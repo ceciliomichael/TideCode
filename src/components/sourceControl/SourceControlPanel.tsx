@@ -515,7 +515,10 @@ function SourceControlPanelContent({
         workspacePath: normalizedWorkspacePath,
       })
       setSyncMessage(result.message)
-      await Promise.all([onRefreshAll(), refreshHistory()])
+      await onRefreshAll()
+      if (action !== 'push') {
+        await refreshHistory()
+      }
       return true
     } catch (error) {
       setSyncError(error instanceof Error ? error.message : `Failed to ${action}.`)
