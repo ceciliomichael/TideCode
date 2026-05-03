@@ -20,7 +20,12 @@ import {
   writeConversationFile,
 } from './conversationFileStore'
 import { buildConversationSummary } from './documents'
-import { ensureStoredFolderExists, readFolderStore, toFolderSummaries, writeFolderStore } from './folderStore'
+import {
+  ensureStoredFolderExists,
+  readPrunedFolderStore,
+  toFolderSummaries,
+  writeFolderStore,
+} from './folderStore'
 import { getConversationAgentContextPath } from './paths'
 
 async function ensureVirtualAgentContextDirectory(conversationId: string) {
@@ -77,11 +82,11 @@ export async function listStoredConversations() {
 }
 
 export async function listStoredFolders() {
-  return toFolderSummaries(await readFolderStore())
+  return toFolderSummaries(await readPrunedFolderStore())
 }
 
 export async function moveStoredFolder(folderId: string, direction: FolderMoveDirection) {
-  const folders = await readFolderStore()
+  const folders = await readPrunedFolderStore()
   const currentIndex = folders.findIndex((folder) => folder.id === folderId)
 
   if (currentIndex < 0) {
@@ -107,7 +112,7 @@ export async function moveStoredFolder(folderId: string, direction: FolderMoveDi
 
 export async function reorderStoredFolder(input: ReorderConversationFolderInput) {
   const { folderId, targetFolderId, position } = input
-  const folders = await readFolderStore()
+  const folders = await readPrunedFolderStore()
 
   if (folderId === targetFolderId) {
     const matchedFolder = folders.find((folder) => folder.id === folderId)
@@ -203,7 +208,7 @@ export async function createStoredFolder(input: CreateConversationFolderInput) {
     throw new Error('Folder name must be 48 characters or less.')
   }
 
-  const folders = await readFolderStore()
+  const folders = await readPrunedFolderStore()
   const duplicateFolder = folders.find(
     (folder) => folder.path.localeCompare(folderPath, undefined, { sensitivity: 'base' }) === 0,
   )
@@ -234,7 +239,7 @@ export async function renameStoredFolder(input: RenameConversationFolderInput) {
     throw new Error('Folder name must be 48 characters or less.')
   }
 
-  const folders = await readFolderStore()
+  const folders = await readPrunedFolderStore()
   const folderToRename = folders.find((folder) => folder.id === input.folderId)
   if (!folderToRename) {
     throw new Error(`Folder not found: ${input.folderId}`)
@@ -255,7 +260,7 @@ export async function renameStoredFolder(input: RenameConversationFolderInput) {
 }
 
 export async function deleteStoredFolder(folderId: string) {
-  const folders = await readFolderStore()
+  const folders = await readPrunedFolderStore()
   const hasFolder = folders.some((folder) => folder.id === folderId)
   if (!hasFolder) {
     return []

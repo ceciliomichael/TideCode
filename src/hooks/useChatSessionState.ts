@@ -91,11 +91,14 @@ export function useChatSessionState(language: AppLanguage) {
     setSelectedFolderId(nextFolderId)
   }, [])
 
-  const setActiveConversationSelection = useCallback((conversation: ConversationRecord) => {
-    setActiveConversationId(conversation.id)
-    setActiveConversationChatMode(conversation.chatMode)
-    setSelectedFolderId(conversation.folderId)
-  }, [])
+  const setActiveConversationSelection = useCallback(
+    (conversation: ConversationRecord, selectedFolderIdOverride: string | null = conversation.folderId) => {
+      setActiveConversationId(conversation.id)
+      setActiveConversationChatMode(conversation.chatMode)
+      setSelectedFolderId(selectedFolderIdOverride)
+    },
+    [],
+  )
 
   const upsertConversationRecord = useCallback((conversation: ConversationRecord) => {
     setConversationRuntimeStates((currentValue) => ({
@@ -127,11 +130,17 @@ export function useChatSessionState(language: AppLanguage) {
         return
       }
 
+      const normalizedInitialSelectedFolderId =
+        initialConversation.folderId !== null &&
+        nextFolderSummaries.some((folder) => folder.id === initialConversation.folderId)
+          ? initialConversation.folderId
+          : null
+
       setConversationRuntimeStates((currentValue) => ({
         ...currentValue,
         [initialConversation.id]: createConversationRuntimeState(initialConversation, currentValue[initialConversation.id]),
       }))
-      setActiveConversationSelection(initialConversation)
+      setActiveConversationSelection(initialConversation, normalizedInitialSelectedFolderId)
     },
     [clearConversationSelection, setActiveConversationSelection],
   )
