@@ -123,6 +123,7 @@ import {
   saveApiKeyProvider,
   switchCodexAccount,
 } from './providers/service'
+import { onProvidersStateChanged } from './providers/events'
 import {
   listCustomModels,
   listProviderModels,
@@ -181,6 +182,13 @@ app.commandLine.appendSwitch(
 let win: BrowserWindow | null
 const activeChatStreamProviders = new Map<string, StartChatStreamInput['providerId']>()
 const mcpServerManager = getMcpServerManager()
+onProvidersStateChanged(() => {
+  if (!win || win.isDestroyed()) {
+    return
+  }
+
+  win.webContents.send('providers:stateChanged')
+})
 
 // --- Instance / profile isolation ---
 //

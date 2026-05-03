@@ -12,6 +12,7 @@ import type { CodexAccountSummary } from '../../../src/types/chat'
 import { refreshCodexOAuthTokensIfNeeded } from './refresh'
 import { fetchCodexUsageSnapshot } from './usage'
 import { selectCodexRotationAccountKey } from './rotation'
+import { emitProvidersStateChanged } from '../events'
 
 const USAGE_FETCH_TIMEOUT_MS = 5_000
 
@@ -122,6 +123,8 @@ export async function getCodexProviderStatus(hydrate = false) {
 
 export async function maybeRotateCodexAccountForChat() {
   const providerStatus = await getCodexProviderStatus(true)
+  emitProvidersStateChanged()
+
   if (!providerStatus.isAuthenticated || !providerStatus.accountKey) {
     return null
   }
@@ -132,7 +135,9 @@ export async function maybeRotateCodexAccountForChat() {
     return readStoredCodexAuthData()
   }
 
-  return activateStoredCodexAccount(targetAccountKey)
+  const nextAuthData = await activateStoredCodexAccount(targetAccountKey)
+  emitProvidersStateChanged()
+  return nextAuthData
 }
 
 export async function connectCodexProviderWithOAuth(openExternal: (url: string) => Promise<void>) {

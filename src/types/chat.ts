@@ -629,6 +629,7 @@ export interface GitCommitResult {
   branchName: string | null
   commitHash: string
   defaultBranchName: string | null
+  historyEntry?: GitHistoryEntry | null
   message: string
   postCommitWarning: string | null
   prUrl: string | null
@@ -838,6 +839,7 @@ export interface EchosphereProvidersApi {
   addCodexAccountWithOAuth: () => Promise<ProvidersState>
   connectCodexWithOAuth: () => Promise<ProvidersState>
   disconnectCodex: () => Promise<ProvidersState>
+  onStateChange: (listener: () => void) => () => void
   removeApiKeyProvider: (providerId: ApiKeyProviderId) => Promise<ProvidersState>
   saveApiKeyProvider: (input: SaveApiKeyProviderInput) => Promise<ProvidersState>
   switchCodexAccount: (accountKey: string) => Promise<ProvidersState>

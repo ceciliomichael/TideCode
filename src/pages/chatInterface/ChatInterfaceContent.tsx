@@ -31,7 +31,13 @@ import { useChatMessageQueue } from './useChatMessageQueue'
 import { canInterruptStreamForSteer } from './chatSteerFollowUp'
 import { useChatCompression } from './useChatCompression'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
-import type { AppSettings, ChatAttachment, ReorderConversationFolderInput, ToolInvocationTrace } from '../../types/chat'
+import type {
+  AppSettings,
+  ChatAttachment,
+  CodexUsageSnapshot,
+  ReorderConversationFolderInput,
+  ToolInvocationTrace,
+} from '../../types/chat'
 import type { ResolvedTheme } from '../../lib/theme'
 import { getNextChatMode, isChatModeToggleShortcut } from '../../components/chat/chatModeShortcut'
 import { resolveTaskModelSelection } from '../../lib/taskModelSelection'
@@ -67,6 +73,7 @@ interface ChatInterfaceContentProps {
   settings: AppSettings
   sidebarWidth: number
   workspaceState: ChatWorkspaceUiState
+  codexUsage: CodexUsageSnapshot | null | undefined
 }
 
 function buildRuntimeSelection(
@@ -100,6 +107,7 @@ export function ChatInterfaceContent({
   sendMessageOnEnter,
   settings,
   sidebarWidth,
+  codexUsage,
   workspaceState,
 }: ChatInterfaceContentProps) {
   const activeWorkspacePath = chatMessages.activeConversationRootPath ?? chatMessages.selectedFolderPath
@@ -602,6 +610,7 @@ export function ChatInterfaceContent({
                 <ChatInput
                   attachments={chatMessages.mainComposerAttachments}
                   contextUsage={contextUsage}
+                  codexUsage={codexUsage}
                   isCompressingChat={isCompressingChat}
                   onCompressChat={handleCompressChat}
                   refactorCandidates={refactorCandidates}

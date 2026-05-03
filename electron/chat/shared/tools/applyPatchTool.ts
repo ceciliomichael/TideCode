@@ -64,6 +64,8 @@ Important:
 - Use \`write\` only when you need to replace a whole file.
 - Do not use guessed paths; read or search first.
 - always patch against the file as it exists right now on disk.
+- Every update hunk must make a real content change. Do not submit hunks where the removed and added text are the same, even if the file already appears correct.
+- If the target already has the desired content, do not call apply_patch; report that no edit is needed.
 - grep results are only location hints.`
 
 function createToolErrorResult(summary: string): AgentToolExecutionResult {
@@ -87,7 +89,7 @@ export function createApplyPatchTool(context: WorkspaceToolContext, providerId: 
   if (providerId === 'codex') {
     return openai.tools.customTool({
       name: 'apply_patch',
-      description: 'Use the apply_patch tool to edit files. This is a freeform tool, so provide only the patch text, not JSON.',
+      description: 'Use the apply_patch tool to edit files. This is a freeform tool, so provide only the patch text, not JSON. Every update hunk must make a real content change; if the target already has the desired content, do not call this tool.',
       format: {
         definition: APPLY_PATCH_LARK_GRAMMAR,
         syntax: 'lark',

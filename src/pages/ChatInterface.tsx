@@ -13,6 +13,7 @@ import { useChatWorkspaceUiState } from './chatInterface/useChatWorkspaceUiState
 import { getTerminalWorkspaceKey } from './chatInterface/chatWorkspaceUiState.utils'
 import type { AppSettings, ProvidersState } from '../types/chat'
 import type { DiffPanelScope } from '../components/chat/ConversationDiffPanel'
+import { selectActiveCodexUsageSnapshot } from '../components/chat/codexUsage'
 import type { ResolvedTheme } from '../lib/theme'
 import { resolveTaskModelSelection } from '../lib/taskModelSelection'
 
@@ -75,6 +76,11 @@ export function ChatInterface({
     settings,
     updateSettings: onUpdateSettings,
   })
+  const codexUsage = selectActiveCodexUsageSnapshot(
+    chatRuntimeConfig.providerId,
+    providersState.providersState,
+    providersState.isLoading,
+  )
   const activeWorkspacePath = chatMessages.activeConversationRootPath ?? chatMessages.selectedFolderPath
   const gitBranchState = useGitBranchState(activeWorkspacePath)
   const hasRepository = gitBranchState.branchState.hasRepository
@@ -177,6 +183,7 @@ export function ChatInterface({
       sendMessageOnEnter={sendMessageOnEnter}
       settings={settings}
       sidebarWidth={sidebarWidth}
+      codexUsage={codexUsage}
       workspaceState={workspaceState}
     />
   )

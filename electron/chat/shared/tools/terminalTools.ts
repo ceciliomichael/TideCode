@@ -11,7 +11,7 @@ import type { TerminalSessionSnapshot } from '../../../terminal/service'
 import { resolveWorkspaceTargetPath } from './workspaceTools'
 
 const MAX_TERMINAL_OUTPUT_BODY_LENGTH = 100_000
-const RUN_TERMINAL_MAX_POLLING_MS = 300_000
+const RUN_TERMINAL_MAX_POLLING_MS = 60_000
 const RUN_TERMINAL_POLLING_INTERVAL_MS = 500
 const ANSI_ESCAPE = '\\u001B'
 const TERMINAL_BELL = '\\u0007'
@@ -358,7 +358,7 @@ function buildRunTerminalResult(input: {
   }
 
   if (input.timedOut) {
-    bodyLines.push('', 'Terminal command is still running after 5 minutes. Returning output collected so far.')
+    bodyLines.push('', 'Terminal command is still running after 1 minute. Returning output collected so far.')
   }
 
   const hasExited = input.snapshot?.hasExited ?? false
@@ -416,7 +416,7 @@ export function createTerminalToolSet(
   return {
     run_terminal: tool({
       description:
-        'Start or reuse a terminal session in the active workspace, then optionally run one non-editing command. Use `cwd` only for a real path inside the workspace. Use this for inspection, testing, and command-line work only. Do not use terminal commands to edit files; use `write` or `apply_patch` instead. When a command is provided, this waits up to 5 minutes for the command to finish and returns available output automatically; it returns earlier when the command finishes.',
+        'Start or reuse a terminal session in the active workspace, then optionally run one non-editing command. Use `cwd` only for a real path inside the workspace. Use this for inspection, testing, and command-line work only. Do not use terminal commands to edit files; use `write` or `apply_patch` instead. When a command is provided, this waits up to 1 minute for the command to finish and returns available output automatically; it returns earlier when the command finishes.',
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {

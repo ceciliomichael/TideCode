@@ -69,8 +69,32 @@ export function useProvidersState() {
   }, [])
 
   useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    let backgroundRefreshTimeoutId: number | null = null
+
+    void refresh().finally(() => {
+      if (cancelled) {
+        return
+      }
+
+      backgroundRefreshTimeoutId = window.setTimeout(() => {
+        void refreshInBackground()
+      }, 250)
+    })
+
+    return () => {
+      cancelled = true
+      if (backgroundRefreshTimeoutId !== null) {
+        window.clearTimeout(backgroundRefreshTimeoutId)
+      }
+    }
+  }, [refresh, refreshInBackground])
+
+  useEffect(() => {
+    return window.echosphereProviders.onStateChange(() => {
+      void refreshInBackground()
+    })
+  }, [refreshInBackground])
 
   const runOperation = useCallback(
     async (operationKey: ProvidersOperationKey, operation: () => Promise<ProvidersState>) => {

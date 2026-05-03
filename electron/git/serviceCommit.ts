@@ -1,4 +1,4 @@
-import type { GitCommitInput, GitCommitResult } from '../../src/types/chat'
+import type { GitCommitInput, GitCommitResult, GitHistoryEntry } from '../../src/types/chat'
 import { normalizeGeneratedCommitMessageWithDescription } from './commitMessageFormatting'
 import {
   fetchOrigin,
@@ -10,6 +10,7 @@ import {
   isGitUnavailable,
   readCurrentBranch,
   readDefaultBranch,
+  readHeadCommitHash,
   readLocalBranches,
   readStagedDiffText,
   readStagedNumstatText,
@@ -30,9 +31,43 @@ import {
   parseGitHubRepositoryRef,
   parseTouchedFilesFromNumstat,
   remoteUrlToHttpsBase,
+  parseGitHistoryLine,
   trimInvalidBranchTail,
   type GitHubRepositoryRef,
 } from './serviceHelpers'
+
+const HISTORY_LOG_FORMAT = '%x1f%H%x1f%h%x1f%P%x1f%an%x1f%aI%x1f%ar%x1f%s%x1f%D'
+
+async function readLatestHistoryEntry(repoRootPath: string): Promise<GitHistoryEntry | null> {
+  const headHash = await readHeadCommitHash(repoRootPath)
+  if (!headHash) {
+    return null
+  }
+
+  try {
+    const { stdout } = await runGit(
+      [
+        'log',
+        '--graph',
+        '--decorate=short',
+        '--date=iso-strict',
+        '--pretty=format:' + HISTORY_LOG_FORMAT,
+        '--all',
+        '--no-color',
+        '-n1',
+      ],
+      repoRootPath,
+    )
+
+    return parseGitHistoryLine(stdout.trim(), headHash)
+  } catch (error) {
+    if (isGitUnavailable(error)) {
+      throw new Error('Git is not available in the current environment.')
+    }
+
+    throw new Error(`Failed to load latest git history entry: ${getErrorMessage(error)}`)
+  }
+}
 
 async function createOrGetGitHubPullRequest(input: {
   baseBranchName: string
@@ -451,6 +486,10 @@ export async function gitCommit(input: GitCommitInput): Promise<GitCommitResult>
   let switchedToDefaultBranch = false
   let pulledLatestOnDefaultBranch = false
   let postCommitWarning: string | null = null
+  const historyEntry = await readLatestHistoryEntry(repoRootPath).catch((error) => {
+    console.error('Failed to read latest git history entry after commit.', error)
+    return null
+  })
   if (input.action === 'commit-and-push' || input.action === 'commit-and-create-pr') {
     try {
       const currentBranch = await readSymbolicHeadBranchName(repoRootPath)
@@ -516,6 +555,7 @@ export async function gitCommit(input: GitCommitInput): Promise<GitCommitResult>
     branchName: activeBranchName,
     commitHash,
     defaultBranchName,
+    historyEntry,
     message: effectiveCommitMessage,
     postCommitWarning,
     prUrl,

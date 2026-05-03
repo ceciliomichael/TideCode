@@ -373,9 +373,18 @@ function SourceControlPanelContent({
   }, [hasWorkspacePath, loadHistoryPage])
 
   const appendCommittedHistoryEntry = useCallback(
-    async (commitHash: string) => {
+    async (commitResult: GitCommitResult) => {
       if (!hasWorkspacePath) {
         return false
+      }
+
+      const nextEntry = commitResult.historyEntry
+      if (nextEntry) {
+        setHistoryEntries((currentValue) => prependCommittedHistoryEntry(currentValue, nextEntry))
+        setHeadHash(nextEntry.hash)
+        setSelectedCommitHash(nextEntry.hash)
+        setHistoryError(null)
+        return true
       }
 
       try {
@@ -385,7 +394,7 @@ function SourceControlPanelContent({
           workspacePath: normalizedWorkspacePath,
         })
         const nextEntry = result.entries[0]
-        if (!nextEntry || nextEntry.hash !== commitHash) {
+        if (!nextEntry || nextEntry.hash !== commitResult.commitHash) {
           return false
         }
 
@@ -551,7 +560,7 @@ function SourceControlPanelContent({
       })
 
       if (commitResult) {
-        await appendCommittedHistoryEntry(commitResult.commitHash)
+        await appendCommittedHistoryEntry(commitResult)
       }
       setCommitMessage('')
       setSyncError(null)

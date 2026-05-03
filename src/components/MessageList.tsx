@@ -356,6 +356,19 @@ export function MessageList({
     });
   }, [conversationId, editingMessageId, visibleMessages.length]);
 
+  useLayoutEffect(() => {
+    if (editingMessageId) {
+      return;
+    }
+
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    container.scrollTop = container.scrollHeight;
+  }, [conversationId, editingMessageId, visibleMessages.length]);
+
   return (
     <div
       ref={scrollContainerRef}

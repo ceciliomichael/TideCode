@@ -16,6 +16,7 @@ import {
 interface ExecutableToolResult {
   body?: string
   status: string
+  summary?: string
   subject?: {
     path?: string
   }
@@ -379,6 +380,36 @@ test('createAgentTools write and apply_patch allow explicit external files in Fu
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
     await fs.rm(outsideDirectoryPath, { force: true, recursive: true })
+  }
+})
+
+test('createAgentTools write rejects identical file content', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const targetFilePath = path.join(workspaceRootPath, 'src', 'same-write.ts')
+  await fs.writeFile(targetFilePath, 'export const value = 1\n', 'utf8')
+
+  try {
+    const tools = await createAgentTools(
+      {
+        workspaceRootPath,
+      },
+      { chatMode: 'agent' },
+    )
+
+    const result = await (tools.write as unknown as ExecutableWriteTool).execute({
+      changes: [
+        {
+          absolute_path: targetFilePath,
+          content: 'export const value = 1\n',
+        },
+      ],
+    })
+
+    assert.equal(result.status, 'error')
+    assert.match(result.summary ?? '', /Write did not change src[/\\]same-write\.ts/u)
+    assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'export const value = 1\n')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 

@@ -24,6 +24,7 @@ const TERMINAL_MAX_COLS = 400;
 const TERMINAL_MIN_ROWS = 6;
 const TERMINAL_MAX_ROWS = 200;
 const MAX_SESSION_OUTPUT_BUFFER_LENGTH = 300_000;
+const MAX_TERMINAL_POLLING_MS = 60_000;
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"]);
 
 interface TerminalShellSpec {
@@ -487,7 +488,7 @@ function assertSessionOwnershipForRead(
 }
 
 function clampTerminalPollingMs(pollingMs: number | undefined) {
-  return clampInteger(pollingMs ?? 0, 0, 300_000, 0);
+  return clampInteger(pollingMs ?? 0, 0, MAX_TERMINAL_POLLING_MS, 0);
 }
 
 function waitForTerminalSessionExitOrTimeout(
@@ -682,6 +683,10 @@ async function createTerminalSessionInternal(
     }
 
     appendSessionOutputBuffer(sessionForData, data);
+    // Wake any pending getTerminalSessionOutput poll as soon as new output arrives.
+    // This prevents run_terminal from waiting the full polling timeout when a
+    // command completion marker has already been written.
+    notifySessionWaiters(sessionForData);
     const payload: TerminalDataEvent = {
       data,
       sessionId,

@@ -133,6 +133,13 @@ const providersApi: EchosphereProvidersApi = {
   addCodexAccountWithOAuth: () => ipcRenderer.invoke('providers:codex:addAccountOauth'),
   connectCodexWithOAuth: () => ipcRenderer.invoke('providers:codex:connectOauth'),
   disconnectCodex: () => ipcRenderer.invoke('providers:codex:disconnect'),
+  onStateChange: (listener: () => void) => {
+    const wrappedListener = () => listener()
+    ipcRenderer.on('providers:stateChanged', wrappedListener)
+    return () => {
+      ipcRenderer.off('providers:stateChanged', wrappedListener)
+    }
+  },
   saveApiKeyProvider: (input: SaveApiKeyProviderInput) => ipcRenderer.invoke('providers:apikey:save', input),
   removeApiKeyProvider: (providerId: ApiKeyProviderId) =>
     ipcRenderer.invoke('providers:apikey:remove', providerId),

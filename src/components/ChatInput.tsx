@@ -4,6 +4,7 @@ import { CHAT_ATTACHMENT_INPUT_ACCEPT, readChatAttachmentsFromFiles } from '../l
 import { chatConversationSurfacePaddingClassName, chatInputSurfaceClassName } from '../lib/chatStyles'
 import { ChatMentionMenu } from './chat/ChatMentionMenu'
 import { ChatMentionTextarea } from './chat/ChatMentionTextarea'
+import { CodexUsageIndicator } from './chat/CodexUsageIndicator'
 import { getNextChatMode, isChatModeToggleShortcut } from './chat/chatModeShortcut'
 import { useChatFileMentionMenu } from '../hooks/useChatFileMentionMenu'
 import { useChatMentionNavigation } from '../hooks/useChatMentionNavigation'
@@ -12,6 +13,7 @@ import type {
   ChatAttachment,
   ChatMode,
   ContextUsageEstimate,
+  CodexUsageSnapshot,
   GitBranchState,
   ReasoningEffort,
   WorkspaceRefactorCandidate,
@@ -33,6 +35,7 @@ interface ChatInputProps {
   chatModeOptions?: readonly ChatModeOption[]
   chatModeSelectorDisabled?: boolean
   contextUsage?: ContextUsageEstimate
+  codexUsage?: CodexUsageSnapshot | null
   isCompressingChat?: boolean
   disabled?: boolean
   focusSignal?: number
@@ -115,6 +118,7 @@ export function ChatInput({
   onCompressChat,
   onQueue,
   contextUsage,
+  codexUsage,
   isCompressingChat = false,
   refactorCandidates = [],
   refactorCandidatesLoading = false,
@@ -490,7 +494,7 @@ export function ChatInput({
             </div>
           ) : null}
 
-          <div className="flex shrink-0 items-center justify-end gap-2 self-end">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 self-end">
             {showRefactorCandidatesIndicator ? (
               <RefactorCandidatesIndicator
                 candidates={refactorCandidates}
@@ -573,7 +577,8 @@ export function ChatInput({
             ) : null}
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {codexUsage ? <CodexUsageIndicator usage={codexUsage} /> : null}
             {showGitBranchSelector && gitBranchState ? (
               <Tooltip content={gitBranchTooltip} hideWhenTriggerExpanded>
                 <GitBranchSelectorField

@@ -683,6 +683,10 @@ export async function applyPatchInWorkspace(
     const nextContent = applyUpdateChunks(sourceTarget.relativePath, existingContent, hunk.chunks)
     const writeTarget = nextTarget ?? sourceTarget
 
+    if (!nextTarget && nextContent === existingContent) {
+      throw new Error(`Patch did not change ${sourceTarget.relativePath}`)
+    }
+
     await fs.mkdir(path.dirname(writeTarget.absolutePath), { recursive: true })
     await fs.writeFile(writeTarget.absolutePath, nextContent, 'utf8')
 

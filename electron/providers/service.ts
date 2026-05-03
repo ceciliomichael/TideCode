@@ -12,6 +12,7 @@ import {
   saveApiKeyProviderConfig,
   toApiKeyProviderStatuses,
 } from './store'
+import { emitProvidersStateChanged } from './events'
 
 const PROVIDERS_CACHE_TTL_MS = 25_000
 
@@ -38,6 +39,7 @@ async function rebuildProvidersStateCache(hydrate = false) {
       .then((nextState) => {
         cachedProvidersState = nextState
         cachedProvidersStateAt = Date.now()
+        emitProvidersStateChanged()
         return nextState
       })
       .finally(() => {
@@ -55,6 +57,7 @@ async function rebuildProvidersStateCache(hydrate = false) {
     .then((nextState) => {
       cachedProvidersState = nextState
       cachedProvidersStateAt = Date.now()
+      emitProvidersStateChanged()
       return nextState
     })
     .finally(() => {

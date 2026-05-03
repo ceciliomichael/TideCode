@@ -64,13 +64,13 @@ test('Codex rotation keeps the active account when 5H usage is above the thresho
   assert.equal(selectCodexRotationAccountKey(accounts, accounts[0]?.accountKey ?? null), accounts[0]?.accountKey)
 })
 
-test('Codex rotation moves from low 5H usage to an account above the threshold', () => {
+test('Codex rotation moves from 2% remaining in 5H to an account above the threshold', () => {
   const accounts = [
     buildAccountSummary({
       accountId: 'workspace-a',
       accountKey: 'workspace-a::user-1',
       label: 'A',
-      primaryUsedPercent: 2,
+      primaryUsedPercent: 98,
     }),
     buildAccountSummary({
       accountId: 'workspace-b',
@@ -90,19 +90,19 @@ test('Codex rotation moves from low 5H usage to an account above the threshold',
   assert.equal(selectCodexRotationAccountKey(accounts, accounts[0]?.accountKey ?? null), accounts[1]?.accountKey)
 })
 
-test('Codex rotation falls back to a week-only account when all 5H usage is low', () => {
+test('Codex rotation falls back to a week-only account when all 5H accounts are at or below threshold', () => {
   const accounts = [
     buildAccountSummary({
       accountId: 'workspace-a',
       accountKey: 'workspace-a::user-1',
       label: 'A',
-      primaryUsedPercent: 2,
+      primaryUsedPercent: 98,
     }),
     buildAccountSummary({
       accountId: 'workspace-b',
       accountKey: 'workspace-b::user-1',
       label: 'B',
-      primaryUsedPercent: 1,
+      primaryUsedPercent: 99,
     }),
     buildAccountSummary({
       accountId: 'workspace-c',
@@ -131,6 +131,25 @@ test('Codex rotation keeps an already selected week-only fallback stable', () =>
       label: 'B',
       primaryUsedPercent: null,
       secondaryUsedPercent: 31,
+    }),
+  ]
+
+  assert.equal(selectCodexRotationAccountKey(accounts, accounts[0]?.accountKey ?? null), accounts[0]?.accountKey)
+})
+
+test('Codex rotation keeps a manually selected account while it remains above threshold', () => {
+  const accounts = [
+    buildAccountSummary({
+      accountId: 'workspace-a',
+      accountKey: 'workspace-a::user-1',
+      label: 'A',
+      primaryUsedPercent: 40,
+    }),
+    buildAccountSummary({
+      accountId: 'workspace-b',
+      accountKey: 'workspace-b::user-1',
+      label: 'B',
+      primaryUsedPercent: 20,
     }),
   ]
 

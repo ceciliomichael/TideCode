@@ -196,6 +196,32 @@ test('applyPatchInWorkspace tolerates accidental line-wrap differences in hunk c
   }
 })
 
+test('applyPatchInWorkspace rejects update patches that do not change file content', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-noop-'))
+  const targetFilePath = path.join(workspaceRootPath, 'src', 'same.ts')
+  await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
+  await fs.writeFile(targetFilePath, 'alpha\nbeta\n', 'utf8')
+
+  try {
+    await assert.rejects(
+      applyPatchInWorkspace(
+        workspaceRootPath,
+        `*** Begin Patch
+*** Update File: src/same.ts
+@@
+ alpha
+ beta
+*** End Patch`,
+      ),
+      /Patch did not change src[/\\]same\.ts/u,
+    )
+
+    assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'alpha\nbeta\n')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('applyPatchInWorkspace applies add, update, move, and delete operations', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-'))
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
@@ -338,6 +364,7 @@ test('createAgentTools exposes Codex apply_patch as a grammar-backed freeform to
     assert.equal(applyPatchTool.args?.format?.type, 'grammar')
     assert.equal(applyPatchTool.args?.format?.syntax, 'lark')
     assert.match(applyPatchTool.args?.format?.definition ?? '', /start: begin_patch hunk\+ end_patch/u)
+    assert.match(applyPatchTool.args?.description ?? '', /Every update hunk must make a real content change/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -450,9 +477,12 @@ test('createAgentTools describes read and apply_patch with exact path guidance',
     assert.match(applyPatchTool.description ?? '', /Use `write` only when you need to replace a whole file/u)
     assert.match(applyPatchTool.description ?? '', /Do not use guessed paths/u)
     assert.match(applyPatchTool.description ?? '', /always patch against the file as it exists right now on disk/u)
+    assert.match(applyPatchTool.description ?? '', /Every update hunk must make a real content change/u)
+    assert.match(applyPatchTool.description ?? '', /If the target already has the desired content, do not call apply_patch/u)
     assert.match(applyPatchTool.description ?? '', /Order update hunks from top to bottom/u)
     assert.match(applyPatchTool.description ?? '', /grep results are only location hints/u)
     assert.match(writeTool.description ?? '', /For small edits to an existing file, use `apply_patch` instead/u)
+    assert.match(writeTool.description ?? '', /Do not call write when the target already has identical content/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
