@@ -42,10 +42,6 @@ export function useInitializeChatHistory(input: UseInitializeChatHistoryInput) {
         )
         const initialWorkspacePath = snapshot.initialConversation?.agentContextRootPath ?? null
 
-        if (initialWorkspacePath) {
-          await loadGitBranchState(initialWorkspacePath).catch(() => undefined)
-        }
-
         if (!isMounted) {
           return
         }
@@ -55,8 +51,14 @@ export function useInitializeChatHistory(input: UseInitializeChatHistoryInput) {
           ...snapshot.folderSummaries.map((folderSummary) => folderSummary.path),
           ...snapshot.conversationSummaries.map((conversationSummary) => conversationSummary.agentContextRootPath),
         ]
-        void prefetchGitBranchStates(workspacePaths)
-        void prefetchGitDiffSnapshots(workspacePaths)
+        window.setTimeout(() => {
+          if (initialWorkspacePath) {
+            void loadGitBranchState(initialWorkspacePath).catch(() => undefined)
+          }
+
+          void prefetchGitBranchStates(workspacePaths)
+          void prefetchGitDiffSnapshots(workspacePaths)
+        }, 250)
       } catch (caughtError) {
         console.error(caughtError)
         if (isMounted) {

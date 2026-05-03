@@ -6,7 +6,7 @@ import {
 import { persistAndStreamMessage } from './chatMessageSendWorkflow'
 import type { ChatRuntimeSelection } from './chatMessageRuntime'
 import type { PersistAndStreamMessageInput } from './chatMessageSendTypes'
-import type { ChatMode } from '../types/chat'
+import type { ChatMode, ConversationRecord } from '../types/chat'
 
 interface UseChatSendActionsInput
   extends Omit<
@@ -284,7 +284,16 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         return
       }
 
-      const persistedConversation = await window.echosphereHistory.getConversation(conversationId)
+      let persistedConversation: ConversationRecord | null
+      try {
+        persistedConversation = await window.echosphereHistory.getConversation(conversationId)
+      } catch (caughtError) {
+        console.error(caughtError)
+        input.cancelEditingMessage()
+        input.setError('Unable to reload that conversation right now.')
+        return
+      }
+
       const hasPersistedEditableMessage = Boolean(
         persistedConversation?.messages.some(
           (message) => message.id === input.editingMessageId && message.role === 'user',

@@ -41,6 +41,62 @@ PATCH`)
   assert.equal(wrappedRaw.hunks[0]?.type, 'add')
 })
 
+test('parseApplyPatch accepts Codex-style applypatch heredoc wrapper', () => {
+  const parsed = parseApplyPatch(`applypatch <<'PATCH'
+*** Begin Patch
+*** Add File: src/alias.txt
++alias
+*** End Patch
+PATCH`)
+
+  assert.equal(parsed.hunks.length, 1)
+  assert.equal(parsed.hunks[0]?.type, 'add')
+})
+
+test('parseApplyPatch accepts first update chunk without explicit context marker', () => {
+  const parsed = parseApplyPatch(`*** Begin Patch
+*** Update File: src/existing.ts
+ import value from './value'
++import other from './other'
+*** End Patch`)
+
+  assert.deepEqual(parsed.hunks, [
+    {
+      chunks: [
+        {
+          newLines: ["import value from './value'", "import other from './other'"],
+          oldLines: ["import value from './value'"],
+        },
+      ],
+      path: 'src/existing.ts',
+      type: 'update',
+    },
+  ])
+})
+
+test('parseApplyPatch preserves bare empty lines in update hunks as context', () => {
+  const parsed = parseApplyPatch(`*** Begin Patch
+*** Update File: file.txt
+@@
+ before
+
+ after
+*** End Patch`)
+
+  assert.deepEqual(parsed.hunks, [
+    {
+      chunks: [
+        {
+          newLines: ['before', '', 'after'],
+          oldLines: ['before', '', 'after'],
+        },
+      ],
+      path: 'file.txt',
+      type: 'update',
+    },
+  ])
+})
+
 test('applyPatchInWorkspace can re-anchor an update when the file already has a matching inserted line', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-reanchor-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'accountService.ts')
@@ -258,6 +314,63 @@ test('createAgentTools exposes write tools in agent mode', async () => {
   }
 })
 
+test('createAgentTools exposes Codex apply_patch as a grammar-backed freeform tool', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
+
+  try {
+    const tools = await createAgentTools(
+      {
+        workspaceRootPath,
+      },
+      {
+        chatMode: 'agent',
+        providerId: 'codex',
+      },
+    )
+
+    const applyPatchTool = tools.apply_patch as {
+      args?: { format?: { definition?: string; syntax?: string; type?: string }; name?: string }
+      type?: string
+    }
+
+    assert.equal(applyPatchTool.type, 'provider')
+    assert.equal(applyPatchTool.args?.name, 'apply_patch')
+    assert.equal(applyPatchTool.args?.format?.type, 'grammar')
+    assert.equal(applyPatchTool.args?.format?.syntax, 'lark')
+    assert.match(applyPatchTool.args?.format?.definition ?? '', /start: begin_patch hunk\+ end_patch/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('createAgentTools keeps JSON apply_patch fallback for non-Codex providers', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
+
+  try {
+    const tools = await createAgentTools(
+      {
+        workspaceRootPath,
+      },
+      {
+        chatMode: 'agent',
+        providerId: 'openai-compatible',
+      },
+    )
+
+    const applyPatchTool = tools.apply_patch as {
+      description?: string
+      inputSchema?: unknown
+      type?: string
+    }
+
+    assert.notEqual(applyPatchTool.type, 'provider')
+    assert.ok(applyPatchTool.inputSchema)
+    assert.match(applyPatchTool.description ?? '', /structured patch/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('createAgentTools describes grep as a file-or-directory scoped workspace search', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
 
@@ -336,6 +449,9 @@ test('createAgentTools describes read and apply_patch with exact path guidance',
     assert.match(applyPatchTool.description ?? '', /workspace-relative file paths like `src\/app\.ts`/u)
     assert.match(applyPatchTool.description ?? '', /Use `write` only when you need to replace a whole file/u)
     assert.match(applyPatchTool.description ?? '', /Do not use guessed paths/u)
+    assert.match(applyPatchTool.description ?? '', /always patch against the file as it exists right now on disk/u)
+    assert.match(applyPatchTool.description ?? '', /Order update hunks from top to bottom/u)
+    assert.match(applyPatchTool.description ?? '', /grep results are only location hints/u)
     assert.match(writeTool.description ?? '', /For small edits to an existing file, use `apply_patch` instead/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

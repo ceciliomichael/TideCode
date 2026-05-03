@@ -90,3 +90,35 @@ test('workspace checkpoint sequences rewind multiple turns and can be redone', a
     await fs.rm(tempRootPath, { force: true, recursive: true })
   }
 })
+
+test('workspace checkpoints surface a friendly error when the manifest file is unreadable', async () => {
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-checkpoints-corrupt-'))
+  const workspaceRootPath = path.join(tempRootPath, 'workspace')
+  const checkpointStorageRootPath = path.join(tempRootPath, 'checkpoint-storage')
+
+  const checkpointStore = createWorkspaceCheckpointStore(checkpointStorageRootPath)
+  await fs.mkdir(workspaceRootPath, { recursive: true })
+  const checkpoint = await checkpointStore.createCheckpoint({
+    workspaceRootPath,
+  })
+
+  const manifestPath = path.join(
+    checkpointStorageRootPath,
+    'workspace-checkpoints',
+    checkpoint.id,
+    'manifest.json',
+  )
+
+  try {
+    await fs.writeFile(manifestPath, '', 'utf8')
+
+    await assert.rejects(
+      checkpointStore.restoreCheckpoint(checkpoint.id),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message.includes('Checkpoint manifest is unreadable:'),
+    )
+  } finally {
+    await fs.rm(tempRootPath, { force: true, recursive: true })
+  }
+})

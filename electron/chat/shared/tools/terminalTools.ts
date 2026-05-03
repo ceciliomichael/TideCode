@@ -18,6 +18,13 @@ const TERMINAL_BELL = '\\u0007'
 const ANSI_CSI_PATTERN = new RegExp(`${ANSI_ESCAPE}\\[[0-?]*[ -/]*[@-~]`, 'g')
 const ANSI_OSC_PATTERN = new RegExp(`${ANSI_ESCAPE}\\][^${TERMINAL_BELL}${ANSI_ESCAPE}]*(?:${TERMINAL_BELL}|${ANSI_ESCAPE}\\\\)`, 'g')
 const ANSI_SINGLE_ESCAPE_PATTERN = new RegExp(`${ANSI_ESCAPE}[@-Z\\-_]`, 'g')
+const EDIT_COMMAND_PATTERNS = [
+  /^(?:cd\s+(?:"([^"]+)"|'([^']+)'|([^\s&]+))\s*&&\s*)?(?:apply_patch|applypatch)\b/iu,
+  /\b(?:Set-Content|Add-Content|Out-File|Set-Item|New-Item)\b/iu,
+  /\b(?:sed|perl)\b[^\n]*\s-(?:i|pi)\b/iu,
+  /(?:^|[;&|]\s*)(?:echo|printf|cat)\b[\s\S]*?(?:>>?|>\s*\S+)/iu,
+  /\btee\b[\s\S]*?(?:>>?|>\s*\S+)/iu,
+]
 
 interface TerminalThreadSessionState {
   nextSessionId: number
@@ -187,6 +194,11 @@ function normalizeCommand(command: string | undefined) {
 
 function resolveTerminalWorkspaceCwd(context: AgentToolContext, cwd: string | undefined) {
   return resolveWorkspaceTargetPath(context.workspaceRootPath, cwd).absolutePath
+}
+
+function isEditingCommand(command: string) {
+  const normalizedCommand = command.replace(/\r\n?/g, '\n').trim()
+  return EDIT_COMMAND_PATTERNS.some((pattern) => pattern.test(normalizedCommand))
 }
 
 function resolveTerminalThreadNamespace(context: AgentToolContext) {
@@ -404,7 +416,7 @@ export function createTerminalToolSet(
   return {
     run_terminal: tool({
       description:
-        'Start or reuse a terminal session in the active workspace, then optionally run one command. Use `cwd` only for a real path inside the workspace. When a command is provided, this waits up to 5 minutes for the command to finish and returns available output automatically; it returns earlier when the command finishes.',
+        'Start or reuse a terminal session in the active workspace, then optionally run one non-editing command. Use `cwd` only for a real path inside the workspace. Use this for inspection, testing, and command-line work only. Do not use terminal commands to edit files; use `write` or `apply_patch` instead. When a command is provided, this waits up to 5 minutes for the command to finish and returns available output automatically; it returns earlier when the command finishes.',
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {
@@ -443,11 +455,17 @@ export function createTerminalToolSet(
         const cols = clampInteger(inputValue.cols, 20, 400, 120)
         const rows = clampInteger(inputValue.rows, 6, 200, 30)
         const command = normalizeCommand(inputValue.command)
-        const namespace = resolveTerminalThreadNamespace(context)
-        const reservedLocalSessionId = reserveThreadLocalSessionId(namespace)
 
         try {
+          if (command && isEditingCommand(command)) {
+            return createErrorResult(
+              'run_terminal cannot be used to edit files. Use write or apply_patch instead.',
+            )
+          }
+
           const cwd = resolveTerminalWorkspaceCwd(context, inputValue.cwd)
+          const namespace = resolveTerminalThreadNamespace(context)
+          const reservedLocalSessionId = reserveThreadLocalSessionId(namespace)
           const resolvedDependencies = await getResolvedDependencies()
           throwIfAborted(abortSignal)
           const session = await raceWithAbort(

@@ -6,7 +6,6 @@ import { useAppSettings } from './hooks/useAppSettings'
 import { useChatMessages } from './hooks/useChatMessages'
 import { useDocumentTheme } from './hooks/useDocumentTheme'
 import { useProvidersState } from './hooks/useProvidersState'
-import { preloadSettingsModelCatalog } from './components/settings/models/settingsModelCatalogStore'
 
 type AppScreen = 'chat' | 'settings'
 
@@ -79,12 +78,16 @@ export default function App() {
   const resolvedTheme = useDocumentTheme(settings.appearance)
 
   useEffect(() => {
-    void preloadSettingsModelCatalog(providersState.providersState)
-  }, [providersState.providersState])
-
-  useEffect(() => {
     setDiffPanelWidth(settings.diffPanelWidth)
   }, [settings.diffPanelWidth])
+
+  useEffect(() => {
+    if (activeScreen !== 'settings') {
+      return
+    }
+
+    void providersState.refreshInBackground()
+  }, [activeScreen, providersState.refreshInBackground])
 
   useEffect(() => {
     if (isLoading || bootConversationLaunchState !== undefined) {

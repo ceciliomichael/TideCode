@@ -269,6 +269,7 @@ export interface RevertEditSession {
 
 export interface CodexProviderConnectionStatus {
   accountId: string | null
+  accountKey: string | null
   authFilePath: string
   email: string | null
   accounts: CodexAccountSummary[]
@@ -292,6 +293,7 @@ export interface CodexUsageSnapshot {
 
 export interface CodexAccountSummary {
   accountId: string
+  accountKey: string
   email: string | null
   isActive: boolean
   label: string
@@ -832,13 +834,13 @@ export interface EchosphereSettingsApi {
 }
 
 export interface EchosphereProvidersApi {
-  getProvidersState: () => Promise<ProvidersState>
+  getProvidersState: (hydrate?: boolean) => Promise<ProvidersState>
   addCodexAccountWithOAuth: () => Promise<ProvidersState>
   connectCodexWithOAuth: () => Promise<ProvidersState>
   disconnectCodex: () => Promise<ProvidersState>
   removeApiKeyProvider: (providerId: ApiKeyProviderId) => Promise<ProvidersState>
   saveApiKeyProvider: (input: SaveApiKeyProviderInput) => Promise<ProvidersState>
-  switchCodexAccount: (accountId: string) => Promise<ProvidersState>
+  switchCodexAccount: (accountKey: string) => Promise<ProvidersState>
 }
 
 export interface EchosphereModelsApi {

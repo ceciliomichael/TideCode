@@ -1,4 +1,5 @@
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
+import type { GitFileDiff } from '../../../types/chat'
 
 export interface WorkspaceClipboardEntry {
   mode: 'copy' | 'cut'
@@ -8,6 +9,7 @@ export interface WorkspaceClipboardEntry {
 export interface WorkspaceExplorerPanelProps {
   activeFilePath: string | null
   clipboardEntry: WorkspaceClipboardEntry | null
+  gitFileDiffs: readonly GitFileDiff[]
   isOpen: boolean
   onCopyEntry: (relativePaths: string[]) => Promise<void>
   onCreateEntry: (relativePath: string, isDirectory: boolean) => Promise<void>

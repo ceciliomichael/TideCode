@@ -17,6 +17,7 @@ function buildEmptyProvidersState(): ProvidersState {
     apiKeyProviders: [],
     codex: {
       accountId: null,
+      accountKey: null,
       accounts: [],
       authFilePath: '',
       email: null,

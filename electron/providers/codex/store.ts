@@ -1,12 +1,13 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { app } from 'electron'
 import type { CodexAccountSummary, CodexProviderConnectionStatus } from '../../../src/types/chat'
-import { parseCodexIdTokenClaims } from './jwt'
+import { extractCodexAccountIdFromTokenPair, extractCodexAccountKeyFromTokenPair, parseCodexIdTokenClaims } from './jwt'
+import { getCodexAuthFilePath } from './paths'
 
 interface CodexAuthTokens {
   access_token: string
   account_id: string
+  account_key: string
   id_token: string
   refresh_token: string
 }
@@ -28,6 +29,10 @@ function hasText(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
 }
 
+export interface CodexStorageOptions {
+  homeDirectory?: string
+}
+
 export function parseStoredCodexAuthData(input: unknown): StoredCodexAuthData | null {
   if (!isRecord(input)) {
     return null
@@ -46,11 +51,24 @@ export function parseStoredCodexAuthData(input: unknown): StoredCodexAuthData | 
     return null
   }
 
-  const parsedClaims = parseCodexIdTokenClaims(tokensCandidate.id_token)
-  const accountId = hasText(tokensCandidate.account_id) ? tokensCandidate.account_id : parsedClaims.accountId
+  const accountId =
+    hasText(tokensCandidate.account_id)
+      ? tokensCandidate.account_id
+      : extractCodexAccountIdFromTokenPair({
+          accessToken: hasText(tokensCandidate.access_token) ? tokensCandidate.access_token : undefined,
+          idToken: tokensCandidate.id_token,
+        })
   if (!hasText(accountId)) {
     return null
   }
+
+  const accountKey =
+    hasText(tokensCandidate.account_key)
+      ? tokensCandidate.account_key
+      : extractCodexAccountKeyFromTokenPair({
+          accessToken: hasText(tokensCandidate.access_token) ? tokensCandidate.access_token : undefined,
+          idToken: tokensCandidate.id_token,
+        }) ?? accountId
 
   const lastRefresh = hasText(input.last_refresh) ? input.last_refresh : new Date().toISOString()
   const expiresAt = hasText(input.expires_at) ? input.expires_at : undefined
@@ -61,27 +79,20 @@ export function parseStoredCodexAuthData(input: unknown): StoredCodexAuthData | 
     tokens: {
       access_token: tokensCandidate.access_token,
       account_id: accountId,
+      account_key: accountKey,
       id_token: tokensCandidate.id_token,
       refresh_token: tokensCandidate.refresh_token,
     },
   }
 }
 
-export function getCodexAuthDirectoryPath() {
-  return path.join(app.getPath('home'), '.codex')
+async function ensureCodexAuthDirectory(homeDirectory?: string) {
+  await fs.mkdir(path.dirname(getCodexAuthFilePath(homeDirectory)), { recursive: true })
 }
 
-export function getCodexAuthFilePath() {
-  return path.join(getCodexAuthDirectoryPath(), 'auth.json')
-}
-
-async function ensureCodexAuthDirectory() {
-  await fs.mkdir(getCodexAuthDirectoryPath(), { recursive: true })
-}
-
-export async function readStoredCodexAuthData() {
+export async function readStoredCodexAuthData(options?: CodexStorageOptions) {
   try {
-    const raw = await fs.readFile(getCodexAuthFilePath(), 'utf8')
+    const raw = await fs.readFile(getCodexAuthFilePath(options?.homeDirectory), 'utf8')
     const parsed = parseStoredCodexAuthData(JSON.parse(raw) as unknown)
 
     if (!parsed) {
@@ -98,17 +109,17 @@ export async function readStoredCodexAuthData() {
   }
 }
 
-export async function writeStoredCodexAuthData(data: StoredCodexAuthData) {
-  await ensureCodexAuthDirectory()
-  await fs.writeFile(getCodexAuthFilePath(), JSON.stringify(data, null, 2), {
+export async function writeStoredCodexAuthData(data: StoredCodexAuthData, options?: CodexStorageOptions) {
+  await ensureCodexAuthDirectory(options?.homeDirectory)
+  await fs.writeFile(getCodexAuthFilePath(options?.homeDirectory), JSON.stringify(data, null, 2), {
     encoding: 'utf8',
     mode: 0o600,
   })
 }
 
-export async function deleteStoredCodexAuthData() {
+export async function deleteStoredCodexAuthData(options?: CodexStorageOptions) {
   try {
-    await fs.unlink(getCodexAuthFilePath())
+    await fs.unlink(getCodexAuthFilePath(options?.homeDirectory))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
       throw error
@@ -119,11 +130,13 @@ export async function deleteStoredCodexAuthData() {
 export function toCodexProviderStatus(
   authData: StoredCodexAuthData | null,
   accounts: CodexAccountSummary[],
+  options?: CodexStorageOptions,
 ): CodexProviderConnectionStatus {
   if (!authData) {
     return {
       accountId: null,
-      authFilePath: getCodexAuthFilePath(),
+      accountKey: null,
+      authFilePath: getCodexAuthFilePath(options?.homeDirectory),
       email: null,
       accounts,
       isAuthenticated: false,
@@ -135,10 +148,12 @@ export function toCodexProviderStatus(
   const tokenClaims = parseCodexIdTokenClaims(authData.tokens.id_token)
   const tokenExpiresAt = authData.expires_at ?? tokenClaims.expiresAt
   const accountId = authData.tokens.account_id || tokenClaims.accountId
+  const accountKey = authData.tokens.account_key || tokenClaims.accountKey
 
   return {
     accountId,
-    authFilePath: getCodexAuthFilePath(),
+    accountKey,
+    authFilePath: getCodexAuthFilePath(options?.homeDirectory),
     email: tokenClaims.email,
     accounts,
     isAuthenticated: true,

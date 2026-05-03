@@ -664,6 +664,7 @@ export function ChatInterfaceContent({
             <WorkspaceExplorerPanel
               activeFilePath={workspaceState.activeWorkspaceFilePath}
               clipboardEntry={workspaceState.workspaceClipboard}
+              gitFileDiffs={gitDiffSnapshot.snapshot.fileDiffs}
               isOpen={workspaceState.isExplorerOpen}
               onCopyEntry={workspaceState.handleCopyWorkspaceEntry}
               onCreateEntry={workspaceState.handleCreateWorkspaceEntry}

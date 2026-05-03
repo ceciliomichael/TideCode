@@ -29,6 +29,7 @@ interface WorkspaceCheckpointStore {
 const CHECKPOINTS_DIRECTORY_NAME = 'workspace-checkpoints'
 const MANIFEST_FILE_NAME = 'manifest.json'
 const SNAPSHOTS_DIRECTORY_NAME = 'snapshots'
+const MANIFEST_READ_RETRY_DELAY_MS = 25
 
 function normalizePath(value: string) {
   return path.resolve(value.trim())
@@ -50,6 +51,12 @@ function assertInsideWorkspace(workspaceRootPath: string, absolutePath: string) 
 
 async function ensureDirectory(directoryPath: string) {
   await fs.mkdir(directoryPath, { recursive: true })
+}
+
+function sleep(milliseconds: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, milliseconds)
+  })
 }
 
 function splitRelativePathSegments(value: string) {
@@ -124,8 +131,30 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
 
   async function readManifest(checkpointId: string) {
     const manifestPath = getCheckpointManifestPath(checkpointId)
-    const raw = await fs.readFile(manifestPath, 'utf8')
-    return JSON.parse(raw) as WorkspaceCheckpointDocument
+    try {
+      const raw = await fs.readFile(manifestPath, 'utf8')
+      if (raw.trim().length === 0) {
+        throw new SyntaxError(`Checkpoint manifest is empty: ${manifestPath}`)
+      }
+
+      return JSON.parse(raw) as WorkspaceCheckpointDocument
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) {
+        throw error
+      }
+
+      await sleep(MANIFEST_READ_RETRY_DELAY_MS)
+      const raw = await fs.readFile(manifestPath, 'utf8')
+      if (raw.trim().length === 0) {
+        throw new Error(`Checkpoint manifest is unreadable: ${manifestPath}`)
+      }
+
+      try {
+        return JSON.parse(raw) as WorkspaceCheckpointDocument
+      } catch {
+        throw new Error(`Checkpoint manifest is unreadable: ${manifestPath}`)
+      }
+    }
   }
 
   function normalizeCheckpointIdList(checkpointIds: string[]) {

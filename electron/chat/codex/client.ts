@@ -3,7 +3,8 @@ import { streamText, type ModelMessage, type StopCondition, type ToolSet } from 
 import type { ReasoningEffort } from '../../../src/types/chat'
 import { buildCodexProviderOptions } from './providerOptions'
 import { refreshCodexOAuthTokensIfNeeded } from '../../providers/codex/refresh'
-import { readStoredCodexAuthData, writeStoredCodexAuthData, type StoredCodexAuthData } from '../../providers/codex/store'
+import { maybeRotateCodexAccountForChat } from '../../providers/codex/service'
+import { writeStoredCodexAuthData, type StoredCodexAuthData } from '../../providers/codex/store'
 
 const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
 const DUMMY_API_KEY = 'codex-oauth-placeholder'
@@ -15,7 +16,7 @@ function stripAuthorizationHeader(headers: HeadersInit | undefined) {
 }
 
 async function resolveCodexAuthData(): Promise<StoredCodexAuthData> {
-  const storedAuthData = await readStoredCodexAuthData()
+  const storedAuthData = await maybeRotateCodexAccountForChat()
   if (!storedAuthData) {
     throw new Error('Codex is not connected. Sign in from Settings before starting a chat.')
   }

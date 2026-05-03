@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -16,6 +17,8 @@ const webContentsStub = {
 type RunTerminalResult = {
   body?: string
   semantics?: Record<string, unknown>
+  status?: string
+  summary?: string
 }
 
 type RunTerminalTool = {
@@ -39,6 +42,10 @@ function readCompletionMarker(writtenCommand: string) {
   const markerMatch = writtenCommand.match(/__ECHOSPHERE_COMMAND_DONE_[A-Za-z0-9_]+__/u)
   assert.ok(markerMatch, 'expected run_terminal to append a completion marker')
   return markerMatch[0]
+}
+
+function pathExists(targetPath: string) {
+  return existsSync(targetPath)
 }
 
 test('run_terminal queues a command, waits for completion, and returns cleaned output', async () => {
@@ -172,6 +179,95 @@ test('run_terminal starts at session 1 in a different conversation thread withou
     assert.match(result.body ?? '', /Started session 1/u)
     assert.equal(result.semantics?.command, null)
     assert.equal(getSessionOutputCalled, false)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('run_terminal rejects apply_patch heredoc commands without launching a terminal', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-apply-patch-'))
+  let createSessionCalled = false
+
+  try {
+    const tools = createTerminalToolSet(
+      {
+        conversationId: 'conversation-apply-patch',
+        webContents: webContentsStub,
+        workspaceRootPath,
+      },
+      {
+        createSession: async () => {
+          createSessionCalled = true
+          throw new Error('unexpected terminal launch')
+        },
+        getSessionOutput: async () => {
+          throw new Error('unexpected terminal output poll')
+        },
+        writeToSession: async () => undefined,
+      },
+    )
+
+    const result = await getRunTerminalTool(tools).execute({
+      cols: 120,
+      command: `apply_patch <<'PATCH'
+*** Begin Patch
+*** Add File: src/from-terminal.txt
++hello
+*** End Patch
+PATCH`,
+      cwd: '.',
+      rows: 30,
+    })
+
+    assert.equal(createSessionCalled, false)
+    assert.equal(result.status, 'error')
+    assert.match(result.summary ?? '', /cannot be used to edit files/u)
+    assert.equal(pathExists(path.join(workspaceRootPath, 'src', 'from-terminal.txt')), false)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('run_terminal rejects cd-prefixed apply_patch heredoc commands without editing files', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-apply-patch-cd-'))
+  await fs.mkdir(path.join(workspaceRootPath, 'packages', 'app'), { recursive: true })
+  let createSessionCalled = false
+
+  try {
+    const tools = createTerminalToolSet(
+      {
+        conversationId: 'conversation-apply-patch-cd',
+        webContents: webContentsStub,
+        workspaceRootPath,
+      },
+      {
+        createSession: async () => {
+          createSessionCalled = true
+          throw new Error('unexpected terminal launch')
+        },
+        getSessionOutput: async () => {
+          throw new Error('unexpected terminal output poll')
+        },
+        writeToSession: async () => undefined,
+      },
+    )
+
+    const result = await getRunTerminalTool(tools).execute({
+      cols: 120,
+      command: `cd packages/app && applypatch <<EOF
+*** Begin Patch
+*** Add File: local.txt
++scoped
+*** End Patch
+EOF`,
+      cwd: '.',
+      rows: 30,
+    })
+
+    assert.equal(createSessionCalled, false)
+    assert.equal(result.status, 'error')
+    assert.match(result.summary ?? '', /cannot be used to edit files/u)
+    assert.equal(pathExists(path.join(workspaceRootPath, 'packages', 'app', 'local.txt')), false)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

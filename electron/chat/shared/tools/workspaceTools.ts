@@ -26,7 +26,7 @@ const MAX_READ_BYTES_LABEL = `${MAX_READ_BYTES / 1024} KB`
 const RIPGREP_EXCLUDE_GLOBS = ['!**/.git', '!**/.git/**', '!**/node_modules', '!**/node_modules/**', '!**/.next', '!**/.next/**']
 const RIPGREP_ALL_FILES_GLOBS = new Set(['**/*', '**/{*,.*}', '**'])
 
-type WorkspaceToolContext = Pick<AgentToolContext, 'checkpointId' | 'terminalExecutionMode' | 'workspaceRootPath'>
+export type WorkspaceToolContext = Pick<AgentToolContext, 'checkpointId' | 'terminalExecutionMode' | 'workspaceRootPath'>
 type GitignoreMatchers = Awaited<ReturnType<typeof loadGitignoreMatchers>>
 
 export function resolveWorkspaceTargetPath(workspaceRootPath: string, candidatePath: string | undefined) {
@@ -746,8 +746,9 @@ async function createWholeFileWriteToolResult(
   )
 }
 
-export async function createApplyPatchToolResult(context: WorkspaceToolContext, patchText: string) {
+export async function createApplyPatchToolResult(context: WorkspaceToolContext, patchText: string, basePath?: string) {
   const appliedPatch = await applyPatchInWorkspace(context.workspaceRootPath, patchText, {
+    ...(basePath ? { basePath } : {}),
     onBeforeChange: async ({ absolutePath, nextAbsolutePath }) => {
       await captureCheckpointFileStateIfNeeded(context.checkpointId, absolutePath)
       if (nextAbsolutePath && nextAbsolutePath !== absolutePath) {

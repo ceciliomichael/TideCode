@@ -264,10 +264,11 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
       })
 
       if (!commitResult || workspacePathAtStart !== activeWorkspacePathRef.current) {
-        return
+        return null
       }
 
       await Promise.all([onDiffRefresh({ forceRefresh: true }), gitBranchState.refresh(), gitCommitState.refreshStatus()])
+      return commitResult
     },
     [gitBranchState, gitCommitState, onDiffRefresh],
   )

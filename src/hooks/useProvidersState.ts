@@ -57,7 +57,7 @@ export function useProvidersState() {
 
   const refreshInBackground = useCallback(async () => {
     try {
-      const providersState = await window.echosphereProviders.getProvidersState()
+      const providersState = await window.echosphereProviders.getProvidersState(true)
       setState((currentValue) => ({
         ...currentValue,
         isLoading: currentValue.activeOperation === 'state:load' ? false : currentValue.isLoading,
@@ -116,8 +116,8 @@ export function useProvidersState() {
   }, [runOperation])
 
   const switchCodexAccount = useCallback(
-    async (accountId: string) => {
-      return runOperation(`codex:switch:${accountId}`, () => window.echosphereProviders.switchCodexAccount(accountId))
+    async (accountKey: string) => {
+      return runOperation(`codex:switch:${accountKey}`, () => window.echosphereProviders.switchCodexAccount(accountKey))
     },
     [runOperation],
   )

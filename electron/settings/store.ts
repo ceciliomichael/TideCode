@@ -257,6 +257,10 @@ async function ensureConfigDirectory() {
   await fs.mkdir(getConfigDirectoryPath(), { recursive: true })
 }
 
+function isRecoverableSettingsParseError(error: unknown) {
+  return error instanceof SyntaxError
+}
+
 async function writeSettingsFile(settings: AppSettings) {
   await ensureConfigDirectory()
   await fs.writeFile(getSettingsFilePath(), JSON.stringify(settings, null, 2), 'utf8')
@@ -344,6 +348,10 @@ async function readStoredSettingsFile() {
       await writeSettingsFile(DEFAULT_APP_SETTINGS)
       return DEFAULT_APP_SETTINGS
     }
+    if (isRecoverableSettingsParseError(error)) {
+      await writeSettingsFile(DEFAULT_APP_SETTINGS)
+      return DEFAULT_APP_SETTINGS
+    }
 
     console.error('Failed to load app settings', error)
     throw error
@@ -357,6 +365,11 @@ async function readDurableSettingsFile(): Promise<DurableAppSettings> {
     return pickDurableAppSettings(sanitizeSettings(JSON.parse(raw) as Partial<AppSettings>))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      const durableSettings = pickDurableAppSettings(DEFAULT_APP_SETTINGS)
+      await writeDurableSettingsFile(durableSettings)
+      return durableSettings
+    }
+    if (isRecoverableSettingsParseError(error)) {
       const durableSettings = pickDurableAppSettings(DEFAULT_APP_SETTINGS)
       await writeDurableSettingsFile(durableSettings)
       return durableSettings
@@ -377,6 +390,11 @@ async function readWorkspaceUiStateFile(legacySettings: AppSettings): Promise<Wo
     }))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      const workspaceUiSettings = pickWorkspaceUiSettings(legacySettings)
+      await writeWorkspaceUiStateFile(workspaceUiSettings)
+      return workspaceUiSettings
+    }
+    if (isRecoverableSettingsParseError(error)) {
       const workspaceUiSettings = pickWorkspaceUiSettings(legacySettings)
       await writeWorkspaceUiStateFile(workspaceUiSettings)
       return workspaceUiSettings

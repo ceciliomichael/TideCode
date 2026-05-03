@@ -5,16 +5,17 @@ import { DropdownField, type DropdownOption } from '../../ui/DropdownField'
 interface CodexAccountDropdownProps {
   accounts: readonly CodexAccountSummary[]
   disabled?: boolean
-  onSelect: (accountId: string) => void
+  onSelect: (accountKey: string) => void
 }
 
 function getAccountLabel(account: CodexAccountSummary) {
-  return account.email ?? account.label ?? account.accountId
+  const baseLabel = account.email ?? account.label ?? account.accountId
+  return `${baseLabel} (${account.accountId})`
 }
 
 export function CodexAccountDropdown({ accounts, disabled = false, onSelect }: CodexAccountDropdownProps) {
-  const selectedAccountId = useMemo(
-    () => accounts.find((account) => account.isActive)?.accountId ?? accounts[0]?.accountId ?? '',
+  const selectedAccountKey = useMemo(
+    () => accounts.find((account) => account.isActive)?.accountKey ?? accounts[0]?.accountKey ?? '',
     [accounts],
   )
 
@@ -22,7 +23,7 @@ export function CodexAccountDropdown({ accounts, disabled = false, onSelect }: C
     () =>
       accounts.map((account) => ({
         label: getAccountLabel(account),
-        value: account.accountId,
+        value: account.accountKey,
       })),
     [accounts],
   )
@@ -34,7 +35,7 @@ export function CodexAccountDropdown({ accounts, disabled = false, onSelect }: C
       disabled={disabled || options.length === 0}
       onChange={onSelect}
       options={options}
-      value={selectedAccountId}
+      value={selectedAccountKey}
     />
   )
 }

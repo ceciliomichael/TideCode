@@ -129,14 +129,14 @@ const skillsApi: EchosphereSkillsApi = {
 }
 
 const providersApi: EchosphereProvidersApi = {
-  getProvidersState: () => ipcRenderer.invoke('providers:state'),
+  getProvidersState: (hydrate = false) => ipcRenderer.invoke('providers:state', hydrate),
   addCodexAccountWithOAuth: () => ipcRenderer.invoke('providers:codex:addAccountOauth'),
   connectCodexWithOAuth: () => ipcRenderer.invoke('providers:codex:connectOauth'),
   disconnectCodex: () => ipcRenderer.invoke('providers:codex:disconnect'),
   saveApiKeyProvider: (input: SaveApiKeyProviderInput) => ipcRenderer.invoke('providers:apikey:save', input),
   removeApiKeyProvider: (providerId: ApiKeyProviderId) =>
     ipcRenderer.invoke('providers:apikey:remove', providerId),
-  switchCodexAccount: (accountId: string) => ipcRenderer.invoke('providers:codex:switchAccount', accountId),
+  switchCodexAccount: (accountKey: string) => ipcRenderer.invoke('providers:codex:switchAccount', accountKey),
 }
 
 const modelsApi: EchosphereModelsApi = {

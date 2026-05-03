@@ -1,10 +1,9 @@
 import { jsonSchema, tool, type ToolSet } from 'ai'
-import type { ChatMode } from '../../../../src/types/chat'
+import type { ChatMode, ChatProviderId } from '../../../../src/types/chat'
 import type { SkillSummary } from '../../../../src/types/skills'
 import { buildLoadedSkillResult, buildSkillToolDescription, loadEnabledSkillByName } from '../../../skills/service'
 import type { AgentToolContext, AgentToolExecutionResult } from '../toolTypes'
 import {
-  createApplyPatchToolResult,
   createGlobToolResult,
   createGrepToolResult,
   createListToolResult,
@@ -13,6 +12,7 @@ import {
   createWholeFileWriteTool,
   resolveReadableTargetPath,
 } from './workspaceTools'
+import { createApplyPatchTool } from './applyPatchTool'
 import { createTerminalToolSet } from './terminalTools'
 
 function createToolErrorResult(summary: string, body?: string): AgentToolExecutionResult {
@@ -25,7 +25,7 @@ function createToolErrorResult(summary: string, body?: string): AgentToolExecuti
 
 export async function createAgentTools(
   input: AgentToolContext,
-  options?: { chatMode?: ChatMode; enabledSkills?: SkillSummary[] },
+  options?: { chatMode?: ChatMode; enabledSkills?: SkillSummary[]; providerId?: ChatProviderId },
 ): Promise<ToolSet> {
   const context = await createToolContext(input)
   const wholeFileWriteTool = createWholeFileWriteTool(context)
@@ -259,32 +259,6 @@ export async function createAgentTools(
     ...tools,
     ...createTerminalToolSet(input),
     write: wholeFileWriteTool,
-    apply_patch: tool({
-      description:
-        context.terminalExecutionMode === 'full'
-          ? 'Edit existing files with a structured patch. Use this after `read` when you know the exact lines to change. Use `write` only when you need to replace a whole file. Do not use guessed paths. In Full Access, patch file paths may be exact external absolute paths if the user provided them. Start with `*** Begin Patch` and end with `*** End Patch`. Example: `*** Update File: /repo/src/app.ts`.'
-          : 'Edit existing files with a structured patch. Use this after `read` when you know the exact lines to change. Use `write` only when you need to replace a whole file. Do not use guessed paths. In Sandbox mode, use workspace-relative file paths like `src/app.ts`. Start with `*** Begin Patch` and end with `*** End Patch`. Example: `*** Update File: src/app.ts`.',
-      inputSchema: jsonSchema({
-        additionalProperties: false,
-        properties: {
-          patchText: {
-            minLength: 1,
-            type: 'string',
-          },
-        },
-        required: ['patchText'],
-        type: 'object',
-      }),
-      execute: async (rawInput) => {
-        const inputValue = rawInput as { patchText: string }
-        try {
-          return await createApplyPatchToolResult(context, inputValue.patchText)
-        } catch (error) {
-          return createToolErrorResult(
-            error instanceof Error && error.message.trim().length > 0 ? error.message : 'Patch failed.',
-          )
-        }
-      },
-    }),
+    apply_patch: createApplyPatchTool(context, options?.providerId),
   }
 }

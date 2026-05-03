@@ -41,13 +41,15 @@ function buildAssistantToolCallParts(message: Message, validToolCallIds: Set<str
     }
 
     const parsedArguments = parseToolArguments(invocation.argumentsText)
-    if (!parsedArguments) {
+    const rawArguments = invocation.argumentsText.trim().length > 0 ? invocation.argumentsText : null
+    const input = parsedArguments ?? (invocation.toolName === 'apply_patch' ? rawArguments : null)
+    if (!input) {
       continue
     }
 
     validToolCallIds.add(invocation.id)
     toolCallParts.push({
-      input: parsedArguments,
+      input,
       toolCallId: invocation.id,
       toolName: invocation.toolName,
       type: 'tool-call',
@@ -95,13 +97,10 @@ function toAssistantMessage(
   const toolCallParts = buildAssistantToolCallParts(message, validToolCallIds)
   const reasoningText = normalized.reasoningContent.trim()
   const text = normalized.content.trim()
-  const combinedAssistantText =
-    options.includeAssistantReasoningParts || reasoningText.length === 0
-      ? text
-      : [reasoningText, text].filter((part) => part.length > 0).join('\n\n')
+  const combinedAssistantText = text
 
   if (toolCallParts.length === 0) {
-    if (!combinedAssistantText && !reasoningText) {
+    if (!combinedAssistantText && (!options.includeAssistantReasoningParts || !reasoningText)) {
       return null
     }
 

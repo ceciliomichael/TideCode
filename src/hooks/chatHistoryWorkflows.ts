@@ -65,12 +65,20 @@ function buildUserMessage(
 }
 
 async function loadStoredConversationOrThrow(conversationId: string) {
-  const conversation = await window.echosphereHistory.getConversation(conversationId)
-  if (!conversation) {
-    throw new Error(`Conversation not found: ${conversationId}`)
-  }
+  try {
+    const conversation = await window.echosphereHistory.getConversation(conversationId)
+    if (!conversation) {
+      throw new Error(`Conversation not found: ${conversationId}`)
+    }
 
-  return conversation
+    return conversation
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Conversation not found:')) {
+      throw error
+    }
+
+    throw new Error(`Unable to load conversation: ${conversationId}`)
+  }
 }
 
 function findUserMessageOrThrow(conversation: ConversationRecord, messageId: string) {

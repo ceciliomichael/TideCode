@@ -379,11 +379,11 @@ function registerHistoryHandlers() {
     return nextSettings
   })
   ipcMain.handle('skills:list', async (_event, workspacePath?: string | null) => listAvailableSkills(workspacePath))
-  ipcMain.handle('providers:state', async () => getProvidersState())
+  ipcMain.handle('providers:state', async (_event, hydrate?: boolean) => getProvidersState(hydrate === true))
   ipcMain.handle('providers:codex:addAccountOauth', async () => addCodexAccountWithOAuth((url) => shell.openExternal(url)))
   ipcMain.handle('providers:codex:connectOauth', async () => connectCodexWithOAuth((url) => shell.openExternal(url)))
   ipcMain.handle('providers:codex:disconnect', async () => disconnectCodex())
-  ipcMain.handle('providers:codex:switchAccount', async (_event, accountId: string) => switchCodexAccount(accountId))
+  ipcMain.handle('providers:codex:switchAccount', async (_event, accountKey: string) => switchCodexAccount(accountKey))
   ipcMain.handle('providers:apikey:save', async (_event, input: SaveApiKeyProviderInput) => saveApiKeyProvider(input))
   ipcMain.handle('providers:apikey:remove', async (_event, providerId: ApiKeyProviderId) =>
     removeApiKeyProvider(providerId),

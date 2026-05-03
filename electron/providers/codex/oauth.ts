@@ -1,12 +1,13 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { createServer } from 'node:http'
-import { parseCodexIdTokenClaims } from './jwt'
+import { extractCodexAccountIdFromTokenPair, extractCodexAccountKeyFromTokenPair } from './jwt'
 
 const CODEX_OAUTH_AUTHORIZATION_URL = 'https://auth.openai.com/oauth/authorize'
 const CODEX_OAUTH_TOKEN_URL = 'https://auth.openai.com/oauth/token'
 const CODEX_OAUTH_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const CODEX_OAUTH_REDIRECT_URI = 'http://localhost:1455/auth/callback'
 const CODEX_OAUTH_SCOPE = 'openid email profile offline_access'
+const CODEX_OAUTH_ORIGINATOR = 'echosphere'
 const OAUTH_TIMEOUT_MS = 5 * 60 * 1000
 
 interface OAuthTokenPayload {
@@ -19,6 +20,7 @@ interface OAuthTokenPayload {
 interface OAuthResult {
   accessToken: string
   accountId: string
+  accountKey: string
   expiresAt: string | null
   idToken: string
   lastRefreshAt: string
@@ -51,7 +53,7 @@ function createOAuthState() {
   return toBase64Url(randomBytes(24))
 }
 
-function createAuthorizationUrl(codeChallenge: string, state: string) {
+export function createAuthorizationUrl(codeChallenge: string, state: string) {
   const url = new URL(CODEX_OAUTH_AUTHORIZATION_URL)
   url.searchParams.set('client_id', CODEX_OAUTH_CLIENT_ID)
   url.searchParams.set('response_type', 'code')
@@ -63,6 +65,7 @@ function createAuthorizationUrl(codeChallenge: string, state: string) {
   url.searchParams.set('prompt', 'login')
   url.searchParams.set('id_token_add_organizations', 'true')
   url.searchParams.set('codex_cli_simplified_flow', 'true')
+  url.searchParams.set('originator', CODEX_OAUTH_ORIGINATOR)
   return url.toString()
 }
 
@@ -237,10 +240,16 @@ export async function runCodexOAuthFlow(openExternal: (url: string) => Promise<v
   const authUrl = createAuthorizationUrl(pkce.challenge, state)
   const authorizationCode = await waitForAuthorizationCode(authUrl, state, openExternal)
   const tokenPayload = await exchangeAuthorizationCodeForTokens(authorizationCode, pkce.verifier)
-  const tokenClaims = parseCodexIdTokenClaims(tokenPayload.id_token)
-  const accountId = tokenClaims.accountId
+  const accountId = extractCodexAccountIdFromTokenPair({
+    accessToken: tokenPayload.access_token,
+    idToken: tokenPayload.id_token,
+  })
+  const accountKey = extractCodexAccountKeyFromTokenPair({
+    accessToken: tokenPayload.access_token,
+    idToken: tokenPayload.id_token,
+  })
 
-  if (!hasText(accountId)) {
+  if (!hasText(accountId) || !hasText(accountKey)) {
     throw new Error('Codex OAuth did not return a usable account identifier.')
   }
 
@@ -253,6 +262,7 @@ export async function runCodexOAuthFlow(openExternal: (url: string) => Promise<v
   return {
     accessToken: tokenPayload.access_token,
     accountId,
+    accountKey,
     expiresAt,
     idToken: tokenPayload.id_token,
     lastRefreshAt: now.toISOString(),

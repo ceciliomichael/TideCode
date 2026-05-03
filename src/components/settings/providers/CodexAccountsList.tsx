@@ -4,7 +4,7 @@ import type { CodexAccountSummary, CodexUsageWindow } from '../../../types/chat'
 interface CodexAccountsListProps {
   accounts: CodexAccountSummary[]
   isBusy: boolean
-  onSwitchAccount: (accountId: string) => Promise<void>
+  onSwitchAccount: (accountKey: string) => Promise<void>
 }
 
 function formatRemaining(window: CodexUsageWindow | null): string {
@@ -104,7 +104,7 @@ export function CodexAccountsList({ accounts, isBusy, onSwitchAccount }: CodexAc
 
         if (!canSwitch) {
           return (
-            <div key={account.accountId} className={baseCardClassName} title={usageDetail}>
+            <div key={account.accountKey} className={baseCardClassName} title={usageDetail}>
               {content}
             </div>
           )
@@ -112,10 +112,10 @@ export function CodexAccountsList({ accounts, isBusy, onSwitchAccount }: CodexAc
 
         return (
           <button
-            key={account.accountId}
+            key={account.accountKey}
             type="button"
             disabled={isBusy}
-            onClick={() => void onSwitchAccount(account.accountId)}
+            onClick={() => void onSwitchAccount(account.accountKey)}
             className={clickableCardClassName}
             title={usageDetail}
           >

@@ -4,6 +4,7 @@ import type { HighlightedToken } from '../../../lib/codeHighlighting'
 export const EDITOR_LINE_HEIGHT_PX = 20
 export const EDITOR_LINE_OVERSCAN_COUNT = 40
 export const EDITOR_VIRTUALIZATION_THRESHOLD = 800
+export const EDITOR_BOTTOM_BUFFER_PX = EDITOR_LINE_HEIGHT_PX
 export const SEARCH_HIGHLIGHT_BACKGROUND = 'var(--workspace-editor-search-highlight-background)'
 export const ACTIVE_SEARCH_HIGHLIGHT_BACKGROUND = 'var(--workspace-editor-search-highlight-active-background)'
 

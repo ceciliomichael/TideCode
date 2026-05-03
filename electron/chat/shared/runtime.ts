@@ -227,6 +227,7 @@ export async function runToolEnabledChatStream(input: {
       {
         chatMode: input.startInput.chatMode,
         enabledSkills,
+        providerId: input.startInput.providerId,
       },
     )
     const prompt = buildChatPrompt({

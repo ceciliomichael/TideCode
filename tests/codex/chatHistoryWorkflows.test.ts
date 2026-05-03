@@ -267,3 +267,35 @@ test('loadInitialChatHistory keeps the workspace on an empty draft when requeste
     restoreWindow()
   }
 })
+
+test('revert helpers surface a friendly error when conversation history cannot be loaded', async () => {
+  const restoreWindow = installWindowMock({
+    echosphereHistory: {
+      getConversation: async () => {
+        throw new SyntaxError('Unexpected end of JSON input')
+      },
+      listConversations: async () => [],
+      listFolders: async () => [],
+      getUserMessageCheckpointHistory: async () => [],
+    },
+    echosphereWorkspace: {
+      createRedoCheckpointFromSource: async () => {
+        throw new Error('not used')
+      },
+      createRedoCheckpointFromSources: async () => {
+        throw new Error('not used')
+      },
+      restoreCheckpoint: async () => undefined,
+      restoreCheckpointSequence: async () => undefined,
+    },
+  })
+
+  try {
+    await assert.rejects(
+      prepareRevertSessionForMessage('conversation-1', 'message-1'),
+      (error: unknown) => error instanceof Error && error.message === 'Unable to load conversation: conversation-1',
+    )
+  } finally {
+    restoreWindow()
+  }
+})

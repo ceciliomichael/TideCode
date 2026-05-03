@@ -13,7 +13,7 @@ interface CodexProviderAccordionProps {
   onAddAccount: () => Promise<void>
   onConnect: () => Promise<void>
   onDisconnect: () => Promise<void>
-  onSwitchAccount: (accountId: string) => Promise<void>
+  onSwitchAccount: (accountKey: string) => Promise<void>
   onToggle: () => void
   providerStatus: CodexProviderConnectionStatus | undefined
   primaryButtonClassName: string
@@ -95,11 +95,11 @@ export function CodexProviderAccordion({
               </button>
             </div>
 
-            <CodexAccountDropdown
+              <CodexAccountDropdown
               accounts={status?.accounts ?? []}
               disabled={isBusy || isActionPending || isSwitchingAccount}
-              onSelect={(accountId) => {
-                void runAction(() => onSwitchAccount(accountId))
+              onSelect={(accountKey) => {
+                void runAction(() => onSwitchAccount(accountKey))
               }}
             />
           </div>

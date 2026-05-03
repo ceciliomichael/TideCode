@@ -7,11 +7,13 @@ import { clampSourceControlHistoryHeight, getDefaultSourceControlHistoryHeight }
 import type {
   GitHistoryCommitDetailsResult,
   GitHistoryEntry,
+  GitCommitResult,
   GitSyncAction,
 } from '../../types/chat'
 import { SourceControlChangesSection } from './SourceControlChangesSection'
 import { SourceControlHistorySection } from './SourceControlHistorySection'
 import { computeSwimlanes } from './historyGraphLayout'
+import { prependCommittedHistoryEntry } from './sourceControlHistoryUtils'
 
 interface SourceControlPanelProps {
   onDiffPanelExpandedFilePathsChange: (nextFilePaths: string[]) => void
@@ -21,7 +23,7 @@ interface SourceControlPanelProps {
   onDiscardFile: (filePath: string) => Promise<void>
   onOpenCommitModal: () => void
   onOpenDiffPanel: () => void
-  onQuickCommit: (input: { includeUnstaged: boolean; message: string }) => Promise<void>
+  onQuickCommit: (input: { includeUnstaged: boolean; message: string }) => Promise<GitCommitResult | null>
   onRefreshAll: () => Promise<void>
   onSectionOpenChange: (nextValue: Record<'changes' | 'commit' | 'history' | 'staged' | 'unstaged', boolean>) => void
   onStageFiles: (filePaths: string[]) => Promise<void>
@@ -370,6 +372,36 @@ function SourceControlPanelContent({
     }
   }, [hasWorkspacePath, loadHistoryPage])
 
+  const appendCommittedHistoryEntry = useCallback(
+    async (commitHash: string) => {
+      if (!hasWorkspacePath) {
+        return false
+      }
+
+      try {
+        const result = await window.echosphereGit.getHistoryPage({
+          limit: 1,
+          offset: 0,
+          workspacePath: normalizedWorkspacePath,
+        })
+        const nextEntry = result.entries[0]
+        if (!nextEntry || nextEntry.hash !== commitHash) {
+          return false
+        }
+
+        setHistoryEntries((currentValue) => prependCommittedHistoryEntry(currentValue, nextEntry))
+        setHeadHash(result.headHash)
+        setSelectedCommitHash(nextEntry.hash)
+        setHistoryError(null)
+        return true
+      } catch (error) {
+        console.error('Failed to append the latest commit to the source control history.', error)
+        return false
+      }
+    },
+    [hasWorkspacePath, normalizedWorkspacePath],
+  )
+
   const loadMoreHistory = useCallback(async () => {
     if (!hasWorkspacePath || !hasMoreHistory || isLoadingMoreHistory) {
       return
@@ -513,11 +545,14 @@ function SourceControlPanelContent({
     setSyncMessage(null)
 
     try {
-      await onQuickCommit({
+      const commitResult = await onQuickCommit({
         includeUnstaged,
         message: commitMessage,
       })
 
+      if (commitResult) {
+        await appendCommittedHistoryEntry(commitResult.commitHash)
+      }
       setCommitMessage('')
       setSyncError(null)
       if (action === 'commit-and-push') {
@@ -527,7 +562,6 @@ function SourceControlPanelContent({
         }
       } else {
         setSyncMessage('Committed changes.')
-        await refreshHistory()
       }
     } catch (error) {
       setQuickCommitError(error instanceof Error ? error.message : 'Failed to commit changes.')

@@ -4,6 +4,10 @@ import { getToolResultModelContent } from '../../../src/lib/toolResultContent'
 import type { ChatMode, Message, ReasoningEffort } from '../../../src/types/chat'
 import { buildChatCompressionSystemPrompt } from './prompts/compression'
 
+const PRIMARY_TRANSCRIPT_CHAR_LIMIT = 120_000
+const SECONDARY_TRANSCRIPT_CHAR_LIMIT = 60_000
+const FALLBACK_EXCERPT_CHAR_LIMIT = 240
+
 interface CompressionStreamFactoryInput {
   messages: ModelMessage[]
   model: string
@@ -36,9 +40,8 @@ function formatUserMessage(message: Message) {
 
 function formatAssistantMessage(message: Message) {
   const normalized = normalizeAssistantMessageContent(message)
-  const reasoning = normalized.reasoningContent.trim()
   const content = normalized.content.trim()
-  const parts = [reasoning, content].filter((part) => part.length > 0)
+  const parts = [content].filter((part) => part.length > 0)
 
   const completedInvocations = (message.toolInvocations ?? []).filter((invocation) => invocation.state !== 'running')
   if (completedInvocations.length > 0) {
@@ -58,7 +61,7 @@ function formatToolMessage(message: Message) {
   return content.trim()
 }
 
-function formatConversationTranscript(messages: Message[]) {
+function formatConversationTranscriptBlocks(messages: Message[]) {
   const blocks: string[] = []
 
   messages.forEach((message, index) => {
@@ -80,7 +83,62 @@ function formatConversationTranscript(messages: Message[]) {
     blocks.push(`Turn ${index + 1} | ${roleLabel}\n${normalizedContent}`)
   })
 
-  return blocks.join('\n\n')
+  return blocks
+}
+
+function trimTranscriptTail(blocks: string[], maxCharacters: number) {
+  const fullTranscript = blocks.join('\n\n')
+  if (fullTranscript.length <= maxCharacters) {
+    return {
+      transcript: fullTranscript,
+      wasTrimmed: false,
+    }
+  }
+
+  let transcript = ''
+
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const block = blocks[index]
+    const separatorLength = transcript.length > 0 ? 2 : 0
+    const nextLength = transcript.length + separatorLength + block.length
+    if (nextLength <= maxCharacters) {
+      transcript = transcript.length > 0 ? `${block}\n\n${transcript}` : block
+      continue
+    }
+
+    const remainingCharacters = maxCharacters - transcript.length - separatorLength
+    if (remainingCharacters > 0) {
+      const tail = block.slice(block.length - remainingCharacters)
+      transcript = transcript.length > 0 ? `${tail}\n\n${transcript}` : tail
+    }
+    break
+  }
+
+  return {
+    transcript,
+    wasTrimmed: true,
+  }
+}
+
+function buildTranscriptCandidates(messages: Message[]) {
+  const blocks = formatConversationTranscriptBlocks(messages)
+  const fullTranscript = blocks.join('\n\n')
+  if (fullTranscript.length <= PRIMARY_TRANSCRIPT_CHAR_LIMIT) {
+    return [
+      {
+        transcript: fullTranscript,
+        wasTrimmed: false,
+      },
+    ]
+  }
+
+  const primaryCandidate = trimTranscriptTail(blocks, PRIMARY_TRANSCRIPT_CHAR_LIMIT)
+  const secondaryCandidate = trimTranscriptTail(blocks, SECONDARY_TRANSCRIPT_CHAR_LIMIT)
+  if (secondaryCandidate.transcript === primaryCandidate.transcript) {
+    return [primaryCandidate]
+  }
+
+  return [primaryCandidate, secondaryCandidate]
 }
 
 async function collectStreamedText(
@@ -96,6 +154,15 @@ async function collectStreamedText(
   }
 
   return text.trim()
+}
+
+function compactText(value: string, maxLength = FALLBACK_EXCERPT_CHAR_LIMIT) {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= maxLength) {
+    return normalized
+  }
+
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`
 }
 
 function containsCampSections(summary: string) {
@@ -122,57 +189,136 @@ function buildCampRepairPrompt(candidateSummary: string) {
   ].join('\n')
 }
 
-function stripThinkTags(value: string) {
-  return value
+function collectCompletedToolNames(messages: Message[]) {
+  const toolNames = new Set<string>()
+
+  messages.forEach((message) => {
+    message.toolInvocations?.forEach((invocation) => {
+      if (invocation.state === 'running') {
+        return
+      }
+
+      const toolName = invocation.toolName.trim()
+      if (toolName.length > 0) {
+        toolNames.add(toolName)
+      }
+    })
+  })
+
+  return [...toolNames]
+}
+
+function buildFallbackCampSummary(messages: Message[], wasTrimmed: boolean) {
+  const firstUserMessage = messages.find((message) => message.role === 'user')
+  const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user')
+  const lastAssistantMessage = [...messages].reverse().find((message) => message.role === 'assistant')
+  const completedToolNames = collectCompletedToolNames(messages)
+
+  const goalText = firstUserMessage ? compactText(formatUserMessage(firstUserMessage)) : 'none'
+  const currentStateParts = [
+    wasTrimmed
+      ? 'The transcript was trimmed to the most recent context before compression.'
+      : 'The compression model returned no visible text on this run.',
+  ]
+
+  if (lastAssistantMessage) {
+    currentStateParts.push(`Latest assistant context: ${compactText(formatAssistantMessage(lastAssistantMessage))}`)
+  }
+
+  if (lastUserMessage) {
+    currentStateParts.push(`Latest user request: ${compactText(formatUserMessage(lastUserMessage))}`)
+  }
+
+  if (completedToolNames.length > 0) {
+    currentStateParts.push(`Tool activity: ${completedToolNames.join(', ')}`)
+  }
+
+  return [
+    'Goal:',
+    `- ${goalText || 'none'}`,
+    '',
+    'Current State:',
+    ...currentStateParts.map((part) => `- ${part}`),
+    '',
+    'Done:',
+    '- Preserved the latest conversation state locally so the next turn can continue.',
+    '',
+    'Decisions:',
+    '- none',
+    '',
+    'Open Items:',
+    `- ${lastUserMessage ? compactText(formatUserMessage(lastUserMessage)) : 'none'}`,
+    '',
+    'Key Refs:',
+    `- ${completedToolNames.length > 0 ? completedToolNames.join(', ') : 'none'}`,
+    '',
+    'Next Step:',
+    '- Continue from the latest user request and recent tool output.',
+  ].join('\n')
+}
+
+function normalizeCompressionSummary(value: string) {
+  const visibleText = value
     .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
     .replace(/<\/?think\b[^>]*\/?>/gi, '')
     .trim()
+  if (visibleText.length > 0) {
+    return visibleText
+  }
+
+  return value.replace(/<\/?think\b[^>]*\/?>/gi, '').trim()
 }
 
 export async function compressChatHistory(input: CompressChatHistoryInput) {
-  const transcript = formatConversationTranscript(input.messages)
-  const modelMessages: ModelMessage[] = [
-    {
-      role: 'user',
-      content: `Full conversation transcript:\n\n${transcript}`,
-    },
-  ]
-  const abortController = new AbortController()
   const systemPrompt = buildChatCompressionSystemPrompt(input.chatMode, input.agentContextRootPath)
-  const rawSummary = await collectStreamedText(input.createStream, {
-    messages: modelMessages,
-    model: input.modelId,
-    reasoningEffort: input.reasoningEffort,
-    signal: abortController.signal,
-    system: systemPrompt,
-  })
-  const summary = stripThinkTags(rawSummary)
+  const transcriptCandidates = buildTranscriptCandidates(input.messages)
 
-  if (summary.length === 0) {
-    throw new Error('The compression model returned an empty summary.')
-  }
-
-  if (containsCampSections(summary)) {
-    return summary
-  }
-
-  const rawRepairedSummary = await collectStreamedText(input.createStream, {
-    messages: [
+  for (const transcriptCandidate of transcriptCandidates) {
+    const modelMessages: ModelMessage[] = [
       {
         role: 'user',
-        content: buildCampRepairPrompt(summary),
+        content: `Full conversation transcript:\n\n${transcriptCandidate.transcript}`,
       },
-    ],
-    model: input.modelId,
-    reasoningEffort: input.reasoningEffort,
-    signal: abortController.signal,
-    system: systemPrompt,
-  })
-  const repairedSummary = stripThinkTags(rawRepairedSummary)
+    ]
+    const abortController = new AbortController()
+    const rawSummary = await collectStreamedText(input.createStream, {
+      messages: modelMessages,
+      model: input.modelId,
+      reasoningEffort: input.reasoningEffort,
+      signal: abortController.signal,
+      system: systemPrompt,
+    })
+    const summary = normalizeCompressionSummary(rawSummary)
 
-  if (repairedSummary.length === 0) {
-    throw new Error('The compression model returned an empty summary.')
+    if (summary.length === 0) {
+      continue
+    }
+
+    if (containsCampSections(summary)) {
+      return summary
+    }
+
+    const rawRepairedSummary = await collectStreamedText(input.createStream, {
+      messages: [
+        {
+          role: 'user',
+          content: buildCampRepairPrompt(summary),
+        },
+      ],
+      model: input.modelId,
+      reasoningEffort: input.reasoningEffort,
+      signal: abortController.signal,
+      system: systemPrompt,
+    })
+    const repairedSummary = normalizeCompressionSummary(rawRepairedSummary)
+
+    if (repairedSummary.length > 0) {
+      return repairedSummary
+    }
   }
 
-  return repairedSummary
+  return buildFallbackCampSummary(
+    input.messages,
+    transcriptCandidates.length > 0 ? transcriptCandidates[0].wasTrimmed : false,
+  )
 }

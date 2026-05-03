@@ -26,7 +26,7 @@ interface ProvidersSettingsPanelProps {
   onRemoveApiKeyProvider: (providerId: ApiKeyProviderId) => Promise<boolean>
   onRefreshProvidersState: () => Promise<void>
   onSaveApiKeyProvider: (input: SaveApiKeyProviderInput) => Promise<boolean>
-  onSwitchCodexAccount: (accountId: string) => Promise<boolean>
+  onSwitchCodexAccount: (accountKey: string) => Promise<boolean>
   providersState: ProvidersState | null
 }
 
@@ -176,8 +176,8 @@ export function ProvidersSettingsPanel({
             onDisconnect={async () => {
               await onDisconnectCodex()
             }}
-            onSwitchAccount={async (accountId) => {
-              await onSwitchCodexAccount(accountId)
+            onSwitchAccount={async (accountKey) => {
+              await onSwitchCodexAccount(accountKey)
             }}
             onToggle={() => setIsCodexExpanded((currentValue) => !currentValue)}
             primaryButtonClassName={PRIMARY_ACTION_BUTTON_CLASS_NAME}

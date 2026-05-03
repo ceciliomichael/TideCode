@@ -11,7 +11,7 @@ import {
   VscWholeWord,
 } from 'react-icons/vsc'
 import { memo } from 'react'
-import { renderHighlightedTokens } from './workspaceFileEditorUtils'
+import { EDITOR_BOTTOM_BUFFER_PX, renderHighlightedTokens } from './workspaceFileEditorUtils'
 import type { WorkspaceFileEditorState } from './useWorkspaceFileEditorState'
 
 interface WorkspaceFileEditorViewProps {
@@ -205,7 +205,10 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
           className="scroll-stable h-full shrink-0 overflow-hidden bg-surface"
           style={{ width: `${layout.gutterWidthCh}ch` }}
         >
-          <pre className="m-0 py-1.5 text-[12px] leading-5 text-subtle-foreground">
+          <pre
+            className="m-0 py-1.5 text-[12px] leading-5 text-subtle-foreground"
+            style={{ paddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px` }}
+          >
             <code className="block">
               {layout.topSpacerHeight > 0 ? <div aria-hidden="true" style={{ height: `${layout.topSpacerHeight}px` }} /> : null}
               {layout.lineNumberRows.map((row) => (
@@ -226,6 +229,7 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
           <div
             ref={refs.highlightedLayerRef}
             className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-1.5 font-mono text-[12px] leading-5 text-foreground"
+            style={{ paddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px` }}
             aria-hidden="true"
           >
             <pre className="m-0 min-w-full bg-transparent">
@@ -252,7 +256,12 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
             spellCheck={false}
             wrap={wordWrapEnabled ? 'soft' : 'off'}
             aria-label={`Editing ${fileName}`}
-            style={{ caretColor: 'var(--color-foreground)', color: 'transparent' }}
+            style={{
+              caretColor: 'var(--color-foreground)',
+              color: 'transparent',
+              paddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px`,
+              scrollPaddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px`,
+            }}
             className={layout.textAreaClassName}
           />
         </div>

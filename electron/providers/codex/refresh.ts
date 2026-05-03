@@ -1,4 +1,4 @@
-import { parseCodexIdTokenClaims } from './jwt'
+import { extractCodexAccountIdFromTokenPair, extractCodexAccountKeyFromTokenPair, parseCodexIdTokenClaims } from './jwt'
 import type { StoredCodexAuthData } from './store'
 
 const CODEX_OAUTH_TOKEN_URL = 'https://auth.openai.com/oauth/token'
@@ -71,10 +71,18 @@ export async function refreshCodexOAuthTokens(currentAuthData: StoredCodexAuthDa
 
   const refreshPayload = parseRefreshTokenPayload((await response.json()) as unknown)
   const nextIdToken = refreshPayload.id_token ?? currentAuthData.tokens.id_token
-  const tokenClaims = parseCodexIdTokenClaims(nextIdToken)
-  const accountId = currentAuthData.tokens.account_id || tokenClaims.accountId
+  const accountId =
+    extractCodexAccountIdFromTokenPair({
+      accessToken: refreshPayload.access_token,
+      idToken: nextIdToken,
+    }) ?? currentAuthData.tokens.account_id
+  const accountKey =
+    extractCodexAccountKeyFromTokenPair({
+      accessToken: refreshPayload.access_token,
+      idToken: nextIdToken,
+    }) ?? currentAuthData.tokens.account_key
 
-  if (!hasText(accountId)) {
+  if (!hasText(accountId) || !hasText(accountKey)) {
     throw new Error('Unable to determine Codex account ID during token refresh.')
   }
 
@@ -91,6 +99,7 @@ export async function refreshCodexOAuthTokens(currentAuthData: StoredCodexAuthDa
     tokens: {
       access_token: refreshPayload.access_token,
       account_id: accountId,
+      account_key: accountKey,
       id_token: nextIdToken,
       refresh_token: refreshPayload.refresh_token ?? currentAuthData.tokens.refresh_token,
     },
@@ -107,4 +116,3 @@ export async function refreshCodexOAuthTokensIfNeeded(authData: StoredCodexAuthD
 
   return refreshCodexOAuthTokens(authData)
 }
-

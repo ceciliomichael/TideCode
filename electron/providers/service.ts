@@ -18,6 +18,7 @@ const PROVIDERS_CACHE_TTL_MS = 25_000
 let cachedProvidersState: ProvidersState | null = null
 let cachedProvidersStateAt = 0
 let providersStateRefreshPromise: Promise<ProvidersState> | null = null
+let providersStateHydrationPromise: Promise<ProvidersState> | null = null
 
 function isProvidersStateCacheFresh() {
   if (!cachedProvidersState) {
@@ -27,12 +28,30 @@ function isProvidersStateCacheFresh() {
   return Date.now() - cachedProvidersStateAt <= PROVIDERS_CACHE_TTL_MS
 }
 
-async function rebuildProvidersStateCache() {
+async function rebuildProvidersStateCache(hydrate = false) {
+  if (hydrate) {
+    if (providersStateHydrationPromise) {
+      return providersStateHydrationPromise
+    }
+
+    providersStateHydrationPromise = buildProvidersState(true)
+      .then((nextState) => {
+        cachedProvidersState = nextState
+        cachedProvidersStateAt = Date.now()
+        return nextState
+      })
+      .finally(() => {
+        providersStateHydrationPromise = null
+      })
+
+    return providersStateHydrationPromise
+  }
+
   if (providersStateRefreshPromise) {
     return providersStateRefreshPromise
   }
 
-  providersStateRefreshPromise = buildProvidersState()
+  providersStateRefreshPromise = buildProvidersState(false)
     .then((nextState) => {
       cachedProvidersState = nextState
       cachedProvidersStateAt = Date.now()
@@ -50,24 +69,28 @@ export async function initializeProvidersState() {
     return
   }
 
-  await rebuildProvidersStateCache()
+  await rebuildProvidersStateCache(false)
 }
 
-export async function getProvidersState() {
+export async function getProvidersState(hydrate = false) {
+  if (hydrate) {
+    return rebuildProvidersStateCache(true)
+  }
+
   if (isProvidersStateCacheFresh()) {
     return cachedProvidersState
   }
 
-  return rebuildProvidersStateCache()
+  return rebuildProvidersStateCache(false)
 }
 
-async function refreshProvidersCache() {
-  return rebuildProvidersStateCache()
+async function refreshProvidersCache(hydrate = false) {
+  return rebuildProvidersStateCache(hydrate)
 }
 
-async function buildProvidersState(): Promise<ProvidersState> {
+async function buildProvidersState(hydrate = false): Promise<ProvidersState> {
   const storedApiKeyProviders = await readStoredApiKeyProviders()
-  const codex = await getCodexProviderStatus()
+  const codex = await getCodexProviderStatus(hydrate)
 
   return {
     apiKeyProviders: toApiKeyProviderStatuses(storedApiKeyProviders),
@@ -90,9 +113,9 @@ export async function disconnectCodex() {
   return refreshProvidersCache()
 }
 
-export async function switchCodexAccount(accountId: string) {
-  await switchStoredCodexAccount(accountId)
-  return refreshProvidersCache()
+export async function switchCodexAccount(accountKey: string) {
+  await switchStoredCodexAccount(accountKey)
+  return refreshProvidersCache(true)
 }
 
 export async function saveApiKeyProvider(input: SaveApiKeyProviderInput) {

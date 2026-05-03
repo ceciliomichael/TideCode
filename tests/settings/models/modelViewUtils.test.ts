@@ -17,6 +17,7 @@ test('buildModelProviderSections includes saved custom models for configured pro
     ],
     codex: {
       accountId: null,
+      accountKey: null,
       accounts: [],
       authFilePath: '',
       email: null,

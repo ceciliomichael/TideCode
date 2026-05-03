@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { normalizeMarkdownText } from '../../lib/chatMessageContent'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -27,6 +27,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ content, isComplete, 
   const [isHovering, setIsHovering] = useState(false)
   const [elapsedSeconds, setElapsedSeconds] = useState<number | null>(null)
   const frozenDurationRef = useRef<number | null>(null)
+  const elapsedSecondsRef = useRef(0)
   const isReasoningComplete = typeof reasoningCompletedAt === 'number'
   const reasoningDurationSeconds =
     isReasoningComplete ? Math.max((reasoningCompletedAt - startTime) / 1000, 0) : null
@@ -38,12 +39,15 @@ export const ThinkingBlock = memo(function ThinkingBlock({ content, isComplete, 
         frozenDurationRef.current = reasoningDurationSeconds
       }
 
+      elapsedSecondsRef.current = reasoningDurationSeconds
       return
     }
 
     if (!isComplete) {
       const intervalId = window.setInterval(() => {
-        setElapsedSeconds((Date.now() - startTime) / 1000)
+        const nextElapsedSeconds = (Date.now() - startTime) / 1000
+        elapsedSecondsRef.current = nextElapsedSeconds
+        setElapsedSeconds(nextElapsedSeconds)
       }, 100)
 
       return () => {
@@ -52,9 +56,9 @@ export const ThinkingBlock = memo(function ThinkingBlock({ content, isComplete, 
     }
 
     if (frozenDurationRef.current === null) {
-      frozenDurationRef.current = elapsedSeconds ?? 0
+      frozenDurationRef.current = elapsedSecondsRef.current
     }
-  }, [elapsedSeconds, isComplete, reasoningDurationSeconds, startTime])
+  }, [isComplete, reasoningDurationSeconds, startTime])
 
   useEffect(() => {
     if (!isReasoningComplete) {
@@ -66,7 +70,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ content, isComplete, 
   }, [isComplete, isReasoningComplete])
 
   const stableDuration = frozenDurationRef.current ?? reasoningDurationSeconds ?? elapsedSeconds
-  const normalizedContent = normalizeMarkdownText(content)
+  const normalizedContent = useMemo(() => normalizeMarkdownText(content), [content])
   const completedDuration = stableDuration ?? 0
   const headerLabel = isReasoningComplete
     ? `Thought for ${formatDuration(completedDuration)}`
@@ -108,15 +112,24 @@ export const ThinkingBlock = memo(function ThinkingBlock({ content, isComplete, 
         />
       </button>
 
-      {isOpen ? (
-        <div className="mt-1.5 text-sm text-muted-foreground/90">
-          {normalizedContent.trim().length > 0 ? (
-            <MarkdownRenderer content={normalizedContent} className="opacity-85" isStreaming={!isComplete} />
-          ) : (
-            <p className="italic text-subtle-foreground">Thinking...</p>
-          )}
-        </div>
-      ) : null}
+      {isOpen ? <ThinkingBlockContent normalizedContent={normalizedContent} isComplete={isComplete} /> : null}
+    </div>
+  )
+})
+
+interface ThinkingBlockContentProps {
+  normalizedContent: string
+  isComplete: boolean
+}
+
+const ThinkingBlockContent = memo(function ThinkingBlockContent({ normalizedContent, isComplete }: ThinkingBlockContentProps) {
+  return (
+    <div className="mt-1.5 text-sm text-muted-foreground/90">
+      {normalizedContent.trim().length > 0 ? (
+        <MarkdownRenderer content={normalizedContent} className="opacity-85" isStreaming={!isComplete} />
+      ) : (
+        <p className="italic text-subtle-foreground">Thinking...</p>
+      )}
     </div>
   )
 })

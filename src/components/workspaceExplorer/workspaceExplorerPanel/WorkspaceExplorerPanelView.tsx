@@ -1,8 +1,10 @@
 import { ChevronRight, File, Folder, FolderOpen, RefreshCw } from 'lucide-react'
 import type { DragEvent as ReactDragEvent } from 'react'
+import { useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { resolveFileIconConfig } from '../../../lib/fileIconResolver'
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
+import { buildExplorerGitStatusMap } from './workspaceExplorerGitStatus'
 import type { WorkspaceExplorerPanelProps } from './workspaceExplorerPanelTypes'
 import type { WorkspaceExplorerPanelState } from './useWorkspaceExplorerPanelState'
 import { WorkspaceExplorerDeleteDialog } from './WorkspaceExplorerDeleteDialog'
@@ -15,8 +17,11 @@ interface WorkspaceExplorerPanelViewProps extends WorkspaceExplorerPanelProps {
 export function WorkspaceExplorerPanelView({
   activeFilePath,
   clipboardEntry,
+  gitFileDiffs,
   panelState,
 }: WorkspaceExplorerPanelViewProps) {
+  const gitStatusByPath = useMemo(() => buildExplorerGitStatusMap(gitFileDiffs), [gitFileDiffs])
+
   function getDeleteActionLabel() {
     const targetEntry = panelState.contextMenuState?.targetEntry
     if (!targetEntry) {
@@ -94,9 +99,11 @@ export function WorkspaceExplorerPanelView({
       const isSelectedEntry = panelState.selectedEntryPaths.has(entry.relativePath)
       const isGitignoredEntry = entry.isGitignored === true
       const isDropTarget = isDirectory && panelState.dropTargetDirectoryPath === entry.relativePath
+      const gitStatus = gitStatusByPath.get(entryPath)
       const rowStateClass = isSelectedEntry || isActiveFile || isContextTarget || isDropTarget
         ? 'bg-surface-muted text-foreground'
         : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground'
+      const gitStatusTextClass = gitStatus === 'untracked' ? 'text-[#5D9F73]' : gitStatus === 'modified' ? 'text-[#C7904A]' : ''
       const isCutEntry =
         clipboardEntry?.mode === 'cut' &&
         clipboardEntry.relativePaths.some(
@@ -171,7 +178,7 @@ export function WorkspaceExplorerPanelView({
                 style={{ color: fileIconConfig?.color }}
               />
             ) : null}
-            <span className={['truncate', isGitignoredEntry ? 'opacity-60' : ''].join(' ')}>{entry.name}</span>
+            <span className={['truncate', isGitignoredEntry ? 'opacity-60' : '', gitStatusTextClass].join(' ')}>{entry.name}</span>
             {isLoading && !isExpanded ? (
               <RefreshCw size={12} className="ml-auto shrink-0 animate-spin text-subtle-foreground" />
             ) : null}

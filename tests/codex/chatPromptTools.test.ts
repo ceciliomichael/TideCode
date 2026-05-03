@@ -9,27 +9,15 @@ test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
   const agentPrompt = buildChatSystemPrompt('agent', 'C:/repo')
   const planPrompt = buildChatSystemPrompt('plan', 'C:/repo')
 
-  assert.match(agentPrompt, /<agent_mode_prompt>/u)
-  assert.match(agentPrompt, /## Required Workflow For Code Changes/u)
-  assert.match(agentPrompt, /You are Echo, a senior production-grade software engineering agent/u)
-  assert.match(agentPrompt, /<user_specific_instructions>/u)
+  assert.match(agentPrompt, /You are Echo, a production-grade software engineering assistant/u)
+  assert.match(agentPrompt, /## execution workflow/iu)
   assert.match(agentPrompt, /WHEN ADDING PACKAGES ALWAYS USE npm install to get latest/u)
-  assert.match(agentPrompt, /## Engineering Principles/u)
-  assert.match(agentPrompt, /simplest correct implementation that is modular, DRY, and easy to extend/u)
-  assert.match(agentPrompt, /<markdown_output_rules>/u)
-  assert.match(agentPrompt, /Never close a code fence with double backticks/u)
+  assert.match(agentPrompt, /## Markdown Output Rules/u)
 
-  assert.match(planPrompt, /<plan_mode_prompt>/u)
-  assert.match(planPrompt, /You are Echo, a senior production-grade software engineering planner focused on understanding requests, gathering context, and turning ambiguity into a clear implementation plan\./u)
-  assert.match(planPrompt, /best practical plan: complete, accurate, modular, DRY, and simple enough to execute without over-engineering/u)
-  assert.match(planPrompt, /## Engineering Principles/u)
-  assert.match(planPrompt, /## Planning Rules/u)
-  assert.match(planPrompt, /Be context-first\. Read the minimum necessary repository context before proposing any plan\./u)
-  assert.match(planPrompt, /Translate the request into a concrete implementation plan that names the affected files or modules, the sequence of changes, and the main risks\./u)
-  assert.match(planPrompt, /<user_specific_instructions>/u)
+  assert.match(planPrompt, /You are Echo, a production-grade software engineering planner/u)
+  assert.match(planPrompt, /## planning workflow/iu)
+  assert.match(planPrompt, /Do not implement\. Do not provide full code\./u)
   assert.match(planPrompt, /WHEN ADDING PACKAGES ALWAYS USE npm install to get latest/u)
-  assert.match(planPrompt, /<markdown_output_rules>/u)
-  assert.match(planPrompt, /Never close a code fence with double backticks/u)
 })
 
 test('buildChatPrompt preserves assistant tool calls and matching tool results', () => {
@@ -111,6 +99,78 @@ test('buildChatPrompt preserves assistant tool calls and matching tool results',
     type: 'text',
     value: 'Read result\nPath: src/example.ts\nAbsolute path: C:/repo/src/example.ts\nType: file\nLine count: 1\n\n1: export const value = 1;',
   })
+})
+
+test('buildChatPrompt preserves freeform apply_patch tool calls', () => {
+  const patchText = `*** Begin Patch
+*** Update File: src/example.ts
+@@
+-const value = 1;
++const value = 2;
+*** End Patch`
+  const messages: Message[] = [
+    {
+      content: 'Edit the file',
+      id: 'user-1',
+      role: 'user',
+      timestamp: 1,
+    },
+    {
+      content: '',
+      id: 'assistant-1',
+      role: 'assistant',
+      timestamp: 2,
+      toolInvocations: [
+        {
+          argumentsText: patchText,
+          completedAt: 3,
+          id: 'tool-call-1',
+          resultContent: '',
+          startedAt: 2,
+          state: 'completed',
+          toolName: 'apply_patch',
+        },
+      ],
+    },
+    {
+      content: formatStructuredToolResultContent(
+        {
+          schema: 'echosphere.tool_result/v1',
+          semantics: {
+            added_path_count: 0,
+            deleted_path_count: 0,
+            operation: 'edit',
+            updated_path_count: 1,
+          },
+          status: 'success',
+          subject: {
+            kind: 'file',
+            path: 'src/example.ts',
+          },
+          summary: 'Patched example.ts',
+          toolCallId: 'tool-call-1',
+          toolName: 'apply_patch',
+        },
+        'Patched example.ts\nM src/example.ts',
+      ),
+      id: 'tool-message-1',
+      role: 'tool',
+      timestamp: 4,
+      toolCallId: 'tool-call-1',
+    },
+  ]
+
+  const prompt = buildChatPrompt({
+    chatMode: 'agent',
+    messages,
+    workspaceRootPath: 'C:/repo',
+  })
+
+  const assistantMessage = prompt.messages[1]
+  assert.equal(assistantMessage?.role, 'assistant')
+  assert.ok(Array.isArray(assistantMessage?.content))
+  assert.equal(assistantMessage?.content[0]?.type, 'tool-call')
+  assert.equal(assistantMessage?.content[0]?.input, patchText)
 })
 
 test('buildChatSystemPrompt includes enabled skill metadata when provided', () => {
@@ -391,7 +451,7 @@ test('buildChatPrompt preserves assistant reasoning content alongside tool calls
   })
 })
 
-test('buildChatPrompt can serialize assistant reasoning as plain text content', () => {
+test('buildChatPrompt can omit assistant reasoning from plain text content', () => {
   const messages: Message[] = [
     {
       content: 'Inspect the file',
@@ -434,9 +494,38 @@ test('buildChatPrompt can serialize assistant reasoning as plain text content', 
   assert.equal(assistantMessage?.role, 'assistant')
   assert.ok(Array.isArray(assistantMessage?.content))
   assert.equal(assistantMessage?.content[0]?.type, 'text')
-  assert.equal(
-    assistantMessage?.content[0]?.text,
-    'I should inspect the file before changing it.\n\nI will call a tool now.',
-  )
+  assert.equal(assistantMessage?.content[0]?.text, 'I will call a tool now.')
   assert.equal(assistantMessage?.content[1]?.type, 'tool-call')
+})
+
+test('buildChatPrompt omits think-tag content when assistant reasoning parts are disabled', () => {
+  const messages: Message[] = [
+    {
+      content: 'What changed?',
+      id: 'user-1',
+      role: 'user',
+      timestamp: 1,
+    },
+    {
+      content: '<think>hidden reasoning</think>\n\nVisible answer',
+      id: 'assistant-1',
+      reasoningContent: '<think>more hidden reasoning</think>',
+      role: 'assistant',
+      timestamp: 2,
+    },
+  ]
+
+  const prompt = buildChatPrompt({
+    chatMode: 'agent',
+    messages,
+    options: {
+      includeAssistantReasoningParts: false,
+    },
+    workspaceRootPath: 'C:/repo',
+  })
+
+  assert.equal(prompt.messages.length, 2)
+  const assistantMessage = prompt.messages[1]
+  assert.equal(assistantMessage?.role, 'assistant')
+  assert.equal(assistantMessage?.content, 'Visible answer')
 })

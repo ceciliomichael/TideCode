@@ -40,6 +40,7 @@ export interface ParsedApplyPatch {
 }
 
 export interface ApplyPatchWorkspaceOptions {
+  basePath?: string
   onBeforeChange?: (input: {
     absolutePath: string
     nextAbsolutePath?: string
@@ -129,12 +130,22 @@ function parseUpdatedFile(lines: string[], startIndex: number) {
   let index = startIndex
 
   while (index < lines.length && !lines[index].startsWith('*** End Patch') && !lines[index].startsWith('*** Add File:') && !lines[index].startsWith('*** Delete File:') && !lines[index].startsWith('*** Update File:')) {
-    if (!lines[index].startsWith('@@')) {
+    if (chunks.length === 0 && lines[index].trim().length === 0) {
+      index += 1
+      continue
+    }
+
+    const hasExplicitContextHeader = lines[index].startsWith('@@')
+    const allowImplicitFirstChunk = chunks.length === 0
+
+    if (!hasExplicitContextHeader && !allowImplicitFirstChunk) {
       throw new Error(`Expected "@@" chunk header, found: ${lines[index]}`)
     }
 
-    const changeContext = lines[index].slice(2).trim() || undefined
-    index += 1
+    const changeContext = hasExplicitContextHeader ? lines[index].slice(2).trim() || undefined : undefined
+    if (hasExplicitContextHeader) {
+      index += 1
+    }
 
     const oldLines: string[] = []
     const newLines: string[] = []
@@ -150,9 +161,20 @@ function parseUpdatedFile(lines: string[], startIndex: number) {
     ) {
       const line = lines[index]
       if (line === '*** End of File') {
+        if (oldLines.length === 0 && newLines.length === 0) {
+          throw new Error('Update hunk does not contain any lines')
+        }
+
         isEndOfFile = true
         index += 1
         break
+      }
+
+      if (line.length === 0) {
+        oldLines.push('')
+        newLines.push('')
+        index += 1
+        continue
       }
 
       if (line.startsWith(' ')) {
@@ -178,12 +200,20 @@ function parseUpdatedFile(lines: string[], startIndex: number) {
       throw new Error(`Invalid patch body line: ${line}`)
     }
 
+    if (oldLines.length === 0 && newLines.length === 0) {
+      throw new Error('Update hunk does not contain any lines')
+    }
+
     chunks.push({
       ...(changeContext === undefined ? {} : { changeContext }),
       ...(isEndOfFile ? { isEndOfFile: true } : {}),
       newLines,
       oldLines,
     })
+  }
+
+  if (chunks.length === 0) {
+    throw new Error('Update file hunk is empty')
   }
 
   return {
@@ -577,6 +607,7 @@ function resolvePatchTargetPath(
   workspaceRootPath: string,
   candidatePath: string,
   customResolver: ApplyPatchWorkspaceOptions['resolveTargetPath'],
+  basePath: string,
 ) {
   if (customResolver) {
     return customResolver(candidatePath)
@@ -587,7 +618,8 @@ function resolvePatchTargetPath(
     return getSafeWorkspaceTargetPath(workspaceRootPath, relativePath)
   }
 
-  return getSafeWorkspaceTargetPath(workspaceRootPath, candidatePath)
+  const resolvedCandidatePath = path.resolve(basePath, candidatePath)
+  return getSafeWorkspaceTargetPath(workspaceRootPath, path.relative(workspaceRootPath, resolvedCandidatePath))
 }
 
 export async function applyPatchInWorkspace(
@@ -597,8 +629,9 @@ export async function applyPatchInWorkspace(
 ) {
   const parsedPatch = parseApplyPatch(patchText)
   const changes: ApplyPatchChange[] = []
+  const basePath = options?.basePath ? path.resolve(options.basePath) : workspaceRootPath
   const resolveTargetPath = (candidatePath: string) =>
-    resolvePatchTargetPath(workspaceRootPath, candidatePath, options?.resolveTargetPath)
+    resolvePatchTargetPath(workspaceRootPath, candidatePath, options?.resolveTargetPath, basePath)
 
   for (const hunk of parsedPatch.hunks) {
     if (hunk.type === 'add') {
