@@ -31,12 +31,9 @@ export const ThinkingBlock = memo(function ThinkingBlock({ content, isComplete, 
   }, [])
 
   useEffect(() => {
-    if (!isReasoningComplete) {
-      setIsOpen(!isComplete)
-      return
+    if (!isComplete && !isReasoningComplete) {
+      setIsOpen(true)
     }
-
-    setIsOpen(false)
   }, [isComplete, isReasoningComplete])
 
   return (

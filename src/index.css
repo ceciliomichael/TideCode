@@ -385,6 +385,10 @@
     scrollbar-gutter: stable both-edges;
   }
 
+  .chat-scroll-viewport {
+    overflow-anchor: none;
+  }
+
   .sidebar-surface {
     background-color: var(--color-sidebar);
   }

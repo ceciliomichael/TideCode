@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useMemo, useRef, type RefObject } from "react";
+import { memo, useMemo, useRef, type RefObject } from "react";
 import { isVisibleTranscriptMessage } from "../lib/chatMessageMetadata";
 import { normalizeAssistantMessageContent } from "../lib/chatMessageContent";
 import type {
@@ -12,6 +12,7 @@ import type {
 import { AssistantMessage } from "./AssistantMessage";
 import { ChatInput } from "./ChatInput";
 import { UserMessage } from "./UserMessage";
+import { useChatAutoScroll } from "./chat/useChatAutoScroll";
 import type { ChatModeOption } from "./chat/ChatModeSelectorField";
 import type { ModelSelectorOption } from "./chat/ModelSelectorField";
 import type { ToolDecisionSubmission } from "./chat/ToolDecisionRequestCard";
@@ -270,8 +271,8 @@ const MessageRow = memo(
 export function MessageList({
   chatModeOptions,
   chatModeSelectorDisabled,
-  conversationId,
   composerAttachments,
+  conversationId,
   editComposerDirty = false,
   editComposerMentionPathMap,
   messages,
@@ -308,6 +309,12 @@ export function MessageList({
   const visibleMessages = messages.filter((message) =>
     isVisibleTranscriptMessage(message),
   );
+  useChatAutoScroll({
+    conversationId,
+    messages: visibleMessages,
+    scrollContainerRef,
+    shouldAutoScroll: isConversationStreaming,
+  });
   const subsequentAssistantTextByMessageId = useMemo(() => {
     const map = new Map<string, boolean>();
     let hasAssistantTextLaterInTranscript = false;
@@ -333,33 +340,10 @@ export function MessageList({
     return map;
   }, [visibleMessages]);
 
-  useLayoutEffect(() => {
-    if (!editingMessageId) {
-      return;
-    }
-
-    const container = scrollContainerRef.current;
-    if (!container) {
-      return;
-    }
-
-    const targetMessage = container.querySelector<HTMLElement>(
-      `[data-message-id="${editingMessageId}"]`,
-    );
-    if (!targetMessage) {
-      return;
-    }
-
-    targetMessage.scrollIntoView({
-      block: "center",
-      behavior: "auto",
-    });
-  }, [conversationId, editingMessageId, visibleMessages.length]);
-
   return (
     <div
       ref={scrollContainerRef}
-      className="scroll-stable flex-1 w-full overflow-y-auto"
+      className="chat-scroll-viewport scroll-stable flex-1 w-full overflow-y-auto"
     >
       <div className="chat-column mx-auto space-y-2.5 px-4 pb-6 pt-6">
         {visibleMessages.map((msg, index) => {
