@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { normalizeMarkdownText } from '../../lib/chatMessageContent'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -24,6 +24,51 @@ function formatDuration(seconds: number): string {
 
 export const ThinkingBlock = memo(function ThinkingBlock({ content, isComplete, reasoningCompletedAt, startTime }: ThinkingBlockProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const isReasoningComplete = typeof reasoningCompletedAt === 'number'
+  const normalizedContent = useMemo(() => normalizeMarkdownText(content), [content])
+  const handleToggle = useCallback(() => {
+    setIsOpen((currentValue) => !currentValue)
+  }, [])
+
+  useEffect(() => {
+    if (!isReasoningComplete) {
+      setIsOpen(!isComplete)
+      return
+    }
+
+    setIsOpen(false)
+  }, [isComplete, isReasoningComplete])
+
+  return (
+    <div>
+      <ThinkingBlockHeader
+        isComplete={isComplete}
+        isOpen={isOpen}
+        reasoningCompletedAt={reasoningCompletedAt}
+        startTime={startTime}
+        onToggle={handleToggle}
+      />
+
+      {isOpen ? <ThinkingBlockContent normalizedContent={normalizedContent} isComplete={isComplete} /> : null}
+    </div>
+  )
+})
+
+interface ThinkingBlockHeaderProps {
+  isComplete: boolean
+  isOpen: boolean
+  reasoningCompletedAt?: number
+  startTime: number
+  onToggle: () => void
+}
+
+const ThinkingBlockHeader = memo(function ThinkingBlockHeader({
+  isComplete,
+  isOpen,
+  reasoningCompletedAt,
+  startTime,
+  onToggle,
+}: ThinkingBlockHeaderProps) {
   const [isHovering, setIsHovering] = useState(false)
   const [elapsedSeconds, setElapsedSeconds] = useState<number | null>(null)
   const frozenDurationRef = useRef<number | null>(null)
@@ -60,17 +105,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ content, isComplete, 
     }
   }, [isComplete, reasoningDurationSeconds, startTime])
 
-  useEffect(() => {
-    if (!isReasoningComplete) {
-      setIsOpen(!isComplete)
-      return
-    }
-
-    setIsOpen(false)
-  }, [isComplete, isReasoningComplete])
-
   const stableDuration = frozenDurationRef.current ?? reasoningDurationSeconds ?? elapsedSeconds
-  const normalizedContent = useMemo(() => normalizeMarkdownText(content), [content])
   const completedDuration = stableDuration ?? 0
   const headerLabel = isReasoningComplete
     ? `Thought for ${formatDuration(completedDuration)}`
@@ -83,37 +118,33 @@ export const ThinkingBlock = memo(function ThinkingBlock({ content, isComplete, 
         : 'Thinking'
 
   return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setIsOpen((currentValue) => !currentValue)}
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
-        className="group flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+    <button
+      type="button"
+      onClick={onToggle}
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+      className="group flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <span
+        className={[
+          isComplete || isReasoningComplete
+            ? isHovering
+              ? 'text-foreground'
+              : 'text-muted-foreground'
+            : isHovering
+              ? 'text-foreground'
+              : 'thinking-shimmer',
+        ].join(' ')}
       >
-        <span
-          className={[
-            isComplete || isReasoningComplete
-              ? isHovering
-                ? 'text-foreground'
-                : 'text-muted-foreground'
-              : isHovering
-                ? 'text-foreground'
-                : 'thinking-shimmer',
-          ].join(' ')}
-        >
-          {headerLabel}
-        </span>
-        <ChevronRight
-          className={[
-            'h-3.5 w-3.5 shrink-0 opacity-0 transition-[opacity,transform] duration-200 group-hover:opacity-100',
-            isOpen ? 'rotate-90' : '',
-          ].join(' ')}
-        />
-      </button>
-
-      {isOpen ? <ThinkingBlockContent normalizedContent={normalizedContent} isComplete={isComplete} /> : null}
-    </div>
+        {headerLabel}
+      </span>
+      <ChevronRight
+        className={[
+          'h-3.5 w-3.5 shrink-0 opacity-0 transition-[opacity,transform] duration-200 group-hover:opacity-100',
+          isOpen ? 'rotate-90' : '',
+        ].join(' ')}
+      />
+    </button>
   )
 })
 

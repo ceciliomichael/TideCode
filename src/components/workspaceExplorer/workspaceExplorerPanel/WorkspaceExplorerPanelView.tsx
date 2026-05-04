@@ -158,7 +158,7 @@ export function WorkspaceExplorerPanelView({
                 : undefined
             }
             className={[
-              'flex h-8 w-full min-w-0 items-center gap-1 rounded-none px-2 text-left text-sm transition-colors',
+              'flex h-8 w-full min-w-0 items-center gap-1 rounded-none px-2 text-left text-sm transition-colors outline-none focus:outline-none focus-visible:outline-none',
               isCutEntry ? 'opacity-55' : '',
               rowStateClass,
             ].join(' ')}
