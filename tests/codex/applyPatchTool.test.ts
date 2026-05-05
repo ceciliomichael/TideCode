@@ -439,7 +439,7 @@ test('createAgentTools keeps plan mode descriptions on discovery-only tools', as
 
     assert.match(listTool.description ?? '', /Use `read` after you find a file/u)
     assert.match(readTool.description ?? '', /Do not guess paths/u)
-    assert.match(globTool.description ?? '', /Read the matched files with `read` before editing/u)
+    assert.match(globTool.description ?? '', /Read the matched files with `read` immediately before editing/u)
     assert.match(grepTool.description ?? '', /read the matching files with `read`/u)
     assert.doesNotMatch(readTool.description ?? '', /apply_patch|write/u)
     assert.doesNotMatch(grepTool.description ?? '', /apply_patch|write/u)
@@ -468,10 +468,13 @@ test('createAgentTools describes read and apply_patch with exact path guidance',
     assert.ok('write' in tools)
 
     const readTool = tools.read as { description?: string }
+    const globTool = tools.glob as { description?: string }
+    const grepTool = tools.grep as { description?: string }
     const applyPatchTool = tools.apply_patch as { description?: string }
     const writeTool = tools.write as { description?: string }
 
     assert.match(readTool.description ?? '', /Do not guess paths/u)
+    assert.match(readTool.description ?? '', /Read the file immediately before editing it/u)
     assert.match(readTool.description ?? '', /After reading, use `apply_patch` for small edits or `write` for a full replacement/u)
     assert.match(applyPatchTool.description ?? '', /workspace-relative file paths like `src\/app\.ts`/u)
     assert.match(applyPatchTool.description ?? '', /Use `write` only when you need to replace a whole file/u)
@@ -481,6 +484,8 @@ test('createAgentTools describes read and apply_patch with exact path guidance',
     assert.match(applyPatchTool.description ?? '', /If the target already has the desired content, do not call apply_patch/u)
     assert.match(applyPatchTool.description ?? '', /Order update hunks from top to bottom/u)
     assert.match(applyPatchTool.description ?? '', /grep results are only location hints/u)
+    assert.match(globTool.description ?? '', /Read the matched files with `read` immediately before editing/u)
+    assert.match(grepTool.description ?? '', /read it again immediately before editing if there is any chance the file changed/u)
     assert.match(writeTool.description ?? '', /For small edits to an existing file, use `apply_patch` instead/u)
     assert.match(writeTool.description ?? '', /Do not call write when the target already has identical content/u)
   } finally {

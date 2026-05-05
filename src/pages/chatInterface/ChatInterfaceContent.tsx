@@ -551,7 +551,6 @@ export function ChatInterfaceContent({
               {isKanbanBoardOpen ? (
                 <KanbanBoard
                   conversationId={chatMessages.activeConversationId}
-                  conversationTitle={chatMessages.activeConversationTitle}
                   messages={chatMessages.messages}
                 />
               ) : (

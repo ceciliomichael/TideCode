@@ -51,6 +51,7 @@ export function useChatMessageQueue({ isQueueBlocked, onSendMessage }: UseChatMe
       try {
         const wasAccepted = await onSendMessage(targetMessage)
         if (!wasAccepted) {
+          attemptedQueueMessageIdRef.current = null
           setQueuedMessages((currentValue) => {
             const nextMessages = [...currentValue]
             nextMessages.splice(Math.max(restoreIndex, 0), 0, targetMessage)
@@ -63,6 +64,7 @@ export function useChatMessageQueue({ isQueueBlocked, onSendMessage }: UseChatMe
         return wasAccepted
       } catch (caughtError) {
         console.error(caughtError)
+        attemptedQueueMessageIdRef.current = null
         setQueuedMessages((currentValue) => {
           const nextMessages = [...currentValue]
           nextMessages.splice(Math.max(restoreIndex, 0), 0, targetMessage)

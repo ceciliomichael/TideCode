@@ -9,7 +9,6 @@ import { useKanbanBoardState } from './useKanbanBoardState'
 
 interface KanbanBoardProps {
   conversationId: string | null
-  conversationTitle: string
   messages: readonly Message[]
 }
 
@@ -21,7 +20,7 @@ interface TaskDraftState {
   title: string
 }
 
-export function KanbanBoard({ conversationId, conversationTitle, messages }: KanbanBoardProps) {
+export function KanbanBoard({ conversationId, messages }: KanbanBoardProps) {
   const [draftTitle, setDraftTitle] = useState('')
   const [draftTask, setDraftTask] = useState<TaskDraftState | null>(null)
   const [showMessagePicker, setShowMessagePicker] = useState(false)

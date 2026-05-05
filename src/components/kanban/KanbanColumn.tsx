@@ -1,4 +1,4 @@
-import type { DragEvent } from 'react'
+import { useState, type DragEvent } from 'react'
 import { KanbanCardItem } from './KanbanCardItem'
 import type { KanbanCard, KanbanColumnDefinition, KanbanColumnId } from './kanbanTypes'
 
@@ -27,36 +27,54 @@ export function KanbanColumn({
   onCardMove,
   onMessageDrop,
 }: KanbanColumnProps) {
-  const isDropTarget = draggedCardId !== null || draggedMessageId !== null
+  const [isOver, setIsOver] = useState(false)
 
-  function handleDragOver(event: DragEvent<HTMLDivElement>) {
+  const isDragging = draggedCardId !== null || draggedMessageId !== null
+
+  function handleDragEnter(event: DragEvent<HTMLElement>) {
+    event.preventDefault()
+    setIsOver(true)
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLElement>) {
+    // Only clear when the cursor actually leaves this column (not a child element)
+    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+      setIsOver(false)
+    }
+  }
+
+  function handleDragOver(event: DragEvent<HTMLElement>) {
     event.preventDefault()
     event.dataTransfer.dropEffect = draggedMessageId !== null ? 'copy' : 'move'
   }
 
-  function handleDrop(event: DragEvent<HTMLDivElement>) {
+  function handleDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault()
+    setIsOver(false)
+
     // Message pill dropped onto a column
     const messageId = event.dataTransfer.getData('kanban/message-id')
     if (messageId) {
       onMessageDrop(messageId, column.id)
       return
     }
+
     // Existing card drag
     if (!draggedCardId) {
       return
     }
-
     onCardDrop(draggedCardId, column.id)
   }
 
   return (
     <section
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       className={[
-        'flex min-h-0 flex-1 flex-col overflow-hidden bg-surface transition-colors',
-        isDropTarget ? 'bg-surface-muted' : '',
+        'flex min-h-0 flex-1 flex-col overflow-hidden transition-colors duration-100',
+        isOver && isDragging ? 'bg-surface-muted' : 'bg-surface',
       ].join(' ')}
     >
       {/* Column header — flat strip */}
