@@ -161,6 +161,7 @@ export function ChatInterfaceContent({
   const [isCompressingChat, setIsCompressingChat] = useState(false)
   const [workspaceViewMode, setWorkspaceViewMode] = useState<ChatWorkspaceViewMode>('chat')
   const isKanbanBoardOpen = workspaceViewMode === 'kanban'
+  const isWorkspaceHeaderControlDisabled = isKanbanBoardOpen
 
   const canSteerQueuedMessages =
     settings.followUpBehavior === 'steer' &&
@@ -224,21 +225,25 @@ export function ChatInterfaceContent({
   )
   const chatModeOptions = CHAT_MODE_OPTIONS
   const hasRepository = gitBranchState.branchState.hasRepository
+  const isWorkspaceRepoHeaderControlDisabled = isWorkspaceHeaderControlDisabled || !hasRepository
   const messageListBoundaryRef = useRef<HTMLDivElement>(null)
 
   const handleCreateConversation = useCallback(async (folderId?: string | null) => {
     clearQueuedMessages()
+    setWorkspaceViewMode('chat')
     await chatMessages.createConversation(folderId)
   }, [chatMessages, clearQueuedMessages])
 
   const handleCreateWorkspaceConversation = useCallback(async () => {
     clearQueuedMessages()
+    setWorkspaceViewMode('chat')
     await chatMessages.createConversation()
   }, [chatMessages, clearQueuedMessages])
 
   const handleSelectConversation = useCallback(
     (conversationId: string) => {
       clearQueuedMessages()
+      setWorkspaceViewMode('chat')
       void chatMessages.selectConversation(conversationId)
     },
     [chatMessages, clearQueuedMessages],
@@ -455,60 +460,113 @@ export function ChatInterfaceContent({
                 </button>
               </Tooltip>
               <div className="mx-1 h-5 w-px bg-border" />
-              <Tooltip content={workspaceState.isTerminalOpen ? 'Hide terminal panel' : 'Open terminal panel'} side="bottom">
+              {isWorkspaceHeaderControlDisabled ? (
                 <button
                   type="button"
+                  disabled={isWorkspaceHeaderControlDisabled}
                   onClick={() => interfaceController.setActiveWorkspaceTerminalOpen(!workspaceState.isTerminalOpen)}
                   className={[
                     'inline-flex h-10 items-center gap-1.5 text-sm transition-colors',
-                    workspaceState.isTerminalOpen ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                    isWorkspaceHeaderControlDisabled
+                      ? 'cursor-not-allowed opacity-50'
+                      : workspaceState.isTerminalOpen
+                        ? 'text-foreground'
+                        : 'text-muted-foreground hover:text-foreground',
                   ].join(' ')}
                 >
                   <Terminal size={16} className="shrink-0" />
                   <span className="hidden md:inline">Terminal</span>
                 </button>
-              </Tooltip>
+              ) : (
+                <Tooltip content={workspaceState.isTerminalOpen ? 'Hide terminal panel' : 'Open terminal panel'} side="bottom">
+                  <button
+                    type="button"
+                    disabled={isWorkspaceHeaderControlDisabled}
+                    onClick={() => interfaceController.setActiveWorkspaceTerminalOpen(!workspaceState.isTerminalOpen)}
+                    className={[
+                      'inline-flex h-10 items-center gap-1.5 text-sm transition-colors',
+                      workspaceState.isTerminalOpen
+                        ? 'text-foreground'
+                        : 'text-muted-foreground hover:text-foreground',
+                    ].join(' ')}
+                  >
+                    <Terminal size={16} className="shrink-0" />
+                    <span className="hidden md:inline">Terminal</span>
+                  </button>
+                </Tooltip>
+              )}
               <div className="mx-1 h-5 w-px bg-border" />
-              <Tooltip content={hasRepository ? 'Commit changes' : 'Open a git-backed folder to commit'} side="bottom">
+              {isWorkspaceRepoHeaderControlDisabled ? (
                 <button
                   type="button"
-                  disabled={!hasRepository}
+                  disabled={isWorkspaceRepoHeaderControlDisabled}
                   onClick={interfaceController.handleOpenCommitModal}
                   className={[
                     'inline-flex h-10 items-center gap-1.5 text-sm text-muted-foreground transition-colors',
-                    !hasRepository ? 'cursor-not-allowed opacity-60' : 'hover:text-foreground',
+                    isWorkspaceRepoHeaderControlDisabled ? 'cursor-not-allowed opacity-50' : 'hover:text-foreground',
                   ].join(' ')}
                 >
                   <GitCommitHorizontal size={16} className="shrink-0" />
                   <span className="hidden md:inline">Commit</span>
                 </button>
-              </Tooltip>
+              ) : (
+                <Tooltip content={hasRepository ? 'Commit changes' : 'Open a git-backed folder to commit'} side="bottom">
+                  <button
+                    type="button"
+                    disabled={isWorkspaceRepoHeaderControlDisabled}
+                    onClick={interfaceController.handleOpenCommitModal}
+                    className={[
+                      'inline-flex h-10 items-center gap-1.5 text-sm text-muted-foreground transition-colors',
+                      isWorkspaceRepoHeaderControlDisabled ? 'cursor-not-allowed opacity-50' : 'hover:text-foreground',
+                    ].join(' ')}
+                  >
+                    <GitCommitHorizontal size={16} className="shrink-0" />
+                    <span className="hidden md:inline">Commit</span>
+                  </button>
+                </Tooltip>
+              )}
               <div className="mx-1 h-5 w-px bg-border" />
-              <Tooltip content={hasRepository ? 'Toggle Source Control panel' : 'Open a git-backed folder'} side="bottom">
+              {isWorkspaceRepoHeaderControlDisabled ? (
                 <button
                   type="button"
-                  disabled={!hasRepository}
+                  disabled={isWorkspaceRepoHeaderControlDisabled}
                   onClick={workspaceState.handleOpenSourceControlPanel}
                   className={[
                     'inline-flex h-10 items-center gap-1.5 text-sm transition-colors',
                     interfaceController.isSourceControlPanelOpen ? 'text-foreground' : 'text-muted-foreground',
-                    !hasRepository ? 'cursor-not-allowed opacity-60' : 'hover:text-foreground',
+                    isWorkspaceRepoHeaderControlDisabled ? 'cursor-not-allowed opacity-50' : 'hover:text-foreground',
                   ].join(' ')}
                 >
                   <GitBranch size={16} className="shrink-0" />
                   <span className="hidden md:inline">Source Control</span>
                 </button>
-              </Tooltip>
+              ) : (
+                <Tooltip content={hasRepository ? 'Toggle Source Control panel' : 'Open a git-backed folder'} side="bottom">
+                  <button
+                    type="button"
+                    disabled={isWorkspaceRepoHeaderControlDisabled}
+                    onClick={workspaceState.handleOpenSourceControlPanel}
+                    className={[
+                      'inline-flex h-10 items-center gap-1.5 text-sm transition-colors',
+                      interfaceController.isSourceControlPanelOpen ? 'text-foreground' : 'text-muted-foreground',
+                      isWorkspaceRepoHeaderControlDisabled ? 'cursor-not-allowed opacity-50' : 'hover:text-foreground',
+                    ].join(' ')}
+                  >
+                    <GitBranch size={16} className="shrink-0" />
+                    <span className="hidden md:inline">Source Control</span>
+                  </button>
+                </Tooltip>
+              )}
               <div className="mx-1 h-5 w-px bg-border" />
-              <Tooltip content={hasRepository ? 'Toggle Diff panel' : 'Open a git-backed folder'} side="bottom">
+              {isWorkspaceRepoHeaderControlDisabled ? (
                 <button
                   type="button"
-                  disabled={!hasRepository}
+                  disabled={isWorkspaceRepoHeaderControlDisabled}
                   onClick={workspaceState.handleOpenDiffPanel}
                   className={[
                     'inline-flex h-10 items-center gap-1.5 text-sm transition-colors',
                     interfaceController.isDiffPanelOpen ? 'text-foreground' : 'text-muted-foreground',
-                    !hasRepository ? 'cursor-not-allowed opacity-60' : 'hover:text-foreground',
+                    isWorkspaceRepoHeaderControlDisabled ? 'cursor-not-allowed opacity-50' : 'hover:text-foreground',
                   ].join(' ')}
                 >
                   <GitCompareArrows size={16} className="shrink-0" />
@@ -519,21 +577,66 @@ export function ChatInterfaceContent({
                     </>
                   ) : null}
                 </button>
-              </Tooltip>
+              ) : (
+                <Tooltip content={hasRepository ? 'Toggle Diff panel' : 'Open a git-backed folder'} side="bottom">
+                  <button
+                    type="button"
+                    disabled={isWorkspaceRepoHeaderControlDisabled}
+                    onClick={workspaceState.handleOpenDiffPanel}
+                    className={[
+                      'inline-flex h-10 items-center gap-1.5 text-sm transition-colors',
+                      interfaceController.isDiffPanelOpen ? 'text-foreground' : 'text-muted-foreground',
+                      isWorkspaceRepoHeaderControlDisabled ? 'cursor-not-allowed opacity-50' : 'hover:text-foreground',
+                    ].join(' ')}
+                  >
+                    <GitCompareArrows size={16} className="shrink-0" />
+                    {hasRepository ? (
+                      <>
+                        <span className="text-emerald-600 dark:text-emerald-400">{`+${gitDiffSnapshot.snapshot.totalAddedLineCount}`}</span>
+                        <span className="text-red-600 dark:text-red-400">{`-${gitDiffSnapshot.snapshot.totalRemovedLineCount}`}</span>
+                      </>
+                    ) : null}
+                  </button>
+                </Tooltip>
+              )}
               <div className="mx-1 h-5 w-px bg-border" />
-              <Tooltip content={workspaceState.isExplorerOpen ? 'Close explorer panel' : 'Open explorer panel'} side="bottom">
+              {isWorkspaceHeaderControlDisabled ? (
                 <button
                   type="button"
+                  disabled={isWorkspaceHeaderControlDisabled}
                   onClick={workspaceState.handleToggleExplorerPanel}
                   className={[
                     'inline-flex h-10 items-center gap-1.5 text-sm transition-colors',
-                    workspaceState.isExplorerOpen ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                    isWorkspaceHeaderControlDisabled
+                      ? 'cursor-not-allowed opacity-50'
+                      : workspaceState.isExplorerOpen
+                        ? 'text-foreground'
+                        : 'text-muted-foreground hover:text-foreground',
                   ].join(' ')}
                 >
                   <FolderTree size={16} className="shrink-0" />
                   <span className="hidden md:inline">Explorer</span>
                 </button>
-              </Tooltip>
+              ) : (
+                <Tooltip content={workspaceState.isExplorerOpen ? 'Close explorer panel' : 'Open explorer panel'} side="bottom">
+                  <button
+                    type="button"
+                    disabled={isWorkspaceHeaderControlDisabled}
+                    onClick={workspaceState.handleToggleExplorerPanel}
+                    className={[
+                      'inline-flex h-10 items-center gap-1.5 text-sm transition-colors',
+                      isWorkspaceHeaderControlDisabled
+                        ? 'cursor-not-allowed opacity-50'
+                        : workspaceState.isExplorerOpen
+                          ? 'text-foreground'
+                          : 'text-muted-foreground hover:text-foreground',
+                    ].join(' ')}
+                  >
+                    <FolderTree size={16} className="shrink-0" />
+                    <span className="hidden md:inline">Explorer</span>
+                  </button>
+                </Tooltip>
+              )}
             </div>
           }
           onRenameTitle={(nextTitle) => {
