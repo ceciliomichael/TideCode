@@ -1,6 +1,5 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { app } from 'electron'
 import type { AppSettings } from '../../src/types/chat'
 import { DEFAULT_APP_SETTINGS } from '../../src/lib/defaultAppSettings'
 import { isAppAppearance, isAppLanguage, isFollowUpBehavior } from '../../src/lib/appSettings'
@@ -11,11 +10,15 @@ import { hasLaunchOnlyAppSettings, resetLaunchOnlyAppSettings } from '../../src/
 import { clampStoredWorkspaceEditorWidth } from '../../src/lib/workspaceEditorSizing'
 import { clampStoredWorkspaceExplorerWidth } from '../../src/lib/workspaceExplorerSizing'
 import type { SourceControlSectionId } from '../../src/types/chat'
+import { electronApp } from '../electronApp'
+import { writeJsonFileAtomic } from './fileStore'
 
 const CONFIG_ROOT_SEGMENTS = ['.echosphere', 'config'] as const
 const SETTINGS_FILE_NAME = 'settings.json'
 const WORKSPACE_UI_STATE_FILE_NAME = 'workspace-ui-state.json'
+const SETTINGS_HOME_OVERRIDE_ENV = 'ECHOSPHERE_SETTINGS_HOME'
 let settingsUpdateQueue: Promise<void> = Promise.resolve()
+let cachedStoredSettings: AppSettings | null = null
 const SOURCE_CONTROL_SECTION_IDS: readonly SourceControlSectionId[] = ['commit', 'changes', 'history']
 const CHAT_PROVIDER_IDS = ['codex', 'openai', 'anthropic', 'google', 'mistral', 'openai-compatible'] as const
 const WORKSPACE_UI_SETTINGS_KEYS = [
@@ -242,7 +245,9 @@ function sanitizeDisabledSkillsByPath(value: unknown): AppSettings['disabledSkil
 }
 
 function getConfigDirectoryPath() {
-  return path.join(app.getPath('home'), ...CONFIG_ROOT_SEGMENTS)
+  const overriddenHome = process.env[SETTINGS_HOME_OVERRIDE_ENV]?.trim()
+  const homePath = overriddenHome && overriddenHome.length > 0 ? overriddenHome : electronApp.getPath('home')
+  return path.join(homePath, ...CONFIG_ROOT_SEGMENTS)
 }
 
 function getSettingsFilePath() {
@@ -259,11 +264,6 @@ async function ensureConfigDirectory() {
 
 function isRecoverableSettingsParseError(error: unknown) {
   return error instanceof SyntaxError
-}
-
-async function writeSettingsFile(settings: AppSettings) {
-  await ensureConfigDirectory()
-  await fs.writeFile(getSettingsFilePath(), JSON.stringify(settings, null, 2), 'utf8')
 }
 
 function pickDurableAppSettings(settings: AppSettings): DurableAppSettings {
@@ -309,12 +309,12 @@ function pickWorkspaceUiSettings(settings: AppSettings): WorkspaceUiSettings {
 
 async function writeDurableSettingsFile(settings: DurableAppSettings) {
   await ensureConfigDirectory()
-  await fs.writeFile(getSettingsFilePath(), JSON.stringify(settings, null, 2), 'utf8')
+  await writeJsonFileAtomic(getSettingsFilePath(), JSON.stringify(settings, null, 2))
 }
 
 async function writeWorkspaceUiStateFile(settings: WorkspaceUiSettings) {
   await ensureConfigDirectory()
-  await fs.writeFile(getWorkspaceUiStateFilePath(), JSON.stringify(settings, null, 2), 'utf8')
+  await writeJsonFileAtomic(getWorkspaceUiStateFilePath(), JSON.stringify(settings, null, 2))
 }
 
 function splitSettingsInput(input: Partial<AppSettings>) {
@@ -338,18 +338,16 @@ function splitSettingsInput(input: Partial<AppSettings>) {
   }
 }
 
-async function readStoredSettingsFile() {
+async function readLegacySettingsFile() {
   try {
     await ensureConfigDirectory()
     const raw = await fs.readFile(getSettingsFilePath(), 'utf8')
     return sanitizeSettings(JSON.parse(raw) as Partial<AppSettings>)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      await writeSettingsFile(DEFAULT_APP_SETTINGS)
       return DEFAULT_APP_SETTINGS
     }
     if (isRecoverableSettingsParseError(error)) {
-      await writeSettingsFile(DEFAULT_APP_SETTINGS)
       return DEFAULT_APP_SETTINGS
     }
 
@@ -370,9 +368,7 @@ async function readDurableSettingsFile(): Promise<DurableAppSettings> {
       return durableSettings
     }
     if (isRecoverableSettingsParseError(error)) {
-      const durableSettings = pickDurableAppSettings(DEFAULT_APP_SETTINGS)
-      await writeDurableSettingsFile(durableSettings)
-      return durableSettings
+      return pickDurableAppSettings(DEFAULT_APP_SETTINGS)
     }
 
     console.error('Failed to load app settings', error)
@@ -395,9 +391,7 @@ async function readWorkspaceUiStateFile(legacySettings: AppSettings): Promise<Wo
       return workspaceUiSettings
     }
     if (isRecoverableSettingsParseError(error)) {
-      const workspaceUiSettings = pickWorkspaceUiSettings(legacySettings)
-      await writeWorkspaceUiStateFile(workspaceUiSettings)
-      return workspaceUiSettings
+      return pickWorkspaceUiSettings(legacySettings)
     }
 
     console.error('Failed to load workspace UI state', error)
@@ -406,18 +400,16 @@ async function readWorkspaceUiStateFile(legacySettings: AppSettings): Promise<Wo
 }
 
 async function readStoredSettingsFiles(): Promise<AppSettings> {
-  const legacySettings = await readStoredSettingsFile()
+  const legacySettings = await readLegacySettingsFile()
   const [durableSettings, workspaceUiSettings] = await Promise.all([
     readDurableSettingsFile(),
     readWorkspaceUiStateFile(legacySettings),
   ])
 
-  const mergedSettings = sanitizeSettings({
+  return sanitizeSettings({
     ...durableSettings,
     ...workspaceUiSettings,
   })
-  await writeStoredSettingsFiles(mergedSettings)
-  return mergedSettings
 }
 
 async function writeStoredSettingsFiles(settings: AppSettings) {
@@ -570,11 +562,13 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
 export async function getStoredSettings() {
   const storedSettings = await readStoredSettingsFiles()
   if (!hasLaunchOnlyAppSettings(storedSettings)) {
+    cachedStoredSettings = storedSettings
     return storedSettings
   }
 
   const launchSafeSettings = resetLaunchOnlyAppSettings(storedSettings)
   await writeStoredSettingsFiles(launchSafeSettings)
+  cachedStoredSettings = launchSafeSettings
   return launchSafeSettings
 }
 
@@ -584,7 +578,7 @@ export async function updateStoredSettings(input: Partial<AppSettings>) {
   settingsUpdateQueue = settingsUpdateQueue
     .catch(() => undefined)
     .then(async () => {
-      const currentSettings = await readStoredSettingsFiles().catch(() => DEFAULT_APP_SETTINGS)
+      const currentSettings = cachedStoredSettings ?? (await readStoredSettingsFiles().catch(() => DEFAULT_APP_SETTINGS))
       const { durableInput, hasDurableInput, hasWorkspaceUiInput, workspaceUiInput } = splitSettingsInput(input)
       const currentDurableSettings = pickDurableAppSettings(currentSettings)
       const currentWorkspaceUiSettings = pickWorkspaceUiSettings(currentSettings)
@@ -605,6 +599,7 @@ export async function updateStoredSettings(input: Partial<AppSettings>) {
         ...nextDurableSettings,
         ...nextWorkspaceUiSettings,
       })
+      cachedStoredSettings = nextSettings
 
       await Promise.all([
         hasDurableInput ? writeDurableSettingsFile(nextDurableSettings) : Promise.resolve(),

@@ -310,7 +310,7 @@ export function DropdownField({
                 setListboxViewportHeight(event.currentTarget.clientHeight)
               }}
               className={[
-                'fixed z-50 overflow-y-auto rounded-xl border border-border bg-surface shadow-soft',
+                'fixed z-[1500] overflow-y-auto rounded-xl border border-border bg-surface shadow-soft',
                 flushOptions ? 'p-0' : fitToContent ? 'p-0.5' : 'p-1',
               ].join(' ')}
               style={menuStyle}

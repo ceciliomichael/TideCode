@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FolderTree, GitBranch, GitCommitHorizontal, GitCompareArrows, Terminal } from 'lucide-react'
+import { Columns3, FolderTree, GitBranch, GitCommitHorizontal, GitCompareArrows, Terminal } from 'lucide-react'
 import { ChatHeader } from '../../components/ChatHeader'
 import { MessageList } from '../../components/MessageList'
 import { ChatInput } from '../../components/ChatInput'
@@ -10,6 +10,7 @@ import type { ChatModeOption } from '../../components/chat/ChatModeSelectorField
 import { ConversationDiffPanel, type DiffPanelScope } from '../../components/chat/ConversationDiffPanel'
 import { ChatQueueBlock } from '../../components/chat/ChatQueueBlock'
 import type { ToolDecisionSubmission } from '../../components/chat/ToolDecisionRequestCard'
+import { KanbanBoard } from '../../components/kanban/KanbanBoard'
 import { AppWorkspaceShell } from '../../components/layout/AppWorkspaceShell'
 import { WorkspaceFloatingControls } from '../../components/layout/WorkspaceFloatingControls'
 import { WorkspacePanel } from '../../components/layout/WorkspacePanel'
@@ -54,6 +55,8 @@ const CHAT_MODE_OPTIONS: readonly ChatModeOption[] = [
     value: 'plan',
   },
 ] as const
+
+type ChatWorkspaceViewMode = 'chat' | 'kanban'
 
 interface ChatInterfaceContentProps {
   chatMessages: ChatMessagesController
@@ -156,6 +159,8 @@ export function ChatInterfaceContent({
   )
   const activeStreamToolInvocations = streamingAssistantMessage?.toolInvocations ?? []
   const [isCompressingChat, setIsCompressingChat] = useState(false)
+  const [workspaceViewMode, setWorkspaceViewMode] = useState<ChatWorkspaceViewMode>('chat')
+  const isKanbanBoardOpen = workspaceViewMode === 'kanban'
 
   const canSteerQueuedMessages =
     settings.followUpBehavior === 'steer' &&
@@ -435,6 +440,21 @@ export function ChatInterfaceContent({
           isSidebarOpen={interfaceController.isSidebarOpen}
           trailingContent={
             <div className="flex items-center gap-1">
+              <Tooltip content={isKanbanBoardOpen ? 'Return to chat' : 'Open Kanban board'} side="bottom">
+                <button
+                  type="button"
+                  aria-pressed={isKanbanBoardOpen}
+                  onClick={() => setWorkspaceViewMode(isKanbanBoardOpen ? 'chat' : 'kanban')}
+                  className={[
+                    'inline-flex h-10 items-center gap-1.5 text-sm transition-colors',
+                    isKanbanBoardOpen ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                  ].join(' ')}
+                >
+                  <Columns3 size={16} className="shrink-0" />
+                  <span className="hidden md:inline">Board</span>
+                </button>
+              </Tooltip>
+              <div className="mx-1 h-5 w-px bg-border" />
               <Tooltip content={workspaceState.isTerminalOpen ? 'Hide terminal panel' : 'Open terminal panel'} side="bottom">
                 <button
                   type="button"
@@ -528,131 +548,143 @@ export function ChatInterfaceContent({
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-hidden">
             <div className="flex min-h-0 w-full flex-1 flex-col">
-              {chatMessages.error ? (
-                <div className="chat-input-shell mx-auto rounded-2xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
-                  {chatMessages.error}
-                </div>
-              ) : null}
-
-              {chatMessages.isLoading ? (
-                <div className="flex flex-1 items-center justify-center px-4 text-sm text-subtle-foreground">
-                  Loading conversations...
-                </div>
-              ) : chatMessages.messages.length === 0 ? (
-                <EmptyState folderName={chatMessages.selectedFolderName} />
+              {isKanbanBoardOpen ? (
+                <KanbanBoard
+                  conversationId={chatMessages.activeConversationId}
+                  conversationTitle={chatMessages.activeConversationTitle}
+                  messages={chatMessages.messages}
+                />
               ) : (
-                <div ref={messageListBoundaryRef} className="flex min-h-0 flex-1 flex-col">
-                  <MessageList
-                    conversationId={chatMessages.activeConversationId}
-                    messages={chatMessages.messages}
-                    chatModeOptions={chatModeOptions}
-                    editingMessageId={chatMessages.editingMessageId}
-                    editComposerDirty={chatMessages.isEditComposerDirty}
-                    editComposerMentionPathMap={chatMessages.editComposerMentionPathMap}
-                    onChatModeChange={chatMessages.setSelectedChatMode}
-                    onToolDecisionSubmit={handleToolDecisionSubmit}
-                    onEditUserMessage={handleEditUserMessage}
-                    onRevertUserMessage={handleRevertUserMessage}
-                    composerAttachments={chatMessages.editComposerAttachments}
-                    composerValue={chatMessages.editComposerValue}
-                    onComposerAttachmentsChange={chatMessages.setEditComposerAttachments}
-                    onComposerValueChange={chatMessages.setEditComposerValue}
-                    onSendEditedMessage={handleSendEditedMessage}
-                    onAbortStreamingResponse={chatMessages.abortStreamingResponse}
-                    onCancelEditingMessage={handleCancelEditingMessage}
-                    composerFocusSignal={chatMessages.editComposerFocusSignal}
-                    isSending={chatMessages.isSending}
-                    modelOptions={selectorOptions}
-                    modelOptionsLoading={chatRuntimeConfig.isModelOptionsLoading}
-                    onModelChange={chatRuntimeConfig.setSelectedModelId}
-                    onReasoningEffortChange={chatRuntimeConfig.setReasoningEffort}
-                    reasoningEffort={chatRuntimeConfig.reasoningEffort}
-                    reasoningEffortOptions={chatRuntimeConfig.availableReasoningEfforts}
-                    selectedChatMode={chatMessages.selectedChatMode}
-                    selectedModelId={chatRuntimeConfig.selectedModelId}
-                    sendMessageOnEnter={sendMessageOnEnter}
-                    showReasoningEffortSelector={chatRuntimeConfig.showReasoningEffortSelector}
-                    streamingAssistantMessageId={chatMessages.streamingAssistantMessageId}
-                    streamingWaitingIndicatorVariant={chatMessages.streamingWaitingIndicatorVariant}
-                    streamingTextActive={chatMessages.isStreamingTextActive}
-                    workspaceRootPath={activeWorkspacePath}
-                  />
-                </div>
+                <>
+                  {chatMessages.error ? (
+                    <div className="chat-input-shell mx-auto rounded-2xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
+                      {chatMessages.error}
+                    </div>
+                  ) : null}
+
+                  {chatMessages.isLoading ? (
+                    <div className="flex flex-1 items-center justify-center px-4 text-sm text-subtle-foreground">
+                      Loading conversations...
+                    </div>
+                  ) : chatMessages.messages.length === 0 ? (
+                    <EmptyState folderName={chatMessages.selectedFolderName} />
+                  ) : (
+                    <div ref={messageListBoundaryRef} className="flex min-h-0 flex-1 flex-col">
+                      <MessageList
+                        conversationId={chatMessages.activeConversationId}
+                        messages={chatMessages.messages}
+                        chatModeOptions={chatModeOptions}
+                        editingMessageId={chatMessages.editingMessageId}
+                        editComposerDirty={chatMessages.isEditComposerDirty}
+                        editComposerMentionPathMap={chatMessages.editComposerMentionPathMap}
+                        onChatModeChange={chatMessages.setSelectedChatMode}
+                        onToolDecisionSubmit={handleToolDecisionSubmit}
+                        onEditUserMessage={handleEditUserMessage}
+                        onRevertUserMessage={handleRevertUserMessage}
+                        composerAttachments={chatMessages.editComposerAttachments}
+                        composerValue={chatMessages.editComposerValue}
+                        onComposerAttachmentsChange={chatMessages.setEditComposerAttachments}
+                        onComposerValueChange={chatMessages.setEditComposerValue}
+                        onSendEditedMessage={handleSendEditedMessage}
+                        onAbortStreamingResponse={chatMessages.abortStreamingResponse}
+                        onCancelEditingMessage={handleCancelEditingMessage}
+                        composerFocusSignal={chatMessages.editComposerFocusSignal}
+                        isSending={chatMessages.isSending}
+                        modelOptions={selectorOptions}
+                        modelOptionsLoading={chatRuntimeConfig.isModelOptionsLoading}
+                        onModelChange={chatRuntimeConfig.setSelectedModelId}
+                        onReasoningEffortChange={chatRuntimeConfig.setReasoningEffort}
+                        reasoningEffort={chatRuntimeConfig.reasoningEffort}
+                        reasoningEffortOptions={chatRuntimeConfig.availableReasoningEfforts}
+                        selectedChatMode={chatMessages.selectedChatMode}
+                        selectedModelId={chatRuntimeConfig.selectedModelId}
+                        sendMessageOnEnter={sendMessageOnEnter}
+                        showReasoningEffortSelector={chatRuntimeConfig.showReasoningEffortSelector}
+                        streamingAssistantMessageId={chatMessages.streamingAssistantMessageId}
+                        streamingWaitingIndicatorVariant={chatMessages.streamingWaitingIndicatorVariant}
+                        streamingTextActive={chatMessages.isStreamingTextActive}
+                        workspaceRootPath={activeWorkspacePath}
+                      />
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
-            <div className="flex w-full shrink-0 flex-col items-center pb-4">
-              {showQueueBlock ? (
-                <div className="chat-queue-shell">
-                  <ChatQueueBlock
-                    queuedMessages={queuedMessages}
-                    editCancelBoundaryRef={messageListBoundaryRef}
-                    onForceSend={forceSendQueuedMessage}
-                    onRemove={removeQueuedMessage}
-                    onUpdate={updateQueuedMessage}
+            {!isKanbanBoardOpen ? (
+              <div className="flex w-full shrink-0 flex-col items-center pb-4">
+                {showQueueBlock ? (
+                  <div className="chat-queue-shell">
+                    <ChatQueueBlock
+                      queuedMessages={queuedMessages}
+                      editCancelBoundaryRef={messageListBoundaryRef}
+                      onForceSend={forceSendQueuedMessage}
+                      onRemove={removeQueuedMessage}
+                      onUpdate={updateQueuedMessage}
+                    />
+                  </div>
+                ) : null}
+
+                <div className="chat-input-shell relative">
+                  {showImplementPlanButton ? (
+                    <button
+                      type="button"
+                      onClick={handleImplementPlan}
+                      className="absolute -top-[3.25rem] left-1/2 z-10 inline-flex h-11 w-auto max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-2 rounded-2xl border border-border bg-surface px-4 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-surface-muted active:scale-95"
+                    >
+                      <span className="truncate">Implement the plan</span>
+                      <span className="rounded-lg border border-border bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        Ctrl + I
+                      </span>
+                    </button>
+                  ) : null}
+                  <ChatInput
+                    attachments={chatMessages.mainComposerAttachments}
+                    contextUsage={contextUsage}
+                    codexUsage={codexUsage}
+                    isCompressingChat={isCompressingChat}
+                    onCompressChat={handleCompressChat}
+                    refactorCandidates={refactorCandidates}
+                    refactorCandidatesLoading={refactorCandidatesLoading}
+                    value={chatMessages.mainComposerValue}
+                    onAttachmentsChange={chatMessages.setMainComposerAttachments}
+                    onValueChange={chatMessages.setMainComposerValue}
+                    onSend={handleSendMainMessage}
+                    onQueue={(value, attachments) => enqueueMessage(value, attachments)}
+                    onAbort={chatMessages.abortStreamingResponse}
+                    chatModeOptions={chatModeOptions}
+                    isStreaming={chatMessages.isStreamingResponse || chatMessages.isSending}
+                    sendOnEnter={sendMessageOnEnter}
+                    disabled={chatMessages.isLoading}
+                    gitBranchError={gitBranchState.errorMessage}
+                    gitBranchLoading={gitBranchState.isLoading}
+                    gitBranchState={gitBranchState.branchState}
+                    gitBranchSwitching={gitBranchState.isSwitching}
+                    onChatModeChange={chatMessages.setSelectedChatMode}
+                    onGitBranchCreate={gitBranchState.createBranch}
+                    onGitBranchChange={gitBranchState.changeBranch}
+                    onGitBranchRefresh={gitBranchState.refresh}
+                    modelOptions={selectorOptions}
+                    modelOptionsLoading={chatRuntimeConfig.isModelOptionsLoading}
+                    modelSelectorDisabled={false}
+                    selectedChatMode={chatMessages.selectedChatMode}
+                    selectedModelId={chatRuntimeConfig.selectedModelId}
+                    onModelChange={chatRuntimeConfig.setSelectedModelId}
+                    onRefactorCandidateSelect={workspaceState.handleOpenWorkspaceFile}
+                    reasoningEffort={chatRuntimeConfig.reasoningEffort}
+                    reasoningEffortOptions={chatRuntimeConfig.availableReasoningEfforts}
+                    reasoningEffortSelectorDisabled={false}
+                    onReasoningEffortChange={chatRuntimeConfig.setReasoningEffort}
+                    showRuntimeTargetSelector
+                    showTerminalExecutionModeSelector
+                    showReasoningEffortSelector={chatRuntimeConfig.showReasoningEffortSelector}
+                    terminalExecutionMode={settings.terminalExecutionMode}
+                    onTerminalExecutionModeChange={interfaceController.handleTerminalExecutionModeChange}
+                    workspaceRootPath={activeWorkspacePath}
                   />
                 </div>
-              ) : null}
-
-              <div className="chat-input-shell relative">
-                {showImplementPlanButton ? (
-                  <button
-                    type="button"
-                    onClick={handleImplementPlan}
-                    className="absolute -top-[3.25rem] left-1/2 z-10 inline-flex h-11 w-auto max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-2 rounded-2xl border border-border bg-surface px-4 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-surface-muted active:scale-95"
-                  >
-                    <span className="truncate">Implement the plan</span>
-                    <span className="rounded-lg border border-border bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                      Ctrl + I
-                    </span>
-                  </button>
-                ) : null}
-                <ChatInput
-                  attachments={chatMessages.mainComposerAttachments}
-                  contextUsage={contextUsage}
-                  codexUsage={codexUsage}
-                  isCompressingChat={isCompressingChat}
-                  onCompressChat={handleCompressChat}
-                  refactorCandidates={refactorCandidates}
-                  refactorCandidatesLoading={refactorCandidatesLoading}
-                  value={chatMessages.mainComposerValue}
-                  onAttachmentsChange={chatMessages.setMainComposerAttachments}
-                  onValueChange={chatMessages.setMainComposerValue}
-                  onSend={handleSendMainMessage}
-                  onQueue={(value, attachments) => enqueueMessage(value, attachments)}
-                  onAbort={chatMessages.abortStreamingResponse}
-                  chatModeOptions={chatModeOptions}
-                  isStreaming={chatMessages.isStreamingResponse || chatMessages.isSending}
-                  sendOnEnter={sendMessageOnEnter}
-                  disabled={chatMessages.isLoading}
-                  gitBranchError={gitBranchState.errorMessage}
-                  gitBranchLoading={gitBranchState.isLoading}
-                  gitBranchState={gitBranchState.branchState}
-                  gitBranchSwitching={gitBranchState.isSwitching}
-                  onChatModeChange={chatMessages.setSelectedChatMode}
-                  onGitBranchCreate={gitBranchState.createBranch}
-                  onGitBranchChange={gitBranchState.changeBranch}
-                  onGitBranchRefresh={gitBranchState.refresh}
-                  modelOptions={selectorOptions}
-                  modelOptionsLoading={chatRuntimeConfig.isModelOptionsLoading}
-                  modelSelectorDisabled={false}
-                  selectedChatMode={chatMessages.selectedChatMode}
-                  selectedModelId={chatRuntimeConfig.selectedModelId}
-                  onModelChange={chatRuntimeConfig.setSelectedModelId}
-                  onRefactorCandidateSelect={workspaceState.handleOpenWorkspaceFile}
-                  reasoningEffort={chatRuntimeConfig.reasoningEffort}
-                  reasoningEffortOptions={chatRuntimeConfig.availableReasoningEfforts}
-                  reasoningEffortSelectorDisabled={false}
-                  onReasoningEffortChange={chatRuntimeConfig.setReasoningEffort}
-                  showRuntimeTargetSelector
-                  showTerminalExecutionModeSelector
-                  showReasoningEffortSelector={chatRuntimeConfig.showReasoningEffortSelector}
-                  terminalExecutionMode={settings.terminalExecutionMode}
-                  onTerminalExecutionModeChange={interfaceController.handleTerminalExecutionModeChange}
-                  workspaceRootPath={activeWorkspacePath}
-                />
               </div>
-            </div>
+            ) : null}
           </div>
           {workspaceState.isWorkspaceTabsPanelOpen ? (
             <WorkspaceFileTabsPanel
