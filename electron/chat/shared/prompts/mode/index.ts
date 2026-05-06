@@ -4,11 +4,19 @@ import type { ChatMode } from '../../../../../src/types/chat'
 import { buildWorkspaceInstructionsBlock } from '../workspaceInstructions'
 
 const PROMPT_REPO_PATH = 'electron/chat/shared/prompts/mode'
-const SHARED_PROMPT_DIR = 'shared'
 const SHARED_PROMPT_EXTENSIONS = new Set(['.md', '.xml'])
 const MODE_PROMPT_PATHS: Record<ChatMode, string> = {
   agent: 'agent/prompt.md',
   plan: 'plan/prompt.md',
+}
+const SHARED_PROMPT_DIRECTORY = {
+  description: 'Supplemental instruction content',
+  directory: 'shared',
+  wrapperTag: 'instruction_extensions',
+} as const
+const TOOLING_PROMPT_PATHS: Record<ChatMode, string> = {
+  agent: 'agent/tooling',
+  plan: 'plan/tooling',
 }
 
 function readPromptFile(relativePath: string) {
@@ -25,7 +33,7 @@ function readPromptFile(relativePath: string) {
   throw new Error(`Unable to load chat prompt file: ${relativePath}`)
 }
 
-function readPromptDirectory(relativeDirectory: string) {
+function readPromptDirectory(relativeDirectory: string, wrapperTag: string, description: string) {
   const appRoot = process.env.APP_ROOT?.trim()
   const searchRoots = [appRoot, process.cwd()].filter((value): value is string => Boolean(value))
 
@@ -51,7 +59,7 @@ function readPromptDirectory(relativeDirectory: string) {
         const wrapperName = `${path.basename(fileName, path.extname(fileName))}_extension`
 
         return [
-          `  <${wrapperName} description="Supplemental instruction content" file="${fileName}" format="${extension}">`,
+          `  <${wrapperName} description="${description}" file="${fileName}" format="${extension}">`,
           content,
           `  </${wrapperName}>`,
         ].join('\n')
@@ -63,9 +71,9 @@ function readPromptDirectory(relativeDirectory: string) {
     }
 
     return [
-      '<instruction_extensions description="Supplemental instruction content">',
+      `<${wrapperTag} description="${description}">`,
       ...wrappedPromptFiles,
-      '</instruction_extensions>',
+      `</${wrapperTag}>`,
     ].join('\n')
   }
 
@@ -74,6 +82,7 @@ function readPromptDirectory(relativeDirectory: string) {
 
 const cachedPrompts: Partial<Record<ChatMode, string>> = {}
 let cachedSharedPrompt: string | null = null
+const cachedToolingPrompts: Partial<Record<ChatMode, string>> = {}
 
 function getModePrompt(chatMode: ChatMode) {
   const cachedPrompt = cachedPrompts[chatMode]
@@ -91,8 +100,23 @@ function getSharedPrompt() {
     return cachedSharedPrompt
   }
 
-  cachedSharedPrompt = readPromptDirectory(SHARED_PROMPT_DIR)
+  cachedSharedPrompt = readPromptDirectory(
+    SHARED_PROMPT_DIRECTORY.directory,
+    SHARED_PROMPT_DIRECTORY.wrapperTag,
+    SHARED_PROMPT_DIRECTORY.description,
+  )
   return cachedSharedPrompt
+}
+
+function getToolingPrompt(chatMode: ChatMode) {
+  const cachedPrompt = cachedToolingPrompts[chatMode]
+  if (cachedPrompt) {
+    return cachedPrompt
+  }
+
+  const toolingPrompt = readPromptDirectory(TOOLING_PROMPT_PATHS[chatMode], 'tooling_instructions', 'Tool usage guidance')
+  cachedToolingPrompts[chatMode] = toolingPrompt
+  return toolingPrompt
 }
 
 export function buildChatModeSystemPrompt(
@@ -101,6 +125,7 @@ export function buildChatModeSystemPrompt(
   options?: { availableSkillsBlock?: string | null },
 ) {
   return [
+    getToolingPrompt(chatMode),
     getModePrompt(chatMode),
     getSharedPrompt(),
     options?.availableSkillsBlock?.trim() ? options.availableSkillsBlock.trim() : null,

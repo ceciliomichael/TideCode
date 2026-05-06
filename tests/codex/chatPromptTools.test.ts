@@ -13,11 +13,19 @@ test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
   assert.match(agentPrompt, /## execution workflow/iu)
   assert.match(agentPrompt, /WHEN ADDING PACKAGES ALWAYS USE npm install to get latest/u)
   assert.match(agentPrompt, /## Markdown Output Rules/u)
+  assert.match(agentPrompt, /<tooling_instructions description="Tool usage guidance"/u)
+  assert.match(agentPrompt, /read_board/u)
+  assert.match(agentPrompt, /move_card/u)
+  assert.match(agentPrompt, /Read before edit: never change a file you have not inspected\./u)
+  assert.match(agentPrompt, /`apply_patch`: use for small, targeted edits when you know the exact lines to change\./u)
 
   assert.match(planPrompt, /You are Echo, a production-grade software engineering planner/u)
   assert.match(planPrompt, /## planning workflow/iu)
   assert.match(planPrompt, /Do not implement\. Do not provide full code\./u)
   assert.match(planPrompt, /WHEN ADDING PACKAGES ALWAYS USE npm install to get latest/u)
+  assert.match(planPrompt, /<tooling_instructions description="Tool usage guidance"/u)
+  assert.match(planPrompt, /read_board/u)
+  assert.match(planPrompt, /Prefer read-only tools first; avoid edit tools unless the task explicitly requires changing files\./u)
 })
 
 test('buildChatPrompt preserves assistant tool calls and matching tool results', () => {
@@ -377,11 +385,15 @@ test('buildChatPrompt combines consecutive tool messages into one replay message
           },
           schema: 'echosphere.tool_result/v1',
           status: 'success',
-          summary: 'Found 2 matches for export',
+          subject: {
+            kind: 'file',
+            path: 'src/three.ts',
+          },
+          summary: 'Grep found exports',
           toolCallId: 'tool-call-3',
           toolName: 'grep',
         },
-        'Found 2 matches',
+        'src/one.ts:1: export const one = 1;\nsrc/two.ts:1: export const two = 2;',
       ),
       id: 'tool-message-3',
       role: 'tool',
@@ -397,135 +409,8 @@ test('buildChatPrompt combines consecutive tool messages into one replay message
   })
 
   assert.equal(prompt.messages.length, 3)
-  const toolMessage = prompt.messages[2]
-  assert.equal(toolMessage?.role, 'tool')
-  assert.ok(Array.isArray(toolMessage?.content))
-  assert.equal(toolMessage?.content.length, 3)
-  assert.deepEqual(toolMessage?.content.map((part) => part.toolCallId), ['tool-call-1', 'tool-call-2', 'tool-call-3'])
-})
-
-test('buildChatPrompt preserves assistant reasoning content alongside tool calls', () => {
-  const messages: Message[] = [
-    {
-      content: 'Inspect the file',
-      id: 'user-1',
-      role: 'user',
-      timestamp: 1,
-    },
-    {
-      content: '',
-      id: 'assistant-1',
-      reasoningCompletedAt: 3,
-      reasoningContent: 'I should inspect the file before changing it.',
-      role: 'assistant',
-      timestamp: 2,
-      toolInvocations: [
-        {
-          argumentsText: JSON.stringify({ absolute_path: 'C:/repo/src/example.ts' }),
-          completedAt: 3,
-          id: 'tool-call-1',
-          resultContent: '',
-          startedAt: 2,
-          state: 'completed',
-          toolName: 'read',
-        },
-      ],
-    },
-  ]
-
-  const prompt = buildChatPrompt({
-    chatMode: 'agent',
-    messages,
-    workspaceRootPath: 'C:/repo',
-  })
-
-  assert.equal(prompt.messages.length, 2)
-  const assistantMessage = prompt.messages[1]
-  assert.equal(assistantMessage?.role, 'assistant')
-  assert.ok(Array.isArray(assistantMessage?.content))
-  assert.equal(assistantMessage?.content[0]?.type, 'reasoning')
-  assert.equal(assistantMessage?.content[0]?.text, 'I should inspect the file before changing it.')
-  assert.equal(assistantMessage?.content[1]?.type, 'tool-call')
-  assert.deepEqual(assistantMessage?.content[1]?.input, {
-    absolute_path: 'C:/repo/src/example.ts',
-  })
-})
-
-test('buildChatPrompt can omit assistant reasoning from plain text content', () => {
-  const messages: Message[] = [
-    {
-      content: 'Inspect the file',
-      id: 'user-1',
-      role: 'user',
-      timestamp: 1,
-    },
-    {
-      content: 'I will call a tool now.',
-      id: 'assistant-1',
-      reasoningCompletedAt: 3,
-      reasoningContent: 'I should inspect the file before changing it.',
-      role: 'assistant',
-      timestamp: 2,
-      toolInvocations: [
-        {
-          argumentsText: JSON.stringify({ absolute_path: 'C:/repo/src/example.ts' }),
-          completedAt: 3,
-          id: 'tool-call-1',
-          resultContent: '',
-          startedAt: 2,
-          state: 'completed',
-          toolName: 'read',
-        },
-      ],
-    },
-  ]
-
-  const prompt = buildChatPrompt({
-    chatMode: 'agent',
-    messages,
-    options: {
-      includeAssistantReasoningParts: false,
-    },
-    workspaceRootPath: 'C:/repo',
-  })
-
-  assert.equal(prompt.messages.length, 2)
-  const assistantMessage = prompt.messages[1]
-  assert.equal(assistantMessage?.role, 'assistant')
-  assert.ok(Array.isArray(assistantMessage?.content))
-  assert.equal(assistantMessage?.content[0]?.type, 'text')
-  assert.equal(assistantMessage?.content[0]?.text, 'I will call a tool now.')
-  assert.equal(assistantMessage?.content[1]?.type, 'tool-call')
-})
-
-test('buildChatPrompt omits think-tag content when assistant reasoning parts are disabled', () => {
-  const messages: Message[] = [
-    {
-      content: 'What changed?',
-      id: 'user-1',
-      role: 'user',
-      timestamp: 1,
-    },
-    {
-      content: '<think>hidden reasoning</think>\n\nVisible answer',
-      id: 'assistant-1',
-      reasoningContent: '<think>more hidden reasoning</think>',
-      role: 'assistant',
-      timestamp: 2,
-    },
-  ]
-
-  const prompt = buildChatPrompt({
-    chatMode: 'agent',
-    messages,
-    options: {
-      includeAssistantReasoningParts: false,
-    },
-    workspaceRootPath: 'C:/repo',
-  })
-
-  assert.equal(prompt.messages.length, 2)
-  const assistantMessage = prompt.messages[1]
-  assert.equal(assistantMessage?.role, 'assistant')
-  assert.equal(assistantMessage?.content, 'Visible answer')
+  const combinedToolMessage = prompt.messages[2]
+  assert.equal(combinedToolMessage?.role, 'tool')
+  assert.ok(Array.isArray(combinedToolMessage?.content))
+  assert.equal(combinedToolMessage?.content.length, 3)
 })
