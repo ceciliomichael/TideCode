@@ -10,8 +10,9 @@ import type { AgentToolContext, AgentToolExecutionResult } from '../toolTypes'
 import type { TerminalSessionSnapshot } from '../../../terminal/service'
 import { resolveWorkspaceTargetPath } from './workspaceTools'
 
-const MAX_TERMINAL_OUTPUT_BODY_LENGTH = 100_000
-const RUN_TERMINAL_MAX_POLLING_MS = 60_000
+const DEFAULT_TERMINAL_OUTPUT_BODY_LENGTH = 40_000
+const GIT_DIFF_TERMINAL_OUTPUT_BODY_LENGTH = 20_000
+const RUN_TERMINAL_MAX_POLLING_MS = 180_000
 const RUN_TERMINAL_POLLING_INTERVAL_MS = 500
 const ANSI_ESCAPE = '\\u001B'
 const TERMINAL_BELL = '\\u0007'
@@ -141,8 +142,42 @@ function clampInteger(value: number | undefined, min: number, max: number, fallb
   return boundedValue
 }
 
-function truncateTerminalOutput(value: string) {
-  if (value.length <= MAX_TERMINAL_OUTPUT_BODY_LENGTH) {
+function isGitDiffCommand(command: string | null) {
+  if (!command) {
+    return false
+  }
+
+  return /(?:^|[;&|]\s*)git(?:\s+--no-pager)?\s+diff(?:\s|$)/iu.test(command.trim())
+}
+
+function preventGitDiffPager(command: string) {
+  return command.replace(/(^|[;&|]\s*)git\s+diff(\s|$)/giu, '$1git --no-pager diff$2')
+}
+
+function prepareTerminalCommand(command: string | null) {
+  if (!command) {
+    return null
+  }
+
+  return isGitDiffCommand(command) ? preventGitDiffPager(command) : command
+}
+
+function getTerminalOutputBodyLimit(command: string | null) {
+  return isGitDiffCommand(command) ? GIT_DIFF_TERMINAL_OUTPUT_BODY_LENGTH : DEFAULT_TERMINAL_OUTPUT_BODY_LENGTH
+}
+
+function getTerminalOutputTruncationMessage(command: string | null, maxLength: number) {
+  if (isGitDiffCommand(command)) {
+    return `Output truncated at ${maxLength} characters. For large diffs, prefer \`git diff --stat\`, \`git diff --name-only\`, or a path-scoped diff.`
+  }
+
+  return `Output truncated at ${maxLength} characters.`
+}
+
+function truncateTerminalOutput(value: string, command: string | null) {
+  const maxLength = getTerminalOutputBodyLimit(command)
+
+  if (value.length <= maxLength) {
     return {
       body: value,
       truncated: false,
@@ -150,7 +185,7 @@ function truncateTerminalOutput(value: string) {
   }
 
   return {
-    body: `${value.slice(0, MAX_TERMINAL_OUTPUT_BODY_LENGTH).trimEnd()}\n\n(Output truncated at ${MAX_TERMINAL_OUTPUT_BODY_LENGTH} characters.)`,
+    body: `${value.slice(0, maxLength).trimEnd()}\n\n(${getTerminalOutputTruncationMessage(command, maxLength)})`,
     truncated: true,
   }
 }
@@ -345,7 +380,7 @@ function buildRunTerminalResult(input: {
   const outputWithoutMarker = input.outputMarker
     ? removeCompletionMarkerLines(sanitizedOutput, input.outputMarker)
     : sanitizedOutput
-  const truncatedOutput = truncateTerminalOutput(outputWithoutMarker)
+  const truncatedOutput = truncateTerminalOutput(outputWithoutMarker, input.command)
 
   if (input.command) {
     bodyLines.push(`Command queued: ${input.command.trimEnd()}`)
@@ -355,10 +390,6 @@ function buildRunTerminalResult(input: {
     bodyLines.push('', truncatedOutput.body)
   } else if (input.command) {
     bodyLines.push('', input.snapshot?.hasExited ? 'Terminal process exited with no output.' : 'No terminal output yet.')
-  }
-
-  if (input.timedOut) {
-    bodyLines.push('', 'Terminal command is still running after 1 minute. Returning output collected so far.')
   }
 
   const hasExited = input.snapshot?.hasExited ?? false
@@ -416,7 +447,7 @@ export function createTerminalToolSet(
   return {
     run_terminal: tool({
       description:
-        'Start or reuse a terminal session in the active workspace, then optionally run one non-editing command. Use `cwd` only for a real path inside the workspace. Use this for inspection, testing, and command-line work only. Do not use terminal commands to edit files; use `write` or `apply_patch` instead. When a command is provided, this waits up to 1 minute for the command to finish and returns available output automatically; it returns earlier when the command finishes.',
+        'Start or reuse a terminal session in the active workspace, then optionally run one non-editing command. Use `cwd` only for a real path inside the workspace. Use this for inspection, testing, and command-line work only. Do not use terminal commands to edit files; use `write` or `apply_patch` instead. When a command is provided, this waits up to 3 minutes for the command to finish and returns available output automatically; it returns earlier when the command finishes.',
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {
@@ -454,7 +485,7 @@ export function createTerminalToolSet(
         const abortSignal = options?.abortSignal
         const cols = clampInteger(inputValue.cols, 20, 400, 120)
         const rows = clampInteger(inputValue.rows, 6, 200, 30)
-        const command = normalizeCommand(inputValue.command)
+        const command = prepareTerminalCommand(normalizeCommand(inputValue.command))
 
         try {
           if (command && isEditingCommand(command)) {

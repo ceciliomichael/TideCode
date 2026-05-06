@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Message } from '../../types/chat'
 import { createCardTitleFromMessage, getKanbanSourceMessages } from './kanbanMessageSources'
-import { loadKanbanBoardData, saveKanbanBoardData } from './kanbanStorage'
+import { loadLegacyKanbanBoardData } from './kanbanStorage'
 import type {
   KanbanBoardData,
   KanbanCard,
@@ -29,50 +29,93 @@ interface UseKanbanBoardStateResult {
   sourceMessages: ReturnType<typeof getKanbanSourceMessages>
 }
 
-function createCardId() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-
-  return `kanban-card-${Date.now()}-${Math.random().toString(36).slice(2)}`
+function hasWorkspacePath(workspacePath: string | null): workspacePath is string {
+  return workspacePath !== null && workspacePath.trim().length > 0
 }
 
-function createCard(input: KanbanCreateCardInput): KanbanCard {
-  const now = Date.now()
-
-  return {
-    columnId: input.columnId ?? 'backlog',
-    createdAt: now,
-    description: input.description?.trim() ?? '',
-    id: createCardId(),
-    sourceMessageId: input.sourceMessageId,
-    title: input.title.trim(),
-    updatedAt: now,
-  }
+function logKanbanSyncError(action: string, error: unknown) {
+  console.error(`Failed to ${action} kanban board`, error)
 }
 
 export function useKanbanBoardState({ workspacePath, messages }: UseKanbanBoardStateInput): UseKanbanBoardStateResult {
-  const [boardData, setBoardData] = useState<KanbanBoardData>(() => loadKanbanBoardData(workspacePath))
+  const [boardData, setBoardData] = useState<KanbanBoardData>({ cards: [] })
   const sourceMessages = useMemo(() => getKanbanSourceMessages(messages), [messages])
 
-  useEffect(() => {
-    setBoardData(loadKanbanBoardData(workspacePath))
-  }, [workspacePath])
-
-  useEffect(() => {
-    saveKanbanBoardData(workspacePath, boardData)
-  }, [boardData, workspacePath])
-
-  const addCard = useCallback((input: KanbanCreateCardInput) => {
-    const trimmedTitle = input.title.trim()
-    if (!trimmedTitle) {
+  const refreshBoardData = useCallback(async () => {
+    if (!hasWorkspacePath(workspacePath)) {
+      setBoardData({ cards: [] })
       return
     }
 
-    setBoardData((currentBoardData) => ({
-      cards: [...currentBoardData.cards, createCard({ ...input, title: trimmedTitle })],
-    }))
-  }, [])
+    const nextBoardData = await window.echosphereKanban.getBoardData({ workspacePath })
+    setBoardData(nextBoardData)
+  }, [workspacePath])
+
+  useEffect(() => {
+    let isActive = true
+
+    async function loadBoardData() {
+      if (!hasWorkspacePath(workspacePath)) {
+        setBoardData({ cards: [] })
+        return
+      }
+
+      try {
+        const nextBoardData = await window.echosphereKanban.getBoardData({ workspacePath })
+        if (!isActive) {
+          return
+        }
+
+        if (nextBoardData.cards.length > 0) {
+          setBoardData(nextBoardData)
+          return
+        }
+
+        const legacyBoardData = loadLegacyKanbanBoardData(workspacePath)
+        if (legacyBoardData.cards.length === 0) {
+          setBoardData(nextBoardData)
+          return
+        }
+
+        const importedBoardData = await window.echosphereKanban.importBoardData({
+          cards: legacyBoardData.cards,
+          workspacePath,
+        })
+        if (isActive) {
+          setBoardData(importedBoardData)
+        }
+      } catch (error) {
+        if (isActive) {
+          logKanbanSyncError('load', error)
+          setBoardData({ cards: [] })
+        }
+      }
+    }
+
+    void loadBoardData()
+
+    return () => {
+      isActive = false
+    }
+  }, [workspacePath])
+
+  const addCard = useCallback(
+    (input: KanbanCreateCardInput) => {
+      if (!hasWorkspacePath(workspacePath) || input.title.trim().length === 0) {
+        return
+      }
+
+      void window.echosphereKanban
+        .createCard({
+          ...input,
+          title: input.title.trim(),
+          workspacePath,
+        })
+        .then(refreshBoardData)
+        .catch((error) => logKanbanSyncError('create task on', error))
+    },
+    [refreshBoardData, workspacePath],
+  )
 
   const addCardFromMessage = useCallback(
     (messageId: string) => {
@@ -107,52 +150,65 @@ export function useKanbanBoardState({ workspacePath, messages }: UseKanbanBoardS
     [addCard, messages],
   )
 
-  const moveCard = useCallback(({ cardId, targetColumnId }: KanbanMoveInput) => {
-    setBoardData((currentBoardData) => ({
-      cards: currentBoardData.cards.map((card) =>
-        card.id === cardId
-          ? {
-              ...card,
-              columnId: targetColumnId,
-              updatedAt: Date.now(),
-            }
-          : card,
-      ),
-    }))
-  }, [])
+  const moveCard = useCallback(
+    ({ cardId, targetColumnId }: KanbanMoveInput) => {
+      if (!hasWorkspacePath(workspacePath)) {
+        return
+      }
 
-  const deleteCard = useCallback(({ cardId }: KanbanDeleteCardInput) => {
-    setBoardData((currentBoardData) => ({
-      cards: currentBoardData.cards.filter((card) => card.id !== cardId),
-    }))
-  }, [])
+      void window.echosphereKanban
+        .moveCard({ cardId, targetColumnId, workspacePath })
+        .then(refreshBoardData)
+        .catch((error) => logKanbanSyncError('move task on', error))
+    },
+    [refreshBoardData, workspacePath],
+  )
 
-  const updateCard = useCallback(({ cardId, columnId, description, title }: KanbanUpdateCardInput) => {
-    const trimmedTitle = title.trim()
-    if (!trimmedTitle) {
+  const deleteCard = useCallback(
+    ({ cardId }: KanbanDeleteCardInput) => {
+      if (!hasWorkspacePath(workspacePath)) {
+        return
+      }
+
+      void window.echosphereKanban
+        .deleteCard({ cardId, workspacePath })
+        .then(setBoardData)
+        .catch((error) => logKanbanSyncError('delete task from', error))
+    },
+    [workspacePath],
+  )
+
+  const updateCard = useCallback(
+    ({ cardId, columnId, description, title }: KanbanUpdateCardInput) => {
+      const trimmedTitle = title.trim()
+      if (!hasWorkspacePath(workspacePath) || !trimmedTitle) {
+        return
+      }
+
+      void window.echosphereKanban
+        .updateCard({
+          cardId,
+          columnId,
+          description,
+          title: trimmedTitle,
+          workspacePath,
+        })
+        .then(refreshBoardData)
+        .catch((error) => logKanbanSyncError('update task on', error))
+    },
+    [refreshBoardData, workspacePath],
+  )
+
+  const clearCompletedCards = useCallback(() => {
+    if (!hasWorkspacePath(workspacePath)) {
       return
     }
 
-    setBoardData((currentBoardData) => ({
-      cards: currentBoardData.cards.map((card) =>
-        card.id === cardId
-          ? {
-              ...card,
-              columnId,
-              description: description.trim(),
-              title: trimmedTitle,
-              updatedAt: Date.now(),
-            }
-          : card,
-      ),
-    }))
-  }, [])
-
-  const clearCompletedCards = useCallback(() => {
-    setBoardData((currentBoardData) => ({
-      cards: currentBoardData.cards.filter((card) => card.columnId !== 'done'),
-    }))
-  }, [])
+    void window.echosphereKanban
+      .clearCompletedCards({ workspacePath })
+      .then(setBoardData)
+      .catch((error) => logKanbanSyncError('clear completed tasks from', error))
+  }, [workspacePath])
 
   return {
     addCard,

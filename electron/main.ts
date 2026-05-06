@@ -54,6 +54,17 @@ import type {
   WorkspaceExplorerWatchChangesInput,
   WriteTerminalSessionInput,
 } from '../src/types/chat'
+import type {
+  KanbanBoardData,
+  KanbanCreateCardRequest,
+  KanbanDeleteCardRequest,
+  KanbanMoveCardRequest,
+  KanbanReadBoardRequest,
+  KanbanReadCardRequest,
+  KanbanUpdateCardInput,
+  KanbanUpdateCardRequest,
+  KanbanWorkspaceInput,
+} from '../src/lib/kanban'
 import type { McpAddServerInput } from '../src/types/mcp'
 import {
   appendStoredMessages,
@@ -154,6 +165,18 @@ import {
   transferWorkspaceEntry,
   writeWorkspaceFile,
 } from './workspace/explorer'
+import {
+  clearCompletedKanbanBoardCards,
+  createKanbanBoardCard,
+  deleteKanbanBoardCard,
+  getKanbanBoardData,
+  getKanbanCard,
+  importKanbanBoardData,
+  moveKanbanBoardCard,
+  readKanbanBoardColumn,
+  updateKanbanBoardCard,
+  updateKanbanBoardCardContent,
+} from './kanban/store'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // The built directory structure
@@ -387,6 +410,24 @@ function registerHistoryHandlers() {
     return nextSettings
   })
   ipcMain.handle('skills:list', async (_event, workspacePath?: string | null) => listAvailableSkills(workspacePath))
+  ipcMain.handle('kanban:getBoardData', async (_event, input: KanbanWorkspaceInput) => getKanbanBoardData(input))
+  ipcMain.handle('kanban:importBoardData', async (_event, input: KanbanWorkspaceInput & { cards: unknown[] }) =>
+    importKanbanBoardData(input as KanbanWorkspaceInput & KanbanBoardData),
+  )
+  ipcMain.handle('kanban:readBoard', async (_event, input: KanbanReadBoardRequest) => readKanbanBoardColumn(input))
+  ipcMain.handle('kanban:readCard', async (_event, input: KanbanReadCardRequest) => getKanbanCard(input))
+  ipcMain.handle('kanban:createCard', async (_event, input: KanbanCreateCardRequest) => createKanbanBoardCard(input))
+  ipcMain.handle('kanban:updateCardContent', async (_event, input: KanbanUpdateCardRequest) =>
+    updateKanbanBoardCardContent(input),
+  )
+  ipcMain.handle('kanban:updateCard', async (_event, input: KanbanWorkspaceInput & KanbanUpdateCardInput) =>
+    updateKanbanBoardCard(input),
+  )
+  ipcMain.handle('kanban:moveCard', async (_event, input: KanbanMoveCardRequest) => moveKanbanBoardCard(input))
+  ipcMain.handle('kanban:deleteCard', async (_event, input: KanbanDeleteCardRequest) => deleteKanbanBoardCard(input))
+  ipcMain.handle('kanban:clearCompletedCards', async (_event, input: KanbanWorkspaceInput) =>
+    clearCompletedKanbanBoardCards(input),
+  )
   ipcMain.handle('providers:state', async (_event, hydrate?: boolean) => getProvidersState(hydrate === true))
   ipcMain.handle('providers:codex:addAccountOauth', async () => addCodexAccountWithOAuth((url) => shell.openExternal(url)))
   ipcMain.handle('providers:codex:connectOauth', async () => connectCodexWithOAuth((url) => shell.openExternal(url)))

@@ -52,7 +52,7 @@ function parseKanbanBoardData(value: unknown): KanbanBoardData {
   }
 }
 
-export function loadKanbanBoardData(workspacePath: string | null): KanbanBoardData {
+export function loadLegacyKanbanBoardData(workspacePath: string | null): KanbanBoardData {
   const normalizedWorkspacePath = workspacePath?.trim()
   if (!normalizedWorkspacePath || typeof window === 'undefined') {
     return { cards: [] }
@@ -66,20 +66,7 @@ export function loadKanbanBoardData(workspacePath: string | null): KanbanBoardDa
 
     return parseKanbanBoardData(JSON.parse(storedValue))
   } catch (error) {
-    console.error('Failed to load Kanban board data', error)
+    console.error('Failed to load legacy Kanban board data', error)
     return { cards: [] }
-  }
-}
-
-export function saveKanbanBoardData(workspacePath: string | null, boardData: KanbanBoardData) {
-  const normalizedWorkspacePath = workspacePath?.trim()
-  if (!normalizedWorkspacePath || typeof window === 'undefined') {
-    return
-  }
-
-  try {
-    window.localStorage.setItem(getStorageKey(normalizedWorkspacePath), JSON.stringify(boardData))
-  } catch (error) {
-    console.error('Failed to save Kanban board data', error)
   }
 }

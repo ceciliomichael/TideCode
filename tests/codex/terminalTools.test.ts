@@ -19,6 +19,7 @@ type RunTerminalResult = {
   semantics?: Record<string, unknown>
   status?: string
   summary?: string
+  truncated?: boolean
 }
 
 type RunTerminalTool = {
@@ -140,6 +141,57 @@ test('run_terminal queues a command, waits for completion, and returns cleaned o
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
+})
+
+test('run_terminal truncates large git diff output before returning it to the model', async () => {
+  const largeDiffOutput = `diff --git a/file.ts b/file.ts\n${'+changed line\n'.repeat(2500)}`
+  const tools = createTerminalToolSet(
+    {
+      conversationId: 'conversation-large-diff',
+      webContents: webContentsStub,
+      workspaceRootPath: '/workspace',
+    },
+    {
+      createSession: async () => ({
+        bufferedOutput: '',
+        cwd: '/workspace',
+        isReused: false,
+        sessionId: 91,
+        shell: 'pwsh',
+      }),
+      getSessionOutput: async (_owner, input) => {
+        const marker = readCompletionMarker(writeCalls[0]?.data ?? '')
+        return {
+          cwd: '/workspace',
+          exitCode: null,
+          hasExited: false,
+          outputBuffer: `${largeDiffOutput}\n${marker}:0\n`,
+          shellLabel: 'pwsh',
+          signal: null,
+          sessionId: input.sessionId,
+        }
+      },
+      writeToSession: async (_owner, input) => {
+        writeCalls.push(input)
+      },
+    },
+  )
+  const writeCalls: Array<{ data: string; sessionId: number }> = []
+
+  const result = await getRunTerminalTool(tools).execute({
+    cols: 120,
+    command: 'git diff',
+    cwd: '.',
+    rows: 30,
+  })
+
+  assert.equal(result.status, 'success')
+  assert.match(writeCalls[0]?.data ?? '', /git --no-pager diff/u)
+  assert.equal(result.semantics?.truncated_output, true)
+  assert.equal(result.truncated, true)
+  assert.match(result.body ?? '', /Output truncated at 20000 characters/u)
+  assert.match(result.body ?? '', /prefer `git diff --stat`/u)
+  assert.ok((result.body ?? '').length < largeDiffOutput.length)
 })
 
 test('run_terminal starts at session 1 in a different conversation thread without polling when no command is provided', async () => {

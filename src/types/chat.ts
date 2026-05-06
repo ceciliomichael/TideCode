@@ -1,4 +1,16 @@
 import type { AppAppearance, AppLanguage, FollowUpBehavior } from '../lib/appSettings'
+import type {
+  KanbanBoardData,
+  KanbanCard,
+  KanbanCreateCardRequest,
+  KanbanDeleteCardRequest,
+  KanbanMoveCardRequest,
+  KanbanReadBoardRequest,
+  KanbanReadCardRequest,
+  KanbanUpdateCardInput,
+  KanbanUpdateCardRequest,
+  KanbanWorkspaceInput,
+} from '../lib/kanban'
 
 export type MessageRole = 'user' | 'assistant' | 'tool'
 export type ChatMode = 'agent' | 'plan'
@@ -859,6 +871,19 @@ export interface EchosphereChatApi {
   onStreamEvent: (listener: (event: ChatStreamEvent) => void) => () => void
   submitToolDecision: (input: SubmitToolDecisionInput) => Promise<SubmitToolDecisionResult>
   startStream: (input: StartChatStreamInput) => Promise<StartChatStreamResult>
+}
+
+export interface EchosphereKanbanApi {
+  clearCompletedCards: (input: KanbanWorkspaceInput) => Promise<KanbanBoardData>
+  createCard: (input: KanbanCreateCardRequest) => Promise<KanbanCard>
+  deleteCard: (input: KanbanDeleteCardRequest) => Promise<KanbanBoardData>
+  getBoardData: (input: KanbanWorkspaceInput) => Promise<KanbanBoardData>
+  importBoardData: (input: KanbanWorkspaceInput & KanbanBoardData) => Promise<KanbanBoardData>
+  moveCard: (input: KanbanMoveCardRequest) => Promise<KanbanCard>
+  readBoard: (input: KanbanReadBoardRequest) => Promise<import('../lib/kanban').KanbanColumnReadResult>
+  readCard: (input: KanbanReadCardRequest) => Promise<KanbanCard | null>
+  updateCard: (input: KanbanWorkspaceInput & KanbanUpdateCardInput) => Promise<KanbanCard>
+  updateCardContent: (input: KanbanUpdateCardRequest) => Promise<KanbanCard>
 }
 
 export interface EchosphereWorkspaceApi {

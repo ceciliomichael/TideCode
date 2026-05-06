@@ -16,6 +16,7 @@ import {
 import { createApplyPatchTool } from './applyPatchTool'
 import { createTerminalToolSet } from './terminalTools'
 import { createWebFetchTool } from './webfetchTool'
+import { createKanbanToolSet } from './kanbanTools'
 
 function createToolErrorResult(summary: string, body?: string): AgentToolExecutionResult {
   return {
@@ -206,6 +207,8 @@ export async function createAgentTools(
       },
     }),
   }
+
+  Object.assign(tools, createKanbanToolSet(context))
 
   if (enabledSkills.length > 0) {
     tools.skill = tool({

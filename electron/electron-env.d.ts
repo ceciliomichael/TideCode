@@ -27,6 +27,7 @@ interface Window {
   echosphereChat: import('../src/types/chat').EchosphereChatApi
   echosphereGit: import('../src/types/chat').EchosphereGitApi
   echosphereHistory: import('../src/types/chat').EchosphereHistoryApi
+  echosphereKanban: import('../src/types/chat').EchosphereKanbanApi
   echosphereModels: import('../src/types/chat').EchosphereModelsApi
   echosphereMcp: import('../src/types/mcp').EchosphereMcpApi
   echosphereProviders: import('../src/types/chat').EchosphereProvidersApi

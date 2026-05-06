@@ -10,6 +10,7 @@ import type {
   EstimateContextUsageInput,
   EchosphereChatApi,
   EchosphereGitApi,
+  EchosphereKanbanApi,
   EchosphereModelsApi,
   EchosphereProvidersApi,
   EchosphereTerminalApi,
@@ -168,6 +169,19 @@ const chatApi: EchosphereChatApi = {
   startStream: (input: StartChatStreamInput) => ipcRenderer.invoke('chat:stream:start', input),
 }
 
+const kanbanApi: EchosphereKanbanApi = {
+  clearCompletedCards: (input) => ipcRenderer.invoke('kanban:clearCompletedCards', input),
+  createCard: (input) => ipcRenderer.invoke('kanban:createCard', input),
+  deleteCard: (input) => ipcRenderer.invoke('kanban:deleteCard', input),
+  getBoardData: (input) => ipcRenderer.invoke('kanban:getBoardData', input),
+  importBoardData: (input) => ipcRenderer.invoke('kanban:importBoardData', input),
+  moveCard: (input) => ipcRenderer.invoke('kanban:moveCard', input),
+  readBoard: (input) => ipcRenderer.invoke('kanban:readBoard', input),
+  readCard: (input) => ipcRenderer.invoke('kanban:readCard', input),
+  updateCard: (input) => ipcRenderer.invoke('kanban:updateCard', input),
+  updateCardContent: (input) => ipcRenderer.invoke('kanban:updateCardContent', input),
+}
+
 const gitApi: EchosphereGitApi = {
   checkoutBranch: (input) => ipcRenderer.invoke('git:checkoutBranch', input),
   commit: (input: GitCommitInput) => ipcRenderer.invoke('git:commit', input),
@@ -241,6 +255,7 @@ const terminalApi: EchosphereTerminalApi = {
 }
 
 contextBridge.exposeInMainWorld('echosphereHistory', historyApi)
+contextBridge.exposeInMainWorld('echosphereKanban', kanbanApi)
 contextBridge.exposeInMainWorld('echosphereModels', modelsApi)
 contextBridge.exposeInMainWorld('echosphereMcp', mcpApi)
 contextBridge.exposeInMainWorld('echosphereSettings', settingsApi)

@@ -50,7 +50,7 @@ const CHAT_MODE_OPTIONS: readonly ChatModeOption[] = [
     value: 'agent',
   },
   {
-    description: 'Echo explores and plans with list/read/glob/grep + ask_question + ready_implement',
+    description: 'Echo explores and plans with workspace + kanban tools before implementation',
     label: 'Plan',
     value: 'plan',
   },
