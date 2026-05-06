@@ -25,6 +25,10 @@ function pluralize(count: number, singular: string) {
     return `${count} searches`
   }
 
+  if (singular === 'web search') {
+    return `${count} web searches`
+  }
+
   return `${count} ${singular}s`
 }
 
