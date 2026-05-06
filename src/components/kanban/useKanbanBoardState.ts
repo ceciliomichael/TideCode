@@ -13,7 +13,7 @@ import type {
 } from './kanbanTypes'
 
 interface UseKanbanBoardStateInput {
-  conversationId: string | null
+  workspacePath: string | null
   messages: readonly Message[]
 }
 
@@ -51,17 +51,17 @@ function createCard(input: KanbanCreateCardInput): KanbanCard {
   }
 }
 
-export function useKanbanBoardState({ conversationId, messages }: UseKanbanBoardStateInput): UseKanbanBoardStateResult {
-  const [boardData, setBoardData] = useState<KanbanBoardData>(() => loadKanbanBoardData(conversationId))
+export function useKanbanBoardState({ workspacePath, messages }: UseKanbanBoardStateInput): UseKanbanBoardStateResult {
+  const [boardData, setBoardData] = useState<KanbanBoardData>(() => loadKanbanBoardData(workspacePath))
   const sourceMessages = useMemo(() => getKanbanSourceMessages(messages), [messages])
 
   useEffect(() => {
-    setBoardData(loadKanbanBoardData(conversationId))
-  }, [conversationId])
+    setBoardData(loadKanbanBoardData(workspacePath))
+  }, [workspacePath])
 
   useEffect(() => {
-    saveKanbanBoardData(conversationId, boardData)
-  }, [boardData, conversationId])
+    saveKanbanBoardData(workspacePath, boardData)
+  }, [boardData, workspacePath])
 
   const addCard = useCallback((input: KanbanCreateCardInput) => {
     const trimmedTitle = input.title.trim()

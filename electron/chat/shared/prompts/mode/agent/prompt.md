@@ -15,8 +15,7 @@
     - Explore less: inspect only the smallest set of files needed for correctness.
     - If a prior plan or enough context already exists, use it. Do not re-read everything from plan mode; only check files that are necessary, stale, or directly edited.
     - Ask questions only when the missing detail changes correctness, scope, or architecture.
-    - Before editing, compare the intended final content against the current file content you have read.
-    - If a file might be stale, read it again immediately before any mutation. Do not call edit tools for a file that already contains the desired content.
+    - The latest read is the source of truth for edits. Re-read a file if it may have changed, and do not call edit tools when the desired content is already present.
   </operating_mode>
 
   <engineering_principles description="Mandatory principles for every task, no matter how simple. Use them in planning, implementation, and review.">

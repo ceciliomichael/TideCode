@@ -1,5 +1,5 @@
-import { useMemo, useState, type DragEvent, type FormEvent } from 'react'
-import { CheckCircle2, ListPlus, MessageSquarePlus, X } from 'lucide-react'
+import { useMemo, useState, type FormEvent } from 'react'
+import { CheckCircle2, ListPlus } from 'lucide-react'
 import type { Message } from '../../types/chat'
 import { KANBAN_COLUMNS } from './kanbanDefaults'
 import { KanbanColumn } from './KanbanColumn'
@@ -8,7 +8,7 @@ import type { KanbanCard, KanbanColumnId, KanbanCreateCardInput } from './kanban
 import { useKanbanBoardState } from './useKanbanBoardState'
 
 interface KanbanBoardProps {
-  conversationId: string | null
+  workspacePath: string | null
   messages: readonly Message[]
 }
 
@@ -20,25 +20,20 @@ interface TaskDraftState {
   title: string
 }
 
-export function KanbanBoard({ conversationId, messages }: KanbanBoardProps) {
+export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
   const [draftTitle, setDraftTitle] = useState('')
   const [draftTask, setDraftTask] = useState<TaskDraftState | null>(null)
-  const [showMessagePicker, setShowMessagePicker] = useState(false)
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null)
-  const [draggedMessageId, setDraggedMessageId] = useState<string | null>(null)
   const {
     addCard,
-    addCardFromMessage,
-    addCardFromMessageToColumn,
     cards,
     clearCompletedCards,
     deleteCard,
     moveCard,
-    sourceMessages,
     updateCard,
   } =
     useKanbanBoardState({
-      conversationId,
+      workspacePath,
       messages,
     })
 
@@ -72,26 +67,6 @@ export function KanbanBoard({ conversationId, messages }: KanbanBoardProps) {
   function handleMoveCard(cardId: string, targetColumnId: KanbanColumnId) {
     moveCard({ cardId, targetColumnId })
     setDraggedCardId(null)
-  }
-
-  function handleAddFromMessage(messageId: string) {
-    addCardFromMessage(messageId)
-    setShowMessagePicker(false)
-  }
-
-  function handleMessageDragStart(event: DragEvent<HTMLButtonElement>, messageId: string) {
-    event.dataTransfer.setData('kanban/message-id', messageId)
-    event.dataTransfer.effectAllowed = 'copy'
-    setDraggedMessageId(messageId)
-  }
-
-  function handleMessageDragEnd() {
-    setDraggedMessageId(null)
-  }
-
-  function handleMessageDrop(messageId: string, targetColumnId: KanbanColumnId) {
-    addCardFromMessageToColumn(messageId, targetColumnId)
-    setDraggedMessageId(null)
   }
 
   function handleSubmitTask(input: KanbanCreateCardInput) {
@@ -137,17 +112,6 @@ export function KanbanBoard({ conversationId, messages }: KanbanBoardProps) {
           {doneCardCount > 0 ? <span className="text-xs text-subtle-foreground">· {doneCardCount} done</span> : null}
         </div>
 
-        {sourceMessages.length > 0 ? (
-          <button
-            type="button"
-            onClick={() => setShowMessagePicker((prev) => !prev)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface-muted px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface hover:text-foreground"
-          >
-            <MessageSquarePlus size={13} />
-            From chat
-          </button>
-        ) : null}
-
         <form onSubmit={handleAddCard} className="flex items-center gap-1.5">
           <label className="sr-only" htmlFor="kanban-card-title">
             Task title
@@ -156,7 +120,6 @@ export function KanbanBoard({ conversationId, messages }: KanbanBoardProps) {
             id="kanban-card-title"
             value={draftTitle}
             onChange={(event) => setDraftTitle(event.target.value)}
-            onFocus={() => setShowMessagePicker(false)}
             placeholder="New task title"
             className="h-8 w-56 rounded-lg border border-border bg-surface px-3 text-xs text-foreground placeholder:text-subtle-foreground focus:outline-none"
           />
@@ -181,58 +144,24 @@ export function KanbanBoard({ conversationId, messages }: KanbanBoardProps) {
         ) : null}
       </div>
 
-      {showMessagePicker ? (
-        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface-muted px-4 py-2">
-          <span className="shrink-0 text-xs font-medium text-muted-foreground">Pick a message:</span>
-          <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-0.5">
-            {sourceMessages.map((sourceMessage) => (
-              <button
-                key={sourceMessage.id}
-                type="button"
-                draggable
-                onDragStart={(event) => handleMessageDragStart(event, sourceMessage.id)}
-                onDragEnd={handleMessageDragEnd}
-                onClick={() => handleAddFromMessage(sourceMessage.id)}
-                className={[
-                  'inline-flex h-7 shrink-0 cursor-grab items-center rounded-md border border-border bg-surface px-2.5 text-xs text-muted-foreground transition-colors hover:text-foreground active:cursor-grabbing',
-                  draggedMessageId === sourceMessage.id ? 'opacity-50' : 'hover:bg-surface-muted',
-                ].join(' ')}
-                title={`Click to add · Drag to a column`}
-              >
-                <span className="max-w-48 truncate">{sourceMessage.label}</span>
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowMessagePicker(false)}
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <X size={13} />
-          </button>
-        </div>
-      ) : null}
-
       <div className="grid min-h-0 flex-1 grid-cols-4 divide-x divide-border overflow-hidden">
         {KANBAN_COLUMNS.map((column) => (
-              <KanbanColumn
-                key={column.id}
-                cards={cards.filter((card) => card.columnId === column.id)}
-                column={column}
-                draggedCardId={draggedCardId}
-                draggedMessageId={draggedMessageId}
-                count={columnCounts[column.id]}
-                onCardOpen={(cardId) => {
-                  const card = cards.find((currentCard) => currentCard.id === cardId)
-                  if (card) {
-                    handleOpenCard(card)
-                  }
-                }}
-                onCardDragStart={setDraggedCardId}
-                onCardDrop={handleMoveCard}
-                onCardMove={handleMoveCard}
-                onMessageDrop={handleMessageDrop}
-              />
+          <KanbanColumn
+            key={column.id}
+            cards={cards.filter((card) => card.columnId === column.id)}
+            column={column}
+            draggedCardId={draggedCardId}
+            count={columnCounts[column.id]}
+            onCardOpen={(cardId) => {
+              const card = cards.find((currentCard) => currentCard.id === cardId)
+              if (card) {
+                handleOpenCard(card)
+              }
+            }}
+            onCardDragStart={setDraggedCardId}
+            onCardDrop={handleMoveCard}
+            onCardMove={handleMoveCard}
+          />
         ))}
       </div>
 

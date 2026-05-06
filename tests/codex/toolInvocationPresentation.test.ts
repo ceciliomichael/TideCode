@@ -303,6 +303,35 @@ test('read tool header labels collapse to the basename for the visible toolblock
   assert.equal(getToolInvocationHeaderLabel(invocation, undefined, WORKSPACE_ROOT_PATH), 'Read example.ts')
 })
 
+test('web search and webfetch header labels use readable product wording', () => {
+  const webSearchRunningInvocation: ToolInvocationTrace = {
+    argumentsText: '{}',
+    id: 'tool-web-search-1',
+    startedAt: 0,
+    state: 'running',
+    toolName: 'web_search',
+  }
+
+  const webSearchCompletedInvocation: ToolInvocationTrace = {
+    ...webSearchRunningInvocation,
+    state: 'completed',
+  }
+
+  const webFetchInvocation: ToolInvocationTrace = {
+    argumentsText: JSON.stringify({
+      url: 'https://example.com/docs',
+    }),
+    id: 'tool-webfetch-1',
+    startedAt: 0,
+    state: 'completed',
+    toolName: 'webfetch',
+  }
+
+  assert.equal(getToolInvocationHeaderLabel(webSearchRunningInvocation, undefined, WORKSPACE_ROOT_PATH), 'Exploring the web')
+  assert.equal(getToolInvocationHeaderLabel(webSearchCompletedInvocation, undefined, WORKSPACE_ROOT_PATH), 'Searched the web')
+  assert.equal(getToolInvocationHeaderLabel(webFetchInvocation, undefined, WORKSPACE_ROOT_PATH), 'Fetched https://example.com/docs')
+})
+
 test('terminal tool header labels prefer the queued command and fall back to the session id', () => {
   const commandInvocation: ToolInvocationTrace = {
     argumentsText: JSON.stringify({

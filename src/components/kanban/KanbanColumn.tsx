@@ -7,12 +7,10 @@ interface KanbanColumnProps {
   column: KanbanColumnDefinition
   count: number
   draggedCardId: string | null
-  draggedMessageId: string | null
   onCardOpen: (cardId: string) => void
   onCardDragStart: (cardId: string) => void
   onCardMove: (cardId: string, targetColumnId: KanbanColumnId) => void
   onCardDrop: (cardId: string, targetColumnId: KanbanColumnId) => void
-  onMessageDrop: (messageId: string, targetColumnId: KanbanColumnId) => void
 }
 
 export function KanbanColumn({
@@ -20,16 +18,14 @@ export function KanbanColumn({
   column,
   count,
   draggedCardId,
-  draggedMessageId,
   onCardOpen,
   onCardDragStart,
   onCardDrop,
   onCardMove,
-  onMessageDrop,
 }: KanbanColumnProps) {
   const [isOver, setIsOver] = useState(false)
 
-  const isDragging = draggedCardId !== null || draggedMessageId !== null
+  const isDragging = draggedCardId !== null
 
   function handleDragEnter(event: DragEvent<HTMLElement>) {
     event.preventDefault()
@@ -45,19 +41,12 @@ export function KanbanColumn({
 
   function handleDragOver(event: DragEvent<HTMLElement>) {
     event.preventDefault()
-    event.dataTransfer.dropEffect = draggedMessageId !== null ? 'copy' : 'move'
+    event.dataTransfer.dropEffect = 'move'
   }
 
   function handleDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault()
     setIsOver(false)
-
-    // Message pill dropped onto a column
-    const messageId = event.dataTransfer.getData('kanban/message-id')
-    if (messageId) {
-      onMessageDrop(messageId, column.id)
-      return
-    }
 
     // Existing card drag
     if (!draggedCardId) {
@@ -99,7 +88,7 @@ export function KanbanColumn({
           </ul>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-4 text-center">
-            <span className="text-[11px] text-subtle-foreground">Drop a task here</span>
+            <span className="text-[11px] text-subtle-foreground">No tasks in this column yet</span>
           </div>
         )}
       </div>

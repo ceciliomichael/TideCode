@@ -11,6 +11,7 @@ interface ToolArgumentsValue {
   pattern?: unknown
   polling_ms?: unknown
   query?: unknown
+  url?: unknown
   session_id?: unknown
   name?: unknown
 }
@@ -188,6 +189,11 @@ function getSearchTarget(argumentsText: string): string | null {
   const parsedArguments = parseCompleteToolArguments(argumentsText)
   const searchText = readFirstText([parsedArguments?.pattern, parsedArguments?.query])
   return searchText
+}
+
+function getWebFetchTarget(argumentsText: string): string | null {
+  const parsedArguments = parseCompleteToolArguments(argumentsText)
+  return readFirstText(parsedArguments?.url)
 }
 
 function readSessionId(value: unknown): string | null {
@@ -440,6 +446,22 @@ function getToolVerb(invocation: ToolInvocationTrace) {
         : 'Skill activation failed'
   }
 
+  if (invocation.toolName === 'web_search') {
+    return invocation.state === 'running'
+      ? 'Exploring the web'
+      : invocation.state === 'completed'
+        ? 'Searched the web'
+        : 'Web exploration failed'
+  }
+
+  if (invocation.toolName === 'webfetch') {
+    return invocation.state === 'running'
+      ? 'Fetching'
+      : invocation.state === 'completed'
+        ? 'Fetched'
+        : 'Fetch failed'
+  }
+
   return invocation.state === 'running'
     ? `Running ${invocation.toolName}`
     : invocation.state === 'completed'
@@ -597,6 +619,13 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
     const searchTarget = getSearchTarget(invocation.argumentsText)
     if (searchTarget) {
       return searchTarget
+    }
+  }
+
+  if (invocation.toolName === 'webfetch') {
+    const fetchTarget = getWebFetchTarget(invocation.argumentsText)
+    if (fetchTarget) {
+      return fetchTarget
     }
   }
 

@@ -7,6 +7,8 @@ interface ToolInvocationSummaryCounts {
   commandCount: number
   fileCount: number
   searchCount: number
+  webSearchCount: number
+  webFetchCount: number
   createdCount: number
   editedCount: number
   deletedCount: number
@@ -33,6 +35,14 @@ function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts
 
   if (toolName === 'glob' || toolName === 'grep' || toolName === 'search_query' || toolName === 'image_query') {
     return 'searchCount'
+  }
+
+  if (toolName === 'web_search') {
+    return 'webSearchCount'
+  }
+
+  if (toolName === 'webfetch') {
+    return 'webFetchCount'
   }
 
   if (
@@ -85,6 +95,8 @@ export function buildToolInvocationGroupSummary(
     commandCount: 0,
     fileCount: 0,
     searchCount: 0,
+    webSearchCount: 0,
+    webFetchCount: 0,
     createdCount: 0,
     editedCount: 0,
     deletedCount: 0,
@@ -129,6 +141,10 @@ export function buildToolInvocationGroupSummary(
         recordMixedBucket('list')
       } else if (classifiedBucket === 'searchCount') {
         recordMixedBucket('search')
+      } else if (classifiedBucket === 'webSearchCount') {
+        recordMixedBucket('web-search')
+      } else if (classifiedBucket === 'webFetchCount') {
+        recordMixedBucket('web-fetch')
       } else if (classifiedBucket === 'commandCount') {
         recordMixedBucket('command')
       } else if (classifiedBucket === 'exploredFileCount') {
@@ -167,6 +183,12 @@ export function buildToolInvocationGroupSummary(
       if (bucketKey === 'search') {
         return pluralize(count, 'search')
       }
+      if (bucketKey === 'web-search') {
+        return `Ran ${pluralize(count, 'web search')}`
+      }
+      if (bucketKey === 'web-fetch') {
+        return `Fetched ${pluralize(count, 'page')}`
+      }
       if (bucketKey === 'command') {
         return `ran ${pluralize(count, 'command')}`
       }
@@ -187,17 +209,59 @@ export function buildToolInvocationGroupSummary(
     return summaryParts.length > 0 ? summaryParts.join(', ') : 'Explored actions'
   }
 
+  const hasOnlyWebFetch =
+    counts.webFetchCount > 0 &&
+    counts.listCount === 0 &&
+    counts.commandCount === 0 &&
+    counts.fileCount === 0 &&
+    counts.searchCount === 0 &&
+    counts.webSearchCount === 0 &&
+    counts.createdCount === 0 &&
+    counts.editedCount === 0 &&
+    counts.deletedCount === 0 &&
+    counts.verifiedCount === 0 &&
+    counts.exploredFileCount === 0 &&
+    otherToolCounts.size === 0
+
+  if (hasOnlyWebFetch) {
+    return `Fetched ${pluralize(counts.webFetchCount, 'page')}`
+  }
+
+  const hasOnlyWebSearch =
+    counts.webSearchCount > 0 &&
+    counts.listCount === 0 &&
+    counts.commandCount === 0 &&
+    counts.fileCount === 0 &&
+    counts.searchCount === 0 &&
+    counts.webFetchCount === 0 &&
+    counts.createdCount === 0 &&
+    counts.editedCount === 0 &&
+    counts.deletedCount === 0 &&
+    counts.verifiedCount === 0 &&
+    counts.exploredFileCount === 0 &&
+    otherToolCounts.size === 0
+
+  if (hasOnlyWebSearch) {
+    return `Ran ${pluralize(counts.webSearchCount, 'web search')}`
+  }
+
   if (counts.listCount > 0) {
     summaryParts.push(pluralize(counts.listCount, 'list'))
   }
   if (counts.searchCount > 0) {
     summaryParts.push(pluralize(counts.searchCount, 'search'))
   }
+  if (counts.webSearchCount > 0) {
+    summaryParts.push(`ran ${pluralize(counts.webSearchCount, 'web search')}`)
+  }
   if (counts.commandCount > 0) {
     summaryParts.push(`ran ${pluralize(counts.commandCount, 'command')}`)
   }
   if (counts.exploredFileCount + counts.fileCount > 0) {
     summaryParts.push(pluralize(counts.exploredFileCount + counts.fileCount, 'file'))
+  }
+  if (counts.webFetchCount > 0) {
+    summaryParts.push(`fetched ${pluralize(counts.webFetchCount, 'page')}`)
   }
 
   for (const [toolLabel, count] of otherToolCounts) {

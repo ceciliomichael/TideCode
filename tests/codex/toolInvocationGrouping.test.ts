@@ -136,6 +136,11 @@ test('buildToolInvocationGroupSummary includes uncategorized tools by name', () 
   assert.equal(summary, 'Explored 1 ready implement')
 })
 
+test('buildToolInvocationGroupSummary reports web search and web fetch with readable labels', () => {
+  assert.equal(buildToolInvocationGroupSummary([createInvocation('web_search')]), 'Ran 1 web search')
+  assert.equal(buildToolInvocationGroupSummary([createInvocation('webfetch')]), 'Fetched 1 page')
+})
+
 test('buildToolInvocationGroupSummary splits mixed file mutations and exploration categories', () => {
   const summary = buildToolInvocationGroupSummary([
     createMutationInvocation('tool-write-edit-1', 'update', 'write'),

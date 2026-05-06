@@ -653,7 +653,7 @@ export function ChatInterfaceContent({
             <div className="flex min-h-0 w-full flex-1 flex-col">
               {isKanbanBoardOpen ? (
                 <KanbanBoard
-                  conversationId={chatMessages.activeConversationId}
+                  workspacePath={activeWorkspacePath}
                   messages={chatMessages.messages}
                 />
               ) : (

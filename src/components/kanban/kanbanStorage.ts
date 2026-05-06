@@ -3,8 +3,8 @@ import type { KanbanBoardData, KanbanCard, KanbanColumnId } from './kanbanTypes'
 const STORAGE_PREFIX = 'echosphere-kanban-board:'
 const COLUMN_IDS = new Set<KanbanColumnId>(['backlog', 'in-progress', 'blocked', 'done'])
 
-function getStorageKey(conversationId: string) {
-  return `${STORAGE_PREFIX}${conversationId}`
+function getStorageKey(workspacePath: string) {
+  return `${STORAGE_PREFIX}${workspacePath}`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -52,13 +52,14 @@ function parseKanbanBoardData(value: unknown): KanbanBoardData {
   }
 }
 
-export function loadKanbanBoardData(conversationId: string | null): KanbanBoardData {
-  if (!conversationId || typeof window === 'undefined') {
+export function loadKanbanBoardData(workspacePath: string | null): KanbanBoardData {
+  const normalizedWorkspacePath = workspacePath?.trim()
+  if (!normalizedWorkspacePath || typeof window === 'undefined') {
     return { cards: [] }
   }
 
   try {
-    const storedValue = window.localStorage.getItem(getStorageKey(conversationId))
+    const storedValue = window.localStorage.getItem(getStorageKey(normalizedWorkspacePath))
     if (!storedValue) {
       return { cards: [] }
     }
@@ -70,13 +71,14 @@ export function loadKanbanBoardData(conversationId: string | null): KanbanBoardD
   }
 }
 
-export function saveKanbanBoardData(conversationId: string | null, boardData: KanbanBoardData) {
-  if (!conversationId || typeof window === 'undefined') {
+export function saveKanbanBoardData(workspacePath: string | null, boardData: KanbanBoardData) {
+  const normalizedWorkspacePath = workspacePath?.trim()
+  if (!normalizedWorkspacePath || typeof window === 'undefined') {
     return
   }
 
   try {
-    window.localStorage.setItem(getStorageKey(conversationId), JSON.stringify(boardData))
+    window.localStorage.setItem(getStorageKey(normalizedWorkspacePath), JSON.stringify(boardData))
   } catch (error) {
     console.error('Failed to save Kanban board data', error)
   }

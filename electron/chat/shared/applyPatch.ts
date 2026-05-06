@@ -53,6 +53,16 @@ interface ApplyPatchTargetPath {
   relativePath: string
 }
 
+interface StagedFileState {
+  content: string | null
+  target: ApplyPatchTargetPath
+}
+
+interface PatchableLine {
+  eol: string
+  text: string
+}
+
 function normalizePatchInput(patchText: string) {
   const normalized = patchText.replace(/\r\n?/g, '\n').trim()
   const heredocPatterns = [
@@ -283,48 +293,22 @@ export function parseApplyPatch(patchText: string): ParsedApplyPatch {
   return { hunks }
 }
 
-function normalizeUnicode(value: string) {
-  return value
-    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
-    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
-    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015]/g, '-')
-    .replace(/\u2026/g, '...')
-    .replace(/\u00A0/g, ' ')
-}
-
-function areComparableLinesEqual(left: string, right: string) {
-  if (left === right) {
-    return true
-  }
-
-  if (left.trimEnd() === right.trimEnd()) {
-    return true
-  }
-
-  if (left.trim() === right.trim()) {
-    return true
-  }
-
-  return normalizeUnicode(left.trim()) === normalizeUnicode(right.trim())
-}
-
-function compactComparableText(value: string) {
-  return normalizeUnicode(value).replace(/\s+/gu, '')
-}
-
-function tryMatchSequence(
+function seekSequence(
   lines: readonly string[],
   pattern: readonly string[],
   startIndex: number,
-  compare: (left: string, right: string) => boolean,
   isEndOfFile: boolean,
 ) {
+  if (pattern.length === 0) {
+    return -1
+  }
+
   if (isEndOfFile) {
     const fromEnd = lines.length - pattern.length
     if (fromEnd >= startIndex) {
       let matches = true
       for (let index = 0; index < pattern.length; index += 1) {
-        if (!compare(lines[fromEnd + index], pattern[index])) {
+        if (lines[fromEnd + index] !== pattern[index]) {
           matches = false
           break
         }
@@ -340,7 +324,7 @@ function tryMatchSequence(
     let matches = true
 
     for (let patternIndex = 0; patternIndex < pattern.length; patternIndex += 1) {
-      if (!compare(lines[lineIndex + patternIndex], pattern[patternIndex])) {
+      if (lines[lineIndex + patternIndex] !== pattern[patternIndex]) {
         matches = false
         break
       }
@@ -354,192 +338,117 @@ function tryMatchSequence(
   return -1
 }
 
-function seekSequence(
-  lines: readonly string[],
-  pattern: readonly string[],
+function splitPatchableContent(content: string) {
+  const records: PatchableLine[] = []
+  const lineEndingCounts = new Map<string, number>()
+  const lineEndingPattern = /\r\n|\n|\r/gu
+  let lineStartIndex = 0
+
+  for (const match of content.matchAll(lineEndingPattern)) {
+    const eol = match[0] ?? '\n'
+    records.push({
+      eol,
+      text: content.slice(lineStartIndex, match.index),
+    })
+    lineEndingCounts.set(eol, (lineEndingCounts.get(eol) ?? 0) + 1)
+    lineStartIndex = match.index + eol.length
+  }
+
+  if (lineStartIndex < content.length) {
+    records.push({
+      eol: '',
+      text: content.slice(lineStartIndex),
+    })
+  }
+
+  let lineEnding = '\n'
+  let lineEndingCount = 0
+  for (const [candidate, count] of lineEndingCounts) {
+    if (count > lineEndingCount) {
+      lineEnding = candidate
+      lineEndingCount = count
+    }
+  }
+
+  return {
+    hasTrailingLineEnding: records.length > 0 && records[records.length - 1]?.eol !== '',
+    lineEnding,
+    lines: records.map((record) => record.text),
+    records,
+  }
+}
+
+function getReplacementLineEnding(
+  records: readonly PatchableLine[],
   startIndex: number,
-  isEndOfFile: boolean,
+  deleteCount: number,
+  fallbackLineEnding: string,
 ) {
-  if (pattern.length === 0) {
-    return -1
+  const deletedLineEnding = records.slice(startIndex, startIndex + deleteCount).find((record) => record.eol !== '')?.eol
+  if (deletedLineEnding) {
+    return deletedLineEnding
   }
 
-  const exact = tryMatchSequence(lines, pattern, startIndex, (left, right) => left === right, isEndOfFile)
-  if (exact !== -1) {
-    return exact
+  const previousLineEnding = records[startIndex - 1]?.eol
+  if (previousLineEnding) {
+    return previousLineEnding
   }
 
-  const trimEndMatch = tryMatchSequence(lines, pattern, startIndex, (left, right) => left.trimEnd() === right.trimEnd(), isEndOfFile)
-  if (trimEndMatch !== -1) {
-    return trimEndMatch
-  }
-
-  const trimMatch = tryMatchSequence(lines, pattern, startIndex, (left, right) => left.trim() === right.trim(), isEndOfFile)
-  if (trimMatch !== -1) {
-    return trimMatch
-  }
-
-  const unicodeTrimMatch = tryMatchSequence(
-    lines,
-    pattern,
-    startIndex,
-    (left, right) => normalizeUnicode(left.trim()) === normalizeUnicode(right.trim()),
-    isEndOfFile,
-  )
-  if (unicodeTrimMatch !== -1) {
-    return unicodeTrimMatch
-  }
-
-  if (pattern.length < 2) {
-    return -1
-  }
-
-  const compactPatternText = compactComparableText(pattern.join('\n'))
-
-  if (isEndOfFile) {
-    const fromEnd = lines.length - pattern.length
-    if (fromEnd >= startIndex) {
-      const compactEndText = compactComparableText(lines.slice(fromEnd, fromEnd + pattern.length).join('\n'))
-      if (compactEndText === compactPatternText) {
-        return fromEnd
-      }
-    }
-  }
-
-  for (let lineIndex = startIndex; lineIndex <= lines.length - pattern.length; lineIndex += 1) {
-    const compactLineText = compactComparableText(lines.slice(lineIndex, lineIndex + pattern.length).join('\n'))
-    if (compactLineText === compactPatternText) {
-      return lineIndex
-    }
-  }
-
-  return -1
+  return records[startIndex]?.eol || fallbackLineEnding
 }
 
-function comparableLineKey(value: string) {
-  return normalizeUnicode(value.trimEnd())
-}
-
-function countComparableLines(lines: readonly string[]) {
-  const counts = new Map<string, number>()
-
-  for (const line of lines) {
-    const key = comparableLineKey(line)
-    counts.set(key, (counts.get(key) ?? 0) + 1)
-  }
-
-  return counts
-}
-
-function canCoverExtraLinesWithReplacement(extraLines: readonly string[], replacementLines: readonly string[]) {
-  if (extraLines.length === 0) {
-    return true
-  }
-
-  const replacementCounts = countComparableLines(replacementLines)
-
-  for (const extraLine of extraLines) {
-    const key = comparableLineKey(extraLine)
-    const remainingCount = replacementCounts.get(key) ?? 0
-    if (remainingCount <= 0) {
-      return false
-    }
-
-    replacementCounts.set(key, remainingCount - 1)
-  }
-
-  return true
-}
-
-interface FuzzyReplacementMatch {
-  deleteCount: number
-  startIndex: number
-}
-
-function findFuzzyReplacementMatch(
-  lines: readonly string[],
-  pattern: readonly string[],
-  replacementLines: readonly string[],
+function buildReplacementRecords(
+  records: readonly PatchableLine[],
   startIndex: number,
+  deleteCount: number,
+  newLines: readonly string[],
+  fallbackLineEnding: string,
 ) {
-  const maxExtraLines = 3
-  let bestMatch: FuzzyReplacementMatch | null = null
-  let bestSpanLength = Number.POSITIVE_INFINITY
+  const oldRecords = records.slice(startIndex, startIndex + deleteCount)
+  const replacementLineEnding = getReplacementLineEnding(records, startIndex, deleteCount, fallbackLineEnding)
+  let oldRecordSearchIndex = 0
 
-  for (let candidateStart = startIndex; candidateStart < lines.length; candidateStart += 1) {
-    const matchedIndices: number[] = []
-    let searchIndex = candidateStart
-
-    for (const patternLine of pattern) {
-      let foundIndex = -1
-      for (let lineIndex = searchIndex; lineIndex < lines.length; lineIndex += 1) {
-        if (areComparableLinesEqual(lines[lineIndex], patternLine)) {
-          foundIndex = lineIndex
-          break
-        }
-      }
-
-      if (foundIndex === -1) {
-        matchedIndices.length = 0
+  return newLines.map((line) => {
+    let matchingOldRecord: PatchableLine | undefined
+    for (let index = oldRecordSearchIndex; index < oldRecords.length; index += 1) {
+      if (oldRecords[index]?.text === line) {
+        matchingOldRecord = oldRecords[index]
+        oldRecordSearchIndex = index + 1
         break
       }
-
-      matchedIndices.push(foundIndex)
-      searchIndex = foundIndex + 1
     }
 
-    if (matchedIndices.length !== pattern.length) {
-      continue
+    return {
+      eol: matchingOldRecord?.eol || replacementLineEnding,
+      text: line,
     }
+  })
+}
 
-    const spanStart = matchedIndices[0]
-    const spanEnd = matchedIndices[matchedIndices.length - 1]
-    const spanLength = spanEnd - spanStart + 1
-    const extraLineCount = spanLength - pattern.length
-
-    if (spanStart < startIndex) {
-      continue
-    }
-
-    if (extraLineCount < 0 || extraLineCount > maxExtraLines) {
-      continue
-    }
-
-    const matchedIndexSet = new Set(matchedIndices)
-    const extraLines = lines.slice(spanStart, spanEnd + 1).filter((_line, lineIndex) => !matchedIndexSet.has(spanStart + lineIndex))
-    if (!canCoverExtraLinesWithReplacement(extraLines, replacementLines)) {
-      continue
-    }
-
-    const candidate: FuzzyReplacementMatch = {
-      deleteCount: spanLength,
-      startIndex: spanStart,
-    }
-
-    if (spanLength < bestSpanLength) {
-      bestMatch = candidate
-      bestSpanLength = spanLength
-      continue
-    }
-
-    if (spanLength === bestSpanLength && bestMatch && spanStart < bestMatch.startIndex) {
-      bestMatch = candidate
-    }
+function serializePatchableRecords(records: readonly PatchableLine[], fallbackLineEnding: string, shouldEndWithLineEnding: boolean) {
+  if (records.length === 0) {
+    return ''
   }
 
-  if (bestMatch) {
-    return bestMatch
-  }
+  return records
+    .map((record, index) => {
+      const isLastRecord = index === records.length - 1
+      if (isLastRecord && shouldEndWithLineEnding && record.eol === '') {
+        return `${record.text}${fallbackLineEnding}`
+      }
 
-  return null
+      return `${record.text}${record.eol}`
+    })
+    .join('')
 }
 
 function applyUpdateChunks(filePath: string, originalContent: string, chunks: readonly ApplyPatchUpdateChunk[]) {
-  const originalLines = originalContent.endsWith('\n')
-    ? originalContent.slice(0, -1).split('\n')
-    : originalContent.length === 0
-      ? []
-      : originalContent.split('\n')
+  const {
+    hasTrailingLineEnding,
+    lineEnding,
+    lines: originalLines,
+    records: originalRecords,
+  } = splitPatchableContent(originalContent)
   const replacements: Array<{ deleteCount: number; newLines: string[]; startIndex: number }> = []
   let searchStartIndex = 0
 
@@ -566,24 +475,7 @@ function applyUpdateChunks(filePath: string, originalContent: string, chunks: re
     const foundIndex = seekSequence(originalLines, chunk.oldLines, searchStartIndex, Boolean(chunk.isEndOfFile))
 
     if (foundIndex === -1) {
-      const fuzzyMatch = findFuzzyReplacementMatch(
-        originalLines,
-        chunk.oldLines,
-        chunk.newLines,
-        searchStartIndex,
-      )
-
-      if (!fuzzyMatch) {
-        throw new Error(`Failed to find expected lines in ${filePath}:\n${chunk.oldLines.join('\n')}`)
-      }
-
-      replacements.push({
-        deleteCount: fuzzyMatch.deleteCount,
-        newLines: [...chunk.newLines],
-        startIndex: fuzzyMatch.startIndex,
-      })
-      searchStartIndex = fuzzyMatch.startIndex + chunk.newLines.length
-      continue
+      throw new Error(`Failed to find expected lines in ${filePath}:\n${chunk.oldLines.join('\n')}`)
     }
 
     replacements.push({
@@ -594,13 +486,23 @@ function applyUpdateChunks(filePath: string, originalContent: string, chunks: re
     searchStartIndex = foundIndex + chunk.oldLines.length
   }
 
-  const nextLines = [...originalLines]
+  const nextRecords = [...originalRecords]
   for (let index = replacements.length - 1; index >= 0; index -= 1) {
     const replacement = replacements[index]
-    nextLines.splice(replacement.startIndex, replacement.deleteCount, ...replacement.newLines)
+    nextRecords.splice(
+      replacement.startIndex,
+      replacement.deleteCount,
+      ...buildReplacementRecords(
+        nextRecords,
+        replacement.startIndex,
+        replacement.deleteCount,
+        replacement.newLines,
+        lineEnding,
+      ),
+    )
   }
 
-  return nextLines.join('\n') + (originalContent.endsWith('\n') || nextLines.length > 0 ? '\n' : '')
+  return serializePatchableRecords(nextRecords, lineEnding, hasTrailingLineEnding || nextRecords.length > 0)
 }
 
 function resolvePatchTargetPath(
@@ -629,19 +531,33 @@ export async function applyPatchInWorkspace(
 ) {
   const parsedPatch = parseApplyPatch(patchText)
   const changes: ApplyPatchChange[] = []
+  const stagedFiles = new Map<string, StagedFileState>()
   const basePath = options?.basePath ? path.resolve(options.basePath) : workspaceRootPath
   const resolveTargetPath = (candidatePath: string) =>
     resolvePatchTargetPath(workspaceRootPath, candidatePath, options?.resolveTargetPath, basePath)
+  const readRequiredContent = async (target: ApplyPatchTargetPath, operation: 'deletion' | 'update') => {
+    const stagedFile = stagedFiles.get(target.absolutePath)
+    if (stagedFile) {
+      if (stagedFile.content === null) {
+        throw new Error(`Failed to read file for ${operation} ${target.relativePath}: file is deleted by this patch`)
+      }
+
+      return stagedFile.content
+    }
+
+    return fs.readFile(target.absolutePath, 'utf8').catch((error: unknown) => {
+      throw new Error(`Failed to read file for ${operation} ${target.relativePath}: ${(error as Error).message}`)
+    })
+  }
 
   for (const hunk of parsedPatch.hunks) {
     if (hunk.type === 'add') {
       const target = resolveTargetPath(hunk.path)
-      await options?.onBeforeChange?.({
-        absolutePath: target.absolutePath,
-      })
       const nextContent = hunk.contents.length === 0 || hunk.contents.endsWith('\n') ? hunk.contents : `${hunk.contents}\n`
-      await fs.mkdir(path.dirname(target.absolutePath), { recursive: true })
-      await fs.writeFile(target.absolutePath, nextContent, 'utf8')
+      stagedFiles.set(target.absolutePath, {
+        content: nextContent,
+        target,
+      })
       changes.push({
         absolutePath: target.absolutePath,
         newContent: nextContent,
@@ -654,13 +570,11 @@ export async function applyPatchInWorkspace(
 
     if (hunk.type === 'delete') {
       const target = resolveTargetPath(hunk.path)
-      const existingContent = await fs.readFile(target.absolutePath, 'utf8').catch((error: unknown) => {
-        throw new Error(`Failed to read file for deletion ${target.relativePath}: ${(error as Error).message}`)
+      const existingContent = await readRequiredContent(target, 'deletion')
+      stagedFiles.set(target.absolutePath, {
+        content: null,
+        target,
       })
-      await options?.onBeforeChange?.({
-        absolutePath: target.absolutePath,
-      })
-      await fs.unlink(target.absolutePath)
       changes.push({
         absolutePath: target.absolutePath,
         newContent: '',
@@ -673,13 +587,7 @@ export async function applyPatchInWorkspace(
 
     const sourceTarget = resolveTargetPath(hunk.path)
     const nextTarget = hunk.movePath ? resolveTargetPath(hunk.movePath) : undefined
-    const existingContent = await fs.readFile(sourceTarget.absolutePath, 'utf8').catch((error: unknown) => {
-      throw new Error(`Failed to read file for update ${sourceTarget.relativePath}: ${(error as Error).message}`)
-    })
-    await options?.onBeforeChange?.({
-      absolutePath: sourceTarget.absolutePath,
-      ...(nextTarget ? { nextAbsolutePath: nextTarget.absolutePath } : {}),
-    })
+    const existingContent = await readRequiredContent(sourceTarget, 'update')
     const nextContent = applyUpdateChunks(sourceTarget.relativePath, existingContent, hunk.chunks)
     const writeTarget = nextTarget ?? sourceTarget
 
@@ -687,11 +595,15 @@ export async function applyPatchInWorkspace(
       throw new Error(`Patch did not change ${sourceTarget.relativePath}`)
     }
 
-    await fs.mkdir(path.dirname(writeTarget.absolutePath), { recursive: true })
-    await fs.writeFile(writeTarget.absolutePath, nextContent, 'utf8')
-
-    if (nextTarget) {
-      await fs.unlink(sourceTarget.absolutePath)
+    stagedFiles.set(writeTarget.absolutePath, {
+      content: nextContent,
+      target: writeTarget,
+    })
+    if (nextTarget && nextTarget.absolutePath !== sourceTarget.absolutePath) {
+      stagedFiles.set(sourceTarget.absolutePath, {
+        content: null,
+        target: sourceTarget,
+      })
     }
 
     changes.push({
@@ -702,6 +614,23 @@ export async function applyPatchInWorkspace(
       relativePath: writeTarget.relativePath,
       type: 'update',
     })
+  }
+
+  for (const change of changes) {
+    await options?.onBeforeChange?.({
+      absolutePath: change.absolutePath,
+      ...(change.nextAbsolutePath ? { nextAbsolutePath: change.nextAbsolutePath } : {}),
+    })
+  }
+
+  for (const stagedFile of stagedFiles.values()) {
+    if (stagedFile.content === null) {
+      await fs.unlink(stagedFile.target.absolutePath)
+      continue
+    }
+
+    await fs.mkdir(path.dirname(stagedFile.target.absolutePath), { recursive: true })
+    await fs.writeFile(stagedFile.target.absolutePath, stagedFile.content, 'utf8')
   }
 
   return {
