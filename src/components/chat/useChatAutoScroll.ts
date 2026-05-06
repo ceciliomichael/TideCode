@@ -3,6 +3,7 @@ import type { Message } from '../../types/chat'
 
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 24
 const AUTO_SCROLL_RESET_DELAY_MS = 50
+const SCROLL_DIRECTION_EPSILON_PX = 1
 
 function getNumUserMessages(messages: readonly Message[]): number {
   return messages.reduce((count, message) => count + (message.role === 'user' ? 1 : 0), 0)
@@ -10,6 +11,10 @@ function getNumUserMessages(messages: readonly Message[]): number {
 
 function isAtBottom(container: HTMLDivElement): boolean {
   return Math.abs(container.scrollHeight - container.scrollTop - container.clientHeight) < AUTO_SCROLL_BOTTOM_THRESHOLD_PX
+}
+
+function getMaxScrollTop(container: HTMLDivElement): number {
+  return Math.max(0, container.scrollHeight - container.clientHeight)
 }
 
 interface UseChatAutoScrollOptions {
@@ -29,6 +34,7 @@ export function useChatAutoScroll({
   const isAutoScrollingRef = useRef(false)
   const autoScrollResetTimeoutRef = useRef<number | null>(null)
   const shouldAnchorToLatestMessageRef = useRef(false)
+  const lastObservedScrollTopRef = useRef(0)
   const numUserMessages = useMemo(() => getNumUserMessages(messages), [messages])
 
   const clearAutoScrollResetTimeout = useCallback(() => {
@@ -51,6 +57,7 @@ export function useChatAutoScroll({
     (container: HTMLDivElement) => {
       finishProgrammaticScroll()
       container.scrollTop = container.scrollHeight
+      lastObservedScrollTopRef.current = getMaxScrollTop(container)
     },
     [finishProgrammaticScroll],
   )
@@ -81,7 +88,13 @@ export function useChatAutoScroll({
     }
 
     const handleScroll = () => {
-      if (isAutoScrollingRef.current) {
+      const previousScrollTop = lastObservedScrollTopRef.current
+      const currentScrollTop = container.scrollTop
+      const isUserScrollingUp = currentScrollTop < previousScrollTop - SCROLL_DIRECTION_EPSILON_PX
+
+      lastObservedScrollTopRef.current = currentScrollTop
+
+      if (isAutoScrollingRef.current && !isUserScrollingUp && !isAtBottom(container)) {
         return
       }
 

@@ -448,7 +448,7 @@ function getToolVerb(invocation: ToolInvocationTrace) {
 
   if (invocation.toolName === 'web_search') {
     return invocation.state === 'running'
-      ? 'Exploring the web'
+      ? 'Searching the web'
       : invocation.state === 'completed'
         ? 'Searched the web'
         : 'Web exploration failed'

@@ -327,7 +327,7 @@ test('web search and webfetch header labels use readable product wording', () =>
     toolName: 'webfetch',
   }
 
-  assert.equal(getToolInvocationHeaderLabel(webSearchRunningInvocation, undefined, WORKSPACE_ROOT_PATH), 'Exploring the web')
+  assert.equal(getToolInvocationHeaderLabel(webSearchRunningInvocation, undefined, WORKSPACE_ROOT_PATH), 'Searching the web')
   assert.equal(getToolInvocationHeaderLabel(webSearchCompletedInvocation, undefined, WORKSPACE_ROOT_PATH), 'Searched the web')
   assert.equal(getToolInvocationHeaderLabel(webFetchInvocation, undefined, WORKSPACE_ROOT_PATH), 'Fetched https://example.com/docs')
 })
