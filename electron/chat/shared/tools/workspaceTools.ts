@@ -134,15 +134,16 @@ function buildFileChangeResult(
   changes: ChangeDiffToolResultItem[],
   operation: 'edit' | 'noop',
   subjectPath: string,
+  bodyPrefix?: string,
 ) {
   const addedPathCount = changes.filter((change) => change.kind === 'add').length
   const deletedPathCount = changes.filter((change) => change.kind === 'delete').length
   const updatedPathCount = changes.filter((change) => change.kind === 'update').length
-  const bodyLines = [summary]
+  const bodyLines = bodyPrefix ? [bodyPrefix, summary] : [summary]
 
   for (const change of changes) {
     const label = change.kind === 'add' ? 'A' : change.kind === 'delete' ? 'D' : 'M'
-    bodyLines.push(`${label} ${change.fileName}`)
+    bodyLines.push(`${label} ${change.fileName} (+${change.addedLineCount} -${change.removedLineCount})`)
   }
 
   return createSuccessResult({
@@ -153,7 +154,14 @@ function buildFileChangeResult(
     },
     semantics: {
       added_path_count: addedPathCount,
+      changed_paths: changes.map((change) => change.fileName),
       deleted_path_count: deletedPathCount,
+      file_changes: changes.map((change) => ({
+        added_line_count: change.addedLineCount,
+        kind: change.kind,
+        path: change.fileName,
+        removed_line_count: change.removedLineCount,
+      })),
       operation,
       updated_path_count: updatedPathCount,
     },
@@ -778,6 +786,9 @@ export async function createApplyPatchToolResult(context: WorkspaceToolContext, 
     changes,
     changes.length === 0 ? 'noop' : 'edit',
     subjectPath,
+    changes.length === 0
+      ? 'Patch parsed successfully, but no file content changed.'
+      : 'Patch applied successfully. The files listed below were changed on disk.',
   )
 }
 

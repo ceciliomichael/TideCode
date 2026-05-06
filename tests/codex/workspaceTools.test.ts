@@ -445,6 +445,17 @@ test('createApplyPatchToolResult diffs against the original file snapshot for re
     assert.equal(change.oldContent, 'one\ntwo\nthree\n')
     assert.equal(change.newContent, 'ONE\nTWO\nthree\n')
     assert.equal(change.kind, 'update')
+    assert.match(result.body ?? '', /Patch applied successfully/u)
+    assert.match(result.body ?? '', /M sample\.txt \(\+2 -2\)/u)
+    assert.deepEqual(result.semantics?.changed_paths, ['sample.txt'])
+    assert.deepEqual(result.semantics?.file_changes, [
+      {
+        added_line_count: 2,
+        kind: 'update',
+        path: 'sample.txt',
+        removed_line_count: 2,
+      },
+    ])
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
