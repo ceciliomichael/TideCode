@@ -71,6 +71,7 @@ interface ChatInterfaceContentProps {
   onDiffPanelSelectedScopeChange: (nextScope: DiffPanelScope) => void
   onOpenSettings: () => void
   onSidebarWidthChange: (sidebarWidth: number) => void
+  onCreateWorkspaceFolderFromPath: (folderPath: string) => Promise<void>
   resolvedTheme: ResolvedTheme
   sendMessageOnEnter: boolean
   settings: AppSettings
@@ -104,6 +105,7 @@ export function ChatInterfaceContent({
   interfaceController,
   onDiffPanelExpandedFilePathsChange,
   onDiffPanelSelectedScopeChange,
+  onCreateWorkspaceFolderFromPath,
   onOpenSettings,
   onSidebarWidthChange,
   resolvedTheme,
@@ -285,6 +287,14 @@ export function ChatInterfaceContent({
     await chatMessages.createFolder()
   }, [chatMessages, clearQueuedMessages])
 
+  const handleCreateWorkspaceFolderFromPath = useCallback(
+    async (folderPath: string) => {
+      clearQueuedMessages()
+      await onCreateWorkspaceFolderFromPath(folderPath)
+    },
+    [clearQueuedMessages, onCreateWorkspaceFolderFromPath],
+  )
+
   const handleDeleteConversation = useCallback(
     (conversationId: string) => {
       clearQueuedMessages()
@@ -454,6 +464,7 @@ export function ChatInterfaceContent({
           conversationGroups={chatMessages.conversationGroups}
           onCreateFolder={handleCreateFolder}
           onCreateConversation={handleCreateConversation}
+          onCreateWorkspaceFolderFromPath={handleCreateWorkspaceFolderFromPath}
           onDeleteConversation={handleDeleteConversation}
           onDeleteFolder={handleDeleteFolder}
           onReorderFolder={handleReorderFolder}

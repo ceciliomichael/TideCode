@@ -3,14 +3,13 @@ import { useHighlightedCodeLines } from '../../../hooks/useHighlightedCodeLines'
 import {
   buildSearchRegularExpression,
   countLines,
+  getWorkspaceEditorScrollTransform,
   EDITOR_LINE_HEIGHT_PX,
   EDITOR_LINE_OVERSCAN_COUNT,
   EDITOR_VIRTUALIZATION_THRESHOLD,
   findLineIndexForOffset,
   findLineStartOffsets,
   findSearchMatches,
-  measureEditorLineWrapCount,
-  normalizeEditorLineText,
   type SearchOptions,
   type TextRange,
 } from './workspaceFileEditorUtils'
@@ -45,6 +44,9 @@ export function useWorkspaceFileEditorState({
   const editorViewportRef = useRef<HTMLDivElement | null>(null)
   const lineNumbersRef = useRef<HTMLDivElement | null>(null)
   const highlightedLayerRef = useRef<HTMLDivElement | null>(null)
+  const lineNumbersContentRef = useRef<HTMLElement | null>(null)
+  const highlightedContentRef = useRef<HTMLElement | null>(null)
+  const highlightedLineElementsRef = useRef(new Map<number, HTMLDivElement>())
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const replaceInputRef = useRef<HTMLInputElement | null>(null)
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -123,7 +125,7 @@ export function useWorkspaceFileEditorState({
   const highlightedLineClassName = wordWrapEnabled ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : 'whitespace-pre'
   const textAreaClassName = [
     'workspace-editor-scrollbar workspace-editor-textarea absolute inset-0 h-full min-h-0 w-full resize-none border-0 bg-transparent px-3 py-1.5 font-mono text-[12px] leading-5 outline-none',
-    wordWrapEnabled ? 'overflow-y-auto overflow-x-hidden' : 'overflow-auto',
+    wordWrapEnabled ? 'overflow-y-auto overflow-x-hidden whitespace-pre-wrap [overflow-wrap:anywhere]' : 'overflow-auto whitespace-pre',
   ].join(' ')
   const lineNumberRows = useMemo(
     () =>
@@ -145,21 +147,19 @@ export function useWorkspaceFileEditorState({
       return
     }
 
+    const scrollLeft = wordWrapEnabled ? 0 : textAreaElement.scrollLeft
+    const scrollTop = textAreaElement.scrollTop
     scrollPositionRef.current = {
-      scrollLeft: textAreaElement.scrollLeft,
-      scrollTop: textAreaElement.scrollTop,
+      scrollLeft,
+      scrollTop,
     }
 
-    if (lineNumbersRef.current) {
-      lineNumbersRef.current.scrollTop = textAreaElement.scrollTop
+    const scrollTransform = getWorkspaceEditorScrollTransform(scrollLeft, scrollTop, wordWrapEnabled)
+    if (highlightedContentRef.current) {
+      highlightedContentRef.current.style.transform = scrollTransform
     }
-    if (highlightedLayerRef.current) {
-      highlightedLayerRef.current.scrollTop = textAreaElement.scrollTop
-      if (!wordWrapEnabled) {
-        highlightedLayerRef.current.scrollLeft = textAreaElement.scrollLeft
-      } else {
-        highlightedLayerRef.current.scrollLeft = 0
-      }
+    if (lineNumbersContentRef.current) {
+      lineNumbersContentRef.current.style.transform = `translateY(${-scrollTop}px)`
     }
 
     if (!shouldVirtualize) {
@@ -183,6 +183,44 @@ export function useWorkspaceFileEditorState({
     })
   }, [shouldVirtualize, totalLineCount, wordWrapEnabled])
 
+  const setHighlightedLineElement = useCallback((lineNumber: number, element: HTMLDivElement | null) => {
+    const sourceLineIndex = lineNumber - 1
+    if (element) {
+      highlightedLineElementsRef.current.set(sourceLineIndex, element)
+      return
+    }
+
+    highlightedLineElementsRef.current.delete(sourceLineIndex)
+  }, [])
+
+  const updateWrappedLineCountsFromRenderedLines = useCallback(() => {
+    if (!wordWrapEnabled) {
+      setWrappedLineCounts(highlightedLines.map(() => 1))
+      return
+    }
+
+    setWrappedLineCounts((currentCounts) => {
+      const nextCounts = highlightedLines.map((_, lineIndex) => {
+        const lineElement = highlightedLineElementsRef.current.get(lineIndex)
+        if (!lineElement) {
+          return currentCounts[lineIndex] ?? 1
+        }
+
+        const renderedHeight = lineElement.getBoundingClientRect().height
+        return Math.max(1, Math.round(renderedHeight / EDITOR_LINE_HEIGHT_PX))
+      })
+
+      if (
+        currentCounts.length === nextCounts.length &&
+        currentCounts.every((count, index) => count === nextCounts[index])
+      ) {
+        return currentCounts
+      }
+
+      return nextCounts
+    })
+  }, [highlightedLines, wordWrapEnabled])
+
   useLayoutEffect(() => {
     const textAreaElement = textAreaRef.current
     if (!textAreaElement) {
@@ -203,12 +241,15 @@ export function useWorkspaceFileEditorState({
       return
     }
 
-    const maxScrollTop = Math.max(0, textAreaElement.scrollHeight - textAreaElement.clientHeight)
-    const maxScrollLeft = Math.max(0, textAreaElement.scrollWidth - textAreaElement.clientWidth)
-    textAreaElement.scrollTop = Math.min(scrollPositionRef.current.scrollTop, maxScrollTop)
-    textAreaElement.scrollLeft = wordWrapEnabled ? 0 : Math.min(scrollPositionRef.current.scrollLeft, maxScrollLeft)
-    handleScroll()
-  }, [fileName, handleScroll, value, wordWrapEnabled])
+    const frameId = window.requestAnimationFrame(() => {
+      handleScroll()
+      updateWrappedLineCountsFromRenderedLines()
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [fileName, handleScroll, updateWrappedLineCountsFromRenderedLines, value])
 
   const closeSearchPanel = useCallback(() => {
     setIsSearchOpen(false)
@@ -487,11 +528,8 @@ export function useWorkspaceFileEditorState({
     if (textAreaElement) {
       textAreaElement.scrollLeft = 0
     }
-
-    if (highlightedLayerRef.current) {
-      highlightedLayerRef.current.scrollLeft = 0
-    }
-  }, [wordWrapEnabled])
+    handleScroll()
+  }, [handleScroll, wordWrapEnabled])
 
   useEffect(() => {
     if (!wordWrapEnabled) {
@@ -500,41 +538,22 @@ export function useWorkspaceFileEditorState({
     }
 
     const viewportElement = editorViewportRef.current
-    const textAreaElement = textAreaRef.current
-    if (!viewportElement || !textAreaElement) {
-      return
-    }
-
-    const canvas = document.createElement('canvas')
-    const context = canvas.getContext('2d')
-    if (!context) {
+    const highlightedContentElement = highlightedContentRef.current
+    if (!viewportElement || !highlightedContentElement) {
       return
     }
 
     let isDisposed = false
+    let frameId = 0
 
     const updateWrappedLineCounts = () => {
       if (isDisposed) {
         return
       }
-
-      const availableWidth = Math.max(0, viewportElement.clientWidth - 24)
-      const computedStyle = window.getComputedStyle(textAreaElement)
-      context.font = `${computedStyle.fontStyle} ${computedStyle.fontVariant} ${computedStyle.fontWeight} ${computedStyle.fontSize} ${computedStyle.fontFamily}`
-
-      const nextCounts = highlightedLines.map((line) =>
-        measureEditorLineWrapCount(context, normalizeEditorLineText(line.text), availableWidth),
-      )
-
-      setWrappedLineCounts((currentCounts) => {
-        if (
-          currentCounts.length === nextCounts.length &&
-          currentCounts.every((count, index) => count === nextCounts[index])
-        ) {
-          return currentCounts
-        }
-
-        return nextCounts
+      window.cancelAnimationFrame(frameId)
+      frameId = window.requestAnimationFrame(() => {
+        updateWrappedLineCountsFromRenderedLines()
+        handleScroll()
       })
     }
 
@@ -544,6 +563,10 @@ export function useWorkspaceFileEditorState({
       updateWrappedLineCounts()
     })
     resizeObserver.observe(viewportElement)
+    resizeObserver.observe(highlightedContentElement)
+    for (const lineElement of highlightedLineElementsRef.current.values()) {
+      resizeObserver.observe(lineElement)
+    }
 
     if (document.fonts?.ready) {
       void document.fonts.ready.then(() => {
@@ -553,9 +576,10 @@ export function useWorkspaceFileEditorState({
 
     return () => {
       isDisposed = true
+      window.cancelAnimationFrame(frameId)
       resizeObserver.disconnect()
     }
-  }, [highlightedLines, wordWrapEnabled])
+  }, [handleScroll, highlightedLines, updateWrappedLineCountsFromRenderedLines, wordWrapEnabled])
 
   return {
     actions: {
@@ -567,6 +591,7 @@ export function useWorkspaceFileEditorState({
       handleReplaceCurrentMatch,
       handleScroll,
       moveSearchMatch,
+      setHighlightedLineElement,
     },
     layout: {
       bottomSpacerHeight,
@@ -583,7 +608,9 @@ export function useWorkspaceFileEditorState({
     refs: {
       editorViewportRef,
       highlightedLayerRef,
+      highlightedContentRef,
       lineNumbersRef,
+      lineNumbersContentRef,
       replaceInputRef,
       searchInputRef,
       textAreaRef,

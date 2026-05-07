@@ -65,6 +65,7 @@ Important:
 - Do not use guessed paths; read or search first.
 - The latest read is the source of truth. Patch only exact text from that read, and re-read first if the file may have changed.
 - Every update hunk must make a real content change.
+- Successful text edits are written with LF line endings; do not rewrite files just to handle CRLF/LF.
 - grep results are only location hints.`
 
 function createToolErrorResult(summary: string): AgentToolExecutionResult {
@@ -88,7 +89,7 @@ export function createApplyPatchTool(context: WorkspaceToolContext, providerId: 
   if (providerId === 'codex') {
     return openai.tools.customTool({
       name: 'apply_patch',
-      description: 'Use the apply_patch tool to edit files. This is a freeform tool, so provide only the patch text, not JSON. The latest read is the source of truth; patch only exact current text.',
+      description: 'Use the apply_patch tool to edit files. This is a freeform tool, so provide only the patch text, not JSON. The latest read is the source of truth; patch only exact current text. Successful text edits are written with LF line endings.',
       format: {
         definition: APPLY_PATCH_LARK_GRAMMAR,
         syntax: 'lark',

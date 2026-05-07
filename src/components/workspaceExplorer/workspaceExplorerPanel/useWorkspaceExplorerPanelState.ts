@@ -16,6 +16,7 @@ import {
   getAncestorDirectoryPaths,
   joinRelativePath,
   normalizeEntryPath,
+  shouldSyncActiveFileAncestors,
   toDirectoryKey,
 } from './workspaceExplorerPanelUtils'
 import { getExternalClipboardFilePaths, getExternalFilePaths } from './workspaceExplorerDragUtils'
@@ -60,6 +61,10 @@ export function useWorkspaceExplorerPanelState({
   const [selectedEntryPaths, setSelectedEntryPaths] = useState<Set<string>>(() => new Set())
   const [selectionDirectoryPath, setSelectionDirectoryPath] = useState<string>(ROOT_DIRECTORY_KEY)
   const [isDraggingExplorerEntry, setIsDraggingExplorerEntry] = useState(false)
+  const lastSyncedActiveFileRef = useRef<{ workspacePath: string | null; filePath: string | null }>({
+    workspacePath: null,
+    filePath: null,
+  })
   const draggedEntryRef = useRef<WorkspaceExplorerEntry | null>(null)
   const selectionAnchorEntryPathRef = useRef<string | null>(null)
   const isActiveSyncReloadingRef = useRef(false)
@@ -241,6 +246,10 @@ export function useWorkspaceExplorerPanelState({
     setSelectedEntryPaths(new Set())
     setSelectionDirectoryPath(ROOT_DIRECTORY_KEY)
     closeContextMenu()
+    lastSyncedActiveFileRef.current = {
+      workspacePath: null,
+      filePath: null,
+    }
   }, [closeContextMenu, resetCreation, resetDeleteDialog, workspaceRootPath])
 
   useEffect(() => {
@@ -299,8 +308,34 @@ export function useWorkspaceExplorerPanelState({
   }, [isOpen, workspaceRootPath])
 
   useEffect(() => {
-    if (!isOpen || !workspaceRootPath || !activeFilePath) {
+    if (!isOpen) {
       return
+    }
+
+    if (!workspaceRootPath || !activeFilePath) {
+      if (!activeFilePath) {
+        lastSyncedActiveFileRef.current = {
+          workspacePath: null,
+          filePath: null,
+        }
+      }
+      return
+    }
+
+    if (
+      !shouldSyncActiveFileAncestors({
+        activeFilePath,
+        activeWorkspacePath: workspaceRootPath,
+        lastSyncedFilePath: lastSyncedActiveFileRef.current.filePath,
+        lastSyncedWorkspacePath: lastSyncedActiveFileRef.current.workspacePath,
+      })
+    ) {
+      return
+    }
+
+    lastSyncedActiveFileRef.current = {
+      workspacePath: workspaceRootPath,
+      filePath: activeFilePath,
     }
 
     const ancestorDirectoryPaths = getAncestorDirectoryPaths(activeFilePath)
@@ -326,7 +361,7 @@ export function useWorkspaceExplorerPanelState({
     if (missingDirectoryPaths.length > 0) {
       void Promise.all(missingDirectoryPaths.map((directoryPath) => loadDirectory(directoryPath)))
     }
-  }, [activeFilePath, directoryEntriesByPath, isOpen, loadDirectory, workspaceRootPath])
+  }, [activeFilePath, isOpen, loadDirectory, workspaceRootPath])
 
   useEffect(() => {
     if (!isOpen || !activeFilePath) {

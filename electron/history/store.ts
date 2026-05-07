@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import { randomUUID } from 'node:crypto'
+import path from 'node:path'
 import type {
   AppendConversationMessagesInput,
   ChatMode,
@@ -204,6 +205,11 @@ export async function createStoredFolder(input: CreateConversationFolderInput) {
     throw new Error('Folder path is required.')
   }
 
+  const folderStats = await fs.stat(folderPath)
+  if (!folderStats.isDirectory()) {
+    throw new Error(`Folder path is not a directory: ${folderPath}`)
+  }
+
   if (name.length > 48) {
     throw new Error('Folder name must be 48 characters or less.')
   }
@@ -227,6 +233,18 @@ export async function createStoredFolder(input: CreateConversationFolderInput) {
 
   await writeFolderStore([...folders, nextFolder])
   return nextFolder
+}
+
+export async function createStoredFolderFromPath(folderPath: string) {
+  const normalizedFolderPath = folderPath.trim()
+  if (normalizedFolderPath.length === 0) {
+    throw new Error('Folder path is required.')
+  }
+
+  return createStoredFolder({
+    name: path.basename(normalizedFolderPath),
+    path: normalizedFolderPath,
+  })
 }
 
 export async function renameStoredFolder(input: RenameConversationFolderInput) {

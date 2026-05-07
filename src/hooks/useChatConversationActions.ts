@@ -107,6 +107,24 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
     }
   }, [addFolder, clearError, resetDraft, setError])
 
+  const createWorkspaceFolderFromPath = useCallback(
+    async (folderPath: string) => {
+      clearError()
+
+      try {
+        const folder = await window.echosphereHistory.createFolderFromPath(folderPath)
+        addFolder(folder)
+        resetDraft(folder.id)
+        return folder.id
+      } catch (caughtError) {
+        console.error(caughtError)
+        setError('Unable to create that folder.')
+        throw caughtError
+      }
+    },
+    [addFolder, clearError, resetDraft, setError],
+  )
+
   const selectFolder = useCallback(
     (folderId: string | null) => {
       clearError()
@@ -232,6 +250,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
   return {
     createConversation,
     createFolder,
+    createWorkspaceFolderFromPath,
     deleteConversation,
     renameConversationTitle: async (conversationId: string, title: string) => {
       clearError()

@@ -58,11 +58,6 @@ interface StagedFileState {
   target: ApplyPatchTargetPath
 }
 
-interface PatchableLine {
-  eol: string
-  text: string
-}
-
 function normalizePatchInput(patchText: string) {
   const normalized = patchText.replace(/\r\n?/g, '\n').trim()
   const heredocPatterns = [
@@ -339,115 +334,28 @@ function seekSequence(
 }
 
 function splitPatchableContent(content: string) {
-  const records: PatchableLine[] = []
-  const lineEndingCounts = new Map<string, number>()
-  const lineEndingPattern = /\r\n|\n|\r/gu
-  let lineStartIndex = 0
-
-  for (const match of content.matchAll(lineEndingPattern)) {
-    const eol = match[0] ?? '\n'
-    records.push({
-      eol,
-      text: content.slice(lineStartIndex, match.index),
-    })
-    lineEndingCounts.set(eol, (lineEndingCounts.get(eol) ?? 0) + 1)
-    lineStartIndex = match.index + eol.length
-  }
-
-  if (lineStartIndex < content.length) {
-    records.push({
-      eol: '',
-      text: content.slice(lineStartIndex),
-    })
-  }
-
-  let lineEnding = '\n'
-  let lineEndingCount = 0
-  for (const [candidate, count] of lineEndingCounts) {
-    if (count > lineEndingCount) {
-      lineEnding = candidate
-      lineEndingCount = count
-    }
-  }
+  const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const hasTrailingLineEnding = normalizedContent.endsWith('\n')
+  const lines = hasTrailingLineEnding
+    ? normalizedContent.slice(0, -1).split('\n')
+    : normalizedContent.length === 0
+      ? []
+      : normalizedContent.split('\n')
 
   return {
-    hasTrailingLineEnding: records.length > 0 && records[records.length - 1]?.eol !== '',
-    lineEnding,
-    lines: records.map((record) => record.text),
-    records,
+    hasTrailingLineEnding,
+    lines,
   }
 }
 
-function getReplacementLineEnding(
-  records: readonly PatchableLine[],
-  startIndex: number,
-  deleteCount: number,
-  fallbackLineEnding: string,
-) {
-  const deletedLineEnding = records.slice(startIndex, startIndex + deleteCount).find((record) => record.eol !== '')?.eol
-  if (deletedLineEnding) {
-    return deletedLineEnding
-  }
-
-  const previousLineEnding = records[startIndex - 1]?.eol
-  if (previousLineEnding) {
-    return previousLineEnding
-  }
-
-  return records[startIndex]?.eol || fallbackLineEnding
-}
-
-function buildReplacementRecords(
-  records: readonly PatchableLine[],
-  startIndex: number,
-  deleteCount: number,
-  newLines: readonly string[],
-  fallbackLineEnding: string,
-) {
-  const oldRecords = records.slice(startIndex, startIndex + deleteCount)
-  const replacementLineEnding = getReplacementLineEnding(records, startIndex, deleteCount, fallbackLineEnding)
-  let oldRecordSearchIndex = 0
-
-  return newLines.map((line) => {
-    let matchingOldRecord: PatchableLine | undefined
-    for (let index = oldRecordSearchIndex; index < oldRecords.length; index += 1) {
-      if (oldRecords[index]?.text === line) {
-        matchingOldRecord = oldRecords[index]
-        oldRecordSearchIndex = index + 1
-        break
-      }
-    }
-
-    return {
-      eol: matchingOldRecord?.eol || replacementLineEnding,
-      text: line,
-    }
-  })
-}
-
-function serializePatchableRecords(records: readonly PatchableLine[], fallbackLineEnding: string, shouldEndWithLineEnding: boolean) {
-  if (records.length === 0) {
-    return ''
-  }
-
-  return records
-    .map((record, index) => {
-      const isLastRecord = index === records.length - 1
-      if (isLastRecord && shouldEndWithLineEnding && record.eol === '') {
-        return `${record.text}${fallbackLineEnding}`
-      }
-
-      return `${record.text}${record.eol}`
-    })
-    .join('')
+function normalizeContentLineEndings(content: string) {
+  return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 }
 
 function applyUpdateChunks(filePath: string, originalContent: string, chunks: readonly ApplyPatchUpdateChunk[]) {
   const {
     hasTrailingLineEnding,
-    lineEnding,
     lines: originalLines,
-    records: originalRecords,
   } = splitPatchableContent(originalContent)
   const replacements: Array<{ deleteCount: number; newLines: string[]; startIndex: number }> = []
   let searchStartIndex = 0
@@ -486,23 +394,13 @@ function applyUpdateChunks(filePath: string, originalContent: string, chunks: re
     searchStartIndex = foundIndex + chunk.oldLines.length
   }
 
-  const nextRecords = [...originalRecords]
+  const nextLines = [...originalLines]
   for (let index = replacements.length - 1; index >= 0; index -= 1) {
     const replacement = replacements[index]
-    nextRecords.splice(
-      replacement.startIndex,
-      replacement.deleteCount,
-      ...buildReplacementRecords(
-        nextRecords,
-        replacement.startIndex,
-        replacement.deleteCount,
-        replacement.newLines,
-        lineEnding,
-      ),
-    )
+    nextLines.splice(replacement.startIndex, replacement.deleteCount, ...replacement.newLines)
   }
 
-  return serializePatchableRecords(nextRecords, lineEnding, hasTrailingLineEnding || nextRecords.length > 0)
+  return nextLines.join('\n') + (hasTrailingLineEnding || nextLines.length > 0 ? '\n' : '')
 }
 
 function resolvePatchTargetPath(
@@ -591,7 +489,7 @@ export async function applyPatchInWorkspace(
     const nextContent = applyUpdateChunks(sourceTarget.relativePath, existingContent, hunk.chunks)
     const writeTarget = nextTarget ?? sourceTarget
 
-    if (!nextTarget && nextContent === existingContent) {
+    if (!nextTarget && nextContent === normalizeContentLineEndings(existingContent)) {
       throw new Error(`Patch did not change ${sourceTarget.relativePath}`)
     }
 

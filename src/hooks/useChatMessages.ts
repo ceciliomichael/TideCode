@@ -571,6 +571,29 @@ export function useChatMessages(input: UseChatMessagesInput) {
     [captureActiveEditDraftSession, conversationActions, deleteAbandonedActiveConversation, persistConversationLaunchPreference],
   )
 
+  const createWorkspaceFolderFromPath = useCallback(
+    async (folderPath: string) => {
+      captureActiveEditDraftSession()
+      await deleteAbandonedActiveConversation()
+      const createdFolderId = await conversationActions.createWorkspaceFolderFromPath(folderPath)
+      if (createdFolderId === undefined) {
+        return
+      }
+
+      persistConversationLaunchPreference({
+        conversationId: null,
+        draftFolderId: createdFolderId,
+        openEmptyConversationOnLaunch: true,
+      })
+    },
+    [
+      captureActiveEditDraftSession,
+      conversationActions,
+      deleteAbandonedActiveConversation,
+      persistConversationLaunchPreference,
+    ],
+  )
+
   const selectFolder = useCallback(
     async (folderId: string | null) => {
       captureActiveEditDraftSession()
@@ -593,6 +616,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     conversationGroups: sessionState.conversationGroups,
     createConversation,
     createFolder,
+    createWorkspaceFolderFromPath,
     reorderFolder: conversationActions.reorderFolder,
     deleteFolder: conversationActions.deleteFolder,
     deleteConversation: conversationActions.deleteConversation,

@@ -47,6 +47,30 @@ export function getAncestorDirectoryPaths(relativePath: string) {
   return ancestorPaths
 }
 
+interface ActiveFileAncestorSyncState {
+  activeFilePath: string | null
+  activeWorkspacePath: string | null
+  lastSyncedFilePath: string | null
+  lastSyncedWorkspacePath: string | null
+}
+
+export function shouldSyncActiveFileAncestors({
+  activeFilePath,
+  activeWorkspacePath,
+  lastSyncedFilePath,
+  lastSyncedWorkspacePath,
+}: ActiveFileAncestorSyncState) {
+  const nextWorkspacePath = activeWorkspacePath?.trim() ?? ''
+  const nextFilePath = activeFilePath?.trim() ?? ''
+  if (nextWorkspacePath.length === 0 || nextFilePath.length === 0) {
+    return false
+  }
+
+  const previousWorkspacePath = lastSyncedWorkspacePath?.trim() ?? ''
+  const previousFilePath = lastSyncedFilePath?.trim() ?? ''
+  return nextWorkspacePath !== previousWorkspacePath || nextFilePath !== previousFilePath
+}
+
 export function getWorkspaceExplorerContextMenuStyle(
   contextMenuState: WorkspaceExplorerContextMenuState | null,
   viewportSize: {

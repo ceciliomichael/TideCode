@@ -1,4 +1,6 @@
 import { FolderPlus, Settings } from 'lucide-react'
+import { useCallback, type DragEvent } from 'react'
+import { getExternalFilePaths } from '../../lib/externalFileDrop'
 import { Tooltip } from '../Tooltip'
 import type { ConversationGroupPreview, ReorderConversationFolderInput } from '../../types/chat'
 import { ConversationHistoryList } from './ConversationHistoryList'
@@ -7,6 +9,7 @@ interface SidebarPanelProps {
   conversationGroups: ConversationGroupPreview[]
   onCreateConversation: (folderId?: string | null) => void
   onCreateFolder: () => Promise<void>
+  onCreateWorkspaceFolderFromPath: (folderPath: string) => Promise<void>
   onDeleteConversation: (conversationId: string) => void
   onDeleteFolder: (folderId: string) => Promise<void>
   onReorderFolder: (input: ReorderConversationFolderInput) => Promise<void>
@@ -20,6 +23,7 @@ export function SidebarPanel({
   conversationGroups,
   onCreateFolder,
   onCreateConversation,
+  onCreateWorkspaceFolderFromPath,
   onDeleteConversation,
   onDeleteFolder,
   onReorderFolder,
@@ -33,8 +37,42 @@ export function SidebarPanel({
   const footerButtonClassName =
     'flex min-h-11 w-full items-center gap-3 rounded-xl px-2 py-3 text-left text-sm font-medium text-foreground transition-colors duration-200 ease-out hover:bg-[var(--sidebar-hover-surface)]'
 
+  const handleWorkspaceFolderDragOver = useCallback((event: DragEvent<HTMLElement>) => {
+    const hasExternalFiles = Array.from(event.dataTransfer.types).includes('Files')
+    if (!hasExternalFiles) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = 'copy'
+  }, [])
+
+  const handleWorkspaceFolderDrop = useCallback(
+    async (event: DragEvent<HTMLElement>) => {
+      const folderPaths = getExternalFilePaths(event)
+      if (folderPaths.length === 0) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+
+      await onCreateWorkspaceFolderFromPath(folderPaths[0])
+    },
+    [onCreateWorkspaceFolderFromPath],
+  )
+
   return (
-    <aside className="flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] pb-5 pl-4 pr-0 pt-3 md:pl-5 md:pr-0">
+    <aside
+      className="flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] pb-5 pl-4 pr-0 pt-3 md:pl-5 md:pr-0"
+      onDragOver={handleWorkspaceFolderDragOver}
+      onDrop={(event) => {
+        void handleWorkspaceFolderDrop(event).catch((error) => {
+          console.error(error)
+        })
+      }}
+    >
       <div className="pb-4 pr-6 md:pr-7">
         <div className="h-10" aria-hidden="true" />
 

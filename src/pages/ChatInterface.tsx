@@ -179,6 +179,7 @@ export function ChatInterface({
       onDiffPanelSelectedScopeChange={onDiffPanelSelectedScopeChange}
       onOpenSettings={onOpenSettings}
       onSidebarWidthChange={onSidebarWidthChange}
+      onCreateWorkspaceFolderFromPath={chatMessages.createWorkspaceFolderFromPath}
       resolvedTheme={resolvedTheme}
       sendMessageOnEnter={sendMessageOnEnter}
       settings={settings}

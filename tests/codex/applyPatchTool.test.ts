@@ -283,7 +283,33 @@ test('applyPatchInWorkspace rejects update patches that do not change file conte
   }
 })
 
-test('applyPatchInWorkspace matches CRLF files using LF patch text and preserves CRLF', async () => {
+test('applyPatchInWorkspace rejects line-ending-only update patches', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-eol-noop-'))
+  const targetFilePath = path.join(workspaceRootPath, 'src', 'same-crlf.ts')
+  await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
+  await fs.writeFile(targetFilePath, 'alpha\r\nbeta\r\n', 'utf8')
+
+  try {
+    await assert.rejects(
+      applyPatchInWorkspace(
+        workspaceRootPath,
+        `*** Begin Patch
+*** Update File: src/same-crlf.ts
+@@
+ alpha
+ beta
+*** End Patch`,
+      ),
+      /Patch did not change src[/\\]same-crlf\.ts/u,
+    )
+
+    assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'alpha\r\nbeta\r\n')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('applyPatchInWorkspace matches CRLF files using LF patch text and writes LF', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-crlf-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'RouteTable.tsx')
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
@@ -323,14 +349,14 @@ test('applyPatchInWorkspace matches CRLF files using LF patch text and preserves
         '  ROUTE_OWNER_FILTER_ALL,',
         '} from "./routeTablePreferences";',
         '',
-      ].join('\r\n'),
+      ].join('\n'),
     )
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('applyPatchInWorkspace preserves mixed line endings around an insertion', async () => {
+test('applyPatchInWorkspace normalizes mixed line endings around an insertion to LF', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-mixed-eol-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'mixed.txt')
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
@@ -349,7 +375,7 @@ test('applyPatchInWorkspace preserves mixed line endings around an insertion', a
     )
 
     assert.equal(result.changes.length, 1)
-    assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'alpha\r\nbeta\ninserted\ngamma\r\ndelta\n')
+    assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'alpha\nbeta\ninserted\ngamma\ndelta\n')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -563,6 +589,7 @@ test('createAgentTools exposes Codex apply_patch as a grammar-backed freeform to
     assert.equal(applyPatchTool.args?.format?.syntax, 'lark')
     assert.match(applyPatchTool.args?.format?.definition ?? '', /start: begin_patch hunk\+ end_patch/u)
     assert.match(applyPatchTool.args?.description ?? '', /latest read is the source of truth/u)
+    assert.match(applyPatchTool.args?.description ?? '', /LF line endings/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -769,12 +796,14 @@ test('createAgentTools describes read and apply_patch with exact path guidance',
     assert.match(applyPatchTool.description ?? '', /Do not use guessed paths/u)
     assert.match(applyPatchTool.description ?? '', /Patch only exact text from that read/u)
     assert.match(applyPatchTool.description ?? '', /The latest read is the source of truth/u)
+    assert.match(applyPatchTool.description ?? '', /LF line endings/u)
     assert.match(applyPatchTool.description ?? '', /Order update hunks from top to bottom/u)
     assert.match(applyPatchTool.description ?? '', /grep results are only location hints/u)
     assert.match(globTool.description ?? '', /Read the matched files with `read` before editing/u)
     assert.match(grepTool.description ?? '', /After reading the target file, use `apply_patch`/u)
     assert.match(writeTool.description ?? '', /For small edits to an existing file, use `apply_patch` instead/u)
     assert.match(writeTool.description ?? '', /Do not call write when the target already has identical content/u)
+    assert.match(writeTool.description ?? '', /LF line endings/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

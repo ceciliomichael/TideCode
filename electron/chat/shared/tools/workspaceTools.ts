@@ -100,6 +100,10 @@ function createErrorResult(summary: string, input?: Pick<AgentToolExecutionResul
   }
 }
 
+function normalizeTextMutationContent(content: string) {
+  return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+}
+
 function hasBinaryContent(buffer: Buffer) {
   const probeLength = Math.min(buffer.length, 1024)
 
@@ -713,7 +717,7 @@ async function createWholeFileWriteToolResult(
   },
 ) {
   const resolvedChanges = input.changes.map((change) => ({
-    content: change.content,
+    content: normalizeTextMutationContent(change.content),
     target: resolveReadableTargetPath(
       context.workspaceRootPath,
       change.absolute_path,
@@ -733,7 +737,7 @@ async function createWholeFileWriteToolResult(
 
   for (const change of resolvedChanges) {
     const previousContent = originalContentByPath.get(change.target.absolutePath) ?? null
-    if (previousContent === change.content) {
+    if (previousContent !== null && normalizeTextMutationContent(previousContent) === change.content) {
       throw new Error(`Write did not change ${change.target.displayPath}`)
     }
 
@@ -806,8 +810,8 @@ export function createWholeFileWriteTool(context: WorkspaceToolContext) {
   return tool({
     description:
       context.terminalExecutionMode === 'full'
-        ? 'Create a new file or replace a whole file. Use this when you want to write the full final content. For small edits to an existing file, use `apply_patch` instead. Do not guess `absolute_path`. Do not call write when the target already has identical content. In Full Access, `absolute_path` may be an exact external path if the user provided it. Example: `write({ changes: [{ absolute_path: "/repo/src/new.ts", content: "..." }] })`.'
-        : 'Create a new file or replace a whole file. Use this when you want to write the full final content. For small edits to an existing file, use `apply_patch` instead. Do not guess `absolute_path`. Do not call write when the target already has identical content. In Sandbox mode, `absolute_path` must be an exact workspace path. Example: `write({ changes: [{ absolute_path: "/repo/src/new.ts", content: "..." }] })`.',
+        ? 'Create a new file or replace a whole file. Use this when you want to write the full final content. For small edits to an existing file, use `apply_patch` instead. Do not guess `absolute_path`. Do not call write when the target already has identical content. Text content is written with LF line endings. In Full Access, `absolute_path` may be an exact external path if the user provided it. Example: `write({ changes: [{ absolute_path: "/repo/src/new.ts", content: "..." }] })`.'
+        : 'Create a new file or replace a whole file. Use this when you want to write the full final content. For small edits to an existing file, use `apply_patch` instead. Do not guess `absolute_path`. Do not call write when the target already has identical content. Text content is written with LF line endings. In Sandbox mode, `absolute_path` must be an exact workspace path. Example: `write({ changes: [{ absolute_path: "/repo/src/new.ts", content: "..." }] })`.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {

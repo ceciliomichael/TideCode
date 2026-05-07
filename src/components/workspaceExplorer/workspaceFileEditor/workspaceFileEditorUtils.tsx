@@ -5,6 +5,7 @@ export const EDITOR_LINE_HEIGHT_PX = 20
 export const EDITOR_LINE_OVERSCAN_COUNT = 40
 export const EDITOR_VIRTUALIZATION_THRESHOLD = 800
 export const EDITOR_BOTTOM_BUFFER_PX = EDITOR_LINE_HEIGHT_PX
+export const EDITOR_HORIZONTAL_PADDING_PX = 24
 export const SEARCH_HIGHLIGHT_BACKGROUND = 'var(--workspace-editor-search-highlight-background)'
 export const ACTIVE_SEARCH_HIGHLIGHT_BACKGROUND = 'var(--workspace-editor-search-highlight-active-background)'
 
@@ -57,12 +58,26 @@ export function measureEditorLineWrapCount(
   return Math.max(1, Math.ceil(context.measureText(text).width / availableWidthPx))
 }
 
+export function getWorkspaceEditorAvailableWidth(clientWidthPx: number) {
+  return Math.max(0, clientWidthPx - EDITOR_HORIZONTAL_PADDING_PX)
+}
+
+export function getWorkspaceEditorScrollTransform(
+  scrollLeftPx: number,
+  scrollTopPx: number,
+  wordWrapEnabled: boolean,
+) {
+  return wordWrapEnabled
+    ? `translateY(${-scrollTopPx}px)`
+    : `translate(${-scrollLeftPx}px, ${-scrollTopPx}px)`
+}
+
 function getTokenClassName(fontStyle: number | undefined) {
   if (!fontStyle) {
     return ''
   }
 
-  return [fontStyle & 1 ? 'italic' : '', fontStyle & 2 ? 'font-semibold' : '', fontStyle & 4 ? 'underline' : '']
+  return [fontStyle & 4 ? 'underline' : '']
     .filter((value) => value.length > 0)
     .join(' ')
 }

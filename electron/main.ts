@@ -69,6 +69,7 @@ import type { McpAddServerInput } from '../src/types/mcp'
 import {
   appendStoredMessages,
   createStoredFolder,
+  createStoredFolderFromPath,
   createStoredConversation,
   deleteStoredFolder,
   deleteStoredConversation,
@@ -378,12 +379,11 @@ function registerHistoryHandlers() {
       return null
     }
 
-    const selectedPath = result.filePaths[0]
-    return createStoredFolder({
-      name: path.basename(selectedPath),
-      path: selectedPath,
-    })
+    return createStoredFolderFromPath(result.filePaths[0])
   })
+  ipcMain.handle('history:createFolderFromPath', async (_event, folderPath: string) =>
+    createStoredFolderFromPath(folderPath),
+  )
   ipcMain.handle('history:openFolderPath', async (_event, folderPath: string) => {
     await shell.openPath(folderPath)
   })

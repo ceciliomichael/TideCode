@@ -413,6 +413,64 @@ test('createAgentTools write rejects identical file content', async () => {
   }
 })
 
+test('createAgentTools write normalizes CRLF content to LF', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const targetFilePath = path.join(workspaceRootPath, 'src', 'line-endings.ts')
+
+  try {
+    const tools = await createAgentTools(
+      {
+        workspaceRootPath,
+      },
+      { chatMode: 'agent' },
+    )
+
+    const result = await (tools.write as unknown as ExecutableWriteTool).execute({
+      changes: [
+        {
+          absolute_path: targetFilePath,
+          content: 'export const first = 1\r\nexport const second = 2\r\n',
+        },
+      ],
+    })
+
+    assert.equal(result.status, 'success')
+    assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'export const first = 1\nexport const second = 2\n')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('createAgentTools write rejects line-ending-only rewrites', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const targetFilePath = path.join(workspaceRootPath, 'src', 'line-ending-only.ts')
+  await fs.writeFile(targetFilePath, 'export const value = 1\r\n', 'utf8')
+
+  try {
+    const tools = await createAgentTools(
+      {
+        workspaceRootPath,
+      },
+      { chatMode: 'agent' },
+    )
+
+    const result = await (tools.write as unknown as ExecutableWriteTool).execute({
+      changes: [
+        {
+          absolute_path: targetFilePath,
+          content: 'export const value = 1\n',
+        },
+      ],
+    })
+
+    assert.equal(result.status, 'error')
+    assert.match(result.summary ?? '', /Write did not change src[/\\]line-ending-only\.ts/u)
+    assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'export const value = 1\r\n')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('createApplyPatchToolResult diffs against the original file snapshot for repeated file edits', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-tools-'))
 

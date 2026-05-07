@@ -209,7 +209,7 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
             className="m-0 py-1.5 text-[12px] leading-5 text-subtle-foreground"
             style={{ paddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px` }}
           >
-            <code className="block">
+            <code ref={refs.lineNumbersContentRef} className="block">
               {layout.topSpacerHeight > 0 ? <div aria-hidden="true" style={{ height: `${layout.topSpacerHeight}px` }} /> : null}
               {layout.lineNumberRows.map((row) => (
                 <div
@@ -228,16 +228,19 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
           {search.isSearchOpen ? <SearchPanel editorState={editorState} /> : null}
           <div
             ref={refs.highlightedLayerRef}
-            className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-1.5 font-mono text-[12px] leading-5 text-foreground"
+            className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-1.5 font-mono text-[12px] leading-5 text-foreground opacity-0"
             style={{ paddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px` }}
             aria-hidden="true"
           >
             <pre className="m-0 min-w-full bg-transparent">
-              <code className={layout.highlightedCodeClassName}>
+              <code ref={refs.highlightedContentRef} className={layout.highlightedCodeClassName}>
                 {layout.topSpacerHeight > 0 ? <div aria-hidden="true" style={{ height: `${layout.topSpacerHeight}px` }} /> : null}
                 {layout.visibleHighlightedLines.map((line, index) => (
                   <div
                     key={`editor-highlighted-${layout.visibleLineNumbers[index] ?? index}-${line.text.slice(0, 16)}`}
+                    ref={(element) => {
+                      actions.setHighlightedLineElement(layout.visibleLineNumbers[index] ?? index + 1, element)
+                    }}
                     className={layout.highlightedLineClassName}
                   >
                     {renderHighlightedTokens(line.tokens, layout.visibleSearchMatches[index] ?? [])}
@@ -258,7 +261,7 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
             aria-label={`Editing ${fileName}`}
             style={{
               caretColor: 'var(--color-foreground)',
-              color: 'transparent',
+              color: 'var(--color-foreground)',
               paddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px`,
               scrollPaddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px`,
             }}

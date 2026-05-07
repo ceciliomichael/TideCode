@@ -223,7 +223,7 @@ export function insertFolderSummary(
   folderSummaries: ConversationFolderSummary[],
   nextFolder: ConversationFolderSummary,
 ) {
-  return [...folderSummaries, nextFolder]
+  return [nextFolder, ...folderSummaries]
 }
 
 export function moveFolderSummary(
