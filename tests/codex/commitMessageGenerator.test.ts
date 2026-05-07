@@ -94,6 +94,21 @@ test('buildCommitMessagePrompt explicitly bans generic filler and requires bulle
   assert.equal(prompt.promptText.includes('Do not use generic filler like "update implementation details"'), true)
 })
 
+test('buildCommitMessagePrompt compresses long numstat output into a short prompt summary', () => {
+  const prompt = buildCommitMessagePrompt({
+    diffText: [
+      'diff --git a/electron/git/commitMessageGenerator.ts b/electron/git/commitMessageGenerator.ts',
+      '@@ -1,3 +1,4 @@',
+      '-const oldValue = 1',
+      '+const newValue = 2',
+    ].join('\n'),
+    numstatText: Array.from({ length: 20 }, (_, index) => `${index + 1}\t0\tsrc/file-${index + 1}.ts`).join('\n'),
+  })
+
+  assert.equal(prompt.promptText.includes('Staged numstat (top changes only):'), true)
+  assert.equal(prompt.promptText.includes('more files omitted'), true)
+})
+
 test('buildHeuristicCommitMessageFromDiff derives a specific fallback from diff context', () => {
   const commitMessage = buildHeuristicCommitMessageFromDiff({
     diffText: [

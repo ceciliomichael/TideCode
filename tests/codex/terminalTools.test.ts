@@ -129,8 +129,8 @@ test('run_terminal queues a command, waits for completion, and returns cleaned o
         workspaceRootPath,
       },
     ])
-    assert.match(result.body ?? '', /Started session 1/u)
-    assert.match(result.body ?? '', /Command queued: npm test/u)
+    assert.doesNotMatch(result.body ?? '', /Started session 1/u)
+    assert.doesNotMatch(result.body ?? '', /Command queued: npm test/u)
     assert.match(result.body ?? '', /line 1/u)
     assert.match(result.body ?? '', /line 2/u)
     assert.ok(!(result.body ?? '').includes('\u001B'))
@@ -228,7 +228,8 @@ test('run_terminal starts at session 1 in a different conversation thread withou
       session_key: 'build',
     })
 
-    assert.match(result.body ?? '', /Started session 1/u)
+    assert.doesNotMatch(result.body ?? '', /Started session 1/u)
+    assert.match(result.body ?? '', /No terminal output yet\./u)
     assert.equal(result.semantics?.command, null)
     assert.equal(getSessionOutputCalled, false)
   } finally {
@@ -362,8 +363,10 @@ test('run_terminal increments local session ids sequentially', async () => {
     session_key: 'second',
   })
 
-  assert.match(firstRunResult.body ?? '', /Started session 1/u)
-  assert.match(secondRunResult.body ?? '', /Started session 2/u)
+  assert.doesNotMatch(firstRunResult.body ?? '', /Started session 1/u)
+  assert.doesNotMatch(secondRunResult.body ?? '', /Started session 2/u)
+  assert.match(firstRunResult.body ?? '', /No terminal output yet\./u)
+  assert.match(secondRunResult.body ?? '', /No terminal output yet\./u)
 })
 
 test('run_terminal aborts promptly while waiting for command output', async () => {

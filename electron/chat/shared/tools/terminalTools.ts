@@ -214,10 +214,6 @@ function getSessionIdLabel(sessionId: number) {
   return `session ${sessionId}`
 }
 
-function formatTerminalOutputBody(bodyLines: string[]) {
-  return bodyLines.join('\n')
-}
-
 function normalizeCommand(command: string | undefined) {
   if (typeof command !== 'string') {
     return null
@@ -309,6 +305,24 @@ function removeCompletionMarkerLines(output: string, marker: string) {
     .trimEnd()
 }
 
+function getRunTerminalBody(
+  outputBody: string,
+  input: {
+    command: string | null
+    snapshot?: TerminalSessionSnapshot
+  },
+) {
+  if (outputBody.trim().length > 0) {
+    return outputBody
+  }
+
+  if (input.command && input.snapshot?.hasExited) {
+    return 'Terminal process exited with no output.'
+  }
+
+  return 'No terminal output yet.'
+}
+
 async function waitForCommandOutput(input: {
   abortSignal: AbortSignal | undefined
   dependencies: TerminalToolDependencies
@@ -374,29 +388,22 @@ function buildRunTerminalResult(input: {
   snapshot?: TerminalSessionSnapshot
   timedOut?: boolean
 }) {
-  const bodyLines = [`Started ${getSessionIdLabel(input.localSessionId)}`]
   const outputSource = input.snapshot?.outputBuffer ?? input.initialSession.bufferedOutput
   const sanitizedOutput = sanitizeTerminalOutput(outputSource)
   const outputWithoutMarker = input.outputMarker
     ? removeCompletionMarkerLines(sanitizedOutput, input.outputMarker)
     : sanitizedOutput
   const truncatedOutput = truncateTerminalOutput(outputWithoutMarker, input.command)
-
-  if (input.command) {
-    bodyLines.push(`Command queued: ${input.command.trimEnd()}`)
-  }
-
-  if (truncatedOutput.body.trim().length > 0) {
-    bodyLines.push('', truncatedOutput.body)
-  } else if (input.command) {
-    bodyLines.push('', input.snapshot?.hasExited ? 'Terminal process exited with no output.' : 'No terminal output yet.')
-  }
+  const body = getRunTerminalBody(truncatedOutput.body, {
+    command: input.command,
+    snapshot: input.snapshot,
+  })
 
   const hasExited = input.snapshot?.hasExited ?? false
   const commandCompleted = input.completedByMarker === true || hasExited
 
   return createSuccessResult({
-    body: formatTerminalOutputBody(bodyLines),
+    body,
     semantics: {
       command: input.command,
       command_completed: input.command ? commandCompleted : null,
@@ -414,7 +421,7 @@ function buildRunTerminalResult(input: {
     },
     summary: input.command
       ? `Ran terminal ${getSessionIdLabel(input.localSessionId)}`
-      : `Started terminal ${getSessionIdLabel(input.localSessionId)}`,
+      : `Opened terminal ${getSessionIdLabel(input.localSessionId)}`,
     truncated: truncatedOutput.truncated,
   })
 }

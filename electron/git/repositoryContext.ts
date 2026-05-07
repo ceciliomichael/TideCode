@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { promisify } from 'node:util'
@@ -14,6 +14,15 @@ const GH_EXECUTION_OPTIONS = {
   encoding: 'utf8' as const,
   maxBuffer: 1024 * 1024,
   windowsHide: true,
+}
+
+interface GitStdoutResult {
+  stdout: string
+  truncated: boolean
+}
+
+interface GitStdoutStreamOptions {
+  charLimit?: number
 }
 
 export interface GitCommandError extends Error {
@@ -66,6 +75,65 @@ export async function runGitBuffer(args: string[], cwd: string) {
     ...GIT_EXECUTION_OPTIONS,
     cwd,
     encoding: 'buffer',
+  })
+}
+
+function readGitStdout(args: string[], cwd: string, options: GitStdoutStreamOptions = {}) {
+  const charLimit = options.charLimit ?? Number.POSITIVE_INFINITY
+
+  return new Promise<GitStdoutResult>((resolve, reject) => {
+    const child = spawn('git', args, {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+
+    let stdout = ''
+    let stderr = ''
+    let truncated = false
+
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+
+    child.stdout.on('data', (chunk: string) => {
+      if (truncated) {
+        return
+      }
+
+      if (stdout.length >= charLimit) {
+        truncated = true
+        child.kill()
+        return
+      }
+
+      const remainingChars = charLimit - stdout.length
+      if (chunk.length > remainingChars) {
+        stdout += chunk.slice(0, remainingChars)
+        truncated = true
+        child.kill()
+        return
+      }
+
+      stdout += chunk
+    })
+
+    child.stderr.on('data', (chunk: string) => {
+      stderr += chunk
+    })
+
+    child.once('error', (error) => {
+      reject(error)
+    })
+
+    child.once('close', (code, signal) => {
+      if (truncated || code === 0 || signal === 'SIGTERM') {
+        resolve({ stdout, truncated })
+        return
+      }
+
+      const errorMessage = stderr.trim().length > 0 ? stderr.trim() : `git ${args[0] ?? 'command'} failed with exit code ${code ?? 'unknown'}`
+      reject(new Error(errorMessage))
+    })
   })
 }
 
@@ -339,12 +407,19 @@ export function isGhAuthError(error: unknown) {
 }
 
 export async function readStagedDiffText(repoRootPath: string) {
-  const { stdout } = await runGit(['diff', '--cached', '--no-color', '--unified=3', '--', '.'], repoRootPath)
-  return stdout
+  const { stdout, truncated } = await readGitStdout(
+    ['diff', '--cached', '--no-color', '--no-ext-diff', '--unified=3', '--', '.'],
+    repoRootPath,
+    {
+      charLimit: 18_000,
+    },
+  )
+
+  return truncated ? `${stdout}\n\n...[diff truncated for prompt size]` : stdout
 }
 
 export async function readStagedNumstatText(repoRootPath: string) {
-  const { stdout } = await runGit(['diff', '--cached', '--numstat', '--', '.'], repoRootPath)
+  const { stdout } = await readGitStdout(['diff', '--cached', '--numstat', '--', '.'], repoRootPath)
   return stdout
 }
 

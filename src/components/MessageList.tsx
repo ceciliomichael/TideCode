@@ -1,6 +1,6 @@
 import { memo, useMemo, useRef, type RefObject } from "react";
 import { isVisibleTranscriptMessage } from "../lib/chatMessageMetadata";
-import { normalizeAssistantMessageContent } from "../lib/chatMessageContent";
+import { groupVisibleTranscriptMessages, type TranscriptRenderEntry } from "./chat/assistantTurnGrouping";
 import type {
   AssistantWaitingIndicatorVariant,
   ChatAttachment,
@@ -66,11 +66,12 @@ interface MessageRowProps {
   editComposerDirty: boolean;
   editComposerMentionPathMap?: ReadonlyMap<string, string>;
   isEditing: boolean;
-  hasSubsequentAssistantText: boolean;
   isConversationStreaming: boolean;
   isSending: boolean;
   isStreaming: boolean;
+  isTextStreaming: boolean;
   message: Message;
+  assistantMessages?: readonly Message[];
   showCopyButton: boolean;
   onAbortStreamingResponse?: () => void;
   onCancelEditingMessage: () => void;
@@ -95,7 +96,6 @@ interface MessageRowProps {
   sendMessageOnEnter: boolean;
   showReasoningEffortSelector?: boolean;
   waitingIndicatorVariant?: AssistantWaitingIndicatorVariant;
-  isTextStreaming?: boolean;
   workspaceRootPath?: string | null;
   editClickBoundaryRef?: RefObject<HTMLElement>;
 }
@@ -109,12 +109,13 @@ const MessageRow = memo(
     composerValue,
     editComposerDirty,
     editComposerMentionPathMap,
-    hasSubsequentAssistantText,
     isConversationStreaming,
     isEditing,
     isSending: _isSending,
     isStreaming,
+    isTextStreaming,
     message,
+    assistantMessages,
     showCopyButton,
     onAbortStreamingResponse,
     onCancelEditingMessage,
@@ -136,7 +137,6 @@ const MessageRow = memo(
     sendMessageOnEnter,
     showReasoningEffortSelector,
     waitingIndicatorVariant,
-    isTextStreaming = false,
     workspaceRootPath = null,
     editClickBoundaryRef,
   }: MessageRowProps) {
@@ -205,20 +205,16 @@ const MessageRow = memo(
           )
         ) : (
           <AssistantMessage
-            content={message.content}
-            hasSubsequentAssistantText={hasSubsequentAssistantText}
+            isComplete={!isStreaming}
             isConversationStreaming={isConversationStreaming}
             isStreaming={isStreaming}
+            isTextStreaming={isTextStreaming}
+            messages={assistantMessages ?? [message]}
+            showCopyButton={showCopyButton}
+            waitingIndicatorVariant={waitingIndicatorVariant}
             onToolDecisionSubmit={(invocation, submission) => {
               onToolDecisionSubmit?.(invocation, submission);
             }}
-            reasoningCompletedAt={message.reasoningCompletedAt}
-            reasoningContent={message.reasoningContent}
-            showCopyButton={showCopyButton}
-            timestamp={message.timestamp}
-            toolInvocations={message.toolInvocations}
-            waitingIndicatorVariant={waitingIndicatorVariant}
-            isTextStreaming={isTextStreaming}
             workspaceRootPath={workspaceRootPath}
           />
         )}
@@ -228,14 +224,14 @@ const MessageRow = memo(
   (previousProps, nextProps) => {
     if (
       previousProps.message !== nextProps.message ||
-      previousProps.hasSubsequentAssistantText !== nextProps.hasSubsequentAssistantText ||
+      previousProps.assistantMessages !== nextProps.assistantMessages ||
       previousProps.isConversationStreaming !== nextProps.isConversationStreaming ||
       previousProps.isEditing !== nextProps.isEditing ||
       previousProps.isStreaming !== nextProps.isStreaming ||
+      previousProps.isTextStreaming !== nextProps.isTextStreaming ||
       previousProps.showCopyButton !== nextProps.showCopyButton ||
       previousProps.waitingIndicatorVariant !==
-        nextProps.waitingIndicatorVariant ||
-      previousProps.isTextStreaming !== nextProps.isTextStreaming
+        nextProps.waitingIndicatorVariant
     ) {
       return false;
     }
@@ -309,36 +305,16 @@ export function MessageList({
   const visibleMessages = messages.filter((message) =>
     isVisibleTranscriptMessage(message),
   );
+  const renderEntries: TranscriptRenderEntry[] = useMemo(
+    () => groupVisibleTranscriptMessages(visibleMessages),
+    [visibleMessages],
+  );
   useChatAutoScroll({
     conversationId,
     messages: visibleMessages,
     scrollContainerRef,
     shouldAutoScroll: isConversationStreaming,
   });
-  const subsequentAssistantTextByMessageId = useMemo(() => {
-    const map = new Map<string, boolean>();
-    let hasAssistantTextLaterInTranscript = false;
-
-    for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
-      const message = visibleMessages[index];
-      map.set(message.id, hasAssistantTextLaterInTranscript);
-
-      if (message.role !== 'assistant') {
-        continue;
-      }
-
-      const normalizedAssistantContent = normalizeAssistantMessageContent(message);
-      const hasAssistantTextInMessage =
-        normalizedAssistantContent.content.trim().length > 0 ||
-        normalizedAssistantContent.reasoningContent.trim().length > 0;
-
-      if (hasAssistantTextInMessage) {
-        hasAssistantTextLaterInTranscript = true;
-      }
-    }
-
-    return map;
-  }, [visibleMessages]);
 
   return (
     <div
@@ -346,16 +322,20 @@ export function MessageList({
       className="chat-scroll-viewport scroll-stable flex-1 w-full overflow-y-auto"
     >
       <div className="chat-column mx-auto space-y-2.5 px-4 pb-6 pt-6">
-        {visibleMessages.map((msg, index) => {
+        {renderEntries.map((entry, index) => {
           const showCopyButton =
             editingMessageId === null &&
-            msg.role === "assistant" &&
-            (index === visibleMessages.length - 1 ||
-              visibleMessages[index + 1]?.role !== "assistant");
+            entry.kind === "assistant" &&
+            index === renderEntries.length - 1;
+          const assistantMessages =
+            entry.kind === "assistant" ? entry.messages : undefined;
+          const message = entry.kind === "assistant"
+            ? entry.messages[entry.messages.length - 1]
+            : entry.message;
 
           return (
-            <MessageRow
-              key={msg.id}
+          <MessageRow
+            key={entry.kind === "assistant" ? entry.messages.map((message) => message.id).join(":") : entry.message.id}
               chatModeOptions={chatModeOptions}
               chatModeSelectorDisabled={chatModeSelectorDisabled}
               composerAttachments={composerAttachments}
@@ -363,14 +343,22 @@ export function MessageList({
               composerValue={composerValue}
               editComposerDirty={editComposerDirty}
               editComposerMentionPathMap={editComposerMentionPathMap}
-              hasSubsequentAssistantText={
-                subsequentAssistantTextByMessageId.get(msg.id) ?? false
-              }
               isConversationStreaming={isConversationStreaming}
-              isEditing={editingMessageId === msg.id}
+              isEditing={entry.kind === "user" && editingMessageId === entry.message.id}
               isSending={isSending}
-              isStreaming={streamingAssistantMessageId === msg.id}
-              message={msg}
+              isStreaming={
+                entry.kind === "assistant"
+                  ? assistantMessages?.some((assistantMessage) => assistantMessage.id === streamingAssistantMessageId) ?? false
+                  : false
+              }
+              isTextStreaming={
+                entry.kind === "assistant" &&
+                assistantMessages?.some((assistantMessage) => assistantMessage.id === streamingAssistantMessageId)
+                  ? streamingTextActive
+                  : false
+              }
+              message={message}
+              assistantMessages={assistantMessages}
               showCopyButton={showCopyButton}
               onAbortStreamingResponse={onAbortStreamingResponse}
               onCancelEditingMessage={onCancelEditingMessage}
@@ -393,14 +381,10 @@ export function MessageList({
               showReasoningEffortSelector={showReasoningEffortSelector}
               editClickBoundaryRef={scrollContainerRef}
               waitingIndicatorVariant={
-                streamingAssistantMessageId === msg.id
+                entry.kind === "assistant" &&
+                assistantMessages?.some((assistantMessage) => assistantMessage.id === streamingAssistantMessageId)
                   ? (streamingWaitingIndicatorVariant ?? "thinking")
                   : undefined
-              }
-              isTextStreaming={
-                streamingAssistantMessageId === msg.id
-                  ? streamingTextActive
-                  : false
               }
               workspaceRootPath={workspaceRootPath}
             />

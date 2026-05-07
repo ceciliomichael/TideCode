@@ -1,130 +1,56 @@
 import { Check, Copy } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { chatMessageContentWidthClassName } from "../lib/chatStyles";
 import {
   getCopyableAssistantMessageText,
   normalizeAssistantMessageContent,
 } from "../lib/chatMessageContent";
-import type {
-  AssistantWaitingIndicatorVariant,
-  ToolInvocationTrace,
-} from "../types/chat";
+import type { Message, ToolInvocationTrace } from "../types/chat";
 import { MarkdownRenderer } from "./chat/MarkdownRenderer";
-import { ThinkingBlock } from "./chat/ThinkingBlock";
-import { ThinkingIndicator } from "./chat/ThinkingIndicator";
-import { resolveAssistantWaitingIndicatorVariant } from "./chat/assistantWaitingIndicator";
-import { ToolInvocationGroup } from "./chat/ToolInvocationGroup";
-import {
-  getToolInvocationDisplayEntries,
-  type ToolInvocationDisplayEntry,
-} from "./chat/toolInvocationPresentation";
+import { AssistantWorkBlock } from "./chat/AssistantWorkBlock";
 import type { ToolDecisionSubmission } from "./chat/ToolDecisionRequestCard";
 
 interface AssistantMessageProps {
-  content: string;
-  hasSubsequentAssistantText?: boolean;
+  isComplete: boolean;
   isConversationStreaming?: boolean;
   isStreaming?: boolean;
   isTextStreaming?: boolean;
-  reasoningCompletedAt?: number;
-  reasoningContent?: string;
+  messages: readonly Message[];
   showCopyButton?: boolean;
-  timestamp: number;
-  toolInvocations?: ToolInvocationTrace[];
+  waitingIndicatorVariant?: "thinking" | "splash" | "rate_limit_retry";
   onToolDecisionSubmit?: (
     invocation: ToolInvocationTrace,
     submission: ToolDecisionSubmission,
   ) => void;
-  waitingIndicatorVariant?: AssistantWaitingIndicatorVariant;
   workspaceRootPath?: string | null;
 }
 
-interface RenderedToolBlock {
-  entries: readonly ToolInvocationDisplayEntry[]
-  key: string
-  groupType: 'exploring'
-}
-
-function buildRenderedToolBlocks(entries: readonly ToolInvocationDisplayEntry[]) {
-  const renderedBlocks: RenderedToolBlock[] = []
-  let groupedEntries: ToolInvocationDisplayEntry[] = []
-  let currentGroupType: RenderedToolBlock['groupType'] | null = null
-
-  const flushGroupedEntries = () => {
-    if (groupedEntries.length === 0 || currentGroupType === null) {
-      return
-    }
-
-    renderedBlocks.push({
-      entries: groupedEntries,
-      key: groupedEntries.map((entry) => entry.key).join(':'),
-      groupType: currentGroupType,
-    })
-
-    groupedEntries = []
-    currentGroupType = null
-  }
-
-  for (const entry of entries) {
-    const nextGroupType: RenderedToolBlock['groupType'] = 'exploring'
-    if (currentGroupType !== null && currentGroupType !== nextGroupType) {
-      flushGroupedEntries()
-    }
-
-    currentGroupType = nextGroupType
-    groupedEntries.push(entry)
-  }
-
-  flushGroupedEntries()
-
-  return renderedBlocks
-}
-
 export function AssistantMessage({
-  content,
-  hasSubsequentAssistantText = false,
+  isComplete,
   isConversationStreaming = false,
   isStreaming = false,
   isTextStreaming = false,
-  reasoningCompletedAt,
-  reasoningContent = "",
+  messages,
   showCopyButton = false,
-  timestamp,
-  toolInvocations = [],
-  onToolDecisionSubmit,
   waitingIndicatorVariant = "thinking",
+  onToolDecisionSubmit,
   workspaceRootPath = null,
 }: AssistantMessageProps) {
   const [isCopied, setIsCopied] = useState(false);
-  const normalizedContent = normalizeAssistantMessageContent({
-    content,
-    reasoningContent,
-  });
-  const hasContent = normalizedContent.content.trim().length > 0;
-  const hasReasoningContent =
-    normalizedContent.reasoningContent.trim().length > 0;
-  const hasVisibleAssistantText =
-    hasContent || hasReasoningContent || hasSubsequentAssistantText;
-  const hasActiveReasoningBlock =
-    hasReasoningContent && reasoningCompletedAt === undefined;
-  const toolDisplayEntries = toolInvocations.flatMap((invocation) =>
-    getToolInvocationDisplayEntries(invocation),
+  const lastMessage = messages[messages.length - 1];
+  const normalizedMessages = useMemo(
+    () => messages.map((message) => normalizeAssistantMessageContent(message)),
+    [messages],
   );
-  const renderedToolBlocks = buildRenderedToolBlocks(toolDisplayEntries);
-  const hasVisibleToolBlocks = renderedToolBlocks.length > 0;
-  const shouldShowWaitingIndicator =
-    isStreaming &&
-    !isTextStreaming &&
-    !hasVisibleToolBlocks &&
-    !hasActiveReasoningBlock;
-  const effectiveWaitingIndicatorVariant = resolveAssistantWaitingIndicatorVariant({
-    hasVisibleAssistantText,
-    toolInvocations,
-    waitingIndicatorVariant,
-  });
-  const copyableText = getCopyableAssistantMessageText({ content, reasoningContent });
+  const finalNormalizedContent = normalizedMessages[normalizedMessages.length - 1]?.content ?? "";
+  const hasFinalContent = finalNormalizedContent.trim().length > 0;
+  const shouldShowFinalContentOutside = isComplete && hasFinalContent;
+  const finalCopyableText = lastMessage
+    ? getCopyableAssistantMessageText(lastMessage)
+    : "";
+
   const canShowCopyButton =
-    showCopyButton && !isStreaming && copyableText.length > 0;
+    showCopyButton && !isStreaming && finalCopyableText.length > 0;
   const messagePaddingClassName = canShowCopyButton ? "pb-5 pr-5" : "";
 
   useEffect(() => {
@@ -143,20 +69,11 @@ export function AssistantMessage({
 
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(copyableText);
+      await navigator.clipboard.writeText(finalCopyableText);
       setIsCopied(true);
     } catch {
       setIsCopied(false);
     }
-  }
-
-  if (
-    !hasContent &&
-    !hasReasoningContent &&
-    toolInvocations.length === 0 &&
-    !shouldShowWaitingIndicator
-  ) {
-    return null;
   }
 
   return (
@@ -169,36 +86,25 @@ export function AssistantMessage({
         .filter(Boolean)
         .join(" ")}
     >
-      {hasReasoningContent ? (
-        <ThinkingBlock
-          content={normalizedContent.reasoningContent}
-          isComplete={!isStreaming}
-          reasoningCompletedAt={reasoningCompletedAt}
-          startTime={timestamp}
-        />
-      ) : null}
+      <AssistantWorkBlock
+        showFinalContentOutside={shouldShowFinalContentOutside}
+        isComplete={isComplete}
+        isConversationStreaming={isConversationStreaming}
+        isStreaming={isStreaming}
+        isTextStreaming={isTextStreaming}
+        messages={messages}
+        startTime={messages[0]?.timestamp ?? Date.now()}
+        waitingIndicatorVariant={waitingIndicatorVariant}
+        onToolDecisionSubmit={onToolDecisionSubmit}
+        workspaceRootPath={workspaceRootPath}
+      />
 
-      {hasContent ? (
+      {shouldShowFinalContentOutside ? (
         <MarkdownRenderer
-          content={normalizedContent.content}
+          content={finalNormalizedContent}
           className="text-left text-[15px]"
-          isStreaming={isStreaming}
+          isStreaming={isTextStreaming}
         />
-      ) : null}
-
-      {renderedToolBlocks.map((block) => (
-        <ToolInvocationGroup
-          key={block.key}
-          entries={block.entries}
-          hasAssistantText={hasVisibleAssistantText}
-          isConversationStreaming={isConversationStreaming}
-          onToolDecisionSubmit={onToolDecisionSubmit}
-          workspaceRootPath={workspaceRootPath}
-        />
-      ))}
-
-      {shouldShowWaitingIndicator ? (
-        <ThinkingIndicator variant={effectiveWaitingIndicatorVariant} />
       ) : null}
 
       {canShowCopyButton ? (

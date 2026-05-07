@@ -2,12 +2,13 @@ import type { ModelMessage } from 'ai'
 import type { ChatProviderId, ReasoningEffort } from '../../src/types/chat'
 import { parseTouchedFilesFromNumstat } from './serviceHelpers'
 
-const MAX_PROMPT_DIFF_LINES = 420
-const MAX_PROMPT_DIFF_CHARS = 18_000
-const MAX_PROMPT_FILE_COUNT = 12
-const MAX_PROMPT_IDENTIFIER_COUNT = 8
-const MAX_PROMPT_KEYWORD_COUNT = 8
-const MAX_PROMPT_QUOTED_PHRASE_COUNT = 4
+const MAX_PROMPT_DIFF_LINES = 120
+const MAX_PROMPT_DIFF_CHARS = 8_000
+const MAX_PROMPT_FILE_COUNT = 8
+const MAX_PROMPT_NUMSTAT_FILE_COUNT = 8
+const MAX_PROMPT_IDENTIFIER_COUNT = 6
+const MAX_PROMPT_KEYWORD_COUNT = 6
+const MAX_PROMPT_QUOTED_PHRASE_COUNT = 3
 const MAX_COMMIT_SUBJECT_LENGTH = 72
 
 const GENERIC_PATH_SEGMENTS = new Set([
@@ -197,6 +198,33 @@ function truncateDiffForPrompt(diffText: string) {
   }
 
   return truncatedDiff
+}
+
+function formatNumstatEntryForPrompt(entry: ParsedNumstatEntry) {
+  const addedCount = entry.addedCount === null ? '?' : String(entry.addedCount)
+  const removedCount = entry.removedCount === null ? '?' : String(entry.removedCount)
+  return `${addedCount}\t${removedCount}\t${entry.filePath}`
+}
+
+function summarizeNumstatForPrompt(numstatText: string) {
+  const entries = parseNumstatEntries(numstatText)
+  const sortedEntries = [...entries].sort((left, right) => {
+    const leftTotal = (left.addedCount ?? 0) + (left.removedCount ?? 0)
+    const rightTotal = (right.addedCount ?? 0) + (right.removedCount ?? 0)
+    return rightTotal - leftTotal
+  })
+  const topEntries = sortedEntries.slice(0, MAX_PROMPT_NUMSTAT_FILE_COUNT)
+
+  if (topEntries.length === 0) {
+    return '(unavailable)'
+  }
+
+  const lines = topEntries.map((entry) => formatNumstatEntryForPrompt(entry))
+  if (sortedEntries.length > topEntries.length) {
+    lines.push(`... ${sortedEntries.length - topEntries.length} more files omitted`)
+  }
+
+  return lines.join('\n')
 }
 
 function extractTouchedFilesFromDiff(diffText: string) {
@@ -616,7 +644,7 @@ export function buildCommitMessagePrompt(input: { diffText: string; numstatText:
   const quotedPhrases = collectQuotedPhrases(input.diffText)
   const topFiles = touchedFiles.slice(0, MAX_PROMPT_FILE_COUNT)
   const fileList = topFiles.length > 0 ? topFiles.join('\n') : '(none detected)'
-  const normalizedNumstat = input.numstatText.trim().length > 0 ? input.numstatText.trim() : '(unavailable)'
+  const numstatList = summarizeNumstatForPrompt(input.numstatText)
   const identifierList = identifiers.length > 0 ? identifiers.join('\n') : '(none detected)'
   const keywordList = keywords.length > 0 ? keywords.join(', ') : '(none detected)'
   const quotedPhraseList = quotedPhrases.length > 0 ? quotedPhrases.join('\n') : '(none detected)'
@@ -638,10 +666,10 @@ export function buildCommitMessagePrompt(input: { diffText: string; numstatText:
     '- Do not use generic filler like "update implementation details", "changed modules", "misc fixes", or "various updates".',
     '- Do not repeat the touched-file list as the subject.',
     '',
-    'Staged numstat:',
-    normalizedNumstat,
+    'Staged numstat (top changes only):',
+    numstatList,
     '',
-    'Touched files (top):',
+    'Touched files (top changes only):',
     fileList,
     '',
     'Changed identifiers and test names:',
