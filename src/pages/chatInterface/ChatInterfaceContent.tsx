@@ -162,6 +162,32 @@ export function ChatInterfaceContent({
   const [workspaceViewMode, setWorkspaceViewMode] = useState<ChatWorkspaceViewMode>('chat')
   const isKanbanBoardOpen = workspaceViewMode === 'kanban'
   const isWorkspaceHeaderControlDisabled = isKanbanBoardOpen
+  const handleToggleWorkspaceBoard = useCallback(() => {
+    if (isKanbanBoardOpen) {
+      setWorkspaceViewMode('chat')
+      return
+    }
+
+    if (workspaceState.isExplorerOpen) {
+      workspaceState.handleToggleExplorerPanel()
+    }
+
+    if (interfaceController.isDiffPanelOpen) {
+      workspaceState.handleOpenDiffPanel()
+    } else if (interfaceController.isSourceControlPanelOpen) {
+      workspaceState.handleOpenSourceControlPanel()
+    }
+
+    if (workspaceState.isTerminalOpen) {
+      interfaceController.setActiveWorkspaceTerminalOpen(false)
+    }
+
+    setWorkspaceViewMode('kanban')
+  }, [
+    interfaceController,
+    isKanbanBoardOpen,
+    workspaceState,
+  ])
 
   const canSteerQueuedMessages =
     settings.followUpBehavior === 'steer' &&
@@ -449,7 +475,7 @@ export function ChatInterfaceContent({
                 <button
                   type="button"
                   aria-pressed={isKanbanBoardOpen}
-                  onClick={() => setWorkspaceViewMode(isKanbanBoardOpen ? 'chat' : 'kanban')}
+                  onClick={handleToggleWorkspaceBoard}
                   className={[
                     'inline-flex h-10 items-center gap-1.5 text-sm transition-colors',
                     isKanbanBoardOpen ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',

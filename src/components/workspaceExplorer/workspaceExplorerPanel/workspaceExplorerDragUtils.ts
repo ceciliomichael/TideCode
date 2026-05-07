@@ -1,7 +1,32 @@
-import type { DragEvent as ReactDragEvent } from 'react'
+import type {
+  ClipboardEvent as ReactClipboardEvent,
+  DragEvent as ReactDragEvent,
+} from 'react'
 
 interface ExternalFileDropItem {
   path: string
+}
+
+function getExternalFilePathsFromFileList(files: ArrayLike<ExternalFileDropItem> | null | undefined) {
+  if (!files) {
+    return []
+  }
+
+  const filePaths: string[] = []
+  for (const file of Array.from(files)) {
+    if (typeof file.path !== 'string') {
+      continue
+    }
+
+    const trimmedPath = file.path.trim()
+    if (trimmedPath.length === 0) {
+      continue
+    }
+
+    filePaths.push(trimmedPath)
+  }
+
+  return filePaths
 }
 
 const DRAG_SCROLL_EDGE_THRESHOLD_PX = 72
@@ -9,23 +34,51 @@ const DRAG_SCROLL_MAX_SPEED_PX = 22
 const MIN_SCROLLBAR_GUTTER_WIDTH_PX = 12
 
 export function getExternalFilePaths(event: ReactDragEvent<HTMLElement>) {
-  const items = Array.from(event.dataTransfer.items)
-  const filePaths: string[] = []
+  const filePaths = getExternalFilePathsFromFileList(event.dataTransfer.files)
+  if (filePaths.length > 0) {
+    return filePaths
+  }
 
+  const items = Array.from(event.dataTransfer.items)
+  const fallbackPaths: string[] = []
   for (const item of items) {
     if (item.kind !== 'file') {
       continue
     }
 
     const file = item.getAsFile() as ExternalFileDropItem | null
-    if (!file || typeof file.path !== 'string' || file.path.trim().length === 0) {
+    if (!file) {
       continue
     }
 
-    filePaths.push(file.path)
+    fallbackPaths.push(...getExternalFilePathsFromFileList([file]))
   }
 
-  return filePaths
+  return fallbackPaths
+}
+
+export function getExternalClipboardFilePaths(event: ReactClipboardEvent<HTMLElement>) {
+  const filePaths = getExternalFilePathsFromFileList(event.clipboardData.files)
+  if (filePaths.length > 0) {
+    return filePaths
+  }
+
+  const items = Array.from(event.clipboardData.items)
+  const fallbackPaths: string[] = []
+  for (const item of items) {
+    if (item.kind !== 'file') {
+      continue
+    }
+
+    const file = item.getAsFile() as ExternalFileDropItem | null
+    if (!file) {
+      continue
+    }
+
+    fallbackPaths.push(...getExternalFilePathsFromFileList([file]))
+  }
+
+  return fallbackPaths
 }
 
 export function getDragScrollVelocity(containerElement: HTMLElement, clientY: number) {

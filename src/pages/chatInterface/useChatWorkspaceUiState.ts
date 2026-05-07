@@ -29,6 +29,7 @@ import {
 import {
   createWorkspaceEntryHandlers,
 } from "./chatWorkspaceUiStateEntries";
+import { shouldClearWorkspaceClipboardByPathPrefix } from "./chatWorkspaceClipboard";
 import { getActiveWorkspacePanelWidth } from "./chatWorkspaceUiStatePanels";
 
 export type {
@@ -111,10 +112,6 @@ export function useChatWorkspaceUiState({
     clearWorkspaceAutosaveTimeoutsForWorkspace({
       workspaceAutosaveTimeoutsRef,
     });
-  }, [activeWorkspaceUiKey]);
-
-  useEffect(() => {
-    setWorkspaceClipboard(null);
   }, [activeWorkspaceUiKey]);
 
   useEffect(() => {
@@ -458,10 +455,11 @@ export function useChatWorkspaceUiState({
     (targetPath: string) => {
       setWorkspaceClipboard((currentClipboard) => {
         if (
-          !currentClipboard ||
-          !currentClipboard.relativePaths.some((relativePath) =>
-            isWorkspacePathWithinTarget(relativePath, targetPath),
-          )
+          !shouldClearWorkspaceClipboardByPathPrefix({
+            clipboard: currentClipboard,
+            targetPath,
+            workspaceRootPath: activeWorkspacePathRef.current,
+          })
         ) {
           return currentClipboard;
         }

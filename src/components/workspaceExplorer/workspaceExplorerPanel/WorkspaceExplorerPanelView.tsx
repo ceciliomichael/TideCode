@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { resolveFileIconConfig } from '../../../lib/fileIconResolver'
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
+import { normalizeWorkspaceRootPath } from '../../../pages/chatInterface/chatWorkspaceClipboard'
 import { buildExplorerGitStatusMap } from './workspaceExplorerGitStatus'
 import type { WorkspaceExplorerPanelProps } from './workspaceExplorerPanelTypes'
 import type { WorkspaceExplorerPanelState } from './useWorkspaceExplorerPanelState'
@@ -19,8 +20,10 @@ export function WorkspaceExplorerPanelView({
   clipboardEntry,
   gitFileDiffs,
   panelState,
+  workspaceRootPath,
 }: WorkspaceExplorerPanelViewProps) {
   const gitStatusByPath = useMemo(() => buildExplorerGitStatusMap(gitFileDiffs), [gitFileDiffs])
+  const normalizedWorkspaceRootPath = workspaceRootPath ? normalizeWorkspaceRootPath(workspaceRootPath) : null
 
   function getDeleteActionLabel() {
     const targetEntry = panelState.contextMenuState?.targetEntry
@@ -106,6 +109,8 @@ export function WorkspaceExplorerPanelView({
       const gitStatusTextClass = gitStatus === 'untracked' ? 'text-[#5D9F73]' : gitStatus === 'modified' ? 'text-[#C7904A]' : ''
       const isCutEntry =
         clipboardEntry?.mode === 'cut' &&
+        normalizedWorkspaceRootPath !== null &&
+        normalizeWorkspaceRootPath(clipboardEntry.sourceWorkspaceRootPath) === normalizedWorkspaceRootPath &&
         clipboardEntry.relativePaths.some(
           (clipboardPath) =>
             isPathWithinTarget(entry.relativePath, clipboardPath) ||
@@ -218,6 +223,9 @@ export function WorkspaceExplorerPanelView({
           panelState.dropTargetDirectoryPath === ROOT_DIRECTORY_KEY ? 'bg-surface/60' : '',
         ].join(' ')}
         tabIndex={0}
+        onPasteCapture={(event) => {
+          void panelState.handleExplorerPaste(event)
+        }}
         onClick={panelState.handleExplorerBackgroundClick}
         onContextMenu={(event) => panelState.openContextMenu(event, null)}
         onKeyDownCapture={panelState.handleTreeKeyDown}

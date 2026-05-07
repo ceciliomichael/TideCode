@@ -1,6 +1,8 @@
 import type { ChatInterfaceRightPanelTab } from "../../hooks/useChatInterfaceController";
 import type { AppSettings } from "../../types/chat";
 import type { WorkspaceTab } from "../../components/workspaceExplorer/types";
+import type { WorkspaceClipboardEntry } from "../../components/workspaceExplorer/workspaceClipboardTypes";
+export type { WorkspaceClipboardEntry } from "../../components/workspaceExplorer/workspaceClipboardTypes";
 
 export const DEFAULT_TERMINAL_WORKSPACE_KEY = "__global__";
 
@@ -12,11 +14,6 @@ export interface WorkspaceUiSession {
   isTabsVisible: boolean;
   rightPanelTab: ChatInterfaceRightPanelTab;
   tabs: WorkspaceTab[];
-}
-
-export interface WorkspaceClipboardEntry {
-  mode: "copy" | "cut";
-  relativePaths: string[];
 }
 
 export interface UseChatWorkspaceUiStateInput {

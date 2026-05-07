@@ -1,12 +1,9 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
-import type { WorkspaceClipboardEntry } from "./chatWorkspaceUiState.types";
-import { isWorkspacePathWithinTarget } from "./chatWorkspaceUiState.utils";
-
-interface ClearWorkspaceClipboardInput {
-  setWorkspaceClipboard: Dispatch<
-    SetStateAction<WorkspaceClipboardEntry | null>
-  >;
-}
+import type { WorkspaceClipboardEntry } from "../../components/workspaceExplorer/workspaceClipboardTypes";
+import {
+  createWorkspaceClipboardEntry,
+  resolveWorkspaceClipboardPasteInputs,
+} from "./chatWorkspaceClipboard";
 
 interface WorkspaceTabsControlInput {
   closeWorkspaceTabsByPathPrefix: (targetPath: string) => void;
@@ -23,24 +20,6 @@ interface WorkspaceEntryHandlersInput extends WorkspaceTabsControlInput {
 
 function uniqueRelativePaths(relativePaths: readonly string[]) {
   return Array.from(new Set(relativePaths.filter((relativePath) => relativePath.trim().length > 0)))
-}
-
-export function createClearWorkspaceClipboardByPathPrefix({
-  setWorkspaceClipboard,
-}: ClearWorkspaceClipboardInput) {
-  return (targetPath: string) => {
-    setWorkspaceClipboard((currentClipboard) => {
-      if (
-        !currentClipboard ||
-        !currentClipboard.relativePaths.some((relativePath) =>
-          isWorkspacePathWithinTarget(relativePath, targetPath),
-        )
-      ) {
-        return currentClipboard;
-      }
-      return null;
-    });
-  };
 }
 
 export function createWorkspaceEntryHandlers({
@@ -118,16 +97,32 @@ export function createWorkspaceEntryHandlers({
   };
 
   const handleCopyWorkspaceEntry = async (relativePaths: string[]) => {
+    const workspaceRootPath = activeWorkspacePathRef.current;
+    if (!workspaceRootPath) {
+      throw new Error("Select a workspace folder first.");
+    }
+
     setWorkspaceClipboard({
-      mode: "copy",
-      relativePaths: uniqueRelativePaths(relativePaths),
+      ...createWorkspaceClipboardEntry({
+        mode: "copy",
+        relativePaths: uniqueRelativePaths(relativePaths),
+        sourceWorkspaceRootPath: workspaceRootPath,
+      }),
     });
   };
 
   const handleCutWorkspaceEntry = async (relativePaths: string[]) => {
+    const workspaceRootPath = activeWorkspacePathRef.current;
+    if (!workspaceRootPath) {
+      throw new Error("Select a workspace folder first.");
+    }
+
     setWorkspaceClipboard({
-      mode: "cut",
-      relativePaths: uniqueRelativePaths(relativePaths),
+      ...createWorkspaceClipboardEntry({
+        mode: "cut",
+        relativePaths: uniqueRelativePaths(relativePaths),
+        sourceWorkspaceRootPath: workspaceRootPath,
+      }),
     });
   };
 
@@ -142,22 +137,23 @@ export function createWorkspaceEntryHandlers({
       throw new Error("Nothing to paste.");
     }
 
-    const relativePaths = uniqueRelativePaths(workspaceClipboard.relativePaths);
-    for (const relativePath of relativePaths) {
-      const result = await window.echosphereWorkspace.transferEntry({
-        mode: workspaceClipboard.mode === "cut" ? "move" : "copy",
-        relativePath,
-        targetDirectoryRelativePath,
-        workspaceRootPath,
-      });
+    const pasteInputs = resolveWorkspaceClipboardPasteInputs({
+      clipboard: workspaceClipboard,
+      targetDirectoryRelativePath,
+      workspaceRootPath,
+    });
 
-      if (
-        result.mode === "move" &&
-        result.targetRelativePath !== result.relativePath
-      ) {
-        clearWorkspaceClipboardByPathPrefix(result.relativePath);
-        closeWorkspaceTabsByPathPrefix(result.relativePath);
+    for (const pasteInput of pasteInputs) {
+      if (pasteInput.kind === "transfer") {
+        const result = await window.echosphereWorkspace.transferEntry(pasteInput.input);
+        if (result.mode === "move" && result.targetRelativePath !== result.relativePath) {
+          clearWorkspaceClipboardByPathPrefix(result.relativePath);
+          closeWorkspaceTabsByPathPrefix(result.relativePath);
+        }
+        continue;
       }
+
+      await window.echosphereWorkspace.importEntry(pasteInput.input);
     }
   };
 

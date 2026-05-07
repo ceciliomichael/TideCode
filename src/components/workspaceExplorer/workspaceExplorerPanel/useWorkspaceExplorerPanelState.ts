@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type ClipboardEvent as ReactClipboardEvent,
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -17,7 +18,7 @@ import {
   normalizeEntryPath,
   toDirectoryKey,
 } from './workspaceExplorerPanelUtils'
-import { getExternalFilePaths } from './workspaceExplorerDragUtils'
+import { getExternalClipboardFilePaths, getExternalFilePaths } from './workspaceExplorerDragUtils'
 import { useWorkspaceExplorerContextMenu } from './useWorkspaceExplorerContextMenu'
 import { useWorkspaceExplorerCreation } from './useWorkspaceExplorerCreation'
 import { useWorkspaceExplorerDeleteDialog } from './useWorkspaceExplorerDeleteDialog'
@@ -394,15 +395,24 @@ export function useWorkspaceExplorerPanelState({
     [loadDirectory, onMoveEntry],
   )
 
-  const submitImportEntry = useCallback(
-    async (sourcePath: string, targetDirectoryRelativePath: string) => {
+  const submitImportEntries = useCallback(
+    async (sourcePaths: readonly string[], targetDirectoryRelativePath: string) => {
       if (!workspaceRootPath) {
         throw new Error('Select a workspace folder first.')
       }
 
+      const uniqueSourcePaths = Array.from(
+        new Set(sourcePaths.map((sourcePath) => sourcePath.trim()).filter((sourcePath) => sourcePath.length > 0)),
+      )
+      if (uniqueSourcePaths.length === 0) {
+        return
+      }
+
       setDropTargetDirectoryPath(null)
       try {
-        await onImportEntry(sourcePath, targetDirectoryRelativePath)
+        for (const sourcePath of uniqueSourcePaths) {
+          await onImportEntry(sourcePath, targetDirectoryRelativePath)
+        }
         setErrorMessage(null)
         await Promise.all([loadDirectory(ROOT_DIRECTORY_KEY), loadDirectory(targetDirectoryRelativePath)])
       } catch (error) {
@@ -410,6 +420,31 @@ export function useWorkspaceExplorerPanelState({
       }
     },
     [loadDirectory, onImportEntry, workspaceRootPath],
+  )
+
+  const handleExplorerPaste = useCallback(
+    async (event: ReactClipboardEvent<HTMLElement>) => {
+      if (!isTreeShortcutTarget(event.target)) {
+        return
+      }
+
+      const filePaths = getExternalClipboardFilePaths(event)
+      if (filePaths.length > 0) {
+        event.preventDefault()
+        event.stopPropagation()
+        await submitImportEntries(filePaths, selectionDirectoryPath)
+        return
+      }
+
+      if (!clipboardEntry) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+      await submitPasteEntry(selectionDirectoryPath)
+    },
+    [clipboardEntry, selectionDirectoryPath, submitImportEntries, submitPasteEntry],
   )
 
   const handleEntryDragStart = useCallback((event: ReactDragEvent<HTMLButtonElement>, entry: WorkspaceExplorerEntry) => {
@@ -526,14 +561,12 @@ export function useWorkspaceExplorerPanelState({
       setDropTargetDirectoryPath(null)
 
       try {
-        for (const filePath of filePaths) {
-          await submitImportEntry(filePath, targetDirectoryRelativePath)
-        }
+        await submitImportEntries(filePaths, targetDirectoryRelativePath)
       } finally {
         setDropTargetDirectoryPath(null)
       }
     },
-    [stopDragScroll, submitImportEntry, workspaceRootPath],
+    [stopDragScroll, submitImportEntries, workspaceRootPath],
   )
 
   const requestRenameEntry = useCallback(() => {
@@ -755,10 +788,6 @@ export function useWorkspaceExplorerPanelState({
         return
       }
 
-      if (key === 'v') {
-        event.preventDefault()
-        void submitPasteEntry(selectionDirectoryPath)
-      }
     },
     [
       activeFilePath,
@@ -769,7 +798,6 @@ export function useWorkspaceExplorerPanelState({
       selectAllLoadedEntriesInSelectionDirectory,
       selectedEntryPaths,
       selectionDirectoryPath,
-      submitPasteEntry,
     ],
   )
 
@@ -847,6 +875,7 @@ export function useWorkspaceExplorerPanelState({
     handleEntryDragStart,
     handleEntryClick,
     handleExplorerBackgroundClick,
+    handleExplorerPaste,
     handleExplorerDragLeave,
     handleExplorerDragOver,
     handleExplorerScrollbarDragOver,
