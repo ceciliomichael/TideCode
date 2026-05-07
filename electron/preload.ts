@@ -1,4 +1,4 @@
-import { ipcRenderer, contextBridge } from 'electron'
+import { ipcRenderer, contextBridge, webUtils } from 'electron'
 import { parseInitialSettingsArg } from './settings/bootstrap'
 import type {
   AppendConversationMessagesInput,
@@ -233,6 +233,10 @@ const workspaceApi: EchosphereWorkspaceApi = {
     ipcRenderer.invoke('workspace:checkpoint:restoreSequence', checkpointIds),
 }
 
+const fileDropApi = {
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
+}
+
 const terminalApi: EchosphereTerminalApi = {
   closeSession: (input: CloseTerminalSessionInput) => ipcRenderer.invoke('terminal:closeSession', input),
   createSession: (input: CreateTerminalSessionInput) => ipcRenderer.invoke('terminal:createSession', input),
@@ -264,5 +268,6 @@ contextBridge.exposeInMainWorld('echosphereProviders', providersApi)
 contextBridge.exposeInMainWorld('echosphereSkills', skillsApi)
 contextBridge.exposeInMainWorld('echosphereChat', chatApi)
 contextBridge.exposeInMainWorld('echosphereGit', gitApi)
+contextBridge.exposeInMainWorld('echosphereFileDrop', fileDropApi)
 contextBridge.exposeInMainWorld('echosphereWorkspace', workspaceApi)
 contextBridge.exposeInMainWorld('echosphereTerminal', terminalApi)

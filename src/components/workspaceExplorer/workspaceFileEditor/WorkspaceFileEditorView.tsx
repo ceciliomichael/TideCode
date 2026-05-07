@@ -228,7 +228,7 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
           {search.isSearchOpen ? <SearchPanel editorState={editorState} /> : null}
           <div
             ref={refs.highlightedLayerRef}
-            className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-1.5 font-mono text-[12px] leading-5 text-foreground opacity-0"
+            className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-1.5 font-mono text-[12px] leading-5 text-foreground"
             style={{ paddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px` }}
             aria-hidden="true"
           >
@@ -261,7 +261,7 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
             aria-label={`Editing ${fileName}`}
             style={{
               caretColor: 'var(--color-foreground)',
-              color: 'var(--color-foreground)',
+              color: 'transparent',
               paddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px`,
               scrollPaddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px`,
             }}

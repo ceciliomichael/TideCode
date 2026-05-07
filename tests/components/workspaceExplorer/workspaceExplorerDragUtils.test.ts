@@ -18,3 +18,35 @@ test('clipboard file extraction ignores empty paths and preserves valid file pat
     '/projects/image.png',
   ])
 })
+
+test('clipboard file extraction falls back to Electron webUtils paths', () => {
+  const previousWindow = globalThis.window
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      echosphereFileDrop: {
+        getPathForFile: (file: { nativePath?: string }) => file.nativePath ?? '',
+      },
+    },
+  })
+
+  try {
+    const event = {
+      clipboardData: {
+        files: [
+          { nativePath: ' C:\\Users\\Administrator\\Desktop\\notes.txt ' },
+          { nativePath: '' },
+        ],
+      },
+    } as unknown as Parameters<typeof getExternalClipboardFilePaths>[0]
+
+    assert.deepEqual(getExternalClipboardFilePaths(event), [
+      'C:\\Users\\Administrator\\Desktop\\notes.txt',
+    ])
+  } finally {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: previousWindow,
+    })
+  }
+})

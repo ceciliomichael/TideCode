@@ -10,7 +10,7 @@ import {
 } from 'react'
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
 import { getPathBasename, getPathDirname } from '../../../lib/pathPresentation'
-import type { WorkspaceExplorerPanelProps } from './workspaceExplorerPanelTypes'
+import type { PendingExplorerRename, WorkspaceExplorerPanelProps } from './workspaceExplorerPanelTypes'
 import {
   ROOT_DIRECTORY_KEY,
   getAncestorDirectoryPaths,
@@ -33,7 +33,9 @@ import {
   isTreeShortcutTarget,
 } from './workspaceExplorerSelectionUtils'
 
-const ACTIVE_EXPLORER_SYNC_INTERVAL_MS = 1000
+interface ReloadExplorerTreeOptions {
+  force?: boolean
+}
 
 export function useWorkspaceExplorerPanelState({
   activeFilePath,
@@ -61,13 +63,18 @@ export function useWorkspaceExplorerPanelState({
   const [selectedEntryPaths, setSelectedEntryPaths] = useState<Set<string>>(() => new Set())
   const [selectionDirectoryPath, setSelectionDirectoryPath] = useState<string>(ROOT_DIRECTORY_KEY)
   const [isDraggingExplorerEntry, setIsDraggingExplorerEntry] = useState(false)
+  const [renameDraft, setRenameDraft] = useState<PendingExplorerRename | null>(null)
+  const [renameName, setRenameName] = useState('')
+  const renameInputRef = useRef<HTMLInputElement | null>(null)
+  const isSubmittingRenameRef = useRef(false)
   const lastSyncedActiveFileRef = useRef<{ workspacePath: string | null; filePath: string | null }>({
     workspacePath: null,
     filePath: null,
   })
   const draggedEntryRef = useRef<WorkspaceExplorerEntry | null>(null)
   const selectionAnchorEntryPathRef = useRef<string | null>(null)
-  const isActiveSyncReloadingRef = useRef(false)
+  const isExplorerEditingRef = useRef(false)
+  const pendingExplorerReloadRef = useRef(false)
   const isWorkspaceConfigured = typeof workspaceRootPath === 'string' && workspaceRootPath.trim().length > 0
 
   const {
@@ -169,7 +176,12 @@ export function useWorkspaceExplorerPanelState({
     })
   }, [])
 
-  const reloadExplorerTree = useCallback(() => {
+  const reloadExplorerTree = useCallback((options?: ReloadExplorerTreeOptions) => {
+    if (isExplorerEditingRef.current && !options?.force) {
+      pendingExplorerReloadRef.current = true
+      return Promise.resolve()
+    }
+
     const directoriesToReload = [ROOT_DIRECTORY_KEY, ...expandedDirectories]
     return preserveTreeScrollDuring(async () => {
       await Promise.all(directoriesToReload.map((directoryPath) => loadDirectory(directoryPath)))
@@ -180,6 +192,15 @@ export function useWorkspaceExplorerPanelState({
   useEffect(() => {
     reloadExplorerTreeRef.current = reloadExplorerTree
   }, [reloadExplorerTree])
+
+  const replayPendingExplorerReload = useCallback(() => {
+    if (!pendingExplorerReloadRef.current) {
+      return
+    }
+
+    pendingExplorerReloadRef.current = false
+    void reloadExplorerTreeRef.current({ force: true })
+  }, [])
 
   const runContextAction = useCallback(
     async (action: () => Promise<void>, shouldReload = true) => {
@@ -237,10 +258,132 @@ export function useWorkspaceExplorerPanelState({
   })
 
   useEffect(() => {
+    if (!renameDraft) {
+      return
+    }
+
+    const animationFrameId = window.requestAnimationFrame(() => {
+      renameInputRef.current?.focus()
+      renameInputRef.current?.select()
+    })
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId)
+    }
+  }, [renameDraft])
+
+  const startCreateEntryWithDeferredReloads = useCallback(
+    (isDirectory: boolean) => {
+      setRenameDraft(null)
+      setRenameName('')
+      isSubmittingRenameRef.current = false
+      isExplorerEditingRef.current = true
+      startCreateEntry(isDirectory)
+    },
+    [startCreateEntry],
+  )
+
+  const cancelCreateEntryWithPendingReload = useCallback(() => {
+    cancelCreateEntry()
+    isExplorerEditingRef.current = false
+    replayPendingExplorerReload()
+  }, [cancelCreateEntry, replayPendingExplorerReload])
+
+  const cancelRenameEntry = useCallback(() => {
+    isSubmittingRenameRef.current = false
+    setRenameDraft(null)
+    setRenameName('')
+    isExplorerEditingRef.current = Boolean(creationDraft)
+    if (!creationDraft) {
+      replayPendingExplorerReload()
+    }
+  }, [creationDraft, replayPendingExplorerReload])
+
+  const submitRenameEntry = useCallback(async () => {
+    const draft = renameDraft
+    if (!draft) {
+      return
+    }
+
+    const nextName = renameName.trim()
+    if (nextName.length === 0) {
+      setErrorMessage('Name is required.')
+      return
+    }
+    if (/[/\\]/u.test(nextName)) {
+      setErrorMessage('Name cannot include path separators.')
+      return
+    }
+
+    const parentPath = getPathDirname(draft.entry.relativePath)
+    const nextRelativePath = joinRelativePath(parentPath, nextName)
+    if (normalizeEntryPath(nextRelativePath) === normalizeEntryPath(draft.entry.relativePath)) {
+      cancelRenameEntry()
+      return
+    }
+
+    isSubmittingRenameRef.current = true
+    try {
+      await onRenameEntry(draft.entry.relativePath, nextRelativePath)
+      setErrorMessage(null)
+      setSelectedEntryPaths(new Set([nextRelativePath]))
+      setSelectionDirectoryPath(parentPath)
+      selectionAnchorEntryPathRef.current = nextRelativePath
+      if (draft.entry.isDirectory) {
+        setExpandedDirectories((current) => {
+          if (!current.has(draft.entry.relativePath)) {
+            return current
+          }
+
+          const nextState = new Set(current)
+          nextState.delete(draft.entry.relativePath)
+          nextState.add(nextRelativePath)
+          return nextState
+        })
+      }
+      await loadDirectory(parentPath)
+      setRenameDraft(null)
+      setRenameName('')
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to rename workspace entry.')
+    } finally {
+      isSubmittingRenameRef.current = false
+      isExplorerEditingRef.current = Boolean(creationDraft)
+      if (!creationDraft) {
+        replayPendingExplorerReload()
+      }
+    }
+  }, [
+    cancelRenameEntry,
+    creationDraft,
+    loadDirectory,
+    onRenameEntry,
+    renameDraft,
+    renameName,
+    replayPendingExplorerReload,
+    setExpandedDirectories,
+  ])
+
+  useEffect(() => {
+    const wasEditing = isExplorerEditingRef.current
+    const isEditing = Boolean(creationDraft || renameDraft)
+    isExplorerEditingRef.current = isEditing
+
+    if (!wasEditing || isEditing || !pendingExplorerReloadRef.current) {
+      return
+    }
+
+    replayPendingExplorerReload()
+  }, [creationDraft, renameDraft, replayPendingExplorerReload])
+
+  useEffect(() => {
     setDirectoryEntriesByPath({})
     setExpandedDirectories(new Set())
     setLoadingDirectories(new Set())
     resetCreation()
+    setRenameDraft(null)
+    setRenameName('')
+    isSubmittingRenameRef.current = false
     setErrorMessage(null)
     resetDeleteDialog()
     setSelectedEntryPaths(new Set())
@@ -250,6 +393,8 @@ export function useWorkspaceExplorerPanelState({
       workspacePath: null,
       filePath: null,
     }
+    isExplorerEditingRef.current = false
+    pendingExplorerReloadRef.current = false
   }, [closeContextMenu, resetCreation, resetDeleteDialog, workspaceRootPath])
 
   useEffect(() => {
@@ -283,29 +428,6 @@ export function useWorkspaceExplorerPanelState({
       })
     }
   }, [isOpen, loadDirectory, workspaceRootPath])
-
-  useEffect(() => {
-    if (!isOpen || !workspaceRootPath) {
-      return
-    }
-
-    const reloadIfIdle = () => {
-      if (isActiveSyncReloadingRef.current) {
-        return
-      }
-
-      isActiveSyncReloadingRef.current = true
-      Promise.resolve(reloadExplorerTreeRef.current()).finally(() => {
-        isActiveSyncReloadingRef.current = false
-      })
-    }
-
-    const intervalId = window.setInterval(reloadIfIdle, ACTIVE_EXPLORER_SYNC_INTERVAL_MS)
-    return () => {
-      window.clearInterval(intervalId)
-      isActiveSyncReloadingRef.current = false
-    }
-  }, [isOpen, workspaceRootPath])
 
   useEffect(() => {
     if (!isOpen) {
@@ -611,33 +733,17 @@ export function useWorkspaceExplorerPanelState({
       return
     }
 
-    const enteredName = window.prompt('Rename entry', getPathBasename(targetEntry.relativePath))
-    if (enteredName === null) {
-      closeContextMenu()
-      return
-    }
-
-    const nextName = enteredName.trim()
-    if (nextName.length === 0) {
-      setErrorMessage('Name is required.')
-      return
-    }
-    if (/[/\\]/u.test(nextName)) {
-      setErrorMessage('Name cannot include path separators.')
-      return
-    }
-
-    const parentPath = getPathDirname(targetEntry.relativePath)
-    const nextRelativePath = joinRelativePath(parentPath, nextName)
-    if (normalizeEntryPath(nextRelativePath) === normalizeEntryPath(targetEntry.relativePath)) {
-      closeContextMenu()
-      return
-    }
-
-    void runContextAction(async () => {
-      await onRenameEntry(targetEntry.relativePath, nextRelativePath)
-    })
-  }, [closeContextMenu, contextMenuState, onRenameEntry, runContextAction])
+    closeContextMenu()
+    resetCreation()
+    isSubmittingCreationRef.current = false
+    isExplorerEditingRef.current = true
+    setErrorMessage(null)
+    setRenameDraft({ entry: targetEntry })
+    setRenameName(getPathBasename(targetEntry.relativePath))
+    setSelectedEntryPaths(new Set([targetEntry.relativePath]))
+    setSelectionDirectoryPath(getSelectionDirectoryPath(targetEntry))
+    selectionAnchorEntryPathRef.current = targetEntry.relativePath
+  }, [closeContextMenu, contextMenuState, isSubmittingCreationRef, resetCreation])
 
   const requestDeleteEntry = useCallback(() => {
     const targetEntry = contextMenuState?.targetEntry
@@ -888,13 +994,17 @@ export function useWorkspaceExplorerPanelState({
   }, [clearEntrySelection])
 
   return {
-    cancelCreateEntry,
+    cancelCreateEntry: cancelCreateEntryWithPendingReload,
+    cancelRenameEntry,
     contextMenuRef,
     contextMenuState,
     contextMenuStyle,
     creationDraft,
     creationInputRef,
     creationName,
+    renameDraft,
+    renameInputRef,
+    renameName,
     directoryEntriesByPath,
     dropTargetDirectoryPath,
     errorMessage,
@@ -919,9 +1029,11 @@ export function useWorkspaceExplorerPanelState({
     isResizing,
     isSubmittingDeleteEntry,
     isSubmittingCreationRef,
+    isSubmittingRenameRef,
     isWorkspaceConfigured,
     loadingDirectories,
     onCreationNameChange,
+    onRenameNameChange: setRenameName,
     deleteDialogState,
     openContextMenu,
     renderedWidth,
@@ -931,8 +1043,9 @@ export function useWorkspaceExplorerPanelState({
     requestRenameEntry,
     rootEntries,
     selectedEntryPaths,
-    startCreateEntry,
+    startCreateEntry: startCreateEntryWithDeferredReloads,
     submitCreateEntry,
+    submitRenameEntry,
     submitMoveEntry,
     submitPasteEntry,
     handleTreeKeyDown,

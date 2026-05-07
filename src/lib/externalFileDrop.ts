@@ -1,7 +1,28 @@
 import type { ClipboardEvent as ReactClipboardEvent, DragEvent as ReactDragEvent } from 'react'
 
 interface ExternalFileDropItem {
-  path: string
+  path?: string
+}
+
+function getExternalFilePath(file: ExternalFileDropItem) {
+  if (typeof file.path === 'string') {
+    const legacyPath = file.path.trim()
+    if (legacyPath.length > 0) {
+      return legacyPath
+    }
+  }
+
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  const nativePath = window.echosphereFileDrop?.getPathForFile(file as File)
+  if (typeof nativePath !== 'string') {
+    return null
+  }
+
+  const trimmedNativePath = nativePath.trim()
+  return trimmedNativePath.length > 0 ? trimmedNativePath : null
 }
 
 function getExternalFilePathsFromFileList(files: ArrayLike<ExternalFileDropItem> | null | undefined) {
@@ -11,16 +32,12 @@ function getExternalFilePathsFromFileList(files: ArrayLike<ExternalFileDropItem>
 
   const filePaths: string[] = []
   for (const file of Array.from(files)) {
-    if (typeof file.path !== 'string') {
+    const filePath = getExternalFilePath(file)
+    if (!filePath) {
       continue
     }
 
-    const trimmedPath = file.path.trim()
-    if (trimmedPath.length === 0) {
-      continue
-    }
-
-    filePaths.push(trimmedPath)
+    filePaths.push(filePath)
   }
 
   return filePaths

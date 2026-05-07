@@ -33,6 +33,9 @@ interface Window {
   echosphereProviders: import('../src/types/chat').EchosphereProvidersApi
   echosphereSkills: import('../src/types/skills').EchosphereSkillsApi
   echosphereSettings: import('../src/types/chat').EchosphereSettingsApi
+  echosphereFileDrop: {
+    getPathForFile: (file: File) => string
+  }
   echosphereTerminal: import('../src/types/chat').EchosphereTerminalApi
   echosphereWorkspace: import('../src/types/chat').EchosphereWorkspaceApi
 }

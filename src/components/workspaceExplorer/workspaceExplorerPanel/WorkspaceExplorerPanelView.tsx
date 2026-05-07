@@ -91,10 +91,65 @@ export function WorkspaceExplorerPanelView({
     )
   }
 
+  function renderRenameRow(entry: WorkspaceExplorerEntry, depth: number) {
+    const fileIconConfig = !entry.isDirectory ? resolveFileIconConfig({ fileName: entry.relativePath }) : null
+    const FileIcon = fileIconConfig?.icon
+
+    return (
+      <li key={`rename-${entry.relativePath}`} className="min-w-0">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            void panelState.submitRenameEntry()
+          }}
+          className="flex h-8 w-full min-w-0 items-center gap-1 bg-surface-muted px-2 text-left text-sm text-foreground"
+          style={{ paddingLeft: `${Math.max(8, depth * 12 + 8)}px` }}
+        >
+          {entry.isDirectory ? (
+            <ChevronRight size={14} className="shrink-0 opacity-0" />
+          ) : (
+            <span className="w-[14px] shrink-0" />
+          )}
+          {entry.isDirectory ? (
+            <Folder size={14} className="shrink-0 text-subtle-foreground" />
+          ) : FileIcon ? (
+            <FileIcon
+              size={14}
+              className="shrink-0"
+              style={{ color: fileIconConfig?.color }}
+            />
+          ) : (
+            <File size={14} className="shrink-0 text-subtle-foreground" />
+          )}
+          <input
+            ref={panelState.renameInputRef}
+            value={panelState.renameName}
+            onChange={(event) => panelState.onRenameNameChange(event.target.value)}
+            onBlur={() => {
+              if (panelState.isSubmittingRenameRef.current) {
+                return
+              }
+              panelState.cancelRenameEntry()
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault()
+                panelState.cancelRenameEntry()
+              }
+            }}
+            placeholder={entry.isDirectory ? 'folder-name' : 'file-name'}
+            className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-subtle-foreground"
+          />
+        </form>
+      </li>
+    )
+  }
+
   function renderEntries(entries: readonly WorkspaceExplorerEntry[], depth: number): JSX.Element[] {
     return entries.flatMap((entry) => {
       const isDirectory = entry.isDirectory
       const entryPath = normalizeEntryPath(entry.relativePath)
+      const isRenamingEntry = panelState.renameDraft?.entry.relativePath === entry.relativePath
       const isExpanded = isDirectory && panelState.expandedDirectories.has(entryPath)
       const isLoading = isDirectory && panelState.loadingDirectories.has(entryPath)
       const isActiveFile = !isDirectory && activeFilePath === entry.relativePath
@@ -119,6 +174,10 @@ export function WorkspaceExplorerPanelView({
       const nestedEntries = isDirectory ? panelState.directoryEntriesByPath[entryPath] ?? [] : []
       const fileIconConfig = !isDirectory ? resolveFileIconConfig({ fileName: entry.relativePath }) : null
       const FileIcon = fileIconConfig?.icon
+
+      if (isRenamingEntry) {
+        return [renderRenameRow(entry, depth)]
+      }
 
       const row = (
         <li key={entry.relativePath} className="min-w-0">

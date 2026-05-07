@@ -54,11 +54,7 @@ export function ConversationFolderSection({
   const showMoreResetTimeoutRef = useRef<number | null>(null)
   const addAnimationResetTimeoutRef = useRef<number | null>(null)
   const visibleConversations = group.conversations.slice(0, visibleThreadCount)
-  const activeRunningConversation =
-    group.conversations.find((conversation) => conversation.isActive && conversation.hasRunningTask) ??
-    group.conversations.find((conversation) => conversation.isActive) ??
-    group.conversations.find((conversation) => conversation.hasRunningTask) ??
-    null
+  const runningConversations = group.conversations.filter((conversation) => conversation.hasRunningTask)
   const remainingThreadCount = Math.max(group.conversations.length - visibleConversations.length, 0)
   const canShowLessThreads = remainingThreadCount === 0 && group.conversations.length > MAX_VISIBLE_PROJECT_FOLDER_THREADS
 
@@ -400,13 +396,16 @@ export function ConversationFolderSection({
       </div>
 
       {isCollapsed ? (
-        activeRunningConversation ? (
+        runningConversations.length > 0 ? (
           <div className="space-y-1.5 px-0 pt-0.5">
-            <ConversationHistoryItem
-              conversation={activeRunningConversation}
-              onSelectConversation={onSelectConversation}
-              onDeleteConversation={onDeleteConversation}
-            />
+            {runningConversations.map((conversation) => (
+              <ConversationHistoryItem
+                key={conversation.id}
+                conversation={conversation}
+                onSelectConversation={onSelectConversation}
+                onDeleteConversation={onDeleteConversation}
+              />
+            ))}
           </div>
         ) : null
       ) : (

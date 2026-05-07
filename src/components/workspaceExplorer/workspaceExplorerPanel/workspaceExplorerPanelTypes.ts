@@ -45,3 +45,7 @@ export interface PendingExplorerCreation {
   isDirectory: boolean
   parentPath: string
 }
+
+export interface PendingExplorerRename {
+  entry: WorkspaceExplorerEntry
+}
