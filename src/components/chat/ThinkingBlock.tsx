@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { normalizeMarkdownText } from '../../lib/chatMessageContent'
-import { formatChatDuration } from '../chatDuration'
 import { MarkdownRenderer } from './MarkdownRenderer'
 
 interface ThinkingBlockProps {
@@ -9,6 +8,18 @@ interface ThinkingBlockProps {
   isComplete: boolean
   reasoningCompletedAt?: number
   startTime: number
+}
+
+function formatDuration(seconds: number): string {
+  const normalizedSeconds = Math.max(seconds, 0.01)
+
+  if (normalizedSeconds >= 60) {
+    const minutes = Math.floor(normalizedSeconds / 60)
+    const remainingSeconds = Math.round(normalizedSeconds % 60)
+    return `${minutes}m ${remainingSeconds}s`
+  }
+
+  return `${normalizedSeconds.toFixed(2)}s`
 }
 
 export const ThinkingBlock = memo(function ThinkingBlock({ content, isComplete, reasoningCompletedAt, startTime }: ThinkingBlockProps) {
@@ -99,13 +110,13 @@ const ThinkingBlockHeader = memo(function ThinkingBlockHeader({
   const stableDuration = frozenDurationRef.current ?? reasoningDurationSeconds ?? elapsedSeconds
   const completedDuration = stableDuration ?? 0
   const headerLabel = isReasoningComplete
-    ? `Thought for ${formatChatDuration(completedDuration)}`
+    ? `Thought for ${formatDuration(completedDuration)}`
     : isComplete
       ? stableDuration !== null
-        ? `Thought for ${formatChatDuration(stableDuration)}`
+        ? `Thought for ${formatDuration(stableDuration)}`
         : 'Thought'
       : stableDuration !== null
-        ? `Thinking for ${formatChatDuration(stableDuration)}`
+        ? `Thinking for ${formatDuration(stableDuration)}`
         : 'Thinking'
 
   return (
@@ -146,9 +157,9 @@ interface ThinkingBlockContentProps {
 
 const ThinkingBlockContent = memo(function ThinkingBlockContent({ normalizedContent, isComplete }: ThinkingBlockContentProps) {
   return (
-    <div className="mt-1.5 text-sm text-foreground">
+    <div className="mt-1.5 text-sm text-muted-foreground/90">
       {normalizedContent.trim().length > 0 ? (
-        <MarkdownRenderer content={normalizedContent} isStreaming={!isComplete} />
+        <MarkdownRenderer content={normalizedContent} className="opacity-85" isStreaming={!isComplete} />
       ) : (
         <p className="italic text-subtle-foreground">Thinking...</p>
       )}

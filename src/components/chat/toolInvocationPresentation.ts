@@ -1,6 +1,8 @@
 import type { ChangeDiffToolResultItem, ToolInvocationTrace } from '../../types/chat'
 import { getRelativeDisplayPath } from '../../lib/pathPresentation'
 import { parseStructuredToolResultContent } from '../../lib/toolResultContent'
+import { getKanbanToolInvocationHeaderLabel } from './kanbanToolInvocationPresentation'
+import { isKanbanTool } from './kanbanToolInvocationKinds'
 import { isFileEditTool, isFileMutationTool, isFileWriteTool } from './toolInvocationKinds'
 
 interface ToolArgumentsValue {
@@ -678,6 +680,17 @@ export function getToolInvocationHeaderLabel(
   overrideState?: ToolInvocationTrace['state'],
   workspaceRootPath?: string | null,
 ) {
+  if (isKanbanTool(invocation.toolName)) {
+    const effectiveInvocation =
+      overrideState === undefined
+        ? invocation
+        : {
+            ...invocation,
+            state: overrideState,
+          }
+    return getKanbanToolInvocationHeaderLabel(effectiveInvocation)
+  }
+
   const effectiveInvocation =
     overrideState === undefined
       ? invocation

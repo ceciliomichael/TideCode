@@ -321,11 +321,15 @@ export function ChatInterfaceContent({
 
   const handleRevertUserMessage = useCallback(
     async (messageId: string) => {
+      const shouldRestoreTerminalOpen = workspaceState.isTerminalOpen
       clearQueuedMessages()
       await chatMessages.revertUserMessage(messageId)
       await workspaceState.handleRefreshWorkspaceFileTabs()
+      if (shouldRestoreTerminalOpen) {
+        interfaceController.setActiveWorkspaceTerminalOpen(true)
+      }
     },
-    [chatMessages, clearQueuedMessages, workspaceState],
+    [chatMessages, clearQueuedMessages, interfaceController, workspaceState],
   )
 
   const handleEditUserMessage = useCallback(

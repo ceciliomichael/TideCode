@@ -1,4 +1,6 @@
 import type { ToolInvocationTrace } from '../../types/chat'
+import { buildKanbanToolInvocationGroupSummary } from './kanbanToolInvocationGrouping'
+import { isKanbanTool } from './kanbanToolInvocationKinds'
 import { isFileWriteTool } from './toolInvocationKinds'
 import { getFileMutationSummaryKind } from './toolInvocationPresentation'
 
@@ -14,6 +16,7 @@ interface ToolInvocationSummaryCounts {
   deletedCount: number
   verifiedCount: number
   exploredFileCount: number
+  kanbanCount: number
 }
 
 function pluralize(count: number, singular: string) {
@@ -74,6 +77,77 @@ function normalizeToolLabel(toolName: string) {
   return toolName.replace(/_/g, ' ')
 }
 
+function capitalizeLeadingWord(value: string) {
+  return value.length > 0 ? `${value[0].toUpperCase()}${value.slice(1)}` : value
+}
+
+function getMixedBucketPriority(bucketKey: string) {
+  if (bucketKey === 'created') {
+    return 0
+  }
+  if (bucketKey === 'edited') {
+    return 1
+  }
+  if (bucketKey === 'deleted') {
+    return 2
+  }
+  if (bucketKey === 'verified') {
+    return 3
+  }
+  if (bucketKey === 'explored-file') {
+    return 4
+  }
+  if (bucketKey === 'file') {
+    return 5
+  }
+  if (bucketKey === 'list') {
+    return 6
+  }
+  if (bucketKey === 'search') {
+    return 7
+  }
+  if (bucketKey === 'command') {
+    return 8
+  }
+  if (bucketKey === 'kanban') {
+    return 9
+  }
+  if (bucketKey === 'web-search') {
+    return 10
+  }
+  if (bucketKey === 'web-fetch') {
+    return 11
+  }
+
+  return 12
+}
+
+function formatMixedSummaryParts(
+  mixedBucketOrder: readonly string[],
+  mixedBucketCounts: ReadonlyMap<string, number>,
+  formatBucket: (bucketKey: string, count: number) => string,
+) {
+  const orderedBuckets = mixedBucketOrder
+    .map((bucketKey, index) => ({
+      bucketKey,
+      index,
+    }))
+    .sort((left, right) => getMixedBucketPriority(left.bucketKey) - getMixedBucketPriority(right.bucketKey) || left.index - right.index)
+
+  const summaryParts = orderedBuckets
+    .map(({ bucketKey }) => {
+      const count = mixedBucketCounts.get(bucketKey) ?? 0
+      return count > 0 ? formatBucket(bucketKey, count) : null
+    })
+    .filter((part): part is string => part !== null)
+
+  if (summaryParts.length > 1) {
+    summaryParts[0] = capitalizeLeadingWord(summaryParts[0])
+  }
+
+  return summaryParts
+}
+
 export function buildToolInvocationGroupSummary(
   invocations: readonly ToolInvocationTrace[],
   summaryVerbOverride?: 'Exploring' | 'Explored' | 'Creating' | 'Created' | 'Editing' | 'Edited',
@@ -106,6 +180,7 @@ export function buildToolInvocationGroupSummary(
     deletedCount: 0,
     verifiedCount: 0,
     exploredFileCount: 0,
+    kanbanCount: 0,
   }
   const otherToolCounts = new Map<string, number>()
   let hasFileMutationBuckets = false
@@ -135,6 +210,12 @@ export function buildToolInvocationGroupSummary(
         counts.verifiedCount += 1
       }
       recordMixedBucket(mutationKind)
+      continue
+    }
+
+    if (isKanbanTool(invocation.toolName)) {
+      counts.kanbanCount += 1
+      recordMixedBucket('kanban')
       continue
     }
 
@@ -185,7 +266,7 @@ export function buildToolInvocationGroupSummary(
         return `Explored ${pluralize(count, 'list')}`
       }
       if (bucketKey === 'search') {
-        return pluralize(count, 'search')
+        return `Ran ${pluralize(count, 'search')}`
       }
       if (bucketKey === 'web-search') {
         return `Ran ${pluralize(count, 'web search')}`
@@ -197,18 +278,16 @@ export function buildToolInvocationGroupSummary(
         return `ran ${pluralize(count, 'command')}`
       }
       if (bucketKey === 'file') {
-        return pluralize(count, 'file')
+        return `Explored ${pluralize(count, 'file')}`
+      }
+      if (bucketKey === 'kanban') {
+        return buildKanbanToolInvocationGroupSummary(count)
       }
 
       return pluralize(count, bucketKey.replace(/^other:/u, ''))
     }
 
-    for (const bucketKey of mixedBucketOrder) {
-      const count = mixedBucketCounts.get(bucketKey) ?? 0
-      if (count > 0) {
-        summaryParts.push(formatMixedBucket(bucketKey, count))
-      }
-    }
+    summaryParts.push(...formatMixedSummaryParts(mixedBucketOrder, mixedBucketCounts, formatMixedBucket))
 
     return summaryParts.length > 0 ? summaryParts.join(', ') : 'Explored actions'
   }
@@ -218,6 +297,7 @@ export function buildToolInvocationGroupSummary(
     counts.listCount === 0 &&
     counts.commandCount === 0 &&
     counts.fileCount === 0 &&
+    counts.kanbanCount === 0 &&
     counts.searchCount === 0 &&
     counts.webSearchCount === 0 &&
     counts.createdCount === 0 &&
@@ -236,6 +316,7 @@ export function buildToolInvocationGroupSummary(
     counts.listCount === 0 &&
     counts.commandCount === 0 &&
     counts.fileCount === 0 &&
+    counts.kanbanCount === 0 &&
     counts.searchCount === 0 &&
     counts.webFetchCount === 0 &&
     counts.createdCount === 0 &&
@@ -250,10 +331,10 @@ export function buildToolInvocationGroupSummary(
   }
 
   if (counts.listCount > 0) {
-    summaryParts.push(pluralize(counts.listCount, 'list'))
+    summaryParts.push(`Explored ${pluralize(counts.listCount, 'list')}`)
   }
   if (counts.searchCount > 0) {
-    summaryParts.push(pluralize(counts.searchCount, 'search'))
+    summaryParts.push(`Ran ${pluralize(counts.searchCount, 'search')}`)
   }
   if (counts.webSearchCount > 0) {
     summaryParts.push(`ran ${pluralize(counts.webSearchCount, 'web search')}`)
@@ -262,16 +343,22 @@ export function buildToolInvocationGroupSummary(
     summaryParts.push(`ran ${pluralize(counts.commandCount, 'command')}`)
   }
   if (counts.exploredFileCount + counts.fileCount > 0) {
-    summaryParts.push(pluralize(counts.exploredFileCount + counts.fileCount, 'file'))
+    summaryParts.push(`Explored ${pluralize(counts.exploredFileCount + counts.fileCount, 'file')}`)
+  }
+  if (counts.kanbanCount > 0) {
+    summaryParts.push(buildKanbanToolInvocationGroupSummary(counts.kanbanCount))
   }
   if (counts.webFetchCount > 0) {
     summaryParts.push(`fetched ${pluralize(counts.webFetchCount, 'page')}`)
   }
 
   for (const [toolLabel, count] of otherToolCounts) {
-    summaryParts.push(pluralize(count, toolLabel))
+    summaryParts.push(`Explored ${pluralize(count, toolLabel)}`)
   }
 
-  const summaryVerb = summaryVerbOverride ?? 'Explored'
-  return summaryParts.length > 0 ? `${summaryVerb} ${summaryParts.join(', ')}` : `${summaryVerb} actions`
+  if (summaryParts.length > 1) {
+    summaryParts[0] = capitalizeLeadingWord(summaryParts[0])
+  }
+
+  return summaryParts.length > 0 ? summaryParts.join(', ') : 'Explored actions'
 }
