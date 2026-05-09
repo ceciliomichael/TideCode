@@ -57,6 +57,7 @@ interface SettingsContentProps {
     onAddCodexAccountWithOAuth: () => Promise<boolean>
     onConnectCodexWithOAuth: () => Promise<boolean>
     onDisconnectCodex: () => Promise<boolean>
+    onRemoveCodexAccount: (accountKey: string) => Promise<boolean>
     onRemoveApiKeyProvider: (providerId: ApiKeyProviderId) => Promise<boolean>
     onRefreshProvidersState: () => Promise<void>
     onSaveApiKeyProvider: (input: SaveApiKeyProviderInput) => Promise<boolean>

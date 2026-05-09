@@ -23,6 +23,7 @@ interface ProvidersSettingsPanelProps {
   onAddCodexAccountWithOAuth: () => Promise<boolean>
   onConnectCodexWithOAuth: () => Promise<boolean>
   onDisconnectCodex: () => Promise<boolean>
+  onRemoveCodexAccount: (accountKey: string) => Promise<boolean>
   onRemoveApiKeyProvider: (providerId: ApiKeyProviderId) => Promise<boolean>
   onRefreshProvidersState: () => Promise<void>
   onSaveApiKeyProvider: (input: SaveApiKeyProviderInput) => Promise<boolean>
@@ -37,6 +38,7 @@ export function ProvidersSettingsPanel({
   onAddCodexAccountWithOAuth,
   onConnectCodexWithOAuth,
   onDisconnectCodex,
+  onRemoveCodexAccount,
   onRemoveApiKeyProvider,
   onRefreshProvidersState,
   onSaveApiKeyProvider,
@@ -175,6 +177,9 @@ export function ProvidersSettingsPanel({
             }}
             onDisconnect={async () => {
               await onDisconnectCodex()
+            }}
+            onRemoveAccount={async (accountKey) => {
+              await onRemoveCodexAccount(accountKey)
             }}
             onSwitchAccount={async (accountKey) => {
               await onSwitchCodexAccount(accountKey)

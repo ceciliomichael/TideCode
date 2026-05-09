@@ -6,7 +6,7 @@ import {
   writeStoredCodexAuthData,
   type StoredCodexAuthData,
 } from './store'
-import { listStoredCodexAccounts, readStoredCodexAccount, upsertStoredCodexAccount } from './accounts'
+import { deleteStoredCodexAccount, listStoredCodexAccounts, readStoredCodexAccount, upsertStoredCodexAccount } from './accounts'
 import { parseCodexIdTokenClaims } from './jwt'
 import type { CodexAccountSummary } from '../../../src/types/chat'
 import { refreshCodexOAuthTokensIfNeeded } from './refresh'
@@ -179,5 +179,26 @@ export async function disconnectCodexProvider() {
 
 export async function switchCodexAccount(accountKey: string) {
   await activateStoredCodexAccount(accountKey)
+  return getCodexProviderStatus()
+}
+
+export async function removeCodexAccountProvider(accountKey: string) {
+  const activeAuthData = await readStoredCodexAuthData()
+  
+  try {
+    await deleteStoredCodexAccount(accountKey)
+  } catch {
+    // Ignore error if account already deleted or missing
+  }
+  
+  if (activeAuthData?.tokens.account_key === accountKey) {
+    const remainingAccounts = await listStoredCodexAccounts().catch(() => [])
+    if (remainingAccounts.length > 0) {
+      await activateStoredCodexAccount(remainingAccounts[0].account.tokens.account_key)
+    } else {
+      await deleteStoredCodexAuthData()
+    }
+  }
+
   return getCodexProviderStatus()
 }

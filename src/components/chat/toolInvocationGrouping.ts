@@ -141,7 +141,7 @@ function formatMixedSummaryParts(
     })
     .filter((part): part is string => part !== null)
 
-  if (summaryParts.length > 1) {
+  if (summaryParts.length > 0) {
     summaryParts[0] = capitalizeLeadingWord(summaryParts[0])
   }
 
@@ -248,37 +248,37 @@ export function buildToolInvocationGroupSummary(
   if (hasFileMutationBuckets) {
     const formatMixedBucket = (bucketKey: string, count: number) => {
       if (bucketKey === 'created') {
-        return `Created ${pluralize(count, 'file')}`
+        return `created ${pluralize(count, 'file')}`
       }
       if (bucketKey === 'edited') {
-        return `Edited ${pluralize(count, 'file')}`
+        return `edited ${pluralize(count, 'file')}`
       }
       if (bucketKey === 'deleted') {
-        return `Deleted ${pluralize(count, 'file')}`
+        return `deleted ${pluralize(count, 'file')}`
       }
       if (bucketKey === 'verified') {
-        return `Verified ${pluralize(count, 'file')}`
+        return `verified ${pluralize(count, 'file')}`
       }
       if (bucketKey === 'explored-file') {
-        return `Explored ${pluralize(count, 'file')}`
+        return `explored ${pluralize(count, 'file')}`
       }
       if (bucketKey === 'list') {
-        return `Explored ${pluralize(count, 'list')}`
+        return `explored ${pluralize(count, 'list')}`
       }
       if (bucketKey === 'search') {
-        return `Ran ${pluralize(count, 'search')}`
+        return `ran ${pluralize(count, 'search')}`
       }
       if (bucketKey === 'web-search') {
-        return `Ran ${pluralize(count, 'web search')}`
+        return `ran ${pluralize(count, 'web search')}`
       }
       if (bucketKey === 'web-fetch') {
-        return `Fetched ${pluralize(count, 'page')}`
+        return `fetched ${pluralize(count, 'page')}`
       }
       if (bucketKey === 'command') {
         return `ran ${pluralize(count, 'command')}`
       }
       if (bucketKey === 'file') {
-        return `Explored ${pluralize(count, 'file')}`
+        return `explored ${pluralize(count, 'file')}`
       }
       if (bucketKey === 'kanban') {
         return buildKanbanToolInvocationGroupSummary(count)
@@ -331,10 +331,10 @@ export function buildToolInvocationGroupSummary(
   }
 
   if (counts.listCount > 0) {
-    summaryParts.push(`Explored ${pluralize(counts.listCount, 'list')}`)
+    summaryParts.push(`explored ${pluralize(counts.listCount, 'list')}`)
   }
   if (counts.searchCount > 0) {
-    summaryParts.push(`Ran ${pluralize(counts.searchCount, 'search')}`)
+    summaryParts.push(`ran ${pluralize(counts.searchCount, 'search')}`)
   }
   if (counts.webSearchCount > 0) {
     summaryParts.push(`ran ${pluralize(counts.webSearchCount, 'web search')}`)
@@ -343,7 +343,7 @@ export function buildToolInvocationGroupSummary(
     summaryParts.push(`ran ${pluralize(counts.commandCount, 'command')}`)
   }
   if (counts.exploredFileCount + counts.fileCount > 0) {
-    summaryParts.push(`Explored ${pluralize(counts.exploredFileCount + counts.fileCount, 'file')}`)
+    summaryParts.push(`explored ${pluralize(counts.exploredFileCount + counts.fileCount, 'file')}`)
   }
   if (counts.kanbanCount > 0) {
     summaryParts.push(buildKanbanToolInvocationGroupSummary(counts.kanbanCount))
@@ -353,10 +353,12 @@ export function buildToolInvocationGroupSummary(
   }
 
   for (const [toolLabel, count] of otherToolCounts) {
-    summaryParts.push(`Explored ${pluralize(count, toolLabel)}`)
+    summaryParts.push(`explored ${pluralize(count, toolLabel)}`)
   }
 
-  if (summaryParts.length > 1) {
+  if (summaryParts.length === 1) {
+    summaryParts[0] = capitalizeLeadingWord(summaryParts[0])
+  } else if (summaryParts.length > 1) {
     summaryParts[0] = capitalizeLeadingWord(summaryParts[0])
   }
 

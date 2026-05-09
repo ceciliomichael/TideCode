@@ -4,6 +4,7 @@ import {
   connectCodexProviderWithOAuth,
   disconnectCodexProvider,
   getCodexProviderStatus,
+  removeCodexAccountProvider,
   switchCodexAccount as switchStoredCodexAccount,
 } from './codex/service'
 import {
@@ -118,6 +119,11 @@ export async function disconnectCodex() {
 
 export async function switchCodexAccount(accountKey: string) {
   await switchStoredCodexAccount(accountKey)
+  return refreshProvidersCache(true)
+}
+
+export async function removeCodexAccount(accountKey: string) {
+  await removeCodexAccountProvider(accountKey)
   return refreshProvidersCache(true)
 }
 

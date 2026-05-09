@@ -67,7 +67,7 @@ test('buildToolInvocationGroupSummary reports list, search, command, and file co
     createInvocation('read'),
   ])
 
-  assert.equal(summary, 'Explored 1 list, Ran 1 search, ran 1 command, Explored 1 file')
+  assert.equal(summary, 'Explored 1 list, ran 1 search, ran 1 command, explored 1 file')
 })
 
 test('buildToolInvocationGroupSummary pluralizes grouped categories', () => {
@@ -79,7 +79,7 @@ test('buildToolInvocationGroupSummary pluralizes grouped categories', () => {
     createInvocation('read'),
   ])
 
-  assert.equal(summary, 'Ran 2 searches, ran 1 command, Explored 2 files')
+  assert.equal(summary, 'Ran 2 searches, ran 1 command, explored 2 files')
 })
 
 test('buildToolInvocationGroupSummary counts write tools inside explored groups', () => {
@@ -96,7 +96,7 @@ test('buildToolInvocationGroupSummary uses a kanban label for kanban-only groups
     createInvocation('read_board'),
   ])
 
-  assert.equal(summary, 'ran 1 kanban tool')
+  assert.equal(summary, 'Ran 1 kanban tool')
 })
 
 test('buildToolInvocationGroupSummary includes kanban tools alongside other work', () => {
@@ -132,13 +132,13 @@ test('buildToolInvocationGroupSummary aggregates run_terminal and get_terminal_o
     createInvocation('get_terminal_output'),
   ])
 
-  assert.equal(summary, 'ran 2 commands')
+  assert.equal(summary, 'Ran 2 commands')
 })
 
 test('buildToolInvocationGroupSummary uses a plain command label when commands are the only work', () => {
   const summary = buildToolInvocationGroupSummary([createInvocation('run_terminal')])
 
-  assert.equal(summary, 'ran 1 command')
+  assert.equal(summary, 'Ran 1 command')
 })
 
 test('buildToolInvocationGroupSummary switches to exploring while a child invocation is active', () => {
@@ -169,7 +169,7 @@ test('buildToolInvocationGroupSummary returns only the exploring label for activ
 test('buildToolInvocationGroupSummary allows the explored label to be overridden', () => {
   const summary = buildToolInvocationGroupSummary([createInvocation('run_terminal')], 'Explored')
 
-  assert.equal(summary, 'ran 1 command')
+  assert.equal(summary, 'Ran 1 command')
 })
 
 test('buildToolInvocationGroupSummary includes uncategorized tools by name', () => {
@@ -201,6 +201,6 @@ test('buildToolInvocationGroupSummary splits mixed file mutations and exploratio
 
   assert.equal(
     summary,
-    'Created 2 files, Edited 2 files, Explored 1 file, Ran 1 search, ran 3 commands',
+    'Created 2 files, edited 2 files, explored 1 file, ran 1 search, ran 3 commands',
   )
 })

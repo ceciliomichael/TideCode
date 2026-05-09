@@ -23,6 +23,7 @@ export default function App() {
   const [diffPanelExpandedFilePaths, setDiffPanelExpandedFilePaths] = useState<string[]>([])
   const { isLoading, settings, updateSettings } = useAppSettings()
   const providersState = useProvidersState()
+  const { refreshInBackground } = providersState
   const [diffPanelWidth, setDiffPanelWidth] = useState(settings.diffPanelWidth)
   const [bootConversationLaunchState, setBootConversationLaunchState] = useState<BootConversationLaunchState | undefined>(
     undefined,
@@ -86,8 +87,8 @@ export default function App() {
       return
     }
 
-    void providersState.refreshInBackground()
-  }, [activeScreen, providersState.refreshInBackground])
+    void refreshInBackground()
+  }, [activeScreen, refreshInBackground])
 
   useEffect(() => {
     if (isLoading || bootConversationLaunchState !== undefined) {
@@ -191,6 +192,7 @@ export default function App() {
               addCodexAccountWithOAuth: providersState.addCodexAccountWithOAuth,
               connectCodexWithOAuth: providersState.connectCodexWithOAuth,
               disconnectCodex: providersState.disconnectCodex,
+              removeCodexAccount: providersState.removeCodexAccount,
               errorMessage: providersState.errorMessage,
               isLoading: providersState.isLoading,
               onRemoveApiKeyProvider: providersState.removeApiKeyProvider,

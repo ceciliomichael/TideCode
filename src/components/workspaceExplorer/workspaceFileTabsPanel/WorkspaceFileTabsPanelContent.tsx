@@ -1,10 +1,12 @@
 import { memo } from 'react'
 import { WorkspaceFileEditor } from '../WorkspaceFileEditor'
 import { WorkspaceMarkdownPreview } from '../workspaceMarkdownPreview/WorkspaceMarkdownPreview'
+import type { GitFileDiff } from '../../../types/chat'
 import type { WorkspaceFileTab, WorkspaceTab } from '../types'
 
 interface WorkspaceFileTabsPanelContentProps {
   activeTab: WorkspaceTab
+  gitFileDiffs: readonly GitFileDiff[]
   tabs: readonly WorkspaceTab[]
   onOpenMarkdownPreview?: () => void
   onFileContentChange: (relativePath: string, content: string) => void
@@ -15,8 +17,18 @@ function isWorkspaceFileTab(tab: WorkspaceTab): tab is WorkspaceFileTab {
   return tab.kind === 'file'
 }
 
+function normalizeWorkspaceFilePath(filePath: string) {
+  return filePath.trim().replace(/\\/g, '/').replace(/^\/+/u, '')
+}
+
+function findGitFileDiff(gitFileDiffs: readonly GitFileDiff[], relativePath: string) {
+  const normalizedRelativePath = normalizeWorkspaceFilePath(relativePath)
+  return gitFileDiffs.find((diff) => normalizeWorkspaceFilePath(diff.fileName) === normalizedRelativePath) ?? null
+}
+
 export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPanelContent({
   activeTab,
+  gitFileDiffs,
   tabs,
   onOpenMarkdownPreview,
   onFileContentChange,
@@ -95,7 +107,9 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
   return (
     <WorkspaceFileEditor
       fileName={activeTab.fileName}
+      gitFileDiff={findGitFileDiff(gitFileDiffs, activeTab.relativePath)}
       onOpenMarkdownPreview={onOpenMarkdownPreview}
+      originalContent={activeTab.originalContent}
       value={activeTab.content}
       wordWrapEnabled={wordWrapEnabled}
       onChange={(nextValue) => onFileContentChange(activeTab.relativePath, nextValue)}

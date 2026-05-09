@@ -13,6 +13,7 @@ interface CodexProviderAccordionProps {
   onAddAccount: () => Promise<void>
   onConnect: () => Promise<void>
   onDisconnect: () => Promise<void>
+  onRemoveAccount: (accountKey: string) => Promise<void>
   onSwitchAccount: (accountKey: string) => Promise<void>
   onToggle: () => void
   providerStatus: CodexProviderConnectionStatus | undefined
@@ -27,6 +28,7 @@ export function CodexProviderAccordion({
   onAddAccount,
   onConnect,
   onDisconnect,
+  onRemoveAccount,
   onSwitchAccount,
   onToggle,
   providerStatus,
@@ -40,6 +42,7 @@ export function CodexProviderAccordion({
   const isConnecting = activeOperation === 'codex:connect'
   const isAddingAccount = activeOperation === 'codex:add-account'
   const isDisconnecting = activeOperation === 'codex:disconnect'
+  const isRemovingAccount = activeOperation?.startsWith('codex:remove-account:') ?? false
   const isSwitchingAccount = activeOperation?.startsWith('codex:switch:') ?? false
   const statusLabel = isAuthenticated ? 'Connected' : 'Not Connected'
   const resolvedDescription = isAuthenticated
@@ -119,15 +122,30 @@ export function CodexProviderAccordion({
           {isAuthenticated ? <CodexUsagePills usage={activeAccount?.usage ?? null} /> : null}
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {isAuthenticated ? (
-              <button
-                type="button"
-                onClick={() => void runAction(onDisconnect)}
-                disabled={isBusy || isActionPending || isDisconnecting}
-                className={primaryButtonClassName}
-              >
-                <Unplug size={15} />
-                Disconnect
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeAccount?.accountKey) {
+                      void runAction(() => onRemoveAccount(activeAccount.accountKey))
+                    }
+                  }}
+                  disabled={isBusy || isActionPending || isRemovingAccount || !activeAccount}
+                  className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-danger-surface px-3.5 text-sm font-medium leading-none text-danger-foreground transition-colors hover:bg-danger-surface-hover active:scale-[0.99] disabled:cursor-not-allowed"
+                >
+                  <Unplug size={15} />
+                  {isRemovingAccount ? 'Removing…' : 'Remove Account'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void runAction(onDisconnect)}
+                  disabled={isBusy || isActionPending || isDisconnecting}
+                  className={primaryButtonClassName}
+                >
+                  <Unplug size={15} />
+                  Disconnect
+                </button>
+              </>
             ) : (
               <button
                 type="button"

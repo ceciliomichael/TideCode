@@ -2,6 +2,7 @@ export interface WorkspaceFileTab {
   kind: 'file'
   tabKey: string
   content: string
+  originalContent: string | null
   errorMessage?: string
   fileName: string
   isBinary: boolean

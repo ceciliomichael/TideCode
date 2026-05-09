@@ -10,11 +10,13 @@ import {
 import { isMarkdownPreviewablePath } from '../../lib/markdown-preview'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
 import { clampWorkspaceEditorWidth } from '../../lib/workspaceEditorSizing'
+import type { GitFileDiff } from '../../types/chat'
 import type { WorkspaceTab } from './types'
 import { WorkspaceFileTabsPanelContent } from './workspaceFileTabsPanel/WorkspaceFileTabsPanelContent'
 
 interface WorkspaceFileTabsPanelProps {
   activeTabKey: string | null
+  gitFileDiffs: readonly GitFileDiff[]
   isOpen: boolean
   onCloseTab: (tabKey: string) => void
   onFileContentChange: (relativePath: string, content: string) => void
@@ -29,6 +31,7 @@ interface WorkspaceFileTabsPanelProps {
 
 export function WorkspaceFileTabsPanel({
   activeTabKey,
+  gitFileDiffs,
   isOpen,
   onCloseTab,
   onFileContentChange,
@@ -399,6 +402,7 @@ export function WorkspaceFileTabsPanel({
         {!hasTabs || !activeTab ? null : (
           <WorkspaceFileTabsPanelContent
             activeTab={activeTab}
+            gitFileDiffs={gitFileDiffs}
             tabs={tabs}
             onFileContentChange={onFileContentChange}
             onOpenMarkdownPreview={

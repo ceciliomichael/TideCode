@@ -11,7 +11,11 @@ import {
   VscWholeWord,
 } from 'react-icons/vsc'
 import { memo } from 'react'
-import { EDITOR_BOTTOM_BUFFER_PX, renderHighlightedTokens } from './workspaceFileEditorUtils'
+import {
+  EDITOR_BOTTOM_BUFFER_PX,
+  renderHighlightedTokens,
+  type WorkspaceEditorLineStatus,
+} from './workspaceFileEditorUtils'
 import type { WorkspaceFileEditorState } from './useWorkspaceFileEditorState'
 
 interface WorkspaceFileEditorViewProps {
@@ -20,6 +24,18 @@ interface WorkspaceFileEditorViewProps {
   onChange: (nextValue: string) => void
   wordWrapEnabled: boolean
   value: string
+}
+
+function getLineNumberRowClassName(status: WorkspaceEditorLineStatus | null) {
+  if (status === 'added') {
+    return 'border-r-[3px] border-emerald-500/80'
+  }
+
+  if (status === 'changed') {
+    return 'border-r-[3px] border-blue-500/80'
+  }
+
+  return ''
 }
 
 function SearchPanel({ editorState }: { editorState: WorkspaceFileEditorState }) {
@@ -214,7 +230,7 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
               {layout.lineNumberRows.map((row) => (
                 <div
                   key={`line-number-${row.lineNumber}`}
-                  className="select-none px-2 text-right leading-5"
+                  className={`select-none px-2 text-right leading-5 ${getLineNumberRowClassName(row.status)}`}
                   style={{ minHeight: `${row.minHeight}px` }}
                 >
                   {row.lineNumber}

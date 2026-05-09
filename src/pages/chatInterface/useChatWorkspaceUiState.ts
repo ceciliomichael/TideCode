@@ -391,6 +391,7 @@ export function useChatWorkspaceUiState({
           ...tab,
           content: result.content,
           errorMessage: undefined,
+          originalContent: result.content,
           fileName: getPathBasename(result.relativePath),
           isBinary: result.isBinary,
           isTruncated: result.isTruncated,
@@ -512,6 +513,7 @@ export function useChatWorkspaceUiState({
           {
             kind: "file",
             content: "",
+            originalContent: null,
             fileName: getPathBasename(relativePath),
             isBinary: false,
             isTruncated: false,
@@ -539,6 +541,7 @@ export function useChatWorkspaceUiState({
                 ? {
                     ...tab,
                     content: result.content,
+                    originalContent: result.content,
                     fileName: getPathBasename(result.relativePath),
                     isBinary: result.isBinary,
                     isTruncated: result.isTruncated,
@@ -781,6 +784,7 @@ export function useChatWorkspaceUiState({
                 ? {
                     ...tab,
                     sizeBytes: result.sizeBytes,
+                    originalContent: content,
                   }
                 : tab,
             ),

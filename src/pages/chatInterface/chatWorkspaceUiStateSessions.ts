@@ -60,6 +60,17 @@ interface WorkspaceAutosaveTimeoutsRefInput {
   workspaceAutosaveTimeoutsRef: MutableRefObject<Map<string, number>>;
 }
 
+function hydrateWorkspaceTabs(tabs: readonly WorkspaceTab[]): WorkspaceTab[] {
+  return tabs.map((tab) =>
+    tab.kind === 'file'
+      ? {
+          ...tab,
+          originalContent: tab.originalContent ?? tab.content,
+        }
+      : tab,
+  )
+}
+
 export function saveWorkspaceUiSession({
   activeWorkspaceFilePath,
   activeWorkspaceTabKey,
@@ -127,6 +138,7 @@ export function restoreWorkspaceUiSession({
     setIsExplorerOpen(nextSession.isExplorerOpen);
     onRightPanelTabChange(nextSession.rightPanelTab);
     onRightPanelOpenChange(nextSession.isRightPanelOpen);
+    setWorkspaceFileTabs(hydrateWorkspaceTabs(nextSession.tabs));
   } else {
     setWorkspaceFileTabs([]);
     setActiveWorkspaceFilePath(null);

@@ -145,6 +145,7 @@ const providersApi: EchosphereProvidersApi = {
   saveApiKeyProvider: (input: SaveApiKeyProviderInput) => ipcRenderer.invoke('providers:apikey:save', input),
   removeApiKeyProvider: (providerId: ApiKeyProviderId) =>
     ipcRenderer.invoke('providers:apikey:remove', providerId),
+  removeCodexAccount: (accountKey: string) => ipcRenderer.invoke('providers:codex:removeAccount', accountKey),
   switchCodexAccount: (accountKey: string) => ipcRenderer.invoke('providers:codex:switchAccount', accountKey),
 }
 

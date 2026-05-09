@@ -7,6 +7,7 @@ type ProvidersOperationKey =
   | 'codex:connect'
   | 'codex:disconnect'
   | `codex:switch:${string}`
+  | `codex:remove-account:${string}`
   | `apikey:${ApiKeyProviderId}:remove`
   | `apikey:${ApiKeyProviderId}:save`
   | 'state:load'
@@ -146,6 +147,13 @@ export function useProvidersState() {
     [runOperation],
   )
 
+  const removeCodexAccount = useCallback(
+    async (accountKey: string) => {
+      return runOperation(`codex:remove-account:${accountKey}`, () => window.echosphereProviders.removeCodexAccount(accountKey))
+    },
+    [runOperation],
+  )
+
   const saveApiKeyProvider = useCallback(
     async (input: SaveApiKeyProviderInput) => {
       return runOperation(`apikey:${input.providerId}:save`, () => window.echosphereProviders.saveApiKeyProvider(input))
@@ -171,6 +179,7 @@ export function useProvidersState() {
     refresh,
     refreshInBackground,
     removeApiKeyProvider,
+    removeCodexAccount,
     saveApiKeyProvider,
     switchCodexAccount,
   }

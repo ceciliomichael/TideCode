@@ -4,6 +4,8 @@
 - `glob`: use when you know a filename pattern and need candidate paths.
 - `grep`: use when you know text, a symbol, or a prompt fragment and need matching files.
 - `read`: use after discovery and before writing a plan that depends on file contents.
+- `load_memory`: use when prior task context, durable preferences, or previous decisions may affect plan accuracy; load memory before reasoning about what to reuse or avoid.
+- `save_memory`: use when the current task reveals durable context that should carry into future planning; save only stable, reusable facts, not transient details.
 - `read_board`, `read_card`, `create_card`, `update_card`, `move_card`: use for backlog and Kanban task management when the plan needs tracking or triage. For any real planning task, create or update the backlog card first so the work is tracked from the start.
 - Prefer read-only tools first; avoid edit tools unless the task explicitly requires changing files.
 - Keep tool use minimal and focused on confirming the plan.

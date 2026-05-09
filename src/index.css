@@ -46,6 +46,10 @@
     --workspace-editor-selection-background: rgb(0 120 215 / 0.26);
     --workspace-editor-search-highlight-background: rgb(0 120 215 / 0.18);
     --workspace-editor-search-highlight-active-background: rgb(0 120 215 / 0.28);
+    --workspace-editor-line-added-border: rgb(16 185 129 / 0.82);
+    --workspace-editor-line-changed-surface: rgb(0 120 215 / 0.12);
+    --workspace-editor-line-changed-border: rgb(0 120 215 / 0.5);
+    --workspace-editor-line-changed-foreground: rgb(0 92 170);
     --workspace-shell-surface: var(--color-sidebar);
     --titlebar-surface: var(--workspace-shell-surface);
     --workspace-panel-surface: var(--color-surface);
@@ -107,6 +111,10 @@
     --workspace-editor-selection-background: rgb(38 120 190 / 0.62);
     --workspace-editor-search-highlight-background: rgb(38 120 190 / 0.28);
     --workspace-editor-search-highlight-active-background: rgb(38 120 190 / 0.44);
+    --workspace-editor-line-added-border: rgb(52 211 153 / 0.82);
+    --workspace-editor-line-changed-surface: rgb(38 120 190 / 0.24);
+    --workspace-editor-line-changed-border: rgb(90 170 255 / 0.72);
+    --workspace-editor-line-changed-foreground: rgb(173 214 255);
     --titlebar-surface: #141415;
     --workspace-shell-surface: #141415;
     --workspace-panel-surface: #121213;

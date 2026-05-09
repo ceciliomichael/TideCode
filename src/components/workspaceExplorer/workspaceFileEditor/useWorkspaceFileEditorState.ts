@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useHighlightedCodeLines } from '../../../hooks/useHighlightedCodeLines'
+import type { GitFileDiff } from '../../../types/chat'
 import {
+  buildWorkspaceEditorLineStatusMap,
   buildSearchRegularExpression,
   countLines,
   getWorkspaceEditorScrollTransform,
@@ -16,7 +18,9 @@ import {
 
 interface WorkspaceFileEditorProps {
   fileName: string
+  gitFileDiff: GitFileDiff | null
   onOpenMarkdownPreview?: () => void
+  originalContent: string | null
   value: string
   wordWrapEnabled: boolean
   onChange: (nextValue: string) => void
@@ -36,7 +40,9 @@ function makeSearchOptions(
 
 export function useWorkspaceFileEditorState({
   fileName,
+  gitFileDiff,
   onOpenMarkdownPreview,
+  originalContent,
   value,
   wordWrapEnabled,
   onChange,
@@ -120,6 +126,11 @@ export function useWorkspaceFileEditorState({
     () => searchMatchesByLine.slice(visibleStartIndex, visibleEndIndex),
     [searchMatchesByLine, visibleEndIndex, visibleStartIndex],
   )
+  const lineStatusBaselineContent = gitFileDiff ? gitFileDiff.oldContent : originalContent
+  const lineStatusByLineNumber = useMemo(
+    () => buildWorkspaceEditorLineStatusMap(lineStatusBaselineContent, value),
+    [lineStatusBaselineContent, value],
+  )
   const gutterWidthCh = Math.max(4, String(totalLineCount).length + 1)
   const highlightedCodeClassName = wordWrapEnabled ? 'block min-w-full w-full bg-transparent' : 'block w-fit min-w-full bg-transparent'
   const highlightedLineClassName = wordWrapEnabled ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : 'whitespace-pre'
@@ -136,9 +147,10 @@ export function useWorkspaceFileEditorState({
         return {
           lineNumber,
           minHeight: wrappedLineCount * EDITOR_LINE_HEIGHT_PX,
+          status: lineStatusByLineNumber.get(lineNumber) ?? null,
         }
       }),
-    [visibleLineNumbers, visibleStartIndex, wrappedLineCounts],
+    [lineStatusByLineNumber, visibleLineNumbers, visibleStartIndex, wrappedLineCounts],
   )
 
   const handleScroll = useCallback(() => {

@@ -26,6 +26,7 @@ interface SettingsInterfaceProps {
     addCodexAccountWithOAuth: () => Promise<boolean>
     connectCodexWithOAuth: () => Promise<boolean>
     disconnectCodex: () => Promise<boolean>
+    removeCodexAccount: (accountKey: string) => Promise<boolean>
     errorMessage: string | null
     isLoading: boolean
     onRemoveApiKeyProvider: (providerId: ApiKeyProviderId) => Promise<boolean>
@@ -136,6 +137,7 @@ export function SettingsInterface({
             onAddCodexAccountWithOAuth: providersState.addCodexAccountWithOAuth,
             onConnectCodexWithOAuth: providersState.connectCodexWithOAuth,
             onDisconnectCodex: providersState.disconnectCodex,
+            onRemoveCodexAccount: providersState.removeCodexAccount,
             onRemoveApiKeyProvider: providersState.onRemoveApiKeyProvider,
             onRefreshProvidersState: providersState.onRefreshProvidersState,
             onSaveApiKeyProvider: providersState.onSaveApiKeyProvider,

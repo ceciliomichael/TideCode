@@ -855,6 +855,7 @@ export interface EchosphereProvidersApi {
   onStateChange: (listener: () => void) => () => void
   removeApiKeyProvider: (providerId: ApiKeyProviderId) => Promise<ProvidersState>
   saveApiKeyProvider: (input: SaveApiKeyProviderInput) => Promise<ProvidersState>
+  removeCodexAccount: (accountKey: string) => Promise<ProvidersState>
   switchCodexAccount: (accountKey: string) => Promise<ProvidersState>
 }
 
