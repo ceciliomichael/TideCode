@@ -789,6 +789,8 @@ test('createAgentTools describes read and apply_patch with exact path guidance',
     const writeTool = tools.write as { description?: string }
 
     assert.match(readTool.description ?? '', /Do not guess paths/u)
+    assert.match(readTool.description ?? '', /read enough contiguous context in one call to avoid repeated reads/u)
+    assert.match(readTool.description ?? '', /500-line reads are acceptable when the file is large/u)
     assert.match(readTool.description ?? '', /The latest read is the source of truth for edits/u)
     assert.match(readTool.description ?? '', /After reading, use `apply_patch` for small edits or `write` for a full replacement/u)
     assert.match(applyPatchTool.description ?? '', /workspace-relative file paths like `src\/app\.ts`/u)

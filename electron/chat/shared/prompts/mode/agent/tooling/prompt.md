@@ -3,7 +3,7 @@
 - `list`: use when you know a directory and want its direct children.
 - `glob`: use when you know a filename pattern and need candidate paths.
 - `grep`: use when you know text, a symbol, or a prompt fragment and need matching files.
-- `read`: use after discovery, before answering about a file, and always before editing the exact target.
+- `read`: use after discovery, before answering about a file, and always before editing the exact target. Prefer larger contiguous reads when they reduce repeated calls; one substantial read is better than many tiny ones.
 - `apply_patch`: use for small, targeted edits when you know the exact lines to change.
 - `write`: use when replacing an entire file is clearer than patching it.
 - `run_terminal`: use for inspection, tests, and validation; do not use it to edit files.
@@ -11,7 +11,7 @@
 
 ## Editing rules
 - Read before edit: never change a file you have not inspected.
-- Prefer the smallest useful search and read scope.
+- Prefer a read scope that captures enough contiguous context in one or two calls; large reads are better than lots of tiny reads when that avoids repeat work.
 - Do not guess at file contents when the source can be read directly.
 - Re-read a file if it may have changed before applying a patch.
 - Do not edit when the requested state already matches the file.

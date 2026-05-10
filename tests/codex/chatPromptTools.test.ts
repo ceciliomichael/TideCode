@@ -27,7 +27,7 @@ test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
   assert.match(planPrompt, /WHEN ADDING PACKAGES ALWAYS USE npm install to get latest/u)
   assert.match(planPrompt, /<tooling_instructions description="Tool usage guidance"/u)
   assert.match(planPrompt, /If MCP tools are available and relevant to the task, use them/u)
-  assert.match(planPrompt, /For any real planning task, create or update the backlog card first so the work is tracked from the start\./u)
+  assert.match(planPrompt, /In plan mode, Kanban setup must not block producing the plan/u)
   assert.match(planPrompt, /read_board/u)
   assert.match(planPrompt, /Prefer read-only tools first; avoid edit tools unless the task explicitly requires changing files\./u)
 })
