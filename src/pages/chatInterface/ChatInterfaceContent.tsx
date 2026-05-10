@@ -181,7 +181,7 @@ export function ChatInterfaceContent({
     }
 
     if (workspaceState.isTerminalOpen) {
-      interfaceController.setActiveWorkspaceTerminalOpen(false)
+      workspaceState.handleTerminalOpenChange(false)
     }
 
     setWorkspaceViewMode('kanban')
@@ -324,10 +324,10 @@ export function ChatInterfaceContent({
       const shouldRestoreTerminalOpen = workspaceState.isTerminalOpen
       clearQueuedMessages()
       await chatMessages.revertUserMessage(messageId)
-      await workspaceState.handleRefreshWorkspaceFileTabs()
       if (shouldRestoreTerminalOpen) {
-        interfaceController.setActiveWorkspaceTerminalOpen(true)
+        workspaceState.handleTerminalOpenChange(true)
       }
+      await workspaceState.handleRefreshWorkspaceFileTabs()
     },
     [chatMessages, clearQueuedMessages, interfaceController, workspaceState],
   )
@@ -505,7 +505,7 @@ export function ChatInterfaceContent({
                 <button
                   type="button"
                   disabled={isWorkspaceHeaderControlDisabled}
-                  onClick={() => interfaceController.setActiveWorkspaceTerminalOpen(!workspaceState.isTerminalOpen)}
+                  onClick={() => workspaceState.handleTerminalOpenChange(!workspaceState.isTerminalOpen)}
                   className={[
                     'inline-flex h-10 items-center gap-1.5 text-sm transition-colors',
                     isWorkspaceHeaderControlDisabled
@@ -523,7 +523,7 @@ export function ChatInterfaceContent({
                   <button
                     type="button"
                     disabled={isWorkspaceHeaderControlDisabled}
-                    onClick={() => interfaceController.setActiveWorkspaceTerminalOpen(!workspaceState.isTerminalOpen)}
+                    onClick={() => workspaceState.handleTerminalOpenChange(!workspaceState.isTerminalOpen)}
                     className={[
                       'inline-flex h-10 items-center gap-1.5 text-sm transition-colors',
                       workspaceState.isTerminalOpen
@@ -914,7 +914,7 @@ export function ChatInterfaceContent({
         </div>
         <WorkspaceTerminalPanel
           isOpen={workspaceState.isTerminalOpen}
-          onClose={() => interfaceController.setActiveWorkspaceTerminalOpen(false)}
+          onClose={() => workspaceState.handleTerminalOpenChange(false)}
           onHeightCommit={interfaceController.handleTerminalPanelHeightCommit}
           resolvedTheme={resolvedTheme}
           storedHeight={workspaceState.terminalPanelHeight}

@@ -21,6 +21,10 @@ export function getTerminalWorkspaceKey({
   selectedFolderId,
 }: TerminalWorkspaceKeyInput) {
   const workspaceKey = toWorkspaceScopedKey(activeWorkspacePath);
+  if (workspaceKey !== DEFAULT_TERMINAL_WORKSPACE_KEY) {
+    return workspaceKey;
+  }
+
   if (selectedFolderId === null && activeConversationId) {
     return `unfiled:${activeConversationId}`;
   }

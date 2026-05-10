@@ -8,6 +8,7 @@ interface SaveWorkspaceUiSessionInput {
   activeWorkspaceTabKey: string | null;
   activeWorkspaceUiKey: string;
   isExplorerOpen: boolean;
+  isTerminalOpen: boolean;
   isRightPanelOpen: boolean;
   isWorkspaceTabsPanelVisible: boolean;
   rightPanelTab: ChatInterfaceRightPanelTab;
@@ -20,6 +21,7 @@ interface RestoreWorkspaceUiSessionInput {
   activeWorkspaceTabKey: string | null;
   activeWorkspaceUiKey: string;
   isExplorerOpen: boolean;
+  isTerminalOpen: boolean;
   isRightPanelOpen: boolean;
   isWorkspaceTabsPanelVisible: boolean;
   onRightPanelOpenChange: (nextValue: boolean) => void;
@@ -28,6 +30,7 @@ interface RestoreWorkspaceUiSessionInput {
   setActiveWorkspaceFilePath: Dispatch<SetStateAction<string | null>>;
   setActiveWorkspaceTabKey: Dispatch<SetStateAction<string | null>>;
   setIsExplorerOpen: Dispatch<SetStateAction<boolean>>;
+  setIsTerminalOpen: Dispatch<SetStateAction<boolean>>;
   setIsWorkspaceTabsPanelVisible: Dispatch<SetStateAction<boolean>>;
   setWorkspaceFileTabs: Dispatch<SetStateAction<WorkspaceTab[]>>;
   workspaceFileTabs: WorkspaceTab[];
@@ -76,6 +79,7 @@ export function saveWorkspaceUiSession({
   activeWorkspaceTabKey,
   activeWorkspaceUiKey,
   isExplorerOpen,
+  isTerminalOpen,
   isRightPanelOpen,
   isWorkspaceTabsPanelVisible,
   rightPanelTab,
@@ -86,6 +90,7 @@ export function saveWorkspaceUiSession({
     activeFilePath: activeWorkspaceFilePath,
     activeTabKey: activeWorkspaceTabKey,
     isExplorerOpen,
+    isTerminalOpen,
     isRightPanelOpen,
     isTabsVisible: isWorkspaceTabsPanelVisible,
     rightPanelTab,
@@ -98,6 +103,7 @@ export function restoreWorkspaceUiSession({
   activeWorkspaceTabKey,
   activeWorkspaceUiKey,
   isExplorerOpen,
+  isTerminalOpen,
   isRightPanelOpen,
   isWorkspaceTabsPanelVisible,
   onRightPanelOpenChange,
@@ -106,6 +112,7 @@ export function restoreWorkspaceUiSession({
   setActiveWorkspaceFilePath,
   setActiveWorkspaceTabKey,
   setIsExplorerOpen,
+  setIsTerminalOpen,
   setIsWorkspaceTabsPanelVisible,
   setWorkspaceFileTabs,
   workspaceFileTabs,
@@ -121,6 +128,7 @@ export function restoreWorkspaceUiSession({
     activeWorkspaceTabKey,
     activeWorkspaceUiKey: previousWorkspaceUiKey,
     isExplorerOpen,
+    isTerminalOpen,
     isRightPanelOpen,
     isWorkspaceTabsPanelVisible,
     rightPanelTab:
@@ -136,6 +144,7 @@ export function restoreWorkspaceUiSession({
     setActiveWorkspaceTabKey(nextSession.activeTabKey ?? nextSession.activeFilePath);
     setIsWorkspaceTabsPanelVisible(nextSession.isTabsVisible);
     setIsExplorerOpen(nextSession.isExplorerOpen);
+    setIsTerminalOpen(nextSession.isTerminalOpen);
     onRightPanelTabChange(nextSession.rightPanelTab);
     onRightPanelOpenChange(nextSession.isRightPanelOpen);
     setWorkspaceFileTabs(hydrateWorkspaceTabs(nextSession.tabs));
@@ -145,6 +154,7 @@ export function restoreWorkspaceUiSession({
     setActiveWorkspaceTabKey(null);
     setIsWorkspaceTabsPanelVisible(false);
     setIsExplorerOpen(false);
+    setIsTerminalOpen(false);
     onRightPanelTabChange("diff");
     onRightPanelOpenChange(false);
   }

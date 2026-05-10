@@ -86,6 +86,7 @@ export function useChatWorkspaceUiState({
     useState(diffPanelWidth);
   const [conversationDiffPanelWidth, setConversationDiffPanelWidth] =
     useState(diffPanelWidth);
+  const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const workspaceUiSessionsRef = useRef<Record<string, WorkspaceUiSession>>({});
   const activeWorkspaceUiKey = toWorkspaceScopedKey(activeWorkspacePath);
   const previousWorkspaceUiKeyRef = useRef(activeWorkspaceUiKey);
@@ -128,6 +129,7 @@ export function useChatWorkspaceUiState({
       activeWorkspaceTabKey,
       activeWorkspaceUiKey,
       isExplorerOpen,
+      isTerminalOpen,
       isRightPanelOpen,
       isWorkspaceTabsPanelVisible,
       onRightPanelOpenChange,
@@ -136,6 +138,7 @@ export function useChatWorkspaceUiState({
       setActiveWorkspaceFilePath,
       setActiveWorkspaceTabKey,
       setIsExplorerOpen,
+      setIsTerminalOpen,
       setIsWorkspaceTabsPanelVisible,
       setWorkspaceFileTabs,
       workspaceFileTabs,
@@ -146,6 +149,7 @@ export function useChatWorkspaceUiState({
     activeWorkspaceTabKey,
     activeWorkspaceUiKey,
     isExplorerOpen,
+    isTerminalOpen,
     isRightPanelOpen,
     isWorkspaceTabsPanelVisible,
     onRightPanelOpenChange,
@@ -160,6 +164,7 @@ export function useChatWorkspaceUiState({
       activeWorkspaceTabKey,
       activeWorkspaceUiKey,
       isExplorerOpen,
+      isTerminalOpen,
       isRightPanelOpen,
       isWorkspaceTabsPanelVisible,
       rightPanelTab,
@@ -171,6 +176,7 @@ export function useChatWorkspaceUiState({
     activeWorkspaceTabKey,
     activeWorkspaceUiKey,
     isExplorerOpen,
+    isTerminalOpen,
     isRightPanelOpen,
     isWorkspaceTabsPanelVisible,
     rightPanelTab,
@@ -216,8 +222,6 @@ export function useChatWorkspaceUiState({
       activeWorkspacePath,
       selectedFolderId,
     });
-  const isTerminalOpen =
-    settings.terminalOpenByWorkspace[activeTerminalWorkspaceKey] ?? false;
   const terminalPanelHeight =
     settings.terminalPanelHeightsByWorkspace[activeTerminalWorkspaceKey] ??
     DEFAULT_TERMINAL_PANEL_HEIGHT;
@@ -729,6 +733,10 @@ export function useChatWorkspaceUiState({
     [onDiffPanelWidthChange, onDiffPanelWidthCommit],
   );
 
+  const handleTerminalOpenChange = useCallback((nextOpen: boolean) => {
+    setIsTerminalOpen(nextOpen);
+  }, []);
+
   const handleSourceControlPanelWidthChange = useCallback(
     (nextWidth: number) => {
       setSourceControlPanelWidth(nextWidth);
@@ -983,6 +991,7 @@ export function useChatWorkspaceUiState({
     handleSourceControlPanelWidthChange,
     handleSourceControlPanelWidthCommit,
     handleSidebarOpenChange,
+    handleTerminalOpenChange,
     handleToggleExplorerPanel,
     handleWorkspaceEditorWidthChange,
     handleWorkspaceEditorWidthCommit,

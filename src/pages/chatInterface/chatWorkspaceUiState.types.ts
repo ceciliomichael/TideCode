@@ -10,6 +10,7 @@ export interface WorkspaceUiSession {
   activeFilePath: string | null;
   activeTabKey: string | null;
   isExplorerOpen: boolean;
+  isTerminalOpen: boolean;
   isRightPanelOpen: boolean;
   isTabsVisible: boolean;
   rightPanelTab: ChatInterfaceRightPanelTab;
@@ -67,6 +68,7 @@ export interface ChatWorkspaceUiState {
     targetDirectoryRelativePath: string,
   ) => Promise<void>;
   handleRefreshWorkspaceFileTabs: () => Promise<void>;
+  handleTerminalOpenChange: (nextOpen: boolean) => void;
   handleRenameWorkspaceEntry: (
     relativePath: string,
     nextRelativePath: string,
