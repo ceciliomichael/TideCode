@@ -10,10 +10,12 @@ import type {
   GitCommitResult,
   GitSyncAction,
 } from '../../types/chat'
+import { describeSourceControlPendingAction, beginSourceControlSyncOperation, endSourceControlSyncOperation } from '../../lib/sourceControlPendingStateStore'
 import { SourceControlChangesSection } from './SourceControlChangesSection'
 import { SourceControlHistorySection } from './SourceControlHistorySection'
 import { computeSwimlanes } from './historyGraphLayout'
 import { prependCommittedHistoryEntry } from './sourceControlHistoryUtils'
+import { useSourceControlPendingState } from '../../hooks/useSourceControlPendingState'
 
 interface SourceControlPanelProps {
   onDiffPanelExpandedFilePathsChange: (nextFilePaths: string[]) => void
@@ -83,12 +85,10 @@ function SourceControlPanelContent({
   const [historyHeight, setHistoryHeight] = useState<number | null>(null)
   const [commitMessage, setCommitMessage] = useState('')
   const [includeUnstaged, setIncludeUnstaged] = useState(true)
-  const [isQuickCommitting, setIsQuickCommitting] = useState(false)
   const [isCommitActionMenuOpen, setIsCommitActionMenuOpen] = useState(false)
   const [quickCommitError, setQuickCommitError] = useState<string | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
-  const [pendingSyncAction, setPendingSyncAction] = useState<GitSyncAction | 'refresh' | null>(null)
   const [historyEntries, setHistoryEntries] = useState<GitHistoryEntry[]>([])
   const [headHash, setHeadHash] = useState<string | null>(null)
   const [hasMoreHistory, setHasMoreHistory] = useState(false)
@@ -106,6 +106,10 @@ function SourceControlPanelContent({
 
   const normalizedWorkspacePath = workspacePath?.trim() ?? ''
   const hasWorkspacePath = normalizedWorkspacePath.length > 0
+  const pendingState = useSourceControlPendingState(normalizedWorkspacePath)
+  const pendingCommitOperation = pendingState?.commit ?? null
+  const pendingSyncOperation = pendingState?.sync ?? null
+  const isSourceControlBusy = pendingCommitOperation !== null || pendingSyncOperation !== null
   const isUnstagedLikeFileDiff = useCallback(
     (fileDiff: ConversationFileDiff) =>
       fileDiff.isUnstaged || fileDiff.isUntracked || (!fileDiff.isStaged && !fileDiff.isUnstaged && !fileDiff.isUntracked),
@@ -118,11 +122,16 @@ function SourceControlPanelContent({
   )
   const totalChangedFileCount = fileDiffs.length
   const shouldUseSplitLayout = isChangesSectionOpen
-  const canQuickCommit =
-    !isQuickCommitting &&
-    (includeUnstaged ? totalChangedFileCount > 0 : stagedFileDiffs.length > 0)
-  const isCommitActionDisabled = !canQuickCommit || pendingSyncAction !== null
+  const canQuickCommit = (includeUnstaged ? totalChangedFileCount > 0 : stagedFileDiffs.length > 0) && !isSourceControlBusy
+  const isCommitActionDisabled = !canQuickCommit || isSourceControlBusy
+  const isQuickCommitting = pendingCommitOperation !== null
+  const pendingSyncAction: GitSyncAction | 'refresh' | null = pendingSyncOperation?.action ?? null
   const isCommitPrimaryBusy = isQuickCommitting || pendingSyncAction === 'push'
+  const pendingOperationLabel = pendingCommitOperation
+    ? describeSourceControlPendingAction(pendingCommitOperation.action)
+    : pendingSyncOperation
+      ? describeSourceControlPendingAction(pendingSyncOperation.action)
+      : null
 
   const historyViewModels = useMemo(() => computeSwimlanes(historyEntries), [historyEntries])
 
@@ -506,7 +515,7 @@ function SourceControlPanelContent({
       return false
     }
 
-    setPendingSyncAction(action)
+    const pendingSyncOperation = beginSourceControlSyncOperation(normalizedWorkspacePath, action)
     setSyncError(null)
     setSyncMessage(null)
     try {
@@ -524,7 +533,9 @@ function SourceControlPanelContent({
       setSyncError(error instanceof Error ? error.message : `Failed to ${action}.`)
       return false
     } finally {
-      setPendingSyncAction(null)
+      if (pendingSyncOperation) {
+        endSourceControlSyncOperation(normalizedWorkspacePath, pendingSyncOperation.sequence)
+      }
     }
   }
 
@@ -533,7 +544,7 @@ function SourceControlPanelContent({
   }
 
   async function handleRefreshPanel() {
-    setPendingSyncAction('refresh')
+    const pendingRefreshOperation = beginSourceControlSyncOperation(normalizedWorkspacePath, 'refresh')
     setSyncError(null)
     setSyncMessage(null)
     try {
@@ -542,7 +553,9 @@ function SourceControlPanelContent({
     } catch (error) {
       setSyncError(error instanceof Error ? error.message : 'Failed to refresh source control.')
     } finally {
-      setPendingSyncAction(null)
+      if (pendingRefreshOperation) {
+        endSourceControlSyncOperation(normalizedWorkspacePath, pendingRefreshOperation.sequence)
+      }
     }
   }
 
@@ -551,7 +564,6 @@ function SourceControlPanelContent({
       return
     }
 
-    setIsQuickCommitting(true)
     setIsCommitActionMenuOpen(false)
     setQuickCommitError(null)
     setSyncMessage(null)
@@ -577,8 +589,6 @@ function SourceControlPanelContent({
       }
     } catch (error) {
       setQuickCommitError(error instanceof Error ? error.message : 'Failed to commit changes.')
-    } finally {
-      setIsQuickCommitting(false)
     }
   }
 
@@ -726,6 +736,7 @@ function SourceControlPanelContent({
           <SourceControlChangesSection
             commitActionControlsRef={commitActionControlsRef}
             commitMessage={commitMessage}
+            isOperationInProgress={isSourceControlBusy}
             includeUnstaged={includeUnstaged}
             isChangesSectionOpen={isChangesSectionOpen}
             isCommitActionDisabled={isCommitActionDisabled}
@@ -735,6 +746,7 @@ function SourceControlPanelContent({
             isStagedSectionOpen={isStagedSectionOpen}
             isUnstagedSectionOpen={isUnstagedSectionOpen}
             pendingFileActionPath={pendingFileActionPath}
+            pendingOperationLabel={pendingOperationLabel}
             quickCommitError={quickCommitError}
             stagedFileCount={stagedFileDiffs.length}
             stagedFileDiffs={stagedFileDiffs}
@@ -772,6 +784,7 @@ function SourceControlPanelContent({
             isHistorySectionOpen={isHistorySectionOpen}
             isLoadingHistory={isLoadingHistory}
             isLoadingMoreHistory={isLoadingMoreHistory}
+            isOperationInProgress={isSourceControlBusy}
             loadingCommitHashes={loadingCommitHashes}
             pendingSyncAction={pendingSyncAction}
             selectedCommitHash={selectedCommitHash}

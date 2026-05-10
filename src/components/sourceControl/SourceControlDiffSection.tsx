@@ -4,6 +4,7 @@ import type { DiffPanelScope } from '../chat/ConversationDiffFileItem'
 
 interface SourceControlDiffSectionProps {
   bodyClassName?: string
+  areFileActionsDisabled: boolean
   diffs: readonly ConversationFileDiff[]
   emptyLabel: string
   pendingFileActionPath: string | null
@@ -18,6 +19,7 @@ interface SourceControlDiffSectionProps {
 
 export function SourceControlDiffSection({
   bodyClassName,
+  areFileActionsDisabled,
   diffs,
   emptyLabel,
   pendingFileActionPath,
@@ -36,6 +38,7 @@ export function SourceControlDiffSection({
       ) : null}
       <VirtualizedSourceControlDiffList
         bodyClassName={bodyClassName}
+        areFileActionsDisabled={areFileActionsDisabled}
         diffs={diffs}
         emptyLabel={emptyLabel}
         pendingFileActionPath={pendingFileActionPath}

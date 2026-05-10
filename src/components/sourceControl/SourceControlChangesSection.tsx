@@ -1,4 +1,4 @@
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Loader2 } from 'lucide-react'
 import type { RefObject } from 'react'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
 import type { DiffPanelScope } from '../chat/ConversationDiffFileItem'
@@ -17,7 +17,9 @@ interface SourceControlChangesSectionProps {
   isQuickCommitting: boolean
   isStagedSectionOpen: boolean
   isUnstagedSectionOpen: boolean
+  isOperationInProgress: boolean
   pendingFileActionPath: string | null
+  pendingOperationLabel: string | null
   quickCommitError: string | null
   stagedFileCount: number
   stagedFileDiffs: readonly ConversationFileDiff[]
@@ -52,7 +54,9 @@ export function SourceControlChangesSection({
   isQuickCommitting,
   isStagedSectionOpen,
   isUnstagedSectionOpen,
+  isOperationInProgress,
   pendingFileActionPath,
+  pendingOperationLabel,
   quickCommitError,
   stagedFileCount,
   stagedFileDiffs,
@@ -90,8 +94,8 @@ export function SourceControlChangesSection({
   const singleDigitBadgeValueClassName = 'tabular-nums translate-x-[1px]'
   const stagedFilePaths = Array.from(new Set(stagedFileDiffs.map((fileDiff) => fileDiff.fileName)))
   const unstagedFilePaths = Array.from(new Set(unstagedFileDiffs.map((fileDiff) => fileDiff.fileName)))
-  const isBulkStageActionDisabled = isQuickCommitting || unstagedFilePaths.length === 0
-  const isBulkUnstageActionDisabled = isQuickCommitting || stagedFilePaths.length === 0
+  const isBulkStageActionDisabled = isOperationInProgress || unstagedFilePaths.length === 0
+  const isBulkUnstageActionDisabled = isOperationInProgress || stagedFilePaths.length === 0
 
   async function handleStageAllUnstagedFiles() {
     if (unstagedFilePaths.length === 0) {
@@ -122,6 +126,12 @@ export function SourceControlChangesSection({
       </button>
       {isChangesSectionOpen ? (
         <div className={[sectionBodyClassName, 'border-t border-border'].join(' ')}>
+          {pendingOperationLabel ? (
+            <div className="flex items-center gap-2 border-b border-border bg-surface-muted px-4 py-2 text-[12px] text-muted-foreground">
+              <Loader2 size={13} className="animate-spin" />
+              <span>{pendingOperationLabel}</span>
+            </div>
+          ) : null}
           <div className="shrink-0 border-b border-border px-4 py-3">
             <textarea
               value={commitMessage}
@@ -133,7 +143,7 @@ export function SourceControlChangesSection({
 
             <div className="mt-2 flex items-center justify-between gap-2">
               <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                <Switch checked={includeUnstaged} onChange={onIncludeUnstagedChange} disabled={isQuickCommitting} />
+                <Switch checked={includeUnstaged} onChange={onIncludeUnstagedChange} disabled={isOperationInProgress} />
                 Include unstaged
               </label>
 
@@ -195,9 +205,10 @@ export function SourceControlChangesSection({
                 <button
                   type="button"
                   onClick={onOpenCommitModal}
+                  disabled={isOperationInProgress}
                   className={[
                     'inline-flex h-8 items-center justify-center rounded-lg px-3 text-xs font-medium transition-colors',
-                    'chat-send-button-enabled',
+                    isOperationInProgress ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
                   ].join(' ')}
                 >
                   Advanced
@@ -254,6 +265,7 @@ export function SourceControlChangesSection({
                 {isStagedSectionOpen ? (
                   <SourceControlDiffSection
                     bodyClassName={diffViewportClassName}
+                    areFileActionsDisabled={isOperationInProgress}
                     sectionClassName="border-b-0 min-h-0 flex flex-1 flex-col"
                     title=""
                     scope="staged"
@@ -318,6 +330,7 @@ export function SourceControlChangesSection({
                 {isUnstagedSectionOpen ? (
                   <SourceControlDiffSection
                     bodyClassName={diffViewportClassName}
+                    areFileActionsDisabled={isOperationInProgress}
                     sectionClassName="border-b-0 min-h-0 flex flex-1 flex-col"
                     title=""
                     scope="unstaged"

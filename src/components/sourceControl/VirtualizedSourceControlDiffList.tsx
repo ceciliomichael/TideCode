@@ -8,6 +8,7 @@ import type { DiffPanelScope } from '../chat/ConversationDiffFileItem'
 
 interface VirtualizedSourceControlDiffListProps {
   bodyClassName?: string
+  areFileActionsDisabled: boolean
   diffs: readonly ConversationFileDiff[]
   emptyLabel: string
   pendingFileActionPath: string | null
@@ -25,6 +26,7 @@ interface VirtualizedDiffListRange {
 
 interface DiffFileActionButtonsProps {
   diff: ConversationFileDiff
+  areFileActionsDisabled: boolean
   isPending: boolean
   selectedScope: DiffPanelScope
   useTooltips: boolean
@@ -140,6 +142,7 @@ function DiffLineSummary({ addedLineCount, removedLineCount }: { addedLineCount:
 
 function DiffFileActionButtons({
   diff,
+  areFileActionsDisabled,
   isPending,
   selectedScope,
   useTooltips,
@@ -154,7 +157,7 @@ function DiffFileActionButtons({
           ariaLabel={`Unstage ${diff.fileName}`}
           className="inline-flex h-7 w-7 items-center justify-center text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
           content="Unstage file"
-          disabled={isPending}
+          disabled={isPending || areFileActionsDisabled}
           icon={<Minus size={14} />}
           useTooltips={useTooltips}
           onClick={() => {
@@ -171,7 +174,7 @@ function DiffFileActionButtons({
         ariaLabel={`Discard ${diff.fileName}`}
         className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
         content="Discard changes"
-        disabled={isPending}
+        disabled={isPending || areFileActionsDisabled}
         icon={<Undo2 size={14} />}
         useTooltips={useTooltips}
         onClick={() => {
@@ -182,7 +185,7 @@ function DiffFileActionButtons({
         ariaLabel={`Stage ${diff.fileName}`}
         className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
         content="Stage file"
-        disabled={isPending}
+        disabled={isPending || areFileActionsDisabled}
         icon={<Plus size={14} />}
         useTooltips={useTooltips}
         onClick={() => {
@@ -195,6 +198,7 @@ function DiffFileActionButtons({
 
 function DiffRow({
   diff,
+  areFileActionsDisabled,
   isPending,
   selectedScope,
   onDiscardFile,
@@ -203,6 +207,7 @@ function DiffRow({
   onUnstageFile,
 }: {
   diff: ConversationFileDiff
+  areFileActionsDisabled: boolean
   isPending: boolean
   selectedScope: DiffPanelScope
   onDiscardFile: (filePath: string) => Promise<void>
@@ -239,6 +244,7 @@ function DiffRow({
       <span className="ml-3 inline-flex w-[4.5rem] shrink-0 items-center justify-end pr-3">
         <DiffFileActionButtons
           diff={diff}
+          areFileActionsDisabled={areFileActionsDisabled}
           isPending={isPending}
           selectedScope={selectedScope}
           useTooltips={false}
@@ -253,6 +259,7 @@ function DiffRow({
 
 function DeletedDiffRow({
   diff,
+  areFileActionsDisabled,
   isPending,
   selectedScope,
   onDiscardFile,
@@ -261,6 +268,7 @@ function DeletedDiffRow({
   onUnstageFile,
 }: {
   diff: ConversationFileDiff
+  areFileActionsDisabled: boolean
   isPending: boolean
   selectedScope: DiffPanelScope
   onDiscardFile: (filePath: string) => Promise<void>
@@ -297,6 +305,7 @@ function DeletedDiffRow({
       <span className="ml-3 inline-flex w-[4.5rem] shrink-0 items-center justify-end pr-3">
         <DiffFileActionButtons
           diff={diff}
+          areFileActionsDisabled={areFileActionsDisabled}
           isPending={isPending}
           selectedScope={selectedScope}
           useTooltips={false}
@@ -318,6 +327,7 @@ const rowWrapperStyle: CSSProperties = {
 const MeasuredSourceControlDiffRow = memo(function MeasuredSourceControlDiffRow({
   diff,
   offsetTop,
+  areFileActionsDisabled,
   pendingFileActionPath,
   selectedScope,
   onDiscardFile,
@@ -327,6 +337,7 @@ const MeasuredSourceControlDiffRow = memo(function MeasuredSourceControlDiffRow(
 }: {
   diff: ConversationFileDiff
   offsetTop: number
+  areFileActionsDisabled: boolean
   pendingFileActionPath: string | null
   selectedScope: DiffPanelScope
   onDiscardFile: (filePath: string) => Promise<void>
@@ -341,6 +352,7 @@ const MeasuredSourceControlDiffRow = memo(function MeasuredSourceControlDiffRow(
       {diff.isDeleted ? (
         <DeletedDiffRow
           diff={diff}
+          areFileActionsDisabled={areFileActionsDisabled}
           isPending={isPending}
           selectedScope={selectedScope}
           onDiscardFile={onDiscardFile}
@@ -351,6 +363,7 @@ const MeasuredSourceControlDiffRow = memo(function MeasuredSourceControlDiffRow(
       ) : (
         <DiffRow
           diff={diff}
+          areFileActionsDisabled={areFileActionsDisabled}
           isPending={isPending}
           selectedScope={selectedScope}
           onDiscardFile={onDiscardFile}
@@ -365,6 +378,7 @@ const MeasuredSourceControlDiffRow = memo(function MeasuredSourceControlDiffRow(
 
 export const VirtualizedSourceControlDiffList = memo(function VirtualizedSourceControlDiffList({
   bodyClassName,
+  areFileActionsDisabled,
   diffs,
   emptyLabel,
   pendingFileActionPath,
@@ -488,6 +502,7 @@ export const VirtualizedSourceControlDiffList = memo(function VirtualizedSourceC
                 key={diff.fileName}
                 diff={diff}
                 offsetTop={offsets[itemIndex] ?? 0}
+                areFileActionsDisabled={areFileActionsDisabled}
                 pendingFileActionPath={pendingFileActionPath}
                 selectedScope={selectedScope}
                 onDiscardFile={onDiscardFile}
@@ -504,6 +519,7 @@ export const VirtualizedSourceControlDiffList = memo(function VirtualizedSourceC
             <DeletedDiffRow
               key={diff.fileName}
               diff={diff}
+              areFileActionsDisabled={areFileActionsDisabled}
               isPending={pendingFileActionPath === diff.fileName}
               selectedScope={selectedScope}
               onDiscardFile={onDiscardFile}
@@ -515,6 +531,7 @@ export const VirtualizedSourceControlDiffList = memo(function VirtualizedSourceC
             <DiffRow
               key={diff.fileName}
               diff={diff}
+              areFileActionsDisabled={areFileActionsDisabled}
               isPending={pendingFileActionPath === diff.fileName}
               selectedScope={selectedScope}
               onDiscardFile={onDiscardFile}

@@ -52,6 +52,7 @@ interface SourceControlHistorySectionProps {
   isHistorySectionOpen: boolean
   isLoadingHistory: boolean
   isLoadingMoreHistory: boolean
+  isOperationInProgress: boolean
   loadingCommitHashes: readonly string[]
   pendingSyncAction: GitSyncAction | 'refresh' | null
   selectedCommitHash: string | null
@@ -80,6 +81,7 @@ export function SourceControlHistorySection({
   isHistorySectionOpen,
   isLoadingHistory,
   isLoadingMoreHistory,
+  isOperationInProgress,
   loadingCommitHashes,
   pendingSyncAction,
   selectedCommitHash,
@@ -151,7 +153,7 @@ export function SourceControlHistorySection({
                 <button
                   type="button"
                   aria-label={config.label}
-                  disabled={!hasWorkspacePath || pendingSyncAction !== null}
+                  disabled={!hasWorkspacePath || isOperationInProgress || pendingSyncAction !== null}
                   onClick={() => void onSyncAction(config.action)}
                   className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -165,7 +167,7 @@ export function SourceControlHistorySection({
             <button
               type="button"
               aria-label="Refresh source control"
-              disabled={!hasWorkspacePath || pendingSyncAction !== null}
+              disabled={!hasWorkspacePath || isOperationInProgress || pendingSyncAction !== null}
               onClick={() => void onRefreshPanel()}
               className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
