@@ -539,6 +539,7 @@ export interface CreateTerminalSessionResult {
   isReused: boolean
   sessionId: number
   shell: string
+  workspaceRootPath: string | null
 }
 
 export interface WriteTerminalSessionInput {

@@ -131,7 +131,7 @@ export function useWorkspaceFileEditorState({
     () => buildWorkspaceEditorLineStatusMap(lineStatusBaselineContent, value),
     [lineStatusBaselineContent, value],
   )
-  const gutterWidthCh = Math.max(4, String(totalLineCount).length + 1)
+  const gutterWidthCh = Math.max(5, String(totalLineCount).length + 2)
   const highlightedCodeClassName = wordWrapEnabled ? 'block min-w-full w-full bg-transparent' : 'block w-fit min-w-full bg-transparent'
   const highlightedLineClassName = wordWrapEnabled ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : 'whitespace-pre'
   const textAreaClassName = [

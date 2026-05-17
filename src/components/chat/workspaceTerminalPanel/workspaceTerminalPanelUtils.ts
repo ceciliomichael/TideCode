@@ -184,3 +184,10 @@ export function getWorkspaceKeyFromTerminalTabKey(tabKey: string) {
     return null;
   }
 }
+
+export function resolveTerminalSessionWorkspaceRootPath(
+  sessionWorkspaceRootPath: string | null | undefined,
+) {
+  const normalizedWorkspaceRootPath = sessionWorkspaceRootPath?.trim() ?? "";
+  return normalizedWorkspaceRootPath.length > 0 ? normalizedWorkspaceRootPath : null;
+}

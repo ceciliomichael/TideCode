@@ -5,7 +5,6 @@ import {
   beginSourceControlCommitOperation,
   endSourceControlCommitOperation,
 } from '../lib/sourceControlPendingStateStore'
-import { useSourceControlPendingState } from './useSourceControlPendingState'
 
 interface UseGitCommitInput {
   hasRepository: boolean
@@ -49,10 +48,9 @@ export function useGitCommit({
   workspacePath,
 }: UseGitCommitInput): UseGitCommitResult {
   const normalizedWorkspacePath = normalizeGitWorkspacePath(workspacePath)
-  const pendingState = useSourceControlPendingState(normalizedWorkspacePath)
-  const isCommitting = pendingState?.commit !== null
   const [status, setStatus] = useState<GitStatusResult | null>(null)
   const [isLoadingStatus, setIsLoadingStatus] = useState(false)
+  const [isCommitting, setIsCommitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [lastCommitResult, setLastCommitResult] = useState<GitCommitResult | null>(null)
   const statusRequestIdRef = useRef(0)
@@ -63,6 +61,7 @@ export function useGitCommit({
     activeWorkspacePathRef.current = normalizedWorkspacePath
     setStatus(null)
     setIsLoadingStatus(false)
+    setIsCommitting(false)
     setErrorMessage(null)
     setLastCommitResult(null)
   }, [normalizedWorkspacePath])
@@ -122,6 +121,7 @@ export function useGitCommit({
 
     const requestId = commitRequestIdRef.current + 1
     commitRequestIdRef.current = requestId
+    setIsCommitting(true)
     setErrorMessage(null)
     const pendingCommitOperation = beginSourceControlCommitOperation(requestWorkspacePath, input.action)
 
@@ -160,6 +160,9 @@ export function useGitCommit({
     } finally {
       if (pendingCommitOperation) {
         endSourceControlCommitOperation(requestWorkspacePath, pendingCommitOperation.sequence)
+      }
+      if (requestWorkspacePath === activeWorkspacePathRef.current) {
+        setIsCommitting(false)
       }
     }
   }, [modelId, providerId, reasoningEffort, workspacePath])

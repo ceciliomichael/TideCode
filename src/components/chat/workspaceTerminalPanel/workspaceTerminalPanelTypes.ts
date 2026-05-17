@@ -23,6 +23,7 @@ export interface TerminalTabState {
   label: string;
   sessionId: number | null;
   status: TerminalTabStatus;
+  workspaceRootPath: string | null;
 }
 
 export interface WorkspaceTerminalPanelState {

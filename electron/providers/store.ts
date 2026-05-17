@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
 import type { ApiKeyProviderId, ApiKeyProviderStatus, SaveApiKeyProviderInput } from '../../src/types/chat'
+import { writeJsonFileAtomic } from '../settings/fileStore'
 
 interface StoredApiKeyProviderConfig {
   api_key?: string
@@ -91,10 +92,7 @@ function sanitizeStoredProviders(input: unknown): StoredApiKeyProviders {
 
 async function writeStoredApiKeyProviders(providers: StoredApiKeyProviders) {
   await ensureConfigDirectory()
-  await fs.writeFile(getProvidersSettingsFilePath(), JSON.stringify(providers, null, 2), {
-    encoding: 'utf8',
-    mode: 0o600,
-  })
+  await writeJsonFileAtomic(getProvidersSettingsFilePath(), JSON.stringify(providers, null, 2))
 }
 
 export async function readStoredApiKeyProviders() {
@@ -103,6 +101,11 @@ export async function readStoredApiKeyProviders() {
     return sanitizeStoredProviders(JSON.parse(raw) as unknown)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return {}
+    }
+
+    if (error instanceof SyntaxError) {
+      console.warn('Ignoring corrupted providers settings file', error)
       return {}
     }
 

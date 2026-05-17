@@ -182,6 +182,8 @@ export function useChatFileMentionMenu({
   const [selectedMenuType, setSelectedMenuType] = useState<ChatMentionMenuType | null>(null)
   const [isIndexLoading, setIsIndexLoading] = useState(false)
   const [workspaceMentionIndex, setWorkspaceMentionIndex] = useState<ChatFileMentionIndex | null>(null)
+  const [workspaceMentionIndexLoadedKey, setWorkspaceMentionIndexLoadedKey] = useState(0)
+  const [workspaceMentionIndexRefreshKey, setWorkspaceMentionIndexRefreshKey] = useState(0)
   const [mentionPathMap, setMentionPathMap] = useState<Map<string, string>>(
     () => (initialMentionPathMap ? new Map(initialMentionPathMap) : new Map()),
   )
@@ -223,12 +225,47 @@ export function useChatFileMentionMenu({
   useEffect(() => {
     if (!workspaceRootPath) {
       setWorkspaceMentionIndex(null)
+      setWorkspaceMentionIndexLoadedKey(0)
+      setWorkspaceMentionIndexRefreshKey(0)
       setIsIndexLoading(false)
       return
     }
 
     setWorkspaceMentionIndex(null)
+    setWorkspaceMentionIndexLoadedKey(0)
+    setWorkspaceMentionIndexRefreshKey(0)
     setIsIndexLoading(false)
+  }, [workspaceRootPath])
+
+  useEffect(() => {
+    if (!workspaceRootPath) {
+      return
+    }
+
+    let isDisposed = false
+    const unsubscribeWorkspaceChanges = window.echosphereWorkspace.onExplorerChange((event) => {
+      if (isDisposed || event.workspaceRootPath !== workspaceRootPath) {
+        return
+      }
+
+      setWorkspaceMentionIndexRefreshKey((currentValue) => currentValue + 1)
+    })
+
+    void window.echosphereWorkspace.watchExplorerChanges({
+      workspaceRootPath,
+    }).catch((error) => {
+      console.error('Failed to watch workspace explorer changes for mention suggestions', error)
+    })
+
+    return () => {
+      isDisposed = true
+      unsubscribeWorkspaceChanges()
+      void window.echosphereWorkspace.unwatchExplorerChanges({
+        workspaceRootPath,
+      }).catch((error) => {
+        console.error('Failed to unwatch workspace explorer changes for mention suggestions', error)
+      })
+    }
   }, [workspaceRootPath])
 
   useEffect(() => {
@@ -236,11 +273,15 @@ export function useChatFileMentionMenu({
       return
     }
 
-    if (workspaceMentionIndex?.workspaceRootPath === workspaceRootPath) {
+    if (
+      workspaceMentionIndex?.workspaceRootPath === workspaceRootPath &&
+      workspaceMentionIndexLoadedKey === workspaceMentionIndexRefreshKey
+    ) {
       return
     }
 
     let isCancelled = false
+    const nextRefreshKey = workspaceMentionIndexRefreshKey
     setIsIndexLoading(true)
 
     void loadWorkspaceMentionIndex(workspaceRootPath)
@@ -250,6 +291,7 @@ export function useChatFileMentionMenu({
         }
 
         setWorkspaceMentionIndex(index)
+        setWorkspaceMentionIndexLoadedKey(nextRefreshKey)
       })
       .catch((error) => {
         if (!isCancelled) {
@@ -259,6 +301,7 @@ export function useChatFileMentionMenu({
             entries: [],
             workspaceRootPath,
           })
+          setWorkspaceMentionIndexLoadedKey(nextRefreshKey)
         }
       })
       .finally(() => {
@@ -270,7 +313,7 @@ export function useChatFileMentionMenu({
     return () => {
       isCancelled = true
     }
-  }, [isOpen, workspaceMentionIndex?.workspaceRootPath, workspaceRootPath])
+  }, [isOpen, workspaceMentionIndex?.workspaceRootPath, workspaceMentionIndexLoadedKey, workspaceMentionIndexRefreshKey, workspaceRootPath])
 
   const searchResults = useMemo(() => {
     if (!workspaceMentionIndex) {

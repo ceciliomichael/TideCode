@@ -17,6 +17,7 @@ export interface SourceControlWorkspacePendingState {
 
 const STORAGE_KEY = 'echosphere:source-control-pending-state'
 const PENDING_STATE_TTL_MS = 10 * 60 * 1000
+const LEGACY_STORAGE_KEY = STORAGE_KEY
 
 let hasLoadedPersistedState = false
 const pendingStateByWorkspace = new Map<string, SourceControlWorkspacePendingState>()
@@ -48,8 +49,9 @@ function readPersistedState(): Record<string, SourceControlWorkspacePendingState
   }
 
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
+    const raw = window.sessionStorage.getItem(STORAGE_KEY)
     if (!raw) {
+      window.localStorage.removeItem(LEGACY_STORAGE_KEY)
       return {}
     }
 
@@ -123,7 +125,9 @@ function persistState() {
   }
 
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(pendingStateByWorkspace.entries())))
+    const serializedState = JSON.stringify(Object.fromEntries(pendingStateByWorkspace.entries()))
+    window.sessionStorage.setItem(STORAGE_KEY, serializedState)
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY)
   } catch (error) {
     console.error('Failed to persist source control pending state.', error)
   }

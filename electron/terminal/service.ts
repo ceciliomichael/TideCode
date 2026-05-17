@@ -560,6 +560,7 @@ function buildCreateSessionResult(input: {
     isReused: input.isReused,
     sessionId: input.sessionId,
     shell: input.activeSession.shellLabel,
+    workspaceRootPath: input.activeSession.workspaceRootPath,
   };
 }
 

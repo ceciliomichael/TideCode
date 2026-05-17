@@ -20,6 +20,7 @@ import {
   getTerminalTheme,
   getWorkspaceKeyFromTerminalTabKey,
   isRenderableTerminalDimensions,
+  resolveTerminalSessionWorkspaceRootPath,
 } from "./workspaceTerminalPanelUtils";
 import "@xterm/xterm/css/xterm.css";
 
@@ -124,6 +125,21 @@ export function useWorkspaceTerminalSessionState({
       : null;
   }, []);
 
+  const getActiveTerminalSessionWorkspaceRootPath = useCallback(() => {
+    const activeSessionId = activeSessionIdRef.current;
+    if (activeSessionId === null) {
+      return null;
+    }
+
+    const tabKey = sessionIdToTabKeyRef.current.get(activeSessionId);
+    if (!tabKey) {
+      return null;
+    }
+
+    const activeTab = terminalTabsRef.current.find((tab) => tab.key === tabKey) ?? null;
+    return resolveTerminalSessionWorkspaceRootPath(activeTab?.workspaceRootPath);
+  }, []);
+
   const sendTerminalSizeToSession = useCallback(
     (dimensions: { cols: number; rows: number }) => {
       const activeSessionId = activeSessionIdRef.current;
@@ -146,20 +162,21 @@ export function useWorkspaceTerminalSessionState({
         rows: dimensions.rows,
         sessionId: activeSessionId,
       };
+      const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath();
 
       void window.echosphereTerminal
         .resizeSession({
           cols: dimensions.cols,
           rows: dimensions.rows,
           sessionId: activeSessionId,
-          workspaceRootPath: workspacePathRef.current,
+          workspaceRootPath,
         })
         .catch((error) => {
           lastSyncedSizeRef.current = null;
           console.error("Failed to sync terminal size", error);
         });
     },
-    [],
+    [getActiveTerminalSessionWorkspaceRootPath],
   );
 
   const syncTerminalSize = useCallback(
@@ -364,11 +381,13 @@ export function useWorkspaceTerminalSessionState({
         return;
       }
 
+      const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath();
+
       void window.echosphereTerminal
         .writeToSession({
           data,
           sessionId: activeSessionId,
-          workspaceRootPath: workspacePathRef.current,
+          workspaceRootPath,
         })
         .catch((error) => {
           console.error("Failed to write terminal input", error);
@@ -382,7 +401,7 @@ export function useWorkspaceTerminalSessionState({
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
     syncTerminalSize(true);
-  }, [resolvedTheme, sendTerminalSizeToSession, syncTerminalSize]);
+  }, [getActiveTerminalSessionWorkspaceRootPath, resolvedTheme, sendTerminalSizeToSession, syncTerminalSize]);
 
   const disposeTerminal = useCallback(() => {
     pendingTerminalRenderRef.current = null;
@@ -414,6 +433,7 @@ export function useWorkspaceTerminalSessionState({
       label: createTerminalTabLabel(tabIndex),
       sessionId: null,
       status: "connecting",
+      workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(workspacePathRef.current),
     };
 
     tabBuffersRef.current.set(tabKey, "");
@@ -445,6 +465,7 @@ export function useWorkspaceTerminalSessionState({
                 errorMessage: null,
                 exitCode: null,
                 sessionId: session.sessionId,
+                workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(session.workspaceRootPath),
                 status: "ready",
               }
             : tab,
@@ -492,7 +513,7 @@ export function useWorkspaceTerminalSessionState({
         void window.echosphereTerminal
           .closeSession({
             sessionId: currentTab.sessionId,
-            workspaceRootPath: workspacePathRef.current,
+            workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(currentTab.workspaceRootPath),
           })
           .catch((error) => {
             console.error("Failed to close terminal session", error);
