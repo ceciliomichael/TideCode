@@ -257,6 +257,62 @@ test('applyPatchInWorkspace rejects accidental line-wrap differences in hunk con
   }
 })
 
+test('applyPatchInWorkspace tolerates indentation-only drift in hunk context', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-indent-'))
+  const targetFilePath = path.join(workspaceRootPath, 'src', 'footer.tsx')
+  await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
+  await fs.writeFile(
+    targetFilePath,
+    [
+      '<footer className="rounded-2xl border border-[#F0F2F6] bg-white p-6 shadow-sm">',
+      '    <p className="mt-4 text-sm leading-6 text-[#606266]">',
+      '    A simple landing page structure for products that need a',
+      '    confident first impression.',
+      '    </p>',
+      '</footer>',
+      '',
+    ].join('\n'),
+    'utf8',
+  )
+
+  try {
+    const result = await applyPatchInWorkspace(
+      workspaceRootPath,
+      `*** Begin Patch
+*** Update File: ${targetFilePath}
+@@
+ <footer className="rounded-2xl border border-[#F0F2F6] bg-white p-6 shadow-sm">
+ <p className="mt-4 text-sm leading-6 text-[#606266]">
+ A simple landing page structure for products that need a
+ confident first impression.
+ </p>
++<div className="mt-6 rounded-xl border border-[#F0F2F6] bg-white p-4">
++<p className="text-sm text-[#606266]">Added through a whitespace-tolerant patch.</p>
++</div>
+*** End Patch`,
+    )
+
+    assert.equal(result.changes.length, 1)
+    assert.equal(
+      await fs.readFile(targetFilePath, 'utf8'),
+      [
+        '<footer className="rounded-2xl border border-[#F0F2F6] bg-white p-6 shadow-sm">',
+        '    <p className="mt-4 text-sm leading-6 text-[#606266]">',
+        '    A simple landing page structure for products that need a',
+        '    confident first impression.',
+        '    </p>',
+        '<div className="mt-6 rounded-xl border border-[#F0F2F6] bg-white p-4">',
+        '<p className="text-sm text-[#606266]">Added through a whitespace-tolerant patch.</p>',
+        '</div>',
+        '</footer>',
+        '',
+      ].join('\n'),
+    )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('applyPatchInWorkspace rejects update patches that do not change file content', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-noop-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'same.ts')
@@ -381,28 +437,27 @@ test('applyPatchInWorkspace normalizes mixed line endings around an insertion to
   }
 })
 
-test('applyPatchInWorkspace still rejects tab and space mismatches after line-ending normalization', async () => {
+test('applyPatchInWorkspace tolerates tab and space indentation mismatches', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-tabs-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'tabs.ts')
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.writeFile(targetFilePath, 'function value() {\r\n\treturn 1\r\n}\r\n', 'utf8')
 
   try {
-    await assert.rejects(
-      applyPatchInWorkspace(
-        workspaceRootPath,
-        `*** Begin Patch
+    const result = await applyPatchInWorkspace(
+      workspaceRootPath,
+      `*** Begin Patch
 *** Update File: src/tabs.ts
 @@
  function value() {
    return 1
  }
++export const done = true
 *** End Patch`,
-      ),
-      /Failed to find expected lines in src[/\\]tabs\.ts/u,
     )
 
-    assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'function value() {\r\n\treturn 1\r\n}\r\n')
+    assert.equal(result.changes.length, 1)
+    assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'function value() {\n\treturn 1\n}\nexport const done = true\n')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

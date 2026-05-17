@@ -298,12 +298,14 @@ function seekSequence(
     return -1
   }
 
+  const linesMatch = (actual: string, expected: string) => actual === expected || actual.trim() === expected.trim()
+
   if (isEndOfFile) {
     const fromEnd = lines.length - pattern.length
     if (fromEnd >= startIndex) {
       let matches = true
       for (let index = 0; index < pattern.length; index += 1) {
-        if (lines[fromEnd + index] !== pattern[index]) {
+        if (!linesMatch(lines[fromEnd + index], pattern[index])) {
           matches = false
           break
         }
@@ -319,7 +321,7 @@ function seekSequence(
     let matches = true
 
     for (let patternIndex = 0; patternIndex < pattern.length; patternIndex += 1) {
-      if (lines[lineIndex + patternIndex] !== pattern[patternIndex]) {
+      if (!linesMatch(lines[lineIndex + patternIndex], pattern[patternIndex])) {
         matches = false
         break
       }
