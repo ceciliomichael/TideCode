@@ -14,7 +14,6 @@ import {
   resolveReadableTargetPath,
 } from './workspaceTools'
 import { createApplyPatchTool } from './applyPatchTool'
-import { createTerminalToolSet } from './terminalTools'
 import { createWebFetchTool } from './webfetchTool'
 import { createKanbanToolSet } from './kanbanTools'
 
@@ -268,7 +267,6 @@ export async function createAgentTools(
 
   return {
     ...tools,
-    ...createTerminalToolSet(input),
     write: wholeFileWriteTool,
     apply_patch: createApplyPatchTool(context, options?.providerId),
   }
