@@ -111,6 +111,7 @@ function SourceControlPanelContent({
   const pendingState = useSourceControlPendingState(normalizedWorkspacePath)
   const pendingCommitOperation = pendingState?.commit ?? null
   const pendingSyncOperation = pendingState?.sync ?? null
+  const previousPendingCommitOperationRef = useRef(pendingCommitOperation)
   const isSourceControlBusy = pendingCommitOperation !== null || pendingSyncOperation !== null
   const isUnstagedLikeFileDiff = useCallback(
     (fileDiff: ConversationFileDiff) =>
@@ -326,6 +327,27 @@ function SourceControlPanelContent({
     setHistoryHeight(getDefaultSourceControlHistoryHeight(containerHeight))
   }, [historyHeight, shouldUseSplitLayout])
 
+  useEffect(() => {
+    const panelBody = panelBodyRef.current
+    if (!panelBody) {
+      return
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const containerHeight = entry.contentRect.height
+        setHistoryHeight((currentValue) => {
+          if (currentValue === null || !shouldUseSplitLayout) return currentValue
+          const clamped = clampSourceControlHistoryHeight(currentValue, containerHeight)
+          return clamped !== currentValue ? clamped : currentValue
+        })
+      }
+    })
+
+    observer.observe(panelBody)
+    return () => observer.disconnect()
+  }, [shouldUseSplitLayout])
+
   const loadHistoryPage = useCallback(
     async (offset: number, append: boolean) => {
       if (!hasWorkspacePath) {
@@ -445,6 +467,25 @@ function SourceControlPanelContent({
 
     void refreshHistory()
   }, [isOpen, refreshHistory, normalizedWorkspacePath])
+
+  useEffect(() => {
+    const handleFocus = () => {
+      if (isOpen) {
+        void refreshHistory()
+      }
+    }
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [isOpen, refreshHistory])
+
+  useEffect(() => {
+    const previous = previousPendingCommitOperationRef.current
+    previousPendingCommitOperationRef.current = pendingCommitOperation
+
+    if (previous !== null && pendingCommitOperation === null) {
+      void refreshHistory()
+    }
+  }, [pendingCommitOperation, refreshHistory])
 
   useEffect(() => {
     if (!isCommitActionMenuOpen) {
