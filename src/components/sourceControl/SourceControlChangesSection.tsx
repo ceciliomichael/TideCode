@@ -135,7 +135,7 @@ export function SourceControlChangesSection({
         <ChevronDown size={13} className={['text-muted-foreground transition-transform', isChangesSectionOpen ? '' : '-rotate-90'].join(' ')} />
       </button>
       {isChangesSectionOpen ? (
-        <div className={['min-h-0 flex flex-1 flex-col overflow-y-auto', 'border-t border-border'].join(' ')}>
+        <div className={[sectionBodyClassName, 'border-t border-border'].join(' ')}>
           {pendingOperationLabel ? (
             <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface-muted px-4 py-2 text-[12px] text-muted-foreground">
               <Loader2 size={13} className="animate-spin" />
