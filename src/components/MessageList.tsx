@@ -12,6 +12,7 @@ import type {
 import { AssistantMessage } from "./AssistantMessage";
 import { ChatInput } from "./ChatInput";
 import { UserMessage } from "./UserMessage";
+import { WorkingBlock } from "./chat/WorkingBlock";
 import { useChatAutoScroll } from "./chat/useChatAutoScroll";
 import type { ChatModeOption } from "./chat/ChatModeSelectorField";
 import type { ModelSelectorOption } from "./chat/ModelSelectorField";
@@ -309,6 +310,130 @@ export function MessageList({
   const visibleMessages = messages.filter((message) =>
     isVisibleTranscriptMessage(message),
   );
+  
+  const renderItems = useMemo(() => {
+    type RenderItem =
+      | { type: 'message'; message: Message; index: number }
+      | { type: 'working_group'; messages: Message[]; startTime: number; endTime: number; startIndex: number; key: string };
+
+    const items: RenderItem[] = [];
+    let currentAssistantRun: Message[] = [];
+    let currentAssistantRunStartIndex = -1;
+
+    const getWorkEndTime = (msg: Message): number => {
+      let endTime = msg.timestamp;
+      if (msg.reasoningCompletedAt !== undefined) {
+        endTime = Math.max(endTime, msg.reasoningCompletedAt);
+      }
+      if (msg.toolInvocations) {
+        for (const tool of msg.toolInvocations) {
+          if (tool.completedAt !== undefined) {
+            endTime = Math.max(endTime, tool.completedAt);
+          }
+        }
+      }
+      return endTime;
+    };
+
+    const processFinishedAssistantRun = () => {
+      if (currentAssistantRun.length === 0) return;
+      
+      const lastMsg = currentAssistantRun[currentAssistantRun.length - 1];
+      const normalizedContent = normalizeAssistantMessageContent(lastMsg);
+      
+      const hasReasoning = normalizedContent.reasoningContent.trim().length > 0;
+      const hasTools = (lastMsg.toolInvocations?.length ?? 0) > 0;
+      const hasText = normalizedContent.content.trim().length > 0;
+      
+      if ((hasReasoning || hasTools) && hasText) {
+        const msgWork = {
+          ...lastMsg,
+          id: `${lastMsg.id}-work`,
+          content: '',
+          reasoningContent: normalizedContent.reasoningContent,
+        };
+        const msgText = {
+          ...lastMsg,
+          id: `${lastMsg.id}-text`,
+          content: normalizedContent.content,
+          reasoningContent: undefined,
+          reasoningCompletedAt: undefined,
+          toolInvocations: [],
+        };
+        
+        const workingMessages = [...currentAssistantRun.slice(0, -1), msgWork];
+        items.push({
+          type: 'working_group',
+          messages: workingMessages,
+          startTime: workingMessages[0].timestamp,
+          endTime: getWorkEndTime(lastMsg),
+          startIndex: currentAssistantRunStartIndex,
+          key: `wg-${workingMessages[0].id}`
+        });
+        
+        items.push({
+          type: 'message',
+          message: msgText,
+          index: currentAssistantRunStartIndex + currentAssistantRun.length - 1
+        });
+      } else if (currentAssistantRun.length > 1) {
+        items.push({
+          type: 'working_group',
+          messages: currentAssistantRun.slice(0, -1),
+          startTime: currentAssistantRun[0].timestamp,
+          endTime: getWorkEndTime(currentAssistantRun[currentAssistantRun.length - 1]),
+          startIndex: currentAssistantRunStartIndex,
+          key: `wg-${currentAssistantRun[0].id}`
+        });
+        items.push({
+          type: 'message',
+          message: lastMsg,
+          index: currentAssistantRunStartIndex + currentAssistantRun.length - 1
+        });
+      } else {
+        items.push({
+          type: 'message',
+          message: lastMsg,
+          index: currentAssistantRunStartIndex
+        });
+      }
+    };
+
+    for (let i = 0; i < visibleMessages.length; i++) {
+      const msg = visibleMessages[i];
+      if (msg.role === 'user') {
+        if (currentAssistantRun.length > 0) {
+          processFinishedAssistantRun();
+          currentAssistantRun = [];
+          currentAssistantRunStartIndex = -1;
+        }
+        items.push({ type: 'message', message: msg, index: i });
+      } else {
+        if (currentAssistantRun.length === 0) {
+          currentAssistantRunStartIndex = i;
+        }
+        currentAssistantRun.push(msg);
+      }
+    }
+
+    if (currentAssistantRun.length > 0) {
+      const isFinished = !isConversationStreaming;
+      if (isFinished) {
+        processFinishedAssistantRun();
+      } else {
+        for (let j = 0; j < currentAssistantRun.length; j++) {
+          items.push({
+            type: 'message',
+            message: currentAssistantRun[j],
+            index: currentAssistantRunStartIndex + j
+          });
+        }
+      }
+    }
+    
+    return items;
+  }, [visibleMessages, isConversationStreaming]);
+
   useChatAutoScroll({
     conversationId,
     messages: visibleMessages,
@@ -340,71 +465,87 @@ export function MessageList({
     return map;
   }, [visibleMessages]);
 
+  const renderMessageRow = (msg: Message, index: number) => {
+    const showCopyButton =
+      editingMessageId === null &&
+      msg.role === "assistant" &&
+      (index === visibleMessages.length - 1 ||
+        visibleMessages[index + 1]?.role !== "assistant");
+
+    return (
+      <MessageRow
+        key={msg.id}
+        chatModeOptions={chatModeOptions}
+        chatModeSelectorDisabled={chatModeSelectorDisabled}
+        composerAttachments={composerAttachments}
+        composerFocusSignal={composerFocusSignal}
+        composerValue={composerValue}
+        editComposerDirty={editComposerDirty}
+        editComposerMentionPathMap={editComposerMentionPathMap}
+        hasSubsequentAssistantText={
+          subsequentAssistantTextByMessageId.get(msg.id) ?? false
+        }
+        isConversationStreaming={isConversationStreaming}
+        isEditing={editingMessageId === msg.id}
+        isSending={isSending}
+        isStreaming={streamingAssistantMessageId === msg.id}
+        message={msg}
+        showCopyButton={showCopyButton}
+        onAbortStreamingResponse={onAbortStreamingResponse}
+        onCancelEditingMessage={onCancelEditingMessage}
+        onChatModeChange={onChatModeChange}
+        onToolDecisionSubmit={onToolDecisionSubmit}
+        onComposerAttachmentsChange={onComposerAttachmentsChange}
+        onComposerValueChange={onComposerValueChange}
+        onEditUserMessage={onEditUserMessage}
+        onRevertUserMessage={onRevertUserMessage}
+        onModelChange={onModelChange}
+        onReasoningEffortChange={onReasoningEffortChange}
+        onSendEditedMessage={onSendEditedMessage}
+        selectedChatMode={selectedChatMode}
+        modelOptions={modelOptions}
+        modelOptionsLoading={modelOptionsLoading}
+        reasoningEffort={reasoningEffort}
+        reasoningEffortOptions={reasoningEffortOptions}
+        selectedModelId={selectedModelId}
+        sendMessageOnEnter={sendMessageOnEnter}
+        showReasoningEffortSelector={showReasoningEffortSelector}
+        editClickBoundaryRef={scrollContainerRef}
+        waitingIndicatorVariant={
+          streamingAssistantMessageId === msg.id
+            ? (streamingWaitingIndicatorVariant ?? "thinking")
+            : undefined
+        }
+        isTextStreaming={
+          streamingAssistantMessageId === msg.id
+            ? streamingTextActive
+            : false
+        }
+        workspaceRootPath={workspaceRootPath}
+      />
+    );
+  };
+
   return (
     <div
       ref={scrollContainerRef}
       className="chat-scroll-viewport scroll-stable flex-1 w-full overflow-y-auto"
     >
       <div className="chat-column mx-auto space-y-2.5 px-4 pb-6 pt-6">
-        {visibleMessages.map((msg, index) => {
-          const showCopyButton =
-            editingMessageId === null &&
-            msg.role === "assistant" &&
-            (index === visibleMessages.length - 1 ||
-              visibleMessages[index + 1]?.role !== "assistant");
-
-          return (
-            <MessageRow
-              key={msg.id}
-              chatModeOptions={chatModeOptions}
-              chatModeSelectorDisabled={chatModeSelectorDisabled}
-              composerAttachments={composerAttachments}
-              composerFocusSignal={composerFocusSignal}
-              composerValue={composerValue}
-              editComposerDirty={editComposerDirty}
-              editComposerMentionPathMap={editComposerMentionPathMap}
-              hasSubsequentAssistantText={
-                subsequentAssistantTextByMessageId.get(msg.id) ?? false
-              }
-              isConversationStreaming={isConversationStreaming}
-              isEditing={editingMessageId === msg.id}
-              isSending={isSending}
-              isStreaming={streamingAssistantMessageId === msg.id}
-              message={msg}
-              showCopyButton={showCopyButton}
-              onAbortStreamingResponse={onAbortStreamingResponse}
-              onCancelEditingMessage={onCancelEditingMessage}
-              onChatModeChange={onChatModeChange}
-              onToolDecisionSubmit={onToolDecisionSubmit}
-              onComposerAttachmentsChange={onComposerAttachmentsChange}
-              onComposerValueChange={onComposerValueChange}
-              onEditUserMessage={onEditUserMessage}
-              onRevertUserMessage={onRevertUserMessage}
-              onModelChange={onModelChange}
-              onReasoningEffortChange={onReasoningEffortChange}
-              onSendEditedMessage={onSendEditedMessage}
-              selectedChatMode={selectedChatMode}
-              modelOptions={modelOptions}
-              modelOptionsLoading={modelOptionsLoading}
-              reasoningEffort={reasoningEffort}
-              reasoningEffortOptions={reasoningEffortOptions}
-              selectedModelId={selectedModelId}
-              sendMessageOnEnter={sendMessageOnEnter}
-              showReasoningEffortSelector={showReasoningEffortSelector}
-              editClickBoundaryRef={scrollContainerRef}
-              waitingIndicatorVariant={
-                streamingAssistantMessageId === msg.id
-                  ? (streamingWaitingIndicatorVariant ?? "thinking")
-                  : undefined
-              }
-              isTextStreaming={
-                streamingAssistantMessageId === msg.id
-                  ? streamingTextActive
-                  : false
-              }
-              workspaceRootPath={workspaceRootPath}
-            />
-          );
+        {renderItems.map((item) => {
+          if (item.type === 'working_group') {
+            return (
+              <WorkingBlock
+                key={item.key}
+                startTime={item.startTime}
+                endTime={item.endTime}
+              >
+                {item.messages.map((msg, idx) => renderMessageRow(msg, item.startIndex + idx))}
+              </WorkingBlock>
+            );
+          } else {
+            return renderMessageRow(item.message, item.index);
+          }
         })}
       </div>
     </div>
