@@ -41,6 +41,7 @@ export interface CodexChatCompletionsCreateInput {
   reasoningEffort: ReasoningEffort
   signal?: AbortSignal
   stopWhen?: StopCondition<ToolSet> | Array<StopCondition<ToolSet>>
+  maxSteps?: number
   system?: string
   tools?: ToolSet
 }
@@ -68,6 +69,7 @@ export function createCodexClient() {
   ) {
     return streamText({
       ...(input.stopWhen ? { stopWhen: input.stopWhen } : {}),
+      ...(input.maxSteps !== undefined ? { maxSteps: input.maxSteps } : {}),
       model: provider.responses(input.model),
       messages: input.messages,
       ...(input.system ? { system: input.system } : {}),

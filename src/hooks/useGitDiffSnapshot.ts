@@ -147,6 +147,20 @@ export function useGitDiffSnapshot({
       return
     }
 
+    const unsubscribe = window.echosphereWorkspace.onExplorerChange(() => {
+      void refresh({ forceRefresh: true, silent: true })
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [hasRepository, pollingEnabled, refresh, workspacePath])
+
+  useEffect(() => {
+    if (!pollingEnabled || !hasRepository || !workspacePath) {
+      return
+    }
+
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === 'hidden') {
         return

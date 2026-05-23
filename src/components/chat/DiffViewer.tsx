@@ -204,22 +204,48 @@ function getLineNumberDividerClassName() {
   return 'bg-border/80'
 }
 
+function getDiffRowClassName() {
+  return 'grid min-h-5 grid-cols-[5.5rem_minmax(0,1fr)] items-stretch'
+}
+
+function getDiffGutterCellClassName() {
+  return 'sticky left-0 z-10 flex shrink-0 items-start border-r border-border bg-surface px-2 py-0.5 text-right'
+}
+
+function getDiffContentCellClassName(line: DiffLine, viewOnly: boolean) {
+  return `min-w-0 px-3 py-0.5 whitespace-pre-wrap [overflow-wrap:anywhere] ${getLineContentClassName(line, viewOnly)}`
+}
+
 function getLineTokens(
   line: DiffLine,
   oldLines: readonly HighlightedCodeLineData[],
   newLines: readonly HighlightedCodeLineData[],
   startLineNumber: number,
 ) {
-  const lineIndex = line.lineNumber === null ? null : line.lineNumber - startLineNumber
-  if (lineIndex === null || lineIndex < 0) {
+  const oldLineIndex = line.oldLineNumber === undefined ? null : line.oldLineNumber - startLineNumber
+  const newLineIndex = line.newLineNumber === undefined ? null : line.newLineNumber - startLineNumber
+
+  if (line.type === 'removed') {
+    if (oldLineIndex === null || oldLineIndex < 0) {
+      return []
+    }
+
+    return oldLines[oldLineIndex]?.tokens ?? []
+  }
+
+  if (line.type === 'added') {
+    if (newLineIndex === null || newLineIndex < 0) {
+      return []
+    }
+
+    return newLines[newLineIndex]?.tokens ?? []
+  }
+
+  if (newLineIndex === null || newLineIndex < 0) {
     return []
   }
 
-  if (line.type === 'removed') {
-    return oldLines[lineIndex]?.tokens ?? []
-  }
-
-  return newLines[lineIndex]?.tokens ?? oldLines[lineIndex]?.tokens ?? []
+  return newLines[newLineIndex]?.tokens ?? oldLines[newLineIndex]?.tokens ?? []
 }
 
 function HighlightedDiffRows({
@@ -253,47 +279,39 @@ function HighlightedDiffRows({
 
   return (
     <>
-      <div className={`sticky left-0 z-10 shrink-0 border-r border-border ${getLineGutterClassName()}`}>
-        {visibleLineItems.map(({ key, line }) => (
-          <DiffRowRender
-            key={`gutter-${key}`}
-            className="flex h-5 items-stretch px-2 text-right"
-            shouldUseContentVisibility={shouldUseContentVisibility}
-            lineContent={
-              showsSingleLineNumberColumn ? (
-                <span className="flex h-5 min-w-8 items-center justify-end">{line.newLineNumber ?? ''}</span>
-              ) : (
-                <span className="inline-grid h-5 grid-cols-[2rem_3px_2rem] items-stretch gap-0">
-                  <span className="flex h-5 min-w-8 items-center justify-end pr-1">{line.oldLineNumber ?? ''}</span>
-                  <span className="flex h-full items-stretch justify-center" aria-hidden="true">
-                    <span className={`block h-full w-px ${getLineNumberDividerClassName()}`} />
+      {visibleLineItems.map(({ key, line, tokens }) => (
+        <DiffRowRender
+          key={key}
+          className={getDiffRowClassName()}
+          shouldUseContentVisibility={shouldUseContentVisibility}
+          lineContent={
+            <>
+              <div className={`${getDiffGutterCellClassName()} ${getLineGutterClassName()}`}>
+                {showsSingleLineNumberColumn ? (
+                  <span className="flex min-h-5 min-w-8 items-start justify-end leading-5">
+                    {line.newLineNumber ?? ''}
                   </span>
-                  <span className="flex h-5 min-w-8 items-center justify-end pl-1">{line.newLineNumber ?? ''}</span>
-                </span>
-              )
-            }
-          />
-        ))}
-      </div>
-
-      <div className="min-w-0 flex-1 bg-surface">
-        <div className="min-w-full w-fit">
-          {visibleLineItems.map(({ key, line, tokens }) => (
-            <DiffRowRender
-              key={`content-${key}`}
-              className={`h-5 px-3 whitespace-pre ${getLineContentClassName(line, viewOnly)}`}
-              shouldUseContentVisibility={shouldUseContentVisibility}
-              lineContent={
-                tokens.length > 0 ? (
-                  <HighlightedCodeTokens tokens={tokens} />
                 ) : (
-                  line.content.length > 0 ? line.content : ' '
-                )
-              }
-            />
-          ))}
-        </div>
-      </div>
+                  <span className="inline-grid grid-cols-[2rem_3px_2rem] items-start gap-0 leading-5">
+                    <span className="flex min-h-5 min-w-8 items-start justify-end pr-1">
+                      {line.oldLineNumber ?? ''}
+                    </span>
+                    <span className="flex min-h-5 items-stretch justify-center" aria-hidden="true">
+                      <span className={`block h-full w-px ${getLineNumberDividerClassName()}`} />
+                    </span>
+                    <span className="flex min-h-5 min-w-8 items-start justify-end pl-1">
+                      {line.newLineNumber ?? ''}
+                    </span>
+                  </span>
+                )}
+              </div>
+              <div className={getDiffContentCellClassName(line, viewOnly)}>
+                {tokens.length > 0 ? <HighlightedCodeTokens tokens={tokens} /> : line.content.length > 0 ? line.content : ' '}
+              </div>
+            </>
+          }
+        />
+      ))}
     </>
   )
 }
@@ -311,41 +329,37 @@ function PlainDiffRows({
 }) {
   return (
     <>
-      <div className={`sticky left-0 z-10 shrink-0 border-r border-border ${getLineGutterClassName()}`}>
-        {renderedLines.map((line, index) => (
-          <DiffRowRender
-            key={`gutter-${line.type}-${index}`}
-            className="flex h-5 items-stretch px-2 text-right"
-            shouldUseContentVisibility={shouldUseContentVisibility}
-            lineContent={
-              showsSingleLineNumberColumn ? (
-                <span className="flex h-5 min-w-8 items-center justify-end">{line.newLineNumber ?? ''}</span>
-              ) : (
-                <span className="inline-grid h-5 grid-cols-[2rem_3px_2rem] items-stretch gap-0">
-                  <span className="flex h-5 min-w-8 items-center justify-end pr-1">{line.oldLineNumber ?? ''}</span>
-                  <span className="flex h-full items-stretch justify-center" aria-hidden="true">
-                    <span className={`block h-full w-px ${getLineNumberDividerClassName()}`} />
+      {renderedLines.map((line, index) => (
+        <DiffRowRender
+          key={`row-${line.type}-${index}`}
+          className={getDiffRowClassName()}
+          shouldUseContentVisibility={shouldUseContentVisibility}
+          lineContent={
+            <>
+              <div className={`${getDiffGutterCellClassName()} ${getLineGutterClassName()}`}>
+                {showsSingleLineNumberColumn ? (
+                  <span className="flex min-h-5 min-w-8 items-start justify-end leading-5">
+                    {line.newLineNumber ?? ''}
                   </span>
-                  <span className="flex h-5 min-w-8 items-center justify-end pl-1">{line.newLineNumber ?? ''}</span>
-                </span>
-              )
-            }
-          />
-        ))}
-      </div>
-
-      <div className="min-w-0 flex-1 bg-surface">
-        <div className="min-w-full w-fit">
-          {renderedLines.map((line, index) => (
-            <DiffRowRender
-              key={`content-${line.type}-${index}`}
-              className={`h-5 px-3 whitespace-pre ${getLineContentClassName(line, viewOnly)}`}
-              shouldUseContentVisibility={shouldUseContentVisibility}
-              lineContent={line.content.length > 0 ? line.content : ' '}
-            />
-          ))}
-        </div>
-      </div>
+                ) : (
+                  <span className="inline-grid grid-cols-[2rem_3px_2rem] items-start gap-0 leading-5">
+                    <span className="flex min-h-5 min-w-8 items-start justify-end pr-1">
+                      {line.oldLineNumber ?? ''}
+                    </span>
+                    <span className="flex min-h-5 items-stretch justify-center" aria-hidden="true">
+                      <span className={`block h-full w-px ${getLineNumberDividerClassName()}`} />
+                    </span>
+                    <span className="flex min-h-5 min-w-8 items-start justify-end pl-1">
+                      {line.newLineNumber ?? ''}
+                    </span>
+                  </span>
+                )}
+              </div>
+              <div className={getDiffContentCellClassName(line, viewOnly)}>{line.content.length > 0 ? line.content : ' '}</div>
+            </>
+          }
+        />
+      ))}
     </>
   )
 }
@@ -417,27 +431,25 @@ function DiffViewerBody({
         .join(' ')}
     >
       <div className="min-w-0 bg-surface font-mono text-[12px] leading-5">
-        <div className="flex min-w-0 items-stretch">
-          {shouldUsePlainTextRendering ? (
-            <PlainDiffRows
-              renderedLines={renderedLines}
-              shouldUseContentVisibility={shouldUseContentVisibility}
-              showsSingleLineNumberColumn={showsSingleLineNumberColumn}
-              viewOnly={viewOnly}
-            />
-          ) : (
+        {shouldUsePlainTextRendering ? (
+          <PlainDiffRows
+            renderedLines={renderedLines}
+            shouldUseContentVisibility={shouldUseContentVisibility}
+            showsSingleLineNumberColumn={showsSingleLineNumberColumn}
+            viewOnly={viewOnly}
+          />
+        ) : (
           <HighlightedDiffRows
-              highlightedOldLines={highlightedOldLines}
-              highlightedNewLines={highlightedNewLines}
-              renderedLines={renderedLines}
-              shouldUseContentVisibility={shouldUseContentVisibility}
-              shouldUsePlainTextRendering={shouldUsePlainTextRendering}
-              showsSingleLineNumberColumn={showsSingleLineNumberColumn}
-              startLineNumber={startLineNumber}
-              viewOnly={viewOnly}
-            />
-          )}
-        </div>
+            highlightedOldLines={highlightedOldLines}
+            highlightedNewLines={highlightedNewLines}
+            renderedLines={renderedLines}
+            shouldUseContentVisibility={shouldUseContentVisibility}
+            shouldUsePlainTextRendering={shouldUsePlainTextRendering}
+            showsSingleLineNumberColumn={showsSingleLineNumberColumn}
+            startLineNumber={startLineNumber}
+            viewOnly={viewOnly}
+          />
+        )}
       </div>
     </div>
   )

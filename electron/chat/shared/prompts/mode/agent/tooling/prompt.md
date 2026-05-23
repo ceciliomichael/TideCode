@@ -6,7 +6,7 @@
 - `read`: use after discovery, before answering about a file, and always before editing the exact target. Prefer larger contiguous reads when they reduce repeated calls; one substantial read is better than many tiny ones.
 - `apply_patch`: use for small, targeted edits when you know the exact lines to change.
 - `write`: use when replacing an entire file is clearer than patching it.
-- `run_terminal`: use for inspection, tests, and validation; do not use it to edit files.
+- `run_terminal`: use for inspection, tests, and validation; it must not be used to edit files.
 - `read_board`, `read_card`, `create_card`, `update_card`, `move_card`: required for task lifecycle tracking when the work is a backlog item or active development task. If the task arrived without a backlog card, create one before implementation. Keep the same card updated through in-progress and move it to done when the task is complete.
 
 ## Editing rules

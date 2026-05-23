@@ -38,7 +38,6 @@ interface SettingsContentProps {
     onUpdateServer: (serverId: string, input: McpAddServerInput) => Promise<boolean>
     onToggleTool: (serverId: string, toolName: string, enabled: boolean) => Promise<boolean>
     state: McpState | null
-    workspacePath: string | null
   }
   skillsSettings: {
     errorMessage: string | null

@@ -7,12 +7,10 @@ import { LineNumberedTextarea } from '../shared/LineNumberedTextarea'
 import type {
   McpAddServerInput,
   McpAddServerTransportType,
-  McpConfigSource,
   McpServerConfig,
 } from '../../../types/mcp'
 
 interface McpServerDialogProps {
-  canSaveToProject: boolean
   errorMessage: string | null
   initialServer?: McpServerConfig | null
   isSubmitting: boolean
@@ -26,7 +24,6 @@ interface McpServerFormState {
   command: string
   envText: string
   headersText: string
-  saveScope: McpConfigSource
   serverName: string
   serverType: McpAddServerTransportType
   url: string
@@ -37,18 +34,12 @@ const TYPE_OPTIONS: readonly DropdownOption[] = [
   { label: 'Streamable HTTP', value: 'streamable-http' },
 ] as const
 
-const SAVE_SCOPE_OPTIONS: readonly DropdownOption[] = [
-  { label: 'Global', value: 'global' },
-  { label: 'This workspace', value: 'project' },
-] as const
-
 function createEmptyFormState(): McpServerFormState {
   return {
     argsText: '',
     command: '',
     envText: '',
     headersText: '',
-    saveScope: 'global',
     serverName: '',
     serverType: 'stdio',
     url: '',
@@ -75,7 +66,6 @@ function createFormStateFromServer(server?: McpServerConfig | null): McpServerFo
     command: server.command ?? '',
     envText: formatKeyValueLines(server.env),
     headersText: formatKeyValueLines(server.headers),
-    saveScope: server.source,
     serverName: server.name,
     serverType: server.type,
     url: server.url ?? '',
@@ -132,7 +122,6 @@ function getDialogCopy(mode: McpServerDialogProps['mode']) {
 }
 
 export function McpServerDialog({
-  canSaveToProject,
   errorMessage,
   initialServer,
   isSubmitting,
@@ -144,12 +133,6 @@ export function McpServerDialog({
   const [localError, setLocalError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement | null>(null)
   const dialogCopy = getDialogCopy(mode)
-  const visibleSaveScopeOptions = canSaveToProject
-    ? SAVE_SCOPE_OPTIONS
-    : SAVE_SCOPE_OPTIONS.filter((option) => option.value === 'global')
-  const saveScopeLabel = formState.saveScope === 'project' ? 'this workspace' : 'your global EchoSphere config'
-  const saveScopePath =
-    formState.saveScope === 'project' ? '.echosphere/mcp/mcp.json in this workspace' : '~/.echosphere/mcp/mcp.json'
 
   useEffect(() => {
     nameRef.current?.focus()
@@ -187,13 +170,13 @@ export function McpServerDialog({
               args: parseTextList(formState.argsText),
               command: normalizedCommand,
               env: parseKeyValueLines(formState.envText),
-              saveScope: formState.saveScope,
+              saveScope: 'global',
               serverName: normalizedServerName,
               type: formState.serverType,
             }
           : {
               headers: parseKeyValueLines(formState.headersText),
-              saveScope: formState.saveScope,
+              saveScope: 'global',
               serverName: normalizedServerName,
               type: formState.serverType,
               url: normalizedUrl,
@@ -302,35 +285,6 @@ export function McpServerDialog({
               </div>
             </div>
 
-            <div className="mt-4 space-y-2">
-              <label htmlFor="mcp-save-scope" className="text-sm font-medium text-foreground">
-                Save to
-              </label>
-              <DropdownField
-                id="mcp-save-scope"
-                ariaLabel="MCP server save scope"
-                className="w-full"
-                triggerClassName="chat-runtime-control-trigger h-11 w-full justify-between rounded-xl border-border bg-surface-muted px-3 text-sm text-foreground shadow-none hover:bg-[var(--dropdown-control-hover-surface)] hover:border-[var(--dropdown-control-hover-border)]"
-                disabled={isSubmitting || mode === 'edit'}
-                onChange={(value) =>
-                  setFormState((current) => ({
-                    ...current,
-                    saveScope: value as McpConfigSource,
-                  }))
-                }
-                options={visibleSaveScopeOptions}
-                value={formState.saveScope}
-              />
-              <p className="text-xs leading-5 text-muted-foreground">
-                {mode === 'add'
-                  ? `New servers are saved to ${saveScopeLabel} by default.`
-                  : `This server stays managed from ${formState.saveScope === 'project' ? 'this workspace' : 'the global config'}.`}
-              </p>
-              <p className="text-xs leading-5 text-muted-foreground">
-                Target file: <code className="font-mono text-[11px] text-foreground">{saveScopePath}</code>
-              </p>
-            </div>
-
             <div className="mt-4 space-y-4">
               {formState.serverType === 'stdio' ? (
                 <>
@@ -415,9 +369,7 @@ export function McpServerDialog({
             </p>
 
             <p className="mt-3 text-xs leading-5 text-muted-foreground">
-              {mode === 'add'
-                ? 'This form writes a single literal server entry to the selected `mcp.json`.'
-                : 'This updates the existing server entry in its current `mcp.json`.'}
+              This form writes a single literal server entry to your global `mcp.json`.
             </p>
 
             {localError || errorMessage ? (
@@ -438,7 +390,13 @@ export function McpServerDialog({
                 Cancel
               </button>
               <button type="submit" disabled={isSubmitting} className={`${PRIMARY_ACTION_BUTTON_CLASS_NAME} h-10`}>
-                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : mode === 'add' ? <Plus className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+                {isSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : mode === 'add' ? (
+                  <Plus className="h-4 w-4" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
                 {dialogCopy.actionLabel}
               </button>
             </div>

@@ -178,6 +178,13 @@ const kanbanApi: EchosphereKanbanApi = {
   getBoardData: (input) => ipcRenderer.invoke('kanban:getBoardData', input),
   importBoardData: (input) => ipcRenderer.invoke('kanban:importBoardData', input),
   moveCard: (input) => ipcRenderer.invoke('kanban:moveCard', input),
+  onBoardChange: (listener) => {
+    const wrappedListener = (_event: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)
+    ipcRenderer.on('kanban:changed', wrappedListener)
+    return () => {
+      ipcRenderer.off('kanban:changed', wrappedListener)
+    }
+  },
   readBoard: (input) => ipcRenderer.invoke('kanban:readBoard', input),
   readCard: (input) => ipcRenderer.invoke('kanban:readCard', input),
   updateCard: (input) => ipcRenderer.invoke('kanban:updateCard', input),
@@ -238,6 +245,10 @@ const fileDropApi = {
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
 }
 
+const clipboardApi = {
+  readFiles: () => ipcRenderer.invoke('clipboard:readFiles'),
+}
+
 const terminalApi: EchosphereTerminalApi = {
   closeSession: (input: CloseTerminalSessionInput) => ipcRenderer.invoke('terminal:closeSession', input),
   createSession: (input: CreateTerminalSessionInput) => ipcRenderer.invoke('terminal:createSession', input),
@@ -270,5 +281,6 @@ contextBridge.exposeInMainWorld('echosphereSkills', skillsApi)
 contextBridge.exposeInMainWorld('echosphereChat', chatApi)
 contextBridge.exposeInMainWorld('echosphereGit', gitApi)
 contextBridge.exposeInMainWorld('echosphereFileDrop', fileDropApi)
+contextBridge.exposeInMainWorld('echosphereClipboard', clipboardApi)
 contextBridge.exposeInMainWorld('echosphereWorkspace', workspaceApi)
 contextBridge.exposeInMainWorld('echosphereTerminal', terminalApi)

@@ -5,18 +5,65 @@ import type { ChatMode, Message } from '../../../src/types/chat'
 import { buildChatModeSystemPrompt } from './prompts/mode'
 
 type ToolModelMessage = Extract<ModelMessage, { role: 'tool' }>
-type ToolResultPart = ToolModelMessage['content'][number]
+
 interface BuildChatPromptOptions {
   availableSkillsBlock?: string | null
   includeAssistantReasoningParts?: boolean
 }
 
-function toUserContent(message: Message) {
-  const textAttachments = (message.attachments ?? [])
-    .filter((attachment) => attachment.kind === 'text')
-    .map((attachment) => `Attachment ${attachment.fileName}:\n${attachment.textContent}`)
+type UserTextPart = {
+  text: string
+  type: 'text'
+}
 
-  return [message.content, ...textAttachments].filter((part) => part.trim().length > 0).join('\n\n')
+type UserImagePart = {
+  image: string
+  mediaType?: string
+  type: 'image'
+}
+
+type UserContentPart = UserTextPart | UserImagePart
+
+function buildUserContent(message: Message): ModelMessage['content'] {
+  const parts: UserContentPart[] = []
+  const originalContent = message.content
+
+  if (originalContent.trim().length > 0) {
+    parts.push({
+      text: originalContent,
+      type: 'text',
+    })
+  }
+
+  for (const attachment of message.attachments ?? []) {
+    if (attachment.kind === 'image') {
+      const normalizedMediaType = attachment.mimeType.trim()
+      parts.push({
+        image: attachment.dataUrl,
+        ...(normalizedMediaType.length > 0 ? { mediaType: normalizedMediaType } : {}),
+        type: 'image',
+      })
+      continue
+    }
+
+    const attachmentText = `Attachment ${attachment.fileName}:\n${attachment.textContent}`
+    if (attachmentText.trim().length > 0) {
+      parts.push({
+        text: attachmentText,
+        type: 'text',
+      })
+    }
+  }
+
+  if (parts.length === 0) {
+    return ''
+  }
+
+  if (parts.length === 1 && parts[0]?.type === 'text') {
+    return parts[0].text
+  }
+
+  return parts
 }
 
 function parseToolArguments(argumentsText: string) {
@@ -33,7 +80,7 @@ function parseToolArguments(argumentsText: string) {
 }
 
 function buildAssistantToolCallParts(message: Message, validToolCallIds: Set<string>) {
-  const toolCallParts: Array<{ input: unknown; toolCallId: string; toolName: string; type: 'tool-call' }> = []
+  const toolCallParts: Array<any> = []
 
   for (const invocation of message.toolInvocations ?? []) {
     if (invocation.state === 'running') {
@@ -49,6 +96,7 @@ function buildAssistantToolCallParts(message: Message, validToolCallIds: Set<str
 
     validToolCallIds.add(invocation.id)
     toolCallParts.push({
+      args: input,
       input,
       toolCallId: invocation.id,
       toolName: invocation.toolName,
@@ -59,7 +107,7 @@ function buildAssistantToolCallParts(message: Message, validToolCallIds: Set<str
   return toolCallParts
 }
 
-function buildToolResultParts(message: Message, validToolCallIds: Set<string>): ToolResultPart[] {
+function buildToolResultParts(message: Message, validToolCallIds: Set<string>): any[] {
   if (!message.toolCallId || !validToolCallIds.has(message.toolCallId)) {
     return []
   }
@@ -81,6 +129,7 @@ function buildToolResultParts(message: Message, validToolCallIds: Set<string>): 
         type: 'text',
         value: outputText,
       },
+      result: outputText,
       toolCallId: message.toolCallId,
       toolName,
       type: 'tool-result',
@@ -126,22 +175,7 @@ function toAssistantMessage(
     }
   }
 
-  const contentParts: Array<
-    | {
-        text: string
-        type: 'reasoning'
-      }
-    | {
-        text: string
-        type: 'text'
-      }
-    | {
-        input: unknown
-        toolCallId: string
-        toolName: string
-        type: 'tool-call'
-      }
-  > = []
+  const contentParts: Array<any> = []
 
   if (options.includeAssistantReasoningParts && reasoningText) {
     contentParts.push({
@@ -195,13 +229,17 @@ function toModelMessage(
   options: Required<BuildChatPromptOptions>,
 ): ModelMessage | null {
   if (message.role === 'user') {
-    const content = toUserContent(message)
-    if (!content.trim()) {
+    const content = buildUserContent(message)
+    if (typeof content === 'string') {
+      if (!content.trim()) {
+        return null
+      }
+    } else if (content.length === 0) {
       return null
     }
 
     return {
-      content,
+      content: content as Extract<ModelMessage, { role: 'user' }>['content'],
       role: 'user',
     }
   }

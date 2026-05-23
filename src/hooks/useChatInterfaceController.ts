@@ -210,7 +210,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
   )
 
   const handleGitFileBatchAction = useCallback(
-    async (filePaths: string[], action: 'stage' | 'unstage') => {
+    async (filePaths: string[], action: 'stage' | 'unstage' | 'discard') => {
       const normalizedWorkspacePath = activeWorkspacePath?.trim() ?? ''
       if (!hasRepository || normalizedWorkspacePath.length === 0 || filePaths.length === 0) {
         return
@@ -220,8 +220,12 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
       try {
         if (action === 'stage') {
           await window.echosphereGit.stageFiles({ filePaths, workspacePath: normalizedWorkspacePath })
-        } else {
+        } else if (action === 'unstage') {
           await window.echosphereGit.unstageFiles({ filePaths, workspacePath: normalizedWorkspacePath })
+        } else {
+          for (const filePath of filePaths) {
+            await window.echosphereGit.discardFileChanges({ filePath, workspacePath: normalizedWorkspacePath })
+          }
         }
         await onDiffRefresh({ forceRefresh: true, silent: true })
       } catch (error) {
@@ -348,6 +352,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
     handleCloseCommitModal,
     handleCloseCommitSuccessDialog,
     handleCommit,
+    handleDiscardDiffFiles: (filePaths: string[]) => handleGitFileBatchAction(filePaths, 'discard'),
     handleDiscardDiffFile: (filePath: string) => handleGitFileAction(filePath, 'discard'),
     handleOpenCommitModal,
     handleOpenRightPanelTab,

@@ -883,6 +883,7 @@ export interface EchosphereKanbanApi {
   getBoardData: (input: KanbanWorkspaceInput) => Promise<KanbanBoardData>
   importBoardData: (input: KanbanWorkspaceInput & KanbanBoardData) => Promise<KanbanBoardData>
   moveCard: (input: KanbanMoveCardRequest) => Promise<KanbanCard>
+  onBoardChange: (listener: (event: KanbanBoardChangeEvent) => void) => () => void
   readBoard: (input: KanbanReadBoardRequest) => Promise<import('../lib/kanban').KanbanColumnReadResult>
   readCard: (input: KanbanReadCardRequest) => Promise<KanbanCard | null>
   updateCard: (input: KanbanWorkspaceInput & KanbanUpdateCardInput) => Promise<KanbanCard>
@@ -907,6 +908,10 @@ export interface EchosphereWorkspaceApi {
   writeFile: (input: WorkspaceExplorerWriteFileInput) => Promise<WorkspaceExplorerWriteFileResult>
   restoreCheckpoint: (checkpointId: string) => Promise<void>
   restoreCheckpointSequence: (checkpointIds: string[]) => Promise<void>
+}
+
+export interface KanbanBoardChangeEvent {
+  workspaceRootPath: string
 }
 
 export interface EchosphereTerminalApi {

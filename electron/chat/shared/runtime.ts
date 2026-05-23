@@ -40,6 +40,7 @@ export interface ProviderStreamFactoryInput {
   reasoningEffort: StartChatStreamInput['reasoningEffort']
   signal: AbortSignal
   stopWhen: StopCondition<ToolSet> | Array<StopCondition<ToolSet>>
+  maxSteps?: number
   system: string
   tools: ToolSet
 }
@@ -245,6 +246,7 @@ export async function runToolEnabledChatStream(input: {
       reasoningEffort: input.startInput.reasoningEffort,
       signal: input.abortController.signal,
       stopWhen: stepCountIs(MAX_TOOL_STEPS),
+      maxSteps: MAX_TOOL_STEPS,
       system: prompt.system,
       tools,
     })
@@ -326,7 +328,7 @@ export async function runToolEnabledChatStream(input: {
         typeof part.toolName === 'string'
       ) {
         const currentState = invocationStateById.get(part.toolCallId)
-        const argumentsText = stringifyToolArguments(part.input)
+        const argumentsText = stringifyToolArguments(part.input ?? part.args)
         if (!currentState) {
           const startedAt = Date.now()
           invocationStateById.set(part.toolCallId, {
@@ -372,16 +374,16 @@ export async function runToolEnabledChatStream(input: {
         }
 
         const currentState = invocationStateById.get(part.toolCallId) ?? {
-          argumentsText: stringifyToolArguments(part.input),
+          argumentsText: stringifyToolArguments(part.input ?? part.args),
           startedAt: Date.now(),
           toolName: part.toolName,
         }
         const completedAt = Date.now()
-        const normalizedResult = normalizeToolExecutionResult(part.toolName, part.output)
+        const normalizedResult = normalizeToolExecutionResult(part.toolName, part.output ?? part.result)
         const syntheticMessage = createSyntheticToolMessage(
           part.toolCallId,
           part.toolName,
-          part.input,
+          part.input ?? part.args,
           completedAt,
           normalizedResult,
         )
@@ -434,7 +436,7 @@ export async function runToolEnabledChatStream(input: {
         const syntheticMessage = createSyntheticToolMessage(
           part.toolCallId,
           part.toolName,
-          part.input,
+          part.input ?? part.args,
           completedAt,
           {
             body: errorMessage,
@@ -445,7 +447,7 @@ export async function runToolEnabledChatStream(input: {
 
         invocationStateById.delete(part.toolCallId)
         emitChatStreamEvent(input.webContents, {
-          argumentsText: currentState?.argumentsText ?? stringifyToolArguments(part.input),
+          argumentsText: currentState?.argumentsText ?? stringifyToolArguments(part.input ?? part.args),
           completedAt,
           errorMessage,
           invocationId: part.toolCallId,

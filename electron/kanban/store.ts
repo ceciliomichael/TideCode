@@ -28,6 +28,7 @@ import {
 import { KANBAN_COLUMNS } from '../../src/components/kanban/kanbanDefaults'
 import { writeJsonFileAtomic } from '../settings/fileStore'
 import { ensureKanbanBoardsDirectory, getKanbanBoardsDirectoryPath } from './paths'
+import { notifyKanbanBoardChange } from './watch'
 
 interface PersistedKanbanBoard {
   cards: KanbanBoardData['cards']
@@ -81,6 +82,12 @@ async function writeBoardDataForWorkspace(workspacePath: string, boardData: Kanb
   await writeJsonFileAtomic(getBoardFilePath(workspacePath), JSON.stringify(payload, null, 2))
 }
 
+async function replaceBoardDataForWorkspace(workspacePath: string, boardData: KanbanBoardData) {
+  return mutateBoardData(workspacePath, async () => {
+    return { boardData, result: boardData }
+  })
+}
+
 async function mutateBoardData<T>(workspacePathInput: string | null | undefined, mutation: KanbanBoardMutation<T>) {
   const workspacePath = normalizeKanbanWorkspacePath(workspacePathInput)
   const previousQueue = boardMutationQueues.get(workspacePath) ?? Promise.resolve()
@@ -91,6 +98,7 @@ async function mutateBoardData<T>(workspacePathInput: string | null | undefined,
       const currentBoardData = await readBoardDataForWorkspace(workspacePath)
       const { boardData, result } = await mutation(currentBoardData)
       await writeBoardDataForWorkspace(workspacePath, boardData)
+      void notifyKanbanBoardChange(workspacePath)
       return result
     })
     .finally(() => {
@@ -117,6 +125,12 @@ export async function importKanbanBoardData(input: KanbanWorkspaceInput & Kanban
     const boardData = parseKanbanBoardData(input)
     return { boardData, result: boardData }
   })
+}
+
+export async function replaceKanbanBoardData(input: KanbanWorkspaceInput & KanbanBoardData): Promise<KanbanBoardData> {
+  const boardData = parseKanbanBoardData(input)
+  const workspacePath = normalizeKanbanWorkspacePath(input.workspacePath)
+  return replaceBoardDataForWorkspace(workspacePath, boardData)
 }
 
 export async function readKanbanBoardColumn(input: KanbanReadBoardRequest): Promise<KanbanColumnReadResult> {

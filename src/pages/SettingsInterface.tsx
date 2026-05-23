@@ -116,7 +116,6 @@ export function SettingsInterface({
             onToggleTool: mcpSettings.toggleTool,
             onUpdateServer: mcpSettings.updateServer,
             state: mcpSettings.state,
-            workspacePath: activeWorkspacePath,
           }}
           skillsSettings={{
             errorMessage: skillsState.errorMessage,

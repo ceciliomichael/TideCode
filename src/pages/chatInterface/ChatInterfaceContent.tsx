@@ -893,6 +893,7 @@ export function ChatInterfaceContent({
               onDiffPanelSelectedScopeChange={onDiffPanelSelectedScopeChange}
               fileDiffs={gitDiffSnapshot.snapshot.fileDiffs}
               isOpen={interfaceController.isSourceControlPanelOpen}
+              onDiscardFiles={interfaceController.handleDiscardDiffFiles}
               onDiscardFile={interfaceController.handleDiscardDiffFile}
               onOpenCommitModal={interfaceController.handleOpenCommitModal}
               onOpenDiffPanel={workspaceState.handleOpenDiffPanel}

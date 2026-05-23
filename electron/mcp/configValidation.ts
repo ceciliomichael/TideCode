@@ -27,7 +27,7 @@ const MCP_ADD_SERVER_INPUT_SCHEMA = z.object({
   command: z.string().optional(),
   env: z.record(z.string(), z.string()).optional(),
   headers: z.record(z.string(), z.string()).optional(),
-  saveScope: z.enum(['global', 'project']).optional(),
+  saveScope: z.enum(['global']).optional(),
   serverName: z.string(),
   type: z.enum(['stdio', 'streamable-http']),
   url: z.string().optional(),

@@ -55,12 +55,12 @@ function createRemovedLine(content: string, lineNumber: number) {
   }
 }
 
-function createUnchangedLine(content: string, lineNumber: number) {
+function createUnchangedLine(content: string, oldLineNumber: number, newLineNumber: number) {
   return {
     content,
-    lineNumber,
-    newLineNumber: lineNumber,
-    oldLineNumber: lineNumber,
+    lineNumber: newLineNumber,
+    newLineNumber,
+    oldLineNumber,
     type: 'unchanged' as const,
   }
 }
@@ -97,7 +97,7 @@ function computeExactDiffLines(
     const newLine = newLines[newIndex]
 
     if (oldLine === newLine) {
-      diff.push(createUnchangedLine(oldLine, oldIndex + startLineNumber))
+      diff.push(createUnchangedLine(oldLine, oldIndex + startLineNumber, newIndex + startLineNumber))
       oldIndex += 1
       newIndex += 1
       continue
@@ -172,7 +172,7 @@ function computeGreedyDiffLines(
     }
 
     if (oldLine === newLine) {
-      diff.push(createUnchangedLine(oldLine, oldIndex + startLineNumber))
+      diff.push(createUnchangedLine(oldLine, oldIndex + startLineNumber, newIndex + startLineNumber))
       oldIndex += 1
       newIndex += 1
       continue

@@ -3,11 +3,13 @@ import { KANBAN_COLUMN_IDS, type KanbanColumnId } from '../../../../src/lib/kanb
 import type { AgentToolContext, AgentToolExecutionResult } from '../toolTypes'
 import {
   createKanbanBoardCard,
+  getKanbanBoardData,
   getKanbanCard,
   moveKanbanBoardCard,
   readKanbanBoardColumn,
   updateKanbanBoardCardContent,
 } from '../../../kanban/store'
+import { captureKanbanBoardSnapshotIfNeeded } from '../../../kanban/checkpoints'
 
 const KANBAN_COLUMN_ENUM = [...KANBAN_COLUMN_IDS]
 
@@ -29,7 +31,26 @@ function createKanbanToolSuccessResult(summary: string, bodyValue: unknown): Age
   }
 }
 
-export function createKanbanToolSet(context: Pick<AgentToolContext, 'workspaceRootPath'>): ToolSet {
+export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointId' | 'workspaceRootPath'>): ToolSet {
+  async function captureKanbanSnapshotBeforeMutation() {
+    const checkpointId = context.checkpointId?.trim()
+    if (!checkpointId) {
+      return
+    }
+
+    const boardData = await getKanbanBoardData({ workspacePath: context.workspaceRootPath })
+    await captureKanbanBoardSnapshotIfNeeded({
+      boardData,
+      checkpointId,
+      workspacePath: context.workspaceRootPath,
+    })
+  }
+
+  async function runKanbanMutation<T>(mutation: () => Promise<T>) {
+    await captureKanbanSnapshotBeforeMutation()
+    return mutation()
+  }
+
   return {
     read_board: tool({
       description:
@@ -144,13 +165,15 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'workspaceRo
         }
 
         try {
-          const card = await createKanbanBoardCard({
-            columnId: inputValue.columnId,
-            description: inputValue.description,
-            sourceMessageId: inputValue.sourceMessageId,
-            title: inputValue.title,
-            workspacePath: context.workspaceRootPath,
-          })
+          const card = await runKanbanMutation(() =>
+            createKanbanBoardCard({
+              columnId: inputValue.columnId,
+              description: inputValue.description,
+              sourceMessageId: inputValue.sourceMessageId,
+              title: inputValue.title,
+              workspacePath: context.workspaceRootPath,
+            }),
+          )
 
           return createKanbanToolSuccessResult(`Created task in ${card.columnId}: ${card.title}`, { card })
         } catch (error) {
@@ -182,12 +205,14 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'workspaceRo
         const inputValue = rawInput as { cardId: string; description?: string; title?: string }
 
         try {
-          const card = await updateKanbanBoardCardContent({
-            cardId: inputValue.cardId,
-            description: inputValue.description,
-            title: inputValue.title,
-            workspacePath: context.workspaceRootPath,
-          })
+          const card = await runKanbanMutation(() =>
+            updateKanbanBoardCardContent({
+              cardId: inputValue.cardId,
+              description: inputValue.description,
+              title: inputValue.title,
+              workspacePath: context.workspaceRootPath,
+            }),
+          )
 
           return createKanbanToolSuccessResult(`Updated task: ${card.title}`, { card })
         } catch (error) {
@@ -217,11 +242,13 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'workspaceRo
         const inputValue = rawInput as { cardId: string; targetColumnId: KanbanColumnId }
 
         try {
-          const card = await moveKanbanBoardCard({
-            cardId: inputValue.cardId,
-            targetColumnId: inputValue.targetColumnId,
-            workspacePath: context.workspaceRootPath,
-          })
+          const card = await runKanbanMutation(() =>
+            moveKanbanBoardCard({
+              cardId: inputValue.cardId,
+              targetColumnId: inputValue.targetColumnId,
+              workspacePath: context.workspaceRootPath,
+            }),
+          )
 
           return createKanbanToolSuccessResult(`Moved task to ${card.columnId}: ${card.title}`, { card })
         } catch (error) {

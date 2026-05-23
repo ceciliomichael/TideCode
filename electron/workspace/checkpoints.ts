@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { CreateWorkspaceCheckpointInput, UserMessageRunCheckpoint } from '../../src/types/chat'
+import { captureKanbanBoardSnapshotIfNeeded, readKanbanBoardSnapshot } from '../kanban/checkpoints'
+import { getKanbanBoardData, replaceKanbanBoardData } from '../kanban/store'
 
 interface WorkspaceCheckpointEntry {
   existed: boolean
@@ -324,6 +326,14 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
           })
         }
 
+        const kanbanSnapshot = await readKanbanBoardSnapshot(checkpointId)
+        if (kanbanSnapshot) {
+          await replaceKanbanBoardData({
+            cards: kanbanSnapshot.boardData.cards,
+            workspacePath: kanbanSnapshot.workspacePath,
+          })
+        }
+
         return manifest.workspaceRootPath
       })
     },
@@ -379,6 +389,13 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
       for (const absolutePath of sortedAbsolutePaths) {
         await this.captureFileState(redoCheckpoint.id, absolutePath)
       }
+
+      const currentKanbanBoardData = await getKanbanBoardData({ workspacePath: workspaceRootPath })
+      await captureKanbanBoardSnapshotIfNeeded({
+        boardData: currentKanbanBoardData,
+        checkpointId: redoCheckpoint.id,
+        workspacePath: workspaceRootPath,
+      })
 
       return redoCheckpoint
     },

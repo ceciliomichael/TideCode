@@ -12,3 +12,15 @@ test('computeDiffLines keeps the shared anchor line in place for small edit bloc
   assert.equal(diffLines.filter((line) => line.type === 'removed').length, 50)
   assert.equal(diffLines.filter((line) => line.type === 'added').length, 50)
 })
+
+test('computeDiffLines keeps old and new line numbers separate after inserted lines', () => {
+  const oldContent = ['first', 'second', 'third'].join('\n')
+  const newContent = ['first', 'inserted', 'second', 'third'].join('\n')
+
+  const diffLines = computeDiffLines(oldContent, newContent)
+  const secondLine = diffLines.find((line) => line.content === 'second' && line.type === 'unchanged')
+
+  assert.ok(secondLine)
+  assert.equal(secondLine?.oldLineNumber, 2)
+  assert.equal(secondLine?.newLineNumber, 3)
+})

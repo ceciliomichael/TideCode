@@ -67,7 +67,7 @@ export function getExternalFilePaths(event: ReactDragEvent<HTMLElement>) {
   return fallbackPaths
 }
 
-export function getExternalClipboardFilePaths(event: ReactClipboardEvent<HTMLElement>) {
+export async function getExternalClipboardFilePaths(event: ReactClipboardEvent<HTMLElement>) {
   const filePaths = getExternalFilePathsFromFileList(event.clipboardData.files)
   if (filePaths.length > 0) {
     return filePaths
@@ -88,5 +88,20 @@ export function getExternalClipboardFilePaths(event: ReactClipboardEvent<HTMLEle
     fallbackPaths.push(...getExternalFilePathsFromFileList([file]))
   }
 
-  return fallbackPaths
+  if (fallbackPaths.length > 0) {
+    return fallbackPaths
+  }
+
+  if (typeof window !== 'undefined' && window.echosphereClipboard) {
+    try {
+      const osPaths = await window.echosphereClipboard.readFiles()
+      if (osPaths.length > 0) {
+        return osPaths
+      }
+    } catch (e) {
+      console.error('Failed to read OS clipboard files', e)
+    }
+  }
+
+  return []
 }

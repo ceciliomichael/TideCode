@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   nativeTheme,
@@ -156,6 +157,7 @@ import {
   subscribeWorkspaceExplorerChanges,
   unsubscribeWorkspaceExplorerChanges,
 } from './workspace/explorerWatch'
+import { disposeKanbanBoardWatchers } from './kanban/watch'
 import {
   createWorkspaceEntry,
   deleteWorkspaceEntry,
@@ -594,6 +596,31 @@ function registerHistoryHandlers() {
   ipcMain.handle('workspace:explorer:importEntry', async (_event, input: WorkspaceExplorerImportEntryInput) =>
     importWorkspaceEntry(input),
   )
+  ipcMain.handle('clipboard:readFiles', async () => {
+    if (process.platform === 'win32') {
+      const raw = clipboard.readBuffer('FileNameW')
+      if (!raw || raw.length === 0) {
+        return []
+      }
+      const pathStr = raw.toString('utf16le')
+      const paths = pathStr.split('\0').filter(s => s.trim().length > 0)
+      return paths
+    }
+
+    if (process.platform === 'darwin') {
+      const url = clipboard.read('public.file-url')
+      if (url && url.startsWith('file://')) {
+        return [decodeURIComponent(url.replace('file://', ''))]
+      }
+      return []
+    }
+
+    const url = clipboard.read('text/uri-list')
+    if (url) {
+      return url.split('\n').filter(s => s.startsWith('file://')).map(s => decodeURIComponent(s.replace('file://', '').trim()))
+    }
+    return []
+  })
 }
 
 function registerMcpHandlers() {
@@ -629,6 +656,7 @@ function registerMcpHandlers() {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     disposeWorkspaceExplorerWatchers()
+    disposeKanbanBoardWatchers()
     app.quit()
     win = null
   }
@@ -642,6 +670,7 @@ app.on('before-quit', (event) => {
   event.preventDefault()
   isQuitFlushInProgress = true
   disposeWorkspaceExplorerWatchers()
+  disposeKanbanBoardWatchers()
   void closeAllTerminalSessions().catch((error) => {
     console.error('Failed to close terminal sessions on quit', error)
   })

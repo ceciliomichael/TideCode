@@ -19,7 +19,6 @@ interface McpServersSettingsPanelProps {
   onToggleTool: (serverId: string, toolName: string, enabled: boolean) => Promise<boolean>
   onUpdateServer: (serverId: string, input: McpAddServerInput) => Promise<boolean>
   state: McpState | null
-  workspacePath: string | null
 }
 
 interface McpServerDialogState {
@@ -38,7 +37,6 @@ export function McpServersSettingsPanel({
   onToggleTool,
   onUpdateServer,
   state,
-  workspacePath,
 }: McpServersSettingsPanelProps) {
   const [dialogState, setDialogState] = useState<McpServerDialogState | null>(null)
   const configs = state?.configs ?? []
@@ -74,8 +72,8 @@ export function McpServersSettingsPanel({
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0 flex-1">
             <p className="text-sm leading-6 text-muted-foreground">
-              MCP servers expose external tools and data sources to the assistant. New servers are saved globally by
-              default, with an option to keep one scoped to the current workspace when needed.
+              MCP servers expose external tools and data sources to the assistant. New servers are saved globally so
+              the same MCP setup is available across your workspaces.
             </p>
           </div>
 
@@ -110,7 +108,6 @@ export function McpServersSettingsPanel({
 
       {dialogState ? (
         <McpServerDialog
-          canSaveToProject={Boolean(workspacePath?.trim())}
           key={`${dialogState.mode}:${dialogState.server?.id ?? 'new'}`}
           errorMessage={visibleErrorMessage ?? null}
           initialServer={dialogState.server}

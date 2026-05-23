@@ -108,6 +108,20 @@ export function useGitCommit({
     void refreshStatus()
   }, [hasRepository, refreshStatus])
 
+  useEffect(() => {
+    if (!hasRepository || !workspacePath) {
+      return
+    }
+
+    const unsubscribe = window.echosphereWorkspace.onExplorerChange(() => {
+      void refreshStatus()
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [hasRepository, refreshStatus, workspacePath])
+
   const commit = useCallback(async (input: {
     action: GitCommitAction
     includeUnstaged: boolean

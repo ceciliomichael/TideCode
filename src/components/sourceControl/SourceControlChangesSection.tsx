@@ -29,6 +29,7 @@ interface SourceControlChangesSectionProps {
   unstagedFileDiffs: readonly ConversationFileDiff[]
   onCommitActionMenuOpenChange: (nextValue: boolean) => void
   onCommitMessageChange: (nextValue: string) => void
+  onDiscardFiles: (filePaths: string[]) => Promise<void>
   onDiscardFile: (filePath: string) => Promise<void>
   onIncludeUnstagedChange: (nextValue: boolean) => void
   onOpenCommitModal: () => void
@@ -66,6 +67,7 @@ export function SourceControlChangesSection({
   unstagedFileDiffs,
   onCommitActionMenuOpenChange,
   onCommitMessageChange,
+  onDiscardFiles,
   onDiscardFile,
   onIncludeUnstagedChange,
   onOpenCommitModal,
@@ -103,6 +105,14 @@ export function SourceControlChangesSection({
     }
 
     await onStageFiles(unstagedFilePaths)
+  }
+
+  async function handleDiscardAllUnstagedFiles() {
+    if (unstagedFilePaths.length === 0) {
+      return
+    }
+
+    await onDiscardFiles(unstagedFilePaths)
   }
 
   async function handleUnstageAllStagedFiles() {
@@ -318,6 +328,24 @@ export function SourceControlChangesSection({
                       >
                         <span>
                           Stage all
+                        </span>
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="Discard all unstaged files" side="left">
+                      <button
+                        type="button"
+                        aria-label="Discard all unstaged files"
+                        disabled={isBulkStageActionDisabled}
+                        onClick={() => void handleDiscardAllUnstagedFiles()}
+                        className={[
+                          'inline-flex h-7 items-center justify-center px-2 text-xs font-medium',
+                          isBulkStageActionDisabled
+                            ? 'cursor-not-allowed text-muted-foreground/60'
+                            : 'text-muted-foreground hover:text-foreground',
+                        ].join(' ')}
+                      >
+                        <span>
+                          Discard all
                         </span>
                       </button>
                     </Tooltip>

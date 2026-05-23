@@ -113,6 +113,47 @@ test('buildChatPrompt preserves assistant tool calls and matching tool results',
   })
 })
 
+test('buildChatPrompt preserves image attachments in user messages', () => {
+  const messages: Message[] = [
+    {
+      attachments: [
+        {
+          dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB',
+          fileName: 'screenshot.png',
+          id: 'attachment-1',
+          kind: 'image',
+          mimeType: 'image/png',
+          sizeBytes: 32,
+        },
+      ],
+      content: 'Please review this screenshot',
+      id: 'user-1',
+      role: 'user',
+      timestamp: 1,
+    },
+  ]
+
+  const prompt = buildChatPrompt({
+    chatMode: 'agent',
+    messages,
+    workspaceRootPath: 'C:/repo',
+  })
+
+  assert.equal(prompt.messages.length, 1)
+  const userMessage = prompt.messages[0]
+  assert.equal(userMessage?.role, 'user')
+  assert.ok(Array.isArray(userMessage?.content))
+  assert.deepEqual(userMessage?.content[0], {
+    text: 'Please review this screenshot',
+    type: 'text',
+  })
+  assert.deepEqual(userMessage?.content[1], {
+    image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB',
+    mediaType: 'image/png',
+    type: 'image',
+  })
+})
+
 test('buildChatPrompt preserves freeform apply_patch tool calls', () => {
   const patchText = `*** Begin Patch
 *** Update File: src/example.ts

@@ -237,7 +237,7 @@ test('run_terminal starts at session 1 in a different conversation thread withou
   }
 })
 
-test('run_terminal rejects apply_patch heredoc commands without launching a terminal', async () => {
+test('run_terminal rejects commands outside the allowlist without launching a terminal', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-apply-patch-'))
   let createSessionCalled = false
 
@@ -274,14 +274,14 @@ PATCH`,
 
     assert.equal(createSessionCalled, false)
     assert.equal(result.status, 'error')
-    assert.match(result.summary ?? '', /cannot be used to edit files/u)
+    assert.match(result.summary ?? '', /allowed terminal commands/u)
     assert.equal(pathExists(path.join(workspaceRootPath, 'src', 'from-terminal.txt')), false)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('run_terminal rejects cd-prefixed apply_patch heredoc commands without editing files', async () => {
+test('run_terminal rejects cd-prefixed commands outside the allowlist without launching a terminal', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-apply-patch-cd-'))
   await fs.mkdir(path.join(workspaceRootPath, 'packages', 'app'), { recursive: true })
   let createSessionCalled = false
@@ -319,8 +319,75 @@ EOF`,
 
     assert.equal(createSessionCalled, false)
     assert.equal(result.status, 'error')
-    assert.match(result.summary ?? '', /cannot be used to edit files/u)
+    assert.match(result.summary ?? '', /allowed terminal commands/u)
     assert.equal(pathExists(path.join(workspaceRootPath, 'packages', 'app', 'local.txt')), false)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('run_terminal allows unrestricted commands in full access mode', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-full-access-'))
+  const createCalls: Array<{
+    cols: number
+    cwd?: string
+    rows: number
+    sessionKey?: string | null
+    workspaceRootPath?: string | null
+  }> = []
+  const writeCalls: Array<{ data: string; sessionId: number }> = []
+
+  try {
+    const tools = createTerminalToolSet(
+      {
+        conversationId: 'conversation-full-access',
+        terminalExecutionMode: 'full',
+        webContents: webContentsStub,
+        workspaceRootPath,
+      },
+      {
+        createSession: async (_owner, input) => {
+          createCalls.push(input)
+          return {
+            bufferedOutput: '',
+            cwd: workspaceRootPath,
+            isReused: false,
+            sessionId: 19,
+            shell: 'pwsh',
+          }
+        },
+        getSessionOutput: async (_owner, input) => {
+          const marker = readCompletionMarker(writeCalls[0]?.data ?? '')
+          return {
+            cwd: workspaceRootPath,
+            exitCode: null,
+            hasExited: false,
+            outputBuffer: `hello from full access\n${marker}:0\n`,
+            shellLabel: 'pwsh',
+            signal: null,
+            sessionId: input.sessionId,
+          }
+        },
+        writeToSession: async (_owner, input) => {
+          writeCalls.push(input)
+        },
+      },
+    )
+
+    const result = await getRunTerminalTool(tools).execute({
+      cols: 120,
+      command: 'echo hello && whoami',
+      cwd: '.',
+      rows: 30,
+      session_key: 'full-access',
+    })
+
+    assert.equal(result.status, 'success')
+    assert.equal(createCalls.length, 1)
+    assert.equal(writeCalls.length, 1)
+    assert.match(writeCalls[0].data, /echo hello && whoami/u)
+    assert.match(result.body ?? '', /hello from full access/u)
+    assert.equal(result.semantics?.command_completed, true)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

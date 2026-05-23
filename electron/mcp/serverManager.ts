@@ -16,8 +16,6 @@ import {
   deleteMcpConfig,
   ensureMcpConfigExists,
   getMcpGlobalConfigPath,
-  getMcpProjectConfigPath,
-  getPreferredMcpConfigPath,
   loadMergedMcpConfigs,
   replaceMcpServerConfig,
   saveMcpConfig,
@@ -132,7 +130,7 @@ class McpWorkspaceSession {
 
   private async syncFromDisk() {
     try {
-      const configs = await loadMergedMcpConfigs(this.workspacePath)
+      const configs = await loadMergedMcpConfigs()
       const storedAutoConnect = await this.stateStore.readAutoConnectMap(this.workspacePath)
 
       const nextConfigsById = new Map<string, McpServerConfig>()
@@ -316,7 +314,7 @@ class McpWorkspaceSession {
 
   async addServer(input: McpAddServerInput) {
     await this.ensureLoaded()
-    await appendMcpServerConfig(input, this.workspacePath)
+    await appendMcpServerConfig(input)
     return this.reload()
   }
 
@@ -336,7 +334,7 @@ class McpWorkspaceSession {
     const nextConfig = buildUpdatedConfig(config, input)
     const shouldReconnect = runtime.status.status === 'connected' || runtime.status.status === 'connecting'
 
-    await replaceMcpServerConfig(config.name, nextConfig, this.workspacePath)
+    await replaceMcpServerConfig(config.name, nextConfig)
 
     const currentAutoConnect = config.autoConnect
     if (nextConfig.name !== config.name) {
@@ -419,7 +417,7 @@ class McpWorkspaceSession {
     }
 
     await this.disconnectRuntime(serverId, runtime, true)
-    await deleteMcpConfig(serverId, this.workspacePath)
+    await deleteMcpConfig(serverId)
     await this.stateStore.removeServer(config.name, this.workspacePath)
     return this.reload()
   }
@@ -490,7 +488,7 @@ class McpWorkspaceSession {
     if (runtime) {
       runtime.config = nextConfig
     }
-    await saveMcpConfig(nextConfig, this.workspacePath)
+    await saveMcpConfig(nextConfig)
     return this.buildState()
   }
 
@@ -549,7 +547,8 @@ export class McpServerManager {
   }
 
   async ensureConfigExists(workspacePath?: string | null) {
-    await ensureMcpConfigExists(workspacePath)
+    void workspacePath
+    await ensureMcpConfigExists()
   }
 
   async getState(workspacePath?: string | null) {
@@ -646,15 +645,12 @@ export class McpServerManager {
   }
 
   getConfigPath(workspacePath?: string | null) {
-    return getPreferredMcpConfigPath(workspacePath)
+    void workspacePath
+    return getMcpGlobalConfigPath()
   }
 
   getGlobalConfigPath() {
     return getMcpGlobalConfigPath()
-  }
-
-  getProjectConfigPath(workspacePath: string) {
-    return getMcpProjectConfigPath(workspacePath)
   }
 }
 

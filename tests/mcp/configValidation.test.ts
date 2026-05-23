@@ -92,7 +92,6 @@ test('parseMcpAddServerInput normalizes streamable-http server entries', () => {
     headers: {
       Authorization: ' Bearer token ',
     },
-    saveScope: 'project',
     serverName: 'remote-server',
     type: 'streamable-http',
     url: ' https://example.com/mcp ',
@@ -101,7 +100,7 @@ test('parseMcpAddServerInput normalizes streamable-http server entries', () => {
   assert.equal(parsed.success, true)
   assert.deepEqual(parsed.data, {
     headers: { Authorization: 'Bearer token' },
-    saveScope: 'project',
+    saveScope: 'global',
     serverName: 'remote-server',
     type: 'streamable-http',
     url: 'https://example.com/mcp',

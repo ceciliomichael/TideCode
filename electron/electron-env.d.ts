@@ -36,6 +36,9 @@ interface Window {
   echosphereFileDrop: {
     getPathForFile: (file: File) => string
   }
+  echosphereClipboard: {
+    readFiles: () => Promise<string[]>
+  }
   echosphereTerminal: import('../src/types/chat').EchosphereTerminalApi
   echosphereWorkspace: import('../src/types/chat').EchosphereWorkspaceApi
 }

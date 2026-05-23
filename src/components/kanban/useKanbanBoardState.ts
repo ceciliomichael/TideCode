@@ -99,6 +99,24 @@ export function useKanbanBoardState({ workspacePath, messages }: UseKanbanBoardS
     }
   }, [workspacePath])
 
+  useEffect(() => {
+    if (!hasWorkspacePath(workspacePath)) {
+      return
+    }
+
+    const unsubscribeKanbanChanges = window.echosphereKanban.onBoardChange((event) => {
+      if (event.workspaceRootPath !== workspacePath) {
+        return
+      }
+
+      void refreshBoardData()
+    })
+
+    return () => {
+      unsubscribeKanbanChanges()
+    }
+  }, [refreshBoardData, workspacePath])
+
   const addCard = useCallback(
     (input: KanbanCreateCardInput) => {
       if (!hasWorkspacePath(workspacePath) || input.title.trim().length === 0) {

@@ -129,7 +129,7 @@ export function buildChatModeSystemPrompt(
     getModePrompt(chatMode),
     getSharedPrompt(),
     options?.availableSkillsBlock?.trim() ? options.availableSkillsBlock.trim() : null,
-    buildWorkspaceInstructionsBlock(),
+    buildWorkspaceInstructionsBlock(workspaceRootPath),
     `Workspace root: ${workspaceRootPath}`,
   ]
     .filter((value): value is string => Boolean(value))

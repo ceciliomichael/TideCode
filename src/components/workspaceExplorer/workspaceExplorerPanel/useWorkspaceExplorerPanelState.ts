@@ -25,6 +25,7 @@ import { useWorkspaceExplorerCreation } from './useWorkspaceExplorerCreation'
 import { useWorkspaceExplorerDeleteDialog } from './useWorkspaceExplorerDeleteDialog'
 import { useWorkspaceExplorerDragScroll } from './useWorkspaceExplorerDragScroll'
 import { useWorkspaceExplorerResize } from './useWorkspaceExplorerResize'
+import { useWorkspaceExplorerUndoStack } from './useWorkspaceExplorerUndoStack'
 import {
   collectLoadedExplorerEntryPaths,
   findLoadedExplorerEntry,
@@ -112,7 +113,7 @@ export function useWorkspaceExplorerPanelState({
   })
 
   const loadDirectory = useCallback(
-    async (relativePath?: string) => {
+    async (relativePath?: string, options?: { hideError?: boolean }) => {
       if (!workspaceRootPath) {
         return
       }
@@ -145,7 +146,9 @@ export function useWorkspaceExplorerPanelState({
           })
           return
         }
-        setErrorMessage(errorText)
+        if (!options?.hideError) {
+          setErrorMessage(errorText)
+        }
       } finally {
         setLoadingDirectories((current) => {
           const nextState = new Set(current)
@@ -184,7 +187,7 @@ export function useWorkspaceExplorerPanelState({
 
     const directoriesToReload = [ROOT_DIRECTORY_KEY, ...expandedDirectories]
     return preserveTreeScrollDuring(async () => {
-      await Promise.all(directoriesToReload.map((directoryPath) => loadDirectory(directoryPath)))
+      await Promise.all(directoriesToReload.map((directoryPath) => loadDirectory(directoryPath, { hideError: true })))
     })
   }, [expandedDirectories, loadDirectory, preserveTreeScrollDuring])
   const reloadExplorerTreeRef = useRef(reloadExplorerTree)
@@ -192,6 +195,11 @@ export function useWorkspaceExplorerPanelState({
   useEffect(() => {
     reloadExplorerTreeRef.current = reloadExplorerTree
   }, [reloadExplorerTree])
+
+  const undoStack = useWorkspaceExplorerUndoStack({
+    workspaceRootPath,
+    reloadExplorerTree,
+  })
 
   const replayPendingExplorerReload = useCallback(() => {
     if (!pendingExplorerReloadRef.current) {
@@ -220,6 +228,14 @@ export function useWorkspaceExplorerPanelState({
     [closeContextMenu, reloadExplorerTree],
   )
 
+  const onDeleteEntryWithUndo = useCallback(
+    async (relativePaths: string[]) => {
+      await undoStack.recordDeleteEntries(relativePaths)
+      await onDeleteEntry(relativePaths)
+    },
+    [onDeleteEntry, undoStack],
+  )
+
   const {
     closeDeleteDialog,
     confirmDeleteEntry,
@@ -230,7 +246,7 @@ export function useWorkspaceExplorerPanelState({
   } = useWorkspaceExplorerDeleteDialog({
     closeContextMenu,
     directoryEntriesByPath,
-    onDeleteEntry,
+    onDeleteEntry: onDeleteEntryWithUndo,
     runContextAction,
   })
 
@@ -325,6 +341,7 @@ export function useWorkspaceExplorerPanelState({
     isSubmittingRenameRef.current = true
     try {
       await onRenameEntry(draft.entry.relativePath, nextRelativePath)
+      undoStack.recordRename(draft.entry.relativePath, nextRelativePath, draft.entry.isDirectory)
       setErrorMessage(null)
       setSelectedEntryPaths(new Set([nextRelativePath]))
       setSelectionDirectoryPath(parentPath)
@@ -362,6 +379,7 @@ export function useWorkspaceExplorerPanelState({
     renameName,
     replayPendingExplorerReload,
     setExpandedDirectories,
+    undoStack,
   ])
 
   useEffect(() => {
@@ -538,6 +556,11 @@ export function useWorkspaceExplorerPanelState({
       setDropTargetDirectoryPath(null)
       try {
         await onMoveEntry(relativePath, targetDirectoryRelativePath)
+        const basename = getPathBasename(relativePath)
+        const resultRelativePath = targetDirectoryRelativePath === ROOT_DIRECTORY_KEY || targetDirectoryRelativePath === '.'
+          ? basename
+          : `${targetDirectoryRelativePath}/${basename}`
+        undoStack.recordMove(relativePath, resultRelativePath)
         setErrorMessage(null)
         const sourceParentPath = getPathDirname(relativePath)
         await Promise.all([
@@ -549,7 +572,7 @@ export function useWorkspaceExplorerPanelState({
         setErrorMessage(error instanceof Error ? error.message : 'Failed to move workspace entry.')
       }
     },
-    [loadDirectory, onMoveEntry],
+    [loadDirectory, onMoveEntry, undoStack],
   )
 
   const submitImportEntries = useCallback(
@@ -585,7 +608,7 @@ export function useWorkspaceExplorerPanelState({
         return
       }
 
-      const filePaths = getExternalClipboardFilePaths(event)
+      const filePaths = await getExternalClipboardFilePaths(event)
       if (filePaths.length > 0) {
         event.preventDefault()
         event.stopPropagation()
@@ -904,6 +927,17 @@ export function useWorkspaceExplorerPanelState({
         return
       }
 
+      if (key === 'z') {
+        event.preventDefault()
+        void (async () => {
+          const didUndo = await undoStack.undo()
+          if (!didUndo && undoStack.canUndo()) {
+            setErrorMessage('Failed to undo the last operation.')
+          }
+        })()
+        return
+      }
+
       if (key === 'a') {
         event.preventDefault()
         selectAllLoadedEntriesInSelectionDirectory()
@@ -929,9 +963,45 @@ export function useWorkspaceExplorerPanelState({
         return
       }
 
+      if (key === 'v') {
+        event.preventDefault()
+        void (async () => {
+          // Determine the paste target: if a single folder is selected, paste into it.
+          // Otherwise paste into the current selection directory.
+          let pasteTargetPath = selectionDirectoryPath
+          if (selectedEntryPaths.size === 1) {
+            const selectedPath = Array.from(selectedEntryPaths)[0]
+            const selectedEntry = findLoadedExplorerEntry(rootEntries, directoryEntriesByPath, selectedPath)
+            if (selectedEntry?.isDirectory) {
+              pasteTargetPath = toDirectoryKey(selectedEntry.relativePath)
+            }
+          }
+
+          // Try reading files from the OS clipboard (e.g. files copied in Windows Explorer)
+          if (typeof window !== 'undefined' && window.echosphereClipboard) {
+            try {
+              const osPaths = await window.echosphereClipboard.readFiles()
+              if (osPaths.length > 0) {
+                await submitImportEntries(osPaths, pasteTargetPath)
+                return
+              }
+            } catch (e) {
+              console.error('Failed to read OS clipboard files', e)
+            }
+          }
+
+          // Fall back to internal clipboard paste
+          if (clipboardEntry) {
+            await submitPasteEntry(pasteTargetPath)
+          }
+        })()
+        return
+      }
+
     },
     [
       activeFilePath,
+      clipboardEntry,
       directoryEntriesByPath,
       openDeleteDialog,
       requestCopyOrCutEntries,
@@ -939,6 +1009,9 @@ export function useWorkspaceExplorerPanelState({
       selectAllLoadedEntriesInSelectionDirectory,
       selectedEntryPaths,
       selectionDirectoryPath,
+      submitImportEntries,
+      submitPasteEntry,
+      undoStack,
     ],
   )
 

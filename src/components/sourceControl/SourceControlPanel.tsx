@@ -22,6 +22,7 @@ interface SourceControlPanelProps {
   onDiffPanelSelectedScopeChange: (nextScope: DiffPanelScope) => void
   fileDiffs: readonly ConversationFileDiff[]
   isOpen: boolean
+  onDiscardFiles: (filePaths: string[]) => Promise<void>
   onDiscardFile: (filePath: string) => Promise<void>
   onOpenCommitModal: () => void
   onOpenDiffPanel: () => void
@@ -47,6 +48,7 @@ function SourceControlPanelContent({
   onDiffPanelSelectedScopeChange,
   fileDiffs,
   isOpen,
+  onDiscardFiles,
   onDiscardFile,
   onOpenCommitModal,
   onOpenDiffPanel,
@@ -756,6 +758,7 @@ function SourceControlPanelContent({
             unstagedFileDiffs={unstagedFileDiffs}
             onCommitActionMenuOpenChange={setIsCommitActionMenuOpen}
             onCommitMessageChange={setCommitMessage}
+            onDiscardFiles={onDiscardFiles}
             onDiscardFile={onDiscardFile}
             onIncludeUnstagedChange={setIncludeUnstaged}
             onOpenCommitModal={onOpenCommitModal}

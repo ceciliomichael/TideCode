@@ -1,5 +1,5 @@
 export type McpTransportType = 'stdio' | 'streamable-http'
-export type McpConfigSource = 'global' | 'project'
+export type McpConfigSource = 'global'
 export type McpConfigOwner = 'echosphere' | 'codex' | 'agents' | 'claude'
 export type McpServerConnectionStatus = 'connected' | 'disconnected' | 'connecting' | 'error'
 export type McpAddServerTransportType = 'stdio' | 'streamable-http'
@@ -40,7 +40,6 @@ export interface McpServerConfig {
   id: string
   isReadOnly: boolean
   name: string
-  projectPath?: string
   source: McpConfigSource
   toolConfiguration?: McpToolConfiguration
   type: McpTransportType

@@ -380,14 +380,18 @@ export function useChatWorkspaceUiState({
         }
 
         if ("error" in refresh) {
-          return {
-            ...tab,
-            errorMessage:
-              refresh.error instanceof Error
-                ? refresh.error.message
-                : "Failed to refresh file.",
-            status: "error",
+          if (tab.status === 'loading') {
+            return {
+              ...tab,
+              errorMessage:
+                refresh.error instanceof Error
+                  ? refresh.error.message
+                  : "Failed to refresh file.",
+              status: "error",
+            }
           }
+          console.warn(`Failed to refresh file: ${tab.relativePath}`, refresh.error);
+          return tab;
         }
 
         const { result } = refresh

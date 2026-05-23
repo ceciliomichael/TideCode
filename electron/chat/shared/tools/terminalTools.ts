@@ -9,6 +9,7 @@ import type {
 import type { AgentToolContext, AgentToolExecutionResult } from '../toolTypes'
 import type { TerminalSessionSnapshot } from '../../../terminal/service'
 import { resolveWorkspaceTargetPath } from './workspaceTools'
+import { isAllowedTerminalCommand } from './terminalCommandPolicy'
 
 const DEFAULT_TERMINAL_OUTPUT_BODY_LENGTH = 40_000
 const GIT_DIFF_TERMINAL_OUTPUT_BODY_LENGTH = 20_000
@@ -19,13 +20,6 @@ const TERMINAL_BELL = '\\u0007'
 const ANSI_CSI_PATTERN = new RegExp(`${ANSI_ESCAPE}\\[[0-?]*[ -/]*[@-~]`, 'g')
 const ANSI_OSC_PATTERN = new RegExp(`${ANSI_ESCAPE}\\][^${TERMINAL_BELL}${ANSI_ESCAPE}]*(?:${TERMINAL_BELL}|${ANSI_ESCAPE}\\\\)`, 'g')
 const ANSI_SINGLE_ESCAPE_PATTERN = new RegExp(`${ANSI_ESCAPE}[@-Z\\-_]`, 'g')
-const EDIT_COMMAND_PATTERNS = [
-  /^(?:cd\s+(?:"([^"]+)"|'([^']+)'|([^\s&]+))\s*&&\s*)?(?:apply_patch|applypatch)\b/iu,
-  /\b(?:Set-Content|Add-Content|Out-File|Set-Item|New-Item)\b/iu,
-  /\b(?:sed|perl)\b[^\n]*\s-(?:i|pi)\b/iu,
-  /(?:^|[;&|]\s*)(?:echo|printf|cat)\b[\s\S]*?(?:>>?|>\s*\S+)/iu,
-  /\btee\b[\s\S]*?(?:>>?|>\s*\S+)/iu,
-]
 
 interface TerminalThreadSessionState {
   nextSessionId: number
@@ -125,6 +119,14 @@ function createErrorResult(summary: string, body?: string): AgentToolExecutionRe
   }
 }
 
+function getRunTerminalDescription(terminalExecutionMode: AgentToolContext['terminalExecutionMode']) {
+  if (terminalExecutionMode === 'full') {
+    return 'Start or reuse a terminal session in the active workspace, then optionally run any terminal command. Use `cwd` only for a real path inside the workspace. Do not use terminal commands to edit files; use `write` or `apply_patch` instead. When a command is provided, this waits up to 3 minutes for the command to finish and returns available output automatically; it returns earlier when the command finishes.'
+  }
+
+  return 'Start or reuse a terminal session in the active workspace, then optionally run one command that matches the terminal command allowlist. Allowed commands are inspection and validation commands such as pwd, ls, dir, Get-ChildItem, cat, type, Get-Content, git status, git diff, git log, rg, grep, findstr, and test/lint/build commands. Use `cwd` only for a real path inside the workspace. Do not use terminal commands to edit files; use `write` or `apply_patch` instead. When a command is provided, this waits up to 3 minutes for the command to finish and returns available output automatically; it returns earlier when the command finishes.'
+}
+
 function clampInteger(value: number | undefined, min: number, max: number, fallback: number) {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return fallback
@@ -220,16 +222,11 @@ function normalizeCommand(command: string | undefined) {
   }
 
   const trimmed = command.trim()
-  return trimmed.length > 0 ? command : null
+  return trimmed.length > 0 ? trimmed : null
 }
 
 function resolveTerminalWorkspaceCwd(context: AgentToolContext, cwd: string | undefined) {
   return resolveWorkspaceTargetPath(context.workspaceRootPath, cwd).absolutePath
-}
-
-function isEditingCommand(command: string) {
-  const normalizedCommand = command.replace(/\r\n?/g, '\n').trim()
-  return EDIT_COMMAND_PATTERNS.some((pattern) => pattern.test(normalizedCommand))
 }
 
 function resolveTerminalThreadNamespace(context: AgentToolContext) {
@@ -451,10 +448,11 @@ export function createTerminalToolSet(
     }
   }
 
+  const terminalExecutionMode = context.terminalExecutionMode ?? 'sandbox'
+
   return {
     run_terminal: tool({
-      description:
-        'Start or reuse a terminal session in the active workspace, then optionally run one non-editing command. Use `cwd` only for a real path inside the workspace. Use this for inspection, testing, and command-line work only. Do not use terminal commands to edit files; use `write` or `apply_patch` instead. When a command is provided, this waits up to 3 minutes for the command to finish and returns available output automatically; it returns earlier when the command finishes.',
+      description: getRunTerminalDescription(terminalExecutionMode),
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {
@@ -492,14 +490,17 @@ export function createTerminalToolSet(
         const abortSignal = options?.abortSignal
         const cols = clampInteger(inputValue.cols, 20, 400, 120)
         const rows = clampInteger(inputValue.rows, 6, 200, 30)
-        const command = prepareTerminalCommand(normalizeCommand(inputValue.command))
+        const requestedCommand = normalizeCommand(inputValue.command)
 
         try {
-          if (command && isEditingCommand(command)) {
+          if (requestedCommand && !isAllowedTerminalCommand(requestedCommand, terminalExecutionMode)) {
             return createErrorResult(
-              'run_terminal cannot be used to edit files. Use write or apply_patch instead.',
+              'run_terminal only allows commands listed in terminal-command-allowlist.md when terminal execution mode is sandbox.',
+              'Allowed terminal commands are defined in electron/chat/shared/tools/terminal-command-allowlist.md.',
             )
           }
+
+          const command = prepareTerminalCommand(requestedCommand)
 
           const cwd = resolveTerminalWorkspaceCwd(context, inputValue.cwd)
           const namespace = resolveTerminalThreadNamespace(context)
