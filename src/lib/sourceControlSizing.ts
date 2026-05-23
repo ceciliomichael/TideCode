@@ -1,6 +1,6 @@
 export const DEFAULT_SOURCE_CONTROL_HISTORY_RATIO = 0.4
 export const MIN_SOURCE_CONTROL_HISTORY_HEIGHT = 140
-export const MIN_SOURCE_CONTROL_REMAINDER_HEIGHT = 250
+export const MIN_SOURCE_CONTROL_REMAINDER_HEIGHT = 380
 
 export function clampSourceControlHistoryHeight(nextHeight: number, containerHeight: number) {
   const maxHistoryHeight = Math.max(MIN_SOURCE_CONTROL_HISTORY_HEIGHT, containerHeight - MIN_SOURCE_CONTROL_REMAINDER_HEIGHT)
