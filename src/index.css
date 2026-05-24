@@ -263,8 +263,6 @@
   }
 
   .chat-runtime-control-label {
-    position: relative;
-    top: 1px;
     transition-property: color;
     transition-duration: 150ms;
     transition-timing-function: ease-out;
