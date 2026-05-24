@@ -314,7 +314,7 @@ export function MessageList({
   const renderItems = useMemo(() => {
     type RenderItem =
       | { type: 'message'; message: Message; index: number }
-      | { type: 'working_group'; messages: Message[]; startTime: number; endTime: number; startIndex: number; key: string };
+      | { type: 'working_group'; messages: Message[]; trailingMessage?: { message: Message, index: number }; startTime: number; endTime: number; startIndex: number; key: string };
 
     const items: RenderItem[] = [];
     let currentAssistantRun: Message[] = [];
@@ -365,30 +365,27 @@ export function MessageList({
         items.push({
           type: 'working_group',
           messages: workingMessages,
+          trailingMessage: {
+            message: msgText,
+            index: currentAssistantRunStartIndex + currentAssistantRun.length - 1
+          },
           startTime: workingMessages[0].timestamp,
           endTime: getWorkEndTime(lastMsg),
           startIndex: currentAssistantRunStartIndex,
           key: `wg-${workingMessages[0].id}`
         });
-        
-        items.push({
-          type: 'message',
-          message: msgText,
-          index: currentAssistantRunStartIndex + currentAssistantRun.length - 1
-        });
       } else if (currentAssistantRun.length > 1) {
         items.push({
           type: 'working_group',
           messages: currentAssistantRun.slice(0, -1),
+          trailingMessage: {
+            message: lastMsg,
+            index: currentAssistantRunStartIndex + currentAssistantRun.length - 1
+          },
           startTime: currentAssistantRun[0].timestamp,
           endTime: getWorkEndTime(currentAssistantRun[currentAssistantRun.length - 1]),
           startIndex: currentAssistantRunStartIndex,
           key: `wg-${currentAssistantRun[0].id}`
-        });
-        items.push({
-          type: 'message',
-          message: lastMsg,
-          index: currentAssistantRunStartIndex + currentAssistantRun.length - 1
         });
       } else {
         items.push({
@@ -535,13 +532,15 @@ export function MessageList({
         {renderItems.map((item) => {
           if (item.type === 'working_group') {
             return (
-              <WorkingBlock
-                key={item.key}
-                startTime={item.startTime}
-                endTime={item.endTime}
-              >
-                {item.messages.map((msg, idx) => renderMessageRow(msg, item.startIndex + idx))}
-              </WorkingBlock>
+              <div key={item.key} className="flex flex-col gap-1.5 w-full">
+                <WorkingBlock
+                  startTime={item.startTime}
+                  endTime={item.endTime}
+                >
+                  {item.messages.map((msg, idx) => renderMessageRow(msg, item.startIndex + idx))}
+                </WorkingBlock>
+                {item.trailingMessage ? renderMessageRow(item.trailingMessage.message, item.trailingMessage.index) : null}
+              </div>
             );
           } else {
             return renderMessageRow(item.message, item.index);

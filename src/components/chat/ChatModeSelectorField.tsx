@@ -1,4 +1,4 @@
-import { Bot, Check } from 'lucide-react'
+import { Check } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
@@ -96,7 +96,6 @@ export function ChatModeSelectorField({
         onClick={() => setIsOpen((currentValue) => !currentValue)}
         className="chat-runtime-control-trigger w-auto max-w-full disabled:cursor-not-allowed"
       >
-        <Bot size={14} className="mr-1.5 shrink-0 text-current" style={{ transform: 'translateY(-0.1em)' }} />
         <span className="chat-runtime-control-label min-w-0 max-w-[12rem] truncate text-left">
           {selectedOption?.label ?? 'Select mode'}
         </span>

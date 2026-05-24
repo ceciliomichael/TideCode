@@ -246,14 +246,17 @@
 
   .chat-runtime-control-trigger {
     display: inline-flex;
-    height: 2rem;
+    min-height: 2rem;
+    box-sizing: border-box;
     max-width: 100%;
     align-items: center;
     border-radius: 1rem;
     border: 1px solid var(--color-border);
     background-color: var(--dropdown-control-surface);
     padding-inline: 0.5625rem;
+    padding-block: 0.3125rem;
     font-size: 0.8125rem;
+    line-height: 1.25rem;
     font-weight: 400;
     color: var(--color-muted-foreground);
     box-shadow: var(--shadow-control-inset);

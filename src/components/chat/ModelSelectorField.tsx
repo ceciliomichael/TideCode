@@ -1,4 +1,4 @@
-import { Search, RefreshCw, Cpu, Check } from 'lucide-react'
+import { Search, RefreshCw, Check } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
@@ -140,7 +140,6 @@ export function ModelSelectorField({
           triggerSizeClassName,
         ].join(' ')}
       >
-        <Cpu size={14} className="mr-1.5 shrink-0 text-current" />
         {isLoading ? (
           <span className="flex min-w-0 max-w-[18rem] items-center gap-2 text-left">
             <span aria-hidden="true" className="h-3 w-14 shrink-0 rounded-full bg-border opacity-80 animate-pulse" />
