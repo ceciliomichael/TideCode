@@ -5,6 +5,7 @@ import { KANBAN_COLUMNS } from './kanbanDefaults'
 import { KanbanColumn } from './KanbanColumn'
 import { KanbanTaskDialog } from './KanbanTaskDialog'
 import type { KanbanCard, KanbanColumnId, KanbanCreateCardInput } from './kanbanTypes'
+import { buildKanbanBoardDisplayData, getKanbanParentCardOptions } from './kanbanHierarchy'
 import { useKanbanBoardState } from './useKanbanBoardState'
 
 interface KanbanBoardProps {
@@ -17,6 +18,7 @@ interface TaskDraftState {
   mode: 'create' | 'edit'
   cardId?: string
   columnId: KanbanColumnId
+  parentCardId?: string
   title: string
 }
 
@@ -37,6 +39,7 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
       messages,
     })
 
+  const boardDisplayData = useMemo(() => buildKanbanBoardDisplayData(cards), [cards])
   const doneCardCount = useMemo(() => cards.filter((card) => card.columnId === 'done').length, [cards])
   const columnCounts = useMemo(
     () =>
@@ -55,6 +58,7 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
       columnId: 'backlog',
       description: '',
       mode: 'create',
+      parentCardId: undefined,
       title: draftTitle.trim(),
     })
   }
@@ -75,6 +79,7 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
         cardId: draftTask.cardId,
         columnId: input.columnId ?? 'backlog',
         description: input.description ?? '',
+        parentCardId: input.parentCardId,
         title: input.title,
       })
     } else {
@@ -91,6 +96,7 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
       columnId: card.columnId,
       description: card.description,
       mode: 'edit',
+      parentCardId: card.parentCardId,
       title: card.title,
     })
   }
@@ -148,7 +154,8 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
         {KANBAN_COLUMNS.map((column) => (
           <KanbanColumn
             key={column.id}
-            cards={cards.filter((card) => card.columnId === column.id)}
+            cards={boardDisplayData.orderedCardsByColumn[column.id]}
+            cardMetaById={boardDisplayData.cardMetaById}
             column={column}
             draggedCardId={draggedCardId}
             count={columnCounts[column.id]}
@@ -170,8 +177,14 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
           dialogTitle={draftTask.mode === 'edit' ? 'Edit task' : 'Describe what this task is about'}
           initialColumnId={draftTask.columnId}
           initialDescription={draftTask.description}
+          initialParentCardId={draftTask.parentCardId}
           initialTitle={draftTask.title}
           onDelete={draftTask.mode === 'edit' ? handleDeleteTask : undefined}
+          parentOptions={
+            draftTask.cardId && (boardDisplayData.cardMetaById.get(draftTask.cardId)?.childCount ?? 0) > 0
+              ? []
+              : getKanbanParentCardOptions(cards, draftTask.cardId)
+          }
           submitLabel={draftTask.mode === 'edit' ? 'Save changes' : 'Add task'}
           onClose={() => setDraftTask(null)}
           onSubmit={handleSubmitTask}

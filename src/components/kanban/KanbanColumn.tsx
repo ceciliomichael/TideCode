@@ -1,12 +1,14 @@
 import { useState, type DragEvent } from 'react'
 import { KanbanCardItem } from './KanbanCardItem'
 import type { KanbanCard, KanbanColumnDefinition, KanbanColumnId } from './kanbanTypes'
+import type { KanbanCardDisplayMeta } from './kanbanHierarchy'
 
 interface KanbanColumnProps {
   cards: readonly KanbanCard[]
   column: KanbanColumnDefinition
   count: number
   draggedCardId: string | null
+  cardMetaById: Map<string, KanbanCardDisplayMeta>
   onCardOpen: (cardId: string) => void
   onCardDragStart: (cardId: string) => void
   onCardMove: (cardId: string, targetColumnId: KanbanColumnId) => void
@@ -17,6 +19,7 @@ export function KanbanColumn({
   cards,
   column,
   count,
+  cardMetaById,
   draggedCardId,
   onCardOpen,
   onCardDragStart,
@@ -82,7 +85,20 @@ export function KanbanColumn({
           <ul className="flex flex-col">
             {cards.map((card) => (
               <li key={card.id}>
-                <KanbanCardItem card={card} onDragStart={onCardDragStart} onMove={onCardMove} onOpen={onCardOpen} />
+                <KanbanCardItem
+                  card={card}
+                  meta={
+                    cardMetaById.get(card.id) ?? {
+                      childCount: 0,
+                      doneChildCount: 0,
+                      isChild: false,
+                      parentTitle: undefined,
+                    }
+                  }
+                  onDragStart={onCardDragStart}
+                  onMove={onCardMove}
+                  onOpen={onCardOpen}
+                />
               </li>
             ))}
           </ul>

@@ -54,7 +54,7 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointI
   return {
     read_board: tool({
       description:
-        'Read one Kanban column for the current workspace. This is intentionally column-scoped for context efficiency and returns compact card summaries only: id, title, and updatedAt. Use read_card with a card id when full task details are needed.',
+        'Read one Kanban column for the current workspace. This is intentionally column-scoped for context efficiency and returns compact card summaries with parent/subtask progress. Use read_card with a card id when full task details are needed.',
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {
@@ -105,7 +105,7 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointI
     }),
     read_card: tool({
       description:
-        'Read the full details for one Kanban card in the current workspace. Use this after read_board identifies the relevant card id.',
+        'Read the full details for one Kanban card in the current workspace, including any subtask progress. Use this after read_board identifies the relevant card id.',
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {
@@ -126,7 +126,7 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointI
             workspacePath: context.workspaceRootPath,
           })
 
-          return createKanbanToolSuccessResult(card ? `Read task: ${card.title}` : 'Task not found.', { card })
+          return createKanbanToolSuccessResult(card ? `Read task: ${card.card.title}` : 'Task not found.', { card })
         } catch (error) {
           return createKanbanToolErrorResult(error, 'Unable to read kanban card.')
         }
@@ -134,7 +134,7 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointI
     }),
     create_card: tool({
       description:
-        'Create a Kanban card in the current workspace. New cards default to backlog when columnId is omitted.',
+        'Create a Kanban card in the current workspace. New cards default to backlog when columnId is omitted, and parentCardId can link the card as a subtask under a top-level task.',
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {
@@ -143,6 +143,9 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointI
             type: 'string',
           },
           description: {
+            type: 'string',
+          },
+          parentCardId: {
             type: 'string',
           },
           sourceMessageId: {
@@ -160,6 +163,7 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointI
         const inputValue = rawInput as {
           columnId?: KanbanColumnId
           description?: string
+          parentCardId?: string
           sourceMessageId?: string
           title: string
         }
@@ -169,6 +173,7 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointI
             createKanbanBoardCard({
               columnId: inputValue.columnId,
               description: inputValue.description,
+              parentCardId: inputValue.parentCardId,
               sourceMessageId: inputValue.sourceMessageId,
               title: inputValue.title,
               workspacePath: context.workspaceRootPath,
@@ -183,7 +188,7 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointI
     }),
     update_card: tool({
       description:
-        'Update Kanban card content only. Use move_card for workflow/status changes between backlog, in-progress, blocked, and done.',
+        'Update Kanban card content only. Use move_card for workflow/status changes between backlog, in-progress, blocked, and done. Use parentCardId to attach or clear a subtask relationship.',
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {
@@ -194,6 +199,9 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointI
           description: {
             type: 'string',
           },
+          parentCardId: {
+            type: 'string',
+          },
           title: {
             type: 'string',
           },
@@ -202,13 +210,14 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointI
         type: 'object',
       }),
       execute: async (rawInput) => {
-        const inputValue = rawInput as { cardId: string; description?: string; title?: string }
+        const inputValue = rawInput as { cardId: string; description?: string; parentCardId?: string; title?: string }
 
         try {
           const card = await runKanbanMutation(() =>
             updateKanbanBoardCardContent({
               cardId: inputValue.cardId,
               description: inputValue.description,
+              parentCardId: inputValue.parentCardId,
               title: inputValue.title,
               workspacePath: context.workspaceRootPath,
             }),

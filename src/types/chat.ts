@@ -885,7 +885,7 @@ export interface EchosphereKanbanApi {
   moveCard: (input: KanbanMoveCardRequest) => Promise<KanbanCard>
   onBoardChange: (listener: (event: KanbanBoardChangeEvent) => void) => () => void
   readBoard: (input: KanbanReadBoardRequest) => Promise<import('../lib/kanban').KanbanColumnReadResult>
-  readCard: (input: KanbanReadCardRequest) => Promise<KanbanCard | null>
+  readCard: (input: KanbanReadCardRequest) => Promise<import('../lib/kanban').KanbanCardDetails | null>
   updateCard: (input: KanbanWorkspaceInput & KanbanUpdateCardInput) => Promise<KanbanCard>
   updateCardContent: (input: KanbanUpdateCardRequest) => Promise<KanbanCard>
 }

@@ -6,14 +6,17 @@ import {
   clearDoneKanbanCards,
   createKanbanCard,
   deleteKanbanCard,
+  getKanbanCardDetails,
   moveKanbanCard,
   normalizeKanbanWorkspacePath,
+  normalizeKanbanBoardData,
   parseKanbanBoardData,
   readKanbanCard,
   readKanbanColumn,
   updateKanbanCard,
   updateKanbanCardContent,
   type KanbanBoardData,
+  type KanbanCardDetails,
   type KanbanCard,
   type KanbanColumnReadResult,
   type KanbanCreateCardRequest,
@@ -53,12 +56,16 @@ function parsePersistedKanbanBoard(value: unknown): KanbanBoardData {
   return parseKanbanBoardData(value)
 }
 
+function normalizeBoardData(boardData: KanbanBoardData): KanbanBoardData {
+  return normalizeKanbanBoardData(boardData)
+}
+
 async function readBoardDataForWorkspace(workspacePath: string): Promise<KanbanBoardData> {
   await ensureKanbanBoardsDirectory()
 
   try {
     const fileContent = await fs.readFile(getBoardFilePath(workspacePath), 'utf8')
-    return parsePersistedKanbanBoard(JSON.parse(fileContent))
+    return normalizeBoardData(parsePersistedKanbanBoard(JSON.parse(fileContent)))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return { cards: [] }
@@ -71,9 +78,10 @@ async function readBoardDataForWorkspace(workspacePath: string): Promise<KanbanB
 
 async function writeBoardDataForWorkspace(workspacePath: string, boardData: KanbanBoardData) {
   await ensureKanbanBoardsDirectory()
+  const normalizedBoardData = normalizeBoardData(boardData)
 
   const payload: PersistedKanbanBoard = {
-    cards: boardData.cards,
+    cards: normalizedBoardData.cards,
     schemaVersion: 1,
     updatedAt: Date.now(),
     workspacePath,
@@ -84,7 +92,7 @@ async function writeBoardDataForWorkspace(workspacePath: string, boardData: Kanb
 
 async function replaceBoardDataForWorkspace(workspacePath: string, boardData: KanbanBoardData) {
   return mutateBoardData(workspacePath, async () => {
-    return { boardData, result: boardData }
+    return { boardData: normalizeBoardData(boardData), result: normalizeBoardData(boardData) }
   })
 }
 
@@ -122,13 +130,13 @@ export async function importKanbanBoardData(input: KanbanWorkspaceInput & Kanban
       return { boardData: currentBoardData, result: currentBoardData }
     }
 
-    const boardData = parseKanbanBoardData(input)
+    const boardData = normalizeBoardData(parseKanbanBoardData(input))
     return { boardData, result: boardData }
   })
 }
 
 export async function replaceKanbanBoardData(input: KanbanWorkspaceInput & KanbanBoardData): Promise<KanbanBoardData> {
-  const boardData = parseKanbanBoardData(input)
+  const boardData = normalizeBoardData(parseKanbanBoardData(input))
   const workspacePath = normalizeKanbanWorkspacePath(input.workspacePath)
   return replaceBoardDataForWorkspace(workspacePath, boardData)
 }
@@ -138,28 +146,64 @@ export async function readKanbanBoardColumn(input: KanbanReadBoardRequest): Prom
   return readKanbanColumn(boardData, KANBAN_COLUMNS, input)
 }
 
-export async function getKanbanCard(input: KanbanReadCardRequest): Promise<KanbanCard | null> {
+function syncParentTaskState(boardData: KanbanBoardData, parentCardId: string, now = Date.now()): KanbanBoardData {
+  const parentCard = readKanbanCard(boardData, { cardId: parentCardId })
+  if (!parentCard || parentCard.parentCardId !== undefined) {
+    return boardData
+  }
+
+  const directChildren = boardData.cards.filter((card) => card.parentCardId === parentCard.id)
+  if (directChildren.length === 0) {
+    return boardData
+  }
+
+  const allChildrenDone = directChildren.every((card) => card.columnId === 'done')
+  if (allChildrenDone && parentCard.columnId !== 'done') {
+    return moveKanbanCard(boardData, { cardId: parentCard.id, targetColumnId: 'done' }, now)
+  }
+
+  if (!allChildrenDone && parentCard.columnId === 'done') {
+    return moveKanbanCard(boardData, { cardId: parentCard.id, targetColumnId: 'in-progress' }, now)
+  }
+
+  return boardData
+}
+
+export async function getKanbanCard(input: KanbanReadCardRequest): Promise<KanbanCardDetails | null> {
   const boardData = await getKanbanBoardData(input)
-  return readKanbanCard(boardData, input)
+  return getKanbanCardDetails(boardData, input)
 }
 
 export async function createKanbanBoardCard(input: KanbanCreateCardRequest): Promise<KanbanCard> {
   return mutateBoardData(input.workspacePath, async (currentBoardData) => {
     const card = createKanbanCard(input, randomUUID())
-    const boardData = addKanbanCard(currentBoardData, card)
+    let boardData = addKanbanCard(currentBoardData, card)
+    if (card.parentCardId) {
+      boardData = syncParentTaskState(boardData, card.parentCardId)
+    }
     return { boardData, result: card }
   })
 }
 
 export async function updateKanbanBoardCardContent(input: KanbanUpdateCardRequest): Promise<KanbanCard> {
   return mutateBoardData(input.workspacePath, async (currentBoardData) => {
+    const currentCard = readKanbanCard(currentBoardData, input)
+    const previousParentCardId = currentCard?.parentCardId
     const boardData = updateKanbanCardContent(currentBoardData, input)
     const updatedCard = readKanbanCard(boardData, input)
     if (!updatedCard) {
       throw new Error(`Task not found after update: ${input.cardId}`)
     }
 
-    return { boardData, result: updatedCard }
+    let nextBoardData = boardData
+    if (previousParentCardId) {
+      nextBoardData = syncParentTaskState(nextBoardData, previousParentCardId)
+    }
+    if (updatedCard.parentCardId) {
+      nextBoardData = syncParentTaskState(nextBoardData, updatedCard.parentCardId)
+    }
+
+    return { boardData: nextBoardData, result: updatedCard }
   })
 }
 
@@ -171,7 +215,12 @@ export async function updateKanbanBoardCard(input: KanbanWorkspaceInput & Kanban
       throw new Error(`Task not found after update: ${input.cardId}`)
     }
 
-    return { boardData, result: updatedCard }
+    let nextBoardData = boardData
+    if (updatedCard.parentCardId) {
+      nextBoardData = syncParentTaskState(nextBoardData, updatedCard.parentCardId)
+    }
+
+    return { boardData: nextBoardData, result: updatedCard }
   })
 }
 
@@ -183,14 +232,21 @@ export async function moveKanbanBoardCard(input: KanbanMoveCardRequest): Promise
       throw new Error(`Task not found after move: ${input.cardId}`)
     }
 
-    return { boardData, result: movedCard }
+    let nextBoardData = boardData
+    if (movedCard.parentCardId) {
+      nextBoardData = syncParentTaskState(nextBoardData, movedCard.parentCardId)
+    }
+
+    return { boardData: nextBoardData, result: movedCard }
   })
 }
 
 export async function deleteKanbanBoardCard(input: KanbanDeleteCardRequest): Promise<KanbanBoardData> {
   return mutateBoardData(input.workspacePath, async (currentBoardData) => {
+    const currentCard = readKanbanCard(currentBoardData, input)
     const boardData = deleteKanbanCard(currentBoardData, input)
-    return { boardData, result: boardData }
+    const nextBoardData = currentCard?.parentCardId ? syncParentTaskState(boardData, currentCard.parentCardId) : boardData
+    return { boardData: nextBoardData, result: nextBoardData }
   })
 }
 

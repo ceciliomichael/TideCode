@@ -126,6 +126,7 @@ export function useKanbanBoardState({ workspacePath, messages }: UseKanbanBoardS
       void window.echosphereKanban
         .createCard({
           ...input,
+          parentCardId: input.parentCardId,
           title: input.title.trim(),
           workspacePath,
         })
@@ -197,7 +198,7 @@ export function useKanbanBoardState({ workspacePath, messages }: UseKanbanBoardS
   )
 
   const updateCard = useCallback(
-    ({ cardId, columnId, description, title }: KanbanUpdateCardInput) => {
+    ({ cardId, columnId, description, parentCardId, title }: KanbanUpdateCardInput) => {
       const trimmedTitle = title.trim()
       if (!hasWorkspacePath(workspacePath) || !trimmedTitle) {
         return
@@ -208,6 +209,7 @@ export function useKanbanBoardState({ workspacePath, messages }: UseKanbanBoardS
           cardId,
           columnId,
           description,
+          parentCardId,
           title: trimmedTitle,
           workspacePath,
         })

@@ -8,10 +8,12 @@ import { DropdownField, type DropdownOption } from '../ui/DropdownField'
 interface KanbanTaskDialogProps {
   dialogTitle: string
   initialDescription?: string
+  initialParentCardId?: string
   initialTitle?: string
   initialColumnId?: KanbanColumnId
   isSubmitting?: boolean
   onDelete?: () => void
+  parentOptions: readonly DropdownOption[]
   submitLabel: string
   onClose: () => void
   onSubmit: (input: KanbanCreateCardInput) => void
@@ -20,10 +22,12 @@ interface KanbanTaskDialogProps {
 export function KanbanTaskDialog({
   dialogTitle,
   initialDescription = '',
+  initialParentCardId,
   initialTitle = '',
   initialColumnId = 'backlog',
   isSubmitting = false,
   onDelete,
+  parentOptions,
   submitLabel,
   onClose,
   onSubmit,
@@ -31,12 +35,14 @@ export function KanbanTaskDialog({
   const [title, setTitle] = useState(initialTitle)
   const [description, setDescription] = useState(initialDescription)
   const [columnId, setColumnId] = useState<KanbanColumnId>(initialColumnId)
+  const [parentCardId, setParentCardId] = useState(initialParentCardId ?? '')
 
   useEffect(() => {
     setTitle(initialTitle)
     setDescription(initialDescription)
     setColumnId(initialColumnId)
-  }, [initialColumnId, initialDescription, initialTitle])
+    setParentCardId(initialParentCardId ?? '')
+  }, [initialColumnId, initialDescription, initialParentCardId, initialTitle])
 
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
@@ -55,6 +61,10 @@ export function KanbanTaskDialog({
   const columnOptions = useMemo(
     () => KANBAN_COLUMNS.map((column) => ({ id: column.id, label: column.title })),
     [],
+  )
+  const parentTaskOptions = useMemo<readonly DropdownOption[]>(
+    () => [{ label: 'No parent task', value: '' }, ...parentOptions],
+    [parentOptions],
   )
   const dropdownOptions = useMemo<readonly DropdownOption[]>(
     () => columnOptions.map((option) => ({ label: option.label, value: option.id })),
@@ -86,14 +96,14 @@ export function KanbanTaskDialog({
           </div>
 
           <button
-              type="button"
-              aria-label="Close task dialog"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="inline-flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <X size={16} />
-            </button>
+            type="button"
+            aria-label="Close task dialog"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="inline-flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <X size={16} />
+          </button>
         </div>
 
         <form
@@ -107,6 +117,7 @@ export function KanbanTaskDialog({
             onSubmit({
               columnId,
               description: description.trim(),
+              parentCardId: parentCardId.trim().length > 0 ? parentCardId.trim() : null,
               title: title.trim(),
             })
           }}
@@ -136,6 +147,20 @@ export function KanbanTaskDialog({
               placeholder="Add context, notes, or a clear next step"
               rows={6}
               className="w-full resize-none rounded-xl border border-border bg-background px-4 py-3 text-sm leading-6 text-foreground placeholder:text-subtle-foreground focus:outline-none"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="kanban-task-parent" className="text-sm font-medium text-foreground">
+              Parent task
+            </label>
+            <DropdownField
+              id="kanban-task-parent"
+              ariaLabel="Parent task"
+              value={parentCardId}
+              onChange={(value) => setParentCardId(value)}
+              options={parentTaskOptions}
+              triggerClassName="h-11"
             />
           </div>
 

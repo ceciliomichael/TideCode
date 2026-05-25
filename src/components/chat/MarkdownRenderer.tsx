@@ -41,7 +41,13 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   isStreaming = false,
   preserveLineBreaks = false,
 }: MarkdownRendererProps) {
-  const rootClassName = ['chat-markdown', preserveLineBreaks ? 'whitespace-pre-wrap' : 'whitespace-normal', className]
+  const rootClassName = [
+    'chat-markdown', 
+    preserveLineBreaks ? 'whitespace-pre-wrap' : 'whitespace-normal', 
+    className,
+    '[&>*:first-child]:mt-0',
+    '[&>*:last-child]:mb-0'
+  ]
     .filter(Boolean)
     .join(' ')
 

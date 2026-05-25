@@ -11,6 +11,7 @@ export interface KanbanColumnDefinition {
 export interface KanbanCreateCardInput {
   columnId?: KanbanColumnId
   description?: string
+  parentCardId?: string | null
   sourceMessageId?: string
   title: string
 }
@@ -19,12 +20,14 @@ export interface KanbanUpdateCardInput {
   cardId: string
   columnId: KanbanColumnId
   description: string
+  parentCardId?: string | null
   title: string
 }
 
 export interface KanbanUpdateCardContentInput {
   cardId: string
   description?: string
+  parentCardId?: string | null
   title?: string
 }
 
@@ -37,6 +40,7 @@ export interface KanbanCard {
   createdAt: number
   description: string
   id: string
+  parentCardId?: string
   sourceMessageId?: string
   title: string
   updatedAt: number
@@ -47,9 +51,19 @@ export interface KanbanBoardData {
 }
 
 export interface KanbanCardSummary {
+  childCount: number
+  doneChildCount: number
   id: string
+  parentCardId?: string
   title: string
   updatedAt: number
+}
+
+export interface KanbanCardDetails {
+  card: KanbanCard
+  childCount: number
+  children: KanbanCardSummary[]
+  doneChildCount: number
 }
 
 export interface KanbanColumnReadInput {
@@ -125,6 +139,83 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function normalizeParentCardId(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
+}
+
+function isTopLevelKanbanCard(card: KanbanCard) {
+  return card.parentCardId === undefined
+}
+
+function getKanbanCardById(boardData: KanbanBoardData, cardId: string) {
+  return boardData.cards.find((card) => card.id === cardId) ?? null
+}
+
+function getKanbanCardChildrenInternal(boardData: KanbanBoardData, parentCardId: string) {
+  return boardData.cards.filter((card) => card.parentCardId === parentCardId)
+}
+
+function getKanbanCardChildCountsInternal(boardData: KanbanBoardData, parentCardId: string) {
+  const children = getKanbanCardChildrenInternal(boardData, parentCardId)
+  const doneChildCount = children.filter((card) => card.columnId === 'done').length
+
+  return {
+    childCount: children.length,
+    doneChildCount,
+  }
+}
+
+function validateKanbanParentCardLink(
+  boardData: KanbanBoardData,
+  parentCardIdInput: string | null | undefined,
+  cardId?: string,
+) {
+  const parentCardId = normalizeParentCardId(parentCardIdInput)
+  if (!parentCardId) {
+    return undefined
+  }
+
+  if (cardId && parentCardId === cardId) {
+    throw new Error('A task cannot be its own parent.')
+  }
+
+  const parentCard = getKanbanCardById(boardData, parentCardId)
+  if (!parentCard) {
+    throw new Error(`Parent task not found: ${parentCardId}`)
+  }
+
+  if (!isTopLevelKanbanCard(parentCard)) {
+    throw new Error('Parent task must be a top-level task.')
+  }
+
+  return parentCardId
+}
+
+function sanitizeKanbanBoardCards(cards: readonly KanbanCard[]): KanbanCard[] {
+  const topLevelCardIds = new Set(cards.filter((card) => card.parentCardId === undefined).map((card) => card.id))
+
+  return cards.map((card) => {
+    const parentCardId = normalizeParentCardId(card.parentCardId)
+    if (!parentCardId || parentCardId === card.id || !topLevelCardIds.has(parentCardId)) {
+      return {
+        ...card,
+        parentCardId: undefined,
+      }
+    }
+
+    return {
+      ...card,
+      parentCardId,
+    }
+  })
+}
+
+export function normalizeKanbanBoardData(boardData: KanbanBoardData): KanbanBoardData {
+  return {
+    cards: sanitizeKanbanBoardCards(boardData.cards),
+  }
+}
+
 export function parseKanbanCard(value: unknown): KanbanCard | null {
   if (!isRecord(value)) {
     return null
@@ -146,6 +237,7 @@ export function parseKanbanCard(value: unknown): KanbanCard | null {
     createdAt: value.createdAt,
     description: value.description,
     id: value.id,
+    parentCardId: normalizeParentCardId(value.parentCardId),
     sourceMessageId: typeof value.sourceMessageId === 'string' ? value.sourceMessageId : undefined,
     title: value.title,
     updatedAt: value.updatedAt,
@@ -157,9 +249,9 @@ export function parseKanbanBoardData(value: unknown): KanbanBoardData {
     return { cards: [] }
   }
 
-  return {
+  return normalizeKanbanBoardData({
     cards: value.cards.map(parseKanbanCard).filter((card): card is KanbanCard => card !== null),
-  }
+  })
 }
 
 export function createKanbanCard(input: KanbanCreateCardInput, id: string, now = Date.now()): KanbanCard {
@@ -175,6 +267,7 @@ export function createKanbanCard(input: KanbanCreateCardInput, id: string, now =
     createdAt: now,
     description: input.description?.trim() ?? '',
     id,
+    parentCardId: normalizeParentCardId(input.parentCardId),
     sourceMessageId: input.sourceMessageId?.trim() || undefined,
     title: trimmedTitle,
     updatedAt: now,
@@ -189,6 +282,33 @@ export function getKanbanColumnCounts(boardData: KanbanBoardData): Record<Kanban
   }
 
   return counts
+}
+
+export function getKanbanCardChildSummaries(boardData: KanbanBoardData, parentCardId: string): KanbanCardSummary[] {
+  return getKanbanCardChildrenInternal(boardData, parentCardId).map((card) => ({
+    childCount: getKanbanCardChildCountsInternal(boardData, card.id).childCount,
+    doneChildCount: getKanbanCardChildCountsInternal(boardData, card.id).doneChildCount,
+    id: card.id,
+    parentCardId: card.parentCardId,
+    title: card.title,
+    updatedAt: card.updatedAt,
+  }))
+}
+
+export function getKanbanCardDetails(boardData: KanbanBoardData, input: KanbanReadCardInput): KanbanCardDetails | null {
+  const card = readKanbanCard(boardData, input)
+  if (!card) {
+    return null
+  }
+
+  const { childCount, doneChildCount } = getKanbanCardChildCountsInternal(boardData, card.id)
+
+  return {
+    card,
+    childCount,
+    children: getKanbanCardChildSummaries(boardData, card.id),
+    doneChildCount,
+  }
 }
 
 export function readKanbanColumn(
@@ -210,11 +330,17 @@ export function readKanbanColumn(
   const nextIndex = safeStartIndex + page.length
 
   return {
-    cards: page.map((card) => ({
-      id: card.id,
-      title: card.title,
-      updatedAt: card.updatedAt,
-    })),
+    cards: page.map((card) => {
+      const { childCount, doneChildCount } = getKanbanCardChildCountsInternal(boardData, card.id)
+      return {
+        childCount,
+        doneChildCount,
+        id: card.id,
+        parentCardId: card.parentCardId,
+        title: card.title,
+        updatedAt: card.updatedAt,
+      }
+    }),
     column: {
       count: matchingCards.length,
       id: column.id,
@@ -231,12 +357,23 @@ export function readKanbanCard(boardData: KanbanBoardData, input: KanbanReadCard
     throw new Error('cardId is required.')
   }
 
-  return boardData.cards.find((card) => card.id === normalizedCardId) ?? null
+  return getKanbanCardById(boardData, normalizedCardId)
 }
 
 export function addKanbanCard(boardData: KanbanBoardData, card: KanbanCard): KanbanBoardData {
   if (boardData.cards.some((currentCard) => currentCard.id === card.id)) {
     throw new Error(`Task already exists: ${card.id}`)
+  }
+
+  if (card.parentCardId !== undefined) {
+    const parentCard = getKanbanCardById(boardData, card.parentCardId)
+    if (!parentCard) {
+      throw new Error(`Parent task not found: ${card.parentCardId}`)
+    }
+
+    if (!isTopLevelKanbanCard(parentCard)) {
+      throw new Error('Parent task must be a top-level task.')
+    }
   }
 
   return {
@@ -258,6 +395,24 @@ export function updateKanbanCardContent(
     throw new Error('Task title cannot be blank.')
   }
 
+  const currentCard = getKanbanCardById(boardData, normalizedCardId)
+  if (!currentCard) {
+    throw new Error(`Task not found: ${normalizedCardId}`)
+  }
+
+  let nextParentCardId = currentCard.parentCardId
+  if (input.parentCardId !== undefined) {
+    if (input.parentCardId === null) {
+      nextParentCardId = undefined
+    } else {
+      if (getKanbanCardChildrenInternal(boardData, currentCard.id).length > 0) {
+        throw new Error('A task with subtasks cannot become a subtask.')
+      }
+
+      nextParentCardId = validateKanbanParentCardLink(boardData, input.parentCardId, currentCard.id)
+    }
+  }
+
   let didUpdate = false
   const cards = boardData.cards.map((card) => {
     if (card.id !== normalizedCardId) {
@@ -269,6 +424,7 @@ export function updateKanbanCardContent(
       ...card,
       ...(input.description !== undefined ? { description: input.description.trim() } : {}),
       ...(input.title !== undefined ? { title: input.title.trim() } : {}),
+      ...(input.parentCardId !== undefined ? { parentCardId: nextParentCardId } : {}),
       updatedAt: now,
     }
   })
@@ -286,6 +442,7 @@ export function updateKanbanCard(boardData: KanbanBoardData, input: KanbanUpdate
     {
       cardId: input.cardId,
       description: input.description,
+      parentCardId: input.parentCardId,
       title: input.title,
     },
     now,
@@ -301,8 +458,20 @@ export function moveKanbanCard(boardData: KanbanBoardData, input: KanbanMoveInpu
   }
 
   const targetColumnId = assertKanbanColumnId(input.targetColumnId, 'targetColumnId')
-  let didUpdate = false
+  const currentCard = getKanbanCardById(boardData, normalizedCardId)
+  if (!currentCard) {
+    throw new Error(`Task not found: ${normalizedCardId}`)
+  }
 
+  if (targetColumnId === 'done' && currentCard.parentCardId === undefined) {
+    const children = getKanbanCardChildrenInternal(boardData, currentCard.id)
+    const incompleteChildCount = children.filter((child) => child.columnId !== 'done').length
+    if (incompleteChildCount > 0) {
+      throw new Error('A parent task cannot be moved to done until all subtasks are done.')
+    }
+  }
+
+  let didUpdate = false
   const cards = boardData.cards.map((card) => {
     if (card.id !== normalizedCardId) {
       return card
