@@ -5,12 +5,7 @@ const MAX_RESPONSE_SIZE = 5 * 1024 * 1024
 const DEFAULT_TIMEOUT_MS = 30_000
 const MAX_TIMEOUT_MS = 120_000
 
-const WEBFETCH_TOOL_DESCRIPTION = `Fetch content from a specific URL.
-
-Use this when the user has already identified a page or document and you need to retrieve its contents.
-Prefer this for direct URL retrieval. Do not use it as a substitute for web search or file search.
-Return readable text when possible.
-`
+const WEBFETCH_TOOL_DESCRIPTION = 'Fetch text or markdown content from a specific http/https URL.'
 
 const BASIC_HTML_ENTITY_MAP: Record<string, string> = {
   '&amp;': '&',

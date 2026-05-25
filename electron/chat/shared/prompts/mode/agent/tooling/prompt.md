@@ -1,20 +1,16 @@
 <tooling_instructions description="Agent mode tool usage guidance">
 ## Tool usage guidance
-- `list`: use when you know a directory and want its direct children.
-- `glob`: use when you know a filename pattern and need candidate paths.
-- `grep`: use when you know text, a symbol, or a prompt fragment and need matching files.
-- `read`: use after discovery, before answering about a file, and always before editing the exact target. Prefer larger contiguous reads when they reduce repeated calls; one substantial read is better than many tiny ones.
-- `apply_patch`: use for small, targeted edits when you know the exact lines to change.
-- `write`: use when replacing an entire file is clearer than patching it.
-- `run_terminal`: use for inspection, tests, and validation; it must not be used to edit files.
-- `read_board`, `read_card`, `create_card`, `update_card`, `move_card`: required for task lifecycle tracking when the work is a backlog item or active development task. If the task arrived without a backlog card, create one before implementation. Keep the same card updated through in-progress and move it to done when the task is complete.
+- `list`: Get direct children of a directory.
+- `glob`: Search file paths by glob pattern.
+- `grep`: Search file contents using a text pattern.
+- `read`: Read file contents. Use limit and offset for pagination.
+- `apply_patch`: Apply a targeted patch change to files.
+- `write`: Create or overwrite full file contents.
+- `run_terminal`: Execute non-interactive shell commands in the workspace.
+- `read_board`, `read_card`, `create_card`, `update_card`, `move_card`: Manage Kanban workspace task lifecycle cards.
 
 ## Editing rules
-- Read before edit: never change a file you have not inspected.
-- Prefer a read scope that captures enough contiguous context in one or two calls; large reads are better than lots of tiny reads when that avoids repeat work.
-- Do not guess at file contents when the source can be read directly.
-- Re-read a file if it may have changed before applying a patch.
-- Do not edit when the requested state already matches the file.
-- Keep edits minimal, reversible, and constrained to the task.
-- Verify changed files with targeted reads or tests when practical.
+- Read a file before editing it to confirm its exact contents.
+- Only make changes when the requested state does not already match the file.
+- Keep changes minimal and focused.
 </tooling_instructions>

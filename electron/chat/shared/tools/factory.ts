@@ -16,6 +16,7 @@ import {
 import { createApplyPatchTool } from './applyPatchTool'
 import { createWebFetchTool } from './webfetchTool'
 import { createKanbanToolSet } from './kanbanTools'
+import { createTerminalToolSet } from './terminalTools'
 
 function createToolErrorResult(summary: string, body?: string): AgentToolExecutionResult {
   return {
@@ -33,30 +34,22 @@ export async function createAgentTools(
   const wholeFileWriteTool = createWholeFileWriteTool(context)
   const isPlanMode = options?.chatMode === 'plan'
   const enabledSkills = options?.enabledSkills ?? []
-  const readPathGuidance =
-    context.terminalExecutionMode === 'full'
-      ? 'Read one UTF-8 text file and return numbered lines. Do not guess paths. Use `list`, `glob`, or `grep` first only to locate the right file, then read enough contiguous context in one call to avoid repeated reads. Large reads are fine when they reduce round trips; 500-line reads are acceptable when the file is large. The latest read is the source of truth for edits. In Full Access, `absolute_path` may point outside the current workspace if the user provided that path. Use `offset` to continue a large file. Example: `read({ absolute_path: "/repo/src/app.ts" })`.'
-      : 'Read one UTF-8 text file and return numbered lines. Do not guess paths. Use `list`, `glob`, or `grep` first only to locate the right file, then read enough contiguous context in one call to avoid repeated reads. Large reads are fine when they reduce round trips; 500-line reads are acceptable when the file is large. The latest read is the source of truth for edits. In Sandbox mode, `absolute_path` must point to a real file inside the current workspace. Use `offset` to continue a large file. Example: `read({ absolute_path: "/repo/src/app.ts" })`.'
-  const listPathGuidance =
-    context.terminalExecutionMode === 'full'
-      ? 'List files and folders in one directory. Use this first when you do not know the exact path yet. In Full Access, `absolute_path` may point outside the current workspace if the user provided that path. This only shows direct children. Example: `list({ absolute_path: "/repo/src" })`.'
-      : 'List files and folders in one workspace directory. Use this first when you do not know the exact path yet. Use `read` after you find a file. In Sandbox mode, `absolute_path` must be the workspace root or an exact directory path inside the workspace. This only shows direct children. Example: `list({ absolute_path: "/repo/src" })`.'
   const listDescription =
-    listPathGuidance
-  const readDescription = isPlanMode
-    ? readPathGuidance
-    : `${readPathGuidance} After reading, use \`apply_patch\` for small edits or \`write\` for a full replacement.`
+    context.terminalExecutionMode === 'full'
+      ? 'List direct child files and folders in a directory.'
+      : 'List direct child files and folders in a workspace directory. In Sandbox mode, absolute_path must be a path inside the workspace.'
+  const readDescription =
+    context.terminalExecutionMode === 'full'
+      ? 'Read a UTF-8 text file as numbered lines. Use limit and offset for pagination.'
+      : 'Read a UTF-8 text file inside the workspace as numbered lines. In Sandbox mode, absolute_path must point to a file inside the workspace. Use limit and offset for pagination.'
   const globDescription =
     context.terminalExecutionMode === 'full'
-      ? 'Find file paths by glob pattern. Use this when you know the file name shape but not the exact path. In Full Access, `absolute_path` may narrow the search to a directory outside the current workspace if the user provided that path. Read the matched files with `read` before editing. Example: `glob({ absolute_path: "/repo/src", pattern: "**/*.ts" })`.'
-      : 'Find file paths by glob pattern inside the workspace. Use this when you know the file name shape but not the exact path. In Sandbox mode, `absolute_path` narrows the search to one directory inside the workspace. Read the matched files with `read` before editing. Example: `glob({ absolute_path: "/repo/src", pattern: "**/*.ts" })`.'
-  const grepDescription = isPlanMode
-    ? context.terminalExecutionMode === 'full'
-      ? 'Search file contents. Use this to find text, symbols, or strings, then read the matching files with `read`. In Full Access, `absolute_path` may limit the search to a file or directory outside the current workspace if the user provided that path. Use `include` to limit by filename glob. Example: `grep({ absolute_path: "/repo/src", pattern: "buildChatPrompt", include: "**/*.ts" })`.'
-      : 'Search file contents in visible workspace files. Use this to find text, symbols, or strings, then read the matching files with `read`. Treat grep results as hints, not full context. Keep `pattern` specific. In Sandbox mode, `absolute_path` must limit the search to one file or directory inside the workspace. Use `include` to limit by filename glob. Example: `grep({ absolute_path: "/repo/src", pattern: "buildChatPrompt", include: "**/*.ts" })`.'
-    : context.terminalExecutionMode === 'full'
-      ? 'Search file contents. Use this to find text, symbols, or strings, then read the matching files with `read`. In Full Access, `absolute_path` may limit the search to a file or directory outside the current workspace if the user provided that path. Use `include` to limit by filename glob. After reading the target file, use `apply_patch` for small edits or `write` for a full replacement. Example: `grep({ absolute_path: "/repo/src", pattern: "buildChatPrompt", include: "**/*.ts" })`.'
-      : 'Search file contents in visible workspace files. Use this to find text, symbols, or strings, then read the matching files with `read`. Treat grep results as hints, not full context. Keep `pattern` specific. In Sandbox mode, `absolute_path` must limit the search to one file or directory inside the workspace. Use `include` to limit by filename glob. After reading the target file, use `apply_patch` for small edits or `write` for a full replacement. Example: `grep({ absolute_path: "/repo/src", pattern: "buildChatPrompt", include: "**/*.ts" })`.'
+      ? 'Find file paths matching a glob pattern.'
+      : 'Find file paths matching a glob pattern inside the workspace. In Sandbox mode, absolute_path limits the search scope to a directory inside the workspace.'
+  const grepDescription =
+    context.terminalExecutionMode === 'full'
+      ? 'Search for regex or string pattern matches in file contents. Use include to filter filenames.'
+      : 'Search for regex or string pattern matches in file contents inside the workspace. In Sandbox mode, absolute_path restricts the search to a path inside the workspace. Use include to filter filenames.'
   const tools: ToolSet = {
     list: tool({
       description: listDescription,
@@ -208,6 +201,10 @@ export async function createAgentTools(
   }
 
   Object.assign(tools, createKanbanToolSet(context))
+
+  if (!isPlanMode) {
+    Object.assign(tools, createTerminalToolSet({ ...context, conversationId: input.conversationId, webContents: input.webContents }))
+  }
 
   if (enabledSkills.length > 0) {
     tools.skill = tool({

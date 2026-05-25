@@ -274,7 +274,7 @@ PATCH`,
 
     assert.equal(createSessionCalled, false)
     assert.equal(result.status, 'error')
-    assert.match(result.summary ?? '', /allowed terminal commands/u)
+    assert.match(result.summary ?? '', /only allows commands listed/u)
     assert.equal(pathExists(path.join(workspaceRootPath, 'src', 'from-terminal.txt')), false)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -319,7 +319,7 @@ EOF`,
 
     assert.equal(createSessionCalled, false)
     assert.equal(result.status, 'error')
-    assert.match(result.summary ?? '', /allowed terminal commands/u)
+    assert.match(result.summary ?? '', /only allows commands listed/u)
     assert.equal(pathExists(path.join(workspaceRootPath, 'packages', 'app', 'local.txt')), false)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

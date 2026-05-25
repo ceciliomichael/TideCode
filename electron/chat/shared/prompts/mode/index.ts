@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import type { ChatMode } from '../../../../../src/types/chat'
+import type { ChatMode, AppTerminalExecutionMode } from '../../../../../src/types/chat'
 import { buildWorkspaceInstructionsBlock } from '../workspaceInstructions'
+import { getTerminalCommandAllowlist } from '../../tools/terminalCommandPolicy'
 
 const PROMPT_REPO_PATH = 'electron/chat/shared/prompts/mode'
 const SHARED_PROMPT_EXTENSIONS = new Set(['.md', '.xml'])
@@ -119,10 +120,30 @@ function getToolingPrompt(chatMode: ChatMode) {
   return toolingPrompt
 }
 
+function buildTerminalPermissionBlock(terminalExecutionMode: AppTerminalExecutionMode | undefined) {
+  const mode = terminalExecutionMode ?? 'sandbox'
+  if (mode === 'full') {
+    return [
+      '<terminal_permission_instructions>',
+      'You are allowed to execute terminal commands.',
+      '</terminal_permission_instructions>'
+    ].join('\n')
+  }
+
+  const allowlist = getTerminalCommandAllowlist()
+  const commandsList = allowlist.map((cmd) => `  - ${cmd}`).join('\n')
+  return [
+    '<terminal_permission_instructions>',
+    'Your terminal permission level is sandbox. Here are your enabled commands only:',
+    commandsList,
+    '</terminal_permission_instructions>'
+  ].join('\n')
+}
+
 export function buildChatModeSystemPrompt(
   chatMode: ChatMode,
   workspaceRootPath: string,
-  options?: { availableSkillsBlock?: string | null },
+  options?: { availableSkillsBlock?: string | null; terminalExecutionMode?: AppTerminalExecutionMode },
 ) {
   return [
     getToolingPrompt(chatMode),
@@ -130,6 +151,7 @@ export function buildChatModeSystemPrompt(
     getSharedPrompt(),
     options?.availableSkillsBlock?.trim() ? options.availableSkillsBlock.trim() : null,
     buildWorkspaceInstructionsBlock(workspaceRootPath),
+    buildTerminalPermissionBlock(options?.terminalExecutionMode),
     `Workspace root: ${workspaceRootPath}`,
   ]
     .filter((value): value is string => Boolean(value))

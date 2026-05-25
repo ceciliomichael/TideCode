@@ -1,11 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { AppTerminalExecutionMode } from '../../../../src/types/chat'
 
 const TERMINAL_COMMAND_ALLOWLIST_REPO_PATH = 'electron/chat/shared/tools/terminal-command-allowlist.md'
 const WHITESPACE_PATTERN = /\s+/g
 const UNSAFE_SHELL_OPERATOR_PATTERN = /[\r\n`|;&<>]/
 const COMMENT_LINE_PATTERN = /^#/
+
+const MODULE_DIRECTORY_PATH = path.dirname(fileURLToPath(import.meta.url))
 
 let cachedAllowlist: string[] | null = null
 
@@ -20,16 +23,35 @@ function resolveTerminalCommandAllowlistPath() {
     }
   }
 
+  const moduleRelativePath = path.join(MODULE_DIRECTORY_PATH, 'terminal-command-allowlist.md')
+  if (existsSync(moduleRelativePath)) {
+    return moduleRelativePath
+  }
+
   return null
 }
+
+const DEFAULT_ALLOWLIST_CONTENT = `# Terminal command allowlist
+# One command or command prefix per line.
+
+npm test
+npm run test
+npm run lint
+npm run typecheck
+npm run build
+git`
 
 function readTerminalCommandAllowlistContent() {
   const sourcePath = resolveTerminalCommandAllowlistPath()
   if (sourcePath) {
-    return readFileSync(sourcePath, 'utf8')
+    try {
+      return readFileSync(sourcePath, 'utf8')
+    } catch {
+      // Fallback on read error
+    }
   }
 
-  throw new Error('Unable to load terminal command allowlist markdown file.')
+  return DEFAULT_ALLOWLIST_CONTENT
 }
 
 function normalizeTerminalCommandText(value: string) {

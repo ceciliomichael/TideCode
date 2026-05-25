@@ -1,7 +1,7 @@
 import type { ModelMessage } from 'ai'
 import { normalizeAssistantMessageContent } from '../../../src/lib/chatMessageContent'
 import { getToolResultModelContent, parseStructuredToolResultContent } from '../../../src/lib/toolResultContent'
-import type { ChatMode, Message } from '../../../src/types/chat'
+import type { ChatMode, Message, AppTerminalExecutionMode } from '../../../src/types/chat'
 import { buildChatModeSystemPrompt } from './prompts/mode'
 
 type ToolModelMessage = Extract<ModelMessage, { role: 'tool' }>
@@ -9,6 +9,7 @@ type ToolModelMessage = Extract<ModelMessage, { role: 'tool' }>
 interface BuildChatPromptOptions {
   availableSkillsBlock?: string | null
   includeAssistantReasoningParts?: boolean
+  terminalExecutionMode?: AppTerminalExecutionMode
 }
 
 type UserTextPart = {
@@ -258,6 +259,7 @@ function toModelMessage(
 export function buildChatSystemPrompt(chatMode: ChatMode, workspaceRootPath: string, options?: BuildChatPromptOptions) {
   return buildChatModeSystemPrompt(chatMode, workspaceRootPath, {
     availableSkillsBlock: options?.availableSkillsBlock,
+    terminalExecutionMode: options?.terminalExecutionMode,
   })
 }
 
@@ -272,6 +274,7 @@ export function buildChatPrompt(input: {
   const options: Required<BuildChatPromptOptions> = {
     availableSkillsBlock: input.options?.availableSkillsBlock ?? null,
     includeAssistantReasoningParts: input.options?.includeAssistantReasoningParts ?? true,
+    terminalExecutionMode: input.options?.terminalExecutionMode ?? 'sandbox',
   }
 
   for (const message of input.messages) {

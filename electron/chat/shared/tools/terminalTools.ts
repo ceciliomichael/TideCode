@@ -121,10 +121,10 @@ function createErrorResult(summary: string, body?: string): AgentToolExecutionRe
 
 function getRunTerminalDescription(terminalExecutionMode: AgentToolContext['terminalExecutionMode']) {
   if (terminalExecutionMode === 'full') {
-    return 'Start or reuse a terminal session in the active workspace, then optionally run any terminal command. Use `cwd` only for a real path inside the workspace. Do not use terminal commands to edit files; use `write` or `apply_patch` instead. When a command is provided, this waits up to 3 minutes for the command to finish and returns available output automatically; it returns earlier when the command finishes.'
+    return 'Execute a terminal command in the active workspace. Use cwd to change directory. Command execution is non-interactive.'
   }
 
-  return 'Start or reuse a terminal session in the active workspace, then optionally run one command that matches the terminal command allowlist. Allowed commands are inspection and validation commands such as pwd, ls, dir, Get-ChildItem, cat, type, Get-Content, git status, git diff, git log, rg, grep, findstr, and test/lint/build commands. Use `cwd` only for a real path inside the workspace. Do not use terminal commands to edit files; use `write` or `apply_patch` instead. When a command is provided, this waits up to 3 minutes for the command to finish and returns available output automatically; it returns earlier when the command finishes.'
+  return 'Execute an allowlisted terminal command in the active workspace. Allowed commands: git, npm test, npm run lint, npm run typecheck, npm run build. Use cwd to change directory. Command execution is non-interactive.'
 }
 
 function clampInteger(value: number | undefined, min: number, max: number, fallback: number) {

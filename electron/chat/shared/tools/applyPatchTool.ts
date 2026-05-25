@@ -26,25 +26,22 @@ eof_line: "*** End of File" LF
 %import common.LF
 `
 
-const APPLY_PATCH_TOOL_DESCRIPTION = `Edit existing files with a structured patch using the apply_patch tool.
-Your patch language is a stripped-down, file-oriented diff format designed to be easy to parse and safe to apply.
+const APPLY_PATCH_TOOL_DESCRIPTION = `Edit files using a line-by-line patch format.
+The patch must start with "*** Begin Patch" and end with "*** End Patch".
 
-A patch starts with:
-*** Begin Patch
+Operations within the envelope:
+*** Add File: <path>
+Prefix every content line with +
+*** Delete File: <path>
+Delete the file. No content lines follow.
+*** Update File: <path>
+Patch an existing file. Optionally followed by "*** Move to: <new path>" to rename.
 
-and ends with:
-*** End Patch
-
-Within that envelope, include one or more file operations:
-*** Add File: <path> - create a new file. Every following content line must start with +.
-*** Delete File: <path> - remove an existing file. Nothing follows.
-*** Update File: <path> - patch an existing file in place.
-
-An update may be immediately followed by:
-*** Move to: <new path>
-
-Update hunks start with @@, optionally followed by a context header. Hunk body lines must start with a space, -, or +.
-Use enough exact surrounding context from the latest read so the patch can be applied unambiguously. Order update hunks from top to bottom as they appear in each file.
+Update hunks start with "@@" or "@@ <context>". Hunk body lines must start with:
+" " (unchanged context)
+"-" (remove line)
+"+" (add line)
+Order update hunks chronologically from top to bottom.
 
 Example:
 *** Begin Patch
@@ -57,16 +54,7 @@ Example:
 *** Delete File: obsolete.txt
 *** End Patch
 
-Important:
-- Include a file operation header for every changed file.
-- Prefix new lines with + even when creating a file.
-- For sandbox mode, use workspace-relative file paths like \`src/app.ts\`.
-- Use \`write\` only when you need to replace a whole file.
-- Do not use guessed paths; read or search first.
-- The latest read is the source of truth. Patch only exact text from that read, and re-read first if the file may have changed.
-- Every update hunk must make a real content change.
-- Successful text edits are written with LF line endings; do not rewrite files just to handle CRLF/LF.
-- grep results are only location hints.`
+In Sandbox mode, paths must be workspace-relative.`
 
 function createToolErrorResult(summary: string): AgentToolExecutionResult {
   return {

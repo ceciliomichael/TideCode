@@ -218,7 +218,7 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
       <div className="flex min-h-0 flex-1 min-w-0">
         <div
           ref={refs.lineNumbersRef}
-          className="scroll-stable h-full shrink-0 overflow-hidden bg-surface"
+          className="h-full shrink-0 overflow-hidden bg-surface workspace-editor-line-numbers"
           style={{ width: `${layout.gutterWidthCh}ch` }}
         >
           <pre
@@ -244,7 +244,7 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
           {search.isSearchOpen ? <SearchPanel editorState={editorState} /> : null}
           <div
             ref={refs.highlightedLayerRef}
-            className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-1.5 font-mono text-[12px] leading-5 text-foreground"
+            className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-1.5 font-mono text-[12px] leading-5 text-foreground workspace-editor-highlighted-layer"
             style={{ paddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px` }}
             aria-hidden="true"
           >

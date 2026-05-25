@@ -444,6 +444,31 @@
     background-color: var(--workspace-editor-selection-background);
   }
 
+  /* Force exact monospace font-family, font-size, line-height, and letter-spacing across the transparent textarea, line numbers, and syntax highlighted layer to ensure perfect selection alignment and caret precision. */
+  .workspace-editor-textarea,
+  .workspace-editor-highlighted-layer,
+  .workspace-editor-highlighted-layer pre,
+  .workspace-editor-highlighted-layer code,
+  .workspace-editor-highlighted-layer span,
+  .workspace-editor-highlighted-layer div,
+  .workspace-editor-line-numbers,
+  .workspace-editor-line-numbers pre,
+  .workspace-editor-line-numbers code,
+  .workspace-editor-line-numbers div {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+    font-size: 12px !important;
+    line-height: 20px !important;
+    letter-spacing: normal !important;
+  }
+
+  /* Ensure the line number descendants are exactly constrained to 100% of the gutter width to prevent the right status border from overflowing and overlapping the code editor text viewport. */
+  .workspace-editor-line-numbers pre,
+  .workspace-editor-line-numbers code,
+  .workspace-editor-line-numbers div {
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
   @media (min-width: 1024px) {
     .chat-shell {
       max-width: min(40vw, 760px);

@@ -237,6 +237,7 @@ export async function runToolEnabledChatStream(input: {
       options: {
         ...input.promptOptions,
         availableSkillsBlock: buildSkillsSystemPromptBlock(enabledSkills),
+        terminalExecutionMode: input.startInput.terminalExecutionMode,
       },
       workspaceRootPath: input.startInput.agentContextRootPath,
     })

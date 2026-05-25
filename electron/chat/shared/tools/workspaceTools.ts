@@ -738,7 +738,7 @@ async function createWholeFileWriteToolResult(
   for (const change of resolvedChanges) {
     const previousContent = originalContentByPath.get(change.target.absolutePath) ?? null
     if (previousContent !== null && normalizeTextMutationContent(previousContent) === change.content) {
-      throw new Error(`Write did not change ${change.target.displayPath}`)
+      continue
     }
 
     await captureCheckpointFileStateIfNeeded(context.checkpointId, change.target.absolutePath)
@@ -755,7 +755,7 @@ async function createWholeFileWriteToolResult(
 
   const subjectPath = fileChanges.length === 1 ? fileChanges[0].fileName : DEFAULT_WORKSPACE_RELATIVE_PATH
   return buildFileChangeResult(
-    `Wrote ${fileChanges.length} file change${fileChanges.length === 1 ? '' : 's'}`,
+    fileChanges.length === 0 ? 'No changes needed. File content is already identical.' : `Wrote ${fileChanges.length} file change${fileChanges.length === 1 ? '' : 's'}`,
     fileChanges,
     fileChanges.length === 0 ? 'noop' : 'edit',
     subjectPath,
@@ -810,8 +810,8 @@ export function createWholeFileWriteTool(context: WorkspaceToolContext) {
   return tool({
     description:
       context.terminalExecutionMode === 'full'
-        ? 'Create a new file or replace a whole file. Use this when you want to write the full final content. For small edits to an existing file, use `apply_patch` instead. Do not guess `absolute_path`. Do not call write when the target already has identical content. Text content is written with LF line endings. In Full Access, `absolute_path` may be an exact external path if the user provided it. Example: `write({ changes: [{ absolute_path: "/repo/src/new.ts", content: "..." }] })`.'
-        : 'Create a new file or replace a whole file. Use this when you want to write the full final content. For small edits to an existing file, use `apply_patch` instead. Do not guess `absolute_path`. Do not call write when the target already has identical content. Text content is written with LF line endings. In Sandbox mode, `absolute_path` must be an exact workspace path. Example: `write({ changes: [{ absolute_path: "/repo/src/new.ts", content: "..." }] })`.',
+        ? 'Create a new file or overwrite the full contents of an existing file.'
+        : 'Create a new file or overwrite the full contents of an existing file. In Sandbox mode, absolute_path must be a path inside the workspace.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {

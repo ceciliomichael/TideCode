@@ -234,9 +234,6 @@ export function buildSkillsSystemPromptBlock(skills: SkillSummary[]) {
   }
 
   return [
-    'Skills provide specialized instructions and workflows for specific tasks.',
-    'When a task clearly matches one of the available skills below, use the `skill` tool to load its full instructions.',
-    '',
     '<available_skills>',
     ...skills.map((skill) =>
       [
@@ -253,10 +250,7 @@ export function buildSkillsSystemPromptBlock(skills: SkillSummary[]) {
 
 export function buildSkillToolDescription(skills: SkillSummary[]) {
   return [
-    'Load one skill and read its full instructions.',
-    '',
-    'Use this only when the current task clearly matches a listed skill.',
-    'Do not guess. Pick the best matching skill by exact name from the list below.',
+    'Load a skill to read its full instructions by its exact name.',
     '',
     'Available skills:',
     ...skills.map((skill) => `- ${skill.name}: ${skill.description}`),

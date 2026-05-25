@@ -53,8 +53,7 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointI
 
   return {
     read_board: tool({
-      description:
-        'Read one Kanban column for the current workspace. This is intentionally column-scoped for context efficiency and returns compact card summaries with parent/subtask progress. Use read_card with a card id when full task details are needed.',
+      description: 'Read the cards within a specific Kanban column for the current workspace.',
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {
@@ -104,8 +103,7 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointI
       },
     }),
     read_card: tool({
-      description:
-        'Read the full details for one Kanban card in the current workspace, including any subtask progress. Use this after read_board identifies the relevant card id.',
+      description: 'Read the details of a specific Kanban card by its ID.',
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {
@@ -133,8 +131,7 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointI
       },
     }),
     create_card: tool({
-      description:
-        'Create a Kanban card in the current workspace. New cards default to backlog when columnId is omitted, and parentCardId can link the card as a subtask under a top-level task.',
+      description: 'Create a new Kanban card in the workspace.',
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {
@@ -187,8 +184,7 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointI
       },
     }),
     update_card: tool({
-      description:
-        'Update Kanban card content only. Use move_card for workflow/status changes between backlog, in-progress, blocked, and done. Use parentCardId to attach or clear a subtask relationship.',
+      description: 'Update the title, description, or parent card relationship of a Kanban card.',
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {
@@ -230,8 +226,7 @@ export function createKanbanToolSet(context: Pick<AgentToolContext, 'checkpointI
       },
     }),
     move_card: tool({
-      description:
-        'Move one Kanban card to another workflow column: backlog, in-progress, blocked, or done. Use this for status transitions only.',
+      description: 'Move a Kanban card to a different workflow column (backlog, in-progress, blocked, or done).',
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {
