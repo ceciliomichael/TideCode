@@ -54,7 +54,11 @@ Example:
 *** Delete File: obsolete.txt
 *** End Patch
 
-In Sandbox mode, paths must be workspace-relative.`
+In Sandbox mode, paths must be workspace-relative.
+
+Important:
+- Context and deletion lines in a hunk must match the target file exactly and contiguously. Do not skip or omit any intermediate lines.
+- For rewriting most of a file or large-scale replacements, use the "write" tool instead of "apply_patch".`
 
 function createToolErrorResult(summary: string): AgentToolExecutionResult {
   return {

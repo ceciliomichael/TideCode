@@ -298,7 +298,30 @@ function seekSequence(
     return -1
   }
 
-  const linesMatch = (actual: string, expected: string) => actual === expected || actual.trim() === expected.trim()
+  const normalizeLine = (str: string) => {
+    return str
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/^-+/, '-') // Normalize leading hyphens (e.g. '--' to '-')
+  }
+
+  const linesMatch = (actual: string, expected: string) => {
+    const act = actual.trim()
+    const exp = expected.trim()
+    if (act === exp) {
+      return true
+    }
+
+    const normAct = normalizeLine(act)
+    const normExp = normalizeLine(exp)
+    if (normAct === normExp) {
+      return true
+    }
+
+    const stripAct = normAct.replace(/^[-*]\s*/, '')
+    const stripExp = normExp.replace(/^[-*]\s*/, '')
+    return stripAct === stripExp
+  }
 
   if (isEndOfFile) {
     const fromEnd = lines.length - pattern.length

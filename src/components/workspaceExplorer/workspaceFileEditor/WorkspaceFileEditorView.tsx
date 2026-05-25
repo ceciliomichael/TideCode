@@ -35,7 +35,7 @@ function getLineNumberRowClassName(status: WorkspaceEditorLineStatus | null) {
     return 'border-r-[3px] border-blue-500/80'
   }
 
-  return ''
+  return 'border-r-[3px] border-transparent'
 }
 
 function SearchPanel({ editorState }: { editorState: WorkspaceFileEditorState }) {
