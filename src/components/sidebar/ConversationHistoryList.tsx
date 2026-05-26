@@ -117,8 +117,13 @@ export function ConversationHistoryList({
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', folderId)
     reorderCommitPendingRef.current = false
-    setDraggedFolderId(folderId)
     setDropTarget(null)
+
+    // Postpone setting the dragged folder ID to the next tick to prevent
+    // HTML5 drag from immediately aborting due to synchronous DOM collapse/layout changes.
+    setTimeout(() => {
+      setDraggedFolderId(folderId)
+    }, 0)
   }
 
   function handleDragEnd() {
@@ -203,7 +208,7 @@ export function ConversationHistoryList({
               <ConversationFolderSection
                 key={stateKey}
                 group={group}
-                isCollapsed={Boolean(collapsedFolderState[stateKey])}
+                isCollapsed={draggedFolderId !== null ? true : Boolean(collapsedFolderState[stateKey])}
                 isDragging={isDraggable && draggedFolderId === folderId}
                 isDraggable={isDraggable}
                 dropIndicatorPosition={showDropIndicator ? dropTarget.position : null}
