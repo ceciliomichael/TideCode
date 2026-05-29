@@ -522,3 +522,72 @@ test('createAgentTools exposes only run_terminal in agent mode when a webContent
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
+
+test('run_terminal allows a cwd outside the workspace root in Full Access mode', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-outside-ws-'))
+  const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-outside-dir-'))
+  const createCalls: Array<{
+    cols: number
+    cwd?: string
+    rows: number
+    sessionKey?: string | null
+    workspaceRootPath?: string | null
+  }> = []
+  const writeCalls: Array<{ data: string; sessionId: number }> = []
+
+  try {
+    const tools = createTerminalToolSet(
+      {
+        conversationId: 'conversation-full-access-outside',
+        terminalExecutionMode: 'full',
+        webContents: webContentsStub,
+        workspaceRootPath,
+      },
+      {
+        createSession: async (_owner, input) => {
+          createCalls.push(input)
+          return {
+            bufferedOutput: '',
+            cwd: outsideDirectoryPath,
+            isReused: false,
+            sessionId: 20,
+            shell: 'pwsh',
+          }
+        },
+        getSessionOutput: async (_owner, input) => {
+          const marker = readCompletionMarker(writeCalls[0]?.data ?? '')
+          return {
+            cwd: outsideDirectoryPath,
+            exitCode: null,
+            hasExited: false,
+            outputBuffer: `hello from outside cwd\n${marker}:0\n`,
+            shellLabel: 'pwsh',
+            signal: null,
+            sessionId: input.sessionId,
+          }
+        },
+        writeToSession: async (_owner, input) => {
+          writeCalls.push(input)
+        },
+      },
+    )
+
+    const result = await getRunTerminalTool(tools).execute({
+      cols: 120,
+      command: 'echo hello',
+      cwd: outsideDirectoryPath,
+      rows: 30,
+      session_key: 'outside-access',
+    })
+
+    assert.equal(result.status, 'success')
+    assert.equal(createCalls.length, 1)
+    assert.equal(createCalls[0].cwd, outsideDirectoryPath)
+    assert.equal(writeCalls.length, 1)
+    assert.match(writeCalls[0].data, /echo hello/u)
+    assert.match(result.body ?? '', /hello from outside cwd/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+    await fs.rm(outsideDirectoryPath, { force: true, recursive: true })
+  }
+})

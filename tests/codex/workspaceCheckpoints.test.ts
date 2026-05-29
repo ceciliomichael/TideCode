@@ -122,3 +122,25 @@ test('workspace checkpoints surface a friendly error when the manifest file is u
     await fs.rm(tempRootPath, { force: true, recursive: true })
   }
 })
+
+test('workspace checkpoints ignore files outside the workspace root gracefully', async () => {
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-checkpoints-outside-'))
+  const workspaceRootPath = path.join(tempRootPath, 'workspace')
+  const checkpointStorageRootPath = path.join(tempRootPath, 'checkpoint-storage')
+  const outsideFilePath = path.join(tempRootPath, 'outside.txt')
+
+  await fs.mkdir(workspaceRootPath, { recursive: true })
+  await fs.writeFile(outsideFilePath, 'outside content\n', 'utf8')
+
+  const checkpointStore = createWorkspaceCheckpointStore(checkpointStorageRootPath)
+  const checkpoint = await checkpointStore.createCheckpoint({
+    workspaceRootPath,
+  })
+
+  try {
+    // This should not throw an error, even though outsideFilePath is outside workspaceRootPath
+    await checkpointStore.captureFileState(checkpoint.id, outsideFilePath)
+  } finally {
+    await fs.rm(tempRootPath, { force: true, recursive: true })
+  }
+})

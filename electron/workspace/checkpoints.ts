@@ -42,15 +42,6 @@ function normalizeRelativePath(value: string) {
   return process.platform === 'win32' ? normalizedPath.toLowerCase() : normalizedPath
 }
 
-function assertInsideWorkspace(workspaceRootPath: string, absolutePath: string) {
-  const relativePath = path.relative(workspaceRootPath, absolutePath)
-  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-    throw new Error(`Path is outside the workspace checkpoint root: ${absolutePath}`)
-  }
-
-  return relativePath
-}
-
 async function ensureDirectory(directoryPath: string) {
   await fs.mkdir(directoryPath, { recursive: true })
 }
@@ -226,7 +217,10 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
       await withCheckpointLock(checkpointId, async () => {
         const manifest = await readManifest(checkpointId)
         const normalizedTargetPath = normalizePath(absolutePath)
-        const relativePath = assertInsideWorkspace(manifest.workspaceRootPath, normalizedTargetPath)
+        const relativePath = path.relative(manifest.workspaceRootPath, normalizedTargetPath)
+        if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+          return
+        }
         const normalizedRelativePath = normalizeRelativePath(relativePath)
         if (manifest.entries.some((entry) => normalizeRelativePath(entry.relativePath) === normalizedRelativePath)) {
           return

@@ -8,7 +8,7 @@ import type {
 } from '../../../../src/types/chat'
 import type { AgentToolContext, AgentToolExecutionResult } from '../toolTypes'
 import type { TerminalSessionSnapshot } from '../../../terminal/service'
-import { resolveWorkspaceTargetPath } from './workspaceTools'
+import { resolveReadableTargetPath } from './workspaceTools'
 import { isAllowedTerminalCommand } from './terminalCommandPolicy'
 
 const DEFAULT_TERMINAL_OUTPUT_BODY_LENGTH = 40_000
@@ -226,7 +226,8 @@ function normalizeCommand(command: string | undefined) {
 }
 
 function resolveTerminalWorkspaceCwd(context: AgentToolContext, cwd: string | undefined) {
-  return resolveWorkspaceTargetPath(context.workspaceRootPath, cwd).absolutePath
+  const terminalExecutionMode = context.terminalExecutionMode ?? 'sandbox'
+  return resolveReadableTargetPath(context.workspaceRootPath, cwd, terminalExecutionMode).absolutePath
 }
 
 function resolveTerminalThreadNamespace(context: AgentToolContext) {

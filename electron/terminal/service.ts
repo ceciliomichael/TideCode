@@ -122,12 +122,22 @@ function resolveTerminalCwd(
 ) {
   const normalizedCwd = cwd?.trim() ?? "";
   if (workspaceRootPath) {
-    const targetPath = getSafeWorkspaceTargetPath(
-      workspaceRootPath,
-      normalizedCwd.length > 0 ? normalizedCwd : ".",
-    );
-    assertDirectoryExists(targetPath.absolutePath);
-    return targetPath.absolutePath;
+    try {
+      const targetPath = getSafeWorkspaceTargetPath(
+        workspaceRootPath,
+        normalizedCwd.length > 0 ? normalizedCwd : ".",
+      );
+      assertDirectoryExists(targetPath.absolutePath);
+      return targetPath.absolutePath;
+    } catch (error) {
+      if (normalizedCwd.length > 0) {
+        const resolvedPath = path.resolve(normalizedCwd);
+        if (existsSync(resolvedPath) && statSync(resolvedPath).isDirectory()) {
+          return resolvedPath;
+        }
+      }
+      throw error;
+    }
   }
 
   if (normalizedCwd.length === 0) {
