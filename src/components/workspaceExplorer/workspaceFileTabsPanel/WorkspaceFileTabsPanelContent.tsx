@@ -1,14 +1,17 @@
 import { memo } from 'react'
 import { WorkspaceFileEditor } from '../WorkspaceFileEditor'
 import { WorkspaceMarkdownPreview } from '../workspaceMarkdownPreview/WorkspaceMarkdownPreview'
+import { WorkspaceSvgPreview } from '../workspaceSvgPreview/WorkspaceSvgPreview'
 import type { GitFileDiff } from '../../../types/chat'
 import type { WorkspaceFileTab, WorkspaceTab } from '../types'
+import { isSvgPreviewablePath } from '../../../lib/svg-preview'
 
 interface WorkspaceFileTabsPanelContentProps {
   activeTab: WorkspaceTab
   gitFileDiffs: readonly GitFileDiff[]
   tabs: readonly WorkspaceTab[]
   onOpenMarkdownPreview?: () => void
+  onOpenSvgPreview?: () => void
   onFileContentChange: (relativePath: string, content: string) => void
   wordWrapEnabled: boolean
 }
@@ -31,6 +34,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
   gitFileDiffs,
   tabs,
   onOpenMarkdownPreview,
+  onOpenSvgPreview,
   onFileContentChange,
   wordWrapEnabled,
 }: WorkspaceFileTabsPanelContentProps) {
@@ -80,6 +84,53 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
     )
   }
 
+  if (activeTab.kind === 'svg-preview') {
+    const sourceTab = tabs.find(
+      (tab): tab is WorkspaceFileTab => isWorkspaceFileTab(tab) && tab.relativePath === activeTab.relativePath,
+    )
+
+    if (!sourceTab) {
+      return (
+        <div className="h-full border-t border-border bg-surface px-4 py-3 text-sm text-subtle-foreground">
+          The source file is no longer open.
+        </div>
+      )
+    }
+
+    if (sourceTab.status === 'loading') {
+      return (
+        <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-subtle-foreground">
+          Loading {sourceTab.fileName}...
+        </div>
+      )
+    }
+
+    if (sourceTab.status === 'error') {
+      return (
+        <div className="h-full border-t border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
+          {sourceTab.errorMessage ?? 'Failed to open file.'}
+        </div>
+      )
+    }
+
+    if (sourceTab.isBinary) {
+      return (
+        <div className="h-full border-t border-border bg-surface px-4 py-3 text-sm text-subtle-foreground">
+          SVG view is not supported for binary file {sourceTab.fileName}.
+        </div>
+      )
+    }
+
+    return (
+      <WorkspaceSvgPreview
+        content={sourceTab.content}
+        fileName={sourceTab.fileName}
+        relativePath={sourceTab.relativePath}
+        isTruncated={sourceTab.isTruncated}
+      />
+    )
+  }
+
   if (activeTab.status === 'loading') {
     return (
       <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-subtle-foreground">
@@ -109,6 +160,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
       fileName={activeTab.fileName}
       gitFileDiff={findGitFileDiff(gitFileDiffs, activeTab.relativePath)}
       onOpenMarkdownPreview={onOpenMarkdownPreview}
+      onOpenSvgPreview={isSvgPreviewablePath(activeTab.relativePath) ? onOpenSvgPreview : undefined}
       originalContent={activeTab.originalContent}
       value={activeTab.content}
       wordWrapEnabled={wordWrapEnabled}

@@ -64,6 +64,7 @@ export interface ChatWorkspaceUiState {
   handleOpenSourceControlPanel: () => void;
   handleOpenWorkspaceFile: (relativePath: string) => void;
   handleOpenWorkspaceMarkdownPreview: (relativePath: string) => void;
+  handleOpenWorkspaceSvgPreview: (relativePath: string) => void;
   handlePasteWorkspaceEntry: (
     targetDirectoryRelativePath: string,
   ) => Promise<void>;

@@ -3,6 +3,7 @@ import { getPathBasename } from "../../lib/pathPresentation";
 import { DEFAULT_DIFF_PANEL_WIDTH } from "../../lib/diffPanelSizing";
 import { DEFAULT_TERMINAL_PANEL_HEIGHT } from "../../lib/terminalPanelSizing";
 import { createMarkdownPreviewTabKey, isMarkdownPreviewablePath } from "../../lib/markdown-preview";
+import { createSvgPreviewTabKey, isSvgPreviewablePath } from "../../lib/svg-preview";
 import { clampWorkspaceExplorerWidth } from "../../lib/workspaceExplorerSizing";
 import type {
   WorkspaceFileTab,
@@ -586,45 +587,63 @@ export function useChatWorkspaceUiState({
     [activeWorkspacePanelWidth, onRightPanelOpenChange, setIsSidebarOpen],
   );
 
+  const openWorkspacePreviewTab = useCallback(
+    (relativePath: string, tabKey: string, kind: 'markdown-preview' | 'svg-preview') => {
+      setIsSidebarOpen(false);
+      setIsExplorerOpen(true);
+      setIsWorkspaceTabsPanelVisible(true);
+      onRightPanelOpenChange(false);
+      setActiveWorkspaceFilePath(relativePath);
+      setActiveWorkspaceTabKey(tabKey);
+
+      setWorkspaceFileTabs((currentTabs) => {
+        if (currentTabs.some((tab) => tab.tabKey === tabKey)) {
+          return currentTabs;
+        }
+
+        return [
+          ...currentTabs,
+          {
+            kind,
+            fileName: getPathBasename(relativePath),
+            relativePath,
+            tabKey,
+          },
+        ];
+      });
+    },
+    [onRightPanelOpenChange, setIsSidebarOpen],
+  );
+
   const handleOpenWorkspaceMarkdownPreview = useCallback(
     (relativePath: string) => {
       if (!isMarkdownPreviewablePath(relativePath)) {
         return;
       }
 
-      const previewTabKey = createMarkdownPreviewTabKey(relativePath);
-
-      setIsSidebarOpen(false);
-      setIsExplorerOpen(true);
-      setIsWorkspaceTabsPanelVisible(true);
-      onRightPanelOpenChange(false);
-      setActiveWorkspaceFilePath(relativePath);
-      setActiveWorkspaceTabKey(previewTabKey);
-
-      setWorkspaceFileTabs((currentTabs) => {
-        if (currentTabs.some((tab) => tab.tabKey === previewTabKey)) {
-          return currentTabs
-        }
-
-        return [
-          ...currentTabs,
-          {
-            kind: "markdown-preview",
-            fileName: getPathBasename(relativePath),
-            relativePath,
-            tabKey: previewTabKey,
-          },
-        ]
-      })
+      openWorkspacePreviewTab(relativePath, createMarkdownPreviewTabKey(relativePath), 'markdown-preview');
     },
-    [onRightPanelOpenChange, setIsSidebarOpen],
+    [openWorkspacePreviewTab],
+  );
+
+  const handleOpenWorkspaceSvgPreview = useCallback(
+    (relativePath: string) => {
+      if (!isSvgPreviewablePath(relativePath)) {
+        return;
+      }
+
+      openWorkspacePreviewTab(relativePath, createSvgPreviewTabKey(relativePath), 'svg-preview');
+    },
+    [openWorkspacePreviewTab],
   );
 
   const handleCloseWorkspaceTab = useCallback((tabKey: string) => {
     const closingTab = workspaceFileTabs.find((tab) => tab.tabKey === tabKey) ?? null;
     const targetPath = closingTab?.relativePath ?? tabKey;
-    const closingPreviewTabKey =
-      closingTab?.kind === "file" ? createMarkdownPreviewTabKey(closingTab.relativePath) : null;
+    const closingPreviewTabKeys =
+      closingTab?.kind === "file"
+        ? [createMarkdownPreviewTabKey(closingTab.relativePath), createSvgPreviewTabKey(closingTab.relativePath)]
+        : [];
 
     if (closingTab?.kind === "file") {
       const pendingAutosaveTimeout =
@@ -646,7 +665,10 @@ export function useChatWorkspaceUiState({
           ? currentTabs.filter(
               (tab) =>
                 tab.tabKey !== tabKey &&
-                !(tab.kind === "markdown-preview" && tab.relativePath === closingTab.relativePath),
+                !(
+                  (tab.kind === "markdown-preview" || tab.kind === "svg-preview") &&
+                  tab.relativePath === closingTab.relativePath
+                ),
             )
           : currentTabs.filter((tab) => tab.tabKey !== tabKey);
 
@@ -673,7 +695,7 @@ export function useChatWorkspaceUiState({
       setActiveWorkspaceTabKey((currentActiveTabKey) => {
         if (
           currentActiveTabKey !== tabKey &&
-          currentActiveTabKey !== closingPreviewTabKey
+          (!currentActiveTabKey || !closingPreviewTabKeys.includes(currentActiveTabKey))
         ) {
           return currentActiveTabKey;
         }
@@ -988,6 +1010,7 @@ export function useChatWorkspaceUiState({
     handleOpenSourceControlPanel,
     handleOpenWorkspaceFile,
     handleOpenWorkspaceMarkdownPreview,
+    handleOpenWorkspaceSvgPreview,
     handlePasteWorkspaceEntry,
     handleRefreshWorkspaceFileTabs,
     handleRenameWorkspaceEntry,

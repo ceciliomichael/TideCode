@@ -19,4 +19,11 @@ export interface WorkspaceMarkdownPreviewTab {
   tabKey: string
 }
 
-export type WorkspaceTab = WorkspaceFileTab | WorkspaceMarkdownPreviewTab
+export interface WorkspaceSvgPreviewTab {
+  kind: 'svg-preview'
+  fileName: string
+  relativePath: string
+  tabKey: string
+}
+
+export type WorkspaceTab = WorkspaceFileTab | WorkspaceMarkdownPreviewTab | WorkspaceSvgPreviewTab

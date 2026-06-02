@@ -8,6 +8,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from 'react'
 import { isMarkdownPreviewablePath } from '../../lib/markdown-preview'
+import { isSvgPreviewablePath } from '../../lib/svg-preview'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
 import { clampWorkspaceEditorWidth } from '../../lib/workspaceEditorSizing'
 import type { GitFileDiff } from '../../types/chat'
@@ -21,6 +22,7 @@ interface WorkspaceFileTabsPanelProps {
   onCloseTab: (tabKey: string) => void
   onFileContentChange: (relativePath: string, content: string) => void
   onOpenMarkdownPreview: (relativePath: string) => void
+  onOpenSvgPreview: (relativePath: string) => void
   onSelectTab: (tabKey: string) => void
   onWidthChange: (nextWidth: number) => void
   onWidthCommit: (nextWidth: number) => void
@@ -36,6 +38,7 @@ export function WorkspaceFileTabsPanel({
   onCloseTab,
   onFileContentChange,
   onOpenMarkdownPreview,
+  onOpenSvgPreview,
   onSelectTab,
   onWidthChange,
   onWidthCommit,
@@ -294,17 +297,14 @@ export function WorkspaceFileTabsPanel({
     viewport.scrollLeft += dominantDelta
   }
 
-  const markdownPreviewTab =
-    activeTab.kind === 'markdown-preview'
-      ? tabs.find((tab) => tab.kind === 'file' && tab.relativePath === activeTab.relativePath) ?? null
-      : null
-
-  const previewTabContent =
-    activeTab.kind === 'markdown-preview'
-      ? markdownPreviewTab
-      : activeTab.kind === 'file' && isMarkdownPreviewablePath(activeTab.relativePath)
-        ? activeTab
-        : null
+  const openMarkdownPreviewForActiveFile =
+    activeTab.kind === 'file' && isMarkdownPreviewablePath(activeTab.relativePath)
+      ? () => onOpenMarkdownPreview(activeTab.relativePath)
+      : undefined
+  const openSvgPreviewForActiveFile =
+    activeTab.kind === 'file' && isSvgPreviewablePath(activeTab.relativePath)
+      ? () => onOpenSvgPreview(activeTab.relativePath)
+      : undefined
 
   return (
     <section
@@ -320,7 +320,7 @@ export function WorkspaceFileTabsPanel({
         >
           {tabs.map((tab) => {
             const isActive = tab.tabKey === activeTab.tabKey
-            const isPreviewTab = tab.kind === 'markdown-preview'
+            const isPreviewTab = tab.kind === 'markdown-preview' || tab.kind === 'svg-preview'
             const resolvedIconConfig = isPreviewTab ? null : resolveFileIconConfig({ fileName: tab.relativePath })
 
             return (
@@ -383,7 +383,7 @@ export function WorkspaceFileTabsPanel({
         ) : null}
       </div>
 
-      {activeTab.kind === 'markdown-preview' ? null : (
+      {activeTab.kind === 'markdown-preview' || activeTab.kind === 'svg-preview' ? null : (
         <div className="flex h-7 items-center bg-surface px-2">
           <div className="flex min-w-0 items-center gap-1 overflow-hidden text-[12px] text-subtle-foreground">
             {breadcrumbSegments.map((segment, index) => (
@@ -405,11 +405,8 @@ export function WorkspaceFileTabsPanel({
             gitFileDiffs={gitFileDiffs}
             tabs={tabs}
             onFileContentChange={onFileContentChange}
-            onOpenMarkdownPreview={
-              previewTabContent && previewTabContent.kind === 'file'
-                ? () => onOpenMarkdownPreview(previewTabContent.relativePath)
-                : undefined
-            }
+            onOpenMarkdownPreview={openMarkdownPreviewForActiveFile}
+            onOpenSvgPreview={openSvgPreviewForActiveFile}
             wordWrapEnabled={wordWrapEnabled}
           />
         )}

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useHighlightedCodeLines } from '../../../hooks/useHighlightedCodeLines'
 import type { GitFileDiff } from '../../../types/chat'
+import { isMarkdownPreviewablePath } from '../../../lib/markdown-preview'
+import { isSvgPreviewablePath } from '../../../lib/svg-preview'
 import {
   buildWorkspaceEditorLineStatusMap,
   buildSearchRegularExpression,
@@ -20,6 +22,7 @@ interface WorkspaceFileEditorProps {
   fileName: string
   gitFileDiff: GitFileDiff | null
   onOpenMarkdownPreview?: () => void
+  onOpenSvgPreview?: () => void
   originalContent: string | null
   value: string
   wordWrapEnabled: boolean
@@ -42,6 +45,7 @@ export function useWorkspaceFileEditorState({
   fileName,
   gitFileDiff,
   onOpenMarkdownPreview,
+  onOpenSvgPreview,
   originalContent,
   value,
   wordWrapEnabled,
@@ -358,8 +362,16 @@ export function useWorkspaceFileEditorState({
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'v') {
-        event.preventDefault()
-        onOpenMarkdownPreview?.()
+        if (isSvgPreviewablePath(fileName)) {
+          event.preventDefault()
+          onOpenSvgPreview?.()
+          return
+        }
+
+        if (isMarkdownPreviewablePath(fileName)) {
+          event.preventDefault()
+          onOpenMarkdownPreview?.()
+        }
         return
       }
 
@@ -413,10 +425,12 @@ export function useWorkspaceFileEditorState({
       closeSearchPanel,
       focusReplaceInput,
       focusSearchInput,
+      fileName,
       isSearchOpen,
       moveSearchMatch,
       onChange,
       onOpenMarkdownPreview,
+      onOpenSvgPreview,
       value,
     ],
   )

@@ -333,7 +333,7 @@ export function ChatInterfaceContent({
       }
       await workspaceState.handleRefreshWorkspaceFileTabs()
     },
-    [chatMessages, clearQueuedMessages, interfaceController, workspaceState],
+    [chatMessages, clearQueuedMessages, workspaceState],
   )
 
   const handleEditUserMessage = useCallback(
@@ -842,6 +842,7 @@ export function ChatInterfaceContent({
               onCloseTab={workspaceState.handleCloseWorkspaceTab}
               onFileContentChange={workspaceState.handleWorkspaceFileContentChange}
               onOpenMarkdownPreview={workspaceState.handleOpenWorkspaceMarkdownPreview}
+              onOpenSvgPreview={workspaceState.handleOpenWorkspaceSvgPreview}
               onSelectTab={workspaceState.handleSelectWorkspaceTab}
               onWidthChange={workspaceState.handleWorkspaceEditorWidthChange}
               onWidthCommit={workspaceState.handleWorkspaceEditorWidthCommit}

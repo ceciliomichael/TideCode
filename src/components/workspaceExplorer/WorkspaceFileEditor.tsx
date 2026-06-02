@@ -7,6 +7,7 @@ interface WorkspaceFileEditorProps {
   fileName: string
   gitFileDiff: GitFileDiff | null
   onOpenMarkdownPreview?: () => void
+  onOpenSvgPreview?: () => void
   originalContent: string | null
   value: string
   wordWrapEnabled: boolean
@@ -17,6 +18,7 @@ export const WorkspaceFileEditor = memo(function WorkspaceFileEditor({
   fileName,
   gitFileDiff,
   onOpenMarkdownPreview,
+  onOpenSvgPreview,
   originalContent,
   value,
   wordWrapEnabled,
@@ -26,6 +28,7 @@ export const WorkspaceFileEditor = memo(function WorkspaceFileEditor({
     fileName,
     gitFileDiff,
     onOpenMarkdownPreview,
+    onOpenSvgPreview,
     originalContent,
     onChange,
     value,
