@@ -44,6 +44,7 @@
     font-family: var(--font-sans);
     color-scheme: light;
     --workspace-editor-selection-background: rgb(0 120 215 / 0.26);
+    --workspace-editor-selection-background-opaque: #bddcf5;
     --workspace-editor-search-highlight-background: rgb(0 120 215 / 0.18);
     --workspace-editor-search-highlight-active-background: rgb(0 120 215 / 0.28);
     --workspace-editor-line-added-border: rgb(16 185 129 / 0.82);
@@ -111,6 +112,7 @@
     --shadow-control-inset: inset 0 1px 2px oklch(0 0 0 / 0.34);
     color-scheme: dark;
     --workspace-editor-selection-background: rgb(38 120 190 / 0.62);
+    --workspace-editor-selection-background-opaque: #20537f;
     --workspace-editor-search-highlight-background: rgb(38 120 190 / 0.28);
     --workspace-editor-search-highlight-active-background: rgb(38 120 190 / 0.44);
     --workspace-editor-line-added-border: rgb(52 211 153 / 0.82);
@@ -440,10 +442,10 @@
   }
 
   .workspace-editor-textarea::selection {
-    background-color: var(--workspace-editor-selection-background);
+    background-color: var(--workspace-editor-selection-background-opaque);
   }
   .workspace-editor-textarea::-moz-selection {
-    background-color: var(--workspace-editor-selection-background);
+    background-color: var(--workspace-editor-selection-background-opaque);
   }
 
 
