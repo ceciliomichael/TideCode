@@ -292,6 +292,7 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
                   const lineNumber = layout.visibleLineNumbers[index] ?? index + 1
                   const lineIndex = lineNumber - 1
                   const selectionRect = layout.visibleSelectionRectsMap.get(lineIndex)
+                  const row = layout.lineNumberRows[index]
 
                   return (
                     <div
@@ -300,7 +301,10 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
                         actions.setHighlightedLineElement(lineNumber, element)
                       }}
                       className={layout.highlightedLineClassName}
-                      style={selectionRect ? { background: getSelectionLineBackground(selectionRect) } : undefined}
+                      style={{
+                        minHeight: row ? `${row.minHeight}px` : undefined,
+                        background: selectionRect ? getSelectionLineBackground(selectionRect) : undefined,
+                      }}
                     >
                       {renderHighlightedTokens(line.tokens, layout.visibleSearchMatches[index] ?? [])}
                     </div>

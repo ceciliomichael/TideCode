@@ -284,14 +284,22 @@ export function findLineStartOffsets(text: string) {
  *
  * The textarea's selectionStart/End on Windows normalises \r\n pairs: the \r
  * is NOT counted as a separate character position. So we must also skip \r
- * when computing ch column positions.
+ * when computing ch column positions. We also skip other zero-width control
+ * characters (like \x1b ANSI escapes) because they don't take up visual space.
  */
 export function computeVisualColumn(text: string, lineStartOffset: number, absoluteOffset: number): number {
   let col = 0
   for (let i = lineStartOffset; i < absoluteOffset && i < text.length; i += 1) {
-    if (text.charCodeAt(i) !== 13) { // skip \r
-      col += 1
+    const code = text.charCodeAt(i)
+    if (code === 13) {
+      continue // skip \r
     }
+    // Skip zero-width control characters (like ANSI \x1b) so the CSS highlight doesn't drift.
+    // Allow \t (9) and \n (10)
+    if (code < 32 && code !== 9 && code !== 10) {
+      continue
+    }
+    col += 1
   }
   return col
 }
@@ -439,9 +447,23 @@ export function computeSelectionLineRects(
   const rects: SelectionLineRect[] = []
   for (let lineIdx = startLineIndex; lineIdx <= endLineIndex; lineIdx++) {
     const lineStart = lineStartOffsets[lineIdx] ?? 0
+    const nextLineStart = lineStartOffsets[lineIdx + 1]
+    const lineEndOffset = nextLineStart !== undefined ? nextLineStart - 1 : text.length
+
     const startCh = lineIdx === startLineIndex ? computeVisualColumn(text, lineStart, selectionStart) : 0
-    // null = span to end of line (full-width highlight strip)
-    const endCh = lineIdx === endLineIndex ? computeVisualColumn(text, lineStart, selectionEnd) : null
+    
+    let endCh: number
+    if (lineIdx === endLineIndex) {
+      endCh = computeVisualColumn(text, lineStart, selectionEnd)
+      if (nextLineStart !== undefined && selectionEnd >= nextLineStart) {
+        const lineLengthCh = computeVisualColumn(text, lineStart, lineEndOffset)
+        endCh = lineLengthCh + 0.5
+      }
+    } else {
+      const lineLengthCh = computeVisualColumn(text, lineStart, lineEndOffset)
+      endCh = lineLengthCh + 0.5
+    }
+
     rects.push({ lineIndex: lineIdx, startCh, endCh })
   }
 

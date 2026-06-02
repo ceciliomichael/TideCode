@@ -6,14 +6,14 @@ Synced ripgrep binary to C:\Users\Administrator\Desktop\echosphere\resources\rip
 
 > echosphere@0.1.21 build
 > tsc && vite build
-
-[36mvite v5.4.21 [32mbuilding for production...[36m[39m
-transforming...
-[32mΓ£ô[39m 4449 modules transformed.
+mΓ£ô[39m 4449 modules transformed.
 rendering chunks...
 computing gzip size...
 [2mdist/[22m[32mindex.html                                       [39m[1m[2m    1.78 kB[22m[1m[22m[2m Γöé gzip:   0.73 kB[22m
 [2mdist/[22m[35massets/index-vXt3ihoe.css                        [39m[1m[2m   75.38 kB[22m[1m[22m[2m Γöé gzip:  14.74 kB[22m
+[36mvite v5.4.21 [32mbuilding for production...[36m[39m
+transforming...
+[32
 [2mdist/[22m[36massets/clone-DPt_B8ZJ.js                         [39m[1m[2m    0.09 kB[22m[1m[22m[2m Γöé gzip:   0.11 kB[22m
 [2mdist/[22m[36massets/channel-BNIIwnV2.js                       [39m[1m[2m    0.11 kB[22m[1m[22m[2m Γöé gzip:   0.13 kB[22m
 [2mdist/[22m[36massets/init-Gi6I4Gst.js                          [39m[1m[2m    0.15 kB[22m[1m[22m[2m Γöé gzip:   0.13 kB[22m
