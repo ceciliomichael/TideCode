@@ -12,14 +12,6 @@ export const ACTIVE_SEARCH_HIGHLIGHT_BACKGROUND = 'var(--workspace-editor-search
 
 export type WorkspaceEditorLineStatus = 'added' | 'changed'
 
-export interface SelectionLineRect {
-  /** 0-based index of the line within the full document */
-  lineIndex: number
-  /** Column (in characters) where the selection starts on this line */
-  startCh: number
-  /** Column (in characters) where the selection ends on this line; null = spans to end of line */
-  endCh: number | null
-}
 
 export interface TextRange {
   end: number
@@ -248,24 +240,6 @@ export function findSearchMatches(text: string, searchValue: string, options: Se
   return ranges
 }
 
-/**
- * Maps a selection offset from a textarea (which strips \r on Windows) back to
- * the corresponding absolute offset in the original string (which may contain \r).
- */
-export function mapTextareaOffsetToValueOffset(value: string, textareaOffset: number): number {
-  let nonCarriageReturnCount = 0
-  for (let i = 0; i < value.length; i++) {
-    if (nonCarriageReturnCount === textareaOffset) {
-      return i
-    }
-    if (value.charCodeAt(i) !== 13) {
-      nonCarriageReturnCount += 1
-    }
-  }
-  return value.length
-}
-
-
 export function findLineStartOffsets(text: string) {
   const offsets = [0]
   for (let index = 0; index < text.length; index += 1) {
@@ -276,33 +250,7 @@ export function findLineStartOffsets(text: string) {
   return offsets
 }
 
-/**
- * Given a line's raw start offset (from findLineStartOffsets) and the content
- * string, returns the number of visual columns from the line start to the given
- * absolute offset. This accounts for CRLF files where \r characters are present
- * in the raw text but the textarea treats them as 0-width for selectionStart/End.
- *
- * The textarea's selectionStart/End on Windows normalises \r\n pairs: the \r
- * is NOT counted as a separate character position. So we must also skip \r
- * when computing ch column positions. We also skip other zero-width control
- * characters (like \x1b ANSI escapes) because they don't take up visual space.
- */
-export function computeVisualColumn(text: string, lineStartOffset: number, absoluteOffset: number): number {
-  let col = 0
-  for (let i = lineStartOffset; i < absoluteOffset && i < text.length; i += 1) {
-    const code = text.charCodeAt(i)
-    if (code === 13) {
-      continue // skip \r
-    }
-    // Skip zero-width control characters (like ANSI \x1b) so the CSS highlight doesn't drift.
-    // Allow \t (9) and \n (10)
-    if (code < 32 && code !== 9 && code !== 10) {
-      continue
-    }
-    col += 1
-  }
-  return col
-}
+
 
 export function findLineIndexForOffset(lineStartOffsets: readonly number[], offset: number) {
   let low = 0
@@ -421,52 +369,4 @@ export function renderHighlightedTokens(tokens: readonly HighlightedToken[], mat
   return renderedSegments
 }
 
-/**
- * Converts raw textarea selectionStart/End offsets into an array of per-line
- * highlight rectangles expressed in character column units, suitable for
- * rendering as a gap-free selection overlay via CSS ch units / gradients.
- *
- * Uses computeVisualColumn so that CRLF files (\r\n) produce correct ch-unit
- * positions — the textarea counts \r\n as one position, not two.
- */
-export function computeSelectionLineRects(
-  lineStartOffsets: readonly number[],
-  selectionStart: number,
-  selectionEnd: number,
-  text: string,
-): SelectionLineRect[] {
-  if (selectionStart >= selectionEnd) {
-    return []
-  }
-
-  const startLineIndex = findLineIndexForOffset(lineStartOffsets, selectionStart)
-  // Use selectionEnd - 1 so that a selection ending exactly at the start of the
-  // next line (i.e. the newline was included) is attributed to the previous line.
-  const endLineIndex = findLineIndexForOffset(lineStartOffsets, selectionEnd - 1)
-
-  const rects: SelectionLineRect[] = []
-  for (let lineIdx = startLineIndex; lineIdx <= endLineIndex; lineIdx++) {
-    const lineStart = lineStartOffsets[lineIdx] ?? 0
-    const nextLineStart = lineStartOffsets[lineIdx + 1]
-    const lineEndOffset = nextLineStart !== undefined ? nextLineStart - 1 : text.length
-
-    const startCh = lineIdx === startLineIndex ? computeVisualColumn(text, lineStart, selectionStart) : 0
-    
-    let endCh: number
-    if (lineIdx === endLineIndex) {
-      endCh = computeVisualColumn(text, lineStart, selectionEnd)
-      if (nextLineStart !== undefined && selectionEnd >= nextLineStart) {
-        const lineLengthCh = computeVisualColumn(text, lineStart, lineEndOffset)
-        endCh = lineLengthCh + 0.5
-      }
-    } else {
-      const lineLengthCh = computeVisualColumn(text, lineStart, lineEndOffset)
-      endCh = lineLengthCh + 0.5
-    }
-
-    rects.push({ lineIndex: lineIdx, startCh, endCh })
-  }
-
-  return rects
-}
 

@@ -4,7 +4,6 @@ import type { GitFileDiff } from '../../../types/chat'
 import {
   buildWorkspaceEditorLineStatusMap,
   buildSearchRegularExpression,
-  computeSelectionLineRects,
   countLines,
   getWorkspaceEditorScrollTransform,
   EDITOR_LINE_HEIGHT_PX,
@@ -13,9 +12,7 @@ import {
   findLineIndexForOffset,
   findLineStartOffsets,
   findSearchMatches,
-  mapTextareaOffsetToValueOffset,
   type SearchOptions,
-  type SelectionLineRect,
   type TextRange,
 } from './workspaceFileEditorUtils'
 
@@ -72,8 +69,6 @@ export function useWorkspaceFileEditorState({
   const [isRegexEnabled, setIsRegexEnabled] = useState(false)
   const [isWholeWordEnabled, setIsWholeWordEnabled] = useState(false)
   const [activeSearchMatchIndex, setActiveSearchMatchIndex] = useState(-1)
-  const [editorSelectionStart, setEditorSelectionStart] = useState(0)
-  const [editorSelectionEnd, setEditorSelectionEnd] = useState(0)
   const [virtualRange, setVirtualRange] = useState(() => ({
     endIndex: Math.min(totalLineCount, EDITOR_VIRTUALIZATION_THRESHOLD),
     startIndex: 0,
@@ -158,47 +153,6 @@ export function useWorkspaceFileEditorState({
     [lineStatusByLineNumber, visibleLineNumbers, visibleStartIndex, wrappedLineCounts],
   )
 
-  const allSelectionLineRects = useMemo(() => {
-    const valueSelectionStart = mapTextareaOffsetToValueOffset(value, editorSelectionStart)
-    const valueSelectionEnd = mapTextareaOffsetToValueOffset(value, editorSelectionEnd)
-    return computeSelectionLineRects(lineStartOffsets, valueSelectionStart, valueSelectionEnd, value)
-  }, [lineStartOffsets, editorSelectionStart, editorSelectionEnd, value])
-
-  const visibleSelectionRectsMap = useMemo(() => {
-    const map = new Map<number, SelectionLineRect>()
-    for (const rect of allSelectionLineRects) {
-      if (rect.lineIndex >= visibleStartIndex && rect.lineIndex < visibleEndIndex) {
-        map.set(rect.lineIndex, rect)
-      }
-    }
-    return map
-  }, [allSelectionLineRects, visibleStartIndex, visibleEndIndex])
-
-  const handleSelect = useCallback(() => {
-    const textArea = textAreaRef.current
-    if (!textArea) return
-    setEditorSelectionStart(textArea.selectionStart)
-    setEditorSelectionEnd(textArea.selectionEnd)
-  }, [])
-
-  // Track selection in real-time via document.selectionchange, which fires
-  // continuously during mouse-drag and held-key selection (unlike onSelect /
-  // onMouseUp which only fire after the interaction ends).
-  useEffect(() => {
-    const onSelectionChange = () => {
-      const textArea = textAreaRef.current
-      if (!textArea) {
-        return
-      }
-      setEditorSelectionStart(textArea.selectionStart)
-      setEditorSelectionEnd(textArea.selectionEnd)
-    }
-
-    document.addEventListener('selectionchange', onSelectionChange)
-    return () => {
-      document.removeEventListener('selectionchange', onSelectionChange)
-    }
-  }, [])
 
   const handleScroll = useCallback(() => {
     const textAreaElement = textAreaRef.current
@@ -476,8 +430,6 @@ export function useWorkspaceFileEditorState({
     setIsRegexEnabled(false)
     setIsWholeWordEnabled(false)
     setActiveSearchMatchIndex(-1)
-    setEditorSelectionStart(0)
-    setEditorSelectionEnd(0)
   }, [fileName])
 
   useEffect(() => {
@@ -651,7 +603,6 @@ export function useWorkspaceFileEditorState({
       handleReplaceAllMatches,
       handleReplaceCurrentMatch,
       handleScroll,
-      handleSelect,
       moveSearchMatch,
       setHighlightedLineElement,
     },
@@ -666,7 +617,6 @@ export function useWorkspaceFileEditorState({
       visibleHighlightedLines,
       visibleLineNumbers,
       visibleSearchMatches,
-      visibleSelectionRectsMap,
     },
     refs: {
       editorViewportRef,

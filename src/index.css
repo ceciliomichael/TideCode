@@ -440,13 +440,12 @@
   }
 
   .workspace-editor-textarea::selection {
-    /* Native selection is hidden — gap-free selection rendered via JS overlay */
-    background-color: transparent;
+    background-color: var(--workspace-editor-selection-background);
+  }
+  .workspace-editor-textarea::-moz-selection {
+    background-color: var(--workspace-editor-selection-background);
   }
 
-  .workspace-editor-textarea::-moz-selection {
-    background-color: transparent;
-  }
 
   /**
    * Gap-free selection for code blocks.

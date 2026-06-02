@@ -14,7 +14,6 @@ import { memo } from 'react'
 import {
   EDITOR_BOTTOM_BUFFER_PX,
   renderHighlightedTokens,
-  type SelectionLineRect,
   type WorkspaceEditorLineStatus,
 } from './workspaceFileEditorUtils'
 import type { WorkspaceFileEditorState } from './useWorkspaceFileEditorState'
@@ -39,41 +38,6 @@ function getLineNumberRowClassName(status: WorkspaceEditorLineStatus | null) {
   return 'border-r-[3px] border-transparent'
 }
 
-/**
- * Returns the CSS `background` value that draws a gap-free selection highlight
- * on a single line using CSS ch units so it aligns perfectly with monospace chars.
- *  - full line  : solid background colour
- *  - first line : colour from startCh → end
- *  - last line  : colour from 0 → endCh
- *  - single line: colour from startCh → endCh
- */
-function getSelectionLineBackground(rect: SelectionLineRect): string {
-  const c = 'var(--workspace-editor-selection-background)'
-
-  // Middle lines of a multi-line selection — paint the whole line
-  if (rect.startCh === 0 && rect.endCh === null) {
-    return c
-  }
-
-  // First line of selection (no left gap) through to end of line
-  if (rect.startCh === 0 && rect.endCh !== null) {
-    return `linear-gradient(to right, ${c} ${rect.endCh}ch, transparent ${rect.endCh}ch)`
-  }
-
-  // Last line (or only line) of selection through to end of visible area
-  if (rect.endCh === null) {
-    return `linear-gradient(to right, transparent ${rect.startCh}ch, ${c} ${rect.startCh}ch)`
-  }
-
-  // Single-line partial selection
-  return [
-    `linear-gradient(to right,`,
-    `transparent ${rect.startCh}ch,`,
-    `${c} ${rect.startCh}ch,`,
-    `${c} ${rect.endCh}ch,`,
-    `transparent ${rect.endCh}ch)`,
-  ].join(' ')
-}
 
 function SearchPanel({ editorState }: { editorState: WorkspaceFileEditorState }) {
   const { actions, refs, search } = editorState
@@ -279,50 +243,12 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
         </div>
         <div ref={refs.editorViewportRef} className="relative h-full min-h-0 min-w-0 flex-1 overflow-hidden bg-surface">
           {search.isSearchOpen ? <SearchPanel editorState={editorState} /> : null}
-          <div
-            ref={refs.highlightedLayerRef}
-            className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-1.5 font-mono text-[12px] leading-5 text-foreground workspace-editor-highlighted-layer"
-            style={{ paddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px` }}
-            aria-hidden="true"
-          >
-            <pre className="m-0 min-w-full bg-transparent">
-              <code ref={refs.highlightedContentRef} className={layout.highlightedCodeClassName}>
-                {layout.topSpacerHeight > 0 ? <div aria-hidden="true" style={{ height: `${layout.topSpacerHeight}px` }} /> : null}
-                {layout.visibleHighlightedLines.map((line, index) => {
-                  const lineNumber = layout.visibleLineNumbers[index] ?? index + 1
-                  const lineIndex = lineNumber - 1
-                  const selectionRect = layout.visibleSelectionRectsMap.get(lineIndex)
-                  const row = layout.lineNumberRows[index]
-
-                  return (
-                    <div
-                      key={`editor-highlighted-${lineNumber}-${line.text.slice(0, 16)}`}
-                      ref={(element) => {
-                        actions.setHighlightedLineElement(lineNumber, element)
-                      }}
-                      className={layout.highlightedLineClassName}
-                      style={{
-                        minHeight: row ? `${row.minHeight}px` : undefined,
-                        background: selectionRect ? getSelectionLineBackground(selectionRect) : undefined,
-                      }}
-                    >
-                      {renderHighlightedTokens(line.tokens, layout.visibleSearchMatches[index] ?? [])}
-                    </div>
-                  )
-                })}
-                {layout.bottomSpacerHeight > 0 ? <div aria-hidden="true" style={{ height: `${layout.bottomSpacerHeight}px` }} /> : null}
-              </code>
-            </pre>
-          </div>
           <textarea
             ref={refs.textAreaRef}
             value={value}
             onChange={(event) => onChange(event.target.value)}
             onScroll={actions.handleScroll}
-            onSelect={actions.handleSelect}
             onKeyDown={actions.handleKeyDown}
-            onKeyUp={actions.handleSelect}
-            onMouseUp={actions.handleSelect}
             spellCheck={false}
             wrap={wordWrapEnabled ? 'soft' : 'off'}
             aria-label={`Editing ${fileName}`}
@@ -334,6 +260,38 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
             }}
             className={layout.textAreaClassName}
           />
+          <div
+            ref={refs.highlightedLayerRef}
+            className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-1.5 font-mono text-[12px] leading-5 text-foreground workspace-editor-highlighted-layer"
+            style={{ paddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px` }}
+            aria-hidden="true"
+          >
+            <pre className="m-0 min-w-full bg-transparent">
+              <code ref={refs.highlightedContentRef} className={layout.highlightedCodeClassName}>
+                {layout.topSpacerHeight > 0 ? <div aria-hidden="true" style={{ height: `${layout.topSpacerHeight}px` }} /> : null}
+                {layout.visibleHighlightedLines.map((line, index) => {
+                  const lineNumber = layout.visibleLineNumbers[index] ?? index + 1
+                  const row = layout.lineNumberRows[index]
+
+                  return (
+                    <div
+                      key={`editor-highlighted-${lineNumber}-${line.text.slice(0, 16)}`}
+                      ref={(element) => {
+                        actions.setHighlightedLineElement(lineNumber, element)
+                      }}
+                      className={layout.highlightedLineClassName}
+                      style={{
+                        minHeight: row ? `${row.minHeight}px` : undefined,
+                      }}
+                    >
+                      {renderHighlightedTokens(line.tokens, layout.visibleSearchMatches[index] ?? [])}
+                    </div>
+                  )
+                })}
+                {layout.bottomSpacerHeight > 0 ? <div aria-hidden="true" style={{ height: `${layout.bottomSpacerHeight}px` }} /> : null}
+              </code>
+            </pre>
+          </div>
         </div>
       </div>
     </div>
