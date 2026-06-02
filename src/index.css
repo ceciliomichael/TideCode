@@ -50,6 +50,8 @@
     --workspace-editor-line-changed-surface: rgb(0 120 215 / 0.12);
     --workspace-editor-line-changed-border: rgb(0 120 215 / 0.5);
     --workspace-editor-line-changed-foreground: rgb(0 92 170);
+    /* High-opacity selection used in diff viewer so blue cleanly overrides red/green row colors */
+    --diff-viewer-selection-background: rgb(0 100 200 / 0.88);
     --workspace-shell-surface: var(--color-sidebar);
     --titlebar-surface: var(--workspace-shell-surface);
     --workspace-panel-surface: var(--color-surface);
@@ -115,6 +117,7 @@
     --workspace-editor-line-changed-surface: rgb(38 120 190 / 0.24);
     --workspace-editor-line-changed-border: rgb(90 170 255 / 0.72);
     --workspace-editor-line-changed-foreground: rgb(173 214 255);
+    --diff-viewer-selection-background: rgb(38 120 190 / 0.92);
     --titlebar-surface: #141415;
     --workspace-shell-surface: #141415;
     --workspace-panel-surface: #121213;
@@ -437,12 +440,62 @@
   }
 
   .workspace-editor-textarea::selection {
-    background-color: var(--workspace-editor-selection-background);
+    /* Native selection is hidden — gap-free selection rendered via JS overlay */
+    background-color: transparent;
   }
 
   .workspace-editor-textarea::-moz-selection {
-    background-color: var(--workspace-editor-selection-background);
+    background-color: transparent;
   }
+
+  /**
+   * Gap-free selection for code blocks.
+   * Each line is a block-level <div>; browsers leave a 1px gap between
+   * consecutive selected block elements. A tiny negative-margin + matching
+   * padding trick makes adjacent rows visually seamless when selected.
+   * NOTE: NOT applied to diff-viewer-content-row because those rows have
+   * colored backgrounds (red/green) that would bleed 1px into adjacent rows.
+   */
+  .code-block-line {
+    margin-top: -1px;
+    padding-top: 1px;
+  }
+
+  /** Diff viewer gutter (line numbers) — never include in selection */
+  .diff-viewer-gutter {
+    user-select: none;
+  }
+
+  /**
+   * Diff viewer selection — use a high-opacity blue so the selection
+   * completely overrides the red/green diff row background instead of
+   * blending with it to produce a muddy purple/brown color.
+   */
+  .diff-viewer-content-row::selection,
+  .diff-viewer-content-row *::selection {
+    background-color: var(--diff-viewer-selection-background);
+    color: #fff !important;
+  }
+
+  .diff-viewer-content-row.is-selected {
+    background-color: var(--diff-viewer-selection-background) !important;
+  }
+
+  .diff-viewer-content-row.is-selected,
+  .diff-viewer-content-row.is-selected * {
+    color: #fff !important;
+  }
+
+  .diff-viewer-content-row.is-selected::selection,
+  .diff-viewer-content-row.is-selected *::selection {
+    background-color: transparent !important;
+    color: #fff !important;
+  }
+
+  .diff-viewer-content-row.is-selected * {
+    background-color: transparent !important;
+  }
+
 
   @media (min-width: 1024px) {
     .chat-shell {

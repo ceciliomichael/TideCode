@@ -32,6 +32,8 @@ import type {
   GitFileStageInput,
   GitSyncInput,
   ReplaceConversationMessagesInput,
+  GitPublishInput,
+
   CloseTerminalSessionInput,
   CreateTerminalSessionInput,
   OpenExternalTerminalLinkInput,
@@ -206,7 +208,10 @@ const gitApi: EchosphereGitApi = {
   stageFile: (input: GitFileStageInput) => ipcRenderer.invoke('git:stageFile', input),
   unstageFiles: (input: GitFileStageBatchInput) => ipcRenderer.invoke('git:unstageFiles', input),
   unstageFile: (input: GitFileStageInput) => ipcRenderer.invoke('git:unstageFile', input),
+  initRepository: (workspacePath: string) => ipcRenderer.invoke('git:init', workspacePath),
+  publishToGitHub: (input: GitPublishInput) => ipcRenderer.invoke('git:publishToGitHub', input),
 }
+
 
 const workspaceApi: EchosphereWorkspaceApi = {
   createCheckpoint: (input: CreateWorkspaceCheckpointInput) => ipcRenderer.invoke('workspace:checkpoint:create', input),

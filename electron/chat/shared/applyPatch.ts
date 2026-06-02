@@ -387,7 +387,17 @@ function applyUpdateChunks(filePath: string, originalContent: string, chunks: re
 
   for (const chunk of chunks) {
     if (chunk.changeContext) {
-      const contextIndex = seekSequence(originalLines, [chunk.changeContext], searchStartIndex, false)
+      const normalize = (str: string) => str.trim().replace(/\s+/g, ' ').replace(/^[-*]\s*/, '')
+      const normContext = normalize(chunk.changeContext)
+      let contextIndex = -1
+
+      for (let i = searchStartIndex; i < originalLines.length; i++) {
+        if (normalize(originalLines[i]).includes(normContext)) {
+          contextIndex = i
+          break
+        }
+      }
+
       if (contextIndex === -1) {
         throw new Error(`Failed to find context "${chunk.changeContext}" in ${filePath}`)
       }

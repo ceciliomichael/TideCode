@@ -1,14 +1,17 @@
 import { ChevronDown, Loader2 } from 'lucide-react'
 import type { RefObject } from 'react'
+import { useState } from 'react'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
 import type { DiffPanelScope } from '../chat/ConversationDiffFileItem'
 import { Tooltip } from '../Tooltip'
 import { Switch } from '../ui/Switch'
 import { SourceControlDiffSection } from './SourceControlDiffSection'
+import { PublishToGitHubModal } from './PublishToGitHubModal'
 
 interface SourceControlChangesSectionProps {
   commitActionControlsRef: RefObject<HTMLDivElement>
   commitMessage: string
+  hasRemote: boolean
   includeUnstaged: boolean
   isChangesSectionOpen: boolean
   isCommitActionDisabled: boolean
@@ -27,6 +30,7 @@ interface SourceControlChangesSectionProps {
   syncMessage: string | null
   unstagedFileCount: number
   unstagedFileDiffs: readonly ConversationFileDiff[]
+  workspacePath: string
   onCommitActionMenuOpenChange: (nextValue: boolean) => void
   onCommitMessageChange: (nextValue: string) => void
   onDiscardFiles: (filePaths: string[]) => Promise<void>
@@ -34,6 +38,7 @@ interface SourceControlChangesSectionProps {
   onIncludeUnstagedChange: (nextValue: boolean) => void
   onOpenCommitModal: () => void
   onOpenDiffPanelForFile: (filePath: string, scope: DiffPanelScope) => void
+  onPublishSuccess: () => Promise<void>
   onQuickCommitSubmit: (action?: 'commit' | 'commit-and-push') => Promise<void>
   onStageFiles: (filePaths: string[]) => Promise<void>
   onStageFile: (filePath: string) => Promise<void>
@@ -44,9 +49,11 @@ interface SourceControlChangesSectionProps {
   onUnstagedSectionOpenChange: (nextValue: boolean) => void
 }
 
+
 export function SourceControlChangesSection({
   commitActionControlsRef,
   commitMessage,
+  hasRemote,
   includeUnstaged,
   isChangesSectionOpen,
   isCommitActionDisabled,
@@ -65,6 +72,7 @@ export function SourceControlChangesSection({
   syncMessage,
   unstagedFileCount,
   unstagedFileDiffs,
+  workspacePath,
   onCommitActionMenuOpenChange,
   onCommitMessageChange,
   onDiscardFiles,
@@ -72,6 +80,7 @@ export function SourceControlChangesSection({
   onIncludeUnstagedChange,
   onOpenCommitModal,
   onOpenDiffPanelForFile,
+  onPublishSuccess,
   onQuickCommitSubmit,
   onStageFiles,
   onStageFile,
@@ -81,7 +90,9 @@ export function SourceControlChangesSection({
   onUnstageFile,
   onUnstagedSectionOpenChange,
 }: SourceControlChangesSectionProps) {
+  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false)
   const sectionBodyClassName = 'min-h-0 flex flex-1 flex-col overflow-hidden'
+
   const diffViewportClassName = 'min-h-0 flex-1 overflow-y-auto'
   const hasStagedSection = stagedFileDiffs.length > 0
   const shouldShowUnstagedSectionTopBorder = hasStagedSection && isStagedSectionOpen
@@ -124,12 +135,14 @@ export function SourceControlChangesSection({
   }
 
   return (
+    <>
     <section
       className={[
         'border-b border-border',
         isChangesSectionOpen ? 'min-h-0 flex flex-1 flex-col' : 'shrink-0',
       ].join(' ')}
     >
+
       <button type="button" onClick={onToggleChangesSection} className="flex h-10 w-full items-center justify-between px-4 text-left">
         <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Changes</span>
         <ChevronDown size={13} className={['text-muted-foreground transition-transform', isChangesSectionOpen ? '' : '-rotate-90'].join(' ')} />
@@ -201,15 +214,30 @@ export function SourceControlChangesSection({
                       >
                         Commit
                       </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => void onQuickCommitSubmit('commit-and-push')}
-                        className="flex h-9 w-full items-center rounded-lg px-2.5 text-left text-xs text-foreground transition-colors hover:bg-surface-muted"
-                      >
-                        Commit and push
-                      </button>
+                      {hasRemote ? (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => void onQuickCommitSubmit('commit-and-push')}
+                          className="flex h-9 w-full items-center rounded-lg px-2.5 text-left text-xs text-foreground transition-colors hover:bg-surface-muted"
+                        >
+                          Commit and push
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            onCommitActionMenuOpenChange(false)
+                            setIsPublishModalOpen(true)
+                          }}
+                          className="flex h-9 w-full items-center rounded-lg px-2.5 text-left text-xs text-foreground transition-colors hover:bg-surface-muted"
+                        >
+                          Publish to GitHub
+                        </button>
+                      )}
                     </div>
+
                   ) : null}
                 </div>
                 <button
@@ -377,5 +405,15 @@ export function SourceControlChangesSection({
         </div>
       ) : null}
     </section>
+
+    {isPublishModalOpen && workspacePath ? (
+      <PublishToGitHubModal
+        workspacePath={workspacePath}
+        onClose={() => setIsPublishModalOpen(false)}
+        onPublishSuccess={onPublishSuccess}
+      />
+    ) : null}
+  </>
   )
 }
+

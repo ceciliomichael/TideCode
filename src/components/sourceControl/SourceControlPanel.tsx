@@ -13,12 +13,18 @@ import type {
 import { describeSourceControlPendingAction, beginSourceControlSyncOperation, endSourceControlSyncOperation } from '../../lib/sourceControlPendingStateStore'
 import { SourceControlChangesSection } from './SourceControlChangesSection'
 import { SourceControlHistorySection } from './SourceControlHistorySection'
+import { SourceControlNoRepoView } from './SourceControlNoRepoView'
 import { computeSwimlanes } from './historyGraphLayout'
+
 import { prependCommittedHistoryEntry } from './sourceControlHistoryUtils'
 import { useSourceControlPendingState } from '../../hooks/useSourceControlPendingState'
 
 interface SourceControlPanelProps {
+  hasRepository: boolean
+  hasRemote: boolean
   onDiffPanelExpandedFilePathsChange: (nextFilePaths: string[]) => void
+
+
   onDiffPanelSelectedScopeChange: (nextScope: DiffPanelScope) => void
   fileDiffs: readonly ConversationFileDiff[]
   isOpen: boolean
@@ -44,7 +50,11 @@ interface SourceControlPanelProps {
 const HISTORY_PAGE_SIZE = 200
 
 function SourceControlPanelContent({
+  hasRepository,
+  hasRemote,
   onDiffPanelExpandedFilePathsChange,
+
+
   onDiffPanelSelectedScopeChange,
   fileDiffs,
   isOpen,
@@ -776,6 +786,14 @@ function SourceControlPanelContent({
             isHistoryResizing ? 'cursor-row-resize' : '',
           ].join(' ')}
         >
+          {!hasRepository && hasWorkspacePath ? (
+            <SourceControlNoRepoView
+              workspacePath={normalizedWorkspacePath}
+              onRefreshAll={onRefreshAll}
+            />
+          ) : (
+            <>
+
           <SourceControlChangesSection
             commitActionControlsRef={commitActionControlsRef}
             commitMessage={commitMessage}
@@ -788,6 +806,7 @@ function SourceControlPanelContent({
             isQuickCommitting={isQuickCommitting}
             isStagedSectionOpen={isStagedSectionOpen}
             isUnstagedSectionOpen={isUnstagedSectionOpen}
+            hasRemote={hasRemote}
             pendingFileActionPath={pendingFileActionPath}
             pendingOperationLabel={pendingOperationLabel}
             quickCommitError={quickCommitError}
@@ -797,6 +816,7 @@ function SourceControlPanelContent({
             syncMessage={syncMessage}
             unstagedFileCount={unstagedFileDiffs.length}
             unstagedFileDiffs={unstagedFileDiffs}
+            workspacePath={normalizedWorkspacePath}
             onCommitActionMenuOpenChange={setIsCommitActionMenuOpen}
             onCommitMessageChange={setCommitMessage}
             onDiscardFiles={onDiscardFiles}
@@ -812,7 +832,9 @@ function SourceControlPanelContent({
             onUnstageFiles={onUnstageFiles}
             onUnstageFile={onUnstageFile}
             onUnstagedSectionOpenChange={handleUnstagedSectionOpenChange}
+            onPublishSuccess={onRefreshAll}
           />
+
 
           <SourceControlHistorySection
             commitDetailsByHash={commitDetailsByHash}
@@ -842,11 +864,14 @@ function SourceControlPanelContent({
             onToggleCommitExpanded={handleCommitExpandedToggle}
             onToggleHistorySection={handleToggleHistorySection}
           />
+            </>
+          )}
         </div>
       </aside>
     </div>
   )
 }
+
 
 function SourceControlPanelGate(props: SourceControlPanelProps) {
   if (!props.isOpen) {

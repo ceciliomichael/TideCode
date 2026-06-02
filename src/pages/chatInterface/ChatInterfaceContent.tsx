@@ -253,8 +253,12 @@ export function ChatInterfaceContent({
   )
   const chatModeOptions = CHAT_MODE_OPTIONS
   const hasRepository = gitBranchState.branchState.hasRepository
+  const hasWorkspacePath = Boolean(workspaceState.activeWorkspacePath?.trim())
+  // Commit/Diff buttons require an actual git repo; Source Control panel only needs a workspace path
   const isWorkspaceRepoHeaderControlDisabled = isWorkspaceHeaderControlDisabled || !hasRepository
+  const isSourceControlButtonDisabled = isWorkspaceHeaderControlDisabled || !hasWorkspacePath
   const messageListBoundaryRef = useRef<HTMLDivElement>(null)
+
 
   const handleCreateConversation = useCallback(async (folderId?: string | null) => {
     clearQueuedMessages()
@@ -567,30 +571,30 @@ export function ChatInterfaceContent({
                 </Tooltip>
               )}
               <div className="mx-1 h-5 w-px bg-border" />
-              {isWorkspaceRepoHeaderControlDisabled ? (
+              {isSourceControlButtonDisabled ? (
                 <button
                   type="button"
-                  disabled={isWorkspaceRepoHeaderControlDisabled}
+                  disabled={isSourceControlButtonDisabled}
                   onClick={workspaceState.handleOpenSourceControlPanel}
                   className={[
                     'inline-flex h-10 items-center gap-1.5 text-sm transition-colors',
                     interfaceController.isSourceControlPanelOpen ? 'text-foreground' : 'text-muted-foreground',
-                    isWorkspaceRepoHeaderControlDisabled ? 'cursor-not-allowed opacity-50' : 'hover:text-foreground',
+                    isSourceControlButtonDisabled ? 'cursor-not-allowed opacity-50' : 'hover:text-foreground',
                   ].join(' ')}
                 >
                   <GitBranch size={16} className="shrink-0" />
                   <span className="hidden md:inline">Source Control</span>
                 </button>
               ) : (
-                <Tooltip content={hasRepository ? 'Toggle Source Control panel' : 'Open a git-backed folder'} side="bottom">
+                <Tooltip content={hasRepository ? 'Toggle Source Control panel' : 'Initialize or publish this folder'} side="bottom">
                   <button
                     type="button"
-                    disabled={isWorkspaceRepoHeaderControlDisabled}
+                    disabled={isSourceControlButtonDisabled}
                     onClick={workspaceState.handleOpenSourceControlPanel}
                     className={[
                       'inline-flex h-10 items-center gap-1.5 text-sm transition-colors',
                       interfaceController.isSourceControlPanelOpen ? 'text-foreground' : 'text-muted-foreground',
-                      isWorkspaceRepoHeaderControlDisabled ? 'cursor-not-allowed opacity-50' : 'hover:text-foreground',
+                      isSourceControlButtonDisabled ? 'cursor-not-allowed opacity-50' : 'hover:text-foreground',
                     ].join(' ')}
                   >
                     <GitBranch size={16} className="shrink-0" />
@@ -598,6 +602,7 @@ export function ChatInterfaceContent({
                   </button>
                 </Tooltip>
               )}
+
               <div className="mx-1 h-5 w-px bg-border" />
               {isWorkspaceRepoHeaderControlDisabled ? (
                 <button
@@ -889,7 +894,10 @@ export function ChatInterfaceContent({
           {interfaceController.isSourceControlPanelOpen ? (
             <SourceControlPanel
               key={workspaceState.activeWorkspacePath?.trim() ?? 'no-workspace'}
+              hasRepository={hasRepository}
+              hasRemote={Boolean(gitBranchState.branchState.remoteUrl)}
               onDiffPanelExpandedFilePathsChange={onDiffPanelExpandedFilePathsChange}
+
               onDiffPanelSelectedScopeChange={onDiffPanelSelectedScopeChange}
               fileDiffs={gitDiffSnapshot.snapshot.fileDiffs}
               isOpen={interfaceController.isSourceControlPanelOpen}
@@ -912,6 +920,7 @@ export function ChatInterfaceContent({
               width={workspaceState.sourceControlPanelWidth}
             />
           ) : null}
+
         </div>
         <WorkspaceTerminalPanel
           isOpen={workspaceState.isTerminalOpen}

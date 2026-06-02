@@ -1,6 +1,7 @@
 import type { CheckoutGitBranchInput, CreateGitBranchInput, GitBranchState } from '../../src/types/chat'
 import {
   getErrorMessage,
+  getRemoteUrl,
   isFastForwardOnlyPullFailure,
   isGitUnavailable,
   isWorkingTreeConflictFailure,
@@ -13,6 +14,7 @@ import {
   validateBranchName,
 } from './repositoryContext'
 
+
 function createEmptyBranchState(): GitBranchState {
   return {
     branches: [],
@@ -20,9 +22,11 @@ function createEmptyBranchState(): GitBranchState {
     defaultBranch: null,
     hasRepository: false,
     isDetachedHead: false,
+    remoteUrl: null,
     repoRootPath: null,
   }
 }
+
 
 export async function getGitBranchState(workspacePath: string): Promise<GitBranchState> {
   const repoRootPath = await resolveRepositoryRoot(workspacePath)
@@ -30,10 +34,11 @@ export async function getGitBranchState(workspacePath: string): Promise<GitBranc
     return createEmptyBranchState()
   }
 
-  const [branchState, branches, defaultBranch] = await Promise.all([
+  const [branchState, branches, defaultBranch, remoteUrl] = await Promise.all([
     readCurrentBranch(repoRootPath),
     readLocalBranches(repoRootPath),
     readDefaultBranch(repoRootPath),
+    getRemoteUrl(repoRootPath).catch(() => null),
   ])
 
   return {
@@ -42,9 +47,11 @@ export async function getGitBranchState(workspacePath: string): Promise<GitBranc
     defaultBranch,
     hasRepository: true,
     isDetachedHead: branchState.isDetachedHead,
+    remoteUrl: remoteUrl ?? null,
     repoRootPath,
   }
 }
+
 
 export async function checkoutGitBranch(input: CheckoutGitBranchInput): Promise<GitBranchState> {
   const workspacePath = input.workspacePath.trim()

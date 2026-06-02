@@ -72,10 +72,12 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
   const isSourceControlPanelOpen = isRightPanelOpen && rightPanelTab === 'source-control'
 
   useEffect(() => {
-    if (!hasRepository && isRightPanelOpen) {
+    // Only force-close the right panel if there's truly no workspace path at all.
+    // Source Control can open without a repo (to offer init/publish).
+    if (!hasRepository && isRightPanelOpen && rightPanelTab !== 'source-control') {
       onRightPanelOpenChange(false)
     }
-  }, [hasRepository, isRightPanelOpen, onRightPanelOpenChange])
+  }, [hasRepository, isRightPanelOpen, onRightPanelOpenChange, rightPanelTab])
 
   useEffect(() => {
     if (!hasRepository) {
@@ -239,7 +241,8 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
 
   const handleOpenRightPanelTab = useCallback(
     (tab: ChatInterfaceRightPanelTab) => {
-      if (!hasRepository) {
+      // Diff panel requires a repo; Source Control panel can open without one
+      if (!hasRepository && tab !== 'source-control') {
         return
       }
 

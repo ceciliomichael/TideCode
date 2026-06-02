@@ -264,6 +264,7 @@ export interface AppSettings {
   terminalOpenByWorkspace: Record<string, boolean>
   terminalPanelHeightsByWorkspace: Record<string, number>
   terminalExecutionMode: AppTerminalExecutionMode
+  githubToken?: string
 }
 
 export type SourceControlSectionId = 'commit' | 'changes' | 'history'
@@ -595,8 +596,10 @@ export interface GitBranchState {
   defaultBranch: string | null
   hasRepository: boolean
   isDetachedHead: boolean
+  remoteUrl: string | null
   repoRootPath: string | null
 }
+
 
 export interface CheckoutGitBranchInput {
   branchName: string
@@ -692,6 +695,26 @@ export interface GitSyncResult {
   action: GitSyncAction
   branchName: string | null
   message: string
+  success: boolean
+}
+
+export interface GitInitResult {
+  repoRootPath: string
+  success: boolean
+}
+
+export interface GitPublishInput {
+  workspacePath: string
+  repoName: string
+  description?: string
+  isPrivate: boolean
+  defaultBranch: string
+  githubToken: string
+}
+
+export interface GitPublishResult {
+  remoteUrl: string
+  repoUrl: string
   success: boolean
 }
 
@@ -934,9 +957,12 @@ export interface EchosphereGitApi {
   getDiffs: (workspacePath: string) => Promise<GitDiffSnapshot>
   getHistoryPage: (input: GitHistoryPageInput) => Promise<GitHistoryPageResult>
   getStatus: (workspacePath: string) => Promise<GitStatusResult>
+  initRepository: (workspacePath: string) => Promise<GitInitResult>
+  publishToGitHub: (input: GitPublishInput) => Promise<GitPublishResult>
   sync: (input: GitSyncInput) => Promise<GitSyncResult>
   stageFiles: (input: GitFileStageBatchInput) => Promise<GitFileStageBatchResult>
   stageFile: (input: GitFileStageInput) => Promise<GitFileStageResult>
   unstageFiles: (input: GitFileStageBatchInput) => Promise<GitFileStageBatchResult>
   unstageFile: (input: GitFileStageInput) => Promise<GitFileStageResult>
 }
+

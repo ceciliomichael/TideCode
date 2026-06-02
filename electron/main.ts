@@ -113,11 +113,14 @@ import {
   getGitStatus,
   gitSync,
   gitCommit,
+  initGitRepository,
+  publishToGitHub,
   stageGitFiles,
   stageGitFile,
   unstageGitFiles,
   unstageGitFile,
 } from './git/service'
+
 import {
   closeAllTerminalSessions,
   closeTerminalSession,
@@ -548,6 +551,9 @@ function registerHistoryHandlers() {
   ipcMain.handle('git:stageFiles', async (_event, input: GitFileStageBatchInput) => stageGitFiles(input))
   ipcMain.handle('git:unstageFile', async (_event, input: GitFileStageInput) => unstageGitFile(input))
   ipcMain.handle('git:unstageFiles', async (_event, input: GitFileStageBatchInput) => unstageGitFiles(input))
+  ipcMain.handle('git:init', async (_event, workspacePath: string) => initGitRepository(workspacePath))
+  ipcMain.handle('git:publishToGitHub', async (_event, input) => publishToGitHub(input))
+
   ipcMain.handle('workspace:checkpoint:create', async (_event, input: CreateWorkspaceCheckpointInput) =>
     createWorkspaceCheckpoint(input),
   )

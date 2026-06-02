@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useState, useRef, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useHighlightedCodeLines } from '../../hooks/useHighlightedCodeLines'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
@@ -209,11 +209,11 @@ function getDiffRowClassName() {
 }
 
 function getDiffGutterCellClassName() {
-  return 'sticky left-0 z-10 flex shrink-0 items-start border-r border-border bg-surface px-2 py-0.5 text-right'
+  return 'diff-viewer-gutter sticky left-0 z-10 flex shrink-0 items-start border-r border-border bg-surface px-2 text-right'
 }
 
 function getDiffContentCellClassName(line: DiffLine, viewOnly: boolean) {
-  return `min-w-0 px-3 py-0.5 whitespace-pre-wrap [overflow-wrap:anywhere] ${getLineContentClassName(line, viewOnly)}`
+  return `diff-viewer-content-row min-w-0 px-3 whitespace-pre-wrap [overflow-wrap:anywhere] ${getLineContentClassName(line, viewOnly)}`
 }
 
 function getLineTokens(
@@ -288,11 +288,11 @@ function HighlightedDiffRows({
             <>
               <div className={`${getDiffGutterCellClassName()} ${getLineGutterClassName()}`}>
                 {showsSingleLineNumberColumn ? (
-                  <span className="flex min-h-5 min-w-8 items-start justify-end leading-5">
+                  <span className="select-none flex min-h-5 min-w-8 items-start justify-end leading-5">
                     {line.newLineNumber ?? ''}
                   </span>
                 ) : (
-                  <span className="inline-grid grid-cols-[2rem_3px_2rem] items-start gap-0 leading-5">
+                  <span className="select-none inline-grid grid-cols-[2rem_3px_2rem] items-start gap-0 leading-5">
                     <span className="flex min-h-5 min-w-8 items-start justify-end pr-1">
                       {line.oldLineNumber ?? ''}
                     </span>
@@ -338,11 +338,11 @@ function PlainDiffRows({
             <>
               <div className={`${getDiffGutterCellClassName()} ${getLineGutterClassName()}`}>
                 {showsSingleLineNumberColumn ? (
-                  <span className="flex min-h-5 min-w-8 items-start justify-end leading-5">
+                  <span className="select-none flex min-h-5 min-w-8 items-start justify-end leading-5">
                     {line.newLineNumber ?? ''}
                   </span>
                 ) : (
-                  <span className="inline-grid grid-cols-[2rem_3px_2rem] items-start gap-0 leading-5">
+                  <span className="select-none inline-grid grid-cols-[2rem_3px_2rem] items-start gap-0 leading-5">
                     <span className="flex min-h-5 min-w-8 items-start justify-end pr-1">
                       {line.oldLineNumber ?? ''}
                     </span>
@@ -416,12 +416,55 @@ function DiffViewerBody({
   const bodyHeightClassName = maxBodyHeightClassName ? `${maxBodyHeightClassName} overflow-y-auto` : ''
   const showsSingleLineNumberColumn = viewOnly || !hasOldSide
   const shouldUseContentVisibility = renderedLines.length >= DIFF_CONTENT_VISIBILITY_THRESHOLD
+  const bodyRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const container = bodyRef.current
+    if (!container) return
+
+    const handleSelectionChange = () => {
+      const selection = window.getSelection()
+      const rows = container.querySelectorAll('.diff-viewer-content-row')
+      
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        rows.forEach((row) => {
+          row.classList.remove('is-selected')
+        })
+        return
+      }
+
+      const range = selection.getRangeAt(0)
+      
+      // Check if the selection intersects with this container
+      if (!container.contains(range.commonAncestorContainer) && !range.intersectsNode(container)) {
+        rows.forEach((row) => {
+          row.classList.remove('is-selected')
+        })
+        return
+      }
+
+      rows.forEach((row) => {
+        if (range.intersectsNode(row)) {
+          row.classList.add('is-selected')
+        } else {
+          row.classList.remove('is-selected')
+        }
+      })
+    }
+
+    document.addEventListener('selectionchange', handleSelectionChange)
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange)
+    }
+  }, [renderedLines])
+
   if (!shouldRenderDiffContent) {
     return null
   }
 
   return (
     <div
+      ref={bodyRef}
       className={[
         isStackedLayout ? 'overflow-hidden bg-surface' : 'overflow-hidden rounded-b-2xl bg-surface',
         bodyHeightClassName,

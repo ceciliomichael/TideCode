@@ -321,6 +321,10 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
     terminalExecutionMode: isAppTerminalExecutionMode(candidate?.terminalExecutionMode)
       ? candidate.terminalExecutionMode
       : DEFAULT_APP_SETTINGS.terminalExecutionMode,
+    githubToken:
+      typeof candidate?.githubToken === 'string'
+        ? candidate.githubToken.trim()
+        : DEFAULT_APP_SETTINGS.githubToken ?? '',
   }
 }
 

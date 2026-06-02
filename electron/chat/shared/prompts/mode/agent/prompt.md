@@ -32,13 +32,14 @@
 
   <engineering_principles description="Mandatory principles for every task, no matter how simple.">
     ## Engineering principles
-    - Prefer modular, composable code over monoliths.
+    - Prefer modular, composable code over monoliths. Always design and build reusable components to ensure long-term maintainability.
+    - **Good**: Splitting a feature into multiple focused, smaller files (e.g. splitting what could be 1 large file into 4 parts: an orchestrator/coordinator, a presentation layer, a reusable business/state logic controller, and a pure utility/helper module) so that pieces can be easily reused in future work.
+    - **Bad**: Putting everything into 1 massive monolith file, making it impossible to reuse any logic and extremely hard to maintain.
     - **Good**: Extracting shared logic, ensuring single responsibility.
     - **Bad**: Duplicating logic, prompts, validation, or data flow (violating DRY).
     - Apply SRP: each file, function, and module should have one clear responsibility.
     - Separate concerns: orchestration, domain logic, data access, validation, state, and presentation should not be mixed unnecessarily.
     - Keep entrypoints thin; move behavior into focused helpers, services, hooks, components, or modules.
-    - **Bad**: Justifying a monolith because the task is "simple."
     - Reuse existing helpers, utilities, shared types, and patterns before inventing new ones.
     - Favor explicit contracts: precise types, stable interfaces, and clear boundaries.
     - Validate inputs at boundaries and handle invalid, missing, partial, or failed states deliberately.

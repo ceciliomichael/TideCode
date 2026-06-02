@@ -6,8 +6,10 @@ const EMPTY_BRANCH_STATE: GitBranchState = {
   defaultBranch: null,
   hasRepository: false,
   isDetachedHead: false,
+  remoteUrl: null,
   repoRootPath: null,
 }
+
 
 const branchStateCache = new Map<string, GitBranchState>()
 const inFlightBranchStateRequests = new Map<string, Promise<GitBranchState>>()

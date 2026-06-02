@@ -14,6 +14,7 @@ import { memo } from 'react'
 import {
   EDITOR_BOTTOM_BUFFER_PX,
   renderHighlightedTokens,
+  type SelectionLineRect,
   type WorkspaceEditorLineStatus,
 } from './workspaceFileEditorUtils'
 import type { WorkspaceFileEditorState } from './useWorkspaceFileEditorState'
@@ -36,6 +37,42 @@ function getLineNumberRowClassName(status: WorkspaceEditorLineStatus | null) {
   }
 
   return 'border-r-[3px] border-transparent'
+}
+
+/**
+ * Returns the CSS `background` value that draws a gap-free selection highlight
+ * on a single line using CSS ch units so it aligns perfectly with monospace chars.
+ *  - full line  : solid background colour
+ *  - first line : colour from startCh → end
+ *  - last line  : colour from 0 → endCh
+ *  - single line: colour from startCh → endCh
+ */
+function getSelectionLineBackground(rect: SelectionLineRect): string {
+  const c = 'var(--workspace-editor-selection-background)'
+
+  // Middle lines of a multi-line selection — paint the whole line
+  if (rect.startCh === 0 && rect.endCh === null) {
+    return c
+  }
+
+  // First line of selection (no left gap) through to end of line
+  if (rect.startCh === 0 && rect.endCh !== null) {
+    return `linear-gradient(to right, ${c} ${rect.endCh}ch, transparent ${rect.endCh}ch)`
+  }
+
+  // Last line (or only line) of selection through to end of visible area
+  if (rect.endCh === null) {
+    return `linear-gradient(to right, transparent ${rect.startCh}ch, ${c} ${rect.startCh}ch)`
+  }
+
+  // Single-line partial selection
+  return [
+    `linear-gradient(to right,`,
+    `transparent ${rect.startCh}ch,`,
+    `${c} ${rect.startCh}ch,`,
+    `${c} ${rect.endCh}ch,`,
+    `transparent ${rect.endCh}ch)`,
+  ].join(' ')
 }
 
 function SearchPanel({ editorState }: { editorState: WorkspaceFileEditorState }) {
@@ -251,17 +288,24 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
             <pre className="m-0 min-w-full bg-transparent">
               <code ref={refs.highlightedContentRef} className={layout.highlightedCodeClassName}>
                 {layout.topSpacerHeight > 0 ? <div aria-hidden="true" style={{ height: `${layout.topSpacerHeight}px` }} /> : null}
-                {layout.visibleHighlightedLines.map((line, index) => (
-                  <div
-                    key={`editor-highlighted-${layout.visibleLineNumbers[index] ?? index}-${line.text.slice(0, 16)}`}
-                    ref={(element) => {
-                      actions.setHighlightedLineElement(layout.visibleLineNumbers[index] ?? index + 1, element)
-                    }}
-                    className={layout.highlightedLineClassName}
-                  >
-                    {renderHighlightedTokens(line.tokens, layout.visibleSearchMatches[index] ?? [])}
-                  </div>
-                ))}
+                {layout.visibleHighlightedLines.map((line, index) => {
+                  const lineNumber = layout.visibleLineNumbers[index] ?? index + 1
+                  const lineIndex = lineNumber - 1
+                  const selectionRect = layout.visibleSelectionRectsMap.get(lineIndex)
+
+                  return (
+                    <div
+                      key={`editor-highlighted-${lineNumber}-${line.text.slice(0, 16)}`}
+                      ref={(element) => {
+                        actions.setHighlightedLineElement(lineNumber, element)
+                      }}
+                      className={layout.highlightedLineClassName}
+                      style={selectionRect ? { background: getSelectionLineBackground(selectionRect) } : undefined}
+                    >
+                      {renderHighlightedTokens(line.tokens, layout.visibleSearchMatches[index] ?? [])}
+                    </div>
+                  )
+                })}
                 {layout.bottomSpacerHeight > 0 ? <div aria-hidden="true" style={{ height: `${layout.bottomSpacerHeight}px` }} /> : null}
               </code>
             </pre>
@@ -271,7 +315,10 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
             value={value}
             onChange={(event) => onChange(event.target.value)}
             onScroll={actions.handleScroll}
+            onSelect={actions.handleSelect}
             onKeyDown={actions.handleKeyDown}
+            onKeyUp={actions.handleSelect}
+            onMouseUp={actions.handleSelect}
             spellCheck={false}
             wrap={wordWrapEnabled ? 'soft' : 'off'}
             aria-label={`Editing ${fileName}`}

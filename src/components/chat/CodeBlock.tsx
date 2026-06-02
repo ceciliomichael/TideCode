@@ -50,7 +50,7 @@ const CodeRows = memo(function CodeRows({
 
   return (
     <div className={['flex min-w-0 bg-surface', fillHeight ? 'h-full' : ''].join(' ')}>
-      <div className={['shrink-0 bg-surface', showLineNumberDivider ? 'border-r border-border' : ''].join(' ')}>
+      <div className={['select-none shrink-0 bg-surface', showLineNumberDivider ? 'border-r border-border' : ''].join(' ')}>
         <pre className="m-0 py-2 text-[12px] leading-5 text-subtle-foreground">
           <code className="block">
             {lines.map((_, index) => {
@@ -72,7 +72,7 @@ const CodeRows = memo(function CodeRows({
         <pre className="m-0 min-w-full bg-transparent px-3 py-2 text-[12px] leading-5 text-foreground">
           <code className="block w-fit min-w-full bg-transparent">
             {lines.map((line, index) => (
-              <div key={`content-${index}-${line.text.slice(0, 16)}`} className="whitespace-pre">
+              <div key={`content-${index}-${line.text.slice(0, 16)}`} className="code-block-line whitespace-pre">
                 <HighlightedCodeLine line={line} />
               </div>
             ))}

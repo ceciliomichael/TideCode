@@ -28,7 +28,9 @@
 
   <engineering_principles description="Mandatory planning principles for every task, no matter how simple.">
     ## Engineering principles
-    - Prefer modular, composable designs over monoliths.
+    - Prefer modular, composable designs over monoliths. Always plan for reusable components to ensure long-term maintainability.
+    - **Good**: Splitting a proposed feature into multiple focused, smaller files (e.g. splitting what could be 1 large file into 4 parts: an orchestrator/coordinator, a presentation layer, a reusable business/state logic controller, and a pure utility/helper module) so that pieces can be easily reused in future plans.
+    - **Bad**: Planning to put everything into 1 massive monolith file, making it impossible to reuse any logic and extremely hard to maintain.
     - **Good**: Extracting shared logic, ensuring single responsibility.
     - **Bad**: Duplicating logic, validation, prompts, or data flow (violating DRY).
     - Apply SRP: each proposed file, module, function, or component should have one clear responsibility.
