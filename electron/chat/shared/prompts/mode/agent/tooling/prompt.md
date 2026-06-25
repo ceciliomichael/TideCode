@@ -24,7 +24,7 @@
 - `apply_patch`
   - **Purpose**: Apply a targeted patch change to files.
   - **Good**: Modifying a single function or a few lines in an existing file.
-  - **Bad**: Guessing the context without reading the file first. Ignoring existing whitespace.
+  - **Bad**: Guessing the context without reading the file first. Ignoring existing whitespace. Outputting hunks that contain no actual changes (e.g. replacing a line with the exact same line, or only outputting context lines).
 
 - `write`
   - **Purpose**: Create or overwrite full file contents.

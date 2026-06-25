@@ -710,54 +710,42 @@ export async function createGrepToolResult(
 async function createWholeFileWriteToolResult(
   context: WorkspaceToolContext,
   input: {
-    changes: Array<{
-      absolute_path: string
-      content: string
-    }>
+    absolute_path: string
+    content: string
   },
 ) {
-  const resolvedChanges = input.changes.map((change) => ({
-    content: normalizeTextMutationContent(change.content),
+  const resolvedChange = {
+    content: normalizeTextMutationContent(input.content),
     target: resolveReadableTargetPath(
       context.workspaceRootPath,
-      change.absolute_path,
+      input.absolute_path,
       context.terminalExecutionMode,
     ),
-  }))
-  const originalContentByPath = new Map<string, string | null>()
-
-  for (const change of resolvedChanges) {
-    if (originalContentByPath.has(change.target.absolutePath)) {
-      continue
-    }
-
-    originalContentByPath.set(change.target.absolutePath, await fs.readFile(change.target.absolutePath, 'utf8').catch(() => null))
   }
+
+  const previousContent = await fs.readFile(resolvedChange.target.absolutePath, 'utf8').catch(() => null)
   const rawFileChanges: Array<{ fileName: string; newContent: string; oldContent: string | null }> = []
 
-  for (const change of resolvedChanges) {
-    const previousContent = originalContentByPath.get(change.target.absolutePath) ?? null
-    if (previousContent !== null && normalizeTextMutationContent(previousContent) === change.content) {
-      continue
-    }
-
-    await captureCheckpointFileStateIfNeeded(context.checkpointId, change.target.absolutePath)
-    await fs.mkdir(path.dirname(change.target.absolutePath), { recursive: true })
-    await fs.writeFile(change.target.absolutePath, change.content, 'utf8')
+  if (previousContent === null || normalizeTextMutationContent(previousContent) !== resolvedChange.content) {
+    await captureCheckpointFileStateIfNeeded(context.checkpointId, resolvedChange.target.absolutePath)
+    await fs.mkdir(path.dirname(resolvedChange.target.absolutePath), { recursive: true })
+    await fs.writeFile(resolvedChange.target.absolutePath, resolvedChange.content, 'utf8')
     rawFileChanges.push({
-      fileName: change.target.displayPath,
-      newContent: change.content,
+      fileName: resolvedChange.target.displayPath,
+      newContent: resolvedChange.content,
       oldContent: previousContent,
     })
+  } else {
+    throw new Error(`Write did not change ${resolvedChange.target.displayPath}`)
   }
 
   const fileChanges = aggregateFileChangeItems(rawFileChanges)
 
-  const subjectPath = fileChanges.length === 1 ? fileChanges[0].fileName : DEFAULT_WORKSPACE_RELATIVE_PATH
+  const subjectPath = resolvedChange.target.displayPath
   return buildFileChangeResult(
-    fileChanges.length === 0 ? 'No changes needed. File content is already identical.' : `Wrote ${fileChanges.length} file change${fileChanges.length === 1 ? '' : 's'}`,
+    `Wrote 1 file change`,
     fileChanges,
-    fileChanges.length === 0 ? 'noop' : 'edit',
+    'edit',
     subjectPath,
   )
 }
@@ -815,33 +803,20 @@ export function createWholeFileWriteTool(context: WorkspaceToolContext) {
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
-        changes: {
-          items: {
-            additionalProperties: false,
-            properties: {
-              absolute_path: {
-                type: 'string',
-              },
-              content: {
-                type: 'string',
-              },
-            },
-            required: ['absolute_path', 'content'],
-            type: 'object',
-          },
-          minItems: 1,
-          type: 'array',
+        absolute_path: {
+          type: 'string',
+        },
+        content: {
+          type: 'string',
         },
       },
-      required: ['changes'],
+      required: ['absolute_path', 'content'],
       type: 'object',
     }),
     execute: async (rawInput) => {
       const inputValue = rawInput as {
-        changes: Array<{
-          absolute_path: string
-          content: string
-        }>
+        absolute_path: string
+        content: string
       }
       try {
         return await createWholeFileWriteToolResult(context, inputValue)

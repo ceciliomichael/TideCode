@@ -155,12 +155,12 @@ test('running file mutation invocations stay hidden until completion', () => {
   const runningApplyPatchInvocation: ToolInvocationTrace = {
     argumentsText: JSON.stringify({
       patchText: [
-        '*** Begin Patch',
-        '*** Update File: src/example.ts',
+        '<patch>',
+        '<update path="src/example.ts">',
         '@@',
         '-const value = 1;',
         '+const value = 2;',
-        '*** End Patch',
+        '</patch>',
       ].join('\n'),
     }),
     id: 'tool-apply-running-single',
@@ -187,16 +187,16 @@ test('multi-file apply_patch invocations stay hidden until they complete', () =>
   const invocation: ToolInvocationTrace = {
     argumentsText: JSON.stringify({
       patchText: [
-        '*** Begin Patch',
-        '*** Update File: src/first.ts',
+        '<patch>',
+        '<update path="src/first.ts">',
         '@@',
         '-const first = 1;',
         '+const first = 2;',
-        '*** Update File: src/second.ts',
+        '<update path="src/second.ts">',
         '@@',
         '-const second = 1;',
         '+const second = 2;',
-        '*** End Patch',
+        '</patch>',
       ].join('\n'),
     }),
     id: 'tool-apply-running-multi',

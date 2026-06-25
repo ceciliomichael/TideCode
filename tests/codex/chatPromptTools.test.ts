@@ -155,12 +155,13 @@ test('buildChatPrompt preserves image attachments in user messages', () => {
 })
 
 test('buildChatPrompt preserves freeform apply_patch tool calls', () => {
-  const patchText = `*** Begin Patch
-*** Update File: src/example.ts
+  const patchText = `<patch>
+<update path="src/example.ts">
 @@
 -const value = 1;
 +const value = 2;
-*** End Patch`
+</update>
+</patch>`
   const messages: Message[] = [
     {
       content: 'Edit the file',

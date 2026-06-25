@@ -35,7 +35,7 @@ interface ExecutableGrepTool {
 }
 
 interface ExecutableWriteTool {
-  execute: (input: { changes: Array<{ absolute_path: string; content: string }> }) => Promise<ExecutableToolResult>
+  execute: (input: { absolute_path: string; content: string }) => Promise<ExecutableToolResult>
 }
 
 interface ExecutableApplyPatchTool {
@@ -355,24 +355,21 @@ test('createAgentTools write and apply_patch allow explicit external files in Fu
     )
 
     const writeResult = await (tools.write as unknown as ExecutableWriteTool).execute({
-      changes: [
-        {
-          absolute_path: outsideFilePath,
-          content: 'written\n',
-        },
-      ],
+      absolute_path: outsideFilePath,
+      content: 'written\n',
     })
 
     assert.equal(writeResult.status, 'success')
     assert.equal(await fs.readFile(outsideFilePath, 'utf8'), 'written\n')
 
     const patchResult = await (tools.apply_patch as unknown as ExecutableApplyPatchTool).execute({
-      patchText: `*** Begin Patch
-*** Update File: ${patchFilePath}
+      patchText: `<patch>
+<update path="${patchFilePath}">
 @@
 -written
 +patched
-*** End Patch`,
+</update>
+</patch>`,
     })
 
     assert.equal(patchResult.status, 'success')
@@ -397,12 +394,8 @@ test('createAgentTools write rejects identical file content', async () => {
     )
 
     const result = await (tools.write as unknown as ExecutableWriteTool).execute({
-      changes: [
-        {
-          absolute_path: targetFilePath,
-          content: 'export const value = 1\n',
-        },
-      ],
+      absolute_path: targetFilePath,
+      content: 'export const value = 1\n',
     })
 
     assert.equal(result.status, 'error')
@@ -426,12 +419,8 @@ test('createAgentTools write normalizes CRLF content to LF', async () => {
     )
 
     const result = await (tools.write as unknown as ExecutableWriteTool).execute({
-      changes: [
-        {
-          absolute_path: targetFilePath,
-          content: 'export const first = 1\r\nexport const second = 2\r\n',
-        },
-      ],
+      absolute_path: targetFilePath,
+      content: 'export const first = 1\r\nexport const second = 2\r\n',
     })
 
     assert.equal(result.status, 'success')
@@ -455,12 +444,8 @@ test('createAgentTools write rejects line-ending-only rewrites', async () => {
     )
 
     const result = await (tools.write as unknown as ExecutableWriteTool).execute({
-      changes: [
-        {
-          absolute_path: targetFilePath,
-          content: 'export const value = 1\n',
-        },
-      ],
+      absolute_path: targetFilePath,
+      content: 'export const value = 1\n',
     })
 
     assert.equal(result.status, 'error')
@@ -483,16 +468,18 @@ test('createApplyPatchToolResult diffs against the original file snapshot for re
         terminalExecutionMode: 'sandbox',
         workspaceRootPath,
       },
-      `*** Begin Patch
-*** Update File: sample.txt
+      `<patch>
+<update path="sample.txt">
 @@
 -one
 +ONE
-*** Update File: sample.txt
+</update>
+<update path="sample.txt">
 @@
 -two
 +TWO
-*** End Patch`,
+</update>
+</patch>`,
     )
 
     assert.equal(result.resultPresentation?.kind, 'change_diff')

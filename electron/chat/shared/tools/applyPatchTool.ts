@@ -5,59 +5,64 @@ import type { AgentToolExecutionResult } from '../toolTypes'
 import { createApplyPatchToolResult } from './workspaceTools'
 import type { WorkspaceToolContext } from './workspaceTools'
 
-const APPLY_PATCH_LARK_GRAMMAR = String.raw`start: begin_patch hunk+ end_patch
-begin_patch: "*** Begin Patch" LF
-end_patch: "*** End Patch" LF?
+const APPLY_PATCH_LARK_GRAMMAR = String.raw`start: patch_start hunk+ patch_end
+patch_start: "<patch>" LF
+patch_end: "</patch>" LF?
 
 hunk: add_hunk | delete_hunk | update_hunk
-add_hunk: "*** Add File: " filename LF add_line+
-delete_hunk: "*** Delete File: " filename LF
-update_hunk: "*** Update File: " filename LF change_move? change?
+add_hunk: "<add path=\"" filename "\">" LF add_line+ "</add>" LF
+delete_hunk: "<delete path=\"" filename "\" />" LF
+update_hunk: "<update path=\"" filename "\"" move_attr? ">" LF change? "</update>" LF
 
-filename: /(.+)/
+move_attr: " move_to=\"" filename "\""
+filename: /[^"]+/
 add_line: "+" /(.*)/ LF -> line
 
-change_move: "*** Move to: " filename LF
 change: (change_context | change_line)+ eof_line?
 change_context: ("@@" | "@@ " /(.+)/) LF
 change_line: ("+" | "-" | " ") /(.*)/ LF
-eof_line: "*** End of File" LF
+eof_line: "<end_of_file />" LF
 
 %import common.LF
 `
 
 const APPLY_PATCH_TOOL_DESCRIPTION = `Edit files using a line-by-line patch format.
-The patch must start with "*** Begin Patch" and end with "*** End Patch".
+The patch must start with "<patch>" and end with "</patch>".
 
 Operations within the envelope:
-*** Add File: <path>
+<add path="path/to/file">
 Prefix every content line with +
-*** Delete File: <path>
-Delete the file. No content lines follow.
-*** Update File: <path>
-Patch an existing file. Optionally followed by "*** Move to: <new path>" to rename.
+</add>
 
+<delete path="path/to/file" />
+
+<update path="path/to/file" move_to="optional/new/path">
+Patch an existing file. Optionally use move_to to rename.
 Update hunks start with "@@" or "@@ <context>". Hunk body lines must start with:
 " " (unchanged context)
 "-" (remove line)
 "+" (add line)
 Order update hunks chronologically from top to bottom.
+</update>
 
 Example:
-*** Begin Patch
-*** Add File: hello.txt
+<patch>
+<add path="hello.txt">
 +Hello world
-*** Update File: src/app.ts
+</add>
+<update path="src/app.ts">
 @@ function greet()
 -console.log("Hi")
 +console.log("Hello, world!")
-*** Delete File: obsolete.txt
-*** End Patch
+</update>
+<delete path="obsolete.txt" />
+</patch>
 
 In Sandbox mode, paths must be workspace-relative.
 
 Important:
 - Context and deletion lines in a hunk must match the target file exactly and contiguously. Do not skip or omit any intermediate lines.
+- Your patch MUST actually contain changes. Do not output hunks that only contain unchanged " " context lines, and do not replace a line with the exact same line.
 - For rewriting most of a file or large-scale replacements, use the "write" tool instead of "apply_patch".`
 
 function createToolErrorResult(summary: string): AgentToolExecutionResult {
@@ -97,7 +102,7 @@ export function createApplyPatchTool(context: WorkspaceToolContext, providerId: 
       additionalProperties: false,
       properties: {
         patchText: {
-          description: 'The complete patch text, starting with *** Begin Patch and ending with *** End Patch.',
+          description: 'The complete patch text, starting with <patch> and ending with </patch>.',
           minLength: 1,
           type: 'string',
         },

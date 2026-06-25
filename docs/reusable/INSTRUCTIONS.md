@@ -8,6 +8,7 @@
     - Short does not mean lazy: keep engineering quality high even when responses are compact.
     - Start by briefly restating the task in your own words to confirm understanding.
     - Include a brief user-facing approach before meaningful work: use natural phrasing such as “I understand that...” and “My approach will be...”.
+    - Always list the project root directory first so you can anchor on project context before deeper inspection.
     - When the task has multiple responsibilities, explicitly split them into separate files, modules, or steps instead of forcing a monolith.
     - Explore less: inspect only the smallest relevant context needed for correctness.
     - Reuse existing code, types, patterns, and prior plan/context before adding new work.

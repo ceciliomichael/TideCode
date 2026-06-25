@@ -78,34 +78,24 @@ function normalizePatchInput(patchText: string) {
 function parsePatchHeader(lines: string[], index: number) {
   const line = lines[index]
 
-  if (line.startsWith('*** Add File:')) {
-    const filePath = line.slice('*** Add File:'.length).trim()
-    return filePath ? { filePath, nextIndex: index + 1, type: 'add' as const } : null
+  const addMatch = line.match(/^<add\s+path="([^"]+)">$/)
+  if (addMatch) {
+    return { filePath: addMatch[1], nextIndex: index + 1, type: 'add' as const }
   }
 
-  if (line.startsWith('*** Delete File:')) {
-    const filePath = line.slice('*** Delete File:'.length).trim()
-    return filePath ? { filePath, nextIndex: index + 1, type: 'delete' as const } : null
+  const deleteMatch = line.match(/^<delete\s+path="([^"]+)"\s*\/>$/)
+  if (deleteMatch) {
+    return { filePath: deleteMatch[1], nextIndex: index + 1, type: 'delete' as const }
   }
 
-  if (line.startsWith('*** Update File:')) {
-    const filePath = line.slice('*** Update File:'.length).trim()
-    let movePath: string | undefined
-    let nextIndex = index + 1
-
-    if (nextIndex < lines.length && lines[nextIndex].startsWith('*** Move to:')) {
-      movePath = lines[nextIndex].slice('*** Move to:'.length).trim()
-      nextIndex += 1
+  const updateMatch = line.match(/^<update\s+path="([^"]+)"(?:\s+move_to="([^"]+)")?>$/)
+  if (updateMatch) {
+    return {
+      filePath: updateMatch[1],
+      movePath: updateMatch[2],
+      nextIndex: index + 1,
+      type: 'update' as const,
     }
-
-    return filePath
-      ? {
-          filePath,
-          movePath,
-          nextIndex,
-          type: 'update' as const,
-        }
-      : null
   }
 
   return null
@@ -115,7 +105,7 @@ function parseAddedFile(lines: string[], startIndex: number) {
   const contentLines: string[] = []
   let index = startIndex
 
-  while (index < lines.length && !lines[index].startsWith('***')) {
+  while (index < lines.length && lines[index] !== '</add>') {
     if (!lines[index].startsWith('+')) {
       throw new Error(`Invalid add-file line: ${lines[index]}`)
     }
@@ -124,9 +114,13 @@ function parseAddedFile(lines: string[], startIndex: number) {
     index += 1
   }
 
+  if (lines[index] !== '</add>') {
+    throw new Error(`Expected </add> tag`)
+  }
+
   return {
     content: contentLines.join('\n'),
-    nextIndex: index,
+    nextIndex: index + 1,
   }
 }
 
@@ -134,7 +128,7 @@ function parseUpdatedFile(lines: string[], startIndex: number) {
   const chunks: ApplyPatchUpdateChunk[] = []
   let index = startIndex
 
-  while (index < lines.length && !lines[index].startsWith('*** End Patch') && !lines[index].startsWith('*** Add File:') && !lines[index].startsWith('*** Delete File:') && !lines[index].startsWith('*** Update File:')) {
+  while (index < lines.length && lines[index] !== '</update>') {
     if (chunks.length === 0 && lines[index].trim().length === 0) {
       index += 1
       continue
@@ -159,13 +153,10 @@ function parseUpdatedFile(lines: string[], startIndex: number) {
     while (
       index < lines.length &&
       !lines[index].startsWith('@@') &&
-      !lines[index].startsWith('*** End Patch') &&
-      !lines[index].startsWith('*** Add File:') &&
-      !lines[index].startsWith('*** Delete File:') &&
-      !lines[index].startsWith('*** Update File:')
+      lines[index] !== '</update>'
     ) {
       const line = lines[index]
-      if (line === '*** End of File') {
+      if (line === '<end_of_file />') {
         if (oldLines.length === 0 && newLines.length === 0) {
           throw new Error('Update hunk does not contain any lines')
         }
@@ -221,20 +212,24 @@ function parseUpdatedFile(lines: string[], startIndex: number) {
     throw new Error('Update file hunk is empty')
   }
 
+  if (lines[index] !== '</update>') {
+    throw new Error(`Expected </update> tag`)
+  }
+
   return {
     chunks,
-    nextIndex: index,
+    nextIndex: index + 1,
   }
 }
 
 export function parseApplyPatch(patchText: string): ParsedApplyPatch {
   const normalized = normalizePatchInput(patchText).replace(/\r\n/g, '\n')
   const lines = normalized.split('\n')
-  const beginIndex = lines.findIndex((line) => line.trim() === '*** Begin Patch')
-  const endIndex = lines.findIndex((line) => line.trim() === '*** End Patch')
+  const beginIndex = lines.findIndex((line) => line.trim() === '<patch>')
+  const endIndex = lines.findIndex((line) => line.trim() === '</patch>')
 
   if (beginIndex === -1 || endIndex === -1 || beginIndex >= endIndex) {
-    throw new Error('Invalid patch format: missing "*** Begin Patch" / "*** End Patch" markers')
+    throw new Error('Invalid patch format: missing "<patch>" / "</patch>" markers')
   }
 
   const hunks: ApplyPatchHunk[] = []

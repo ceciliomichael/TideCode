@@ -263,10 +263,11 @@ test('run_terminal rejects commands outside the allowlist without launching a te
     const result = await getRunTerminalTool(tools).execute({
       cols: 120,
       command: `apply_patch <<'PATCH'
-*** Begin Patch
-*** Add File: src/from-terminal.txt
+<patch>
+<add path="src/from-terminal.txt">
 +hello
-*** End Patch
+</add>
+</patch>
 PATCH`,
       cwd: '.',
       rows: 30,
@@ -308,10 +309,11 @@ test('run_terminal rejects cd-prefixed commands outside the allowlist without la
     const result = await getRunTerminalTool(tools).execute({
       cols: 120,
       command: `cd packages/app && applypatch <<EOF
-*** Begin Patch
-*** Add File: local.txt
+<patch>
+<add path="local.txt">
 +scoped
-*** End Patch
+</add>
+</patch>
 EOF`,
       cwd: '.',
       rows: 30,

@@ -35,14 +35,16 @@ async function withHttpServer(
 }
 
 test('parseApplyPatch reads add and update hunks', () => {
-  const parsed = parseApplyPatch(`*** Begin Patch
-*** Add File: src/new.ts
+  const parsed = parseApplyPatch(`<patch>
+<add path="src/new.ts">
 +export const value = 1
-*** Update File: src/existing.ts
+</add>
+<update path="src/existing.ts">
 @@
 -old
 +new
-*** End Patch`)
+</update>
+</patch>`)
 
   assert.equal(parsed.hunks.length, 2)
   assert.equal(parsed.hunks[0]?.type, 'add')
@@ -51,19 +53,21 @@ test('parseApplyPatch reads add and update hunks', () => {
 
 test('parseApplyPatch accepts heredoc-wrapped patch text', () => {
   const wrappedWithCat = parseApplyPatch(`cat <<'EOF'
-*** Begin Patch
-*** Add File: src/cat.txt
+<patch>
+<add path="src/cat.txt">
 +cat
-*** End Patch
+</add>
+</patch>
 EOF`)
   assert.equal(wrappedWithCat.hunks.length, 1)
   assert.equal(wrappedWithCat.hunks[0]?.type, 'add')
 
   const wrappedRaw = parseApplyPatch(`<<PATCH
-*** Begin Patch
-*** Add File: src/raw.txt
+<patch>
+<add path="src/raw.txt">
 +raw
-*** End Patch
+</add>
+</patch>
 PATCH`)
   assert.equal(wrappedRaw.hunks.length, 1)
   assert.equal(wrappedRaw.hunks[0]?.type, 'add')
@@ -71,10 +75,11 @@ PATCH`)
 
 test('parseApplyPatch accepts Codex-style applypatch heredoc wrapper', () => {
   const parsed = parseApplyPatch(`applypatch <<'PATCH'
-*** Begin Patch
-*** Add File: src/alias.txt
+<patch>
+<add path="src/alias.txt">
 +alias
-*** End Patch
+</add>
+</patch>
 PATCH`)
 
   assert.equal(parsed.hunks.length, 1)
@@ -82,11 +87,12 @@ PATCH`)
 })
 
 test('parseApplyPatch accepts first update chunk without explicit context marker', () => {
-  const parsed = parseApplyPatch(`*** Begin Patch
-*** Update File: src/existing.ts
+  const parsed = parseApplyPatch(`<patch>
+<update path="src/existing.ts">
  import value from './value'
 +import other from './other'
-*** End Patch`)
+</update>
+</patch>`)
 
   assert.deepEqual(parsed.hunks, [
     {
@@ -103,13 +109,14 @@ test('parseApplyPatch accepts first update chunk without explicit context marker
 })
 
 test('parseApplyPatch preserves bare empty lines in update hunks as context', () => {
-  const parsed = parseApplyPatch(`*** Begin Patch
-*** Update File: file.txt
+  const parsed = parseApplyPatch(`<patch>
+<update path="file.txt">
 @@
  before
 
  after
-*** End Patch`)
+</update>
+</patch>`)
 
   assert.deepEqual(parsed.hunks, [
     {
@@ -157,8 +164,8 @@ test('applyPatchInWorkspace rejects stale update hunks instead of re-anchoring t
     await assert.rejects(
       applyPatchInWorkspace(
         workspaceRootPath,
-        `*** Begin Patch
-*** Update File: ${targetFilePath}
+        `<patch>
+<update path="${targetFilePath}">
 @@
  import * as fs from 'node:fs/promises';
 +import { createHash } from 'node:crypto';
@@ -173,7 +180,8 @@ test('applyPatchInWorkspace rejects stale update hunks instead of re-anchoring t
  \treadAuthJsonFile,
  \twriteAuthJsonFile
  } from './authService';
-*** End Patch`,
+</update>
+</patch>`,
       ),
       /Failed to find expected lines in src[/\\]accountService\.ts/u,
     )
@@ -227,15 +235,16 @@ test('applyPatchInWorkspace rejects accidental line-wrap differences in hunk con
     await assert.rejects(
       applyPatchInWorkspace(
         workspaceRootPath,
-        `*** Begin Patch
-*** Update File: ${targetFilePath}
+        `<patch>
+<update path="${targetFilePath}">
 @@
  <footer className="rounded-2xl border border-[#F0F2F6] bg-white p-6 shadow-sm">
  <p className="mt-4 text-sm leading-6 text-[#606266]">
  A simple landing page structure for products that need a confident
  first impression.
  </p>
-*** End Patch`,
+</update>
+</patch>`,
       ),
       /Failed to find expected lines in src[/\\]footer\.tsx/u,
     )
@@ -278,8 +287,8 @@ test('applyPatchInWorkspace tolerates indentation-only drift in hunk context', a
   try {
     const result = await applyPatchInWorkspace(
       workspaceRootPath,
-      `*** Begin Patch
-*** Update File: ${targetFilePath}
+      `<patch>
+<update path="${targetFilePath}">
 @@
  <footer className="rounded-2xl border border-[#F0F2F6] bg-white p-6 shadow-sm">
  <p className="mt-4 text-sm leading-6 text-[#606266]">
@@ -289,7 +298,8 @@ test('applyPatchInWorkspace tolerates indentation-only drift in hunk context', a
 +<div className="mt-6 rounded-xl border border-[#F0F2F6] bg-white p-4">
 +<p className="text-sm text-[#606266]">Added through a whitespace-tolerant patch.</p>
 +</div>
-*** End Patch`,
+</update>
+</patch>`,
     )
 
     assert.equal(result.changes.length, 1)
@@ -323,12 +333,13 @@ test('applyPatchInWorkspace rejects update patches that do not change file conte
     await assert.rejects(
       applyPatchInWorkspace(
         workspaceRootPath,
-        `*** Begin Patch
-*** Update File: src/same.ts
+        `<patch>
+<update path="src/same.ts">
 @@
  alpha
  beta
-*** End Patch`,
+</update>
+</patch>`,
       ),
       /Patch did not change src[/\\]same\.ts/u,
     )
@@ -349,12 +360,13 @@ test('applyPatchInWorkspace rejects line-ending-only update patches', async () =
     await assert.rejects(
       applyPatchInWorkspace(
         workspaceRootPath,
-        `*** Begin Patch
-*** Update File: src/same-crlf.ts
+        `<patch>
+<update path="src/same-crlf.ts">
 @@
  alpha
  beta
-*** End Patch`,
+</update>
+</patch>`,
       ),
       /Patch did not change src[/\\]same-crlf\.ts/u,
     )
@@ -384,15 +396,16 @@ test('applyPatchInWorkspace matches CRLF files using LF patch text and writes LF
   try {
     const result = await applyPatchInWorkspace(
       workspaceRootPath,
-      `*** Begin Patch
-*** Update File: src/RouteTable.tsx
+      `<patch>
+<update path="src/RouteTable.tsx">
 @@
  import { SegmentedField } from "../../components/SegmentedField";
  import {
    getRouteOwnerFilterStorageKey,
 +  ROUTE_OWNER_FILTER_ALL,
  } from "./routeTablePreferences";
-*** End Patch`,
+</update>
+</patch>`,
     )
 
     assert.equal(result.changes.length, 1)
@@ -421,13 +434,14 @@ test('applyPatchInWorkspace normalizes mixed line endings around an insertion to
   try {
     const result = await applyPatchInWorkspace(
       workspaceRootPath,
-      `*** Begin Patch
-*** Update File: src/mixed.txt
+      `<patch>
+<update path="src/mixed.txt">
 @@
  beta
 +inserted
  gamma
-*** End Patch`,
+</update>
+</patch>`,
     )
 
     assert.equal(result.changes.length, 1)
@@ -446,14 +460,15 @@ test('applyPatchInWorkspace tolerates tab and space indentation mismatches', asy
   try {
     const result = await applyPatchInWorkspace(
       workspaceRootPath,
-      `*** Begin Patch
-*** Update File: src/tabs.ts
+      `<patch>
+<update path="src/tabs.ts">
 @@
  function value() {
    return 1
  }
 +export const done = true
-*** End Patch`,
+</update>
+</patch>`,
     )
 
     assert.equal(result.changes.length, 1)
@@ -476,14 +491,16 @@ test('applyPatchInWorkspace does not write earlier hunks when a later hunk fails
     await assert.rejects(
       applyPatchInWorkspace(
         workspaceRootPath,
-        `*** Begin Patch
-*** Add File: src/created.ts
+        `<patch>
+<add path="src/created.ts">
 +export const created = true;
-*** Update File: src/existing.ts
+</add>
+<update path="src/existing.ts">
 @@
  missing
 +replacement
-*** End Patch`,
+</update>
+</patch>`,
         {
           onBeforeChange: (input) => {
             beforeChanges.push(input)
@@ -510,17 +527,18 @@ test('applyPatchInWorkspace applies add, update, move, and delete operations', a
   try {
     const result = await applyPatchInWorkspace(
       workspaceRootPath,
-      `*** Begin Patch
-*** Add File: src/new.ts
+      `<patch>
+<add path="src/new.ts">
 +export const created = true;
-*** Update File: src/existing.ts
-*** Move to: src/renamed.ts
+</add>
+<update path="src/existing.ts" move_to="src/renamed.ts">
 @@
  alpha
 -beta
 +gamma
-*** Delete File: src/remove.ts
-*** End Patch`,
+</update>
+<delete path="src/remove.ts" />
+</patch>`,
     )
 
     assert.equal(result.changes.length, 3)
@@ -545,17 +563,18 @@ test('applyPatchInWorkspace reports each path before mutation for checkpoint cap
 
     await applyPatchInWorkspace(
       workspaceRootPath,
-      `*** Begin Patch
-*** Add File: src/new.ts
+      `<patch>
+<add path="src/new.ts">
 +export const created = true;
-*** Update File: src/existing.ts
-*** Move to: src/target.ts
+</add>
+<update path="src/existing.ts" move_to="src/target.ts">
 @@
  alpha
 -beta
 +gamma
-*** Delete File: src/remove.ts
-*** End Patch`,
+</update>
+<delete path="src/remove.ts" />
+</patch>`,
       {
         onBeforeChange: (input) => {
           beforeChanges.push(input)
