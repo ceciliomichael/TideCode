@@ -8,6 +8,11 @@
     "buildResources": "build",
     "output": "release/${version}"
   },
+  "publish": {
+    "provider": "github",
+    "owner": "ceciliomichael",
+    "repo": "echosphereui"
+  },
   "files": [
     "AGENTS.md",
     "dist",
