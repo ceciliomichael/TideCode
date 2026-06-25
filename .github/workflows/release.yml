@@ -15,7 +15,20 @@ permissions:
   contents: write
 
 jobs:
+  create_release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Echosphere ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+
   build_and_publish:
+    needs: create_release
     name: Build and Publish (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     env:
