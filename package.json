@@ -16,11 +16,11 @@
     "dist": "npm run build && npm run icons:generate && electron-builder --publish never",
     "dist:win": "npm run build && npm run icons:generate && electron-builder --win --x64 --publish never",
     "dist:linux": "npm run build && npm run icons:generate && electron-builder --linux AppImage --x64 --publish never",
-    "dist:mac": "npm run build && npm run icons:generate && electron-builder --mac dmg --x64 --arm64 --publish never",
+    "dist:mac": "npm run build && npm run icons:generate && electron-builder --mac dmg --universal --publish never",
     "dist:publish": "npm run build && npm run icons:generate && electron-builder --publish always",
     "dist:win:publish": "npm run build && npm run icons:generate && electron-builder --win --x64 --publish always",
     "dist:linux:publish": "npm run build && npm run icons:generate && electron-builder --linux AppImage --x64 --publish always",
-    "dist:mac:publish": "npm run build && npm run icons:generate && electron-builder --mac dmg --x64 --arm64 --publish always",
+    "dist:mac:publish": "npm run build && npm run icons:generate && electron-builder --mac dmg --universal --publish always",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "test:tools": "node --import tsx --test tests/openaiCompatible/*.test.ts tests/codex/*.test.ts tests/scripts/*.test.ts"
