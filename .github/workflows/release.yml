@@ -30,8 +30,6 @@ jobs:
             dist_command: npm run dist:win:publish
           - os: ubuntu-latest
             dist_command: npm run dist:linux:publish
-          - os: macos-13
-            dist_command: npm run dist:mac:publish
           - os: macos-latest
             dist_command: npm run dist:mac:publish
 
