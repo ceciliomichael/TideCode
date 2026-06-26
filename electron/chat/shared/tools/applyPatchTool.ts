@@ -38,7 +38,7 @@ Prefix every content line with +
 
 <update path="path/to/file" move_to="optional/new/path">
 Patch an existing file. Optionally use move_to to rename.
-Update hunks start with "@@" or "@@ <context>". Hunk body lines must start with:
+Update hunks start with "@@" or "@@ <context>" or "@@ -<start_line>,<count> +<new_start>,<count> @@". Hunk body lines must start with:
 " " (unchanged context)
 "-" (remove line)
 "+" (add line)

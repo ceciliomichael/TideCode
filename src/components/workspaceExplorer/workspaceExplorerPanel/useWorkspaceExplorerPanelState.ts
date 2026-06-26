@@ -483,6 +483,10 @@ export function useWorkspaceExplorerPanelState({
       return
     }
 
+    const newlyExpandedPaths = ancestorDirectoryPaths.filter(
+      (directoryPath) => !expandedDirectories.has(directoryPath)
+    )
+
     setExpandedDirectories((current) => {
       let hasChanges = false
       const nextState = new Set(current)
@@ -497,11 +501,10 @@ export function useWorkspaceExplorerPanelState({
       return hasChanges ? nextState : current
     })
 
-    const missingDirectoryPaths = ancestorDirectoryPaths.filter((directoryPath) => !directoryEntriesByPath[directoryPath])
-    if (missingDirectoryPaths.length > 0) {
-      void Promise.all(missingDirectoryPaths.map((directoryPath) => loadDirectory(directoryPath)))
+    if (newlyExpandedPaths.length > 0) {
+      void Promise.all(newlyExpandedPaths.map((directoryPath) => loadDirectory(directoryPath)))
     }
-  }, [activeFilePath, isOpen, loadDirectory, workspaceRootPath])
+  }, [activeFilePath, expandedDirectories, isOpen, loadDirectory, workspaceRootPath])
 
   useEffect(() => {
     if (!isOpen || !activeFilePath) {
@@ -534,14 +537,9 @@ export function useWorkspaceExplorerPanelState({
       try {
         await onPasteEntry(targetDirectoryRelativePath)
         setErrorMessage(null)
-        const loadOperations = [loadDirectory(ROOT_DIRECTORY_KEY), loadDirectory(targetDirectoryRelativePath)]
-        if (clipboardEntry?.mode === 'cut') {
-          const sourceParentPaths = Array.from(
-            new Set(clipboardEntry.relativePaths.map((relativePath) => getPathDirname(relativePath))),
-          )
-          for (const sourceParentPath of sourceParentPaths) {
-            loadOperations.push(loadDirectory(sourceParentPath))
-          }
+        const loadOperations = [reloadExplorerTreeRef.current({ force: true })]
+        if (targetDirectoryRelativePath !== ROOT_DIRECTORY_KEY) {
+          loadOperations.push(loadDirectory(targetDirectoryRelativePath))
         }
         await Promise.all(loadOperations)
       } catch (error) {
@@ -562,12 +560,15 @@ export function useWorkspaceExplorerPanelState({
           : `${targetDirectoryRelativePath}/${basename}`
         undoStack.recordMove(relativePath, resultRelativePath)
         setErrorMessage(null)
+        const loadOperations = [reloadExplorerTreeRef.current({ force: true })]
+        if (targetDirectoryRelativePath !== ROOT_DIRECTORY_KEY) {
+          loadOperations.push(loadDirectory(targetDirectoryRelativePath))
+        }
         const sourceParentPath = getPathDirname(relativePath)
-        await Promise.all([
-          loadDirectory(ROOT_DIRECTORY_KEY),
-          loadDirectory(sourceParentPath),
-          loadDirectory(targetDirectoryRelativePath),
-        ])
+        if (sourceParentPath !== ROOT_DIRECTORY_KEY) {
+          loadOperations.push(loadDirectory(sourceParentPath))
+        }
+        await Promise.all(loadOperations)
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Failed to move workspace entry.')
       }
@@ -594,7 +595,11 @@ export function useWorkspaceExplorerPanelState({
           await onImportEntry(sourcePath, targetDirectoryRelativePath)
         }
         setErrorMessage(null)
-        await Promise.all([loadDirectory(ROOT_DIRECTORY_KEY), loadDirectory(targetDirectoryRelativePath)])
+        const loadOperations = [reloadExplorerTreeRef.current({ force: true })]
+        if (targetDirectoryRelativePath !== ROOT_DIRECTORY_KEY) {
+          loadOperations.push(loadDirectory(targetDirectoryRelativePath))
+        }
+        await Promise.all(loadOperations)
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Failed to import workspace entry.')
       }
@@ -1018,21 +1023,23 @@ export function useWorkspaceExplorerPanelState({
   const toggleDirectory = useCallback(
     (directory: WorkspaceExplorerEntry) => {
       const directoryPath = toDirectoryKey(directory.relativePath)
+      const isExpanding = !expandedDirectories.has(directoryPath)
+      
       setExpandedDirectories((current) => {
         const nextState = new Set(current)
-        if (nextState.has(directoryPath)) {
-          nextState.delete(directoryPath)
-        } else {
+        if (isExpanding) {
           nextState.add(directoryPath)
+        } else {
+          nextState.delete(directoryPath)
         }
         return nextState
       })
 
-      if (!directoryEntriesByPath[directoryPath]) {
+      if (isExpanding) {
         void loadDirectory(directoryPath)
       }
     },
-    [directoryEntriesByPath, loadDirectory],
+    [expandedDirectories, loadDirectory],
   )
 
   const handleEntryClick = useCallback(

@@ -3,6 +3,7 @@ You are compressing chat history into continuation memory for the next assistant
 Return only the summary text.
 Do not add XML, a title, a preface, an acknowledgement, markdown fences, or commentary.
 Do not add wrappers like "Updated memory", "Summary", or "Here is".
+You must exclusively use the English language for the summary text.
 
 Use CAMP format:
 CAMP = Continuation Active Memory Packet

@@ -145,6 +145,7 @@ const MODEL_SYSTEM_PROMPT = [
   'You write production-grade git commit messages from staged diffs.',
   'Stay strictly grounded in the visible diff and metadata.',
   'Do not output markdown fences, analysis, or commentary.',
+  'You must exclusively use the English language.',
 ].join(' ')
 
 interface ActiveModelSelection {

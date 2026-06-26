@@ -21,6 +21,10 @@ export type ApplyPatchHunk =
 
 export interface ApplyPatchUpdateChunk {
   changeContext?: string
+  offset?: {
+    startLine: number
+    lineCount: number
+  }
   isEndOfFile?: boolean
   newLines: string[]
   oldLines: string[]
@@ -141,8 +145,21 @@ function parseUpdatedFile(lines: string[], startIndex: number) {
       throw new Error(`Expected "@@" chunk header, found: ${lines[index]}`)
     }
 
-    const changeContext = hasExplicitContextHeader ? lines[index].slice(2).trim() || undefined : undefined
+    let changeContext: string | undefined = undefined
+    let offset: { startLine: number; lineCount: number } | undefined = undefined
+
     if (hasExplicitContextHeader) {
+      const headerText = lines[index].slice(2).trim()
+      const unifiedMatch = headerText.match(/^-(\d+)(?:,(\d+))?(?:\s+\+\d+(?:,\d+)?)?(?:\s*@@)?(.*)$/)
+
+      if (unifiedMatch && unifiedMatch[1]) {
+        offset = {
+          startLine: parseInt(unifiedMatch[1], 10),
+          lineCount: unifiedMatch[2] ? parseInt(unifiedMatch[2], 10) : 1
+        }
+      } else {
+        changeContext = headerText || undefined
+      }
       index += 1
     }
 
@@ -202,6 +219,7 @@ function parseUpdatedFile(lines: string[], startIndex: number) {
 
     chunks.push({
       ...(changeContext === undefined ? {} : { changeContext }),
+      ...(offset === undefined ? {} : { offset }),
       ...(isEndOfFile ? { isEndOfFile: true } : {}),
       newLines,
       oldLines,
@@ -381,6 +399,38 @@ function applyUpdateChunks(filePath: string, originalContent: string, chunks: re
   let searchStartIndex = 0
 
   for (const chunk of chunks) {
+    if (chunk.offset) {
+      const startLine0 = chunk.offset.startLine - 1
+      
+      if (chunk.oldLines.length === 0) {
+        const insertionIndex = chunk.isEndOfFile ? originalLines.length : startLine0
+        replacements.push({
+          deleteCount: 0,
+          newLines: [...chunk.newLines],
+          startIndex: insertionIndex,
+        })
+        searchStartIndex = insertionIndex
+        continue
+      }
+      
+      let foundIndex = -1
+      if (startLine0 >= 0 && startLine0 <= originalLines.length) {
+        foundIndex = seekSequence(originalLines, chunk.oldLines, startLine0, Boolean(chunk.isEndOfFile))
+      }
+      
+      if (foundIndex === -1 || foundIndex !== startLine0) {
+        throw new Error(`Failed to validate unified diff offset at line ${chunk.offset.startLine} in ${filePath}`)
+      }
+
+      replacements.push({
+        deleteCount: chunk.oldLines.length,
+        newLines: [...chunk.newLines],
+        startIndex: foundIndex,
+      })
+      searchStartIndex = foundIndex + chunk.oldLines.length
+      continue
+    }
+
     if (chunk.changeContext) {
       const normalize = (str: string) => str.trim().replace(/\s+/g, ' ').replace(/^[-*]\s*/, '')
       const normContext = normalize(chunk.changeContext)

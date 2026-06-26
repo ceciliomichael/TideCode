@@ -184,6 +184,7 @@ function buildCampRepairPrompt(candidateSummary: string) {
     'Rewrite the following into strict CAMP format.',
     'Return only CAMP text with section headings on separate lines and multiline bullets.',
     'Do not include any preface like "Updated memory" or "Summary".',
+    'You must exclusively use the English language.',
     '',
     candidateSummary,
   ].join('\n')
