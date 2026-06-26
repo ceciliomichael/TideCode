@@ -276,6 +276,10 @@ async function main() {
     options.bump = "patch";
   }
 
+  if (options.commit) {
+    ensureCleanWorkingTree(options.allowDirty);
+  }
+
   const nextVersion = options.version || bumpVersion(currentVersion, options.bump);
   const nextTag = `v${nextVersion}`;
 
@@ -309,7 +313,6 @@ async function main() {
     return;
   }
 
-  ensureCleanWorkingTree(options.allowDirty);
   ensureTagDoesNotExist(nextTag);
 
   const filesToAdd = ["package.json"];
