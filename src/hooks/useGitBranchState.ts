@@ -16,7 +16,7 @@ interface UseGitBranchStateResult {
   createBranch: (branchName: string) => Promise<void>
   errorMessage: string | null
   isLoading: boolean
-  refresh: () => Promise<void>
+  refresh: (options?: { forceRefresh?: boolean; silent?: boolean }) => Promise<void>
   isSwitching: boolean
 }
 
@@ -35,7 +35,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
     activeWorkspacePathRef.current = normalizedWorkspacePath
   }, [normalizedWorkspacePath])
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options?: { forceRefresh?: boolean; silent?: boolean }) => {
     const requestWorkspacePath = normalizeGitWorkspacePath(workspacePath)
     if (!requestWorkspacePath) {
       if (requestWorkspacePath === activeWorkspacePathRef.current) {
@@ -53,7 +53,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
 
     try {
       const nextBranchState = await loadGitBranchState(requestWorkspacePath, {
-        forceRefresh: true,
+        forceRefresh: options?.forceRefresh ?? true,
       })
       if (
         requestId !== requestIdRef.current ||
@@ -119,6 +119,39 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
       isCancelled = true
     }
   }, [workspacePath])
+
+
+  useEffect(() => {
+    if (!workspacePath) {
+      return
+    }
+
+    const unsubscribe = window.echosphereWorkspace.onExplorerChange(() => {
+      void refresh({ forceRefresh: true, silent: true })
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [refresh, workspacePath])
+
+  useEffect(() => {
+    if (!workspacePath) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') {
+        return
+      }
+
+      void refresh({ forceRefresh: true, silent: true })
+    }, 5000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [refresh, workspacePath])
 
   const changeBranch = useCallback(
     async (branchName: string) => {

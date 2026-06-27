@@ -21,6 +21,7 @@ import {
 interface WorkspaceFileEditorProps {
   fileName: string
   gitFileDiff: GitFileDiff | null
+  hasRepository: boolean
   onOpenMarkdownPreview?: () => void
   onOpenSvgPreview?: () => void
   originalContent: string | null
@@ -44,6 +45,7 @@ function makeSearchOptions(
 export function useWorkspaceFileEditorState({
   fileName,
   gitFileDiff,
+  hasRepository,
   onOpenMarkdownPreview,
   onOpenSvgPreview,
   originalContent,
@@ -132,15 +134,15 @@ export function useWorkspaceFileEditorState({
   )
   const lineStatusBaselineContent = gitFileDiff ? gitFileDiff.oldContent : originalContent
   const lineStatusByLineNumber = useMemo(
-    () => buildWorkspaceEditorLineStatusMap(lineStatusBaselineContent, value),
-    [lineStatusBaselineContent, value],
+    () => hasRepository ? buildWorkspaceEditorLineStatusMap(lineStatusBaselineContent, value) : new Map(),
+    [hasRepository, lineStatusBaselineContent, value],
   )
   const gutterWidthCh = Math.max(5, String(totalLineCount).length + 2)
   const highlightedCodeClassName = wordWrapEnabled ? 'block min-w-full w-full bg-transparent' : 'block w-fit min-w-full bg-transparent'
   const highlightedLineClassName = wordWrapEnabled ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : 'whitespace-pre'
   const textAreaClassName = [
     'workspace-editor-scrollbar workspace-editor-textarea absolute inset-0 h-full min-h-0 w-full resize-none border-0 bg-transparent px-3 py-1.5 font-mono text-[12px] leading-5 outline-none',
-    wordWrapEnabled ? 'overflow-y-auto overflow-x-hidden whitespace-pre-wrap [overflow-wrap:anywhere]' : 'overflow-auto whitespace-pre',
+    wordWrapEnabled ? 'overflow-y-scroll overflow-x-hidden whitespace-pre-wrap [overflow-wrap:anywhere]' : 'overflow-scroll whitespace-pre',
   ].join(' ')
   const lineNumberRows = useMemo(
     () =>

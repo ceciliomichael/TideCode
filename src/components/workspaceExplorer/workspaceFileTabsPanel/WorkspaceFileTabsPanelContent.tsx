@@ -9,6 +9,7 @@ import { isSvgPreviewablePath } from '../../../lib/svg-preview'
 interface WorkspaceFileTabsPanelContentProps {
   activeTab: WorkspaceTab
   gitFileDiffs: readonly GitFileDiff[]
+    hasRepository: boolean
   tabs: readonly WorkspaceTab[]
   onOpenMarkdownPreview?: () => void
   onOpenSvgPreview?: () => void
@@ -32,6 +33,7 @@ function findGitFileDiff(gitFileDiffs: readonly GitFileDiff[], relativePath: str
 export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPanelContent({
   activeTab,
   gitFileDiffs,
+  hasRepository,
   tabs,
   onOpenMarkdownPreview,
   onOpenSvgPreview,
@@ -159,6 +161,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
     <WorkspaceFileEditor
       fileName={activeTab.fileName}
       gitFileDiff={findGitFileDiff(gitFileDiffs, activeTab.relativePath)}
+        hasRepository={hasRepository}
       onOpenMarkdownPreview={onOpenMarkdownPreview}
       onOpenSvgPreview={isSvgPreviewablePath(activeTab.relativePath) ? onOpenSvgPreview : undefined}
       originalContent={activeTab.originalContent}

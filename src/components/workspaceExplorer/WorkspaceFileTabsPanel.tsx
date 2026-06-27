@@ -18,6 +18,7 @@ import { WorkspaceFileTabsPanelContent } from './workspaceFileTabsPanel/Workspac
 interface WorkspaceFileTabsPanelProps {
   activeTabKey: string | null
   gitFileDiffs: readonly GitFileDiff[]
+  hasRepository: boolean
   isOpen: boolean
   onCloseTab: (tabKey: string) => void
   onFileContentChange: (relativePath: string, content: string) => void
@@ -34,6 +35,7 @@ interface WorkspaceFileTabsPanelProps {
 export function WorkspaceFileTabsPanel({
   activeTabKey,
   gitFileDiffs,
+  hasRepository,
   isOpen,
   onCloseTab,
   onFileContentChange,
@@ -403,6 +405,7 @@ export function WorkspaceFileTabsPanel({
           <WorkspaceFileTabsPanelContent
             activeTab={activeTab}
             gitFileDiffs={gitFileDiffs}
+              hasRepository={hasRepository}
             tabs={tabs}
             onFileContentChange={onFileContentChange}
             onOpenMarkdownPreview={openMarkdownPreviewForActiveFile}

@@ -348,6 +348,22 @@ export function useWorkspaceTerminalSessionState({
     terminalContextMenuListenerRef.current = handleTerminalContextMenu;
     hostElement.addEventListener("contextmenu", handleTerminalContextMenu);
     terminal.attachCustomKeyEventHandler((event) => {
+      if (event.key === "Enter" && (event.shiftKey || event.altKey)) {
+        if (event.type === "keydown") {
+          const activeSessionId = activeSessionIdRef.current;
+          if (activeSessionId !== null) {
+            const sequence = "\x1b\r"; // Alt+Enter is widely recognized by prompt_toolkit as newline
+            const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath();
+            void window.echosphereTerminal.writeToSession({
+              data: sequence,
+              sessionId: activeSessionId,
+              workspaceRootPath,
+            }).catch(console.error);
+          }
+        }
+        return false;
+      }
+
       const isCopyShortcut =
         (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "c";
       if (!isCopyShortcut) {
@@ -440,7 +456,7 @@ export function useWorkspaceTerminalSessionState({
       tabIndex++;
     }
 
-    nextTabIndexRef.current = tabIndex + 1; // Keeping it updated just in case
+    nextTabIndexRef.current = tabIndex + 1;
     const tabKey = createTerminalTabKey(workspaceKey, tabIndex);
     const nextTab: TerminalTabState = {
       errorMessage: null,

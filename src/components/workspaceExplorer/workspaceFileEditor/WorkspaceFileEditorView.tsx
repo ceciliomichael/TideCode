@@ -262,7 +262,9 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
           />
           <div
             ref={refs.highlightedLayerRef}
-            className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-1.5 font-mono text-[12px] leading-5 text-foreground workspace-editor-highlighted-layer"
+            className={`pointer-events-none absolute inset-0 px-3 py-1.5 font-mono text-[12px] leading-5 text-foreground workspace-editor-highlighted-layer workspace-editor-scrollbar ${
+              wordWrapEnabled ? 'overflow-y-scroll overflow-x-hidden' : 'overflow-scroll'
+            }`}
             style={{ paddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px` }}
             aria-hidden="true"
           >

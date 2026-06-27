@@ -862,6 +862,7 @@ export function ChatInterfaceContent({
             <WorkspaceFileTabsPanel
               activeTabKey={workspaceState.activeWorkspaceTabKey}
               gitFileDiffs={gitDiffSnapshot.snapshot.fileDiffs}
+                hasRepository={gitBranchState.branchState.hasRepository}
               isOpen={workspaceState.isWorkspaceTabsPanelOpen}
               onCloseTab={workspaceState.handleCloseWorkspaceTab}
               onFileContentChange={workspaceState.handleWorkspaceFileContentChange}

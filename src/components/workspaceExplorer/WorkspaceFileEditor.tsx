@@ -6,6 +6,7 @@ import { useWorkspaceFileEditorState } from './workspaceFileEditor/useWorkspaceF
 interface WorkspaceFileEditorProps {
   fileName: string
   gitFileDiff: GitFileDiff | null
+  hasRepository: boolean
   onOpenMarkdownPreview?: () => void
   onOpenSvgPreview?: () => void
   originalContent: string | null
@@ -17,6 +18,7 @@ interface WorkspaceFileEditorProps {
 export const WorkspaceFileEditor = memo(function WorkspaceFileEditor({
   fileName,
   gitFileDiff,
+  hasRepository,
   onOpenMarkdownPreview,
   onOpenSvgPreview,
   originalContent,
@@ -27,6 +29,7 @@ export const WorkspaceFileEditor = memo(function WorkspaceFileEditor({
   const editorState = useWorkspaceFileEditorState({
     fileName,
     gitFileDiff,
+    hasRepository,
     onOpenMarkdownPreview,
     onOpenSvgPreview,
     originalContent,

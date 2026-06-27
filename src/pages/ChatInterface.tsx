@@ -116,7 +116,7 @@ export function ChatInterface({
   })
   const gitDiffSnapshot = useGitDiffSnapshot({
     hasRepository,
-    pollingEnabled: isRightPanelOpen,
+    pollingEnabled: true,
     workspacePath: activeWorkspacePath,
   })
   const sidebarOpenChangeHandlerRef = useRef<(nextSidebarOpen: boolean) => void>(() => undefined)
