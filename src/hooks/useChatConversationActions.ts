@@ -267,6 +267,21 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
         throw caughtError
       }
     },
+    pinConversation: async (conversationId: string, isPinned: boolean) => {
+      clearError()
+
+      try {
+        const conversation = await window.echosphereHistory.updateConversationPinned(conversationId, isPinned)
+        upsertConversation(conversation)
+        if (conversationId === activeConversationId) {
+          applyConversation(conversation)
+        }
+      } catch (caughtError) {
+        console.error(caughtError)
+        setError('Unable to pin that thread.')
+        throw caughtError
+      }
+    },
     renameFolder: async (folderId: string, name: string) => {
       clearError()
 

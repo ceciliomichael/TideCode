@@ -11,6 +11,7 @@ export interface WorkspaceUiSession {
   activeTabKey: string | null;
   isExplorerOpen: boolean;
   isTerminalOpen: boolean;
+  isTerminalFullScreen: boolean;
   isRightPanelOpen: boolean;
   isTabsVisible: boolean;
   rightPanelTab: ChatInterfaceRightPanelTab;
@@ -69,7 +70,6 @@ export interface ChatWorkspaceUiState {
     targetDirectoryRelativePath: string,
   ) => Promise<void>;
   handleRefreshWorkspaceFileTabs: () => Promise<void>;
-  handleTerminalOpenChange: (nextOpen: boolean) => void;
   handleRenameWorkspaceEntry: (
     relativePath: string,
     nextRelativePath: string,
@@ -78,6 +78,8 @@ export interface ChatWorkspaceUiState {
   handleSourceControlPanelWidthChange: (nextWidth: number) => void;
   handleSourceControlPanelWidthCommit: (nextWidth: number) => void;
   handleSidebarOpenChange: (nextSidebarOpen: boolean) => void;
+  handleTerminalFullScreenChange: (nextFullScreen: boolean) => void;
+  handleTerminalOpenChange: (nextOpen: boolean) => void;
   handleToggleExplorerPanel: () => void;
   handleWorkspaceEditorWidthChange: (nextWidth: number) => void;
   handleWorkspaceEditorWidthCommit: (nextWidth: number) => void;
@@ -88,6 +90,7 @@ export interface ChatWorkspaceUiState {
     content: string,
   ) => void;
   isExplorerOpen: boolean;
+  isTerminalFullScreen: boolean;
   isTerminalOpen: boolean;
   isWorkspaceTabsPanelOpen: boolean;
   sourceControlPanelWidth: number;

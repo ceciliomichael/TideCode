@@ -93,6 +93,8 @@ const historyApi: EchosphereHistoryApi = {
     ipcRenderer.invoke('history:replaceMessages', input),
   updateConversationTitle: (conversationId: string, title: string) =>
     ipcRenderer.invoke('history:updateTitle', conversationId, title),
+  updateConversationPinned: (conversationId: string, isPinned: boolean) =>
+    ipcRenderer.invoke('history:updatePinned', conversationId, isPinned),
   deleteConversation: (conversationId: string) => ipcRenderer.invoke('history:delete', conversationId),
 }
 

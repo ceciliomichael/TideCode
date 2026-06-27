@@ -6,11 +6,13 @@ import type {
 } from '../../types/chat'
 import { FolderOpen } from 'lucide-react'
 import { ConversationFolderSection } from './ConversationFolderSection'
+import { PINNED_FOLDER_ID } from '../../hooks/chatHistoryViewModels'
 
 interface ConversationHistoryListProps {
   conversationGroups: ConversationGroupPreview[]
   onCreateConversation: (folderId?: string | null) => void
   onDeleteConversation: (conversationId: string) => void
+  onPinConversation: (conversationId: string, isPinned: boolean) => void
   onDeleteFolder: (folderId: string) => Promise<void>
   onReorderFolder: (input: ReorderConversationFolderInput) => Promise<void>
   onRenameFolder: (folderId: string, name: string) => Promise<void>
@@ -63,6 +65,7 @@ export function ConversationHistoryList({
   onCreateConversation,
   onSelectConversation,
   onDeleteConversation,
+  onPinConversation,
   onDeleteFolder,
   onReorderFolder,
   onRenameFolder,
@@ -89,7 +92,7 @@ export function ConversationHistoryList({
   }, [collapsedFolderState])
 
   function handleToggleFolder(folderId: string | null) {
-    const stateKey = folderId ?? 'unfiled'
+    const stateKey = folderId ?? 'chats'
     setCollapsedFolderState((currentValue) => ({
       ...currentValue,
       [stateKey]: !currentValue[stateKey],
@@ -179,28 +182,19 @@ export function ConversationHistoryList({
     })
   }
 
+  const hasCustomFolders = conversationGroups.some(
+    (group) => group.folder.id !== null && group.folder.id !== PINNED_FOLDER_ID
+  )
+  const showList = hasCustomFolders || hasAnyConversations
+
   return (
     <div className="flex min-h-full flex-col pb-1">
-      {!hasAnyConversations ? (
-        <div className="flex min-h-full flex-1 items-center justify-center px-4 py-6 text-center">
-          <div className="flex max-w-[240px] flex-col items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-muted text-subtle-foreground">
-              <FolderOpen size={22} />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-foreground">No project folders yet</p>
-              <p className="text-sm leading-6 text-subtle-foreground">
-                Add a project folder to start a thread
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : (
+      {showList ? (
         <div>
           {conversationGroups.map((group) => {
-            const stateKey = group.folder.id ?? 'unfiled'
+            const stateKey = group.folder.id ?? 'chats'
             const folderId = group.folder.id
-            const isDraggable = folderId !== null
+            const isDraggable = folderId !== null && folderId !== PINNED_FOLDER_ID
             const showDropIndicator =
               isDraggable && dropTarget?.folderId === folderId && draggedFolderId !== null && draggedFolderId !== folderId
 
@@ -215,21 +209,21 @@ export function ConversationHistoryList({
                 onCreateConversation={onCreateConversation}
                 onDragEnd={handleDragEnd}
                 onDragOver={
-                  folderId
+                  isDraggable && folderId
                     ? (event) => {
                         handleDragOver(event, folderId)
                       }
                     : undefined
                 }
                 onDragStart={
-                  folderId
+                  isDraggable && folderId
                     ? (event) => {
                         handleDragStart(event, folderId)
                       }
                     : undefined
                 }
                 onDrop={
-                  folderId
+                  isDraggable && folderId
                     ? (event) => {
                         handleDrop(event, folderId)
                       }
@@ -241,11 +235,28 @@ export function ConversationHistoryList({
                 onSelectFolder={onSelectFolder}
                 onSelectConversation={onSelectConversation}
                 onDeleteConversation={onDeleteConversation}
+                onPinConversation={onPinConversation}
               />
             )
           })}
         </div>
-      )}
+      ) : null}
+
+      {!hasCustomFolders ? (
+        <div className="flex flex-1 items-center justify-center px-4 py-8 text-center mt-2">
+          <div className="flex max-w-[240px] flex-col items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-muted text-subtle-foreground">
+              <FolderOpen size={22} />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-foreground">No project folders yet</p>
+              <p className="text-sm leading-6 text-subtle-foreground">
+                Add a project folder to start a thread
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

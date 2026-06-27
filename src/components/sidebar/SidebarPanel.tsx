@@ -11,6 +11,7 @@ interface SidebarPanelProps {
   onCreateFolder: () => Promise<void>
   onCreateWorkspaceFolderFromPath: (folderPath: string) => Promise<void>
   onDeleteConversation: (conversationId: string) => void
+  onPinConversation: (conversationId: string, isPinned: boolean) => void
   onDeleteFolder: (folderId: string) => Promise<void>
   onReorderFolder: (input: ReorderConversationFolderInput) => Promise<void>
   onOpenSettings: () => void
@@ -25,6 +26,7 @@ export function SidebarPanel({
   onCreateConversation,
   onCreateWorkspaceFolderFromPath,
   onDeleteConversation,
+  onPinConversation,
   onDeleteFolder,
   onReorderFolder,
   onOpenSettings,
@@ -102,6 +104,7 @@ export function SidebarPanel({
           conversationGroups={conversationGroups}
           onCreateConversation={onCreateConversation}
           onDeleteConversation={onDeleteConversation}
+          onPinConversation={onPinConversation}
           onDeleteFolder={onDeleteFolder}
           onReorderFolder={onReorderFolder}
           onRenameFolder={onRenameFolder}

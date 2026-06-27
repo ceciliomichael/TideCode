@@ -1,4 +1,4 @@
-import { Check, Trash2 } from 'lucide-react'
+import { Check, Trash2, Pin, PinOff } from 'lucide-react'
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { LuLoader } from 'react-icons/lu'
 import type { ConversationPreview } from '../../types/chat'
@@ -7,6 +7,7 @@ import { Tooltip } from '../Tooltip'
 interface ConversationHistoryItemProps {
   conversation: ConversationPreview
   onDeleteConversation: (conversationId: string) => void
+  onPinConversation: (conversationId: string, isPinned: boolean) => void
   onSelectConversation: (conversationId: string) => void
 }
 
@@ -14,6 +15,7 @@ export function ConversationHistoryItem({
   conversation,
   onSelectConversation,
   onDeleteConversation,
+  onPinConversation,
 }: ConversationHistoryItemProps) {
   const [isDeleteConfirming, setIsDeleteConfirming] = useState(false)
   const deleteButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -54,6 +56,13 @@ export function ConversationHistoryItem({
     setIsDeleteConfirming(true)
   }
 
+  function handlePinClick(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault()
+    event.stopPropagation()
+
+    onPinConversation(conversation.id, !conversation.isPinned)
+  }
+
   return (
     <div
       className={[
@@ -92,6 +101,26 @@ export function ConversationHistoryItem({
             </span>
           )
         ) : null}
+
+        {!isDeleteConfirming && (
+          <Tooltip content={conversation.isPinned ? 'Unpin thread' : 'Pin thread'} side="top">
+            <button
+              type="button"
+              onClick={handlePinClick}
+              className={[
+                'h-8 w-8 items-center justify-center rounded-full origin-center transform-gpu transition-[color,opacity,transform] duration-150 ease-out',
+                conversation.isPinned ? 'flex text-foreground' : 'hidden text-subtle-foreground hover:scale-110 hover:text-foreground group-hover:flex'
+              ].join(' ')}
+              aria-label={conversation.isPinned ? `Unpin thread ${conversation.title}` : `Pin thread ${conversation.title}`}
+            >
+              {conversation.isPinned ? (
+                <PinOff size={15} strokeWidth={2.4} className="block" />
+              ) : (
+                <Pin size={15} strokeWidth={2} className="block" />
+              )}
+            </button>
+          </Tooltip>
+        )}
 
         <Tooltip content={isDeleteConfirming ? 'Click again to delete thread' : 'Delete thread'} side="right">
           <button

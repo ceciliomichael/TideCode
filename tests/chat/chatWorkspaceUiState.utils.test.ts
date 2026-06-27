@@ -18,7 +18,7 @@ test("filed project threads share the same terminal workspace key", () => {
   assert.equal(secondKey, "/projects/atlas");
 });
 
-test("unfiled threads keep separate terminal workspace keys when no project path is available", () => {
+test("chats threads keep separate terminal workspace keys when no project path is available", () => {
   const firstKey = getTerminalWorkspaceKey({
     activeConversationId: "conversation-a",
     activeWorkspacePath: null,
@@ -30,8 +30,8 @@ test("unfiled threads keep separate terminal workspace keys when no project path
     selectedFolderId: null,
   });
 
-  assert.equal(firstKey, "unfiled:conversation-a");
-  assert.equal(secondKey, "unfiled:conversation-b");
+  assert.equal(firstKey, "chats:conversation-a");
+  assert.equal(secondKey, "chats:conversation-b");
 });
 
 test("terminal workspace key falls back to the global key when no workspace is available", () => {

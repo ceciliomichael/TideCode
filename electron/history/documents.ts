@@ -207,6 +207,7 @@ export function normalizeConversationRecord(
             ...(message.runCheckpoint ? { runCheckpoint: message.runCheckpoint } : {}),
           },
     ),
+    isPinned: Boolean(conversation.isPinned),
   }
 }
 
@@ -220,6 +221,7 @@ export function buildConversationSummary(conversation: ConversationRecord): Conv
     updatedAt: conversation.updatedAt,
     messageCount: conversation.messages.length,
     folderId: conversation.folderId,
+    isPinned: conversation.isPinned,
   }
 }
 

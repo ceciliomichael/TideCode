@@ -83,6 +83,7 @@ import {
   renameStoredFolder,
   replaceStoredMessages,
   updateStoredConversationTitle,
+  updateStoredConversationPinned,
 } from './history/store'
 import { flushStoredSettingsUpdates, getStoredSettings, updateStoredSettings } from './settings/store'
 import { serializeInitialSettingsArg } from './settings/bootstrap'
@@ -401,6 +402,9 @@ function registerHistoryHandlers() {
   )
   ipcMain.handle('history:updateTitle', async (_event, conversationId: string, title: string) =>
     updateStoredConversationTitle(conversationId, title),
+  )
+  ipcMain.handle('history:updatePinned', async (_event, conversationId: string, isPinned: boolean) =>
+    updateStoredConversationPinned(conversationId, isPinned),
   )
   ipcMain.handle('history:delete', async (_event, conversationId: string) =>
     deleteStoredConversation(conversationId),

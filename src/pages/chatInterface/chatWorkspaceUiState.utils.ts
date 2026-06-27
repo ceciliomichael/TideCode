@@ -26,7 +26,7 @@ export function getTerminalWorkspaceKey({
   }
 
   if (selectedFolderId === null && activeConversationId) {
-    return `unfiled:${activeConversationId}`;
+    return `chats:${activeConversationId}`;
   }
 
   return workspaceKey;

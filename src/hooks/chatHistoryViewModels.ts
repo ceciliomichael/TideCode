@@ -15,7 +15,7 @@ import type {
 const relativeTimeFormatterCache = new Map<AppLanguage, Intl.RelativeTimeFormat>()
 const shortDateFormatterCache = new Map<AppLanguage, Intl.DateTimeFormat>()
 
-export const UNFILED_FOLDER_NAME = 'Unfiled'
+export const CHATS_FOLDER_NAME = 'Chats'
 
 function getRelativeTimeFormatter(language: AppLanguage) {
   const cachedFormatter = relativeTimeFormatterCache.get(language)
@@ -44,10 +44,10 @@ export function getSelectedFolderName(
   selectedFolderId: string | null,
 ) {
   if (selectedFolderId === null) {
-    return UNFILED_FOLDER_NAME
+    return CHATS_FOLDER_NAME
   }
 
-  return folderSummaries.find((folder) => folder.id === selectedFolderId)?.name ?? UNFILED_FOLDER_NAME
+  return folderSummaries.find((folder) => folder.id === selectedFolderId)?.name ?? CHATS_FOLDER_NAME
 }
 
 function normalizeFolderPath(folderPath: string) {
@@ -138,8 +138,11 @@ function mapConversationPreview(
     updatedAtLabel: formatUpdatedAtLabel(summary.updatedAt, language),
     folderId: summary.folderId,
     isActive: summary.id === activeConversationId,
+    isPinned: summary.isPinned,
   }
 }
+
+export const PINNED_FOLDER_ID = 'pinned'
 
 export function buildConversationGroups(
   folderSummaries: ConversationFolderSummary[],
@@ -151,41 +154,75 @@ export function buildConversationGroups(
 ): ConversationGroupPreview[] {
   const groupedConversations = new Map<string | null, ConversationPreview[]>()
   groupedConversations.set(null, [])
+  const pinnedConversations: ConversationPreview[] = []
 
   for (const folder of folderSummaries) {
     groupedConversations.set(folder.id, [])
   }
 
+  const activeConversationIsPinned =
+    activeConversationId !== null &&
+    conversationSummaries.find((c) => c.id === activeConversationId)?.isPinned === true
+
   for (const conversation of conversationSummaries) {
     const preview = mapConversationPreview(conversation, activeConversationId, runningConversationIds, language)
-    const targetFolderId =
-      conversation.folderId !== null && groupedConversations.has(conversation.folderId) ? conversation.folderId : null
+    
+    if (conversation.isPinned) {
+      pinnedConversations.push(preview)
+    } else {
+      const targetFolderId =
+        conversation.folderId !== null && groupedConversations.has(conversation.folderId) ? conversation.folderId : null
 
-    groupedConversations.get(targetFolderId)?.push(preview)
+      groupedConversations.get(targetFolderId)?.push(preview)
+    }
   }
 
-  return [
-    {
-      folder: {
-        id: null,
-        name: UNFILED_FOLDER_NAME,
-        path: null,
-        conversationCount: groupedConversations.get(null)?.length ?? 0,
-        isSelected: selectedFolderId === null,
-      },
-      conversations: groupedConversations.get(null) ?? [],
+  const pinnedGroup = {
+    folder: {
+      id: PINNED_FOLDER_ID,
+      name: 'Pinned',
+      path: null,
+      conversationCount: pinnedConversations.length,
+      isSelected: selectedFolderId === PINNED_FOLDER_ID || activeConversationIsPinned,
     },
-    ...folderSummaries.map((folder) => ({
-      folder: {
-        id: folder.id,
-        name: folder.name,
-        path: folder.path,
-        conversationCount: groupedConversations.get(folder.id)?.length ?? 0,
-        isSelected: selectedFolderId === folder.id,
-      },
-      conversations: groupedConversations.get(folder.id) ?? [],
-    })),
-  ]
+    conversations: pinnedConversations,
+  }
+
+  const chatsGroup = {
+    folder: {
+      id: null,
+      name: CHATS_FOLDER_NAME,
+      path: null,
+      conversationCount: groupedConversations.get(null)?.length ?? 0,
+      isSelected: selectedFolderId === null && !activeConversationIsPinned,
+    },
+    conversations: groupedConversations.get(null) ?? [],
+  }
+
+  const folderGroups = folderSummaries.map((folder) => ({
+    folder: {
+      id: folder.id,
+      name: folder.name,
+      path: folder.path,
+      conversationCount: groupedConversations.get(folder.id)?.length ?? 0,
+      isSelected: selectedFolderId === folder.id && !activeConversationIsPinned,
+    },
+    conversations: groupedConversations.get(folder.id) ?? [],
+  }))
+
+  const groups = []
+  
+  if (pinnedConversations.length > 0) {
+    groups.push(pinnedGroup)
+  }
+
+  // Push project folders first, then the Chats group at the bottom
+  groups.push(...folderGroups)
+  groups.push(chatsGroup)
+
+  console.log('Sidebar groups order:', groups.map((g) => g.folder.name))
+
+  return groups
 }
 
 export function buildConversationSummary(conversation: ConversationRecord): ConversationSummary {
@@ -198,6 +235,7 @@ export function buildConversationSummary(conversation: ConversationRecord): Conv
     updatedAt: conversation.updatedAt,
     messageCount: conversation.messages.length,
     folderId: conversation.folderId,
+    isPinned: conversation.isPinned,
   }
 }
 

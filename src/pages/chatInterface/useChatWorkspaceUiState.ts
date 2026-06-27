@@ -88,6 +88,7 @@ export function useChatWorkspaceUiState({
   const [conversationDiffPanelWidth, setConversationDiffPanelWidth] =
     useState(diffPanelWidth);
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
+  const [isTerminalFullScreen, setIsTerminalFullScreen] = useState(false);
   const workspaceUiSessionsRef = useRef<Record<string, WorkspaceUiSession>>({});
   const activeWorkspaceUiKey = toWorkspaceScopedKey(activeWorkspacePath);
   const previousWorkspaceUiKeyRef = useRef(activeWorkspaceUiKey);
@@ -131,6 +132,7 @@ export function useChatWorkspaceUiState({
       activeWorkspaceUiKey,
       isExplorerOpen,
       isTerminalOpen,
+      isTerminalFullScreen,
       isRightPanelOpen,
       isWorkspaceTabsPanelVisible,
       onRightPanelOpenChange,
@@ -140,6 +142,7 @@ export function useChatWorkspaceUiState({
       setActiveWorkspaceTabKey,
       setIsExplorerOpen,
       setIsTerminalOpen,
+      setIsTerminalFullScreen,
       setIsWorkspaceTabsPanelVisible,
       setWorkspaceFileTabs,
       workspaceFileTabs,
@@ -151,6 +154,7 @@ export function useChatWorkspaceUiState({
     activeWorkspaceUiKey,
     isExplorerOpen,
     isTerminalOpen,
+    isTerminalFullScreen,
     isRightPanelOpen,
     isWorkspaceTabsPanelVisible,
     onRightPanelOpenChange,
@@ -166,6 +170,7 @@ export function useChatWorkspaceUiState({
       activeWorkspaceUiKey,
       isExplorerOpen,
       isTerminalOpen,
+      isTerminalFullScreen,
       isRightPanelOpen,
       isWorkspaceTabsPanelVisible,
       rightPanelTab,
@@ -178,6 +183,7 @@ export function useChatWorkspaceUiState({
     activeWorkspaceUiKey,
     isExplorerOpen,
     isTerminalOpen,
+    isTerminalFullScreen,
     isRightPanelOpen,
     isWorkspaceTabsPanelVisible,
     rightPanelTab,
@@ -763,6 +769,10 @@ export function useChatWorkspaceUiState({
     setIsTerminalOpen(nextOpen);
   }, []);
 
+  const handleTerminalFullScreenChange = useCallback((nextFullScreen: boolean) => {
+    setIsTerminalFullScreen(nextFullScreen);
+  }, []);
+
   const handleSourceControlPanelWidthChange = useCallback(
     (nextWidth: number) => {
       setSourceControlPanelWidth(nextWidth);
@@ -1015,9 +1025,10 @@ export function useChatWorkspaceUiState({
     handleRefreshWorkspaceFileTabs,
     handleRenameWorkspaceEntry,
     handleSelectWorkspaceTab,
+    handleSidebarOpenChange,
     handleSourceControlPanelWidthChange,
     handleSourceControlPanelWidthCommit,
-    handleSidebarOpenChange,
+    handleTerminalFullScreenChange,
     handleTerminalOpenChange,
     handleToggleExplorerPanel,
     handleWorkspaceEditorWidthChange,
@@ -1026,6 +1037,7 @@ export function useChatWorkspaceUiState({
     handleWorkspaceExplorerWidthCommit,
     handleWorkspaceFileContentChange,
     isExplorerOpen,
+    isTerminalFullScreen,
     isTerminalOpen,
     isWorkspaceTabsPanelOpen,
     sourceControlPanelWidth,

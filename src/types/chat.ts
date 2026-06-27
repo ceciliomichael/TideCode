@@ -134,6 +134,7 @@ export interface ConversationSummary {
   updatedAt: number
   messageCount: number
   folderId: string | null
+  isPinned?: boolean
 }
 
 export interface ConversationPreview {
@@ -144,6 +145,7 @@ export interface ConversationPreview {
   folderId: string | null
   isActive?: boolean
   hasRunningTask?: boolean
+  isPinned?: boolean
 }
 
 export interface ConversationRecord {
@@ -155,6 +157,7 @@ export interface ConversationRecord {
   updatedAt: number
   folderId: string | null
   messages: Message[]
+  isPinned?: boolean
 }
 
 export interface ConversationFolderRecord {
@@ -863,6 +866,7 @@ export interface EchosphereHistoryApi {
   replaceMessages: (input: ReplaceConversationMessagesInput) => Promise<ConversationRecord>
   updateConversationTitle: (conversationId: string, title: string) => Promise<ConversationRecord>
   deleteConversation: (conversationId: string) => Promise<void>
+  updateConversationPinned: (conversationId: string, isPinned: boolean) => Promise<ConversationRecord>
 }
 
 export interface EchosphereSettingsApi {

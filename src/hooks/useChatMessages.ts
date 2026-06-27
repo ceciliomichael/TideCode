@@ -642,6 +642,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     selectConversation,
     selectFolder,
     renameConversationTitle: conversationActions.renameConversationTitle,
+    pinConversation: conversationActions.pinConversation,
     renameFolder: conversationActions.renameFolder,
     setError: sessionState.setError,
     setEditComposerAttachments: composerState.setEditComposerAttachments,

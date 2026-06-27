@@ -307,6 +307,13 @@ export function ChatInterfaceContent({
     [chatMessages, clearQueuedMessages],
   )
 
+  const handlePinConversation = useCallback(
+    (conversationId: string, isPinned: boolean) => {
+      void chatMessages.pinConversation(conversationId, isPinned)
+    },
+    [chatMessages],
+  )
+
   const handleDeleteFolder = useCallback(
     async (folderId: string) => {
       clearQueuedMessages()
@@ -474,6 +481,7 @@ export function ChatInterfaceContent({
           onCreateConversation={handleCreateConversation}
           onCreateWorkspaceFolderFromPath={handleCreateWorkspaceFolderFromPath}
           onDeleteConversation={handleDeleteConversation}
+          onPinConversation={handlePinConversation}
           onDeleteFolder={handleDeleteFolder}
           onReorderFolder={handleReorderFolder}
           onOpenSettings={onOpenSettings}
@@ -695,8 +703,12 @@ export function ChatInterfaceContent({
         />
 
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-hidden">
-            <div className="flex min-h-0 w-full flex-1 flex-col">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div
+              className="flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-hidden"
+              style={{ display: workspaceState.isTerminalFullScreen && workspaceState.isTerminalOpen ? 'none' : 'flex' }}
+            >
+              <div className="flex min-h-0 w-full flex-1 flex-col">
               {isKanbanBoardOpen ? (
                 <KanbanBoard
                   workspacePath={activeWorkspacePath}
@@ -833,6 +845,18 @@ export function ChatInterfaceContent({
                 </div>
               </div>
             ) : null}
+            </div>
+            <WorkspaceTerminalPanel
+              isOpen={workspaceState.isTerminalOpen}
+              onClose={() => workspaceState.handleTerminalOpenChange(false)}
+              onHeightCommit={interfaceController.handleTerminalPanelHeightCommit}
+              resolvedTheme={resolvedTheme}
+              storedHeight={workspaceState.terminalPanelHeight}
+              workspaceKey={workspaceState.activeTerminalWorkspaceKey}
+              workspacePath={workspaceState.activeWorkspacePath}
+              isFullScreen={workspaceState.isTerminalFullScreen}
+              onFullScreenChange={workspaceState.handleTerminalFullScreenChange}
+            />
           </div>
           {workspaceState.isWorkspaceTabsPanelOpen ? (
             <WorkspaceFileTabsPanel
@@ -923,15 +947,6 @@ export function ChatInterfaceContent({
           ) : null}
 
         </div>
-        <WorkspaceTerminalPanel
-          isOpen={workspaceState.isTerminalOpen}
-          onClose={() => workspaceState.handleTerminalOpenChange(false)}
-          onHeightCommit={interfaceController.handleTerminalPanelHeightCommit}
-          resolvedTheme={resolvedTheme}
-          storedHeight={workspaceState.terminalPanelHeight}
-          workspaceKey={workspaceState.activeTerminalWorkspaceKey}
-          workspacePath={workspaceState.activeWorkspacePath}
-        />
       </WorkspacePanel>
 
       {interfaceController.isCommitModalOpen ? (

@@ -14,6 +14,8 @@ export interface WorkspaceTerminalPanelProps {
   storedHeight: number;
   workspaceKey: string;
   workspacePath: string | null;
+  isFullScreen?: boolean;
+  onFullScreenChange?: (nextFullScreen: boolean) => void;
 }
 
 export interface TerminalTabState {
@@ -40,4 +42,6 @@ export interface WorkspaceTerminalPanelState {
   selectTerminalTab: (tabKey: string) => void;
   terminalHostRef: RefObject<HTMLDivElement>;
   terminalTabs: readonly TerminalTabState[];
+  isFullScreen?: boolean;
+  onFullScreenChange?: (nextFullScreen: boolean) => void;
 }

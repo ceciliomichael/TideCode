@@ -13,6 +13,8 @@ export function useWorkspaceTerminalPanelState({
   storedHeight,
   workspaceKey,
   workspacePath,
+  isFullScreen,
+  onFullScreenChange,
 }: WorkspaceTerminalPanelProps): WorkspaceTerminalPanelState {
   const sizingState = useWorkspaceTerminalPanelSizing({
     isOpen,
@@ -42,5 +44,7 @@ export function useWorkspaceTerminalPanelState({
     selectTerminalTab: sessionState.selectTerminalTab,
     terminalHostRef: sessionState.terminalHostRef,
     terminalTabs: sessionState.terminalTabs,
+    isFullScreen,
+    onFullScreenChange,
   };
 }

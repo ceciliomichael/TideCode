@@ -394,6 +394,27 @@ export async function updateStoredConversationTitle(conversationId: string, titl
   await writeConversationFile(nextConversation)
   return nextConversation
 }
+
+export async function updateStoredConversationPinned(conversationId: string, isPinned: boolean) {
+  const existingConversation = await getStoredConversation(conversationId)
+
+  if (!existingConversation) {
+    throw new Error(`Conversation not found: ${conversationId}`)
+  }
+
+  if (Boolean(existingConversation.isPinned) === isPinned) {
+    return existingConversation
+  }
+
+  const nextConversation: ConversationRecord = {
+    ...existingConversation,
+    isPinned,
+    updatedAt: Date.now(),
+  }
+
+  await writeConversationFile(nextConversation)
+  return nextConversation
+}
 export async function deleteStoredConversation(conversationId: string) {
   const conversation = await getStoredConversation(conversationId)
   await deleteConversationFile(conversationId)

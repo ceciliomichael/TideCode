@@ -1,5 +1,5 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { LoaderCircle, Plus, X } from "lucide-react";
+import { LoaderCircle, Plus, X, Maximize, Minimize } from "lucide-react";
 import { Tooltip } from "../../Tooltip";
 import type { WorkspaceTerminalPanelState } from "./workspaceTerminalPanelTypes";
 
@@ -39,19 +39,22 @@ export function WorkspaceTerminalPanelView({
         "relative flex min-h-0 w-full shrink-0 self-stretch flex-col overflow-hidden border-t border-border bg-[var(--workspace-panel-surface)]",
       ].join(" ")}
       style={{
-        borderTopColor: panelState.isOpen ? "var(--color-border)" : "transparent",
-        height: panelState.isOpen ? panelState.panelHeight : 0,
+        borderTopColor: panelState.isOpen && !panelState.isFullScreen ? "var(--color-border)" : "transparent",
+        height: panelState.isOpen ? (panelState.isFullScreen ? "100%" : panelState.panelHeight) : 0,
+        flex: panelState.isOpen && panelState.isFullScreen ? 1 : "none",
       }}
     >
-      <button
-        type="button"
-        aria-label="Resize terminal panel"
-        onPointerDown={panelState.handleResizePointerDown}
-        className={[
-          "absolute left-0 right-0 top-0 z-20 h-2",
-          panelState.isOpen ? "cursor-row-resize" : "cursor-default",
-        ].join(" ")}
-      />
+      {!panelState.isFullScreen ? (
+        <button
+          type="button"
+          aria-label="Resize terminal panel"
+          onPointerDown={panelState.handleResizePointerDown}
+          className={[
+            "absolute left-0 right-0 top-0 z-20 h-2",
+            panelState.isOpen ? "cursor-row-resize" : "cursor-default",
+          ].join(" ")}
+        />
+      ) : null}
       <div className="flex h-10 shrink-0 items-stretch border-b border-border bg-background">
         <div className="flex min-w-0 flex-1 items-stretch overflow-hidden">
           <div className="workspace-tabs-scroll-viewport flex min-w-0 flex-1 items-stretch gap-0 overflow-x-auto overflow-y-hidden">
@@ -110,6 +113,18 @@ export function WorkspaceTerminalPanelView({
               <Plus size={14} />
             </button>
           </Tooltip>
+          {panelState.onFullScreenChange ? (
+            <Tooltip content={panelState.isFullScreen ? "Exit full screen" : "Full screen"} side="bottom" noWrap>
+              <button
+                type="button"
+                onClick={() => panelState.onFullScreenChange?.(!panelState.isFullScreen)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:rounded-xl hover:bg-surface-muted hover:text-foreground"
+                aria-label={panelState.isFullScreen ? "Exit full screen" : "Full screen"}
+              >
+                {panelState.isFullScreen ? <Minimize size={14} /> : <Maximize size={14} />}
+              </button>
+            </Tooltip>
+          ) : null}
           <Tooltip content="Close terminal panel" side="bottom" noWrap>
             <button
               type="button"
@@ -122,10 +137,12 @@ export function WorkspaceTerminalPanelView({
           </Tooltip>
         </div>
       </div>
-      <div
-        ref={panelState.terminalHostRef}
-        className="workspace-terminal-host min-h-0 flex-1 overflow-hidden bg-[var(--workspace-panel-surface)] px-4 py-3 text-foreground"
-      />
+      <div className="flex-1 min-h-0 overflow-hidden bg-[var(--workspace-panel-surface)] px-4 py-3">
+        <div
+          ref={panelState.terminalHostRef}
+          className="workspace-terminal-host h-full w-full overflow-hidden text-foreground bg-[var(--workspace-panel-surface)]"
+        />
+      </div>
       {activeTerminalTab?.status === "error" &&
       activeTerminalTab.errorMessage ? (
         <div className="border-t border-danger-border bg-danger-surface px-4 py-1.5 text-xs text-danger-foreground">

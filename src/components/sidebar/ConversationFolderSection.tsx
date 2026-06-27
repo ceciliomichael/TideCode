@@ -5,6 +5,7 @@ import type { ConversationGroupPreview } from '../../types/chat'
 import { Tooltip } from '../Tooltip'
 import { ConversationHistoryItem } from './ConversationHistoryItem'
 import { RemoveProjectFolderDialog } from './RemoveProjectFolderDialog'
+import { PINNED_FOLDER_ID } from '../../hooks/chatHistoryViewModels'
 import type { FolderReorderPosition } from '../../types/chat'
 
 interface ConversationFolderSectionProps {
@@ -12,6 +13,7 @@ interface ConversationFolderSectionProps {
   isCollapsed: boolean
   onCreateConversation: (folderId?: string | null) => void
   onDeleteConversation: (conversationId: string) => void
+  onPinConversation: (conversationId: string, isPinned: boolean) => void
   onDeleteFolder: (folderId: string) => Promise<void>
   onRenameFolder: (folderId: string, name: string) => Promise<void>
   onSelectFolder: (folderId: string | null) => void
@@ -38,6 +40,7 @@ export function ConversationFolderSection({
   onSelectFolder,
   onSelectConversation,
   onDeleteConversation,
+  onPinConversation,
   dropIndicatorPosition,
   isDraggable,
   isDragging,
@@ -47,7 +50,7 @@ export function ConversationFolderSection({
   onDrop,
 }: ConversationFolderSectionProps) {
   const FolderIcon = group.folder.isSelected ? FolderOpen : Folder
-  const hasFolderActions = group.folder.id !== null
+  const hasFolderActions = group.folder.id !== null && group.folder.id !== PINNED_FOLDER_ID
   const [visibleThreadCount, setVisibleThreadCount] = useState(MAX_VISIBLE_PROJECT_FOLDER_THREADS)
   const [recentlyAddedStartIndex, setRecentlyAddedStartIndex] = useState<number | null>(null)
   const [isThreadListCollapsing, setIsThreadListCollapsing] = useState(false)
@@ -377,7 +380,7 @@ export function ConversationFolderSection({
               </button>
             </Tooltip>
           </div>
-        ) : (
+        ) : group.folder.id !== PINNED_FOLDER_ID ? (
           <Tooltip content={`Start new thread in ${group.folder.name}`} side="right">
             <button
               type="button"
@@ -388,7 +391,7 @@ export function ConversationFolderSection({
               <SquarePen size={16} strokeWidth={2.1} />
             </button>
           </Tooltip>
-        )}
+        ) : null}
         </div>
         {dropIndicatorPosition === 'after' ? (
           <div className="pointer-events-none absolute -bottom-1.5 left-2 right-2 h-0.5 rounded-full bg-border" />
@@ -404,6 +407,7 @@ export function ConversationFolderSection({
                 conversation={conversation}
                 onSelectConversation={onSelectConversation}
                 onDeleteConversation={onDeleteConversation}
+                onPinConversation={onPinConversation}
               />
             ))}
           </div>
@@ -436,6 +440,7 @@ export function ConversationFolderSection({
                       conversation={conversation}
                       onSelectConversation={onSelectConversation}
                       onDeleteConversation={onDeleteConversation}
+                      onPinConversation={onPinConversation}
                     />
                   </div>
                 )
