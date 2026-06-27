@@ -423,8 +423,24 @@ export function useWorkspaceTerminalSessionState({
   const openTerminalTab = useCallback(async () => {
     ensureTerminal();
 
-    const tabIndex = nextTabIndexRef.current;
-    nextTabIndexRef.current += 1;
+    const currentTabs = terminalTabsRef.current;
+    const existingIndices = new Set(
+      currentTabs
+        .map((tab) => {
+          const separatorIndex = tab.key.indexOf("::terminal-tab-");
+          if (separatorIndex === -1) return null;
+          const parsed = parseInt(tab.key.slice(separatorIndex + 15), 10);
+          return Number.isNaN(parsed) ? null : parsed;
+        })
+        .filter((idx): idx is number => idx !== null)
+    );
+
+    let tabIndex = 1;
+    while (existingIndices.has(tabIndex)) {
+      tabIndex++;
+    }
+
+    nextTabIndexRef.current = tabIndex + 1; // Keeping it updated just in case
     const tabKey = createTerminalTabKey(workspaceKey, tabIndex);
     const nextTab: TerminalTabState = {
       errorMessage: null,
