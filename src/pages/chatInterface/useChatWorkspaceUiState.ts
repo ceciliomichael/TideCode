@@ -402,11 +402,17 @@ export function useChatWorkspaceUiState({
         }
 
         const { result } = refresh
+        const normalizedContent = result.content.replace(/\r\n/g, '\n')
+        
+        if (tab.content === normalizedContent || workspaceAutosaveTimeoutsRef.current.has(tab.relativePath)) {
+          return tab
+        }
+
         return {
           ...tab,
-          content: result.content,
+          content: normalizedContent,
           errorMessage: undefined,
-          originalContent: result.content,
+          originalContent: normalizedContent,
           fileName: getPathBasename(result.relativePath),
           isBinary: result.isBinary,
           isTruncated: result.isTruncated,
@@ -553,18 +559,21 @@ export function useChatWorkspaceUiState({
           setWorkspaceFileTabs((currentTabs) =>
             currentTabs.map((tab) =>
               tab.kind === "file" && tab.relativePath === relativePath
-                ? {
-                    ...tab,
-                    content: result.content,
-                    originalContent: result.content,
-                    fileName: getPathBasename(result.relativePath),
-                    isBinary: result.isBinary,
-                    isTruncated: result.isTruncated,
-                    relativePath: result.relativePath,
-                    tabKey: result.relativePath,
-                    sizeBytes: result.sizeBytes,
-                    status: "ready",
-                  }
+                  ? (() => {
+                      const normalizedContent = result.content.replace(/\r\n/g, '\n')
+                      return {
+                        ...tab,
+                        content: normalizedContent,
+                        originalContent: normalizedContent,
+                        fileName: getPathBasename(result.relativePath),
+                        isBinary: result.isBinary,
+                        isTruncated: result.isTruncated,
+                        relativePath: result.relativePath,
+                        tabKey: result.relativePath,
+                        sizeBytes: result.sizeBytes,
+                        status: "ready",
+                      }
+                    })()
                 : tab,
             ),
           );
@@ -828,7 +837,6 @@ export function useChatWorkspaceUiState({
                 ? {
                     ...tab,
                     sizeBytes: result.sizeBytes,
-                    originalContent: content,
                   }
                 : tab,
             ),

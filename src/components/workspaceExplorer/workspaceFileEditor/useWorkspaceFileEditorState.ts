@@ -219,10 +219,12 @@ export function useWorkspaceFileEditorState({
     }
 
     setWrappedLineCounts((currentCounts) => {
+      const isLengthChanged = highlightedLines.length !== currentCounts.length
+      
       const nextCounts = highlightedLines.map((_, lineIndex) => {
         const lineElement = highlightedLineElementsRef.current.get(lineIndex)
         if (!lineElement) {
-          return currentCounts[lineIndex] ?? 1
+          return isLengthChanged ? 1 : (currentCounts[lineIndex] ?? 1)
         }
 
         const renderedHeight = lineElement.getBoundingClientRect().height
@@ -253,11 +255,15 @@ export function useWorkspaceFileEditorState({
     previousValueRef.current = value
 
     if (!isSameFileContentUpdate) {
-      scrollPositionRef.current = {
-        scrollLeft: textAreaElement.scrollLeft,
-        scrollTop: textAreaElement.scrollTop,
-      }
-      return
+      textAreaRef.current?.scrollTo({ left: 0, top: 0 })
+      setScrollLeftPx(0)
+      setScrollTopPx(0)
+      setWrappedLineCounts(wordWrapEnabled ? countLines(value) > 0 ? Array(countLines(value)).fill(1) : [] : [])
+    }
+    
+    scrollPositionRef.current = {
+      scrollLeft: textAreaElement.scrollLeft,
+      scrollTop: textAreaElement.scrollTop,
     }
 
     const frameId = window.requestAnimationFrame(() => {

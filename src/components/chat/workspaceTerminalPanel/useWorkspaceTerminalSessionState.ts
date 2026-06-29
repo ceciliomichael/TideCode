@@ -348,7 +348,7 @@ export function useWorkspaceTerminalSessionState({
     terminalContextMenuListenerRef.current = handleTerminalContextMenu;
     hostElement.addEventListener("contextmenu", handleTerminalContextMenu);
     terminal.attachCustomKeyEventHandler((event) => {
-      if (event.key === "Enter" && (event.shiftKey || event.altKey)) {
+      if (event.key === "Enter" && event.altKey) {
         if (event.type === "keydown") {
           const activeSessionId = activeSessionIdRef.current;
           if (activeSessionId !== null) {
