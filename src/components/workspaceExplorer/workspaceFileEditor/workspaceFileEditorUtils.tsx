@@ -356,10 +356,6 @@ export function renderHighlightedTokens(tokens: readonly HighlightedToken[], sea
 
       if (isSelectionActive) {
         className += ' workspace-editor-selection'
-        if ((activeSelectionMatch as any).isNewlineSelected && nextBreak === tokenEndIndex && token === tokens[tokens.length - 1]) {
-           // We are at the end of the line and the newline is selected
-           className += ' workspace-editor-selection-newline'
-        }
       } else if (isSearchActive) {
         style.backgroundColor = activeSearchMatch.isActive ? ACTIVE_SEARCH_HIGHLIGHT_BACKGROUND : SEARCH_HIGHLIGHT_BACKGROUND
         style.borderRadius = 2
@@ -385,7 +381,7 @@ export function renderHighlightedTokens(tokens: readonly HighlightedToken[], sea
 
   // If there's a selection on the newline character at the end of a line with tokens
   const lastSelection = selectionMatches[selectionMatches.length - 1]
-  if (tokens.length > 0 && lastSelection && (lastSelection as any).isNewlineSelected && lastSelection.start >= absoluteIndex) {
+  if (tokens.length > 0 && lastSelection && (lastSelection as any).isNewlineSelected) {
     renderedSegments.push(
       <span 
         key={`newline-selection`}

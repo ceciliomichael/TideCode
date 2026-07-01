@@ -122,7 +122,7 @@ export function useWorkspaceFileEditorState({
           start: matchOffsetInLine,
         })
 
-        const lengthMatchedInLine = matchEndInLine - matchOffsetInLine
+        const lengthMatchedInLine = Math.max(0, matchEndInLine - matchOffsetInLine)
         remainingLength -= lengthMatchedInLine
         currentMatchStart += lengthMatchedInLine
 
@@ -165,8 +165,10 @@ export function useWorkspaceFileEditorState({
     const matchesByLine = highlightedLines.map(() => [] as TextRange[])
     if (!selection) return matchesByLine
     
-    let currentMatchStart = selection.start
-    let remainingLength = selection.end - selection.start
+    const safeStart = Math.min(selection.start, value.length)
+    const safeEnd = Math.min(selection.end, value.length)
+    let currentMatchStart = safeStart
+    let remainingLength = Math.max(0, safeEnd - safeStart)
 
     while (remainingLength > 0) {
       const lineIndex = findLineIndexForOffset(lineStartOffsets, currentMatchStart)
@@ -181,7 +183,7 @@ export function useWorkspaceFileEditorState({
       const matchOffsetInLine = currentMatchStart - lineStartOffset
       const matchEndInLine = Math.min(matchOffsetInLine + remainingLength, lineLength)
 
-      const lengthMatchedInLine = matchEndInLine - matchOffsetInLine
+      const lengthMatchedInLine = Math.max(0, matchEndInLine - matchOffsetInLine)
       const isNewlineSelected = remainingLength > lengthMatchedInLine
 
       matchesByLine[lineIndex].push({

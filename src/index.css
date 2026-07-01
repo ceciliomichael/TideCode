@@ -467,6 +467,7 @@
 
   .workspace-editor-selection-newline {
     padding-right: 0.5ch; /* Visual indicator for selected newline */
+    margin-right: -0.5ch; /* Visual indicator without affecting layout width */
   }
 
 
