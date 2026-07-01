@@ -284,7 +284,6 @@ export function renderHighlightedTokens(tokens: readonly HighlightedToken[], sea
       return (
         <span 
           className="workspace-editor-selection"
-          style={{ width: (activeMatch as any).isNewlineSelected ? '100%' : 'auto', display: 'inline-block' }}
         >
           {'\u00A0'}
         </span>
