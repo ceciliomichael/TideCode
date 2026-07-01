@@ -280,7 +280,6 @@ export function renderHighlightedTokens(tokens: readonly HighlightedToken[], sea
   if (tokens.length === 0) {
     if (selectionMatches.length > 0) {
       // Empty line with selection
-      const activeMatch = selectionMatches[0]
       return (
         <span 
           className="workspace-editor-selection"
