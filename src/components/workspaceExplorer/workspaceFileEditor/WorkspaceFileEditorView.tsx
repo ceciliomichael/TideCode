@@ -273,16 +273,22 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
                 {layout.topSpacerHeight > 0 ? <div aria-hidden="true" style={{ height: `${layout.topSpacerHeight}px` }} /> : null}
                 {layout.visibleHighlightedLines.map((line, index) => {
                   const lineNumber = layout.visibleLineNumbers[index] ?? index + 1
-                  
+                  const selectionMatches = layout.visibleSelectionMatches?.[index] ?? []
                   return (
                     <div
                       key={`editor-highlighted-${lineNumber}-${line.text.slice(0, 16)}`}
                       ref={(element) => {
                         actions.setHighlightedLineElement(lineNumber, element)
                       }}
-                      className={layout.highlightedLineClassName}
+                      className={`${layout.highlightedLineClassName} relative`}
                     >
-                      {renderHighlightedTokens(line.tokens, layout.visibleSearchMatches[index] ?? [])}
+                      <span className="relative pointer-events-none">
+                        {renderHighlightedTokens(
+                          line.tokens, 
+                          layout.visibleSearchMatches[index] ?? [], 
+                          selectionMatches
+                        )}
+                      </span>
                     </div>
                   )
                 })}

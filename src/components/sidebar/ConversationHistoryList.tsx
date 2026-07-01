@@ -95,7 +95,7 @@ export function ConversationHistoryList({
     const stateKey = folderId ?? 'chats'
     setCollapsedFolderState((currentValue) => ({
       ...currentValue,
-      [stateKey]: !currentValue[stateKey],
+      [stateKey]: !(currentValue[stateKey] ?? true),
     }))
   }
 
@@ -202,7 +202,7 @@ export function ConversationHistoryList({
               <ConversationFolderSection
                 key={stateKey}
                 group={group}
-                isCollapsed={draggedFolderId !== null ? true : Boolean(collapsedFolderState[stateKey])}
+                isCollapsed={draggedFolderId !== null ? true : (collapsedFolderState[stateKey] ?? true)}
                 isDragging={isDraggable && draggedFolderId === folderId}
                 isDraggable={isDraggable}
                 dropIndicatorPosition={showDropIndicator ? dropTarget.position : null}

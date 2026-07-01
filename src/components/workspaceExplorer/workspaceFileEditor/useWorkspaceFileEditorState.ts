@@ -98,27 +98,111 @@ export function useWorkspaceFileEditorState({
   )
   const searchMatchesByLine = useMemo(() => {
     const matchesByLine = highlightedLines.map(() => [] as TextRange[])
-    for (let index = 0; index < searchMatches.length; index += 1) {
-      const match = searchMatches[index]
-      if (match.end <= match.start) {
-        continue
-      }
 
-      const startLineIndex = findLineIndexForOffset(lineStartOffsets, match.start)
-      const endLineIndex = findLineIndexForOffset(lineStartOffsets, Math.max(match.end - 1, match.start))
-      if (startLineIndex !== endLineIndex) {
-        continue
-      }
+    for (const match of searchMatches) {
+      let currentMatchStart = match.start
+      let remainingLength = match.end - match.start
 
-      const lineStartOffset = lineStartOffsets[startLineIndex] ?? 0
-      matchesByLine[startLineIndex].push({
-        end: match.end - lineStartOffset,
-        isActive: index === activeSearchMatchIndex,
-        start: match.start - lineStartOffset,
-      })
+      while (remainingLength > 0) {
+        const lineIndex = findLineIndexForOffset(lineStartOffsets, currentMatchStart)
+        if (lineIndex === -1) {
+          break
+        }
+
+        const lineStartOffset = lineStartOffsets[lineIndex]
+        const lineText = highlightedLines[lineIndex].text
+        const lineLength = lineText.length
+
+        const matchOffsetInLine = currentMatchStart - lineStartOffset
+        const matchEndInLine = Math.min(matchOffsetInLine + remainingLength, lineLength)
+
+        matchesByLine[lineIndex].push({
+          end: matchEndInLine,
+          isActive: match === searchMatches[activeSearchMatchIndex],
+          start: matchOffsetInLine,
+        })
+
+        const lengthMatchedInLine = matchEndInLine - matchOffsetInLine
+        remainingLength -= lengthMatchedInLine
+        currentMatchStart += lengthMatchedInLine
+
+        if (remainingLength > 0) {
+          currentMatchStart += 1 // For the newline character
+          remainingLength -= 1
+        }
+      }
     }
+
     return matchesByLine
   }, [activeSearchMatchIndex, highlightedLines, lineStartOffsets, searchMatches])
+
+  const [selection, setSelection] = useState<{ start: number, end: number } | null>(null)
+  
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      if (!textAreaRef.current) return
+      
+      // Only process selection if the textarea is focused to avoid unnecessary updates
+      if (document.activeElement !== textAreaRef.current) return
+      
+      const { selectionStart, selectionEnd } = textAreaRef.current
+      if (selectionStart !== selectionEnd) {
+        setSelection(prev => 
+          prev?.start === selectionStart && prev?.end === selectionEnd 
+            ? prev 
+            : { start: selectionStart, end: selectionEnd }
+        )
+      } else {
+        setSelection(null)
+      }
+    }
+    
+    document.addEventListener('selectionchange', handleSelectionChange)
+    return () => document.removeEventListener('selectionchange', handleSelectionChange)
+  }, [])
+
+  const selectionMatchesByLine = useMemo(() => {
+    const matchesByLine = highlightedLines.map(() => [] as TextRange[])
+    if (!selection) return matchesByLine
+    
+    let currentMatchStart = selection.start
+    let remainingLength = selection.end - selection.start
+
+    while (remainingLength > 0) {
+      const lineIndex = findLineIndexForOffset(lineStartOffsets, currentMatchStart)
+      if (lineIndex === -1) {
+        break
+      }
+
+      const lineStartOffset = lineStartOffsets[lineIndex]
+      const lineText = highlightedLines[lineIndex].text
+      const lineLength = lineText.length
+
+      const matchOffsetInLine = currentMatchStart - lineStartOffset
+      const matchEndInLine = Math.min(matchOffsetInLine + remainingLength, lineLength)
+
+      const lengthMatchedInLine = matchEndInLine - matchOffsetInLine
+      const isNewlineSelected = remainingLength > lengthMatchedInLine
+
+      matchesByLine[lineIndex].push({
+        end: matchEndInLine,
+        isActive: true,
+        start: matchOffsetInLine,
+        isNewlineSelected,
+      } as any)
+
+      remainingLength -= lengthMatchedInLine
+      currentMatchStart += lengthMatchedInLine
+
+      if (remainingLength > 0) {
+        currentMatchStart += 1 // For the newline character
+        remainingLength -= 1
+      }
+    }
+
+    return matchesByLine
+  }, [highlightedLines, lineStartOffsets, selection])
+
   const visibleLineNumbers = useMemo(
     () =>
       Array.from({ length: Math.max(0, visibleEndIndex - visibleStartIndex) }, (_, index) => visibleStartIndex + index + 1),
@@ -131,6 +215,10 @@ export function useWorkspaceFileEditorState({
   const visibleSearchMatches = useMemo(
     () => searchMatchesByLine.slice(visibleStartIndex, visibleEndIndex),
     [searchMatchesByLine, visibleEndIndex, visibleStartIndex],
+  )
+  const visibleSelectionMatches = useMemo(
+    () => selectionMatchesByLine.slice(visibleStartIndex, visibleEndIndex),
+    [selectionMatchesByLine, visibleEndIndex, visibleStartIndex],
   )
   const lineStatusBaselineContent = gitFileDiff ? gitFileDiff.oldContent : originalContent
   const lineStatusByLineNumber = useMemo(
@@ -201,6 +289,19 @@ export function useWorkspaceFileEditorState({
       }
     })
   }, [shouldVirtualize, totalLineCount, wordWrapEnabled])
+
+  // Restores the textarea scroll to the saved position and syncs overlay transforms.
+  // Used after DOM reflows (e.g. word-wrap height recalculation) to prevent scroll jumping.
+  const restoreAndSyncScroll = useCallback(() => {
+    const textAreaElement = textAreaRef.current
+    if (!textAreaElement) {
+      return
+    }
+    const { scrollLeft, scrollTop } = scrollPositionRef.current
+    textAreaElement.scrollLeft = scrollLeft
+    textAreaElement.scrollTop = scrollTop
+    handleScroll()
+  }, [handleScroll])
 
   const setHighlightedLineElement = useCallback((lineNumber: number, element: HTMLDivElement | null) => {
     const sourceLineIndex = lineNumber - 1
@@ -590,7 +691,9 @@ export function useWorkspaceFileEditorState({
       window.cancelAnimationFrame(frameId)
       frameId = window.requestAnimationFrame(() => {
         updateWrappedLineCountsFromRenderedLines()
-        handleScroll()
+        // Use restoreAndSyncScroll instead of handleScroll to prevent the browser
+        // DOM reflow from shifting the scroll position after line heights change.
+        restoreAndSyncScroll()
       })
     }
 
@@ -616,7 +719,7 @@ export function useWorkspaceFileEditorState({
       window.cancelAnimationFrame(frameId)
       resizeObserver.disconnect()
     }
-  }, [handleScroll, highlightedLines, updateWrappedLineCountsFromRenderedLines, wordWrapEnabled])
+  }, [handleScroll, highlightedLines, restoreAndSyncScroll, updateWrappedLineCountsFromRenderedLines, wordWrapEnabled])
 
   return {
     actions: {
@@ -630,6 +733,9 @@ export function useWorkspaceFileEditorState({
       moveSearchMatch,
       setHighlightedLineElement,
     },
+    selection: {
+      matchesByLine: selectionMatchesByLine,
+    },
     layout: {
       bottomSpacerHeight,
       gutterWidthCh,
@@ -641,6 +747,7 @@ export function useWorkspaceFileEditorState({
       visibleHighlightedLines,
       visibleLineNumbers,
       visibleSearchMatches,
+      visibleSelectionMatches,
     },
     refs: {
       editorViewportRef,

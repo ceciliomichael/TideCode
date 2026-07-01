@@ -43,7 +43,7 @@
   :root {
     font-family: var(--font-sans);
     color-scheme: light;
-    --workspace-editor-selection-background: rgb(0 120 215 / 0.26);
+    --workspace-editor-selection-background: rgb(0 120 215 / 0.45);
     --workspace-editor-selection-background-opaque: #bddcf5;
     --workspace-editor-search-highlight-background: rgb(0 120 215 / 0.18);
     --workspace-editor-search-highlight-active-background: rgb(0 120 215 / 0.28);
@@ -52,7 +52,9 @@
     --workspace-editor-line-changed-border: rgb(0 120 215 / 0.5);
     --workspace-editor-line-changed-foreground: rgb(0 92 170);
     /* High-opacity selection used in diff viewer so blue cleanly overrides red/green row colors */
+    --diff-viewer-removed-word-background: rgb(250 180 180 / 0.5);
     --diff-viewer-selection-background: rgb(0 100 200 / 0.88);
+    --diff-viewer-selection-background-opaque: rgb(30 118 206);
     --workspace-shell-surface: var(--color-sidebar);
     --titlebar-surface: var(--workspace-shell-surface);
     --workspace-panel-surface: var(--color-surface);
@@ -120,6 +122,7 @@
     --workspace-editor-line-changed-border: rgb(90 170 255 / 0.72);
     --workspace-editor-line-changed-foreground: rgb(173 214 255);
     --diff-viewer-selection-background: rgb(38 120 190 / 0.92);
+    --diff-viewer-selection-background-opaque: rgb(36 111 176);
     --titlebar-surface: #141415;
     --workspace-shell-surface: #141415;
     --workspace-panel-surface: #121213;
@@ -442,10 +445,28 @@
   }
 
   .workspace-editor-textarea::selection {
-    background-color: var(--workspace-editor-selection-background-opaque);
+    background-color: transparent;
+    color: transparent !important;
   }
   .workspace-editor-textarea::-moz-selection {
-    background-color: var(--workspace-editor-selection-background-opaque);
+    background-color: transparent;
+    color: transparent !important;
+  }
+
+  .workspace-editor-selection {
+    background-color: var(--diff-viewer-selection-background-opaque);
+    color: #fff !important;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    margin-top: -4px;
+    margin-bottom: -4px;
+    border-radius: 2px;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
+  .workspace-editor-selection-newline {
+    padding-right: 0.5ch; /* Visual indicator for selected newline */
   }
 
 

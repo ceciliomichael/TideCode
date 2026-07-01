@@ -276,12 +276,24 @@ export function findLineIndexForOffset(lineStartOffsets: readonly number[], offs
   return Math.max(0, lineStartOffsets.length - 1)
 }
 
-export function renderHighlightedTokens(tokens: readonly HighlightedToken[], matches: readonly TextRange[]): ReactNode {
+export function renderHighlightedTokens(tokens: readonly HighlightedToken[], searchMatches: readonly TextRange[], selectionMatches: readonly TextRange[] = []): ReactNode {
   if (tokens.length === 0) {
+    if (selectionMatches.length > 0) {
+      // Empty line with selection
+      const activeMatch = selectionMatches[0]
+      return (
+        <span 
+          className="workspace-editor-selection"
+          style={{ width: (activeMatch as any).isNewlineSelected ? '100%' : 'auto', display: 'inline-block' }}
+        >
+          {'\u00A0'}
+        </span>
+      )
+    }
     return '\u00A0'
   }
 
-  if (matches.length === 0) {
+  if (searchMatches.length === 0 && selectionMatches.length === 0) {
     return tokens.map((token, index) => (
       <span
         key={`${index}:${token.content.slice(0, 16)}:${token.color ?? ''}`}
@@ -295,7 +307,8 @@ export function renderHighlightedTokens(tokens: readonly HighlightedToken[], mat
 
   const renderedSegments: ReactNode[] = []
   let absoluteIndex = 0
-  let matchIndex = 0
+  let searchMatchIndex = 0
+  let selectionMatchIndex = 0
 
   for (const token of tokens) {
     const tokenStartIndex = absoluteIndex
@@ -303,67 +316,84 @@ export function renderHighlightedTokens(tokens: readonly HighlightedToken[], mat
     let tokenOffset = 0
 
     while (tokenOffset < token.content.length) {
-      while (matchIndex < matches.length && matches[matchIndex].end <= tokenStartIndex + tokenOffset) {
-        matchIndex += 1
-      }
-
-      const activeMatch = matches[matchIndex]
       const absoluteOffset = tokenStartIndex + tokenOffset
-      const hasMatchWithinToken =
-        Boolean(activeMatch) && activeMatch.start < tokenEndIndex && activeMatch.end > absoluteOffset
 
-      if (!hasMatchWithinToken) {
-        const remainingText = token.content.slice(tokenOffset)
-        if (remainingText.length > 0) {
-          renderedSegments.push(
-            <span
-              key={`${tokenStartIndex}:${tokenOffset}:${remainingText.slice(0, 16)}:plain`}
-              className={getTokenClassName(token.fontStyle)}
-              style={token.color ? { color: token.color } : undefined}
-            >
-              {remainingText}
-            </span>,
-          )
-        }
-        break
+      while (searchMatchIndex < searchMatches.length && searchMatches[searchMatchIndex].end <= absoluteOffset) {
+        searchMatchIndex += 1
+      }
+      while (selectionMatchIndex < selectionMatches.length && selectionMatches[selectionMatchIndex].end <= absoluteOffset) {
+        selectionMatchIndex += 1
       }
 
-      if (activeMatch.start > absoluteOffset) {
-        const plainEndIndex = Math.min(activeMatch.start, tokenEndIndex)
-        const plainText = token.content.slice(tokenOffset, plainEndIndex - tokenStartIndex)
-        if (plainText.length > 0) {
-          renderedSegments.push(
-            <span
-              key={`${tokenStartIndex}:${tokenOffset}:${plainText.slice(0, 16)}:plain`}
-              className={getTokenClassName(token.fontStyle)}
-              style={token.color ? { color: token.color } : undefined}
-            >
-              {plainText}
-            </span>,
-          )
+      const activeSearchMatch = searchMatches[searchMatchIndex]
+      const activeSelectionMatch = selectionMatches[selectionMatchIndex]
+
+      let nextBreak = tokenEndIndex
+
+      if (activeSearchMatch) {
+        if (activeSearchMatch.start > absoluteOffset) {
+          nextBreak = Math.min(nextBreak, activeSearchMatch.start)
+        } else if (activeSearchMatch.end > absoluteOffset) {
+          nextBreak = Math.min(nextBreak, activeSearchMatch.end)
         }
-        tokenOffset = plainEndIndex - tokenStartIndex
-        continue
       }
 
-      const highlightedEndIndex = Math.min(activeMatch.end, tokenEndIndex)
-      const highlightedText = token.content.slice(tokenOffset, highlightedEndIndex - tokenStartIndex)
+      if (activeSelectionMatch) {
+        if (activeSelectionMatch.start > absoluteOffset) {
+          nextBreak = Math.min(nextBreak, activeSelectionMatch.start)
+        } else if (activeSelectionMatch.end > absoluteOffset) {
+          nextBreak = Math.min(nextBreak, activeSelectionMatch.end)
+        }
+      }
+
+      const segmentText = token.content.slice(tokenOffset, nextBreak - tokenStartIndex)
+      
+      const isSearchActive = activeSearchMatch && activeSearchMatch.start <= absoluteOffset && activeSearchMatch.end >= nextBreak
+      const isSelectionActive = activeSelectionMatch && activeSelectionMatch.start <= absoluteOffset && activeSelectionMatch.end >= nextBreak
+
+      const style: React.CSSProperties = {}
+      let className = getTokenClassName(token.fontStyle)
+
+      if (isSelectionActive) {
+        className += ' workspace-editor-selection'
+        if ((activeSelectionMatch as any).isNewlineSelected && nextBreak === tokenEndIndex && token === tokens[tokens.length - 1]) {
+           // We are at the end of the line and the newline is selected
+           className += ' workspace-editor-selection-newline'
+        }
+      } else if (isSearchActive) {
+        style.backgroundColor = activeSearchMatch.isActive ? ACTIVE_SEARCH_HIGHLIGHT_BACKGROUND : SEARCH_HIGHLIGHT_BACKGROUND
+        style.borderRadius = 2
+      } else if (token.color) {
+        style.color = token.color
+      }
+
       renderedSegments.push(
         <span
-          key={`${tokenStartIndex}:${tokenOffset}:${highlightedText.slice(0, 16)}:match`}
-          className={getTokenClassName(token.fontStyle)}
-          style={{
-            backgroundColor: activeMatch.isActive ? ACTIVE_SEARCH_HIGHLIGHT_BACKGROUND : SEARCH_HIGHLIGHT_BACKGROUND,
-            borderRadius: 2,
-          }}
+          key={`${tokenStartIndex}:${tokenOffset}:${segmentText.slice(0, 16)}`}
+          className={className}
+          style={Object.keys(style).length > 0 ? style : undefined}
         >
-          {highlightedText}
-        </span>,
+          {segmentText}
+        </span>
       )
-      tokenOffset = highlightedEndIndex - tokenStartIndex
+
+      tokenOffset += segmentText.length
     }
 
     absoluteIndex = tokenEndIndex
+  }
+
+  // If there's a selection on the newline character at the end of a line with tokens
+  const lastSelection = selectionMatches[selectionMatches.length - 1]
+  if (tokens.length > 0 && lastSelection && (lastSelection as any).isNewlineSelected && lastSelection.start >= absoluteIndex) {
+    renderedSegments.push(
+      <span 
+        key={`newline-selection`}
+        className="workspace-editor-selection workspace-editor-selection-newline"
+      >
+        {'\u200B'}
+      </span>
+    )
   }
 
   return renderedSegments

@@ -76,6 +76,7 @@ export function useWorkspaceExplorerPanelState({
   const selectionAnchorEntryPathRef = useRef<string | null>(null)
   const isExplorerEditingRef = useRef(false)
   const pendingExplorerReloadRef = useRef(false)
+  const lastScrolledActiveFileRef = useRef<string | null>(null)
   const isWorkspaceConfigured = typeof workspaceRootPath === 'string' && workspaceRootPath.trim().length > 0
 
   const {
@@ -510,6 +511,13 @@ export function useWorkspaceExplorerPanelState({
     if (!isOpen || !activeFilePath) {
       return
     }
+
+    // Only auto-scroll when activeFilePath itself changes, not on every directory reload.
+    // This prevents the explorer from jumping on autosave/file-watch refreshes.
+    if (lastScrolledActiveFileRef.current === activeFilePath) {
+      return
+    }
+    lastScrolledActiveFileRef.current = activeFilePath
 
     const animationFrameId = window.requestAnimationFrame(() => {
       const containerElement = treeContainerRef.current
