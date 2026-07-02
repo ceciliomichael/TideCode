@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Columns3, FolderTree, GitBranch, GitCommitHorizontal, GitCompareArrows, Terminal } from 'lucide-react'
 import { ChatHeader } from '../../components/ChatHeader'
 import { MessageList } from '../../components/MessageList'
@@ -259,6 +259,91 @@ export function ChatInterfaceContent({
   const isSourceControlButtonDisabled = isWorkspaceHeaderControlDisabled || !hasWorkspacePath
   const messageListBoundaryRef = useRef<HTMLDivElement>(null)
 
+  // ── Chat panel resize (VSCode model) ──────────────────────────────────
+  // Chat panel is fixed-width (shrink-0); file editor is flex-1 and fills
+  // the remaining space. Dragging either boundary only affects chat↔editor,
+  // never touching the right panels (Explorer / Diff / SourceControl).
+  const MIN_CHAT_PANEL_WIDTH = Math.round(window.innerWidth * 0.2)
+  const MAX_CHAT_PANEL_WIDTH = Math.round(window.innerWidth * 0.35)
+  const DEFAULT_CHAT_PANEL_WIDTH = Math.round(window.innerWidth * 0.35)
+  const [chatPanelWidth, setChatPanelWidth] = useState(DEFAULT_CHAT_PANEL_WIDTH)
+  const chatPanelWidthRef = useRef(chatPanelWidth)
+  const chatResizeDragStateRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null)
+  const chatResizeRafRef = useRef<number | null>(null)
+  const chatPanelRef = useRef<HTMLDivElement | null>(null)
+  const isChatResizingRef = useRef(false)
+
+  // Clamp chat width on viewport resize
+  useEffect(() => {
+    function handleWindowResize() {
+      if (isChatResizingRef.current) return
+      const maxChat = Math.round(window.innerWidth * 0.35)
+      const min = Math.round(window.innerWidth * 0.2)
+      setChatPanelWidth((w) => Math.min(maxChat, Math.max(min, w)))
+    }
+    window.addEventListener('resize', handleWindowResize)
+    return () => window.removeEventListener('resize', handleWindowResize)
+  }, [])
+
+  useEffect(() => {
+    function handlePointerMove(event: PointerEvent) {
+      const drag = chatResizeDragStateRef.current
+      if (!drag) return
+      const nextWidth = drag.startWidth + (event.clientX - drag.startX)
+      const maxChat = Math.round(window.innerWidth * 0.35)
+      const min = Math.round(window.innerWidth * 0.2)
+      const clamped = Math.min(maxChat, Math.max(min, Math.round(nextWidth)))
+      chatPanelWidthRef.current = clamped
+      if (chatResizeRafRef.current !== null) return
+      chatResizeRafRef.current = window.requestAnimationFrame(() => {
+        chatResizeRafRef.current = null
+        if (chatPanelRef.current) {
+          chatPanelRef.current.style.width = `${chatPanelWidthRef.current}px`
+        }
+      })
+    }
+    function handlePointerUp(event: PointerEvent) {
+      const drag = chatResizeDragStateRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      chatResizeDragStateRef.current = null
+      isChatResizingRef.current = false
+      if (chatResizeRafRef.current !== null) {
+        window.cancelAnimationFrame(chatResizeRafRef.current)
+        chatResizeRafRef.current = null
+      }
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      setChatPanelWidth(chatPanelWidthRef.current)
+    }
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      if (chatResizeRafRef.current !== null) {
+        window.cancelAnimationFrame(chatResizeRafRef.current)
+        chatResizeRafRef.current = null
+      }
+    }
+  }, [])
+
+  function handleChatResizePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return
+    chatPanelWidthRef.current = chatPanelRef.current
+      ? chatPanelRef.current.offsetWidth
+      : chatPanelWidth
+    chatResizeDragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: chatPanelWidthRef.current,
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    event.preventDefault()
+    isChatResizingRef.current = true
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
+  // ──────────────────────────────────────────────────────────────────────
 
   const handleCreateConversation = useCallback(async (folderId?: string | null) => {
     clearQueuedMessages()
@@ -703,7 +788,29 @@ export function ChatInterfaceContent({
         />
 
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {/* Chat panel — fixed width when file editor is open, flex-1 when alone */}
+          <div
+            ref={chatPanelRef}
+            className={[
+              'relative flex min-h-0 flex-col overflow-hidden',
+              workspaceState.isWorkspaceTabsPanelOpen ? 'shrink-0' : 'flex-1',
+            ].join(' ')}
+            style={
+              workspaceState.isWorkspaceTabsPanelOpen
+                ? { width: `${chatPanelWidth}px`, minWidth: `${MIN_CHAT_PANEL_WIDTH}px`, maxWidth: `${MAX_CHAT_PANEL_WIDTH}px` }
+                : undefined
+            }
+          >
+            {/* Chat resize handle — only shown when file editor is open */}
+            {workspaceState.isWorkspaceTabsPanelOpen ? (
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize chat panel"
+                onPointerDown={handleChatResizePointerDown}
+                className="absolute inset-y-0 right-0 z-30 w-2 translate-x-1/2 cursor-col-resize"
+              />
+            ) : null}
             <div
               className="flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-hidden"
               style={{ display: workspaceState.isTerminalFullScreen && workspaceState.isTerminalOpen ? 'none' : 'flex' }}
@@ -869,10 +976,7 @@ export function ChatInterfaceContent({
               onOpenMarkdownPreview={workspaceState.handleOpenWorkspaceMarkdownPreview}
               onOpenSvgPreview={workspaceState.handleOpenWorkspaceSvgPreview}
               onSelectTab={workspaceState.handleSelectWorkspaceTab}
-              onWidthChange={workspaceState.handleWorkspaceEditorWidthChange}
-              onWidthCommit={workspaceState.handleWorkspaceEditorWidthCommit}
               tabs={workspaceState.workspaceFileTabs}
-              width={workspaceState.workspaceEditorWidth}
               wordWrapEnabled={settings.workspaceFileEditorWordWrap}
             />
           ) : null}

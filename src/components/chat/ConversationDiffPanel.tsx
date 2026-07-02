@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Check, ChevronDown, Maximize, Minimize } from 'lucide-react'
 import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
-import { MIN_DIFF_PANEL_WIDTH, getMaxDiffPanelWidth } from '../../lib/diffPanelSizing'
+import { getMaxDiffPanelWidth, getMinDiffPanelWidth } from '../../lib/diffPanelSizing'
 import { Tooltip } from '../Tooltip'
 import { VirtualizedConversationDiffFileList } from './VirtualizedConversationDiffFileList'
 
@@ -159,12 +159,15 @@ function ConversationDiffPanelContent({
     }
 
     function clampPanelWidth() {
+      if (dragStateRef.current) {
+        return
+      }
       const parentWidth = panelRef.current?.parentElement?.clientWidth
       if (!parentWidth) {
         return
       }
 
-      const clampedWidth = Math.min(getMaxDiffPanelWidth(parentWidth), Math.max(MIN_DIFF_PANEL_WIDTH, renderedWidth))
+      const clampedWidth = Math.min(getMaxDiffPanelWidth(parentWidth), Math.max(getMinDiffPanelWidth(parentWidth), renderedWidth))
       if (clampedWidth !== renderedWidth) {
         setRenderedWidth(clampedWidth)
         onWidthChangeRef.current(clampedWidth)
@@ -187,7 +190,7 @@ function ConversationDiffPanelContent({
       const nextWidth = dragState.startWidth - (event.clientX - dragState.startX)
       const clampedWidth = Math.min(
         getMaxDiffPanelWidth(parentWidth),
-        Math.max(MIN_DIFF_PANEL_WIDTH, Math.round(nextWidth)),
+        Math.max(getMinDiffPanelWidth(parentWidth), Math.round(nextWidth)),
       )
       widthRef.current = clampedWidth
       if (resizeAnimationFrameRef.current !== null) {

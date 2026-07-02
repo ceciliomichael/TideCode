@@ -45,7 +45,7 @@ export function useWorkspaceExplorerResize({
   }, [isResizing, width])
 
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen || isResizing) {
       return
     }
 
@@ -62,7 +62,7 @@ export function useWorkspaceExplorerResize({
     return () => {
       window.removeEventListener('resize', handleWindowResize)
     }
-  }, [isOpen, onWidthChange, renderedWidth])
+  }, [isOpen, isResizing, onWidthChange, renderedWidth])
 
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {

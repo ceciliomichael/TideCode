@@ -10,7 +10,6 @@ import {
 import { isMarkdownPreviewablePath } from '../../lib/markdown-preview'
 import { isSvgPreviewablePath } from '../../lib/svg-preview'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
-import { clampWorkspaceEditorWidth } from '../../lib/workspaceEditorSizing'
 import type { GitFileDiff } from '../../types/chat'
 import type { WorkspaceTab } from './types'
 import { WorkspaceFileTabsPanelContent } from './workspaceFileTabsPanel/WorkspaceFileTabsPanelContent'
@@ -25,10 +24,7 @@ interface WorkspaceFileTabsPanelProps {
   onOpenMarkdownPreview: (relativePath: string) => void
   onOpenSvgPreview: (relativePath: string) => void
   onSelectTab: (tabKey: string) => void
-  onWidthChange: (nextWidth: number) => void
-  onWidthCommit: (nextWidth: number) => void
   tabs: readonly WorkspaceTab[]
-  width: number
   wordWrapEnabled: boolean
 }
 
@@ -42,41 +38,18 @@ export function WorkspaceFileTabsPanel({
   onOpenMarkdownPreview,
   onOpenSvgPreview,
   onSelectTab,
-  onWidthChange,
-  onWidthCommit,
   tabs,
-  width,
   wordWrapEnabled,
 }: WorkspaceFileTabsPanelProps) {
   const hasTabs = tabs.length > 0
   const activeTab = tabs.find((tab) => tab.tabKey === activeTabKey) ?? null
-  const panelRef = useRef<HTMLElement | null>(null)
   const tabsViewportRef = useRef<HTMLDivElement | null>(null)
-  const resizeDragStateRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null)
-  const resizeAnimationFrameRef = useRef<number | null>(null)
-  const renderedWidthRef = useRef(width)
   const dragStateRef = useRef<{ pointerId: number; startX: number; startThumbLeft: number } | null>(null)
-  const [renderedWidth, setRenderedWidth] = useState(width)
   const [tabsScrollMetrics, setTabsScrollMetrics] = useState({
     canScroll: false,
     thumbLeft: 0,
     thumbWidth: 0,
   })
-  const [isResizing, setIsResizing] = useState(false)
-
-  useEffect(() => {
-    if (isResizing) {
-      return
-    }
-    setRenderedWidth(width)
-  }, [isResizing, width])
-
-  useEffect(() => {
-    renderedWidthRef.current = renderedWidth
-    if (panelRef.current) {
-      panelRef.current.style.width = `${renderedWidth}px`
-    }
-  }, [renderedWidth])
 
   const updateTabsScrollMetrics = useCallback(() => {
     const viewport = tabsViewportRef.current
@@ -112,14 +85,6 @@ export function WorkspaceFileTabsPanel({
       return
     }
 
-    const panelElement = tabsViewportRef.current?.closest('section')
-    const parentWidth = panelElement?.parentElement?.clientWidth ?? window.innerWidth
-    const clampedWidth = clampWorkspaceEditorWidth(renderedWidth, parentWidth)
-    if (clampedWidth !== renderedWidth) {
-      setRenderedWidth(clampedWidth)
-      onWidthChange(clampedWidth)
-    }
-
     const viewport = tabsViewportRef.current
     if (!viewport) {
       return
@@ -137,84 +102,7 @@ export function WorkspaceFileTabsPanel({
       resizeObserver.disconnect()
       window.removeEventListener('resize', updateTabsScrollMetrics)
     }
-  }, [isOpen, onWidthChange, renderedWidth, tabs, updateTabsScrollMetrics])
-
-  useEffect(() => {
-    function handleResizePointerMove(event: PointerEvent) {
-      const dragState = resizeDragStateRef.current
-      if (!dragState) {
-        return
-      }
-
-      const panelElement = tabsViewportRef.current?.closest('section')
-      const parentWidth = panelElement?.parentElement?.clientWidth ?? window.innerWidth
-      const nextWidth = clampWorkspaceEditorWidth(
-        dragState.startWidth - (event.clientX - dragState.startX),
-        parentWidth,
-      )
-      renderedWidthRef.current = nextWidth
-
-      if (resizeAnimationFrameRef.current !== null) {
-        return
-      }
-
-      resizeAnimationFrameRef.current = window.requestAnimationFrame(() => {
-        resizeAnimationFrameRef.current = null
-        if (panelRef.current) {
-          panelRef.current.style.width = `${renderedWidthRef.current}px`
-        }
-      })
-    }
-
-    function handleResizePointerUp(event: PointerEvent) {
-      if (resizeDragStateRef.current?.pointerId !== event.pointerId) {
-        return
-      }
-
-      const dragState = resizeDragStateRef.current
-      resizeDragStateRef.current = null
-      if (resizeAnimationFrameRef.current !== null) {
-        window.cancelAnimationFrame(resizeAnimationFrameRef.current)
-        resizeAnimationFrameRef.current = null
-      }
-      setIsResizing(false)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-
-      if (!dragState) {
-        return
-      }
-
-      const panelElement = tabsViewportRef.current?.closest('section')
-      const parentWidth = panelElement?.parentElement?.clientWidth ?? window.innerWidth
-      const committedWidth = clampWorkspaceEditorWidth(
-        dragState.startWidth - (event.clientX - dragState.startX),
-        parentWidth,
-      )
-      renderedWidthRef.current = committedWidth
-      setRenderedWidth(committedWidth)
-      onWidthChange(committedWidth)
-      onWidthCommit(committedWidth)
-    }
-
-    window.addEventListener('pointermove', handleResizePointerMove)
-    window.addEventListener('pointerup', handleResizePointerUp)
-
-    return () => {
-      window.removeEventListener('pointermove', handleResizePointerMove)
-      window.removeEventListener('pointerup', handleResizePointerUp)
-      if (resizeAnimationFrameRef.current !== null) {
-        window.cancelAnimationFrame(resizeAnimationFrameRef.current)
-        resizeAnimationFrameRef.current = null
-      }
-      if (resizeDragStateRef.current) {
-        resizeDragStateRef.current = null
-        setIsResizing(false)
-        document.body.style.cursor = ''
-        document.body.style.userSelect = ''
-      }
-    }
-  }, [onWidthChange, onWidthCommit])
+  }, [isOpen, tabs, updateTabsScrollMetrics])
 
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {
@@ -266,24 +154,6 @@ export function WorkspaceFileTabsPanel({
     event.currentTarget.setPointerCapture(pointerId)
   }
 
-  function handleResizePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) {
-      return
-    }
-
-    resizeDragStateRef.current = {
-      pointerId: event.pointerId,
-      startWidth: renderedWidthRef.current,
-      startX: event.clientX,
-    }
-    event.currentTarget.setPointerCapture(event.pointerId)
-    event.preventDefault()
-    event.stopPropagation()
-    setIsResizing(true)
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-  }
-
   function handleTabsWheel(event: ReactWheelEvent<HTMLDivElement>) {
     const viewport = tabsViewportRef.current
     if (!viewport || !tabsScrollMetrics.canScroll) {
@@ -309,11 +179,7 @@ export function WorkspaceFileTabsPanel({
       : undefined
 
   return (
-    <section
-      ref={panelRef}
-      className={['relative flex h-full shrink-0 min-w-0 flex-col border-l border-border bg-background', isResizing ? '' : 'transition-[width] duration-150 ease-out'].join(' ')}
-      style={{ width: `${renderedWidth}px` }}
-    >
+    <section className="relative flex min-w-0 flex-1 flex-col border-l border-border bg-background">
       <div className="group relative h-10 border-b border-border bg-background">
         <div
           ref={tabsViewportRef}
@@ -401,26 +267,17 @@ export function WorkspaceFileTabsPanel({
       )}
 
       <div className="min-h-0 flex-1 overflow-hidden">
-        {!hasTabs || !activeTab ? null : (
-          <WorkspaceFileTabsPanelContent
-            activeTab={activeTab}
-            gitFileDiffs={gitFileDiffs}
-              hasRepository={hasRepository}
-            tabs={tabs}
-            onFileContentChange={onFileContentChange}
-            onOpenMarkdownPreview={openMarkdownPreviewForActiveFile}
-            onOpenSvgPreview={openSvgPreviewForActiveFile}
-            wordWrapEnabled={wordWrapEnabled}
-          />
-        )}
+        <WorkspaceFileTabsPanelContent
+          activeTab={activeTab}
+          gitFileDiffs={gitFileDiffs}
+          hasRepository={hasRepository}
+          tabs={tabs}
+          onFileContentChange={onFileContentChange}
+          onOpenMarkdownPreview={openMarkdownPreviewForActiveFile}
+          onOpenSvgPreview={openSvgPreviewForActiveFile}
+          wordWrapEnabled={wordWrapEnabled}
+        />
       </div>
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize editor panel"
-        onPointerDown={handleResizePointerDown}
-        className="absolute inset-y-0 left-0 z-20 w-3 -translate-x-1/2 cursor-col-resize"
-      />
     </section>
   )
 }

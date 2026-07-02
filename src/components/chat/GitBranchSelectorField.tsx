@@ -29,7 +29,6 @@ export function GitBranchSelectorField({
   errorMessage = null,
   hasRepository,
   isDetachedHead = false,
-  isLoading = false,
   isSwitching = false,
   onChange,
   onCreateBranch,
@@ -189,7 +188,7 @@ export function GitBranchSelectorField({
         <span className="chat-runtime-control-label min-w-0 max-w-[14rem] truncate text-left">
           {controlLabel}
         </span>
-        {(isLoading || isSwitching) && hasRepository ? <RefreshCw size={13} className="ml-1.5 shrink-0 animate-spin text-current" /> : null}
+        {isSwitching && hasRepository ? <RefreshCw size={13} className="ml-1.5 shrink-0 animate-spin text-current" /> : null}
       </button>
 
       {isOpen

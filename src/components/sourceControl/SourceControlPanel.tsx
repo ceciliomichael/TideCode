@@ -2,7 +2,7 @@ import { GitCommitHorizontal } from 'lucide-react'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
 import type { DiffPanelScope } from '../chat/ConversationDiffPanel'
-import { MIN_DIFF_PANEL_WIDTH, getMaxDiffPanelWidth } from '../../lib/diffPanelSizing'
+import { getMaxDiffPanelWidth, getMinDiffPanelWidth } from '../../lib/diffPanelSizing'
 import { clampSourceControlHistoryHeight, getDefaultSourceControlHistoryHeight } from '../../lib/sourceControlSizing'
 import type {
   GitHistoryCommitDetailsResult,
@@ -207,12 +207,15 @@ function SourceControlPanelContent({
     }
 
     function clampPanelWidth() {
+      if (dragStateRef.current) {
+        return
+      }
       const parentWidth = panelRef.current?.parentElement?.clientWidth
       if (!parentWidth) {
         return
       }
 
-      const clampedWidth = Math.min(getMaxDiffPanelWidth(parentWidth), Math.max(MIN_DIFF_PANEL_WIDTH, renderedWidth))
+      const clampedWidth = Math.min(getMaxDiffPanelWidth(parentWidth), Math.max(getMinDiffPanelWidth(parentWidth), renderedWidth))
       if (clampedWidth !== renderedWidth) {
         setRenderedWidth(clampedWidth)
         onWidthChangeRef.current(clampedWidth)
@@ -235,7 +238,7 @@ function SourceControlPanelContent({
       const nextWidth = dragState.startWidth - (event.clientX - dragState.startX)
       const clampedWidth = Math.min(
         getMaxDiffPanelWidth(parentWidth),
-        Math.max(MIN_DIFF_PANEL_WIDTH, Math.round(nextWidth)),
+        Math.max(getMinDiffPanelWidth(parentWidth), Math.round(nextWidth)),
       )
       widthRef.current = clampedWidth
       if (resizeAnimationFrameRef.current !== null) {

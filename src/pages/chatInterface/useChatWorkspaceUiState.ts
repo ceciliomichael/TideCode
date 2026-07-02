@@ -80,9 +80,6 @@ export function useChatWorkspaceUiState({
   const [workspaceExplorerWidth, setWorkspaceExplorerWidth] = useState(
     settings.workspaceExplorerWidth,
   );
-  const [workspaceEditorWidth, setWorkspaceEditorWidth] = useState(
-    settings.workspaceEditorWidth,
-  );
   const [sourceControlPanelWidth, setSourceControlPanelWidth] =
     useState(diffPanelWidth);
   const [conversationDiffPanelWidth, setConversationDiffPanelWidth] =
@@ -120,10 +117,6 @@ export function useChatWorkspaceUiState({
   useEffect(() => {
     setWorkspaceExplorerWidth(settings.workspaceExplorerWidth);
   }, [settings.workspaceExplorerWidth]);
-
-  useEffect(() => {
-    setWorkspaceEditorWidth(settings.workspaceEditorWidth);
-  }, [settings.workspaceEditorWidth]);
 
   useEffect(() => {
     restoreWorkspaceUiSession({
@@ -214,9 +207,6 @@ export function useChatWorkspaceUiState({
   }, []);
 
   useEffect(() => {
-    setWorkspaceEditorWidth((currentWidth) =>
-      currentWidth === DEFAULT_DIFF_PANEL_WIDTH ? diffPanelWidth : currentWidth,
-    );
     setSourceControlPanelWidth((currentWidth) =>
       currentWidth === DEFAULT_DIFF_PANEL_WIDTH ? diffPanelWidth : currentWidth,
     );
@@ -727,20 +717,6 @@ export function useChatWorkspaceUiState({
     setActiveWorkspaceTabKey(selectedTab?.tabKey ?? tabKey);
   }, [workspaceFileTabs]);
 
-  const handleWorkspaceEditorWidthChange = useCallback((nextWidth: number) => {
-    setWorkspaceEditorWidth(nextWidth);
-  }, []);
-
-  const handleWorkspaceEditorWidthCommit = useCallback(
-    (nextWidth: number) => {
-      setWorkspaceEditorWidth(nextWidth);
-      if (nextWidth !== settings.workspaceEditorWidth) {
-        void onUpdateSettings({ workspaceEditorWidth: nextWidth });
-      }
-    },
-    [onUpdateSettings, settings.workspaceEditorWidth],
-  );
-
   const handleWorkspaceExplorerWidthChange = useCallback(
     (nextWidth: number) => {
       setWorkspaceExplorerWidth(nextWidth);
@@ -1039,8 +1015,6 @@ export function useChatWorkspaceUiState({
     handleTerminalFullScreenChange,
     handleTerminalOpenChange,
     handleToggleExplorerPanel,
-    handleWorkspaceEditorWidthChange,
-    handleWorkspaceEditorWidthCommit,
     handleWorkspaceExplorerWidthChange,
     handleWorkspaceExplorerWidthCommit,
     handleWorkspaceFileContentChange,
@@ -1051,7 +1025,6 @@ export function useChatWorkspaceUiState({
     sourceControlPanelWidth,
     terminalPanelHeight,
     workspaceClipboard,
-    workspaceEditorWidth,
     workspaceExplorerWidth,
     workspaceFileTabs,
   };

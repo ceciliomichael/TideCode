@@ -81,8 +81,6 @@ export interface ChatWorkspaceUiState {
   handleTerminalFullScreenChange: (nextFullScreen: boolean) => void;
   handleTerminalOpenChange: (nextOpen: boolean) => void;
   handleToggleExplorerPanel: () => void;
-  handleWorkspaceEditorWidthChange: (nextWidth: number) => void;
-  handleWorkspaceEditorWidthCommit: (nextWidth: number) => void;
   handleWorkspaceExplorerWidthChange: (nextWidth: number) => void;
   handleWorkspaceExplorerWidthCommit: (nextWidth: number) => void;
   handleWorkspaceFileContentChange: (
@@ -96,7 +94,6 @@ export interface ChatWorkspaceUiState {
   sourceControlPanelWidth: number;
   terminalPanelHeight: number;
   workspaceClipboard: WorkspaceClipboardEntry | null;
-  workspaceEditorWidth: number;
   workspaceExplorerWidth: number;
   workspaceFileTabs: WorkspaceTab[];
 }
