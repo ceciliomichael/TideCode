@@ -39,6 +39,11 @@ export interface WorkspaceTerminalPanelState {
   onClose: () => void;
   panelHeight: number;
   panelRef: RefObject<HTMLElement>;
+  reorderTerminalTabs: (
+    sourceTabKey: string,
+    targetTabKey: string,
+    position: "before" | "after",
+  ) => void;
   selectTerminalTab: (tabKey: string) => void;
   terminalHostRef: RefObject<HTMLDivElement>;
   terminalTabs: readonly TerminalTabState[];

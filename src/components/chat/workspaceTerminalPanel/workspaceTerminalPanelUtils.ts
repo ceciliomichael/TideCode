@@ -191,3 +191,34 @@ export function resolveTerminalSessionWorkspaceRootPath(
   const normalizedWorkspaceRootPath = sessionWorkspaceRootPath?.trim() ?? "";
   return normalizedWorkspaceRootPath.length > 0 ? normalizedWorkspaceRootPath : null;
 }
+
+export function reorderTabList<T extends { key: string }>(
+  tabs: readonly T[],
+  sourceTabKey: string,
+  targetTabKey: string,
+  position: "before" | "after",
+): T[] {
+  if (sourceTabKey === targetTabKey) {
+    return [...tabs];
+  }
+
+  const sourceIndex = tabs.findIndex((tab) => tab.key === sourceTabKey);
+  if (sourceIndex === -1) {
+    return [...tabs];
+  }
+
+  const sourceTab = tabs[sourceIndex];
+  const remainingTabs = tabs.filter((tab) => tab.key !== sourceTabKey);
+  const targetIndexInRemaining = remainingTabs.findIndex((tab) => tab.key === targetTabKey);
+  if (targetIndexInRemaining === -1) {
+    return [...tabs];
+  }
+
+  const insertIndex =
+    position === "before" ? targetIndexInRemaining : targetIndexInRemaining + 1;
+
+  const nextTabs = [...remainingTabs];
+  nextTabs.splice(insertIndex, 0, sourceTab);
+  return nextTabs;
+}
+

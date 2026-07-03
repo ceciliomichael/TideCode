@@ -41,6 +41,7 @@ export function useWorkspaceTerminalPanelState({
     onClose,
     panelHeight: sizingState.panelHeight,
     panelRef: sizingState.panelRef,
+    reorderTerminalTabs: sessionState.reorderTerminalTabs,
     selectTerminalTab: sessionState.selectTerminalTab,
     terminalHostRef: sessionState.terminalHostRef,
     terminalTabs: sessionState.terminalTabs,

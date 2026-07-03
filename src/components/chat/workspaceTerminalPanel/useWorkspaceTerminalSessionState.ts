@@ -20,6 +20,7 @@ import {
   getTerminalTheme,
   getWorkspaceKeyFromTerminalTabKey,
   isRenderableTerminalDimensions,
+  reorderTabList,
   resolveTerminalSessionWorkspaceRootPath,
 } from "./workspaceTerminalPanelUtils";
 import "@xterm/xterm/css/xterm.css";
@@ -43,6 +44,11 @@ interface WorkspaceTerminalSessionState {
   activeTerminalTabKey: string | null;
   closeTerminalTab: (tabKey: string) => void;
   openTerminalTab: () => void;
+  reorderTerminalTabs: (
+    sourceTabKey: string,
+    targetTabKey: string,
+    position: "before" | "after",
+  ) => void;
   selectTerminalTab: (tabKey: string) => void;
   terminalHostRef: RefObject<HTMLDivElement>;
   terminalTabs: readonly TerminalTabState[];
@@ -605,6 +611,19 @@ export function useWorkspaceTerminalSessionState({
     [renderActiveTerminalTab],
   );
 
+  const reorderTerminalTabs = useCallback(
+    (sourceTabKey: string, targetTabKey: string, position: "before" | "after") => {
+      if (sourceTabKey === targetTabKey) {
+        return;
+      }
+
+      setTerminalTabs((currentTabs) =>
+        reorderTabList(currentTabs, sourceTabKey, targetTabKey, position),
+      );
+    },
+    [],
+  );
+
   useEffect(() => {
     const unsubscribeData = window.echosphereTerminal.onData((event) => {
       const tabKey = sessionIdToTabKeyRef.current.get(event.sessionId);
@@ -861,6 +880,7 @@ export function useWorkspaceTerminalSessionState({
     activeTerminalTabKey,
     closeTerminalTab,
     openTerminalTab,
+    reorderTerminalTabs,
     selectTerminalTab,
     terminalHostRef,
     terminalTabs,

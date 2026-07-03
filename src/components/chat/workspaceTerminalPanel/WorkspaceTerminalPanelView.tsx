@@ -2,6 +2,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { LoaderCircle, Plus, X, Maximize, Minimize } from "lucide-react";
 import { Tooltip } from "../../Tooltip";
 import type { WorkspaceTerminalPanelState } from "./workspaceTerminalPanelTypes";
+import { useWorkspaceTerminalTabDragDrop } from "./useWorkspaceTerminalTabDragDrop";
 
 interface WorkspaceTerminalPanelViewProps {
   panelState: WorkspaceTerminalPanelState;
@@ -11,6 +12,10 @@ export function WorkspaceTerminalPanelView({
   panelState,
 }: WorkspaceTerminalPanelViewProps) {
   const activeTerminalTab = panelState.activeTerminalTab;
+  const { draggedTabKey, dragOverTabKey, dropPosition, getTabDragHandlers } =
+    useWorkspaceTerminalTabDragDrop({
+      reorderTerminalTabs: panelState.reorderTerminalTabs,
+    });
 
   const handleTerminalTabMouseDown = (
     event: ReactMouseEvent<HTMLButtonElement>,
@@ -60,18 +65,32 @@ export function WorkspaceTerminalPanelView({
           <div className="workspace-tabs-scroll-viewport flex min-w-0 flex-1 items-stretch gap-0 overflow-x-auto overflow-y-hidden">
             {panelState.terminalTabs.map((tab) => {
               const isActive = tab.key === panelState.activeTerminalTabKey;
+              const isDragging = draggedTabKey === tab.key;
+              const isDragOver = dragOverTabKey === tab.key && !isDragging;
+              const dragHandlers = getTabDragHandlers(tab.key);
+
               return (
                 <div
                   key={tab.key}
-                  className="group relative inline-flex h-full shrink-0 items-stretch border-r border-border"
+                  {...dragHandlers}
+                  className={[
+                    "group relative inline-flex h-full shrink-0 items-stretch border-r border-border transition-opacity select-none cursor-grab active:cursor-grabbing",
+                    isDragging ? "opacity-40" : "opacity-100",
+                  ].join(" ")}
                 >
+                  {isDragOver && dropPosition === "before" ? (
+                    <div className="absolute left-0 top-0 bottom-0 z-30 w-0.5 bg-foreground" />
+                  ) : null}
+                  {isDragOver && dropPosition === "after" ? (
+                    <div className="absolute right-0 top-0 bottom-0 z-30 w-0.5 bg-foreground" />
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => panelState.selectTerminalTab(tab.key)}
                     onMouseDown={handleTerminalTabMouseDown}
                     onAuxClick={(event) => handleTerminalTabAuxClick(event, tab.key)}
                     className={[
-                      "inline-flex h-full max-w-[248px] items-center gap-2 px-3 pr-9 text-sm transition-colors",
+                      "inline-flex h-full max-w-[248px] items-center gap-2 px-3 pr-9 text-sm transition-colors cursor-grab active:cursor-grabbing",
                       isActive
                         ? "border-t-2 border-t-foreground/60 bg-background text-foreground"
                         : "border-t-2 border-t-transparent bg-background text-muted-foreground hover:bg-surface-muted hover:text-foreground",
