@@ -159,7 +159,7 @@ export function WorkspaceTerminalPanelView({
       <div className="flex-1 min-h-0 overflow-hidden bg-[var(--workspace-panel-surface)] px-4 py-3">
         <div
           ref={panelState.terminalHostRef}
-          className="workspace-terminal-host h-full w-full overflow-hidden text-foreground bg-[var(--workspace-panel-surface)]"
+          className="workspace-terminal-host relative h-full w-full overflow-hidden text-foreground bg-[var(--workspace-panel-surface)]"
         />
       </div>
       {activeTerminalTab?.status === "error" &&

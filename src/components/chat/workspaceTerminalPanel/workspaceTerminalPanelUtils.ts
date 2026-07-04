@@ -222,3 +222,14 @@ export function reorderTabList<T extends { key: string }>(
   return nextTabs;
 }
 
+export function sanitizeTerminalBuffer(buffer: string): string {
+  if (!buffer) return "";
+  const clearScrollbackIdx = buffer.lastIndexOf("\x1b[3J");
+  const resetIdx = buffer.lastIndexOf("\x1b[c");
+  const lastClearIdx = Math.max(clearScrollbackIdx, resetIdx);
+  if (lastClearIdx !== -1) {
+    return buffer.slice(lastClearIdx);
+  }
+  return buffer;
+}
+

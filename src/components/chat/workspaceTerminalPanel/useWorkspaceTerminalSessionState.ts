@@ -15,13 +15,12 @@ import {
   getErrorMessage,
   getNativeSelectionTextWithinHost,
   getSessionDimensions,
-  MIN_TERMINAL_COLS,
-  MIN_TERMINAL_ROWS,
   getTerminalTheme,
   getWorkspaceKeyFromTerminalTabKey,
   isRenderableTerminalDimensions,
   reorderTabList,
   resolveTerminalSessionWorkspaceRootPath,
+  sanitizeTerminalBuffer,
 } from "./workspaceTerminalPanelUtils";
 import "@xterm/xterm/css/xterm.css";
 
@@ -43,6 +42,8 @@ interface WorkspaceTerminalSessionState {
   activeTerminalTab: TerminalTabState | null;
   activeTerminalTabKey: string | null;
   closeTerminalTab: (tabKey: string) => void;
+  clearTerminalTab: (tabKey: string) => void;
+  restartTerminalTab: (tabKey: string) => void;
   openTerminalTab: () => void;
   reorderTerminalTabs: (
     sourceTabKey: string,
@@ -52,6 +53,15 @@ interface WorkspaceTerminalSessionState {
   selectTerminalTab: (tabKey: string) => void;
   terminalHostRef: RefObject<HTMLDivElement>;
   terminalTabs: readonly TerminalTabState[];
+}
+
+interface TabTerminalInstance {
+  terminal: Terminal;
+  fitAddon: FitAddon;
+  webLinksAddon: WebLinksAddon;
+  container: HTMLDivElement;
+  disposables: IDisposable[];
+  lastSyncedSize?: { cols: number; rows: number };
 }
 
 const TERMINAL_THEME_SYNC_DELAY_MS = 200;
@@ -65,23 +75,10 @@ export function useWorkspaceTerminalSessionState({
   workspacePath,
 }: UseWorkspaceTerminalSessionStateArgs): WorkspaceTerminalSessionState {
   const terminalHostRef = useRef<HTMLDivElement | null>(null);
-  const terminalRef = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
-  const terminalInputDisposableRef = useRef<IDisposable | null>(null);
-  const terminalResizeDisposableRef = useRef<IDisposable | null>(null);
-  const terminalContextMenuListenerRef = useRef<((event: MouseEvent) => void) | null>(null);
+  const tabInstancesRef = useRef<Map<string, TabTerminalInstance>>(new Map());
   const workspacePathRef = useRef<string | null>(workspacePath);
   const activeWorkspaceKeyRef = useRef(workspaceKey);
   const isResizingRef = useRef(isResizing);
-  const pendingTerminalRenderRef = useRef<{
-    sessionId: number | null;
-    tabKey: string | null;
-  } | null>(null);
-  const lastSyncedSizeRef = useRef<{
-    cols: number;
-    rows: number;
-    sessionId: number;
-  } | null>(null);
   const terminalWorkspaceStateRef = useRef<Record<string, TerminalWorkspaceState>>({});
   const previousWorkspaceKeyRef = useRef(workspaceKey);
   const terminalTabsRef = useRef<TerminalTabState[]>([]);
@@ -119,332 +116,349 @@ export function useWorkspaceTerminalSessionState({
     activeSessionIdRef.current = activeTerminalTab?.sessionId ?? null;
   }, [activeTerminalTab, activeTerminalTabKey]);
 
-  const getRenderableTerminalDimensions = useCallback(() => {
-    const fitAddon = fitAddonRef.current;
-    if (!fitAddon) {
+  const getActiveTerminalSessionWorkspaceRootPath = useCallback((tabKey?: string | null) => {
+    const targetKey = tabKey ?? activeTabKeyRef.current;
+    if (!targetKey) {
       return null;
     }
 
-    const proposedDimensions = fitAddon.proposeDimensions();
-    return isRenderableTerminalDimensions(proposedDimensions)
-      ? proposedDimensions
-      : null;
-  }, []);
-
-  const getActiveTerminalSessionWorkspaceRootPath = useCallback(() => {
-    const activeSessionId = activeSessionIdRef.current;
-    if (activeSessionId === null) {
-      return null;
-    }
-
-    const tabKey = sessionIdToTabKeyRef.current.get(activeSessionId);
-    if (!tabKey) {
-      return null;
-    }
-
-    const activeTab = terminalTabsRef.current.find((tab) => tab.key === tabKey) ?? null;
-    return resolveTerminalSessionWorkspaceRootPath(activeTab?.workspaceRootPath);
+    const targetTab = terminalTabsRef.current.find((tab) => tab.key === targetKey) ?? null;
+    return resolveTerminalSessionWorkspaceRootPath(targetTab?.workspaceRootPath);
   }, []);
 
   const sendTerminalSizeToSession = useCallback(
-    (dimensions: { cols: number; rows: number }) => {
-      const activeSessionId = activeSessionIdRef.current;
-      if (activeSessionId === null) {
+    (tabKey: string, sessionId: number, dimensions: { cols: number; rows: number }) => {
+      const instance = tabInstancesRef.current.get(tabKey);
+      if (!instance) {
         return;
       }
 
-      const lastSyncedSize = lastSyncedSizeRef.current;
       if (
-        lastSyncedSize &&
-        lastSyncedSize.sessionId === activeSessionId &&
-        lastSyncedSize.cols === dimensions.cols &&
-        lastSyncedSize.rows === dimensions.rows
+        instance.lastSyncedSize &&
+        instance.lastSyncedSize.cols === dimensions.cols &&
+        instance.lastSyncedSize.rows === dimensions.rows
       ) {
         return;
       }
 
-      lastSyncedSizeRef.current = {
+      instance.lastSyncedSize = {
         cols: dimensions.cols,
         rows: dimensions.rows,
-        sessionId: activeSessionId,
       };
-      const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath();
+      const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath(tabKey);
 
       void window.echosphereTerminal
         .resizeSession({
           cols: dimensions.cols,
           rows: dimensions.rows,
-          sessionId: activeSessionId,
+          sessionId,
           workspaceRootPath,
         })
         .catch((error) => {
-          lastSyncedSizeRef.current = null;
-          console.error("Failed to sync terminal size", error);
+          if (instance) {
+            instance.lastSyncedSize = undefined;
+          }
+          console.error(`Failed to sync terminal size for tab ${tabKey}`, error);
         });
     },
     [getActiveTerminalSessionWorkspaceRootPath],
   );
 
-  const syncTerminalSize = useCallback(
-    (force = false) => {
+  const syncTabSize = useCallback(
+    (tabKey: string, force = false) => {
       if (!force && isResizingRef.current) {
         return false;
       }
 
-      const terminal = terminalRef.current;
-      if (!terminal) {
+      const instance = tabInstancesRef.current.get(tabKey);
+      if (!instance) {
         return false;
       }
 
-      const proposedDimensions = getRenderableTerminalDimensions();
-      if (!proposedDimensions) {
+      const proposedDimensions = instance.fitAddon.proposeDimensions();
+      if (!isRenderableTerminalDimensions(proposedDimensions)) {
         return false;
       }
 
-      fitAddonRef.current?.fit();
-      sendTerminalSizeToSession(getSessionDimensions(terminal));
+      instance.fitAddon.fit();
+      const tab = terminalTabsRef.current.find((t) => t.key === tabKey);
+      if (tab?.sessionId !== null && tab?.sessionId !== undefined) {
+        sendTerminalSizeToSession(tabKey, tab.sessionId, getSessionDimensions(instance.terminal));
+      }
       return true;
     },
-    [getRenderableTerminalDimensions, sendTerminalSizeToSession],
+    [sendTerminalSizeToSession],
+  );
+
+  const syncAllVisibleTabSizes = useCallback(
+    (force = false) => {
+      if (!isOpen || (!force && isResizingRef.current)) {
+        return;
+      }
+
+      const activeKey = activeTabKeyRef.current;
+      if (activeKey) {
+        syncTabSize(activeKey, force);
+      }
+    },
+    [isOpen, syncTabSize],
   );
 
   const syncTerminalTheme = useCallback(() => {
-    const hostElement = terminalHostRef.current;
-    const terminal = terminalRef.current;
-    if (!hostElement || !terminal) {
-      return;
-    }
+    const hostElement = terminalHostRef.current || document.body;
+    const theme = getTerminalTheme(hostElement, resolvedTheme);
 
-    terminal.options.theme = {
-      ...getTerminalTheme(hostElement, resolvedTheme),
-    };
-    terminal.refresh(0, Math.max(terminal.rows - 1, 0));
+    tabInstancesRef.current.forEach((instance) => {
+      instance.terminal.options.theme = { ...theme };
+      instance.terminal.refresh(0, Math.max(instance.terminal.rows - 1, 0));
+    });
   }, [resolvedTheme]);
 
-  const renderActiveTerminalTabNow = useCallback(
-    (nextTabKey: string | null, sessionIdOverride?: number | null) => {
-      const terminal = terminalRef.current;
-      if (!terminal) {
-        return;
-      }
+  const ensureTabInstance = useCallback(
+    (tabKey: string): TabTerminalInstance => {
+      let instance = tabInstancesRef.current.get(tabKey);
+      const hostElement = terminalHostRef.current;
 
-      const nextTab = nextTabKey
-        ? (terminalTabsRef.current.find((tab) => tab.key === nextTabKey) ?? null)
-        : null;
-      activeTabKeyRef.current = nextTabKey;
-      activeSessionIdRef.current = sessionIdOverride ?? nextTab?.sessionId ?? null;
-      lastSyncedSizeRef.current = null;
-      terminal.reset();
-
-      if (!nextTabKey) {
-        terminal.focus();
-        return;
-      }
-
-      const bufferedOutput = tabBuffersRef.current.get(nextTabKey) ?? "";
-      if (bufferedOutput.length > 0) {
-        terminal.write(bufferedOutput);
-      }
-
-      if (nextTab?.status === "error" && nextTab.errorMessage) {
-        terminal.writeln(`\r\n\r\nFailed to start terminal: ${nextTab.errorMessage}`);
-      }
-
-      if (nextTab?.status === "exited" && nextTab.exitCode !== null) {
-        terminal.writeln(`\r\n\r\nProcess exited with code ${nextTab.exitCode}.`);
-      }
-
-      terminal.focus();
-      syncTerminalSize(true);
-    },
-    [syncTerminalSize],
-  );
-
-  const flushPendingTerminalRender = useCallback(() => {
-    const pendingTerminalRender = pendingTerminalRenderRef.current;
-    if (!pendingTerminalRender) {
-      return;
-    }
-
-    if (!getRenderableTerminalDimensions()) {
-      return;
-    }
-
-    pendingTerminalRenderRef.current = null;
-    renderActiveTerminalTabNow(
-      pendingTerminalRender.tabKey,
-      pendingTerminalRender.sessionId,
-    );
-  }, [getRenderableTerminalDimensions, renderActiveTerminalTabNow]);
-
-  const renderActiveTerminalTab = useCallback(
-    (nextTabKey: string | null, sessionIdOverride?: number | null) => {
-      const terminal = terminalRef.current;
-      if (!terminal) {
-        return;
-      }
-
-      if (!getRenderableTerminalDimensions()) {
-        pendingTerminalRenderRef.current = {
-          sessionId: sessionIdOverride ?? null,
-          tabKey: nextTabKey,
-        };
-        return;
-      }
-
-      pendingTerminalRenderRef.current = null;
-      renderActiveTerminalTabNow(nextTabKey, sessionIdOverride);
-    },
-    [getRenderableTerminalDimensions, renderActiveTerminalTabNow],
-  );
-
-  const ensureTerminal = useCallback(() => {
-    const hostElement = terminalHostRef.current;
-    if (!hostElement || terminalRef.current) {
-      return;
-    }
-
-    const terminal = new Terminal({
-      cursorBlink: true,
-      cursorStyle: "block",
-      fontFamily: '"Cascadia Mono", Consolas, "Courier New", monospace',
-      fontSize: 13,
-      lineHeight: 1.24,
-      minimumContrastRatio: 4.5,
-      scrollback: 5_000,
-      theme: getTerminalTheme(hostElement, resolvedTheme),
-    });
-    const fitAddon = new FitAddon();
-    const webLinksAddon = new WebLinksAddon((event, uri) => {
-      if (!event.ctrlKey && !event.metaKey) {
-        return;
-      }
-
-      event.preventDefault();
-      void window.echosphereTerminal.openExternalLink({ url: uri }).catch((error) => {
-        console.error("Failed to open terminal link", error);
-      });
-    });
-
-    terminal.loadAddon(fitAddon);
-    terminal.loadAddon(webLinksAddon);
-    terminal.open(hostElement);
-    terminal.focus();
-    const handleTerminalContextMenu = (event: MouseEvent) => {
-      const terminalSelection =
-        terminal.getSelection() || getNativeSelectionTextWithinHost(hostElement);
-      if (!terminalSelection) {
-        return;
-      }
-
-      event.preventDefault();
-      void copyTerminalSelectionToClipboard({
-        hostElement,
-        terminal,
-      })
-        .catch((error) => {
-          console.error("Failed to copy selected terminal text", error);
-        })
-        .finally(() => {
-          terminal.clearSelection();
-          clearSelectionWithinHost(hostElement);
-        });
-    };
-
-    terminalContextMenuListenerRef.current = handleTerminalContextMenu;
-    hostElement.addEventListener("contextmenu", handleTerminalContextMenu);
-    terminal.attachCustomKeyEventHandler((event) => {
-      if (event.key === "Enter" && event.altKey) {
-        if (event.type === "keydown") {
-          const activeSessionId = activeSessionIdRef.current;
-          if (activeSessionId !== null) {
-            const sequence = "\x1b\r"; // Alt+Enter is widely recognized by prompt_toolkit as newline
-            const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath();
-            void window.echosphereTerminal.writeToSession({
-              data: sequence,
-              sessionId: activeSessionId,
-              workspaceRootPath,
-            }).catch(console.error);
-          }
+      if (instance) {
+        if (hostElement && !hostElement.contains(instance.container)) {
+          hostElement.appendChild(instance.container);
         }
-        return false;
+        return instance;
       }
 
-      const isCopyShortcut =
-        (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "c";
-      if (!isCopyShortcut) {
-        return true;
+      const container = document.createElement("div");
+      container.className = "workspace-terminal-tab-instance";
+      container.style.position = "absolute";
+      container.style.top = "0";
+      container.style.left = "0";
+      container.style.width = "100%";
+      container.style.height = "100%";
+      container.style.overflow = "hidden";
+      container.style.display = tabKey === activeTabKeyRef.current ? "block" : "none";
+
+      if (hostElement) {
+        hostElement.appendChild(container);
       }
 
-      const copySelectedText = (text: string) => {
-        void navigator.clipboard.writeText(text).catch((error) => {
-          console.error("Failed to copy selected terminal text", error);
+      const terminal = new Terminal({
+        cursorBlink: true,
+        cursorStyle: "block",
+        fontFamily: '"Cascadia Mono", Consolas, "Courier New", monospace',
+        fontSize: 13,
+        lineHeight: 1.24,
+        minimumContrastRatio: 4.5,
+        scrollback: 5_000,
+        theme: getTerminalTheme(hostElement || document.body, resolvedTheme),
+      });
+
+      const fitAddon = new FitAddon();
+      const webLinksAddon = new WebLinksAddon((event, uri) => {
+        if (!event.ctrlKey && !event.metaKey) {
+          return;
+        }
+
+        event.preventDefault();
+        void window.echosphereTerminal.openExternalLink({ url: uri }).catch((error) => {
+          console.error("Failed to open terminal link", error);
         });
+      });
+
+      terminal.loadAddon(fitAddon);
+      terminal.loadAddon(webLinksAddon);
+      terminal.open(container);
+
+      const disposables: IDisposable[] = [];
+
+      const handleTerminalContextMenu = (event: MouseEvent) => {
+        const terminalSelection =
+          terminal.getSelection() || getNativeSelectionTextWithinHost(container);
+        if (terminalSelection) {
+          event.preventDefault();
+          void copyTerminalSelectionToClipboard({
+            hostElement: container,
+            terminal,
+          })
+            .catch((error) => {
+              console.error("Failed to copy selected terminal text", error);
+            })
+            .finally(() => {
+              terminal.clearSelection();
+              clearSelectionWithinHost(container);
+            });
+        } else {
+          // No text selected: paste from clipboard on right click (VS Code / Windows terminal behavior)
+          event.preventDefault();
+          void navigator.clipboard
+            .readText()
+            .then((text) => {
+              if (text) {
+                const tab = terminalTabsRef.current.find((t) => t.key === tabKey);
+                if (tab?.sessionId !== null && tab?.sessionId !== undefined) {
+                  const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath(tabKey);
+                  void window.echosphereTerminal.writeToSession({
+                    data: text,
+                    sessionId: tab.sessionId,
+                    workspaceRootPath,
+                  });
+                }
+              }
+            })
+            .catch((error) => {
+              console.error("Failed to read clipboard for paste", error);
+            });
+        }
       };
 
-      const terminalSelection = terminal.getSelection();
-      if (terminalSelection) {
-        copySelectedText(terminalSelection);
-        return false;
-      }
+      container.addEventListener("contextmenu", handleTerminalContextMenu);
 
-      const nativeSelection = getNativeSelectionTextWithinHost(hostElement);
-      if (nativeSelection) {
-        copySelectedText(nativeSelection);
-        return false;
-      }
+      terminal.attachCustomKeyEventHandler((event) => {
+        if (event.key === "Enter" && event.altKey) {
+          if (event.type === "keydown") {
+            const tab = terminalTabsRef.current.find((t) => t.key === tabKey);
+            if (tab?.sessionId !== null && tab?.sessionId !== undefined) {
+              const sequence = "\x1b\r";
+              const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath(tabKey);
+              void window.echosphereTerminal
+                .writeToSession({
+                  data: sequence,
+                  sessionId: tab.sessionId,
+                  workspaceRootPath,
+                })
+                .catch(console.error);
+            }
+          }
+          return false;
+        }
 
-      return true;
-    });
+        const isClearShortcut =
+          (event.ctrlKey || event.metaKey) &&
+          !event.altKey &&
+          !event.shiftKey &&
+          event.key.toLowerCase() === "k";
+        if (isClearShortcut && event.type === "keydown") {
+          terminal.clear();
+          return false;
+        }
 
-    terminalInputDisposableRef.current = terminal.onData((data) => {
-      const activeSessionId = activeSessionIdRef.current;
-      if (activeSessionId === null) {
-        return;
-      }
+        const isCopyShortcut =
+          (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "c";
+        if (isCopyShortcut) {
+          const terminalSelection = terminal.getSelection();
+          if (terminalSelection) {
+            void navigator.clipboard.writeText(terminalSelection).catch(console.error);
+            return false;
+          }
 
-      const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath();
+          const nativeSelection = getNativeSelectionTextWithinHost(container);
+          if (nativeSelection) {
+            void navigator.clipboard.writeText(nativeSelection).catch(console.error);
+            return false;
+          }
 
-      void window.echosphereTerminal
-        .writeToSession({
-          data,
-          sessionId: activeSessionId,
-          workspaceRootPath,
-        })
-        .catch((error) => {
-          console.error("Failed to write terminal input", error);
-        });
-    });
+          return true;
+        }
 
-    terminalResizeDisposableRef.current = terminal.onResize(() => {
-      sendTerminalSizeToSession(getSessionDimensions(terminal));
-    });
+        const isPasteShortcut =
+          ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "v") ||
+          (event.shiftKey && event.key === "Insert");
+        if (isPasteShortcut && event.type === "keydown") {
+          void navigator.clipboard
+            .readText()
+            .then((text) => {
+              if (text) {
+                const tab = terminalTabsRef.current.find((t) => t.key === tabKey);
+                if (tab?.sessionId !== null && tab?.sessionId !== undefined) {
+                  const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath(tabKey);
+                  void window.echosphereTerminal.writeToSession({
+                    data: text,
+                    sessionId: tab.sessionId,
+                    workspaceRootPath,
+                  });
+                }
+              }
+            })
+            .catch(console.error);
+          return false;
+        }
 
-    terminalRef.current = terminal;
-    fitAddonRef.current = fitAddon;
-    syncTerminalSize(true);
-  }, [getActiveTerminalSessionWorkspaceRootPath, resolvedTheme, sendTerminalSizeToSession, syncTerminalSize]);
+        return true;
+      });
 
-  const disposeTerminal = useCallback(() => {
-    pendingTerminalRenderRef.current = null;
-    const hostElement = terminalHostRef.current;
-    const handleTerminalContextMenu = terminalContextMenuListenerRef.current;
-    if (hostElement && handleTerminalContextMenu) {
-      hostElement.removeEventListener("contextmenu", handleTerminalContextMenu);
+      disposables.push(
+        terminal.onData((data) => {
+          const tab = terminalTabsRef.current.find((t) => t.key === tabKey);
+          if (tab?.sessionId === null || tab?.sessionId === undefined) {
+            return;
+          }
+
+          const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath(tabKey);
+          void window.echosphereTerminal
+            .writeToSession({
+              data,
+              sessionId: tab.sessionId,
+              workspaceRootPath,
+            })
+            .catch((error) => {
+              console.error(`Failed to write terminal input for tab ${tabKey}`, error);
+            });
+        }),
+      );
+
+      disposables.push(
+        terminal.onResize(() => {
+          const tab = terminalTabsRef.current.find((t) => t.key === tabKey);
+          if (tab?.sessionId !== null && tab?.sessionId !== undefined) {
+            sendTerminalSizeToSession(tabKey, tab.sessionId, getSessionDimensions(terminal));
+          }
+        }),
+      );
+
+      instance = {
+        container,
+        disposables,
+        fitAddon,
+        terminal,
+        webLinksAddon,
+      };
+
+      tabInstancesRef.current.set(tabKey, instance);
+      return instance;
+    },
+    [getActiveTerminalSessionWorkspaceRootPath, resolvedTheme, sendTerminalSizeToSession],
+  );
+
+  const disposeTabInstance = useCallback((tabKey: string) => {
+    const instance = tabInstancesRef.current.get(tabKey);
+    if (!instance) {
+      return;
     }
-    terminalContextMenuListenerRef.current = null;
-    terminalInputDisposableRef.current?.dispose();
-    terminalResizeDisposableRef.current?.dispose();
-    terminalInputDisposableRef.current = null;
-    terminalResizeDisposableRef.current = null;
-    fitAddonRef.current = null;
-    terminalRef.current?.dispose();
-    terminalRef.current = null;
+
+    instance.disposables.forEach((d) => d.dispose());
+    instance.terminal.dispose();
+    if (instance.container.parentElement) {
+      instance.container.remove();
+    }
+    tabInstancesRef.current.delete(tabKey);
   }, []);
 
-  const openTerminalTab = useCallback(async () => {
-    ensureTerminal();
+  const updateTabVisibility = useCallback(
+    (nextActiveKey: string | null) => {
+      tabInstancesRef.current.forEach((instance, key) => {
+        const isTargetActive = key === nextActiveKey;
+        instance.container.style.display = isTargetActive ? "block" : "none";
+        if (isTargetActive && isOpen) {
+          setTimeout(() => {
+            if (syncTabSize(key, true)) {
+              instance.terminal.focus();
+            }
+          }, 0);
+        }
+      });
+    },
+    [isOpen, syncTabSize],
+  );
 
+  const openTerminalTab = useCallback(async () => {
     const currentTabs = terminalTabsRef.current;
     const existingIndices = new Set(
       currentTabs
@@ -454,7 +468,7 @@ export function useWorkspaceTerminalSessionState({
           const parsed = parseInt(tab.key.slice(separatorIndex + 15), 10);
           return Number.isNaN(parsed) ? null : parsed;
         })
-        .filter((idx): idx is number => idx !== null)
+        .filter((idx): idx is number => idx !== null),
     );
 
     let tabIndex = 1;
@@ -478,10 +492,10 @@ export function useWorkspaceTerminalSessionState({
     setTerminalTabs((currentTabs) => [...currentTabs, nextTab]);
     setActiveTerminalTabKey(tabKey);
 
-    const terminal = terminalRef.current;
-    const dimensions = terminal
-      ? getSessionDimensions(terminal)
-      : { cols: MIN_TERMINAL_COLS, rows: MIN_TERMINAL_ROWS };
+    const instance = ensureTabInstance(tabKey);
+    updateTabVisibility(tabKey);
+
+    const dimensions = getSessionDimensions(instance.terminal);
 
     try {
       const session = await window.echosphereTerminal.createSession({
@@ -493,7 +507,8 @@ export function useWorkspaceTerminalSessionState({
       });
 
       sessionIdToTabKeyRef.current.set(session.sessionId, tabKey);
-      tabBuffersRef.current.set(tabKey, session.bufferedOutput);
+      const sanitizedOutput = sanitizeTerminalBuffer(session.bufferedOutput);
+      tabBuffersRef.current.set(tabKey, sanitizedOutput);
 
       setTerminalTabs((currentTabs) =>
         currentTabs.map((tab) =>
@@ -503,16 +518,20 @@ export function useWorkspaceTerminalSessionState({
                 errorMessage: null,
                 exitCode: null,
                 sessionId: session.sessionId,
-                workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(session.workspaceRootPath),
+                workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(
+                  session.workspaceRootPath,
+                ),
                 status: "ready",
               }
             : tab,
         ),
       );
 
-      if (activeTabKeyRef.current === tabKey) {
-        renderActiveTerminalTab(tabKey, session.sessionId);
+      if (sanitizedOutput.length > 0) {
+        instance.terminal.write(sanitizedOutput);
       }
+      instance.terminal.focus();
+      syncTabSize(tabKey, true);
     } catch (error) {
       const message = getErrorMessage(error);
       setTerminalTabs((currentTabs) =>
@@ -528,14 +547,10 @@ export function useWorkspaceTerminalSessionState({
         ),
       );
 
-      if (activeTabKeyRef.current === tabKey && terminalRef.current) {
-        terminalRef.current.reset();
-        terminalRef.current.writeln(`\r\n\r\nFailed to start terminal: ${message}`);
-      }
-
+      instance.terminal.writeln(`\r\n\r\nFailed to start terminal: ${message}`);
       console.error("Failed to start terminal session", error);
     }
-  }, [ensureTerminal, renderActiveTerminalTab, workspaceKey]);
+  }, [ensureTabInstance, syncTabSize, updateTabVisibility, workspaceKey]);
 
   const closeTerminalTab = useCallback(
     async (tabKey: string) => {
@@ -558,23 +573,19 @@ export function useWorkspaceTerminalSessionState({
           });
       }
 
-      if (pendingTerminalRenderRef.current?.tabKey === tabKey) {
-        pendingTerminalRenderRef.current = null;
-      }
-
+      disposeTabInstance(tabKey);
       tabBuffersRef.current.delete(tabKey);
+
       const nextTabs = currentTabs.filter((tab) => tab.key !== tabKey);
       const wasActive = activeTabKeyRef.current === tabKey;
 
       setTerminalTabs(nextTabs);
 
       if (nextTabs.length === 0) {
-        pendingTerminalRenderRef.current = null;
         setActiveTerminalTabKey(null);
         nextTabIndexRef.current = 1;
         activeTabKeyRef.current = null;
         activeSessionIdRef.current = null;
-        lastSyncedSizeRef.current = null;
         onClose();
         return;
       }
@@ -588,9 +599,117 @@ export function useWorkspaceTerminalSessionState({
       }
 
       setActiveTerminalTabKey(nextActiveTab.key);
-      renderActiveTerminalTab(nextActiveTab.key, nextActiveTab.sessionId);
+      updateTabVisibility(nextActiveTab.key);
     },
-    [onClose, renderActiveTerminalTab],
+    [disposeTabInstance, onClose, updateTabVisibility],
+  );
+
+  const clearTerminalTab = useCallback((tabKey: string) => {
+    const instance = tabInstancesRef.current.get(tabKey);
+    if (instance) {
+      instance.terminal.clear();
+      tabBuffersRef.current.set(tabKey, "");
+    }
+  }, []);
+
+  const restartTerminalTab = useCallback(
+    async (tabKey: string) => {
+      const currentTab = terminalTabsRef.current.find((tab) => tab.key === tabKey);
+      if (!currentTab) {
+        return;
+      }
+
+      if (currentTab.sessionId !== null) {
+        sessionIdToTabKeyRef.current.delete(currentTab.sessionId);
+        void window.echosphereTerminal
+          .closeSession({
+            sessionId: currentTab.sessionId,
+            workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(currentTab.workspaceRootPath),
+          })
+          .catch((error) => {
+            console.error("Failed to close terminal session during restart", error);
+          });
+      }
+
+      disposeTabInstance(tabKey);
+      tabBuffersRef.current.set(tabKey, "");
+
+      setTerminalTabs((currentTabs) =>
+        currentTabs.map((tab) =>
+          tab.key === tabKey
+            ? {
+                ...tab,
+                errorMessage: null,
+                exitCode: null,
+                sessionId: null,
+                status: "connecting",
+              }
+            : tab,
+        ),
+      );
+
+      const instance = ensureTabInstance(tabKey);
+      updateTabVisibility(activeTabKeyRef.current);
+
+      const dimensions = getSessionDimensions(instance.terminal);
+
+      try {
+        const session = await window.echosphereTerminal.createSession({
+          cols: dimensions.cols,
+          cwd: workspacePathRef.current,
+          rows: dimensions.rows,
+          sessionKey: tabKey,
+          workspaceRootPath: workspacePathRef.current,
+        });
+
+        sessionIdToTabKeyRef.current.set(session.sessionId, tabKey);
+        const sanitizedOutput = sanitizeTerminalBuffer(session.bufferedOutput);
+        tabBuffersRef.current.set(tabKey, sanitizedOutput);
+
+        setTerminalTabs((currentTabs) =>
+          currentTabs.map((tab) =>
+            tab.key === tabKey
+              ? {
+                  ...tab,
+                  errorMessage: null,
+                  exitCode: null,
+                  sessionId: session.sessionId,
+                  workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(
+                    session.workspaceRootPath,
+                  ),
+                  status: "ready",
+                }
+              : tab,
+          ),
+        );
+
+        if (sanitizedOutput.length > 0) {
+          instance.terminal.write(sanitizedOutput);
+        }
+        if (activeTabKeyRef.current === tabKey) {
+          instance.terminal.focus();
+          syncTabSize(tabKey, true);
+        }
+      } catch (error) {
+        const message = getErrorMessage(error);
+        setTerminalTabs((currentTabs) =>
+          currentTabs.map((tab) =>
+            tab.key === tabKey
+              ? {
+                  ...tab,
+                  errorMessage: message,
+                  sessionId: null,
+                  status: "error",
+                }
+              : tab,
+          ),
+        );
+
+        instance.terminal.writeln(`\r\n\r\nFailed to start terminal: ${message}`);
+        console.error("Failed to restart terminal session", error);
+      }
+    },
+    [disposeTabInstance, ensureTabInstance, syncTabSize, updateTabVisibility],
   );
 
   const selectTerminalTab = useCallback(
@@ -599,16 +718,10 @@ export function useWorkspaceTerminalSessionState({
         return;
       }
 
-      const nextTab =
-        terminalTabsRef.current.find((tab) => tab.key === tabKey) ?? null;
-      if (!nextTab) {
-        return;
-      }
-
       setActiveTerminalTabKey(tabKey);
-      renderActiveTerminalTab(tabKey, nextTab.sessionId);
+      updateTabVisibility(tabKey);
     },
-    [renderActiveTerminalTab],
+    [updateTabVisibility],
   );
 
   const reorderTerminalTabs = useCallback(
@@ -633,11 +746,11 @@ export function useWorkspaceTerminalSessionState({
 
       const currentBuffer = tabBuffersRef.current.get(tabKey) ?? "";
       tabBuffersRef.current.set(tabKey, currentBuffer + event.data);
-      if (event.sessionId !== activeSessionIdRef.current) {
-        return;
-      }
 
-      terminalRef.current?.write(event.data);
+      const instance = tabInstancesRef.current.get(tabKey);
+      if (instance) {
+        instance.terminal.write(event.data);
+      }
     });
 
     const unsubscribeExit = window.echosphereTerminal.onExit((event) => {
@@ -669,9 +782,11 @@ export function useWorkspaceTerminalSessionState({
         ),
       );
 
-      if (event.sessionId !== activeSessionIdRef.current) {
-        const storedWorkspaceState =
-          terminalWorkspaceStateRef.current[tabWorkspaceKey];
+      const instance = tabInstancesRef.current.get(tabKey);
+      if (instance) {
+        instance.terminal.writeln(nextExitMessage);
+      } else {
+        const storedWorkspaceState = terminalWorkspaceStateRef.current[tabWorkspaceKey];
         if (storedWorkspaceState) {
           storedWorkspaceState.terminalTabs = storedWorkspaceState.terminalTabs.map((tab) =>
             tab.key === tabKey
@@ -684,11 +799,7 @@ export function useWorkspaceTerminalSessionState({
               : tab,
           );
         }
-        return;
       }
-
-      activeSessionIdRef.current = null;
-      terminalRef.current?.writeln(nextExitMessage);
     });
 
     return () => {
@@ -702,7 +813,15 @@ export function useWorkspaceTerminalSessionState({
       return;
     }
 
-    ensureTerminal();
+    const hostElement = terminalHostRef.current;
+    if (hostElement) {
+      tabInstancesRef.current.forEach((instance) => {
+        if (!hostElement.contains(instance.container)) {
+          hostElement.appendChild(instance.container);
+        }
+      });
+    }
+
     if (terminalTabsRef.current.length === 0) {
       void openTerminalTab();
       return;
@@ -710,9 +829,7 @@ export function useWorkspaceTerminalSessionState({
 
     const fallbackTab = terminalTabsRef.current[0] ?? null;
     const nextActiveTab = activeTabKeyRef.current
-      ? (terminalTabsRef.current.find(
-          (tab) => tab.key === activeTabKeyRef.current,
-        ) ?? fallbackTab)
+      ? (terminalTabsRef.current.find((tab) => tab.key === activeTabKeyRef.current) ?? fallbackTab)
       : fallbackTab;
 
     if (!nextActiveTab) {
@@ -720,11 +837,11 @@ export function useWorkspaceTerminalSessionState({
     }
 
     setActiveTerminalTabKey(nextActiveTab.key);
-    renderActiveTerminalTab(nextActiveTab.key, nextActiveTab.sessionId);
-  }, [ensureTerminal, isOpen, openTerminalTab, renderActiveTerminalTab]);
+    updateTabVisibility(nextActiveTab.key);
+  }, [isOpen, openTerminalTab, updateTabVisibility]);
 
   useEffect(() => {
-    if (!terminalRef.current || !terminalHostRef.current) {
+    if (!terminalHostRef.current) {
       return;
     }
 
@@ -747,28 +864,17 @@ export function useWorkspaceTerminalSessionState({
     }
 
     const animationFrameId = window.requestAnimationFrame(() => {
-      if (syncTerminalSize(true)) {
-        flushPendingTerminalRender();
-      }
+      syncAllVisibleTabSizes(true);
     });
     const timeoutId = window.setTimeout(() => {
-      if (syncTerminalSize(true)) {
-        flushPendingTerminalRender();
-      }
+      syncAllVisibleTabSizes(true);
     }, TERMINAL_THEME_SYNC_DELAY_MS);
 
     return () => {
       window.cancelAnimationFrame(animationFrameId);
       window.clearTimeout(timeoutId);
     };
-  }, [
-    activeTerminalTabKey,
-    flushPendingTerminalRender,
-    isOpen,
-    isResizing,
-    syncTerminalSize,
-    workspaceKey,
-  ]);
+  }, [activeTerminalTabKey, isOpen, isResizing, syncAllVisibleTabSizes, workspaceKey]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -781,15 +887,13 @@ export function useWorkspaceTerminalSessionState({
     }
 
     const resizeObserver = new ResizeObserver(() => {
-      if (syncTerminalSize()) {
-        flushPendingTerminalRender();
-      }
+      syncAllVisibleTabSizes();
     });
     resizeObserver.observe(hostElement);
     return () => {
       resizeObserver.disconnect();
     };
-  }, [flushPendingTerminalRender, isOpen, syncTerminalSize]);
+  }, [isOpen, syncAllVisibleTabSizes]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -797,22 +901,28 @@ export function useWorkspaceTerminalSessionState({
     }
 
     const handleWindowResize = () => {
-      if (syncTerminalSize()) {
-        flushPendingTerminalRender();
-      }
+      syncAllVisibleTabSizes();
     };
 
     window.addEventListener("resize", handleWindowResize);
     return () => {
       window.removeEventListener("resize", handleWindowResize);
     };
-  }, [flushPendingTerminalRender, isOpen, syncTerminalSize]);
+  }, [isOpen, syncAllVisibleTabSizes]);
 
   useEffect(() => {
+    const tabInstances = tabInstancesRef.current;
     return () => {
-      disposeTerminal();
+      tabInstances.forEach((instance) => {
+        instance.disposables.forEach((d) => d.dispose());
+        instance.terminal.dispose();
+        if (instance.container.parentElement) {
+          instance.container.remove();
+        }
+      });
+      tabInstances.clear();
     };
-  }, [disposeTerminal]);
+  }, []);
 
   useEffect(() => {
     const nextWorkspaceKey = workspaceKey;
@@ -821,7 +931,6 @@ export function useWorkspaceTerminalSessionState({
       return;
     }
 
-    pendingTerminalRenderRef.current = null;
     terminalWorkspaceStateRef.current[previousWorkspaceKey] = {
       activeTerminalTabKey,
       nextTabIndex: nextTabIndexRef.current,
@@ -837,15 +946,13 @@ export function useWorkspaceTerminalSessionState({
 
     if (nextWorkspaceState.terminalTabs.length === 0) {
       previousWorkspaceKeyRef.current = nextWorkspaceKey;
-      pendingTerminalRenderRef.current = null;
       setTerminalTabs([]);
       setActiveTerminalTabKey(null);
       nextTabIndexRef.current = 1;
       terminalTabsRef.current = [];
       activeTabKeyRef.current = null;
       activeSessionIdRef.current = null;
-      lastSyncedSizeRef.current = null;
-      terminalRef.current?.reset();
+      updateTabVisibility(null);
       return;
     }
 
@@ -859,26 +966,16 @@ export function useWorkspaceTerminalSessionState({
       nextWorkspaceState.terminalTabs.find(
         (tab) => tab.key === nextWorkspaceState.activeTerminalTabKey,
       )?.sessionId ?? null;
-    lastSyncedSizeRef.current = null;
-    pendingTerminalRenderRef.current = null;
-    terminalRef.current?.reset();
 
-    const nextActiveTab = nextWorkspaceState.activeTerminalTabKey
-      ? nextWorkspaceState.terminalTabs.find(
-          (tab) => tab.key === nextWorkspaceState.activeTerminalTabKey,
-        ) ?? null
-      : null;
-    if (nextActiveTab) {
-      renderActiveTerminalTab(nextActiveTab.key, nextActiveTab.sessionId);
-    } else if (isOpen) {
-      terminalRef.current?.focus();
-    }
-  }, [activeTerminalTabKey, isOpen, renderActiveTerminalTab, terminalTabs, workspaceKey]);
+    updateTabVisibility(nextWorkspaceState.activeTerminalTabKey);
+  }, [activeTerminalTabKey, terminalTabs, updateTabVisibility, workspaceKey]);
 
   return {
     activeTerminalTab,
     activeTerminalTabKey,
     closeTerminalTab,
+    clearTerminalTab,
+    restartTerminalTab,
     openTerminalTab,
     reorderTerminalTabs,
     selectTerminalTab,

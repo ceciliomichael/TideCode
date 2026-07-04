@@ -306,13 +306,21 @@ function appendSessionOutputBuffer(
   chunk: string,
 ) {
   activeSession.outputBuffer += chunk;
-  if (activeSession.outputBuffer.length <= MAX_SESSION_OUTPUT_BUFFER_LENGTH) {
-    return;
-  }
 
-  const startIndex =
-    activeSession.outputBuffer.length - MAX_SESSION_OUTPUT_BUFFER_LENGTH;
-  activeSession.outputBuffer = activeSession.outputBuffer.slice(startIndex);
+  // If the output contains ANSI clear scrollback (\x1b[3J) or reset (\x1b[c) sequences,
+  // slice the buffer from the last occurrence so re-attaching or reusing this session
+  // does not re-emit cleared historical output or undo the user's clear command.
+  const clearScrollbackIdx = activeSession.outputBuffer.lastIndexOf("\x1b[3J");
+  const resetIdx = activeSession.outputBuffer.lastIndexOf("\x1b[c");
+  const lastClearIdx = Math.max(clearScrollbackIdx, resetIdx);
+
+  if (lastClearIdx !== -1) {
+    activeSession.outputBuffer = activeSession.outputBuffer.slice(lastClearIdx);
+  } else if (activeSession.outputBuffer.length > MAX_SESSION_OUTPUT_BUFFER_LENGTH) {
+    const startIndex =
+      activeSession.outputBuffer.length - MAX_SESSION_OUTPUT_BUFFER_LENGTH;
+    activeSession.outputBuffer = activeSession.outputBuffer.slice(startIndex);
+  }
 }
 
 function createTerminalSessionSnapshot(

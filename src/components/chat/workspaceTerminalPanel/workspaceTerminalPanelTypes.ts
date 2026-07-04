@@ -32,6 +32,8 @@ export interface WorkspaceTerminalPanelState {
   activeTerminalTab: TerminalTabState | null;
   activeTerminalTabKey: string | null;
   closeTerminalTab: (tabKey: string) => void;
+  clearTerminalTab: (tabKey: string) => void;
+  restartTerminalTab: (tabKey: string) => void;
   handleResizePointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   isOpen: boolean;
   isResizing: boolean;
