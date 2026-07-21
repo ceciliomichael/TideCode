@@ -4,17 +4,10 @@ import path from 'node:path'
 const WORKSPACE_INSTRUCTIONS_REPO_PATH = 'AGENTS.md'
 
 function resolveWorkspaceInstructionsPath(workspaceRootPath?: string) {
-  const appRoot = process.env.APP_ROOT?.trim()
-  const searchRoots = [workspaceRootPath, appRoot, process.cwd()].filter((value): value is string => Boolean(value))
-
-  for (const root of searchRoots) {
-    const candidatePath = path.join(root, WORKSPACE_INSTRUCTIONS_REPO_PATH)
-    if (existsSync(candidatePath)) {
-      return candidatePath
-    }
-  }
-
-  return null
+  const workspacePath = workspaceRootPath?.trim()
+  if (!workspacePath) return null
+  const candidatePath = path.join(workspacePath, WORKSPACE_INSTRUCTIONS_REPO_PATH)
+  return existsSync(candidatePath) ? candidatePath : null
 }
 
 function readWorkspaceInstructionsContent(workspaceRootPath?: string) {

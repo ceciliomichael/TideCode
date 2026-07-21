@@ -9,27 +9,31 @@ test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
   const agentPrompt = buildChatSystemPrompt('agent', 'C:/repo')
   const planPrompt = buildChatSystemPrompt('plan', 'C:/repo')
 
-  assert.match(agentPrompt, /You are Echo, a production-grade software engineering assistant/u)
-  assert.match(agentPrompt, /## execution workflow/iu)
-  assert.match(agentPrompt, /WHEN ADDING PACKAGES ALWAYS USE npm install to get latest/u)
-  assert.match(agentPrompt, /## Markdown Output Rules/u)
+  assert.match(agentPrompt, /You are Echo\. Do excellent software work\./u)
+  assert.match(agentPrompt, /Work hard\. Talk little\./u)
+  assert.match(agentPrompt, /Build the full working result, not only the named piece/u)
+  assert.match(agentPrompt, /put it into the real page unless they clearly ask/u)
+  assert.match(agentPrompt, /Build for real use\. Check that every part is connected/u)
+  assert.match(agentPrompt, /Prove key behavior with tests or a direct check/u)
+  assert.match(agentPrompt, /finish in 1-3 short sentences/u)
+  assert.match(agentPrompt, /Use `npm install` in npm projects/u)
+  assert.match(agentPrompt, /Use valid Markdown with only the structure needed for clarity/u)
   assert.match(agentPrompt, /<tooling_instructions description="Tool usage guidance"/u)
-  assert.match(agentPrompt, /If MCP tools are available and relevant to the task, use them/u)
-  assert.match(agentPrompt, /If the task arrived without a backlog card, create one before implementation\./u)
-  assert.match(agentPrompt, /read_board/u)
-  assert.match(agentPrompt, /move_card/u)
-  assert.match(agentPrompt, /Read before edit: never change a file you have not inspected\./u)
-  assert.match(agentPrompt, /`apply_patch`: use for small, targeted edits when you know the exact lines to change\./u)
+  assert.match(agentPrompt, /## When to use tools/u)
+  assert.match(agentPrompt, /`read`: get current file text/u)
+  assert.match(agentPrompt, /If a patch fails, use the current file version and nearby text/u)
+  assert.doesNotMatch(agentPrompt, /authorization_override/u)
 
-  assert.match(planPrompt, /You are Echo, a production-grade software engineering planner/u)
-  assert.match(planPrompt, /## planning workflow/iu)
-  assert.match(planPrompt, /Do not implement\. Do not provide full code\./u)
-  assert.match(planPrompt, /WHEN ADDING PACKAGES ALWAYS USE npm install to get latest/u)
+  assert.match(planPrompt, /Make the shortest plan that another engineer can follow/u)
+  assert.match(planPrompt, /Plan the full working result, not only the named piece/u)
+  assert.match(planPrompt, /plan where it will be used unless they clearly ask/u)
+  assert.match(planPrompt, /Plan for real use\. Include checks for wiring/u)
+  assert.match(planPrompt, /Plan how key behavior will be proved/u)
+  assert.match(planPrompt, /Plan only\. Do not build the change or give full code\./u)
+  assert.match(planPrompt, /Keep normal plans under 200 words/u)
   assert.match(planPrompt, /<tooling_instructions description="Tool usage guidance"/u)
-  assert.match(planPrompt, /If MCP tools are available and relevant to the task, use them/u)
-  assert.match(planPrompt, /In plan mode, Kanban setup must not block producing the plan/u)
-  assert.match(planPrompt, /read_board/u)
-  assert.match(planPrompt, /Prefer read-only tools first; avoid edit tools unless the task explicitly requires changing files\./u)
+  assert.match(planPrompt, /Use read-only tools/u)
+  assert.doesNotMatch(planPrompt, /authorization_override/u)
 })
 
 test('buildChatPrompt preserves assistant tool calls and matching tool results', () => {
@@ -66,6 +70,7 @@ test('buildChatPrompt preserves assistant tool calls and matching tool results',
           semantics: {
             line_count: 1,
             offset: 1,
+            revision: 'sha256:test-revision',
           },
           schema: 'echosphere.tool_result/v1',
           status: 'success',
@@ -109,7 +114,7 @@ test('buildChatPrompt preserves assistant tool calls and matching tool results',
   assert.equal(toolMessage?.content[0]?.type, 'tool-result')
   assert.deepEqual(toolMessage?.content[0]?.output, {
     type: 'text',
-    value: 'Read result\nPath: src/example.ts\nAbsolute path: C:/repo/src/example.ts\nType: file\nLine count: 1\n\n1: export const value = 1;',
+    value: 'File: src/example.ts\nRevision: sha256:test-revision\n\n1: export const value = 1;',
   })
 })
 
@@ -247,7 +252,7 @@ test('buildChatSystemPrompt includes enabled skill metadata when provided', () =
   assert.match(prompt, /Work with Word documents\./u)
 })
 
-test('buildSkillToolDescription uses strict skill-loading guidance', () => {
+test('buildSkillToolDescription states only the literal skill operation', () => {
   const description = buildSkillToolDescription([
     {
       baseDirectory: 'C:/skills/docx',
@@ -260,10 +265,10 @@ test('buildSkillToolDescription uses strict skill-loading guidance', () => {
     },
   ])
 
-  assert.match(description, /Load one skill and read its full instructions\./u)
-  assert.match(description, /Use this only when the current task clearly matches a listed skill\./u)
-  assert.match(description, /Do not guess\./u)
-  assert.match(description, /- docx: Work with Word documents\./u)
+  assert.match(description, /Loads and returns the complete instructions and base directory/u)
+  assert.match(description, /selected by exact name/u)
+  assert.match(description, /Enabled names: docx/u)
+  assert.doesNotMatch(description, /when|should|use this/iu)
 })
 
 test('buildChatPrompt formats list tool results with structured directory metadata', () => {
@@ -330,7 +335,7 @@ test('buildChatPrompt formats list tool results with structured directory metada
   assert.ok(Array.isArray(toolMessage?.content))
   assert.deepEqual(toolMessage?.content[0]?.output, {
     type: 'text',
-    value: 'List result\nAbsolute path: C:/repo/src\nRelative path: src\nType: directory\nEntry count: 2\n\ncomponents/\nlib/',
+    value: 'Directory: src\nEntries: 2\n\ncomponents/\nlib/',
   })
 })
 

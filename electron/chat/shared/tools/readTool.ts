@@ -2,14 +2,11 @@ import { jsonSchema, tool } from 'ai'
 import { createReadToolResult, resolveReadableTargetPath, type WorkspaceToolContext } from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
-export function createReadTool(context: WorkspaceToolContext, isPlanMode: boolean) {
-  const editingGuidance = isPlanMode
-    ? ''
-    : ' The latest read is the source of truth for edits. After reading, use `apply_patch` for small edits or `write` for a full replacement.'
+export function createReadTool(context: WorkspaceToolContext) {
   const description =
     context.terminalExecutionMode === 'full'
-      ? `Read a UTF-8 text file as numbered lines. Do not guess paths. Use limit and offset for pagination, and read enough contiguous context in one call to avoid repeated reads; 500-line reads are acceptable when the file is large.${editingGuidance}`
-      : `Read a UTF-8 text file inside the workspace as numbered lines. In Sandbox mode, absolute_path must point to a file inside the workspace. Do not guess paths. Use limit and offset for pagination, and read enough contiguous context in one call to avoid repeated reads; 500-line reads are acceptable when the file is large.${editingGuidance}`
+      ? 'Returns numbered UTF-8 file lines or sorted directory entries. offset is 1-based, limit defaults to 2000, file output is capped at 256 KB, and binary files return an error.'
+      : 'Returns numbered UTF-8 file lines or sorted directory entries inside the workspace. absolute_path must remain inside the workspace; offset is 1-based, limit defaults to 2000, file output is capped at 256 KB, and binary files return an error.'
 
   return tool({
     description,

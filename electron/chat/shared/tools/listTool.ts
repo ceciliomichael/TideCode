@@ -5,8 +5,8 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 export function createListTool(context: WorkspaceToolContext) {
   const description =
     context.terminalExecutionMode === 'full'
-      ? 'List direct child files and folders in a directory. Use `read` after you find a file.'
-      : 'List direct child files and folders in a workspace directory. In Sandbox mode, absolute_path must be a path inside the workspace. Use `read` after you find a file.'
+      ? 'Returns up to 100 sorted, visible direct child entries of absolute_path, or the workspace root when omitted. Directory names end with /.'
+      : 'Returns up to 100 sorted, visible direct child entries of a workspace directory. absolute_path defaults to the workspace root and must remain inside it. Directory names end with /.'
 
   return tool({
     description,

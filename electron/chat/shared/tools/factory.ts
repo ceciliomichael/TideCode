@@ -43,9 +43,9 @@ export async function createAgentTools(
   const enabledSkills = options.enabledSkills ?? []
   const tools: ToolSet = {
     list: createListTool(context),
-    read: createReadTool(context, isPlanMode),
+    read: createReadTool(context),
     glob: createGlobTool(context),
-    grep: createGrepTool(context, isPlanMode),
+    grep: createGrepTool(context),
     ...createKanbanToolSet(context),
   }
 

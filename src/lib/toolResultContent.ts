@@ -79,32 +79,21 @@ function isStructuredToolResultEnvelope(value: unknown): value is StructuredTool
 
 function formatReadToolResultBody(metadata: StructuredToolResultMetadata, body: string | null) {
   const subjectPath = metadata.subject?.path?.trim() ?? ''
-  const absolutePath =
-    typeof metadata.arguments?.absolute_path === 'string' ? metadata.arguments.absolute_path.trim() : ''
   const bodyText = body?.trim() ?? ''
-  const headerLines = ['Read result']
+  const headerLines: string[] = []
 
   if (subjectPath.length > 0) {
-    headerLines.push(`Path: ${subjectPath}`)
+    headerLines.push(`${metadata.subject?.kind === 'directory' ? 'Directory' : 'File'}: ${subjectPath}`)
   }
 
-  if (absolutePath.length > 0 && absolutePath !== subjectPath) {
-    headerLines.push(`Absolute path: ${absolutePath}`)
-  }
-
-  if (metadata.subject?.kind === 'directory') {
-    headerLines.push('Type: directory')
-  } else if (metadata.subject?.kind === 'file') {
-    headerLines.push('Type: file')
-  }
-
-  const lineCount = metadata.semantics && typeof metadata.semantics.line_count === 'number' ? metadata.semantics.line_count : null
   const offset = metadata.semantics && typeof metadata.semantics.offset === 'number' ? metadata.semantics.offset : null
   const entryCount =
     metadata.semantics && typeof metadata.semantics.entry_count === 'number' ? metadata.semantics.entry_count : null
+  const revision =
+    metadata.semantics && typeof metadata.semantics.revision === 'string' ? metadata.semantics.revision : null
 
-  if (typeof lineCount === 'number') {
-    headerLines.push(`Line count: ${lineCount}`)
+  if (revision) {
+    headerLines.push(`Revision: ${revision}`)
   }
 
   if (typeof offset === 'number' && offset > 1) {
@@ -124,30 +113,14 @@ function formatReadToolResultBody(metadata: StructuredToolResultMetadata, body: 
 
 function formatListToolResultBody(metadata: StructuredToolResultMetadata, body: string | null) {
   const subjectPath = metadata.subject?.path?.trim() ?? ''
-  const absolutePath =
-    typeof metadata.arguments?.absolute_path === 'string' ? metadata.arguments.absolute_path.trim() : ''
   const bodyText = body?.trim() ?? ''
-  const headerLines = ['List result']
-
-  if (absolutePath.length > 0) {
-    headerLines.push(`Absolute path: ${absolutePath}`)
-  }
-
-  if (subjectPath.length > 0 && subjectPath !== absolutePath) {
-    headerLines.push(`Relative path: ${subjectPath}`)
-  }
-
-  if (metadata.subject?.kind === 'directory') {
-    headerLines.push('Type: directory')
-  } else if (metadata.subject?.kind === 'file') {
-    headerLines.push('Type: file')
-  }
+  const headerLines = subjectPath.length > 0 ? [`Directory: ${subjectPath}`] : []
 
   const count =
     metadata.semantics && typeof metadata.semantics.count === 'number' ? metadata.semantics.count : null
 
   if (typeof count === 'number') {
-    headerLines.push(`Entry count: ${count}`)
+    headerLines.push(`Entries: ${count}`)
   }
 
   if (bodyText.length === 0) {

@@ -5,8 +5,8 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 export function createWriteTool(context: WorkspaceToolContext) {
   const description =
     context.terminalExecutionMode === 'full'
-      ? 'Create a new file or overwrite the full contents of an existing file. For small edits to an existing file, use `apply_patch` instead. Do not call write when the target already has identical content. Successful text writes use LF line endings.'
-      : 'Create a new file or overwrite the full contents of an existing file. In Sandbox mode, absolute_path must be a path inside the workspace. For small edits to an existing file, use `apply_patch` instead. Do not call write when the target already has identical content. Successful text writes use LF line endings.'
+      ? 'Writes content as the complete UTF-8 contents of absolute_path, creates parent directories, normalizes line endings to LF, and returns an error when the content is unchanged.'
+      : 'Writes content as the complete UTF-8 contents of absolute_path inside the workspace, creates parent directories, normalizes line endings to LF, and returns an error when the content is unchanged.'
 
   return tool({
     description,

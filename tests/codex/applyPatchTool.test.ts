@@ -34,7 +34,7 @@ async function withHttpServer(
   }
 }
 
-test('parseApplyPatch reads add and update hunks', () => {
+test('parseApplyPatch keeps legacy XML patches compatible', () => {
   const parsed = parseApplyPatch(`<patch>
 <add path="src/new.ts">
 +export const value = 1
@@ -49,6 +49,55 @@ test('parseApplyPatch reads add and update hunks', () => {
   assert.equal(parsed.hunks.length, 2)
   assert.equal(parsed.hunks[0]?.type, 'add')
   assert.equal(parsed.hunks[1]?.type, 'update')
+})
+
+test('parseApplyPatch reads standard add, update, move, and delete hunks', () => {
+  const parsed = parseApplyPatch(`*** Begin Patch
+*** Add File: src/new.ts
++export const value = 1
+*** Update File: src/existing.ts
+*** Move to: src/renamed.ts
+@@ function value()
+-return 1
++return 2
+*** Delete File: src/obsolete.ts
+*** End Patch`)
+
+  assert.equal(parsed.hunks.length, 3)
+  assert.deepEqual(parsed.hunks[0], {
+    contents: 'export const value = 1',
+    path: 'src/new.ts',
+    type: 'add',
+  })
+  assert.deepEqual(parsed.hunks[1], {
+    chunks: [
+      {
+        changeContext: 'function value()',
+        newLines: ['return 2'],
+        oldLines: ['return 1'],
+      },
+    ],
+    movePath: 'src/renamed.ts',
+    path: 'src/existing.ts',
+    type: 'update',
+  })
+  assert.deepEqual(parsed.hunks[2], {
+    path: 'src/obsolete.ts',
+    type: 'delete',
+  })
+})
+
+test('parseApplyPatch rejects legacy XML control markers emitted as source lines', () => {
+  assert.throws(
+    () =>
+      parseApplyPatch(`<patch>
+<update path="src/app/layout.tsx">
+@@
+-</update>
+</update>
+</patch>`),
+    /reserved marker "<\/update>" was emitted as source text/u,
+  )
 })
 
 test('parseApplyPatch accepts heredoc-wrapped patch text', () => {
@@ -425,6 +474,85 @@ test('applyPatchInWorkspace matches CRLF files using LF patch text and writes LF
   }
 })
 
+test('applyPatchInWorkspace treats unified line numbers as hints when the source match is unique', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-offset-'))
+  const targetFilePath = path.join(workspaceRootPath, 'src', 'shifted.ts')
+  await fs.mkdir(path.dirname(targetFilePath), { recursive: true })
+  await fs.writeFile(targetFilePath, 'intro\nunchanged\nconst value = 1\noutro\n', 'utf8')
+
+  try {
+    await applyPatchInWorkspace(
+      workspaceRootPath,
+      `*** Begin Patch
+*** Update File: src/shifted.ts
+@@ -1,1 +1,1 @@
+-const value = 1
++const value = 2
+*** End Patch`,
+    )
+
+    assert.equal(
+      await fs.readFile(targetFilePath, 'utf8'),
+      'intro\nunchanged\nconst value = 2\noutro\n',
+    )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('applyPatchInWorkspace rejects ambiguous short hunks instead of editing the wrong match', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-ambiguous-'))
+  const targetFilePath = path.join(workspaceRootPath, 'src', 'repeated.ts')
+  await fs.mkdir(path.dirname(targetFilePath), { recursive: true })
+  await fs.writeFile(targetFilePath, 'const value = 1\nseparator\nconst value = 1\n', 'utf8')
+
+  try {
+    await assert.rejects(
+      applyPatchInWorkspace(
+        workspaceRootPath,
+        `*** Begin Patch
+*** Update File: src/repeated.ts
+@@
+-const value = 1
++const value = 2
+*** End Patch`,
+      ),
+      /Ambiguous patch hunk in src[/\\]repeated\.ts.*lines 1, 3/u,
+    )
+    assert.equal(
+      await fs.readFile(targetFilePath, 'utf8'),
+      'const value = 1\nseparator\nconst value = 1\n',
+    )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('applyPatchInWorkspace includes nearby current source when a hunk is stale', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-diagnostic-'))
+  const targetFilePath = path.join(workspaceRootPath, 'src', 'diagnostic.ts')
+  await fs.mkdir(path.dirname(targetFilePath), { recursive: true })
+  await fs.writeFile(targetFilePath, 'start\nconst alpha = 1\nconst current = true\nend\n', 'utf8')
+
+  try {
+    await assert.rejects(
+      applyPatchInWorkspace(
+        workspaceRootPath,
+        `*** Begin Patch
+*** Update File: src/diagnostic.ts
+@@
+ const alpha = 1
+-const stale = true
++const current = false
+*** End Patch`,
+      ),
+      /Current source near the match.*2: const alpha = 1.*3: const current = true/su,
+    )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('applyPatchInWorkspace normalizes mixed line endings around an insertion to LF', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-mixed-eol-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'mixed.txt')
@@ -663,7 +791,10 @@ test('createAgentTools exposes Codex apply_patch as a grammar-backed freeform to
     assert.equal(applyPatchTool.args?.format?.type, 'grammar')
     assert.equal(applyPatchTool.args?.format?.syntax, 'lark')
     assert.match(applyPatchTool.args?.format?.definition ?? '', /start: begin_patch hunk\+ end_patch/u)
-    assert.match(applyPatchTool.args?.description ?? '', /latest read is the source of truth/u)
+    assert.match(applyPatchTool.args?.format?.definition ?? '', /"\*\*\* Begin Patch"/u)
+    assert.doesNotMatch(applyPatchTool.args?.format?.definition ?? '', /<patch>|<update/u)
+    assert.match(applyPatchTool.args?.description ?? '', /Applies one standard structured patch/u)
+    assert.match(applyPatchTool.args?.description ?? '', /validated before any file write/u)
     assert.match(applyPatchTool.args?.description ?? '', /LF line endings/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -788,7 +919,30 @@ test('createAgentTools keeps JSON apply_patch fallback for non-Codex providers',
   }
 })
 
-test('createAgentTools describes grep as a file-or-directory scoped workspace search', async () => {
+test('createAgentTools gives every provider the same apply_patch contract', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
+
+  try {
+    const codexTools = await createAgentTools(
+      { workspaceRootPath },
+      { chatMode: 'agent', providerId: 'codex' },
+    )
+    const compatibleTools = await createAgentTools(
+      { workspaceRootPath },
+      { chatMode: 'agent', providerId: 'custom:test-provider' },
+    )
+    const codexPatchTool = codexTools.apply_patch as {
+      args?: { description?: string }
+    }
+    const compatiblePatchTool = compatibleTools.apply_patch as { description?: string }
+
+    assert.equal(codexPatchTool.args?.description, compatiblePatchTool.description)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('createAgentTools describes grep mechanics without workflow guidance', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
 
   try {
@@ -801,15 +955,16 @@ test('createAgentTools describes grep as a file-or-directory scoped workspace se
     assert.ok('grep' in tools)
     const grepTool = tools.grep as { description?: string }
 
-    assert.match(grepTool.description ?? '', /Search file contents in visible workspace files/u)
-    assert.match(grepTool.description ?? '', /read the matching files with `read`/u)
-    assert.match(grepTool.description ?? '', /Treat grep results as hints, not full context/u)
+    assert.match(grepTool.description ?? '', /ripgrep regex pattern/u)
+    assert.match(grepTool.description ?? '', /sorted by path and line number/u)
+    assert.match(grepTool.description ?? '', /one workspace file or directory/u)
+    assert.doesNotMatch(grepTool.description ?? '', /use `read`|apply_patch|should|prefer/iu)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('createAgentTools keeps plan mode descriptions on discovery-only tools', async () => {
+test('createAgentTools keeps plan mode tool descriptions literal', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
 
   try {
@@ -827,12 +982,13 @@ test('createAgentTools keeps plan mode descriptions on discovery-only tools', as
     const globTool = tools.glob as { description?: string }
     const grepTool = tools.grep as { description?: string }
 
-    assert.match(listTool.description ?? '', /Use `read` after you find a file/u)
-    assert.match(readTool.description ?? '', /Do not guess paths/u)
-    assert.match(globTool.description ?? '', /Read the matched files with `read` before editing/u)
-    assert.match(grepTool.description ?? '', /read the matching files with `read`/u)
-    assert.doesNotMatch(readTool.description ?? '', /apply_patch|write/u)
-    assert.doesNotMatch(grepTool.description ?? '', /apply_patch|write/u)
+    assert.match(listTool.description ?? '', /up to 100 sorted, visible direct child entries/u)
+    assert.match(readTool.description ?? '', /offset is 1-based/u)
+    assert.match(globTool.description ?? '', /up to 100 visible absolute file paths/u)
+    assert.match(grepTool.description ?? '', /ripgrep regex pattern/u)
+    for (const description of [listTool, readTool, globTool, grepTool].map((tool) => tool.description ?? '')) {
+      assert.doesNotMatch(description, /use `read`|apply_patch|write|should|prefer/iu)
+    }
     assert.ok(!('write' in tools))
     assert.ok(!('apply_patch' in tools))
   } finally {
@@ -840,7 +996,7 @@ test('createAgentTools keeps plan mode descriptions on discovery-only tools', as
   }
 })
 
-test('createAgentTools describes read and apply_patch with exact path guidance', async () => {
+test('createAgentTools keeps mutation descriptions mechanical and workflow-free', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
 
   try {
@@ -863,24 +1019,20 @@ test('createAgentTools describes read and apply_patch with exact path guidance',
     const applyPatchTool = tools.apply_patch as { description?: string }
     const writeTool = tools.write as { description?: string }
 
-    assert.match(readTool.description ?? '', /Do not guess paths/u)
-    assert.match(readTool.description ?? '', /read enough contiguous context in one call to avoid repeated reads/u)
-    assert.match(readTool.description ?? '', /500-line reads are acceptable when the file is large/u)
-    assert.match(readTool.description ?? '', /The latest read is the source of truth for edits/u)
-    assert.match(readTool.description ?? '', /After reading, use `apply_patch` for small edits or `write` for a full replacement/u)
-    assert.match(applyPatchTool.description ?? '', /workspace-relative file paths like `src\/app\.ts`/u)
-    assert.match(applyPatchTool.description ?? '', /Use `write` only when you need to replace a whole file/u)
-    assert.match(applyPatchTool.description ?? '', /Do not use guessed paths/u)
-    assert.match(applyPatchTool.description ?? '', /Patch only exact text from that read/u)
-    assert.match(applyPatchTool.description ?? '', /The latest read is the source of truth/u)
+    assert.match(readTool.description ?? '', /numbered UTF-8 file lines/u)
+    assert.match(readTool.description ?? '', /limit defaults to 2000/u)
+    assert.match(readTool.description ?? '', /output is capped at 256 KB/u)
+    assert.match(applyPatchTool.description ?? '', /add, update, move, or delete operations/u)
+    assert.match(applyPatchTool.description ?? '', /ambiguous matches are rejected/u)
     assert.match(applyPatchTool.description ?? '', /LF line endings/u)
-    assert.match(applyPatchTool.description ?? '', /Order update hunks from top to bottom/u)
-    assert.match(applyPatchTool.description ?? '', /grep results are only location hints/u)
-    assert.match(globTool.description ?? '', /Read the matched files with `read` before editing/u)
-    assert.match(grepTool.description ?? '', /After reading the target file, use `apply_patch`/u)
-    assert.match(writeTool.description ?? '', /For small edits to an existing file, use `apply_patch` instead/u)
-    assert.match(writeTool.description ?? '', /Do not call write when the target already has identical content/u)
-    assert.match(writeTool.description ?? '', /LF line endings/u)
+    assert.match(globTool.description ?? '', /matching the glob pattern/u)
+    assert.match(grepTool.description ?? '', /optional filename glob/u)
+    assert.match(writeTool.description ?? '', /complete UTF-8 contents/u)
+    assert.match(writeTool.description ?? '', /content is unchanged/u)
+    for (const description of [readTool, globTool, grepTool, applyPatchTool, writeTool]
+      .map((tool) => tool.description ?? '')) {
+      assert.doesNotMatch(description, /should|prefer|after reading|before editing/iu)
+    }
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

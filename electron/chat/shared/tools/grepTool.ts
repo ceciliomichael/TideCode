@@ -2,12 +2,11 @@ import { jsonSchema, tool } from 'ai'
 import { createGrepToolResult, resolveReadableTargetPath, type WorkspaceToolContext } from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
-export function createGrepTool(context: WorkspaceToolContext, isPlanMode: boolean) {
-  const editingGuidance = isPlanMode ? '' : ' After reading the target file, use `apply_patch` for small edits.'
+export function createGrepTool(context: WorkspaceToolContext) {
   const description =
     context.terminalExecutionMode === 'full'
-      ? `Search file contents in visible workspace files for regex or string matches. Use include to filter filenames, then read the matching files with \`read\`. Treat grep results as hints, not full context.${editingGuidance}`
-      : `Search file contents in visible workspace files for regex or string matches. In Sandbox mode, absolute_path restricts the search to a file or directory inside the workspace. Use include to filter filenames, then read the matching files with \`read\`. Treat grep results as hints, not full context.${editingGuidance}`
+      ? 'Returns visible workspace text matches for the ripgrep regex pattern, sorted by path and line number. absolute_path may select one file or directory; include is an optional filename glob.'
+      : 'Returns visible workspace text matches for the ripgrep regex pattern, sorted by path and line number. absolute_path may select one workspace file or directory; include is an optional filename glob.'
 
   return tool({
     description,

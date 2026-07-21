@@ -13,6 +13,7 @@ import {
 } from '../../../workspace/paths'
 import { captureWorkspaceCheckpointFileState } from '../../../workspace/checkpoints'
 import { applyPatchInWorkspace, type ApplyPatchChange } from '../applyPatch'
+import { createFileRevision } from '../fileRevision'
 import type { AgentToolContext, AgentToolExecutionResult } from '../toolTypes'
 import { runRipgrep } from './ripgrep'
 
@@ -479,6 +480,8 @@ export async function createReadToolResult(
     })
   }
 
+  const revision = createFileRevision(await fs.readFile(absolutePath))
+
   const startLine = Math.max(1, offset ?? 1)
   const maxLines = Math.max(1, limit ?? DEFAULT_READ_LIMIT)
   const stream = createReadStream(absolutePath, { encoding: 'utf8' })
@@ -550,6 +553,7 @@ export async function createReadToolResult(
       is_directory: false,
       line_count: lineCount,
       offset: startLine,
+      revision,
     },
     subject: {
       kind: 'file',

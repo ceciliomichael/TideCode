@@ -5,8 +5,8 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 export function createGlobTool(context: WorkspaceToolContext) {
   const description =
     context.terminalExecutionMode === 'full'
-      ? 'Find file paths matching a glob pattern. Read the matched files with `read` before editing.'
-      : 'Find file paths matching a glob pattern inside the workspace. In Sandbox mode, absolute_path limits the search scope to a directory inside the workspace. Read the matched files with `read` before editing.'
+      ? 'Returns up to 100 visible absolute file paths matching the glob pattern below absolute_path, or the workspace root when omitted.'
+      : 'Returns up to 100 visible absolute file paths matching the glob pattern below a workspace directory. absolute_path defaults to the workspace root and must remain inside it.'
 
   return tool({
     description,
