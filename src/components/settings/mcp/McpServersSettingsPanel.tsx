@@ -6,7 +6,7 @@ import type { McpAddServerInput, McpServerConfig, McpState } from '../../../type
 import { SETTINGS_SECTION_TITLE_CLASS_NAME, SettingsPanelLayout } from '../shared/SettingsPanelPrimitives'
 
 const ADD_MCP_BUTTON_CLASS_NAME =
-  'provider-primary-action-button inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 text-xs font-medium leading-none transition-colors active:scale-[0.99] disabled:cursor-not-allowed'
+  'provider-primary-action-button inline-flex h-11 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3.5 text-sm font-medium transition-transform active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 md:h-10 md:w-auto'
 
 interface McpServersSettingsPanelProps {
   activeOperation: string | null
@@ -67,26 +67,21 @@ export function McpServersSettingsPanel({
       <div className="flex flex-col gap-4">
         <header className="flex flex-col gap-1 px-1 pt-1">
           <h2 className={SETTINGS_SECTION_TITLE_CLASS_NAME}>MCP Servers</h2>
-        </header>
-
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm leading-6 text-muted-foreground">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <p className="min-w-0 flex-1 text-sm leading-6 text-muted-foreground">
               MCP servers expose external tools and data sources to the assistant. New servers are saved globally so
               the same MCP setup is available across your workspaces.
             </p>
+            <button
+              type="button"
+              onClick={openAddDialog}
+              disabled={isLoading}
+              className={`${ADD_MCP_BUTTON_CLASS_NAME} md:shrink-0`}
+            >
+              <Plus size={15} /> Add MCP
+            </button>
           </div>
-
-          <button
-            type="button"
-            onClick={openAddDialog}
-            disabled={isLoading}
-            className={`${ADD_MCP_BUTTON_CLASS_NAME} w-full md:w-auto`}
-          >
-            <Plus className="h-3.5 w-3.5 shrink-0 -mt-px" />
-            Add MCP
-          </button>
-        </div>
+        </header>
 
         {visibleErrorMessage ? (
           <div className="rounded-2xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">

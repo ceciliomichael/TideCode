@@ -6,10 +6,8 @@ import { toProviderModelCatalogItems } from '../components/settings/models/provi
 import { dedupeModelCatalogItems } from '../components/settings/models/modelCatalogDedupe'
 import { filterEnabledModelCatalogItems, readStoredModelToggleState } from '../components/settings/models/modelStorage'
 import { isProviderConfigured } from '../components/settings/models/modelViewUtils'
-import {
-  normalizeReasoningEffort,
-} from '../lib/reasoningEffort'
 import { resolveModelReasoningProfile } from '../lib/modelReasoningProfiles'
+import { resolveReasoningEffortTransition } from '../lib/reasoningEffortTransition'
 import type {
   AppSettings,
   ChatMode,
@@ -41,8 +39,8 @@ function buildChatModelOptions(
   const modelToggleState = readStoredModelToggleState()
   const modelCatalog = filterEnabledModelCatalogItems(dedupeModelCatalogItems([
     ...MODEL_CATALOG,
-    ...toProviderModelCatalogItems(providerModels),
     ...toCustomModelCatalogItems(customModels),
+    ...toProviderModelCatalogItems(providerModels),
   ]), modelToggleState)
 
   const customProviderSections = (providersState?.apiKeyProviders ?? [])
@@ -219,8 +217,8 @@ export function useChatRuntimeConfig({
   const allModelCatalog = useMemo(
     () => dedupeModelCatalogItems([
       ...MODEL_CATALOG,
-      ...toProviderModelCatalogItems(providerModels),
       ...toCustomModelCatalogItems(customModels),
+      ...toProviderModelCatalogItems(providerModels),
     ]),
     [customModels, providerModels],
   )
@@ -243,7 +241,7 @@ export function useChatRuntimeConfig({
 
     return isProviderConfigured(modeSelection.providerId, providersState)
   }, [modeSelection.providerId, providersState])
-  const missingSelectedModelOption = useMemo(() => {
+  const missingSelectedModelOption = useMemo<ChatModelOption | null>(() => {
     const normalizedSavedModelId = modeSelection.modelId.trim()
     const hasExactEnabledCatalogMatch = modelOptions.some((option) => {
       if (option.id !== normalizedSavedModelId) {
@@ -329,9 +327,11 @@ export function useChatRuntimeConfig({
     return selectedModel.reasoningEfforts ?? []
   }, [selectedModel])
   const reasoningEffort = useMemo(
-    () => availableReasoningEfforts.includes(settings.chatReasoningEffort)
-      ? settings.chatReasoningEffort
-      : selectedModel?.defaultReasoningEffort ?? normalizeReasoningEffort(settings.chatReasoningEffort, availableReasoningEfforts),
+    () => resolveReasoningEffortTransition({
+      currentEffort: settings.chatReasoningEffort,
+      defaultEffort: selectedModel?.defaultReasoningEffort,
+      supportedEfforts: availableReasoningEfforts,
+    }),
     [availableReasoningEfforts, selectedModel?.defaultReasoningEffort, settings.chatReasoningEffort],
   )
   const hasSavedModelId = modeSelection.modelId.trim().length > 0
@@ -469,6 +469,12 @@ export function useChatRuntimeConfig({
         return
       }
 
+      const nextReasoningEffort = resolveReasoningEffortTransition({
+        currentEffort: settings.chatReasoningEffort,
+        defaultEffort: selectedOption?.defaultReasoningEffort,
+        supportedEfforts: selectedOption?.reasoningEfforts,
+      })
+
       void updateSettings({
         [modeSelection.updateKeys.modelId]: chatModelId,
         [modeSelection.updateKeys.providerId]: nextProviderId,
@@ -476,6 +482,7 @@ export function useChatRuntimeConfig({
         chatModelId,
         chatModelProviderId: nextProviderId,
         chatModelLabel: selectedOption?.label ?? chatModelId,
+        chatReasoningEffort: nextReasoningEffort,
       })
     },
     [
@@ -485,6 +492,7 @@ export function useChatRuntimeConfig({
       modeSelection.updateKeys.modelLabel,
       modeSelection.updateKeys.providerId,
       runtimeModelOptions,
+      settings.chatReasoningEffort,
       updateSettings,
     ],
   )

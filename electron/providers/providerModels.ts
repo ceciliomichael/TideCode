@@ -49,6 +49,7 @@ export function parseConfigurableProviderModels(value: unknown): ConfigurablePro
     if (!apiModelId) throw new Error('Each provider model needs an apiModelId.')
 
     const reasoningBodies = parseReasoningBodies(entry.reasoningBodies)
+    const extraBody = parseExtraBody(entry.extraBody)
     const bodyEfforts = Object.keys(reasoningBodies).filter(isReasoningEffort)
     const reasoningCapable = entry.reasoningCapable === true || bodyEfforts.length > 0
     const reasoningEfforts = reasoningCapable ? bodyEfforts : parseReasoningEfforts(entry.reasoningEfforts)
@@ -69,6 +70,7 @@ export function parseConfigurableProviderModels(value: unknown): ConfigurablePro
       apiModelId,
       ...(defaultReasoningEffort ? { defaultReasoningEffort } : {}),
       ...(typeof entry.enabledByDefault === 'boolean' ? { enabledByDefault: entry.enabledByDefault } : {}),
+      ...(Object.keys(extraBody).length > 0 ? { extraBody } : {}),
       ...(optionalText(entry.id) ? { id: optionalText(entry.id) } : {}),
       ...(optionalText(entry.label) ? { label: optionalText(entry.label) } : {}),
       reasoningCapable,

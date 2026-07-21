@@ -3,6 +3,7 @@ import test from 'node:test'
 import type { ApiKeyChatProviderConfig } from '../../electron/chat/apiKey/config'
 import {
   mergeRequestExtras,
+  resolveModelExtraBody,
   resolveProviderReasoningOptions,
   resolveReasoningExtraBody,
 } from '../../electron/chat/apiKey/reasoning'
@@ -40,4 +41,41 @@ test('custom reasoning sends the exact body declared by the model JSON', () => {
     custom_thinking: { enabled: true },
   })
   assert.equal(resolveProviderReasoningOptions(config, 'my-model', 'high'), undefined)
+})
+
+test('custom provider extra settings resolve only for the exact selected model', () => {
+  const config = createConfig({
+    models: [
+      { apiModelId: 'model-a', extraBody: { temperature: 0.2 } },
+      { apiModelId: 'model-b', extraBody: { temperature: 0.8 } },
+    ],
+  })
+
+  assert.deepEqual(resolveModelExtraBody(config, 'model-a'), { temperature: 0.2 })
+  assert.deepEqual(resolveModelExtraBody(config, 'model-b'), { temperature: 0.8 })
+  assert.deepEqual(resolveModelExtraBody(config, 'unknown'), {})
+})
+
+test('built-in providers never resolve arbitrary model extra settings', () => {
+  const config = createConfig({
+    models: [{ apiModelId: 'gpt-custom', extraBody: { store: false } }],
+    providerId: 'openai',
+  })
+
+  assert.deepEqual(resolveModelExtraBody(config, 'gpt-custom'), {})
+})
+
+test('reasoning and cache layers can override generic model settings predictably', () => {
+  const merged = mergeRequestExtras(
+    mergeRequestExtras(
+      { chat_template_kwargs: { enable_thinking: false, stable: true }, temperature: 0.4 },
+      { chat_template_kwargs: { enable_thinking: true } },
+    ),
+    { temperature: 0.1 },
+  )
+
+  assert.deepEqual(merged, {
+    chat_template_kwargs: { enable_thinking: true, stable: true },
+    temperature: 0.1,
+  })
 })

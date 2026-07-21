@@ -1,6 +1,7 @@
 import type { ApiKeyProviderId, ConfigurableProviderModel } from '../../../src/types/chat'
 import { apiKeyProviderUsesCustomBaseUrl, isApiKeyProviderId } from '../../providers/providerIds'
 import { readStoredApiKeyProviders } from '../../providers/store'
+import { listStoredCustomModels } from '../../models/store'
 
 const DEFAULT_BASE_URLS: Partial<Record<ApiKeyProviderId, string>> = {
   anthropic: 'https://api.anthropic.com/v1',
@@ -23,7 +24,10 @@ export async function readApiKeyChatProviderConfig(providerId: ApiKeyProviderId)
     throw new Error('Unsupported API-key provider.')
   }
 
-  const providers = await readStoredApiKeyProviders()
+  const [providers, userModels] = await Promise.all([
+    readStoredApiKeyProviders(),
+    listStoredCustomModels(),
+  ])
   const provider = providers[providerId]
   const usesCustomBaseUrl = apiKeyProviderUsesCustomBaseUrl(providerId)
   const baseUrl = usesCustomBaseUrl
@@ -41,7 +45,21 @@ export async function readApiKeyChatProviderConfig(providerId: ApiKeyProviderId)
     apiKey: provider?.api_key?.trim() ?? '',
     baseUrl,
     extraBody: provider?.extra_body ?? {},
-    models: provider?.models ?? [],
+    models: [
+      ...userModels
+        .filter((model) => model.providerId === providerId)
+        .map((model) => ({
+          apiModelId: model.apiModelId,
+          ...(model.defaultReasoningEffort ? { defaultReasoningEffort: model.defaultReasoningEffort } : {}),
+          ...(model.extraBody ? { extraBody: model.extraBody } : {}),
+          id: model.id,
+          label: model.label,
+          reasoningCapable: model.reasoningCapable,
+          ...(model.reasoningBodies ? { reasoningBodies: model.reasoningBodies } : {}),
+          ...(model.reasoningEfforts ? { reasoningEfforts: model.reasoningEfforts } : {}),
+        })),
+      ...(provider?.models ?? []),
+    ],
     providerId,
   }
 }

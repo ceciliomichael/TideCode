@@ -92,10 +92,13 @@ async function runApiKeyChatStream(
       abortController,
       createStream: (streamInput) =>
         client.chat.completions.create({
+          cacheKey: streamInput.cacheKey,
           messages: streamInput.messages,
           model: streamInput.model,
           reasoningEffort: streamInput.reasoningEffort,
           signal: streamInput.signal,
+          maxSteps: streamInput.maxSteps,
+          onStepEnd: streamInput.onStepEnd,
           stopWhen: streamInput.stopWhen,
           system: streamInput.system,
           tools: streamInput.tools,

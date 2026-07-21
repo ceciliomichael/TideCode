@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { WebContents } from 'electron'
 import { stepCountIs, type ModelMessage, type StopCondition, type ToolSet } from 'ai'
-import { formatStructuredToolResultContent } from '../../../src/lib/toolResultContent'
 import type {
   ChatStreamEvent,
   ContextUsageEstimate,
@@ -10,9 +9,28 @@ import type {
   ToolInvocationResultPresentation,
 } from '../../../src/types/chat'
 import { buildSkillsSystemPromptBlock, listEnabledSkills } from '../../skills/service'
+import { buildPromptContextManifest } from '../cache/canonicalization'
+import { derivePromptCacheKey } from '../cache/providerPolicies'
+import type { ProviderStepRecord } from '../history/contracts'
+import {
+  readCanonicalHistory,
+  recordContextEpoch,
+  recordRunCompleted,
+  recordRunStarted,
+  recordRunTerminal,
+  recordStepCompleted,
+  recordToolFreshness,
+  synchronizeCanonicalMessages,
+} from '../history/eventStore'
+import { projectCanonicalReplay } from '../history/replayProjector'
 import { buildChatPrompt, buildChatSystemPrompt } from './messages'
 import { createAgentTools } from './tools'
 import type { AgentToolExecutionResult } from './toolTypes'
+import {
+  createCanonicalToolResultContent,
+  normalizeToolExecutionResult,
+  withCanonicalToolModelOutputs,
+} from './toolReplay'
 
 const CHAT_STREAM_EVENT_CHANNEL = 'chat:stream:event'
 // Tool-heavy coding runs routinely exceed a dozen read/search/edit steps.
@@ -35,6 +53,7 @@ interface RuntimePromptOptions {
 }
 
 export interface ProviderStreamFactoryInput {
+  cacheKey: string
   messages: ModelMessage[]
   model: string
   reasoningEffort: StartChatStreamInput['reasoningEffort']
@@ -43,6 +62,7 @@ export interface ProviderStreamFactoryInput {
   maxSteps?: number
   system: string
   tools: ToolSet
+  onStepEnd?: (step: ProviderStepRecord) => void | Promise<void>
 }
 
 export type ProviderStreamFactory = (
@@ -68,40 +88,6 @@ function approximateTokenCount(value: string) {
   return Math.ceil(trimmedValue.length / 4)
 }
 
-function isAgentToolExecutionResult(value: unknown): value is AgentToolExecutionResult {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-
-  const candidate = value as Partial<AgentToolExecutionResult>
-  return (
-    (candidate.status === 'success' || candidate.status === 'error') &&
-    typeof candidate.summary === 'string' &&
-    (candidate.body === undefined || typeof candidate.body === 'string')
-  )
-}
-
-function normalizeToolExecutionResult(toolName: string, output: unknown): AgentToolExecutionResult {
-  if (isAgentToolExecutionResult(output)) {
-    return output
-  }
-
-  const summary = `Completed ${toolName}`
-  if (typeof output === 'string') {
-    return {
-      body: output,
-      status: 'success',
-      summary,
-    }
-  }
-
-  return {
-    body: JSON.stringify(output, null, 2),
-    status: 'success',
-    summary,
-  }
-}
-
 function isStreamPart(part: RuntimeStreamPart, type: string): boolean {
   return part.type === type
 }
@@ -121,30 +107,25 @@ function createSyntheticToolMessage(
   completedAt: number,
   result: AgentToolExecutionResult,
 ): Message {
-  // This JSON envelope is the exact tool output replayed back into the next model turn.
-  // Edit `summary`, `body`, `subject`, or `semantics` here to change what the AI receives.
   return {
-    content: formatStructuredToolResultContent(
-      {
-        arguments:
-          typeof argumentsValue === 'object' && argumentsValue !== null
-            ? (argumentsValue as Record<string, unknown>)
-            : undefined,
-        schema: 'echosphere.tool_result/v1',
-        ...(result.semantics ? { semantics: result.semantics } : {}),
-        status: result.status,
-        ...(result.subject ? { subject: result.subject } : {}),
-        summary: result.summary,
-        toolCallId: invocationId,
-        toolName,
-        ...(result.truncated === undefined ? {} : { truncated: result.truncated }),
-      },
-      result.body,
-    ),
+    content: createCanonicalToolResultContent({
+      argumentsValue,
+      result,
+      toolCallId: invocationId,
+      toolName,
+    }),
     id: randomUUID(),
     role: 'tool',
     timestamp: completedAt,
     toolCallId: invocationId,
+  }
+}
+
+async function safelyPersistHistory(action: () => Promise<unknown>) {
+  try {
+    await action()
+  } catch (error) {
+    console.error('Canonical chat history persistence failed.', error)
   }
 }
 
@@ -212,12 +193,15 @@ export async function runToolEnabledChatStream(input: {
   webContents: WebContents
 }) {
   const invocationStateById = new Map<string, ToolInvocationState>()
+  const runId = randomUUID()
+  const conversationId = input.startInput.conversationId?.trim() || null
   let completedStepCount = 0
   let lastFinishReason: string | null = null
+  let runWasRecorded = false
 
   try {
     const enabledSkills = await listEnabledSkills(input.startInput.agentContextRootPath)
-    const tools = await createAgentTools(
+    const rawTools = await createAgentTools(
       {
         checkpointId: resolveActiveCheckpointId(input.startInput.messages),
         conversationId: input.startInput.conversationId ?? null,
@@ -231,18 +215,73 @@ export async function runToolEnabledChatStream(input: {
         providerId: input.startInput.providerId,
       },
     )
+    const tools = withCanonicalToolModelOutputs(rawTools)
+    const promptOptions = {
+      ...input.promptOptions,
+      availableSkillsBlock: buildSkillsSystemPromptBlock(enabledSkills),
+      terminalExecutionMode: input.startInput.terminalExecutionMode,
+    }
     const prompt = buildChatPrompt({
       chatMode: input.startInput.chatMode,
       messages: input.startInput.messages,
-      options: {
-        ...input.promptOptions,
-        availableSkillsBlock: buildSkillsSystemPromptBlock(enabledSkills),
-        terminalExecutionMode: input.startInput.terminalExecutionMode,
-      },
+      options: promptOptions,
       workspaceRootPath: input.startInput.agentContextRootPath,
     })
+    const promptContext = buildPromptContextManifest({
+      modelId: input.startInput.modelId,
+      providerId: input.startInput.providerId,
+      system: prompt.system,
+      tools,
+    })
+    const contextFingerprint = promptContext.fingerprint
+    let modelMessages = prompt.messages
+    let freshnessRevision = 0
+    let replayFidelity: 'exact' | 'migrated_legacy' = 'migrated_legacy'
+
+    if (conversationId) {
+      await safelyPersistHistory(() => synchronizeCanonicalMessages(conversationId, input.startInput.messages))
+      await safelyPersistHistory(() => recordContextEpoch(conversationId, promptContext))
+      const canonicalHistory = await readCanonicalHistory(conversationId)
+      const replay = projectCanonicalReplay({
+        document: canonicalHistory,
+        fallbackMessages: prompt.messages,
+        messages: input.startInput.messages,
+        modelId: input.startInput.modelId,
+        options: promptOptions,
+        providerId: input.startInput.providerId,
+      })
+      modelMessages = replay.messages
+      freshnessRevision = replay.freshnessRevision
+      replayFidelity = replay.fidelity === 'exact' ? 'exact' : 'migrated_legacy'
+    }
+
+    const anchorUserMessageId = [...input.startInput.messages].reverse()
+      .find((message) => message.role === 'user')?.id ?? null
+    const cacheKey = derivePromptCacheKey({
+      contextFingerprint,
+      conversationId,
+      modelId: input.startInput.modelId,
+      providerId: input.startInput.providerId,
+    })
+    const responseMessages: ModelMessage[] = []
+
+    if (conversationId) {
+      await safelyPersistHistory(() => recordRunStarted({
+        anchorUserMessageId,
+        contextFingerprint,
+        conversationId,
+        fidelity: replayFidelity,
+        initialMessages: modelMessages,
+        modelId: input.startInput.modelId,
+        providerId: input.startInput.providerId,
+        runId,
+      }))
+      runWasRecorded = true
+    }
+
     const stream = await input.createStream({
-      messages: prompt.messages,
+      cacheKey,
+      messages: modelMessages,
       model: input.startInput.modelId,
       reasoningEffort: input.startInput.reasoningEffort,
       signal: input.abortController.signal,
@@ -250,6 +289,12 @@ export async function runToolEnabledChatStream(input: {
       maxSteps: MAX_TOOL_STEPS,
       system: prompt.system,
       tools,
+      onStepEnd: async (step) => {
+        responseMessages.push(...step.responseMessages as ModelMessage[])
+        if (conversationId) {
+          await safelyPersistHistory(() => recordStepCompleted(conversationId, runId, step))
+        }
+      },
     })
 
     emitChatStreamEvent(input.webContents, {
@@ -380,7 +425,16 @@ export async function runToolEnabledChatStream(input: {
           toolName: part.toolName,
         }
         const completedAt = Date.now()
-        const normalizedResult = normalizeToolExecutionResult(part.toolName, part.output ?? part.result)
+        const toolName = part.toolName
+        const normalizedResult = normalizeToolExecutionResult(toolName, part.output ?? part.result)
+        if (conversationId) {
+          await safelyPersistHistory(() => recordToolFreshness({
+            conversationId,
+            status: normalizedResult.status,
+            subject: normalizedResult.subject,
+            toolName,
+          }))
+        }
         const syntheticMessage = createSyntheticToolMessage(
           part.toolCallId,
           part.toolName,
@@ -467,6 +521,15 @@ export async function runToolEnabledChatStream(input: {
     }
 
     if (completedStepCount >= MAX_TOOL_STEPS && lastFinishReason === 'tool-calls') {
+      if (conversationId && runWasRecorded) {
+        await safelyPersistHistory(() => recordRunTerminal(
+          conversationId,
+          runId,
+          'run_failed',
+          `tool-step-limit:${MAX_TOOL_STEPS}`,
+        ))
+        runWasRecorded = false
+      }
       emitChatStreamEvent(input.webContents, {
         errorMessage: `The assistant hit the tool-step limit (${MAX_TOOL_STEPS}) before finishing. Increase the limit or continue the task in a follow-up turn.`,
         streamId: input.streamId,
@@ -475,11 +538,35 @@ export async function runToolEnabledChatStream(input: {
       return
     }
 
+    if (conversationId) {
+      const finalDocument = await readCanonicalHistory(conversationId)
+      await safelyPersistHistory(() => recordRunCompleted({
+        anchorUserMessageId,
+        contextFingerprint,
+        conversationId,
+        freshnessRevision: finalDocument.freshness.revision || freshnessRevision,
+        fidelity: replayFidelity,
+        messages: [...modelMessages, ...responseMessages],
+        modelId: input.startInput.modelId,
+        providerId: input.startInput.providerId,
+        runId,
+      }))
+      runWasRecorded = false
+    }
+
     emitChatStreamEvent(input.webContents, {
       streamId: input.streamId,
       type: 'completed',
     })
   } catch (error) {
+    if (conversationId && runWasRecorded) {
+      await safelyPersistHistory(() => recordRunTerminal(
+        conversationId,
+        runId,
+        input.abortController.signal.aborted ? 'run_aborted' : 'run_failed',
+        error instanceof Error ? error.message : String(error),
+      ))
+    }
     if (input.abortController.signal.aborted) {
       emitChatStreamEvent(input.webContents, {
         streamId: input.streamId,

@@ -13,10 +13,17 @@ function findConfiguredModel(
   return config.models.find((model) => model.apiModelId.trim().toLowerCase() === normalizedModelId) ?? null
 }
 
+export function resolveModelExtraBody(
+  config: ApiKeyChatProviderConfig,
+  modelId: string,
+): Record<string, unknown> {
+  if (!isCustomApiKeyProviderId(config.providerId)) return {}
+  return findConfiguredModel(config, modelId)?.extraBody ?? {}
+}
+
 function findReasoningModel(config: ApiKeyChatProviderConfig, modelId: string) {
-  return isCustomApiKeyProviderId(config.providerId)
-    ? findConfiguredModel(config, modelId)
-    : findCatalogModel(config.providerId, modelId)
+  return findConfiguredModel(config, modelId) ??
+    (isCustomApiKeyProviderId(config.providerId) ? null : findCatalogModel(config.providerId, modelId))
 }
 
 function supportsReasoningEffort(

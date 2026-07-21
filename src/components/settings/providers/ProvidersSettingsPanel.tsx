@@ -40,12 +40,10 @@ const CUSTOM_PROVIDER_SCHEMA = {
   baseUrlRequired: true,
   defaultBaseUrl: 'http://localhost:1234/v1',
   description: 'Connect another model service and give it a name you will recognize.',
-  extraBodyExample: '{\n  "chat_template_kwargs": {\n    "enable_thinking": true\n  }\n}',
-  extraBodyHelp: 'Add optional settings for this provider.',
-  id: 'custom' as any,
+  id: 'custom:pending',
   label: 'Custom provider',
   showBaseUrl: true,
-} as ApiKeyProviderSchema
+} as ApiKeyProviderSchema<ApiKeyProviderId>
 
 export function ProvidersSettingsPanel(props: ProvidersSettingsPanelProps) {
   const [dialog, setDialog] = useState<ProviderDialogState | null>(null)
@@ -70,17 +68,19 @@ export function ProvidersSettingsPanel(props: ProvidersSettingsPanelProps) {
       <div className="flex flex-col gap-4">
         <header className="flex flex-col gap-1 px-1 pt-1">
           <h2 className={SETTINGS_SECTION_TITLE_CLASS_NAME}>Providers</h2>
-          <p className="text-sm leading-6 text-muted-foreground">
-            Choose a provider to configure it. API keys and request settings are saved locally for all workspaces.
-          </p>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <p className="min-w-0 flex-1 text-sm leading-6 text-muted-foreground">
+              Choose and configure providers, or connect another model service. API keys are saved locally for all workspaces.
+            </p>
+            <button
+              type="button"
+              onClick={() => setDialog({ kind: 'custom' })}
+              className={`${ADD_PROVIDER_BUTTON_CLASS_NAME} md:shrink-0`}
+            >
+              <Plus size={15} /> Add custom provider
+            </button>
+          </div>
         </header>
-
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <p className="text-sm text-muted-foreground">Connect as many other model services as you need.</p>
-          <button type="button" onClick={() => setDialog({ kind: 'custom' })} className={ADD_PROVIDER_BUTTON_CLASS_NAME}>
-            <Plus size={15} /> Add custom provider
-          </button>
-        </div>
 
         {props.errorMessage ? (
           <div className="rounded-2xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">{props.errorMessage}</div>

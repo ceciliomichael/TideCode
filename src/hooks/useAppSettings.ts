@@ -54,6 +54,7 @@ export function useAppSettings() {
           return
         }
 
+        settingsRef.current = nextSettings
         setSettings(nextSettings)
         setErrorMessage(null)
         setSaveState('idle')
@@ -106,6 +107,7 @@ export function useAppSettings() {
     const requestId = requestIdRef.current + 1
     requestIdRef.current = requestId
 
+    settingsRef.current = optimisticSettings
     setSettings(optimisticSettings)
     setSaveState('saving')
     setErrorMessage(null)
@@ -117,6 +119,7 @@ export function useAppSettings() {
           return null
         }
 
+        settingsRef.current = nextSettings
         setSettings(nextSettings)
         setSaveState('saved')
         return nextSettings
@@ -127,6 +130,7 @@ export function useAppSettings() {
           return null
         }
 
+        settingsRef.current = previousSettings
         setSettings(previousSettings)
         setSaveState('error')
         setErrorMessage('Unable to save your settings right now.')

@@ -6,7 +6,7 @@ import { buildChatModeSystemPrompt } from './prompts/mode'
 
 type ToolModelMessage = Extract<ModelMessage, { role: 'tool' }>
 
-interface BuildChatPromptOptions {
+export interface BuildChatPromptOptions {
   availableSkillsBlock?: string | null
   includeAssistantReasoningParts?: boolean
   terminalExecutionMode?: AppTerminalExecutionMode
@@ -269,15 +269,25 @@ export function buildChatPrompt(input: {
   options?: BuildChatPromptOptions
   workspaceRootPath: string
 }): { messages: ModelMessage[]; system: string } {
+  return {
+    messages: buildModelMessages(input.messages, input.options),
+    system: buildChatSystemPrompt(input.chatMode, input.workspaceRootPath, input.options),
+  }
+}
+
+export function buildModelMessages(
+  inputMessages: Message[],
+  inputOptions?: BuildChatPromptOptions,
+): ModelMessage[] {
   const validToolCallIds = new Set<string>()
   const messages: ModelMessage[] = []
   const options: Required<BuildChatPromptOptions> = {
-    availableSkillsBlock: input.options?.availableSkillsBlock ?? null,
-    includeAssistantReasoningParts: input.options?.includeAssistantReasoningParts ?? true,
-    terminalExecutionMode: input.options?.terminalExecutionMode ?? 'sandbox',
+    availableSkillsBlock: inputOptions?.availableSkillsBlock ?? null,
+    includeAssistantReasoningParts: inputOptions?.includeAssistantReasoningParts ?? true,
+    terminalExecutionMode: inputOptions?.terminalExecutionMode ?? 'sandbox',
   }
 
-  for (const message of input.messages) {
+  for (const message of inputMessages) {
     const modelMessage = toModelMessage(message, validToolCallIds, options)
     if (!modelMessage) {
       continue
@@ -286,8 +296,5 @@ export function buildChatPrompt(input: {
     appendModelMessage(messages, modelMessage)
   }
 
-  return {
-    messages,
-    system: buildChatSystemPrompt(input.chatMode, input.workspaceRootPath, options),
-  }
+  return messages
 }

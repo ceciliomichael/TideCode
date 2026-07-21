@@ -28,6 +28,19 @@ export function isProviderConfigured(providerId: ChatProviderId, providersState:
   return Boolean(providerStatus?.configured)
 }
 
+export function listConfiguredModelProviders(providersState: ProvidersState | null) {
+  const customProviderSections = (providersState?.apiKeyProviders ?? [])
+    .filter((provider) => provider.isCustom || provider.id.startsWith('custom:'))
+    .map((provider) => ({
+      description: 'Models from your connected service.',
+      id: provider.id as ChatProviderId,
+      label: provider.label,
+    }))
+
+  return [...PROVIDER_SECTIONS, ...customProviderSections]
+    .filter((provider) => isProviderConfigured(provider.id, providersState))
+}
+
 export function buildModelProviderSections(
   searchValue: string,
   providersState: ProvidersState | null,
@@ -37,25 +50,20 @@ export function buildModelProviderSections(
   const normalizedSearch = normalizeSearchValue(searchValue)
   const modelCatalog = dedupeModelCatalogItems([
     ...MODEL_CATALOG,
-    ...toProviderModelCatalogItems(providerModels),
     ...toCustomModelCatalogItems(customModels),
+    ...toProviderModelCatalogItems(providerModels),
   ])
   const filteredModels =
     normalizedSearch.length === 0
       ? modelCatalog
-      : modelCatalog.filter((model) => model.label.toLowerCase().includes(normalizedSearch))
+      : modelCatalog.filter((model) =>
+          model.label.toLowerCase().includes(normalizedSearch) ||
+          (model.apiModelId ?? model.id).toLowerCase().includes(normalizedSearch))
 
-  const customProviderSections = (providersState?.apiKeyProviders ?? [])
-    .filter((provider) => provider.isCustom)
-    .map((provider) => ({
-      description: 'Models from your connected service.',
-      id: provider.id,
-      label: provider.label,
-    }))
-
-  return [...PROVIDER_SECTIONS, ...customProviderSections].map((provider) => ({
+  return listConfiguredModelProviders(providersState).map((provider) => ({
     configured: isProviderConfigured(provider.id, providersState),
     models: filteredModels.filter((model) => model.providerId === provider.id),
     provider,
-  })).filter((section) => section.configured && section.models.length > 0)
+  })).filter((section) =>
+    section.configured && (normalizedSearch.length === 0 || section.models.length > 0))
 }

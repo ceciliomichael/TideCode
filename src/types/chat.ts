@@ -327,7 +327,7 @@ export type BuiltInApiKeyProviderId =
 export type CustomApiKeyProviderId = `custom:${string}`
 export type ApiKeyProviderId = BuiltInApiKeyProviderId | CustomApiKeyProviderId
 export type ChatProviderId = 'codex' | ApiKeyProviderId
-export type CustomModelProviderId = ApiKeyProviderId
+export type CustomModelProviderId = ChatProviderId
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 export type ReasoningRequestBodies = Partial<Record<ReasoningEffort, Record<string, unknown>>>
@@ -336,6 +336,7 @@ export interface ConfigurableProviderModel {
   apiModelId: string
   defaultReasoningEffort?: ReasoningEffort
   enabledByDefault?: boolean
+  extraBody?: Record<string, unknown>
   id?: string
   label?: string
   reasoningCapable?: boolean
@@ -372,18 +373,27 @@ export interface SaveApiKeyProviderInput {
 export interface CustomModelConfig {
   apiModelId: string
   createdAt: string
+  defaultReasoningEffort?: ReasoningEffort
+  extraBody?: Record<string, unknown>
   id: string
   label: string
   providerId: CustomModelProviderId
   reasoningCapable: boolean
+  reasoningBodies?: ReasoningRequestBodies
+  reasoningEfforts?: ReasoningEffort[]
   updatedAt: string
 }
 
 export interface SaveCustomModelInput {
   apiModelId: string
+  defaultReasoningEffort?: ReasoningEffort
+  extraBody?: Record<string, unknown>
   label?: string
+  modelId?: string
   providerId: CustomModelProviderId
   reasoningCapable: boolean
+  reasoningBodies?: ReasoningRequestBodies
+  reasoningEfforts?: ReasoningEffort[]
 }
 
 export interface StartChatStreamInput {
@@ -414,6 +424,7 @@ export interface ProviderModelConfig {
   apiModelId: string
   defaultReasoningEffort?: ReasoningEffort
   enabledByDefault: boolean
+  extraBody?: Record<string, unknown>
   id: string
   label: string
   providerId: ChatProviderId

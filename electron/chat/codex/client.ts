@@ -1,6 +1,8 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { streamText, type ModelMessage, type StopCondition, type ToolSet } from 'ai'
 import type { ReasoningEffort } from '../../../src/types/chat'
+import { normalizeLanguageModelUsage } from '../cache/usage'
+import type { ProviderStepRecord } from '../history/contracts'
 import { buildCodexProviderOptions } from './providerOptions'
 import { refreshCodexOAuthTokensIfNeeded } from '../../providers/codex/refresh'
 import { maybeRotateCodexAccountForChat } from '../../providers/codex/service'
@@ -36,6 +38,7 @@ async function resolveCodexAuthData(): Promise<StoredCodexAuthData> {
 }
 
 export interface CodexChatCompletionsCreateInput {
+  cacheKey?: string
   messages: ModelMessage[]
   model: string
   reasoningEffort: ReasoningEffort
@@ -44,6 +47,7 @@ export interface CodexChatCompletionsCreateInput {
   maxSteps?: number
   system?: string
   tools?: ToolSet
+  onStepEnd?: (step: ProviderStepRecord) => void | Promise<void>
 }
 
 export function createCodexClient() {
@@ -75,6 +79,18 @@ export function createCodexClient() {
       ...(input.system ? { system: input.system } : {}),
       ...(input.tools ? { tools: input.tools } : {}),
       providerOptions: buildCodexProviderOptions(input),
+      ...(input.onStepEnd
+        ? {
+            onStepEnd: (step) => input.onStepEnd?.({
+              finishReason: step.finishReason,
+              durationMs: step.performance.stepTimeMs,
+              providerMetadata: step.providerMetadata,
+              responseMessages: step.response.messages,
+              stepNumber: step.stepNumber,
+              usage: normalizeLanguageModelUsage(step.usage),
+            }),
+          }
+        : {}),
       abortSignal: input.signal,
     })
   }

@@ -6,6 +6,7 @@ export interface ModelCatalogItem {
   apiModelId?: string
   defaultReasoningEffort?: ReasoningEffort
   enabledByDefault: boolean
+  extraBody?: Record<string, unknown>
   id: string
   isCustom?: boolean
   label: string

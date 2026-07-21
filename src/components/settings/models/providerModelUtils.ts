@@ -6,6 +6,7 @@ export function toProviderModelCatalogItems(providerModels: readonly ProviderMod
     apiModelId: model.apiModelId,
     ...(model.defaultReasoningEffort ? { defaultReasoningEffort: model.defaultReasoningEffort } : {}),
     enabledByDefault: model.enabledByDefault,
+    ...(model.extraBody ? { extraBody: model.extraBody } : {}),
     id: model.id,
     label: model.label,
     providerId: model.providerId,

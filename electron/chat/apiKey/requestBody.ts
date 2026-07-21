@@ -1,5 +1,11 @@
-export function createExtraBodyFetch(extraBody: Record<string, unknown>, fetchImplementation: typeof fetch = fetch) {
-  if (Object.keys(extraBody).length === 0) {
+export type RequestBodyTransform = (requestBody: Record<string, unknown>) => Record<string, unknown>
+
+export function createExtraBodyFetch(
+  extraBody: Record<string, unknown>,
+  fetchImplementation: typeof fetch = fetch,
+  transform?: RequestBodyTransform,
+) {
+  if (Object.keys(extraBody).length === 0 && !transform) {
     return fetchImplementation
   }
 
@@ -14,12 +20,13 @@ export function createExtraBodyFetch(extraBody: Record<string, unknown>, fetchIm
         return fetchImplementation(input, init)
       }
 
+      const mergedBody = {
+        ...(requestBody as Record<string, unknown>),
+        ...extraBody,
+      }
       return fetchImplementation(input, {
         ...init,
-        body: JSON.stringify({
-          ...(requestBody as Record<string, unknown>),
-          ...extraBody,
-        }),
+        body: JSON.stringify(transform ? transform(mergedBody) : mergedBody),
       })
     } catch {
       return fetchImplementation(input, init)

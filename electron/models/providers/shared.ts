@@ -42,8 +42,10 @@ export function normalizeProviderModelConfig(
   const label = hasText(input.label) ? input.label.trim() : id
   const enabledByDefault = typeof input.enabledByDefault === 'boolean' ? input.enabledByDefault : true
   let reasoningBodies: ReasoningRequestBodies
+  let extraBody: Record<string, unknown>
   try {
     reasoningBodies = normalizeReasoningBodies(input.reasoningBodies)
+    extraBody = parseExtraBody(input.extraBody)
   } catch {
     return null
   }
@@ -65,6 +67,7 @@ export function normalizeProviderModelConfig(
     apiModelId,
     ...(defaultReasoningEffort ? { defaultReasoningEffort } : {}),
     enabledByDefault,
+    ...(Object.keys(extraBody).length > 0 ? { extraBody } : {}),
     id,
     label,
     providerId,

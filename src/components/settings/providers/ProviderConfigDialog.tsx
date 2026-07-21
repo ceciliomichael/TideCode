@@ -5,14 +5,8 @@ import type {
   ApiKeyProviderStatus,
   SaveApiKeyProviderInput,
 } from '../../../types/chat'
-import { LineNumberedTextarea } from '../shared/LineNumberedTextarea'
 import { PRIMARY_ACTION_BUTTON_CLASS_NAME } from '../shared/actionButtonStyles'
 import type { ApiKeyProviderSchema } from './providerSchemas'
-import {
-  parseProviderModelsText,
-  PROVIDER_MODELS_EXAMPLE,
-  validateExtraBodyText,
-} from './providerJsonUtils'
 
 interface ProviderConfigDialogProps {
   isCustom: boolean
@@ -20,7 +14,7 @@ interface ProviderConfigDialogProps {
   onClose: () => void
   onRemove?: () => Promise<boolean>
   onSubmit: (input: SaveApiKeyProviderInput) => Promise<boolean>
-  schema: ApiKeyProviderSchema
+  schema: ApiKeyProviderSchema<ApiKeyProviderStatus['id']>
   status?: ApiKeyProviderStatus
 }
 
@@ -35,11 +29,7 @@ export function ProviderConfigDialog({
 }: ProviderConfigDialogProps) {
   const [apiKey, setApiKey] = useState(status?.apiKey ?? '')
   const [baseUrl, setBaseUrl] = useState(status?.baseUrl ?? '')
-  const [extraBody, setExtraBody] = useState(status?.extraBody ?? '')
   const [label, setLabel] = useState(status?.label ?? (isCustom ? '' : schema.label))
-  const [modelsJson, setModelsJson] = useState(
-    status?.models?.length ? JSON.stringify(status.models, null, 2) : '',
-  )
   const [isApiKeyVisible, setIsApiKeyVisible] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const firstInputRef = useRef<HTMLInputElement | null>(null)
@@ -78,27 +68,10 @@ export function ProviderConfigDialog({
       setLocalError('Base URL is required for this provider.')
       return
     }
-    const extraBodyError = validateExtraBodyText(extraBody)
-    if (extraBodyError) {
-      setLocalError(extraBodyError)
-      return
-    }
-
-    const showJsonSetup = isCustom
-    let models = []
-    try {
-      models = parseProviderModelsText(modelsJson)
-    } catch (error) {
-      setLocalError(error instanceof Error ? error.message : 'Check the provider JSON and try again.')
-      return
-    }
-
     const input: SaveApiKeyProviderInput = {
       apiKey: apiKey.trim(),
       baseUrl: normalizedBaseUrl,
-      extraBody: extraBody.trim(),
       ...(isCustom ? { label: normalizedLabel } : {}),
-      ...(showJsonSetup ? { models } : {}),
       providerId: status?.id ?? schema.id,
     }
     onClose()
@@ -106,7 +79,6 @@ export function ProviderConfigDialog({
   }
 
   const title = status?.configured ? `Edit ${status.label}` : isCustom ? 'Add custom provider' : `Set up ${schema.label}`
-  const showJsonSetup = isCustom
 
   return createPortal(
     <div
@@ -200,33 +172,6 @@ export function ProviderConfigDialog({
                 </div>
               ) : null}
 
-              <div className="md:col-span-2">
-                <LineNumberedTextarea
-                  id="provider-extra-body"
-                  label="Extra settings (JSON)"
-                  description={schema.extraBodyHelp}
-                  value={extraBody}
-                  onChange={setExtraBody}
-                  placeholder={schema.extraBodyExample}
-                  rows={6}
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              {showJsonSetup ? (
-                <div className="md:col-span-2">
-                  <LineNumberedTextarea
-                    id="provider-models"
-                    label="Models (JSON)"
-                    description="Choose exactly which models appear. A model can include its reasoning choices, default, and request settings here."
-                    value={modelsJson}
-                    onChange={setModelsJson}
-                    placeholder={PROVIDER_MODELS_EXAMPLE}
-                    rows={10}
-                    disabled={isSubmitting}
-                  />
-                </div>
-              ) : null}
             </div>
 
             {localError ? (

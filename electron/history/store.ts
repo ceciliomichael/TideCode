@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
+import { deleteCanonicalHistory } from '../chat/history/eventStore'
 import type {
   AppendConversationMessagesInput,
   ChatMode,
@@ -292,6 +293,7 @@ export async function deleteStoredFolder(folderId: string) {
   await Promise.all([
     writeFolderStore(nextFolders),
     ...deletedConversationIds.map((conversationId) => deleteConversationFile(conversationId)),
+    ...deletedConversationIds.map((conversationId) => deleteCanonicalHistory(conversationId)),
   ])
 
   return deletedConversationIds
@@ -418,6 +420,7 @@ export async function updateStoredConversationPinned(conversationId: string, isP
 export async function deleteStoredConversation(conversationId: string) {
   const conversation = await getStoredConversation(conversationId)
   await deleteConversationFile(conversationId)
+  await deleteCanonicalHistory(conversationId)
 
   if (!conversation || conversation.agentContextRootPath !== getConversationAgentContextPath(conversationId)) {
     return

@@ -6,11 +6,21 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { streamText, type LanguageModel, type ModelMessage, type StopCondition, type ToolSet } from 'ai'
 import type { ReasoningEffort } from '../../../src/types/chat'
 import { isCustomApiKeyProviderId } from '../../providers/providerIds'
+import { mergeProviderOptions, resolvePromptCacheExtraBody, resolvePromptCacheProviderOptions } from '../cache/providerPolicies'
+import { normalizeLanguageModelUsage } from '../cache/usage'
+import type { ProviderStepRecord } from '../history/contracts'
 import type { ApiKeyChatProviderConfig } from './config'
+import { normalizeDeepSeekRequestBody } from './deepSeekWire'
 import { createExtraBodyFetch } from './requestBody'
-import { mergeRequestExtras, resolveProviderReasoningOptions, resolveReasoningExtraBody } from './reasoning'
+import {
+  mergeRequestExtras,
+  resolveModelExtraBody,
+  resolveProviderReasoningOptions,
+  resolveReasoningExtraBody,
+} from './reasoning'
 
 export interface ApiKeyChatCompletionsCreateInput {
+  cacheKey?: string
   messages: ModelMessage[]
   model: string
   reasoningEffort: ReasoningEffort
@@ -19,6 +29,7 @@ export interface ApiKeyChatCompletionsCreateInput {
   maxSteps?: number
   system?: string
   tools?: ToolSet
+  onStepEnd?: (step: ProviderStepRecord) => void | Promise<void>
 }
 
 function stripTrailingSlashes(value: string) {
@@ -39,9 +50,18 @@ function createModelFactory(
   config: ApiKeyChatProviderConfig,
   modelId: string,
   reasoningEffort: ReasoningEffort,
+  cacheKey?: string,
 ): (modelId: string) => LanguageModel {
   const fetchWithExtraBody = createExtraBodyFetch(
-    mergeRequestExtras(config.extraBody, resolveReasoningExtraBody(config, modelId, reasoningEffort)),
+    mergeRequestExtras(
+      mergeRequestExtras(
+        mergeRequestExtras(config.extraBody, resolveModelExtraBody(config, modelId)),
+        resolveReasoningExtraBody(config, modelId, reasoningEffort),
+      ),
+      cacheKey ? resolvePromptCacheExtraBody({ cacheKey, providerId: config.providerId }) : {},
+    ),
+    fetch,
+    config.providerId === 'deepseek' ? normalizeDeepSeekRequestBody : undefined,
   )
   const baseURL = stripTrailingSlashes(config.baseUrl)
 
@@ -69,9 +89,14 @@ function createModelFactory(
 
 export function createApiKeyChatClient(config: ApiKeyChatProviderConfig) {
   async function createChatCompletionStream(input: ApiKeyChatCompletionsCreateInput) {
-    const modelFactory = createModelFactory(config, input.model, input.reasoningEffort)
+    const modelFactory = createModelFactory(config, input.model, input.reasoningEffort, input.cacheKey)
     const model = modelFactory(input.model)
-    const providerOptions = resolveProviderReasoningOptions(config, input.model, input.reasoningEffort)
+    const providerOptions = mergeProviderOptions(
+      resolveProviderReasoningOptions(config, input.model, input.reasoningEffort),
+      input.cacheKey
+        ? resolvePromptCacheProviderOptions({ cacheKey: input.cacheKey, providerId: config.providerId })
+        : undefined,
+    )
 
     return streamText({
       ...(input.stopWhen ? { stopWhen: input.stopWhen } : {}),
@@ -81,6 +106,18 @@ export function createApiKeyChatClient(config: ApiKeyChatProviderConfig) {
       ...(input.system ? { system: input.system } : {}),
       ...(input.tools ? { tools: input.tools } : {}),
       ...(providerOptions ? { providerOptions } : {}),
+      ...(input.onStepEnd
+        ? {
+            onStepEnd: (step) => input.onStepEnd?.({
+              finishReason: step.finishReason,
+              durationMs: step.performance.stepTimeMs,
+              providerMetadata: step.providerMetadata,
+              responseMessages: step.response.messages,
+              stepNumber: step.stepNumber,
+              usage: normalizeLanguageModelUsage(step.usage),
+            }),
+          }
+        : {}),
       abortSignal: input.signal,
     })
   }
