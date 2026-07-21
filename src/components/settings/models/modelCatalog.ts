@@ -1,46 +1,36 @@
 import type { ModelCatalogItem, ProviderSectionDefinition } from './modelTypes'
-import { PROVIDER_MODELS } from './providerModels'
 
 export const PROVIDER_SECTIONS: readonly ProviderSectionDefinition[] = [
   {
-    description: 'OAuth account connection for Codex sessions.',
+    description: 'Models available with your ChatGPT account.',
     id: 'codex',
     label: 'Codex',
   },
   {
-    description: 'OpenAI API key provider.',
+    description: 'Your OpenAI models.',
     id: 'openai',
     label: 'OpenAI',
   },
   {
-    description: 'Anthropic API key provider.',
+    description: 'Your Claude models.',
     id: 'anthropic',
     label: 'Anthropic',
   },
   {
-    description: 'Google API key provider.',
+    description: 'Your Gemini models.',
     id: 'google',
     label: 'Google',
   },
   {
-    description: 'Mistral AI API key provider.',
+    description: 'Your Mistral models.',
     id: 'mistral',
     label: 'Mistral AI',
   },
   {
-    description: 'Custom OpenAI-compatible endpoint.',
-    id: 'openai-compatible',
-    label: 'OpenAI Compatible',
+    description: 'DeepSeek models with optional thinking.',
+    id: 'deepseek',
+    label: 'DeepSeek',
   },
 ] as const
 
-function buildModelCatalog(): ModelCatalogItem[] {
-  return PROVIDER_SECTIONS.flatMap((provider) =>
-    PROVIDER_MODELS[provider.id].map((model) => ({
-      ...model,
-      providerId: provider.id,
-    })),
-  )
-}
-
-export const MODEL_CATALOG: readonly ModelCatalogItem[] = buildModelCatalog()
+export const MODEL_CATALOG: readonly ModelCatalogItem[] = []

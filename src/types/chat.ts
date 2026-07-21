@@ -318,18 +318,41 @@ export interface CodexAccountSummary {
   usage: CodexUsageSnapshot | null
 }
 
-export type ApiKeyProviderId = 'anthropic' | 'google' | 'mistral' | 'openai' | 'openai-compatible'
+export type BuiltInApiKeyProviderId =
+  | 'anthropic'
+  | 'deepseek'
+  | 'google'
+  | 'mistral'
+  | 'openai'
+export type CustomApiKeyProviderId = `custom:${string}`
+export type ApiKeyProviderId = BuiltInApiKeyProviderId | CustomApiKeyProviderId
 export type ChatProviderId = 'codex' | ApiKeyProviderId
-export type CustomModelProviderId = 'openai' | 'openai-compatible'
-export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+export type CustomModelProviderId = ApiKeyProviderId
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
+export type ReasoningRequestBodies = Partial<Record<ReasoningEffort, Record<string, unknown>>>
+
+export interface ConfigurableProviderModel {
+  apiModelId: string
+  defaultReasoningEffort?: ReasoningEffort
+  enabledByDefault?: boolean
+  id?: string
+  label?: string
+  reasoningCapable?: boolean
+  reasoningBodies?: ReasoningRequestBodies
+  reasoningEfforts?: ReasoningEffort[]
+}
 
 export interface ApiKeyProviderStatus {
   apiKey: string | null
   baseUrl: string | null
   configured: boolean
+  extraBody: string
   hasApiKey: boolean
   id: ApiKeyProviderId
+  isCustom: boolean
   label: string
+  models: ConfigurableProviderModel[]
 }
 
 export interface ProvidersState {
@@ -340,6 +363,9 @@ export interface ProvidersState {
 export interface SaveApiKeyProviderInput {
   apiKey: string
   baseUrl?: string
+  extraBody?: string
+  label?: string
+  models?: ConfigurableProviderModel[]
   providerId: ApiKeyProviderId
 }
 
@@ -386,11 +412,14 @@ export interface StartChatStreamResult {
 
 export interface ProviderModelConfig {
   apiModelId: string
+  defaultReasoningEffort?: ReasoningEffort
   enabledByDefault: boolean
   id: string
   label: string
   providerId: ChatProviderId
   reasoningCapable: boolean
+  reasoningBodies?: ReasoningRequestBodies
+  reasoningEfforts?: ReasoningEffort[]
 }
 
 export interface SubmitToolDecisionInput {

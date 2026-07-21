@@ -34,6 +34,7 @@
   - **Good**: Keeping track of tasks, moving cards across stages as work progresses.
 
 ## Planning rules
+- Prefer read-only tools first; avoid edit tools unless the task explicitly requires changing files.
 - **Read before plan**: Always `read` necessary files before designing plan details.
 - **Fast execution**: Keep tool usage focused strictly on plan validation. Do not over-explore or do unnecessary steps.
 - **Conciseness**: Keep plans concise and structured.

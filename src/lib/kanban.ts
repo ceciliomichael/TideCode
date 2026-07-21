@@ -197,10 +197,9 @@ function sanitizeKanbanBoardCards(cards: readonly KanbanCard[]): KanbanCard[] {
   return cards.map((card) => {
     const parentCardId = normalizeParentCardId(card.parentCardId)
     if (!parentCardId || parentCardId === card.id || !topLevelCardIds.has(parentCardId)) {
-      return {
-        ...card,
-        parentCardId: undefined,
-      }
+      const cardWithoutParent = { ...card }
+      delete cardWithoutParent.parentCardId
+      return cardWithoutParent
     }
 
     return {
@@ -232,13 +231,16 @@ export function parseKanbanCard(value: unknown): KanbanCard | null {
     return null
   }
 
+  const parentCardId = normalizeParentCardId(value.parentCardId)
+  const sourceMessageId = typeof value.sourceMessageId === 'string' ? value.sourceMessageId : undefined
+
   return {
     columnId: value.columnId,
     createdAt: value.createdAt,
     description: value.description,
     id: value.id,
-    parentCardId: normalizeParentCardId(value.parentCardId),
-    sourceMessageId: typeof value.sourceMessageId === 'string' ? value.sourceMessageId : undefined,
+    ...(parentCardId ? { parentCardId } : {}),
+    ...(sourceMessageId ? { sourceMessageId } : {}),
     title: value.title,
     updatedAt: value.updatedAt,
   }

@@ -3,6 +3,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import type { IDisposable } from "@xterm/xterm";
+import { pasteTextIntoTerminal } from "./terminalPaste";
 import type {
   TerminalTabState,
   WorkspaceTerminalPanelProps,
@@ -286,22 +287,13 @@ export function useWorkspaceTerminalSessionState({
               clearSelectionWithinHost(container);
             });
         } else {
-          // No text selected: paste from clipboard on right click (VS Code / Windows terminal behavior)
+          // No text selected: paste from clipboard on right click (VS Code / Windows terminal behavior).
+          // xterm wraps this in bracketed-paste markers when the active CLI requests them.
           event.preventDefault();
           void navigator.clipboard
             .readText()
             .then((text) => {
-              if (text) {
-                const tab = terminalTabsRef.current.find((t) => t.key === tabKey);
-                if (tab?.sessionId !== null && tab?.sessionId !== undefined) {
-                  const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath(tabKey);
-                  void window.echosphereTerminal.writeToSession({
-                    data: text,
-                    sessionId: tab.sessionId,
-                    workspaceRootPath,
-                  });
-                }
-              }
+              pasteTextIntoTerminal(terminal, text);
             })
             .catch((error) => {
               console.error("Failed to read clipboard for paste", error);
@@ -312,32 +304,80 @@ export function useWorkspaceTerminalSessionState({
       container.addEventListener("contextmenu", handleTerminalContextMenu);
 
       terminal.attachCustomKeyEventHandler((event) => {
-        if (event.key === "Enter" && event.altKey) {
-          if (event.type === "keydown") {
-            const tab = terminalTabsRef.current.find((t) => t.key === tabKey);
-            if (tab?.sessionId !== null && tab?.sessionId !== undefined) {
-              const sequence = "\x1b\r";
-              const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath(tabKey);
-              void window.echosphereTerminal
-                .writeToSession({
-                  data: sequence,
-                  sessionId: tab.sessionId,
-                  workspaceRootPath,
-                })
-                .catch(console.error);
+        const writeSequence = (sequence: string) => {
+          const tab = terminalTabsRef.current.find((t) => t.key === tabKey);
+          if (tab?.sessionId !== null && tab?.sessionId !== undefined) {
+            const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath(tabKey);
+            void window.echosphereTerminal
+              .writeToSession({
+                data: sequence,
+                sessionId: tab.sessionId,
+                workspaceRootPath,
+              })
+              .catch(console.error);
+          }
+        };
+
+        if (event.type === "keydown") {
+          if (event.key === "Enter" && event.altKey) {
+            writeSequence("\x1b\r");
+            return false;
+          }
+
+          if (event.key === "Backspace") {
+            if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+              writeSequence("\x17"); // Ctrl-W (delete word backward)
+              return false;
+            }
+            if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+              writeSequence("\x1b\x7f"); // Alt-Backspace (delete word backward)
+              return false;
             }
           }
-          return false;
-        }
 
-        const isClearShortcut =
-          (event.ctrlKey || event.metaKey) &&
-          !event.altKey &&
-          !event.shiftKey &&
-          event.key.toLowerCase() === "k";
-        if (isClearShortcut && event.type === "keydown") {
-          terminal.clear();
-          return false;
+          if (event.key === "Delete") {
+            if ((event.ctrlKey || event.metaKey || event.altKey) && !event.shiftKey) {
+              writeSequence("\x1bd"); // Esc-d (delete word forward)
+              return false;
+            }
+          }
+
+          if (event.key === "ArrowLeft") {
+            if ((event.ctrlKey || event.metaKey || event.altKey) && !event.shiftKey) {
+              writeSequence("\x1bb"); // Esc-b (move word backward)
+              return false;
+            }
+          }
+
+          if (event.key === "ArrowRight") {
+            if ((event.ctrlKey || event.metaKey || event.altKey) && !event.shiftKey) {
+              writeSequence("\x1bf"); // Esc-f (move word forward)
+              return false;
+            }
+          }
+
+          const isClearShortcut =
+            (event.ctrlKey || event.metaKey) &&
+            !event.altKey &&
+            !event.shiftKey &&
+            event.key.toLowerCase() === "k";
+          if (isClearShortcut) {
+            terminal.clear();
+            return false;
+          }
+
+          const isPasteShortcut =
+            ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "v") ||
+            (event.shiftKey && event.key === "Insert");
+          if (isPasteShortcut) {
+            void navigator.clipboard
+              .readText()
+              .then((text) => {
+                pasteTextIntoTerminal(terminal, text);
+              })
+              .catch(console.error);
+            return false;
+          }
         }
 
         const isCopyShortcut =
@@ -356,29 +396,6 @@ export function useWorkspaceTerminalSessionState({
           }
 
           return true;
-        }
-
-        const isPasteShortcut =
-          ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "v") ||
-          (event.shiftKey && event.key === "Insert");
-        if (isPasteShortcut && event.type === "keydown") {
-          void navigator.clipboard
-            .readText()
-            .then((text) => {
-              if (text) {
-                const tab = terminalTabsRef.current.find((t) => t.key === tabKey);
-                if (tab?.sessionId !== null && tab?.sessionId !== undefined) {
-                  const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath(tabKey);
-                  void window.echosphereTerminal.writeToSession({
-                    data: text,
-                    sessionId: tab.sessionId,
-                    workspaceRootPath,
-                  });
-                }
-              }
-            })
-            .catch(console.error);
-          return false;
         }
 
         return true;

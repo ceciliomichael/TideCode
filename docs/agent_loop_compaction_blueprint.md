@@ -60,7 +60,7 @@ When reinserting canonical context after compaction:
 ## Provider Strategy
 
 - `codex`: use compact endpoint when supported by backend contract.
-- `openai-compatible`: enable only when endpoint compatibility is confirmed.
+- `custom:*`: enable only when endpoint compatibility is confirmed.
 - Other providers: add translator-specific compact adapters later; no hard coupling in loop core.
 
 ## Required Tests (Future Implementation)

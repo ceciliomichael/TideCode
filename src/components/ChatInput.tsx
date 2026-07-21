@@ -150,6 +150,10 @@ export function ChatInput({
       ? 'Select model'
       : 'No models available'
   const showReasoningControl = showReasoningEffortSelector && typeof onReasoningEffortChange === 'function'
+  const hasReasoningToggle =
+    reasoningEffortOptions.length === 2 &&
+    reasoningEffortOptions.includes('none') &&
+    reasoningEffortOptions.includes('high')
   const isReasoningEffortDisabled = reasoningEffortSelectorDisabled ?? disabled
   const showRuntimeTargetControl = variant === 'composer' && showRuntimeTargetSelector
   const showTerminalExecutionModeControl =
@@ -482,7 +486,7 @@ export function ChatInput({
               ) : null}
 
               {showReasoningControl ? (
-                <Tooltip content="Set reasoning effort" hideWhenTriggerExpanded>
+                <Tooltip content={hasReasoningToggle ? 'Turn reasoning on or off' : 'Set reasoning effort'} hideWhenTriggerExpanded>
                   <ReasoningEffortBlock
                     options={reasoningEffortOptions}
                     value={reasoningEffort}

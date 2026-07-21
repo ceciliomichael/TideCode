@@ -1,0 +1,36 @@
+[
+  {
+    "apiModelId": "claude-fable-5",
+    "enabledByDefault": true,
+    "id": "anthropic:claude-fable-5",
+    "label": "Claude Fable 5",
+    "reasoningCapable": true,
+    "reasoningEfforts": ["low", "medium", "high", "max"],
+    "defaultReasoningEffort": "high"
+  },
+  {
+    "apiModelId": "claude-sonnet-5",
+    "enabledByDefault": true,
+    "id": "anthropic:claude-sonnet-5",
+    "label": "Claude Sonnet 5",
+    "reasoningCapable": true,
+    "reasoningEfforts": ["low", "medium", "high", "max"],
+    "defaultReasoningEffort": "medium"
+  },
+  {
+    "apiModelId": "claude-opus-4-8",
+    "enabledByDefault": true,
+    "id": "anthropic:claude-opus-4-8",
+    "label": "Claude Opus 4.8",
+    "reasoningCapable": true,
+    "reasoningEfforts": ["low", "medium", "high", "max"],
+    "defaultReasoningEffort": "high"
+  },
+  {
+    "apiModelId": "claude-haiku-4-5",
+    "enabledByDefault": true,
+    "id": "anthropic:claude-haiku-4-5",
+    "label": "Claude Haiku 4.5",
+    "reasoningCapable": false
+  }
+]

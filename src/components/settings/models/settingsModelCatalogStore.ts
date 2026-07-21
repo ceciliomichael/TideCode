@@ -2,8 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react'
 import { isProviderConfigured } from './modelViewUtils'
 import { PROVIDER_SECTIONS } from './modelCatalog'
 import { mergeProviderModels } from './providerModelMergeUtils'
-import type { CustomModelConfig, ProviderModelConfig, ProvidersState } from '../../../types/chat'
-import type { ModelProviderId } from './modelTypes'
+import type { ChatProviderId, CustomModelConfig, ProviderModelConfig, ProvidersState } from '../../../types/chat'
 
 export interface SettingsModelCatalogState {
   customModels: CustomModelConfig[]
@@ -28,8 +27,8 @@ const EMPTY_SETTINGS_MODEL_CATALOG_STATE: SettingsModelCatalogState = {
 const subscribers = new Set<() => void>()
 let state: SettingsModelCatalogState = EMPTY_SETTINGS_MODEL_CATALOG_STATE
 let customModelsRequest: Promise<CustomModelConfig[]> | null = null
-const loadedProviderModelIds = new Set<ModelProviderId>()
-const providerModelRequests = new Map<ModelProviderId, Promise<ProviderModelConfig[]>>()
+const loadedProviderModelSignatures = new Map<ChatProviderId, string>()
+const providerModelRequests = new Map<ChatProviderId, Promise<ProviderModelConfig[]>>()
 
 function mergeCustomModels(
   existingModels: readonly CustomModelConfig[],
@@ -78,10 +77,18 @@ function setProviderModelsLoading() {
   })
 }
 
-function getConfiguredProviderIds(providersState: ProvidersState | null): ModelProviderId[] {
-  return PROVIDER_SECTIONS.filter((provider) => isProviderConfigured(provider.id, providersState)).map(
+function getConfiguredProviderIds(providersState: ProvidersState | null): ChatProviderId[] {
+  if (!providersState) {
+    return []
+  }
+
+  const builtInProviderIds = PROVIDER_SECTIONS.filter((provider) => isProviderConfigured(provider.id, providersState)).map(
     (provider) => provider.id,
   )
+  const customProviderIds = providersState.apiKeyProviders
+    .filter((provider) => provider.isCustom && provider.configured)
+    .map((provider) => provider.id)
+  return [...builtInProviderIds, ...customProviderIds]
 }
 
 function getLoadErrorMessage(error: unknown, fallbackMessage: string): string {
@@ -145,7 +152,13 @@ async function loadCustomModels() {
   return customModelsRequest
 }
 
-function scheduleProviderModelsLoad(providerId: ModelProviderId) {
+function getProviderModelSignature(providerId: ChatProviderId, providersState: ProvidersState) {
+  if (providerId === 'codex') return 'codex:configured'
+  const provider = providersState.apiKeyProviders.find((entry) => entry.id === providerId)
+  return JSON.stringify(provider?.models ?? [])
+}
+
+function scheduleProviderModelsLoad(providerId: ChatProviderId, signature: string) {
   if (typeof window === 'undefined') {
     return Promise.resolve(state.providerModels)
   }
@@ -164,10 +177,13 @@ function scheduleProviderModelsLoad(providerId: ModelProviderId) {
   const request = window.echosphereModels
     .listProviderModels(providerId)
     .then((models) => {
-      loadedProviderModelIds.add(providerId)
+      loadedProviderModelSignatures.set(providerId, signature)
       updateState({
         ...state,
-        providerModels: mergeProviderModels(state.providerModels, models),
+        providerModels: mergeProviderModels(
+          state.providerModels.filter((model) => model.providerId !== providerId),
+          models,
+        ),
         providerModelsErrorMessage: null,
       })
       return models
@@ -194,16 +210,20 @@ async function loadConfiguredProviderModels(providersState: ProvidersState | nul
     return state.providerModels
   }
 
+  if (!providersState) return state.providerModels
   const configuredProviderIds = getConfiguredProviderIds(providersState)
   const pendingProviderIds = configuredProviderIds.filter(
-    (providerId) => !loadedProviderModelIds.has(providerId) && !providerModelRequests.has(providerId),
+    (providerId) =>
+      loadedProviderModelSignatures.get(providerId) !== getProviderModelSignature(providerId, providersState) &&
+      !providerModelRequests.has(providerId),
   )
 
   if (pendingProviderIds.length === 0) {
     return state.providerModels
   }
 
-  const loadOperations = pendingProviderIds.map((providerId) => scheduleProviderModelsLoad(providerId))
+  const loadOperations = pendingProviderIds.map((providerId) =>
+    scheduleProviderModelsLoad(providerId, getProviderModelSignature(providerId, providersState)))
   await Promise.allSettled(loadOperations)
   return state.providerModels
 }

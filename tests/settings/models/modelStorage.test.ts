@@ -8,13 +8,13 @@ test('filterEnabledModelCatalogItems removes models that are explicitly disabled
       enabledByDefault: true,
       id: 'enabled-model',
       label: 'Enabled Model',
-      providerId: 'openai-compatible' as const,
+      providerId: 'custom:test-provider' as const,
     },
     {
       enabledByDefault: true,
       id: 'disabled-model',
       label: 'Disabled Model',
-      providerId: 'openai-compatible' as const,
+      providerId: 'custom:test-provider' as const,
     },
   ]
 

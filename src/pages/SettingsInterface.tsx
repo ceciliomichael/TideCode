@@ -30,7 +30,6 @@ interface SettingsInterfaceProps {
     errorMessage: string | null
     isLoading: boolean
     onRemoveApiKeyProvider: (providerId: ApiKeyProviderId) => Promise<boolean>
-    onRefreshProvidersState: () => Promise<void>
     onSaveApiKeyProvider: (input: SaveApiKeyProviderInput) => Promise<boolean>
     onSwitchCodexAccount: (accountId: string) => Promise<boolean>
     providersState: ProvidersState | null
@@ -138,7 +137,6 @@ export function SettingsInterface({
             onDisconnectCodex: providersState.disconnectCodex,
             onRemoveCodexAccount: providersState.removeCodexAccount,
             onRemoveApiKeyProvider: providersState.onRemoveApiKeyProvider,
-            onRefreshProvidersState: providersState.onRefreshProvidersState,
             onSaveApiKeyProvider: providersState.onSaveApiKeyProvider,
             onSwitchCodexAccount: providersState.onSwitchCodexAccount,
             providersState: providersState.providersState,

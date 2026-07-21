@@ -13,11 +13,11 @@ test('toProviderModelCatalogItems preserves backend default state for provider m
       reasoningCapable: true,
     },
     {
-      apiModelId: 'openai-compatible-b',
+      apiModelId: 'custom-test-b',
       enabledByDefault: false,
-      id: 'openai-compatible-b',
+      id: 'custom-test-b',
       label: 'OpenAI Compatible B',
-      providerId: 'openai-compatible',
+      providerId: 'custom:test-provider',
       reasoningCapable: false,
     },
   ])
@@ -32,11 +32,11 @@ test('toProviderModelCatalogItems preserves backend default state for provider m
       reasoningCapable: true,
     },
     {
-      apiModelId: 'openai-compatible-b',
+      apiModelId: 'custom-test-b',
       enabledByDefault: false,
-      id: 'openai-compatible-b',
+      id: 'custom-test-b',
       label: 'OpenAI Compatible B',
-      providerId: 'openai-compatible',
+      providerId: 'custom:test-provider',
       reasoningCapable: false,
     },
   ])

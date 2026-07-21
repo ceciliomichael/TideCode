@@ -3,13 +3,13 @@ import { MODEL_CATALOG, PROVIDER_SECTIONS } from '../components/settings/models/
 import { useSettingsModelCatalog } from '../components/settings/models/settingsModelCatalogStore'
 import { toCustomModelCatalogItems } from '../components/settings/models/customModelUtils'
 import { toProviderModelCatalogItems } from '../components/settings/models/providerModelUtils'
+import { dedupeModelCatalogItems } from '../components/settings/models/modelCatalogDedupe'
 import { filterEnabledModelCatalogItems, readStoredModelToggleState } from '../components/settings/models/modelStorage'
 import { isProviderConfigured } from '../components/settings/models/modelViewUtils'
 import {
-  DEFAULT_REASONING_EFFORT_VALUES,
   normalizeReasoningEffort,
-  OPENAI_COMPATIBLE_REASONING_EFFORT_VALUES,
 } from '../lib/reasoningEffort'
+import { resolveModelReasoningProfile } from '../lib/modelReasoningProfiles'
 import type {
   AppSettings,
   ChatMode,
@@ -22,6 +22,7 @@ import type {
 import type { ModelCatalogItem } from '../components/settings/models/modelTypes'
 
 interface ChatModelOption {
+  defaultReasoningEffort?: ReasoningEffort
   id: string
   isCatalogBacked: boolean
   label: string
@@ -38,13 +39,17 @@ function buildChatModelOptions(
   providerModels: readonly ProviderModelConfig[],
 ): ChatModelOption[] {
   const modelToggleState = readStoredModelToggleState()
-  const modelCatalog = filterEnabledModelCatalogItems([
+  const modelCatalog = filterEnabledModelCatalogItems(dedupeModelCatalogItems([
     ...MODEL_CATALOG,
     ...toProviderModelCatalogItems(providerModels),
     ...toCustomModelCatalogItems(customModels),
-  ], modelToggleState)
+  ]), modelToggleState)
 
-  return PROVIDER_SECTIONS.flatMap((provider) => {
+  const customProviderSections = (providersState?.apiKeyProviders ?? [])
+    .filter((provider) => provider.isCustom)
+    .map((provider) => ({ id: provider.id, label: provider.label }))
+
+  return [...PROVIDER_SECTIONS, ...customProviderSections].flatMap((provider) => {
     if (!isProviderConfigured(provider.id, providersState)) {
       return []
     }
@@ -55,17 +60,33 @@ function buildChatModelOptions(
     )
     const sourceModels = enabledProviderModels.length > 0 ? enabledProviderModels : providerModels
 
-    return sourceModels.map((model) => ({
-      id: model.id,
-      isCatalogBacked: true,
-      label: model.label,
-      providerId: provider.id,
-      providerLabel: provider.label,
-      reasoningCapable: model.reasoningCapable ?? false,
-      reasoningEfforts: model.reasoningEfforts,
-      runtimeModelId: model.apiModelId ?? model.id,
-    }))
+    return sourceModels.map((model) => {
+      const runtimeModelId = model.apiModelId ?? model.id
+      const reasoningProfile = resolveModelReasoningProfile(model)
+      return {
+        defaultReasoningEffort: reasoningProfile?.defaultEffort,
+        id: model.id,
+        isCatalogBacked: true,
+        label: model.label,
+        providerId: provider.id,
+        providerLabel: provider.label,
+        reasoningCapable: reasoningProfile !== null,
+        reasoningEfforts: reasoningProfile?.efforts,
+        runtimeModelId,
+      }
+    })
   })
+}
+
+function getProviderLabel(providerId: ChatProviderId | null, providersState: ProvidersState | null) {
+  if (!providerId) {
+    return 'Saved model'
+  }
+  return (
+    PROVIDER_SECTIONS.find((provider) => provider.id === providerId)?.label ??
+    providersState?.apiKeyProviders.find((provider) => provider.id === providerId)?.label ??
+    'Saved model'
+  )
 }
 
 interface UseChatRuntimeConfigInput {
@@ -86,14 +107,6 @@ interface UseChatRuntimeConfigInput {
     | 'planModelProviderId'
   >
   updateSettings: (input: Partial<AppSettings>) => Promise<AppSettings | null>
-}
-
-function getDefaultReasoningEfforts(providerId: ChatProviderId | null) {
-  if (providerId === 'openai-compatible') {
-    return OPENAI_COMPATIBLE_REASONING_EFFORT_VALUES
-  }
-
-  return DEFAULT_REASONING_EFFORT_VALUES
 }
 
 function findSelectedModel(
@@ -140,15 +153,18 @@ function findExactSelectedModel(
 }
 
 function toStaticChatModelOption(model: ModelCatalogItem): ChatModelOption {
+  const runtimeModelId = model.apiModelId ?? model.id
+  const reasoningProfile = resolveModelReasoningProfile(model)
   return {
+    defaultReasoningEffort: reasoningProfile?.defaultEffort,
     id: model.id,
     isCatalogBacked: true,
     label: model.label,
     providerId: model.providerId,
     providerLabel: PROVIDER_SECTIONS.find((provider) => provider.id === model.providerId)?.label ?? 'Saved model',
-    reasoningCapable: model.reasoningCapable ?? false,
-    reasoningEfforts: model.reasoningEfforts,
-    runtimeModelId: model.apiModelId ?? model.id,
+    reasoningCapable: reasoningProfile !== null,
+    reasoningEfforts: reasoningProfile?.efforts ?? model.reasoningEfforts,
+    runtimeModelId,
   }
 }
 
@@ -201,7 +217,11 @@ export function useChatRuntimeConfig({
 }: UseChatRuntimeConfigInput) {
   const { customModels, customModelsLoading, providerModels, providerModelsLoading } = useSettingsModelCatalog(providersState)
   const allModelCatalog = useMemo(
-    () => [...MODEL_CATALOG, ...toProviderModelCatalogItems(providerModels), ...toCustomModelCatalogItems(customModels)],
+    () => dedupeModelCatalogItems([
+      ...MODEL_CATALOG,
+      ...toProviderModelCatalogItems(providerModels),
+      ...toCustomModelCatalogItems(customModels),
+    ]),
     [customModels, providerModels],
   )
   const enabledStaticModelOptions = useMemo(
@@ -260,7 +280,7 @@ export function useChatRuntimeConfig({
     const fallbackProviderLabel =
       modeSelection.providerId === null
         ? 'Saved model'
-        : PROVIDER_SECTIONS.find((provider) => provider.id === modeSelection.providerId)?.label ?? 'Saved model'
+        : getProviderLabel(modeSelection.providerId, providersState)
     const fallbackLabel = modeSelection.modelLabel.trim().length > 0 ? modeSelection.modelLabel.trim() : normalizedSavedModelId
 
     return {
@@ -279,6 +299,7 @@ export function useChatRuntimeConfig({
     modeSelection.providerId,
     modelOptions,
     selectedProviderConfigured,
+    providersState,
   ])
   const runtimeModelOptions = useMemo(
     () => (missingSelectedModelOption ? [missingSelectedModelOption, ...modelOptions] : modelOptions),
@@ -305,11 +326,13 @@ export function useChatRuntimeConfig({
       return [] as readonly ReasoningEffort[]
     }
 
-    return selectedModel.reasoningEfforts ?? getDefaultReasoningEfforts(selectedModel.providerId)
+    return selectedModel.reasoningEfforts ?? []
   }, [selectedModel])
   const reasoningEffort = useMemo(
-    () => normalizeReasoningEffort(settings.chatReasoningEffort, availableReasoningEfforts),
-    [availableReasoningEfforts, settings.chatReasoningEffort],
+    () => availableReasoningEfforts.includes(settings.chatReasoningEffort)
+      ? settings.chatReasoningEffort
+      : selectedModel?.defaultReasoningEffort ?? normalizeReasoningEffort(settings.chatReasoningEffort, availableReasoningEfforts),
+    [availableReasoningEfforts, selectedModel?.defaultReasoningEffort, settings.chatReasoningEffort],
   )
   const hasSavedModelId = modeSelection.modelId.trim().length > 0
   const isModelOptionsLoading =

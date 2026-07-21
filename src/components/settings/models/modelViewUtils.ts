@@ -1,20 +1,21 @@
 import { MODEL_CATALOG, PROVIDER_SECTIONS } from './modelCatalog'
-import type { ModelCatalogItem, ModelProviderId, ProviderSectionDefinition } from './modelTypes'
+import type { ModelCatalogItem } from './modelTypes'
 import { toCustomModelCatalogItems } from './customModelUtils'
 import { toProviderModelCatalogItems } from './providerModelUtils'
-import type { CustomModelConfig, ProviderModelConfig, ProvidersState } from '../../../types/chat'
+import type { ChatProviderId, CustomModelConfig, ProviderModelConfig, ProvidersState } from '../../../types/chat'
+import { dedupeModelCatalogItems } from './modelCatalogDedupe'
 
 export interface ModelProviderSectionView {
   configured: boolean
   models: ModelCatalogItem[]
-  provider: ProviderSectionDefinition
+  provider: { description: string; id: ChatProviderId; label: string }
 }
 
 function normalizeSearchValue(value: string) {
   return value.trim().toLowerCase()
 }
 
-export function isProviderConfigured(providerId: ModelProviderId, providersState: ProvidersState | null) {
+export function isProviderConfigured(providerId: ChatProviderId, providersState: ProvidersState | null) {
   if (!providersState) {
     return false
   }
@@ -34,13 +35,25 @@ export function buildModelProviderSections(
   providerModels: readonly ProviderModelConfig[] = [],
 ): ModelProviderSectionView[] {
   const normalizedSearch = normalizeSearchValue(searchValue)
-  const modelCatalog = [...MODEL_CATALOG, ...toProviderModelCatalogItems(providerModels), ...toCustomModelCatalogItems(customModels)]
+  const modelCatalog = dedupeModelCatalogItems([
+    ...MODEL_CATALOG,
+    ...toProviderModelCatalogItems(providerModels),
+    ...toCustomModelCatalogItems(customModels),
+  ])
   const filteredModels =
     normalizedSearch.length === 0
       ? modelCatalog
       : modelCatalog.filter((model) => model.label.toLowerCase().includes(normalizedSearch))
 
-  return PROVIDER_SECTIONS.map((provider) => ({
+  const customProviderSections = (providersState?.apiKeyProviders ?? [])
+    .filter((provider) => provider.isCustom)
+    .map((provider) => ({
+      description: 'Models from your connected service.',
+      id: provider.id,
+      label: provider.label,
+    }))
+
+  return [...PROVIDER_SECTIONS, ...customProviderSections].map((provider) => ({
     configured: isProviderConfigured(provider.id, providersState),
     models: filteredModels.filter((model) => model.providerId === provider.id),
     provider,

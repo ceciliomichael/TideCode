@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ApiKeyProviderId, ProvidersState, SaveApiKeyProviderInput } from '../types/chat'
+import { applyOptimisticProviderRemoval, applyOptimisticProviderSave } from './providerOptimisticState'
 
 type ProvidersOperationKey =
   | null
@@ -69,6 +70,18 @@ export function useProvidersState() {
     }
   }, [])
 
+  const syncCachedState = useCallback(async () => {
+    try {
+      const providersState = await window.echosphereProviders.getProvidersState()
+      setState((currentValue) => ({
+        ...currentValue,
+        providersState,
+      }))
+    } catch (error) {
+      console.error('Failed to synchronize provider settings', error)
+    }
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     let backgroundRefreshTimeoutId: number | null = null
@@ -93,17 +106,26 @@ export function useProvidersState() {
 
   useEffect(() => {
     return window.echosphereProviders.onStateChange(() => {
-      void refreshInBackground()
+      void syncCachedState()
     })
-  }, [refreshInBackground])
+  }, [syncCachedState])
 
   const runOperation = useCallback(
-    async (operationKey: ProvidersOperationKey, operation: () => Promise<ProvidersState>) => {
+    async (
+      operationKey: ProvidersOperationKey,
+      operation: () => Promise<ProvidersState>,
+      optimisticUpdate?: (providersState: ProvidersState | null) => ProvidersState | null,
+    ) => {
+      let previousProvidersState: ProvidersState | null = null
       setState((currentValue) => ({
-        ...currentValue,
-        activeOperation: operationKey,
-        errorMessage: null,
-      }))
+          ...currentValue,
+          activeOperation: operationKey,
+          errorMessage: null,
+          providersState: (() => {
+            previousProvidersState = currentValue.providersState
+            return optimisticUpdate?.(currentValue.providersState) ?? currentValue.providersState
+          })(),
+        }))
 
       try {
         const providersState = await operation()
@@ -121,6 +143,7 @@ export function useProvidersState() {
           ...currentValue,
           activeOperation: null,
           errorMessage,
+          providersState: previousProvidersState,
         }))
         return false
       }
@@ -156,14 +179,22 @@ export function useProvidersState() {
 
   const saveApiKeyProvider = useCallback(
     async (input: SaveApiKeyProviderInput) => {
-      return runOperation(`apikey:${input.providerId}:save`, () => window.echosphereProviders.saveApiKeyProvider(input))
+      return runOperation(
+        `apikey:${input.providerId}:save`,
+        () => window.echosphereProviders.saveApiKeyProvider(input),
+        (providersState) => applyOptimisticProviderSave(providersState, input),
+      )
     },
     [runOperation],
   )
 
   const removeApiKeyProvider = useCallback(
     async (providerId: ApiKeyProviderId) => {
-      return runOperation(`apikey:${providerId}:remove`, () => window.echosphereProviders.removeApiKeyProvider(providerId))
+      return runOperation(
+        `apikey:${providerId}:remove`,
+        () => window.echosphereProviders.removeApiKeyProvider(providerId),
+        (providersState) => applyOptimisticProviderRemoval(providersState, providerId),
+      )
     },
     [runOperation],
   )

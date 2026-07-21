@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { preprocessMarkdown } from '../../../lib/markdown'
 import { CodeBlock } from '../../chat/CodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
 
@@ -164,7 +165,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
         ) : null}
         <div className="min-w-0">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-            {content}
+            {useMemo(() => preprocessMarkdown(content), [content])}
           </ReactMarkdown>
         </div>
       </div>

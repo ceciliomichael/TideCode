@@ -653,12 +653,13 @@ test('createAgentTools exposes Codex apply_patch as a grammar-backed freeform to
     )
 
     const applyPatchTool = tools.apply_patch as {
-      args?: { format?: { definition?: string; syntax?: string; type?: string }; name?: string }
+      args?: { description?: string; format?: { definition?: string; syntax?: string; type?: string } }
+      id?: string
       type?: string
     }
 
     assert.equal(applyPatchTool.type, 'provider')
-    assert.equal(applyPatchTool.args?.name, 'apply_patch')
+    assert.equal(applyPatchTool.id, 'openai.custom')
     assert.equal(applyPatchTool.args?.format?.type, 'grammar')
     assert.equal(applyPatchTool.args?.format?.syntax, 'lark')
     assert.match(applyPatchTool.args?.format?.definition ?? '', /start: begin_patch hunk\+ end_patch/u)
@@ -702,7 +703,7 @@ test('createAgentTools exposes webfetch for non-Codex providers', async () => {
       },
       {
         chatMode: 'agent',
-        providerId: 'openai-compatible',
+        providerId: 'custom:test-provider',
       },
     )
 
@@ -729,7 +730,7 @@ test('webfetch fetches and normalizes HTML content', async () => {
           },
           {
             chatMode: 'agent',
-            providerId: 'openai-compatible',
+            providerId: 'custom:test-provider',
           },
         )
 
@@ -768,7 +769,7 @@ test('createAgentTools keeps JSON apply_patch fallback for non-Codex providers',
       },
       {
         chatMode: 'agent',
-        providerId: 'openai-compatible',
+        providerId: 'custom:test-provider',
       },
     )
 

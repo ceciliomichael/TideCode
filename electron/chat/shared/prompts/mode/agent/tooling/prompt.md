@@ -42,6 +42,8 @@
   - **Good**: Keeping track of tasks, moving cards across stages as work progresses.
 
 ## Editing & execution rules
+- Read before edit: never change a file you have not inspected.
+- `apply_patch`: use for small, targeted edits when you know the exact lines to change.
 - **Read before edit**: Always `read` a file first to verify its exact contents before editing it. Do not guess paths or contents.
 - **Choose the right tool**: Use `apply_patch` for precise edits and `write` for full-file overwrites or new files.
 - **Patch fallback**: If a patch fails, re-read the file to ensure context freshness, and fall back to `write` if needed.

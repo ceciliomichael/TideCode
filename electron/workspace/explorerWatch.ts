@@ -1,10 +1,26 @@
 import { webContents, type WebContents } from 'electron'
 import { readdir } from 'node:fs/promises'
-import { watch, type FSWatcher } from 'node:fs'
+import chokidar, { type FSWatcher } from 'chokidar'
 import path from 'node:path'
+import { isWorkspaceExplorerTemporaryDeletingEntryName } from './explorerIgnore'
+import { WorkspaceExplorerWatchSubscriptions } from './explorerWatchSubscriptions'
 
 const DEFAULT_RELATIVE_PATH = '.'
-const IGNORED_DIRECTORY_NAMES = new Set(['.git'])
+const IGNORED_DIRECTORY_NAMES = new Set([
+  '.git',
+  'node_modules',
+  '.next',
+  '.nuxt',
+  '__pycache__',
+  '.cache',
+  '.turbo',
+  '.svelte-kit',
+  '.angular',
+  '.output',
+  'venv',
+  '.venv',
+  '.tox',
+])
 const IGNORED_FILE_NAMES = new Set<string>()
 const RELOAD_DEBOUNCE_MS = 100
 const POLL_INTERVAL_MS = 1000
@@ -19,7 +35,7 @@ interface WorkspaceExplorerWatcherState {
 }
 
 const watcherStates = new Map<string, WorkspaceExplorerWatcherState>()
-const senderRoots = new Map<number, string>()
+const subscriptions = new WorkspaceExplorerWatchSubscriptions()
 const registeredSenders = new Set<number>()
 
 function normalizeWorkspaceRootPath(workspaceRootPath: string) {
@@ -27,6 +43,10 @@ function normalizeWorkspaceRootPath(workspaceRootPath: string) {
 }
 
 function shouldIncludeEntry(entryName: string, isDirectory: boolean) {
+  if (isWorkspaceExplorerTemporaryDeletingEntryName(entryName)) {
+    return false
+  }
+
   if (isDirectory) {
     return !IGNORED_DIRECTORY_NAMES.has(entryName)
   }
@@ -89,7 +109,9 @@ function removeWorkspaceExplorerWatcherState(rootPath: string) {
     state.pollTimerId = null
   }
 
-  state.watcher?.close()
+  if (state.watcher) {
+    void state.watcher.close()
+  }
   state.watcher = null
   state.subscribers.clear()
   watcherStates.delete(normalizedRootPath)
@@ -119,7 +141,7 @@ function emitWorkspaceExplorerChange(rootPath: string) {
     const targetWebContents = webContents.fromId(subscriberId)
     if (!targetWebContents || targetWebContents.isDestroyed()) {
       state.subscribers.delete(subscriberId)
-      senderRoots.delete(subscriberId)
+      removeWorkspaceExplorerSubscriber(subscriberId)
       continue
     }
 
@@ -163,12 +185,26 @@ function startPollingWorkspaceRoot(rootPath: string, state: WorkspaceExplorerWat
 
 function startWatchingWorkspaceRoot(rootPath: string, state: WorkspaceExplorerWatcherState) {
   try {
-    state.watcher = watch(rootPath, { recursive: true }, () => {
+    state.watcher = chokidar.watch(rootPath, {
+      ignoreInitial: true,
+      ignored: (testPath: string) => {
+        const basename = path.basename(testPath)
+        return (
+          IGNORED_DIRECTORY_NAMES.has(basename) ||
+          IGNORED_FILE_NAMES.has(basename) ||
+          isWorkspaceExplorerTemporaryDeletingEntryName(basename)
+        )
+      },
+    })
+    state.watcher.on('all', () => {
+      scheduleWorkspaceExplorerChange(rootPath)
+    })
+    state.watcher.on('ready', () => {
       scheduleWorkspaceExplorerChange(rootPath)
     })
     state.watcher.on('error', () => {
       if (state.watcher) {
-        state.watcher.close()
+        void state.watcher.close()
         state.watcher = null
       }
       if (state.pollTimerId === null) {
@@ -204,19 +240,32 @@ function getWorkspaceExplorerWatcherState(rootPath: string) {
 }
 
 function removeWorkspaceExplorerSubscriber(senderId: number, workspaceRootPath?: string) {
-  const normalizedRootPath = workspaceRootPath ? normalizeWorkspaceRootPath(workspaceRootPath) : senderRoots.get(senderId)
-  if (!normalizedRootPath) {
+  if (!workspaceRootPath) {
+    for (const rootPath of subscriptions.removeSubscriber(senderId)) {
+      const state = watcherStates.get(rootPath)
+      if (!state) {
+        continue
+      }
+
+      state.subscribers.delete(senderId)
+      if (state.subscribers.size === 0) {
+        removeWorkspaceExplorerWatcherState(rootPath)
+      }
+    }
+    return
+  }
+
+  const normalizedRootPath = normalizeWorkspaceRootPath(workspaceRootPath)
+  if (!subscriptions.unsubscribe(senderId, normalizedRootPath)) {
     return
   }
 
   const state = watcherStates.get(normalizedRootPath)
   if (!state) {
-    senderRoots.delete(senderId)
     return
   }
 
   state.subscribers.delete(senderId)
-  senderRoots.delete(senderId)
 
   if (state.subscribers.size === 0) {
     removeWorkspaceExplorerWatcherState(normalizedRootPath)
@@ -225,22 +274,15 @@ function removeWorkspaceExplorerSubscriber(senderId: number, workspaceRootPath?:
 
 function addWorkspaceExplorerSubscriber(sender: WebContents, workspaceRootPath: string) {
   const normalizedRootPath = normalizeWorkspaceRootPath(workspaceRootPath)
-  const previousRootPath = senderRoots.get(sender.id)
-  if (previousRootPath && previousRootPath !== normalizedRootPath) {
-    removeWorkspaceExplorerSubscriber(sender.id, previousRootPath)
-  }
-
   const state = getWorkspaceExplorerWatcherState(normalizedRootPath)
-  state.subscribers.add(sender.id)
-  senderRoots.set(sender.id, normalizedRootPath)
+  if (subscriptions.subscribe(sender.id, normalizedRootPath)) {
+    state.subscribers.add(sender.id)
+  }
 
   if (!registeredSenders.has(sender.id)) {
     registeredSenders.add(sender.id)
     sender.once('destroyed', () => {
-      const currentRootPath = senderRoots.get(sender.id)
-      if (currentRootPath) {
-        removeWorkspaceExplorerSubscriber(sender.id, currentRootPath)
-      }
+      removeWorkspaceExplorerSubscriber(sender.id)
       registeredSenders.delete(sender.id)
     })
   }
@@ -267,6 +309,6 @@ export function disposeWorkspaceExplorerWatchers() {
   for (const rootPath of Array.from(watcherStates.keys())) {
     removeWorkspaceExplorerWatcherState(rootPath)
   }
-  senderRoots.clear()
+  subscriptions.clear()
   registeredSenders.clear()
 }

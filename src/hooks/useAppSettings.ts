@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { DEFAULT_APP_SETTINGS } from '../lib/defaultAppSettings'
 import { resetLaunchOnlyAppSettings } from './appSettingsLaunchState'
 import { getCachedAppearancePreference } from '../lib/theme'
@@ -97,7 +97,7 @@ export function useAppSettings() {
     }
   }, [saveState])
 
-  function updateSettings(input: Partial<AppSettings>) {
+  const updateSettings = useCallback((input: Partial<AppSettings>) => {
     const previousSettings = settingsRef.current
     const optimisticSettings = {
       ...previousSettings,
@@ -132,7 +132,7 @@ export function useAppSettings() {
         setErrorMessage('Unable to save your settings right now.')
         return null
       })
-  }
+  }, [])
 
   return {
     errorMessage,

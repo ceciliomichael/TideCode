@@ -1,0 +1,20 @@
+[
+  {
+    "apiModelId": "deepseek-v4-flash",
+    "enabledByDefault": true,
+    "id": "deepseek:deepseek-v4-flash",
+    "label": "DeepSeek V4 Flash",
+    "reasoningCapable": true,
+    "reasoningEfforts": ["high", "max"],
+    "defaultReasoningEffort": "high"
+  },
+  {
+    "apiModelId": "deepseek-v4-pro",
+    "enabledByDefault": true,
+    "id": "deepseek:deepseek-v4-pro",
+    "label": "DeepSeek V4 Pro",
+    "reasoningCapable": true,
+    "reasoningEfforts": ["high", "max"],
+    "defaultReasoningEffort": "high"
+  }
+]

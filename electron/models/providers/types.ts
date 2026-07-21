@@ -1,11 +1,14 @@
-import type { ChatProviderId } from '../../../src/types/chat'
+import type { ChatProviderId, ReasoningEffort, ReasoningRequestBodies } from '../../../src/types/chat'
 
 export interface ProviderModelDefinition {
   apiModelId?: string
+  defaultReasoningEffort?: ReasoningEffort
   enabledByDefault?: boolean
   id: string
   label?: string
   reasoningCapable?: boolean
+  reasoningBodies?: ReasoningRequestBodies
+  reasoningEfforts?: readonly ReasoningEffort[]
 }
 
 export interface ProviderModelJsonSource {

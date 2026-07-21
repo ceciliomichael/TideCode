@@ -1,6 +1,7 @@
 import { isChatAttachment } from '../../src/lib/chatAttachments'
 import { normalizeAssistantMessageContent } from '../../src/lib/chatMessageContent'
 import { getConversationPreviewContent } from '../../src/lib/chatMessageMetadata'
+import { isApiKeyProviderId } from '../providers/providerIds'
 import type {
   ChatMode,
   ConversationFolderRecord,
@@ -118,18 +119,16 @@ function isMessage(value: unknown): value is Message {
   const hasValidProviderId =
     message.providerId === undefined ||
     message.providerId === 'codex' ||
-    message.providerId === 'openai' ||
-    message.providerId === 'anthropic' ||
-    message.providerId === 'google' ||
-    message.providerId === 'mistral' ||
-    message.providerId === 'openai-compatible'
+    (typeof message.providerId === 'string' && isApiKeyProviderId(message.providerId))
   const hasValidReasoningEffort =
     message.reasoningEffort === undefined ||
+    message.reasoningEffort === 'none' ||
     message.reasoningEffort === 'minimal' ||
     message.reasoningEffort === 'low' ||
     message.reasoningEffort === 'medium' ||
     message.reasoningEffort === 'high' ||
-    message.reasoningEffort === 'xhigh'
+    message.reasoningEffort === 'xhigh' ||
+    message.reasoningEffort === 'max'
   const hasValidUserMessageKind =
     message.userMessageKind === undefined ||
     message.userMessageKind === 'human' ||

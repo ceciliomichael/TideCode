@@ -70,14 +70,16 @@ export function createWorkspaceEntryHandlers({
     }
 
     const normalizedRelativePaths = uniqueRelativePaths(relativePaths);
-    for (const relativePath of normalizedRelativePaths) {
-      await window.echosphereWorkspace.deleteEntry({
-        relativePath,
-        workspaceRootPath,
-      });
-      clearWorkspaceClipboardByPathPrefix(relativePath);
-      closeWorkspaceTabsByPathPrefix(relativePath);
-    }
+    await Promise.all(
+      normalizedRelativePaths.map(async (relativePath) => {
+        await window.echosphereWorkspace.deleteEntry({
+          relativePath,
+          workspaceRootPath,
+        });
+        clearWorkspaceClipboardByPathPrefix(relativePath);
+        closeWorkspaceTabsByPathPrefix(relativePath);
+      })
+    );
   };
 
   const handleImportWorkspaceEntry = async (

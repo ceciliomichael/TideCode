@@ -1,7 +1,6 @@
 import { createReadStream, promises as fs } from 'node:fs'
 import path from 'node:path'
 import { createInterface } from 'node:readline'
-import { jsonSchema, tool } from 'ai'
 import { getDiffSummary } from '../../../../src/lib/textDiff'
 import type { AppTerminalExecutionMode } from '../../../../src/types/chat'
 import type { ChangeDiffToolResultItem } from '../../../../src/types/chat'
@@ -707,7 +706,7 @@ export async function createGrepToolResult(
   })
 }
 
-async function createWholeFileWriteToolResult(
+export async function createWholeFileWriteToolResult(
   context: WorkspaceToolContext,
   input: {
     absolute_path: string
@@ -792,39 +791,4 @@ export async function createToolContext(input: AgentToolContext) {
     terminalExecutionMode: input.terminalExecutionMode ?? 'sandbox',
     workspaceRootPath,
   }
-}
-
-export function createWholeFileWriteTool(context: WorkspaceToolContext) {
-  return tool({
-    description:
-      context.terminalExecutionMode === 'full'
-        ? 'Create a new file or overwrite the full contents of an existing file.'
-        : 'Create a new file or overwrite the full contents of an existing file. In Sandbox mode, absolute_path must be a path inside the workspace.',
-    inputSchema: jsonSchema({
-      additionalProperties: false,
-      properties: {
-        absolute_path: {
-          type: 'string',
-        },
-        content: {
-          type: 'string',
-        },
-      },
-      required: ['absolute_path', 'content'],
-      type: 'object',
-    }),
-    execute: async (rawInput) => {
-      const inputValue = rawInput as {
-        absolute_path: string
-        content: string
-      }
-      try {
-        return await createWholeFileWriteToolResult(context, inputValue)
-      } catch (error) {
-        return createErrorResult(
-          error instanceof Error && error.message.trim().length > 0 ? error.message : 'File change failed.',
-        )
-      }
-    },
-  })
 }

@@ -8,13 +8,13 @@ import { clampStoredWorkspaceEditorWidth } from '../../src/lib/workspaceEditorSi
 import { clampStoredWorkspaceExplorerWidth } from '../../src/lib/workspaceExplorerSizing'
 import type { AppSettings } from '../../src/types/chat'
 import type { SourceControlSectionId } from '../../src/types/chat'
+import { isChatProviderId as isSupportedChatProviderId } from '../providers/providerIds'
 
 const INITIAL_SETTINGS_ARG_PREFIX = '--echosphere-initial-settings='
 const SOURCE_CONTROL_SECTION_IDS: readonly SourceControlSectionId[] = ['commit', 'changes', 'history']
-const CHAT_PROVIDER_IDS = ['codex', 'openai', 'anthropic', 'google', 'mistral', 'openai-compatible'] as const
 
 function isChatProviderId(value: unknown): value is AppSettings['chatModelProviderId'] {
-  return typeof value === 'string' && CHAT_PROVIDER_IDS.includes(value as (typeof CHAT_PROVIDER_IDS)[number])
+  return value === null || isSupportedChatProviderId(value)
 }
 
 function isAppTerminalExecutionMode(value: unknown): value is AppSettings['terminalExecutionMode'] {

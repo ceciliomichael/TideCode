@@ -775,22 +775,18 @@ async function generateCommitMessageWithModel(promptText: string, selection: Act
     return readCommitMessageFromStream(stream)
   }
 
-  if (selection.providerId === 'openai-compatible') {
-    const { readOpenAICompatibleProviderConfig } = await import('../chat/openaiCompatible/config')
-    const { createOpenAICompatibleClient } = await import('../chat/openaiCompatible/client')
-    const providerConfig = await readOpenAICompatibleProviderConfig()
-    const client = createOpenAICompatibleClient(providerConfig)
-    const stream = await client.chat.completions.create({
-      messages,
-      model: selection.modelId,
-      reasoningEffort: selection.reasoningEffort,
-      system: MODEL_SYSTEM_PROMPT,
-    })
+  const { readApiKeyChatProviderConfig } = await import('../chat/apiKey/config')
+  const { createApiKeyChatClient } = await import('../chat/apiKey/client')
+  const providerConfig = await readApiKeyChatProviderConfig(selection.providerId)
+  const client = createApiKeyChatClient(providerConfig)
+  const stream = await client.chat.completions.create({
+    messages,
+    model: selection.modelId,
+    reasoningEffort: selection.reasoningEffort,
+    system: MODEL_SYSTEM_PROMPT,
+  })
 
-    return readCommitMessageFromStream(stream)
-  }
-
-  return ''
+  return readCommitMessageFromStream(stream)
 }
 
 export async function generateCommitMessageFromDiff(input: GenerateCommitMessageInput) {

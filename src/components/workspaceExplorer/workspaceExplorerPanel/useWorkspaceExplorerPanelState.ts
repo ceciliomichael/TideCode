@@ -229,12 +229,18 @@ export function useWorkspaceExplorerPanelState({
     [closeContextMenu, reloadExplorerTree],
   )
 
+  const rootEntries = directoryEntriesByPath[ROOT_DIRECTORY_KEY] ?? []
+
   const onDeleteEntryWithUndo = useCallback(
     async (relativePaths: string[]) => {
-      await undoStack.recordDeleteEntries(relativePaths)
+      const entriesForUndo = relativePaths.map((relativePath) => {
+        const entry = findLoadedExplorerEntry(rootEntries, directoryEntriesByPath, relativePath)
+        return { relativePath, isDirectory: entry?.isDirectory ?? false }
+      })
+      await undoStack.recordDeleteEntries(entriesForUndo)
       await onDeleteEntry(relativePaths)
     },
-    [onDeleteEntry, undoStack],
+    [onDeleteEntry, undoStack, rootEntries, directoryEntriesByPath],
   )
 
   const {
@@ -251,7 +257,6 @@ export function useWorkspaceExplorerPanelState({
     runContextAction,
   })
 
-  const rootEntries = directoryEntriesByPath[ROOT_DIRECTORY_KEY] ?? []
 
   const {
     cancelCreateEntry,

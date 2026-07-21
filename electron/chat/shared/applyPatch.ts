@@ -21,6 +21,10 @@ export type ApplyPatchHunk =
 
 export interface ApplyPatchUpdateChunk {
   changeContext?: string
+  contextLineMappings: Array<{
+    newLineIndex: number
+    oldLineIndex: number
+  }>
   offset?: {
     startLine: number
     lineCount: number
@@ -165,6 +169,7 @@ function parseUpdatedFile(lines: string[], startIndex: number) {
 
     const oldLines: string[] = []
     const newLines: string[] = []
+    const contextLineMappings: ApplyPatchUpdateChunk['contextLineMappings'] = []
     let isEndOfFile = false
 
     while (
@@ -192,6 +197,10 @@ function parseUpdatedFile(lines: string[], startIndex: number) {
 
       if (line.startsWith(' ')) {
         const content = line.slice(1)
+        contextLineMappings.push({
+          newLineIndex: newLines.length,
+          oldLineIndex: oldLines.length,
+        })
         oldLines.push(content)
         newLines.push(content)
         index += 1
@@ -217,13 +226,18 @@ function parseUpdatedFile(lines: string[], startIndex: number) {
       throw new Error('Update hunk does not contain any lines')
     }
 
-    chunks.push({
+    const chunk = {
       ...(changeContext === undefined ? {} : { changeContext }),
       ...(offset === undefined ? {} : { offset }),
       ...(isEndOfFile ? { isEndOfFile: true } : {}),
       newLines,
       oldLines,
+    } as ApplyPatchUpdateChunk
+    Object.defineProperty(chunk, 'contextLineMappings', {
+      enumerable: false,
+      value: contextLineMappings,
     })
+    chunks.push(chunk)
   }
 
   if (chunks.length === 0) {
@@ -398,6 +412,14 @@ function applyUpdateChunks(filePath: string, originalContent: string, chunks: re
   const replacements: Array<{ deleteCount: number; newLines: string[]; startIndex: number }> = []
   let searchStartIndex = 0
 
+  const buildReplacementLines = (chunk: ApplyPatchUpdateChunk, foundIndex: number) => {
+    const replacementLines = [...chunk.newLines]
+    for (const mapping of chunk.contextLineMappings) {
+      replacementLines[mapping.newLineIndex] = originalLines[foundIndex + mapping.oldLineIndex]
+    }
+    return replacementLines
+  }
+
   for (const chunk of chunks) {
     if (chunk.offset) {
       const startLine0 = chunk.offset.startLine - 1
@@ -422,9 +444,9 @@ function applyUpdateChunks(filePath: string, originalContent: string, chunks: re
         throw new Error(`Failed to validate unified diff offset at line ${chunk.offset.startLine} in ${filePath}`)
       }
 
-      replacements.push({
-        deleteCount: chunk.oldLines.length,
-        newLines: [...chunk.newLines],
+        replacements.push({
+          deleteCount: chunk.oldLines.length,
+          newLines: buildReplacementLines(chunk, foundIndex),
         startIndex: foundIndex,
       })
       searchStartIndex = foundIndex + chunk.oldLines.length
@@ -468,7 +490,7 @@ function applyUpdateChunks(filePath: string, originalContent: string, chunks: re
 
     replacements.push({
       deleteCount: chunk.oldLines.length,
-      newLines: [...chunk.newLines],
+      newLines: buildReplacementLines(chunk, foundIndex),
       startIndex: foundIndex,
     })
     searchStartIndex = foundIndex + chunk.oldLines.length

@@ -1,15 +1,17 @@
-import type { ApiKeyProviderId, ReasoningEffort } from '../../../types/chat'
+import type { BuiltInApiKeyProviderId, ChatProviderId, ReasoningEffort } from '../../../types/chat'
 
-export type ModelProviderId = 'codex' | ApiKeyProviderId
+export type ModelProviderId = 'codex' | BuiltInApiKeyProviderId
 
 export interface ModelCatalogItem {
   apiModelId?: string
+  defaultReasoningEffort?: ReasoningEffort
   enabledByDefault: boolean
   id: string
   isCustom?: boolean
   label: string
-  providerId: ModelProviderId
+  providerId: ChatProviderId
   reasoningCapable?: boolean
+  reasoningBodies?: Partial<Record<ReasoningEffort, Record<string, unknown>>>
   reasoningEfforts?: readonly ReasoningEffort[]
 }
 

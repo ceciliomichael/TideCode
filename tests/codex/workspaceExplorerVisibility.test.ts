@@ -12,11 +12,17 @@ async function createWorkspaceFixture() {
   await fs.mkdir(path.join(workspaceRootPath, '.next'), { recursive: true })
   await fs.mkdir(path.join(workspaceRootPath, 'ignored'), { recursive: true })
   await fs.mkdir(path.join(workspaceRootPath, 'node_modules', 'pkg'), { recursive: true })
+  await fs.mkdir(path.join(workspaceRootPath, 'node_modules.echodeleting_1234567890', 'pkg'), { recursive: true })
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.writeFile(path.join(workspaceRootPath, '.gitignore'), 'ignored/\n', 'utf8')
   await fs.writeFile(path.join(workspaceRootPath, '.env'), 'SECRET=1\n', 'utf8')
   await fs.writeFile(path.join(workspaceRootPath, 'ignored', 'hidden.ts'), 'export const hidden = true\n', 'utf8')
   await fs.writeFile(path.join(workspaceRootPath, 'node_modules', 'pkg', 'index.ts'), 'export const dep = true\n', 'utf8')
+  await fs.writeFile(
+    path.join(workspaceRootPath, 'node_modules.echodeleting_1234567890', 'pkg', 'index.ts'),
+    'export const deleting = true\n',
+    'utf8',
+  )
   await fs.writeFile(path.join(workspaceRootPath, 'src', 'visible.ts'), 'export const visible = true\n', 'utf8')
 
   return workspaceRootPath
@@ -38,6 +44,7 @@ test('workspace directory listings can expose dependency folders in explorer mod
     assert.ok(explorerEntryNames.includes('.next'))
     assert.ok(explorerEntryNames.includes('ignored'))
     assert.ok(!explorerEntryNames.includes('.git'))
+    assert.ok(!explorerEntryNames.includes('node_modules.echodeleting_1234567890'))
     assert.equal(explorerEntryByName.get('ignored')?.isGitignored, true)
     assert.equal(explorerEntryByName.get('node_modules')?.isGitignored, false)
     assert.equal(explorerEntryByName.get('.next')?.isGitignored, false)
@@ -59,6 +66,7 @@ test('workspace directory listings keep workspace-mode pruning for mention/searc
     assert.ok(workspaceEntryNames.includes('src'))
     assert.ok(workspaceEntryNames.includes('.env'))
     assert.ok(!workspaceEntryNames.includes('node_modules'))
+    assert.ok(!workspaceEntryNames.includes('node_modules.echodeleting_1234567890'))
     assert.ok(!workspaceEntryNames.includes('.next'))
     assert.ok(!workspaceEntryNames.includes('.git'))
     assert.equal(workspaceEntries.some((entry) => entry.isGitignored), false)

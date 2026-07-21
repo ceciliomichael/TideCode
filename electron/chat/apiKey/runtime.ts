@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import type { WebContents } from 'electron'
 import type {
-  EstimateContextUsageInput,
-  ContextUsageEstimate,
   CompressChatHistoryInput,
+  ContextUsageEstimate,
+  EstimateContextUsageInput,
   StartChatStreamInput,
   StartChatStreamResult,
   SubmitToolDecisionInput,
@@ -11,14 +11,12 @@ import type {
 } from '../../../src/types/chat'
 import { compressChatHistory } from '../shared/compression'
 import { estimateToolEnabledContextUsage, runToolEnabledChatStream } from '../shared/runtime'
-import { createOpenAICompatibleClient } from './client'
-import { readOpenAICompatibleProviderConfig } from './config'
+import { createApiKeyChatClient } from './client'
+import { readApiKeyChatProviderConfig } from './config'
 
 const activeStreams = new Map<string, AbortController>()
 
-export async function estimateOpenAICompatibleContextUsage(
-  input: EstimateContextUsageInput,
-): Promise<ContextUsageEstimate> {
+export async function estimateApiKeyContextUsage(input: EstimateContextUsageInput): Promise<ContextUsageEstimate> {
   return estimateToolEnabledContextUsage({
     agentContextRootPath: input.agentContextRootPath,
     chatMode: input.chatMode,
@@ -26,18 +24,17 @@ export async function estimateOpenAICompatibleContextUsage(
   })
 }
 
-export async function compressOpenAICompatibleChatHistory(input: CompressChatHistoryInput): Promise<string> {
-  if (input.providerId !== 'openai-compatible') {
-    throw new Error('The OpenAI-compatible compression runtime only supports the OpenAI-compatible provider.')
+export async function compressApiKeyChatHistory(input: CompressChatHistoryInput): Promise<string> {
+  if (input.providerId === 'codex') {
+    throw new Error('Codex compression must use the Codex runtime.')
   }
-
   const modelId = input.modelId.trim()
   if (!modelId) {
     throw new Error('Select a model before compressing a chat.')
   }
 
-  const providerConfig = await readOpenAICompatibleProviderConfig()
-  const client = createOpenAICompatibleClient(providerConfig)
+  const config = await readApiKeyChatProviderConfig(input.providerId)
+  const client = createApiKeyChatClient(config)
   return compressChatHistory({
     agentContextRootPath: input.agentContextRootPath,
     chatMode: input.chatMode,
@@ -55,15 +52,14 @@ export async function compressOpenAICompatibleChatHistory(input: CompressChatHis
   })
 }
 
-export async function startOpenAICompatibleChatStream(
+export async function startApiKeyChatStream(
   webContents: WebContents,
   input: StartChatStreamInput,
   onSettled?: () => void,
 ): Promise<StartChatStreamResult> {
-  if (input.providerId !== 'openai-compatible') {
-    throw new Error('Only the OpenAI-compatible provider is available in the rebuilt chat backend.')
+  if (input.providerId === 'codex') {
+    throw new Error('Codex streams must use the Codex runtime.')
   }
-
   const modelId = input.modelId.trim()
   if (!modelId) {
     throw new Error('Select a model before starting a chat.')
@@ -74,13 +70,12 @@ export async function startOpenAICompatibleChatStream(
   activeStreams.set(streamId, abortController)
 
   queueMicrotask(() => {
-    void runOpenAICompatibleChatStream(webContents, streamId, input, abortController, onSettled)
+    void runApiKeyChatStream(webContents, streamId, input, abortController, onSettled)
   })
-
   return { streamId }
 }
 
-async function runOpenAICompatibleChatStream(
+async function runApiKeyChatStream(
   webContents: WebContents,
   streamId: string,
   input: StartChatStreamInput,
@@ -88,8 +83,11 @@ async function runOpenAICompatibleChatStream(
   onSettled?: () => void,
 ) {
   try {
-    const providerConfig = await readOpenAICompatibleProviderConfig()
-    const client = createOpenAICompatibleClient(providerConfig)
+    if (input.providerId === 'codex') {
+      throw new Error('Codex streams must use the Codex runtime.')
+    }
+    const config = await readApiKeyChatProviderConfig(input.providerId)
+    const client = createApiKeyChatClient(config)
     await runToolEnabledChatStream({
       abortController,
       createStream: (streamInput) =>
@@ -103,34 +101,23 @@ async function runOpenAICompatibleChatStream(
           tools: streamInput.tools,
         }),
       onSettled,
-      promptOptions: {
-        includeAssistantReasoningParts: false,
-      },
+      promptOptions: { includeAssistantReasoningParts: input.providerId === 'openai' },
       startInput: input,
       streamId,
       webContents,
     })
-  } catch (error) {
-    if (!abortController.signal.aborted) {
-      throw error
-    }
   } finally {
     activeStreams.delete(streamId)
   }
 }
 
-export async function cancelOpenAICompatibleChatStream(streamId: string) {
-  const abortController = activeStreams.get(streamId)
-  if (!abortController) {
-    return
-  }
-
-  abortController.abort()
+export async function cancelApiKeyChatStream(streamId: string) {
+  activeStreams.get(streamId)?.abort()
 }
 
-export async function submitOpenAICompatibleToolDecision(
+export async function submitApiKeyToolDecision(
   input: SubmitToolDecisionInput,
 ): Promise<SubmitToolDecisionResult> {
   void input
-  throw new Error('Tool decisions are not implemented for the rebuilt OpenAI-compatible backend yet.')
+  throw new Error('Tool decisions are not implemented for API-key providers yet.')
 }

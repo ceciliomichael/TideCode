@@ -4,15 +4,18 @@ export function mergeProviderModels(
   existingModels: readonly ProviderModelConfig[],
   incomingModels: readonly ProviderModelConfig[],
 ): ProviderModelConfig[] {
-  const seenModelIds = new Set(existingModels.map((model) => model.id))
+  const getIdentity = (model: ProviderModelConfig) =>
+    `${model.providerId}::${(model.apiModelId || model.id).trim().toLowerCase()}`
+  const seenModelIds = new Set(existingModels.map(getIdentity))
   const mergedModels = [...existingModels]
 
   for (const model of incomingModels) {
-    if (seenModelIds.has(model.id)) {
+    const identity = getIdentity(model)
+    if (seenModelIds.has(identity)) {
       continue
     }
 
-    seenModelIds.add(model.id)
+    seenModelIds.add(identity)
     mergedModels.push(model)
   }
 

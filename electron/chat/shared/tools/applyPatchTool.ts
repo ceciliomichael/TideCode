@@ -5,9 +5,9 @@ import type { AgentToolExecutionResult } from '../toolTypes'
 import { createApplyPatchToolResult } from './workspaceTools'
 import type { WorkspaceToolContext } from './workspaceTools'
 
-const APPLY_PATCH_LARK_GRAMMAR = String.raw`start: patch_start hunk+ patch_end
-patch_start: "<patch>" LF
-patch_end: "</patch>" LF?
+const APPLY_PATCH_LARK_GRAMMAR = String.raw`start: begin_patch hunk+ end_patch
+begin_patch: "<patch>" LF
+end_patch: "</patch>" LF?
 
 hunk: add_hunk | delete_hunk | update_hunk
 add_hunk: "<add path=\"" filename "\">" LF add_line+ "</add>" LF
@@ -26,7 +26,7 @@ eof_line: "<end_of_file />" LF
 %import common.LF
 `
 
-const APPLY_PATCH_TOOL_DESCRIPTION = `Edit files using a line-by-line patch format.
+const APPLY_PATCH_TOOL_DESCRIPTION = `Edit files using a structured patch with a line-by-line format.
 The patch must start with "<patch>" and end with "</patch>".
 
 Operations within the envelope:
@@ -58,12 +58,16 @@ Example:
 <delete path="obsolete.txt" />
 </patch>
 
-In Sandbox mode, paths must be workspace-relative.
+Use workspace-relative file paths like \`src/app.ts\`. In Sandbox mode, paths must be workspace-relative.
 
 Important:
 - Context and deletion lines in a hunk must match the target file exactly and contiguously. Do not skip or omit any intermediate lines.
+- Do not use guessed paths. Read the target first. Patch only exact text from that read. The latest read is the source of truth.
+- grep results are only location hints; read the target file before patching it.
+- Order update hunks from top to bottom.
 - Your patch MUST actually contain changes. Do not output hunks that only contain unchanged " " context lines, and do not replace a line with the exact same line.
-- For rewriting most of a file or large-scale replacements, use the "write" tool instead of "apply_patch".`
+- Successful text edits use LF line endings.
+- Use \`write\` only when you need to replace a whole file.`
 
 function createToolErrorResult(summary: string): AgentToolExecutionResult {
   return {
@@ -85,7 +89,6 @@ async function executeApplyPatch(context: WorkspaceToolContext, patchText: strin
 export function createApplyPatchTool(context: WorkspaceToolContext, providerId: ChatProviderId | undefined) {
   if (providerId === 'codex') {
     return openai.tools.customTool({
-      name: 'apply_patch',
       description: 'Use the apply_patch tool to edit files. This is a freeform tool, so provide only the patch text, not JSON. The latest read is the source of truth; patch only exact current text. Successful text edits are written with LF line endings.',
       format: {
         definition: APPLY_PATCH_LARK_GRAMMAR,

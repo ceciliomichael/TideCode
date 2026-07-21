@@ -97,12 +97,12 @@ import {
   submitCodexToolDecision,
 } from './chat/codex/runtime'
 import {
-  cancelOpenAICompatibleChatStream,
-  estimateOpenAICompatibleContextUsage,
-  compressOpenAICompatibleChatHistory,
-  startOpenAICompatibleChatStream,
-  submitOpenAICompatibleToolDecision,
-} from './chat/openaiCompatible/runtime'
+  cancelApiKeyChatStream,
+  compressApiKeyChatHistory,
+  estimateApiKeyContextUsage,
+  startApiKeyChatStream,
+  submitApiKeyToolDecision,
+} from './chat/apiKey/runtime'
 import {
   checkoutGitBranch,
   createAndCheckoutGitBranch,
@@ -461,15 +461,11 @@ function registerHistoryHandlers() {
       return result
     }
 
-    if (input.providerId === 'openai-compatible') {
-      const result = await startOpenAICompatibleChatStream(event.sender, input, () => {
-        activeChatStreamProviders.delete(result.streamId)
-      })
-      activeChatStreamProviders.set(result.streamId, input.providerId)
-      return result
-    }
-
-    throw new Error(`Chat backend is not implemented for provider "${input.providerId}".`)
+    const result = await startApiKeyChatStream(event.sender, input, () => {
+      activeChatStreamProviders.delete(result.streamId)
+    })
+    activeChatStreamProviders.set(result.streamId, input.providerId)
+    return result
   })
   ipcMain.handle('chat:stream:cancel', async (_event, streamId: string) => {
     const providerId = activeChatStreamProviders.get(streamId)
@@ -480,23 +476,19 @@ function registerHistoryHandlers() {
       return
     }
 
-    if (providerId === 'openai-compatible') {
-      await cancelOpenAICompatibleChatStream(streamId)
+    if (providerId) {
+      await cancelApiKeyChatStream(streamId)
       return
     }
 
-    await Promise.all([cancelCodexChatStream(streamId), cancelOpenAICompatibleChatStream(streamId)])
+    await Promise.all([cancelCodexChatStream(streamId), cancelApiKeyChatStream(streamId)])
   })
   ipcMain.handle('chat:compressConversation', async (_event, input: CompressChatHistoryInput) => {
     if (input.providerId === 'codex') {
       return compressCodexChatHistory(input)
     }
 
-    if (input.providerId === 'openai-compatible') {
-      return compressOpenAICompatibleChatHistory(input)
-    }
-
-    throw new Error(`Chat compression is not implemented for provider "${input.providerId}".`)
+    return compressApiKeyChatHistory(input)
   })
   ipcMain.handle('chat:stream:submitToolDecision', async (_event, input: SubmitToolDecisionInput) => {
     const providerId = activeChatStreamProviders.get(input.streamId)
@@ -505,8 +497,8 @@ function registerHistoryHandlers() {
       return submitCodexToolDecision(input)
     }
 
-    if (providerId === 'openai-compatible') {
-      return submitOpenAICompatibleToolDecision(input)
+    if (providerId) {
+      return submitApiKeyToolDecision(input)
     }
 
     throw new Error('Unable to determine which provider owns this tool decision stream.')
@@ -516,11 +508,7 @@ function registerHistoryHandlers() {
       return estimateCodexContextUsage(input)
     }
 
-    if (input.providerId === 'openai-compatible') {
-      return estimateOpenAICompatibleContextUsage(input)
-    }
-
-    throw new Error(`Context estimation is not implemented for provider "${input.providerId}".`)
+    return estimateApiKeyContextUsage(input)
   })
   ipcMain.handle('terminal:createSession', async (event, input: CreateTerminalSessionInput) =>
     createTerminalSession(event, input),

@@ -11,7 +11,7 @@ test('buildModelProviderSections includes saved custom models for configured pro
         baseUrl: null,
         configured: true,
         hasApiKey: false,
-        id: 'openai-compatible',
+        id: 'custom:test-provider',
         label: 'OpenAI Compatible',
       },
     ],
@@ -34,9 +34,9 @@ test('buildModelProviderSections includes saved custom models for configured pro
       {
         apiModelId: 'my-custom-model',
         createdAt: '2025-01-01T00:00:00.000Z',
-        id: 'openai-compatible:custom:1',
+        id: 'custom:test:custom:1',
         label: 'My Custom Model',
-        providerId: 'openai-compatible',
+        providerId: 'custom:test-provider',
         reasoningCapable: false,
         updatedAt: '2025-01-01T00:00:00.000Z',
       },
@@ -45,7 +45,7 @@ test('buildModelProviderSections includes saved custom models for configured pro
   )
 
   assert.equal(sections.length, 1)
-  assert.equal(sections[0]?.provider.id, 'openai-compatible')
+  assert.equal(sections[0]?.provider.id, 'custom:test-provider')
   assert.deepEqual(sections[0]?.models.map((model) => ({
     id: model.id,
     isCustom: model.isCustom,
@@ -53,10 +53,10 @@ test('buildModelProviderSections includes saved custom models for configured pro
     providerId: model.providerId,
   })), [
     {
-      id: 'openai-compatible:custom:1',
+      id: 'custom:test:custom:1',
       isCustom: true,
       label: 'My Custom Model',
-      providerId: 'openai-compatible',
+      providerId: 'custom:test-provider',
     },
   ])
 })

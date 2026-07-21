@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { notifyWorkspaceExplorerChange } from './explorerNotifications'
 import {
   isGitignored,
   loadGitignoreMatchers,
@@ -420,6 +421,8 @@ export async function writeWorkspaceFile(input: WorkspaceExplorerWriteFileInput)
   await fs.writeFile(target.absolutePath, input.content, 'utf8')
   const writtenStats = await fs.stat(target.absolutePath)
 
+  notifyWorkspaceExplorerChange(workspaceRootPath)
+
   return {
     relativePath: target.relativePath,
     sizeBytes: writtenStats.size,
@@ -453,6 +456,8 @@ export async function createWorkspaceEntry(
   } else {
     await fs.writeFile(target.absolutePath, '', { encoding: 'utf8', flag: 'wx' })
   }
+
+  notifyWorkspaceExplorerChange(workspaceRootPath)
 
   return {
     isDirectory: input.isDirectory,
@@ -504,6 +509,8 @@ export async function renameWorkspaceEntry(
   await fs.mkdir(path.dirname(destinationTarget.absolutePath), { recursive: true })
   await fs.rename(sourceTarget.absolutePath, destinationTarget.absolutePath)
 
+  notifyWorkspaceExplorerChange(workspaceRootPath)
+
   return {
     nextRelativePath: destinationTarget.relativePath,
     relativePath: sourceTarget.relativePath,
@@ -530,7 +537,20 @@ export async function deleteWorkspaceEntry(
     throw new Error(`Unsupported entry type: ${target.relativePath}`)
   }
 
-  await fs.rm(target.absolutePath, { force: false, recursive: true })
+  try {
+    const { shell } = await import('electron')
+    await shell.trashItem(target.absolutePath)
+  } catch (error) {
+    await fs.rm(target.absolutePath, {
+      force: true,
+      maxRetries: 3,
+      recursive: targetStats.isDirectory(),
+      retryDelay: 100,
+    })
+  }
+
+  notifyWorkspaceExplorerChange(workspaceRootPath)
+
   return {
     relativePath: target.relativePath,
   }
@@ -613,6 +633,8 @@ export async function transferWorkspaceEntry(
     await fs.rename(sourceTarget.absolutePath, destinationTarget.absolutePath)
   }
 
+  notifyWorkspaceExplorerChange(workspaceRootPath)
+
   return {
     mode: input.mode,
     relativePath: sourceTarget.relativePath,
@@ -666,6 +688,8 @@ export async function importWorkspaceEntry(input: {
   } else {
     await fs.copyFile(sourcePath, destinationTarget.absolutePath)
   }
+
+  notifyWorkspaceExplorerChange(workspaceRootPath)
 
   return {
     mode: 'copy',

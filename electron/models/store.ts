@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
 import type { CustomModelConfig, CustomModelProviderId, SaveCustomModelInput } from '../../src/types/chat'
+import { isApiKeyProviderId } from '../providers/providerIds'
 
 interface StoredCustomModelConfig {
   api_model_id: string
@@ -17,7 +18,6 @@ type StoredCustomModelsByProvider = Partial<Record<CustomModelProviderId, Stored
 
 const CONFIG_ROOT_SEGMENTS = ['.echosphere', 'config'] as const
 const CUSTOM_MODELS_FILE_NAME = 'custom-models.json'
-const CUSTOM_MODEL_PROVIDER_ORDER: readonly CustomModelProviderId[] = ['openai', 'openai-compatible']
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -28,7 +28,7 @@ function hasText(value: unknown): value is string {
 }
 
 function isCustomModelProviderId(value: unknown): value is CustomModelProviderId {
-  return CUSTOM_MODEL_PROVIDER_ORDER.some((providerId) => providerId === value)
+  return isApiKeyProviderId(value)
 }
 
 function getConfigDirectoryPath() {
@@ -133,7 +133,7 @@ function toCustomModelConfig(
 }
 
 function flattenCustomModels(modelsByProvider: StoredCustomModelsByProvider): CustomModelConfig[] {
-  return CUSTOM_MODEL_PROVIDER_ORDER.flatMap((providerId) => {
+  return Object.keys(modelsByProvider).filter(isCustomModelProviderId).flatMap((providerId) => {
     const providerModels = modelsByProvider[providerId] ?? []
     return providerModels.map((model) => toCustomModelConfig(providerId, model))
   }).sort((left, right) => left.label.localeCompare(right.label))
@@ -213,7 +213,7 @@ export async function removeCustomModelConfig(modelId: string) {
     ...currentModelsByProvider,
   }
 
-  for (const providerId of CUSTOM_MODEL_PROVIDER_ORDER) {
+  for (const providerId of Object.keys(nextModelsByProvider).filter(isCustomModelProviderId)) {
     const providerModels = nextModelsByProvider[providerId] ?? []
     const filteredModels = providerModels.filter((model) => model.id !== normalizedModelId)
     if (filteredModels.length !== providerModels.length) {

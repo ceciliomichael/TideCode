@@ -196,7 +196,6 @@ export default function App() {
               errorMessage: providersState.errorMessage,
               isLoading: providersState.isLoading,
               onRemoveApiKeyProvider: providersState.removeApiKeyProvider,
-              onRefreshProvidersState: providersState.refreshInBackground,
               onSaveApiKeyProvider: providersState.saveApiKeyProvider,
               onSwitchCodexAccount: providersState.switchCodexAccount,
               providersState: providersState.providersState,

@@ -58,7 +58,6 @@ interface SettingsContentProps {
     onDisconnectCodex: () => Promise<boolean>
     onRemoveCodexAccount: (accountKey: string) => Promise<boolean>
     onRemoveApiKeyProvider: (providerId: ApiKeyProviderId) => Promise<boolean>
-    onRefreshProvidersState: () => Promise<void>
     onSaveApiKeyProvider: (input: SaveApiKeyProviderInput) => Promise<boolean>
     onSwitchCodexAccount: (accountId: string) => Promise<boolean>
     providersState: ProvidersState | null

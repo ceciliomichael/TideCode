@@ -8,7 +8,7 @@ function createRuntimeSelection(): ChatRuntimeSelection {
   return {
     hasConfiguredProvider: true,
     modelId: 'gpt-5.4',
-    providerId: 'openai-compatible',
+    providerId: 'custom:test-provider',
     providerLabel: 'OpenAI Compatible',
     reasoningEffort: 'medium',
     terminalExecutionMode: 'sandbox',
@@ -30,7 +30,7 @@ function createDraftManager() {
     onConversationMessagesUpdated: (nextMessages) => {
       messages.splice(0, messages.length, ...nextMessages)
     },
-    providerId: 'openai-compatible',
+    providerId: 'custom:test-provider',
     removeLocalMessage: (_conversationId, messageId) => {
       const nextMessages = messages.filter((message) => message.id !== messageId)
       messages.splice(0, messages.length, ...nextMessages)

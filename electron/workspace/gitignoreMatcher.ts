@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import ignore from 'ignore'
+import { isWorkspaceExplorerTemporaryDeletingEntryName } from './explorerIgnore'
 
 interface GitignoreMatcherEntry {
   basePath: string
@@ -103,6 +104,10 @@ export function shouldAlwaysShowEntry(entryName: string) {
 }
 
 export function shouldIgnoreWorkspaceEntry(entryName: string, visibility: WorkspaceEntryVisibility = 'workspace') {
+  if (isWorkspaceExplorerTemporaryDeletingEntryName(entryName)) {
+    return true
+  }
+
   if (EXPLORER_IGNORED_ENTRY_NAMES.has(entryName)) {
     return true
   }

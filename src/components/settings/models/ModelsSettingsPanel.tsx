@@ -1,14 +1,14 @@
-import { Search } from 'lucide-react'
+import { Brain, Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { CustomModelFormSection } from './CustomModelFormSection'
 import { PROVIDER_SECTIONS } from './modelCatalog'
 import type { ModelToggleState } from './modelTypes'
 import { buildModelProviderSections, isProviderConfigured } from './modelViewUtils'
 import { readStoredModelToggleState, writeStoredModelToggleState } from './modelStorage'
-import { replaceCustomModels, useSettingsModelCatalog } from './settingsModelCatalogStore'
+import { useSettingsModelCatalog } from './settingsModelCatalogStore'
 import { SETTINGS_SECTION_TITLE_CLASS_NAME } from '../shared/SettingsPanelPrimitives'
 import { Switch } from '../../ui/Switch'
 import type { ProvidersState } from '../../../types/chat'
+import { resolveModelReasoningProfile } from '../../../lib/modelReasoningProfiles'
 
 interface ModelsSettingsPanelProps {
   providersState: ProvidersState | null
@@ -35,17 +35,9 @@ export function ModelsSettingsPanel({ providersState }: ModelsSettingsPanelProps
     () => buildModelProviderSections(normalizedSearchValue, providersState, customModels, providerModels),
     [customModels, normalizedSearchValue, providerModels, providersState],
   )
-  const mixedModels = useMemo(
-    () =>
-      providerSections.flatMap((section) =>
-        section.models.map((model) => ({
-          model,
-          providerLabel: section.provider.label,
-        })),
-      ),
-    [providerSections],
-  )
-  const hasConfiguredProvider = PROVIDER_SECTIONS.some((provider) => isProviderConfigured(provider.id, providersState))
+  const hasConfiguredProvider =
+    PROVIDER_SECTIONS.some((provider) => isProviderConfigured(provider.id, providersState)) ||
+    Boolean(providersState?.apiKeyProviders.some((provider) => provider.isCustom && provider.configured))
   const isAnyModelsLoading = customModelsLoading || providerModelsLoading
 
   useEffect(() => {
@@ -57,7 +49,7 @@ export function ModelsSettingsPanel({ providersState }: ModelsSettingsPanelProps
       <header className="flex flex-col gap-1 px-1 pt-1">
         <h2 className={SETTINGS_SECTION_TITLE_CLASS_NAME}>Models</h2>
         <p className="text-sm leading-6 text-muted-foreground">
-          Browse available provider models and custom models, then toggle the ones you want active in the workspace.
+          Choose which connected models appear in your model picker.
         </p>
       </header>
 
@@ -73,7 +65,7 @@ export function ModelsSettingsPanel({ providersState }: ModelsSettingsPanelProps
         </div>
       ) : null}
 
-      <section className="flex h-[520px] flex-none flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm md:h-[560px]">
+      <section className="flex min-h-[420px] flex-none flex-col overflow-hidden rounded-2xl border border-border bg-surface md:max-h-[calc(100dvh-12rem)]">
         <div className="border-b border-border px-4 py-3 md:px-5">
           <div className="relative">
             <Search
@@ -86,7 +78,7 @@ export function ModelsSettingsPanel({ providersState }: ModelsSettingsPanelProps
               onChange={(event) => setSearchValue(event.target.value)}
               placeholder="Search models..."
               disabled={!hasConfiguredProvider}
-              className="h-10 w-full rounded-xl border border-border bg-surface-muted pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-subtle-foreground disabled:cursor-not-allowed disabled:opacity-60"
+              className="h-11 w-full rounded-xl border border-border bg-surface-muted pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-subtle-foreground disabled:cursor-not-allowed disabled:opacity-60 md:h-10"
             />
           </div>
         </div>
@@ -102,45 +94,53 @@ export function ModelsSettingsPanel({ providersState }: ModelsSettingsPanelProps
             )
           ) : providerSections.length === 0 && !isAnyModelsLoading ? (
             <div className="px-4 py-6 text-sm text-muted-foreground md:px-5">No models found.</div>
-          ) : (
-            mixedModels.map((item, modelIndex) => {
-              const { model, providerLabel } = item
-              const isEnabled = Boolean(toggleState[model.id] ?? model.enabledByDefault)
-
-              return (
-                <div
-                  key={model.id}
-                  className={[
-                    'flex min-h-14 items-center justify-between gap-3 px-4 py-3 md:px-5',
-                    modelIndex === 0 ? '' : 'border-t border-border',
-                  ].join(' ')}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-foreground">{model.label}</p>
-                    <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                      {providerLabel}
-                    </p>
+          ) : providerSections.map((section, sectionIndex) => {
+            return (
+              <section key={section.provider.id} className={sectionIndex === 0 ? '' : 'border-t border-border'}>
+                <header className="flex items-center justify-between gap-3 bg-surface-muted px-4 py-3 md:px-5">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">{section.provider.label}</h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{section.provider.description}</p>
                   </div>
-                  <Switch
-                    checked={isEnabled}
-                    label={`Enable ${model.label}`}
-                    onChange={() => {
-                      setToggleState((currentValue) => ({
-                        ...currentValue,
-                        [model.id]: !(
-                          currentValue[model.id] ?? model.enabledByDefault ?? true
-                        ),
-                      }))
-                    }}
-                  />
-                </div>
-              )
-            })
-          )}
+                  <span className="rounded-lg bg-surface px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                    {section.models.length} {section.models.length === 1 ? 'model' : 'models'}
+                  </span>
+                </header>
+                {section.models.map((model, modelIndex) => {
+                  const isEnabled = Boolean(toggleState[model.id] ?? model.enabledByDefault)
+                  const reasoningProfile = resolveModelReasoningProfile(model)
+
+                  return (
+                    <div
+                      key={model.id}
+                      className={`flex min-h-16 items-center justify-between gap-3 px-4 py-3 md:px-5 ${modelIndex === 0 ? '' : 'border-t border-border'}`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">{model.label}</p>
+                        {reasoningProfile ? (
+                          <span className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-surface-muted px-2 py-1 text-[11px] font-medium text-muted-foreground">
+                            <Brain size={12} /> Reasoning
+                          </span>
+                        ) : null}
+                      </div>
+                      <Switch
+                        checked={isEnabled}
+                        label={`Enable ${model.label}`}
+                        onChange={() => {
+                          setToggleState((currentValue) => ({
+                            ...currentValue,
+                            [model.id]: !(currentValue[model.id] ?? model.enabledByDefault ?? true),
+                          }))
+                        }}
+                      />
+                    </div>
+                  )
+                })}
+              </section>
+            )
+          })}
         </div>
       </section>
-
-      <CustomModelFormSection onModelsChanged={replaceCustomModels} />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { preprocessMarkdown } from '../../lib/markdown'
 import { CodeBlock } from './CodeBlock'
 
 interface MarkdownRendererProps {
@@ -121,10 +122,12 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
     [isStreaming],
   )
 
+  const processedContent = useMemo(() => preprocessMarkdown(content), [content])
+
   return (
     <div className={rootClassName}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-        {content}
+        {processedContent}
       </ReactMarkdown>
     </div>
   )

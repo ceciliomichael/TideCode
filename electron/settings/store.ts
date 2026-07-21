@@ -12,6 +12,7 @@ import { clampStoredWorkspaceExplorerWidth } from '../../src/lib/workspaceExplor
 import type { SourceControlSectionId } from '../../src/types/chat'
 import { electronApp } from '../electronApp'
 import { writeJsonFileAtomic } from './fileStore'
+import { isChatProviderId as isSupportedChatProviderId } from '../providers/providerIds'
 
 const CONFIG_ROOT_SEGMENTS = ['.echosphere', 'config'] as const
 const SETTINGS_FILE_NAME = 'settings.json'
@@ -20,7 +21,6 @@ const SETTINGS_HOME_OVERRIDE_ENV = 'ECHOSPHERE_SETTINGS_HOME'
 let settingsUpdateQueue: Promise<void> = Promise.resolve()
 let cachedStoredSettings: AppSettings | null = null
 const SOURCE_CONTROL_SECTION_IDS: readonly SourceControlSectionId[] = ['commit', 'changes', 'history']
-const CHAT_PROVIDER_IDS = ['codex', 'openai', 'anthropic', 'google', 'mistral', 'openai-compatible'] as const
 const WORKSPACE_UI_SETTINGS_KEYS = [
   'diffPanelWidth',
   'editSessionsByConversation',
@@ -45,7 +45,7 @@ type DurableAppSettings = Omit<AppSettings, WorkspaceUiSettingsKey>
 const WORKSPACE_UI_SETTINGS_KEY_SET = new Set<keyof AppSettings>(WORKSPACE_UI_SETTINGS_KEYS)
 
 function isChatProviderId(value: unknown): value is AppSettings['chatModelProviderId'] {
-  return typeof value === 'string' && CHAT_PROVIDER_IDS.includes(value as (typeof CHAT_PROVIDER_IDS)[number])
+  return value === null || isSupportedChatProviderId(value)
 }
 
 function isAppTerminalExecutionMode(value: unknown): value is AppSettings['terminalExecutionMode'] {

@@ -1,4 +1,7 @@
 import type { ProviderModelConfig } from '../../../src/types/chat'
+import { isReasoningEffort } from '../../../src/lib/reasoningEffort'
+import type { ReasoningRequestBodies } from '../../../src/types/chat'
+import { parseExtraBody } from '../../providers/extraBody'
 import type { ProviderModelDefinition } from './types'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -7,6 +10,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function hasText(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function normalizeReasoningBodies(value: unknown): ReasoningRequestBodies {
+  if (!isRecord(value)) return {}
+  const bodies: ReasoningRequestBodies = {}
+  for (const [effort, body] of Object.entries(value)) {
+    if (isReasoningEffort(effort)) bodies[effort] = parseExtraBody(body)
+  }
+  return bodies
 }
 
 export function compareProviderModelLabels(left: ProviderModelConfig, right: ProviderModelConfig) {
@@ -29,15 +41,36 @@ export function normalizeProviderModelConfig(
   const apiModelId = hasText(input.apiModelId) ? input.apiModelId.trim() : id
   const label = hasText(input.label) ? input.label.trim() : id
   const enabledByDefault = typeof input.enabledByDefault === 'boolean' ? input.enabledByDefault : true
-  const reasoningCapable = typeof input.reasoningCapable === 'boolean' ? input.reasoningCapable : false
+  let reasoningBodies: ReasoningRequestBodies
+  try {
+    reasoningBodies = normalizeReasoningBodies(input.reasoningBodies)
+  } catch {
+    return null
+  }
+  const bodyEfforts = Object.keys(reasoningBodies).filter(isReasoningEffort)
+  const reasoningCapable = bodyEfforts.length > 0 || input.reasoningCapable === true
+  const reasoningEfforts = reasoningCapable
+    ? bodyEfforts.length > 0
+      ? bodyEfforts
+      : Array.isArray(input.reasoningEfforts)
+        ? Array.from(new Set(input.reasoningEfforts.filter(isReasoningEffort)))
+        : []
+    : []
+  const defaultReasoningEffort = reasoningCapable && isReasoningEffort(input.defaultReasoningEffort) &&
+    reasoningEfforts.includes(input.defaultReasoningEffort)
+    ? input.defaultReasoningEffort
+    : reasoningEfforts[0]
 
   return {
     apiModelId,
+    ...(defaultReasoningEffort ? { defaultReasoningEffort } : {}),
     enabledByDefault,
     id,
     label,
     providerId,
     reasoningCapable,
+    ...(bodyEfforts.length > 0 ? { reasoningBodies } : {}),
+    ...(reasoningEfforts.length > 0 ? { reasoningEfforts } : {}),
   }
 }
 
@@ -45,11 +78,15 @@ export function normalizeProviderModelConfigs(
   providerId: ProviderModelConfig['providerId'],
   input: readonly unknown[],
 ): ProviderModelConfig[] {
-  const configs = input
+  const normalized = input
     .map((entry) => normalizeProviderModelConfig(providerId, entry))
     .filter((model): model is ProviderModelConfig => model !== null)
-
-  return configs.sort(compareProviderModelLabels)
+  const configs = new Map<string, ProviderModelConfig>()
+  for (const model of normalized) {
+    const identity = model.apiModelId.trim().toLowerCase()
+    if (!configs.has(identity)) configs.set(identity, model)
+  }
+  return Array.from(configs.values()).sort(compareProviderModelLabels)
 }
 
 export function mapModelIdsToProviderConfigs(
@@ -67,7 +104,7 @@ export function mapModelIdsToProviderConfigs(
     configs.set(trimmedModelId, {
       apiModelId: trimmedModelId,
       enabledByDefault: true,
-      id: trimmedModelId,
+      id: `${providerId}:${trimmedModelId}`,
       label: trimmedModelId,
       providerId,
       reasoningCapable: false,

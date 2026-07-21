@@ -8,7 +8,7 @@ test('mergeProviderModels preserves existing models and appends new ones', () =>
       enabledByDefault: true,
       id: 'alpha',
       label: 'Alpha',
-      providerId: 'openai-compatible' as const,
+      providerId: 'custom:test-provider' as const,
       reasoningCapable: false,
     },
   ]
@@ -17,14 +17,14 @@ test('mergeProviderModels preserves existing models and appends new ones', () =>
       enabledByDefault: true,
       id: 'alpha',
       label: 'Alpha updated',
-      providerId: 'openai-compatible' as const,
+      providerId: 'custom:test-provider' as const,
       reasoningCapable: false,
     },
     {
       enabledByDefault: false,
       id: 'beta',
       label: 'Beta',
-      providerId: 'openai-compatible' as const,
+      providerId: 'custom:test-provider' as const,
       reasoningCapable: false,
     },
   ]
@@ -34,14 +34,14 @@ test('mergeProviderModels preserves existing models and appends new ones', () =>
       enabledByDefault: true,
       id: 'alpha',
       label: 'Alpha',
-      providerId: 'openai-compatible',
+      providerId: 'custom:test-provider',
       reasoningCapable: false,
     },
     {
       enabledByDefault: false,
       id: 'beta',
       label: 'Beta',
-      providerId: 'openai-compatible',
+      providerId: 'custom:test-provider',
       reasoningCapable: false,
     },
   ])

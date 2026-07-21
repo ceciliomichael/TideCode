@@ -1,75 +1,75 @@
-import type { ApiKeyProviderId } from '../../../types/chat'
+import type { BuiltInApiKeyProviderId } from '../../../types/chat'
 
 export interface ApiKeyProviderSchema {
   apiKeyOptional: boolean
-  baseUrlLabel: string
   baseUrlRequired: boolean
   defaultBaseUrl: string
   description: string
-  id: ApiKeyProviderId
+  extraBodyExample: string
+  extraBodyHelp: string
+  id: BuiltInApiKeyProviderId
   label: string
-  showAdvancedDefaults: boolean
   showBaseUrl: boolean
 }
 
 export const API_KEY_PROVIDER_SCHEMAS: readonly ApiKeyProviderSchema[] = [
   {
     apiKeyOptional: false,
-    baseUrlLabel: 'Base URL',
     baseUrlRequired: false,
     defaultBaseUrl: 'https://api.openai.com/v1',
-    description: 'Connect to OpenAI using your API key.',
+    description: 'Bring your OpenAI models into Echosphere.',
+    extraBodyExample: '{\n  "store": false\n}',
+    extraBodyHelp: 'Add optional settings you want sent with each message.',
     id: 'openai',
     label: 'OpenAI',
-    showAdvancedDefaults: true,
-    showBaseUrl: true,
-  },
-  {
-    apiKeyOptional: false,
-    baseUrlLabel: 'Base URL',
-    baseUrlRequired: false,
-    defaultBaseUrl: 'https://api.anthropic.com',
-    description: 'Connect to Anthropic Claude using your API key. You can override the default API base URL if needed.',
-    id: 'anthropic',
-    label: 'Anthropic',
-    showAdvancedDefaults: true,
-    showBaseUrl: true,
-  },
-  {
-    apiKeyOptional: false,
-    baseUrlLabel: 'Base URL',
-    baseUrlRequired: false,
-    defaultBaseUrl: 'https://generativelanguage.googleapis.com',
-    description: 'Connect to Google Gemini using your API key.',
-    id: 'google',
-    label: 'Google',
-    showAdvancedDefaults: true,
     showBaseUrl: false,
   },
   {
     apiKeyOptional: false,
-    baseUrlLabel: 'Base URL',
     baseUrlRequired: false,
-    defaultBaseUrl: 'https://api.mistral.ai',
-    description: 'Connect to Mistral AI using your API key.',
-    id: 'mistral',
-    label: 'Mistral AI',
-    showAdvancedDefaults: true,
-    showBaseUrl: true,
+    defaultBaseUrl: 'https://api.anthropic.com/v1',
+    description: 'Chat and build with Claude models.',
+    extraBodyExample: '{\n  "metadata": {\n    "user_id": "local-user"\n  }\n}',
+    extraBodyHelp: 'Add optional settings for your Claude messages.',
+    id: 'anthropic',
+    label: 'Anthropic',
+    showBaseUrl: false,
   },
   {
-    apiKeyOptional: true,
-    baseUrlLabel: 'Base URL',
-    baseUrlRequired: true,
-    defaultBaseUrl: 'https://your-provider.example.com/v1',
-    description: 'Connect to any OpenAI-compatible endpoint. API key is optional.',
-    id: 'openai-compatible',
-    label: 'OpenAI Compatible',
-    showAdvancedDefaults: true,
-    showBaseUrl: true,
+    apiKeyOptional: false,
+    baseUrlRequired: false,
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    description: 'Use Gemini models for everyday and complex work.',
+    extraBodyExample: '{\n  "generationConfig": {\n    "candidateCount": 1\n  }\n}',
+    extraBodyHelp: 'Add optional settings for your Gemini messages.',
+    id: 'google',
+    label: 'Google',
+    showBaseUrl: false,
+  },
+  {
+    apiKeyOptional: false,
+    baseUrlRequired: false,
+    defaultBaseUrl: 'https://api.mistral.ai/v1',
+    description: 'Connect Mistral models for fast, capable assistance.',
+    extraBodyExample: '{\n  "safe_prompt": true\n}',
+    extraBodyHelp: 'Add optional settings for your Mistral messages.',
+    id: 'mistral',
+    label: 'Mistral AI',
+    showBaseUrl: false,
+  },
+  {
+    apiKeyOptional: false,
+    baseUrlRequired: false,
+    defaultBaseUrl: 'https://api.deepseek.com',
+    description: 'Use DeepSeek V4 with thinking ready by default.',
+    extraBodyExample: '{\n  "thinking": {\n    "type": "enabled"\n  }\n}',
+    extraBodyHelp: 'Add optional preferences for DeepSeek responses.',
+    id: 'deepseek',
+    label: 'DeepSeek',
+    showBaseUrl: false,
   },
 ] as const
 
-export function getApiKeyProviderSchema(providerId: ApiKeyProviderId) {
+export function getApiKeyProviderSchema(providerId: BuiltInApiKeyProviderId) {
   return API_KEY_PROVIDER_SCHEMAS.find((schema) => schema.id === providerId)
 }

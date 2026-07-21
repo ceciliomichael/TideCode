@@ -4,6 +4,8 @@ import { useHighlightedCodeLines } from '../../hooks/useHighlightedCodeLines'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
 import { computeDiffLines, type DiffLine } from '../../lib/textDiff'
 import { PathLabel } from './PathLabel'
+// eslint-disable-next-line react-refresh/only-export-components
+export { calculateVisibleDiffRange } from './diffViewerVirtualization'
 import { HighlightedCodeTokens } from './HighlightedCodeLine'
 import type { HighlightedCodeLine as HighlightedCodeLineData } from '../../lib/codeHighlighting'
 

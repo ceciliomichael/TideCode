@@ -1,8 +1,6 @@
-import codexModelDefinitions from './models.json'
 import type { ProviderModelConfig } from '../../../../src/types/chat'
-import type { ProviderModelDefinition } from '../types'
-import { normalizeProviderModelDefinitions } from '../shared'
+import { listCatalogModels } from '../../catalog/catalog'
 
 export function listCodexModels(): ProviderModelConfig[] {
-  return normalizeProviderModelDefinitions('codex', codexModelDefinitions as readonly ProviderModelDefinition[])
+  return listCatalogModels('codex')
 }
