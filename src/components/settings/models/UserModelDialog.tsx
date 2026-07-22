@@ -1,4 +1,4 @@
-import { Loader2, Save, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Loader2, Save, X } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { DropdownField } from '../../ui/DropdownField'
@@ -383,18 +383,54 @@ export function UserModelDialog({
                             className="h-10 w-full max-w-sm rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
                           />
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (customReasoningLevels.length > 1) {
-                              setCustomReasoningLevels(customReasoningLevels.filter((_, i) => i !== levelIndex))
-                            }
-                          }}
-                          disabled={isSaving || customReasoningLevels.length <= 1}
-                          className="text-sm font-medium text-danger-foreground disabled:opacity-50"
-                        >
-                          Remove
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            aria-label="Move level up"
+                            onClick={() => {
+                              if (levelIndex > 0) {
+                                const newLevels = [...customReasoningLevels]
+                                const temp = newLevels[levelIndex]
+                                newLevels[levelIndex] = newLevels[levelIndex - 1]
+                                newLevels[levelIndex - 1] = temp
+                                setCustomReasoningLevels(newLevels)
+                              }
+                            }}
+                            disabled={isSaving || levelIndex === 0}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-surface-muted hover:text-foreground disabled:opacity-30"
+                          >
+                            <ChevronUp className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Move level down"
+                            onClick={() => {
+                              if (levelIndex < customReasoningLevels.length - 1) {
+                                const newLevels = [...customReasoningLevels]
+                                const temp = newLevels[levelIndex]
+                                newLevels[levelIndex] = newLevels[levelIndex + 1]
+                                newLevels[levelIndex + 1] = temp
+                                setCustomReasoningLevels(newLevels)
+                              }
+                            }}
+                            disabled={isSaving || levelIndex === customReasoningLevels.length - 1}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-surface-muted hover:text-foreground disabled:opacity-30"
+                          >
+                            <ChevronDown className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (customReasoningLevels.length > 1) {
+                                setCustomReasoningLevels(customReasoningLevels.filter((_, i) => i !== levelIndex))
+                              }
+                            }}
+                            disabled={isSaving || customReasoningLevels.length <= 1}
+                            className="ml-2 text-sm font-medium text-danger-foreground disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
                       
                       <div className="space-y-2 pt-2">
