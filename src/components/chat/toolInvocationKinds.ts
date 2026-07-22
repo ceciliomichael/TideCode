@@ -5,8 +5,12 @@ export function isFileWriteTool(toolName: string) {
 }
 
 export function isFileEditTool(toolName: string) {
-  return toolName === 'apply_patch'
+  return (
+    toolName === 'replace_file_content' ||
+    toolName === 'multi_replace_file_content'
+  )
 }
+
 
 export function isFileMutationTool(toolName: string) {
   return isFileWriteTool(toolName) || isFileEditTool(toolName)

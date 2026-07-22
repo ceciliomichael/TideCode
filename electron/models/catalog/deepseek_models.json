@@ -5,7 +5,7 @@
     "id": "deepseek:deepseek-v4-flash",
     "label": "DeepSeek V4 Flash",
     "reasoningCapable": true,
-    "reasoningEfforts": ["high", "max"],
+    "reasoningEfforts": ["none", "high", "max"],
     "defaultReasoningEffort": "high"
   },
   {
@@ -14,7 +14,7 @@
     "id": "deepseek:deepseek-v4-pro",
     "label": "DeepSeek V4 Pro",
     "reasoningCapable": true,
-    "reasoningEfforts": ["high", "max"],
+    "reasoningEfforts": ["none", "high", "max"],
     "defaultReasoningEffort": "high"
   }
 ]

@@ -10,8 +10,8 @@ interface GitignoreMatcherEntry {
 
 export type WorkspaceEntryVisibility = 'explorer' | 'workspace'
 
-const WORKSPACE_IGNORED_ENTRY_NAMES = new Set(['node_modules', '.next', '.echosphere', '.DS_Store', 'Thumbs.db'])
-const EXPLORER_IGNORED_ENTRY_NAMES = new Set(['.git'])
+const WORKSPACE_IGNORED_ENTRY_NAMES = new Set<string>()
+const EXPLORER_IGNORED_ENTRY_NAMES = new Set<string>()
 const gitignoreMatcherCache = new Map<string, Promise<GitignoreMatcherEntry[]>>()
 
 function toPosixRelativePath(fromPath: string, toPath: string) {

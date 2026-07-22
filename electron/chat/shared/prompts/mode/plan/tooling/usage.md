@@ -1,11 +1,10 @@
-## When to use tools
+<tool_usage_instructions>
+- list: see one folder level
+- glob: find files by name or extension
+- grep: search text inside files
+- read: verify exact file content before referencing it in a plan
+- skill: load rules for a specialised task before planning around it
+- webfetch: fetch external data when the plan depends on up-to-date facts
 
-- `list`: see one folder level.
-- `glob`: find file names.
-- `grep`: find useful text.
-- `read`: check code facts needed by the plan.
-- `skill`: load full rules for a matching skill.
-- Web or MCP tools: get current outside facts or use a connected service.
-- Kanban tools: use only when the user asks or a card is already in use.
-
-Use read-only tools. Stop reading when you know enough to make the plan. Do not change code in plan mode.
+Use read-only tools. Do not change code in plan mode.
+</tool_usage_instructions>

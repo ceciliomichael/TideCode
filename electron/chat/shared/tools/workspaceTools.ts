@@ -23,7 +23,7 @@ const SEARCH_LIMIT = 100
 const MAX_LINE_LENGTH = 2000
 const MAX_READ_BYTES = 256 * 1024
 const MAX_READ_BYTES_LABEL = `${MAX_READ_BYTES / 1024} KB`
-const RIPGREP_EXCLUDE_GLOBS = ['!**/.git', '!**/.git/**', '!**/node_modules', '!**/node_modules/**', '!**/.next', '!**/.next/**']
+const RIPGREP_EXCLUDE_GLOBS: string[] = []
 const RIPGREP_ALL_FILES_GLOBS = new Set(['**/*', '**/{*,.*}', '**'])
 
 export type WorkspaceToolContext = Pick<AgentToolContext, 'checkpointId' | 'terminalExecutionMode' | 'workspaceRootPath'>
@@ -525,15 +525,6 @@ export async function createReadToolResult(
     stream.destroy()
   }
 
-  if (lineCount < startLine && !(lineCount === 0 && startLine === 1)) {
-    return createErrorResult(`Offset ${startLine} is out of range for ${displayPath}`, {
-      subject: {
-        kind: 'file',
-        path: displayPath,
-      },
-    })
-  }
-
   const numberedLines = collectedLines.map((line, index) => `${startLine + index}: ${line}`)
   const bodyLines = [...numberedLines]
   if (truncatedByBytes) {
@@ -784,6 +775,255 @@ export async function createApplyPatchToolResult(context: WorkspaceToolContext, 
     changes.length === 0
       ? 'Patch parsed successfully, but no file content changed.'
       : 'Patch applied successfully. The files listed below were changed on disk.',
+  )
+}
+
+export interface ReplaceFileContentChunk {
+  targetContent: string
+  replacementContent: string
+  startLine: number
+  endLine: number
+  allowMultiple: boolean
+}
+
+export interface ReplaceFileContentInput {
+  absolute_path: string
+  targetContent: string
+  replacementContent: string
+  startLine: number
+  endLine: number
+  allowMultiple: boolean
+}
+
+export interface MultiReplaceFileContentInput {
+  absolute_path: string
+  chunks: ReplaceFileContentChunk[]
+}
+
+function applyChunkToContent(
+  fileContent: string,
+  chunk: ReplaceFileContentChunk,
+  displayPath: string,
+): string {
+  const lines = fileContent.split('\n')
+  const totalLines = lines.length
+
+  // Add a +/- 5 line padding to the search window to account for minor line shifts
+  // from previous edits that the AI may not have re-read.
+  const clampedStart = Math.max(1, chunk.startLine - 5)
+  const clampedEnd = Math.min(totalLines, chunk.endLine + 5)
+
+  if (clampedStart > clampedEnd) {
+    throw new Error(
+      `Invalid line range [${chunk.startLine}, ${chunk.endLine}] for file "${displayPath}" (${totalLines} lines total).`,
+    )
+  }
+
+  // Build the searchable region from the clamped line window
+  const regionLines = lines.slice(clampedStart - 1, clampedEnd)
+  const region = regionLines.join('\n')
+
+  let targetContent = chunk.targetContent
+  let replacementContent = chunk.replacementContent
+
+  // Count occurrences of targetContent within the region
+  let occurrenceCount = 0
+  let searchStart = 0
+  while (true) {
+    const idx = region.indexOf(targetContent, searchStart)
+    if (idx === -1) break
+    occurrenceCount += 1
+    searchStart = idx + targetContent.length
+  }
+
+  // Fallback: If strict match fails, try a whitespace-normalized line-by-line match
+  // This helps when the AI mixes up tabs and spaces, or gets the indentation depth wrong.
+  if (occurrenceCount === 0) {
+    const normalizeSpace = (s: string) => s.replace(/[ \t]+/g, ' ').trim()
+    const targetNormalized = normalizeSpace(targetContent)
+    
+    if (targetNormalized.length > 0) {
+      let normalizedOccurrenceCount = 0
+      const targetLines = targetContent.split('\n').map(normalizeSpace)
+      const rLines = regionLines.map(normalizeSpace)
+      const matches: number[] = []
+      
+      for (let i = 0; i <= rLines.length - targetLines.length; i++) {
+        let match = true
+        for (let j = 0; j < targetLines.length; j++) {
+          if (rLines[i + j] !== targetLines[j]) {
+            match = false
+            break
+          }
+        }
+        if (match) {
+          matches.push(i)
+          normalizedOccurrenceCount++
+        }
+      }
+      
+      if (normalizedOccurrenceCount === 1 || (normalizedOccurrenceCount > 1 && chunk.allowMultiple)) {
+        // We found a flexible match! Overwrite targetContent with the exact string from the file
+        const firstMatchIdx = matches[0]
+        const exactOriginalString = regionLines.slice(firstMatchIdx, firstMatchIdx + targetLines.length).join('\n')
+        targetContent = exactOriginalString
+        occurrenceCount = normalizedOccurrenceCount
+      }
+    }
+  }
+
+  if (occurrenceCount === 0) {
+    throw new Error(
+      `Target content not found between lines ${chunk.startLine} and ${chunk.endLine} in "${displayPath}". ` +
+        `Make sure the text matches exactly, including leading whitespace.`,
+    )
+  }
+
+  if (occurrenceCount > 1 && !chunk.allowMultiple) {
+    throw new Error(
+      `Target content found ${occurrenceCount} times between lines ${chunk.startLine} and ${chunk.endLine} in "${displayPath}". ` +
+        `Narrow the line range to target a single occurrence, or set allowMultiple to true.`,
+    )
+  }
+
+  // Apply replacement(s) within the region, then splice back into the full content
+  const updatedRegion = chunk.allowMultiple
+    ? region.split(targetContent).join(replacementContent)
+    : region.replace(targetContent, replacementContent)
+
+  const beforeLines = lines.slice(0, clampedStart - 1)
+  const afterLines = lines.slice(clampedEnd)
+  const updatedLines = updatedRegion.split('\n')
+
+  return [...beforeLines, ...updatedLines, ...afterLines].join('\n')
+}
+
+export async function createReplaceFileContentToolResult(
+  context: WorkspaceToolContext,
+  input: ReplaceFileContentInput,
+): Promise<AgentToolExecutionResult> {
+  const target = resolveReadableTargetPath(
+    context.workspaceRootPath,
+    input.absolute_path,
+    context.terminalExecutionMode,
+  )
+
+  const oldContent = await fs.readFile(target.absolutePath, 'utf8').catch(() => null)
+  if (oldContent === null) {
+    throw new Error(`File not found: "${target.displayPath}". Use the write tool to create new files.`)
+  }
+
+  const normalizedOld = normalizeTextMutationContent(oldContent)
+  const chunk: ReplaceFileContentChunk = {
+    allowMultiple: input.allowMultiple,
+    endLine: input.endLine,
+    replacementContent: normalizeTextMutationContent(input.replacementContent),
+    startLine: input.startLine,
+    targetContent: normalizeTextMutationContent(input.targetContent),
+  }
+
+  const newContent = applyChunkToContent(normalizedOld, chunk, target.displayPath)
+
+  if (newContent === normalizedOld) {
+    throw new Error(`Replacement did not change "${target.displayPath}". The target and replacement content are identical.`)
+  }
+
+  await captureCheckpointFileStateIfNeeded(context.checkpointId, target.absolutePath)
+  await fs.writeFile(target.absolutePath, newContent, 'utf8')
+
+  const fileChanges = aggregateFileChangeItems([
+    {
+      fileName: target.displayPath,
+      newContent,
+      oldContent: normalizedOld,
+    },
+  ])
+
+  return buildFileChangeResult(
+    `Edited 1 file`,
+    fileChanges,
+    'edit',
+    target.displayPath,
+    'File content replaced successfully.',
+  )
+}
+
+export async function createMultiReplaceFileContentToolResult(
+  context: WorkspaceToolContext,
+  input: MultiReplaceFileContentInput,
+): Promise<AgentToolExecutionResult> {
+  if (!Array.isArray(input.chunks) || input.chunks.length === 0) {
+    throw new Error('At least one replacement chunk must be provided.')
+  }
+
+  const target = resolveReadableTargetPath(
+    context.workspaceRootPath,
+    input.absolute_path,
+    context.terminalExecutionMode,
+  )
+
+  const oldContent = await fs.readFile(target.absolutePath, 'utf8').catch(() => null)
+  if (oldContent === null) {
+    throw new Error(`File not found: "${target.displayPath}". Use the write tool to create new files.`)
+  }
+
+  const normalizedOld = normalizeTextMutationContent(oldContent)
+
+  // Validate all chunks before writing anything to disk
+  const normalizedChunks: ReplaceFileContentChunk[] = input.chunks.map((chunk) => ({
+    allowMultiple: chunk.allowMultiple,
+    endLine: chunk.endLine,
+    replacementContent: normalizeTextMutationContent(chunk.replacementContent),
+    startLine: chunk.startLine,
+    targetContent: normalizeTextMutationContent(chunk.targetContent),
+  }))
+
+  // Sort chunks in reverse line order so that applying earlier chunks doesn't
+  // shift the line offsets for subsequent chunks
+  const sortedChunks = [...normalizedChunks].sort((a, b) => b.startLine - a.startLine)
+
+  // Dry-run all chunks against the ORIGINAL content to surface all validation
+  // errors at once before we mutate anything on disk
+  const validationErrors: string[] = []
+  for (const chunk of sortedChunks) {
+    try {
+      applyChunkToContent(normalizedOld, chunk, target.displayPath)
+    } catch (error) {
+      validationErrors.push(error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  if (validationErrors.length > 0) {
+    throw new Error(`Multi-replace validation failed:\n${validationErrors.map((e, i) => `  ${i + 1}. ${e}`).join('\n')}`)
+  }
+
+  // All chunks validated — now apply them sequentially to a working copy
+  let workingContent = normalizedOld
+  for (const chunk of sortedChunks) {
+    workingContent = applyChunkToContent(workingContent, chunk, target.displayPath)
+  }
+
+  if (workingContent === normalizedOld) {
+    throw new Error(`Replacements did not change "${target.displayPath}". All target and replacement content pairs are identical.`)
+  }
+
+  await captureCheckpointFileStateIfNeeded(context.checkpointId, target.absolutePath)
+  await fs.writeFile(target.absolutePath, workingContent, 'utf8')
+
+  const fileChanges = aggregateFileChangeItems([
+    {
+      fileName: target.displayPath,
+      newContent: workingContent,
+      oldContent: normalizedOld,
+    },
+  ])
+
+  return buildFileChangeResult(
+    `Edited 1 file`,
+    fileChanges,
+    'edit',
+    target.displayPath,
+    `File content replaced successfully (${input.chunks.length} chunk${input.chunks.length === 1 ? '' : 's'}).`,
   )
 }
 

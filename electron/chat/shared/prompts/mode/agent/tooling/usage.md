@@ -1,14 +1,12 @@
-## When to use tools
-
-- `list`: see one folder level.
-- `glob`: find file names.
-- `grep`: find text. Its result is a clue, not the full file.
-- `read`: get current file text. Read a file before changing it.
-- `apply_patch`: change a small part of an existing file. Prefer one file per call and use enough nearby text to find one place.
-- `write`: make a new file or replace a whole file.
-- `run_terminal`: run commands, tests, builds, and package installs that do not ask questions.
-- `skill`: load full rules for a skill that matches the task.
-- Web or MCP tools: get current outside data or use a connected service.
-- Kanban tools: use only when the user asks or a card is already in use.
-
-If a patch fails, use the current file version and nearby text in the error. Try a smaller patch. Read again only when that text is not enough. Use `write` when replacing the whole file is safer. Do not talk about a tool error you can fix. Test after changes.
+<tool_usage_instructions>
+- list: see one folder level
+- glob: find files by name or extension
+- grep: search text inside files
+- read: get exact file content before any edit
+- replace_file_content: edit one contiguous block in an existing file
+- multi_replace_file_content: edit multiple separate blocks in one file atomically
+- write: create a new file or overwrite entire file
+- run_terminal: you not need use, user permission need, use is prohibited unless specifically told
+- skill: load rules for a specialised task
+- webfetch: fetch data from a URL
+</tool_usage_instructions>

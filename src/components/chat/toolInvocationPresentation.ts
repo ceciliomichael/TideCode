@@ -631,6 +631,15 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
     }
   }
 
+  // For the new precise-edit tools the target file is always in absolute_path
+  if (
+    invocation.toolName === 'replace_file_content' ||
+    invocation.toolName === 'multi_replace_file_content'
+  ) {
+    const absolutePath = getAbsolutePath(invocation)
+    return absolutePath ? getBasename(absolutePath) : null
+  }
+
   const wholeFileChangeSingleChangeTarget = getWholeFileChangeSingleChangeTarget(invocation)
   if (wholeFileChangeSingleChangeTarget) {
     return wholeFileChangeSingleChangeTarget

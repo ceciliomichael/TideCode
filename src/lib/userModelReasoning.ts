@@ -18,7 +18,7 @@ export const USER_MODEL_EFFORT_CHOICES = [
 const PROVIDER_EFFORT_CHOICES: Partial<Record<CustomModelProviderId, readonly ReasoningEffort[]>> = {
   anthropic: ['low', 'medium', 'high', 'max'],
   codex: ['low', 'medium', 'high', 'xhigh'],
-  deepseek: ['high', 'max'],
+  deepseek: ['none', 'high', 'max'],
   google: ['minimal', 'low', 'medium', 'high'],
   mistral: ['high'],
   openai: ['minimal', 'low', 'medium', 'high', 'xhigh'],

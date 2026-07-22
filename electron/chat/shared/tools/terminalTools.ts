@@ -1,3 +1,4 @@
+import path from 'node:path'
 import type { WebContents } from 'electron'
 import { jsonSchema, tool, type ToolSet } from 'ai'
 import type {
@@ -9,7 +10,7 @@ import type {
 import type { AgentToolContext, AgentToolExecutionResult } from '../toolTypes'
 import type { TerminalSessionSnapshot } from '../../../terminal/service'
 import { resolveReadableTargetPath } from './workspaceTools'
-import { isAllowedTerminalCommand } from './terminalCommandPolicy'
+import { notifyWorkspaceExplorerChange } from '../../../workspace/explorerNotifications'
 
 const DEFAULT_TERMINAL_OUTPUT_BODY_LENGTH = 40_000
 const GIT_DIFF_TERMINAL_OUTPUT_BODY_LENGTH = 20_000
@@ -120,11 +121,17 @@ function createErrorResult(summary: string, body?: string): AgentToolExecutionRe
 }
 
 function getRunTerminalDescription(terminalExecutionMode: AgentToolContext['terminalExecutionMode']) {
+  const osHint = process.platform === 'win32' 
+    ? ' Note: The shell is PowerShell. Use PowerShell syntax.'
+    : ''
+
+  const strictWarning = ' LAST RESORT: ONLY use this tool when explicitly requested by the user. Do not run commands on your own initiative.'
+
   if (terminalExecutionMode === 'full') {
-    return 'Execute a terminal command in the active workspace. Use cwd to change directory. Command execution is non-interactive.'
+    return `Execute a terminal command. You have full access and may execute commands anywhere. Use cwd to change directory. Command execution is non-interactive.${osHint}${strictWarning}`
   }
 
-  return 'Execute an allowlisted terminal command in the active workspace. Allowed commands: git, npm test, npm run lint, npm run typecheck, npm run build. Use cwd to change directory. Command execution is non-interactive.'
+  return `Execute a terminal command. You are restricted to executing commands ONLY within the current workspace directory. Command execution is non-interactive.${osHint}${strictWarning}`
 }
 
 function clampInteger(value: number | undefined, min: number, max: number, fallback: number) {
@@ -465,9 +472,11 @@ export function createTerminalToolSet(
           command: {
             type: 'string',
           },
-          cwd: {
-            type: 'string',
-          },
+          ...(terminalExecutionMode === 'full' ? {
+            cwd: {
+              type: 'string',
+            }
+          } : {}),
           rows: {
             minimum: 6,
             maximum: 200,
@@ -494,11 +503,42 @@ export function createTerminalToolSet(
         const requestedCommand = normalizeCommand(inputValue.command)
 
         try {
-          if (requestedCommand && !isAllowedTerminalCommand(requestedCommand, terminalExecutionMode)) {
-            return createErrorResult(
-              'run_terminal only allows commands listed in terminal-command-allowlist.md when terminal execution mode is sandbox.',
-              'Allowed terminal commands are defined in electron/chat/shared/tools/terminal-command-allowlist.md.',
-            )
+          if (terminalExecutionMode === 'sandbox' && requestedCommand) {
+            const cdRegex = /(?:^|[;&|]\s*)cd\s+("[^"]+"|'[^']+'|[^\s;&|]+)/gi
+            let match
+            while ((match = cdRegex.exec(requestedCommand)) !== null) {
+              let targetPath = match[1]
+              if (
+                (targetPath.startsWith('"') && targetPath.endsWith('"')) ||
+                (targetPath.startsWith("'") && targetPath.endsWith("'"))
+              ) {
+                targetPath = targetPath.slice(1, -1)
+              }
+
+              if (targetPath.includes('..')) {
+                return createErrorResult(
+                  'In sandbox mode, you cannot use ".." in cd commands to traverse up directories.',
+                  'Command rejected: Directory traversal (..) is not allowed in sandbox mode.',
+                )
+              }
+
+              if (path.isAbsolute(targetPath)) {
+                const normalizedTarget = path.normalize(targetPath).toLowerCase()
+                const normalizedWorkspace = path.normalize(context.workspaceRootPath).toLowerCase()
+
+                if (!normalizedTarget.startsWith(normalizedWorkspace)) {
+                  return createErrorResult(
+                    `In sandbox mode, cd to an absolute path must be within the workspace root (${context.workspaceRootPath}).`,
+                    'Command rejected: cd to a path outside the workspace is not allowed in sandbox mode.',
+                  )
+                }
+              } else if (targetPath.startsWith('/') || targetPath.startsWith('\\')) {
+                return createErrorResult(
+                  'In sandbox mode, cd to root-relative paths is not allowed.',
+                  'Command rejected: cd to root-relative paths is not allowed in sandbox mode.',
+                )
+              }
+            }
           }
 
           const command = prepareTerminalCommand(requestedCommand)
@@ -545,6 +585,8 @@ export function createTerminalToolSet(
             sessionId: session.sessionId,
             workspaceRootPath: context.workspaceRootPath,
           })
+
+          notifyWorkspaceExplorerChange(context.workspaceRootPath)
 
           return buildRunTerminalResult({
             command,

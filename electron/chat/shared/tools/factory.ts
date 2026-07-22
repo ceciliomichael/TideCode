@@ -2,7 +2,9 @@ import type { ToolSet } from 'ai'
 import type { ChatMode, ChatProviderId } from '../../../../src/types/chat'
 import type { SkillSummary } from '../../../../src/types/skills'
 import type { AgentToolContext } from '../toolTypes'
-import { createApplyPatchTool } from './applyPatchTool'
+
+import { createMultiReplaceFileContentTool } from './multiReplaceFileContentTool'
+import { createReplaceFileContentTool } from './replaceFileContentTool'
 import { createGlobTool } from './globTool'
 import { createGrepTool } from './grepTool'
 import { createKanbanToolSet } from './kanbanTools'
@@ -71,6 +73,7 @@ export async function createAgentTools(
   return {
     ...tools,
     write: createWriteTool(context),
-    apply_patch: createApplyPatchTool(context, options.providerId),
+    replace_file_content: createReplaceFileContentTool(context),
+    multi_replace_file_content: createMultiReplaceFileContentTool(context),
   }
 }

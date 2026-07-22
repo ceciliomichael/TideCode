@@ -48,6 +48,11 @@ export function resolveReasoningExtraBody(
   }
 
   if (config.providerId === 'deepseek') {
+    if (reasoningEffort === 'none') {
+      return {
+        thinking: { type: 'disabled' },
+      }
+    }
     return {
       reasoning_effort: reasoningEffort === 'max' || reasoningEffort === 'xhigh' ? 'max' : reasoningEffort,
       thinking: { type: 'enabled' },
