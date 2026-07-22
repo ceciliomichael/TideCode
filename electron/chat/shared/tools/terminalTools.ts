@@ -267,7 +267,7 @@ function reserveThreadLocalSessionId(namespace: string) {
 }
 
 function createCompletionMarker(localSessionId: number) {
-  return `__ECHOSPHERE_COMMAND_DONE_${localSessionId}_${Date.now()}__`
+  return `__EDONE_${localSessionId.toString(36)}_${Date.now().toString(36)}__`
 }
 
 function buildMarkedCommand(command: string, shellLabel: string, marker: string) {
@@ -275,14 +275,14 @@ function buildMarkedCommand(command: string, shellLabel: string, marker: string)
   const trimmedCommand = command.trimEnd()
 
   if (normalizedShellLabel.includes('powershell') || normalizedShellLabel.includes('pwsh')) {
-    return `${trimmedCommand}; $__echosphereExitCode = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }; Write-Output "${marker}:$__echosphereExitCode"\r`
+    return `${trimmedCommand}; echo "${marker}:$([int]$LASTEXITCODE)"\r`
   }
 
   if (normalizedShellLabel.includes('command prompt') || normalizedShellLabel === 'cmd' || normalizedShellLabel.includes('cmd.exe')) {
     return `${trimmedCommand} & echo ${marker}:%ERRORLEVEL%\r`
   }
 
-  return `${trimmedCommand}; printf '\\n${marker}:%s\\n' "$?"\r`
+  return `${trimmedCommand}; echo "${marker}:$?"\r`
 }
 
 function parseCompletionMarker(output: string, marker: string) {
@@ -302,12 +302,19 @@ function parseCompletionMarker(output: string, marker: string) {
   }
 }
 
-function removeCompletionMarkerLines(output: string, marker: string) {
-  return output
-    .split('\n')
-    .filter((line) => !line.includes(marker))
-    .join('\n')
-    .trimEnd()
+function extractPureCommandOutput(output: string, marker: string) {
+  const lines = output.split('\n')
+  const firstMarkerIndex = lines.findIndex((line) => line.includes(marker))
+  const lastMarkerIndex = lines.findLastIndex((line) => line.includes(marker))
+
+  if (firstMarkerIndex !== -1 && lastMarkerIndex !== -1 && firstMarkerIndex !== lastMarkerIndex) {
+    // The pure output is exactly between the echoed command (first marker) and the final evaluation (last marker).
+    const pureLines = lines.slice(firstMarkerIndex + 1, lastMarkerIndex)
+    return pureLines.join('\n').trimEnd()
+  }
+
+  // Fallback: just filter out any lines with the marker
+  return lines.filter((line) => !line.includes(marker)).join('\n').trimEnd()
 }
 
 function getRunTerminalBody(
@@ -396,7 +403,7 @@ function buildRunTerminalResult(input: {
   const outputSource = input.snapshot?.outputBuffer ?? input.initialSession.bufferedOutput
   const sanitizedOutput = sanitizeTerminalOutput(outputSource)
   const outputWithoutMarker = input.outputMarker
-    ? removeCompletionMarkerLines(sanitizedOutput, input.outputMarker)
+    ? extractPureCommandOutput(sanitizedOutput, input.outputMarker)
     : sanitizedOutput
   const truncatedOutput = truncateTerminalOutput(outputWithoutMarker, input.command)
   const body = getRunTerminalBody(truncatedOutput.body, {

@@ -108,11 +108,23 @@ export function buildChatModeSystemPrompt(
   workspaceRootPath: string,
   options?: { availableSkillsBlock?: string | null; terminalExecutionMode?: AppTerminalExecutionMode },
 ) {
-  return [
+  const systemRules = [
     getToolingPrompt(chatMode),
     getModePrompt(chatMode),
     getSharedPrompt(),
     options?.availableSkillsBlock?.trim() ? options.availableSkillsBlock.trim() : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join('\n\n')
+
+  const systemContractBlock = [
+    '<system_contract description="Core system instructions in which you are bound to follow, every word and every sentence.">',
+    systemRules,
+    '</system_contract>',
+  ].join('\n')
+
+  return [
+    systemContractBlock,
     buildWorkspaceInstructionsBlock(workspaceRootPath),
     `Workspace root: ${workspaceRootPath}`,
   ]
