@@ -5,8 +5,13 @@
     "id": "deepseek:deepseek-v4-flash",
     "label": "DeepSeek V4 Flash",
     "reasoningCapable": true,
-    "reasoningEfforts": ["none", "high", "max"],
-    "defaultReasoningEffort": "high"
+    "reasoningEfforts": [
+      "none",
+      "low",
+      "high"
+    ],
+    "defaultReasoningEffort": "low",
+    "maxTokens": 384000
   },
   {
     "apiModelId": "deepseek-v4-pro",
@@ -14,7 +19,12 @@
     "id": "deepseek:deepseek-v4-pro",
     "label": "DeepSeek V4 Pro",
     "reasoningCapable": true,
-    "reasoningEfforts": ["none", "high", "max"],
-    "defaultReasoningEffort": "high"
+    "reasoningEfforts": [
+      "none",
+      "low",
+      "high"
+    ],
+    "defaultReasoningEffort": "low",
+    "maxTokens": 384000
   }
 ]

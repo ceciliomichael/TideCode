@@ -925,7 +925,11 @@ export async function createReplaceFileContentToolResult(
   const newContent = applyChunkToContent(normalizedOld, chunk, target.displayPath)
 
   if (newContent === normalizedOld) {
-    throw new Error(`Replacement did not change "${target.displayPath}". The target and replacement content are identical.`)
+    return createSuccessResult({
+      body: `No changes were made to "${target.displayPath}" because the replacement content is identical to the target content.`,
+      subject: { kind: 'file', path: target.displayPath },
+      summary: `No changes made to ${target.displayPath}`,
+    })
   }
 
   await captureCheckpointFileStateIfNeeded(context.checkpointId, target.absolutePath)
@@ -1004,7 +1008,11 @@ export async function createMultiReplaceFileContentToolResult(
   }
 
   if (workingContent === normalizedOld) {
-    throw new Error(`Replacements did not change "${target.displayPath}". All target and replacement content pairs are identical.`)
+    return createSuccessResult({
+      body: `No changes were made to "${target.displayPath}" because all replacement contents were identical to their target contents.`,
+      subject: { kind: 'file', path: target.displayPath },
+      summary: `No changes made to ${target.displayPath}`,
+    })
   }
 
   await captureCheckpointFileStateIfNeeded(context.checkpointId, target.absolutePath)

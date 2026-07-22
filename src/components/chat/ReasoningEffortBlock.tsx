@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { DropdownField } from '../ui/DropdownField'
 import type { ReasoningEffort } from '../../types/chat'
 
-const REASONING_EFFORT_LABELS: Readonly<Record<ReasoningEffort, string>> = {
+const REASONING_EFFORT_LABELS: Readonly<Record<string, string>> = {
   high: 'High',
   low: 'Low',
   max: 'Maximum',
@@ -26,11 +26,8 @@ export function ReasoningEffortBlock({
   value,
 }: ReasoningEffortBlockProps) {
   const reasoningEffortOptions = useMemo(() => {
-    const isEnabledDisabledChoice = options.length === 2 && options.includes('none') && options.includes('high')
     return options.map((option) => ({
-      label: isEnabledDisabledChoice
-        ? option === 'none' ? 'Disabled' : 'Enabled'
-        : REASONING_EFFORT_LABELS[option],
+      label: REASONING_EFFORT_LABELS[option] ?? option,
       value: option,
     }))
   }, [options])

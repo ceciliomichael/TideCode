@@ -5,7 +5,12 @@
     "id": "anthropic:claude-fable-5",
     "label": "Claude Fable 5",
     "reasoningCapable": true,
-    "reasoningEfforts": ["low", "medium", "high", "max"],
+    "reasoningEfforts": [
+      "low",
+      "medium",
+      "high",
+      "max"
+    ],
     "defaultReasoningEffort": "high"
   },
   {
@@ -14,7 +19,12 @@
     "id": "anthropic:claude-sonnet-5",
     "label": "Claude Sonnet 5",
     "reasoningCapable": true,
-    "reasoningEfforts": ["low", "medium", "high", "max"],
+    "reasoningEfforts": [
+      "low",
+      "medium",
+      "high",
+      "max"
+    ],
     "defaultReasoningEffort": "medium"
   },
   {
@@ -23,7 +33,12 @@
     "id": "anthropic:claude-opus-4-8",
     "label": "Claude Opus 4.8",
     "reasoningCapable": true,
-    "reasoningEfforts": ["low", "medium", "high", "max"],
+    "reasoningEfforts": [
+      "low",
+      "medium",
+      "high",
+      "max"
+    ],
     "defaultReasoningEffort": "high"
   },
   {

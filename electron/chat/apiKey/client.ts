@@ -97,10 +97,13 @@ export function createApiKeyChatClient(config: ApiKeyChatProviderConfig) {
         ? resolvePromptCacheProviderOptions({ cacheKey: input.cacheKey, providerId: config.providerId })
         : undefined,
     )
+    const normalizedModelId = input.model.trim().toLowerCase()
+    const configuredModel = config.models.find((m) => m.apiModelId.trim().toLowerCase() === normalizedModelId)
 
     return streamText({
       ...(input.stopWhen ? { stopWhen: input.stopWhen } : {}),
       ...(input.maxSteps !== undefined ? { maxSteps: input.maxSteps } : {}),
+      ...(configuredModel?.maxTokens ? { maxTokens: configuredModel.maxTokens } : {}),
       model,
       messages: input.messages,
       ...(input.system ? { system: input.system } : {}),

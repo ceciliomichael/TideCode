@@ -53,8 +53,12 @@ export function resolveReasoningExtraBody(
         thinking: { type: 'disabled' },
       }
     }
+    let mappedEffort = reasoningEffort
+    if (reasoningEffort === 'low') mappedEffort = 'high' as typeof reasoningEffort
+    else if (reasoningEffort === 'high' || reasoningEffort === 'max' || reasoningEffort === 'xhigh') mappedEffort = 'max' as typeof reasoningEffort
+
     return {
-      reasoning_effort: reasoningEffort === 'max' || reasoningEffort === 'xhigh' ? 'max' : reasoningEffort,
+      reasoning_effort: mappedEffort,
       thinking: { type: 'enabled' },
     }
   }

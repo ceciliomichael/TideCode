@@ -74,6 +74,7 @@ export function normalizeProviderModelConfig(
     reasoningCapable,
     ...(bodyEfforts.length > 0 ? { reasoningBodies } : {}),
     ...(reasoningEfforts.length > 0 ? { reasoningEfforts } : {}),
+    ...(typeof input.maxTokens === 'number' ? { maxTokens: input.maxTokens } : {}),
   }
 }
 

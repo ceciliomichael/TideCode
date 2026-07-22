@@ -13,7 +13,7 @@ export function isBuiltInApiKeyProviderId(value: unknown): value is BuiltInApiKe
 }
 
 export function isCustomApiKeyProviderId(value: unknown): value is CustomApiKeyProviderId {
-  return typeof value === 'string' && /^custom:[a-zA-Z0-9][a-zA-Z0-9_-]{7,127}$/u.test(value)
+  return typeof value === 'string' && value.startsWith('custom:') && value.trim().length > 7
 }
 
 export function isApiKeyProviderId(value: unknown): value is ApiKeyProviderId {

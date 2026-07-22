@@ -39,7 +39,7 @@ export function buildWorkspaceInstructionsBlock(workspaceRootPath?: string) {
   }
 
   const block = [
-    '<user_specific_instructions description="follow all user say because user is boss">',
+    '<user_specific_instructions>',
     content,
     '</user_specific_instructions>',
   ].join('\n')

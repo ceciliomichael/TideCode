@@ -8,16 +8,12 @@ import type {
   WriteTerminalSessionInput,
 } from '../../../../src/types/chat'
 import type { AgentToolContext, AgentToolExecutionResult } from '../toolTypes'
-import type { TerminalSessionSnapshot } from '../../../terminal/service'
+import type { TerminalSessionSnapshot, TerminalSessionInfo } from '../../../terminal/service'
 import { resolveReadableTargetPath } from './workspaceTools'
-import { notifyWorkspaceExplorerChange } from '../../../workspace/explorerNotifications'
-
 const DEFAULT_TERMINAL_OUTPUT_BODY_LENGTH = 40_000
 const GIT_DIFF_TERMINAL_OUTPUT_BODY_LENGTH = 20_000
-const RUN_TERMINAL_MAX_POLLING_MS = 180_000
-const RUN_TERMINAL_POLLING_INTERVAL_MS = 500
-const ANSI_ESCAPE = '\\u001B'
-const TERMINAL_BELL = '\\u0007'
+const ANSI_ESCAPE = '\u001B'
+const TERMINAL_BELL = '\u0007'
 const ANSI_CSI_PATTERN = new RegExp(`${ANSI_ESCAPE}\\[[0-?]*[ -/]*[@-~]`, 'g')
 const ANSI_OSC_PATTERN = new RegExp(`${ANSI_ESCAPE}\\][^${TERMINAL_BELL}${ANSI_ESCAPE}]*(?:${TERMINAL_BELL}|${ANSI_ESCAPE}\\\\)`, 'g')
 const ANSI_SINGLE_ESCAPE_PATTERN = new RegExp(`${ANSI_ESCAPE}[@-Z\\-_]`, 'g')
@@ -26,12 +22,8 @@ interface TerminalThreadSessionState {
   nextSessionId: number
 }
 
-interface TerminalCommandPollResult {
-  commandExitCode: number | null
-  completedByMarker: boolean
-  snapshot: TerminalSessionSnapshot
-  timedOut: boolean
-}
+// Background sessions: sessionId -> label for AI tracking
+const backgroundSessions = new Map<number, string>()
 
 const terminalThreadSessionStates = new Map<string, TerminalThreadSessionState>()
 
@@ -44,6 +36,15 @@ interface TerminalToolDependencies {
     ownerWebContents: WebContents,
     input: TerminalSessionOutputInput,
   ) => Promise<TerminalSessionSnapshot>
+  listSessions: (
+    ownerWebContents: WebContents,
+    workspaceRootPath: string,
+  ) => TerminalSessionInfo[]
+  terminateSession: (
+    ownerWebContents: WebContents,
+    sessionId: number,
+    workspaceRootPath: string,
+  ) => void
   writeToSession: (
     ownerWebContents: WebContents,
     input: WriteTerminalSessionInput,
@@ -101,6 +102,8 @@ async function loadDefaultTerminalToolDependencies(): Promise<TerminalToolDepend
   return {
     createSession: terminalService.createTerminalSessionForWebContents,
     getSessionOutput: terminalService.getTerminalSessionOutputForWebContents,
+    listSessions: terminalService.listSessionsForWebContents,
+    terminateSession: terminalService.terminateSessionForWebContents,
     writeToSession: terminalService.writeToTerminalSessionForWebContents,
   }
 }
@@ -120,18 +123,22 @@ function createErrorResult(summary: string, body?: string): AgentToolExecutionRe
   }
 }
 
-function getRunTerminalDescription(terminalExecutionMode: AgentToolContext['terminalExecutionMode']) {
-  const osHint = process.platform === 'win32' 
-    ? ' Note: The shell is PowerShell. Use PowerShell syntax.'
+function getExecuteTerminalDescription() {
+  const osHint = process.platform === 'win32'
+    ? ' Shell is PowerShell. Use PowerShell syntax.'
     : ''
 
-  const strictWarning = ' LAST RESORT: ONLY use this tool when explicitly requested by the user. Do not run commands on your own initiative.'
+  const strictWarning = ' Only use when explicitly requested by the user.'
 
-  if (terminalExecutionMode === 'full') {
-    return `Execute a terminal command. You have full access and may execute commands anywhere. Use cwd to change directory. Command execution is non-interactive.${osHint}${strictWarning}`
-  }
-
-  return `Execute a terminal command. You are restricted to executing commands ONLY within the current workspace directory. Command execution is non-interactive.${osHint}${strictWarning}`
+  return [
+    `Manage terminal sessions. mode parameter controls action:`,
+    `- execute: Run a command in background. Returns session_id immediately. Use for long-running commands (npm run dev, etc).`,
+    `- read: Read output from a background session by session_id.`,
+    `- list: List all active terminal sessions.`,
+    `- end: Kill a terminal session by session_id.`,
+    osHint,
+    strictWarning,
+  ].join(' ')
 }
 
 function clampInteger(value: number | undefined, min: number, max: number, fallback: number) {
@@ -219,9 +226,7 @@ function sanitizeTerminalOutput(value: string) {
     .join('')
 }
 
-function getSessionIdLabel(sessionId: number) {
-  return `session ${sessionId}`
-}
+
 
 function normalizeCommand(command: string | undefined) {
   if (typeof command !== 'string') {
@@ -252,11 +257,9 @@ function getTerminalThreadSessionState(namespace: string): TerminalThreadSession
     return existingState
   }
 
-  const nextState: TerminalThreadSessionState = {
-    nextSessionId: 1,
-  }
-  terminalThreadSessionStates.set(namespace, nextState)
-  return nextState
+  const newState: TerminalThreadSessionState = { nextSessionId: 1 }
+  terminalThreadSessionStates.set(namespace, newState)
+  return newState
 }
 
 function reserveThreadLocalSessionId(namespace: string) {
@@ -285,158 +288,9 @@ function buildMarkedCommand(command: string, shellLabel: string, marker: string)
   return `${trimmedCommand}; echo "${marker}:$?"\r`
 }
 
-function parseCompletionMarker(output: string, marker: string) {
-  const markerPattern = new RegExp(`${marker}:(-?\\d+)`)
-  const match = output.match(markerPattern)
-  if (!match) {
-    return {
-      commandExitCode: null,
-      completedByMarker: false,
-    }
-  }
 
-  const parsedExitCode = Number.parseInt(match[1], 10)
-  return {
-    commandExitCode: Number.isFinite(parsedExitCode) ? parsedExitCode : null,
-    completedByMarker: true,
-  }
-}
 
-function extractPureCommandOutput(output: string, marker: string) {
-  const lines = output.split('\n')
-  const firstMarkerIndex = lines.findIndex((line) => line.includes(marker))
-  const lastMarkerIndex = lines.findLastIndex((line) => line.includes(marker))
-
-  if (firstMarkerIndex !== -1 && lastMarkerIndex !== -1 && firstMarkerIndex !== lastMarkerIndex) {
-    // The pure output is exactly between the echoed command (first marker) and the final evaluation (last marker).
-    const pureLines = lines.slice(firstMarkerIndex + 1, lastMarkerIndex)
-    return pureLines.join('\n').trimEnd()
-  }
-
-  // Fallback: just filter out any lines with the marker
-  return lines.filter((line) => !line.includes(marker)).join('\n').trimEnd()
-}
-
-function getRunTerminalBody(
-  outputBody: string,
-  input: {
-    command: string | null
-    snapshot?: TerminalSessionSnapshot
-  },
-) {
-  if (outputBody.trim().length > 0) {
-    return outputBody
-  }
-
-  if (input.command && input.snapshot?.hasExited) {
-    return 'Terminal process exited with no output.'
-  }
-
-  return 'No terminal output yet.'
-}
-
-async function waitForCommandOutput(input: {
-  abortSignal: AbortSignal | undefined
-  dependencies: TerminalToolDependencies
-  marker: string
-  ownerWebContents: WebContents
-  sessionId: number
-  workspaceRootPath: string
-}): Promise<TerminalCommandPollResult> {
-  const deadlineMs = Date.now() + RUN_TERMINAL_MAX_POLLING_MS
-  let latestSnapshot: TerminalSessionSnapshot | null = null
-
-  while (Date.now() <= deadlineMs) {
-    throwIfAborted(input.abortSignal)
-    const remainingMs = Math.max(0, deadlineMs - Date.now())
-    const pollingMs = Math.min(RUN_TERMINAL_POLLING_INTERVAL_MS, remainingMs)
-    const snapshot = await raceWithAbort(
-      input.dependencies.getSessionOutput(input.ownerWebContents, {
-        pollingMs,
-        sessionId: input.sessionId,
-        workspaceRootPath: input.workspaceRootPath,
-      }),
-      input.abortSignal,
-    )
-    latestSnapshot = snapshot
-    const sanitizedOutput = sanitizeTerminalOutput(snapshot.outputBuffer)
-    const markerState = parseCompletionMarker(sanitizedOutput, input.marker)
-
-    if (markerState.completedByMarker || snapshot.hasExited) {
-      return {
-        ...markerState,
-        snapshot,
-        timedOut: false,
-      }
-    }
-  }
-
-  if (!latestSnapshot) {
-    latestSnapshot = await raceWithAbort(
-      input.dependencies.getSessionOutput(input.ownerWebContents, {
-        pollingMs: 0,
-        sessionId: input.sessionId,
-        workspaceRootPath: input.workspaceRootPath,
-      }),
-      input.abortSignal,
-    )
-  }
-
-  const markerState = parseCompletionMarker(sanitizeTerminalOutput(latestSnapshot.outputBuffer), input.marker)
-  return {
-    ...markerState,
-    snapshot: latestSnapshot,
-    timedOut: !markerState.completedByMarker && !latestSnapshot.hasExited,
-  }
-}
-
-function buildRunTerminalResult(input: {
-  command: string | null
-  commandExitCode?: number | null
-  completedByMarker?: boolean
-  initialSession: CreateTerminalSessionResult
-  localSessionId: number
-  outputMarker?: string
-  snapshot?: TerminalSessionSnapshot
-  timedOut?: boolean
-}) {
-  const outputSource = input.snapshot?.outputBuffer ?? input.initialSession.bufferedOutput
-  const sanitizedOutput = sanitizeTerminalOutput(outputSource)
-  const outputWithoutMarker = input.outputMarker
-    ? extractPureCommandOutput(sanitizedOutput, input.outputMarker)
-    : sanitizedOutput
-  const truncatedOutput = truncateTerminalOutput(outputWithoutMarker, input.command)
-  const body = getRunTerminalBody(truncatedOutput.body, {
-    command: input.command,
-    snapshot: input.snapshot,
-  })
-
-  const hasExited = input.snapshot?.hasExited ?? false
-  const commandCompleted = input.completedByMarker === true || hasExited
-
-  return createSuccessResult({
-    body,
-    semantics: {
-      command: input.command,
-      command_completed: input.command ? commandCompleted : null,
-      command_exit_code: input.commandExitCode ?? null,
-      exit_code: input.snapshot?.exitCode ?? null,
-      has_exited: hasExited,
-      session_id: input.localSessionId,
-      signal: input.snapshot?.signal ?? null,
-      timed_out: input.timedOut ?? false,
-      truncated_output: truncatedOutput.truncated,
-    },
-    subject: {
-      kind: 'session',
-      path: String(input.localSessionId),
-    },
-    summary: input.command
-      ? `Ran terminal ${getSessionIdLabel(input.localSessionId)}`
-      : `Opened terminal ${getSessionIdLabel(input.localSessionId)}`,
-    truncated: truncatedOutput.truncated,
-  })
-}
+// Removed waitForCommandCompletion
 
 export function createTerminalToolSet(
   context: AgentToolContext,
@@ -451,6 +305,8 @@ export function createTerminalToolSet(
     if (
       dependencies.createSession !== undefined &&
       dependencies.getSessionOutput !== undefined &&
+      dependencies.listSessions !== undefined &&
+      dependencies.terminateSession !== undefined &&
       dependencies.writeToSession !== undefined
     ) {
       return dependencies as TerminalToolDependencies
@@ -466,18 +322,36 @@ export function createTerminalToolSet(
   const terminalExecutionMode = context.terminalExecutionMode ?? 'sandbox'
 
   return {
-    run_terminal: tool({
-      description: getRunTerminalDescription(terminalExecutionMode),
+    execute_terminal: tool({
+      description: getExecuteTerminalDescription(),
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {
+          mode: {
+            type: 'string',
+            enum: ['execute', 'read', 'list', 'end'],
+            description: 'execute: run command in background | read: read output of session | list: list sessions | end: kill session',
+          },
+          wait_ms: {
+            type: 'number',
+            description: 'Milliseconds to wait for output in read mode (max 15000). Useful to avoid spamming read.',
+          },
+          command: {
+            type: 'string',
+            description: 'Command to run. Required for execute mode.',
+          },
+          session_id: {
+            type: 'number',
+            description: 'Session ID. Required for read and end modes.',
+          },
+          label: {
+            type: 'string',
+            description: 'Human-readable label for the session (e.g. "dev server"). Optional for execute mode.',
+          },
           cols: {
             minimum: 20,
             maximum: 400,
             type: 'number',
-          },
-          command: {
-            type: 'string',
           },
           ...(terminalExecutionMode === 'full' ? {
             cwd: {
@@ -493,34 +367,110 @@ export function createTerminalToolSet(
             type: 'string',
           },
         },
-        required: ['cols', 'rows'],
+        required: ['mode'],
         type: 'object',
       }),
       execute: async (rawInput, options) => {
         const inputValue = rawInput as {
-          cols: number
+          mode: 'execute' | 'read' | 'list' | 'end'
+          wait_ms?: number
           command?: string
+          session_id?: number
+          label?: string
+          cols?: number
           cwd?: string
-          rows: number
+          rows?: number
           session_key?: string
         }
+
         const abortSignal = options?.abortSignal
-        const cols = clampInteger(inputValue.cols, 20, 400, 120)
-        const rows = clampInteger(inputValue.rows, 6, 200, 30)
-        const requestedCommand = normalizeCommand(inputValue.command)
+        const cols = clampInteger(inputValue.cols, 20, 400, 220)
+        const rows = clampInteger(inputValue.rows, 6, 200, 50)
+        const waitMs = clampInteger(inputValue.wait_ms, 0, 15000, 2000)
 
         try {
-          if (terminalExecutionMode === 'sandbox' && requestedCommand) {
-            const cdRegex = /(?:^|[;&|]\s*)cd\s+("[^"]+"|'[^']+'|[^\s;&|]+)/gi
+          const resolvedDependencies = await getResolvedDependencies()
+
+          // ─── LIST ──────────────────────────────────────────────────────────
+          if (inputValue.mode === 'list') {
+            const sessionList = resolvedDependencies.listSessions(ownerWebContents, context.workspaceRootPath)
+            if (sessionList.length === 0) {
+              return createSuccessResult({
+                body: 'No active terminal sessions.',
+                summary: 'Listed terminal sessions',
+              })
+            }
+
+            const lines = sessionList.map((s) => {
+              const idleSec = Math.floor((Date.now() - s.lastReadAt) / 1000)
+              const status = s.hasExited ? 'exited' : 'running'
+              return `[${s.sessionId}] ${s.label ?? '(unlabeled)'} | ${status} | cwd: ${s.cwd} | idle: ${idleSec}s`
+            })
+
+            return createSuccessResult({
+              body: lines.join('\n'),
+              summary: `Listed ${sessionList.length} terminal session(s)`,
+            })
+          }
+
+          // ─── END ───────────────────────────────────────────────────────────
+          if (inputValue.mode === 'end') {
+            if (typeof inputValue.session_id !== 'number') {
+              return createErrorResult('session_id required for end mode.')
+            }
+
+            resolvedDependencies.terminateSession(ownerWebContents, inputValue.session_id, context.workspaceRootPath)
+            backgroundSessions.delete(inputValue.session_id)
+            return createSuccessResult({
+              body: `Session ${inputValue.session_id} terminated.`,
+              summary: `Ended terminal session ${inputValue.session_id}`,
+            })
+          }
+
+          // ─── READ ──────────────────────────────────────────────────────────
+          if (inputValue.mode === 'read') {
+            if (typeof inputValue.session_id !== 'number') {
+              return createErrorResult('session_id required for read mode.')
+            }
+
+            throwIfAborted(abortSignal)
+            const snapshot = await raceWithAbort(
+              resolvedDependencies.getSessionOutput(ownerWebContents, {
+                pollingMs: waitMs,
+                sessionId: inputValue.session_id,
+                workspaceRootPath: context.workspaceRootPath,
+              }),
+              abortSignal,
+            )
+
+            const sanitized = sanitizeTerminalOutput(snapshot.outputBuffer)
+            const truncated = truncateTerminalOutput(sanitized, null)
+
+            return createSuccessResult({
+              body: truncated.body || 'No output yet.',
+              semantics: {
+                has_exited: snapshot.hasExited,
+                exit_code: snapshot.exitCode,
+                session_id: inputValue.session_id,
+                truncated_output: truncated.truncated,
+              },
+              subject: { kind: 'session', path: String(inputValue.session_id) },
+              summary: `Read terminal session ${inputValue.session_id}`,
+              truncated: truncated.truncated,
+            })
+          }
+
+          // ─── EXECUTE ───────────────────────────────────────────────────────
+          const requestedCommand = normalizeCommand(inputValue.command)
+          if (!requestedCommand) {
+            return createErrorResult('command required for execute mode.')
+          }
+
+          if (terminalExecutionMode === 'sandbox') {
+            const cdRegex = /(?:^|[;&|]\s*)cd\s+("([^"]+)"|'([^']+)'|([^\s;&|]+))/gi
             let match
             while ((match = cdRegex.exec(requestedCommand)) !== null) {
-              let targetPath = match[1]
-              if (
-                (targetPath.startsWith('"') && targetPath.endsWith('"')) ||
-                (targetPath.startsWith("'") && targetPath.endsWith("'"))
-              ) {
-                targetPath = targetPath.slice(1, -1)
-              }
+              const targetPath = (match[2] ?? match[3] ?? match[4] ?? '').trim()
 
               if (targetPath.includes('..')) {
                 return createErrorResult(
@@ -548,31 +498,23 @@ export function createTerminalToolSet(
             }
           }
 
-          const command = prepareTerminalCommand(requestedCommand)
-
+          const command = prepareTerminalCommand(requestedCommand)!
           const cwd = resolveTerminalWorkspaceCwd(context, inputValue.cwd)
           const namespace = resolveTerminalThreadNamespace(context)
           const reservedLocalSessionId = reserveThreadLocalSessionId(namespace)
-          const resolvedDependencies = await getResolvedDependencies()
+
           throwIfAborted(abortSignal)
           const session = await raceWithAbort(
             resolvedDependencies.createSession(ownerWebContents, {
               cols,
               cwd,
+              label: inputValue.label ?? null,
               rows,
               sessionKey: inputValue.session_key,
               workspaceRootPath: context.workspaceRootPath,
             }),
             abortSignal,
           )
-
-          if (!command) {
-            return buildRunTerminalResult({
-              command,
-              initialSession: session,
-              localSessionId: reservedLocalSessionId,
-            })
-          }
 
           const completionMarker = createCompletionMarker(reservedLocalSessionId)
           throwIfAborted(abortSignal)
@@ -584,29 +526,22 @@ export function createTerminalToolSet(
             abortSignal,
           )
 
-          const pollResult = await waitForCommandOutput({
-            abortSignal,
-            dependencies: resolvedDependencies,
-            marker: completionMarker,
-            ownerWebContents,
-            sessionId: session.sessionId,
-            workspaceRootPath: context.workspaceRootPath,
-          })
+          // Fire-and-forget: do not wait for completion at all. Return session ID immediately.
+          backgroundSessions.set(session.sessionId, inputValue.label ?? command)
 
-          notifyWorkspaceExplorerChange(context.workspaceRootPath)
-
-          return buildRunTerminalResult({
-            command,
-            commandExitCode: pollResult.commandExitCode,
-            completedByMarker: pollResult.completedByMarker,
-            initialSession: session,
-            localSessionId: reservedLocalSessionId,
-            outputMarker: completionMarker,
-            snapshot: {
-              ...pollResult.snapshot,
-              sessionId: reservedLocalSessionId,
+          return createSuccessResult({
+            body: [
+              `Command started in background. session_id: ${session.sessionId}`,
+              `Use execute_terminal with mode=read and session_id=${session.sessionId} to check output.`,
+              `Use execute_terminal with mode=end and session_id=${session.sessionId} to stop it.`,
+            ].join('\n'),
+            semantics: {
+              command,
+              session_id: session.sessionId,
+              is_background: true,
             },
-            timedOut: pollResult.timedOut,
+            subject: { kind: 'session', path: String(session.sessionId) },
+            summary: `Started terminal session ${session.sessionId}`,
           })
         } catch (error) {
           if (abortSignal?.aborted) {
@@ -614,10 +549,25 @@ export function createTerminalToolSet(
           }
 
           return createErrorResult(
-            error instanceof Error && error.message.trim().length > 0 ? error.message : 'Terminal run failed.',
+            error instanceof Error && error.message.trim().length > 0 ? error.message : 'Terminal execution failed.',
           )
         }
       },
     }),
   }
+}
+
+export async function terminateAllBackgroundSessions(
+  webContents: WebContents,
+  workspaceRootPath: string
+) {
+  const terminalService = await loadDefaultTerminalToolDependencies()
+  for (const sessionId of backgroundSessions.keys()) {
+    try {
+      terminalService.terminateSession(webContents, sessionId, workspaceRootPath)
+    } catch (e) {
+      // ignore
+    }
+  }
+  backgroundSessions.clear()
 }

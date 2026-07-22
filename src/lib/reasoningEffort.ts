@@ -8,7 +8,7 @@ export const GOOGLE_REASONING_EFFORT_VALUES: readonly ReasoningEffort[] = ['mini
 export const GOOGLE_PRO_REASONING_EFFORT_VALUES: readonly ReasoningEffort[] = ['low', 'medium', 'high']
 
 export function isReasoningEffort(value: unknown): value is ReasoningEffort {
-  return typeof value === 'string' && REASONING_EFFORT_VALUES.includes(value as ReasoningEffort)
+  return typeof value === 'string' && value.trim().length > 0
 }
 
 export function normalizeReasoningEffort(

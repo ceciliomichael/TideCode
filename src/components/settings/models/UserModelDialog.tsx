@@ -1,13 +1,10 @@
-import { Check, Loader2, Save, X } from 'lucide-react'
+import { Loader2, Save, X } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { DropdownField } from '../../ui/DropdownField'
-import { LineNumberedTextarea } from '../shared/LineNumberedTextarea'
 import { PRIMARY_ACTION_BUTTON_CLASS_NAME } from '../shared/actionButtonStyles'
-import { formatModelExtraBody, parseModelExtraBodyText } from './modelExtraBody'
 import {
   buildUserModelReasoningProfile,
-  getSelectableUserModelEfforts,
   getUserModelReasoningKind,
   type UserModelReasoningKind,
 } from '../../../lib/userModelReasoning'
@@ -15,6 +12,7 @@ import type {
   CustomModelConfig,
   CustomModelProviderId,
   ReasoningEffort,
+  ReasoningRequestBodies,
   SaveCustomModelInput,
 } from '../../../types/chat'
 
@@ -33,20 +31,14 @@ interface UserModelDialogProps {
 }
 
 const REASONING_KIND_OPTIONS = [
-  { label: 'No reasoning control', value: 'none' },
-  { label: 'Enabled or disabled', value: 'toggle' },
-  { label: 'Reasoning effort levels', value: 'effort' },
+  { label: 'No reasoning support', value: 'none' },
+  { label: 'Custom reasoning control', value: 'effort' },
 ] as const
 
-const EFFORT_LABELS: Record<ReasoningEffort, string> = {
-  high: 'High',
-  low: 'Low',
-  max: 'Maximum',
-  medium: 'Medium',
-  minimal: 'Minimal',
-  none: 'Disabled',
-  xhigh: 'Extra high',
-}
+const REASONING_KIND_OPTIONS_BUILTIN = [
+  { label: 'No reasoning support', value: 'none' },
+  { label: 'Uses provider standard reasoning', value: 'provider_default' },
+] as const
 
 export function UserModelDialog({
   initialProviderId,
@@ -56,36 +48,67 @@ export function UserModelDialog({
   onSave,
   providers,
 }: UserModelDialogProps) {
-  const initialKind = getUserModelReasoningKind(model?.reasoningCapable ?? false, model?.reasoningEfforts)
-  const [providerId, setProviderId] = useState<CustomModelProviderId>(model?.providerId ?? initialProviderId)
+  const initialProvider = model?.providerId ?? initialProviderId
+  const initialKind = getUserModelReasoningKind(
+    model?.reasoningCapable ?? false,
+    model?.reasoningEfforts,
+    initialProvider
+  )
+  const [providerId, setProviderId] = useState<CustomModelProviderId>(initialProvider)
   const [apiModelId, setApiModelId] = useState(model?.apiModelId ?? '')
   const [label, setLabel] = useState(model?.label ?? '')
-  const [extraBodyText, setExtraBodyText] = useState(formatModelExtraBody(model?.extraBody))
+  const [maxTokens, setMaxTokens] = useState<string>(model?.maxTokens?.toString() ?? '')
+  
+  const [kvSettings, setKvSettings] = useState<{ id: number; key: string; value: string }[]>(() => {
+    if (!model?.extraBody || Object.keys(model.extraBody).length === 0) {
+      return [{ id: Date.now(), key: '', value: '' }]
+    }
+    return Object.entries(model.extraBody).map(([k, v], index) => ({
+      id: Date.now() + index,
+      key: k,
+      value: typeof v === 'string' ? v : JSON.stringify(v),
+    }))
+  })
+
+  const [customReasoningLevels, setCustomReasoningLevels] = useState<{
+    id: number
+    name: string
+    settings: { id: number; key: string; value: string }[]
+  }[]>(() => {
+    if (!providerId.startsWith('custom:')) return []
+    const bodies = model?.reasoningBodies ?? {}
+    const efforts = model?.reasoningEfforts?.filter((e) => e !== 'none') ?? []
+    if (efforts.length === 0) return [{ id: Date.now(), name: '', settings: [{ id: Date.now() + 1, key: '', value: '' }] }]
+    return efforts.map((effort, i) => {
+      const body = bodies[effort]
+      const settings = body && Object.keys(body).length > 0
+        ? Object.entries(body).map(([k, v], index) => ({
+            id: Date.now() + index + Math.random(),
+            key: k,
+            value: typeof v === 'string' ? v : JSON.stringify(v),
+          }))
+        : [{ id: Date.now() + Math.random(), key: '', value: '' }]
+      return {
+        id: Date.now() + i + Math.random(),
+        name: effort,
+        settings,
+      }
+    })
+  })
+
   const [reasoningKind, setReasoningKind] = useState<UserModelReasoningKind>(initialKind)
-  const [effortChoices, setEffortChoices] = useState<ReasoningEffort[]>(
-    initialKind === 'effort' && model?.reasoningEfforts?.length
-      ? model.reasoningEfforts.filter((effort) => effort !== 'none')
-      : ['low', 'medium', 'high'],
-  )
-  const [defaultEffort, setDefaultEffort] = useState<ReasoningEffort>(
-    model?.defaultReasoningEffort ?? (initialKind === 'toggle' ? 'high' : 'medium'),
-  )
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const firstInputRef = useRef<HTMLInputElement | null>(null)
-  const availableEffortChoices = getSelectableUserModelEfforts(providerId)
-  const selectedAvailableEfforts = effortChoices.filter((effort) => availableEffortChoices.includes(effort))
-  const selectableDefaultEfforts: readonly ReasoningEffort[] = reasoningKind === 'toggle'
-    ? ['none', 'high']
-    : selectedAvailableEfforts
-  const resolvedDefaultEffort = selectableDefaultEfforts.includes(defaultEffort)
-    ? defaultEffort
-    : selectableDefaultEfforts.includes('medium')
-      ? 'medium'
-      : selectableDefaultEfforts[0] ?? 'high'
-  const defaultOptions = selectableDefaultEfforts.map((effort) => ({
-    label: EFFORT_LABELS[effort],
-    value: effort,
-  }))
+
+
+  // Ensure reasoningKind is valid when provider switches
+  useEffect(() => {
+    if (providerId.startsWith('custom:')) {
+      if (reasoningKind === 'provider_default') setReasoningKind('none')
+    } else {
+      if (reasoningKind === 'effort') setReasoningKind('provider_default')
+    }
+  }, [providerId, reasoningKind])
 
   useEffect(() => {
     firstInputRef.current?.focus()
@@ -108,20 +131,65 @@ export function UserModelDialog({
       return
     }
     try {
-      const extraBody = providerId.startsWith('custom:')
-        ? parseModelExtraBodyText(extraBodyText)
-        : {}
+      const extraBody: Record<string, unknown> = {}
+      if (providerId.startsWith('custom:')) {
+        for (const kv of kvSettings) {
+          const k = kv.key.trim()
+          if (k) {
+            const v = kv.value.trim()
+            try {
+              extraBody[k] = JSON.parse(v)
+            } catch {
+              extraBody[k] = v
+            }
+          }
+        }
+      }
+      const customReasoningBodies: ReasoningRequestBodies = {}
+      let finalEffortChoices: ReasoningEffort[] = []
+
+      if (providerId.startsWith('custom:')) {
+        if (reasoningKind === 'effort') {
+          for (const level of customReasoningLevels) {
+            const effortName = level.name.trim() as ReasoningEffort
+            if (!effortName || effortName === 'none') continue
+            finalEffortChoices.push(effortName)
+
+            if (level.settings.some(kv => kv.key.trim() !== '')) {
+              const body = level.settings.reduce<Record<string, unknown>>((acc, kv) => {
+                const k = kv.key.trim()
+                if (k) {
+                  try {
+                    acc[k] = JSON.parse(kv.value.trim())
+                  } catch {
+                    acc[k] = kv.value.trim()
+                  }
+                }
+                return acc
+              }, {})
+              if (Object.keys(body).length > 0) {
+                customReasoningBodies[effortName] = body
+              }
+            }
+          }
+        }
+      } else {
+        // Built-in providers don't use this modal for configuring efforts
+        finalEffortChoices = []
+      }
+
       const reasoning = buildUserModelReasoningProfile({
-        defaultEffort: resolvedDefaultEffort,
-        effortChoices: selectedAvailableEfforts,
+        effortChoices: finalEffortChoices.length > 0 ? ['none', ...finalEffortChoices] : undefined,
         kind: reasoningKind,
         providerId,
+        customReasoningBodies: Object.keys(customReasoningBodies).length > 0 ? customReasoningBodies : undefined,
       })
       await onSave({
         apiModelId: normalizedModelId,
         label: label.trim() || normalizedModelId,
         ...(Object.keys(extraBody).length > 0 ? { extraBody } : {}),
         ...(model ? { modelId: model.id } : {}),
+        ...(maxTokens.trim() ? { maxTokens: parseInt(maxTokens, 10) } : {}),
         providerId,
         ...reasoning,
       })
@@ -142,9 +210,9 @@ export function UserModelDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="user-model-dialog-title"
-        className="flex h-full w-full flex-col overflow-hidden border-border bg-surface md:h-auto md:max-h-[calc(100dvh-3rem)] md:max-w-xl md:rounded-2xl md:border md:shadow-soft"
+        className="flex h-full w-full flex-col overflow-hidden border-border bg-surface md:h-[650px] md:max-h-[calc(100dvh-3rem)] md:max-w-3xl md:rounded-2xl md:border md:shadow-soft"
       >
-        <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-4 md:px-6">
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-4 py-4 md:px-6">
           <div>
             <h2 id="user-model-dialog-title" className="text-lg font-semibold text-foreground">
               {model ? 'Edit model' : 'Add model'}
@@ -174,15 +242,7 @@ export function UserModelDialog({
                   value={providerId}
                   onChange={(value) => {
                     const nextProviderId = value as CustomModelProviderId
-                    const nextAvailableEfforts = getSelectableUserModelEfforts(nextProviderId)
                     setProviderId(nextProviderId)
-                    setEffortChoices((current) => {
-                      const retained = current.filter((effort) => nextAvailableEfforts.includes(effort))
-                      return retained.length > 0 ? retained : [...nextAvailableEfforts]
-                    })
-                    if (nextProviderId === 'mistral' && reasoningKind === 'effort') {
-                      setReasoningKind('toggle')
-                    }
                   }}
                   options={providers}
                   disabled={isSaving}
@@ -211,19 +271,80 @@ export function UserModelDialog({
                   className="h-11 w-full rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
                 />
               </div>
+              <div className="space-y-2">
+                <label htmlFor="user-model-maxtokens" className="text-sm font-medium text-foreground">Max Output Tokens</label>
+                <input
+                  id="user-model-maxtokens"
+                  type="number"
+                  min="0"
+                  value={maxTokens}
+                  onChange={(event) => setMaxTokens(event.target.value)}
+                  placeholder="e.g. 8192 (leave empty for default)"
+                  disabled={isSaving}
+                  className="h-11 w-full rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              </div>
             </div>
 
             {providerId.startsWith('custom:') ? (
-              <LineNumberedTextarea
-                id="user-model-extra-body"
-                label="Extra settings (JSON)"
-                description="Optional request settings sent only when this exact model is used."
-                value={extraBodyText}
-                onChange={setExtraBodyText}
-                placeholder={'{\n  "chat_template_kwargs": {\n    "enable_thinking": true\n  }\n}'}
-                rows={6}
-                disabled={isSaving}
-              />
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-foreground">Extra settings</label>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Optional request settings sent only when this exact model is used.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {kvSettings.map((kv, index) => (
+                    <div key={kv.id} className="flex gap-2">
+                      <input
+                        value={kv.key}
+                        onChange={(e) => {
+                          const newKv = [...kvSettings]
+                          newKv[index].key = e.target.value
+                          setKvSettings(newKv)
+                        }}
+                        placeholder="Key (e.g. enable_thinking)"
+                        disabled={isSaving}
+                        className="h-10 w-1/2 rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                      />
+                      <input
+                        value={kv.value}
+                        onChange={(e) => {
+                          const newKv = [...kvSettings]
+                          newKv[index].value = e.target.value
+                          setKvSettings(newKv)
+                        }}
+                        placeholder="Value (e.g. true)"
+                        disabled={isSaving}
+                        className="h-10 w-1/2 rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (kvSettings.length > 1) {
+                            setKvSettings(kvSettings.filter((_, i) => i !== index))
+                          } else {
+                            setKvSettings([{ id: Date.now(), key: '', value: '' }])
+                          }
+                        }}
+                        disabled={isSaving}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setKvSettings([...kvSettings, { id: Date.now(), key: '', value: '' }])}
+                    disabled={isSaving}
+                    className="inline-flex h-9 items-center justify-center rounded-xl bg-surface-muted px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted/80"
+                  >
+                    + Add setting
+                  </button>
+                </div>
+              </div>
             ) : null}
 
             <div className="space-y-2">
@@ -232,9 +353,9 @@ export function UserModelDialog({
                 ariaLabel="Reasoning control type"
                 value={reasoningKind}
                 onChange={(value) => setReasoningKind(value as UserModelReasoningKind)}
-                options={providerId === 'mistral'
-                  ? REASONING_KIND_OPTIONS.filter((option) => option.value !== 'effort')
-                  : REASONING_KIND_OPTIONS}
+                options={providerId.startsWith('custom:')
+                  ? REASONING_KIND_OPTIONS
+                  : REASONING_KIND_OPTIONS_BUILTIN}
                 disabled={isSaving}
               />
               <p className="text-xs leading-5 text-muted-foreground">
@@ -242,53 +363,109 @@ export function UserModelDialog({
               </p>
             </div>
 
-            {reasoningKind === 'effort' ? (
-              <div className="space-y-2">
-                <span className="text-sm font-medium text-foreground">Available efforts</span>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {availableEffortChoices.map((effort) => {
-                    const selected = effortChoices.includes(effort)
-                    return (
-                      <button
-                        key={effort}
-                        type="button"
-                        aria-pressed={selected}
-                        onClick={() => setEffortChoices((current) =>
-                          selected ? current.filter((entry) => entry !== effort) : [...current, effort])}
-                        disabled={isSaving}
-                        className={[
-                          'flex min-h-11 items-center justify-between rounded-xl border px-3 text-sm transition-colors',
-                          selected
-                            ? 'border-foreground bg-surface-muted text-foreground'
-                            : 'border-border bg-surface text-muted-foreground hover:bg-surface-muted',
-                        ].join(' ')}
-                      >
-                        {EFFORT_LABELS[effort]}
-                        {selected ? <Check size={15} /> : null}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            {reasoningKind !== 'none' && selectableDefaultEfforts.length > 0 ? (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Default value</label>
-                <DropdownField
-                  ariaLabel="Default reasoning value"
-                  value={resolvedDefaultEffort}
-                  onChange={(value) => setDefaultEffort(value as ReasoningEffort)}
-                  options={defaultOptions}
+            {providerId.startsWith('custom:') && reasoningKind === 'effort' ? (
+              <div className="space-y-4 pt-2">
+                {customReasoningLevels.map((level, levelIndex) => {
+                  return (
+                    <div key={level.id} className="space-y-3 rounded-xl border border-border p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 flex flex-col gap-2">
+                          <label className="text-sm font-medium text-foreground">Custom Reasoning Level</label>
+                          <input
+                            value={level.name}
+                            onChange={(e) => {
+                              const newLevels = [...customReasoningLevels]
+                              newLevels[levelIndex].name = e.target.value
+                              setCustomReasoningLevels(newLevels)
+                            }}
+                            placeholder="Name (e.g. Smart Mode)"
+                            disabled={isSaving}
+                            className="h-10 w-full max-w-sm rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (customReasoningLevels.length > 1) {
+                              setCustomReasoningLevels(customReasoningLevels.filter((_, i) => i !== levelIndex))
+                            }
+                          }}
+                          disabled={isSaving || customReasoningLevels.length <= 1}
+                          className="text-sm font-medium text-danger-foreground disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      
+                      <div className="space-y-2 pt-2">
+                        <label className="text-sm font-medium text-foreground">Payload</label>
+                        {level.settings.map((kv, kvIndex) => (
+                          <div key={kv.id} className="flex gap-2">
+                            <input
+                              value={kv.key}
+                              onChange={(e) => {
+                                const newLevels = [...customReasoningLevels]
+                                newLevels[levelIndex].settings[kvIndex].key = e.target.value
+                                setCustomReasoningLevels(newLevels)
+                              }}
+                              placeholder="Key (e.g. chat_template_kwargs)"
+                              disabled={isSaving}
+                              className="h-10 w-1/2 rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                            />
+                            <input
+                              value={kv.value}
+                              onChange={(e) => {
+                                const newLevels = [...customReasoningLevels]
+                                newLevels[levelIndex].settings[kvIndex].value = e.target.value
+                                setCustomReasoningLevels(newLevels)
+                              }}
+                              placeholder='Value (e.g. {"thinking":true})'
+                              disabled={isSaving}
+                              className="h-10 w-1/2 rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newLevels = [...customReasoningLevels]
+                                if (level.settings.length > 1) {
+                                  newLevels[levelIndex].settings = level.settings.filter((_, i) => i !== kvIndex)
+                                } else {
+                                  newLevels[levelIndex].settings = [{ id: Date.now(), key: '', value: '' }]
+                                }
+                                setCustomReasoningLevels(newLevels)
+                              }}
+                              disabled={isSaving}
+                              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newLevels = [...customReasoningLevels]
+                            newLevels[levelIndex].settings.push({ id: Date.now(), key: '', value: '' })
+                            setCustomReasoningLevels(newLevels)
+                          }}
+                          disabled={isSaving}
+                          className="inline-flex h-9 items-center justify-center rounded-xl bg-surface-muted px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted/80"
+                        >
+                          + Add payload field
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+                <button
+                  type="button"
+                  onClick={() => setCustomReasoningLevels([...customReasoningLevels, { id: Date.now(), name: '', settings: [{ id: Date.now() + 1, key: '', value: '' }] }])}
                   disabled={isSaving}
-                />
+                  className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-surface px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted"
+                >
+                  + Add reasoning level
+                </button>
               </div>
-            ) : null}
-
-            {providerId.startsWith('custom:') && reasoningKind !== 'none' ? (
-              <p className="rounded-xl border border-border bg-surface-muted px-3 py-2 text-xs leading-5 text-muted-foreground">
-                This custom provider will receive the selected value through the OpenAI-compatible reasoning effort field.
-              </p>
             ) : null}
 
             {errorMessage ? (
@@ -298,7 +475,7 @@ export function UserModelDialog({
             ) : null}
           </div>
 
-          <footer className="flex flex-col-reverse gap-2 border-t border-border bg-surface px-4 py-4 sm:flex-row sm:justify-end md:px-6">
+          <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface px-4 py-4 sm:flex-row sm:justify-end md:px-6">
             <button
               type="button"
               onClick={onClose}

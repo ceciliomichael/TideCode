@@ -328,7 +328,7 @@ export type CustomApiKeyProviderId = `custom:${string}`
 export type ApiKeyProviderId = BuiltInApiKeyProviderId | CustomApiKeyProviderId
 export type ChatProviderId = 'codex' | ApiKeyProviderId
 export type CustomModelProviderId = ChatProviderId
-export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | (string & {})
 
 export type ReasoningRequestBodies = Partial<Record<ReasoningEffort, Record<string, unknown>>>
 
@@ -342,6 +342,7 @@ export interface ConfigurableProviderModel {
   reasoningCapable?: boolean
   reasoningBodies?: ReasoningRequestBodies
   reasoningEfforts?: ReasoningEffort[]
+  maxTokens?: number
 }
 
 export interface ApiKeyProviderStatus {
@@ -381,6 +382,7 @@ export interface CustomModelConfig {
   reasoningCapable: boolean
   reasoningBodies?: ReasoningRequestBodies
   reasoningEfforts?: ReasoningEffort[]
+  maxTokens?: number
   updatedAt: string
 }
 
@@ -394,6 +396,7 @@ export interface SaveCustomModelInput {
   reasoningCapable: boolean
   reasoningBodies?: ReasoningRequestBodies
   reasoningEfforts?: ReasoningEffort[]
+  maxTokens?: number
 }
 
 export interface StartChatStreamInput {
@@ -430,6 +433,7 @@ export interface ProviderModelConfig {
   providerId: ChatProviderId
   reasoningCapable: boolean
   reasoningBodies?: ReasoningRequestBodies
+  maxTokens?: number
   reasoningEfforts?: ReasoningEffort[]
 }
 
@@ -572,6 +576,7 @@ export interface WorkspaceExplorerImportEntryResult {
 export interface CreateTerminalSessionInput {
   cols: number
   cwd?: string | null
+  label?: string | null
   sessionKey?: string | null
   workspaceRootPath?: string | null
   rows: number

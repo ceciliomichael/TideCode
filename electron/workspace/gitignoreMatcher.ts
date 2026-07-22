@@ -10,7 +10,7 @@ interface GitignoreMatcherEntry {
 
 export type WorkspaceEntryVisibility = 'explorer' | 'workspace'
 
-const WORKSPACE_IGNORED_ENTRY_NAMES = new Set<string>()
+const WORKSPACE_IGNORED_ENTRY_NAMES = new Set<string>(['AGENTS.md', 'RULES.md', 'GEMINI.md'])
 const EXPLORER_IGNORED_ENTRY_NAMES = new Set<string>()
 const gitignoreMatcherCache = new Map<string, Promise<GitignoreMatcherEntry[]>>()
 

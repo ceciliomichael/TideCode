@@ -204,30 +204,11 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
         removeConversationRuntime(conversationId)
         replaceConversationSummaries(remainingSummaries)
 
-        if (remainingSummaries.length === 0) {
-          clearConversationSelection(deletedConversationFolderId)
-          return
-        }
-
         if (conversationId !== activeConversationId) {
           return
         }
 
-        clearConversationSelection(deletedConversationFolderId)
-
-        const cachedConversation = conversationRuntimeStatesRef.current[remainingSummaries[0].id]?.conversation
-        if (cachedConversation) {
-          applyConversation(cachedConversation)
-          return
-        }
-
-        const nextConversation = await window.echosphereHistory.getConversation(remainingSummaries[0].id)
-        if (!nextConversation) {
-          setError('Unable to load the next conversation after deletion.')
-          return
-        }
-
-        applyConversation(nextConversation)
+        await createConversation(deletedConversationFolderId)
       } catch (caughtError) {
         console.error(caughtError)
         setError('Unable to delete that conversation.')
@@ -239,6 +220,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       clearConversationSelection,
       clearError,
       conversationRuntimeStatesRef,
+      createConversation,
       getDeletionContext,
       removeConversationRuntime,
       replaceConversationSummaries,

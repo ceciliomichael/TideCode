@@ -400,7 +400,30 @@ function getToolVerb(invocation: ToolInvocationTrace) {
       : formatEditVerb(actionKind === 'overwrite' ? 'edit' : actionKind, invocation.state)
   }
 
-  if (invocation.toolName === 'run_terminal') {
+  if (invocation.toolName === 'execute_terminal' || invocation.toolName === 'run_terminal') {
+    const parsedArgs = parseCompleteToolArguments(invocation.argumentsText) as Record<string, any>
+    const mode = parsedArgs?.mode || 'execute'
+    if (mode === 'read') {
+      return invocation.state === 'running'
+        ? 'Reading'
+        : invocation.state === 'completed'
+          ? 'Read'
+          : 'Read failed'
+    }
+    if (mode === 'list') {
+      return invocation.state === 'running'
+        ? 'Listing terminal sessions'
+        : invocation.state === 'completed'
+          ? 'Listed terminal sessions'
+          : 'List sessions failed'
+    }
+    if (mode === 'end') {
+      return invocation.state === 'running'
+        ? 'Terminating'
+        : invocation.state === 'completed'
+          ? 'Terminated'
+          : 'Terminate failed'
+    }
     return invocation.state === 'running'
       ? 'Running'
       : invocation.state === 'completed'
@@ -593,9 +616,20 @@ export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace)
 }
 
 function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: string | null) {
-  const parsedArguments = parseCompleteToolArguments(invocation.argumentsText)
+  const parsedArguments = parseCompleteToolArguments(invocation.argumentsText) as Record<string, any>
 
-  if (invocation.toolName === 'run_terminal') {
+  if (invocation.toolName === 'execute_terminal' || invocation.toolName === 'run_terminal') {
+    const mode = parsedArguments?.mode || 'execute'
+    
+    if (mode === 'list') {
+      return null
+    }
+    
+    if (mode === 'read' || mode === 'end') {
+      const sessionIdText = readSessionId(parsedArguments?.session_id)
+      return sessionIdText ? `session ${sessionIdText}` : null
+    }
+
     const commandText = readFirstText([parsedArguments?.command, parsedArguments?.cmd])
     if (commandText) {
       return commandText

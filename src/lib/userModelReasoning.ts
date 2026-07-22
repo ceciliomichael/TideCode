@@ -4,7 +4,7 @@ import type {
   ReasoningRequestBodies,
 } from '../types/chat'
 
-export type UserModelReasoningKind = 'none' | 'toggle' | 'effort'
+export type UserModelReasoningKind = 'none' | 'effort' | 'provider_default'
 
 export const USER_MODEL_EFFORT_CHOICES = [
   'minimal',
@@ -30,12 +30,12 @@ export function getSelectableUserModelEfforts(providerId: CustomModelProviderId)
 
 export function getUserModelReasoningKind(
   reasoningCapable: boolean,
-  efforts: readonly ReasoningEffort[] | undefined,
+  _efforts: readonly ReasoningEffort[] | undefined,
+  providerId: CustomModelProviderId
 ): UserModelReasoningKind {
-  if (!reasoningCapable || !efforts?.length) return 'none'
-  return efforts.length === 2 && efforts.includes('none') && efforts.includes('high')
-    ? 'toggle'
-    : 'effort'
+  if (!reasoningCapable) return 'none'
+  if (!providerId.startsWith('custom:')) return 'provider_default'
+  return 'effort'
 }
 
 function buildOpenAICompatibleReasoningBodies(efforts: readonly ReasoningEffort[]) {
@@ -46,6 +46,7 @@ function buildOpenAICompatibleReasoningBodies(efforts: readonly ReasoningEffort[
 }
 
 export function buildUserModelReasoningProfile(input: {
+  customReasoningBodies?: ReasoningRequestBodies
   defaultEffort?: ReasoningEffort
   effortChoices?: readonly ReasoningEffort[]
   kind: UserModelReasoningKind
@@ -54,12 +55,25 @@ export function buildUserModelReasoningProfile(input: {
   if (input.kind === 'none') {
     return { reasoningCapable: false } as const
   }
+  if (input.kind === 'provider_default') {
+    const isCustomProvider = input.providerId.startsWith('custom:')
+    if (isCustomProvider) {
+      throw new Error('Custom providers cannot use the default reasoning schema.')
+    }
+    const defaultSchema = {
+      anthropic: { reasoningCapable: true },
+      deepseek: { reasoningCapable: true, reasoningEfforts: ['none', 'low', 'high'], defaultReasoningEffort: 'low' },
+      google: { reasoningCapable: false },
+      mistral: { reasoningCapable: false },
+      openai: { reasoningCapable: true, reasoningEfforts: ['low', 'medium', 'high'], defaultReasoningEffort: 'medium' },
+      codex: { reasoningCapable: true, reasoningEfforts: ['low', 'medium', 'high', 'xhigh'], defaultReasoningEffort: 'medium' }
+    } as const
+    return defaultSchema[input.providerId as keyof typeof defaultSchema] ?? { reasoningCapable: true }
+  }
 
-  const reasoningEfforts: ReasoningEffort[] = input.kind === 'toggle'
-    ? ['none', 'high']
-    : Array.from(new Set(
-        (input.effortChoices ?? []).filter((effort) => effort !== 'none'),
-      ))
+  const reasoningEfforts: ReasoningEffort[] = Array.from(new Set(
+    (input.effortChoices ?? []).filter((effort) => effort !== 'none'),
+  ))
   if (reasoningEfforts.length === 0) {
     throw new Error('Select at least one reasoning effort.')
   }
@@ -74,7 +88,7 @@ export function buildUserModelReasoningProfile(input: {
     defaultReasoningEffort,
     reasoningCapable: true,
     ...(isCustomProvider
-      ? { reasoningBodies: buildOpenAICompatibleReasoningBodies(reasoningEfforts) }
+      ? { reasoningBodies: input.customReasoningBodies ?? buildOpenAICompatibleReasoningBodies(reasoningEfforts) }
       : {}),
     reasoningEfforts,
   } as const

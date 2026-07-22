@@ -5,7 +5,12 @@
     "id": "openai:gpt-5.6-sol",
     "label": "GPT-5.6 Sol",
     "reasoningCapable": true,
-    "reasoningEfforts": ["low", "medium", "high", "xhigh"],
+    "reasoningEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
     "defaultReasoningEffort": "high"
   },
   {
@@ -14,7 +19,11 @@
     "id": "openai:gpt-5.6-terra",
     "label": "GPT-5.6 Terra",
     "reasoningCapable": true,
-    "reasoningEfforts": ["low", "medium", "high"],
+    "reasoningEfforts": [
+      "low",
+      "medium",
+      "high"
+    ],
     "defaultReasoningEffort": "medium"
   },
   {
@@ -23,7 +32,11 @@
     "id": "openai:gpt-5.6-luna",
     "label": "GPT-5.6 Luna",
     "reasoningCapable": true,
-    "reasoningEfforts": ["minimal", "low", "medium"],
+    "reasoningEfforts": [
+      "minimal",
+      "low",
+      "medium"
+    ],
     "defaultReasoningEffort": "low"
   },
   {
@@ -32,7 +45,12 @@
     "id": "openai:gpt-5.5",
     "label": "GPT-5.5",
     "reasoningCapable": true,
-    "reasoningEfforts": ["minimal", "low", "medium", "high"],
+    "reasoningEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high"
+    ],
     "defaultReasoningEffort": "medium"
   },
   {
@@ -41,7 +59,12 @@
     "id": "openai:gpt-5.4",
     "label": "GPT-5.4",
     "reasoningCapable": true,
-    "reasoningEfforts": ["minimal", "low", "medium", "high"],
+    "reasoningEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high"
+    ],
     "defaultReasoningEffort": "medium"
   },
   {
@@ -50,7 +73,11 @@
     "id": "openai:gpt-5.4-mini",
     "label": "GPT-5.4 Mini",
     "reasoningCapable": true,
-    "reasoningEfforts": ["minimal", "low", "medium"],
+    "reasoningEfforts": [
+      "minimal",
+      "low",
+      "medium"
+    ],
     "defaultReasoningEffort": "low"
   }
 ]

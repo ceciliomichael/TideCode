@@ -139,7 +139,7 @@ export function ModelsSettingsPanel({ providersState }: ModelsSettingsPanelProps
           </div>
         ))}
 
-      <section className="flex min-h-[420px] flex-none flex-col overflow-hidden rounded-2xl border border-border bg-surface md:max-h-[calc(100dvh-12rem)]">
+      <section className="flex min-h-[280px] max-h-[calc(100dvh-14rem)] flex-none flex-col overflow-hidden rounded-2xl border border-border bg-surface md:min-h-[360px] md:max-h-[calc(100dvh-16.5rem)]">
         <div className="border-b border-border px-4 py-3 md:px-5">
           <div className="relative">
             <Search

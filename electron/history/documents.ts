@@ -1,7 +1,6 @@
 import { isChatAttachment } from '../../src/lib/chatAttachments'
 import { normalizeAssistantMessageContent } from '../../src/lib/chatMessageContent'
 import { getConversationPreviewContent } from '../../src/lib/chatMessageMetadata'
-import { isApiKeyProviderId } from '../providers/providerIds'
 import type {
   ChatMode,
   ConversationFolderRecord,
@@ -116,19 +115,8 @@ function isMessage(value: unknown): value is Message {
   }
 
   const message = value as Partial<Message>
-  const hasValidProviderId =
-    message.providerId === undefined ||
-    message.providerId === 'codex' ||
-    (typeof message.providerId === 'string' && isApiKeyProviderId(message.providerId))
-  const hasValidReasoningEffort =
-    message.reasoningEffort === undefined ||
-    message.reasoningEffort === 'none' ||
-    message.reasoningEffort === 'minimal' ||
-    message.reasoningEffort === 'low' ||
-    message.reasoningEffort === 'medium' ||
-    message.reasoningEffort === 'high' ||
-    message.reasoningEffort === 'xhigh' ||
-    message.reasoningEffort === 'max'
+  const hasValidProviderId = message.providerId === undefined || typeof message.providerId === 'string'
+  const hasValidReasoningEffort = message.reasoningEffort === undefined || typeof message.reasoningEffort === 'string'
   const hasValidUserMessageKind =
     message.userMessageKind === undefined ||
     message.userMessageKind === 'human' ||

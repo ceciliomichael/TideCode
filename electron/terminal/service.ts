@@ -25,6 +25,7 @@ const TERMINAL_MIN_ROWS = 6;
 const TERMINAL_MAX_ROWS = 200;
 const MAX_SESSION_OUTPUT_BUFFER_LENGTH = 300_000;
 const MAX_TERMINAL_POLLING_MS = 60_000;
+const IDLE_TERMINATE_MS = 5 * 60 * 1000; // 5 minutes
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"]);
 
 interface TerminalShellSpec {
@@ -37,6 +38,9 @@ interface ActiveTerminalSession {
   cwd: string;
   exitCode: number | null;
   hasExited: boolean;
+  idleTimerId: ReturnType<typeof setTimeout> | null;
+  label: string | null;
+  lastReadAt: number;
   outputBuffer: string;
   outputWaiters: Set<() => void>;
   ownerWebContentsId: number;
@@ -51,10 +55,21 @@ export interface TerminalSessionSnapshot {
   cwd: string;
   exitCode: number | null;
   hasExited: boolean;
+  label: string | null;
   outputBuffer: string;
   shellLabel: string;
   signal: number | null;
   sessionId: number;
+}
+
+export interface TerminalSessionInfo {
+  cwd: string;
+  hasExited: boolean;
+  label: string | null;
+  lastReadAt: number;
+  sessionId: number;
+  shellLabel: string;
+  workspaceRootPath: string;
 }
 
 const sessions = new Map<number, ActiveTerminalSession>();
@@ -331,6 +346,7 @@ function createTerminalSessionSnapshot(
     cwd: activeSession.cwd,
     exitCode: activeSession.exitCode,
     hasExited: activeSession.hasExited,
+    label: activeSession.label,
     outputBuffer: activeSession.outputBuffer,
     shellLabel: activeSession.shellLabel,
     signal: activeSession.signal,
@@ -424,6 +440,11 @@ function terminateSession(sessionId: number) {
     return;
   }
 
+  if (activeSession.idleTimerId !== null) {
+    clearTimeout(activeSession.idleTimerId);
+    activeSession.idleTimerId = null;
+  }
+
   notifySessionWaiters(activeSession);
   sessions.delete(sessionId);
   unregisterSessionFromOwner(activeSession.ownerWebContentsId, sessionId);
@@ -437,6 +458,24 @@ function terminateSession(sessionId: number) {
   } catch (error) {
     console.warn(`Failed to kill terminal session ${sessionId}`, error);
   }
+}
+
+function scheduleIdleTerminate(sessionId: number) {
+  const activeSession = sessions.get(sessionId);
+  if (!activeSession) return;
+
+  if (activeSession.idleTimerId !== null) {
+    clearTimeout(activeSession.idleTimerId);
+  }
+
+  activeSession.idleTimerId = setTimeout(() => {
+    const session = sessions.get(sessionId);
+    if (!session) return;
+    const idleMs = Date.now() - session.lastReadAt;
+    if (idleMs >= IDLE_TERMINATE_MS) {
+      terminateSession(sessionId);
+    }
+  }, IDLE_TERMINATE_MS);
 }
 
 function terminateSessionsForOwner(ownerWebContentsId: number) {
@@ -678,6 +717,9 @@ async function createTerminalSessionInternal(
     cwd,
     exitCode: null,
     hasExited: false,
+    idleTimerId: null,
+    label: input.label ?? null,
+    lastReadAt: Date.now(),
     outputBuffer: "",
     outputWaiters: new Set(),
     ownerWebContentsId: sender.id,
@@ -690,6 +732,7 @@ async function createTerminalSessionInternal(
   sessions.set(sessionId, activeSession);
   registerSessionWithOwner(sender.id, sessionId);
   registerWorkspaceSession(sender.id, workspaceSessionKey, sessionId);
+  scheduleIdleTerminate(sessionId);
 
   ptyProcess.onData((data) => {
     const sessionForData = sessions.get(sessionId);
@@ -875,7 +918,48 @@ export async function getTerminalSessionOutputForWebContents(
     );
   }
 
+  // Reset idle timer on every read
+  refreshedSession.lastReadAt = Date.now();
+  scheduleIdleTerminate(input.sessionId);
+
   return createTerminalSessionSnapshot(input.sessionId, refreshedSession);
+}
+
+export function listSessionsForWebContents(
+  sender: WebContents,
+  workspaceRootPath: string,
+): TerminalSessionInfo[] {
+  const ownerSessions = ownerSessionIds.get(sender.id);
+  if (!ownerSessions) return [];
+
+  const normalizedWorkspace = normalizeWorkspacePath(workspaceRootPath);
+  const result: TerminalSessionInfo[] = [];
+
+  for (const sessionId of ownerSessions) {
+    const session = sessions.get(sessionId);
+    if (!session) continue;
+    if (session.workspaceRootPath !== normalizedWorkspace) continue;
+    result.push({
+      cwd: session.cwd,
+      hasExited: session.hasExited,
+      label: session.label,
+      lastReadAt: session.lastReadAt,
+      sessionId,
+      shellLabel: session.shellLabel,
+      workspaceRootPath: session.workspaceRootPath,
+    });
+  }
+
+  return result;
+}
+
+export function terminateSessionForWebContents(
+  sender: WebContents,
+  sessionId: number,
+  workspaceRootPath: string,
+) {
+  assertSessionOwnership(sender.id, sessionId, workspaceRootPath);
+  terminateSession(sessionId);
 }
 
 export async function openExternalTerminalLink(

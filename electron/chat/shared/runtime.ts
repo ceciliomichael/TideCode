@@ -25,6 +25,7 @@ import {
 import { projectCanonicalReplay } from '../history/replayProjector'
 import { buildChatPrompt, buildChatSystemPrompt } from './messages'
 import { createAgentTools } from './tools'
+import { terminateAllBackgroundSessions } from './tools/terminalTools'
 import type { AgentToolExecutionResult } from './toolTypes'
 import {
   createCanonicalToolResultContent,
@@ -581,5 +582,6 @@ export async function runToolEnabledChatStream(input: {
     }
   } finally {
     input.onSettled?.()
+    terminateAllBackgroundSessions(input.webContents, input.startInput.agentContextRootPath).catch(() => {})
   }
 }

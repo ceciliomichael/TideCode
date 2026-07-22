@@ -5,7 +5,10 @@
     "id": "mistral:mistral-large-latest",
     "label": "Mistral Large",
     "reasoningCapable": true,
-    "reasoningEfforts": ["none", "high"],
+    "reasoningEfforts": [
+      "none",
+      "high"
+    ],
     "defaultReasoningEffort": "high"
   },
   {
@@ -14,7 +17,10 @@
     "id": "mistral:mistral-medium-latest",
     "label": "Mistral Medium",
     "reasoningCapable": true,
-    "reasoningEfforts": ["none", "high"],
+    "reasoningEfforts": [
+      "none",
+      "high"
+    ],
     "defaultReasoningEffort": "none"
   },
   {
@@ -23,7 +29,10 @@
     "id": "mistral:mistral-small-latest",
     "label": "Mistral Small",
     "reasoningCapable": true,
-    "reasoningEfforts": ["none", "high"],
+    "reasoningEfforts": [
+      "none",
+      "high"
+    ],
     "defaultReasoningEffort": "none"
   }
 ]

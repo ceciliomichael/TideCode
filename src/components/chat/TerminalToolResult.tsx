@@ -4,8 +4,8 @@ interface TerminalToolResultProps {
   toolName: string
 }
 
-function getTerminalResultLabel(toolName: TerminalToolResultProps['toolName']) {
-  if (toolName === 'run_terminal') {
+function getTerminalResultLabel(toolName: string) {
+  if (toolName === 'execute_terminal' || toolName === 'run_terminal') {
     return 'Terminal output'
   }
 
