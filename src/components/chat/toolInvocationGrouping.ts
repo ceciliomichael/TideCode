@@ -54,7 +54,6 @@ function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts
 
   if (
     toolName === 'execute_terminal' ||
-    toolName === 'run_terminal' ||
     toolName === 'get_terminal_output' ||
     toolName === 'exec_command' ||
     toolName === 'write_stdin' ||

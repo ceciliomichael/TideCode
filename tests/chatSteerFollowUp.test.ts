@@ -35,7 +35,7 @@ test('steer can interrupt once tool execution has settled', () => {
     canInterruptStreamForSteer([
       {
         state: 'completed',
-        toolName: 'run_terminal',
+        toolName: 'execute_terminal',
       },
       {
         state: 'failed',

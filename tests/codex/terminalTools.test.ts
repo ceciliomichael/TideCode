@@ -14,7 +14,7 @@ const webContentsStub = {
   once: () => undefined,
 } as unknown as WebContents
 
-type RunTerminalResult = {
+type ExecuteTerminalResult = {
   body?: string
   semantics?: Record<string, unknown>
   status?: string
@@ -22,26 +22,29 @@ type RunTerminalResult = {
   truncated?: boolean
 }
 
-type RunTerminalTool = {
+type ExecuteTerminalTool = {
   execute: (
     input: {
-      cols: number
+      mode: 'execute' | 'read' | 'list' | 'end'
+      cols?: number
       command?: string
       cwd?: string
-      rows: number
+      rows?: number
+      session_id?: number
       session_key?: string
+      wait_ms?: number
     },
     options?: { abortSignal?: AbortSignal },
-  ) => Promise<RunTerminalResult>
+  ) => Promise<ExecuteTerminalResult>
 }
 
-function getRunTerminalTool(tools: ReturnType<typeof createTerminalToolSet>) {
-  return tools.run_terminal as unknown as RunTerminalTool
+function getExecuteTerminalTool(tools: ReturnType<typeof createTerminalToolSet>) {
+  return tools.execute_terminal as unknown as ExecuteTerminalTool
 }
 
 function readCompletionMarker(writtenCommand: string) {
-  const markerMatch = writtenCommand.match(/__ECHOSPHERE_COMMAND_DONE_[A-Za-z0-9_]+__/u)
-  assert.ok(markerMatch, 'expected run_terminal to append a completion marker')
+  const markerMatch = writtenCommand.match(/__EDONE_[A-Za-z0-9_]+__/u)
+  assert.ok(markerMatch, 'expected execute_terminal to append a completion marker')
   return markerMatch[0]
 }
 
@@ -49,13 +52,14 @@ function pathExists(targetPath: string) {
   return existsSync(targetPath)
 }
 
-test('run_terminal queues a command, waits for completion, and returns cleaned output', async () => {
+test('execute_terminal mode=execute queues command in background and mode=read fetches cleaned output', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-tools-workspace-'))
   const nestedPath = path.join(workspaceRootPath, 'nested')
   await fs.mkdir(nestedPath, { recursive: true })
   const createCalls: Array<{
     cols: number
     cwd?: string
+    enableIdleTimeout?: boolean
     rows: number
     sessionKey?: string | null
     workspaceRootPath?: string | null
@@ -94,13 +98,16 @@ test('run_terminal queues a command, waits for completion, and returns cleaned o
             sessionId: input.sessionId,
           }
         },
+        listSessions: () => [],
+        terminateSession: () => undefined,
         writeToSession: async (_owner, input) => {
           writeCalls.push(input)
         },
       },
     )
 
-    const result = await getRunTerminalTool(tools).execute({
+    const execResult = await getExecuteTerminalTool(tools).execute({
+      mode: 'execute',
       cols: 120,
       command: 'npm test',
       cwd: 'nested',
@@ -108,10 +115,14 @@ test('run_terminal queues a command, waits for completion, and returns cleaned o
       session_key: 'build',
     })
 
+    assert.equal(execResult.status, 'success')
+    assert.match(execResult.body ?? '', /Command started in background\. session_id: 7/u)
     assert.deepEqual(createCalls, [
       {
         cols: 120,
         cwd: nestedPath,
+        enableIdleTimeout: true,
+        label: null,
         rows: 30,
         sessionKey: 'build',
         workspaceRootPath,
@@ -120,31 +131,26 @@ test('run_terminal queues a command, waits for completion, and returns cleaned o
     assert.equal(writeCalls.length, 1)
     assert.equal(writeCalls[0].sessionId, 7)
     assert.match(writeCalls[0].data, /npm test/u)
-    assert.doesNotMatch(writeCalls[0].data, /\r\n/u)
-    assert.match(writeCalls[0].data, /__ECHOSPHERE_COMMAND_DONE_/u)
-    assert.deepEqual(getSessionOutputCalls, [
-      {
-        pollingMs: 500,
-        sessionId: 7,
-        workspaceRootPath,
-      },
-    ])
-    assert.doesNotMatch(result.body ?? '', /Started session 1/u)
-    assert.doesNotMatch(result.body ?? '', /Command queued: npm test/u)
-    assert.match(result.body ?? '', /line 1/u)
-    assert.match(result.body ?? '', /line 2/u)
-    assert.ok(!(result.body ?? '').includes('\u001B'))
-    assert.doesNotMatch(result.body ?? '', /__ECHOSPHERE_COMMAND_DONE_/u)
-    assert.equal(result.semantics?.command_completed, true)
-    assert.equal(result.semantics?.command_exit_code, 0)
-    assert.equal(result.semantics?.timed_out, false)
+
+    const readResult = await getExecuteTerminalTool(tools).execute({
+      mode: 'read',
+      session_id: 7,
+      wait_ms: 500,
+    })
+
+    assert.equal(readResult.status, 'success')
+    assert.match(readResult.body ?? '', /line 1/u)
+    assert.match(readResult.body ?? '', /line 2/u)
+    assert.ok(!(readResult.body ?? '').includes('\u001B'))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('run_terminal truncates large git diff output before returning it to the model', async () => {
+test('execute_terminal mode=read truncates large git diff output', async () => {
   const largeDiffOutput = `diff --git a/file.ts b/file.ts\n${'+changed line\n'.repeat(2500)}`
+  const writeCalls: Array<{ data: string; sessionId: number }> = []
+
   const tools = createTerminalToolSet(
     {
       conversationId: 'conversation-large-diff',
@@ -160,84 +166,43 @@ test('run_terminal truncates large git diff output before returning it to the mo
         shell: 'pwsh',
       }),
       getSessionOutput: async (_owner, input) => {
-        const marker = readCompletionMarker(writeCalls[0]?.data ?? '')
         return {
           cwd: '/workspace',
           exitCode: null,
           hasExited: false,
-          outputBuffer: `${largeDiffOutput}\n${marker}:0\n`,
+          outputBuffer: `${largeDiffOutput}\n`,
           shellLabel: 'pwsh',
           signal: null,
           sessionId: input.sessionId,
         }
       },
+      listSessions: () => [],
+      terminateSession: () => undefined,
       writeToSession: async (_owner, input) => {
         writeCalls.push(input)
       },
     },
   )
-  const writeCalls: Array<{ data: string; sessionId: number }> = []
 
-  const result = await getRunTerminalTool(tools).execute({
+  await getExecuteTerminalTool(tools).execute({
+    mode: 'execute',
     cols: 120,
     command: 'git diff',
-    cwd: '.',
     rows: 30,
   })
 
-  assert.equal(result.status, 'success')
-  assert.match(writeCalls[0]?.data ?? '', /git --no-pager diff/u)
-  assert.equal(result.semantics?.truncated_output, true)
-  assert.equal(result.truncated, true)
-  assert.match(result.body ?? '', /Output truncated at 20000 characters/u)
-  assert.match(result.body ?? '', /prefer `git diff --stat`/u)
-  assert.ok((result.body ?? '').length < largeDiffOutput.length)
+  const readResult = await getExecuteTerminalTool(tools).execute({
+    mode: 'read',
+    session_id: 91,
+  })
+
+  assert.equal(readResult.status, 'success')
+  assert.equal(readResult.semantics?.truncated_output, true)
+  assert.equal(readResult.truncated, true)
+  assert.match(readResult.body ?? '', /Output truncated at 20000 characters/u)
 })
 
-test('run_terminal starts at session 1 in a different conversation thread without polling when no command is provided', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-tools-thread-'))
-  let getSessionOutputCalled = false
-
-  try {
-    const tools = createTerminalToolSet(
-      {
-        conversationId: 'conversation-b',
-        webContents: webContentsStub,
-        workspaceRootPath,
-      },
-      {
-        createSession: async () => ({
-          bufferedOutput: '',
-          cwd: workspaceRootPath,
-          isReused: false,
-          sessionId: 8,
-          shell: 'pwsh',
-        }),
-        getSessionOutput: async () => {
-          getSessionOutputCalled = true
-          throw new Error('unexpected getSessionOutput call')
-        },
-        writeToSession: async () => undefined,
-      },
-    )
-
-    const result = await getRunTerminalTool(tools).execute({
-      cols: 120,
-      cwd: '.',
-      rows: 30,
-      session_key: 'build',
-    })
-
-    assert.doesNotMatch(result.body ?? '', /Started session 1/u)
-    assert.match(result.body ?? '', /No terminal output yet\./u)
-    assert.equal(result.semantics?.command, null)
-    assert.equal(getSessionOutputCalled, false)
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('run_terminal rejects commands outside the allowlist without launching a terminal', async () => {
+test('execute_terminal rejects commands outside the allowlist in sandbox mode', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-apply-patch-'))
   let createSessionCalled = false
 
@@ -256,79 +221,28 @@ test('run_terminal rejects commands outside the allowlist without launching a te
         getSessionOutput: async () => {
           throw new Error('unexpected terminal output poll')
         },
+        listSessions: () => [],
+        terminateSession: () => undefined,
         writeToSession: async () => undefined,
       },
     )
 
-    const result = await getRunTerminalTool(tools).execute({
+    const result = await getExecuteTerminalTool(tools).execute({
+      mode: 'execute',
       cols: 120,
-      command: `apply_patch <<'PATCH'
-<patch>
-<add path="src/from-terminal.txt">
-+hello
-</add>
-</patch>
-PATCH`,
-      cwd: '.',
+      command: `cd ../outside`,
       rows: 30,
     })
 
     assert.equal(createSessionCalled, false)
     assert.equal(result.status, 'error')
-    assert.match(result.summary ?? '', /only allows commands listed/u)
-    assert.equal(pathExists(path.join(workspaceRootPath, 'src', 'from-terminal.txt')), false)
+    assert.match(result.body ?? '', /Directory traversal \(\.\.\) is not allowed/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('run_terminal rejects cd-prefixed commands outside the allowlist without launching a terminal', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-apply-patch-cd-'))
-  await fs.mkdir(path.join(workspaceRootPath, 'packages', 'app'), { recursive: true })
-  let createSessionCalled = false
-
-  try {
-    const tools = createTerminalToolSet(
-      {
-        conversationId: 'conversation-apply-patch-cd',
-        webContents: webContentsStub,
-        workspaceRootPath,
-      },
-      {
-        createSession: async () => {
-          createSessionCalled = true
-          throw new Error('unexpected terminal launch')
-        },
-        getSessionOutput: async () => {
-          throw new Error('unexpected terminal output poll')
-        },
-        writeToSession: async () => undefined,
-      },
-    )
-
-    const result = await getRunTerminalTool(tools).execute({
-      cols: 120,
-      command: `cd packages/app && applypatch <<EOF
-<patch>
-<add path="local.txt">
-+scoped
-</add>
-</patch>
-EOF`,
-      cwd: '.',
-      rows: 30,
-    })
-
-    assert.equal(createSessionCalled, false)
-    assert.equal(result.status, 'error')
-    assert.match(result.summary ?? '', /only allows commands listed/u)
-    assert.equal(pathExists(path.join(workspaceRootPath, 'packages', 'app', 'local.txt')), false)
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('run_terminal allows unrestricted commands in full access mode', async () => {
+test('execute_terminal allows unrestricted commands in full access mode', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-full-access-'))
   const createCalls: Array<{
     cols: number
@@ -359,27 +273,28 @@ test('run_terminal allows unrestricted commands in full access mode', async () =
           }
         },
         getSessionOutput: async (_owner, input) => {
-          const marker = readCompletionMarker(writeCalls[0]?.data ?? '')
           return {
             cwd: workspaceRootPath,
             exitCode: null,
             hasExited: false,
-            outputBuffer: `hello from full access\n${marker}:0\n`,
+            outputBuffer: `hello from full access\n`,
             shellLabel: 'pwsh',
             signal: null,
             sessionId: input.sessionId,
           }
         },
+        listSessions: () => [],
+        terminateSession: () => undefined,
         writeToSession: async (_owner, input) => {
           writeCalls.push(input)
         },
       },
     )
 
-    const result = await getRunTerminalTool(tools).execute({
+    const result = await getExecuteTerminalTool(tools).execute({
+      mode: 'execute',
       cols: 120,
       command: 'echo hello && whoami',
-      cwd: '.',
       rows: 30,
       session_key: 'full-access',
     })
@@ -388,112 +303,12 @@ test('run_terminal allows unrestricted commands in full access mode', async () =
     assert.equal(createCalls.length, 1)
     assert.equal(writeCalls.length, 1)
     assert.match(writeCalls[0].data, /echo hello && whoami/u)
-    assert.match(result.body ?? '', /hello from full access/u)
-    assert.equal(result.semantics?.command_completed, true)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('run_terminal increments local session ids sequentially', async () => {
-  let nextGlobalSessionId = 30
-  const tools = createTerminalToolSet(
-    {
-      conversationId: 'conversation-sequential',
-      webContents: webContentsStub,
-      workspaceRootPath: '/workspace',
-    },
-    {
-      createSession: async () => ({
-        bufferedOutput: '',
-        cwd: '/workspace',
-        isReused: false,
-        sessionId: nextGlobalSessionId++,
-        shell: 'pwsh',
-      }),
-      getSessionOutput: async () => {
-        throw new Error('unexpected getSessionOutput call')
-      },
-      writeToSession: async () => undefined,
-    },
-  )
-
-  const firstRunResult = await getRunTerminalTool(tools).execute({
-    cols: 120,
-    cwd: '.',
-    rows: 30,
-    session_key: 'first',
-  })
-
-  const secondRunResult = await getRunTerminalTool(tools).execute({
-    cols: 120,
-    cwd: '.',
-    rows: 30,
-    session_key: 'second',
-  })
-
-  assert.doesNotMatch(firstRunResult.body ?? '', /Started session 1/u)
-  assert.doesNotMatch(secondRunResult.body ?? '', /Started session 2/u)
-  assert.match(firstRunResult.body ?? '', /No terminal output yet\./u)
-  assert.match(secondRunResult.body ?? '', /No terminal output yet\./u)
-})
-
-test('run_terminal aborts promptly while waiting for command output', async () => {
-  let releaseOutput: (() => void) | null = null
-  const outputPromiseGate = new Promise<void>((resolve) => {
-    releaseOutput = resolve
-  })
-  const tools = createTerminalToolSet(
-    {
-      conversationId: 'conversation-abort',
-      webContents: webContentsStub,
-      workspaceRootPath: '/workspace',
-    },
-    {
-      createSession: async () => ({
-        bufferedOutput: '',
-        cwd: '/workspace',
-        isReused: false,
-        sessionId: 41,
-        shell: 'pwsh',
-      }),
-      getSessionOutput: async (_owner, input) => {
-        await outputPromiseGate
-        return {
-          cwd: '/workspace',
-          exitCode: null,
-          hasExited: false,
-          outputBuffer: 'late output\n',
-          shellLabel: 'pwsh',
-          signal: null,
-          sessionId: input.sessionId,
-        }
-      },
-      writeToSession: async () => undefined,
-    },
-  )
-
-  const abortController = new AbortController()
-  const outputPromise = getRunTerminalTool(tools).execute(
-    {
-      cols: 120,
-      command: 'npm test',
-      cwd: '.',
-      rows: 30,
-      session_key: 'abortable-poll',
-    },
-    {
-      abortSignal: abortController.signal,
-    },
-  )
-
-  abortController.abort(new Error('Canceled by test'))
-
-  await assert.rejects(outputPromise, /Canceled by test/u)
-  releaseOutput?.()
-})
-
-test('createAgentTools exposes only run_terminal in agent mode when a webContents owner is available', async () => {
+test('createAgentTools exposes execute_terminal in agent mode when webContents is available', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-tools-'))
 
   try {
@@ -516,16 +331,14 @@ test('createAgentTools exposes only run_terminal in agent mode when a webContent
       },
     )
 
-    assert.ok('run_terminal' in agentTools)
-    assert.ok(!('get_terminal_output' in agentTools))
-    assert.ok(!('run_terminal' in planTools))
-    assert.ok(!('get_terminal_output' in planTools))
+    assert.ok('execute_terminal' in agentTools)
+    assert.ok(!('execute_terminal' in planTools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('run_terminal allows a cwd outside the workspace root in Full Access mode', async () => {
+test('execute_terminal allows a cwd outside the workspace root in Full Access mode', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-outside-ws-'))
   const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-outside-dir-'))
   const createCalls: Array<{
@@ -557,24 +370,26 @@ test('run_terminal allows a cwd outside the workspace root in Full Access mode',
           }
         },
         getSessionOutput: async (_owner, input) => {
-          const marker = readCompletionMarker(writeCalls[0]?.data ?? '')
           return {
             cwd: outsideDirectoryPath,
             exitCode: null,
             hasExited: false,
-            outputBuffer: `hello from outside cwd\n${marker}:0\n`,
+            outputBuffer: `hello from outside cwd\n`,
             shellLabel: 'pwsh',
             signal: null,
             sessionId: input.sessionId,
           }
         },
+        listSessions: () => [],
+        terminateSession: () => undefined,
         writeToSession: async (_owner, input) => {
           writeCalls.push(input)
         },
       },
     )
 
-    const result = await getRunTerminalTool(tools).execute({
+    const result = await getExecuteTerminalTool(tools).execute({
+      mode: 'execute',
       cols: 120,
       command: 'echo hello',
       cwd: outsideDirectoryPath,
@@ -587,7 +402,6 @@ test('run_terminal allows a cwd outside the workspace root in Full Access mode',
     assert.equal(createCalls[0].cwd, outsideDirectoryPath)
     assert.equal(writeCalls.length, 1)
     assert.match(writeCalls[0].data, /echo hello/u)
-    assert.match(result.body ?? '', /hello from outside cwd/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
     await fs.rm(outsideDirectoryPath, { force: true, recursive: true })

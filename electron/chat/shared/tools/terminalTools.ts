@@ -443,8 +443,9 @@ export function createTerminalToolSet(
               abortSignal,
             )
 
+            const trackedCommand = backgroundSessions.get(inputValue.session_id) ?? null
             const sanitized = sanitizeTerminalOutput(snapshot.outputBuffer)
-            const truncated = truncateTerminalOutput(sanitized, null)
+            const truncated = truncateTerminalOutput(sanitized, trackedCommand)
 
             return createSuccessResult({
               body: truncated.body || 'No output yet.',
@@ -508,6 +509,7 @@ export function createTerminalToolSet(
             resolvedDependencies.createSession(ownerWebContents, {
               cols,
               cwd,
+              enableIdleTimeout: true,
               label: inputValue.label ?? null,
               rows,
               sessionKey: inputValue.session_key,

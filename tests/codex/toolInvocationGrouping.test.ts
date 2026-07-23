@@ -63,7 +63,7 @@ test('buildToolInvocationGroupSummary reports list, search, command, and file co
   const summary = buildToolInvocationGroupSummary([
     createInvocation('list'),
     createInvocation('glob'),
-    createInvocation('run_terminal'),
+    createInvocation('execute_terminal'),
     createInvocation('read'),
   ])
 
@@ -101,7 +101,7 @@ test('buildToolInvocationGroupSummary uses a kanban label for kanban-only groups
 
 test('buildToolInvocationGroupSummary includes kanban tools alongside other work', () => {
   const summary = buildToolInvocationGroupSummary([
-    createInvocation('run_terminal'),
+    createInvocation('execute_terminal'),
     createInvocation('create_card'),
   ])
 
@@ -126,9 +126,9 @@ test('buildToolInvocationGroupSummary uses Ran for search-only summaries', () =>
   assert.equal(summary, 'Ran 2 searches')
 })
 
-test('buildToolInvocationGroupSummary aggregates run_terminal and get_terminal_output as commands', () => {
+test('buildToolInvocationGroupSummary aggregates execute_terminal and get_terminal_output as commands', () => {
   const summary = buildToolInvocationGroupSummary([
-    createInvocation('run_terminal'),
+    createInvocation('execute_terminal'),
     createInvocation('get_terminal_output'),
   ])
 
@@ -136,7 +136,7 @@ test('buildToolInvocationGroupSummary aggregates run_terminal and get_terminal_o
 })
 
 test('buildToolInvocationGroupSummary uses a plain command label when commands are the only work', () => {
-  const summary = buildToolInvocationGroupSummary([createInvocation('run_terminal')])
+  const summary = buildToolInvocationGroupSummary([createInvocation('execute_terminal')])
 
   assert.equal(summary, 'Ran 1 command')
 })
@@ -144,7 +144,7 @@ test('buildToolInvocationGroupSummary uses a plain command label when commands a
 test('buildToolInvocationGroupSummary switches to exploring while a child invocation is active', () => {
   const summary = buildToolInvocationGroupSummary([
     {
-      ...createInvocation('run_terminal'),
+      ...createInvocation('execute_terminal'),
       state: 'running',
     },
     createInvocation('get_terminal_output'),
@@ -160,14 +160,14 @@ test('buildToolInvocationGroupSummary returns only the exploring label for activ
       state: 'running',
     },
     createInvocation('glob'),
-    createInvocation('run_terminal'),
+    createInvocation('execute_terminal'),
   ], 'Exploring')
 
   assert.equal(summary, 'Exploring')
 })
 
 test('buildToolInvocationGroupSummary allows the explored label to be overridden', () => {
-  const summary = buildToolInvocationGroupSummary([createInvocation('run_terminal')], 'Explored')
+  const summary = buildToolInvocationGroupSummary([createInvocation('execute_terminal')], 'Explored')
 
   assert.equal(summary, 'Ran 1 command')
 })
@@ -194,9 +194,9 @@ test('buildToolInvocationGroupSummary splits mixed file mutations and exploratio
     createMutationInvocation('tool-write-create-2', 'add', 'apply_patch'),
     createInvocation('read'),
     createInvocation('glob'),
-    createInvocation('run_terminal'),
+    createInvocation('execute_terminal'),
     createInvocation('get_terminal_output'),
-    createInvocation('run_terminal'),
+    createInvocation('execute_terminal'),
   ])
 
   assert.equal(

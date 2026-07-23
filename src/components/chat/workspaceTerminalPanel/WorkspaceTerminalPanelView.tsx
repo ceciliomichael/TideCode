@@ -164,14 +164,31 @@ export function WorkspaceTerminalPanelView({
       </div>
       {activeTerminalTab?.status === "error" &&
       activeTerminalTab.errorMessage ? (
-        <div className="border-t border-danger-border bg-danger-surface px-4 py-1.5 text-xs text-danger-foreground">
-          {activeTerminalTab.errorMessage}
+        <div className="flex items-center justify-between border-t border-danger-border bg-danger-surface px-4 py-1.5 text-xs text-danger-foreground">
+          <span>{activeTerminalTab.errorMessage}</span>
+          <button
+            type="button"
+            onClick={() => void panelState.restartTerminalTab(activeTerminalTab.key)}
+            className="rounded bg-danger-foreground/10 px-2 py-0.5 font-medium transition-colors hover:bg-danger-foreground/20"
+          >
+            Restart
+          </button>
         </div>
       ) : null}
-      {activeTerminalTab?.status === "exited" &&
-      activeTerminalTab.exitCode !== null ? (
-        <div className="border-t border-border bg-surface-muted px-4 py-1.5 text-xs text-muted-foreground">
-          Process exited with code {activeTerminalTab.exitCode}
+      {activeTerminalTab?.status === "exited" ? (
+        <div className="flex items-center justify-between border-t border-border bg-surface-muted px-4 py-1.5 text-xs text-muted-foreground">
+          <span>
+            {activeTerminalTab.exitCode !== null
+              ? `Process exited with code ${activeTerminalTab.exitCode}`
+              : "Terminal session ended"}
+          </span>
+          <button
+            type="button"
+            onClick={() => void panelState.restartTerminalTab(activeTerminalTab.key)}
+            className="rounded bg-surface-muted-hover px-2 py-0.5 font-medium transition-colors hover:text-foreground"
+          >
+            Restart Terminal
+          </button>
         </div>
       ) : null}
     </section>

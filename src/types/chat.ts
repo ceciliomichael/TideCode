@@ -576,6 +576,7 @@ export interface WorkspaceExplorerImportEntryResult {
 export interface CreateTerminalSessionInput {
   cols: number
   cwd?: string | null
+  enableIdleTimeout?: boolean
   label?: string | null
   sessionKey?: string | null
   workspaceRootPath?: string | null

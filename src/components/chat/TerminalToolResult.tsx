@@ -5,7 +5,7 @@ interface TerminalToolResultProps {
 }
 
 function getTerminalResultLabel(toolName: string) {
-  if (toolName === 'execute_terminal' || toolName === 'run_terminal') {
+  if (toolName === 'execute_terminal') {
     return 'Terminal output'
   }
 

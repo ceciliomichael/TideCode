@@ -400,7 +400,7 @@ function getToolVerb(invocation: ToolInvocationTrace) {
       : formatEditVerb(actionKind === 'overwrite' ? 'edit' : actionKind, invocation.state)
   }
 
-  if (invocation.toolName === 'execute_terminal' || invocation.toolName === 'run_terminal') {
+  if (invocation.toolName === 'execute_terminal') {
     const parsedArgs = parseCompleteToolArguments(invocation.argumentsText) as Record<string, any>
     const mode = parsedArgs?.mode || 'execute'
     if (mode === 'read') {
@@ -618,7 +618,7 @@ export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace)
 function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: string | null) {
   const parsedArguments = parseCompleteToolArguments(invocation.argumentsText) as Record<string, any>
 
-  if (invocation.toolName === 'execute_terminal' || invocation.toolName === 'run_terminal') {
+  if (invocation.toolName === 'execute_terminal') {
     const mode = parsedArguments?.mode || 'execute'
     
     if (mode === 'list') {

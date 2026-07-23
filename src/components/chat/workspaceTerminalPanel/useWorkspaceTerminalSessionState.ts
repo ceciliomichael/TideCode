@@ -405,18 +405,52 @@ export function useWorkspaceTerminalSessionState({
         terminal.onData((data) => {
           const tab = terminalTabsRef.current.find((t) => t.key === tabKey);
           if (tab?.sessionId === null || tab?.sessionId === undefined) {
+            if (tab?.status === "exited" && (data === "\r" || data === "\n")) {
+              void restartTerminalTab(tabKey);
+            }
             return;
           }
 
+          const targetSessionId = tab.sessionId;
           const workspaceRootPath = getActiveTerminalSessionWorkspaceRootPath(tabKey);
           void window.echosphereTerminal
             .writeToSession({
               data,
-              sessionId: tab.sessionId,
+              sessionId: targetSessionId,
               workspaceRootPath,
             })
             .catch((error) => {
-              console.error(`Failed to write terminal input for tab ${tabKey}`, error);
+              const errorMessage = getErrorMessage(error);
+              const isUnknownOrExited =
+                errorMessage.includes("Unknown terminal session id") ||
+                errorMessage.includes("already exited") ||
+                errorMessage.includes("does not belong");
+
+              if (isUnknownOrExited) {
+                sessionIdToTabKeyRef.current.delete(targetSessionId);
+                setTerminalTabs((currentTabs) =>
+                  currentTabs.map((t) =>
+                    t.key === tabKey
+                      ? {
+                          ...t,
+                          errorMessage: null,
+                          exitCode: t.exitCode ?? 0,
+                          sessionId: null,
+                          status: "exited",
+                        }
+                      : t,
+                  ),
+                );
+
+                const instanceToNotify = tabInstancesRef.current.get(tabKey);
+                if (instanceToNotify) {
+                  instanceToNotify.terminal.writeln(
+                    "\r\n\r\n[Terminal session ended. Press Enter or click Restart to reconnect.]",
+                  );
+                }
+              } else {
+                console.error(`Failed to write terminal input for tab ${tabKey}`, error);
+              }
             });
         }),
       );

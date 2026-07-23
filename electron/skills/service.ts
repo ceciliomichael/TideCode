@@ -240,7 +240,6 @@ export function buildSkillsSystemPromptBlock(skills: SkillSummary[]) {
         '  <skill>',
         `    <name>${escapeXml(skill.name)}</name>`,
         `    <description>${escapeXml(skill.description)}</description>`,
-        `    <location>${escapeXml(pathToFileURL(skill.location).href)}</location>`,
         '  </skill>',
       ].join('\n'),
     ),

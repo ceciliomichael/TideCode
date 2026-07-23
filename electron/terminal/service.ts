@@ -36,6 +36,7 @@ interface TerminalShellSpec {
 
 interface ActiveTerminalSession {
   cwd: string;
+  enableIdleTimeout: boolean;
   exitCode: number | null;
   hasExited: boolean;
   idleTimerId: ReturnType<typeof setTimeout> | null;
@@ -251,6 +252,8 @@ function createTerminalEnvironment() {
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
     TERM: "xterm-256color",
+    COLORTERM: "truecolor",
+    PYTHONUNBUFFERED: "1",
   };
   delete environment.ELECTRON_RUN_AS_NODE;
   return environment;
@@ -265,11 +268,7 @@ function createPowerShellInteractiveArgs() {
       "$ErrorActionPreference = 'SilentlyContinue'",
       "if (Get-Module -ListAvailable PSReadLine) { Import-Module PSReadLine -ErrorAction SilentlyContinue }",
       "if (Get-Command Set-PSReadLineOption -ErrorAction SilentlyContinue) {",
-      "  try { Set-PSReadLineOption -PredictionSource HistoryAndPlugin -PredictionViewStyle InlineView -BellStyle None } catch {",
-      "    try { Set-PSReadLineOption -PredictionSource History -PredictionViewStyle InlineView -BellStyle None } catch {",
-      "      try { Set-PSReadLineOption -PredictionSource History } catch {}",
-      "    }",
-      "  }",
+      "  try { Set-PSReadLineOption -PredictionSource None -BellStyle None } catch {}",
       "}",
     ].join("; "),
   ];
@@ -462,7 +461,7 @@ function terminateSession(sessionId: number) {
 
 function scheduleIdleTerminate(sessionId: number) {
   const activeSession = sessions.get(sessionId);
-  if (!activeSession) return;
+  if (!activeSession || !activeSession.enableIdleTimeout) return;
 
   if (activeSession.idleTimerId !== null) {
     clearTimeout(activeSession.idleTimerId);
@@ -470,7 +469,7 @@ function scheduleIdleTerminate(sessionId: number) {
 
   activeSession.idleTimerId = setTimeout(() => {
     const session = sessions.get(sessionId);
-    if (!session) return;
+    if (!session || !session.enableIdleTimeout) return;
     const idleMs = Date.now() - session.lastReadAt;
     if (idleMs >= IDLE_TERMINATE_MS) {
       terminateSession(sessionId);
@@ -715,6 +714,7 @@ async function createTerminalSessionInternal(
 
   const activeSession: ActiveTerminalSession = {
     cwd,
+    enableIdleTimeout: Boolean(input.enableIdleTimeout),
     exitCode: null,
     hasExited: false,
     idleTimerId: null,
@@ -732,7 +732,9 @@ async function createTerminalSessionInternal(
   sessions.set(sessionId, activeSession);
   registerSessionWithOwner(sender.id, sessionId);
   registerWorkspaceSession(sender.id, workspaceSessionKey, sessionId);
-  scheduleIdleTerminate(sessionId);
+  if (activeSession.enableIdleTimeout) {
+    scheduleIdleTerminate(sessionId);
+  }
 
   ptyProcess.onData((data) => {
     const sessionForData = sessions.get(sessionId);
@@ -746,7 +748,7 @@ async function createTerminalSessionInternal(
 
     appendSessionOutputBuffer(sessionForData, data);
     // Wake any pending getTerminalSessionOutput poll as soon as new output arrives.
-    // This prevents run_terminal from waiting the full polling timeout when a
+    // This prevents execute_terminal from waiting the full polling timeout when a
     // command completion marker has already been written.
     notifySessionWaiters(sessionForData);
     const payload: TerminalDataEvent = {
@@ -920,7 +922,9 @@ export async function getTerminalSessionOutputForWebContents(
 
   // Reset idle timer on every read
   refreshedSession.lastReadAt = Date.now();
-  scheduleIdleTerminate(input.sessionId);
+  if (refreshedSession.enableIdleTimeout) {
+    scheduleIdleTerminate(input.sessionId);
+  }
 
   return createTerminalSessionSnapshot(input.sessionId, refreshedSession);
 }

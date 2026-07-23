@@ -419,7 +419,7 @@ test('terminal tool header labels prefer the queued command and fall back to the
     id: 'tool-terminal-1',
     startedAt: 0,
     state: 'completed',
-    toolName: 'run_terminal',
+    toolName: 'execute_terminal',
   }
 
   const sessionInvocation: ToolInvocationTrace = {
@@ -452,7 +452,7 @@ test('terminal tool header labels preserve the full queued command text for UI t
     id: 'tool-terminal-3',
     startedAt: 0,
     state: 'completed',
-    toolName: 'run_terminal',
+    toolName: 'execute_terminal',
   }
 
   assert.equal(getToolInvocationHeaderLabel(invocation, undefined, WORKSPACE_ROOT_PATH), `Ran ${command}`)
