@@ -268,7 +268,7 @@ function createPowerShellInteractiveArgs() {
       "$ErrorActionPreference = 'SilentlyContinue'",
       "if (Get-Module -ListAvailable PSReadLine) { Import-Module PSReadLine -ErrorAction SilentlyContinue }",
       "if (Get-Command Set-PSReadLineOption -ErrorAction SilentlyContinue) {",
-      "  try { Set-PSReadLineOption -PredictionSource None -BellStyle None } catch {}",
+      "  try { Set-PSReadLineOption -PredictionSource History -PredictionView InlineView -BellStyle None } catch {}",
       "}",
     ].join("; "),
   ];

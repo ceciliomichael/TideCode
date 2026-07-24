@@ -561,15 +561,31 @@ export function createTerminalToolSet(
 
 export async function terminateAllBackgroundSessions(
   webContents: WebContents,
-  workspaceRootPath: string
+  workspaceRootPath: string,
+  customTerminateSession?: (webContents: WebContents, sessionId: number, workspaceRootPath: string) => void,
 ) {
-  const terminalService = await loadDefaultTerminalToolDependencies()
-  for (const sessionId of backgroundSessions.keys()) {
+  if (customTerminateSession) {
+    for (const sessionId of backgroundSessions.keys()) {
+      try {
+        customTerminateSession(webContents, sessionId, workspaceRootPath)
+      } catch (e) {
+        // ignore
+      }
+    }
+  } else {
     try {
-      terminalService.terminateSession(webContents, sessionId, workspaceRootPath)
+      const terminalService = await loadDefaultTerminalToolDependencies()
+      for (const sessionId of backgroundSessions.keys()) {
+        try {
+          terminalService.terminateSession(webContents, sessionId, workspaceRootPath)
+        } catch (e) {
+          // ignore
+        }
+      }
     } catch (e) {
       // ignore
     }
   }
   backgroundSessions.clear()
+  terminalThreadSessionStates.clear()
 }

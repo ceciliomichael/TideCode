@@ -6,7 +6,7 @@ import path from 'node:path'
 import test from 'node:test'
 import type { WebContents } from 'electron'
 import { createAgentTools } from '../../electron/chat/shared/tools'
-import { createTerminalToolSet } from '../../electron/chat/shared/tools/terminalTools'
+import { createTerminalToolSet, terminateAllBackgroundSessions } from '../../electron/chat/shared/tools/terminalTools'
 
 const webContentsStub = {
   id: 42,
@@ -405,5 +405,95 @@ test('execute_terminal allows a cwd outside the workspace root in Full Access mo
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
     await fs.rm(outsideDirectoryPath, { force: true, recursive: true })
+  }
+})
+
+test('terminateAllBackgroundSessions terminates active tool sessions and resets local session counter to 1', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-cleanup-'))
+  const terminatedSessions: number[] = []
+
+  try {
+    const tools = createTerminalToolSet(
+      {
+        conversationId: 'conversation-cleanup',
+        webContents: webContentsStub,
+        workspaceRootPath,
+      },
+      {
+        createSession: async (_owner, input) => ({
+          bufferedOutput: '',
+          cwd: workspaceRootPath,
+          isReused: false,
+          sessionId: 55,
+          shell: 'pwsh',
+        }),
+        getSessionOutput: async () => ({
+          cwd: workspaceRootPath,
+          exitCode: null,
+          hasExited: false,
+          outputBuffer: '',
+          shellLabel: 'pwsh',
+          signal: null,
+          sessionId: 55,
+        }),
+        listSessions: () => [],
+        terminateSession: (_owner, id) => {
+          terminatedSessions.push(id)
+        },
+        writeToSession: async () => undefined,
+      },
+    )
+
+    await getExecuteTerminalTool(tools).execute({
+      mode: 'execute',
+      cols: 120,
+      command: 'echo first',
+      rows: 30,
+    })
+
+    await terminateAllBackgroundSessions(webContentsStub, workspaceRootPath, (_owner, id) => {
+      terminatedSessions.push(id)
+    })
+    assert.ok(terminatedSessions.includes(55))
+
+    const secondTools = createTerminalToolSet(
+      {
+        conversationId: 'conversation-cleanup',
+        webContents: webContentsStub,
+        workspaceRootPath,
+      },
+      {
+        createSession: async (_owner, input) => ({
+          bufferedOutput: '',
+          cwd: workspaceRootPath,
+          isReused: false,
+          sessionId: 56,
+          shell: 'pwsh',
+        }),
+        getSessionOutput: async () => ({
+          cwd: workspaceRootPath,
+          exitCode: null,
+          hasExited: false,
+          outputBuffer: '',
+          shellLabel: 'pwsh',
+          signal: null,
+          sessionId: 56,
+        }),
+        listSessions: () => [],
+        terminateSession: () => undefined,
+        writeToSession: async () => undefined,
+      },
+    )
+
+    const execResult = await getExecuteTerminalTool(secondTools).execute({
+      mode: 'execute',
+      cols: 120,
+      command: 'echo second',
+      rows: 30,
+    })
+
+    assert.equal(execResult.status, 'success')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })

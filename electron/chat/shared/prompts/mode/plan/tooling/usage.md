@@ -6,5 +6,5 @@
 - skill: load rules for a specialised task before planning around it
 - webfetch: fetch external data when the plan depends on up-to-date facts
 
-Use read-only tools. Do not change code in plan mode.
+You only have read-only tools in plan mode.
 </tool_usage_instructions>
