@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "postinstall": "node ./scripts/sync-ripgrep-binary.mjs",
     "predev": "node ./scripts/sync-ripgrep-binary.mjs",
     "prebuild": "node ./scripts/sync-ripgrep-binary.mjs",
     "ripgrep:sync": "node ./scripts/sync-ripgrep-binary.mjs",
@@ -15,6 +16,7 @@
     "icons:generate": "node ./scripts/generate-electron-icons.mjs",
     "dist": "npm run build && npm run icons:generate && electron-builder --publish never",
     "dist:win": "npm run build && npm run icons:generate && electron-builder --win --x64 --publish never",
+    "dist:win:fast": "npm run build && npm run icons:generate && electron-builder --win --x64 -c.compression=store --publish never",
     "dist:linux": "npm run build && npm run icons:generate && electron-builder --linux AppImage --x64 --publish never",
     "dist:mac": "npm run build && npm run icons:generate && electron-builder --mac dmg --publish never",
     "dist:publish": "npm run build && npm run icons:generate && electron-builder --publish always",
