@@ -4,13 +4,17 @@ interface ExternalFileDropItem {
   path?: string
 }
 
-function getExternalFilePath(file: ExternalFileDropItem) {
-  if (typeof file.path === 'string') {
-    const legacyPath = file.path.trim()
+type DropFileCandidate = ExternalFileDropItem | File | (File & { path?: string })
+
+function getExternalFilePath(file: DropFileCandidate) {
+  const legacyPathCandidate = (file as ExternalFileDropItem).path
+  if (typeof legacyPathCandidate === 'string') {
+    const legacyPath = legacyPathCandidate.trim()
     if (legacyPath.length > 0) {
       return legacyPath
     }
   }
+
 
   if (typeof window === 'undefined') {
     return null
@@ -25,7 +29,7 @@ function getExternalFilePath(file: ExternalFileDropItem) {
   return trimmedNativePath.length > 0 ? trimmedNativePath : null
 }
 
-function getExternalFilePathsFromFileList(files: ArrayLike<ExternalFileDropItem> | null | undefined) {
+function getExternalFilePathsFromFileList(files: ArrayLike<ExternalFileDropItem | File> | null | undefined) {
   if (!files) {
     return []
   }
