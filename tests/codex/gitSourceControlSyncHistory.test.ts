@@ -173,6 +173,45 @@ test('gitSync push sets upstream when pushing a new local branch', async () => {
   })
 })
 
+test('gitSync sync pushes a committed local change to the tracked remote branch', async () => {
+  await withTemporaryDirectory(async (tempRootPath) => {
+    const { clonePath, seedPath } = await setupRemoteAndClone(tempRootPath)
+    await commitFile(clonePath, 'local.txt', 'local sync change\n', 'feat: local sync change')
+
+    const result = await gitSync({
+      action: 'sync',
+      workspacePath: clonePath,
+    })
+
+    assert.equal(result.success, true)
+    assert.equal(result.action, 'sync')
+    const { stdout: localHeadStdout } = await runGit(['rev-parse', 'HEAD'], clonePath)
+    const { stdout: remoteHeadStdout } = await runGit(['rev-parse', 'HEAD'], seedPath)
+    await runGit(['fetch', 'origin'], seedPath)
+    const { stdout: refreshedRemoteHeadStdout } = await runGit(['rev-parse', 'origin/main'], seedPath)
+    assert.notEqual(remoteHeadStdout.trim(), localHeadStdout.trim())
+    assert.equal(refreshedRemoteHeadStdout.trim(), localHeadStdout.trim())
+  })
+})
+
+test('gitSync sync pulls a remote fast-forward before completing', async () => {
+  await withTemporaryDirectory(async (tempRootPath) => {
+    const { clonePath, seedPath } = await setupRemoteAndClone(tempRootPath)
+    await commitFile(seedPath, 'remote.txt', 'remote sync change\n', 'feat: remote sync change')
+    await runGit(['push', 'origin', 'main'], seedPath)
+
+    const result = await gitSync({
+      action: 'sync',
+      workspacePath: clonePath,
+    })
+
+    assert.equal(result.success, true)
+    const { stdout: localHeadStdout } = await runGit(['rev-parse', 'HEAD'], clonePath)
+    const { stdout: remoteHeadStdout } = await runGit(['rev-parse', 'HEAD'], seedPath)
+    assert.equal(localHeadStdout.trim(), remoteHeadStdout.trim())
+  })
+})
+
 test('getGitHistoryPage returns paginated history entries with head metadata', async () => {
   await withTemporaryDirectory(async (tempRootPath) => {
     const repoPath = path.join(tempRootPath, 'history-repo')

@@ -140,6 +140,7 @@ function SourceControlPanelContent({
   const isQuickCommitting = pendingCommitOperation !== null
   const pendingSyncAction: GitSyncAction | 'refresh' | null = pendingSyncOperation?.action ?? null
   const isCommitPrimaryBusy = isQuickCommitting || pendingSyncAction === 'push'
+  const isSyncingChanges = pendingSyncAction === 'sync'
   const pendingOperationLabel = pendingCommitOperation
     ? describeSourceControlPendingAction(pendingCommitOperation.action)
     : pendingSyncOperation
@@ -599,6 +600,10 @@ function SourceControlPanelContent({
     await performSyncAction(action)
   }
 
+  async function handleSyncChanges() {
+    await performSyncAction('sync')
+  }
+
   async function handleRefreshPanel() {
     const pendingRefreshOperation = beginSourceControlSyncOperation(normalizedWorkspacePath, 'refresh')
     setSyncError(null)
@@ -807,6 +812,7 @@ function SourceControlPanelContent({
             isCommitActionMenuOpen={isCommitActionMenuOpen}
             isCommitPrimaryBusy={isCommitPrimaryBusy}
             isQuickCommitting={isQuickCommitting}
+            isSyncingChanges={isSyncingChanges}
             isStagedSectionOpen={isStagedSectionOpen}
             isUnstagedSectionOpen={isUnstagedSectionOpen}
             hasRemote={hasRemote}
@@ -827,6 +833,7 @@ function SourceControlPanelContent({
             onIncludeUnstagedChange={setIncludeUnstaged}
             onOpenCommitModal={onOpenCommitModal}
             onQuickCommitSubmit={handleQuickCommitSubmit}
+            onSyncChanges={handleSyncChanges}
             onOpenDiffPanelForFile={handleOpenDiffPanelForFile}
             onStageFiles={onStageFiles}
             onStageFile={onStageFile}

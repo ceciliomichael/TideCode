@@ -733,7 +733,7 @@ export interface GitFileStageBatchResult {
   success: boolean
 }
 
-export type GitSyncAction = 'fetch-all' | 'pull' | 'push'
+export type GitSyncAction = 'fetch-all' | 'pull' | 'push' | 'sync'
 
 export interface GitSyncInput {
   action: GitSyncAction

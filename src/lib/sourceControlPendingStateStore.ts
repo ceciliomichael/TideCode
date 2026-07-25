@@ -349,6 +349,8 @@ export function describeSourceControlPendingAction(
       return 'Pulling latest changes…'
     case 'push':
       return 'Pushing changes to remote…'
+    case 'sync':
+      return 'Syncing changes with remote…'
     case 'refresh':
       return 'Refreshing source control…'
     default: {

@@ -7,6 +7,7 @@ import { Tooltip } from '../Tooltip'
 import { Switch } from '../ui/Switch'
 import { SourceControlDiffSection } from './SourceControlDiffSection'
 import { PublishToGitHubModal } from './PublishToGitHubModal'
+import { SourceControlSyncButton } from './SourceControlSyncButton'
 
 interface SourceControlChangesSectionProps {
   commitActionControlsRef: RefObject<HTMLDivElement>
@@ -18,6 +19,7 @@ interface SourceControlChangesSectionProps {
   isCommitActionMenuOpen: boolean
   isCommitPrimaryBusy: boolean
   isQuickCommitting: boolean
+  isSyncingChanges: boolean
   isStagedSectionOpen: boolean
   isUnstagedSectionOpen: boolean
   isOperationInProgress: boolean
@@ -40,6 +42,7 @@ interface SourceControlChangesSectionProps {
   onOpenDiffPanelForFile: (filePath: string, scope: DiffPanelScope) => void
   onPublishSuccess: () => Promise<void>
   onQuickCommitSubmit: (action?: 'commit' | 'commit-and-push') => Promise<void>
+  onSyncChanges: () => Promise<void>
   onStageFiles: (filePaths: string[]) => Promise<void>
   onStageFile: (filePath: string) => Promise<void>
   onStagedSectionOpenChange: (nextValue: boolean) => void
@@ -60,6 +63,7 @@ export function SourceControlChangesSection({
   isCommitActionMenuOpen,
   isCommitPrimaryBusy,
   isQuickCommitting,
+  isSyncingChanges,
   isStagedSectionOpen,
   isUnstagedSectionOpen,
   isOperationInProgress,
@@ -82,6 +86,7 @@ export function SourceControlChangesSection({
   onOpenDiffPanelForFile,
   onPublishSuccess,
   onQuickCommitSubmit,
+  onSyncChanges,
   onStageFiles,
   onStageFile,
   onStagedSectionOpenChange,
@@ -109,6 +114,7 @@ export function SourceControlChangesSection({
   const unstagedFilePaths = Array.from(new Set(unstagedFileDiffs.map((fileDiff) => fileDiff.fileName)))
   const isBulkStageActionDisabled = isOperationInProgress || unstagedFilePaths.length === 0
   const isBulkUnstageActionDisabled = isOperationInProgress || stagedFilePaths.length === 0
+  const shouldShowSyncChanges = hasRemote && stagedFileCount === 0 && unstagedFileCount === 0
 
   async function handleStageAllUnstagedFiles() {
     if (unstagedFilePaths.length === 0) {
@@ -156,103 +162,112 @@ export function SourceControlChangesSection({
             </div>
           ) : null}
           <div className="shrink-0 border-b border-border px-4 py-3">
-            <textarea
-              value={commitMessage}
-              onChange={(event) => onCommitMessageChange(event.target.value)}
-              rows={3}
-              placeholder="Commit message (leave empty to auto-generate with AI)"
-              className="w-full resize-none rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm text-foreground outline-none placeholder:text-subtle-foreground"
-            />
+            {shouldShowSyncChanges ? (
+              <SourceControlSyncButton
+                disabled={isOperationInProgress}
+                isSyncing={isSyncingChanges}
+                onSync={onSyncChanges}
+              />
+            ) : (
+              <>
+                <textarea
+                  value={commitMessage}
+                  onChange={(event) => onCommitMessageChange(event.target.value)}
+                  rows={3}
+                  placeholder="Commit message (leave empty to auto-generate with AI)"
+                  className="w-full resize-none rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm text-foreground outline-none placeholder:text-subtle-foreground"
+                />
 
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                <Switch checked={includeUnstaged} onChange={onIncludeUnstagedChange} disabled={isOperationInProgress} />
-                Include unstaged
-              </label>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                    <Switch checked={includeUnstaged} onChange={onIncludeUnstagedChange} disabled={isOperationInProgress} />
+                    Include unstaged
+                  </label>
 
-              <div className="inline-flex items-center gap-1.5">
-                <div ref={commitActionControlsRef} className="relative inline-flex items-center">
-                  <button
-                    type="button"
-                    disabled={isCommitActionDisabled}
-                    onClick={() => void onQuickCommitSubmit('commit')}
-                    className={[
-                      'inline-flex h-8 min-w-[66px] items-center justify-center rounded-l-lg rounded-r-none pl-2 text-xs font-medium transition-colors',
-                      isCommitPrimaryBusy ? 'pr-2' : 'pr-1',
-                      isCommitActionDisabled ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
-                    ].join(' ')}
-                  >
-                    {isQuickCommitting ? 'Committing' : isCommitPrimaryBusy ? 'Pushing' : 'Commit'}
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Commit actions"
-                    aria-haspopup="menu"
-                    aria-expanded={isCommitActionMenuOpen}
-                    disabled={isCommitActionDisabled}
-                    onClick={() => {
-                      onCommitActionMenuOpenChange(!isCommitActionMenuOpen)
-                    }}
-                    className={[
-                      'inline-flex h-8 w-8 items-center justify-center rounded-l-none rounded-r-lg border-l border-white/15 text-xs transition-colors',
-                      isCommitActionDisabled ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
-                    ].join(' ')}
-                  >
-                    <ChevronDown size={13} />
-                  </button>
-                  {isCommitActionMenuOpen ? (
-                    <div
-                      role="menu"
-                      aria-label="Commit actions"
-                      className="absolute right-0 top-[calc(100%+6px)] z-40 min-w-[160px] overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-soft"
-                    >
+                  <div className="inline-flex items-center gap-1.5">
+                    <div ref={commitActionControlsRef} className="relative inline-flex items-center">
                       <button
                         type="button"
-                        role="menuitem"
+                        disabled={isCommitActionDisabled}
                         onClick={() => void onQuickCommitSubmit('commit')}
-                        className="flex h-9 w-full items-center rounded-lg px-2.5 text-left text-xs text-foreground transition-colors hover:bg-surface-muted"
+                        className={[
+                          'inline-flex h-8 min-w-[66px] items-center justify-center rounded-l-lg rounded-r-none pl-2 text-xs font-medium transition-colors',
+                          isCommitPrimaryBusy ? 'pr-2' : 'pr-1',
+                          isCommitActionDisabled ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
+                        ].join(' ')}
                       >
-                        Commit
+                        {isQuickCommitting ? 'Committing' : isCommitPrimaryBusy ? 'Pushing' : 'Commit'}
                       </button>
-                      {hasRemote ? (
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => void onQuickCommitSubmit('commit-and-push')}
-                          className="flex h-9 w-full items-center rounded-lg px-2.5 text-left text-xs text-foreground transition-colors hover:bg-surface-muted"
+                      <button
+                        type="button"
+                        aria-label="Commit actions"
+                        aria-haspopup="menu"
+                        aria-expanded={isCommitActionMenuOpen}
+                        disabled={isCommitActionDisabled}
+                        onClick={() => {
+                          onCommitActionMenuOpenChange(!isCommitActionMenuOpen)
+                        }}
+                        className={[
+                          'inline-flex h-8 w-8 items-center justify-center rounded-l-none rounded-r-lg border-l border-white/15 text-xs transition-colors',
+                          isCommitActionDisabled ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
+                        ].join(' ')}
+                      >
+                        <ChevronDown size={13} />
+                      </button>
+                      {isCommitActionMenuOpen ? (
+                        <div
+                          role="menu"
+                          aria-label="Commit actions"
+                          className="absolute right-0 top-[calc(100%+6px)] z-40 min-w-[160px] overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-soft"
                         >
-                          Commit and push
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            onCommitActionMenuOpenChange(false)
-                            setIsPublishModalOpen(true)
-                          }}
-                          className="flex h-9 w-full items-center rounded-lg px-2.5 text-left text-xs text-foreground transition-colors hover:bg-surface-muted"
-                        >
-                          Publish to GitHub
-                        </button>
-                      )}
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => void onQuickCommitSubmit('commit')}
+                            className="flex h-9 w-full items-center rounded-lg px-2.5 text-left text-xs text-foreground transition-colors hover:bg-surface-muted"
+                          >
+                            Commit
+                          </button>
+                          {hasRemote ? (
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => void onQuickCommitSubmit('commit-and-push')}
+                              className="flex h-9 w-full items-center rounded-lg px-2.5 text-left text-xs text-foreground transition-colors hover:bg-surface-muted"
+                            >
+                              Commit and push
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                onCommitActionMenuOpenChange(false)
+                                setIsPublishModalOpen(true)
+                              }}
+                              className="flex h-9 w-full items-center rounded-lg px-2.5 text-left text-xs text-foreground transition-colors hover:bg-surface-muted"
+                            >
+                              Publish to GitHub
+                            </button>
+                          )}
+                        </div>
+                      ) : null}
                     </div>
-
-                  ) : null}
+                    <button
+                      type="button"
+                      onClick={onOpenCommitModal}
+                      disabled={isOperationInProgress}
+                      className={[
+                        'inline-flex h-8 items-center justify-center rounded-lg px-3 text-xs font-medium transition-colors',
+                        isOperationInProgress ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
+                      ].join(' ')}
+                    >
+                      Advanced
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={onOpenCommitModal}
-                  disabled={isOperationInProgress}
-                  className={[
-                    'inline-flex h-8 items-center justify-center rounded-lg px-3 text-xs font-medium transition-colors',
-                    isOperationInProgress ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
-                  ].join(' ')}
-                >
-                  Advanced
-                </button>
-              </div>
-            </div>
+              </>
+            )}
 
             {quickCommitError ? <p className="mt-2 text-xs text-danger-foreground">{quickCommitError}</p> : null}
             {syncError ? <p className="mt-2 text-xs text-danger-foreground">{syncError}</p> : null}
