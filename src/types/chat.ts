@@ -640,10 +640,13 @@ export interface ContextUsageEstimate {
 }
 
 export interface GitBranchState {
+  aheadCommitCount: number
+  behindCommitCount: number
   branches: string[]
   currentBranch: string | null
   defaultBranch: string | null
   hasRepository: boolean
+  hasUpstream: boolean
   isDetachedHead: boolean
   remoteUrl: string | null
   repoRootPath: string | null

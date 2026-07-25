@@ -1,10 +1,13 @@
 import type { GitBranchState } from '../types/chat'
 
 const EMPTY_BRANCH_STATE: GitBranchState = {
+  aheadCommitCount: 0,
+  behindCommitCount: 0,
   branches: [],
   currentBranch: null,
   defaultBranch: null,
   hasRepository: false,
+  hasUpstream: false,
   isDetachedHead: false,
   remoteUrl: null,
   repoRootPath: null,

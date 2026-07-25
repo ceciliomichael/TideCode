@@ -20,6 +20,7 @@ import { prependCommittedHistoryEntry } from './sourceControlHistoryUtils'
 import { useSourceControlPendingState } from '../../hooks/useSourceControlPendingState'
 
 interface SourceControlPanelProps {
+  aheadCommitCount: number
   hasRepository: boolean
   hasRemote: boolean
   onDiffPanelExpandedFilePathsChange: (nextFilePaths: string[]) => void
@@ -50,6 +51,7 @@ interface SourceControlPanelProps {
 const HISTORY_PAGE_SIZE = 200
 
 function SourceControlPanelContent({
+  aheadCommitCount,
   hasRepository,
   hasRemote,
   onDiffPanelExpandedFilePathsChange,
@@ -803,6 +805,7 @@ function SourceControlPanelContent({
             <>
 
           <SourceControlChangesSection
+            aheadCommitCount={aheadCommitCount}
             commitActionControlsRef={commitActionControlsRef}
             commitMessage={commitMessage}
             isOperationInProgress={isSourceControlBusy}

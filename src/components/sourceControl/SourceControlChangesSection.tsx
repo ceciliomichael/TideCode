@@ -7,9 +7,9 @@ import { Tooltip } from '../Tooltip'
 import { Switch } from '../ui/Switch'
 import { SourceControlDiffSection } from './SourceControlDiffSection'
 import { PublishToGitHubModal } from './PublishToGitHubModal'
-import { SourceControlSyncButton } from './SourceControlSyncButton'
 
 interface SourceControlChangesSectionProps {
+  aheadCommitCount: number
   commitActionControlsRef: RefObject<HTMLDivElement>
   commitMessage: string
   hasRemote: boolean
@@ -54,6 +54,7 @@ interface SourceControlChangesSectionProps {
 
 
 export function SourceControlChangesSection({
+  aheadCommitCount,
   commitActionControlsRef,
   commitMessage,
   hasRemote,
@@ -114,7 +115,8 @@ export function SourceControlChangesSection({
   const unstagedFilePaths = Array.from(new Set(unstagedFileDiffs.map((fileDiff) => fileDiff.fileName)))
   const isBulkStageActionDisabled = isOperationInProgress || unstagedFilePaths.length === 0
   const isBulkUnstageActionDisabled = isOperationInProgress || stagedFilePaths.length === 0
-  const shouldShowSyncChanges = hasRemote && stagedFileCount === 0 && unstagedFileCount === 0
+  const shouldShowSyncChanges =
+    hasRemote && aheadCommitCount > 0 && stagedFileCount === 0 && unstagedFileCount === 0
 
   async function handleStageAllUnstagedFiles() {
     if (unstagedFilePaths.length === 0) {
@@ -162,29 +164,34 @@ export function SourceControlChangesSection({
             </div>
           ) : null}
           <div className="shrink-0 border-b border-border px-4 py-3">
-            {shouldShowSyncChanges ? (
-              <SourceControlSyncButton
-                disabled={isOperationInProgress}
-                isSyncing={isSyncingChanges}
-                onSync={onSyncChanges}
-              />
-            ) : (
-              <>
-                <textarea
-                  value={commitMessage}
-                  onChange={(event) => onCommitMessageChange(event.target.value)}
-                  rows={3}
-                  placeholder="Commit message (leave empty to auto-generate with AI)"
-                  className="w-full resize-none rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm text-foreground outline-none placeholder:text-subtle-foreground"
-                />
+            <textarea
+              value={commitMessage}
+              onChange={(event) => onCommitMessageChange(event.target.value)}
+              rows={3}
+              placeholder="Commit message (leave empty to auto-generate with AI)"
+              className="w-full resize-none rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm text-foreground outline-none placeholder:text-subtle-foreground"
+            />
 
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                    <Switch checked={includeUnstaged} onChange={onIncludeUnstagedChange} disabled={isOperationInProgress} />
-                    Include unstaged
-                  </label>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                <Switch checked={includeUnstaged} onChange={onIncludeUnstagedChange} disabled={isOperationInProgress} />
+                Include unstaged
+              </label>
 
-                  <div className="inline-flex items-center gap-1.5">
+              <div className="inline-flex items-center gap-1.5">
+                {shouldShowSyncChanges ? (
+                  <button
+                    type="button"
+                    disabled={isOperationInProgress}
+                    onClick={() => void onSyncChanges()}
+                    className={[
+                      'inline-flex h-8 items-center justify-center rounded-lg px-3 text-xs font-medium transition-colors',
+                      isOperationInProgress ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
+                    ].join(' ')}
+                  >
+                    {isSyncingChanges ? 'Syncing…' : 'Sync Changes'}
+                  </button>
+                ) : (
                     <div ref={commitActionControlsRef} className="relative inline-flex items-center">
                       <button
                         type="button"
@@ -253,21 +260,20 @@ export function SourceControlChangesSection({
                         </div>
                       ) : null}
                     </div>
-                    <button
-                      type="button"
-                      onClick={onOpenCommitModal}
-                      disabled={isOperationInProgress}
-                      className={[
-                        'inline-flex h-8 items-center justify-center rounded-lg px-3 text-xs font-medium transition-colors',
-                        isOperationInProgress ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
-                      ].join(' ')}
-                    >
-                      Advanced
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
+                )}
+                <button
+                  type="button"
+                  onClick={onOpenCommitModal}
+                  disabled={isOperationInProgress}
+                  className={[
+                    'inline-flex h-8 items-center justify-center rounded-lg px-3 text-xs font-medium transition-colors',
+                    isOperationInProgress ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
+                  ].join(' ')}
+                >
+                  Advanced
+                </button>
+              </div>
+            </div>
 
             {quickCommitError ? <p className="mt-2 text-xs text-danger-foreground">{quickCommitError}</p> : null}
             {syncError ? <p className="mt-2 text-xs text-danger-foreground">{syncError}</p> : null}

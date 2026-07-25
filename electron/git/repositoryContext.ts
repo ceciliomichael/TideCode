@@ -257,6 +257,39 @@ export async function readCurrentUpstreamBranch(repoRootPath: string) {
   }
 }
 
+export async function readAheadBehindCounts(repoRootPath: string) {
+  const upstreamBranch = await readCurrentUpstreamBranch(repoRootPath)
+  if (!upstreamBranch) {
+    return {
+      aheadCommitCount: 0,
+      behindCommitCount: 0,
+      hasUpstream: false,
+    }
+  }
+
+  try {
+    const { stdout } = await runGit(
+      ['rev-list', '--left-right', '--count', `HEAD...${upstreamBranch}`],
+      repoRootPath,
+    )
+    const [aheadValue, behindValue] = stdout.trim().split(/\s+/)
+    const aheadCommitCount = Number.parseInt(aheadValue ?? '', 10)
+    const behindCommitCount = Number.parseInt(behindValue ?? '', 10)
+
+    return {
+      aheadCommitCount: Number.isFinite(aheadCommitCount) ? Math.max(0, aheadCommitCount) : 0,
+      behindCommitCount: Number.isFinite(behindCommitCount) ? Math.max(0, behindCommitCount) : 0,
+      hasUpstream: true,
+    }
+  } catch {
+    return {
+      aheadCommitCount: 0,
+      behindCommitCount: 0,
+      hasUpstream: true,
+    }
+  }
+}
+
 export function isFastForwardOnlyPullFailure(error: unknown) {
   const normalizedMessage = getErrorMessage(error).toLowerCase()
   return (

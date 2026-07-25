@@ -1024,6 +1024,7 @@ export function ChatInterfaceContent({
           {interfaceController.isSourceControlPanelOpen ? (
             <SourceControlPanel
               key={workspaceState.activeWorkspacePath?.trim() ?? 'no-workspace'}
+              aheadCommitCount={gitBranchState.branchState.aheadCommitCount}
               hasRepository={hasRepository}
               hasRemote={Boolean(gitBranchState.branchState.remoteUrl)}
               onDiffPanelExpandedFilePathsChange={onDiffPanelExpandedFilePathsChange}

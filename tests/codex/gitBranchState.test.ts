@@ -64,9 +64,38 @@ test('getGitBranchState returns an empty state for non-repositories', async () =
     const state = await getGitBranchState(workspacePath)
 
     assert.equal(state.hasRepository, false)
+    assert.equal(state.aheadCommitCount, 0)
+    assert.equal(state.behindCommitCount, 0)
+    assert.equal(state.hasUpstream, false)
     assert.equal(state.repoRootPath, null)
     assert.equal(state.currentBranch, null)
     assert.equal(state.isDetachedHead, false)
     assert.deepEqual(state.branches, [])
+  })
+})
+
+test('getGitBranchState reports outgoing commits relative to the configured upstream', async () => {
+  await withTemporaryDirectory(async (workspacePath) => {
+    const remotePath = path.join(workspacePath, 'remote.git')
+    const repoPath = path.join(workspacePath, 'repo')
+    await fs.mkdir(repoPath)
+    await runGit(['init', '--bare', remotePath], workspacePath)
+    await runGit(['init', '-b', 'main'], repoPath)
+    await runGit(['config', 'user.name', 'Test User'], repoPath)
+    await runGit(['config', 'user.email', 'test@example.com'], repoPath)
+    await fs.writeFile(path.join(repoPath, 'README.md'), 'one\n', 'utf8')
+    await runGit(['add', '.'], repoPath)
+    await runGit(['commit', '-m', 'initial'], repoPath)
+    await runGit(['remote', 'add', 'origin', remotePath], repoPath)
+    await runGit(['push', '-u', 'origin', 'main'], repoPath)
+    await fs.writeFile(path.join(repoPath, 'README.md'), 'one\ntwo\n', 'utf8')
+    await runGit(['add', '.'], repoPath)
+    await runGit(['commit', '-m', 'local change'], repoPath)
+
+    const state = await getGitBranchState(repoPath)
+
+    assert.equal(state.hasUpstream, true)
+    assert.equal(state.aheadCommitCount, 1)
+    assert.equal(state.behindCommitCount, 0)
   })
 })

@@ -5,6 +5,7 @@ import {
   isFastForwardOnlyPullFailure,
   isGitUnavailable,
   isWorkingTreeConflictFailure,
+  readAheadBehindCounts,
   readCurrentBranch,
   readDefaultBranch,
   readLocalBranches,
@@ -17,10 +18,13 @@ import {
 
 function createEmptyBranchState(): GitBranchState {
   return {
+    aheadCommitCount: 0,
+    behindCommitCount: 0,
     branches: [],
     currentBranch: null,
     defaultBranch: null,
     hasRepository: false,
+    hasUpstream: false,
     isDetachedHead: false,
     remoteUrl: null,
     repoRootPath: null,
@@ -34,14 +38,16 @@ export async function getGitBranchState(workspacePath: string): Promise<GitBranc
     return createEmptyBranchState()
   }
 
-  const [branchState, branches, defaultBranch, remoteUrl] = await Promise.all([
+  const [branchState, branches, defaultBranch, remoteUrl, aheadBehindCounts] = await Promise.all([
     readCurrentBranch(repoRootPath),
     readLocalBranches(repoRootPath),
     readDefaultBranch(repoRootPath),
     getRemoteUrl(repoRootPath).catch(() => null),
+    readAheadBehindCounts(repoRootPath),
   ])
 
   return {
+    ...aheadBehindCounts,
     branches,
     currentBranch: branchState.currentBranch,
     defaultBranch,
