@@ -29,7 +29,11 @@ import type { GitCommitController } from '../../hooks/useGitCommit'
 import type { GitDiffSnapshotController } from '../../hooks/useGitDiffSnapshot'
 import { useWorkspaceRefactorCandidates } from '../../hooks/useWorkspaceRefactorCandidates'
 import { useChatMessageQueue } from './useChatMessageQueue'
-import { canInterruptStreamForSteer } from './chatSteerFollowUp'
+import {
+  canInterruptStreamForSteer,
+  getLatestSuccessfulToolCompletionSignal,
+} from './chatSteerFollowUp'
+import type { QueuedMessageAutoSendReason } from './chatQueueAutoSend'
 import { useChatCompression } from './useChatCompression'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
 import type {
@@ -191,21 +195,19 @@ export function ChatInterfaceContent({
     workspaceState,
   ])
 
-  const canSteerQueuedMessages =
-    settings.followUpBehavior === 'steer' &&
-    chatMessages.isSending &&
-    canInterruptStreamForSteer(activeStreamToolInvocations)
-  const isQueueBlocked =
-    chatMessages.isLoading ||
-    isCompressingChat ||
-    (settings.followUpBehavior === 'queue'
-      ? chatMessages.isSending
-      : chatMessages.isSending && !canSteerQueuedMessages)
+  const hasRunningToolInvocations = !canInterruptStreamForSteer(activeStreamToolInvocations)
+  const successfulToolCompletionSignal = getLatestSuccessfulToolCompletionSignal(
+    activeStreamToolInvocations,
+  )
+  const isQueueAutoSendBlocked = chatMessages.isLoading || isCompressingChat
 
   const sendQueuedMessage = useCallback(
-    (queuedMessage: { content: string; attachments?: ChatAttachment[] }) => {
+    (
+      queuedMessage: { content: string; attachments?: ChatAttachment[] },
+      reason: QueuedMessageAutoSendReason,
+    ) => {
       return (async () => {
-        if (canSteerQueuedMessages) {
+        if (reason === 'successful_tool') {
           await chatMessages.abortStreamingResponse()
         }
 
@@ -214,7 +216,7 @@ export function ChatInterfaceContent({
         })
       })()
     },
-    [canSteerQueuedMessages, chatMessages, runtimeSelection],
+    [chatMessages, runtimeSelection],
   )
 
   const {
@@ -225,8 +227,12 @@ export function ChatInterfaceContent({
     removeQueuedMessage,
     updateQueuedMessage,
   } = useChatMessageQueue({
-    isQueueBlocked,
+    followUpBehavior: settings.followUpBehavior,
+    hasRunningToolInvocations,
+    isAutoSendBlocked: isQueueAutoSendBlocked,
+    isTurnActive: chatMessages.isSending,
     onSendMessage: sendQueuedMessage,
+    successfulToolCompletionSignal,
   })
   const { handleCompressChat } = useChatCompression({
     activeWorkspacePath,

@@ -117,7 +117,7 @@ export function GeneralSettingsPanel({
         <div className="border-t border-border">
           <SettingsRow
             title="Follow-up behavior"
-            description="Queue sends after the full task. Steer sends after the last tool call."
+            description="Queue waits for the full turn. Steer sends after the next successful tool call, or when the turn ends."
           >
             <SegmentedField
               ariaLabel="Follow-up behavior"

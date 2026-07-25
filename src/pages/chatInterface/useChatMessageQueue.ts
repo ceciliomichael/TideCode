@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { FollowUpBehavior } from '../../lib/appSettings'
 import type { ChatAttachment, QueuedMessage } from '../../types/chat'
 import {
   createQueuedComposerMessage,
@@ -6,65 +7,110 @@ import {
   removeQueuedComposerMessage,
   updateQueuedComposerMessage,
 } from './chatComposerQueue'
+import {
+  detectSuccessfulToolReleaseSignal,
+  resolveQueuedMessageAutoSendReason,
+  type QueuedMessageAutoSendReason,
+} from './chatQueueAutoSend'
 
 interface UseChatMessageQueueInput {
-  isQueueBlocked: boolean
-  onSendMessage: (message: QueuedMessage) => Promise<boolean> | boolean
+  followUpBehavior: FollowUpBehavior
+  hasRunningToolInvocations: boolean
+  isAutoSendBlocked: boolean
+  isTurnActive: boolean
+  onSendMessage: (
+    message: QueuedMessage,
+    reason: QueuedMessageAutoSendReason,
+  ) => Promise<boolean> | boolean
+  successfulToolCompletionSignal: string | null
 }
 
-export function useChatMessageQueue({ isQueueBlocked, onSendMessage }: UseChatMessageQueueInput) {
+export function useChatMessageQueue({
+  followUpBehavior,
+  hasRunningToolInvocations,
+  isAutoSendBlocked,
+  isTurnActive,
+  onSendMessage,
+  successfulToolCompletionSignal,
+}: UseChatMessageQueueInput) {
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([])
+  const [successfulToolReleaseSignal, setSuccessfulToolReleaseSignal] = useState<string | null>(null)
   const isProcessingQueueRef = useRef(false)
-  const attemptedQueueMessageIdRef = useRef<string | null>(null)
+  const attemptedAutoSendKeyRef = useRef<string | null>(null)
+  const observedSuccessfulToolSignalRef = useRef(successfulToolCompletionSignal)
 
   useEffect(() => {
-    if (isQueueBlocked) {
-      attemptedQueueMessageIdRef.current = null
+    const previousSignal = observedSuccessfulToolSignalRef.current
+    observedSuccessfulToolSignalRef.current = successfulToolCompletionSignal
+    const nextReleaseSignal = detectSuccessfulToolReleaseSignal({
+      currentSignal: successfulToolCompletionSignal,
+      hasQueuedMessages: queuedMessages.length > 0,
+      observedSignal: previousSignal,
+    })
+    if (nextReleaseSignal === null) {
+      return
     }
-  }, [isQueueBlocked])
+
+    attemptedAutoSendKeyRef.current = null
+    setSuccessfulToolReleaseSignal(nextReleaseSignal)
+  }, [queuedMessages.length, successfulToolCompletionSignal])
+
+  useEffect(() => {
+    if (queuedMessages.length > 0) {
+      return
+    }
+
+    attemptedAutoSendKeyRef.current = null
+    observedSuccessfulToolSignalRef.current = successfulToolCompletionSignal
+    setSuccessfulToolReleaseSignal(null)
+  }, [queuedMessages.length, successfulToolCompletionSignal])
 
   const enqueueMessage = useCallback((content: string, attachments?: ChatAttachment[]) => {
     const nextMessage = createQueuedComposerMessage({ attachments, content })
-    attemptedQueueMessageIdRef.current = null
+    attemptedAutoSendKeyRef.current = null
     setQueuedMessages((currentValue) => [...currentValue, nextMessage])
   }, [])
 
   const removeQueuedMessage = useCallback((id: string) => {
-    attemptedQueueMessageIdRef.current = null
+    attemptedAutoSendKeyRef.current = null
     setQueuedMessages((currentValue) => removeQueuedComposerMessage(currentValue, id))
   }, [])
 
   const updateQueuedMessage = useCallback((id: string, content: string, attachments?: ChatAttachment[]) => {
-    attemptedQueueMessageIdRef.current = null
+    attemptedAutoSendKeyRef.current = null
     setQueuedMessages((currentValue) => updateQueuedComposerMessage(currentValue, id, content, attachments))
   }, [])
 
   const clearQueuedMessages = useCallback(() => {
-    attemptedQueueMessageIdRef.current = null
+    attemptedAutoSendKeyRef.current = null
+    setSuccessfulToolReleaseSignal(null)
     setQueuedMessages([])
   }, [])
 
   const sendQueuedMessage = useCallback(
-    async (targetMessage: QueuedMessage, restoreIndex: number) => {
+    async (
+      targetMessage: QueuedMessage,
+      restoreIndex: number,
+      reason: QueuedMessageAutoSendReason,
+    ) => {
       setQueuedMessages((currentValue) => removeQueuedComposerMessage(currentValue, targetMessage.id))
 
       try {
-        const wasAccepted = await onSendMessage(targetMessage)
+        const wasAccepted = await onSendMessage(targetMessage, reason)
         if (!wasAccepted) {
-          attemptedQueueMessageIdRef.current = null
           setQueuedMessages((currentValue) => {
             const nextMessages = [...currentValue]
             nextMessages.splice(Math.max(restoreIndex, 0), 0, targetMessage)
             return nextMessages
           })
         } else {
-          attemptedQueueMessageIdRef.current = null
+          attemptedAutoSendKeyRef.current = null
+          setSuccessfulToolReleaseSignal(null)
         }
 
         return wasAccepted
       } catch (caughtError) {
         console.error(caughtError)
-        attemptedQueueMessageIdRef.current = null
         setQueuedMessages((currentValue) => {
           const nextMessages = [...currentValue]
           nextMessages.splice(Math.max(restoreIndex, 0), 0, targetMessage)
@@ -84,14 +130,14 @@ export function useChatMessageQueue({ isQueueBlocked, onSendMessage }: UseChatMe
         return
       }
 
-      attemptedQueueMessageIdRef.current = null
-      await sendQueuedMessage(targetMessage, restoreIndex)
+      attemptedAutoSendKeyRef.current = null
+      await sendQueuedMessage(targetMessage, restoreIndex, 'turn_completed')
     },
     [queuedMessages, sendQueuedMessage],
   )
 
   useEffect(() => {
-    if (isQueueBlocked || queuedMessages.length === 0 || isProcessingQueueRef.current) {
+    if (isAutoSendBlocked || queuedMessages.length === 0 || isProcessingQueueRef.current) {
       return undefined
     }
 
@@ -100,23 +146,46 @@ export function useChatMessageQueue({ isQueueBlocked, onSendMessage }: UseChatMe
       return undefined
     }
 
-    if (attemptedQueueMessageIdRef.current === nextMessage.id) {
+    const autoSendReason = resolveQueuedMessageAutoSendReason({
+      followUpBehavior,
+      hasRunningToolInvocations,
+      hasSuccessfulToolRelease: successfulToolReleaseSignal !== null,
+      isTurnActive,
+    })
+    if (!autoSendReason) {
       return undefined
     }
 
-    attemptedQueueMessageIdRef.current = nextMessage.id
+    const releaseSignal =
+      autoSendReason === 'successful_tool'
+        ? successfulToolReleaseSignal
+        : 'turn_completed'
+    const autoSendKey = `${nextMessage.id}:${autoSendReason}:${releaseSignal}`
+    if (attemptedAutoSendKeyRef.current === autoSendKey) {
+      return undefined
+    }
+
+    attemptedAutoSendKeyRef.current = autoSendKey
     isProcessingQueueRef.current = true
 
     void (async () => {
       try {
-        await sendQueuedMessage(nextMessage, 0)
+        await sendQueuedMessage(nextMessage, 0, autoSendReason)
       } finally {
         isProcessingQueueRef.current = false
       }
     })()
 
     return undefined
-  }, [isQueueBlocked, queuedMessages, sendQueuedMessage])
+  }, [
+    followUpBehavior,
+    hasRunningToolInvocations,
+    isAutoSendBlocked,
+    isTurnActive,
+    queuedMessages,
+    sendQueuedMessage,
+    successfulToolReleaseSignal,
+  ])
 
   return {
     clearQueuedMessages,
