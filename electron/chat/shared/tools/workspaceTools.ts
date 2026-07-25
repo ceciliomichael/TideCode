@@ -732,7 +732,7 @@ export async function createWholeFileWriteToolResult(
 
   const subjectPath = resolvedChange.target.displayPath
   return buildFileChangeResult(
-    `Wrote 1 file change`,
+    `Successfully wrote 1 file change`,
     fileChanges,
     'edit',
     subjectPath,

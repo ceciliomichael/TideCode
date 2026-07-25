@@ -16,6 +16,12 @@ export type WorkspaceEditorLineStatus = 'added' | 'changed'
 export interface TextRange {
   end: number
   isActive: boolean
+  isNewlineSelected?: boolean
+  start: number
+}
+
+export interface TextSelectionRange {
+  end: number
   start: number
 }
 
@@ -250,6 +256,61 @@ export function findLineStartOffsets(text: string) {
   return offsets
 }
 
+export function normalizeTextSelectionRange(
+  selectionStart: number,
+  selectionEnd: number,
+  textLength: number,
+): TextSelectionRange | null {
+  const safeTextLength = Math.max(0, Math.trunc(textLength))
+  const safeSelectionStart = Math.min(safeTextLength, Math.max(0, Math.trunc(selectionStart)))
+  const safeSelectionEnd = Math.min(safeTextLength, Math.max(0, Math.trunc(selectionEnd)))
+  const start = Math.min(safeSelectionStart, safeSelectionEnd)
+  const end = Math.max(safeSelectionStart, safeSelectionEnd)
+
+  return start === end ? null : { end, start }
+}
+
+export function buildSelectionRangesByLine(
+  text: string,
+  selection: TextSelectionRange | null,
+): TextRange[][] {
+  const lines = text.split('\n')
+  const rangesByLine = lines.map(() => [] as TextRange[])
+  if (!selection) {
+    return rangesByLine
+  }
+
+  const normalizedSelection = normalizeTextSelectionRange(selection.start, selection.end, text.length)
+  if (!normalizedSelection) {
+    return rangesByLine
+  }
+
+  let lineStart = 0
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const lineText = lines[lineIndex]
+    const lineEnd = lineStart + lineText.length
+    const selectedTextStart = Math.max(normalizedSelection.start, lineStart)
+    const selectedTextEnd = Math.min(normalizedSelection.end, lineEnd)
+    const isNewlineSelected =
+      lineIndex < lines.length - 1 &&
+      normalizedSelection.start <= lineEnd &&
+      normalizedSelection.end > lineEnd
+
+    if (selectedTextEnd > selectedTextStart || isNewlineSelected) {
+      rangesByLine[lineIndex].push({
+        end: Math.max(0, selectedTextEnd - lineStart),
+        isActive: true,
+        isNewlineSelected,
+        start: Math.max(0, selectedTextStart - lineStart),
+      })
+    }
+
+    lineStart = lineEnd + 1
+  }
+
+  return rangesByLine
+}
+
 
 
 export function findLineIndexForOffset(lineStartOffsets: readonly number[], offset: number) {
@@ -379,7 +440,7 @@ export function renderHighlightedTokens(tokens: readonly HighlightedToken[], sea
 
   // If there's a selection on the newline character at the end of a line with tokens
   const lastSelection = selectionMatches[selectionMatches.length - 1]
-  if (tokens.length > 0 && lastSelection && (lastSelection as any).isNewlineSelected) {
+  if (tokens.length > 0 && lastSelection?.isNewlineSelected) {
     renderedSegments.push(
       <span 
         key={`newline-selection`}

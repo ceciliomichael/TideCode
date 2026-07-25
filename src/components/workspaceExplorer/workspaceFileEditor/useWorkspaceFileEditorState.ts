@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type SyntheticEvent } from 'react'
 import { useHighlightedCodeLines } from '../../../hooks/useHighlightedCodeLines'
 import type { GitFileDiff } from '../../../types/chat'
 import { isMarkdownPreviewablePath } from '../../../lib/markdown-preview'
 import { isSvgPreviewablePath } from '../../../lib/svg-preview'
 import {
   buildWorkspaceEditorLineStatusMap,
+  buildSelectionRangesByLine,
   buildSearchRegularExpression,
   countLines,
   getWorkspaceEditorScrollTransform,
@@ -14,7 +15,10 @@ import {
   findLineIndexForOffset,
   findLineStartOffsets,
   findSearchMatches,
+  normalizeEditorLineText,
+  normalizeTextSelectionRange,
   type SearchOptions,
+  type TextSelectionRange,
   type TextRange,
 } from './workspaceFileEditorUtils'
 
@@ -136,74 +140,61 @@ export function useWorkspaceFileEditorState({
     return matchesByLine
   }, [activeSearchMatchIndex, highlightedLines, lineStartOffsets, searchMatches])
 
-  const [selection, setSelection] = useState<{ start: number, end: number } | null>(null)
-  
-  useEffect(() => {
-    const handleSelectionChange = () => {
-      if (!textAreaRef.current) return
-      
-      // Only process selection if the textarea is focused to avoid unnecessary updates
-      if (document.activeElement !== textAreaRef.current) return
-      
-      const { selectionStart, selectionEnd } = textAreaRef.current
-      if (selectionStart !== selectionEnd) {
-        setSelection(prev => 
-          prev?.start === selectionStart && prev?.end === selectionEnd 
-            ? prev 
-            : { start: selectionStart, end: selectionEnd }
-        )
-      } else {
-        setSelection(null)
-      }
-    }
-    
-    document.addEventListener('selectionchange', handleSelectionChange)
-    return () => document.removeEventListener('selectionchange', handleSelectionChange)
+  const [selection, setSelection] = useState<TextSelectionRange | null>(null)
+  const normalizedEditorValue = useMemo(() => normalizeEditorLineText(value), [value])
+
+  const syncSelection = useCallback((textarea: HTMLTextAreaElement) => {
+    const nextSelection = normalizeTextSelectionRange(
+      textarea.selectionStart,
+      textarea.selectionEnd,
+      textarea.value.length,
+    )
+    setSelection((currentSelection) =>
+      currentSelection?.start === nextSelection?.start && currentSelection?.end === nextSelection?.end
+        ? currentSelection
+        : nextSelection,
+    )
   }, [])
 
-  const selectionMatchesByLine = useMemo(() => {
-    const matchesByLine = highlightedLines.map(() => [] as TextRange[])
-    if (!selection) return matchesByLine
-    
-    const safeStart = Math.min(selection.start, value.length)
-    const safeEnd = Math.min(selection.end, value.length)
-    let currentMatchStart = safeStart
-    let remainingLength = Math.max(0, safeEnd - safeStart)
+  const handleEditorChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
+    syncSelection(event.currentTarget)
+    onChange(event.currentTarget.value)
+  }, [onChange, syncSelection])
 
-    while (remainingLength > 0) {
-      const lineIndex = findLineIndexForOffset(lineStartOffsets, currentMatchStart)
-      if (lineIndex === -1) {
-        break
+  const handleEditorSelect = useCallback((event: SyntheticEvent<HTMLTextAreaElement>) => {
+    syncSelection(event.currentTarget)
+  }, [syncSelection])
+
+  useEffect(() => {
+    let frameId: number | null = null
+
+    function handleDocumentSelectionChange() {
+      const textarea = textAreaRef.current
+      if (!textarea || document.activeElement !== textarea || frameId !== null) {
+        return
       }
 
-      const lineStartOffset = lineStartOffsets[lineIndex]
-      const lineText = highlightedLines[lineIndex].text
-      const lineLength = lineText.length
-
-      const matchOffsetInLine = currentMatchStart - lineStartOffset
-      const matchEndInLine = Math.min(matchOffsetInLine + remainingLength, lineLength)
-
-      const lengthMatchedInLine = Math.max(0, matchEndInLine - matchOffsetInLine)
-      const isNewlineSelected = remainingLength > lengthMatchedInLine
-
-      matchesByLine[lineIndex].push({
-        end: matchEndInLine,
-        isActive: true,
-        start: matchOffsetInLine,
-        isNewlineSelected,
-      } as any)
-
-      remainingLength -= lengthMatchedInLine
-      currentMatchStart += lengthMatchedInLine
-
-      if (remainingLength > 0) {
-        currentMatchStart += 1 // For the newline character
-        remainingLength -= 1
-      }
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null
+        const activeTextarea = textAreaRef.current
+        if (activeTextarea && document.activeElement === activeTextarea) {
+          syncSelection(activeTextarea)
+        }
+      })
     }
 
-    return matchesByLine
-  }, [highlightedLines, lineStartOffsets, selection])
+    document.addEventListener('selectionchange', handleDocumentSelectionChange)
+    return () => {
+      document.removeEventListener('selectionchange', handleDocumentSelectionChange)
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId)
+      }
+    }
+  }, [syncSelection])
+
+  const selectionMatchesByLine = useMemo(() => {
+    return buildSelectionRangesByLine(normalizedEditorValue, selection)
+  }, [normalizedEditorValue, selection])
 
   const visibleLineNumbers = useMemo(
     () =>
@@ -379,7 +370,7 @@ export function useWorkspaceFileEditorState({
     return () => {
       window.cancelAnimationFrame(frameId)
     }
-  }, [fileName, handleScroll, updateWrappedLineCountsFromRenderedLines, value])
+  }, [fileName, handleScroll, updateWrappedLineCountsFromRenderedLines, value, wordWrapEnabled])
 
   const closeSearchPanel = useCallback(() => {
     setIsSearchOpen(false)
@@ -729,6 +720,8 @@ export function useWorkspaceFileEditorState({
       focusReplaceInput,
       focusSearchInput,
       handleKeyDown,
+      handleEditorChange,
+      handleEditorSelect,
       handleReplaceAllMatches,
       handleReplaceCurrentMatch,
       handleScroll,

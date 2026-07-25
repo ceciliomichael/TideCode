@@ -42,7 +42,6 @@ export const WorkspaceFileEditor = memo(function WorkspaceFileEditor({
     <WorkspaceFileEditorView
       editorState={editorState}
       fileName={fileName}
-      onChange={onChange}
       value={value}
       wordWrapEnabled={wordWrapEnabled}
     />

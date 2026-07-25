@@ -21,7 +21,11 @@ export const ChatMentionText = memo(function ChatMentionText({
 }: ChatMentionTextProps) {
   const segments = splitChatMentionSegments(text, mentionPathMap)
   const rootClassName = [
-    wrap === 'nowrap' ? 'block whitespace-nowrap overflow-hidden text-ellipsis [overflow-wrap:normal]' : 'whitespace-pre-wrap [overflow-wrap:anywhere]',
+    wrap === 'nowrap'
+      ? 'block whitespace-nowrap overflow-hidden text-ellipsis [overflow-wrap:normal]'
+      : variant === 'backdrop'
+        ? 'whitespace-pre-wrap [overflow-wrap:break-word]'
+        : 'whitespace-pre-wrap [overflow-wrap:anywhere]',
     variant === 'backdrop' ? 'text-transparent' : 'text-foreground',
     className,
   ]

@@ -21,7 +21,6 @@ import type { WorkspaceFileEditorState } from './useWorkspaceFileEditorState'
 interface WorkspaceFileEditorViewProps {
   editorState: WorkspaceFileEditorState
   fileName: string
-  onChange: (nextValue: string) => void
   wordWrapEnabled: boolean
   value: string
 }
@@ -208,7 +207,6 @@ function SearchPanel({ editorState }: { editorState: WorkspaceFileEditorState })
 export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
   editorState,
   fileName,
-  onChange,
   wordWrapEnabled,
   value,
 }: WorkspaceFileEditorViewProps) {
@@ -246,7 +244,8 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
           <textarea
             ref={refs.textAreaRef}
             value={value}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={actions.handleEditorChange}
+            onSelect={actions.handleEditorSelect}
             onScroll={actions.handleScroll}
             onKeyDown={actions.handleKeyDown}
             spellCheck={false}
@@ -276,7 +275,7 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
                   const selectionMatches = layout.visibleSelectionMatches?.[index] ?? []
                   return (
                     <div
-                      key={`editor-highlighted-${lineNumber}-${line.text.slice(0, 16)}`}
+                      key={`editor-highlighted-${lineNumber}`}
                       ref={(element) => {
                         actions.setHighlightedLineElement(lineNumber, element)
                       }}

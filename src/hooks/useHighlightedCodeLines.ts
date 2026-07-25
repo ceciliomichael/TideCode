@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { highlightCodeLines, type HighlightedCodeLine } from '../lib/codeHighlighting'
 import { useResolvedDocumentTheme } from './useResolvedDocumentTheme'
 
@@ -26,12 +26,24 @@ export function useHighlightedCodeLines(
   { fileName, language, stripTrailingNewline = true }: UseHighlightedCodeLinesOptions = {},
 ) {
   const theme = useResolvedDocumentTheme()
-  const [lines, setLines] = useState<HighlightedCodeLine[]>(() => createPlainLines(code, stripTrailingNewline))
+  const requestKey = useMemo(
+    () => JSON.stringify([code, fileName ?? '', language ?? '', stripTrailingNewline, theme]),
+    [code, fileName, language, stripTrailingNewline, theme],
+  )
+  const plainLines = useMemo(
+    () => createPlainLines(code, stripTrailingNewline),
+    [code, stripTrailingNewline],
+  )
+  const [highlightedResult, setHighlightedResult] = useState<{
+    lines: HighlightedCodeLine[]
+    requestKey: string
+  }>(() => ({
+    lines: plainLines,
+    requestKey,
+  }))
 
   useEffect(() => {
     let isCancelled = false
-
-    setLines(createPlainLines(code, stripTrailingNewline))
 
     void highlightCodeLines({
       code,
@@ -41,14 +53,19 @@ export function useHighlightedCodeLines(
       theme,
     }).then((highlightedLines) => {
       if (!isCancelled) {
-        setLines(highlightedLines)
+        setHighlightedResult({
+          lines: highlightedLines,
+          requestKey,
+        })
       }
     })
 
     return () => {
       isCancelled = true
     }
-  }, [code, fileName, language, stripTrailingNewline, theme])
+  }, [code, fileName, language, requestKey, stripTrailingNewline, theme])
 
-  return lines
+  return highlightedResult.requestKey === requestKey
+    ? highlightedResult.lines
+    : plainLines
 }

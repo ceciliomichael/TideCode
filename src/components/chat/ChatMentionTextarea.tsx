@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ClipboardEvent, type ChangeEvent, type KeyboardEvent, type MouseEvent, type RefObject } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, type CSSProperties, type ClipboardEvent, type ChangeEvent, type KeyboardEvent, type MouseEvent, type RefObject } from 'react'
 import { ChatMentionText } from './ChatMentionText'
 
 interface ChatMentionTextareaProps {
@@ -41,12 +41,14 @@ export function ChatMentionTextarea({
   value,
 }: ChatMentionTextareaProps) {
   const backdropRef = useRef<HTMLDivElement>(null)
-  const [scrollOffset, setScrollOffset] = useState({ left: 0, top: 0 })
+  const backdropContentRef = useRef<HTMLDivElement>(null)
   const textareaStyle = useMemo(
     () =>
       ({
         ...style,
         caretColor: 'var(--color-foreground)',
+        overflowWrap: 'break-word',
+        whiteSpace: 'pre-wrap',
       }) as CSSProperties,
     [style],
   )
@@ -73,66 +75,88 @@ export function ChatMentionTextarea({
     [className],
   )
 
-  useLayoutEffect(() => {
+  const syncBackdropScroll = useCallback(() => {
+    const textarea = textareaRef.current
+    const backdropContent = backdropContentRef.current
+    if (!textarea || !backdropContent) {
+      return
+    }
+
+    backdropContent.style.transform = `translate3d(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px, 0)`
+  }, [textareaRef])
+
+  const syncBackdropLayout = useCallback(() => {
     const textarea = textareaRef.current
     const backdrop = backdropRef.current
-    if (!textarea || !backdrop) {
+    const backdropContent = backdropContentRef.current
+    if (!textarea || !backdrop || !backdropContent) {
       return
     }
 
-    const syncHeight = () => {
-      textarea.style.height = 'auto'
-      backdrop.style.height = 'auto'
+    textarea.style.height = 'auto'
+    const nextHeight = Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT_PX)
+    const nextHeightStyle = `${nextHeight}px`
+    textarea.style.height = nextHeightStyle
+    backdrop.style.height = nextHeightStyle
+    backdropContent.style.width = `${textarea.clientWidth}px`
+    syncBackdropScroll()
+  }, [syncBackdropScroll, textareaRef])
 
-      const nextHeight = Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT_PX)
-      textarea.style.height = `${nextHeight}px`
-      backdrop.style.height = `${nextHeight}px`
+  useLayoutEffect(() => {
+    syncBackdropLayout()
+    const frameId = window.requestAnimationFrame(syncBackdropLayout)
+    return () => window.cancelAnimationFrame(frameId)
+  }, [syncBackdropLayout, value])
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current
+    if (!textarea || typeof ResizeObserver !== 'function') {
+      return
     }
 
-    syncHeight()
-    setScrollOffset({
-      left: textarea.scrollLeft,
-      top: textarea.scrollTop,
-    })
-
+    let frameId: number | null = null
     const resizeObserver =
-      typeof ResizeObserver === 'function'
-        ? new ResizeObserver(() => {
-            syncHeight()
-            setScrollOffset({
-              left: textarea.scrollLeft,
-              top: textarea.scrollTop,
-            })
-          })
-        : null
+      new ResizeObserver(() => {
+        if (frameId !== null) {
+          window.cancelAnimationFrame(frameId)
+        }
+        frameId = window.requestAnimationFrame(() => {
+          frameId = null
+          syncBackdropLayout()
+        })
+      })
 
-    resizeObserver?.observe(textarea)
+    resizeObserver.observe(textarea)
 
     return () => {
-      resizeObserver?.disconnect()
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId)
+      }
+      resizeObserver.disconnect()
     }
-  }, [textareaRef, value])
+  }, [syncBackdropLayout, textareaRef])
 
   function handleScroll() {
-    const textarea = textareaRef.current
-    if (!textarea) {
-      return
-    }
+    syncBackdropScroll()
+  }
 
-    setScrollOffset({
-      left: textarea.scrollLeft,
-      top: textarea.scrollTop,
-    })
+  function handleInput() {
+    onInput?.()
+    syncBackdropScroll()
+    window.requestAnimationFrame(syncBackdropLayout)
   }
 
   return (
     <div className="relative w-full">
       <div ref={backdropRef} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
         <div
+          ref={backdropContentRef}
           className={sharedLayerClassName}
           style={{
-            transform: `translate(${-scrollOffset.left}px, ${-scrollOffset.top}px)`,
             ...style,
+            overflowWrap: 'break-word',
+            whiteSpace: 'pre-wrap',
+            willChange: 'transform',
           }}
         >
           <ChatMentionText text={value} mentionPathMap={mentionPathMap} variant="backdrop" />
@@ -145,7 +169,7 @@ export function ChatMentionTextarea({
         onBlur={onBlur}
         onChange={onChange}
         onFocus={onFocus}
-        onInput={onInput}
+        onInput={handleInput}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
         onClick={onClick}
