@@ -261,7 +261,7 @@ test('resolveReadableTargetPath allows Full Access reads outside the workspace a
 
     assert.equal(result.status, 'success')
     assert.match(result.body ?? '', /outside workspace/u)
-    assert.match(String(result.semantics?.revision ?? ''), /^sha256:[a-f0-9]{64}$/u)
+    assert.equal(result.semantics?.revision, undefined)
     assert.equal(result.subject?.path, outsideFilePath)
     assert.match(result.summary, /Read /u)
     assert.match(result.summary, new RegExp(`${outsideFilePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`))

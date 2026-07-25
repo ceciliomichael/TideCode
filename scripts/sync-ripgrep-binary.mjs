@@ -84,4 +84,37 @@ if (process.platform === 'win32') {
   }
 }
 
+// 4. Verify Electron binary exists, download if missing
+// Only run during postinstall or explicit --verify-electron flag
+const isVerifyRun = process.env.npm_lifecycle_event === 'postinstall' || process.argv.includes('--verify-electron')
+if (isVerifyRun) {
+  try {
+    const electronPkgDir = path.dirname(require.resolve('electron/package.json'))
+    const binaryName = process.platform === 'win32' ? 'electron.exe' : 'electron'
+    const binaryPath = path.join(electronPkgDir, 'dist', binaryName)
+
+    let binaryExists = false
+    try {
+      await access(binaryPath)
+      binaryExists = true
+    } catch {
+      binaryExists = false
+    }
+
+    if (!binaryExists) {
+      console.log('[setup] Electron binary missing. Running postinstall to download...')
+      execSync('node install.js', { cwd: electronPkgDir, stdio: 'inherit' })
+      console.log('[setup] Electron binary downloaded successfully.')
+    } else {
+      console.log('[setup] Electron binary verified.')
+    }
+  } catch (err) {
+    // electron might not be installed at all (e.g. devDependencies not installed)
+    // Non-critical, skip silently
+    if (err.code !== 'MODULE_NOT_FOUND') {
+      console.log('[setup] Electron verify skipped:', err.message)
+    }
+  }
+}
+
 

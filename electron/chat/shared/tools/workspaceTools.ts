@@ -13,16 +13,15 @@ import {
 } from '../../../workspace/paths'
 import { captureWorkspaceCheckpointFileState } from '../../../workspace/checkpoints'
 import { applyPatchInWorkspace, type ApplyPatchChange } from '../applyPatch'
-import { createFileRevision } from '../fileRevision'
+
 import type { AgentToolContext, AgentToolExecutionResult } from '../toolTypes'
 import { runRipgrep } from './ripgrep'
 
 const DEFAULT_READ_LIMIT = 2000
 const LIST_LIMIT = 100
 const SEARCH_LIMIT = 100
-const MAX_LINE_LENGTH = 2000
+const MAX_LINE_LENGTH = 50000
 const MAX_READ_BYTES = 256 * 1024
-const MAX_READ_BYTES_LABEL = `${MAX_READ_BYTES / 1024} KB`
 const RIPGREP_EXCLUDE_GLOBS: string[] = []
 const RIPGREP_ALL_FILES_GLOBS = new Set(['**/*', '**/{*,.*}', '**'])
 
@@ -480,7 +479,7 @@ export async function createReadToolResult(
     })
   }
 
-  const revision = createFileRevision(await fs.readFile(absolutePath))
+
 
   const startLine = Math.max(1, offset ?? 1)
   const maxLines = Math.max(1, limit ?? DEFAULT_READ_LIMIT)
@@ -509,7 +508,9 @@ export async function createReadToolResult(
       }
 
       const limitedLine =
-        line.length > MAX_LINE_LENGTH ? `${line.slice(0, MAX_LINE_LENGTH)}... (line truncated)` : line
+        line.length > MAX_LINE_LENGTH
+          ? `${line.slice(0, MAX_LINE_LENGTH)}... (line truncated, ${line.length} chars total)`
+          : line
       const nextBytes = Buffer.byteLength(limitedLine, 'utf8') + (collectedLines.length > 0 ? 1 : 0)
       if (byteCount + nextBytes > MAX_READ_BYTES) {
         truncatedByBytes = true
@@ -527,14 +528,7 @@ export async function createReadToolResult(
 
   const numberedLines = collectedLines.map((line, index) => `${startLine + index}: ${line}`)
   const bodyLines = [...numberedLines]
-  if (truncatedByBytes) {
-    bodyLines.push('', `(Output capped at ${MAX_READ_BYTES_LABEL}. Continue with offset=${startLine + collectedLines.length}.)`)
-  } else if (hasMoreLines) {
-    bodyLines.push(
-      '',
-      `(Showing lines ${startLine}-${startLine + collectedLines.length - 1} of ${lineCount}. Continue with offset=${startLine + collectedLines.length}.)`,
-    )
-  } else {
+  if (!truncatedByBytes && !hasMoreLines && bodyLines.length > 0) {
     bodyLines.push('', `(End of file - ${lineCount} lines total)`)
   }
 
@@ -544,7 +538,8 @@ export async function createReadToolResult(
       is_directory: false,
       line_count: lineCount,
       offset: startLine,
-      revision,
+      truncated_by_bytes: truncatedByBytes,
+      truncated_by_lines: hasMoreLines && !truncatedByBytes,
     },
     subject: {
       kind: 'file',

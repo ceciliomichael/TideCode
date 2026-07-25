@@ -33,6 +33,20 @@ import type {
 } from '../../src/types/chat'
 import type { WorkspaceEntryVisibility } from './gitignoreMatcher'
 const MAX_TEXT_FILE_BYTES = 256 * 1024
+
+function trimBufferToValidUtf8(buffer: Buffer): Buffer {
+  if (buffer.length === 0) return buffer
+  let i = buffer.length - 1
+  while (i >= 0 && (buffer[i] & 0xc0) === 0x80) i--
+  if (i < 0) return buffer
+  const b = buffer[i]
+  let expectedLen = 1
+  if ((b & 0xe0) === 0xc0) expectedLen = 2
+  else if ((b & 0xf0) === 0xe0) expectedLen = 3
+  else if ((b & 0xf8) === 0xf0) expectedLen = 4
+  const actualLen = buffer.length - i
+  return actualLen >= expectedLen ? buffer : buffer.slice(0, i)
+}
 const REFACTOR_CANDIDATE_LINE_THRESHOLD = 300
 const REFACTOR_CODE_EXTENSIONS = new Set([
   '.astro',
@@ -402,7 +416,8 @@ export async function readWorkspaceFile(input: WorkspaceExplorerReadFileInput): 
       await fileHandle.close()
     }
   }
-  const content = fileBuffer.toString('utf8')
+  const safeBuffer = isTruncated ? trimBufferToValidUtf8(fileBuffer) : fileBuffer
+  const content = safeBuffer.toString('utf8')
 
   return {
     content,

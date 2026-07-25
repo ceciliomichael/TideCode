@@ -68,7 +68,7 @@
     "@typescript-eslint/eslint-plugin": "^7.1.1",
     "@typescript-eslint/parser": "^7.1.1",
     "@vitejs/plugin-react": "^4.2.1",
-    "electron": "^30.0.1",
+    "electron": "^43.2.0",
     "electron-builder": "^24.13.3",
     "eslint": "^8.57.0",
     "eslint-plugin-react-hooks": "^4.6.0",
@@ -82,5 +82,13 @@
     "vite-plugin-electron": "^0.28.6",
     "vite-plugin-electron-renderer": "^0.14.5"
   },
-  "main": "dist-electron/main.js"
+  "main": "dist-electron/main.js",
+  "allowScripts": {
+    "@vscode/ripgrep@1.17.1": true,
+    "electron@43.2.0": true,
+    "esbuild@0.21.5": true,
+    "esbuild@0.27.7": true,
+    "node-pty@1.1.0": true,
+    "sharp@0.34.5": true
+  }
 }
