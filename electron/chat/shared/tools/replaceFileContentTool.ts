@@ -14,7 +14,7 @@ export function createReplaceFileContentTool(context: WorkspaceToolContext) {
       replacementContent: string
       startLine: number
       endLine: number
-      allowMultiple: boolean
+      allowMultiple?: boolean
     }>({
       additionalProperties: false,
       properties: {
@@ -24,12 +24,12 @@ export function createReplaceFileContentTool(context: WorkspaceToolContext) {
         },
         allowMultiple: {
           description:
-            'When true, all occurrences of targetContent within the line range are replaced. When false (default), more than one occurrence causes an error.',
+            'When true, all occurrences of targetContent within the line range are replaced. Defaults to false, which rejects multiple matches.',
           type: 'boolean',
         },
         endLine: {
           description:
-            'Ending line of the search window (1-indexed, inclusive). Must be >= startLine and <= the total line count of the file.',
+            'Last line where the target was read (1-indexed, inclusive). If the exact target moved and is unique, the tool can still find it.',
           minimum: 1,
           type: 'integer',
         },
@@ -39,7 +39,7 @@ export function createReplaceFileContentTool(context: WorkspaceToolContext) {
         },
         startLine: {
           description:
-            'Starting line of the search window (1-indexed, inclusive). The targetContent must appear within [startLine, endLine].',
+            'First line where the target was read (1-indexed, inclusive).',
           minimum: 1,
           type: 'integer',
         },
@@ -50,7 +50,7 @@ export function createReplaceFileContentTool(context: WorkspaceToolContext) {
           type: 'string',
         },
       },
-      required: ['absolute_path', 'targetContent', 'replacementContent', 'startLine', 'endLine', 'allowMultiple'],
+      required: ['absolute_path', 'targetContent', 'replacementContent', 'startLine', 'endLine'],
       type: 'object',
     }),
     execute: async (rawInput): Promise<AgentToolExecutionResult> => {
@@ -60,10 +60,13 @@ export function createReplaceFileContentTool(context: WorkspaceToolContext) {
         replacementContent: string
         startLine: number
         endLine: number
-        allowMultiple: boolean
+        allowMultiple?: boolean
       }
       try {
-        return await createReplaceFileContentToolResult(context, input)
+        return await createReplaceFileContentToolResult(context, {
+          ...input,
+          allowMultiple: input.allowMultiple ?? false,
+        })
       } catch (error) {
         return createToolErrorResult(getToolErrorSummary(error, 'File replacement failed.'))
       }

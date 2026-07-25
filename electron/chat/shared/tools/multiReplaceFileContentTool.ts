@@ -10,7 +10,7 @@ interface ChunkInput {
   replacementContent: string
   startLine: number
   endLine: number
-  allowMultiple: boolean
+  allowMultiple?: boolean
 }
 
 export function createMultiReplaceFileContentTool(context: WorkspaceToolContext) {
@@ -33,11 +33,11 @@ export function createMultiReplaceFileContentTool(context: WorkspaceToolContext)
             properties: {
               allowMultiple: {
                 description:
-                  'When true, all occurrences of targetContent within the line range are replaced. When false, more than one occurrence causes a validation error.',
+                  'When true, all occurrences of targetContent within the line range are replaced. Defaults to false, which rejects multiple matches.',
                 type: 'boolean',
               },
               endLine: {
-                description: 'Ending line of the search window (1-indexed, inclusive).',
+                description: 'Last line where the target was read (1-indexed, inclusive).',
                 minimum: 1,
                 type: 'integer',
               },
@@ -46,7 +46,7 @@ export function createMultiReplaceFileContentTool(context: WorkspaceToolContext)
                 type: 'string',
               },
               startLine: {
-                description: 'Starting line of the search window (1-indexed, inclusive).',
+                description: 'First line where the target was read (1-indexed, inclusive).',
                 minimum: 1,
                 type: 'integer',
               },
@@ -56,9 +56,10 @@ export function createMultiReplaceFileContentTool(context: WorkspaceToolContext)
                 type: 'string',
               },
             },
-            required: ['targetContent', 'replacementContent', 'startLine', 'endLine', 'allowMultiple'],
+            required: ['targetContent', 'replacementContent', 'startLine', 'endLine'],
             type: 'object',
           },
+          maxItems: 100,
           minItems: 1,
           type: 'array',
         },
@@ -69,7 +70,7 @@ export function createMultiReplaceFileContentTool(context: WorkspaceToolContext)
     execute: async (rawInput): Promise<AgentToolExecutionResult> => {
       const input = rawInput as { absolute_path: string; chunks: ChunkInput[] }
       const chunks: ReplaceFileContentChunk[] = input.chunks.map((c) => ({
-        allowMultiple: c.allowMultiple,
+        allowMultiple: c.allowMultiple ?? false,
         endLine: c.endLine,
         replacementContent: c.replacementContent,
         startLine: c.startLine,
@@ -81,7 +82,7 @@ export function createMultiReplaceFileContentTool(context: WorkspaceToolContext)
           chunks,
         })
       } catch (error) {
-        return createToolErrorResult(getToolErrorSummary(error, 'Multi-file replacement failed.'))
+        return createToolErrorResult(getToolErrorSummary(error, 'Multi-replace failed.'))
       }
     },
   })

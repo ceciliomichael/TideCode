@@ -1,10 +1,10 @@
 <tool_usage_instructions>
-- list: see one folder level
-- glob: find files by name or extension
-- grep: search text inside files
-- read: verify exact file content before referencing it in a plan
-- skill: load rules for a specialised task before planning around it
-- webfetch: fetch external data when the plan depends on up-to-date facts
+Plan mode can only read. Never say that anything changed.
 
-You only have read-only tools in plan mode.
+- Find with `glob`/`grep`, then `read` the code and tests that matter.
+- Run reads together only when none needs another result.
+- Use `read_board`/`read_card` when the board matters.
+- Use web tools only for outside or current facts.
+- Load a matching `skill` before planning that work.
+- Do not guess. Read until the plan is clear, then stop.
 </tool_usage_instructions>

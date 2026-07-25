@@ -202,7 +202,7 @@ test('execute_terminal mode=read truncates large git diff output', async () => {
   assert.match(readResult.body ?? '', /Output truncated at 20000 characters/u)
 })
 
-test('execute_terminal rejects commands outside the allowlist in sandbox mode', async () => {
+test('execute_terminal rejects directory traversal in sandbox mode', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-apply-patch-'))
   let createSessionCalled = false
 

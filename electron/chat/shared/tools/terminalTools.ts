@@ -128,7 +128,8 @@ function getExecuteTerminalDescription() {
     ? ' Shell is PowerShell. Use PowerShell syntax.'
     : ''
 
-  const strictWarning = ' Only use when explicitly requested by the user.'
+  const usageHint =
+    ' Use for commands, tests, builds, package tools, and runtime checks when the task requires them; prefer dedicated tools for reading and editing files.'
 
   return [
     `Manage terminal sessions. mode parameter controls action:`,
@@ -137,7 +138,7 @@ function getExecuteTerminalDescription() {
     `- list: List all active terminal sessions.`,
     `- end: Kill a terminal session by session_id.`,
     osHint,
-    strictWarning,
+    usageHint,
   ].join(' ')
 }
 

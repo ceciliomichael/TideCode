@@ -1,14 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Message } from '../../types/chat'
-import { createCardTitleFromMessage, getKanbanSourceMessages } from './kanbanMessageSources'
+import {
+  createCardTitleFromMessage,
+  getKanbanSourceMessages,
+} from './kanbanMessageSources'
+import {
+  presentKanbanError,
+  type KanbanErrorAction,
+  type KanbanUserFacingError,
+} from './kanbanErrorPresentation'
 import { loadLegacyKanbanBoardData } from './kanbanStorage'
 import type {
   KanbanBoardData,
   KanbanCard,
   KanbanColumnId,
-  KanbanDeleteCardInput,
   KanbanCreateCardInput,
+  KanbanCreateTaskInput,
+  KanbanCreateTaskResult,
+  KanbanDeleteCardInput,
   KanbanMoveInput,
+  KanbanReorderInput,
   KanbanUpdateCardInput,
 } from './kanbanTypes'
 
@@ -18,50 +29,109 @@ interface UseKanbanBoardStateInput {
 }
 
 interface UseKanbanBoardStateResult {
-  addCard: (input: KanbanCreateCardInput) => void
-  addCardFromMessage: (messageId: string) => void
-  addCardFromMessageToColumn: (messageId: string, columnId: KanbanColumnId) => void
+  addCard: (input: KanbanCreateCardInput) => Promise<KanbanCard | null>
+  addCardFromMessage: (messageId: string) => Promise<KanbanCard | null>
+  addCardFromMessageToColumn: (
+    messageId: string,
+    columnId: KanbanColumnId,
+  ) => Promise<KanbanCard | null>
   cards: readonly KanbanCard[]
-  clearCompletedCards: () => void
-  deleteCard: (input: KanbanDeleteCardInput) => void
-  moveCard: (input: KanbanMoveInput) => void
-  updateCard: (input: KanbanUpdateCardInput) => void
+  clearCompletedCards: () => Promise<void>
+  createTask: (
+    input: KanbanCreateTaskInput,
+  ) => Promise<KanbanCreateTaskResult | null>
+  deleteCard: (input: KanbanDeleteCardInput) => Promise<boolean>
+  dismissError: () => void
+  error: KanbanUserFacingError | null
+  isBusy: boolean
+  isLoading: boolean
+  moveCard: (input: KanbanMoveInput) => Promise<KanbanCard | null>
+  reorderCard: (input: KanbanReorderInput) => Promise<KanbanCard | null>
   sourceMessages: ReturnType<typeof getKanbanSourceMessages>
+  updateCard: (input: KanbanUpdateCardInput) => Promise<KanbanCard | null>
 }
 
-function hasWorkspacePath(workspacePath: string | null): workspacePath is string {
+const EMPTY_BOARD_DATA: KanbanBoardData = {
+  cards: [],
+  revision: 0,
+}
+
+function hasWorkspacePath(
+  workspacePath: string | null,
+): workspacePath is string {
   return workspacePath !== null && workspacePath.trim().length > 0
 }
 
-function logKanbanSyncError(action: string, error: unknown) {
-  console.error(`Failed to ${action} kanban board`, error)
-}
-
-export function useKanbanBoardState({ workspacePath, messages }: UseKanbanBoardStateInput): UseKanbanBoardStateResult {
-  const [boardData, setBoardData] = useState<KanbanBoardData>({ cards: [] })
-  const sourceMessages = useMemo(() => getKanbanSourceMessages(messages), [messages])
+export function useKanbanBoardState({
+  workspacePath,
+  messages,
+}: UseKanbanBoardStateInput): UseKanbanBoardStateResult {
+  const [boardData, setBoardData] = useState<KanbanBoardData>(EMPTY_BOARD_DATA)
+  const [error, setError] = useState<KanbanUserFacingError | null>(null)
+  const [pendingMutationCount, setPendingMutationCount] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
+  const sourceMessages = useMemo(
+    () => getKanbanSourceMessages(messages),
+    [messages],
+  )
 
   const refreshBoardData = useCallback(async () => {
     if (!hasWorkspacePath(workspacePath)) {
-      setBoardData({ cards: [] })
+      setBoardData(EMPTY_BOARD_DATA)
       return
     }
 
-    const nextBoardData = await window.echosphereKanban.getBoardData({ workspacePath })
+    const nextBoardData = await window.echosphereKanban.getBoardData({
+      workspacePath,
+    })
     setBoardData(nextBoardData)
   }, [workspacePath])
 
+  const refreshBoardDataSafely = useCallback(async () => {
+    try {
+      await refreshBoardData()
+    } catch (refreshError) {
+      console.error('Failed to refresh kanban board', refreshError)
+      setError(presentKanbanError('refresh', refreshError))
+    }
+  }, [refreshBoardData])
+
+  const runMutation = useCallback(
+    async <Result>(
+      action: KanbanErrorAction,
+      mutation: () => Promise<Result>,
+      relatedCardId?: string,
+    ): Promise<Result | null> => {
+      setPendingMutationCount((count) => count + 1)
+      setError(null)
+      try {
+        return await mutation()
+      } catch (mutationError) {
+        console.error(`Failed to ${action} kanban board`, mutationError)
+        setError(presentKanbanError(action, mutationError, relatedCardId))
+        return null
+      } finally {
+        setPendingMutationCount((count) => Math.max(0, count - 1))
+      }
+    },
+    [],
+  )
+
   useEffect(() => {
     let isActive = true
+    setIsLoading(true)
 
     async function loadBoardData() {
       if (!hasWorkspacePath(workspacePath)) {
-        setBoardData({ cards: [] })
+        setBoardData(EMPTY_BOARD_DATA)
+        setIsLoading(false)
         return
       }
 
       try {
-        const nextBoardData = await window.echosphereKanban.getBoardData({ workspacePath })
+        const nextBoardData = await window.echosphereKanban.getBoardData({
+          workspacePath,
+        })
         if (!isActive) {
           return
         }
@@ -77,17 +147,25 @@ export function useKanbanBoardState({ workspacePath, messages }: UseKanbanBoardS
           return
         }
 
-        const importedBoardData = await window.echosphereKanban.importBoardData({
-          cards: legacyBoardData.cards,
-          workspacePath,
-        })
+        const importedBoardData = await window.echosphereKanban.importBoardData(
+          {
+            cards: legacyBoardData.cards,
+            revision: legacyBoardData.revision,
+            workspacePath,
+          },
+        )
         if (isActive) {
           setBoardData(importedBoardData)
         }
       } catch (error) {
         if (isActive) {
-          logKanbanSyncError('load', error)
-          setBoardData({ cards: [] })
+          console.error('Failed to load kanban board', error)
+          setError(presentKanbanError('load', error))
+          setBoardData(EMPTY_BOARD_DATA)
+        }
+      } finally {
+        if (isActive) {
+          setIsLoading(false)
         }
       }
     }
@@ -104,46 +182,73 @@ export function useKanbanBoardState({ workspacePath, messages }: UseKanbanBoardS
       return
     }
 
-    const unsubscribeKanbanChanges = window.echosphereKanban.onBoardChange((event) => {
-      if (event.workspaceRootPath !== workspacePath) {
-        return
-      }
+    const normalizedWorkspacePath = workspacePath.trim().toLocaleLowerCase()
+    const unsubscribeKanbanChanges = window.echosphereKanban.onBoardChange(
+      (event) => {
+        if (
+          event.workspaceRootPath.trim().toLocaleLowerCase() !==
+          normalizedWorkspacePath
+        ) {
+          return
+        }
 
-      void refreshBoardData()
-    })
+        void refreshBoardDataSafely()
+      },
+    )
 
-    return () => {
-      unsubscribeKanbanChanges()
-    }
-  }, [refreshBoardData, workspacePath])
+    return unsubscribeKanbanChanges
+  }, [refreshBoardDataSafely, workspacePath])
 
   const addCard = useCallback(
-    (input: KanbanCreateCardInput) => {
+    async (input: KanbanCreateCardInput) => {
       if (!hasWorkspacePath(workspacePath) || input.title.trim().length === 0) {
-        return
+        return null
       }
 
-      void window.echosphereKanban
-        .createCard({
+      const result = await runMutation('create', () =>
+        window.echosphereKanban.createCard({
           ...input,
-          parentCardId: input.parentCardId,
           title: input.title.trim(),
           workspacePath,
-        })
-        .then(refreshBoardData)
-        .catch((error) => logKanbanSyncError('create task on', error))
+        }),
+      )
+      if (result) {
+        await refreshBoardDataSafely()
+      }
+      return result
     },
-    [refreshBoardData, workspacePath],
+    [refreshBoardDataSafely, runMutation, workspacePath],
+  )
+
+  const createTask = useCallback(
+    async (input: KanbanCreateTaskInput) => {
+      if (!hasWorkspacePath(workspacePath) || input.title.trim().length === 0) {
+        return null
+      }
+
+      const result = await runMutation('create', () =>
+        window.echosphereKanban.createTask({
+          ...input,
+          title: input.title.trim(),
+          workspacePath,
+        }),
+      )
+      if (result) {
+        await refreshBoardDataSafely()
+      }
+      return result
+    },
+    [refreshBoardDataSafely, runMutation, workspacePath],
   )
 
   const addCardFromMessage = useCallback(
-    (messageId: string) => {
+    async (messageId: string) => {
       const sourceMessage = messages.find((message) => message.id === messageId)
       if (!sourceMessage) {
-        return
+        return null
       }
 
-      addCard({
+      return addCard({
         description: sourceMessage.content.trim(),
         sourceMessageId: sourceMessage.id,
         title: createCardTitleFromMessage(sourceMessage),
@@ -153,13 +258,13 @@ export function useKanbanBoardState({ workspacePath, messages }: UseKanbanBoardS
   )
 
   const addCardFromMessageToColumn = useCallback(
-    (messageId: string, columnId: KanbanColumnId) => {
+    async (messageId: string, columnId: KanbanColumnId) => {
       const sourceMessage = messages.find((message) => message.id === messageId)
       if (!sourceMessage) {
-        return
+        return null
       }
 
-      addCard({
+      return addCard({
         columnId,
         description: sourceMessage.content.trim(),
         sourceMessageId: sourceMessage.id,
@@ -170,65 +275,111 @@ export function useKanbanBoardState({ workspacePath, messages }: UseKanbanBoardS
   )
 
   const moveCard = useCallback(
-    ({ cardId, targetColumnId }: KanbanMoveInput) => {
+    async ({ cardId, targetColumnId }: KanbanMoveInput) => {
       if (!hasWorkspacePath(workspacePath)) {
-        return
+        return null
       }
 
-      void window.echosphereKanban
-        .moveCard({ cardId, targetColumnId, workspacePath })
-        .then(refreshBoardData)
-        .catch((error) => logKanbanSyncError('move task on', error))
+      const result = await runMutation(
+        'move',
+        () =>
+          window.echosphereKanban.moveCard({
+            cardId,
+            targetColumnId,
+            workspacePath,
+          }),
+        cardId,
+      )
+      if (result) {
+        await refreshBoardDataSafely()
+      }
+      return result
     },
-    [refreshBoardData, workspacePath],
+    [refreshBoardDataSafely, runMutation, workspacePath],
+  )
+
+  const reorderCard = useCallback(
+    async ({ cardId, targetColumnId, targetIndex }: KanbanReorderInput) => {
+      if (!hasWorkspacePath(workspacePath)) {
+        return null
+      }
+
+      const result = await runMutation(
+        'reorder',
+        () =>
+          window.echosphereKanban.reorderCard({
+            cardId,
+            targetColumnId,
+            targetIndex,
+            workspacePath,
+          }),
+        cardId,
+      )
+      if (result) {
+        await refreshBoardDataSafely()
+      }
+      return result
+    },
+    [refreshBoardDataSafely, runMutation, workspacePath],
   )
 
   const deleteCard = useCallback(
-    ({ cardId }: KanbanDeleteCardInput) => {
+    async (input: KanbanDeleteCardInput) => {
       if (!hasWorkspacePath(workspacePath)) {
-        return
+        return false
       }
 
-      void window.echosphereKanban
-        .deleteCard({ cardId, workspacePath })
-        .then(setBoardData)
-        .catch((error) => logKanbanSyncError('delete task from', error))
+      const result = await runMutation(
+        'delete',
+        () => window.echosphereKanban.deleteCard({ ...input, workspacePath }),
+        input.cardId,
+      )
+      if (result) {
+        await refreshBoardDataSafely()
+        return true
+      }
+      return false
     },
-    [workspacePath],
+    [refreshBoardDataSafely, runMutation, workspacePath],
   )
 
   const updateCard = useCallback(
-    ({ cardId, columnId, description, parentCardId, title }: KanbanUpdateCardInput) => {
-      const trimmedTitle = title.trim()
+    async (input: KanbanUpdateCardInput) => {
+      const trimmedTitle = input.title.trim()
       if (!hasWorkspacePath(workspacePath) || !trimmedTitle) {
-        return
+        return null
       }
 
-      void window.echosphereKanban
-        .updateCard({
-          cardId,
-          columnId,
-          description,
-          parentCardId,
-          title: trimmedTitle,
-          workspacePath,
-        })
-        .then(refreshBoardData)
-        .catch((error) => logKanbanSyncError('update task on', error))
+      const result = await runMutation(
+        'save',
+        () =>
+          window.echosphereKanban.updateCard({
+            ...input,
+            title: trimmedTitle,
+            workspacePath,
+          }),
+        input.cardId,
+      )
+      if (result) {
+        await refreshBoardDataSafely()
+      }
+      return result
     },
-    [refreshBoardData, workspacePath],
+    [refreshBoardDataSafely, runMutation, workspacePath],
   )
 
-  const clearCompletedCards = useCallback(() => {
+  const clearCompletedCards = useCallback(async () => {
     if (!hasWorkspacePath(workspacePath)) {
       return
     }
 
-    void window.echosphereKanban
-      .clearCompletedCards({ workspacePath })
-      .then(setBoardData)
-      .catch((error) => logKanbanSyncError('clear completed tasks from', error))
-  }, [workspacePath])
+    const result = await runMutation('clear', () =>
+      window.echosphereKanban.clearCompletedCards({ workspacePath }),
+    )
+    if (result) {
+      await refreshBoardDataSafely()
+    }
+  }, [refreshBoardDataSafely, runMutation, workspacePath])
 
   return {
     addCard,
@@ -236,9 +387,15 @@ export function useKanbanBoardState({ workspacePath, messages }: UseKanbanBoardS
     addCardFromMessageToColumn,
     cards: boardData.cards,
     clearCompletedCards,
+    createTask,
     deleteCard,
+    dismissError: () => setError(null),
+    error,
+    isBusy: pendingMutationCount > 0,
+    isLoading,
     moveCard,
-    updateCard,
+    reorderCard,
     sourceMessages,
+    updateCard,
   }
 }

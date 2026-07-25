@@ -360,7 +360,12 @@ export async function recordToolFreshness(input: {
 
   return updateDocument(input.conversationId, (document) => {
     const invalidated = new Set(document.freshness.invalidatedSubjects)
-    const mutationTools = new Set(['write', 'apply_patch'])
+    const mutationTools = new Set([
+      'write',
+      'apply_patch',
+      'replace_file_content',
+      'multi_replace_file_content',
+    ])
     const type = mutationTools.has(input.toolName) || isTerminalTool
       ? 'observation_invalidated'
       : 'observation_recorded'

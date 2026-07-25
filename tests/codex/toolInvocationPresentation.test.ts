@@ -369,6 +369,19 @@ test('kanban tool header labels use kanban-specific verbs', () => {
     state: 'completed',
   }
 
+  const reorderCardRunning: ToolInvocationTrace = {
+    argumentsText: '{}',
+    id: 'tool-kanban-reorder-card',
+    startedAt: 0,
+    state: 'running',
+    toolName: 'reorder_card',
+  }
+
+  const reorderCardCompleted: ToolInvocationTrace = {
+    ...reorderCardRunning,
+    state: 'completed',
+  }
+
   assert.equal(getToolInvocationHeaderLabel(readBoardRunning, undefined, WORKSPACE_ROOT_PATH), 'Reading board')
   assert.equal(getToolInvocationHeaderLabel(readBoardCompleted, undefined, WORKSPACE_ROOT_PATH), 'Read board')
   assert.equal(getToolInvocationHeaderLabel(readCardRunning, undefined, WORKSPACE_ROOT_PATH), 'Reading card')
@@ -379,6 +392,8 @@ test('kanban tool header labels use kanban-specific verbs', () => {
   assert.equal(getToolInvocationHeaderLabel(updateCardCompleted, undefined, WORKSPACE_ROOT_PATH), 'Updated card')
   assert.equal(getToolInvocationHeaderLabel(moveCardRunning, undefined, WORKSPACE_ROOT_PATH), 'Moving card')
   assert.equal(getToolInvocationHeaderLabel(moveCardCompleted, undefined, WORKSPACE_ROOT_PATH), 'Moved card')
+  assert.equal(getToolInvocationHeaderLabel(reorderCardRunning, undefined, WORKSPACE_ROOT_PATH), 'Reordering card')
+  assert.equal(getToolInvocationHeaderLabel(reorderCardCompleted, undefined, WORKSPACE_ROOT_PATH), 'Reordered card')
 })
 
 test('web search and webfetch header labels use readable product wording', () => {

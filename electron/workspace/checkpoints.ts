@@ -324,6 +324,7 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
         if (kanbanSnapshot) {
           await replaceKanbanBoardData({
             cards: kanbanSnapshot.boardData.cards,
+            revision: kanbanSnapshot.boardData.revision,
             workspacePath: kanbanSnapshot.workspacePath,
           })
         }

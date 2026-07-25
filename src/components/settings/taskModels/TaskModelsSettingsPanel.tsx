@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo } from 'react'
 import { PROVIDER_SECTIONS } from '../models/modelCatalog'
 import { buildModelProviderSections } from '../models/modelViewUtils'
 import { ModelSelectorField, type ModelSelectorOption } from '../../chat/ModelSelectorField'
+import { SegmentedField } from '../../ui/SegmentedField'
 import { SettingsPanelLayout, SettingsRow, SettingsSection } from '../shared/SettingsPanelPrimitives'
 import type { AppSettings, ChatProviderId, ProvidersState } from '../../../types/chat'
 import { useSettingsModelCatalog } from '../models/settingsModelCatalogStore'
@@ -34,6 +35,10 @@ interface TaskModelsSettingsPanelProps {
     | 'gitCommitModelId'
     | 'gitCommitModelLabel'
     | 'gitCommitModelProviderId'
+    | 'kanbanAiPlanningEnabled'
+    | 'kanbanModelId'
+    | 'kanbanModelLabel'
+    | 'kanbanModelProviderId'
     | 'planModelId'
     | 'planModelLabel'
     | 'planModelProviderId'
@@ -159,6 +164,10 @@ export function TaskModelsSettingsPanel({
     () => getMissingOption(settings.gitCommitModelId, settings.gitCommitModelLabel, settings.gitCommitModelProviderId),
     [settings.gitCommitModelId, settings.gitCommitModelLabel, settings.gitCommitModelProviderId],
   )
+  const kanbanMissingOption = useMemo(
+    () => getMissingOption(settings.kanbanModelId, settings.kanbanModelLabel, settings.kanbanModelProviderId),
+    [settings.kanbanModelId, settings.kanbanModelLabel, settings.kanbanModelProviderId],
+  )
 
   const isSelectorDisabled = isLoading
   const isModelsLoading = customModelsLoading || providerModelsLoading
@@ -174,16 +183,26 @@ export function TaskModelsSettingsPanel({
     () => buildSelectorOptions(sharedOptions, gitCommitMissingOption),
     [gitCommitMissingOption, sharedOptions],
   )
+  const kanbanOptions = useMemo(
+    () => buildSelectorOptions(sharedOptions, kanbanMissingOption),
+    [kanbanMissingOption, sharedOptions],
+  )
 
   const setTaskModel = useCallback(
     (
       nextValue: string,
       keys: {
-        modelId: 'agentModelId' | 'gitCommitModelId' | 'planModelId' | 'summarizationModelId'
-        modelLabel: 'agentModelLabel' | 'gitCommitModelLabel' | 'planModelLabel' | 'summarizationModelLabel'
+        modelId: 'agentModelId' | 'gitCommitModelId' | 'kanbanModelId' | 'planModelId' | 'summarizationModelId'
+        modelLabel:
+          | 'agentModelLabel'
+          | 'gitCommitModelLabel'
+          | 'kanbanModelLabel'
+          | 'planModelLabel'
+          | 'summarizationModelLabel'
         providerId:
           | 'agentModelProviderId'
           | 'gitCommitModelProviderId'
+          | 'kanbanModelProviderId'
           | 'planModelProviderId'
           | 'summarizationModelProviderId'
       },
@@ -235,32 +254,85 @@ export function TaskModelsSettingsPanel({
       findSelectedValue(sharedOptions, gitCommitMissingOption, settings.gitCommitModelId, settings.gitCommitModelProviderId),
     [gitCommitMissingOption, settings.gitCommitModelId, settings.gitCommitModelProviderId, sharedOptions],
   )
+  const kanbanSelectedValue = useMemo(
+    () =>
+      findSelectedValue(
+        sharedOptions,
+        kanbanMissingOption,
+        settings.kanbanModelId,
+        settings.kanbanModelProviderId,
+      ),
+    [kanbanMissingOption, settings.kanbanModelId, settings.kanbanModelProviderId, sharedOptions],
+  )
 
   return (
     <SettingsPanelLayout>
       <SettingsSection title="Configuration">
         <SettingsRow
-          title="Agent mode model"
-          description="Default model for Agent mode. Changes made from chat input in Agent mode are saved here."
+          title="AI task planning"
+          description="Let the task composer draft context, acceptance criteria, and subtasks for review."
         >
-          <div className="w-full md:w-[240px] lg:w-[252px]">
-            <ModelSelectorField
-              className="w-full"
-              disabled={isSelectorDisabled}
-              fullWidth
-              isLoading={isModelsLoading}
-              options={agentOptions}
-              size="comfortable"
-              value={agentSelectedValue}
-              onChange={(nextValue) =>
-                setTaskModel(nextValue, {
-                  modelId: 'agentModelId',
-                  modelLabel: 'agentModelLabel',
-                  providerId: 'agentModelProviderId',
-                })}
-            />
-          </div>
+          <SegmentedField
+            ariaLabel="AI task planning"
+            disabled={isLoading}
+            value={settings.kanbanAiPlanningEnabled ? 'on' : 'off'}
+            onChange={(value) => onUpdateSettings({ kanbanAiPlanningEnabled: value === 'on' })}
+            options={[
+              { label: 'Off', value: 'off' },
+              { label: 'On', value: 'on' },
+            ]}
+          />
         </SettingsRow>
+
+        <div className="border-t border-border">
+          <SettingsRow
+            title="Task planning model"
+            description="Model used to turn a task title into a reviewable implementation plan."
+          >
+            <div className="w-full md:w-[240px] lg:w-[252px]">
+              <ModelSelectorField
+                className="w-full"
+                disabled={isSelectorDisabled || !settings.kanbanAiPlanningEnabled}
+                fullWidth
+                isLoading={isModelsLoading}
+                options={kanbanOptions}
+                size="comfortable"
+                value={kanbanSelectedValue}
+                onChange={(nextValue) =>
+                  setTaskModel(nextValue, {
+                    modelId: 'kanbanModelId',
+                    modelLabel: 'kanbanModelLabel',
+                    providerId: 'kanbanModelProviderId',
+                  })}
+              />
+            </div>
+          </SettingsRow>
+        </div>
+
+        <div className="border-t border-border">
+          <SettingsRow
+            title="Agent mode model"
+            description="Default model for Agent mode. Changes made from chat input in Agent mode are saved here."
+          >
+            <div className="w-full md:w-[240px] lg:w-[252px]">
+              <ModelSelectorField
+                className="w-full"
+                disabled={isSelectorDisabled}
+                fullWidth
+                isLoading={isModelsLoading}
+                options={agentOptions}
+                size="comfortable"
+                value={agentSelectedValue}
+                onChange={(nextValue) =>
+                  setTaskModel(nextValue, {
+                    modelId: 'agentModelId',
+                    modelLabel: 'agentModelLabel',
+                    providerId: 'agentModelProviderId',
+                  })}
+              />
+            </div>
+          </SettingsRow>
+        </div>
 
         <div className="border-t border-border">
           <SettingsRow

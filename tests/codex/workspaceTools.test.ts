@@ -38,8 +38,14 @@ interface ExecutableWriteTool {
   execute: (input: { absolute_path: string; content: string }) => Promise<ExecutableToolResult>
 }
 
-interface ExecutableApplyPatchTool {
-  execute: (input: { patchText: string }) => Promise<ExecutableToolResult>
+interface ExecutableReplaceTool {
+  execute: (input: {
+    absolute_path: string
+    endLine: number
+    replacementContent: string
+    startLine: number
+    targetContent: string
+  }) => Promise<ExecutableToolResult>
 }
 
 async function createWorkspaceFixture() {
@@ -50,7 +56,11 @@ async function createWorkspaceFixture() {
   await fs.mkdir(path.join(workspaceRootPath, 'ignored'), { recursive: true })
   await fs.mkdir(path.join(workspaceRootPath, '.git', 'objects'), { recursive: true })
   await fs.mkdir(path.join(workspaceRootPath, 'node_modules', 'pkg'), { recursive: true })
-  await fs.writeFile(path.join(workspaceRootPath, '.gitignore'), 'ignored/\n*.secret\n.env\n', 'utf8')
+  await fs.writeFile(
+    path.join(workspaceRootPath, '.gitignore'),
+    'ignored/\nnode_modules/\n*.secret\n.env\n',
+    'utf8',
+  )
   await fs.writeFile(path.join(workspaceRootPath, 'nested', 'package-a', '.gitignore'), 'src/generated.ts\n', 'utf8')
   await fs.writeFile(
     path.join(workspaceRootPath, 'src', 'visible.ts'),
@@ -340,11 +350,10 @@ test('createAgentTools glob and grep allow explicit external paths in Full Acces
   }
 })
 
-test('createAgentTools write and apply_patch allow explicit external files in Full Access mode', async () => {
+test('createAgentTools write and replace allow explicit external files in Full Access mode', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
   const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-outside-write-'))
   const outsideFilePath = path.join(outsideDirectoryPath, 'external-write.txt')
-  const patchFilePath = outsideFilePath.split(path.sep).join(path.posix.sep)
 
   try {
     const tools = await createAgentTools(
@@ -363,17 +372,15 @@ test('createAgentTools write and apply_patch allow explicit external files in Fu
     assert.equal(writeResult.status, 'success')
     assert.equal(await fs.readFile(outsideFilePath, 'utf8'), 'written\n')
 
-    const patchResult = await (tools.apply_patch as unknown as ExecutableApplyPatchTool).execute({
-      patchText: `<patch>
-<update path="${patchFilePath}">
-@@
--written
-+patched
-</update>
-</patch>`,
+    const replaceResult = await (tools.replace_file_content as unknown as ExecutableReplaceTool).execute({
+      absolute_path: outsideFilePath,
+      endLine: 1,
+      replacementContent: 'patched',
+      startLine: 1,
+      targetContent: 'written',
     })
 
-    assert.equal(patchResult.status, 'success')
+    assert.equal(replaceResult.status, 'success')
     assert.equal(await fs.readFile(outsideFilePath, 'utf8'), 'patched\n')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

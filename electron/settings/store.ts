@@ -467,6 +467,19 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     typeof input?.gitCommitModelLabel === 'string'
       ? input.gitCommitModelLabel.trim()
       : DEFAULT_APP_SETTINGS.gitCommitModelLabel
+  const kanbanAiPlanningEnabled =
+    typeof input?.kanbanAiPlanningEnabled === 'boolean'
+      ? input.kanbanAiPlanningEnabled
+      : DEFAULT_APP_SETTINGS.kanbanAiPlanningEnabled
+  const kanbanModelId =
+    typeof input?.kanbanModelId === 'string' ? input.kanbanModelId.trim() : DEFAULT_APP_SETTINGS.kanbanModelId
+  const kanbanModelProviderId = isChatProviderId(input?.kanbanModelProviderId)
+    ? input.kanbanModelProviderId
+    : DEFAULT_APP_SETTINGS.kanbanModelProviderId
+  const kanbanModelLabel =
+    typeof input?.kanbanModelLabel === 'string'
+      ? input.kanbanModelLabel.trim()
+      : DEFAULT_APP_SETTINGS.kanbanModelLabel
   const diffPanelWidth =
     typeof input?.diffPanelWidth === 'number' && Number.isFinite(input.diffPanelWidth)
       ? clampStoredDiffPanelWidth(input.diffPanelWidth)
@@ -535,6 +548,10 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     gitCommitModelId,
     gitCommitModelProviderId,
     gitCommitModelLabel,
+    kanbanAiPlanningEnabled,
+    kanbanModelId,
+    kanbanModelProviderId,
+    kanbanModelLabel,
     diffPanelWidth,
     editSessionsByConversation,
     followUpBehavior,

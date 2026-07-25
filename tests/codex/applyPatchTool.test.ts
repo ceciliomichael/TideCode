@@ -742,8 +742,18 @@ test('createAgentTools omits write tools in plan mode', async () => {
 
     assert.ok('list' in tools)
     assert.ok('read' in tools)
+    assert.ok('read_board' in tools)
+    assert.ok('read_card' in tools)
     assert.ok(!('write' in tools))
+    assert.ok(!('replace_file_content' in tools))
+    assert.ok(!('multi_replace_file_content' in tools))
     assert.ok(!('apply_patch' in tools))
+    assert.ok(!('create_card' in tools))
+    assert.ok(!('create_task_with_subtasks' in tools))
+    assert.ok(!('update_card' in tools))
+    assert.ok(!('move_card' in tools))
+    assert.ok(!('reorder_card' in tools))
+    assert.ok(!('delete_card' in tools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -760,42 +770,15 @@ test('createAgentTools exposes write tools in agent mode', async () => {
     })
 
     assert.ok('write' in tools)
-    assert.ok('apply_patch' in tools)
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('createAgentTools exposes Codex apply_patch as a grammar-backed freeform tool', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
-
-  try {
-    const tools = await createAgentTools(
-      {
-        workspaceRootPath,
-      },
-      {
-        chatMode: 'agent',
-        providerId: 'codex',
-      },
-    )
-
-    const applyPatchTool = tools.apply_patch as {
-      args?: { description?: string; format?: { definition?: string; syntax?: string; type?: string } }
-      id?: string
-      type?: string
-    }
-
-    assert.equal(applyPatchTool.type, 'provider')
-    assert.equal(applyPatchTool.id, 'openai.custom')
-    assert.equal(applyPatchTool.args?.format?.type, 'grammar')
-    assert.equal(applyPatchTool.args?.format?.syntax, 'lark')
-    assert.match(applyPatchTool.args?.format?.definition ?? '', /start: begin_patch hunk\+ end_patch/u)
-    assert.match(applyPatchTool.args?.format?.definition ?? '', /"\*\*\* Begin Patch"/u)
-    assert.doesNotMatch(applyPatchTool.args?.format?.definition ?? '', /<patch>|<update/u)
-    assert.match(applyPatchTool.args?.description ?? '', /Applies one standard structured patch/u)
-    assert.match(applyPatchTool.args?.description ?? '', /validated before any file write/u)
-    assert.match(applyPatchTool.args?.description ?? '', /LF line endings/u)
+    assert.ok('replace_file_content' in tools)
+    assert.ok('multi_replace_file_content' in tools)
+    assert.ok(!('apply_patch' in tools))
+    assert.ok('create_card' in tools)
+    assert.ok('create_task_with_subtasks' in tools)
+    assert.ok('update_card' in tools)
+    assert.ok('move_card' in tools)
+    assert.ok('reorder_card' in tools)
+    assert.ok('delete_card' in tools)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -890,36 +873,7 @@ test('webfetch fetches and normalizes HTML content', async () => {
   )
 })
 
-test('createAgentTools keeps JSON apply_patch fallback for non-Codex providers', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
-
-  try {
-    const tools = await createAgentTools(
-      {
-        workspaceRootPath,
-      },
-      {
-        chatMode: 'agent',
-        providerId: 'custom:test-provider',
-      },
-    )
-
-    const applyPatchTool = tools.apply_patch as {
-      description?: string
-      inputSchema?: unknown
-      type?: string
-    }
-
-    assert.notEqual(applyPatchTool.type, 'provider')
-    assert.ok(applyPatchTool.inputSchema)
-    assert.match(applyPatchTool.description ?? '', /structured patch/u)
-    assert.ok(!('web_search' in tools))
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('createAgentTools gives every provider the same apply_patch contract', async () => {
+test('createAgentTools exposes the same exact replacement tools for every provider', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
 
   try {
@@ -931,12 +885,26 @@ test('createAgentTools gives every provider the same apply_patch contract', asyn
       { workspaceRootPath },
       { chatMode: 'agent', providerId: 'custom:test-provider' },
     )
-    const codexPatchTool = codexTools.apply_patch as {
-      args?: { description?: string }
-    }
-    const compatiblePatchTool = compatibleTools.apply_patch as { description?: string }
 
-    assert.equal(codexPatchTool.args?.description, compatiblePatchTool.description)
+    for (const toolName of [
+      'replace_file_content',
+      'multi_replace_file_content',
+    ]) {
+      const codexTool = codexTools[toolName] as {
+        description?: string
+        inputSchema?: unknown
+      }
+      const compatibleTool = compatibleTools[toolName] as {
+        description?: string
+        inputSchema?: unknown
+      }
+      assert.equal(codexTool.description, compatibleTool.description)
+      assert.ok(codexTool.inputSchema)
+      assert.ok(compatibleTool.inputSchema)
+    }
+
+    assert.ok('web_search' in codexTools)
+    assert.ok('webfetch' in compatibleTools)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -990,6 +958,8 @@ test('createAgentTools keeps plan mode tool descriptions literal', async () => {
       assert.doesNotMatch(description, /use `read`|apply_patch|write|should|prefer/iu)
     }
     assert.ok(!('write' in tools))
+    assert.ok(!('replace_file_content' in tools))
+    assert.ok(!('multi_replace_file_content' in tools))
     assert.ok(!('apply_patch' in tools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -1010,26 +980,37 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     )
 
     assert.ok('read' in tools)
-    assert.ok('apply_patch' in tools)
+    assert.ok('replace_file_content' in tools)
+    assert.ok('multi_replace_file_content' in tools)
     assert.ok('write' in tools)
 
     const readTool = tools.read as { description?: string }
     const globTool = tools.glob as { description?: string }
     const grepTool = tools.grep as { description?: string }
-    const applyPatchTool = tools.apply_patch as { description?: string }
+    const replaceTool = tools.replace_file_content as { description?: string }
+    const multiReplaceTool = tools.multi_replace_file_content as {
+      description?: string
+    }
     const writeTool = tools.write as { description?: string }
 
     assert.match(readTool.description ?? '', /numbered UTF-8 file lines/u)
     assert.match(readTool.description ?? '', /limit defaults to 2000/u)
     assert.match(readTool.description ?? '', /output is capped at 256 KB/u)
-    assert.match(applyPatchTool.description ?? '', /add, update, move, or delete operations/u)
-    assert.match(applyPatchTool.description ?? '', /ambiguous matches are rejected/u)
-    assert.match(applyPatchTool.description ?? '', /LF line endings/u)
+    assert.match(replaceTool.description ?? '', /single, exact, contiguous block/u)
+    assert.match(multiReplaceTool.description ?? '', /multiple non-contiguous exact-string replacements/u)
+    assert.match(multiReplaceTool.description ?? '', /one atomic operation/u)
     assert.match(globTool.description ?? '', /matching the glob pattern/u)
     assert.match(grepTool.description ?? '', /optional filename glob/u)
     assert.match(writeTool.description ?? '', /complete UTF-8 contents/u)
     assert.match(writeTool.description ?? '', /content is unchanged/u)
-    for (const description of [readTool, globTool, grepTool, applyPatchTool, writeTool]
+    for (const description of [
+      readTool,
+      globTool,
+      grepTool,
+      replaceTool,
+      multiReplaceTool,
+      writeTool,
+    ]
       .map((tool) => tool.description ?? '')) {
       assert.doesNotMatch(description, /should|prefer|after reading|before editing/iu)
     }

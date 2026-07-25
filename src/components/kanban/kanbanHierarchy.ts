@@ -52,7 +52,9 @@ export function buildKanbanBoardDisplayData(cards: readonly KanbanCard[]): Kanba
 
   const orderedCardsByColumn = createEmptyColumnCardMap()
   for (const column of KANBAN_COLUMNS) {
-    const cardsInColumn = cards.filter((card) => card.columnId === column.id)
+    const cardsInColumn = cards
+      .filter((card) => card.columnId === column.id)
+      .sort((left, right) => left.position - right.position || left.createdAt - right.createdAt)
     const topLevelCards = cardsInColumn.filter((card) => card.parentCardId === undefined)
     const childCardsInColumn = cardsInColumn.filter((card) => card.parentCardId !== undefined)
     const appendedCardIds = new Set<string>()

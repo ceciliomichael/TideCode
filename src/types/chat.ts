@@ -3,10 +3,15 @@ import type {
   KanbanBoardData,
   KanbanCard,
   KanbanCreateCardRequest,
+  KanbanCreateTaskRequest,
+  KanbanCreateTaskResult,
   KanbanDeleteCardRequest,
   KanbanMoveCardRequest,
   KanbanReadBoardRequest,
   KanbanReadCardRequest,
+  KanbanReorderCardRequest,
+  KanbanTaskPlan,
+  KanbanTaskPlanInput,
   KanbanUpdateCardInput,
   KanbanUpdateCardRequest,
   KanbanWorkspaceInput,
@@ -246,6 +251,10 @@ export interface AppSettings {
   gitCommitModelId: string
   gitCommitModelProviderId: ChatProviderId | null
   gitCommitModelLabel: string
+  kanbanAiPlanningEnabled: boolean
+  kanbanModelId: string
+  kanbanModelProviderId: ChatProviderId | null
+  kanbanModelLabel: string
   diffPanelWidth: number
   editSessionsByConversation: Record<string, ConversationEditSession>
   followUpBehavior: FollowUpBehavior
@@ -955,13 +964,16 @@ export interface EchosphereChatApi {
 export interface EchosphereKanbanApi {
   clearCompletedCards: (input: KanbanWorkspaceInput) => Promise<KanbanBoardData>
   createCard: (input: KanbanCreateCardRequest) => Promise<KanbanCard>
+  createTask: (input: KanbanCreateTaskRequest) => Promise<KanbanCreateTaskResult>
   deleteCard: (input: KanbanDeleteCardRequest) => Promise<KanbanBoardData>
   getBoardData: (input: KanbanWorkspaceInput) => Promise<KanbanBoardData>
   importBoardData: (input: KanbanWorkspaceInput & KanbanBoardData) => Promise<KanbanBoardData>
   moveCard: (input: KanbanMoveCardRequest) => Promise<KanbanCard>
   onBoardChange: (listener: (event: KanbanBoardChangeEvent) => void) => () => void
+  planTask: (input: KanbanTaskPlanInput) => Promise<KanbanTaskPlan>
   readBoard: (input: KanbanReadBoardRequest) => Promise<import('../lib/kanban').KanbanColumnReadResult>
   readCard: (input: KanbanReadCardRequest) => Promise<import('../lib/kanban').KanbanCardDetails | null>
+  reorderCard: (input: KanbanReorderCardRequest) => Promise<KanbanCard>
   updateCard: (input: KanbanWorkspaceInput & KanbanUpdateCardInput) => Promise<KanbanCard>
   updateCardContent: (input: KanbanUpdateCardRequest) => Promise<KanbanCard>
 }

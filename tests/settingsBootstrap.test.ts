@@ -73,3 +73,21 @@ test('parseInitialSettingsArg sanitizes disabled skill paths', () => {
     'C:/skills/docx/SKILL.md': true,
   })
 })
+
+test('parseInitialSettingsArg preserves AI task planning configuration', () => {
+  const parsedSettings = parseInitialSettingsArg([
+    'echosphere.exe',
+    serializeInitialSettingsArg({
+      ...DEFAULT_APP_SETTINGS,
+      kanbanAiPlanningEnabled: false,
+      kanbanModelId: 'gpt-5',
+      kanbanModelLabel: 'GPT-5',
+      kanbanModelProviderId: 'openai',
+    }),
+  ])
+
+  assert.equal(parsedSettings.kanbanAiPlanningEnabled, false)
+  assert.equal(parsedSettings.kanbanModelId, 'gpt-5')
+  assert.equal(parsedSettings.kanbanModelLabel, 'GPT-5')
+  assert.equal(parsedSettings.kanbanModelProviderId, 'openai')
+})

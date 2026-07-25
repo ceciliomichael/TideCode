@@ -58,10 +58,13 @@ import type {
 import type {
   KanbanBoardData,
   KanbanCreateCardRequest,
+  KanbanCreateTaskRequest,
   KanbanDeleteCardRequest,
   KanbanMoveCardRequest,
   KanbanReadBoardRequest,
   KanbanReadCardRequest,
+  KanbanReorderCardRequest,
+  KanbanTaskPlanInput,
   KanbanUpdateCardInput,
   KanbanUpdateCardRequest,
   KanbanWorkspaceInput,
@@ -176,15 +179,18 @@ import {
 import {
   clearCompletedKanbanBoardCards,
   createKanbanBoardCard,
+  createKanbanBoardTask,
   deleteKanbanBoardCard,
   getKanbanBoardData,
   getKanbanCard,
   importKanbanBoardData,
   moveKanbanBoardCard,
   readKanbanBoardColumn,
+  reorderKanbanBoardCard,
   updateKanbanBoardCard,
   updateKanbanBoardCardContent,
 } from './kanban/store'
+import { generateKanbanTaskPlan } from './kanban/planner'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // The built directory structure
@@ -426,7 +432,9 @@ function registerHistoryHandlers() {
   )
   ipcMain.handle('kanban:readBoard', async (_event, input: KanbanReadBoardRequest) => readKanbanBoardColumn(input))
   ipcMain.handle('kanban:readCard', async (_event, input: KanbanReadCardRequest) => getKanbanCard(input))
+  ipcMain.handle('kanban:planTask', async (_event, input: KanbanTaskPlanInput) => generateKanbanTaskPlan(input))
   ipcMain.handle('kanban:createCard', async (_event, input: KanbanCreateCardRequest) => createKanbanBoardCard(input))
+  ipcMain.handle('kanban:createTask', async (_event, input: KanbanCreateTaskRequest) => createKanbanBoardTask(input))
   ipcMain.handle('kanban:updateCardContent', async (_event, input: KanbanUpdateCardRequest) =>
     updateKanbanBoardCardContent(input),
   )
@@ -434,6 +442,9 @@ function registerHistoryHandlers() {
     updateKanbanBoardCard(input),
   )
   ipcMain.handle('kanban:moveCard', async (_event, input: KanbanMoveCardRequest) => moveKanbanBoardCard(input))
+  ipcMain.handle('kanban:reorderCard', async (_event, input: KanbanReorderCardRequest) =>
+    reorderKanbanBoardCard(input),
+  )
   ipcMain.handle('kanban:deleteCard', async (_event, input: KanbanDeleteCardRequest) => deleteKanbanBoardCard(input))
   ipcMain.handle('kanban:clearCompletedCards', async (_event, input: KanbanWorkspaceInput) =>
     clearCompletedKanbanBoardCards(input),

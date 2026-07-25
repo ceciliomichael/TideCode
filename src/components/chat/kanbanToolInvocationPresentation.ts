@@ -31,6 +31,16 @@ function formatKanbanVerb(toolName: string, state: ToolInvocationTrace['state'])
     return 'Create card failed'
   }
 
+  if (toolName === 'create_task_with_subtasks') {
+    if (state === 'running') {
+      return 'Planning task and subtasks'
+    }
+    if (state === 'completed') {
+      return 'Created task and subtasks'
+    }
+    return 'Create task and subtasks failed'
+  }
+
   if (toolName === 'update_card') {
     if (state === 'running') {
       return 'Updating card'
@@ -51,7 +61,31 @@ function formatKanbanVerb(toolName: string, state: ToolInvocationTrace['state'])
     return 'Move card failed'
   }
 
-  return state === 'running' ? `Running ${toolName}` : state === 'completed' ? `Completed ${toolName}` : `Failed ${toolName}`
+  if (toolName === 'reorder_card') {
+    if (state === 'running') {
+      return 'Reordering card'
+    }
+    if (state === 'completed') {
+      return 'Reordered card'
+    }
+    return 'Reorder card failed'
+  }
+
+  if (toolName === 'delete_card') {
+    if (state === 'running') {
+      return 'Deleting task'
+    }
+    if (state === 'completed') {
+      return 'Deleted task'
+    }
+    return 'Delete task failed'
+  }
+
+  return state === 'running'
+    ? `Running ${toolName}`
+    : state === 'completed'
+      ? `Completed ${toolName}`
+      : `Failed ${toolName}`
 }
 
 export function getKanbanToolInvocationHeaderLabel(invocation: ToolInvocationTrace) {

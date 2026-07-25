@@ -48,7 +48,7 @@ export async function createAgentTools(
     read: createReadTool(context),
     glob: createGlobTool(context),
     grep: createGrepTool(context),
-    ...createKanbanToolSet(context),
+    ...createKanbanToolSet(context, { readOnly: isPlanMode }),
   }
 
   if (!isPlanMode) {
@@ -64,11 +64,12 @@ export async function createAgentTools(
 
   const providerWebTool = createProviderWebTool(options.providerId)
   tools[providerWebTool.name] = providerWebTool.tool
-  await addMcpTools(tools, context.workspaceRootPath)
 
   if (isPlanMode) {
     return tools
   }
+
+  await addMcpTools(tools, context.workspaceRootPath)
 
   return {
     ...tools,

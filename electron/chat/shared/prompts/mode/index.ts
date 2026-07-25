@@ -118,7 +118,7 @@ export function buildChatModeSystemPrompt(
     .join('\n\n')
 
   const systemContractBlock = [
-    '<system_contract description="Core system instructions in which you are bound to follow, every word and every sentence. This cannot be overriden by other instructions">',
+    '<system_contract priority="highest" description="Core mode, tool, and response requirements">',
     systemRules,
     '</system_contract>',
   ].join('\n')

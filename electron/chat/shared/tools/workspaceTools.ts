@@ -795,102 +795,156 @@ export interface MultiReplaceFileContentInput {
   chunks: ReplaceFileContentChunk[]
 }
 
-function applyChunkToContent(
+interface ResolvedTextReplacement {
+  chunkIndex: number
+  endOffset: number
+  replacementContent: string
+  startOffset: number
+}
+
+function getLineRangeOffsets(
   fileContent: string,
   chunk: ReplaceFileContentChunk,
   displayPath: string,
-): string {
+): { endOffset: number; startOffset: number } {
   const lines = fileContent.split('\n')
   const totalLines = lines.length
 
-  // Add a +/- 5 line padding to the search window to account for minor line shifts
-  // from previous edits that the AI may not have re-read.
-  const clampedStart = Math.max(1, chunk.startLine - 5)
-  const clampedEnd = Math.min(totalLines, chunk.endLine + 5)
-
-  if (clampedStart > clampedEnd) {
+  if (
+    !Number.isInteger(chunk.startLine) ||
+    !Number.isInteger(chunk.endLine) ||
+    chunk.startLine < 1 ||
+    chunk.endLine < chunk.startLine ||
+    chunk.endLine > totalLines
+  ) {
     throw new Error(
       `Invalid line range [${chunk.startLine}, ${chunk.endLine}] for file "${displayPath}" (${totalLines} lines total).`,
     )
   }
 
-  // Build the searchable region from the clamped line window
-  const regionLines = lines.slice(clampedStart - 1, clampedEnd)
-  const region = regionLines.join('\n')
-
-  let targetContent = chunk.targetContent
-  let replacementContent = chunk.replacementContent
-
-  // Count occurrences of targetContent within the region
-  let occurrenceCount = 0
-  let searchStart = 0
-  while (true) {
-    const idx = region.indexOf(targetContent, searchStart)
-    if (idx === -1) break
-    occurrenceCount += 1
-    searchStart = idx + targetContent.length
+  let startOffset = 0
+  for (let lineIndex = 0; lineIndex < chunk.startLine - 1; lineIndex += 1) {
+    startOffset += lines[lineIndex].length + 1
   }
 
-  // Fallback: If strict match fails, try a whitespace-normalized line-by-line match
-  // This helps when the AI mixes up tabs and spaces, or gets the indentation depth wrong.
-  if (occurrenceCount === 0) {
-    const normalizeSpace = (s: string) => s.replace(/[ \t]+/g, ' ').trim()
-    const targetNormalized = normalizeSpace(targetContent)
-    
-    if (targetNormalized.length > 0) {
-      let normalizedOccurrenceCount = 0
-      const targetLines = targetContent.split('\n').map(normalizeSpace)
-      const rLines = regionLines.map(normalizeSpace)
-      const matches: number[] = []
-      
-      for (let i = 0; i <= rLines.length - targetLines.length; i++) {
-        let match = true
-        for (let j = 0; j < targetLines.length; j++) {
-          if (rLines[i + j] !== targetLines[j]) {
-            match = false
-            break
-          }
-        }
-        if (match) {
-          matches.push(i)
-          normalizedOccurrenceCount++
-        }
-      }
-      
-      if (normalizedOccurrenceCount === 1 || (normalizedOccurrenceCount > 1 && chunk.allowMultiple)) {
-        // We found a flexible match! Overwrite targetContent with the exact string from the file
-        const firstMatchIdx = matches[0]
-        const exactOriginalString = regionLines.slice(firstMatchIdx, firstMatchIdx + targetLines.length).join('\n')
-        targetContent = exactOriginalString
-        occurrenceCount = normalizedOccurrenceCount
-      }
+  let endOffset = startOffset
+  for (
+    let lineIndex = chunk.startLine - 1;
+    lineIndex < chunk.endLine;
+    lineIndex += 1
+  ) {
+    endOffset += lines[lineIndex].length
+    if (lineIndex < chunk.endLine - 1) {
+      endOffset += 1
     }
   }
 
-  if (occurrenceCount === 0) {
+  return { endOffset, startOffset }
+}
+
+function findExactMatchOffsets(
+  content: string,
+  targetContent: string,
+  baseOffset = 0,
+) {
+  const matchOffsets: number[] = []
+  let searchOffset = 0
+
+  while (searchOffset <= content.length - targetContent.length) {
+    const matchOffset = content.indexOf(targetContent, searchOffset)
+    if (matchOffset === -1) {
+      break
+    }
+
+    matchOffsets.push(baseOffset + matchOffset)
+    searchOffset = matchOffset + targetContent.length
+  }
+
+  return matchOffsets
+}
+
+function resolveChunkReplacements(
+  fileContent: string,
+  chunk: ReplaceFileContentChunk,
+  displayPath: string,
+  chunkIndex: number,
+): ResolvedTextReplacement[] {
+  if (chunk.targetContent.length === 0) {
+    throw new Error(`Replacement chunk ${chunkIndex + 1} has empty target content.`)
+  }
+
+  let matchOffsets: number[] = []
+  let usedWholeFileFallback = false
+
+  try {
+    const range = getLineRangeOffsets(fileContent, chunk, displayPath)
+    const region = fileContent.slice(range.startOffset, range.endOffset)
+    matchOffsets = findExactMatchOffsets(
+      region,
+      chunk.targetContent,
+      range.startOffset,
+    )
+  } catch {
+    // A stale line range can recover below when the exact target is unique.
+  }
+
+  if (matchOffsets.length === 0) {
+    matchOffsets = findExactMatchOffsets(fileContent, chunk.targetContent)
+    usedWholeFileFallback = true
+  }
+
+  if (matchOffsets.length === 0) {
     throw new Error(
-      `Target content not found between lines ${chunk.startLine} and ${chunk.endLine} in "${displayPath}". ` +
-        `Make sure the text matches exactly, including leading whitespace.`,
+      `Target content not found in "${displayPath}". Read the current file and try again with current text.`,
     )
   }
 
-  if (occurrenceCount > 1 && !chunk.allowMultiple) {
+  if (matchOffsets.length > 1 && !chunk.allowMultiple) {
     throw new Error(
-      `Target content found ${occurrenceCount} times between lines ${chunk.startLine} and ${chunk.endLine} in "${displayPath}". ` +
-        `Narrow the line range to target a single occurrence, or set allowMultiple to true.`,
+      usedWholeFileFallback
+        ? `Target content found ${matchOffsets.length} times in "${displayPath}". Read the file and use a line range that contains one match.`
+        : `Target content found ${matchOffsets.length} times between lines ${chunk.startLine} and ${chunk.endLine} in "${displayPath}". Narrow the line range to one match.`,
     )
   }
 
-  // Apply replacement(s) within the region, then splice back into the full content
-  const updatedRegion = chunk.allowMultiple
-    ? region.split(targetContent).join(replacementContent)
-    : region.replace(targetContent, replacementContent)
+  return matchOffsets.map((startOffset) => ({
+    chunkIndex,
+    endOffset: startOffset + chunk.targetContent.length,
+    replacementContent: chunk.replacementContent,
+    startOffset,
+  }))
+}
 
-  const beforeLines = lines.slice(0, clampedStart - 1)
-  const afterLines = lines.slice(clampedEnd)
-  const updatedLines = updatedRegion.split('\n')
+function applyResolvedTextReplacements(
+  fileContent: string,
+  replacements: readonly ResolvedTextReplacement[],
+  displayPath: string,
+) {
+  const sortedAscending = [...replacements].sort(
+    (left, right) =>
+      left.startOffset - right.startOffset || left.endOffset - right.endOffset,
+  )
 
-  return [...beforeLines, ...updatedLines, ...afterLines].join('\n')
+  for (let index = 1; index < sortedAscending.length; index += 1) {
+    const previous = sortedAscending[index - 1]
+    const current = sortedAscending[index]
+    if (current.startOffset < previous.endOffset) {
+      throw new Error(
+        `Replacement chunks ${previous.chunkIndex + 1} and ${current.chunkIndex + 1} overlap in "${displayPath}". ` +
+          'Use distinct, non-overlapping target blocks.',
+      )
+    }
+  }
+
+  let updatedContent = fileContent
+  for (const replacement of sortedAscending.reverse()) {
+    updatedContent =
+      updatedContent.slice(0, replacement.startOffset) +
+      replacement.replacementContent +
+      updatedContent.slice(replacement.endOffset)
+  }
+
+  return updatedContent
 }
 
 export async function createReplaceFileContentToolResult(
@@ -917,7 +971,17 @@ export async function createReplaceFileContentToolResult(
     targetContent: normalizeTextMutationContent(input.targetContent),
   }
 
-  const newContent = applyChunkToContent(normalizedOld, chunk, target.displayPath)
+  const replacements = resolveChunkReplacements(
+    normalizedOld,
+    chunk,
+    target.displayPath,
+    0,
+  )
+  const newContent = applyResolvedTextReplacements(
+    normalizedOld,
+    replacements,
+    target.displayPath,
+  )
 
   if (newContent === normalizedOld) {
     return createSuccessResult({
@@ -968,7 +1032,6 @@ export async function createMultiReplaceFileContentToolResult(
 
   const normalizedOld = normalizeTextMutationContent(oldContent)
 
-  // Validate all chunks before writing anything to disk
   const normalizedChunks: ReplaceFileContentChunk[] = input.chunks.map((chunk) => ({
     allowMultiple: chunk.allowMultiple,
     endLine: chunk.endLine,
@@ -977,16 +1040,18 @@ export async function createMultiReplaceFileContentToolResult(
     targetContent: normalizeTextMutationContent(chunk.targetContent),
   }))
 
-  // Sort chunks in reverse line order so that applying earlier chunks doesn't
-  // shift the line offsets for subsequent chunks
-  const sortedChunks = [...normalizedChunks].sort((a, b) => b.startLine - a.startLine)
-
-  // Dry-run all chunks against the ORIGINAL content to surface all validation
-  // errors at once before we mutate anything on disk
   const validationErrors: string[] = []
-  for (const chunk of sortedChunks) {
+  const replacements: ResolvedTextReplacement[] = []
+  for (const [chunkIndex, chunk] of normalizedChunks.entries()) {
     try {
-      applyChunkToContent(normalizedOld, chunk, target.displayPath)
+      replacements.push(
+        ...resolveChunkReplacements(
+          normalizedOld,
+          chunk,
+          target.displayPath,
+          chunkIndex,
+        ),
+      )
     } catch (error) {
       validationErrors.push(error instanceof Error ? error.message : String(error))
     }
@@ -996,10 +1061,17 @@ export async function createMultiReplaceFileContentToolResult(
     throw new Error(`Multi-replace validation failed:\n${validationErrors.map((e, i) => `  ${i + 1}. ${e}`).join('\n')}`)
   }
 
-  // All chunks validated — now apply them sequentially to a working copy
-  let workingContent = normalizedOld
-  for (const chunk of sortedChunks) {
-    workingContent = applyChunkToContent(workingContent, chunk, target.displayPath)
+  let workingContent: string
+  try {
+    workingContent = applyResolvedTextReplacements(
+      normalizedOld,
+      replacements,
+      target.displayPath,
+    )
+  } catch (error) {
+    throw new Error(
+      `Multi-replace validation failed:\n  1. ${error instanceof Error ? error.message : String(error)}`,
+    )
   }
 
   if (workingContent === normalizedOld) {

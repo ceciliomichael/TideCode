@@ -1,92 +1,130 @@
-import { useState, type DragEvent } from 'react'
-import { KanbanCardItem } from './KanbanCardItem'
-import type { KanbanCard, KanbanColumnDefinition, KanbanColumnId } from './kanbanTypes'
+import { Plus } from 'lucide-react'
+import { useEffect, useState, type DragEvent } from 'react'
 import type { KanbanCardDisplayMeta } from './kanbanHierarchy'
+import { KanbanCardItem } from './KanbanCardItem'
+import type {
+  KanbanCard,
+  KanbanColumnDefinition,
+  KanbanColumnId,
+} from './kanbanTypes'
 
 interface KanbanColumnProps {
+  cardMetaById: Map<string, KanbanCardDisplayMeta>
   cards: readonly KanbanCard[]
   column: KanbanColumnDefinition
   count: number
   draggedCardId: string | null
-  cardMetaById: Map<string, KanbanCardDisplayMeta>
-  onCardOpen: (cardId: string) => void
+  onAdd: (columnId: KanbanColumnId) => void
+  onCardDragEnd: () => void
   onCardDragStart: (cardId: string) => void
+  onCardDropAt: (
+    cardId: string,
+    targetColumnId: KanbanColumnId,
+    targetIndex: number,
+  ) => void
   onCardMove: (cardId: string, targetColumnId: KanbanColumnId) => void
-  onCardDrop: (cardId: string, targetColumnId: KanbanColumnId) => void
+  onCardOpen: (cardId: string) => void
+}
+
+const COLUMN_MARKER_CLASS_NAMES: Record<KanbanColumnId, string> = {
+  backlog: 'bg-slate-400',
+  blocked: 'bg-red-500',
+  done: 'bg-emerald-500',
+  'in-progress': 'bg-blue-500',
 }
 
 export function KanbanColumn({
+  cardMetaById,
   cards,
   column,
   count,
-  cardMetaById,
   draggedCardId,
-  onCardOpen,
+  onAdd,
+  onCardDragEnd,
   onCardDragStart,
-  onCardDrop,
+  onCardDropAt,
   onCardMove,
+  onCardOpen,
 }: KanbanColumnProps) {
   const [isOver, setIsOver] = useState(false)
 
-  const isDragging = draggedCardId !== null
-
-  function handleDragEnter(event: DragEvent<HTMLElement>) {
-    event.preventDefault()
-    setIsOver(true)
-  }
+  useEffect(() => {
+    if (!draggedCardId) {
+      setIsOver(false)
+    }
+  }, [draggedCardId])
 
   function handleDragLeave(event: DragEvent<HTMLElement>) {
-    // Only clear when the cursor actually leaves this column (not a child element)
     if (!event.currentTarget.contains(event.relatedTarget as Node)) {
       setIsOver(false)
     }
   }
 
-  function handleDragOver(event: DragEvent<HTMLElement>) {
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-  }
-
   function handleDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault()
     setIsOver(false)
-
-    // Existing card drag
-    if (!draggedCardId) {
-      return
+    const cardId =
+      event.dataTransfer.getData('application/x-echosphere-kanban-card') ||
+      draggedCardId
+    if (cardId) {
+      onCardDropAt(cardId, column.id, cards.length)
     }
-    onCardDrop(draggedCardId, column.id)
   }
 
   return (
     <section
-      onDragEnter={handleDragEnter}
+      onDragEnter={(event) => {
+        event.preventDefault()
+        setIsOver(true)
+      }}
       onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
+      onDragOver={(event) => {
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'move'
+      }}
       onDrop={handleDrop}
       className={[
-        'flex min-h-0 flex-1 flex-col overflow-hidden transition-colors duration-100',
-        isOver && isDragging ? 'bg-surface-muted' : 'bg-surface',
+        'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border transition-colors duration-150',
+        isOver && draggedCardId
+          ? 'bg-[var(--dropdown-control-open-surface)]'
+          : 'bg-surface-muted',
       ].join(' ')}
     >
-      {/* Column header — flat strip */}
-      <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground">{column.title}</span>
-          <span className="rounded-sm bg-surface-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
-            {count}
-          </span>
+      <header className="flex shrink-0 items-start justify-between gap-3 px-3.5 pb-2 pt-3.5">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              className={`h-2 w-2 rounded-full ${COLUMN_MARKER_CLASS_NAMES[column.id]}`}
+            />
+            <h2 className="text-xs font-bold uppercase tracking-[0.13em] text-foreground">
+              {column.title}
+            </h2>
+            <span className="rounded-md bg-surface px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
+              {count}
+            </span>
+          </div>
+          <p className="mt-1.5 line-clamp-1 text-[11px] text-subtle-foreground">
+            {column.description}
+          </p>
         </div>
+        <button
+          type="button"
+          onClick={() => onAdd(column.id)}
+          aria-label={`Add task to ${column.title}`}
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface hover:text-foreground active:scale-95"
+        >
+          <Plus size={15} />
+        </button>
       </header>
 
-      {/* Cards list — scrollable, fills remaining height */}
-      <div className="flex flex-1 flex-col overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {cards.length > 0 ? (
-          <ul className="flex flex-col">
-            {cards.map((card) => (
-              <li key={card.id}>
+          <ul className="space-y-2">
+            {cards.map((card, index) => (
+              <li key={card.id} className="min-w-0">
                 <KanbanCardItem
                   card={card}
+                  index={index}
                   meta={
                     cardMetaById.get(card.id) ?? {
                       childCount: 0,
@@ -95,7 +133,9 @@ export function KanbanColumn({
                       parentTitle: undefined,
                     }
                   }
+                  onDragEnd={onCardDragEnd}
                   onDragStart={onCardDragStart}
+                  onDropAt={onCardDropAt}
                   onMove={onCardMove}
                   onOpen={onCardOpen}
                 />
@@ -103,9 +143,13 @@ export function KanbanColumn({
             ))}
           </ul>
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-4 text-center">
-            <span className="text-[11px] text-subtle-foreground">No tasks in this column yet</span>
-          </div>
+          <button
+            type="button"
+            onClick={() => onAdd(column.id)}
+            className="flex min-h-28 w-full items-center justify-center rounded-xl border border-dashed border-border bg-surface px-4 text-center text-xs text-muted-foreground transition-colors hover:border-muted-foreground hover:text-foreground"
+          >
+            Add the first task
+          </button>
         )}
       </div>
     </section>

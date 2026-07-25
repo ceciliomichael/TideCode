@@ -1,11 +1,20 @@
-import { useMemo, useState, type FormEvent } from 'react'
-import { CheckCircle2, ListPlus } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { CheckCircle2, Plus, Search, X } from 'lucide-react'
 import type { Message } from '../../types/chat'
+import { DropdownField, type DropdownOption } from '../ui/DropdownField'
 import { KANBAN_COLUMNS } from './kanbanDefaults'
+import { buildKanbanBoardDisplayData } from './kanbanHierarchy'
+import { doesKanbanCardMatchQuery } from './kanbanPresentation'
 import { KanbanColumn } from './KanbanColumn'
+import { KanbanErrorDialog } from './KanbanErrorDialog'
+import { KanbanTaskDetails } from './KanbanTaskDetails'
 import { KanbanTaskDialog } from './KanbanTaskDialog'
-import type { KanbanCard, KanbanColumnId, KanbanCreateCardInput } from './kanbanTypes'
-import { buildKanbanBoardDisplayData, getKanbanParentCardOptions } from './kanbanHierarchy'
+import type {
+  KanbanColumnId,
+  KanbanCreateTaskInput,
+  KanbanPriority,
+} from './kanbanTypes'
+import { useKanbanAiPlanner } from './useKanbanAiPlanner'
 import { useKanbanBoardState } from './useKanbanBoardState'
 
 interface KanbanBoardProps {
@@ -13,181 +22,410 @@ interface KanbanBoardProps {
   messages: readonly Message[]
 }
 
-interface TaskDraftState {
-  description: string
-  mode: 'create' | 'edit'
-  cardId?: string
+interface TaskComposerState {
   columnId: KanbanColumnId
-  parentCardId?: string
   title: string
 }
 
+const PRIORITY_FILTERS: readonly DropdownOption[] = [
+  { label: 'All priorities', value: 'all' },
+  { label: 'Urgent', value: 'urgent' },
+  { label: 'High', value: 'high' },
+  { label: 'Medium', value: 'medium' },
+  { label: 'Low', value: 'low' },
+]
+
 export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
-  const [draftTitle, setDraftTitle] = useState('')
-  const [draftTask, setDraftTask] = useState<TaskDraftState | null>(null)
+  const [composerState, setComposerState] = useState<TaskComposerState | null>(
+    null,
+  )
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [priorityFilter, setPriorityFilter] = useState<KanbanPriority | 'all'>(
+    'all',
+  )
+  const [mobileColumnId, setMobileColumnId] =
+    useState<KanbanColumnId>('backlog')
   const {
     addCard,
     cards,
     clearCompletedCards,
+    createTask,
     deleteCard,
+    dismissError,
+    error,
+    isBusy,
+    isLoading,
     moveCard,
+    reorderCard,
     updateCard,
-  } =
-    useKanbanBoardState({
-      workspacePath,
-      messages,
-    })
+  } = useKanbanBoardState({
+    workspacePath,
+    messages,
+  })
+  const aiPlanner = useKanbanAiPlanner({ workspacePath })
 
-  const boardDisplayData = useMemo(() => buildKanbanBoardDisplayData(cards), [cards])
-  const doneCardCount = useMemo(() => cards.filter((card) => card.columnId === 'done').length, [cards])
-  const columnCounts = useMemo(
+  const filteredCards = useMemo(
     () =>
-      KANBAN_COLUMNS.reduce(
-        (accumulator, column) => {
-          accumulator[column.id] = cards.filter((card) => card.columnId === column.id).length
-          return accumulator
-        },
-        {} as Record<KanbanColumnId, number>,
+      cards.filter(
+        (card) =>
+          doesKanbanCardMatchQuery(card, searchQuery) &&
+          (priorityFilter === 'all' || card.priority === priorityFilter),
       ),
-    [cards],
+    [cards, priorityFilter, searchQuery],
   )
+  const boardDisplayData = useMemo(
+    () => buildKanbanBoardDisplayData(filteredCards),
+    [filteredCards],
+  )
+  const selectedCard = selectedCardId
+    ? (cards.find((card) => card.id === selectedCardId) ?? null)
+    : null
+  const doneCardCount = cards.filter((card) => card.columnId === 'done').length
+  const blockedCardCount = cards.filter(
+    (card) => card.columnId === 'blocked',
+  ).length
+  const activeCardCount = cards.filter(
+    (card) => card.columnId === 'in-progress',
+  ).length
+  const columnCounts = KANBAN_COLUMNS.reduce(
+    (accumulator, column) => {
+      accumulator[column.id] = filteredCards.filter(
+        (card) => card.columnId === column.id,
+      ).length
+      return accumulator
+    },
+    {} as Record<KanbanColumnId, number>,
+  )
+  const activeError = error ?? aiPlanner.error
+  const errorTask =
+    activeError?.relatedCardId !== undefined
+      ? (cards.find((card) => card.id === activeError.relatedCardId) ?? null)
+      : null
 
-  function openTaskDialog() {
-    setDraftTask({
-      columnId: 'backlog',
-      description: '',
-      mode: 'create',
-      parentCardId: undefined,
-      title: draftTitle.trim(),
+  function dismissActiveError() {
+    dismissError()
+    aiPlanner.dismissError()
+  }
+
+  function openComposer(columnId: KanbanColumnId = 'backlog', title = '') {
+    setComposerState({
+      columnId,
+      title,
     })
   }
 
-  function handleAddCard(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    openTaskDialog()
-  }
-
-  function handleMoveCard(cardId: string, targetColumnId: KanbanColumnId) {
-    moveCard({ cardId, targetColumnId })
-    setDraggedCardId(null)
-  }
-
-  function handleSubmitTask(input: KanbanCreateCardInput) {
-    if (draftTask?.mode === 'edit' && draftTask.cardId) {
-      updateCard({
-        cardId: draftTask.cardId,
-        columnId: input.columnId ?? 'backlog',
-        description: input.description ?? '',
-        parentCardId: input.parentCardId,
-        title: input.title,
-      })
-    } else {
-      addCard(input)
+  async function handleCreateTask(input: KanbanCreateTaskInput) {
+    const result = await createTask(input)
+    if (result) {
+      setComposerState(null)
+      setSelectedCardId(result.parent.id)
     }
-
-    setDraftTitle('')
-    setDraftTask(null)
-  }
-
-  function handleOpenCard(card: KanbanCard) {
-    setDraftTask({
-      cardId: card.id,
-      columnId: card.columnId,
-      description: card.description,
-      mode: 'edit',
-      parentCardId: card.parentCardId,
-      title: card.title,
-    })
-  }
-
-  function handleDeleteTask() {
-    if (!draftTask?.cardId) {
-      return
-    }
-
-    deleteCard({ cardId: draftTask.cardId })
-    setDraftTask(null)
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
-      <div className="flex shrink-0 items-center gap-3 border-b border-border bg-surface px-4 py-2.5">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="text-xs text-subtle-foreground">{cards.length} tasks</span>
-          {doneCardCount > 0 ? <span className="text-xs text-subtle-foreground">· {doneCardCount} done</span> : null}
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      <header className="shrink-0 border-b border-border bg-surface px-4 py-3 md:px-5">
+        <div className="space-y-3 xl:hidden">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
+                  Work board
+                </h1>
+                {isBusy ? (
+                  <span className="rounded-md border border-border bg-surface-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">
+                    Saving…
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {activeCardCount} active · {blockedCardCount} blocked ·{' '}
+                {doneCardCount} done
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => openComposer()}
+              className="hidden h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-foreground transition-colors hover:bg-surface-muted active:scale-[0.98] md:inline-flex"
+            >
+              <Plus size={16} />
+              New task
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="relative min-w-0 flex-1">
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-subtle-foreground"
+              />
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search tasks, labels, owners…"
+                className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-9 text-sm text-foreground shadow-none placeholder:text-subtle-foreground focus:border-border focus:outline-none focus:ring-0 focus:shadow-none"
+              />
+              {searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear task search"
+                  className="absolute right-1 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                >
+                  <X size={14} />
+                </button>
+              ) : null}
+            </div>
+            <div className="hidden w-48 shrink-0 md:block">
+              <DropdownField
+                id="kanban-priority-filter-compact"
+                ariaLabel="Filter tasks by priority"
+                value={priorityFilter}
+                onChange={(value) =>
+                  setPriorityFilter(value as KanbanPriority | 'all')
+                }
+                options={PRIORITY_FILTERS}
+                triggerClassName="h-11"
+              />
+            </div>
+          </div>
         </div>
 
-        <form onSubmit={handleAddCard} className="flex items-center gap-1.5">
-          <label className="sr-only" htmlFor="kanban-card-title">
-            Task title
-          </label>
-          <input
-            id="kanban-card-title"
-            value={draftTitle}
-            onChange={(event) => setDraftTitle(event.target.value)}
-            placeholder="New task title"
-            className="h-8 w-56 rounded-lg border border-border bg-surface px-3 text-xs text-foreground placeholder:text-subtle-foreground focus:outline-none"
-          />
-          <button
-            type="submit"
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-medium text-foreground transition-colors hover:bg-surface-muted disabled:pointer-events-none disabled:opacity-40"
-          >
-            <ListPlus size={13} />
-            Add
-          </button>
-        </form>
+        <div className="hidden items-center gap-3 xl:flex">
+          <div className="w-44 shrink-0">
+            <div className="flex items-center gap-2">
+              <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
+                Work board
+              </h1>
+              {isBusy ? (
+                <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-muted-foreground" />
+              ) : null}
+            </div>
+            <p className="mt-0.5 whitespace-nowrap text-[11px] text-muted-foreground">
+              {activeCardCount} active · {blockedCardCount} blocked ·{' '}
+              {doneCardCount} done
+            </p>
+          </div>
 
-        {doneCardCount > 0 ? (
+          <div className="relative min-w-64 max-w-xl flex-1">
+            <Search
+              size={15}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-subtle-foreground"
+            />
+            <input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search tasks, labels, owners…"
+              className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-9 text-sm text-foreground shadow-none placeholder:text-subtle-foreground focus:border-border focus:outline-none focus:ring-0 focus:shadow-none"
+            />
+            {searchQuery ? (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear task search"
+                className="absolute right-1 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+              >
+                <X size={14} />
+              </button>
+            ) : null}
+          </div>
+
+          <div className="w-44 shrink-0">
+            <DropdownField
+              id="kanban-priority-filter"
+              ariaLabel="Filter tasks by priority"
+              value={priorityFilter}
+              onChange={(value) =>
+                setPriorityFilter(value as KanbanPriority | 'all')
+              }
+              options={PRIORITY_FILTERS}
+              triggerClassName="h-11"
+            />
+          </div>
+
+          {doneCardCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => void clearCompletedCards()}
+              disabled={isBusy}
+              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-50"
+            >
+              <CheckCircle2 size={15} />
+              Clear done
+            </button>
+          ) : null}
+
           <button
             type="button"
-            onClick={clearCompletedCards}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+            onClick={() => openComposer()}
+            className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-foreground transition-colors hover:bg-surface-muted active:scale-[0.98]"
           >
-            <CheckCircle2 size={13} />
-            Clear done
+            <Plus size={16} />
+            New task
           </button>
-        ) : null}
-      </div>
+        </div>
+      </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-4 divide-x divide-border overflow-hidden">
-        {KANBAN_COLUMNS.map((column) => (
-          <KanbanColumn
-            key={column.id}
-            cards={boardDisplayData.orderedCardsByColumn[column.id]}
-            cardMetaById={boardDisplayData.cardMetaById}
-            column={column}
-            draggedCardId={draggedCardId}
-            count={columnCounts[column.id]}
-            onCardOpen={(cardId) => {
-              const card = cards.find((currentCard) => currentCard.id === cardId)
-              if (card) {
-                handleOpenCard(card)
-              }
-            }}
-            onCardDragStart={setDraggedCardId}
-            onCardDrop={handleMoveCard}
-            onCardMove={handleMoveCard}
-          />
-        ))}
-      </div>
+      {isLoading ? (
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-4 md:grid-cols-4 md:p-5">
+          {KANBAN_COLUMNS.map((column) => (
+            <div
+              key={column.id}
+              className="rounded-2xl border border-border bg-surface-muted p-3"
+            >
+              <div className="h-5 w-24 animate-pulse rounded bg-border" />
+              <div className="mt-5 space-y-2">
+                <div className="h-28 animate-pulse rounded-xl bg-surface" />
+                <div className="h-24 animate-pulse rounded-xl bg-surface" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
+          <div className="hidden min-h-0 flex-1 overflow-x-auto p-4 md:block md:p-5">
+            <div className="grid h-full min-w-[1080px] grid-cols-4 gap-3">
+              {KANBAN_COLUMNS.map((column) => (
+                <KanbanColumn
+                  key={column.id}
+                  cards={boardDisplayData.orderedCardsByColumn[column.id]}
+                  cardMetaById={boardDisplayData.cardMetaById}
+                  column={column}
+                  count={columnCounts[column.id]}
+                  draggedCardId={draggedCardId}
+                  onAdd={(columnId) => openComposer(columnId)}
+                  onCardOpen={setSelectedCardId}
+                  onCardDragEnd={() => setDraggedCardId(null)}
+                  onCardDragStart={setDraggedCardId}
+                  onCardDropAt={(cardId, targetColumnId, targetIndex) => {
+                    void reorderCard({
+                      cardId,
+                      targetColumnId,
+                      targetIndex,
+                    }).finally(() => setDraggedCardId(null))
+                  }}
+                  onCardMove={(cardId, targetColumnId) => {
+                    void moveCard({ cardId, targetColumnId })
+                  }}
+                />
+              ))}
+            </div>
+          </div>
 
-      {draftTask ? (
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:hidden">
+            <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-surface px-3 py-2">
+              {KANBAN_COLUMNS.map((column) => (
+                <button
+                  key={column.id}
+                  type="button"
+                  onClick={() => setMobileColumnId(column.id)}
+                  className={[
+                    'inline-flex h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-xs font-semibold transition-colors',
+                    mobileColumnId === column.id
+                      ? 'bg-action text-white'
+                      : 'bg-surface text-muted-foreground',
+                  ].join(' ')}
+                >
+                  {column.title}
+                  <span className="tabular-nums opacity-75">
+                    {columnCounts[column.id]}
+                  </span>
+                </button>
+              ))}
+            </nav>
+            <div className="min-h-0 flex-1 p-3 pb-20">
+              {KANBAN_COLUMNS.filter(
+                (column) => column.id === mobileColumnId,
+              ).map((column) => (
+                <KanbanColumn
+                  key={column.id}
+                  cards={boardDisplayData.orderedCardsByColumn[column.id]}
+                  cardMetaById={boardDisplayData.cardMetaById}
+                  column={column}
+                  count={columnCounts[column.id]}
+                  draggedCardId={draggedCardId}
+                  onAdd={(columnId) => openComposer(columnId)}
+                  onCardOpen={setSelectedCardId}
+                  onCardDragEnd={() => setDraggedCardId(null)}
+                  onCardDragStart={setDraggedCardId}
+                  onCardDropAt={(cardId, targetColumnId, targetIndex) => {
+                    void reorderCard({ cardId, targetColumnId, targetIndex })
+                  }}
+                  onCardMove={(cardId, targetColumnId) => {
+                    void moveCard({ cardId, targetColumnId })
+                  }}
+                />
+              ))}
+            </div>
+            <div className="absolute bottom-0 left-0 right-0 z-20 border-t border-border bg-surface p-3">
+              <button
+                type="button"
+                onClick={() => openComposer(mobileColumnId)}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-action text-sm font-semibold text-white active:scale-[0.99]"
+              >
+                <Plus size={17} />
+                Add to{' '}
+                {
+                  KANBAN_COLUMNS.find((column) => column.id === mobileColumnId)
+                    ?.title
+                }
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {composerState ? (
         <KanbanTaskDialog
-          dialogTitle={draftTask.mode === 'edit' ? 'Edit task' : 'Describe what this task is about'}
-          initialColumnId={draftTask.columnId}
-          initialDescription={draftTask.description}
-          initialParentCardId={draftTask.parentCardId}
-          initialTitle={draftTask.title}
-          onDelete={draftTask.mode === 'edit' ? handleDeleteTask : undefined}
-          parentOptions={
-            draftTask.cardId && (boardDisplayData.cardMetaById.get(draftTask.cardId)?.childCount ?? 0) > 0
-              ? []
-              : getKanbanParentCardOptions(cards, draftTask.cardId)
+          initialColumnId={composerState.columnId}
+          initialTitle={composerState.title}
+          isAiPlanningEnabled={aiPlanner.isEnabled}
+          isPlanning={aiPlanner.isPlanning}
+          isSubmitting={isBusy}
+          onClose={() => setComposerState(null)}
+          onPlan={aiPlanner.planTask}
+          onSubmit={(input) => {
+            void handleCreateTask(input)
+          }}
+        />
+      ) : null}
+
+      {selectedCard ? (
+        <KanbanTaskDetails
+          key={selectedCard.id}
+          card={selectedCard}
+          cards={cards}
+          isBusy={isBusy}
+          onAddSubtask={addCard}
+          onClose={() => setSelectedCardId(null)}
+          onDelete={async (cardId, deleteSubtasks) => {
+            const didDelete = await deleteCard({ cardId, deleteSubtasks })
+            if (didDelete) {
+              setSelectedCardId(null)
+            }
+          }}
+          onMove={(cardId, targetColumnId) =>
+            moveCard({ cardId, targetColumnId })
           }
-          submitLabel={draftTask.mode === 'edit' ? 'Save changes' : 'Add task'}
-          onClose={() => setDraftTask(null)}
-          onSubmit={handleSubmitTask}
+          onOpenCard={setSelectedCardId}
+          onUpdate={updateCard}
+        />
+      ) : null}
+
+      {activeError ? (
+        <KanbanErrorDialog
+          error={activeError}
+          onClose={dismissActiveError}
+          onReviewTask={
+            errorTask
+              ? () => {
+                  dismissActiveError()
+                  setSelectedCardId(errorTask.id)
+                }
+              : undefined
+          }
         />
       ) : null}
     </div>

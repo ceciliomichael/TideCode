@@ -267,6 +267,21 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
       typeof candidate?.gitCommitModelLabel === 'string'
         ? candidate.gitCommitModelLabel.trim()
         : DEFAULT_APP_SETTINGS.gitCommitModelLabel,
+    kanbanAiPlanningEnabled:
+      typeof candidate?.kanbanAiPlanningEnabled === 'boolean'
+        ? candidate.kanbanAiPlanningEnabled
+        : DEFAULT_APP_SETTINGS.kanbanAiPlanningEnabled,
+    kanbanModelId:
+      typeof candidate?.kanbanModelId === 'string'
+        ? candidate.kanbanModelId.trim()
+        : DEFAULT_APP_SETTINGS.kanbanModelId,
+    kanbanModelProviderId: isChatProviderId(candidate?.kanbanModelProviderId)
+      ? candidate.kanbanModelProviderId
+      : DEFAULT_APP_SETTINGS.kanbanModelProviderId,
+    kanbanModelLabel:
+      typeof candidate?.kanbanModelLabel === 'string'
+        ? candidate.kanbanModelLabel.trim()
+        : DEFAULT_APP_SETTINGS.kanbanModelLabel,
     diffPanelWidth:
       typeof candidate?.diffPanelWidth === 'number' && Number.isFinite(candidate.diffPanelWidth)
         ? clampStoredDiffPanelWidth(candidate.diffPanelWidth)

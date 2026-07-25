@@ -178,6 +178,7 @@ const chatApi: EchosphereChatApi = {
 const kanbanApi: EchosphereKanbanApi = {
   clearCompletedCards: (input) => ipcRenderer.invoke('kanban:clearCompletedCards', input),
   createCard: (input) => ipcRenderer.invoke('kanban:createCard', input),
+  createTask: (input) => ipcRenderer.invoke('kanban:createTask', input),
   deleteCard: (input) => ipcRenderer.invoke('kanban:deleteCard', input),
   getBoardData: (input) => ipcRenderer.invoke('kanban:getBoardData', input),
   importBoardData: (input) => ipcRenderer.invoke('kanban:importBoardData', input),
@@ -189,8 +190,10 @@ const kanbanApi: EchosphereKanbanApi = {
       ipcRenderer.off('kanban:changed', wrappedListener)
     }
   },
+  planTask: (input) => ipcRenderer.invoke('kanban:planTask', input),
   readBoard: (input) => ipcRenderer.invoke('kanban:readBoard', input),
   readCard: (input) => ipcRenderer.invoke('kanban:readCard', input),
+  reorderCard: (input) => ipcRenderer.invoke('kanban:reorderCard', input),
   updateCard: (input) => ipcRenderer.invoke('kanban:updateCard', input),
   updateCardContent: (input) => ipcRenderer.invoke('kanban:updateCardContent', input),
 }

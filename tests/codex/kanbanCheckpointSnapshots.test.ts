@@ -7,6 +7,7 @@ import test, { mock } from 'node:test'
 import { captureKanbanBoardSnapshotIfNeeded } from '../../electron/kanban/checkpoints'
 import { createWorkspaceCheckpointStore } from '../../electron/workspace/checkpoints'
 import { getKanbanBoardData, replaceKanbanBoardData } from '../../electron/kanban/store'
+import { parseKanbanBoardData } from '../../src/lib/kanban'
 
 test('kanban snapshots restore with workspace checkpoint revert and redo', async () => {
   const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-kanban-checkpoints-'))
@@ -84,10 +85,16 @@ test('kanban snapshots restore with workspace checkpoint revert and redo', async
     const redoCheckpoint = await checkpointStore.createRedoCheckpointFromSource(checkpoint.id)
 
     await checkpointStore.restoreCheckpoint(checkpoint.id)
-    assert.deepEqual(await getKanbanBoardData({ workspacePath: workspaceRootPath }), initialBoardData)
+    assert.deepEqual(
+      (await getKanbanBoardData({ workspacePath: workspaceRootPath })).cards,
+      parseKanbanBoardData(initialBoardData).cards,
+    )
 
     await checkpointStore.restoreCheckpoint(redoCheckpoint.id)
-    assert.deepEqual(await getKanbanBoardData({ workspacePath: workspaceRootPath }), revertedBoardData)
+    assert.deepEqual(
+      (await getKanbanBoardData({ workspacePath: workspaceRootPath })).cards,
+      parseKanbanBoardData(revertedBoardData).cards,
+    )
   } finally {
     mock.restoreAll()
     await fs.rm(tempRootPath, { force: true, recursive: true })
