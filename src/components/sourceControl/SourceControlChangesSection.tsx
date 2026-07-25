@@ -1,4 +1,4 @@
-import { ChevronDown, Loader2 } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import type { RefObject } from 'react'
 import { useState } from 'react'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
@@ -7,6 +7,10 @@ import { Tooltip } from '../Tooltip'
 import { Switch } from '../ui/Switch'
 import { SourceControlDiffSection } from './SourceControlDiffSection'
 import { PublishToGitHubModal } from './PublishToGitHubModal'
+import {
+  SourceControlOperationStatus,
+  type SourceControlOperationNotice,
+} from './SourceControlOperationStatus'
 
 interface SourceControlChangesSectionProps {
   aheadCommitCount: number
@@ -23,13 +27,11 @@ interface SourceControlChangesSectionProps {
   isStagedSectionOpen: boolean
   isUnstagedSectionOpen: boolean
   isOperationInProgress: boolean
+  operationNotice: SourceControlOperationNotice | null
   pendingFileActionPath: string | null
   pendingOperationLabel: string | null
-  quickCommitError: string | null
   stagedFileCount: number
   stagedFileDiffs: readonly ConversationFileDiff[]
-  syncError: string | null
-  syncMessage: string | null
   unstagedFileCount: number
   unstagedFileDiffs: readonly ConversationFileDiff[]
   workspacePath: string
@@ -68,13 +70,11 @@ export function SourceControlChangesSection({
   isStagedSectionOpen,
   isUnstagedSectionOpen,
   isOperationInProgress,
+  operationNotice,
   pendingFileActionPath,
   pendingOperationLabel,
-  quickCommitError,
   stagedFileCount,
   stagedFileDiffs,
-  syncError,
-  syncMessage,
   unstagedFileCount,
   unstagedFileDiffs,
   workspacePath,
@@ -157,12 +157,10 @@ export function SourceControlChangesSection({
       </button>
       {isChangesSectionOpen ? (
         <div className={[sectionBodyClassName, 'border-t border-border'].join(' ')}>
-          {pendingOperationLabel ? (
-            <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface-muted px-4 py-2 text-[12px] text-muted-foreground">
-              <Loader2 size={13} className="animate-spin" />
-              <span>{pendingOperationLabel}</span>
-            </div>
-          ) : null}
+          <SourceControlOperationStatus
+            notice={operationNotice}
+            pendingMessage={pendingOperationLabel}
+          />
           <div className="shrink-0 border-b border-border px-4 py-3">
             <textarea
               value={commitMessage}
@@ -274,10 +272,6 @@ export function SourceControlChangesSection({
                 </button>
               </div>
             </div>
-
-            {quickCommitError ? <p className="mt-2 text-xs text-danger-foreground">{quickCommitError}</p> : null}
-            {syncError ? <p className="mt-2 text-xs text-danger-foreground">{syncError}</p> : null}
-            {!syncError && syncMessage ? <p className="mt-2 text-xs text-muted-foreground">{syncMessage}</p> : null}
           </div>
 
           <div className={sectionBodyClassName}>

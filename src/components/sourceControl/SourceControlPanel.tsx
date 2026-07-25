@@ -14,6 +14,7 @@ import { describeSourceControlPendingAction, beginSourceControlSyncOperation, en
 import { SourceControlChangesSection } from './SourceControlChangesSection'
 import { SourceControlHistorySection } from './SourceControlHistorySection'
 import { SourceControlNoRepoView } from './SourceControlNoRepoView'
+import type { SourceControlOperationNotice } from './SourceControlOperationStatus'
 import { computeSwimlanes } from './historyGraphLayout'
 
 import { prependCommittedHistoryEntry } from './sourceControlHistoryUtils'
@@ -100,9 +101,7 @@ function SourceControlPanelContent({
   const [commitMessage, setCommitMessage] = useState('')
   const [includeUnstaged, setIncludeUnstaged] = useState(true)
   const [isCommitActionMenuOpen, setIsCommitActionMenuOpen] = useState(false)
-  const [quickCommitError, setQuickCommitError] = useState<string | null>(null)
-  const [syncError, setSyncError] = useState<string | null>(null)
-  const [syncMessage, setSyncMessage] = useState<string | null>(null)
+  const [operationNotice, setOperationNotice] = useState<SourceControlOperationNotice | null>(null)
   const [historyEntries, setHistoryEntries] = useState<GitHistoryEntry[]>([])
   const [headHash, setHeadHash] = useState<string | null>(null)
   const [hasMoreHistory, setHasMoreHistory] = useState(false)
@@ -533,16 +532,17 @@ function SourceControlPanelContent({
   }, [isCommitActionMenuOpen])
 
   useEffect(() => {
-    if (!syncMessage) {
+    if (operationNotice?.kind !== 'success') {
       return
     }
 
+    const noticeToDismiss = operationNotice
     const timeoutId = window.setTimeout(() => {
-      setSyncMessage((currentValue) => (currentValue === syncMessage ? null : currentValue))
+      setOperationNotice((currentValue) => (currentValue === noticeToDismiss ? null : currentValue))
     }, 3000)
 
     return () => window.clearTimeout(timeoutId)
-  }, [syncMessage])
+  }, [operationNotice])
 
   const loadCommitDetails = useCallback(
     async (commitHash: string) => {
@@ -575,21 +575,23 @@ function SourceControlPanelContent({
     }
 
     const pendingSyncOperation = beginSourceControlSyncOperation(normalizedWorkspacePath, action)
-    setSyncError(null)
-    setSyncMessage(null)
+    setOperationNotice(null)
     try {
       const result = await window.echosphereGit.sync({
         action,
         workspacePath: normalizedWorkspacePath,
       })
-      setSyncMessage(result.message)
+      setOperationNotice({ kind: 'success', message: result.message })
       await onRefreshAll()
       if (action !== 'push') {
         await refreshHistory()
       }
       return true
     } catch (error) {
-      setSyncError(error instanceof Error ? error.message : `Failed to ${action}.`)
+      setOperationNotice({
+        kind: 'error',
+        message: error instanceof Error ? error.message : `Failed to ${action}.`,
+      })
       return false
     } finally {
       if (pendingSyncOperation) {
@@ -608,13 +610,15 @@ function SourceControlPanelContent({
 
   async function handleRefreshPanel() {
     const pendingRefreshOperation = beginSourceControlSyncOperation(normalizedWorkspacePath, 'refresh')
-    setSyncError(null)
-    setSyncMessage(null)
+    setOperationNotice(null)
     try {
       await Promise.all([onRefreshAll(), refreshHistory()])
-      setSyncMessage('Source control refreshed.')
+      setOperationNotice({ kind: 'success', message: 'Source control refreshed.' })
     } catch (error) {
-      setSyncError(error instanceof Error ? error.message : 'Failed to refresh source control.')
+      setOperationNotice({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Failed to refresh source control.',
+      })
     } finally {
       if (pendingRefreshOperation) {
         endSourceControlSyncOperation(normalizedWorkspacePath, pendingRefreshOperation.sequence)
@@ -628,8 +632,7 @@ function SourceControlPanelContent({
     }
 
     setIsCommitActionMenuOpen(false)
-    setQuickCommitError(null)
-    setSyncMessage(null)
+    setOperationNotice(null)
 
     try {
       const commitResult = await onQuickCommit({
@@ -641,17 +644,19 @@ function SourceControlPanelContent({
         await appendCommittedHistoryEntry(commitResult)
       }
       setCommitMessage('')
-      setSyncError(null)
       if (action === 'commit-and-push') {
         const isPushSuccessful = await performSyncAction('push')
         if (!isPushSuccessful) {
           return
         }
       } else {
-        setSyncMessage('Committed changes.')
+        setOperationNotice({ kind: 'success', message: 'Committed changes.' })
       }
     } catch (error) {
-      setQuickCommitError(error instanceof Error ? error.message : 'Failed to commit changes.')
+      setOperationNotice({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Failed to commit changes.',
+      })
     }
   }
 
@@ -819,13 +824,11 @@ function SourceControlPanelContent({
             isStagedSectionOpen={isStagedSectionOpen}
             isUnstagedSectionOpen={isUnstagedSectionOpen}
             hasRemote={hasRemote}
+            operationNotice={operationNotice}
             pendingFileActionPath={pendingFileActionPath}
             pendingOperationLabel={pendingOperationLabel}
-            quickCommitError={quickCommitError}
             stagedFileCount={stagedFileDiffs.length}
             stagedFileDiffs={stagedFileDiffs}
-            syncError={syncError}
-            syncMessage={syncMessage}
             unstagedFileCount={unstagedFileDiffs.length}
             unstagedFileDiffs={unstagedFileDiffs}
             workspacePath={normalizedWorkspacePath}
