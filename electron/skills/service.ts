@@ -1,7 +1,6 @@
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 import type { AppSettings } from '../../src/types/chat'
 import type { SkillSummary, SkillsState } from '../../src/types/skills'
 import type { AgentToolExecutionResult } from '../chat/shared/toolTypes'
@@ -236,7 +235,7 @@ export function buildSkillsSystemPromptBlock(skills: SkillSummary[]) {
     return ''
   }
 
-  return [
+  const skillListBlock = [
     '<available_skills>',
     ...skills.map((skill) =>
       [
@@ -248,11 +247,16 @@ export function buildSkillsSystemPromptBlock(skills: SkillSummary[]) {
     ),
     '</available_skills>',
   ].join('\n')
+
+  const complianceDirective =
+    'When you need to do work that matches a skill&#39;s name or description, load it with the `skill` tool and follow its instructions carefully. Skill content is authoritative for the workflows it defines.'
+
+  return [skillListBlock, complianceDirective].join('\n')
 }
 
 export function buildSkillToolDescription(skills: SkillSummary[]) {
   return [
-    'Loads and returns the complete instructions and base directory for one enabled skill selected by exact name.',
+    'Loads and returns the complete instructions and base directory for one enabled skill selected by exact name. Once loaded, follow the skill&#39;s instructions for the workflows it defines.',
     `Enabled names: ${skills.map((skill) => skill.name).join(', ') || 'none'}.`,
   ].join('\n')
 }
@@ -353,8 +357,8 @@ export function buildLoadedSkillResult(skill: LoadedSkill): AgentToolExecutionRe
       '',
       skill.content.trim(),
       '',
-      `Base directory: ${pathToFileURL(skill.baseDirectory).href}`,
-      'Resolve any relative paths in the skill from this base directory.',
+      `You MUST follow the instructions above for any work covered by the "${skill.name}" skill.`,
+      'If the skill specifies constraints, a design system, or workflow rules, apply them as if they were in the system instructions.',
       '</skill_content>',
     ].join('\n'),
     status: 'success',

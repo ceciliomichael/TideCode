@@ -22,6 +22,7 @@ let settingsUpdateQueue: Promise<void> = Promise.resolve()
 let cachedStoredSettings: AppSettings | null = null
 const SOURCE_CONTROL_SECTION_IDS: readonly SourceControlSectionId[] = ['commit', 'changes', 'history']
 const WORKSPACE_UI_SETTINGS_KEYS = [
+  'conversationModelPreferences',
   'diffPanelWidth',
   'editSessionsByConversation',
   'lastActiveConversationId',
@@ -157,6 +158,48 @@ function sanitizeTerminalPanelHeightsByWorkspace(value: unknown): Record<string,
   return sanitizedValue
 }
 
+function sanitizeConversationModelPreferences(value: unknown): AppSettings['conversationModelPreferences'] {
+  if (!value || typeof value !== 'object') {
+    return {}
+  }
+
+  const candidateEntries = Object.entries(value as Record<string, unknown>)
+  const sanitizedValue: AppSettings['conversationModelPreferences'] = {}
+
+  for (const [conversationId, candidatePreference] of candidateEntries) {
+    const normalizedId = conversationId.trim()
+    if (
+      normalizedId.length === 0 ||
+      !candidatePreference ||
+      typeof candidatePreference !== 'object'
+    ) {
+      continue
+    }
+
+    const preference = candidatePreference as Record<string, unknown>
+    const modelId =
+      typeof preference.modelId === 'string' ? preference.modelId.trim() : ''
+    const label =
+      typeof preference.label === 'string' ? preference.label.trim() : ''
+    const providerId =
+      preference.providerId === null || isChatProviderId(preference.providerId)
+        ? (preference.providerId ?? null)
+        : null
+
+    if (modelId.length === 0) {
+      continue
+    }
+
+    sanitizedValue[normalizedId] = {
+      label,
+      modelId,
+      providerId,
+    }
+  }
+
+  return sanitizedValue
+}
+
 function sanitizeRevertEditSessionsByConversation(value: unknown): AppSettings['revertEditSessionsByConversation'] {
   if (!value || typeof value !== 'object') {
     return { ...DEFAULT_APP_SETTINGS.revertEditSessionsByConversation }
@@ -268,6 +311,7 @@ function isRecoverableSettingsParseError(error: unknown) {
 
 function pickDurableAppSettings(settings: AppSettings): DurableAppSettings {
   const {
+    conversationModelPreferences: _conversationModelPreferences,
     diffPanelWidth: _diffPanelWidth,
     editSessionsByConversation: _editSessionsByConversation,
     lastActiveConversationId: _lastActiveConversationId,
@@ -290,6 +334,7 @@ function pickDurableAppSettings(settings: AppSettings): DurableAppSettings {
 
 function pickWorkspaceUiSettings(settings: AppSettings): WorkspaceUiSettings {
   return {
+    conversationModelPreferences: settings.conversationModelPreferences,
     diffPanelWidth: settings.diffPanelWidth,
     editSessionsByConversation: settings.editSessionsByConversation,
     lastActiveConversationId: settings.lastActiveConversationId,
@@ -529,6 +574,7 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
   const terminalExecutionMode = isAppTerminalExecutionMode(input?.terminalExecutionMode)
     ? input.terminalExecutionMode
     : DEFAULT_APP_SETTINGS.terminalExecutionMode
+  const conversationModelPreferences = sanitizeConversationModelPreferences(input?.conversationModelPreferences)
 
   return {
     appearance,
@@ -552,6 +598,7 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     kanbanModelId,
     kanbanModelProviderId,
     kanbanModelLabel,
+    conversationModelPreferences,
     diffPanelWidth,
     editSessionsByConversation,
     followUpBehavior,

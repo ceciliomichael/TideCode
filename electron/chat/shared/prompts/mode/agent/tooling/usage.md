@@ -12,7 +12,6 @@ Follow each tool's schema exactly. Never make up inputs.
 - Find files with `glob`/`grep`. Read only what you need.
 - Read a file just before changing it. Use line numbers from that read.
 - Use `replace_file_content` for one exact block.
-- Use one `multi_replace_file_content` call for two or more separate blocks in one file. If any block is wrong, nothing is written.
 - Different files may be changed together after each one is read.
 - Use `write` only for a new file or a full-file replacement.
 - Target text and spaces must match. Use `allowMultiple` only when every match should change.

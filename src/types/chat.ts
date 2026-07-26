@@ -280,6 +280,7 @@ export interface AppSettings {
   revertEditSessionsByConversation: Record<string, RevertEditSession>
   sendMessageOnEnter: boolean
   workspaceFileEditorWordWrap: boolean
+  conversationModelPreferences: Record<string, ConversationModelPreference>
   disabledSkillsByPath: Record<string, boolean>
   sidebarWidth: number
 
@@ -305,6 +306,12 @@ export interface ConversationEditSession {
 export interface RevertEditSession {
   messageId: string
   redoCheckpointId: string
+}
+
+export interface ConversationModelPreference {
+  label: string
+  modelId: string
+  providerId: ChatProviderId | null
 }
 
 export interface CodexProviderConnectionStatus {

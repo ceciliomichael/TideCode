@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import assert from 'node:assert/strict'
 import test from 'node:test'
 import { formatStructuredToolResultContent } from '../../src/lib/toolResultContent'
 import type { Message } from '../../src/types/chat'
@@ -11,7 +12,7 @@ test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
 
   assert.match(agentPrompt, /You are the active builder/u)
   assert.match(agentPrompt, /Run calls together only when none needs another call's result/u)
-  assert.match(agentPrompt, /multi_replace_file_content/u)
+  assert.match(agentPrompt, /replace_file_content/u)
   assert.match(agentPrompt, /Default to 1-3 short sentences or bullets/u)
   assert.doesNotMatch(agentPrompt, /caveman|authorization_override/iu)
 

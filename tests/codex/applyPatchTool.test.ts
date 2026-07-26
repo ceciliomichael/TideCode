@@ -742,18 +742,10 @@ test('createAgentTools omits write tools in plan mode', async () => {
 
     assert.ok('list' in tools)
     assert.ok('read' in tools)
-    assert.ok('read_board' in tools)
-    assert.ok('read_card' in tools)
+    assert.ok('kanban_board' in tools)
     assert.ok(!('write' in tools))
     assert.ok(!('replace_file_content' in tools))
-    assert.ok(!('multi_replace_file_content' in tools))
     assert.ok(!('apply_patch' in tools))
-    assert.ok(!('create_card' in tools))
-    assert.ok(!('create_task_with_subtasks' in tools))
-    assert.ok(!('update_card' in tools))
-    assert.ok(!('move_card' in tools))
-    assert.ok(!('reorder_card' in tools))
-    assert.ok(!('delete_card' in tools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -771,14 +763,8 @@ test('createAgentTools exposes write tools in agent mode', async () => {
 
     assert.ok('write' in tools)
     assert.ok('replace_file_content' in tools)
-    assert.ok('multi_replace_file_content' in tools)
     assert.ok(!('apply_patch' in tools))
-    assert.ok('create_card' in tools)
-    assert.ok('create_task_with_subtasks' in tools)
-    assert.ok('update_card' in tools)
-    assert.ok('move_card' in tools)
-    assert.ok('reorder_card' in tools)
-    assert.ok('delete_card' in tools)
+    assert.ok('kanban_board' in tools)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -888,7 +874,6 @@ test('createAgentTools exposes the same exact replacement tools for every provid
 
     for (const toolName of [
       'replace_file_content',
-      'multi_replace_file_content',
     ]) {
       const codexTool = codexTools[toolName] as {
         description?: string
@@ -959,7 +944,6 @@ test('createAgentTools keeps plan mode tool descriptions literal', async () => {
     }
     assert.ok(!('write' in tools))
     assert.ok(!('replace_file_content' in tools))
-    assert.ok(!('multi_replace_file_content' in tools))
     assert.ok(!('apply_patch' in tools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -981,24 +965,18 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
 
     assert.ok('read' in tools)
     assert.ok('replace_file_content' in tools)
-    assert.ok('multi_replace_file_content' in tools)
     assert.ok('write' in tools)
 
     const readTool = tools.read as { description?: string }
     const globTool = tools.glob as { description?: string }
     const grepTool = tools.grep as { description?: string }
     const replaceTool = tools.replace_file_content as { description?: string }
-    const multiReplaceTool = tools.multi_replace_file_content as {
-      description?: string
-    }
     const writeTool = tools.write as { description?: string }
 
     assert.match(readTool.description ?? '', /numbered UTF-8 file lines/u)
     assert.match(readTool.description ?? '', /limit defaults to 2000/u)
     assert.match(readTool.description ?? '', /output is capped at 256 KB/u)
     assert.match(replaceTool.description ?? '', /single, exact, contiguous block/u)
-    assert.match(multiReplaceTool.description ?? '', /multiple non-contiguous exact-string replacements/u)
-    assert.match(multiReplaceTool.description ?? '', /one atomic operation/u)
     assert.match(globTool.description ?? '', /matching the glob pattern/u)
     assert.match(grepTool.description ?? '', /optional filename glob/u)
     assert.match(writeTool.description ?? '', /complete UTF-8 contents/u)
@@ -1008,7 +986,6 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
       globTool,
       grepTool,
       replaceTool,
-      multiReplaceTool,
       writeTool,
     ]
       .map((tool) => tool.description ?? '')) {

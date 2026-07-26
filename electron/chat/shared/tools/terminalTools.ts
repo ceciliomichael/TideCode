@@ -506,6 +506,15 @@ export function createTerminalToolSet(
           const reservedLocalSessionId = reserveThreadLocalSessionId(namespace)
 
           throwIfAborted(abortSignal)
+
+          // Always prefix with __ai__ so the session key never collides with a
+          // user-created terminal panel session.  Without this the AI could
+          // "reuse" the user's session, run a command in it, and then terminate
+          // it on cleanup — killing the user's terminal.
+          const aiSessionKey = inputValue.session_key
+            ? `__ai__${inputValue.session_key}`
+            : `__ai__`
+
           const session = await raceWithAbort(
             resolvedDependencies.createSession(ownerWebContents, {
               cols,
@@ -513,7 +522,7 @@ export function createTerminalToolSet(
               enableIdleTimeout: true,
               label: inputValue.label ?? null,
               rows,
-              sessionKey: inputValue.session_key,
+              sessionKey: aiSessionKey,
               workspaceRootPath: context.workspaceRootPath,
             }),
             abortSignal,

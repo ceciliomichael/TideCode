@@ -71,6 +71,7 @@ export function ChatInterface({
 }: ChatInterfaceProps) {
   const chatRuntimeConfig = useChatRuntimeConfig({
     activeChatMode: chatMessages.selectedChatMode,
+    activeConversationId: chatMessages.activeConversationId,
     isProvidersLoading: providersState.isLoading,
     providersState: providersState.providersState,
     settings,

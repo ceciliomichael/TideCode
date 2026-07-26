@@ -1,4 +1,4 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { shell, type IpcMainInvokeEvent, type WebContents } from "electron";
 import { spawn, type IPty } from "node-pty";
@@ -77,7 +77,17 @@ const sessions = new Map<number, ActiveTerminalSession>();
 const ownerSessionIds = new Map<number, Set<number>>();
 const ownerWorkspaceSessions = new Map<number, Map<string, number>>();
 const ownersWithCleanup = new Set<number>();
-let nextSessionId = 1;
+
+// Per-workspace session ID counters so each workspace's sessions start from 1
+// and are unaffected by sessions in other workspaces.
+const nextWorkspaceSessionId = new Map<string, number>();
+
+function getNextSessionId(workspaceRootPath: string) {
+  const normalized = normalizeWorkspacePath(workspaceRootPath);
+  const nextId = nextWorkspaceSessionId.get(normalized) ?? 1;
+  nextWorkspaceSessionId.set(normalized, nextId + 1);
+  return nextId;
+}
 
 function clampInteger(
   value: number,
@@ -248,7 +258,7 @@ function resolveWindowsShellSpecs() {
   return windowsCandidates;
 }
 
-function createTerminalEnvironment() {
+function createTerminalEnvironment(cwd: string, workspaceRootPath: string | null) {
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
     TERM: "xterm-256color",
@@ -256,7 +266,104 @@ function createTerminalEnvironment() {
     PYTHONUNBUFFERED: "1",
   };
   delete environment.ELECTRON_RUN_AS_NODE;
+
+  const venvPath = findVenvPath(cwd, workspaceRootPath);
+  if (venvPath) {
+    return activateVenvInEnvironment(environment, venvPath);
+  }
+
   return environment;
+}
+
+// ---------------------------------------------------------------------------
+// Python virtual environment auto-detection & activation
+// ---------------------------------------------------------------------------
+
+/**
+ * Walk upward from `cwd` looking for a Python virtual environment.
+ *
+ * Detects any directory containing a `pyvenv.cfg` file — the standard marker
+ * that Python's `venv` module generates, regardless of what the directory is
+ * named (`venv`, `.venv`, `env`, `sandbox`, etc.).  Stops at the workspace
+ * root or filesystem root.
+ */
+function findVenvPath(cwd: string, workspaceRootPath: string | null): string | null {
+  const normalizedCwd = path.normalize(cwd);
+  const boundary = workspaceRootPath
+    ? path.normalize(workspaceRootPath)
+    : path.parse(normalizedCwd).root;
+
+  let currentDir = normalizedCwd;
+  while (currentDir.length >= boundary.length) {
+    // Check if this directory itself is a venv (has pyvenv.cfg inside it)
+    if (hasPyvenvCfg(currentDir)) {
+      return currentDir;
+    }
+
+    // Also check immediate subdirectories for pyvenv.cfg for the common pattern
+    // where cwd is the workspace root and venv is a child dir like ./venv
+    try {
+      const entries = readdirSync(currentDir, { encoding: "utf-8" });
+      for (const name of entries) {
+        const candidate = path.join(currentDir, name);
+        try {
+          if (statSync(candidate).isDirectory() && hasPyvenvCfg(candidate)) {
+            return candidate;
+          }
+        } catch (_) {
+          // skip entries we can't stat
+        }
+      }
+    } catch (_) {
+      // Permission errors on currentDir — skip
+    }
+
+    if (currentDir === boundary) {
+      break;
+    }
+
+    const parent = path.dirname(currentDir);
+    if (parent === currentDir) {
+      break; // filesystem root
+    }
+    currentDir = parent;
+  }
+
+  return null;
+}
+
+/**
+ * Returns true when `dirPath` contains a `pyvenv.cfg` file — the standard
+ * marker for a Python virtual environment created by `python -m venv`.
+ */
+function hasPyvenvCfg(dirPath: string): boolean {
+  return existsSync(path.join(dirPath, "pyvenv.cfg"));
+}
+
+/**
+ * Set VIRTUAL_ENV and prepend the venv's bin/Scripts directory to PATH so the
+ * terminal behaves as if the venv had been activated via the activate script.
+ */
+function activateVenvInEnvironment(
+  env: NodeJS.ProcessEnv,
+  venvPath: string,
+): NodeJS.ProcessEnv {
+  const isWindows = process.platform === "win32";
+  const venvBin = isWindows
+    ? path.join(venvPath, "Scripts")
+    : path.join(venvPath, "bin");
+  const pathSeparator = isWindows ? ";" : ":";
+
+  const existingPath = env.PATH ?? "";
+  const prependedPath = existingPath.length > 0
+    ? `${venvBin}${pathSeparator}${existingPath}`
+    : venvBin;
+
+  return {
+    ...env,
+    PATH: prependedPath,
+    VIRTUAL_ENV: venvPath,
+  };
 }
 
 function createPowerShellInteractiveArgs() {
@@ -453,10 +560,14 @@ function terminateSession(sessionId: number) {
     sessionId,
   );
 
-  // Reset the session ID counter when the sessions map empties so the next
-  // session across any owner starts from 1, matching the AI's per-turn expectation.
-  if (sessions.size === 0) {
-    nextSessionId = 1;
+  // When the last session for a workspace is gone, reset its counter so
+  // the next session for that workspace starts from 1.
+  const normalizedWorkspace = activeSession.workspaceRootPath;
+  const hasMoreInWorkspace = Array.from(sessions.values()).some(
+    (s) => s.workspaceRootPath === normalizedWorkspace,
+  );
+  if (!hasMoreInWorkspace) {
+    nextWorkspaceSessionId.delete(normalizedWorkspace);
   }
 
   try {
@@ -708,7 +819,7 @@ async function createTerminalSessionInternal(
     return reusedSession;
   }
 
-  const terminalEnvironment = createTerminalEnvironment();
+  const terminalEnvironment = createTerminalEnvironment(cwd, workspaceRootPath);
   const { ptyProcess, shellLabel } = spawnTerminalFromCandidates({
     cols,
     cwd,
@@ -716,8 +827,7 @@ async function createTerminalSessionInternal(
     rows,
   });
 
-  const sessionId = nextSessionId;
-  nextSessionId += 1;
+  const sessionId = getNextSessionId(workspaceRootPath ?? cwd);
 
   const activeSession: ActiveTerminalSession = {
     cwd,

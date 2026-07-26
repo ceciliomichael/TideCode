@@ -239,6 +239,81 @@ test('createGrepToolResult returns no files for invalid regex patterns', async (
   }
 })
 
+test('createListToolResult shows contents of a workspace-ignored directory like node_modules when explicitly targeted', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const nodeModulesPath = path.join(workspaceRootPath, 'node_modules')
+
+  try {
+    const result = await createListToolResult(workspaceRootPath, nodeModulesPath, 'node_modules')
+
+    assert.equal(result.status, 'success')
+    assert.match(result.body ?? '', /pkg\/$/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('createGlobToolResult finds files inside node_modules when explicitly targeting it', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const nodeModulesPath = path.join(workspaceRootPath, 'node_modules')
+
+  try {
+    const result = await createGlobToolResult(workspaceRootPath, nodeModulesPath, 'node_modules', '**/*.ts')
+
+    assert.equal(result.status, 'success')
+    assert.match(result.body ?? '', /node_modules[\\/]pkg[\\/]index\.ts/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('createGrepToolResult finds matches inside node_modules when explicitly targeting it', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const nodeModulesPath = path.join(workspaceRootPath, 'node_modules')
+
+  try {
+    const result = await createGrepToolResult(
+      workspaceRootPath,
+      nodeModulesPath,
+      'node_modules',
+      'needle',
+      '**/*.ts',
+    )
+
+    assert.equal(result.status, 'success')
+    assert.equal(result.semantics?.matches, 1)
+    assert.match(result.body ?? '', /node_modules[\\/]pkg[\\/]index\.ts/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('createGlobToolResult still hides node_modules from root-level searches', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+
+  try {
+    const result = await createGlobToolResult(workspaceRootPath, workspaceRootPath, '.', '**/*.ts')
+
+    assert.equal(result.status, 'success')
+    assert.doesNotMatch(result.body ?? '', /node_modules/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('createGrepToolResult still hides node_modules from root-level searches', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+
+  try {
+    const result = await createGrepToolResult(workspaceRootPath, workspaceRootPath, '.', 'needle', '**/{*,.*}')
+
+    assert.equal(result.status, 'success')
+    assert.doesNotMatch(result.body ?? '', /node_modules/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('resolveReadableTargetPath keeps sandbox reads inside the workspace', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
   const outsideFilePath = path.join(tmpdir(), `echosphere-outside-${Date.now()}.txt`)

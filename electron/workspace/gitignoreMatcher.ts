@@ -10,7 +10,8 @@ interface GitignoreMatcherEntry {
 
 export type WorkspaceEntryVisibility = 'explorer' | 'workspace'
 
-const WORKSPACE_IGNORED_ENTRY_NAMES = new Set<string>([
+export const WORKSPACE_IGNORED_ENTRY_NAMES: ReadonlySet<string> = new Set<string>([
+  '.echosphere',
   '.git',
   '.next',
   'node_modules',
@@ -108,6 +109,26 @@ export function isGitignored(
 
 export function shouldAlwaysShowEntry(entryName: string) {
   return entryName.toLowerCase().startsWith('.env')
+}
+
+/**
+ * Returns true when any path segment of the relative path from workspaceRootPath
+ * to absolutePath matches a workspace-ignored entry name (e.g. "node_modules").
+ *
+ * This is used to determine whether the AI explicitly targeted a directory inside
+ * an otherwise ignored tree so that tools can relax filtering for that subtree.
+ */
+export function isInsideWorkspaceIgnoredPath(workspaceRootPath: string, absolutePath: string) {
+  const relativeSegments = path
+    .relative(path.resolve(workspaceRootPath), path.resolve(absolutePath))
+    .split(path.sep)
+    .filter((segment) => segment.length > 0)
+
+  if (relativeSegments.length > 0 && (relativeSegments[0] === '..' || path.isAbsolute(relativeSegments[0]))) {
+    return false
+  }
+
+  return relativeSegments.some((segment) => WORKSPACE_IGNORED_ENTRY_NAMES.has(segment))
 }
 
 export function shouldIgnoreWorkspaceEntry(entryName: string, visibility: WorkspaceEntryVisibility = 'workspace') {

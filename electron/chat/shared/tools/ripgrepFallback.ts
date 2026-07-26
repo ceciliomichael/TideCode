@@ -5,6 +5,7 @@ import { createInterface } from 'node:readline'
 import { minimatch } from 'minimatch'
 import {
   isGitignored,
+  isInsideWorkspaceIgnoredPath,
   loadGitignoreMatchers,
   shouldIgnoreWorkspaceEntry,
 } from '../../../workspace/gitignoreMatcher'
@@ -64,10 +65,19 @@ function normalizeSearchIncludePattern(includePattern: string | null) {
 function createWorkspaceEntryVisibilityFilter(
   workspaceRootPath: string,
   options?: {
+    ignoreBasePath?: string
     ignoreWorkspaceRules?: boolean
   },
 ) {
   const matcherCache = new Map<string, Promise<Awaited<ReturnType<typeof loadGitignoreMatchers>>>>()
+  const ignoreBaseSegments =
+    options?.ignoreBasePath
+      ? path
+          .relative(workspaceRootPath, options.ignoreBasePath)
+          .split(path.sep)
+          .filter((segment) => segment.length > 0)
+          .filter((segment) => segment !== '.' && !segment.startsWith('..'))
+      : []
 
   function loadCachedMatchers(directoryPath: string): Promise<Awaited<ReturnType<typeof loadGitignoreMatchers>>> {
     const normalizedDirectoryPath = path.resolve(directoryPath)
@@ -81,11 +91,35 @@ function createWorkspaceEntryVisibilityFilter(
     return matchersPromise
   }
 
+  function isUnderIgnoreBase(entrySegments: readonly string[]) {
+    if (ignoreBaseSegments.length === 0) {
+      return false
+    }
+
+    if (entrySegments.length < ignoreBaseSegments.length) {
+      return false
+    }
+
+    for (let index = 0; index < ignoreBaseSegments.length; index += 1) {
+      if (entrySegments[index] !== ignoreBaseSegments[index]) {
+        return false
+      }
+    }
+
+    return true
+  }
+
   return async (entryAbsolutePath: string, isDirectory: boolean) => {
     const workspaceRelativeSegments = path
       .relative(workspaceRootPath, entryAbsolutePath)
       .split(path.sep)
       .filter((segment) => segment.length > 0)
+
+    const underIgnoreBase = isUnderIgnoreBase(workspaceRelativeSegments)
+
+    if (underIgnoreBase) {
+      return true
+    }
 
     if (workspaceRelativeSegments.some((segment) => shouldIgnoreWorkspaceEntry(segment, 'explorer'))) {
       return false
@@ -175,6 +209,7 @@ export async function searchVisibleFiles(
   include: string | undefined,
   maxResults?: number,
   options?: {
+    ignoreBasePath?: string
     ignoreWorkspaceRules?: boolean
     literalFallback?: boolean
     regex?: boolean
@@ -193,6 +228,7 @@ export async function searchVisibleFiles(
   }
   const matches: SearchMatch[] = []
   const isVisibleEntry = createWorkspaceEntryVisibilityFilter(workspaceRootPath, {
+    ignoreBasePath: options?.ignoreBasePath,
     ignoreWorkspaceRules: options?.ignoreWorkspaceRules,
   })
   let truncated = false
@@ -395,7 +431,10 @@ export async function runRipgrepFallback(args: string[], cwd: string): Promise<R
     }
 
     const include = normalizeSearchIncludePattern(getPrimaryGlobPattern(args)) ?? undefined
+    const ignoreBasePath =
+      searchPathStats.isDirectory() && isInsideWorkspaceIgnoredPath(cwd, searchPath) ? searchPath : undefined
     const result = await searchVisibleFiles(cwd, searchPath, searchPattern, include, undefined, {
+      ignoreBasePath,
       ignoreWorkspaceRules: false,
       literalFallback: false,
       regex: true,

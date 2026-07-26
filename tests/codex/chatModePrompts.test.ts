@@ -15,8 +15,7 @@ test('agent prompt teaches concise, reliable, dependency-aware tool use', async 
     assert.doesNotMatch(prompt, /caveman|primitive speech/iu)
     assert.match(prompt, /Run calls together only when none needs another call's result/u)
     assert.match(prompt, /Never change the same file, terminal session, or Kanban card at the same time/u)
-    assert.match(prompt, /multi_replace_file_content/u)
-    assert.match(prompt, /If any block is wrong, nothing is written/u)
+    assert.match(prompt, /replace_file_content/u)
     assert.match(prompt, /reorder_card/u)
     assert.match(prompt, /Answer first/u)
     assert.match(prompt, /Default to 1-3 short sentences or bullets/u)
@@ -63,13 +62,6 @@ test('runtime tool exposure enforces the Agent and Plan mode contracts', async (
     for (const toolName of [
       'write',
       'replace_file_content',
-      'multi_replace_file_content',
-      'create_card',
-      'create_task_with_subtasks',
-      'update_card',
-      'move_card',
-      'reorder_card',
-      'delete_card',
     ]) {
       assert.ok(toolName in agentTools, `Agent mode must expose ${toolName}`)
       assert.ok(!(toolName in planTools), `Plan mode must not expose ${toolName}`)
@@ -80,8 +72,7 @@ test('runtime tool exposure enforces the Agent and Plan mode contracts', async (
       'glob',
       'grep',
       'read',
-      'read_board',
-      'read_card',
+      'kanban_board',
       'webfetch',
     ]) {
       assert.ok(toolName in agentTools, `Agent mode must expose ${toolName}`)

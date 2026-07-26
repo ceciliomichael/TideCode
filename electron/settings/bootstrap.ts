@@ -209,6 +209,48 @@ function sanitizeDisabledSkillsByPath(value: unknown): AppSettings['disabledSkil
   return sanitizedValue
 }
 
+function sanitizeConversationModelPreferences(value: unknown): AppSettings['conversationModelPreferences'] {
+  if (!value || typeof value !== 'object') {
+    return {}
+  }
+
+  const candidateEntries = Object.entries(value as Record<string, unknown>)
+  const sanitizedValue: AppSettings['conversationModelPreferences'] = {}
+
+  for (const [conversationId, candidatePreference] of candidateEntries) {
+    const normalizedId = conversationId.trim()
+    if (
+      normalizedId.length === 0 ||
+      !candidatePreference ||
+      typeof candidatePreference !== 'object'
+    ) {
+      continue
+    }
+
+    const preference = candidatePreference as Record<string, unknown>
+    const modelId =
+      typeof preference.modelId === 'string' ? preference.modelId.trim() : ''
+    const label =
+      typeof preference.label === 'string' ? preference.label.trim() : ''
+    const providerId =
+      preference.providerId === null || isChatProviderId(preference.providerId)
+        ? (preference.providerId ?? null)
+        : null
+
+    if (modelId.length === 0) {
+      continue
+    }
+
+    sanitizedValue[normalizedId] = {
+      label,
+      modelId,
+      providerId,
+    }
+  }
+
+  return sanitizedValue
+}
+
 function sanitizeBootstrappedSettings(input: unknown): AppSettings {
   const candidate = input as Partial<AppSettings> | null | undefined
 
@@ -314,6 +356,7 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
       typeof candidate?.workspaceFileEditorWordWrap === 'boolean'
         ? candidate.workspaceFileEditorWordWrap
         : DEFAULT_APP_SETTINGS.workspaceFileEditorWordWrap,
+    conversationModelPreferences: sanitizeConversationModelPreferences(candidate?.conversationModelPreferences),
     disabledSkillsByPath: sanitizeDisabledSkillsByPath(candidate?.disabledSkillsByPath),
     sidebarWidth:
 

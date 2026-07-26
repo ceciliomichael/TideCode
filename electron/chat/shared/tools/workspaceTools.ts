@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline'
 import { getDiffSummary } from '../../../../src/lib/textDiff'
 import type { AppTerminalExecutionMode } from '../../../../src/types/chat'
 import type { ChangeDiffToolResultItem } from '../../../../src/types/chat'
-import { loadGitignoreMatchers, isGitignored, shouldAlwaysShowEntry, shouldIgnoreWorkspaceEntry } from '../../../workspace/gitignoreMatcher'
+import { loadGitignoreMatchers, isGitignored, shouldAlwaysShowEntry, shouldIgnoreWorkspaceEntry, isInsideWorkspaceIgnoredPath } from '../../../workspace/gitignoreMatcher'
 import {
   assertWorkspaceDirectory,
   DEFAULT_WORKSPACE_RELATIVE_PATH,
@@ -325,12 +325,24 @@ async function captureCheckpointFileStateIfNeeded(checkpointId: string | null | 
   await captureWorkspaceCheckpointFileState(normalizedCheckpointId, absolutePath)
 }
 
-async function listImmediateDirectoryEntries(workspaceRootPath: string, directoryPath: string) {
+async function listImmediateDirectoryEntries(
+  workspaceRootPath: string,
+  directoryPath: string,
+  options?: { relaxIgnore?: boolean },
+): Promise<string[]> {
   const entries = await fs.readdir(directoryPath, { withFileTypes: true })
-  const gitignoreMatchers = await loadGitignoreMatchers(workspaceRootPath, directoryPath)
-  const visibleEntries = entries
+  const filteredEntries = entries
     .filter((entry) => !entry.isSymbolicLink())
     .filter((entry) => entry.isDirectory() || entry.isFile())
+
+  if (options?.relaxIgnore) {
+    return filteredEntries
+      .map((entry) => `${entry.name}${entry.isDirectory() ? '/' : ''}`)
+      .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }))
+  }
+
+  const gitignoreMatchers = await loadGitignoreMatchers(workspaceRootPath, directoryPath)
+  return filteredEntries
     .filter((entry) => !shouldIgnoreWorkspaceEntry(entry.name))
     .filter((entry) => {
       if (shouldAlwaysShowEntry(entry.name)) {
@@ -341,12 +353,21 @@ async function listImmediateDirectoryEntries(workspaceRootPath: string, director
     })
     .map((entry) => `${entry.name}${entry.isDirectory() ? '/' : ''}`)
     .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }))
-
-  return visibleEntries
 }
 
-function createWorkspaceEntryVisibilityFilter(workspaceRootPath: string) {
+function createWorkspaceEntryVisibilityFilter(
+  workspaceRootPath: string,
+  options?: { ignoreBasePath?: string },
+) {
   const matcherCache = new Map<string, Promise<GitignoreMatchers>>()
+  const ignoreBaseSegments =
+    options?.ignoreBasePath
+      ? path
+          .relative(workspaceRootPath, options.ignoreBasePath)
+          .split(path.sep)
+          .filter((segment) => segment.length > 0)
+          .filter((segment) => segment !== '.' && !segment.startsWith('..'))
+      : []
 
   function loadCachedMatchers(directoryPath: string): Promise<GitignoreMatchers> {
     const normalizedDirectoryPath = path.resolve(directoryPath)
@@ -359,17 +380,43 @@ function createWorkspaceEntryVisibilityFilter(workspaceRootPath: string) {
     return matchersPromise
   }
 
+  function isUnderIgnoreBase(entrySegments: readonly string[]) {
+    if (ignoreBaseSegments.length === 0) {
+      return false
+    }
+
+    if (entrySegments.length < ignoreBaseSegments.length) {
+      return false
+    }
+
+    for (let index = 0; index < ignoreBaseSegments.length; index += 1) {
+      if (entrySegments[index] !== ignoreBaseSegments[index]) {
+        return false
+      }
+    }
+
+    return true
+  }
+
   return async (entryAbsolutePath: string, isDirectory: boolean) => {
     const workspaceRelativeSegments = path
       .relative(workspaceRootPath, entryAbsolutePath)
       .split(path.sep)
       .filter((segment) => segment.length > 0)
 
-    if (workspaceRelativeSegments.some((segment) => shouldIgnoreWorkspaceEntry(segment))) {
-      return false
+    const underIgnoreBase = isUnderIgnoreBase(workspaceRelativeSegments)
+
+    if (!underIgnoreBase) {
+      if (workspaceRelativeSegments.some((segment) => shouldIgnoreWorkspaceEntry(segment))) {
+        return false
+      }
     }
 
     const gitignoreMatchers = await loadCachedMatchers(path.dirname(entryAbsolutePath))
+    if (underIgnoreBase) {
+      return true
+    }
+
     return !isGitignored(entryAbsolutePath, isDirectory, gitignoreMatchers)
   }
 }
@@ -391,8 +438,11 @@ async function filterVisibleRelativeFileEntries(
   workspaceRootPath: string,
   baseAbsolutePath: string,
   relativeEntries: readonly string[],
+  options?: { ignoreBasePath?: string },
 ) {
-  const isVisibleEntry = createWorkspaceEntryVisibilityFilter(workspaceRootPath)
+  const isVisibleEntry = createWorkspaceEntryVisibilityFilter(workspaceRootPath, {
+    ignoreBasePath: options?.ignoreBasePath,
+  })
   const visibleEntries: string[] = []
 
   for (const relativeEntry of relativeEntries) {
@@ -406,7 +456,8 @@ async function filterVisibleRelativeFileEntries(
 }
 
 export async function createListToolResult(workspaceRootPath: string, absolutePath: string, relativePath: string) {
-  const immediateEntries = await listImmediateDirectoryEntries(workspaceRootPath, absolutePath)
+  const relaxIgnore = isInsideWorkspaceIgnoredPath(workspaceRootPath, absolutePath)
+  const immediateEntries = await listImmediateDirectoryEntries(workspaceRootPath, absolutePath, { relaxIgnore })
   const limitedEntries = immediateEntries.slice(0, LIST_LIMIT)
 
   const bodyLines = [...limitedEntries]
@@ -576,7 +627,10 @@ export async function createGlobToolResult(
     .split(/\r?\n/u)
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0)
-  const visibleRelativeMatches = await filterVisibleRelativeFileEntries(workspaceRootPath, absolutePath, relativeMatches)
+  const ignoreBasePath = isInsideWorkspaceIgnoredPath(workspaceRootPath, absolutePath) ? absolutePath : undefined
+  const visibleRelativeMatches = await filterVisibleRelativeFileEntries(workspaceRootPath, absolutePath, relativeMatches, {
+    ignoreBasePath,
+  })
   const matches = visibleRelativeMatches.map((entry) => path.resolve(absolutePath, entry))
   const limitedMatches = matches.slice(0, SEARCH_LIMIT)
   const bodyLines = limitedMatches.length === 0 ? ['No files found'] : limitedMatches
@@ -650,7 +704,11 @@ export async function createGrepToolResult(
   }
 
   const parsedMatches: GrepMatch[] = []
-  const isVisibleEntry = createWorkspaceEntryVisibilityFilter(workspaceRootPath)
+  const ignoreBasePath =
+    stats.isDirectory() && isInsideWorkspaceIgnoredPath(workspaceRootPath, absolutePath) ? absolutePath : undefined
+  const isVisibleEntry = createWorkspaceEntryVisibilityFilter(workspaceRootPath, {
+    ignoreBasePath,
+  })
   for (const line of output.split(/\r?\n/u)) {
     if (!line) {
       continue

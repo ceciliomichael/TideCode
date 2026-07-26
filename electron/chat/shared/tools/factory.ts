@@ -3,7 +3,6 @@ import type { ChatMode, ChatProviderId } from '../../../../src/types/chat'
 import type { SkillSummary } from '../../../../src/types/skills'
 import type { AgentToolContext } from '../toolTypes'
 
-import { createMultiReplaceFileContentTool } from './multiReplaceFileContentTool'
 import { createReplaceFileContentTool } from './replaceFileContentTool'
 import { createGlobTool } from './globTool'
 import { createGrepTool } from './grepTool'
@@ -75,6 +74,5 @@ export async function createAgentTools(
     ...tools,
     write: createWriteTool(context),
     replace_file_content: createReplaceFileContentTool(context),
-    multi_replace_file_content: createMultiReplaceFileContentTool(context),
   }
 }
