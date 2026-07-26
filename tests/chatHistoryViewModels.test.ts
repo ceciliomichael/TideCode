@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { ConversationFolderSummary } from '../src/types/chat'
+import type { ConversationFolderSummary, ConversationSummary } from '../src/types/chat'
 import {
   getFolderIdForWorkspacePath,
   insertFolderSummary,
   moveFolderSummary,
+  orderConversationFamilies,
   reorderFolderSummary,
 } from '../src/hooks/chatHistoryViewModels'
 
@@ -95,4 +96,43 @@ test('reorderFolderSummary ignores invalid moves', () => {
     targetFolderId: 'missing',
   })
   assert.deepEqual(invalidTargetMove.map((folder) => folder.id), ['folder-a', 'folder-b'])
+})
+
+test('orderConversationFamilies keeps compactions beside their original in chronological order', () => {
+  const buildSummary = (
+    id: string,
+    updatedAt: number,
+    compaction?: ConversationSummary['compaction'],
+  ): ConversationSummary => ({
+    agentContextRootPath: '/workspace',
+    chatMode: 'agent',
+    ...(compaction ? { compaction } : {}),
+    folderId: null,
+    id,
+    messageCount: 1,
+    preview: id,
+    title: id,
+    updatedAt,
+  })
+  const original = buildSummary('original', 10)
+  const compactOne = buildSummary('compact-1', 30, {
+    compactedAt: 20,
+    depth: 1,
+    rootConversationId: 'original',
+    sequence: 1,
+    sourceConversationId: 'original',
+  })
+  const compactTwo = buildSummary('compact-2', 40, {
+    compactedAt: 40,
+    depth: 2,
+    rootConversationId: 'original',
+    sequence: 2,
+    sourceConversationId: 'compact-1',
+  })
+  const other = buildSummary('other', 35)
+
+  assert.deepEqual(
+    orderConversationFamilies([compactTwo, other, original, compactOne]).map((summary) => summary.id),
+    ['original', 'compact-1', 'compact-2', 'other'],
+  )
 })

@@ -129,10 +129,22 @@ function mapConversationPreview(
   activeConversationId: string | null,
   runningConversationIds: ReadonlySet<string>,
   language: AppLanguage,
+  familySize: number,
+  latestCompactionSequence: number,
 ): ConversationPreview {
+  const hasCompactionFamily = familySize > 1 || summary.compaction !== undefined
+
   return {
+    ...(summary.compaction ? { compaction: summary.compaction } : {}),
+    ...(hasCompactionFamily
+      ? { compactionLabel: summary.compaction ? `Compact ${summary.compaction.sequence}` : 'Original' }
+      : {}),
     hasRunningTask: runningConversationIds.has(summary.id),
+    hasCompactionFamily,
     id: summary.id,
+    isLatestCompaction:
+      summary.compaction !== undefined &&
+      summary.compaction.sequence === latestCompactionSequence,
     title: summary.title,
     preview: summary.preview,
     updatedAtLabel: formatUpdatedAtLabel(summary.updatedAt, language),
@@ -144,6 +156,52 @@ function mapConversationPreview(
 
 export const PINNED_FOLDER_ID = 'pinned'
 
+function getCompactionRootId(summary: ConversationSummary) {
+  return summary.compaction?.rootConversationId ?? summary.id
+}
+
+function buildCompactionFamilyStats(conversationSummaries: readonly ConversationSummary[]) {
+  const familyStats = new Map<string, { latestSequence: number; size: number }>()
+
+  for (const summary of conversationSummaries) {
+    const rootConversationId = getCompactionRootId(summary)
+    const currentStats = familyStats.get(rootConversationId) ?? {
+      latestSequence: 0,
+      size: 0,
+    }
+    familyStats.set(rootConversationId, {
+      latestSequence: Math.max(currentStats.latestSequence, summary.compaction?.sequence ?? 0),
+      size: currentStats.size + 1,
+    })
+  }
+
+  return familyStats
+}
+
+export function orderConversationFamilies(conversationSummaries: readonly ConversationSummary[]) {
+  const families = new Map<string, ConversationSummary[]>()
+  for (const summary of conversationSummaries) {
+    const rootConversationId = getCompactionRootId(summary)
+    const family = families.get(rootConversationId) ?? []
+    family.push(summary)
+    families.set(rootConversationId, family)
+  }
+
+  return [...families.values()]
+    .sort((leftFamily, rightFamily) => {
+      const leftUpdatedAt = Math.max(...leftFamily.map((summary) => summary.updatedAt))
+      const rightUpdatedAt = Math.max(...rightFamily.map((summary) => summary.updatedAt))
+      return rightUpdatedAt - leftUpdatedAt
+    })
+    .flatMap((family) =>
+      [...family].sort((left, right) => {
+        const leftSequence = left.compaction?.sequence ?? 0
+        const rightSequence = right.compaction?.sequence ?? 0
+        return leftSequence - rightSequence || left.updatedAt - right.updatedAt
+      }),
+    )
+}
+
 export function buildConversationGroups(
   folderSummaries: ConversationFolderSummary[],
   conversationSummaries: ConversationSummary[],
@@ -152,12 +210,13 @@ export function buildConversationGroups(
   runningConversationIds: ReadonlySet<string>,
   language: AppLanguage,
 ): ConversationGroupPreview[] {
-  const groupedConversations = new Map<string | null, ConversationPreview[]>()
-  groupedConversations.set(null, [])
-  const pinnedConversations: ConversationPreview[] = []
+  const groupedSummaries = new Map<string | null, ConversationSummary[]>()
+  const familyStats = buildCompactionFamilyStats(conversationSummaries)
+  groupedSummaries.set(null, [])
+  const pinnedSummaries: ConversationSummary[] = []
 
   for (const folder of folderSummaries) {
-    groupedConversations.set(folder.id, [])
+    groupedSummaries.set(folder.id, [])
   }
 
   const activeConversationIsPinned =
@@ -165,17 +224,32 @@ export function buildConversationGroups(
     conversationSummaries.find((c) => c.id === activeConversationId)?.isPinned === true
 
   for (const conversation of conversationSummaries) {
-    const preview = mapConversationPreview(conversation, activeConversationId, runningConversationIds, language)
-    
     if (conversation.isPinned) {
-      pinnedConversations.push(preview)
+      pinnedSummaries.push(conversation)
     } else {
       const targetFolderId =
-        conversation.folderId !== null && groupedConversations.has(conversation.folderId) ? conversation.folderId : null
+        conversation.folderId !== null && groupedSummaries.has(conversation.folderId) ? conversation.folderId : null
 
-      groupedConversations.get(targetFolderId)?.push(preview)
+      groupedSummaries.get(targetFolderId)?.push(conversation)
     }
   }
+
+  const mapSummaries = (summaries: readonly ConversationSummary[]) =>
+    orderConversationFamilies(summaries).map((summary) => {
+      const stats = familyStats.get(getCompactionRootId(summary)) ?? {
+        latestSequence: 0,
+        size: 1,
+      }
+      return mapConversationPreview(
+        summary,
+        activeConversationId,
+        runningConversationIds,
+        language,
+        stats.size,
+        stats.latestSequence,
+      )
+    })
+  const pinnedConversations = mapSummaries(pinnedSummaries)
 
   const pinnedGroup = {
     folder: {
@@ -193,10 +267,10 @@ export function buildConversationGroups(
       id: null,
       name: CHATS_FOLDER_NAME,
       path: null,
-      conversationCount: groupedConversations.get(null)?.length ?? 0,
+      conversationCount: groupedSummaries.get(null)?.length ?? 0,
       isSelected: selectedFolderId === null && !activeConversationIsPinned,
     },
-    conversations: groupedConversations.get(null) ?? [],
+    conversations: mapSummaries(groupedSummaries.get(null) ?? []),
   }
 
   const folderGroups = folderSummaries.map((folder) => ({
@@ -204,10 +278,10 @@ export function buildConversationGroups(
       id: folder.id,
       name: folder.name,
       path: folder.path,
-      conversationCount: groupedConversations.get(folder.id)?.length ?? 0,
+      conversationCount: groupedSummaries.get(folder.id)?.length ?? 0,
       isSelected: selectedFolderId === folder.id && !activeConversationIsPinned,
     },
-    conversations: groupedConversations.get(folder.id) ?? [],
+    conversations: mapSummaries(groupedSummaries.get(folder.id) ?? []),
   }))
 
   const groups = []
@@ -220,8 +294,6 @@ export function buildConversationGroups(
   groups.push(...folderGroups)
   groups.push(chatsGroup)
 
-  console.log('Sidebar groups order:', groups.map((g) => g.folder.name))
-
   return groups
 }
 
@@ -229,6 +301,7 @@ export function buildConversationSummary(conversation: ConversationRecord): Conv
   return {
     agentContextRootPath: conversation.agentContextRootPath,
     chatMode: conversation.chatMode,
+    ...(conversation.compaction ? { compaction: conversation.compaction } : {}),
     id: conversation.id,
     title: conversation.title,
     preview: getConversationPreviewContent(conversation.messages),
@@ -261,7 +334,7 @@ export function insertFolderSummary(
   folderSummaries: ConversationFolderSummary[],
   nextFolder: ConversationFolderSummary,
 ) {
-  return [nextFolder, ...folderSummaries]
+  return [...folderSummaries, nextFolder]
 }
 
 export function moveFolderSummary(

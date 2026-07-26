@@ -1,93 +1,57 @@
 import type { ToolInvocationTrace } from '../../types/chat'
 
-function formatKanbanVerb(toolName: string, state: ToolInvocationTrace['state']) {
-  if (toolName === 'read_board') {
-    if (state === 'running') {
-      return 'Reading board'
+/**
+ * Safely parses the `action` field from the tool invocation's argumentsText JSON.
+ * Returns null if the arguments cannot be parsed or action is missing.
+ */
+function parseKanbanAction(argumentsText: string): string | null {
+  try {
+    const parsed = JSON.parse(argumentsText)
+    if (parsed && typeof parsed === 'object' && typeof parsed.action === 'string') {
+      return parsed.action
     }
-    if (state === 'completed') {
-      return 'Read board'
-    }
-    return 'Read board failed'
+  } catch {
+    // Partial / streaming JSON — tolerate gracefully
   }
+  return null
+}
 
-  if (toolName === 'read_card') {
-    if (state === 'running') {
-      return 'Reading card'
-    }
-    if (state === 'completed') {
-      return 'Read card'
-    }
-    return 'Read card failed'
+function formatKanbanVerb(action: string | null, state: ToolInvocationTrace['state']) {
+  switch (action) {
+    case 'read_board':
+      return state === 'running' ? 'Reading board' : state === 'completed' ? 'Read board' : 'Read board failed'
+    case 'read_card':
+      return state === 'running' ? 'Reading card' : state === 'completed' ? 'Read card' : 'Read card failed'
+    case 'create_card':
+      return state === 'running' ? 'Creating card' : state === 'completed' ? 'Created card' : 'Create card failed'
+    case 'create_task_with_subtasks':
+      return state === 'running'
+        ? 'Planning task and subtasks'
+        : state === 'completed'
+          ? 'Created task and subtasks'
+          : 'Create task and subtasks failed'
+    case 'update_card':
+      return state === 'running' ? 'Updating card' : state === 'completed' ? 'Updated card' : 'Update card failed'
+    case 'move_card':
+      return state === 'running' ? 'Moving card' : state === 'completed' ? 'Moved card' : 'Move card failed'
+    case 'reorder_card':
+      return state === 'running'
+        ? 'Reordering card'
+        : state === 'completed'
+          ? 'Reordered card'
+          : 'Reorder card failed'
+    case 'delete_card':
+      return state === 'running' ? 'Deleting task' : state === 'completed' ? 'Deleted task' : 'Delete task failed'
+    default:
+      return state === 'running'
+        ? 'Running kanban operation'
+        : state === 'completed'
+          ? 'Completed kanban operation'
+          : 'Kanban operation failed'
   }
-
-  if (toolName === 'create_card') {
-    if (state === 'running') {
-      return 'Creating card'
-    }
-    if (state === 'completed') {
-      return 'Created card'
-    }
-    return 'Create card failed'
-  }
-
-  if (toolName === 'create_task_with_subtasks') {
-    if (state === 'running') {
-      return 'Planning task and subtasks'
-    }
-    if (state === 'completed') {
-      return 'Created task and subtasks'
-    }
-    return 'Create task and subtasks failed'
-  }
-
-  if (toolName === 'update_card') {
-    if (state === 'running') {
-      return 'Updating card'
-    }
-    if (state === 'completed') {
-      return 'Updated card'
-    }
-    return 'Update card failed'
-  }
-
-  if (toolName === 'move_card') {
-    if (state === 'running') {
-      return 'Moving card'
-    }
-    if (state === 'completed') {
-      return 'Moved card'
-    }
-    return 'Move card failed'
-  }
-
-  if (toolName === 'reorder_card') {
-    if (state === 'running') {
-      return 'Reordering card'
-    }
-    if (state === 'completed') {
-      return 'Reordered card'
-    }
-    return 'Reorder card failed'
-  }
-
-  if (toolName === 'delete_card') {
-    if (state === 'running') {
-      return 'Deleting task'
-    }
-    if (state === 'completed') {
-      return 'Deleted task'
-    }
-    return 'Delete task failed'
-  }
-
-  return state === 'running'
-    ? `Running ${toolName}`
-    : state === 'completed'
-      ? `Completed ${toolName}`
-      : `Failed ${toolName}`
 }
 
 export function getKanbanToolInvocationHeaderLabel(invocation: ToolInvocationTrace) {
-  return formatKanbanVerb(invocation.toolName, invocation.state)
+  const action = parseKanbanAction(invocation.argumentsText)
+  return formatKanbanVerb(action, invocation.state)
 }

@@ -10,6 +10,9 @@ const SKILL_FILE_NAME = 'SKILL.md'
 const GLOBAL_SKILL_DIRECTORIES = ['.echosphere/skills', '.codex/skills', '.agents/skills', '.claude/skills'] as const
 const WORKSPACE_SKILL_DIRECTORIES = ['skills', '.echosphere/skills', '.codex/skills', '.agents/skills', '.claude/skills'] as const
 const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/
+const SKILL_DISCOVERY_CACHE_TTL_MS = 3_000
+const skillDiscoveryCache = new Map<string, { expiresAt: number; state: SkillsState }>()
+const skillDiscoveryInFlight = new Map<string, Promise<SkillsState>>()
 
 interface SkillSearchRoot {
   directory: string
@@ -254,7 +257,7 @@ export function buildSkillToolDescription(skills: SkillSummary[]) {
   ].join('\n')
 }
 
-export async function listAvailableSkills(workspacePath?: string | null): Promise<SkillsState> {
+async function discoverAvailableSkills(workspacePath?: string | null): Promise<SkillsState> {
   try {
     const discoveredSkills: SkillSummary[] = []
 
@@ -282,6 +285,33 @@ export async function listAvailableSkills(workspacePath?: string | null): Promis
       skills: [],
     }
   }
+}
+
+export async function listAvailableSkills(workspacePath?: string | null): Promise<SkillsState> {
+  const cacheKey = normalizeWorkspacePath(workspacePath) ?? ''
+  const cached = skillDiscoveryCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.state
+  }
+
+  const activeDiscovery = skillDiscoveryInFlight.get(cacheKey)
+  if (activeDiscovery) {
+    return activeDiscovery
+  }
+
+  const discovery = discoverAvailableSkills(workspacePath)
+    .then((state) => {
+      skillDiscoveryCache.set(cacheKey, {
+        expiresAt: Date.now() + SKILL_DISCOVERY_CACHE_TTL_MS,
+        state,
+      })
+      return state
+    })
+    .finally(() => {
+      skillDiscoveryInFlight.delete(cacheKey)
+    })
+  skillDiscoveryInFlight.set(cacheKey, discovery)
+  return discovery
 }
 
 export async function listEnabledSkills(workspacePath?: string | null) {

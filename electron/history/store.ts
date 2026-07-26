@@ -28,6 +28,7 @@ import {
   toFolderSummaries,
   writeFolderStore,
 } from './folderStore'
+import { buildConversationCompaction } from './conversationCompaction'
 import { getConversationAgentContextPath } from './paths'
 
 async function ensureVirtualAgentContextDirectory(conversationId: string) {
@@ -173,15 +174,29 @@ export async function getStoredUserMessageCheckpointHistory(conversationId: stri
 
 export async function createStoredConversation(input?: CreateConversationInput) {
   const timestamp = Date.now()
-  const folderId = input?.folderId ?? null
-  const chatMode = input?.chatMode ?? 'agent'
+  const compactionSourceConversationId = input?.compactionSourceConversationId?.trim() ?? ''
+  const sourceConversation = compactionSourceConversationId
+    ? await getStoredConversation(compactionSourceConversationId)
+    : null
+  if (compactionSourceConversationId && !sourceConversation) {
+    throw new Error('The chat selected for compression no longer exists.')
+  }
+
+  const folderId = sourceConversation?.folderId ?? input?.folderId ?? null
+  const chatMode = input?.chatMode ?? sourceConversation?.chatMode ?? 'agent'
 
   const conversationId = randomUUID()
-  const agentContextRootPath = await resolveAgentContextRootPath(conversationId, folderId, chatMode)
+  const agentContextRootPath =
+    sourceConversation?.agentContextRootPath ??
+    (await resolveAgentContextRootPath(conversationId, folderId, chatMode))
+  const compaction = sourceConversation
+    ? buildConversationCompaction(sourceConversation, await listConversationRecords(), timestamp)
+    : undefined
 
   const conversation: ConversationRecord = {
     agentContextRootPath,
     chatMode,
+    ...(compaction ? { compaction } : {}),
     id: conversationId,
     title: 'New chat',
     createdAt: timestamp,
@@ -422,7 +437,20 @@ export async function deleteStoredConversation(conversationId: string) {
   await deleteConversationFile(conversationId)
   await deleteCanonicalHistory(conversationId)
 
-  if (!conversation || conversation.agentContextRootPath !== getConversationAgentContextPath(conversationId)) {
+  const contextOwnerConversationId = conversation?.compaction?.rootConversationId ?? conversationId
+  if (
+    !conversation ||
+    conversation.agentContextRootPath !== getConversationAgentContextPath(contextOwnerConversationId)
+  ) {
+    return
+  }
+
+  const contextIsStillInUse = (await listConversationRecords()).some(
+    (remainingConversation) =>
+      remainingConversation.id !== conversationId &&
+      remainingConversation.agentContextRootPath === conversation.agentContextRootPath,
+  )
+  if (contextIsStillInUse) {
     return
   }
 

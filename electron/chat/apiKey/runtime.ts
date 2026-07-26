@@ -16,11 +16,17 @@ import { readApiKeyChatProviderConfig } from './config'
 
 const activeStreams = new Map<string, AbortController>()
 
-export async function estimateApiKeyContextUsage(input: EstimateContextUsageInput): Promise<ContextUsageEstimate> {
+export async function estimateApiKeyContextUsage(
+  webContents: WebContents,
+  input: EstimateContextUsageInput,
+): Promise<ContextUsageEstimate> {
   return estimateToolEnabledContextUsage({
     agentContextRootPath: input.agentContextRootPath,
     chatMode: input.chatMode,
     messages: input.messages,
+    providerId: input.providerId,
+    terminalExecutionMode: input.terminalExecutionMode,
+    webContents,
   })
 }
 

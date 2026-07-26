@@ -150,6 +150,7 @@ export function ChatInterfaceContent({
     chatMode: chatMessages.selectedChatMode,
     messages: chatMessages.messages,
     providerId: runtimeSelection.providerId,
+    terminalExecutionMode: runtimeSelection.terminalExecutionMode,
   })
   const { candidates: refactorCandidates, isLoading: refactorCandidatesLoading } =
     useWorkspaceRefactorCandidates(activeWorkspacePath)
@@ -235,11 +236,12 @@ export function ChatInterfaceContent({
     successfulToolCompletionSignal,
   })
   const { handleCompressChat } = useChatCompression({
+    activeConversationId: chatMessages.activeConversationId,
+    activeConversationTitle: chatMessages.activeConversationTitle,
     activeWorkspacePath,
     chatMode: chatMessages.selectedChatMode,
     clearQueuedMessages,
     compressionSelection,
-    createConversation: chatMessages.createConversation,
     isBusy: chatMessages.isLoading || chatMessages.isSending,
     isCompressingChat,
     messages: chatMessages.messages,

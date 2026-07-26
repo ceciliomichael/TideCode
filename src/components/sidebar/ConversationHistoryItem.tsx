@@ -66,7 +66,10 @@ export function ConversationHistoryItem({
   return (
     <div
       className={[
-        'group flex w-full items-center gap-2 rounded-xl border border-transparent px-2 py-0.5 transition-[background-color,border-color,box-shadow]',
+        'group relative flex w-full items-center gap-2 rounded-xl border border-transparent px-2 py-0.5 transition-[background-color,border-color,box-shadow]',
+        conversation.compaction
+          ? 'ml-3 w-[calc(100%-0.75rem)] before:absolute before:-left-2 before:bottom-1 before:top-1 before:w-px before:bg-border'
+          : '',
         isDeleteConfirming
           ? 'border-danger-border bg-danger-surface'
           : conversation.isActive
@@ -82,7 +85,15 @@ export function ConversationHistoryItem({
           conversation.isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
         ].join(' ')}
       >
-        <span className="block min-w-0 truncate text-sm font-medium text-inherit">{conversation.title}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-inherit">{conversation.title}</span>
+          {conversation.compactionLabel ? (
+            <span className="shrink-0 rounded-md bg-surface-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-subtle-foreground">
+              {conversation.compactionLabel}
+              {conversation.isLatestCompaction ? ' · latest' : ''}
+            </span>
+          ) : null}
+        </span>
       </button>
 
       <div

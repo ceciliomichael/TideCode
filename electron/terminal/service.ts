@@ -452,6 +452,13 @@ function terminateSession(sessionId: number) {
     activeSession.workspaceSessionKey,
     sessionId,
   );
+
+  // Reset the session ID counter when the sessions map empties so the next
+  // session across any owner starts from 1, matching the AI's per-turn expectation.
+  if (sessions.size === 0) {
+    nextSessionId = 1;
+  }
+
   try {
     activeSession.ptyProcess.kill();
   } catch (error) {

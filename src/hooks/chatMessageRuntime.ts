@@ -7,6 +7,7 @@ import type {
   ToolDecisionRequest,
   ToolInvocationTrace,
 } from '../types/chat'
+import { toUserFacingErrorMessage } from '../lib/userFacingError'
 import {
   hasMeaningfulAssistantContent,
   normalizeAssistantMessageContent,
@@ -23,6 +24,7 @@ export interface ChatRuntimeSelection {
 
 interface StreamAssistantResponseInput {
   agentContextRootPath: string
+  cacheScopeId: string
   chatMode: ChatMode
   conversationId: string
   messages: Message[]
@@ -82,11 +84,7 @@ export function normalizeAssistantMessage(message: Message): Message {
 }
 
 export function toErrorMessage(error: unknown, fallbackMessage: string) {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message
-  }
-
-  return fallbackMessage
+  return toUserFacingErrorMessage(error, fallbackMessage)
 }
 
 export function upsertToolInvocation(
@@ -218,6 +216,7 @@ export async function streamAssistantResponse(
       .startStream({
         messages: input.messages,
         agentContextRootPath: input.agentContextRootPath,
+        cacheScopeId: input.cacheScopeId,
         chatMode: input.chatMode,
         conversationId: input.conversationId,
         modelId: input.modelId,

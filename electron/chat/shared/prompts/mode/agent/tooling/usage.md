@@ -27,9 +27,9 @@ Follow each tool's schema exactly. Never make up inputs.
 
 ## Kanban
 
-- Read a card before changing it.
-- Use `create_card` for one task. Use `create_task_with_subtasks` when the task has steps.
-- Use `update_card` for details, `move_card` for status, `reorder_card` for order, and `delete_card` only when asked.
+- Use `kanban_board` with `action: "read_card"` before changing it.
+- Use `action: "create_card"` for one task, or `"create_task_with_subtasks"` when a task has steps.
+- Use `action: "update_card"` for details, `"move_card"` for status, `"reorder_card"` for order, and `"delete_card"` only when asked.
 - Move a task to Done only after its checks and subtasks are done.
 
 Finish the work, check it, and report only what you verified.

@@ -2,17 +2,17 @@ import type { ProviderOptions } from '@ai-sdk/provider-utils'
 import type { ChatProviderId } from '../../../src/types/chat'
 import { sha256, stableStringify } from './canonicalization'
 
-const CACHE_KEY_SCHEMA = 'echosphere.prompt_cache/v1'
+const CACHE_KEY_SCHEMA = 'echosphere.prompt_cache/v2'
 
 export function derivePromptCacheKey(input: {
+  cacheScopeId: string
   contextFingerprint: string
-  conversationId: string | null
   modelId: string
   providerId: ChatProviderId
 }) {
   return `ech_${sha256(stableStringify({
+    cacheScopeId: input.cacheScopeId,
     contextFingerprint: input.contextFingerprint,
-    conversationId: input.conversationId ?? 'ephemeral',
     modelId: input.modelId,
     providerId: input.providerId,
     schema: CACHE_KEY_SCHEMA,

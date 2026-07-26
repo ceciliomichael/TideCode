@@ -30,8 +30,23 @@ test('stable prompt manifests and cache keys ignore object insertion order', () 
   const fingerprintB = buildPromptContextFingerprint({ modelId: 'model', providerId: 'openai', system: 'system', tools: toolsB })
   assert.equal(fingerprintA, fingerprintB)
   assert.equal(
-    derivePromptCacheKey({ contextFingerprint: fingerprintA, conversationId: 'conversation', modelId: 'model', providerId: 'openai' }),
-    derivePromptCacheKey({ contextFingerprint: fingerprintB, conversationId: 'conversation', modelId: 'model', providerId: 'openai' }),
+    derivePromptCacheKey({ cacheScopeId: 'conversation', contextFingerprint: fingerprintA, modelId: 'model', providerId: 'openai' }),
+    derivePromptCacheKey({ cacheScopeId: 'conversation', contextFingerprint: fingerprintB, modelId: 'model', providerId: 'openai' }),
+  )
+})
+
+test('prompt cache keys stay stable across a compaction lineage and partition unrelated chats', () => {
+  const input = {
+    cacheScopeId: 'lineage-root',
+    contextFingerprint: 'shared-context',
+    modelId: 'model',
+    providerId: 'openai' as const,
+  }
+
+  assert.equal(derivePromptCacheKey(input), derivePromptCacheKey({ ...input }))
+  assert.notEqual(
+    derivePromptCacheKey(input),
+    derivePromptCacheKey({ ...input, cacheScopeId: 'unrelated-chat' }),
   )
 })
 

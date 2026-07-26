@@ -122,11 +122,18 @@ export function buildChatModeSystemPrompt(
     systemRules,
     '</system_contract>',
   ].join('\n')
-
-  return [
+  const workspaceContextBlock = [
+    '<workspace_context>',
     `Workspace root: ${workspaceRootPath}`,
     buildWorkspaceInstructionsBlock(workspaceRootPath),
+    '</workspace_context>',
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join('\n')
+
+  return [
     systemContractBlock,
+    workspaceContextBlock,
   ]
     .filter((value): value is string => Boolean(value))
     .join('\n\n')

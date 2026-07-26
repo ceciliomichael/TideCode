@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 import type { ChatMode, Message } from "../../types/chat";
 import type { ChatRuntimeSelection } from "../../hooks/chatMessageRuntime";
+import { toUserFacingErrorMessage } from "../../lib/userFacingError";
 import {
   buildCompressedHistoryAcknowledgementMessage,
   buildCompressedHistoryMessage,
@@ -15,11 +16,12 @@ interface CompressionSelection {
 }
 
 interface UseChatCompressionInput {
+  activeConversationId: string | null;
+  activeConversationTitle: string;
   activeWorkspacePath: string | null;
   chatMode: ChatMode;
   clearQueuedMessages: () => void;
   compressionSelection: CompressionSelection;
-  createConversation: () => Promise<void>;
   isBusy: boolean;
   messages: Message[];
   isCompressingChat: boolean;
@@ -29,6 +31,7 @@ interface UseChatCompressionInput {
     messageText: string,
     options?: {
       chatMode?: ChatMode
+      compactionSourceConversationId?: string
       forceNewConversation?: boolean
       syntheticAssistantMessage?: Message
       title?: string
@@ -46,21 +49,14 @@ function buildCompressionAcknowledgementMessage() {
   return buildCompressedHistoryAcknowledgementMessage(uuidv4());
 }
 
-function toErrorMessage(error: unknown, fallbackMessage: string) {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-
-  return fallbackMessage;
-}
-
 export function useChatCompression(input: UseChatCompressionInput) {
   const {
     activeWorkspacePath,
+    activeConversationId,
+    activeConversationTitle,
     chatMode,
     clearQueuedMessages,
     compressionSelection,
-    createConversation,
     isBusy,
     isCompressingChat,
     messages,
@@ -77,6 +73,11 @@ export function useChatCompression(input: UseChatCompressionInput) {
 
     if (messages.length === 0) {
       setError("Send at least one message before compressing the chat.");
+      return;
+    }
+
+    if (!activeConversationId) {
+      setError("Open a saved chat before compressing it.");
       return;
     }
 
@@ -116,31 +117,32 @@ export function useChatCompression(input: UseChatCompressionInput) {
         reasoningEffort: compressionSelection.reasoningEffort,
       });
 
-      await createConversation();
       await sendProgrammaticMessage(
         runtimeSelection,
         buildCompressionSeedMessage(summary),
         {
           chatMode,
+          compactionSourceConversationId: activeConversationId,
           forceNewConversation: true,
           syntheticAssistantMessage: buildCompressionAcknowledgementMessage(),
-          title: "Compressed text",
+          title: activeConversationTitle,
         },
       );
     } catch (caughtError) {
       console.error("Failed to compress chat history", caughtError);
       setError(
-        toErrorMessage(caughtError, "Unable to compress the current chat."),
+        toUserFacingErrorMessage(caughtError, "Unable to compress the current chat."),
       );
     } finally {
       setIsCompressingChat(false);
     }
   }, [
     activeWorkspacePath,
+    activeConversationId,
+    activeConversationTitle,
     chatMode,
     clearQueuedMessages,
     compressionSelection,
-    createConversation,
     isBusy,
     isCompressingChat,
     messages,

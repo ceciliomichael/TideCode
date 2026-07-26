@@ -206,3 +206,64 @@ test('compressChatHistory falls back to a CAMP packet when the model returns no 
   assert.match(summary, /Compress this chat and keep the important work history\./u)
   assert.match(summary, /The compression model returned no visible text/u)
 })
+
+test('compressChatHistory does not duplicate persisted tool results in the model transcript', async () => {
+  const messages: Message[] = [
+    { content: 'Read the file', id: 'user-1', role: 'user', timestamp: 1 },
+    {
+      content: '',
+      id: 'assistant-1',
+      role: 'assistant',
+      timestamp: 2,
+      toolInvocations: [{
+        argumentsText: '{"path":"src/app.ts"}',
+        completedAt: 3,
+        id: 'call-1',
+        resultContent: 'UNIQUE TOOL RESULT',
+        startedAt: 2,
+        state: 'completed',
+        toolName: 'read',
+      }],
+    },
+    {
+      content: 'UNIQUE TOOL RESULT',
+      id: 'tool-1',
+      role: 'tool',
+      timestamp: 3,
+      toolCallId: 'call-1',
+    },
+  ]
+  let transcript = ''
+
+  await compressChatHistory({
+    agentContextRootPath: 'C:/repo',
+    chatMode: 'agent',
+    createStream: async (input) => {
+      transcript = String(input.messages[0]?.content ?? '')
+      return { fullStream: [] }
+    },
+    messages,
+    modelId: 'test-model',
+    reasoningEffort: 'medium',
+  })
+
+  assert.equal(transcript.match(/UNIQUE TOOL RESULT/gu)?.length, 1)
+})
+
+test('compressChatHistory recovers locally when the compression provider fails', async () => {
+  const summary = await compressChatHistory({
+    agentContextRootPath: 'C:/repo',
+    chatMode: 'agent',
+    createStream: async () => {
+      throw new Error('provider unavailable')
+    },
+    messages: [
+      { content: 'Keep this goal safe', id: 'user-1', role: 'user', timestamp: 1 },
+    ],
+    modelId: 'test-model',
+    reasoningEffort: 'medium',
+  })
+
+  assert.ok(parseCampMemoryPacket(summary))
+  assert.match(summary, /Keep this goal safe/u)
+})

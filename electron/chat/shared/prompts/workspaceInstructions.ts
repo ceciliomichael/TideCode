@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 const WORKSPACE_INSTRUCTIONS_REPO_PATH = 'AGENTS.md'
@@ -24,7 +24,14 @@ function readWorkspaceInstructionsContent(workspaceRootPath?: string) {
   return null
 }
 
-const cachedWorkspaceInstructionsBlocks = new Map<string, string | null>()
+interface CachedWorkspaceInstructions {
+  block: string | null
+  modifiedAtMs: number | null
+  size: number | null
+  sourcePath: string | null
+}
+
+const cachedWorkspaceInstructionsBlocks = new Map<string, CachedWorkspaceInstructions>()
 
 function escapePromptMarkup(content: string) {
   return content
@@ -35,13 +42,38 @@ function escapePromptMarkup(content: string) {
 
 export function buildWorkspaceInstructionsBlock(workspaceRootPath?: string) {
   const cacheKey = workspaceRootPath?.trim() || ''
-  if (cachedWorkspaceInstructionsBlocks.has(cacheKey)) {
-    return cachedWorkspaceInstructionsBlocks.get(cacheKey) ?? null
+  const sourcePath = resolveWorkspaceInstructionsPath(workspaceRootPath)
+  let modifiedAtMs: number | null = null
+  let size: number | null = null
+  if (sourcePath) {
+    try {
+      const stats = statSync(sourcePath)
+      modifiedAtMs = stats.mtimeMs
+      size = stats.size
+    } catch {
+      modifiedAtMs = null
+      size = null
+    }
+  }
+
+  const cached = cachedWorkspaceInstructionsBlocks.get(cacheKey)
+  if (
+    cached &&
+    cached.sourcePath === sourcePath &&
+    cached.modifiedAtMs === modifiedAtMs &&
+    cached.size === size
+  ) {
+    return cached.block
   }
 
   const content = readWorkspaceInstructionsContent(workspaceRootPath)
   if (!content) {
-    cachedWorkspaceInstructionsBlocks.set(cacheKey, null)
+    cachedWorkspaceInstructionsBlocks.set(cacheKey, {
+      block: null,
+      modifiedAtMs,
+      size,
+      sourcePath,
+    })
     return null
   }
 
@@ -54,6 +86,11 @@ export function buildWorkspaceInstructionsBlock(workspaceRootPath?: string) {
     '</workspace_instructions>',
   ].join('\n')
 
-  cachedWorkspaceInstructionsBlocks.set(cacheKey, block)
+  cachedWorkspaceInstructionsBlocks.set(cacheKey, {
+    block,
+    modifiedAtMs,
+    size,
+    sourcePath,
+  })
   return block
 }

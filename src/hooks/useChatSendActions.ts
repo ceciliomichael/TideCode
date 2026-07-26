@@ -35,6 +35,7 @@ interface SendNewMessageOptions {
 
 interface SendProgrammaticMessageOptions {
   chatMode?: ChatMode
+  compactionSourceConversationId?: string
   forceNewConversation?: boolean
   syntheticAssistantMessage?: PersistAndStreamMessageInput['syntheticAssistantMessage']
   title?: string
@@ -256,6 +257,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         draftChatMode: options?.chatMode ?? input.draftChatMode,
         activeConversationId,
         activeConversationIdRef: options?.forceNewConversation ? { current: null } : input.activeConversationIdRef,
+        compactionSourceConversationId: options?.compactionSourceConversationId,
         resetMainComposerAfterSend: false,
         runtimeSelection,
         targetEditMessageId: null,

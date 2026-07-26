@@ -7,6 +7,7 @@ import { buildChatCompressionSystemPrompt } from './prompts/compression'
 const PRIMARY_TRANSCRIPT_CHAR_LIMIT = 120_000
 const SECONDARY_TRANSCRIPT_CHAR_LIMIT = 60_000
 const FALLBACK_EXCERPT_CHAR_LIMIT = 240
+const COMPRESSION_REQUEST_TIMEOUT_MS = 90_000
 
 interface CompressionStreamFactoryInput {
   messages: ModelMessage[]
@@ -38,7 +39,7 @@ function formatUserMessage(message: Message) {
   return [message.content.trim(), ...textAttachments].filter((part) => part.length > 0).join('\n\n')
 }
 
-function formatAssistantMessage(message: Message) {
+function formatAssistantMessage(message: Message, toolResultCallIds: ReadonlySet<string>) {
   const normalized = normalizeAssistantMessageContent(message)
   const content = normalized.content.trim()
   const parts = [content].filter((part) => part.length > 0)
@@ -47,7 +48,10 @@ function formatAssistantMessage(message: Message) {
   if (completedInvocations.length > 0) {
     const invocationLines = completedInvocations.map((invocation) => {
       const resultContent = invocation.resultContent?.trim() ?? ''
-      const resultSuffix = resultContent.length > 0 ? `\nResult:\n${resultContent}` : ''
+      const resultSuffix =
+        resultContent.length > 0 && !toolResultCallIds.has(invocation.id)
+          ? `\nResult:\n${resultContent}`
+          : ''
       return `Tool Invocation: ${invocation.toolName}\nArguments:\n${invocation.argumentsText}${resultSuffix}`
     })
     parts.push(invocationLines.join('\n\n'))
@@ -63,6 +67,11 @@ function formatToolMessage(message: Message) {
 
 function formatConversationTranscriptBlocks(messages: Message[]) {
   const blocks: string[] = []
+  const toolResultCallIds = new Set(
+    messages
+      .filter((message) => message.role === 'tool' && message.toolCallId)
+      .map((message) => message.toolCallId as string),
+  )
 
   messages.forEach((message, index) => {
     let roleLabel = ''
@@ -73,7 +82,7 @@ function formatConversationTranscriptBlocks(messages: Message[]) {
       content = formatUserMessage(message)
     } else if (message.role === 'assistant') {
       roleLabel = 'ASSISTANT'
-      content = formatAssistantMessage(message)
+      content = formatAssistantMessage(message, toolResultCallIds)
     } else {
       roleLabel = 'TOOL_RESULT'
       content = formatToolMessage(message)
@@ -156,6 +165,28 @@ async function collectStreamedText(
   return text.trim()
 }
 
+async function collectCompressionText(
+  createStream: CompressionStreamFactory,
+  input: Omit<CompressionStreamFactoryInput, 'signal'>,
+) {
+  const abortController = new AbortController()
+  const timeoutId = setTimeout(() => {
+    abortController.abort()
+  }, COMPRESSION_REQUEST_TIMEOUT_MS)
+
+  try {
+    return await collectStreamedText(createStream, {
+      ...input,
+      signal: abortController.signal,
+    })
+  } catch (error) {
+    console.warn('Chat compression model request failed; using local recovery.', error)
+    return null
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 function compactText(value: string, maxLength = FALLBACK_EXCERPT_CHAR_LIMIT) {
   const normalized = value.replace(/\s+/g, ' ').trim()
   if (normalized.length <= maxLength) {
@@ -223,7 +254,7 @@ function buildFallbackCampSummary(messages: Message[], wasTrimmed: boolean) {
   ]
 
   if (lastAssistantMessage) {
-    currentStateParts.push(`Latest assistant context: ${compactText(formatAssistantMessage(lastAssistantMessage))}`)
+    currentStateParts.push(`Latest assistant context: ${compactText(formatAssistantMessage(lastAssistantMessage, new Set()))}`)
   }
 
   if (lastUserMessage) {
@@ -281,14 +312,15 @@ export async function compressChatHistory(input: CompressChatHistoryInput) {
         content: `Full conversation transcript:\n\n${transcriptCandidate.transcript}`,
       },
     ]
-    const abortController = new AbortController()
-    const rawSummary = await collectStreamedText(input.createStream, {
+    const rawSummary = await collectCompressionText(input.createStream, {
       messages: modelMessages,
       model: input.modelId,
       reasoningEffort: input.reasoningEffort,
-      signal: abortController.signal,
       system: systemPrompt,
     })
+    if (rawSummary === null) {
+      break
+    }
     const summary = normalizeCompressionSummary(rawSummary)
 
     if (summary.length === 0) {
@@ -299,7 +331,7 @@ export async function compressChatHistory(input: CompressChatHistoryInput) {
       return summary
     }
 
-    const rawRepairedSummary = await collectStreamedText(input.createStream, {
+    const rawRepairedSummary = await collectCompressionText(input.createStream, {
       messages: [
         {
           role: 'user',
@@ -308,9 +340,11 @@ export async function compressChatHistory(input: CompressChatHistoryInput) {
       ],
       model: input.modelId,
       reasoningEffort: input.reasoningEffort,
-      signal: abortController.signal,
       system: systemPrompt,
     })
+    if (rawRepairedSummary === null) {
+      return summary
+    }
     const repairedSummary = normalizeCompressionSummary(rawRepairedSummary)
 
     if (repairedSummary.length > 0) {

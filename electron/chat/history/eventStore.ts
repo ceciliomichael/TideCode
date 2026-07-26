@@ -123,7 +123,7 @@ type NewCanonicalHistoryEvent = CanonicalHistoryEvent extends infer Event
 
 async function updateDocument(
   conversationId: string,
-  updater: (document: CanonicalHistoryDocument) => void | Promise<void>,
+  updater: (document: CanonicalHistoryDocument) => boolean | void | Promise<boolean | void>,
 ) {
   const previous = updateQueues.get(conversationId) ?? Promise.resolve()
   let release: () => void = () => undefined
@@ -137,7 +137,10 @@ async function updateDocument(
   try {
     await ensureCanonicalDirectory()
     const document = await readDocumentUnsafe(conversationId)
-    await updater(document)
+    const shouldWrite = await updater(document)
+    if (shouldWrite === false) {
+      return document
+    }
     await writeAtomic(getCanonicalHistoryPath(conversationId), JSON.stringify(document, null, 2))
     return document
   } finally {
@@ -159,6 +162,12 @@ export async function synchronizeCanonicalMessages(conversationId: string, messa
     const messageDigests = messages.map((message) => sha256(stableStringify(message)))
     const priorIds = document.synchronizedMessageIds
     const priorDigests = document.synchronizedMessageDigests
+    const historyIsUnchanged =
+      priorIds.length === messageIds.length &&
+      priorIds.every((id, index) => messageIds[index] === id && priorDigests[index] === messageDigests[index])
+    if (historyIsUnchanged) {
+      return false
+    }
     const priorIsPrefix = priorIds.every((id, index) => (
       messageIds[index] === id && priorDigests[index] === messageDigests[index]
     ))
@@ -232,7 +241,7 @@ export async function synchronizeCanonicalMessages(conversationId: string, messa
 export async function recordContextEpoch(conversationId: string, promptContext: CanonicalPromptContext) {
   return updateDocument(conversationId, (document) => {
     const contextFingerprint = promptContext.fingerprint
-    if (document.contextFingerprint === contextFingerprint) return
+    if (document.contextFingerprint === contextFingerprint) return false
     const previousContextFingerprint = document.contextFingerprint
     const previousPromptContext = document.promptContext
     document.contextFingerprint = contextFingerprint

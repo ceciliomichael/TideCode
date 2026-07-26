@@ -22,6 +22,7 @@ export interface ChatHistorySnapshot {
 interface PersistUserTurnInput {
   activeConversationId: string | null
   chatMode: ChatMode
+  compactionSourceConversationId?: string
   modelId: string
   providerId: ChatProviderId
   reasoningEffort: ReasoningEffort
@@ -244,6 +245,9 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
   } else {
     const createdConversation = await window.echosphereHistory.createConversation({
       chatMode: input.chatMode,
+      ...(input.compactionSourceConversationId
+        ? { compactionSourceConversationId: input.compactionSourceConversationId }
+        : {}),
       folderId: input.selectedFolderId,
     })
     conversationId = createdConversation.id

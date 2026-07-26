@@ -4,8 +4,8 @@ import { createChatAssistantDraftManager } from './chatAssistantDrafts'
 import { streamAssistantResponse, toErrorMessage } from './chatMessageRuntime'
 import type { PersistAndStreamMessageInput } from './chatMessageSendTypes'
 
-const STREAM_PROGRESS_PERSIST_DEBOUNCE_MS = 220
-const STREAM_PROGRESS_PERSIST_CHAR_FLUSH_THRESHOLD = 180
+const STREAM_PROGRESS_PERSIST_DEBOUNCE_MS = 600
+const STREAM_PROGRESS_PERSIST_CHAR_FLUSH_THRESHOLD = 768
 
 function validateRuntimeSelection(input: PersistAndStreamMessageInput) {
   if (!input.runtimeSelection.hasConfiguredProvider) {
@@ -260,6 +260,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       activeConversationId: initiatingConversationId,
       attachments: input.attachments,
       chatMode: input.draftChatMode,
+      compactionSourceConversationId: input.compactionSourceConversationId,
       modelId: input.runtimeSelection.modelId,
       providerId,
       reasoningEffort: input.runtimeSelection.reasoningEffort,
@@ -371,6 +372,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
     draftManager.appendPlaceholderDraft()
     const streamedAssistant = await streamAssistantResponse({
       agentContextRootPath: conversationForRun.agentContextRootPath,
+      cacheScopeId: conversationForRun.compaction?.rootConversationId ?? conversationForRun.id,
       chatMode: input.draftChatMode,
       conversationId: conversationForRun.id,
       messages: conversationForRun.messages,

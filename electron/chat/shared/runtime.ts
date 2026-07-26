@@ -8,8 +8,9 @@ import type {
   StartChatStreamInput,
   ToolInvocationResultPresentation,
 } from '../../../src/types/chat'
+import { approximateTokenCount, estimateMessageContextUsage } from '../../../src/lib/contextUsage'
 import { buildSkillsSystemPromptBlock, listEnabledSkills } from '../../skills/service'
-import { buildPromptContextManifest } from '../cache/canonicalization'
+import { buildPromptContextManifest, describeTools, stableStringify } from '../cache/canonicalization'
 import { derivePromptCacheKey } from '../cache/providerPolicies'
 import type { ProviderStepRecord } from '../history/contracts'
 import {
@@ -80,15 +81,6 @@ function emitChatStreamEvent(webContents: WebContents, payload: ChatStreamEvent)
   webContents.send(CHAT_STREAM_EVENT_CHANNEL, payload)
 }
 
-function approximateTokenCount(value: string) {
-  const trimmedValue = value.trim()
-  if (trimmedValue.length === 0) {
-    return 0
-  }
-
-  return Math.ceil(trimmedValue.length / 4)
-}
-
 function isStreamPart(part: RuntimeStreamPart, type: string): boolean {
   return part.type === type
 }
@@ -99,6 +91,12 @@ function stringifyToolArguments(input: unknown) {
   } catch {
     return '{}'
   }
+}
+
+function sortToolSet(tools: ToolSet): ToolSet {
+  return Object.fromEntries(
+    Object.entries(tools).sort(([leftName], [rightName]) => leftName.localeCompare(rightName)),
+  ) as ToolSet
 }
 
 function createSyntheticToolMessage(
@@ -154,33 +152,43 @@ export async function estimateToolEnabledContextUsage(input: {
   agentContextRootPath: string | null
   chatMode: StartChatStreamInput['chatMode']
   messages: Message[]
+  providerId: StartChatStreamInput['providerId']
+  terminalExecutionMode: StartChatStreamInput['terminalExecutionMode']
+  webContents: WebContents
 }): Promise<ContextUsageEstimate> {
   const workspaceRootPath = input.agentContextRootPath?.trim() || 'No workspace selected'
   const enabledSkills = await listEnabledSkills(input.agentContextRootPath)
   const systemPrompt = buildChatSystemPrompt(input.chatMode, workspaceRootPath, {
     availableSkillsBlock: buildSkillsSystemPromptBlock(enabledSkills),
+    terminalExecutionMode: input.terminalExecutionMode,
   })
-  let historyTokens = 0
-  let toolResultsTokens = 0
-
-  for (const message of input.messages) {
-    if (message.role === 'tool') {
-      toolResultsTokens += approximateTokenCount(message.content)
-      continue
-    }
-
-    historyTokens += approximateTokenCount(message.content)
-    historyTokens += approximateTokenCount(message.reasoningContent ?? '')
+  const messageUsage = estimateMessageContextUsage(input.messages)
+  let toolSchemaTokens = 0
+  if (input.agentContextRootPath?.trim()) {
+    const tools = await createAgentTools(
+      {
+        checkpointId: null,
+        conversationId: null,
+        workspaceRootPath: input.agentContextRootPath,
+        terminalExecutionMode: input.terminalExecutionMode,
+        webContents: input.webContents,
+      },
+      {
+        chatMode: input.chatMode,
+        enabledSkills,
+        providerId: input.providerId,
+      },
+    )
+    toolSchemaTokens = approximateTokenCount(stableStringify(describeTools(sortToolSet(tools))))
   }
-
-  const systemPromptTokens = approximateTokenCount(systemPrompt)
+  const systemPromptTokens = approximateTokenCount(systemPrompt) + toolSchemaTokens
 
   return {
-    historyTokens,
+    historyTokens: messageUsage.historyTokens,
     maxTokens: 0,
     systemPromptTokens,
-    toolResultsTokens,
-    totalTokens: historyTokens + systemPromptTokens + toolResultsTokens,
+    toolResultsTokens: messageUsage.toolResultsTokens,
+    totalTokens: messageUsage.totalTokens + systemPromptTokens,
   }
 }
 
@@ -199,6 +207,10 @@ export async function runToolEnabledChatStream(input: {
   let completedStepCount = 0
   let lastFinishReason: string | null = null
   let runWasRecorded = false
+  let queuedHistoryWrites = Promise.resolve()
+  const queueHistoryWrite = (action: () => Promise<unknown>) => {
+    queuedHistoryWrites = queuedHistoryWrites.then(() => safelyPersistHistory(action))
+  }
 
   try {
     const enabledSkills = await listEnabledSkills(input.startInput.agentContextRootPath)
@@ -216,7 +228,7 @@ export async function runToolEnabledChatStream(input: {
         providerId: input.startInput.providerId,
       },
     )
-    const tools = withCanonicalToolModelOutputs(rawTools)
+    const tools = withCanonicalToolModelOutputs(sortToolSet(rawTools))
     const promptOptions = {
       ...input.promptOptions,
       availableSkillsBlock: buildSkillsSystemPromptBlock(enabledSkills),
@@ -259,8 +271,8 @@ export async function runToolEnabledChatStream(input: {
     const anchorUserMessageId = [...input.startInput.messages].reverse()
       .find((message) => message.role === 'user')?.id ?? null
     const cacheKey = derivePromptCacheKey({
+      cacheScopeId: input.startInput.cacheScopeId?.trim() || conversationId || 'ephemeral',
       contextFingerprint,
-      conversationId,
       modelId: input.startInput.modelId,
       providerId: input.startInput.providerId,
     })
@@ -290,10 +302,10 @@ export async function runToolEnabledChatStream(input: {
       maxSteps: MAX_TOOL_STEPS,
       system: prompt.system,
       tools,
-      onStepEnd: async (step) => {
+      onStepEnd: (step) => {
         responseMessages.push(...step.responseMessages as ModelMessage[])
         if (conversationId) {
-          await safelyPersistHistory(() => recordStepCompleted(conversationId, runId, step))
+          queueHistoryWrite(() => recordStepCompleted(conversationId, runId, step))
         }
       },
     })
@@ -429,7 +441,7 @@ export async function runToolEnabledChatStream(input: {
         const toolName = part.toolName
         const normalizedResult = normalizeToolExecutionResult(toolName, part.output ?? part.result)
         if (conversationId) {
-          await safelyPersistHistory(() => recordToolFreshness({
+          queueHistoryWrite(() => recordToolFreshness({
             conversationId,
             status: normalizedResult.status,
             subject: normalizedResult.subject,
@@ -540,6 +552,7 @@ export async function runToolEnabledChatStream(input: {
     }
 
     if (conversationId) {
+      await queuedHistoryWrites
       const finalDocument = await readCanonicalHistory(conversationId)
       await safelyPersistHistory(() => recordRunCompleted({
         anchorUserMessageId,
@@ -560,6 +573,7 @@ export async function runToolEnabledChatStream(input: {
       type: 'completed',
     })
   } catch (error) {
+    await queuedHistoryWrites
     if (conversationId && runWasRecorded) {
       await safelyPersistHistory(() => recordRunTerminal(
         conversationId,

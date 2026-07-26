@@ -3,6 +3,7 @@ import { normalizeAssistantMessageContent } from '../../src/lib/chatMessageConte
 import { getConversationPreviewContent } from '../../src/lib/chatMessageMetadata'
 import type {
   ChatMode,
+  ConversationCompaction,
   ConversationFolderRecord,
   ConversationRecord,
   ConversationSummary,
@@ -35,6 +36,38 @@ interface ChangeDiffPresentationItem {
 
 function normalizeChatMode(value: unknown): ChatMode {
   return value === 'plan' ? 'plan' : 'agent'
+}
+
+function normalizeConversationCompaction(value: unknown): ConversationCompaction | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined
+  }
+
+  const compaction = value as Partial<ConversationCompaction>
+  const rootConversationId = compaction.rootConversationId?.trim() ?? ''
+  const sourceConversationId = compaction.sourceConversationId?.trim() ?? ''
+  if (
+    rootConversationId.length === 0 ||
+    sourceConversationId.length === 0 ||
+    typeof compaction.compactedAt !== 'number' ||
+    !Number.isFinite(compaction.compactedAt) ||
+    typeof compaction.depth !== 'number' ||
+    !Number.isInteger(compaction.depth) ||
+    compaction.depth < 1 ||
+    typeof compaction.sequence !== 'number' ||
+    !Number.isInteger(compaction.sequence) ||
+    compaction.sequence < 1
+  ) {
+    return undefined
+  }
+
+  return {
+    compactedAt: compaction.compactedAt,
+    depth: compaction.depth,
+    rootConversationId,
+    sequence: compaction.sequence,
+    sourceConversationId,
+  }
 }
 
 function isToolInvocationResultPresentation(value: unknown): value is ToolInvocationResultPresentation {
@@ -172,6 +205,7 @@ export function normalizeConversationRecord(
 ): ConversationRecord {
   const createdAt = typeof conversation.createdAt === 'number' ? conversation.createdAt : Date.now()
   const messages = Array.isArray(conversation.messages) ? conversation.messages.filter(isMessage) : []
+  const compaction = normalizeConversationCompaction(conversation.compaction)
 
   return {
     id: conversation.id,
@@ -179,6 +213,7 @@ export function normalizeConversationRecord(
     createdAt,
     updatedAt: typeof conversation.updatedAt === 'number' ? conversation.updatedAt : createdAt,
     chatMode: normalizeChatMode(conversation.chatMode),
+    ...(compaction ? { compaction } : {}),
     agentContextRootPath:
       typeof conversation.agentContextRootPath === 'string' ? conversation.agentContextRootPath.trim() : '',
     folderId: typeof conversation.folderId === 'string' ? conversation.folderId : null,
@@ -202,6 +237,7 @@ export function buildConversationSummary(conversation: ConversationRecord): Conv
   return {
     agentContextRootPath: conversation.agentContextRootPath,
     chatMode: conversation.chatMode,
+    ...(conversation.compaction ? { compaction: conversation.compaction } : {}),
     id: conversation.id,
     title: conversation.title,
     preview: getConversationPreviewContent(conversation.messages),

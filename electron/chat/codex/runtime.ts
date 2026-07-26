@@ -15,11 +15,17 @@ import { createCodexClient } from './client'
 
 const activeStreams = new Map<string, AbortController>()
 
-export async function estimateCodexContextUsage(input: EstimateContextUsageInput): Promise<ContextUsageEstimate> {
+export async function estimateCodexContextUsage(
+  webContents: WebContents,
+  input: EstimateContextUsageInput,
+): Promise<ContextUsageEstimate> {
   return estimateToolEnabledContextUsage({
     agentContextRootPath: input.agentContextRootPath,
     chatMode: input.chatMode,
     messages: input.messages,
+    providerId: input.providerId,
+    terminalExecutionMode: input.terminalExecutionMode,
+    webContents,
   })
 }
 

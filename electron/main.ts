@@ -514,12 +514,12 @@ function registerHistoryHandlers() {
 
     throw new Error('Unable to determine which provider owns this tool decision stream.')
   })
-  ipcMain.handle('chat:context-usage:estimate', async (_event, input: EstimateContextUsageInput) => {
+  ipcMain.handle('chat:context-usage:estimate', async (event, input: EstimateContextUsageInput) => {
     if (input.providerId === 'codex') {
-      return estimateCodexContextUsage(input)
+      return estimateCodexContextUsage(event.sender, input)
     }
 
-    return estimateApiKeyContextUsage(input)
+    return estimateApiKeyContextUsage(event.sender, input)
   })
   ipcMain.handle('terminal:createSession', async (event, input: CreateTerminalSessionInput) =>
     createTerminalSession(event, input),

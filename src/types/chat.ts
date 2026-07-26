@@ -130,9 +130,18 @@ export interface UserMessageRunCheckpoint {
   id: string
 }
 
+export interface ConversationCompaction {
+  compactedAt: number
+  depth: number
+  rootConversationId: string
+  sequence: number
+  sourceConversationId: string
+}
+
 export interface ConversationSummary {
   agentContextRootPath: string
   chatMode: ChatMode
+  compaction?: ConversationCompaction
   id: string
   title: string
   preview: string
@@ -143,7 +152,11 @@ export interface ConversationSummary {
 }
 
 export interface ConversationPreview {
+  compaction?: ConversationCompaction
+  compactionLabel?: string
+  hasCompactionFamily?: boolean
   id: string
+  isLatestCompaction?: boolean
   title: string
   preview: string
   updatedAtLabel: string
@@ -156,6 +169,7 @@ export interface ConversationPreview {
 export interface ConversationRecord {
   agentContextRootPath: string
   chatMode: ChatMode
+  compaction?: ConversationCompaction
   id: string
   title: string
   createdAt: number
@@ -196,6 +210,7 @@ export interface ConversationGroupPreview {
 
 export interface CreateConversationInput {
   chatMode?: ChatMode
+  compactionSourceConversationId?: string
   folderId?: string | null
 }
 
@@ -337,7 +352,15 @@ export type CustomApiKeyProviderId = `custom:${string}`
 export type ApiKeyProviderId = BuiltInApiKeyProviderId | CustomApiKeyProviderId
 export type ChatProviderId = 'codex' | ApiKeyProviderId
 export type CustomModelProviderId = ChatProviderId
-export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | (string & {})
+export type ReasoningEffort =
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+  | (string & Record<never, never>)
 
 export type ReasoningRequestBodies = Partial<Record<ReasoningEffort, Record<string, unknown>>>
 
@@ -410,6 +433,7 @@ export interface SaveCustomModelInput {
 
 export interface StartChatStreamInput {
   agentContextRootPath: string
+  cacheScopeId?: string
   chatMode: ChatMode
   conversationId?: string
   messages: Message[]
@@ -462,6 +486,7 @@ export interface EstimateContextUsageInput {
   chatMode: ChatMode
   messages: Message[]
   providerId: ChatProviderId
+  terminalExecutionMode: AppTerminalExecutionMode
 }
 
 export interface CreateWorkspaceCheckpointInput {

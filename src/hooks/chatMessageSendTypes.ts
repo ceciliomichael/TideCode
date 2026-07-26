@@ -31,6 +31,7 @@ export interface PersistAndStreamMessageInput {
   clearTextStreamingIdleTimeout: (conversationId: string) => void
   completeEditingMessage: () => void
   conversationRuntimeStatesRef: { current: Record<string, ConversationRuntimeSnapshot> }
+  compactionSourceConversationId?: string
   draftChatMode: ChatMode
   markTextStreamingPulse: (conversationId: string) => void
   removeLocalMessage: (conversationId: string, messageId: string) => void
