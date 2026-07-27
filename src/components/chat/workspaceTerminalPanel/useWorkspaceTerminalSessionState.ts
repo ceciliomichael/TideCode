@@ -319,7 +319,7 @@ export function useWorkspaceTerminalSessionState({
         };
 
         if (event.type === "keydown") {
-          if (event.key === "Enter" && event.altKey) {
+          if (event.key === "Enter" && (event.shiftKey || event.altKey)) {
             writeSequence("\x1b\r");
             return false;
           }
@@ -365,11 +365,11 @@ export function useWorkspaceTerminalSessionState({
             terminal.clear();
             return false;
           }
-
           const isPasteShortcut =
             ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "v") ||
             (event.shiftKey && event.key === "Insert");
           if (isPasteShortcut) {
+            event.preventDefault();
             void navigator.clipboard
               .readText()
               .then((text) => {
@@ -814,7 +814,7 @@ export function useWorkspaceTerminalSessionState({
         getWorkspaceKeyFromTerminalTabKey(tabKey) ?? activeWorkspaceKeyRef.current;
 
       sessionIdToTabKeyRef.current.delete(event.sessionId);
-      const nextExitMessage = `\r\n\r\nProcess exited with code ${event.exitCode}.`;
+      const nextExitMessage = `\r\n\r\n[Terminal session ended with code ${event.exitCode}]`;
       tabBuffersRef.current.set(
         tabKey,
         `${tabBuffersRef.current.get(tabKey) ?? ""}${nextExitMessage}`,

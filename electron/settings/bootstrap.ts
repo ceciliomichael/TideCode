@@ -236,16 +236,28 @@ function sanitizeConversationModelPreferences(value: unknown): AppSettings['conv
       preference.providerId === null || isChatProviderId(preference.providerId)
         ? (preference.providerId ?? null)
         : null
+    const chatMode =
+      typeof preference.chatMode === 'string' && preference.chatMode === 'plan'
+        ? ('plan' as const)
+        : undefined
+    const reasoningEffort =
+      typeof preference.reasoningEffort === 'string' && isReasoningEffort(preference.reasoningEffort)
+        ? preference.reasoningEffort
+        : undefined
 
     if (modelId.length === 0) {
       continue
     }
 
-    sanitizedValue[normalizedId] = {
+    const entry: AppSettings['conversationModelPreferences'][string] = {
       label,
       modelId,
       providerId,
     }
+    if (chatMode !== undefined) entry.chatMode = chatMode
+    if (reasoningEffort !== undefined) entry.reasoningEffort = reasoningEffort
+
+    sanitizedValue[normalizedId] = entry
   }
 
   return sanitizedValue

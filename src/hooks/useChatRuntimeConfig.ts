@@ -350,6 +350,12 @@ export function useChatRuntimeConfig({
     }),
     [availableReasoningEfforts, selectedModel?.defaultReasoningEffort, settings.chatReasoningEffort],
   )
+  const effectiveReasoningEffort = useMemo(() => {
+    if (conversationModelPreference?.reasoningEffort) {
+      return conversationModelPreference.reasoningEffort
+    }
+    return reasoningEffort
+  }, [conversationModelPreference, reasoningEffort])
   const hasSavedModelId = effectiveModeSelection.modelId.trim().length > 0
   const isModelOptionsLoading =
     !hasSavedModelId && (isProvidersLoading || customModelsLoading || providerModelsLoading)
@@ -474,14 +480,14 @@ export function useChatRuntimeConfig({
       return
     }
 
-    if (availableReasoningEfforts.length === 0 || reasoningEffort === settings.chatReasoningEffort) {
+    if (availableReasoningEfforts.length === 0 || effectiveReasoningEffort === settings.chatReasoningEffort) {
       return
     }
 
-    void updateSettings({ chatReasoningEffort: reasoningEffort })
+    void updateSettings({ chatReasoningEffort: effectiveReasoningEffort })
   }, [
     availableReasoningEfforts.length,
-    reasoningEffort,
+    effectiveReasoningEffort,
     selectedModel,
     settings.chatReasoningEffort,
     updateSettings,
@@ -512,19 +518,24 @@ export function useChatRuntimeConfig({
       }
 
       if (activeConversationId) {
+        const prev = settings.conversationModelPreferences?.[activeConversationId]
+        const pref: AppSettings['conversationModelPreferences'][string] = {
+          label: selectedOption?.label ?? chatModelId,
+          modelId: chatModelId,
+          providerId: nextProviderId,
+          chatMode: prev?.chatMode ?? activeChatMode,
+        }
+        if (prev?.reasoningEffort !== undefined) pref.reasoningEffort = prev.reasoningEffort
         globalUpdate.conversationModelPreferences = {
           ...settings.conversationModelPreferences,
-          [activeConversationId]: {
-            label: selectedOption?.label ?? chatModelId,
-            modelId: chatModelId,
-            providerId: nextProviderId,
-          },
+          [activeConversationId]: pref,
         }
       }
 
       void updateSettings(globalUpdate)
     },
     [
+      activeChatMode,
       activeConversationId,
       effectiveModeSelection.modelId,
       effectiveModeSelection.providerId,
@@ -540,13 +551,29 @@ export function useChatRuntimeConfig({
 
   const setReasoningEffort = useCallback(
     (chatReasoningEffort: ReasoningEffort) => {
-      if (chatReasoningEffort === settings.chatReasoningEffort) {
+      if (chatReasoningEffort === effectiveReasoningEffort) {
         return
       }
 
-      void updateSettings({ chatReasoningEffort })
+      const update: Partial<AppSettings> = { chatReasoningEffort }
+      if (activeConversationId) {
+        const prev = settings.conversationModelPreferences?.[activeConversationId]
+        const pref: AppSettings['conversationModelPreferences'][string] = {
+          label: prev?.label ?? '',
+          modelId: prev?.modelId ?? '',
+          providerId: prev?.providerId ?? null,
+          chatMode: prev?.chatMode ?? activeChatMode,
+          reasoningEffort: chatReasoningEffort,
+        }
+        update.conversationModelPreferences = {
+          ...settings.conversationModelPreferences,
+          [activeConversationId]: pref,
+        }
+      }
+
+      void updateSettings(update)
     },
-    [settings.chatReasoningEffort, updateSettings],
+    [activeChatMode, activeConversationId, effectiveReasoningEffort, settings.conversationModelPreferences, updateSettings],
   )
 
   return {
@@ -556,7 +583,7 @@ export function useChatRuntimeConfig({
     modelOptions: runtimeModelOptions,
     providerId: selectedModel?.providerId ?? null,
     providerLabel: selectedModel?.providerLabel ?? null,
-    reasoningEffort,
+    reasoningEffort: effectiveReasoningEffort,
     selectedModelId: selectedModel?.id ?? effectiveModeSelection.modelId,
     selectedRuntimeModelId: selectedModel?.runtimeModelId ?? effectiveModeSelection.modelId,
     setReasoningEffort,

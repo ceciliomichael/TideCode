@@ -1,5 +1,5 @@
 import { webContents, type WebContents } from 'electron'
-import { readdir } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import chokidar, { type FSWatcher } from 'chokidar'
 import path from 'node:path'
 import { isWorkspaceExplorerTemporaryDeletingEntryName } from './explorerIgnore'
@@ -80,10 +80,16 @@ async function buildWorkspaceTreeSnapshot(rootPath: string): Promise<string> {
         relativePath === DEFAULT_RELATIVE_PATH
           ? directoryEntry.name
           : path.join(relativePath, directoryEntry.name)
-      snapshotEntries.push(`${isDirectory ? 'd' : 'f'}:${nextRelativePath}`)
 
       if (isDirectory) {
+        snapshotEntries.push(`d:${nextRelativePath}`)
         await visitDirectory(nextRelativePath)
+      } else {
+        const fileAbsolutePath = path.resolve(normalizedRootPath, nextRelativePath)
+        const fileStats = await stat(fileAbsolutePath).catch(() => null)
+        const mtime = fileStats ? fileStats.mtimeMs : 0
+        const size = fileStats ? fileStats.size : 0
+        snapshotEntries.push(`f:${nextRelativePath}:${mtime}:${size}`)
       }
     }
   }

@@ -309,9 +309,11 @@ export interface RevertEditSession {
 }
 
 export interface ConversationModelPreference {
+  chatMode?: ChatMode
   label: string
   modelId: string
   providerId: ChatProviderId | null
+  reasoningEffort?: ReasoningEffort
 }
 
 export interface CodexProviderConnectionStatus {
@@ -618,6 +620,7 @@ export interface CreateTerminalSessionInput {
   cols: number
   cwd?: string | null
   enableIdleTimeout?: boolean
+  isAiSession?: boolean
   label?: string | null
   sessionKey?: string | null
   workspaceRootPath?: string | null

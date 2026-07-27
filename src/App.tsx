@@ -43,8 +43,12 @@ export default function App() {
     [updateSettings],
   )
   const chatMessages = useChatMessages({
+    conversationModelPreferences: settings.conversationModelPreferences,
     editSessionsByConversation: settings.editSessionsByConversation,
     language: settings.language,
+    onPersistConversationModelPreferences: (nextValue) => {
+      void updateSettings({ conversationModelPreferences: nextValue })
+    },
     openEmptyConversationOnLaunch: bootConversationLaunchState?.openEmptyConversationOnLaunch ?? false,
     persistConversationLaunchPreference,
     persistEditSessionsByConversation: (nextValue) => {

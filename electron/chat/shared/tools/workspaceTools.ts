@@ -840,17 +840,13 @@ export interface ReplaceFileContentChunk {
 }
 
 export interface ReplaceFileContentInput {
-  absolute_path: string
+  path?: string
+  absolute_path?: string
   targetContent: string
   replacementContent: string
   startLine: number
   endLine: number
   allowMultiple: boolean
-}
-
-export interface MultiReplaceFileContentInput {
-  absolute_path: string
-  chunks: ReplaceFileContentChunk[]
 }
 
 interface ResolvedTextReplacement {
@@ -1005,13 +1001,37 @@ function applyResolvedTextReplacements(
   return updatedContent
 }
 
+interface ActiveFileEditSession {
+  baseContent: string
+  replacements: ResolvedTextReplacement[]
+  lastUpdated: number
+}
+
+const activeFileEditSessions = new Map<string, ActiveFileEditSession>()
+const SESSION_TTL_MS = 10000
+
+function getActiveFileEditSession(filePath: string): ActiveFileEditSession | null {
+  const session = activeFileEditSessions.get(filePath)
+  if (!session) return null
+  if (Date.now() - session.lastUpdated > SESSION_TTL_MS) {
+    activeFileEditSessions.delete(filePath)
+    return null
+  }
+  return session
+}
+
 export async function createReplaceFileContentToolResult(
   context: WorkspaceToolContext,
   input: ReplaceFileContentInput,
 ): Promise<AgentToolExecutionResult> {
+  const filePath = input.path ?? input.absolute_path
+  if (!filePath) {
+    throw new Error('File path ("path") is required.')
+  }
+
   const target = resolveReadableTargetPath(
     context.workspaceRootPath,
-    input.absolute_path,
+    filePath,
     context.terminalExecutionMode,
   )
 
@@ -1029,17 +1049,57 @@ export async function createReplaceFileContentToolResult(
     targetContent: normalizeTextMutationContent(input.targetContent),
   }
 
-  const replacements = resolveChunkReplacements(
-    normalizedOld,
-    chunk,
-    target.displayPath,
-    0,
-  )
-  const newContent = applyResolvedTextReplacements(
-    normalizedOld,
-    replacements,
-    target.displayPath,
-  )
+  const session = getActiveFileEditSession(target.absolutePath)
+  let replacements: ResolvedTextReplacement[] = []
+  let usedSessionFallback = false
+
+  try {
+    replacements = resolveChunkReplacements(
+      normalizedOld,
+      chunk,
+      target.displayPath,
+      session ? session.replacements.length : 0,
+    )
+  } catch (diskError) {
+    if (session) {
+      try {
+        replacements = resolveChunkReplacements(
+          session.baseContent,
+          chunk,
+          target.displayPath,
+          session.replacements.length,
+        )
+        usedSessionFallback = true
+      } catch {
+        throw diskError
+      }
+    } else {
+      throw diskError
+    }
+  }
+
+  let newContent: string
+  if (usedSessionFallback && session) {
+    const combinedReplacements = [...session.replacements, ...replacements]
+    newContent = applyResolvedTextReplacements(
+      session.baseContent,
+      combinedReplacements,
+      target.displayPath,
+    )
+    session.replacements = combinedReplacements
+    session.lastUpdated = Date.now()
+  } else {
+    newContent = applyResolvedTextReplacements(
+      normalizedOld,
+      replacements,
+      target.displayPath,
+    )
+    activeFileEditSessions.set(target.absolutePath, {
+      baseContent: normalizedOld,
+      replacements,
+      lastUpdated: Date.now(),
+    })
+  }
 
   if (newContent === normalizedOld) {
     return createSuccessResult({
@@ -1069,96 +1129,6 @@ export async function createReplaceFileContentToolResult(
   )
 }
 
-export async function createMultiReplaceFileContentToolResult(
-  context: WorkspaceToolContext,
-  input: MultiReplaceFileContentInput,
-): Promise<AgentToolExecutionResult> {
-  if (!Array.isArray(input.chunks) || input.chunks.length === 0) {
-    throw new Error('At least one replacement chunk must be provided.')
-  }
-
-  const target = resolveReadableTargetPath(
-    context.workspaceRootPath,
-    input.absolute_path,
-    context.terminalExecutionMode,
-  )
-
-  const oldContent = await fs.readFile(target.absolutePath, 'utf8').catch(() => null)
-  if (oldContent === null) {
-    throw new Error(`File not found: "${target.displayPath}". Use the write tool to create new files.`)
-  }
-
-  const normalizedOld = normalizeTextMutationContent(oldContent)
-
-  const normalizedChunks: ReplaceFileContentChunk[] = input.chunks.map((chunk) => ({
-    allowMultiple: chunk.allowMultiple,
-    endLine: chunk.endLine,
-    replacementContent: normalizeTextMutationContent(chunk.replacementContent),
-    startLine: chunk.startLine,
-    targetContent: normalizeTextMutationContent(chunk.targetContent),
-  }))
-
-  const validationErrors: string[] = []
-  const replacements: ResolvedTextReplacement[] = []
-  for (const [chunkIndex, chunk] of normalizedChunks.entries()) {
-    try {
-      replacements.push(
-        ...resolveChunkReplacements(
-          normalizedOld,
-          chunk,
-          target.displayPath,
-          chunkIndex,
-        ),
-      )
-    } catch (error) {
-      validationErrors.push(error instanceof Error ? error.message : String(error))
-    }
-  }
-
-  if (validationErrors.length > 0) {
-    throw new Error(`Multi-replace validation failed:\n${validationErrors.map((e, i) => `  ${i + 1}. ${e}`).join('\n')}`)
-  }
-
-  let workingContent: string
-  try {
-    workingContent = applyResolvedTextReplacements(
-      normalizedOld,
-      replacements,
-      target.displayPath,
-    )
-  } catch (error) {
-    throw new Error(
-      `Multi-replace validation failed:\n  1. ${error instanceof Error ? error.message : String(error)}`,
-    )
-  }
-
-  if (workingContent === normalizedOld) {
-    return createSuccessResult({
-      body: `No changes were made to "${target.displayPath}" because all replacement contents were identical to their target contents.`,
-      subject: { kind: 'file', path: target.displayPath },
-      summary: `No changes made to ${target.displayPath}`,
-    })
-  }
-
-  await captureCheckpointFileStateIfNeeded(context.checkpointId, target.absolutePath)
-  await fs.writeFile(target.absolutePath, workingContent, 'utf8')
-
-  const fileChanges = aggregateFileChangeItems([
-    {
-      fileName: target.displayPath,
-      newContent: workingContent,
-      oldContent: normalizedOld,
-    },
-  ])
-
-  return buildFileChangeResult(
-    `Edited 1 file`,
-    fileChanges,
-    'edit',
-    target.displayPath,
-    `File content replaced successfully (${input.chunks.length} chunk${input.chunks.length === 1 ? '' : 's'}).`,
-  )
-}
 
 export async function createToolContext(input: AgentToolContext) {
   const workspaceRootPath = normalizeWorkspacePath(input.workspaceRootPath)

@@ -1,10 +1,29 @@
 <tool_usage_instructions>
-Plan mode can only read. Never say that anything changed.
+Follow each tool's schema exactly. Never make up inputs.
 
-- Find with `glob`/`grep`, then `read` the code and tests that matter.
-- Run reads together only when none needs another result.
-- Use `kanban_board` (with `action: "read_board"` or `"read_card"`) when the board matters.
-- Use web tools only for outside or current facts.
-- Load a matching `skill` before planning that work.
-- Do not guess. Read until the plan is clear, then stop.
+## Calls
+
+- Run calls together only when none needs another call's result.
+- Wait when one result decides the next call.
+- Never change the same Kanban card at the same time.
+
+## Files
+
+- Find files with `glob`/`grep`. Read only what you need.
+- Plan mode cannot edit files or run terminal commands. Read until the plan is clear, then stop.
+- Do not guess codebase details; read the code and tests that matter.
+
+## Other tools
+
+- Use `web_search` or `webfetch` only when outside or current information is needed.
+- Load a matching `skill` before doing that work.
+
+## Kanban
+
+- Use `kanban_board` with `action: "read_card"` before changing it.
+- Use `action: "create_card"` for one task, or `"create_task_with_subtasks"` when a task has steps.
+- Use `action: "update_card"` for details, `"move_card"` for status, `"reorder_card"` for order, and `"delete_card"` only when asked.
+- Move a task to Done only after its checks and subtasks are done.
+
+Finish the planning, check your findings, and report only what you verified.
 </tool_usage_instructions>

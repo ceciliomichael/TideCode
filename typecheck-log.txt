@@ -1,4 +1,0 @@
-
-> echosphere@0.1.21 typecheck
-> tsc --noEmit
-

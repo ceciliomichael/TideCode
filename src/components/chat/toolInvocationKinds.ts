@@ -5,10 +5,7 @@ export function isFileWriteTool(toolName: string) {
 }
 
 export function isFileEditTool(toolName: string) {
-  return (
-    toolName === 'replace_file_content' ||
-    toolName === 'multi_replace_file_content'
-  )
+  return toolName === 'replace_file_content'
 }
 
 

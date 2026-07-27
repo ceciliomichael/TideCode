@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { shell, type IpcMainInvokeEvent, type WebContents } from "electron";
@@ -40,6 +41,7 @@ interface ActiveTerminalSession {
   exitCode: number | null;
   hasExited: boolean;
   idleTimerId: ReturnType<typeof setTimeout> | null;
+  isAiSession: boolean;
   label: string | null;
   lastReadAt: number;
   outputBuffer: string;
@@ -78,15 +80,10 @@ const ownerSessionIds = new Map<number, Set<number>>();
 const ownerWorkspaceSessions = new Map<number, Map<string, number>>();
 const ownersWithCleanup = new Set<number>();
 
-// Per-workspace session ID counters so each workspace's sessions start from 1
-// and are unaffected by sessions in other workspaces.
-const nextWorkspaceSessionId = new Map<string, number>();
+let nextGlobalSessionId = 1;
 
-function getNextSessionId(workspaceRootPath: string) {
-  const normalized = normalizeWorkspacePath(workspaceRootPath);
-  const nextId = nextWorkspaceSessionId.get(normalized) ?? 1;
-  nextWorkspaceSessionId.set(normalized, nextId + 1);
-  return nextId;
+function getNextSessionId() {
+  return nextGlobalSessionId++;
 }
 
 function clampInteger(
@@ -560,21 +557,26 @@ function terminateSession(sessionId: number) {
     sessionId,
   );
 
-  // When the last session for a workspace is gone, reset its counter so
-  // the next session for that workspace starts from 1.
-  const normalizedWorkspace = activeSession.workspaceRootPath;
-  const hasMoreInWorkspace = Array.from(sessions.values()).some(
-    (s) => s.workspaceRootPath === normalizedWorkspace,
-  );
-  if (!hasMoreInWorkspace) {
-    nextWorkspaceSessionId.delete(normalizedWorkspace);
-  }
 
+
+function killPtyProcessTree(ptyProcess: IPty) {
   try {
-    activeSession.ptyProcess.kill();
+    const pid = ptyProcess.pid;
+    if (process.platform === "win32" && typeof pid === "number" && pid > 0) {
+      spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" });
+    } else {
+      ptyProcess.kill();
+    }
   } catch (error) {
-    console.warn(`Failed to kill terminal session ${sessionId}`, error);
+    try {
+      ptyProcess.kill();
+    } catch {
+      // ignore
+    }
   }
+}
+
+  killPtyProcessTree(activeSession.ptyProcess);
 }
 
 function scheduleIdleTerminate(sessionId: number) {
@@ -740,6 +742,7 @@ function buildCreateSessionResult(input: {
 
 function reuseExistingSession(input: {
   cols: number;
+  isAiSession?: boolean;
   ownerWebContentsId: number;
   rows: number;
   sessionKey?: string | null;
@@ -757,7 +760,8 @@ function reuseExistingSession(input: {
   if (
     !activeSession ||
     activeSession.ownerWebContentsId !== input.ownerWebContentsId ||
-    activeSession.hasExited
+    activeSession.hasExited ||
+    activeSession.isAiSession !== Boolean(input.isAiSession)
   ) {
     unregisterWorkspaceSession(
       input.ownerWebContentsId,
@@ -808,8 +812,10 @@ async function createTerminalSessionInternal(
     workspaceKey,
     input.sessionKey,
   );
+  const isAiSession = Boolean(input.isAiSession);
   const reusedSession = reuseExistingSession({
     cols,
+    isAiSession,
     ownerWebContentsId: sender.id,
     sessionKey: input.sessionKey,
     rows,
@@ -827,7 +833,7 @@ async function createTerminalSessionInternal(
     rows,
   });
 
-  const sessionId = getNextSessionId(workspaceRootPath ?? cwd);
+  const sessionId = getNextSessionId();
 
   const activeSession: ActiveTerminalSession = {
     cwd,
@@ -835,6 +841,7 @@ async function createTerminalSessionInternal(
     exitCode: null,
     hasExited: false,
     idleTimerId: null,
+    isAiSession,
     label: input.label ?? null,
     lastReadAt: Date.now(),
     outputBuffer: "",
@@ -1078,8 +1085,13 @@ export function terminateSessionForWebContents(
   sender: WebContents,
   sessionId: number,
   workspaceRootPath: string,
+  options?: { aiOnly?: boolean },
 ) {
   assertSessionOwnership(sender.id, sessionId, workspaceRootPath);
+  const activeSession = sessions.get(sessionId);
+  if (options?.aiOnly && (!activeSession || !activeSession.isAiSession)) {
+    return;
+  }
   terminateSession(sessionId);
 }
 

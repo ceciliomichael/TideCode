@@ -42,7 +42,9 @@ function areDiffSnapshotsEqual(left: ConversationDiffSnapshot, right: Conversati
       leftFileDiff.removedLineCount !== rightFileDiff.removedLineCount ||
       leftFileDiff.isStaged !== rightFileDiff.isStaged ||
       leftFileDiff.isUnstaged !== rightFileDiff.isUnstaged ||
-      leftFileDiff.isUntracked !== rightFileDiff.isUntracked
+      leftFileDiff.isUntracked !== rightFileDiff.isUntracked ||
+      leftFileDiff.newContent !== rightFileDiff.newContent ||
+      leftFileDiff.oldContent !== rightFileDiff.oldContent
     ) {
       return false
     }
@@ -147,12 +149,14 @@ export function useGitDiffSnapshot({
       return
     }
 
+    void window.echosphereWorkspace.watchExplorerChanges({ workspaceRootPath: workspacePath })
     const unsubscribe = window.echosphereWorkspace.onExplorerChange(() => {
       void refresh({ forceRefresh: true, silent: true })
     })
 
     return () => {
       unsubscribe()
+      void window.echosphereWorkspace.unwatchExplorerChanges({ workspaceRootPath: workspacePath })
     }
   }, [hasRepository, pollingEnabled, refresh, workspacePath])
 

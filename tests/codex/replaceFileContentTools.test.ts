@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import {
-  createMultiReplaceFileContentToolResult,
   createReplaceFileContentToolResult,
   type WorkspaceToolContext,
 } from '../../electron/chat/shared/tools/workspaceTools'
@@ -23,105 +22,50 @@ async function createFixture(content: string) {
   return { context, targetPath, workspaceRootPath }
 }
 
-test('multi-replace applies non-contiguous edits against one file snapshot', async () => {
-  const fixture = await createFixture(
-    ['export const first = 1', 'export const middle = true', 'export const last = 3', ''].join('\n'),
-  )
-
+test('replace supports relative path in path parameter', async () => {
+  const originalContent = 'const val = 1\n'
+  const fixture = await createFixture(originalContent)
   try {
-    const result = await createMultiReplaceFileContentToolResult(fixture.context, {
-      absolute_path: fixture.targetPath,
-      chunks: [
-        {
-          allowMultiple: false,
-          endLine: 1,
-          replacementContent: 'export const first = 100',
-          startLine: 1,
-          targetContent: 'export const first = 1',
-        },
-        {
-          allowMultiple: false,
-          endLine: 3,
-          replacementContent: 'export const last = 300',
-          startLine: 3,
-          targetContent: 'export const last = 3',
-        },
-      ],
+    const result = await createReplaceFileContentToolResult(fixture.context, {
+      path: 'target.ts',
+      allowMultiple: false,
+      endLine: 1,
+      replacementContent: 'const val = 2',
+      startLine: 1,
+      targetContent: 'const val = 1',
     })
-
     assert.equal(result.status, 'success')
+    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), 'const val = 2\n')
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+test('replace resolves back-to-back parallel tool calls targeting different regions', async () => {
+  const originalContent = ['export const first = 1', 'export const middle = true', 'export const last = 3', ''].join('\n')
+  const fixture = await createFixture(originalContent)
+  try {
+    const res1 = await createReplaceFileContentToolResult(fixture.context, {
+      path: 'target.ts',
+      allowMultiple: false,
+      endLine: 1,
+      replacementContent: 'export const first = 100',
+      startLine: 1,
+      targetContent: 'export const first = 1',
+    })
+    const res2 = await createReplaceFileContentToolResult(fixture.context, {
+      path: 'target.ts',
+      allowMultiple: false,
+      endLine: 3,
+      replacementContent: 'export const last = 300',
+      startLine: 3,
+      targetContent: 'export const last = 3',
+    })
+    assert.equal(res1.status, 'success')
+    assert.equal(res2.status, 'success')
     assert.equal(
       await fs.readFile(fixture.targetPath, 'utf8'),
       ['export const first = 100', 'export const middle = true', 'export const last = 300', ''].join('\n'),
     )
-  } finally {
-    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('multi-replace leaves the file unchanged when any chunk is invalid', async () => {
-  const originalContent = ['export const first = 1', 'export const last = 3', ''].join('\n')
-  const fixture = await createFixture(originalContent)
-
-  try {
-    await assert.rejects(
-      createMultiReplaceFileContentToolResult(fixture.context, {
-        absolute_path: fixture.targetPath,
-        chunks: [
-          {
-            allowMultiple: false,
-            endLine: 1,
-            replacementContent: 'export const first = 100',
-            startLine: 1,
-            targetContent: 'export const first = 1',
-          },
-          {
-            allowMultiple: false,
-            endLine: 2,
-            replacementContent: 'export const missing = true',
-            startLine: 2,
-            targetContent: 'export const missing = false',
-          },
-        ],
-      }),
-      /Multi-replace validation failed.*Target content not found/su,
-    )
-
-    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
-  } finally {
-    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('multi-replace rejects overlapping targets without writing', async () => {
-  const originalContent = 'alpha beta gamma\n'
-  const fixture = await createFixture(originalContent)
-
-  try {
-    await assert.rejects(
-      createMultiReplaceFileContentToolResult(fixture.context, {
-        absolute_path: fixture.targetPath,
-        chunks: [
-          {
-            allowMultiple: false,
-            endLine: 1,
-            replacementContent: 'first',
-            startLine: 1,
-            targetContent: 'alpha beta',
-          },
-          {
-            allowMultiple: false,
-            endLine: 1,
-            replacementContent: 'second',
-            startLine: 1,
-            targetContent: 'beta gamma',
-          },
-        ],
-      }),
-      /Replacement chunks 1 and 2 overlap/u,
-    )
-
-    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
   } finally {
     await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
   }

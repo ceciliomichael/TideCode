@@ -8,13 +8,15 @@ import { useChatSessionState } from './useChatSessionState'
 import { useChatStreamingState } from './useChatStreamingState'
 import { useInitializeChatHistory } from './useInitializeChatHistory'
 import type { AppLanguage } from '../lib/appSettings'
-import type { ChatMode, ConversationEditSession, Message, RevertEditSession } from '../types/chat'
+import type { ChatMode, ConversationEditSession, ConversationModelPreference, Message, RevertEditSession } from '../types/chat'
 
 const EMPTY_MESSAGES: Message[] = []
 
 interface UseChatMessagesInput {
+  conversationModelPreferences: Record<string, ConversationModelPreference>
   editSessionsByConversation: Record<string, ConversationEditSession>
   language: AppLanguage
+  onPersistConversationModelPreferences: (nextValue: Record<string, ConversationModelPreference>) => void
   persistConversationLaunchPreference: (input: {
     conversationId: string | null
     draftFolderId: string | null
@@ -31,8 +33,10 @@ interface UseChatMessagesInput {
 
 export function useChatMessages(input: UseChatMessagesInput) {
   const {
+    conversationModelPreferences,
     editSessionsByConversation: persistedEditSessionsByConversation,
     language,
+    onPersistConversationModelPreferences,
     persistConversationLaunchPreference,
     persistEditSessionsByConversation,
     persistRevertEditSessionsByConversation,
@@ -195,6 +199,11 @@ export function useChatMessages(input: UseChatMessagesInput) {
     }
 
     syncedConversationModeIdRef.current = activeConversationId
+    const savedPreference = conversationModelPreferences[activeConversationId]
+    if (savedPreference?.chatMode) {
+      setDraftChatMode(savedPreference.chatMode)
+      return
+    }
     const draftModeForConversation = draftChatModeByConversationRef.current[activeConversationId]
     if (draftModeForConversation) {
       setDraftChatMode(draftModeForConversation)
@@ -207,7 +216,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     }
 
     setDraftChatMode(activeConversationChatMode)
-  }, [sessionState.activeConversationChatMode, sessionState.activeConversationId])
+  }, [conversationModelPreferences, sessionState.activeConversationChatMode, sessionState.activeConversationId])
 
   useEffect(() => {
     if (!activeConversationId) {
@@ -222,9 +231,16 @@ export function useChatMessages(input: UseChatMessagesInput) {
       setDraftChatMode(nextMode)
       if (activeConversationId) {
         draftChatModeByConversationRef.current[activeConversationId] = nextMode
+        const existing = conversationModelPreferences[activeConversationId]
+        if (existing) {
+          onPersistConversationModelPreferences({
+            ...conversationModelPreferences,
+            [activeConversationId]: { ...existing, chatMode: nextMode },
+          })
+        }
       }
     },
-    [activeConversationId],
+    [activeConversationId, conversationModelPreferences, onPersistConversationModelPreferences],
   )
 
   const captureActiveEditDraftSession = useCallback(() => {

@@ -6,6 +6,7 @@ import { isKanbanTool } from './kanbanToolInvocationKinds'
 import { isFileEditTool, isFileMutationTool, isFileWriteTool } from './toolInvocationKinds'
 
 interface ToolArgumentsValue {
+  path?: unknown
   absolute_path?: unknown
   command?: unknown
   cmd?: unknown
@@ -88,17 +89,21 @@ function decodePartialJsonString(input: string) {
 }
 
 function extractPartialAbsolutePath(argumentsText: string) {
-  const absolutePathMatch = argumentsText.match(/"absolute_path"\s*:\s*"((?:\\.|[^"])*)/u)
-  if (!absolutePathMatch) {
+  const pathMatch = argumentsText.match(/"(?:path|absolute_path)"\s*:\s*"((?:\\.|[^"])*)/u)
+  if (!pathMatch) {
     return null
   }
 
-  const absolutePath = decodePartialJsonString(absolutePathMatch[1]).trim()
+  const absolutePath = decodePartialJsonString(pathMatch[1]).trim()
   return absolutePath.length > 0 ? absolutePath : null
 }
 
 function getAbsolutePath(invocation: ToolInvocationTrace) {
   const argumentsValue = parseCompleteToolArguments(invocation.argumentsText)
+
+  if (typeof argumentsValue?.path === 'string' && argumentsValue.path.trim().length > 0) {
+    return argumentsValue.path.trim()
+  }
 
   if (typeof argumentsValue?.absolute_path === 'string' && argumentsValue.absolute_path.trim().length > 0) {
     return argumentsValue.absolute_path.trim()
@@ -666,10 +671,7 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
   }
 
   // For the new precise-edit tools the target file is always in absolute_path
-  if (
-    invocation.toolName === 'replace_file_content' ||
-    invocation.toolName === 'multi_replace_file_content'
-  ) {
+  if (invocation.toolName === 'replace_file_content') {
     const absolutePath = getAbsolutePath(invocation)
     return absolutePath ? getBasename(absolutePath) : null
   }

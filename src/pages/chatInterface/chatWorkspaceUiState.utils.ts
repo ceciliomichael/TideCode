@@ -12,20 +12,19 @@ export function toWorkspaceScopedKey(workspacePath: string | null) {
 interface TerminalWorkspaceKeyInput {
   activeConversationId: string | null;
   activeWorkspacePath: string | null;
-  selectedFolderId: string | null;
+  selectedFolderId?: string | null;
 }
 
 export function getTerminalWorkspaceKey({
   activeConversationId,
   activeWorkspacePath,
-  selectedFolderId,
 }: TerminalWorkspaceKeyInput) {
   const workspaceKey = toWorkspaceScopedKey(activeWorkspacePath);
-  if (workspaceKey !== DEFAULT_TERMINAL_WORKSPACE_KEY) {
-    return workspaceKey;
-  }
 
-  if (selectedFolderId === null && activeConversationId) {
+  if (activeConversationId) {
+    if (workspaceKey !== DEFAULT_TERMINAL_WORKSPACE_KEY) {
+      return `${workspaceKey}::conversation:${activeConversationId}`;
+    }
     return `chats:${activeConversationId}`;
   }
 

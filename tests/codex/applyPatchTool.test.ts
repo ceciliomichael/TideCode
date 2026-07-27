@@ -976,7 +976,7 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     assert.match(readTool.description ?? '', /numbered UTF-8 file lines/u)
     assert.match(readTool.description ?? '', /limit defaults to 2000/u)
     assert.match(readTool.description ?? '', /output is capped at 256 KB/u)
-    assert.match(replaceTool.description ?? '', /single, exact, contiguous block/u)
+    assert.match(replaceTool.description ?? '', /single exact contiguous block/u)
     assert.match(globTool.description ?? '', /matching the glob pattern/u)
     assert.match(grepTool.description ?? '', /optional filename glob/u)
     assert.match(writeTool.description ?? '', /complete UTF-8 contents/u)

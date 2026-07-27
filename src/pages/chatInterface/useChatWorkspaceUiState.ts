@@ -219,6 +219,31 @@ export function useChatWorkspaceUiState({
       activeWorkspacePath,
       selectedFolderId,
     });
+  const previousTerminalWorkspaceKeyRef = useRef(activeTerminalWorkspaceKey);
+  const terminalOpenStatesRef = useRef<
+    Record<string, { isTerminalOpen: boolean; isTerminalFullScreen: boolean }>
+  >({});
+
+  useEffect(() => {
+    const previousKey = previousTerminalWorkspaceKeyRef.current;
+    if (previousKey !== activeTerminalWorkspaceKey) {
+      previousTerminalWorkspaceKeyRef.current = activeTerminalWorkspaceKey;
+
+      const nextState = terminalOpenStatesRef.current[activeTerminalWorkspaceKey] ?? {
+        isTerminalOpen: false,
+        isTerminalFullScreen: false,
+      };
+
+      setIsTerminalOpen(nextState.isTerminalOpen);
+      setIsTerminalFullScreen(nextState.isTerminalFullScreen);
+    } else {
+      terminalOpenStatesRef.current[activeTerminalWorkspaceKey] = {
+        isTerminalOpen,
+        isTerminalFullScreen,
+      };
+    }
+  }, [activeTerminalWorkspaceKey, isTerminalOpen, isTerminalFullScreen]);
+
   const terminalPanelHeight =
     settings.terminalPanelHeightsByWorkspace[activeTerminalWorkspaceKey] ??
     DEFAULT_TERMINAL_PANEL_HEIGHT;

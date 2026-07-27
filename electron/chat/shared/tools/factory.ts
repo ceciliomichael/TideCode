@@ -47,7 +47,7 @@ export async function createAgentTools(
     read: createReadTool(context),
     glob: createGlobTool(context),
     grep: createGrepTool(context),
-    ...createKanbanToolSet(context, { readOnly: isPlanMode }),
+    ...createKanbanToolSet(context),
   }
 
   if (!isPlanMode) {

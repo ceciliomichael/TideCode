@@ -18,24 +18,23 @@ test('agent prompt teaches concise, reliable, dependency-aware tool use', async 
     assert.match(prompt, /replace_file_content/u)
     assert.match(prompt, /reorder_card/u)
     assert.match(prompt, /Answer first/u)
-    assert.match(prompt, /Default to 1-3 short sentences or bullets/u)
+    assert.match(prompt, /Default to 1-3 short sentences/u)
     assert.match(prompt, /report only what you verified/iu)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('plan prompt is concise and explicitly read-only', async () => {
+test('plan prompt is concise and explicitly restricts file editing while supporting kanban tools', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-plan-prompt-'))
 
   try {
     const prompt = buildChatModeSystemPrompt('plan', workspaceRootPath)
 
     assert.doesNotMatch(prompt, /caveman|primitive speech/iu)
-    assert.match(prompt, /Plan mode can only read/u)
-    assert.match(prompt, /Never say that anything changed/u)
-    assert.match(prompt, /Run reads together only when none needs another result/u)
-    assert.match(prompt, /read_board.*read_card/su)
+    assert.match(prompt, /Plan mode cannot edit files or run terminal commands/u)
+    assert.match(prompt, /Run calls together only when none needs another call's result/u)
+    assert.match(prompt, /create_card.*create_task_with_subtasks/su)
     assert.match(prompt, /Stay under 300 words/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

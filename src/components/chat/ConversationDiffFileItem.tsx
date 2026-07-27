@@ -299,7 +299,9 @@ function areConversationDiffFileItemPropsEqual(
     left.diff.isUntracked === right.diff.isUntracked &&
     left.diff.contentSignature === right.diff.contentSignature &&
     left.diff.contextLines === right.diff.contextLines &&
-    left.diff.startLineNumber === right.diff.startLineNumber
+    left.diff.startLineNumber === right.diff.startLineNumber &&
+    left.diff.newContent === right.diff.newContent &&
+    left.diff.oldContent === right.diff.oldContent
   )
 }
 

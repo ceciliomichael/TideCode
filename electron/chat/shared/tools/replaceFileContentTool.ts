@@ -3,13 +3,15 @@ import type { AgentToolExecutionResult } from '../toolTypes'
 import { createReplaceFileContentToolResult, type WorkspaceToolContext } from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
-const REPLACE_FILE_CONTENT_DESCRIPTION = 'Replaces a single, exact, contiguous block of text inside an existing file.'
+const REPLACE_FILE_CONTENT_DESCRIPTION =
+  'Replaces a single exact contiguous block of text inside an existing file. Supports relative or absolute file paths. Note: If making multiple edits to the same file or function, make a single comprehensive replacement covering the entire region, or re-read the file between tool calls, as previous edits alter line numbers and target text.'
 
 export function createReplaceFileContentTool(context: WorkspaceToolContext) {
   return tool({
     description: REPLACE_FILE_CONTENT_DESCRIPTION,
     inputSchema: jsonSchema<{
-      absolute_path: string
+      path?: string
+      absolute_path?: string
       targetContent: string
       replacementContent: string
       startLine: number
@@ -18,8 +20,12 @@ export function createReplaceFileContentTool(context: WorkspaceToolContext) {
     }>({
       additionalProperties: false,
       properties: {
+        path: {
+          description: 'Relative or absolute path to the file to edit.',
+          type: 'string',
+        },
         absolute_path: {
-          description: 'Absolute path to the file to edit.',
+          description: 'Alias for path (relative or absolute path to the file to edit).',
           type: 'string',
         },
         allowMultiple: {
@@ -50,21 +56,27 @@ export function createReplaceFileContentTool(context: WorkspaceToolContext) {
           type: 'string',
         },
       },
-      required: ['absolute_path', 'targetContent', 'replacementContent', 'startLine', 'endLine'],
+      required: ['path', 'targetContent', 'replacementContent', 'startLine', 'endLine'],
       type: 'object',
     }),
     execute: async (rawInput): Promise<AgentToolExecutionResult> => {
       const input = rawInput as {
-        absolute_path: string
+        path?: string
+        absolute_path?: string
         targetContent: string
         replacementContent: string
         startLine: number
         endLine: number
         allowMultiple?: boolean
       }
+      const targetPath = input.path ?? input.absolute_path
+      if (!targetPath) {
+        throw new Error('File path ("path") is required.')
+      }
       try {
         return await createReplaceFileContentToolResult(context, {
           ...input,
+          path: targetPath,
           allowMultiple: input.allowMultiple ?? false,
         })
       } catch (error) {
