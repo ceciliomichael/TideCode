@@ -28,7 +28,7 @@ interface UseChatFileMentionMenuInput {
 const MAX_MENTION_RESULTS = 8
 const MAX_SCANNED_FILES = 10000
 const MAX_SCANNED_DIRECTORIES = 1000
-const ROOT_MENU_OPTION_COUNT = 2
+const ROOT_MENU_OPTION_COUNT = 3
 
 function normalizeRelativePath(relativePath: string) {
   return relativePath.replace(/\\/g, '/')
@@ -48,9 +48,8 @@ function buildLabelCounts(entries: readonly WorkspaceExplorerEntry[]) {
   return counts
 }
 
-function toMentionLabel(relativePath: string, basenameCounts: ReadonlyMap<string, number>) {
-  const basename = getPathBasename(relativePath)
-  return (basenameCounts.get(basename) ?? 0) > 1 ? normalizeRelativePath(relativePath) : basename
+function toMentionLabel(relativePath: string) {
+  return getPathBasename(relativePath)
 }
 
 function normalizeMentionSearchValue(value: string) {
@@ -148,17 +147,46 @@ async function loadWorkspaceMentionIndex(workspaceRootPath: string) {
 
   await visitDirectory()
   const basenameCounts = buildLabelCounts(discoveredEntries)
-  const entries = discoveredEntries
+  const fileAndFolderEntries = discoveredEntries
     .map((entry) => {
       const normalizedRelativePath = normalizeRelativePath(entry.relativePath)
       return {
         description: normalizedRelativePath,
         kind: entry.isDirectory ? ('folder' as const) : ('file' as const),
-        label: toMentionLabel(entry.relativePath, basenameCounts),
-        relativePath: normalizedRelativePath,
+        label: toMentionLabel(entry.relativePath),
+        relativePath: entry.isDirectory ? `list:${normalizedRelativePath}` : `read:${normalizedRelativePath}`,
       }
     })
-    .sort((left, right) => left.description.localeCompare(right.description, undefined, { sensitivity: 'base' }))
+
+  const skillEntries: ChatMentionMenuItem[] = []
+  if (typeof window !== 'undefined' && window.echosphereSkills) {
+    try {
+      const [skillsState, settings] = await Promise.all([
+        window.echosphereSkills.listSkills(workspaceRootPath),
+        window.echosphereSettings ? window.echosphereSettings.getSettings() : Promise.resolve(null),
+      ])
+
+      const disabledSkillsByPath = settings?.disabledSkillsByPath ?? {}
+      const enabledSkills = skillsState.skills.filter(
+        (skill) => disabledSkillsByPath[skill.location] !== true,
+      )
+
+      for (const skill of enabledSkills) {
+        skillEntries.push({
+          description: skill.description || 'Skill pack',
+          kind: 'skill',
+          label: skill.name,
+          relativePath: `load_skill:${skill.name}`,
+        })
+      }
+    } catch (error) {
+      console.error('Failed to load skills for mention menu index', error)
+    }
+  }
+
+  const entries = [...fileAndFolderEntries, ...skillEntries].sort((left, right) =>
+    left.description.localeCompare(right.description, undefined, { sensitivity: 'base' }),
+  )
 
   return {
     basenameCounts,
@@ -557,7 +585,7 @@ export function useChatFileMentionMenu({
 
         if (event.key === 'Enter' || event.key === 'Tab') {
           event.preventDefault()
-          handleSelectCategory(selectedIndex === 1 ? 'folder' : 'file')
+          handleSelectCategory(selectedIndex === 2 ? 'skill' : selectedIndex === 1 ? 'folder' : 'file')
           return true
         }
 

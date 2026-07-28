@@ -469,11 +469,38 @@ function getToolVerb(invocation: ToolInvocationTrace) {
   }
 
   if (invocation.toolName === 'skill') {
+    const parsedArgs = parseCompleteToolArguments(invocation.argumentsText) as Record<string, any>
+    const action = parsedArgs?.action || 'load'
+
+    if (action === 'list') {
+      return invocation.state === 'running'
+        ? 'Listing skills'
+        : invocation.state === 'completed'
+          ? 'Listed skills'
+          : 'List skills failed'
+    }
+
+    if (action === 'search') {
+      return invocation.state === 'running'
+        ? 'Searching skills'
+        : invocation.state === 'completed'
+          ? 'Searched skills'
+          : 'Skill search failed'
+    }
+
+    if (action === 'read_resource') {
+      return invocation.state === 'running'
+        ? 'Reading skill resource'
+        : invocation.state === 'completed'
+          ? 'Read skill resource'
+          : 'Read skill resource failed'
+    }
+
     return invocation.state === 'running'
-      ? 'Activating Skill'
+      ? 'Loading skill'
       : invocation.state === 'completed'
-        ? 'Activated Skill'
-        : 'Skill activation failed'
+        ? 'Loaded skill'
+        : 'Skill load failed'
   }
 
   if (invocation.toolName === 'web_search') {
@@ -650,6 +677,21 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
   }
 
   if (invocation.toolName === 'skill') {
+    const action = parsedArguments?.action || 'load'
+    if (action === 'list') {
+      return null
+    }
+
+    if (action === 'search') {
+      return readFirstText(parsedArguments?.query)
+    }
+
+    if (action === 'read_resource') {
+      const resourcePath = readFirstText(parsedArguments?.resourcePath)
+      const skillName = readSkillName(parsedArguments?.name)
+      return skillName && resourcePath ? `${skillName} (${resourcePath})` : resourcePath || skillName
+    }
+
     const skillNameText = readSkillName(parsedArguments?.name)
     if (skillNameText) {
       return skillNameText

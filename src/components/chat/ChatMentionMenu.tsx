@@ -1,9 +1,9 @@
-import { File, Folder } from 'lucide-react'
+import { File, Folder, Wand2 } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties, RefObject } from 'react'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
 
-export type ChatMentionMenuType = 'file' | 'folder'
+export type ChatMentionMenuType = 'file' | 'folder' | 'skill'
 
 export interface ChatMentionMenuItem {
   description: string
@@ -47,6 +47,12 @@ const ROOT_OPTIONS: readonly {
     icon: Folder,
     kind: 'folder',
     label: 'Folder',
+  },
+  {
+    description: 'Search for skills',
+    icon: Wand2,
+    kind: 'skill',
+    label: 'Skills',
   },
 ]
 
@@ -111,7 +117,16 @@ export function ChatMentionMenu({
                         : 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]',
                     ].join(' ')}
                   >
-                    <Icon size={17} className={`shrink-0 ${option.kind === 'file' ? 'text-[#2563EB]' : 'text-[#F59E0B]'}`} />
+                    <Icon
+                      size={17}
+                      className={`shrink-0 ${
+                        option.kind === 'file'
+                          ? 'text-[#2563EB]'
+                          : option.kind === 'folder'
+                            ? 'text-[#F59E0B]'
+                            : 'text-[#A855F7]'
+                      }`}
+                    />
                     <span className="min-w-0 flex-1">
                       <span className="block text-[15px] leading-5">{option.label}</span>
                       <span className="block text-[12px] leading-5 text-subtle-foreground">{option.description}</span>
@@ -132,7 +147,9 @@ export function ChatMentionMenu({
             ? 'Folder mentions'
             : selectedMenuType === 'file'
               ? 'File mentions'
-              : 'File and folder mentions'
+              : selectedMenuType === 'skill'
+                ? 'Skill mentions'
+                : 'File, folder, and skill mentions'
         }
         data-floating-menu-root="true"
         className="fixed z-40 w-[min(26rem,calc(100vw-1rem))] overflow-hidden rounded-[22px] border border-border bg-surface shadow-[0_10px_30px_rgba(15,23,42,0.08)]"
@@ -145,7 +162,7 @@ export function ChatMentionMenu({
             </div>
           ) : loading ? (
             <div className="px-4 py-3 text-sm text-subtle-foreground">
-              Loading files...
+              Loading mentions...
             </div>
           ) : results.length === 0 ? (
             <div className="px-4 py-3 text-sm text-subtle-foreground">
@@ -155,7 +172,9 @@ export function ChatMentionMenu({
                   ? 'Type to search folders...'
                   : selectedMenuType === 'file'
                     ? 'Type to search files...'
-                    : 'Type to search files or folders...'}
+                    : selectedMenuType === 'skill'
+                      ? 'Type to search skills...'
+                      : 'Type to search files, folders, or skills...'}
             </div>
           ) : (
             results.map((item, index) => {
@@ -183,7 +202,9 @@ export function ChatMentionMenu({
                       : 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]',
                   ].join(' ')}
                 >
-                  {item.kind === 'folder' ? (
+                  {item.kind === 'skill' ? (
+                    <Wand2 size={14} className="shrink-0 text-[#A855F7]" />
+                  ) : item.kind === 'folder' ? (
                     <Folder size={14} className="shrink-0 text-[#F59E0B]" />
                   ) : FileIcon ? (
                     <FileIcon size={14} className="shrink-0" style={{ color: fileIconConfig.color }} />

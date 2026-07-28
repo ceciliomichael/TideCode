@@ -568,11 +568,13 @@ export function useWorkspaceTerminalSessionState({
                 ...tab,
                 errorMessage: null,
                 exitCode: null,
+                label: createTerminalTabLabel(tabIndex, session.venvName),
                 sessionId: session.sessionId,
+                status: "ready",
+                venvName: session.venvName ?? null,
                 workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(
                   session.workspaceRootPath,
                 ),
-                status: "ready",
               }
             : tab,
         ),

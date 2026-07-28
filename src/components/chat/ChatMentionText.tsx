@@ -10,7 +10,8 @@ interface ChatMentionTextProps {
 }
 
 const mentionHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(59,130,246,0.18)]'
-const mentionRenderedHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(59,130,246,0.14)]'
+const folderHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(245,158,11,0.18)]'
+const skillHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(168,85,247,0.18)]'
 
 export const ChatMentionText = memo(function ChatMentionText({
   className,
@@ -47,8 +48,18 @@ export const ChatMentionText = memo(function ChatMentionText({
           )
         }
 
+        const isSkill = Boolean(segment.path?.startsWith('load_skill:') || segment.path?.startsWith('skill:'))
+        const isFolder = Boolean(segment.path?.startsWith('list:') || segment.path?.startsWith('folder:') || segment.path?.endsWith('/'))
         const isBackdrop = variant === 'backdrop'
         const isRendered = variant === 'rendered'
+        const highlightClass = isSkill
+          ? skillHighlightSurfaceClassName
+          : isFolder
+            ? folderHighlightSurfaceClassName
+            : mentionHighlightSurfaceClassName
+
+        const textColorClass = 'text-foreground font-normal'
+
         if (isRendered) {
           return (
             <span
@@ -56,11 +67,13 @@ export const ChatMentionText = memo(function ChatMentionText({
               className="relative inline align-baseline"
               title={segment.path ?? segment.label}
             >
+              <span className={`relative ${textColorClass}`}>
+                {segment.text}
+              </span>
               <span
                 aria-hidden="true"
-                className={`pointer-events-none absolute inset-0 ${mentionRenderedHighlightSurfaceClassName}`}
+                className={`pointer-events-none absolute inset-0 z-[1] ${highlightClass}`}
               />
-              {segment.text}
             </span>
           )
         }
@@ -68,11 +81,13 @@ export const ChatMentionText = memo(function ChatMentionText({
         if (!isBackdrop) {
           return (
             <span key={`mention-${index}`} className="relative inline-block" title={segment.path ?? segment.label}>
+              <span className={`relative ${textColorClass}`}>
+                {segment.text}
+              </span>
               <span
                 aria-hidden="true"
-                className={`pointer-events-none absolute inset-0 ${mentionHighlightSurfaceClassName}`}
+                className={`pointer-events-none absolute inset-0 z-[1] ${highlightClass}`}
               />
-              <span className="relative z-[1] text-foreground">{segment.text}</span>
             </span>
           )
         }
@@ -80,7 +95,7 @@ export const ChatMentionText = memo(function ChatMentionText({
         return (
           <span
             key={`mention-${index}`}
-            className={`${mentionHighlightSurfaceClassName} text-transparent`}
+            className={`${highlightClass} text-transparent`}
             title={segment.path ?? segment.label}
           >
             {segment.text}

@@ -1,6 +1,7 @@
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import type { ToolInvocationTrace } from '../../types/chat'
+import { normalizeMarkdownText } from '../../lib/chatMessageContent'
 import { DiffViewer } from './DiffViewer'
 import { ChangeDiffResult } from './FileChangeDiffResult'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -135,11 +136,12 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   const diffResultPresentation = invocation.resultPresentation?.kind === 'file_diff' ? invocation.resultPresentation : null
   const changeResultPresentation = invocation.resultPresentation?.kind === 'change_diff' ? invocation.resultPresentation : null
   const parsedStructuredResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
-  const resultBody =
+  const rawResultBody =
     parsedStructuredResult?.body ??
     parsedStructuredResult?.metadata?.summary ??
     invocation.resultContent ??
     ''
+  const normalizedResultBody = useMemo(() => normalizeMarkdownText(rawResultBody), [rawResultBody])
   const shouldLimitResultHeight =
     terminalToolName === null && !isFileWriteTool(invocation.toolName) && !isFileEditTool(invocation.toolName)
 
@@ -195,16 +197,15 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
             <ChangeDiffResult parsedResult={changeResultPresentation} />
           ) : terminalToolName ? (
             <TerminalToolResult
-              content={resultBody}
+              content={rawResultBody}
               isStreaming={invocation.state === 'running'}
               toolName={terminalToolName}
             />
           ) : (
             <MarkdownRenderer
-              content={resultBody}
+              content={normalizedResultBody}
               className="w-full opacity-85"
               isStreaming={invocation.state === 'running'}
-              preserveLineBreaks
             />
           )}
         </div>

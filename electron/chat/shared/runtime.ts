@@ -158,7 +158,7 @@ export async function estimateToolEnabledContextUsage(input: {
   const workspaceRootPath = input.agentContextRootPath?.trim() || 'No workspace selected'
   const enabledSkills = await listEnabledSkills(input.agentContextRootPath)
   const systemPrompt = buildChatSystemPrompt(input.chatMode, workspaceRootPath, {
-    availableSkillsBlock: buildSkillsSystemPromptBlock(enabledSkills),
+    availableSkillsBlock: buildSkillsSystemPromptBlock(),
     terminalExecutionMode: input.terminalExecutionMode,
   })
   const messageUsage = estimateMessageContextUsage(input.messages)
@@ -230,7 +230,7 @@ export async function runToolEnabledChatStream(input: {
     const tools = withCanonicalToolModelOutputs(sortToolSet(rawTools))
     const promptOptions = {
       ...input.promptOptions,
-      availableSkillsBlock: buildSkillsSystemPromptBlock(enabledSkills),
+      availableSkillsBlock: buildSkillsSystemPromptBlock(),
       terminalExecutionMode: input.startInput.terminalExecutionMode,
     }
     const prompt = buildChatPrompt({

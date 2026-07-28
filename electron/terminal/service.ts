@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { shell, type IpcMainInvokeEvent, type WebContents } from "electron";
 import { spawn, type IPty } from "node-pty";
@@ -8,6 +8,7 @@ import {
   getSafeWorkspaceTargetPath,
   normalizeWorkspacePath,
 } from "../workspace/paths";
+import { activateVenvInEnvironment, detectVenvInfo, findVenvPath } from "../python/venv";
 import type {
   CloseTerminalSessionInput,
   CreateTerminalSessionInput,
@@ -50,6 +51,7 @@ interface ActiveTerminalSession {
   ptyProcess: IPty;
   shellLabel: string;
   signal: number | null;
+  venvName: string | null;
   workspaceRootPath: string;
   workspaceSessionKey: string;
 }
@@ -272,96 +274,6 @@ function createTerminalEnvironment(cwd: string, workspaceRootPath: string | null
   return environment;
 }
 
-// ---------------------------------------------------------------------------
-// Python virtual environment auto-detection & activation
-// ---------------------------------------------------------------------------
-
-/**
- * Walk upward from `cwd` looking for a Python virtual environment.
- *
- * Detects any directory containing a `pyvenv.cfg` file — the standard marker
- * that Python's `venv` module generates, regardless of what the directory is
- * named (`venv`, `.venv`, `env`, `sandbox`, etc.).  Stops at the workspace
- * root or filesystem root.
- */
-function findVenvPath(cwd: string, workspaceRootPath: string | null): string | null {
-  const normalizedCwd = path.normalize(cwd);
-  const boundary = workspaceRootPath
-    ? path.normalize(workspaceRootPath)
-    : path.parse(normalizedCwd).root;
-
-  let currentDir = normalizedCwd;
-  while (currentDir.length >= boundary.length) {
-    // Check if this directory itself is a venv (has pyvenv.cfg inside it)
-    if (hasPyvenvCfg(currentDir)) {
-      return currentDir;
-    }
-
-    // Also check immediate subdirectories for pyvenv.cfg for the common pattern
-    // where cwd is the workspace root and venv is a child dir like ./venv
-    try {
-      const entries = readdirSync(currentDir, { encoding: "utf-8" });
-      for (const name of entries) {
-        const candidate = path.join(currentDir, name);
-        try {
-          if (statSync(candidate).isDirectory() && hasPyvenvCfg(candidate)) {
-            return candidate;
-          }
-        } catch (_) {
-          // skip entries we can't stat
-        }
-      }
-    } catch (_) {
-      // Permission errors on currentDir — skip
-    }
-
-    if (currentDir === boundary) {
-      break;
-    }
-
-    const parent = path.dirname(currentDir);
-    if (parent === currentDir) {
-      break; // filesystem root
-    }
-    currentDir = parent;
-  }
-
-  return null;
-}
-
-/**
- * Returns true when `dirPath` contains a `pyvenv.cfg` file — the standard
- * marker for a Python virtual environment created by `python -m venv`.
- */
-function hasPyvenvCfg(dirPath: string): boolean {
-  return existsSync(path.join(dirPath, "pyvenv.cfg"));
-}
-
-/**
- * Set VIRTUAL_ENV and prepend the venv's bin/Scripts directory to PATH so the
- * terminal behaves as if the venv had been activated via the activate script.
- */
-function activateVenvInEnvironment(
-  env: NodeJS.ProcessEnv,
-  venvPath: string,
-): NodeJS.ProcessEnv {
-  const isWindows = process.platform === "win32";
-  const venvBin = isWindows
-    ? path.join(venvPath, "Scripts")
-    : path.join(venvPath, "bin");
-  const pathSeparator = isWindows ? ";" : ":";
-
-  const existingPath = env.PATH ?? "";
-  const prependedPath = existingPath.length > 0
-    ? `${venvBin}${pathSeparator}${existingPath}`
-    : venvBin;
-
-  return {
-    ...env,
-    PATH: prependedPath,
-    VIRTUAL_ENV: venvPath,
-  };
-}
 
 function createPowerShellInteractiveArgs() {
   return [
@@ -370,6 +282,7 @@ function createPowerShellInteractiveArgs() {
     "-Command",
     [
       "$ErrorActionPreference = 'SilentlyContinue'",
+      "if ($env:VIRTUAL_ENV) { $vName = Split-Path $env:VIRTUAL_ENV -Leaf; function prompt { \"($vName) \" + (Get-Location) + '> ' } }",
       "if (Get-Module -ListAvailable PSReadLine) { Import-Module PSReadLine -ErrorAction SilentlyContinue }",
       "if (Get-Command Set-PSReadLineOption -ErrorAction SilentlyContinue) {",
       "  try { Set-PSReadLineOption -PredictionSource History -PredictionView InlineView -BellStyle None } catch {}",
@@ -736,6 +649,7 @@ function buildCreateSessionResult(input: {
     isReused: input.isReused,
     sessionId: input.sessionId,
     shell: input.activeSession.shellLabel,
+    venvName: input.activeSession.venvName,
     workspaceRootPath: input.activeSession.workspaceRootPath,
   };
 }
@@ -826,6 +740,9 @@ async function createTerminalSessionInternal(
   }
 
   const terminalEnvironment = createTerminalEnvironment(cwd, workspaceRootPath);
+  const venvInfo = detectVenvInfo(workspaceRootPath ?? cwd, cwd);
+  const venvName = venvInfo?.name ?? null;
+
   const { ptyProcess, shellLabel } = spawnTerminalFromCandidates({
     cols,
     cwd,
@@ -850,6 +767,7 @@ async function createTerminalSessionInternal(
     ptyProcess,
     shellLabel,
     signal: null,
+    venvName,
     workspaceRootPath: workspaceRootPath ?? cwd,
     workspaceSessionKey,
   };

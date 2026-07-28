@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { ChatMode, AppTerminalExecutionMode } from '../../../../../src/types/chat'
 import { buildWorkspaceInstructionsBlock } from '../workspaceInstructions'
+import { buildPythonVenvPromptBlock } from '../../../../python/venv'
 
 const PROMPT_REPO_PATH = 'electron/chat/shared/prompts/mode'
 const SHARED_PROMPT_EXTENSIONS = new Set(['.md', '.xml'])
@@ -122,9 +123,11 @@ export function buildChatModeSystemPrompt(
     systemRules,
     '</system_contract>',
   ].join('\n')
+  const venvPromptBlock = buildPythonVenvPromptBlock(workspaceRootPath)
   const workspaceContextBlock = [
     '<workspace_context>',
     `Workspace root: ${workspaceRootPath}`,
+    venvPromptBlock,
     buildWorkspaceInstructionsBlock(workspaceRootPath),
     '</workspace_context>',
   ]

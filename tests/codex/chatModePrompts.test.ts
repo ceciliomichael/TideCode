@@ -111,3 +111,20 @@ test('workspace instructions cannot inject nested system-contract markup', async
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
+
+test('buildChatModeSystemPrompt includes python venv notification when venv exists', async () => {
+  const workspaceRootPath = await fs.mkdtemp(
+    path.join(tmpdir(), 'echosphere-venv-prompt-'),
+  )
+
+  try {
+    const venvDir = path.join(workspaceRootPath, '.venv')
+    await fs.mkdir(venvDir, { recursive: true })
+    await fs.writeFile(path.join(venvDir, 'pyvenv.cfg'), 'home = /usr/bin/python\n', 'utf8')
+
+    const prompt = buildChatModeSystemPrompt('agent', workspaceRootPath)
+    assert.match(prompt, /Python virtual environment activated: \.venv/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})

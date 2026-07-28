@@ -25,6 +25,7 @@ export interface TerminalTabState {
   label: string;
   sessionId: number | null;
   status: TerminalTabStatus;
+  venvName?: string | null;
   workspaceRootPath: string | null;
 }
 

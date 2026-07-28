@@ -633,6 +633,7 @@ export interface CreateTerminalSessionResult {
   isReused: boolean
   sessionId: number
   shell: string
+  venvName?: string | null
   workspaceRootPath: string | null
 }
 

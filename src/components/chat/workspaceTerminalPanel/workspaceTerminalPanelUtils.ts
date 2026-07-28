@@ -163,8 +163,13 @@ export function getTerminalTheme(
   };
 }
 
-export function createTerminalTabLabel(tabIndex: number) {
-  return tabIndex === 1 ? "Terminal" : `Terminal ${tabIndex}`;
+export function createTerminalTabLabel(tabIndex: number, venvName?: string | null) {
+  const baseLabel = tabIndex === 1 ? "Terminal" : `Terminal ${tabIndex}`;
+  const normalizedVenv = venvName?.trim();
+  if (normalizedVenv && normalizedVenv.length > 0) {
+    return `${baseLabel} (${normalizedVenv})`;
+  }
+  return baseLabel;
 }
 
 export function createTerminalTabKey(workspaceKey: string, tabIndex: number) {
