@@ -793,7 +793,7 @@ test('createAgentTools exposes Codex web_search as a provider tool', async () =>
   }
 })
 
-test('createAgentTools exposes webfetch for non-Codex providers', async () => {
+test('createAgentTools does not expose webfetch for non-Codex providers', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
 
   try {
@@ -807,56 +807,11 @@ test('createAgentTools exposes webfetch for non-Codex providers', async () => {
       },
     )
 
-    assert.ok('webfetch' in tools)
+    assert.ok(!('webfetch' in tools))
     assert.ok(!('web_search' in tools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
-})
-
-test('webfetch fetches and normalizes HTML content', async () => {
-  await withHttpServer(
-    (_request, response) => {
-      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-      response.end('<html><body><h1>Hello</h1><p>World</p><a href="https://example.com">Link</a></body></html>')
-    },
-    async (baseUrl) => {
-      const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
-
-      try {
-        const tools = await createAgentTools(
-          {
-            workspaceRootPath,
-          },
-          {
-            chatMode: 'agent',
-            providerId: 'custom:test-provider',
-          },
-        )
-
-        const webfetchTool = tools.webfetch as {
-          execute: (input: { format?: string; timeout?: number; url: string }) => Promise<{
-            body?: string
-            status: 'error' | 'success'
-            summary: string
-          }>
-        }
-
-        const result = await webfetchTool.execute({
-          format: 'markdown',
-          url: `${baseUrl}/docs`,
-        })
-
-        assert.equal(result.status, 'success')
-        assert.match(result.summary, /Fetched http:\/\/127\.0\.0\.1:/u)
-        assert.match(result.body ?? '', /Hello/u)
-        assert.match(result.body ?? '', /World/u)
-        assert.match(result.body ?? '', /Link \(https:\/\/example\.com\)/u)
-      } finally {
-        await fs.rm(workspaceRootPath, { force: true, recursive: true })
-      }
-    },
-  )
 })
 
 test('createAgentTools exposes the same exact replacement tools for every provider', async () => {
@@ -889,7 +844,7 @@ test('createAgentTools exposes the same exact replacement tools for every provid
     }
 
     assert.ok('web_search' in codexTools)
-    assert.ok('webfetch' in compatibleTools)
+    assert.ok(!('webfetch' in compatibleTools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

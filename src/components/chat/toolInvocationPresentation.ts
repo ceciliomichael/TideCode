@@ -198,11 +198,6 @@ function getSearchTarget(argumentsText: string): string | null {
   return searchText
 }
 
-function getWebFetchTarget(argumentsText: string): string | null {
-  const parsedArguments = parseCompleteToolArguments(argumentsText)
-  return readFirstText(parsedArguments?.url)
-}
-
 function readSessionId(value: unknown): string | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return String(Math.floor(value))
@@ -511,14 +506,6 @@ function getToolVerb(invocation: ToolInvocationTrace) {
         : 'Web exploration failed'
   }
 
-  if (invocation.toolName === 'webfetch') {
-    return invocation.state === 'running'
-      ? 'Fetching'
-      : invocation.state === 'completed'
-        ? 'Fetched'
-        : 'Fetch failed'
-  }
-
   return invocation.state === 'running'
     ? `Running ${invocation.toolName}`
     : invocation.state === 'completed'
@@ -702,13 +689,6 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
     const searchTarget = getSearchTarget(invocation.argumentsText)
     if (searchTarget) {
       return searchTarget
-    }
-  }
-
-  if (invocation.toolName === 'webfetch') {
-    const fetchTarget = getWebFetchTarget(invocation.argumentsText)
-    if (fetchTarget) {
-      return fetchTarget
     }
   }
 

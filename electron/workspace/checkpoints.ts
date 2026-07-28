@@ -31,6 +31,7 @@ interface WorkspaceCheckpointStore {
   createCheckpoint: (input: CreateWorkspaceCheckpointInput) => Promise<UserMessageRunCheckpoint>
   createRedoCheckpointFromSource: (sourceCheckpointId: string) => Promise<UserMessageRunCheckpoint>
   createRedoCheckpointFromSources: (sourceCheckpointIds: string[]) => Promise<UserMessageRunCheckpoint>
+  pruneUnchangedEntries: (checkpointId: string) => Promise<void>
   restoreCheckpoint: (checkpointId: string) => Promise<string>
   restoreCheckpointSequence: (checkpointIds: string[]) => Promise<string>
   savePreStateDirectories: (checkpointId: string, directoryPaths: string[]) => Promise<void>
@@ -247,8 +248,7 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
             await ensureDirectory(getCheckpointSnapshotsDirectoryPath(checkpointId))
             await fs.writeFile(
               path.join(getCheckpointSnapshotsDirectoryPath(checkpointId), snapshotFileName),
-              await fs.readFile(normalizedTargetPath, 'utf8'),
-              'utf8',
+              await fs.readFile(normalizedTargetPath),
             )
             manifest.entries.push({
               existed: true,
@@ -403,6 +403,41 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
       })
     },
 
+    async pruneUnchangedEntries(checkpointId: string) {
+      await withCheckpointLock(checkpointId, async () => {
+        const manifest = await readManifest(checkpointId)
+        const activeEntries: WorkspaceCheckpointEntry[] = []
+
+        for (const entry of manifest.entries) {
+          if (!entry.existed || entry.isDirectory || !entry.snapshotFileName) {
+            activeEntries.push(entry)
+            continue
+          }
+
+          const absolutePath = path.join(manifest.workspaceRootPath, entry.relativePath)
+          const snapshotPath = path.join(getCheckpointSnapshotsDirectoryPath(checkpointId), entry.snapshotFileName)
+
+          try {
+            const snapshotBuffer = await fs.readFile(snapshotPath)
+            const currentBuffer = await fs.readFile(absolutePath)
+
+            // Keep the entry ONLY if the file was modified by the tool!
+            if (!snapshotBuffer.equals(currentBuffer)) {
+              activeEntries.push(entry)
+            }
+          } catch {
+            // File was deleted by the tool, so keep entry to recreate it on restore
+            activeEntries.push(entry)
+          }
+        }
+
+        if (activeEntries.length !== manifest.entries.length) {
+          manifest.entries = activeEntries
+          await writeManifest(manifest)
+        }
+      })
+    },
+
     async restoreCheckpoint(checkpointId: string) {
       return withCheckpointLock(checkpointId, async () => {
 
@@ -414,9 +449,10 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
           const absolutePath = path.join(manifest.workspaceRootPath, entry.relativePath)
 
           if (!entry.existed) {
+            await fs.chmod(absolutePath, 0o666).catch(() => undefined)
             await fs.rm(absolutePath, { force: true, recursive: true }).catch((error: unknown) => {
               if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-                throw error
+                console.warn(`Failed to remove created entry during restore: ${absolutePath}`, error)
               }
             })
 
@@ -436,21 +472,25 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
           }
 
           const snapshotPath = path.join(getCheckpointSnapshotsDirectoryPath(checkpointId), entry.snapshotFileName)
-          const snapshotContent = await fs.readFile(snapshotPath, 'utf8')
-          const existingStats = await fs.stat(absolutePath).catch((error: unknown) => {
-            if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-              return null
-            }
-
-            throw error
-          })
+          const snapshotBuffer = await fs.readFile(snapshotPath)
+          const existingStats = await fs.stat(absolutePath).catch(() => null)
 
           if (existingStats?.isDirectory()) {
-            await fs.rm(absolutePath, { force: true, recursive: true })
+            await fs.rm(absolutePath, { force: true, recursive: true }).catch(() => undefined)
           }
 
           await ensureDirectory(path.dirname(absolutePath))
-          await fs.writeFile(absolutePath, snapshotContent, 'utf8')
+          try {
+            await fs.chmod(absolutePath, 0o666).catch(() => undefined)
+            await fs.writeFile(absolutePath, snapshotBuffer)
+          } catch (error) {
+            try {
+              await fs.unlink(absolutePath).catch(() => undefined)
+              await fs.writeFile(absolutePath, snapshotBuffer)
+            } catch (writeError) {
+              console.warn(`Failed to restore file ${absolutePath}:`, writeError)
+            }
+          }
         }
 
         const orderedDirectories = Array.from(directoryCleanupCandidates).sort((left, right) => {
@@ -670,7 +710,7 @@ export async function captureWorkspaceCheckpointTerminalPreState(
 
 export async function captureWorkspaceCheckpointTerminalPostState(
   checkpointId: string | null | undefined,
-  workspaceRootPath: string,
+  _workspaceRootPath: string,
   customStore?: WorkspaceCheckpointStore,
 ) {
   const normalizedCheckpointId = checkpointId?.trim()
@@ -678,13 +718,10 @@ export async function captureWorkspaceCheckpointTerminalPostState(
     return
   }
 
-  const { filePaths, directoryPaths } = await collectWorkspaceEntries(workspaceRootPath)
   const checkpointStore = customStore ?? (await getDefaultWorkspaceCheckpointStore())
 
-  // Register files that were created by the terminal so they get deleted on revert.
-  await checkpointStore.captureCreatedFilesState(normalizedCheckpointId, filePaths)
-
-  // Register directories that were created by the terminal so they get deleted on revert.
-  // This handles cases like `mkdir hello` where no files are created inside.
-  await checkpointStore.captureCreatedDirectoriesState(normalizedCheckpointId, directoryPaths)
+  // Prune any pre-state entries for files that were NOT modified by the terminal command.
+  // This ensures that user manual edits to unrelated files are NEVER undone when reverting the chat,
+  // and user-created files (like test.md) are NEVER registered for deletion on revert.
+  await checkpointStore.pruneUnchangedEntries(normalizedCheckpointId)
 }

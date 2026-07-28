@@ -396,7 +396,7 @@ test('kanban tool header labels use kanban-specific verbs', () => {
   assert.equal(getToolInvocationHeaderLabel(reorderCardCompleted, undefined, WORKSPACE_ROOT_PATH), 'Reordered card')
 })
 
-test('web search and webfetch header labels use readable product wording', () => {
+test('web search header labels use readable product wording', () => {
   const webSearchRunningInvocation: ToolInvocationTrace = {
     argumentsText: '{}',
     id: 'tool-web-search-1',
@@ -410,19 +410,8 @@ test('web search and webfetch header labels use readable product wording', () =>
     state: 'completed',
   }
 
-  const webFetchInvocation: ToolInvocationTrace = {
-    argumentsText: JSON.stringify({
-      url: 'https://example.com/docs',
-    }),
-    id: 'tool-webfetch-1',
-    startedAt: 0,
-    state: 'completed',
-    toolName: 'webfetch',
-  }
-
   assert.equal(getToolInvocationHeaderLabel(webSearchRunningInvocation, undefined, WORKSPACE_ROOT_PATH), 'Searching the web')
   assert.equal(getToolInvocationHeaderLabel(webSearchCompletedInvocation, undefined, WORKSPACE_ROOT_PATH), 'Searched the web')
-  assert.equal(getToolInvocationHeaderLabel(webFetchInvocation, undefined, WORKSPACE_ROOT_PATH), 'Fetched https://example.com/docs')
 })
 
 test('terminal tool header labels prefer the queued command and fall back to the session id', () => {

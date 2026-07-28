@@ -177,13 +177,12 @@ test('buildToolInvocationGroupSummary includes uncategorized tools by name', () 
   assert.equal(summary, 'Explored 1 ready implement')
 })
 
-test('buildToolInvocationGroupSummary reports web search and web fetch with readable labels', () => {
+test('buildToolInvocationGroupSummary reports web search with readable labels', () => {
   assert.equal(buildToolInvocationGroupSummary([createInvocation('web_search')]), 'Ran 1 web search')
   assert.equal(
     buildToolInvocationGroupSummary([createInvocation('web_search'), createInvocation('web_search')]),
     'Ran 2 web searches',
   )
-  assert.equal(buildToolInvocationGroupSummary([createInvocation('webfetch')]), 'Fetched 1 page')
 })
 
 test('buildToolInvocationGroupSummary splits mixed file mutations and exploration categories', () => {

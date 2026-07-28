@@ -62,7 +62,9 @@ export async function createAgentTools(
   }
 
   const providerWebTool = createProviderWebTool(options.providerId)
-  tools[providerWebTool.name] = providerWebTool.tool
+  if (providerWebTool) {
+    tools[providerWebTool.name] = providerWebTool.tool
+  }
 
   if (isPlanMode) {
     return tools

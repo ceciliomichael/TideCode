@@ -72,7 +72,6 @@ test('runtime tool exposure enforces the Agent and Plan mode contracts', async (
       'grep',
       'read',
       'kanban_board',
-      'webfetch',
     ]) {
       assert.ok(toolName in agentTools, `Agent mode must expose ${toolName}`)
       assert.ok(toolName in planTools, `Plan mode must expose ${toolName}`)

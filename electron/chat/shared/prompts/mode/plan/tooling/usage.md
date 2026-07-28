@@ -16,7 +16,7 @@ Follow each tool's schema exactly. Never make up inputs.
 
 ## Other tools
 
-- Use `web_search` or `webfetch` only when outside or current information is needed.
+- Use `web_search` only when outside or current information is needed.
 - Use `skill` with `action: "load"` directly when given `load_skill:<name>`. Otherwise use `"search"` or `"list"` to discover skills, and `"read_resource"` for referenced files.
 
 ## Kanban

@@ -207,7 +207,7 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
               invocation={invocation}
               isStreaming={displayedState === 'running'}
             />
-          ) : invocation.toolName === 'web_search' || invocation.toolName === 'webfetch' ? (
+          ) : invocation.toolName === 'web_search' ? (
             <WebToolResult
               invocation={invocation}
               isStreaming={displayedState === 'running'}
@@ -217,6 +217,7 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
               content={normalizedResultBody}
               className="w-full opacity-85"
               isStreaming={invocation.state === 'running'}
+              preserveLineBreaks
             />
           )}
         </div>

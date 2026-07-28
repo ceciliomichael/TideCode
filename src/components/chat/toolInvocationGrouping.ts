@@ -10,7 +10,6 @@ interface ToolInvocationSummaryCounts {
   fileCount: number
   searchCount: number
   webSearchCount: number
-  webFetchCount: number
   createdCount: number
   editedCount: number
   deletedCount: number
@@ -46,10 +45,6 @@ function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts
 
   if (toolName === 'web_search') {
     return 'webSearchCount'
-  }
-
-  if (toolName === 'webfetch') {
-    return 'webFetchCount'
   }
 
   if (
@@ -115,11 +110,8 @@ function getMixedBucketPriority(bucketKey: string) {
   if (bucketKey === 'web-search') {
     return 10
   }
-  if (bucketKey === 'web-fetch') {
-    return 11
-  }
 
-  return 12
+  return 11
 }
 
 function formatMixedSummaryParts(
@@ -174,7 +166,6 @@ export function buildToolInvocationGroupSummary(
     fileCount: 0,
     searchCount: 0,
     webSearchCount: 0,
-    webFetchCount: 0,
     createdCount: 0,
     editedCount: 0,
     deletedCount: 0,
@@ -228,8 +219,6 @@ export function buildToolInvocationGroupSummary(
         recordMixedBucket('search')
       } else if (classifiedBucket === 'webSearchCount') {
         recordMixedBucket('web-search')
-      } else if (classifiedBucket === 'webFetchCount') {
-        recordMixedBucket('web-fetch')
       } else if (classifiedBucket === 'commandCount') {
         recordMixedBucket('command')
       } else if (classifiedBucket === 'exploredFileCount') {
@@ -271,9 +260,6 @@ export function buildToolInvocationGroupSummary(
       if (bucketKey === 'web-search') {
         return `ran ${pluralize(count, 'web search')}`
       }
-      if (bucketKey === 'web-fetch') {
-        return `fetched ${pluralize(count, 'page')}`
-      }
       if (bucketKey === 'command') {
         return `ran ${pluralize(count, 'command')}`
       }
@@ -292,25 +278,6 @@ export function buildToolInvocationGroupSummary(
     return summaryParts.length > 0 ? summaryParts.join(', ') : 'Explored actions'
   }
 
-  const hasOnlyWebFetch =
-    counts.webFetchCount > 0 &&
-    counts.listCount === 0 &&
-    counts.commandCount === 0 &&
-    counts.fileCount === 0 &&
-    counts.kanbanCount === 0 &&
-    counts.searchCount === 0 &&
-    counts.webSearchCount === 0 &&
-    counts.createdCount === 0 &&
-    counts.editedCount === 0 &&
-    counts.deletedCount === 0 &&
-    counts.verifiedCount === 0 &&
-    counts.exploredFileCount === 0 &&
-    otherToolCounts.size === 0
-
-  if (hasOnlyWebFetch) {
-    return `Fetched ${pluralize(counts.webFetchCount, 'page')}`
-  }
-
   const hasOnlyWebSearch =
     counts.webSearchCount > 0 &&
     counts.listCount === 0 &&
@@ -318,7 +285,6 @@ export function buildToolInvocationGroupSummary(
     counts.fileCount === 0 &&
     counts.kanbanCount === 0 &&
     counts.searchCount === 0 &&
-    counts.webFetchCount === 0 &&
     counts.createdCount === 0 &&
     counts.editedCount === 0 &&
     counts.deletedCount === 0 &&
@@ -347,9 +313,6 @@ export function buildToolInvocationGroupSummary(
   }
   if (counts.kanbanCount > 0) {
     summaryParts.push(buildKanbanToolInvocationGroupSummary(counts.kanbanCount))
-  }
-  if (counts.webFetchCount > 0) {
-    summaryParts.push(`fetched ${pluralize(counts.webFetchCount, 'page')}`)
   }
 
   for (const [toolLabel, count] of otherToolCounts) {

@@ -14,8 +14,7 @@ import {
   captureWorkspaceCheckpointTerminalPreState,
 } from '../../../workspace/checkpoints'
 import { resolveReadableTargetPath } from './workspaceTools'
-const DEFAULT_TERMINAL_OUTPUT_BODY_LENGTH = 40_000
-const GIT_DIFF_TERMINAL_OUTPUT_BODY_LENGTH = 20_000
+
 const ANSI_ESCAPE = '\u001B'
 const TERMINAL_BELL = '\u0007'
 const ANSI_CSI_PATTERN = new RegExp(`${ANSI_ESCAPE}\\[[0-?]*[ -/]*[@-~]`, 'g')
@@ -175,31 +174,12 @@ function prepareTerminalCommand(command: string | null) {
   return isGitDiffCommand(command) ? preventGitDiffPager(command) : command
 }
 
-function getTerminalOutputBodyLimit(command: string | null) {
-  return isGitDiffCommand(command) ? GIT_DIFF_TERMINAL_OUTPUT_BODY_LENGTH : DEFAULT_TERMINAL_OUTPUT_BODY_LENGTH
-}
 
-function getTerminalOutputTruncationMessage(command: string | null, maxLength: number) {
-  if (isGitDiffCommand(command)) {
-    return `Output truncated at ${maxLength} characters. For large diffs, prefer \`git diff --stat\`, \`git diff --name-only\`, or a path-scoped diff.`
-  }
 
-  return `Output truncated at ${maxLength} characters.`
-}
-
-function truncateTerminalOutput(value: string, command: string | null) {
-  const maxLength = getTerminalOutputBodyLimit(command)
-
-  if (value.length <= maxLength) {
-    return {
-      body: value,
-      truncated: false,
-    }
-  }
-
+function truncateTerminalOutput(value: string, _command: string | null) {
   return {
-    body: `${value.slice(0, maxLength).trimEnd()}\n\n(${getTerminalOutputTruncationMessage(command, maxLength)})`,
-    truncated: true,
+    body: value,
+    truncated: false,
   }
 }
 
@@ -210,6 +190,10 @@ function sanitizeTerminalOutput(value: string) {
     .replace(ANSI_OSC_PATTERN, '')
     .replace(ANSI_CSI_PATTERN, '')
     .replace(ANSI_SINGLE_ESCAPE_PATTERN, '')
+    .replace(/;\s*echo\s*"__EDONE_[^"]*"/gi, '')
+    .replace(/__EDONE_[a-z0-9_]+(?::\d*)?/gi, '')
+    .replace(/;\s*echo\s*":?\$\([^)]*\)"/gi, '')
+    .replace(/;\s*echo\s*":?\$\?"/gi, '')
     .split('')
     .filter((character) => {
       const code = character.charCodeAt(0)
@@ -241,10 +225,12 @@ interface ThreadAiSession {
   cwd: string
   command: string
   shell: string
+  lastReadOffset: number
 }
 
 interface ThreadSessionStore {
   nextLocalSessionId: number
+  latestLocalSessionId: number | null
   sessions: Map<number, ThreadAiSession>
 }
 
@@ -255,11 +241,74 @@ function getOrCreateThreadStore(namespace: string): ThreadSessionStore {
   if (!store) {
     store = {
       nextLocalSessionId: 1,
+      latestLocalSessionId: null,
       sessions: new Map(),
     }
     threadStores.set(namespace, store)
   }
   return store
+}
+
+async function pruneAndResetThreadStore(
+  store: ThreadSessionStore,
+  ownerWebContents: WebContents,
+  resolvedDependencies: TerminalToolDependencies,
+  workspaceRootPath: string,
+) {
+  if (store.sessions.size === 0) {
+    store.nextLocalSessionId = 1
+    store.latestLocalSessionId = null
+    return
+  }
+
+  const entries = Array.from(store.sessions.entries())
+  for (const [localId, session] of entries) {
+    try {
+      const snapshot = await resolvedDependencies.getSessionOutput(ownerWebContents, {
+        pollingMs: 0,
+        sessionId: session.globalSessionId,
+        workspaceRootPath,
+      })
+
+      if (snapshot.hasExited || (typeof snapshot.outputBuffer === 'string' && snapshot.outputBuffer.includes('__EDONE_'))) {
+        try {
+          resolvedDependencies.terminateSession(ownerWebContents, session.globalSessionId, workspaceRootPath)
+        } catch {
+          // ignore
+        }
+        store.sessions.delete(localId)
+      }
+    } catch {
+      store.sessions.delete(localId)
+    }
+  }
+
+  if (store.sessions.size === 0) {
+    store.nextLocalSessionId = 1
+    store.latestLocalSessionId = null
+  }
+}
+
+export async function cleanUpFinishedSessionsAtTurnEnd(
+  webContents: WebContents,
+  workspaceRootPath: string,
+  conversationId?: string | null,
+) {
+  const terminalService = await loadDefaultTerminalToolDependencies()
+
+  const namespacesToClean: string[] = []
+  if (conversationId?.trim()) {
+    namespacesToClean.push(`conversation:${conversationId.trim()}`)
+  } else {
+    namespacesToClean.push(...threadStores.keys())
+  }
+
+  for (const ns of namespacesToClean) {
+    const store = threadStores.get(ns)
+    if (!store) continue
+
+    await pruneAndResetThreadStore(store, webContents, terminalService, workspaceRootPath)
+  }
 }
 
 function resolveTerminalWorkspaceCwd(context: AgentToolContext, cwd: string | undefined) {
@@ -436,14 +485,20 @@ export function createTerminalToolSet(
 
           // ─── READ ──────────────────────────────────────────────────────────
           if (inputValue.mode === 'read') {
-            if (typeof inputValue.session_id !== 'number') {
-              return createErrorResult('session_id required for read mode.')
+            let targetSessionId = inputValue.session_id
+            if (typeof targetSessionId !== 'number' || !store.sessions.has(targetSessionId)) {
+              if (store.latestLocalSessionId !== null && store.sessions.has(store.latestLocalSessionId)) {
+                targetSessionId = store.latestLocalSessionId
+              } else if (store.sessions.size > 0) {
+                targetSessionId = Array.from(store.sessions.keys()).pop()
+              }
             }
 
-            const session = store.sessions.get(inputValue.session_id)
-            if (!session) {
-              return createErrorResult(`Session ${inputValue.session_id} not found in this chat context.`)
+            if (typeof targetSessionId !== 'number' || !store.sessions.has(targetSessionId)) {
+              return createErrorResult('No active terminal session found to read in this chat context.')
             }
+
+            const session = store.sessions.get(targetSessionId)!
 
             throwIfAborted(abortSignal)
             const snapshot = await raceWithAbort(
@@ -456,22 +511,27 @@ export function createTerminalToolSet(
             )
 
             const sanitized = sanitizeTerminalOutput(snapshot.outputBuffer)
-            const truncated = truncateTerminalOutput(sanitized, session.command)
+            
+            // Incremental delta reading: Return only the NEW output produced since the last read
+            const newOutput = sanitized.slice(session.lastReadOffset)
+            session.lastReadOffset = sanitized.length
+
+            const truncated = truncateTerminalOutput(newOutput, session.command)
 
             if (context.checkpointId) {
               await captureWorkspaceCheckpointTerminalPostState(context.checkpointId, context.workspaceRootPath)
             }
 
             return createSuccessResult({
-              body: truncated.body || 'No output yet.',
+              body: truncated.body || 'No new output.',
               semantics: {
                 has_exited: snapshot.hasExited,
                 exit_code: snapshot.exitCode,
-                session_id: inputValue.session_id,
+                session_id: targetSessionId,
                 truncated_output: truncated.truncated,
               },
-              subject: { kind: 'session', path: String(inputValue.session_id) },
-              summary: `Read terminal session ${inputValue.session_id}`,
+              subject: { kind: 'session', path: String(targetSessionId) },
+              summary: `Read terminal session ${targetSessionId}`,
               truncated: truncated.truncated,
             })
           }
@@ -562,8 +622,11 @@ export function createTerminalToolSet(
               cwd,
               command,
               shell: shellLabel,
+              lastReadOffset: 0,
             })
           }
+
+          store.latestLocalSessionId = localSessionId
 
           const completionMarker = createCompletionMarker(localSessionId)
           throwIfAborted(abortSignal)
