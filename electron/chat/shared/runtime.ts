@@ -25,7 +25,7 @@ import {
 } from '../history/eventStore'
 import { projectCanonicalReplay } from '../history/replayProjector'
 import { buildChatPrompt, buildChatSystemPrompt } from './messages'
-import { createAgentTools, sortToolSet } from './tools'
+import { createAgentTools } from './tools'
 import { captureWorkspaceCheckpointTerminalPostState } from '../../workspace/checkpoints'
 import type { AgentToolExecutionResult } from './toolTypes'
 import {
