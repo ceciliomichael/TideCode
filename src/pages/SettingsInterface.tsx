@@ -119,6 +119,7 @@ export function SettingsInterface({
           skillsSettings={{
             errorMessage: skillsState.errorMessage,
             isLoading: skillsState.isLoading,
+            onCreateSkill: skillsState.createSkill,
             onUpdateSettings: handleUpdateSettings,
             settings: {
               disabledSkillsByPath: settings.disabledSkillsByPath,

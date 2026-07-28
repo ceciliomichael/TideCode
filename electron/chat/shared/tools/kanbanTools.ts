@@ -48,14 +48,14 @@ function ok(summary: string, body: unknown): AgentToolExecutionResult {
 const FLAT_KANBAN_SCHEMA = {
   type: 'object',
   description:
-    'Kanban board. action: read_board | read_card | create_card | create_task_with_subtasks | update_card | move_card | reorder_card | delete_card',
+    'Kanban board. action: read_board | read_card | create_card | create_task_with_subtasks | update_card | move_card | reorder_card | delete_card. NOTE: Moving to done requires all acceptance criteria to have completed: true. Never call update_card and move_card in parallel on the same card. To update criteria and move to done in one step, call update_card with acceptanceCriteria (setting completed: true) and targetColumnId: "done".',
   properties: {
     action: { type: 'string' },
 
     // Card identifiers & target locations
     cardId: { type: 'string' },
-    columnId: { enum: COL_ENUM, type: 'string' },
-    targetColumnId: { enum: COL_ENUM, type: 'string' },
+    columnId: { enum: COL_ENUM, type: 'string', description: 'Column ID for read_board, or target column for move_card (backlog, in-progress, blocked, done).' },
+    targetColumnId: { enum: COL_ENUM, type: 'string', description: 'Destination column ID for move_card or reorder_card (backlog, in-progress, blocked, done).' },
     targetIndex: { type: 'integer' },
     deleteSubtasks: { type: 'boolean' },
 
@@ -257,8 +257,9 @@ export function createKanbanToolSet(
             }
 
             case 'update_card': {
-              const card = await mutate(() =>
-                updateKanbanBoardCardContent({
+              const destination = input.targetColumnId || input.columnId
+              const card = await mutate(async () => {
+                let updated = await updateKanbanBoardCardContent({
                   acceptanceCriteria: input.acceptanceCriteria,
                   assignee: input.assignee,
                   cardId: input.cardId!,
@@ -269,16 +270,28 @@ export function createKanbanToolSet(
                   priority: input.priority,
                   title: input.title,
                   workspacePath: context.workspaceRootPath,
-                }),
-              )
+                })
+                if (destination && updated.columnId !== destination) {
+                  updated = await moveKanbanBoardCard({
+                    cardId: input.cardId!,
+                    targetColumnId: destination,
+                    workspacePath: context.workspaceRootPath,
+                  })
+                }
+                return updated
+              })
               return ok(`Updated task: ${card.title}`, { card })
             }
 
             case 'move_card': {
+              const destination = input.targetColumnId || input.columnId
+              if (!destination) {
+                return err(null, 'move_card requires targetColumnId or columnId.')
+              }
               const card = await mutate(() =>
                 moveKanbanBoardCard({
                   cardId: input.cardId!,
-                  targetColumnId: input.targetColumnId!,
+                  targetColumnId: destination,
                   workspacePath: context.workspaceRootPath,
                 }),
               )
@@ -286,10 +299,14 @@ export function createKanbanToolSet(
             }
 
             case 'reorder_card': {
+              const destination = input.targetColumnId || input.columnId
+              if (!destination) {
+                return err(null, 'reorder_card requires targetColumnId or columnId.')
+              }
               const card = await mutate(() =>
                 reorderKanbanBoardCard({
                   cardId: input.cardId!,
-                  targetColumnId: input.targetColumnId!,
+                  targetColumnId: destination,
                   targetIndex: input.targetIndex!,
                   workspacePath: context.workspaceRootPath,
                 }),

@@ -31,6 +31,7 @@ const TASK_PLANNER_SYSTEM_PROMPT = [
   '{"description":"string","acceptanceCriteria":["string"],"subtasks":["string"],"labels":["string"]}.',
   'Create 3-8 concrete subtasks in execution order.',
   'Create 2-6 observable acceptance criteria.',
+  'Create 1-4 short, relevant lowercase labels (e.g., ["ui", "api", "auth", "state"]).',
   'Do not add markdown, code fences, commentary, IDs, estimates, or assignees.',
 ].join(' ')
 
@@ -54,7 +55,53 @@ function normalizeStringArray(
   ].slice(0, maximumCount)
 }
 
-export function parseKanbanTaskPlanResponse(value: string): KanbanTaskPlan {
+function deriveLabelsFromTitle(title: string): string[] {
+  const commonStopWords = new Set([
+    'a',
+    'an',
+    'and',
+    'are',
+    'as',
+    'at',
+    'be',
+    'by',
+    'for',
+    'from',
+    'has',
+    'he',
+    'in',
+    'is',
+    'it',
+    'its',
+    'of',
+    'on',
+    'that',
+    'the',
+    'to',
+    'was',
+    'were',
+    'will',
+    'with',
+    'this',
+    'make',
+    'when',
+  ])
+  const words = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length >= 3 && !commonStopWords.has(word))
+
+  if (words.length === 0) {
+    return ['task']
+  }
+  return [...new Set(words)].slice(0, 3)
+}
+
+export function parseKanbanTaskPlanResponse(
+  value: string,
+  title = '',
+): KanbanTaskPlan {
   const trimmedValue = value.trim()
   const jsonStart = trimmedValue.indexOf('{')
   const jsonEnd = trimmedValue.lastIndexOf('}')
@@ -87,7 +134,9 @@ export function parseKanbanTaskPlanResponse(value: string): KanbanTaskPlan {
     280,
   )
   const subtasks = normalizeStringArray(parsed.subtasks, 12, 180)
-  const labels = normalizeStringArray(parsed.labels, 8, 32)
+  const rawLabels = normalizeStringArray(parsed.labels, 8, 32)
+  const labels =
+    rawLabels.length > 0 ? rawLabels : deriveLabelsFromTitle(title)
 
   if (
     !description &&
@@ -122,7 +171,7 @@ export function buildFallbackKanbanTaskPlan(
     description:
       description ||
       `Deliver "${title}" as a complete, reliable change with clear behavior, validation, and a documented outcome.`,
-    labels: [],
+    labels: deriveLabelsFromTitle(title),
     subtasks: [
       'Confirm the expected behavior, constraints, and edge cases',
       'Implement the core change',
@@ -233,7 +282,7 @@ export async function generateKanbanTaskPlan(
   let firstResponse = ''
   try {
     firstResponse = await requestPlannerText(selection, messages)
-    return parseKanbanTaskPlanResponse(firstResponse)
+    return parseKanbanTaskPlanResponse(firstResponse, title)
   } catch (error) {
     if (!isRecoverablePlannerOutputError(error)) {
       throw error
@@ -259,6 +308,7 @@ export async function generateKanbanTaskPlan(
   try {
     return parseKanbanTaskPlanResponse(
       await requestPlannerText(selection, correctionMessages),
+      title,
     )
   } catch (error) {
     if (!isRecoverablePlannerOutputError(error)) {

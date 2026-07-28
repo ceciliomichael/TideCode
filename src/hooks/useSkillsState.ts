@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { SkillsState } from '../types/skills'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { CreateSkillInput, SkillsState } from '../types/skills'
 
 interface UseSkillsStateResult {
+  createSkill: (input: CreateSkillInput) => Promise<boolean>
   errorMessage: string | null
   isLoading: boolean
+  refreshSkills: () => Promise<void>
   state: SkillsState | null
 }
 
@@ -26,7 +28,7 @@ export function useSkillsState(workspacePath?: string | null): UseSkillsStateRes
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  useEffect(() => {
+  const fetchSkills = useCallback(async () => {
     const api = getSkillsApi()
     if (!api) {
       setState(null)
@@ -35,42 +37,54 @@ export function useSkillsState(workspacePath?: string | null): UseSkillsStateRes
       return
     }
 
-    let isActive = true
-    setState(null)
     setIsLoading(true)
     setErrorMessage(null)
 
-    void api
-      .listSkills(normalizedWorkspacePath)
-      .then((nextState) => {
-        if (!isActive) {
-          return
-        }
-
-        setState(nextState)
-        setErrorMessage(nextState.errorMessage)
-      })
-      .catch((error) => {
-        if (!isActive) {
-          return
-        }
-
-        setErrorMessage(getErrorMessage(error, 'Unable to load skills.'))
-      })
-      .finally(() => {
-        if (isActive) {
-          setIsLoading(false)
-        }
-      })
-
-    return () => {
-      isActive = false
+    try {
+      const nextState = await api.listSkills(normalizedWorkspacePath)
+      setState(nextState)
+      setErrorMessage(nextState.errorMessage)
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, 'Unable to load skills.'))
+    } finally {
+      setIsLoading(false)
     }
   }, [normalizedWorkspacePath])
 
+  useEffect(() => {
+    void fetchSkills()
+  }, [fetchSkills])
+
+  const createSkill = useCallback(
+    async (input: CreateSkillInput) => {
+      const api = getSkillsApi()
+      if (!api) {
+        setErrorMessage('Skills API is unavailable.')
+        return false
+      }
+
+      try {
+        const result = await api.createSkill(input, normalizedWorkspacePath)
+        if (result.error) {
+          setErrorMessage(result.error)
+          return false
+        }
+
+        await fetchSkills()
+        return true
+      } catch (error) {
+        setErrorMessage(getErrorMessage(error, 'Failed to create skill.'))
+        return false
+      }
+    },
+    [fetchSkills, normalizedWorkspacePath],
+  )
+
   return {
+    createSkill,
     errorMessage,
     isLoading,
+    refreshSkills: fetchSkills,
     state,
   }
 }

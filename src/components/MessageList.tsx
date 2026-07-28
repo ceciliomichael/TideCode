@@ -188,7 +188,7 @@ const MessageRow = memo(
               />
             </div>
           ) : (
-            <div className="-mx-4 flex-1 min-w-0 w-[calc(100%+2rem)] max-w-full">
+            <div className="-mx-4 flex-1 min-w-0 w-[calc(100%+2rem)]">
               <UserMessage
                 content={message.content}
                 onEdit={

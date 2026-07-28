@@ -22,7 +22,7 @@ export const SETTINGS_ITEMS = [
   {
     id: 'settings-item5',
     label: 'Skills',
-    description: 'Control which discovered skills the assistant can load dynamically.',
+    description: 'Manage skills and instruction packs available to the assistant.',
   },
   {
     id: 'settings-item6',

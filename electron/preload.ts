@@ -131,6 +131,7 @@ const mcpApi: EchosphereMcpApi = {
 }
 
 const skillsApi: EchosphereSkillsApi = {
+  createSkill: (input, workspacePath) => ipcRenderer.invoke('skills:createSkill', input, workspacePath),
   listSkills: (workspacePath?: string | null) => ipcRenderer.invoke('skills:list', workspacePath),
 }
 

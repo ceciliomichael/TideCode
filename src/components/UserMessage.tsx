@@ -24,7 +24,9 @@ interface UserMessageProps {
 
 export function UserMessage({ content, onEdit, onRevert }: UserMessageProps) {
   const contentRef = useRef<HTMLDivElement>(null);
+  const textEndRef = useRef<HTMLSpanElement>(null);
   const [isMultiline, setIsMultiline] = useState(false);
+  const [isOverlapping, setIsOverlapping] = useState(false);
   const trimmedContent = content.trim();
   const compressedHistoryMessage = useMemo(
     () => parseCompressedHistoryMessage(content),
@@ -32,28 +34,24 @@ export function UserMessage({ content, onEdit, onRevert }: UserMessageProps) {
   );
   const isCompressedHistoryMessage = compressedHistoryMessage !== null;
   const contentClampClassName = "line-clamp-10 overflow-hidden";
-  const surfaceAlignmentClassName = isMultiline
-    ? "items-stretch"
-    : "items-center";
-  const revertButtonContainerClassName = isMultiline
-    ? "self-stretch flex items-end"
-    : "self-center flex items-center";
 
   const surfaceClassName = [
     chatMessageSurfaceClassName,
-    `group inline-flex w-fit min-w-0 max-w-full ${surfaceAlignmentClassName} gap-1.5 ${chatConversationSurfacePaddingClassName} text-[15px] leading-6 text-foreground align-top`,
+    `relative group inline-flex w-fit min-w-0 max-w-full overflow-hidden ${chatConversationSurfacePaddingClassName} text-[15px] leading-6 text-foreground align-top`,
     onEdit ? "cursor-pointer" : "",
   ].join(" ");
 
   useLayoutEffect(() => {
     if (isCompressedHistoryMessage) {
       setIsMultiline(false);
+      setIsOverlapping(false);
       return;
     }
 
     const contentElement = contentRef.current;
     if (!contentElement || trimmedContent.length === 0) {
       setIsMultiline(false);
+      setIsOverlapping(false);
       return;
     }
 
@@ -63,12 +61,21 @@ export function UserMessage({ content, onEdit, onRevert }: UserMessageProps) {
       );
       if (!Number.isFinite(lineHeight) || lineHeight <= 0) {
         setIsMultiline(false);
+        setIsOverlapping(false);
         return;
       }
 
       setIsMultiline(
         contentElement.getBoundingClientRect().height > lineHeight * 1.5,
       );
+
+      const endElement = textEndRef.current;
+      if (endElement) {
+        const endRect = endElement.getBoundingClientRect();
+        const containerRect = contentElement.getBoundingClientRect();
+        // ~48px threshold ensures we detect overlap before text hits the revert button
+        setIsOverlapping(endRect.right > containerRect.right - 48);
+      }
     };
 
     updateMultilineState();
@@ -111,6 +118,10 @@ export function UserMessage({ content, onEdit, onRevert }: UserMessageProps) {
     onRevert?.();
   };
 
+  const buttonPositionClassName = isMultiline
+    ? "right-0 bottom-0 h-9"
+    : "right-0 top-0 bottom-0";
+
   return (
     <div
       className={surfaceClassName}
@@ -127,21 +138,32 @@ export function UserMessage({ content, onEdit, onRevert }: UserMessageProps) {
         {trimmedContent.length > 0 ? (
           <ChatMentionText text={content} variant="rendered" />
         ) : null}
+        <span ref={textEndRef} aria-hidden="true" />
       </div>
 
       {onRevert ? (
-        <div className={revertButtonContainerClassName}>
-          <Tooltip content="Revert and edit this message" side="right">
-            <button
-              type="button"
-              onClick={handleUndoClick}
-              className="invisible inline-flex h-4 w-4 shrink-0 items-center justify-center leading-none text-subtle-foreground opacity-0 transition-[color,opacity] duration-150 hover:text-foreground group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
-              aria-label="Revert and edit this message"
-            >
-              <Undo2 size={13} />
-            </button>
-          </Tooltip>
-        </div>
+        <Tooltip content="Revert and edit this message" side="right">
+          <div
+            className={`absolute ${buttonPositionClassName} invisible z-10 flex items-center justify-end opacity-0 transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100`}
+          >
+            <div className="h-full w-6 bg-gradient-to-r from-transparent to-surface" />
+            <div className="flex h-full items-center bg-surface pr-3">
+              {isOverlapping ? (
+                <span className="mr-1.5 select-none text-[15px] font-normal leading-6 tracking-widest text-foreground">
+                  ...
+                </span>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleUndoClick}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-subtle-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
+                aria-label="Revert and edit this message"
+              >
+                <Undo2 size={13} />
+              </button>
+            </div>
+          </div>
+        </Tooltip>
       ) : null}
     </div>
   );

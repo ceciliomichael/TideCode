@@ -9,6 +9,9 @@ import { TerminalToolResult } from './TerminalToolResult'
 import { ToolDecisionRequestCard, type ToolDecisionSubmission } from './ToolDecisionRequestCard'
 import { getToolInvocationHeaderLabel } from './toolInvocationPresentation'
 import { isFileEditTool, isFileWriteTool } from './toolInvocationKinds'
+import { isKanbanTool } from './kanbanToolInvocationKinds'
+import { KanbanToolResult } from './KanbanToolResult'
+import { WebToolResult } from './WebToolResult'
 import { parseStructuredToolResultContent } from '../../lib/toolResultContent'
 
 interface ToolInvocationBlockProps {
@@ -198,6 +201,16 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
               content={rawResultBody}
               isStreaming={invocation.state === 'running'}
               toolName={terminalToolName}
+            />
+          ) : isKanbanTool(invocation.toolName) ? (
+            <KanbanToolResult
+              invocation={invocation}
+              isStreaming={displayedState === 'running'}
+            />
+          ) : invocation.toolName === 'web_search' || invocation.toolName === 'webfetch' ? (
+            <WebToolResult
+              invocation={invocation}
+              isStreaming={displayedState === 'running'}
             />
           ) : (
             <MarkdownRenderer

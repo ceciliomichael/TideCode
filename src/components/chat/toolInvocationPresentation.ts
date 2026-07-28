@@ -497,10 +497,10 @@ function getToolVerb(invocation: ToolInvocationTrace) {
     }
 
     return invocation.state === 'running'
-      ? 'Loading skill'
+      ? 'Activating Skill'
       : invocation.state === 'completed'
-        ? 'Loaded skill'
-        : 'Skill load failed'
+        ? 'Activated Skill'
+        : 'Skill activation failed'
   }
 
   if (invocation.toolName === 'web_search') {

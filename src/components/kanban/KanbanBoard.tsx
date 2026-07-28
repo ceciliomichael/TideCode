@@ -245,26 +245,28 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
             />
           </div>
 
-          {doneCardCount > 0 ? (
+          <div className="ml-auto flex items-center gap-2.5 shrink-0">
+            {doneCardCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => void clearCompletedCards()}
+                disabled={isBusy}
+                className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3.5 text-xs font-semibold leading-none text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-50"
+              >
+                <CheckCircle2 size={15} className="shrink-0" />
+                <span className="leading-none">Clear done</span>
+              </button>
+            ) : null}
+
             <button
               type="button"
-              onClick={() => void clearCompletedCards()}
-              disabled={isBusy}
-              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-50"
+              onClick={() => openComposer()}
+              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-foreground transition-colors hover:bg-surface-muted active:scale-[0.98]"
             >
-              <CheckCircle2 size={15} />
-              Clear done
+              <Plus size={16} />
+              New task
             </button>
-          ) : null}
-
-          <button
-            type="button"
-            onClick={() => openComposer()}
-            className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-foreground transition-colors hover:bg-surface-muted active:scale-[0.98]"
-          >
-            <Plus size={16} />
-            New task
-          </button>
+          </div>
         </div>
       </header>
 

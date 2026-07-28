@@ -210,7 +210,7 @@
   }
 
   .chat-input-shell {
-    width: min(752px, calc(100% - 2rem));
+    width: min(720px, calc(100% - 2rem));
     min-width: 0;
   }
 

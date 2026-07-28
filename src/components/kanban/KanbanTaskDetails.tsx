@@ -11,10 +11,8 @@ import {
 } from 'lucide-react'
 import { DropdownField, type DropdownOption } from '../ui/DropdownField'
 import { KANBAN_COLUMNS } from './kanbanDefaults'
-import {
-  KANBAN_ISSUE_TYPE_OPTIONS,
-  KANBAN_PRIORITY_OPTIONS,
-} from './kanbanPresentation'
+import { KANBAN_ISSUE_TYPE_OPTIONS, KANBAN_PRIORITY_OPTIONS } from './kanbanPresentation'
+import { KanbanDeleteTaskDialog } from './KanbanDeleteTaskDialog'
 import { useKanbanTaskAutosave } from './useKanbanTaskAutosave'
 import type {
   KanbanAcceptanceCriterion,
@@ -531,77 +529,60 @@ export function KanbanTaskDetails({
                 </form>
               </section>
             ) : null}
-
-            <section className="border-t border-border pt-5">
-              {isConfirmingDelete ? (
-                <div className="rounded-xl border border-danger-border bg-danger-surface p-4">
-                  <p className="text-sm font-semibold text-danger-foreground">
-                    Delete this task permanently?
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    {subtasks.length > 0
-                      ? `Its ${subtasks.length} subtask${subtasks.length === 1 ? '' : 's'} will also be deleted.`
-                      : 'This action cannot be undone from the board.'}
-                  </p>
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => setIsConfirmingDelete(false)}
-                      className="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-foreground"
-                    >
-                      Keep task
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() =>
-                        void onDelete(card.id, subtasks.length > 0)
-                      }
-                      className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-danger-border bg-danger-surface px-3 text-xs font-semibold text-danger-foreground"
-                    >
-                      <Trash2 size={14} />
-                      Delete permanently
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  disabled={isBusy}
-                  onClick={() => setIsConfirmingDelete(true)}
-                  className="inline-flex h-11 items-center gap-2 rounded-xl text-sm font-semibold text-danger-foreground transition-colors hover:bg-danger-surface px-3 disabled:opacity-50"
-                >
-                  <Trash2 size={15} />
-                  Delete task
-                </button>
-              )}
-            </section>
           </div>
         </div>
 
-        <footer className="flex shrink-0 items-center gap-2 border-t border-border bg-surface px-5 py-4 md:px-6">
-          <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-            {!isDraftValid
-              ? 'Add a title to save'
-              : autosave.status === 'saving' || isBusy
-                ? 'Saving…'
-                : autosave.status === 'saved'
-                  ? 'Saved'
-                  : autosave.status === 'unsaved'
-                    ? 'Waiting to save…'
-                    : 'Changes save automatically'}
-          </p>
+        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-surface px-5 py-4 md:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={() => setIsConfirmingDelete(true)}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-danger-border/50 bg-danger-surface/30 px-3.5 text-xs font-semibold text-danger-foreground transition-colors hover:bg-danger-surface disabled:opacity-50"
+            >
+              <Trash2 size={14} className="shrink-0" />
+              Delete task
+            </button>
+
+            {!isDraftValid ? (
+              <span className="truncate text-xs font-medium text-amber-500">
+                Add a title to save
+              </span>
+            ) : autosave.status === 'saving' || isBusy ? (
+              <span className="truncate text-xs text-muted-foreground">
+                Saving…
+              </span>
+            ) : autosave.status === 'saved' ? (
+              <span className="truncate text-xs text-muted-foreground">
+                Saved
+              </span>
+            ) : autosave.status === 'unsaved' ? (
+              <span className="truncate text-xs text-muted-foreground">
+                Waiting to save…
+              </span>
+            ) : null}
+          </div>
+
           <button
             type="button"
             onClick={() => void handleClose()}
             disabled={isBusy}
-            className="inline-flex h-11 flex-1 items-center justify-center rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-foreground transition-colors hover:bg-surface-muted disabled:opacity-50 md:flex-none"
+            className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-surface px-4 text-xs font-semibold text-foreground transition-colors hover:bg-surface-muted disabled:opacity-50"
           >
             Close
           </button>
         </footer>
       </aside>
+
+      {isConfirmingDelete ? (
+        <KanbanDeleteTaskDialog
+          isSubmitting={isBusy}
+          subtaskCount={subtasks.length}
+          taskTitle={card.title}
+          onClose={() => setIsConfirmingDelete(false)}
+          onConfirm={() => void onDelete(card.id, subtasks.length > 0)}
+        />
+      ) : null}
     </div>,
     document.body,
   )

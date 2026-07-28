@@ -39,7 +39,11 @@ function buildPlainMentionRegex(knownMentionLabels?: ReadonlyMap<string, string>
     .map((label) => escapeRegExp(label))
     .join('|')
 
-  return new RegExp(`(^|[\\s(])@(${escapedLabels})(?=$|[\\s,.;:!?\\]\\)])`, 'g')
+  // Use a lookbehind for the prefix so the preceding whitespace/boundary is NOT
+  // consumed as part of the match. Without this, consecutive @mentions like
+  // "@natural-writing @flat-design" only highlight the first one because the
+  // space before the second mention is swallowed by the first match[0].
+  return new RegExp(`(?:^|(?<=[\\s(]))@(${escapedLabels})(?=$|[\\s,.;:!?\\]\\)])`, 'g')
 }
 
 function pushTextSegment(segments: ChatMentionSegment[], text: string) {
@@ -101,10 +105,12 @@ export function findChatMentionMatches(
   const plainMentionRegex = buildPlainMentionRegex(knownMentionLabels)
   if (plainMentionRegex) {
     while ((match = plainMentionRegex.exec(text)) !== null) {
-      const prefix = match[1] ?? ''
-      const label = match[2]
-      const start = match.index + prefix.length
-      const end = start + label.length + 1
+      // With the lookbehind regex the full match starts at the `@` character
+      // (no prefix capture group), so match[1] is the label and match.index
+      // is exactly where the `@` sits.
+      const label = match[1]
+      const start = match.index
+      const end = start + label.length + 1 // +1 for the `@`
 
       if (matches.some((existingMatch) => start < existingMatch.end && end > existingMatch.start)) {
         continue
@@ -275,12 +281,14 @@ export function expandChatMentions(text: string, knownMentionLabels: ReadonlyMap
     return text
   }
 
-  return text.replace(plainMentionRegex, (_match, prefix: string, label: string) => {
+  // With the lookbehind regex there is no prefix capture group — match[1] is
+  // the label and the full match is just `@label`.
+  return text.replace(plainMentionRegex, (_match, label: string) => {
     const path = knownMentionLabels.get(label)
     if (!path) {
-      return `${prefix}@${label}`
+      return `@${label}`
     }
 
-    return `${prefix}${path}`
+    return path
   })
 }

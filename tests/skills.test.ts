@@ -78,3 +78,31 @@ test('expandChatMentions expands file, folder, and skill mentions with read:, li
   const collapsed = collapseChatMentionMarkup(expanded)
   assert.equal(collapsed, 'Please use @writing to help write @main.ts in @components')
 })
+
+test('createSkill creates a valid skill directory and file', async () => {
+  const os = await import('node:os')
+  const fs = await import('node:fs/promises')
+  const path = await import('node:path')
+  const { createSkill } = await import('../electron/skills/service')
+
+  const globalSkillFile = path.join(os.homedir(), '.echosphere', 'skills', 'test-skill', 'SKILL.md')
+  try {
+    const result = await createSkill({
+      name: 'test-skill',
+      description: 'Test skill description',
+      content: '# Test Skill Instructions',
+    })
+
+    assert.equal(result.error, undefined)
+    assert.ok(result.skill)
+    assert.equal(result.skill.name, 'test-skill')
+    assert.equal(result.skill.description, 'Test skill description')
+
+    const fileContent = await fs.readFile(globalSkillFile, 'utf8')
+    assert.match(fileContent, /---/)
+    assert.match(fileContent, /name: test-skill/)
+    assert.match(fileContent, /# Test Skill Instructions/)
+  } finally {
+    await fs.rm(path.dirname(globalSkillFile), { recursive: true, force: true })
+  }
+})

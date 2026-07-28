@@ -413,3 +413,55 @@ export function buildLoadedSkillResult(skill: LoadedSkill): AgentToolExecutionRe
   }
 }
 
+export async function createSkill(
+  input: { name: string; description: string; content: string },
+  workspacePath?: string | null,
+): Promise<{ error?: string; skill?: SkillSummary }> {
+  const nameTrimmed = input.name.trim()
+  const normalizedName = nameTrimmed.replace(/[^a-zA-Z0-9_-]+/g, '-').toLowerCase()
+  if (!normalizedName) {
+    return { error: 'Skill name is required.' }
+  }
+
+  const normalizedDescription = input.description.trim()
+  const rawContent = input.content.trim()
+
+  const targetDir = path.join(os.homedir(), '.echosphere', 'skills', normalizedName)
+  const skillFilePath = path.join(targetDir, SKILL_FILE_NAME)
+
+  const fileText = [
+    '---',
+    `name: ${nameTrimmed}`,
+    `description: ${normalizedDescription}`,
+    '---',
+    '',
+    rawContent,
+  ].join('\n')
+
+  try {
+    await fs.mkdir(targetDir, { recursive: true })
+    await fs.writeFile(skillFilePath, fileText, 'utf8')
+
+    // Invalidate discovery cache
+    skillDiscoveryCache.clear()
+
+    const state = await discoverAvailableSkills(workspacePath)
+    const resolvedPath = path.resolve(skillFilePath)
+    const newSkill = state.skills.find((s) => s.location === resolvedPath)
+
+    return {
+      skill: newSkill ?? {
+        baseDirectory: targetDir,
+        description: normalizedDescription,
+        id: skillFilePath,
+        location: resolvedPath,
+        name: nameTrimmed,
+        source: 'global',
+        sourceLabel: 'Global',
+      },
+    }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Unable to create skill file.' }
+  }
+}
+

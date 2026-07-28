@@ -9,7 +9,7 @@ import { getSettingsItem, type SettingsItemId } from './settingsItems'
 import type { AppAppearance, AppLanguage, FollowUpBehavior } from '../../lib/appSettings'
 import type { ApiKeyProviderId, AppSettings, ProvidersState, SaveApiKeyProviderInput } from '../../types/chat'
 import type { McpAddServerInput, McpState } from '../../types/mcp'
-import type { SkillsState } from '../../types/skills'
+import type { CreateSkillInput, SkillsState } from '../../types/skills'
 
 interface GeneralSettingsViewModel {
   isLoading: boolean
@@ -42,6 +42,7 @@ interface SettingsContentProps {
   skillsSettings: {
     errorMessage: string | null
     isLoading: boolean
+    onCreateSkill: (input: CreateSkillInput) => Promise<boolean>
     onUpdateSettings: (input: Partial<AppSettings>) => void
     settings: Pick<AppSettings, 'disabledSkillsByPath'>
     state: SkillsState | null
@@ -93,30 +94,12 @@ export function SettingsContent({
             isLoading={generalSettings.isLoading}
             onUpdateSettings={generalSettings.onUpdateSettings}
             providersState={providersSettings.providersState}
-            settings={{
-              agentModelId: appSettings.agentModelId,
-              agentModelLabel: appSettings.agentModelLabel,
-              agentModelProviderId: appSettings.agentModelProviderId,
-              gitCommitModelId: appSettings.gitCommitModelId,
-              gitCommitModelLabel: appSettings.gitCommitModelLabel,
-              gitCommitModelProviderId: appSettings.gitCommitModelProviderId,
-              kanbanAiPlanningEnabled: appSettings.kanbanAiPlanningEnabled,
-              kanbanModelId: appSettings.kanbanModelId,
-              kanbanModelLabel: appSettings.kanbanModelLabel,
-              kanbanModelProviderId: appSettings.kanbanModelProviderId,
-              planModelId: appSettings.planModelId,
-              planModelLabel: appSettings.planModelLabel,
-              planModelProviderId: appSettings.planModelProviderId,
-              summarizationModelId: appSettings.summarizationModelId,
-              summarizationModelLabel: appSettings.summarizationModelLabel,
-              summarizationModelProviderId: appSettings.summarizationModelProviderId,
-            }}
+            settings={appSettings}
           />
         ) : (
           <SettingsPlaceholderPanel item={activeItem} />
         )}
       </div>
-      <div className="h-12 shrink-0 md:h-16" aria-hidden="true" />
     </div>
   )
 }

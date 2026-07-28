@@ -91,7 +91,7 @@ import {
 import { flushStoredSettingsUpdates, getStoredSettings, updateStoredSettings } from './settings/store'
 import { serializeInitialSettingsArg } from './settings/bootstrap'
 import { applyWindowTheme, getTitleBarOverlay, getWindowBackgroundColor, syncNativeThemeSource } from './window/theme'
-import { listAvailableSkills } from './skills/service'
+import { createSkill, listAvailableSkills } from './skills/service'
 import {
   cancelCodexChatStream,
   estimateCodexContextUsage,
@@ -426,6 +426,9 @@ function registerHistoryHandlers() {
     return nextSettings
   })
   ipcMain.handle('skills:list', async (_event, workspacePath?: string | null) => listAvailableSkills(workspacePath))
+  ipcMain.handle('skills:createSkill', async (_event, input: Parameters<typeof createSkill>[0], workspacePath?: string | null) =>
+    createSkill(input, workspacePath),
+  )
   ipcMain.handle('kanban:getBoardData', async (_event, input: KanbanWorkspaceInput) => getKanbanBoardData(input))
   ipcMain.handle('kanban:importBoardData', async (_event, input: KanbanWorkspaceInput & { cards: unknown[] }) =>
     importKanbanBoardData(input as KanbanWorkspaceInput & KanbanBoardData),

@@ -1,5 +1,17 @@
 import type { ToolInvocationTrace } from '../../types/chat'
 
+// Actions that correspond 1:1 with a discrete tool name (no `action` field in args)
+const DISCRETE_KANBAN_ACTIONS = new Set([
+  'read_board',
+  'read_card',
+  'create_card',
+  'create_task_with_subtasks',
+  'update_card',
+  'move_card',
+  'reorder_card',
+  'delete_card',
+])
+
 /**
  * Safely parses the `action` field from the tool invocation's argumentsText JSON.
  * Returns null if the arguments cannot be parsed or action is missing.
@@ -52,6 +64,10 @@ function formatKanbanVerb(action: string | null, state: ToolInvocationTrace['sta
 }
 
 export function getKanbanToolInvocationHeaderLabel(invocation: ToolInvocationTrace) {
-  const action = parseKanbanAction(invocation.argumentsText)
+  // For discrete action tools, the tool name IS the action
+  const action = DISCRETE_KANBAN_ACTIONS.has(invocation.toolName)
+    ? invocation.toolName
+    : parseKanbanAction(invocation.argumentsText)
   return formatKanbanVerb(action, invocation.state)
 }
+
