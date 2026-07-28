@@ -9,6 +9,10 @@ import type {
 } from '../../../../src/types/chat'
 import type { AgentToolContext, AgentToolExecutionResult } from '../toolTypes'
 import type { TerminalSessionSnapshot, TerminalSessionInfo } from '../../../terminal/service'
+import {
+  captureWorkspaceCheckpointTerminalPostState,
+  captureWorkspaceCheckpointTerminalPreState,
+} from '../../../workspace/checkpoints'
 import { resolveReadableTargetPath } from './workspaceTools'
 const DEFAULT_TERMINAL_OUTPUT_BODY_LENGTH = 40_000
 const GIT_DIFF_TERMINAL_OUTPUT_BODY_LENGTH = 20_000
@@ -454,6 +458,10 @@ export function createTerminalToolSet(
             const sanitized = sanitizeTerminalOutput(snapshot.outputBuffer)
             const truncated = truncateTerminalOutput(sanitized, session.command)
 
+            if (context.checkpointId) {
+              await captureWorkspaceCheckpointTerminalPostState(context.checkpointId, context.workspaceRootPath)
+            }
+
             return createSuccessResult({
               body: truncated.body || 'No output yet.',
               semantics: {
@@ -511,6 +519,13 @@ export function createTerminalToolSet(
 
           throwIfAborted(abortSignal)
 
+          // Capture workspace state BEFORE the command runs so revert can undo
+          // any files or directories the shell creates. This must happen before
+          // session creation so we don't miss anything the shell startup touches.
+          if (context.checkpointId) {
+            await captureWorkspaceCheckpointTerminalPreState(context.checkpointId, context.workspaceRootPath)
+          }
+
           let localSessionId: number
           let globalSessionId: number
           let shellLabel: string
@@ -552,6 +567,7 @@ export function createTerminalToolSet(
 
           const completionMarker = createCompletionMarker(localSessionId)
           throwIfAborted(abortSignal)
+
           await raceWithAbort(
             resolvedDependencies.writeToSession(ownerWebContents, {
               data: buildMarkedCommand(command, shellLabel, completionMarker),
@@ -559,6 +575,11 @@ export function createTerminalToolSet(
             }),
             abortSignal,
           )
+
+          // Post-state is NOT captured here because writeToSession only dispatches
+          // the command — the shell hasn't run it yet. Post-state is captured in
+          // the `read` branch below, after the AI polls for output (by which time
+          // the command has actually finished and files/dirs exist on disk).
 
           return createSuccessResult({
             body: [

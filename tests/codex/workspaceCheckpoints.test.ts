@@ -144,3 +144,122 @@ test('workspace checkpoints ignore files outside the workspace root gracefully',
     await fs.rm(tempRootPath, { force: true, recursive: true })
   }
 })
+
+test('workspace checkpoints undo terminal executions creating folders, files, or modifying existing content', async () => {
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-checkpoints-terminal-'))
+  const workspaceRootPath = path.join(tempRootPath, 'workspace')
+  const existingFilePath = path.join(workspaceRootPath, 'src', 'app.ts')
+  const createdFolderDir = path.join(workspaceRootPath, 'my-new-folder')
+  const createdInFolderFilePath = path.join(createdFolderDir, 'nested', 'component.tsx')
+
+  await fs.mkdir(path.dirname(existingFilePath), { recursive: true })
+  await fs.writeFile(existingFilePath, 'original content\n', 'utf8')
+
+  const {
+    captureWorkspaceCheckpointTerminalPostState,
+    captureWorkspaceCheckpointTerminalPreState,
+    createWorkspaceCheckpointStore,
+  } = await import('../../electron/workspace/checkpoints')
+
+  const checkpointStore = createWorkspaceCheckpointStore(path.join(tempRootPath, 'checkpoints'))
+  const checkpoint = await checkpointStore.createCheckpoint({ workspaceRootPath })
+
+  try {
+    // 1. Terminal execution pre-state capture
+    await captureWorkspaceCheckpointTerminalPreState(checkpoint.id, workspaceRootPath, checkpointStore)
+
+    // 2. Simulate terminal execution creating folder and files, and updating existing file
+    await fs.writeFile(existingFilePath, 'modified by terminal\n', 'utf8')
+    await fs.mkdir(path.dirname(createdInFolderFilePath), { recursive: true })
+    await fs.writeFile(createdInFolderFilePath, 'created by terminal\n', 'utf8')
+
+    // 3. Terminal execution post-state capture
+    await captureWorkspaceCheckpointTerminalPostState(checkpoint.id, workspaceRootPath, checkpointStore)
+
+    // 4. Restore checkpoint (Revert chat turn)
+    await checkpointStore.restoreCheckpoint(checkpoint.id)
+
+    // 5. Verify revert restored original state and completely removed folder and files created by terminal execution
+    assert.equal(await fs.readFile(existingFilePath, 'utf8'), 'original content\n')
+    await assert.rejects(fs.readFile(createdInFolderFilePath, 'utf8'), { code: 'ENOENT' })
+    await assert.rejects(fs.stat(createdFolderDir), { code: 'ENOENT' })
+  } finally {
+    await fs.rm(tempRootPath, { force: true, recursive: true })
+  }
+})
+
+test('workspace checkpoints undo terminal executions that create an empty directory', async () => {
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-checkpoints-emptydir-'))
+  const workspaceRootPath = path.join(tempRootPath, 'workspace')
+  const emptyDirPath = path.join(workspaceRootPath, 'hello')
+
+  await fs.mkdir(workspaceRootPath, { recursive: true })
+
+  const {
+    captureWorkspaceCheckpointTerminalPostState,
+    captureWorkspaceCheckpointTerminalPreState,
+    createWorkspaceCheckpointStore,
+  } = await import('../../electron/workspace/checkpoints')
+
+  const checkpointStore = createWorkspaceCheckpointStore(path.join(tempRootPath, 'checkpoints'))
+  const checkpoint = await checkpointStore.createCheckpoint({ workspaceRootPath })
+
+  try {
+    // 1. Pre-state: workspace has no 'hello' folder
+    await captureWorkspaceCheckpointTerminalPreState(checkpoint.id, workspaceRootPath, checkpointStore)
+
+    // 2. Simulate: terminal runs `mkdir hello` — creates an empty directory
+    await fs.mkdir(emptyDirPath)
+
+    // 3. Post-state capture
+    await captureWorkspaceCheckpointTerminalPostState(checkpoint.id, workspaceRootPath, checkpointStore)
+
+    // 4. Revert
+    await checkpointStore.restoreCheckpoint(checkpoint.id)
+
+    // 5. The empty folder must be gone after revert
+    await assert.rejects(fs.stat(emptyDirPath), { code: 'ENOENT' })
+  } finally {
+    await fs.rm(tempRootPath, { force: true, recursive: true })
+  }
+})
+
+test('workspace checkpoints create redo checkpoint successfully when source manifest contains directory entries', async () => {
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-checkpoints-redodir-'))
+  const workspaceRootPath = path.join(tempRootPath, 'workspace')
+  const emptyDirPath = path.join(workspaceRootPath, 'hello')
+
+  await fs.mkdir(workspaceRootPath, { recursive: true })
+
+  const {
+    captureWorkspaceCheckpointTerminalPostState,
+    captureWorkspaceCheckpointTerminalPreState,
+    createWorkspaceCheckpointStore,
+  } = await import('../../electron/workspace/checkpoints')
+
+  const checkpointStore = createWorkspaceCheckpointStore(path.join(tempRootPath, 'checkpoints'))
+  const checkpoint = await checkpointStore.createCheckpoint({ workspaceRootPath })
+
+  try {
+    await captureWorkspaceCheckpointTerminalPreState(checkpoint.id, workspaceRootPath, checkpointStore)
+    await fs.mkdir(emptyDirPath)
+    await captureWorkspaceCheckpointTerminalPostState(checkpoint.id, workspaceRootPath, checkpointStore)
+
+    // Verify createRedoCheckpointFromSources works without throwing 'Checkpoint capture only supports files'
+    const redoCheckpoint = await checkpointStore.createRedoCheckpointFromSources([checkpoint.id])
+    assert.ok(redoCheckpoint.id)
+
+    // Restore original checkpoint (deletes hello)
+    await checkpointStore.restoreCheckpoint(checkpoint.id)
+    await assert.rejects(fs.stat(emptyDirPath), { code: 'ENOENT' })
+
+    // Restore redo checkpoint (re-creates hello)
+    await checkpointStore.restoreCheckpoint(redoCheckpoint.id)
+    const stats = await fs.stat(emptyDirPath)
+    assert.ok(stats.isDirectory())
+  } finally {
+    await fs.rm(tempRootPath, { force: true, recursive: true })
+  }
+})
+
+

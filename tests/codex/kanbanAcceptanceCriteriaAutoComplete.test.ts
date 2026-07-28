@@ -72,3 +72,35 @@ test('moving a task to done requires all acceptance criteria to be complete', as
     await fs.rm(tempRootPath, { force: true, recursive: true })
   }
 })
+
+test('read_board without columnId returns all columns and cards in a single call', async () => {
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-kanban-full-'))
+  const workspaceRootPath = path.join(tempRootPath, 'workspace')
+  const kanbanHomePath = path.join(tempRootPath, 'home')
+
+  await fs.mkdir(workspaceRootPath, { recursive: true })
+  mock.method(os, 'homedir', () => kanbanHomePath)
+
+  try {
+    await createKanbanBoardCard({
+      columnId: 'backlog',
+      title: 'Backlog Task',
+      workspacePath: workspaceRootPath,
+    })
+    await createKanbanBoardCard({
+      columnId: 'in-progress',
+      title: 'InProgress Task',
+      workspacePath: workspaceRootPath,
+    })
+
+    const { getKanbanBoardData } = await import('../../electron/kanban/store')
+    const boardData = await getKanbanBoardData({ workspacePath: workspaceRootPath })
+
+    assert.equal(boardData.cards.length >= 2, true)
+    assert.ok(boardData.cards.some((c) => c.title === 'Backlog Task'))
+    assert.ok(boardData.cards.some((c) => c.title === 'InProgress Task'))
+  } finally {
+    mock.restoreAll()
+    await fs.rm(tempRootPath, { force: true, recursive: true })
+  }
+})

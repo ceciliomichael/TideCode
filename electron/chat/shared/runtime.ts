@@ -25,7 +25,8 @@ import {
 } from '../history/eventStore'
 import { projectCanonicalReplay } from '../history/replayProjector'
 import { buildChatPrompt, buildChatSystemPrompt } from './messages'
-import { createAgentTools } from './tools'
+import { createAgentTools, sortToolSet } from './tools'
+import { captureWorkspaceCheckpointTerminalPostState } from '../../workspace/checkpoints'
 import type { AgentToolExecutionResult } from './toolTypes'
 import {
   createCanonicalToolResultContent,
@@ -594,6 +595,10 @@ export async function runToolEnabledChatStream(input: {
       })
     }
   } finally {
+    const checkpointId = resolveActiveCheckpointId(input.startInput.messages)
+    if (checkpointId && input.startInput.agentContextRootPath) {
+      await captureWorkspaceCheckpointTerminalPostState(checkpointId, input.startInput.agentContextRootPath).catch(() => undefined)
+    }
     input.onSettled?.()
   }
 }

@@ -4,9 +4,11 @@ import path from 'node:path'
 import type { CreateWorkspaceCheckpointInput, UserMessageRunCheckpoint } from '../../src/types/chat'
 import { captureKanbanBoardSnapshotIfNeeded, readKanbanBoardSnapshot } from '../kanban/checkpoints'
 import { getKanbanBoardData, replaceKanbanBoardData } from '../kanban/store'
+import { isGitignored, loadGitignoreMatchers, shouldIgnoreWorkspaceEntry } from './gitignoreMatcher'
 
 interface WorkspaceCheckpointEntry {
   existed: boolean
+  isDirectory?: boolean
   missingDirectories?: string[]
   relativePath: string
   snapshotFileName?: string
@@ -16,16 +18,22 @@ interface WorkspaceCheckpointDocument {
   createdAt: number
   entries: WorkspaceCheckpointEntry[]
   id: string
+  // Directories that existed before a terminal execution (pre-state snapshot).
+  // Used during post-state to detect newly created directories.
+  preStateTrackedDirectories?: string[]
   workspaceRootPath: string
 }
 
 interface WorkspaceCheckpointStore {
+  captureCreatedDirectoriesState: (checkpointId: string, currentDirPaths: string[]) => Promise<void>
+  captureCreatedFilesState: (checkpointId: string, currentFilePaths: string[]) => Promise<void>
   captureFileState: (checkpointId: string, absolutePath: string) => Promise<void>
   createCheckpoint: (input: CreateWorkspaceCheckpointInput) => Promise<UserMessageRunCheckpoint>
   createRedoCheckpointFromSource: (sourceCheckpointId: string) => Promise<UserMessageRunCheckpoint>
   createRedoCheckpointFromSources: (sourceCheckpointIds: string[]) => Promise<UserMessageRunCheckpoint>
   restoreCheckpoint: (checkpointId: string) => Promise<string>
   restoreCheckpointSequence: (checkpointIds: string[]) => Promise<string>
+  savePreStateDirectories: (checkpointId: string, directoryPaths: string[]) => Promise<void>
 }
 
 const CHECKPOINTS_DIRECTORY_NAME = 'workspace-checkpoints'
@@ -228,22 +236,29 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
 
         try {
           const targetStats = await fs.stat(normalizedTargetPath)
-          if (!targetStats.isFile()) {
-            throw new Error(`Checkpoint capture only supports files: ${normalizedTargetPath}`)
+          if (targetStats.isDirectory()) {
+            manifest.entries.push({
+              existed: true,
+              isDirectory: true,
+              relativePath,
+            })
+          } else if (targetStats.isFile()) {
+            const snapshotFileName = `${manifest.entries.length}.txt`
+            await ensureDirectory(getCheckpointSnapshotsDirectoryPath(checkpointId))
+            await fs.writeFile(
+              path.join(getCheckpointSnapshotsDirectoryPath(checkpointId), snapshotFileName),
+              await fs.readFile(normalizedTargetPath, 'utf8'),
+              'utf8',
+            )
+            manifest.entries.push({
+              existed: true,
+              isDirectory: false,
+              relativePath,
+              snapshotFileName,
+            })
+          } else {
+            return
           }
-
-          const snapshotFileName = `${manifest.entries.length}.txt`
-          await ensureDirectory(getCheckpointSnapshotsDirectoryPath(checkpointId))
-          await fs.writeFile(
-            path.join(getCheckpointSnapshotsDirectoryPath(checkpointId), snapshotFileName),
-            await fs.readFile(normalizedTargetPath, 'utf8'),
-            'utf8',
-          )
-          manifest.entries.push({
-            existed: true,
-            relativePath,
-            snapshotFileName,
-          })
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
             throw error
@@ -260,8 +275,137 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
       })
     },
 
+    async captureCreatedFilesState(checkpointId: string, currentFilePaths: string[]) {
+      await withCheckpointLock(checkpointId, async () => {
+        const manifest = await readManifest(checkpointId)
+        const existingEntriesSet = new Set(manifest.entries.map((entry) => normalizeRelativePath(entry.relativePath)))
+
+        // Build the set of directories that were known to exist BEFORE the terminal ran,
+        // derived from pre-state manifest entries. We cannot call getMissingParentDirectories
+        // here because the terminal has already created those directories on disk, which
+        // would cause it to return [] and the restore would never clean them up.
+        const knownPreStateNormalizedDirs = new Set<string>()
+        for (const entry of manifest.entries) {
+          const segments = splitRelativePathSegments(path.dirname(normalizeRelativePath(entry.relativePath)))
+          let currentDir = ''
+          for (const segment of segments) {
+            currentDir = currentDir ? `${currentDir}/${segment}` : segment
+            knownPreStateNormalizedDirs.add(currentDir)
+          }
+        }
+
+        let manifestChanged = false
+
+        for (const absolutePath of currentFilePaths) {
+          const normalizedTargetPath = normalizePath(absolutePath)
+          const relativePath = path.relative(manifest.workspaceRootPath, normalizedTargetPath)
+          if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+            continue
+          }
+
+          const normalizedRelativePath = normalizeRelativePath(relativePath)
+          if (existingEntriesSet.has(normalizedRelativePath)) {
+            continue
+          }
+
+          // Walk up the directory tree to find which parent directories did NOT exist
+          // before the terminal ran (i.e., are NOT in the pre-state known dirs set).
+          const relativeDir = path.dirname(relativePath)
+          const dirSegments = relativeDir === '.' || relativeDir.length === 0
+            ? []
+            : splitRelativePathSegments(relativeDir)
+
+          const missingDirectories: string[] = []
+          let currentRelativeDir = ''
+          let hasMissingAncestor = false
+
+          for (const segment of dirSegments) {
+            currentRelativeDir = currentRelativeDir ? path.join(currentRelativeDir, segment) : segment
+            const normalizedCurrentDir = normalizeRelativePath(currentRelativeDir)
+            if (hasMissingAncestor || !knownPreStateNormalizedDirs.has(normalizedCurrentDir)) {
+              hasMissingAncestor = true
+              missingDirectories.push(currentRelativeDir)
+            }
+          }
+
+          manifest.entries.push({
+            existed: false,
+            missingDirectories,
+            relativePath,
+          })
+          existingEntriesSet.add(normalizedRelativePath)
+          // Register newly-discovered dirs so siblings don't double-mark them
+          const newDirSegments = splitRelativePathSegments(normalizeRelativePath(relativeDir === '.' ? '' : relativeDir))
+          let cumulativeDir = ''
+          for (const segment of newDirSegments) {
+            cumulativeDir = cumulativeDir ? `${cumulativeDir}/${segment}` : segment
+            knownPreStateNormalizedDirs.add(cumulativeDir)
+          }
+          manifestChanged = true
+        }
+
+        if (manifestChanged) {
+          await writeManifest(manifest)
+        }
+      })
+    },
+
+    async savePreStateDirectories(checkpointId: string, directoryPaths: string[]) {
+      await withCheckpointLock(checkpointId, async () => {
+        const manifest = await readManifest(checkpointId)
+        const relativeDirectories = directoryPaths
+          .map((absolutePath) => path.relative(manifest.workspaceRootPath, normalizePath(absolutePath)))
+          .filter((relative) => !relative.startsWith('..') && !path.isAbsolute(relative))
+        manifest.preStateTrackedDirectories = relativeDirectories
+        await writeManifest(manifest)
+      })
+    },
+
+    async captureCreatedDirectoriesState(checkpointId: string, currentDirPaths: string[]) {
+      await withCheckpointLock(checkpointId, async () => {
+        const manifest = await readManifest(checkpointId)
+        // Build normalized set of directories that existed BEFORE the terminal ran.
+        const preStateDirSet = new Set(
+          (manifest.preStateTrackedDirectories ?? []).map(normalizeRelativePath),
+        )
+        const existingEntrySet = new Set(manifest.entries.map((e) => normalizeRelativePath(e.relativePath)))
+        let manifestChanged = false
+
+        for (const absolutePath of currentDirPaths) {
+          const normalizedTargetPath = normalizePath(absolutePath)
+          const relativePath = path.relative(manifest.workspaceRootPath, normalizedTargetPath)
+          if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+            continue
+          }
+
+          const normalizedRelativePath = normalizeRelativePath(relativePath)
+          // Skip dirs that existed before the terminal ran, or that are already tracked.
+          if (preStateDirSet.has(normalizedRelativePath) || existingEntrySet.has(normalizedRelativePath)) {
+            continue
+          }
+
+          // Register the new directory as a deletion target for restore.
+          // fs.rm with recursive:true handles the whole subtree, so registering
+          // a parent dir implicitly removes its children too. Registering nested
+          // dirs is harmless since ENOENT is silently ignored during restore.
+          manifest.entries.push({
+            existed: false,
+            missingDirectories: [],
+            relativePath,
+          })
+          existingEntrySet.add(normalizedRelativePath)
+          manifestChanged = true
+        }
+
+        if (manifestChanged) {
+          await writeManifest(manifest)
+        }
+      })
+    },
+
     async restoreCheckpoint(checkpointId: string) {
       return withCheckpointLock(checkpointId, async () => {
+
         const manifest = await readManifest(checkpointId)
         const restoreEntries = [...manifest.entries].reverse()
         const directoryCleanupCandidates = new Set<string>()
@@ -279,6 +423,11 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
             for (const missingDirectory of entry.missingDirectories ?? []) {
               directoryCleanupCandidates.add(missingDirectory)
             }
+            continue
+          }
+
+          if (entry.isDirectory) {
+            await ensureDirectory(absolutePath)
             continue
           }
 
@@ -449,4 +598,93 @@ export async function restoreWorkspaceCheckpointSequence(checkpointIds: string[]
     .catch(() => {
       // Node-only tests import checkpoint helpers without the Electron runtime.
     })
+}
+
+interface WorkspaceEntries {
+  directoryPaths: string[]
+  filePaths: string[]
+}
+
+async function collectWorkspaceEntries(workspaceRootPath: string): Promise<WorkspaceEntries> {
+  const filePaths: string[] = []
+  const directoryPaths: string[] = []
+
+  async function walkDirectory(currentDirectoryPath: string) {
+    let entries
+    try {
+      entries = await fs.readdir(currentDirectoryPath, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    const matcherEntries = await loadGitignoreMatchers(workspaceRootPath, currentDirectoryPath)
+
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) {
+        continue
+      }
+      if (shouldIgnoreWorkspaceEntry(entry.name)) {
+        continue
+      }
+
+      const absolutePath = path.join(currentDirectoryPath, entry.name)
+      if (isGitignored(absolutePath, entry.isDirectory(), matcherEntries)) {
+        continue
+      }
+
+      if (entry.isDirectory()) {
+        directoryPaths.push(absolutePath)
+        await walkDirectory(absolutePath)
+      } else if (entry.isFile()) {
+        filePaths.push(absolutePath)
+      }
+    }
+  }
+
+  await walkDirectory(workspaceRootPath)
+  return { directoryPaths, filePaths }
+}
+
+export async function captureWorkspaceCheckpointTerminalPreState(
+  checkpointId: string | null | undefined,
+  workspaceRootPath: string,
+  customStore?: WorkspaceCheckpointStore,
+) {
+  const normalizedCheckpointId = checkpointId?.trim()
+  if (!normalizedCheckpointId) {
+    return
+  }
+
+  const { filePaths, directoryPaths } = await collectWorkspaceEntries(workspaceRootPath)
+  const checkpointStore = customStore ?? (await getDefaultWorkspaceCheckpointStore())
+
+  // Snapshot existing file contents so we can restore modified files on revert.
+  for (const absolutePath of filePaths) {
+    await checkpointStore.captureFileState(normalizedCheckpointId, absolutePath)
+  }
+
+  // Save the list of directories that exist NOW (before the terminal runs).
+  // This lets post-state detect which directories were created by the terminal.
+  await checkpointStore.savePreStateDirectories(normalizedCheckpointId, directoryPaths)
+}
+
+export async function captureWorkspaceCheckpointTerminalPostState(
+  checkpointId: string | null | undefined,
+  workspaceRootPath: string,
+  customStore?: WorkspaceCheckpointStore,
+) {
+  const normalizedCheckpointId = checkpointId?.trim()
+  if (!normalizedCheckpointId) {
+    return
+  }
+
+  const { filePaths, directoryPaths } = await collectWorkspaceEntries(workspaceRootPath)
+  const checkpointStore = customStore ?? (await getDefaultWorkspaceCheckpointStore())
+
+  // Register files that were created by the terminal so they get deleted on revert.
+  await checkpointStore.captureCreatedFilesState(normalizedCheckpointId, filePaths)
+
+  // Register directories that were created by the terminal so they get deleted on revert.
+  // This handles cases like `mkdir hello` where no files are created inside.
+  await checkpointStore.captureCreatedDirectoriesState(normalizedCheckpointId, directoryPaths)
 }

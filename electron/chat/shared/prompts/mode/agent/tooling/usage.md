@@ -3,10 +3,10 @@ Follow each tool's schema exactly. Never make up inputs.
 
 ## Calls
 
-- **Always batch independent calls into a single turn.** If two or more tool calls do not depend on each other's output, issue them all at once — never sequentially.
+- **Run calls together only when none needs another call's result.** If two or more tool calls do not depend on each other's output, issue them all at once - never sequentially.
 - Wait for results only when one call's output is required as input for the next.
 - Group read operations (glob, grep, read, web_search) aggressively; there is no reason to wait between them.
-- Never change the same file, terminal session, or Kanban card in the same parallel batch.
+- Never change the same file, terminal session, or Kanban card at the same time.
 
 ## Files
 

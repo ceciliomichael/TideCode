@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { CheckCircle2, Circle, ListChecks, Tag, FolderGit2 } from 'lucide-react'
+import { CheckCircle2, Circle, ListChecks, Tag, FolderGit2, LayoutGrid, Trash2 } from 'lucide-react'
 import type { ToolInvocationTrace } from '../../types/chat'
 import { parseStructuredToolResultContent } from '../../lib/toolResultContent'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -48,7 +48,7 @@ function ColumnBadge({ columnId }: { columnId: string }) {
   }
 
   return (
-    <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase ${colorStyle}`}>
+    <span className={`inline-flex items-center shrink-0 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase ${colorStyle}`}>
       {label}
     </span>
   )
@@ -68,7 +68,7 @@ function PriorityBadge({ priority }: { priority: string }) {
   }
 
   return (
-    <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium capitalize ${colorStyle}`}>
+    <span className={`inline-flex items-center shrink-0 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-medium capitalize ${colorStyle}`}>
       {priority}
     </span>
   )
@@ -85,7 +85,7 @@ function IssueTypeBadge({ issueType }: { issueType: string }) {
   }
 
   return (
-    <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium capitalize ${colorStyle}`}>
+    <span className={`inline-flex items-center shrink-0 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-medium capitalize ${colorStyle}`}>
       {issueType}
     </span>
   )
@@ -129,7 +129,7 @@ function CardItemView({ card, isSubtask = false }: { card: KanbanCardData; isSub
   if (!card || !card.title) return null
 
   return (
-    <div className={`space-y-2 rounded-xl border border-border/60 bg-surface/70 p-3.5 shadow-xs ${isSubtask ? 'ml-3 border-l-2 border-l-primary/50 bg-surface/40' : ''}`}>
+    <div className={`w-full space-y-2 rounded-xl border border-border/60 bg-surface/70 p-3.5 shadow-xs ${isSubtask ? 'border-l-2 border-l-primary/50 bg-surface/50' : ''}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-semibold leading-snug text-foreground">{card.title}</span>
         <div className="flex items-center gap-1.5">
@@ -247,6 +247,28 @@ function formatCardAsPlainMarkdown(card: KanbanCardData): string {
   return parts.join('\n\n')
 }
 
+function formatBoardOverviewAsPlainMarkdown(data: Record<string, unknown>): string {
+  const columns = data.columns as Array<{ title: string; count: number; tasks?: Array<{ title: string }> }> | undefined
+  if (!columns || !Array.isArray(columns)) return ''
+
+  const lines: string[] = []
+
+  for (const col of columns) {
+    const taskCountStr = `${col.count} task${col.count === 1 ? '' : 's'}`
+    lines.push(`**${col.title}** (${taskCountStr})`)
+    if (col.tasks && col.tasks.length > 0) {
+      for (const t of col.tasks) {
+        lines.push(`- ${t.title}`)
+      }
+    } else {
+      lines.push('- *No tasks*')
+    }
+    lines.push('')
+  }
+
+  return lines.join('\n').trim()
+}
+
 export function KanbanToolResult({ invocation, isStreaming = false }: KanbanToolResultProps) {
   const parsedInfo = useMemo(() => {
     if (!invocation.resultContent) return null
@@ -317,17 +339,122 @@ export function KanbanToolResult({ invocation, isStreaming = false }: KanbanTool
     )
   }
 
+  // Shape C: Board Overview UI (100% consistent using CardItemView)
+  if (data && typeof data === 'object' && 'columns' in data && Array.isArray((data as Record<string, unknown>).columns)) {
+    const columns = (data as Record<string, unknown>).columns as Array<{
+      id: string
+      title: string
+      count: number
+      tasks?: KanbanCardData[]
+    }>
+    const totalCards =
+      typeof (data as Record<string, unknown>).totalCards === 'number'
+        ? ((data as Record<string, unknown>).totalCards as number)
+        : columns.reduce((acc, c) => acc + c.count, 0)
+
+    return (
+      <div className="space-y-3 rounded-xl border border-border bg-surface p-3.5 shadow-sm">
+        <div className="flex items-center justify-between border-b border-border/50 pb-2.5">
+          <div className="flex items-center gap-2">
+            <LayoutGrid className="h-4 w-4 text-primary" />
+            <span className="text-sm font-semibold text-foreground">Board Overview</span>
+          </div>
+          <span className="rounded-md bg-secondary/80 px-2 py-0.5 font-mono text-[11px] font-medium text-secondary-foreground">
+            {totalCards} {totalCards === 1 ? 'task' : 'tasks'}
+          </span>
+        </div>
+
+        <div className="space-y-3">
+          {columns.map((col) => {
+            const taskList = col.tasks || []
+
+            return (
+              <div key={col.id} className="flex flex-col space-y-2 rounded-lg border border-border/60 bg-surface-muted/50 p-3">
+                <div className="flex items-center justify-between border-b border-border/30 pb-2">
+                  <div className="flex items-center gap-1.5">
+                    <ColumnBadge columnId={col.id} />
+                  </div>
+                  <span className="font-mono text-[11px] font-semibold text-muted-foreground">
+                    {col.count} {col.count === 1 ? 'task' : 'tasks'}
+                  </span>
+                </div>
+
+                {taskList.length > 0 ? (
+                  <div className="space-y-2 pt-1">
+                    {taskList.map((task, idx) => (
+                      <CardItemView key={task.id || idx} card={task} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-1 text-[11px] italic text-muted-foreground/60">
+                    No tasks in this column.
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  // Shape D: Specific Column Read UI (for read_board with columnId)
+  if (data && typeof data === 'object' && 'cards' in data && Array.isArray((data as Record<string, unknown>).cards)) {
+    const cards = (data as Record<string, unknown>).cards as KanbanCardData[]
+    const columnInfo = (data as Record<string, unknown>).column as { id?: string; title?: string; count?: number } | undefined
+    const colId = columnInfo?.id || (cards[0]?.columnId ?? 'backlog')
+
+    return (
+      <div className="space-y-3 rounded-xl border border-border bg-surface p-3.5 shadow-sm">
+        <div className="flex items-center justify-between border-b border-border/50 pb-2.5">
+          <div className="flex items-center gap-2">
+            <ColumnBadge columnId={colId} />
+          </div>
+          <span className="rounded-md bg-secondary/80 px-2 py-0.5 font-mono text-[11px] font-medium text-secondary-foreground">
+            {cards.length} {cards.length === 1 ? 'task' : 'tasks'}
+          </span>
+        </div>
+
+        {cards.length === 0 ? (
+          <div className="p-3 text-center text-xs italic text-muted-foreground/60">
+            No tasks in this column.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {cards.map((card, index) => (
+              <CardItemView key={card.id || index} card={card} />
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Shape E: Deleted Task UI (for delete_card)
+  if (data && typeof data === 'object' && 'deletedCard' in data && (data as Record<string, unknown>).deletedCard) {
+    const deletedCard = (data as Record<string, unknown>).deletedCard as KanbanCardData
+    return (
+      <div className="space-y-2 rounded-xl border border-rose-500/30 bg-rose-500/5 p-3.5 shadow-sm">
+        <div className="flex items-center justify-between border-b border-rose-500/20 pb-2">
+          <div className="flex items-center gap-2 text-xs font-semibold text-rose-400">
+            <Trash2 className="h-4 w-4" />
+            <span>Deleted Task</span>
+          </div>
+          {deletedCard.columnId ? <ColumnBadge columnId={deletedCard.columnId} /> : null}
+        </div>
+        <CardItemView card={deletedCard} />
+      </div>
+    )
+  }
+
   // Fallback for plain text, read_card, read_board, move_card, or errors — format as plain markdown text
   let textToShow = ''
 
   const plainCard = extractCardFromData(data)
   if (plainCard) {
     textToShow = formatCardAsPlainMarkdown(plainCard)
-  } else if (data && typeof data === 'object' && 'cards' in data && Array.isArray((data as Record<string, unknown>).cards)) {
-    const cards = (data as Record<string, unknown>).cards as KanbanCardData[]
-    const colInfo = (data as Record<string, unknown>).column as { title?: string } | undefined
-    const lines = cards.map((c) => `- **${c.title}**${c.columnId ? ` (${c.columnId})` : ''}`)
-    textToShow = `**${colInfo?.title || 'Board Column'}** (${cards.length} tasks)\n\n` + lines.join('\n')
+  } else if (data && typeof data === 'object' && 'columns' in data && Array.isArray((data as Record<string, unknown>).columns)) {
+    textToShow = formatBoardOverviewAsPlainMarkdown(data as Record<string, unknown>)
   } else {
     const rawSummary = summary && summary.trim().length > 0 ? summary : null
     const cleanedSummary = rawSummary ? rawSummary.replace(/^(Read task|Read board):\s*/i, '').trim() : null

@@ -54,7 +54,7 @@ const FLAT_KANBAN_SCHEMA = {
 
     // Card identifiers & target locations
     cardId: { type: 'string' },
-    columnId: { enum: COL_ENUM, type: 'string', description: 'Column ID for read_board, or target column for move_card (backlog, in-progress, blocked, done).' },
+    columnId: { enum: COL_ENUM, type: 'string', description: 'Optional column ID for read_board, move_card, or reorder_card (backlog, in-progress, blocked, done). Omit for read_board to get a board overview with column counts and task titles, or pass columnId to read full details of a specific column.' },
     targetColumnId: { enum: COL_ENUM, type: 'string', description: 'Destination column ID for move_card or reorder_card (backlog, in-progress, blocked, done).' },
     targetIndex: { type: 'integer' },
     deleteSubtasks: { type: 'boolean' },
@@ -187,16 +187,57 @@ export function createKanbanToolSet(
         try {
           switch (input.action) {
             case 'read_board': {
-              const result = await readKanbanBoardColumn({
-                columnId: input.columnId!,
-                cursor: input.cursor,
-                includeCounts: input.includeCounts,
-                limit: input.limit,
+              if (input.columnId) {
+                const result = await readKanbanBoardColumn({
+                  columnId: input.columnId,
+                  cursor: input.cursor,
+                  includeCounts: input.includeCounts,
+                  limit: input.limit,
+                  workspacePath: context.workspaceRootPath,
+                })
+                return ok(
+                  `Read ${result.cards.length} ${result.column.title} task${result.cards.length === 1 ? '' : 's'}.`,
+                  result,
+                )
+              }
+
+              const boardData = await getKanbanBoardData({
                 workspacePath: context.workspaceRootPath,
               })
+              const counts = {
+                backlog: boardData.cards.filter((c) => c.columnId === 'backlog').length,
+                'in-progress': boardData.cards.filter((c) => c.columnId === 'in-progress').length,
+                blocked: boardData.cards.filter((c) => c.columnId === 'blocked').length,
+                done: boardData.cards.filter((c) => c.columnId === 'done').length,
+              }
+              const columns = KANBAN_COLUMN_IDS.map((colId) => {
+                const matchingCards = boardData.cards.filter((c) => c.columnId === colId)
+                const colTitle =
+                  colId === 'in-progress'
+                    ? 'In Progress'
+                    : colId.charAt(0).toUpperCase() + colId.slice(1)
+                return {
+                  count: matchingCards.length,
+                  id: colId,
+                  tasks: matchingCards.map((c) => ({
+                    acceptanceCriteria: c.acceptanceCriteria,
+                    assignee: c.assignee,
+                    columnId: c.columnId,
+                    description: c.description,
+                    id: c.id,
+                    issueType: c.issueType,
+                    labels: c.labels,
+                    parentCardId: c.parentCardId,
+                    priority: c.priority,
+                    title: c.title,
+                  })),
+                  title: colTitle,
+                }
+              })
+              const totalCards = boardData.cards.length
               return ok(
-                `Read ${result.cards.length} ${result.column.title} task${result.cards.length === 1 ? '' : 's'}.`,
-                result,
+                `Read full board (${totalCards} task${totalCards === 1 ? '' : 's'} across 4 columns).`,
+                { counts, columns, totalCards },
               )
             }
 
@@ -315,6 +356,11 @@ export function createKanbanToolSet(
             }
 
             case 'delete_card': {
+              const targetCard = await getKanbanCard({
+                cardId: input.cardId!,
+                workspacePath: context.workspaceRootPath,
+              })
+              const deletedCard = targetCard?.card || null
               const boardData = await mutate(() =>
                 deleteKanbanBoardCard({
                   cardId: input.cardId!,
@@ -322,7 +368,8 @@ export function createKanbanToolSet(
                   workspacePath: context.workspaceRootPath,
                 }),
               )
-              return ok('Deleted task.', { boardData })
+              const cardTitle = deletedCard?.title ? `: ${deletedCard.title}` : ''
+              return ok(`Deleted task${cardTitle}`, { deletedCard, boardData })
             }
 
             default: {
