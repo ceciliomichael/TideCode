@@ -48,19 +48,25 @@ export function useFloatingMenuPosition({
       const viewportWidth = window.innerWidth
       const viewportHeight = window.innerHeight
       const menuWidth = menuRect?.width ?? anchorRect.width
-      const menuHeight = menuElement?.scrollHeight ?? menuRect?.height ?? 0
+      // Use scrollHeight (intrinsic content height) only for deciding which side
+      // to open on, but use offsetHeight (the actual clamped rendered height) for
+      // the final `top` calculation so a 1-result menu doesn't jump too far above.
+      const menuScrollHeight = menuElement?.scrollHeight ?? menuRect?.height ?? 0
+      const menuRenderedHeight = menuElement?.offsetHeight ?? menuRect?.height ?? 0
       const availableBelow = Math.max(viewportHeight - anchorRect.bottom - offset - minViewportMargin, 0)
       const availableAbove = Math.max(anchorRect.top - offset - minViewportMargin, 0)
       const shouldOpenAbove =
         preferredPlacement === 'above'
-          ? availableAbove >= menuHeight
-          : availableBelow < menuHeight && availableAbove > availableBelow
+          ? availableAbove >= menuScrollHeight && availableAbove >= availableBelow
+          : availableBelow < menuScrollHeight && availableAbove > availableBelow
       const maxHeight = Math.max(shouldOpenAbove ? availableAbove : availableBelow, 0)
       const unclampedLeft = anchorRect.left
       const maxLeft = Math.max(viewportWidth - menuWidth - minViewportMargin, minViewportMargin)
       const left = Math.min(Math.max(unclampedLeft, minViewportMargin), maxLeft)
+      // Use the actual rendered height (offsetHeight) for the top offset so the
+      // menu sits flush against the anchor regardless of how many results there are.
       const top = shouldOpenAbove
-        ? Math.max(minViewportMargin, anchorRect.top - Math.min(menuHeight, maxHeight) - offset)
+        ? Math.max(minViewportMargin, anchorRect.top - Math.min(menuRenderedHeight, maxHeight) - offset)
         : anchorRect.bottom + offset
 
       setMenuStyle({
