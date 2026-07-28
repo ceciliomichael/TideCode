@@ -38,14 +38,6 @@ function normalizeSkillLocation(location: string) {
   return path.resolve(location)
 }
 
-function escapeXml(value: string) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;')
-}
 
 function normalizeFrontmatterValue(value: string) {
   const trimmed = value.trim()
@@ -237,9 +229,9 @@ export function buildSkillsSystemPromptBlock() {
 export function buildSkillToolDescription() {
   return [
     'Accesses and interacts with skills. Modes:',
+    '- action: "load", name: string — Loads SKILL.md instructions for a skill.',
     '- action: "list", page?: number — Lists available skills (max 10 per page).',
     '- action: "search", query: string — Searches skills by keyword/name/description.',
-    '- action: "load", name: string — Loads the main SKILL.md instructions for a skill.',
     '- action: "read_resource", name: string, resourcePath: string — Reads a resource/reference file inside the skill folder.',
   ].join('\n')
 }
@@ -411,16 +403,7 @@ export async function loadEnabledSkillByName(
 
 export function buildLoadedSkillResult(skill: LoadedSkill): AgentToolExecutionResult {
   return {
-    body: [
-      `<skill_content name="${escapeXml(skill.name)}">`,
-      `# Skill: ${skill.name}`,
-      '',
-      skill.content.trim(),
-      '',
-      `You MUST follow the instructions above for any work covered by the "${skill.name}" skill.`,
-      'If the skill specifies constraints, a design system, or workflow rules, apply them as if they were in the system instructions.',
-      '</skill_content>',
-    ].join('\n'),
+    body: skill.content.trim(),
     status: 'success',
     subject: {
       kind: 'file',

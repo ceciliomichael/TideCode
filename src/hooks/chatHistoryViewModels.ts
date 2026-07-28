@@ -1,6 +1,7 @@
 import type { AppLanguage } from '../lib/appSettings'
 import { getChatAttachmentSummary } from '../lib/chatAttachments'
 import { getConversationPreviewContent } from '../lib/chatMessageMetadata'
+import { collapseChatMentionMarkup } from '../lib/chatMentions'
 import type {
   ChatAttachment,
   FolderMoveDirection,
@@ -100,7 +101,8 @@ function formatUpdatedAtLabel(timestamp: number, language: AppLanguage) {
 }
 
 export function getConversationTitle(seed: string) {
-  const normalized = seed.trim().replace(/\s+/g, ' ')
+  const collapsed = collapseChatMentionMarkup(seed)
+  const normalized = collapsed.trim().replace(/\s+/g, ' ')
   if (normalized.length === 0) {
     return 'New chat'
   }

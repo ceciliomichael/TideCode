@@ -26,7 +26,7 @@ export function createSkillTool(context: WorkspaceToolContext, enabledSkills: Sk
       additionalProperties: false,
       properties: {
         action: {
-          description: 'The mode/action to perform: "list" (page available skills), "search" (search by query), "load" (fetch SKILL.md), or "read_resource" (read a reference file inside the skill folder).',
+          description: 'The mode/action to perform: "load" (loads SKILL.md), "list", "search", or "read_resource".',
           enum: ['list', 'search', 'load', 'read_resource'],
           type: 'string',
         },
@@ -159,13 +159,7 @@ export function createSkillTool(context: WorkspaceToolContext, enabledSkills: Sk
             }
 
             return {
-              body: [
-                `<skill_resource skill="${result.skill.name}" path="${resourcePath}">`,
-                `# Resource: ${resourcePath} (Skill: ${result.skill.name})`,
-                '',
-                result.content.trim(),
-                '</skill_resource>',
-              ].join('\n'),
+              body: result.content.trim(),
               status: 'success',
               subject: {
                 kind: 'file',

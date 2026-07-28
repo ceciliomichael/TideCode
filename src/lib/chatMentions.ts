@@ -55,6 +55,12 @@ function pushTextSegment(segments: ChatMentionSegment[], text: string) {
   segments.push(segment)
 }
 
+function getPathBasename(path: string) {
+  const normalized = path.replace(/\\/g, '/')
+  const segments = normalized.split('/').filter(Boolean)
+  return segments[segments.length - 1] ?? path
+}
+
 export function findChatMentionMatches(
   text: string,
   knownMentionLabels?: ReadonlyMap<string, string>,
@@ -69,6 +75,26 @@ export function findChatMentionMatches(
       label: match[1],
       path: match[2] ?? null,
       start: match.index,
+    })
+  }
+
+  const rawActionRegex = /(?:^|[\s(])((?:read|list|load_skill):([^\s,.;:!?\])]+))/g
+  while ((match = rawActionRegex.exec(text)) !== null) {
+    const fullMatch = match[0]
+    const actionTag = match[1]
+    const targetPath = match[2]
+    const start = match.index + (fullMatch.length - actionTag.length)
+    const end = start + actionTag.length
+
+    if (matches.some((existingMatch) => start < existingMatch.end && end > existingMatch.start)) {
+      continue
+    }
+
+    matches.push({
+      end,
+      label: getPathBasename(targetPath),
+      path: actionTag,
+      start,
     })
   }
 
@@ -255,6 +281,6 @@ export function expandChatMentions(text: string, knownMentionLabels: ReadonlyMap
       return `${prefix}@${label}`
     }
 
-    return `${prefix}@[${label}](${path})`
+    return `${prefix}${path}`
   })
 }

@@ -62,7 +62,7 @@ test('createSkillTool executes list and search actions', async () => {
 })
 
 test('expandChatMentions expands file, folder, and skill mentions with read:, list:, and load_skill:', async () => {
-  const { expandChatMentions } = await import('../src/lib/chatMentions')
+  const { expandChatMentions, collapseChatMentionMarkup } = await import('../src/lib/chatMentions')
   const map = new Map<string, string>([
     ['writing', 'load_skill:writing'],
     ['main.ts', 'read:src/main.ts'],
@@ -72,6 +72,9 @@ test('expandChatMentions expands file, folder, and skill mentions with read:, li
   const expanded = expandChatMentions('Please use @writing to help write @main.ts in @components', map)
   assert.equal(
     expanded,
-    'Please use @[writing](load_skill:writing) to help write @[main.ts](read:src/main.ts) in @[components](list:src/components)',
+    'Please use load_skill:writing to help write read:src/main.ts in list:src/components',
   )
+
+  const collapsed = collapseChatMentionMarkup(expanded)
+  assert.equal(collapsed, 'Please use @writing to help write @main.ts in @components')
 })

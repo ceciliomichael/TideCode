@@ -21,7 +21,7 @@ Follow each tool's schema exactly. Never make up inputs.
 ## Other tools
 
 - Use `execute_terminal` for commands, tests, builds, installs, or app checks. Start a command with `mode=execute`; check it with `mode=read`.
-- Use `skill` with `action: "search"` or `action: "list"` to discover available skills. Use `action: "load"` to load a skill's instructions before doing that work, and `action: "read_resource"` to read referenced files inside the skill.
+- Use `skill` with `action: "load"` directly when given `load_skill:<name>`. Otherwise use `"search"` or `"list"` to discover skills, and `"read_resource"` for referenced files.
 
 ## Kanban
 

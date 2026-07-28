@@ -60,12 +60,9 @@ function renderDiffCountSummary(invocation: ToolInvocationTrace) {
     return <span className="text-emerald-500">{`+${addedLineCount}`}</span>
   }
 
-  if (removedLineCount > 0) {
-    return <span className="text-red-500">{`-${removedLineCount}`}</span>
-  }
-
   return null
 }
+
 
 export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   invocation,
@@ -127,6 +124,7 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   const hasPendingDecision = invocation.decisionRequest !== undefined
   const isRunning = displayedState === 'running'
   const disableHeaderToggle = isRunning && !hasPendingDecision
+
   const headerLabel = getToolInvocationHeaderLabel(invocation, displayedState, workspaceRootPath)
   const diffCountSummary = renderDiffCountSummary(invocation)
   const terminalToolName =
