@@ -127,13 +127,28 @@ export default function App() {
     }
 
     const activeConversationId = chatMessages.activeConversationId
+    const activeFolderId = chatMessages.selectedFolderId ?? null
+
     if (!activeConversationId) {
+      if (
+        settings.lastActiveConversationId === null &&
+        settings.lastActiveDraftFolderId === activeFolderId &&
+        settings.openEmptyConversationOnLaunch
+      ) {
+        return
+      }
+
+      void updateSettings({
+        lastActiveConversationId: null,
+        lastActiveDraftFolderId: activeFolderId,
+        openEmptyConversationOnLaunch: true,
+      })
       return
     }
 
     if (
       activeConversationId === settings.lastActiveConversationId &&
-      settings.lastActiveDraftFolderId === null &&
+      activeFolderId === settings.lastActiveDraftFolderId &&
       !settings.openEmptyConversationOnLaunch
     ) {
       return
@@ -141,12 +156,13 @@ export default function App() {
 
     void updateSettings({
       lastActiveConversationId: activeConversationId,
-      lastActiveDraftFolderId: null,
+      lastActiveDraftFolderId: activeFolderId,
       openEmptyConversationOnLaunch: false,
     })
   }, [
     chatMessages.activeConversationId,
     chatMessages.isLoading,
+    chatMessages.selectedFolderId,
     isLoading,
     settings.lastActiveConversationId,
     settings.lastActiveDraftFolderId,

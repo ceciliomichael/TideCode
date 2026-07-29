@@ -295,4 +295,33 @@ test('workspace checkpoints create redo checkpoint successfully when source mani
   }
 })
 
+test('workspace checkpoints do not delete pre-existing files when post-state runs without pre-state capture', async () => {
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-checkpoints-noprestate-'))
+  const workspaceRootPath = path.join(tempRootPath, 'workspace')
+  const existingFilePath = path.join(workspaceRootPath, 'src', 'index.ts')
+
+  await fs.mkdir(path.dirname(existingFilePath), { recursive: true })
+  await fs.writeFile(existingFilePath, 'console.log("hello");\n', 'utf8')
+
+  const {
+    captureWorkspaceCheckpointTerminalPostState,
+    createWorkspaceCheckpointStore,
+  } = await import('../../electron/workspace/checkpoints')
+
+  const checkpointStore = createWorkspaceCheckpointStore(path.join(tempRootPath, 'checkpoints'))
+  const checkpoint = await checkpointStore.createCheckpoint({ workspaceRootPath })
+
+  try {
+    // Post-state runs at end of turn without any terminal pre-state having been captured
+    await captureWorkspaceCheckpointTerminalPostState(checkpoint.id, workspaceRootPath, checkpointStore)
+
+    // Restoring checkpoint must preserve pre-existing files, NOT delete them
+    await checkpointStore.restoreCheckpoint(checkpoint.id)
+    assert.equal(await fs.readFile(existingFilePath, 'utf8'), 'console.log("hello");\n')
+  } finally {
+    await fs.rm(tempRootPath, { force: true, recursive: true })
+  }
+})
+
+
 

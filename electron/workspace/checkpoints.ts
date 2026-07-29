@@ -278,6 +278,10 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
     async captureCreatedFilesState(checkpointId: string, currentFilePaths: string[]) {
       await withCheckpointLock(checkpointId, async () => {
         const manifest = await readManifest(checkpointId)
+        if (!Array.isArray(manifest.preStateTrackedDirectories)) {
+          return
+        }
+
         const existingEntriesSet = new Set(manifest.entries.map((entry) => normalizeRelativePath(entry.relativePath)))
 
         // Build the set of directories that were known to exist BEFORE the terminal ran,
@@ -285,7 +289,7 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
         // here because the terminal has already created those directories on disk, which
         // would cause it to return [] and the restore would never clean them up.
         const knownPreStateNormalizedDirs = new Set<string>(
-          (manifest.preStateTrackedDirectories ?? []).map(normalizeRelativePath),
+          manifest.preStateTrackedDirectories.map(normalizeRelativePath),
         )
         for (const entry of manifest.entries) {
           const segments = splitRelativePathSegments(path.dirname(normalizeRelativePath(entry.relativePath)))
@@ -366,9 +370,13 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
     async captureCreatedDirectoriesState(checkpointId: string, currentDirPaths: string[]) {
       await withCheckpointLock(checkpointId, async () => {
         const manifest = await readManifest(checkpointId)
+        if (!Array.isArray(manifest.preStateTrackedDirectories)) {
+          return
+        }
+
         // Build normalized set of directories that existed BEFORE the terminal ran.
         const preStateDirSet = new Set(
-          (manifest.preStateTrackedDirectories ?? []).map(normalizeRelativePath),
+          manifest.preStateTrackedDirectories.map(normalizeRelativePath),
         )
         const existingEntrySet = new Set(manifest.entries.map((e) => normalizeRelativePath(e.relativePath)))
         let manifestChanged = false

@@ -63,29 +63,18 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
     [clearConversationSelection, resetComposerState],
   )
 
-  const createConversation = useCallback(
-    async (folderId?: string | null, chatMode: ConversationRecord['chatMode'] = 'agent') => {
+  const prepareNewConversation = useCallback(
+    (folderId?: string | null) => {
       clearError()
       const nextFolderId =
         folderId !== undefined
           ? folderId
           : selectedFolderId ?? resolveFolderIdForWorkspacePath(activeWorkspacePath)
 
-      try {
-        const conversation = await window.echosphereHistory.createConversation({
-          chatMode,
-          folderId: nextFolderId,
-        })
-        applyConversation(conversation)
-        return conversation
-      } catch (caughtError) {
-        console.error(caughtError)
-        setError('Unable to create a new chat.')
-        resetDraft(nextFolderId)
-        throw caughtError
-      }
+      resetDraft(nextFolderId)
+      return nextFolderId
     },
-    [activeWorkspacePath, applyConversation, clearError, resolveFolderIdForWorkspacePath, resetDraft, selectedFolderId, setError],
+    [activeWorkspacePath, clearError, resolveFolderIdForWorkspacePath, resetDraft, selectedFolderId],
   )
 
   const createFolder = useCallback(async () => {
@@ -208,7 +197,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
           return
         }
 
-        await createConversation(deletedConversationFolderId)
+        resetDraft(deletedConversationFolderId)
       } catch (caughtError) {
         console.error(caughtError)
         setError('Unable to delete that conversation.')
@@ -216,21 +205,19 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
     },
     [
       activeConversationId,
-      applyConversation,
-      clearConversationSelection,
       clearError,
       conversationRuntimeStatesRef,
-      createConversation,
       getDeletionContext,
       removeConversationRuntime,
       replaceConversationSummaries,
       resetComposerState,
+      resetDraft,
       setError,
     ],
   )
 
   return {
-    createConversation,
+    prepareNewConversation,
     createFolder,
     createWorkspaceFolderFromPath,
     deleteConversation,

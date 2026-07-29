@@ -24,9 +24,7 @@ interface UserMessageProps {
 
 export function UserMessage({ content, onEdit, onRevert }: UserMessageProps) {
   const contentRef = useRef<HTMLDivElement>(null);
-  const textEndRef = useRef<HTMLSpanElement>(null);
   const [isMultiline, setIsMultiline] = useState(false);
-  const [isOverlapping, setIsOverlapping] = useState(false);
   const trimmedContent = content.trim();
   const compressedHistoryMessage = useMemo(
     () => parseCompressedHistoryMessage(content),
@@ -44,14 +42,12 @@ export function UserMessage({ content, onEdit, onRevert }: UserMessageProps) {
   useLayoutEffect(() => {
     if (isCompressedHistoryMessage) {
       setIsMultiline(false);
-      setIsOverlapping(false);
       return;
     }
 
     const contentElement = contentRef.current;
     if (!contentElement || trimmedContent.length === 0) {
       setIsMultiline(false);
-      setIsOverlapping(false);
       return;
     }
 
@@ -61,21 +57,12 @@ export function UserMessage({ content, onEdit, onRevert }: UserMessageProps) {
       );
       if (!Number.isFinite(lineHeight) || lineHeight <= 0) {
         setIsMultiline(false);
-        setIsOverlapping(false);
         return;
       }
 
       setIsMultiline(
         contentElement.getBoundingClientRect().height > lineHeight * 1.5,
       );
-
-      const endElement = textEndRef.current;
-      if (endElement) {
-        const endRect = endElement.getBoundingClientRect();
-        const containerRect = contentElement.getBoundingClientRect();
-        // ~48px threshold ensures we detect overlap before text hits the revert button
-        setIsOverlapping(endRect.right > containerRect.right - 48);
-      }
     };
 
     updateMultilineState();
@@ -138,7 +125,6 @@ export function UserMessage({ content, onEdit, onRevert }: UserMessageProps) {
         {trimmedContent.length > 0 ? (
           <ChatMentionText text={content} variant="rendered" />
         ) : null}
-        <span ref={textEndRef} aria-hidden="true" />
       </div>
 
       {onRevert ? (
@@ -148,11 +134,6 @@ export function UserMessage({ content, onEdit, onRevert }: UserMessageProps) {
           >
             <div className="h-full w-6 bg-gradient-to-r from-transparent to-surface" />
             <div className="flex h-full items-center bg-surface pr-3">
-              {isOverlapping ? (
-                <span className="mr-1.5 select-none text-[15px] font-normal leading-6 tracking-widest text-foreground">
-                  ...
-                </span>
-              ) : null}
               <button
                 type="button"
                 onClick={handleUndoClick}

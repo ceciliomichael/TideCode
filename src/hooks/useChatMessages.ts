@@ -522,8 +522,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
       !activeConversationState ||
       activeConversationState.isSending ||
       activeConversationState.activeStreamId !== null ||
-      activeConversationState.conversation.messages.length > 0 ||
-      activeConversationState.conversation.folderId !== null
+      activeConversationState.conversation.messages.length > 0
     ) {
       return
     }
@@ -541,21 +540,36 @@ export function useChatMessages(input: UseChatMessagesInput) {
 
   const createConversation = useCallback(
     async (folderId?: string | null) => {
+      const resolvedFolderId =
+        folderId !== undefined
+          ? folderId
+          : sessionState.selectedFolderId ?? sessionState.resolveFolderIdForWorkspacePath(activeWorkspacePath)
+
+      if (
+        sessionState.activeConversationId === null &&
+        sessionState.selectedFolderId === (resolvedFolderId ?? null)
+      ) {
+        return
+      }
+
       captureActiveEditDraftSession()
       await deleteAbandonedActiveConversation()
-      const createdConversation = await conversationActions.createConversation(folderId, draftChatMode)
+      const nextFolderId = conversationActions.prepareNewConversation(folderId)
       persistConversationLaunchPreference({
-        conversationId: createdConversation.id,
-        draftFolderId: null,
-        openEmptyConversationOnLaunch: false,
+        conversationId: null,
+        draftFolderId: nextFolderId ?? null,
+        openEmptyConversationOnLaunch: true,
       })
     },
     [
+      activeWorkspacePath,
       captureActiveEditDraftSession,
       conversationActions,
       deleteAbandonedActiveConversation,
-      draftChatMode,
       persistConversationLaunchPreference,
+      sessionState.activeConversationId,
+      sessionState.resolveFolderIdForWorkspacePath,
+      sessionState.selectedFolderId,
     ],
   )
 

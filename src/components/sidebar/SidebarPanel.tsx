@@ -204,6 +204,7 @@ export function SidebarPanel({
           onSelectConversation={onSelectConversation}
           onSelectProject={(projectId) => {
             setIsNewThreadProjectDialogOpen(false)
+            handleSelectProject(projectId)
             onCreateConversation(projectId === CHATS_PROJECT_FILTER_ID ? null : projectId)
           }}
           selectedProjectId={resolvedSelectedProjectId}

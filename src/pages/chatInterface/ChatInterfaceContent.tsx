@@ -364,11 +364,19 @@ export function ChatInterfaceContent({
   }
   // ──────────────────────────────────────────────────────────────────────
 
-  const handleCreateConversation = useCallback(async (folderId?: string | null) => {
-    clearQueuedMessages()
-    setWorkspaceViewMode('chat')
-    await chatMessages.createConversation(folderId)
-  }, [chatMessages, clearQueuedMessages])
+  const handleCreateConversation = useCallback(
+    async (folderId?: string | null) => {
+      clearQueuedMessages()
+      setWorkspaceViewMode('chat')
+      if (folderId !== undefined) {
+        const nextProjectId = folderId === null ? CHATS_PROJECT_FILTER_ID : folderId
+        setSelectedProjectId(nextProjectId)
+        onUpdateSettings({ selectedProjectId: nextProjectId })
+      }
+      await chatMessages.createConversation(folderId)
+    },
+    [chatMessages, clearQueuedMessages, onUpdateSettings],
+  )
 
   const handleSelectProject = useCallback(
     (projectId: string) => {
