@@ -16,6 +16,7 @@ import { WorkspaceFloatingControls } from '../../components/layout/WorkspaceFloa
 import { WorkspacePanel } from '../../components/layout/WorkspacePanel'
 import { SidebarPanel } from '../../components/sidebar/SidebarPanel'
 import { ALL_PROJECTS_FILTER_ID, CHATS_PROJECT_FILTER_ID } from '../../components/sidebar/sidebarProjectThreads'
+import { resolveProjectSwitchTarget } from '../../lib/projectSelectionUtils'
 import { SourceControlPanel } from '../../components/sourceControl/SourceControlPanel'
 import { WorkspaceTerminalPanel } from '../../components/chat/WorkspaceTerminalPanel'
 import { Tooltip } from '../../components/Tooltip'
@@ -377,31 +378,27 @@ export function ChatInterfaceContent({
     (projectId: string) => {
       setSelectedProjectId(projectId)
       onUpdateSettings({ selectedProjectId: projectId })
-      const targetFolderId =
-        projectId === ALL_PROJECTS_FILTER_ID
-          ? undefined
-          : projectId === CHATS_PROJECT_FILTER_ID
-            ? null
-            : projectId
 
-      if (
-        chatMessages.activeConversationId &&
-        (targetFolderId === undefined || chatMessages.selectedFolderId === targetFolderId)
-      ) {
+      const action = resolveProjectSwitchTarget({
+        activeConversationId: chatMessages.activeConversationId,
+        conversationGroups: chatMessages.conversationGroups,
+        currentSelectedFolderId: chatMessages.selectedFolderId,
+        projectId,
+      })
+
+      if (action.type === 'preserve_active_thread') {
         return
       }
 
-      const targetGroup = chatMessages.conversationGroups.find(
-        (group) => group.folder.id === (targetFolderId ?? null),
-      )
-      const targetConv = targetGroup?.conversations[0]
-
-      if (targetConv) {
+      if (action.type === 'switch_to_conversation') {
         clearQueuedMessages()
         setWorkspaceViewMode('chat')
-        void chatMessages.selectConversation(targetConv.id)
-      } else {
-        void handleCreateConversation(targetFolderId)
+        void chatMessages.selectConversation(action.conversationId)
+        return
+      }
+
+      if (action.type === 'create_new_conversation') {
+        void handleCreateConversation(action.folderId)
       }
     },
     [chatMessages, clearQueuedMessages, handleCreateConversation, onUpdateSettings],

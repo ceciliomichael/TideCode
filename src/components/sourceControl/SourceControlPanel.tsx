@@ -99,7 +99,6 @@ function SourceControlPanelContent({
   const [isHistoryResizing, setIsHistoryResizing] = useState(false)
   const [historyHeight, setHistoryHeight] = useState<number | null>(null)
   const [commitMessage, setCommitMessage] = useState('')
-  const [includeUnstaged, setIncludeUnstaged] = useState(true)
   const [isCommitActionMenuOpen, setIsCommitActionMenuOpen] = useState(false)
   const [operationNotice, setOperationNotice] = useState<SourceControlOperationNotice | null>(null)
   const [historyEntries, setHistoryEntries] = useState<GitHistoryEntry[]>([])
@@ -134,9 +133,8 @@ function SourceControlPanelContent({
     () => fileDiffs.filter((fileDiff) => isUnstagedLikeFileDiff(fileDiff)),
     [fileDiffs, isUnstagedLikeFileDiff],
   )
-  const totalChangedFileCount = fileDiffs.length
   const shouldUseSplitLayout = isChangesSectionOpen
-  const canQuickCommit = (includeUnstaged ? totalChangedFileCount > 0 : stagedFileDiffs.length > 0) && !isSourceControlBusy
+  const canQuickCommit = fileDiffs.length > 0 && !isSourceControlBusy
   const isCommitActionDisabled = !canQuickCommit || isSourceControlBusy
   const isQuickCommitting = pendingCommitOperation !== null
   const pendingSyncAction: GitSyncAction | 'refresh' | null = pendingSyncOperation?.action ?? null
@@ -636,7 +634,7 @@ function SourceControlPanelContent({
 
     try {
       const commitResult = await onQuickCommit({
-        includeUnstaged,
+        includeUnstaged: false,
         message: commitMessage,
       })
 
@@ -814,7 +812,6 @@ function SourceControlPanelContent({
             commitActionControlsRef={commitActionControlsRef}
             commitMessage={commitMessage}
             isOperationInProgress={isSourceControlBusy}
-            includeUnstaged={includeUnstaged}
             isChangesSectionOpen={isChangesSectionOpen}
             isCommitActionDisabled={isCommitActionDisabled}
             isCommitActionMenuOpen={isCommitActionMenuOpen}
@@ -836,7 +833,6 @@ function SourceControlPanelContent({
             onCommitMessageChange={setCommitMessage}
             onDiscardFiles={onDiscardFiles}
             onDiscardFile={onDiscardFile}
-            onIncludeUnstagedChange={setIncludeUnstaged}
             onOpenCommitModal={onOpenCommitModal}
             onQuickCommitSubmit={handleQuickCommitSubmit}
             onSyncChanges={handleSyncChanges}

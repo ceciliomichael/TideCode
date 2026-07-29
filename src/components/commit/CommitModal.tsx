@@ -4,7 +4,6 @@ import { GitBranch, GitCommitHorizontal, ArrowUp, X, Loader2 } from 'lucide-reac
 import { FaGithub } from 'react-icons/fa'
 import type { GitBranchState, GitCommitAction, GitStatusResult } from '../../types/chat'
 import type { ConversationDiffSnapshot } from '../../lib/chatDiffs'
-import { Switch } from '../ui/Switch'
 
 type CommitNextStep = GitCommitAction
 
@@ -70,7 +69,6 @@ export function CommitModal({
 }: CommitModalProps) {
   const [commitMessage, setCommitMessage] = useState('')
   const [commitBranchName, setCommitBranchName] = useState('')
-  const [includeUnstaged, setIncludeUnstaged] = useState(true)
   const [selectedAction, setSelectedAction] = useState<CommitNextStep>('commit')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -111,7 +109,7 @@ export function CommitModal({
 
         await onCommit({
           action: selectedAction,
-          includeUnstaged,
+          includeUnstaged: false,
           message: commitMessage,
           preferredBranchName: targetBranch.length > 0 ? targetBranch : undefined,
         })
@@ -121,13 +119,15 @@ export function CommitModal({
         setIsSubmitting(false)
       }
     },
-    [branchState, commitBranchName, commitMessage, includeUnstaged, onBranchChange, onBranchCreate, onCommit, selectedAction],
+    [branchState, commitBranchName, commitMessage, onBranchChange, onBranchCreate, onCommit, selectedAction],
   )
 
-  const changedFileCount = status?.changedFileCount ?? diffSnapshot.fileDiffs.length
+  const stagedFileCount = status?.stagedFileCount ?? diffSnapshot.fileDiffs.filter((fileDiff) => fileDiff.isStaged).length
+  const totalChangedFileCount = status?.changedFileCount ?? diffSnapshot.fileDiffs.length
+  const displayFileCount = stagedFileCount > 0 ? stagedFileCount : totalChangedFileCount
   const addedLineCount = diffSnapshot.totalAddedLineCount
   const removedLineCount = diffSnapshot.totalRemovedLineCount
-  const hasChanges = changedFileCount > 0 || addedLineCount > 0 || removedLineCount > 0
+  const hasChanges = totalChangedFileCount > 0 || addedLineCount > 0 || removedLineCount > 0
   const disableActionSelection = isSubmitting || isCommitting || isSwitchingBranch
   const disableSubmit =
     isSubmitting ||
@@ -214,7 +214,7 @@ export function CommitModal({
                 ) : (
                   <>
                     <span className="text-sm text-muted-foreground">
-                      {changedFileCount} {changedFileCount === 1 ? 'file' : 'files'}
+                      {displayFileCount} {displayFileCount === 1 ? 'file' : 'files'}
                     </span>
                     {hasChanges ? (
                       <>
@@ -230,14 +230,6 @@ export function CommitModal({
                 )}
               </div>
             </div>
-          </div>
-
-          {/* Include unstaged toggle */}
-          <div className="px-6 py-2.5">
-            <label className="flex cursor-pointer items-center gap-3">
-              <Switch checked={includeUnstaged} onChange={setIncludeUnstaged} disabled={disableSubmit} />
-              <span className="text-sm text-foreground">Include unstaged</span>
-            </label>
           </div>
 
           {/* Divider */}

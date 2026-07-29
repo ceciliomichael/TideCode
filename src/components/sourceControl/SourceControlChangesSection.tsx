@@ -4,7 +4,6 @@ import { useState } from 'react'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
 import type { DiffPanelScope } from '../chat/ConversationDiffFileItem'
 import { Tooltip } from '../Tooltip'
-import { Switch } from '../ui/Switch'
 import { SourceControlDiffSection } from './SourceControlDiffSection'
 import { PublishToGitHubModal } from './PublishToGitHubModal'
 import {
@@ -17,7 +16,6 @@ interface SourceControlChangesSectionProps {
   commitActionControlsRef: RefObject<HTMLDivElement>
   commitMessage: string
   hasRemote: boolean
-  includeUnstaged: boolean
   isChangesSectionOpen: boolean
   isCommitActionDisabled: boolean
   isCommitActionMenuOpen: boolean
@@ -39,7 +37,6 @@ interface SourceControlChangesSectionProps {
   onCommitMessageChange: (nextValue: string) => void
   onDiscardFiles: (filePaths: string[]) => Promise<void>
   onDiscardFile: (filePath: string) => Promise<void>
-  onIncludeUnstagedChange: (nextValue: boolean) => void
   onOpenCommitModal: () => void
   onOpenDiffPanelForFile: (filePath: string, scope: DiffPanelScope) => void
   onPublishSuccess: () => Promise<void>
@@ -60,7 +57,6 @@ export function SourceControlChangesSection({
   commitActionControlsRef,
   commitMessage,
   hasRemote,
-  includeUnstaged,
   isChangesSectionOpen,
   isCommitActionDisabled,
   isCommitActionMenuOpen,
@@ -82,7 +78,6 @@ export function SourceControlChangesSection({
   onCommitMessageChange,
   onDiscardFiles,
   onDiscardFile,
-  onIncludeUnstagedChange,
   onOpenCommitModal,
   onOpenDiffPanelForFile,
   onPublishSuccess,
@@ -170,12 +165,7 @@ export function SourceControlChangesSection({
               className="w-full resize-none rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm text-foreground outline-none placeholder:text-subtle-foreground"
             />
 
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                <Switch checked={includeUnstaged} onChange={onIncludeUnstagedChange} disabled={isOperationInProgress} />
-                Include unstaged
-              </label>
-
+            <div className="mt-2 flex items-center justify-end gap-2">
               <div className="inline-flex items-center gap-1.5">
                 {shouldShowSyncChanges ? (
                   <button

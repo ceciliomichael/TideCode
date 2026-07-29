@@ -403,6 +403,15 @@ export async function gitCommit(input: GitCommitInput): Promise<GitCommitResult>
     } catch (error) {
       throw new Error(`Failed to stage changes: ${getErrorMessage(error)}`)
     }
+  } else {
+    const currentStagedNumstat = await readStagedNumstatText(repoRootPath)
+    if (currentStagedNumstat.trim().length === 0) {
+      try {
+        await runGit(['add', '-A'], repoRootPath)
+      } catch (error) {
+        throw new Error(`Failed to stage changes: ${getErrorMessage(error)}`)
+      }
+    }
   }
 
   const stagedDiffText = await readStagedDiffText(repoRootPath)
