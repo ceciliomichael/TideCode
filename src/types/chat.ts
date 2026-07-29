@@ -946,6 +946,9 @@ export type ChatStreamEvent =
     }
 
 export interface EchosphereHistoryApi {
+  getDraftAgentContextPathSync: () => string
+  ensureDraftAgentContext: () => Promise<string>
+  cleanupDraftAgentContext: () => Promise<void>
   listConversations: () => Promise<ConversationSummary[]>
   listFolders: () => Promise<ConversationFolderSummary[]>
   getConversation: (conversationId: string) => Promise<ConversationRecord | null>

@@ -278,7 +278,7 @@ export function WorkspaceExplorerPanelView({
       <div
         ref={panelState.treeContainerRef}
         className={[
-          'min-h-0 flex flex-1 flex-col overflow-y-auto',
+          'min-h-0 flex flex-1 flex-col overflow-y-auto focus:outline-none',
           panelState.dropTargetDirectoryPath === ROOT_DIRECTORY_KEY ? 'bg-surface/60' : '',
         ].join(' ')}
         tabIndex={0}

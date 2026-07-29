@@ -48,8 +48,28 @@ export function useChatMessages(input: UseChatMessagesInput) {
   } = input
   const sessionState = useChatSessionState(language)
   const messages = sessionState.activeConversationState?.conversation.messages ?? EMPTY_MESSAGES
+  // Read the draft agent context path synchronously so the Explorer panel
+  // always has a valid path on the very first render — no "Explorer is waiting" flash.
+  const [draftAgentContextPath] = useState<string | null>(() => {
+    try {
+      return window.echosphereHistory?.getDraftAgentContextPathSync?.() ?? null
+    } catch {
+      return null
+    }
+  })
+
+  // Ensure the VIRT_draft directory exists on disk as a fire-and-forget side-effect.
+  // We don't need to await or set state — the path itself is already known synchronously.
+  useEffect(() => {
+    if (draftAgentContextPath && window.echosphereHistory?.ensureDraftAgentContext) {
+      void window.echosphereHistory.ensureDraftAgentContext().catch(() => undefined)
+    }
+  }, [draftAgentContextPath])
+
   const activeWorkspacePath =
-    sessionState.activeConversationState?.conversation.agentContextRootPath ?? sessionState.selectedFolderPath
+    sessionState.activeConversationState?.conversation.agentContextRootPath ??
+    sessionState.selectedFolderPath ??
+    draftAgentContextPath
   const composerState = useChatComposerState(messages)
   const activeConversationId = sessionState.activeConversationId
   const setSessionError = sessionState.setError
@@ -517,6 +537,10 @@ export function useChatMessages(input: UseChatMessagesInput) {
   const isActiveDraftSending = activeConversationId === null && pendingDraftSendCount > 0
 
   const deleteAbandonedActiveConversation = useCallback(async () => {
+    if (typeof window !== 'undefined' && window.echosphereHistory?.cleanupDraftAgentContext) {
+      await window.echosphereHistory.cleanupDraftAgentContext().catch(() => undefined)
+    }
+
     const activeConversationState = sessionState.activeConversationState
     if (
       !activeConversationState ||
@@ -641,7 +665,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
 
   return {
     activeConversationId,
-    activeConversationRootPath: sessionState.activeConversationState?.conversation.agentContextRootPath ?? null,
+    activeConversationRootPath: activeWorkspacePath,
     activeConversationTitle: sessionState.activeConversationTitle,
     cancelEditingMessage,
     conversationGroups: sessionState.conversationGroups,

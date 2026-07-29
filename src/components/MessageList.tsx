@@ -469,6 +469,11 @@ export function MessageList({
       (index === visibleMessages.length - 1 ||
         visibleMessages[index + 1]?.role !== "assistant");
 
+    const isMsgStreaming =
+      streamingAssistantMessageId !== null &&
+      (msg.id === streamingAssistantMessageId ||
+        msg.id.startsWith(`${streamingAssistantMessageId}-`));
+
     return (
       <MessageRow
         key={msg.id}
@@ -485,7 +490,7 @@ export function MessageList({
         isConversationStreaming={isConversationStreaming}
         isEditing={editingMessageId === msg.id}
         isSending={isSending}
-        isStreaming={streamingAssistantMessageId === msg.id}
+        isStreaming={isMsgStreaming}
         message={msg}
         showCopyButton={showCopyButton}
         onAbortStreamingResponse={onAbortStreamingResponse}
@@ -509,12 +514,12 @@ export function MessageList({
         showReasoningEffortSelector={showReasoningEffortSelector}
         editClickBoundaryRef={scrollContainerRef}
         waitingIndicatorVariant={
-          streamingAssistantMessageId === msg.id
+          isMsgStreaming
             ? (streamingWaitingIndicatorVariant ?? "thinking")
             : undefined
         }
         isTextStreaming={
-          streamingAssistantMessageId === msg.id
+          isMsgStreaming
             ? streamingTextActive
             : false
         }
@@ -531,11 +536,20 @@ export function MessageList({
       <div className="chat-column mx-auto space-y-2.5 px-4 pb-6 pt-6">
         {renderItems.map((item) => {
           if (item.type === 'working_group') {
+            const isWorkingGroupStreaming =
+              streamingAssistantMessageId !== null &&
+              item.messages.some(
+                (m) =>
+                  m.id === streamingAssistantMessageId ||
+                  m.id.startsWith(`${streamingAssistantMessageId}-`),
+              );
+
             return (
               <div key={item.key} className="flex flex-col gap-1.5 w-full">
                 <WorkingBlock
                   startTime={item.startTime}
                   endTime={item.endTime}
+                  isStreaming={isWorkingGroupStreaming}
                 >
                   {item.messages.map((msg, idx) => renderMessageRow(msg, item.startIndex + idx))}
                 </WorkingBlock>

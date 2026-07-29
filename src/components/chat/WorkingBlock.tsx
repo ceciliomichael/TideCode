@@ -1,10 +1,11 @@
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useEffect, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 
 interface WorkingBlockProps {
   children: React.ReactNode
   startTime: number
   endTime: number
+  isStreaming?: boolean
 }
 
 function formatDuration(seconds: number): string {
@@ -19,9 +20,17 @@ function formatDuration(seconds: number): string {
   return `${normalizedSeconds.toFixed(2)}s`
 }
 
-export const WorkingBlock = memo(function WorkingBlock({ children, startTime, endTime }: WorkingBlockProps) {
-  const [isOpen, setIsOpen] = useState(false)
+export const WorkingBlock = memo(function WorkingBlock({ children, startTime, endTime, isStreaming = false }: WorkingBlockProps) {
+  const [isOpen, setIsOpen] = useState(isStreaming)
   const durationSeconds = Math.max((endTime - startTime) / 1000, 0)
+
+  useEffect(() => {
+    if (isStreaming) {
+      setIsOpen(true)
+    } else {
+      setIsOpen(false)
+    }
+  }, [isStreaming])
 
   const handleToggle = useCallback(() => {
     setIsOpen((currentValue) => !currentValue)
@@ -32,6 +41,7 @@ export const WorkingBlock = memo(function WorkingBlock({ children, startTime, en
       <WorkingBlockHeader
         isOpen={isOpen}
         durationSeconds={durationSeconds}
+        isStreaming={isStreaming}
         onToggle={handleToggle}
       />
       {isOpen ? (
@@ -46,17 +56,21 @@ export const WorkingBlock = memo(function WorkingBlock({ children, startTime, en
 interface WorkingBlockHeaderProps {
   isOpen: boolean
   durationSeconds: number
+  isStreaming?: boolean
   onToggle: () => void
 }
 
 const WorkingBlockHeader = memo(function WorkingBlockHeader({
   isOpen,
   durationSeconds,
+  isStreaming = false,
   onToggle,
 }: WorkingBlockHeaderProps) {
   const [isHovering, setIsHovering] = useState(false)
   
-  const headerLabel = `Worked for ${formatDuration(durationSeconds)}`
+  const headerLabel = isStreaming
+    ? 'Working...'
+    : `Worked for ${formatDuration(durationSeconds)}`
 
   return (
     <button

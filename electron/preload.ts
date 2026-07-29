@@ -73,6 +73,9 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
 })
 
 const historyApi: EchosphereHistoryApi = {
+  getDraftAgentContextPathSync: () => ipcRenderer.sendSync('history:getDraftAgentContextPathSync') as string,
+  ensureDraftAgentContext: () => ipcRenderer.invoke('history:ensureDraftAgentContext'),
+  cleanupDraftAgentContext: () => ipcRenderer.invoke('history:cleanupDraftAgentContext'),
   listConversations: () => ipcRenderer.invoke('history:list'),
   listFolders: () => ipcRenderer.invoke('history:listFolders'),
   getConversation: (conversationId: string) => ipcRenderer.invoke('history:get', conversationId),

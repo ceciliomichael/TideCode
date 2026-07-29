@@ -57,7 +57,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
     preserveLineBreaks ? 'whitespace-pre-wrap' : 'whitespace-normal', 
     className,
     '[&>*:first-child]:mt-0',
-    '[&>*:last-child]:mb-0'
+    '[&>ul+ul]:-mt-1',
+    '[&>ol+ol]:-mt-1'
   ]
     .filter(Boolean)
     .join(' ')
@@ -74,13 +75,13 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         <h3 {...props} className="mt-1.5 mb-1 text-[1rem] font-semibold leading-[1.3] text-foreground" />
       ),
       p: (props: React.ComponentPropsWithoutRef<'p'>) => (
-        <p {...props} className="my-0 mb-3 leading-[1.65] text-foreground last:mb-0" />
+        <p {...props} className="my-0 mb-3 leading-[1.65] text-foreground" />
       ),
       ul: (props: React.ComponentPropsWithoutRef<'ul'>) => (
-        <ul {...props} className="my-2 list-disc pl-6 text-foreground last:mb-0" />
+        <ul {...props} className="my-2 space-y-1 list-disc pl-6 text-foreground" />
       ),
       ol: (props: React.ComponentPropsWithoutRef<'ol'>) => (
-        <ol {...props} className="my-2 list-decimal pl-6 text-foreground last:mb-0" />
+        <ol {...props} className="my-2 space-y-1 list-decimal pl-6 text-foreground" />
       ),
       li: (props: React.ComponentPropsWithoutRef<'li'>) => (
         <li {...props} className="my-0 leading-[1.6] [&>p]:my-0 [&>p]:mb-0 [&>p+p]:mt-1" />

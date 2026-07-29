@@ -228,6 +228,16 @@ test('loadInitialChatHistory keeps the workspace on an empty draft when requeste
 
   const restoreWindow = installWindowMock({
     echosphereHistory: {
+      createConversation: async (input) => ({
+        agentContextRootPath: '/virtual/agent/context',
+        chatMode: 'agent',
+        createdAt: 100,
+        folderId: input?.folderId ?? null,
+        id: 'new-draft-id',
+        messages: [],
+        title: 'New chat',
+        updatedAt: 100,
+      }),
       getConversation: async () => {
         throw new Error('should not load a conversation when restoring an empty draft')
       },

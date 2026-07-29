@@ -33,6 +33,10 @@ export function getConversationAgentContextPath(conversationId: string) {
   return path.join(getAgentContextsDirectoryPath(), getVirtualAgentContextDirectoryName(conversationId))
 }
 
+export function getDraftAgentContextPath() {
+  return path.join(getAgentContextsDirectoryPath(), 'VIRT_draft')
+}
+
 export async function ensureHistoryDirectory() {
   await fs.mkdir(getHistoryDirectoryPath(), { recursive: true })
 }

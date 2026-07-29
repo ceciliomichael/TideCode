@@ -13,6 +13,8 @@ import {
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+
 import type {
   ApiKeyProviderId,
   AppendConversationMessagesInput,
@@ -77,6 +79,8 @@ import {
   createStoredConversation,
   deleteStoredFolder,
   deleteStoredConversation,
+  ensureDraftAgentContextDirectory,
+  cleanupDraftAgentContextDirectory,
   getStoredConversation,
   getStoredUserMessageCheckpointHistory,
   listStoredConversations,
@@ -88,6 +92,7 @@ import {
   updateStoredConversationTitle,
   updateStoredConversationPinned,
 } from './history/store'
+import { getDraftAgentContextPath } from './history/paths'
 import { flushStoredSettingsUpdates, getStoredSettings, updateStoredSettings } from './settings/store'
 import { serializeInitialSettingsArg } from './settings/bootstrap'
 import { applyWindowTheme, getTitleBarOverlay, getWindowBackgroundColor, syncNativeThemeSource } from './window/theme'
@@ -358,7 +363,78 @@ async function createWindow() {
   }
 }
 
+class WindowsClipboardReader {
+  private ps: ChildProcessWithoutNullStreams | null = null
+  private pendingRequests: Array<(paths: string[]) => void> = []
+  private currentPaths: string[] = []
+  private isShuttingDown = false
+
+  public constructor() {
+    app.on('quit', () => {
+      this.isShuttingDown = true
+      if (this.ps) {
+        this.ps.kill()
+      }
+    })
+  }
+
+  private getProcess() {
+    if (!this.ps && !this.isShuttingDown) {
+      this.ps = spawn('powershell', ['-STA', '-NoProfile', '-Command', '-'], { windowsHide: true })
+      this.ps.stdout.on('data', (data: Buffer) => {
+        const lines = data.toString().split(/\r?\n/)
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (trimmed === 'EOF') {
+            const req = this.pendingRequests.shift()
+            if (req) req([...this.currentPaths])
+            this.currentPaths = []
+          } else if (trimmed.length > 0) {
+            this.currentPaths.push(trimmed)
+          }
+        }
+      })
+      this.ps.on('exit', () => {
+        this.ps = null
+        for (const req of this.pendingRequests) {
+          req([])
+        }
+        this.pendingRequests = []
+      })
+    }
+    return this.ps
+  }
+
+  public async readFiles(): Promise<string[]> {
+    return new Promise((resolve) => {
+      if (this.isShuttingDown) {
+        resolve([])
+        return
+      }
+      this.pendingRequests.push(resolve)
+      const ps = this.getProcess()
+      if (ps) {
+        ps.stdin.write(`
+Add-Type -AssemblyName System.Windows.Forms
+if ([System.Windows.Forms.Clipboard]::ContainsFileDropList()) {
+    $files = [System.Windows.Forms.Clipboard]::GetFileDropList()
+    foreach ($file in $files) { Write-Host $file }
+}
+Write-Host "EOF"\n`)
+      }
+    })
+  }
+}
+
+const windowsClipboard = new WindowsClipboardReader()
+
 function registerHistoryHandlers() {
+  // Synchronous channel: lets the renderer read the draft path on first paint without an async round-trip
+  ipcMain.on('history:getDraftAgentContextPathSync', (event) => {
+    event.returnValue = getDraftAgentContextPath()
+  })
+  ipcMain.handle('history:ensureDraftAgentContext', async () => ensureDraftAgentContextDirectory())
+  ipcMain.handle('history:cleanupDraftAgentContext', async () => cleanupDraftAgentContextDirectory())
   ipcMain.handle('history:list', async () => listStoredConversations())
   ipcMain.handle('history:listFolders', async () => listStoredFolders())
   ipcMain.handle('history:get', async (_event, conversationId: string) => getStoredConversation(conversationId))
@@ -610,27 +686,49 @@ function registerHistoryHandlers() {
   )
   ipcMain.handle('clipboard:readFiles', async () => {
     if (process.platform === 'win32') {
-      const raw = clipboard.readBuffer('FileNameW')
-      if (!raw || raw.length === 0) {
-        return []
+      if (clipboard.has('FileNameW') || clipboard.has('FileName')) {
+        try {
+          const paths = await windowsClipboard.readFiles()
+          if (paths && paths.length > 0) {
+            return paths
+          }
+        } catch (e) {
+          console.error('Failed to read files from persistent clipboard reader', e)
+        }
       }
-      const pathStr = raw.toString('utf16le')
-      const paths = pathStr.split('\0').filter(s => s.trim().length > 0)
-      return paths
+
+      // Fallback if powershell fails: read FileNameW directly (only returns the 1st file)
+      const raw = clipboard.readBuffer('FileNameW')
+      if (raw && raw.length > 0) {
+        const pathStr = raw.toString('utf16le')
+        const paths = pathStr.split('\0').filter((s) => s.trim().length > 0)
+        if (paths.length > 0) {
+          return paths
+        }
+      }
+    }
+
+    const uriList = clipboard.read('text/uri-list')
+    if (uriList && uriList.trim().length > 0) {
+      const paths = uriList
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith('file://'))
+        .map((line) => decodeURIComponent(line.replace(/^file:\/\//, '')))
+        .filter((filePath) => filePath.length > 0)
+
+      if (paths.length > 0) {
+        return paths
+      }
     }
 
     if (process.platform === 'darwin') {
       const url = clipboard.read('public.file-url')
       if (url && url.startsWith('file://')) {
-        return [decodeURIComponent(url.replace('file://', ''))]
+        return [decodeURIComponent(url.replace(/^file:\/\//, ''))]
       }
-      return []
     }
 
-    const url = clipboard.read('text/uri-list')
-    if (url) {
-      return url.split('\n').filter(s => s.startsWith('file://')).map(s => decodeURIComponent(s.replace('file://', '').trim()))
-    }
     return []
   })
 }

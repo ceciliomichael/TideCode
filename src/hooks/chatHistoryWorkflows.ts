@@ -167,6 +167,10 @@ export async function loadInitialChatHistory(
       : null
 
   if (conversationSummaries.length === 0 || openEmptyConversationOnLaunch) {
+    if (!validPreferredFolderId && window.echosphereHistory.ensureDraftAgentContext) {
+      await window.echosphereHistory.ensureDraftAgentContext()
+    }
+
     return {
       conversationSummaries,
       folderSummaries,

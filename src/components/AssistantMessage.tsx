@@ -124,7 +124,8 @@ export function AssistantMessage({
   });
   const copyableText = getCopyableAssistantMessageText({ content, reasoningContent });
   const canShowCopyButton =
-    showCopyButton && !isStreaming && copyableText.length > 0;
+    showCopyButton && copyableText.length > 0;
+  const isCopyButtonVisible = canShowCopyButton && !isStreaming;
   const messagePaddingClassName = canShowCopyButton ? "pb-5 pr-5" : "";
 
   useEffect(() => {
@@ -201,7 +202,7 @@ export function AssistantMessage({
         <ThinkingIndicator variant={effectiveWaitingIndicatorVariant} />
       ) : null}
 
-      {canShowCopyButton ? (
+      {isCopyButtonVisible ? (
         <button
           type="button"
           onClick={handleCopy}

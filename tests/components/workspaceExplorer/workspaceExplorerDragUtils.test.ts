@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { getExternalClipboardFilePaths } from '../../../src/components/workspaceExplorer/workspaceExplorerPanel/workspaceExplorerDragUtils'
 
-test('clipboard file extraction ignores empty paths and preserves valid file paths', () => {
+test('clipboard file extraction ignores empty paths and preserves valid file paths', async () => {
   const event = {
     clipboardData: {
       files: [
@@ -13,13 +13,13 @@ test('clipboard file extraction ignores empty paths and preserves valid file pat
     },
   } as Parameters<typeof getExternalClipboardFilePaths>[0]
 
-  assert.deepEqual(getExternalClipboardFilePaths(event), [
+  assert.deepEqual(await getExternalClipboardFilePaths(event), [
     '/Users/administrator/Desktop/notes.txt',
     '/projects/image.png',
   ])
 })
 
-test('clipboard file extraction falls back to Electron webUtils paths', () => {
+test('clipboard file extraction falls back to Electron webUtils paths', async () => {
   const previousWindow = globalThis.window
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
@@ -40,7 +40,7 @@ test('clipboard file extraction falls back to Electron webUtils paths', () => {
       },
     } as unknown as Parameters<typeof getExternalClipboardFilePaths>[0]
 
-    assert.deepEqual(getExternalClipboardFilePaths(event), [
+    assert.deepEqual(await getExternalClipboardFilePaths(event), [
       'C:\\Users\\Administrator\\Desktop\\notes.txt',
     ])
   } finally {
