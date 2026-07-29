@@ -15,6 +15,7 @@ import { AppWorkspaceShell } from '../../components/layout/AppWorkspaceShell'
 import { WorkspaceFloatingControls } from '../../components/layout/WorkspaceFloatingControls'
 import { WorkspacePanel } from '../../components/layout/WorkspacePanel'
 import { SidebarPanel } from '../../components/sidebar/SidebarPanel'
+import { ALL_PROJECTS_FILTER_ID } from '../../components/sidebar/sidebarProjectThreads'
 import { SourceControlPanel } from '../../components/sourceControl/SourceControlPanel'
 import { WorkspaceTerminalPanel } from '../../components/chat/WorkspaceTerminalPanel'
 import { Tooltip } from '../../components/Tooltip'
@@ -118,6 +119,7 @@ export function ChatInterfaceContent({
   codexUsage,
   workspaceState,
 }: ChatInterfaceContentProps) {
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(ALL_PROJECTS_FILTER_ID)
   const activeWorkspacePath = chatMessages.activeConversationRootPath ?? chatMessages.selectedFolderPath
   const runtimeSelection = useMemo(
     () => buildRuntimeSelection(chatRuntimeConfig, settings.terminalExecutionMode),
@@ -561,6 +563,8 @@ export function ChatInterfaceContent({
           onOpenSettings={onOpenSettings}
           onRenameFolder={chatMessages.renameFolder}
           onSelectConversation={handleSelectConversation}
+          selectedProjectId={selectedProjectId}
+          onSelectProject={setSelectedProjectId}
         />
       }
       sidebarWidth={sidebarWidth}

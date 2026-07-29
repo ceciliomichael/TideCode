@@ -22,8 +22,6 @@ export function ResizableSidebarPanel({
   const [isResizing, setIsResizing] = useState(false)
   const dragStateRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null)
   const sidebarWidthRef = useRef(renderedSidebarWidth)
-  const visibleSidebarWidth = isSidebarOpen ? renderedSidebarWidth : 0
-  const shouldRenderSidebarContent = isSidebarOpen
 
   function updateRenderedSidebarWidth(nextWidth: number) {
     sidebarWidthRef.current = nextWidth
@@ -90,8 +88,10 @@ export function ResizableSidebarPanel({
     document.body.style.userSelect = 'none'
   }
 
+  const visibleSidebarWidth = isSidebarOpen ? renderedSidebarWidth : 0
+
   return (
-    <div className="flex h-full min-w-0 flex-1 overflow-hidden">
+    <div className="relative flex h-full min-w-0 flex-1 overflow-hidden">
       <div
         data-sidebar-root="true"
         className={[
@@ -102,12 +102,12 @@ export function ResizableSidebarPanel({
         style={{ width: `${visibleSidebarWidth}px` }}
         aria-hidden={!isSidebarOpen}
       >
-        <div className="h-full min-w-0 flex-1" style={{ width: `${renderedSidebarWidth}px` }}>
-          {shouldRenderSidebarContent ? sidebar : null}
+        <div className="h-full shrink-0" style={{ width: `${renderedSidebarWidth}px` }}>
+          {sidebar}
         </div>
       </div>
 
-      <div className="relative flex min-w-0 flex-1">
+      <div className="relative flex min-w-0 flex-1 z-10">
         <div
           role="separator"
           aria-orientation="vertical"

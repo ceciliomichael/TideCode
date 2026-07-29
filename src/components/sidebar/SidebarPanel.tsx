@@ -25,6 +25,8 @@ interface SidebarPanelProps {
   onOpenSettings: () => void
   onRenameFolder: (folderId: string, name: string) => Promise<void>
   onSelectConversation: (conversationId: string) => void
+  selectedProjectId?: string
+  onSelectProject?: (projectId: string) => void
 }
 
 export function SidebarPanel({
@@ -38,24 +40,38 @@ export function SidebarPanel({
   onOpenSettings,
   onRenameFolder,
   onSelectConversation,
+  selectedProjectId: controlledSelectedProjectId,
+  onSelectProject: controlledOnSelectProject,
 }: SidebarPanelProps) {
   const projects = useMemo(() => buildSidebarProjectOptions(conversationGroups), [conversationGroups])
-  const [selectedProjectId, setSelectedProjectId] = useState(ALL_PROJECTS_FILTER_ID)
+  const [internalSelectedProjectId, setInternalSelectedProjectId] = useState(ALL_PROJECTS_FILTER_ID)
   const [searchQuery, setSearchQuery] = useState('')
   const [isNewThreadProjectDialogOpen, setIsNewThreadProjectDialogOpen] = useState(false)
-  const resolvedSelectedProjectId = resolveSidebarProjectFilter(selectedProjectId, projects)
+
+  const activeSelectedProjectId = controlledSelectedProjectId ?? internalSelectedProjectId
+  const handleSelectProject = useCallback(
+    (projectId: string) => {
+      if (controlledOnSelectProject) {
+        controlledOnSelectProject(projectId)
+      } else {
+        setInternalSelectedProjectId(projectId)
+      }
+    },
+    [controlledOnSelectProject],
+  )
+
+  const resolvedSelectedProjectId = resolveSidebarProjectFilter(activeSelectedProjectId, projects)
 
   useEffect(() => {
-    if (resolvedSelectedProjectId !== selectedProjectId) {
-      setSelectedProjectId(resolvedSelectedProjectId)
+    if (resolvedSelectedProjectId !== activeSelectedProjectId) {
+      handleSelectProject(resolvedSelectedProjectId)
     }
-  }, [resolvedSelectedProjectId, selectedProjectId])
+  }, [activeSelectedProjectId, handleSelectProject, resolvedSelectedProjectId])
 
   const actionButtonClassName =
     'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-150 ease-out hover:bg-[var(--sidebar-hover-surface)] hover:text-foreground'
   const footerButtonClassName =
     'flex min-h-11 w-full items-center gap-3 rounded-xl px-2 py-3 text-left text-sm font-medium text-foreground transition-colors duration-200 ease-out hover:bg-[var(--sidebar-hover-surface)]'
-
   const handleWorkspaceFolderDragOver = useCallback((event: DragEvent<HTMLElement>) => {
     const hasExternalFiles = Array.from(event.dataTransfer.types).includes('Files')
     if (!hasExternalFiles) {
@@ -109,7 +125,7 @@ export function SidebarPanel({
                     projects.find((project) => project.id === resolvedSelectedProjectId)?.name ?? 'project'
                   }`
             }
-            side="left"
+            side="right"
           >
             <button
               type="button"
@@ -137,10 +153,10 @@ export function SidebarPanel({
             selectedProjectId={resolvedSelectedProjectId}
             onDeleteProject={onDeleteFolder}
             onRenameProject={onRenameFolder}
-            onSelectProject={setSelectedProjectId}
+            onSelectProject={handleSelectProject}
           />
           <div className="flex shrink-0 items-center">
-            <Tooltip content="Add folder" side="left">
+            <Tooltip content="Add folder" side="right">
               <button
                 type="button"
                 onClick={() => {
