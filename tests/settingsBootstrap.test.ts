@@ -79,14 +79,14 @@ test('parseInitialSettingsArg preserves AI task planning configuration', () => {
     'echosphere.exe',
     serializeInitialSettingsArg({
       ...DEFAULT_APP_SETTINGS,
-      kanbanAiPlanningEnabled: false,
+      kanbanAiPlanningEnabled: true,
       kanbanModelId: 'gpt-5',
       kanbanModelLabel: 'GPT-5',
       kanbanModelProviderId: 'openai',
     }),
   ])
 
-  assert.equal(parsedSettings.kanbanAiPlanningEnabled, false)
+  assert.equal(parsedSettings.kanbanAiPlanningEnabled, true)
   assert.equal(parsedSettings.kanbanModelId, 'gpt-5')
   assert.equal(parsedSettings.kanbanModelLabel, 'GPT-5')
   assert.equal(parsedSettings.kanbanModelProviderId, 'openai')

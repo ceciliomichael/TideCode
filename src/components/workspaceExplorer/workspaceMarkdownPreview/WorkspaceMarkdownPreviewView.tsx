@@ -1,5 +1,7 @@
-import { memo, useMemo } from 'react'
+import React, { memo, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
+import rehypeRaw from 'rehype-raw'
+import remarkEmoji from 'remark-emoji'
 import remarkGfm from 'remark-gfm'
 import { preprocessMarkdown } from '../../../lib/markdown'
 import { CodeBlock } from '../../chat/CodeBlock'
@@ -38,6 +40,14 @@ function extractLanguage(className: string | undefined) {
 
 function isBlockCode(nodeClassName: string | undefined, inline: boolean | undefined, codeText: string) {
   return inline === false || (typeof nodeClassName === 'string' && nodeClassName.includes('language-')) || codeText.includes('\n')
+}
+
+function isSummaryElement(child: React.ReactNode): boolean {
+  if (!React.isValidElement(child)) return false
+  if (child.type === 'summary') return true
+  if (typeof child.type === 'string' && child.type.toLowerCase() === 'summary') return true
+  if (child.props && (child.props as { node?: { tagName?: string } }).node?.tagName === 'summary') return true
+  return false
 }
 
 export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPreviewView({
@@ -97,9 +107,88 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
         }
 
         return (
-          <code {...props} className="rounded bg-surface-muted px-1.5 py-0.5 text-[13px] text-foreground">
+          <code {...props} className="rounded-xs border border-border/40 bg-surface-muted/60 px-1.5 py-[2px] font-[inherit] text-inherit [font-weight:inherit] text-foreground align-baseline">
             {children}
           </code>
+        )
+      },
+      kbd: (props: React.ComponentPropsWithoutRef<'kbd'>) => (
+        <kbd {...props} className="inline-block rounded-md border border-border bg-surface-muted px-1.5 py-0.5 font-mono text-[0.8em] font-semibold text-foreground shadow-xs" />
+      ),
+      sub: (props: React.ComponentPropsWithoutRef<'sub'>) => (
+        <sub {...props} className="text-[0.75em] leading-none text-foreground" />
+      ),
+      sup: ({ className: supClassName, ...props }: React.ComponentPropsWithoutRef<'sup'>) => {
+        const isFootnoteRef = 'data-footnote-ref' in props || (typeof supClassName === 'string' && supClassName.includes('footnote'))
+        return (
+          <sup
+            {...props}
+            className={[
+              supClassName,
+              'text-[0.75em] leading-none text-foreground',
+              isFootnoteRef ? 'ml-0.5 font-semibold text-primary underline-offset-2 hover:underline' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          />
+        )
+      },
+      mark: (props: React.ComponentPropsWithoutRef<'mark'>) => (
+        <mark {...props} className="rounded-xs bg-amber-500/25 px-1.5 py-[2px] text-inherit font-[inherit]" />
+      ),
+      details: ({ children, ...props }: React.ComponentPropsWithoutRef<'details'>) => {
+        const childArray = React.Children.toArray(children)
+        const summaryChild = childArray.find(isSummaryElement)
+        const contentChildren = childArray.filter((child) => child !== summaryChild)
+
+        return (
+          <details
+            {...props}
+            className="group/details my-3 w-full overflow-hidden rounded-xl border border-border bg-surface-muted/30 text-foreground transition-all"
+          >
+            {summaryChild}
+            {contentChildren.length > 0 ? (
+              <div className="p-3.5 pt-1 space-y-3 text-foreground [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                {contentChildren}
+              </div>
+            ) : null}
+          </details>
+        )
+      },
+      summary: (props: React.ComponentPropsWithoutRef<'summary'>) => (
+        <summary {...props} className="flex cursor-pointer select-none items-center justify-between px-3.5 py-2.5 font-medium text-foreground hover:bg-surface-muted/50 transition-colors focus:outline-none list-none [&::-webkit-details-marker]:hidden after:content-['›'] after:ml-auto after:text-lg after:font-semibold after:text-foreground/70 after:transition-transform after:duration-200 group-open/details:after:rotate-90" />
+      ),
+      del: (props: React.ComponentPropsWithoutRef<'del'>) => (
+        <del {...props} className="line-through text-muted-foreground" />
+      ),
+      ins: (props: React.ComponentPropsWithoutRef<'ins'>) => (
+        <ins {...props} className="underline text-foreground decoration-emerald-500" />
+      ),
+      dl: (props: React.ComponentPropsWithoutRef<'dl'>) => (
+        <dl {...props} className="my-2 space-y-1 text-foreground" />
+      ),
+      dt: (props: React.ComponentPropsWithoutRef<'dt'>) => (
+        <dt {...props} className="mt-2 font-semibold text-foreground" />
+      ),
+      dd: (props: React.ComponentPropsWithoutRef<'dd'>) => (
+        <dd {...props} className="mb-1 pl-4 text-foreground/90" />
+      ),
+      section: ({ className: sectionClassName, ...props }: React.ComponentPropsWithoutRef<'section'>) => {
+        const isFootnoteSection =
+          'data-footnotes' in props ||
+          (typeof sectionClassName === 'string' && sectionClassName.includes('footnotes'))
+        return (
+          <section
+            {...props}
+            className={[
+              sectionClassName,
+              isFootnoteSection
+                ? 'mt-6 border-t border-border/60 pt-3 text-xs text-muted-foreground [&>ol]:list-decimal [&>ol]:pl-5 [&>ol]:space-y-1.5 [&_a]:text-primary [&_a]:underline'
+                : 'my-3 border-t border-border pt-2 text-xs text-muted-foreground',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          />
         )
       },
       a: (props: React.ComponentPropsWithoutRef<'a'>) => (
@@ -164,7 +253,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
           </div>
         ) : null}
         <div className="min-w-0">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkEmoji]} rehypePlugins={[rehypeRaw]} components={markdownComponents}>
             {useMemo(() => preprocessMarkdown(content), [content])}
           </ReactMarkdown>
         </div>
@@ -172,3 +261,4 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
     </div>
   )
 })
+

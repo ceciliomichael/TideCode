@@ -148,7 +148,7 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
             <button
               type="button"
               onClick={() => openComposer()}
-              className="hidden h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-foreground transition-colors hover:bg-surface-muted active:scale-[0.98] md:inline-flex"
+              className="hidden h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted active:scale-[0.98] md:inline-flex"
             >
               <Plus size={16} />
               New task
@@ -261,7 +261,7 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
             <button
               type="button"
               onClick={() => openComposer()}
-              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-foreground transition-colors hover:bg-surface-muted active:scale-[0.98]"
+              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted active:scale-[0.98]"
             >
               <Plus size={16} />
               New task

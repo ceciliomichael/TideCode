@@ -375,14 +375,19 @@ export function KanbanTaskDialog({
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
-                className="inline-flex h-11 flex-1 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-foreground transition hover:bg-surface-muted active:scale-[0.99] disabled:opacity-50 md:flex-none"
+                className="inline-flex h-11 flex-1 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-medium text-foreground transition hover:bg-surface-muted active:scale-[0.99] disabled:opacity-50 md:flex-none"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={!canSubmit}
-                className="inline-flex h-11 flex-[1.4] items-center justify-center rounded-xl bg-action px-5 text-sm font-semibold text-white transition hover:bg-action-hover active:scale-[0.99] disabled:pointer-events-none disabled:bg-disabled disabled:text-disabled-foreground md:flex-none"
+                className={[
+                  'inline-flex h-11 flex-[1.4] items-center justify-center rounded-xl px-5 text-sm font-medium transition active:scale-[0.99] md:flex-none',
+                  canSubmit
+                    ? 'chat-send-button-enabled cursor-pointer'
+                    : 'chat-send-button-disabled cursor-not-allowed',
+                ].join(' ')}
               >
                 {isSubmitting ? 'Creating…' : 'Create task'}
               </button>

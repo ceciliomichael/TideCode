@@ -2,7 +2,6 @@ import { memo, useCallback, useMemo } from 'react'
 import { PROVIDER_SECTIONS } from '../models/modelCatalog'
 import { buildModelProviderSections } from '../models/modelViewUtils'
 import { ModelSelectorField, type ModelSelectorOption } from '../../chat/ModelSelectorField'
-import { SegmentedField } from '../../ui/SegmentedField'
 import { SettingsPanelLayout, SettingsRow, SettingsSection } from '../shared/SettingsPanelPrimitives'
 import type { AppSettings, ChatProviderId, ProvidersState } from '../../../types/chat'
 import { useSettingsModelCatalog } from '../models/settingsModelCatalogStore'
@@ -35,7 +34,6 @@ interface TaskModelsSettingsPanelProps {
     | 'gitCommitModelId'
     | 'gitCommitModelLabel'
     | 'gitCommitModelProviderId'
-    | 'kanbanAiPlanningEnabled'
     | 'kanbanModelId'
     | 'kanbanModelLabel'
     | 'kanbanModelProviderId'
@@ -269,45 +267,27 @@ export function TaskModelsSettingsPanel({
     <SettingsPanelLayout>
       <SettingsSection title="Configuration">
         <SettingsRow
-          title="AI task planning"
-          description="Let the task composer draft context, acceptance criteria, and subtasks for review."
+          title="Task planning model"
+          description="Model used to turn a task title into a reviewable implementation plan."
         >
-          <SegmentedField
-            ariaLabel="AI task planning"
-            disabled={isLoading}
-            value={settings.kanbanAiPlanningEnabled ? 'on' : 'off'}
-            onChange={(value) => onUpdateSettings({ kanbanAiPlanningEnabled: value === 'on' })}
-            options={[
-              { label: 'Off', value: 'off' },
-              { label: 'On', value: 'on' },
-            ]}
-          />
+          <div className="w-full md:w-[240px] lg:w-[252px]">
+            <ModelSelectorField
+              className="w-full"
+              disabled={isSelectorDisabled}
+              fullWidth
+              isLoading={isModelsLoading}
+              options={kanbanOptions}
+              size="comfortable"
+              value={kanbanSelectedValue}
+              onChange={(nextValue) =>
+                setTaskModel(nextValue, {
+                  modelId: 'kanbanModelId',
+                  modelLabel: 'kanbanModelLabel',
+                  providerId: 'kanbanModelProviderId',
+                })}
+            />
+          </div>
         </SettingsRow>
-
-        <div className="border-t border-border">
-          <SettingsRow
-            title="Task planning model"
-            description="Model used to turn a task title into a reviewable implementation plan."
-          >
-            <div className="w-full md:w-[240px] lg:w-[252px]">
-              <ModelSelectorField
-                className="w-full"
-                disabled={isSelectorDisabled || !settings.kanbanAiPlanningEnabled}
-                fullWidth
-                isLoading={isModelsLoading}
-                options={kanbanOptions}
-                size="comfortable"
-                value={kanbanSelectedValue}
-                onChange={(nextValue) =>
-                  setTaskModel(nextValue, {
-                    modelId: 'kanbanModelId',
-                    modelLabel: 'kanbanModelLabel',
-                    providerId: 'kanbanModelProviderId',
-                  })}
-              />
-            </div>
-          </SettingsRow>
-        </div>
 
         <div className="border-t border-border">
           <SettingsRow

@@ -46,6 +46,38 @@ export function preprocessMarkdown(markdown: string): string {
     }
 
     let processedLine = line
+
+    // Normalize details and summary block HTML tags onto separate lines if written inline
+    if (processedLine.includes('<details>') || processedLine.includes('<summary>')) {
+      processedLine = processedLine
+        .replace(/<details>/g, '\n<details>\n')
+        .replace(/<\/details>/g, '\n</details>\n')
+        .replace(/<summary>/g, '\n<summary>')
+        .replace(/<\/summary>/g, '</summary>\n')
+    }
+
+    // Process inline highlight: ==text== -> <mark>text</mark>
+    processedLine = processedLine.replace(/==([^=]+)==/g, '<mark>$1</mark>')
+
+    // Process superscript: ^text^ -> <sup>text</sup> (avoid matching GFM footnote refs like [^1])
+    processedLine = processedLine.replace(/(?<!\[)\^([^\^\s\\]+)\^/g, '<sup>$1</sup>')
+
+    // Process subscript: ~text~ (not ~~strikethrough~~) -> <sub>text</sub>
+    processedLine = processedLine.replace(/(?<!~)~([^~\s]+)~(?!~)/g, '<sub>$1</sub>')
+
+    // Process definition lists: "Term : Definition" (avoid matching GFM footnotes like [^1]: content)
+    const defMatch = processedLine.match(/^([^\s:][^:]*)\s*:\s+(.+)$/)
+    if (
+      defMatch &&
+      !defMatch[1].trim().startsWith('[^') &&
+      !processedLine.trim().startsWith('|') &&
+      !processedLine.trim().startsWith('-')
+    ) {
+      const term = defMatch[1].trim()
+      const definition = defMatch[2].trim()
+      processedLine = `<dl><dt><strong>${term}</strong></dt><dd>${definition}</dd></dl>`
+    }
+
     if (processedLine.trim().startsWith('|') && processedLine.includes('`')) {
       processedLine = processedLine.replace(/(?<!`)`([^`]+)`(?!`)/g, (_, code) => {
         return '`' + code.replace(/\|/g, '\\|') + '`'
@@ -68,4 +100,5 @@ export function preprocessMarkdown(markdown: string): string {
 
   return resultLines.join('\n')
 }
+
 
