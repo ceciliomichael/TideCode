@@ -17,7 +17,7 @@ interface UseGitCommitInput {
 interface UseGitCommitResult {
   commit: (input: {
     action: GitCommitAction
-    includeUnstaged: boolean
+    includeUnstaged?: boolean
     message: string
     preferredBranchName?: string
   }) => Promise<GitCommitResult | null>
@@ -124,7 +124,7 @@ export function useGitCommit({
 
   const commit = useCallback(async (input: {
     action: GitCommitAction
-    includeUnstaged: boolean
+    includeUnstaged?: boolean
     message: string
     preferredBranchName?: string
   }): Promise<GitCommitResult | null> => {

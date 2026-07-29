@@ -47,7 +47,7 @@ interface CommitModalProps {
   onClose: () => void
   onCommit: (input: {
     action: GitCommitAction
-    includeUnstaged: boolean
+    includeUnstaged?: boolean
     message: string
     preferredBranchName?: string
   }) => Promise<void>
@@ -109,7 +109,6 @@ export function CommitModal({
 
         await onCommit({
           action: selectedAction,
-          includeUnstaged: false,
           message: commitMessage,
           preferredBranchName: targetBranch.length > 0 ? targetBranch : undefined,
         })

@@ -21,7 +21,7 @@ interface UseChatInterfaceControllerInput {
   gitCommitState: {
     commit: (input: {
       action: GitCommitAction
-      includeUnstaged: boolean
+      includeUnstaged?: boolean
       message: string
       preferredBranchName?: string
     }) => Promise<GitCommitResult | null>
@@ -163,7 +163,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
   const handleCommit = useCallback(
     async (commitInput: {
       action: GitCommitAction
-      includeUnstaged: boolean
+      includeUnstaged?: boolean
       message: string
       preferredBranchName?: string
     }) => {
@@ -262,11 +262,10 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
   }, [gitBranchState, onDiffRefresh])
 
   const handleQuickCommit = useCallback(
-    async (commitInput: { includeUnstaged: boolean; message: string }) => {
+    async (commitInput: { message: string }) => {
       const workspacePathAtStart = activeWorkspacePathRef.current
       const commitResult = await gitCommitState.commit({
         action: 'commit',
-        includeUnstaged: commitInput.includeUnstaged,
         message: commitInput.message,
       })
 

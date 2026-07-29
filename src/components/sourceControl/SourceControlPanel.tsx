@@ -34,7 +34,7 @@ interface SourceControlPanelProps {
   onDiscardFile: (filePath: string) => Promise<void>
   onOpenCommitModal: () => void
   onOpenDiffPanel: () => void
-  onQuickCommit: (input: { includeUnstaged: boolean; message: string }) => Promise<GitCommitResult | null>
+  onQuickCommit: (input: { message: string }) => Promise<GitCommitResult | null>
   onRefreshAll: () => Promise<void>
   onSectionOpenChange: (nextValue: Record<'changes' | 'commit' | 'history' | 'staged' | 'unstaged', boolean>) => void
   onStageFiles: (filePaths: string[]) => Promise<void>
@@ -634,7 +634,6 @@ function SourceControlPanelContent({
 
     try {
       const commitResult = await onQuickCommit({
-        includeUnstaged: false,
         message: commitMessage,
       })
 

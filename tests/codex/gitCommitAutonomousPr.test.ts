@@ -60,7 +60,6 @@ test('gitCommit auto-creates a feature branch for commit-and-create-pr on defaul
 
     const result = await gitCommit({
       action: 'commit-and-create-pr',
-      includeUnstaged: true,
       message: 'fix: support autonomous PR commits',
       workspacePath: repoPath,
     })
@@ -91,7 +90,6 @@ test('gitCommit respects preferredBranchName when creating PR commits', async ()
 
     const result = await gitCommit({
       action: 'commit-and-create-pr',
-      includeUnstaged: true,
       message: 'feat: add preferred branch support',
       preferredBranchName: 'feat/custom-branch',
       workspacePath: repoPath,
@@ -120,7 +118,6 @@ test('gitCommit keeps manual commit messages exactly as provided', async () => {
     await fs.writeFile(path.join(repoPath, 'README.md'), 'hello\n', 'utf8')
     await gitCommit({
       action: 'commit',
-      includeUnstaged: true,
       message: 'fix: tighten commit pipeline formatting',
       workspacePath: repoPath,
     })
