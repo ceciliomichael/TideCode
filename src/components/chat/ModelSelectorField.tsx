@@ -109,13 +109,13 @@ export function ModelSelectorField({
   }
 
   const triggerSizeClassName =
-    size === 'comfortable' ? 'min-h-12 rounded-2xl px-4 py-2.5 text-[15px]' : ''
+    size === 'comfortable' ? 'min-h-12 rounded-xl px-4 py-2.5 text-[15px]' : ''
   const menuWidthClassName =
     size === 'comfortable'
       ? 'w-[min(20rem,calc(100vw-1rem))] min-w-[12rem]'
       : 'w-[min(18rem,calc(100vw-1rem))] min-w-[10rem]'
-  const searchInputClassName = size === 'comfortable' ? 'h-10 rounded-2xl text-[14px]' : 'h-9 rounded-xl text-sm'
-  const actionButtonClassName = size === 'comfortable' ? 'h-10 w-10 rounded-2xl' : 'h-9 w-9 rounded-xl'
+  const searchInputClassName = size === 'comfortable' ? 'h-10 rounded-lg text-[14px]' : 'h-9 rounded-lg text-sm'
+  const actionButtonClassName = size === 'comfortable' ? 'h-10 w-10 rounded-lg' : 'h-9 w-9 rounded-lg'
 
   return (
     <div ref={containerRef} className={['relative max-w-full', className ?? 'w-fit'].join(' ')}>
@@ -158,7 +158,7 @@ export function ModelSelectorField({
               ref={menuRef}
               data-floating-menu-root="true"
               className={[
-                'fixed z-[60] overflow-hidden rounded-2xl border border-border bg-surface shadow-soft',
+                'fixed z-[60] overflow-hidden rounded-xl border border-border bg-surface shadow-soft',
                 menuWidthClassName,
               ].join(' ')}
               style={menuStyle}
@@ -197,7 +197,7 @@ export function ModelSelectorField({
               <div
                 role="listbox"
                 onMouseLeave={() => setHighlightedValue(value)}
-                className="max-h-56 space-y-0 overflow-y-auto"
+                className="max-h-56 space-y-0.5 overflow-y-auto p-1"
               >
                 {filteredOptions.length > 0 ? (
                   filteredOptions.map((option) => {
@@ -213,7 +213,7 @@ export function ModelSelectorField({
                         onMouseEnter={() => setHighlightedValue(option.value)}
                         onClick={() => handleSelect(option.value)}
                         className={[
-                          'flex w-full items-start justify-between gap-2 px-2.5 py-2 text-left transition-[background-color,color,box-shadow]',
+                          'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]',
                           isHighlighted
                             ? 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
                             : 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]',

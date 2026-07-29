@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import type { WebContents } from 'electron'
+import type { CreateTerminalSessionInput, WriteTerminalSessionInput } from '../../src/types/chat'
 import { createAgentTools } from '../../electron/chat/shared/tools'
+import { getGlobalAgentsDirectory } from '../../electron/chat/shared/tools/sandboxPaths'
 import { createTerminalToolSet, terminateAllBackgroundSessions } from '../../electron/chat/shared/tools/terminalTools'
 
 const webContentsStub = {
@@ -236,7 +238,102 @@ test('execute_terminal rejects directory traversal in sandbox mode', async () =>
 
     assert.equal(createSessionCalled, false)
     assert.equal(result.status, 'error')
-    assert.match(result.body ?? '', /Directory traversal \(\.\.\) is not allowed/u)
+    assert.match(result.body ?? '', /outside the sandbox roots/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('execute_terminal allows a global .agents skill directory as cwd in sandbox mode', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-agents-workspace-'))
+  const skillDirectory = path.join(getGlobalAgentsDirectory(), 'skills', 'document-tools')
+  const createCalls: CreateTerminalSessionInput[] = []
+  const writeCalls: WriteTerminalSessionInput[] = []
+
+  try {
+    const tools = createTerminalToolSet(
+      {
+        conversationId: 'conversation-global-agents-skill',
+        webContents: webContentsStub,
+        workspaceRootPath,
+      },
+      {
+        createSession: async (_owner, input) => {
+          createCalls.push(input)
+          return {
+            bufferedOutput: '',
+            cwd: skillDirectory,
+            isReused: false,
+            sessionId: 18,
+            shell: 'pwsh',
+          }
+        },
+        getSessionOutput: async () => ({
+          cwd: skillDirectory,
+          exitCode: null,
+          hasExited: false,
+          outputBuffer: '',
+          shellLabel: 'pwsh',
+          signal: null,
+          sessionId: 18,
+        }),
+        listSessions: () => [],
+        terminateSession: () => undefined,
+        writeToSession: async (_owner, input) => {
+          writeCalls.push(input)
+        },
+      },
+    )
+
+    const result = await getExecuteTerminalTool(tools).execute({
+      mode: 'execute',
+      command: 'node scripts/check.mjs',
+      cwd: skillDirectory,
+    })
+
+    assert.equal(result.status, 'success')
+    assert.equal(createCalls[0]?.cwd, path.resolve(skillDirectory))
+    assert.equal(writeCalls.length, 1)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('execute_terminal rejects sandbox cwd in a sibling of global .agents', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-agents-sibling-'))
+  const disallowedDirectory = path.join(path.dirname(getGlobalAgentsDirectory()), '.agents-backup', 'skills')
+  let createSessionCalled = false
+
+  try {
+    const tools = createTerminalToolSet(
+      {
+        conversationId: 'conversation-global-agents-sibling',
+        webContents: webContentsStub,
+        workspaceRootPath,
+      },
+      {
+        createSession: async () => {
+          createSessionCalled = true
+          throw new Error('unexpected terminal launch')
+        },
+        getSessionOutput: async () => {
+          throw new Error('unexpected terminal output poll')
+        },
+        listSessions: () => [],
+        terminateSession: () => undefined,
+        writeToSession: async () => undefined,
+      },
+    )
+
+    const result = await getExecuteTerminalTool(tools).execute({
+      mode: 'execute',
+      command: 'node scripts/check.mjs',
+      cwd: disallowedDirectory,
+    })
+
+    assert.equal(result.status, 'error')
+    assert.equal(createSessionCalled, false)
+    assert.match(result.summary ?? '', /outside the sandbox roots/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

@@ -21,7 +21,6 @@ interface DropdownFieldProps {
   className?: string
   disabled?: boolean
   fitToContent?: boolean
-  flushOptions?: boolean
   id?: string
   onChange: (value: string) => void
   options: readonly DropdownOption[]
@@ -39,7 +38,6 @@ export function DropdownField({
   className,
   disabled = false,
   fitToContent = false,
-  flushOptions = false,
   id,
   onChange,
   options,
@@ -311,7 +309,7 @@ export function DropdownField({
               }}
               className={[
                 'fixed z-[1500] overflow-y-auto rounded-xl border border-border bg-surface shadow-soft',
-                flushOptions ? 'p-0' : fitToContent ? 'p-0.5' : 'p-1',
+                fitToContent ? 'p-0.5' : 'p-1',
               ].join(' ')}
               style={menuStyle}
             >
@@ -335,7 +333,7 @@ export function DropdownField({
                           onClick={() => commitValue(option.value)}
                           className={[
                             'flex h-9 w-full items-center justify-between px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
-                            flushOptions ? 'rounded-none' : 'rounded-lg',
+                            'rounded-lg',
                             isHighlighted
                               ? 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
                               : 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]',
@@ -365,7 +363,7 @@ export function DropdownField({
                       onClick={() => commitValue(option.value)}
                       className={[
                         'flex h-9 w-full items-center justify-between px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
-                        flushOptions ? 'rounded-none' : 'rounded-lg',
+                        'rounded-lg',
                         isHighlighted
                           ? 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
                           : 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]',

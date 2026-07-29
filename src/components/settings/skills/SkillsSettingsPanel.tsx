@@ -86,7 +86,7 @@ export function SkillsSettingsPanel({
         </header>
 
         {visibleErrorMessage ? (
-          <div className="rounded-2xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
+          <div className="rounded-xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
             {visibleErrorMessage}
           </div>
         ) : null}
@@ -98,7 +98,7 @@ export function SkillsSettingsPanel({
             skills={state?.skills ?? []}
           />
         ) : (
-          <div className="rounded-2xl border border-border bg-surface px-4 py-10 text-sm text-muted-foreground">
+          <div className="rounded-xl border border-border bg-surface px-4 py-10 text-sm text-muted-foreground">
             Loading skills…
           </div>
         )}

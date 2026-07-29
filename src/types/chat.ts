@@ -159,6 +159,7 @@ export interface ConversationPreview {
   isLatestCompaction?: boolean
   title: string
   preview: string
+  updatedAt: number
   updatedAtLabel: string
   folderId: string | null
   isActive?: boolean

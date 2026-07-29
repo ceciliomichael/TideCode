@@ -223,7 +223,7 @@ export function McpServerDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="mcp-server-dialog-title"
-        className="flex h-[min(42rem,calc(100dvh-2rem))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-soft"
+        className="flex h-[min(42rem,calc(100dvh-2rem))] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-soft"
       >
         <div className="flex items-start justify-between gap-3 border-b border-border px-6 pt-5 pb-3">
           <div className="min-w-0">

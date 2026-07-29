@@ -13,7 +13,12 @@ import {
   captureWorkspaceCheckpointTerminalPostState,
   captureWorkspaceCheckpointTerminalPreState,
 } from '../../../workspace/checkpoints'
-import { resolveReadableTargetPath } from './workspaceTools'
+import {
+  assertSandboxCommandWorkingDirectories,
+  assertSandboxPathDoesNotEscapeThroughSymlink,
+  getSandboxPathRoots,
+  resolveSandboxPath,
+} from './sandboxPaths'
 
 const ANSI_ESCAPE = '\u001B'
 const TERMINAL_BELL = '\u0007'
@@ -125,7 +130,6 @@ function getExecuteTerminalDescription() {
 
   const usageHint =
     ' Use for commands, tests, builds, package tools, and runtime checks when the task requires them; prefer dedicated tools for reading and editing files.'
-
   return [
     `Manage terminal sessions. mode parameter controls action:`,
     `- execute: Run a command in background. Returns session_id immediately. Use for long-running commands (npm run dev, etc).`,
@@ -313,7 +317,18 @@ export async function cleanUpFinishedSessionsAtTurnEnd(
 
 function resolveTerminalWorkspaceCwd(context: AgentToolContext, cwd: string | undefined) {
   const terminalExecutionMode = context.terminalExecutionMode ?? 'sandbox'
-  return resolveReadableTargetPath(context.workspaceRootPath, cwd, terminalExecutionMode).absolutePath
+  if (terminalExecutionMode === 'sandbox') {
+    return resolveSandboxPath(context.workspaceRootPath, cwd)
+  }
+
+  const normalizedCwd = cwd?.trim() ?? ''
+  return {
+    absolutePath:
+      normalizedCwd.length === 0
+        ? context.workspaceRootPath
+        : path.resolve(context.workspaceRootPath, normalizedCwd),
+    roots: getSandboxPathRoots(context.workspaceRootPath),
+  }
 }
 
 function resolveTerminalThreadNamespace(context: AgentToolContext) {
@@ -405,11 +420,10 @@ export function createTerminalToolSet(
             maximum: 400,
             type: 'number',
           },
-          ...(terminalExecutionMode === 'full' ? {
-            cwd: {
-              type: 'string',
-            }
-          } : {}),
+          cwd: {
+            description: 'Working directory for the command. The active execution context defines the permitted path scope.',
+            type: 'string',
+          },
           rows: {
             minimum: 6,
             maximum: 200,
@@ -542,40 +556,29 @@ export function createTerminalToolSet(
             return createErrorResult('command required for execute mode.')
           }
 
+          const command = prepareTerminalCommand(requestedCommand)!
+          const resolvedCwd = resolveTerminalWorkspaceCwd(context, inputValue.cwd)
+          const cwd = resolvedCwd.absolutePath
           if (terminalExecutionMode === 'sandbox') {
-            const cdRegex = /(?:^|[;&|]\s*)cd\s+("([^"]+)"|'([^']+)'|([^\s;&|]+))/gi
-            let match
-            while ((match = cdRegex.exec(requestedCommand)) !== null) {
-              const targetPath = (match[2] ?? match[3] ?? match[4] ?? '').trim()
-
-              if (targetPath.includes('..')) {
-                return createErrorResult(
-                  'In sandbox mode, you cannot use ".." in cd commands to traverse up directories.',
-                  'Command rejected: Directory traversal (..) is not allowed in sandbox mode.',
-                )
-              }
-
-              if (path.isAbsolute(targetPath)) {
-                const normalizedTarget = path.normalize(targetPath).toLowerCase()
-                const normalizedWorkspace = path.normalize(context.workspaceRootPath).toLowerCase()
-
-                if (!normalizedTarget.startsWith(normalizedWorkspace)) {
-                  return createErrorResult(
-                    `In sandbox mode, cd to an absolute path must be within the workspace root (${context.workspaceRootPath}).`,
-                    'Command rejected: cd to a path outside the workspace is not allowed in sandbox mode.',
-                  )
-                }
-              } else if (targetPath.startsWith('/') || targetPath.startsWith('\\')) {
-                return createErrorResult(
-                  'In sandbox mode, cd to root-relative paths is not allowed.',
-                  'Command rejected: cd to root-relative paths is not allowed in sandbox mode.',
-                )
-              }
+            try {
+              const changedWorkingDirectories = assertSandboxCommandWorkingDirectories(
+                command,
+                context.workspaceRootPath,
+                cwd,
+              )
+              await Promise.all(
+                [cwd, ...changedWorkingDirectories].map((directoryPath) =>
+                  assertSandboxPathDoesNotEscapeThroughSymlink(directoryPath, resolvedCwd.roots),
+                ),
+              )
+            } catch (error) {
+              const message =
+                error instanceof Error && error.message.trim().length > 0
+                  ? error.message
+                  : 'Command changes to a directory outside the sandbox roots.'
+              return createErrorResult(message, `Command rejected: ${message}`)
             }
           }
-
-          const command = prepareTerminalCommand(requestedCommand)!
-          const cwd = resolveTerminalWorkspaceCwd(context, inputValue.cwd)
 
           throwIfAborted(abortSignal)
 

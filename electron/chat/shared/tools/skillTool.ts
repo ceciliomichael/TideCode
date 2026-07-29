@@ -5,18 +5,16 @@ import {
   buildSkillToolDescription,
   loadEnabledSkillByName,
   paginateSkills,
-  readSkillResource,
   searchSkills,
 } from '../../../skills/service'
 import type { WorkspaceToolContext } from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export interface SkillToolInput {
-  action: 'list' | 'search' | 'load' | 'read_resource'
+  action: 'list' | 'search' | 'load'
   name?: string
   page?: number
   query?: string
-  resourcePath?: string
 }
 
 export function createSkillTool(context: WorkspaceToolContext, enabledSkills: SkillSummary[]) {
@@ -26,12 +24,12 @@ export function createSkillTool(context: WorkspaceToolContext, enabledSkills: Sk
       additionalProperties: false,
       properties: {
         action: {
-          description: 'The mode/action to perform: "load" (loads SKILL.md), "list", "search", or "read_resource".',
-          enum: ['list', 'search', 'load', 'read_resource'],
+          description: 'The mode/action to perform: "load" (loads SKILL.md with its location), "list", or "search".',
+          enum: ['list', 'search', 'load'],
           type: 'string',
         },
         name: {
-          description: 'The skill name. Required for "load" and "read_resource".',
+          description: 'The skill name. Required for "load".',
           type: 'string',
         },
         page: {
@@ -40,10 +38,6 @@ export function createSkillTool(context: WorkspaceToolContext, enabledSkills: Sk
         },
         query: {
           description: 'Search query keyword for "search" mode.',
-          type: 'string',
-        },
-        resourcePath: {
-          description: 'Relative path to resource file inside skill directory for "read_resource" mode (e.g., "references/acting/character-arcs.md").',
           type: 'string',
         },
       },
@@ -143,34 +137,8 @@ export function createSkillTool(context: WorkspaceToolContext, enabledSkills: Sk
             return buildLoadedSkillResult(loadedSkill)
           }
 
-          case 'read_resource': {
-            const name = input.name?.trim() ?? ''
-            const resourcePath = input.resourcePath?.trim() ?? ''
-            if (!name) {
-              return createToolErrorResult('Skill name parameter "name" is required for read_resource mode.')
-            }
-            if (!resourcePath) {
-              return createToolErrorResult('Resource path parameter "resourcePath" is required for read_resource mode.')
-            }
-
-            const result = await readSkillResource(name, resourcePath, context.workspaceRootPath, enabledSkills)
-            if ('error' in result) {
-              return createToolErrorResult(result.error)
-            }
-
-            return {
-              body: result.content.trim(),
-              status: 'success',
-              subject: {
-                kind: 'file',
-                path: result.targetPath,
-              },
-              summary: `Read resource "${resourcePath}" for skill "${result.skill.name}"`,
-            }
-          }
-
           default:
-            return createToolErrorResult(`Invalid action "${(input as { action: string }).action}". Supported actions: list, search, load, read_resource.`)
+            return createToolErrorResult(`Invalid action "${(input as { action: string }).action}". Supported actions: list, search, load.`)
         }
       } catch (error) {
         return createToolErrorResult(getToolErrorSummary(error, 'Error executing skill tool action.'))

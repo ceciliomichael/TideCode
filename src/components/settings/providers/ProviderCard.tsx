@@ -24,7 +24,7 @@ export function ProviderCard({
     <button
       type="button"
       onClick={onClick}
-      className="group flex min-h-20 w-full items-center gap-3 rounded-2xl border border-border bg-surface p-4 text-left transition-[transform,border-color,background-color] hover:-translate-y-0.5 hover:bg-surface-muted active:translate-y-0 md:px-5"
+      className="group flex min-h-20 w-full items-center gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-[transform,border-color,background-color] hover:-translate-y-0.5 hover:bg-surface-muted active:translate-y-0 md:px-5"
     >
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-muted text-foreground">
         <Icon size={19} />

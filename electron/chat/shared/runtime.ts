@@ -24,7 +24,11 @@ import {
   synchronizeCanonicalMessages,
 } from '../history/eventStore'
 import { projectCanonicalReplay } from '../history/replayProjector'
-import { buildChatPrompt, buildChatSystemPrompt } from './messages'
+import {
+  buildChatPrompt,
+  buildChatSystemPrompt,
+  ensureCurrentExecutionModeContext,
+} from './messages'
 import { createAgentTools } from './tools'
 import { captureWorkspaceCheckpointTerminalPostState } from '../../workspace/checkpoints'
 import { cleanUpFinishedSessionsAtTurnEnd } from './tools/terminalTools'
@@ -268,6 +272,10 @@ export async function runToolEnabledChatStream(input: {
       freshnessRevision = replay.freshnessRevision
       replayFidelity = replay.fidelity === 'exact' ? 'exact' : 'migrated_legacy'
     }
+    modelMessages = ensureCurrentExecutionModeContext(
+      modelMessages,
+      input.startInput.terminalExecutionMode,
+    )
 
     const anchorUserMessageId = [...input.startInput.messages].reverse()
       .find((message) => message.role === 'user')?.id ?? null

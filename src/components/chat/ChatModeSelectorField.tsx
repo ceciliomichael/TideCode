@@ -106,10 +106,10 @@ export function ChatModeSelectorField({
             <div
               ref={menuRef}
               data-floating-menu-root="true"
-              className="fixed z-40 w-[min(9rem,calc(100vw-1rem))] overflow-hidden rounded-2xl border border-border bg-surface shadow-soft"
+              className="fixed z-40 w-[min(9rem,calc(100vw-1rem))] overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-soft"
               style={menuStyle}
             >
-              <div role="listbox" onMouseLeave={() => setHighlightedValue(value)} className="space-y-0.5 p-1.5">
+              <div role="listbox" onMouseLeave={() => setHighlightedValue(value)} className="space-y-0.5">
                 {options.map((option) => {
                   const isSelected = option.value === value
                   const isHighlighted = option.value === highlightedValue
@@ -123,7 +123,7 @@ export function ChatModeSelectorField({
                         onMouseEnter={() => setHighlightedValue(option.value)}
                         onClick={() => handleSelect(option.value)}
                         className={[
-                          'flex w-full items-start justify-between gap-2 rounded-xl px-2.5 py-2 text-left transition-[background-color,color,box-shadow]',
+                          'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]',
                           isHighlighted
                             ? 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
                             : 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]',

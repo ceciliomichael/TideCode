@@ -229,10 +229,10 @@ export function buildSkillsSystemPromptBlock() {
 export function buildSkillToolDescription() {
   return [
     'Accesses and interacts with skills. Modes:',
-    '- action: "load", name: string — Loads SKILL.md instructions for a skill.',
+    '- action: "load", name: string — Loads SKILL.md instructions together with the skill file and base-directory locations.',
     '- action: "list", page?: number — Lists available skills (max 10 per page).',
     '- action: "search", query: string — Searches skills by keyword/name/description.',
-    '- action: "read_resource", name: string, resourcePath: string — Reads a resource/reference file inside the skill folder.',
+    'After loading a skill, use read/list/glob/grep for files under its base directory and the terminal tool for scripts.',
   ].join('\n')
 }
 
@@ -267,49 +267,6 @@ export function paginateSkills(skills: SkillSummary[], page: number = 1, pageSiz
     pageSize,
     totalPages,
     totalSkills,
-  }
-}
-
-export async function readSkillResource(
-  skillName: string,
-  resourcePath: string,
-  workspacePath?: string | null,
-  enabledSkills?: SkillSummary[],
-): Promise<{ content: string; skill: SkillSummary; targetPath: string } | { error: string }> {
-  const normalizedSkillName = skillName.trim().toLowerCase()
-  if (!normalizedSkillName) {
-    return { error: 'Skill name is required.' }
-  }
-
-  const normalizedResourcePath = resourcePath.trim()
-  if (!normalizedResourcePath) {
-    return { error: 'Resource path is required.' }
-  }
-
-  const skills = enabledSkills ?? (await listEnabledSkills(workspacePath))
-  const skill = skills.find((candidate) => candidate.name.trim().toLowerCase() === normalizedSkillName)
-  if (!skill) {
-    return { error: `Skill "${skillName}" is unavailable or disabled.` }
-  }
-
-  const skillBaseDir = path.resolve(skill.baseDirectory)
-  const resolvedTargetPath = path.resolve(skillBaseDir, normalizedResourcePath)
-
-  // Security check: path traversal protection
-  if (!resolvedTargetPath.startsWith(skillBaseDir + path.sep) && resolvedTargetPath !== skillBaseDir) {
-    return { error: `Access denied: resource path "${resourcePath}" is outside skill directory.` }
-  }
-
-  try {
-    const content = await fs.readFile(resolvedTargetPath, 'utf8')
-    return {
-      content,
-      skill,
-      targetPath: resolvedTargetPath,
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'File not found or unreadable'
-    return { error: `Unable to read resource "${resourcePath}" in skill "${skill.name}": ${message}` }
   }
 }
 
@@ -403,7 +360,18 @@ export async function loadEnabledSkillByName(
 
 export function buildLoadedSkillResult(skill: LoadedSkill): AgentToolExecutionResult {
   return {
-    body: skill.content.trim(),
+    body: [
+      `Skill file: ${skill.location}`,
+      `Skill directory: ${skill.baseDirectory}`,
+      'Resolve relative resource and script paths from the skill directory above.',
+      '',
+      skill.content.trim(),
+    ].join('\n'),
+    semantics: {
+      skill_directory: skill.baseDirectory,
+      skill_file: skill.location,
+      skill_name: skill.name,
+    },
     status: 'success',
     subject: {
       kind: 'file',
@@ -464,4 +432,3 @@ export async function createSkill(
     return { error: error instanceof Error ? error.message : 'Unable to create skill file.' }
   }
 }
-

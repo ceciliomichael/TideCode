@@ -76,7 +76,14 @@ export function projectCanonicalReplay(input: {
   try {
     const exactPrefix = decodeModelMessages(replay.messages)
     const appendedUserMessages = input.messages.slice(anchorIndex + 1).filter((message) => message.role === 'user')
-    const suffix = buildModelMessages(appendedUserMessages, input.options)
+    const userMessageOrdinalOffset = input.messages
+      .slice(0, anchorIndex + 1)
+      .filter((message) => message.role === 'user' && message.userMessageKind !== 'tool_result')
+      .length
+    const suffix = buildModelMessages(appendedUserMessages, {
+      ...input.options,
+      userMessageOrdinalOffset,
+    })
     const messages = replay.freshnessRevision < input.document.freshness.revision
       ? appendFreshnessNotice([...exactPrefix, ...suffix], input.document.freshness.invalidatedSubjects)
       : [...exactPrefix, ...suffix]

@@ -26,6 +26,9 @@ interface StructuredToolResultEnvelope {
   schema: 'echosphere.tool_result/v2'
 }
 
+const SKILL_LOCATION_PREAMBLE_PATTERN =
+  /^Skill file:[^\r\n]*\r?\nSkill directory:[^\r\n]*\r?\nResolve relative resource and script paths from the skill directory above\.(?:\r?\n){1,2}/u
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
@@ -183,4 +186,12 @@ export function getToolResultModelContent(content: string) {
   }
 
   return content.trim()
+}
+
+export function getToolResultDisplayBody(toolName: string, body: string) {
+  if (toolName !== 'skill') {
+    return body
+  }
+
+  return body.replace(SKILL_LOCATION_PREAMBLE_PATTERN, '')
 }

@@ -188,6 +188,39 @@ test('workspace checkpoints undo terminal executions creating folders, files, or
   }
 })
 
+test('workspace checkpoints remove files copied from outside while preserving the external source', async () => {
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-checkpoints-copy-'))
+  const workspaceRootPath = path.join(tempRootPath, 'workspace')
+  const existingEmptyDirectoryPath = path.join(workspaceRootPath, 'existing-empty-directory')
+  const externalSourcePath = path.join(tempRootPath, 'external-source.txt')
+  const copiedFilePath = path.join(existingEmptyDirectoryPath, 'copied.txt')
+  const checkpointStorageRootPath = path.join(tempRootPath, 'checkpoints')
+
+  await fs.mkdir(existingEmptyDirectoryPath, { recursive: true })
+  await fs.writeFile(externalSourcePath, 'external source\n', 'utf8')
+
+  const {
+    captureWorkspaceCheckpointTerminalPostState,
+    captureWorkspaceCheckpointTerminalPreState,
+    createWorkspaceCheckpointStore,
+  } = await import('../../electron/workspace/checkpoints')
+  const checkpointStore = createWorkspaceCheckpointStore(checkpointStorageRootPath)
+  const checkpoint = await checkpointStore.createCheckpoint({ workspaceRootPath })
+
+  try {
+    await captureWorkspaceCheckpointTerminalPreState(checkpoint.id, workspaceRootPath, checkpointStore)
+    await fs.copyFile(externalSourcePath, copiedFilePath)
+    await captureWorkspaceCheckpointTerminalPostState(checkpoint.id, workspaceRootPath, checkpointStore)
+    await checkpointStore.restoreCheckpoint(checkpoint.id)
+
+    await assert.rejects(fs.readFile(copiedFilePath, 'utf8'), { code: 'ENOENT' })
+    assert.equal(await fs.readFile(externalSourcePath, 'utf8'), 'external source\n')
+    assert.ok((await fs.stat(existingEmptyDirectoryPath)).isDirectory())
+  } finally {
+    await fs.rm(tempRootPath, { force: true, recursive: true })
+  }
+})
+
 test('workspace checkpoints undo terminal executions that create an empty directory', async () => {
   const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-checkpoints-emptydir-'))
   const workspaceRootPath = path.join(tempRootPath, 'workspace')

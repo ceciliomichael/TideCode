@@ -28,12 +28,12 @@ export function SettingsPlaceholderPanel({ item }: SettingsPlaceholderPanelProps
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
-          <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
+          <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
             <p className="text-sm font-semibold text-foreground">Section status</p>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
           </section>
 
-          <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
+          <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
             <p className="text-sm font-semibold text-foreground">Implementation note</p>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               The navigation is separate from the page shell, so each item can grow into its own module without

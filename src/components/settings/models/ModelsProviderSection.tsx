@@ -44,7 +44,7 @@ export function ModelsProviderSection({
   )
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
+    <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
       <header className="flex flex-wrap items-start justify-between gap-3 px-4 py-3.5 md:px-5">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">

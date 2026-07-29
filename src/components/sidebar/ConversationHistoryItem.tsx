@@ -6,6 +6,7 @@ import { Tooltip } from '../Tooltip'
 
 interface ConversationHistoryItemProps {
   conversation: ConversationPreview
+  workspaceName?: string
   onDeleteConversation: (conversationId: string) => void
   onPinConversation: (conversationId: string, isPinned: boolean) => void
   onSelectConversation: (conversationId: string) => void
@@ -16,6 +17,7 @@ export function ConversationHistoryItem({
   onSelectConversation,
   onDeleteConversation,
   onPinConversation,
+  workspaceName,
 }: ConversationHistoryItemProps) {
   const [isDeleteConfirming, setIsDeleteConfirming] = useState(false)
   const deleteButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -85,10 +87,17 @@ export function ConversationHistoryItem({
           conversation.isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
         ].join(' ')}
       >
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-inherit">{conversation.title}</span>
+        <span className="flex min-w-0 items-start gap-1.5">
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium text-inherit">{conversation.title}</span>
+            {workspaceName ? (
+              <span className="mt-0.5 block truncate text-[11px] font-medium text-subtle-foreground">
+                {workspaceName}
+              </span>
+            ) : null}
+          </span>
           {conversation.compactionLabel ? (
-            <span className="shrink-0 rounded-md bg-surface-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-subtle-foreground">
+            <span className="mt-0.5 shrink-0 rounded-md bg-surface-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-subtle-foreground">
               {conversation.compactionLabel}
               {conversation.isLatestCompaction ? ' · latest' : ''}
             </span>

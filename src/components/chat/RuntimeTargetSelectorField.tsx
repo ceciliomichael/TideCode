@@ -96,13 +96,13 @@ export function RuntimeTargetSelectorField({ triggerClassName }: { triggerClassN
               data-floating-menu-root="true"
               role="listbox"
               aria-label="Runtime targets"
-              className="fixed z-40 min-w-[12rem] overflow-hidden rounded-2xl border border-border bg-surface shadow-soft"
+              className="fixed z-40 min-w-[12rem] overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-soft"
               style={menuStyle}
             >
               <div
                 role="listbox"
                 onMouseLeave={() => setHighlightedValue('local')}
-                className="space-y-0.5 p-1.5"
+                className="space-y-0.5"
               >
                 {TARGET_OPTIONS.map((option) => {
                   const Icon = option.icon
@@ -122,7 +122,7 @@ export function RuntimeTargetSelectorField({ triggerClassName }: { triggerClassN
                           }
                         }}
                         className={[
-                          'flex min-h-10 w-full items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
+                          'flex min-h-10 w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
                           isHighlighted
                             ? 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
                             : option.disabled

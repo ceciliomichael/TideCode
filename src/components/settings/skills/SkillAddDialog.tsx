@@ -86,7 +86,7 @@ export function SkillAddDialog({
       />
 
       {/* Modal Dialog */}
-      <div className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl transition-all">
+      <div className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl transition-all">
         {/* Header */}
         <div className="flex items-start justify-between border-b border-border px-6 pt-6 pb-4">
           <div>

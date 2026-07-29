@@ -258,7 +258,7 @@
     box-sizing: border-box;
     max-width: 100%;
     align-items: center;
-    border-radius: 1rem;
+    border-radius: 0.75rem;
     border: 1px solid var(--color-border);
     background-color: var(--dropdown-control-surface);
     padding-inline: 0.5625rem;

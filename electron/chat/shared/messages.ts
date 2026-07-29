@@ -10,6 +10,7 @@ export interface BuildChatPromptOptions {
   availableSkillsBlock?: string | null
   includeAssistantReasoningParts?: boolean
   terminalExecutionMode?: AppTerminalExecutionMode
+  userMessageOrdinalOffset?: number
 }
 
 type UserTextPart = {
@@ -24,6 +25,106 @@ type UserImagePart = {
 }
 
 type UserContentPart = UserTextPart | UserImagePart
+
+type UserModelMessage = Extract<ModelMessage, { role: 'user' }>
+
+const EXECUTION_MODE_CONTEXT_PATTERN =
+  /<execution_mode_context mode="(sandbox|full)">[\s\S]*?<\/execution_mode_context>/gu
+
+export function buildExecutionModeContext(terminalExecutionMode: AppTerminalExecutionMode) {
+  const details =
+    terminalExecutionMode === 'sandbox'
+      ? [
+          'Terminal execution mode: sandbox.',
+          'Filesystem access is limited to the workspace, with read/list/glob/grep and terminal working-directory access also allowed under the global ~/.agents directory.',
+          'Workspace checkpoint revert tracks terminal changes made inside the workspace.',
+        ]
+      : [
+          'Terminal execution mode: full access.',
+          'Filesystem tools and terminal commands may access paths outside the workspace.',
+          'Workspace checkpoint revert tracks workspace changes only; changes written outside the workspace are not reverted.',
+        ]
+
+  return [
+    `<execution_mode_context mode="${terminalExecutionMode}">`,
+    ...details,
+    '</execution_mode_context>',
+  ].join('\n')
+}
+
+function appendExecutionModeContext(
+  message: UserModelMessage,
+  terminalExecutionMode: AppTerminalExecutionMode,
+): UserModelMessage {
+  const notice = buildExecutionModeContext(terminalExecutionMode)
+  const content =
+    typeof message.content === 'string'
+      ? `${message.content}\n\n${notice}`
+      : [...message.content, { text: notice, type: 'text' as const }]
+
+  return {
+    ...message,
+    content,
+  }
+}
+
+function getExecutionModeFromUserMessage(message: UserModelMessage) {
+  const text =
+    typeof message.content === 'string'
+      ? message.content
+      : message.content
+          .filter((part): part is Extract<typeof part, { type: 'text' }> => part.type === 'text')
+          .map((part) => part.text)
+          .join('\n')
+  const matches = Array.from(text.matchAll(EXECUTION_MODE_CONTEXT_PATTERN))
+  const mode = matches.at(-1)?.[1]
+  return mode === 'sandbox' || mode === 'full' ? mode : null
+}
+
+export function ensureCurrentExecutionModeContext(
+  messages: ModelMessage[],
+  terminalExecutionMode: AppTerminalExecutionMode,
+) {
+  const nextMessages = [...messages]
+  const userMessageIndexes = nextMessages
+    .map((message, index) => message.role === 'user' ? index : -1)
+    .filter((index) => index >= 0)
+  const latestUserMessageIndex = userMessageIndexes.at(-1)
+  if (latestUserMessageIndex === undefined) {
+    return nextMessages
+  }
+
+  let lastContextUserPosition = -1
+  let lastContextMode: AppTerminalExecutionMode | null = null
+  for (let position = userMessageIndexes.length - 1; position >= 0; position -= 1) {
+    const messageIndex = userMessageIndexes[position]
+    const message = nextMessages[messageIndex] as UserModelMessage
+    const mode = getExecutionModeFromUserMessage(message)
+    if (mode) {
+      lastContextUserPosition = position
+      lastContextMode = mode
+      break
+    }
+  }
+
+  const userMessagesSinceContext =
+    lastContextUserPosition < 0
+      ? userMessageIndexes.length
+      : userMessageIndexes.length - lastContextUserPosition - 1
+  const shouldAppend =
+    lastContextMode === null ||
+    lastContextMode !== terminalExecutionMode ||
+    userMessagesSinceContext >= 5
+  if (!shouldAppend) {
+    return nextMessages
+  }
+
+  nextMessages[latestUserMessageIndex] = appendExecutionModeContext(
+    nextMessages[latestUserMessageIndex] as UserModelMessage,
+    terminalExecutionMode,
+  )
+  return nextMessages
+}
 
 function buildUserContent(message: Message): ModelMessage['content'] {
   const parts: UserContentPart[] = []
@@ -269,8 +370,12 @@ export function buildChatPrompt(input: {
   options?: BuildChatPromptOptions
   workspaceRootPath: string
 }): { messages: ModelMessage[]; system: string } {
+  const terminalExecutionMode = input.options?.terminalExecutionMode ?? 'sandbox'
   return {
-    messages: buildModelMessages(input.messages, input.options),
+    messages: ensureCurrentExecutionModeContext(
+      buildModelMessages(input.messages, input.options),
+      terminalExecutionMode,
+    ),
     system: buildChatSystemPrompt(input.chatMode, input.workspaceRootPath, input.options),
   }
 }
@@ -285,12 +390,24 @@ export function buildModelMessages(
     availableSkillsBlock: inputOptions?.availableSkillsBlock ?? null,
     includeAssistantReasoningParts: inputOptions?.includeAssistantReasoningParts ?? true,
     terminalExecutionMode: inputOptions?.terminalExecutionMode ?? 'sandbox',
+    userMessageOrdinalOffset: inputOptions?.userMessageOrdinalOffset ?? 0,
   }
+  let userMessageOrdinal = options.userMessageOrdinalOffset
 
   for (const message of inputMessages) {
-    const modelMessage = toModelMessage(message, validToolCallIds, options)
+    let modelMessage = toModelMessage(message, validToolCallIds, options)
     if (!modelMessage) {
       continue
+    }
+
+    if (message.role === 'user' && message.userMessageKind !== 'tool_result') {
+      userMessageOrdinal += 1
+      if ((userMessageOrdinal - 1) % 5 === 0) {
+        modelMessage = appendExecutionModeContext(
+          modelMessage as UserModelMessage,
+          options.terminalExecutionMode,
+        )
+      }
     }
 
     appendModelMessage(messages, modelMessage)

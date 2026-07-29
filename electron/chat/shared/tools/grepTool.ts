@@ -1,15 +1,10 @@
 import { jsonSchema, tool } from 'ai'
-import { createGrepToolResult, resolveReadableTargetPath, type WorkspaceToolContext } from './workspaceTools'
+import { createGrepToolResult, resolveReadOnlyTargetPath, type WorkspaceToolContext } from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createGrepTool(context: WorkspaceToolContext) {
-  const description =
-    context.terminalExecutionMode === 'full'
-      ? 'Returns visible workspace text matches for the ripgrep regex pattern, sorted by path and line number. absolute_path may select one file or directory; include is an optional filename glob.'
-      : 'Returns visible workspace text matches for the ripgrep regex pattern, sorted by path and line number. absolute_path may select one workspace file or directory; include is an optional filename glob.'
-
   return tool({
-    description,
+    description: 'Returns visible text matches for the ripgrep regex pattern within the active execution context, sorted by path and line number. absolute_path may select one file or directory; include is an optional filename glob.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
@@ -23,7 +18,7 @@ export function createGrepTool(context: WorkspaceToolContext) {
     execute: async (rawInput) => {
       const input = rawInput as { absolute_path?: string; include?: string; pattern: string }
       try {
-        const target = resolveReadableTargetPath(
+        const target = await resolveReadOnlyTargetPath(
           context.workspaceRootPath,
           input.absolute_path,
           context.terminalExecutionMode,

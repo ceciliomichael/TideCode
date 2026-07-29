@@ -483,14 +483,6 @@ function getToolVerb(invocation: ToolInvocationTrace) {
           : 'Skill search failed'
     }
 
-    if (action === 'read_resource') {
-      return invocation.state === 'running'
-        ? 'Reading skill resource'
-        : invocation.state === 'completed'
-          ? 'Read skill resource'
-          : 'Read skill resource failed'
-    }
-
     return invocation.state === 'running'
       ? 'Activating Skill'
       : invocation.state === 'completed'
@@ -671,12 +663,6 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
 
     if (action === 'search') {
       return readFirstText(parsedArguments?.query)
-    }
-
-    if (action === 'read_resource') {
-      const resourcePath = readFirstText(parsedArguments?.resourcePath)
-      const skillName = readSkillName(parsedArguments?.name)
-      return skillName && resourcePath ? `${skillName} (${resourcePath})` : resourcePath || skillName
     }
 
     const skillNameText = readSkillName(parsedArguments?.name)

@@ -12,6 +12,7 @@ import {
   createReadToolResult,
   resolveReadableTargetPath,
 } from '../../electron/chat/shared/tools/workspaceTools'
+import { getGlobalAgentsDirectory } from '../../electron/chat/shared/tools/sandboxPaths'
 
 interface ExecutableToolResult {
   body?: string
@@ -328,6 +329,139 @@ test('resolveReadableTargetPath keeps sandbox reads inside the workspace', async
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
     await fs.rm(outsideFilePath, { force: true })
+  }
+})
+
+test('resolveReadableTargetPath allows sandbox reads in global .agents but rejects sibling directories', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const globalAgentsDirectory = getGlobalAgentsDirectory()
+  const skillResourcePath = path.join(globalAgentsDirectory, 'skills', 'documents', 'references', 'formatting.md')
+  const siblingPath = path.join(path.dirname(globalAgentsDirectory), '.agents-backup', 'secrets.txt')
+
+  try {
+    const target = resolveReadableTargetPath(
+      workspaceRootPath,
+      skillResourcePath,
+      'sandbox',
+      { allowGlobalAgentsDirectory: true },
+    )
+    assert.equal(target.absolutePath, path.resolve(skillResourcePath))
+    assert.equal(target.displayPath, path.resolve(skillResourcePath))
+
+    assert.throws(
+      () => resolveReadableTargetPath(
+        workspaceRootPath,
+        siblingPath,
+        'sandbox',
+        { allowGlobalAgentsDirectory: true },
+      ),
+      /outside the sandbox roots/u,
+    )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('sandbox list, glob, and grep can inspect global .agents skill files', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const globalAgentsDirectory = getGlobalAgentsDirectory()
+  const agentsDirectoryExisted = await fs.stat(globalAgentsDirectory)
+    .then((stats) => stats.isDirectory())
+    .catch(() => false)
+  await fs.mkdir(globalAgentsDirectory, { recursive: true })
+  const skillDirectory = await fs.mkdtemp(path.join(globalAgentsDirectory, 'echosphere-readonly-tools-'))
+  const scriptsDirectory = path.join(skillDirectory, 'scripts')
+  const scriptPath = path.join(scriptsDirectory, 'validate.mjs')
+
+  try {
+    await fs.mkdir(scriptsDirectory, { recursive: true })
+    await fs.writeFile(scriptPath, 'console.log("skill-validation-needle")\n', 'utf8')
+    await fs.writeFile(path.join(skillDirectory, 'SKILL.md'), '# Test skill\n', 'utf8')
+
+    const tools = await createAgentTools(
+      { workspaceRootPath },
+      { chatMode: 'agent' },
+    )
+    const listResult = await (tools.list as unknown as ExecutableListTool).execute({
+      absolute_path: skillDirectory,
+    })
+    const globResult = await (tools.glob as unknown as ExecutableGlobTool).execute({
+      absolute_path: skillDirectory,
+      pattern: '**/*.mjs',
+    })
+    const grepResult = await (tools.grep as unknown as ExecutableGrepTool).execute({
+      absolute_path: skillDirectory,
+      pattern: 'skill-validation-needle',
+    })
+
+    assert.equal(listResult.status, 'success')
+    assert.match(listResult.body ?? '', /scripts\//u)
+    assert.equal(globResult.status, 'success')
+    assert.match(globResult.body ?? '', /validate\.mjs/u)
+    assert.equal(grepResult.status, 'success')
+    assert.match(grepResult.body ?? '', /skill-validation-needle/u)
+  } finally {
+    await fs.rm(skillDirectory, { force: true, recursive: true })
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+    if (!agentsDirectoryExisted) {
+      await fs.rmdir(globalAgentsDirectory).catch(() => undefined)
+    }
+  }
+})
+
+test('sandbox list rejects directories outside the workspace and global .agents', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-sandbox-list-outside-'))
+
+  try {
+    const tools = await createAgentTools(
+      { workspaceRootPath },
+      { chatMode: 'agent' },
+    )
+    const result = await (tools.list as unknown as ExecutableListTool).execute({
+      absolute_path: outsideDirectoryPath,
+    })
+
+    assert.equal(result.status, 'error')
+    assert.match(result.summary ?? '', /outside the sandbox roots/u)
+  } finally {
+    await fs.rm(outsideDirectoryPath, { force: true, recursive: true })
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('sandbox write and replace remain blocked inside global .agents', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const globalSkillFilePath = path.join(
+    getGlobalAgentsDirectory(),
+    'skills',
+    'protected-skill',
+    'SKILL.md',
+  )
+
+  try {
+    const tools = await createAgentTools(
+      { workspaceRootPath },
+      { chatMode: 'agent' },
+    )
+    const writeResult = await (tools.write as unknown as ExecutableWriteTool).execute({
+      absolute_path: globalSkillFilePath,
+      content: '# Changed skill\n',
+    })
+    const replaceResult = await (tools.replace_file_content as unknown as ExecutableReplaceTool).execute({
+      absolute_path: globalSkillFilePath,
+      endLine: 1,
+      replacementContent: '# Changed skill',
+      startLine: 1,
+      targetContent: '# Protected skill',
+    })
+
+    assert.equal(writeResult.status, 'error')
+    assert.match(writeResult.summary ?? '', /outside the workspace root/u)
+    assert.equal(replaceResult.status, 'error')
+    assert.match(replaceResult.summary ?? '', /outside the workspace root/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 

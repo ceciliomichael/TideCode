@@ -331,7 +331,7 @@ function ConversationDiffPanelContent({
         onMouseEnter={() => setHighlightedScope(option.value)}
         onClick={() => handleSelectScope(option.value)}
         className={[
-          'flex w-full items-start justify-between gap-2 px-2.5 py-2 text-left transition-[background-color,color,box-shadow]',
+          'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]',
           isHighlighted
             ? 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
             : 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]',
@@ -397,14 +397,14 @@ function ConversationDiffPanelContent({
                   <div
                     ref={scopeMenuRef}
                     data-floating-menu-root="true"
-                    className="fixed z-40 w-[min(18rem,calc(100vw-1rem))] min-w-[10rem] overflow-hidden rounded-2xl border border-border bg-surface shadow-soft"
+                    className="fixed z-40 w-[min(18rem,calc(100vw-1rem))] min-w-[10rem] overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-soft"
                     style={menuStyle}
                   >
                     <div
                       role="listbox"
                       aria-label="Diff scopes"
                       onMouseLeave={() => setHighlightedScope(selectedScope)}
-                      className="max-h-56 space-y-0 overflow-y-auto"
+                      className="max-h-56 space-y-0.5 overflow-y-auto"
                     >
                       {scopeOptions.map((option) => renderScopeOption(option))}
                     </div>

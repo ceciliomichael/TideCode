@@ -28,7 +28,7 @@ export function SettingsSection({ children, title }: SettingsSectionProps) {
       <header>
         <h3 className={SETTINGS_SECTION_TITLE_CLASS_NAME}>{title}</h3>
       </header>
-      <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">{children}</div>
+      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">{children}</div>
     </section>
   )
 }

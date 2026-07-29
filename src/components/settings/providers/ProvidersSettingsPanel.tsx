@@ -83,7 +83,7 @@ export function ProvidersSettingsPanel(props: ProvidersSettingsPanelProps) {
         </header>
 
         {props.errorMessage ? (
-          <div className="rounded-2xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">{props.errorMessage}</div>
+          <div className="rounded-xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">{props.errorMessage}</div>
         ) : null}
 
         <div className="flex flex-col gap-2.5">

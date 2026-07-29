@@ -3,13 +3,8 @@ import { createWholeFileWriteToolResult, type WorkspaceToolContext } from './wor
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createWriteTool(context: WorkspaceToolContext) {
-  const description =
-    context.terminalExecutionMode === 'full'
-      ? 'Writes content as the complete UTF-8 contents of absolute_path, creates parent directories, normalizes line endings to LF, and returns an error when the content is unchanged.'
-      : 'Writes content as the complete UTF-8 contents of absolute_path inside the workspace, creates parent directories, normalizes line endings to LF, and returns an error when the content is unchanged.'
-
   return tool({
-    description,
+    description: 'Writes content as the complete UTF-8 contents of absolute_path within the active execution context, creates parent directories, normalizes line endings to LF, and returns an error when the content is unchanged.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {

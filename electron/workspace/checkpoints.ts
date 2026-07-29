@@ -284,7 +284,9 @@ export function createWorkspaceCheckpointStore(storageRootPath: string): Workspa
         // derived from pre-state manifest entries. We cannot call getMissingParentDirectories
         // here because the terminal has already created those directories on disk, which
         // would cause it to return [] and the restore would never clean them up.
-        const knownPreStateNormalizedDirs = new Set<string>()
+        const knownPreStateNormalizedDirs = new Set<string>(
+          (manifest.preStateTrackedDirectories ?? []).map(normalizeRelativePath),
+        )
         for (const entry of manifest.entries) {
           const segments = splitRelativePathSegments(path.dirname(normalizeRelativePath(entry.relativePath)))
           let currentDir = ''
@@ -710,7 +712,7 @@ export async function captureWorkspaceCheckpointTerminalPreState(
 
 export async function captureWorkspaceCheckpointTerminalPostState(
   checkpointId: string | null | undefined,
-  _workspaceRootPath: string,
+  workspaceRootPath: string,
   customStore?: WorkspaceCheckpointStore,
 ) {
   const normalizedCheckpointId = checkpointId?.trim()
@@ -719,6 +721,13 @@ export async function captureWorkspaceCheckpointTerminalPostState(
   }
 
   const checkpointStore = customStore ?? (await getDefaultWorkspaceCheckpointStore())
+  const { filePaths, directoryPaths } = await collectWorkspaceEntries(workspaceRootPath)
+
+  // Register files and directories that did not exist when terminal pre-state
+  // capture ran. Restore removes these entries, including files copied from an
+  // external source into the workspace.
+  await checkpointStore.captureCreatedFilesState(normalizedCheckpointId, filePaths)
+  await checkpointStore.captureCreatedDirectoriesState(normalizedCheckpointId, directoryPaths)
 
   // Prune any pre-state entries for files that were NOT modified by the terminal command.
   // This ensures that user manual edits to unrelated files are NEVER undone when reverting the chat,

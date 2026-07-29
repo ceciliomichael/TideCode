@@ -21,7 +21,7 @@ export function RemoveUserModelDialog({
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="remove-user-model-title"
-        className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-soft"
+        className="w-full max-w-md rounded-xl border border-border bg-surface p-5 shadow-soft"
       >
         <h2 id="remove-user-model-title" className="text-lg font-semibold text-foreground">Remove {model.label}?</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">

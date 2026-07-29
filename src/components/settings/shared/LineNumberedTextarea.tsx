@@ -34,7 +34,7 @@ export function LineNumberedTextarea({
         {label}
       </label>
 
-      <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
         <div className="flex min-w-0 items-stretch">
           {showLineNumbers ? (
             <div className="shrink-0 border-r border-border bg-surface px-2 py-2.5">

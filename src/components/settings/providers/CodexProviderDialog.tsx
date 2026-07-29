@@ -55,7 +55,7 @@ export function CodexProviderDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="codex-provider-dialog-title"
-        className="flex h-full w-full flex-col overflow-hidden border-border bg-surface md:h-auto md:max-h-[calc(100dvh-3rem)] md:max-w-2xl md:rounded-2xl md:border md:shadow-soft"
+        className="flex h-full w-full flex-col overflow-hidden border-border bg-surface md:h-auto md:max-h-[calc(100dvh-3rem)] md:max-w-2xl md:rounded-xl md:border md:shadow-soft"
       >
         <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-4 md:px-6">
           <div>
@@ -100,7 +100,7 @@ export function CodexProviderDialog({
               <CodexUsagePills usage={activeAccount?.usage ?? null} />
             </div>
           ) : (
-            <div className="rounded-2xl border border-border bg-surface-muted px-4 py-5">
+            <div className="rounded-xl border border-border bg-surface-muted px-4 py-5">
               <h3 className="text-sm font-medium text-foreground">No Codex account connected</h3>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">Sign in through the browser to load Codex models and usage.</p>
             </div>

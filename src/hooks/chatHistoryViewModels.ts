@@ -149,6 +149,7 @@ function mapConversationPreview(
       summary.compaction.sequence === latestCompactionSequence,
     title: summary.title,
     preview: summary.preview,
+    updatedAt: summary.updatedAt,
     updatedAtLabel: formatUpdatedAtLabel(summary.updatedAt, language),
     folderId: summary.folderId,
     isActive: summary.id === activeConversationId,

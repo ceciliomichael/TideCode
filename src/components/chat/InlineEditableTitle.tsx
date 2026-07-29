@@ -81,7 +81,7 @@ export function InlineEditableTitle({ value, onSave }: InlineEditableTitleProps)
 
   if (isEditing) {
     return (
-      <div className="min-w-0 flex-1">
+      <div className="flex min-h-10 min-w-0 flex-1 items-center">
         <label htmlFor={inputId} className="sr-only">
           Thread title
         </label>
@@ -103,7 +103,7 @@ export function InlineEditableTitle({ value, onSave }: InlineEditableTitleProps)
     <button
       type="button"
       onClick={() => setIsEditing(true)}
-      className="min-w-0 text-left"
+      className="flex min-h-10 min-w-0 items-center text-left"
       aria-label="Rename thread"
     >
       <span className="block truncate text-sm font-semibold text-foreground transition-colors hover:text-foreground/80">

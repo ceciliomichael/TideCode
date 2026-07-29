@@ -38,7 +38,6 @@ export function ReasoningEffortBlock({
         ariaLabel="Reasoning effort"
         className="w-fit max-w-full"
         fitToContent
-        flushOptions
         variant="text"
         value={value}
         onChange={(nextValue) => onChange(nextValue as ReasoningEffort)}

@@ -196,7 +196,7 @@ export function GitBranchSelectorField({
             <div
               ref={menuRef}
               data-floating-menu-root="true"
-              className="fixed z-40 w-[min(20rem,calc(100vw-1rem))] min-w-[12rem] overflow-hidden rounded-2xl border border-border bg-surface shadow-soft"
+              className="fixed z-40 w-[min(20rem,calc(100vw-1rem))] min-w-[12rem] overflow-hidden rounded-xl border border-border bg-surface shadow-soft"
               style={menuStyle}
             >
               <div className="flex items-center gap-1.5 border-b border-border px-2 py-2">
@@ -211,14 +211,14 @@ export function GitBranchSelectorField({
                     value={searchValue}
                     onChange={(event) => setSearchValue(event.target.value)}
                     placeholder="Search branches..."
-                    className="h-9 w-full rounded-xl border border-border bg-surface-muted pl-8 pr-2.5 text-sm text-foreground outline-none placeholder:text-subtle-foreground"
+                    className="h-9 w-full rounded-lg border border-border bg-surface-muted pl-8 pr-2.5 text-sm text-foreground outline-none placeholder:text-subtle-foreground"
                   />
                 </div>
                 <button
                   type="button"
                   aria-label="Refresh branch list"
                   onClick={() => void onRefresh?.()}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-surface-muted text-muted-foreground transition-colors hover:text-foreground"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-muted text-muted-foreground transition-colors hover:text-foreground"
                 >
                   <RefreshCw size={14} />
                 </button>
@@ -228,7 +228,7 @@ export function GitBranchSelectorField({
                 role="listbox"
                 aria-label="Git branches"
                 onMouseLeave={() => setHighlightedBranch(currentBranch)}
-                className="h-64 overflow-y-auto"
+                className="h-64 space-y-0.5 overflow-y-auto p-1"
               >
                 {visibleBranches.length > 0 ? (
                   visibleBranches.map((branchName) => {
@@ -245,7 +245,7 @@ export function GitBranchSelectorField({
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => handleSelect(branchName)}
                         className={[
-                          'flex w-full items-start justify-between gap-2 px-2.5 py-2 text-left transition-[background-color,color,box-shadow]',
+                          'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]',
                           isHighlighted
                             ? 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
                             : 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]',

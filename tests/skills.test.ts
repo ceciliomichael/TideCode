@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { SkillSummary } from '../src/types/skills'
-import { paginateSkills, searchSkills } from '../electron/skills/service'
+import {
+  formatStructuredToolResultContent,
+  getToolResultDisplayBody,
+  getToolResultModelContent,
+} from '../src/lib/toolResultContent'
+import {
+  buildLoadedSkillResult,
+  buildSkillToolDescription,
+  paginateSkills,
+  searchSkills,
+} from '../electron/skills/service'
 import { createSkillTool } from '../electron/chat/shared/tools/skillTool'
 
 const mockSkills: SkillSummary[] = [
@@ -59,6 +69,64 @@ test('createSkillTool executes list and search actions', async () => {
   const searchResult = await (toolInstance.execute as any)({ action: 'search', query: 'narrative' })
   assert.equal(searchResult.status, 'success')
   assert.match(searchResult.body, /writing/)
+})
+
+test('loaded skill results expose the skill file and base directory to the agent', () => {
+  const result = buildLoadedSkillResult({
+    ...mockSkills[0],
+    content: 'Run scripts/check.mjs before completing the task.',
+  })
+
+  assert.equal(result.status, 'success')
+  assert.match(result.body ?? '', /Skill file: \/path\/to\/writing\/SKILL\.md/u)
+  assert.match(result.body ?? '', /Skill directory: \/path\/to\/writing/u)
+  assert.match(result.body ?? '', /Run scripts\/check\.mjs/u)
+  assert.deepEqual(result.semantics, {
+    skill_directory: '/path/to/writing',
+    skill_file: '/path/to/writing/SKILL.md',
+    skill_name: 'writing',
+  })
+})
+
+test('skill location context remains model-visible but is filtered from the displayed result', () => {
+  const loadedResult = buildLoadedSkillResult({
+    ...mockSkills[0],
+    content: 'Run scripts/check.mjs before completing the task.',
+  })
+  const structuredContent = formatStructuredToolResultContent(
+    {
+      arguments: {
+        action: 'load',
+        name: 'writing',
+      },
+      schema: 'echosphere.tool_result/v1',
+      semantics: loadedResult.semantics,
+      status: 'success',
+      subject: loadedResult.subject,
+      summary: loadedResult.summary,
+      toolCallId: 'skill-call-1',
+      toolName: 'skill',
+    },
+    loadedResult.body,
+  )
+  const modelContent = getToolResultModelContent(structuredContent)
+  const displayContent = getToolResultDisplayBody('skill', modelContent)
+
+  assert.match(modelContent, /Skill file: \/path\/to\/writing\/SKILL\.md/u)
+  assert.match(modelContent, /Skill directory: \/path\/to\/writing/u)
+  assert.match(modelContent, /Resolve relative resource and script paths/u)
+  assert.doesNotMatch(displayContent, /Skill file:/u)
+  assert.doesNotMatch(displayContent, /Skill directory:/u)
+  assert.doesNotMatch(displayContent, /Resolve relative resource and script paths/u)
+  assert.equal(displayContent, 'Run scripts/check.mjs before completing the task.')
+  assert.equal(getToolResultDisplayBody('read', modelContent), modelContent)
+})
+
+test('skill tool no longer exposes the read_resource action', () => {
+  const description = buildSkillToolDescription()
+
+  assert.doesNotMatch(description, /read_resource/u)
+  assert.match(description, /read\/list\/glob\/grep/u)
 })
 
 test('expandChatMentions expands file, folder, and skill mentions with read:, list:, and load_skill:', async () => {

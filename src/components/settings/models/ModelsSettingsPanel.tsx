@@ -133,13 +133,13 @@ export function ModelsSettingsPanel({ providersState }: ModelsSettingsPanelProps
         .map((message) => (
           <div
             key={message}
-            className="rounded-2xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground"
+            className="rounded-xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground"
           >
             {message}
           </div>
         ))}
 
-      <section className="flex min-h-[280px] max-h-[calc(100dvh-14rem)] flex-none flex-col overflow-hidden rounded-2xl border border-border bg-surface md:min-h-[360px] md:max-h-[calc(100dvh-16.5rem)]">
+      <section className="flex min-h-[280px] max-h-[calc(100dvh-14rem)] flex-none flex-col overflow-hidden rounded-xl border border-border bg-surface md:min-h-[360px] md:max-h-[calc(100dvh-16.5rem)]">
         <div className="border-b border-border px-4 py-3 md:px-5">
           <div className="relative">
             <Search

@@ -12,7 +12,7 @@ import { isFileEditTool, isFileWriteTool } from './toolInvocationKinds'
 import { isKanbanTool } from './kanbanToolInvocationKinds'
 import { KanbanToolResult } from './KanbanToolResult'
 import { WebToolResult } from './WebToolResult'
-import { parseStructuredToolResultContent } from '../../lib/toolResultContent'
+import { getToolResultDisplayBody, parseStructuredToolResultContent } from '../../lib/toolResultContent'
 
 interface ToolInvocationBlockProps {
   invocation: ToolInvocationTrace
@@ -142,7 +142,8 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
     parsedStructuredResult?.metadata?.summary ??
     invocation.resultContent ??
     ''
-  const normalizedResultBody = useMemo(() => normalizeMarkdownText(rawResultBody), [rawResultBody])
+  const displayResultBody = getToolResultDisplayBody(invocation.toolName, rawResultBody)
+  const normalizedResultBody = useMemo(() => normalizeMarkdownText(displayResultBody), [displayResultBody])
   const shouldLimitResultHeight =
     terminalToolName === null && !isFileWriteTool(invocation.toolName) && !isFileEditTool(invocation.toolName)
 

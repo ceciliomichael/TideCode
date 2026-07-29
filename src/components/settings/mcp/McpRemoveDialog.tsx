@@ -36,7 +36,7 @@ export function McpRemoveDialog({ isSubmitting, onClose, onConfirm, serverName }
         role="dialog"
         aria-modal="true"
         aria-labelledby="mcp-remove-dialog-title"
-        className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-soft"
+        className="flex w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-soft"
       >
         <div className="flex items-start justify-between gap-3 border-b border-border px-6 pt-5 pb-3">
           <div className="min-w-0">

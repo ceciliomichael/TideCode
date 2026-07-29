@@ -1,260 +1,92 @@
-import { useEffect, useRef, useState, type DragEvent } from 'react'
-import type {
-  ConversationGroupPreview,
-  FolderReorderPosition,
-  ReorderConversationFolderInput,
-} from '../../types/chat'
-import { FolderOpen } from 'lucide-react'
-import { ConversationFolderSection } from './ConversationFolderSection'
+import { FolderOpen, MessageSquareText } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { PINNED_FOLDER_ID } from '../../hooks/chatHistoryViewModels'
+import type { ConversationGroupPreview } from '../../types/chat'
+import { ConversationHistoryItem } from './ConversationHistoryItem'
+import { ALL_PROJECTS_FILTER_ID, buildSidebarThreadRows } from './sidebarProjectThreads'
 
 interface ConversationHistoryListProps {
   conversationGroups: ConversationGroupPreview[]
-  onCreateConversation: (folderId?: string | null) => void
   onDeleteConversation: (conversationId: string) => void
   onPinConversation: (conversationId: string, isPinned: boolean) => void
-  onDeleteFolder: (folderId: string) => Promise<void>
-  onReorderFolder: (input: ReorderConversationFolderInput) => Promise<void>
-  onRenameFolder: (folderId: string, name: string) => Promise<void>
   onSelectConversation: (conversationId: string) => void
-  onSelectFolder: (folderId: string | null) => void
+  searchQuery: string
+  selectedProjectId: string
 }
 
-const COLLAPSED_FOLDER_STATE_STORAGE_KEY = 'echosphere:sidebar-collapsed-folders'
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function readCollapsedFolderState(): Record<string, boolean> {
-  if (typeof window === 'undefined') {
-    return {}
-  }
-
-  try {
-    const raw = window.localStorage.getItem(COLLAPSED_FOLDER_STATE_STORAGE_KEY)
-    if (!raw) {
-      return {}
-    }
-
-    const parsed = JSON.parse(raw) as unknown
-    if (!isRecord(parsed)) {
-      return {}
-    }
-
-    const nextState: Record<string, boolean> = {}
-    for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value === 'boolean') {
-        nextState[key] = value
-      }
-    }
-
-    return nextState
-  } catch {
-    return {}
-  }
-}
-
-function getDropPosition(event: DragEvent<HTMLElement>): FolderReorderPosition {
-  const rect = event.currentTarget.getBoundingClientRect()
-  return event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
-}
+const THREAD_BATCH_SIZE = 40
 
 export function ConversationHistoryList({
   conversationGroups,
-  onCreateConversation,
   onSelectConversation,
   onDeleteConversation,
   onPinConversation,
-  onDeleteFolder,
-  onReorderFolder,
-  onRenameFolder,
-  onSelectFolder,
+  searchQuery,
+  selectedProjectId,
 }: ConversationHistoryListProps) {
-  const [collapsedFolderState, setCollapsedFolderState] = useState<Record<string, boolean>>(() =>
-    readCollapsedFolderState(),
+  const [visibleThreadCount, setVisibleThreadCount] = useState(THREAD_BATCH_SIZE)
+  const threadRows = useMemo(
+    () => buildSidebarThreadRows(conversationGroups, selectedProjectId, searchQuery),
+    [conversationGroups, searchQuery, selectedProjectId],
   )
-  const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null)
-  const [dropTarget, setDropTarget] = useState<{ folderId: string; position: FolderReorderPosition } | null>(null)
-  const reorderCommitPendingRef = useRef(false)
-  const hasAnyConversations = conversationGroups.some((group) => group.conversations.length > 0)
+  const visibleThreadRows = threadRows.slice(0, visibleThreadCount)
+  const remainingThreadCount = threadRows.length - visibleThreadRows.length
+  const isAllProjectsView = selectedProjectId === ALL_PROJECTS_FILTER_ID
+  const hasProjects = conversationGroups.some(
+    (group) => group.folder.id !== null && group.folder.id !== PINNED_FOLDER_ID,
+  )
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
+    setVisibleThreadCount(THREAD_BATCH_SIZE)
+  }, [searchQuery, selectedProjectId])
 
-    try {
-      window.localStorage.setItem(COLLAPSED_FOLDER_STATE_STORAGE_KEY, JSON.stringify(collapsedFolderState))
-    } catch {
-      // Ignore storage write failures.
-    }
-  }, [collapsedFolderState])
+  if (threadRows.length === 0) {
+    const hasSearchQuery = searchQuery.trim().length > 0
 
-  function handleToggleFolder(folderId: string | null) {
-    const stateKey = folderId ?? 'chats'
-    setCollapsedFolderState((currentValue) => ({
-      ...currentValue,
-      [stateKey]: !(currentValue[stateKey] ?? true),
-    }))
+    return (
+      <div className="flex min-h-full flex-1 items-center justify-center px-4 py-8 text-center">
+        <div className="flex max-w-[240px] flex-col items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-surface-muted text-subtle-foreground">
+            {hasProjects ? <MessageSquareText size={22} /> : <FolderOpen size={22} />}
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">
+              {hasSearchQuery ? 'No matching threads' : hasProjects ? 'No threads here yet' : 'No projects yet'}
+            </p>
+            <p className="text-sm leading-6 text-subtle-foreground">
+              {hasSearchQuery
+                ? 'Try another title or project name'
+                : hasProjects
+                  ? 'Start a thread in this project to see it here'
+                  : 'Add a project folder to start a thread'}
+            </p>
+          </div>
+        </div>
+      </div>
+    )
   }
-
-  function resetDragState() {
-    setDraggedFolderId(null)
-    setDropTarget(null)
-    reorderCommitPendingRef.current = false
-  }
-
-  function commitFolderReorder(input: ReorderConversationFolderInput) {
-    if (reorderCommitPendingRef.current) {
-      return
-    }
-
-    reorderCommitPendingRef.current = true
-    void onReorderFolder(input).finally(() => {
-      resetDragState()
-    })
-  }
-
-  function handleDragStart(event: DragEvent<HTMLElement>, folderId: string) {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', folderId)
-    reorderCommitPendingRef.current = false
-    setDropTarget(null)
-
-    // Postpone setting the dragged folder ID to the next tick to prevent
-    // HTML5 drag from immediately aborting due to synchronous DOM collapse/layout changes.
-    setTimeout(() => {
-      setDraggedFolderId(folderId)
-    }, 0)
-  }
-
-  function handleDragEnd() {
-    if (!draggedFolderId || !dropTarget || draggedFolderId === dropTarget.folderId) {
-      resetDragState()
-      return
-    }
-
-    commitFolderReorder({
-      folderId: draggedFolderId,
-      targetFolderId: dropTarget.folderId,
-      position: dropTarget.position,
-    })
-  }
-
-  function handleDragOver(event: DragEvent<HTMLElement>, targetFolderId: string) {
-    const sourceFolderId = draggedFolderId ?? event.dataTransfer.getData('text/plain')
-    if (!sourceFolderId || sourceFolderId === targetFolderId) {
-      return
-    }
-
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    const position = getDropPosition(event)
-    setDropTarget((currentValue) => {
-      if (currentValue?.folderId === targetFolderId && currentValue.position === position) {
-        return currentValue
-      }
-
-      return {
-        folderId: targetFolderId,
-        position,
-      }
-    })
-  }
-
-  function handleDrop(event: DragEvent<HTMLElement>, targetFolderId: string) {
-    event.preventDefault()
-
-    const sourceFolderId = draggedFolderId ?? event.dataTransfer.getData('text/plain')
-    if (!sourceFolderId || sourceFolderId === targetFolderId) {
-      resetDragState()
-      return
-    }
-
-    const position =
-      dropTarget?.folderId === targetFolderId ? dropTarget.position : getDropPosition(event)
-
-    commitFolderReorder({
-      folderId: sourceFolderId,
-      targetFolderId,
-      position,
-    })
-  }
-
-  const hasCustomFolders = conversationGroups.some(
-    (group) => group.folder.id !== null && group.folder.id !== PINNED_FOLDER_ID
-  )
-  const showList = hasCustomFolders || hasAnyConversations
 
   return (
-    <div className="flex min-h-full flex-col pb-1">
-      {showList ? (
-        <div>
-          {conversationGroups.map((group) => {
-            const stateKey = group.folder.id ?? 'chats'
-            const folderId = group.folder.id
-            const isDraggable = folderId !== null && folderId !== PINNED_FOLDER_ID
-            const showDropIndicator =
-              isDraggable && dropTarget?.folderId === folderId && draggedFolderId !== null && draggedFolderId !== folderId
-
-            return (
-              <ConversationFolderSection
-                key={stateKey}
-                group={group}
-                isCollapsed={draggedFolderId !== null ? true : (collapsedFolderState[stateKey] ?? true)}
-                isDragging={isDraggable && draggedFolderId === folderId}
-                isDraggable={isDraggable}
-                dropIndicatorPosition={showDropIndicator ? dropTarget.position : null}
-                onCreateConversation={onCreateConversation}
-                onDragEnd={handleDragEnd}
-                onDragOver={
-                  isDraggable && folderId
-                    ? (event) => {
-                        handleDragOver(event, folderId)
-                      }
-                    : undefined
-                }
-                onDragStart={
-                  isDraggable && folderId
-                    ? (event) => {
-                        handleDragStart(event, folderId)
-                      }
-                    : undefined
-                }
-                onDrop={
-                  isDraggable && folderId
-                    ? (event) => {
-                        handleDrop(event, folderId)
-                      }
-                    : undefined
-                }
-                onToggleCollapsed={() => handleToggleFolder(group.folder.id)}
-                onDeleteFolder={onDeleteFolder}
-                onRenameFolder={onRenameFolder}
-                onSelectFolder={onSelectFolder}
-                onSelectConversation={onSelectConversation}
-                onDeleteConversation={onDeleteConversation}
-                onPinConversation={onPinConversation}
-              />
-            )
-          })}
-        </div>
-      ) : null}
-
-      {!hasCustomFolders ? (
-        <div className="flex flex-1 items-center justify-center px-4 py-8 text-center mt-2">
-          <div className="flex max-w-[240px] flex-col items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-muted text-subtle-foreground">
-              <FolderOpen size={22} />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-foreground">No project folders yet</p>
-              <p className="text-sm leading-6 text-subtle-foreground">
-                Add a project folder to start a thread
-              </p>
-            </div>
-          </div>
+    <div className="space-y-1.5 pb-1">
+      {visibleThreadRows.map(({ conversation, workspaceName }) => (
+        <ConversationHistoryItem
+          key={conversation.id}
+          conversation={conversation}
+          workspaceName={isAllProjectsView ? workspaceName : undefined}
+          onSelectConversation={onSelectConversation}
+          onDeleteConversation={onDeleteConversation}
+          onPinConversation={onPinConversation}
+        />
+      ))}
+      {remainingThreadCount > 0 ? (
+        <div className="px-4 py-2">
+          <button
+            type="button"
+            onClick={() => setVisibleThreadCount((currentValue) => currentValue + THREAD_BATCH_SIZE)}
+            className="min-h-10 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-[var(--sidebar-hover-surface)] hover:text-foreground"
+          >
+            Show {Math.min(remainingThreadCount, THREAD_BATCH_SIZE)} more
+          </button>
         </div>
       ) : null}
     </div>

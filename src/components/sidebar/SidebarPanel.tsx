@@ -1,9 +1,18 @@
-import { FolderPlus, Settings } from 'lucide-react'
-import { useCallback, type DragEvent } from 'react'
+import { FolderPlus, Settings, SquarePen } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react'
 import { getExternalFilePaths } from '../../lib/externalFileDrop'
 import { Tooltip } from '../Tooltip'
-import type { ConversationGroupPreview, ReorderConversationFolderInput } from '../../types/chat'
+import type { ConversationGroupPreview } from '../../types/chat'
 import { ConversationHistoryList } from './ConversationHistoryList'
+import { NewThreadProjectDialog } from './NewThreadProjectDialog'
+import { ProjectThreadSelector } from './ProjectThreadSelector'
+import { SidebarThreadSearch } from './SidebarThreadSearch'
+import {
+  ALL_PROJECTS_FILTER_ID,
+  CHATS_PROJECT_FILTER_ID,
+  buildSidebarProjectOptions,
+  resolveSidebarProjectFilter,
+} from './sidebarProjectThreads'
 
 interface SidebarPanelProps {
   conversationGroups: ConversationGroupPreview[]
@@ -13,11 +22,9 @@ interface SidebarPanelProps {
   onDeleteConversation: (conversationId: string) => void
   onPinConversation: (conversationId: string, isPinned: boolean) => void
   onDeleteFolder: (folderId: string) => Promise<void>
-  onReorderFolder: (input: ReorderConversationFolderInput) => Promise<void>
   onOpenSettings: () => void
   onRenameFolder: (folderId: string, name: string) => Promise<void>
   onSelectConversation: (conversationId: string) => void
-  onSelectFolder: (folderId: string | null) => void
 }
 
 export function SidebarPanel({
@@ -28,14 +35,24 @@ export function SidebarPanel({
   onDeleteConversation,
   onPinConversation,
   onDeleteFolder,
-  onReorderFolder,
   onOpenSettings,
   onRenameFolder,
   onSelectConversation,
-  onSelectFolder,
 }: SidebarPanelProps) {
+  const projects = useMemo(() => buildSidebarProjectOptions(conversationGroups), [conversationGroups])
+  const [selectedProjectId, setSelectedProjectId] = useState(ALL_PROJECTS_FILTER_ID)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [isNewThreadProjectDialogOpen, setIsNewThreadProjectDialogOpen] = useState(false)
+  const resolvedSelectedProjectId = resolveSidebarProjectFilter(selectedProjectId, projects)
+
+  useEffect(() => {
+    if (resolvedSelectedProjectId !== selectedProjectId) {
+      setSelectedProjectId(resolvedSelectedProjectId)
+    }
+  }, [resolvedSelectedProjectId, selectedProjectId])
+
   const actionButtonClassName =
-    'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-all duration-150 ease-out hover:scale-110 hover:text-foreground'
+    'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-150 ease-out hover:bg-[var(--sidebar-hover-surface)] hover:text-foreground'
   const footerButtonClassName =
     'flex min-h-11 w-full items-center gap-3 rounded-xl px-2 py-3 text-left text-sm font-medium text-foreground transition-colors duration-200 ease-out hover:bg-[var(--sidebar-hover-surface)]'
 
@@ -78,11 +95,51 @@ export function SidebarPanel({
       <div className="pb-4 pr-6 md:pr-7">
         <div className="h-10" aria-hidden="true" />
 
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <div className="min-w-0 flex-1 pl-2">
-            <p className="truncate whitespace-nowrap text-sm font-semibold text-foreground">Threads</p>
+        <div className="mt-4 flex items-center gap-1">
+          <div className="min-w-0 flex-1">
+            <SidebarThreadSearch value={searchQuery} onChange={setSearchQuery} />
           </div>
-          <div className="flex items-center gap-2">
+          <Tooltip
+            content={
+              resolvedSelectedProjectId === ALL_PROJECTS_FILTER_ID
+                ? 'Choose a project for a new thread'
+                : resolvedSelectedProjectId === CHATS_PROJECT_FILTER_ID
+                  ? 'Start new thread in Chats'
+                : `Start new thread in ${
+                    projects.find((project) => project.id === resolvedSelectedProjectId)?.name ?? 'project'
+                  }`
+            }
+            side="left"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                if (resolvedSelectedProjectId === ALL_PROJECTS_FILTER_ID) {
+                  setIsNewThreadProjectDialogOpen(true)
+                  return
+                }
+
+                onCreateConversation(
+                  resolvedSelectedProjectId === CHATS_PROJECT_FILTER_ID ? null : resolvedSelectedProjectId,
+                )
+              }}
+              className={actionButtonClassName}
+              aria-label="Start new thread"
+            >
+              <SquarePen size={18} strokeWidth={2.2} />
+            </button>
+          </Tooltip>
+        </div>
+
+        <div className="mt-2 flex items-center justify-between gap-1">
+          <ProjectThreadSelector
+            projects={projects}
+            selectedProjectId={resolvedSelectedProjectId}
+            onDeleteProject={onDeleteFolder}
+            onRenameProject={onRenameFolder}
+            onSelectProject={setSelectedProjectId}
+          />
+          <div className="flex shrink-0 items-center">
             <Tooltip content="Add folder" side="left">
               <button
                 type="button"
@@ -102,14 +159,11 @@ export function SidebarPanel({
       <div className="scroll-stable mt-2 flex-1 overflow-y-auto pr-6 md:pr-7">
         <ConversationHistoryList
           conversationGroups={conversationGroups}
-          onCreateConversation={onCreateConversation}
+          searchQuery={searchQuery}
+          selectedProjectId={resolvedSelectedProjectId}
           onDeleteConversation={onDeleteConversation}
           onPinConversation={onPinConversation}
-          onDeleteFolder={onDeleteFolder}
-          onReorderFolder={onReorderFolder}
-          onRenameFolder={onRenameFolder}
           onSelectConversation={onSelectConversation}
-          onSelectFolder={onSelectFolder}
         />
       </div>
 
@@ -124,6 +178,21 @@ export function SidebarPanel({
           <span>Settings</span>
         </button>
       </div>
+
+      {isNewThreadProjectDialogOpen ? (
+        <NewThreadProjectDialog
+          conversationGroups={conversationGroups}
+          projects={projects}
+          onAddProject={onCreateFolder}
+          onCancel={() => setIsNewThreadProjectDialogOpen(false)}
+          onOpenSettings={onOpenSettings}
+          onSelectConversation={onSelectConversation}
+          onSelectProject={(projectId) => {
+            setIsNewThreadProjectDialogOpen(false)
+            onCreateConversation(projectId === CHATS_PROJECT_FILTER_ID ? null : projectId)
+          }}
+        />
+      ) : null}
     </aside>
   )
 }

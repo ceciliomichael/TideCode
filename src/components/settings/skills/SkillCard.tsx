@@ -81,7 +81,7 @@ export function SkillCard({ isEnabled, onToggle, skill }: SkillCardProps) {
   }, [collapsedLineCount, skill.description])
 
   return (
-    <article className="flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border bg-surface p-4">
+    <article className="flex min-w-0 flex-col gap-3 overflow-hidden rounded-xl border border-border bg-surface p-4">
       <div className="flex min-w-0 items-start justify-between gap-4">
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <div className="shrink-0 rounded-lg bg-surface-muted p-2">

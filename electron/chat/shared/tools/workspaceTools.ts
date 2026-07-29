@@ -16,6 +16,12 @@ import { applyPatchInWorkspace, type ApplyPatchChange } from '../applyPatch'
 
 import type { AgentToolContext, AgentToolExecutionResult } from '../toolTypes'
 import { runRipgrep } from './ripgrep'
+import {
+  assertSandboxPathDoesNotEscapeThroughSymlink,
+  getSandboxPathRoots,
+  isPathInsideRoot,
+  resolveSandboxPath,
+} from './sandboxPaths'
 
 const DEFAULT_READ_LIMIT = 2000
 const LIST_LIMIT = 100
@@ -43,17 +49,21 @@ export function resolveWorkspaceTargetPath(workspaceRootPath: string, candidateP
   return getSafeWorkspaceTargetPath(workspaceRootPath, candidatePath)
 }
 
-function isPathWithinWorkspace(workspaceRootPath: string, targetPath: string) {
-  const relativePath = path.relative(workspaceRootPath, targetPath)
-  return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
-}
-
 export function resolveReadableTargetPath(
   workspaceRootPath: string,
   candidatePath: string | undefined,
   terminalExecutionMode: AppTerminalExecutionMode = 'sandbox',
+  options: { allowGlobalAgentsDirectory?: boolean } = {},
 ) {
   if (terminalExecutionMode === 'sandbox') {
+    if (options.allowGlobalAgentsDirectory) {
+      const target = resolveSandboxPath(workspaceRootPath, candidatePath)
+      return {
+        absolutePath: target.absolutePath,
+        displayPath: target.displayPath,
+      }
+    }
+
     const target = resolveWorkspaceTargetPath(workspaceRootPath, candidatePath)
     return {
       absolutePath: target.absolutePath,
@@ -75,12 +85,34 @@ export function resolveReadableTargetPath(
 
   return {
     absolutePath,
-    displayPath: isPathWithinWorkspace(workspaceRootPath, absolutePath)
+    displayPath: isPathInsideRoot(workspaceRootPath, absolutePath)
       ? relativePath === ''
         ? DEFAULT_WORKSPACE_RELATIVE_PATH
         : relativePath
       : absolutePath,
   }
+}
+
+export async function resolveReadOnlyTargetPath(
+  workspaceRootPath: string,
+  candidatePath: string | undefined,
+  terminalExecutionMode: AppTerminalExecutionMode = 'sandbox',
+) {
+  const target = resolveReadableTargetPath(
+    workspaceRootPath,
+    candidatePath,
+    terminalExecutionMode,
+    { allowGlobalAgentsDirectory: true },
+  )
+
+  if (terminalExecutionMode === 'sandbox') {
+    await assertSandboxPathDoesNotEscapeThroughSymlink(
+      target.absolutePath,
+      getSandboxPathRoots(workspaceRootPath),
+    )
+  }
+
+  return target
 }
 
 function createSuccessResult(input: Omit<AgentToolExecutionResult, 'status'>): AgentToolExecutionResult {

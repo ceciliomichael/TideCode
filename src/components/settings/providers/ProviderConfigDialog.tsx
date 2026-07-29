@@ -93,7 +93,7 @@ export function ProviderConfigDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="provider-dialog-title"
-        className="flex h-full w-full flex-col overflow-hidden border-border bg-surface md:h-auto md:max-h-[calc(100dvh-3rem)] md:max-w-2xl md:rounded-2xl md:border md:shadow-soft"
+        className="flex h-full w-full flex-col overflow-hidden border-border bg-surface md:h-auto md:max-h-[calc(100dvh-3rem)] md:max-w-2xl md:rounded-xl md:border md:shadow-soft"
       >
         <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-4 md:px-6">
           <div className="min-w-0">

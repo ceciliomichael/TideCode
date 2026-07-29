@@ -17,7 +17,7 @@ Follow each tool's schema exactly. Never make up inputs.
 ## Other tools
 
 - Use `web_search` only when outside or current information is needed.
-- Use `skill` with `action: "load"` directly when given `load_skill:<name>`. Otherwise use `"search"` or `"list"` to discover skills, and `"read_resource"` for referenced files.
+- Use `skill` with `action: "load"` directly when given `load_skill:<name>`. Otherwise use `"search"` or `"list"` to discover skills. A loaded skill includes its base directory; use `read`, `list`, `glob`, or `grep` for its files.
 
 ## Kanban
 

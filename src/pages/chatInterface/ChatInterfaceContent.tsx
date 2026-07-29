@@ -40,7 +40,6 @@ import type {
   AppSettings,
   ChatAttachment,
   CodexUsageSnapshot,
-  ReorderConversationFolderInput,
   ToolInvocationTrace,
 } from '../../types/chat'
 import type { ResolvedTheme } from '../../lib/theme'
@@ -374,11 +373,6 @@ export function ChatInterfaceContent({
     [chatMessages, clearQueuedMessages],
   )
 
-  const handleSelectFolder = useCallback(async (folderId: string | null) => {
-    clearQueuedMessages()
-    await chatMessages.selectFolder(folderId)
-  }, [chatMessages, clearQueuedMessages])
-
   const handleCreateFolder = useCallback(async () => {
     clearQueuedMessages()
     await chatMessages.createFolder()
@@ -411,14 +405,6 @@ export function ChatInterfaceContent({
     async (folderId: string) => {
       clearQueuedMessages()
       await chatMessages.deleteFolder(folderId)
-    },
-    [chatMessages, clearQueuedMessages],
-  )
-
-  const handleReorderFolder = useCallback(
-    async (input: ReorderConversationFolderInput) => {
-      clearQueuedMessages()
-      await chatMessages.reorderFolder(input)
     },
     [chatMessages, clearQueuedMessages],
   )
@@ -572,11 +558,9 @@ export function ChatInterfaceContent({
           onDeleteConversation={handleDeleteConversation}
           onPinConversation={handlePinConversation}
           onDeleteFolder={handleDeleteFolder}
-          onReorderFolder={handleReorderFolder}
           onOpenSettings={onOpenSettings}
           onRenameFolder={chatMessages.renameFolder}
           onSelectConversation={handleSelectConversation}
-          onSelectFolder={handleSelectFolder}
         />
       }
       sidebarWidth={sidebarWidth}

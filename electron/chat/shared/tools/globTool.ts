@@ -1,15 +1,10 @@
 import { jsonSchema, tool } from 'ai'
-import { createGlobToolResult, resolveReadableTargetPath, type WorkspaceToolContext } from './workspaceTools'
+import { createGlobToolResult, resolveReadOnlyTargetPath, type WorkspaceToolContext } from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createGlobTool(context: WorkspaceToolContext) {
-  const description =
-    context.terminalExecutionMode === 'full'
-      ? 'Returns up to 100 visible absolute file paths matching the glob pattern below absolute_path, or the workspace root when omitted.'
-      : 'Returns up to 100 visible absolute file paths matching the glob pattern below a workspace directory. absolute_path defaults to the workspace root and must remain inside it.'
-
   return tool({
-    description,
+    description: 'Returns up to 100 visible absolute file paths matching the glob pattern below absolute_path within the active execution context, or the workspace root when omitted.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
@@ -22,7 +17,7 @@ export function createGlobTool(context: WorkspaceToolContext) {
     execute: async (rawInput) => {
       const input = rawInput as { absolute_path?: string; pattern: string }
       try {
-        const target = resolveReadableTargetPath(
+        const target = await resolveReadOnlyTargetPath(
           context.workspaceRootPath,
           input.absolute_path,
           context.terminalExecutionMode,
