@@ -8,12 +8,12 @@ export const LIGHT_THEME_COLOR = '#EEF4EE'
 export const DARK_THEME_COLOR = '#171717'
 
 export function getCachedAppearancePreference(): AppAppearance {
-  if (typeof window === 'undefined') {
+  if (typeof window === 'undefined' || typeof window.echosphereSettings?.getInitialSettings !== 'function') {
     return DEFAULT_APP_APPEARANCE
   }
 
   try {
-    const cachedAppearance = window.localStorage.getItem(THEME_STORAGE_KEY)
+    const cachedAppearance = window.echosphereSettings.getInitialSettings().appearance
     return isAppAppearance(cachedAppearance) ? cachedAppearance : DEFAULT_APP_APPEARANCE
   } catch {
     return DEFAULT_APP_APPEARANCE
@@ -21,14 +21,14 @@ export function getCachedAppearancePreference(): AppAppearance {
 }
 
 export function cacheAppearancePreference(appearance: AppAppearance) {
-  if (typeof window === 'undefined') {
+  if (typeof window === 'undefined' || typeof window.echosphereSettings?.updateSettings !== 'function') {
     return
   }
 
   try {
-    window.localStorage.setItem(THEME_STORAGE_KEY, appearance)
+    void window.echosphereSettings.updateSettings({ appearance })
   } catch {
-    // Ignore local cache write failures and rely on the persisted Electron settings store.
+    // Ignore cache write failures
   }
 }
 

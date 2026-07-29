@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { DiffPanelScope } from './components/chat/ConversationDiffPanel'
 import { ChatInterface, type RightPanelTab } from './pages/ChatInterface'
 import { SettingsInterface } from './pages/SettingsInterface'
+import { ALL_PROJECTS_FILTER_ID, CHATS_PROJECT_FILTER_ID } from './components/sidebar/sidebarProjectThreads'
 import { useAppSettings } from './hooks/useAppSettings'
 import { useChatMessages } from './hooks/useChatMessages'
 import { useDocumentTheme } from './hooks/useDocumentTheme'
@@ -99,8 +100,15 @@ export default function App() {
       return
     }
 
+    const preferredDraftFolderId =
+      settings.lastActiveDraftFolderId ??
+      (settings.selectedProjectId && settings.selectedProjectId !== ALL_PROJECTS_FILTER_ID && settings.selectedProjectId !== CHATS_PROJECT_FILTER_ID
+        ? settings.selectedProjectId
+        : null)
+
+
     setBootConversationLaunchState({
-      preferredDraftFolderId: settings.lastActiveDraftFolderId,
+      preferredDraftFolderId,
       openEmptyConversationOnLaunch: settings.openEmptyConversationOnLaunch,
       preferredConversationId: settings.lastActiveConversationId,
     })
@@ -110,6 +118,7 @@ export default function App() {
     settings.lastActiveConversationId,
     settings.lastActiveDraftFolderId,
     settings.openEmptyConversationOnLaunch,
+    settings.selectedProjectId,
   ])
 
   useEffect(() => {

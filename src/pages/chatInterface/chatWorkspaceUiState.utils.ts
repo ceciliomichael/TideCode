@@ -21,10 +21,11 @@ export function getTerminalWorkspaceKey({
 }: TerminalWorkspaceKeyInput) {
   const workspaceKey = toWorkspaceScopedKey(activeWorkspacePath);
 
+  if (workspaceKey !== DEFAULT_TERMINAL_WORKSPACE_KEY) {
+    return workspaceKey;
+  }
+
   if (activeConversationId) {
-    if (workspaceKey !== DEFAULT_TERMINAL_WORKSPACE_KEY) {
-      return `${workspaceKey}::conversation:${activeConversationId}`;
-    }
     return `chats:${activeConversationId}`;
   }
 

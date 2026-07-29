@@ -227,10 +227,16 @@ export function useChatWorkspaceUiState({
   useEffect(() => {
     const previousKey = previousTerminalWorkspaceKeyRef.current;
     if (previousKey !== activeTerminalWorkspaceKey) {
+      terminalOpenStatesRef.current[previousKey] = {
+        isTerminalOpen,
+        isTerminalFullScreen,
+      };
+
       previousTerminalWorkspaceKeyRef.current = activeTerminalWorkspaceKey;
 
+      const storedOpen = settings.terminalOpenByWorkspace[activeTerminalWorkspaceKey] ?? false;
       const nextState = terminalOpenStatesRef.current[activeTerminalWorkspaceKey] ?? {
-        isTerminalOpen: false,
+        isTerminalOpen: storedOpen,
         isTerminalFullScreen: false,
       };
 
@@ -242,7 +248,7 @@ export function useChatWorkspaceUiState({
         isTerminalFullScreen,
       };
     }
-  }, [activeTerminalWorkspaceKey, isTerminalOpen, isTerminalFullScreen]);
+  }, [activeTerminalWorkspaceKey, isTerminalOpen, isTerminalFullScreen, settings.terminalOpenByWorkspace]);
 
   const terminalPanelHeight =
     settings.terminalPanelHeightsByWorkspace[activeTerminalWorkspaceKey] ??

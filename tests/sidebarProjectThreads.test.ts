@@ -142,3 +142,9 @@ test('resolveSidebarProjectFilter falls back to all projects after a project dis
   assert.equal(resolveSidebarProjectFilter(CHATS_PROJECT_FILTER_ID, projects), CHATS_PROJECT_FILTER_ID)
   assert.equal(resolveSidebarProjectFilter('removed-project', projects), ALL_PROJECTS_FILTER_ID)
 })
+
+test('resolveSidebarProjectFilter preserves selectedProjectId while history is loading', () => {
+  assert.equal(resolveSidebarProjectFilter('project-two', [], true), 'project-two')
+  assert.equal(resolveSidebarProjectFilter('custom-project-id', [], true), 'custom-project-id')
+})
+

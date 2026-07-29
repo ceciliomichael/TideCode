@@ -74,7 +74,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         <h3 {...props} className="mt-1.5 mb-1 text-[1rem] font-semibold leading-[1.3] text-foreground" />
       ),
       p: (props: React.ComponentPropsWithoutRef<'p'>) => (
-        <p {...props} className="my-0 mb-3 leading-[1.52] text-foreground last:mb-0" />
+        <p {...props} className="my-0 mb-3 leading-[1.65] text-foreground last:mb-0" />
       ),
       ul: (props: React.ComponentPropsWithoutRef<'ul'>) => (
         <ul {...props} className="my-2 list-disc pl-6 text-foreground last:mb-0" />
@@ -83,7 +83,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         <ol {...props} className="my-2 list-decimal pl-6 text-foreground last:mb-0" />
       ),
       li: (props: React.ComponentPropsWithoutRef<'li'>) => (
-        <li {...props} className="my-0 leading-[1.45] [&>p]:my-0 [&>p]:mb-0 [&>p+p]:mt-1" />
+        <li {...props} className="my-0 leading-[1.6] [&>p]:my-0 [&>p]:mb-0 [&>p+p]:mt-1" />
       ),
       blockquote: (props: React.ComponentPropsWithoutRef<'blockquote'>) => (
         <blockquote {...props} className="my-2 border-l-2 border-border pl-3 italic text-muted-foreground" />
@@ -101,13 +101,13 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         }
 
         return (
-          <code {...props} className="rounded-xs border border-border/40 bg-surface-muted/60 px-1.5 py-[2px] font-[inherit] text-inherit [font-weight:inherit] text-foreground align-baseline">
+          <code {...props} className="mx-[2px] rounded-xs border border-border/40 bg-surface-muted/60 px-1 py-[1px] font-[inherit] text-inherit [font-weight:inherit] text-foreground align-baseline">
             {children}
           </code>
         )
       },
       kbd: (props: React.ComponentPropsWithoutRef<'kbd'>) => (
-        <kbd {...props} className="inline-block rounded-md border border-border bg-surface-muted px-1.5 py-0.5 font-mono text-[0.8em] font-semibold text-foreground shadow-xs" />
+        <kbd {...props} className="mx-[2px] rounded-xs border border-border/40 bg-surface-muted/60 px-1 py-[1px] font-[inherit] text-inherit [font-weight:inherit] text-foreground align-baseline" />
       ),
       sub: (props: React.ComponentPropsWithoutRef<'sub'>) => (
         <sub {...props} className="text-[0.75em] leading-none text-foreground" />
@@ -128,7 +128,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         )
       },
       mark: (props: React.ComponentPropsWithoutRef<'mark'>) => (
-        <mark {...props} className="rounded-xs bg-amber-500/25 px-1.5 py-[2px] text-inherit font-[inherit]" />
+        <mark {...props} className="mx-[2px] rounded-xs bg-amber-500/25 px-1 py-[1px] text-inherit font-[inherit]" />
       ),
       details: ({ children, ...props }: React.ComponentPropsWithoutRef<'details'>) => {
         const childArray = React.Children.toArray(children)

@@ -26,7 +26,7 @@ export function SkillCard({ isEnabled, onToggle, skill }: SkillCardProps) {
       strong: (props: React.ComponentPropsWithoutRef<'strong'>) => <strong {...props} className="font-semibold text-foreground" />,
       em: (props: React.ComponentPropsWithoutRef<'em'>) => <em {...props} className="italic" />,
       code: (props: React.ComponentPropsWithoutRef<'code'>) => (
-        <code {...props} className="rounded-xs border border-border/40 bg-surface-muted/60 px-1.5 py-[2px] font-[inherit] text-inherit [font-weight:inherit] text-foreground align-baseline" />
+        <code {...props} className="mx-[2px] rounded-xs border border-border/40 bg-surface-muted/60 px-1 py-[1px] font-[inherit] text-inherit [font-weight:inherit] text-foreground align-baseline" />
       ),
       a: (props: React.ComponentPropsWithoutRef<'a'>) => (
         <a

@@ -37,6 +37,7 @@ const WORKSPACE_UI_SETTINGS_KEYS = [
   'sourceControlSectionSizes',
   'terminalOpenByWorkspace',
   'terminalPanelHeightsByWorkspace',
+  'selectedProjectId',
 ] as const satisfies readonly (keyof AppSettings)[]
 
 type WorkspaceUiSettingsKey = (typeof WORKSPACE_UI_SETTINGS_KEYS)[number]
@@ -361,6 +362,7 @@ function pickWorkspaceUiSettings(settings: AppSettings): WorkspaceUiSettings {
     sourceControlSectionSizes: settings.sourceControlSectionSizes,
     terminalOpenByWorkspace: settings.terminalOpenByWorkspace,
     terminalPanelHeightsByWorkspace: settings.terminalPanelHeightsByWorkspace,
+    selectedProjectId: settings.selectedProjectId,
   }
 }
 
@@ -632,6 +634,8 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     terminalOpenByWorkspace,
     terminalPanelHeightsByWorkspace,
     terminalExecutionMode,
+    selectedProjectId: typeof input?.selectedProjectId === 'string' ? input.selectedProjectId : DEFAULT_APP_SETTINGS.selectedProjectId,
+    modelToggleState: typeof input?.modelToggleState === 'object' && input.modelToggleState !== null ? (input.modelToggleState as Record<string, boolean>) : DEFAULT_APP_SETTINGS.modelToggleState,
   }
 }
 

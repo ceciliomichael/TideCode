@@ -1,8 +1,6 @@
 import { MODEL_CATALOG } from './modelCatalog'
 import type { ModelCatalogItem, ModelToggleState } from './modelTypes'
 
-const MODEL_TOGGLES_STORAGE_KEY = 'echosphere:model-toggles'
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
@@ -49,30 +47,30 @@ export function filterEnabledModelCatalogItems(
 }
 
 export function readStoredModelToggleState(): ModelToggleState {
-  if (typeof window === 'undefined') {
+  if (typeof window === 'undefined' || typeof window.echosphereSettings?.getInitialSettings !== 'function') {
     return buildDefaultModelToggleState()
   }
 
   try {
-    const raw = window.localStorage.getItem(MODEL_TOGGLES_STORAGE_KEY)
+    const raw = window.echosphereSettings.getInitialSettings().modelToggleState
     if (!raw) {
       return buildDefaultModelToggleState()
     }
 
-    return sanitizeModelToggleState(JSON.parse(raw) as unknown)
+    return sanitizeModelToggleState(raw)
   } catch {
     return buildDefaultModelToggleState()
   }
 }
 
 export function writeStoredModelToggleState(state: ModelToggleState) {
-  if (typeof window === 'undefined') {
+  if (typeof window === 'undefined' || typeof window.echosphereSettings?.updateSettings !== 'function') {
     return
   }
 
   try {
-    window.localStorage.setItem(MODEL_TOGGLES_STORAGE_KEY, JSON.stringify(state))
+    void window.echosphereSettings.updateSettings({ modelToggleState: state })
   } catch {
-    // Ignore local storage write failures.
+    // Ignore settings write failures.
   }
 }

@@ -34,6 +34,7 @@ interface NewThreadProjectDialogProps {
   onSelectConversation: (conversationId: string) => void
   onSelectProject: (projectId: string) => void
   projects: readonly SidebarProjectOption[]
+  selectedProjectId: string
 }
 
 function matchesSearch(value: string, normalizedQuery: string) {
@@ -48,6 +49,7 @@ export function NewThreadProjectDialog({
   onSelectConversation,
   onSelectProject,
   projects,
+  selectedProjectId,
 }: NewThreadProjectDialogProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [highlightedIndex, setHighlightedIndex] = useState(0)
@@ -78,10 +80,13 @@ export function NewThreadProjectDialog({
     [conversationGroups, projects],
   )
   const latestProject = useMemo(() => {
+    if (selectedProjectId !== ALL_PROJECTS_FILTER_ID) {
+      return allProjectOptions.find((project) => project.id === selectedProjectId) ?? allProjectOptions[0] ?? null
+    }
     const latestFolderId = allThreadRows[0]?.conversation.folderId ?? null
     const targetId = latestFolderId === null ? CHATS_PROJECT_FILTER_ID : latestFolderId
     return allProjectOptions.find((project) => project.id === targetId) ?? allProjectOptions[0] ?? null
-  }, [allThreadRows, allProjectOptions])
+  }, [allThreadRows, allProjectOptions, selectedProjectId])
   const matchingProjects = useMemo(
     () =>
       allProjectOptions.filter(

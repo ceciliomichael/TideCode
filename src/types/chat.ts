@@ -294,6 +294,8 @@ export interface AppSettings {
   terminalPanelHeightsByWorkspace: Record<string, number>
   terminalExecutionMode: AppTerminalExecutionMode
   githubToken?: string
+  selectedProjectId?: string
+  modelToggleState?: Record<string, boolean>
 }
 
 export type SourceControlSectionId = 'commit' | 'changes' | 'history'

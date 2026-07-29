@@ -76,7 +76,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
         <h6 {...props} className="mt-3 mb-1.5 text-[0.84rem] font-semibold uppercase tracking-wide text-muted-foreground" />
       ),
       p: (props: React.ComponentPropsWithoutRef<'p'>) => (
-        <p {...props} className="my-0 mb-3 leading-6 text-foreground last:mb-0" />
+        <p {...props} className="my-0 mb-3 leading-[1.65] text-foreground last:mb-0" />
       ),
       ul: (props: React.ComponentPropsWithoutRef<'ul'>) => (
         <ul {...props} className="my-3 list-disc space-y-1 pl-6 text-foreground last:mb-0" />
@@ -85,7 +85,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
         <ol {...props} className="my-3 list-decimal space-y-1 pl-6 text-foreground last:mb-0" />
       ),
       li: (props: React.ComponentPropsWithoutRef<'li'>) => (
-        <li {...props} className="my-0 leading-6 text-foreground [&>p]:my-0 [&>p]:mb-0 [&>p+p]:mt-1" />
+        <li {...props} className="my-0 leading-[1.6] text-foreground [&>p]:my-0 [&>p]:mb-0 [&>p+p]:mt-1" />
       ),
       blockquote: (props: React.ComponentPropsWithoutRef<'blockquote'>) => (
         <blockquote
@@ -107,13 +107,13 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
         }
 
         return (
-          <code {...props} className="rounded-xs border border-border/40 bg-surface-muted/60 px-1.5 py-[2px] font-[inherit] text-inherit [font-weight:inherit] text-foreground align-baseline">
+          <code {...props} className="mx-[2px] rounded-xs border border-border/40 bg-surface-muted/60 px-1 py-[1px] font-[inherit] text-inherit [font-weight:inherit] text-foreground align-baseline">
             {children}
           </code>
         )
       },
       kbd: (props: React.ComponentPropsWithoutRef<'kbd'>) => (
-        <kbd {...props} className="inline-block rounded-md border border-border bg-surface-muted px-1.5 py-0.5 font-mono text-[0.8em] font-semibold text-foreground shadow-xs" />
+        <kbd {...props} className="mx-[2px] rounded-xs border border-border/40 bg-surface-muted/60 px-1 py-[1px] font-[inherit] text-inherit [font-weight:inherit] text-foreground align-baseline" />
       ),
       sub: (props: React.ComponentPropsWithoutRef<'sub'>) => (
         <sub {...props} className="text-[0.75em] leading-none text-foreground" />
@@ -134,7 +134,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
         )
       },
       mark: (props: React.ComponentPropsWithoutRef<'mark'>) => (
-        <mark {...props} className="rounded-xs bg-amber-500/25 px-1.5 py-[2px] text-inherit font-[inherit]" />
+        <mark {...props} className="mx-[2px] rounded-xs bg-amber-500/25 px-1 py-[1px] text-inherit font-[inherit]" />
       ),
       details: ({ children, ...props }: React.ComponentPropsWithoutRef<'details'>) => {
         const childArray = React.Children.toArray(children)

@@ -159,33 +159,70 @@ export async function loadInitialChatHistory(
     window.echosphereHistory.listFolders(),
   ])
 
+  const normalizedPreferredDraftFolderId = preferredDraftFolderId?.trim() ?? ''
+  const validPreferredFolderId =
+    normalizedPreferredDraftFolderId.length > 0 &&
+    folderSummaries.some((folderSummary) => folderSummary.id === normalizedPreferredDraftFolderId)
+      ? normalizedPreferredDraftFolderId
+      : null
+
   if (conversationSummaries.length === 0 || openEmptyConversationOnLaunch) {
-    const normalizedPreferredDraftFolderId = preferredDraftFolderId?.trim() ?? ''
-    const initialSelectedFolderId =
-      normalizedPreferredDraftFolderId.length > 0 &&
-      folderSummaries.some((folderSummary) => folderSummary.id === normalizedPreferredDraftFolderId)
-        ? normalizedPreferredDraftFolderId
-        : null
+    return {
+      conversationSummaries,
+      folderSummaries,
+      initialConversation: null,
+      initialSelectedFolderId: validPreferredFolderId,
+    }
+  }
+
+  const normalizedPreferredConversationId = preferredConversationId?.trim() ?? ''
+  const preferredConversationSummary =
+    normalizedPreferredConversationId.length > 0
+      ? conversationSummaries.find((summary) => summary.id === normalizedPreferredConversationId)
+      : null
+
+  if (preferredConversationSummary) {
+    if (!validPreferredFolderId || preferredConversationSummary.folderId === validPreferredFolderId) {
+      const initialConversation = await window.echosphereHistory.getConversation(preferredConversationSummary.id)
+      if (initialConversation) {
+        return {
+          conversationSummaries,
+          folderSummaries,
+          initialConversation,
+          initialSelectedFolderId: initialConversation.folderId ?? validPreferredFolderId,
+        }
+      }
+    }
+  }
+
+  if (validPreferredFolderId) {
+    const emptyProjectConversationSummary = conversationSummaries.find(
+      (summary) =>
+        summary.folderId === validPreferredFolderId &&
+        (summary.preview.trim() === '' || summary.preview === 'New Chat'),
+    )
+    if (emptyProjectConversationSummary) {
+      const initialConversation = await window.echosphereHistory.getConversation(emptyProjectConversationSummary.id)
+      if (initialConversation) {
+        return {
+          conversationSummaries,
+          folderSummaries,
+          initialConversation,
+          initialSelectedFolderId: validPreferredFolderId,
+        }
+      }
+    }
 
     return {
       conversationSummaries,
       folderSummaries,
       initialConversation: null,
-      initialSelectedFolderId,
+      initialSelectedFolderId: validPreferredFolderId,
     }
   }
 
-  const normalizedPreferredConversationId = preferredConversationId?.trim() ?? ''
-  const initialConversationId =
-    normalizedPreferredConversationId.length > 0 &&
-    conversationSummaries.some((conversationSummary) => conversationSummary.id === normalizedPreferredConversationId)
-      ? normalizedPreferredConversationId
-      : conversationSummaries[0].id
-
-  let initialConversation = await window.echosphereHistory.getConversation(initialConversationId)
-  if (!initialConversation && initialConversationId !== conversationSummaries[0].id) {
-    initialConversation = await window.echosphereHistory.getConversation(conversationSummaries[0].id)
-  }
+  const fallbackSummary = conversationSummaries[0]
+  const initialConversation = await window.echosphereHistory.getConversation(fallbackSummary.id)
 
   return {
     conversationSummaries,

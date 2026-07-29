@@ -15,7 +15,7 @@ import { AppWorkspaceShell } from '../../components/layout/AppWorkspaceShell'
 import { WorkspaceFloatingControls } from '../../components/layout/WorkspaceFloatingControls'
 import { WorkspacePanel } from '../../components/layout/WorkspacePanel'
 import { SidebarPanel } from '../../components/sidebar/SidebarPanel'
-import { ALL_PROJECTS_FILTER_ID } from '../../components/sidebar/sidebarProjectThreads'
+import { ALL_PROJECTS_FILTER_ID, CHATS_PROJECT_FILTER_ID } from '../../components/sidebar/sidebarProjectThreads'
 import { SourceControlPanel } from '../../components/sourceControl/SourceControlPanel'
 import { WorkspaceTerminalPanel } from '../../components/chat/WorkspaceTerminalPanel'
 import { Tooltip } from '../../components/Tooltip'
@@ -75,6 +75,7 @@ interface ChatInterfaceContentProps {
   onDiffPanelSelectedScopeChange: (nextScope: DiffPanelScope) => void
   onOpenSettings: () => void
   onSidebarWidthChange: (sidebarWidth: number) => void
+  onUpdateSettings: (settings: Partial<AppSettings>) => void
   onCreateWorkspaceFolderFromPath: (folderPath: string) => Promise<void>
   resolvedTheme: ResolvedTheme
   sendMessageOnEnter: boolean
@@ -112,6 +113,7 @@ export function ChatInterfaceContent({
   onCreateWorkspaceFolderFromPath,
   onOpenSettings,
   onSidebarWidthChange,
+  onUpdateSettings,
   resolvedTheme,
   sendMessageOnEnter,
   settings,
@@ -119,7 +121,15 @@ export function ChatInterfaceContent({
   codexUsage,
   workspaceState,
 }: ChatInterfaceContentProps) {
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(ALL_PROJECTS_FILTER_ID)
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(settings.selectedProjectId ?? ALL_PROJECTS_FILTER_ID)
+
+  // Sync selectedProjectId with settings
+  useEffect(() => {
+    if (settings.selectedProjectId && settings.selectedProjectId !== selectedProjectId) {
+      setSelectedProjectId(settings.selectedProjectId)
+    }
+  }, [settings.selectedProjectId, selectedProjectId])
+
   const activeWorkspacePath = chatMessages.activeConversationRootPath ?? chatMessages.selectedFolderPath
   const runtimeSelection = useMemo(
     () => buildRuntimeSelection(chatRuntimeConfig, settings.terminalExecutionMode),
@@ -360,11 +370,48 @@ export function ChatInterfaceContent({
     await chatMessages.createConversation(folderId)
   }, [chatMessages, clearQueuedMessages])
 
+  const handleSelectProject = useCallback(
+    (projectId: string) => {
+      setSelectedProjectId(projectId)
+      onUpdateSettings({ selectedProjectId: projectId })
+      const targetFolderId =
+        projectId === ALL_PROJECTS_FILTER_ID
+          ? undefined
+          : projectId === CHATS_PROJECT_FILTER_ID
+            ? null
+            : projectId
+
+      if (
+        chatMessages.activeConversationId &&
+        (targetFolderId === undefined || chatMessages.selectedFolderId === targetFolderId)
+      ) {
+        return
+      }
+
+      const targetGroup = chatMessages.conversationGroups.find(
+        (group) => group.folder.id === (targetFolderId ?? null),
+      )
+      const targetConv = targetGroup?.conversations[0]
+
+      if (targetConv) {
+        clearQueuedMessages()
+        setWorkspaceViewMode('chat')
+        void chatMessages.selectConversation(targetConv.id)
+      } else {
+        void handleCreateConversation(targetFolderId)
+      }
+    },
+    [chatMessages, clearQueuedMessages, handleCreateConversation, onUpdateSettings],
+  )
+
   const handleCreateWorkspaceConversation = useCallback(async () => {
     clearQueuedMessages()
     setWorkspaceViewMode('chat')
-    await chatMessages.createConversation()
-  }, [chatMessages, clearQueuedMessages])
+    
+    // If we're inside a specific project, default new chats to that project
+    const folderId = selectedProjectId === ALL_PROJECTS_FILTER_ID ? undefined : (selectedProjectId === CHATS_PROJECT_FILTER_ID ? null : selectedProjectId)
+    await chatMessages.createConversation(folderId)
+  }, [chatMessages, clearQueuedMessages, selectedProjectId])
 
   const handleSelectConversation = useCallback(
     (conversationId: string) => {
@@ -554,6 +601,7 @@ export function ChatInterfaceContent({
       sidebar={
         <SidebarPanel
           conversationGroups={chatMessages.conversationGroups}
+          isLoading={chatMessages.isLoading}
           onCreateFolder={handleCreateFolder}
           onCreateConversation={handleCreateConversation}
           onCreateWorkspaceFolderFromPath={handleCreateWorkspaceFolderFromPath}
@@ -564,7 +612,7 @@ export function ChatInterfaceContent({
           onRenameFolder={chatMessages.renameFolder}
           onSelectConversation={handleSelectConversation}
           selectedProjectId={selectedProjectId}
-          onSelectProject={setSelectedProjectId}
+          onSelectProject={handleSelectProject}
         />
       }
       sidebarWidth={sidebarWidth}

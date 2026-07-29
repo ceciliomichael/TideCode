@@ -16,6 +16,7 @@ import {
 
 interface SidebarPanelProps {
   conversationGroups: ConversationGroupPreview[]
+  isLoading?: boolean
   onCreateConversation: (folderId?: string | null) => void
   onCreateFolder: () => Promise<void>
   onCreateWorkspaceFolderFromPath: (folderPath: string) => Promise<void>
@@ -31,6 +32,7 @@ interface SidebarPanelProps {
 
 export function SidebarPanel({
   conversationGroups,
+  isLoading = false,
   onCreateFolder,
   onCreateConversation,
   onCreateWorkspaceFolderFromPath,
@@ -60,13 +62,17 @@ export function SidebarPanel({
     [controlledOnSelectProject],
   )
 
-  const resolvedSelectedProjectId = resolveSidebarProjectFilter(activeSelectedProjectId, projects)
+  const resolvedSelectedProjectId = resolveSidebarProjectFilter(activeSelectedProjectId, projects, isLoading)
 
   useEffect(() => {
+    if (isLoading) {
+      return
+    }
     if (resolvedSelectedProjectId !== activeSelectedProjectId) {
       handleSelectProject(resolvedSelectedProjectId)
     }
-  }, [activeSelectedProjectId, handleSelectProject, resolvedSelectedProjectId])
+  }, [isLoading, activeSelectedProjectId, handleSelectProject, resolvedSelectedProjectId])
+
 
   const actionButtonClassName =
     'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-150 ease-out hover:bg-[var(--sidebar-hover-surface)] hover:text-foreground'
@@ -130,14 +136,7 @@ export function SidebarPanel({
             <button
               type="button"
               onClick={() => {
-                if (resolvedSelectedProjectId === ALL_PROJECTS_FILTER_ID) {
-                  setIsNewThreadProjectDialogOpen(true)
-                  return
-                }
-
-                onCreateConversation(
-                  resolvedSelectedProjectId === CHATS_PROJECT_FILTER_ID ? null : resolvedSelectedProjectId,
-                )
+                setIsNewThreadProjectDialogOpen(true)
               }}
               className={actionButtonClassName}
               aria-label="Start new thread"
@@ -207,6 +206,7 @@ export function SidebarPanel({
             setIsNewThreadProjectDialogOpen(false)
             onCreateConversation(projectId === CHATS_PROJECT_FILTER_ID ? null : projectId)
           }}
+          selectedProjectId={resolvedSelectedProjectId}
         />
       ) : null}
     </aside>

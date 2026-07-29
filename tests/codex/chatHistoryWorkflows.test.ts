@@ -268,6 +268,53 @@ test('loadInitialChatHistory keeps the workspace on an empty draft when requeste
   }
 })
 
+test('loadInitialChatHistory opens a new thread inside preferred project folder when on a draft', async () => {
+  const restoreWindow = installWindowMock({
+    echosphereHistory: {
+      getConversation: async () => {
+        throw new Error('should not load global conversation when on a project draft')
+      },
+      listConversations: async () => [
+        {
+          agentContextRootPath: '/other-workspace',
+          chatMode: 'agent',
+          folderId: 'other-folder',
+          id: 'other-conv-1',
+          messageCount: 5,
+          preview: 'other chat',
+          title: 'Other chat',
+          updatedAt: 100,
+        },
+      ],
+      listFolders: async () => [
+        {
+          conversationCount: 0,
+          id: 'project1',
+          name: 'Project One',
+          path: '/workspace/project1',
+        },
+      ],
+      getUserMessageCheckpointHistory: async () => [],
+    },
+    echosphereWorkspace: {
+      createRedoCheckpointFromSource: async () => undefined,
+      createRedoCheckpointFromSources: async () => undefined,
+      restoreCheckpoint: async () => undefined,
+      restoreCheckpointSequence: async () => undefined,
+    },
+  })
+
+  try {
+    const snapshot = await loadInitialChatHistory(null, false, 'project1')
+
+    assert.equal(snapshot.initialConversation, null)
+    assert.equal(snapshot.initialSelectedFolderId, 'project1')
+  } finally {
+    restoreWindow()
+  }
+})
+
+
 test('revert helpers surface a friendly error when conversation history cannot be loaded', async () => {
   const restoreWindow = installWindowMock({
     echosphereHistory: {

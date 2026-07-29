@@ -65,19 +65,6 @@ export function preprocessMarkdown(markdown: string): string {
     // Process subscript: ~text~ (not ~~strikethrough~~) -> <sub>text</sub>
     processedLine = processedLine.replace(/(?<!~)~([^~\s]+)~(?!~)/g, '<sub>$1</sub>')
 
-    // Process definition lists: "Term : Definition" (avoid matching GFM footnotes like [^1]: content)
-    const defMatch = processedLine.match(/^([^\s:][^:]*)\s*:\s+(.+)$/)
-    if (
-      defMatch &&
-      !defMatch[1].trim().startsWith('[^') &&
-      !processedLine.trim().startsWith('|') &&
-      !processedLine.trim().startsWith('-')
-    ) {
-      const term = defMatch[1].trim()
-      const definition = defMatch[2].trim()
-      processedLine = `<dl><dt><strong>${term}</strong></dt><dd>${definition}</dd></dl>`
-    }
-
     if (processedLine.trim().startsWith('|') && processedLine.includes('`')) {
       processedLine = processedLine.replace(/(?<!`)`([^`]+)`(?!`)/g, (_, code) => {
         return '`' + code.replace(/\|/g, '\\|') + '`'

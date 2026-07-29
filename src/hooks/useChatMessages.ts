@@ -522,7 +522,8 @@ export function useChatMessages(input: UseChatMessagesInput) {
       !activeConversationState ||
       activeConversationState.isSending ||
       activeConversationState.activeStreamId !== null ||
-      activeConversationState.conversation.messages.length > 0
+      activeConversationState.conversation.messages.length > 0 ||
+      activeConversationState.conversation.folderId !== null
     ) {
       return
     }

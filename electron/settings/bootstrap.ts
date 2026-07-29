@@ -395,6 +395,14 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
       typeof candidate?.githubToken === 'string'
         ? candidate.githubToken.trim()
         : DEFAULT_APP_SETTINGS.githubToken ?? '',
+    selectedProjectId:
+      typeof candidate?.selectedProjectId === 'string' && candidate.selectedProjectId.trim().length > 0
+        ? candidate.selectedProjectId.trim()
+        : DEFAULT_APP_SETTINGS.selectedProjectId,
+    modelToggleState:
+      typeof candidate?.modelToggleState === 'object' && candidate.modelToggleState !== null
+        ? (candidate.modelToggleState as Record<string, boolean>)
+        : DEFAULT_APP_SETTINGS.modelToggleState,
   }
 }
 

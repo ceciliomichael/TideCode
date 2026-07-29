@@ -87,8 +87,13 @@ export function buildSidebarThreadRows(
     )
 }
 
-export function resolveSidebarProjectFilter(selectedProjectId: string, projects: readonly SidebarProjectOption[]) {
+export function resolveSidebarProjectFilter(
+  selectedProjectId: string,
+  projects: readonly SidebarProjectOption[],
+  isLoading = false,
+) {
   if (
+    isLoading ||
     selectedProjectId === ALL_PROJECTS_FILTER_ID ||
     selectedProjectId === CHATS_PROJECT_FILTER_ID ||
     projects.some((project) => project.id === selectedProjectId)
@@ -98,3 +103,4 @@ export function resolveSidebarProjectFilter(selectedProjectId: string, projects:
 
   return ALL_PROJECTS_FILTER_ID
 }
+
