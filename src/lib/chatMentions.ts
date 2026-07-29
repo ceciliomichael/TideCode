@@ -1,4 +1,17 @@
+// Canonical expanded mention format: [[action:path]]
+// e.g. [[load_skill:natural-writing]], [[read:src/main.ts]], [[list:src/components]]
+// The double-bracket delimiters give unambiguous boundaries so no greedy-match
+// issues can bleed into surrounding normal text.
+
 const FULL_MENTION_REGEX_SOURCE = /@\[([^\]]+)\]\(([^)]+)\)/.source
+
+// Matches the NEW canonical [[action:path]] delimited format (may contain spaces)
+const BRACKETED_ACTION_REGEX = /\[\[((?:read|list|load_skill):[^\]]+)\]\]/g
+
+// Legacy bare action tags stored before the [[]] format was introduced.
+// Supports both single-word and multi-word (greedy, stops before next action tag or @) unquoted paths
+// for backwards compatibility with old DB messages, plus quoted variants with spaces.
+const LEGACY_ACTION_REGEX = /(?:^|[\s(])((?:read|list|load_skill):(?:"([^"]+)"|'([^']+)'|((?:(?!\s+(?:read|list|load_skill):|\s+@)[^\r\n,;:!?\])])+)))(?=\.?(?:\s|[,;:!?\])]|$))/g
 
 export interface ChatMentionMatch {
   end: number
@@ -70,9 +83,10 @@ export function findChatMentionMatches(
   knownMentionLabels?: ReadonlyMap<string, string>,
 ) {
   const matches: ChatMentionMatch[] = []
-  const resolvedMentionRegex = new RegExp(FULL_MENTION_REGEX_SOURCE, 'g')
   let match: RegExpExecArray | null
 
+  // 1. Fully resolved @[label](path) markup — highest priority
+  const resolvedMentionRegex = new RegExp(FULL_MENTION_REGEX_SOURCE, 'g')
   while ((match = resolvedMentionRegex.exec(text)) !== null) {
     matches.push({
       end: match.index + match[0].length,
@@ -82,11 +96,35 @@ export function findChatMentionMatches(
     })
   }
 
-  const rawActionRegex = /(?:^|[\s(])((?:read|list|load_skill):([^\s,.;:!?\])]+))/g
-  while ((match = rawActionRegex.exec(text)) !== null) {
+  // 2. NEW canonical format: [[action:path]] — unambiguous boundaries
+  const bracketedRegex = new RegExp(BRACKETED_ACTION_REGEX.source, 'g')
+  while ((match = bracketedRegex.exec(text)) !== null) {
+    const actionTag = match[1] // e.g. "read:src/main.ts" or "load_skill:natural-writing"
+    const colonIndex = actionTag.indexOf(':')
+    const targetPath = actionTag.slice(colonIndex + 1)
+    const start = match.index
+    const end = start + match[0].length
+
+    if (matches.some((existingMatch) => start < existingMatch.end && end > existingMatch.start)) {
+      continue
+    }
+
+    matches.push({
+      end,
+      label: getPathBasename(targetPath),
+      path: actionTag,
+      start,
+    })
+  }
+
+  // 3. Legacy bare format: read:path list:path load_skill:name (no brackets)
+  //    Kept for backwards compatibility with messages stored in DB before [[]] format.
+  //    Unquoted paths are single-word (no spaces); quoted paths allow spaces.
+  const legacyRegex = new RegExp(LEGACY_ACTION_REGEX.source, 'g')
+  while ((match = legacyRegex.exec(text)) !== null) {
     const fullMatch = match[0]
     const actionTag = match[1]
-    const targetPath = match[2]
+    const targetPath = match[2] ?? match[3] ?? match[4]
     const start = match.index + (fullMatch.length - actionTag.length)
     const end = start + actionTag.length
 
@@ -102,12 +140,10 @@ export function findChatMentionMatches(
     })
   }
 
+  // 4. Plain @label mentions (only when knownMentionLabels provided — in-composer use)
   const plainMentionRegex = buildPlainMentionRegex(knownMentionLabels)
   if (plainMentionRegex) {
     while ((match = plainMentionRegex.exec(text)) !== null) {
-      // With the lookbehind regex the full match starts at the `@` character
-      // (no prefix capture group), so match[1] is the label and match.index
-      // is exactly where the `@` sits.
       const label = match[1]
       const start = match.index
       const end = start + label.length + 1 // +1 for the `@`
@@ -209,7 +245,11 @@ export function buildChatMentionPathMap(text: string) {
   return mentionPathMap
 }
 
-export function getChatMentionTriggerState(text: string, cursorPosition: number): ChatMentionTriggerState | null {
+export function getChatMentionTriggerState(
+  text: string,
+  cursorPosition: number,
+  knownMentionLabels?: ReadonlyMap<string, string>,
+): ChatMentionTriggerState | null {
   const clampedCursorPosition = Math.max(0, Math.min(cursorPosition, text.length))
   const textBeforeCursor = text.slice(0, clampedCursorPosition)
   const triggerIndex = textBeforeCursor.lastIndexOf('@')
@@ -223,8 +263,13 @@ export function getChatMentionTriggerState(text: string, cursorPosition: number)
     return null
   }
 
+  const matches = findChatMentionMatches(text, knownMentionLabels)
+  if (matches.some((match) => match.start === triggerIndex)) {
+    return null
+  }
+
   const rawQuery = textBeforeCursor.slice(triggerIndex + 1)
-  if (rawQuery.startsWith('[') || /\s/u.test(rawQuery)) {
+  if (rawQuery.startsWith('[') || /[\r\n]/u.test(rawQuery)) {
     return null
   }
 
@@ -281,14 +326,14 @@ export function expandChatMentions(text: string, knownMentionLabels: ReadonlyMap
     return text
   }
 
-  // With the lookbehind regex there is no prefix capture group — match[1] is
-  // the label and the full match is just `@label`.
   return text.replace(plainMentionRegex, (_match, label: string) => {
     const path = knownMentionLabels.get(label)
     if (!path) {
       return `@${label}`
     }
 
-    return path
+    // Wrap in [[...]] delimiters — gives unambiguous boundaries so regex can
+    // never bleed into adjacent normal text regardless of spaces in the path.
+    return `[[${path}]]`
   })
 }

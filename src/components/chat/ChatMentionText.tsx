@@ -64,7 +64,7 @@ export const ChatMentionText = memo(function ChatMentionText({
           return (
             <span
               key={`mention-${index}`}
-              className="relative inline whitespace-nowrap align-baseline"
+              className="relative inline align-baseline [overflow-wrap:anywhere]"
               title={segment.path ?? segment.label}
             >
               <span className={`relative ${textColorClass}`}>
@@ -80,7 +80,11 @@ export const ChatMentionText = memo(function ChatMentionText({
 
         if (!isBackdrop) {
           return (
-            <span key={`mention-${index}`} className="relative inline-block whitespace-nowrap" title={segment.path ?? segment.label}>
+            <span
+              key={`mention-${index}`}
+              className="relative inline-block align-baseline [overflow-wrap:anywhere]"
+              title={segment.path ?? segment.label}
+            >
               <span className={`relative ${textColorClass}`}>
                 {segment.text}
               </span>
@@ -95,7 +99,7 @@ export const ChatMentionText = memo(function ChatMentionText({
         return (
           <span
             key={`mention-${index}`}
-            className={`${highlightClass} whitespace-nowrap text-transparent`}
+            className={`${highlightClass} text-transparent`}
             title={segment.path ?? segment.label}
           >
             {segment.text}

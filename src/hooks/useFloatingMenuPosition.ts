@@ -2,6 +2,7 @@ import { useLayoutEffect, useState, type CSSProperties, type RefObject } from 'r
 
 interface UseFloatingMenuPositionInput {
   anchorRef: RefObject<HTMLElement | null>
+  getAnchorRect?: () => DOMRect | null
   isOpen: boolean
   matchAnchorWidth?: boolean
   menuRef: RefObject<HTMLElement | null>
@@ -15,6 +16,7 @@ const DEFAULT_VIEWPORT_MARGIN = 8
 
 export function useFloatingMenuPosition({
   anchorRef,
+  getAnchorRect,
   isOpen,
   matchAnchorWidth = true,
   menuRef,
@@ -38,7 +40,7 @@ export function useFloatingMenuPosition({
     function updateMenuPosition() {
       const anchorElement = anchorRef.current
       const menuElement = menuRef.current
-      const anchorRect = anchorElement?.getBoundingClientRect()
+      const anchorRect = getAnchorRect?.() ?? anchorElement?.getBoundingClientRect()
       const menuRect = menuElement?.getBoundingClientRect()
 
       if (!anchorRect) {

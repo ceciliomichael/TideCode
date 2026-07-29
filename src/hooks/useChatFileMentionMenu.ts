@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react'
 import { useFloatingMenuPosition } from './useFloatingMenuPosition'
 import { getPathBasename } from '../lib/pathPresentation'
+import { getCaretBoundingRect } from '../lib/caretPosition'
 import {
   expandChatMentions,
   findChatMentionMatches,
@@ -222,9 +223,24 @@ export function useChatFileMentionMenu({
 
   mentionPathMapRef.current = mentionPathMap
 
+  const getAnchorRect = useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea || !isOpen) {
+      return null
+    }
+
+    const cursorPosition = textarea.selectionStart ?? value.length
+    const triggerState = getChatMentionTriggerState(value, cursorPosition)
+    const targetIndex = triggerState ? triggerState.start : cursorPosition
+
+    return getCaretBoundingRect(textarea, targetIndex)
+  }, [isOpen, textareaRef, value])
+
   const menuStyle = useFloatingMenuPosition({
     anchorRef,
+    getAnchorRect,
     isOpen,
+    matchAnchorWidth: false,
     menuRef,
     preferredPlacement: 'above',
   })
@@ -456,6 +472,16 @@ export function useChatFileMentionMenu({
     setSelectedMenuType(null)
   }, [])
 
+  useEffect(() => {
+    if (!isOpen || isIndexLoading) {
+      return
+    }
+
+    if (searchQuery.includes(' ') && searchResults.length === 0) {
+      closeMenu()
+    }
+  }, [closeMenu, isIndexLoading, isOpen, searchQuery, searchResults.length])
+
   const handleSelectCategory = useCallback(
     (nextType: ChatMentionMenuType) => {
       const textarea = textareaRef.current
@@ -501,7 +527,8 @@ export function useChatFileMentionMenu({
       }
 
       const validationMap = mentionPathMapRef.current.size > 0 ? mentionPathMapRef.current : undefined
-      const activeMention = findChatMentionMatches(nextValue, validationMap).find(
+      const matches = findChatMentionMatches(nextValue, validationMap)
+      const activeMention = matches.find(
         (match) => cursorPosition >= match.start && cursorPosition <= match.end,
       )
       if (activeMention) {
@@ -509,7 +536,7 @@ export function useChatFileMentionMenu({
         return
       }
 
-      const triggerState = getChatMentionTriggerState(nextValue, cursorPosition)
+      const triggerState = getChatMentionTriggerState(nextValue, cursorPosition, validationMap)
       if (!triggerState) {
         closeMenu()
         return

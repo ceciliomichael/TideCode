@@ -157,9 +157,9 @@ interface ThinkingBlockContentProps {
 
 const ThinkingBlockContent = memo(function ThinkingBlockContent({ normalizedContent, isComplete }: ThinkingBlockContentProps) {
   return (
-    <div className="mt-1.5 text-sm text-muted-foreground/90">
+    <div className="mt-1.5 text-sm text-muted-foreground/90 [&>*:last-child]:mb-0">
       {normalizedContent.trim().length > 0 ? (
-        <MarkdownRenderer content={normalizedContent} className="opacity-85" isStreaming={!isComplete} />
+        <MarkdownRenderer content={normalizedContent} className="opacity-85" isStreaming={!isComplete} preserveLineBreaks />
       ) : (
         <p className="italic text-subtle-foreground">Thinking...</p>
       )}

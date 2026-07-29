@@ -54,6 +54,7 @@ export function WebToolResult({ invocation, isStreaming = false }: WebToolResult
           content={content}
           className="text-xs text-foreground/90 leading-relaxed font-sans"
           isStreaming={isStreaming}
+          preserveLineBreaks
         />
       </div>
     </div>

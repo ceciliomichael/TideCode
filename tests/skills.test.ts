@@ -130,21 +130,68 @@ test('skill tool no longer exposes the read_resource action', () => {
 })
 
 test('expandChatMentions expands file, folder, and skill mentions with read:, list:, and load_skill:', async () => {
-  const { expandChatMentions, collapseChatMentionMarkup } = await import('../src/lib/chatMentions')
+  const { expandChatMentions, collapseChatMentionMarkup, findChatMentionMatches, buildChatMentionPathMap } = await import('../src/lib/chatMentions')
   const map = new Map<string, string>([
     ['writing', 'load_skill:writing'],
     ['main.ts', 'read:src/main.ts'],
     ['components', 'list:src/components'],
+    ['AllSpaces AI Engine — Complete Step-by-Step Build Guide.md', 'read:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md'],
   ])
 
-  const expanded = expandChatMentions('Please use @writing to help write @main.ts in @components', map)
+  const expanded = expandChatMentions(
+    'Please use @writing to help write @main.ts in @components for @AllSpaces AI Engine — Complete Step-by-Step Build Guide.md',
+    map,
+  )
+  // All action tags now wrapped in [[...]] delimiters — unambiguous boundaries
   assert.equal(
     expanded,
-    'Please use load_skill:writing to help write read:src/main.ts in list:src/components',
+    'Please use [[load_skill:writing]] to help write [[read:src/main.ts]] in [[list:src/components]] for [[read:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md]]',
   )
 
   const collapsed = collapseChatMentionMarkup(expanded)
-  assert.equal(collapsed, 'Please use @writing to help write @main.ts in @components')
+  assert.equal(
+    collapsed,
+    'Please use @writing to help write @main.ts in @components for @AllSpaces AI Engine — Complete Step-by-Step Build Guide.md',
+  )
+
+  const pathMap = buildChatMentionPathMap(expanded)
+  assert.equal(
+    pathMap.get('AllSpaces AI Engine — Complete Step-by-Step Build Guide.md'),
+    'read:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md',
+  )
+
+  const matches = findChatMentionMatches(expanded)
+  assert.equal(matches.length, 4)
+  assert.equal(matches[3].label, 'AllSpaces AI Engine — Complete Step-by-Step Build Guide.md')
+
+  // Adjacent mentions with no space-bleed between them
+  const adjacent = expandChatMentions('@writing @main.ts', map)
+  assert.equal(adjacent, '[[load_skill:writing]] [[read:src/main.ts]]')
+  const adjacentCollapsed = collapseChatMentionMarkup(adjacent)
+  assert.equal(adjacentCollapsed, '@writing @main.ts')
+
+  // Typing normal text after a [[]] mention must NOT bleed into the adjacent text
+  const withNormalText = '[[load_skill:natural-writing]] create a new mark'
+  const withNormalMatches = findChatMentionMatches(withNormalText)
+  assert.equal(withNormalMatches.length, 1)
+  assert.equal(withNormalMatches[0].label, 'natural-writing')
+  assert.equal(withNormalMatches[0].end, '[[load_skill:natural-writing]]'.length)
+
+  // Legacy bare action tags in DB still parsed for backwards compat
+  const legacyUnquoted = 'u study read:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md'
+  const legacyMatches = findChatMentionMatches(legacyUnquoted)
+  assert.equal(legacyMatches.length, 1)
+  assert.equal(legacyMatches[0].label, 'AllSpaces AI Engine — Complete Step-by-Step Build Guide.md')
+
+  const legacyCollapsed = collapseChatMentionMarkup(legacyUnquoted)
+  assert.equal(legacyCollapsed, 'u study @AllSpaces AI Engine — Complete Step-by-Step Build Guide.md')
+
+  // Verify getChatMentionTriggerState returns null when typing normal text after a completed mention
+  const { getChatMentionTriggerState } = await import('../src/lib/chatMentions')
+  const completedText = '@natural-writing create a new mark'
+  const triggerMap = new Map([['natural-writing', 'load_skill:natural-writing']])
+  const triggerState = getChatMentionTriggerState(completedText, completedText.length, triggerMap)
+  assert.equal(triggerState, null)
 })
 
 test('createSkill creates a valid skill directory and file', async () => {

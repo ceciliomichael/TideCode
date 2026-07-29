@@ -78,6 +78,16 @@ export function preprocessMarkdown(markdown: string): string {
       }
     }
 
+    if (resultLines.length > 0) {
+      const isSetextUnderline = /^[-=]{3,}\s*$/.test(processedLine.trim())
+      if (isSetextUnderline) {
+        const prevLine = resultLines[resultLines.length - 1].trim()
+        if (prevLine.length > 0) {
+          resultLines.push('')
+        }
+      }
+    }
+
     resultLines.push(processedLine)
   }
 

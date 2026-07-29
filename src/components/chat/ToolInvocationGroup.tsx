@@ -87,7 +87,7 @@ export const ToolInvocationGroup = memo(function ToolInvocationGroup({
       </button>
 
       {isOpen ? (
-        <div className="mt-1.5 space-y-1.5">
+        <div className="mt-1.5 space-y-1.5 [&>*:last-child]:mb-0">
           {entries.map((entry) => (
             <ToolInvocationBlock
               key={entry.key}

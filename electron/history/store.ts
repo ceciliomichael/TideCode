@@ -41,6 +41,7 @@ export async function cleanupDraftAgentContextDirectory() {
   const draftPath = getDraftAgentContextPath()
   try {
     await fs.rm(draftPath, { recursive: true, force: true })
+    await fs.mkdir(draftPath, { recursive: true })
   } catch (error) {
     console.warn('Failed to cleanup draft virtual agent context directory', error)
   }

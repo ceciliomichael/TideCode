@@ -181,7 +181,7 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
       {isOpen && invocation.resultContent ? (
         <div
           className={[
-            'mt-1.5 w-full text-sm text-muted-foreground/90',
+            'mt-1.5 w-full text-sm text-muted-foreground/90 [&>*:last-child]:mb-0',
             shouldLimitResultHeight ? 'max-h-80 overflow-y-auto pr-1' : '',
           ].join(' ')}
         >

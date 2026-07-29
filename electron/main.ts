@@ -381,8 +381,10 @@ class WindowsClipboardReader {
   private getProcess() {
     if (!this.ps && !this.isShuttingDown) {
       this.ps = spawn('powershell', ['-STA', '-NoProfile', '-Command', '-'], { windowsHide: true })
+      // Initialize UTF-8 encoding for PowerShell stdout
+      this.ps.stdin.write('[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $OutputEncoding = [System.Text.Encoding]::UTF8\n')
       this.ps.stdout.on('data', (data: Buffer) => {
-        const lines = data.toString().split(/\r?\n/)
+        const lines = data.toString('utf8').split(/\r?\n/)
         for (const line of lines) {
           const trimmed = line.trim()
           if (trimmed === 'EOF') {
@@ -415,6 +417,8 @@ class WindowsClipboardReader {
       const ps = this.getProcess()
       if (ps) {
         ps.stdin.write(`
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Windows.Forms
 if ([System.Windows.Forms.Clipboard]::ContainsFileDropList()) {
     $files = [System.Windows.Forms.Clipboard]::GetFileDropList()

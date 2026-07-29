@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { getAgentContextsDirectoryPath } from '../history/paths'
 
 export const DEFAULT_WORKSPACE_RELATIVE_PATH = '.'
 
@@ -27,9 +28,26 @@ export function getSafeWorkspaceTargetPath(workspaceRootPath: string, relativePa
   }
 }
 
+function isAgentContextPath(targetPath: string): boolean {
+  try {
+    const agentContextsDir = path.resolve(getAgentContextsDirectoryPath())
+    const resolvedTargetPath = path.resolve(targetPath)
+    return (
+      resolvedTargetPath === agentContextsDir ||
+      resolvedTargetPath.startsWith(agentContextsDir + path.sep)
+    )
+  } catch {
+    return false
+  }
+}
+
 export async function assertWorkspaceDirectory(workspaceRootPath: string) {
-  const stats = await fs.stat(workspaceRootPath).catch((error: unknown) => {
+  const stats = await fs.stat(workspaceRootPath).catch(async (error: unknown) => {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if (isAgentContextPath(workspaceRootPath)) {
+        await fs.mkdir(workspaceRootPath, { recursive: true })
+        return fs.stat(workspaceRootPath)
+      }
       throw new Error(`Workspace path does not exist: ${workspaceRootPath}`)
     }
 

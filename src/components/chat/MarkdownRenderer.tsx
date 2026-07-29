@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
 import remarkEmoji from 'remark-emoji'
 import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
 import { preprocessMarkdown } from '../../lib/markdown'
 import { CodeBlock } from './CodeBlock'
 
@@ -54,9 +55,10 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 }: MarkdownRendererProps) {
   const rootClassName = [
     'chat-markdown', 
-    preserveLineBreaks ? 'whitespace-pre-wrap' : 'whitespace-normal', 
+    'whitespace-normal', 
     className,
     '[&>*:first-child]:mt-0',
+    '[&>*:last-child]:mb-0',
     '[&>ul+ul]:-mt-1',
     '[&>ol+ol]:-mt-1'
   ]
@@ -216,7 +218,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 
   return (
     <div className={rootClassName}>
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkEmoji]} rehypePlugins={[rehypeRaw]} components={markdownComponents}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkEmoji, ...(preserveLineBreaks ? [remarkBreaks] : [])]} rehypePlugins={[rehypeRaw]} components={markdownComponents}>
         {processedContent}
       </ReactMarkdown>
     </div>

@@ -184,6 +184,7 @@ export function AssistantMessage({
           content={normalizedContent.content}
           className="text-left text-[15px]"
           isStreaming={isStreaming}
+          preserveLineBreaks
         />
       ) : null}
 

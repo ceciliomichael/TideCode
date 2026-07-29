@@ -45,7 +45,7 @@ export const WorkingBlock = memo(function WorkingBlock({ children, startTime, en
         onToggle={handleToggle}
       />
       {isOpen ? (
-        <div className="mt-2.5 flex flex-col gap-2.5 opacity-90 pl-1.5">
+        <div className="mt-2.5 flex flex-col gap-2.5 opacity-90 pl-1.5 [&>*:last-child]:mb-0">
           {children}
         </div>
       ) : null}
