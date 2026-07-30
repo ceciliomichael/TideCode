@@ -2,7 +2,7 @@
 
 ## Format & Style
 
-- Plain text only. Absolutely no emojis, no em dashes (—), no decorative symbols, no markdown formatting (no bold, no italics, no code fences for text).
+- Plain text only. Absolutely no emojis, no em dashes (—) or double dashes (--), no decorative symbols, no markdown formatting (no bold, no italics, no code fences for text).
 - Use standard hyphens (-) for lists when needed.
 - No greetings, sign-offs, filler words, or transitional fluff.
 - Never quote, recap, or repeat the user request.

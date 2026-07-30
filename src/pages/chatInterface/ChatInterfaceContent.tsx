@@ -373,9 +373,16 @@ export function ChatInterfaceContent({
     async (folderId?: string | null) => {
       clearQueuedMessages()
       setWorkspaceViewMode('chat')
+
+      const targetFolderId = folderId ?? null
+      if (shouldResetProjectFilterToAllProjects(selectedProjectId, targetFolderId)) {
+        setSelectedProjectId(ALL_PROJECTS_FILTER_ID)
+        void onUpdateSettings({ selectedProjectId: ALL_PROJECTS_FILTER_ID })
+      }
+
       await chatMessages.createConversation(folderId)
     },
-    [chatMessages, clearQueuedMessages],
+    [chatMessages, clearQueuedMessages, onUpdateSettings, selectedProjectId],
   )
 
   const handleSelectProject = useCallback(
