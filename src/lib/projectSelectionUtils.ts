@@ -23,7 +23,11 @@ export function resolveProjectSwitchTarget({
     return { type: 'preserve_active_thread' }
   }
 
-  const targetFolderId = projectId === CHATS_PROJECT_FILTER_ID ? null : projectId
+  if (projectId === CHATS_PROJECT_FILTER_ID) {
+    return { type: 'create_new_conversation', folderId: null }
+  }
+
+  const targetFolderId = projectId
 
   if (activeConversationId && currentSelectedFolderId === targetFolderId) {
     return { type: 'preserve_active_thread' }

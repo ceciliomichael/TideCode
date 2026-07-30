@@ -637,15 +637,11 @@ export function useChatWorkspaceUiState({
           return currentTabs;
         }
 
-        return [
-          ...currentTabs,
-          {
-            kind,
-            fileName: getPathBasename(relativePath),
-            relativePath,
-            tabKey,
-          },
-        ];
+        const newTab = kind === 'markdown-preview'
+          ? { kind, fileName: getPathBasename(relativePath), relativePath, tabKey, content: '', status: 'loading' as const, isTruncated: false }
+          : { kind, fileName: getPathBasename(relativePath), relativePath, tabKey };
+
+        return [...currentTabs, newTab];
       });
     },
     [onRightPanelOpenChange, setIsSidebarOpen],
@@ -657,10 +653,83 @@ export function useChatWorkspaceUiState({
         return;
       }
 
-      openWorkspacePreviewTab(relativePath, createMarkdownPreviewTabKey(relativePath), 'markdown-preview');
+      const workspaceRootPath = activeWorkspacePathRef.current;
+      const tabKey = createMarkdownPreviewTabKey(relativePath);
+      openWorkspacePreviewTab(relativePath, tabKey, 'markdown-preview');
+
+      if (!workspaceRootPath) return;
+
+      void window.echosphereWorkspace
+        .readFile({ relativePath, workspaceRootPath })
+        .then((result) => {
+          if (activeWorkspacePathRef.current !== workspaceRootPath) return;
+          const normalizedContent = result.content.replace(/\r\n/g, '\n');
+          setWorkspaceFileTabs((currentTabs) =>
+            currentTabs.map((tab) =>
+              tab.kind === 'markdown-preview' && tab.tabKey === tabKey
+                ? { ...tab, content: normalizedContent, status: 'ready' as const, isTruncated: result.isTruncated, fileName: getPathBasename(result.relativePath) }
+                : tab,
+            ),
+          );
+        })
+        .catch((error) => {
+          if (activeWorkspacePathRef.current !== workspaceRootPath) return;
+          setWorkspaceFileTabs((currentTabs) =>
+            currentTabs.map((tab) =>
+              tab.kind === 'markdown-preview' && tab.tabKey === tabKey
+                ? { ...tab, status: 'error' as const, errorMessage: error instanceof Error ? error.message : 'Failed to load file.' }
+                : tab,
+            ),
+          );
+        });
     },
     [openWorkspacePreviewTab],
   );
+
+  useEffect(() => {
+    const handleOpenMarkdownPreviewEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<{ relativePath: string; anchor?: string }>
+      const { relativePath, anchor } = customEvent.detail || {}
+      if (relativePath) {
+        handleOpenWorkspaceMarkdownPreview(relativePath)
+        if (anchor) {
+          setTimeout(() => {
+            const element =
+              document.getElementById(anchor) ||
+              document.getElementById(decodeURIComponent(anchor)) ||
+              document.getElementById(anchor.toLowerCase())
+            if (element) {
+              const container =
+                element.closest('.workspace-markdown-preview') ||
+                element.closest('.overflow-auto')
+              if (container) {
+                const containerRect = container.getBoundingClientRect()
+                const elementRect = element.getBoundingClientRect()
+                const targetTop = elementRect.top - containerRect.top + container.scrollTop - 24
+                container.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' })
+              }
+            }
+          }, 300)
+        }
+      }
+    }
+
+    const handleOpenFileEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<{ relativePath: string }>
+      const { relativePath } = customEvent.detail || {}
+      if (relativePath) {
+        handleOpenWorkspaceFile(relativePath)
+      }
+    }
+
+    window.addEventListener('echosphere:open-markdown-preview', handleOpenMarkdownPreviewEvent)
+    window.addEventListener('echosphere:open-file', handleOpenFileEvent)
+
+    return () => {
+      window.removeEventListener('echosphere:open-markdown-preview', handleOpenMarkdownPreviewEvent)
+      window.removeEventListener('echosphere:open-file', handleOpenFileEvent)
+    }
+  }, [handleOpenWorkspaceMarkdownPreview, handleOpenWorkspaceFile]);
 
   const handleOpenWorkspaceSvgPreview = useCallback(
     (relativePath: string) => {

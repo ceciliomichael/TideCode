@@ -119,7 +119,7 @@ test('switching to empty project creates new conversation for that project', () 
   assert.deepEqual(result, { type: 'create_new_conversation', folderId: 'empty-project-id' })
 })
 
-test('switching to Chats selects Chats conversation', () => {
+test('switching to Chats creates a new conversation', () => {
   const result = resolveProjectSwitchTarget({
     activeConversationId: 'conv-p1-1',
     conversationGroups: mockGroups,
@@ -127,5 +127,5 @@ test('switching to Chats selects Chats conversation', () => {
     projectId: CHATS_PROJECT_FILTER_ID,
   })
 
-  assert.deepEqual(result, { type: 'switch_to_conversation', conversationId: 'conv-chats-1' })
+  assert.deepEqual(result, { type: 'create_new_conversation', folderId: null })
 })

@@ -1,15 +1,17 @@
 import React, { memo, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
+import rehypeSlug from 'rehype-slug'
 import remarkEmoji from 'remark-emoji'
 import remarkGfm from 'remark-gfm'
-import { preprocessMarkdown } from '../../../lib/markdown'
+import { handleMarkdownLinkClick, preprocessMarkdown } from '../../../lib/markdown'
 import { CodeBlock } from '../../chat/CodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
 
 interface WorkspaceMarkdownPreviewViewProps {
   content: string
   fileName: string
+  relativePath?: string
   isTruncated?: boolean
 }
 
@@ -53,27 +55,28 @@ function isSummaryElement(child: React.ReactNode): boolean {
 export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPreviewView({
   content,
   fileName,
+  relativePath,
   isTruncated = false,
 }: WorkspaceMarkdownPreviewViewProps) {
   const markdownComponents = useMemo(
     () => ({
       h1: (props: React.ComponentPropsWithoutRef<'h1'>) => (
-        <h1 {...props} className="mt-0 mb-4 text-[1.5rem] font-semibold leading-tight text-foreground" />
+        <h1 {...props} className="scroll-mt-6 mt-0 mb-4 text-[1.5rem] font-semibold leading-tight text-foreground" />
       ),
       h2: (props: React.ComponentPropsWithoutRef<'h2'>) => (
-        <h2 {...props} className="mt-5 mb-2 text-[1.18rem] font-semibold leading-tight text-foreground" />
+        <h2 {...props} className="scroll-mt-6 mt-5 mb-2 text-[1.18rem] font-semibold leading-tight text-foreground" />
       ),
       h3: (props: React.ComponentPropsWithoutRef<'h3'>) => (
-        <h3 {...props} className="mt-4 mb-2 text-[1.05rem] font-semibold leading-tight text-foreground" />
+        <h3 {...props} className="scroll-mt-6 mt-4 mb-2 text-[1.05rem] font-semibold leading-tight text-foreground" />
       ),
       h4: (props: React.ComponentPropsWithoutRef<'h4'>) => (
-        <h4 {...props} className="mt-3 mb-1.5 text-[0.98rem] font-semibold leading-tight text-foreground" />
+        <h4 {...props} className="scroll-mt-6 mt-3 mb-1.5 text-[0.98rem] font-semibold leading-tight text-foreground" />
       ),
       h5: (props: React.ComponentPropsWithoutRef<'h5'>) => (
-        <h5 {...props} className="mt-3 mb-1.5 text-[0.94rem] font-semibold leading-tight text-foreground" />
+        <h5 {...props} className="scroll-mt-6 mt-3 mb-1.5 text-[0.94rem] font-semibold leading-tight text-foreground" />
       ),
       h6: (props: React.ComponentPropsWithoutRef<'h6'>) => (
-        <h6 {...props} className="mt-3 mb-1.5 text-[0.84rem] font-semibold uppercase tracking-wide text-muted-foreground" />
+        <h6 {...props} className="scroll-mt-6 mt-3 mb-1.5 text-[0.84rem] font-semibold uppercase tracking-wide text-muted-foreground" />
       ),
       p: (props: React.ComponentPropsWithoutRef<'p'>) => (
         <p {...props} className="my-0 mb-3 leading-[1.65] text-foreground last:mb-0" />
@@ -191,13 +194,15 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
           />
         )
       },
-      a: (props: React.ComponentPropsWithoutRef<'a'>) => (
+      a: ({ href, children, ...props }: React.ComponentPropsWithoutRef<'a'>) => (
         <a
           {...props}
-          target="_blank"
-          rel="noreferrer"
-          className="text-foreground underline decoration-border underline-offset-2 transition-colors hover:decoration-foreground"
-        />
+          href={href}
+          onClick={(e) => handleMarkdownLinkClick(e, href, relativePath)}
+          className="text-foreground underline decoration-border underline-offset-2 transition-colors hover:decoration-foreground cursor-pointer [&_code]:mx-0 [&_code]:px-0 [&_code]:py-0 [&_code]:border-0 [&_code]:bg-transparent [&_code]:text-inherit"
+        >
+          {children}
+        </a>
       ),
       table: (props: React.ComponentPropsWithoutRef<'table'>) => (
         <div className="my-4 overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm">
@@ -253,7 +258,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
           </div>
         ) : null}
         <div className="min-w-0">
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkEmoji]} rehypePlugins={[rehypeRaw]} components={markdownComponents}>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkEmoji]} rehypePlugins={[rehypeRaw, rehypeSlug]} components={markdownComponents}>
             {useMemo(() => preprocessMarkdown(content), [content])}
           </ReactMarkdown>
         </div>

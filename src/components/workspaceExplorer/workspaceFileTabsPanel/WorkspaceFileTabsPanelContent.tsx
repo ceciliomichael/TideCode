@@ -41,47 +41,28 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
   wordWrapEnabled,
 }: WorkspaceFileTabsPanelContentProps) {
   if (activeTab.kind === 'markdown-preview') {
-    const sourceTab = tabs.find(
-      (tab): tab is WorkspaceFileTab => isWorkspaceFileTab(tab) && tab.relativePath === activeTab.relativePath,
-    )
-
-    if (!sourceTab) {
-      return (
-        <div className="h-full border-t border-border bg-surface px-4 py-3 text-sm text-subtle-foreground">
-          The source file is no longer open.
-        </div>
-      )
-    }
-
-    if (sourceTab.status === 'loading') {
+    if (activeTab.status === 'loading') {
       return (
         <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-subtle-foreground">
-          Loading {sourceTab.fileName}...
+          Loading preview...
         </div>
       )
     }
 
-    if (sourceTab.status === 'error') {
+    if (activeTab.status === 'error') {
       return (
         <div className="h-full border-t border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
-          {sourceTab.errorMessage ?? 'Failed to open file.'}
-        </div>
-      )
-    }
-
-    if (sourceTab.isBinary) {
-      return (
-        <div className="h-full border-t border-border bg-surface px-4 py-3 text-sm text-subtle-foreground">
-          Markdown view is not supported for binary file {sourceTab.fileName}.
+          {activeTab.errorMessage ?? 'Failed to load preview.'}
         </div>
       )
     }
 
     return (
       <WorkspaceMarkdownPreview
-        content={sourceTab.content}
-        fileName={sourceTab.fileName}
-        isTruncated={sourceTab.isTruncated}
+        content={activeTab.content}
+        fileName={activeTab.fileName}
+        relativePath={activeTab.relativePath}
+        isTruncated={activeTab.isTruncated}
       />
     )
   }

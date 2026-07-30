@@ -1,10 +1,11 @@
 import React, { memo, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
+import rehypeSlug from 'rehype-slug'
 import remarkEmoji from 'remark-emoji'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
-import { preprocessMarkdown } from '../../lib/markdown'
+import { handleMarkdownLinkClick, preprocessMarkdown } from '../../lib/markdown'
 import { CodeBlock } from './CodeBlock'
 
 interface MarkdownRendererProps {
@@ -68,13 +69,13 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   const markdownComponents = useMemo(
     () => ({
       h1: (props: React.ComponentPropsWithoutRef<'h1'>) => (
-        <h1 {...props} className="mt-2 mb-2 text-[1.12rem] font-semibold leading-[1.3] text-foreground" />
+        <h1 {...props} className="scroll-mt-6 mt-2 mb-2 text-[1.12rem] font-semibold leading-[1.3] text-foreground" />
       ),
       h2: (props: React.ComponentPropsWithoutRef<'h2'>) => (
-        <h2 {...props} className="mt-2 mb-1.5 text-[1.05rem] font-semibold leading-[1.3] text-foreground" />
+        <h2 {...props} className="scroll-mt-6 mt-2 mb-1.5 text-[1.05rem] font-semibold leading-[1.3] text-foreground" />
       ),
       h3: (props: React.ComponentPropsWithoutRef<'h3'>) => (
-        <h3 {...props} className="mt-1.5 mb-1 text-[1rem] font-semibold leading-[1.3] text-foreground" />
+        <h3 {...props} className="scroll-mt-6 mt-1.5 mb-1 text-[1rem] font-semibold leading-[1.3] text-foreground" />
       ),
       p: (props: React.ComponentPropsWithoutRef<'p'>) => (
         <p {...props} className="my-0 mb-3 leading-[1.65] text-foreground" />
@@ -188,13 +189,15 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           />
         )
       },
-      a: (props: React.ComponentPropsWithoutRef<'a'>) => (
+      a: ({ href, children, ...props }: React.ComponentPropsWithoutRef<'a'>) => (
         <a
           {...props}
-          target="_blank"
-          rel="noreferrer"
-          className="text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
-        />
+          href={href}
+          onClick={(e) => handleMarkdownLinkClick(e, href)}
+          className="text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground cursor-pointer [&_code]:mx-0 [&_code]:px-0 [&_code]:py-0 [&_code]:border-0 [&_code]:bg-transparent [&_code]:text-inherit"
+        >
+          {children}
+        </a>
       ),
       table: (props: React.ComponentPropsWithoutRef<'table'>) => (
         <div className="my-2 overflow-x-auto rounded-xl border border-border">
@@ -218,7 +221,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 
   return (
     <div className={rootClassName}>
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkEmoji, ...(preserveLineBreaks ? [remarkBreaks] : [])]} rehypePlugins={[rehypeRaw]} components={markdownComponents}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkEmoji, ...(preserveLineBreaks ? [remarkBreaks] : [])]} rehypePlugins={[rehypeRaw, rehypeSlug]} components={markdownComponents}>
         {processedContent}
       </ReactMarkdown>
     </div>

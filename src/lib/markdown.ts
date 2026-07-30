@@ -98,4 +98,90 @@ export function preprocessMarkdown(markdown: string): string {
   return resultLines.join('\n')
 }
 
+export function resolveRelativePath(basePath: string | undefined, relativeLink: string): string {
+  const cleanLink = relativeLink.replace(/^file:\/\/\/?/, '')
+
+  if (!basePath || cleanLink.startsWith('/') || /^[a-zA-Z]:[\\\/]/.test(cleanLink)) {
+    return cleanLink.replace(/^\.\//, '')
+  }
+
+  const baseParts = basePath.split(/[\/\\]/).slice(0, -1)
+  const targetParts = cleanLink.split(/[\/\\]/)
+
+  for (const part of targetParts) {
+    if (part === '.' || part === '') continue
+    if (part === '..') {
+      if (baseParts.length > 0) baseParts.pop()
+    } else {
+      baseParts.push(part)
+    }
+  }
+
+  return baseParts.join('/')
+}
+
+export function handleMarkdownLinkClick(
+  e: React.MouseEvent<HTMLAnchorElement>,
+  href: string | undefined,
+  currentRelativePath?: string,
+) {
+  if (!href) return
+
+  if (href.startsWith('#')) {
+    e.preventDefault()
+    const rawId = href.slice(1)
+    const targetId = decodeURIComponent(rawId)
+    const element =
+      document.getElementById(targetId) ||
+      document.getElementById(rawId) ||
+      document.getElementById(targetId.toLowerCase())
+    if (element) {
+      const container =
+        element.closest('.workspace-markdown-preview') ||
+        element.closest('.chat-scroll-container') ||
+        element.closest('.overflow-auto') ||
+        element.closest('.overflow-y-auto')
+
+      if (container) {
+        const containerRect = container.getBoundingClientRect()
+        const elementRect = element.getBoundingClientRect()
+        const targetTop = elementRect.top - containerRect.top + container.scrollTop - 24
+        container.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' })
+      } else {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }
+    return
+  }
+
+  if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:')) {
+    return
+  }
+
+  e.preventDefault()
+  let cleanHref = href
+  if (cleanHref.startsWith('file:///')) {
+    cleanHref = cleanHref.slice(8)
+  }
+
+  const [pathPart, anchorPart] = cleanHref.split('#')
+  const resolvedPath = resolveRelativePath(currentRelativePath, pathPart)
+
+  const isMarkdown = /\.mdx?$/i.test(resolvedPath) || /\.markdown$/i.test(resolvedPath)
+
+  if (isMarkdown) {
+    window.dispatchEvent(
+      new CustomEvent('echosphere:open-markdown-preview', {
+        detail: { relativePath: resolvedPath, anchor: anchorPart },
+      }),
+    )
+  } else if (resolvedPath) {
+    window.dispatchEvent(
+      new CustomEvent('echosphere:open-file', {
+        detail: { relativePath: resolvedPath },
+      }),
+    )
+  }
+}
+
 

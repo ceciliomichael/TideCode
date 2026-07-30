@@ -17,6 +17,10 @@ export interface WorkspaceMarkdownPreviewTab {
   fileName: string
   relativePath: string
   tabKey: string
+  content: string
+  status: 'loading' | 'ready' | 'error'
+  isTruncated: boolean
+  errorMessage?: string
 }
 
 export interface WorkspaceSvgPreviewTab {
