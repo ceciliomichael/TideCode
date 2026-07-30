@@ -7,10 +7,10 @@ import {
 } from './workspaceExplorerDragUtils'
 
 interface UseWorkspaceExplorerDragScrollOptions {
-  draggedEntryRef: RefObject<WorkspaceExplorerEntry | null>
+  draggedEntriesRef: RefObject<WorkspaceExplorerEntry[]>
 }
 
-export function useWorkspaceExplorerDragScroll({ draggedEntryRef }: UseWorkspaceExplorerDragScrollOptions) {
+export function useWorkspaceExplorerDragScroll({ draggedEntriesRef }: UseWorkspaceExplorerDragScrollOptions) {
   const treeContainerRef = useRef<HTMLDivElement | null>(null)
   const dragScrollAnimationFrameRef = useRef<number | null>(null)
   const dragScrollVelocityRef = useRef(0)
@@ -55,7 +55,7 @@ export function useWorkspaceExplorerDragScroll({ draggedEntryRef }: UseWorkspace
   }, [runDragScrollFrame, stopDragScroll])
 
   const handleExplorerDragOver = useCallback((event: ReactDragEvent<HTMLElement>) => {
-    if (!draggedEntryRef.current && !Array.from(event.dataTransfer.types).includes('Files')) {
+    if ((draggedEntriesRef.current?.length ?? 0) === 0 && !Array.from(event.dataTransfer.types).includes('Files')) {
       return
     }
 
@@ -69,7 +69,7 @@ export function useWorkspaceExplorerDragScroll({ draggedEntryRef }: UseWorkspace
     }
 
     updateDragScroll(event)
-  }, [draggedEntryRef, stopDragScroll, updateDragScroll])
+  }, [draggedEntriesRef, stopDragScroll, updateDragScroll])
 
   const handleExplorerDragLeave = useCallback((event: ReactDragEvent<HTMLElement>) => {
     if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
@@ -80,7 +80,7 @@ export function useWorkspaceExplorerDragScroll({ draggedEntryRef }: UseWorkspace
   }, [stopDragScroll])
 
   const handleExplorerScrollbarDragOver = useCallback((event: ReactDragEvent<HTMLElement>) => {
-    if (!draggedEntryRef.current) {
+    if ((draggedEntriesRef.current?.length ?? 0) === 0) {
       return
     }
 
@@ -94,7 +94,7 @@ export function useWorkspaceExplorerDragScroll({ draggedEntryRef }: UseWorkspace
     event.dataTransfer.dropEffect = 'none'
     stopDragScroll()
     scrollToDragScrollbarPosition(containerElement, event.clientY)
-  }, [draggedEntryRef, stopDragScroll])
+  }, [draggedEntriesRef, stopDragScroll])
 
   useEffect(() => {
     return () => {

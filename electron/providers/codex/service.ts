@@ -8,13 +8,14 @@ import {
 } from './store'
 import { deleteStoredCodexAccount, listStoredCodexAccounts, readStoredCodexAccount, upsertStoredCodexAccount } from './accounts'
 import { parseCodexIdTokenClaims } from './jwt'
-import type { CodexAccountSummary } from '../../../src/types/chat'
+import type { CodexAccountSummary, CodexUsageSnapshot } from '../../../src/types/chat'
 import { refreshCodexOAuthTokensIfNeeded } from './refresh'
 import { fetchCodexUsageSnapshot } from './usage'
 import { selectCodexRotationAccountKey } from './rotation'
 import { emitProvidersStateChanged } from '../events'
 
-const USAGE_FETCH_TIMEOUT_MS = 5_000
+const USAGE_FETCH_TIMEOUT_MS = 10_000
+const cachedAccountUsages = new Map<string, CodexUsageSnapshot>()
 
 async function fetchUsageWithTimeout(input: { accessToken: string; accountId: string }) {
   const controller = new AbortController()
@@ -44,38 +45,36 @@ async function activateStoredCodexAccount(accountKey: string) {
   return refreshed
 }
 
-export async function getCodexProviderStatus(hydrate = false) {
-  const activeAuthData = await readStoredCodexAuthData()
+export async function getCodexProviderStatus(hydrate = false, options?: { homeDirectory?: string }) {
+  const activeAuthData = await readStoredCodexAuthData(options)
 
   if (activeAuthData) {
-    const existingAccount = await readStoredCodexAccount(activeAuthData.tokens.account_key)
-    await upsertStoredCodexAccount(activeAuthData, existingAccount?.label)
+    const existingAccount = await readStoredCodexAccount(activeAuthData.tokens.account_key, options)
+    await upsertStoredCodexAccount(activeAuthData, existingAccount?.label, options)
   }
 
-  const storedAccounts = await listStoredCodexAccounts().catch(() => [])
+  const storedAccounts = await listStoredCodexAccounts(options).catch(() => [])
   const activeAccountKey = activeAuthData?.tokens.account_key ?? null
 
   const accounts = await Promise.all(
     storedAccounts.map(async ({ account }) => {
       let resolvedAccount = account
-      let usage = null
+      let usage: CodexAccountSummary['usage'] = cachedAccountUsages.get(account.tokens.account_key) ?? null
 
       if (hydrate) {
         try {
-          if (account.tokens.account_key === activeAccountKey) {
-            const nextAuthData = await refreshCodexOAuthTokensIfNeeded(account)
-            if (
-              nextAuthData.tokens.access_token !== account.tokens.access_token ||
-              nextAuthData.tokens.refresh_token !== account.tokens.refresh_token ||
-              nextAuthData.tokens.id_token !== account.tokens.id_token ||
-              nextAuthData.expires_at !== account.expires_at ||
-              nextAuthData.last_refresh !== account.last_refresh
-            ) {
-              resolvedAccount = (await upsertStoredCodexAccount(nextAuthData, account.label)).account
+          const nextAuthData = await refreshCodexOAuthTokensIfNeeded(account)
+          if (
+            nextAuthData.tokens.access_token !== account.tokens.access_token ||
+            nextAuthData.tokens.refresh_token !== account.tokens.refresh_token ||
+            nextAuthData.tokens.id_token !== account.tokens.id_token ||
+            nextAuthData.expires_at !== account.expires_at ||
+            nextAuthData.last_refresh !== account.last_refresh
+          ) {
+            resolvedAccount = (await upsertStoredCodexAccount(nextAuthData, account.label, options)).account
 
-              if (nextAuthData.tokens.account_key === activeAccountKey) {
-                await writeStoredCodexAuthData(nextAuthData)
-              }
+            if (nextAuthData.tokens.account_key === activeAccountKey) {
+              await writeStoredCodexAuthData(nextAuthData, options)
             }
           }
         } catch {
@@ -83,12 +82,15 @@ export async function getCodexProviderStatus(hydrate = false) {
         }
 
         try {
-          usage = await fetchUsageWithTimeout({
+          const fetchedUsage = await fetchUsageWithTimeout({
             accessToken: resolvedAccount.tokens.access_token,
             accountId: resolvedAccount.tokens.account_id,
           })
+          usage = fetchedUsage
+          cachedAccountUsages.set(resolvedAccount.tokens.account_key, fetchedUsage)
         } catch {
-          usage = null
+          // Retain cached usage if fetch timed out or failed temporarily
+          usage = cachedAccountUsages.get(resolvedAccount.tokens.account_key) ?? null
         }
       }
 
@@ -118,7 +120,7 @@ export async function getCodexProviderStatus(hydrate = false) {
     return left.label.localeCompare(right.label)
   })
 
-  return toCodexProviderStatus(activeAuthData, accounts)
+  return toCodexProviderStatus(activeAuthData, accounts, options)
 }
 
 export async function maybeRotateCodexAccountForChat() {
@@ -165,7 +167,7 @@ export async function connectCodexProviderWithOAuth(openExternal: (url: string) 
   await writeStoredCodexAuthData(nextAuthData)
   await upsertStoredCodexAccount(nextAuthData)
 
-  return getCodexProviderStatus()
+  return getCodexProviderStatus(true)
 }
 
 export async function addCodexAccountProviderWithOAuth(openExternal: (url: string) => Promise<void>) {
@@ -174,16 +176,18 @@ export async function addCodexAccountProviderWithOAuth(openExternal: (url: strin
 
 export async function disconnectCodexProvider() {
   await deleteStoredCodexAuthData()
+  cachedAccountUsages.clear()
   return getCodexProviderStatus()
 }
 
 export async function switchCodexAccount(accountKey: string) {
   await activateStoredCodexAccount(accountKey)
-  return getCodexProviderStatus()
+  return getCodexProviderStatus(true)
 }
 
 export async function removeCodexAccountProvider(accountKey: string) {
   const activeAuthData = await readStoredCodexAuthData()
+  cachedAccountUsages.delete(accountKey)
   
   try {
     await deleteStoredCodexAccount(accountKey)
@@ -200,5 +204,5 @@ export async function removeCodexAccountProvider(accountKey: string) {
     }
   }
 
-  return getCodexProviderStatus()
+  return getCodexProviderStatus(true)
 }

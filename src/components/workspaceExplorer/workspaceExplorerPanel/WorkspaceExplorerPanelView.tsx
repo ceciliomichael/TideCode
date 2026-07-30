@@ -9,6 +9,7 @@ import { buildExplorerGitStatusMap } from './workspaceExplorerGitStatus'
 import type { WorkspaceExplorerPanelProps } from './workspaceExplorerPanelTypes'
 import type { WorkspaceExplorerPanelState } from './useWorkspaceExplorerPanelState'
 import { WorkspaceExplorerDeleteDialog } from './WorkspaceExplorerDeleteDialog'
+import { getPathDirname } from '../../../lib/pathPresentation'
 import { ROOT_DIRECTORY_KEY, isPathWithinTarget, normalizeEntryPath } from './workspaceExplorerPanelUtils'
 
 interface WorkspaceExplorerPanelViewProps extends WorkspaceExplorerPanelProps {
@@ -156,7 +157,11 @@ export function WorkspaceExplorerPanelView({
       const isContextTarget = panelState.contextMenuState?.targetEntry?.relativePath === entry.relativePath
       const isSelectedEntry = panelState.selectedEntryPaths.has(entry.relativePath)
       const isGitignoredEntry = entry.isGitignored === true
-      const isDropTarget = isDirectory && panelState.dropTargetDirectoryPath === entry.relativePath
+      const activeDropTarget = panelState.dropTargetDirectoryPath
+      const isDropTarget =
+        activeDropTarget !== null &&
+        activeDropTarget !== ROOT_DIRECTORY_KEY &&
+        isPathWithinTarget(entry.relativePath, activeDropTarget)
       const gitStatus = gitStatusByPath.get(entryPath)
       const rowStateClass = isSelectedEntry || isActiveFile || isContextTarget || isDropTarget
         ? 'bg-surface-muted text-foreground'
@@ -188,39 +193,30 @@ export function WorkspaceExplorerPanelView({
             onContextMenu={(event) => panelState.openContextMenu(event, entry)}
             onDragStart={(event) => panelState.handleEntryDragStart(event, entry)}
             onDragEnd={panelState.handleEntryDragEnd}
-            onDragOver={
-              isDirectory
-                ? (event) => {
-                    if (isExternalFileDrag(event)) {
-                      panelState.handleExternalDragOver(event, entry.relativePath)
-                      return
-                    }
-                    panelState.handleDirectoryDragOver(event, entry.relativePath)
-                  }
-                : undefined
-            }
-            onDragLeave={
-              isDirectory
-                ? (event) => {
-                    if (isExternalFileDrag(event)) {
-                      panelState.handleExternalDragLeave(event, entry.relativePath)
-                      return
-                    }
-                    panelState.handleDirectoryDragLeave(event, entry.relativePath)
-                  }
-                : undefined
-            }
-            onDrop={
-              isDirectory
-                ? (event) => {
-                    if (isExternalFileDrag(event)) {
-                      void panelState.handleExternalDrop(event, entry.relativePath)
-                      return
-                    }
-                    panelState.handleDirectoryDrop(event, entry.relativePath)
-                  }
-                : undefined
-            }
+            onDragOver={(event) => {
+              const targetDir = isDirectory ? entry.relativePath : getPathDirname(entry.relativePath)
+              if (isExternalFileDrag(event)) {
+                panelState.handleExternalDragOver(event, targetDir)
+                return
+              }
+              panelState.handleDirectoryDragOver(event, targetDir)
+            }}
+            onDragLeave={(event) => {
+              const targetDir = isDirectory ? entry.relativePath : getPathDirname(entry.relativePath)
+              if (isExternalFileDrag(event)) {
+                panelState.handleExternalDragLeave(event, targetDir)
+                return
+              }
+              panelState.handleDirectoryDragLeave(event, targetDir)
+            }}
+            onDrop={(event) => {
+              const targetDir = isDirectory ? entry.relativePath : getPathDirname(entry.relativePath)
+              if (isExternalFileDrag(event)) {
+                void panelState.handleExternalDrop(event, targetDir)
+                return
+              }
+              panelState.handleDirectoryDrop(event, targetDir)
+            }}
             className={[
               'flex h-8 w-full min-w-0 items-center gap-1 rounded-none px-2 text-left text-sm transition-colors outline-none focus:outline-none focus-visible:outline-none',
               isCutEntry ? 'opacity-55' : '',

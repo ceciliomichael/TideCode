@@ -68,12 +68,23 @@ async function rebuildProvidersStateCache(hydrate = false) {
   return providersStateRefreshPromise
 }
 
+const BACKGROUND_REFRESH_INTERVAL_MS = 60_000
+let backgroundRefreshTimerId: ReturnType<typeof setInterval> | null = null
+
 export async function initializeProvidersState() {
   if (cachedProvidersState) {
     return
   }
 
   await rebuildProvidersStateCache(false)
+
+  if (backgroundRefreshTimerId === null) {
+    backgroundRefreshTimerId = setInterval(() => {
+      if (cachedProvidersState?.codex?.accounts && cachedProvidersState.codex.accounts.length > 0) {
+        void rebuildProvidersStateCache(true).catch(() => {})
+      }
+    }, BACKGROUND_REFRESH_INTERVAL_MS)
+  }
 }
 
 export async function getProvidersState(hydrate = false) {
@@ -88,7 +99,7 @@ export async function getProvidersState(hydrate = false) {
   return rebuildProvidersStateCache(false)
 }
 
-async function refreshProvidersCache(hydrate = false) {
+export async function refreshProvidersCache(hydrate = false) {
   return rebuildProvidersStateCache(hydrate)
 }
 
@@ -104,17 +115,17 @@ async function buildProvidersState(hydrate = false): Promise<ProvidersState> {
 
 export async function connectCodexWithOAuth(openExternal: (url: string) => Promise<void>) {
   await connectCodexProviderWithOAuth(openExternal)
-  return refreshProvidersCache()
+  return refreshProvidersCache(true)
 }
 
 export async function addCodexAccountWithOAuth(openExternal: (url: string) => Promise<void>) {
   await addCodexAccountProviderWithOAuth(openExternal)
-  return refreshProvidersCache()
+  return refreshProvidersCache(true)
 }
 
 export async function disconnectCodex() {
   await disconnectCodexProvider()
-  return refreshProvidersCache()
+  return refreshProvidersCache(true)
 }
 
 export async function switchCodexAccount(accountKey: string) {

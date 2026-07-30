@@ -7,26 +7,30 @@ interface ExternalFileDropItem {
 type DropFileCandidate = ExternalFileDropItem | File | (File & { path?: string })
 
 function getExternalFilePath(file: DropFileCandidate) {
-  const legacyPathCandidate = (file as ExternalFileDropItem).path
-  if (typeof legacyPathCandidate === 'string') {
-    const legacyPath = legacyPathCandidate.trim()
-    if (legacyPath.length > 0) {
-      return legacyPath
-    }
+  const directPath = (file as { path?: string })?.path
+  if (typeof directPath === 'string' && directPath.trim().length > 0) {
+    return directPath.trim()
   }
 
+  const legacyPathCandidate = (file as ExternalFileDropItem).path
+  if (typeof legacyPathCandidate === 'string' && legacyPathCandidate.trim().length > 0) {
+    return legacyPathCandidate.trim()
+  }
 
   if (typeof window === 'undefined') {
     return null
   }
 
-  const nativePath = window.echosphereFileDrop?.getPathForFile(file as File)
-  if (typeof nativePath !== 'string') {
-    return null
+  try {
+    const nativePath = window.echosphereFileDrop?.getPathForFile(file as File)
+    if (typeof nativePath === 'string' && nativePath.trim().length > 0) {
+      return nativePath.trim()
+    }
+  } catch (e) {
+    console.warn('getPathForFile failed:', e)
   }
 
-  const trimmedNativePath = nativePath.trim()
-  return trimmedNativePath.length > 0 ? trimmedNativePath : null
+  return null
 }
 
 function getExternalFilePathsFromFileList(files: ArrayLike<ExternalFileDropItem | File> | null | undefined) {

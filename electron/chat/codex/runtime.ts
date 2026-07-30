@@ -12,6 +12,7 @@ import type {
 import { compressChatHistory } from '../shared/compression'
 import { estimateToolEnabledContextUsage, runToolEnabledChatStream } from '../shared/runtime'
 import { createCodexClient } from './client'
+import { refreshProvidersCache } from '../../providers/service'
 
 const activeStreams = new Map<string, AbortController>()
 
@@ -117,6 +118,7 @@ async function runCodexChatStream(
     }
   } finally {
     activeStreams.delete(streamId)
+    void refreshProvidersCache(true).catch(() => {})
   }
 }
 

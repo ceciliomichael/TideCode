@@ -72,7 +72,7 @@ export function useWorkspaceExplorerPanelState({
     workspacePath: null,
     filePath: null,
   })
-  const draggedEntryRef = useRef<WorkspaceExplorerEntry | null>(null)
+  const draggedEntriesRef = useRef<WorkspaceExplorerEntry[]>([])
   const selectionAnchorEntryPathRef = useRef<string | null>(null)
   const isExplorerEditingRef = useRef(false)
   const pendingExplorerReloadRef = useRef(false)
@@ -110,7 +110,7 @@ export function useWorkspaceExplorerPanelState({
     treeContainerRef,
     updateDragScroll,
   } = useWorkspaceExplorerDragScroll({
-    draggedEntryRef,
+    draggedEntriesRef,
   })
 
   const loadDirectory = useCallback(
@@ -562,23 +562,48 @@ export function useWorkspaceExplorerPanelState({
     [clipboardEntry, closeContextMenu, loadDirectory, onPasteEntry],
   )
 
-  const submitMoveEntry = useCallback(
-    async (relativePath: string, targetDirectoryRelativePath: string) => {
+  const submitMoveEntries = useCallback(
+    async (relativePaths: readonly string[], targetDirectoryRelativePath: string) => {
       setDropTargetDirectoryPath(null)
+
+      const validPaths = relativePaths.filter((relativePath) => {
+        if (relativePath === targetDirectoryRelativePath) return false
+        if (
+          targetDirectoryRelativePath !== ROOT_DIRECTORY_KEY &&
+          targetDirectoryRelativePath.startsWith(relativePath + '/')
+        ) {
+          return false
+        }
+        return true
+      })
+
+      if (validPaths.length === 0) {
+        return
+      }
+
       try {
-        await onMoveEntry(relativePath, targetDirectoryRelativePath)
-        const basename = getPathBasename(relativePath)
-        const resultRelativePath = targetDirectoryRelativePath === ROOT_DIRECTORY_KEY || targetDirectoryRelativePath === '.'
-          ? basename
-          : `${targetDirectoryRelativePath}/${basename}`
-        undoStack.recordMove(relativePath, resultRelativePath)
+        const sourceParentPaths = new Set<string>()
+        for (const relativePath of validPaths) {
+          await onMoveEntry(relativePath, targetDirectoryRelativePath)
+          const basename = getPathBasename(relativePath)
+          const resultRelativePath =
+            targetDirectoryRelativePath === ROOT_DIRECTORY_KEY || targetDirectoryRelativePath === '.'
+              ? basename
+              : `${targetDirectoryRelativePath}/${basename}`
+          undoStack.recordMove(relativePath, resultRelativePath)
+          const sourceParentPath = getPathDirname(relativePath)
+          if (sourceParentPath !== ROOT_DIRECTORY_KEY) {
+            sourceParentPaths.add(sourceParentPath)
+          }
+        }
         setErrorMessage(null)
+        setSelectedEntryPaths(new Set())
+
         const loadOperations = [reloadExplorerTreeRef.current({ force: true })]
         if (targetDirectoryRelativePath !== ROOT_DIRECTORY_KEY) {
           loadOperations.push(loadDirectory(targetDirectoryRelativePath))
         }
-        const sourceParentPath = getPathDirname(relativePath)
-        if (sourceParentPath !== ROOT_DIRECTORY_KEY) {
+        for (const sourceParentPath of sourceParentPaths) {
           loadOperations.push(loadDirectory(sourceParentPath))
         }
         await Promise.all(loadOperations)
@@ -587,6 +612,13 @@ export function useWorkspaceExplorerPanelState({
       }
     },
     [loadDirectory, onMoveEntry, undoStack],
+  )
+
+  const submitMoveEntry = useCallback(
+    async (relativePath: string, targetDirectoryRelativePath: string) => {
+      await submitMoveEntries([relativePath], targetDirectoryRelativePath)
+    },
+    [submitMoveEntries],
   )
 
   const submitImportEntries = useCallback(
@@ -608,6 +640,7 @@ export function useWorkspaceExplorerPanelState({
           await onImportEntry(sourcePath, targetDirectoryRelativePath)
         }
         setErrorMessage(null)
+        setSelectedEntryPaths(new Set())
         const loadOperations = [reloadExplorerTreeRef.current({ force: true })]
         if (targetDirectoryRelativePath !== ROOT_DIRECTORY_KEY) {
           loadOperations.push(loadDirectory(targetDirectoryRelativePath))
@@ -645,15 +678,31 @@ export function useWorkspaceExplorerPanelState({
     [clipboardEntry, selectionDirectoryPath, submitImportEntries, submitPasteEntry],
   )
 
-  const handleEntryDragStart = useCallback((event: ReactDragEvent<HTMLButtonElement>, entry: WorkspaceExplorerEntry) => {
-    draggedEntryRef.current = entry
-    setIsDraggingExplorerEntry(true)
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', entry.relativePath)
-  }, [])
+  const handleEntryDragStart = useCallback(
+    (event: ReactDragEvent<HTMLButtonElement>, entry: WorkspaceExplorerEntry) => {
+      const selectedPaths = selectedEntryPaths.has(entry.relativePath)
+        ? Array.from(selectedEntryPaths)
+        : [entry.relativePath]
+
+      const draggedEntries: WorkspaceExplorerEntry[] = []
+      for (const pathStr of selectedPaths) {
+        const found = findLoadedExplorerEntry(rootEntries, directoryEntriesByPath, pathStr)
+        if (found) {
+          draggedEntries.push(found)
+        }
+      }
+
+      const entriesToDrag = draggedEntries.length > 0 ? draggedEntries : [entry]
+      draggedEntriesRef.current = entriesToDrag
+      setIsDraggingExplorerEntry(true)
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('text/plain', entriesToDrag.map((e) => e.relativePath).join('\n'))
+    },
+    [directoryEntriesByPath, rootEntries, selectedEntryPaths],
+  )
 
   const handleEntryDragEnd = useCallback(() => {
-    draggedEntryRef.current = null
+    draggedEntriesRef.current = []
     setIsDraggingExplorerEntry(false)
     setDropTargetDirectoryPath(null)
     stopDragScroll()
@@ -661,9 +710,24 @@ export function useWorkspaceExplorerPanelState({
 
   const handleDirectoryDragOver = useCallback(
     (event: ReactDragEvent<HTMLElement>, targetDirectoryRelativePath: string) => {
-      if (!draggedEntryRef.current) {
+      if (draggedEntriesRef.current.length === 0) {
         return
       }
+      const hasValidMove = draggedEntriesRef.current.some((draggedEntry) => {
+        if (draggedEntry.relativePath === targetDirectoryRelativePath) return false
+        if (
+          draggedEntry.isDirectory &&
+          targetDirectoryRelativePath !== ROOT_DIRECTORY_KEY &&
+          targetDirectoryRelativePath.startsWith(draggedEntry.relativePath + '/')
+        ) {
+          return false
+        }
+        return true
+      })
+      if (!hasValidMove) {
+        return
+      }
+
       event.preventDefault()
       event.stopPropagation()
       updateDragScroll(event)
@@ -677,18 +741,19 @@ export function useWorkspaceExplorerPanelState({
 
   const handleDirectoryDrop = useCallback(
     (event: ReactDragEvent<HTMLElement>, targetDirectoryRelativePath: string) => {
-      const draggedEntry = draggedEntryRef.current
-      if (!draggedEntry) {
+      const draggedEntries = draggedEntriesRef.current
+      if (draggedEntries.length === 0) {
         return
       }
       event.preventDefault()
       event.stopPropagation()
       stopDragScroll()
-      draggedEntryRef.current = null
+      draggedEntriesRef.current = []
       setIsDraggingExplorerEntry(false)
-      void submitMoveEntry(draggedEntry.relativePath, targetDirectoryRelativePath)
+      const relativePaths = draggedEntries.map((e) => e.relativePath)
+      void submitMoveEntries(relativePaths, targetDirectoryRelativePath)
     },
-    [stopDragScroll, submitMoveEntry],
+    [stopDragScroll, submitMoveEntries],
   )
 
   const handleDirectoryDragLeave = useCallback(
@@ -732,7 +797,18 @@ export function useWorkspaceExplorerPanelState({
         return
       }
 
-      if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      if (event.relatedTarget && event.currentTarget.contains(event.relatedTarget as Node)) {
+        return
+      }
+
+      const rect = event.currentTarget.getBoundingClientRect()
+      const { clientX, clientY } = event
+      if (
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+      ) {
         return
       }
 
@@ -743,25 +819,30 @@ export function useWorkspaceExplorerPanelState({
 
   const handleExternalDrop = useCallback(
     async (event: ReactDragEvent<HTMLElement>, targetDirectoryRelativePath: string) => {
-      if (!workspaceRootPath) {
-        return
-      }
-
-      const filePaths = getExternalFilePaths(event)
-
-      if (filePaths.length === 0) {
-        return
-      }
-
       event.preventDefault()
       event.stopPropagation()
       stopDragScroll()
       setDropTargetDirectoryPath(null)
 
+      if (!workspaceRootPath) {
+        return
+      }
+
+      let filePaths: string[] = []
+      try {
+        filePaths = getExternalFilePaths(event)
+      } catch (err) {
+        console.error('Failed to get external file paths:', err)
+      }
+
+      if (filePaths.length === 0) {
+        return
+      }
+
       try {
         await submitImportEntries(filePaths, targetDirectoryRelativePath)
-      } finally {
-        setDropTargetDirectoryPath(null)
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'Failed to import workspace entry.')
       }
     },
     [stopDragScroll, submitImportEntries, workspaceRootPath],
