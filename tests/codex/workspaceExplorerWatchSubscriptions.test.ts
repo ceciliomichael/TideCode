@@ -34,3 +34,21 @@ test('window cleanup returns each subscribed root once regardless of reference c
   )
   assert.deepEqual(subscriptions.removeSubscriber(23), [])
 })
+
+test('unions watched directories across subscribers and updates one subscriber safely', () => {
+  const subscriptions = new WorkspaceExplorerWatchSubscriptions()
+
+  subscriptions.subscribe(31, 'C:\\workspace', new Set(['.', 'src']))
+  subscriptions.subscribe(32, 'C:\\workspace', new Set(['.', 'packages']))
+
+  assert.deepEqual(
+    Array.from(subscriptions.getWatchPaths('C:\\workspace')).sort(),
+    ['.', 'packages', 'src'],
+  )
+  assert.equal(subscriptions.updateWatchPaths(31, 'C:\\workspace', new Set(['.', 'tests'])), true)
+  assert.deepEqual(
+    Array.from(subscriptions.getWatchPaths('C:\\workspace')).sort(),
+    ['.', 'packages', 'tests'],
+  )
+  assert.equal(subscriptions.updateWatchPaths(99, 'C:\\workspace', new Set(['.'])), false)
+})

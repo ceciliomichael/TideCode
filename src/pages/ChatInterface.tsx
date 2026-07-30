@@ -115,8 +115,11 @@ export function ChatInterface({
     reasoningEffort: chatRuntimeConfig.reasoningEffort,
     workspacePath: activeWorkspacePath,
   })
+  const shouldLoadDetailedGitDiffs =
+    isRightPanelOpen && (rightPanelTab === 'diff' || rightPanelTab === 'source-control')
   const gitDiffSnapshot = useGitDiffSnapshot({
     hasRepository,
+    includeContent: shouldLoadDetailedGitDiffs,
     pollingEnabled: true,
     workspacePath: activeWorkspacePath,
   })

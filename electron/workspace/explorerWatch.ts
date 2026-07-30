@@ -23,15 +23,17 @@ const IGNORED_DIRECTORY_NAMES = new Set([
 ])
 const IGNORED_FILE_NAMES = new Set<string>()
 const RELOAD_DEBOUNCE_MS = 100
-const POLL_INTERVAL_MS = 1000
+const POLL_INTERVAL_MS = 1500
 const SNAPSHOT_ERROR = '__workspace_snapshot_error__'
 
 interface WorkspaceExplorerWatcherState {
   watcher: FSWatcher | null
+  watcherGeneration: number
   pollTimerId: ReturnType<typeof setInterval> | null
   pendingEmitTimerId: ReturnType<typeof setTimeout> | null
   lastSnapshot: string | null
   subscribers: Set<number>
+  watchedRelativeDirectoryPaths: Set<string>
 }
 
 const watcherStates = new Map<string, WorkspaceExplorerWatcherState>()
@@ -40,6 +42,33 @@ const registeredSenders = new Set<number>()
 
 function normalizeWorkspaceRootPath(workspaceRootPath: string) {
   return path.resolve(workspaceRootPath.trim())
+}
+
+function normalizeRelativeDirectoryPaths(rootPath: string, relativeDirectoryPaths?: readonly string[]) {
+  const normalizedRootPath = normalizeWorkspaceRootPath(rootPath)
+  const candidates = relativeDirectoryPaths && relativeDirectoryPaths.length > 0 ? relativeDirectoryPaths : [DEFAULT_RELATIVE_PATH]
+  const normalizedPaths = new Set<string>()
+
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') {
+      continue
+    }
+
+    const absolutePath = path.resolve(normalizedRootPath, candidate.trim() || DEFAULT_RELATIVE_PATH)
+    const relativePath = path.relative(normalizedRootPath, absolutePath)
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      continue
+    }
+
+    const segments = relativePath.split(path.sep).filter((segment) => segment.length > 0)
+    if (segments.some((segment) => IGNORED_DIRECTORY_NAMES.has(segment))) {
+      continue
+    }
+
+    normalizedPaths.add(relativePath.length === 0 ? DEFAULT_RELATIVE_PATH : relativePath)
+  }
+
+  return normalizedPaths.size > 0 ? normalizedPaths : new Set([DEFAULT_RELATIVE_PATH])
 }
 
 function shouldIncludeEntry(entryName: string, isDirectory: boolean) {
@@ -54,47 +83,56 @@ function shouldIncludeEntry(entryName: string, isDirectory: boolean) {
   return !IGNORED_FILE_NAMES.has(entryName)
 }
 
-async function buildWorkspaceTreeSnapshot(rootPath: string): Promise<string> {
+async function buildWatchedDirectoriesSnapshot(
+  rootPath: string,
+  watchedRelativeDirectoryPaths: ReadonlySet<string>,
+): Promise<string> {
   const normalizedRootPath = normalizeWorkspaceRootPath(rootPath)
   const snapshotEntries: string[] = []
 
-  async function visitDirectory(relativePath: string): Promise<void> {
-    const absolutePath =
-      relativePath === DEFAULT_RELATIVE_PATH ? normalizedRootPath : path.resolve(normalizedRootPath, relativePath)
-    const directoryEntries = await readdir(absolutePath, { withFileTypes: true })
+  await Promise.all(
+    Array.from(watchedRelativeDirectoryPaths, async (relativePath) => {
+      const absolutePath =
+        relativePath === DEFAULT_RELATIVE_PATH ? normalizedRootPath : path.resolve(normalizedRootPath, relativePath)
+      const directoryEntries = await readdir(absolutePath, { withFileTypes: true }).catch((error: unknown) => {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          return []
+        }
+        throw error
+      })
 
-    for (const directoryEntry of directoryEntries) {
-      if (directoryEntry.isSymbolicLink()) {
-        continue
+      const fileEntries = directoryEntries.filter((entry) => entry.isFile() && shouldIncludeEntry(entry.name, false))
+      const fileStats = await Promise.all(
+        fileEntries.map(async (entry) => {
+          const filePath = path.join(absolutePath, entry.name)
+          const fileStat = await stat(filePath).catch(() => null)
+          return `${relativePath === DEFAULT_RELATIVE_PATH ? entry.name : path.join(relativePath, entry.name)}:${
+            fileStat?.mtimeMs ?? 0
+          }:${fileStat?.size ?? 0}`
+        }),
+      )
+
+      for (const directoryEntry of directoryEntries) {
+        if (directoryEntry.isSymbolicLink()) {
+          continue
+        }
+
+        const isDirectory = directoryEntry.isDirectory()
+        if ((!isDirectory && !directoryEntry.isFile()) || !shouldIncludeEntry(directoryEntry.name, isDirectory)) {
+          continue
+        }
+
+        const nextRelativePath =
+          relativePath === DEFAULT_RELATIVE_PATH
+            ? directoryEntry.name
+            : path.join(relativePath, directoryEntry.name)
+        snapshotEntries.push(`${isDirectory ? 'd' : 'f'}:${nextRelativePath}`)
       }
 
-      const isDirectory = directoryEntry.isDirectory()
-      if (!isDirectory && !directoryEntry.isFile()) {
-        continue
-      }
-      if (!shouldIncludeEntry(directoryEntry.name, isDirectory)) {
-        continue
-      }
+      snapshotEntries.push(...fileStats.map((fileStat) => `m:${fileStat}`))
+    }),
+  )
 
-      const nextRelativePath =
-        relativePath === DEFAULT_RELATIVE_PATH
-          ? directoryEntry.name
-          : path.join(relativePath, directoryEntry.name)
-
-      if (isDirectory) {
-        snapshotEntries.push(`d:${nextRelativePath}`)
-        await visitDirectory(nextRelativePath)
-      } else {
-        const fileAbsolutePath = path.resolve(normalizedRootPath, nextRelativePath)
-        const fileStats = await stat(fileAbsolutePath).catch(() => null)
-        const mtime = fileStats ? fileStats.mtimeMs : 0
-        const size = fileStats ? fileStats.size : 0
-        snapshotEntries.push(`f:${nextRelativePath}:${mtime}:${size}`)
-      }
-    }
-  }
-
-  await visitDirectory(DEFAULT_RELATIVE_PATH)
   snapshotEntries.sort((left, right) => left.localeCompare(right))
   return snapshotEntries.join('\n')
 }
@@ -106,6 +144,7 @@ function removeWorkspaceExplorerWatcherState(rootPath: string) {
     return
   }
 
+  state.watcherGeneration += 1
   if (state.pendingEmitTimerId !== null) {
     clearTimeout(state.pendingEmitTimerId)
     state.pendingEmitTimerId = null
@@ -169,7 +208,10 @@ async function refreshWorkspaceExplorerSnapshot(rootPath: string) {
   }
 
   try {
-    const nextSnapshot = await buildWorkspaceTreeSnapshot(normalizedRootPath)
+    const nextSnapshot = await buildWatchedDirectoriesSnapshot(
+      normalizedRootPath,
+      state.watchedRelativeDirectoryPaths,
+    )
     if (state.lastSnapshot !== nextSnapshot) {
       state.lastSnapshot = nextSnapshot
       scheduleWorkspaceExplorerChange(normalizedRootPath)
@@ -183,6 +225,10 @@ async function refreshWorkspaceExplorerSnapshot(rootPath: string) {
 }
 
 function startPollingWorkspaceRoot(rootPath: string, state: WorkspaceExplorerWatcherState) {
+  if (state.pollTimerId !== null) {
+    return
+  }
+
   void refreshWorkspaceExplorerSnapshot(rootPath)
   state.pollTimerId = setInterval(() => {
     void refreshWorkspaceExplorerSnapshot(rootPath)
@@ -190,8 +236,14 @@ function startPollingWorkspaceRoot(rootPath: string, state: WorkspaceExplorerWat
 }
 
 function startWatchingWorkspaceRoot(rootPath: string, state: WorkspaceExplorerWatcherState) {
+  const watcherGeneration = state.watcherGeneration
+  const watchTargets = Array.from(state.watchedRelativeDirectoryPaths, (relativePath) =>
+    relativePath === DEFAULT_RELATIVE_PATH ? rootPath : path.resolve(rootPath, relativePath),
+  )
+
   try {
-    state.watcher = chokidar.watch(rootPath, {
+    const watcher = chokidar.watch(watchTargets, {
+      depth: 0,
       ignoreInitial: true,
       ignored: (testPath: string) => {
         const basename = path.basename(testPath)
@@ -202,20 +254,18 @@ function startWatchingWorkspaceRoot(rootPath: string, state: WorkspaceExplorerWa
         )
       },
     })
-    state.watcher.on('all', () => {
+    state.watcher = watcher
+    watcher.on('all', () => {
       scheduleWorkspaceExplorerChange(rootPath)
     })
-    state.watcher.on('ready', () => {
-      scheduleWorkspaceExplorerChange(rootPath)
-    })
-    state.watcher.on('error', () => {
-      if (state.watcher) {
-        void state.watcher.close()
-        state.watcher = null
+    watcher.on('error', () => {
+      if (state.watcher !== watcher || state.watcherGeneration !== watcherGeneration) {
+        return
       }
-      if (state.pollTimerId === null) {
-        startPollingWorkspaceRoot(rootPath, state)
-      }
+
+      state.watcher = null
+      void watcher.close()
+      startPollingWorkspaceRoot(rootPath, state)
     })
     return
   } catch {
@@ -223,6 +273,29 @@ function startWatchingWorkspaceRoot(rootPath: string, state: WorkspaceExplorerWa
   }
 
   startPollingWorkspaceRoot(rootPath, state)
+}
+
+function restartWorkspaceExplorerWatcher(rootPath: string, state: WorkspaceExplorerWatcherState) {
+  if (state.pollTimerId !== null) {
+    state.lastSnapshot = null
+    void refreshWorkspaceExplorerSnapshot(rootPath)
+    return
+  }
+
+  state.watcherGeneration += 1
+  const watcherGeneration = state.watcherGeneration
+  const previousWatcher = state.watcher
+  state.watcher = null
+
+  void Promise.resolve(previousWatcher?.close())
+    .catch(() => undefined)
+    .finally(() => {
+      if (watcherStates.get(rootPath) !== state || state.watcherGeneration !== watcherGeneration) {
+        return
+      }
+
+      startWatchingWorkspaceRoot(rootPath, state)
+    })
 }
 
 function getWorkspaceExplorerWatcherState(rootPath: string) {
@@ -234,10 +307,12 @@ function getWorkspaceExplorerWatcherState(rootPath: string) {
 
   const nextState: WorkspaceExplorerWatcherState = {
     watcher: null,
+    watcherGeneration: 0,
     pollTimerId: null,
     pendingEmitTimerId: null,
     lastSnapshot: null,
     subscribers: new Set(),
+    watchedRelativeDirectoryPaths: new Set([DEFAULT_RELATIVE_PATH]),
   }
 
   watcherStates.set(normalizedRootPath, nextState)
@@ -256,6 +331,9 @@ function removeWorkspaceExplorerSubscriber(senderId: number, workspaceRootPath?:
       state.subscribers.delete(senderId)
       if (state.subscribers.size === 0) {
         removeWorkspaceExplorerWatcherState(rootPath)
+      } else {
+        state.watchedRelativeDirectoryPaths = new Set(subscriptions.getWatchPaths(rootPath))
+        restartWorkspaceExplorerWatcher(rootPath, state)
       }
     }
     return
@@ -275,15 +353,24 @@ function removeWorkspaceExplorerSubscriber(senderId: number, workspaceRootPath?:
 
   if (state.subscribers.size === 0) {
     removeWorkspaceExplorerWatcherState(normalizedRootPath)
+  } else {
+    state.watchedRelativeDirectoryPaths = new Set(subscriptions.getWatchPaths(normalizedRootPath))
+    restartWorkspaceExplorerWatcher(normalizedRootPath, state)
   }
 }
 
-function addWorkspaceExplorerSubscriber(sender: WebContents, workspaceRootPath: string) {
+function addWorkspaceExplorerSubscriber(
+  sender: WebContents,
+  workspaceRootPath: string,
+  relativeDirectoryPaths?: readonly string[],
+) {
   const normalizedRootPath = normalizeWorkspaceRootPath(workspaceRootPath)
+  const normalizedWatchPaths = normalizeRelativeDirectoryPaths(normalizedRootPath, relativeDirectoryPaths)
   const state = getWorkspaceExplorerWatcherState(normalizedRootPath)
-  if (subscriptions.subscribe(sender.id, normalizedRootPath)) {
-    state.subscribers.add(sender.id)
-  }
+  subscriptions.subscribe(sender.id, normalizedRootPath, normalizedWatchPaths)
+  state.subscribers.add(sender.id)
+  state.watchedRelativeDirectoryPaths = new Set(subscriptions.getWatchPaths(normalizedRootPath))
+  restartWorkspaceExplorerWatcher(normalizedRootPath, state)
 
   if (!registeredSenders.has(sender.id)) {
     registeredSenders.add(sender.id)
@@ -294,8 +381,32 @@ function addWorkspaceExplorerSubscriber(sender: WebContents, workspaceRootPath: 
   }
 }
 
-export function subscribeWorkspaceExplorerChanges(sender: WebContents, workspaceRootPath: string) {
-  addWorkspaceExplorerSubscriber(sender, workspaceRootPath)
+export function subscribeWorkspaceExplorerChanges(
+  sender: WebContents,
+  workspaceRootPath: string,
+  relativeDirectoryPaths?: readonly string[],
+) {
+  addWorkspaceExplorerSubscriber(sender, workspaceRootPath, relativeDirectoryPaths)
+}
+
+export function updateWorkspaceExplorerWatchPaths(
+  senderId: number,
+  workspaceRootPath: string,
+  relativeDirectoryPaths?: readonly string[],
+) {
+  const normalizedRootPath = normalizeWorkspaceRootPath(workspaceRootPath)
+  const normalizedWatchPaths = normalizeRelativeDirectoryPaths(normalizedRootPath, relativeDirectoryPaths)
+  if (!subscriptions.updateWatchPaths(senderId, normalizedRootPath, normalizedWatchPaths)) {
+    return
+  }
+
+  const state = watcherStates.get(normalizedRootPath)
+  if (!state) {
+    return
+  }
+
+  state.watchedRelativeDirectoryPaths = new Set(subscriptions.getWatchPaths(normalizedRootPath))
+  restartWorkspaceExplorerWatcher(normalizedRootPath, state)
 }
 
 export function unsubscribeWorkspaceExplorerChanges(senderId: number, workspaceRootPath?: string) {

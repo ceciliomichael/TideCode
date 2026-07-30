@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import { loadGitBranchState, prefetchGitBranchStates } from '../lib/gitBranchStateCache'
-import { prefetchGitDiffSnapshots } from '../lib/gitDiffSnapshotCache'
 import { loadInitialChatHistory } from './chatHistoryWorkflows'
 
 interface UseInitializeChatHistoryInput {
@@ -57,7 +56,6 @@ export function useInitializeChatHistory(input: UseInitializeChatHistoryInput) {
           }
 
           void prefetchGitBranchStates(workspacePaths)
-          void prefetchGitDiffSnapshots(workspacePaths)
         }, 250)
       } catch (caughtError) {
         console.error(caughtError)

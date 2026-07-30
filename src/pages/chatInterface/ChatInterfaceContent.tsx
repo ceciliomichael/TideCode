@@ -136,6 +136,8 @@ export function ChatInterfaceContent({
   }, [settings.selectedProjectId, selectedProjectId])
 
   const activeWorkspacePath = chatMessages.activeConversationRootPath ?? chatMessages.selectedFolderPath
+  const gitAddedLineCount = gitCommitState.status?.addedLineCount ?? 0
+  const gitRemovedLineCount = gitCommitState.status?.removedLineCount ?? 0
   const runtimeSelection = useMemo(
     () => buildRuntimeSelection(chatRuntimeConfig, settings.terminalExecutionMode),
     [chatRuntimeConfig, settings.terminalExecutionMode],
@@ -769,8 +771,8 @@ export function ChatInterfaceContent({
                   <GitCompareArrows size={16} className="shrink-0" />
                   {hasRepository ? (
                     <>
-                      <span className="text-emerald-600 dark:text-emerald-400">{`+${gitDiffSnapshot.snapshot.totalAddedLineCount}`}</span>
-                      <span className="text-red-600 dark:text-red-400">{`-${gitDiffSnapshot.snapshot.totalRemovedLineCount}`}</span>
+                      <span className="text-emerald-600 dark:text-emerald-400">{`+${gitAddedLineCount}`}</span>
+                      <span className="text-red-600 dark:text-red-400">{`-${gitRemovedLineCount}`}</span>
                     </>
                   ) : null}
                 </button>
@@ -789,8 +791,8 @@ export function ChatInterfaceContent({
                     <GitCompareArrows size={16} className="shrink-0" />
                     {hasRepository ? (
                       <>
-                        <span className="text-emerald-600 dark:text-emerald-400">{`+${gitDiffSnapshot.snapshot.totalAddedLineCount}`}</span>
-                        <span className="text-red-600 dark:text-red-400">{`-${gitDiffSnapshot.snapshot.totalRemovedLineCount}`}</span>
+                        <span className="text-emerald-600 dark:text-emerald-400">{`+${gitAddedLineCount}`}</span>
+                        <span className="text-red-600 dark:text-red-400">{`-${gitRemovedLineCount}`}</span>
                       </>
                     ) : null}
                   </button>

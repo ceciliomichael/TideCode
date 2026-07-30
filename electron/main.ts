@@ -37,6 +37,7 @@ import type {
   WorkspaceExplorerWriteFileInput,
   EstimateContextUsageInput,
   GitCommitInput,
+  GitDiffLoadOptions,
   GitHistoryCommitDetailsInput,
   GitHistoryPageInput,
   GitFileStageInput,
@@ -168,6 +169,7 @@ import {
   disposeWorkspaceExplorerWatchers,
   subscribeWorkspaceExplorerChanges,
   unsubscribeWorkspaceExplorerChanges,
+  updateWorkspaceExplorerWatchPaths,
 } from './workspace/explorerWatch'
 import { disposeKanbanBoardWatchers } from './kanban/watch'
 import {
@@ -620,7 +622,14 @@ function registerHistoryHandlers() {
     openExternalTerminalLink(input),
   )
   ipcMain.handle('git:getBranches', async (_event, workspacePath: string) => getGitBranchState(workspacePath))
-  ipcMain.handle('git:getDiffs', async (_event, workspacePath: string) => getGitDiffSnapshot(workspacePath))
+  ipcMain.handle(
+    'git:getDiffs',
+    async (_event, input: { options?: GitDiffLoadOptions; workspacePath: string } | string) => {
+      const workspacePath = typeof input === 'string' ? input : input.workspacePath
+      const options = typeof input === 'string' ? undefined : input.options
+      return getGitDiffSnapshot(workspacePath, options)
+    },
+  )
   ipcMain.handle('git:getHistoryCommitDetails', async (_event, input: GitHistoryCommitDetailsInput) =>
     getGitHistoryCommitDetails(input),
   )
@@ -656,7 +665,10 @@ function registerHistoryHandlers() {
     restoreWorkspaceCheckpointSequence(checkpointIds),
   )
   ipcMain.handle('workspace:explorer:watch', async (event, input: WorkspaceExplorerWatchChangesInput) =>
-    subscribeWorkspaceExplorerChanges(event.sender, input.workspaceRootPath),
+    subscribeWorkspaceExplorerChanges(event.sender, input.workspaceRootPath, input.relativeDirectoryPaths),
+  )
+  ipcMain.handle('workspace:explorer:updateWatchPaths', async (event, input: WorkspaceExplorerWatchChangesInput) =>
+    updateWorkspaceExplorerWatchPaths(event.sender.id, input.workspaceRootPath, input.relativeDirectoryPaths),
   )
   ipcMain.handle('workspace:explorer:unwatch', async (event, input: WorkspaceExplorerWatchChangesInput) =>
     unsubscribeWorkspaceExplorerChanges(event.sender.id, input.workspaceRootPath),

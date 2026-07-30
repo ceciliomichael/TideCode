@@ -9,7 +9,16 @@ const EMPTY_DIFF_SNAPSHOT: ConversationDiffSnapshot = {
 const MAX_DIFF_SNAPSHOT_CACHE_ENTRIES = 12
 
 const diffSnapshotCache = new Map<string, ConversationDiffSnapshot>()
+const statusSnapshotCache = new Map<string, ConversationDiffSnapshot>()
 const inFlightDiffSnapshotRequests = new Map<string, Promise<ConversationDiffSnapshot>>()
+
+function getSnapshotCache(includeContent: boolean) {
+  return includeContent ? diffSnapshotCache : statusSnapshotCache
+}
+
+function getRequestKey(workspacePath: string, includeContent: boolean) {
+  return `${includeContent ? 'content' : 'status'}:${workspacePath}`
+}
 
 function setCachedDiffSnapshot(cacheKey: string, snapshot: ConversationDiffSnapshot) {
   if (diffSnapshotCache.has(cacheKey)) {
@@ -47,43 +56,81 @@ export function getCachedGitDiffSnapshot(workspacePath: string | null | undefine
   return cachedSnapshot
 }
 
+function setCachedStatusSnapshot(cacheKey: string, snapshot: ConversationDiffSnapshot) {
+  if (statusSnapshotCache.has(cacheKey)) {
+    statusSnapshotCache.delete(cacheKey)
+  }
+
+  statusSnapshotCache.set(cacheKey, snapshot)
+  while (statusSnapshotCache.size > MAX_DIFF_SNAPSHOT_CACHE_ENTRIES) {
+    const oldestKey = statusSnapshotCache.keys().next().value
+    if (typeof oldestKey !== 'string') {
+      break
+    }
+
+    statusSnapshotCache.delete(oldestKey)
+  }
+}
+
+export function getCachedGitStatusSnapshot(workspacePath: string | null | undefined) {
+  const normalizedWorkspacePath = normalizeGitWorkspacePath(workspacePath)
+  if (!normalizedWorkspacePath) {
+    return null
+  }
+
+  const cachedSnapshot = statusSnapshotCache.get(normalizedWorkspacePath)
+  if (!cachedSnapshot) {
+    return null
+  }
+
+  return cachedSnapshot
+}
+
 export async function loadGitDiffSnapshot(
   workspacePath: string | null | undefined,
-  options?: { forceRefresh?: boolean },
+  options?: { forceRefresh?: boolean; includeContent?: boolean },
 ) {
   const normalizedWorkspacePath = normalizeGitWorkspacePath(workspacePath)
   if (!normalizedWorkspacePath) {
     return EMPTY_DIFF_SNAPSHOT
   }
 
+  const includeContent = options?.includeContent !== false
+  const snapshotCache = getSnapshotCache(includeContent)
+  const requestKey = getRequestKey(normalizedWorkspacePath, includeContent)
+
   if (!options?.forceRefresh) {
-    const cachedDiffSnapshot = diffSnapshotCache.get(normalizedWorkspacePath)
+    const cachedDiffSnapshot = snapshotCache.get(normalizedWorkspacePath)
     if (cachedDiffSnapshot) {
       return cachedDiffSnapshot
     }
   }
 
-  const existingRequest = inFlightDiffSnapshotRequests.get(normalizedWorkspacePath)
-  if (existingRequest && !options?.forceRefresh) {
+  const existingRequest = inFlightDiffSnapshotRequests.get(requestKey)
+  if (existingRequest) {
     return existingRequest
   }
 
   const nextRequest = window.echosphereGit
-    .getDiffs(normalizedWorkspacePath)
+    .getDiffs(normalizedWorkspacePath, { includeContent })
     .then((diffSnapshot) => {
       const normalizedSnapshot = diffSnapshot.hasRepository
         ? buildFileDiffSnapshot(diffSnapshot.fileDiffs)
         : EMPTY_DIFF_SNAPSHOT
-      setCachedDiffSnapshot(normalizedWorkspacePath, normalizedSnapshot)
+      if (includeContent) {
+        setCachedDiffSnapshot(normalizedWorkspacePath, normalizedSnapshot)
+      } else {
+        setCachedStatusSnapshot(normalizedWorkspacePath, normalizedSnapshot)
+      }
       return normalizedSnapshot
     })
     .finally(() => {
-      if (inFlightDiffSnapshotRequests.get(normalizedWorkspacePath) === nextRequest) {
-        inFlightDiffSnapshotRequests.delete(normalizedWorkspacePath)
+      if (inFlightDiffSnapshotRequests.get(requestKey) === nextRequest) {
+        inFlightDiffSnapshotRequests.delete(requestKey)
       }
     })
 
-  inFlightDiffSnapshotRequests.set(normalizedWorkspacePath, nextRequest)
+  inFlightDiffSnapshotRequests.set(requestKey, nextRequest)
   return nextRequest
 }
 

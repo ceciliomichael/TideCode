@@ -1,4 +1,4 @@
-import type { GitDiffSnapshot, GitFileDiff } from '../../src/types/chat'
+import type { GitDiffLoadOptions, GitDiffSnapshot, GitFileDiff } from '../../src/types/chat'
 import { readHeadFile, readWorkingTreeFile, resolveRepositoryRoot, runGit } from './repositoryContext'
 import { normalizeGitFilePath, splitNullDelimitedOutput } from './serviceHelpers'
 
@@ -7,6 +7,25 @@ interface ChangedFileSets {
   stagedFileSet: Set<string>
   unstagedFileSet: Set<string>
   untrackedFileSet: Set<string>
+}
+
+const MAX_CONCURRENT_FILE_READS = 24
+
+async function mapWithConcurrency<T, R>(items: readonly T[], worker: (item: T) => Promise<R>, limit: number) {
+  const results: R[] = []
+  let nextIndex = 0
+
+  async function consume() {
+    while (nextIndex < items.length) {
+      const itemIndex = nextIndex
+      nextIndex += 1
+      results[itemIndex] = await worker(items[itemIndex])
+    }
+  }
+
+  const workerCount = Math.min(Math.max(1, limit), items.length)
+  await Promise.all(Array.from({ length: workerCount }, () => consume()))
+  return results
 }
 
 async function readChangedFileSets(repoRootPath: string): Promise<ChangedFileSets> {
@@ -58,7 +77,10 @@ async function buildGitFileDiff(
   }
 }
 
-export async function getGitDiffSnapshot(workspacePath: string): Promise<GitDiffSnapshot> {
+export async function getGitDiffSnapshot(
+  workspacePath: string,
+  options?: GitDiffLoadOptions,
+): Promise<GitDiffSnapshot> {
   const repoRootPath = await resolveRepositoryRoot(workspacePath)
   if (!repoRootPath) {
     return {
@@ -68,17 +90,30 @@ export async function getGitDiffSnapshot(workspacePath: string): Promise<GitDiff
   }
 
   const changedFileSets = await readChangedFileSets(repoRootPath)
-  const fileDiffs = (
-    await Promise.all(
-      changedFileSets.allChangedFiles.map((filePath) =>
-        buildGitFileDiff(repoRootPath, filePath, {
-          stagedFileSet: changedFileSets.stagedFileSet,
-          untrackedFileSet: changedFileSets.untrackedFileSet,
-          unstagedFileSet: changedFileSets.unstagedFileSet,
-        }),
-      ),
-    )
-  ).filter((fileDiff): fileDiff is GitFileDiff => fileDiff !== null)
+  const fileDiffs = options?.includeContent === false
+    ? changedFileSets.allChangedFiles.map((filePath): GitFileDiff => {
+        const normalizedFilePath = normalizeGitFilePath(filePath)
+        return {
+          fileName: normalizedFilePath,
+          isStaged: changedFileSets.stagedFileSet.has(normalizedFilePath),
+          isUnstaged: changedFileSets.unstagedFileSet.has(normalizedFilePath),
+          isUntracked: changedFileSets.untrackedFileSet.has(normalizedFilePath),
+          newContent: '',
+          oldContent: null,
+        }
+      })
+    : (
+        await mapWithConcurrency(
+          changedFileSets.allChangedFiles,
+          (filePath) =>
+            buildGitFileDiff(repoRootPath, filePath, {
+              stagedFileSet: changedFileSets.stagedFileSet,
+              untrackedFileSet: changedFileSets.untrackedFileSet,
+              unstagedFileSet: changedFileSets.unstagedFileSet,
+            }),
+          MAX_CONCURRENT_FILE_READS,
+        )
+      ).filter((fileDiff): fileDiff is GitFileDiff => fileDiff !== null)
 
   return {
     fileDiffs,

@@ -1,6 +1,6 @@
-import { ChevronRight, File, Folder, FolderOpen, RefreshCw } from 'lucide-react'
+import { ChevronRight, File, Folder, FolderOpen } from 'lucide-react'
 import type { DragEvent as ReactDragEvent } from 'react'
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { resolveFileIconConfig } from '../../../lib/fileIconResolver'
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
@@ -9,7 +9,7 @@ import { buildExplorerGitStatusMap } from './workspaceExplorerGitStatus'
 import type { WorkspaceExplorerPanelProps } from './workspaceExplorerPanelTypes'
 import type { WorkspaceExplorerPanelState } from './useWorkspaceExplorerPanelState'
 import { WorkspaceExplorerDeleteDialog } from './WorkspaceExplorerDeleteDialog'
-import { getPathDirname } from '../../../lib/pathPresentation'
+import { WorkspaceExplorerEntryRow, type WorkspaceExplorerEntryRowActions } from './WorkspaceExplorerEntryRow'
 import { ROOT_DIRECTORY_KEY, isPathWithinTarget, normalizeEntryPath } from './workspaceExplorerPanelUtils'
 
 interface WorkspaceExplorerPanelViewProps extends WorkspaceExplorerPanelProps {
@@ -25,6 +25,30 @@ export function WorkspaceExplorerPanelView({
 }: WorkspaceExplorerPanelViewProps) {
   const gitStatusByPath = useMemo(() => buildExplorerGitStatusMap(gitFileDiffs), [gitFileDiffs])
   const normalizedWorkspaceRootPath = workspaceRootPath ? normalizeWorkspaceRootPath(workspaceRootPath) : null
+  const entryRowActionsRef = useRef<WorkspaceExplorerEntryRowActions>({
+    handleDirectoryDragLeave: panelState.handleDirectoryDragLeave,
+    handleDirectoryDragOver: panelState.handleDirectoryDragOver,
+    handleDirectoryDrop: panelState.handleDirectoryDrop,
+    handleEntryClick: panelState.handleEntryClick,
+    handleEntryDragEnd: panelState.handleEntryDragEnd,
+    handleEntryDragStart: panelState.handleEntryDragStart,
+    handleExternalDragLeave: panelState.handleExternalDragLeave,
+    handleExternalDragOver: panelState.handleExternalDragOver,
+    handleExternalDrop: panelState.handleExternalDrop,
+    openContextMenu: panelState.openContextMenu,
+  })
+  entryRowActionsRef.current = {
+    handleDirectoryDragLeave: panelState.handleDirectoryDragLeave,
+    handleDirectoryDragOver: panelState.handleDirectoryDragOver,
+    handleDirectoryDrop: panelState.handleDirectoryDrop,
+    handleEntryClick: panelState.handleEntryClick,
+    handleEntryDragEnd: panelState.handleEntryDragEnd,
+    handleEntryDragStart: panelState.handleEntryDragStart,
+    handleExternalDragLeave: panelState.handleExternalDragLeave,
+    handleExternalDragOver: panelState.handleExternalDragOver,
+    handleExternalDrop: panelState.handleExternalDrop,
+    openContextMenu: panelState.openContextMenu,
+  }
 
   function getDeleteActionLabel() {
     const targetEntry = panelState.contextMenuState?.targetEntry
@@ -53,7 +77,11 @@ export function WorkspaceExplorerPanelView({
     }
 
     return (
-      <li key={`create-${draft.parentPath}-${draft.isDirectory ? 'folder' : 'file'}`} className="min-w-0">
+      <li
+        key={`create-${draft.parentPath}-${draft.isDirectory ? 'folder' : 'file'}`}
+        className="min-w-0"
+        style={{ containIntrinsicSize: '32px', contentVisibility: 'auto' }}
+      >
         <form
           onSubmit={(event) => {
             event.preventDefault()
@@ -97,7 +125,11 @@ export function WorkspaceExplorerPanelView({
     const FileIcon = fileIconConfig?.icon
 
     return (
-      <li key={`rename-${entry.relativePath}`} className="min-w-0">
+      <li
+        key={`rename-${entry.relativePath}`}
+        className="min-w-0"
+        style={{ containIntrinsicSize: '32px', contentVisibility: 'auto' }}
+      >
         <form
           onSubmit={(event) => {
             event.preventDefault()
@@ -163,83 +195,32 @@ export function WorkspaceExplorerPanelView({
         activeDropTarget !== ROOT_DIRECTORY_KEY &&
         isPathWithinTarget(entry.relativePath, activeDropTarget)
       const gitStatus = gitStatusByPath.get(entryPath)
-      const rowStateClass = isSelectedEntry || isActiveFile || isContextTarget || isDropTarget
-        ? 'bg-surface-muted text-foreground'
-        : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground'
-      const gitStatusTextClass = gitStatus === 'untracked' ? 'text-[#5D9F73]' : gitStatus === 'modified' ? 'text-[#C7904A]' : ''
       const isCutEntry =
         clipboardEntry?.mode === 'cut' &&
         normalizedWorkspaceRootPath !== null &&
         normalizeWorkspaceRootPath(clipboardEntry.sourceWorkspaceRootPath) === normalizedWorkspaceRootPath &&
         clipboardEntry.relativePaths.some((clipboardPath) => isPathWithinTarget(entry.relativePath, clipboardPath))
       const nestedEntries = isDirectory ? panelState.directoryEntriesByPath[entryPath] ?? [] : []
-      const fileIconConfig = !isDirectory ? resolveFileIconConfig({ fileName: entry.relativePath }) : null
-      const FileIcon = fileIconConfig?.icon
-
       if (isRenamingEntry) {
         return [renderRenameRow(entry, depth)]
       }
 
       const row = (
-        <li key={entry.relativePath} className="min-w-0">
-          <button
-            type="button"
-            draggable
-            onClick={(event) => panelState.handleEntryClick(entry, event)}
-            onContextMenu={(event) => panelState.openContextMenu(event, entry)}
-            onDragStart={(event) => panelState.handleEntryDragStart(event, entry)}
-            onDragEnd={panelState.handleEntryDragEnd}
-            onDragOver={(event) => {
-              const targetDir = isDirectory ? entry.relativePath : getPathDirname(entry.relativePath)
-              if (isExternalFileDrag(event)) {
-                panelState.handleExternalDragOver(event, targetDir)
-                return
-              }
-              panelState.handleDirectoryDragOver(event, targetDir)
-            }}
-            onDragLeave={(event) => {
-              const targetDir = isDirectory ? entry.relativePath : getPathDirname(entry.relativePath)
-              if (isExternalFileDrag(event)) {
-                panelState.handleExternalDragLeave(event, targetDir)
-                return
-              }
-              panelState.handleDirectoryDragLeave(event, targetDir)
-            }}
-            onDrop={(event) => {
-              const targetDir = isDirectory ? entry.relativePath : getPathDirname(entry.relativePath)
-              if (isExternalFileDrag(event)) {
-                void panelState.handleExternalDrop(event, targetDir)
-                return
-              }
-              panelState.handleDirectoryDrop(event, targetDir)
-            }}
-            className={[
-              'flex h-8 w-full min-w-0 items-center gap-1 rounded-none px-2 text-left text-sm transition-colors outline-none focus:outline-none focus-visible:outline-none',
-              isCutEntry ? 'opacity-55' : '',
-              rowStateClass,
-            ].join(' ')}
-            data-workspace-entry-path={entry.relativePath}
-            aria-selected={isSelectedEntry || isActiveFile || isContextTarget}
-            style={{ paddingLeft: `${Math.max(8, depth * 12 + 8)}px` }}
-          >
-            {isDirectory ? (
-              <ChevronRight size={14} className={['shrink-0 transition-transform', isExpanded ? 'rotate-90' : ''].join(' ')} />
-            ) : (
-              <span className="w-[14px] shrink-0" />
-            )}
-            {!isDirectory && FileIcon ? (
-              <FileIcon
-                size={14}
-                className="shrink-0"
-                style={{ color: fileIconConfig?.color }}
-              />
-            ) : null}
-            <span className={['truncate', isGitignoredEntry ? 'opacity-60' : '', gitStatusTextClass].join(' ')}>{entry.name}</span>
-            {isLoading && !isExpanded ? (
-              <RefreshCw size={12} className="ml-auto shrink-0 animate-spin text-subtle-foreground" />
-            ) : null}
-          </button>
-        </li>
+        <WorkspaceExplorerEntryRow
+          key={entry.relativePath}
+          actionsRef={entryRowActionsRef}
+          depth={depth}
+          entry={entry}
+          gitStatus={gitStatus}
+          isActiveFile={isActiveFile}
+          isContextTarget={isContextTarget}
+          isCutEntry={isCutEntry}
+          isDropTarget={isDropTarget}
+          isExpanded={isExpanded}
+          isGitignoredEntry={isGitignoredEntry}
+          isLoading={isLoading}
+          isSelectedEntry={isSelectedEntry}
+        />
       )
 
       if (!isDirectory || !isExpanded) {

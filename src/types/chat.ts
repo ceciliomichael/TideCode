@@ -514,6 +514,7 @@ export interface WorkspaceExplorerListDirectoryInput {
 }
 
 export interface WorkspaceExplorerWatchChangesInput {
+  relativeDirectoryPaths?: readonly string[]
   workspaceRootPath: string
 }
 
@@ -726,6 +727,10 @@ export interface GitFileDiff {
 export interface GitDiffSnapshot {
   fileDiffs: GitFileDiff[]
   hasRepository: boolean
+}
+
+export interface GitDiffLoadOptions {
+  includeContent?: boolean
 }
 
 export type GitCommitAction = 'commit' | 'commit-and-push' | 'commit-and-create-pr'
@@ -1032,6 +1037,7 @@ export interface EchosphereWorkspaceApi {
   listDirectory: (input: WorkspaceExplorerListDirectoryInput) => Promise<WorkspaceExplorerEntry[]>
   readFile: (input: WorkspaceExplorerReadFileInput) => Promise<WorkspaceExplorerReadFileResult>
   renameEntry: (input: WorkspaceExplorerRenameEntryInput) => Promise<WorkspaceExplorerRenameEntryResult>
+  updateExplorerWatchPaths: (input: WorkspaceExplorerWatchChangesInput) => Promise<void>
   unwatchExplorerChanges: (input: WorkspaceExplorerWatchChangesInput) => Promise<void>
   transferEntry: (input: WorkspaceExplorerTransferEntryInput) => Promise<WorkspaceExplorerTransferEntryResult>
   watchExplorerChanges: (input: WorkspaceExplorerWatchChangesInput) => Promise<void>
@@ -1061,7 +1067,7 @@ export interface EchosphereGitApi {
   discardFileChanges: (input: GitFileStageInput) => Promise<GitFileStageResult>
   getBranches: (workspacePath: string) => Promise<GitBranchState>
   getHistoryCommitDetails: (input: GitHistoryCommitDetailsInput) => Promise<GitHistoryCommitDetailsResult>
-  getDiffs: (workspacePath: string) => Promise<GitDiffSnapshot>
+  getDiffs: (workspacePath: string, options?: GitDiffLoadOptions) => Promise<GitDiffSnapshot>
   getHistoryPage: (input: GitHistoryPageInput) => Promise<GitHistoryPageResult>
   getStatus: (workspacePath: string) => Promise<GitStatusResult>
   initRepository: (workspacePath: string) => Promise<GitInitResult>

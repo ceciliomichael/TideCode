@@ -39,6 +39,7 @@ const EMPTY_STATUS: GitStatusResult = {
   unstagedFileCount: 0,
   untrackedFileCount: 0,
 }
+const GIT_STATUS_POLL_INTERVAL_MS = 10000
 
 export function useGitCommit({
   hasRepository,
@@ -119,6 +120,24 @@ export function useGitCommit({
 
     return () => {
       unsubscribe()
+    }
+  }, [hasRepository, refreshStatus, workspacePath])
+
+  useEffect(() => {
+    if (!hasRepository || !workspacePath) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') {
+        return
+      }
+
+      void refreshStatus()
+    }, GIT_STATUS_POLL_INTERVAL_MS)
+
+    return () => {
+      window.clearInterval(intervalId)
     }
   }, [hasRepository, refreshStatus, workspacePath])
 

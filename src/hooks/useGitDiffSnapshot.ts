@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ConversationDiffSnapshot } from '../lib/chatDiffs'
 import {
   getCachedGitDiffSnapshot,
+  getCachedGitStatusSnapshot,
   getEmptyGitDiffSnapshot,
   loadGitDiffSnapshot,
 } from '../lib/gitDiffSnapshotCache'
@@ -9,6 +10,7 @@ import { normalizeGitWorkspacePath } from '../lib/gitBranchStateCache'
 
 interface UseGitDiffSnapshotInput {
   hasRepository: boolean
+  includeContent?: boolean
   pollingEnabled?: boolean
   workspacePath: string | null | undefined
 }
@@ -20,7 +22,7 @@ interface UseGitDiffSnapshotResult {
   snapshot: ConversationDiffSnapshot
 }
 
-const GIT_DIFF_POLL_INTERVAL_MS = 5000
+const GIT_DIFF_POLL_INTERVAL_MS = 10000
 
 function areDiffSnapshotsEqual(left: ConversationDiffSnapshot, right: ConversationDiffSnapshot) {
   if (
@@ -55,12 +57,15 @@ function areDiffSnapshotsEqual(left: ConversationDiffSnapshot, right: Conversati
 
 export function useGitDiffSnapshot({
   hasRepository,
+  includeContent = true,
   pollingEnabled = true,
   workspacePath,
 }: UseGitDiffSnapshotInput): UseGitDiffSnapshotResult {
   const normalizedWorkspacePath = normalizeGitWorkspacePath(workspacePath)
   const [snapshot, setSnapshot] = useState<ConversationDiffSnapshot>(
-    () => getCachedGitDiffSnapshot(normalizedWorkspacePath) ?? getEmptyGitDiffSnapshot(),
+    () =>
+      (includeContent ? getCachedGitDiffSnapshot(normalizedWorkspacePath) : getCachedGitStatusSnapshot(normalizedWorkspacePath)) ??
+      getEmptyGitDiffSnapshot(),
   )
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -97,6 +102,7 @@ export function useGitDiffSnapshot({
     try {
       const diffSnapshot = await loadGitDiffSnapshot(requestWorkspacePath, {
         forceRefresh: options?.forceRefresh,
+        includeContent,
       })
       if (
         requestId !== requestIdRef.current ||
@@ -128,13 +134,15 @@ export function useGitDiffSnapshot({
         setIsLoading(false)
       }
     }
-  }, [hasRepository, workspacePath])
+  }, [hasRepository, includeContent, workspacePath])
 
   useEffect(() => {
-    const cachedSnapshot = getCachedGitDiffSnapshot(workspacePath) ?? getEmptyGitDiffSnapshot()
+    const cachedSnapshot =
+      (includeContent ? getCachedGitDiffSnapshot(workspacePath) : getCachedGitStatusSnapshot(workspacePath)) ??
+      getEmptyGitDiffSnapshot()
     setSnapshot((currentSnapshot) => (areDiffSnapshotsEqual(currentSnapshot, cachedSnapshot) ? currentSnapshot : cachedSnapshot))
     void refresh()
-  }, [refresh, workspacePath])
+  }, [includeContent, refresh, workspacePath])
 
   useEffect(() => {
     if (!pollingEnabled || !hasRepository || !workspacePath) {
@@ -149,14 +157,12 @@ export function useGitDiffSnapshot({
       return
     }
 
-    void window.echosphereWorkspace.watchExplorerChanges({ workspaceRootPath: workspacePath })
     const unsubscribe = window.echosphereWorkspace.onExplorerChange(() => {
       void refresh({ forceRefresh: true, silent: true })
     })
 
     return () => {
       unsubscribe()
-      void window.echosphereWorkspace.unwatchExplorerChanges({ workspaceRootPath: workspacePath })
     }
   }, [hasRepository, pollingEnabled, refresh, workspacePath])
 

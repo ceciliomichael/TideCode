@@ -30,6 +30,7 @@ import type {
   EchosphereSettingsApi,
   EchosphereWorkspaceApi,
   GitFileStageInput,
+  GitDiffLoadOptions,
   GitSyncInput,
   ReplaceConversationMessagesInput,
   GitPublishInput,
@@ -209,7 +210,8 @@ const gitApi: EchosphereGitApi = {
   discardFileChanges: (input: GitFileStageInput) => ipcRenderer.invoke('git:discardFileChanges', input),
   getBranches: (workspacePath: string) => ipcRenderer.invoke('git:getBranches', workspacePath),
   getHistoryCommitDetails: (input: GitHistoryCommitDetailsInput) => ipcRenderer.invoke('git:getHistoryCommitDetails', input),
-  getDiffs: (workspacePath: string) => ipcRenderer.invoke('git:getDiffs', workspacePath),
+  getDiffs: (workspacePath: string, options?: GitDiffLoadOptions) =>
+    ipcRenderer.invoke('git:getDiffs', { options, workspacePath }),
   getHistoryPage: (input: GitHistoryPageInput) => ipcRenderer.invoke('git:getHistoryPage', input),
   getStatus: (workspacePath: string) => ipcRenderer.invoke('git:getStatus', workspacePath),
   sync: (input: GitSyncInput) => ipcRenderer.invoke('git:sync', input),
@@ -246,6 +248,8 @@ const workspaceApi: EchosphereWorkspaceApi = {
   renameEntry: (input) => ipcRenderer.invoke('workspace:explorer:renameEntry', input),
   unwatchExplorerChanges: (input: WorkspaceExplorerWatchChangesInput) =>
     ipcRenderer.invoke('workspace:explorer:unwatch', input),
+  updateExplorerWatchPaths: (input: WorkspaceExplorerWatchChangesInput) =>
+    ipcRenderer.invoke('workspace:explorer:updateWatchPaths', input),
   transferEntry: (input) => ipcRenderer.invoke('workspace:explorer:transferEntry', input),
   watchExplorerChanges: (input: WorkspaceExplorerWatchChangesInput) =>
     ipcRenderer.invoke('workspace:explorer:watch', input),

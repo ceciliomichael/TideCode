@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ClipboardEvent as ReactClipboardEvent,
@@ -178,7 +179,7 @@ export function useWorkspaceExplorerPanelState({
         Math.max(0, currentTreeContainer.scrollHeight - currentTreeContainer.clientHeight),
       )
     })
-  }, [])
+  }, [treeContainerRef])
 
   const reloadExplorerTree = useCallback((options?: ReloadExplorerTreeOptions) => {
     if (isExplorerEditingRef.current && !options?.force) {
@@ -229,7 +230,10 @@ export function useWorkspaceExplorerPanelState({
     [closeContextMenu, reloadExplorerTree],
   )
 
-  const rootEntries = directoryEntriesByPath[ROOT_DIRECTORY_KEY] ?? []
+  const rootEntries = useMemo(
+    () => directoryEntriesByPath[ROOT_DIRECTORY_KEY] ?? [],
+    [directoryEntriesByPath],
+  )
 
   const onDeleteEntryWithUndo = useCallback(
     async (relativePaths: string[]) => {
@@ -435,6 +439,7 @@ export function useWorkspaceExplorerPanelState({
     })
 
     void window.echosphereWorkspace.watchExplorerChanges({
+      relativeDirectoryPaths: [ROOT_DIRECTORY_KEY],
       workspaceRootPath,
     }).catch((error) => {
       console.error('Failed to watch workspace explorer changes', error)
@@ -445,13 +450,36 @@ export function useWorkspaceExplorerPanelState({
     return () => {
       isDisposed = true
       unsubscribeWorkspaceChanges()
-      void window.echosphereWorkspace.unwatchExplorerChanges({
-        workspaceRootPath,
-      }).catch((error) => {
-        console.error('Failed to unwatch workspace explorer changes', error)
-      })
+      void window.echosphereWorkspace
+        .updateExplorerWatchPaths({
+          relativeDirectoryPaths: [ROOT_DIRECTORY_KEY],
+          workspaceRootPath,
+        })
+        .catch((error) => {
+          console.error('Failed to reset workspace explorer watch paths', error)
+        })
+        .finally(() => {
+          void window.echosphereWorkspace.unwatchExplorerChanges({
+            workspaceRootPath,
+          }).catch((error) => {
+            console.error('Failed to unwatch workspace explorer changes', error)
+          })
+        })
     }
   }, [isOpen, loadDirectory, workspaceRootPath])
+
+  useEffect(() => {
+    if (!isOpen || !workspaceRootPath) {
+      return
+    }
+
+    void window.echosphereWorkspace.updateExplorerWatchPaths({
+      relativeDirectoryPaths: [ROOT_DIRECTORY_KEY, ...expandedDirectories],
+      workspaceRootPath,
+    }).catch((error) => {
+      console.error('Failed to update workspace explorer watch paths', error)
+    })
+  }, [expandedDirectories, isOpen, workspaceRootPath])
 
   useEffect(() => {
     if (!isOpen) {
@@ -542,7 +570,7 @@ export function useWorkspaceExplorerPanelState({
     return () => {
       window.cancelAnimationFrame(animationFrameId)
     }
-  }, [activeFilePath, directoryEntriesByPath, expandedDirectories, isOpen])
+  }, [activeFilePath, directoryEntriesByPath, expandedDirectories, isOpen, treeContainerRef])
 
   const submitPasteEntry = useCallback(
     async (targetDirectoryRelativePath: string) => {
@@ -559,7 +587,7 @@ export function useWorkspaceExplorerPanelState({
         setErrorMessage(error instanceof Error ? error.message : 'Failed to paste workspace entry.')
       }
     },
-    [clipboardEntry, closeContextMenu, loadDirectory, onPasteEntry],
+    [closeContextMenu, loadDirectory, onPasteEntry],
   )
 
   const submitMoveEntries = useCallback(
