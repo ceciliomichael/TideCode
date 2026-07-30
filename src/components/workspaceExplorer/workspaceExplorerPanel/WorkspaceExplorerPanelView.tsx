@@ -171,11 +171,7 @@ export function WorkspaceExplorerPanelView({
         clipboardEntry?.mode === 'cut' &&
         normalizedWorkspaceRootPath !== null &&
         normalizeWorkspaceRootPath(clipboardEntry.sourceWorkspaceRootPath) === normalizedWorkspaceRootPath &&
-        clipboardEntry.relativePaths.some(
-          (clipboardPath) =>
-            isPathWithinTarget(entry.relativePath, clipboardPath) ||
-            isPathWithinTarget(clipboardPath, entry.relativePath),
-        )
+        clipboardEntry.relativePaths.some((clipboardPath) => isPathWithinTarget(entry.relativePath, clipboardPath))
       const nestedEntries = isDirectory ? panelState.directoryEntriesByPath[entryPath] ?? [] : []
       const fileIconConfig = !isDirectory ? resolveFileIconConfig({ fileName: entry.relativePath }) : null
       const FileIcon = fileIconConfig?.icon
