@@ -10,10 +10,6 @@ import type {
 import type { AgentToolContext, AgentToolExecutionResult } from '../toolTypes'
 import type { TerminalSessionSnapshot, TerminalSessionInfo } from '../../../terminal/service'
 import {
-  captureWorkspaceCheckpointTerminalPostState,
-  captureWorkspaceCheckpointTerminalPreState,
-} from '../../../workspace/checkpoints'
-import {
   assertSandboxCommandWorkingDirectories,
   assertSandboxPathDoesNotEscapeThroughSymlink,
   getSandboxPathRoots,
@@ -532,10 +528,6 @@ export function createTerminalToolSet(
 
             const truncated = truncateTerminalOutput(newOutput, session.command)
 
-            if (context.checkpointId) {
-              await captureWorkspaceCheckpointTerminalPostState(context.checkpointId, context.workspaceRootPath)
-            }
-
             return createSuccessResult({
               body: truncated.body || 'No new output.',
               semantics: {
@@ -581,13 +573,6 @@ export function createTerminalToolSet(
           }
 
           throwIfAborted(abortSignal)
-
-          // Capture workspace state BEFORE the command runs so revert can undo
-          // any files or directories the shell creates. This must happen before
-          // session creation so we don't miss anything the shell startup touches.
-          if (context.checkpointId) {
-            await captureWorkspaceCheckpointTerminalPreState(context.checkpointId, context.workspaceRootPath)
-          }
 
           let localSessionId: number
           let globalSessionId: number

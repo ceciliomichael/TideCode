@@ -15,9 +15,6 @@ export const WORKSPACE_IGNORED_ENTRY_NAMES: ReadonlySet<string> = new Set<string
   '.git',
   '.next',
   'node_modules',
-  'AGENTS.md',
-  'RULES.md',
-  'GEMINI.md',
 ])
 const EXPLORER_IGNORED_ENTRY_NAMES = new Set<string>(['.git'])
 const gitignoreMatcherCache = new Map<string, Promise<GitignoreMatcherEntry[]>>()
@@ -108,7 +105,8 @@ export function isGitignored(
 }
 
 export function shouldAlwaysShowEntry(entryName: string) {
-  return entryName.toLowerCase().startsWith('.env')
+  const normalized = entryName.toLowerCase()
+  return normalized.startsWith('.env') || normalized.startsWith('agents.md')
 }
 
 /**

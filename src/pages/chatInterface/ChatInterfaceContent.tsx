@@ -16,7 +16,11 @@ import { WorkspaceFloatingControls } from '../../components/layout/WorkspaceFloa
 import { WorkspacePanel } from '../../components/layout/WorkspacePanel'
 import { SidebarPanel } from '../../components/sidebar/SidebarPanel'
 import { ALL_PROJECTS_FILTER_ID, CHATS_PROJECT_FILTER_ID } from '../../components/sidebar/sidebarProjectThreads'
-import { resolveProjectSwitchTarget } from '../../lib/projectSelectionUtils'
+import {
+  findFolderIdForConversation,
+  resolveProjectSwitchTarget,
+  shouldResetProjectFilterToAllProjects,
+} from '../../lib/projectSelectionUtils'
 import { SourceControlPanel } from '../../components/sourceControl/SourceControlPanel'
 import { WorkspaceTerminalPanel } from '../../components/chat/WorkspaceTerminalPanel'
 import { Tooltip } from '../../components/Tooltip'
@@ -417,9 +421,16 @@ export function ChatInterfaceContent({
     (conversationId: string) => {
       clearQueuedMessages()
       setWorkspaceViewMode('chat')
+
+      const convFolderId = findFolderIdForConversation(chatMessages.conversationGroups, conversationId)
+      if (convFolderId !== undefined && shouldResetProjectFilterToAllProjects(selectedProjectId, convFolderId)) {
+        setSelectedProjectId(ALL_PROJECTS_FILTER_ID)
+        void onUpdateSettings({ selectedProjectId: ALL_PROJECTS_FILTER_ID })
+      }
+
       void chatMessages.selectConversation(conversationId)
     },
-    [chatMessages, clearQueuedMessages],
+    [chatMessages, clearQueuedMessages, onUpdateSettings, selectedProjectId],
   )
 
   const handleCreateFolder = useCallback(async () => {

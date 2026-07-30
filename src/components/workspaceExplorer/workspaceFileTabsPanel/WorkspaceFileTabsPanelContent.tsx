@@ -41,7 +41,12 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
   wordWrapEnabled,
 }: WorkspaceFileTabsPanelContentProps) {
   if (activeTab.kind === 'markdown-preview') {
-    if (activeTab.status === 'loading') {
+    const sourceTab = tabs.find(
+      (tab): tab is WorkspaceFileTab => isWorkspaceFileTab(tab) && tab.relativePath === activeTab.relativePath,
+    )
+    const contentToDisplay = sourceTab ? sourceTab.content : activeTab.content
+
+    if (activeTab.status === 'loading' && !sourceTab) {
       return (
         <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-subtle-foreground">
           Loading preview...
@@ -49,7 +54,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
       )
     }
 
-    if (activeTab.status === 'error') {
+    if (activeTab.status === 'error' && !sourceTab) {
       return (
         <div className="h-full border-t border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
           {activeTab.errorMessage ?? 'Failed to load preview.'}
@@ -59,10 +64,10 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
 
     return (
       <WorkspaceMarkdownPreview
-        content={activeTab.content}
+        content={contentToDisplay}
         fileName={activeTab.fileName}
         relativePath={activeTab.relativePath}
-        isTruncated={activeTab.isTruncated}
+        isTruncated={sourceTab ? sourceTab.isTruncated : activeTab.isTruncated}
       />
     )
   }

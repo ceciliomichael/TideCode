@@ -15,7 +15,7 @@ export interface ResolveProjectSwitchInput {
 
 export function resolveProjectSwitchTarget({
   activeConversationId,
-  conversationGroups,
+  conversationGroups: _conversationGroups,
   currentSelectedFolderId,
   projectId,
 }: ResolveProjectSwitchInput): ProjectSwitchTargetAction {
@@ -33,12 +33,32 @@ export function resolveProjectSwitchTarget({
     return { type: 'preserve_active_thread' }
   }
 
-  const targetGroup = conversationGroups.find((group) => group.folder.id === targetFolderId)
-  const targetConv = targetGroup?.conversations[0]
-
-  if (targetConv) {
-    return { type: 'switch_to_conversation', conversationId: targetConv.id }
-  }
-
   return { type: 'create_new_conversation', folderId: targetFolderId }
 }
+
+export function shouldResetProjectFilterToAllProjects(
+  selectedProjectId: string,
+  activeThreadFolderId: string | null,
+): boolean {
+  if (selectedProjectId === ALL_PROJECTS_FILTER_ID) {
+    return false
+  }
+
+  const activeThreadProjectId = activeThreadFolderId === null ? CHATS_PROJECT_FILTER_ID : activeThreadFolderId
+  return selectedProjectId !== activeThreadProjectId
+}
+
+export function findFolderIdForConversation(
+  conversationGroups: readonly ConversationGroupPreview[],
+  conversationId: string,
+): string | null | undefined {
+  for (const group of conversationGroups) {
+    const conversation = group.conversations.find((item) => item.id === conversationId)
+    if (conversation) {
+      return conversation.folderId
+    }
+  }
+  return undefined
+}
+
+

@@ -30,7 +30,6 @@ import {
   ensureCurrentExecutionModeContext,
 } from './messages'
 import { createAgentTools } from './tools'
-import { captureWorkspaceCheckpointTerminalPostState } from '../../workspace/checkpoints'
 import { cleanUpFinishedSessionsAtTurnEnd } from './tools/terminalTools'
 import type { AgentToolExecutionResult } from './toolTypes'
 import {
@@ -604,10 +603,6 @@ export async function runToolEnabledChatStream(input: {
       })
     }
   } finally {
-    const checkpointId = resolveActiveCheckpointId(input.startInput.messages)
-    if (checkpointId && input.startInput.agentContextRootPath) {
-      await captureWorkspaceCheckpointTerminalPostState(checkpointId, input.startInput.agentContextRootPath).catch(() => undefined)
-    }
     if (input.startInput.agentContextRootPath) {
       await cleanUpFinishedSessionsAtTurnEnd(
         input.webContents,

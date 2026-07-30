@@ -37,12 +37,10 @@ export function buildExecutionModeContext(terminalExecutionMode: AppTerminalExec
       ? [
           'Terminal execution mode: sandbox.',
           'Filesystem access is limited to the workspace, with read/list/glob/grep and terminal working-directory access also allowed under the global ~/.agents directory.',
-          'Workspace checkpoint revert tracks terminal changes made inside the workspace.',
         ]
       : [
           'Terminal execution mode: full access.',
           'Filesystem tools and terminal commands may access paths outside the workspace.',
-          'Workspace checkpoint revert tracks workspace changes only; changes written outside the workspace are not reverted.',
         ]
 
   return [

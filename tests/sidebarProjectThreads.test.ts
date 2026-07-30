@@ -14,10 +14,12 @@ function createConversation(
   folderId: string | null,
   updatedAt: number,
   isPinned = false,
+  isActive = false,
 ): ConversationPreview {
   return {
     folderId,
     id,
+    isActive,
     isPinned,
     preview: '',
     title: id,
@@ -146,5 +148,25 @@ test('resolveSidebarProjectFilter falls back to all projects after a project dis
 test('resolveSidebarProjectFilter preserves selectedProjectId while history is loading', () => {
   assert.equal(resolveSidebarProjectFilter('project-two', [], true), 'project-two')
   assert.equal(resolveSidebarProjectFilter('custom-project-id', [], true), 'custom-project-id')
+})
+
+test('active conversation folder takes precedence over globally latest conversation when filtering all projects', () => {
+  const projectOneOlderConv = createConversation('project-one-older', 'project-one', 500, false, false)
+  const projectTwoActiveConv = createConversation('project-two-active', 'project-two', 100, false, true)
+
+  const activeGroups: ConversationGroupPreview[] = [
+    {
+      folder: { conversationCount: 1, id: 'project-one', name: 'Movie tracker', path: 'C:/projects/movie-tracker' },
+      conversations: [projectOneOlderConv],
+    },
+    {
+      folder: { conversationCount: 1, id: 'project-two', name: 'Data science', path: 'C:/projects/data-science' },
+      conversations: [projectTwoActiveConv],
+    },
+  ]
+
+  const rows = buildSidebarThreadRows(activeGroups, ALL_PROJECTS_FILTER_ID)
+  const activeRow = rows.find((r) => r.conversation.isActive)
+  assert.equal(activeRow?.conversation.folderId, 'project-two')
 })
 

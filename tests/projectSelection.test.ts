@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ALL_PROJECTS_FILTER_ID, CHATS_PROJECT_FILTER_ID } from '../src/components/sidebar/sidebarProjectThreads'
-import { resolveProjectSwitchTarget } from '../src/lib/projectSelectionUtils'
+import {
+  findFolderIdForConversation,
+  resolveProjectSwitchTarget,
+  shouldResetProjectFilterToAllProjects,
+} from '../src/lib/projectSelectionUtils'
 import type { ConversationGroupPreview } from '../src/types/chat'
 
 const mockGroups: ConversationGroupPreview[] = [
@@ -86,7 +90,7 @@ test('switching to All Projects preserves active thread even when on a draft thr
   assert.deepEqual(result, { type: 'preserve_active_thread' })
 })
 
-test('switching from Project 1 to Project 2 switches to Project 2 thread', () => {
+test('switching from Project 1 to Project 2 creates a new thread in Project 2', () => {
   const result = resolveProjectSwitchTarget({
     activeConversationId: 'conv-p1-1',
     conversationGroups: mockGroups,
@@ -94,7 +98,7 @@ test('switching from Project 1 to Project 2 switches to Project 2 thread', () =>
     projectId: 'project-2',
   })
 
-  assert.deepEqual(result, { type: 'switch_to_conversation', conversationId: 'conv-p2-1' })
+  assert.deepEqual(result, { type: 'create_new_conversation', folderId: 'project-2' })
 })
 
 test('switching to same project preserves active thread', () => {
@@ -129,3 +133,27 @@ test('switching to Chats creates a new conversation', () => {
 
   assert.deepEqual(result, { type: 'create_new_conversation', folderId: null })
 })
+
+test('shouldResetProjectFilterToAllProjects returns true only when selected filter does not match active thread project', () => {
+  // Matching project filter: do not reset
+  assert.equal(shouldResetProjectFilterToAllProjects('project-1', 'project-1'), false)
+  // All projects filter: do not reset
+  assert.equal(shouldResetProjectFilterToAllProjects(ALL_PROJECTS_FILTER_ID, 'project-1'), false)
+  assert.equal(shouldResetProjectFilterToAllProjects(ALL_PROJECTS_FILTER_ID, null), false)
+  // Matching Chats filter: do not reset
+  assert.equal(shouldResetProjectFilterToAllProjects(CHATS_PROJECT_FILTER_ID, null), false)
+
+  // Mismatched project filter: reset to All projects
+  assert.equal(shouldResetProjectFilterToAllProjects('project-1', 'project-2'), true)
+  assert.equal(shouldResetProjectFilterToAllProjects('project-1', null), true)
+  assert.equal(shouldResetProjectFilterToAllProjects(CHATS_PROJECT_FILTER_ID, 'project-1'), true)
+})
+
+test('findFolderIdForConversation returns folderId for known conversations', () => {
+  assert.equal(findFolderIdForConversation(mockGroups, 'conv-p1-1'), 'project-1')
+  assert.equal(findFolderIdForConversation(mockGroups, 'conv-p2-1'), 'project-2')
+  assert.equal(findFolderIdForConversation(mockGroups, 'conv-chats-1'), null)
+  assert.equal(findFolderIdForConversation(mockGroups, 'unknown-id'), undefined)
+})
+
+

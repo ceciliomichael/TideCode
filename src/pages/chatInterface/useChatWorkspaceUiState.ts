@@ -326,33 +326,37 @@ export function useChatWorkspaceUiState({
       return;
     }
 
-    const fileTabs = workspaceFileTabsRef.current.filter(
-      (tab): tab is WorkspaceFileTab => tab.kind === "file",
+    const targetRelativePaths = Array.from(
+      new Set(
+        workspaceFileTabsRef.current
+          .filter((tab) => tab.kind === "file" || tab.kind === "markdown-preview")
+          .map((tab) => tab.relativePath),
+      ),
     );
-    if (fileTabs.length === 0) {
+    if (targetRelativePaths.length === 0) {
       return;
     }
 
     const pendingRefreshes = await Promise.all(
-      fileTabs.map(async (tab) => {
-        if (workspaceAutosaveTimeoutsRef.current.has(tab.relativePath)) {
+      targetRelativePaths.map(async (relativePath) => {
+        if (workspaceAutosaveTimeoutsRef.current.has(relativePath)) {
           return null;
         }
 
         try {
           const result = await window.echosphereWorkspace.readFile({
-            relativePath: tab.relativePath,
+            relativePath,
             workspaceRootPath,
           });
 
           return {
-            relativePath: tab.relativePath,
+            relativePath,
             result,
           };
         } catch (error) {
           return {
             error,
-            relativePath: tab.relativePath,
+            relativePath,
           };
         }
       }),
@@ -368,47 +372,47 @@ export function useChatWorkspaceUiState({
           relativePath: string;
           result: Awaited<ReturnType<typeof window.echosphereWorkspace.readFile>>;
         }
-    >()
+    >();
 
     for (const refresh of pendingRefreshes) {
       if (!refresh) {
         continue;
       }
 
-      refreshByPath.set(refresh.relativePath, refresh)
+      refreshByPath.set(refresh.relativePath, refresh);
     }
 
     if (refreshByPath.size === 0) {
-      return
+      return;
     }
 
     const missingRelativePaths = Array.from(refreshByPath.values())
       .filter((refresh): refresh is { error: unknown; relativePath: string } => "error" in refresh)
       .filter((refresh) => isMissingWorkspaceFileError(refresh.error))
-      .map((refresh) => refresh.relativePath)
+      .map((refresh) => refresh.relativePath);
 
     for (const missingRelativePath of missingRelativePaths) {
-      refreshByPath.delete(missingRelativePath)
-      closeWorkspaceTabsByPathPrefix(missingRelativePath)
+      refreshByPath.delete(missingRelativePath);
+      closeWorkspaceTabsByPathPrefix(missingRelativePath);
     }
 
     if (refreshByPath.size === 0) {
-      return
+      return;
     }
 
     setWorkspaceFileTabs((currentTabs) =>
       currentTabs.map((tab) => {
-        if (tab.kind !== "file") {
-          return tab
+        if (tab.kind !== "file" && tab.kind !== "markdown-preview") {
+          return tab;
         }
 
-        const refresh = refreshByPath.get(tab.relativePath)
+        const refresh = refreshByPath.get(tab.relativePath);
         if (!refresh) {
-          return tab
+          return tab;
         }
 
         if ("error" in refresh) {
-          if (tab.status === 'loading') {
+          if (tab.status === "loading") {
             return {
               ...tab,
               errorMessage:
@@ -416,35 +420,54 @@ export function useChatWorkspaceUiState({
                   ? refresh.error.message
                   : "Failed to refresh file.",
               status: "error",
-            }
+            };
           }
           console.warn(`Failed to refresh file: ${tab.relativePath}`, refresh.error);
           return tab;
         }
 
-        const { result } = refresh
-        const normalizedContent = result.content.replace(/\r\n/g, '\n')
-        
-        if (tab.content === normalizedContent || workspaceAutosaveTimeoutsRef.current.has(tab.relativePath)) {
-          return tab
+        const { result } = refresh;
+        const normalizedContent = result.content.replace(/\r\n/g, "\n");
+
+        if (tab.kind === "file") {
+          if (tab.content === normalizedContent || workspaceAutosaveTimeoutsRef.current.has(tab.relativePath)) {
+            return tab;
+          }
+
+          return {
+            ...tab,
+            content: normalizedContent,
+            errorMessage: undefined,
+            originalContent: normalizedContent,
+            fileName: getPathBasename(result.relativePath),
+            isBinary: result.isBinary,
+            isTruncated: result.isTruncated,
+            relativePath: result.relativePath,
+            sizeBytes: result.sizeBytes,
+            status: "ready",
+            tabKey: result.relativePath,
+          };
         }
 
-        return {
-          ...tab,
-          content: normalizedContent,
-          errorMessage: undefined,
-          originalContent: normalizedContent,
-          fileName: getPathBasename(result.relativePath),
-          isBinary: result.isBinary,
-          isTruncated: result.isTruncated,
-          relativePath: result.relativePath,
-          sizeBytes: result.sizeBytes,
-          status: "ready",
-          tabKey: result.relativePath,
+        if (tab.kind === "markdown-preview") {
+          if (tab.content === normalizedContent && tab.status === "ready") {
+            return tab;
+          }
+
+          return {
+            ...tab,
+            content: normalizedContent,
+            errorMessage: undefined,
+            fileName: getPathBasename(result.relativePath),
+            isTruncated: result.isTruncated,
+            status: "ready",
+          };
         }
+
+        return tab;
       }),
-    )
-  }, [activeWorkspacePathRef, closeWorkspaceTabsByPathPrefix, workspaceAutosaveTimeoutsRef])
+    );
+  }, [activeWorkspacePathRef, closeWorkspaceTabsByPathPrefix, workspaceAutosaveTimeoutsRef]);
 
   useEffect(() => {
     const workspaceRootPath = activeWorkspacePath?.trim() ?? ""
@@ -624,7 +647,13 @@ export function useChatWorkspaceUiState({
   );
 
   const openWorkspacePreviewTab = useCallback(
-    (relativePath: string, tabKey: string, kind: 'markdown-preview' | 'svg-preview') => {
+    (
+      relativePath: string,
+      tabKey: string,
+      kind: 'markdown-preview' | 'svg-preview',
+      initialContent = '',
+      initialStatus: 'loading' | 'ready' = 'loading',
+    ) => {
       setIsSidebarOpen(false);
       setIsExplorerOpen(true);
       setIsWorkspaceTabsPanelVisible(true);
@@ -638,7 +667,7 @@ export function useChatWorkspaceUiState({
         }
 
         const newTab = kind === 'markdown-preview'
-          ? { kind, fileName: getPathBasename(relativePath), relativePath, tabKey, content: '', status: 'loading' as const, isTruncated: false }
+          ? { kind, fileName: getPathBasename(relativePath), relativePath, tabKey, content: initialContent, status: initialStatus, isTruncated: false }
           : { kind, fileName: getPathBasename(relativePath), relativePath, tabKey };
 
         return [...currentTabs, newTab];
@@ -655,7 +684,13 @@ export function useChatWorkspaceUiState({
 
       const workspaceRootPath = activeWorkspacePathRef.current;
       const tabKey = createMarkdownPreviewTabKey(relativePath);
-      openWorkspacePreviewTab(relativePath, tabKey, 'markdown-preview');
+      const sourceTab = workspaceFileTabsRef.current.find(
+        (tab): tab is WorkspaceFileTab => tab.kind === 'file' && tab.relativePath === relativePath,
+      );
+      const initialContent = sourceTab ? sourceTab.content : '';
+      const initialStatus = sourceTab && sourceTab.status === 'ready' ? ('ready' as const) : ('loading' as const);
+
+      openWorkspacePreviewTab(relativePath, tabKey, 'markdown-preview', initialContent, initialStatus);
 
       if (!workspaceRootPath) return;
 
@@ -879,15 +914,29 @@ export function useChatWorkspaceUiState({
     }
 
     setWorkspaceFileTabs((currentTabs) =>
-      currentTabs.map((tab) =>
-        tab.kind === "file" && tab.relativePath === relativePath
-          ? {
-              ...tab,
-              content,
-              sizeBytes: new TextEncoder().encode(content).length,
-            }
-          : tab,
-      ),
+      currentTabs.map((tab) => {
+        if (tab.relativePath !== relativePath) {
+          return tab;
+        }
+
+        if (tab.kind === "file") {
+          return {
+            ...tab,
+            content,
+            sizeBytes: new TextEncoder().encode(content).length,
+          };
+        }
+
+        if (tab.kind === "markdown-preview") {
+          return {
+            ...tab,
+            content,
+            status: "ready",
+          };
+        }
+
+        return tab;
+      }),
     );
 
     const pendingAutosaveTimeout = workspaceAutosaveTimeoutsRef.current.get(relativePath);
