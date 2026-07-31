@@ -50,11 +50,12 @@ export function resolveToolInvocationForPresentation(invocation: ToolInvocationT
   }) | null
   const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
   const resultToolName = parsedResult?.metadata?.toolName
+  const wrapperToolId = typeof wrapperArguments?.id === 'string'
+    ? wrapperArguments.id.trim()
+    : extractPartialStringArgument(invocation.argumentsText, 'id')
   const targetToolName = resultToolName && resultToolName !== 'execute_tool'
     ? resultToolName
-    : typeof wrapperArguments?.id === 'string'
-      ? wrapperArguments.id.trim()
-      : null
+    : wrapperToolId
 
   if (!targetToolName) {
     return invocation
@@ -127,14 +128,16 @@ function decodePartialJsonString(input: string) {
   return decodedValue
 }
 
-function extractPartialPath(argumentsText: string) {
-  const pathMatch = argumentsText.match(/"path"\s*:\s*"((?:\\.|[^"])*)/u)
-  if (!pathMatch) {
+function extractPartialStringArgument(argumentsText: string, key: 'id' | 'path') {
+  const argumentMatch = key === 'id'
+    ? argumentsText.match(/"id"\s*:\s*"((?:\\.|[^"])*)/u)
+    : argumentsText.match(/"path"\s*:\s*"((?:\\.|[^"])*)/u)
+  if (!argumentMatch) {
     return null
   }
 
-  const absolutePath = decodePartialJsonString(pathMatch[1]).trim()
-  return absolutePath.length > 0 ? absolutePath : null
+  const argumentValue = decodePartialJsonString(argumentMatch[1]).trim()
+  return argumentValue.length > 0 ? argumentValue : null
 }
 
 function getToolPath(invocation: ToolInvocationTrace) {
@@ -144,7 +147,7 @@ function getToolPath(invocation: ToolInvocationTrace) {
     return argumentsValue.path.trim()
   }
 
-  return extractPartialPath(invocation.argumentsText)
+  return extractPartialStringArgument(invocation.argumentsText, 'path')
 }
 
 function getBasename(absolutePath: string) {
@@ -442,12 +445,14 @@ function getToolVerb(invocation: ToolInvocationTrace) {
 
   if (invocation.toolName === 'execute_tool') {
     const id = parseCompleteToolArguments(invocation.argumentsText)?.id
-    const idText = typeof id === 'string' && id.trim().length > 0 ? id.trim() : 'tool'
+    const idText = typeof id === 'string' && id.trim().length > 0
+      ? id.trim()
+      : extractPartialStringArgument(invocation.argumentsText, 'id')
     return invocation.state === 'running'
-      ? `Running ${idText}`
+      ? idText ? `Executing ${idText}` : 'Preparing tool'
       : invocation.state === 'completed'
-        ? `Completed ${idText}`
-        : `Failed ${idText}`
+        ? idText ? `Completed ${idText}` : 'Tool completed'
+        : idText ? `Failed ${idText}` : 'Tool failed'
   }
 
   if (invocation.toolName === 'list') {
@@ -679,6 +684,9 @@ function getWholeFileChangeSingleChangeTarget(invocation: ToolInvocationTrace) {
 
 export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace): ToolInvocationDisplayEntry[] {
   invocation = resolveToolInvocationForPresentation(invocation)
+  if (invocation.toolName === 'execute_tool' && invocation.state === 'running') {
+    return []
+  }
   if (isFileMutationTool(invocation.toolName) && invocation.state === 'running') {
     return []
   }

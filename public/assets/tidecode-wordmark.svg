@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 120" fill="currentColor">
+  <!-- inherits color from the parent element - style it with your app's
+       existing light/dark text color, no media query needed -->
+  <g transform="translate(10,9) scale(0.78125)" stroke="currentColor" fill="none">
+    <path d="M27,35 L101,35" stroke-width="15" stroke-linecap="round"/>
+    <path d="M64,35 L64,74 C64,92 77,98 95,90" stroke-width="15" stroke-linecap="round"/>
+  </g>
+
+  <text x="130" y="80" font-size="54" letter-spacing="-1"
+        font-family="-apple-system, 'Segoe UI', system-ui, sans-serif">
+    <tspan font-weight="500">Tide</tspan><tspan font-weight="800">Code</tspan>
+  </text>
+</svg>

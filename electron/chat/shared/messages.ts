@@ -10,7 +10,6 @@ export interface BuildChatPromptOptions {
   availableSkillsBlock?: string | null
   includeAssistantReasoningParts?: boolean
   terminalExecutionMode?: AppTerminalExecutionMode
-  userMessageOrdinalOffset?: number
 }
 
 type UserTextPart = {
@@ -92,27 +91,18 @@ export function ensureCurrentExecutionModeContext(
     return nextMessages
   }
 
-  let lastContextUserPosition = -1
   let lastContextMode: AppTerminalExecutionMode | null = null
   for (let position = userMessageIndexes.length - 1; position >= 0; position -= 1) {
     const messageIndex = userMessageIndexes[position]
     const message = nextMessages[messageIndex] as UserModelMessage
     const mode = getExecutionModeFromUserMessage(message)
     if (mode) {
-      lastContextUserPosition = position
       lastContextMode = mode
       break
     }
   }
 
-  const userMessagesSinceContext =
-    lastContextUserPosition < 0
-      ? userMessageIndexes.length
-      : userMessageIndexes.length - lastContextUserPosition - 1
-  const shouldAppend =
-    lastContextMode === null ||
-    lastContextMode !== terminalExecutionMode ||
-    userMessagesSinceContext >= 5
+  const shouldAppend = lastContextMode === null || lastContextMode !== terminalExecutionMode
   if (!shouldAppend) {
     return nextMessages
   }
@@ -388,24 +378,12 @@ export function buildModelMessages(
     availableSkillsBlock: inputOptions?.availableSkillsBlock ?? null,
     includeAssistantReasoningParts: inputOptions?.includeAssistantReasoningParts ?? true,
     terminalExecutionMode: inputOptions?.terminalExecutionMode ?? 'sandbox',
-    userMessageOrdinalOffset: inputOptions?.userMessageOrdinalOffset ?? 0,
   }
-  let userMessageOrdinal = options.userMessageOrdinalOffset
 
   for (const message of inputMessages) {
-    let modelMessage = toModelMessage(message, validToolCallIds, options)
+    const modelMessage = toModelMessage(message, validToolCallIds, options)
     if (!modelMessage) {
       continue
-    }
-
-    if (message.role === 'user' && message.userMessageKind !== 'tool_result') {
-      userMessageOrdinal += 1
-      if ((userMessageOrdinal - 1) % 5 === 0) {
-        modelMessage = appendExecutionModeContext(
-          modelMessage as UserModelMessage,
-          options.terminalExecutionMode,
-        )
-      }
     }
 
     appendModelMessage(messages, modelMessage)

@@ -39,18 +39,19 @@ function createUserMessages(count: number): Message[] {
   }))
 }
 
-test('execution mode context is injected on user messages 1, 6, and 11', () => {
+test('execution mode context is injected once for a stable mode', () => {
   const modelMessages = buildModelMessages(createUserMessages(11), {
     terminalExecutionMode: 'sandbox',
   })
-  const userTexts = modelMessages
+  const messagesWithContext = ensureCurrentExecutionModeContext(modelMessages, 'sandbox')
+  const userTexts = messagesWithContext
     .filter((message) => message.role === 'user')
     .map(getUserMessageText)
   const contextPositions = userTexts
     .map((text, index) => text.includes('<execution_mode_context mode="sandbox">') ? index + 1 : null)
     .filter((position): position is number => position !== null)
 
-  assert.deepEqual(contextPositions, [1, 6, 11])
+  assert.deepEqual(contextPositions, [1])
 })
 
 test('execution mode changes are injected immediately without duplicating the same context', () => {

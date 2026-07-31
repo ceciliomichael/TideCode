@@ -2,6 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { calculateCacheEfficiency, classifyCacheStep } from '../../electron/chat/cache/diagnostics'
 import { normalizeDeepSeekRequestBody } from '../../electron/chat/apiKey/deepSeekWire'
+import {
+  DEEPSEEK_TOOL_RESULT_REPLAY_MAX_BYTES,
+  DEEPSEEK_TOOL_RESULT_TRUNCATION_MARKER,
+  limitDeepSeekToolResultContent,
+} from '../../electron/chat/apiKey/deepSeekToolResultPolicy'
 import { shouldReplayAssistantReasoning } from '../../electron/chat/shared/assistantReasoningPolicy'
 import { buildModelMessages } from '../../electron/chat/shared/messages'
 import type { Message } from '../../src/types/chat'
@@ -67,6 +72,30 @@ test('DeepSeek tool loop remains a byte-identical prefix of the following user t
   const followingPrefix = (followingTurn.messages as unknown[]).slice(0, previousMessages.length)
   assert.equal(JSON.stringify(followingPrefix), JSON.stringify(previousMessages))
   assert.equal(JSON.stringify(followingTurn).includes('private final-turn reasoning'), false)
+})
+
+test('DeepSeek shortens oversized tool results only at the provider wire boundary', () => {
+  const originalToolResult = `head\n${'x'.repeat(30_000)}\ntail`
+  const requestBody = {
+    messages: [
+      { content: 'Inspect the project', role: 'user' },
+      { content: originalToolResult, role: 'tool', tool_call_id: 'call-1' },
+      { content: 'Final answer', role: 'assistant' },
+    ],
+  }
+
+  const normalized = normalizeDeepSeekRequestBody(requestBody)
+  const normalizedMessages = normalized.messages as Array<Record<string, unknown>>
+  const normalizedToolResult = normalizedMessages[1]?.content
+
+  assert.equal(requestBody.messages[1]?.content, originalToolResult)
+  assert.equal(typeof normalizedToolResult, 'string')
+  assert.ok(new TextEncoder().encode(normalizedToolResult as string).byteLength <= DEEPSEEK_TOOL_RESULT_REPLAY_MAX_BYTES)
+  assert.match(normalizedToolResult as string, new RegExp(DEEPSEEK_TOOL_RESULT_TRUNCATION_MARKER.trim(), 'u'))
+  assert.match(normalizedToolResult as string, /head/u)
+  assert.match(normalizedToolResult as string, /tail\s*$/u)
+  assert.equal(limitDeepSeekToolResultContent('short result'), 'short result')
+  assert.equal(normalizedMessages[2]?.content, 'Final answer')
 })
 
 test('cache diagnostics report token-weighted and request-weighted hit rates separately', () => {

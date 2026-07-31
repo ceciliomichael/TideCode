@@ -183,6 +183,43 @@ test('running file mutation invocations stay hidden until completion', () => {
   assert.deepEqual(getToolInvocationDisplayEntries(runningWriteInvocation), [])
 })
 
+test('running dynamic tool invocations use the discovered native presentation', () => {
+  const runningListInvocation: ToolInvocationTrace = {
+    argumentsText: JSON.stringify({
+      args: {},
+      id: 'list',
+    }),
+    id: 'tool-execute-list-running',
+    startedAt: 0,
+    state: 'running',
+    toolName: 'execute_tool',
+  }
+  const runningReadInvocation: ToolInvocationTrace = {
+    argumentsText: '{"id":"read","args":',
+    id: 'tool-execute-read-running',
+    startedAt: 0,
+    state: 'running',
+    toolName: 'execute_tool',
+  }
+
+  assert.equal(getToolInvocationHeaderLabel(runningListInvocation), 'Listing')
+  assert.equal(getToolInvocationHeaderLabel(runningReadInvocation), 'Reading')
+  assert.doesNotMatch(getToolInvocationHeaderLabel(runningListInvocation), /Running tool/u)
+})
+
+test('unresolved running dynamic tool invocations stay hidden instead of showing a transport label', () => {
+  const invocation: ToolInvocationTrace = {
+    argumentsText: '{"args":{',
+    id: 'tool-execute-unknown-running',
+    startedAt: 0,
+    state: 'running',
+    toolName: 'execute_tool',
+  }
+
+  assert.equal(getToolInvocationHeaderLabel(invocation), 'Preparing tool')
+  assert.deepEqual(getToolInvocationDisplayEntries(invocation), [])
+})
+
 test('multi-file apply_patch invocations stay hidden until they complete', () => {
   const invocation: ToolInvocationTrace = {
     argumentsText: JSON.stringify({

@@ -29,8 +29,8 @@ interface StructuredToolResultEnvelope {
 const SKILL_LOCATION_PREAMBLE_PATTERN =
   /^Skill file:[^\r\n]*\r?\nSkill directory:[^\r\n]*\r?\nResolve relative resource and script paths from the skill directory above\.(?:\r?\n){1,2}/u
 
-const MODEL_TOOL_RESULT_MAX_BYTES = 32 * 1024
-const MODEL_TOOL_RESULT_TRUNCATION_MARKER =
+export const DEFAULT_MODEL_TOOL_RESULT_MAX_BYTES = 32 * 1024
+export const DEFAULT_MODEL_TOOL_RESULT_TRUNCATION_MARKER =
   '\n\n[Tool result shortened for context efficiency. Use a narrower path, query, or read range to retrieve the omitted section.]\n\n'
 const UTF8_ENCODER = new TextEncoder()
 
@@ -68,20 +68,24 @@ function takeUtf8Suffix(value: string, maxBytes: number) {
   return value.slice(startIndex)
 }
 
-function limitModelToolResult(value: string) {
-  if (utf8ByteLength(value) <= MODEL_TOOL_RESULT_MAX_BYTES) {
+export function limitModelToolResultForContext(
+  value: string,
+  maxBytes = DEFAULT_MODEL_TOOL_RESULT_MAX_BYTES,
+  marker = DEFAULT_MODEL_TOOL_RESULT_TRUNCATION_MARKER,
+) {
+  if (utf8ByteLength(value) <= maxBytes) {
     return value
   }
 
-  const markerBytes = utf8ByteLength(MODEL_TOOL_RESULT_TRUNCATION_MARKER)
-  const contentBudget = MODEL_TOOL_RESULT_MAX_BYTES - markerBytes
+  const markerBytes = utf8ByteLength(marker)
+  const contentBudget = maxBytes - markerBytes
   if (contentBudget <= 0) {
-    return value.slice(0, MODEL_TOOL_RESULT_MAX_BYTES)
+    return takeUtf8Prefix(value, maxBytes)
   }
 
   const headBudget = Math.floor(contentBudget * 0.65)
   const tailBudget = contentBudget - headBudget
-  return `${takeUtf8Prefix(value, headBudget)}${MODEL_TOOL_RESULT_TRUNCATION_MARKER}${takeUtf8Suffix(value, tailBudget)}`
+  return `${takeUtf8Prefix(value, headBudget)}${marker}${takeUtf8Suffix(value, tailBudget)}`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -237,7 +241,7 @@ export function getToolResultModelContent(content: string) {
     modelContent = content.trim()
   }
 
-  return limitModelToolResult(modelContent)
+  return limitModelToolResultForContext(modelContent)
 }
 
 export function getToolResultDisplayBody(toolName: string, body: string) {
