@@ -391,7 +391,7 @@ function SourceControlPanelContent({
     [hasWorkspacePath, normalizedWorkspacePath],
   )
 
-  const refreshHistory = useCallback(async () => {
+  const refreshHistory = useCallback(async (options?: { silent?: boolean }) => {
     if (!hasWorkspacePath) {
       setHistoryEntries([])
       setHeadHash(null)
@@ -404,15 +404,23 @@ function SourceControlPanelContent({
       return
     }
 
-    setIsLoadingHistory(true)
     setHistoryError(null)
+    if (!options?.silent) {
+      setIsLoadingHistory(true)
+    }
     try {
       await loadHistoryPage(0, false)
     } catch (error) {
-      // Keep the last known history visible during a background refresh failure.
+      if (!options?.silent) {
+        setHistoryEntries([])
+        setHeadHash(null)
+        setHasMoreHistory(false)
+      }
       setHistoryError(error instanceof Error ? error.message : 'Failed to load git history.')
     } finally {
-      setIsLoadingHistory(false)
+      if (!options?.silent) {
+        setIsLoadingHistory(false)
+      }
     }
   }, [hasWorkspacePath, loadHistoryPage])
 
@@ -482,7 +490,7 @@ function SourceControlPanelContent({
   useEffect(() => {
     const handleFocus = () => {
       if (isOpen) {
-        void refreshHistory()
+        void refreshHistory({ silent: true })
       }
     }
     window.addEventListener('focus', handleFocus)
@@ -494,7 +502,7 @@ function SourceControlPanelContent({
     previousPendingCommitOperationRef.current = pendingCommitOperation
 
     if (previous !== null && pendingCommitOperation === null) {
-      void refreshHistory()
+      void refreshHistory({ silent: true })
     }
   }, [pendingCommitOperation, refreshHistory])
 
@@ -580,7 +588,7 @@ function SourceControlPanelContent({
       setOperationNotice({ kind: 'success', message: result.message })
       await onRefreshAll()
       if (action !== 'push') {
-        await refreshHistory()
+        await refreshHistory({ silent: true })
       }
       return true
     } catch (error) {
@@ -608,7 +616,7 @@ function SourceControlPanelContent({
     const pendingRefreshOperation = beginSourceControlSyncOperation(normalizedWorkspacePath, 'refresh')
     setOperationNotice(null)
     try {
-      await Promise.all([onRefreshAll(), refreshHistory()])
+      await Promise.all([onRefreshAll(), refreshHistory({ silent: true })])
       setOperationNotice({ kind: 'success', message: 'Source control refreshed.' })
     } catch (error) {
       setOperationNotice({

@@ -199,7 +199,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
           {...props}
           href={href}
           onClick={(e) => handleMarkdownLinkClick(e, href, relativePath)}
-          className="text-foreground underline decoration-border underline-offset-2 transition-colors hover:decoration-foreground cursor-pointer [&_code]:mx-0 [&_code]:px-0 [&_code]:py-0 [&_code]:border-0 [&_code]:bg-transparent [&_code]:text-inherit"
+          className="text-foreground underline decoration-border underline-offset-2 transition-colors hover:decoration-foreground cursor-pointer [&_code]:mx-0 [&_code]:text-inherit [&_code]:decoration-inherit"
         >
           {children}
         </a>

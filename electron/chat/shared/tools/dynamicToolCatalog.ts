@@ -119,7 +119,11 @@ function buildToolGuidance(id: string, tags: readonly string[]): DynamicToolGuid
     edit: {
       safety: ['Keep the replacement target exact and verify the resulting file.'],
       whenToUse: 'Use for one precise replacement in an existing file.',
-      workflow: ['Read the current file first, then replace one exact target block.'],
+      workflow: [
+        'Read the current file first and copy the exact current block into targetContent.',
+        'Call edit with path, targetContent, and replacementContent. startLine and endLine are optional search bounds, but must be provided together when used.',
+        'If the target is ambiguous, narrow the line range or include a larger unique block; never guess which occurrence to change.',
+      ],
     },
     skill: {
       safety: ['Load only the exact enabled skill needed for the task.'],

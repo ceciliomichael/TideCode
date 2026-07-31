@@ -868,21 +868,24 @@ export async function createApplyPatchToolResult(context: WorkspaceToolContext, 
   )
 }
 
-export interface EditChunk {
+export interface EditOperationInput {
   targetContent: string
   replacementContent: string
-  startLine: number
-  endLine: number
+  startLine?: number
+  endLine?: number
   allowMultiple: boolean
 }
 
+export interface EditChunk extends EditOperationInput {}
+
 export interface EditInput {
   path: string
-  targetContent: string
-  replacementContent: string
-  startLine: number
-  endLine: number
-  allowMultiple: boolean
+  targetContent?: string
+  replacementContent?: string
+  startLine?: number
+  endLine?: number
+  allowMultiple?: boolean
+  edits?: readonly EditOperationInput[]
 }
 
 interface ResolvedTextReplacement {
@@ -897,34 +900,38 @@ function getLineRangeOffsets(
   chunk: EditChunk,
   displayPath: string,
 ): { endOffset: number; startOffset: number } {
+  const startLine = chunk.startLine
+  const endLine = chunk.endLine
   const lines = fileContent.split('\n')
   const totalLines = lines.length
 
   if (
-    !Number.isInteger(chunk.startLine) ||
-    !Number.isInteger(chunk.endLine) ||
-    chunk.startLine < 1 ||
-    chunk.endLine < chunk.startLine ||
-    chunk.endLine > totalLines
+    typeof startLine !== 'number' ||
+    typeof endLine !== 'number' ||
+    !Number.isInteger(startLine) ||
+    !Number.isInteger(endLine) ||
+    startLine < 1 ||
+    endLine < startLine ||
+    endLine > totalLines
   ) {
     throw new Error(
-      `Invalid line range [${chunk.startLine}, ${chunk.endLine}] for file "${displayPath}" (${totalLines} lines total).`,
+      `Invalid line range [${startLine}, ${endLine}] for file "${displayPath}" (${totalLines} lines total).`,
     )
   }
 
   let startOffset = 0
-  for (let lineIndex = 0; lineIndex < chunk.startLine - 1; lineIndex += 1) {
+  for (let lineIndex = 0; lineIndex < startLine - 1; lineIndex += 1) {
     startOffset += lines[lineIndex].length + 1
   }
 
   let endOffset = startOffset
   for (
-    let lineIndex = chunk.startLine - 1;
-    lineIndex < chunk.endLine;
+    let lineIndex = startLine - 1;
+    lineIndex < endLine;
     lineIndex += 1
   ) {
     endOffset += lines[lineIndex].length
-    if (lineIndex < chunk.endLine - 1) {
+    if (lineIndex < endLine - 1) {
       endOffset += 1
     }
   }
@@ -943,25 +950,33 @@ function resolveChunkReplacements(
   }
 
   let matchOffsets: TextMatch[] = []
-  let usedWholeFileFallback = false
+  const hasStartLine = chunk.startLine !== undefined
+  const hasEndLine = chunk.endLine !== undefined
+  if (hasStartLine !== hasEndLine) {
+    throw new Error(`Replacement chunk ${chunkIndex + 1} must provide both startLine and endLine when using a line range.`)
+  }
 
-  try {
-    const range = getLineRangeOffsets(fileContent, chunk, displayPath)
-    const region = fileContent.slice(range.startOffset, range.endOffset)
-    matchOffsets = findExactMatchOffsets(
-      region,
-      chunk.targetContent,
-      range.startOffset,
-    )
-    if (matchOffsets.length === 0) {
-      matchOffsets = findIndentationTolerantMatchOffsets(
+  let usedWholeFileFallback = !hasStartLine
+
+  if (hasStartLine && hasEndLine) {
+    try {
+      const range = getLineRangeOffsets(fileContent, chunk, displayPath)
+      const region = fileContent.slice(range.startOffset, range.endOffset)
+      matchOffsets = findExactMatchOffsets(
         region,
         chunk.targetContent,
         range.startOffset,
       )
+      if (matchOffsets.length === 0) {
+        matchOffsets = findIndentationTolerantMatchOffsets(
+          region,
+          chunk.targetContent,
+          range.startOffset,
+        )
+      }
+    } catch {
+      // A stale line range can recover below when the exact target is unique.
     }
-  } catch {
-    // A stale line range can recover below when the exact target is unique.
   }
 
   if (matchOffsets.length === 0) {
@@ -1051,6 +1066,7 @@ export async function createEditToolResult(
   context: WorkspaceToolContext,
   input: EditInput,
 ): Promise<AgentToolExecutionResult> {
+  const chunks = normalizeEditChunks(input)
   const target = resolveReadableTargetPath(
     context.workspaceRootPath,
     input.path,
@@ -1063,34 +1079,27 @@ export async function createEditToolResult(
   }
 
   const normalizedOld = normalizeTextMutationContent(oldContent)
-  const chunk: EditChunk = {
-    allowMultiple: input.allowMultiple,
-    endLine: input.endLine,
-    replacementContent: normalizeTextMutationContent(input.replacementContent),
-    startLine: input.startLine,
-    targetContent: normalizeTextMutationContent(input.targetContent),
-  }
 
   const session = getActiveFileEditSession(target.absolutePath)
   let replacements: ResolvedTextReplacement[] = []
   let usedSessionFallback = false
 
   try {
-    replacements = resolveChunkReplacements(
+    replacements = chunks.flatMap((chunk, index) => resolveChunkReplacements(
       normalizedOld,
       chunk,
       target.displayPath,
-      session ? session.replacements.length : 0,
-    )
+      (session?.replacements.length ?? 0) + index,
+    ))
   } catch (diskError) {
     if (session) {
       try {
-        replacements = resolveChunkReplacements(
+        replacements = chunks.flatMap((chunk, index) => resolveChunkReplacements(
           session.baseContent,
           chunk,
           target.displayPath,
-          session.replacements.length,
-        )
+          session.replacements.length + index,
+        ))
         usedSessionFallback = true
       } catch {
         throw diskError
@@ -1143,12 +1152,64 @@ export async function createEditToolResult(
   ])
 
   return buildFileChangeResult(
-    `Edited 1 file`,
+    `Edited 1 file${chunks.length > 1 ? ` in ${chunks.length} blocks` : ''}`,
     fileChanges,
     'edit',
     target.displayPath,
     'File content replaced successfully.',
   )
+}
+
+function normalizeEditChunks(input: EditInput): EditChunk[] {
+  if (input.edits !== undefined) {
+    if (input.edits.length === 0 || input.edits.length > 20) {
+      throw new Error('Edit requires between 1 and 20 edit operations.')
+    }
+
+    return input.edits.map((operation, index) => {
+      if (typeof operation.targetContent !== 'string' || operation.targetContent.length === 0) {
+        throw new Error(`Edit operation ${index + 1} requires non-empty targetContent.`)
+      }
+      if (typeof operation.replacementContent !== 'string') {
+        throw new Error(`Edit operation ${index + 1} requires replacementContent.`)
+      }
+      if (typeof operation.allowMultiple !== 'boolean') {
+        throw new Error(`Edit operation ${index + 1} requires boolean allowMultiple.`)
+      }
+      if ((operation.startLine === undefined) !== (operation.endLine === undefined)) {
+        throw new Error(`Edit operation ${index + 1} must provide both startLine and endLine when using a line range.`)
+      }
+
+      return {
+        allowMultiple: operation.allowMultiple,
+        endLine: operation.endLine,
+        replacementContent: normalizeTextMutationContent(operation.replacementContent),
+        startLine: operation.startLine,
+        targetContent: normalizeTextMutationContent(operation.targetContent),
+      }
+    })
+  }
+
+  if (typeof input.targetContent !== 'string' || input.targetContent.length === 0) {
+    throw new Error('Edit requires non-empty targetContent copied from the latest read result.')
+  }
+  if (typeof input.replacementContent !== 'string') {
+    throw new Error('Edit requires replacementContent. Use an empty string when deleting the target.')
+  }
+  if (typeof input.allowMultiple !== 'boolean') {
+    throw new Error('Edit requires boolean allowMultiple.')
+  }
+  if ((input.startLine === undefined) !== (input.endLine === undefined)) {
+    throw new Error('Edit requires both startLine and endLine when using a line range.')
+  }
+
+  return [{
+    allowMultiple: input.allowMultiple,
+    endLine: input.endLine,
+    replacementContent: normalizeTextMutationContent(input.replacementContent),
+    startLine: input.startLine,
+    targetContent: normalizeTextMutationContent(input.targetContent),
+  }]
 }
 
 

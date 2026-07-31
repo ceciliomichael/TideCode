@@ -26,20 +26,22 @@ function createCatalogEntry(
   description: string,
   options: {
     aliases?: string[]
+    inputSchema?: Record<string, unknown>
     searchHints?: string[]
     tags?: string[]
   } = {},
 ): DynamicToolCatalogEntry {
+  const inputSchema = options.inputSchema ?? {
+    additionalProperties: false,
+    properties: {
+      path: { type: 'string' },
+    },
+    required: ['path'],
+    type: 'object',
+  }
   const nativeTool = tool({
     description,
-    inputSchema: jsonSchema({
-      additionalProperties: false,
-      properties: {
-        path: { type: 'string' },
-      },
-      required: ['path'],
-      type: 'object',
-    }),
+    inputSchema: jsonSchema(inputSchema),
     execute: async () => ({
       body: `executed ${id}`,
       status: 'success' as const,
@@ -57,12 +59,7 @@ function createCatalogEntry(
       workflow: [],
     },
     id,
-    inputSchema: {
-      additionalProperties: false,
-      properties: { path: { type: 'string' } },
-      required: ['path'],
-      type: 'object',
-    },
+    inputSchema,
     name: id,
     nativeTool,
     searchHints: options.searchHints ?? [],
@@ -296,6 +293,58 @@ test('execute_tool validates nested arguments and preserves native result metada
     argumentsValue: { path: 'example.ts' },
     toolName: 'read_file',
   })
+})
+
+test('edit argument errors explain how to recover without exposing a schema dump', async () => {
+  const tools = await createDynamicToolSet([
+    createCatalogEntry('edit', 'Edit one exact block in a file', {
+      inputSchema: {
+        oneOf: [
+          {
+            additionalProperties: false,
+            properties: {
+              path: { type: 'string' },
+              replacementContent: { type: 'string' },
+              targetContent: { minLength: 1, type: 'string' },
+            },
+            required: ['path', 'targetContent', 'replacementContent'],
+            type: 'object',
+          },
+          {
+            additionalProperties: false,
+            properties: {
+              edits: { minItems: 1, type: 'array' },
+              path: { type: 'string' },
+            },
+            required: ['path', 'edits'],
+            type: 'object',
+          },
+        ],
+        type: 'object',
+      },
+    }),
+  ])
+  const execute = tools.execute_tool.execute
+  assert.ok(execute)
+
+  const result = await execute(
+    { args: { path: 'src/example.ts', replacementContent: 'next' }, id: 'edit' },
+    { abortSignal: undefined, context: {}, messages: [], toolCallId: 'edit-invalid-1' },
+  )
+
+  assert.equal(result.status, 'error')
+  const body = JSON.parse(result.body ?? '{}') as {
+    changed?: boolean
+    code?: string
+    missing?: string[]
+    nextStep?: string
+    schema?: unknown
+  }
+  assert.equal(body.code, 'INVALID_ARGUMENTS')
+  assert.deepEqual(body.missing, ['targetContent'])
+  assert.equal(body.changed, false)
+  assert.match(body.nextStep ?? '', /Read the file.*targetContent/u)
+  assert.equal(body.schema, undefined)
 })
 
 test('dynamic invocation projection delegates presentation to the discovered native tool', () => {

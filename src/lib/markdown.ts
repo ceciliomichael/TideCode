@@ -71,7 +71,7 @@ export function preprocessMarkdown(markdown: string): string {
       const [pathPart, anchorPart] = cleanTarget.split('#')
       const basename = pathPart.split(/[\/\\]/).pop() || pathPart
       const displayText = anchorPart ? `${basename}#${anchorPart}` : basename
-      return `[${displayText}](${cleanTarget})`
+      return `[\`${displayText}\`](${cleanTarget})`
     })
 
     if (processedLine.trim().startsWith('|') && processedLine.includes('`')) {

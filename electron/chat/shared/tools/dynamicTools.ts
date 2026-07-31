@@ -293,11 +293,29 @@ export async function createDynamicToolSet(catalogEntries: readonly DynamicToolC
           return getUnknownToolErrorResult(catalogEntries, input.id)
         }
 
-        const validationError = getFirstValidationError(validateJsonSchema(input.args, entry.inputSchema))
+        const validationIssues = validateJsonSchema(input.args, entry.inputSchema)
+        const validationError = getFirstValidationError(validationIssues)
         if (validationError) {
+          const missingArguments = validationIssues
+            .filter((issue) => issue.message === 'is required')
+            .map((issue) => issue.path.replace(/^\$\./u, ''))
+          const editRepair = entry.id === 'edit'
+            ? {
+                changed: false,
+                nextStep: 'Read the file at args.path first, then retry edit with targetContent copied exactly from the latest read result. Do not guess the target text.',
+                retryable: true,
+              }
+            : {}
           return errorResult(
             `Invalid arguments for tool "${entry.id}".`,
-            jsonBody({ error: validationError, id: entry.id, schema: entry.inputSchema }),
+            jsonBody({
+              code: 'INVALID_ARGUMENTS',
+              error: validationError,
+              id: entry.id,
+              ...(missingArguments.length > 0 ? { missing: missingArguments } : {}),
+              ...editRepair,
+              ...(entry.id === 'edit' ? {} : { schema: entry.inputSchema }),
+            }),
             { dynamicInvocation: createInvocationMetadata(entry.id, input.args) },
           )
         }

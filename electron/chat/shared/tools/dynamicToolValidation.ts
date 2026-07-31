@@ -71,17 +71,25 @@ function validateAgainstSchema(
       continue
     }
 
+    const branchIssues: JsonSchemaValidationIssue[][] = []
     const branchMatches = branches.some((branch) => {
       if (!isRecord(branch)) {
         return true
       }
 
-      const branchIssues: JsonSchemaValidationIssue[] = []
-      validateAgainstSchema(value, branch, path, branchIssues, depth + 1)
-      return branchIssues.length === 0
+      const issuesForBranch: JsonSchemaValidationIssue[] = []
+      validateAgainstSchema(value, branch, path, issuesForBranch, depth + 1)
+      branchIssues.push(issuesForBranch)
+      return issuesForBranch.length === 0
     })
     if (!branchMatches) {
-      issues.push({ message: `must match one of the allowed schemas`, path })
+      const mostLikelyBranch = branchIssues
+        .sort((left, right) => left.length - right.length)[0]
+      if (mostLikelyBranch && mostLikelyBranch.length > 0) {
+        issues.push(...mostLikelyBranch)
+      } else {
+        issues.push({ message: `must match one of the allowed schemas`, path })
+      }
       return
     }
   }

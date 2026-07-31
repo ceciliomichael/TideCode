@@ -40,6 +40,124 @@ test('replace supports relative path in path parameter', async () => {
     await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
   }
 })
+
+test('edit finds a unique target without line bounds', async () => {
+  const fixture = await createFixture('const value = true\n')
+
+  try {
+    const result = await createEditToolResult(fixture.context, {
+      allowMultiple: false,
+      path: fixture.targetPath,
+      replacementContent: 'const value = false',
+      targetContent: 'const value = true',
+    })
+
+    assert.equal(result.status, 'success')
+    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), 'const value = false\n')
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('edit applies multiple independent blocks atomically', async () => {
+  const originalContent = 'const first = true\nconst second = true\n'
+  const fixture = await createFixture(originalContent)
+
+  try {
+    const result = await createEditToolResult(fixture.context, {
+      edits: [
+        {
+          allowMultiple: false,
+          replacementContent: 'const first = false',
+          targetContent: 'const first = true',
+        },
+        {
+          allowMultiple: false,
+          replacementContent: 'const second = false',
+          targetContent: 'const second = true',
+        },
+      ],
+      path: fixture.targetPath,
+    })
+
+    assert.equal(result.status, 'success')
+    assert.equal(
+      await fs.readFile(fixture.targetPath, 'utf8'),
+      'const first = false\nconst second = false\n',
+    )
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('edit keeps a batch atomic when one target is missing', async () => {
+  const originalContent = 'const first = true\nconst second = true\n'
+  const fixture = await createFixture(originalContent)
+
+  try {
+    await assert.rejects(
+      createEditToolResult(fixture.context, {
+        edits: [
+          {
+            allowMultiple: false,
+            replacementContent: 'const first = false',
+            targetContent: 'const first = true',
+          },
+          {
+            allowMultiple: false,
+            replacementContent: 'const missing = false',
+            targetContent: 'const missing = true',
+          },
+        ],
+        path: fixture.targetPath,
+      }),
+      /Target content not found/u,
+    )
+    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('edit rejects ambiguous targets without line bounds', async () => {
+  const originalContent = 'const value = true\nconst middle = 1\nconst value = true\n'
+  const fixture = await createFixture(originalContent)
+
+  try {
+    await assert.rejects(
+      createEditToolResult(fixture.context, {
+        allowMultiple: false,
+        path: fixture.targetPath,
+        replacementContent: 'const value = false',
+        targetContent: 'const value = true',
+      }),
+      /Read the file and use a line range that contains one match/u,
+    )
+    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('edit requires line bounds together when either bound is provided', async () => {
+  const fixture = await createFixture('const value = true\n')
+
+  try {
+    await assert.rejects(
+      createEditToolResult(fixture.context, {
+        allowMultiple: false,
+        path: fixture.targetPath,
+        replacementContent: 'const value = false',
+        startLine: 1,
+        targetContent: 'const value = true',
+      }),
+      /must provide both startLine and endLine/u,
+    )
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('replace resolves back-to-back parallel tool calls targeting different regions', async () => {
   const originalContent = ['export const first = 1', 'export const middle = true', 'export const last = 3', ''].join('\n')
   const fixture = await createFixture(originalContent)
