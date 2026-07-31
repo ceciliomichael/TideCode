@@ -16,6 +16,7 @@ const SHARED_PROMPT_DIRECTORY = {
   directory: 'shared',
   wrapperTag: 'instruction_extensions',
 } as const
+const SHARED_TOOLING_PROMPT_FILE = 'tooling.md'
 const SHARED_TOOLING_PROMPT_PATH = 'shared/tooling.md'
 
 function readPromptFile(relativePath: string) {
@@ -43,7 +44,11 @@ function readPromptDirectory(relativeDirectory: string) {
     }
 
     const promptFiles = readdirSync(candidateDirectory, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && SHARED_PROMPT_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))
+      .filter((entry) => (
+        entry.isFile() &&
+        entry.name !== SHARED_TOOLING_PROMPT_FILE &&
+        SHARED_PROMPT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())
+      ))
       .map((entry) => entry.name)
       .sort((left, right) => left.localeCompare(right))
 

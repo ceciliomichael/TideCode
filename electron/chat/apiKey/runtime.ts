@@ -12,6 +12,7 @@ import type {
   SubmitToolDecisionResult,
 } from '../../../src/types/chat'
 import { compressChatHistory } from '../shared/compression'
+import { shouldReplayAssistantReasoning } from '../shared/assistantReasoningPolicy'
 import { estimateToolEnabledContextUsage, runToolEnabledChatStream } from '../shared/runtime'
 import { createApiKeyChatClient } from './client'
 import { readApiKeyChatProviderConfig } from './config'
@@ -161,7 +162,7 @@ async function runApiKeyChatStream(
           prepareStep: streamInput.prepareStep,
         }),
       onSettled,
-      promptOptions: { includeAssistantReasoningParts: input.providerId === 'openai' },
+      promptOptions: { includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId) },
       startInput: input,
       streamId,
       webContents,

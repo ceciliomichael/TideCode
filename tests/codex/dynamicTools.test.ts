@@ -9,6 +9,7 @@ import {
 } from '../../electron/chat/shared/tools/dynamicTools'
 import { repairDirectDynamicToolCall } from '../../electron/chat/shared/tools/dynamicToolRepair'
 import {
+  DYNAMIC_SCHEMA_BATCH_SIZE,
   DYNAMIC_TOOL_NAMES,
   type DynamicToolCatalogEntry,
 } from '../../electron/chat/shared/tools/dynamicToolContracts'
@@ -133,6 +134,43 @@ test('schema fetch returns tool-specific guidance only after discovery', async (
   ])
 })
 
+test('schema fetch batches independent tools in request order and reports missing ids', async () => {
+  const tools = await createDynamicToolSet([
+    createCatalogEntry('read_file', 'Read file contents'),
+    createCatalogEntry('write_file', 'Write file contents'),
+  ])
+  const getSchema = tools.get_tool_schema.execute
+  assert.ok(getSchema)
+
+  const result = await getSchema({ ids: ['write_file', 'missing_tool', 'read_file'] })
+  assert.equal(result.status, 'success')
+
+  const body = JSON.parse(result.body ?? '{}') as {
+    results?: Array<{
+      error?: string
+      id: string
+      status: string
+    }>
+  }
+  assert.deepEqual(body.results?.map((entry) => entry.id), ['write_file', 'missing_tool', 'read_file'])
+  assert.deepEqual(body.results?.map((entry) => entry.status), ['success', 'error', 'success'])
+  assert.match(body.results?.[1]?.error ?? '', /missing_tool/u)
+})
+
+test('schema fetch rejects empty or oversized batches', async () => {
+  const tools = await createDynamicToolSet([createCatalogEntry('read_file', 'Read file contents')])
+  const getSchema = tools.get_tool_schema.execute
+  assert.ok(getSchema)
+
+  const empty = await getSchema({ ids: [] })
+  assert.equal(empty.status, 'error')
+  assert.match(empty.body ?? '', /non-empty array/u)
+
+  const oversized = await getSchema({ ids: Array.from({ length: DYNAMIC_SCHEMA_BATCH_SIZE + 1 }, (_, index) => `tool_${index}`) })
+  assert.equal(oversized.status, 'error')
+  assert.match(oversized.body ?? '', /max_batch_size/u)
+})
+
 test('dynamic search ranks semantic matches, tolerates typos, and paginates ten per page', () => {
   const catalog = [
     createCatalogEntry('read_file', 'Read and inspect UTF-8 file contents'),
@@ -246,6 +284,10 @@ test('meta-tool presentation uses the user-facing discovery language', () => {
   assert.equal(getToolInvocationHeaderLabel(makeInvocation('list_tools', { query: 'read' })), 'Searched read in tool set')
   assert.equal(getToolInvocationHeaderLabel(makeInvocation('list_tools', {})), 'Listed tool set')
   assert.equal(getToolInvocationHeaderLabel(getInvocation('get_tool_schema', { id: 'read' })), 'Fetched schema for read')
+  assert.equal(
+    getToolInvocationHeaderLabel(getInvocation('get_tool_schema', { ids: ['read', 'write'] })),
+    'Fetched schemas for read, write',
+  )
 })
 
 test('private catalog changes do not change the provider-facing prompt fingerprint', async () => {

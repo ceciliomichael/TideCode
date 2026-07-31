@@ -18,6 +18,7 @@ interface ToolArgumentsValue {
   session_id?: unknown
   name?: unknown
   id?: unknown
+  ids?: unknown
   args?: unknown
 }
 
@@ -427,13 +428,21 @@ function getToolVerb(invocation: ToolInvocationTrace) {
   }
 
   if (invocation.toolName === 'get_tool_schema') {
-    const id = parseCompleteToolArguments(invocation.argumentsText)?.id
-    const idText = typeof id === 'string' && id.trim().length > 0 ? id.trim() : 'tool'
+    const argumentsValue = parseCompleteToolArguments(invocation.argumentsText)
+    const ids = Array.isArray(argumentsValue?.ids)
+      ? argumentsValue.ids.filter((id): id is string => typeof id === 'string' && id.trim().length > 0).map((id) => id.trim())
+      : []
+    const id = typeof argumentsValue?.id === 'string' && argumentsValue.id.trim().length > 0
+      ? argumentsValue.id.trim()
+      : null
+    const targetText = ids.length > 0 ? ids.join(', ') : id ?? 'tool'
+    const targetCount = ids.length > 0 ? ids.length : id ? 1 : 0
+    const schemaNoun = targetCount === 1 ? 'schema' : 'schemas'
     return invocation.state === 'running'
-      ? `Fetching schema for ${idText}`
+      ? `Fetching ${schemaNoun} for ${targetText}`
       : invocation.state === 'completed'
-        ? `Fetched schema for ${idText}`
-        : `Fetch schema failed for ${idText}`
+        ? `Fetched ${schemaNoun} for ${targetText}`
+        : `Fetch ${schemaNoun} failed for ${targetText}`
   }
 
   if (invocation.toolName === 'execute_tool') {

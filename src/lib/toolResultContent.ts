@@ -29,6 +29,61 @@ interface StructuredToolResultEnvelope {
 const SKILL_LOCATION_PREAMBLE_PATTERN =
   /^Skill file:[^\r\n]*\r?\nSkill directory:[^\r\n]*\r?\nResolve relative resource and script paths from the skill directory above\.(?:\r?\n){1,2}/u
 
+const MODEL_TOOL_RESULT_MAX_BYTES = 32 * 1024
+const MODEL_TOOL_RESULT_TRUNCATION_MARKER =
+  '\n\n[Tool result shortened for context efficiency. Use a narrower path, query, or read range to retrieve the omitted section.]\n\n'
+const UTF8_ENCODER = new TextEncoder()
+
+function utf8ByteLength(value: string) {
+  return UTF8_ENCODER.encode(value).byteLength
+}
+
+function takeUtf8Prefix(value: string, maxBytes: number) {
+  let byteLength = 0
+  let endIndex = 0
+  for (const character of value) {
+    const characterBytes = utf8ByteLength(character)
+    if (byteLength + characterBytes > maxBytes) {
+      break
+    }
+    byteLength += characterBytes
+    endIndex += character.length
+  }
+  return value.slice(0, endIndex)
+}
+
+function takeUtf8Suffix(value: string, maxBytes: number) {
+  let byteLength = 0
+  let startIndex = value.length
+  const characters = Array.from(value)
+  for (let index = characters.length - 1; index >= 0; index -= 1) {
+    const character = characters[index]
+    const characterBytes = utf8ByteLength(character)
+    if (byteLength + characterBytes > maxBytes) {
+      break
+    }
+    byteLength += characterBytes
+    startIndex -= character.length
+  }
+  return value.slice(startIndex)
+}
+
+function limitModelToolResult(value: string) {
+  if (utf8ByteLength(value) <= MODEL_TOOL_RESULT_MAX_BYTES) {
+    return value
+  }
+
+  const markerBytes = utf8ByteLength(MODEL_TOOL_RESULT_TRUNCATION_MARKER)
+  const contentBudget = MODEL_TOOL_RESULT_MAX_BYTES - markerBytes
+  if (contentBudget <= 0) {
+    return value.slice(0, MODEL_TOOL_RESULT_MAX_BYTES)
+  }
+
+  const headBudget = Math.floor(contentBudget * 0.65)
+  const tailBudget = contentBudget - headBudget
+  return `${takeUtf8Prefix(value, headBudget)}${MODEL_TOOL_RESULT_TRUNCATION_MARKER}${takeUtf8Suffix(value, tailBudget)}`
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
@@ -169,23 +224,20 @@ export function parseStructuredToolResultContent(content: string): ParsedStructu
 export function getToolResultModelContent(content: string) {
   // This is the final text that gets replayed to the model when history is rebuilt.
   const parsedContent = parseStructuredToolResultContent(content)
+  let modelContent: string
   if (parsedContent.metadata?.toolName === 'read') {
-    return formatReadToolResultBody(parsedContent.metadata, parsedContent.body)
+    modelContent = formatReadToolResultBody(parsedContent.metadata, parsedContent.body)
+  } else if (parsedContent.metadata?.toolName === 'list') {
+    modelContent = formatListToolResultBody(parsedContent.metadata, parsedContent.body)
+  } else if (parsedContent.body) {
+    modelContent = parsedContent.body
+  } else if (parsedContent.metadata?.summary.trim().length) {
+    modelContent = parsedContent.metadata.summary.trim()
+  } else {
+    modelContent = content.trim()
   }
 
-  if (parsedContent.metadata?.toolName === 'list') {
-    return formatListToolResultBody(parsedContent.metadata, parsedContent.body)
-  }
-
-  if (parsedContent.body) {
-    return parsedContent.body
-  }
-
-  if (parsedContent.metadata?.summary.trim().length) {
-    return parsedContent.metadata.summary.trim()
-  }
-
-  return content.trim()
+  return limitModelToolResult(modelContent)
 }
 
 export function getToolResultDisplayBody(toolName: string, body: string) {

@@ -18,8 +18,9 @@ import type {
 import { approximateTokenCount, estimateModelMessageContextUsage } from '../../../src/lib/contextUsage'
 import { normalizeContextCompactionSettings } from '../../../src/lib/contextCompactionSettings'
 import { buildSkillsSystemPromptBlock, listEnabledSkills } from '../../skills/service'
+import { shouldReplayAssistantReasoning } from './assistantReasoningPolicy'
 import { buildPromptContextManifest, describeTools, stableStringify } from '../cache/canonicalization'
-import { derivePromptCacheKey } from '../cache/providerPolicies'
+import { applyPromptCacheBreakpoints, derivePromptCacheKey } from '../cache/providerPolicies'
 import type { ProviderStepRecord } from '../history/contracts'
 import {
   readCanonicalHistory,
@@ -199,7 +200,7 @@ export async function estimateToolEnabledContextUsage(input: {
   const enabledSkills = await listEnabledSkills(input.agentContextRootPath)
   const promptOptions = {
     availableSkillsBlock: buildSkillsSystemPromptBlock(),
-    includeAssistantReasoningParts: input.providerId === 'openai',
+    includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId),
     terminalExecutionMode: input.terminalExecutionMode,
   }
   const prompt = buildChatPrompt({
@@ -238,7 +239,8 @@ export async function estimateToolEnabledContextUsage(input: {
         providerId: input.providerId,
       },
     )
-    toolSchemaTokens = approximateTokenCount(stableStringify(describeTools(sortToolSet(tools))))
+    const cacheAwareTools = applyPromptCacheBreakpoints(sortToolSet(tools), input.providerId)
+    toolSchemaTokens = approximateTokenCount(stableStringify(describeTools(cacheAwareTools)))
   }
   const systemPromptTokens = approximateTokenCount(systemPrompt) + toolSchemaTokens
 
@@ -288,7 +290,10 @@ export async function runToolEnabledChatStream(input: {
         providerId: input.startInput.providerId,
       },
     )
-    const tools = withCanonicalToolModelOutputs(sortToolSet(rawTools))
+    const tools = applyPromptCacheBreakpoints(
+      withCanonicalToolModelOutputs(sortToolSet(rawTools)),
+      input.startInput.providerId,
+    )
     const promptOptions = {
       ...input.promptOptions,
       availableSkillsBlock: buildSkillsSystemPromptBlock(),

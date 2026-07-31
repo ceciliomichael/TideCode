@@ -25,7 +25,11 @@ export function normalizeLanguageModelUsage(usage: LanguageModelUsage): Normaliz
     usage.raw,
     ['prompt_cache_hit_tokens'],
     ['cache_read_input_tokens'],
+    ['cachedContentTokenCount'],
+    ['total_cached_tokens'],
+    ['num_cached_tokens'],
     ['prompt_tokens_details', 'cached_tokens'],
+    ['prompt_token_details', 'cached_tokens'],
     ['input_tokens_details', 'cached_tokens'],
   ) ?? count(usage.inputTokenDetails?.cacheReadTokens)
   const cacheWriteTokens = rawCount(
@@ -37,12 +41,14 @@ export function normalizeLanguageModelUsage(usage: LanguageModelUsage): Normaliz
     usage.raw,
     ['prompt_cache_miss_tokens'],
   )
-  const noCacheTokens = rawNoCacheTokens ?? count(usage.inputTokenDetails?.noCacheTokens)
+  const reportedNoCacheTokens = rawNoCacheTokens ?? usage.inputTokenDetails?.noCacheTokens
+  const inputTokens = count(usage.inputTokens)
+  const noCacheTokens = reportedNoCacheTokens ?? Math.max(0, inputTokens - cacheReadTokens - cacheWriteTokens)
   return {
     cacheReadTokens,
     cacheWriteTokens,
-    inputTokens: count(usage.inputTokens),
-    noCacheTokens: noCacheTokens || Math.max(0, count(usage.inputTokens) - cacheReadTokens),
+    inputTokens,
+    noCacheTokens,
     outputTokens: count(usage.outputTokens),
     reasoningTokens: count(usage.outputTokenDetails?.reasoningTokens),
     totalTokens: count(usage.totalTokens),

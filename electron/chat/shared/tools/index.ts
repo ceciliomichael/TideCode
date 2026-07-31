@@ -7,6 +7,7 @@ export {
 export { repairDirectDynamicToolCall } from './dynamicToolRepair'
 export {
   DYNAMIC_EXECUTE_TOOL_NAME,
+  DYNAMIC_SCHEMA_BATCH_SIZE,
   DYNAMIC_TOOL_NAMES,
   DYNAMIC_TOOL_PAGE_SIZE,
 } from './dynamicToolContracts'

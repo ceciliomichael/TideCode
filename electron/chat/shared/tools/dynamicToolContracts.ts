@@ -2,6 +2,7 @@ import type { ToolExecutionOptions, ToolSet } from 'ai'
 
 export const DYNAMIC_TOOL_NAMES = ['list_tools', 'get_tool_schema', 'execute_tool'] as const
 export const DYNAMIC_TOOL_PAGE_SIZE = 10
+export const DYNAMIC_SCHEMA_BATCH_SIZE = 20
 export const DYNAMIC_EXECUTE_TOOL_NAME = 'execute_tool'
 
 export type DynamicMetaToolName = (typeof DYNAMIC_TOOL_NAMES)[number]
@@ -43,9 +44,9 @@ export interface DynamicListInput {
   query?: string
 }
 
-export interface DynamicSchemaInput {
-  id: string
-}
+export type DynamicSchemaInput =
+  | { id: string; ids?: never }
+  | { id?: never; ids: string[] }
 
 export interface DynamicExecuteInput {
   args: Record<string, unknown>

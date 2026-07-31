@@ -3,6 +3,7 @@ import { normalizeToolExecutionResult } from '../toolReplay'
 import type { AgentToolExecutionResult } from '../toolTypes'
 import {
   DYNAMIC_EXECUTE_TOOL_NAME,
+  DYNAMIC_SCHEMA_BATCH_SIZE,
   DYNAMIC_TOOL_PAGE_SIZE,
   isRecord,
   type DynamicExecuteInput,
@@ -25,10 +26,40 @@ const DYNAMIC_LIST_SCHEMA = {
 
 const DYNAMIC_SCHEMA_SCHEMA = {
   additionalProperties: false,
+  oneOf: [
+    {
+      additionalProperties: false,
+      properties: {
+        id: { description: 'Exact catalog tool identifier.', minLength: 1, type: 'string' },
+      },
+      required: ['id'],
+      type: 'object',
+    },
+    {
+      additionalProperties: false,
+      properties: {
+        ids: {
+          description: `Exact catalog tool identifiers. Fetch up to ${DYNAMIC_SCHEMA_BATCH_SIZE} schemas in one call.`,
+          items: { minLength: 1, type: 'string' },
+          maxItems: DYNAMIC_SCHEMA_BATCH_SIZE,
+          minItems: 1,
+          type: 'array',
+        },
+      },
+      required: ['ids'],
+      type: 'object',
+    },
+  ],
   properties: {
-    id: { description: 'Catalog tool identifier.', minLength: 1, type: 'string' },
+    id: { description: 'Exact catalog tool identifier.', minLength: 1, type: 'string' },
+    ids: {
+      description: `Exact catalog tool identifiers. Fetch up to ${DYNAMIC_SCHEMA_BATCH_SIZE} schemas in one call.`,
+      items: { minLength: 1, type: 'string' },
+      maxItems: DYNAMIC_SCHEMA_BATCH_SIZE,
+      minItems: 1,
+      type: 'array',
+    },
   },
-  required: ['id'],
   type: 'object',
 }
 
@@ -81,8 +112,76 @@ function parseDynamicExecuteInput(value: unknown): DynamicExecuteInput | null {
   return { args: value.args, id: value.id }
 }
 
+function parseDynamicSchemaInput(value: unknown): DynamicSchemaInput | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const hasId = typeof value.id === 'string'
+  const hasIds = Array.isArray(value.ids)
+  if (hasId === hasIds) {
+    return null
+  }
+
+  if (hasId) {
+    return { id: value.id as string }
+  }
+
+  const ids = Array.isArray(value.ids) ? value.ids : null
+  if (!ids || ids.length < 1 || ids.length > DYNAMIC_SCHEMA_BATCH_SIZE) {
+    return null
+  }
+
+  const stringIds = ids.filter((id): id is string => typeof id === 'string')
+  if (stringIds.length !== ids.length || stringIds.some((id) => id.trim().length === 0)) {
+    return null
+  }
+
+  return { ids: [...stringIds] }
+}
+
 function createInvocationMetadata(toolName: string, argumentsValue: unknown): DynamicToolInvocationMetadata {
   return { argumentsValue, toolName }
+}
+
+function getSchemaPayload(entry: DynamicToolCatalogEntry) {
+  return {
+    description: entry.description,
+    guidance: {
+      safety: [...entry.guidance.safety],
+      whenToUse: entry.guidance.whenToUse,
+      workflow: [...entry.guidance.workflow],
+    },
+    id: entry.id,
+    name: entry.name,
+    parameters: entry.inputSchema,
+    tags: [...entry.tags],
+  }
+}
+
+function getSchemaBatchResult(catalog: ReadonlyMap<string, DynamicToolCatalogEntry>, ids: readonly string[]) {
+  const results = ids.map((requestedId) => {
+    const id = requestedId.trim()
+    const entry = getCatalogEntry(catalog, id)
+    if (!entry) {
+      return {
+        error: `Tool "${requestedId}" not found or not allowed.`,
+        id: requestedId,
+        status: 'error' as const,
+      }
+    }
+
+    return {
+      ...getSchemaPayload(entry),
+      status: 'success' as const,
+    }
+  })
+  const successfulCount = results.filter((result) => result.status === 'success').length
+
+  return {
+    results,
+    successfulCount,
+  }
 }
 
 async function resolveNestedOutput(output: unknown): Promise<unknown> {
@@ -190,32 +289,37 @@ export async function createDynamicToolSet(catalogEntries: readonly DynamicToolC
       },
     }),
     get_tool_schema: tool({
-      description: 'Gets the schema for a catalog tool.',
+      description: `Gets the schema for one or more catalog tools. Use id for one tool or ids for up to ${DYNAMIC_SCHEMA_BATCH_SIZE} tools.`,
       inputSchema: jsonSchema(DYNAMIC_SCHEMA_SCHEMA, {
         validate: (value) => validateMetaInput(value, DYNAMIC_SCHEMA_SCHEMA),
       }),
       execute: async (rawInput) => {
-        const input = rawInput as DynamicSchemaInput
-        const entry = getCatalogEntry(catalog, input.id)
-        if (!entry) {
-          return errorResult(`Tool "${input.id}" not found or not allowed.`, jsonBody({ error: `Tool "${input.id}" not found or not allowed.` }))
+        const input = parseDynamicSchemaInput(rawInput)
+        if (!input) {
+          return errorResult(
+            'Invalid get_tool_schema input.',
+            jsonBody({
+              error: 'Provide either id as a string or ids as a non-empty array of catalog tool identifiers.',
+              max_batch_size: DYNAMIC_SCHEMA_BATCH_SIZE,
+            }),
+          )
         }
 
-        return successResult(
-          `Fetched schema for ${entry.id}`,
-          jsonBody({
-            description: entry.description,
-            guidance: {
-              safety: [...entry.guidance.safety],
-              whenToUse: entry.guidance.whenToUse,
-              workflow: [...entry.guidance.workflow],
-            },
-            id: entry.id,
-            name: entry.name,
-            parameters: entry.inputSchema,
-            tags: entry.tags,
-          }),
-        )
+        if (input.id !== undefined) {
+          const entry = getCatalogEntry(catalog, input.id)
+          if (!entry) {
+            return errorResult(`Tool "${input.id}" not found or not allowed.`, jsonBody({ error: `Tool "${input.id}" not found or not allowed.` }))
+          }
+
+          return successResult(`Fetched schema for ${entry.id}`, jsonBody(getSchemaPayload(entry)))
+        }
+
+        const batch = getSchemaBatchResult(catalog, input.ids)
+        const summary = `Fetched ${batch.successfulCount} of ${input.ids.length} tool schemas`
+        const body = jsonBody({ results: batch.results })
+        return batch.successfulCount > 0
+          ? successResult(summary, body)
+          : errorResult(summary, body)
       },
     }),
     list_tools: tool({

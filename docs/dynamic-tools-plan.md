@@ -8,7 +8,7 @@ Instead, it only ever sees three meta-tools that allow it to discover, inspect, 
 | Meta-tool            | Purpose                                      |
 |----------------------|----------------------------------------------|
 | `list_tools`         | List or search available tools               |
-| `get_tool_schema`    | Get the full JSON schema of one tool         |
+| `get_tool_schema`    | Get the full JSON schema of one or more tools |
 | `execute_tool`       | Execute a tool by ID with arguments          |
 
 ### Goals
@@ -120,7 +120,7 @@ list_tools  get_tool_schema  execute_tool
 
 ### 3.2 `get_tool_schema`
 
-**Purpose:** Retrieve the complete JSON schema for one tool.
+**Purpose:** Retrieve the complete JSON schema for one tool or a bounded batch of independent tools.
 
 **Schema:**
 
@@ -134,13 +134,28 @@ list_tools  get_tool_schema  execute_tool
       "id": {
         "type": "string",
         "description": "Exact tool ID returned by list_tools"
+      },
+      "ids": {
+        "type": "array",
+        "description": "Exact tool IDs returned by list_tools; fetch up to 20 schemas in one call",
+        "items": { "type": "string", "minLength": 1 },
+        "minItems": 1,
+        "maxItems": 20
       }
     },
-    "required": ["id"],
+    "oneOf": [
+      { "required": ["id"] },
+      { "required": ["ids"] }
+    ],
     "additionalProperties": false
   }
 }
 ```
+
+Use `id` for a single schema to preserve the compact response format. Use
+`ids` when several selected tools are independent. The batch response keeps
+the requested order and includes an item-level error for an unknown or
+disallowed ID, so one missing tool does not hide successful schemas.
 
 **Response format (full schema):**
 
@@ -343,7 +358,7 @@ Chosen names:
 You have only three tools: list_tools, get_tool_schema, and execute_tool.
 
 - Always use list_tools first to discover available tools.
-- Always use get_tool_schema to learn the exact parameters before calling a tool.
+- Always use get_tool_schema to learn the exact parameters before calling a tool; use its `ids` form for independent tools.
 - Never assume a tool’s arguments. Always fetch the schema.
 - Then use execute_tool with the exact arguments required by the schema.
 ```
@@ -378,7 +393,7 @@ Our design prioritizes **dependability and clarity** over maximum compression or
 |---------------------------|---------------------------------------------|
 | Number of meta-tools      | **3**                                       |
 | Discovery                 | `list_tools(query?)`                        |
-| Schema inspection         | `get_tool_schema(id)`                       |
+| Schema inspection         | `get_tool_schema(id)` or `get_tool_schema(ids[])` |
 | Execution                 | `execute_tool(id, args)`                    |
 | Identifier                | Stable `id` (usually same as name)          |
 | Naming style              | `snake_case` with underscores               |
@@ -449,7 +464,9 @@ three stable meta-tool definitions. The private native catalog is intentionally
 excluded from `describeTools()` and from the system prompt, so adding, removing,
 or reordering native catalog entries does not change the prompt-context
 fingerprint. Tool-specific workflow guidance is returned only by
-`get_tool_schema` after the model selects a tool.
+`get_tool_schema` after the model selects a tool. Independent selections can
+share one bounded `get_tool_schema(ids[])` call; execution still remains
+sequential wherever tools share mutable state.
 
 The prompt fingerprint still changes when the actual system context changes,
 such as the workspace root, workspace instructions, model/provider, or mode.

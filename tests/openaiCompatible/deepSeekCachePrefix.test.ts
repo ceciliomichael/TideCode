@@ -2,6 +2,46 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { calculateCacheEfficiency, classifyCacheStep } from '../../electron/chat/cache/diagnostics'
 import { normalizeDeepSeekRequestBody } from '../../electron/chat/apiKey/deepSeekWire'
+import { shouldReplayAssistantReasoning } from '../../electron/chat/shared/assistantReasoningPolicy'
+import { buildModelMessages } from '../../electron/chat/shared/messages'
+import type { Message } from '../../src/types/chat'
+
+test('DeepSeek tool-call history rebuilds reasoning_content before serialization', () => {
+  const assistantToolTurn: Message = {
+    content: '',
+    id: 'assistant-1',
+    providerId: 'deepseek',
+    reasoningContent: 'I should inspect the entry point before editing it.',
+    role: 'assistant',
+    timestamp: 1,
+    toolInvocations: [{
+      argumentsText: '{"path":"src/main.ts"}',
+      id: 'call-1',
+      startedAt: 1,
+      state: 'completed',
+      toolName: 'read',
+    }],
+  }
+
+  const [modelMessage] = buildModelMessages([assistantToolTurn], {
+    includeAssistantReasoningParts: shouldReplayAssistantReasoning('deepseek'),
+  })
+
+  assert.equal(shouldReplayAssistantReasoning('deepseek'), true)
+  assert.deepEqual(modelMessage, {
+    content: [
+      { text: 'I should inspect the entry point before editing it.', type: 'reasoning' },
+      {
+        args: { path: 'src/main.ts' },
+        input: { path: 'src/main.ts' },
+        toolCallId: 'call-1',
+        toolName: 'read',
+        type: 'tool-call',
+      },
+    ],
+    role: 'assistant',
+  })
+})
 
 test('DeepSeek tool loop remains a byte-identical prefix of the following user turn', () => {
   const toolLoopRequest = normalizeDeepSeekRequestBody({

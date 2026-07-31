@@ -182,12 +182,15 @@ export function WorkspaceExplorerPanelView({
     return entries.flatMap((entry) => {
       const isDirectory = entry.isDirectory
       const entryPath = normalizeEntryPath(entry.relativePath)
+      const normalizedActiveFilePath = activeFilePath ? normalizeEntryPath(activeFilePath) : null
       const isRenamingEntry = panelState.renameDraft?.entry.relativePath === entry.relativePath
       const isExpanded = isDirectory && panelState.expandedDirectories.has(entryPath)
       const isLoading = isDirectory && panelState.loadingDirectories.has(entryPath)
-      const isActiveFile = !isDirectory && activeFilePath === entry.relativePath
+      const isActiveFile = !isDirectory && normalizedActiveFilePath !== null && normalizedActiveFilePath === entryPath
       const isContextTarget = panelState.contextMenuState?.targetEntry?.relativePath === entry.relativePath
-      const isSelectedEntry = panelState.selectedEntryPaths.has(entry.relativePath)
+      const isSelectedEntry =
+        panelState.selectedEntryPaths.has(entry.relativePath) ||
+        panelState.selectedEntryPaths.has(entryPath)
       const isGitignoredEntry = entry.isGitignored === true
       const activeDropTarget = panelState.dropTargetDirectoryPath
       const isDropTarget =

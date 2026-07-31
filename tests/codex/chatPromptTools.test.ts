@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
-import assert from 'node:assert/strict'
 import test from 'node:test'
-import { formatStructuredToolResultContent } from '../../src/lib/toolResultContent'
+import { formatStructuredToolResultContent, getToolResultModelContent, parseStructuredToolResultContent } from '../../src/lib/toolResultContent'
 import type { Message } from '../../src/types/chat'
 import { buildChatPrompt, buildChatSystemPrompt } from '../../electron/chat/shared/messages'
 import { buildSkillToolDescription, buildSkillsSystemPromptBlock } from '../../electron/skills/service'
@@ -13,9 +12,11 @@ test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
   assert.match(agentPrompt, /You are the active builder/u)
   assert.match(agentPrompt, /model-facing tool surface contains three capability tools/u)
   assert.match(agentPrompt, /list_tools searches the private catalog/u)
+  assert.equal((agentPrompt.match(/<tool_instructions>/gu) ?? []).length, 1)
   assert.match(agentPrompt, /Tool workflow for every request that needs a tool/u)
   assert.match(agentPrompt, /Call list_tools first/u)
-  assert.match(agentPrompt, /Wait for the schema, then call execute_tool/u)
+  assert.match(agentPrompt, /Wait for every requested schema, then call execute_tool/u)
+  assert.match(agentPrompt, /ids array for multiple independent tools/u)
   assert.match(agentPrompt, /targeted natural-language task query/u)
   assert.match(agentPrompt, /Default to 1-3 short sentences or a brief bullet list/u)
   assert.doesNotMatch(agentPrompt, /caveman|authorization_override/iu)
@@ -25,6 +26,29 @@ test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
   assert.match(planPrompt, /Start directly with a concise numbered plan/u)
   assert.match(planPrompt, /Stay under 300 words/u)
   assert.doesNotMatch(planPrompt, /caveman|authorization_override/iu)
+})
+
+test('tool result replay bounds oversized model content without changing the stored result', () => {
+  const body = `head\n${'x'.repeat(60_000)}\ntail`
+  const structuredContent = formatStructuredToolResultContent(
+    {
+      schema: 'echosphere.tool_result/v1',
+      status: 'success',
+      summary: 'Read a large file',
+      toolCallId: 'tool-call-large',
+      toolName: 'read',
+    },
+    body,
+  )
+
+  const modelContent = getToolResultModelContent(structuredContent)
+  const storedResult = parseStructuredToolResultContent(structuredContent)
+
+  assert.ok(new TextEncoder().encode(modelContent).byteLength <= 32 * 1024)
+  assert.match(modelContent, /Tool result shortened for context efficiency/u)
+  assert.match(modelContent, /head/u)
+  assert.match(modelContent, /tail\s*$/u)
+  assert.equal(storedResult.body, body)
 })
 
 test('buildChatPrompt preserves assistant tool calls and matching tool results', () => {

@@ -65,6 +65,15 @@ export function preprocessMarkdown(markdown: string): string {
     // Process subscript: ~text~ (not ~~strikethrough~~) -> <sub>text</sub>
     processedLine = processedLine.replace(/(?<!~)~([^~\s]+)~(?!~)/g, '<sub>$1</sub>')
 
+    // Process custom/wiki [[read:path/to/file]] or [[path/to/file]] links
+    processedLine = processedLine.replace(/\[\[(?:read:)?([^\]]+)\]\]/g, (_, target) => {
+      const cleanTarget = target.trim()
+      const [pathPart, anchorPart] = cleanTarget.split('#')
+      const basename = pathPart.split(/[\/\\]/).pop() || pathPart
+      const displayText = anchorPart ? `${basename}#${anchorPart}` : basename
+      return `[${displayText}](${cleanTarget})`
+    })
+
     if (processedLine.trim().startsWith('|') && processedLine.includes('`')) {
       processedLine = processedLine.replace(/(?<!`)`([^`]+)`(?!`)/g, (_, code) => {
         return '`' + code.replace(/\|/g, '\\|') + '`'
@@ -105,19 +114,32 @@ export function resolveRelativePath(basePath: string | undefined, relativeLink: 
     return cleanLink.replace(/^\.\//, '')
   }
 
+  const isExplicitRelative = cleanLink.startsWith('./') || cleanLink.startsWith('../')
   const baseParts = basePath.split(/[\/\\]/).slice(0, -1)
   const targetParts = cleanLink.split(/[\/\\]/)
 
-  for (const part of targetParts) {
-    if (part === '.' || part === '') continue
-    if (part === '..') {
-      if (baseParts.length > 0) baseParts.pop()
-    } else {
-      baseParts.push(part)
+  if (isExplicitRelative) {
+    const resolvedParts = [...baseParts]
+    for (const part of targetParts) {
+      if (part === '.' || part === '') continue
+      if (part === '..') {
+        if (resolvedParts.length > 0) resolvedParts.pop()
+      } else {
+        resolvedParts.push(part)
+      }
     }
+    return resolvedParts.join('/')
   }
 
-  return baseParts.join('/')
+  if (baseParts.length > 0 && targetParts.length > 0 && baseParts[0] === targetParts[0]) {
+    return cleanLink
+  }
+
+  if (baseParts.length > 0) {
+    return [...baseParts, ...targetParts].join('/')
+  }
+
+  return cleanLink
 }
 
 export function handleMarkdownLinkClick(

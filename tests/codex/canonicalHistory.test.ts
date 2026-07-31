@@ -3,6 +3,7 @@ import test from 'node:test'
 import { jsonSchema, type ModelMessage, type ToolSet } from 'ai'
 import { buildPromptContextFingerprint, stableStringify } from '../../electron/chat/cache/canonicalization'
 import {
+  applyPromptCacheBreakpoints,
   derivePromptCacheKey,
   mergeProviderOptions,
   resolvePromptCacheExtraBody,
@@ -66,6 +67,31 @@ test('provider cache policies are capability-gated and cannot replace reasoning 
     ),
     { openai: { promptCacheKey: 'key', reasoningEffort: 'high' } },
   )
+})
+
+test('Anthropic receives one deterministic tool cache breakpoint while other providers stay unchanged', () => {
+  const tools = {
+    execute_tool: {
+      description: 'Execute a discovered tool',
+      inputSchema: jsonSchema({ properties: {}, type: 'object' }),
+    },
+    list_tools: {
+      description: 'List available tools',
+      inputSchema: jsonSchema({ properties: {}, type: 'object' }),
+    },
+  } as ToolSet
+
+  const anthropicTools = applyPromptCacheBreakpoints(tools, 'anthropic')
+  assert.deepEqual(anthropicTools.list_tools.providerOptions, {
+    anthropic: { cacheControl: { ttl: '5m', type: 'ephemeral' } },
+  })
+  assert.equal(anthropicTools.execute_tool.providerOptions, undefined)
+  assert.equal(applyPromptCacheBreakpoints(tools, 'google'), tools)
+  assert.equal(applyPromptCacheBreakpoints(tools, 'mistral'), tools)
+  assert.equal(applyPromptCacheBreakpoints(tools, 'deepseek'), tools)
+  assert.equal(applyPromptCacheBreakpoints(tools, 'custom:local'), tools)
+  assert.deepEqual(resolvePromptCacheProviderOptions({ cacheKey: 'key', providerId: 'custom:local' }), undefined)
+  assert.deepEqual(resolvePromptCacheExtraBody({ cacheKey: 'key', providerId: 'custom:local' }), {})
 })
 
 test('replay codec retains reasoning metadata and binary provider state', () => {
@@ -216,4 +242,28 @@ test('DeepSeek raw miss tokens override the generic compatible-adapter fallback'
   })
   assert.equal(usage.cacheReadTokens, 900)
   assert.equal(usage.noCacheTokens, 100)
+})
+
+test('usage normalization preserves explicit zero uncached tokens and provider cache aliases', () => {
+  const fullyCached = normalizeLanguageModelUsage({
+    inputTokenDetails: { cacheReadTokens: undefined, cacheWriteTokens: undefined, noCacheTokens: undefined },
+    inputTokens: 1_000,
+    outputTokenDetails: { reasoningTokens: undefined, textTokens: undefined },
+    outputTokens: 25,
+    raw: { cachedContentTokenCount: 1_000, prompt_cache_miss_tokens: 0 },
+    totalTokens: 1_025,
+  })
+  assert.equal(fullyCached.cacheReadTokens, 1_000)
+  assert.equal(fullyCached.noCacheTokens, 0)
+
+  const mistralUsage = normalizeLanguageModelUsage({
+    inputTokenDetails: { cacheReadTokens: undefined, cacheWriteTokens: undefined, noCacheTokens: undefined },
+    inputTokens: 1_000,
+    outputTokenDetails: { reasoningTokens: undefined, textTokens: undefined },
+    outputTokens: 25,
+    raw: { num_cached_tokens: 800 },
+    totalTokens: 1_025,
+  })
+  assert.equal(mistralUsage.cacheReadTokens, 800)
+  assert.equal(mistralUsage.noCacheTokens, 200)
 })

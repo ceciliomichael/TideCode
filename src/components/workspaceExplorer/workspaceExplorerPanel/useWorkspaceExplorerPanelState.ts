@@ -486,6 +486,31 @@ export function useWorkspaceExplorerPanelState({
       return
     }
 
+    if (!activeFilePath) {
+      setSelectedEntryPaths((current) => {
+        if (current.size === 0) {
+          return current
+        }
+        return new Set()
+      })
+      return
+    }
+
+    const normalizedActivePath = normalizeEntryPath(activeFilePath)
+
+    setSelectedEntryPaths((current) => {
+      if (current.size === 1 && (current.has(activeFilePath) || current.has(normalizedActivePath))) {
+        return current
+      }
+      return new Set([normalizedActivePath])
+    })
+  }, [activeFilePath, isOpen])
+
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
     if (!workspaceRootPath || !activeFilePath) {
       if (!activeFilePath) {
         lastSyncedActiveFileRef.current = {
