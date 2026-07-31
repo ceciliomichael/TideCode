@@ -7,6 +7,7 @@ import {
   findChatMentionMatches,
   getChatMentionTriggerState,
   insertChatMention,
+  shouldCloseChatMentionMenuForNormalText,
 } from '../lib/chatMentions'
 import type { WorkspaceExplorerEntry } from '../types/chat'
 import type { ChatMentionMenuItem, ChatMentionMenuType } from '../components/chat/ChatMentionMenu'
@@ -219,6 +220,12 @@ export function useChatFileMentionMenu({
   const mentionPathMapRef = useRef(mentionPathMap)
   const suppressNextTriggerUpdateRef = useRef(false)
   const anchorRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const nextMentionPathMap = initialMentionPathMap ? new Map(initialMentionPathMap) : new Map<string, string>()
+    mentionPathMapRef.current = nextMentionPathMap
+    setMentionPathMap(nextMentionPathMap)
+  }, [initialMentionPathMap])
   const menuRef = useRef<HTMLDivElement | null>(null)
 
   mentionPathMapRef.current = mentionPathMap
@@ -455,14 +462,11 @@ export function useChatFileMentionMenu({
   }, [highlightedIndex, isOpen, searchResults, selectedMenuType])
 
   useEffect(() => {
-    if (!isOpen) {
-      return
-    }
-
     if (value.trim().length === 0 && mentionPathMap.size > 0) {
       setMentionPathMap(new Map())
+      mentionPathMapRef.current = new Map()
     }
-  }, [isOpen, mentionPathMap.size, value])
+  }, [mentionPathMap.size, value])
 
   const closeMenu = useCallback(() => {
     setIsOpen(false)
@@ -471,16 +475,6 @@ export function useChatFileMentionMenu({
     setHighlightedIndex(0)
     setSelectedMenuType(null)
   }, [])
-
-  useEffect(() => {
-    if (!isOpen || isIndexLoading) {
-      return
-    }
-
-    if (searchQuery.includes(' ') && searchResults.length === 0) {
-      closeMenu()
-    }
-  }, [closeMenu, isIndexLoading, isOpen, searchQuery, searchResults.length])
 
   const handleSelectCategory = useCallback(
     (nextType: ChatMentionMenuType) => {
@@ -538,6 +532,11 @@ export function useChatFileMentionMenu({
 
       const triggerState = getChatMentionTriggerState(nextValue, cursorPosition, validationMap)
       if (!triggerState) {
+        closeMenu()
+        return
+      }
+
+      if (shouldCloseChatMentionMenuForNormalText(triggerState)) {
         closeMenu()
         return
       }

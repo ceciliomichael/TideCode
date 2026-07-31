@@ -8,7 +8,10 @@ export function createGrepTool(context: WorkspaceToolContext) {
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
-        absolute_path: { type: 'string' },
+        path: {
+          description: 'Directory or file path to search. Omit it to search from the workspace root.',
+          type: 'string',
+        },
         include: { type: 'string' },
         pattern: { minLength: 1, type: 'string' },
       },
@@ -16,11 +19,11 @@ export function createGrepTool(context: WorkspaceToolContext) {
       type: 'object',
     }),
     execute: async (rawInput) => {
-      const input = rawInput as { absolute_path?: string; include?: string; pattern: string }
+      const input = rawInput as { include?: string; path?: string; pattern: string }
       try {
         const target = await resolveReadOnlyTargetPath(
           context.workspaceRootPath,
-          input.absolute_path,
+          input.path,
           context.terminalExecutionMode,
         )
         return await createGrepToolResult(

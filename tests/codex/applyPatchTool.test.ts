@@ -744,7 +744,7 @@ test('createAgentTools omits write tools in plan mode', async () => {
     assert.ok('read' in tools)
     assert.ok('kanban_board' in tools)
     assert.ok(!('write' in tools))
-    assert.ok(!('replace_file_content' in tools))
+    assert.ok(!('edit' in tools))
     assert.ok(!('apply_patch' in tools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -762,7 +762,7 @@ test('createAgentTools exposes write tools in agent mode', async () => {
     })
 
     assert.ok('write' in tools)
-    assert.ok('replace_file_content' in tools)
+    assert.ok('edit' in tools)
     assert.ok(!('apply_patch' in tools))
     assert.ok('kanban_board' in tools)
   } finally {
@@ -828,7 +828,7 @@ test('createAgentTools exposes the same exact replacement tools for every provid
     )
 
     for (const toolName of [
-      'replace_file_content',
+      'edit',
     ]) {
       const codexTool = codexTools[toolName] as {
         description?: string
@@ -896,7 +896,7 @@ test('createAgentTools keeps plan mode tool descriptions literal', async () => {
       assert.doesNotMatch(description, /use `read`|apply_patch|write|should|prefer/iu)
     }
     assert.ok(!('write' in tools))
-    assert.ok(!('replace_file_content' in tools))
+    assert.ok(!('edit' in tools))
     assert.ok(!('apply_patch' in tools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -917,13 +917,13 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     )
 
     assert.ok('read' in tools)
-    assert.ok('replace_file_content' in tools)
+    assert.ok('edit' in tools)
     assert.ok('write' in tools)
 
     const readTool = tools.read as { description?: string }
     const globTool = tools.glob as { description?: string }
     const grepTool = tools.grep as { description?: string }
-    const replaceTool = tools.replace_file_content as { description?: string }
+    const replaceTool = tools.edit as { description?: string }
     const writeTool = tools.write as { description?: string }
 
     assert.match(readTool.description ?? '', /Reads file contents/u)

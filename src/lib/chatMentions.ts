@@ -32,6 +32,10 @@ export interface ChatMentionTriggerState {
   start: number
 }
 
+export function shouldCloseChatMentionMenuForNormalText(triggerState: ChatMentionTriggerState | null) {
+  return triggerState !== null && /\s/u.test(triggerState.query)
+}
+
 function escapeRegExp(input: string) {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

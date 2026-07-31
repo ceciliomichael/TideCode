@@ -4,6 +4,7 @@ import type {
   DynamicToolCatalogEntry,
   DynamicToolGuidance,
 } from './dynamicToolContracts'
+import { getDynamicToolSearchHints } from './dynamicToolSearchHints'
 
 function normalizeToolId(value: string) {
   return value.trim()
@@ -115,7 +116,7 @@ function buildToolGuidance(id: string, tags: readonly string[]): DynamicToolGuid
       whenToUse: 'Use to inspect the current contents of a file or directory.',
       workflow: ['Read an existing file immediately before editing it so the edit uses current contents.'],
     },
-    replace_file_content: {
+    edit: {
       safety: ['Keep the replacement target exact and verify the resulting file.'],
       whenToUse: 'Use for one precise replacement in an existing file.',
       workflow: ['Read the current file first, then replace one exact target block.'],
@@ -196,6 +197,7 @@ export async function buildDynamicToolCatalog(nativeTools: ToolSet): Promise<Dyn
         inputSchema,
         name: id,
         nativeTool,
+        searchHints: getDynamicToolSearchHints(id),
         tags,
       } satisfies DynamicToolCatalogEntry
     }),

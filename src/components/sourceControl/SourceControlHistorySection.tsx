@@ -171,7 +171,7 @@ export function SourceControlHistorySection({
               onClick={() => void onRefreshPanel()}
               className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {pendingSyncAction === 'refresh' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              <RefreshCw size={13} />
             </button>
           </Tooltip>
 
@@ -190,16 +190,7 @@ export function SourceControlHistorySection({
       </div>
 
       {isHistorySectionOpen ? (
-        isLoadingHistory ? (
-          <div className="flex flex-1 items-center justify-center border-t border-border text-[12px] text-muted-foreground">
-            <Loader2 size={14} className="mr-2 animate-spin" />
-            Loading history...
-          </div>
-        ) : historyEntries.length === 0 ? (
-          <div className="flex flex-1 flex-col border-t border-border px-4 py-3">
-            <div className="flex min-h-16 items-center text-[12px] text-muted-foreground">No commits yet.</div>
-          </div>
-        ) : (
+        historyEntries.length > 0 ? (
           <VirtualizedSourceControlHistoryList
             bodyClassName="min-h-0 flex-1 overflow-y-auto border-t border-border"
             commitDetailsByHash={commitDetailsByHash}
@@ -215,6 +206,19 @@ export function SourceControlHistorySection({
             onLoadMoreHistory={onLoadMoreHistory}
             onToggleCommitExpanded={onToggleCommitExpanded}
           />
+        ) : isLoadingHistory ? (
+          <div className="flex flex-1 items-center justify-center border-t border-border text-[12px] text-muted-foreground">
+            <Loader2 size={14} className="mr-2 animate-spin" />
+            Loading history...
+          </div>
+        ) : historyError ? (
+          <div className="flex flex-1 flex-col border-t border-border px-4 py-3">
+            <div className="flex min-h-16 items-center text-[12px] text-danger-foreground">{historyError}</div>
+          </div>
+        ) : (
+          <div className="flex flex-1 flex-col border-t border-border px-4 py-3">
+            <div className="flex min-h-16 items-center text-[12px] text-muted-foreground">No commits yet.</div>
+          </div>
         )
       ) : null}
     </section>

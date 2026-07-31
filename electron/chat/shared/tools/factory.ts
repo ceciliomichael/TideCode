@@ -3,7 +3,7 @@ import type { ChatMode, ChatProviderId } from '../../../../src/types/chat'
 import type { SkillSummary } from '../../../../src/types/skills'
 import type { AgentToolContext } from '../toolTypes'
 
-import { createReplaceFileContentTool } from './replaceFileContentTool'
+import { createEditTool } from './editTool'
 import { createGlobTool } from './globTool'
 import { createGrepTool } from './grepTool'
 import { createKanbanToolSet } from './kanbanTools'
@@ -77,7 +77,7 @@ export async function createNativeAgentTools(
   return {
     ...tools,
     write: createWriteTool(context),
-    replace_file_content: createReplaceFileContentTool(context),
+    edit: createEditTool(context),
   }
 }
 

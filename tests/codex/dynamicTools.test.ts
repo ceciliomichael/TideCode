@@ -21,7 +21,15 @@ import {
 } from '../../src/components/chat/toolInvocationPresentation'
 import { formatStructuredToolResultContent } from '../../src/lib/toolResultContent'
 
-function createCatalogEntry(id: string, description: string): DynamicToolCatalogEntry {
+function createCatalogEntry(
+  id: string,
+  description: string,
+  options: {
+    aliases?: string[]
+    searchHints?: string[]
+    tags?: string[]
+  } = {},
+): DynamicToolCatalogEntry {
   const nativeTool = tool({
     description,
     inputSchema: jsonSchema({
@@ -40,7 +48,7 @@ function createCatalogEntry(id: string, description: string): DynamicToolCatalog
   })
 
   return {
-    aliases: [id],
+    aliases: options.aliases ?? [id],
     description,
     execute: nativeTool.execute,
     guidance: {
@@ -57,7 +65,8 @@ function createCatalogEntry(id: string, description: string): DynamicToolCatalog
     },
     name: id,
     nativeTool,
-    tags: id === 'read_file' ? ['filesystem'] : ['general'],
+    searchHints: options.searchHints ?? [],
+    tags: options.tags ?? (id === 'read_file' ? ['filesystem'] : ['general']),
   }
 }
 
@@ -69,9 +78,33 @@ test('dynamic tool set exposes exactly three model-facing tools', async () => {
   assert.deepEqual(Object.keys(tools).sort(), [...DYNAMIC_TOOL_NAMES].sort())
 })
 
+test('unknown execute ids return discovery guidance and ranked suggestions', async () => {
+  const tools = await createDynamicToolSet([
+    createCatalogEntry('list', 'List directory contents', {
+      searchHints: ['list_dir', 'list directory contents'],
+    }),
+    createCatalogEntry('read', 'Read file contents'),
+  ])
+  const execute = tools.execute_tool.execute
+  assert.ok(execute)
+
+  const result = await execute(
+    { args: {}, id: 'list_dir' },
+    { abortSignal: undefined, context: {}, messages: [], toolCallId: 'unknown-1' },
+  )
+
+  assert.equal(result.status, 'error')
+  const body = JSON.parse(result.body ?? '{}') as {
+    nextStep?: string
+    suggestions?: Array<{ id: string }>
+  }
+  assert.match(body.nextStep ?? '', /list_tools.*get_tool_schema/u)
+  assert.equal(body.suggestions?.[0]?.id, 'list')
+})
+
 test('direct native tool calls are repaired into discovery calls', async () => {
   const directCall = {
-    input: JSON.stringify({ absolute_path: 'src/example.ts' }),
+    input: JSON.stringify({ path: 'src/example.ts' }),
     toolCallId: 'direct-1',
     toolName: 'read',
     type: 'tool-call' as const,
@@ -192,6 +225,32 @@ test('dynamic search ranks semantic matches, tolerates typos, and paginates ten 
   assert.notEqual(firstPage.results[0]?.id, secondPage.results[0]?.id)
 })
 
+test('dynamic search uses semantic hints for natural-language intent', () => {
+  const catalog = [
+    createCatalogEntry('grep', 'Search text and regular expressions in files', {
+      aliases: ['grep', 'text search', 'pattern search'],
+      searchHints: [
+        'find authentication tokens API keys secrets credentials or other text in files',
+      ],
+      tags: ['filesystem', 'search'],
+    }),
+    createCatalogEntry('read', 'Read file contents', {
+      searchHints: ['open inspect or view source code'],
+      tags: ['filesystem'],
+    }),
+    createCatalogEntry('glob', 'Find files by name', {
+      searchHints: ['locate files and directories'],
+      tags: ['filesystem', 'search'],
+    }),
+  ]
+
+  const searchPage = searchToolCatalog(catalog, 'find auth tokens if used')
+  assert.equal(searchPage.results[0]?.id, 'grep')
+
+  const fuzzySearchPage = searchToolCatalog(catalog, 'find authentcation toknes if used')
+  assert.equal(fuzzySearchPage.results[0]?.id, 'grep')
+})
+
 test('execute_tool validates nested arguments and preserves native result metadata', async () => {
   const catalog = await buildDynamicToolCatalog({
     read_file: tool({
@@ -241,17 +300,17 @@ test('execute_tool validates nested arguments and preserves native result metada
 
 test('dynamic invocation projection delegates presentation to the discovered native tool', () => {
   const wrapperArguments = JSON.stringify({
-    args: { absolute_path: '/workspace/src/example.ts' },
+    args: { path: '/workspace/src/example.ts' },
     id: 'read',
   })
   const projected = getDynamicToolInvocationProjection('execute_tool', JSON.parse(wrapperArguments))
   assert.deepEqual(projected, {
-    argumentsValue: { absolute_path: '/workspace/src/example.ts' },
+    argumentsValue: { path: '/workspace/src/example.ts' },
     toolName: 'read',
   })
 
   const resultContent = formatStructuredToolResultContent({
-    arguments: { absolute_path: '/workspace/src/example.ts' },
+    arguments: { path: '/workspace/src/example.ts' },
     schema: 'echosphere.tool_result/v1',
     status: 'success',
     summary: 'Read src/example.ts',

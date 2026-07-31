@@ -7,6 +7,7 @@ import {
 import { persistAndStreamMessage } from './chatMessageSendWorkflow'
 import type { ChatRuntimeSelection } from './chatMessageRuntime'
 import type { PersistAndStreamMessageInput } from './chatMessageSendTypes'
+import { restoreChatComposerDraft } from '../lib/chatComposerDraft'
 import {
   getActiveUnrespondedUserMessage,
   getPendingRevertMessageIds,
@@ -94,8 +95,10 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
 
       revertedUserMessageIdsRef.current.add(message.id)
       input.cancelEditingMessage()
-      input.setMainComposerValue(message.content)
+      const restoredComposerDraft = restoreChatComposerDraft(message.content)
+      input.setMainComposerValue(restoredComposerDraft.value)
       input.setMainComposerAttachments(message.attachments ?? [])
+      input.setMainComposerMentionPathMap(restoredComposerDraft.mentionPathMap)
 
       const conversationState = input.conversationRuntimeStatesRef.current[conversationId] ?? null
       const pendingMessageIds = getPendingRevertMessageIds(conversationState, message.id)

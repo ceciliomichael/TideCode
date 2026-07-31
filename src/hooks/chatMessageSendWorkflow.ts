@@ -1,4 +1,5 @@
 import type { ConversationRecord, Message } from '../types/chat'
+import { restoreChatComposerDraft } from '../lib/chatComposerDraft'
 import {
   getMessagesBeforeUserMessage,
   persistConversationSnapshot,
@@ -195,8 +196,10 @@ async function rollbackAndRestoreComposer(input: PersistAndStreamMessageInput, o
   userMessageId: string | null
 }) {
   if (options.shouldKeepSelected) {
-    input.setMainComposerValue(input.originalText)
+    const restoredComposerDraft = restoreChatComposerDraft(input.originalText)
+    input.setMainComposerValue(restoredComposerDraft.value)
     input.setMainComposerAttachments(input.attachments)
+    input.setMainComposerMentionPathMap(restoredComposerDraft.mentionPathMap)
   }
 
   if (options.userMessageId) {
@@ -332,6 +335,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
     } else if (shouldKeepSelected && input.resetMainComposerAfterSend !== false) {
       input.setMainComposerValue('')
       input.setMainComposerAttachments([])
+      input.setMainComposerMentionPathMap(new Map())
     }
 
     if (input.syntheticAssistantMessage) {

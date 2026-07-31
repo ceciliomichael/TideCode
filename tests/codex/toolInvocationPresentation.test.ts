@@ -37,7 +37,7 @@ function buildFileChangeInvocation(
   } as const
 
   const invocation: ToolInvocationTrace = {
-    argumentsText: JSON.stringify({ absolute_path: TARGET_FILE_PATH }),
+    argumentsText: JSON.stringify({ path: TARGET_FILE_PATH }),
     id: 'tool-1',
     resultContent: formatStructuredToolResultContent(
       {
@@ -74,7 +74,7 @@ function buildMultiFileWriteInvocation(
   }>,
 ) {
   return {
-    argumentsText: JSON.stringify({ absolute_path: `${WORKSPACE_ROOT_PATH}/.` }),
+    argumentsText: JSON.stringify({ path: `${WORKSPACE_ROOT_PATH}/.` }),
     id: 'tool-multi-1',
     resultContent: formatStructuredToolResultContent(
       {
@@ -171,7 +171,7 @@ test('running file mutation invocations stay hidden until completion', () => {
 
   const runningWriteInvocation: ToolInvocationTrace = {
     argumentsText: JSON.stringify({
-      absolute_path: `${WORKSPACE_ROOT_PATH}/src/example.ts`,
+      path: `${WORKSPACE_ROOT_PATH}/src/example.ts`,
     }),
     id: 'tool-write-running-single',
     startedAt: 0,
@@ -276,12 +276,12 @@ test('multi-file write invocations expand into separate display blocks', () => {
 
 test('read tool header labels collapse to the basename for the visible toolblock', () => {
   const invocation: ToolInvocationTrace = {
-    argumentsText: JSON.stringify({ absolute_path: TARGET_FILE_PATH }),
+    argumentsText: JSON.stringify({ path: TARGET_FILE_PATH }),
     id: 'tool-read-1',
     resultContent: formatStructuredToolResultContent(
       {
         arguments: {
-          absolute_path: TARGET_FILE_PATH,
+          path: TARGET_FILE_PATH,
         },
         schema: 'echosphere.tool_result/v1',
         status: 'success',

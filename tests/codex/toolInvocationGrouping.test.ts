@@ -20,7 +20,7 @@ function createMutationInvocation(
   toolName: 'write' | 'apply_patch',
 ): ToolInvocationTrace {
   return {
-    argumentsText: JSON.stringify({ absolute_path: '/workspace/example.ts' }),
+    argumentsText: JSON.stringify({ path: '/workspace/example.ts' }),
     id,
     resultPresentation: {
       changes: [
@@ -80,6 +80,28 @@ test('buildToolInvocationGroupSummary pluralizes grouped categories', () => {
   ])
 
   assert.equal(summary, 'Ran 2 searches, ran 1 command, explored 2 files')
+})
+
+test('buildToolInvocationGroupSummary uses readable labels for dynamic tool discovery', () => {
+  const summary = buildToolInvocationGroupSummary([
+    createInvocation('list_tools'),
+    createInvocation('list_tools'),
+    createInvocation('list_tools'),
+    createInvocation('get_tool_schema'),
+  ])
+
+  assert.equal(summary, 'Explored 3 tools, fetched 1 schema')
+  assert.equal(
+    buildToolInvocationGroupSummary([createInvocation('list_tools')]),
+    'Explored 1 tool',
+  )
+  assert.equal(
+    buildToolInvocationGroupSummary([
+      createInvocation('get_tool_schema'),
+      createInvocation('get_tool_schema'),
+    ]),
+    'Fetched 2 schemas',
+  )
 })
 
 test('buildToolInvocationGroupSummary counts write tools inside explored groups', () => {

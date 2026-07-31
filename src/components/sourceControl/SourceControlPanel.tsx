@@ -409,9 +409,7 @@ function SourceControlPanelContent({
     try {
       await loadHistoryPage(0, false)
     } catch (error) {
-      setHistoryEntries([])
-      setHeadHash(null)
-      setHasMoreHistory(false)
+      // Keep the last known history visible during a background refresh failure.
       setHistoryError(error instanceof Error ? error.message : 'Failed to load git history.')
     } finally {
       setIsLoadingHistory(false)

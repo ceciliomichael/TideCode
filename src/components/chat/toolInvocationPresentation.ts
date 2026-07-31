@@ -7,7 +7,6 @@ import { isFileEditTool, isFileMutationTool, isFileWriteTool } from './toolInvoc
 
 interface ToolArgumentsValue {
   path?: unknown
-  absolute_path?: unknown
   command?: unknown
   cmd?: unknown
   patchText?: unknown
@@ -128,8 +127,8 @@ function decodePartialJsonString(input: string) {
   return decodedValue
 }
 
-function extractPartialAbsolutePath(argumentsText: string) {
-  const pathMatch = argumentsText.match(/"(?:path|absolute_path)"\s*:\s*"((?:\\.|[^"])*)/u)
+function extractPartialPath(argumentsText: string) {
+  const pathMatch = argumentsText.match(/"path"\s*:\s*"((?:\\.|[^"])*)/u)
   if (!pathMatch) {
     return null
   }
@@ -138,18 +137,14 @@ function extractPartialAbsolutePath(argumentsText: string) {
   return absolutePath.length > 0 ? absolutePath : null
 }
 
-function getAbsolutePath(invocation: ToolInvocationTrace) {
+function getToolPath(invocation: ToolInvocationTrace) {
   const argumentsValue = parseCompleteToolArguments(invocation.argumentsText)
 
   if (typeof argumentsValue?.path === 'string' && argumentsValue.path.trim().length > 0) {
     return argumentsValue.path.trim()
   }
 
-  if (typeof argumentsValue?.absolute_path === 'string' && argumentsValue.absolute_path.trim().length > 0) {
-    return argumentsValue.absolute_path.trim()
-  }
-
-  return extractPartialAbsolutePath(invocation.argumentsText)
+  return extractPartialPath(invocation.argumentsText)
 }
 
 function getBasename(absolutePath: string) {
@@ -221,7 +216,7 @@ function readFirstText(value: unknown): string | null {
 
   if (typeof value === 'object' && value !== null) {
     const record = value as Record<string, unknown>
-    for (const candidate of [record.path, record.absolute_path, record.file_path, record.name, record.query, record.command, record.cmd]) {
+    for (const candidate of [record.path, record.file_path, record.name, record.query, record.command, record.cmd]) {
       const nextValue = readFirstText(candidate)
       if (nextValue) {
         return nextValue
@@ -768,10 +763,10 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
     }
   }
 
-  // For the new precise-edit tools the target file is always in absolute_path
-  if (invocation.toolName === 'replace_file_content') {
-    const absolutePath = getAbsolutePath(invocation)
-    return absolutePath ? getBasename(absolutePath) : null
+  // Precise-edit tools identify their target file through path.
+  if (invocation.toolName === 'edit') {
+    const toolPath = getToolPath(invocation)
+    return toolPath ? getBasename(toolPath) : null
   }
 
   const wholeFileChangeSingleChangeTarget = getWholeFileChangeSingleChangeTarget(invocation)
@@ -789,8 +784,8 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
   if (typeof structuredPath === 'string' && structuredPath.trim().length > 0) {
     const normalizedStructuredPath = structuredPath.trim()
     if ((isFileWriteTool(invocation.toolName) || isFileEditTool(invocation.toolName)) && normalizedStructuredPath === '.') {
-      const absolutePath = getAbsolutePath(invocation)
-      return absolutePath ? getBasename(absolutePath) : null
+      const toolPath = getToolPath(invocation)
+      return toolPath ? getBasename(toolPath) : null
     }
 
     if (invocation.toolName === 'list' || invocation.toolName === 'glob' || invocation.toolName === 'grep' || invocation.toolName === 'read') {
@@ -803,19 +798,19 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
     return getBasename(normalizedStructuredPath)
   }
 
-  const absolutePath = getAbsolutePath(invocation)
-  if (!absolutePath) {
+  const toolPath = getToolPath(invocation)
+  if (!toolPath) {
     return null
   }
 
   if (invocation.toolName === 'list' || invocation.toolName === 'glob' || invocation.toolName === 'grep' || invocation.toolName === 'read') {
     if (invocation.toolName === 'read') {
-      return getReadToolTarget(absolutePath, workspaceRootPath)
+      return getReadToolTarget(toolPath, workspaceRootPath)
     }
-    return workspaceRootPath ? getRelativeDisplayPath(workspaceRootPath, absolutePath) : absolutePath
+    return workspaceRootPath ? getRelativeDisplayPath(workspaceRootPath, toolPath) : toolPath
   }
 
-  return getBasename(absolutePath)
+  return getBasename(toolPath)
 }
 
 export function getToolInvocationHeaderLabel(

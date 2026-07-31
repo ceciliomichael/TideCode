@@ -80,10 +80,10 @@ test('plan mode excludes workspace mutation tools but permits Kanban planning ac
     ])
 
     assert.ok('write' in agentTools)
-    assert.ok('replace_file_content' in agentTools)
+    assert.ok('edit' in agentTools)
     assert.ok('execute_terminal' in agentTools)
     assert.ok(!('write' in planTools))
-    assert.ok(!('replace_file_content' in planTools))
+    assert.ok(!('edit' in planTools))
     assert.ok(!('execute_terminal' in planTools))
 
     const planKanban = planTools.kanban_board

@@ -66,7 +66,7 @@ test('buildChatPrompt preserves assistant tool calls and matching tool results',
       timestamp: 2,
       toolInvocations: [
         {
-          argumentsText: JSON.stringify({ absolute_path: 'C:/repo/src/example.ts' }),
+          argumentsText: JSON.stringify({ path: 'C:/repo/src/example.ts' }),
           completedAt: 3,
           id: 'tool-call-1',
           resultContent: '',
@@ -80,7 +80,7 @@ test('buildChatPrompt preserves assistant tool calls and matching tool results',
       content: formatStructuredToolResultContent(
         {
           arguments: {
-            absolute_path: 'C:/repo/src/example.ts',
+            path: 'C:/repo/src/example.ts',
           },
           semantics: {
             line_count: 1,
@@ -120,7 +120,7 @@ test('buildChatPrompt preserves assistant tool calls and matching tool results',
   assert.ok(Array.isArray(assistantMessage?.content))
   assert.equal(assistantMessage?.content[0]?.type, 'tool-call')
   assert.deepEqual(assistantMessage?.content[0]?.input, {
-    absolute_path: 'C:/repo/src/example.ts',
+    path: 'C:/repo/src/example.ts',
   })
 
   const toolMessage = prompt.messages[2]
@@ -301,7 +301,7 @@ test('buildChatPrompt formats list tool results with structured directory metada
       timestamp: 2,
       toolInvocations: [
         {
-          argumentsText: JSON.stringify({ absolute_path: 'C:/repo/src' }),
+          argumentsText: JSON.stringify({ path: 'C:/repo/src' }),
           completedAt: 3,
           id: 'tool-call-1',
           resultContent: '',
@@ -315,7 +315,7 @@ test('buildChatPrompt formats list tool results with structured directory metada
       content: formatStructuredToolResultContent(
         {
           arguments: {
-            absolute_path: 'C:/repo/src',
+            path: 'C:/repo/src',
           },
           schema: 'echosphere.tool_result/v1',
           semantics: {
@@ -369,7 +369,7 @@ test('buildChatPrompt combines consecutive tool messages into one replay message
       timestamp: 2,
       toolInvocations: [
         {
-          argumentsText: JSON.stringify({ absolute_path: 'C:/repo/src/one.ts' }),
+          argumentsText: JSON.stringify({ path: 'C:/repo/src/one.ts' }),
           completedAt: 3,
           id: 'tool-call-1',
           resultContent: '',
@@ -378,7 +378,7 @@ test('buildChatPrompt combines consecutive tool messages into one replay message
           toolName: 'read',
         },
         {
-          argumentsText: JSON.stringify({ absolute_path: 'C:/repo/src/two.ts' }),
+          argumentsText: JSON.stringify({ path: 'C:/repo/src/two.ts' }),
           completedAt: 4,
           id: 'tool-call-2',
           resultContent: '',
@@ -401,7 +401,7 @@ test('buildChatPrompt combines consecutive tool messages into one replay message
       content: formatStructuredToolResultContent(
         {
           arguments: {
-            absolute_path: 'C:/repo/src/one.ts',
+            path: 'C:/repo/src/one.ts',
           },
           schema: 'echosphere.tool_result/v1',
           status: 'success',
@@ -424,7 +424,7 @@ test('buildChatPrompt combines consecutive tool messages into one replay message
       content: formatStructuredToolResultContent(
         {
           arguments: {
-            absolute_path: 'C:/repo/src/two.ts',
+            path: 'C:/repo/src/two.ts',
           },
           schema: 'echosphere.tool_result/v1',
           status: 'success',

@@ -22,6 +22,11 @@ import {
   isPathInsideRoot,
   resolveSandboxPath,
 } from './sandboxPaths'
+import {
+  findExactMatchOffsets,
+  findIndentationTolerantMatchOffsets,
+  type TextMatch,
+} from './textReplacementMatching'
 
 const DEFAULT_READ_LIMIT = 2000
 const LIST_LIMIT = 100
@@ -789,15 +794,15 @@ export async function createGrepToolResult(
 export async function createWholeFileWriteToolResult(
   context: WorkspaceToolContext,
   input: {
-    absolute_path: string
     content: string
+    path: string
   },
 ) {
   const resolvedChange = {
     content: normalizeTextMutationContent(input.content),
     target: resolveReadableTargetPath(
       context.workspaceRootPath,
-      input.absolute_path,
+      input.path,
       context.terminalExecutionMode,
     ),
   }
@@ -863,7 +868,7 @@ export async function createApplyPatchToolResult(context: WorkspaceToolContext, 
   )
 }
 
-export interface ReplaceFileContentChunk {
+export interface EditChunk {
   targetContent: string
   replacementContent: string
   startLine: number
@@ -871,9 +876,8 @@ export interface ReplaceFileContentChunk {
   allowMultiple: boolean
 }
 
-export interface ReplaceFileContentInput {
-  path?: string
-  absolute_path?: string
+export interface EditInput {
+  path: string
   targetContent: string
   replacementContent: string
   startLine: number
@@ -890,7 +894,7 @@ interface ResolvedTextReplacement {
 
 function getLineRangeOffsets(
   fileContent: string,
-  chunk: ReplaceFileContentChunk,
+  chunk: EditChunk,
   displayPath: string,
 ): { endOffset: number; startOffset: number } {
   const lines = fileContent.split('\n')
@@ -928,30 +932,9 @@ function getLineRangeOffsets(
   return { endOffset, startOffset }
 }
 
-function findExactMatchOffsets(
-  content: string,
-  targetContent: string,
-  baseOffset = 0,
-) {
-  const matchOffsets: number[] = []
-  let searchOffset = 0
-
-  while (searchOffset <= content.length - targetContent.length) {
-    const matchOffset = content.indexOf(targetContent, searchOffset)
-    if (matchOffset === -1) {
-      break
-    }
-
-    matchOffsets.push(baseOffset + matchOffset)
-    searchOffset = matchOffset + targetContent.length
-  }
-
-  return matchOffsets
-}
-
 function resolveChunkReplacements(
   fileContent: string,
-  chunk: ReplaceFileContentChunk,
+  chunk: EditChunk,
   displayPath: string,
   chunkIndex: number,
 ): ResolvedTextReplacement[] {
@@ -959,7 +942,7 @@ function resolveChunkReplacements(
     throw new Error(`Replacement chunk ${chunkIndex + 1} has empty target content.`)
   }
 
-  let matchOffsets: number[] = []
+  let matchOffsets: TextMatch[] = []
   let usedWholeFileFallback = false
 
   try {
@@ -970,12 +953,24 @@ function resolveChunkReplacements(
       chunk.targetContent,
       range.startOffset,
     )
+    if (matchOffsets.length === 0) {
+      matchOffsets = findIndentationTolerantMatchOffsets(
+        region,
+        chunk.targetContent,
+        range.startOffset,
+      )
+    }
   } catch {
     // A stale line range can recover below when the exact target is unique.
   }
 
   if (matchOffsets.length === 0) {
     matchOffsets = findExactMatchOffsets(fileContent, chunk.targetContent)
+    usedWholeFileFallback = true
+  }
+
+  if (matchOffsets.length === 0) {
+    matchOffsets = findIndentationTolerantMatchOffsets(fileContent, chunk.targetContent)
     usedWholeFileFallback = true
   }
 
@@ -993,9 +988,9 @@ function resolveChunkReplacements(
     )
   }
 
-  return matchOffsets.map((startOffset) => ({
+  return matchOffsets.map(({ endOffset, startOffset }) => ({
     chunkIndex,
-    endOffset: startOffset + chunk.targetContent.length,
+    endOffset,
     replacementContent: chunk.replacementContent,
     startOffset,
   }))
@@ -1052,18 +1047,13 @@ function getActiveFileEditSession(filePath: string): ActiveFileEditSession | nul
   return session
 }
 
-export async function createReplaceFileContentToolResult(
+export async function createEditToolResult(
   context: WorkspaceToolContext,
-  input: ReplaceFileContentInput,
+  input: EditInput,
 ): Promise<AgentToolExecutionResult> {
-  const filePath = input.path ?? input.absolute_path
-  if (!filePath) {
-    throw new Error('File path ("path") is required.')
-  }
-
   const target = resolveReadableTargetPath(
     context.workspaceRootPath,
-    filePath,
+    input.path,
     context.terminalExecutionMode,
   )
 
@@ -1073,7 +1063,7 @@ export async function createReplaceFileContentToolResult(
   }
 
   const normalizedOld = normalizeTextMutationContent(oldContent)
-  const chunk: ReplaceFileContentChunk = {
+  const chunk: EditChunk = {
     allowMultiple: input.allowMultiple,
     endLine: input.endLine,
     replacementContent: normalizeTextMutationContent(input.replacementContent),

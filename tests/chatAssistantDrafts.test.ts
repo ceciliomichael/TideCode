@@ -80,7 +80,7 @@ test('chat assistant drafts create a fresh think block after a tool boundary', (
   draftManager.handleReasoningDelta('First reasoning block')
   draftManager.handleReasoningCompleted()
   draftManager.handleToolInvocationStarted('tool-call-1', {
-    argumentsText: '{"absolute_path":"C:/repo/src/example.ts"}',
+    argumentsText: '{"path":"C:/repo/src/example.ts"}',
     startedAt: 10,
     toolName: 'read',
   })
@@ -92,7 +92,7 @@ test('chat assistant drafts create a fresh think block after a tool boundary', (
     toolCallId: 'tool-call-1',
   })
   draftManager.handleToolInvocationCompleted('tool-call-1', {
-    argumentsText: '{"absolute_path":"C:/repo/src/example.ts"}',
+    argumentsText: '{"path":"C:/repo/src/example.ts"}',
     completedAt: 12,
     resultContent: 'Read src/example.ts',
     resultPresentation: undefined,

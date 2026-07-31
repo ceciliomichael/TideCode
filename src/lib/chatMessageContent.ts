@@ -42,7 +42,7 @@ function looksLikeRawToolArgumentFragment(line: string) {
     return false
   }
 
-  return /"(?:absolute_path|start_line|end_line|max_lines|old_string|new_string|recipient_name|tool_name)"/u.test(
+  return /"(?:path|start_line|end_line|max_lines|old_string|new_string|recipient_name|tool_name)"/u.test(
     normalizedLine,
   )
 }

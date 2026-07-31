@@ -6,6 +6,8 @@ import { getFileMutationSummaryKind, resolveToolInvocationForPresentation } from
 
 interface ToolInvocationSummaryCounts {
   listCount: number
+  toolCount: number
+  toolSchemaCount: number
   commandCount: number
   fileCount: number
   searchCount: number
@@ -37,6 +39,14 @@ function pluralize(count: number, singular: string) {
 function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts | null {
   if (toolName === 'list') {
     return 'listCount'
+  }
+
+  if (toolName === 'list_tools') {
+    return 'toolCount'
+  }
+
+  if (toolName === 'get_tool_schema') {
+    return 'toolSchemaCount'
   }
 
   if (toolName === 'glob' || toolName === 'grep' || toolName === 'search_query' || toolName === 'image_query') {
@@ -98,20 +108,26 @@ function getMixedBucketPriority(bucketKey: string) {
   if (bucketKey === 'list') {
     return 6
   }
-  if (bucketKey === 'search') {
+  if (bucketKey === 'tool') {
     return 7
   }
-  if (bucketKey === 'command') {
+  if (bucketKey === 'tool-schema') {
     return 8
   }
-  if (bucketKey === 'kanban') {
+  if (bucketKey === 'search') {
     return 9
   }
-  if (bucketKey === 'web-search') {
+  if (bucketKey === 'command') {
     return 10
   }
+  if (bucketKey === 'kanban') {
+    return 11
+  }
+  if (bucketKey === 'web-search') {
+    return 12
+  }
 
-  return 11
+  return 13
 }
 
 function formatMixedSummaryParts(
@@ -162,6 +178,8 @@ export function buildToolInvocationGroupSummary(
   }
   const counts: ToolInvocationSummaryCounts = {
     listCount: 0,
+    toolCount: 0,
+    toolSchemaCount: 0,
     commandCount: 0,
     fileCount: 0,
     searchCount: 0,
@@ -216,6 +234,10 @@ export function buildToolInvocationGroupSummary(
       counts[classifiedBucket] += 1
       if (classifiedBucket === 'listCount') {
         recordMixedBucket('list')
+      } else if (classifiedBucket === 'toolCount') {
+        recordMixedBucket('tool')
+      } else if (classifiedBucket === 'toolSchemaCount') {
+        recordMixedBucket('tool-schema')
       } else if (classifiedBucket === 'searchCount') {
         recordMixedBucket('search')
       } else if (classifiedBucket === 'webSearchCount') {
@@ -255,6 +277,12 @@ export function buildToolInvocationGroupSummary(
       if (bucketKey === 'list') {
         return `explored ${pluralize(count, 'list')}`
       }
+      if (bucketKey === 'tool') {
+        return `explored ${pluralize(count, 'tool')}`
+      }
+      if (bucketKey === 'tool-schema') {
+        return `fetched ${pluralize(count, 'schema')}`
+      }
       if (bucketKey === 'search') {
         return `ran ${pluralize(count, 'search')}`
       }
@@ -282,6 +310,8 @@ export function buildToolInvocationGroupSummary(
   const hasOnlyWebSearch =
     counts.webSearchCount > 0 &&
     counts.listCount === 0 &&
+    counts.toolCount === 0 &&
+    counts.toolSchemaCount === 0 &&
     counts.commandCount === 0 &&
     counts.fileCount === 0 &&
     counts.kanbanCount === 0 &&
@@ -299,6 +329,12 @@ export function buildToolInvocationGroupSummary(
 
   if (counts.listCount > 0) {
     summaryParts.push(`explored ${pluralize(counts.listCount, 'list')}`)
+  }
+  if (counts.toolCount > 0) {
+    summaryParts.push(`explored ${pluralize(counts.toolCount, 'tool')}`)
+  }
+  if (counts.toolSchemaCount > 0) {
+    summaryParts.push(`fetched ${pluralize(counts.toolSchemaCount, 'schema')}`)
   }
   if (counts.searchCount > 0) {
     summaryParts.push(`ran ${pluralize(counts.searchCount, 'search')}`)

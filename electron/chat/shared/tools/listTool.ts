@@ -8,16 +8,19 @@ export function createListTool(context: WorkspaceToolContext) {
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
-        absolute_path: { type: 'string' },
+        path: {
+          description: 'Path to the directory. Omit it to list the workspace root.',
+          type: 'string',
+        },
       },
       type: 'object',
     }),
     execute: async (rawInput) => {
-      const input = rawInput as { absolute_path?: string }
+      const input = rawInput as { path?: string }
       try {
         const target = await resolveReadOnlyTargetPath(
           context.workspaceRootPath,
-          input.absolute_path,
+          input.path,
           context.terminalExecutionMode,
         )
         return await createListToolResult(context.workspaceRootPath, target.absolutePath, target.displayPath)

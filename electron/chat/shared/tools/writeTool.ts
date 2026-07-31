@@ -8,16 +8,23 @@ export function createWriteTool(context: WorkspaceToolContext) {
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
-        absolute_path: { type: 'string' },
-        content: { type: 'string' },
+        content: { description: 'Complete file contents to write.', type: 'string' },
+        path: { description: 'Path to the file to create or replace.', type: 'string' },
       },
-      required: ['absolute_path', 'content'],
+      required: ['path', 'content'],
       type: 'object',
     }),
     execute: async (rawInput) => {
-      const input = rawInput as { absolute_path: string; content: string }
+      const input = rawInput as { content: string; path?: string }
       try {
-        return await createWholeFileWriteToolResult(context, input)
+        const targetPath = input.path
+        if (!targetPath) {
+          throw new Error('File path ("path") is required.')
+        }
+        return await createWholeFileWriteToolResult(context, {
+          content: input.content,
+          path: targetPath,
+        })
       } catch (error) {
         return createToolErrorResult(getToolErrorSummary(error, 'File change failed.'))
       }

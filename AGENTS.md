@@ -18,7 +18,6 @@
   </anti_laziness_protocol>
 
   <hard_constraints description="NON-NEGOTIABLE. Apply before any code is written.">
-    - ALWAYS USE list_dir on the root of the project before anything else.
     - NEVER call view_file or other read tools on rule files (e.g., AGENTS.md, GEMINI.md, RULES.md). Their contents are automatically injected into your system prompt under <user_rules>. Reading them manually is redundant and strictly forbidden.
     - NEVER produce a single file when the work has more than one distinct responsibility.
     - NEVER co-locate orchestration, domain logic, data access, validation, state, and UI in the same file. Each concern lives in its own file.

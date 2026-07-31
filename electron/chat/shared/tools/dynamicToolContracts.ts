@@ -31,6 +31,7 @@ export interface DynamicToolCatalogEntry extends DynamicToolSummary {
   nativeTool: DynamicNativeTool
   execute: DynamicToolExecutor | null
   aliases: string[]
+  searchHints: string[]
   guidance: DynamicToolGuidance
 }
 

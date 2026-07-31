@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { asSchema } from 'ai'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -24,25 +25,25 @@ interface ExecutableToolResult {
 }
 
 interface ExecutableListTool {
-  execute: (input: { absolute_path: string }) => Promise<ExecutableToolResult>
+  execute: (input: { path: string }) => Promise<ExecutableToolResult>
 }
 
 interface ExecutableGlobTool {
-  execute: (input: { absolute_path: string; pattern: string }) => Promise<ExecutableToolResult>
+  execute: (input: { path: string; pattern: string }) => Promise<ExecutableToolResult>
 }
 
 interface ExecutableGrepTool {
-  execute: (input: { absolute_path: string; include?: string; pattern: string }) => Promise<ExecutableToolResult>
+  execute: (input: { include?: string; path: string; pattern: string }) => Promise<ExecutableToolResult>
 }
 
 interface ExecutableWriteTool {
-  execute: (input: { absolute_path: string; content: string }) => Promise<ExecutableToolResult>
+  execute: (input: { content: string; path: string }) => Promise<ExecutableToolResult>
 }
 
 interface ExecutableReplaceTool {
   execute: (input: {
-    absolute_path: string
     endLine: number
+    path: string
     replacementContent: string
     startLine: number
     targetContent: string
@@ -383,14 +384,14 @@ test('sandbox list, glob, and grep can inspect global .agents skill files', asyn
       { chatMode: 'agent' },
     )
     const listResult = await (tools.list as unknown as ExecutableListTool).execute({
-      absolute_path: skillDirectory,
+      path: skillDirectory,
     })
     const globResult = await (tools.glob as unknown as ExecutableGlobTool).execute({
-      absolute_path: skillDirectory,
+      path: skillDirectory,
       pattern: '**/*.mjs',
     })
     const grepResult = await (tools.grep as unknown as ExecutableGrepTool).execute({
-      absolute_path: skillDirectory,
+      path: skillDirectory,
       pattern: 'skill-validation-needle',
     })
 
@@ -419,7 +420,7 @@ test('sandbox list rejects directories outside the workspace and global .agents'
       { chatMode: 'agent' },
     )
     const result = await (tools.list as unknown as ExecutableListTool).execute({
-      absolute_path: outsideDirectoryPath,
+      path: outsideDirectoryPath,
     })
 
     assert.equal(result.status, 'error')
@@ -445,11 +446,11 @@ test('sandbox write and replace remain blocked inside global .agents', async () 
       { chatMode: 'agent' },
     )
     const writeResult = await (tools.write as unknown as ExecutableWriteTool).execute({
-      absolute_path: globalSkillFilePath,
+      path: globalSkillFilePath,
       content: '# Changed skill\n',
     })
-    const replaceResult = await (tools.replace_file_content as unknown as ExecutableReplaceTool).execute({
-      absolute_path: globalSkillFilePath,
+    const replaceResult = await (tools.edit as unknown as ExecutableReplaceTool).execute({
+      path: globalSkillFilePath,
       endLine: 1,
       replacementContent: '# Changed skill',
       startLine: 1,
@@ -506,7 +507,7 @@ test('createAgentTools list allows explicit external directories in Full Access 
       { chatMode: 'plan' },
     )
     const result = await (tools.list as unknown as ExecutableListTool).execute({
-      absolute_path: outsideDirectoryPath,
+      path: outsideDirectoryPath,
     })
 
     assert.equal(result.status, 'success')
@@ -515,6 +516,27 @@ test('createAgentTools list allows explicit external directories in Full Access 
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
     await fs.rm(outsideDirectoryPath, { force: true, recursive: true })
+  }
+})
+
+test('workspace tool schemas use path consistently for filesystem targets', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+
+  try {
+    const tools = await createAgentTools(
+      { workspaceRootPath },
+      { chatMode: 'agent' },
+    )
+
+    for (const toolName of ['list', 'read', 'glob', 'grep', 'write', 'edit']) {
+      const tool = tools[toolName] as { inputSchema: unknown }
+      const schema = await asSchema(tool.inputSchema).jsonSchema as {
+        properties?: Record<string, unknown>
+      }
+      assert.ok(schema.properties && 'path' in schema.properties, `${toolName} should expose path`)
+    }
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
@@ -536,11 +558,11 @@ test('createAgentTools glob and grep allow explicit external paths in Full Acces
     )
 
     const globResult = await (tools.glob as unknown as ExecutableGlobTool).execute({
-      absolute_path: outsideDirectoryPath,
+      path: outsideDirectoryPath,
       pattern: '**/*.ts',
     })
     const grepResult = await (tools.grep as unknown as ExecutableGrepTool).execute({
-      absolute_path: outsideDirectoryPath,
+      path: outsideDirectoryPath,
       include: '**/*.ts',
       pattern: 'externalNeedle',
     })
@@ -574,15 +596,15 @@ test('createAgentTools write and replace allow explicit external files in Full A
     )
 
     const writeResult = await (tools.write as unknown as ExecutableWriteTool).execute({
-      absolute_path: outsideFilePath,
+      path: outsideFilePath,
       content: 'written\n',
     })
 
     assert.equal(writeResult.status, 'success')
     assert.equal(await fs.readFile(outsideFilePath, 'utf8'), 'written\n')
 
-    const replaceResult = await (tools.replace_file_content as unknown as ExecutableReplaceTool).execute({
-      absolute_path: outsideFilePath,
+    const replaceResult = await (tools.edit as unknown as ExecutableReplaceTool).execute({
+      path: outsideFilePath,
       endLine: 1,
       replacementContent: 'patched',
       startLine: 1,
@@ -611,7 +633,7 @@ test('createAgentTools write rejects identical file content', async () => {
     )
 
     const result = await (tools.write as unknown as ExecutableWriteTool).execute({
-      absolute_path: targetFilePath,
+      path: targetFilePath,
       content: 'export const value = 1\n',
     })
 
@@ -636,7 +658,7 @@ test('createAgentTools write normalizes CRLF content to LF', async () => {
     )
 
     const result = await (tools.write as unknown as ExecutableWriteTool).execute({
-      absolute_path: targetFilePath,
+      path: targetFilePath,
       content: 'export const first = 1\r\nexport const second = 2\r\n',
     })
 
@@ -661,7 +683,7 @@ test('createAgentTools write rejects line-ending-only rewrites', async () => {
     )
 
     const result = await (tools.write as unknown as ExecutableWriteTool).execute({
-      absolute_path: targetFilePath,
+      path: targetFilePath,
       content: 'export const value = 1\n',
     })
 

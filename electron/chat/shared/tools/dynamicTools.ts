@@ -83,6 +83,26 @@ function getCatalogEntry(catalog: ReadonlyMap<string, DynamicToolCatalogEntry>, 
   return normalizedId.length > 0 ? catalog.get(normalizedId) ?? null : null
 }
 
+function getUnknownToolErrorResult(
+  catalogEntries: readonly DynamicToolCatalogEntry[],
+  requestedId: string,
+) {
+  const summary = `Tool "${requestedId}" not found or not allowed.`
+  const suggestions = searchToolCatalog(catalogEntries, requestedId, 1).results
+    .slice(0, 3)
+    .map((result) => ({ id: result.id, name: result.name }))
+
+  return errorResult(
+    summary,
+    jsonBody({
+      error: summary,
+      nextStep: 'Call list_tools to discover an exact tool id, then call get_tool_schema before execute_tool.',
+      requestedId,
+      suggestions,
+    }),
+  )
+}
+
 function jsonBody(value: unknown) {
   return JSON.stringify(value, null, 2)
 }
@@ -270,10 +290,7 @@ export async function createDynamicToolSet(catalogEntries: readonly DynamicToolC
 
         const entry = getCatalogEntry(catalog, input.id)
         if (!entry) {
-          return errorResult(
-            `Tool "${input.id}" not found or not allowed.`,
-            jsonBody({ error: `Tool "${input.id}" not found or not allowed.` }),
-          )
+          return getUnknownToolErrorResult(catalogEntries, input.id)
         }
 
         const validationError = getFirstValidationError(validateJsonSchema(input.args, entry.inputSchema))

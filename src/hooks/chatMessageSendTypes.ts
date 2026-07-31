@@ -44,6 +44,7 @@ export interface PersistAndStreamMessageInput {
   clearUserMessageRevert?: (messageId: string) => void
   setError: (errorMessage: string | null) => void
   setMainComposerAttachments: (attachments: ChatAttachment[]) => void
+  setMainComposerMentionPathMap: (mentionPathMap: Map<string, string>) => void
   setMainComposerValue: (value: string) => void
   setPendingDraftSendCount: (updater: (currentValue: number) => number) => void
   resetMainComposerAfterSend?: boolean

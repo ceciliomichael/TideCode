@@ -991,6 +991,7 @@ export function ChatInterfaceContent({
                     refactorCandidatesLoading={refactorCandidatesLoading}
                     value={chatMessages.mainComposerValue}
                     onAttachmentsChange={chatMessages.setMainComposerAttachments}
+                    initialMentionPathMap={chatMessages.mainComposerMentionPathMap}
                     onValueChange={chatMessages.setMainComposerValue}
                     onSend={handleSendMainMessage}
                     onQueue={(value, attachments) => enqueueMessage(value, attachments)}

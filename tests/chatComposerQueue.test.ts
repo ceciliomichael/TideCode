@@ -5,6 +5,7 @@ import {
   createQueuedComposerMessage,
   dequeueQueuedComposerMessage,
   removeQueuedComposerMessage,
+  requeueQueuedComposerMessage,
   updateQueuedComposerMessage,
 } from '../src/pages/chatInterface/chatComposerQueue'
 
@@ -66,4 +67,13 @@ test('dequeueQueuedComposerMessage returns the first message and the remaining q
 
   assert.equal(result.nextMessage?.content, 'First')
   assert.deepEqual(result.remainingMessages.map((message) => message.content), ['Second'])
+})
+
+test('requeueQueuedComposerMessage does not duplicate a queued item during a retry race', () => {
+  const queuedMessage = createQueuedComposerMessage({ content: 'Retry this once' })
+  const existingMessages = [queuedMessage]
+
+  const nextMessages = requeueQueuedComposerMessage(existingMessages, queuedMessage, 0)
+
+  assert.deepEqual(nextMessages.map((message) => message.id), [queuedMessage.id])
 })

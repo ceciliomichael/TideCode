@@ -8,18 +8,21 @@ export function createGlobTool(context: WorkspaceToolContext) {
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
-        absolute_path: { type: 'string' },
+        path: {
+          description: 'Directory path to search. Omit it to search from the workspace root.',
+          type: 'string',
+        },
         pattern: { minLength: 1, type: 'string' },
       },
       required: ['pattern'],
       type: 'object',
     }),
     execute: async (rawInput) => {
-      const input = rawInput as { absolute_path?: string; pattern: string }
+      const input = rawInput as { path?: string; pattern: string }
       try {
         const target = await resolveReadOnlyTargetPath(
           context.workspaceRootPath,
-          input.absolute_path,
+          input.path,
           context.terminalExecutionMode,
         )
         return await createGlobToolResult(

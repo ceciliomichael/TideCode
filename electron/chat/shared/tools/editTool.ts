@@ -1,16 +1,16 @@
 import { jsonSchema, tool } from 'ai'
 import type { AgentToolExecutionResult } from '../toolTypes'
-import { createReplaceFileContentToolResult, type WorkspaceToolContext } from './workspaceTools'
+import { createEditToolResult, type WorkspaceToolContext } from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
-const REPLACE_FILE_CONTENT_DESCRIPTION = 'Replaces a block of text in a file.'
+const REPLACE_FILE_CONTENT_DESCRIPTION =
+  'Replaces a block of text in a file. Leading indentation differences are ignored, but the remaining text must match exactly.'
 
-export function createReplaceFileContentTool(context: WorkspaceToolContext) {
+export function createEditTool(context: WorkspaceToolContext) {
   return tool({
     description: REPLACE_FILE_CONTENT_DESCRIPTION,
     inputSchema: jsonSchema<{
-      path?: string
-      absolute_path?: string
+      path: string
       targetContent: string
       replacementContent: string
       startLine: number
@@ -21,10 +21,6 @@ export function createReplaceFileContentTool(context: WorkspaceToolContext) {
       properties: {
         path: {
           description: 'Path to the file to edit.',
-          type: 'string',
-        },
-        absolute_path: {
-          description: 'Alias for path.',
           type: 'string',
         },
         allowMultiple: {
@@ -46,7 +42,7 @@ export function createReplaceFileContentTool(context: WorkspaceToolContext) {
           type: 'integer',
         },
         targetContent: {
-          description: 'Target text to replace.',
+          description: 'Text to replace. Leading spaces or tabs on each line may differ from the file.',
           minLength: 1,
           type: 'string',
         },
@@ -57,19 +53,18 @@ export function createReplaceFileContentTool(context: WorkspaceToolContext) {
     execute: async (rawInput): Promise<AgentToolExecutionResult> => {
       const input = rawInput as {
         path?: string
-        absolute_path?: string
         targetContent: string
         replacementContent: string
         startLine: number
         endLine: number
         allowMultiple?: boolean
       }
-      const targetPath = input.path ?? input.absolute_path
+      const targetPath = input.path
       if (!targetPath) {
         throw new Error('File path ("path") is required.')
       }
       try {
-        return await createReplaceFileContentToolResult(context, {
+        return await createEditToolResult(context, {
           ...input,
           path: targetPath,
           allowMultiple: input.allowMultiple ?? false,

@@ -5,6 +5,7 @@ import {
   createQueuedComposerMessage,
   dequeueQueuedComposerMessage,
   removeQueuedComposerMessage,
+  requeueQueuedComposerMessage,
   updateQueuedComposerMessage,
 } from './chatComposerQueue'
 import {
@@ -36,6 +37,8 @@ export function useChatMessageQueue({
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([])
   const [successfulToolReleaseSignal, setSuccessfulToolReleaseSignal] = useState<string | null>(null)
   const isProcessingQueueRef = useRef(false)
+  const queuedMessageSendInFlightIdsRef = useRef<Set<string>>(new Set())
+  const queueLifecycleVersionRef = useRef(0)
   const attemptedAutoSendKeyRef = useRef<string | null>(null)
   const observedSuccessfulToolSignalRef = useRef(successfulToolCompletionSignal)
 
@@ -72,16 +75,19 @@ export function useChatMessageQueue({
   }, [])
 
   const removeQueuedMessage = useCallback((id: string) => {
+    queueLifecycleVersionRef.current += 1
     attemptedAutoSendKeyRef.current = null
     setQueuedMessages((currentValue) => removeQueuedComposerMessage(currentValue, id))
   }, [])
 
   const updateQueuedMessage = useCallback((id: string, content: string, attachments?: ChatAttachment[]) => {
+    queueLifecycleVersionRef.current += 1
     attemptedAutoSendKeyRef.current = null
     setQueuedMessages((currentValue) => updateQueuedComposerMessage(currentValue, id, content, attachments))
   }, [])
 
   const clearQueuedMessages = useCallback(() => {
+    queueLifecycleVersionRef.current += 1
     attemptedAutoSendKeyRef.current = null
     setSuccessfulToolReleaseSignal(null)
     setQueuedMessages([])
@@ -93,16 +99,22 @@ export function useChatMessageQueue({
       restoreIndex: number,
       reason: QueuedMessageAutoSendReason,
     ) => {
+      if (queuedMessageSendInFlightIdsRef.current.has(targetMessage.id)) {
+        return true
+      }
+
+      queuedMessageSendInFlightIdsRef.current.add(targetMessage.id)
+      const queueLifecycleVersion = queueLifecycleVersionRef.current
       setQueuedMessages((currentValue) => removeQueuedComposerMessage(currentValue, targetMessage.id))
 
       try {
         const wasAccepted = await onSendMessage(targetMessage, reason)
         if (!wasAccepted) {
-          setQueuedMessages((currentValue) => {
-            const nextMessages = [...currentValue]
-            nextMessages.splice(Math.max(restoreIndex, 0), 0, targetMessage)
-            return nextMessages
-          })
+          if (queueLifecycleVersionRef.current === queueLifecycleVersion) {
+            setQueuedMessages((currentValue) =>
+              requeueQueuedComposerMessage(currentValue, targetMessage, restoreIndex),
+            )
+          }
         } else {
           attemptedAutoSendKeyRef.current = null
           setSuccessfulToolReleaseSignal(null)
@@ -111,12 +123,14 @@ export function useChatMessageQueue({
         return wasAccepted
       } catch (caughtError) {
         console.error(caughtError)
-        setQueuedMessages((currentValue) => {
-          const nextMessages = [...currentValue]
-          nextMessages.splice(Math.max(restoreIndex, 0), 0, targetMessage)
-          return nextMessages
-        })
+        if (queueLifecycleVersionRef.current === queueLifecycleVersion) {
+          setQueuedMessages((currentValue) =>
+            requeueQueuedComposerMessage(currentValue, targetMessage, restoreIndex),
+          )
+        }
         return false
+      } finally {
+        queuedMessageSendInFlightIdsRef.current.delete(targetMessage.id)
       }
     },
     [onSendMessage],

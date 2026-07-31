@@ -44,6 +44,9 @@ function cloneAttachments(attachments: readonly ChatAttachment[]) {
 export function useChatComposerState(messages: Message[]) {
   const [mainComposerValue, setMainComposerValue] = useState('')
   const [mainComposerAttachments, setMainComposerAttachments] = useState<ChatAttachment[]>([])
+  const [mainComposerMentionPathMap, setMainComposerMentionPathMap] = useState<Map<string, string>>(
+    () => new Map(),
+  )
   const [editComposerValue, setEditComposerValue] = useState('')
   const [editComposerAttachments, setEditComposerAttachments] = useState<ChatAttachment[]>([])
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
@@ -56,6 +59,14 @@ export function useChatComposerState(messages: Message[]) {
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
+
+  useEffect(() => {
+    if (mainComposerValue.trim().length > 0 || mainComposerMentionPathMap.size === 0) {
+      return
+    }
+
+    setMainComposerMentionPathMap(new Map())
+  }, [mainComposerMentionPathMap.size, mainComposerValue])
 
   const restoreEditingSession = useCallback((session: EditComposerDraftSession | { messageId: string }) => {
     const targetMessage = messagesRef.current.find(
@@ -87,6 +98,7 @@ export function useChatComposerState(messages: Message[]) {
     setEditingMessageId(null)
     setMainComposerValue('')
     setMainComposerAttachments([])
+    setMainComposerMentionPathMap(new Map())
     setEditComposerValue('')
     setEditComposerAttachments([])
     setEditInitialValue('')
@@ -128,6 +140,8 @@ export function useChatComposerState(messages: Message[]) {
     setMainComposerValue,
     mainComposerAttachments,
     setMainComposerAttachments,
+    mainComposerMentionPathMap,
+    setMainComposerMentionPathMap,
     editComposerValue,
     setEditComposerValue,
     editComposerAttachments,
