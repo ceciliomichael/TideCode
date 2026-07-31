@@ -40,6 +40,8 @@ export interface PersistAndStreamMessageInput {
   selectedFolderIdRef: { current: string | null }
   hasPendingAbortRequest: () => boolean
   consumePendingAbortBeforeStreamStart: () => boolean
+  isUserMessageReverted?: (messageId: string) => boolean
+  clearUserMessageRevert?: (messageId: string) => void
   setError: (errorMessage: string | null) => void
   setMainComposerAttachments: (attachments: ChatAttachment[]) => void
   setMainComposerValue: (value: string) => void

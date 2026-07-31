@@ -338,6 +338,23 @@ export async function persistConversationSnapshot(conversationId: string, messag
   })
 }
 
+export function getMessagesBeforeUserMessage(messages: readonly Message[], messageId: string) {
+  const targetMessageIndex = messages.findIndex(
+    (message) => message.id === messageId && message.role === 'user',
+  )
+  return targetMessageIndex < 0 ? null : messages.slice(0, targetMessageIndex)
+}
+
+export async function rollbackConversationBeforeUserMessage(conversationId: string, messageId: string) {
+  const conversation = await loadStoredConversationOrThrow(conversationId)
+  const messagesBeforeUserMessage = getMessagesBeforeUserMessage(conversation.messages, messageId)
+  if (!messagesBeforeUserMessage) {
+    return conversation
+  }
+
+  return persistConversationSnapshot(conversationId, messagesBeforeUserMessage)
+}
+
 export async function restoreWorkspaceCheckpointForMessage(conversationId: string, messageId: string) {
   const conversation = await loadStoredConversationOrThrow(conversationId)
   const { checkpointIds, targetMessage, targetMessageIndex } = await findUserMessageForRevertOrThrow(conversation, messageId)
