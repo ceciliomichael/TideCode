@@ -3,8 +3,7 @@ import type { AgentToolExecutionResult } from '../toolTypes'
 import { createReplaceFileContentToolResult, type WorkspaceToolContext } from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
-const REPLACE_FILE_CONTENT_DESCRIPTION =
-  'Replaces a single exact contiguous block of text inside an existing file. Supports relative or absolute file paths. Note: If making multiple edits to the same file or function, make a single comprehensive replacement covering the entire region, or re-read the file between tool calls, as previous edits alter line numbers and target text.'
+const REPLACE_FILE_CONTENT_DESCRIPTION = 'Replaces a block of text in a file.'
 
 export function createReplaceFileContentTool(context: WorkspaceToolContext) {
   return tool({
@@ -21,37 +20,33 @@ export function createReplaceFileContentTool(context: WorkspaceToolContext) {
       additionalProperties: false,
       properties: {
         path: {
-          description: 'Relative or absolute path to the file to edit.',
+          description: 'Path to the file to edit.',
           type: 'string',
         },
         absolute_path: {
-          description: 'Alias for path (relative or absolute path to the file to edit).',
+          description: 'Alias for path.',
           type: 'string',
         },
         allowMultiple: {
-          description:
-            'When true, all occurrences of targetContent within the line range are replaced. Defaults to false, which rejects multiple matches.',
+          description: 'Whether to replace all occurrences within the line range.',
           type: 'boolean',
         },
         endLine: {
-          description:
-            'Last line where the target was read (1-indexed, inclusive). If the exact target moved and is unique, the tool can still find it.',
+          description: 'Ending line number (1-indexed).',
           minimum: 1,
           type: 'integer',
         },
         replacementContent: {
-          description: 'The text to insert in place of targetContent.',
+          description: 'Replacement text.',
           type: 'string',
         },
         startLine: {
-          description:
-            'First line where the target was read (1-indexed, inclusive).',
+          description: 'Starting line number (1-indexed).',
           minimum: 1,
           type: 'integer',
         },
         targetContent: {
-          description:
-            'The exact string to replace, including all whitespace and indentation. Must be a unique match within the specified line range (unless allowMultiple is true).',
+          description: 'Target text to replace.',
           minLength: 1,
           type: 'string',
         },

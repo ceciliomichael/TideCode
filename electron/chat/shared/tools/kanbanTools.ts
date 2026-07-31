@@ -47,8 +47,7 @@ function ok(summary: string, body: unknown): AgentToolExecutionResult {
 // ---------------------------------------------------------------------------
 const FLAT_KANBAN_SCHEMA = {
   type: 'object',
-  description:
-    'Kanban board. action: read_board | read_card | create_card | create_task_with_subtasks | update_card | move_card | reorder_card | delete_card. NOTE: Moving to done requires all acceptance criteria to have completed: true. Never call update_card and move_card in parallel on the same card. To update criteria and move to done in one step, call update_card with acceptanceCriteria (setting completed: true) and targetColumnId: "done".',
+  description: 'Manages tasks and cards on the workspace Kanban board.',
   properties: {
     action: { type: 'string' },
 
@@ -119,11 +118,6 @@ const FLAT_KANBAN_SCHEMA = {
   required: ['action'],
 }
 
-const FLAT_KANBAN_SCHEMA_READ_ONLY = {
-  ...FLAT_KANBAN_SCHEMA,
-  description: 'Kanban board. action: read_board | read_card',
-}
-
 interface KanbanBoardInput {
   action: string
   cardId?: string
@@ -156,7 +150,6 @@ interface KanbanBoardInput {
 
 export function createKanbanToolSet(
   context: Pick<AgentToolContext, 'checkpointId' | 'workspaceRootPath'>,
-  options: { readOnly?: boolean } = {},
 ): ToolSet {
   async function snapshot() {
     const checkpointId = context.checkpointId?.trim()
@@ -174,12 +167,11 @@ export function createKanbanToolSet(
     return fn()
   }
 
-  const schema = options.readOnly ? FLAT_KANBAN_SCHEMA_READ_ONLY : FLAT_KANBAN_SCHEMA
+  const schema = FLAT_KANBAN_SCHEMA
 
   return {
     kanban_board: tool({
-      description:
-        'Interact with the workspace Kanban board. Set `action` to one of: read_board, read_card, create_card, create_task_with_subtasks, update_card, move_card, reorder_card, delete_card.',
+      description: 'Manages tasks and cards on the workspace Kanban board.',
       inputSchema: jsonSchema(schema as Parameters<typeof jsonSchema>[0]),
       execute: async (rawInput): Promise<AgentToolExecutionResult> => {
         const input = rawInput as KanbanBoardInput

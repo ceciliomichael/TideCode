@@ -2,7 +2,7 @@ import type { ToolInvocationTrace } from '../../types/chat'
 import { buildKanbanToolInvocationGroupSummary } from './kanbanToolInvocationGrouping'
 import { isKanbanTool } from './kanbanToolInvocationKinds'
 import { isFileWriteTool } from './toolInvocationKinds'
-import { getFileMutationSummaryKind } from './toolInvocationPresentation'
+import { getFileMutationSummaryKind, resolveToolInvocationForPresentation } from './toolInvocationPresentation'
 
 interface ToolInvocationSummaryCounts {
   listCount: number
@@ -188,7 +188,8 @@ export function buildToolInvocationGroupSummary(
   }
 
   for (const invocation of invocations) {
-    const mutationKind = getFileMutationSummaryKind(invocation)
+    const displayInvocation = resolveToolInvocationForPresentation(invocation)
+    const mutationKind = getFileMutationSummaryKind(displayInvocation)
     if (mutationKind) {
       hasFileMutationBuckets = true
       if (mutationKind === 'created') {
@@ -204,13 +205,13 @@ export function buildToolInvocationGroupSummary(
       continue
     }
 
-    if (isKanbanTool(invocation.toolName)) {
+    if (isKanbanTool(displayInvocation.toolName)) {
       counts.kanbanCount += 1
       recordMixedBucket('kanban')
       continue
     }
 
-    const classifiedBucket = classifyInvocation(invocation.toolName)
+    const classifiedBucket = classifyInvocation(displayInvocation.toolName)
     if (classifiedBucket) {
       counts[classifiedBucket] += 1
       if (classifiedBucket === 'listCount') {
@@ -229,7 +230,7 @@ export function buildToolInvocationGroupSummary(
       continue
     }
 
-    const label = normalizeToolLabel(invocation.toolName)
+    const label = normalizeToolLabel(displayInvocation.toolName)
     otherToolCounts.set(label, (otherToolCounts.get(label) ?? 0) + 1)
     recordMixedBucket(`other:${label}`)
   }

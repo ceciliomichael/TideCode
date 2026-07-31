@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { buildChatModeSystemPrompt } from '../../electron/chat/shared/prompts/mode'
-import { createAgentTools } from '../../electron/chat/shared/tools'
+import { createAgentTools, createNativeAgentTools } from '../../electron/chat/shared/tools'
 
 test('agent prompt teaches concise, reliable, dependency-aware tool use', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-agent-prompt-'))
@@ -13,10 +13,8 @@ test('agent prompt teaches concise, reliable, dependency-aware tool use', async 
     const prompt = buildChatModeSystemPrompt('agent', workspaceRootPath)
 
     assert.doesNotMatch(prompt, /caveman|primitive speech/iu)
-    assert.match(prompt, /Run calls together only when none needs another call's result/u)
-    assert.match(prompt, /Never change the same file, terminal session, or Kanban card at the same time/u)
-    assert.match(prompt, /replace_file_content/u)
-    assert.match(prompt, /reorder_card/u)
+    assert.match(prompt, /Batch calls only when none depends on another result/u)
+    assert.match(prompt, /same file, terminal session, or Kanban card sequential/u)
     assert.match(prompt, /Answer first/u)
     assert.match(prompt, /Default to 1-3 short sentences/u)
     assert.match(prompt, /report only what you verified/iu)
@@ -32,16 +30,15 @@ test('plan prompt is concise and explicitly restricts file editing while support
     const prompt = buildChatModeSystemPrompt('plan', workspaceRootPath)
 
     assert.doesNotMatch(prompt, /caveman|primitive speech/iu)
-    assert.match(prompt, /Plan mode cannot edit files or run terminal commands/u)
-    assert.match(prompt, /Run calls together only when none needs another call's result/u)
-    assert.match(prompt, /create_card.*create_task_with_subtasks/su)
+    assert.match(prompt, /Plan mode may use Kanban planning actions and discovered MCP tools/u)
+    assert.match(prompt, /model-facing tool surface contains three capability tools/u)
     assert.match(prompt, /Stay under 300 words/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('runtime tool exposure enforces the Agent and Plan mode contracts', async () => {
+test('runtime tool exposure keeps the provider surface to the three dynamic tools', async () => {
   const workspaceRootPath = await fs.mkdtemp(
     path.join(tmpdir(), 'echosphere-mode-tools-'),
   )
@@ -58,24 +55,41 @@ test('runtime tool exposure enforces the Agent and Plan mode contracts', async (
       ),
     ])
 
-    for (const toolName of [
-      'write',
-      'replace_file_content',
-    ]) {
-      assert.ok(toolName in agentTools, `Agent mode must expose ${toolName}`)
-      assert.ok(!(toolName in planTools), `Plan mode must not expose ${toolName}`)
-    }
+    assert.deepEqual(Object.keys(agentTools).sort(), ['execute_tool', 'get_tool_schema', 'list_tools'])
+    assert.deepEqual(Object.keys(planTools).sort(), ['execute_tool', 'get_tool_schema', 'list_tools'])
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
 
-    for (const toolName of [
-      'list',
-      'glob',
-      'grep',
-      'read',
-      'kanban_board',
-    ]) {
-      assert.ok(toolName in agentTools, `Agent mode must expose ${toolName}`)
-      assert.ok(toolName in planTools, `Plan mode must expose ${toolName}`)
-    }
+test('plan mode excludes workspace mutation tools but permits Kanban planning actions', async () => {
+  const workspaceRootPath = await fs.mkdtemp(
+    path.join(tmpdir(), 'echosphere-mode-native-tools-'),
+  )
+
+  try {
+    const [agentTools, planTools] = await Promise.all([
+      createNativeAgentTools(
+        { workspaceRootPath },
+        { chatMode: 'agent', providerId: 'custom:test-provider' },
+      ),
+      createNativeAgentTools(
+        { workspaceRootPath },
+        { chatMode: 'plan', providerId: 'custom:test-provider' },
+      ),
+    ])
+
+    assert.ok('write' in agentTools)
+    assert.ok('replace_file_content' in agentTools)
+    assert.ok('execute_terminal' in agentTools)
+    assert.ok(!('write' in planTools))
+    assert.ok(!('replace_file_content' in planTools))
+    assert.ok(!('execute_terminal' in planTools))
+
+    const planKanban = planTools.kanban_board
+    assert.ok(planKanban)
+    assert.match(String(planKanban.description), /read_board/u)
+    assert.match(String(planKanban.description), /create_card|update_card|delete_card/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

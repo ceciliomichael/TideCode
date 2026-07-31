@@ -34,7 +34,7 @@
     "@ai-sdk/openai": "^4.0.16",
     "@ai-sdk/openai-compatible": "^3.0.12",
     "@ai-sdk/provider-utils": "^5.0.11",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@monaco-editor/react": "^4.7.0",
     "@shikijs/monaco": "^4.3.0",
     "@tailwindcss/vite": "^4.2.1",

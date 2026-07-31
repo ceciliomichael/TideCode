@@ -1,3 +1,4 @@
+import type { ModelMessage } from 'ai'
 import type { Message } from '../types/chat'
 
 export function approximateTokenCount(value: string) {
@@ -32,6 +33,26 @@ export function estimateMessageContextUsage(messages: readonly Message[]) {
       if (invocation.state !== 'running') {
         historyTokens += approximateTokenCount(invocation.argumentsText)
       }
+    }
+  }
+
+  return {
+    historyTokens,
+    toolResultsTokens,
+    totalTokens: historyTokens + toolResultsTokens,
+  }
+}
+
+export function estimateModelMessageContextUsage(messages: readonly ModelMessage[]) {
+  let historyTokens = 0
+  let toolResultsTokens = 0
+
+  for (const message of messages) {
+    const messageTokens = approximateTokenCount(JSON.stringify(message.content))
+    if (message.role === 'tool') {
+      toolResultsTokens += messageTokens
+    } else {
+      historyTokens += messageTokens
     }
   }
 

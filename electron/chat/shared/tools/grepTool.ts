@@ -4,7 +4,7 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createGrepTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Returns visible text matches for the ripgrep regex pattern within the active execution context, sorted by path and line number. absolute_path may select one file or directory; include is an optional filename glob.',
+    description: 'Searches file contents using regular expressions.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {

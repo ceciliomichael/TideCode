@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { ChatMode, AppTerminalExecutionMode } from '../../../../../src/types/chat'
 import { buildWorkspaceInstructionsBlock } from '../workspaceInstructions'
+import { buildDynamicToolsPrompt } from '../dynamicTools'
 import { buildPythonVenvPromptBlock } from '../../../../python/venv'
 
 const PROMPT_REPO_PATH = 'electron/chat/shared/prompts/mode'
@@ -15,10 +16,7 @@ const SHARED_PROMPT_DIRECTORY = {
   directory: 'shared',
   wrapperTag: 'instruction_extensions',
 } as const
-const TOOLING_PROMPT_PATHS: Record<ChatMode, string> = {
-  agent: 'agent/tooling',
-  plan: 'plan/tooling',
-}
+const SHARED_TOOLING_PROMPT_PATH = 'shared/tooling.md'
 
 function readPromptFile(relativePath: string) {
   const appRoot = process.env.APP_ROOT?.trim()
@@ -71,7 +69,7 @@ function readPromptDirectory(relativeDirectory: string) {
 
 const cachedPrompts: Partial<Record<ChatMode, string>> = {}
 let cachedSharedPrompt: string | null = null
-const cachedToolingPrompts: Partial<Record<ChatMode, string>> = {}
+let cachedToolingPrompt: string | null = null
 
 function getModePrompt(chatMode: ChatMode) {
   const cachedPrompt = cachedPrompts[chatMode]
@@ -93,15 +91,13 @@ function getSharedPrompt() {
   return cachedSharedPrompt
 }
 
-function getToolingPrompt(chatMode: ChatMode) {
-  const cachedPrompt = cachedToolingPrompts[chatMode]
-  if (cachedPrompt) {
-    return cachedPrompt
+function getToolingPrompt() {
+  if (cachedToolingPrompt !== null) {
+    return cachedToolingPrompt
   }
 
-  const toolingPrompt = readPromptDirectory(TOOLING_PROMPT_PATHS[chatMode])
-  cachedToolingPrompts[chatMode] = toolingPrompt
-  return toolingPrompt
+  cachedToolingPrompt = readPromptFile(SHARED_TOOLING_PROMPT_PATH)
+  return cachedToolingPrompt
 }
 
 export function buildChatModeSystemPrompt(
@@ -110,7 +106,8 @@ export function buildChatModeSystemPrompt(
   options?: { availableSkillsBlock?: string | null; terminalExecutionMode?: AppTerminalExecutionMode },
 ) {
   const systemRules = [
-    getToolingPrompt(chatMode),
+    buildDynamicToolsPrompt(),
+    getToolingPrompt(),
     getModePrompt(chatMode),
     getSharedPrompt(),
     options?.availableSkillsBlock?.trim() ? options.availableSkillsBlock.trim() : null,

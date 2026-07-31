@@ -7,7 +7,7 @@ import { ChangeDiffResult } from './FileChangeDiffResult'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { TerminalToolResult } from './TerminalToolResult'
 import { ToolDecisionRequestCard, type ToolDecisionSubmission } from './ToolDecisionRequestCard'
-import { getToolInvocationHeaderLabel } from './toolInvocationPresentation'
+import { getToolInvocationHeaderLabel, resolveToolInvocationForPresentation } from './toolInvocationPresentation'
 import { isFileEditTool, isFileWriteTool } from './toolInvocationKinds'
 import { isKanbanTool } from './kanbanToolInvocationKinds'
 import { KanbanToolResult } from './KanbanToolResult'
@@ -72,6 +72,10 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   onToolDecisionSubmit,
   workspaceRootPath = null,
 }: ToolInvocationBlockProps) {
+  const displayInvocation = useMemo(
+    () => resolveToolInvocationForPresentation(invocation),
+    [invocation],
+  )
   const [isOpen, setIsOpen] = useState(false)
   const [submittedDecisionRequestKey, setSubmittedDecisionRequestKey] = useState<string | null>(null)
   const [displayedState, setDisplayedState] = useState<ToolInvocationTrace['state']>(invocation.state)
@@ -88,64 +92,64 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
     const hasUnsubmittedDecisionRequest =
       decisionRequestKey !== null && decisionRequestKey !== submittedDecisionRequestKey
     const shouldAutoOpenReadyImplementCompletion =
-      invocation.toolName === 'ready_implement' && invocation.state === 'completed' && submittedDecisionRequestKey === null
+      displayInvocation.toolName === 'ready_implement' && displayInvocation.state === 'completed' && submittedDecisionRequestKey === null
 
     if (hasUnsubmittedDecisionRequest || shouldAutoOpenReadyImplementCompletion) {
       setIsOpen(true)
     }
-  }, [decisionRequestKey, invocation.state, invocation.toolName, submittedDecisionRequestKey])
+  }, [decisionRequestKey, displayInvocation, submittedDecisionRequestKey])
 
   useEffect(() => {
-    if (invocation.state === 'running') {
+    if (displayInvocation.state === 'running') {
       setDisplayedState('running')
       return undefined
     }
 
-    if (!shouldHoldRunningLabel(invocation)) {
-      setDisplayedState(invocation.state)
+    if (!shouldHoldRunningLabel(displayInvocation)) {
+      setDisplayedState(displayInvocation.state)
       return undefined
     }
 
-    const elapsedSinceStart = Date.now() - invocation.startedAt
+    const elapsedSinceStart = Date.now() - displayInvocation.startedAt
     const remainingRunningLabelTime = Math.max(0, MIN_RUNNING_LABEL_DURATION_MS - elapsedSinceStart)
 
     if (remainingRunningLabelTime === 0) {
-      setDisplayedState(invocation.state)
+      setDisplayedState(displayInvocation.state)
       return undefined
     }
 
     setDisplayedState('running')
     const timeoutId = window.setTimeout(() => {
-      setDisplayedState(invocation.state)
+      setDisplayedState(displayInvocation.state)
     }, remainingRunningLabelTime)
 
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [invocation.startedAt, invocation.state])
+  }, [displayInvocation])
 
   const hasPendingDecision = invocation.decisionRequest !== undefined
   const isRunning = displayedState === 'running'
   const disableHeaderToggle = isRunning && !hasPendingDecision
 
-  const headerLabel = getToolInvocationHeaderLabel(invocation, displayedState, workspaceRootPath)
-  const diffCountSummary = renderDiffCountSummary(invocation)
+  const headerLabel = getToolInvocationHeaderLabel(displayInvocation, displayedState, workspaceRootPath)
+  const diffCountSummary = renderDiffCountSummary(displayInvocation)
   const terminalToolName =
-    invocation.toolName === 'execute_terminal' || invocation.toolName === 'get_terminal_output'
-      ? invocation.toolName
+    displayInvocation.toolName === 'execute_terminal' || displayInvocation.toolName === 'get_terminal_output'
+      ? displayInvocation.toolName
       : null
-  const diffResultPresentation = invocation.resultPresentation?.kind === 'file_diff' ? invocation.resultPresentation : null
-  const changeResultPresentation = invocation.resultPresentation?.kind === 'change_diff' ? invocation.resultPresentation : null
-  const parsedStructuredResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
+  const diffResultPresentation = displayInvocation.resultPresentation?.kind === 'file_diff' ? displayInvocation.resultPresentation : null
+  const changeResultPresentation = displayInvocation.resultPresentation?.kind === 'change_diff' ? displayInvocation.resultPresentation : null
+  const parsedStructuredResult = displayInvocation.resultContent ? parseStructuredToolResultContent(displayInvocation.resultContent) : null
   const rawResultBody =
     parsedStructuredResult?.body ??
     parsedStructuredResult?.metadata?.summary ??
-    invocation.resultContent ??
+    displayInvocation.resultContent ??
     ''
-  const displayResultBody = getToolResultDisplayBody(invocation.toolName, rawResultBody)
+  const displayResultBody = getToolResultDisplayBody(displayInvocation.toolName, rawResultBody)
   const normalizedResultBody = useMemo(() => normalizeMarkdownText(displayResultBody), [displayResultBody])
   const shouldLimitResultHeight =
-    terminalToolName === null && !isFileWriteTool(invocation.toolName) && !isFileEditTool(invocation.toolName)
+    terminalToolName === null && !isFileWriteTool(displayInvocation.toolName) && !isFileEditTool(displayInvocation.toolName)
 
   return (
     <div className="w-full">
@@ -178,7 +182,7 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
         </span>
       </button>
 
-      {isOpen && invocation.resultContent ? (
+      {isOpen && displayInvocation.resultContent ? (
         <div
           className={[
             'mt-1.5 w-full text-sm text-muted-foreground/90 [&>*:last-child]:mb-0',
@@ -189,7 +193,7 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
             <DiffViewer
               contextLines={diffResultPresentation.contextLines}
               filePath={diffResultPresentation.fileName}
-              isStreaming={invocation.state === 'running'}
+              isStreaming={displayInvocation.state === 'running'}
               newContent={diffResultPresentation.newContent}
               oldContent={diffResultPresentation.oldContent}
               startLineNumber={diffResultPresentation.startLineNumber}
@@ -200,24 +204,24 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
           ) : terminalToolName ? (
             <TerminalToolResult
               content={rawResultBody}
-              isStreaming={invocation.state === 'running'}
+              isStreaming={displayInvocation.state === 'running'}
               toolName={terminalToolName}
             />
-          ) : isKanbanTool(invocation.toolName) ? (
+          ) : isKanbanTool(displayInvocation.toolName) ? (
             <KanbanToolResult
-              invocation={invocation}
+              invocation={displayInvocation}
               isStreaming={displayedState === 'running'}
             />
-          ) : invocation.toolName === 'web_search' ? (
+          ) : displayInvocation.toolName === 'web_search' ? (
             <WebToolResult
-              invocation={invocation}
+              invocation={displayInvocation}
               isStreaming={displayedState === 'running'}
             />
           ) : (
             <MarkdownRenderer
               content={normalizedResultBody}
               className="w-full opacity-85"
-              isStreaming={invocation.state === 'running'}
+              isStreaming={displayInvocation.state === 'running'}
               preserveLineBreaks
             />
           )}

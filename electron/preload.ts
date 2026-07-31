@@ -6,6 +6,7 @@ import type {
   AppSettings,
   ChatProviderId,
   ChatStreamEvent,
+  CompactConversationInput,
   CompressChatHistoryInput,
   EstimateContextUsageInput,
   EchosphereChatApi,
@@ -80,6 +81,7 @@ const historyApi: EchosphereHistoryApi = {
   listConversations: () => ipcRenderer.invoke('history:list'),
   listFolders: () => ipcRenderer.invoke('history:listFolders'),
   getConversation: (conversationId: string) => ipcRenderer.invoke('history:get', conversationId),
+  listCompactionMarkers: (conversationId: string) => ipcRenderer.invoke('history:listCompactionMarkers', conversationId),
   getUserMessageCheckpointHistory: (conversationId: string, messageId: string) =>
     ipcRenderer.invoke('history:getUserMessageCheckpointHistory', conversationId, messageId),
   createConversation: (input?: CreateConversationInput) => ipcRenderer.invoke('history:create', input),
@@ -167,6 +169,7 @@ const modelsApi: EchosphereModelsApi = {
 
 const chatApi: EchosphereChatApi = {
   cancelStream: (streamId: string) => ipcRenderer.invoke('chat:stream:cancel', streamId),
+  compactConversation: (input: CompactConversationInput) => ipcRenderer.invoke('chat:compactConversation', input),
   compressConversation: (input: CompressChatHistoryInput) => ipcRenderer.invoke('chat:compressConversation', input),
   estimateContextUsage: (input: EstimateContextUsageInput) => ipcRenderer.invoke('chat:context-usage:estimate', input),
   onStreamEvent: (listener: (event: ChatStreamEvent) => void) => {

@@ -1,5 +1,12 @@
 import { createOpenAI } from '@ai-sdk/openai'
-import { streamText, type ModelMessage, type StopCondition, type ToolSet } from 'ai'
+import {
+  streamText,
+  type ModelMessage,
+  type PrepareStepFunction,
+  type StopCondition,
+  type ToolCallRepairFunction,
+  type ToolSet,
+} from 'ai'
 import type { ReasoningEffort } from '../../../src/types/chat'
 import { normalizeLanguageModelUsage } from '../cache/usage'
 import { findCatalogModel } from '../../models/catalog/catalog'
@@ -47,8 +54,10 @@ export interface CodexChatCompletionsCreateInput {
   stopWhen?: StopCondition<ToolSet> | Array<StopCondition<ToolSet>>
   maxSteps?: number
   system?: string
+  repairToolCall?: ToolCallRepairFunction<ToolSet>
   tools?: ToolSet
   onStepEnd?: (step: ProviderStepRecord) => void | Promise<void>
+  prepareStep?: PrepareStepFunction<ToolSet>
 }
 
 export function createCodexClient() {
@@ -78,6 +87,7 @@ export function createCodexClient() {
     return streamText({
       ...(input.stopWhen ? { stopWhen: input.stopWhen } : {}),
       ...(input.maxSteps !== undefined ? { maxSteps: input.maxSteps } : {}),
+      ...(input.repairToolCall ? { repairToolCall: input.repairToolCall } : {}),
       ...(catalogModel?.maxTokens ? { maxTokens: catalogModel.maxTokens } : {}),
       model: provider.responses(input.model),
       messages: input.messages,
@@ -96,6 +106,7 @@ export function createCodexClient() {
             }),
           }
         : {}),
+      ...(input.prepareStep ? { prepareStep: input.prepareStep } : {}),
       abortSignal: input.signal,
     })
   }

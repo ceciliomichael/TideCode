@@ -17,6 +17,8 @@ interface ToolArgumentsValue {
   url?: unknown
   session_id?: unknown
   name?: unknown
+  id?: unknown
+  args?: unknown
 }
 
 function parseCompleteToolArguments(argumentsText: string): ToolArgumentsValue | null {
@@ -29,6 +31,43 @@ function parseCompleteToolArguments(argumentsText: string): ToolArgumentsValue |
     return parsedValue as ToolArgumentsValue
   } catch {
     return null
+  }
+}
+
+/**
+ * `execute_tool` is a model-facing transport. Once its target is known, the
+ * visible invocation is represented as the native tool invocation so every
+ * existing tool-specific presenter can be reused unchanged.
+ */
+export function resolveToolInvocationForPresentation(invocation: ToolInvocationTrace): ToolInvocationTrace {
+  if (invocation.toolName !== 'execute_tool') {
+    return invocation
+  }
+
+  const wrapperArguments = parseCompleteToolArguments(invocation.argumentsText) as (ToolArgumentsValue & {
+    args?: unknown
+    id?: unknown
+  }) | null
+  const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
+  const resultToolName = parsedResult?.metadata?.toolName
+  const targetToolName = resultToolName && resultToolName !== 'execute_tool'
+    ? resultToolName
+    : typeof wrapperArguments?.id === 'string'
+      ? wrapperArguments.id.trim()
+      : null
+
+  if (!targetToolName) {
+    return invocation
+  }
+
+  const targetArguments = wrapperArguments?.args && typeof wrapperArguments.args === 'object' && !Array.isArray(wrapperArguments.args)
+    ? wrapperArguments.args
+    : parsedResult?.metadata?.arguments ?? {}
+
+  return {
+    ...invocation,
+    argumentsText: JSON.stringify(targetArguments),
+    toolName: targetToolName,
   }
 }
 
@@ -369,6 +408,44 @@ function getToolVerb(invocation: ToolInvocationTrace) {
       ? parsedResult.metadata.semantics.operation
       : null
 
+  if (invocation.toolName === 'list_tools') {
+    const query = parseCompleteToolArguments(invocation.argumentsText)?.query
+    const queryText = typeof query === 'string' && query.trim().length > 0 ? query.trim() : null
+    if (queryText) {
+      return invocation.state === 'running'
+        ? `Searching ${queryText} in tool set`
+        : invocation.state === 'completed'
+          ? `Searched ${queryText} in tool set`
+          : `Search failed for ${queryText} in tool set`
+    }
+
+    return invocation.state === 'running'
+      ? 'Listing tool set'
+      : invocation.state === 'completed'
+        ? 'Listed tool set'
+        : 'List tool set failed'
+  }
+
+  if (invocation.toolName === 'get_tool_schema') {
+    const id = parseCompleteToolArguments(invocation.argumentsText)?.id
+    const idText = typeof id === 'string' && id.trim().length > 0 ? id.trim() : 'tool'
+    return invocation.state === 'running'
+      ? `Fetching schema for ${idText}`
+      : invocation.state === 'completed'
+        ? `Fetched schema for ${idText}`
+        : `Fetch schema failed for ${idText}`
+  }
+
+  if (invocation.toolName === 'execute_tool') {
+    const id = parseCompleteToolArguments(invocation.argumentsText)?.id
+    const idText = typeof id === 'string' && id.trim().length > 0 ? id.trim() : 'tool'
+    return invocation.state === 'running'
+      ? `Running ${idText}`
+      : invocation.state === 'completed'
+        ? `Completed ${idText}`
+        : `Failed ${idText}`
+  }
+
   if (invocation.toolName === 'list') {
     return invocation.state === 'running' ? 'Listing' : invocation.state === 'completed' ? 'Listed' : 'List failed'
   }
@@ -401,7 +478,7 @@ function getToolVerb(invocation: ToolInvocationTrace) {
   }
 
   if (invocation.toolName === 'execute_terminal') {
-    const parsedArgs = parseCompleteToolArguments(invocation.argumentsText) as Record<string, any>
+    const parsedArgs = parseCompleteToolArguments(invocation.argumentsText) as Record<string, unknown>
     const mode = parsedArgs?.mode || 'execute'
     if (mode === 'read') {
       return invocation.state === 'running'
@@ -464,7 +541,7 @@ function getToolVerb(invocation: ToolInvocationTrace) {
   }
 
   if (invocation.toolName === 'skill') {
-    const parsedArgs = parseCompleteToolArguments(invocation.argumentsText) as Record<string, any>
+    const parsedArgs = parseCompleteToolArguments(invocation.argumentsText) as Record<string, unknown>
     const action = parsedArgs?.action || 'load'
 
     if (action === 'list') {
@@ -511,6 +588,7 @@ export interface ToolInvocationDisplayEntry {
 }
 
 export function getFileMutationGroupType(invocation: ToolInvocationTrace): 'creating' | 'overwriting' | 'editing' | null {
+  invocation = resolveToolInvocationForPresentation(invocation)
   if (isFileEditTool(invocation.toolName)) {
     return 'editing'
   }
@@ -535,6 +613,7 @@ export function getFileMutationGroupType(invocation: ToolInvocationTrace): 'crea
 export function getFileMutationSummaryKind(
   invocation: ToolInvocationTrace,
 ): 'created' | 'edited' | 'deleted' | 'verified' | null {
+  invocation = resolveToolInvocationForPresentation(invocation)
   if (!isFileWriteTool(invocation.toolName) && !isFileEditTool(invocation.toolName)) {
     return null
   }
@@ -580,6 +659,7 @@ export function getFileMutationSummaryKind(
 }
 
 function getWholeFileChangeSingleChangeTarget(invocation: ToolInvocationTrace) {
+  invocation = resolveToolInvocationForPresentation(invocation)
   if (!isFileWriteTool(invocation.toolName) && !isFileEditTool(invocation.toolName)) {
     return null
   }
@@ -594,6 +674,7 @@ function getWholeFileChangeSingleChangeTarget(invocation: ToolInvocationTrace) {
 }
 
 export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace): ToolInvocationDisplayEntry[] {
+  invocation = resolveToolInvocationForPresentation(invocation)
   if (isFileMutationTool(invocation.toolName) && invocation.state === 'running') {
     return []
   }
@@ -627,7 +708,7 @@ export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace)
 }
 
 function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: string | null) {
-  const parsedArguments = parseCompleteToolArguments(invocation.argumentsText) as Record<string, any>
+  const parsedArguments = parseCompleteToolArguments(invocation.argumentsText) as Record<string, unknown>
 
   if (invocation.toolName === 'execute_terminal') {
     const mode = parsedArguments?.mode || 'execute'
@@ -733,6 +814,7 @@ export function getToolInvocationHeaderLabel(
   overrideState?: ToolInvocationTrace['state'],
   workspaceRootPath?: string | null,
 ) {
+  invocation = resolveToolInvocationForPresentation(invocation)
   if (isKanbanTool(invocation.toolName)) {
     const effectiveInvocation =
       overrideState === undefined

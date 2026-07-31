@@ -4,7 +4,7 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createGlobTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Returns up to 100 visible absolute file paths matching the glob pattern below absolute_path within the active execution context, or the workspace root when omitted.',
+    description: 'Finds file paths matching a pattern.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {

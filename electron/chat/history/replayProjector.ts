@@ -11,6 +11,51 @@ export interface ReplayProjectionResult {
   replayRunId: string | null
 }
 
+function findLatestCompactionProjection(input: {
+  document: CanonicalHistoryDocument
+  modelId: string
+  providerId: string
+}) {
+  const compactionEvents = [...input.document.events].reverse().filter((candidate) => (
+    candidate.type === 'compaction_committed' &&
+    'projectedMessages' in candidate &&
+    candidate.branchId === input.document.activeBranchId
+  ))
+  const event = compactionEvents.find((candidate) => (
+    candidate.type === 'compaction_committed' &&
+    'projectedMessages' in candidate &&
+    candidate.modelId === input.modelId &&
+    candidate.providerId === input.providerId
+  )) ?? compactionEvents.find((candidate) => (
+    candidate.type === 'compaction_committed' &&
+    'projectedMessages' in candidate &&
+    candidate.providerId === input.providerId
+  ))
+  if (!event || event.type !== 'compaction_committed' || !('projectedMessages' in event)) {
+    return null
+  }
+
+  try {
+    decodeModelMessages(event.projectedMessages)
+    return {
+      anchorUserMessageId: event.anchorUserMessageId,
+      branchId: event.branchId,
+      contextFingerprint: input.document.contextFingerprint ?? '',
+      fidelity: 'exact' as const,
+      freshnessRevision: input.document.freshness.revision,
+      messages: event.projectedMessages,
+      modelId: input.modelId,
+      providerId: input.providerId,
+      runId: event.compactionId,
+      sourceRevision: event.revision,
+      updatedAt: event.createdAt,
+    }
+  } catch (error) {
+    console.warn('Canonical compaction projection could not be decoded.', error)
+    return null
+  }
+}
+
 function appendFreshnessNotice(messages: ModelMessage[], invalidatedSubjects: string[]) {
   if (invalidatedSubjects.length === 0) return messages
   const notice = [
@@ -44,7 +89,15 @@ export function projectCanonicalReplay(input: {
       : never
     : never
 }): ReplayProjectionResult {
-  const replay = input.document.replays[getReplaySlotKey(input.providerId, input.modelId)] ?? input.document.replay
+  const storedReplay = input.document.replays[getReplaySlotKey(input.providerId, input.modelId)] ?? input.document.replay
+  const compactionProjection = findLatestCompactionProjection({
+    document: input.document,
+    modelId: input.modelId,
+    providerId: input.providerId,
+  })
+  const replay = compactionProjection && (!storedReplay || compactionProjection.sourceRevision > storedReplay.sourceRevision)
+    ? compactionProjection
+    : storedReplay
   if (
     !replay ||
     replay.branchId !== input.document.activeBranchId ||

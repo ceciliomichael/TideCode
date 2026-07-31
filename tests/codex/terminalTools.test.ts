@@ -6,7 +6,7 @@ import path from 'node:path'
 import test from 'node:test'
 import type { WebContents } from 'electron'
 import type { CreateTerminalSessionInput, WriteTerminalSessionInput } from '../../src/types/chat'
-import { createAgentTools } from '../../electron/chat/shared/tools'
+import { createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
 import { getGlobalAgentsDirectory } from '../../electron/chat/shared/tools/sandboxPaths'
 import { createTerminalToolSet, terminateAllBackgroundSessions } from '../../electron/chat/shared/tools/terminalTools'
 

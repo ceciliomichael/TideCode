@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
-import { estimateMessageContextUsage } from '../lib/contextUsage'
+import { useEffect, useRef, useState } from 'react'
 import type {
   AppTerminalExecutionMode,
   ChatMode,
@@ -7,6 +6,7 @@ import type {
   ContextUsageEstimate,
   Message,
 } from '../types/chat'
+import type { ContextCompactionSettings } from '../lib/contextCompactionSettings'
 
 const EMPTY_CONTEXT_USAGE: ContextUsageEstimate = {
   historyTokens: 0,
@@ -19,23 +19,35 @@ const EMPTY_CONTEXT_USAGE: ContextUsageEstimate = {
 interface UseChatContextUsageInput {
   agentContextRootPath: string | null
   chatMode: ChatMode
+  conversationId: string | null
+  contextCompaction: ContextCompactionSettings
   messages: Message[]
+  modelId: string
   providerId: ChatProviderId | null
+  refreshSignal?: number
   terminalExecutionMode: AppTerminalExecutionMode
 }
 
 export function useChatContextUsage({
   agentContextRootPath,
   chatMode,
+  conversationId,
+  contextCompaction,
   messages,
+  modelId,
   providerId,
+  refreshSignal = 0,
   terminalExecutionMode,
 }: UseChatContextUsageInput) {
-  const [staticUsage, setStaticUsage] = useState<ContextUsageEstimate>(EMPTY_CONTEXT_USAGE)
+  const [usage, setUsage] = useState<ContextUsageEstimate>(EMPTY_CONTEXT_USAGE)
+  const messagesRef = useRef(messages)
+  const fetchUsageRef = useRef<(() => void) | null>(null)
+  messagesRef.current = messages
 
   useEffect(() => {
     if (!providerId) {
-      setStaticUsage(EMPTY_CONTEXT_USAGE)
+      setUsage(EMPTY_CONTEXT_USAGE)
+      fetchUsageRef.current = null
       return
     }
 
@@ -46,13 +58,16 @@ export function useChatContextUsage({
         .estimateContextUsage({
           agentContextRootPath,
           chatMode,
-          messages: [],
+          conversationId,
+          contextCompaction,
+          messages: messagesRef.current,
+          modelId,
           providerId,
           terminalExecutionMode,
         })
         .then((nextUsage) => {
           if (!isCancelled) {
-            setStaticUsage(nextUsage)
+            setUsage(nextUsage)
           }
         })
         .catch((error) => {
@@ -60,10 +75,9 @@ export function useChatContextUsage({
         })
     }
 
-    // Initial fetch
+    fetchUsageRef.current = fetchUsage
     const timeoutId = window.setTimeout(fetchUsage, 120)
 
-    // 1. Real-Time File Change Detection via Electron chokidar watcher
     let unsubscribeExplorer: (() => void) | null = null
     if (agentContextRootPath?.trim()) {
       const rootPath = agentContextRootPath.trim()
@@ -75,10 +89,7 @@ export function useChatContextUsage({
       void window.echosphereWorkspace.watchExplorerChanges({ workspaceRootPath: rootPath })
     }
 
-    // 2. Low-frequency safety poll (every 10s fallback for external edits)
     const intervalId = window.setInterval(fetchUsage, 10_000)
-
-    // 3. Immediate refresh on window focus
     const handleFocus = () => fetchUsage()
     window.addEventListener('focus', handleFocus)
 
@@ -96,16 +107,17 @@ export function useChatContextUsage({
           workspaceRootPath: agentContextRootPath.trim(),
         })
       }
+      if (fetchUsageRef.current === fetchUsage) {
+        fetchUsageRef.current = null
+      }
     }
-  }, [agentContextRootPath, chatMode, providerId, terminalExecutionMode])
+  }, [agentContextRootPath, chatMode, contextCompaction, conversationId, modelId, providerId, refreshSignal, terminalExecutionMode])
 
-  return useMemo(() => {
-    const messageUsage = estimateMessageContextUsage(messages)
-    return {
-      ...staticUsage,
-      historyTokens: messageUsage.historyTokens,
-      toolResultsTokens: messageUsage.toolResultsTokens,
-      totalTokens: staticUsage.systemPromptTokens + messageUsage.totalTokens,
-    }
-  }, [messages, staticUsage])
+  useEffect(() => {
+    if (!providerId) return
+    const timeoutId = window.setTimeout(() => fetchUsageRef.current?.(), 250)
+    return () => window.clearTimeout(timeoutId)
+  }, [messages.length, providerId, refreshSignal])
+
+  return usage
 }

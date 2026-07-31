@@ -6,6 +6,8 @@ import { SettingsPanelLayout, SettingsRow, SettingsSection } from '../shared/Set
 import type { AppSettings, ChatProviderId, ProvidersState } from '../../../types/chat'
 import { useSettingsModelCatalog } from '../models/settingsModelCatalogStore'
 import { filterEnabledModelCatalogItems, readStoredModelToggleState } from '../models/modelStorage'
+import { MemoizedContextSettingsSections } from '../context/ContextSettingsPanel'
+import type { ContextCompactionSettings } from '../../../lib/contextCompactionSettings'
 
 interface ModelOption {
   label: string
@@ -23,6 +25,11 @@ const USE_CHAT_INPUT_MODEL_OPTION: ModelSelectorOption = {
 }
 
 interface TaskModelsSettingsPanelProps {
+  contextSettings: {
+    isLoading: boolean
+    onUpdateSettings: (input: Partial<AppSettings>) => void
+    settings: ContextCompactionSettings
+  }
   isLoading: boolean
   onUpdateSettings: (input: Partial<AppSettings>) => void
   providersState: ProvidersState | null
@@ -120,6 +127,7 @@ function findSelectedValue(
 }
 
 export function TaskModelsSettingsPanel({
+  contextSettings,
   isLoading,
   onUpdateSettings,
   providersState,
@@ -389,6 +397,7 @@ export function TaskModelsSettingsPanel({
           </SettingsRow>
         </div>
       </SettingsSection>
+      <MemoizedContextSettingsSections {...contextSettings} />
     </SettingsPanelLayout>
   )
 }

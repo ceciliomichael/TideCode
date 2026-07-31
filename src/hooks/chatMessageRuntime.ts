@@ -7,6 +7,7 @@ import type {
   ToolDecisionRequest,
   ToolInvocationTrace,
 } from '../types/chat'
+import type { ContextCompactionSettings } from '../lib/contextCompactionSettings'
 import { toUserFacingErrorMessage } from '../lib/userFacingError'
 import {
   hasMeaningfulAssistantContent,
@@ -14,6 +15,7 @@ import {
 } from '../lib/chatMessageContent'
 
 export interface ChatRuntimeSelection {
+  contextCompaction: ContextCompactionSettings
   hasConfiguredProvider: boolean
   modelId: string
   providerId: ChatProviderId | null
@@ -27,6 +29,7 @@ interface StreamAssistantResponseInput {
   cacheScopeId: string
   chatMode: ChatMode
   conversationId: string
+  contextCompaction: ContextCompactionSettings
   messages: Message[]
   modelId: string
   onContentDelta: (delta: string) => void
@@ -219,6 +222,7 @@ export async function streamAssistantResponse(
         cacheScopeId: input.cacheScopeId,
         chatMode: input.chatMode,
         conversationId: input.conversationId,
+        contextCompaction: input.contextCompaction,
         modelId: input.modelId,
         providerId: input.providerId,
         reasoningEffort: input.reasoningEffort,

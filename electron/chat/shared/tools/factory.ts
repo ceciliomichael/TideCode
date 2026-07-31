@@ -14,6 +14,8 @@ import { createSkillTool } from './skillTool'
 import { createTerminalToolSet } from './terminalTools'
 import { createToolContext } from './workspaceTools'
 import { createWriteTool } from './writeTool'
+import { buildDynamicToolCatalog } from './dynamicToolCatalog'
+import { createDynamicToolSet } from './dynamicTools'
 
 export interface CreateAgentToolsOptions {
   chatMode?: ChatMode
@@ -35,7 +37,7 @@ async function addMcpTools(tools: ToolSet, workspaceRootPath: string) {
   }
 }
 
-export async function createAgentTools(
+export async function createNativeAgentTools(
   input: AgentToolContext,
   options: CreateAgentToolsOptions = {},
 ): Promise<ToolSet> {
@@ -66,15 +68,28 @@ export async function createAgentTools(
     tools[providerWebTool.name] = providerWebTool.tool
   }
 
+  await addMcpTools(tools, context.workspaceRootPath)
+
   if (isPlanMode) {
     return tools
   }
-
-  await addMcpTools(tools, context.workspaceRootPath)
 
   return {
     ...tools,
     write: createWriteTool(context),
     replace_file_content: createReplaceFileContentTool(context),
   }
+}
+
+/**
+ * Builds the provider-facing tool set. Native tools stay private to the
+ * application and are exposed to the model through the three dynamic tools.
+ */
+export async function createAgentTools(
+  input: AgentToolContext,
+  options: CreateAgentToolsOptions = {},
+): Promise<ToolSet> {
+  const nativeTools = await createNativeAgentTools(input, options)
+  const catalog = await buildDynamicToolCatalog(nativeTools)
+  return createDynamicToolSet(catalog)
 }

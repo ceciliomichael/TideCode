@@ -1,4 +1,5 @@
 import type { AppAppearance, AppLanguage, FollowUpBehavior } from '../lib/appSettings'
+import type { ContextCompactionSettings } from '../lib/contextCompactionSettings'
 import type {
   KanbanBoardData,
   KanbanCard,
@@ -255,6 +256,7 @@ export interface AppSettings {
   chatModelProviderId: ChatProviderId | null
   chatModelLabel: string
   chatReasoningEffort: ReasoningEffort
+  contextCompaction: ContextCompactionSettings
   agentModelId: string
   agentModelProviderId: ChatProviderId | null
   agentModelLabel: string
@@ -447,6 +449,7 @@ export interface StartChatStreamInput {
   agentContextRootPath: string
   cacheScopeId?: string
   chatMode: ChatMode
+  contextCompaction: ContextCompactionSettings
   conversationId?: string
   messages: Message[]
   modelId: string
@@ -462,6 +465,20 @@ export interface CompressChatHistoryInput {
   modelId: string
   providerId: ChatProviderId
   reasoningEffort: ReasoningEffort
+}
+
+export interface CompactConversationInput extends CompressChatHistoryInput {
+  conversationId: string
+  contextCompaction: ContextCompactionSettings
+  targetModelId?: string
+  targetProviderId?: ChatProviderId
+  terminalExecutionMode: AppTerminalExecutionMode
+}
+
+export interface CompactConversationResult {
+  compacted: boolean
+  packetId: string | null
+  usedFallback: boolean
 }
 
 export interface StartChatStreamResult {
@@ -496,7 +513,10 @@ export interface SubmitToolDecisionResult {
 export interface EstimateContextUsageInput {
   agentContextRootPath: string | null
   chatMode: ChatMode
+  contextCompaction: ContextCompactionSettings
+  conversationId?: string | null
   messages: Message[]
+  modelId?: string
   providerId: ChatProviderId
   terminalExecutionMode: AppTerminalExecutionMode
 }
@@ -686,6 +706,18 @@ export interface ContextUsageEstimate {
   systemPromptTokens: number
   toolResultsTokens: number
   totalTokens: number
+}
+
+export interface ChatCompactionMarker {
+  anchorUserMessageId: string | null
+  compactionId: string
+  createdAt: number
+  detailSections: ChatCompactionDetailSection[]
+}
+
+export interface ChatCompactionDetailSection {
+  items: string[]
+  label: string
 }
 
 export interface GitBranchState {
@@ -957,6 +989,7 @@ export interface EchosphereHistoryApi {
   listConversations: () => Promise<ConversationSummary[]>
   listFolders: () => Promise<ConversationFolderSummary[]>
   getConversation: (conversationId: string) => Promise<ConversationRecord | null>
+  listCompactionMarkers: (conversationId: string) => Promise<ChatCompactionMarker[]>
   getUserMessageCheckpointHistory: (conversationId: string, messageId: string) => Promise<UserMessageRunCheckpoint[]>
   createConversation: (input?: CreateConversationInput) => Promise<ConversationRecord>
   createFolder: (input: CreateConversationFolderInput) => Promise<ConversationFolderRecord>
@@ -1001,6 +1034,7 @@ export interface EchosphereModelsApi {
 
 export interface EchosphereChatApi {
   cancelStream: (streamId: string) => Promise<void>
+  compactConversation: (input: CompactConversationInput) => Promise<CompactConversationResult>
   compressConversation: (input: CompressChatHistoryInput) => Promise<string>
   estimateContextUsage: (input: EstimateContextUsageInput) => Promise<ContextUsageEstimate>
   onStreamEvent: (listener: (event: ChatStreamEvent) => void) => () => void

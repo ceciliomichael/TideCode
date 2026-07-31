@@ -10,6 +10,7 @@ import type { AppAppearance, AppLanguage, FollowUpBehavior } from '../../lib/app
 import type { ApiKeyProviderId, AppSettings, ProvidersState, SaveApiKeyProviderInput } from '../../types/chat'
 import type { McpAddServerInput, McpState } from '../../types/mcp'
 import type { CreateSkillInput, SkillsState } from '../../types/skills'
+import type { ContextCompactionSettings } from '../../lib/contextCompactionSettings'
 
 interface GeneralSettingsViewModel {
   isLoading: boolean
@@ -26,6 +27,11 @@ interface GeneralSettingsViewModel {
 interface SettingsContentProps {
   activeItemId: SettingsItemId
   appSettings: AppSettings
+  contextSettings: {
+    isLoading: boolean
+    onUpdateSettings: (input: Partial<AppSettings>) => void
+    settings: ContextCompactionSettings
+  }
   generalSettings: GeneralSettingsViewModel
   mcpSettings: {
     activeOperation: string | null
@@ -68,6 +74,7 @@ interface SettingsContentProps {
 export function SettingsContent({
   activeItemId,
   appSettings,
+  contextSettings,
   generalSettings,
   mcpSettings,
   skillsSettings,
@@ -91,6 +98,7 @@ export function SettingsContent({
           <SkillsSettingsPanel {...skillsSettings} />
         ) : activeItemId === 'settings-item6' ? (
           <MemoizedTaskModelsSettingsPanel
+            contextSettings={contextSettings}
             isLoading={generalSettings.isLoading}
             onUpdateSettings={generalSettings.onUpdateSettings}
             providersState={providersSettings.providersState}

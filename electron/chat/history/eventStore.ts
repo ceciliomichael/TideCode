@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { getHistoryDirectoryPath } from '../../history/paths'
-import type { Message } from '../../../src/types/chat'
+import type { ChatCompactionDetailSection, ChatCompactionMarker, Message } from '../../../src/types/chat'
 import {
   createEmptyCanonicalHistory,
   getReplaySlotKey,
@@ -12,7 +12,7 @@ import {
   type CanonicalReplayProjection,
   type ProviderStepRecord,
 } from './contracts'
-import { encodeModelMessages, encodeReplayValue } from './replayCodec'
+import { decodeReplayValue, encodeModelMessages, encodeReplayValue } from './replayCodec'
 import { parseCanonicalHistoryDocument } from './validation'
 import type { ModelMessage } from 'ai'
 import { sha256, stableStringify } from '../cache/canonicalization'
@@ -156,6 +156,66 @@ export async function readCanonicalHistory(conversationId: string) {
   return readDocumentUnsafe(conversationId)
 }
 
+export async function listCompactionMarkers(conversationId: string): Promise<ChatCompactionMarker[]> {
+  const document = await readCanonicalHistory(conversationId)
+  return document.events
+    .flatMap((event) => {
+      if (
+        event.branchId !== document.activeBranchId ||
+        event.type !== 'compaction_committed' ||
+        !('compactionId' in event)
+      ) {
+        return []
+      }
+
+      return [{
+        anchorUserMessageId: event.anchorUserMessageId,
+        compactionId: event.compactionId,
+        createdAt: event.createdAt,
+        detailSections: buildCompactionDetailSections(event.packet),
+      }]
+    })
+}
+
+const COMPACTION_DETAIL_FIELDS: readonly [string, string][] = [
+  ['Goal', 'goal'],
+  ['Current state', 'currentState'],
+  ['Completed work', 'completedWork'],
+  ['Decisions', 'decisions'],
+  ['Open items', 'openItems'],
+  ['Failures and workarounds', 'failuresAndWorkarounds'],
+  ['Validation', 'validation'],
+  ['Next actions', 'nextActions'],
+]
+
+function readCompactionDetailItems(packet: unknown, field: string) {
+  if (!packet || typeof packet !== 'object' || Array.isArray(packet)) {
+    return []
+  }
+
+  const value = (packet as Record<string, unknown>)[field]
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    .slice(0, 8)
+    .map((item) => item.trim().slice(0, 400))
+}
+
+function buildCompactionDetailSections(encodedPacket: Parameters<typeof decodeReplayValue>[0]): ChatCompactionDetailSection[] {
+  try {
+    const packet = decodeReplayValue(encodedPacket)
+    return COMPACTION_DETAIL_FIELDS.flatMap(([label, field]) => {
+      const items = readCompactionDetailItems(packet, field)
+      return items.length > 0 ? [{ items, label }] : []
+    })
+  } catch {
+    return []
+  }
+}
+
 export async function synchronizeCanonicalMessages(conversationId: string, messages: Message[]) {
   return updateDocument(conversationId, (document) => {
     const messageIds = messages.map((message) => message.id)
@@ -281,6 +341,35 @@ export async function recordRunStarted(input: {
       providerId: input.providerId,
       runId: input.runId,
       type: 'run_started',
+    })
+  })
+}
+
+export async function recordCompactionCommitted(input: {
+  anchorUserMessageId: string | null
+  compactionId: string
+  conversationId: string
+  modelId: string
+  packet: unknown
+  projectedMessages: ModelMessage[]
+  providerId: CanonicalReplayProjection['providerId']
+  sourceDigest: string
+  sourceMessageIds: string[]
+  usedFallback: boolean
+}) {
+  return updateDocument(input.conversationId, (document) => {
+    appendEvent(document, {
+      anchorUserMessageId: input.anchorUserMessageId,
+      compactionId: input.compactionId,
+      modelId: input.modelId,
+      packet: encodeReplayValue(input.packet),
+      projectedMessages: encodeModelMessages(input.projectedMessages),
+      providerId: input.providerId,
+      runId: null,
+      sourceDigest: input.sourceDigest,
+      sourceMessageIds: input.sourceMessageIds,
+      type: 'compaction_committed',
+      usedFallback: input.usedFallback,
     })
   })
 }

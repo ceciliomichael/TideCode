@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { createAgentTools } from '../../electron/chat/shared/tools'
+import { createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
 import {
   createApplyPatchToolResult,
   createGlobToolResult,

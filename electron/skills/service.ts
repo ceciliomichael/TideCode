@@ -227,13 +227,7 @@ export function buildSkillsSystemPromptBlock() {
 }
 
 export function buildSkillToolDescription() {
-  return [
-    'Accesses and interacts with skills. Modes:',
-    '- action: "load", name: string — Loads SKILL.md instructions together with the skill file and base-directory locations.',
-    '- action: "list", page?: number — Lists available skills (max 10 per page).',
-    '- action: "search", query: string — Searches skills by keyword/name/description.',
-    'After loading a skill, use read/list/glob/grep for files under its base directory and the terminal tool for scripts.',
-  ].join('\n')
+  return 'Manages and loads workspace skills.'
 }
 
 export function searchSkills(skills: SkillSummary[], query: string): SkillSummary[] {

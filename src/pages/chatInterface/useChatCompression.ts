@@ -1,12 +1,7 @@
 import { useCallback } from "react";
-import { v4 as uuidv4 } from "uuid";
 import type { ChatMode, Message } from "../../types/chat";
 import type { ChatRuntimeSelection } from "../../hooks/chatMessageRuntime";
 import { toUserFacingErrorMessage } from "../../lib/userFacingError";
-import {
-  buildCompressedHistoryAcknowledgementMessage,
-  buildCompressedHistoryMessage,
-} from "../../lib/chatCompression";
 
 interface CompressionSelection {
   hasConfiguredProvider: boolean;
@@ -17,7 +12,6 @@ interface CompressionSelection {
 
 interface UseChatCompressionInput {
   activeConversationId: string | null;
-  activeConversationTitle: string;
   activeWorkspacePath: string | null;
   chatMode: ChatMode;
   clearQueuedMessages: () => void;
@@ -25,35 +19,16 @@ interface UseChatCompressionInput {
   isBusy: boolean;
   messages: Message[];
   isCompressingChat: boolean;
+  onCompactionComplete: () => void;
   runtimeSelection: ChatRuntimeSelection;
-  sendProgrammaticMessage: (
-    runtimeSelection: ChatRuntimeSelection,
-    messageText: string,
-    options?: {
-      chatMode?: ChatMode
-      compactionSourceConversationId?: string
-      forceNewConversation?: boolean
-      syntheticAssistantMessage?: Message
-      title?: string
-    },
-  ) => Promise<void>;
   setError: (errorMessage: string | null) => void;
   setIsCompressingChat: (nextValue: boolean) => void;
-}
-
-function buildCompressionSeedMessage(summary: string) {
-  return buildCompressedHistoryMessage(summary);
-}
-
-function buildCompressionAcknowledgementMessage() {
-  return buildCompressedHistoryAcknowledgementMessage(uuidv4());
 }
 
 export function useChatCompression(input: UseChatCompressionInput) {
   const {
     activeWorkspacePath,
     activeConversationId,
-    activeConversationTitle,
     chatMode,
     clearQueuedMessages,
     compressionSelection,
@@ -61,7 +36,7 @@ export function useChatCompression(input: UseChatCompressionInput) {
     isCompressingChat,
     messages,
     runtimeSelection,
-    sendProgrammaticMessage,
+    onCompactionComplete,
     setError,
     setIsCompressingChat,
   } = input;
@@ -108,26 +83,24 @@ export function useChatCompression(input: UseChatCompressionInput) {
     clearQueuedMessages();
 
     try {
-      const summary = await window.echosphereChat.compressConversation({
+      const result = await window.echosphereChat.compactConversation({
         agentContextRootPath: activeWorkspacePath,
         chatMode,
+        conversationId: activeConversationId,
+        contextCompaction: runtimeSelection.contextCompaction,
         messages,
         modelId: compressionSelection.modelId,
         providerId: compressionSelection.providerId,
         reasoningEffort: compressionSelection.reasoningEffort,
+        targetModelId: runtimeSelection.modelId,
+        targetProviderId: runtimeSelection.providerId ?? undefined,
+        terminalExecutionMode: runtimeSelection.terminalExecutionMode,
       });
-
-      await sendProgrammaticMessage(
-        runtimeSelection,
-        buildCompressionSeedMessage(summary),
-        {
-          chatMode,
-          compactionSourceConversationId: activeConversationId,
-          forceNewConversation: true,
-          syntheticAssistantMessage: buildCompressionAcknowledgementMessage(),
-          title: activeConversationTitle,
-        },
-      );
+      if (!result.compacted) {
+        setError("There is not yet a safe completed turn to compact.");
+      } else {
+        onCompactionComplete();
+      }
     } catch (caughtError) {
       console.error("Failed to compress chat history", caughtError);
       setError(
@@ -139,15 +112,14 @@ export function useChatCompression(input: UseChatCompressionInput) {
   }, [
     activeWorkspacePath,
     activeConversationId,
-    activeConversationTitle,
     chatMode,
     clearQueuedMessages,
     compressionSelection,
     isBusy,
     isCompressingChat,
     messages,
+    onCompactionComplete,
     runtimeSelection,
-    sendProgrammaticMessage,
     setError,
     setIsCompressingChat,
   ]);

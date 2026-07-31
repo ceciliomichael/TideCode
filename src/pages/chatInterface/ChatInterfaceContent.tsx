@@ -27,6 +27,7 @@ import { Tooltip } from '../../components/Tooltip'
 import { WorkspaceExplorerPanel } from '../../components/workspaceExplorer/WorkspaceExplorerPanel'
 import { WorkspaceFileTabsPanel } from '../../components/workspaceExplorer/WorkspaceFileTabsPanel'
 import { useChatContextUsage } from '../../hooks/useChatContextUsage'
+import { useChatCompactionMarkers } from '../../hooks/useChatCompactionMarkers'
 import type { ChatMessagesController, ChatRuntimeSelection } from '../../hooks/useChatMessages'
 import type { ChatRuntimeConfigState } from '../../hooks/useChatRuntimeConfig'
 import type { ChatInterfaceControllerState } from '../../hooks/useChatInterfaceController'
@@ -92,9 +93,11 @@ interface ChatInterfaceContentProps {
 
 function buildRuntimeSelection(
   chatRuntimeConfig: ChatRuntimeConfigState,
+  contextCompaction: AppSettings['contextCompaction'],
   terminalExecutionMode: AppSettings['terminalExecutionMode'],
 ): ChatRuntimeSelection {
   return {
+    contextCompaction,
     hasConfiguredProvider: chatRuntimeConfig.hasConfiguredProvider,
     modelId: chatRuntimeConfig.selectedRuntimeModelId,
     providerId: chatRuntimeConfig.providerId,
@@ -139,8 +142,8 @@ export function ChatInterfaceContent({
   const gitAddedLineCount = gitCommitState.status?.addedLineCount ?? 0
   const gitRemovedLineCount = gitCommitState.status?.removedLineCount ?? 0
   const runtimeSelection = useMemo(
-    () => buildRuntimeSelection(chatRuntimeConfig, settings.terminalExecutionMode),
-    [chatRuntimeConfig, settings.terminalExecutionMode],
+    () => buildRuntimeSelection(chatRuntimeConfig, settings.contextCompaction, settings.terminalExecutionMode),
+    [chatRuntimeConfig, settings.contextCompaction, settings.terminalExecutionMode],
   )
   const compressionSelection = useMemo(
     () => {
@@ -163,12 +166,25 @@ export function ChatInterfaceContent({
       settings.summarizationModelProviderId,
     ],
   )
+  const [compactionRefreshSignal, setCompactionRefreshSignal] = useState(0)
+  const handleCompactionComplete = useCallback(() => {
+    setCompactionRefreshSignal((current) => current + 1)
+  }, [])
   const contextUsage = useChatContextUsage({
     agentContextRootPath: activeWorkspacePath,
     chatMode: chatMessages.selectedChatMode,
+    conversationId: chatMessages.activeConversationId,
+    contextCompaction: runtimeSelection.contextCompaction,
     messages: chatMessages.messages,
+    modelId: runtimeSelection.modelId,
     providerId: runtimeSelection.providerId,
+    refreshSignal: compactionRefreshSignal,
     terminalExecutionMode: runtimeSelection.terminalExecutionMode,
+  })
+  const compactionMarkers = useChatCompactionMarkers({
+    conversationId: chatMessages.activeConversationId,
+    messagesLength: chatMessages.messages.length,
+    refreshSignal: compactionRefreshSignal,
   })
   const { candidates: refactorCandidates, isLoading: refactorCandidatesLoading } =
     useWorkspaceRefactorCandidates(activeWorkspacePath)
@@ -255,7 +271,6 @@ export function ChatInterfaceContent({
   })
   const { handleCompressChat } = useChatCompression({
     activeConversationId: chatMessages.activeConversationId,
-    activeConversationTitle: chatMessages.activeConversationTitle,
     activeWorkspacePath,
     chatMode: chatMessages.selectedChatMode,
     clearQueuedMessages,
@@ -263,8 +278,8 @@ export function ChatInterfaceContent({
     isBusy: chatMessages.isLoading || chatMessages.isSending,
     isCompressingChat,
     messages: chatMessages.messages,
+    onCompactionComplete: handleCompactionComplete,
     runtimeSelection,
-    sendProgrammaticMessage: chatMessages.sendProgrammaticMessage,
     setError: chatMessages.setError,
     setIsCompressingChat,
   })
@@ -899,6 +914,7 @@ export function ChatInterfaceContent({
                     <div ref={messageListBoundaryRef} className="flex min-h-0 flex-1 flex-col">
                       <MessageList
                         conversationId={chatMessages.activeConversationId}
+                        compactionMarkers={compactionMarkers}
                         messages={chatMessages.messages}
                         chatModeOptions={chatModeOptions}
                         editingMessageId={chatMessages.editingMessageId}

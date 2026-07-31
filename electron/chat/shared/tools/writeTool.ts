@@ -4,7 +4,7 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createWriteTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Writes content as the complete UTF-8 contents of absolute_path within the active execution context, creates parent directories, normalizes line endings to LF, and returns an error when the content is unchanged.',
+    description: 'Writes content to a file.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {

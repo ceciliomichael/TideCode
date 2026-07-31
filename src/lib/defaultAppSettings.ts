@@ -4,6 +4,7 @@ import { DEFAULT_DIFF_PANEL_WIDTH } from './diffPanelSizing'
 import { DEFAULT_SIDEBAR_WIDTH } from './sidebarSizing'
 import { DEFAULT_WORKSPACE_EDITOR_WIDTH } from './workspaceEditorSizing'
 import { DEFAULT_WORKSPACE_EXPLORER_WIDTH } from './workspaceExplorerSizing'
+import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from './contextCompactionSettings'
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   appearance: DEFAULT_APP_APPEARANCE,
@@ -11,6 +12,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   chatModelProviderId: null,
   chatModelLabel: '',
   chatReasoningEffort: 'medium',
+  contextCompaction: DEFAULT_CONTEXT_COMPACTION_SETTINGS,
   agentModelId: '',
   agentModelProviderId: null,
   agentModelLabel: '',

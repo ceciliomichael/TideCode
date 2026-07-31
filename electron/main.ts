@@ -21,6 +21,7 @@ import type {
   AppSettings,
   CheckoutGitBranchInput,
   CloseTerminalSessionInput,
+  CompactConversationInput,
   CreateGitBranchInput,
   CompressChatHistoryInput,
   CreateTerminalSessionInput,
@@ -93,6 +94,7 @@ import {
   updateStoredConversationTitle,
   updateStoredConversationPinned,
 } from './history/store'
+import { listCompactionMarkers } from './chat/history/eventStore'
 import { getDraftAgentContextPath } from './history/paths'
 import { flushStoredSettingsUpdates, getStoredSettings, updateStoredSettings } from './settings/store'
 import { serializeInitialSettingsArg } from './settings/bootstrap'
@@ -100,6 +102,7 @@ import { applyWindowTheme, getTitleBarOverlay, getWindowBackgroundColor, syncNat
 import { createSkill, listAvailableSkills } from './skills/service'
 import {
   cancelCodexChatStream,
+  compactCodexConversation,
   estimateCodexContextUsage,
   compressCodexChatHistory,
   startCodexChatStream,
@@ -107,6 +110,7 @@ import {
 } from './chat/codex/runtime'
 import {
   cancelApiKeyChatStream,
+  compactApiKeyConversation,
   compressApiKeyChatHistory,
   estimateApiKeyContextUsage,
   startApiKeyChatStream,
@@ -444,6 +448,9 @@ function registerHistoryHandlers() {
   ipcMain.handle('history:list', async () => listStoredConversations())
   ipcMain.handle('history:listFolders', async () => listStoredFolders())
   ipcMain.handle('history:get', async (_event, conversationId: string) => getStoredConversation(conversationId))
+  ipcMain.handle('history:listCompactionMarkers', async (_event, conversationId: string) =>
+    listCompactionMarkers(conversationId),
+  )
   ipcMain.handle('history:getUserMessageCheckpointHistory', async (_event, conversationId: string, messageId: string) =>
     getStoredUserMessageCheckpointHistory(conversationId, messageId),
   )
@@ -585,6 +592,13 @@ function registerHistoryHandlers() {
     }
 
     return compressApiKeyChatHistory(input)
+  })
+  ipcMain.handle('chat:compactConversation', async (_event, input: CompactConversationInput) => {
+    if (input.providerId === 'codex') {
+      return compactCodexConversation(input)
+    }
+
+    return compactApiKeyConversation(input)
   })
   ipcMain.handle('chat:stream:submitToolDecision', async (_event, input: SubmitToolDecisionInput) => {
     const providerId = activeChatStreamProviders.get(input.streamId)

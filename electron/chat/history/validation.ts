@@ -56,6 +56,20 @@ function isEvent(value: unknown): value is CanonicalHistoryEvent {
     return typeof value.stepNumber === 'number' && typeof value.durationMs === 'number' && isUsage(value.usage)
   }
 
+  if (value.type === 'compaction_committed' && 'compactionId' in value) {
+    return (
+      typeof value.anchorUserMessageId === 'string' || value.anchorUserMessageId === null
+    ) &&
+      typeof value.compactionId === 'string' &&
+      typeof value.modelId === 'string' &&
+      'packet' in value &&
+      'projectedMessages' in value &&
+      typeof value.providerId === 'string' &&
+      typeof value.sourceDigest === 'string' &&
+      isStringArray(value.sourceMessageIds) &&
+      typeof value.usedFallback === 'boolean'
+  }
+
   return [
     'messages_synchronized', 'branch_created', 'context_epoch_changed', 'run_started', 'run_completed',
     'run_aborted', 'run_failed', 'observation_recorded', 'observation_invalidated', 'compaction_committed',

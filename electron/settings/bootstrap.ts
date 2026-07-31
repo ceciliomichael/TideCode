@@ -6,6 +6,7 @@ import { isReasoningEffort } from '../../src/lib/reasoningEffort'
 import { resetLaunchOnlyAppSettings } from '../../src/hooks/appSettingsLaunchState'
 import { clampStoredWorkspaceEditorWidth } from '../../src/lib/workspaceEditorSizing'
 import { clampStoredWorkspaceExplorerWidth } from '../../src/lib/workspaceExplorerSizing'
+import { normalizeContextCompactionSettings } from '../../src/lib/contextCompactionSettings'
 import type { AppSettings } from '../../src/types/chat'
 import type { SourceControlSectionId } from '../../src/types/chat'
 import { isChatProviderId as isSupportedChatProviderId } from '../providers/providerIds'
@@ -277,6 +278,7 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
     chatReasoningEffort: isReasoningEffort(candidate?.chatReasoningEffort)
       ? candidate.chatReasoningEffort
       : DEFAULT_APP_SETTINGS.chatReasoningEffort,
+    contextCompaction: normalizeContextCompactionSettings(candidate?.contextCompaction),
     agentModelId:
       typeof candidate?.agentModelId === 'string'
         ? candidate.agentModelId.trim()

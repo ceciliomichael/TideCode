@@ -4,6 +4,7 @@ import { normalizeAssistantMessageContent } from "../lib/chatMessageContent";
 import type {
   AssistantWaitingIndicatorVariant,
   ChatAttachment,
+  ChatCompactionMarker,
   ChatMode,
   Message,
   ReasoningEffort,
@@ -13,6 +14,7 @@ import { AssistantMessage } from "./AssistantMessage";
 import { ChatInput } from "./ChatInput";
 import { UserMessage } from "./UserMessage";
 import { WorkingBlock } from "./chat/WorkingBlock";
+import { CompactionDivider } from "./chat/CompactionDivider";
 import { useChatAutoScroll } from "./chat/useChatAutoScroll";
 import type { ChatModeOption } from "./chat/ChatModeSelectorField";
 import type { ModelSelectorOption } from "./chat/ModelSelectorField";
@@ -21,6 +23,7 @@ import type { ToolDecisionSubmission } from "./chat/ToolDecisionRequestCard";
 interface MessageListProps {
   chatModeOptions?: readonly ChatModeOption[];
   chatModeSelectorDisabled?: boolean;
+  compactionMarkers?: readonly ChatCompactionMarker[];
   conversationId: string | null;
   composerAttachments: ChatAttachment[];
   composerValue: string;
@@ -272,6 +275,7 @@ const MessageRow = memo(
 export function MessageList({
   chatModeOptions,
   chatModeSelectorDisabled,
+  compactionMarkers = [],
   composerAttachments,
   conversationId,
   editComposerDirty = false,
@@ -314,9 +318,21 @@ export function MessageList({
   const renderItems = useMemo(() => {
     type RenderItem =
       | { type: 'message'; message: Message; index: number }
+      | { type: 'compaction_marker'; marker: ChatCompactionMarker }
       | { type: 'working_group'; messages: Message[]; trailingMessage?: { message: Message, index: number }; startTime: number; endTime: number; startIndex: number; key: string };
 
     const items: RenderItem[] = [];
+    const markersByAnchor = new Map<string, ChatCompactionMarker[]>();
+    const unanchoredMarkers: ChatCompactionMarker[] = [];
+    for (const marker of compactionMarkers) {
+      if (!marker.anchorUserMessageId) {
+        unanchoredMarkers.push(marker);
+        continue;
+      }
+      const anchored = markersByAnchor.get(marker.anchorUserMessageId) ?? [];
+      anchored.push(marker);
+      markersByAnchor.set(marker.anchorUserMessageId, anchored);
+    }
     let currentAssistantRun: Message[] = [];
     let currentAssistantRunStartIndex = -1;
 
@@ -405,6 +421,9 @@ export function MessageList({
           currentAssistantRunStartIndex = -1;
         }
         items.push({ type: 'message', message: msg, index: i });
+        for (const marker of markersByAnchor.get(msg.id) ?? []) {
+          items.push({ marker, type: 'compaction_marker' });
+        }
       } else {
         if (currentAssistantRun.length === 0) {
           currentAssistantRunStartIndex = i;
@@ -427,9 +446,13 @@ export function MessageList({
         }
       }
     }
+
+    for (const marker of unanchoredMarkers) {
+      items.push({ marker, type: 'compaction_marker' });
+    }
     
     return items;
-  }, [visibleMessages, isConversationStreaming]);
+  }, [compactionMarkers, isConversationStreaming, visibleMessages]);
 
   useChatAutoScroll({
     conversationId,
@@ -535,6 +558,10 @@ export function MessageList({
     >
       <div className="chat-column mx-auto space-y-2.5 px-4 pb-6 pt-6">
         {renderItems.map((item) => {
+          if (item.type === 'compaction_marker') {
+            return <CompactionDivider key={`compaction-${item.marker.compactionId}`} marker={item.marker} />;
+          }
+
           if (item.type === 'working_group') {
             const isWorkingGroupStreaming =
               streamingAssistantMessageId !== null &&

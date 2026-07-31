@@ -103,6 +103,11 @@ export function SettingsInterface({
         <SettingsContent
           activeItemId={activeItemId}
           appSettings={settings}
+          contextSettings={{
+            isLoading: isSettingsLoading,
+            onUpdateSettings: handleUpdateSettings,
+            settings: settings.contextCompaction,
+          }}
           generalSettings={generalSettings}
           mcpSettings={{
             activeOperation: mcpSettings.activeOperation,

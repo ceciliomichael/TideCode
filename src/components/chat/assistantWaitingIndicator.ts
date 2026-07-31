@@ -1,9 +1,10 @@
 import type { AssistantWaitingIndicatorVariant, ToolInvocationTrace } from '../../types/chat'
 import { isFileMutationTool } from './toolInvocationKinds'
+import { resolveToolInvocationForPresentation } from './toolInvocationPresentation'
 
 interface ResolveAssistantWaitingIndicatorVariantInput {
   hasVisibleAssistantText: boolean
-  toolInvocations: readonly Pick<ToolInvocationTrace, 'toolName'>[]
+  toolInvocations: readonly ToolInvocationTrace[]
   waitingIndicatorVariant: AssistantWaitingIndicatorVariant
 }
 
@@ -16,8 +17,9 @@ export function resolveAssistantWaitingIndicatorVariant({
     return waitingIndicatorVariant
   }
 
-  const hasFileMutationToolInvocation = toolInvocations.some((invocation) => isFileMutationTool(invocation.toolName))
-  const hasNonFileMutationToolInvocation = toolInvocations.some(
+  const displayInvocations = toolInvocations.map(resolveToolInvocationForPresentation)
+  const hasFileMutationToolInvocation = displayInvocations.some((invocation) => isFileMutationTool(invocation.toolName))
+  const hasNonFileMutationToolInvocation = displayInvocations.some(
     (invocation) => !isFileMutationTool(invocation.toolName),
   )
 

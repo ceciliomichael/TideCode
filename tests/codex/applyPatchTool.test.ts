@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { applyPatchInWorkspace, parseApplyPatch } from '../../electron/chat/shared/applyPatch'
-import { createAgentTools } from '../../electron/chat/shared/tools'
+import { createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
 
 async function withHttpServer(
   handler: Parameters<typeof createServer>[0],
@@ -863,9 +863,7 @@ test('createAgentTools describes grep mechanics without workflow guidance', asyn
     assert.ok('grep' in tools)
     const grepTool = tools.grep as { description?: string }
 
-    assert.match(grepTool.description ?? '', /ripgrep regex pattern/u)
-    assert.match(grepTool.description ?? '', /sorted by path and line number/u)
-    assert.match(grepTool.description ?? '', /one workspace file or directory/u)
+    assert.match(grepTool.description ?? '', /Searches file contents/u)
     assert.doesNotMatch(grepTool.description ?? '', /use `read`|apply_patch|should|prefer/iu)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -890,10 +888,10 @@ test('createAgentTools keeps plan mode tool descriptions literal', async () => {
     const globTool = tools.glob as { description?: string }
     const grepTool = tools.grep as { description?: string }
 
-    assert.match(listTool.description ?? '', /up to 100 sorted, visible direct child entries/u)
-    assert.match(readTool.description ?? '', /offset is 1-based/u)
-    assert.match(globTool.description ?? '', /up to 100 visible absolute file paths/u)
-    assert.match(grepTool.description ?? '', /ripgrep regex pattern/u)
+    assert.match(listTool.description ?? '', /Lists direct contents/u)
+    assert.match(readTool.description ?? '', /Reads file contents/u)
+    assert.match(globTool.description ?? '', /Finds file paths/u)
+    assert.match(grepTool.description ?? '', /Searches file contents/u)
     for (const description of [listTool, readTool, globTool, grepTool].map((tool) => tool.description ?? '')) {
       assert.doesNotMatch(description, /use `read`|apply_patch|write|should|prefer/iu)
     }
@@ -928,14 +926,11 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     const replaceTool = tools.replace_file_content as { description?: string }
     const writeTool = tools.write as { description?: string }
 
-    assert.match(readTool.description ?? '', /numbered UTF-8 file lines/u)
-    assert.match(readTool.description ?? '', /limit defaults to 2000/u)
-    assert.match(readTool.description ?? '', /output is capped at 256 KB/u)
-    assert.match(replaceTool.description ?? '', /single exact contiguous block/u)
-    assert.match(globTool.description ?? '', /matching the glob pattern/u)
-    assert.match(grepTool.description ?? '', /optional filename glob/u)
-    assert.match(writeTool.description ?? '', /complete UTF-8 contents/u)
-    assert.match(writeTool.description ?? '', /content is unchanged/u)
+    assert.match(readTool.description ?? '', /Reads file contents/u)
+    assert.match(replaceTool.description ?? '', /Replaces a block of text/u)
+    assert.match(globTool.description ?? '', /Finds file paths/u)
+    assert.match(grepTool.description ?? '', /Searches file contents/u)
+    assert.match(writeTool.description ?? '', /Writes content to a file/u)
     for (const description of [
       readTool,
       globTool,

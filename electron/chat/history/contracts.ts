@@ -93,6 +93,18 @@ export type CanonicalHistoryEvent =
       summary: string
       type: 'compaction_committed'
     })
+  | (CanonicalHistoryEventBase & {
+      anchorUserMessageId: string | null
+      compactionId: string
+      modelId: string
+      packet: EncodedReplayValue
+      projectedMessages: EncodedReplayValue
+      providerId: ChatProviderId
+      sourceDigest: string
+      sourceMessageIds: string[]
+      type: 'compaction_committed'
+      usedFallback: boolean
+    })
 
 export interface CanonicalReplayProjection {
   anchorUserMessageId: string | null

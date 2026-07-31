@@ -120,21 +120,7 @@ function createErrorResult(summary: string, body?: string): AgentToolExecutionRe
 }
 
 function getExecuteTerminalDescription() {
-  const osHint = process.platform === 'win32'
-    ? ' Shell is PowerShell. Use PowerShell syntax.'
-    : ''
-
-  const usageHint =
-    ' Use for commands, tests, builds, package tools, and runtime checks when the task requires them; prefer dedicated tools for reading and editing files.'
-  return [
-    `Manage terminal sessions. mode parameter controls action:`,
-    `- execute: Run a command in background. Returns session_id immediately. Use for long-running commands (npm run dev, etc).`,
-    `- read: Read output from a background session by session_id.`,
-    `- list: List all active terminal sessions.`,
-    `- end: Kill a terminal session by session_id.`,
-    osHint,
-    usageHint,
-  ].join(' ')
+  return 'Executes terminal commands and manages terminal sessions.'
 }
 
 function clampInteger(value: number | undefined, min: number, max: number, fallback: number) {
@@ -393,23 +379,23 @@ export function createTerminalToolSet(
           mode: {
             type: 'string',
             enum: ['execute', 'read', 'list', 'end'],
-            description: 'execute: run command in background | read: read output of session | list: list sessions | end: kill session',
+            description: 'Terminal operation mode.',
           },
           wait_ms: {
             type: 'number',
-            description: 'Milliseconds to wait for output in read mode (max 15000). Useful to avoid spamming read.',
+            description: 'Milliseconds to wait for output in read mode.',
           },
           command: {
             type: 'string',
-            description: 'Command to run. Required for execute mode.',
+            description: 'Command to run.',
           },
           session_id: {
             type: 'number',
-            description: 'Session ID. Required for read and end modes.',
+            description: 'Session ID for read or end mode.',
           },
           label: {
             type: 'string',
-            description: 'Human-readable label for the session (e.g. "dev server"). Optional for execute mode.',
+            description: 'Human-readable label for the session.',
           },
           cols: {
             minimum: 20,
@@ -417,7 +403,7 @@ export function createTerminalToolSet(
             type: 'number',
           },
           cwd: {
-            description: 'Working directory for the command. The active execution context defines the permitted path scope.',
+            description: 'Working directory for the command.',
             type: 'string',
           },
           rows: {

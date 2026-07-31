@@ -4,7 +4,7 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createListTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Returns up to 100 sorted, visible direct child entries of absolute_path within the active execution context, or the workspace root when omitted. Directory names end with /.',
+    description: 'Lists direct contents of a directory.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {

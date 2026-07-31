@@ -4,7 +4,7 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createReadTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Returns numbered UTF-8 file lines or sorted directory entries within the active execution context. offset is 1-based, limit defaults to 2000, file output is capped at 256 KB, and binary files return an error.',
+    description: 'Reads file contents or directory entries.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {

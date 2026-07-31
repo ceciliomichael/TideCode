@@ -8,7 +8,7 @@ import {
   buildModelMessages,
   ensureCurrentExecutionModeContext,
 } from '../../electron/chat/shared/messages'
-import { createAgentTools } from '../../electron/chat/shared/tools'
+import { createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
 import type { Message } from '../../src/types/chat'
 
 const webContentsStub = {

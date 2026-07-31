@@ -9,6 +9,7 @@ import { isReasoningEffort } from '../../src/lib/reasoningEffort'
 import { hasLaunchOnlyAppSettings, resetLaunchOnlyAppSettings } from '../../src/hooks/appSettingsLaunchState'
 import { clampStoredWorkspaceEditorWidth } from '../../src/lib/workspaceEditorSizing'
 import { clampStoredWorkspaceExplorerWidth } from '../../src/lib/workspaceExplorerSizing'
+import { normalizeContextCompactionSettings } from '../../src/lib/contextCompactionSettings'
 import type { SourceControlSectionId } from '../../src/types/chat'
 import { electronApp } from '../electronApp'
 import { writeJsonFileAtomic } from './fileStore'
@@ -492,6 +493,7 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
   const chatReasoningEffort = isReasoningEffort(input?.chatReasoningEffort)
     ? input.chatReasoningEffort
     : DEFAULT_APP_SETTINGS.chatReasoningEffort
+  const contextCompaction = normalizeContextCompactionSettings(input?.contextCompaction)
   const agentModelId = typeof input?.agentModelId === 'string' ? input.agentModelId.trim() : DEFAULT_APP_SETTINGS.agentModelId
   const agentModelProviderId = isChatProviderId(input?.agentModelProviderId)
     ? input.agentModelProviderId
@@ -596,6 +598,7 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     chatModelProviderId,
     chatModelLabel,
     chatReasoningEffort,
+    contextCompaction,
     agentModelId,
     agentModelProviderId,
     agentModelLabel,

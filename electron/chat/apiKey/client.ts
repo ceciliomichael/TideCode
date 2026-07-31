@@ -3,7 +3,15 @@ import { createGoogle } from '@ai-sdk/google'
 import { createMistral } from '@ai-sdk/mistral'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { streamText, type LanguageModel, type ModelMessage, type StopCondition, type ToolSet } from 'ai'
+import {
+  streamText,
+  type LanguageModel,
+  type ModelMessage,
+  type PrepareStepFunction,
+  type StopCondition,
+  type ToolCallRepairFunction,
+  type ToolSet,
+} from 'ai'
 import type { ReasoningEffort } from '../../../src/types/chat'
 import { isCustomApiKeyProviderId } from '../../providers/providerIds'
 import { mergeProviderOptions, resolvePromptCacheExtraBody, resolvePromptCacheProviderOptions } from '../cache/providerPolicies'
@@ -28,8 +36,10 @@ export interface ApiKeyChatCompletionsCreateInput {
   stopWhen?: StopCondition<ToolSet> | Array<StopCondition<ToolSet>>
   maxSteps?: number
   system?: string
+  repairToolCall?: ToolCallRepairFunction<ToolSet>
   tools?: ToolSet
   onStepEnd?: (step: ProviderStepRecord) => void | Promise<void>
+  prepareStep?: PrepareStepFunction<ToolSet>
 }
 
 function stripTrailingSlashes(value: string) {
@@ -103,6 +113,7 @@ export function createApiKeyChatClient(config: ApiKeyChatProviderConfig) {
     return streamText({
       ...(input.stopWhen ? { stopWhen: input.stopWhen } : {}),
       ...(input.maxSteps !== undefined ? { maxSteps: input.maxSteps } : {}),
+      ...(input.repairToolCall ? { repairToolCall: input.repairToolCall } : {}),
       ...(configuredModel?.maxTokens ? { maxTokens: configuredModel.maxTokens } : {}),
       model,
       messages: input.messages,
@@ -121,6 +132,7 @@ export function createApiKeyChatClient(config: ApiKeyChatProviderConfig) {
             }),
           }
         : {}),
+      ...(input.prepareStep ? { prepareStep: input.prepareStep } : {}),
       abortSignal: input.signal,
     })
   }

@@ -375,6 +375,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       cacheScopeId: conversationForRun.compaction?.rootConversationId ?? conversationForRun.id,
       chatMode: input.draftChatMode,
       conversationId: conversationForRun.id,
+      contextCompaction: input.runtimeSelection.contextCompaction,
       messages: conversationForRun.messages,
       modelId: input.runtimeSelection.modelId,
       onContentDelta: draftManager.handleContentDelta,
