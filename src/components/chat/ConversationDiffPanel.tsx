@@ -348,22 +348,15 @@ function ConversationDiffPanelContent({
     )
   }
 
-  const isFullscreenPanel = isFullscreen && isOpen
-
   return (
     <div
       ref={panelRef}
       className={[
-        isFullscreenPanel
+        isFullscreen
           ? 'pointer-events-auto absolute inset-0 z-30 flex h-full min-w-0 overflow-hidden'
-          : [
-              'relative flex h-full min-w-0 shrink-0 overflow-hidden max-md:hidden',
-              isOpen ? 'pointer-events-auto' : 'pointer-events-none',
-              isResizing ? '' : 'transition-[width] duration-200 ease-out',
-            ].join(' '),
+          : 'relative hidden h-full shrink-0 overflow-hidden md:flex',
       ].join(' ')}
-      aria-hidden={!isOpen}
-      style={isFullscreenPanel ? undefined : { width: isOpen ? `${renderedWidth}px` : '0px' }}
+      style={isFullscreen ? undefined : { width: `${renderedWidth}px` }}
     >
       {!isFullscreen && isOpen ? (
         <div
@@ -459,5 +452,9 @@ function ConversationDiffPanelContent({
 }
 
 export function ConversationDiffPanel(props: ConversationDiffPanelProps) {
+  if (!props.isOpen) {
+    return null
+  }
+
   return <ConversationDiffPanelContent {...props} />
 }

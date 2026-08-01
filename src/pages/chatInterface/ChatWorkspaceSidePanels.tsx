@@ -71,22 +71,24 @@ export function ChatWorkspaceSidePanels({
           workspaceRootPath={workspaceState.activeWorkspacePath}
         />
       ) : null}
-      <ConversationDiffPanel
-        currentBranch={gitBranchState.branchState.currentBranch}
-        expandedFilePaths={diffPanelExpandedFilePaths}
-        fileDiffs={gitDiffSnapshot.snapshot.fileDiffs}
-        isOpen={interfaceController.isDiffPanelOpen}
-        onDiscardFile={interfaceController.handleDiscardDiffFile}
-        onExpandedFilePathsChange={onDiffPanelExpandedFilePathsChange}
-        onSelectedScopeChange={onDiffPanelSelectedScopeChange}
-        onStageFile={interfaceController.handleStageDiffFile}
-        onUnstageFile={interfaceController.handleUnstageDiffFile}
-        pendingFileActionPath={interfaceController.pendingFileActionPath}
-        width={workspaceState.conversationDiffPanelWidth}
-        onWidthChange={workspaceState.handleConversationDiffPanelWidthChange}
-        onWidthCommit={workspaceState.handleConversationDiffPanelWidthCommit}
-        selectedScope={diffPanelSelectedScope}
-      />
+      {interfaceController.isDiffPanelOpen ? (
+        <ConversationDiffPanel
+          currentBranch={gitBranchState.branchState.currentBranch}
+          expandedFilePaths={diffPanelExpandedFilePaths}
+          fileDiffs={gitDiffSnapshot.snapshot.fileDiffs}
+          isOpen={interfaceController.isDiffPanelOpen}
+          onDiscardFile={interfaceController.handleDiscardDiffFile}
+          onExpandedFilePathsChange={onDiffPanelExpandedFilePathsChange}
+          onSelectedScopeChange={onDiffPanelSelectedScopeChange}
+          onStageFile={interfaceController.handleStageDiffFile}
+          onUnstageFile={interfaceController.handleUnstageDiffFile}
+          pendingFileActionPath={interfaceController.pendingFileActionPath}
+          width={workspaceState.conversationDiffPanelWidth}
+          onWidthChange={workspaceState.handleConversationDiffPanelWidthChange}
+          onWidthCommit={workspaceState.handleConversationDiffPanelWidthCommit}
+          selectedScope={diffPanelSelectedScope}
+        />
+      ) : null}
       {interfaceController.isSourceControlPanelOpen ? (
         <SourceControlPanel
           key={workspaceState.activeWorkspacePath?.trim() ?? 'no-workspace'}

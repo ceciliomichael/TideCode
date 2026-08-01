@@ -143,7 +143,7 @@ function SourceControlPanelContent({
   const isSyncingChanges = pendingSyncAction === 'sync'
   const pendingOperationLabel = pendingCommitOperation
     ? describeSourceControlPendingAction(pendingCommitOperation.action)
-    : pendingSyncOperation
+    : pendingSyncOperation && pendingSyncOperation.action !== 'refresh'
       ? describeSourceControlPendingAction(pendingSyncOperation.action)
       : null
 
@@ -277,7 +277,6 @@ function SourceControlPanelContent({
     setOperationNotice(null)
     try {
       await Promise.all([onRefreshAll(), refreshHistory({ silent: true })])
-      setOperationNotice({ kind: 'success', message: 'Source control refreshed.' })
     } catch (error) {
       setOperationNotice({
         kind: 'error',
