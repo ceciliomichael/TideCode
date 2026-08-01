@@ -485,6 +485,10 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
       ? Math.max(DEFAULT_APP_SETTINGS.sidebarWidth, input.sidebarWidth)
       : DEFAULT_APP_SETTINGS.sidebarWidth
   const appearance = isAppAppearance(input?.appearance) ? input.appearance : DEFAULT_APP_SETTINGS.appearance
+  const autoDownloadUpdates =
+    typeof input?.autoDownloadUpdates === 'boolean'
+      ? input.autoDownloadUpdates
+      : DEFAULT_APP_SETTINGS.autoDownloadUpdates
   const chatModelId = typeof input?.chatModelId === 'string' ? input.chatModelId.trim() : DEFAULT_APP_SETTINGS.chatModelId
   const chatModelProviderId = isChatProviderId(input?.chatModelProviderId)
     ? input.chatModelProviderId
@@ -594,6 +598,7 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
 
   return {
     appearance,
+    autoDownloadUpdates,
     chatModelId,
     chatModelProviderId,
     chatModelLabel,

@@ -26,6 +26,7 @@ export interface ConversationModelPreference {
 
 export interface AppSettings {
   appearance: AppAppearance
+  autoDownloadUpdates: boolean
   chatModelId: string
   chatModelProviderId: ChatProviderId | null
   chatModelLabel: string

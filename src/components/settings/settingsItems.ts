@@ -29,6 +29,11 @@ export const SETTINGS_ITEMS = [
     label: 'Configuration',
     description: 'Set default models for Agent, Plan, summarization, and Git/PR flows.',
   },
+  {
+    id: 'settings-item7',
+    label: 'Updates',
+    description: 'Check for new TideCode releases and download them when ready.',
+  },
 ] as const
 
 export type SettingsItem = (typeof SETTINGS_ITEMS)[number]

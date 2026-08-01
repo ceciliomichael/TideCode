@@ -4,6 +4,7 @@ import { ModelsSettingsPanel } from './models/ModelsSettingsPanel'
 import { ProvidersSettingsPanel } from './providers/ProvidersSettingsPanel'
 import { SkillsSettingsPanel } from './skills/SkillsSettingsPanel'
 import { MemoizedTaskModelsSettingsPanel } from './taskModels/TaskModelsSettingsPanel'
+import { UpdatesSettingsPanel } from './updates/UpdatesSettingsPanel'
 import { SettingsPlaceholderPanel } from './SettingsPlaceholderPanel'
 import { getSettingsItem, type SettingsItemId } from './settingsItems'
 import type { AppAppearance, AppLanguage, FollowUpBehavior } from '../../lib/appSettings'
@@ -103,6 +104,12 @@ export function SettingsContent({
             onUpdateSettings={generalSettings.onUpdateSettings}
             providersState={providersSettings.providersState}
             settings={appSettings}
+          />
+        ) : activeItemId === 'settings-item7' ? (
+          <UpdatesSettingsPanel
+            autoDownloadUpdates={appSettings.autoDownloadUpdates}
+            isLoading={generalSettings.isLoading}
+            onUpdateSettings={generalSettings.onUpdateSettings}
           />
         ) : (
           <SettingsPlaceholderPanel item={activeItem} />

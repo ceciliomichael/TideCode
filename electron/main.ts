@@ -16,6 +16,7 @@ import { registerCoreIpcHandlers } from './ipc/registerCoreIpcHandlers'
 import { registerChatGitTerminalIpcHandlers } from './ipc/registerChatGitTerminalIpcHandlers'
 import { registerWorkspaceIpcHandlers } from './ipc/registerWorkspaceIpcHandlers'
 import { registerMcpHandlers } from './ipc/registerMcpHandlers'
+import { registerUpdatesIpcHandlers } from './ipc/registerUpdatesIpcHandlers'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // The built directory structure
@@ -106,6 +107,7 @@ function registerApplicationIpcHandlers() {
   registerCoreIpcHandlers(() => win)
   registerChatGitTerminalIpcHandlers(activeChatStreamProviders)
   registerWorkspaceIpcHandlers()
+  registerUpdatesIpcHandlers(() => win)
 }
 
 

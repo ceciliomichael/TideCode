@@ -135,4 +135,6 @@ The release should be published, its body should match the `1.0.1` changelog sec
 
 ## End-user updates
 
-TideCode currently does not include an in-app auto-updater. A new release is distributed through GitHub Releases, so users update by downloading and installing the latest platform artifact.
+Packaged TideCode builds use `electron-updater` with the GitHub Releases provider. The Settings → Updates flow checks the latest release, downloads a compatible update in the background, and shows `Restart to update` when the installer is ready. The user-controlled restart calls the updater installer; normal app exit does not silently install a pending update.
+
+The unpackaged development build can check release metadata and open the release page, but it cannot install an update. `dev-app-update.yml` exists for updater configuration during development; real update installation must be tested with a packaged installer created by electron-builder.

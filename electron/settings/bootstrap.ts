@@ -269,6 +269,10 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
 
   return {
     appearance: isAppAppearance(candidate?.appearance) ? candidate.appearance : DEFAULT_APP_SETTINGS.appearance,
+    autoDownloadUpdates:
+      typeof candidate?.autoDownloadUpdates === 'boolean'
+        ? candidate.autoDownloadUpdates
+        : DEFAULT_APP_SETTINGS.autoDownloadUpdates,
     chatModelId: typeof candidate?.chatModelId === 'string' ? candidate.chatModelId.trim() : DEFAULT_APP_SETTINGS.chatModelId,
     chatModelProviderId: isChatProviderId(candidate?.chatModelProviderId)
       ? candidate.chatModelProviderId

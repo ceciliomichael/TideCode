@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.2 — Safer updates and a polished installer
+
+TideCode now gives users a clear, user-controlled path to discover and install releases from Settings, while the Windows installer keeps the experience branded, readable, and safe to repeat.
+
+- Added a cached Updates settings view that checks the official TideCode GitHub release once per app session and allows a fresh manual check at any time.
+- Added readable Markdown release notes with release links, version status, last-checked time, and download progress.
+- Added user-controlled update downloads, disabled by default, so finding an update never downloads or installs it without explicit approval.
+- Added cross-platform update downloads with a clear `Restart to update` step after the download completes.
+- Added persisted update preferences and validation around release versions and updater requests.
+- Added a branded Windows setup flow with clear Install/Update actions, richer TideCode copy, and bundled Google Sans Flex typography.
+- Preserved the per-user installation path and shortcut identity during updates so existing taskbar pins continue to point to TideCode.
+- Added high-density installer artwork and a generated asset step so Windows DPI scaling keeps the installer sharp.
+
 ## 1.0.1 — Dynamic tool discovery and execution
 
 This patch release makes tool selection more reliable in natural-language requests and improves the handoff from model-generated arguments to tool execution.

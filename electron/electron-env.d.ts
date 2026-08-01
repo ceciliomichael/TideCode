@@ -33,6 +33,7 @@ interface Window {
   tidecodeProviders: import('../src/types/chat').TideCodeProvidersApi
   tidecodeSkills: import('../src/types/skills').TideCodeSkillsApi
   tidecodeSettings: import('../src/types/chat').TideCodeSettingsApi
+  tidecodeUpdates: import('../src/types/updates').TideCodeUpdatesApi
   tidecodeFileDrop: {
     getPathForFile: (file: File) => string
   }

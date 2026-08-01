@@ -57,8 +57,13 @@
   "nsis": {
     "oneClick": false,
     "perMachine": false,
-    "allowToChangeInstallationDirectory": true,
-    "deleteAppDataOnUninstall": false
+    "allowToChangeInstallationDirectory": false,
+    "deleteAppDataOnUninstall": false,
+    "include": "installer/installer.nsh",
+    "installerHeader": "build/installerHeader.bmp",
+    "installerIcon": "build/icons/icon.ico",
+    "installerSidebar": "build/installerSidebar.bmp",
+    "uninstallerSidebar": "build/uninstallerSidebar.bmp"
   },
   "linux": {
     "icon": "build/icons",

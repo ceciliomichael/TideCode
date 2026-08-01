@@ -50,6 +50,7 @@ import type {
 } from '../src/types/chat'
 import type { TideCodeMcpApi, McpAddServerInput, McpState } from '../src/types/mcp'
 import type { TideCodeSkillsApi } from '../src/types/skills'
+import type { TideCodeUpdatesApi } from '../src/types/updates'
 
 // --------- Expose some API to the Renderer process ---------
 contextBridge.exposeInMainWorld('ipcRenderer', {
@@ -108,6 +109,21 @@ const settingsApi: TideCodeSettingsApi = {
   getInitialSettings: () => parseInitialSettingsArg(process.argv),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   updateSettings: (input: Partial<AppSettings>) => ipcRenderer.invoke('settings:update', input),
+}
+
+const updatesApi: TideCodeUpdatesApi = {
+  checkForUpdates: () => ipcRenderer.invoke('updates:checkForUpdates'),
+  downloadUpdate: (version: string) => ipcRenderer.invoke('updates:downloadUpdate', version),
+  getCurrentVersion: () => ipcRenderer.invoke('updates:getCurrentVersion'),
+  onUpdateState: (listener) => {
+    const wrappedListener = (_event: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)
+    ipcRenderer.on('updates:stateChanged', wrappedListener)
+    return () => {
+      ipcRenderer.off('updates:stateChanged', wrappedListener)
+    }
+  },
+  openLatestRelease: () => ipcRenderer.invoke('updates:openLatestRelease'),
+  restartToUpdate: () => ipcRenderer.invoke('updates:restartToUpdate'),
 }
 
 const mcpApi: TideCodeMcpApi = {
@@ -297,6 +313,7 @@ contextBridge.exposeInMainWorld('tidecodeKanban', kanbanApi)
 contextBridge.exposeInMainWorld('tidecodeModels', modelsApi)
 contextBridge.exposeInMainWorld('tidecodeMcp', mcpApi)
 contextBridge.exposeInMainWorld('tidecodeSettings', settingsApi)
+contextBridge.exposeInMainWorld('tidecodeUpdates', updatesApi)
 contextBridge.exposeInMainWorld('tidecodeProviders', providersApi)
 contextBridge.exposeInMainWorld('tidecodeSkills', skillsApi)
 contextBridge.exposeInMainWorld('tidecodeChat', chatApi)
