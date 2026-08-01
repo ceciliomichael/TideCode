@@ -37,8 +37,8 @@
   --color-danger-border: oklch(0.9 0.04 22);
   --color-danger-foreground: oklch(0.56 0.16 24);
   --color-danger-foreground-hover: oklch(0.49 0.15 24);
-  --color-disabled: oklch(0.955 0 0);
-  --color-disabled-foreground: oklch(0.72 0 0);
+  --color-disabled: color-mix(in srgb, var(--color-brand-action) 28%, var(--color-surface));
+  --color-disabled-foreground: color-mix(in srgb, var(--color-brand) 62%, var(--color-muted-foreground));
   --color-scrollbar-thumb: oklch(0.86 0 0 / 1);
   --color-scrollbar-thumb-hover: oklch(0.48 0 0 / 0.6);
 
@@ -119,8 +119,8 @@
     --color-danger-border: rgb(188 79 91 / 0.45);
     --color-danger-foreground: #f48771;
     --color-danger-foreground-hover: #ffb3a7;
-    --color-disabled: #222224;
-    --color-disabled-foreground: #7d7d83;
+    --color-disabled: color-mix(in srgb, var(--color-brand-action) 38%, var(--color-surface-muted));
+    --color-disabled-foreground: color-mix(in srgb, var(--color-brand) 58%, var(--color-muted-foreground));
     --color-scrollbar-thumb: rgb(124 124 129 / 0.72);
     --color-scrollbar-thumb-hover: rgb(146 146 153 / 0.82);
 
@@ -243,11 +243,6 @@
   .chat-send-button-disabled {
     background-color: var(--color-disabled);
     color: var(--color-disabled-foreground);
-  }
-
-  :root:not([data-theme='dark']) .chat-send-button-disabled {
-    background-color: rgb(23 23 23 / 0.5);
-    color: rgb(255 255 255 / 0.72);
   }
 
   .provider-primary-action-button {
@@ -389,11 +384,6 @@
     background-color: var(--color-brand-action-hover);
   }
 
-  :root[data-theme='dark'] .chat-send-button-disabled {
-    background-color: rgb(255 255 255 / 0.5);
-    color: rgb(23 23 23 / 0.72);
-  }
-
   :root[data-theme='dark'] .provider-primary-action-button {
     background-color: var(--color-brand-action);
     color: #fff;
@@ -401,11 +391,6 @@
 
   :root[data-theme='dark'] .provider-primary-action-button:not(:disabled):hover {
     background-color: var(--color-brand-action-hover);
-  }
-
-  :root[data-theme='dark'] .provider-primary-action-button:disabled {
-    background-color: rgb(255 255 255 / 0.5);
-    color: rgb(23 23 23 / 0.72);
   }
 
   .app-drag-region {

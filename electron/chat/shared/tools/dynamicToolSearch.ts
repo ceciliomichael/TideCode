@@ -20,10 +20,16 @@ const STOP_WORDS = new Set([
   'does',
   'for',
   'from',
+  'help',
+  'how',
+  'i',
   'if',
   'in',
   'is',
   'it',
+  'looking',
+  'make',
+  'need',
   'me',
   'of',
   'on',
@@ -33,42 +39,68 @@ const STOP_WORDS = new Set([
   'this',
   'to',
   'used',
+  'want',
+  'what',
+  'which',
   'where',
+  'why',
   'with',
   'you',
   'your',
 ])
 
+const CONTEXT_ONLY_TERMS = new Set([
+  'file',
+  'files',
+  'path',
+  'paths',
+  'repo',
+  'repository',
+  'workspace',
+])
+
 const TERM_SYNONYMS: Record<string, string[]> = {
   auth: ['authentication', 'credential', 'credentials', 'token'],
-  browse: ['list', 'directory', 'folder'],
-  change: ['edit', 'modify', 'update', 'write'],
+  authentication: ['auth', 'credential', 'credentials', 'token'],
+  browse: ['list', 'directory', 'folder', 'workspace'],
+  build: ['compile', 'test', 'run'],
+  change: ['edit', 'modify', 'update', 'replace', 'patch'],
   command: ['terminal', 'shell', 'run', 'execute'],
-  create: ['write', 'add', 'new'],
+  create: ['write', 'add', 'new', 'generate', 'save'],
   credential: ['auth', 'authentication', 'secret', 'token'],
   credentials: ['auth', 'authentication', 'secret', 'token'],
   delete: ['remove', 'destroy'],
   directory: ['folder', 'list', 'browse'],
   edit: ['change', 'modify', 'update', 'replace'],
+  examine: ['inspect', 'read', 'view', 'open'],
   execute: ['run', 'command', 'terminal', 'shell'],
   find: ['search', 'grep', 'locate', 'lookup'],
+  filename: ['name', 'path', 'glob'],
+  function: ['symbol', 'definition', 'reference', 'usage'],
+  generate: ['create', 'write', 'save'],
   inspect: ['read', 'view', 'open'],
+  install: ['run', 'command', 'terminal', 'shell'],
   locate: ['search', 'find', 'grep', 'lookup'],
   lookup: ['search', 'find', 'locate', 'grep'],
   modify: ['edit', 'change', 'update', 'replace'],
+  patch: ['edit', 'change', 'modify', 'diff'],
   open: ['read', 'inspect', 'view'],
   read: ['open', 'inspect', 'view', 'contents'],
   remove: ['delete', 'destroy'],
   replace: ['edit', 'change', 'modify', 'update'],
   run: ['execute', 'command', 'terminal', 'shell'],
+  save: ['write', 'create', 'generate'],
   search: ['find', 'grep', 'locate', 'lookup'],
   secret: ['credential', 'credentials', 'token', 'password', 'key'],
   show: ['read', 'inspect', 'view', 'display'],
+  symbol: ['function', 'class', 'definition', 'reference', 'usage'],
+  task: ['issue', 'todo', 'card', 'work item'],
+  test: ['run', 'execute', 'command', 'terminal'],
   token: ['auth', 'authentication', 'credential', 'secret'],
   update: ['edit', 'change', 'modify', 'replace'],
   view: ['read', 'inspect', 'open'],
-  web: ['internet', 'online', 'browser'],
-  write: ['create', 'add', 'edit', 'modify'],
+  web: ['internet', 'online', 'browser', 'external', 'current'],
+  write: ['create', 'add', 'generate', 'save'],
 }
 
 type SearchFieldKind = 'alias' | 'description' | 'guidance' | 'hint' | 'id' | 'name' | 'schema' | 'tag'
@@ -88,7 +120,12 @@ interface SearchDocument {
 
 interface SearchQueryTerm {
   original: string
-  variants: string[]
+  variants: SearchQueryVariant[]
+}
+
+interface SearchQueryVariant {
+  strength: number
+  token: string
 }
 
 const SEARCH_INDEX_CACHE = new WeakMap<object, SearchDocument[]>()
@@ -128,26 +165,23 @@ function stemToken(token: string) {
 }
 
 function expandToken(token: string) {
-  const variants = new Set<string>()
-  const addVariant = (candidate: string) => {
+  const variants = new Map<string, number>()
+  const addVariant = (candidate: string, strength: number) => {
     const normalizedCandidate = candidate.trim().toLowerCase()
     if (normalizedCandidate.length === 0) {
       return
     }
-    variants.add(normalizedCandidate)
-    variants.add(stemToken(normalizedCandidate))
+    variants.set(normalizedCandidate, Math.max(variants.get(normalizedCandidate) ?? 0, strength))
+    const stem = stemToken(normalizedCandidate)
+    variants.set(stem, Math.max(variants.get(stem) ?? 0, strength * 0.96))
   }
 
-  addVariant(token)
-  addVariant(stemToken(token))
+  addVariant(token, 1)
   for (const synonym of TERM_SYNONYMS[token] ?? []) {
-    addVariant(synonym)
-  }
-  for (const synonym of TERM_SYNONYMS[stemToken(token)] ?? []) {
-    addVariant(synonym)
+    addVariant(synonym, 0.62)
   }
 
-  return Array.from(variants)
+  return Array.from(variants, ([variant, strength]) => ({ strength, token: variant }))
 }
 
 function normalizeText(value: string) {
@@ -172,6 +206,9 @@ function toQueryTerms(value: string) {
     }
 
     const stem = stemToken(token)
+    if (CONTEXT_ONLY_TERMS.has(token) || CONTEXT_ONLY_TERMS.has(stem)) {
+      continue
+    }
     if (seen.has(stem)) {
       continue
     }
@@ -371,21 +408,28 @@ function scoreToken(queryToken: string, documentTokens: readonly string[]) {
 function scoreQueryTerm(term: SearchQueryTerm, document: SearchDocument) {
   let bestMatch = 0
   let bestFieldKind: SearchFieldKind | null = null
+  let bestVariantStrength = 0
 
   for (const field of document.fields) {
     let fieldMatch = 0
+    let fieldVariantStrength = 0
     for (const variant of term.variants) {
-      fieldMatch = Math.max(fieldMatch, scoreToken(variant, field.tokens))
+      const variantMatch = scoreToken(variant.token, field.tokens) * variant.strength
+      if (variantMatch > fieldMatch) {
+        fieldMatch = variantMatch
+        fieldVariantStrength = variant.strength
+      }
     }
 
     const weightedMatch = fieldMatch * field.weight
     if (weightedMatch > bestMatch) {
       bestMatch = weightedMatch
       bestFieldKind = field.kind
+      bestVariantStrength = fieldVariantStrength
     }
   }
 
-  return { bestFieldKind, bestMatch }
+  return { bestFieldKind, bestMatch, bestVariantStrength }
 }
 
 function scoreDocument(document: SearchDocument, query: string) {
@@ -396,26 +440,30 @@ function scoreDocument(document: SearchDocument, query: string) {
 
   const normalizedQuery = normalizeText(query)
   let matchedTermCount = 0
+  let primaryMatchCount = 0
   let totalTokenScore = 0
   let semanticHintMatchCount = 0
 
   for (const term of queryTerms) {
-    const { bestFieldKind, bestMatch } = scoreQueryTerm(term, document)
+    const { bestFieldKind, bestMatch, bestVariantStrength } = scoreQueryTerm(term, document)
     if (bestMatch > 0) {
       matchedTermCount += 1
       totalTokenScore += bestMatch
+      if (bestVariantStrength >= 0.9) {
+        primaryMatchCount += 1
+      }
       if (bestFieldKind === 'hint' || bestFieldKind === 'guidance') {
         semanticHintMatchCount += 1
       }
     }
   }
 
-  if (matchedTermCount === 0) {
+  if (matchedTermCount === 0 || primaryMatchCount === 0) {
     return 0
   }
 
   const coverage = matchedTermCount / queryTerms.length
-  if (queryTerms.length > 1 && coverage < 0.5) {
+  if (queryTerms.length > 1 && coverage < 0.66) {
     return 0
   }
 

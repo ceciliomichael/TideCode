@@ -18,6 +18,7 @@ import {
   type CompiledJsonSchemaValidator,
   type JsonSchemaCompilationResult,
 } from './dynamicToolValidation'
+import { normalizeDynamicToolExecutionArguments } from './dynamicToolArgumentCompatibility'
 import { normalizeDynamicExecuteInput } from './dynamicToolInput'
 import { searchToolCatalog } from './dynamicToolSearch'
 
@@ -297,6 +298,7 @@ async function resolveNestedOutput(output: unknown): Promise<unknown> {
 async function executeCatalogTool(
   entry: DynamicToolCatalogEntry,
   input: DynamicExecuteInput,
+  executionArguments: Record<string, unknown>,
   options: Parameters<NonNullable<DynamicToolCatalogEntry['execute']>>[1],
 ) {
   if (!entry.execute) {
@@ -310,7 +312,7 @@ async function executeCatalogTool(
   }
 
   try {
-    const rawOutput = await entry.execute(input.args, {
+    const rawOutput = await entry.execute(executionArguments, {
       abortSignal: options.abortSignal,
       context: {},
       messages: options.messages,
@@ -392,7 +394,8 @@ export async function createDynamicToolSet(catalogEntries: readonly DynamicToolC
           )
         }
 
-        const validationIssues = compilation.validator.validate(input.args)
+        const executionArguments = normalizeDynamicToolExecutionArguments(entry.id, input.args)
+        const validationIssues = compilation.validator.validate(executionArguments)
         const validationError = getFirstValidationError(validationIssues)
         if (validationError) {
           const missingArguments = validationIssues
@@ -423,7 +426,7 @@ export async function createDynamicToolSet(catalogEntries: readonly DynamicToolC
           )
         }
 
-        return executeCatalogTool(entry, input, options)
+        return executeCatalogTool(entry, input, executionArguments, options)
       },
     }),
     get_tool_schema: tool({

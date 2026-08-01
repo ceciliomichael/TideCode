@@ -136,8 +136,11 @@ function buildToolGuidance(id: string, tags: readonly string[]): DynamicToolGuid
     },
     write: {
       safety: ['Keep the target inside the active execution context and verify the written contents.'],
-      whenToUse: 'Use to create a file or replace a file with complete contents.',
-      workflow: ['For an existing file, read it first and make sure a full replacement is intentional.'],
+      whenToUse: 'Use to create a file or replace a file with complete contents. The path argument is named `path`, not `file` or `filename`.',
+      workflow: [
+        'For an existing file, read it first and make sure a full replacement is intentional.',
+        'Pass the destination as path and the complete contents as content.',
+      ],
     },
   }
 
@@ -202,7 +205,11 @@ export async function buildDynamicToolCatalog(nativeTools: ToolSet): Promise<Dyn
         inputSchema,
         name,
         nativeTool,
-        searchHints: getDynamicToolSearchHints(id),
+        searchHints: getDynamicToolSearchHints(id, {
+          description,
+          name,
+          tags,
+        }),
         source: mcpSource ?? { kind: 'native' as const },
         tags,
       }

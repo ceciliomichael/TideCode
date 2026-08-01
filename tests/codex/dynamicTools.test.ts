@@ -288,6 +288,91 @@ test('dynamic search uses semantic hints for natural-language intent', () => {
   assert.equal(fuzzySearchPage.results[0]?.id, 'grep')
 })
 
+test('dynamic search separates similar capabilities and ignores context-only queries', () => {
+  const catalog = [
+    createCatalogEntry('apply_patch', 'Apply coordinated patch changes', {
+      searchHints: [
+        'apply a unified diff or patch text',
+        'edit multiple files in one operation',
+        'perform bulk code changes or a multi-file refactor',
+      ],
+    }),
+    createCatalogEntry('execute_terminal', 'Run commands in a terminal', {
+      searchHints: ['run shell commands', 'run tests builds and scripts', 'inspect terminal output'],
+    }),
+    createCatalogEntry('edit', 'Make a precise change to an existing file', {
+      searchHints: ['replace exact text in an existing file', 'change a specific file section'],
+    }),
+    createCatalogEntry('grep', 'Search text inside file contents', {
+      searchHints: ['find text in files', 'find function definitions symbols references and regex matches'],
+    }),
+    createCatalogEntry('glob', 'Find files by name', {
+      searchHints: ['find files by name filename extension or wildcard', 'locate matching file paths'],
+    }),
+    createCatalogEntry('kanban_board', 'Manage project tasks', {
+      searchHints: ['manage project tasks and work items', 'create update move or delete kanban cards'],
+    }),
+    createCatalogEntry('read', 'Read current file contents', {
+      searchHints: ['open look at inspect view show or display source code', 'read a file before editing it'],
+    }),
+    createCatalogEntry('skill', 'Load specialized instructions', {
+      searchHints: ['load a playbook workflow or specialized capability', 'activate instructions before a task'],
+    }),
+    createCatalogEntry('web_search', 'Search the internet', {
+      searchHints: ['look up current latest recent information online', 'find external web sources'],
+    }),
+    createCatalogEntry('write', 'Write complete file contents', {
+      searchHints: ['create a new file', 'write save overwrite or rewrite an entire file'],
+    }),
+  ]
+
+  const expectedMatches: Array<[string, string]> = [
+    ['apply multi-file patch', 'apply_patch'],
+    ['change exact text', 'edit'],
+    ['find file by name', 'glob'],
+    ['find function definition', 'grep'],
+    ['load specialized instructions', 'skill'],
+    ['manage project tasks', 'kanban_board'],
+    ['read current file', 'read'],
+    ['run tests', 'execute_terminal'],
+    ['search latest news online', 'web_search'],
+    ['create new file', 'write'],
+  ]
+
+  for (const [query, expectedId] of expectedMatches) {
+    const result = searchToolCatalog(catalog, query)
+    assert.equal(result.results[0]?.id, expectedId, `Expected ${expectedId} to lead for ${query}`)
+    assert.ok(result.totalMatches >= 1, `Expected at least one result for ${query}`)
+  }
+
+  const contextOnlyResult = searchToolCatalog(catalog, 'files')
+  assert.equal(contextOnlyResult.totalMatches, 0)
+
+  const terminalResult = searchToolCatalog(catalog, 'run tests')
+  assert.ok(!terminalResult.results.some((result) => result.id === 'read'))
+  assert.ok(!terminalResult.results.some((result) => result.id === 'write'))
+})
+
+test('dynamic catalogs infer semantic hints for custom tool descriptions', async () => {
+  const catalog = await buildDynamicToolCatalog({
+    inspect_logs: tool({
+      description: 'Searches file contents using regular expressions.',
+      inputSchema: jsonSchema({ type: 'object' }),
+      execute: async () => ({ status: 'success' as const, summary: 'Searched logs' }),
+    }),
+    run_command: tool({
+      description: 'Runs shell commands and scripts in a persistent session.',
+      inputSchema: jsonSchema({ type: 'object' }),
+      execute: async () => ({ status: 'success' as const, summary: 'Ran command' }),
+    }),
+  })
+
+  const logTool = catalog.find((entry) => entry.id === 'inspect_logs')
+  const commandTool = catalog.find((entry) => entry.id === 'run_command')
+  assert.ok(logTool?.searchHints.some((hint) => hint.includes('regular expressions inside file contents')))
+  assert.ok(commandTool?.searchHints.some((hint) => hint.includes('shell commands scripts tests builds')))
+})
+
 test('execute_tool validates nested arguments and preserves native result metadata', async () => {
   const catalog = await buildDynamicToolCatalog({
     read_file: tool({
@@ -580,6 +665,61 @@ test('execute_tool accepts flattened edit arguments from a nested wrapper', asyn
 
   assert.equal(result.status, 'success')
   assert.equal(result.body, 'src/example.ts:1')
+})
+
+test('execute_tool accepts write file as a compatibility alias for path', async () => {
+  let receivedArguments: Record<string, unknown> | undefined
+  const catalog = await buildDynamicToolCatalog({
+    write: tool({
+      description: 'Write complete file contents. Use path for the destination.',
+      inputSchema: jsonSchema({
+        additionalProperties: false,
+        properties: {
+          content: { type: 'string' },
+          path: { type: 'string' },
+        },
+        required: ['path', 'content'],
+        type: 'object',
+      }),
+      execute: async (input) => {
+        const argumentsValue = input as Record<string, unknown>
+        receivedArguments = argumentsValue
+        return {
+          body: `wrote ${argumentsValue.path as string}`,
+          status: 'success' as const,
+          summary: 'Wrote file',
+        }
+      },
+    }),
+  })
+  const tools = await createDynamicToolSet(catalog)
+  const execute = tools.execute_tool.execute
+  assert.ok(execute)
+
+  const rawArguments = {
+    content: '<html></html>',
+    file: 'minecraft-clone/index.html',
+  }
+  const result = await execute(
+    { args: rawArguments, id: 'write' },
+    {
+      abortSignal: undefined,
+      context: {},
+      messages: [],
+      toolCallId: 'write-file-alias-1',
+    },
+  )
+
+  assert.equal(result.status, 'success')
+  assert.equal(result.body, 'wrote minecraft-clone/index.html')
+  assert.deepEqual(receivedArguments, {
+    content: '<html></html>',
+    path: 'minecraft-clone/index.html',
+  })
+  assert.deepEqual(result.dynamicInvocation, {
+    argumentsValue: rawArguments,
+    toolName: 'write',
+  })
 })
 
 test('edit argument errors explain how to recover without exposing a schema dump', async () => {
