@@ -96,12 +96,15 @@ export function requestUpdateCheck() {
   subscribeToMainProcessState()
   const requestId = latestRequestId + 1
   latestRequestId = requestId
+  const downloadedVersion =
+    updatesSessionSnapshot.downloadState === 'downloaded' ? updatesSessionSnapshot.pendingVersion : null
+
   updateSnapshot({
     checkState: 'checking',
-    downloadPercent: null,
-    downloadState: 'not-available',
+    downloadPercent: downloadedVersion ? 100 : null,
+    downloadState: downloadedVersion ? 'downloaded' : 'not-available',
     errorMessage: null,
-    pendingVersion: null,
+    pendingVersion: downloadedVersion,
     result: null,
   })
 
@@ -121,13 +124,15 @@ export function requestUpdateCheck() {
         return
       }
 
+      const downloadedUpdateIsStillCurrent = downloadedVersion === result.latestVersion
+
       updateSnapshot({
         checkState: result.downloadState === 'error' ? 'error' : 'success',
         currentVersion: result.currentVersion,
-        downloadPercent: result.downloadPercent,
-        downloadState: result.downloadState,
+        downloadPercent: downloadedUpdateIsStillCurrent ? 100 : result.downloadPercent,
+        downloadState: downloadedUpdateIsStillCurrent ? 'downloaded' : result.downloadState,
         errorMessage: result.downloadError ?? null,
-        pendingVersion: result.latestVersion,
+        pendingVersion: downloadedUpdateIsStillCurrent ? downloadedVersion : result.latestVersion,
         result,
       })
     })

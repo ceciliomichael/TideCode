@@ -1,6 +1,6 @@
 import { net } from 'electron'
 import type { Readable } from 'node:stream'
-import { TIDECODE_LATEST_RELEASE_API_URL, type ReleaseRequest } from './githubReleaseService'
+import { buildLatestReleaseRequestUrl, type ReleaseRequest } from './githubReleaseService'
 
 const UPDATE_REQUEST_TIMEOUT_MS = 20_000
 
@@ -29,10 +29,12 @@ export const requestLatestReleaseWithElectron: ReleaseRequest = () =>
 
     const request = net.request({
       method: 'GET',
-      url: TIDECODE_LATEST_RELEASE_API_URL,
+      url: buildLatestReleaseRequestUrl(),
     })
 
     request.setHeader('Accept', 'application/vnd.github+json')
+    request.setHeader('Cache-Control', 'no-cache, no-store, max-age=0')
+    request.setHeader('Pragma', 'no-cache')
     request.setHeader('User-Agent', 'TideCode-update-checker')
     request.setHeader('X-GitHub-Api-Version', '2022-11-28')
     request.on('error', (error) => settle(() => reject(error)))

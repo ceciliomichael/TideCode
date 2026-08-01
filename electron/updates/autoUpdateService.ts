@@ -9,6 +9,7 @@ let hasBeenConfigured = false
 let updateIsDownloaded = false
 let pendingVersion: string | null = null
 let stateListener: UpdateStateListener | null = null
+let updateInstallInProgress = false
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'TideCode could not download this update.'
@@ -120,5 +121,15 @@ export function restartToInstallUpdate() {
     throw new Error('No downloaded update is ready to install.')
   }
 
-  autoUpdater.quitAndInstall(false, true)
+  updateInstallInProgress = true
+  try {
+    autoUpdater.quitAndInstall(false, true)
+  } catch (error) {
+    updateInstallInProgress = false
+    throw error
+  }
+}
+
+export function isUpdateInstallInProgress() {
+  return updateInstallInProgress
 }

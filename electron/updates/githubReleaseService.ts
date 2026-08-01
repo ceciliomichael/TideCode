@@ -6,6 +6,11 @@ export const TIDECODE_LATEST_RELEASE_URL = `https://github.com/${TIDECODE_GITHUB
 
 export const TIDECODE_LATEST_RELEASE_API_URL = `https://api.github.com/repos/${TIDECODE_GITHUB_REPOSITORY}/releases/latest`
 
+export function buildLatestReleaseRequestUrl(cacheBust = Date.now()) {
+  const separator = TIDECODE_LATEST_RELEASE_API_URL.includes('?') ? '&' : '?'
+  return `${TIDECODE_LATEST_RELEASE_API_URL}${separator}_=${encodeURIComponent(String(cacheBust))}`
+}
+
 interface GitHubReleasePayload {
   body?: unknown
   html_url?: unknown

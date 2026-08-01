@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Download, ExternalLink, PackageCheck, RefreshCw, RotateCw } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ExternalLink, PackageCheck, RefreshCw, RotateCw } from 'lucide-react'
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { MarkdownRenderer } from '../../chat/MarkdownRenderer'
 import { SegmentedField } from '../../ui/SegmentedField'
@@ -130,6 +130,7 @@ export function UpdatesSettingsPanel({ autoDownloadUpdates, isLoading, onUpdateS
   const updateIsReady = session.downloadState === 'downloaded'
   const updateIsAvailable = session.result?.updateAvailable === true
   const isDownloading = session.checkState === 'downloading' || session.downloadState === 'downloading'
+  const canCheckAgain = session.result !== null && session.checkState !== 'checking' && !isDownloading
   const statusIcon =
     session.checkState === 'error' ? (
       <AlertCircle size={19} strokeWidth={2} className="text-danger-foreground" aria-hidden="true" />
@@ -171,43 +172,55 @@ export function UpdatesSettingsPanel({ autoDownloadUpdates, isLoading, onUpdateS
               </div>
             </div>
 
-            <button
-              type="button"
-              disabled={session.checkState === 'checking' || isDownloading}
-              onClick={() => {
-                if (updateIsReady) {
-                  void handleRestartToUpdate()
-                  return
-                }
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {canCheckAgain ? (
+                <button
+                  type="button"
+                  onClick={handleManualCheck}
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-surface-muted"
+                >
+                  <RefreshCw size={16} strokeWidth={2.2} />
+                  Check again
+                </button>
+              ) : null}
+              <button
+                type="button"
+                disabled={session.checkState === 'checking' || isDownloading}
+                onClick={() => {
+                  if (updateIsReady) {
+                    void handleRestartToUpdate()
+                    return
+                  }
 
-                if (updateIsAvailable) {
-                  handleDownloadUpdate()
-                  return
-                }
+                  if (updateIsAvailable) {
+                    handleDownloadUpdate()
+                    return
+                  }
 
-                handleManualCheck()
-              }}
-              className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-brand-border bg-brand-soft px-4 py-2 text-sm font-semibold text-brand-soft-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {updateIsReady ? (
-                <RotateCw size={16} strokeWidth={2.2} />
-              ) : (
-                <RefreshCw
-                  size={16}
-                  strokeWidth={2.2}
-                  className={session.checkState === 'checking' || isDownloading ? 'animate-spin' : undefined}
-                />
-              )}
-              {updateIsReady
-                ? 'Restart to update'
-                : isDownloading
-                  ? 'Downloading...'
-                  : updateIsAvailable
-                    ? 'Download update'
-                    : session.checkState === 'checking'
-                      ? 'Checking...'
-                      : 'Check for updates'}
-            </button>
+                  handleManualCheck()
+                }}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-brand-border bg-brand-soft px-4 py-2 text-sm font-semibold text-brand-soft-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {updateIsReady ? (
+                  <RotateCw size={16} strokeWidth={2.2} />
+                ) : (
+                  <RefreshCw
+                    size={16}
+                    strokeWidth={2.2}
+                    className={session.checkState === 'checking' || isDownloading ? 'animate-spin' : undefined}
+                  />
+                )}
+                {updateIsReady
+                  ? 'Restart to update'
+                  : isDownloading
+                    ? 'Downloading...'
+                    : updateIsAvailable
+                      ? 'Download update'
+                      : session.checkState === 'checking'
+                        ? 'Checking...'
+                        : 'Check for updates'}
+              </button>
+            </div>
           </div>
 
           {errorMessage ? (
@@ -241,29 +254,11 @@ export function UpdatesSettingsPanel({ autoDownloadUpdates, isLoading, onUpdateS
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  if (updateIsReady) {
-                    void handleRestartToUpdate()
-                    return
-                  }
-
-                  if (updateIsAvailable) {
-                    handleDownloadUpdate()
-                    return
-                  }
-
-                  void handleOpenLatestRelease()
-                }}
+                onClick={() => void handleOpenLatestRelease()}
                 className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-surface-muted"
               >
-                {updateIsReady ? 'Restart to update' : updateIsAvailable ? 'Download update' : 'View release'}
-                {updateIsReady ? (
-                  <RotateCw size={15} strokeWidth={2.2} />
-                ) : updateIsAvailable ? (
-                  <Download size={15} strokeWidth={2.2} />
-                ) : (
-                  <ExternalLink size={15} strokeWidth={2.2} />
-                )}
+                View release
+                <ExternalLink size={15} strokeWidth={2.2} />
               </button>
             </div>
 

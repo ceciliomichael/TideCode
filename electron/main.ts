@@ -17,6 +17,7 @@ import { registerChatGitTerminalIpcHandlers } from './ipc/registerChatGitTermina
 import { registerWorkspaceIpcHandlers } from './ipc/registerWorkspaceIpcHandlers'
 import { registerMcpHandlers } from './ipc/registerMcpHandlers'
 import { registerUpdatesIpcHandlers } from './ipc/registerUpdatesIpcHandlers'
+import { isUpdateInstallInProgress } from './updates/autoUpdateService'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // The built directory structure
@@ -124,6 +125,12 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', (event) => {
+  if (isUpdateInstallInProgress()) {
+    disposeWorkspaceExplorerWatchers()
+    disposeKanbanBoardWatchers()
+    return
+  }
+
   if (isQuitFlushInProgress) {
     return
   }

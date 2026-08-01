@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.3 — Reliable updates and smoother installs
+
+TideCode now makes the final step of updating easier to understand and harder to interrupt, from the first manual check through the installer handoff.
+
+- Added a dedicated `Check again` action that always requests the latest release from GitHub instead of reusing a cached network response.
+- Kept the once-per-session automatic check behavior, so returning to Updates from the main workspace stays instant and predictable.
+- Removed the duplicate `Restart to update` action from release details; the primary update action and the title-bar prompt now provide the clear restart path.
+- Added a persistent restart prompt beside the TideCode wordmark whenever a downloaded update is waiting.
+- Preserved downloaded-update readiness when users manually refresh release information.
+- Fixed the quit handoff so TideCode does not block `electron-updater` while it launches the installer.
+
 ## 1.0.2 — Safer updates and a polished installer
 
 TideCode now gives users a clear, user-controlled path to discover and install releases from Settings, while the Windows installer keeps the experience branded, readable, and safe to repeat.
