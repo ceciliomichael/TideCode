@@ -16,7 +16,7 @@ import { parseKanbanBoardData } from '../../src/lib/kanban'
 
 test('creates a parent and structured subtasks in one persisted mutation', async () => {
   const tempRootPath = await fs.mkdtemp(
-    path.join(tmpdir(), 'echosphere-kanban-task-create-'),
+    path.join(tmpdir(), 'tidecode-kanban-task-create-'),
   )
   const workspaceRootPath = path.join(tempRootPath, 'workspace')
   mock.method(os, 'homedir', () => path.join(tempRootPath, 'home'))
@@ -73,7 +73,7 @@ test('creates a parent and structured subtasks in one persisted mutation', async
 
 test('guards completion and deletion when structured child work is incomplete', async () => {
   const tempRootPath = await fs.mkdtemp(
-    path.join(tmpdir(), 'echosphere-kanban-task-guards-'),
+    path.join(tmpdir(), 'tidecode-kanban-task-guards-'),
   )
   const workspaceRootPath = path.join(tempRootPath, 'workspace')
   mock.method(os, 'homedir', () => path.join(tempRootPath, 'home'))
@@ -154,7 +154,7 @@ test('reorders tasks and migrates legacy cards to the richer schema', async () =
   assert.equal(legacyBoard.cards[0].position, 10)
 
   const tempRootPath = await fs.mkdtemp(
-    path.join(tmpdir(), 'echosphere-kanban-task-reorder-'),
+    path.join(tmpdir(), 'tidecode-kanban-task-reorder-'),
   )
   const workspaceRootPath = path.join(tempRootPath, 'workspace')
   mock.method(os, 'homedir', () => path.join(tempRootPath, 'home'))

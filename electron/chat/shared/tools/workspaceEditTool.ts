@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs'
+import { notifyWorkspaceExplorerChange } from '../../../workspace/explorerNotifications'
 import type { AgentToolExecutionResult } from '../toolTypes'
 import {
   findExactMatchOffsets,
@@ -289,6 +290,7 @@ export async function createEditToolResult(
 
   await captureCheckpointFileStateIfNeeded(context.checkpointId, target.absolutePath)
   await fs.writeFile(target.absolutePath, newContent, 'utf8')
+  notifyWorkspaceExplorerChange(context.workspaceRootPath)
 
   const fileChanges = aggregateFileChangeItems([
     {

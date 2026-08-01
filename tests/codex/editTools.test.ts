@@ -9,7 +9,7 @@ import {
 } from '../../electron/chat/shared/tools/workspaceTools'
 
 async function createFixture(content: string) {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-replace-tools-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-replace-tools-'))
   const targetPath = path.join(workspaceRootPath, 'target.ts')
   await fs.writeFile(targetPath, content, 'utf8')
 

@@ -3,7 +3,7 @@ import type { ToolSet } from 'ai'
 import type { ChatProviderId } from '../../../src/types/chat'
 import { sha256, stableStringify } from './canonicalization'
 
-const CACHE_KEY_SCHEMA = 'echosphere.prompt_cache/v2'
+const CACHE_KEY_SCHEMA = 'tidecode.prompt_cache/v2'
 const ANTHROPIC_TOOL_CACHE_CONTROL = { ttl: '5m', type: 'ephemeral' } as const
 
 export function derivePromptCacheKey(input: {

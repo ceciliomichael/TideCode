@@ -81,7 +81,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
     clearError()
 
     try {
-      const folder = await window.echosphereHistory.pickFolder()
+      const folder = await window.tidecodeHistory.pickFolder()
       if (!folder) {
         return
       }
@@ -101,7 +101,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       clearError()
 
       try {
-        const folder = await window.echosphereHistory.createFolderFromPath(folderPath)
+        const folder = await window.tidecodeHistory.createFolderFromPath(folderPath)
         addFolder(folder)
         resetDraft(folder.id)
         return folder.id
@@ -139,7 +139,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       }
 
       try {
-        const conversation = await window.echosphereHistory.getConversation(conversationId)
+        const conversation = await window.tidecodeHistory.getConversation(conversationId)
         if (!conversation) {
           setError('That conversation could not be loaded.')
           return
@@ -174,7 +174,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
 
       if (conversationState?.activeStreamId) {
         try {
-          await window.echosphereChat.cancelStream(conversationState.activeStreamId)
+          await window.tidecodeChat.cancelStream(conversationState.activeStreamId)
         } catch (caughtError) {
           console.error(caughtError)
           setError('Unable to stop the current thread task before deleting it.')
@@ -189,7 +189,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       }
 
       try {
-        await window.echosphereHistory.deleteConversation(conversationId)
+        await window.tidecodeHistory.deleteConversation(conversationId)
         removeConversationRuntime(conversationId)
         replaceConversationSummaries(remainingSummaries)
 
@@ -225,7 +225,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       clearError()
 
       try {
-        const conversation = await window.echosphereHistory.updateConversationTitle(conversationId, title)
+        const conversation = await window.tidecodeHistory.updateConversationTitle(conversationId, title)
         upsertConversation(conversation)
         if (conversationId === activeConversationId) {
           applyConversation(conversation)
@@ -240,7 +240,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       clearError()
 
       try {
-        const conversation = await window.echosphereHistory.updateConversationPinned(conversationId, isPinned)
+        const conversation = await window.tidecodeHistory.updateConversationPinned(conversationId, isPinned)
         upsertConversation(conversation)
         if (conversationId === activeConversationId) {
           applyConversation(conversation)
@@ -255,7 +255,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       clearError()
 
       try {
-        const folder = await window.echosphereHistory.renameFolder({
+        const folder = await window.tidecodeHistory.renameFolder({
           folderId,
           name,
         })
@@ -270,7 +270,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       clearError()
 
       try {
-        const deletedConversationIds = await window.echosphereHistory.deleteFolder(folderId)
+        const deletedConversationIds = await window.tidecodeHistory.deleteFolder(folderId)
         removeFolder(folderId, deletedConversationIds)
       } catch (caughtError) {
         console.error(caughtError)
@@ -283,7 +283,7 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       applyFolderReorder(input)
 
       try {
-        await window.echosphereHistory.reorderFolder(input)
+        await window.tidecodeHistory.reorderFolder(input)
       } catch (caughtError) {
         console.error(caughtError)
         setError('Unable to reorder that project folder.')

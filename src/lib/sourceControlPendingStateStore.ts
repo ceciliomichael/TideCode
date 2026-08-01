@@ -15,7 +15,7 @@ export interface SourceControlWorkspacePendingState {
   sync: SourceControlPendingOperation<SourceControlPendingSyncAction> | null
 }
 
-const STORAGE_KEY = 'echosphere:source-control-pending-state'
+const STORAGE_KEY = 'tidecode:source-control-pending-state'
 const PENDING_STATE_TTL_MS = 10 * 60 * 1000
 const LEGACY_STORAGE_KEY = STORAGE_KEY
 

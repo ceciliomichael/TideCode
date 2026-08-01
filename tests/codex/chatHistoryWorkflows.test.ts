@@ -14,13 +14,13 @@ import type {
 } from '../../src/types/chat'
 
 type WindowMock = {
-  echosphereHistory: {
+  tidecodeHistory: {
     listConversations: () => Promise<ConversationSummary[]>
     listFolders: () => Promise<ConversationFolderSummary[]>
     getConversation: (conversationId: string) => Promise<ConversationRecord | null>
     getUserMessageCheckpointHistory: (conversationId: string, messageId: string) => Promise<UserMessageRunCheckpoint[]>
   }
-  echosphereWorkspace: {
+  tidecodeWorkspace: {
     createRedoCheckpointFromSource: (sourceCheckpointId: string) => Promise<UserMessageRunCheckpoint>
     createRedoCheckpointFromSources: (sourceCheckpointIds: string[]) => Promise<UserMessageRunCheckpoint>
     restoreCheckpoint: (checkpointId: string) => Promise<void>
@@ -114,7 +114,7 @@ test('revert helpers rewind the clicked message and every later user turn', asyn
   const restoreCheckpointCalls: string[][] = []
   const redoCheckpointCalls: string[][] = []
   const restoreWindow = installWindowMock({
-    echosphereHistory: {
+    tidecodeHistory: {
       getConversation: async (conversationId) => (conversationId === conversation.id ? conversation : null),
       listConversations: async () => [],
       listFolders: async () => [],
@@ -122,7 +122,7 @@ test('revert helpers rewind the clicked message and every later user turn', asyn
         throw new Error('history lookup should not be used when direct checkpoints exist')
       },
     },
-    echosphereWorkspace: {
+    tidecodeWorkspace: {
       createRedoCheckpointFromSource: async (sourceCheckpointId) => {
         redoCheckpointCalls.push([sourceCheckpointId])
         return redoCheckpoint
@@ -180,13 +180,13 @@ test('revert helpers fall back to checkpoint history when the message checkpoint
   const restoreCheckpointCalls: string[][] = []
   const redoCheckpointCalls: string[][] = []
   const restoreWindow = installWindowMock({
-    echosphereHistory: {
+    tidecodeHistory: {
       getConversation: async (conversationId) => (conversationId === conversation.id ? conversation : null),
       listConversations: async () => [],
       listFolders: async () => [],
       getUserMessageCheckpointHistory: async () => [historicalCheckpoint],
     },
-    echosphereWorkspace: {
+    tidecodeWorkspace: {
       createRedoCheckpointFromSource: async (sourceCheckpointId) => {
         redoCheckpointCalls.push([sourceCheckpointId])
         return redoCheckpoint
@@ -227,7 +227,7 @@ test('loadInitialChatHistory keeps the workspace on an empty draft when requeste
   ])
 
   const restoreWindow = installWindowMock({
-    echosphereHistory: {
+    tidecodeHistory: {
       createConversation: async (input) => ({
         agentContextRootPath: '/virtual/agent/context',
         chatMode: 'agent',
@@ -256,7 +256,7 @@ test('loadInitialChatHistory keeps the workspace on an empty draft when requeste
       listFolders: async () => [],
       getUserMessageCheckpointHistory: async () => [],
     },
-    echosphereWorkspace: {
+    tidecodeWorkspace: {
       createRedoCheckpointFromSource: async () => {
         throw new Error('not used')
       },
@@ -280,7 +280,7 @@ test('loadInitialChatHistory keeps the workspace on an empty draft when requeste
 
 test('loadInitialChatHistory opens a new thread inside preferred project folder when on a draft', async () => {
   const restoreWindow = installWindowMock({
-    echosphereHistory: {
+    tidecodeHistory: {
       getConversation: async () => {
         throw new Error('should not load global conversation when on a project draft')
       },
@@ -306,7 +306,7 @@ test('loadInitialChatHistory opens a new thread inside preferred project folder 
       ],
       getUserMessageCheckpointHistory: async () => [],
     },
-    echosphereWorkspace: {
+    tidecodeWorkspace: {
       createRedoCheckpointFromSource: async () => undefined,
       createRedoCheckpointFromSources: async () => undefined,
       restoreCheckpoint: async () => undefined,
@@ -327,7 +327,7 @@ test('loadInitialChatHistory opens a new thread inside preferred project folder 
 
 test('revert helpers surface a friendly error when conversation history cannot be loaded', async () => {
   const restoreWindow = installWindowMock({
-    echosphereHistory: {
+    tidecodeHistory: {
       getConversation: async () => {
         throw new SyntaxError('Unexpected end of JSON input')
       },
@@ -335,7 +335,7 @@ test('revert helpers surface a friendly error when conversation history cannot b
       listFolders: async () => [],
       getUserMessageCheckpointHistory: async () => [],
     },
-    echosphereWorkspace: {
+    tidecodeWorkspace: {
       createRedoCheckpointFromSource: async () => {
         throw new Error('not used')
       },

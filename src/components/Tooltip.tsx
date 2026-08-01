@@ -36,7 +36,7 @@ interface TooltipProps {
 
 const TOOLTIP_OFFSET = 6
 const TOOLTIP_EDGE_PADDING = 12
-const TOOLTIP_SHOW_EVENT = 'echosphere:tooltip-show'
+const TOOLTIP_SHOW_EVENT = 'tidecode:tooltip-show'
 
 function mergeClassNames(left: string | undefined, right: string) {
   return left ? `${left} ${right}` : right

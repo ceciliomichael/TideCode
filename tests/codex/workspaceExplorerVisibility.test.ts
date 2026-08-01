@@ -6,7 +6,7 @@ import test from 'node:test'
 import { listWorkspaceDirectory } from '../../electron/workspace/explorer'
 
 async function createWorkspaceFixture() {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-explorer-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-workspace-explorer-'))
 
   await fs.mkdir(path.join(workspaceRootPath, '.git'), { recursive: true })
   await fs.mkdir(path.join(workspaceRootPath, '.next'), { recursive: true })

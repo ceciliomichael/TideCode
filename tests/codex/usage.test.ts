@@ -92,7 +92,7 @@ test('fetchCodexUsageSnapshot accepts hourly and weekly window naming drift', as
 })
 
 test('getCodexProviderStatus returns hydrated status and retains cached usage when called unhydrated', async () => {
-  const homeDirectory = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-codex-test-'))
+  const homeDirectory = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-codex-test-'))
 
   const { getCodexProviderStatus } = await import('../../electron/providers/codex/service')
   const { writeStoredCodexAuthData, StoredCodexAuthData } = await import('../../electron/providers/codex/store')

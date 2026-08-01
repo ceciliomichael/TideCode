@@ -572,6 +572,13 @@ const DiffViewerComponent = ({
       return undefined
     }
 
+    // Defer only the first render after expanding a file. Once the body is
+    // visible, keep it mounted while new diff contents arrive so background
+    // refreshes update in place instead of flashing "Rendering diff...".
+    if (isBodyReady) {
+      return undefined
+    }
+
     let isCancelled = false
     setIsBodyReady(false)
 
@@ -596,6 +603,7 @@ const DiffViewerComponent = ({
     shouldRenderDiffContent,
     shouldDeferBodyRender,
     startLineNumber,
+    isBodyReady,
     viewOnly,
   ])
 

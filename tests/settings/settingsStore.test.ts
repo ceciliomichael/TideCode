@@ -21,7 +21,7 @@ function buildFullStoredSettings() {
 }
 
 test('writeJsonFileAtomic replaces an existing file without leaving a partial write behind', async () => {
-  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-settings-atomic-'))
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-settings-atomic-'))
   const targetPath = path.join(tempRootPath, 'settings.json')
   const originalContent = JSON.stringify({ value: 'original' }, null, 2)
   const nextContent = JSON.stringify({ value: 'updated' }, null, 2)
@@ -54,13 +54,13 @@ test('writeJsonFileAtomic replaces an existing file without leaving a partial wr
 })
 
 test('updateStoredSettings preserves saved preferences when the cache is available', async () => {
-  const tempHomePath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-settings-cache-'))
-  const configDirectoryPath = path.join(tempHomePath, '.echosphere', 'config')
+  const tempHomePath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-settings-cache-'))
+  const configDirectoryPath = path.join(tempHomePath, '.tidecode', 'config')
   const settingsFilePath = path.join(configDirectoryPath, 'settings.json')
   const workspaceUiStateFilePath = path.join(configDirectoryPath, 'workspace-ui-state.json')
   const initialSettings = buildFullStoredSettings()
   const originalReadFile = fs.readFile.bind(fs)
-  const previousSettingsHome = process.env.ECHOSPHERE_SETTINGS_HOME
+  const previousSettingsHome = process.env.TIDECODE_SETTINGS_HOME
   const initialWorkspaceUiState = {
     diffPanelWidth: initialSettings.diffPanelWidth,
     editSessionsByConversation: initialSettings.editSessionsByConversation,
@@ -79,7 +79,7 @@ test('updateStoredSettings preserves saved preferences when the cache is availab
   }
 
   try {
-    process.env.ECHOSPHERE_SETTINGS_HOME = tempHomePath
+    process.env.TIDECODE_SETTINGS_HOME = tempHomePath
 
     await fs.mkdir(configDirectoryPath, { recursive: true })
     await fs.writeFile(settingsFilePath, JSON.stringify(initialSettings, null, 2), 'utf8')
@@ -110,9 +110,9 @@ test('updateStoredSettings preserves saved preferences when the cache is availab
   } finally {
     mock.restoreAll()
     if (previousSettingsHome === undefined) {
-      delete process.env.ECHOSPHERE_SETTINGS_HOME
+      delete process.env.TIDECODE_SETTINGS_HOME
     } else {
-      process.env.ECHOSPHERE_SETTINGS_HOME = previousSettingsHome
+      process.env.TIDECODE_SETTINGS_HOME = previousSettingsHome
     }
     await fs.rm(tempHomePath, { force: true, recursive: true })
   }

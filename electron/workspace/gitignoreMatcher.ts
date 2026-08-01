@@ -11,7 +11,7 @@ interface GitignoreMatcherEntry {
 export type WorkspaceEntryVisibility = 'explorer' | 'workspace'
 
 export const WORKSPACE_IGNORED_ENTRY_NAMES: ReadonlySet<string> = new Set<string>([
-  '.echosphere',
+  '.tidecode',
   '.git',
   '.next',
   'node_modules',

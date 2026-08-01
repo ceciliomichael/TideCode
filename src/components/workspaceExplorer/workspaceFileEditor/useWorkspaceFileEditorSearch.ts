@@ -13,6 +13,7 @@ interface HighlightedLineText {
 }
 
 interface UseWorkspaceFileEditorSearchOptions {
+  clearEditorSelection: () => void
   fileName: string
   handleScroll: () => void
   highlightedLines: readonly HighlightedLineText[]
@@ -37,6 +38,7 @@ function makeSearchOptions(
 }
 
 export function useWorkspaceFileEditorSearch({
+  clearEditorSelection,
   fileName,
   handleScroll,
   highlightedLines,
@@ -68,6 +70,9 @@ export function useWorkspaceFileEditorSearch({
 
   const matchesByLine = useMemo(() => {
     const nextMatchesByLine = highlightedLines.map(() => [] as TextRange[])
+    if (!isSearchOpen) {
+      return nextMatchesByLine
+    }
 
     for (const match of searchMatches) {
       let currentMatchStart = match.start
@@ -102,15 +107,16 @@ export function useWorkspaceFileEditorSearch({
     }
 
     return nextMatchesByLine
-  }, [activeSearchMatchIndex, highlightedLines, lineStartOffsets, searchMatches])
+  }, [activeSearchMatchIndex, highlightedLines, isSearchOpen, lineStartOffsets, searchMatches])
 
   const closeSearchPanel = useCallback(() => {
     setIsSearchOpen(false)
     setIsReplaceOpen(false)
+    clearEditorSelection()
     window.requestAnimationFrame(() => {
       textAreaRef.current?.focus()
     })
-  }, [textAreaRef])
+  }, [clearEditorSelection, textAreaRef])
 
   const focusSearchInput = useCallback(() => {
     window.requestAnimationFrame(() => {

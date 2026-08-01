@@ -30,7 +30,7 @@ export interface StoredApiKeyProviderConfig {
 export type StoredApiKeyProviders = Partial<Record<ApiKeyProviderId, StoredApiKeyProviderConfig>>
 
 const PROVIDERS_SETTINGS_FILE_NAME = 'providers.json'
-const CONFIG_ROOT_SEGMENTS = ['.echosphere', 'config'] as const
+const CONFIG_ROOT_SEGMENTS = ['.tidecode', 'config'] as const
 
 export const PROVIDER_LABELS: Record<BuiltInApiKeyProviderId, string> = {
   anthropic: 'Anthropic',
@@ -206,7 +206,7 @@ export function toApiKeyProviderStatuses(storedProviders: StoredApiKeyProviders)
     const configured = requiresBaseUrl ? Boolean(provider?.base_url) : Boolean(provider?.api_key)
 
     return {
-      apiKey: null,
+      apiKey: provider?.api_key ?? null,
       baseUrl: provider?.base_url ?? null,
       configured,
       extraBody: formatExtraBody(provider?.extra_body),

@@ -22,7 +22,7 @@ function getExternalFilePath(file: DropFileCandidate) {
   }
 
   try {
-    const nativePath = window.echosphereFileDrop?.getPathForFile(file as File)
+    const nativePath = window.tidecodeFileDrop?.getPathForFile(file as File)
     if (typeof nativePath === 'string' && nativePath.trim().length > 0) {
       return nativePath.trim()
     }
@@ -76,9 +76,9 @@ export function getExternalFilePaths(event: ReactDragEvent<HTMLElement>) {
 }
 
 export async function getExternalClipboardFilePaths(event: ReactClipboardEvent<HTMLElement>) {
-  if (typeof window !== 'undefined' && window.echosphereClipboard) {
+  if (typeof window !== 'undefined' && window.tidecodeClipboard) {
     try {
-      const osPaths = await window.echosphereClipboard.readFiles()
+      const osPaths = await window.tidecodeClipboard.readFiles()
       if (osPaths.length > 0) {
         return osPaths
       }

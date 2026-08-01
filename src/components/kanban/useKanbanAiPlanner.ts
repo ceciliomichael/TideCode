@@ -16,7 +16,7 @@ export function useKanbanAiPlanner({ workspacePath }: UseKanbanAiPlannerInput) {
 
   useEffect(() => {
     let isActive = true
-    void window.echosphereSettings
+    void window.tidecodeSettings
       .getSettings()
       .then((settings) => {
         if (isActive) {
@@ -43,7 +43,7 @@ export function useKanbanAiPlanner({ workspacePath }: UseKanbanAiPlannerInput) {
       setIsPlanning(true)
       setError(null)
       try {
-        return await window.echosphereKanban.planTask({
+        return await window.tidecodeKanban.planTask({
           description,
           title,
           workspacePath,

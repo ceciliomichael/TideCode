@@ -7,7 +7,7 @@ const CODEX_OAUTH_TOKEN_URL = 'https://auth.openai.com/oauth/token'
 const CODEX_OAUTH_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const CODEX_OAUTH_REDIRECT_URI = 'http://localhost:1455/auth/callback'
 const CODEX_OAUTH_SCOPE = 'openid email profile offline_access'
-const CODEX_OAUTH_ORIGINATOR = 'echosphere'
+const CODEX_OAUTH_ORIGINATOR = 'tidecode'
 const OAUTH_TIMEOUT_MS = 5 * 60 * 1000
 
 interface OAuthTokenPayload {

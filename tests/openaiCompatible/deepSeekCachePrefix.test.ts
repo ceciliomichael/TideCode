@@ -2,11 +2,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { calculateCacheEfficiency, classifyCacheStep } from '../../electron/chat/cache/diagnostics'
 import { normalizeDeepSeekRequestBody } from '../../electron/chat/apiKey/deepSeekWire'
-import {
-  DEEPSEEK_TOOL_RESULT_REPLAY_MAX_BYTES,
-  DEEPSEEK_TOOL_RESULT_TRUNCATION_MARKER,
-  limitDeepSeekToolResultContent,
-} from '../../electron/chat/apiKey/deepSeekToolResultPolicy'
 import { shouldReplayAssistantReasoning } from '../../electron/chat/shared/assistantReasoningPolicy'
 import { buildModelMessages } from '../../electron/chat/shared/messages'
 import type { Message } from '../../src/types/chat'
@@ -19,13 +14,15 @@ test('DeepSeek tool-call history rebuilds reasoning_content before serialization
     reasoningContent: 'I should inspect the entry point before editing it.',
     role: 'assistant',
     timestamp: 1,
-    toolInvocations: [{
-      argumentsText: '{"path":"src/main.ts"}',
-      id: 'call-1',
-      startedAt: 1,
-      state: 'completed',
-      toolName: 'read',
-    }],
+    toolInvocations: [
+      {
+        argumentsText: '{"path":"src/main.ts"}',
+        id: 'call-1',
+        startedAt: 1,
+        state: 'completed',
+        toolName: 'read',
+      },
+    ],
   }
 
   const [modelMessage] = buildModelMessages([assistantToolTurn], {
@@ -35,7 +32,10 @@ test('DeepSeek tool-call history rebuilds reasoning_content before serialization
   assert.equal(shouldReplayAssistantReasoning('deepseek'), true)
   assert.deepEqual(modelMessage, {
     content: [
-      { text: 'I should inspect the entry point before editing it.', type: 'reasoning' },
+      {
+        text: 'I should inspect the entry point before editing it.',
+        type: 'reasoning',
+      },
       {
         args: { path: 'src/main.ts' },
         input: { path: 'src/main.ts' },
@@ -56,15 +56,29 @@ test('DeepSeek tool loop remains a byte-identical prefix of the following user t
         content: null,
         reasoning_content: 'I should read the entry point.',
         role: 'assistant',
-        tool_calls: [{ function: { arguments: '{"path":"src/main.ts"}', name: 'read' }, id: 'call-1', type: 'function' }],
+        tool_calls: [
+          {
+            function: { arguments: '{"path":"src/main.ts"}', name: 'read' },
+            id: 'call-1',
+            type: 'function',
+          },
+        ],
       },
-      { content: 'export function main() {}', role: 'tool', tool_call_id: 'call-1' },
+      {
+        content: 'export function main() {}',
+        role: 'tool',
+        tool_call_id: 'call-1',
+      },
     ],
   })
   const followingTurn = normalizeDeepSeekRequestBody({
     messages: [
       ...(toolLoopRequest.messages as unknown[]),
-      { content: 'The entry point is straightforward.', reasoning_content: 'private final-turn reasoning', role: 'assistant' },
+      {
+        content: 'The entry point is straightforward.',
+        reasoning_content: 'private final-turn reasoning',
+        role: 'assistant',
+      },
       { content: 'Now optimize it', role: 'user' },
     ],
   })
@@ -74,7 +88,7 @@ test('DeepSeek tool loop remains a byte-identical prefix of the following user t
   assert.equal(JSON.stringify(followingTurn).includes('private final-turn reasoning'), false)
 })
 
-test('DeepSeek shortens oversized tool results only at the provider wire boundary', () => {
+test('DeepSeek preserves oversized tool results at the provider wire boundary', () => {
   const originalToolResult = `head\n${'x'.repeat(30_000)}\ntail`
   const requestBody = {
     messages: [
@@ -89,12 +103,7 @@ test('DeepSeek shortens oversized tool results only at the provider wire boundar
   const normalizedToolResult = normalizedMessages[1]?.content
 
   assert.equal(requestBody.messages[1]?.content, originalToolResult)
-  assert.equal(typeof normalizedToolResult, 'string')
-  assert.ok(new TextEncoder().encode(normalizedToolResult as string).byteLength <= DEEPSEEK_TOOL_RESULT_REPLAY_MAX_BYTES)
-  assert.match(normalizedToolResult as string, new RegExp(DEEPSEEK_TOOL_RESULT_TRUNCATION_MARKER.trim(), 'u'))
-  assert.match(normalizedToolResult as string, /head/u)
-  assert.match(normalizedToolResult as string, /tail\s*$/u)
-  assert.equal(limitDeepSeekToolResultContent('short result'), 'short result')
+  assert.equal(normalizedToolResult, originalToolResult)
   assert.equal(normalizedMessages[2]?.content, 'Final answer')
 })
 
@@ -114,13 +123,16 @@ test('cache diagnostics report token-weighted and request-weighted hit rates sep
   assert.equal(efficiency.cachedInputRatio, 0.9)
   assert.equal(efficiency.requestHitRate, 0.5)
   assert.equal(efficiency.averageStepDurationMs, 2_000)
-  assert.equal(classifyCacheStep({
-    cacheReadTokens: 64,
-    cacheWriteTokens: 0,
-    inputTokens: 128,
-    noCacheTokens: 64,
-    outputTokens: 1,
-    reasoningTokens: 0,
-    totalTokens: 129,
-  }), 'hit')
+  assert.equal(
+    classifyCacheStep({
+      cacheReadTokens: 64,
+      cacheWriteTokens: 0,
+      inputTokens: 128,
+      noCacheTokens: 64,
+      outputTokens: 1,
+      reasoningTokens: 0,
+      totalTokens: 129,
+    }),
+    'hit',
+  )
 })

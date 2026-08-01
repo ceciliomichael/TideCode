@@ -5,7 +5,7 @@ export interface StructuredToolResultSubject {
 
 export interface StructuredToolResultMetadata {
   arguments?: Record<string, unknown>
-  schema: 'echosphere.tool_result/v1'
+  schema: 'tidecode.tool_result/v1'
   semantics?: Record<string, unknown>
   status: 'error' | 'success'
   subject?: StructuredToolResultSubject
@@ -23,70 +23,11 @@ export interface ParsedStructuredToolResultContent {
 interface StructuredToolResultEnvelope {
   body?: string
   metadata: StructuredToolResultMetadata
-  schema: 'echosphere.tool_result/v2'
+  schema: 'tidecode.tool_result/v2'
 }
 
 const SKILL_LOCATION_PREAMBLE_PATTERN =
   /^Skill file:[^\r\n]*\r?\nSkill directory:[^\r\n]*\r?\nResolve relative resource and script paths from the skill directory above\.(?:\r?\n){1,2}/u
-
-export const DEFAULT_MODEL_TOOL_RESULT_MAX_BYTES = 32 * 1024
-export const DEFAULT_MODEL_TOOL_RESULT_TRUNCATION_MARKER =
-  '\n\n[Tool result shortened for context efficiency. Use a narrower path, query, or read range to retrieve the omitted section.]\n\n'
-const UTF8_ENCODER = new TextEncoder()
-
-function utf8ByteLength(value: string) {
-  return UTF8_ENCODER.encode(value).byteLength
-}
-
-function takeUtf8Prefix(value: string, maxBytes: number) {
-  let byteLength = 0
-  let endIndex = 0
-  for (const character of value) {
-    const characterBytes = utf8ByteLength(character)
-    if (byteLength + characterBytes > maxBytes) {
-      break
-    }
-    byteLength += characterBytes
-    endIndex += character.length
-  }
-  return value.slice(0, endIndex)
-}
-
-function takeUtf8Suffix(value: string, maxBytes: number) {
-  let byteLength = 0
-  let startIndex = value.length
-  const characters = Array.from(value)
-  for (let index = characters.length - 1; index >= 0; index -= 1) {
-    const character = characters[index]
-    const characterBytes = utf8ByteLength(character)
-    if (byteLength + characterBytes > maxBytes) {
-      break
-    }
-    byteLength += characterBytes
-    startIndex -= character.length
-  }
-  return value.slice(startIndex)
-}
-
-export function limitModelToolResultForContext(
-  value: string,
-  maxBytes = DEFAULT_MODEL_TOOL_RESULT_MAX_BYTES,
-  marker = DEFAULT_MODEL_TOOL_RESULT_TRUNCATION_MARKER,
-) {
-  if (utf8ByteLength(value) <= maxBytes) {
-    return value
-  }
-
-  const markerBytes = utf8ByteLength(marker)
-  const contentBudget = maxBytes - markerBytes
-  if (contentBudget <= 0) {
-    return takeUtf8Prefix(value, maxBytes)
-  }
-
-  const headBudget = Math.floor(contentBudget * 0.65)
-  const tailBudget = contentBudget - headBudget
-  return `${takeUtf8Prefix(value, headBudget)}${marker}${takeUtf8Suffix(value, tailBudget)}`
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -115,7 +56,7 @@ function isStructuredToolResultMetadata(value: unknown): value is StructuredTool
   }
 
   return (
-    value.schema === 'echosphere.tool_result/v1' &&
+    value.schema === 'tidecode.tool_result/v1' &&
     (value.status === 'success' || value.status === 'error') &&
     typeof value.summary === 'string' &&
     typeof value.toolCallId === 'string' &&
@@ -133,7 +74,7 @@ function isStructuredToolResultEnvelope(value: unknown): value is StructuredTool
   }
 
   return (
-    value.schema === 'echosphere.tool_result/v2' &&
+    value.schema === 'tidecode.tool_result/v2' &&
     isStructuredToolResultMetadata(value.metadata) &&
     (value.body === undefined || typeof value.body === 'string')
   )
@@ -170,6 +111,10 @@ function formatReadToolResultBody(metadata: StructuredToolResultMetadata, body: 
     return headerLines.join('\n')
   }
 
+  if (headerLines.length === 0) {
+    return bodyText
+  }
+
   return `${headerLines.join('\n')}\n\n${bodyText}`
 }
 
@@ -178,8 +123,7 @@ function formatListToolResultBody(metadata: StructuredToolResultMetadata, body: 
   const bodyText = body?.trim() ?? ''
   const headerLines = subjectPath.length > 0 ? [`Directory: ${subjectPath}`] : []
 
-  const count =
-    metadata.semantics && typeof metadata.semantics.count === 'number' ? metadata.semantics.count : null
+  const count = metadata.semantics && typeof metadata.semantics.count === 'number' ? metadata.semantics.count : null
 
   if (typeof count === 'number') {
     headerLines.push(`Entries: ${count}`)
@@ -189,18 +133,19 @@ function formatListToolResultBody(metadata: StructuredToolResultMetadata, body: 
     return headerLines.join('\n')
   }
 
+  if (headerLines.length === 0) {
+    return bodyText
+  }
+
   return `${headerLines.join('\n')}\n\n${bodyText}`
 }
 
-export function formatStructuredToolResultContent(
-  metadata: StructuredToolResultMetadata,
-  body?: string | null,
-) {
+export function formatStructuredToolResultContent(metadata: StructuredToolResultMetadata, body?: string | null) {
   // `body` is the model-facing text. If it is omitted, the summary becomes the fallback.
   const envelope: StructuredToolResultEnvelope = {
     ...(typeof body === 'string' && body.length > 0 ? { body } : {}),
     metadata,
-    schema: 'echosphere.tool_result/v2',
+    schema: 'tidecode.tool_result/v2',
   }
 
   return JSON.stringify(envelope, null, 2)
@@ -241,7 +186,7 @@ export function getToolResultModelContent(content: string) {
     modelContent = content.trim()
   }
 
-  return limitModelToolResultForContext(modelContent)
+  return modelContent
 }
 
 export function getToolResultDisplayBody(toolName: string, body: string) {

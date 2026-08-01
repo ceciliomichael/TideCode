@@ -44,12 +44,12 @@ Direct Codex backend calls require OAuth bearer tokens and account header.
   - `codex_cli_simplified_flow=true`
   - `id_token_add_organizations=true`
 
-### 3.2 Token source is always user-profile auth file (`~/.echosphere/config/providers/codex/auth.json`)
+### 3.2 Token source is always user-profile auth file (`~/.tidecode/config/providers/codex/auth.json`)
 
 Always load auth from the user profile Codex auth file:
 
-- Unix/macOS: `~/.echosphere/config/providers/codex/auth.json`
-- Windows: `%USERPROFILE%\\.echosphere\\config\\providers\\codex\\auth.json`
+- Unix/macOS: `~/.tidecode/config/providers/codex/auth.json`
+- Windows: `%USERPROFILE%\\.tidecode\\config\\providers\\codex\\auth.json`
 
 Do not hardcode tokens in source code or config when using this integration pattern.
 
@@ -318,7 +318,7 @@ Response parsing:
 These are the minimum integration functions that matter in production:
 
 1. `load_auth()`
-   - always read user-profile `~/.echosphere/config/providers/codex/auth.json` and return access token + account ID
+   - always read user-profile `~/.tidecode/config/providers/codex/auth.json` and return access token + account ID
 2. `refresh_access_token()`
    - call OAuth token endpoint with refresh token, then persist
 3. `build_headers(stream: bool)`
@@ -343,7 +343,7 @@ These are the minimum integration functions that matter in production:
 Use this before shipping:
 
 - Auth:
-  - auth is always loaded from user-profile `~/.echosphere/config/providers/codex/auth.json` (Windows: `%USERPROFILE%\\.echosphere\\config\\providers\\codex\\auth.json`)
+  - auth is always loaded from user-profile `~/.tidecode/config/providers/codex/auth.json` (Windows: `%USERPROFILE%\\.tidecode\\config\\providers\\codex\\auth.json`)
   - token refresh is implemented
   - token file writes are atomic/safe
 - Headers:

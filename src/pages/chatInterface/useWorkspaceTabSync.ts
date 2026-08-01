@@ -138,7 +138,7 @@ export function useWorkspaceTabSync({
           }
   
           try {
-            const result = await window.echosphereWorkspace.readFile({
+            const result = await window.tidecodeWorkspace.readFile({
               relativePath,
               workspaceRootPath,
             });
@@ -164,7 +164,7 @@ export function useWorkspaceTabSync({
           }
         | {
             relativePath: string;
-            result: Awaited<ReturnType<typeof window.echosphereWorkspace.readFile>>;
+            result: Awaited<ReturnType<typeof window.tidecodeWorkspace.readFile>>;
           }
       >();
   
@@ -277,7 +277,7 @@ export function useWorkspaceTabSync({
       }
   
       let isDisposed = false
-      const unsubscribeWorkspaceChanges = window.echosphereWorkspace.onExplorerChange((event) => {
+      const unsubscribeWorkspaceChanges = window.tidecodeWorkspace.onExplorerChange((event) => {
         if (isDisposed || event.workspaceRootPath !== workspaceRootPath) {
           return
         }
@@ -298,7 +298,7 @@ export function useWorkspaceTabSync({
   
       const refreshIntervalId = window.setInterval(refreshTabsIfIdle, ACTIVE_WORKSPACE_TAB_SYNC_INTERVAL_MS)
   
-      void window.echosphereWorkspace.watchExplorerChanges({
+      void window.tidecodeWorkspace.watchExplorerChanges({
         workspaceRootPath,
       }).catch((error) => {
         console.error("Failed to watch workspace changes for open file tabs", error)
@@ -309,7 +309,7 @@ export function useWorkspaceTabSync({
         window.clearInterval(refreshIntervalId)
         isWorkspaceFileTabsRefreshInFlightRef.current = false
         unsubscribeWorkspaceChanges()
-        void window.echosphereWorkspace.unwatchExplorerChanges({
+        void window.tidecodeWorkspace.unwatchExplorerChanges({
           workspaceRootPath,
         }).catch((error) => {
           console.error("Failed to stop watching workspace changes for open file tabs", error)
@@ -355,7 +355,7 @@ export function useWorkspaceTabSync({
       }
   
       const timeoutId = window.setTimeout(() => {
-        void window.echosphereWorkspace
+        void window.tidecodeWorkspace
           .writeFile({
             content,
             relativePath,

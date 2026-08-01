@@ -15,8 +15,8 @@ test('buildCompressedHistoryMessage only returns the compressed context payload'
 
   const message = buildCompressedHistoryMessage(summary)
 
-  assert.ok(message.includes('<echosphere:compressed_history>'))
-  assert.ok(message.includes('<echosphere:summary>'))
+  assert.ok(message.includes('<tidecode:compressed_history>'))
+  assert.ok(message.includes('<tidecode:summary>'))
   assert.ok(!message.includes(COMPRESSION_ACKNOWLEDGEMENT_TEXT))
   assert.deepEqual(parseCompressedHistoryMessage(message), { summary })
 })

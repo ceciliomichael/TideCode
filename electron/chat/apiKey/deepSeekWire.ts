@@ -1,5 +1,3 @@
-import { limitDeepSeekToolResultContent } from './deepSeekToolResultPolicy'
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -14,13 +12,6 @@ export function normalizeDeepSeekRequestBody(requestBody: Record<string, unknown
 
   const messages = requestBody.messages.map((value) => {
     if (!isRecord(value)) return value
-
-    if (value.role === 'tool' && typeof value.content === 'string') {
-      return {
-        ...value,
-        content: limitDeepSeekToolResultContent(value.content),
-      }
-    }
 
     if (value.role !== 'assistant') return value
     const message = { ...value }

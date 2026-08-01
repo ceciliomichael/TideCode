@@ -18,7 +18,7 @@ export function applyOptimisticProviderSave(
   const existing = providersState.apiKeyProviders.find((provider) => provider.id === input.providerId)
   const isCustom = isCustomProviderId(input.providerId)
   const nextStatus: ApiKeyProviderStatus = {
-    apiKey: null,
+    apiKey: input.apiKey.trim() || existing?.apiKey || null,
     baseUrl: input.baseUrl?.trim() || existing?.baseUrl || null,
     configured: true,
     extraBody: input.extraBody?.trim() ?? existing?.extraBody ?? '',

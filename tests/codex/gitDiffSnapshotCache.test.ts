@@ -6,7 +6,7 @@ import {
 } from '../../src/lib/gitDiffSnapshotCache'
 
 interface GitApiTestWindow {
-  echosphereGit: {
+  tidecodeGit: {
     getDiffs: (workspacePath: string, options?: { includeContent?: boolean }) => Promise<{
       fileDiffs: Array<{
         fileName: string
@@ -25,7 +25,7 @@ test('loads status-only git metadata without reading diff content and coalesces 
   const calls: Array<{ includeContent?: boolean; workspacePath: string }> = []
   const originalWindow = (globalThis as { window?: GitApiTestWindow }).window
   const testWindow: GitApiTestWindow = {
-    echosphereGit: {
+    tidecodeGit: {
       getDiffs: async (workspacePath, options) => {
         calls.push({ includeContent: options?.includeContent, workspacePath })
         return {

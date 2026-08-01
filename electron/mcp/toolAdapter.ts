@@ -3,6 +3,8 @@ import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type { McpServerConfig, McpTool } from '../../src/types/mcp'
 import type { AgentToolExecutionResult } from '../chat/shared/toolTypes'
+import { identifyMcpTools } from './toolIdentity'
+import { registerMcpToolSource } from './toolMetadata'
 
 function createSuccessResult(input: Omit<AgentToolExecutionResult, 'status'>): AgentToolExecutionResult {
   return {
@@ -48,14 +50,9 @@ function toToolBody(content: CallToolResult['content']) {
   return lines.join('\n').trim()
 }
 
-function createNamespacedToolName(toolName: string) {
-  const normalizedToolName = toolName.trim().replace(/[^a-zA-Z0-9_-]+/g, '_')
-  return `mcp_${normalizedToolName}`
-}
-
 function createToolDescription(config: McpServerConfig, tool: McpTool) {
   const baseDescription = tool.description?.trim() ?? ''
-  const sourceLabel = config.owner === 'echosphere' ? 'global' : config.owner
+  const sourceLabel = config.owner === 'tidecode' ? 'global' : config.owner
   return baseDescription.length > 0 ? `[${sourceLabel}] ${baseDescription}` : `[${sourceLabel}] MCP tool`
 }
 
@@ -63,52 +60,53 @@ export function createMcpToolSetForServer(config: McpServerConfig, client: Clien
   const enabledToolNames = new Set(config.toolConfiguration?.allowedTools ?? [])
   const disabledToolNames = new Set(config.toolConfiguration?.disabledTools ?? [])
 
+  const allowedTools = tools.filter((tool) => {
+    if (enabledToolNames.size > 0 && !enabledToolNames.has(tool.name)) {
+      return false
+    }
+
+    if (disabledToolNames.has(tool.name)) {
+      return false
+    }
+
+    return true
+  })
+
   return Object.fromEntries(
-    tools
-      .filter((tool) => {
-        if (enabledToolNames.size > 0 && !enabledToolNames.has(tool.name)) {
-          return false
-        }
+    identifyMcpTools(config, allowedTools).map(({ catalogId, tool: mcpTool }) => {
+      const adaptedTool = tool({
+        description: createToolDescription(config, mcpTool),
+        inputSchema: jsonSchema(mcpTool.inputSchema),
+        execute: async (rawInput) => {
+          try {
+            const result = await client.callTool({
+              arguments: rawInput as Record<string, unknown>,
+              name: mcpTool.name,
+            })
 
-        if (disabledToolNames.has(tool.name)) {
-          return false
-        }
+            const body = toToolBody(result.content as CallToolResult['content'])
+            if (result.isError) {
+              return createErrorResult(`MCP tool ${mcpTool.name} failed.`, body.length > 0 ? body : undefined)
+            }
 
-        return true
+            return createSuccessResult({
+              ...(body.length > 0 ? { body } : {}),
+              summary: body.length > 0 ? `Completed ${mcpTool.name}` : `Completed ${mcpTool.name}`,
+            })
+          } catch (error) {
+            const message =
+              error instanceof Error && error.message.trim().length > 0 ? error.message : 'Tool call failed.'
+            return createErrorResult(`MCP tool ${mcpTool.name} failed.`, message)
+          }
+        },
       })
-      .map((mcpTool) => {
-        const toolName = createNamespacedToolName(mcpTool.name)
-        return [
-          toolName,
-          tool({
-            description: createToolDescription(config, mcpTool),
-            inputSchema: jsonSchema(mcpTool.inputSchema),
-            execute: async (rawInput) => {
-              try {
-                const result = await client.callTool({
-                  arguments: rawInput as Record<string, unknown>,
-                  name: mcpTool.name,
-                })
-
-                const body = toToolBody(result.content as CallToolResult['content'])
-                if (result.isError) {
-                  return createErrorResult(
-                    `MCP tool ${mcpTool.name} failed.`,
-                    body.length > 0 ? body : undefined,
-                  )
-                }
-
-                return createSuccessResult({
-                  ...(body.length > 0 ? { body } : {}),
-                  summary: body.length > 0 ? `Completed ${mcpTool.name}` : `Completed ${mcpTool.name}`,
-                })
-              } catch (error) {
-                const message = error instanceof Error && error.message.trim().length > 0 ? error.message : 'Tool call failed.'
-                return createErrorResult(`MCP tool ${mcpTool.name} failed.`, message)
-              }
-            },
-          }),
-        ] as const
-      }),
+      registerMcpToolSource(adaptedTool, {
+        kind: 'mcp',
+        originalToolName: mcpTool.name,
+        serverId: config.id,
+        serverName: config.name,
+      })
+      return [catalogId, adaptedTool] as const
+    }),
   )
 }

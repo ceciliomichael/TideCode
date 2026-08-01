@@ -6,8 +6,8 @@ import type { SkillSummary, SkillsState } from '../../src/types/skills'
 import type { AgentToolExecutionResult } from '../chat/shared/toolTypes'
 
 const SKILL_FILE_NAME = 'SKILL.md'
-const GLOBAL_SKILL_DIRECTORIES = ['.echosphere/skills', '.codex/skills', '.agents/skills', '.claude/skills'] as const
-const WORKSPACE_SKILL_DIRECTORIES = ['skills', '.echosphere/skills', '.codex/skills', '.agents/skills', '.claude/skills'] as const
+const GLOBAL_SKILL_DIRECTORIES = ['.tidecode/skills', '.codex/skills', '.agents/skills', '.claude/skills'] as const
+const WORKSPACE_SKILL_DIRECTORIES = ['skills', '.tidecode/skills', '.codex/skills', '.agents/skills', '.claude/skills'] as const
 const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/
 const SKILL_DISCOVERY_CACHE_TTL_MS = 3_000
 const skillDiscoveryCache = new Map<string, { expiresAt: number; state: SkillsState }>()
@@ -418,7 +418,7 @@ export async function createSkill(
   const normalizedDescription = input.description.trim()
   const rawContent = input.content.trim()
 
-  const targetDir = path.join(os.homedir(), '.echosphere', 'skills', normalizedName)
+  const targetDir = path.join(os.homedir(), '.tidecode', 'skills', normalizedName)
   const skillFilePath = path.join(targetDir, SKILL_FILE_NAME)
 
   const fileText = [

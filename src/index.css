@@ -20,12 +20,19 @@
   --color-border: oklch(0.885 0 0);
   --color-border-muted: oklch(0.925 0 0);
 
-  --color-action: oklch(0.22 0 0);
-  --color-action-hover: oklch(0.16 0 0);
-  --color-accent: oklch(0.96 0 0);
-  --color-accent-hover: oklch(0.93 0 0);
-  --color-accent-soft: oklch(0.98 0 0);
-  --color-accent-foreground: oklch(0.3 0 0);
+  --color-action: #315f59;
+  --color-action-hover: #284f4a;
+  --color-brand: #315f59;
+  --color-brand-hover: #284f4a;
+  --color-brand-action: #315f59;
+  --color-brand-action-hover: #284f4a;
+  --color-brand-soft: #d9e9e6;
+  --color-brand-soft-foreground: #315f59;
+  --color-brand-border: #789a93;
+  --color-accent: var(--color-brand-soft);
+  --color-accent-hover: #cfe2de;
+  --color-accent-soft: #e6f0ee;
+  --color-accent-foreground: var(--color-brand-soft-foreground);
   --color-danger-surface: oklch(0.97 0.03 22);
   --color-danger-border: oklch(0.9 0.04 22);
   --color-danger-foreground: oklch(0.56 0.16 24);
@@ -45,8 +52,8 @@
     color-scheme: light;
     --workspace-editor-selection-background: rgb(0 120 215 / 0.45);
     --workspace-editor-selection-background-opaque: #bddcf5;
-    --workspace-editor-search-highlight-background: rgb(0 120 215 / 0.18);
-    --workspace-editor-search-highlight-active-background: rgb(0 120 215 / 0.28);
+    --workspace-editor-search-highlight-background: #b8d8f4;
+    --workspace-editor-search-highlight-active-background: #1267b2;
     --workspace-editor-line-added-border: rgb(16 185 129 / 0.82);
     --workspace-editor-line-changed-surface: rgb(0 120 215 / 0.12);
     --workspace-editor-line-changed-border: rgb(0 120 215 / 0.5);
@@ -62,19 +69,19 @@
     --sidebar-raised-surface: var(--color-surface);
     --sidebar-hover-surface: var(--color-sidebar-muted);
     --sidebar-muted-surface-mix: color-mix(in srgb, var(--sidebar-hover-surface) 84%, var(--sidebar-panel-surface));
-    --sidebar-item-active-surface: var(--color-surface);
-    --sidebar-item-active-border: var(--color-border-muted);
+    --sidebar-item-active-surface: var(--color-brand-soft);
+    --sidebar-item-active-border: color-mix(in srgb, var(--color-brand) 26%, var(--color-border-muted));
     --user-message-hover-border: color-mix(in srgb, var(--color-action) 28%, var(--color-border));
     --segmented-control-hover-surface: color-mix(in srgb, var(--color-foreground) 5%, var(--color-surface));
-    --segmented-control-active-surface: var(--color-surface);
+    --segmented-control-active-surface: var(--color-brand-soft);
     --dropdown-control-hover-surface: color-mix(in srgb, var(--color-foreground) 2%, var(--color-surface));
     --dropdown-control-hover-border: color-mix(in srgb, var(--color-foreground) 10%, var(--color-border));
     --dropdown-control-open-surface: color-mix(in srgb, var(--color-foreground) 4%, var(--color-surface));
     --dropdown-control-open-border: color-mix(in srgb, var(--color-foreground) 12%, var(--color-border));
     --dropdown-control-surface: var(--color-surface-muted);
     --dropdown-option-hover-surface: color-mix(in srgb, var(--color-foreground) 4%, var(--color-surface));
-    --dropdown-option-active-surface: color-mix(in srgb, var(--color-foreground) 12%, var(--color-surface));
-    --dropdown-option-active-hover-surface: color-mix(in srgb, var(--color-foreground) 15%, var(--color-surface));
+    --dropdown-option-active-surface: var(--color-brand-soft);
+    --dropdown-option-active-hover-surface: color-mix(in srgb, var(--color-brand) 16%, var(--color-surface));
     --dropdown-option-active-border: transparent;
   }
 
@@ -95,12 +102,19 @@
     --color-border: #36363a;
     --color-border-muted: #2b2b2e;
 
-    --color-action: #545458;
-    --color-action-hover: #66666b;
-    --color-accent: #302a3b;
-    --color-accent-hover: #3a3247;
-    --color-accent-soft: #231f2d;
-    --color-accent-foreground: #e6deff;
+    --color-action: #467b72;
+    --color-action-hover: #52887f;
+    --color-brand: #7fa59c;
+    --color-brand-hover: #8eafa7;
+    --color-brand-action: #467b72;
+    --color-brand-action-hover: #52887f;
+    --color-brand-soft: #223630;
+    --color-brand-soft-foreground: #b8cec9;
+    --color-brand-border: #527069;
+    --color-accent: var(--color-brand-soft);
+    --color-accent-hover: #29413b;
+    --color-accent-soft: #1d2e2a;
+    --color-accent-foreground: var(--color-brand-soft-foreground);
     --color-danger-surface: rgb(95 34 41 / 0.28);
     --color-danger-border: rgb(188 79 91 / 0.45);
     --color-danger-foreground: #f48771;
@@ -115,8 +129,8 @@
     color-scheme: dark;
     --workspace-editor-selection-background: rgb(38 120 190 / 0.62);
     --workspace-editor-selection-background-opaque: #20537f;
-    --workspace-editor-search-highlight-background: rgb(38 120 190 / 0.28);
-    --workspace-editor-search-highlight-active-background: rgb(38 120 190 / 0.44);
+    --workspace-editor-search-highlight-background: #294c6b;
+    --workspace-editor-search-highlight-active-background: #1976c8;
     --workspace-editor-line-added-border: rgb(52 211 153 / 0.82);
     --workspace-editor-line-changed-surface: rgb(38 120 190 / 0.24);
     --workspace-editor-line-changed-border: rgb(90 170 255 / 0.72);
@@ -129,29 +143,27 @@
     --sidebar-panel-surface: #141415;
     --sidebar-raised-surface: #232326;
     --sidebar-hover-surface: #2a2a2d;
-    --sidebar-item-active-surface: #333337;
-    --sidebar-item-active-border: #45454a;
+    --sidebar-item-active-surface: var(--color-brand-soft);
+    --sidebar-item-active-border: color-mix(in srgb, var(--color-brand) 34%, var(--color-border-muted));
     --user-message-hover-border: color-mix(in srgb, var(--color-foreground) 22%, var(--color-border));
     --segmented-control-hover-surface: #2a2a2d;
-    --segmented-control-active-surface: #343438;
+    --segmented-control-active-surface: var(--color-brand-soft);
     --dropdown-control-surface: #131314;
     --dropdown-control-hover-surface: #1f1f22;
     --dropdown-control-hover-border: #45454a;
     --dropdown-control-open-surface: #242427;
     --dropdown-control-open-border: #59595f;
     --dropdown-option-hover-surface: #27272a;
-    --dropdown-option-active-surface: #323236;
-    --dropdown-option-active-hover-surface: #3a3a3f;
+    --dropdown-option-active-surface: var(--color-brand-soft);
+    --dropdown-option-active-hover-surface: #263630;
     --dropdown-option-active-border: transparent;
   }
 
-  :root.theme-transition,
-  :root.theme-transition *,
-  :root.theme-transition *::before,
-  :root.theme-transition *::after {
-    transition-property: background-color, border-color, color, fill, stroke, box-shadow;
-    transition-duration: 180ms;
-    transition-timing-function: ease-out;
+  :root.theme-switching,
+  :root.theme-switching *,
+  :root.theme-switching *::before,
+  :root.theme-switching *::after {
+    transition: none !important;
   }
 
   body {
@@ -369,12 +381,12 @@
   }
 
   :root[data-theme='dark'] .chat-send-button-enabled {
-    background-color: #fff;
-    color: var(--color-background);
+    background-color: var(--color-brand-action);
+    color: #fff;
   }
 
   :root[data-theme='dark'] .chat-send-button-enabled:hover {
-    background-color: #f2f2f2;
+    background-color: var(--color-brand-action-hover);
   }
 
   :root[data-theme='dark'] .chat-send-button-disabled {
@@ -383,12 +395,12 @@
   }
 
   :root[data-theme='dark'] .provider-primary-action-button {
-    background-color: #fff;
-    color: var(--color-background);
+    background-color: var(--color-brand-action);
+    color: #fff;
   }
 
   :root[data-theme='dark'] .provider-primary-action-button:not(:disabled):hover {
-    background-color: #f2f2f2;
+    background-color: var(--color-brand-action-hover);
   }
 
   :root[data-theme='dark'] .provider-primary-action-button:disabled {
@@ -453,16 +465,23 @@
     color: transparent !important;
   }
 
-  .workspace-editor-selection {
-    background-color: var(--diff-viewer-selection-background-opaque);
+  .workspace-editor-text-highlight {
+    --workspace-editor-highlight-color: var(--diff-viewer-selection-background-opaque);
+    background-color: var(--workspace-editor-highlight-color);
+    box-shadow:
+      0 4px 0 var(--workspace-editor-highlight-color),
+      0 -4px 0 var(--workspace-editor-highlight-color);
     color: #fff !important;
-    padding-top: 4px;
-    padding-bottom: 4px;
-    margin-top: -4px;
-    margin-bottom: -4px;
-    border-radius: 2px;
-    -webkit-box-decoration-break: clone;
-    box-decoration-break: clone;
+  }
+
+  .workspace-editor-search-highlight {
+    --workspace-editor-highlight-color: var(--workspace-editor-search-highlight-background);
+    color: var(--color-foreground) !important;
+  }
+
+  .workspace-editor-search-highlight-active {
+    --workspace-editor-highlight-color: var(--workspace-editor-search-highlight-active-background);
+    color: #fff !important;
   }
 
   .workspace-editor-selection-newline {

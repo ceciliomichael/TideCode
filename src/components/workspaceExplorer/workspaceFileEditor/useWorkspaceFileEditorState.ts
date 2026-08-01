@@ -66,6 +66,7 @@ export function useWorkspaceFileEditorState({
   const lineStartOffsets = useMemo(() => findLineStartOffsets(value), [value])
 
   const {
+    clearEditorSelection,
     handleEditorChange,
     handleEditorSelect,
     matchesByLine: selectionMatchesByLine,
@@ -153,6 +154,7 @@ export function useWorkspaceFileEditorState({
     matchesByLine: searchMatchesByLine,
     state: searchState,
   } = useWorkspaceFileEditorSearch({
+    clearEditorSelection,
     fileName,
     handleScroll,
     highlightedLines,

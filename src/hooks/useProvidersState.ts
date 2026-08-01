@@ -39,7 +39,7 @@ export function useProvidersState() {
     }))
 
     try {
-      const providersState = await window.echosphereProviders.getProvidersState()
+      const providersState = await window.tidecodeProviders.getProvidersState()
       setState({
         activeOperation: null,
         errorMessage: null,
@@ -59,7 +59,7 @@ export function useProvidersState() {
 
   const refreshInBackground = useCallback(async () => {
     try {
-      const providersState = await window.echosphereProviders.getProvidersState(true)
+      const providersState = await window.tidecodeProviders.getProvidersState(true)
       setState((currentValue) => ({
         ...currentValue,
         isLoading: currentValue.activeOperation === 'state:load' ? false : currentValue.isLoading,
@@ -72,7 +72,7 @@ export function useProvidersState() {
 
   const syncCachedState = useCallback(async () => {
     try {
-      const providersState = await window.echosphereProviders.getProvidersState()
+      const providersState = await window.tidecodeProviders.getProvidersState()
       setState((currentValue) => ({
         ...currentValue,
         providersState,
@@ -105,7 +105,7 @@ export function useProvidersState() {
   }, [refresh, refreshInBackground])
 
   useEffect(() => {
-    return window.echosphereProviders.onStateChange(() => {
+    return window.tidecodeProviders.onStateChange(() => {
       void syncCachedState()
     })
   }, [syncCachedState])
@@ -152,27 +152,27 @@ export function useProvidersState() {
   )
 
   const connectCodexWithOAuth = useCallback(async () => {
-    return runOperation('codex:connect', () => window.echosphereProviders.connectCodexWithOAuth())
+    return runOperation('codex:connect', () => window.tidecodeProviders.connectCodexWithOAuth())
   }, [runOperation])
 
   const addCodexAccountWithOAuth = useCallback(async () => {
-    return runOperation('codex:add-account', () => window.echosphereProviders.addCodexAccountWithOAuth())
+    return runOperation('codex:add-account', () => window.tidecodeProviders.addCodexAccountWithOAuth())
   }, [runOperation])
 
   const disconnectCodex = useCallback(async () => {
-    return runOperation('codex:disconnect', () => window.echosphereProviders.disconnectCodex())
+    return runOperation('codex:disconnect', () => window.tidecodeProviders.disconnectCodex())
   }, [runOperation])
 
   const switchCodexAccount = useCallback(
     async (accountKey: string) => {
-      return runOperation(`codex:switch:${accountKey}`, () => window.echosphereProviders.switchCodexAccount(accountKey))
+      return runOperation(`codex:switch:${accountKey}`, () => window.tidecodeProviders.switchCodexAccount(accountKey))
     },
     [runOperation],
   )
 
   const removeCodexAccount = useCallback(
     async (accountKey: string) => {
-      return runOperation(`codex:remove-account:${accountKey}`, () => window.echosphereProviders.removeCodexAccount(accountKey))
+      return runOperation(`codex:remove-account:${accountKey}`, () => window.tidecodeProviders.removeCodexAccount(accountKey))
     },
     [runOperation],
   )
@@ -181,7 +181,7 @@ export function useProvidersState() {
     async (input: SaveApiKeyProviderInput) => {
       return runOperation(
         `apikey:${input.providerId}:save`,
-        () => window.echosphereProviders.saveApiKeyProvider(input),
+        () => window.tidecodeProviders.saveApiKeyProvider(input),
         (providersState) => applyOptimisticProviderSave(providersState, input),
       )
     },
@@ -192,7 +192,7 @@ export function useProvidersState() {
     async (providerId: ApiKeyProviderId) => {
       return runOperation(
         `apikey:${providerId}:remove`,
-        () => window.echosphereProviders.removeApiKeyProvider(providerId),
+        () => window.tidecodeProviders.removeApiKeyProvider(providerId),
         (providersState) => applyOptimisticProviderRemoval(providersState, providerId),
       )
     },

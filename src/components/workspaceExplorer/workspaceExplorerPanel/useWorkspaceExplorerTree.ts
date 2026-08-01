@@ -58,7 +58,7 @@ export function useWorkspaceExplorerTree({
       const targetPath = toDirectoryKey(relativePath)
       setLoadingDirectories((current) => new Set(current).add(targetPath))
       try {
-        const entries = await window.echosphereWorkspace.listDirectory({
+        const entries = await window.tidecodeWorkspace.listDirectory({
           relativePath: targetPath === ROOT_DIRECTORY_KEY ? undefined : targetPath,
           visibility: 'explorer',
           workspaceRootPath,
@@ -150,13 +150,13 @@ export function useWorkspaceExplorerTree({
     }
 
     let isDisposed = false
-    const unsubscribeWorkspaceChanges = window.echosphereWorkspace.onExplorerChange((event) => {
+    const unsubscribeWorkspaceChanges = window.tidecodeWorkspace.onExplorerChange((event) => {
       if (!isDisposed && event.workspaceRootPath === workspaceRootPath) {
         void reloadExplorerTreeRef.current()
       }
     })
 
-    void window.echosphereWorkspace.watchExplorerChanges({
+    void window.tidecodeWorkspace.watchExplorerChanges({
       relativeDirectoryPaths: [ROOT_DIRECTORY_KEY],
       workspaceRootPath,
     }).catch((error) => {
@@ -167,7 +167,7 @@ export function useWorkspaceExplorerTree({
     return () => {
       isDisposed = true
       unsubscribeWorkspaceChanges()
-      void window.echosphereWorkspace
+      void window.tidecodeWorkspace
         .updateExplorerWatchPaths({
           relativeDirectoryPaths: [ROOT_DIRECTORY_KEY],
           workspaceRootPath,
@@ -176,7 +176,7 @@ export function useWorkspaceExplorerTree({
           console.error('Failed to reset workspace explorer watch paths', error)
         })
         .finally(() => {
-          void window.echosphereWorkspace.unwatchExplorerChanges({ workspaceRootPath }).catch((error) => {
+          void window.tidecodeWorkspace.unwatchExplorerChanges({ workspaceRootPath }).catch((error) => {
             console.error('Failed to unwatch workspace explorer changes', error)
           })
         })
@@ -187,7 +187,7 @@ export function useWorkspaceExplorerTree({
     if (!isOpen || !workspaceRootPath) {
       return
     }
-    void window.echosphereWorkspace.updateExplorerWatchPaths({
+    void window.tidecodeWorkspace.updateExplorerWatchPaths({
       relativeDirectoryPaths: [ROOT_DIRECTORY_KEY, ...expandedDirectories],
       workspaceRootPath,
     }).catch((error) => {

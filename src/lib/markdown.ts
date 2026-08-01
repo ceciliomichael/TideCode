@@ -193,13 +193,13 @@ export function handleMarkdownLinkClick(
 
   if (isMarkdown) {
     window.dispatchEvent(
-      new CustomEvent('echosphere:open-markdown-preview', {
+      new CustomEvent('tidecode:open-markdown-preview', {
         detail: { relativePath: resolvedPath, anchor: anchorPart },
       }),
     )
   } else if (resolvedPath) {
     window.dispatchEvent(
-      new CustomEvent('echosphere:open-file', {
+      new CustomEvent('tidecode:open-file', {
         detail: { relativePath: resolvedPath },
       }),
     )

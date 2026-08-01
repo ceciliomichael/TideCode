@@ -6,7 +6,7 @@ import test from 'node:test'
 import { buildWorkspaceInstructionsBlock } from '../../electron/chat/shared/prompts/workspaceInstructions'
 
 test('workspace instruction cache refreshes after the file changes', async () => {
-  const workspacePath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-instructions-'))
+  const workspacePath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-workspace-instructions-'))
   const instructionsPath = path.join(workspacePath, 'AGENTS.md')
 
   try {

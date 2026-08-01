@@ -88,7 +88,7 @@ function SourceControlHistoryItemComponent({
           }}
           className={[
             'flex h-[50px] w-full items-center gap-0 text-left transition-colors',
-            isSelected ? 'bg-surface-muted' : 'hover:bg-surface-muted/50',
+            isSelected ? 'bg-brand-soft text-brand-soft-foreground' : 'hover:bg-surface-muted/50',
           ].join(' ')}
         >
           <GitGraphLane viewModel={viewModel} />

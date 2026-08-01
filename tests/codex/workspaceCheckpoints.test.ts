@@ -6,7 +6,7 @@ import test from 'node:test'
 import { createWorkspaceCheckpointStore } from '../../electron/workspace/checkpoints'
 
 test('workspace checkpoints restore and redo created, updated, and deleted files', async () => {
-  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-checkpoints-'))
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-workspace-checkpoints-'))
   const workspaceRootPath = path.join(tempRootPath, 'workspace')
   const checkpointStorageRootPath = path.join(tempRootPath, 'checkpoint-storage')
   const updatedFilePath = path.join(workspaceRootPath, 'src', 'updated.ts')
@@ -52,7 +52,7 @@ test('workspace checkpoints restore and redo created, updated, and deleted files
 })
 
 test('workspace checkpoint sequences rewind multiple turns and can be redone', async () => {
-  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-checkpoints-sequence-'))
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-workspace-checkpoints-sequence-'))
   const workspaceRootPath = path.join(tempRootPath, 'workspace')
   const checkpointStorageRootPath = path.join(tempRootPath, 'checkpoint-storage')
   const firstCreatedFilePath = path.join(workspaceRootPath, 'hello.txt')
@@ -92,7 +92,7 @@ test('workspace checkpoint sequences rewind multiple turns and can be redone', a
 })
 
 test('workspace checkpoints surface a friendly error when the manifest file is unreadable', async () => {
-  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-checkpoints-corrupt-'))
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-workspace-checkpoints-corrupt-'))
   const workspaceRootPath = path.join(tempRootPath, 'workspace')
   const checkpointStorageRootPath = path.join(tempRootPath, 'checkpoint-storage')
 
@@ -124,7 +124,7 @@ test('workspace checkpoints surface a friendly error when the manifest file is u
 })
 
 test('workspace checkpoints ignore files outside the workspace root gracefully', async () => {
-  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-checkpoints-outside-'))
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-workspace-checkpoints-outside-'))
   const workspaceRootPath = path.join(tempRootPath, 'workspace')
   const checkpointStorageRootPath = path.join(tempRootPath, 'checkpoint-storage')
   const outsideFilePath = path.join(tempRootPath, 'outside.txt')

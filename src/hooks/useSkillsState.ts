@@ -15,7 +15,7 @@ function normalizeWorkspacePath(workspacePath?: string | null) {
 }
 
 function getSkillsApi() {
-  return typeof window !== 'undefined' ? window.echosphereSkills : null
+  return typeof window !== 'undefined' ? window.tidecodeSkills : null
 }
 
 function getErrorMessage(error: unknown, fallbackMessage: string) {

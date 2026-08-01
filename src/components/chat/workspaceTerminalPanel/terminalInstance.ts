@@ -83,7 +83,7 @@ export function createTerminalInstance({
   const webLinksAddon = new WebLinksAddon((event, uri) => {
     if (!event.ctrlKey && !event.metaKey) return;
     event.preventDefault();
-    void window.echosphereTerminal.openExternalLink({ url: uri }).catch((error: unknown) => {
+    void window.tidecodeTerminal.openExternalLink({ url: uri }).catch((error: unknown) => {
       console.error("Failed to open terminal link", error);
     });
   });
@@ -112,7 +112,7 @@ export function createTerminalInstance({
   const writeSequence = (sequence: string) => {
     const tab = terminalTabsRef.current.find((candidate) => candidate.key === tabKey);
     if (tab?.sessionId === null || tab?.sessionId === undefined) return;
-    void window.echosphereTerminal.writeToSession({
+    void window.tidecodeTerminal.writeToSession({
       data: sequence,
       sessionId: tab.sessionId,
       workspaceRootPath: getWorkspaceRootPath(tabKey),
@@ -185,7 +185,7 @@ export function createTerminalInstance({
         return;
       }
       const sessionId = tab.sessionId;
-      void window.echosphereTerminal.writeToSession({
+      void window.tidecodeTerminal.writeToSession({
         data,
         sessionId,
         workspaceRootPath: getWorkspaceRootPath(tabKey),

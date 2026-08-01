@@ -21,7 +21,7 @@ export interface CreateSkillInput {
   content: string
 }
 
-export interface EchosphereSkillsApi {
+export interface TideCodeSkillsApi {
   listSkills: (workspacePath?: string | null) => Promise<SkillsState>
   createSkill: (
     input: CreateSkillInput,

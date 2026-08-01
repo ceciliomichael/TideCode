@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { formatStructuredToolResultContent, getToolResultModelContent, parseStructuredToolResultContent } from '../../src/lib/toolResultContent'
+import {
+  formatStructuredToolResultContent,
+  getToolResultModelContent,
+  parseStructuredToolResultContent,
+} from '../../src/lib/toolResultContent'
 import type { Message } from '../../src/types/chat'
 import { buildChatPrompt, buildChatSystemPrompt } from '../../electron/chat/shared/messages'
 import { buildSkillToolDescription, buildSkillsSystemPromptBlock } from '../../electron/skills/service'
@@ -15,7 +19,9 @@ test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
   assert.equal((agentPrompt.match(/<tool_instructions>/gu) ?? []).length, 1)
   assert.match(agentPrompt, /Tool workflow for every request that needs a tool/u)
   assert.match(agentPrompt, /Call list_tools first/u)
-  assert.match(agentPrompt, /Wait for every requested schema, then call execute_tool/u)
+  assert.doesNotMatch(agentPrompt, /\blist_dir\b/u)
+  assert.match(agentPrompt, /execute_tool may be called directly/u)
+  assert.match(agentPrompt, /wait for the requested schema/u)
   assert.match(agentPrompt, /ids array for multiple independent tools/u)
   assert.match(agentPrompt, /targeted natural-language task query/u)
   assert.match(agentPrompt, /Default to 1-3 short sentences or a brief bullet list/u)
@@ -28,11 +34,11 @@ test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
   assert.doesNotMatch(planPrompt, /caveman|authorization_override/iu)
 })
 
-test('tool result replay bounds oversized model content without changing the stored result', () => {
+test('tool result replay preserves oversized model content without truncation', () => {
   const body = `head\n${'x'.repeat(60_000)}\ntail`
   const structuredContent = formatStructuredToolResultContent(
     {
-      schema: 'echosphere.tool_result/v1',
+      schema: 'tidecode.tool_result/v1',
       status: 'success',
       summary: 'Read a large file',
       toolCallId: 'tool-call-large',
@@ -44,10 +50,7 @@ test('tool result replay bounds oversized model content without changing the sto
   const modelContent = getToolResultModelContent(structuredContent)
   const storedResult = parseStructuredToolResultContent(structuredContent)
 
-  assert.ok(new TextEncoder().encode(modelContent).byteLength <= 32 * 1024)
-  assert.match(modelContent, /Tool result shortened for context efficiency/u)
-  assert.match(modelContent, /head/u)
-  assert.match(modelContent, /tail\s*$/u)
+  assert.equal(modelContent, body)
   assert.equal(storedResult.body, body)
 })
 
@@ -87,7 +90,7 @@ test('buildChatPrompt preserves assistant tool calls and matching tool results',
             offset: 1,
             revision: 'sha256:test-revision',
           },
-          schema: 'echosphere.tool_result/v1',
+          schema: 'tidecode.tool_result/v1',
           status: 'success',
           subject: {
             kind: 'file',
@@ -209,7 +212,7 @@ test('buildChatPrompt preserves freeform apply_patch tool calls', () => {
     {
       content: formatStructuredToolResultContent(
         {
-          schema: 'echosphere.tool_result/v1',
+          schema: 'tidecode.tool_result/v1',
           semantics: {
             added_path_count: 0,
             deleted_path_count: 0,
@@ -317,7 +320,7 @@ test('buildChatPrompt formats list tool results with structured directory metada
           arguments: {
             path: 'C:/repo/src',
           },
-          schema: 'echosphere.tool_result/v1',
+          schema: 'tidecode.tool_result/v1',
           semantics: {
             count: 2,
           },
@@ -403,7 +406,7 @@ test('buildChatPrompt combines consecutive tool messages into one replay message
           arguments: {
             path: 'C:/repo/src/one.ts',
           },
-          schema: 'echosphere.tool_result/v1',
+          schema: 'tidecode.tool_result/v1',
           status: 'success',
           subject: {
             kind: 'file',
@@ -426,7 +429,7 @@ test('buildChatPrompt combines consecutive tool messages into one replay message
           arguments: {
             path: 'C:/repo/src/two.ts',
           },
-          schema: 'echosphere.tool_result/v1',
+          schema: 'tidecode.tool_result/v1',
           status: 'success',
           subject: {
             kind: 'file',
@@ -449,7 +452,7 @@ test('buildChatPrompt combines consecutive tool messages into one replay message
           arguments: {
             pattern: 'export',
           },
-          schema: 'echosphere.tool_result/v1',
+          schema: 'tidecode.tool_result/v1',
           status: 'success',
           subject: {
             kind: 'file',

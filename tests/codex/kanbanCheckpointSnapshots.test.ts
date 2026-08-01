@@ -10,7 +10,7 @@ import { getKanbanBoardData, replaceKanbanBoardData } from '../../electron/kanba
 import { parseKanbanBoardData } from '../../src/lib/kanban'
 
 test('kanban snapshots restore with workspace checkpoint revert and redo', async () => {
-  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-kanban-checkpoints-'))
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-kanban-checkpoints-'))
   const workspaceRootPath = path.join(tempRootPath, 'workspace')
   const checkpointStorageRootPath = path.join(tempRootPath, 'checkpoint-storage')
   const kanbanHomePath = path.join(tempRootPath, 'home')

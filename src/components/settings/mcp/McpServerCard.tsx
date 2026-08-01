@@ -113,9 +113,9 @@ export function McpServerCard({
             disabled={isConnecting || !config.enabled || isBusy}
             className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-2.5 text-xs font-medium leading-none transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             style={{
-              backgroundColor: 'var(--color-foreground)',
+              backgroundColor: 'var(--color-brand-action)',
               borderColor: 'transparent',
-              color: 'var(--color-background)',
+              color: '#fff',
             }}
           >
             <Power className="block h-3.5 w-3.5 shrink-0 self-center" />
@@ -160,9 +160,9 @@ export function McpServerCard({
             disabled={isBusy || isReadOnly}
             className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-2.5 text-xs font-medium leading-none transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             style={{
-              backgroundColor: 'var(--color-foreground)',
+              backgroundColor: 'var(--color-brand-action)',
               borderColor: 'transparent',
-              color: 'var(--color-background)',
+              color: '#fff',
             }}
             title={isReadOnly ? 'This server is managed outside TideCode.' : undefined}
           >
@@ -243,9 +243,9 @@ export function McpServerCard({
                           enabled ? '' : '',
                         ].join(' ')}
                         style={{
-                          backgroundColor: enabled ? 'var(--color-foreground)' : 'var(--color-surface-muted)',
-                          borderColor: enabled ? 'var(--color-foreground)' : 'transparent',
-                          color: enabled ? 'var(--color-background)' : 'var(--color-muted-foreground)',
+                          backgroundColor: enabled ? 'var(--color-brand-action)' : 'var(--color-surface-muted)',
+                          borderColor: enabled ? 'var(--color-brand-action)' : 'transparent',
+                          color: enabled ? '#fff' : 'var(--color-muted-foreground)',
                         }}
                         title={
                           isReadOnly

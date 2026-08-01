@@ -111,9 +111,9 @@ export async function streamAssistantResponse(
   let streamId: string | null = null
 
   return new Promise<StreamAssistantResponseOutput>((resolve, reject) => {
-    const queuedEvents: Parameters<Parameters<typeof window.echosphereChat.onStreamEvent>[0]>[0][] = []
+    const queuedEvents: Parameters<Parameters<typeof window.tidecodeChat.onStreamEvent>[0]>[0][] = []
 
-    const handleStreamEvent = (event: Parameters<Parameters<typeof window.echosphereChat.onStreamEvent>[0]>[0]) => {
+    const handleStreamEvent = (event: Parameters<Parameters<typeof window.tidecodeChat.onStreamEvent>[0]>[0]) => {
       if (event.type === 'content_delta') {
         input.onContentDelta(event.delta)
         return
@@ -202,7 +202,7 @@ export async function streamAssistantResponse(
       }
     }
 
-    const unsubscribe = window.echosphereChat.onStreamEvent((event) => {
+    const unsubscribe = window.tidecodeChat.onStreamEvent((event) => {
       if (!streamId) {
         queuedEvents.push(event)
         return
@@ -215,7 +215,7 @@ export async function streamAssistantResponse(
       handleStreamEvent(event)
     })
 
-    void window.echosphereChat
+    void window.tidecodeChat
       .startStream({
         messages: input.messages,
         agentContextRootPath: input.agentContextRootPath,

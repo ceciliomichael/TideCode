@@ -1,7 +1,7 @@
 import type { ModelMessage } from 'ai'
 import { z } from 'zod'
 
-export const LOCAL_COMPACTION_PACKET_SCHEMA = 'echosphere.compaction_packet/v1' as const
+export const LOCAL_COMPACTION_PACKET_SCHEMA = 'tidecode.compaction_packet/v1' as const
 
 const boundedText = z.string().trim().max(4_000)
 const boundedTextList = z.array(boundedText).max(64)

@@ -111,7 +111,7 @@ export async function loadGitDiffSnapshot(
     return existingRequest
   }
 
-  const nextRequest = window.echosphereGit
+  const nextRequest = window.tidecodeGit
     .getDiffs(normalizedWorkspacePath, { includeContent })
     .then((diffSnapshot) => {
       const normalizedSnapshot = diffSnapshot.hasRepository

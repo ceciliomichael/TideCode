@@ -28,7 +28,7 @@ function buildConversationRecord(): ConversationRecord {
 }
 
 test('readConversationRecordFromPath falls back to the backup file when the primary file is truncated', async () => {
-  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-conversation-file-store-'))
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-conversation-file-store-'))
   const primaryFilePath = path.join(tempRootPath, 'conversation-1.json')
   const backupFilePath = `${primaryFilePath}.bak`
   const backupConversation = buildConversationRecord()
@@ -49,7 +49,7 @@ test('readConversationRecordFromPath falls back to the backup file when the prim
 })
 
 test('readConversationRecordFromPath surfaces a parsing error when both the primary and backup files are invalid', async () => {
-  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-conversation-file-store-invalid-'))
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-conversation-file-store-invalid-'))
   const primaryFilePath = path.join(tempRootPath, 'conversation-2.json')
   const backupFilePath = `${primaryFilePath}.bak`
 

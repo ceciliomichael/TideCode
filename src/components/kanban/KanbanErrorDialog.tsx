@@ -94,7 +94,7 @@ export function KanbanErrorDialog({
             type="button"
             onClick={onReviewTask ?? onClose}
             autoFocus
-            className="inline-flex h-11 items-center justify-center rounded-xl bg-foreground px-5 text-sm font-semibold text-background transition-colors hover:bg-action-hover"
+            className="inline-flex h-11 items-center justify-center rounded-xl bg-action px-5 text-sm font-semibold text-white transition-colors hover:bg-action-hover"
           >
             {onReviewTask ? 'Review task' : 'Got it'}
           </button>

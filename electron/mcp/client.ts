@@ -29,6 +29,7 @@ function toMcpTool(tool: {
 export async function connectMcpServer(
   config: McpServerConfig,
   workspacePath?: string | null,
+  onToolsChanged?: (tools: McpTool[]) => void,
 ): Promise<ConnectedMcpServer> {
   const transport = createMcpTransport(config, workspacePath)
   const client = new Client(
@@ -40,6 +41,21 @@ export async function connectMcpServer(
       capabilities: {
         roots: {
           listChanged: true,
+        },
+      },
+      listChanged: {
+        tools: {
+          autoRefresh: true,
+          debounceMs: 100,
+          onChanged: (tools) => {
+            if (!Array.isArray(tools)) {
+              if (tools instanceof Error) {
+                console.error(`Failed to refresh MCP tools for server "${config.name}".`, tools)
+              }
+              return
+            }
+            onToolsChanged?.(tools.map((tool) => toMcpTool(tool)))
+          },
         },
       },
     },
@@ -54,4 +70,3 @@ export async function connectMcpServer(
     transport,
   }
 }
-

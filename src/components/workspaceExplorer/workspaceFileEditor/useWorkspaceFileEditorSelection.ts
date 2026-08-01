@@ -50,6 +50,15 @@ export function useWorkspaceFileEditorSelection({
     syncSelection(event.currentTarget)
   }, [syncSelection])
 
+  const clearEditorSelection = useCallback(() => {
+    const textarea = textAreaRef.current
+    if (textarea) {
+      const caretOffset = textarea.selectionEnd
+      textarea.setSelectionRange(caretOffset, caretOffset)
+    }
+    setSelection(null)
+  }, [textAreaRef])
+
   useEffect(() => {
     let frameId: number | null = null
 
@@ -83,6 +92,7 @@ export function useWorkspaceFileEditorSelection({
   )
 
   return {
+    clearEditorSelection,
     handleEditorChange,
     handleEditorSelect,
     matchesByLine,

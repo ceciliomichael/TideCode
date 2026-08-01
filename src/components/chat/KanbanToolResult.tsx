@@ -37,7 +37,7 @@ function ColumnBadge({ columnId }: { columnId: string }) {
     colorStyle = 'bg-slate-500/15 text-slate-300 border-slate-500/30'
     label = 'Backlog'
   } else if (normalized === 'in-progress') {
-    colorStyle = 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+    colorStyle = 'bg-brand/15 text-brand border-brand/30'
     label = 'In Progress'
   } else if (normalized === 'blocked') {
     colorStyle = 'bg-amber-500/15 text-amber-400 border-amber-500/30'

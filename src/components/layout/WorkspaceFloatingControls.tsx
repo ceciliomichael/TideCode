@@ -65,7 +65,8 @@ export function WorkspaceFloatingControls({
             type="button"
             onClick={explorerButton.onClick}
             className={[
-              'pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-[opacity,transform,color] duration-180 ease-out hover:scale-110 hover:text-foreground',
+              'pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full transition-[opacity,transform,color] duration-180 ease-out hover:scale-110 hover:text-foreground',
+              explorerButton.isActive ? 'text-brand' : 'text-muted-foreground',
               shouldShowExplorer ? 'opacity-100 scale-100' : 'pointer-events-none opacity-0 scale-95',
             ].join(' ')}
             aria-label={explorerButton.tooltip ?? 'Toggle explorer'}

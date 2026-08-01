@@ -41,7 +41,7 @@ function buildFileChangeInvocation(
     id: 'tool-1',
     resultContent: formatStructuredToolResultContent(
       {
-        schema: 'echosphere.tool_result/v1',
+        schema: 'tidecode.tool_result/v1',
         semantics: semanticsByKind[kind],
         status: 'success',
         subject: {
@@ -78,7 +78,7 @@ function buildMultiFileWriteInvocation(
     id: 'tool-multi-1',
     resultContent: formatStructuredToolResultContent(
       {
-        schema: 'echosphere.tool_result/v1',
+        schema: 'tidecode.tool_result/v1',
         semantics: {
           added_path_count: changes.filter((change) => change.kind === 'add').length,
           deleted_path_count: changes.filter((change) => change.kind === 'delete').length,
@@ -128,7 +128,7 @@ test('write tool header labels keep mixed changes on the edit fallback', () => {
   const invocation = buildFileChangeInvocation('update', 'completed', {
     resultContent: formatStructuredToolResultContent(
       {
-        schema: 'echosphere.tool_result/v1',
+        schema: 'tidecode.tool_result/v1',
         semantics: {
           added_path_count: 1,
           deleted_path_count: 0,
@@ -320,7 +320,7 @@ test('read tool header labels collapse to the basename for the visible toolblock
         arguments: {
           path: TARGET_FILE_PATH,
         },
-        schema: 'echosphere.tool_result/v1',
+        schema: 'tidecode.tool_result/v1',
         status: 'success',
         subject: {
           kind: 'file',

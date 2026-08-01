@@ -17,7 +17,7 @@ export function Switch({ checked, className = '', disabled = false, label, onCha
       onClick={() => onChange(!checked)}
       className={[
         'relative h-6 w-11 shrink-0 rounded-full transition-colors focus:outline-none focus-visible:outline-none',
-        checked ? 'bg-emerald-500' : 'bg-border',
+        checked ? 'bg-brand' : 'bg-border',
         disabled ? 'cursor-not-allowed opacity-50' : '',
         className,
       ]

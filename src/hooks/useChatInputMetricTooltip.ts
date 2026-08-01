@@ -9,7 +9,7 @@ interface UseChatInputMetricTooltipInput {
   minimumTopSpace?: number
 }
 
-const CHAT_INPUT_METRIC_TOOLTIP_EVENT = 'echosphere:chat-input-metric-tooltip-hover'
+const CHAT_INPUT_METRIC_TOOLTIP_EVENT = 'tidecode:chat-input-metric-tooltip-hover'
 
 export function useChatInputMetricTooltip({
   disabled = false,

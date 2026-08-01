@@ -94,7 +94,7 @@ export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess 
     }
 
     try {
-      const result = await window.echosphereGit.publishToGitHub(input)
+      const result = await window.tidecodeGit.publishToGitHub(input)
       setRepoUrl(result.repoUrl)
 
       if (rememberToken && isChangingToken) {
@@ -160,7 +160,7 @@ export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess 
             <div className="space-y-1.5 rounded-xl border border-border/60 bg-surface-muted/30 p-3.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-foreground flex items-center gap-1.5 select-none">
-                  <Key size={13} className="text-blue-500" />
+                  <Key size={13} className="text-brand" />
                   GitHub Authentication
                 </span>
                 {!!settings.githubToken && !isChangingToken && (
@@ -170,7 +170,7 @@ export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess 
                       setIsChangingToken(true)
                       setGithubToken('')
                     }}
-                    className="text-[11px] font-medium text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    className="text-[11px] font-medium text-brand hover:text-brand-hover transition-colors cursor-pointer"
                   >
                     Change Token
                   </button>
@@ -195,7 +195,7 @@ export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess 
                         setError(null)
                       }}
                       placeholder="Enter GitHub Personal Access Token (PAT)..."
-                      className="w-full rounded-lg border border-border bg-surface-muted pl-3 pr-10 py-2 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30"
+                      className="w-full rounded-lg border border-border bg-surface-muted pl-3 pr-10 py-2 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-brand focus:ring-1 focus:ring-brand/30"
                     />
                     <button
                       type="button"
@@ -212,7 +212,7 @@ export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess 
                         type="checkbox"
                         checked={rememberToken}
                         onChange={(e) => setRememberToken(e.target.checked)}
-                        className="rounded border-border bg-surface-muted text-blue-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                        className="rounded border-border bg-surface-muted text-brand focus:ring-0 focus:ring-offset-0 cursor-pointer"
                       />
                       Remember token in Settings
                     </label>
@@ -220,7 +220,7 @@ export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess 
                       href="https://github.com/settings/tokens/new?scopes=repo&description=TideCode"
                       target="_blank"
                       rel="noreferrer"
-                      className="text-blue-500 hover:text-blue-600 underline underline-offset-2 flex items-center gap-0.5"
+                      className="text-brand hover:text-brand-hover underline underline-offset-2 flex items-center gap-0.5"
                     >
                       Generate Token <ExternalLink size={10} />
                     </a>
@@ -248,7 +248,7 @@ export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess 
                   if (e.key === 'Enter' && isFormValid) void handlePublish()
                 }}
                 placeholder="my-awesome-project"
-                className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30"
+                className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-brand focus:ring-1 focus:ring-brand/30"
               />
             </div>
 
@@ -263,7 +263,7 @@ export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess 
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="A short description of your project"
-                className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30"
+                className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-brand focus:ring-1 focus:ring-brand/30"
               />
             </div>
 
@@ -279,7 +279,7 @@ export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess 
                 value={defaultBranch}
                 onChange={(e) => setDefaultBranch(e.target.value)}
                 placeholder="main"
-                className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30"
+                className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-brand focus:ring-1 focus:ring-brand/30"
               />
             </div>
 
@@ -293,11 +293,11 @@ export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess 
                   className={[
                     'flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm transition-all cursor-pointer',
                     !isPrivate
-                      ? 'border-blue-500 bg-blue-500/10 text-foreground ring-1 ring-blue-500/30'
+                      ? 'border-brand bg-brand/10 text-foreground ring-1 ring-brand/30'
                       : 'border-border bg-surface-muted text-muted-foreground hover:border-border/80 hover:text-foreground',
                   ].join(' ')}
                 >
-                  <Globe size={14} className={!isPrivate ? 'text-blue-500' : 'text-muted-foreground'} />
+                  <Globe size={14} className={!isPrivate ? 'text-brand' : 'text-muted-foreground'} />
                   <div>
                     <div className="font-medium text-xs">Public</div>
                     <div className="text-[10px] text-muted-foreground">Anyone can see</div>
@@ -309,11 +309,11 @@ export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess 
                   className={[
                     'flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm transition-all cursor-pointer',
                     isPrivate
-                      ? 'border-blue-500 bg-blue-500/10 text-foreground ring-1 ring-blue-500/30'
+                      ? 'border-brand bg-brand/10 text-foreground ring-1 ring-brand/30'
                       : 'border-border bg-surface-muted text-muted-foreground hover:border-border/80 hover:text-foreground',
                   ].join(' ')}
                 >
-                  <Lock size={14} className={isPrivate ? 'text-blue-500' : 'text-muted-foreground'} />
+                  <Lock size={14} className={isPrivate ? 'text-brand' : 'text-muted-foreground'} />
                   <div>
                     <div className="font-medium text-xs">Private</div>
                     <div className="text-[10px] text-muted-foreground">Only you can see</div>
@@ -357,7 +357,7 @@ export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess 
                 <Github size={24} />
               </div>
               <div className="absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-surface border border-border">
-                <Loader2 size={12} className="animate-spin text-blue-500" />
+                <Loader2 size={12} className="animate-spin text-brand" />
               </div>
             </div>
             <div className="text-center space-y-1">

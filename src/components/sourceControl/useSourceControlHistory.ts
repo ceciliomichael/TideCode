@@ -32,7 +32,7 @@ export function useSourceControlHistory({
   const loadHistoryPage = useCallback(
     async (offset: number, append: boolean) => {
       if (!hasWorkspacePath) return
-      const result = await window.echosphereGit.getHistoryPage({
+      const result = await window.tidecodeGit.getHistoryPage({
         limit: HISTORY_PAGE_SIZE,
         offset,
         workspacePath: normalizedWorkspacePath,
@@ -94,7 +94,7 @@ export function useSourceControlHistory({
       return true
     }
     try {
-      const result = await window.echosphereGit.getHistoryPage({
+      const result = await window.tidecodeGit.getHistoryPage({
         limit: 1,
         offset: 0,
         workspacePath: normalizedWorkspacePath,
@@ -129,7 +129,7 @@ export function useSourceControlHistory({
     if (!hasWorkspacePath || commitDetailsByHash[commitHash] || loadingCommitHashes.includes(commitHash)) return
     setLoadingCommitHashes((currentValue) => [...currentValue, commitHash])
     try {
-      const details = await window.echosphereGit.getHistoryCommitDetails({
+      const details = await window.tidecodeGit.getHistoryCommitDetails({
         commitHash,
         workspacePath: normalizedWorkspacePath,
       })

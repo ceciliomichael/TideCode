@@ -7,7 +7,7 @@ import { buildChatModeSystemPrompt } from '../../electron/chat/shared/prompts/mo
 import { createAgentTools, createNativeAgentTools } from '../../electron/chat/shared/tools'
 
 test('agent prompt teaches concise, reliable, dependency-aware tool use', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-agent-prompt-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-agent-prompt-'))
 
   try {
     const prompt = buildChatModeSystemPrompt('agent', workspaceRootPath)
@@ -24,7 +24,7 @@ test('agent prompt teaches concise, reliable, dependency-aware tool use', async 
 })
 
 test('plan prompt is concise and explicitly restricts file editing while supporting kanban tools', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-plan-prompt-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-plan-prompt-'))
 
   try {
     const prompt = buildChatModeSystemPrompt('plan', workspaceRootPath)
@@ -40,7 +40,7 @@ test('plan prompt is concise and explicitly restricts file editing while support
 
 test('runtime tool exposure keeps the provider surface to the three dynamic tools', async () => {
   const workspaceRootPath = await fs.mkdtemp(
-    path.join(tmpdir(), 'echosphere-mode-tools-'),
+    path.join(tmpdir(), 'tidecode-mode-tools-'),
   )
 
   try {
@@ -64,7 +64,7 @@ test('runtime tool exposure keeps the provider surface to the three dynamic tool
 
 test('plan mode excludes workspace mutation tools but permits Kanban planning actions', async () => {
   const workspaceRootPath = await fs.mkdtemp(
-    path.join(tmpdir(), 'echosphere-mode-native-tools-'),
+    path.join(tmpdir(), 'tidecode-mode-native-tools-'),
   )
 
   try {
@@ -97,7 +97,7 @@ test('plan mode excludes workspace mutation tools but permits Kanban planning ac
 
 test('workspace instructions cannot inject nested system-contract markup', async () => {
   const workspaceRootPath = await fs.mkdtemp(
-    path.join(tmpdir(), 'echosphere-workspace-prompt-'),
+    path.join(tmpdir(), 'tidecode-workspace-prompt-'),
   )
 
   try {
@@ -127,7 +127,7 @@ test('workspace instructions cannot inject nested system-contract markup', async
 
 test('buildChatModeSystemPrompt includes python venv notification when venv exists', async () => {
   const workspaceRootPath = await fs.mkdtemp(
-    path.join(tmpdir(), 'echosphere-venv-prompt-'),
+    path.join(tmpdir(), 'tidecode-venv-prompt-'),
   )
 
   try {

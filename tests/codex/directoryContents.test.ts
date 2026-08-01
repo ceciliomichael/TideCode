@@ -6,7 +6,7 @@ import test from 'node:test'
 import { resetDirectoryContents } from '../../electron/history/directoryContents'
 
 test('resetDirectoryContents clears entries without removing a watched root directory', async () => {
-  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-directory-contents-'))
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-directory-contents-'))
   const directoryPath = path.join(tempRootPath, 'VIRT_draft')
   const nestedDirectoryPath = path.join(directoryPath, 'nested')
   await fs.mkdir(nestedDirectoryPath, { recursive: true })
@@ -28,7 +28,7 @@ test('resetDirectoryContents clears entries without removing a watched root dire
 })
 
 test('resetDirectoryContents is idempotent and creates a missing root directory', async () => {
-  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-directory-contents-missing-'))
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-directory-contents-missing-'))
   const directoryPath = path.join(tempRootPath, 'VIRT_draft')
 
   try {

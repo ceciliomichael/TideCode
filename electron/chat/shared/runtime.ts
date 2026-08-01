@@ -41,6 +41,7 @@ import {
 } from './tools'
 import { cleanUpFinishedSessionsAtTurnEnd } from './tools/terminalTools'
 import { sortToolSet } from './runtimeToolSet'
+import { continueToolLoopUntilModelStops } from './toolLoopPolicy'
 import {
   emitChatStreamEvent,
   processRuntimeStream,
@@ -51,10 +52,6 @@ import {
 } from './toolReplay'
 
 export { estimateToolEnabledContextUsage } from './runtimeContextUsage'
-
-// Tool-heavy coding runs routinely exceed a dozen read/search/edit steps.
-// Keep the limit high enough that the AI SDK does not terminate mid-task.
-const MAX_TOOL_STEPS = 99999
 
 interface RuntimePromptOptions {
   includeAssistantReasoningParts?: boolean
@@ -219,8 +216,7 @@ export async function runToolEnabledChatStream(input: {
       model: input.startInput.modelId,
       reasoningEffort: input.startInput.reasoningEffort,
       signal: input.abortController.signal,
-      stopWhen: stepCountIs(MAX_TOOL_STEPS),
-      maxSteps: MAX_TOOL_STEPS,
+      stopWhen: continueToolLoopUntilModelStops,
       repairToolCall: repairDirectDynamicToolCall,
       system: prompt.system,
       tools,
@@ -284,7 +280,7 @@ export async function runToolEnabledChatStream(input: {
       type: 'started',
     })
 
-    const { completedStepCount, lastFinishReason } = await processRuntimeStream({
+    await processRuntimeStream({
       abortController: input.abortController,
       conversationId,
       fullStream: stream.fullStream,
@@ -292,24 +288,6 @@ export async function runToolEnabledChatStream(input: {
       streamId: input.streamId,
       webContents: input.webContents,
     })
-
-    if (completedStepCount >= MAX_TOOL_STEPS && lastFinishReason === 'tool-calls') {
-      if (conversationId && runWasRecorded) {
-        await safelyPersistHistory(() => recordRunTerminal(
-          conversationId,
-          runId,
-          'run_failed',
-          `tool-step-limit:${MAX_TOOL_STEPS}`,
-        ))
-        runWasRecorded = false
-      }
-      emitChatStreamEvent(input.webContents, {
-        errorMessage: `The assistant hit the tool-step limit (${MAX_TOOL_STEPS}) before finishing. Increase the limit or continue the task in a follow-up turn.`,
-        streamId: input.streamId,
-        type: 'error',
-      })
-      return
-    }
 
     if (conversationId) {
       await queuedHistoryWrites

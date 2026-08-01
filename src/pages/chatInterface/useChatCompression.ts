@@ -83,7 +83,7 @@ export function useChatCompression(input: UseChatCompressionInput) {
     clearQueuedMessages();
 
     try {
-      const result = await window.echosphereChat.compactConversation({
+      const result = await window.tidecodeChat.compactConversation({
         agentContextRootPath: activeWorkspacePath,
         chatMode,
         conversationId: activeConversationId,

@@ -191,7 +191,7 @@ export function useWorkspaceTerminalSessionState({
     const dimensions = getSessionDimensions(instance.terminal);
 
     try {
-      const session = await window.echosphereTerminal.createSession({
+      const session = await window.tidecodeTerminal.createSession({
         cols: dimensions.cols,
         cwd: workspacePathRef.current,
         rows: dimensions.rows,
@@ -258,7 +258,7 @@ export function useWorkspaceTerminalSessionState({
       const currentTab = currentTabs[currentTabIndex];
       if (currentTab.sessionId !== null) {
         sessionIdToTabKeyRef.current.delete(currentTab.sessionId);
-        void window.echosphereTerminal
+        void window.tidecodeTerminal
           .closeSession({
             sessionId: currentTab.sessionId,
             workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(currentTab.workspaceRootPath),
@@ -316,7 +316,7 @@ export function useWorkspaceTerminalSessionState({
 
       if (currentTab.sessionId !== null) {
         sessionIdToTabKeyRef.current.delete(currentTab.sessionId);
-        void window.echosphereTerminal
+        void window.tidecodeTerminal
           .closeSession({
             sessionId: currentTab.sessionId,
             workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(currentTab.workspaceRootPath),
@@ -349,7 +349,7 @@ export function useWorkspaceTerminalSessionState({
       const dimensions = getSessionDimensions(instance.terminal);
 
       try {
-        const session = await window.echosphereTerminal.createSession({
+        const session = await window.tidecodeTerminal.createSession({
           cols: dimensions.cols,
           cwd: workspacePathRef.current,
           rows: dimensions.rows,

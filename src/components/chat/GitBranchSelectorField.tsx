@@ -257,7 +257,7 @@ export function GitBranchSelectorField({
                             {isSelected ? (isDetachedHead ? 'Detached HEAD' : 'Current branch') : 'Local branch'}
                           </span>
                         </span>
-                        {isSelected ? <Check size={16} strokeWidth={2.2} className="mt-0.5 shrink-0 text-foreground" /> : null}
+                        {isSelected ? <Check size={16} strokeWidth={2.2} className="mt-0.5 shrink-0 text-brand" /> : null}
                       </button>
                     )
                   })

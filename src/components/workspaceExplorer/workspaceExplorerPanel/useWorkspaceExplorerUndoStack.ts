@@ -116,7 +116,7 @@ export function useWorkspaceExplorerUndoStack({
       if (!workspaceRootPath || shouldSkipDeleteUndoDirectorySnapshot(directoryRelativePath)) return null
 
       const files: Array<{ relativePath: string; content: string }> = []
-      const entries = await window.echosphereWorkspace.listDirectory({
+      const entries = await window.tidecodeWorkspace.listDirectory({
         relativePath: directoryRelativePath,
         workspaceRootPath,
         visibility: 'explorer',
@@ -131,7 +131,7 @@ export function useWorkspaceExplorerUndoStack({
           files.push(...nested)
         } else {
           try {
-            const result = await window.echosphereWorkspace.readFile({
+            const result = await window.tidecodeWorkspace.readFile({
               relativePath: entry.relativePath,
               workspaceRootPath,
             })
@@ -169,7 +169,7 @@ export function useWorkspaceExplorerUndoStack({
         // First try reading as a file if it's not explicitly a directory
         if (!entry.isDirectory) {
           try {
-            const result = await window.echosphereWorkspace.readFile({
+            const result = await window.tidecodeWorkspace.readFile({
               relativePath: entry.relativePath,
               workspaceRootPath,
             })
@@ -239,18 +239,18 @@ export function useWorkspaceExplorerUndoStack({
       if (!workspaceRootPath) return
 
       if (entry.type === 'delete-file') {
-        await window.echosphereWorkspace.createEntry({
+        await window.tidecodeWorkspace.createEntry({
           isDirectory: false,
           relativePath: entry.relativePath,
           workspaceRootPath,
         })
-        await window.echosphereWorkspace.writeFile({
+        await window.tidecodeWorkspace.writeFile({
           content: entry.content,
           relativePath: entry.relativePath,
           workspaceRootPath,
         })
       } else if (entry.type === 'delete-directory') {
-        await window.echosphereWorkspace.createEntry({
+        await window.tidecodeWorkspace.createEntry({
           isDirectory: true,
           relativePath: entry.relativePath,
           workspaceRootPath,
@@ -262,7 +262,7 @@ export function useWorkspaceExplorerUndoStack({
           for (let i = 1; i < parentSegments.length; i++) {
             const parentPath = parentSegments.slice(0, i).join('/')
             try {
-              await window.echosphereWorkspace.createEntry({
+              await window.tidecodeWorkspace.createEntry({
                 isDirectory: true,
                 relativePath: parentPath,
                 workspaceRootPath,
@@ -272,7 +272,7 @@ export function useWorkspaceExplorerUndoStack({
             }
           }
           try {
-            await window.echosphereWorkspace.createEntry({
+            await window.tidecodeWorkspace.createEntry({
               isDirectory: false,
               relativePath: file.relativePath,
               workspaceRootPath,
@@ -280,7 +280,7 @@ export function useWorkspaceExplorerUndoStack({
           } catch {
             // File may already exist
           }
-          await window.echosphereWorkspace.writeFile({
+          await window.tidecodeWorkspace.writeFile({
             content: file.content,
             relativePath: file.relativePath,
             workspaceRootPath,
@@ -312,14 +312,14 @@ export function useWorkspaceExplorerUndoStack({
           break
 
         case 'create':
-          await window.echosphereWorkspace.deleteEntry({
+          await window.tidecodeWorkspace.deleteEntry({
             relativePath: entry.relativePath,
             workspaceRootPath,
           })
           break
 
         case 'rename':
-          await window.echosphereWorkspace.renameEntry({
+          await window.tidecodeWorkspace.renameEntry({
             relativePath: entry.newPath,
             nextRelativePath: entry.oldPath,
             workspaceRootPath,
@@ -328,7 +328,7 @@ export function useWorkspaceExplorerUndoStack({
 
         case 'move':
           // Move it back by renaming
-          await window.echosphereWorkspace.renameEntry({
+          await window.tidecodeWorkspace.renameEntry({
             relativePath: entry.resultRelativePath,
             nextRelativePath: entry.originalRelativePath,
             workspaceRootPath,
@@ -336,7 +336,7 @@ export function useWorkspaceExplorerUndoStack({
           break
 
         case 'import':
-          await window.echosphereWorkspace.deleteEntry({
+          await window.tidecodeWorkspace.deleteEntry({
             relativePath: entry.resultRelativePath,
             workspaceRootPath,
           })

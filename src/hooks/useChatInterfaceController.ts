@@ -195,11 +195,11 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
       setPendingFileActionPath(filePath)
       try {
         if (action === 'stage') {
-          await window.echosphereGit.stageFile({ filePath, workspacePath: normalizedWorkspacePath })
+          await window.tidecodeGit.stageFile({ filePath, workspacePath: normalizedWorkspacePath })
         } else if (action === 'unstage') {
-          await window.echosphereGit.unstageFile({ filePath, workspacePath: normalizedWorkspacePath })
+          await window.tidecodeGit.unstageFile({ filePath, workspacePath: normalizedWorkspacePath })
         } else {
-          await window.echosphereGit.discardFileChanges({ filePath, workspacePath: normalizedWorkspacePath })
+          await window.tidecodeGit.discardFileChanges({ filePath, workspacePath: normalizedWorkspacePath })
         }
         await onDiffRefresh({ forceRefresh: true, silent: true })
       } catch (error) {
@@ -221,12 +221,12 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
       setPendingFileActionPath(filePaths[0] ?? null)
       try {
         if (action === 'stage') {
-          await window.echosphereGit.stageFiles({ filePaths, workspacePath: normalizedWorkspacePath })
+          await window.tidecodeGit.stageFiles({ filePaths, workspacePath: normalizedWorkspacePath })
         } else if (action === 'unstage') {
-          await window.echosphereGit.unstageFiles({ filePaths, workspacePath: normalizedWorkspacePath })
+          await window.tidecodeGit.unstageFiles({ filePaths, workspacePath: normalizedWorkspacePath })
         } else {
           for (const filePath of filePaths) {
-            await window.echosphereGit.discardFileChanges({ filePath, workspacePath: normalizedWorkspacePath })
+            await window.tidecodeGit.discardFileChanges({ filePath, workspacePath: normalizedWorkspacePath })
           }
         }
         await onDiffRefresh({ forceRefresh: true, silent: true })

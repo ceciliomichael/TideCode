@@ -11,7 +11,7 @@ import type { AppSettings } from '../../src/types/chat'
 import type { SourceControlSectionId } from '../../src/types/chat'
 import { isChatProviderId as isSupportedChatProviderId } from '../providers/providerIds'
 
-const INITIAL_SETTINGS_ARG_PREFIX = '--echosphere-initial-settings='
+const INITIAL_SETTINGS_ARG_PREFIX = '--tidecode-initial-settings='
 const SOURCE_CONTROL_SECTION_IDS: readonly SourceControlSectionId[] = ['commit', 'changes', 'history']
 
 function isChatProviderId(value: unknown): value is AppSettings['chatModelProviderId'] {

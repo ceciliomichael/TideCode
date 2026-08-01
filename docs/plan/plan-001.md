@@ -83,7 +83,7 @@ Today, compression:
 4. Calls the selected provider for a free-form CAMP summary.
 5. May make a second model call to repair the summary format.
 6. Falls back to a locally generated CAMP packet if the provider fails.
-7. Creates a new conversation and inserts the summary inside an `echosphere:compressed_history` XML block as a synthetic user message.
+7. Creates a new conversation and inserts the summary inside an `tidecode:compressed_history` XML block as a synthetic user message.
 
 This has useful safety fallbacks, but it is not equivalent to compaction in a long-running agent loop:
 
@@ -147,7 +147,7 @@ Use a versioned, validated structure rather than CAMP text as the persistence fo
 
 ```ts
 interface LocalCompactionPacket {
-  schema: 'echosphere.compaction_packet/v1'
+  schema: 'tidecode.compaction_packet/v1'
   packetId: string
   sourceDigest: string
   sourceMessageIds: string[]

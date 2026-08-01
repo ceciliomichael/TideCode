@@ -241,7 +241,7 @@ function SourceControlPanelContent({
     const pendingSyncOperation = beginSourceControlSyncOperation(normalizedWorkspacePath, action)
     setOperationNotice(null)
     try {
-      const result = await window.echosphereGit.sync({
+      const result = await window.tidecodeGit.sync({
         action,
         workspacePath: normalizedWorkspacePath,
       })

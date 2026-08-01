@@ -9,7 +9,7 @@ import {
 } from '../../electron/chat/shared/tools/sandboxPaths'
 
 test('sandbox canonical path checks reject a symlink that escapes an allowed root', async () => {
-  const fixtureRoot = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-sandbox-symlink-'))
+  const fixtureRoot = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-sandbox-symlink-'))
   const workspaceRootPath = path.join(fixtureRoot, 'workspace')
   const globalAgentsDirectory = path.join(fixtureRoot, '.agents')
   const outsideDirectory = path.join(fixtureRoot, 'outside')
@@ -45,7 +45,7 @@ test('sandbox canonical path checks reject a symlink that escapes an allowed roo
 })
 
 test('sandbox canonical path checks allow ordinary files inside an allowed root', async () => {
-  const fixtureRoot = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-sandbox-inside-'))
+  const fixtureRoot = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-sandbox-inside-'))
   const workspaceRootPath = path.join(fixtureRoot, 'workspace')
   const globalAgentsDirectory = path.join(fixtureRoot, '.agents')
   const resourcePath = path.join(globalAgentsDirectory, 'skills', 'safe-skill', 'reference.md')

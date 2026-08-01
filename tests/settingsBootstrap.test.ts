@@ -5,7 +5,7 @@ import { DEFAULT_APP_SETTINGS } from '../src/lib/defaultAppSettings'
 
 test('parseInitialSettingsArg sanitizes persisted edit sessions by conversation', () => {
   const parsedSettings = parseInitialSettingsArg([
-    'echosphere.exe',
+    'tidecode.exe',
     serializeInitialSettingsArg({
       ...DEFAULT_APP_SETTINGS,
       editSessionsByConversation: {
@@ -29,7 +29,7 @@ test('parseInitialSettingsArg sanitizes persisted edit sessions by conversation'
 
 test('parseInitialSettingsArg resets launch-only terminal open state', () => {
   const parsedSettings = parseInitialSettingsArg([
-    'echosphere.exe',
+    'tidecode.exe',
     serializeInitialSettingsArg({
       ...DEFAULT_APP_SETTINGS,
       terminalOpenByWorkspace: {
@@ -44,7 +44,7 @@ test('parseInitialSettingsArg resets launch-only terminal open state', () => {
 
 test('parseInitialSettingsArg preserves empty chat launch preference', () => {
   const parsedSettings = parseInitialSettingsArg([
-    'echosphere.exe',
+    'tidecode.exe',
     serializeInitialSettingsArg({
       ...DEFAULT_APP_SETTINGS,
       lastActiveConversationId: null,
@@ -58,7 +58,7 @@ test('parseInitialSettingsArg preserves empty chat launch preference', () => {
 
 test('parseInitialSettingsArg sanitizes disabled skill paths', () => {
   const parsedSettings = parseInitialSettingsArg([
-    'echosphere.exe',
+    'tidecode.exe',
     serializeInitialSettingsArg({
       ...DEFAULT_APP_SETTINGS,
       disabledSkillsByPath: {
@@ -76,7 +76,7 @@ test('parseInitialSettingsArg sanitizes disabled skill paths', () => {
 
 test('parseInitialSettingsArg preserves AI task planning configuration', () => {
   const parsedSettings = parseInitialSettingsArg([
-    'echosphere.exe',
+    'tidecode.exe',
     serializeInitialSettingsArg({
       ...DEFAULT_APP_SETTINGS,
       kanbanAiPlanningEnabled: true,

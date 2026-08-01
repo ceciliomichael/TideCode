@@ -1,6 +1,6 @@
 export type McpTransportType = 'stdio' | 'streamable-http'
 export type McpConfigSource = 'global'
-export type McpConfigOwner = 'echosphere' | 'codex' | 'agents' | 'claude'
+export type McpConfigOwner = 'tidecode' | 'codex' | 'agents' | 'claude'
 export type McpServerConnectionStatus = 'connected' | 'disconnected' | 'connecting' | 'error'
 export type McpAddServerTransportType = 'stdio' | 'streamable-http'
 
@@ -62,7 +62,7 @@ export interface McpState {
   statuses: Record<string, McpServerStatus>
 }
 
-export interface EchosphereMcpApi {
+export interface TideCodeMcpApi {
   addServer: (input: McpAddServerInput, workspacePath?: string | null) => Promise<McpState>
   connectServer: (serverId: string, workspacePath?: string | null) => Promise<McpState>
   disconnectServer: (serverId: string, workspacePath?: string | null) => Promise<McpState>

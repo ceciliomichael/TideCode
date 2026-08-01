@@ -12,7 +12,7 @@ test('Codex authorize URL matches the OpenCode browser auth shape', () => {
   assert.equal(url.searchParams.get('code_challenge_method'), 'S256')
   assert.equal(url.searchParams.get('codex_cli_simplified_flow'), 'true')
   assert.equal(url.searchParams.get('id_token_add_organizations'), 'true')
-  assert.equal(url.searchParams.get('originator'), 'echosphere')
+  assert.equal(url.searchParams.get('originator'), 'tidecode')
   assert.equal(url.searchParams.get('prompt'), 'login')
   assert.equal(url.searchParams.get('redirect_uri'), 'http://localhost:1455/auth/callback')
   assert.equal(url.searchParams.get('response_type'), 'code')

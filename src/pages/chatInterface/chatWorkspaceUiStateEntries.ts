@@ -38,7 +38,7 @@ export function createWorkspaceEntryHandlers({
       throw new Error("Select a workspace folder first.");
     }
 
-    await window.echosphereWorkspace.createEntry({
+    await window.tidecodeWorkspace.createEntry({
       isDirectory,
       relativePath,
       workspaceRootPath,
@@ -54,7 +54,7 @@ export function createWorkspaceEntryHandlers({
       throw new Error("Select a workspace folder first.");
     }
 
-    await window.echosphereWorkspace.renameEntry({
+    await window.tidecodeWorkspace.renameEntry({
       nextRelativePath,
       relativePath,
       workspaceRootPath,
@@ -72,7 +72,7 @@ export function createWorkspaceEntryHandlers({
     const normalizedRelativePaths = uniqueRelativePaths(relativePaths);
     await Promise.all(
       normalizedRelativePaths.map(async (relativePath) => {
-        await window.echosphereWorkspace.deleteEntry({
+        await window.tidecodeWorkspace.deleteEntry({
           relativePath,
           workspaceRootPath,
         });
@@ -91,7 +91,7 @@ export function createWorkspaceEntryHandlers({
       throw new Error("Select a workspace folder first.");
     }
 
-    await window.echosphereWorkspace.importEntry({
+    await window.tidecodeWorkspace.importEntry({
       sourcePath,
       targetDirectoryRelativePath,
       workspaceRootPath,
@@ -147,7 +147,7 @@ export function createWorkspaceEntryHandlers({
 
     for (const pasteInput of pasteInputs) {
       if (pasteInput.kind === "transfer") {
-        const result = await window.echosphereWorkspace.transferEntry(pasteInput.input);
+        const result = await window.tidecodeWorkspace.transferEntry(pasteInput.input);
         if (result.mode === "move" && result.targetRelativePath !== result.relativePath) {
           clearWorkspaceClipboardByPathPrefix(result.relativePath);
           closeWorkspaceTabsByPathPrefix(result.relativePath);
@@ -155,7 +155,7 @@ export function createWorkspaceEntryHandlers({
         continue;
       }
 
-      await window.echosphereWorkspace.importEntry(pasteInput.input);
+      await window.tidecodeWorkspace.importEntry(pasteInput.input);
     }
   };
 
@@ -168,7 +168,7 @@ export function createWorkspaceEntryHandlers({
       throw new Error("Select a workspace folder first.");
     }
 
-    const result = await window.echosphereWorkspace.transferEntry({
+    const result = await window.tidecodeWorkspace.transferEntry({
       mode: "move",
       relativePath,
       targetDirectoryRelativePath,

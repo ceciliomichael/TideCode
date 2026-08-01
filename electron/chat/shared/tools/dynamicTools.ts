@@ -12,14 +12,27 @@ import {
   type DynamicToolCatalogEntry,
   type DynamicToolInvocationMetadata,
 } from './dynamicToolContracts'
-import { getFirstValidationError, validateJsonSchema } from './dynamicToolValidation'
+import {
+  compileJsonSchema,
+  getFirstValidationError,
+  type CompiledJsonSchemaValidator,
+  type JsonSchemaCompilationResult,
+} from './dynamicToolValidation'
+import { normalizeDynamicExecuteInput } from './dynamicToolInput'
 import { searchToolCatalog } from './dynamicToolSearch'
 
 const DYNAMIC_LIST_SCHEMA = {
   additionalProperties: false,
   properties: {
-    page: { description: '1-indexed result page.', minimum: 1, type: 'integer' },
-    query: { description: 'Natural-language text describing the capability to find.', type: 'string' },
+    page: {
+      description: '1-indexed result page.',
+      minimum: 1,
+      type: 'integer',
+    },
+    query: {
+      description: 'Natural-language text describing the capability to find.',
+      type: 'string',
+    },
   },
   type: 'object',
 }
@@ -30,7 +43,11 @@ const DYNAMIC_SCHEMA_SCHEMA = {
     {
       additionalProperties: false,
       properties: {
-        id: { description: 'Exact catalog tool identifier.', minLength: 1, type: 'string' },
+        id: {
+          description: 'Exact catalog tool identifier.',
+          minLength: 1,
+          type: 'string',
+        },
       },
       required: ['id'],
       type: 'object',
@@ -51,7 +68,11 @@ const DYNAMIC_SCHEMA_SCHEMA = {
     },
   ],
   properties: {
-    id: { description: 'Exact catalog tool identifier.', minLength: 1, type: 'string' },
+    id: {
+      description: 'Exact catalog tool identifier.',
+      minLength: 1,
+      type: 'string',
+    },
     ids: {
       description: `Exact catalog tool identifiers. Fetch up to ${DYNAMIC_SCHEMA_BATCH_SIZE} schemas in one call.`,
       items: { minLength: 1, type: 'string' },
@@ -66,37 +87,71 @@ const DYNAMIC_SCHEMA_SCHEMA = {
 const DYNAMIC_EXECUTE_SCHEMA = {
   additionalProperties: false,
   properties: {
-    args: { description: 'Arguments for the selected catalog tool.', type: 'object' },
-    id: { description: 'Catalog tool identifier.', minLength: 1, type: 'string' },
+    args: {
+      description:
+        'Native arguments for the selected catalog tool. Keep id and args as separate top-level properties; do not put id inside args.',
+      type: 'object',
+    },
+    id: {
+      description: 'Catalog tool identifier. This is a sibling of args at the top level.',
+      minLength: 1,
+      type: 'string',
+    },
   },
   required: ['id', 'args'],
   type: 'object',
 }
 
-function validateMetaInput(value: unknown, schema: Record<string, unknown>) {
-  const message = getFirstValidationError(validateJsonSchema(value, schema))
-  return message ? { error: new Error(`Invalid dynamic tool input: ${message}`), success: false as const } : { success: true as const, value }
+function requireCompiledSchema(schema: Record<string, unknown>) {
+  const result = compileJsonSchema(schema)
+  if (!result.success) {
+    throw new Error(`Invalid internal dynamic tool schema: ${result.error}`)
+  }
+  return result.validator
+}
+
+const LIST_INPUT_VALIDATOR = requireCompiledSchema(DYNAMIC_LIST_SCHEMA)
+const SCHEMA_INPUT_VALIDATOR = requireCompiledSchema(DYNAMIC_SCHEMA_SCHEMA)
+const EXECUTE_INPUT_VALIDATOR = requireCompiledSchema(DYNAMIC_EXECUTE_SCHEMA)
+
+function validateMetaInput(value: unknown, validator: CompiledJsonSchemaValidator) {
+  const message = getFirstValidationError(validator.validate(value))
+  return message
+    ? {
+        error: new Error(`Invalid dynamic tool input: ${message}`),
+        success: false as const,
+      }
+    : { success: true as const, value }
+}
+
+function validateDynamicExecuteInput(value: unknown) {
+  const normalizedInput = normalizeDynamicExecuteInput(value)
+  if (!normalizedInput) {
+    return {
+      error: new Error('Invalid dynamic tool input: execute_tool requires top-level id and args properties.'),
+      success: false as const,
+    }
+  }
+
+  return validateMetaInput(normalizedInput, EXECUTE_INPUT_VALIDATOR)
 }
 
 function getCatalogEntry(catalog: ReadonlyMap<string, DynamicToolCatalogEntry>, id: string) {
   const normalizedId = id.trim()
-  return normalizedId.length > 0 ? catalog.get(normalizedId) ?? null : null
+  return normalizedId.length > 0 ? (catalog.get(normalizedId) ?? null) : null
 }
 
-function getUnknownToolErrorResult(
-  catalogEntries: readonly DynamicToolCatalogEntry[],
-  requestedId: string,
-) {
+function getUnknownToolErrorResult(catalogEntries: readonly DynamicToolCatalogEntry[], requestedId: string) {
   const summary = `Tool "${requestedId}" not found or not allowed.`
-  const suggestions = searchToolCatalog(catalogEntries, requestedId, 1).results
-    .slice(0, 3)
+  const suggestions = searchToolCatalog(catalogEntries, requestedId, 1)
+    .results.slice(0, 3)
     .map((result) => ({ id: result.id, name: result.name }))
 
   return errorResult(
     summary,
     jsonBody({
       error: summary,
-      nextStep: 'Call list_tools to discover an exact tool id, then call get_tool_schema before execute_tool.',
+      nextStep: 'Call list_tools to discover an exact tool id, then call get_tool_schema if you need to confirm its arguments before execute_tool.',
       requestedId,
       suggestions,
     }),
@@ -104,10 +159,14 @@ function getUnknownToolErrorResult(
 }
 
 function jsonBody(value: unknown) {
-  return JSON.stringify(value, null, 2)
+  return JSON.stringify(value)
 }
 
-function successResult(summary: string, body: string, extra: Partial<AgentToolExecutionResult> = {}): AgentToolExecutionResult {
+function successResult(
+  summary: string,
+  body: string,
+  extra: Partial<AgentToolExecutionResult> = {},
+): AgentToolExecutionResult {
   return {
     ...extra,
     body,
@@ -116,7 +175,11 @@ function successResult(summary: string, body: string, extra: Partial<AgentToolEx
   }
 }
 
-function errorResult(summary: string, body?: string, extra: Partial<AgentToolExecutionResult> = {}): AgentToolExecutionResult {
+function errorResult(
+  summary: string,
+  body?: string,
+  extra: Partial<AgentToolExecutionResult> = {},
+): AgentToolExecutionResult {
   return {
     ...extra,
     ...(body ? { body } : {}),
@@ -126,10 +189,7 @@ function errorResult(summary: string, body?: string, extra: Partial<AgentToolExe
 }
 
 function parseDynamicExecuteInput(value: unknown): DynamicExecuteInput | null {
-  if (!isRecord(value) || typeof value.id !== 'string' || !isRecord(value.args)) {
-    return null
-  }
-  return { args: value.args, id: value.id }
+  return normalizeDynamicExecuteInput(value)
 }
 
 function parseDynamicSchemaInput(value: unknown): DynamicSchemaInput | null {
@@ -175,32 +235,50 @@ function getSchemaPayload(entry: DynamicToolCatalogEntry) {
     id: entry.id,
     name: entry.name,
     parameters: entry.inputSchema,
+    source: { ...entry.source },
     tags: [...entry.tags],
   }
 }
 
-function getSchemaBatchResult(catalog: ReadonlyMap<string, DynamicToolCatalogEntry>, ids: readonly string[]) {
-  const results = ids.map((requestedId) => {
-    const id = requestedId.trim()
-    const entry = getCatalogEntry(catalog, id)
-    if (!entry) {
-      return {
-        error: `Tool "${requestedId}" not found or not allowed.`,
-        id: requestedId,
-        status: 'error' as const,
-      }
-    }
-
+function getSchemaResult(
+  catalog: ReadonlyMap<string, DynamicToolCatalogEntry>,
+  catalogValidators: ReadonlyMap<string, JsonSchemaCompilationResult>,
+  discoveredToolIds: ReadonlySet<string>,
+  requestedId: string,
+) {
+  const id = requestedId.trim()
+  const entry = getCatalogEntry(catalog, id)
+  if (!entry) {
     return {
-      ...getSchemaPayload(entry),
-      status: 'success' as const,
+      code: 'UNKNOWN_TOOL',
+      error: `Tool "${requestedId}" not found or not allowed.`,
+      id: requestedId,
+      status: 'error' as const,
     }
-  })
-  const successfulCount = results.filter((result) => result.status === 'success').length
+  }
+  if (!discoveredToolIds.has(entry.id)) {
+    return {
+      code: 'TOOL_NOT_DISCOVERED',
+      error: `Tool "${entry.id}" must be returned by list_tools before its schema can be fetched.`,
+      id: entry.id,
+      nextStep: 'Call list_tools with a targeted capability query and use an exact returned id.',
+      status: 'error' as const,
+    }
+  }
+
+  const compilation = catalogValidators.get(entry.id)
+  if (!compilation || !compilation.success) {
+    return {
+      code: 'INVALID_TOOL_SCHEMA',
+      error: compilation?.error ?? 'Tool schema was not compiled.',
+      id: entry.id,
+      status: 'error' as const,
+    }
+  }
 
   return {
-    results,
-    successfulCount,
+    ...getSchemaPayload(entry),
+    status: 'success' as const,
   }
 }
 
@@ -224,7 +302,10 @@ async function executeCatalogTool(
   if (!entry.execute) {
     return errorResult(
       `Tool "${entry.id}" is provider-managed and cannot be executed through execute_tool.`,
-      jsonBody({ id: entry.id, error: 'This tool does not expose a local execute handler.' }),
+      jsonBody({
+        id: entry.id,
+        error: 'This tool does not expose a local execute handler.',
+      }),
     )
   }
 
@@ -241,9 +322,8 @@ async function executeCatalogTool(
       dynamicInvocation: createInvocationMetadata(entry.id, input.args),
     }
   } catch (error) {
-    const summary = error instanceof Error && error.message.trim().length > 0
-      ? error.message
-      : `Tool "${entry.id}" failed.`
+    const summary =
+      error instanceof Error && error.message.trim().length > 0 ? error.message : `Tool "${entry.id}" failed.`
     return errorResult(summary, undefined, {
       dynamicInvocation: createInvocationMetadata(entry.id, input.args),
     })
@@ -275,12 +355,16 @@ export function getDynamicToolInvocationProjection(
 
 export async function createDynamicToolSet(catalogEntries: readonly DynamicToolCatalogEntry[]): Promise<ToolSet> {
   const catalog = new Map(catalogEntries.map((entry) => [entry.id, entry]))
+  const catalogValidators = new Map(
+    catalogEntries.map((entry) => [entry.id, compileJsonSchema(entry.inputSchema)] as const),
+  )
+  const discoveredToolIds = new Set<string>()
 
   return {
     execute_tool: tool({
-      description: 'Runs a tool from the catalog.',
+      description: 'Runs a catalog tool with a known id and arguments. Fetch its schema when the argument shape is not already known.',
       inputSchema: jsonSchema(DYNAMIC_EXECUTE_SCHEMA, {
-        validate: (value) => validateMetaInput(value, DYNAMIC_EXECUTE_SCHEMA),
+        validate: validateDynamicExecuteInput,
       }),
       execute: async (rawInput, options) => {
         const input = parseDynamicExecuteInput(rawInput)
@@ -293,19 +377,36 @@ export async function createDynamicToolSet(catalogEntries: readonly DynamicToolC
           return getUnknownToolErrorResult(catalogEntries, input.id)
         }
 
-        const validationIssues = validateJsonSchema(input.args, entry.inputSchema)
+        const compilation = catalogValidators.get(entry.id)
+        if (!compilation || !compilation.success) {
+          return errorResult(
+            `Schema for tool "${entry.id}" is invalid.`,
+            jsonBody({
+              code: 'INVALID_TOOL_SCHEMA',
+              error: compilation?.error ?? 'Tool schema was not compiled.',
+              id: entry.id,
+            }),
+            {
+              dynamicInvocation: createInvocationMetadata(entry.id, input.args),
+            },
+          )
+        }
+
+        const validationIssues = compilation.validator.validate(input.args)
         const validationError = getFirstValidationError(validationIssues)
         if (validationError) {
           const missingArguments = validationIssues
             .filter((issue) => issue.message === 'is required')
             .map((issue) => issue.path.replace(/^\$\./u, ''))
-          const editRepair = entry.id === 'edit'
-            ? {
-                changed: false,
-                nextStep: 'Read the file at args.path first, then retry edit with targetContent copied exactly from the latest read result. Do not guess the target text.',
-                retryable: true,
-              }
-            : {}
+          const editRepair =
+            entry.id === 'edit'
+              ? {
+                  changed: false,
+                  nextStep:
+                    'Read the file at args.path first, then retry edit with targetContent copied exactly from the latest read result. Do not guess the target text.',
+                  retryable: true,
+                }
+              : {}
           return errorResult(
             `Invalid arguments for tool "${entry.id}".`,
             jsonBody({
@@ -316,7 +417,9 @@ export async function createDynamicToolSet(catalogEntries: readonly DynamicToolC
               ...editRepair,
               ...(entry.id === 'edit' ? {} : { schema: entry.inputSchema }),
             }),
-            { dynamicInvocation: createInvocationMetadata(entry.id, input.args) },
+            {
+              dynamicInvocation: createInvocationMetadata(entry.id, input.args),
+            },
           )
         }
 
@@ -326,7 +429,7 @@ export async function createDynamicToolSet(catalogEntries: readonly DynamicToolC
     get_tool_schema: tool({
       description: `Gets the schema for one or more catalog tools. Use id for one tool or ids for up to ${DYNAMIC_SCHEMA_BATCH_SIZE} tools.`,
       inputSchema: jsonSchema(DYNAMIC_SCHEMA_SCHEMA, {
-        validate: (value) => validateMetaInput(value, DYNAMIC_SCHEMA_SCHEMA),
+        validate: (value) => validateMetaInput(value, SCHEMA_INPUT_VALIDATOR),
       }),
       execute: async (rawInput) => {
         const input = parseDynamicSchemaInput(rawInput)
@@ -341,30 +444,39 @@ export async function createDynamicToolSet(catalogEntries: readonly DynamicToolC
         }
 
         if (input.id !== undefined) {
-          const entry = getCatalogEntry(catalog, input.id)
-          if (!entry) {
-            return errorResult(`Tool "${input.id}" not found or not allowed.`, jsonBody({ error: `Tool "${input.id}" not found or not allowed.` }))
+          const schemaResult = getSchemaResult(
+            catalog,
+            catalogValidators,
+            discoveredToolIds,
+            input.id,
+          )
+          if (schemaResult.status === 'error') {
+            return errorResult(schemaResult.error, jsonBody(schemaResult))
           }
 
-          return successResult(`Fetched schema for ${entry.id}`, jsonBody(getSchemaPayload(entry)))
+          return successResult(`Fetched schema for ${schemaResult.id}`, jsonBody(schemaResult))
         }
 
-        const batch = getSchemaBatchResult(catalog, input.ids)
-        const summary = `Fetched ${batch.successfulCount} of ${input.ids.length} tool schemas`
-        const body = jsonBody({ results: batch.results })
-        return batch.successfulCount > 0
-          ? successResult(summary, body)
-          : errorResult(summary, body)
+        const results = input.ids.map((id) =>
+          getSchemaResult(catalog, catalogValidators, discoveredToolIds, id),
+        )
+        const successfulCount = results.filter((result) => result.status === 'success').length
+        const summary = `Fetched ${successfulCount} of ${input.ids.length} tool schemas`
+        const body = jsonBody({ results })
+        return successfulCount > 0 ? successResult(summary, body) : errorResult(summary, body)
       },
     }),
     list_tools: tool({
       description: 'Searches and lists tools in the catalog.',
       inputSchema: jsonSchema(DYNAMIC_LIST_SCHEMA, {
-        validate: (value) => validateMetaInput(value, DYNAMIC_LIST_SCHEMA),
+        validate: (value) => validateMetaInput(value, LIST_INPUT_VALIDATOR),
       }),
       execute: async (rawInput) => {
         const input = (rawInput ?? {}) as DynamicListInput
         const page = searchToolCatalog(catalogEntries, input.query, input.page)
+        for (const result of page.results) {
+          discoveredToolIds.add(result.id)
+        }
         const summary = page.query ? `Searched ${page.query} in tool set` : 'Listed tool set'
         return successResult(summary, jsonBody(page), {
           semantics: {

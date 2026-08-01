@@ -77,7 +77,7 @@ export async function loadGitBranchState(
     return existingRequest
   }
 
-  const nextRequest = window.echosphereGit
+  const nextRequest = window.tidecodeGit
     .getBranches(normalizedWorkspacePath)
     .then((branchState) => {
       cacheBranchState(normalizedWorkspacePath, branchState)

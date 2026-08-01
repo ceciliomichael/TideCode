@@ -317,7 +317,7 @@ export function ConversationFolderSection({
               strokeWidth={2.1}
               className={[
                 'absolute transition-opacity duration-150 ease-out group-hover:opacity-0',
-                group.folder.isSelected ? 'text-foreground' : 'text-muted-foreground',
+                group.folder.isSelected ? 'text-brand' : 'text-muted-foreground',
               ].join(' ')}
             />
             {isCollapsed ? (
@@ -344,7 +344,7 @@ export function ConversationFolderSection({
           <span
             className={[
               'block truncate text-sm',
-              group.folder.isSelected ? 'font-semibold text-foreground' : 'font-medium text-foreground',
+              group.folder.isSelected ? 'font-semibold text-brand-soft-foreground' : 'font-medium text-foreground',
             ].join(' ')}
           >
             {group.folder.name}

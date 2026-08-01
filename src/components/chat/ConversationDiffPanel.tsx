@@ -343,20 +343,27 @@ function ConversationDiffPanelContent({
             <span className="mt-0.5 block truncate text-[11px] font-medium text-muted-foreground">{option.description}</span>
           ) : null}
         </span>
-        {isSelected ? <Check size={16} strokeWidth={2.2} className="mt-0.5 shrink-0 text-foreground" /> : null}
+        {isSelected ? <Check size={16} strokeWidth={2.2} className="mt-0.5 shrink-0 text-brand" /> : null}
       </button>
     )
   }
+
+  const isFullscreenPanel = isFullscreen && isOpen
 
   return (
     <div
       ref={panelRef}
       className={[
-        isFullscreen
-          ? 'absolute inset-0 z-30 flex h-full min-w-0 overflow-hidden'
-          : 'relative hidden h-full shrink-0 overflow-hidden md:flex',
+        isFullscreenPanel
+          ? 'pointer-events-auto absolute inset-0 z-30 flex h-full min-w-0 overflow-hidden'
+          : [
+              'relative flex h-full min-w-0 shrink-0 overflow-hidden max-md:hidden',
+              isOpen ? 'pointer-events-auto' : 'pointer-events-none',
+              isResizing ? '' : 'transition-[width] duration-200 ease-out',
+            ].join(' '),
       ].join(' ')}
-      style={isFullscreen ? undefined : { width: `${renderedWidth}px` }}
+      aria-hidden={!isOpen}
+      style={isFullscreenPanel ? undefined : { width: isOpen ? `${renderedWidth}px` : '0px' }}
     >
       {!isFullscreen && isOpen ? (
         <div
@@ -452,9 +459,5 @@ function ConversationDiffPanelContent({
 }
 
 export function ConversationDiffPanel(props: ConversationDiffPanelProps) {
-  if (!props.isOpen) {
-    return null
-  }
-
   return <ConversationDiffPanelContent {...props} />
 }

@@ -24,7 +24,7 @@ test('clipboard file extraction falls back to Electron webUtils paths', async ()
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: {
-      echosphereFileDrop: {
+      tidecodeFileDrop: {
         getPathForFile: (file: { nativePath?: string }) => file.nativePath ?? '',
       },
     },

@@ -7,9 +7,6 @@ export const EDITOR_LINE_OVERSCAN_COUNT = 40
 export const EDITOR_VIRTUALIZATION_THRESHOLD = 800
 export const EDITOR_BOTTOM_BUFFER_PX = EDITOR_LINE_HEIGHT_PX
 export const EDITOR_HORIZONTAL_PADDING_PX = 24
-export const SEARCH_HIGHLIGHT_BACKGROUND = 'var(--workspace-editor-search-highlight-background)'
-export const ACTIVE_SEARCH_HIGHLIGHT_BACKGROUND = 'var(--workspace-editor-search-highlight-active-background)'
-
 export type WorkspaceEditorLineStatus = 'added' | 'changed'
 
 
@@ -343,7 +340,7 @@ export function renderHighlightedTokens(tokens: readonly HighlightedToken[], sea
       // Empty line with selection
       return (
         <span 
-          className="workspace-editor-selection"
+          className="workspace-editor-text-highlight workspace-editor-selection"
         >
           {'\u00A0'}
         </span>
@@ -410,23 +407,25 @@ export function renderHighlightedTokens(tokens: readonly HighlightedToken[], sea
       const isSearchActive = activeSearchMatch && activeSearchMatch.start <= absoluteOffset && activeSearchMatch.end >= nextBreak
       const isSelectionActive = activeSelectionMatch && activeSelectionMatch.start <= absoluteOffset && activeSelectionMatch.end >= nextBreak
 
-      const style: React.CSSProperties = {}
       let className = getTokenClassName(token.fontStyle)
 
       if (isSelectionActive) {
-        className += ' workspace-editor-selection'
+        className += ' workspace-editor-text-highlight workspace-editor-selection'
       } else if (isSearchActive) {
-        style.backgroundColor = activeSearchMatch.isActive ? ACTIVE_SEARCH_HIGHLIGHT_BACKGROUND : SEARCH_HIGHLIGHT_BACKGROUND
-        style.borderRadius = 2
-      } else if (token.color) {
-        style.color = token.color
+        className += ` workspace-editor-text-highlight workspace-editor-search-highlight${
+          activeSearchMatch.isActive ? ' workspace-editor-search-highlight-active' : ''
+        }`
       }
+
+      const style = !isSelectionActive && !isSearchActive && token.color
+        ? { color: token.color }
+        : undefined
 
       renderedSegments.push(
         <span
           key={`${tokenStartIndex}:${tokenOffset}:${segmentText.slice(0, 16)}`}
           className={className}
-          style={Object.keys(style).length > 0 ? style : undefined}
+          style={style}
         >
           {segmentText}
         </span>
@@ -444,7 +443,7 @@ export function renderHighlightedTokens(tokens: readonly HighlightedToken[], sea
     renderedSegments.push(
       <span 
         key={`newline-selection`}
-        className="workspace-editor-selection workspace-editor-selection-newline"
+        className="workspace-editor-text-highlight workspace-editor-selection workspace-editor-selection-newline"
       >
         {'\u200B'}
       </span>

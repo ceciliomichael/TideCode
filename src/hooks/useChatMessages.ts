@@ -52,7 +52,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
   // always has a valid path on the very first render — no "Explorer is waiting" flash.
   const [draftAgentContextPath] = useState<string | null>(() => {
     try {
-      return window.echosphereHistory?.getDraftAgentContextPathSync?.() ?? null
+      return window.tidecodeHistory?.getDraftAgentContextPathSync?.() ?? null
     } catch {
       return null
     }
@@ -61,8 +61,8 @@ export function useChatMessages(input: UseChatMessagesInput) {
   // Ensure the VIRT_draft directory exists on disk as a fire-and-forget side-effect.
   // We don't need to await or set state — the path itself is already known synchronously.
   useEffect(() => {
-    if (draftAgentContextPath && window.echosphereHistory?.ensureDraftAgentContext) {
-      void window.echosphereHistory.ensureDraftAgentContext().catch(() => undefined)
+    if (draftAgentContextPath && window.tidecodeHistory?.ensureDraftAgentContext) {
+      void window.tidecodeHistory.ensureDraftAgentContext().catch(() => undefined)
     }
   }, [draftAgentContextPath])
 
@@ -327,7 +327,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
 
   const redoRevertSession = useCallback(
     async (_conversationId: string, revertSession: RevertEditSession, failureMessage: string) => {
-      await window.echosphereWorkspace.restoreCheckpoint(revertSession.redoCheckpointId).catch((caughtError) => {
+      await window.tidecodeWorkspace.restoreCheckpoint(revertSession.redoCheckpointId).catch((caughtError) => {
         console.error(caughtError)
         throw new Error(failureMessage)
       })
@@ -542,8 +542,8 @@ export function useChatMessages(input: UseChatMessagesInput) {
       return
     }
 
-    if (typeof window !== 'undefined' && window.echosphereHistory?.cleanupDraftAgentContext) {
-      await window.echosphereHistory.cleanupDraftAgentContext().catch(() => undefined)
+    if (typeof window !== 'undefined' && window.tidecodeHistory?.cleanupDraftAgentContext) {
+      await window.tidecodeHistory.cleanupDraftAgentContext().catch(() => undefined)
     }
 
     const activeConversationState = sessionState.activeConversationState
@@ -559,7 +559,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     try {
       const conversation = activeConversationState.conversation
       const { remainingSummaries } = sessionState.getDeletionContext(conversation.id)
-      await window.echosphereHistory.deleteConversation(conversation.id)
+      await window.tidecodeHistory.deleteConversation(conversation.id)
       sessionState.removeConversationRuntime(conversation.id)
       sessionState.replaceConversationSummaries(remainingSummaries)
     } catch (caughtError) {

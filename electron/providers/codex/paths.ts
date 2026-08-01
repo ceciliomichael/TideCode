@@ -1,7 +1,7 @@
 import electron from 'electron'
 import path from 'node:path'
 
-const CODEX_STORAGE_ROOT_SEGMENTS = ['.echosphere', 'config', 'providers', 'codex'] as const
+const CODEX_STORAGE_ROOT_SEGMENTS = ['.tidecode', 'config', 'providers', 'codex'] as const
 
 function resolveHomeDirectory(homeDirectory?: string) {
   const normalizedHomeDirectory = homeDirectory?.trim()

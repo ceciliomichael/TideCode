@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
 
-const CONFIG_ROOT_SEGMENTS = ['.echosphere', 'mcp'] as const
+const CONFIG_ROOT_SEGMENTS = ['.tidecode', 'mcp'] as const
 const STATE_FILENAME = 'state.json'
 const GLOBAL_STATE_KEY = '__global__'
 

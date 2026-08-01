@@ -126,7 +126,7 @@ async function loadWorkspaceMentionIndex(workspaceRootPath: string) {
       directoryCount += 1
     }
 
-    const entries = await window.echosphereWorkspace.listDirectory({
+    const entries = await window.tidecodeWorkspace.listDirectory({
       relativePath: directoryKey === '.' ? undefined : directoryKey,
       workspaceRootPath,
     })
@@ -161,11 +161,11 @@ async function loadWorkspaceMentionIndex(workspaceRootPath: string) {
     })
 
   const skillEntries: ChatMentionMenuItem[] = []
-  if (typeof window !== 'undefined' && window.echosphereSkills) {
+  if (typeof window !== 'undefined' && window.tidecodeSkills) {
     try {
       const [skillsState, settings] = await Promise.all([
-        window.echosphereSkills.listSkills(workspaceRootPath),
-        window.echosphereSettings ? window.echosphereSettings.getSettings() : Promise.resolve(null),
+        window.tidecodeSkills.listSkills(workspaceRootPath),
+        window.tidecodeSettings ? window.tidecodeSettings.getSettings() : Promise.resolve(null),
       ])
 
       const disabledSkillsByPath = settings?.disabledSkillsByPath ?? {}
@@ -294,7 +294,7 @@ export function useChatFileMentionMenu({
     }
 
     let isDisposed = false
-    const unsubscribeWorkspaceChanges = window.echosphereWorkspace.onExplorerChange((event) => {
+    const unsubscribeWorkspaceChanges = window.tidecodeWorkspace.onExplorerChange((event) => {
       if (isDisposed || event.workspaceRootPath !== workspaceRootPath) {
         return
       }
@@ -302,7 +302,7 @@ export function useChatFileMentionMenu({
       setWorkspaceMentionIndexRefreshKey((currentValue) => currentValue + 1)
     })
 
-    void window.echosphereWorkspace.watchExplorerChanges({
+    void window.tidecodeWorkspace.watchExplorerChanges({
       workspaceRootPath,
     }).catch((error) => {
       console.error('Failed to watch workspace explorer changes for mention suggestions', error)
@@ -311,7 +311,7 @@ export function useChatFileMentionMenu({
     return () => {
       isDisposed = true
       unsubscribeWorkspaceChanges()
-      void window.echosphereWorkspace.unwatchExplorerChanges({
+      void window.tidecodeWorkspace.unwatchExplorerChanges({
         workspaceRootPath,
       }).catch((error) => {
         console.error('Failed to unwatch workspace explorer changes for mention suggestions', error)

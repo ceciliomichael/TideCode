@@ -8,17 +8,24 @@ export const DYNAMIC_EXECUTE_TOOL_NAME = 'execute_tool'
 export type DynamicMetaToolName = (typeof DYNAMIC_TOOL_NAMES)[number]
 export type DynamicNativeTool = ToolSet[string]
 export type DynamicToolExecutionOptions = ToolExecutionOptions<unknown>
-export type DynamicToolExecutor = (
-  input: unknown,
-  options: DynamicToolExecutionOptions,
-) => unknown
+export type DynamicToolExecutor = (input: unknown, options: DynamicToolExecutionOptions) => unknown
 
 export interface DynamicToolSummary {
   description: string
   id: string
   name: string
+  source: DynamicToolSource
   tags: string[]
 }
+
+export type DynamicToolSource =
+  | { kind: 'native' }
+  | {
+      kind: 'mcp'
+      originalToolName: string
+      serverId: string
+      serverName: string
+    }
 
 export interface DynamicToolGuidance {
   safety: string[]
@@ -45,9 +52,7 @@ export interface DynamicListInput {
   query?: string
 }
 
-export type DynamicSchemaInput =
-  | { id: string; ids?: never }
-  | { id?: never; ids: string[] }
+export type DynamicSchemaInput = { id: string; ids?: never } | { id?: never; ids: string[] }
 
 export interface DynamicExecuteInput {
   args: Record<string, unknown>
@@ -85,6 +90,7 @@ export function toDynamicToolSummary(entry: DynamicToolCatalogEntry): DynamicToo
     description: entry.description,
     id: entry.id,
     name: entry.name,
+    source: { ...entry.source },
     tags: [...entry.tags],
   }
 }

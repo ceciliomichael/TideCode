@@ -124,7 +124,7 @@ async function loadCustomModels() {
     customModelsLoading: true,
   })
 
-  customModelsRequest = window.echosphereModels
+  customModelsRequest = window.tidecodeModels
     .listCustomModels()
     .then((models) => {
       updateState({
@@ -174,7 +174,7 @@ function scheduleProviderModelsLoad(providerId: ChatProviderId, signature: strin
     providerModelsLoading: true,
   })
 
-  const request = window.echosphereModels
+  const request = window.tidecodeModels
     .listProviderModels(providerId)
     .then((models) => {
       loadedProviderModelSignatures.set(providerId, signature)

@@ -35,7 +35,7 @@ function createMutationInvocation(
     },
     resultContent: formatStructuredToolResultContent(
       {
-        schema: 'echosphere.tool_result/v1',
+        schema: 'tidecode.tool_result/v1',
         semantics: {
           added_path_count: kind === 'add' ? 1 : 0,
           deleted_path_count: kind === 'delete' ? 1 : 0,

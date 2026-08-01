@@ -130,7 +130,7 @@ export function ChatModeSelectorField({
                         ].join(' ')}
                       >
                         <span className="block min-w-0 flex-1 truncate text-[15px] leading-5">{option.label}</span>
-                        {isSelected ? <Check size={16} strokeWidth={2.2} className="mt-0.5 shrink-0 text-foreground" /> : null}
+                        {isSelected ? <Check size={16} strokeWidth={2.2} className="mt-0.5 shrink-0 text-brand" /> : null}
                       </button>
                     </Tooltip>
                   )

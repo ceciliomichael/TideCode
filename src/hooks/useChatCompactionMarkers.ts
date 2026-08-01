@@ -22,7 +22,7 @@ export function useChatCompactionMarkers({
 
     let isCancelled = false
     const timeoutId = window.setTimeout(() => {
-      void window.echosphereHistory
+      void window.tidecodeHistory
         .listCompactionMarkers(conversationId)
         .then((nextMarkers) => {
           if (!isCancelled) {

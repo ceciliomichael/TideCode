@@ -81,7 +81,7 @@ export function useKanbanBoardState({
       return
     }
 
-    const nextBoardData = await window.echosphereKanban.getBoardData({
+    const nextBoardData = await window.tidecodeKanban.getBoardData({
       workspacePath,
     })
     setBoardData(nextBoardData)
@@ -129,7 +129,7 @@ export function useKanbanBoardState({
       }
 
       try {
-        const nextBoardData = await window.echosphereKanban.getBoardData({
+        const nextBoardData = await window.tidecodeKanban.getBoardData({
           workspacePath,
         })
         if (!isActive) {
@@ -147,7 +147,7 @@ export function useKanbanBoardState({
           return
         }
 
-        const importedBoardData = await window.echosphereKanban.importBoardData(
+        const importedBoardData = await window.tidecodeKanban.importBoardData(
           {
             cards: legacyBoardData.cards,
             revision: legacyBoardData.revision,
@@ -183,7 +183,7 @@ export function useKanbanBoardState({
     }
 
     const normalizedWorkspacePath = workspacePath.trim().toLocaleLowerCase()
-    const unsubscribeKanbanChanges = window.echosphereKanban.onBoardChange(
+    const unsubscribeKanbanChanges = window.tidecodeKanban.onBoardChange(
       (event) => {
         if (
           event.workspaceRootPath.trim().toLocaleLowerCase() !==
@@ -206,7 +206,7 @@ export function useKanbanBoardState({
       }
 
       const result = await runMutation('create', () =>
-        window.echosphereKanban.createCard({
+        window.tidecodeKanban.createCard({
           ...input,
           title: input.title.trim(),
           workspacePath,
@@ -227,7 +227,7 @@ export function useKanbanBoardState({
       }
 
       const result = await runMutation('create', () =>
-        window.echosphereKanban.createTask({
+        window.tidecodeKanban.createTask({
           ...input,
           title: input.title.trim(),
           workspacePath,
@@ -283,7 +283,7 @@ export function useKanbanBoardState({
       const result = await runMutation(
         'move',
         () =>
-          window.echosphereKanban.moveCard({
+          window.tidecodeKanban.moveCard({
             cardId,
             targetColumnId,
             workspacePath,
@@ -307,7 +307,7 @@ export function useKanbanBoardState({
       const result = await runMutation(
         'reorder',
         () =>
-          window.echosphereKanban.reorderCard({
+          window.tidecodeKanban.reorderCard({
             cardId,
             targetColumnId,
             targetIndex,
@@ -331,7 +331,7 @@ export function useKanbanBoardState({
 
       const result = await runMutation(
         'delete',
-        () => window.echosphereKanban.deleteCard({ ...input, workspacePath }),
+        () => window.tidecodeKanban.deleteCard({ ...input, workspacePath }),
         input.cardId,
       )
       if (result) {
@@ -353,7 +353,7 @@ export function useKanbanBoardState({
       const result = await runMutation(
         'save',
         () =>
-          window.echosphereKanban.updateCard({
+          window.tidecodeKanban.updateCard({
             ...input,
             title: trimmedTitle,
             workspacePath,
@@ -374,7 +374,7 @@ export function useKanbanBoardState({
     }
 
     const result = await runMutation('clear', () =>
-      window.echosphereKanban.clearCompletedCards({ workspacePath }),
+      window.tidecodeKanban.clearCompletedCards({ workspacePath }),
     )
     if (result) {
       await refreshBoardDataSafely()

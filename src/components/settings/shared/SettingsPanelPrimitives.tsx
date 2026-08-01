@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 export const SETTINGS_SECTION_TITLE_CLASS_NAME =
-  'text-[18px] font-semibold tracking-tight text-foreground md:text-[20px]'
+  'text-[18px] font-semibold tracking-tight text-brand md:text-[20px]'
 
 interface SettingsPanelLayoutProps {
   children: ReactNode

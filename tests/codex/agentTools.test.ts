@@ -6,7 +6,7 @@ import test from 'node:test'
 import { createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
 
 test('createAgentTools omits write tools in plan mode', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
 
   try {
     const tools = await createAgentTools(
@@ -29,7 +29,7 @@ test('createAgentTools omits write tools in plan mode', async () => {
   }
 })
 test('createAgentTools exposes write tools in agent mode', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
 
   try {
     const tools = await createAgentTools({
@@ -48,7 +48,7 @@ test('createAgentTools exposes write tools in agent mode', async () => {
 })
 
 test('createAgentTools exposes Codex web_search as a provider tool', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
 
   try {
     const tools = await createAgentTools(
@@ -71,7 +71,7 @@ test('createAgentTools exposes Codex web_search as a provider tool', async () =>
 })
 
 test('createAgentTools does not expose webfetch for non-Codex providers', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
 
   try {
     const tools = await createAgentTools(
@@ -92,7 +92,7 @@ test('createAgentTools does not expose webfetch for non-Codex providers', async 
 })
 
 test('createAgentTools exposes the same exact replacement tools for every provider', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
 
   try {
     const codexTools = await createAgentTools(
@@ -128,7 +128,7 @@ test('createAgentTools exposes the same exact replacement tools for every provid
 })
 
 test('createAgentTools describes grep mechanics without workflow guidance', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
 
   try {
     const tools = await createAgentTools({
@@ -148,7 +148,7 @@ test('createAgentTools describes grep mechanics without workflow guidance', asyn
 })
 
 test('createAgentTools keeps plan mode tool descriptions literal', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
 
   try {
     const tools = await createAgentTools(
@@ -181,7 +181,7 @@ test('createAgentTools keeps plan mode tool descriptions literal', async () => {
 })
 
 test('createAgentTools keeps mutation descriptions mechanical and workflow-free', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-tools-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
 
   try {
     const tools = await createAgentTools(

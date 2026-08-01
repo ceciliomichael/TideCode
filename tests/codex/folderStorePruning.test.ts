@@ -15,7 +15,7 @@ function buildFolderRecord(overrides: Partial<ConversationFolderRecord> & Pick<C
 }
 
 test('filterResolvableFolderRecords removes folders whose paths no longer resolve', async () => {
-  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-folder-store-prune-'))
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-folder-store-prune-'))
   const existingFolderPath = path.join(tempRootPath, 'existing-folder')
   const missingFolderPath = path.join(tempRootPath, 'missing-folder')
 

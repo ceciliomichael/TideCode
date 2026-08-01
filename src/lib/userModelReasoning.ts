@@ -18,7 +18,7 @@ export const USER_MODEL_EFFORT_CHOICES = [
 const PROVIDER_EFFORT_CHOICES: Partial<Record<CustomModelProviderId, readonly ReasoningEffort[]>> = {
   anthropic: ['low', 'medium', 'high', 'max'],
   codex: ['low', 'medium', 'high', 'xhigh'],
-  deepseek: ['high', 'max'],
+  deepseek: ['none', 'high', 'max'],
   google: ['minimal', 'low', 'medium', 'high'],
   mistral: ['high'],
   openai: ['minimal', 'low', 'medium', 'high', 'xhigh'],
@@ -79,7 +79,7 @@ export function buildUserModelReasoningProfile(input: {
     const defaultSchema = {
       anthropic: { reasoningCapable: true, reasoningEfforts: ['low', 'medium', 'high', 'max'], defaultReasoningEffort: 'high' },
       codex: { reasoningCapable: true, reasoningEfforts: ['low', 'medium', 'high', 'xhigh'], defaultReasoningEffort: 'medium' },
-      deepseek: { reasoningCapable: true, reasoningEfforts: ['high', 'max'], defaultReasoningEffort: 'high' },
+      deepseek: { reasoningCapable: true, reasoningEfforts: ['none', 'high', 'max'], defaultReasoningEffort: 'high' },
       google: { reasoningCapable: true, reasoningEfforts: ['minimal', 'low', 'medium', 'high'], defaultReasoningEffort: 'medium' },
       mistral: { reasoningCapable: true, reasoningEfforts: ['high'], defaultReasoningEffort: 'high' },
       openai: { reasoningCapable: true, reasoningEfforts: ['minimal', 'low', 'medium', 'high', 'xhigh'], defaultReasoningEffort: 'medium' },

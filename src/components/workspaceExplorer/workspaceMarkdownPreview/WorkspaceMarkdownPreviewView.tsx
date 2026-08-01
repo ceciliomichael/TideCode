@@ -237,7 +237,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
               type="checkbox"
               disabled
               readOnly
-              className="mr-2 inline-block align-middle accent-[#8771FF]"
+              className="mr-2 inline-block align-middle accent-[var(--color-brand)]"
             />
           )
         }

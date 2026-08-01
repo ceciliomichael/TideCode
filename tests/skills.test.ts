@@ -99,7 +99,7 @@ test('skill location context remains model-visible but is filtered from the disp
         action: 'load',
         name: 'writing',
       },
-      schema: 'echosphere.tool_result/v1',
+      schema: 'tidecode.tool_result/v1',
       semantics: loadedResult.semantics,
       status: 'success',
       subject: loadedResult.subject,
@@ -200,7 +200,7 @@ test('createSkill creates a valid skill directory and file', async () => {
   const path = await import('node:path')
   const { createSkill } = await import('../electron/skills/service')
 
-  const globalSkillFile = path.join(os.homedir(), '.echosphere', 'skills', 'test-skill', 'SKILL.md')
+  const globalSkillFile = path.join(os.homedir(), '.tidecode', 'skills', 'test-skill', 'SKILL.md')
   try {
     const result = await createSkill({
       name: 'test-skill',

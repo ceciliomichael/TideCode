@@ -55,7 +55,7 @@ export function ModelsProviderSection({
           </div>
           <p className="mt-1 text-sm text-muted-foreground">{providerDescription}</p>
         </div>
-        <p className="shrink-0 text-xs font-medium text-muted-foreground">{enabledCount} enabled</p>
+        <p className="shrink-0 text-xs font-medium text-brand">{enabledCount} enabled</p>
       </header>
 
       <div className="border-t border-border">
@@ -74,7 +74,7 @@ export function ModelsProviderSection({
               <div className="flex min-w-0 items-center gap-2">
                 <p className="min-w-0 truncate text-sm text-foreground">{model.label}</p>
                 {model.isCustom ? (
-                  <span className="rounded-full bg-[#f3f0ff] px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-[#6d5ed6]">
+                  <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-brand-soft-foreground">
                     Custom
                   </span>
                 ) : null}

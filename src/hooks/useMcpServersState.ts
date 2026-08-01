@@ -21,7 +21,7 @@ function normalizeWorkspacePath(workspacePath?: string | null) {
 }
 
 function getMcpApi() {
-  return typeof window !== 'undefined' ? window.echosphereMcp : null
+  return typeof window !== 'undefined' ? window.tidecodeMcp : null
 }
 
 function getErrorMessage(error: unknown, fallbackMessage: string) {

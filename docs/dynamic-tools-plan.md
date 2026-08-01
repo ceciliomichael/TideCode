@@ -62,7 +62,7 @@ list_tools  get_tool_schema  execute_tool
 ```json
 {
   "name": "list_tools",
-  "description": "List available tools or search for tools by keyword. Returns short summaries only. Use get_tool_schema to get the full parameter schema before calling a tool.",
+  "description": "List available tools or search for tools by keyword. Returns short summaries only. Use get_tool_schema to get the full parameter schema when the tool's arguments are not already known.",
   "parameters": {
     "type": "object",
     "properties": {
@@ -127,7 +127,7 @@ list_tools  get_tool_schema  execute_tool
 ```json
 {
   "name": "get_tool_schema",
-  "description": "Get the full parameter schema for a specific tool. Always call this before using execute_tool so you know the exact arguments required.",
+  "description": "Get the full parameter schema for a specific tool when you need to discover or confirm the exact arguments required by execute_tool.",
   "parameters": {
     "type": "object",
     "properties": {
@@ -214,7 +214,7 @@ The response includes the complete parameter schema plus tool-specific
 ```json
 {
   "name": "execute_tool",
-  "description": "Execute a tool by its ID. You must first obtain the tool's schema using get_tool_schema.",
+  "description": "Execute a tool by its ID. Use get_tool_schema first when the exact argument shape is not already known.",
   "parameters": {
     "type": "object",
     "properties": {
@@ -358,9 +358,9 @@ Chosen names:
 You have only three tools: list_tools, get_tool_schema, and execute_tool.
 
 - Always use list_tools first to discover available tools.
-- Always use get_tool_schema to learn the exact parameters before calling a tool; use its `ids` form for independent tools.
-- Never assume a tool’s arguments. Always fetch the schema.
-- Then use execute_tool with the exact arguments required by the schema.
+- Use get_tool_schema to learn or confirm exact parameters when they are not already known; use its `ids` form for independent tools.
+- When the exact id and argument shape are already known from conversation history, call execute_tool directly with those arguments.
+- Then use execute_tool with the exact arguments accepted by the current catalog schema.
 ```
 
 ---

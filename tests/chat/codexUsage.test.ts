@@ -30,7 +30,7 @@ function buildProvidersState(): ProvidersState {
           },
         },
       ],
-      authFilePath: 'C:/Users/Administrator/.echosphere/config/providers/codex/auth.json',
+      authFilePath: 'C:/Users/Administrator/.tidecode/config/providers/codex/auth.json',
       email: 'user@example.com',
       isAuthenticated: true,
       lastRefreshAt: null,

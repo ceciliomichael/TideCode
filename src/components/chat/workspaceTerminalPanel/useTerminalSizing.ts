@@ -54,7 +54,7 @@ export function useTerminalSizing({
       }
 
       instance.lastSyncedSize = { cols: dimensions.cols, rows: dimensions.rows };
-      void window.echosphereTerminal
+      void window.tidecodeTerminal
         .resizeSession({
           cols: dimensions.cols,
           rows: dimensions.rows,

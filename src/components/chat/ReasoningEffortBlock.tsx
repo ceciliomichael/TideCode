@@ -12,6 +12,33 @@ const REASONING_EFFORT_LABELS: Readonly<Record<string, string>> = {
   xhigh: 'XHigh',
 }
 
+// DeepSeek models expose ['high', 'max'] (and optionally 'none' to disable thinking);
+// show them as Low / High instead of High / Maximum, with 'none' shown as None.
+const DEEPSEEK_EFFORT_LABEL_OVERRIDES: Readonly<Record<string, string>> = {
+  high: 'Low',
+  max: 'High',
+}
+
+// Mistral models expose a ['none', 'high'] toggle; show it as Disable / Enabled instead of None / High.
+const TOGGLE_EFFORT_LABEL_OVERRIDES: Readonly<Record<string, string>> = {
+  none: 'Disable',
+  high: 'Enabled',
+}
+
+function getEffortLabelOverrides(options: readonly ReasoningEffort[]) {
+  const isDeepSeekPair =
+    options.length === 2 && options.includes('high') && options.includes('max')
+  const isDeepSeekWithNone =
+    options.length === 3 && options.includes('none') && options.includes('high') && options.includes('max')
+  if (isDeepSeekPair || isDeepSeekWithNone) {
+    return DEEPSEEK_EFFORT_LABEL_OVERRIDES
+  }
+  if (options.length === 2 && options.includes('none') && options.includes('high')) {
+    return TOGGLE_EFFORT_LABEL_OVERRIDES
+  }
+  return null
+}
+
 interface ReasoningEffortBlockProps {
   disabled?: boolean
   onChange: (effort: ReasoningEffort) => void
@@ -26,8 +53,9 @@ export function ReasoningEffortBlock({
   value,
 }: ReasoningEffortBlockProps) {
   const reasoningEffortOptions = useMemo(() => {
+    const labelOverrides = getEffortLabelOverrides(options)
     return options.map((option) => ({
-      label: REASONING_EFFORT_LABELS[option] ?? option,
+      label: labelOverrides?.[option] ?? REASONING_EFFORT_LABELS[option] ?? option,
       value: option,
     }))
   }, [options])

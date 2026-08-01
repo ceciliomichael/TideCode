@@ -126,7 +126,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
       return
     }
 
-    const unsubscribe = window.echosphereWorkspace.onExplorerChange(() => {
+    const unsubscribe = window.tidecodeWorkspace.onExplorerChange(() => {
       void refresh({ forceRefresh: true, silent: true })
     })
 
@@ -164,7 +164,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
       setErrorMessage(null)
 
       try {
-        const nextBranchState = await window.echosphereGit.checkoutBranch({
+        const nextBranchState = await window.tidecodeGit.checkoutBranch({
           branchName,
           workspacePath: normalizedWorkspacePath,
         })
@@ -194,7 +194,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
       setErrorMessage(null)
 
       try {
-        const nextBranchState = await window.echosphereGit.createAndCheckoutBranch({
+        const nextBranchState = await window.tidecodeGit.createAndCheckoutBranch({
           branchName,
           workspacePath: normalizedWorkspacePath,
         })

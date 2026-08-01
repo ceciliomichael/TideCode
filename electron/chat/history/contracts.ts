@@ -1,7 +1,7 @@
 import type { ChatProviderId } from '../../../src/types/chat'
 
-export const CANONICAL_HISTORY_SCHEMA = 'echosphere.canonical_history/v1' as const
-export const REPLAY_CODEC_SCHEMA = 'echosphere.replay_value/v1' as const
+export const CANONICAL_HISTORY_SCHEMA = 'tidecode.canonical_history/v1' as const
+export const REPLAY_CODEC_SCHEMA = 'tidecode.replay_value/v1' as const
 
 export type ReplayScalar = boolean | null | number | string
 

@@ -12,7 +12,7 @@ import {
 } from '../../electron/python/venv'
 
 test('hasPyvenvCfg returns true only if pyvenv.cfg exists', async () => {
-  const tmpDir = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-venv-test-'))
+  const tmpDir = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-venv-test-'))
   try {
     assert.equal(hasPyvenvCfg(tmpDir), false)
     await fs.writeFile(path.join(tmpDir, 'pyvenv.cfg'), 'home = /usr/bin/python\n', 'utf8')
@@ -23,7 +23,7 @@ test('hasPyvenvCfg returns true only if pyvenv.cfg exists', async () => {
 })
 
 test('findVenvPath detects venv in workspace root and subdirectories', async () => {
-  const workspaceDir = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-venv-ws-'))
+  const workspaceDir = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-venv-ws-'))
   const venvDir = path.join(workspaceDir, '.venv')
   await fs.mkdir(venvDir, { recursive: true })
   await fs.writeFile(path.join(venvDir, 'pyvenv.cfg'), 'home = /usr/bin/python\n', 'utf8')
@@ -37,7 +37,7 @@ test('findVenvPath detects venv in workspace root and subdirectories', async () 
 })
 
 test('detectVenvInfo returns name, relativePath, and venvPath', async () => {
-  const workspaceDir = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-venv-info-ws-'))
+  const workspaceDir = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-venv-info-ws-'))
   const venvDir = path.join(workspaceDir, 'myenv')
   await fs.mkdir(venvDir, { recursive: true })
   await fs.writeFile(path.join(venvDir, 'pyvenv.cfg'), 'home = /usr/bin/python\n', 'utf8')
@@ -54,7 +54,7 @@ test('detectVenvInfo returns name, relativePath, and venvPath', async () => {
 })
 
 test('buildPythonVenvPromptBlock formats short prompt block with venv name', async () => {
-  const workspaceDir = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-venv-prompt-ws-'))
+  const workspaceDir = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-venv-prompt-ws-'))
   const venvDir = path.join(workspaceDir, '.venv')
   await fs.mkdir(venvDir, { recursive: true })
   await fs.writeFile(path.join(venvDir, 'pyvenv.cfg'), 'home = /usr/bin/python\n', 'utf8')
@@ -79,7 +79,7 @@ test('activateVenvInEnvironment sets VIRTUAL_ENV and prepends PATH', () => {
 })
 
 test('detectVenvInfo handles custom venv names like asjdajsd', async () => {
-  const workspaceDir = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-venv-custom-ws-'))
+  const workspaceDir = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-venv-custom-ws-'))
   const venvDir = path.join(workspaceDir, 'asjdajsd')
   await fs.mkdir(venvDir, { recursive: true })
   await fs.writeFile(path.join(venvDir, 'pyvenv.cfg'), 'home = /usr/bin/python\n', 'utf8')

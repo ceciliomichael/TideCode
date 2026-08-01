@@ -47,12 +47,12 @@ export function filterEnabledModelCatalogItems(
 }
 
 export function readStoredModelToggleState(): ModelToggleState {
-  if (typeof window === 'undefined' || typeof window.echosphereSettings?.getInitialSettings !== 'function') {
+  if (typeof window === 'undefined' || typeof window.tidecodeSettings?.getInitialSettings !== 'function') {
     return buildDefaultModelToggleState()
   }
 
   try {
-    const raw = window.echosphereSettings.getInitialSettings().modelToggleState
+    const raw = window.tidecodeSettings.getInitialSettings().modelToggleState
     if (!raw) {
       return buildDefaultModelToggleState()
     }
@@ -64,12 +64,12 @@ export function readStoredModelToggleState(): ModelToggleState {
 }
 
 export function writeStoredModelToggleState(state: ModelToggleState) {
-  if (typeof window === 'undefined' || typeof window.echosphereSettings?.updateSettings !== 'function') {
+  if (typeof window === 'undefined' || typeof window.tidecodeSettings?.updateSettings !== 'function') {
     return
   }
 
   try {
-    void window.echosphereSettings.updateSettings({ modelToggleState: state })
+    void window.tidecodeSettings.updateSettings({ modelToggleState: state })
   } catch {
     // Ignore settings write failures.
   }

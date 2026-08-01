@@ -41,7 +41,7 @@ export function createCanonicalToolResultContent(input: {
         typeof input.argumentsValue === 'object' && input.argumentsValue !== null
           ? (input.argumentsValue as Record<string, unknown>)
           : undefined,
-      schema: 'echosphere.tool_result/v1',
+      schema: 'tidecode.tool_result/v1',
       ...(input.result.semantics ? { semantics: input.result.semantics } : {}),
       status: input.result.status,
       ...(input.result.subject ? { subject: input.result.subject } : {}),

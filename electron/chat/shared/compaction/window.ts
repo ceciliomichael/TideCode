@@ -4,7 +4,7 @@ import { stableStringify, sha256 } from '../../cache/canonicalization'
 import { estimateModelMessagesTokens } from './budget'
 import type { CompactionWindow, LocalCompactionPacket } from './contracts'
 
-const COMPACTION_MESSAGE_PREFIX = 'echosphere.compaction_state.v1'
+const COMPACTION_MESSAGE_PREFIX = 'tidecode.compaction_state.v1'
 const MAX_SOURCE_MESSAGE_IDS = 64
 
 function getParts(message: ModelMessage) {

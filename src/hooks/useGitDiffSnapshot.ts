@@ -157,7 +157,7 @@ export function useGitDiffSnapshot({
       return
     }
 
-    const unsubscribe = window.echosphereWorkspace.onExplorerChange(() => {
+    const unsubscribe = window.tidecodeWorkspace.onExplorerChange(() => {
       void refresh({ forceRefresh: true, silent: true })
     })
 

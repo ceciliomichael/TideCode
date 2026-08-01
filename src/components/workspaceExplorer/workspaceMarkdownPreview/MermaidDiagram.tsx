@@ -10,9 +10,9 @@ function RenderingIndicator() {
   return (
     <div className="flex items-center justify-center gap-2 px-4 py-4 text-sm text-muted-foreground">
       <div className="flex gap-1">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-foreground" style={{ animationDelay: '0ms' }} />
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-foreground" style={{ animationDelay: '150ms' }} />
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-foreground" style={{ animationDelay: '300ms' }} />
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" style={{ animationDelay: '0ms' }} />
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" style={{ animationDelay: '150ms' }} />
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" style={{ animationDelay: '300ms' }} />
       </div>
       <span>Rendering diagram...</span>
     </div>

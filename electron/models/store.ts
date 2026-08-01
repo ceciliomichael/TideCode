@@ -20,7 +20,7 @@ import {
   type StoredUserModelCatalog,
 } from './userCatalogSchema'
 
-const CONFIG_ROOT_SEGMENTS = ['.echosphere'] as const
+const CONFIG_ROOT_SEGMENTS = ['.tidecode'] as const
 const MODELS_DIRECTORY_NAME = 'models'
 const LEGACY_MODELS_FILE_SEGMENTS = ['config', 'custom-models.json'] as const
 let mutationQueue: Promise<unknown> = Promise.resolve()

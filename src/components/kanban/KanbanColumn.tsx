@@ -30,7 +30,7 @@ const COLUMN_MARKER_CLASS_NAMES: Record<KanbanColumnId, string> = {
   backlog: 'bg-slate-400',
   blocked: 'bg-red-500',
   done: 'bg-emerald-500',
-  'in-progress': 'bg-blue-500',
+  'in-progress': 'bg-brand',
 }
 
 export function KanbanColumn({
@@ -64,7 +64,7 @@ export function KanbanColumn({
     event.preventDefault()
     setIsOver(false)
     const cardId =
-      event.dataTransfer.getData('application/x-echosphere-kanban-card') ||
+      event.dataTransfer.getData('application/x-tidecode-kanban-card') ||
       draggedCardId
     if (cardId) {
       onCardDropAt(cardId, column.id, cards.length)

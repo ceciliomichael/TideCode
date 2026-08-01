@@ -9,12 +9,12 @@ import type {
   CompactConversationInput,
   CompressChatHistoryInput,
   EstimateContextUsageInput,
-  EchosphereChatApi,
-  EchosphereGitApi,
-  EchosphereKanbanApi,
-  EchosphereModelsApi,
-  EchosphereProvidersApi,
-  EchosphereTerminalApi,
+  TideCodeChatApi,
+  TideCodeGitApi,
+  TideCodeKanbanApi,
+  TideCodeModelsApi,
+  TideCodeProvidersApi,
+  TideCodeTerminalApi,
   GitCommitInput,
   GitFileStageBatchInput,
   GitHistoryCommitDetailsInput,
@@ -27,9 +27,9 @@ import type {
   FolderMoveDirection,
   CreateConversationInput,
   CreateWorkspaceCheckpointInput,
-  EchosphereHistoryApi,
-  EchosphereSettingsApi,
-  EchosphereWorkspaceApi,
+  TideCodeHistoryApi,
+  TideCodeSettingsApi,
+  TideCodeWorkspaceApi,
   GitFileStageInput,
   GitDiffLoadOptions,
   GitSyncInput,
@@ -48,8 +48,8 @@ import type {
   WorkspaceExplorerWatchChangesInput,
   WriteTerminalSessionInput,
 } from '../src/types/chat'
-import type { EchosphereMcpApi, McpAddServerInput, McpState } from '../src/types/mcp'
-import type { EchosphereSkillsApi } from '../src/types/skills'
+import type { TideCodeMcpApi, McpAddServerInput, McpState } from '../src/types/mcp'
+import type { TideCodeSkillsApi } from '../src/types/skills'
 
 // --------- Expose some API to the Renderer process ---------
 contextBridge.exposeInMainWorld('ipcRenderer', {
@@ -74,7 +74,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
   // ...
 })
 
-const historyApi: EchosphereHistoryApi = {
+const historyApi: TideCodeHistoryApi = {
   getDraftAgentContextPathSync: () => ipcRenderer.sendSync('history:getDraftAgentContextPathSync') as string,
   ensureDraftAgentContext: () => ipcRenderer.invoke('history:ensureDraftAgentContext'),
   cleanupDraftAgentContext: () => ipcRenderer.invoke('history:cleanupDraftAgentContext'),
@@ -104,13 +104,13 @@ const historyApi: EchosphereHistoryApi = {
   deleteConversation: (conversationId: string) => ipcRenderer.invoke('history:delete', conversationId),
 }
 
-const settingsApi: EchosphereSettingsApi = {
+const settingsApi: TideCodeSettingsApi = {
   getInitialSettings: () => parseInitialSettingsArg(process.argv),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   updateSettings: (input: Partial<AppSettings>) => ipcRenderer.invoke('settings:update', input),
 }
 
-const mcpApi: EchosphereMcpApi = {
+const mcpApi: TideCodeMcpApi = {
   addServer: (input: McpAddServerInput, workspacePath?: string | null) =>
     ipcRenderer.invoke('mcp:addServer', input, workspacePath),
   connectServer: (serverId: string, workspacePath?: string | null) =>
@@ -136,12 +136,12 @@ const mcpApi: EchosphereMcpApi = {
     ipcRenderer.invoke('mcp:toggleTool', serverId, toolName, enabled, workspacePath),
 }
 
-const skillsApi: EchosphereSkillsApi = {
+const skillsApi: TideCodeSkillsApi = {
   createSkill: (input, workspacePath) => ipcRenderer.invoke('skills:createSkill', input, workspacePath),
   listSkills: (workspacePath?: string | null) => ipcRenderer.invoke('skills:list', workspacePath),
 }
 
-const providersApi: EchosphereProvidersApi = {
+const providersApi: TideCodeProvidersApi = {
   getProvidersState: (hydrate = false) => ipcRenderer.invoke('providers:state', hydrate),
   addCodexAccountWithOAuth: () => ipcRenderer.invoke('providers:codex:addAccountOauth'),
   connectCodexWithOAuth: () => ipcRenderer.invoke('providers:codex:connectOauth'),
@@ -160,14 +160,14 @@ const providersApi: EchosphereProvidersApi = {
   switchCodexAccount: (accountKey: string) => ipcRenderer.invoke('providers:codex:switchAccount', accountKey),
 }
 
-const modelsApi: EchosphereModelsApi = {
+const modelsApi: TideCodeModelsApi = {
   listCustomModels: () => ipcRenderer.invoke('models:custom:list'),
   listProviderModels: (providerId: ChatProviderId) => ipcRenderer.invoke('models:provider:list', providerId),
   saveCustomModel: (input: SaveCustomModelInput) => ipcRenderer.invoke('models:custom:save', input),
   removeCustomModel: (modelId: string) => ipcRenderer.invoke('models:custom:remove', modelId),
 }
 
-const chatApi: EchosphereChatApi = {
+const chatApi: TideCodeChatApi = {
   cancelStream: (streamId: string) => ipcRenderer.invoke('chat:stream:cancel', streamId),
   compactConversation: (input: CompactConversationInput) => ipcRenderer.invoke('chat:compactConversation', input),
   compressConversation: (input: CompressChatHistoryInput) => ipcRenderer.invoke('chat:compressConversation', input),
@@ -183,7 +183,7 @@ const chatApi: EchosphereChatApi = {
   startStream: (input: StartChatStreamInput) => ipcRenderer.invoke('chat:stream:start', input),
 }
 
-const kanbanApi: EchosphereKanbanApi = {
+const kanbanApi: TideCodeKanbanApi = {
   clearCompletedCards: (input) => ipcRenderer.invoke('kanban:clearCompletedCards', input),
   createCard: (input) => ipcRenderer.invoke('kanban:createCard', input),
   createTask: (input) => ipcRenderer.invoke('kanban:createTask', input),
@@ -206,7 +206,7 @@ const kanbanApi: EchosphereKanbanApi = {
   updateCardContent: (input) => ipcRenderer.invoke('kanban:updateCardContent', input),
 }
 
-const gitApi: EchosphereGitApi = {
+const gitApi: TideCodeGitApi = {
   checkoutBranch: (input) => ipcRenderer.invoke('git:checkoutBranch', input),
   commit: (input: GitCommitInput) => ipcRenderer.invoke('git:commit', input),
   createAndCheckoutBranch: (input) => ipcRenderer.invoke('git:createAndCheckoutBranch', input),
@@ -227,7 +227,7 @@ const gitApi: EchosphereGitApi = {
 }
 
 
-const workspaceApi: EchosphereWorkspaceApi = {
+const workspaceApi: TideCodeWorkspaceApi = {
   createCheckpoint: (input: CreateWorkspaceCheckpointInput) => ipcRenderer.invoke('workspace:checkpoint:create', input),
   createRedoCheckpointFromSource: (sourceCheckpointId: string) =>
     ipcRenderer.invoke('workspace:checkpoint:createRedoFromSource', sourceCheckpointId),
@@ -270,7 +270,7 @@ const clipboardApi = {
   readFiles: () => ipcRenderer.invoke('clipboard:readFiles'),
 }
 
-const terminalApi: EchosphereTerminalApi = {
+const terminalApi: TideCodeTerminalApi = {
   closeSession: (input: CloseTerminalSessionInput) => ipcRenderer.invoke('terminal:closeSession', input),
   createSession: (input: CreateTerminalSessionInput) => ipcRenderer.invoke('terminal:createSession', input),
   openExternalLink: (input: OpenExternalTerminalLinkInput) => ipcRenderer.invoke('terminal:openExternalLink', input),
@@ -292,16 +292,16 @@ const terminalApi: EchosphereTerminalApi = {
   writeToSession: (input: WriteTerminalSessionInput) => ipcRenderer.invoke('terminal:writeToSession', input),
 }
 
-contextBridge.exposeInMainWorld('echosphereHistory', historyApi)
-contextBridge.exposeInMainWorld('echosphereKanban', kanbanApi)
-contextBridge.exposeInMainWorld('echosphereModels', modelsApi)
-contextBridge.exposeInMainWorld('echosphereMcp', mcpApi)
-contextBridge.exposeInMainWorld('echosphereSettings', settingsApi)
-contextBridge.exposeInMainWorld('echosphereProviders', providersApi)
-contextBridge.exposeInMainWorld('echosphereSkills', skillsApi)
-contextBridge.exposeInMainWorld('echosphereChat', chatApi)
-contextBridge.exposeInMainWorld('echosphereGit', gitApi)
-contextBridge.exposeInMainWorld('echosphereFileDrop', fileDropApi)
-contextBridge.exposeInMainWorld('echosphereClipboard', clipboardApi)
-contextBridge.exposeInMainWorld('echosphereWorkspace', workspaceApi)
-contextBridge.exposeInMainWorld('echosphereTerminal', terminalApi)
+contextBridge.exposeInMainWorld('tidecodeHistory', historyApi)
+contextBridge.exposeInMainWorld('tidecodeKanban', kanbanApi)
+contextBridge.exposeInMainWorld('tidecodeModels', modelsApi)
+contextBridge.exposeInMainWorld('tidecodeMcp', mcpApi)
+contextBridge.exposeInMainWorld('tidecodeSettings', settingsApi)
+contextBridge.exposeInMainWorld('tidecodeProviders', providersApi)
+contextBridge.exposeInMainWorld('tidecodeSkills', skillsApi)
+contextBridge.exposeInMainWorld('tidecodeChat', chatApi)
+contextBridge.exposeInMainWorld('tidecodeGit', gitApi)
+contextBridge.exposeInMainWorld('tidecodeFileDrop', fileDropApi)
+contextBridge.exposeInMainWorld('tidecodeClipboard', clipboardApi)
+contextBridge.exposeInMainWorld('tidecodeWorkspace', workspaceApi)
+contextBridge.exposeInMainWorld('tidecodeTerminal', terminalApi)

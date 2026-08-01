@@ -34,7 +34,7 @@ export function buildCompactionRequestPrompt(input: {
   return [
     'Output schema:',
     stableStringify({
-      schema: 'echosphere.compaction_packet/v1',
+      schema: 'tidecode.compaction_packet/v1',
       packetId: 'new-id',
       sourceDigest: input.sourceDigest,
       sourceMessageIds: input.sourceMessageIds,

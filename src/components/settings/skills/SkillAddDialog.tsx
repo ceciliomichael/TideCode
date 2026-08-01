@@ -128,7 +128,7 @@ export function SkillAddDialog({
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. writing, refactoring, unit-testing"
                 disabled={isSubmitting}
-                className="h-10 w-full rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary"
+                className="h-10 w-full rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-brand"
               />
             </div>
 
@@ -144,7 +144,7 @@ export function SkillAddDialog({
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief summary of when and how this skill helps..."
                 disabled={isSubmitting}
-                className="w-full resize-none overflow-y-auto rounded-xl border border-border bg-surface-muted p-3 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary"
+                className="w-full resize-none overflow-y-auto rounded-xl border border-border bg-surface-muted p-3 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-brand"
               />
             </div>
 
@@ -160,7 +160,7 @@ export function SkillAddDialog({
                 onChange={(e) => setContent(e.target.value)}
                 placeholder={`# Instructions for ${name || 'Skill'}\n\nSpecify workflow rules, guidelines, or formatting rules...`}
                 disabled={isSubmitting}
-                className="min-h-[300px] w-full flex-1 resize-none overflow-y-auto rounded-xl border border-border bg-surface-muted p-3 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:border-primary"
+                className="min-h-[300px] w-full flex-1 resize-none overflow-y-auto rounded-xl border border-border bg-surface-muted p-3 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:border-brand"
               />
             </div>
           </div>

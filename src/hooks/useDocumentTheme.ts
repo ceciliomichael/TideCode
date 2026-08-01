@@ -10,8 +10,7 @@ import {
   type ResolvedTheme,
 } from '../lib/theme'
 
-const THEME_TRANSITION_CLASS_NAME = 'theme-transition'
-const THEME_TRANSITION_DURATION_MS = 180
+const THEME_SWITCHING_CLASS_NAME = 'theme-switching'
 
 function applyDocumentTheme(appearance: AppAppearance, resolvedTheme: ResolvedTheme) {
   const root = document.documentElement
@@ -25,13 +24,8 @@ function applyDocumentTheme(appearance: AppAppearance, resolvedTheme: ResolvedTh
     ?.setAttribute('content', resolvedTheme === 'dark' ? DARK_THEME_COLOR : LIGHT_THEME_COLOR)
 }
 
-function enableThemeTransition(root: HTMLElement) {
-  root.classList.add(THEME_TRANSITION_CLASS_NAME)
-}
-
 export function useDocumentTheme(appearance: AppAppearance) {
-  const isFirstApplicationRef = useRef(true)
-  const transitionTimeoutRef = useRef<number | null>(null)
+  const transitionFrameRef = useRef<number | null>(null)
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
       return resolveTheme(appearance)
@@ -49,50 +43,52 @@ export function useDocumentTheme(appearance: AppAppearance) {
     const mediaQueryList =
       typeof window.matchMedia === 'function' ? window.matchMedia(SYSTEM_DARK_MODE_QUERY) : null
 
-    const clearThemeTransition = () => {
-      root.classList.remove(THEME_TRANSITION_CLASS_NAME)
+    const finishThemeSwitch = () => {
+      root.classList.remove(THEME_SWITCHING_CLASS_NAME)
 
-      if (transitionTimeoutRef.current !== null) {
-        window.clearTimeout(transitionTimeoutRef.current)
-        transitionTimeoutRef.current = null
+      if (transitionFrameRef.current !== null) {
+        window.cancelAnimationFrame(transitionFrameRef.current)
+        transitionFrameRef.current = null
       }
     }
 
-    const applyCurrentTheme = (shouldAnimate: boolean) => {
-      if (shouldAnimate) {
-        enableThemeTransition(root)
+    const applyCurrentTheme = () => {
+      if (transitionFrameRef.current !== null) {
+        window.cancelAnimationFrame(transitionFrameRef.current)
       }
+
+      root.classList.add(THEME_SWITCHING_CLASS_NAME)
 
       const nextResolvedTheme = resolveTheme(appearance, mediaQueryList)
-      setResolvedTheme(nextResolvedTheme)
       applyDocumentTheme(appearance, nextResolvedTheme)
       cacheAppearancePreference(appearance)
+      setResolvedTheme(nextResolvedTheme)
 
-      if (shouldAnimate) {
-        transitionTimeoutRef.current = window.setTimeout(() => {
-          clearThemeTransition()
-        }, THEME_TRANSITION_DURATION_MS)
-      }
+      transitionFrameRef.current = window.requestAnimationFrame(() => {
+        transitionFrameRef.current = window.requestAnimationFrame(() => {
+          root.classList.remove(THEME_SWITCHING_CLASS_NAME)
+          transitionFrameRef.current = null
+        })
+      })
     }
 
-    applyCurrentTheme(!isFirstApplicationRef.current)
-    isFirstApplicationRef.current = false
+    applyCurrentTheme()
 
     if (appearance !== 'system' || mediaQueryList === null) {
       return () => {
-        clearThemeTransition()
+        finishThemeSwitch()
       }
     }
 
     const handleSystemThemeChange = () => {
-      applyCurrentTheme(true)
+      applyCurrentTheme()
     }
 
     if (typeof mediaQueryList.addEventListener === 'function') {
       mediaQueryList.addEventListener('change', handleSystemThemeChange)
 
       return () => {
-        clearThemeTransition()
+        finishThemeSwitch()
         mediaQueryList.removeEventListener('change', handleSystemThemeChange)
       }
     }
@@ -100,7 +96,7 @@ export function useDocumentTheme(appearance: AppAppearance) {
     mediaQueryList.addListener(handleSystemThemeChange)
 
     return () => {
-      clearThemeTransition()
+      finishThemeSwitch()
       mediaQueryList.removeListener(handleSystemThemeChange)
     }
   }, [appearance])

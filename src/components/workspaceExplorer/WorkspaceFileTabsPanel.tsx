@@ -206,12 +206,12 @@ export function WorkspaceFileTabsPanel({
                   className={[
                     'inline-flex h-full max-w-[248px] items-center gap-2 px-3 pr-9 text-sm transition-colors',
                     isActive
-                      ? 'border-t-2 border-t-foreground/60 bg-background text-foreground'
+                      ? 'border-t-2 border-t-brand bg-background text-foreground'
                       : 'border-t-2 border-t-transparent bg-background text-muted-foreground hover:bg-surface-muted hover:text-foreground',
                   ].join(' ')}
                 >
                   {isPreviewTab ? (
-                    <Eye size={14} className="shrink-0 text-[#8771FF]" />
+                    <Eye size={14} className="shrink-0 text-brand" />
                   ) : (
                     (() => {
                       const FileIcon = resolvedIconConfig!.icon

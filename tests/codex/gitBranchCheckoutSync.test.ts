@@ -18,7 +18,7 @@ async function runGit(args: string[], cwd: string) {
 }
 
 async function withTemporaryDirectory<T>(callback: (directoryPath: string) => Promise<T>) {
-  const directoryPath = await fs.mkdtemp(path.join(os.tmpdir(), 'echosphere-git-checkout-sync-test-'))
+  const directoryPath = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-git-checkout-sync-test-'))
 
   try {
     return await callback(directoryPath)

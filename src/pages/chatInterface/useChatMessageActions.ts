@@ -92,7 +92,7 @@ export function useChatMessageActions({
         chatMessages.setSelectedChatMode(nextMode)
       }
 
-      void window.echosphereChat
+      void window.tidecodeChat
         .submitToolDecision({
           customAnswer: submission.customAnswer,
           invocationId: invocation.id,

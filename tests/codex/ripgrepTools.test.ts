@@ -43,7 +43,7 @@ test('buildRipgrepCommandCandidates resolves packaged ripgrep from an app.asar r
   const packagedResourcesRoot = path.join('C:', 'repo', 'resources')
   const packagedBinaryPath = path.join(packagedResourcesRoot, 'ripgrep', process.platform === 'win32' ? 'rg.exe' : 'rg')
   const candidates = await __testOnly.buildRipgrepCommandCandidates({
-    executablePath: path.join('C:', 'repo', 'Echosphere.exe'),
+    executablePath: path.join('C:', 'repo', 'TideCode.exe'),
     isPackagedApp: true,
     pathExistsImpl: async (candidatePath) => candidatePath === packagedBinaryPath,
     resourcesPath: path.join(packagedResourcesRoot, 'app.asar'),
@@ -100,7 +100,7 @@ test('runRipgrepWithCandidates retries another executable after ENOENT', async (
 })
 
 test('runRipgrepFallback lists files recursively when ripgrep is unavailable', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'echosphere-ripgrep-list-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-ripgrep-list-'))
   await fs.mkdir(path.join(workspaceRootPath, 'src', 'nested'), { recursive: true })
   await fs.mkdir(path.join(workspaceRootPath, 'node_modules', 'pkg'), { recursive: true })
   await fs.writeFile(path.join(workspaceRootPath, 'src', 'nested', 'file.ts'), 'export const value = 1;\n')
@@ -118,7 +118,7 @@ test('runRipgrepFallback lists files recursively when ripgrep is unavailable', a
 })
 
 test('runRipgrepFallback filters recursive file listings by glob', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'echosphere-ripgrep-glob-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-ripgrep-glob-'))
   await fs.mkdir(path.join(workspaceRootPath, 'src', 'nested'), { recursive: true })
   await fs.writeFile(path.join(workspaceRootPath, 'src', 'nested', 'file.ts'), 'export const value = 1;\n')
   await fs.writeFile(path.join(workspaceRootPath, 'src', 'nested', 'file.test.ts'), 'test()\n')
@@ -132,7 +132,7 @@ test('runRipgrepFallback filters recursive file listings by glob', async () => {
 })
 
 test('runRipgrepFallback searches file contents and emits json match lines', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'echosphere-ripgrep-search-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-ripgrep-search-'))
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.writeFile(path.join(workspaceRootPath, 'src', 'example.ts'), 'const foo = 1;\nconst bar = foo + 1;\n')
   await fs.writeFile(path.join(workspaceRootPath, 'src', 'other.ts'), 'const baz = 2;\n')
@@ -167,7 +167,7 @@ test('runRipgrepFallback searches file contents and emits json match lines', asy
 })
 
 test('runRipgrepFallback searches file contents with ripgrep-style grep output', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'echosphere-ripgrep-grep-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-ripgrep-grep-'))
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.mkdir(path.join(workspaceRootPath, '.git'), { recursive: true })
   await fs.writeFile(path.join(workspaceRootPath, 'src', 'example.ts'), 'const foo = 1;\nconst bar = foo + 1;\n')
@@ -188,7 +188,7 @@ test('runRipgrepFallback searches file contents with ripgrep-style grep output',
 })
 
 test('runRipgrepFallback supports ripgrep-style grep output when search path is a file', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'echosphere-ripgrep-grep-file-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-ripgrep-grep-file-'))
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   const filePath = path.join(workspaceRootPath, 'src', 'example.ts')
   await fs.writeFile(filePath, 'const foo = 1;\nconst bar = foo + 1;\n')

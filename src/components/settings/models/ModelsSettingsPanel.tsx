@@ -81,7 +81,7 @@ export function ModelsSettingsPanel({ providersState }: ModelsSettingsPanelProps
     setIsSavingModel(true)
     setOperationError(null)
     try {
-      replaceCustomModels(await window.echosphereModels.saveCustomModel(input))
+      replaceCustomModels(await window.tidecodeModels.saveCustomModel(input))
     } finally {
       setIsSavingModel(false)
     }
@@ -92,7 +92,7 @@ export function ModelsSettingsPanel({ providersState }: ModelsSettingsPanelProps
     setIsRemovingModel(true)
     setOperationError(null)
     try {
-      replaceCustomModels(await window.echosphereModels.removeCustomModel(modelPendingRemoval.id))
+      replaceCustomModels(await window.tidecodeModels.removeCustomModel(modelPendingRemoval.id))
       setToggleState((currentValue) => {
         const nextValue = { ...currentValue }
         delete nextValue[modelPendingRemoval.id]

@@ -84,7 +84,7 @@ export function useGitCommit({
     setErrorMessage(null)
 
     try {
-      const nextStatus = await window.echosphereGit.getStatus(requestWorkspacePath)
+      const nextStatus = await window.tidecodeGit.getStatus(requestWorkspacePath)
       if (requestId === statusRequestIdRef.current && requestWorkspacePath === activeWorkspacePathRef.current) {
         setStatus(nextStatus)
       }
@@ -114,7 +114,7 @@ export function useGitCommit({
       return
     }
 
-    const unsubscribe = window.echosphereWorkspace.onExplorerChange(() => {
+    const unsubscribe = window.tidecodeWorkspace.onExplorerChange(() => {
       void refreshStatus()
     })
 
@@ -159,7 +159,7 @@ export function useGitCommit({
     const pendingCommitOperation = beginSourceControlCommitOperation(requestWorkspacePath, input.action)
 
     try {
-      const result = await window.echosphereGit.commit({
+      const result = await window.tidecodeGit.commit({
         action: input.action,
         includeUnstaged: input.includeUnstaged,
         message: input.message,

@@ -2,7 +2,7 @@ import { Buffer } from 'node:buffer'
 import type { ModelMessage } from 'ai'
 import { REPLAY_CODEC_SCHEMA, type EncodedReplayValue } from './contracts'
 
-const TYPE_KEY = '__echosphereReplayType'
+const TYPE_KEY = '__tidecodeReplayType'
 
 function encodeValue(value: unknown, seen: WeakSet<object>): EncodedReplayValue | undefined {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') {

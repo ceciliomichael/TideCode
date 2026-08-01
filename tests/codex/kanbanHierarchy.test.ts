@@ -14,7 +14,7 @@ import {
 } from '../../electron/kanban/store'
 
 test('kanban parent tasks expose child progress and auto-complete with subtasks', async () => {
-  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-kanban-hierarchy-'))
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-kanban-hierarchy-'))
   const workspaceRootPath = path.join(tempRootPath, 'workspace')
   const kanbanHomePath = path.join(tempRootPath, 'home')
 
@@ -78,7 +78,7 @@ test('kanban parent tasks expose child progress and auto-complete with subtasks'
 })
 
 test('kanban hierarchy survives persistence round trips', async () => {
-  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-kanban-hierarchy-persist-'))
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-kanban-hierarchy-persist-'))
   const workspaceRootPath = path.join(tempRootPath, 'workspace')
   const kanbanHomePath = path.join(tempRootPath, 'home')
 

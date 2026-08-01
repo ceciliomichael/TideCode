@@ -2,13 +2,7 @@ import { EventEmitter } from 'node:events'
 import type { ToolSet } from 'ai'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
-import type {
-  McpAddServerInput,
-  McpServerConfig,
-  McpServerStatus,
-  McpState,
-  McpTool,
-} from '../../src/types/mcp'
+import type { McpAddServerInput, McpServerConfig, McpServerStatus, McpState, McpTool } from '../../src/types/mcp'
 import { createMcpToolSetForServer } from './toolAdapter'
 import { connectMcpServer } from './client'
 import {
@@ -111,7 +105,9 @@ async function closeTransport(transport: Transport | null) {
     return
   }
 
-  const maybeTerminable = transport as Transport & { terminateSession?: () => Promise<void> }
+  const maybeTerminable = transport as Transport & {
+    terminateSession?: () => Promise<void>
+  }
   if (typeof maybeTerminable.terminateSession === 'function') {
     await maybeTerminable.terminateSession().catch(() => undefined)
   }
@@ -236,7 +232,16 @@ class McpWorkspaceSession {
     this.runtimesById.set(serverId, nextRuntime)
 
     try {
-      const connected = await connectMcpServer(config, this.workspacePath)
+      const connected = await connectMcpServer(config, this.workspacePath, (tools) => {
+        nextRuntime.tools = tools
+        if (nextRuntime.status.status === 'connected') {
+          nextRuntime.status = {
+            ...nextRuntime.status,
+            toolCount: tools.length,
+            tools,
+          }
+        }
+      })
       nextRuntime.client = connected.client
       nextRuntime.transport = connected.transport
       nextRuntime.tools = connected.tools
@@ -327,7 +332,7 @@ class McpWorkspaceSession {
       throw new Error(`MCP server not found: ${serverId}`)
     }
 
-    if (config.isReadOnly || config.owner !== 'echosphere') {
+    if (config.isReadOnly || config.owner !== 'tidecode') {
       throw new Error(`MCP server "${config.name}" is managed by ${config.owner} and is read-only in TideCode.`)
     }
 
@@ -412,7 +417,7 @@ class McpWorkspaceSession {
       throw new Error(`MCP server not found: ${serverId}`)
     }
 
-    if (config.isReadOnly || config.owner !== 'echosphere') {
+    if (config.isReadOnly || config.owner !== 'tidecode') {
       throw new Error(`MCP server "${config.name}" is managed by ${config.owner} and cannot be removed from TideCode.`)
     }
 
@@ -450,8 +455,10 @@ class McpWorkspaceSession {
       throw new Error(`MCP server not found: ${serverId}`)
     }
 
-    if (config.isReadOnly || config.owner !== 'echosphere') {
-      throw new Error(`MCP server "${config.name}" is managed by ${config.owner} and its tool overrides are read-only in TideCode.`)
+    if (config.isReadOnly || config.owner !== 'tidecode') {
+      throw new Error(
+        `MCP server "${config.name}" is managed by ${config.owner} and its tool overrides are read-only in TideCode.`,
+      )
     }
 
     const currentDisabledTools = new Set(config.toolConfiguration?.disabledTools ?? [])
@@ -501,7 +508,16 @@ class McpWorkspaceSession {
         continue
       }
 
-      Object.assign(toolSet, createMcpToolSetForServer(runtime.config, runtime.client, runtime.tools))
+      try {
+        const serverTools = createMcpToolSetForServer(runtime.config, runtime.client, runtime.tools)
+        const collisions = Object.keys(serverTools).filter((toolId) => toolId in toolSet)
+        if (collisions.length > 0) {
+          throw new Error(`MCP catalog IDs already exist: ${collisions.join(', ')}`)
+        }
+        Object.assign(toolSet, serverTools)
+      } catch (error) {
+        console.error(`Failed to catalog MCP tools for server "${runtime.config.name}".`, error)
+      }
     }
 
     return toolSet

@@ -1,188 +1,229 @@
-import { isRecord } from './dynamicToolContracts'
+import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv'
+import Ajv2019 from 'ajv/dist/2019.js'
+import Ajv2020 from 'ajv/dist/2020.js'
+import addFormats from 'ajv-formats'
 
 export interface JsonSchemaValidationIssue {
   message: string
   path: string
 }
 
-function formatPath(path: string, key: string | number) {
-  if (typeof key === 'number') {
-    return `${path}[${key}]`
-  }
+export interface CompiledJsonSchemaValidator {
+  validate: (value: unknown) => JsonSchemaValidationIssue[]
+}
 
+export type JsonSchemaCompilationResult =
+  | { success: true; validator: CompiledJsonSchemaValidator }
+  | { error: string; success: false }
+
+const MAX_SCHEMA_DEPTH = 256
+const MAX_SCHEMA_BYTES = 2 * 1024 * 1024
+
+function configureAjv<T extends Ajv | Ajv2019 | Ajv2020>(ajv: T): T {
+  addFormats(ajv)
+  return ajv
+}
+
+const draft7Validator = configureAjv(
+  new Ajv({
+    allErrors: true,
+    allowMatchingProperties: true,
+    allowUnionTypes: true,
+    strictSchema: true,
+    strictTuples: false,
+    strictTypes: false,
+    validateFormats: true,
+  }),
+)
+
+const draft2019Validator = configureAjv(
+  new Ajv2019({
+    allErrors: true,
+    allowMatchingProperties: true,
+    allowUnionTypes: true,
+    strictSchema: true,
+    strictTuples: false,
+    strictTypes: false,
+    validateFormats: true,
+  }),
+)
+
+const draft2020Validator = configureAjv(
+  new Ajv2020({
+    allErrors: true,
+    allowMatchingProperties: true,
+    allowUnionTypes: true,
+    strictSchema: true,
+    strictTuples: false,
+    strictTypes: false,
+    validateFormats: true,
+  }),
+)
+
+function decodeJsonPointerSegment(value: string) {
+  return value.replaceAll('~1', '/').replaceAll('~0', '~')
+}
+
+function formatPropertyPath(path: string, key: string) {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`
 }
 
-function typeMatches(value: unknown, type: string) {
-  switch (type) {
-    case 'array':
-      return Array.isArray(value)
-    case 'boolean':
-      return typeof value === 'boolean'
-    case 'integer':
-      return typeof value === 'number' && Number.isInteger(value)
-    case 'null':
-      return value === null
-    case 'number':
-      return typeof value === 'number' && Number.isFinite(value)
-    case 'object':
-      return isRecord(value)
-    case 'string':
-      return typeof value === 'string'
-    default:
-      return true
+function formatInstancePath(instancePath: string) {
+  if (!instancePath) {
+    return '$'
   }
+
+  return instancePath
+    .split('/')
+    .slice(1)
+    .map(decodeJsonPointerSegment)
+    .reduce(
+      (path, segment) => (/^\d+$/u.test(segment) ? `${path}[${segment}]` : formatPropertyPath(path, segment)),
+      '$',
+    )
 }
 
-function readSchemaTypes(schema: Record<string, unknown>) {
-  if (typeof schema.type === 'string') {
-    return [schema.type]
+function toValidationIssue(error: ErrorObject): JsonSchemaValidationIssue {
+  let path = formatInstancePath(error.instancePath)
+  let message = error.message ?? `failed ${error.keyword} validation`
+
+  if (error.keyword === 'required') {
+    const missingProperty = typeof error.params.missingProperty === 'string' ? error.params.missingProperty : null
+    if (missingProperty) {
+      path = formatPropertyPath(path, missingProperty)
+    }
+    message = 'is required'
+  } else if (error.keyword === 'additionalProperties') {
+    const additionalProperty =
+      typeof error.params.additionalProperty === 'string' ? error.params.additionalProperty : null
+    if (additionalProperty) {
+      path = formatPropertyPath(path, additionalProperty)
+    }
+    message = 'is not allowed'
   }
 
-  if (Array.isArray(schema.type)) {
-    return schema.type.filter((value): value is string => typeof value === 'string')
-  }
-
-  return []
+  return { message, path }
 }
 
-function validateAgainstSchema(
-  value: unknown,
-  schema: Record<string, unknown>,
-  path: string,
-  issues: JsonSchemaValidationIssue[],
-  depth: number,
-) {
-  if (issues.length >= 25 || depth > 32) {
-    return
-  }
+function selectMostRelevantUnionBranches(errors: readonly ErrorObject[]) {
+  const excludedErrors = new Set<ErrorObject>()
+  const unionErrors = errors
+    .filter((error) => error.keyword === 'oneOf' || error.keyword === 'anyOf')
+    .sort((left, right) => right.schemaPath.length - left.schemaPath.length)
 
-  if (Array.isArray(schema.allOf)) {
-    for (const branch of schema.allOf) {
-      if (isRecord(branch)) {
-        validateAgainstSchema(value, branch, path, issues, depth + 1)
-      }
+  for (const unionError of unionErrors) {
+    const branchPrefix = `${unionError.schemaPath}/`
+    const errorsByBranch = new Map<string, ErrorObject[]>()
+    for (const error of errors) {
+      if (error === unionError || !error.schemaPath.startsWith(branchPrefix)) continue
+      const branch = error.schemaPath.slice(branchPrefix.length).split('/')[0]
+      if (!/^\d+$/u.test(branch)) continue
+      const branchErrors = errorsByBranch.get(branch) ?? []
+      branchErrors.push(error)
+      errorsByBranch.set(branch, branchErrors)
+    }
+
+    if (errorsByBranch.size === 0) continue
+    const selectedBranch = Array.from(errorsByBranch.entries()).sort((left, right) => {
+      const activeLeftErrors = left[1].filter((error) => !excludedErrors.has(error)).length
+      const activeRightErrors = right[1].filter((error) => !excludedErrors.has(error)).length
+      return activeLeftErrors - activeRightErrors || Number(left[0]) - Number(right[0])
+    })[0]?.[0]
+
+    for (const [branch, branchErrors] of errorsByBranch.entries()) {
+      if (branch === selectedBranch) continue
+      branchErrors.forEach((error) => excludedErrors.add(error))
     }
   }
 
-  for (const keyword of ['anyOf', 'oneOf'] as const) {
-    const branches = schema[keyword]
-    if (!Array.isArray(branches)) {
+  return errors.filter((error) => !excludedErrors.has(error))
+}
+
+function measureSchema(schema: Record<string, unknown>) {
+  let serialized: string
+  try {
+    serialized = JSON.stringify(schema)
+  } catch {
+    return {
+      error: 'Schema must be JSON-serializable.',
+      success: false as const,
+    }
+  }
+
+  if (Buffer.byteLength(serialized, 'utf8') > MAX_SCHEMA_BYTES) {
+    return {
+      error: `Schema exceeds the ${MAX_SCHEMA_BYTES}-byte compilation limit.`,
+      success: false as const,
+    }
+  }
+
+  const pending: Array<{ depth: number; value: unknown }> = [{ depth: 0, value: schema }]
+  while (pending.length > 0) {
+    const current = pending.pop()
+    if (!current) continue
+    if (current.depth > MAX_SCHEMA_DEPTH) {
+      return {
+        error: `Schema exceeds the maximum supported depth of ${MAX_SCHEMA_DEPTH}.`,
+        success: false as const,
+      }
+    }
+
+    if (Array.isArray(current.value)) {
+      for (const item of current.value) {
+        pending.push({ depth: current.depth + 1, value: item })
+      }
       continue
     }
 
-    const branchIssues: JsonSchemaValidationIssue[][] = []
-    const branchMatches = branches.some((branch) => {
-      if (!isRecord(branch)) {
-        return true
-      }
-
-      const issuesForBranch: JsonSchemaValidationIssue[] = []
-      validateAgainstSchema(value, branch, path, issuesForBranch, depth + 1)
-      branchIssues.push(issuesForBranch)
-      return issuesForBranch.length === 0
-    })
-    if (!branchMatches) {
-      const mostLikelyBranch = branchIssues
-        .sort((left, right) => left.length - right.length)[0]
-      if (mostLikelyBranch && mostLikelyBranch.length > 0) {
-        issues.push(...mostLikelyBranch)
-      } else {
-        issues.push({ message: `must match one of the allowed schemas`, path })
-      }
-      return
-    }
-  }
-
-  if ('const' in schema && !Object.is(value, schema.const)) {
-    issues.push({ message: `must equal ${JSON.stringify(schema.const)}`, path })
-    return
-  }
-
-  if (Array.isArray(schema.enum) && !schema.enum.some((candidate) => Object.is(candidate, value))) {
-    issues.push({ message: `must be one of ${schema.enum.map((candidate) => JSON.stringify(candidate)).join(', ')}`, path })
-    return
-  }
-
-  const schemaTypes = readSchemaTypes(schema)
-  if (schemaTypes.length > 0 && !schemaTypes.some((type) => typeMatches(value, type))) {
-    issues.push({ message: `must be ${schemaTypes.join(' or ')}`, path })
-    return
-  }
-
-  if (typeof value === 'string') {
-    if (typeof schema.minLength === 'number' && value.length < schema.minLength) {
-      issues.push({ message: `must contain at least ${schema.minLength} characters`, path })
-    }
-    if (typeof schema.maxLength === 'number' && value.length > schema.maxLength) {
-      issues.push({ message: `must contain at most ${schema.maxLength} characters`, path })
-    }
-    if (typeof schema.pattern === 'string') {
-      try {
-        if (!new RegExp(schema.pattern, 'u').test(value)) {
-          issues.push({ message: `must match ${JSON.stringify(schema.pattern)}`, path })
-        }
-      } catch {
-        // An invalid provider pattern should not make every invocation unusable.
+    if (typeof current.value === 'object' && current.value !== null) {
+      for (const item of Object.values(current.value)) {
+        pending.push({ depth: current.depth + 1, value: item })
       }
     }
   }
 
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    if (typeof schema.minimum === 'number' && value < schema.minimum) {
-      issues.push({ message: `must be greater than or equal to ${schema.minimum}`, path })
-    }
-    if (typeof schema.maximum === 'number' && value > schema.maximum) {
-      issues.push({ message: `must be less than or equal to ${schema.maximum}`, path })
-    }
+  return { success: true as const }
+}
+
+function selectValidator(schema: Record<string, unknown>) {
+  const dialect = typeof schema.$schema === 'string' ? schema.$schema.toLowerCase() : ''
+  if (!dialect || dialect.includes('2020-12')) {
+    return draft2020Validator
   }
-
-  if (Array.isArray(value)) {
-    if (typeof schema.minItems === 'number' && value.length < schema.minItems) {
-      issues.push({ message: `must contain at least ${schema.minItems} items`, path })
-    }
-    if (typeof schema.maxItems === 'number' && value.length > schema.maxItems) {
-      issues.push({ message: `must contain at most ${schema.maxItems} items`, path })
-    }
-    if (isRecord(schema.items)) {
-      value.forEach((item, index) => validateAgainstSchema(item, schema.items as Record<string, unknown>, formatPath(path, index), issues, depth + 1))
-    }
+  if (dialect.includes('2019-09')) {
+    return draft2019Validator
   }
-
-  if (!isRecord(value)) {
-    return
+  if (dialect.includes('draft-07')) {
+    return draft7Validator
   }
+  throw new Error(`Unsupported JSON Schema dialect: ${schema.$schema}`)
+}
 
-  const properties = isRecord(schema.properties) ? schema.properties : {}
-  const required = Array.isArray(schema.required)
-    ? schema.required.filter((key): key is string => typeof key === 'string')
-    : []
-
-  for (const key of required) {
-    if (!(key in value)) {
-      issues.push({ message: 'is required', path: formatPath(path, key) })
-    }
-  }
-
-  for (const [key, propertyValue] of Object.entries(value)) {
-    const propertySchema = properties[key]
-    if (isRecord(propertySchema)) {
-      validateAgainstSchema(propertyValue, propertySchema, formatPath(path, key), issues, depth + 1)
-      continue
-    }
-
-    if (schema.additionalProperties === false) {
-      issues.push({ message: 'is not allowed', path: formatPath(path, key) })
-    } else if (isRecord(schema.additionalProperties)) {
-      validateAgainstSchema(propertyValue, schema.additionalProperties, formatPath(path, key), issues, depth + 1)
-    }
+function createValidator(validateFunction: ValidateFunction<unknown>): CompiledJsonSchemaValidator {
+  return {
+    validate: (value) => {
+      if (validateFunction(value)) {
+        return []
+      }
+      return selectMostRelevantUnionBranches(validateFunction.errors ?? []).slice(0, 25).map(toValidationIssue)
+    },
   }
 }
 
-export function validateJsonSchema(value: unknown, schema: Record<string, unknown>) {
-  const issues: JsonSchemaValidationIssue[] = []
-  validateAgainstSchema(value, schema, '$', issues, 0)
-  return issues
+export function compileJsonSchema(schema: Record<string, unknown>): JsonSchemaCompilationResult {
+  const measurement = measureSchema(schema)
+  if (!measurement.success) {
+    return measurement
+  }
+
+  try {
+    const validateFunction = selectValidator(schema).compile<unknown>(schema)
+    return { success: true, validator: createValidator(validateFunction) }
+  } catch (error) {
+    const message =
+      error instanceof Error && error.message.trim().length > 0 ? error.message : 'Schema compilation failed.'
+    return { error: message, success: false }
+  }
 }
 
 export function getFirstValidationError(issues: readonly JsonSchemaValidationIssue[]) {

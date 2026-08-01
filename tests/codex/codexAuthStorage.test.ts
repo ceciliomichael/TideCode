@@ -57,11 +57,11 @@ function buildStoredAuthData(input: { accountId: string; email: string; subject:
   return authData
 }
 
-test('Codex auth paths resolve under EchoSphere config storage', async () => {
-  const homeDirectory = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-codex-paths-'))
+test('Codex auth paths resolve under TideCode config storage', async () => {
+  const homeDirectory = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-codex-paths-'))
 
   try {
-    const expectedRootPath = path.join(homeDirectory, '.echosphere', 'config', 'providers', 'codex')
+    const expectedRootPath = path.join(homeDirectory, '.tidecode', 'config', 'providers', 'codex')
     assert.equal(getCodexStorageRootPath(homeDirectory), expectedRootPath)
     assert.equal(getCodexAuthFilePath(homeDirectory), path.join(expectedRootPath, 'auth.json'))
     assert.equal(getCodexAccountsDirectoryPath(homeDirectory), path.join(expectedRootPath, 'accounts'))
@@ -117,8 +117,8 @@ test('Codex token parsing accepts nested and fallback account claims', () => {
   assert.equal(parsedFallbackAuth?.tokens.account_key, 'acct-access::user-sub-2')
 })
 
-test('Codex auth storage writes and reads EchoSphere-owned files', async () => {
-  const homeDirectory = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-codex-storage-'))
+test('Codex auth storage writes and reads TideCode-owned files', async () => {
+  const homeDirectory = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-codex-storage-'))
   const authData = buildStoredAuthData({
     accountId: 'workspace-a',
     email: 'person@example.com',
@@ -127,7 +127,7 @@ test('Codex auth storage writes and reads EchoSphere-owned files', async () => {
 
   try {
     await writeStoredCodexAuthData(authData, { homeDirectory })
-    const authFilePath = path.join(homeDirectory, '.echosphere', 'config', 'providers', 'codex', 'auth.json')
+    const authFilePath = path.join(homeDirectory, '.tidecode', 'config', 'providers', 'codex', 'auth.json')
     assert.equal(await fs.readFile(authFilePath, 'utf8'), `${JSON.stringify(authData, null, 2)}`)
 
     const storedAuthData = await readStoredCodexAuthData({ homeDirectory })
@@ -151,7 +151,7 @@ test('Codex auth storage writes and reads EchoSphere-owned files', async () => {
 })
 
 test('Codex auth storage keeps same Gmail accounts separate across workspaces', async () => {
-  const homeDirectory = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-codex-duplicates-'))
+  const homeDirectory = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-codex-duplicates-'))
   const firstAuthData = buildStoredAuthData({
     accountId: 'workspace-a',
     email: 'person@example.com',

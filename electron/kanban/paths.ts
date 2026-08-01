@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 
-const KANBAN_ROOT_SEGMENTS = ['.echosphere', 'kanban'] as const
+const KANBAN_ROOT_SEGMENTS = ['.tidecode', 'kanban'] as const
 const BOARD_DIRECTORY_NAME = 'boards'
 const CHECKPOINT_DIRECTORY_NAME = 'checkpoints'
 

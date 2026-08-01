@@ -65,8 +65,10 @@ export function CodexAccountsList({ accounts, isBusy, onSwitchAccount }: CodexAc
       {accounts.map((account) => {
         const usageDetail = getUsageDetail(account)
         const canSwitch = !account.isActive
-        const baseCardClassName =
-          'flex w-full flex-col gap-3 rounded-xl border border-border bg-background px-3 py-3 text-left transition-colors md:flex-row md:items-start md:justify-between'
+        const baseCardClassName = [
+          'flex w-full flex-col gap-3 rounded-xl border px-3 py-3 text-left transition-colors md:flex-row md:items-start md:justify-between',
+          account.isActive ? 'border-brand/60 bg-brand-soft' : 'border-border bg-background',
+        ].join(' ')
         const clickableCardClassName = `${baseCardClassName} cursor-pointer hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60`
 
         const content = (
@@ -92,7 +94,7 @@ export function CodexAccountsList({ accounts, isBusy, onSwitchAccount }: CodexAc
                     </span>
                   ) : null}
                   {account.isActive ? (
-                    <span className="inline-flex h-7 items-center rounded-full border border-border bg-surface px-3 text-[11px] font-medium text-muted-foreground">
+                    <span className="inline-flex h-7 items-center rounded-full border border-brand/50 bg-brand-soft px-3 text-[11px] font-medium text-brand-soft-foreground">
                       <span className="leading-none">active</span>
                     </span>
                   ) : null}

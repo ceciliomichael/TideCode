@@ -31,7 +31,7 @@ function getLineNumberRowClassName(status: WorkspaceEditorLineStatus | null) {
   }
 
   if (status === 'changed') {
-    return 'border-r-[3px] border-blue-500/80'
+    return 'border-r-[3px] border-brand/80'
   }
 
   return 'border-r-[3px] border-transparent'

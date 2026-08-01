@@ -12,7 +12,7 @@ import {
 } from '../../electron/kanban/store'
 
 test('moving a task to done requires all acceptance criteria to be complete', async () => {
-  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-kanban-ac-'))
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-kanban-ac-'))
   const workspaceRootPath = path.join(tempRootPath, 'workspace')
   const kanbanHomePath = path.join(tempRootPath, 'home')
 
@@ -74,7 +74,7 @@ test('moving a task to done requires all acceptance criteria to be complete', as
 })
 
 test('read_board without columnId returns all columns and cards in a single call', async () => {
-  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-kanban-full-'))
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-kanban-full-'))
   const workspaceRootPath = path.join(tempRootPath, 'workspace')
   const kanbanHomePath = path.join(tempRootPath, 'home')
 

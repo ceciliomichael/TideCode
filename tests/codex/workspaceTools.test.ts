@@ -51,7 +51,7 @@ interface ExecutableReplaceTool {
 }
 
 async function createWorkspaceFixture() {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-tools-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-workspace-tools-'))
 
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.mkdir(path.join(workspaceRootPath, 'nested', 'package-a', 'src'), { recursive: true })
@@ -318,7 +318,7 @@ test('createGrepToolResult still hides node_modules from root-level searches', a
 
 test('resolveReadableTargetPath keeps sandbox reads inside the workspace', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
-  const outsideFilePath = path.join(tmpdir(), `echosphere-outside-${Date.now()}.txt`)
+  const outsideFilePath = path.join(tmpdir(), `tidecode-outside-${Date.now()}.txt`)
 
   try {
     await fs.writeFile(outsideFilePath, 'outside workspace\n', 'utf8')
@@ -370,7 +370,7 @@ test('sandbox list, glob, and grep can inspect global .agents skill files', asyn
     .then((stats) => stats.isDirectory())
     .catch(() => false)
   await fs.mkdir(globalAgentsDirectory, { recursive: true })
-  const skillDirectory = await fs.mkdtemp(path.join(globalAgentsDirectory, 'echosphere-readonly-tools-'))
+  const skillDirectory = await fs.mkdtemp(path.join(globalAgentsDirectory, 'tidecode-readonly-tools-'))
   const scriptsDirectory = path.join(skillDirectory, 'scripts')
   const scriptPath = path.join(scriptsDirectory, 'validate.mjs')
 
@@ -412,7 +412,7 @@ test('sandbox list, glob, and grep can inspect global .agents skill files', asyn
 
 test('sandbox list rejects directories outside the workspace and global .agents', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
-  const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-sandbox-list-outside-'))
+  const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-sandbox-list-outside-'))
 
   try {
     const tools = await createAgentTools(
@@ -468,7 +468,7 @@ test('sandbox write and replace remain blocked inside global .agents', async () 
 
 test('resolveReadableTargetPath allows Full Access reads outside the workspace and createReadToolResult can read them', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
-  const outsideFilePath = path.join(tmpdir(), `echosphere-outside-${Date.now()}.txt`)
+  const outsideFilePath = path.join(tmpdir(), `tidecode-outside-${Date.now()}.txt`)
 
   try {
     await fs.writeFile(outsideFilePath, 'outside workspace\n', 'utf8')
@@ -493,7 +493,7 @@ test('resolveReadableTargetPath allows Full Access reads outside the workspace a
 
 test('createAgentTools list allows explicit external directories in Full Access mode', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
-  const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-outside-list-'))
+  const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-outside-list-'))
   const outsideFileName = 'external-marker.txt'
 
   try {
@@ -542,7 +542,7 @@ test('workspace tool schemas use path consistently for filesystem targets', asyn
 
 test('createAgentTools glob and grep allow explicit external paths in Full Access mode', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
-  const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-outside-search-'))
+  const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-outside-search-'))
   const outsideFileName = 'external-search.ts'
   const outsideFilePath = path.join(outsideDirectoryPath, outsideFileName)
 
@@ -583,7 +583,7 @@ test('createAgentTools glob and grep allow explicit external paths in Full Acces
 
 test('createAgentTools write and replace allow explicit external files in Full Access mode', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
-  const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-outside-write-'))
+  const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-outside-write-'))
   const outsideFilePath = path.join(outsideDirectoryPath, 'external-write.txt')
 
   try {
@@ -696,7 +696,7 @@ test('createAgentTools write rejects line-ending-only rewrites', async () => {
 })
 
 test('createApplyPatchToolResult diffs against the original file snapshot for repeated file edits', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-workspace-tools-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-workspace-tools-'))
 
   try {
     await fs.writeFile(path.join(workspaceRootPath, 'sample.txt'), 'one\ntwo\nthree\n', 'utf8')

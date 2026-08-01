@@ -2,7 +2,7 @@ import { app, BrowserWindow, nativeTheme } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import type { StartChatStreamInput } from '../src/types/chat'
-import { flushStoredSettingsUpdates, getStoredSettings } from './settings/store'
+import { flushStoredSettingsUpdates } from './settings/store'
 import { applyTideCodeAppIcon } from './window/branding'
 import { applyWindowTheme } from './window/theme'
 import { createApplicationWindow } from './window/createApplicationWindow'
@@ -181,19 +181,11 @@ app.whenReady().then(() => {
   nativeTheme.on('updated', () => {
     const currentWindow = win
 
-    if (!currentWindow) {
+    if (!currentWindow || nativeTheme.themeSource !== 'system') {
       return
     }
 
-    void getStoredSettings()
-      .then((settings) => {
-        if (settings.appearance === 'system') {
-          applyWindowTheme(currentWindow, settings.appearance)
-          applyTideCodeAppIcon(currentWindow)
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to sync native theme', error)
-      })
+    applyWindowTheme(currentWindow, 'system')
+    applyTideCodeAppIcon(currentWindow)
   })
 })

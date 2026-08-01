@@ -15,10 +15,10 @@ import { electronApp } from '../electronApp'
 import { writeJsonFileAtomic } from './fileStore'
 import { isChatProviderId as isSupportedChatProviderId } from '../providers/providerIds'
 
-const CONFIG_ROOT_SEGMENTS = ['.echosphere', 'config'] as const
+const CONFIG_ROOT_SEGMENTS = ['.tidecode', 'config'] as const
 const SETTINGS_FILE_NAME = 'settings.json'
 const WORKSPACE_UI_STATE_FILE_NAME = 'workspace-ui-state.json'
-const SETTINGS_HOME_OVERRIDE_ENV = 'ECHOSPHERE_SETTINGS_HOME'
+const SETTINGS_HOME_OVERRIDE_ENV = 'TIDECODE_SETTINGS_HOME'
 let settingsUpdateQueue: Promise<void> = Promise.resolve()
 let cachedStoredSettings: AppSettings | null = null
 const SOURCE_CONTROL_SECTION_IDS: readonly SourceControlSectionId[] = ['commit', 'changes', 'history']

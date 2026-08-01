@@ -71,7 +71,7 @@ export function useWorkspaceTabActions({
         ]
       })
 
-      void window.echosphereWorkspace
+      void window.tidecodeWorkspace
         .readFile({ relativePath, workspaceRootPath })
         .then((result) => {
           if (activeWorkspacePathRef.current !== workspaceRootPath) return
@@ -186,7 +186,7 @@ export function useWorkspaceTabActions({
       openWorkspacePreviewTab(relativePath, tabKey, 'markdown-preview', initialContent, initialStatus)
       if (!workspaceRootPath) return
 
-      void window.echosphereWorkspace
+      void window.tidecodeWorkspace
         .readFile({ relativePath, workspaceRootPath })
         .then((result) => {
           if (activeWorkspacePathRef.current !== workspaceRootPath) return
@@ -251,11 +251,11 @@ export function useWorkspaceTabActions({
       if (relativePath) handleOpenWorkspaceFile(relativePath)
     }
 
-    window.addEventListener('echosphere:open-markdown-preview', handleOpenMarkdownPreviewEvent)
-    window.addEventListener('echosphere:open-file', handleOpenFileEvent)
+    window.addEventListener('tidecode:open-markdown-preview', handleOpenMarkdownPreviewEvent)
+    window.addEventListener('tidecode:open-file', handleOpenFileEvent)
     return () => {
-      window.removeEventListener('echosphere:open-markdown-preview', handleOpenMarkdownPreviewEvent)
-      window.removeEventListener('echosphere:open-file', handleOpenFileEvent)
+      window.removeEventListener('tidecode:open-markdown-preview', handleOpenMarkdownPreviewEvent)
+      window.removeEventListener('tidecode:open-file', handleOpenFileEvent)
     }
   }, [handleOpenWorkspaceFile, handleOpenWorkspaceMarkdownPreview])
 

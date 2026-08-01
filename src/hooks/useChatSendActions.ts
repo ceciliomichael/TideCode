@@ -206,7 +206,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
 
       const streamId = conversationState?.activeStreamId ?? null
       if (streamId) {
-        await window.echosphereChat.cancelStream(streamId)
+        await window.tidecodeChat.cancelStream(streamId)
       }
 
       await waitForConversationRunState(
@@ -379,7 +379,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       try {
         let persistedConversation
         try {
-          persistedConversation = await window.echosphereHistory.getConversation(conversationId)
+          persistedConversation = await window.tidecodeHistory.getConversation(conversationId)
         } catch (caughtError) {
           console.error(caughtError)
           input.cancelEditingMessage()

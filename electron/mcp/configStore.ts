@@ -4,7 +4,7 @@ import { app } from 'electron'
 import type { McpAddServerInput, McpConfigOwner, McpConfigSource, McpServerConfig } from '../../src/types/mcp'
 import { type McpSettingsFile, parseMcpAddServerInput, parseMcpSettings, type RawMcpServerConfig } from './configValidation'
 
-const CONFIG_ROOT_SEGMENTS = ['.echosphere', 'mcp'] as const
+const CONFIG_ROOT_SEGMENTS = ['.tidecode', 'mcp'] as const
 const GLOBAL_CONFIG_FILENAME = 'mcp.json'
 const EXTERNAL_PROVIDER_CONFIGS = [
   { owner: 'codex', directoryName: '.codex' },
@@ -95,7 +95,7 @@ export function buildMcpServerConfig(
     ...(typeof rawConfig.env !== 'undefined' ? { env: toRecordOfStrings(rawConfig.env) } : {}),
     ...(typeof rawConfig.headers !== 'undefined' ? { headers: toRecordOfStrings(rawConfig.headers) } : {}),
     id: generateServerId(serverName),
-    isReadOnly: owner !== 'echosphere',
+    isReadOnly: owner !== 'tidecode',
     name: serverName,
     source,
     ...(typeof rawConfig.alwaysAllow !== 'undefined' || typeof rawConfig.disabledTools !== 'undefined'
@@ -173,7 +173,7 @@ export async function loadMergedMcpConfigs(): Promise<McpServerConfig[]> {
   const candidates: McpConfigCandidate[] = []
 
   candidates.push({
-    owner: 'echosphere',
+    owner: 'tidecode',
     path: getGlobalConfigPath(),
     scope: 'global',
   })
@@ -261,7 +261,7 @@ export async function appendMcpServerConfig(
 }
 
 export async function saveMcpConfig(config: McpServerConfig) {
-  if (config.isReadOnly || config.owner !== 'echosphere') {
+  if (config.isReadOnly || config.owner !== 'tidecode') {
     throw new Error(`MCP server "${config.name}" is managed by ${config.owner} and cannot be edited from TideCode.`)
   }
   void config.source
@@ -281,7 +281,7 @@ export async function replaceMcpServerConfig(
   previousServerName: string,
   config: McpServerConfig,
 ) {
-  if (config.isReadOnly || config.owner !== 'echosphere') {
+  if (config.isReadOnly || config.owner !== 'tidecode') {
     throw new Error(`MCP server "${config.name}" is managed by ${config.owner} and cannot be edited from TideCode.`)
   }
   void config.source

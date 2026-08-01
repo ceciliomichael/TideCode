@@ -109,7 +109,7 @@ import type {
   WriteTerminalSessionInput,
 } from './workspace'
 
-export interface EchosphereHistoryApi {
+export interface TideCodeHistoryApi {
   getDraftAgentContextPathSync: () => string
   ensureDraftAgentContext: () => Promise<string>
   cleanupDraftAgentContext: () => Promise<void>
@@ -134,13 +134,13 @@ export interface EchosphereHistoryApi {
   updateConversationPinned: (conversationId: string, isPinned: boolean) => Promise<ConversationRecord>
 }
 
-export interface EchosphereSettingsApi {
+export interface TideCodeSettingsApi {
   getInitialSettings: () => AppSettings
   getSettings: () => Promise<AppSettings>
   updateSettings: (input: Partial<AppSettings>) => Promise<AppSettings>
 }
 
-export interface EchosphereProvidersApi {
+export interface TideCodeProvidersApi {
   getProvidersState: (hydrate?: boolean) => Promise<ProvidersState>
   addCodexAccountWithOAuth: () => Promise<ProvidersState>
   connectCodexWithOAuth: () => Promise<ProvidersState>
@@ -152,14 +152,14 @@ export interface EchosphereProvidersApi {
   switchCodexAccount: (accountKey: string) => Promise<ProvidersState>
 }
 
-export interface EchosphereModelsApi {
+export interface TideCodeModelsApi {
   listCustomModels: () => Promise<CustomModelConfig[]>
   listProviderModels: (providerId: ChatProviderId) => Promise<ProviderModelConfig[]>
   removeCustomModel: (modelId: string) => Promise<CustomModelConfig[]>
   saveCustomModel: (input: SaveCustomModelInput) => Promise<CustomModelConfig[]>
 }
 
-export interface EchosphereChatApi {
+export interface TideCodeChatApi {
   cancelStream: (streamId: string) => Promise<void>
   compactConversation: (input: CompactConversationInput) => Promise<CompactConversationResult>
   compressConversation: (input: CompressChatHistoryInput) => Promise<string>
@@ -169,7 +169,7 @@ export interface EchosphereChatApi {
   startStream: (input: StartChatStreamInput) => Promise<StartChatStreamResult>
 }
 
-export interface EchosphereKanbanApi {
+export interface TideCodeKanbanApi {
   clearCompletedCards: (input: KanbanWorkspaceInput) => Promise<KanbanBoardData>
   createCard: (input: KanbanCreateCardRequest) => Promise<KanbanCard>
   createTask: (input: KanbanCreateTaskRequest) => Promise<KanbanCreateTaskResult>
@@ -186,7 +186,7 @@ export interface EchosphereKanbanApi {
   updateCardContent: (input: KanbanUpdateCardRequest) => Promise<KanbanCard>
 }
 
-export interface EchosphereWorkspaceApi {
+export interface TideCodeWorkspaceApi {
   createCheckpoint: (input: CreateWorkspaceCheckpointInput) => Promise<UserMessageRunCheckpoint>
   createRedoCheckpointFromSource: (sourceCheckpointId: string) => Promise<UserMessageRunCheckpoint>
   createRedoCheckpointFromSources: (sourceCheckpointIds: string[]) => Promise<UserMessageRunCheckpoint>
@@ -211,7 +211,7 @@ export interface KanbanBoardChangeEvent {
   workspaceRootPath: string
 }
 
-export interface EchosphereTerminalApi {
+export interface TideCodeTerminalApi {
   closeSession: (input: CloseTerminalSessionInput) => Promise<void>
   createSession: (input: CreateTerminalSessionInput) => Promise<CreateTerminalSessionResult>
   openExternalLink: (input: OpenExternalTerminalLinkInput) => Promise<void>
@@ -221,7 +221,7 @@ export interface EchosphereTerminalApi {
   writeToSession: (input: WriteTerminalSessionInput) => Promise<void>
 }
 
-export interface EchosphereGitApi {
+export interface TideCodeGitApi {
   checkoutBranch: (input: CheckoutGitBranchInput) => Promise<GitBranchState>
   commit: (input: GitCommitInput) => Promise<GitCommitResult>
   createAndCheckoutBranch: (input: CreateGitBranchInput) => Promise<GitBranchState>

@@ -3,7 +3,7 @@ import path from 'node:path'
 import { electronApp } from '../electronApp'
 import { getVirtualAgentContextDirectoryName } from './virtualAgentContext'
 
-const HISTORY_ROOT_SEGMENTS = ['.echosphere', 'history'] as const
+const HISTORY_ROOT_SEGMENTS = ['.tidecode', 'history'] as const
 const AGENT_CONTEXTS_DIRECTORY_NAME = 'agent-contexts'
 
 export const MESSAGE_LOG_FILE_NAME = 'messages.jsonl'

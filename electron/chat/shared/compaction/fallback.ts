@@ -59,7 +59,7 @@ export function buildFallbackCompactionPacket(input: {
   const prior = input.previousPacket
 
   const packet: LocalCompactionPacket = {
-    schema: 'echosphere.compaction_packet/v1',
+    schema: 'tidecode.compaction_packet/v1',
     packetId: createPacketId(),
     sourceDigest: input.sourceDigest,
     sourceMessageIds: input.sourceMessageIds,
@@ -88,4 +88,3 @@ export function buildFallbackCompactionPacket(input: {
   }
   return packet
 }
-

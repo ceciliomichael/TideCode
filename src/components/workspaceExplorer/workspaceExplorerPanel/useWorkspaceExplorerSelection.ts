@@ -234,9 +234,9 @@ export function useWorkspaceExplorerSelection({
           }
         }
 
-        if (typeof window !== 'undefined' && window.echosphereClipboard) {
+        if (typeof window !== 'undefined' && window.tidecodeClipboard) {
           try {
-            const osPaths = await window.echosphereClipboard.readFiles()
+            const osPaths = await window.tidecodeClipboard.readFiles()
             if (osPaths.length > 0) {
               await submitImportEntries(osPaths, pasteTargetPath)
               return

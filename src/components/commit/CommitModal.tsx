@@ -274,7 +274,7 @@ export function CommitModal({
                     disabled={isDisabled}
                     className={[
                       'flex min-h-11 w-full items-center justify-start gap-2 px-3 text-left text-sm transition-colors',
-                      isSelected ? 'bg-surface-muted text-foreground' : 'bg-surface text-muted-foreground',
+                      isSelected ? 'bg-brand-soft text-brand-soft-foreground' : 'bg-surface text-muted-foreground',
                       isDisabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-surface-muted/70 hover:text-foreground',
                     ].join(' ')}
                   >

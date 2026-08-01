@@ -6,6 +6,7 @@
     "label": "DeepSeek V4 Flash",
     "reasoningCapable": true,
     "reasoningEfforts": [
+      "none",
       "high",
       "max"
     ],
@@ -19,6 +20,7 @@
     "label": "DeepSeek V4 Pro",
     "reasoningCapable": true,
     "reasoningEfforts": [
+      "none",
       "high",
       "max"
     ],

@@ -79,10 +79,10 @@ export function WorkspaceTerminalPanelView({
                   ].join(" ")}
                 >
                   {isDragOver && dropPosition === "before" ? (
-                    <div className="absolute left-0 top-0 bottom-0 z-30 w-0.5 bg-foreground" />
+                    <div className="absolute left-0 top-0 bottom-0 z-30 w-0.5 bg-brand" />
                   ) : null}
                   {isDragOver && dropPosition === "after" ? (
-                    <div className="absolute right-0 top-0 bottom-0 z-30 w-0.5 bg-foreground" />
+                    <div className="absolute right-0 top-0 bottom-0 z-30 w-0.5 bg-brand" />
                   ) : null}
                   <button
                     type="button"
@@ -90,7 +90,7 @@ export function WorkspaceTerminalPanelView({
                     onMouseDown={handleTerminalTabMouseDown}
                     onAuxClick={(event) => handleTerminalTabAuxClick(event, tab.key)}
                     className={[
-                      "inline-flex h-full max-w-[248px] items-center gap-2 px-3 pr-9 text-sm transition-colors cursor-grab active:cursor-grabbing",
+                      "inline-flex h-full min-w-[128px] max-w-[320px] items-center gap-2 px-3 pr-9 text-sm transition-colors cursor-grab active:cursor-grabbing",
                       isActive
                         ? "border-t-2 border-t-foreground/60 bg-background text-foreground"
                         : "border-t-2 border-t-transparent bg-background text-muted-foreground hover:bg-surface-muted hover:text-foreground",

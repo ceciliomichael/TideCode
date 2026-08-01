@@ -67,7 +67,7 @@ export function buildPromptContextManifest(input: {
   const tools = stableStringify(describeTools(input.tools))
   const model = stableStringify({ modelId: input.modelId, providerId: input.providerId })
   const fingerprint = sha256(stableStringify({
-    cacheSchema: 'echosphere.prompt_context/v1',
+    cacheSchema: 'tidecode.prompt_context/v1',
     model,
     system: input.system,
     tools,

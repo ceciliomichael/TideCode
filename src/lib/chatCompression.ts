@@ -1,6 +1,6 @@
 import type { Message } from '../types/chat'
 
-const COMPRESSION_MESSAGE_NAMESPACE = "echosphere";
+const COMPRESSION_MESSAGE_NAMESPACE = "tidecode";
 const COMPRESSION_MESSAGE_ROOT = "compressed_history";
 const COMPRESSION_SUMMARY_TAG = "summary";
 const CAMP_SECTION_ORDER = [

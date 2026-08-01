@@ -74,7 +74,7 @@ export function KanbanCardItem({
     event.preventDefault()
     event.stopPropagation()
     const draggedCardId = event.dataTransfer.getData(
-      'application/x-echosphere-kanban-card',
+      'application/x-tidecode-kanban-card',
     )
     if (draggedCardId && draggedCardId !== card.id) {
       onDropAt(draggedCardId, card.columnId, index)
@@ -96,7 +96,7 @@ export function KanbanCardItem({
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = 'move'
         event.dataTransfer.setData(
-          'application/x-echosphere-kanban-card',
+          'application/x-tidecode-kanban-card',
           card.id,
         )
         onDragStart(card.id)

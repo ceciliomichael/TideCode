@@ -330,7 +330,7 @@ export function DropdownField({
                           ].join(' ')}
                         >
                           <span className="truncate pr-3">{option.label}</span>
-                          {isSelected ? <Check size={16} strokeWidth={2.2} className="shrink-0 text-foreground" /> : null}
+                          {isSelected ? <Check size={16} strokeWidth={2.2} className="shrink-0 text-brand" /> : null}
                         </button>
                       )
                     })}
@@ -360,7 +360,7 @@ export function DropdownField({
                       ].join(' ')}
                     >
                       <span className="truncate pr-3">{option.label}</span>
-                      {isSelected ? <Check size={16} strokeWidth={2.2} className="shrink-0 text-foreground" /> : null}
+                      {isSelected ? <Check size={16} strokeWidth={2.2} className="shrink-0 text-brand" /> : null}
                     </button>
                   )
                 })

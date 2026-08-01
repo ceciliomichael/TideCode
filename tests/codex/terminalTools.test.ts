@@ -55,7 +55,7 @@ function pathExists(targetPath: string) {
 }
 
 test('execute_terminal mode=execute queues command in background and mode=read fetches cleaned output', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-tools-workspace-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-terminal-tools-workspace-'))
   const nestedPath = path.join(workspaceRootPath, 'nested')
   await fs.mkdir(nestedPath, { recursive: true })
   const createCalls: Array<{
@@ -205,7 +205,7 @@ test('execute_terminal mode=read truncates large git diff output', async () => {
 })
 
 test('execute_terminal rejects directory traversal in sandbox mode', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-apply-patch-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-terminal-apply-patch-'))
   let createSessionCalled = false
 
   try {
@@ -245,7 +245,7 @@ test('execute_terminal rejects directory traversal in sandbox mode', async () =>
 })
 
 test('execute_terminal allows a global .agents skill directory as cwd in sandbox mode', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-agents-workspace-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-terminal-agents-workspace-'))
   const skillDirectory = path.join(getGlobalAgentsDirectory(), 'skills', 'document-tools')
   const createCalls: CreateTerminalSessionInput[] = []
   const writeCalls: WriteTerminalSessionInput[] = []
@@ -300,7 +300,7 @@ test('execute_terminal allows a global .agents skill directory as cwd in sandbox
 })
 
 test('execute_terminal rejects sandbox cwd in a sibling of global .agents', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-agents-sibling-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-terminal-agents-sibling-'))
   const disallowedDirectory = path.join(path.dirname(getGlobalAgentsDirectory()), '.agents-backup', 'skills')
   let createSessionCalled = false
 
@@ -340,7 +340,7 @@ test('execute_terminal rejects sandbox cwd in a sibling of global .agents', asyn
 })
 
 test('execute_terminal allows unrestricted commands in full access mode', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-full-access-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-terminal-full-access-'))
   const createCalls: Array<{
     cols: number
     cwd?: string
@@ -406,7 +406,7 @@ test('execute_terminal allows unrestricted commands in full access mode', async 
 })
 
 test('createAgentTools exposes execute_terminal in agent mode when webContents is available', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-tools-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-terminal-tools-'))
 
   try {
     const agentTools = await createAgentTools(
@@ -436,8 +436,8 @@ test('createAgentTools exposes execute_terminal in agent mode when webContents i
 })
 
 test('execute_terminal allows a cwd outside the workspace root in Full Access mode', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-outside-ws-'))
-  const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-outside-dir-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-terminal-outside-ws-'))
+  const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-terminal-outside-dir-'))
   const createCalls: Array<{
     cols: number
     cwd?: string
@@ -506,7 +506,7 @@ test('execute_terminal allows a cwd outside the workspace root in Full Access mo
 })
 
 test('terminateAllBackgroundSessions terminates active tool sessions and resets local session counter to 1', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-terminal-cleanup-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-terminal-cleanup-'))
   const terminatedSessions: number[] = []
 
   try {

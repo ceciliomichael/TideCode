@@ -54,7 +54,7 @@ export function useChatContextUsage({
     let isCancelled = false
 
     const fetchUsage = () => {
-      void window.echosphereChat
+      void window.tidecodeChat
         .estimateContextUsage({
           agentContextRootPath,
           chatMode,
@@ -81,12 +81,12 @@ export function useChatContextUsage({
     let unsubscribeExplorer: (() => void) | null = null
     if (agentContextRootPath?.trim()) {
       const rootPath = agentContextRootPath.trim()
-      unsubscribeExplorer = window.echosphereWorkspace.onExplorerChange((event) => {
+      unsubscribeExplorer = window.tidecodeWorkspace.onExplorerChange((event) => {
         if (event.workspaceRootPath === rootPath) {
           fetchUsage()
         }
       })
-      void window.echosphereWorkspace.watchExplorerChanges({ workspaceRootPath: rootPath })
+      void window.tidecodeWorkspace.watchExplorerChanges({ workspaceRootPath: rootPath })
     }
 
     const intervalId = window.setInterval(fetchUsage, 10_000)
@@ -103,7 +103,7 @@ export function useChatContextUsage({
         unsubscribeExplorer()
       }
       if (agentContextRootPath?.trim()) {
-        void window.echosphereWorkspace.unwatchExplorerChanges({
+        void window.tidecodeWorkspace.unwatchExplorerChanges({
           workspaceRootPath: agentContextRootPath.trim(),
         })
       }

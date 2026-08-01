@@ -65,7 +65,7 @@ async function run() {
   const grandTotalTokens = systemPromptTokens + totalToolSchemaTokens
 
   // 4. Generate Markdown Dump Output
-  let mdContent = `# Echosphere System + Tools Context Dump
+  let mdContent = `# TideCode System + Tools Context Dump
 
 **Workspace Root**: \`${workspaceRootPath}\`  
 **Chat Mode**: \`${chatMode}\`  

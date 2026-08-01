@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { jsonSchema, NoSuchToolError, tool } from 'ai'
+import { asSchema, jsonSchema, NoSuchToolError, tool } from 'ai'
 import { buildPromptContextManifest } from '../../electron/chat/cache/canonicalization'
 import { buildDynamicToolCatalog } from '../../electron/chat/shared/tools/dynamicToolCatalog'
-import {
-  createDynamicToolSet,
-  getDynamicToolInvocationProjection,
-} from '../../electron/chat/shared/tools/dynamicTools'
+import { createDynamicToolSet, getDynamicToolInvocationProjection } from '../../electron/chat/shared/tools/dynamicTools'
 import { repairDirectDynamicToolCall } from '../../electron/chat/shared/tools/dynamicToolRepair'
 import {
   DYNAMIC_SCHEMA_BATCH_SIZE,
@@ -63,14 +60,28 @@ function createCatalogEntry(
     name: id,
     nativeTool,
     searchHints: options.searchHints ?? [],
+    source: { kind: 'native' },
     tags: options.tags ?? (id === 'read_file' ? ['filesystem'] : ['general']),
   }
 }
 
+async function discoverTools(tools: Awaited<ReturnType<typeof createDynamicToolSet>>, query?: string) {
+  const listTools = tools.list_tools.execute
+  assert.ok(listTools)
+  return listTools(query ? { page: 1, query } : { page: 1 })
+}
+
+async function discoverAndFetchSchema(tools: Awaited<ReturnType<typeof createDynamicToolSet>>, id: string) {
+  await discoverTools(tools, id)
+  const getSchema = tools.get_tool_schema.execute
+  assert.ok(getSchema)
+  const result = await getSchema({ id })
+  assert.equal(result.status, 'success')
+  return result
+}
+
 test('dynamic tool set exposes exactly three model-facing tools', async () => {
-  const tools = await createDynamicToolSet([
-    createCatalogEntry('read_file', 'Read file contents'),
-  ])
+  const tools = await createDynamicToolSet([createCatalogEntry('read_file', 'Read file contents')])
 
   assert.deepEqual(Object.keys(tools).sort(), [...DYNAMIC_TOOL_NAMES].sort())
 })
@@ -87,7 +98,12 @@ test('unknown execute ids return discovery guidance and ranked suggestions', asy
 
   const result = await execute(
     { args: {}, id: 'list_dir' },
-    { abortSignal: undefined, context: {}, messages: [], toolCallId: 'unknown-1' },
+    {
+      abortSignal: undefined,
+      context: {},
+      messages: [],
+      toolCallId: 'unknown-1',
+    },
   )
 
   assert.equal(result.status, 'error')
@@ -107,7 +123,10 @@ test('direct native tool calls are repaired into discovery calls', async () => {
     type: 'tool-call' as const,
   }
   const repaired = await repairDirectDynamicToolCall({
-    error: new NoSuchToolError({ availableTools: [...DYNAMIC_TOOL_NAMES], toolName: 'read' }),
+    error: new NoSuchToolError({
+      availableTools: [...DYNAMIC_TOOL_NAMES],
+      toolName: 'read',
+    }),
     inputSchema: async () => ({ type: 'object' }),
     instructions: undefined,
     messages: [],
@@ -123,7 +142,10 @@ test('direct native tool calls are repaired into discovery calls', async () => {
   })
 
   const alreadyWrapped = await repairDirectDynamicToolCall({
-    error: new NoSuchToolError({ availableTools: [...DYNAMIC_TOOL_NAMES], toolName: 'execute_tool' }),
+    error: new NoSuchToolError({
+      availableTools: [...DYNAMIC_TOOL_NAMES],
+      toolName: 'execute_tool',
+    }),
     inputSchema: async () => ({ type: 'object' }),
     instructions: undefined,
     messages: [],
@@ -146,13 +168,22 @@ test('schema fetch returns tool-specific guidance only after discovery', async (
         required: ['path'],
         type: 'object',
       }),
-      execute: async () => ({ body: 'contents', status: 'success' as const, summary: 'Read file' }),
+      execute: async () => ({
+        body: 'contents',
+        status: 'success' as const,
+        summary: 'Read file',
+      }),
     }),
   })
   const tools = await createDynamicToolSet(catalog)
   const getSchema = tools.get_tool_schema.execute
   assert.ok(getSchema)
 
+  const beforeDiscovery = await getSchema({ id: 'read' })
+  assert.equal(beforeDiscovery.status, 'error')
+  assert.match(beforeDiscovery.body ?? '', /TOOL_NOT_DISCOVERED/u)
+
+  await discoverTools(tools, 'read')
   const result = await getSchema({ id: 'read' })
   assert.equal(result.status, 'success')
   const body = JSON.parse(result.body ?? '{}') as {
@@ -172,7 +203,10 @@ test('schema fetch batches independent tools in request order and reports missin
   const getSchema = tools.get_tool_schema.execute
   assert.ok(getSchema)
 
-  const result = await getSchema({ ids: ['write_file', 'missing_tool', 'read_file'] })
+  await discoverTools(tools)
+  const result = await getSchema({
+    ids: ['write_file', 'missing_tool', 'read_file'],
+  })
   assert.equal(result.status, 'success')
 
   const body = JSON.parse(result.body ?? '{}') as {
@@ -182,8 +216,14 @@ test('schema fetch batches independent tools in request order and reports missin
       status: string
     }>
   }
-  assert.deepEqual(body.results?.map((entry) => entry.id), ['write_file', 'missing_tool', 'read_file'])
-  assert.deepEqual(body.results?.map((entry) => entry.status), ['success', 'error', 'success'])
+  assert.deepEqual(
+    body.results?.map((entry) => entry.id),
+    ['write_file', 'missing_tool', 'read_file'],
+  )
+  assert.deepEqual(
+    body.results?.map((entry) => entry.status),
+    ['success', 'error', 'success'],
+  )
   assert.match(body.results?.[1]?.error ?? '', /missing_tool/u)
 })
 
@@ -196,7 +236,9 @@ test('schema fetch rejects empty or oversized batches', async () => {
   assert.equal(empty.status, 'error')
   assert.match(empty.body ?? '', /non-empty array/u)
 
-  const oversized = await getSchema({ ids: Array.from({ length: DYNAMIC_SCHEMA_BATCH_SIZE + 1 }, (_, index) => `tool_${index}`) })
+  const oversized = await getSchema({
+    ids: Array.from({ length: DYNAMIC_SCHEMA_BATCH_SIZE + 1 }, (_, index) => `tool_${index}`),
+  })
   assert.equal(oversized.status, 'error')
   assert.match(oversized.body ?? '', /max_batch_size/u)
 })
@@ -226,9 +268,7 @@ test('dynamic search uses semantic hints for natural-language intent', () => {
   const catalog = [
     createCatalogEntry('grep', 'Search text and regular expressions in files', {
       aliases: ['grep', 'text search', 'pattern search'],
-      searchHints: [
-        'find authentication tokens API keys secrets credentials or other text in files',
-      ],
+      searchHints: ['find authentication tokens API keys secrets credentials or other text in files'],
       tags: ['filesystem', 'search'],
     }),
     createCatalogEntry('read', 'Read file contents', {
@@ -275,16 +315,39 @@ test('execute_tool validates nested arguments and preserves native result metada
   const execute = tools.execute_tool.execute
   assert.ok(execute)
 
+  const knownFromHistory = await execute(
+    { args: { path: 'example.ts' }, id: 'read_file' },
+    {
+      abortSignal: undefined,
+      context: {},
+      messages: [],
+      toolCallId: 'history-known-1',
+    },
+  )
+  assert.equal(knownFromHistory.status, 'success')
+  assert.equal(knownFromHistory.body, 'contents for example.ts')
+
+  await discoverAndFetchSchema(tools, 'read_file')
   const invalid = await execute(
     { args: {}, id: 'read_file' },
-    { abortSignal: undefined, context: {}, messages: [], toolCallId: 'outer-1' },
+    {
+      abortSignal: undefined,
+      context: {},
+      messages: [],
+      toolCallId: 'outer-1',
+    },
   )
   assert.equal(invalid.status, 'error')
   assert.match(invalid.body ?? '', /required/u)
 
   const valid = await execute(
     { args: { path: 'example.ts' }, id: 'read_file' },
-    { abortSignal: undefined, context: {}, messages: [], toolCallId: 'outer-2' },
+    {
+      abortSignal: undefined,
+      context: {},
+      messages: [],
+      toolCallId: 'outer-2',
+    },
   )
   assert.equal(valid.status, 'success')
   assert.equal(valid.body, 'contents for example.ts')
@@ -293,6 +356,230 @@ test('execute_tool validates nested arguments and preserves native result metada
     argumentsValue: { path: 'example.ts' },
     toolName: 'read_file',
   })
+})
+
+test('execute_tool keeps the top-level contract and repairs one legacy outer args wrapper', async () => {
+  const catalog = await buildDynamicToolCatalog({
+    read_file: tool({
+      description: 'Read file contents',
+      inputSchema: jsonSchema({
+        additionalProperties: false,
+        properties: { path: { type: 'string' } },
+        required: ['path'],
+        type: 'object',
+      }),
+      execute: async (input) => ({
+        body: `contents for ${(input as { path: string }).path}`,
+        status: 'success' as const,
+        summary: 'Read file',
+      }),
+    }),
+  })
+  const tools = await createDynamicToolSet(catalog)
+  await discoverAndFetchSchema(tools, 'read_file')
+
+  const execute = tools.execute_tool.execute
+  assert.ok(execute)
+  const legacyWrappedResult = await execute(
+    { args: { args: { path: 'example.ts' }, id: 'read_file' } },
+    {
+      abortSignal: undefined,
+      context: {},
+      messages: [],
+      toolCallId: 'legacy-wrapper-1',
+    },
+  )
+  assert.equal(legacyWrappedResult.status, 'success')
+  assert.equal(legacyWrappedResult.body, 'contents for example.ts')
+
+  const duplicateIdWrappedResult = await execute(
+    { args: { args: { path: 'example.ts' }, id: 'read_file' }, id: 'read_file' },
+    {
+      abortSignal: undefined,
+      context: {},
+      messages: [],
+      toolCallId: 'legacy-duplicate-id-wrapper-1',
+    },
+  )
+  assert.equal(duplicateIdWrappedResult.status, 'success')
+  assert.equal(duplicateIdWrappedResult.body, 'contents for example.ts')
+
+  const doublyWrappedResult = await execute(
+    { args: { args: { args: { path: 'example.ts' }, id: 'read_file' } } },
+    {
+      abortSignal: undefined,
+      context: {},
+      messages: [],
+      toolCallId: 'legacy-double-wrapper-1',
+    },
+  )
+  assert.equal(doublyWrappedResult.status, 'success')
+  assert.equal(doublyWrappedResult.body, 'contents for example.ts')
+
+  const flattenedLegacyResult = await execute(
+    { args: { id: 'read_file', path: 'example.ts' } },
+    {
+      abortSignal: undefined,
+      context: {},
+      messages: [],
+      toolCallId: 'legacy-flattened-wrapper-1',
+    },
+  )
+  assert.equal(flattenedLegacyResult.status, 'success')
+  assert.equal(flattenedLegacyResult.body, 'contents for example.ts')
+
+  const executeSchema = asSchema(tools.execute_tool.inputSchema)
+  assert.ok(executeSchema.validate)
+  const normalized = await executeSchema.validate({
+    args: { args: { path: 'example.ts' }, id: 'read_file' },
+  })
+  assert.equal(normalized.success, true)
+  if (normalized.success) {
+    assert.deepEqual(normalized.value, {
+      args: { path: 'example.ts' },
+      id: 'read_file',
+    })
+  }
+
+  const normalizedDuplicateId = await executeSchema.validate({
+    args: { args: { path: 'example.ts' }, id: 'read_file' },
+    id: 'read_file',
+  })
+  assert.equal(normalizedDuplicateId.success, true)
+  if (normalizedDuplicateId.success) {
+    assert.deepEqual(normalizedDuplicateId.value, {
+      args: { path: 'example.ts' },
+      id: 'read_file',
+    })
+  }
+
+  const normalizedDoublyWrapped = await executeSchema.validate({
+    args: { args: { args: { path: 'example.ts' }, id: 'read_file' } },
+  })
+  assert.equal(normalizedDoublyWrapped.success, true)
+  if (normalizedDoublyWrapped.success) {
+    assert.deepEqual(normalizedDoublyWrapped.value, {
+      args: { path: 'example.ts' },
+      id: 'read_file',
+    })
+  }
+
+  const normalizedFlattened = await executeSchema.validate({
+    args: { id: 'read_file', path: 'example.ts' },
+  })
+  assert.equal(normalizedFlattened.success, true)
+  if (normalizedFlattened.success) {
+    assert.deepEqual(normalizedFlattened.value, {
+      args: { path: 'example.ts' },
+      id: 'read_file',
+    })
+  }
+
+  const extraOuterField = await executeSchema.validate({
+    args: { args: { path: 'example.ts' }, id: 'read_file' },
+    unexpected: true,
+  })
+  assert.equal(extraOuterField.success, false)
+})
+
+test('execute_tool enforces full JSON Schema references and oneOf semantics before dispatch', async () => {
+  let executionCount = 0
+  const catalog = await buildDynamicToolCatalog({
+    exact_choice: tool({
+      description: 'Execute one exact payload shape',
+      inputSchema: jsonSchema({
+        $defs: {
+          payload: {
+            oneOf: [
+              { required: ['left'], type: 'object' },
+              { required: ['right'], type: 'object' },
+            ],
+            properties: {
+              left: { type: 'string' },
+              right: { type: 'string' },
+            },
+            type: 'object',
+          },
+        },
+        additionalProperties: false,
+        properties: {
+          payload: { $ref: '#/$defs/payload' },
+        },
+        required: ['payload'],
+        type: 'object',
+      }),
+      execute: async () => {
+        executionCount += 1
+        return { status: 'success' as const, summary: 'Executed exact choice' }
+      },
+    }),
+  })
+  const tools = await createDynamicToolSet(catalog)
+  await discoverAndFetchSchema(tools, 'exact_choice')
+  const execute = tools.execute_tool.execute
+  assert.ok(execute)
+
+  const result = await execute(
+    { args: { payload: { left: 'a', right: 'b' } }, id: 'exact_choice' },
+    {
+      abortSignal: undefined,
+      context: {},
+      messages: [],
+      toolCallId: 'one-of-invalid',
+    },
+  )
+
+  assert.equal(result.status, 'error')
+  assert.match(result.body ?? '', /INVALID_ARGUMENTS/u)
+  assert.equal(executionCount, 0)
+})
+
+test('execute_tool accepts flattened edit arguments from a nested wrapper', async () => {
+  const catalog = await buildDynamicToolCatalog({
+    edit: tool({
+      description: 'Apply exact edits to a file',
+      inputSchema: jsonSchema({
+        additionalProperties: false,
+        properties: {
+          edits: {
+            items: { type: 'object' },
+            minItems: 1,
+            type: 'array',
+          },
+          path: { type: 'string' },
+        },
+        required: ['path', 'edits'],
+        type: 'object',
+      }),
+      execute: async (input) => ({
+        body: `${(input as { path: string }).path}:${(input as { edits: unknown[] }).edits.length}`,
+        status: 'success' as const,
+        summary: 'Applied edits',
+      }),
+    }),
+  })
+  const tools = await createDynamicToolSet(catalog)
+  const execute = tools.execute_tool.execute
+  assert.ok(execute)
+
+  const result = await execute(
+    {
+      args: {
+        edits: [{ replacementContent: 'new', targetContent: 'old' }],
+        id: 'edit',
+        path: 'src/example.ts',
+      },
+    },
+    {
+      abortSignal: undefined,
+      context: {},
+      messages: [],
+      toolCallId: 'flattened-edit-wrapper-1',
+    },
+  )
+
+  assert.equal(result.status, 'success')
+  assert.equal(result.body, 'src/example.ts:1')
 })
 
 test('edit argument errors explain how to recover without exposing a schema dump', async () => {
@@ -327,9 +614,18 @@ test('edit argument errors explain how to recover without exposing a schema dump
   const execute = tools.execute_tool.execute
   assert.ok(execute)
 
+  await discoverAndFetchSchema(tools, 'edit')
   const result = await execute(
-    { args: { path: 'src/example.ts', replacementContent: 'next' }, id: 'edit' },
-    { abortSignal: undefined, context: {}, messages: [], toolCallId: 'edit-invalid-1' },
+    {
+      args: { path: 'src/example.ts', replacementContent: 'next' },
+      id: 'edit',
+    },
+    {
+      abortSignal: undefined,
+      context: {},
+      messages: [],
+      toolCallId: 'edit-invalid-1',
+    },
   )
 
   assert.equal(result.status, 'error')
@@ -358,15 +654,18 @@ test('dynamic invocation projection delegates presentation to the discovered nat
     toolName: 'read',
   })
 
-  const resultContent = formatStructuredToolResultContent({
-    arguments: { path: '/workspace/src/example.ts' },
-    schema: 'echosphere.tool_result/v1',
-    status: 'success',
-    summary: 'Read src/example.ts',
-    subject: { kind: 'file', path: 'src/example.ts' },
-    toolCallId: 'outer-3',
-    toolName: 'read',
-  }, '1: value')
+  const resultContent = formatStructuredToolResultContent(
+    {
+      arguments: { path: '/workspace/src/example.ts' },
+      schema: 'tidecode.tool_result/v1',
+      status: 'success',
+      summary: 'Read src/example.ts',
+      subject: { kind: 'file', path: 'src/example.ts' },
+      toolCallId: 'outer-3',
+      toolName: 'read',
+    },
+    '1: value',
+  )
   const invocation: ToolInvocationTrace = {
     argumentsText: wrapperArguments,
     id: 'outer-3',
@@ -381,17 +680,28 @@ test('dynamic invocation projection delegates presentation to the discovered nat
 })
 
 test('meta-tool presentation uses the user-facing discovery language', () => {
-  const makeInvocation = (toolName: string, args: Record<string, unknown>, state: ToolInvocationTrace['state'] = 'completed') => ({
-    argumentsText: JSON.stringify(args),
-    id: `${toolName}-1`,
-    startedAt: 0,
-    state,
-    toolName,
-  }) satisfies ToolInvocationTrace
+  const makeInvocation = (
+    toolName: string,
+    args: Record<string, unknown>,
+    state: ToolInvocationTrace['state'] = 'completed',
+  ) =>
+    ({
+      argumentsText: JSON.stringify(args),
+      id: `${toolName}-1`,
+      startedAt: 0,
+      state,
+      toolName,
+    }) satisfies ToolInvocationTrace
 
-  assert.equal(getToolInvocationHeaderLabel(makeInvocation('list_tools', { query: 'read' })), 'Searched read in tool set')
+  assert.equal(
+    getToolInvocationHeaderLabel(makeInvocation('list_tools', { query: 'read' })),
+    'Searched read in tool set',
+  )
   assert.equal(getToolInvocationHeaderLabel(makeInvocation('list_tools', {})), 'Listed tool set')
-  assert.equal(getToolInvocationHeaderLabel(getInvocation('get_tool_schema', { id: 'read' })), 'Fetched schema for read')
+  assert.equal(
+    getToolInvocationHeaderLabel(getInvocation('get_tool_schema', { id: 'read' })),
+    'Fetched schema for read',
+  )
   assert.equal(
     getToolInvocationHeaderLabel(getInvocation('get_tool_schema', { ids: ['read', 'write'] })),
     'Fetched schemas for read, write',

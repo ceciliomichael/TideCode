@@ -158,7 +158,7 @@ test('fallback compaction produces a parseable assistant continuation marker', a
   assert.ok(result)
   assert.equal(result.usedFallback, true)
   assert.equal(result.projectedMessages[0]?.role, 'user')
-  assert.equal(result.projectedMessages.some((message) => message.role === 'assistant' && typeof message.content === 'string' && message.content.startsWith('echosphere.compaction_state.v1\n')), true)
+  assert.equal(result.projectedMessages.some((message) => message.role === 'assistant' && typeof message.content === 'string' && message.content.startsWith('tidecode.compaction_state.v1\n')), true)
   assert.deepEqual(findLatestCompactionPacket(result.projectedMessages), result.packet)
   assert.deepEqual(parseCompactionMessage(buildCompactionMessage(result.packet)), result.packet)
 })

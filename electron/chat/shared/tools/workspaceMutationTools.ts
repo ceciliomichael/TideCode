@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { notifyWorkspaceExplorerChange } from '../../../workspace/explorerNotifications'
 import { DEFAULT_WORKSPACE_RELATIVE_PATH } from '../../../workspace/paths'
 import { applyPatchInWorkspace } from '../applyPatch'
 import type { WorkspaceToolContext } from './workspaceToolPaths'
@@ -35,6 +36,7 @@ export async function createWholeFileWriteToolResult(
     await captureCheckpointFileStateIfNeeded(context.checkpointId, resolvedChange.target.absolutePath)
     await fs.mkdir(path.dirname(resolvedChange.target.absolutePath), { recursive: true })
     await fs.writeFile(resolvedChange.target.absolutePath, resolvedChange.content, 'utf8')
+    notifyWorkspaceExplorerChange(context.workspaceRootPath)
     rawFileChanges.push({
       fileName: resolvedChange.target.displayPath,
       newContent: resolvedChange.content,
@@ -74,6 +76,9 @@ export async function createApplyPatchToolResult(context: WorkspaceToolContext, 
           }
         : undefined,
   })
+  if (appliedPatch.changes.length > 0) {
+    notifyWorkspaceExplorerChange(context.workspaceRootPath)
+  }
   const changes = aggregateAppliedPatchChanges(appliedPatch.changes)
   const subjectPath = changes.length === 1 ? changes[0].fileName : DEFAULT_WORKSPACE_RELATIVE_PATH
 

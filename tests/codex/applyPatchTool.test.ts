@@ -6,7 +6,7 @@ import test from 'node:test'
 import { applyPatchInWorkspace } from '../../electron/chat/shared/applyPatch'
 
 test('applyPatchInWorkspace rejects stale update hunks instead of re-anchoring them', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-reanchor-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-reanchor-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'accountService.ts')
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.writeFile(
@@ -86,7 +86,7 @@ test('applyPatchInWorkspace rejects stale update hunks instead of re-anchoring t
   }
 })
 test('applyPatchInWorkspace rejects accidental line-wrap differences in hunk context', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-wrap-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-wrap-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'footer.tsx')
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.writeFile(
@@ -138,7 +138,7 @@ test('applyPatchInWorkspace rejects accidental line-wrap differences in hunk con
   }
 })
 test('applyPatchInWorkspace tolerates indentation-only drift in hunk context', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-indent-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-indent-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'footer.tsx')
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.writeFile(
@@ -195,7 +195,7 @@ test('applyPatchInWorkspace tolerates indentation-only drift in hunk context', a
 })
 
 test('applyPatchInWorkspace rejects update patches that do not change file content', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-noop-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-noop-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'same.ts')
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.writeFile(targetFilePath, 'alpha\nbeta\n', 'utf8')
@@ -222,7 +222,7 @@ test('applyPatchInWorkspace rejects update patches that do not change file conte
 })
 
 test('applyPatchInWorkspace rejects line-ending-only update patches', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-eol-noop-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-eol-noop-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'same-crlf.ts')
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.writeFile(targetFilePath, 'alpha\r\nbeta\r\n', 'utf8')
@@ -249,7 +249,7 @@ test('applyPatchInWorkspace rejects line-ending-only update patches', async () =
 })
 
 test('applyPatchInWorkspace matches CRLF files using LF patch text and writes LF', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-crlf-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-crlf-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'RouteTable.tsx')
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.writeFile(
@@ -297,7 +297,7 @@ test('applyPatchInWorkspace matches CRLF files using LF patch text and writes LF
 })
 
 test('applyPatchInWorkspace treats unified line numbers as hints when the source match is unique', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-offset-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-offset-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'shifted.ts')
   await fs.mkdir(path.dirname(targetFilePath), { recursive: true })
   await fs.writeFile(targetFilePath, 'intro\nunchanged\nconst value = 1\noutro\n', 'utf8')
@@ -323,7 +323,7 @@ test('applyPatchInWorkspace treats unified line numbers as hints when the source
 })
 
 test('applyPatchInWorkspace rejects ambiguous short hunks instead of editing the wrong match', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-ambiguous-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-ambiguous-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'repeated.ts')
   await fs.mkdir(path.dirname(targetFilePath), { recursive: true })
   await fs.writeFile(targetFilePath, 'const value = 1\nseparator\nconst value = 1\n', 'utf8')
@@ -351,7 +351,7 @@ test('applyPatchInWorkspace rejects ambiguous short hunks instead of editing the
 })
 
 test('applyPatchInWorkspace includes nearby current source when a hunk is stale', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-diagnostic-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-diagnostic-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'diagnostic.ts')
   await fs.mkdir(path.dirname(targetFilePath), { recursive: true })
   await fs.writeFile(targetFilePath, 'start\nconst alpha = 1\nconst current = true\nend\n', 'utf8')
@@ -376,7 +376,7 @@ test('applyPatchInWorkspace includes nearby current source when a hunk is stale'
 })
 
 test('applyPatchInWorkspace normalizes mixed line endings around an insertion to LF', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-mixed-eol-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-mixed-eol-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'mixed.txt')
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.writeFile(targetFilePath, 'alpha\r\nbeta\ngamma\r\ndelta\n', 'utf8')
@@ -402,7 +402,7 @@ test('applyPatchInWorkspace normalizes mixed line endings around an insertion to
 })
 
 test('applyPatchInWorkspace tolerates tab and space indentation mismatches', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-tabs-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-tabs-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'tabs.ts')
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.writeFile(targetFilePath, 'function value() {\r\n\treturn 1\r\n}\r\n', 'utf8')
@@ -429,7 +429,7 @@ test('applyPatchInWorkspace tolerates tab and space indentation mismatches', asy
 })
 
 test('applyPatchInWorkspace does not write earlier hunks when a later hunk fails', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-atomic-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-atomic-'))
   const targetFilePath = path.join(workspaceRootPath, 'src', 'existing.ts')
   const createdFilePath = path.join(workspaceRootPath, 'src', 'created.ts')
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
@@ -469,7 +469,7 @@ test('applyPatchInWorkspace does not write earlier hunks when a later hunk fails
 })
 
 test('applyPatchInWorkspace applies add, update, move, and delete operations', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-'))
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.writeFile(path.join(workspaceRootPath, 'src', 'existing.ts'), 'alpha\nbeta\n', 'utf8')
   await fs.writeFile(path.join(workspaceRootPath, 'src', 'remove.ts'), 'remove me\n', 'utf8')
@@ -502,7 +502,7 @@ test('applyPatchInWorkspace applies add, update, move, and delete operations', a
 })
 
 test('applyPatchInWorkspace reports each path before mutation for checkpoint capture', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'echosphere-patch-capture-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-capture-'))
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.writeFile(path.join(workspaceRootPath, 'src', 'existing.ts'), 'alpha\nbeta\n', 'utf8')
   await fs.writeFile(path.join(workspaceRootPath, 'src', 'target.ts'), 'old target\n', 'utf8')

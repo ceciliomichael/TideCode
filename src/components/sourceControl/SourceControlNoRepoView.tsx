@@ -20,7 +20,7 @@ export function SourceControlNoRepoView({ workspacePath, onRefreshAll }: SourceC
     setInitError(null)
 
     try {
-      await window.echosphereGit.initRepository(workspacePath)
+      await window.tidecodeGit.initRepository(workspacePath)
       setInitStep('success')
       // Small delay for the success state to be visible, then refresh
       await new Promise((resolve) => setTimeout(resolve, 600))
@@ -92,7 +92,7 @@ export function SourceControlNoRepoView({ workspacePath, onRefreshAll }: SourceC
             )}
 
             {initStep === 'loading' ? (
-              <Loader2 size={15} className="animate-spin text-blue-500" />
+              <Loader2 size={15} className="animate-spin text-brand" />
             ) : initStep === 'success' ? (
               <CheckCircle2 size={15} className="text-emerald-500" />
             ) : (

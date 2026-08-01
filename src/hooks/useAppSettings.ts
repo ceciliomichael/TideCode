@@ -3,6 +3,7 @@ import { DEFAULT_APP_SETTINGS } from '../lib/defaultAppSettings'
 import { resetLaunchOnlyAppSettings } from './appSettingsLaunchState'
 import { getCachedAppearancePreference } from '../lib/theme'
 import type { AppSettings } from '../types/chat'
+import { shouldDeferRendererSettingsCommit } from './appSettingsUpdatePolicy'
 
 export type AppSettingsSaveState = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -12,13 +13,13 @@ function getInitialAppSettings(): AppSettings {
     appearance: getCachedAppearancePreference(),
   }
 
-  if (typeof window === 'undefined' || typeof window.echosphereSettings?.getInitialSettings !== 'function') {
+  if (typeof window === 'undefined' || typeof window.tidecodeSettings?.getInitialSettings !== 'function') {
     return fallbackSettings
   }
 
   return resetLaunchOnlyAppSettings({
     ...fallbackSettings,
-    ...window.echosphereSettings.getInitialSettings(),
+    ...window.tidecodeSettings.getInitialSettings(),
   })
 }
 
@@ -48,7 +49,7 @@ export function useAppSettings() {
     async function loadSettings() {
       try {
         const nextSettings = resetLaunchOnlyAppSettings(
-          await window.echosphereSettings.getSettings(),
+          await window.tidecodeSettings.getSettings(),
         )
         if (!isMounted) {
           return
@@ -100,6 +101,7 @@ export function useAppSettings() {
 
   const updateSettings = useCallback((input: Partial<AppSettings>) => {
     const previousSettings = settingsRef.current
+    const shouldDeferRendererCommit = shouldDeferRendererSettingsCommit(input)
     const optimisticSettings = {
       ...previousSettings,
       ...input,
@@ -108,11 +110,13 @@ export function useAppSettings() {
     requestIdRef.current = requestId
 
     settingsRef.current = optimisticSettings
-    setSettings(optimisticSettings)
+    if (!shouldDeferRendererCommit) {
+      setSettings(optimisticSettings)
+    }
     setSaveState('saving')
     setErrorMessage(null)
 
-    return window.echosphereSettings
+    return window.tidecodeSettings
       .updateSettings(input)
       .then((nextSettings) => {
         if (requestId !== requestIdRef.current) {
@@ -131,7 +135,9 @@ export function useAppSettings() {
         }
 
         settingsRef.current = previousSettings
-        setSettings(previousSettings)
+        if (!shouldDeferRendererCommit) {
+          setSettings(previousSettings)
+        }
         setSaveState('error')
         setErrorMessage('Unable to save your settings right now.')
         return null

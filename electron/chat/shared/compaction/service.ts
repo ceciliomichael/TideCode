@@ -148,7 +148,7 @@ export async function compactModelMessages(input: CompactModelMessagesInput) {
 
 export function createEmptyCompactionPacket(sourceDigest: string, sourceMessageIds: string[]): LocalCompactionPacket {
   return {
-    schema: 'echosphere.compaction_packet/v1',
+    schema: 'tidecode.compaction_packet/v1',
     packetId: randomUUID(),
     sourceDigest,
     sourceMessageIds,

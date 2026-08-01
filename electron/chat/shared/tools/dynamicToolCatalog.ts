@@ -1,9 +1,6 @@
 import { asSchema, type ToolSet } from 'ai'
-import type {
-  DynamicNativeTool,
-  DynamicToolCatalogEntry,
-  DynamicToolGuidance,
-} from './dynamicToolContracts'
+import { getMcpToolSource } from '../../../mcp/toolMetadata'
+import type { DynamicNativeTool, DynamicToolCatalogEntry, DynamicToolGuidance } from './dynamicToolContracts'
 import { getDynamicToolSearchHints } from './dynamicToolSearchHints'
 
 function normalizeToolId(value: string) {
@@ -128,7 +125,9 @@ function buildToolGuidance(id: string, tags: readonly string[]): DynamicToolGuid
     skill: {
       safety: ['Load only the exact enabled skill needed for the task.'],
       whenToUse: 'Use to list, search, or load enabled skill instructions.',
-      workflow: ['Use list or search to discover a skill, then load it by exact name before applying its instructions.'],
+      workflow: [
+        'Use list or search to discover a skill, then load it by exact name before applying its instructions.',
+      ],
     },
     web_search: {
       safety: ['Use authoritative sources when the answer depends on current or external information.'],
@@ -174,7 +173,9 @@ function buildToolGuidance(id: string, tags: readonly string[]): DynamicToolGuid
   }
 }
 
-function isExecutableTool(tool: DynamicNativeTool): tool is DynamicNativeTool & { execute: (...args: never[]) => unknown } {
+function isExecutableTool(
+  tool: DynamicNativeTool,
+): tool is DynamicNativeTool & { execute: (...args: never[]) => unknown } {
   return typeof tool.execute === 'function'
 }
 
@@ -182,7 +183,7 @@ export async function buildDynamicToolCatalog(nativeTools: ToolSet): Promise<Dyn
   const entries = await Promise.all(
     Object.entries(nativeTools).map(async ([rawId, nativeTool]) => {
       const id = normalizeToolId(rawId)
-      if (id.length === 0) {
+      if (id.length === 0 || !isExecutableTool(nativeTool)) {
         return null
       }
 
@@ -190,24 +191,31 @@ export async function buildDynamicToolCatalog(nativeTools: ToolSet): Promise<Dyn
       const inputSchema = resolvedSchema as unknown as Record<string, unknown>
       const description = readDescription(nativeTool)
       const tags = buildTags(id, description, inputSchema)
-      return {
-        aliases: buildAliases(id, id, description),
+      const mcpSource = getMcpToolSource(nativeTool)
+      const name = mcpSource?.originalToolName ?? id
+      const entry: DynamicToolCatalogEntry = {
+        aliases: buildAliases(id, name, description),
         description,
-        execute: isExecutableTool(nativeTool)
-          ? (nativeTool.execute as unknown as DynamicToolCatalogEntry['execute'])
-          : null,
+        execute: nativeTool.execute as unknown as DynamicToolCatalogEntry['execute'],
         guidance: buildToolGuidance(id, tags),
         id,
         inputSchema,
-        name: id,
+        name,
         nativeTool,
         searchHints: getDynamicToolSearchHints(id),
+        source: mcpSource ?? { kind: 'native' as const },
         tags,
-      } satisfies DynamicToolCatalogEntry
+      }
+      return entry
     }),
   )
 
   return entries
     .filter((entry): entry is DynamicToolCatalogEntry => entry !== null)
-    .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }) || left.id.localeCompare(right.id))
+    .sort(
+      (left, right) =>
+        left.name.localeCompare(right.name, undefined, {
+          sensitivity: 'base',
+        }) || left.id.localeCompare(right.id),
+    )
 }

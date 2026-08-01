@@ -1,4 +1,5 @@
-import { webContents, type WebContents } from 'electron'
+import type { WebContents } from 'electron'
+import * as electronModule from 'electron'
 import { readdir, stat } from 'node:fs/promises'
 import chokidar, { type FSWatcher } from 'chokidar'
 import path from 'node:path'
@@ -39,6 +40,27 @@ interface WorkspaceExplorerWatcherState {
 const watcherStates = new Map<string, WorkspaceExplorerWatcherState>()
 const subscriptions = new WorkspaceExplorerWatchSubscriptions()
 const registeredSenders = new Set<number>()
+
+interface ElectronWebContentsRegistry {
+  fromId(id: number): WebContents | undefined
+}
+
+function resolveElectronWebContentsRegistry(): ElectronWebContentsRegistry | null {
+  const electronNamespace = electronModule as unknown as {
+    default?: unknown
+    webContents?: unknown
+  }
+  const defaultExport =
+    typeof electronNamespace.default === 'object' && electronNamespace.default !== null
+      ? electronNamespace.default as { webContents?: unknown }
+      : null
+  const candidate = electronNamespace.webContents ?? defaultExport?.webContents
+
+  return typeof candidate === 'object' && candidate !== null &&
+    typeof (candidate as ElectronWebContentsRegistry).fromId === 'function'
+    ? candidate as ElectronWebContentsRegistry
+    : null
+}
 
 function normalizeWorkspaceRootPath(workspaceRootPath: string) {
   return path.resolve(workspaceRootPath.trim())
@@ -181,9 +203,10 @@ function emitWorkspaceExplorerChange(rootPath: string) {
   if (!state) {
     return
   }
+  const webContentsRegistry = resolveElectronWebContentsRegistry()
 
   for (const subscriberId of Array.from(state.subscribers)) {
-    const targetWebContents = webContents.fromId(subscriberId)
+    const targetWebContents = webContentsRegistry?.fromId(subscriberId)
     if (!targetWebContents || targetWebContents.isDestroyed()) {
       state.subscribers.delete(subscriberId)
       removeWorkspaceExplorerSubscriber(subscriberId)

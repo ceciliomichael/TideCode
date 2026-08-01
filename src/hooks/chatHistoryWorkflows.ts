@@ -67,7 +67,7 @@ function buildUserMessage(
 
 async function loadStoredConversationOrThrow(conversationId: string) {
   try {
-    const conversation = await window.echosphereHistory.getConversation(conversationId)
+    const conversation = await window.tidecodeHistory.getConversation(conversationId)
     if (!conversation) {
       throw new Error(`Conversation not found: ${conversationId}`)
     }
@@ -105,7 +105,7 @@ async function resolveUserMessageCheckpointIdOrThrow(conversation: ConversationR
     return directCheckpointId
   }
 
-  const checkpointHistory = await window.echosphereHistory.getUserMessageCheckpointHistory(conversation.id, targetMessage.id)
+  const checkpointHistory = await window.tidecodeHistory.getUserMessageCheckpointHistory(conversation.id, targetMessage.id)
   if (checkpointHistory.length > 0) {
     return checkpointHistory.at(-1)?.id ?? checkpointHistory[0].id
   }
@@ -144,7 +144,7 @@ async function findUserMessageForRevertOrThrow(conversation: ConversationRecord,
 }
 
 async function createRunCheckpoint(agentContextRootPath: string) {
-  return window.echosphereWorkspace.createCheckpoint({
+  return window.tidecodeWorkspace.createCheckpoint({
     workspaceRootPath: agentContextRootPath,
   })
 }
@@ -155,8 +155,8 @@ export async function loadInitialChatHistory(
   preferredDraftFolderId?: string | null,
 ): Promise<ChatHistorySnapshot> {
   const [conversationSummaries, folderSummaries] = await Promise.all([
-    window.echosphereHistory.listConversations(),
-    window.echosphereHistory.listFolders(),
+    window.tidecodeHistory.listConversations(),
+    window.tidecodeHistory.listFolders(),
   ])
 
   const normalizedPreferredDraftFolderId = preferredDraftFolderId?.trim() ?? ''
@@ -167,8 +167,8 @@ export async function loadInitialChatHistory(
       : null
 
   if (conversationSummaries.length === 0 || openEmptyConversationOnLaunch) {
-    if (!validPreferredFolderId && window.echosphereHistory.ensureDraftAgentContext) {
-      await window.echosphereHistory.ensureDraftAgentContext()
+    if (!validPreferredFolderId && window.tidecodeHistory.ensureDraftAgentContext) {
+      await window.tidecodeHistory.ensureDraftAgentContext()
     }
 
     return {
@@ -187,7 +187,7 @@ export async function loadInitialChatHistory(
 
   if (preferredConversationSummary) {
     if (!validPreferredFolderId || preferredConversationSummary.folderId === validPreferredFolderId) {
-      const initialConversation = await window.echosphereHistory.getConversation(preferredConversationSummary.id)
+      const initialConversation = await window.tidecodeHistory.getConversation(preferredConversationSummary.id)
       if (initialConversation) {
         return {
           conversationSummaries,
@@ -206,7 +206,7 @@ export async function loadInitialChatHistory(
         (summary.preview.trim() === '' || summary.preview === 'New Chat'),
     )
     if (emptyProjectConversationSummary) {
-      const initialConversation = await window.echosphereHistory.getConversation(emptyProjectConversationSummary.id)
+      const initialConversation = await window.tidecodeHistory.getConversation(emptyProjectConversationSummary.id)
       if (initialConversation) {
         return {
           conversationSummaries,
@@ -226,7 +226,7 @@ export async function loadInitialChatHistory(
   }
 
   const fallbackSummary = conversationSummaries[0]
-  const initialConversation = await window.echosphereHistory.getConversation(fallbackSummary.id)
+  const initialConversation = await window.tidecodeHistory.getConversation(fallbackSummary.id)
 
   return {
     conversationSummaries,
@@ -262,7 +262,7 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
     }
 
     const rewrittenMessages = [...currentConversation.messages.slice(0, targetMessageIndex), userMessage]
-    const conversation = await window.echosphereHistory.replaceMessages({
+    const conversation = await window.tidecodeHistory.replaceMessages({
       chatMode: input.chatMode,
       conversationId: currentConversation.id,
       messages: rewrittenMessages,
@@ -282,9 +282,9 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
   let currentConversation: ConversationRecord | null = null
 
   if (conversationId) {
-    currentConversation = await window.echosphereHistory.getConversation(conversationId)
+    currentConversation = await window.tidecodeHistory.getConversation(conversationId)
   } else {
-    const createdConversation = await window.echosphereHistory.createConversation({
+    const createdConversation = await window.tidecodeHistory.createConversation({
       chatMode: input.chatMode,
       ...(input.compactionSourceConversationId
         ? { compactionSourceConversationId: input.compactionSourceConversationId }
@@ -309,7 +309,7 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
     input.attachments,
     runCheckpoint,
   )
-  const conversation = await window.echosphereHistory.appendMessages({
+  const conversation = await window.tidecodeHistory.appendMessages({
     chatMode: input.chatMode,
     conversationId,
     messages: [userMessage],
@@ -325,14 +325,14 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
 }
 
 export async function persistAssistantTurn(conversationId: string, messages: Message[]) {
-  return window.echosphereHistory.appendMessages({
+  return window.tidecodeHistory.appendMessages({
     conversationId,
     messages,
   })
 }
 
 export async function persistConversationSnapshot(conversationId: string, messages: Message[]) {
-  return window.echosphereHistory.replaceMessages({
+  return window.tidecodeHistory.replaceMessages({
     conversationId,
     messages,
   })
@@ -359,7 +359,7 @@ export async function restoreWorkspaceCheckpointForMessage(conversationId: strin
   const conversation = await loadStoredConversationOrThrow(conversationId)
   const { checkpointIds, targetMessage, targetMessageIndex } = await findUserMessageForRevertOrThrow(conversation, messageId)
 
-  await window.echosphereWorkspace.restoreCheckpointSequence(checkpointIds)
+  await window.tidecodeWorkspace.restoreCheckpointSequence(checkpointIds)
   return {
     conversation,
     targetMessage,
@@ -373,7 +373,7 @@ export async function prepareRevertSessionForMessage(
 ): Promise<RevertPreparationResult> {
   const conversation = await loadStoredConversationOrThrow(conversationId)
   const { checkpointIds, targetMessage } = await findUserMessageForRevertOrThrow(conversation, messageId)
-  const redoCheckpoint = await window.echosphereWorkspace.createRedoCheckpointFromSources(checkpointIds)
+  const redoCheckpoint = await window.tidecodeWorkspace.createRedoCheckpointFromSources(checkpointIds)
 
   return {
     messageId: targetMessage.id,

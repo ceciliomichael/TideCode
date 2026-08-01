@@ -23,7 +23,7 @@ export function useTerminalSessionEvents({
   terminalWorkspaceStateRef,
 }: UseTerminalSessionEventsInput) {
   useEffect(() => {
-    const unsubscribeData = window.echosphereTerminal.onData((event: TerminalDataEvent) => {
+    const unsubscribeData = window.tidecodeTerminal.onData((event: TerminalDataEvent) => {
       const tabKey = sessionIdToTabKeyRef.current.get(event.sessionId);
       if (!tabKey) return;
 
@@ -32,7 +32,7 @@ export function useTerminalSessionEvents({
       tabInstancesRef.current.get(tabKey)?.terminal.write(event.data);
     });
 
-    const unsubscribeExit = window.echosphereTerminal.onExit((event: TerminalExitEvent) => {
+    const unsubscribeExit = window.tidecodeTerminal.onExit((event: TerminalExitEvent) => {
       const tabKey = sessionIdToTabKeyRef.current.get(event.sessionId);
       if (!tabKey) return;
 
