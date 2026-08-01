@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { autoUpdater, type ProgressInfo } from 'electron-updater'
-import type { TideCodeUpdateStateEvent } from '../../src/types/updates'
+import type { TideCodeUpdateDownloadResult, TideCodeUpdateStateEvent } from '../../src/types/updates'
 import { normalizeSemanticVersion } from './releaseVersion'
 
 type UpdateStateListener = (event: TideCodeUpdateStateEvent) => void
@@ -10,6 +10,7 @@ let updateIsDownloaded = false
 let pendingVersion: string | null = null
 let stateListener: UpdateStateListener | null = null
 let updateInstallInProgress = false
+let downloadPromise: Promise<TideCodeUpdateDownloadResult> | null = null
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'TideCode could not download this update.'
@@ -49,14 +50,7 @@ export function configureAutoUpdater(listener: UpdateStateListener) {
   })
 }
 
-export async function downloadLatestUpdate(version: string) {
-  let normalizedVersion: string
-  try {
-    normalizedVersion = normalizeSemanticVersion(version)
-  } catch {
-    throw new Error('TideCode received an invalid update version.')
-  }
-
+async function downloadLatestUpdateInternal(normalizedVersion: string): Promise<TideCodeUpdateDownloadResult> {
   if (!app.isPackaged) {
     return {
       downloadError: undefined,
@@ -110,6 +104,36 @@ export async function downloadLatestUpdate(version: string) {
       downloadState: 'error' as const,
     }
   }
+}
+
+export function downloadLatestUpdate(version: string): Promise<TideCodeUpdateDownloadResult> {
+  let normalizedVersion: string
+  try {
+    normalizedVersion = normalizeSemanticVersion(version)
+  } catch {
+    throw new Error('TideCode received an invalid update version.')
+  }
+
+  if (downloadPromise) {
+    return downloadPromise
+  }
+
+  const nextDownloadPromise = downloadLatestUpdateInternal(normalizedVersion)
+  downloadPromise = nextDownloadPromise
+  void nextDownloadPromise.then(
+    () => {
+      if (downloadPromise === nextDownloadPromise) {
+        downloadPromise = null
+      }
+    },
+    () => {
+      if (downloadPromise === nextDownloadPromise) {
+        downloadPromise = null
+      }
+    },
+  )
+
+  return nextDownloadPromise
 }
 
 export function restartToInstallUpdate() {

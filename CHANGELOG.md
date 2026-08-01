@@ -1,12 +1,5 @@
 # Changelog
 
-## 1.0.4 — A clearer update action
-
-The Updates screen now keeps one clear primary action, so checking the latest release never competes with a second button that does the same thing.
-
-- Replaced the duplicate `Check again` and `Check for updates` buttons with one context-aware action.
-- Kept the manual check behavior fully fresh while preserving the once-per-session automatic check when returning to Settings.
-
 ## 1.0.3 — Reliable updates and smoother installs
 
 TideCode now makes the final step of updating easier to understand and harder to interrupt, from the first manual check through the installer handoff.
@@ -17,6 +10,8 @@ TideCode now makes the final step of updating easier to understand and harder to
 - Added a persistent restart prompt beside the TideCode wordmark whenever a downloaded update is waiting.
 - Preserved downloaded-update readiness when users manually refresh release information.
 - Fixed the quit handoff so TideCode does not block `electron-updater` while it launches the installer.
+- Replaced duplicate `Check again` and `Check for updates` controls with one context-aware action.
+- Prevented concurrent update downloads from resetting progress or downloading the same release twice.
 
 ## 1.0.2 — Safer updates and a polished installer
 
