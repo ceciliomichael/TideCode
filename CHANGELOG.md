@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.4 — A clearer update action
+
+The Updates screen now keeps one clear primary action, so checking the latest release never competes with a second button that does the same thing.
+
+- Replaced the duplicate `Check again` and `Check for updates` buttons with one context-aware action.
+- Kept the manual check behavior fully fresh while preserving the once-per-session automatic check when returning to Settings.
+
 ## 1.0.3 — Reliable updates and smoother installs
 
 TideCode now makes the final step of updating easier to understand and harder to interrupt, from the first manual check through the installer handoff.
