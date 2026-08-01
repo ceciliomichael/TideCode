@@ -256,6 +256,7 @@ export function buildSkillToolDescription(skills: readonly SkillSummary[] = []) 
 
   return [
     'Loads and returns the complete instructions and base directory for one enabled skill selected by exact name.',
+    'After loading, use read/list/glob/grep for files under the skill directory and the terminal for scripts.',
     `Enabled names: ${enabledNames || 'none'}.`,
   ].join(' ')
 }

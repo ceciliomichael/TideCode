@@ -1,9 +1,9 @@
 {
   "name": "tidecode",
-  "description": "Desktop AI workspace built with Electron, Vite, and React.",
+  "description": "A focused desktop AI workspace for efficient software work.",
   "author": "TideCode Team",
   "private": true,
-  "version": "0.2.11",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,7 @@
     "prebuild": "node ./scripts/sync-ripgrep-binary.mjs",
     "ripgrep:sync": "node ./scripts/sync-ripgrep-binary.mjs",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test",
     "build": "tsc && vite build",
     "icons:generate": "node ./scripts/generate-electron-icons.mjs",
     "dist": "npm run build && npm run icons:generate && electron-builder --publish never",

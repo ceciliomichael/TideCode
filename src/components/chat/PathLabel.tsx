@@ -32,8 +32,8 @@ export const PathLabel = memo(function PathLabel({ path, className = '' }: PathL
 
   return (
     <span className={`inline-flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap ${className}`.trim()} title={normalizedPath}>
-      <span className="min-w-0 flex-1 truncate text-right">{parentPath}</span>
-      <span className="min-w-0 shrink truncate">{basename}</span>
+      <span className="min-w-0 shrink truncate text-left">{parentPath}</span>
+      <span className="shrink-0 truncate">{basename}</span>
     </span>
   )
 })

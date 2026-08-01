@@ -1,3 +1,4 @@
+import { useCallback, useState } from 'react'
 import { ConversationDiffPanel, type DiffPanelScope } from '../../components/chat/ConversationDiffPanel'
 import { SourceControlPanel } from '../../components/sourceControl/SourceControlPanel'
 import { WorkspaceExplorerPanel } from '../../components/workspaceExplorer/WorkspaceExplorerPanel'
@@ -32,6 +33,13 @@ export function ChatWorkspaceSidePanels({
   workspaceState,
 }: ChatWorkspaceSidePanelsProps) {
   const hasRepository = gitBranchState.branchState.hasRepository
+  const [diffPanelFilePathToFocus, setDiffPanelFilePathToFocus] = useState<string | null>(null)
+  const handleDiffPanelFileFocus = useCallback((filePath: string) => {
+    setDiffPanelFilePathToFocus(filePath)
+  }, [])
+  const handleDiffPanelFileFocusHandled = useCallback(() => {
+    setDiffPanelFilePathToFocus(null)
+  }, [])
 
   return (
     <>
@@ -79,10 +87,12 @@ export function ChatWorkspaceSidePanels({
           isOpen={interfaceController.isDiffPanelOpen}
           onDiscardFile={interfaceController.handleDiscardDiffFile}
           onExpandedFilePathsChange={onDiffPanelExpandedFilePathsChange}
+          onScrollToFilePath={handleDiffPanelFileFocusHandled}
           onSelectedScopeChange={onDiffPanelSelectedScopeChange}
           onStageFile={interfaceController.handleStageDiffFile}
           onUnstageFile={interfaceController.handleUnstageDiffFile}
           pendingFileActionPath={interfaceController.pendingFileActionPath}
+          scrollToFilePath={diffPanelFilePathToFocus}
           width={workspaceState.conversationDiffPanelWidth}
           onWidthChange={workspaceState.handleConversationDiffPanelWidthChange}
           onWidthCommit={workspaceState.handleConversationDiffPanelWidthCommit}
@@ -102,6 +112,7 @@ export function ChatWorkspaceSidePanels({
           onDiscardFiles={interfaceController.handleDiscardDiffFiles}
           onDiscardFile={interfaceController.handleDiscardDiffFile}
           onOpenCommitModal={interfaceController.handleOpenCommitModal}
+          onDiffPanelFileFocus={handleDiffPanelFileFocus}
           onOpenDiffPanel={workspaceState.handleOpenDiffPanel}
           onQuickCommit={interfaceController.handleQuickCommit}
           onRefreshAll={interfaceController.handleRefreshGitUi}

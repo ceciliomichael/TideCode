@@ -14,12 +14,14 @@ interface ConversationDiffPanelProps {
   isOpen: boolean
   onDiscardFile: (filePath: string) => Promise<void>
   onExpandedFilePathsChange: (nextFilePaths: string[]) => void
+  onScrollToFilePath?: () => void
   onStageFile: (filePath: string) => Promise<void>
   onUnstageFile: (filePath: string) => Promise<void>
   onSelectedScopeChange: (nextScope: DiffPanelScope) => void
   onWidthChange: (nextWidth: number) => void
   onWidthCommit?: (nextWidth: number) => void
   pendingFileActionPath: string | null
+  scrollToFilePath?: string | null
   selectedScope: DiffPanelScope
   width: number
 }
@@ -39,12 +41,14 @@ function ConversationDiffPanelContent({
   isOpen,
   onDiscardFile,
   onExpandedFilePathsChange,
+  onScrollToFilePath,
   onStageFile,
   onUnstageFile,
   onSelectedScopeChange,
   onWidthChange,
   onWidthCommit,
   pendingFileActionPath,
+  scrollToFilePath,
   selectedScope,
   width,
 }: ConversationDiffPanelProps) {
@@ -438,11 +442,13 @@ function ConversationDiffPanelContent({
           <VirtualizedConversationDiffFileList
             diffs={displayedFileDiffs}
             expandedFilePathSet={expandedFilePathSet}
+            onScrollToFilePath={onScrollToFilePath}
             onDiscardFile={onDiscardFile}
             onExpandedChange={handleFileExpandedChange}
             onStageFile={onStageFile}
             onUnstageFile={onUnstageFile}
             pendingFileActionPath={pendingFileActionPath}
+            scrollToFilePath={scrollToFilePath}
             selectedScope={selectedScope}
           />
         )}

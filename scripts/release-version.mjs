@@ -74,7 +74,7 @@ function parseArgs(argv) {
     push: false,
     allowDirty: false,
     dryRun: false,
-    remote: "origin",
+    remote: "tidecode",
     interactive: false,
   };
 
@@ -161,7 +161,7 @@ Options:
   --interactive, -i           Interactive prompt mode
   --commit                    Commit package version files and create git tag
   --push                      Push branch and tag to remote (implies --commit)
-  --remote <name>             Git remote name for push (default: origin)
+  --remote <name>             Git remote name for push (default: tidecode)
   --allow-dirty               Allow running with a dirty git working tree
   --dry-run                   Print actions without writing files
   --help                      Show this help

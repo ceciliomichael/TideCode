@@ -14,7 +14,6 @@
     "repo": "TideCode"
   },
   "files": [
-    "AGENTS.md",
     "dist",
     "dist-electron",
     "electron/chat/shared/prompts/**/*",

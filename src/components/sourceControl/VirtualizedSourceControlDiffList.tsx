@@ -3,6 +3,7 @@ import { Minus, Plus, Undo2 } from 'lucide-react'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
 import { getPathBasename } from '../../lib/pathPresentation'
+import { PathLabel } from '../chat/PathLabel'
 import { Tooltip } from '../Tooltip'
 import type { DiffPanelScope } from '../chat/ConversationDiffFileItem'
 
@@ -133,7 +134,7 @@ function DiffFileActionButton({
 
 function DiffLineSummary({ addedLineCount, removedLineCount }: { addedLineCount: number; removedLineCount: number }) {
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 text-xs leading-none">
+    <span className="inline-flex items-center gap-1 text-xs leading-none">
       <span className="leading-none text-emerald-600 dark:text-emerald-400">{`+${addedLineCount}`}</span>
       {removedLineCount > 0 ? <span className="leading-none text-red-600 dark:text-red-400">{`-${removedLineCount}`}</span> : null}
     </span>
@@ -217,12 +218,12 @@ function DiffRow({
 }) {
   const iconConfig = resolveFileIconConfig({ fileName: diff.fileName })
   const FileIcon = iconConfig.icon
-  const { fileName, normalizedPath } = splitFilePath(diff.fileName)
+  const { normalizedPath } = splitFilePath(diff.fileName)
 
   return (
     <div
       className={[
-        'group flex min-h-[49px] w-full items-center border-b border-border/60 bg-surface transition-colors',
+        'group flex h-[49px] w-full items-center border-b border-border/60 bg-surface transition-colors',
         'hover:bg-surface-muted/50',
       ].join(' ')}
     >
@@ -231,13 +232,11 @@ function DiffRow({
         onClick={() => onOpenDiffPanelForFile(diff.fileName, selectedScope)}
         className="group flex min-w-0 flex-1 items-center px-4 py-3 text-left text-[12px] text-muted-foreground"
       >
-        <span className="flex min-w-0 flex-1 items-center gap-2.5">
+        <span className="inline-flex min-h-4 min-w-0 flex-1 items-center gap-2.5">
           <FileIcon size={14} style={{ color: iconConfig.color }} className="shrink-0" />
-          <span className="min-w-0 flex-1" title={normalizedPath}>
-            <span className="relative top-px flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 truncate text-foreground">{fileName}</span>
+          <span className="relative top-px inline-flex min-w-0 items-center gap-1.5">
+              <PathLabel path={normalizedPath} className="min-w-0 leading-[1] text-foreground" />
               <DiffLineSummary addedLineCount={diff.addedLineCount} removedLineCount={diff.removedLineCount} />
-            </span>
           </span>
         </span>
       </button>
@@ -294,7 +293,7 @@ function DeletedDiffRow({
       >
         <FileIcon size={14} style={{ color: iconConfig.color }} className="shrink-0" />
         <div className="min-w-0 flex-1" title={normalizedPath}>
-          <div className="relative top-px flex min-w-0 items-center gap-1.5">
+          <div className="relative top-px inline-flex min-w-0 items-center gap-1.5">
             <span className="min-w-0 truncate text-left text-foreground decoration-white decoration-[1.5px] line-through">{fileName}</span>
             <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-red-500">D</span>
             <DiffLineSummary addedLineCount={diff.addedLineCount} removedLineCount={diff.removedLineCount} />

@@ -28,6 +28,7 @@ interface SourceControlPanelProps {
   onDiscardFiles: (filePaths: string[]) => Promise<void>
   onDiscardFile: (filePath: string) => Promise<void>
   onOpenCommitModal: () => void
+  onDiffPanelFileFocus: (filePath: string) => void
   onOpenDiffPanel: () => void
   onQuickCommit: (input: { message: string }) => Promise<GitCommitResult | null>
   onRefreshAll: () => Promise<void>
@@ -57,6 +58,7 @@ function SourceControlPanelContent({
   onDiscardFiles,
   onDiscardFile,
   onOpenCommitModal,
+  onDiffPanelFileFocus,
   onOpenDiffPanel,
   onQuickCommit,
   onRefreshAll,
@@ -325,6 +327,7 @@ function SourceControlPanelContent({
   function handleOpenDiffPanelForFile(filePath: string, scope: DiffPanelScope) {
     onDiffPanelSelectedScopeChange(scope)
     onDiffPanelExpandedFilePathsChange([filePath])
+    onDiffPanelFileFocus(filePath)
     onOpenDiffPanel()
   }
 

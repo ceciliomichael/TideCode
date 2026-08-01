@@ -6,11 +6,13 @@ import { ConversationDiffFileItem } from './ConversationDiffFileItem'
 interface VirtualizedConversationDiffFileListProps {
   diffs: readonly ConversationFileDiff[]
   expandedFilePathSet: ReadonlySet<string>
+  onScrollToFilePath?: () => void
   onDiscardFile: (filePath: string) => Promise<void>
   onExpandedChange: (filePath: string, nextValue: boolean) => void
   onStageFile: (filePath: string) => Promise<void>
   onUnstageFile: (filePath: string) => Promise<void>
   pendingFileActionPath: string | null
+  scrollToFilePath?: string | null
   selectedScope: DiffPanelScope
 }
 
@@ -142,11 +144,13 @@ const MeasuredConversationDiffRow = memo(function MeasuredConversationDiffRow({
 export const VirtualizedConversationDiffFileList = memo(function VirtualizedConversationDiffFileList({
   diffs,
   expandedFilePathSet,
+  onScrollToFilePath,
   onDiscardFile,
   onExpandedChange,
   onStageFile,
   onUnstageFile,
   pendingFileActionPath,
+  scrollToFilePath,
   selectedScope,
 }: VirtualizedConversationDiffFileListProps) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
@@ -192,6 +196,33 @@ export const VirtualizedConversationDiffFileList = memo(function VirtualizedConv
       viewportHeight,
     })
   }, [diffs.length, itemHeights, offsets, scrollTop, shouldVirtualize, viewportHeight])
+
+  useEffect(() => {
+    if (!scrollToFilePath || !scrollContainerRef.current) {
+      return
+    }
+
+    const targetIndex = diffs.findIndex((diff) => diff.fileName === scrollToFilePath)
+    if (targetIndex < 0) {
+      if (diffs.length > 0) {
+        onScrollToFilePath?.()
+      }
+      return
+    }
+
+    const containerElement = scrollContainerRef.current
+    const targetTop = offsets[targetIndex] ?? 0
+    const nextScrollTop = targetTop > 0 ? targetTop - 8 : 0
+    const maxScrollTop = Math.max(0, containerElement.scrollHeight - containerElement.clientHeight)
+    const clampedScrollTop = Math.min(maxScrollTop, Math.max(0, nextScrollTop))
+
+    if (containerElement.scrollTop !== clampedScrollTop) {
+      containerElement.scrollTop = clampedScrollTop
+      setScrollTop(clampedScrollTop)
+    }
+
+    onScrollToFilePath?.()
+  }, [diffs, itemHeights, offsets, onScrollToFilePath, scrollToFilePath])
 
   const handleHeightChange = useCallback((filePath: string, nextHeight: number) => {
     setMeasuredHeightsByPath((currentValue) => {

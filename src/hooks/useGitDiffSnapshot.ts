@@ -6,6 +6,7 @@ import {
   getEmptyGitDiffSnapshot,
   loadGitDiffSnapshot,
 } from '../lib/gitDiffSnapshotCache'
+import { appendNewDiffsToSnapshot } from '../lib/diffSnapshotOrdering'
 import { normalizeGitWorkspacePath } from '../lib/gitBranchStateCache'
 
 interface UseGitDiffSnapshotInput {
@@ -71,6 +72,10 @@ export function useGitDiffSnapshot({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const requestIdRef = useRef(0)
   const activeWorkspacePathRef = useRef(normalizedWorkspacePath)
+  const snapshotIdentityRef = useRef({
+    includeContent,
+    workspacePath: normalizedWorkspacePath,
+  })
 
   useEffect(() => {
     activeWorkspacePathRef.current = normalizedWorkspacePath
@@ -111,7 +116,16 @@ export function useGitDiffSnapshot({
         return
       }
 
-      setSnapshot((currentSnapshot) => (areDiffSnapshotsEqual(currentSnapshot, diffSnapshot) ? currentSnapshot : diffSnapshot))
+      const canPreserveExistingOrder =
+        snapshotIdentityRef.current.includeContent === includeContent &&
+        snapshotIdentityRef.current.workspacePath === requestWorkspacePath
+
+      setSnapshot((currentSnapshot) => {
+        const nextSnapshot = canPreserveExistingOrder
+          ? appendNewDiffsToSnapshot(currentSnapshot, diffSnapshot)
+          : diffSnapshot
+        return areDiffSnapshotsEqual(currentSnapshot, nextSnapshot) ? currentSnapshot : nextSnapshot
+      })
     } catch (error) {
       if (
         requestId !== requestIdRef.current ||
@@ -120,10 +134,6 @@ export function useGitDiffSnapshot({
         return
       }
 
-      setSnapshot((currentSnapshot) => {
-        const emptySnapshot = getEmptyGitDiffSnapshot()
-        return areDiffSnapshotsEqual(currentSnapshot, emptySnapshot) ? currentSnapshot : emptySnapshot
-      })
       setErrorMessage(error instanceof Error ? error.message : 'Failed to load git diffs.')
     } finally {
       if (
@@ -137,6 +147,10 @@ export function useGitDiffSnapshot({
   }, [hasRepository, includeContent, workspacePath])
 
   useEffect(() => {
+    snapshotIdentityRef.current = {
+      includeContent,
+      workspacePath: normalizeGitWorkspacePath(workspacePath),
+    }
     const cachedSnapshot =
       (includeContent ? getCachedGitDiffSnapshot(workspacePath) : getCachedGitStatusSnapshot(workspacePath)) ??
       getEmptyGitDiffSnapshot()
