@@ -24,6 +24,8 @@ import { captureKanbanBoardSnapshotIfNeeded } from '../../../kanban/checkpoints'
 const COL_ENUM = [...KANBAN_COLUMN_IDS]
 const TYPE_ENUM = [...KANBAN_ISSUE_TYPE_IDS]
 const PRI_ENUM = [...KANBAN_PRIORITY_IDS]
+const KANBAN_TOOL_DESCRIPTION =
+  'Manages workspace Kanban cards with read_board, read_card, create_card, create_task_with_subtasks, update_card, move_card, reorder_card, and delete_card actions.'
 
 function err(error: unknown, fallback: string): AgentToolExecutionResult {
   return {
@@ -47,7 +49,7 @@ function ok(summary: string, body: unknown): AgentToolExecutionResult {
 // ---------------------------------------------------------------------------
 const FLAT_KANBAN_SCHEMA = {
   type: 'object',
-  description: 'Manages tasks and cards on the workspace Kanban board.',
+  description: KANBAN_TOOL_DESCRIPTION,
   properties: {
     action: { type: 'string' },
 
@@ -171,7 +173,7 @@ export function createKanbanToolSet(
 
   return {
     kanban_board: tool({
-      description: 'Manages tasks and cards on the workspace Kanban board.',
+      description: KANBAN_TOOL_DESCRIPTION,
       inputSchema: jsonSchema(schema as Parameters<typeof jsonSchema>[0]),
       execute: async (rawInput): Promise<AgentToolExecutionResult> => {
         const input = rawInput as KanbanBoardInput

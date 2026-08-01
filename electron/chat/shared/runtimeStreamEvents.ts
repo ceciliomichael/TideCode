@@ -1,0 +1,355 @@
+import { randomUUID } from 'node:crypto'
+import type { WebContents } from 'electron'
+import type {
+  ChatStreamEvent,
+  Message,
+  ToolInvocationResultPresentation,
+} from '../../../src/types/chat'
+import { recordToolFreshness } from '../history/eventStore'
+import { getDynamicToolInvocationProjection } from './tools'
+import type { AgentToolExecutionResult } from './toolTypes'
+import {
+  createCanonicalToolResultContent,
+  normalizeToolExecutionResult,
+} from './toolReplay'
+
+const CHAT_STREAM_EVENT_CHANNEL = 'chat:stream:event'
+
+interface ToolInvocationState {
+  argumentsText: string
+  startedAt: number
+  toolName: string
+}
+
+export interface RuntimeStreamPart {
+  type: string
+  [key: string]: unknown
+}
+
+export function emitChatStreamEvent(webContents: WebContents, payload: ChatStreamEvent) {
+  if (webContents.isDestroyed()) {
+    return
+  }
+
+  webContents.send(CHAT_STREAM_EVENT_CHANNEL, payload)
+}
+
+function isStreamPart(part: RuntimeStreamPart, type: string): boolean {
+  return part.type === type
+}
+
+function stringifyToolArguments(input: unknown) {
+  try {
+    return JSON.stringify(input ?? {}, null, 2)
+  } catch {
+    return '{}'
+  }
+}
+function parseToolArguments(input: string) {
+  try {
+    return JSON.parse(input) as unknown
+  } catch {
+    return null
+  }
+}
+function resolveDisplayedInvocation(toolName: string, input: unknown, result?: unknown) {
+  return getDynamicToolInvocationProjection(toolName, input, result) ?? {
+    argumentsValue: input,
+    toolName,
+  }
+}
+
+
+function createSyntheticToolMessage(
+  invocationId: string,
+  toolName: string,
+  argumentsValue: unknown,
+  completedAt: number,
+  result: AgentToolExecutionResult,
+): Message {
+  return {
+    content: createCanonicalToolResultContent({
+      argumentsValue,
+      result,
+      toolCallId: invocationId,
+      toolName,
+    }),
+    id: randomUUID(),
+    role: 'tool',
+    timestamp: completedAt,
+    toolCallId: invocationId,
+  }
+}
+
+function getToolResultPresentation(result: AgentToolExecutionResult): ToolInvocationResultPresentation | undefined {
+  return result.resultPresentation
+}
+
+interface ProcessRuntimeStreamInput {
+  abortController: AbortController
+  conversationId: string | null
+  fullStream: AsyncIterable<RuntimeStreamPart>
+  queueHistoryWrite: (action: () => Promise<unknown>) => void
+  streamId: string
+  webContents: WebContents
+}
+
+export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
+  const { conversationId, queueHistoryWrite } = input
+  const invocationStateById = new Map<string, ToolInvocationState>()
+  let completedStepCount = 0
+  let lastFinishReason: string | null = null
+
+      for await (const part of input.fullStream) {
+        if (isStreamPart(part, 'text-delta') && typeof part.text === 'string') {
+          emitChatStreamEvent(input.webContents, {
+            delta: part.text,
+            streamId: input.streamId,
+            type: 'content_delta',
+          })
+          continue
+        }
+  
+        if (isStreamPart(part, 'reasoning-delta') && typeof part.text === 'string') {
+          emitChatStreamEvent(input.webContents, {
+            delta: part.text,
+            streamId: input.streamId,
+            type: 'reasoning_delta',
+          })
+          continue
+        }
+  
+        if (isStreamPart(part, 'reasoning-end')) {
+          emitChatStreamEvent(input.webContents, {
+            streamId: input.streamId,
+            type: 'reasoning_completed',
+          })
+          continue
+        }
+  
+        if (isStreamPart(part, 'tool-input-start') && typeof part.id === 'string' && typeof part.toolName === 'string') {
+          const startedAt = Date.now()
+          const displayedInvocation = resolveDisplayedInvocation(part.toolName, undefined)
+          invocationStateById.set(part.id, {
+            argumentsText: '',
+            startedAt,
+            toolName: displayedInvocation.toolName,
+          })
+          emitChatStreamEvent(input.webContents, {
+            argumentsText: '',
+            invocationId: part.id,
+            startedAt,
+            streamId: input.streamId,
+            toolName: displayedInvocation.toolName,
+            type: 'tool_invocation_started',
+          })
+          continue
+        }
+  
+        if (isStreamPart(part, 'tool-input-delta') && typeof part.id === 'string' && typeof part.delta === 'string') {
+          const currentState = invocationStateById.get(part.id) ?? {
+            argumentsText: '',
+            startedAt: Date.now(),
+            toolName: 'tool',
+          }
+          const nextArgumentsText = currentState.argumentsText + part.delta
+          const outerToolName = typeof part.toolName === 'string' ? part.toolName : currentState.toolName
+          const displayedInvocation = resolveDisplayedInvocation(outerToolName, parseToolArguments(nextArgumentsText))
+          const displayedArgumentsText = displayedInvocation.toolName === outerToolName
+            ? nextArgumentsText
+            : stringifyToolArguments(displayedInvocation.argumentsValue)
+          invocationStateById.set(part.id, {
+            ...currentState,
+            argumentsText: displayedArgumentsText,
+            toolName: displayedInvocation.toolName,
+          })
+          emitChatStreamEvent(input.webContents, {
+            argumentsText: displayedArgumentsText,
+            invocationId: part.id,
+            streamId: input.streamId,
+            toolName: displayedInvocation.toolName,
+            type: 'tool_invocation_delta',
+          })
+          continue
+        }
+  
+        if (
+          isStreamPart(part, 'tool-call') &&
+          typeof part.toolCallId === 'string' &&
+          typeof part.toolName === 'string'
+        ) {
+          const currentState = invocationStateById.get(part.toolCallId)
+          const displayedInvocation = resolveDisplayedInvocation(part.toolName, part.input ?? part.args)
+          const argumentsText = stringifyToolArguments(displayedInvocation.argumentsValue)
+          if (!currentState) {
+            const startedAt = Date.now()
+            invocationStateById.set(part.toolCallId, {
+              argumentsText,
+              startedAt,
+              toolName: displayedInvocation.toolName,
+            })
+            emitChatStreamEvent(input.webContents, {
+              argumentsText,
+              invocationId: part.toolCallId,
+              startedAt,
+              streamId: input.streamId,
+              toolName: displayedInvocation.toolName,
+              type: 'tool_invocation_started',
+            })
+            continue
+          }
+  
+          if (currentState.argumentsText !== argumentsText) {
+            invocationStateById.set(part.toolCallId, {
+              ...currentState,
+              argumentsText,
+              toolName: displayedInvocation.toolName,
+            })
+            emitChatStreamEvent(input.webContents, {
+              argumentsText,
+              invocationId: part.toolCallId,
+              streamId: input.streamId,
+              toolName: displayedInvocation.toolName,
+              type: 'tool_invocation_delta',
+            })
+          }
+          continue
+        }
+  
+        if (
+          isStreamPart(part, 'tool-result') &&
+          typeof part.toolCallId === 'string' &&
+          typeof part.toolName === 'string'
+        ) {
+          if (input.abortController.signal.aborted) {
+            invocationStateById.delete(part.toolCallId)
+            continue
+          }
+  
+          const completedAt = Date.now()
+          const toolName = part.toolName
+          const normalizedResult = normalizeToolExecutionResult(toolName, part.output ?? part.result)
+          const displayedInvocation = resolveDisplayedInvocation(
+            toolName,
+            part.input ?? part.args,
+            normalizedResult,
+          )
+          const displayedArgumentsText = stringifyToolArguments(displayedInvocation.argumentsValue)
+          if (conversationId) {
+            queueHistoryWrite(() => recordToolFreshness({
+              conversationId,
+              status: normalizedResult.status,
+              subject: normalizedResult.subject,
+              toolName,
+            }))
+          }
+          const syntheticMessage = createSyntheticToolMessage(
+            part.toolCallId,
+            part.toolName,
+            part.input ?? part.args,
+            completedAt,
+            normalizedResult,
+          )
+          const displaySyntheticMessage = createSyntheticToolMessage(
+            part.toolCallId,
+            displayedInvocation.toolName,
+            displayedInvocation.argumentsValue,
+            completedAt,
+            normalizedResult,
+          )
+          const payload = {
+            argumentsText: displayedArgumentsText,
+            completedAt,
+            invocationId: part.toolCallId,
+            resultContent: displaySyntheticMessage.content,
+            ...(getToolResultPresentation(normalizedResult)
+              ? { resultPresentation: getToolResultPresentation(normalizedResult) }
+              : {}),
+            streamId: input.streamId,
+            syntheticMessage,
+            toolName: displayedInvocation.toolName,
+          } as const
+  
+          invocationStateById.delete(part.toolCallId)
+          if (normalizedResult.status === 'error') {
+            emitChatStreamEvent(input.webContents, {
+              ...payload,
+              errorMessage: normalizedResult.summary,
+              type: 'tool_invocation_failed',
+            })
+            continue
+          }
+  
+          emitChatStreamEvent(input.webContents, {
+            ...payload,
+            type: 'tool_invocation_completed',
+          })
+          continue
+        }
+  
+        if (
+          isStreamPart(part, 'tool-error') &&
+          typeof part.toolCallId === 'string' &&
+          typeof part.toolName === 'string'
+        ) {
+          if (input.abortController.signal.aborted) {
+            invocationStateById.delete(part.toolCallId)
+            continue
+          }
+  
+          const currentState = invocationStateById.get(part.toolCallId)
+          const completedAt = Date.now()
+          const displayedInvocation = resolveDisplayedInvocation(part.toolName, part.input ?? part.args)
+          const displayedArgumentsText = stringifyToolArguments(displayedInvocation.argumentsValue)
+          const errorMessage =
+            (part.error instanceof Error && part.error.message.trim().length > 0
+              ? part.error.message
+              : null) || `Tool ${part.toolName} failed before returning a result.`
+          const syntheticMessage = createSyntheticToolMessage(
+            part.toolCallId,
+            part.toolName,
+            part.input ?? part.args,
+            completedAt,
+            {
+              body: errorMessage,
+              status: 'error',
+              summary: errorMessage,
+            },
+          )
+          const displaySyntheticMessage = createSyntheticToolMessage(
+            part.toolCallId,
+            displayedInvocation.toolName,
+            displayedInvocation.argumentsValue,
+            completedAt,
+            {
+              body: errorMessage,
+              status: 'error',
+              summary: errorMessage,
+            },
+          )
+  
+          invocationStateById.delete(part.toolCallId)
+          emitChatStreamEvent(input.webContents, {
+            argumentsText: currentState?.argumentsText ?? displayedArgumentsText,
+            completedAt,
+            errorMessage,
+            invocationId: part.toolCallId,
+            resultContent: displaySyntheticMessage.content,
+            streamId: input.streamId,
+            syntheticMessage,
+            toolName: displayedInvocation.toolName,
+            type: 'tool_invocation_failed',
+          })
+        }
+  
+        if (isStreamPart(part, 'finish')) {
+          completedStepCount += 1
+          lastFinishReason = typeof part.finishReason === 'string' ? part.finishReason : null
+        }
+      }
+
+  return {
+    completedStepCount,
+    lastFinishReason,
+  }
+}

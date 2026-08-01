@@ -4,7 +4,12 @@ import { createEditToolResult, type WorkspaceToolContext } from './workspaceTool
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 const EDIT_TOOL_DESCRIPTION =
-  'Safely edits an existing file using one exact target block or a batch of exact target blocks. Read the file first and copy each current block into targetContent. Leading indentation differences are ignored, but the remaining text must match exactly.'
+  'Replaces a block of text in an existing file, or applies a batch of exact text replacements atomically. Leading indentation differences are ignored, but the remaining target text must match exactly.'
+
+const EDIT_PATH_SCHEMA = {
+  description: 'Path to the file to edit.',
+  type: 'string',
+}
 
 const EDIT_OPERATION_SCHEMA = {
   additionalProperties: false,
@@ -38,16 +43,17 @@ const EDIT_OPERATION_SCHEMA = {
 }
 
 const EDIT_INPUT_SCHEMA = {
+  properties: {
+    path: EDIT_PATH_SCHEMA,
+  },
+  required: ['path'],
   oneOf: [
     {
       additionalProperties: false,
       properties: {
         allowMultiple: EDIT_OPERATION_SCHEMA.properties.allowMultiple,
         endLine: EDIT_OPERATION_SCHEMA.properties.endLine,
-        path: {
-          description: 'Path to the file to edit.',
-          type: 'string',
-        },
+        path: EDIT_PATH_SCHEMA,
         replacementContent: EDIT_OPERATION_SCHEMA.properties.replacementContent,
         startLine: EDIT_OPERATION_SCHEMA.properties.startLine,
         targetContent: EDIT_OPERATION_SCHEMA.properties.targetContent,
@@ -65,10 +71,7 @@ const EDIT_INPUT_SCHEMA = {
           minItems: 1,
           type: 'array',
         },
-        path: {
-          description: 'Path to the file to edit.',
-          type: 'string',
-        },
+        path: EDIT_PATH_SCHEMA,
       },
       required: ['path', 'edits'],
       type: 'object',
@@ -168,6 +171,10 @@ function normalizeAllowMultiple(value: unknown, label: string) {
 function normalizeLineBounds(startLine: unknown, endLine: unknown, label: string) {
   if (startLine === undefined && endLine === undefined) {
     return { endLine: undefined, startLine: undefined }
+  }
+
+  if ((startLine === undefined) !== (endLine === undefined)) {
+    throw new Error(`${label} must provide both startLine and endLine when using a line range.`)
   }
 
   if (

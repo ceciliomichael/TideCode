@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { app } from 'electron'
+import { electronApp } from '../electronApp'
 import { getVirtualAgentContextDirectoryName } from './virtualAgentContext'
 
 const HISTORY_ROOT_SEGMENTS = ['.echosphere', 'history'] as const
@@ -10,7 +10,7 @@ export const MESSAGE_LOG_FILE_NAME = 'messages.jsonl'
 export const FOLDERS_FILE_NAME = 'folders.json'
 
 export function getHistoryDirectoryPath() {
-  return path.join(app.getPath('home'), ...HISTORY_ROOT_SEGMENTS)
+  return path.join(electronApp.getPath('home'), ...HISTORY_ROOT_SEGMENTS)
 }
 
 export function getConversationFilePath(conversationId: string) {

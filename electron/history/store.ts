@@ -29,44 +29,14 @@ import {
   writeFolderStore,
 } from './folderStore'
 import { buildConversationCompaction } from './conversationCompaction'
-import { getConversationAgentContextPath, getDraftAgentContextPath } from './paths'
+import {
+  adoptDraftAgentContextDirectory,
+  cleanupDraftAgentContextDirectory,
+  ensureDraftAgentContextDirectory,
+} from './draftAgentContextStore'
+import { getConversationAgentContextPath } from './paths'
 
-export async function ensureDraftAgentContextDirectory() {
-  const draftPath = getDraftAgentContextPath()
-  await fs.mkdir(draftPath, { recursive: true })
-  return draftPath
-}
-
-export async function cleanupDraftAgentContextDirectory() {
-  const draftPath = getDraftAgentContextPath()
-  try {
-    await fs.rm(draftPath, { recursive: true, force: true })
-    await fs.mkdir(draftPath, { recursive: true })
-  } catch (error) {
-    console.warn('Failed to cleanup draft virtual agent context directory', error)
-  }
-}
-
-export async function adoptDraftAgentContextDirectory(targetConversationId: string) {
-  const draftPath = getDraftAgentContextPath()
-  const targetPath = getConversationAgentContextPath(targetConversationId)
-
-  try {
-    await fs.mkdir(targetPath, { recursive: true })
-    const entries = await fs.readdir(draftPath, { withFileTypes: true })
-    for (const entry of entries) {
-      const src = path.join(draftPath, entry.name)
-      const dest = path.join(targetPath, entry.name)
-      await fs.cp(src, dest, { recursive: true })
-    }
-  } catch (error) {
-    // Draft directory might not exist or be empty, which is completely normal
-  } finally {
-    await cleanupDraftAgentContextDirectory()
-  }
-
-  return targetPath
-}
+export { cleanupDraftAgentContextDirectory, ensureDraftAgentContextDirectory }
 
 async function ensureVirtualAgentContextDirectory(conversationId: string) {
   const agentContextPath = getConversationAgentContextPath(conversationId)

@@ -1,0 +1,196 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { GitCommitResult, GitHistoryCommitDetailsResult, GitHistoryEntry } from '../../types/chat'
+import { computeSwimlanes } from './historyGraphLayout'
+import { prependCommittedHistoryEntry } from './sourceControlHistoryUtils'
+
+const HISTORY_PAGE_SIZE = 200
+
+interface UseSourceControlHistoryInput {
+  isOpen: boolean
+  normalizedWorkspacePath: string
+}
+
+export function useSourceControlHistory({
+  isOpen,
+  normalizedWorkspacePath,
+}: UseSourceControlHistoryInput) {
+  const historyRowRefMap = useRef(new Map<string, HTMLButtonElement | null>())
+  const [historyEntries, setHistoryEntries] = useState<GitHistoryEntry[]>([])
+  const [headHash, setHeadHash] = useState<string | null>(null)
+  const [hasMoreHistory, setHasMoreHistory] = useState(false)
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+  const [isLoadingMoreHistory, setIsLoadingMoreHistory] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null)
+  const [expandedCommitHashes, setExpandedCommitHashes] = useState<string[]>([])
+  const [commitDetailsByHash, setCommitDetailsByHash] =
+    useState<Record<string, GitHistoryCommitDetailsResult>>({})
+  const [loadingCommitHashes, setLoadingCommitHashes] = useState<string[]>([])
+  const hasWorkspacePath = normalizedWorkspacePath.length > 0
+  const historyViewModels = useMemo(() => computeSwimlanes(historyEntries), [historyEntries])
+
+  const loadHistoryPage = useCallback(
+    async (offset: number, append: boolean) => {
+      if (!hasWorkspacePath) return
+      const result = await window.echosphereGit.getHistoryPage({
+        limit: HISTORY_PAGE_SIZE,
+        offset,
+        workspacePath: normalizedWorkspacePath,
+      })
+      setHeadHash(result.headHash)
+      setHasMoreHistory(result.hasMore)
+      setHistoryEntries((currentEntries) =>
+        append ? [...currentEntries, ...result.entries] : result.entries,
+      )
+      setSelectedCommitHash((currentSelectedHash) => {
+        if (currentSelectedHash && result.entries.some((entry) => entry.hash === currentSelectedHash)) {
+          return currentSelectedHash
+        }
+        if (result.headHash && result.entries.some((entry) => entry.hash === result.headHash)) {
+          return result.headHash
+        }
+        return result.entries[0]?.hash ?? null
+      })
+    },
+    [hasWorkspacePath, normalizedWorkspacePath],
+  )
+
+  const refreshHistory = useCallback(async (options?: { silent?: boolean }) => {
+    if (!hasWorkspacePath) {
+      setHistoryEntries([])
+      setHeadHash(null)
+      setHasMoreHistory(false)
+      setHistoryError(null)
+      setSelectedCommitHash(null)
+      setExpandedCommitHashes([])
+      setCommitDetailsByHash({})
+      setLoadingCommitHashes([])
+      return
+    }
+    setHistoryError(null)
+    if (!options?.silent) setIsLoadingHistory(true)
+    try {
+      await loadHistoryPage(0, false)
+    } catch (error) {
+      if (!options?.silent) {
+        setHistoryEntries([])
+        setHeadHash(null)
+        setHasMoreHistory(false)
+      }
+      setHistoryError(error instanceof Error ? error.message : 'Failed to load git history.')
+    } finally {
+      if (!options?.silent) setIsLoadingHistory(false)
+    }
+  }, [hasWorkspacePath, loadHistoryPage])
+
+  const appendCommittedHistoryEntry = useCallback(async (commitResult: GitCommitResult) => {
+    if (!hasWorkspacePath) return false
+    const nextEntry = commitResult.historyEntry
+    if (nextEntry) {
+      setHistoryEntries((currentValue) => prependCommittedHistoryEntry(currentValue, nextEntry))
+      setHeadHash(nextEntry.hash)
+      setSelectedCommitHash(nextEntry.hash)
+      setHistoryError(null)
+      return true
+    }
+    try {
+      const result = await window.echosphereGit.getHistoryPage({
+        limit: 1,
+        offset: 0,
+        workspacePath: normalizedWorkspacePath,
+      })
+      const latestEntry = result.entries[0]
+      if (!latestEntry || latestEntry.hash !== commitResult.commitHash) return false
+      setHistoryEntries((currentValue) => prependCommittedHistoryEntry(currentValue, latestEntry))
+      setHeadHash(result.headHash)
+      setSelectedCommitHash(latestEntry.hash)
+      setHistoryError(null)
+      return true
+    } catch (error) {
+      console.error('Failed to append the latest commit to the source control history.', error)
+      return false
+    }
+  }, [hasWorkspacePath, normalizedWorkspacePath])
+
+  const loadMoreHistory = useCallback(async () => {
+    if (!hasWorkspacePath || !hasMoreHistory || isLoadingMoreHistory) return
+    setIsLoadingMoreHistory(true)
+    setHistoryError(null)
+    try {
+      await loadHistoryPage(historyEntries.length, true)
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : 'Failed to load more history.')
+    } finally {
+      setIsLoadingMoreHistory(false)
+    }
+  }, [hasMoreHistory, hasWorkspacePath, historyEntries.length, isLoadingMoreHistory, loadHistoryPage])
+
+  const loadCommitDetails = useCallback(async (commitHash: string) => {
+    if (!hasWorkspacePath || commitDetailsByHash[commitHash] || loadingCommitHashes.includes(commitHash)) return
+    setLoadingCommitHashes((currentValue) => [...currentValue, commitHash])
+    try {
+      const details = await window.echosphereGit.getHistoryCommitDetails({
+        commitHash,
+        workspacePath: normalizedWorkspacePath,
+      })
+      setCommitDetailsByHash((currentValue) => ({ ...currentValue, [commitHash]: details }))
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : 'Failed to load commit details.')
+    } finally {
+      setLoadingCommitHashes((currentValue) => currentValue.filter((value) => value !== commitHash))
+    }
+  }, [commitDetailsByHash, hasWorkspacePath, loadingCommitHashes, normalizedWorkspacePath])
+
+  const handleGoToCurrentCommit = useCallback(async () => {
+    if (!headHash) return
+    if (!historyEntries.some((entry) => entry.hash === headHash) && hasMoreHistory) {
+      await loadMoreHistory()
+    }
+    setSelectedCommitHash(headHash)
+    requestAnimationFrame(() => {
+      historyRowRefMap.current.get(headHash)?.scrollIntoView({ block: 'center' })
+    })
+  }, [hasMoreHistory, headHash, historyEntries, loadMoreHistory])
+
+  const handleCommitExpandedToggle = useCallback((commitHash: string) => {
+    const shouldExpand = !expandedCommitHashes.includes(commitHash)
+    setSelectedCommitHash(commitHash)
+    setExpandedCommitHashes((currentValue) =>
+      shouldExpand ? [...currentValue, commitHash] : currentValue.filter((value) => value !== commitHash),
+    )
+    if (shouldExpand) void loadCommitDetails(commitHash)
+  }, [expandedCommitHashes, loadCommitDetails])
+
+  useEffect(() => {
+    if (isOpen) void refreshHistory()
+  }, [isOpen, refreshHistory, normalizedWorkspacePath])
+
+  useEffect(() => {
+    const handleFocus = () => {
+      if (isOpen) void refreshHistory({ silent: true })
+    }
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [isOpen, refreshHistory])
+
+  return {
+    appendCommittedHistoryEntry,
+    commitDetailsByHash,
+    expandedCommitHashes,
+    handleCommitExpandedToggle,
+    handleGoToCurrentCommit,
+    hasMoreHistory,
+    headHash,
+    historyEntries,
+    historyError,
+    historyRowRefMap,
+    historyViewModels,
+    isLoadingHistory,
+    isLoadingMoreHistory,
+    loadCommitDetails,
+    loadMoreHistory,
+    loadingCommitHashes,
+    refreshHistory,
+    selectedCommitHash,
+  }
+}

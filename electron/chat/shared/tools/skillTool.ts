@@ -19,7 +19,7 @@ export interface SkillToolInput {
 
 export function createSkillTool(context: WorkspaceToolContext, enabledSkills: SkillSummary[]) {
   return tool({
-    description: buildSkillToolDescription(),
+    description: buildSkillToolDescription(enabledSkills),
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {

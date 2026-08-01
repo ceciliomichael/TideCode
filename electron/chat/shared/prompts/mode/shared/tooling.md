@@ -7,5 +7,5 @@ Tool workflow for every request that needs a tool:
 3. Wait for every requested schema, then call execute_tool with exactly {"id":"<catalog id>","args":{...}} using only parameters accepted by that schema.
 4. Read the native result before deciding whether another tool call is needed.
 
-Never call a private catalog tool directly. Never call execute_tool before its schema has returned. Never combine get_tool_schema and execute_tool in the same assistant turn. Batch get_tool_schema only for tools whose schemas can be fetched independently; keep execute_tool calls for the same file, terminal session, or Kanban card sequential. If the request does not need workspace or integration access, answer without calling a tool.
+Never call a private catalog tool directly. Never call execute_tool before its schema has returned. Never combine get_tool_schema and execute_tool in the same assistant turn. Batch calls only when none depends on another result. Keep calls for the same file, terminal session, or Kanban card sequential. If the request does not need workspace or integration access, answer without calling a tool.
 </tool_instructions>

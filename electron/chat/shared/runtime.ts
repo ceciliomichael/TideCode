@@ -9,17 +9,13 @@ import {
   type ToolSet,
 } from 'ai'
 import type {
-  ChatStreamEvent,
-  ContextUsageEstimate,
   Message,
   StartChatStreamInput,
-  ToolInvocationResultPresentation,
 } from '../../../src/types/chat'
-import { approximateTokenCount, estimateModelMessageContextUsage } from '../../../src/lib/contextUsage'
+import { approximateTokenCount } from '../../../src/lib/contextUsage'
 import { normalizeContextCompactionSettings } from '../../../src/lib/contextCompactionSettings'
 import { buildSkillsSystemPromptBlock, listEnabledSkills } from '../../skills/service'
-import { shouldReplayAssistantReasoning } from './assistantReasoningPolicy'
-import { buildPromptContextManifest, describeTools, stableStringify } from '../cache/canonicalization'
+import { buildPromptContextManifest } from '../cache/canonicalization'
 import { applyPromptCacheBreakpoints, derivePromptCacheKey } from '../cache/providerPolicies'
 import type { ProviderStepRecord } from '../history/contracts'
 import {
@@ -30,7 +26,6 @@ import {
   recordRunStarted,
   recordRunTerminal,
   recordStepCompleted,
-  recordToolFreshness,
   synchronizeCanonicalMessages,
 } from '../history/eventStore'
 import { projectCanonicalReplay } from '../history/replayProjector'
@@ -42,32 +37,24 @@ import {
 } from './messages'
 import {
   createAgentTools,
-  getDynamicToolInvocationProjection,
   repairDirectDynamicToolCall,
 } from './tools'
 import { cleanUpFinishedSessionsAtTurnEnd } from './tools/terminalTools'
-import type { AgentToolExecutionResult } from './toolTypes'
+import { sortToolSet } from './runtimeToolSet'
 import {
-  createCanonicalToolResultContent,
-  normalizeToolExecutionResult,
+  emitChatStreamEvent,
+  processRuntimeStream,
+  type RuntimeStreamPart,
+} from './runtimeStreamEvents'
+import {
   withCanonicalToolModelOutputs,
 } from './toolReplay'
 
-const CHAT_STREAM_EVENT_CHANNEL = 'chat:stream:event'
+export { estimateToolEnabledContextUsage } from './runtimeContextUsage'
+
 // Tool-heavy coding runs routinely exceed a dozen read/search/edit steps.
 // Keep the limit high enough that the AI SDK does not terminate mid-task.
 const MAX_TOOL_STEPS = 99999
-
-interface ToolInvocationState {
-  argumentsText: string
-  startedAt: number
-  toolName: string
-}
-
-interface RuntimeStreamPart {
-  type: string
-  [key: string]: unknown
-}
 
 interface RuntimePromptOptions {
   includeAssistantReasoningParts?: boolean
@@ -94,67 +81,6 @@ export type ProviderStreamFactory = (
   fullStream: AsyncIterable<RuntimeStreamPart>
 }>
 
-function emitChatStreamEvent(webContents: WebContents, payload: ChatStreamEvent) {
-  if (webContents.isDestroyed()) {
-    return
-  }
-
-  webContents.send(CHAT_STREAM_EVENT_CHANNEL, payload)
-}
-
-function isStreamPart(part: RuntimeStreamPart, type: string): boolean {
-  return part.type === type
-}
-
-function stringifyToolArguments(input: unknown) {
-  try {
-    return JSON.stringify(input ?? {}, null, 2)
-  } catch {
-    return '{}'
-  }
-}
-
-function parseToolArguments(input: string) {
-  try {
-    return JSON.parse(input) as unknown
-  } catch {
-    return null
-  }
-}
-
-function resolveDisplayedInvocation(toolName: string, input: unknown, result?: unknown) {
-  return getDynamicToolInvocationProjection(toolName, input, result) ?? {
-    argumentsValue: input,
-    toolName,
-  }
-}
-
-function sortToolSet(tools: ToolSet): ToolSet {
-  return Object.fromEntries(
-    Object.entries(tools).sort(([leftName], [rightName]) => leftName.localeCompare(rightName)),
-  ) as ToolSet
-}
-
-function createSyntheticToolMessage(
-  invocationId: string,
-  toolName: string,
-  argumentsValue: unknown,
-  completedAt: number,
-  result: AgentToolExecutionResult,
-): Message {
-  return {
-    content: createCanonicalToolResultContent({
-      argumentsValue,
-      result,
-      toolCallId: invocationId,
-      toolName,
-    }),
-    id: randomUUID(),
-    role: 'tool',
-    timestamp: completedAt,
-    toolCallId: invocationId,
-  }
-}
 
 async function safelyPersistHistory(action: () => Promise<unknown>) {
   try {
@@ -162,10 +88,6 @@ async function safelyPersistHistory(action: () => Promise<unknown>) {
   } catch (error) {
     console.error('Canonical chat history persistence failed.', error)
   }
-}
-
-function getToolResultPresentation(result: AgentToolExecutionResult): ToolInvocationResultPresentation | undefined {
-  return result.resultPresentation
 }
 
 function resolveActiveCheckpointId(messages: Message[]) {
@@ -184,74 +106,6 @@ function resolveActiveCheckpointId(messages: Message[]) {
   return null
 }
 
-export async function estimateToolEnabledContextUsage(input: {
-  agentContextRootPath: string | null
-  chatMode: StartChatStreamInput['chatMode']
-  conversationId?: string | null
-  contextCompaction: StartChatStreamInput['contextCompaction']
-  messages: Message[]
-  modelId?: string
-  providerId: StartChatStreamInput['providerId']
-  terminalExecutionMode: StartChatStreamInput['terminalExecutionMode']
-  webContents: WebContents
-}): Promise<ContextUsageEstimate> {
-  const contextCompaction = normalizeContextCompactionSettings(input.contextCompaction)
-  const workspaceRootPath = input.agentContextRootPath?.trim() || 'No workspace selected'
-  const enabledSkills = await listEnabledSkills(input.agentContextRootPath)
-  const promptOptions = {
-    availableSkillsBlock: buildSkillsSystemPromptBlock(),
-    includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId),
-    terminalExecutionMode: input.terminalExecutionMode,
-  }
-  const prompt = buildChatPrompt({
-    chatMode: input.chatMode,
-    messages: input.messages,
-    options: promptOptions,
-    workspaceRootPath,
-  })
-  let modelMessages = prompt.messages
-  if (input.conversationId?.trim() && input.modelId?.trim()) {
-    const canonicalHistory = await readCanonicalHistory(input.conversationId.trim())
-    modelMessages = projectCanonicalReplay({
-      document: canonicalHistory,
-      fallbackMessages: prompt.messages,
-      messages: input.messages,
-      modelId: input.modelId.trim(),
-      options: promptOptions,
-      providerId: input.providerId,
-    }).messages
-  }
-  const systemPrompt = prompt.system
-  const messageUsage = estimateModelMessageContextUsage(modelMessages)
-  let toolSchemaTokens = 0
-  if (input.agentContextRootPath?.trim()) {
-    const tools = await createAgentTools(
-      {
-        checkpointId: null,
-        conversationId: null,
-        workspaceRootPath: input.agentContextRootPath,
-        terminalExecutionMode: input.terminalExecutionMode,
-        webContents: input.webContents,
-      },
-      {
-        chatMode: input.chatMode,
-        enabledSkills,
-        providerId: input.providerId,
-      },
-    )
-    const cacheAwareTools = applyPromptCacheBreakpoints(sortToolSet(tools), input.providerId)
-    toolSchemaTokens = approximateTokenCount(stableStringify(describeTools(cacheAwareTools)))
-  }
-  const systemPromptTokens = approximateTokenCount(systemPrompt) + toolSchemaTokens
-
-  return {
-    historyTokens: messageUsage.historyTokens,
-    maxTokens: contextCompaction.contextWindowTokens,
-    systemPromptTokens,
-    toolResultsTokens: messageUsage.toolResultsTokens,
-    totalTokens: messageUsage.totalTokens + systemPromptTokens,
-  }
-}
 
 export async function runToolEnabledChatStream(input: {
   abortController: AbortController
@@ -263,11 +117,8 @@ export async function runToolEnabledChatStream(input: {
   webContents: WebContents
 }) {
   const contextCompaction = normalizeContextCompactionSettings(input.startInput.contextCompaction)
-  const invocationStateById = new Map<string, ToolInvocationState>()
   const runId = randomUUID()
   const conversationId = input.startInput.conversationId?.trim() || null
-  let completedStepCount = 0
-  let lastFinishReason: string | null = null
   let runWasRecorded = false
   let queuedHistoryWrites = Promise.resolve()
   const queueHistoryWrite = (action: () => Promise<unknown>) => {
@@ -296,7 +147,7 @@ export async function runToolEnabledChatStream(input: {
     )
     const promptOptions = {
       ...input.promptOptions,
-      availableSkillsBlock: buildSkillsSystemPromptBlock(),
+      availableSkillsBlock: buildSkillsSystemPromptBlock(enabledSkills),
       terminalExecutionMode: input.startInput.terminalExecutionMode,
     }
     const prompt = buildChatPrompt({
@@ -433,253 +284,14 @@ export async function runToolEnabledChatStream(input: {
       type: 'started',
     })
 
-    for await (const part of stream.fullStream) {
-      if (isStreamPart(part, 'text-delta') && typeof part.text === 'string') {
-        emitChatStreamEvent(input.webContents, {
-          delta: part.text,
-          streamId: input.streamId,
-          type: 'content_delta',
-        })
-        continue
-      }
-
-      if (isStreamPart(part, 'reasoning-delta') && typeof part.text === 'string') {
-        emitChatStreamEvent(input.webContents, {
-          delta: part.text,
-          streamId: input.streamId,
-          type: 'reasoning_delta',
-        })
-        continue
-      }
-
-      if (isStreamPart(part, 'reasoning-end')) {
-        emitChatStreamEvent(input.webContents, {
-          streamId: input.streamId,
-          type: 'reasoning_completed',
-        })
-        continue
-      }
-
-      if (isStreamPart(part, 'tool-input-start') && typeof part.id === 'string' && typeof part.toolName === 'string') {
-        const startedAt = Date.now()
-        const displayedInvocation = resolveDisplayedInvocation(part.toolName, undefined)
-        invocationStateById.set(part.id, {
-          argumentsText: '',
-          startedAt,
-          toolName: displayedInvocation.toolName,
-        })
-        emitChatStreamEvent(input.webContents, {
-          argumentsText: '',
-          invocationId: part.id,
-          startedAt,
-          streamId: input.streamId,
-          toolName: displayedInvocation.toolName,
-          type: 'tool_invocation_started',
-        })
-        continue
-      }
-
-      if (isStreamPart(part, 'tool-input-delta') && typeof part.id === 'string' && typeof part.delta === 'string') {
-        const currentState = invocationStateById.get(part.id) ?? {
-          argumentsText: '',
-          startedAt: Date.now(),
-          toolName: 'tool',
-        }
-        const nextArgumentsText = currentState.argumentsText + part.delta
-        const outerToolName = typeof part.toolName === 'string' ? part.toolName : currentState.toolName
-        const displayedInvocation = resolveDisplayedInvocation(outerToolName, parseToolArguments(nextArgumentsText))
-        const displayedArgumentsText = displayedInvocation.toolName === outerToolName
-          ? nextArgumentsText
-          : stringifyToolArguments(displayedInvocation.argumentsValue)
-        invocationStateById.set(part.id, {
-          ...currentState,
-          argumentsText: displayedArgumentsText,
-          toolName: displayedInvocation.toolName,
-        })
-        emitChatStreamEvent(input.webContents, {
-          argumentsText: displayedArgumentsText,
-          invocationId: part.id,
-          streamId: input.streamId,
-          toolName: displayedInvocation.toolName,
-          type: 'tool_invocation_delta',
-        })
-        continue
-      }
-
-      if (
-        isStreamPart(part, 'tool-call') &&
-        typeof part.toolCallId === 'string' &&
-        typeof part.toolName === 'string'
-      ) {
-        const currentState = invocationStateById.get(part.toolCallId)
-        const displayedInvocation = resolveDisplayedInvocation(part.toolName, part.input ?? part.args)
-        const argumentsText = stringifyToolArguments(displayedInvocation.argumentsValue)
-        if (!currentState) {
-          const startedAt = Date.now()
-          invocationStateById.set(part.toolCallId, {
-            argumentsText,
-            startedAt,
-            toolName: displayedInvocation.toolName,
-          })
-          emitChatStreamEvent(input.webContents, {
-            argumentsText,
-            invocationId: part.toolCallId,
-            startedAt,
-            streamId: input.streamId,
-            toolName: displayedInvocation.toolName,
-            type: 'tool_invocation_started',
-          })
-          continue
-        }
-
-        if (currentState.argumentsText !== argumentsText) {
-          invocationStateById.set(part.toolCallId, {
-            ...currentState,
-            argumentsText,
-            toolName: displayedInvocation.toolName,
-          })
-          emitChatStreamEvent(input.webContents, {
-            argumentsText,
-            invocationId: part.toolCallId,
-            streamId: input.streamId,
-            toolName: displayedInvocation.toolName,
-            type: 'tool_invocation_delta',
-          })
-        }
-        continue
-      }
-
-      if (
-        isStreamPart(part, 'tool-result') &&
-        typeof part.toolCallId === 'string' &&
-        typeof part.toolName === 'string'
-      ) {
-        if (input.abortController.signal.aborted) {
-          invocationStateById.delete(part.toolCallId)
-          continue
-        }
-
-        const completedAt = Date.now()
-        const toolName = part.toolName
-        const normalizedResult = normalizeToolExecutionResult(toolName, part.output ?? part.result)
-        const displayedInvocation = resolveDisplayedInvocation(
-          toolName,
-          part.input ?? part.args,
-          normalizedResult,
-        )
-        const displayedArgumentsText = stringifyToolArguments(displayedInvocation.argumentsValue)
-        if (conversationId) {
-          queueHistoryWrite(() => recordToolFreshness({
-            conversationId,
-            status: normalizedResult.status,
-            subject: normalizedResult.subject,
-            toolName,
-          }))
-        }
-        const syntheticMessage = createSyntheticToolMessage(
-          part.toolCallId,
-          part.toolName,
-          part.input ?? part.args,
-          completedAt,
-          normalizedResult,
-        )
-        const displaySyntheticMessage = createSyntheticToolMessage(
-          part.toolCallId,
-          displayedInvocation.toolName,
-          displayedInvocation.argumentsValue,
-          completedAt,
-          normalizedResult,
-        )
-        const payload = {
-          argumentsText: displayedArgumentsText,
-          completedAt,
-          invocationId: part.toolCallId,
-          resultContent: displaySyntheticMessage.content,
-          ...(getToolResultPresentation(normalizedResult)
-            ? { resultPresentation: getToolResultPresentation(normalizedResult) }
-            : {}),
-          streamId: input.streamId,
-          syntheticMessage,
-          toolName: displayedInvocation.toolName,
-        } as const
-
-        invocationStateById.delete(part.toolCallId)
-        if (normalizedResult.status === 'error') {
-          emitChatStreamEvent(input.webContents, {
-            ...payload,
-            errorMessage: normalizedResult.summary,
-            type: 'tool_invocation_failed',
-          })
-          continue
-        }
-
-        emitChatStreamEvent(input.webContents, {
-          ...payload,
-          type: 'tool_invocation_completed',
-        })
-        continue
-      }
-
-      if (
-        isStreamPart(part, 'tool-error') &&
-        typeof part.toolCallId === 'string' &&
-        typeof part.toolName === 'string'
-      ) {
-        if (input.abortController.signal.aborted) {
-          invocationStateById.delete(part.toolCallId)
-          continue
-        }
-
-        const currentState = invocationStateById.get(part.toolCallId)
-        const completedAt = Date.now()
-        const displayedInvocation = resolveDisplayedInvocation(part.toolName, part.input ?? part.args)
-        const displayedArgumentsText = stringifyToolArguments(displayedInvocation.argumentsValue)
-        const errorMessage =
-          (part.error instanceof Error && part.error.message.trim().length > 0
-            ? part.error.message
-            : null) || `Tool ${part.toolName} failed before returning a result.`
-        const syntheticMessage = createSyntheticToolMessage(
-          part.toolCallId,
-          part.toolName,
-          part.input ?? part.args,
-          completedAt,
-          {
-            body: errorMessage,
-            status: 'error',
-            summary: errorMessage,
-          },
-        )
-        const displaySyntheticMessage = createSyntheticToolMessage(
-          part.toolCallId,
-          displayedInvocation.toolName,
-          displayedInvocation.argumentsValue,
-          completedAt,
-          {
-            body: errorMessage,
-            status: 'error',
-            summary: errorMessage,
-          },
-        )
-
-        invocationStateById.delete(part.toolCallId)
-        emitChatStreamEvent(input.webContents, {
-          argumentsText: currentState?.argumentsText ?? displayedArgumentsText,
-          completedAt,
-          errorMessage,
-          invocationId: part.toolCallId,
-          resultContent: displaySyntheticMessage.content,
-          streamId: input.streamId,
-          syntheticMessage,
-          toolName: displayedInvocation.toolName,
-          type: 'tool_invocation_failed',
-        })
-      }
-
-      if (isStreamPart(part, 'finish')) {
-        completedStepCount += 1
-        lastFinishReason = typeof part.finishReason === 'string' ? part.finishReason : null
-      }
-    }
+    const { completedStepCount, lastFinishReason } = await processRuntimeStream({
+      abortController: input.abortController,
+      conversationId,
+      fullStream: stream.fullStream,
+      queueHistoryWrite,
+      streamId: input.streamId,
+      webContents: input.webContents,
+    })
 
     if (completedStepCount >= MAX_TOOL_STEPS && lastFinishReason === 'tool-calls') {
       if (conversationId && runWasRecorded) {

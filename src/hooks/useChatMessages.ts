@@ -538,6 +538,10 @@ export function useChatMessages(input: UseChatMessagesInput) {
   const isActiveDraftSending = activeConversationId === null && pendingDraftSendCount > 0
 
   const deleteAbandonedActiveConversation = useCallback(async () => {
+    if (pendingDraftSendCount > 0) {
+      return
+    }
+
     if (typeof window !== 'undefined' && window.echosphereHistory?.cleanupDraftAgentContext) {
       await window.echosphereHistory.cleanupDraftAgentContext().catch(() => undefined)
     }
@@ -561,7 +565,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     } catch (caughtError) {
       console.warn('Skipped cleanup for abandoned empty chat.', caughtError)
     }
-  }, [sessionState])
+  }, [pendingDraftSendCount, sessionState])
 
   const createConversation = useCallback(
     async (folderId?: string | null) => {

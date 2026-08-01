@@ -222,12 +222,42 @@ function isSkillEnabled(settings: AppSettings, skill: SkillSummary) {
   return settings.disabledSkillsByPath[skill.location] !== true
 }
 
-export function buildSkillsSystemPromptBlock() {
-  return ''
+function escapeSkillPromptXml(value: string) {
+  return value
+    .replace(/&/gu, '&amp;')
+    .replace(/</gu, '&lt;')
+    .replace(/>/gu, '&gt;')
+    .replace(/"/gu, '&quot;')
+    .replace(/'/gu, '&apos;')
 }
 
-export function buildSkillToolDescription() {
-  return 'Manages and loads workspace skills.'
+export function buildSkillsSystemPromptBlock(skills: readonly SkillSummary[] = []) {
+  if (skills.length === 0) {
+    return ''
+  }
+
+  return [
+    '<available_skills>',
+    ...skills.flatMap((skill) => [
+      '  <skill>',
+      `    <name>${escapeSkillPromptXml(skill.name)}</name>`,
+      `    <description>${escapeSkillPromptXml(skill.description)}</description>`,
+      '  </skill>',
+    ]),
+    '</available_skills>',
+  ].join('\n')
+}
+
+export function buildSkillToolDescription(skills: readonly SkillSummary[] = []) {
+  const enabledNames = skills
+    .map((skill) => skill.name.trim())
+    .filter((name) => name.length > 0)
+    .join(', ')
+
+  return [
+    'Loads and returns the complete instructions and base directory for one enabled skill selected by exact name.',
+    `Enabled names: ${enabledNames || 'none'}.`,
+  ].join(' ')
 }
 
 export function searchSkills(skills: SkillSummary[], query: string): SkillSummary[] {

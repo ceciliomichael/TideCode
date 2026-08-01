@@ -171,7 +171,7 @@ export function buildFallbackKanbanTaskPlan(
     description:
       description ||
       `Deliver "${title}" as a complete, reliable change with clear behavior, validation, and a documented outcome.`,
-    labels: deriveLabelsFromTitle(title),
+    labels: [],
     subtasks: [
       'Confirm the expected behavior, constraints, and edge cases',
       'Implement the core change',

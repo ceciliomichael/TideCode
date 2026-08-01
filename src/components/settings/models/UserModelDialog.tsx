@@ -32,6 +32,7 @@ interface UserModelDialogProps {
 
 const REASONING_KIND_OPTIONS = [
   { label: 'No reasoning support', value: 'none' },
+  { label: 'Reasoning on or off', value: 'toggle' },
   { label: 'Custom reasoning control', value: 'effort' },
 ] as const
 
@@ -106,7 +107,9 @@ export function UserModelDialog({
     if (providerId.startsWith('custom:')) {
       if (reasoningKind === 'provider_default') setReasoningKind('none')
     } else {
-      if (reasoningKind === 'effort') setReasoningKind('provider_default')
+      if (reasoningKind === 'effort' || reasoningKind === 'toggle') {
+        setReasoningKind('provider_default')
+      }
     }
   }, [providerId, reasoningKind])
 

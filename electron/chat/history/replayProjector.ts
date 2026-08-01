@@ -131,6 +131,7 @@ export function projectCanonicalReplay(input: {
     const appendedUserMessages = input.messages.slice(anchorIndex + 1).filter((message) => message.role === 'user')
     const suffix = buildModelMessages(appendedUserMessages, {
       ...input.options,
+      includeExecutionModeContext: false,
     })
     const messages = replay.freshnessRevision < input.document.freshness.revision
       ? appendFreshnessNotice([...exactPrefix, ...suffix], input.document.freshness.invalidatedSubjects)

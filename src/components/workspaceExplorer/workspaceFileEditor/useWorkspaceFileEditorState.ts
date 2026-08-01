@@ -1,26 +1,19 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type SyntheticEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useHighlightedCodeLines } from '../../../hooks/useHighlightedCodeLines'
 import type { GitFileDiff } from '../../../types/chat'
 import { isMarkdownPreviewablePath } from '../../../lib/markdown-preview'
 import { isSvgPreviewablePath } from '../../../lib/svg-preview'
 import {
-  buildWorkspaceEditorLineStatusMap,
-  buildSelectionRangesByLine,
-  buildSearchRegularExpression,
   countLines,
   getWorkspaceEditorScrollTransform,
   EDITOR_LINE_HEIGHT_PX,
   EDITOR_LINE_OVERSCAN_COUNT,
   EDITOR_VIRTUALIZATION_THRESHOLD,
-  findLineIndexForOffset,
   findLineStartOffsets,
-  findSearchMatches,
-  normalizeEditorLineText,
-  normalizeTextSelectionRange,
-  type SearchOptions,
-  type TextSelectionRange,
-  type TextRange,
 } from './workspaceFileEditorUtils'
+import { useWorkspaceFileEditorSearch } from './useWorkspaceFileEditorSearch'
+import { useWorkspaceFileEditorSelection } from './useWorkspaceFileEditorSelection'
+import { useWorkspaceFileEditorLayout } from './useWorkspaceFileEditorLayout'
 
 interface WorkspaceFileEditorProps {
   fileName: string
@@ -32,18 +25,6 @@ interface WorkspaceFileEditorProps {
   value: string
   wordWrapEnabled: boolean
   onChange: (nextValue: string) => void
-}
-
-function makeSearchOptions(
-  matchCase: boolean,
-  regex: boolean,
-  wholeWord: boolean,
-): SearchOptions {
-  return {
-    matchCase,
-    regex,
-    wholeWord,
-  }
 }
 
 export function useWorkspaceFileEditorState({
@@ -71,14 +52,6 @@ export function useWorkspaceFileEditorState({
   const scrollPositionRef = useRef({ scrollLeft: 0, scrollTop: 0 })
   const highlightedLines = useHighlightedCodeLines(value, { fileName, stripTrailingNewline: false })
   const totalLineCount = useMemo(() => countLines(value), [value])
-  const [searchValue, setSearchValue] = useState('')
-  const [replaceValue, setReplaceValue] = useState('')
-  const [isSearchOpen, setIsSearchOpen] = useState(false)
-  const [isReplaceOpen, setIsReplaceOpen] = useState(false)
-  const [isMatchCaseEnabled, setIsMatchCaseEnabled] = useState(false)
-  const [isRegexEnabled, setIsRegexEnabled] = useState(false)
-  const [isWholeWordEnabled, setIsWholeWordEnabled] = useState(false)
-  const [activeSearchMatchIndex, setActiveSearchMatchIndex] = useState(-1)
   const [virtualRange, setVirtualRange] = useState(() => ({
     endIndex: Math.min(totalLineCount, EDITOR_VIRTUALIZATION_THRESHOLD),
     startIndex: 0,
@@ -91,154 +64,39 @@ export function useWorkspaceFileEditorState({
   const topSpacerHeight = shouldVirtualize ? visibleStartIndex * EDITOR_LINE_HEIGHT_PX : 0
   const bottomSpacerHeight = shouldVirtualize ? (totalLineCount - visibleEndIndex) * EDITOR_LINE_HEIGHT_PX : 0
   const lineStartOffsets = useMemo(() => findLineStartOffsets(value), [value])
-  const searchMatches = useMemo(
-    () =>
-      findSearchMatches(
-        value,
-        searchValue,
-        makeSearchOptions(isMatchCaseEnabled, isRegexEnabled, isWholeWordEnabled),
-      ),
-    [isMatchCaseEnabled, isRegexEnabled, isWholeWordEnabled, searchValue, value],
-  )
-  const searchMatchesByLine = useMemo(() => {
-    const matchesByLine = highlightedLines.map(() => [] as TextRange[])
 
-    for (const match of searchMatches) {
-      let currentMatchStart = match.start
-      let remainingLength = match.end - match.start
+  const {
+    handleEditorChange,
+    handleEditorSelect,
+    matchesByLine: selectionMatchesByLine,
+  } = useWorkspaceFileEditorSelection({
+    onChange,
+    textAreaRef,
+    value,
+  })
 
-      while (remainingLength > 0) {
-        const lineIndex = findLineIndexForOffset(lineStartOffsets, currentMatchStart)
-        if (lineIndex === -1) {
-          break
-        }
-
-        const lineStartOffset = lineStartOffsets[lineIndex]
-        const lineText = highlightedLines[lineIndex].text
-        const lineLength = lineText.length
-
-        const matchOffsetInLine = currentMatchStart - lineStartOffset
-        const matchEndInLine = Math.min(matchOffsetInLine + remainingLength, lineLength)
-
-        matchesByLine[lineIndex].push({
-          end: matchEndInLine,
-          isActive: match === searchMatches[activeSearchMatchIndex],
-          start: matchOffsetInLine,
-        })
-
-        const lengthMatchedInLine = Math.max(0, matchEndInLine - matchOffsetInLine)
-        remainingLength -= lengthMatchedInLine
-        currentMatchStart += lengthMatchedInLine
-
-        if (remainingLength > 0) {
-          currentMatchStart += 1 // For the newline character
-          remainingLength -= 1
-        }
-      }
-    }
-
-    return matchesByLine
-  }, [activeSearchMatchIndex, highlightedLines, lineStartOffsets, searchMatches])
-
-  const [selection, setSelection] = useState<TextSelectionRange | null>(null)
-  const normalizedEditorValue = useMemo(() => normalizeEditorLineText(value), [value])
-
-  const syncSelection = useCallback((textarea: HTMLTextAreaElement) => {
-    const nextSelection = normalizeTextSelectionRange(
-      textarea.selectionStart,
-      textarea.selectionEnd,
-      textarea.value.length,
-    )
-    setSelection((currentSelection) =>
-      currentSelection?.start === nextSelection?.start && currentSelection?.end === nextSelection?.end
-        ? currentSelection
-        : nextSelection,
-    )
-  }, [])
-
-  const handleEditorChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
-    syncSelection(event.currentTarget)
-    onChange(event.currentTarget.value)
-  }, [onChange, syncSelection])
-
-  const handleEditorSelect = useCallback((event: SyntheticEvent<HTMLTextAreaElement>) => {
-    syncSelection(event.currentTarget)
-  }, [syncSelection])
-
-  useEffect(() => {
-    let frameId: number | null = null
-
-    function handleDocumentSelectionChange() {
-      const textarea = textAreaRef.current
-      if (!textarea || document.activeElement !== textarea || frameId !== null) {
-        return
-      }
-
-      frameId = window.requestAnimationFrame(() => {
-        frameId = null
-        const activeTextarea = textAreaRef.current
-        if (activeTextarea && document.activeElement === activeTextarea) {
-          syncSelection(activeTextarea)
-        }
-      })
-    }
-
-    document.addEventListener('selectionchange', handleDocumentSelectionChange)
-    return () => {
-      document.removeEventListener('selectionchange', handleDocumentSelectionChange)
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId)
-      }
-    }
-  }, [syncSelection])
-
-  const selectionMatchesByLine = useMemo(() => {
-    return buildSelectionRangesByLine(normalizedEditorValue, selection)
-  }, [normalizedEditorValue, selection])
-
-  const visibleLineNumbers = useMemo(
-    () =>
-      Array.from({ length: Math.max(0, visibleEndIndex - visibleStartIndex) }, (_, index) => visibleStartIndex + index + 1),
-    [visibleEndIndex, visibleStartIndex],
-  )
-  const visibleHighlightedLines = useMemo(
-    () => highlightedLines.slice(visibleStartIndex, visibleEndIndex),
-    [highlightedLines, visibleEndIndex, visibleStartIndex],
-  )
-  const visibleSearchMatches = useMemo(
-    () => searchMatchesByLine.slice(visibleStartIndex, visibleEndIndex),
-    [searchMatchesByLine, visibleEndIndex, visibleStartIndex],
-  )
-  const visibleSelectionMatches = useMemo(
-    () => selectionMatchesByLine.slice(visibleStartIndex, visibleEndIndex),
-    [selectionMatchesByLine, visibleEndIndex, visibleStartIndex],
-  )
-  const lineStatusBaselineContent = gitFileDiff ? gitFileDiff.oldContent : originalContent
-  const lineStatusByLineNumber = useMemo(
-    () => hasRepository ? buildWorkspaceEditorLineStatusMap(lineStatusBaselineContent, value) : new Map(),
-    [hasRepository, lineStatusBaselineContent, value],
-  )
-  const gutterWidthCh = Math.max(5, String(totalLineCount).length + 2)
-  const highlightedCodeClassName = wordWrapEnabled ? 'block min-w-full w-full bg-transparent' : 'block w-fit min-w-full bg-transparent'
-  const highlightedLineClassName = wordWrapEnabled ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : 'whitespace-pre'
-  const textAreaClassName = [
-    'workspace-editor-scrollbar workspace-editor-textarea absolute inset-0 h-full min-h-0 w-full resize-none border-0 bg-transparent px-3 py-1.5 font-mono text-[12px] leading-5 outline-none',
-    wordWrapEnabled ? 'overflow-y-scroll overflow-x-hidden whitespace-pre-wrap [overflow-wrap:anywhere]' : 'overflow-scroll whitespace-pre',
-  ].join(' ')
-  const lineNumberRows = useMemo(
-    () =>
-      visibleLineNumbers.map((lineNumber, index) => {
-        const sourceLineIndex = visibleStartIndex + index
-        const wrappedLineCount = wrappedLineCounts[sourceLineIndex] ?? 1
-
-        return {
-          lineNumber,
-          minHeight: wrappedLineCount * EDITOR_LINE_HEIGHT_PX,
-          status: lineStatusByLineNumber.get(lineNumber) ?? null,
-        }
-      }),
-    [lineStatusByLineNumber, visibleLineNumbers, visibleStartIndex, wrappedLineCounts],
-  )
+  const {
+    gutterWidthCh,
+    highlightedCodeClassName,
+    highlightedLineClassName,
+    lineNumberRows,
+    textAreaClassName,
+    visibleHighlightedLines,
+    visibleLineNumbers,
+    visibleSelectionMatches,
+  } = useWorkspaceFileEditorLayout({
+    gitFileDiff,
+    hasRepository,
+    highlightedLines,
+    originalContent,
+    selectionMatchesByLine,
+    totalLineCount,
+    value,
+    visibleEndIndex,
+    visibleStartIndex,
+    wordWrapEnabled,
+    wrappedLineCounts,
+  })
 
 
   const handleScroll = useCallback(() => {
@@ -282,6 +140,38 @@ export function useWorkspaceFileEditorState({
       }
     })
   }, [shouldVirtualize, totalLineCount, wordWrapEnabled])
+
+  const {
+    actions: {
+      closeSearchPanel,
+      focusReplaceInput,
+      focusSearchInput,
+      handleReplaceAllMatches,
+      handleReplaceCurrentMatch,
+      moveSearchMatch,
+    },
+    matchesByLine: searchMatchesByLine,
+    state: searchState,
+  } = useWorkspaceFileEditorSearch({
+    fileName,
+    handleScroll,
+    highlightedLines,
+    lineStartOffsets,
+    onChange,
+    replaceInputRef,
+    searchInputRef,
+    textAreaRef,
+    value,
+  })
+  const {
+    isSearchOpen,
+    setIsReplaceOpen,
+    setIsSearchOpen,
+  } = searchState
+  const visibleSearchMatches = useMemo(
+    () => searchMatchesByLine.slice(visibleStartIndex, visibleEndIndex),
+    [searchMatchesByLine, visibleEndIndex, visibleStartIndex],
+  )
 
   // Restores the textarea scroll to the saved position and syncs overlay transforms.
   // Used after DOM reflows (e.g. word-wrap height recalculation) to prevent scroll jumping.
@@ -372,97 +262,6 @@ export function useWorkspaceFileEditorState({
     }
   }, [fileName, handleScroll, updateWrappedLineCountsFromRenderedLines, value, wordWrapEnabled])
 
-  const closeSearchPanel = useCallback(() => {
-    setIsSearchOpen(false)
-    setIsReplaceOpen(false)
-    window.requestAnimationFrame(() => {
-      textAreaRef.current?.focus()
-    })
-  }, [])
-
-  const focusSearchInput = useCallback(() => {
-    window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus()
-      searchInputRef.current?.select()
-    })
-  }, [])
-
-  const focusReplaceInput = useCallback(() => {
-    window.requestAnimationFrame(() => {
-      replaceInputRef.current?.focus()
-      replaceInputRef.current?.select()
-    })
-  }, [])
-
-  const moveSearchMatch = useCallback(
-    (direction: 1 | -1) => {
-      if (searchMatches.length === 0) {
-        return
-      }
-      setActiveSearchMatchIndex((currentIndex) => {
-        const baseIndex = currentIndex < 0 ? 0 : currentIndex
-        return (baseIndex + direction + searchMatches.length) % searchMatches.length
-      })
-    },
-    [searchMatches],
-  )
-
-  const handleReplaceCurrentMatch = useCallback(() => {
-    if (activeSearchMatchIndex < 0 || activeSearchMatchIndex >= searchMatches.length) {
-      return
-    }
-
-    const activeMatch = searchMatches[activeSearchMatchIndex]
-    const replacementText = isRegexEnabled
-      ? activeMatch.value.replace(
-          buildSearchRegularExpression(
-            searchValue,
-            makeSearchOptions(isMatchCaseEnabled, true, isWholeWordEnabled),
-            false,
-          ) ?? /$^/,
-          replaceValue,
-        )
-      : replaceValue
-    const nextValue = `${value.slice(0, activeMatch.start)}${replacementText}${value.slice(activeMatch.end)}`
-    onChange(nextValue)
-  }, [
-    activeSearchMatchIndex,
-    isMatchCaseEnabled,
-    isRegexEnabled,
-    isWholeWordEnabled,
-    onChange,
-    replaceValue,
-    searchMatches,
-    searchValue,
-    value,
-  ])
-
-  const handleReplaceAllMatches = useCallback(() => {
-    if (searchMatches.length === 0) {
-      return
-    }
-
-    if (isRegexEnabled) {
-      const expression = buildSearchRegularExpression(
-        searchValue,
-        makeSearchOptions(isMatchCaseEnabled, true, isWholeWordEnabled),
-        true,
-      )
-      if (!expression) {
-        return
-      }
-      onChange(value.replace(expression, replaceValue))
-      return
-    }
-
-    let nextValue = value
-    for (let index = searchMatches.length - 1; index >= 0; index -= 1) {
-      const match = searchMatches[index]
-      nextValue = `${nextValue.slice(0, match.start)}${replaceValue}${nextValue.slice(match.end)}`
-    }
-    onChange(nextValue)
-  }, [isMatchCaseEnabled, isRegexEnabled, isWholeWordEnabled, onChange, replaceValue, searchMatches, searchValue, value])
-
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'v') {
@@ -535,32 +334,11 @@ export function useWorkspaceFileEditorState({
       onChange,
       onOpenMarkdownPreview,
       onOpenSvgPreview,
+      setIsReplaceOpen,
+      setIsSearchOpen,
       value,
     ],
   )
-
-  useEffect(() => {
-    setSearchValue('')
-    setReplaceValue('')
-    setIsSearchOpen(false)
-    setIsReplaceOpen(false)
-    setIsMatchCaseEnabled(false)
-    setIsRegexEnabled(false)
-    setIsWholeWordEnabled(false)
-    setActiveSearchMatchIndex(-1)
-  }, [fileName])
-
-  useEffect(() => {
-    setActiveSearchMatchIndex((currentIndex) => {
-      if (searchMatches.length === 0) {
-        return -1
-      }
-      if (currentIndex < 0 || currentIndex >= searchMatches.length) {
-        return 0
-      }
-      return currentIndex
-    })
-  }, [searchMatches])
 
   useEffect(() => {
     if (!shouldVirtualize) {
@@ -603,52 +381,6 @@ export function useWorkspaceFileEditorState({
       window.removeEventListener('resize', updateVirtualRange)
     }
   }, [shouldVirtualize, totalLineCount])
-
-  useEffect(() => {
-    if (!isSearchOpen) {
-      return
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      handleScroll()
-    })
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
-    }
-  }, [handleScroll, isSearchOpen])
-
-  useEffect(() => {
-    if (!isSearchOpen || activeSearchMatchIndex < 0 || activeSearchMatchIndex >= searchMatches.length) {
-      return
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      const textAreaElement = textAreaRef.current
-      if (!textAreaElement) {
-        return
-      }
-
-      const activeMatch = searchMatches[activeSearchMatchIndex]
-      const lineIndex = findLineIndexForOffset(lineStartOffsets, activeMatch.start)
-      const targetScrollTop = Math.max(
-        0,
-        lineIndex * EDITOR_LINE_HEIGHT_PX - textAreaElement.clientHeight / 2 + EDITOR_LINE_HEIGHT_PX / 2,
-      )
-      textAreaElement.scrollTop = targetScrollTop
-      const activeElement = document.activeElement
-      const isTypingInSearchField = activeElement === searchInputRef.current || activeElement === replaceInputRef.current
-      if (!isTypingInSearchField) {
-        textAreaElement.selectionStart = activeMatch.start
-        textAreaElement.selectionEnd = activeMatch.end
-      }
-      handleScroll()
-    })
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
-    }
-  }, [activeSearchMatchIndex, handleScroll, isSearchOpen, lineStartOffsets, searchMatches])
 
   useEffect(() => {
     if (!wordWrapEnabled) {
@@ -754,24 +486,7 @@ export function useWorkspaceFileEditorState({
       searchInputRef,
       textAreaRef,
     },
-    search: {
-      activeSearchMatchIndex,
-      isMatchCaseEnabled,
-      isRegexEnabled,
-      isReplaceOpen,
-      isSearchOpen,
-      isWholeWordEnabled,
-      replaceValue,
-      searchValue,
-      setIsMatchCaseEnabled,
-      setIsRegexEnabled,
-      setIsReplaceOpen,
-      setIsSearchOpen,
-      setIsWholeWordEnabled,
-      setReplaceValue,
-      setSearchValue,
-      totalSearchMatchCount: searchMatches.length,
-    },
+    search: searchState,
   }
 }
 

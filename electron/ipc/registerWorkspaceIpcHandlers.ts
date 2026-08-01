@@ -1,0 +1,139 @@
+import { clipboard, ipcMain } from 'electron'
+import type {
+  CreateWorkspaceCheckpointInput,
+  WorkspaceExplorerCreateEntryInput,
+  WorkspaceExplorerDeleteEntryInput,
+  WorkspaceExplorerImportEntryInput,
+  WorkspaceExplorerListDirectoryInput,
+  WorkspaceExplorerReadFileInput,
+  WorkspaceExplorerRenameEntryInput,
+  WorkspaceExplorerTransferEntryInput,
+  WorkspaceExplorerWatchChangesInput,
+  WorkspaceExplorerWriteFileInput,
+  WorkspaceRefactorCandidatesInput,
+} from '../../src/types/chat'
+import {
+  createWorkspaceCheckpoint,
+  createWorkspaceRedoCheckpointFromSource,
+  createWorkspaceRedoCheckpointFromSources,
+  restoreWorkspaceCheckpoint,
+  restoreWorkspaceCheckpointSequence,
+} from '../workspace/checkpoints'
+import {
+  subscribeWorkspaceExplorerChanges,
+  unsubscribeWorkspaceExplorerChanges,
+  updateWorkspaceExplorerWatchPaths,
+} from '../workspace/explorerWatch'
+import {
+  createWorkspaceEntry,
+  deleteWorkspaceEntry,
+  importWorkspaceEntry,
+  listWorkspaceDirectory,
+  listWorkspaceRefactorCandidates,
+  readWorkspaceFile,
+  renameWorkspaceEntry,
+  transferWorkspaceEntry,
+  writeWorkspaceFile,
+} from '../workspace/explorer'
+import { windowsClipboard } from '../clipboard/windowsClipboardReader'
+
+export function registerWorkspaceIpcHandlers() {
+  ipcMain.handle('workspace:checkpoint:create', async (_event, input: CreateWorkspaceCheckpointInput) =>
+    createWorkspaceCheckpoint(input),
+  )
+  ipcMain.handle('workspace:checkpoint:restore', async (_event, checkpointId: string) =>
+    restoreWorkspaceCheckpoint(checkpointId),
+  )
+  ipcMain.handle('workspace:checkpoint:createRedoFromSource', async (_event, sourceCheckpointId: string) =>
+    createWorkspaceRedoCheckpointFromSource(sourceCheckpointId),
+  )
+  ipcMain.handle('workspace:checkpoint:createRedoFromSources', async (_event, sourceCheckpointIds: string[]) =>
+    createWorkspaceRedoCheckpointFromSources(sourceCheckpointIds),
+  )
+  ipcMain.handle('workspace:checkpoint:restoreSequence', async (_event, checkpointIds: string[]) =>
+    restoreWorkspaceCheckpointSequence(checkpointIds),
+  )
+  ipcMain.handle('workspace:explorer:watch', async (event, input: WorkspaceExplorerWatchChangesInput) =>
+    subscribeWorkspaceExplorerChanges(event.sender, input.workspaceRootPath, input.relativeDirectoryPaths),
+  )
+  ipcMain.handle('workspace:explorer:updateWatchPaths', async (event, input: WorkspaceExplorerWatchChangesInput) =>
+    updateWorkspaceExplorerWatchPaths(event.sender.id, input.workspaceRootPath, input.relativeDirectoryPaths),
+  )
+  ipcMain.handle('workspace:explorer:unwatch', async (event, input: WorkspaceExplorerWatchChangesInput) =>
+    unsubscribeWorkspaceExplorerChanges(event.sender.id, input.workspaceRootPath),
+  )
+  ipcMain.handle('workspace:explorer:listDirectory', async (_event, input: WorkspaceExplorerListDirectoryInput) =>
+    listWorkspaceDirectory(input),
+  )
+  ipcMain.handle('workspace:refactorCandidates:list', async (_event, input: WorkspaceRefactorCandidatesInput) =>
+    listWorkspaceRefactorCandidates(input),
+  )
+  ipcMain.handle('workspace:explorer:readFile', async (_event, input: WorkspaceExplorerReadFileInput) =>
+    readWorkspaceFile(input),
+  )
+  ipcMain.handle('workspace:explorer:writeFile', async (_event, input: WorkspaceExplorerWriteFileInput) =>
+    writeWorkspaceFile(input),
+  )
+  ipcMain.handle('workspace:explorer:createEntry', async (_event, input: WorkspaceExplorerCreateEntryInput) =>
+    createWorkspaceEntry(input),
+  )
+  ipcMain.handle('workspace:explorer:renameEntry', async (_event, input: WorkspaceExplorerRenameEntryInput) =>
+    renameWorkspaceEntry(input),
+  )
+  ipcMain.handle('workspace:explorer:deleteEntry', async (_event, input: WorkspaceExplorerDeleteEntryInput) =>
+    deleteWorkspaceEntry(input),
+  )
+  ipcMain.handle('workspace:explorer:transferEntry', async (_event, input: WorkspaceExplorerTransferEntryInput) =>
+    transferWorkspaceEntry(input),
+  )
+  ipcMain.handle('workspace:explorer:importEntry', async (_event, input: WorkspaceExplorerImportEntryInput) =>
+    importWorkspaceEntry(input),
+  )
+  ipcMain.handle('clipboard:readFiles', async () => {
+    if (process.platform === 'win32') {
+      if (clipboard.has('FileNameW') || clipboard.has('FileName')) {
+        try {
+          const paths = await windowsClipboard.readFiles()
+          if (paths && paths.length > 0) {
+            return paths
+          }
+        } catch (e) {
+          console.error('Failed to read files from persistent clipboard reader', e)
+        }
+      }
+
+      // Fallback if powershell fails: read FileNameW directly (only returns the 1st file)
+      const raw = clipboard.readBuffer('FileNameW')
+      if (raw && raw.length > 0) {
+        const pathStr = raw.toString('utf16le')
+        const paths = pathStr.split('\0').filter((s) => s.trim().length > 0)
+        if (paths.length > 0) {
+          return paths
+        }
+      }
+    }
+
+    const uriList = clipboard.read('text/uri-list')
+    if (uriList && uriList.trim().length > 0) {
+      const paths = uriList
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith('file://'))
+        .map((line) => decodeURIComponent(line.replace(/^file:\/\//, '')))
+        .filter((filePath) => filePath.length > 0)
+
+      if (paths.length > 0) {
+        return paths
+      }
+    }
+
+    if (process.platform === 'darwin') {
+      const url = clipboard.read('public.file-url')
+      if (url && url.startsWith('file://')) {
+        return [decodeURIComponent(url.replace(/^file:\/\//, ''))]
+      }
+    }
+
+    return []
+  })
+}

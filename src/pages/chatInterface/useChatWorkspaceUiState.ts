@@ -1,14 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getPathBasename } from "../../lib/pathPresentation";
 import { DEFAULT_DIFF_PANEL_WIDTH } from "../../lib/diffPanelSizing";
 import { DEFAULT_TERMINAL_PANEL_HEIGHT } from "../../lib/terminalPanelSizing";
-import { createMarkdownPreviewTabKey, isMarkdownPreviewablePath } from "../../lib/markdown-preview";
-import { createSvgPreviewTabKey, isSvgPreviewablePath } from "../../lib/svg-preview";
 import { clampWorkspaceExplorerWidth } from "../../lib/workspaceExplorerSizing";
-import type {
-  WorkspaceFileTab,
-  WorkspaceTab,
-} from "../../components/workspaceExplorer/types";
+import type { WorkspaceTab } from "../../components/workspaceExplorer/types";
 import type {
   ChatWorkspaceUiState,
   UseChatWorkspaceUiStateInput,
@@ -16,9 +10,7 @@ import type {
   WorkspaceUiSession,
 } from "./chatWorkspaceUiState.types";
 import {
-  isWorkspacePathWithinTarget,
   getTerminalWorkspaceKey,
-  normalizeWorkspaceRelativePath,
   toWorkspaceScopedKey,
 } from "./chatWorkspaceUiState.utils";
 import {
@@ -32,21 +24,15 @@ import {
 } from "./chatWorkspaceUiStateEntries";
 import { shouldClearWorkspaceClipboardByPathPrefix } from "./chatWorkspaceClipboard";
 import { getActiveWorkspacePanelWidth } from "./chatWorkspaceUiStatePanels";
+import { useChatWorkspacePanelActions } from "./useChatWorkspacePanelActions";
+import { useWorkspaceTabSync } from "./useWorkspaceTabSync";
+import { useWorkspaceTabActions } from "./useWorkspaceTabActions";
 
 export type {
   ChatWorkspaceUiState,
   WorkspaceClipboardEntry,
 } from "./chatWorkspaceUiState.types";
 
-function isMissingWorkspaceFileError(error: unknown) {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  return error.message.includes("File does not exist:");
-}
-
-const ACTIVE_WORKSPACE_TAB_SYNC_INTERVAL_MS = 1000;
 
 export function useChatWorkspaceUiState({
   activeConversationId,
@@ -91,7 +77,6 @@ export function useChatWorkspaceUiState({
   const previousWorkspaceUiKeyRef = useRef(activeWorkspaceUiKey);
   const activeWorkspacePathRef = useRef<string | null>(activeWorkspacePath);
   const workspaceAutosaveTimeoutsRef = useRef<Map<string, number>>(new Map());
-  const isWorkspaceFileTabsRefreshInFlightRef = useRef(false);
   const [workspaceClipboard, setWorkspaceClipboard] =
     useState<WorkspaceClipboardEntry | null>(null);
   const sidebarPanelRestoreRef = useRef<{
@@ -261,261 +246,61 @@ export function useChatWorkspaceUiState({
     sourceControlPanelWidth,
     workspaceExplorerWidth,
   });
+  const {
+    closeWorkspaceTabsByPathPrefix,
+    handleRefreshWorkspaceFileTabs,
+    handleWorkspaceFileContentChange,
+  } = useWorkspaceTabSync({
+    activeWorkspacePath,
+    activeWorkspacePathRef,
+    isExplorerOpen,
+    setActiveWorkspaceFilePath,
+    setActiveWorkspaceTabKey,
+    setIsWorkspaceTabsPanelVisible,
+    setWorkspaceFileTabs,
+    workspaceAutosaveTimeoutsRef,
+    workspaceFileTabCount: workspaceFileTabs.length,
+    workspaceFileTabsRef,
+  });
 
-  const closeWorkspaceTabsByPathPrefix = useCallback((targetPath: string) => {
-    const normalizedTargetPath = normalizeWorkspaceRelativePath(targetPath);
-    workspaceAutosaveTimeoutsRef.current.forEach((timeoutId, relativePath) => {
-      if (!isWorkspacePathWithinTarget(relativePath, normalizedTargetPath)) {
-        return;
-      }
-      window.clearTimeout(timeoutId);
-      workspaceAutosaveTimeoutsRef.current.delete(relativePath);
-    });
+  const {
+    handleConversationDiffPanelWidthChange,
+    handleConversationDiffPanelWidthCommit,
+    handleOpenDiffPanel,
+    handleOpenSourceControlPanel,
+    handleSidebarOpenChange,
+    handleSourceControlPanelWidthChange,
+    handleSourceControlPanelWidthCommit,
+    handleTerminalFullScreenChange,
+    handleTerminalOpenChange,
+    handleToggleExplorerPanel,
+    handleWorkspaceExplorerWidthChange,
+    handleWorkspaceExplorerWidthCommit,
+  } = useChatWorkspacePanelActions({
+    activeWorkspacePanelWidth,
+    isExplorerOpen,
+    isRightPanelOpen,
+    isSidebarOpen,
+    isWorkspaceTabsPanelVisible,
+    onDiffPanelWidthChange,
+    onDiffPanelWidthCommit,
+    onRightPanelOpenChange,
+    onRightPanelTabChange,
+    onUpdateSettings,
+    rightPanelTab,
+    setConversationDiffPanelWidth,
+    setIsExplorerOpen,
+    setIsSidebarOpen,
+    setIsTerminalFullScreen,
+    setIsTerminalOpen,
+    setIsWorkspaceTabsPanelVisible,
+    setSourceControlPanelWidth,
+    setWorkspaceExplorerWidth,
+    settings,
+    sidebarPanelRestoreRef,
+    workspaceFileTabCount: workspaceFileTabs.length,
+  });
 
-    setWorkspaceFileTabs((currentTabs) => {
-      const firstClosingIndex = currentTabs.findIndex((tab) =>
-        isWorkspacePathWithinTarget(tab.relativePath, normalizedTargetPath),
-      );
-      const nextTabs = currentTabs.filter(
-        (tab) =>
-          !isWorkspacePathWithinTarget(tab.relativePath, normalizedTargetPath),
-      );
-      if (nextTabs.length === 0) {
-        setIsWorkspaceTabsPanelVisible(false);
-      }
-
-      if (firstClosingIndex !== -1) {
-        const fallbackTab =
-          nextTabs[firstClosingIndex] ?? nextTabs[firstClosingIndex - 1] ?? null;
-
-        setActiveWorkspaceFilePath((currentActivePath) => {
-          if (
-            !currentActivePath ||
-            !isWorkspacePathWithinTarget(currentActivePath, normalizedTargetPath)
-          ) {
-            return currentActivePath;
-          }
-
-          return fallbackTab?.relativePath ?? null;
-        });
-        setActiveWorkspaceTabKey((currentActiveTabKey) => {
-          if (!currentActiveTabKey) {
-            return currentActiveTabKey;
-          }
-
-          const currentActiveTab =
-            currentTabs.find((tab) => tab.tabKey === currentActiveTabKey) ?? null;
-          if (
-            !currentActiveTab ||
-            !isWorkspacePathWithinTarget(currentActiveTab.relativePath, normalizedTargetPath)
-          ) {
-            return currentActiveTabKey;
-          }
-
-          return fallbackTab?.tabKey ?? null;
-        });
-      }
-
-      return nextTabs;
-    });
-  }, []);
-
-  const handleRefreshWorkspaceFileTabs = useCallback(async () => {
-    const workspaceRootPath = activeWorkspacePathRef.current;
-    if (!workspaceRootPath) {
-      return;
-    }
-
-    const targetRelativePaths = Array.from(
-      new Set(
-        workspaceFileTabsRef.current
-          .filter((tab) => tab.kind === "file" || tab.kind === "markdown-preview")
-          .map((tab) => tab.relativePath),
-      ),
-    );
-    if (targetRelativePaths.length === 0) {
-      return;
-    }
-
-    const pendingRefreshes = await Promise.all(
-      targetRelativePaths.map(async (relativePath) => {
-        if (workspaceAutosaveTimeoutsRef.current.has(relativePath)) {
-          return null;
-        }
-
-        try {
-          const result = await window.echosphereWorkspace.readFile({
-            relativePath,
-            workspaceRootPath,
-          });
-
-          return {
-            relativePath,
-            result,
-          };
-        } catch (error) {
-          return {
-            error,
-            relativePath,
-          };
-        }
-      }),
-    );
-
-    const refreshByPath = new Map<
-      string,
-      | {
-          error: unknown;
-          relativePath: string;
-        }
-      | {
-          relativePath: string;
-          result: Awaited<ReturnType<typeof window.echosphereWorkspace.readFile>>;
-        }
-    >();
-
-    for (const refresh of pendingRefreshes) {
-      if (!refresh) {
-        continue;
-      }
-
-      refreshByPath.set(refresh.relativePath, refresh);
-    }
-
-    if (refreshByPath.size === 0) {
-      return;
-    }
-
-    const missingRelativePaths = Array.from(refreshByPath.values())
-      .filter((refresh): refresh is { error: unknown; relativePath: string } => "error" in refresh)
-      .filter((refresh) => isMissingWorkspaceFileError(refresh.error))
-      .map((refresh) => refresh.relativePath);
-
-    for (const missingRelativePath of missingRelativePaths) {
-      refreshByPath.delete(missingRelativePath);
-      closeWorkspaceTabsByPathPrefix(missingRelativePath);
-    }
-
-    if (refreshByPath.size === 0) {
-      return;
-    }
-
-    setWorkspaceFileTabs((currentTabs) =>
-      currentTabs.map((tab) => {
-        if (tab.kind !== "file" && tab.kind !== "markdown-preview") {
-          return tab;
-        }
-
-        const refresh = refreshByPath.get(tab.relativePath);
-        if (!refresh) {
-          return tab;
-        }
-
-        if ("error" in refresh) {
-          if (tab.status === "loading") {
-            return {
-              ...tab,
-              errorMessage:
-                refresh.error instanceof Error
-                  ? refresh.error.message
-                  : "Failed to refresh file.",
-              status: "error",
-            };
-          }
-          console.warn(`Failed to refresh file: ${tab.relativePath}`, refresh.error);
-          return tab;
-        }
-
-        const { result } = refresh;
-        const normalizedContent = result.content.replace(/\r\n/g, "\n");
-
-        if (tab.kind === "file") {
-          if (tab.content === normalizedContent || workspaceAutosaveTimeoutsRef.current.has(tab.relativePath)) {
-            return tab;
-          }
-
-          return {
-            ...tab,
-            content: normalizedContent,
-            errorMessage: undefined,
-            originalContent: normalizedContent,
-            fileName: getPathBasename(result.relativePath),
-            isBinary: result.isBinary,
-            isTruncated: result.isTruncated,
-            relativePath: result.relativePath,
-            sizeBytes: result.sizeBytes,
-            status: "ready",
-            tabKey: result.relativePath,
-          };
-        }
-
-        if (tab.kind === "markdown-preview") {
-          if (tab.content === normalizedContent && tab.status === "ready") {
-            return tab;
-          }
-
-          return {
-            ...tab,
-            content: normalizedContent,
-            errorMessage: undefined,
-            fileName: getPathBasename(result.relativePath),
-            isTruncated: result.isTruncated,
-            status: "ready",
-          };
-        }
-
-        return tab;
-      }),
-    );
-  }, [activeWorkspacePathRef, closeWorkspaceTabsByPathPrefix, workspaceAutosaveTimeoutsRef]);
-
-  useEffect(() => {
-    const workspaceRootPath = activeWorkspacePath?.trim() ?? ""
-    const shouldWatchWorkspaceChanges = workspaceRootPath.length > 0 && (isExplorerOpen || workspaceFileTabs.length > 0)
-    if (!shouldWatchWorkspaceChanges) {
-      return
-    }
-
-    let isDisposed = false
-    const unsubscribeWorkspaceChanges = window.echosphereWorkspace.onExplorerChange((event) => {
-      if (isDisposed || event.workspaceRootPath !== workspaceRootPath) {
-        return
-      }
-
-      void handleRefreshWorkspaceFileTabs()
-    })
-
-    const refreshTabsIfIdle = () => {
-      if (isWorkspaceFileTabsRefreshInFlightRef.current) {
-        return
-      }
-
-      isWorkspaceFileTabsRefreshInFlightRef.current = true
-      void handleRefreshWorkspaceFileTabs().finally(() => {
-        isWorkspaceFileTabsRefreshInFlightRef.current = false
-      })
-    }
-
-    const refreshIntervalId = window.setInterval(refreshTabsIfIdle, ACTIVE_WORKSPACE_TAB_SYNC_INTERVAL_MS)
-
-    void window.echosphereWorkspace.watchExplorerChanges({
-      workspaceRootPath,
-    }).catch((error) => {
-      console.error("Failed to watch workspace changes for open file tabs", error)
-    })
-
-    return () => {
-      isDisposed = true
-      window.clearInterval(refreshIntervalId)
-      isWorkspaceFileTabsRefreshInFlightRef.current = false
-      unsubscribeWorkspaceChanges()
-      void window.echosphereWorkspace.unwatchExplorerChanges({
-        workspaceRootPath,
-      }).catch((error) => {
-        console.error("Failed to stop watching workspace changes for open file tabs", error)
-      })
-    }
-  }, [activeWorkspacePath, handleRefreshWorkspaceFileTabs, isExplorerOpen, workspaceFileTabs.length])
 
   const clearWorkspaceClipboardByPathPrefix = useCallback(
     (targetPath: string) => {
@@ -552,584 +337,27 @@ export function useChatWorkspaceUiState({
     workspaceClipboard,
   });
 
-  const handleOpenWorkspaceFile = useCallback(
-    (relativePath: string) => {
-      const workspaceRootPath = activeWorkspacePathRef.current;
-      if (!workspaceRootPath) {
-        return;
-      }
-
-      if (activeWorkspacePanelWidth !== null) {
-        setWorkspaceExplorerWidth(activeWorkspacePanelWidth);
-      }
-      setIsSidebarOpen(false);
-      setIsExplorerOpen(true);
-      setIsWorkspaceTabsPanelVisible(true);
-      onRightPanelOpenChange(false);
-      setActiveWorkspaceFilePath(relativePath);
-      setActiveWorkspaceTabKey(relativePath);
-      setWorkspaceFileTabs((currentTabs) => {
-        if (currentTabs.some((tab) => tab.kind === "file" && tab.relativePath === relativePath)) {
-          return currentTabs;
-        }
-
-        return [
-          ...currentTabs,
-          {
-            kind: "file",
-            content: "",
-            originalContent: null,
-            fileName: getPathBasename(relativePath),
-            isBinary: false,
-            isTruncated: false,
-            relativePath,
-            tabKey: relativePath,
-            sizeBytes: 0,
-            status: "loading",
-          },
-        ];
-      });
-
-      void window.echosphereWorkspace
-        .readFile({
-          relativePath,
-          workspaceRootPath,
-        })
-        .then((result) => {
-          if (activeWorkspacePathRef.current !== workspaceRootPath) {
-            return;
-          }
-
-          setWorkspaceFileTabs((currentTabs) =>
-            currentTabs.map((tab) =>
-              tab.kind === "file" && tab.relativePath === relativePath
-                  ? (() => {
-                      const normalizedContent = result.content.replace(/\r\n/g, '\n')
-                      return {
-                        ...tab,
-                        content: normalizedContent,
-                        originalContent: normalizedContent,
-                        fileName: getPathBasename(result.relativePath),
-                        isBinary: result.isBinary,
-                        isTruncated: result.isTruncated,
-                        relativePath: result.relativePath,
-                        tabKey: result.relativePath,
-                        sizeBytes: result.sizeBytes,
-                        status: "ready",
-                      }
-                    })()
-                : tab,
-            ),
-          );
-        })
-        .catch((error) => {
-          if (activeWorkspacePathRef.current !== workspaceRootPath) {
-            return;
-          }
-
-          setWorkspaceFileTabs((currentTabs) =>
-            currentTabs.map((tab) =>
-              tab.kind === "file" && tab.relativePath === relativePath
-                ? {
-                    ...tab,
-                    errorMessage:
-                      error instanceof Error
-                        ? error.message
-                        : "Failed to open file.",
-                    status: "error",
-                  }
-                : tab,
-            ),
-          );
-        });
-    },
-    [activeWorkspacePanelWidth, onRightPanelOpenChange, setIsSidebarOpen],
-  );
-
-  const openWorkspacePreviewTab = useCallback(
-    (
-      relativePath: string,
-      tabKey: string,
-      kind: 'markdown-preview' | 'svg-preview',
-      initialContent = '',
-      initialStatus: 'loading' | 'ready' = 'loading',
-    ) => {
-      setIsSidebarOpen(false);
-      setIsExplorerOpen(true);
-      setIsWorkspaceTabsPanelVisible(true);
-      onRightPanelOpenChange(false);
-      setActiveWorkspaceFilePath(relativePath);
-      setActiveWorkspaceTabKey(tabKey);
-
-      setWorkspaceFileTabs((currentTabs) => {
-        if (currentTabs.some((tab) => tab.tabKey === tabKey)) {
-          return currentTabs;
-        }
-
-        const newTab = kind === 'markdown-preview'
-          ? { kind, fileName: getPathBasename(relativePath), relativePath, tabKey, content: initialContent, status: initialStatus, isTruncated: false }
-          : { kind, fileName: getPathBasename(relativePath), relativePath, tabKey };
-
-        return [...currentTabs, newTab];
-      });
-    },
-    [onRightPanelOpenChange, setIsSidebarOpen],
-  );
-
-  const handleOpenWorkspaceMarkdownPreview = useCallback(
-    (relativePath: string) => {
-      if (!isMarkdownPreviewablePath(relativePath)) {
-        return;
-      }
-
-      const workspaceRootPath = activeWorkspacePathRef.current;
-      const tabKey = createMarkdownPreviewTabKey(relativePath);
-      const sourceTab = workspaceFileTabsRef.current.find(
-        (tab): tab is WorkspaceFileTab => tab.kind === 'file' && tab.relativePath === relativePath,
-      );
-      const initialContent = sourceTab ? sourceTab.content : '';
-      const initialStatus = sourceTab && sourceTab.status === 'ready' ? ('ready' as const) : ('loading' as const);
-
-      openWorkspacePreviewTab(relativePath, tabKey, 'markdown-preview', initialContent, initialStatus);
-
-      if (!workspaceRootPath) return;
-
-      void window.echosphereWorkspace
-        .readFile({ relativePath, workspaceRootPath })
-        .then((result) => {
-          if (activeWorkspacePathRef.current !== workspaceRootPath) return;
-          const normalizedContent = result.content.replace(/\r\n/g, '\n');
-          setWorkspaceFileTabs((currentTabs) =>
-            currentTabs.map((tab) =>
-              tab.kind === 'markdown-preview' && tab.tabKey === tabKey
-                ? { ...tab, content: normalizedContent, status: 'ready' as const, isTruncated: result.isTruncated, fileName: getPathBasename(result.relativePath) }
-                : tab,
-            ),
-          );
-        })
-        .catch((error) => {
-          if (activeWorkspacePathRef.current !== workspaceRootPath) return;
-          setWorkspaceFileTabs((currentTabs) =>
-            currentTabs.map((tab) =>
-              tab.kind === 'markdown-preview' && tab.tabKey === tabKey
-                ? { ...tab, status: 'error' as const, errorMessage: error instanceof Error ? error.message : 'Failed to load file.' }
-                : tab,
-            ),
-          );
-        });
-    },
-    [openWorkspacePreviewTab],
-  );
-
-  useEffect(() => {
-    const handleOpenMarkdownPreviewEvent = (e: Event) => {
-      const customEvent = e as CustomEvent<{ relativePath: string; anchor?: string }>
-      const { relativePath, anchor } = customEvent.detail || {}
-      if (relativePath) {
-        handleOpenWorkspaceMarkdownPreview(relativePath)
-        if (anchor) {
-          setTimeout(() => {
-            const element =
-              document.getElementById(anchor) ||
-              document.getElementById(decodeURIComponent(anchor)) ||
-              document.getElementById(anchor.toLowerCase())
-            if (element) {
-              const container =
-                element.closest('.workspace-markdown-preview') ||
-                element.closest('.overflow-auto')
-              if (container) {
-                const containerRect = container.getBoundingClientRect()
-                const elementRect = element.getBoundingClientRect()
-                const targetTop = elementRect.top - containerRect.top + container.scrollTop - 24
-                container.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' })
-              }
-            }
-          }, 300)
-        }
-      }
-    }
-
-    const handleOpenFileEvent = (e: Event) => {
-      const customEvent = e as CustomEvent<{ relativePath: string }>
-      const { relativePath } = customEvent.detail || {}
-      if (relativePath) {
-        handleOpenWorkspaceFile(relativePath)
-      }
-    }
-
-    window.addEventListener('echosphere:open-markdown-preview', handleOpenMarkdownPreviewEvent)
-    window.addEventListener('echosphere:open-file', handleOpenFileEvent)
-
-    return () => {
-      window.removeEventListener('echosphere:open-markdown-preview', handleOpenMarkdownPreviewEvent)
-      window.removeEventListener('echosphere:open-file', handleOpenFileEvent)
-    }
-  }, [handleOpenWorkspaceMarkdownPreview, handleOpenWorkspaceFile]);
-
-  const handleOpenWorkspaceSvgPreview = useCallback(
-    (relativePath: string) => {
-      if (!isSvgPreviewablePath(relativePath)) {
-        return;
-      }
-
-      openWorkspacePreviewTab(relativePath, createSvgPreviewTabKey(relativePath), 'svg-preview');
-    },
-    [openWorkspacePreviewTab],
-  );
-
-  const handleCloseWorkspaceTab = useCallback((tabKey: string) => {
-    const closingTab = workspaceFileTabs.find((tab) => tab.tabKey === tabKey) ?? null;
-    const targetPath = closingTab?.relativePath ?? tabKey;
-    const closingPreviewTabKeys =
-      closingTab?.kind === "file"
-        ? [createMarkdownPreviewTabKey(closingTab.relativePath), createSvgPreviewTabKey(closingTab.relativePath)]
-        : [];
-
-    if (closingTab?.kind === "file") {
-      const pendingAutosaveTimeout =
-        workspaceAutosaveTimeoutsRef.current.get(targetPath);
-      if (typeof pendingAutosaveTimeout === "number") {
-        window.clearTimeout(pendingAutosaveTimeout);
-        workspaceAutosaveTimeoutsRef.current.delete(targetPath);
-      }
-    }
-
-    setWorkspaceFileTabs((currentTabs) => {
-      const closingIndex = currentTabs.findIndex((tab) => tab.tabKey === tabKey);
-      if (closingIndex === -1) {
-        return currentTabs;
-      }
-
-      const nextTabs =
-        closingTab?.kind === "file"
-          ? currentTabs.filter(
-              (tab) =>
-                tab.tabKey !== tabKey &&
-                !(
-                  (tab.kind === "markdown-preview" || tab.kind === "svg-preview") &&
-                  tab.relativePath === closingTab.relativePath
-                ),
-            )
-          : currentTabs.filter((tab) => tab.tabKey !== tabKey);
-
-      if (nextTabs.length === 0) {
-        setIsWorkspaceTabsPanelVisible(false);
-      }
-      setActiveWorkspaceFilePath((currentActiveFilePath) => {
-        if (!closingTab) {
-          return currentActiveFilePath;
-        }
-
-        const shouldClearActivePath =
-          closingTab.kind === "markdown-preview"
-            ? currentActiveFilePath === closingTab.relativePath
-            : currentActiveFilePath === closingTab.relativePath;
-        if (!shouldClearActivePath) {
-          return currentActiveFilePath;
-        }
-
-        const fallbackTab =
-          nextTabs[closingIndex] ?? nextTabs[closingIndex - 1] ?? null;
-        return fallbackTab?.relativePath ?? null;
-      });
-      setActiveWorkspaceTabKey((currentActiveTabKey) => {
-        if (
-          currentActiveTabKey !== tabKey &&
-          (!currentActiveTabKey || !closingPreviewTabKeys.includes(currentActiveTabKey))
-        ) {
-          return currentActiveTabKey;
-        }
-        const fallbackTab = nextTabs[closingIndex] ?? nextTabs[closingIndex - 1] ?? null;
-        return fallbackTab?.tabKey ?? null;
-      });
-      return nextTabs;
-    });
-  }, [workspaceFileTabs]);
-
-  const handleSelectWorkspaceTab = useCallback((tabKey: string) => {
-    const selectedTab = workspaceFileTabs.find((tab) => tab.tabKey === tabKey) ?? null;
-    setActiveWorkspaceFilePath(selectedTab?.relativePath ?? null);
-    setActiveWorkspaceTabKey(selectedTab?.tabKey ?? tabKey);
-  }, [workspaceFileTabs]);
-
-  const handleWorkspaceExplorerWidthChange = useCallback(
-    (nextWidth: number) => {
-      setWorkspaceExplorerWidth(nextWidth);
-    },
-    [],
-  );
-
-  const handleWorkspaceExplorerWidthCommit = useCallback(
-    (nextWidth: number) => {
-      setWorkspaceExplorerWidth(nextWidth);
-      if (nextWidth !== settings.workspaceExplorerWidth) {
-        void onUpdateSettings({ workspaceExplorerWidth: nextWidth });
-      }
-    },
-    [onUpdateSettings, settings.workspaceExplorerWidth],
-  );
-
-  const handleConversationDiffPanelWidthChange = useCallback(
-    (nextWidth: number) => {
-      setConversationDiffPanelWidth(nextWidth);
-    },
-    [],
-  );
-
-  const handleConversationDiffPanelWidthCommit = useCallback(
-    (nextWidth: number) => {
-      setConversationDiffPanelWidth(nextWidth);
-      onDiffPanelWidthChange(nextWidth);
-      onDiffPanelWidthCommit(nextWidth);
-    },
-    [onDiffPanelWidthChange, onDiffPanelWidthCommit],
-  );
-
-  const handleTerminalOpenChange = useCallback((nextOpen: boolean) => {
-    setIsTerminalOpen(nextOpen);
-  }, []);
-
-  const handleTerminalFullScreenChange = useCallback((nextFullScreen: boolean) => {
-    setIsTerminalFullScreen(nextFullScreen);
-  }, []);
-
-  const handleSourceControlPanelWidthChange = useCallback(
-    (nextWidth: number) => {
-      setSourceControlPanelWidth(nextWidth);
-    },
-    [],
-  );
-
-  const handleSourceControlPanelWidthCommit = useCallback(
-    (nextWidth: number) => {
-      setSourceControlPanelWidth(nextWidth);
-    },
-    [],
-  );
-
-  const handleWorkspaceFileContentChange = useCallback((relativePath: string, content: string) => {
-    const workspaceRootPath = activeWorkspacePathRef.current;
-    if (!workspaceRootPath) {
-      return;
-    }
-
-    setWorkspaceFileTabs((currentTabs) =>
-      currentTabs.map((tab) => {
-        if (tab.relativePath !== relativePath) {
-          return tab;
-        }
-
-        if (tab.kind === "file") {
-          return {
-            ...tab,
-            content,
-            sizeBytes: new TextEncoder().encode(content).length,
-          };
-        }
-
-        if (tab.kind === "markdown-preview") {
-          return {
-            ...tab,
-            content,
-            status: "ready",
-          };
-        }
-
-        return tab;
-      }),
-    );
-
-    const pendingAutosaveTimeout = workspaceAutosaveTimeoutsRef.current.get(relativePath);
-    if (typeof pendingAutosaveTimeout === 'number') {
-      window.clearTimeout(pendingAutosaveTimeout);
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      void window.echosphereWorkspace
-        .writeFile({
-          content,
-          relativePath,
-          workspaceRootPath,
-        })
-        .then((result) => {
-          if (activeWorkspacePathRef.current !== workspaceRootPath) {
-            return;
-          }
-
-          setWorkspaceFileTabs((currentTabs) =>
-            currentTabs.map((tab) =>
-              tab.kind === "file" && tab.relativePath === relativePath
-                ? {
-                    ...tab,
-                    sizeBytes: result.sizeBytes,
-                  }
-                : tab,
-            ),
-          );
-        })
-        .catch((error) => {
-          console.error(`Failed to autosave ${relativePath}`, error);
-        })
-        .finally(() => {
-          const activeTimeoutId = workspaceAutosaveTimeoutsRef.current.get(relativePath);
-          if (activeTimeoutId === timeoutId) {
-            workspaceAutosaveTimeoutsRef.current.delete(relativePath);
-          }
-        });
-    }, 220);
-
-    workspaceAutosaveTimeoutsRef.current.set(relativePath, timeoutId);
-  }, []);
-
-  const handleOpenSourceControlPanel = useCallback(() => {
-    setIsExplorerOpen(false);
-    if (isSidebarOpen) {
-      setIsWorkspaceTabsPanelVisible(false);
-    } else if (workspaceFileTabs.length > 0) {
-      setIsWorkspaceTabsPanelVisible(true);
-    }
-    if (activeWorkspacePanelWidth !== null) {
-      setSourceControlPanelWidth(activeWorkspacePanelWidth);
-    }
-    if (isRightPanelOpen && rightPanelTab === "source-control") {
-      onRightPanelOpenChange(false);
-      return;
-    }
-
-    onRightPanelTabChange("source-control");
-    onRightPanelOpenChange(true);
-  }, [
+  const {
+    handleCloseWorkspaceTab,
+    handleOpenWorkspaceFile,
+    handleOpenWorkspaceMarkdownPreview,
+    handleOpenWorkspaceSvgPreview,
+    handleSelectWorkspaceTab,
+  } = useWorkspaceTabActions({
     activeWorkspacePanelWidth,
-    isRightPanelOpen,
-    isSidebarOpen,
+    activeWorkspacePathRef,
     onRightPanelOpenChange,
-    onRightPanelTabChange,
-    rightPanelTab,
-    workspaceFileTabs.length,
-  ]);
-
-  const handleOpenDiffPanel = useCallback(() => {
-    setIsExplorerOpen(false);
-    if (isSidebarOpen) {
-      setIsWorkspaceTabsPanelVisible(false);
-    } else if (workspaceFileTabs.length > 0) {
-      setIsWorkspaceTabsPanelVisible(true);
-    }
-    if (activeWorkspacePanelWidth !== null) {
-      setConversationDiffPanelWidth(activeWorkspacePanelWidth);
-    }
-    if (isRightPanelOpen && rightPanelTab === "diff") {
-      onRightPanelOpenChange(false);
-      return;
-    }
-
-    onRightPanelTabChange("diff");
-    onRightPanelOpenChange(true);
-  }, [
-    activeWorkspacePanelWidth,
-    isRightPanelOpen,
-    isSidebarOpen,
-    onRightPanelOpenChange,
-    onRightPanelTabChange,
-    rightPanelTab,
-    workspaceFileTabs.length,
-  ]);
-
-  const handleToggleExplorerPanel = useCallback(() => {
-    setIsExplorerOpen((currentValue) => {
-      const nextValue = !currentValue;
-      if (!nextValue) {
-        sidebarPanelRestoreRef.current = null;
-        setIsSidebarOpen(true);
-        setIsWorkspaceTabsPanelVisible(false);
-        return nextValue;
-      }
-
-      if (nextValue) {
-        if (activeWorkspacePanelWidth !== null) {
-          setWorkspaceExplorerWidth(activeWorkspacePanelWidth);
-        }
-        if (isSidebarOpen) {
-          sidebarPanelRestoreRef.current = null;
-          setIsSidebarOpen(false);
-          if (workspaceFileTabs.length > 0) {
-            setIsWorkspaceTabsPanelVisible(true);
-          }
-        } else if (workspaceFileTabs.length > 0) {
-          setIsWorkspaceTabsPanelVisible(true);
-        }
-
-        onRightPanelOpenChange(false);
-      }
-      return nextValue;
-    });
-  }, [
-    activeWorkspacePanelWidth,
-    isSidebarOpen,
-    onRightPanelOpenChange,
-    sidebarPanelRestoreRef,
+    setActiveWorkspaceFilePath,
+    setActiveWorkspaceTabKey,
+    setIsExplorerOpen,
     setIsSidebarOpen,
     setIsWorkspaceTabsPanelVisible,
-    workspaceFileTabs.length,
-  ]);
-
-  const handleSidebarOpenChange = useCallback(
-    (nextSidebarOpen: boolean) => {
-      if (nextSidebarOpen) {
-        const shouldCloseTabs =
-          isWorkspaceTabsPanelVisible && workspaceFileTabs.length > 0;
-        const shouldCloseRightPanel = isRightPanelOpen;
-        const shouldCloseExplorer = isExplorerOpen;
-        const shouldClosePanels =
-          shouldCloseTabs || shouldCloseRightPanel || shouldCloseExplorer;
-
-        if (!shouldClosePanels) {
-          sidebarPanelRestoreRef.current = null;
-          return;
-        }
-
-        sidebarPanelRestoreRef.current = {
-          shouldRestoreExplorer: shouldCloseExplorer,
-          shouldRestoreRightPanel: shouldCloseRightPanel,
-          shouldRestoreTabs: shouldCloseTabs,
-        };
-
-        if (shouldCloseTabs) {
-          setIsWorkspaceTabsPanelVisible(false);
-        }
-        if (shouldCloseRightPanel) {
-          onRightPanelOpenChange(false);
-        }
-        if (shouldCloseExplorer) {
-          setIsExplorerOpen(false);
-        }
-        return;
-      }
-
-      const restoreState = sidebarPanelRestoreRef.current;
-      sidebarPanelRestoreRef.current = null;
-      if (!restoreState) {
-        return;
-      }
-
-      if (restoreState.shouldRestoreTabs && workspaceFileTabs.length > 0) {
-        setIsWorkspaceTabsPanelVisible(true);
-      }
-      if (restoreState.shouldRestoreRightPanel) {
-        onRightPanelOpenChange(true);
-      }
-      if (restoreState.shouldRestoreExplorer) {
-        setIsExplorerOpen(true);
-      }
-    },
-    [
-      isExplorerOpen,
-      isRightPanelOpen,
-      isWorkspaceTabsPanelVisible,
-      onRightPanelOpenChange,
-      workspaceFileTabs.length,
-    ],
-  );
+    setWorkspaceExplorerWidth,
+    setWorkspaceFileTabs,
+    workspaceAutosaveTimeoutsRef,
+    workspaceFileTabs,
+    workspaceFileTabsRef,
+  });
 
   const isWorkspaceTabsPanelOpen =
     isWorkspaceTabsPanelVisible && workspaceFileTabs.length > 0;

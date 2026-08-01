@@ -21,6 +21,7 @@ const TERMINAL_BELL = '\u0007'
 const ANSI_CSI_PATTERN = new RegExp(`${ANSI_ESCAPE}\\[[0-?]*[ -/]*[@-~]`, 'g')
 const ANSI_OSC_PATTERN = new RegExp(`${ANSI_ESCAPE}\\][^${TERMINAL_BELL}${ANSI_ESCAPE}]*(?:${TERMINAL_BELL}|${ANSI_ESCAPE}\\\\)`, 'g')
 const ANSI_SINGLE_ESCAPE_PATTERN = new RegExp(`${ANSI_ESCAPE}[@-Z\\-_]`, 'g')
+const MAX_GIT_DIFF_OUTPUT_LENGTH = 20_000
 
 
 interface TerminalToolDependencies {
@@ -162,10 +163,17 @@ function prepareTerminalCommand(command: string | null) {
 
 
 
-function truncateTerminalOutput(value: string, _command: string | null) {
+function truncateTerminalOutput(value: string, command: string | null) {
+  if (!isGitDiffCommand(command) || value.length <= MAX_GIT_DIFF_OUTPUT_LENGTH) {
+    return {
+      body: value,
+      truncated: false,
+    }
+  }
+
   return {
-    body: value,
-    truncated: false,
+    body: `${value.slice(0, MAX_GIT_DIFF_OUTPUT_LENGTH)}\n\n[Output truncated at ${MAX_GIT_DIFF_OUTPUT_LENGTH} characters.]`,
+    truncated: true,
   }
 }
 
@@ -283,8 +291,11 @@ export async function cleanUpFinishedSessionsAtTurnEnd(
   const terminalService = await loadDefaultTerminalToolDependencies()
 
   const namespacesToClean: string[] = []
-  if (conversationId?.trim()) {
-    namespacesToClean.push(`conversation:${conversationId.trim()}`)
+  const normalizedConversationId = typeof conversationId === 'string'
+    ? conversationId.trim()
+    : ''
+  if (normalizedConversationId) {
+    namespacesToClean.push(`conversation:${normalizedConversationId}`)
   } else {
     namespacesToClean.push(...threadStores.keys())
   }
@@ -346,9 +357,6 @@ export function createTerminalToolSet(
   dependencies: Partial<TerminalToolDependencies> = {},
 ): ToolSet {
   const ownerWebContents = context.webContents
-  if (!ownerWebContents) {
-    return {}
-  }
 
   const getResolvedDependencies = async () => {
     if (
@@ -437,6 +445,9 @@ export function createTerminalToolSet(
         const waitMs = clampInteger(inputValue.wait_ms, 0, 15000, 2000)
 
         try {
+          if (!ownerWebContents) {
+            return createErrorResult('Terminal execution requires an active renderer context.')
+          }
           const resolvedDependencies = await getResolvedDependencies()
           const namespace = resolveTerminalThreadNamespace(context)
           const store = getOrCreateThreadStore(namespace)
@@ -570,15 +581,14 @@ export function createTerminalToolSet(
             globalSessionId = existing.globalSessionId
             shellLabel = existing.shell
           } else {
-            localSessionId = store.nextLocalSessionId++
-            const aiSessionKey = `__ai__${namespace}__${localSessionId}`
+            const sessionOrdinal = store.nextLocalSessionId++
+            const aiSessionKey = inputValue.session_key?.trim() || `__ai__${namespace}__${sessionOrdinal}`
 
             const session = await raceWithAbort(
               resolvedDependencies.createSession(ownerWebContents, {
                 cols,
                 cwd,
                 enableIdleTimeout: true,
-                isAiSession: true,
                 label: inputValue.label ?? null,
                 rows,
                 sessionKey: aiSessionKey,
@@ -588,6 +598,7 @@ export function createTerminalToolSet(
             )
 
             globalSessionId = session.sessionId
+            localSessionId = globalSessionId
             shellLabel = session.shell
             store.sessions.set(localSessionId, {
               localSessionId,
@@ -649,14 +660,22 @@ export function createTerminalToolSet(
 export async function terminateAllBackgroundSessions(
   webContents: WebContents,
   workspaceRootPath: string,
-  conversationId?: string | null,
+  conversationIdOrTerminate?: string | null | (
+    (webContents: WebContents, sessionId: number, workspaceRootPath: string) => void
+  ),
   customTerminateSession?: (webContents: WebContents, sessionId: number, workspaceRootPath: string) => void,
 ) {
-  const terminalService = customTerminateSession ? null : await loadDefaultTerminalToolDependencies()
+  const conversationId = typeof conversationIdOrTerminate === 'string'
+    ? conversationIdOrTerminate.trim()
+    : ''
+  const terminateSession = typeof conversationIdOrTerminate === 'function'
+    ? conversationIdOrTerminate
+    : customTerminateSession
+  const terminalService = terminateSession ? null : await loadDefaultTerminalToolDependencies()
 
   const namespacesToClean: string[] = []
-  if (conversationId?.trim()) {
-    namespacesToClean.push(`conversation:${conversationId.trim()}`)
+  if (conversationId) {
+    namespacesToClean.push(`conversation:${conversationId}`)
   } else {
     namespacesToClean.push(...threadStores.keys())
   }
@@ -667,8 +686,8 @@ export async function terminateAllBackgroundSessions(
 
     for (const session of store.sessions.values()) {
       try {
-        if (customTerminateSession) {
-          customTerminateSession(webContents, session.globalSessionId, workspaceRootPath)
+        if (terminateSession) {
+          terminateSession(webContents, session.globalSessionId, workspaceRootPath)
         } else if (terminalService) {
           terminalService.terminateSession(webContents, session.globalSessionId, workspaceRootPath)
         }

@@ -9,6 +9,7 @@ type ToolModelMessage = Extract<ModelMessage, { role: 'tool' }>
 export interface BuildChatPromptOptions {
   availableSkillsBlock?: string | null
   includeAssistantReasoningParts?: boolean
+  includeExecutionModeContext?: boolean
   terminalExecutionMode?: AppTerminalExecutionMode
 }
 
@@ -107,8 +108,14 @@ export function ensureCurrentExecutionModeContext(
     return nextMessages
   }
 
-  nextMessages[latestUserMessageIndex] = appendExecutionModeContext(
-    nextMessages[latestUserMessageIndex] as UserModelMessage,
+  // Establish the initial mode at the start of the user-visible history so it
+  // behaves like version 1 of the execution context. Later mode changes belong
+  // on the latest user message so they take effect immediately.
+  const targetUserMessageIndex = lastContextMode === null
+    ? userMessageIndexes[0]
+    : latestUserMessageIndex
+  nextMessages[targetUserMessageIndex] = appendExecutionModeContext(
+    nextMessages[targetUserMessageIndex] as UserModelMessage,
     terminalExecutionMode,
   )
   return nextMessages
@@ -377,6 +384,7 @@ export function buildModelMessages(
   const options: Required<BuildChatPromptOptions> = {
     availableSkillsBlock: inputOptions?.availableSkillsBlock ?? null,
     includeAssistantReasoningParts: inputOptions?.includeAssistantReasoningParts ?? true,
+    includeExecutionModeContext: inputOptions?.includeExecutionModeContext ?? true,
     terminalExecutionMode: inputOptions?.terminalExecutionMode ?? 'sandbox',
   }
 
@@ -389,5 +397,7 @@ export function buildModelMessages(
     appendModelMessage(messages, modelMessage)
   }
 
-  return messages
+  return options.includeExecutionModeContext
+    ? ensureCurrentExecutionModeContext(messages, options.terminalExecutionMode)
+    : messages
 }
