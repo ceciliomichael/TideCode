@@ -32,6 +32,11 @@
       SendMessage $mui.WelcomePage.Title ${WM_SETTEXT} 0 "STR:TideCode is already here"
       SendMessage $mui.WelcomePage.Text ${WM_SETTEXT} 0 "STR:This installer will update TideCode in place.$\r$\n$\r$\nYour settings, workspaces, shortcut, and taskbar pin stay connected to the same TideCode installation.$\r$\n$\r$\nNothing in your projects is removed."
       SendMessage $mui.Button.Next ${WM_SETTEXT} 0 "STR:Update"
+      ${if} ${isUpdated}
+        ; electron-updater already confirmed this update. Keep the branded
+        ; installer visible, but continue without asking for a second click.
+        SendMessage $mui.Button.Next ${BM_CLICK} 0 0
+      ${endif}
     ${else}
       SendMessage $mui.Button.Next ${WM_SETTEXT} 0 "STR:Install"
     ${endif}

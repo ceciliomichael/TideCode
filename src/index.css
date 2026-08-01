@@ -397,6 +397,10 @@
     -webkit-app-region: drag;
   }
 
+  .app-no-drag {
+    -webkit-app-region: no-drag;
+  }
+
   .scroll-stable {
     scrollbar-gutter: stable both-edges;
   }

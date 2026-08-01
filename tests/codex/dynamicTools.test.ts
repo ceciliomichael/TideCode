@@ -667,6 +667,98 @@ test('execute_tool accepts flattened edit arguments from a nested wrapper', asyn
   assert.equal(result.body, 'src/example.ts:1')
 })
 
+test('execute_tool normalizes same-path batch edit items into the shared top-level path shape', async () => {
+  let receivedArguments: Record<string, unknown> | undefined
+  const catalog = await buildDynamicToolCatalog({
+    edit: tool({
+      description: 'Apply exact edits to one file',
+      inputSchema: jsonSchema({
+        additionalProperties: false,
+        properties: {
+          edits: {
+            items: {
+              additionalProperties: false,
+              properties: {
+                replacementContent: { type: 'string' },
+                targetContent: { minLength: 1, type: 'string' },
+              },
+              required: ['targetContent', 'replacementContent'],
+              type: 'object',
+            },
+            minItems: 1,
+            type: 'array',
+          },
+          path: { type: 'string' },
+        },
+        required: ['path', 'edits'],
+        type: 'object',
+      }),
+      execute: async (input) => {
+        receivedArguments = input as Record<string, unknown>
+        return {
+          body: `${receivedArguments.path as string}:${(receivedArguments.edits as unknown[]).length}`,
+          status: 'success' as const,
+          summary: 'Applied edits',
+        }
+      },
+    }),
+  })
+  const tools = await createDynamicToolSet(catalog)
+  const execute = tools.execute_tool.execute
+  assert.ok(execute)
+
+  const rawArguments = {
+    edits: [
+      { path: 'src/example.ts', replacementContent: 'new one', targetContent: 'old one' },
+      { path: 'src/example.ts', replacementContent: 'new two', targetContent: 'old two' },
+    ],
+  }
+  const result = await execute(
+    { args: rawArguments, id: 'edit' },
+    {
+      abortSignal: undefined,
+      context: {},
+      messages: [],
+      toolCallId: 'edit-item-paths-1',
+    },
+  )
+
+  assert.equal(result.status, 'success')
+  assert.equal(result.body, 'src/example.ts:2')
+  assert.deepEqual(receivedArguments, {
+    edits: [
+      { replacementContent: 'new one', targetContent: 'old one' },
+      { replacementContent: 'new two', targetContent: 'old two' },
+    ],
+    path: 'src/example.ts',
+  })
+  assert.deepEqual(result.dynamicInvocation, {
+    argumentsValue: rawArguments,
+    toolName: 'edit',
+  })
+
+  const differentPathsResult = await execute(
+    {
+      args: {
+        edits: [
+          { path: 'src/one.ts', replacementContent: 'new one', targetContent: 'old one' },
+          { path: 'src/two.ts', replacementContent: 'new two', targetContent: 'old two' },
+        ],
+      },
+      id: 'edit',
+    },
+    {
+      abortSignal: undefined,
+      context: {},
+      messages: [],
+      toolCallId: 'edit-item-paths-2',
+    },
+  )
+  assert.equal(differentPathsResult.status, 'error')
+  const differentPathsBody = JSON.parse(differentPathsResult.body ?? '{}') as { missing?: string[] }
+  assert.deepEqual(differentPathsBody.missing, ['path'])
+})
+
 test('execute_tool accepts write file as a compatibility alias for path', async () => {
   let receivedArguments: Record<string, unknown> | undefined
   const catalog = await buildDynamicToolCatalog({

@@ -135,6 +135,6 @@ The release should be published, its body should match the `1.0.1` changelog sec
 
 ## End-user updates
 
-Packaged TideCode builds use `electron-updater` with the GitHub Releases provider. The Settings → Updates flow checks the latest release, downloads a compatible update in the background, and shows `Restart to update` when the installer is ready. The user-controlled restart hands the already-downloaded update directly to the silent installer and relaunches TideCode when installation finishes; normal app exit does not silently install a pending update.
+Packaged TideCode builds use `electron-updater` with the GitHub Releases provider. The Settings → Updates flow checks the latest release, downloads a compatible update in the background, and shows `Restart to update` when the installer is ready. The user-controlled restart hands the already-downloaded update directly to the branded installer and relaunches TideCode when installation finishes; normal app exit does not install a pending update.
 
-The unpackaged development build can check release metadata and open the release page, but it cannot install an update. `dev-app-update.yml` exists for updater configuration during development; real update installation must be tested with a packaged installer created by electron-builder.
+The unpackaged development build can check release metadata and open the release page, but it cannot install an update. `dev-app-update.yml` exists for updater configuration during development; real update installation must be tested with a packaged installer created by electron-builder. When an in-app update is handed to Windows, the branded installer remains visible and automatically continues the already-confirmed update without requiring a second Update click.

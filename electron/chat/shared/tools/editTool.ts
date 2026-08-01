@@ -4,7 +4,7 @@ import { createEditToolResult, type WorkspaceToolContext } from './workspaceTool
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 const EDIT_TOOL_DESCRIPTION =
-  'Replaces a block of text in an existing file, or applies a batch of exact text replacements atomically. Leading indentation differences are ignored, but the remaining target text must match exactly.'
+  'Replaces a block of text in an existing file, or applies a batch of exact text replacements atomically. For a batch, put the shared file path in the top-level path field and do not put path inside individual edit items. Leading indentation differences are ignored, but the remaining target text must match exactly.'
 
 const EDIT_PATH_SCHEMA = {
   description: 'Path to the file to edit.',
@@ -65,7 +65,7 @@ const EDIT_INPUT_SCHEMA = {
       additionalProperties: false,
       properties: {
         edits: {
-          description: 'Independent edits applied atomically to the same file.',
+          description: 'Independent edits applied atomically to the same file. Put the shared file path in the top-level path field; each item contains targetContent and replacementContent, not path.',
           items: EDIT_OPERATION_SCHEMA,
           maxItems: 20,
           minItems: 1,

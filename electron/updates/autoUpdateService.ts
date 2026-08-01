@@ -151,10 +151,10 @@ export function restartToInstallUpdate() {
 
   updateInstallInProgress = true
   try {
-    // The update is already downloaded. Hand off directly to the installer in
-    // silent mode so the restart action does not open a second update flow.
+    // The update is already downloaded. Hand off directly to the branded
+    // installer so the restart action does not open a second update flow.
     // Force the updated application to launch again after installation.
-    autoUpdater.quitAndInstall(true, true)
+    autoUpdater.quitAndInstall(false, true)
   } catch (error) {
     updateInstallInProgress = false
     throw error

@@ -398,9 +398,13 @@ export async function createDynamicToolSet(catalogEntries: readonly DynamicToolC
         const validationIssues = compilation.validator.validate(executionArguments)
         const validationError = getFirstValidationError(validationIssues)
         if (validationError) {
-          const missingArguments = validationIssues
-            .filter((issue) => issue.message === 'is required')
-            .map((issue) => issue.path.replace(/^\$\./u, ''))
+          const missingArguments = Array.from(
+            new Set(
+              validationIssues
+                .filter((issue) => issue.message === 'is required')
+                .map((issue) => issue.path.replace(/^\$\./u, '')),
+            ),
+          )
           const editRepair =
             entry.id === 'edit'
               ? {

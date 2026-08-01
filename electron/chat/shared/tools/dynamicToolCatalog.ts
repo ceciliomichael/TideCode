@@ -119,6 +119,7 @@ function buildToolGuidance(id: string, tags: readonly string[]): DynamicToolGuid
       workflow: [
         'Read the current file first and copy the exact current block into targetContent.',
         'Call edit with path, targetContent, and replacementContent. startLine and endLine are optional search bounds, but must be provided together when used.',
+        'For multiple edits in one file, use one top-level path and put only the replacement fields inside each edits item.',
         'If the target is ambiguous, narrow the line range or include a larger unique block; never guess which occurrence to change.',
       ],
     },

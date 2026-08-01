@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.5 — Smoother updates and more reliable tool edits
+
+TideCode now makes both app updates and model-driven file edits easier to finish without extra friction.
+
+- Kept the branded Windows installer visible during an in-app update while automatically continuing the already-confirmed update without a second confirmation click.
+- Made the title-bar restart action clickable and placed it immediately to the right of the TideCode wordmark.
+- Improved compatibility for batch edit tool calls that repeat the same file path inside each edit item.
+- Added clearer edit-tool guidance and deduplicated missing-argument diagnostics.
+- Added regression coverage for same-file batch edit normalization and invalid mixed-path requests.
+
 ## 1.0.4 — Faster restart installs
 
 TideCode now moves directly from a downloaded update to installation, so restarting feels like one clear action instead of another update step.

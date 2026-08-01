@@ -30,7 +30,7 @@ export function PendingUpdateAction() {
     <button
       type="button"
       aria-label="Restart TideCode to install the downloaded update"
-      className="pointer-events-auto inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-brand-border bg-brand-soft px-2.5 py-1 text-xs font-semibold text-brand-soft-foreground transition-colors hover:bg-accent-hover"
+      className="app-no-drag pointer-events-auto inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-lg border border-brand-border bg-brand-soft px-2.5 py-1 text-xs font-semibold text-brand-soft-foreground transition-colors hover:bg-accent-hover"
       onClick={() => void handleRestart()}
       title={errorMessage ?? 'Restart TideCode to install the downloaded update'}
     >

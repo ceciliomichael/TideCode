@@ -30,8 +30,8 @@ export function AppWorkspaceShell({
         style={{ height: 'env(titlebar-area-height, 0px)' }}
       >
         <div className="flex items-center gap-2">
-          <PendingUpdateAction />
           <BrandWordmark className="h-7 w-[107px] text-brand" />
+          <PendingUpdateAction />
         </div>
       </div>
 
