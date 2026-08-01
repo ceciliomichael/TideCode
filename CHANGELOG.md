@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.4 — Faster restart installs
+
+TideCode now moves directly from a downloaded update to installation, so restarting feels like one clear action instead of another update step.
+
+- Made `Restart to update` hand the already-downloaded release directly to the silent installer.
+- Relaunches TideCode automatically after installation finishes.
+- Prevented repeated restart clicks from starting multiple installer handoffs.
+- Documented the restart-to-install behavior for future release work.
+
 ## 1.0.3 — Reliable updates and smoother installs
 
 TideCode now makes the final step of updating easier to understand and harder to interrupt, from the first manual check through the installer handoff.

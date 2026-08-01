@@ -145,9 +145,16 @@ export function restartToInstallUpdate() {
     throw new Error('No downloaded update is ready to install.')
   }
 
+  if (updateInstallInProgress) {
+    return
+  }
+
   updateInstallInProgress = true
   try {
-    autoUpdater.quitAndInstall(false, true)
+    // The update is already downloaded. Hand off directly to the installer in
+    // silent mode so the restart action does not open a second update flow.
+    // Force the updated application to launch again after installation.
+    autoUpdater.quitAndInstall(true, true)
   } catch (error) {
     updateInstallInProgress = false
     throw error
