@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.6 — Clearer workspace selection
+
+Workspace Explorer selections now keep their text at the strongest readable contrast against the TideCode selection background.
+
+- Improved selected, active, context, and drop-target row readability in Workspace Explorer.
+
 ## 1.0.5 — Smoother updates and more reliable tool edits
 
 TideCode now makes both app updates and model-driven file edits easier to finish without extra friction.

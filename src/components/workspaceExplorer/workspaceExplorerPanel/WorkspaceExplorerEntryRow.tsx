@@ -59,7 +59,7 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
   const FileIcon = fileIconConfig?.icon
   const gitStatusTextClass = gitStatus === 'untracked' ? 'text-[#5D9F73]' : gitStatus === 'modified' ? 'text-[#C7904A]' : ''
   const rowStateClass = isSelectedEntry || isActiveFile || isContextTarget || isDropTarget
-    ? 'bg-brand-soft text-brand-soft-foreground'
+    ? 'bg-brand-soft text-foreground'
     : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground'
   const targetDirectoryPath = isDirectory ? entryPath : getPathDirname(entryPath)
 
