@@ -8,12 +8,13 @@ import { persistAndStreamMessage } from './chatMessageSendWorkflow'
 import type { ChatRuntimeSelection } from './chatMessageRuntime'
 import type { PersistAndStreamMessageInput } from './chatMessageSendTypes'
 import { restoreChatComposerDraft } from '../lib/chatComposerDraft'
+import { acquireChatSendGate, releaseChatSendGate } from '../lib/chatSendGate'
 import {
   getActiveUnrespondedUserMessage,
   getPendingRevertMessageIds,
   isActiveUnrespondedUserMessage,
 } from './chatPendingMessageRevert'
-import type { ChatMode, ConversationRecord, Message } from '../types/chat'
+import type { ChatMode, Message } from '../types/chat'
 
 interface UseChatSendActionsInput
   extends Omit<
@@ -76,6 +77,7 @@ function sleep(milliseconds: number) {
 
 export function useChatSendActions(input: UseChatSendActionsInput) {
   const actionInFlightRef = useRef(false)
+  const submissionInFlightRef = useRef(false)
   const pendingAbortBeforeStreamStartRef = useRef(false)
   const revertedUserMessageIdsRef = useRef<Set<string>>(new Set())
 
@@ -228,6 +230,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         : false
 
       if (
+        submissionInFlightRef.current ||
         actionInFlightRef.current ||
         isActiveConversationSending ||
         (activeConversationId === null && input.pendingDraftSendCount > 0)
@@ -241,28 +244,36 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         return false
       }
 
+      if (!acquireChatSendGate(submissionInFlightRef)) {
+        return false
+      }
+
       pendingAbortBeforeStreamStartRef.current = false
 
-      return persistAndStreamMessage({
-        ...input,
-        attachments,
-        hasPendingAbortRequest: () => pendingAbortBeforeStreamStartRef.current,
-        consumePendingAbortBeforeStreamStart: () => {
-          if (!pendingAbortBeforeStreamStartRef.current) {
-            return false
-          }
+      try {
+        return await persistAndStreamMessage({
+          ...input,
+          attachments,
+          hasPendingAbortRequest: () => pendingAbortBeforeStreamStartRef.current,
+          consumePendingAbortBeforeStreamStart: () => {
+            if (!pendingAbortBeforeStreamStartRef.current) {
+              return false
+            }
 
-          pendingAbortBeforeStreamStartRef.current = false
-          return true
-        },
-        isUserMessageReverted,
-        clearUserMessageRevert,
-        originalText: nextMessageText,
-        resetMainComposerAfterSend: options?.resetMainComposerAfterSend,
-        runtimeSelection,
-        targetEditMessageId: null,
-        trimmedText,
-      })
+            pendingAbortBeforeStreamStartRef.current = false
+            return true
+          },
+          isUserMessageReverted,
+          clearUserMessageRevert,
+          originalText: nextMessageText,
+          resetMainComposerAfterSend: options?.resetMainComposerAfterSend,
+          runtimeSelection,
+          targetEditMessageId: null,
+          trimmedText,
+        })
+      } finally {
+        releaseChatSendGate(submissionInFlightRef)
+      }
     },
     [clearUserMessageRevert, getConversationState, input, isUserMessageReverted],
   )
@@ -281,6 +292,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         : false
 
       if (
+        submissionInFlightRef.current ||
         actionInFlightRef.current ||
         isActiveConversationSending ||
         (!options?.forceNewConversation && activeConversationId === null && input.pendingDraftSendCount > 0)
@@ -293,34 +305,42 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         return
       }
 
+      if (!acquireChatSendGate(submissionInFlightRef)) {
+        return
+      }
+
       pendingAbortBeforeStreamStartRef.current = false
 
-      await persistAndStreamMessage({
-        ...input,
-        attachments: [],
-        hasPendingAbortRequest: () => pendingAbortBeforeStreamStartRef.current,
-        consumePendingAbortBeforeStreamStart: () => {
-          if (!pendingAbortBeforeStreamStartRef.current) {
-            return false
-          }
+      try {
+        await persistAndStreamMessage({
+          ...input,
+          attachments: [],
+          hasPendingAbortRequest: () => pendingAbortBeforeStreamStartRef.current,
+          consumePendingAbortBeforeStreamStart: () => {
+            if (!pendingAbortBeforeStreamStartRef.current) {
+              return false
+            }
 
-          pendingAbortBeforeStreamStartRef.current = false
-          return true
-        },
-        isUserMessageReverted,
-        clearUserMessageRevert,
-        originalText: messageText,
-        draftChatMode: options?.chatMode ?? input.draftChatMode,
-        activeConversationId,
-        activeConversationIdRef: options?.forceNewConversation ? { current: null } : input.activeConversationIdRef,
-        compactionSourceConversationId: options?.compactionSourceConversationId,
-        resetMainComposerAfterSend: false,
-        runtimeSelection,
-        targetEditMessageId: null,
-        trimmedText,
-        syntheticAssistantMessage: options?.syntheticAssistantMessage,
-        title: options?.title,
-      })
+            pendingAbortBeforeStreamStartRef.current = false
+            return true
+          },
+          isUserMessageReverted,
+          clearUserMessageRevert,
+          originalText: messageText,
+          draftChatMode: options?.chatMode ?? input.draftChatMode,
+          activeConversationId,
+          activeConversationIdRef: options?.forceNewConversation ? { current: null } : input.activeConversationIdRef,
+          compactionSourceConversationId: options?.compactionSourceConversationId,
+          resetMainComposerAfterSend: false,
+          runtimeSelection,
+          targetEditMessageId: null,
+          trimmedText,
+          syntheticAssistantMessage: options?.syntheticAssistantMessage,
+          title: options?.title,
+        })
+      } finally {
+        releaseChatSendGate(submissionInFlightRef)
+      }
     },
     [
       clearUserMessageRevert,
@@ -337,7 +357,12 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       attachments = input.editComposerAttachments,
     ) => {
       const conversationId = input.activeConversationIdRef.current ?? input.activeConversationId
-      if (actionInFlightRef.current || input.editingMessageId === null || conversationId === null) {
+      if (
+        submissionInFlightRef.current ||
+        actionInFlightRef.current ||
+        input.editingMessageId === null ||
+        conversationId === null
+      ) {
         return
       }
 
@@ -347,46 +372,48 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         return
       }
 
-      let persistedConversation: ConversationRecord | null
+      if (!acquireChatSendGate(submissionInFlightRef)) {
+        return
+      }
+
       try {
-        persistedConversation = await window.echosphereHistory.getConversation(conversationId)
-      } catch (caughtError) {
-        console.error(caughtError)
-        input.cancelEditingMessage()
-        input.setError('Unable to reload that conversation right now.')
-        return
-      }
-
-      const hasPersistedEditableMessage = Boolean(
-        persistedConversation?.messages.some(
-          (message) => message.id === input.editingMessageId && message.role === 'user',
-        ),
-      )
-      if (!hasPersistedEditableMessage) {
-        input.cancelEditingMessage()
-        input.setError('This message is no longer available to edit.')
-        return
-      }
-
-      const conversationState = getConversationState(conversationId)
-      const hasEditableMessage = Boolean(
-        conversationState?.conversation.messages.some(
-          (message) => message.id === input.editingMessageId && message.role === 'user',
-        ),
-      )
-      if (!hasEditableMessage) {
-        input.cancelEditingMessage()
-        input.setError('This message is no longer available to edit.')
-        return
-      }
-
-      actionInFlightRef.current = true
-
-      let setupSuccessful = false
-      try {
-        input.clearError()
-        await abortActiveStreamIfNeeded()
+        let persistedConversation
         try {
+          persistedConversation = await window.echosphereHistory.getConversation(conversationId)
+        } catch (caughtError) {
+          console.error(caughtError)
+          input.cancelEditingMessage()
+          input.setError('Unable to reload that conversation right now.')
+          return
+        }
+
+        const hasPersistedEditableMessage = Boolean(
+          persistedConversation?.messages.some(
+            (message) => message.id === input.editingMessageId && message.role === 'user',
+          ),
+        )
+        if (!hasPersistedEditableMessage) {
+          input.cancelEditingMessage()
+          input.setError('This message is no longer available to edit.')
+          return
+        }
+
+        const conversationState = getConversationState(conversationId)
+        const hasEditableMessage = Boolean(
+          conversationState?.conversation.messages.some(
+            (message) => message.id === input.editingMessageId && message.role === 'user',
+          ),
+        )
+        if (!hasEditableMessage) {
+          input.cancelEditingMessage()
+          input.setError('This message is no longer available to edit.')
+          return
+        }
+
+        actionInFlightRef.current = true
+        try {
+          input.clearError()
+          await abortActiveStreamIfNeeded()
           await restoreWorkspaceCheckpointForMessage(conversationId, input.editingMessageId)
         } catch (caughtError) {
           if (isMessageNotFoundError(caughtError)) {
@@ -398,22 +425,10 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           if (!isMissingCheckpointError(caughtError)) {
             throw caughtError
           }
-        }
-        setupSuccessful = true
-      } catch (caughtError) {
-        console.error(caughtError)
-        if (isMessageNotFoundError(caughtError)) {
-          input.cancelEditingMessage()
-          input.setError('This message is no longer available to edit.')
-          return
+        } finally {
+          actionInFlightRef.current = false
         }
 
-        input.setError(toActionErrorMessage(caughtError, 'Unable to resend your edit.'))
-      } finally {
-        actionInFlightRef.current = false
-      }
-
-      if (setupSuccessful) {
         pendingAbortBeforeStreamStartRef.current = false
 
         await persistAndStreamMessage({
@@ -435,6 +450,17 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           targetEditMessageId: input.editingMessageId,
           trimmedText,
         })
+      } catch (caughtError) {
+        console.error(caughtError)
+        if (isMessageNotFoundError(caughtError)) {
+          input.cancelEditingMessage()
+          input.setError('This message is no longer available to edit.')
+          return
+        }
+
+        input.setError(toActionErrorMessage(caughtError, 'Unable to resend your edit.'))
+      } finally {
+        releaseChatSendGate(submissionInFlightRef)
       }
     },
     [
@@ -470,7 +496,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
   const revertUserMessage = useCallback(
     async (messageId: string) => {
       const conversationId = input.activeConversationIdRef.current ?? input.activeConversationId
-      if (actionInFlightRef.current || !conversationId) {
+      if (actionInFlightRef.current || submissionInFlightRef.current || !conversationId) {
         return
       }
 

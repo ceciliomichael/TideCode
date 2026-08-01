@@ -23,6 +23,11 @@ test('normalizeMarkdownText inserts paragraph spacing between glued reasoning se
   )
 })
 
+test('normalizeMarkdownText does not split <!DOCTYPE html> or ellipsis', () => {
+  const input = 'Structure:\n<!DOCTYPE html>\n...'
+  assert.equal(normalizeMarkdownText(input), 'Structure:\n<!DOCTYPE html>\n...')
+})
+
 test('getCopyableAssistantMessageText excludes reasoning content and think tags', () => {
   assert.equal(
     getCopyableAssistantMessageText({

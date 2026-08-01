@@ -1,11 +1,14 @@
 import React, { memo, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
+import rehypeSanitize from 'rehype-sanitize'
 import rehypeSlug from 'rehype-slug'
 import remarkEmoji from 'remark-emoji'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
+import { chatMarkdownSanitizeSchema } from '../../lib/chatMarkdownSecurity'
 import { handleMarkdownLinkClick, preprocessMarkdown } from '../../lib/markdown'
+import { detectRawHtmlDocument } from '../../lib/markdownCodeDetection'
 import { CodeBlock } from './CodeBlock'
 
 interface MarkdownRendererProps {
@@ -55,8 +58,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   preserveLineBreaks = false,
 }: MarkdownRendererProps) {
   const rootClassName = [
-    'chat-markdown', 
-    'whitespace-normal', 
+    'chat-markdown',
+    'min-w-0 max-w-full overflow-hidden whitespace-normal',
     className,
     '[&>*:first-child]:mt-0',
     '[&>*:last-child]:mb-0',
@@ -218,12 +221,37 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   )
 
   const processedContent = useMemo(() => preprocessMarkdown(content), [content])
+  const rawHtmlDocument = useMemo(() => detectRawHtmlDocument(content), [content])
+  const processedRawHtmlPrefix = useMemo(
+    () => (rawHtmlDocument?.prefix ? preprocessMarkdown(rawHtmlDocument.prefix) : ''),
+    [rawHtmlDocument],
+  )
+  const remarkPlugins = [remarkGfm, remarkEmoji, ...(preserveLineBreaks ? [remarkBreaks] : [])]
 
   return (
     <div className={rootClassName}>
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkEmoji, ...(preserveLineBreaks ? [remarkBreaks] : [])]} rehypePlugins={[rehypeRaw, rehypeSlug]} components={markdownComponents}>
-        {processedContent}
-      </ReactMarkdown>
+      {rawHtmlDocument ? (
+        <>
+          {processedRawHtmlPrefix.length > 0 ? (
+            <ReactMarkdown
+              remarkPlugins={remarkPlugins}
+              rehypePlugins={[rehypeRaw, rehypeSlug, [rehypeSanitize, chatMarkdownSanitizeSchema]]}
+              components={markdownComponents}
+            >
+              {processedRawHtmlPrefix}
+            </ReactMarkdown>
+          ) : null}
+          <CodeBlock code={rawHtmlDocument.code} language={rawHtmlDocument.language} isStreaming={isStreaming} />
+        </>
+      ) : (
+        <ReactMarkdown
+          remarkPlugins={remarkPlugins}
+          rehypePlugins={[rehypeRaw, rehypeSlug, [rehypeSanitize, chatMarkdownSanitizeSchema]]}
+          components={markdownComponents}
+        >
+          {processedContent}
+        </ReactMarkdown>
+      )}
     </div>
   )
 })

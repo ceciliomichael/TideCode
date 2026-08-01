@@ -123,25 +123,15 @@ export function DropdownField({
       }
     }
 
-    function handleWindowScroll(event: Event) {
-      const target = event.target
-      if (
-        target instanceof Node &&
-        !containerRef.current?.contains(target) &&
-        !listboxRef.current?.contains(target)
-      ) {
-        setIsOpen(false)
-      }
-    }
-
+    // Keep the menu open while an ancestor viewport scrolls. The floating
+    // position hook re-anchors the portal, and chat streaming legitimately
+    // scrolls its message viewport on every streamed update.
     document.addEventListener('mousedown', handlePointerDown)
     document.addEventListener('keydown', handleEscape)
-    window.addEventListener('scroll', handleWindowScroll, true)
 
     return () => {
       document.removeEventListener('mousedown', handlePointerDown)
       document.removeEventListener('keydown', handleEscape)
-      window.removeEventListener('scroll', handleWindowScroll, true)
     }
   }, [isOpen])
 

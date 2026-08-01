@@ -33,7 +33,7 @@ export async function connectMcpServer(
   const transport = createMcpTransport(config, workspacePath)
   const client = new Client(
     {
-      name: app.getName() || 'Echosphere',
+      name: app.getName() || 'TideCode',
       version: app.getVersion() || '0.0.0',
     },
     {

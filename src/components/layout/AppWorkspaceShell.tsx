@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { ResizableSidebarPanel } from '../sidebar/ResizableSidebarPanel'
+import { BrandWordmark } from '../branding/BrandWordmark'
 
 interface AppWorkspaceShellProps {
   isSidebarOpen: boolean
@@ -27,7 +28,7 @@ export function AppWorkspaceShell({
         className="app-drag-region pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center bg-[var(--titlebar-surface)] px-3 text-sm font-medium text-foreground/75"
         style={{ height: 'env(titlebar-area-height, 0px)' }}
       >
-        <span className="select-none">EchoSphere</span>
+        <BrandWordmark className="h-7 w-[107px] text-foreground/80" />
       </div>
 
       {floatingControls ? <div className="relative z-40">{floatingControls}</div> : null}

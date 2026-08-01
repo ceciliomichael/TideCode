@@ -174,7 +174,7 @@ function githubRequest(
       method,
       headers: {
         'Authorization': `Bearer ${token}`,
-        'User-Agent': 'Echosphere',
+        'User-Agent': 'TideCode',
         'Accept': 'application/vnd.github.v3+json',
         'Content-Type': 'application/json',
         ...(body ? { 'Content-Length': Buffer.byteLength(postData) } : {})

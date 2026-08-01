@@ -6,6 +6,7 @@ import { toProviderModelCatalogItems } from '../components/settings/models/provi
 import { dedupeModelCatalogItems } from '../components/settings/models/modelCatalogDedupe'
 import { filterEnabledModelCatalogItems, readStoredModelToggleState } from '../components/settings/models/modelStorage'
 import { isProviderConfigured } from '../components/settings/models/modelViewUtils'
+import { createConversationModelPreference } from '../lib/conversationModelPreference'
 import { resolveModelReasoningProfile } from '../lib/modelReasoningProfiles'
 import { resolveReasoningEffortTransition } from '../lib/reasoningEffortTransition'
 import type {
@@ -557,23 +558,39 @@ export function useChatRuntimeConfig({
 
       const update: Partial<AppSettings> = { chatReasoningEffort }
       if (activeConversationId) {
-        const prev = settings.conversationModelPreferences?.[activeConversationId]
-        const pref: AppSettings['conversationModelPreferences'][string] = {
-          label: prev?.label ?? '',
-          modelId: prev?.modelId ?? '',
-          providerId: prev?.providerId ?? null,
-          chatMode: prev?.chatMode ?? activeChatMode,
+        const preference = createConversationModelPreference({
+          activeChatMode,
+          activeSelection: {
+            label: effectiveModeSelection.modelLabel,
+            modelId: effectiveModeSelection.modelId,
+            providerId: effectiveModeSelection.providerId,
+          },
+          previousPreference: settings.conversationModelPreferences?.[activeConversationId],
           reasoningEffort: chatReasoningEffort,
-        }
-        update.conversationModelPreferences = {
-          ...settings.conversationModelPreferences,
-          [activeConversationId]: pref,
+          selectedModelLabel: selectedModel?.label,
+        })
+
+        if (preference) {
+          update.conversationModelPreferences = {
+            ...settings.conversationModelPreferences,
+            [activeConversationId]: preference,
+          }
         }
       }
 
       void updateSettings(update)
     },
-    [activeChatMode, activeConversationId, effectiveReasoningEffort, settings.conversationModelPreferences, updateSettings],
+    [
+      activeChatMode,
+      activeConversationId,
+      effectiveModeSelection.modelId,
+      effectiveModeSelection.modelLabel,
+      effectiveModeSelection.providerId,
+      effectiveReasoningEffort,
+      selectedModel?.label,
+      settings.conversationModelPreferences,
+      updateSettings,
+    ],
   )
 
   return {

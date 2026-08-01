@@ -83,6 +83,74 @@ test('compaction boundaries never split a tool-call and tool-result pair', () =>
   assert.equal(longWindow.sourceMessageIds.at(-1), `model:${longWindow.boundaryIndex - 1}`)
 })
 
+test('compaction still evicts older history when a recent tool result exceeds the target', () => {
+  const messages = [
+    { role: 'user', content: 'Implement the requested change.' },
+    { role: 'assistant', content: 'I am reviewing the existing implementation.' },
+    { role: 'user', content: 'Keep the current provider behavior intact.' },
+    {
+      role: 'assistant',
+      content: [{ type: 'tool-call', toolCallId: 'call-large', toolName: 'read_file', input: { path: 'src/app.ts' } }],
+    },
+    {
+      role: 'tool',
+      content: [{
+        type: 'tool-result',
+        toolCallId: 'call-large',
+        toolName: 'read_file',
+        output: { type: 'text', value: 'tool output '.repeat(2_000) },
+      }],
+    },
+    { role: 'assistant', content: 'The file contents are ready for the next step.' },
+  ] as ModelMessage[]
+
+  const window = selectCompactionWindow(messages, 1_000)
+
+  assert.ok(window)
+  assert.ok(window.boundaryIndex > 0)
+  assert.ok(window.evictedMessages.length > 0)
+  assert.equal(hasUnresolvedToolCall(window.tailMessages), false)
+  assert.equal(window.tailMessages.some((message) => message.role === 'tool'), true)
+})
+
+test('automatic budget checks compact a completed tool step even when the target cannot fit the recent tail', async () => {
+  const messages = [
+    { role: 'user', content: 'Inspect the workspace and continue the implementation.' },
+    { role: 'assistant', content: 'I am checking the existing files first.' },
+    { role: 'user', content: 'Preserve the current behavior while making the change.' },
+    {
+      role: 'assistant',
+      content: [{ type: 'tool-call', toolCallId: 'call-budget', toolName: 'read_file', input: { path: 'src/app.ts' } }],
+    },
+    {
+      role: 'tool',
+      content: [{
+        type: 'tool-result',
+        toolCallId: 'call-budget',
+        toolName: 'read_file',
+        output: { type: 'text', value: 'large tool output '.repeat(4_000) },
+      }],
+    },
+    { role: 'assistant', content: 'The tool result is available for the next model step.' },
+  ] as ModelMessage[]
+
+  const result = await compactModelMessages({
+    messages,
+    model: 'test-model',
+    reasoningEffort: 'low',
+    systemPromptTokens: 100,
+    toolSchemaTokens: 100,
+    contextWindowTokens: 16_000,
+    reserveTokens: 4_000,
+    targetRatio: 0.25,
+    triggerRatio: 0.8,
+  })
+
+  assert.ok(result)
+  assert.equal(result.usedFallback, true)
+  assert.ok(result.boundaryIndex > 0)
+})
+
 test('fallback compaction produces a parseable assistant continuation marker', async () => {
   const messages = createConversationMessages()
   const result = await compactModelMessages(createCompactionInput(messages))

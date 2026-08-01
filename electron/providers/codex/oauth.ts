@@ -118,7 +118,7 @@ async function waitForAuthorizationCode(authUrl: string, expectedState: string, 
       if (error) {
         response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
         response.end(
-          createCallbackHtml('Codex sign-in failed', 'Authentication was not completed. Return to EchoSphere and try again.'),
+          createCallbackHtml('Codex sign-in failed', 'Authentication was not completed. Return to TideCode and try again.'),
         )
         finish(new Error(`OAuth authorization failed: ${error}`))
         return
@@ -128,7 +128,7 @@ async function waitForAuthorizationCode(authUrl: string, expectedState: string, 
       if (state !== expectedState) {
         response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
         response.end(
-          createCallbackHtml('Invalid sign-in state', 'This sign-in request is no longer valid. Return to EchoSphere and retry.'),
+          createCallbackHtml('Invalid sign-in state', 'This sign-in request is no longer valid. Return to TideCode and retry.'),
         )
         finish(new Error('OAuth state mismatch.'))
         return
@@ -138,7 +138,7 @@ async function waitForAuthorizationCode(authUrl: string, expectedState: string, 
       if (!hasText(code)) {
         response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
         response.end(
-          createCallbackHtml('Missing authorization code', 'Authentication could not be completed. Return to EchoSphere and try again.'),
+          createCallbackHtml('Missing authorization code', 'Authentication could not be completed. Return to TideCode and try again.'),
         )
         finish(new Error('OAuth callback did not include an authorization code.'))
         return
@@ -146,7 +146,7 @@ async function waitForAuthorizationCode(authUrl: string, expectedState: string, 
 
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
       response.end(
-        createCallbackHtml('Codex connected', 'Authentication succeeded. Return to EchoSphere to continue.'),
+        createCallbackHtml('Codex connected', 'Authentication succeeded. Return to TideCode to continue.'),
       )
       finish(undefined, code)
     })

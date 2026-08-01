@@ -15,7 +15,7 @@ export const API_KEY_PROVIDER_SCHEMAS: readonly ApiKeyProviderSchema[] = [
     apiKeyOptional: false,
     baseUrlRequired: false,
     defaultBaseUrl: 'https://api.openai.com/v1',
-    description: 'Bring your OpenAI models into Echosphere.',
+    description: 'Bring your OpenAI models into TideCode.',
     id: 'openai',
     label: 'OpenAI',
     showBaseUrl: false,

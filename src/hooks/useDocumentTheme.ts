@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { AppAppearance } from '../lib/appSettings'
+import { syncTideCodeFavicon } from '../lib/brandAssets'
 import {
   cacheAppearancePreference,
   DARK_THEME_COLOR,
@@ -18,6 +19,7 @@ function applyDocumentTheme(appearance: AppAppearance, resolvedTheme: ResolvedTh
   root.dataset.theme = resolvedTheme
   root.dataset.themePreference = appearance
   root.style.colorScheme = resolvedTheme
+  syncTideCodeFavicon()
   document
     .querySelector('meta[name="theme-color"]')
     ?.setAttribute('content', resolvedTheme === 'dark' ? DARK_THEME_COLOR : LIGHT_THEME_COLOR)

@@ -125,12 +125,12 @@ export function getCommitMessageBody(commitMessage: string) {
   const lines = commitMessage.split(/\r?\n/u)
   const firstNonEmptyLineIndex = lines.findIndex((line) => line.trim().length > 0)
   if (firstNonEmptyLineIndex < 0) {
-    return 'Automated PR created by EchoSphere.'
+    return 'Automated PR created by TideCode.'
   }
 
   const body = lines.slice(firstNonEmptyLineIndex + 1).join('\n').trim()
 
-  return body.length > 0 ? body : 'Automated PR created by EchoSphere.'
+  return body.length > 0 ? body : 'Automated PR created by TideCode.'
 }
 
 export function extractGitHubPullRequestUrl(text: string) {

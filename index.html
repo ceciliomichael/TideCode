@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link id="tidecode-app-icon" rel="icon" type="image/svg+xml" href="/assets/tidecode-icon-light.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#EEF4EE" />
     <script>
@@ -34,10 +34,11 @@
           if (themeMetaTag) {
             themeMetaTag.setAttribute('content', resolvedTheme === 'dark' ? darkThemeColor : lightThemeColor)
           }
+
         } catch {}
       })()
     </script>
-    <title>EchoSphere</title>
+    <title>TideCode</title>
   </head>
   <body spellcheck="false">
     <div id="root"></div>

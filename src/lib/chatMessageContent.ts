@@ -75,7 +75,7 @@ export function normalizeMarkdownText(input: string) {
   const normalized = stripInternalToolCallLeakage(input)
     .replace(/\r\n/g, '\n')
     .replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n')
-    .replace(/([.!?])([A-Z])/g, '$1\n\n$2')
+    .replace(/(?<=\w)([.!?])(?=[A-Z])/g, '$1\n\n')
 
   const fenceMatches = normalized.match(/```/g)
   const tripleFenceCount = fenceMatches?.length ?? 0

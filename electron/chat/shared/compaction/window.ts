@@ -80,25 +80,30 @@ export function selectCompactionWindow(
 ): CompactionWindow | null {
   if (messages.length < 4 || hasUnresolvedToolCall(messages)) return null
 
+  let largestSafeWindow: CompactionWindow | null = null
+
   for (let boundaryIndex = 1; boundaryIndex < messages.length - 1; boundaryIndex += 1) {
     if (!isSafeCompactionBoundary(messages, boundaryIndex)) continue
     const tailMessages = messages.slice(boundaryIndex)
-    if (estimateModelMessagesTokens(tailMessages) > targetHistoryTokens) continue
-
     const firstUserIndex = getFirstUserIndex(messages)
     const anchorMessages = firstUserIndex >= 0 && firstUserIndex < boundaryIndex
       ? [messages[firstUserIndex]]
       : []
-    return {
+    const window = {
       anchorMessages,
       boundaryIndex,
       evictedMessages: messages.slice(0, boundaryIndex),
       sourceMessageIds: buildSourceMessageIds(boundaryIndex),
       tailMessages,
     }
+
+    largestSafeWindow = window
+    if (estimateModelMessagesTokens(tailMessages) <= targetHistoryTokens) {
+      return window
+    }
   }
 
-  return null
+  return largestSafeWindow
 }
 
 export function buildCompactionMessage(packet: LocalCompactionPacket): ModelMessage {

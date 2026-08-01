@@ -217,7 +217,7 @@ export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess 
                       Remember token in Settings
                     </label>
                     <a
-                      href="https://github.com/settings/tokens/new?scopes=repo&description=Echosphere"
+                      href="https://github.com/settings/tokens/new?scopes=repo&description=TideCode"
                       target="_blank"
                       rel="noreferrer"
                       className="text-blue-500 hover:text-blue-600 underline underline-offset-2 flex items-center gap-0.5"

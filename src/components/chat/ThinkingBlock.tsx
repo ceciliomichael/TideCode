@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { normalizeMarkdownText } from '../../lib/chatMessageContent'
 import { MarkdownRenderer } from './MarkdownRenderer'
+import { useThinkingAutoScroll } from './useThinkingAutoScroll'
 
 interface ThinkingBlockProps {
   content: string
@@ -156,8 +157,10 @@ interface ThinkingBlockContentProps {
 }
 
 const ThinkingBlockContent = memo(function ThinkingBlockContent({ normalizedContent, isComplete }: ThinkingBlockContentProps) {
+  const contentRef = useThinkingAutoScroll({ content: normalizedContent, isStreaming: !isComplete })
+
   return (
-    <div className="mt-1.5 text-sm text-muted-foreground/90 [&>*:last-child]:mb-0">
+    <div ref={contentRef} className="mt-1.5 max-h-80 w-full min-w-0 overflow-y-auto pr-1 text-sm text-muted-foreground/90 [&>*:last-child]:mb-0">
       {normalizedContent.trim().length > 0 ? (
         <MarkdownRenderer content={normalizedContent} className="opacity-85" isStreaming={!isComplete} preserveLineBreaks />
       ) : (

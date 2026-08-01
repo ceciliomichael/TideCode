@@ -98,6 +98,7 @@ import { listCompactionMarkers } from './chat/history/eventStore'
 import { getDraftAgentContextPath } from './history/paths'
 import { flushStoredSettingsUpdates, getStoredSettings, updateStoredSettings } from './settings/store'
 import { serializeInitialSettingsArg } from './settings/bootstrap'
+import { applyTideCodeAppIcon, getTideCodeAppIconPath } from './window/branding'
 import { applyWindowTheme, getTitleBarOverlay, getWindowBackgroundColor, syncNativeThemeSource } from './window/theme'
 import { createSkill, listAvailableSkills } from './skills/service'
 import {
@@ -298,8 +299,8 @@ async function createWindow() {
   const initialBounds = getInitialWindowBounds()
   const initialSettings = await getStoredSettings().catch(() => null)
   const initialAppearance = initialSettings?.appearance ?? 'system'
-  const appIconPath = path.join(process.env.APP_ROOT, 'public', 'logo', 'icon.svg')
   syncNativeThemeSource(initialAppearance)
+  const appIconPath = getTideCodeAppIconPath()
   const windowOptions: BrowserWindowConstructorOptions = {
     autoHideMenuBar: true,
     backgroundColor: getWindowBackgroundColor(initialAppearance),
@@ -307,7 +308,7 @@ async function createWindow() {
     minHeight: MIN_WINDOW_HEIGHT,
     minWidth: MIN_WINDOW_WIDTH,
     show: false,
-    title: 'EchoSphere',
+    title: 'TideCode',
     width: initialBounds.width,
     x: initialBounds.x,
     y: initialBounds.y,
@@ -328,6 +329,7 @@ async function createWindow() {
 
   win = new BrowserWindow(windowOptions)
   applyWindowTheme(win, initialAppearance)
+  applyTideCodeAppIcon(win)
 
   win.setMenuBarVisibility(false)
   win.once('ready-to-show', () => {
@@ -510,6 +512,7 @@ function registerHistoryHandlers() {
 
     if (win) {
       applyWindowTheme(win, nextSettings.appearance)
+      applyTideCodeAppIcon(win)
     }
 
     return nextSettings
@@ -870,6 +873,7 @@ app.whenReady().then(() => {
       .then((settings) => {
         if (settings.appearance === 'system') {
           applyWindowTheme(currentWindow, settings.appearance)
+          applyTideCodeAppIcon(currentWindow)
         }
       })
       .catch((error) => {

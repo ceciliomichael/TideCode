@@ -328,7 +328,7 @@ class McpWorkspaceSession {
     }
 
     if (config.isReadOnly || config.owner !== 'echosphere') {
-      throw new Error(`MCP server "${config.name}" is managed by ${config.owner} and is read-only in EchoSphere.`)
+      throw new Error(`MCP server "${config.name}" is managed by ${config.owner} and is read-only in TideCode.`)
     }
 
     const nextConfig = buildUpdatedConfig(config, input)
@@ -413,7 +413,7 @@ class McpWorkspaceSession {
     }
 
     if (config.isReadOnly || config.owner !== 'echosphere') {
-      throw new Error(`MCP server "${config.name}" is managed by ${config.owner} and cannot be removed from EchoSphere.`)
+      throw new Error(`MCP server "${config.name}" is managed by ${config.owner} and cannot be removed from TideCode.`)
     }
 
     await this.disconnectRuntime(serverId, runtime, true)
@@ -451,7 +451,7 @@ class McpWorkspaceSession {
     }
 
     if (config.isReadOnly || config.owner !== 'echosphere') {
-      throw new Error(`MCP server "${config.name}" is managed by ${config.owner} and its tool overrides are read-only in EchoSphere.`)
+      throw new Error(`MCP server "${config.name}" is managed by ${config.owner} and its tool overrides are read-only in TideCode.`)
     }
 
     const currentDisabledTools = new Set(config.toolConfiguration?.disabledTools ?? [])

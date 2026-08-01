@@ -3,7 +3,7 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.echosphere.app",
   "asar": true,
-  "productName": "Echosphere",
+  "productName": "TideCode",
   "directories": {
     "buildResources": "build",
     "output": "release/${version}"
@@ -11,14 +11,20 @@
   "publish": {
     "provider": "github",
     "owner": "ceciliomichael",
-    "repo": "echosphereui"
+    "repo": "TideCode"
   },
   "files": [
     "AGENTS.md",
     "dist",
     "dist-electron",
     "electron/chat/shared/prompts/**/*",
-    "public/logo/icon.svg"
+    "public/assets/tidecode-icon-dark.svg",
+    "public/assets/tidecode-icon-dark.png",
+    "public/assets/tidecode-icon-light.svg",
+    "public/assets/tidecode-icon-light.png",
+    "public/assets/tidecode-mark.svg",
+    "public/assets/tidecode-word.svg",
+    "public/assets/tidecode-wordmark.svg"
   ],
   "extraResources": [
     {
@@ -37,7 +43,7 @@
     "artifactName": "${productName}-Mac-${version}-${arch}-Installer.${ext}"
   },
   "win": {
-    "executableName": "Echosphere",
+    "executableName": "TideCode",
     "icon": "build/icons/icon.ico",
     "target": [
       {

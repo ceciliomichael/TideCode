@@ -262,7 +262,7 @@ export async function appendMcpServerConfig(
 
 export async function saveMcpConfig(config: McpServerConfig) {
   if (config.isReadOnly || config.owner !== 'echosphere') {
-    throw new Error(`MCP server "${config.name}" is managed by ${config.owner} and cannot be edited from EchoSphere.`)
+    throw new Error(`MCP server "${config.name}" is managed by ${config.owner} and cannot be edited from TideCode.`)
   }
   void config.source
   const targetPath = getGlobalConfigPath()
@@ -282,7 +282,7 @@ export async function replaceMcpServerConfig(
   config: McpServerConfig,
 ) {
   if (config.isReadOnly || config.owner !== 'echosphere') {
-    throw new Error(`MCP server "${config.name}" is managed by ${config.owner} and cannot be edited from EchoSphere.`)
+    throw new Error(`MCP server "${config.name}" is managed by ${config.owner} and cannot be edited from TideCode.`)
   }
   void config.source
   const targetPath = getGlobalConfigPath()

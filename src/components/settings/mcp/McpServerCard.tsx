@@ -148,7 +148,7 @@ export function McpServerCard({
             onClick={() => setIsRemoveConfirmationOpen((currentValue) => !currentValue)}
             disabled={isBusy || isReadOnly}
             className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-danger-border bg-danger-surface px-2.5 text-xs font-medium leading-none text-danger-foreground transition-colors hover:text-danger-foreground-hover disabled:cursor-not-allowed disabled:opacity-50"
-            title={isReadOnly ? 'This server is managed outside EchoSphere.' : undefined}
+                    title={isReadOnly ? 'This server is managed outside TideCode.' : undefined}
           >
             <Trash2 className="block h-3.5 w-3.5 shrink-0 self-center" />
             <span className="relative top-px flex items-center leading-none">Remove</span>
@@ -164,7 +164,7 @@ export function McpServerCard({
               borderColor: 'transparent',
               color: 'var(--color-background)',
             }}
-            title={isReadOnly ? 'This server is managed outside EchoSphere.' : undefined}
+            title={isReadOnly ? 'This server is managed outside TideCode.' : undefined}
           >
             <PencilLine className="block h-3.5 w-3.5 shrink-0 self-center" />
             <span className="relative top-px flex items-center leading-none">Edit</span>
@@ -249,7 +249,7 @@ export function McpServerCard({
                         }}
                         title={
                           isReadOnly
-                            ? `${tool.description ?? tool.name} (managed outside EchoSphere)`
+                            ? `${tool.description ?? tool.name} (managed outside TideCode)`
                             : `${tool.description ?? tool.name} (${enabled ? 'click to disable' : 'click to enable'})`
                         }
                       >
