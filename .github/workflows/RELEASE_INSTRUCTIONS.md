@@ -6,8 +6,8 @@ This is the release procedure for TideCode maintainers, humans, and AI agents. U
 
 - Inspect the worktree before changing anything. Include only changes that belong to the requested release; preserve unrelated user work.
 - Use the next unused stable x.y.z version. Do not reuse an existing tag or release.
-- The release has two commits in this order: one normal conventional commit for the product changes, then one chore(release) commit for the changelog and version metadata.
-- The release tag must point to the release metadata commit and must contain the matching CHANGELOG.md section.
+- Product changes and release metadata land through pull requests; do not push release work directly to main.
+- The release tag must point to the merged release commit and must contain the matching CHANGELOG.md section.
 - Release notes must describe user-visible behavior and group related changes semantically. Do not publish raw automated commit messages as release notes.
 - Never use git reset --hard, git clean, force-push, tag replacement, or --allow-dirty for a normal release.
 - Do not manually commit generated installers or updater metadata. The release workflow builds and uploads those artifacts.
@@ -53,28 +53,40 @@ npm run build
 
 If a check fails, fix the code or report the failure. Do not publish a release that has not been reviewed. A successful build may still print bundle-size or chunking warnings; distinguish warnings from errors and record anything meaningful in the handoff.
 
-## 3. Create the normal product commit first
+## 3. Land product changes through a pull request
 
-Stage only the reviewed product files and tests. Do not stage package.json, package-lock.json, or CHANGELOG.md yet; those belong to the release metadata commit.
+Product work belongs on a feature or fix branch. If the requested changes are still uncommitted on main, create the branch before staging them. Keep package.json, package-lock.json, and CHANGELOG.md out of the product PR unless they are part of the user-facing product change itself.
 
 ~~~text
+git switch -c <type>/<short-description>
 git add <reviewed-product-files>
 git diff --cached --stat
 git diff --cached --check
 git commit -m "<type>: <clear user-facing summary>" -m "<Detailed body describing the user-visible behavior, implementation scope, and validation>"
+git push --set-upstream <remote> <branch>
+gh pr create --base main --head <branch> --title "<type>: <clear user-facing summary>" --body-file <pull-request-description>
+gh pr checks <pull-request-number> --watch
+gh pr merge <pull-request-number> --squash --delete-branch
 ~~~
 
-Use a conventional subject such as fix: show release notes while updates download or feat: preserve long-running terminal output. Keep the subject short, specific, and free of issue-tracker or AI-generated filler, then add a meaningful body. The body must explain what changed for users, identify important implementation or compatibility details, and record the validation performed; a one-line-only product commit is not sufficient. Use a blank line between the subject and body, with a paragraph or concise bullets as appropriate. Verify the commit before pushing:
+Use a conventional subject such as fix: show release notes while updates download or feat: preserve long-running terminal output. Keep the subject short, specific, and free of issue-tracker or AI-generated filler. The PR description must explain the user-visible behavior, important compatibility details, and validation. Merge only after the required checks pass. Refresh main after the squash merge:
 
 ~~~text
-git show --stat --oneline HEAD
-git status --short --branch
-git push <remote> <branch>
+git switch main
+git pull --ff-only <remote> main
 ~~~
 
-The normal product commit must be pushed before preparing the release metadata. If the worktree was already dirty before this task, do not push unrelated commits or changes.
+CI validates every product pull request. Metadata-only pushes to main are intentionally ignored because the release pull request has already validated those files and the tag-driven workflow validates packaged output.
 
-## 4. Prepare the changelog and version metadata
+## 4. Prepare the release pull request
+
+Create a release branch from the current main commit. The release branch contains only the version metadata and changelog for this release:
+
+~~~text
+git switch main
+git pull --ff-only <remote> main
+git switch -c release/v<version>
+~~~
 
 Choose a semantic title and write the release section at the top of CHANGELOG.md beneath # Changelog:
 
@@ -96,7 +108,7 @@ Bump both package manifests with the repository’s version script:
 node scripts/release-version.mjs --version <version>
 ~~~
 
-This updates package.json and package-lock.json without creating a commit or tag. Confirm the result and ensure the changelog heading matches exactly:
+This updates package.json and package-lock.json without creating a commit or tag. Add the changelog section, then confirm the result and ensure the heading matches exactly:
 
 ~~~text
 npm pkg get version
@@ -104,31 +116,36 @@ git diff -- CHANGELOG.md package.json package-lock.json
 git diff --check
 ~~~
 
-## 5. Create the release metadata commit and tag
+## 5. Merge the release pull request and tag the merged commit
 
-Stage only the release metadata, then create the second, dedicated release commit:
+Commit the release metadata on the release branch and open a pull request. Do not tag the branch before it is merged:
 
 ~~~text
 git add CHANGELOG.md package.json package-lock.json
+git diff --cached --stat
 git diff --cached --check
-git commit -m "chore(release): v<version>"
-git tag -a v<version> -m "TideCode v<version>"
-git show --stat --oneline HEAD
-git show --no-patch --decorate v<version>
+git commit -m "chore(release): prepare v<version>"
+git push --set-upstream <remote> release/v<version>
+gh pr create --base main --head release/v<version> --title "chore(release): prepare v<version>" --body-file <release-description>
+gh pr checks <pull-request-number> --watch
 ~~~
 
-Before pushing, verify that the tag is on the release commit and that the release section is present in the tagged content:
+Merge the release pull request with squash merge after its checks pass, then tag the resulting main commit:
 
 ~~~text
+gh pr merge <pull-request-number> --squash --delete-branch
+git switch main
+git pull --ff-only <remote> main
+git tag -a v<version> -m "TideCode v<version>"
+git push <remote> v<version>
+~~~
+
+Before pushing the tag, verify that it points to the merged release commit and that the release section is present in the tagged content:
+
+~~~text
+git show --no-patch --decorate v<version>
 git show v<version>:CHANGELOG.md
 git status --short --branch
-~~~
-
-Then push the branch and tag:
-
-~~~text
-git push <remote> <branch>
-git push <remote> v<version>
 ~~~
 
 Pushing the v* tag starts .github/workflows/release.yml. Do not run gh release create in the normal flow because the workflow owns release creation, semantic release-note extraction, artifact publishing, and final publication.
