@@ -11,6 +11,7 @@ import {
   createGrepToolResult,
   createListToolResult,
   createReadToolResult,
+  createWholeFileWriteToolResult,
   resolveReadableTargetPath,
 } from '../../electron/chat/shared/tools/workspaceTools'
 import { getGlobalAgentsDirectory } from '../../electron/chat/shared/tools/sandboxPaths'
@@ -172,6 +173,35 @@ test('createGrepToolResult returns the ripgrep-style workspace match set', async
     assert.doesNotMatch(result.body ?? '', /plain\.secret/u)
     assert.doesNotMatch(result.body ?? '', /\.env/u)
     assert.doesNotMatch(result.body ?? '', /[\\/]?\.git[\\/]+config/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('createWholeFileWriteToolResult counts content changes without counting line-ending changes', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-write-diff-tools-'))
+  const targetPath = path.join(workspaceRootPath, 'target.ts')
+
+  try {
+    await fs.writeFile(targetPath, 'first\r\nsecond\r\nthird\r\n', 'utf8')
+
+    const result = await createWholeFileWriteToolResult(
+      {
+        checkpointId: null,
+        terminalExecutionMode: 'sandbox',
+        workspaceRootPath,
+      },
+      {
+        content: 'first\r\nupdated\r\nthird\r\n',
+        path: 'target.ts',
+      },
+    )
+
+    assert.equal(result.status, 'success')
+    assert.match(result.body ?? '', /M target\.ts \(\+1 -1\)/u)
+    assert.equal(result.resultPresentation?.kind, 'change_diff')
+    assert.equal(result.resultPresentation?.changes[0]?.addedLineCount, 1)
+    assert.equal(result.resultPresentation?.changes[0]?.removedLineCount, 1)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -535,6 +565,36 @@ test('workspace tool schemas use path consistently for filesystem targets', asyn
       }
       assert.ok(schema.properties && 'path' in schema.properties, `${toolName} should expose path`)
     }
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('list, glob, and grep hide AGENTS.md files from AI tool results', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const nestedDirectoryPath = path.join(workspaceRootPath, 'nested', 'package-a')
+
+  try {
+    await fs.writeFile(path.join(workspaceRootPath, 'AGENTS.md'), 'rootAgentInstructionNeedle\n', 'utf8')
+    await fs.writeFile(path.join(nestedDirectoryPath, 'agents.md'), 'nestedAgentInstructionNeedle\n', 'utf8')
+
+    const listResult = await createListToolResult(workspaceRootPath, workspaceRootPath, '.')
+    const globResult = await createGlobToolResult(workspaceRootPath, workspaceRootPath, '.', '**/*.md')
+    const grepResult = await createGrepToolResult(
+      workspaceRootPath,
+      workspaceRootPath,
+      '.',
+      'AgentInstructionNeedle',
+      '**/*',
+    )
+
+    assert.equal(listResult.status, 'success')
+    assert.doesNotMatch(listResult.body ?? '', /AGENTS\.md/u)
+    assert.equal(globResult.status, 'success')
+    assert.doesNotMatch(globResult.body ?? '', /AGENTS\.md/u)
+    assert.doesNotMatch(globResult.body ?? '', /agents\.md/u)
+    assert.equal(grepResult.status, 'success')
+    assert.equal(grepResult.body, 'No files found')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

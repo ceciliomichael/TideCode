@@ -1,73 +1,56 @@
-# TideCode release instructions
+# TideCode release workflow
 
-Use this file when the user explicitly asks to commit and publish a release.
+Use this guide only after the user asks to commit and publish a release.
 
-## Release flow
+## 1. Review and test
 
-1. Review the work.
+```powershell
+git status --short --branch
+git diff --stat
+git diff --check
+npm run typecheck
+npm test
+npm run build
+```
 
-   ```powershell
-   git status --short --branch
-   git diff --stat
-   git diff --check
-   ```
+Review the full diff. Preserve unrelated work. Never reset, clean, rewrite, or delete existing releases or tags.
 
-   Preserve unrelated work. Do not reset, clean, rewrite, or delete existing releases or tags.
+## 2. Commit the product changes
 
-2. Run the gates before committing:
+Use one clear conventional commit, then push `main`:
 
-   ```powershell
-   npm run typecheck
-   npm test
-   npm run build
-   ```
+```powershell
+git add <reviewed-files>
+git diff --cached --check
+git commit -m "feat: <short user-facing summary>"
+git push tidecode main
+```
 
-3. Commit the reviewed product changes with one clear conventional message:
+## 3. Prepare and publish the release
 
-   ```powershell
-   git add <reviewed-files>
-   git diff --cached --check
-   git commit -m "feat: <short user-facing summary>"
-   git push tidecode main
-   ```
+Choose the next unused `x.y.z` version. Add its user-facing notes to the top of `CHANGELOG.md`, then bump `package.json` and `package-lock.json`:
 
-4. Prepare the next unused version. Add a specific section at the top of `CHANGELOG.md`:
+```powershell
+node scripts/release-version.mjs --version <version>
+git add CHANGELOG.md package.json package-lock.json
+git diff --cached --check
+git commit -m "chore(release): v<version>"
+git tag -a v<version> -m "TideCode v<version>"
+git push tidecode main
+git push tidecode v<version>
+```
 
-   ```markdown
-   ## 1.0.7 — Short release theme
+Do not reuse an existing tag or use `--allow-dirty` for a normal release. The tag must contain the matching changelog section.
 
-   One or two sentences describing the user-facing result.
+## 4. Verify GitHub
 
-   - List the meaningful changes included in this release.
-   ```
+Pushing `v*` starts `.github/workflows/release.yml`. It creates the release notes, builds Windows/macOS/Linux installers, uploads updater metadata and artifacts, and publishes the release after all builds pass.
 
-5. Bump `package.json` and `package-lock.json`, then create the release commit and tag:
-
-   ```powershell
-   node scripts/release-version.mjs --version 1.0.7 --commit
-   git push tidecode main
-   git push tidecode v1.0.7
-   ```
-
-   Use the next unused semantic version. Never move or recreate an existing tag. Do not use `--allow-dirty` for a normal release.
-
-## GitHub workflow
-
-Pushing a `v*` tag starts `.github/workflows/release.yml`. It extracts the matching changelog section, creates a draft release, builds Windows/macOS/Linux artifacts, uploads them, and publishes the release after all builds pass.
-
-On Windows, use the full GitHub CLI path when needed:
+On Windows, use:
 
 ```powershell
 & "C:\Program Files\GitHub CLI\gh.exe" run list --repo ceciliomichael/TideCode
-& "C:\Program Files\GitHub CLI\gh.exe" release view v1.0.7 --repo ceciliomichael/TideCode
+& "C:\Program Files\GitHub CLI\gh.exe" release view v<version> --repo ceciliomichael/TideCode
 ```
 
-If a workflow fails, inspect it before changing any tag:
-
-```powershell
-& "C:\Program Files\GitHub CLI\gh.exe" run view <run-id> --repo ceciliomichael/TideCode --log-failed
-```
-
-## Update behavior
-
-Packaged TideCode uses `electron-updater` with GitHub Releases. Downloads require user approval unless automatic downloads are enabled. A downloaded update installs silently when the user closes TideCode; Settings also provides an immediate restart option. Test installation with a packaged build, not the development app.
+Packaged TideCode downloads updates only after user approval unless automatic downloads are enabled. A downloaded update installs silently when the app closes; Settings also has an immediate restart option. Test installation with a packaged build, not the development app.

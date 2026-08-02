@@ -117,6 +117,33 @@ test('runRipgrepFallback lists files recursively when ripgrep is unavailable', a
   assert.deepEqual(result.stdout.split(/\r?\n/u).sort(), ['README.md', path.join('src', 'nested', 'file.ts')].sort())
 })
 
+test('runRipgrepFallback excludes AGENTS.md from file listings and content matches', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-ripgrep-agents-'))
+
+  try {
+    await fs.mkdir(path.join(workspaceRootPath, 'nested'), { recursive: true })
+    await fs.writeFile(path.join(workspaceRootPath, 'AGENTS.md'), 'agentInstructionNeedle\n')
+    await fs.writeFile(path.join(workspaceRootPath, 'nested', 'agents.md'), 'nestedAgentInstructionNeedle\n')
+    await fs.writeFile(path.join(workspaceRootPath, 'visible.ts'), 'export const visible = true;\n')
+
+    const listResult = await __testOnly.runRipgrepFallback(
+      ['--files', '--hidden', '--glob', '**/*'],
+      workspaceRootPath,
+    )
+    const grepResult = await __testOnly.runRipgrepFallback(
+      ['-nH', '--hidden', '--no-messages', '--field-match-separator=|', '--regexp', 'AgentInstructionNeedle', workspaceRootPath],
+      workspaceRootPath,
+    )
+
+    assert.equal(listResult.exitCode, 0)
+    assert.deepEqual(listResult.stdout.split(/\r?\n/u), ['visible.ts'])
+    assert.equal(grepResult.exitCode, 1)
+    assert.equal(grepResult.stdout, '')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('runRipgrepFallback filters recursive file listings by glob', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-ripgrep-glob-'))
   await fs.mkdir(path.join(workspaceRootPath, 'src', 'nested'), { recursive: true })

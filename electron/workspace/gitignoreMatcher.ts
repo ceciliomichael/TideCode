@@ -110,6 +110,15 @@ export function shouldAlwaysShowEntry(entryName: string) {
 }
 
 /**
+ * Agent filesystem search tools must not expose repository instruction files.
+ * Keep this separate from shouldAlwaysShowEntry because the workspace explorer
+ * and instruction loader intentionally retain their existing AGENTS.md behavior.
+ */
+export function isAgentInstructionsFile(entryName: string) {
+  return entryName.toLowerCase() === 'agents.md'
+}
+
+/**
  * Returns true when any path segment of the relative path from workspaceRootPath
  * to absolutePath matches a workspace-ignored entry name (e.g. "node_modules").
  *

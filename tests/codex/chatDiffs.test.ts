@@ -51,3 +51,21 @@ test('buildFileDiffSnapshot keeps content signatures stable for identical diff c
 
   assert.equal(firstSnapshot.fileDiffs[0]?.contentSignature, secondSnapshot.fileDiffs[0]?.contentSignature)
 })
+
+test('buildFileDiffSnapshot counts content changes correctly across line-ending styles', () => {
+  const snapshot = buildFileDiffSnapshot([
+    {
+      fileName: 'src/example.ts',
+      isStaged: false,
+      isUnstaged: true,
+      isUntracked: false,
+      newContent: 'first\nupdated\nthird\n',
+      oldContent: 'first\r\nsecond\r\nthird\r\n',
+    },
+  ])
+
+  assert.equal(snapshot.fileDiffs[0]?.addedLineCount, 1)
+  assert.equal(snapshot.fileDiffs[0]?.removedLineCount, 1)
+  assert.equal(snapshot.totalAddedLineCount, 1)
+  assert.equal(snapshot.totalRemovedLineCount, 1)
+})
