@@ -4,9 +4,19 @@ on:
   push:
     branches:
       - main
+    # Release metadata is validated by the tag-driven packaging workflow.
+    # Avoid starting a second CI run that only supersedes the product commit.
+    paths-ignore:
+      - CHANGELOG.md
+      - package.json
+      - package-lock.json
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - CHANGELOG.md
+      - package.json
+      - package-lock.json
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
