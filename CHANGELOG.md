@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.7 — Safer workspace search and accurate diffs
+
+TideCode now keeps repository instruction files out of AI file discovery and reports file changes more accurately across line-ending styles and larger files.
+
+- Excluded `AGENTS.md` files from AI list, glob, grep, and ripgrep fallback results while preserving normal workspace instruction support.
+- Improved added and removed line counts for CRLF/LF files and larger edits.
+- Added regression coverage for protected instruction files, line-ending normalization, and large-file diff summaries.
+
 ## 1.0.6 — Clearer workspace selection
 
 Workspace Explorer selections now keep their text at the strongest readable contrast against the TideCode selection background.

@@ -3,7 +3,7 @@
   "description": "A focused desktop AI workspace for efficient software work.",
   "author": "TideCode Team",
   "private": true,
-  "version": "1.0.6",
+  "version": "1.0.7",
   "type": "module",
   "scripts": {
     "dev": "vite",
