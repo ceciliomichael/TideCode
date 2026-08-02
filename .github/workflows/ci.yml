@@ -13,10 +13,6 @@ on:
   pull_request:
     branches:
       - main
-    paths-ignore:
-      - CHANGELOG.md
-      - package.json
-      - package-lock.json
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
