@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.11 — Archived chats and a steadier commit workflow
+
+TideCode now gives users more control over chat history and a clearer, more reliable path from local changes to commits and pull requests.
+
+- Added archive and unarchive actions with an Archived filter, project context in archived rows, a dedicated empty state, and automatic restoration when an archived thread receives a new message.
+- Kept archived threads out of pinned views and return the sidebar to All projects when a resumed archived thread becomes active again.
+- Improved the Commit your changes modal with reliable branch overrides, automatic creation of missing branches, editable spaces that normalize at commit time, clearer pull-request language, stable selection styling, theme-safe text, and no unnecessary refresh animation.
+- Strengthened Agent mode’s implementation contract while keeping Plan mode’s prompt scope separate, with regression coverage for both behaviors.
+
 ## 1.0.10 — Authenticated GitHub publishing and more deliberate planning
 
 TideCode now makes it easier to publish a local workspace to GitHub while giving Plan mode a more deliberate, decision-focused planning workflow.
