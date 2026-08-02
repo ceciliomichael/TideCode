@@ -7,7 +7,7 @@ import { AppWorkspaceShell } from '../../components/layout/AppWorkspaceShell'
 import { WorkspaceFloatingControls } from '../../components/layout/WorkspaceFloatingControls'
 import { WorkspacePanel } from '../../components/layout/WorkspacePanel'
 import { SidebarPanel } from '../../components/sidebar/SidebarPanel'
-import { ALL_PROJECTS_FILTER_ID } from '../../components/sidebar/sidebarProjectThreads'
+import { ALL_PROJECTS_FILTER_ID, ARCHIVED_PROJECT_FILTER_ID } from '../../components/sidebar/sidebarProjectThreads'
 import { WorkspaceTerminalPanel } from '../../components/chat/WorkspaceTerminalPanel'
 import { useChatContextUsage } from '../../hooks/useChatContextUsage'
 import { useChatCompactionMarkers } from '../../hooks/useChatCompactionMarkers'
@@ -85,6 +85,7 @@ export function ChatInterfaceContent({
   workspaceState,
 }: ChatInterfaceContentProps) {
   const [selectedProjectId, setSelectedProjectId] = useState<string>(settings.selectedProjectId ?? ALL_PROJECTS_FILTER_ID)
+  const previousActiveConversationArchivedRef = useRef<boolean | null>(null)
 
   // Sync selectedProjectId with settings
   useEffect(() => {
@@ -92,6 +93,33 @@ export function ChatInterfaceContent({
       setSelectedProjectId(settings.selectedProjectId)
     }
   }, [settings.selectedProjectId, selectedProjectId])
+
+  const activeConversationIsArchived = useMemo(() => {
+    const activeConversationId = chatMessages.activeConversationId
+    if (!activeConversationId) {
+      return false
+    }
+
+    return chatMessages.conversationGroups.some((group) =>
+      group.conversations.some(
+        (conversation) => conversation.id === activeConversationId && conversation.isArchived === true,
+      ),
+    )
+  }, [chatMessages.activeConversationId, chatMessages.conversationGroups])
+
+  useEffect(() => {
+    const previousValue = previousActiveConversationArchivedRef.current
+    previousActiveConversationArchivedRef.current = activeConversationIsArchived
+
+    if (
+      selectedProjectId === ARCHIVED_PROJECT_FILTER_ID &&
+      previousValue === true &&
+      activeConversationIsArchived === false
+    ) {
+      setSelectedProjectId(ALL_PROJECTS_FILTER_ID)
+      onUpdateSettings({ selectedProjectId: ALL_PROJECTS_FILTER_ID })
+    }
+  }, [activeConversationIsArchived, onUpdateSettings, selectedProjectId])
 
   const activeWorkspacePath = chatMessages.activeConversationRootPath ?? chatMessages.selectedFolderPath
   const gitAddedLineCount = gitCommitState.status?.addedLineCount ?? 0
@@ -268,7 +296,7 @@ export function ChatInterfaceContent({
     handleCreateFolder,
     handleCreateWorkspaceConversation,
     handleCreateWorkspaceFolderFromPath,
-    handleDeleteConversation,
+    handleArchiveConversation,
     handleDeleteFolder,
     handlePinConversation,
     handleSelectConversation,
@@ -328,7 +356,7 @@ export function ChatInterfaceContent({
           onCreateFolder={handleCreateFolder}
           onCreateConversation={handleCreateConversation}
           onCreateWorkspaceFolderFromPath={handleCreateWorkspaceFolderFromPath}
-          onDeleteConversation={handleDeleteConversation}
+          onArchiveConversation={handleArchiveConversation}
           onPinConversation={handlePinConversation}
           onDeleteFolder={handleDeleteFolder}
           onOpenSettings={onOpenSettings}
@@ -466,10 +494,7 @@ export function ChatInterfaceContent({
           diffSnapshot={gitDiffSnapshot.snapshot}
           errorMessage={gitCommitState.errorMessage}
           isCommitting={gitCommitState.isCommitting}
-          isLoadingStatus={gitCommitState.isLoadingStatus}
           isSwitchingBranch={gitBranchState.isSwitching}
-          onBranchChange={gitBranchState.changeBranch}
-          onBranchCreate={gitBranchState.createBranch}
           onClose={interfaceController.handleCloseCommitModal}
           onCommit={interfaceController.handleCommit}
           status={gitCommitState.status}

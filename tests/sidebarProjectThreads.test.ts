@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   ALL_PROJECTS_FILTER_ID,
+  ARCHIVED_PROJECT_FILTER_ID,
   CHATS_PROJECT_FILTER_ID,
   buildSidebarProjectOptions,
   buildSidebarThreadRows,
@@ -15,11 +16,13 @@ function createConversation(
   updatedAt: number,
   isPinned = false,
   isActive = false,
+  isArchived = false,
 ): ConversationPreview {
   return {
     folderId,
     id,
     isActive,
+    isArchived,
     isPinned,
     preview: '',
     title: id,
@@ -32,6 +35,7 @@ const projectOneConversation = createConversation('project-one-chat', 'project-o
 const projectTwoConversation = createConversation('project-two-chat', 'project-two', 300)
 const pinnedProjectOneConversation = createConversation('pinned-project-one-chat', 'project-one', 200, true)
 const unassignedConversation = createConversation('unassigned-chat', null, 50)
+const archivedProjectOneConversation = createConversation('archived-project-one-chat', 'project-one', 400, false, false, true)
 
 const groups: ConversationGroupPreview[] = [
   {
@@ -69,6 +73,15 @@ const groups: ConversationGroupPreview[] = [
       path: null,
     },
     conversations: [unassignedConversation],
+  },
+  {
+    folder: {
+      conversationCount: 1,
+      id: 'archived',
+      name: 'Archived',
+      path: null,
+    },
+    conversations: [archivedProjectOneConversation],
   },
 ]
 
@@ -137,11 +150,28 @@ test('Chats filter returns only conversations without a project', () => {
   )
 })
 
+test('Archived filter returns only archived conversations and keeps their project context', () => {
+  assert.deepEqual(
+    buildSidebarThreadRows(groups, ARCHIVED_PROJECT_FILTER_ID).map((row) => ({
+      id: row.conversation.id,
+      workspaceName: row.workspaceName,
+    })),
+    [{ id: 'archived-project-one-chat', workspaceName: 'Movie tracker' }],
+  )
+  assert.deepEqual(buildSidebarThreadRows(groups, ALL_PROJECTS_FILTER_ID).map((row) => row.conversation.id), [
+    'project-two-chat',
+    'pinned-project-one-chat',
+    'project-one-chat',
+    'unassigned-chat',
+  ])
+})
+
 test('resolveSidebarProjectFilter falls back to all projects after a project disappears', () => {
   const projects = buildSidebarProjectOptions(groups)
 
   assert.equal(resolveSidebarProjectFilter('project-two', projects), 'project-two')
   assert.equal(resolveSidebarProjectFilter(CHATS_PROJECT_FILTER_ID, projects), CHATS_PROJECT_FILTER_ID)
+  assert.equal(resolveSidebarProjectFilter(ARCHIVED_PROJECT_FILTER_ID, projects), ARCHIVED_PROJECT_FILTER_ID)
   assert.equal(resolveSidebarProjectFilter('removed-project', projects), ALL_PROJECTS_FILTER_ID)
 })
 

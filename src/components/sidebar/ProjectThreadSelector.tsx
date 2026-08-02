@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
 import { RemoveProjectFolderDialog } from './RemoveProjectFolderDialog'
 import type { SidebarProjectOption } from './sidebarProjectThreads'
-import { ALL_PROJECTS_FILTER_ID, CHATS_PROJECT_FILTER_ID } from './sidebarProjectThreads'
+import { ALL_PROJECTS_FILTER_ID, ARCHIVED_PROJECT_FILTER_ID, CHATS_PROJECT_FILTER_ID } from './sidebarProjectThreads'
 
 interface ProjectThreadSelectorProps {
   onDeleteProject: (projectId: string) => Promise<void>
@@ -32,7 +32,11 @@ export function ProjectThreadSelector({
   const actionsMenuRef = useRef<HTMLDivElement | null>(null)
   const selectedProject = projects.find((project) => project.id === selectedProjectId)
   const selectedLabel =
-    selectedProjectId === CHATS_PROJECT_FILTER_ID ? 'Chats' : (selectedProject?.name ?? 'All projects')
+    selectedProjectId === CHATS_PROJECT_FILTER_ID
+      ? 'Chats'
+      : selectedProjectId === ARCHIVED_PROJECT_FILTER_ID
+        ? 'Archived'
+        : (selectedProject?.name ?? 'All projects')
   const menuStyle = useFloatingMenuPosition({
     anchorRef: buttonRef,
     isOpen,
@@ -168,6 +172,17 @@ export function ProjectThreadSelector({
               >
                 <Folder size={16} strokeWidth={2} className="shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1 truncate font-medium">Chats</span>
+              </button>
+
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={selectedProjectId === ARCHIVED_PROJECT_FILTER_ID}
+                onClick={() => selectProject(ARCHIVED_PROJECT_FILTER_ID)}
+                className="flex h-10 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm text-foreground transition-colors hover:bg-[var(--dropdown-option-hover-surface)]"
+              >
+                <Folder size={16} strokeWidth={2} className="shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate font-medium">Archived</span>
               </button>
 
               {projects.length > 0 ? <div role="separator" className="mx-2 my-1 h-px bg-border" /> : null}

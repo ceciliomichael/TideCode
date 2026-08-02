@@ -131,6 +131,7 @@ export interface ConversationSummary {
   updatedAt: number
   messageCount: number
   folderId: string | null
+  isArchived?: boolean
   isPinned?: boolean
 }
 
@@ -145,6 +146,7 @@ export interface ConversationPreview {
   updatedAt: number
   updatedAtLabel: string
   folderId: string | null
+  isArchived?: boolean
   isActive?: boolean
   hasRunningTask?: boolean
   isPinned?: boolean
@@ -159,6 +161,7 @@ export interface ConversationRecord {
   createdAt: number
   updatedAt: number
   folderId: string | null
+  isArchived?: boolean
   messages: Message[]
   isPinned?: boolean
 }

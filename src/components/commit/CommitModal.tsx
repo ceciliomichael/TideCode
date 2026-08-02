@@ -4,6 +4,7 @@ import { GitBranch, GitCommitHorizontal, ArrowUp, X, Loader2 } from 'lucide-reac
 import { FaGithub } from 'react-icons/fa'
 import type { GitBranchState, GitCommitAction, GitStatusResult } from '../../types/chat'
 import type { ConversationDiffSnapshot } from '../../lib/chatDiffs'
+import { normalizeGitBranchName, sanitizeGitBranchInput } from '../../lib/gitBranchName'
 
 type CommitNextStep = GitCommitAction
 
@@ -28,9 +29,9 @@ const COMMIT_NEXT_STEPS: CommitNextStepOption[] = [
     value: 'commit-and-push',
   },
   {
-    description: 'Commit, push, and open PR',
+    description: 'Commit, push, and create a pull request',
     icon: <FaGithub size={15} />,
-    label: 'Commit and create PR',
+    label: 'Commit and create a pull request',
     value: 'commit-and-create-pr',
   },
 ]
@@ -40,10 +41,7 @@ interface CommitModalProps {
   diffSnapshot: ConversationDiffSnapshot
   errorMessage: string | null
   isCommitting: boolean
-  isLoadingStatus: boolean
   isSwitchingBranch: boolean
-  onBranchChange: (branchName: string) => void | Promise<void>
-  onBranchCreate: (branchName: string) => void | Promise<void>
   onClose: () => void
   onCommit: (input: {
     action: GitCommitAction
@@ -59,10 +57,7 @@ export function CommitModal({
   diffSnapshot,
   errorMessage,
   isCommitting,
-  isLoadingStatus,
   isSwitchingBranch,
-  onBranchChange,
-  onBranchCreate,
   onClose,
   onCommit,
   status,
@@ -98,15 +93,7 @@ export function CommitModal({
       setLocalError(null)
 
       try {
-        const targetBranch = commitBranchName.trim()
-        if (targetBranch && targetBranch !== branchState.currentBranch) {
-          if (branchState.branches.includes(targetBranch)) {
-            await onBranchChange(targetBranch)
-          } else {
-            await onBranchCreate(targetBranch)
-          }
-        }
-
+        const targetBranch = normalizeGitBranchName(commitBranchName)
         await onCommit({
           action: selectedAction,
           message: commitMessage,
@@ -118,7 +105,7 @@ export function CommitModal({
         setIsSubmitting(false)
       }
     },
-    [branchState, commitBranchName, commitMessage, onBranchChange, onBranchCreate, onCommit, selectedAction],
+    [commitBranchName, commitMessage, onCommit, selectedAction],
   )
 
   const stagedFileCount = status?.stagedFileCount ?? diffSnapshot.fileDiffs.filter((fileDiff) => fileDiff.isStaged).length
@@ -128,18 +115,19 @@ export function CommitModal({
   const removedLineCount = diffSnapshot.totalRemovedLineCount
   const hasChanges = totalChangedFileCount > 0 || addedLineCount > 0 || removedLineCount > 0
   const disableActionSelection = isSubmitting || isCommitting || isSwitchingBranch
+  const disableFields = isSubmitting || isCommitting || isSwitchingBranch
   const disableSubmit =
     isSubmitting ||
     isCommitting ||
     isSwitchingBranch ||
-    (!hasChanges && !isLoadingStatus)
+    !hasChanges
 
   const actionLabel =
     selectedAction === 'commit'
-      ? 'Commit'
+        ? 'Commit'
       : selectedAction === 'commit-and-push'
         ? 'Commit and push'
-        : 'Commit, push and create PR'
+        : 'Commit, push and create a pull request'
 
   return createPortal(
     <div
@@ -194,11 +182,14 @@ export function CommitModal({
                 <input
                   type="text"
                   value={commitBranchName}
-                  onChange={(e) => setCommitBranchName(e.target.value.replace(/[^A-Za-z0-9_.-/]/g, ''))}
-                  disabled={disableSubmit}
-                  placeholder="Optional (leave blank to auto-create a PR branch when needed)"
+                  onChange={(e) => setCommitBranchName(sanitizeGitBranchInput(e.target.value))}
+                  disabled={disableFields}
+                  placeholder="Optional branch name"
                   className="h-10 w-full rounded-xl border border-border bg-surface pl-8 pr-3 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus:border-border focus:outline-none focus:ring-0"
                 />
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  This branch will be used for the commit and pull request. Missing branches are created automatically.
+                </p>
               </div>
             </div>
           </div>
@@ -208,25 +199,15 @@ export function CommitModal({
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-foreground">Changes</span>
               <div className="flex items-center gap-2">
-                {isLoadingStatus ? (
-                  <Loader2 size={14} className="animate-spin text-muted-foreground" />
-                ) : (
+                <span className="text-sm text-foreground">
+                  {displayFileCount} {displayFileCount === 1 ? 'file' : 'files'}
+                </span>
+                {hasChanges ? (
                   <>
-                    <span className="text-sm text-muted-foreground">
-                      {displayFileCount} {displayFileCount === 1 ? 'file' : 'files'}
-                    </span>
-                    {hasChanges ? (
-                      <>
-                        <span className="text-sm text-emerald-600 dark:text-emerald-400">
-                          +{addedLineCount}
-                        </span>
-                        <span className="text-sm text-red-600 dark:text-red-400">
-                          -{removedLineCount}
-                        </span>
-                      </>
-                    ) : null}
+                    <span className="text-sm text-emerald-600 dark:text-emerald-400">+{addedLineCount}</span>
+                    <span className="text-sm text-red-600 dark:text-red-400">-{removedLineCount}</span>
                   </>
-                )}
+                ) : null}
               </div>
             </div>
           </div>
@@ -246,7 +227,7 @@ export function CommitModal({
               onChange={(e) => setCommitMessage(e.target.value)}
               placeholder={`Leave blank to auto-generate a detailed commit message (title + description) using the active model and staged diff. Current branch: ${branchState.currentBranch ?? 'No branch'}`}
               rows={3}
-              className="w-full resize-none rounded-xl border border-border bg-surface-muted px-3.5 py-2.5 text-sm text-foreground outline-none placeholder:text-subtle-foreground"
+              className="w-full resize-none rounded-xl border border-border bg-surface-muted px-3.5 py-2.5 text-sm text-foreground outline-none placeholder:text-subtle-foreground focus:border-border focus:ring-0"
             />
           </div>
 
@@ -274,11 +255,13 @@ export function CommitModal({
                     disabled={isDisabled}
                     className={[
                       'flex min-h-11 w-full items-center justify-start gap-2 px-3 text-left text-sm transition-colors',
-                      isSelected ? 'bg-brand-soft text-brand-soft-foreground' : 'bg-surface text-muted-foreground',
-                      isDisabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-surface-muted/70 hover:text-foreground',
+                      isSelected
+                        ? 'bg-brand-soft text-foreground hover:bg-brand-soft hover:text-foreground'
+                        : 'bg-surface text-foreground hover:bg-surface-muted/70 hover:text-foreground',
+                      isDisabled ? 'cursor-not-allowed opacity-50' : '',
                     ].join(' ')}
                   >
-                    <span className="shrink-0">{step.icon}</span>
+                    <span className="shrink-0 text-inherit">{step.icon}</span>
                     <span className="truncate">{step.label}</span>
                   </button>
                 )

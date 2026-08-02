@@ -152,12 +152,14 @@ function mapConversationPreview(
     updatedAt: summary.updatedAt,
     updatedAtLabel: formatUpdatedAtLabel(summary.updatedAt, language),
     folderId: summary.folderId,
+    isArchived: summary.isArchived,
     isActive: summary.id === activeConversationId,
-    isPinned: summary.isPinned,
+    isPinned: summary.isArchived ? false : summary.isPinned,
   }
 }
 
 export const PINNED_FOLDER_ID = 'pinned'
+export const ARCHIVED_FOLDER_ID = 'archived'
 
 function getCompactionRootId(summary: ConversationSummary) {
   return summary.compaction?.rootConversationId ?? summary.id
@@ -217,6 +219,7 @@ export function buildConversationGroups(
   const familyStats = buildCompactionFamilyStats(conversationSummaries)
   groupedSummaries.set(null, [])
   const pinnedSummaries: ConversationSummary[] = []
+  const archivedSummaries: ConversationSummary[] = []
 
   for (const folder of folderSummaries) {
     groupedSummaries.set(folder.id, [])
@@ -227,7 +230,9 @@ export function buildConversationGroups(
     conversationSummaries.find((c) => c.id === activeConversationId)?.isPinned === true
 
   for (const conversation of conversationSummaries) {
-    if (conversation.isPinned) {
+    if (conversation.isArchived) {
+      archivedSummaries.push(conversation)
+    } else if (conversation.isPinned) {
       pinnedSummaries.push(conversation)
     } else {
       const targetFolderId =
@@ -253,6 +258,7 @@ export function buildConversationGroups(
       )
     })
   const pinnedConversations = mapSummaries(pinnedSummaries)
+  const archivedConversations = mapSummaries(archivedSummaries)
 
   const pinnedGroup = {
     folder: {
@@ -276,6 +282,17 @@ export function buildConversationGroups(
     conversations: mapSummaries(groupedSummaries.get(null) ?? []),
   }
 
+  const archivedGroup = {
+    folder: {
+      id: ARCHIVED_FOLDER_ID,
+      name: 'Archived',
+      path: null,
+      conversationCount: archivedConversations.length,
+      isSelected: selectedFolderId === ARCHIVED_FOLDER_ID,
+    },
+    conversations: archivedConversations,
+  }
+
   const folderGroups = folderSummaries.map((folder) => ({
     folder: {
       id: folder.id,
@@ -296,6 +313,9 @@ export function buildConversationGroups(
   // Push project folders first, then the Chats group at the bottom
   groups.push(...folderGroups)
   groups.push(chatsGroup)
+  if (archivedConversations.length > 0) {
+    groups.push(archivedGroup)
+  }
 
   return groups
 }
@@ -311,7 +331,8 @@ export function buildConversationSummary(conversation: ConversationRecord): Conv
     updatedAt: conversation.updatedAt,
     messageCount: conversation.messages.length,
     folderId: conversation.folderId,
-    isPinned: conversation.isPinned,
+    isArchived: conversation.isArchived,
+    isPinned: conversation.isArchived ? false : conversation.isPinned,
   }
 }
 

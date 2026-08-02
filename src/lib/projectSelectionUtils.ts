@@ -1,4 +1,8 @@
-import { ALL_PROJECTS_FILTER_ID, CHATS_PROJECT_FILTER_ID } from '../components/sidebar/sidebarProjectThreads'
+import {
+  ALL_PROJECTS_FILTER_ID,
+  ARCHIVED_PROJECT_FILTER_ID,
+  CHATS_PROJECT_FILTER_ID,
+} from '../components/sidebar/sidebarProjectThreads'
 import type { ConversationGroupPreview } from '../types/chat'
 
 export type ProjectSwitchTargetAction =
@@ -15,7 +19,6 @@ export interface ResolveProjectSwitchInput {
 
 export function resolveProjectSwitchTarget({
   activeConversationId,
-  conversationGroups: _conversationGroups,
   currentSelectedFolderId,
   projectId,
 }: ResolveProjectSwitchInput): ProjectSwitchTargetAction {
@@ -25,6 +28,10 @@ export function resolveProjectSwitchTarget({
 
   if (projectId === CHATS_PROJECT_FILTER_ID) {
     return { type: 'create_new_conversation', folderId: null }
+  }
+
+  if (projectId === ARCHIVED_PROJECT_FILTER_ID) {
+    return { type: 'preserve_active_thread' }
   }
 
   const targetFolderId = projectId

@@ -12,7 +12,7 @@ interface ConversationFolderSectionProps {
   group: ConversationGroupPreview
   isCollapsed: boolean
   onCreateConversation: (folderId?: string | null) => void
-  onDeleteConversation: (conversationId: string) => void
+  onArchiveConversation: (conversationId: string, isArchived: boolean) => void
   onPinConversation: (conversationId: string, isPinned: boolean) => void
   onDeleteFolder: (folderId: string) => Promise<void>
   onRenameFolder: (folderId: string, name: string) => Promise<void>
@@ -39,7 +39,7 @@ export function ConversationFolderSection({
   onDeleteFolder,
   onSelectFolder,
   onSelectConversation,
-  onDeleteConversation,
+  onArchiveConversation,
   onPinConversation,
   dropIndicatorPosition,
   isDraggable,
@@ -406,7 +406,7 @@ export function ConversationFolderSection({
                 key={conversation.id}
                 conversation={conversation}
                 onSelectConversation={onSelectConversation}
-                onDeleteConversation={onDeleteConversation}
+                onArchiveConversation={onArchiveConversation}
                 onPinConversation={onPinConversation}
               />
             ))}
@@ -439,7 +439,7 @@ export function ConversationFolderSection({
                     <ConversationHistoryItem
                       conversation={conversation}
                       onSelectConversation={onSelectConversation}
-                      onDeleteConversation={onDeleteConversation}
+                      onArchiveConversation={onArchiveConversation}
                       onPinConversation={onPinConversation}
                     />
                   </div>

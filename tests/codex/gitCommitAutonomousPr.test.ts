@@ -126,3 +126,23 @@ test('gitCommit keeps manual commit messages exactly as provided', async () => {
     assert.equal(stdout.trim(), 'fix: tighten commit pipeline formatting')
   })
 })
+
+test('gitCommit creates and checks out a preferred branch for a local commit', async () => {
+  await withTemporaryDirectory(async (tempRootPath) => {
+    const { repoPath } = await setupRepositoryWithOrigin(tempRootPath)
+    await fs.writeFile(path.join(repoPath, 'local-feature.txt'), 'local feature work\n', 'utf8')
+
+    const result = await gitCommit({
+      action: 'commit',
+      message: 'feat: add local preferred branch support',
+      preferredBranchName: 'feat/local-branch',
+      workspacePath: repoPath,
+    })
+
+    assert.equal(result.success, true)
+    assert.equal(result.branchName, 'feat/local-branch')
+
+    const { stdout: currentBranchStdout } = await runGit(['symbolic-ref', '--short', 'HEAD'], repoPath)
+    assert.equal(currentBranchStdout.trim(), 'feat/local-branch')
+  })
+})

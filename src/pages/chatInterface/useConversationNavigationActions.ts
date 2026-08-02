@@ -1,5 +1,9 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react'
-import { ALL_PROJECTS_FILTER_ID, CHATS_PROJECT_FILTER_ID } from '../../components/sidebar/sidebarProjectThreads'
+import {
+  ALL_PROJECTS_FILTER_ID,
+  ARCHIVED_PROJECT_FILTER_ID,
+  CHATS_PROJECT_FILTER_ID,
+} from '../../components/sidebar/sidebarProjectThreads'
 import type { ChatMessagesController } from '../../hooks/useChatMessages'
 import {
   findFolderIdForConversation,
@@ -73,14 +77,19 @@ export function useConversationNavigationActions({
     clearQueuedMessages()
     setWorkspaceViewMode('chat')
 
+    if (selectedProjectId === ARCHIVED_PROJECT_FILTER_ID) {
+      setSelectedProjectId(ALL_PROJECTS_FILTER_ID)
+      void onUpdateSettings({ selectedProjectId: ALL_PROJECTS_FILTER_ID })
+    }
+
     const folderId =
-      selectedProjectId === ALL_PROJECTS_FILTER_ID
+      selectedProjectId === ALL_PROJECTS_FILTER_ID || selectedProjectId === ARCHIVED_PROJECT_FILTER_ID
         ? undefined
         : selectedProjectId === CHATS_PROJECT_FILTER_ID
           ? null
           : selectedProjectId
     await chatMessages.createConversation(folderId)
-  }, [chatMessages, clearQueuedMessages, selectedProjectId, setWorkspaceViewMode])
+  }, [chatMessages, clearQueuedMessages, onUpdateSettings, selectedProjectId, setSelectedProjectId, setWorkspaceViewMode])
 
   const handleSelectConversation = useCallback(
     (conversationId: string) => {
@@ -90,6 +99,7 @@ export function useConversationNavigationActions({
       const conversationFolderId = findFolderIdForConversation(chatMessages.conversationGroups, conversationId)
       if (
         conversationFolderId !== undefined &&
+        selectedProjectId !== ARCHIVED_PROJECT_FILTER_ID &&
         shouldResetProjectFilterToAllProjects(selectedProjectId, conversationFolderId)
       ) {
         setSelectedProjectId(ALL_PROJECTS_FILTER_ID)
@@ -114,10 +124,10 @@ export function useConversationNavigationActions({
     [clearQueuedMessages, onCreateWorkspaceFolderFromPath],
   )
 
-  const handleDeleteConversation = useCallback(
-    (conversationId: string) => {
+  const handleArchiveConversation = useCallback(
+    (conversationId: string, isArchived: boolean) => {
       clearQueuedMessages()
-      void chatMessages.deleteConversation(conversationId)
+      void chatMessages.archiveConversation(conversationId, isArchived)
     },
     [chatMessages, clearQueuedMessages],
   )
@@ -142,7 +152,7 @@ export function useConversationNavigationActions({
     handleCreateFolder,
     handleCreateWorkspaceConversation,
     handleCreateWorkspaceFolderFromPath,
-    handleDeleteConversation,
+    handleArchiveConversation,
     handleDeleteFolder,
     handlePinConversation,
     handleSelectConversation,

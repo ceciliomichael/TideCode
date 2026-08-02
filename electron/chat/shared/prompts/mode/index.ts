@@ -17,6 +17,10 @@ const SHARED_PROMPT_DIRECTORY = {
 } as const
 const SHARED_TOOLING_PROMPT_FILE = 'tooling.md'
 const SHARED_TOOLING_PROMPT_PATH = 'shared/tooling.md'
+const MODE_SHARED_PROMPT_EXCLUDED_FILES: Record<ChatMode, ReadonlySet<string>> = {
+  agent: new Set(),
+  plan: new Set(['intent.md']),
+}
 
 function readPromptFile(relativePath: string) {
   const appRoot = process.env.APP_ROOT?.trim()
@@ -32,7 +36,10 @@ function readPromptFile(relativePath: string) {
   throw new Error(`Unable to load chat prompt file: ${relativePath}`)
 }
 
-function readPromptDirectory(relativeDirectory: string) {
+function readPromptDirectory(
+  relativeDirectory: string,
+  excludedFileNames: ReadonlySet<string> = new Set(),
+) {
   const appRoot = process.env.APP_ROOT?.trim()
   const searchRoots = [appRoot, process.cwd()].filter((value): value is string => Boolean(value))
 
@@ -46,6 +53,7 @@ function readPromptDirectory(relativeDirectory: string) {
       .filter((entry) => (
         entry.isFile() &&
         entry.name !== SHARED_TOOLING_PROMPT_FILE &&
+        !excludedFileNames.has(entry.name) &&
         SHARED_PROMPT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())
       ))
       .map((entry) => entry.name)
@@ -72,7 +80,7 @@ function readPromptDirectory(relativeDirectory: string) {
 }
 
 const cachedPrompts: Partial<Record<ChatMode, string>> = {}
-let cachedSharedPrompt: string | null = null
+const cachedSharedPrompts: Partial<Record<ChatMode, string>> = {}
 let cachedToolingPrompt: string | null = null
 
 export interface ChatSystemPromptComponent {
@@ -98,13 +106,18 @@ function getModePrompt(chatMode: ChatMode) {
   return prompt
 }
 
-function getSharedPrompt() {
-  if (cachedSharedPrompt !== null) {
-    return cachedSharedPrompt
+function getSharedPrompt(chatMode: ChatMode) {
+  const cachedPrompt = cachedSharedPrompts[chatMode]
+  if (cachedPrompt !== undefined) {
+    return cachedPrompt
   }
 
-  cachedSharedPrompt = readPromptDirectory(SHARED_PROMPT_DIRECTORY.directory)
-  return cachedSharedPrompt
+  const prompt = readPromptDirectory(
+    SHARED_PROMPT_DIRECTORY.directory,
+    MODE_SHARED_PROMPT_EXCLUDED_FILES[chatMode],
+  )
+  cachedSharedPrompts[chatMode] = prompt
+  return prompt
 }
 
 function getToolingPrompt() {
@@ -137,7 +150,7 @@ export function buildChatModeSystemPromptBreakdown(
       source: `electron/chat/shared/prompts/mode/${MODE_PROMPT_PATHS[chatMode]}`,
     },
     {
-      content: getSharedPrompt(),
+      content: getSharedPrompt(chatMode),
       id: 'shared_prompt_extensions',
       section: 'system_contract' as const,
       source: 'electron/chat/shared/prompts/mode/shared/*.{md,xml}',

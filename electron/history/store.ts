@@ -345,6 +345,7 @@ export async function appendStoredMessages(input: AppendConversationMessagesInpu
   const nextConversation: ConversationRecord = {
     ...existingConversation,
     chatMode: input.chatMode ?? existingConversation.chatMode,
+    isArchived: uniqueMessages.length > 0 ? false : existingConversation.isArchived,
     title: nextTitle,
     updatedAt:
       uniqueMessages.at(-1)?.timestamp ?? (hasTitleChange ? Date.now() : existingConversation.updatedAt),
@@ -383,6 +384,7 @@ export async function replaceStoredMessages(input: ReplaceConversationMessagesIn
   const nextConversation: ConversationRecord = {
     ...existingConversation,
     chatMode: input.chatMode ?? existingConversation.chatMode,
+    isArchived: false,
     title: input.title?.trim() ? input.title.trim() : existingConversation.title,
     updatedAt: input.messages.at(-1)?.timestamp ?? Date.now(),
     messages: input.messages,
@@ -423,6 +425,29 @@ export async function updateStoredConversationTitle(conversationId: string, titl
   return nextConversation
 }
 
+export async function updateStoredConversationArchived(conversationId: string, isArchived: boolean) {
+  const existingConversation = await getStoredConversation(conversationId)
+
+  if (!existingConversation) {
+    throw new Error(`Conversation not found: ${conversationId}`)
+  }
+
+  const nextIsArchived = Boolean(isArchived)
+  if (Boolean(existingConversation.isArchived) === nextIsArchived) {
+    return existingConversation
+  }
+
+  const nextConversation: ConversationRecord = {
+    ...existingConversation,
+    isArchived: nextIsArchived,
+    isPinned: nextIsArchived ? false : existingConversation.isPinned,
+    updatedAt: Date.now(),
+  }
+
+  await writeConversationFile(nextConversation)
+  return nextConversation
+}
+
 export async function updateStoredConversationPinned(conversationId: string, isPinned: boolean) {
   const existingConversation = await getStoredConversation(conversationId)
 
@@ -430,7 +455,7 @@ export async function updateStoredConversationPinned(conversationId: string, isP
     throw new Error(`Conversation not found: ${conversationId}`)
   }
 
-  if (Boolean(existingConversation.isPinned) === isPinned) {
+  if (existingConversation.isArchived || Boolean(existingConversation.isPinned) === isPinned) {
     return existingConversation
   }
 

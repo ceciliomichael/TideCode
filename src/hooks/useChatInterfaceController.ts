@@ -16,7 +16,7 @@ interface UseChatInterfaceControllerInput {
     branchState: {
       currentBranch: string | null
     }
-    refresh: () => Promise<void>
+    refresh: (options?: { forceRefresh?: boolean; silent?: boolean }) => Promise<void>
   }
   gitCommitState: {
     commit: (input: {
@@ -179,8 +179,8 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
         result: commitResult,
       })
 
-      void onDiffRefresh({ forceRefresh: true })
-      void gitBranchState.refresh()
+      void onDiffRefresh({ forceRefresh: true, silent: true })
+      void gitBranchState.refresh({ forceRefresh: true, silent: true })
     },
     [gitBranchState, gitCommitState, onDiffRefresh],
   )

@@ -677,6 +677,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     createWorkspaceFolderFromPath,
     reorderFolder: conversationActions.reorderFolder,
     deleteFolder: conversationActions.deleteFolder,
+    archiveConversation: conversationActions.archiveConversation,
     deleteConversation: conversationActions.deleteConversation,
     editComposerAttachments: composerState.editComposerAttachments,
     editComposerFocusSignal: composerState.editComposerFocusSignal,

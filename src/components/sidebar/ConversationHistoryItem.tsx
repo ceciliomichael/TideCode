@@ -1,5 +1,5 @@
-import { Check, Trash2, Pin, PinOff } from 'lucide-react'
-import { useEffect, useRef, useState, type MouseEvent } from 'react'
+import { Archive, ArchiveRestore, Pin, PinOff } from 'lucide-react'
+import type { MouseEvent } from 'react'
 import { LuLoader } from 'react-icons/lu'
 import type { ConversationPreview } from '../../types/chat'
 import { Tooltip } from '../Tooltip'
@@ -7,7 +7,7 @@ import { Tooltip } from '../Tooltip'
 interface ConversationHistoryItemProps {
   conversation: ConversationPreview
   workspaceName?: string
-  onDeleteConversation: (conversationId: string) => void
+  onArchiveConversation: (conversationId: string, isArchived: boolean) => void
   onPinConversation: (conversationId: string, isPinned: boolean) => void
   onSelectConversation: (conversationId: string) => void
 }
@@ -15,47 +15,14 @@ interface ConversationHistoryItemProps {
 export function ConversationHistoryItem({
   conversation,
   onSelectConversation,
-  onDeleteConversation,
+  onArchiveConversation,
   onPinConversation,
   workspaceName,
 }: ConversationHistoryItemProps) {
-  const [isDeleteConfirming, setIsDeleteConfirming] = useState(false)
-  const deleteButtonRef = useRef<HTMLButtonElement | null>(null)
-
-  useEffect(() => {
-    setIsDeleteConfirming(false)
-  }, [conversation.id])
-
-  useEffect(() => {
-    if (!isDeleteConfirming) {
-      return
-    }
-
-    function handlePointerDown(event: PointerEvent) {
-      const targetNode = event.target as Node | null
-      if (!targetNode || deleteButtonRef.current?.contains(targetNode)) {
-        return
-      }
-
-      setIsDeleteConfirming(false)
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown)
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown)
-    }
-  }, [isDeleteConfirming])
-
-  function handleDeleteClick(event: MouseEvent<HTMLButtonElement>) {
+  function handleArchiveClick(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault()
     event.stopPropagation()
-
-    if (isDeleteConfirming) {
-      onDeleteConversation(conversation.id)
-      return
-    }
-
-    setIsDeleteConfirming(true)
+    onArchiveConversation(conversation.id, !conversation.isArchived)
   }
 
   function handlePinClick(event: MouseEvent<HTMLButtonElement>) {
@@ -72,11 +39,9 @@ export function ConversationHistoryItem({
         conversation.compaction
           ? 'ml-3 w-[calc(100%-0.75rem)] before:absolute before:-left-2 before:bottom-1 before:top-1 before:w-px before:bg-border'
           : '',
-        isDeleteConfirming
-          ? 'border-danger-border bg-danger-surface'
-          : conversation.isActive
-            ? 'border-[var(--sidebar-item-active-border)] bg-[var(--sidebar-item-active-surface)]'
-            : 'hover:bg-[var(--sidebar-hover-surface)]',
+        conversation.isActive
+          ? 'border-[var(--sidebar-item-active-border)] bg-[var(--sidebar-item-active-surface)]'
+          : 'hover:bg-[var(--sidebar-hover-surface)]',
       ].join(' ')}
     >
       <button
@@ -109,7 +74,7 @@ export function ConversationHistoryItem({
         onClick={() => onSelectConversation(conversation.id)}
         className="flex h-8 w-[96px] shrink-0 cursor-pointer items-center justify-end"
       >
-        {!isDeleteConfirming ? (
+        {!conversation.isArchived ? (
           conversation.hasRunningTask ? (
             <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium text-subtle-foreground group-hover:hidden">
               <LuLoader className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
@@ -122,14 +87,16 @@ export function ConversationHistoryItem({
           )
         ) : null}
 
-        {!isDeleteConfirming && (
+        {!conversation.isArchived ? (
           <Tooltip content={conversation.isPinned ? 'Unpin thread' : 'Pin thread'} side="top">
             <button
               type="button"
               onClick={handlePinClick}
               className={[
-                'h-8 w-8 items-center justify-center rounded-full origin-center transform-gpu transition-[color,opacity,transform] duration-150 ease-out',
-                conversation.isPinned ? 'flex text-foreground' : 'hidden text-subtle-foreground hover:scale-110 hover:text-foreground group-hover:flex'
+                'h-8 w-8 origin-center transform-gpu items-center justify-center rounded-full transition-[color,opacity,transform] duration-150 ease-out',
+                conversation.isPinned
+                  ? 'flex text-foreground'
+                  : 'hidden text-subtle-foreground hover:scale-110 hover:text-foreground group-hover:flex',
               ].join(' ')}
               aria-label={conversation.isPinned ? `Unpin thread ${conversation.title}` : `Pin thread ${conversation.title}`}
             >
@@ -140,25 +107,19 @@ export function ConversationHistoryItem({
               )}
             </button>
           </Tooltip>
-        )}
+        ) : null}
 
-        <Tooltip content={isDeleteConfirming ? 'Click again to delete thread' : 'Delete thread'} side="right">
+        <Tooltip content={conversation.isArchived ? 'Unarchive thread' : 'Archive thread'} side="right">
           <button
-            ref={deleteButtonRef}
             type="button"
-            onClick={handleDeleteClick}
-            className={[
-              'h-8 w-8 items-center justify-center rounded-full origin-center transform-gpu transition-[color,opacity,transform] duration-150 ease-out',
-              isDeleteConfirming
-                ? 'flex text-danger-foreground hover:scale-110 hover:text-danger-foreground-hover'
-                : 'hidden text-subtle-foreground hover:scale-110 hover:text-foreground group-hover:flex',
-            ].join(' ')}
-            aria-label={isDeleteConfirming ? `Confirm delete thread ${conversation.title}` : `Delete thread ${conversation.title}`}
+            onClick={handleArchiveClick}
+            className="hidden h-8 w-8 origin-center transform-gpu items-center justify-center rounded-full text-subtle-foreground transition-[color,opacity,transform] duration-150 ease-out hover:scale-110 hover:text-foreground group-hover:flex"
+            aria-label={conversation.isArchived ? `Unarchive thread ${conversation.title}` : `Archive thread ${conversation.title}`}
           >
-            {isDeleteConfirming ? (
-              <Check size={15} strokeWidth={2.4} className="block" />
+            {conversation.isArchived ? (
+              <ArchiveRestore size={15} strokeWidth={2} className="block" />
             ) : (
-              <Trash2 size={15} strokeWidth={2} className="block" />
+              <Archive size={15} strokeWidth={2} className="block" />
             )}
           </button>
         </Tooltip>

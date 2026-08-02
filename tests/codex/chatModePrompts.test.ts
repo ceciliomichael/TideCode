@@ -6,7 +6,7 @@ import test from 'node:test'
 import { buildChatModeSystemPrompt } from '../../electron/chat/shared/prompts/mode'
 import { createAgentTools, createNativeAgentTools } from '../../electron/chat/shared/tools'
 
-test('agent prompt teaches concise, reliable, dependency-aware tool use', async () => {
+test('agent prompt teaches autonomous, reliable, dependency-aware implementation', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-agent-prompt-'))
 
   try {
@@ -18,6 +18,10 @@ test('agent prompt teaches concise, reliable, dependency-aware tool use', async 
     assert.match(prompt, /Answer first/u)
     assert.match(prompt, /Default to 1-3 short sentences/u)
     assert.match(prompt, /report only what you verified/iu)
+    assert.match(prompt, /<intent_rules/u)
+    assert.match(prompt, /understand the outcome, inspect the relevant context, choose the smallest complete approach, implement it, verify it/u)
+    assert.match(prompt, /Treat existing user changes as owned work/u)
+    assert.match(prompt, /every external value as untrusted/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -30,6 +34,7 @@ test('plan prompt is concise and explicitly restricts file editing while support
     const prompt = buildChatModeSystemPrompt('plan', workspaceRootPath)
 
     assert.doesNotMatch(prompt, /caveman|primitive speech/iu)
+    assert.doesNotMatch(prompt, /<intent_rules/u)
     assert.match(prompt, /Plan mode may use Kanban planning actions and discovered MCP tools/u)
     assert.match(prompt, /concrete tool whose name and parameters match the task/u)
     assert.match(prompt, /Stay under 300 words/u)

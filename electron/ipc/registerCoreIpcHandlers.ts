@@ -43,6 +43,7 @@ import {
   moveStoredFolder,
   renameStoredFolder,
   reorderStoredFolder,
+  updateStoredConversationArchived,
   replaceStoredMessages,
   updateStoredConversationPinned,
   updateStoredConversationTitle,
@@ -145,6 +146,9 @@ export function registerCoreIpcHandlers(getWindow: () => BrowserWindow | null) {
   )
   ipcMain.handle('history:updateTitle', async (_event, conversationId: string, title: string) =>
     updateStoredConversationTitle(conversationId, title),
+  )
+  ipcMain.handle('history:updateArchived', async (_event, conversationId: string, isArchived: boolean) =>
+    updateStoredConversationArchived(conversationId, isArchived),
   )
   ipcMain.handle('history:updatePinned', async (_event, conversationId: string, isPinned: boolean) =>
     updateStoredConversationPinned(conversationId, isPinned),

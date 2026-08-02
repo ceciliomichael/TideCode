@@ -133,6 +133,7 @@ export interface TideCodeHistoryApi {
   replaceMessages: (input: ReplaceConversationMessagesInput) => Promise<ConversationRecord>
   updateConversationTitle: (conversationId: string, title: string) => Promise<ConversationRecord>
   deleteConversation: (conversationId: string) => Promise<void>
+  updateConversationArchived: (conversationId: string, isArchived: boolean) => Promise<ConversationRecord>
   updateConversationPinned: (conversationId: string, isPinned: boolean) => Promise<ConversationRecord>
 }
 

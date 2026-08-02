@@ -1,8 +1,9 @@
-import { PINNED_FOLDER_ID } from '../../hooks/chatHistoryViewModels'
+import { ARCHIVED_FOLDER_ID, PINNED_FOLDER_ID } from '../../hooks/chatHistoryViewModels'
 import type { ConversationGroupPreview, ConversationPreview } from '../../types/chat'
 
 export const ALL_PROJECTS_FILTER_ID = 'all-projects'
 export const CHATS_PROJECT_FILTER_ID = 'chats'
+export const ARCHIVED_PROJECT_FILTER_ID = ARCHIVED_FOLDER_ID
 export const UNASSIGNED_WORKSPACE_NAME = 'Chats'
 
 export interface SidebarProjectOption {
@@ -17,7 +18,7 @@ export interface SidebarThreadRow {
 }
 
 function isProjectGroup(group: ConversationGroupPreview) {
-  return group.folder.id !== null && group.folder.id !== PINNED_FOLDER_ID
+  return group.folder.id !== null && group.folder.id !== PINNED_FOLDER_ID && group.folder.id !== ARCHIVED_FOLDER_ID
 }
 
 export function buildSidebarProjectOptions(
@@ -27,7 +28,7 @@ export function buildSidebarProjectOptions(
 
   for (const group of conversationGroups) {
     for (const conversation of group.conversations) {
-      if (conversation.folderId === null) {
+      if (conversation.folderId === null || conversation.isArchived) {
         continue
       }
 
@@ -66,10 +67,14 @@ export function buildSidebarThreadRows(
   return [...conversationsById.values()]
     .filter(
       (conversation) =>
-        selectedProjectId === ALL_PROJECTS_FILTER_ID ||
-        (selectedProjectId === CHATS_PROJECT_FILTER_ID
-          ? conversation.folderId === null
-          : conversation.folderId === selectedProjectId),
+        (selectedProjectId === ALL_PROJECTS_FILTER_ID && !conversation.isArchived) ||
+        (selectedProjectId === ARCHIVED_PROJECT_FILTER_ID && conversation.isArchived) ||
+        (selectedProjectId === CHATS_PROJECT_FILTER_ID && !conversation.isArchived && conversation.folderId === null) ||
+        (selectedProjectId !== ALL_PROJECTS_FILTER_ID &&
+          selectedProjectId !== CHATS_PROJECT_FILTER_ID &&
+          selectedProjectId !== ARCHIVED_PROJECT_FILTER_ID &&
+          !conversation.isArchived &&
+          conversation.folderId === selectedProjectId),
     )
     .sort((left, right) => right.updatedAt - left.updatedAt)
     .map((conversation) => ({
@@ -96,6 +101,7 @@ export function resolveSidebarProjectFilter(
     isLoading ||
     selectedProjectId === ALL_PROJECTS_FILTER_ID ||
     selectedProjectId === CHATS_PROJECT_FILTER_ID ||
+    selectedProjectId === ARCHIVED_PROJECT_FILTER_ID ||
     projects.some((project) => project.id === selectedProjectId)
   ) {
     return selectedProjectId

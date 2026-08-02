@@ -26,7 +26,7 @@ function getActionCopy(action: GitCommitAction): { description: string; title: s
 
   return {
     description: 'Your commit was pushed and a pull request was created.',
-    title: 'Commit and create PR successful',
+    title: 'Commit and pull request created',
   }
 }
 

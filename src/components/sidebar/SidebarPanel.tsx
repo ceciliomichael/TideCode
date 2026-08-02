@@ -9,6 +9,7 @@ import { ProjectThreadSelector } from './ProjectThreadSelector'
 import { SidebarThreadSearch } from './SidebarThreadSearch'
 import {
   ALL_PROJECTS_FILTER_ID,
+  ARCHIVED_PROJECT_FILTER_ID,
   CHATS_PROJECT_FILTER_ID,
   buildSidebarProjectOptions,
   resolveSidebarProjectFilter,
@@ -20,7 +21,7 @@ interface SidebarPanelProps {
   onCreateConversation: (folderId?: string | null) => void
   onCreateFolder: () => Promise<void>
   onCreateWorkspaceFolderFromPath: (folderPath: string) => Promise<void>
-  onDeleteConversation: (conversationId: string) => void
+  onArchiveConversation: (conversationId: string, isArchived: boolean) => void
   onPinConversation: (conversationId: string, isPinned: boolean) => void
   onDeleteFolder: (folderId: string) => Promise<void>
   onOpenSettings: () => void
@@ -36,7 +37,7 @@ export function SidebarPanel({
   onCreateFolder,
   onCreateConversation,
   onCreateWorkspaceFolderFromPath,
-  onDeleteConversation,
+  onArchiveConversation,
   onPinConversation,
   onDeleteFolder,
   onOpenSettings,
@@ -127,7 +128,9 @@ export function SidebarPanel({
                 ? 'Choose a project for a new thread'
                 : resolvedSelectedProjectId === CHATS_PROJECT_FILTER_ID
                   ? 'Start new thread in Chats'
-                : `Start new thread in ${
+                : resolvedSelectedProjectId === ARCHIVED_PROJECT_FILTER_ID
+                  ? 'Choose a project for a new thread'
+                  : `Start new thread in ${
                     projects.find((project) => project.id === resolvedSelectedProjectId)?.name ?? 'project'
                   }`
             }
@@ -176,7 +179,7 @@ export function SidebarPanel({
           conversationGroups={conversationGroups}
           searchQuery={searchQuery}
           selectedProjectId={resolvedSelectedProjectId}
-          onDeleteConversation={onDeleteConversation}
+          onArchiveConversation={onArchiveConversation}
           onPinConversation={onPinConversation}
           onSelectConversation={onSelectConversation}
         />

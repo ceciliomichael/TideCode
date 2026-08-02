@@ -48,7 +48,8 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
 
     const requestId = requestIdRef.current + 1
     requestIdRef.current = requestId
-    setIsLoading(true)
+    const isSilent = options?.silent === true
+    setIsLoading(!isSilent)
     setErrorMessage(null)
 
     try {
@@ -76,7 +77,9 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
         requestId === requestIdRef.current &&
         requestWorkspacePath === activeWorkspacePathRef.current
       ) {
-        setIsLoading(false)
+        if (!isSilent) {
+          setIsLoading(false)
+        }
       }
     }
   }, [workspacePath])

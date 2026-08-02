@@ -102,6 +102,8 @@ const historyApi: TideCodeHistoryApi = {
     ipcRenderer.invoke('history:replaceMessages', input),
   updateConversationTitle: (conversationId: string, title: string) =>
     ipcRenderer.invoke('history:updateTitle', conversationId, title),
+  updateConversationArchived: (conversationId: string, isArchived: boolean) =>
+    ipcRenderer.invoke('history:updateArchived', conversationId, isArchived),
   updateConversationPinned: (conversationId: string, isPinned: boolean) =>
     ipcRenderer.invoke('history:updatePinned', conversationId, isPinned),
   deleteConversation: (conversationId: string) => ipcRenderer.invoke('history:delete', conversationId),

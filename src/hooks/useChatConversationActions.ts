@@ -216,10 +216,35 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
     ],
   )
 
+  const archiveConversation = useCallback(
+    async (conversationId: string, isArchived: boolean) => {
+      clearError()
+
+      const conversationState = conversationRuntimeStatesRef.current[conversationId] ?? null
+      if (isArchived && conversationState?.isSending) {
+        setError('Wait for the current thread task to finish before archiving it.')
+        return
+      }
+
+      try {
+        const conversation = await window.tidecodeHistory.updateConversationArchived(conversationId, isArchived)
+        upsertConversation(conversation)
+        if (conversationId === activeConversationId) {
+          applyConversation(conversation)
+        }
+      } catch (caughtError) {
+        console.error(caughtError)
+        setError(isArchived ? 'Unable to archive that thread.' : 'Unable to unarchive that thread.')
+      }
+    },
+    [activeConversationId, applyConversation, clearError, conversationRuntimeStatesRef, setError, upsertConversation],
+  )
+
   return {
     prepareNewConversation,
     createFolder,
     createWorkspaceFolderFromPath,
+    archiveConversation,
     deleteConversation,
     renameConversationTitle: async (conversationId: string, title: string) => {
       clearError()

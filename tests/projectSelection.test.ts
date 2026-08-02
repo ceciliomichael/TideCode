@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ALL_PROJECTS_FILTER_ID, CHATS_PROJECT_FILTER_ID } from '../src/components/sidebar/sidebarProjectThreads'
+import {
+  ALL_PROJECTS_FILTER_ID,
+  ARCHIVED_PROJECT_FILTER_ID,
+  CHATS_PROJECT_FILTER_ID,
+} from '../src/components/sidebar/sidebarProjectThreads'
 import {
   findFolderIdForConversation,
   resolveProjectSwitchTarget,
@@ -132,6 +136,18 @@ test('switching to Chats creates a new conversation', () => {
   })
 
   assert.deepEqual(result, { type: 'create_new_conversation', folderId: null })
+})
+
+test('switching to Archived only changes the filter and keeps the active chat open', () => {
+  assert.deepEqual(
+    resolveProjectSwitchTarget({
+      activeConversationId: 'conversation-1',
+      conversationGroups: [],
+      currentSelectedFolderId: null,
+      projectId: ARCHIVED_PROJECT_FILTER_ID,
+    }),
+    { type: 'preserve_active_thread' },
+  )
 })
 
 test('shouldResetProjectFilterToAllProjects returns true only when selected filter does not match active thread project', () => {

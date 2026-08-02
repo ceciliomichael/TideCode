@@ -1,13 +1,13 @@
-import { FolderOpen, MessageSquareText } from 'lucide-react'
+import { Archive, FolderOpen, MessageSquareText } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { PINNED_FOLDER_ID } from '../../hooks/chatHistoryViewModels'
+import { ARCHIVED_FOLDER_ID, PINNED_FOLDER_ID } from '../../hooks/chatHistoryViewModels'
 import type { ConversationGroupPreview } from '../../types/chat'
 import { ConversationHistoryItem } from './ConversationHistoryItem'
-import { ALL_PROJECTS_FILTER_ID, buildSidebarThreadRows } from './sidebarProjectThreads'
+import { ALL_PROJECTS_FILTER_ID, ARCHIVED_PROJECT_FILTER_ID, buildSidebarThreadRows } from './sidebarProjectThreads'
 
 interface ConversationHistoryListProps {
   conversationGroups: ConversationGroupPreview[]
-  onDeleteConversation: (conversationId: string) => void
+  onArchiveConversation: (conversationId: string, isArchived: boolean) => void
   onPinConversation: (conversationId: string, isPinned: boolean) => void
   onSelectConversation: (conversationId: string) => void
   searchQuery: string
@@ -19,7 +19,7 @@ const THREAD_BATCH_SIZE = 40
 export function ConversationHistoryList({
   conversationGroups,
   onSelectConversation,
-  onDeleteConversation,
+  onArchiveConversation,
   onPinConversation,
   searchQuery,
   selectedProjectId,
@@ -32,8 +32,9 @@ export function ConversationHistoryList({
   const visibleThreadRows = threadRows.slice(0, visibleThreadCount)
   const remainingThreadCount = threadRows.length - visibleThreadRows.length
   const isAllProjectsView = selectedProjectId === ALL_PROJECTS_FILTER_ID
+  const isArchivedView = selectedProjectId === ARCHIVED_PROJECT_FILTER_ID
   const hasProjects = conversationGroups.some(
-    (group) => group.folder.id !== null && group.folder.id !== PINNED_FOLDER_ID,
+    (group) => group.folder.id !== null && group.folder.id !== PINNED_FOLDER_ID && group.folder.id !== ARCHIVED_FOLDER_ID,
   )
 
   useEffect(() => {
@@ -47,18 +48,26 @@ export function ConversationHistoryList({
       <div className="flex min-h-full flex-1 items-center justify-center px-4 py-8 text-center">
         <div className="flex max-w-[240px] flex-col items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-surface-muted text-subtle-foreground">
-            {hasProjects ? <MessageSquareText size={22} /> : <FolderOpen size={22} />}
+            {isArchivedView ? <Archive size={22} /> : hasProjects ? <MessageSquareText size={22} /> : <FolderOpen size={22} />}
           </div>
           <div className="space-y-1">
             <p className="text-sm font-medium text-foreground">
-              {hasSearchQuery ? 'No matching threads' : hasProjects ? 'No threads here yet' : 'No projects yet'}
+              {hasSearchQuery
+                ? 'No matching threads'
+                : isArchivedView
+                  ? 'No archived chats'
+                  : hasProjects
+                    ? 'No threads here yet'
+                    : 'No projects yet'}
             </p>
             <p className="text-sm leading-6 text-subtle-foreground">
               {hasSearchQuery
                 ? 'Try another title or project name'
-                : hasProjects
-                  ? 'Start a thread in this project to see it here'
-                  : 'Add a project folder to start a thread'}
+                : isArchivedView
+                  ? 'Archived chats will appear here when you archive a thread'
+                  : hasProjects
+                    ? 'Start a thread in this project to see it here'
+                    : 'Add a project folder to start a thread'}
             </p>
           </div>
         </div>
@@ -72,9 +81,9 @@ export function ConversationHistoryList({
         <ConversationHistoryItem
           key={conversation.id}
           conversation={conversation}
-          workspaceName={isAllProjectsView ? workspaceName : undefined}
+          workspaceName={isAllProjectsView || isArchivedView ? workspaceName : undefined}
           onSelectConversation={onSelectConversation}
-          onDeleteConversation={onDeleteConversation}
+          onArchiveConversation={onArchiveConversation}
           onPinConversation={onPinConversation}
         />
       ))}
