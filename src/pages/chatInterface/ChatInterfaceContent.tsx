@@ -310,7 +310,6 @@ export function ChatInterfaceContent({
 
   return (
     <AppWorkspaceShell
-      disableSidebarTransition={workspaceState.isExplorerOpen}
       isSidebarOpen={interfaceController.isSidebarOpen}
       onSidebarWidthChange={onSidebarWidthChange}
       floatingControls={

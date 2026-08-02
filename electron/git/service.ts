@@ -18,4 +18,10 @@ export {
   unstageGitFile,
 } from './serviceStage'
 export { gitCommit } from './serviceCommit'
-export { initGitRepository, publishToGitHub } from './serviceInit'
+export { initGitRepository } from './serviceInit'
+export {
+  completeGitHubDeviceLogin,
+  connectGitHub,
+  getGitHubAuthStatus,
+  publishToGitHub,
+} from './servicePublish'

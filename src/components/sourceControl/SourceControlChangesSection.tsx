@@ -1,4 +1,4 @@
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Github } from 'lucide-react'
 import type { RefObject } from 'react'
 import { useState } from 'react'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
@@ -6,6 +6,7 @@ import type { DiffPanelScope } from '../chat/ConversationDiffFileItem'
 import { Tooltip } from '../Tooltip'
 import { SourceControlDiffSection } from './SourceControlDiffSection'
 import { PublishToGitHubModal } from './PublishToGitHubModal'
+import { getSourceControlPrimaryAction } from './sourceControlPrimaryAction'
 import {
   SourceControlOperationStatus,
   type SourceControlOperationNotice,
@@ -110,8 +111,15 @@ export function SourceControlChangesSection({
   const unstagedFilePaths = Array.from(new Set(unstagedFileDiffs.map((fileDiff) => fileDiff.fileName)))
   const isBulkStageActionDisabled = isOperationInProgress || unstagedFilePaths.length === 0
   const isBulkUnstageActionDisabled = isOperationInProgress || stagedFilePaths.length === 0
-  const shouldShowSyncChanges =
-    hasRemote && aheadCommitCount > 0 && stagedFileCount === 0 && unstagedFileCount === 0
+  const primaryAction = getSourceControlPrimaryAction({
+    aheadCommitCount,
+    hasRemote,
+    stagedFileCount,
+    unstagedFileCount,
+  })
+  const shouldShowSyncChanges = primaryAction === 'sync-changes'
+  const shouldShowPublishAction = primaryAction === 'publish-to-github'
+  const isPrimaryActionDisabled = shouldShowPublishAction ? isOperationInProgress : isCommitActionDisabled
 
   async function handleStageAllUnstagedFiles() {
     if (unstagedFilePaths.length === 0) {
@@ -160,9 +168,10 @@ export function SourceControlChangesSection({
             <textarea
               value={commitMessage}
               onChange={(event) => onCommitMessageChange(event.target.value)}
+              disabled={shouldShowPublishAction}
               rows={3}
-              placeholder="Commit message (leave empty to auto-generate with AI)"
-              className="w-full resize-none rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm text-foreground outline-none placeholder:text-subtle-foreground"
+              placeholder={shouldShowPublishAction ? 'No changes to commit.' : 'Commit message (leave empty to auto-generate with AI)'}
+              className="w-full resize-none rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm text-foreground outline-none placeholder:text-subtle-foreground disabled:cursor-not-allowed disabled:opacity-60"
             />
 
             <div className="mt-2 flex items-center justify-end gap-2">
@@ -179,16 +188,29 @@ export function SourceControlChangesSection({
                   >
                     {isSyncingChanges ? 'Syncing…' : 'Sync Changes'}
                   </button>
+                ) : shouldShowPublishAction ? (
+                  <button
+                    type="button"
+                    disabled={isPrimaryActionDisabled}
+                    onClick={() => setIsPublishModalOpen(true)}
+                    className={[
+                      'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors',
+                      isPrimaryActionDisabled ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
+                    ].join(' ')}
+                  >
+                    <Github size={13} />
+                    Publish to GitHub
+                  </button>
                 ) : (
-                    <div ref={commitActionControlsRef} className="relative inline-flex items-center">
+                  <div ref={commitActionControlsRef} className="relative inline-flex items-center">
                       <button
                         type="button"
-                        disabled={isCommitActionDisabled}
+                        disabled={isPrimaryActionDisabled}
                         onClick={() => void onQuickCommitSubmit('commit')}
                         className={[
                           'inline-flex h-8 min-w-[66px] items-center justify-center rounded-l-lg rounded-r-none pl-2 text-xs font-medium transition-colors',
                           isCommitPrimaryBusy ? 'pr-2' : 'pr-1',
-                          isCommitActionDisabled ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
+                          isPrimaryActionDisabled ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
                         ].join(' ')}
                       >
                         {isQuickCommitting ? 'Committing' : isCommitPrimaryBusy ? 'Pushing' : 'Commit'}
@@ -198,13 +220,13 @@ export function SourceControlChangesSection({
                         aria-label="Commit actions"
                         aria-haspopup="menu"
                         aria-expanded={isCommitActionMenuOpen}
-                        disabled={isCommitActionDisabled}
+                        disabled={isPrimaryActionDisabled}
                         onClick={() => {
                           onCommitActionMenuOpenChange(!isCommitActionMenuOpen)
                         }}
                         className={[
                           'inline-flex h-8 w-8 items-center justify-center rounded-l-none rounded-r-lg border-l border-white/15 text-xs transition-colors',
-                          isCommitActionDisabled ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
+                          isPrimaryActionDisabled ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
                         ].join(' ')}
                       >
                         <ChevronDown size={13} />
@@ -247,7 +269,7 @@ export function SourceControlChangesSection({
                           )}
                         </div>
                       ) : null}
-                    </div>
+                  </div>
                 )}
                 <button
                   type="button"

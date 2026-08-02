@@ -47,6 +47,8 @@ import type {
   GitHistoryCommitDetailsResult,
   GitHistoryPageInput,
   GitHistoryPageResult,
+  GitHubAuthStatus,
+  GitHubDeviceLoginResult,
   GitInitResult,
   GitPublishInput,
   GitPublishResult,
@@ -230,6 +232,9 @@ export interface TideCodeGitApi {
   getHistoryCommitDetails: (input: GitHistoryCommitDetailsInput) => Promise<GitHistoryCommitDetailsResult>
   getDiffs: (workspacePath: string, options?: GitDiffLoadOptions) => Promise<GitDiffSnapshot>
   getHistoryPage: (input: GitHistoryPageInput) => Promise<GitHistoryPageResult>
+  getGitHubAuthStatus: () => Promise<GitHubAuthStatus>
+  connectGitHub: () => Promise<GitHubDeviceLoginResult>
+  completeGitHubDeviceLogin: () => Promise<GitHubAuthStatus>
   getStatus: (workspacePath: string) => Promise<GitStatusResult>
   initRepository: (workspacePath: string) => Promise<GitInitResult>
   publishToGitHub: (input: GitPublishInput) => Promise<GitPublishResult>

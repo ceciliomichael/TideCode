@@ -61,10 +61,10 @@ Stage only the reviewed product files and tests. Do not stage package.json, pack
 git add <reviewed-product-files>
 git diff --cached --stat
 git diff --cached --check
-git commit -m "<type>: <clear user-facing summary>"
+git commit -m "<type>: <clear user-facing summary>" -m "<Detailed body describing the user-visible behavior, implementation scope, and validation>"
 ~~~
 
-Use a conventional subject such as fix: show release notes while updates download or feat: preserve long-running terminal output. Keep it short, specific, and free of issue-tracker or AI-generated filler. Verify the commit before pushing:
+Use a conventional subject such as fix: show release notes while updates download or feat: preserve long-running terminal output. Keep the subject short, specific, and free of issue-tracker or AI-generated filler, then add a meaningful body. The body must explain what changed for users, identify important implementation or compatibility details, and record the validation performed; a one-line-only product commit is not sufficient. Use a blank line between the subject and body, with a paragraph or concise bullets as appropriate. Verify the commit before pushing:
 
 ~~~text
 git show --stat --oneline HEAD

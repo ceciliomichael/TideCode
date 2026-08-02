@@ -69,7 +69,6 @@ export interface AppSettings {
   terminalOpenByWorkspace: Record<string, boolean>
   terminalPanelHeightsByWorkspace: Record<string, number>
   terminalExecutionMode: AppTerminalExecutionMode
-  githubToken?: string
   selectedProjectId?: string
   modelToggleState?: Record<string, boolean>
 }

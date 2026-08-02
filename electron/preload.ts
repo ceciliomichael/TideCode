@@ -32,6 +32,8 @@ import type {
   TideCodeWorkspaceApi,
   GitFileStageInput,
   GitDiffLoadOptions,
+  GitHubAuthStatus,
+  GitHubDeviceLoginResult,
   GitSyncInput,
   ReplaceConversationMessagesInput,
   GitPublishInput,
@@ -232,6 +234,9 @@ const gitApi: TideCodeGitApi = {
   getDiffs: (workspacePath: string, options?: GitDiffLoadOptions) =>
     ipcRenderer.invoke('git:getDiffs', { options, workspacePath }),
   getHistoryPage: (input: GitHistoryPageInput) => ipcRenderer.invoke('git:getHistoryPage', input),
+  getGitHubAuthStatus: (): Promise<GitHubAuthStatus> => ipcRenderer.invoke('git:getGitHubAuthStatus'),
+  connectGitHub: (): Promise<GitHubDeviceLoginResult> => ipcRenderer.invoke('git:connectGitHub'),
+  completeGitHubDeviceLogin: (): Promise<GitHubAuthStatus> => ipcRenderer.invoke('git:completeGitHubDeviceLogin'),
   getStatus: (workspacePath: string) => ipcRenderer.invoke('git:getStatus', workspacePath),
   sync: (input: GitSyncInput) => ipcRenderer.invoke('git:sync', input),
   stageFiles: (input: GitFileStageBatchInput) => ipcRenderer.invoke('git:stageFiles', input),

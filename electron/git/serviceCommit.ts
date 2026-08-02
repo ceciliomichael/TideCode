@@ -3,6 +3,7 @@ import { normalizeGeneratedCommitMessageWithDescription } from './commitMessageF
 import {
   fetchOrigin,
   getErrorMessage,
+  getPreferredRemoteName,
   getRemoteUrl,
   hasRemoteTrackingBranch,
   isGhAuthError,
@@ -508,7 +509,12 @@ export async function gitCommit(input: GitCommitInput): Promise<GitCommitResult>
         )
       }
 
-      await runGit(['push', '-u', 'origin', currentBranch], repoRootPath)
+      const remoteName = await getPreferredRemoteName(repoRootPath)
+      if (!remoteName) {
+        throw new Error('No remote is configured for this repository.')
+      }
+
+      await runGit(['push', '-u', remoteName, currentBranch], repoRootPath)
 
       if (input.action === 'commit-and-create-pr') {
         const remoteUrl = await getRemoteUrl(repoRootPath)

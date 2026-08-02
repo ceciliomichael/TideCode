@@ -42,6 +42,9 @@ import {
   discardGitFileChanges,
   getGitBranchState,
   getGitDiffSnapshot,
+  getGitHubAuthStatus,
+  connectGitHub,
+  completeGitHubDeviceLogin,
   getGitHistoryCommitDetails,
   getGitHistoryPage,
   getGitStatus,
@@ -158,6 +161,9 @@ export function registerChatGitTerminalIpcHandlers(
     getGitHistoryCommitDetails(input),
   )
   ipcMain.handle('git:getHistoryPage', async (_event, input: GitHistoryPageInput) => getGitHistoryPage(input))
+  ipcMain.handle('git:getGitHubAuthStatus', async () => getGitHubAuthStatus())
+  ipcMain.handle('git:connectGitHub', async () => connectGitHub())
+  ipcMain.handle('git:completeGitHubDeviceLogin', async () => completeGitHubDeviceLogin())
   ipcMain.handle('git:discardFileChanges', async (_event, input: GitFileStageInput) => discardGitFileChanges(input))
   ipcMain.handle('git:checkoutBranch', async (_event, input: CheckoutGitBranchInput) => checkoutGitBranch(input))
   ipcMain.handle('git:createAndCheckoutBranch', async (_event, input: CreateGitBranchInput) =>

@@ -62,7 +62,6 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   terminalOpenByWorkspace: {},
   terminalPanelHeightsByWorkspace: {},
   terminalExecutionMode: 'sandbox',
-  githubToken: '',
   selectedProjectId: 'all-projects',
   modelToggleState: {},
 }

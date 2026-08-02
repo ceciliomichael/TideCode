@@ -205,10 +205,18 @@ export async function readLocalBranches(repoRootPath: string) {
 }
 
 export async function readDefaultBranch(repoRootPath: string) {
+  const remoteName = await getPreferredRemoteName(repoRootPath)
+  if (!remoteName) {
+    return null
+  }
+
   try {
-    const { stdout } = await runGit(['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], repoRootPath)
+    const { stdout } = await runGit(
+      ['symbolic-ref', '--quiet', '--short', `refs/remotes/${remoteName}/HEAD`],
+      repoRootPath,
+    )
     const remoteHeadRef = stdout.trim()
-    const prefix = 'origin/'
+    const prefix = `${remoteName}/`
     if (!remoteHeadRef.startsWith(prefix)) {
       return null
     }
@@ -220,27 +228,42 @@ export async function readDefaultBranch(repoRootPath: string) {
   }
 }
 
-export async function hasOriginRemote(repoRootPath: string) {
+export async function getPreferredRemoteName(repoRootPath: string): Promise<string | null> {
   try {
-    await runGit(['remote', 'get-url', 'origin'], repoRootPath)
-    return true
+    const { stdout } = await runGit(['remote'], repoRootPath)
+    const remoteNames = stdout
+      .split(/\r?\n/u)
+      .map((remoteName) => remoteName.trim())
+      .filter((remoteName) => remoteName.length > 0)
+
+    return remoteNames.find((remoteName) => remoteName === 'origin') ?? remoteNames[0] ?? null
   } catch {
-    return false
+    return null
   }
 }
 
+export async function hasAnyRemote(repoRootPath: string) {
+  return (await getPreferredRemoteName(repoRootPath)) !== null
+}
+
 export async function fetchOrigin(repoRootPath: string) {
-  if (!(await hasOriginRemote(repoRootPath))) {
+  const remoteName = await getPreferredRemoteName(repoRootPath)
+  if (!remoteName) {
     return false
   }
 
-  await runGit(['fetch', '--prune', 'origin'], repoRootPath)
+  await runGit(['fetch', '--prune', remoteName], repoRootPath)
   return true
 }
 
 export async function hasRemoteTrackingBranch(repoRootPath: string, branchName: string) {
+  const remoteName = await getPreferredRemoteName(repoRootPath)
+  if (!remoteName) {
+    return false
+  }
+
   try {
-    await runGit(['show-ref', '--verify', '--quiet', `refs/remotes/origin/${branchName}`], repoRootPath)
+    await runGit(['show-ref', '--verify', '--quiet', `refs/remotes/${remoteName}/${branchName}`], repoRootPath)
     return true
   } catch {
     return false
@@ -316,8 +339,11 @@ export async function syncCheckedOutBranchWithRemote(repoRootPath: string, branc
 
   let upstreamBranch = await readCurrentUpstreamBranch(repoRootPath)
   if (!upstreamBranch && (await hasRemoteTrackingBranch(repoRootPath, branchName))) {
-    await runGit(['branch', '--set-upstream-to', `origin/${branchName}`, branchName], repoRootPath)
-    upstreamBranch = `origin/${branchName}`
+    const remoteName = await getPreferredRemoteName(repoRootPath)
+    if (remoteName) {
+      await runGit(['branch', '--set-upstream-to', `${remoteName}/${branchName}`, branchName], repoRootPath)
+      upstreamBranch = `${remoteName}/${branchName}`
+    }
   }
 
   if (!upstreamBranch) {
@@ -420,7 +446,17 @@ export async function getRemoteUrl(repoRootPath: string): Promise<string | null>
     const { stdout } = await runGit(['remote', 'get-url', 'origin'], repoRootPath)
     return stdout.trim() || null
   } catch {
-    return null
+    const remoteName = await getPreferredRemoteName(repoRootPath)
+    if (!remoteName) {
+      return null
+    }
+
+    try {
+      const { stdout } = await runGit(['remote', 'get-url', remoteName], repoRootPath)
+      return stdout.trim() || null
+    } catch {
+      return null
+    }
   }
 }
 
@@ -436,7 +472,14 @@ export function isGhUnavailable(error: unknown) {
 
 export function isGhAuthError(error: unknown) {
   const message = getErrorMessage(error).toLowerCase()
-  return message.includes('authentication') || message.includes('gh auth login') || message.includes('not logged into')
+  return (
+    message.includes('authentication') ||
+    message.includes('gh auth login') ||
+    message.includes('not logged into') ||
+    message.includes('not logged in') ||
+    message.includes('no oauth token') ||
+    message.includes('no accounts')
+  )
 }
 
 export async function readStagedDiffText(repoRootPath: string) {

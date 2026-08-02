@@ -21,9 +21,9 @@ test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
   assert.match(agentPrompt, /Default to 1-3 short sentences or a brief bullet list/u)
   assert.doesNotMatch(agentPrompt, /caveman|authorization_override/iu)
 
-  assert.match(planPrompt, /You are a senior engineer creating plans/u)
-  assert.match(planPrompt, /You are a senior engineer creating plans/u)
-  assert.match(planPrompt, /Start directly with a concise numbered plan/u)
+  assert.match(planPrompt, /You are a senior engineer acting as a relentless planning interviewer/u)
+  assert.match(planPrompt, /Ask exactly one focused question per response/u)
+  assert.match(planPrompt, /start directly with a concise numbered plan/u)
   assert.match(planPrompt, /Stay under 300 words/u)
   assert.doesNotMatch(planPrompt, /caveman|authorization_override/iu)
 })

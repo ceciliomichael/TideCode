@@ -119,13 +119,31 @@ export interface GitInitResult {
   success: boolean
 }
 
+export type GitHubAuthStatus =
+  | {
+      kind: 'authenticated'
+    }
+  | {
+      kind: 'not-authenticated'
+      message: string
+    }
+  | {
+      kind: 'unavailable'
+      message: string
+    }
+
+export interface GitHubDeviceLoginResult {
+  expiresAt: string
+  userCode: string
+  verificationUri: string
+}
+
 export interface GitPublishInput {
   workspacePath: string
   repoName: string
   description?: string
   isPrivate: boolean
   defaultBranch: string
-  githubToken: string
 }
 
 export interface GitPublishResult {

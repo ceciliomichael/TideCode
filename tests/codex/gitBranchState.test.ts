@@ -99,3 +99,22 @@ test('getGitBranchState reports outgoing commits relative to the configured upst
     assert.equal(state.behindCommitCount, 0)
   })
 })
+
+test('getGitBranchState recognizes a configured remote even when it is not named origin', async () => {
+  await withTemporaryDirectory(async (workspacePath) => {
+    const remotePath = path.join(workspacePath, 'remote.git')
+    await runGit(['init', '--bare', remotePath], workspacePath)
+    await runGit(['init', '-b', 'main'], workspacePath)
+    await runGit(['config', 'user.name', 'Test User'], workspacePath)
+    await runGit(['config', 'user.email', 'test@example.com'], workspacePath)
+    await fs.writeFile(path.join(workspacePath, 'README.md'), 'published\n', 'utf8')
+    await runGit(['add', '.'], workspacePath)
+    await runGit(['commit', '-m', 'initial'], workspacePath)
+    await runGit(['remote', 'add', 'tidecode', remotePath], workspacePath)
+    await runGit(['push', '-u', 'tidecode', 'main'], workspacePath)
+
+    const state = await getGitBranchState(workspacePath)
+
+    assert.equal(state.remoteUrl, remotePath)
+  })
+})

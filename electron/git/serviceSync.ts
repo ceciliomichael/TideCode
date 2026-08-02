@@ -1,7 +1,7 @@
 import type { GitSyncAction, GitSyncInput, GitSyncResult } from '../../src/types/chat'
 import {
   getErrorMessage,
-  hasOriginRemote,
+  getPreferredRemoteName,
   hasRemoteTrackingBranch,
   isFastForwardOnlyPullFailure,
   isGitUnavailable,
@@ -15,8 +15,11 @@ import {
 async function resolveCurrentUpstream(repoRootPath: string, branchName: string) {
   let upstreamBranch = await readCurrentUpstreamBranch(repoRootPath)
   if (!upstreamBranch && (await hasRemoteTrackingBranch(repoRootPath, branchName))) {
-    await runGit(['branch', '--set-upstream-to', `origin/${branchName}`, branchName], repoRootPath)
-    upstreamBranch = `origin/${branchName}`
+    const remoteName = await getPreferredRemoteName(repoRootPath)
+    if (remoteName) {
+      await runGit(['branch', '--set-upstream-to', `${remoteName}/${branchName}`, branchName], repoRootPath)
+      upstreamBranch = `${remoteName}/${branchName}`
+    }
   }
 
   return upstreamBranch
@@ -37,10 +40,13 @@ async function pushCurrentBranch(repoRootPath: string, branchName: string) {
   const upstreamBranch = await readCurrentUpstreamBranch(repoRootPath)
   if (upstreamBranch) {
     await runGit(['push'], repoRootPath)
-  } else if (await hasOriginRemote(repoRootPath)) {
-    await runGit(['push', '-u', 'origin', branchName], repoRootPath)
   } else {
-    throw new Error("Remote 'origin' is not configured for this repository.")
+    const remoteName = await getPreferredRemoteName(repoRootPath)
+    if (!remoteName) {
+      throw new Error('No remote is configured for this repository.')
+    }
+
+    await runGit(['push', '-u', remoteName, branchName], repoRootPath)
   }
 }
 
