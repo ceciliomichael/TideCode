@@ -1,73 +1,113 @@
-!macro customHeader
-  XPStyle on
-  SetFont "Google Sans Flex" 9 400
+; TideCode keeps the operating system's native NSIS pages and controls.
+; The generated header and sidebar bitmaps provide the brand without replacing
+; the installer with a custom-styled interface.
+
+!macro customWelcomePage
+  ; An updater launch already has the user's approval. A manually launched
+  ; installer with an existing install should also go directly to the native
+  ; install-mode page, where the upgrade/reinstall state is explained.
+  !define UniqueID ${__LINE__}
+  Function skipWelcomeIfAlreadyInstalled_${UniqueID}
+    ${if} ${isUpdated}
+      Abort
+    ${elseif} $hasPerUserInstallation == "1"
+    ${orIf} $hasPerMachineInstallation == "1"
+      Abort
+    ${endif}
+  FunctionEnd
+  !define MUI_PAGE_CUSTOMFUNCTION_PRE skipWelcomeIfAlreadyInstalled_${UniqueID}
+  !undef UniqueID
+
+  !insertmacro MUI_PAGE_WELCOME
 !macroend
 
 !macro customInit
-  InitPluginsDir
-  File /oname=$PLUGINSDIR\GoogleSansFlex-Latin.ttf "${PROJECT_DIR}\installer\fonts\GoogleSansFlex-Latin.ttf"
-  StrCpy $0 "$PLUGINSDIR\GoogleSansFlex-Latin.ttf"
-  System::Call 'gdi32::AddFontResourceEx(t r0, i 0x10, i 0) i'
-!macroend
+  ; electron-builder normally detects an existing install from
+  ; Software\${APP_GUID}\InstallLocation. Older TideCode installers may
+  ; have only written the Windows uninstall entry, so recover the install
+  ; directory from its DisplayIcon value when the primary record is absent.
+  StrCpy $R3 "0"
+  StrCpy $R4 "0"
 
-!macro customInstallmode
-  ${if} $hasPerMachineInstallation == "1"
-    StrCpy $isForceMachineInstall "1"
-  ${else}
-    StrCpy $isForceCurrentInstall "1"
+  ${if} $hasPerUserInstallation == "0"
+    ReadRegStr $0 HKCU "${UNINSTALL_REGISTRY_KEY}" DisplayIcon
+    ${if} $0 != ""
+      ; electron-builder writes the icon as <executable>,0.
+      StrCpy $1 $0 2 -2
+      ${if} $1 == ",0"
+        StrCpy $0 $0 -2
+      ${endif}
+      ${StdUtils.GetParentPath} $2 "$0"
+      ${if} ${FileExists} "$2\${APP_EXECUTABLE_FILENAME}"
+        StrCpy $perUserInstallationFolder "$2"
+        StrCpy $hasPerUserInstallation "1"
+        StrCpy $R3 "1"
+      ${endif}
+    ${endif}
+  ${endif}
+
+  ${if} $hasPerMachineInstallation == "0"
+    ReadRegStr $0 HKLM "${UNINSTALL_REGISTRY_KEY}" DisplayIcon
+    ${if} $0 != ""
+      StrCpy $1 $0 2 -2
+      ${if} $1 == ",0"
+        StrCpy $0 $0 -2
+      ${endif}
+      ${StdUtils.GetParentPath} $2 "$0"
+      ${if} ${FileExists} "$2\${APP_EXECUTABLE_FILENAME}"
+        StrCpy $perMachineInstallationFolder "$2"
+        StrCpy $hasPerMachineInstallation "1"
+        StrCpy $R4 "1"
+      ${endif}
+    ${endif}
+  ${endif}
+
+  ; Keep the native installer controls aligned with a recovered install
+  ; without re-reading the missing primary registry value and losing the
+  ; path we just recovered.
+  ${if} $R3 == "1"
+    StrCpy $installMode CurrentUser
+    SetShellVarContext current
+    StrCpy $INSTDIR $perUserInstallationFolder
+  ${elseif} $R4 == "1"
+    StrCpy $installMode all
+    SetShellVarContext all
+    StrCpy $INSTDIR $perMachineInstallationFolder
   ${endif}
 !macroend
 
-!macro customWelcomePage
-  !define MUI_BGCOLOR "F7FAF9"
-  !define MUI_TEXTCOLOR "0F4C5C"
-  SetFont "Google Sans Flex" 9 400
-  !define MUI_WELCOMEPAGE_TITLE "Welcome to TideCode"
-  !define MUI_WELCOMEPAGE_TEXT "A calmer, more efficient workspace for building with AI.$\r$\n$\r$\nTideCode brings conversations, tools, files, and Git together so you can move from intent to reviewed change with fewer interruptions.$\r$\n$\r$\nYour settings and workspaces stay where they are. Updates install in place so your TideCode shortcut and taskbar pin keep pointing to the same app."
-  !define MUI_PAGE_CUSTOMFUNCTION_SHOW TideCodeWelcomeShow
-  !insertmacro MUI_PAGE_WELCOME
-  Function TideCodeWelcomeShow
-    ${if} $hasPerMachineInstallation == "1"
-    ${orIf} $hasPerUserInstallation == "1"
-      SendMessage $mui.WelcomePage.Title ${WM_SETTEXT} 0 "STR:TideCode is already here"
-      SendMessage $mui.WelcomePage.Text ${WM_SETTEXT} 0 "STR:This installer will update TideCode in place.$\r$\n$\r$\nYour settings, workspaces, shortcut, and taskbar pin stay connected to the same TideCode installation.$\r$\n$\r$\nNothing in your projects is removed."
-      SendMessage $mui.Button.Next ${WM_SETTEXT} 0 "STR:Update"
-      ${if} ${isUpdated}
-        ; electron-updater already confirmed this update. Keep the branded
-        ; installer visible, but continue without asking for a second click.
-        SendMessage $mui.Button.Next ${BM_CLICK} 0 0
-      ${endif}
-    ${else}
-      SendMessage $mui.Button.Next ${WM_SETTEXT} 0 "STR:Install"
-    ${endif}
-  FunctionEnd
-!macroend
-
 !macro customPageAfterChangeDir
-  !define MUI_INSTFILESPAGE_COLORS "2DD4BF F7FAF9"
-  !define MUI_INSTFILESPAGE_PROGRESSBAR "smooth colored"
-  !define MUI_INSTFILESPAGE_FINISHHEADER_TEXT "TideCode is ready"
-  !define MUI_INSTFILESPAGE_FINISHHEADER_SUBTEXT "Your workspace is installed and ready to use."
-  !define MUI_INSTFILESPAGE_ABORTHEADER_TEXT "Installation paused"
-  !define MUI_INSTFILESPAGE_ABORTHEADER_SUBTEXT "TideCode was not fully installed."
-  SetFont "Google Sans Flex" 9 400
+  ; Keep the native directory picker while leaving electron-builder's
+  ; shortcut-preservation path enabled for manual reinstalls. The built-in
+  ; directory page is disabled in the config because that option also tells
+  ; electron-builder to remove and recreate shortcuts during upgrades.
+  !insertmacro skipPageIfUpdated
+  !insertmacro MUI_PAGE_DIRECTORY
 !macroend
 
-!macro customFinishPage
-  !define MUI_FINISHPAGE_TITLE "TideCode is ready"
-  !define MUI_FINISHPAGE_TEXT "TideCode is installed. Your workspace is ready for the next idea, fix, or release."
-  !define MUI_FINISHPAGE_RUN
-  !define MUI_FINISHPAGE_RUN_TEXT "Open TideCode"
-  !define MUI_FINISHPAGE_RUN_FUNCTION "TideCodeStartApp"
-
-  Function TideCodeStartApp
-    ${if} ${isUpdated}
-      StrCpy $1 "--updated"
+!macro customInstallmode
+  ; Preserve the existing per-user or per-machine installation mode during
+  ; an in-app update without asking the user to choose it a second time.
+  ; Fresh installs and manually launched installers keep the native choice
+  ; page so the user can choose the installation mode and destination.
+  ${if} ${isUpdated}
+    ${if} $hasPerMachineInstallation == "1"
+      StrCpy $isForceMachineInstall "1"
     ${else}
-      StrCpy $1 ""
+      StrCpy $isForceCurrentInstall "1"
     ${endif}
-    ${StdUtils.ExecShellAsUser} $0 "$launchLink" "open" "$1"
-  FunctionEnd
+  ${endif}
+!macroend
 
-  !insertmacro MUI_PAGE_FINISH
+!macro customInstall
+  ; electron-updater starts a non-silent installer for the user-visible
+  ; update flow. Once the files are installed, launch the new app and close
+  ; NSIS directly instead of showing a finish page or waiting for a click.
+  ${if} ${isUpdated}
+    HideWindow
+    StrCpy $1 "--updated"
+    ${StdUtils.ExecShellAsUser} $0 "$launchLink" "open" "$1"
+    SetErrorLevel 0
+    Quit
+  ${endif}
 !macroend

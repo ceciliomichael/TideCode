@@ -114,7 +114,7 @@ export function SidebarPanel({
         })
       }}
     >
-      <div className="pb-4 pr-6 md:pr-7">
+      <div className="pr-6 md:pr-7">
         <div className="h-10" aria-hidden="true" />
 
         <div className="mt-4 flex items-center gap-1">
