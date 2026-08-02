@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.9 — More dependable Windows updates and a tighter workspace layout
+
+TideCode now handles Windows updates and reinstalls more reliably while keeping the workspace sidebar compact.
+
+- Recovered existing per-user and per-machine installation locations from legacy Windows uninstall metadata when the primary installer record is missing.
+- Kept fresh installs on the native Windows installer flow while letting confirmed in-app updates continue directly and relaunch TideCode after installation.
+- Removed extra bottom spacing above the sidebar content for a more consistent navigation layout.
+
 ## 1.0.8 — More reliable terminal output and clearer update downloads
 
 TideCode now keeps long-running AI terminal work observable while making update discovery feel immediate and informative.
