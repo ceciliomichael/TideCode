@@ -1,5 +1,6 @@
 import type { ModelMessage } from 'ai'
 import { normalizeAssistantMessageContent } from '../../../src/lib/chatMessageContent'
+import { EXECUTION_MODE_CONTEXT_PATTERN } from '../../../src/lib/executionModeContext'
 import { getToolResultModelContent, parseStructuredToolResultContent } from '../../../src/lib/toolResultContent'
 import type { ChatMode, Message, AppTerminalExecutionMode } from '../../../src/types/chat'
 import { buildChatModeSystemPrompt } from './prompts/mode'
@@ -31,9 +32,6 @@ type UserImagePart = {
 type UserContentPart = UserTextPart | UserImagePart
 
 type UserModelMessage = Extract<ModelMessage, { role: 'user' }>
-
-const EXECUTION_MODE_CONTEXT_PATTERN =
-  /<execution_mode_context mode="(sandbox|full)">[\s\S]*?<\/execution_mode_context>/gu
 
 export function buildExecutionModeContext(terminalExecutionMode: AppTerminalExecutionMode) {
   const details =

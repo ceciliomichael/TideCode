@@ -77,6 +77,11 @@ export function useChatContextUsage({
 
     fetchUsageRef.current = fetchUsage
     const timeoutId = window.setTimeout(fetchUsage, 120)
+    const unsubscribeChat = window.tidecodeChat.onStreamEvent((event) => {
+      if (event.type === 'compaction_committed' && event.conversationId === conversationId) {
+        fetchUsage()
+      }
+    })
 
     let unsubscribeExplorer: (() => void) | null = null
     if (agentContextRootPath?.trim()) {
@@ -98,6 +103,7 @@ export function useChatContextUsage({
       window.clearTimeout(timeoutId)
       window.clearInterval(intervalId)
       window.removeEventListener('focus', handleFocus)
+      unsubscribeChat()
 
       if (unsubscribeExplorer) {
         unsubscribeExplorer()

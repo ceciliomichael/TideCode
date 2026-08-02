@@ -36,6 +36,7 @@ export interface TideCodeUpdateStateEvent {
 export interface TideCodeUpdatesApi {
   checkForUpdates: () => Promise<TideCodeUpdateCheckResult>
   downloadUpdate: (version: string) => Promise<TideCodeUpdateDownloadResult>
+  getCachedUpdate: () => Promise<TideCodeUpdateCheckResult | null>
   getCurrentVersion: () => Promise<string>
   openLatestRelease: () => Promise<void>
   onUpdateState: (listener: (event: TideCodeUpdateStateEvent) => void) => () => void

@@ -30,6 +30,7 @@ import {
 } from '../history/eventStore'
 import { projectCanonicalReplay } from '../history/replayProjector'
 import { compactModelMessages } from './compaction/service'
+import { resolveAutomaticCompactionTrigger } from './compaction/automatic'
 import { findLatestCompactionPacket } from './compaction/window'
 import {
   buildChatPrompt,
@@ -222,6 +223,14 @@ export async function runToolEnabledChatStream(input: {
         }
       },
       prepareStep: async (stepInput) => {
+        const automaticTrigger = resolveAutomaticCompactionTrigger({
+          abortSignal: input.abortController.signal,
+          messages: stepInput.messages,
+          responseMessages: stepInput.responseMessages,
+          stepNumber: stepInput.stepNumber,
+        })
+        if (!automaticTrigger) return undefined
+
         const compacted = await compactModelMessages({
           createStream: (compactionInput) => input.createStream({
             cacheKey: `${cacheKey}:compaction`,
@@ -242,11 +251,10 @@ export async function runToolEnabledChatStream(input: {
           previousPacket: latestCompactionPacket,
           contextWindowTokens: contextCompaction.contextWindowTokens,
           reserveTokens: contextCompaction.reserveTokens,
-          targetRatio: contextCompaction.targetPercent / 100,
           triggerRatio: contextCompaction.triggerPercent / 100,
           signal: input.abortController.signal,
         })
-        if (!compacted) return undefined
+        if (!compacted || input.abortController.signal.aborted) return undefined
 
         replayMessages = [...compacted.projectedMessages]
         latestCompactionPacket = compacted.packet
@@ -263,6 +271,12 @@ export async function runToolEnabledChatStream(input: {
             sourceMessageIds: compacted.packet.sourceMessageIds,
             usedFallback: compacted.usedFallback,
           }))
+          emitChatStreamEvent(input.webContents, {
+            compactionId: compacted.packet.packetId,
+            conversationId,
+            streamId: input.streamId,
+            type: 'compaction_committed',
+          })
         }
         return {
           messages: compacted.projectedMessages,

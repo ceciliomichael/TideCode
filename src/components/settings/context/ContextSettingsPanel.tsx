@@ -48,11 +48,6 @@ export function ContextSettingsSections({ isLoading, onUpdateSettings, settings 
       .map((value) => ({ label: `${value.toLocaleString()} tokens`, value: String(value) })),
     [settings.contextWindowTokens],
   )
-  const maximumTargetPercent = Math.max(
-    CONTEXT_COMPACTION_LIMITS.targetPercent.minimum,
-    settings.triggerPercent - 5,
-  )
-
   return (
     <>
       <SettingsSection title="Context budget">
@@ -102,31 +97,6 @@ export function ContextSettingsSections({ isLoading, onUpdateSettings, settings 
           </SettingsRow>
         </div>
 
-        <div className="border-t border-border">
-          <SettingsRow
-            title="Compaction target"
-            description="After compaction, keep approximately this percentage of the context budget for the compacted state and recent tail."
-          >
-            <div className="w-full md:w-[240px]">
-              <div className="flex items-center gap-3">
-                <input
-                  aria-label="Compaction target"
-                  className="min-w-0 flex-1 accent-action"
-                  disabled={isLoading}
-                  max={maximumTargetPercent}
-                  min={CONTEXT_COMPACTION_LIMITS.targetPercent.minimum}
-                  onChange={(event) => updateContextSettings({ targetPercent: Number(event.target.value) })}
-                  step="1"
-                  type="range"
-                  value={Math.min(settings.targetPercent, maximumTargetPercent)}
-                />
-                <output className="w-12 text-right text-sm font-medium text-foreground">
-                  {formatPercent(settings.targetPercent)}
-                </output>
-              </div>
-            </div>
-          </SettingsRow>
-        </div>
       </SettingsSection>
 
       <SettingsSection title="Generation reserve">

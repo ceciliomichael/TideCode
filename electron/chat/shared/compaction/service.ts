@@ -71,7 +71,6 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
     messageTokens,
     reserveTokens: input.reserveTokens,
     systemPromptTokens: input.systemPromptTokens,
-    targetRatio: input.targetRatio,
     toolSchemaTokens: input.toolSchemaTokens,
     triggerRatio: input.triggerRatio,
   })
@@ -126,7 +125,6 @@ export async function compactModelMessages(input: CompactModelMessagesInput) {
     messageTokens,
     reserveTokens: input.reserveTokens,
     systemPromptTokens: input.systemPromptTokens,
-    targetRatio: input.targetRatio,
     toolSchemaTokens: input.toolSchemaTokens,
     triggerRatio: input.triggerRatio,
   })

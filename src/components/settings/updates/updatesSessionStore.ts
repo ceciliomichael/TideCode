@@ -30,6 +30,8 @@ const INITIAL_UPDATES_SESSION_SNAPSHOT: UpdatesSessionSnapshot = {
 let updatesSessionSnapshot = INITIAL_UPDATES_SESSION_SNAPSHOT
 let latestRequestId = 0
 const listeners = new Set<() => void>()
+let hasHydratedCachedUpdate = false
+let cachedUpdateHydrationPromise: Promise<void> | null = null
 
 function publishSnapshot(nextSnapshot: UpdatesSessionSnapshot) {
   updatesSessionSnapshot = nextSnapshot
@@ -42,6 +44,38 @@ function updateSnapshot(patch: Partial<UpdatesSessionSnapshot>) {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'TideCode could not check for updates right now.'
+}
+
+export function hydrateCachedUpdate() {
+  if (hasHydratedCachedUpdate) {
+    return cachedUpdateHydrationPromise ?? Promise.resolve()
+  }
+
+  hasHydratedCachedUpdate = true
+  if (typeof window === 'undefined' || !window.tidecodeUpdates) {
+    return Promise.resolve()
+  }
+
+  cachedUpdateHydrationPromise = window.tidecodeUpdates
+    .getCachedUpdate()
+    .then((result) => {
+      if (!result || updatesSessionSnapshot.result) {
+        return
+      }
+
+      updateSnapshot({
+        checkState: updatesSessionSnapshot.checkState === 'checking' ? 'checking' : 'success',
+        currentVersion: result.currentVersion,
+        downloadPercent: null,
+        downloadState: 'not-available',
+        errorMessage: null,
+        pendingVersion: result.updateAvailable ? result.latestVersion : null,
+        result,
+      })
+    })
+    .catch(() => undefined)
+
+  return cachedUpdateHydrationPromise
 }
 
 export function getUpdatesSessionSnapshot() {
@@ -94,6 +128,7 @@ function subscribeToMainProcessState() {
 
 export function requestUpdateCheck() {
   subscribeToMainProcessState()
+  void hydrateCachedUpdate()
   const requestId = latestRequestId + 1
   latestRequestId = requestId
   const downloadedVersion =
@@ -105,7 +140,6 @@ export function requestUpdateCheck() {
     downloadState: downloadedVersion ? 'downloaded' : 'not-available',
     errorMessage: null,
     pendingVersion: downloadedVersion,
-    result: null,
   })
 
   void window.tidecodeUpdates
@@ -200,5 +234,6 @@ export function requestAutomaticUpdateCheck() {
   }
 
   updateSnapshot({ hasAutoChecked: true })
+  void hydrateCachedUpdate()
   requestUpdateCheck()
 }

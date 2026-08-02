@@ -6,8 +6,11 @@ import {
 } from '../updates/githubReleaseService'
 import { downloadLatestUpdate, configureAutoUpdater, restartToInstallUpdate } from '../updates/autoUpdateService'
 import { requestLatestReleaseWithElectron } from '../updates/electronReleaseRequest'
+import { buildCachedUpdateCheckResult, createUpdateReleaseCacheStore } from '../updates/releaseCache'
 
 export function registerUpdatesIpcHandlers(getWindow: () => Electron.BrowserWindow | null) {
+  const releaseCache = createUpdateReleaseCacheStore(app.getPath('userData'))
+
   configureAutoUpdater((event) => {
     const currentWindow = getWindow()
     if (currentWindow && !currentWindow.isDestroyed()) {
@@ -16,8 +19,21 @@ export function registerUpdatesIpcHandlers(getWindow: () => Electron.BrowserWind
   })
 
   ipcMain.handle('updates:getCurrentVersion', () => app.getVersion())
+  ipcMain.handle('updates:getCachedUpdate', async () => {
+    const cachedRelease = await releaseCache.read()
+    return cachedRelease ? buildCachedUpdateCheckResult(app.getVersion(), cachedRelease) : null
+  })
   ipcMain.handle('updates:checkForUpdates', async () => {
     const result = await checkForUpdates(app.getVersion(), requestLatestReleaseWithElectron)
+    try {
+      await releaseCache.write({
+        checkedAt: result.checkedAt,
+        release: result.release,
+      })
+    } catch (error) {
+      console.warn('TideCode could not persist release metadata.', error)
+    }
+
     const shouldDownloadAutomatically = result.updateAvailable && (await getStoredSettings()).autoDownloadUpdates
     if (!shouldDownloadAutomatically || !app.isPackaged) {
       return result

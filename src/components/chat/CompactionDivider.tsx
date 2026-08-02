@@ -1,4 +1,3 @@
-import { ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import type { ChatCompactionMarker } from '../../types/chat'
 
@@ -17,16 +16,10 @@ export function CompactionDivider({ marker }: CompactionDividerProps) {
           type="button"
           aria-expanded={isOpen}
           aria-label="Show compacted context details"
-          className="group flex shrink-0 items-center gap-1 text-subtle-foreground transition-colors hover:text-foreground"
+          className="flex shrink-0 items-center text-subtle-foreground transition-colors hover:text-foreground"
           onClick={() => setIsOpen((currentValue) => !currentValue)}
         >
           <span>Compacted</span>
-          <ChevronRight
-            className={[
-              'h-3.5 w-3.5 opacity-0 transition-[opacity,transform] duration-200 group-hover:opacity-100',
-              isOpen ? 'rotate-90 opacity-100' : '',
-            ].join(' ')}
-          />
         </button>
         <div className="h-px flex-1 bg-border" />
       </div>

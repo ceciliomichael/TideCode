@@ -1,4 +1,5 @@
 import { localCompactionPacketSchema, type LocalCompactionPacket } from './contracts'
+import { sanitizeCompactionPacket } from './sanitize'
 
 const MAX_PROJECTED_PACKET_CHARS = 48_000
 const MAX_PROJECTED_PACKET_TEXT_CHARS = 800
@@ -120,11 +121,11 @@ export function normalizeCompactionPacket(packet: LocalCompactionPacket, expecte
   sourceMessageIds: string[]
 }) {
   const sourceIds = new Set(expected.sourceMessageIds)
-  const normalized = boundPacket({
+  const normalized = boundPacket(sanitizeCompactionPacket({
     ...packet,
     sourceDigest: expected.sourceDigest,
     sourceMessageIds: packet.sourceMessageIds.filter((id) => sourceIds.has(id)),
-  })
+  }))
   const result = localCompactionPacketSchema.safeParse(normalized)
   return result.success ? result.data : null
 }

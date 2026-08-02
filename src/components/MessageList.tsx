@@ -15,6 +15,7 @@ import { ChatInput } from "./ChatInput";
 import { UserMessage } from "./UserMessage";
 import { WorkingBlock } from "./chat/WorkingBlock";
 import { CompactionDivider } from "./chat/CompactionDivider";
+import { placeCompactionMarkersAfterTranscript } from './chat/compactionMarkerPlacement';
 import { useChatAutoScroll } from "./chat/useChatAutoScroll";
 import type { ChatModeOption } from "./chat/ChatModeSelectorField";
 import type { ModelSelectorOption } from "./chat/ModelSelectorField";
@@ -322,17 +323,7 @@ export function MessageList({
       | { type: 'working_group'; messages: Message[]; trailingMessage?: { message: Message, index: number }; startTime: number; endTime: number; startIndex: number; key: string };
 
     const items: RenderItem[] = [];
-    const markersByAnchor = new Map<string, ChatCompactionMarker[]>();
-    const unanchoredMarkers: ChatCompactionMarker[] = [];
-    for (const marker of compactionMarkers) {
-      if (!marker.anchorUserMessageId) {
-        unanchoredMarkers.push(marker);
-        continue;
-      }
-      const anchored = markersByAnchor.get(marker.anchorUserMessageId) ?? [];
-      anchored.push(marker);
-      markersByAnchor.set(marker.anchorUserMessageId, anchored);
-    }
+    const markerPlacement = placeCompactionMarkersAfterTranscript(visibleMessages, compactionMarkers);
     let currentAssistantRun: Message[] = [];
     let currentAssistantRunStartIndex = -1;
 
@@ -420,10 +411,10 @@ export function MessageList({
           currentAssistantRun = [];
           currentAssistantRunStartIndex = -1;
         }
-        items.push({ type: 'message', message: msg, index: i });
-        for (const marker of markersByAnchor.get(msg.id) ?? []) {
+        for (const marker of markerPlacement.markersBeforeMessageId.get(msg.id) ?? []) {
           items.push({ marker, type: 'compaction_marker' });
         }
+        items.push({ type: 'message', message: msg, index: i });
       } else {
         if (currentAssistantRun.length === 0) {
           currentAssistantRunStartIndex = i;
@@ -447,7 +438,7 @@ export function MessageList({
       }
     }
 
-    for (const marker of unanchoredMarkers) {
+    for (const marker of markerPlacement.trailingMarkers) {
       items.push({ marker, type: 'compaction_marker' });
     }
     

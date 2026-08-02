@@ -4,6 +4,7 @@ import { MarkdownRenderer } from '../../chat/MarkdownRenderer'
 import { SegmentedField } from '../../ui/SegmentedField'
 import {
   getUpdatesSessionSnapshot,
+  hydrateCachedUpdate,
   requestAutomaticUpdateCheck,
   requestUpdateDownload,
   requestUpdateCheck,
@@ -86,6 +87,7 @@ export function UpdatesSettingsPanel({ autoDownloadUpdates, isLoading, onUpdateS
   const [openReleaseError, setOpenReleaseError] = useState<string | null>(null)
 
   useEffect(() => {
+    void hydrateCachedUpdate()
     requestAutomaticUpdateCheck()
   }, [])
 

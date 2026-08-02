@@ -8,6 +8,7 @@ import {
   buildModelMessages,
   ensureCurrentExecutionModeContext,
 } from '../../electron/chat/shared/messages'
+import { stripExecutionModeContext } from '../../src/lib/executionModeContext'
 import { createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
 import type { Message } from '../../src/types/chat'
 
@@ -104,4 +105,22 @@ test('execution mode changes do not alter the system prompt or tool context fing
   assert.equal(sandboxManifest.systemHash, fullAccessManifest.systemHash)
   assert.equal(sandboxManifest.toolsHash, fullAccessManifest.toolsHash)
   assert.equal(sandboxManifest.fingerprint, fullAccessManifest.fingerprint)
+})
+
+test('execution mode context is removed from compacted text', () => {
+  const text = [
+    'Continue the workspace implementation.',
+    '',
+    '<execution_mode_context mode="full">',
+    'Execution mode: full access.',
+    'This must not be retained in the user-facing compacted state.',
+    '</execution_mode_context>',
+    '',
+    'The validation test is the next task.',
+  ].join('\n')
+
+  assert.equal(
+    stripExecutionModeContext(text),
+    'Continue the workspace implementation.\n\nThe validation test is the next task.',
+  )
 })

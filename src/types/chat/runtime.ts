@@ -93,6 +93,12 @@ export interface ChatCompactionDetailSection {
 
 export type ChatStreamEvent =
   | { streamId: string; type: 'started' }
+  | {
+      compactionId: string
+      conversationId: string
+      streamId: string
+      type: 'compaction_committed'
+    }
   | { delta: string; streamId: string; type: 'content_delta' }
   | { delta: string; streamId: string; type: 'reasoning_delta' }
   | { streamId: string; type: 'reasoning_completed' }

@@ -17,6 +17,7 @@ import {
   selectCompactionWindow,
 } from '../../electron/chat/shared/compaction/window'
 import type { CompactionStreamFactory } from '../../electron/chat/shared/compaction/contracts'
+import { buildCompactionRequestPrompt } from '../../electron/chat/shared/compaction/prompt'
 
 function createConversationMessages(): ModelMessage[] {
   return [
@@ -142,7 +143,6 @@ test('automatic budget checks compact a completed tool step even when the target
     toolSchemaTokens: 100,
     contextWindowTokens: 16_000,
     reserveTokens: 4_000,
-    targetRatio: 0.25,
     triggerRatio: 0.8,
   })
 
@@ -161,6 +161,37 @@ test('fallback compaction produces a parseable assistant continuation marker', a
   assert.equal(result.projectedMessages.some((message) => message.role === 'assistant' && typeof message.content === 'string' && message.content.startsWith('tidecode.compaction_state.v1\n')), true)
   assert.deepEqual(findLatestCompactionPacket(result.projectedMessages), result.packet)
   assert.deepEqual(parseCompactionMessage(buildCompactionMessage(result.packet)), result.packet)
+})
+
+test('compaction strips execution mode context from prompts, fallback packets, and replay messages', () => {
+  const executionModeContext = [
+    '<execution_mode_context mode="full">',
+    'Internal execution details that are not conversation state.',
+    '</execution_mode_context>',
+  ].join('\n')
+  const messages = [
+    { role: 'user', content: `Implement the requested workspace change.\n\n${executionModeContext}` },
+    { role: 'assistant', content: `I am checking the application code.\n\n${executionModeContext}` },
+    { role: 'user', content: 'Fix the validation behavior.' },
+    { role: 'assistant', content: 'The next step is to update the regression test.' },
+  ] as ModelMessage[]
+  const sourceDigest = buildCompactionSourceDigest(messages, 2)
+  const sourceMessageIds = ['model:0', 'model:1']
+  const packet = buildFallbackCompactionPacket({
+    messages: messages.slice(0, 2),
+    sourceDigest,
+    sourceMessageIds,
+  })
+  const prompt = buildCompactionRequestPrompt({
+    messages: messages.slice(0, 2),
+    sourceDigest,
+    sourceMessageIds,
+  })
+  const replayMessage = buildCompactionMessage(packet)
+
+  assert.doesNotMatch(prompt, /execution_mode_context/u)
+  assert.doesNotMatch(JSON.stringify(packet), /execution_mode_context/u)
+  assert.doesNotMatch(typeof replayMessage.content === 'string' ? replayMessage.content : '', /execution_mode_context/u)
 })
 
 test('valid model compaction output is accepted and malformed output falls back safely', async () => {

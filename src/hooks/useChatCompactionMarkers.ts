@@ -21,7 +21,7 @@ export function useChatCompactionMarkers({
     }
 
     let isCancelled = false
-    const timeoutId = window.setTimeout(() => {
+    const loadMarkers = () => {
       void window.tidecodeHistory
         .listCompactionMarkers(conversationId)
         .then((nextMarkers) => {
@@ -32,11 +32,19 @@ export function useChatCompactionMarkers({
         .catch((error) => {
           console.error('Failed to load chat compaction markers', error)
         })
-    }, 100)
+    }
+
+    const timeoutId = window.setTimeout(loadMarkers, 100)
+    const unsubscribeStream = window.tidecodeChat.onStreamEvent((event) => {
+      if (event.type === 'compaction_committed' && event.conversationId === conversationId) {
+        loadMarkers()
+      }
+    })
 
     return () => {
       isCancelled = true
       window.clearTimeout(timeoutId)
+      unsubscribeStream()
     }
   }, [conversationId, messagesLength, refreshSignal])
 

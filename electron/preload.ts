@@ -118,6 +118,7 @@ const settingsApi: TideCodeSettingsApi = {
 const updatesApi: TideCodeUpdatesApi = {
   checkForUpdates: () => ipcRenderer.invoke('updates:checkForUpdates'),
   downloadUpdate: (version: string) => ipcRenderer.invoke('updates:downloadUpdate', version),
+  getCachedUpdate: () => ipcRenderer.invoke('updates:getCachedUpdate'),
   getCurrentVersion: () => ipcRenderer.invoke('updates:getCurrentVersion'),
   onUpdateState: (listener) => {
     const wrappedListener = (_event: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)

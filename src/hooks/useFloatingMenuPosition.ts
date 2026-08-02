@@ -24,6 +24,7 @@ export function useFloatingMenuPosition({
   offset = DEFAULT_OFFSET,
   preferredPlacement = 'below',
 }: UseFloatingMenuPositionInput) {
+  const [isPositioned, setIsPositioned] = useState(false)
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({
     left: 0,
     maxHeight: 0,
@@ -34,8 +35,14 @@ export function useFloatingMenuPosition({
 
   useLayoutEffect(() => {
     if (!isOpen) {
+      setIsPositioned(false)
       return
     }
+
+    // A portal is mounted after the trigger opens. Keep it hidden until this
+    // layout pass measures the current menu instead of briefly reusing the
+    // previous open position from a stale render.
+    setIsPositioned(false)
 
     function updateMenuPosition() {
       const anchorElement = anchorRef.current
@@ -50,11 +57,9 @@ export function useFloatingMenuPosition({
       const viewportWidth = window.innerWidth
       const viewportHeight = window.innerHeight
       const menuWidth = menuRect?.width ?? anchorRect.width
-      // Use scrollHeight (intrinsic content height) only for deciding which side
-      // to open on, but use offsetHeight (the actual clamped rendered height) for
-      // the final `top` calculation so a 1-result menu doesn't jump too far above.
+      // Use scrollHeight (intrinsic content height) for both placement and the
+      // initial top calculation so the menu does not need a visible correction.
       const menuScrollHeight = menuElement?.scrollHeight ?? menuRect?.height ?? 0
-      const menuRenderedHeight = menuElement?.offsetHeight ?? menuRect?.height ?? 0
       const availableBelow = Math.max(viewportHeight - anchorRect.bottom - offset - minViewportMargin, 0)
       const availableAbove = Math.max(anchorRect.top - offset - minViewportMargin, 0)
       const shouldOpenAbove =
@@ -65,10 +70,12 @@ export function useFloatingMenuPosition({
       const unclampedLeft = anchorRect.left
       const maxLeft = Math.max(viewportWidth - menuWidth - minViewportMargin, minViewportMargin)
       const left = Math.min(Math.max(unclampedLeft, minViewportMargin), maxLeft)
-      // Use the actual rendered height (offsetHeight) for the top offset so the
-      // menu sits flush against the anchor regardless of how many results there are.
+      // The first layout pass can still have a zero offsetHeight because the
+      // previous hidden style had maxHeight: 0. The intrinsic height is already
+      // available and avoids a second visible jump after the menu becomes visible.
+      const menuHeight = Math.min(menuScrollHeight, maxHeight)
       const top = shouldOpenAbove
-        ? Math.max(minViewportMargin, anchorRect.top - Math.min(menuRenderedHeight, maxHeight) - offset)
+        ? Math.max(minViewportMargin, anchorRect.top - menuHeight - offset)
         : anchorRect.bottom + offset
 
       setMenuStyle({
@@ -78,10 +85,10 @@ export function useFloatingMenuPosition({
         top,
         visibility: 'visible',
       })
+      setIsPositioned(true)
     }
 
     updateMenuPosition()
-    const animationFrameId = window.requestAnimationFrame(updateMenuPosition)
     const menuElement = menuRef.current
     const resizeObserver =
       typeof ResizeObserver === 'function'
@@ -97,12 +104,15 @@ export function useFloatingMenuPosition({
     window.addEventListener('scroll', updateMenuPosition, true)
 
     return () => {
-      window.cancelAnimationFrame(animationFrameId)
       resizeObserver?.disconnect()
       window.removeEventListener('resize', updateMenuPosition)
       window.removeEventListener('scroll', updateMenuPosition, true)
     }
   }, [anchorRef, isOpen, matchAnchorWidth, menuRef, minViewportMargin, offset, preferredPlacement])
 
-  return menuStyle
+  const resolvedMenuStyle: CSSProperties = {
+    ...menuStyle,
+    visibility: isOpen && isPositioned ? 'visible' : 'hidden',
+  }
+  return resolvedMenuStyle
 }

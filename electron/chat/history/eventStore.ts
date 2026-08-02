@@ -16,6 +16,7 @@ import { decodeReplayValue, encodeModelMessages, encodeReplayValue } from './rep
 import { parseCanonicalHistoryDocument } from './validation'
 import type { ModelMessage } from 'ai'
 import { sha256, stableStringify } from '../cache/canonicalization'
+import { stripExecutionModeContext } from '../../../src/lib/executionModeContext'
 
 const CANONICAL_DIRECTORY_NAME = 'canonical-history'
 const updateQueues = new Map<string, Promise<void>>()
@@ -201,7 +202,8 @@ function readCompactionDetailItems(packet: unknown, field: string) {
   return value
     .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
     .slice(0, 8)
-    .map((item) => item.trim().slice(0, 400))
+    .map((item) => stripExecutionModeContext(item).slice(0, 400))
+    .filter((item) => item.length > 0)
 }
 
 function buildCompactionDetailSections(encodedPacket: Parameters<typeof decodeReplayValue>[0]): ChatCompactionDetailSection[] {

@@ -1,9 +1,11 @@
 import type { ModelMessage } from 'ai'
+import { stripExecutionModeContext } from '../../../../src/lib/executionModeContext'
 import { createPacketId } from './window'
 import type { CompactionReasoningMode, LocalCompactionPacket } from './contracts'
+import { sanitizeCompactionPacket } from './sanitize'
 
 function compactText(value: string, maxLength = 1_500) {
-  const normalized = value.replace(/\s+/gu, ' ').trim()
+  const normalized = stripExecutionModeContext(value).replace(/\s+/gu, ' ').trim()
   return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength - 1).trimEnd()}…`
 }
 
@@ -56,7 +58,7 @@ export function buildFallbackCompactionPacket(input: {
   const tools = roleText(input.messages, 'tool')
   const paths = extractPaths(input.messages)
   const reasoningMode = detectReasoningMode(input.messages)
-  const prior = input.previousPacket
+  const prior = input.previousPacket ? sanitizeCompactionPacket(input.previousPacket) : undefined
 
   const packet: LocalCompactionPacket = {
     schema: 'tidecode.compaction_packet/v1',
@@ -86,5 +88,5 @@ export function buildFallbackCompactionPacket(input: {
     nextActions: prior?.nextActions?.length ? prior.nextActions : ['Continue from the latest user request and retained tool evidence.'],
     omitted: ['Model summarization was unavailable; older details may require rereading from durable history.'],
   }
-  return packet
+  return sanitizeCompactionPacket(packet)
 }
