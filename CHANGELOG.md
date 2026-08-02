@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.10 — Authenticated GitHub publishing and more deliberate planning
+
+TideCode now makes it easier to publish a local workspace to GitHub while giving Plan mode a more deliberate, decision-focused planning workflow.
+
+- Added GitHub device authorization with encrypted local token storage, repository creation, initial-branch setup, and authenticated first push from Source Control.
+- Added validation and clear failure handling for repository names, descriptions, branches, remotes, workspace paths, expired sign-ins, and GitHub responses.
+- Made Source Control choose the primary action from repository state: Commit while files need review, Publish to GitHub for a clean local repository without a remote, and Sync Changes for outgoing commits.
+- Expanded Plan mode to investigate repository evidence, ask focused decision questions, surface tradeoffs, and converge on a confirmed scope before producing a plan.
+
 ## 1.0.9 — More dependable Windows updates and a tighter workspace layout
 
 TideCode now handles Windows updates and reinstalls more reliably while keeping the workspace sidebar compact.
