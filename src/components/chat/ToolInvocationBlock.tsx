@@ -7,7 +7,7 @@ import { ChangeDiffResult } from './FileChangeDiffResult'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { TerminalToolResult } from './TerminalToolResult'
 import { ToolDecisionRequestCard, type ToolDecisionSubmission } from './ToolDecisionRequestCard'
-import { getToolInvocationHeaderLabel, resolveToolInvocationForPresentation } from './toolInvocationPresentation'
+import { getToolInvocationHeaderLabel } from './toolInvocationPresentation'
 import { isFileEditTool, isFileWriteTool } from './toolInvocationKinds'
 import { isKanbanTool } from './kanbanToolInvocationKinds'
 import { KanbanToolResult } from './KanbanToolResult'
@@ -63,6 +63,10 @@ function renderDiffCountSummary(invocation: ToolInvocationTrace) {
     return <span className="text-emerald-500">{`+${addedLineCount}`}</span>
   }
 
+  if (removedLineCount > 0) {
+    return <span className="text-red-500">{`-${removedLineCount}`}</span>
+  }
+
   return null
 }
 
@@ -72,10 +76,7 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   onToolDecisionSubmit,
   workspaceRootPath = null,
 }: ToolInvocationBlockProps) {
-  const displayInvocation = useMemo(
-    () => resolveToolInvocationForPresentation(invocation),
-    [invocation],
-  )
+  const displayInvocation = invocation
   const [isOpen, setIsOpen] = useState(false)
   const [submittedDecisionRequestKey, setSubmittedDecisionRequestKey] = useState<string | null>(null)
   const [displayedState, setDisplayedState] = useState<ToolInvocationTrace['state']>(invocation.state)

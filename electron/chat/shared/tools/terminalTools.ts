@@ -121,7 +121,7 @@ function createErrorResult(summary: string, body?: string): AgentToolExecutionRe
 }
 
 function getExecuteTerminalDescription() {
-  return 'Executes terminal commands and manages terminal sessions.'
+  return 'Run or manage terminal sessions.'
 }
 
 function clampInteger(value: number | undefined, min: number, max: number, fallback: number) {

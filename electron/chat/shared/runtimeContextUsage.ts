@@ -9,7 +9,7 @@ import {
   estimateModelMessageContextUsage,
 } from '../../../src/lib/contextUsage'
 import { normalizeContextCompactionSettings } from '../../../src/lib/contextCompactionSettings'
-import { buildSkillsSystemPromptBlock, listEnabledSkills } from '../../skills/service'
+import { listEnabledSkills } from '../../skills/service'
 import { describeTools, stableStringify } from '../cache/canonicalization'
 import { applyPromptCacheBreakpoints } from '../cache/providerPolicies'
 import { readCanonicalHistory } from '../history/eventStore'
@@ -34,7 +34,6 @@ export async function estimateToolEnabledContextUsage(input: {
   const workspaceRootPath = input.agentContextRootPath?.trim() || 'No workspace selected'
   const enabledSkills = await listEnabledSkills(input.agentContextRootPath)
   const promptOptions = {
-    availableSkillsBlock: buildSkillsSystemPromptBlock(enabledSkills),
     includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId),
     terminalExecutionMode: input.terminalExecutionMode,
   }

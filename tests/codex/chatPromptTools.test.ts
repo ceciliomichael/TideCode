@@ -7,23 +7,17 @@ import {
 } from '../../src/lib/toolResultContent'
 import type { Message } from '../../src/types/chat'
 import { buildChatPrompt, buildChatSystemPrompt } from '../../electron/chat/shared/messages'
-import { buildSkillToolDescription, buildSkillsSystemPromptBlock } from '../../electron/skills/service'
+import { buildSkillToolDescription } from '../../electron/skills/service'
 
 test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
   const agentPrompt = buildChatSystemPrompt('agent', 'C:/repo')
   const planPrompt = buildChatSystemPrompt('plan', 'C:/repo')
 
   assert.match(agentPrompt, /You are the active builder/u)
-  assert.match(agentPrompt, /model-facing tool surface contains three capability tools/u)
-  assert.match(agentPrompt, /list_tools searches the private catalog/u)
+  assert.match(agentPrompt, /concrete tool whose name and parameters match the task/u)
   assert.equal((agentPrompt.match(/<tool_instructions>/gu) ?? []).length, 1)
-  assert.match(agentPrompt, /Tool workflow for every request that needs a tool/u)
-  assert.match(agentPrompt, /Call list_tools first/u)
+  assert.match(agentPrompt, /Read before editing/u)
   assert.doesNotMatch(agentPrompt, /\blist_dir\b/u)
-  assert.match(agentPrompt, /execute_tool may be called directly/u)
-  assert.match(agentPrompt, /wait for the requested schema/u)
-  assert.match(agentPrompt, /ids array for multiple independent tools/u)
-  assert.match(agentPrompt, /targeted natural-language task query/u)
   assert.match(agentPrompt, /Default to 1-3 short sentences or a brief bullet list/u)
   assert.doesNotMatch(agentPrompt, /caveman|authorization_override/iu)
 
@@ -250,24 +244,10 @@ test('buildChatPrompt preserves freeform apply_patch tool calls', () => {
   assert.equal(assistantMessage?.content[0]?.input, patchText)
 })
 
-test('buildChatSystemPrompt includes enabled skill metadata when provided', () => {
-  const prompt = buildChatSystemPrompt('agent', 'C:/repo', {
-    availableSkillsBlock: buildSkillsSystemPromptBlock([
-      {
-        baseDirectory: 'C:/skills/docx',
-        description: 'Work with Word documents.',
-        id: 'C:/skills/docx/SKILL.md',
-        location: 'C:/skills/docx/SKILL.md',
-        name: 'docx',
-        source: 'global',
-        sourceLabel: 'Global',
-      },
-    ]),
-  })
+test('buildChatSystemPrompt does not expose skill metadata', () => {
+  const prompt = buildChatSystemPrompt('agent', 'C:/repo')
 
-  assert.match(prompt, /<available_skills>/u)
-  assert.match(prompt, /<name>docx<\/name>/u)
-  assert.match(prompt, /Work with Word documents\./u)
+  assert.doesNotMatch(prompt, /<available_skills>|<names>|skill/iu)
 })
 
 test('buildSkillToolDescription states only the literal skill operation', () => {
@@ -283,9 +263,7 @@ test('buildSkillToolDescription states only the literal skill operation', () => 
     },
   ])
 
-  assert.match(description, /Loads and returns the complete instructions and base directory/u)
-  assert.match(description, /selected by exact name/u)
-  assert.match(description, /Enabled names: docx/u)
+  assert.equal(description, 'List, search, or load an enabled skill.')
   assert.doesNotMatch(description, /when|should|use this/iu)
 })
 

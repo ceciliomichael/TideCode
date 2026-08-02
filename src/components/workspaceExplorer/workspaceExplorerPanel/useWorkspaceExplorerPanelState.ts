@@ -253,10 +253,6 @@ export function useWorkspaceExplorerPanelState({
   }, [closeContextMenu, resetCreation, resetDeleteDialog, resetRename, resetTree, workspaceRootPath])
 
   useEffect(() => {
-    if (!isOpen) {
-      return
-    }
-
     if (!activeFilePath) {
       setSelectedEntryPaths((current) => {
         if (current.size === 0) {
@@ -275,7 +271,16 @@ export function useWorkspaceExplorerPanelState({
       }
       return new Set([normalizedActivePath])
     })
-  }, [activeFilePath, isOpen])
+  }, [activeFilePath])
+
+  useEffect(() => {
+    if (isOpen) {
+      return
+    }
+
+    closeContextMenu()
+    resetDeleteDialog()
+  }, [closeContextMenu, isOpen, resetDeleteDialog])
 
   const {
     handleDirectoryDragLeave,

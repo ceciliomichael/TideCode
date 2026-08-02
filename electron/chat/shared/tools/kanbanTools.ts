@@ -25,7 +25,7 @@ const COL_ENUM = [...KANBAN_COLUMN_IDS]
 const TYPE_ENUM = [...KANBAN_ISSUE_TYPE_IDS]
 const PRI_ENUM = [...KANBAN_PRIORITY_IDS]
 const KANBAN_TOOL_DESCRIPTION =
-  'Manages workspace Kanban cards with read_board, read_card, create_card, create_task_with_subtasks, update_card, move_card, reorder_card, and delete_card actions.'
+  'Manage Kanban cards.'
 
 function err(error: unknown, fallback: string): AgentToolExecutionResult {
   return {

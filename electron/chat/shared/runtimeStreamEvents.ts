@@ -6,7 +6,6 @@ import type {
   ToolInvocationResultPresentation,
 } from '../../../src/types/chat'
 import { recordToolFreshness } from '../history/eventStore'
-import { getDynamicToolInvocationProjection } from './tools'
 import type { AgentToolExecutionResult } from './toolTypes'
 import {
   createCanonicalToolResultContent,
@@ -52,11 +51,28 @@ function parseToolArguments(input: string) {
     return null
   }
 }
-function resolveDisplayedInvocation(toolName: string, input: unknown, result?: unknown) {
-  return getDynamicToolInvocationProjection(toolName, input, result) ?? {
-    argumentsValue: input,
-    toolName,
+
+function getToolErrorMessage(toolName: string, error: unknown) {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message
   }
+
+  if (typeof error === 'string' && error.trim().length > 0) {
+    return error
+  }
+
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message
+    }
+  }
+
+  return `Tool ${toolName} failed before returning a result.`
+}
+
+function resolveDisplayedInvocation(toolName: string, input: unknown) {
+  return { argumentsValue: input, toolName }
 }
 
 
@@ -232,7 +248,6 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
           const displayedInvocation = resolveDisplayedInvocation(
             toolName,
             part.input ?? part.args,
-            normalizedResult,
           )
           const displayedArgumentsText = stringifyToolArguments(displayedInvocation.argumentsValue)
           if (conversationId) {
@@ -301,10 +316,7 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
           const completedAt = Date.now()
           const displayedInvocation = resolveDisplayedInvocation(part.toolName, part.input ?? part.args)
           const displayedArgumentsText = stringifyToolArguments(displayedInvocation.argumentsValue)
-          const errorMessage =
-            (part.error instanceof Error && part.error.message.trim().length > 0
-              ? part.error.message
-              : null) || `Tool ${part.toolName} failed before returning a result.`
+          const errorMessage = getToolErrorMessage(part.toolName, part.error)
           const syntheticMessage = createSyntheticToolMessage(
             part.toolCallId,
             part.toolName,

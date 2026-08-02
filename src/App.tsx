@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import type { DiffPanelScope } from './components/chat/ConversationDiffPanel'
 import { ChatInterface, type RightPanelTab } from './pages/ChatInterface'
 import { SettingsInterface } from './pages/SettingsInterface'
@@ -83,7 +83,7 @@ export default function App() {
 
   const resolvedTheme = useDocumentTheme(settings.appearance)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setDiffPanelWidth(settings.diffPanelWidth)
   }, [settings.diffPanelWidth])
 

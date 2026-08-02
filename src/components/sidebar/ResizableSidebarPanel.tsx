@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { clampSidebarWidth } from '../../lib/sidebarSizing'
 
 interface ResizableSidebarPanelProps {
+  disableSidebarTransition?: boolean
   isSidebarOpen: boolean
   onSidebarWidthChange: (sidebarWidth: number) => void
   sidebar: ReactNode
@@ -10,6 +11,7 @@ interface ResizableSidebarPanelProps {
 }
 
 export function ResizableSidebarPanel({
+  disableSidebarTransition = false,
   isSidebarOpen,
   onSidebarWidthChange,
   sidebar,
@@ -28,7 +30,7 @@ export function ResizableSidebarPanel({
     setRenderedSidebarWidth(nextWidth)
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     function handleWindowResize() {
       const widthToClamp = dragStateRef.current ? sidebarWidthRef.current : sidebarWidth
       updateRenderedSidebarWidth(clampSidebarWidth(widthToClamp, window.innerWidth))
@@ -96,7 +98,7 @@ export function ResizableSidebarPanel({
         data-sidebar-root="true"
         className={[
           'hidden h-full shrink-0 overflow-hidden lg:flex',
-          isResizing ? '' : 'transition-[width,opacity] duration-300 ease-out',
+          disableSidebarTransition || isResizing ? '' : 'transition-[width,opacity] duration-300 ease-out',
           isSidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
         ].join(' ')}
         style={{ width: `${visibleSidebarWidth}px` }}

@@ -2,7 +2,6 @@ import type { ModelMessage } from 'ai'
 import type { AppTerminalExecutionMode, ChatMode, ChatProviderId, Message, ReasoningEffort } from '../../../../src/types/chat'
 import { approximateTokenCount } from '../../../../src/lib/contextUsage'
 import { normalizeContextCompactionSettings, type ContextCompactionSettings } from '../../../../src/lib/contextCompactionSettings'
-import { buildSkillsSystemPromptBlock, listEnabledSkills } from '../../../skills/service'
 import { recordCompactionCommitted } from '../../history/eventStore'
 import { buildChatPrompt } from '../messages'
 import { compactModelMessages } from './service'
@@ -25,12 +24,10 @@ export interface CompactConversationInput {
 
 export async function compactConversationForProvider(input: CompactConversationInput): Promise<CompactionResult | null> {
   const contextCompaction = normalizeContextCompactionSettings(input.contextCompaction)
-  const enabledSkills = await listEnabledSkills(input.agentContextRootPath)
   const prompt = buildChatPrompt({
     chatMode: input.chatMode,
     messages: input.messages,
     options: {
-      availableSkillsBlock: buildSkillsSystemPromptBlock(enabledSkills),
       terminalExecutionMode: input.terminalExecutionMode,
     },
     workspaceRootPath: input.agentContextRootPath,

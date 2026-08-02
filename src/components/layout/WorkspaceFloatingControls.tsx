@@ -30,7 +30,7 @@ export function WorkspaceFloatingControls({
       className="pointer-events-none fixed left-4 z-40 flex items-center gap-0"
       style={{ top: 'calc(env(titlebar-area-height, 0px) + 8px)' }}
     >
-      <Tooltip content={sidebarTooltip} side="bottom">
+    <Tooltip content={sidebarTooltip} side={isSidebarOpen ? 'right' : 'bottom'}>
         <button
           type="button"
           onClick={onToggleSidebar}

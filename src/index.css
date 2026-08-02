@@ -226,9 +226,19 @@
     min-width: 0;
   }
 
-  .chat-queue-shell {
-    width: min(688px, calc(100% - 2rem));
+  .chat-composer-shell {
+    width: min(720px, calc(100% - 2rem));
     min-width: 0;
+  }
+
+  .chat-composer-shell .chat-input-shell {
+    width: 100%;
+  }
+
+  .chat-queue-shell {
+    width: 95%;
+    min-width: 0;
+    margin-inline: auto;
   }
 
   .chat-send-button-enabled {

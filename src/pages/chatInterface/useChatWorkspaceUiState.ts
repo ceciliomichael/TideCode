@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { DEFAULT_DIFF_PANEL_WIDTH } from "../../lib/diffPanelSizing";
 import { DEFAULT_TERMINAL_PANEL_HEIGHT } from "../../lib/terminalPanelSizing";
 import { clampWorkspaceExplorerWidth } from "../../lib/workspaceExplorerSizing";
@@ -99,7 +99,7 @@ export function useChatWorkspaceUiState({
     });
   }, [activeWorkspaceUiKey]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setWorkspaceExplorerWidth(settings.workspaceExplorerWidth);
   }, [settings.workspaceExplorerWidth]);
 
@@ -191,7 +191,7 @@ export function useChatWorkspaceUiState({
     };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setSourceControlPanelWidth((currentWidth) =>
       currentWidth === DEFAULT_DIFF_PANEL_WIDTH ? diffPanelWidth : currentWidth,
     );

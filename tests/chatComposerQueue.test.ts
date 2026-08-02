@@ -6,6 +6,7 @@ import {
   dequeueQueuedComposerMessage,
   removeQueuedComposerMessage,
   requeueQueuedComposerMessage,
+  reorderQueuedComposerMessages,
   updateQueuedComposerMessage,
 } from '../src/pages/chatInterface/chatComposerQueue'
 
@@ -57,6 +58,42 @@ test('removeQueuedComposerMessage deletes the matching queued message', () => {
   const nextMessages = removeQueuedComposerMessage([firstMessage, secondMessage], firstMessage.id)
 
   assert.deepEqual(nextMessages.map((message) => message.content), ['Second'])
+})
+
+test('reorderQueuedComposerMessages moves a queued item before the drop target', () => {
+  const firstMessage = createQueuedComposerMessage({ content: 'First' })
+  const secondMessage = createQueuedComposerMessage({ content: 'Second' })
+  const thirdMessage = createQueuedComposerMessage({ content: 'Third' })
+
+  const nextMessages = reorderQueuedComposerMessages(
+    [firstMessage, secondMessage, thirdMessage],
+    thirdMessage.id,
+    firstMessage.id,
+  )
+
+  assert.deepEqual(nextMessages.map((message) => message.content), ['Third', 'First', 'Second'])
+})
+
+test('reorderQueuedComposerMessages moves an earlier item after the drop target', () => {
+  const firstMessage = createQueuedComposerMessage({ content: 'First' })
+  const secondMessage = createQueuedComposerMessage({ content: 'Second' })
+  const thirdMessage = createQueuedComposerMessage({ content: 'Third' })
+
+  const nextMessages = reorderQueuedComposerMessages(
+    [firstMessage, secondMessage, thirdMessage],
+    firstMessage.id,
+    secondMessage.id,
+  )
+
+  assert.deepEqual(nextMessages.map((message) => message.content), ['Second', 'First', 'Third'])
+})
+
+test('reorderQueuedComposerMessages leaves an unknown drag target unchanged', () => {
+  const firstMessage = createQueuedComposerMessage({ content: 'First' })
+
+  const nextMessages = reorderQueuedComposerMessages([firstMessage], firstMessage.id, 'missing-target')
+
+  assert.deepEqual(nextMessages.map((message) => message.content), ['First'])
 })
 
 test('dequeueQueuedComposerMessage returns the first message and the remaining queue', () => {

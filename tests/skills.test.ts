@@ -126,7 +126,7 @@ test('skill tool no longer exposes the read_resource action', () => {
   const description = buildSkillToolDescription()
 
   assert.doesNotMatch(description, /read_resource/u)
-  assert.match(description, /read\/list\/glob\/grep/u)
+  assert.match(description, /List, search, or load an enabled skill\./u)
 })
 
 test('expandChatMentions expands file, folder, and skill mentions with read:, list:, and load_skill:', async () => {

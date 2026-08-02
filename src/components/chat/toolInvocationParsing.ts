@@ -1,8 +1,8 @@
 import type { ToolInvocationTrace } from '../../types/chat'
 import { getRelativeDisplayPath } from '../../lib/pathPresentation'
-import { parseStructuredToolResultContent } from '../../lib/toolResultContent'
 
 interface ToolArgumentsValue {
+  action?: unknown
   path?: unknown
   command?: unknown
   cmd?: unknown
@@ -13,9 +13,6 @@ interface ToolArgumentsValue {
   url?: unknown
   session_id?: unknown
   name?: unknown
-  id?: unknown
-  ids?: unknown
-  args?: unknown
 }
 
 export function parseCompleteToolArguments(argumentsText: string): ToolArgumentsValue | null {
@@ -28,44 +25,6 @@ export function parseCompleteToolArguments(argumentsText: string): ToolArguments
     return parsedValue as ToolArgumentsValue
   } catch {
     return null
-  }
-}
-
-/**
- * `execute_tool` is a model-facing transport. Once its target is known, the
- * visible invocation is represented as the native tool invocation so every
- * existing tool-specific presenter can be reused unchanged.
- */
-export function resolveToolInvocationForPresentation(invocation: ToolInvocationTrace): ToolInvocationTrace {
-  if (invocation.toolName !== 'execute_tool') {
-    return invocation
-  }
-
-  const wrapperArguments = parseCompleteToolArguments(invocation.argumentsText) as (ToolArgumentsValue & {
-    args?: unknown
-    id?: unknown
-  }) | null
-  const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
-  const resultToolName = parsedResult?.metadata?.toolName
-  const wrapperToolId = typeof wrapperArguments?.id === 'string'
-    ? wrapperArguments.id.trim()
-    : extractPartialStringArgument(invocation.argumentsText, 'id')
-  const targetToolName = resultToolName && resultToolName !== 'execute_tool'
-    ? resultToolName
-    : wrapperToolId
-
-  if (!targetToolName) {
-    return invocation
-  }
-
-  const targetArguments = wrapperArguments?.args && typeof wrapperArguments.args === 'object' && !Array.isArray(wrapperArguments.args)
-    ? wrapperArguments.args
-    : parsedResult?.metadata?.arguments ?? {}
-
-  return {
-    ...invocation,
-    argumentsText: JSON.stringify(targetArguments),
-    toolName: targetToolName,
   }
 }
 

@@ -41,6 +41,26 @@ test('replace supports relative path in path parameter', async () => {
   }
 })
 
+test('edit creates a missing file from its replacement content', async () => {
+  const fixture = await createFixture('const value = true\n')
+  const createdPath = path.join(fixture.workspaceRootPath, 'src', 'blocks.js')
+
+  try {
+    const result = await createEditToolResult(fixture.context, {
+      allowMultiple: false,
+      path: 'src/blocks.js',
+      replacementContent: 'export const blocks = []\n',
+      targetContent: 'new file',
+    })
+
+    assert.equal(result.status, 'success')
+    assert.match(result.body ?? '', /A .*blocks\.js/u)
+    assert.equal(await fs.readFile(createdPath, 'utf8'), 'export const blocks = []\n')
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('edit finds a unique target without line bounds', async () => {
   const fixture = await createFixture('const value = true\n')
 

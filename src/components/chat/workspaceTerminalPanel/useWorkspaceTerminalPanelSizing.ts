@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type RefObject,
@@ -66,7 +67,7 @@ export function useWorkspaceTerminalPanelSizing({
     isResizingRef.current = isResizing;
   }, [isResizing]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isOpen) {
       return;
     }
@@ -77,7 +78,7 @@ export function useWorkspaceTerminalPanelSizing({
     );
   }, [getMaxPanelHeight, isOpen]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (isResizing) {
       return;
     }

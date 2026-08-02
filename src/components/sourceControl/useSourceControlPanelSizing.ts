@@ -50,7 +50,7 @@ export function useSourceControlPanelSizing({
       widthRef.current = width
     }, [width])
   
-    useEffect(() => {
+    useLayoutEffect(() => {
       if (isResizing) {
         return
       }
@@ -65,7 +65,7 @@ export function useSourceControlPanelSizing({
       onWidthCommitRef.current = onWidthCommit
     }, [onWidthCommit])
   
-    useEffect(() => {
+    useLayoutEffect(() => {
       if (!isOpen) {
         return
       }

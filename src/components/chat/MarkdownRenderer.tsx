@@ -139,8 +139,22 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
       ),
       details: ({ children, ...props }: React.ComponentPropsWithoutRef<'details'>) => {
         const childArray = React.Children.toArray(children)
-        const summaryChild = childArray.find(isSummaryElement)
-        const contentChildren = childArray.filter((child) => child !== summaryChild)
+        const foundSummary = childArray.find(isSummaryElement)
+        const contentChildren = childArray.filter((child) => child !== foundSummary)
+        
+        // Clean up leading and trailing whitespace from raw text children to prevent empty blank lines
+        if (contentChildren.length > 0 && typeof contentChildren[0] === 'string') {
+          contentChildren[0] = (contentChildren[0] as string).replace(/^\s+/, '')
+        }
+        if (contentChildren.length > 0 && typeof contentChildren[contentChildren.length - 1] === 'string') {
+          contentChildren[contentChildren.length - 1] = (contentChildren[contentChildren.length - 1] as string).replace(/\s+$/, '')
+        }
+        
+        const summaryChild = foundSummary || (
+          <summary className="flex cursor-pointer select-none items-center justify-between px-3.5 py-2.5 font-medium text-foreground hover:bg-surface-muted/50 transition-colors focus:outline-none list-none [&::-webkit-details-marker]:hidden after:content-['›'] after:ml-auto after:text-lg after:font-semibold after:text-foreground/70 after:transition-transform after:duration-200 group-open/details:after:rotate-90">
+            Details
+          </summary>
+        )
 
         return (
           <details
@@ -149,7 +163,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           >
             {summaryChild}
             {contentChildren.length > 0 ? (
-              <div className="p-3.5 pt-1 space-y-3 text-foreground [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+              <div className="p-3.5 pt-1 space-y-3 text-foreground whitespace-pre-wrap [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
                 {contentChildren}
               </div>
             ) : null}

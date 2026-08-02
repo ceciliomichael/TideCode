@@ -14,8 +14,6 @@ import { createSkillTool } from './skillTool'
 import { createTerminalToolSet } from './terminalTools'
 import { createToolContext } from './workspaceTools'
 import { createWriteTool } from './writeTool'
-import { buildDynamicToolCatalog } from './dynamicToolCatalog'
-import { createDynamicToolSet } from './dynamicTools'
 
 export interface CreateAgentToolsOptions {
   chatMode?: ChatMode
@@ -81,15 +79,10 @@ export async function createNativeAgentTools(
   }
 }
 
-/**
- * Builds the provider-facing tool set. Native tools stay private to the
- * application and are exposed to the model through the three dynamic tools.
- */
+/** Builds the exact provider-facing native tool set. */
 export async function createAgentTools(
   input: AgentToolContext,
   options: CreateAgentToolsOptions = {},
 ): Promise<ToolSet> {
-  const nativeTools = await createNativeAgentTools(input, options)
-  const catalog = await buildDynamicToolCatalog(nativeTools)
-  return createDynamicToolSet(catalog)
+  return createNativeAgentTools(input, options)
 }

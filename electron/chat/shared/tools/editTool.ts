@@ -4,10 +4,10 @@ import { createEditToolResult, type WorkspaceToolContext } from './workspaceTool
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 const EDIT_TOOL_DESCRIPTION =
-  'Replaces a block of text in an existing file, or applies a batch of exact text replacements atomically. For a batch, put the shared file path in the top-level path field and do not put path inside individual edit items. Leading indentation differences are ignored, but the remaining target text must match exactly.'
+  'Replace exact text in a file.'
 
 const EDIT_PATH_SCHEMA = {
-  description: 'Path to the file to edit.',
+  description: 'File path.',
   type: 'string',
 }
 
@@ -15,25 +15,25 @@ const EDIT_OPERATION_SCHEMA = {
   additionalProperties: false,
   properties: {
     allowMultiple: {
-      description: 'Whether to replace every matching occurrence for this edit. Omit unless all matches are intended.',
+      description: 'Replace every match.',
       type: 'boolean',
     },
     endLine: {
-      description: 'Optional ending line number (1-indexed). Provide it together with startLine to narrow the search.',
+      description: 'Optional 1-indexed end line; use with startLine.',
       minimum: 1,
       type: 'integer',
     },
     replacementContent: {
-      description: 'Replacement text. Use an empty string to delete the target.',
+      description: 'Replacement text; empty deletes the target.',
       type: 'string',
     },
     startLine: {
-      description: 'Optional starting line number (1-indexed). Provide it together with endLine to narrow the search.',
+      description: 'Optional 1-indexed start line; use with endLine.',
       minimum: 1,
       type: 'integer',
     },
     targetContent: {
-      description: 'Required exact current text copied from the latest read result. Leading spaces or tabs on each line may differ from the file.',
+      description: 'Exact current text from the latest read.',
       minLength: 1,
       type: 'string',
     },
@@ -65,7 +65,7 @@ const EDIT_INPUT_SCHEMA = {
       additionalProperties: false,
       properties: {
         edits: {
-          description: 'Independent edits applied atomically to the same file. Put the shared file path in the top-level path field; each item contains targetContent and replacementContent, not path.',
+          description: 'Exact replacements for the top-level path.',
           items: EDIT_OPERATION_SCHEMA,
           maxItems: 20,
           minItems: 1,

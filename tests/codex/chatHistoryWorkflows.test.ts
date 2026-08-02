@@ -144,6 +144,7 @@ test('revert helpers rewind the clicked message and every later user turn', asyn
     const revertPreparation = await prepareRevertSessionForMessage(conversation.id, 'message-1')
     const restoredConversation = await restoreWorkspaceCheckpointForMessage(conversation.id, 'message-1')
 
+    assert.deepEqual(revertPreparation.checkpointIds, [firstCheckpoint.id, secondCheckpoint.id, thirdCheckpoint.id])
     assert.equal(revertPreparation.redoCheckpointId, redoCheckpoint.id)
     assert.deepEqual(redoCheckpointCalls, [[firstCheckpoint.id, secondCheckpoint.id, thirdCheckpoint.id]])
     assert.deepEqual(restoreCheckpointCalls, [[firstCheckpoint.id, secondCheckpoint.id, thirdCheckpoint.id]])
@@ -208,6 +209,7 @@ test('revert helpers fall back to checkpoint history when the message checkpoint
     const revertPreparation = await prepareRevertSessionForMessage(conversation.id, 'message-1')
     await restoreWorkspaceCheckpointForMessage(conversation.id, 'message-1')
 
+    assert.deepEqual(revertPreparation.checkpointIds, [historicalCheckpoint.id])
     assert.equal(revertPreparation.redoCheckpointId, redoCheckpoint.id)
     assert.deepEqual(redoCheckpointCalls, [[historicalCheckpoint.id]])
     assert.deepEqual(restoreCheckpointCalls, [[historicalCheckpoint.id]])

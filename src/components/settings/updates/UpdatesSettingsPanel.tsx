@@ -55,7 +55,7 @@ function getStatusCopy(
   }
 
   if (downloadState === 'downloaded') {
-    return 'The update is ready. Restart TideCode to finish installing it.'
+    return 'The update is ready. TideCode will install it automatically when you close the app.'
   }
 
   if (downloadState === 'error') {
@@ -233,7 +233,7 @@ export function UpdatesSettingsPanel({ autoDownloadUpdates, isLoading, onUpdateS
                 <p className="text-sm font-semibold text-foreground">{session.result.release.name}</p>
                 <p className="mt-1 text-sm leading-5 text-muted-foreground">
                   {session.downloadState === 'downloaded'
-                    ? 'The update has finished downloading. Restart TideCode to install it.'
+                    ? 'The update has finished downloading. TideCode will install it automatically when you close the app, or you can restart now.'
                     : session.downloadState === 'error'
                       ? 'TideCode found this release but could not download it. Try again or download it from GitHub instead.'
                       : session.result.updateAvailable

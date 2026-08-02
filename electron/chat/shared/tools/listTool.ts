@@ -4,12 +4,12 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createListTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Lists direct contents of a directory.',
+    description: 'List a directory.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
         path: {
-          description: 'Path to the directory. Omit it to list the workspace root.',
+          description: 'Directory path. Omit for the workspace root.',
           type: 'string',
         },
       },

@@ -4,12 +4,12 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createReadTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Reads file contents or directory entries.',
+    description: 'Read a file or directory.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
         path: {
-          description: 'Path to the file or directory to read.',
+          description: 'File or directory path.',
           type: 'string',
         },
         limit: { minimum: 1, type: 'number' },

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, ChevronDown, Maximize, Minimize } from 'lucide-react'
 import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
@@ -133,7 +133,7 @@ function ConversationDiffPanelContent({
     widthRef.current = width
   }, [width])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (isResizing) {
       return
     }
@@ -157,7 +157,7 @@ function ConversationDiffPanelContent({
     setIsScopeMenuOpen(false)
   }, [isOpen])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isOpen) {
       return
     }
@@ -352,15 +352,21 @@ function ConversationDiffPanelContent({
     )
   }
 
+  const isFullscreenPanel = isFullscreen && isOpen
+
   return (
     <div
       ref={panelRef}
       className={[
-        isFullscreen
+        isFullscreenPanel
           ? 'pointer-events-auto absolute inset-0 z-30 flex h-full min-w-0 overflow-hidden'
-          : 'relative hidden h-full shrink-0 overflow-hidden md:flex',
+          : [
+              'relative flex h-full min-w-0 shrink-0 overflow-hidden max-md:hidden',
+              isOpen ? 'pointer-events-auto' : 'pointer-events-none invisible',
+            ].join(' '),
       ].join(' ')}
-      style={isFullscreen ? undefined : { width: `${renderedWidth}px` }}
+      aria-hidden={!isOpen}
+      style={isFullscreenPanel ? undefined : { width: isOpen ? `${renderedWidth}px` : '0px' }}
     >
       {!isFullscreen && isOpen ? (
         <div
@@ -458,9 +464,5 @@ function ConversationDiffPanelContent({
 }
 
 export function ConversationDiffPanel(props: ConversationDiffPanelProps) {
-  if (!props.isOpen) {
-    return null
-  }
-
   return <ConversationDiffPanelContent {...props} />
 }

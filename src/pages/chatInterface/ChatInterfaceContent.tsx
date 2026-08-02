@@ -212,9 +212,9 @@ export function ChatInterfaceContent({
   const {
     clearQueuedMessages,
     enqueueMessage,
-    forceSendQueuedMessage,
     queuedMessages,
     removeQueuedMessage,
+    reorderQueuedMessages,
     updateQueuedMessage,
   } = useChatMessageQueue({
     followUpBehavior: settings.followUpBehavior,
@@ -306,10 +306,11 @@ export function ChatInterfaceContent({
     queuedMessages.length > 0 &&
     typeof removeQueuedMessage === 'function' &&
     typeof updateQueuedMessage === 'function' &&
-    typeof forceSendQueuedMessage === 'function'
+    typeof reorderQueuedMessages === 'function'
 
   return (
     <AppWorkspaceShell
+      disableSidebarTransition={workspaceState.isExplorerOpen}
       isSidebarOpen={interfaceController.isSidebarOpen}
       onSidebarWidthChange={onSidebarWidthChange}
       floatingControls={
@@ -406,7 +407,6 @@ export function ChatInterfaceContent({
               codexUsage={codexUsage}
               compactionMarkers={compactionMarkers}
               contextUsage={contextUsage}
-              forceSendQueuedMessage={forceSendQueuedMessage}
               gitBranchState={gitBranchState}
               handleCancelEditingMessage={handleCancelEditingMessage}
               handleCompressChat={handleCompressChat}
@@ -425,6 +425,7 @@ export function ChatInterfaceContent({
               refactorCandidates={refactorCandidates}
               refactorCandidatesLoading={refactorCandidatesLoading}
               removeQueuedMessage={removeQueuedMessage}
+              reorderQueuedMessages={reorderQueuedMessages}
               selectorOptions={selectorOptions}
               sendMessageOnEnter={sendMessageOnEnter}
               showImplementPlanButton={showImplementPlanButton}

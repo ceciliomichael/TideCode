@@ -39,6 +39,7 @@ interface PersistUserTurnResult {
 }
 
 export interface RevertPreparationResult {
+  checkpointIds: string[]
   messageId: string
   redoCheckpointId: string
 }
@@ -345,6 +346,13 @@ export function getMessagesBeforeUserMessage(messages: readonly Message[], messa
   return targetMessageIndex < 0 ? null : messages.slice(0, targetMessageIndex)
 }
 
+export function getMessagesThroughUserMessage(messages: readonly Message[], messageId: string) {
+  const targetMessageIndex = messages.findIndex(
+    (message) => message.id === messageId && message.role === 'user',
+  )
+  return targetMessageIndex < 0 ? null : messages.slice(0, targetMessageIndex + 1)
+}
+
 export async function rollbackConversationBeforeUserMessage(conversationId: string, messageId: string) {
   const conversation = await loadStoredConversationOrThrow(conversationId)
   const messagesBeforeUserMessage = getMessagesBeforeUserMessage(conversation.messages, messageId)
@@ -359,12 +367,16 @@ export async function restoreWorkspaceCheckpointForMessage(conversationId: strin
   const conversation = await loadStoredConversationOrThrow(conversationId)
   const { checkpointIds, targetMessage, targetMessageIndex } = await findUserMessageForRevertOrThrow(conversation, messageId)
 
-  await window.tidecodeWorkspace.restoreCheckpointSequence(checkpointIds)
+  await restoreWorkspaceCheckpointSequence(checkpointIds)
   return {
     conversation,
     targetMessage,
     targetMessageIndex,
   }
+}
+
+export async function restoreWorkspaceCheckpointSequence(checkpointIds: readonly string[]) {
+  await window.tidecodeWorkspace.restoreCheckpointSequence([...checkpointIds])
 }
 
 export async function prepareRevertSessionForMessage(
@@ -376,6 +388,7 @@ export async function prepareRevertSessionForMessage(
   const redoCheckpoint = await window.tidecodeWorkspace.createRedoCheckpointFromSources(checkpointIds)
 
   return {
+    checkpointIds,
     messageId: targetMessage.id,
     redoCheckpointId: redoCheckpoint.id,
   }

@@ -8,8 +8,8 @@ interface ChatQueueBlockProps {
   queuedMessages: readonly QueuedMessage[]
   editCancelBoundaryRef?: RefObject<HTMLElement>
   onClearQueue?: () => void
-  onForceSend: (id: string) => void
   onRemove: (id: string) => void
+  onReorder: (sourceId: string, targetId: string) => void
   onUpdate: (id: string, content: string, attachments?: ChatAttachment[]) => void
 }
 
@@ -17,14 +17,23 @@ export function ChatQueueBlock({
   queuedMessages,
   editCancelBoundaryRef,
   onClearQueue,
-  onForceSend,
   onRemove,
+  onReorder,
   onUpdate,
 }: ChatQueueBlockProps) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [draggedMessageId, setDraggedMessageId] = useState<string | null>(null)
 
   if (queuedMessages.length === 0) {
     return null
+  }
+
+  function handleDrop(targetId: string) {
+    if (draggedMessageId && draggedMessageId !== targetId) {
+      onReorder(draggedMessageId, targetId)
+    }
+
+    setDraggedMessageId(null)
   }
 
   return (
@@ -32,7 +41,7 @@ export function ChatQueueBlock({
       <button
         type="button"
         onClick={() => setIsExpanded((currentValue) => !currentValue)}
-        className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-muted"
+        className="flex w-full items-start justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-surface-muted"
       >
         <div className="flex min-w-0 flex-1 items-start gap-2">
           <Clock size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
@@ -71,7 +80,9 @@ export function ChatQueueBlock({
                 index={index}
                 message={message}
                 editCancelBoundaryRef={editCancelBoundaryRef}
-                onForceSend={onForceSend}
+                onDragEnd={() => setDraggedMessageId(null)}
+                onDragStart={setDraggedMessageId}
+                onDrop={handleDrop}
                 onRemove={onRemove}
                 onUpdate={onUpdate}
               />

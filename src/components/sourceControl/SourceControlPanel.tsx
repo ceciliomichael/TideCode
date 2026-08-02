@@ -104,7 +104,7 @@ function SourceControlPanelContent({
     loadingCommitHashes,
     refreshHistory,
     selectedCommitHash,
-  } = useSourceControlHistory({ isOpen, normalizedWorkspacePath })
+  } = useSourceControlHistory({ hasRepository, isOpen, normalizedWorkspacePath })
   const pendingState = useSourceControlPendingState(normalizedWorkspacePath)
   const pendingCommitOperation = pendingState?.commit ?? null
   const pendingSyncOperation = pendingState?.sync ?? null
@@ -357,9 +357,11 @@ function SourceControlPanelContent({
     <div
       ref={panelRef}
       className={[
-        'relative hidden h-full shrink-0 overflow-hidden md:flex',
+        'relative flex h-full min-w-0 shrink-0 overflow-hidden max-md:hidden',
+        isOpen ? 'pointer-events-auto' : 'pointer-events-none invisible',
       ].join(' ')}
-      style={{ width: `${renderedWidth}px` }}
+      aria-hidden={!isOpen}
+      style={{ width: isOpen ? `${renderedWidth}px` : '0px' }}
     >
       {isOpen ? (
         <div
@@ -474,12 +476,4 @@ function SourceControlPanelContent({
 }
 
 
-function SourceControlPanelGate(props: SourceControlPanelProps) {
-  if (!props.isOpen) {
-    return null
-  }
-
-  return <SourceControlPanelContent {...props} />
-}
-
-export const SourceControlPanel = memo(SourceControlPanelGate)
+export const SourceControlPanel = memo(SourceControlPanelContent)

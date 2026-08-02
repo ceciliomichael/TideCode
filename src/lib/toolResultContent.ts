@@ -190,9 +190,47 @@ export function getToolResultModelContent(content: string) {
 }
 
 export function getToolResultDisplayBody(toolName: string, body: string) {
-  if (toolName !== 'skill') {
-    return body
+  let displayBody = body
+
+  if (toolName === 'edit') {
+    displayBody = removeInternalNextFieldsFromJson(displayBody)
   }
 
-  return body.replace(SKILL_LOCATION_PREAMBLE_PATTERN, '')
+  if (toolName === 'skill') {
+    return displayBody.replace(SKILL_LOCATION_PREAMBLE_PATTERN, '')
+  }
+
+  return displayBody
+}
+
+function removeInternalNextFieldsFromJson(body: string) {
+  try {
+    const parsed = JSON.parse(body) as unknown
+    let changed = false
+
+    const stripFields = (value: unknown): unknown => {
+      if (Array.isArray(value)) {
+        return value.map(stripFields)
+      }
+
+      if (!isRecord(value)) {
+        return value
+      }
+
+      const cleaned: Record<string, unknown> = {}
+      for (const [key, nestedValue] of Object.entries(value)) {
+        if (key === 'next' || key === 'nextStep') {
+          changed = true
+          continue
+        }
+        cleaned[key] = stripFields(nestedValue)
+      }
+      return cleaned
+    }
+
+    const cleaned = stripFields(parsed)
+    return changed ? JSON.stringify(cleaned, null, 2) : body
+  } catch {
+    return body
+  }
 }

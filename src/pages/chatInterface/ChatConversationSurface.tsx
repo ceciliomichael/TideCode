@@ -30,7 +30,6 @@ interface ChatConversationSurfaceProps {
   codexUsage: CodexUsageSnapshot | null | undefined
   compactionMarkers: ChatCompactionMarker[]
   contextUsage: ContextUsageEstimate | null
-  forceSendQueuedMessage: (messageId: string) => void
   gitBranchState: GitBranchStateController
   handleCancelEditingMessage: MessageListProps['onCancelEditingMessage']
   handleCompressChat: () => void
@@ -49,6 +48,7 @@ interface ChatConversationSurfaceProps {
   refactorCandidates: WorkspaceRefactorCandidate[]
   refactorCandidatesLoading: boolean
   removeQueuedMessage: (messageId: string) => void
+  reorderQueuedMessages: (sourceId: string, targetId: string) => void
   selectorOptions: ChatInputProps['modelOptions']
   sendMessageOnEnter: boolean
   showImplementPlanButton: boolean
@@ -66,7 +66,6 @@ export function ChatConversationSurface({
   codexUsage,
   compactionMarkers,
   contextUsage,
-  forceSendQueuedMessage,
   gitBranchState,
   handleCancelEditingMessage,
   handleCompressChat,
@@ -85,6 +84,7 @@ export function ChatConversationSurface({
   refactorCandidates,
   refactorCandidatesLoading,
   removeQueuedMessage,
+  reorderQueuedMessages,
   selectorOptions,
   sendMessageOnEnter,
   showImplementPlanButton,
@@ -159,18 +159,19 @@ export function ChatConversationSurface({
       </div>
       {!isKanbanBoardOpen ? (
         <div className="flex w-full shrink-0 flex-col items-center pb-4">
-          {showQueueBlock ? (
-            <div className="chat-queue-shell">
-              <ChatQueueBlock
-                queuedMessages={queuedMessages}
-                editCancelBoundaryRef={messageListBoundaryRef}
-                onForceSend={forceSendQueuedMessage}
-                onRemove={removeQueuedMessage}
-                onUpdate={updateQueuedMessage}
-              />
-            </div>
-          ) : null}
-          <div className="chat-input-shell relative">
+          <div className="chat-composer-shell">
+            {showQueueBlock ? (
+              <div className="chat-queue-shell">
+                <ChatQueueBlock
+                  queuedMessages={queuedMessages}
+                  editCancelBoundaryRef={messageListBoundaryRef}
+                  onRemove={removeQueuedMessage}
+                  onReorder={reorderQueuedMessages}
+                  onUpdate={updateQueuedMessage}
+                />
+              </div>
+            ) : null}
+            <div className="chat-input-shell relative">
             {showImplementPlanButton ? (
               <button
                 type="button"
@@ -228,6 +229,7 @@ export function ChatConversationSurface({
               onTerminalExecutionModeChange={onTerminalExecutionModeChange}
               workspaceRootPath={activeWorkspacePath}
             />
+            </div>
           </div>
         </div>
       ) : null}

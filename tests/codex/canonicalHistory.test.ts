@@ -71,21 +71,21 @@ test('provider cache policies are capability-gated and cannot replace reasoning 
 
 test('Anthropic receives one deterministic tool cache breakpoint while other providers stay unchanged', () => {
   const tools = {
-    execute_tool: {
-      description: 'Execute a discovered tool',
+    read: {
+      description: 'Read a file',
       inputSchema: jsonSchema({ properties: {}, type: 'object' }),
     },
-    list_tools: {
-      description: 'List available tools',
+    write: {
+      description: 'Write a file',
       inputSchema: jsonSchema({ properties: {}, type: 'object' }),
     },
   } as ToolSet
 
   const anthropicTools = applyPromptCacheBreakpoints(tools, 'anthropic')
-  assert.deepEqual(anthropicTools.list_tools.providerOptions, {
+  assert.deepEqual(anthropicTools.write.providerOptions, {
     anthropic: { cacheControl: { ttl: '5m', type: 'ephemeral' } },
   })
-  assert.equal(anthropicTools.execute_tool.providerOptions, undefined)
+  assert.equal(anthropicTools.read.providerOptions, undefined)
   assert.equal(applyPromptCacheBreakpoints(tools, 'google'), tools)
   assert.equal(applyPromptCacheBreakpoints(tools, 'mistral'), tools)
   assert.equal(applyPromptCacheBreakpoints(tools, 'deepseek'), tools)

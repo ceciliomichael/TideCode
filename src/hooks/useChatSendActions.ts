@@ -1,14 +1,21 @@
 import { useCallback, useRef } from 'react'
 import {
+  getMessagesThroughUserMessage,
   prepareRevertSessionForMessage,
+  persistConversationSnapshot,
   rollbackConversationBeforeUserMessage,
   restoreWorkspaceCheckpointForMessage,
+  restoreWorkspaceCheckpointSequence,
 } from './chatHistoryWorkflows'
 import { persistAndStreamMessage } from './chatMessageSendWorkflow'
 import type { ChatRuntimeSelection } from './chatMessageRuntime'
 import type { PersistAndStreamMessageInput } from './chatMessageSendTypes'
 import { restoreChatComposerDraft } from '../lib/chatComposerDraft'
-import { acquireChatSendGate, releaseChatSendGate } from '../lib/chatSendGate'
+import {
+  acquireChatSendScopeGate,
+  getChatSendScopeKey,
+  releaseChatSendScopeGate,
+} from '../lib/chatSendGate'
 import {
   getActiveUnrespondedUserMessage,
   getPendingRevertMessageIds,
@@ -77,7 +84,7 @@ function sleep(milliseconds: number) {
 
 export function useChatSendActions(input: UseChatSendActionsInput) {
   const actionInFlightRef = useRef(false)
-  const submissionInFlightRef = useRef(false)
+  const submissionInFlightRef = useRef<Set<string>>(new Set())
   const pendingAbortBeforeStreamStartRef = useRef(false)
   const revertedUserMessageIdsRef = useRef<Set<string>>(new Set())
 
@@ -225,12 +232,13 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       options?: SendNewMessageOptions,
     ) => {
       const activeConversationId = input.activeConversationIdRef.current ?? input.activeConversationId
+      const sendScopeKey = getChatSendScopeKey(activeConversationId)
       const isActiveConversationSending = activeConversationId
         ? (getConversationState(activeConversationId)?.isSending ?? false)
         : false
 
       if (
-        submissionInFlightRef.current ||
+        submissionInFlightRef.current.has(sendScopeKey) ||
         actionInFlightRef.current ||
         isActiveConversationSending ||
         (activeConversationId === null && input.pendingDraftSendCount > 0)
@@ -244,7 +252,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         return false
       }
 
-      if (!acquireChatSendGate(submissionInFlightRef)) {
+      if (!acquireChatSendScopeGate(submissionInFlightRef, sendScopeKey)) {
         return false
       }
 
@@ -272,7 +280,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           trimmedText,
         })
       } finally {
-        releaseChatSendGate(submissionInFlightRef)
+        releaseChatSendScopeGate(submissionInFlightRef, sendScopeKey)
       }
     },
     [clearUserMessageRevert, getConversationState, input, isUserMessageReverted],
@@ -287,12 +295,13 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       const activeConversationId = options?.forceNewConversation
         ? null
         : input.activeConversationIdRef.current ?? input.activeConversationId
+      const sendScopeKey = getChatSendScopeKey(activeConversationId)
       const isActiveConversationSending = activeConversationId
         ? (getConversationState(activeConversationId)?.isSending ?? false)
         : false
 
       if (
-        submissionInFlightRef.current ||
+        submissionInFlightRef.current.has(sendScopeKey) ||
         actionInFlightRef.current ||
         isActiveConversationSending ||
         (!options?.forceNewConversation && activeConversationId === null && input.pendingDraftSendCount > 0)
@@ -305,7 +314,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         return
       }
 
-      if (!acquireChatSendGate(submissionInFlightRef)) {
+      if (!acquireChatSendScopeGate(submissionInFlightRef, sendScopeKey)) {
         return
       }
 
@@ -339,7 +348,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           title: options?.title,
         })
       } finally {
-        releaseChatSendGate(submissionInFlightRef)
+        releaseChatSendScopeGate(submissionInFlightRef, sendScopeKey)
       }
     },
     [
@@ -358,13 +367,15 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     ) => {
       const conversationId = input.activeConversationIdRef.current ?? input.activeConversationId
       if (
-        submissionInFlightRef.current ||
+        conversationId === null ||
+        submissionInFlightRef.current.has(getChatSendScopeKey(conversationId)) ||
         actionInFlightRef.current ||
-        input.editingMessageId === null ||
-        conversationId === null
+        input.editingMessageId === null
       ) {
         return
       }
+
+      const sendScopeKey = getChatSendScopeKey(conversationId)
 
       const nextMessageText = messageText ?? input.editComposerValue
       const trimmedText = nextMessageText.trim()
@@ -372,7 +383,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         return
       }
 
-      if (!acquireChatSendGate(submissionInFlightRef)) {
+      if (!acquireChatSendScopeGate(submissionInFlightRef, sendScopeKey)) {
         return
       }
 
@@ -460,7 +471,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
 
         input.setError(toActionErrorMessage(caughtError, 'Unable to resend your edit.'))
       } finally {
-        releaseChatSendGate(submissionInFlightRef)
+        releaseChatSendScopeGate(submissionInFlightRef, sendScopeKey)
       }
     },
     [
@@ -496,12 +507,13 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
   const revertUserMessage = useCallback(
     async (messageId: string) => {
       const conversationId = input.activeConversationIdRef.current ?? input.activeConversationId
-      if (actionInFlightRef.current || submissionInFlightRef.current || !conversationId) {
+      if (actionInFlightRef.current || !conversationId) {
         return
       }
 
       const conversationState = getConversationState(conversationId)
       const isPendingSendRevert = isActiveUnrespondedUserMessage(conversationState, messageId)
+      const hasActiveRun = Boolean(conversationState?.isSending || conversationState?.activeStreamId)
 
       actionInFlightRef.current = true
 
@@ -520,10 +532,48 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           return
         }
 
+        // Capture the complete checkpoint sequence before stopping an active
+        // run. The normal abort cleanup removes the in-flight user turn, which
+        // would otherwise make the revert target and its later checkpoints
+        // unavailable by the time the revert workflow resumes.
+        const activeRunRevertPreparation = hasActiveRun
+          ? await prepareRevertSessionForMessage(conversationId, messageId)
+          : null
+
         await abortActiveStreamIfNeeded()
-        const revertPreparation = await prepareRevertSessionForMessage(conversationId, messageId)
+
+        if (activeRunRevertPreparation) {
+          const postAbortConversation = getConversationState(conversationId)?.conversation
+          const targetStillExists = postAbortConversation?.messages.some(
+            (message) => message.id === messageId && message.role === 'user',
+          )
+
+          if (!targetStillExists) {
+            const messagesThroughTarget = getMessagesThroughUserMessage(
+              conversationState?.conversation.messages ?? [],
+              messageId,
+            )
+            if (!messagesThroughTarget) {
+              throw new Error(`Message not found: ${messageId}`)
+            }
+
+            const restoredConversation = await persistConversationSnapshot(conversationId, messagesThroughTarget)
+            input.upsertConversation(restoredConversation)
+            input.updateConversationSummary(restoredConversation)
+            if ((input.activeConversationIdRef.current ?? input.activeConversationId) === conversationId) {
+              input.applyConversation(restoredConversation)
+            }
+          }
+        }
+
+        const revertPreparation =
+          activeRunRevertPreparation ?? (await prepareRevertSessionForMessage(conversationId, messageId))
         try {
-          await restoreWorkspaceCheckpointForMessage(conversationId, messageId)
+          if (activeRunRevertPreparation) {
+            await restoreWorkspaceCheckpointSequence(revertPreparation.checkpointIds)
+          } else {
+            await restoreWorkspaceCheckpointForMessage(conversationId, messageId)
+          }
         } catch (caughtError) {
           if (!isMissingCheckpointError(caughtError)) {
             throw caughtError

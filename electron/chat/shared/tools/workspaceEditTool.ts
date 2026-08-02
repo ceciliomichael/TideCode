@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs'
+import path from 'node:path'
 import { notifyWorkspaceExplorerChange } from '../../../workspace/explorerNotifications'
 import type { AgentToolExecutionResult } from '../toolTypes'
 import {
@@ -223,7 +224,31 @@ export async function createEditToolResult(
 
   const oldContent = await fs.readFile(target.absolutePath, 'utf8').catch(() => null)
   if (oldContent === null) {
-    throw new Error(`File not found: "${target.displayPath}". Use the write tool to create new files.`)
+    if (chunks.length !== 1) {
+      throw new Error(`File not found: "${target.displayPath}".`)
+    }
+
+    const newContent = chunks[0].replacementContent
+    await captureCheckpointFileStateIfNeeded(context.checkpointId, target.absolutePath)
+    await fs.mkdir(path.dirname(target.absolutePath), { recursive: true })
+    await fs.writeFile(target.absolutePath, newContent, 'utf8')
+    notifyWorkspaceExplorerChange(context.workspaceRootPath)
+
+    const fileChanges = aggregateFileChangeItems([
+      {
+        fileName: target.displayPath,
+        newContent,
+        oldContent: null,
+      },
+    ])
+
+    return buildFileChangeResult(
+      'Created 1 file',
+      fileChanges,
+      'edit',
+      target.displayPath,
+      'File created successfully.',
+    )
   }
 
   const normalizedOld = normalizeTextMutationContent(oldContent)

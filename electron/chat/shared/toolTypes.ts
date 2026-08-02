@@ -1,7 +1,6 @@
 import type { AppTerminalExecutionMode } from '../../../src/types/chat'
 import type { WebContents } from 'electron'
 import type { ToolInvocationResultPresentation } from '../../../src/types/chat'
-import type { DynamicToolInvocationMetadata } from './tools/dynamicToolContracts'
 
 export interface AgentToolResultSubject {
   kind?: string
@@ -10,7 +9,6 @@ export interface AgentToolResultSubject {
 
 export interface AgentToolExecutionResult {
   body?: string
-  dynamicInvocation?: DynamicToolInvocationMetadata
   resultPresentation?: ToolInvocationResultPresentation
   semantics?: Record<string, unknown>
   status: 'error' | 'success'

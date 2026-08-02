@@ -6,8 +6,12 @@ import { buildChatModeSystemPrompt } from './prompts/mode'
 
 type ToolModelMessage = Extract<ModelMessage, { role: 'tool' }>
 
+interface CanonicalToolCall {
+  argumentsValue: Record<string, unknown>
+  toolName: string
+}
+
 export interface BuildChatPromptOptions {
-  availableSkillsBlock?: string | null
   includeAssistantReasoningParts?: boolean
   includeExecutionModeContext?: boolean
   terminalExecutionMode?: AppTerminalExecutionMode
@@ -176,7 +180,34 @@ function parseToolArguments(argumentsText: string) {
   }
 }
 
-function buildAssistantToolCallParts(message: Message, validToolCallIds: Set<string>) {
+function buildCanonicalToolCallIndex(inputMessages: readonly Message[]) {
+  const canonicalToolCalls = new Map<string, CanonicalToolCall>()
+
+  for (const message of inputMessages) {
+    if (message.role !== 'tool' || !message.toolCallId) {
+      continue
+    }
+
+    const parsedResult = parseStructuredToolResultContent(message.content)
+    const metadata = parsedResult.metadata
+    if (!metadata?.arguments || metadata.toolName.trim().length === 0) {
+      continue
+    }
+
+    canonicalToolCalls.set(message.toolCallId, {
+      argumentsValue: metadata.arguments,
+      toolName: metadata.toolName,
+    })
+  }
+
+  return canonicalToolCalls
+}
+
+function buildAssistantToolCallParts(
+  message: Message,
+  validToolCallIds: Set<string>,
+  canonicalToolCalls: ReadonlyMap<string, CanonicalToolCall>,
+) {
   const toolCallParts: Array<any> = []
 
   for (const invocation of message.toolInvocations ?? []) {
@@ -184,7 +215,8 @@ function buildAssistantToolCallParts(message: Message, validToolCallIds: Set<str
       continue
     }
 
-    const parsedArguments = parseToolArguments(invocation.argumentsText)
+    const canonicalToolCall = canonicalToolCalls.get(invocation.id)
+    const parsedArguments = canonicalToolCall?.argumentsValue ?? parseToolArguments(invocation.argumentsText)
     const rawArguments = invocation.argumentsText.trim().length > 0 ? invocation.argumentsText : null
     const input = parsedArguments ?? (invocation.toolName === 'apply_patch' ? rawArguments : null)
     if (!input) {
@@ -196,7 +228,7 @@ function buildAssistantToolCallParts(message: Message, validToolCallIds: Set<str
       args: input,
       input,
       toolCallId: invocation.id,
-      toolName: invocation.toolName,
+      toolName: canonicalToolCall?.toolName ?? invocation.toolName,
       type: 'tool-call',
     })
   }
@@ -237,10 +269,11 @@ function buildToolResultParts(message: Message, validToolCallIds: Set<string>): 
 function toAssistantMessage(
   message: Message,
   validToolCallIds: Set<string>,
+  canonicalToolCalls: ReadonlyMap<string, CanonicalToolCall>,
   options: Required<BuildChatPromptOptions>,
 ): ModelMessage | null {
   const normalized = normalizeAssistantMessageContent(message)
-  const toolCallParts = buildAssistantToolCallParts(message, validToolCallIds)
+  const toolCallParts = buildAssistantToolCallParts(message, validToolCallIds, canonicalToolCalls)
   const reasoningText = normalized.reasoningContent.trim()
   const text = normalized.content.trim()
   const combinedAssistantText = text
@@ -323,6 +356,7 @@ function appendModelMessage(messages: ModelMessage[], nextMessage: ModelMessage)
 function toModelMessage(
   message: Message,
   validToolCallIds: Set<string>,
+  canonicalToolCalls: ReadonlyMap<string, CanonicalToolCall>,
   options: Required<BuildChatPromptOptions>,
 ): ModelMessage | null {
   if (message.role === 'user') {
@@ -342,7 +376,7 @@ function toModelMessage(
   }
 
   if (message.role === 'assistant') {
-    return toAssistantMessage(message, validToolCallIds, options)
+    return toAssistantMessage(message, validToolCallIds, canonicalToolCalls, options)
   }
 
   if (message.role === 'tool') {
@@ -354,7 +388,6 @@ function toModelMessage(
 
 export function buildChatSystemPrompt(chatMode: ChatMode, workspaceRootPath: string, options?: BuildChatPromptOptions) {
   return buildChatModeSystemPrompt(chatMode, workspaceRootPath, {
-    availableSkillsBlock: options?.availableSkillsBlock,
     terminalExecutionMode: options?.terminalExecutionMode,
   })
 }
@@ -380,16 +413,16 @@ export function buildModelMessages(
   inputOptions?: BuildChatPromptOptions,
 ): ModelMessage[] {
   const validToolCallIds = new Set<string>()
+  const canonicalToolCalls = buildCanonicalToolCallIndex(inputMessages)
   const messages: ModelMessage[] = []
   const options: Required<BuildChatPromptOptions> = {
-    availableSkillsBlock: inputOptions?.availableSkillsBlock ?? null,
     includeAssistantReasoningParts: inputOptions?.includeAssistantReasoningParts ?? true,
     includeExecutionModeContext: inputOptions?.includeExecutionModeContext ?? true,
     terminalExecutionMode: inputOptions?.terminalExecutionMode ?? 'sandbox',
   }
 
   for (const message of inputMessages) {
-    const modelMessage = toModelMessage(message, validToolCallIds, options)
+    const modelMessage = toModelMessage(message, validToolCallIds, canonicalToolCalls, options)
     if (!modelMessage) {
       continue
     }

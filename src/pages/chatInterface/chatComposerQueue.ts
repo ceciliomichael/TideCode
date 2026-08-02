@@ -36,6 +36,33 @@ export function removeQueuedComposerMessage(messages: readonly QueuedMessage[], 
   return messages.filter((message) => message.id !== id)
 }
 
+export function reorderQueuedComposerMessages(
+  messages: readonly QueuedMessage[],
+  sourceId: string,
+  targetId: string,
+) {
+  if (sourceId === targetId) {
+    return [...messages]
+  }
+
+  const sourceIndex = messages.findIndex((message) => message.id === sourceId)
+  const targetIndex = messages.findIndex((message) => message.id === targetId)
+  if (sourceIndex < 0 || targetIndex < 0) {
+    return [...messages]
+  }
+
+  const nextMessages = [...messages]
+  const [movedMessage] = nextMessages.splice(sourceIndex, 1)
+  if (!movedMessage) {
+    return [...messages]
+  }
+
+  const nextTargetIndex = nextMessages.findIndex((message) => message.id === targetId)
+  const insertionIndex = sourceIndex < targetIndex ? nextTargetIndex + 1 : nextTargetIndex
+  nextMessages.splice(Math.max(insertionIndex, 0), 0, movedMessage)
+  return nextMessages
+}
+
 export function requeueQueuedComposerMessage(
   messages: readonly QueuedMessage[],
   message: QueuedMessage,

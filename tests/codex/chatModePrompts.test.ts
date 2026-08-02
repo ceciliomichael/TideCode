@@ -13,8 +13,8 @@ test('agent prompt teaches concise, reliable, dependency-aware tool use', async 
     const prompt = buildChatModeSystemPrompt('agent', workspaceRootPath)
 
     assert.doesNotMatch(prompt, /caveman|primitive speech/iu)
-    assert.match(prompt, /Batch calls only when none depends on another result/u)
-    assert.match(prompt, /same file, terminal session, or Kanban card sequential/u)
+    assert.match(prompt, /concrete tool whose name and parameters match the task/u)
+    assert.match(prompt, /keep dependent calls sequential/u)
     assert.match(prompt, /Answer first/u)
     assert.match(prompt, /Default to 1-3 short sentences/u)
     assert.match(prompt, /report only what you verified/iu)
@@ -31,14 +31,14 @@ test('plan prompt is concise and explicitly restricts file editing while support
 
     assert.doesNotMatch(prompt, /caveman|primitive speech/iu)
     assert.match(prompt, /Plan mode may use Kanban planning actions and discovered MCP tools/u)
-    assert.match(prompt, /model-facing tool surface contains three capability tools/u)
+    assert.match(prompt, /concrete tool whose name and parameters match the task/u)
     assert.match(prompt, /Stay under 300 words/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('runtime tool exposure keeps the provider surface to the three dynamic tools', async () => {
+test('runtime tool exposure gives the provider the concrete native tools', async () => {
   const workspaceRootPath = await fs.mkdtemp(
     path.join(tmpdir(), 'tidecode-mode-tools-'),
   )
@@ -55,8 +55,23 @@ test('runtime tool exposure keeps the provider surface to the three dynamic tool
       ),
     ])
 
-    assert.deepEqual(Object.keys(agentTools).sort(), ['execute_tool', 'get_tool_schema', 'list_tools'])
-    assert.deepEqual(Object.keys(planTools).sort(), ['execute_tool', 'get_tool_schema', 'list_tools'])
+    assert.deepEqual(Object.keys(agentTools).sort(), [
+      'edit',
+      'execute_terminal',
+      'glob',
+      'grep',
+      'kanban_board',
+      'list',
+      'read',
+      'write',
+    ])
+    assert.deepEqual(Object.keys(planTools).sort(), [
+      'glob',
+      'grep',
+      'kanban_board',
+      'list',
+      'read',
+    ])
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -88,8 +103,7 @@ test('plan mode excludes workspace mutation tools but permits Kanban planning ac
 
     const planKanban = planTools.kanban_board
     assert.ok(planKanban)
-    assert.match(String(planKanban.description), /read_board/u)
-    assert.match(String(planKanban.description), /create_card|update_card|delete_card/u)
+    assert.equal(planKanban.description, 'Manage Kanban cards.')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

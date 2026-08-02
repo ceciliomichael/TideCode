@@ -1,5 +1,14 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ChangeEvent, type RefObject } from 'react'
-import { Check, Paperclip, Play, X } from 'lucide-react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ChangeEvent,
+  type DragEvent,
+  type RefObject,
+} from 'react'
+import { Check, GripVertical, Paperclip, Undo2 } from 'lucide-react'
 import { CHAT_ATTACHMENT_INPUT_ACCEPT, readChatAttachmentsFromFiles } from '../../lib/chatAttachmentFiles'
 import { chatInputSurfaceClassName } from '../../lib/chatStyles'
 import { AttachmentPillList } from './AttachmentPillList'
@@ -11,7 +20,9 @@ interface ChatQueueItemProps {
   index: number
   message: QueuedMessage
   editCancelBoundaryRef?: RefObject<HTMLElement>
-  onForceSend: (id: string) => void
+  onDragEnd: () => void
+  onDragStart: (id: string) => void
+  onDrop: (id: string) => void
   onRemove: (id: string) => void
   onUpdate: (id: string, content: string, attachments?: ChatAttachment[]) => void
 }
@@ -20,7 +31,9 @@ export function ChatQueueItem({
   index,
   message,
   editCancelBoundaryRef,
-  onForceSend,
+  onDragEnd,
+  onDragStart,
+  onDrop,
   onRemove,
   onUpdate,
 }: ChatQueueItemProps) {
@@ -31,6 +44,8 @@ export function ChatQueueItem({
   const [draftContent, setDraftContent] = useState(message.content)
   const [draftAttachments, setDraftAttachments] = useState<ChatAttachment[]>(message.attachments ?? [])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [isDragOver, setIsDragOver] = useState(false)
 
   useEffect(() => {
     setDraftContent(message.content)
@@ -59,6 +74,41 @@ export function ChatQueueItem({
 
   function handleActivate() {
     setIsEditing(true)
+  }
+
+  function handleDragStart(event: DragEvent<HTMLDivElement>) {
+    event.stopPropagation()
+    setIsDragging(true)
+    onDragStart(message.id)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', message.id)
+  }
+
+  function handleDragEnd() {
+    setIsDragging(false)
+    setIsDragOver(false)
+    onDragEnd()
+  }
+
+  function handleDragOver(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    setIsDragOver(true)
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLDivElement>) {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      return
+    }
+
+    setIsDragOver(false)
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    event.stopPropagation()
+    onDrop(message.id)
+    setIsDragOver(false)
   }
 
   const handleCancel = useCallback(() => {
@@ -192,6 +242,12 @@ export function ChatQueueItem({
     <div
       role="button"
       tabIndex={0}
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       onClick={handleActivate}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -199,9 +255,14 @@ export function ChatQueueItem({
           handleActivate()
         }
       }}
-      className="group flex min-h-12 cursor-pointer items-center justify-between gap-2 px-2 py-2 text-left transition-[background-color,color,box-shadow] hover:bg-surface-muted/70"
+      className={[
+        'group flex min-h-9 cursor-grab items-center justify-between gap-2 px-2 text-left transition-[background-color,color,box-shadow] active:cursor-grabbing',
+        isDragging ? 'opacity-50' : '',
+        isDragOver ? 'bg-surface-muted ring-1 ring-inset ring-action/40' : 'hover:bg-surface-muted/70',
+      ].join(' ')}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        <GripVertical size={13} className="shrink-0 text-muted-foreground/70" aria-hidden="true" />
         <span className="shrink-0 text-sm font-medium leading-5 text-muted-foreground">{`${index + 1}.`}</span>
         <div className="flex min-w-0 flex-1 items-center gap-2" title={message.content}>
           <ChatMentionText
@@ -218,32 +279,22 @@ export function ChatQueueItem({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation()
-            onForceSend(message.id)
-          }}
-          className="inline-flex h-8 w-8 items-center justify-center bg-transparent text-emerald-600 transition-colors hover:text-emerald-700"
-          aria-label="Send queued message now"
-          title="Send queued message now"
-        >
-          <Play size={14} />
-        </button>
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation()
-            onRemove(message.id)
-          }}
-          className="inline-flex h-8 w-8 items-center justify-center bg-transparent text-red-600 transition-colors hover:text-red-700"
-          aria-label="Remove queued message"
-          title="Remove queued message"
-        >
-          <X size={14} />
-        </button>
-      </div>
+      {!isDragging ? (
+        <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onRemove(message.id)
+            }}
+            className="inline-flex h-8 w-8 items-center justify-center bg-transparent text-muted-foreground transition-colors hover:text-foreground"
+            aria-label="Remove queued message"
+            title="Remove queued message"
+          >
+            <Undo2 size={14} />
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }

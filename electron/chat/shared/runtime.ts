@@ -14,7 +14,7 @@ import type {
 } from '../../../src/types/chat'
 import { approximateTokenCount } from '../../../src/lib/contextUsage'
 import { normalizeContextCompactionSettings } from '../../../src/lib/contextCompactionSettings'
-import { buildSkillsSystemPromptBlock, listEnabledSkills } from '../../skills/service'
+import { listEnabledSkills } from '../../skills/service'
 import { buildPromptContextManifest } from '../cache/canonicalization'
 import { applyPromptCacheBreakpoints, derivePromptCacheKey } from '../cache/providerPolicies'
 import type { ProviderStepRecord } from '../history/contracts'
@@ -35,10 +35,7 @@ import {
   buildChatPrompt,
   ensureCurrentExecutionModeContext,
 } from './messages'
-import {
-  createAgentTools,
-  repairDirectDynamicToolCall,
-} from './tools'
+import { createAgentTools } from './tools'
 import { cleanUpFinishedSessionsAtTurnEnd } from './tools/terminalTools'
 import { sortToolSet } from './runtimeToolSet'
 import { continueToolLoopUntilModelStops } from './toolLoopPolicy'
@@ -144,7 +141,6 @@ export async function runToolEnabledChatStream(input: {
     )
     const promptOptions = {
       ...input.promptOptions,
-      availableSkillsBlock: buildSkillsSystemPromptBlock(enabledSkills),
       terminalExecutionMode: input.startInput.terminalExecutionMode,
     }
     const prompt = buildChatPrompt({
@@ -217,7 +213,6 @@ export async function runToolEnabledChatStream(input: {
       reasoningEffort: input.startInput.reasoningEffort,
       signal: input.abortController.signal,
       stopWhen: continueToolLoopUntilModelStops,
-      repairToolCall: repairDirectDynamicToolCall,
       system: prompt.system,
       tools,
       onStepEnd: (step) => {

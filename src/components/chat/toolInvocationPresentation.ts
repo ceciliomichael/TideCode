@@ -6,7 +6,6 @@ import { isKanbanTool } from './kanbanToolInvocationKinds'
 import { isFileEditTool, isFileMutationTool, isFileWriteTool } from './toolInvocationKinds'
 
 import {
-  extractPartialStringArgument,
   getApplyPatchFileTargets,
   getBasename,
   getReadToolTarget,
@@ -16,9 +15,7 @@ import {
   readFirstText,
   readSessionId,
   readSkillName,
-  resolveToolInvocationForPresentation,
 } from './toolInvocationParsing'
-export { resolveToolInvocationForPresentation } from './toolInvocationParsing'
 
 import {
   detectFileMutationActionKind,
@@ -32,54 +29,6 @@ function getToolVerb(invocation: ToolInvocationTrace) {
     parsedResult?.metadata?.semantics && typeof parsedResult.metadata.semantics.operation === 'string'
       ? parsedResult.metadata.semantics.operation
       : null
-
-  if (invocation.toolName === 'list_tools') {
-    const query = parseCompleteToolArguments(invocation.argumentsText)?.query
-    const queryText = typeof query === 'string' && query.trim().length > 0 ? query.trim() : null
-    if (queryText) {
-      return invocation.state === 'running'
-        ? `Searching ${queryText} in tool set`
-        : invocation.state === 'completed'
-          ? `Searched ${queryText} in tool set`
-          : `Search failed for ${queryText} in tool set`
-    }
-
-    return invocation.state === 'running'
-      ? 'Listing tool set'
-      : invocation.state === 'completed'
-        ? 'Listed tool set'
-        : 'List tool set failed'
-  }
-
-  if (invocation.toolName === 'get_tool_schema') {
-    const argumentsValue = parseCompleteToolArguments(invocation.argumentsText)
-    const ids = Array.isArray(argumentsValue?.ids)
-      ? argumentsValue.ids.filter((id): id is string => typeof id === 'string' && id.trim().length > 0).map((id) => id.trim())
-      : []
-    const id = typeof argumentsValue?.id === 'string' && argumentsValue.id.trim().length > 0
-      ? argumentsValue.id.trim()
-      : null
-    const targetText = ids.length > 0 ? ids.join(', ') : id ?? 'tool'
-    const targetCount = ids.length > 0 ? ids.length : id ? 1 : 0
-    const schemaNoun = targetCount === 1 ? 'schema' : 'schemas'
-    return invocation.state === 'running'
-      ? `Fetching ${schemaNoun} for ${targetText}`
-      : invocation.state === 'completed'
-        ? `Fetched ${schemaNoun} for ${targetText}`
-        : `Fetch ${schemaNoun} failed for ${targetText}`
-  }
-
-  if (invocation.toolName === 'execute_tool') {
-    const id = parseCompleteToolArguments(invocation.argumentsText)?.id
-    const idText = typeof id === 'string' && id.trim().length > 0
-      ? id.trim()
-      : extractPartialStringArgument(invocation.argumentsText, 'id')
-    return invocation.state === 'running'
-      ? idText ? `Executing ${idText}` : 'Preparing tool'
-      : invocation.state === 'completed'
-        ? idText ? `Completed ${idText}` : 'Tool completed'
-        : idText ? `Failed ${idText}` : 'Tool failed'
-  }
 
   if (invocation.toolName === 'list') {
     return invocation.state === 'running' ? 'Listing' : invocation.state === 'completed' ? 'Listed' : 'List failed'
@@ -223,7 +172,6 @@ export interface ToolInvocationDisplayEntry {
 }
 
 export function getFileMutationGroupType(invocation: ToolInvocationTrace): 'creating' | 'overwriting' | 'editing' | null {
-  invocation = resolveToolInvocationForPresentation(invocation)
   if (isFileEditTool(invocation.toolName)) {
     return 'editing'
   }
@@ -248,7 +196,6 @@ export function getFileMutationGroupType(invocation: ToolInvocationTrace): 'crea
 export function getFileMutationSummaryKind(
   invocation: ToolInvocationTrace,
 ): 'created' | 'edited' | 'deleted' | 'verified' | null {
-  invocation = resolveToolInvocationForPresentation(invocation)
   if (!isFileWriteTool(invocation.toolName) && !isFileEditTool(invocation.toolName)) {
     return null
   }
@@ -294,7 +241,6 @@ export function getFileMutationSummaryKind(
 }
 
 function getWholeFileChangeSingleChangeTarget(invocation: ToolInvocationTrace) {
-  invocation = resolveToolInvocationForPresentation(invocation)
   if (!isFileWriteTool(invocation.toolName) && !isFileEditTool(invocation.toolName)) {
     return null
   }
@@ -309,10 +255,6 @@ function getWholeFileChangeSingleChangeTarget(invocation: ToolInvocationTrace) {
 }
 
 export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace): ToolInvocationDisplayEntry[] {
-  invocation = resolveToolInvocationForPresentation(invocation)
-  if (invocation.toolName === 'execute_tool' && invocation.state === 'running') {
-    return []
-  }
   if (isFileMutationTool(invocation.toolName) && invocation.state === 'running') {
     return []
   }
@@ -452,7 +394,6 @@ export function getToolInvocationHeaderLabel(
   overrideState?: ToolInvocationTrace['state'],
   workspaceRootPath?: string | null,
 ) {
-  invocation = resolveToolInvocationForPresentation(invocation)
   if (isKanbanTool(invocation.toolName)) {
     const effectiveInvocation =
       overrideState === undefined

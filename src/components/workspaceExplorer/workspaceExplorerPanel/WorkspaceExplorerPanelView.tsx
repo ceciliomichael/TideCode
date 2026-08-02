@@ -20,6 +20,7 @@ export function WorkspaceExplorerPanelView({
   activeFilePath,
   clipboardEntry,
   gitFileDiffs,
+  isOpen,
   panelState,
   workspaceRootPath,
 }: WorkspaceExplorerPanelViewProps) {
@@ -244,9 +245,11 @@ export function WorkspaceExplorerPanelView({
   return (
     <aside
       className={[
-        'relative hidden h-full shrink-0 min-w-0 flex-col overflow-hidden border-l border-border bg-background md:flex',
+        'relative flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-background max-md:hidden',
+        isOpen ? 'pointer-events-auto' : 'pointer-events-none invisible',
       ].join(' ')}
-      style={{ width: `${panelState.renderedWidth}px` }}
+      aria-hidden={!isOpen}
+      style={{ width: isOpen ? `${panelState.renderedWidth}px` : '0px' }}
     >
       <div className="flex h-11 items-center justify-between pl-5 pr-3">
         <p className="text-xs font-semibold uppercase tracking-[0.08em] text-subtle-foreground">Explorer</p>
@@ -513,13 +516,15 @@ export function WorkspaceExplorerPanelView({
           state={panelState.deleteDialogState}
         />
       ) : null}
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize explorer panel"
-        onPointerDown={panelState.handleResizePointerDown}
-        className="absolute inset-y-0 left-0 z-20 w-3 -translate-x-1/2 cursor-col-resize"
-      />
+      {isOpen ? (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize explorer panel"
+          onPointerDown={panelState.handleResizePointerDown}
+          className="absolute inset-y-0 left-0 z-20 w-3 -translate-x-1/2 cursor-col-resize"
+        />
+      ) : null}
     </aside>
   )
 }

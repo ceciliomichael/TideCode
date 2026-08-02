@@ -4,12 +4,12 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createGrepTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Searches file contents using regular expressions.',
+    description: 'Search file contents.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
         path: {
-          description: 'Directory or file path to search. Omit it to search from the workspace root.',
+          description: 'File or directory path. Omit for the workspace root.',
           type: 'string',
         },
         include: { type: 'string' },

@@ -115,11 +115,10 @@ export function ChatInterface({
     reasoningEffort: chatRuntimeConfig.reasoningEffort,
     workspacePath: activeWorkspacePath,
   })
-  const shouldLoadDetailedGitDiffs =
-    isRightPanelOpen && (rightPanelTab === 'diff' || rightPanelTab === 'source-control')
+  // Keep full diff contents warm while the side panels are closed so opening
+  // either panel only changes visibility instead of triggering a second render.
   const gitDiffSnapshot = useGitDiffSnapshot({
     hasRepository,
-    includeContent: shouldLoadDetailedGitDiffs,
     pollingEnabled: true,
     workspacePath: activeWorkspacePath,
   })

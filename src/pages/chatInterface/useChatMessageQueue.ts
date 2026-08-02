@@ -6,6 +6,7 @@ import {
   dequeueQueuedComposerMessage,
   removeQueuedComposerMessage,
   requeueQueuedComposerMessage,
+  reorderQueuedComposerMessages,
   updateQueuedComposerMessage,
 } from './chatComposerQueue'
 import {
@@ -136,19 +137,15 @@ export function useChatMessageQueue({
     [onSendMessage],
   )
 
-  const forceSendQueuedMessage = useCallback(
-    async (id: string) => {
-      const restoreIndex = queuedMessages.findIndex((message) => message.id === id)
-      const targetMessage = queuedMessages[restoreIndex]
-      if (!targetMessage) {
-        return
-      }
+  const reorderQueuedMessages = useCallback((sourceId: string, targetId: string) => {
+    if (sourceId === targetId) {
+      return
+    }
 
-      attemptedAutoSendKeyRef.current = null
-      await sendQueuedMessage(targetMessage, restoreIndex, 'turn_completed')
-    },
-    [queuedMessages, sendQueuedMessage],
-  )
+    queueLifecycleVersionRef.current += 1
+    attemptedAutoSendKeyRef.current = null
+    setQueuedMessages((currentValue) => reorderQueuedComposerMessages(currentValue, sourceId, targetId))
+  }, [])
 
   useEffect(() => {
     if (isAutoSendBlocked || queuedMessages.length === 0 || isProcessingQueueRef.current) {
@@ -204,9 +201,9 @@ export function useChatMessageQueue({
   return {
     clearQueuedMessages,
     enqueueMessage,
-    forceSendQueuedMessage,
     queuedMessages,
     removeQueuedMessage,
+    reorderQueuedMessages,
     updateQueuedMessage,
   }
 }

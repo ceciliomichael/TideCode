@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -37,14 +38,14 @@ export function useWorkspaceExplorerResize({
     onWidthCommitRef.current = onWidthCommit
   }, [onWidthChange, onWidthCommit])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (isResizing) {
       return
     }
     setRenderedWidth(width)
   }, [isResizing, width])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isOpen || isResizing) {
       return
     }

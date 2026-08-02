@@ -140,7 +140,7 @@ test('createAgentTools describes grep mechanics without workflow guidance', asyn
     assert.ok('grep' in tools)
     const grepTool = tools.grep as { description?: string }
 
-    assert.match(grepTool.description ?? '', /Searches file contents/u)
+    assert.equal(grepTool.description, 'Search file contents.')
     assert.doesNotMatch(grepTool.description ?? '', /use `read`|apply_patch|should|prefer/iu)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -165,10 +165,10 @@ test('createAgentTools keeps plan mode tool descriptions literal', async () => {
     const globTool = tools.glob as { description?: string }
     const grepTool = tools.grep as { description?: string }
 
-    assert.match(listTool.description ?? '', /Lists direct contents/u)
-    assert.match(readTool.description ?? '', /Reads file contents/u)
-    assert.match(globTool.description ?? '', /Finds file paths/u)
-    assert.match(grepTool.description ?? '', /Searches file contents/u)
+    assert.equal(listTool.description, 'List a directory.')
+    assert.equal(readTool.description, 'Read a file or directory.')
+    assert.equal(globTool.description, 'Find files by pattern.')
+    assert.equal(grepTool.description, 'Search file contents.')
     for (const description of [listTool, readTool, globTool, grepTool].map((tool) => tool.description ?? '')) {
       assert.doesNotMatch(description, /use `read`|apply_patch|write|should|prefer/iu)
     }
@@ -203,11 +203,11 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     const replaceTool = tools.edit as { description?: string }
     const writeTool = tools.write as { description?: string }
 
-    assert.match(readTool.description ?? '', /Reads file contents/u)
-    assert.match(replaceTool.description ?? '', /Replaces a block of text/u)
-    assert.match(globTool.description ?? '', /Finds file paths/u)
-    assert.match(grepTool.description ?? '', /Searches file contents/u)
-    assert.match(writeTool.description ?? '', /Writes content to a file/u)
+    assert.equal(readTool.description, 'Read a file or directory.')
+    assert.equal(replaceTool.description, 'Replace exact text in a file.')
+    assert.equal(globTool.description, 'Find files by pattern.')
+    assert.equal(grepTool.description, 'Search file contents.')
+    assert.equal(writeTool.description, 'Write a complete file.')
     for (const description of [
       readTool,
       globTool,

@@ -145,7 +145,7 @@ export function useWorkspaceExplorerTree({
   }, [])
 
   useEffect(() => {
-    if (!isOpen || !workspaceRootPath) {
+    if (!workspaceRootPath) {
       return
     }
 
@@ -181,10 +181,10 @@ export function useWorkspaceExplorerTree({
           })
         })
     }
-  }, [isOpen, loadDirectory, workspaceRootPath])
+  }, [loadDirectory, workspaceRootPath])
 
   useEffect(() => {
-    if (!isOpen || !workspaceRootPath) {
+    if (!workspaceRootPath) {
       return
     }
     void window.tidecodeWorkspace.updateExplorerWatchPaths({
@@ -193,10 +193,10 @@ export function useWorkspaceExplorerTree({
     }).catch((error) => {
       console.error('Failed to update workspace explorer watch paths', error)
     })
-  }, [expandedDirectories, isOpen, workspaceRootPath])
+  }, [expandedDirectories, workspaceRootPath])
 
   useEffect(() => {
-    if (!isOpen || !workspaceRootPath || !activeFilePath) {
+    if (!workspaceRootPath || !activeFilePath) {
       if (!activeFilePath) {
         lastSyncedActiveFileRef.current = { workspacePath: null, filePath: null }
       }
@@ -233,7 +233,7 @@ export function useWorkspaceExplorerTree({
     if (newlyExpandedPaths.length > 0) {
       void Promise.all(newlyExpandedPaths.map((directoryPath) => loadDirectory(directoryPath)))
     }
-  }, [activeFilePath, expandedDirectories, isOpen, loadDirectory, workspaceRootPath])
+  }, [activeFilePath, expandedDirectories, loadDirectory, workspaceRootPath])
 
   useEffect(() => {
     if (!isOpen || !activeFilePath || lastScrolledActiveFileRef.current === activeFilePath) {

@@ -37,7 +37,7 @@ export function configureAutoUpdater(listener: UpdateStateListener) {
 
   hasBeenConfigured = true
   autoUpdater.autoDownload = false
-  autoUpdater.autoInstallOnAppQuit = false
+  autoUpdater.autoInstallOnAppQuit = true
   autoUpdater.allowPrerelease = false
   autoUpdater.on('download-progress', handleDownloadProgress)
   autoUpdater.on('update-downloaded', () => {

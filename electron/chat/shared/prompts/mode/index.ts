@@ -2,7 +2,6 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { ChatMode, AppTerminalExecutionMode } from '../../../../../src/types/chat'
 import { buildWorkspaceInstructionsBlock } from '../workspaceInstructions'
-import { buildDynamicToolsPrompt } from '../dynamicTools'
 import { buildPythonVenvPromptBlock } from '../../../../python/venv'
 
 const PROMPT_REPO_PATH = 'electron/chat/shared/prompts/mode'
@@ -76,6 +75,18 @@ const cachedPrompts: Partial<Record<ChatMode, string>> = {}
 let cachedSharedPrompt: string | null = null
 let cachedToolingPrompt: string | null = null
 
+export interface ChatSystemPromptComponent {
+  content: string
+  id: string
+  section: 'system_contract' | 'workspace_context'
+  source: string
+}
+
+export interface ChatSystemPromptBreakdown {
+  components: ChatSystemPromptComponent[]
+  systemPrompt: string
+}
+
 function getModePrompt(chatMode: ChatMode) {
   const cachedPrompt = cachedPrompts[chatMode]
   if (cachedPrompt) {
@@ -105,41 +116,95 @@ function getToolingPrompt() {
   return cachedToolingPrompt
 }
 
-export function buildChatModeSystemPrompt(
+export function buildChatModeSystemPromptBreakdown(
   chatMode: ChatMode,
   workspaceRootPath: string,
-  options?: { availableSkillsBlock?: string | null; terminalExecutionMode?: AppTerminalExecutionMode },
-) {
-  const systemRules = [
-    buildDynamicToolsPrompt(),
-    getToolingPrompt(),
-    getModePrompt(chatMode),
-    getSharedPrompt(),
-    options?.availableSkillsBlock?.trim() ? options.availableSkillsBlock.trim() : null,
-  ]
-    .filter((value): value is string => Boolean(value))
-    .join('\n\n')
+  options?: { terminalExecutionMode?: AppTerminalExecutionMode },
+): ChatSystemPromptBreakdown {
+  void options
+
+  const systemRuleComponents: ChatSystemPromptComponent[] = [
+    {
+      content: getToolingPrompt(),
+      id: 'tooling_prompt',
+      section: 'system_contract' as const,
+      source: 'electron/chat/shared/prompts/mode/shared/tooling.md',
+    },
+    {
+      content: getModePrompt(chatMode),
+      id: `${chatMode}_mode_prompt`,
+      section: 'system_contract' as const,
+      source: `electron/chat/shared/prompts/mode/${MODE_PROMPT_PATHS[chatMode]}`,
+    },
+    {
+      content: getSharedPrompt(),
+      id: 'shared_prompt_extensions',
+      section: 'system_contract' as const,
+      source: 'electron/chat/shared/prompts/mode/shared/*.{md,xml}',
+    },
+  ].filter((component) => component.content.length > 0)
+
+  const workspaceRootComponent: ChatSystemPromptComponent = {
+    content: `Workspace root: ${workspaceRootPath}`,
+    id: 'workspace_root',
+    section: 'workspace_context' as const,
+    source: 'electron/chat/shared/prompts/mode/index.ts',
+  }
+  const venvPrompt = buildPythonVenvPromptBlock(workspaceRootPath)
+  const workspaceInstructions = buildWorkspaceInstructionsBlock(workspaceRootPath)
+  const workspaceComponents = [
+    workspaceRootComponent,
+    venvPrompt
+      ? {
+          content: venvPrompt,
+          id: 'python_venv_context',
+          section: 'workspace_context' as const,
+          source: 'electron/python/venv.ts',
+        }
+      : null,
+    workspaceInstructions
+      ? {
+          content: workspaceInstructions,
+          id: 'workspace_instructions',
+          section: 'workspace_context' as const,
+          source: `${path.join(workspaceRootPath, 'AGENTS.md')}`,
+        }
+      : null,
+  ].filter((component): component is ChatSystemPromptComponent => component !== null)
+
+  const systemRules = systemRuleComponents.map((component) => component.content).join('\n\n')
 
   const systemContractBlock = [
     '<system_contract priority="highest" description="Core mode, tool, and response requirements">',
     systemRules,
     '</system_contract>',
   ].join('\n')
-  const venvPromptBlock = buildPythonVenvPromptBlock(workspaceRootPath)
+  const workspaceContext = workspaceComponents.map((component) => component.content).join('\n')
   const workspaceContextBlock = [
     '<workspace_context>',
-    `Workspace root: ${workspaceRootPath}`,
-    venvPromptBlock,
-    buildWorkspaceInstructionsBlock(workspaceRootPath),
+    workspaceContext,
     '</workspace_context>',
   ]
     .filter((value): value is string => Boolean(value))
     .join('\n')
 
-  return [
+  const systemPrompt = [
     systemContractBlock,
     workspaceContextBlock,
   ]
     .filter((value): value is string => Boolean(value))
     .join('\n\n')
+
+  return {
+    components: [...systemRuleComponents, ...workspaceComponents],
+    systemPrompt,
+  }
+}
+
+export function buildChatModeSystemPrompt(
+  chatMode: ChatMode,
+  workspaceRootPath: string,
+  options?: { terminalExecutionMode?: AppTerminalExecutionMode },
+) {
+  return buildChatModeSystemPromptBreakdown(chatMode, workspaceRootPath, options).systemPrompt
 }

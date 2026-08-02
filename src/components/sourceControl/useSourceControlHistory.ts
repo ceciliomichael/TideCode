@@ -6,11 +6,13 @@ import { prependCommittedHistoryEntry } from './sourceControlHistoryUtils'
 const HISTORY_PAGE_SIZE = 200
 
 interface UseSourceControlHistoryInput {
+  hasRepository: boolean
   isOpen: boolean
   normalizedWorkspacePath: string
 }
 
 export function useSourceControlHistory({
+  hasRepository,
   isOpen,
   normalizedWorkspacePath,
 }: UseSourceControlHistoryInput) {
@@ -56,7 +58,7 @@ export function useSourceControlHistory({
   )
 
   const refreshHistory = useCallback(async (options?: { silent?: boolean }) => {
-    if (!hasWorkspacePath) {
+    if (!hasWorkspacePath || !hasRepository) {
       setHistoryEntries([])
       setHeadHash(null)
       setHasMoreHistory(false)
@@ -81,7 +83,7 @@ export function useSourceControlHistory({
     } finally {
       if (!options?.silent) setIsLoadingHistory(false)
     }
-  }, [hasWorkspacePath, loadHistoryPage])
+  }, [hasRepository, hasWorkspacePath, loadHistoryPage])
 
   const appendCommittedHistoryEntry = useCallback(async (commitResult: GitCommitResult) => {
     if (!hasWorkspacePath) return false
@@ -162,16 +164,18 @@ export function useSourceControlHistory({
   }, [expandedCommitHashes, loadCommitDetails])
 
   useEffect(() => {
-    if (isOpen) void refreshHistory()
-  }, [isOpen, refreshHistory, normalizedWorkspacePath])
+    if (hasRepository || !hasWorkspacePath) {
+      void refreshHistory()
+    }
+  }, [hasRepository, hasWorkspacePath, normalizedWorkspacePath, refreshHistory])
 
   useEffect(() => {
     const handleFocus = () => {
-      if (isOpen) void refreshHistory({ silent: true })
+      if (isOpen && hasRepository) void refreshHistory({ silent: true })
     }
     window.addEventListener('focus', handleFocus)
     return () => window.removeEventListener('focus', handleFocus)
-  }, [isOpen, refreshHistory])
+  }, [hasRepository, isOpen, refreshHistory])
 
   return {
     appendCommittedHistoryEntry,

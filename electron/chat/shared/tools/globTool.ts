@@ -4,12 +4,12 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createGlobTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Finds file paths matching a pattern.',
+    description: 'Find files by pattern.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
         path: {
-          description: 'Directory path to search. Omit it to search from the workspace root.',
+          description: 'Directory path. Omit for the workspace root.',
           type: 'string',
         },
         pattern: { minLength: 1, type: 'string' },

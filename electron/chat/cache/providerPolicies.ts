@@ -46,7 +46,7 @@ export function resolvePromptCacheExtraBody(input: {
 /**
  * Anthropic caches tool definitions only when a cache breakpoint is attached
  * to a tool. Keep the breakpoint on the lexicographically last tool so the
- * dynamic tool manifest remains deterministic across every request.
+ * tool set remains deterministic across every request.
  *
  * Other providers deliberately pass through unchanged: they either use a
  * request-level cache key, have a different cache-resource lifecycle, or do

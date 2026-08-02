@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
 import { ResizableSidebarPanel } from '../sidebar/ResizableSidebarPanel'
 import { BrandWordmark } from '../branding/BrandWordmark'
-import { PendingUpdateAction } from '../updates/PendingUpdateAction'
 
 interface AppWorkspaceShellProps {
+  disableSidebarTransition?: boolean
   isSidebarOpen: boolean
   onSidebarWidthChange: (sidebarWidth: number) => void
   sidebar: ReactNode
@@ -13,6 +13,7 @@ interface AppWorkspaceShellProps {
 }
 
 export function AppWorkspaceShell({
+  disableSidebarTransition = false,
   isSidebarOpen,
   onSidebarWidthChange,
   sidebar,
@@ -31,13 +32,13 @@ export function AppWorkspaceShell({
       >
         <div className="flex items-center gap-2">
           <BrandWordmark className="h-7 w-[107px] text-brand" />
-          <PendingUpdateAction />
         </div>
       </div>
 
       {floatingControls ? <div className="relative z-40">{floatingControls}</div> : null}
 
       <ResizableSidebarPanel
+        disableSidebarTransition={disableSidebarTransition}
         isSidebarOpen={isSidebarOpen}
         onSidebarWidthChange={onSidebarWidthChange}
         sidebar={sidebar}

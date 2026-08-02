@@ -2,8 +2,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { McpServerConfig } from '../../src/types/mcp'
-import { buildDynamicToolCatalog } from '../../electron/chat/shared/tools/dynamicToolCatalog'
-import { createDynamicToolSet } from '../../electron/chat/shared/tools/dynamicTools'
 import { createMcpToolSetForServer } from '../../electron/mcp/toolAdapter'
 
 test('createMcpToolSetForServer namespaces tools and filters disabled entries', async () => {
@@ -74,44 +72,6 @@ test('createMcpToolSetForServer namespaces tools and filters disabled entries', 
   assert.equal(result.body, 'search:{"query":"atlas"}')
   assert.deepEqual(calls, [{ arguments: { query: 'atlas' }, name: 'search' }])
 
-  const catalog = await buildDynamicToolCatalog(tools)
-  const dynamicTools = await createDynamicToolSet(catalog)
-  const listTools = dynamicTools.list_tools.execute
-  assert.ok(listTools)
-  const listed = await listTools({ page: 1, query: 'search' })
-  const body = JSON.parse(listed.body ?? '{}') as {
-    results?: Array<{
-      id: string
-      name: string
-      source: { kind: string; originalToolName?: string; serverId?: string }
-    }>
-  }
-  assert.deepEqual(body.results?.[0], {
-    description: '[global] MCP tool',
-    id: 'mcp_server-one_search',
-    name: 'search',
-    source: {
-      kind: 'mcp',
-      originalToolName: 'search',
-      serverId: 'server-one',
-      serverName: 'server-one',
-    },
-    tags: ['search'],
-  })
-
-  const getSchema = dynamicTools.get_tool_schema.execute
-  const executeDynamicTool = dynamicTools.execute_tool.execute
-  assert.ok(getSchema)
-  assert.ok(executeDynamicTool)
-  const schemaResult = await getSchema({ id: 'mcp_server-one_search' })
-  assert.equal(schemaResult.status, 'success')
-  const dynamicResult = await executeDynamicTool(
-    { args: { query: 'from-wrapper' }, id: 'mcp_server-one_search' },
-    { abortSignal: undefined, context: {}, messages: [], toolCallId: 'mcp-wrapper-call' },
-  )
-  assert.equal(dynamicResult.status, 'success')
-  assert.deepEqual(calls[1], { arguments: { query: 'from-wrapper' }, name: 'search' })
-  assert.equal(Object.keys(calls[1] ?? {}).includes('schema'), false)
 })
 
 test('same-named tools from different MCP servers retain distinct catalog IDs', () => {
