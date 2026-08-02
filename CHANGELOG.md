@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.8 — More reliable terminal output and clearer update downloads
+
+TideCode now keeps long-running AI terminal work observable while making update discovery feel immediate and informative.
+
+- Kept release details and Markdown notes visible as soon as a packaged update begins downloading, while progress continues in the background.
+- Preserved complete pending output for AI terminal sessions even when the visible terminal buffer rolls over, so long-running commands are less likely to lose output between reads.
+- Allowed terminal reads to wait for longer-running commands without the previous polling cap interrupting the agent’s workflow.
+- Renamed the `execute_terminal` operation field from `mode` to `action` and updated tool guidance, status labels, and validation to use the clearer contract.
+- Added regression coverage for retained terminal output, extended waits, action-based terminal operations, and update-download presentation.
+
 ## 1.0.7 — Safer workspace search and accurate diffs
 
 TideCode now keeps repository instruction files out of AI file discovery and reports file changes more accurately across line-ending styles and larger files.
