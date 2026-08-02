@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.12 — More dependable context and update recovery
+
+TideCode now keeps long-running conversations usable while making context recovery and update discovery more resilient.
+
+- Automatically compacts completed conversation work at safe user and tool boundaries, using the same context accounting shown in the chat UI and preserving tool-call/result pairs.
+- Keeps compaction markers and context usage current after a compaction commits, while removing internal execution-mode details from compacted and replayed conversation state.
+- Restores previously discovered release notes when Settings reopens, retains update progress behavior, and avoids stale floating-menu placement during quick interactions.
+- Added regression coverage for automatic compaction, retained update metadata, marker placement, execution-mode sanitization, and context usage estimates.
+
 ## 1.0.11 — Archived chats and a steadier commit workflow
 
 TideCode now gives users more control over chat history and a clearer, more reliable path from local changes to commits and pull requests.
