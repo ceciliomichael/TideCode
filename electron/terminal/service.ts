@@ -28,6 +28,7 @@ import {
 } from "./configuration";
 import {
   appendSessionOutputBuffer,
+  consumePendingAiOutput,
   createTerminalSessionSnapshot,
   notifySessionWaiters,
   type ActiveTerminalSession,
@@ -55,7 +56,11 @@ function waitForTerminalSessionExitOrTimeout(
   activeSession: ActiveTerminalSession,
   pollingMs: number,
 ) {
-  if (pollingMs <= 0 || activeSession.hasExited) {
+  if (
+    pollingMs <= 0 ||
+    activeSession.hasExited ||
+    activeSession.pendingAiOutputChunks.length > 0
+  ) {
     return Promise.resolve();
   }
 
@@ -189,6 +194,7 @@ async function createTerminalSessionInternal(
     label: input.label ?? null,
     lastReadAt: Date.now(),
     outputBuffer: "",
+    pendingAiOutputChunks: [],
     outputWaiters: new Set(),
     ownerWebContentsId: sender.id,
     ptyProcess,
@@ -385,7 +391,20 @@ export async function getTerminalSessionOutputForWebContents(
     scheduleIdleTerminate(input.sessionId);
   }
 
-  return createTerminalSessionSnapshot(input.sessionId, refreshedSession);
+  const snapshot = createTerminalSessionSnapshot(input.sessionId, refreshedSession);
+  return snapshot;
+}
+
+export function consumeTerminalSessionOutputForWebContents(
+  sender: WebContents,
+  input: TerminalSessionOutputInput,
+) {
+  const activeSession = assertSessionOwnershipForRead(
+    sender.id,
+    input.sessionId,
+    input.workspaceRootPath,
+  );
+  consumePendingAiOutput(activeSession);
 }
 
 export function listSessionsForWebContents(

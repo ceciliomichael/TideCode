@@ -12,6 +12,7 @@ export interface ActiveTerminalSession {
   label: string | null;
   lastReadAt: number;
   outputBuffer: string;
+  pendingAiOutputChunks: string[];
   outputWaiters: Set<() => void>;
   ownerWebContentsId: number;
   ptyProcess: IPty;
@@ -28,6 +29,7 @@ export interface TerminalSessionSnapshot {
   hasExited: boolean;
   label: string | null;
   outputBuffer: string;
+  pendingOutputBuffer: string;
   shellLabel: string;
   signal: number | null;
   sessionId: number;
@@ -47,19 +49,34 @@ export function appendSessionOutputBuffer(
   activeSession: ActiveTerminalSession,
   chunk: string,
 ) {
+  const previousBufferLength = activeSession.outputBuffer.length;
   activeSession.outputBuffer += chunk;
+  if (activeSession.isAiSession) {
+    activeSession.pendingAiOutputChunks.push(chunk);
+  }
 
   const clearScrollbackIndex = activeSession.outputBuffer.lastIndexOf("\x1b[3J");
   const resetIndex = activeSession.outputBuffer.lastIndexOf("\x1b[c");
   const lastClearIndex = Math.max(clearScrollbackIndex, resetIndex);
 
-  if (lastClearIndex !== -1) {
+  if (lastClearIndex >= previousBufferLength) {
     activeSession.outputBuffer = activeSession.outputBuffer.slice(lastClearIndex);
   } else if (activeSession.outputBuffer.length > MAX_SESSION_OUTPUT_BUFFER_LENGTH) {
+    const discardedLength = activeSession.outputBuffer.length - MAX_SESSION_OUTPUT_BUFFER_LENGTH;
     activeSession.outputBuffer = activeSession.outputBuffer.slice(
-      activeSession.outputBuffer.length - MAX_SESSION_OUTPUT_BUFFER_LENGTH,
+      discardedLength,
     );
   }
+}
+
+export function consumePendingAiOutput(activeSession: ActiveTerminalSession) {
+  if (activeSession.pendingAiOutputChunks.length === 0) {
+    return "";
+  }
+
+  const pendingOutput = activeSession.pendingAiOutputChunks.join("");
+  activeSession.pendingAiOutputChunks = [];
+  return pendingOutput;
 }
 
 export function createTerminalSessionSnapshot(
@@ -72,6 +89,7 @@ export function createTerminalSessionSnapshot(
     hasExited: activeSession.hasExited,
     label: activeSession.label,
     outputBuffer: activeSession.outputBuffer,
+    pendingOutputBuffer: activeSession.pendingAiOutputChunks.join(""),
     shellLabel: activeSession.shellLabel,
     signal: activeSession.signal,
     sessionId,

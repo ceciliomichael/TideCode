@@ -33,6 +33,10 @@ interface TerminalToolDependencies {
     ownerWebContents: WebContents,
     input: TerminalSessionOutputInput,
   ) => Promise<TerminalSessionSnapshot>
+  consumeSessionOutput: (
+    ownerWebContents: WebContents,
+    input: TerminalSessionOutputInput,
+  ) => void
   listSessions: (
     ownerWebContents: WebContents,
     workspaceRootPath: string,
@@ -99,6 +103,7 @@ async function loadDefaultTerminalToolDependencies(): Promise<TerminalToolDepend
   return {
     createSession: terminalService.createTerminalSessionForWebContents,
     getSessionOutput: terminalService.getTerminalSessionOutputForWebContents,
+    consumeSessionOutput: terminalService.consumeTerminalSessionOutputForWebContents,
     listSessions: terminalService.listSessionsForWebContents,
     terminateSession: terminalService.terminateSessionForWebContents,
     writeToSession: terminalService.writeToTerminalSessionForWebContents,
@@ -139,6 +144,14 @@ function clampInteger(value: number | undefined, min: number, max: number, fallb
   }
 
   return boundedValue
+}
+
+function normalizeWaitMilliseconds(value: number | undefined, fallback: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback
+  }
+
+  return Math.max(0, Math.floor(value))
 }
 
 function isGitDiffCommand(command: string | null) {
@@ -219,7 +232,6 @@ interface ThreadAiSession {
   cwd: string
   command: string
   shell: string
-  lastReadOffset: number
 }
 
 interface ThreadSessionStore {
@@ -264,7 +276,11 @@ async function pruneAndResetThreadStore(
         workspaceRootPath,
       })
 
-      if (snapshot.hasExited || (typeof snapshot.outputBuffer === 'string' && snapshot.outputBuffer.includes('__EDONE_'))) {
+      const hasPendingOutput = snapshot.pendingOutputBuffer.length > 0
+      const commandFinished =
+        snapshot.hasExited ||
+        (typeof snapshot.outputBuffer === 'string' && snapshot.outputBuffer.includes('__EDONE_'))
+      if (commandFinished && !hasPendingOutput) {
         try {
           resolvedDependencies.terminateSession(ownerWebContents, session.globalSessionId, workspaceRootPath)
         } catch {
@@ -366,7 +382,10 @@ export function createTerminalToolSet(
       dependencies.terminateSession !== undefined &&
       dependencies.writeToSession !== undefined
     ) {
-      return dependencies as TerminalToolDependencies
+      return {
+        ...(dependencies as Omit<TerminalToolDependencies, 'consumeSessionOutput'>),
+        consumeSessionOutput: dependencies.consumeSessionOutput ?? (() => undefined),
+      }
     }
 
     const defaultDependencies = await loadDefaultTerminalToolDependencies()
@@ -384,14 +403,14 @@ export function createTerminalToolSet(
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {
-          mode: {
+          action: {
             type: 'string',
             enum: ['execute', 'read', 'list', 'end'],
-            description: 'Terminal operation mode.',
+            description: 'Terminal action to perform.',
           },
           wait_ms: {
             type: 'number',
-            description: 'Milliseconds to wait for output in read mode.',
+            description: 'Milliseconds to wait for output in read action.',
           },
           command: {
             type: 'string',
@@ -399,7 +418,7 @@ export function createTerminalToolSet(
           },
           session_id: {
             type: 'number',
-            description: 'Session ID for read or end mode.',
+            description: 'Session ID for read or end actions.',
           },
           label: {
             type: 'string',
@@ -423,12 +442,12 @@ export function createTerminalToolSet(
             type: 'string',
           },
         },
-        required: ['mode'],
+        required: ['action'],
         type: 'object',
       }),
       execute: async (rawInput, options) => {
         const inputValue = rawInput as {
-          mode: 'execute' | 'read' | 'list' | 'end'
+          action: 'execute' | 'read' | 'list' | 'end'
           wait_ms?: number
           command?: string
           session_id?: number
@@ -442,7 +461,7 @@ export function createTerminalToolSet(
         const abortSignal = options?.abortSignal
         const cols = clampInteger(inputValue.cols, 20, 400, 220)
         const rows = clampInteger(inputValue.rows, 6, 200, 50)
-        const waitMs = clampInteger(inputValue.wait_ms, 0, 15000, 2000)
+        const waitMs = normalizeWaitMilliseconds(inputValue.wait_ms, 2000)
 
         try {
           if (!ownerWebContents) {
@@ -453,7 +472,7 @@ export function createTerminalToolSet(
           const store = getOrCreateThreadStore(namespace)
 
           // ─── LIST ──────────────────────────────────────────────────────────
-          if (inputValue.mode === 'list') {
+          if (inputValue.action === 'list') {
             if (store.sessions.size === 0) {
               return createSuccessResult({
                 body: 'No active terminal sessions in this chat context.',
@@ -472,9 +491,9 @@ export function createTerminalToolSet(
           }
 
           // ─── END ───────────────────────────────────────────────────────────
-          if (inputValue.mode === 'end') {
+          if (inputValue.action === 'end') {
             if (typeof inputValue.session_id !== 'number') {
-              return createErrorResult('session_id required for end mode.')
+              return createErrorResult('session_id required for end action.')
             }
 
             const session = store.sessions.get(inputValue.session_id)
@@ -491,7 +510,7 @@ export function createTerminalToolSet(
           }
 
           // ─── READ ──────────────────────────────────────────────────────────
-          if (inputValue.mode === 'read') {
+          if (inputValue.action === 'read') {
             let targetSessionId = inputValue.session_id
             if (typeof targetSessionId !== 'number' || !store.sessions.has(targetSessionId)) {
               if (store.latestLocalSessionId !== null && store.sessions.has(store.latestLocalSessionId)) {
@@ -517,11 +536,13 @@ export function createTerminalToolSet(
               abortSignal,
             )
 
-            const sanitized = sanitizeTerminalOutput(snapshot.outputBuffer)
-            
-            // Incremental delta reading: Return only the NEW output produced since the last read
-            const newOutput = sanitized.slice(session.lastReadOffset)
-            session.lastReadOffset = sanitized.length
+            throwIfAborted(abortSignal)
+            resolvedDependencies.consumeSessionOutput(ownerWebContents, {
+              sessionId: session.globalSessionId,
+              workspaceRootPath: context.workspaceRootPath,
+            })
+
+            const newOutput = sanitizeTerminalOutput(snapshot.pendingOutputBuffer)
 
             const truncated = truncateTerminalOutput(newOutput, session.command)
 
@@ -542,7 +563,7 @@ export function createTerminalToolSet(
           // ─── EXECUTE ───────────────────────────────────────────────────────
           const requestedCommand = normalizeCommand(inputValue.command)
           if (!requestedCommand) {
-            return createErrorResult('command required for execute mode.')
+            return createErrorResult('command required for execute action.')
           }
 
           const command = prepareTerminalCommand(requestedCommand)!
@@ -589,6 +610,7 @@ export function createTerminalToolSet(
                 cols,
                 cwd,
                 enableIdleTimeout: true,
+                isAiSession: true,
                 label: inputValue.label ?? null,
                 rows,
                 sessionKey: aiSessionKey,
@@ -607,7 +629,6 @@ export function createTerminalToolSet(
               cwd,
               command,
               shell: shellLabel,
-              lastReadOffset: 0,
             })
           }
 
@@ -632,8 +653,8 @@ export function createTerminalToolSet(
           return createSuccessResult({
             body: [
               `Command started in background. session_id: ${localSessionId}`,
-              `Use execute_terminal with mode=read and session_id=${localSessionId} to check output.`,
-              `Use execute_terminal with mode=end and session_id=${localSessionId} to stop it.`,
+              `Use execute_terminal with action=read and session_id=${localSessionId} to check output.`,
+              `Use execute_terminal with action=end and session_id=${localSessionId} to stop it.`,
             ].join('\n'),
             semantics: {
               command,

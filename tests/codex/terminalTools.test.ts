@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { existsSync } from 'node:fs'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -27,7 +26,7 @@ type ExecuteTerminalResult = {
 type ExecuteTerminalTool = {
   execute: (
     input: {
-      mode: 'execute' | 'read' | 'list' | 'end'
+      action: 'execute' | 'read' | 'list' | 'end'
       cols?: number
       command?: string
       cwd?: string
@@ -50,11 +49,7 @@ function readCompletionMarker(writtenCommand: string) {
   return markerMatch[0]
 }
 
-function pathExists(targetPath: string) {
-  return existsSync(targetPath)
-}
-
-test('execute_terminal mode=execute queues command in background and mode=read fetches cleaned output', async () => {
+test('execute_terminal action=execute queues command in background and action=read fetches cleaned output', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-terminal-tools-workspace-'))
   const nestedPath = path.join(workspaceRootPath, 'nested')
   await fs.mkdir(nestedPath, { recursive: true })
@@ -62,6 +57,7 @@ test('execute_terminal mode=execute queues command in background and mode=read f
     cols: number
     cwd?: string
     enableIdleTimeout?: boolean
+    isAiSession?: boolean
     rows: number
     sessionKey?: string | null
     workspaceRootPath?: string | null
@@ -95,6 +91,7 @@ test('execute_terminal mode=execute queues command in background and mode=read f
             exitCode: null,
             hasExited: false,
             outputBuffer: `\u001B[32mline 1\u001B[0m\r\nline 2\r\n${marker}:0\r\n`,
+            pendingOutputBuffer: `\u001B[32mline 1\u001B[0m\r\nline 2\r\n${marker}:0\r\n`,
             shellLabel: 'pwsh',
             signal: null,
             sessionId: input.sessionId,
@@ -109,7 +106,7 @@ test('execute_terminal mode=execute queues command in background and mode=read f
     )
 
     const execResult = await getExecuteTerminalTool(tools).execute({
-      mode: 'execute',
+      action: 'execute',
       cols: 120,
       command: 'npm test',
       cwd: 'nested',
@@ -124,6 +121,7 @@ test('execute_terminal mode=execute queues command in background and mode=read f
         cols: 120,
         cwd: nestedPath,
         enableIdleTimeout: true,
+        isAiSession: true,
         label: null,
         rows: 30,
         sessionKey: 'build',
@@ -135,12 +133,13 @@ test('execute_terminal mode=execute queues command in background and mode=read f
     assert.match(writeCalls[0].data, /npm test/u)
 
     const readResult = await getExecuteTerminalTool(tools).execute({
-      mode: 'read',
+      action: 'read',
       session_id: 7,
-      wait_ms: 500,
+      wait_ms: 120_000,
     })
 
     assert.equal(readResult.status, 'success')
+    assert.equal(getSessionOutputCalls[0]?.pollingMs, 120_000)
     assert.match(readResult.body ?? '', /line 1/u)
     assert.match(readResult.body ?? '', /line 2/u)
     assert.ok(!(readResult.body ?? '').includes('\u001B'))
@@ -149,7 +148,54 @@ test('execute_terminal mode=execute queues command in background and mode=read f
   }
 })
 
-test('execute_terminal mode=read truncates large git diff output', async () => {
+test('execute_terminal action=read returns the retained buffer after a buffer rollover', async () => {
+  let readCount = 0
+  const tools = createTerminalToolSet(
+    {
+      conversationId: 'conversation-buffer-rollover',
+      webContents: webContentsStub,
+      workspaceRootPath: '/workspace',
+    },
+    {
+      createSession: async () => ({
+        bufferedOutput: '',
+        cwd: '/workspace',
+        isReused: false,
+        sessionId: 701,
+        shell: 'pwsh',
+      }),
+      getSessionOutput: async (_owner, input) => {
+        readCount += 1
+        const outputBuffer = readCount === 1 ? 'initial output\n' : 'retained output after rollover\n'
+        return {
+          cwd: '/workspace',
+          exitCode: null,
+          hasExited: false,
+          outputBuffer,
+          pendingOutputBuffer: outputBuffer,
+          shellLabel: 'pwsh',
+          signal: null,
+          sessionId: input.sessionId,
+        }
+      },
+      listSessions: () => [],
+      terminateSession: () => undefined,
+      writeToSession: async () => undefined,
+    },
+  )
+
+  const executeTool = getExecuteTerminalTool(tools)
+  await executeTool.execute({ action: 'execute', command: 'long-running-command' })
+
+  const firstRead = await executeTool.execute({ action: 'read', session_id: 701 })
+  assert.match(firstRead.body ?? '', /initial output/u)
+
+  const rolloverRead = await executeTool.execute({ action: 'read', session_id: 701 })
+  assert.match(rolloverRead.body ?? '', /retained output after rollover/u)
+  assert.ok(!(rolloverRead.body ?? '').includes('No new output.'))
+})
+
+test('execute_terminal action=read truncates large git diff output', async () => {
   const largeDiffOutput = `diff --git a/file.ts b/file.ts\n${'+changed line\n'.repeat(2500)}`
   const writeCalls: Array<{ data: string; sessionId: number }> = []
 
@@ -173,6 +219,7 @@ test('execute_terminal mode=read truncates large git diff output', async () => {
           exitCode: null,
           hasExited: false,
           outputBuffer: `${largeDiffOutput}\n`,
+          pendingOutputBuffer: `${largeDiffOutput}\n`,
           shellLabel: 'pwsh',
           signal: null,
           sessionId: input.sessionId,
@@ -187,14 +234,14 @@ test('execute_terminal mode=read truncates large git diff output', async () => {
   )
 
   await getExecuteTerminalTool(tools).execute({
-    mode: 'execute',
+    action: 'execute',
     cols: 120,
     command: 'git diff',
     rows: 30,
   })
 
   const readResult = await getExecuteTerminalTool(tools).execute({
-    mode: 'read',
+    action: 'read',
     session_id: 91,
   })
 
@@ -230,7 +277,7 @@ test('execute_terminal rejects directory traversal in sandbox mode', async () =>
     )
 
     const result = await getExecuteTerminalTool(tools).execute({
-      mode: 'execute',
+      action: 'execute',
       cols: 120,
       command: `cd ../outside`,
       rows: 30,
@@ -273,6 +320,7 @@ test('execute_terminal allows a global .agents skill directory as cwd in sandbox
           exitCode: null,
           hasExited: false,
           outputBuffer: '',
+          pendingOutputBuffer: '',
           shellLabel: 'pwsh',
           signal: null,
           sessionId: 18,
@@ -286,7 +334,7 @@ test('execute_terminal allows a global .agents skill directory as cwd in sandbox
     )
 
     const result = await getExecuteTerminalTool(tools).execute({
-      mode: 'execute',
+      action: 'execute',
       command: 'node scripts/check.mjs',
       cwd: skillDirectory,
     })
@@ -326,7 +374,7 @@ test('execute_terminal rejects sandbox cwd in a sibling of global .agents', asyn
     )
 
     const result = await getExecuteTerminalTool(tools).execute({
-      mode: 'execute',
+      action: 'execute',
       command: 'node scripts/check.mjs',
       cwd: disallowedDirectory,
     })
@@ -375,6 +423,7 @@ test('execute_terminal allows unrestricted commands in full access mode', async 
             exitCode: null,
             hasExited: false,
             outputBuffer: `hello from full access\n`,
+            pendingOutputBuffer: `hello from full access\n`,
             shellLabel: 'pwsh',
             signal: null,
             sessionId: input.sessionId,
@@ -389,7 +438,7 @@ test('execute_terminal allows unrestricted commands in full access mode', async 
     )
 
     const result = await getExecuteTerminalTool(tools).execute({
-      mode: 'execute',
+      action: 'execute',
       cols: 120,
       command: 'echo hello && whoami',
       rows: 30,
@@ -472,6 +521,7 @@ test('execute_terminal allows a cwd outside the workspace root in Full Access mo
             exitCode: null,
             hasExited: false,
             outputBuffer: `hello from outside cwd\n`,
+            pendingOutputBuffer: `hello from outside cwd\n`,
             shellLabel: 'pwsh',
             signal: null,
             sessionId: input.sessionId,
@@ -486,7 +536,7 @@ test('execute_terminal allows a cwd outside the workspace root in Full Access mo
     )
 
     const result = await getExecuteTerminalTool(tools).execute({
-      mode: 'execute',
+      action: 'execute',
       cols: 120,
       command: 'echo hello',
       cwd: outsideDirectoryPath,
@@ -517,7 +567,7 @@ test('terminateAllBackgroundSessions terminates active tool sessions and resets 
         workspaceRootPath,
       },
       {
-        createSession: async (_owner, input) => ({
+        createSession: async () => ({
           bufferedOutput: '',
           cwd: workspaceRootPath,
           isReused: false,
@@ -529,6 +579,7 @@ test('terminateAllBackgroundSessions terminates active tool sessions and resets 
           exitCode: null,
           hasExited: false,
           outputBuffer: '',
+          pendingOutputBuffer: '',
           shellLabel: 'pwsh',
           signal: null,
           sessionId: 55,
@@ -542,7 +593,7 @@ test('terminateAllBackgroundSessions terminates active tool sessions and resets 
     )
 
     await getExecuteTerminalTool(tools).execute({
-      mode: 'execute',
+      action: 'execute',
       cols: 120,
       command: 'echo first',
       rows: 30,
@@ -560,7 +611,7 @@ test('terminateAllBackgroundSessions terminates active tool sessions and resets 
         workspaceRootPath,
       },
       {
-        createSession: async (_owner, input) => ({
+        createSession: async () => ({
           bufferedOutput: '',
           cwd: workspaceRootPath,
           isReused: false,
@@ -572,6 +623,7 @@ test('terminateAllBackgroundSessions terminates active tool sessions and resets 
           exitCode: null,
           hasExited: false,
           outputBuffer: '',
+          pendingOutputBuffer: '',
           shellLabel: 'pwsh',
           signal: null,
           sessionId: 56,
@@ -583,7 +635,7 @@ test('terminateAllBackgroundSessions terminates active tool sessions and resets 
     )
 
     const execResult = await getExecuteTerminalTool(secondTools).execute({
-      mode: 'execute',
+      action: 'execute',
       cols: 120,
       command: 'echo second',
       rows: 30,

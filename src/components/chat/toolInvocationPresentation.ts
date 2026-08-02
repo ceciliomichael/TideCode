@@ -63,22 +63,22 @@ function getToolVerb(invocation: ToolInvocationTrace) {
 
   if (invocation.toolName === 'execute_terminal') {
     const parsedArgs = parseCompleteToolArguments(invocation.argumentsText) as Record<string, unknown>
-    const mode = parsedArgs?.mode || 'execute'
-    if (mode === 'read') {
+    const action = parsedArgs?.action || 'execute'
+    if (action === 'read') {
       return invocation.state === 'running'
         ? 'Reading'
         : invocation.state === 'completed'
           ? 'Read'
           : 'Read failed'
     }
-    if (mode === 'list') {
+    if (action === 'list') {
       return invocation.state === 'running'
         ? 'Listing terminal sessions'
         : invocation.state === 'completed'
           ? 'Listed terminal sessions'
           : 'List sessions failed'
     }
-    if (mode === 'end') {
+    if (action === 'end') {
       return invocation.state === 'running'
         ? 'Terminating'
         : invocation.state === 'completed'
@@ -291,13 +291,13 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
   const parsedArguments = parseCompleteToolArguments(invocation.argumentsText) as Record<string, unknown>
 
   if (invocation.toolName === 'execute_terminal') {
-    const mode = parsedArguments?.mode || 'execute'
-    
-    if (mode === 'list') {
+    const action = parsedArguments?.action || 'execute'
+
+    if (action === 'list') {
       return null
     }
     
-    if (mode === 'read' || mode === 'end') {
+    if (action === 'read' || action === 'end') {
       const sessionIdText = readSessionId(parsedArguments?.session_id)
       return sessionIdText ? `session ${sessionIdText}` : null
     }

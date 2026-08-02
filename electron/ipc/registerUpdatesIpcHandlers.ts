@@ -18,13 +18,17 @@ export function registerUpdatesIpcHandlers(getWindow: () => Electron.BrowserWind
   ipcMain.handle('updates:getCurrentVersion', () => app.getVersion())
   ipcMain.handle('updates:checkForUpdates', async () => {
     const result = await checkForUpdates(app.getVersion(), requestLatestReleaseWithElectron)
-    if (!result.updateAvailable || !(await getStoredSettings()).autoDownloadUpdates) {
+    const shouldDownloadAutomatically = result.updateAvailable && (await getStoredSettings()).autoDownloadUpdates
+    if (!shouldDownloadAutomatically || !app.isPackaged) {
       return result
     }
 
+    void downloadLatestUpdate(result.latestVersion).catch(() => undefined)
+
     return {
       ...result,
-      ...(await downloadLatestUpdate(result.latestVersion)),
+      downloadPercent: 0,
+      downloadState: 'downloading' as const,
     }
   })
   ipcMain.handle('updates:downloadUpdate', async (_event, version: unknown) => {

@@ -234,6 +234,8 @@ export function UpdatesSettingsPanel({ autoDownloadUpdates, isLoading, onUpdateS
                 <p className="mt-1 text-sm leading-5 text-muted-foreground">
                   {session.downloadState === 'downloaded'
                     ? 'The update has finished downloading. TideCode will install it automatically when you close the app, or you can restart now.'
+                    : session.downloadState === 'downloading'
+                      ? `TideCode is downloading ${session.result.latestVersion} now. You can keep working while the release notes stay available below.`
                     : session.downloadState === 'error'
                       ? 'TideCode found this release but could not download it. Try again or download it from GitHub instead.'
                       : session.result.updateAvailable
