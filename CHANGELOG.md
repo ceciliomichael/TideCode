@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.14 — One clean update download
+
+Update checks with automatic downloads enabled now download the installer once, with a single continuous progress run, instead of filling to 100%, resetting to 0, and downloading again.
+
+- Downloads the full installer directly instead of the differential-installer path that silently restarted from 0 when patching the previously cached installer failed.
+- Reports the real download state from every update check, so a completed update stays ready at 100% instead of appearing to restart, and a mid-download check continues from its actual progress.
+- Ignores redundant download requests for a version that is already downloading or downloaded.
+
 ## 1.0.13 — More reliable terminal turns and thread creation
 
 TideCode now keeps AI terminal work scoped to the turn that started it while preserving the correct project context when users begin new threads from the sidebar.
