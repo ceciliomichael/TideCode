@@ -9,4 +9,3 @@ export function isPdfPreviewablePath(relativePath: string) {
 export function createPdfPreviewDataUrl(base64Content: string) {
   return `data:${PDF_PREVIEW_MIME_TYPE};base64,${base64Content}`
 }
-

@@ -23,4 +23,3 @@ export const WorkspaceImagePreview = memo(function WorkspaceImagePreview({
     />
   )
 })
-

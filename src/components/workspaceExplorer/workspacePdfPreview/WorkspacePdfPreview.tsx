@@ -23,4 +23,3 @@ export const WorkspacePdfPreview = memo(function WorkspacePdfPreview({
     />
   )
 })
-
