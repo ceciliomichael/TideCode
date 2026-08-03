@@ -396,12 +396,20 @@ function createCompletionMarker(localSessionId: number) {
   return `__EDONE_${localSessionId.toString(36)}_${Date.now().toString(36)}__`
 }
 
+function encodePowerShellCommand(command: string) {
+  const encodedCommand = Buffer.from(command, 'utf8').toString('base64')
+  return `Invoke-Expression ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedCommand}')))`
+}
+
 function buildMarkedCommand(command: string, shellLabel: string, marker: string) {
   const normalizedShellLabel = shellLabel.toLowerCase()
   const trimmedCommand = command.trimEnd()
 
   if (normalizedShellLabel.includes('powershell') || normalizedShellLabel.includes('pwsh')) {
-    return `${trimmedCommand}; echo "${marker}:$([int]$LASTEXITCODE)"\r`
+    const shellCommand = /[\r\n]/u.test(trimmedCommand)
+      ? encodePowerShellCommand(trimmedCommand)
+      : trimmedCommand
+    return `${shellCommand}; echo "${marker}:$([int]$LASTEXITCODE)"\r`
   }
 
   if (normalizedShellLabel.includes('command prompt') || normalizedShellLabel === 'cmd' || normalizedShellLabel.includes('cmd.exe')) {

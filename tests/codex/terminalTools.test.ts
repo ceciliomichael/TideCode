@@ -59,6 +59,60 @@ function readVisibleSessionId(result: ExecuteTerminalResult) {
   return Number(sessionIdMatch[1])
 }
 
+test('execute_terminal preserves multiline PowerShell commands as one PTY input line', async () => {
+  const multilineCommand = [
+    'git commit -m "fix: preserve multiline input" -m "First paragraph.',
+    '',
+    'Validated with npm test (517 passing)."',
+  ].join('\n')
+  const writeCalls: WriteTerminalSessionInput[] = []
+  const tools = createTerminalToolSet(
+    {
+      conversationId: 'conversation-multiline-powershell-command',
+      webContents: webContentsStub,
+      workspaceRootPath: '/workspace',
+    },
+    {
+      createSession: async () => ({
+        bufferedOutput: '',
+        cwd: '/workspace',
+        isReused: false,
+        sessionId: 703,
+        shell: 'pwsh',
+      }),
+      getSessionOutput: async (_owner, input) => ({
+        cwd: '/workspace',
+        exitCode: null,
+        hasExited: false,
+        outputBuffer: '',
+        pendingOutputBuffer: '',
+        shellLabel: 'pwsh',
+        signal: null,
+        sessionId: input.sessionId,
+      }),
+      listSessions: () => [],
+      terminateSession: () => undefined,
+      writeToSession: async (_owner, input) => {
+        writeCalls.push(input)
+      },
+    },
+  )
+
+  await getExecuteTerminalTool(tools).execute({
+    action: 'execute',
+    command: multilineCommand,
+  })
+
+  const writtenCommand = writeCalls[0]?.data
+  assert.ok(writtenCommand)
+  assert.equal(writtenCommand.endsWith('\r'), true)
+  assert.equal(/[\r\n]/u.test(writtenCommand.slice(0, -1)), false)
+
+  const encodedCommand = writtenCommand.match(/FromBase64String\('([^']+)'\)/u)?.[1]
+  assert.ok(encodedCommand, 'expected the multiline command to be encoded')
+  assert.equal(Buffer.from(encodedCommand, 'base64').toString('utf8'), multilineCommand)
+})
+
 test('execute_terminal action=execute queues command in background and action=read fetches cleaned output', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-terminal-tools-workspace-'))
   const nestedPath = path.join(workspaceRootPath, 'nested')
