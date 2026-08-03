@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.13 — More reliable terminal turns and thread creation
+
+TideCode now keeps AI terminal work scoped to the turn that started it while preserving the correct project context when users begin new threads from the sidebar.
+
+- Keeps background AI terminal sessions addressable with unique visible session IDs, including when several commands run during one turn.
+- Terminates every AI terminal session created by a completed or interrupted turn, including unfinished commands, without affecting sessions from other turns.
+- Starts new threads in the active or selected project, including Chats, and keeps thread search input free of browser search affordances.
+
 ## 1.0.12 — More dependable context and update recovery
 
 TideCode now keeps long-running conversations usable while making context recovery and update discovery more resilient.
