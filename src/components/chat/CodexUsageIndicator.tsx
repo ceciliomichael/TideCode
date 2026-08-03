@@ -17,12 +17,6 @@ export function CodexUsageIndicator({ disabled = false, usage }: CodexUsageIndic
   const [isOpen, setIsOpen] = useState(false)
   const [tooltipPosition, setTooltipPosition] = useState<'above' | 'below'>('above')
 
-  if (items.length === 0) {
-    return null
-  }
-
-  const primaryItem = items[0]
-
   function calculatePosition() {
     const buttonRect = buttonRef.current?.getBoundingClientRect()
     if (!buttonRect) {
@@ -78,6 +72,12 @@ export function CodexUsageIndicator({ disabled = false, usage }: CodexUsageIndic
     }
   }, [isOpen])
 
+  if (items.length === 0) {
+    return null
+  }
+
+  const primaryItem = items[0]
+
   const hoverSummary = items.map((item) => `${item.label} ${item.remainingPercent}%`).join(', ')
 
   return (
@@ -103,7 +103,8 @@ export function CodexUsageIndicator({ disabled = false, usage }: CodexUsageIndic
       {isOpen ? (
         <div
           ref={popoverRef}
-          role="tooltip"
+          role="dialog"
+          aria-label="Codex usage details"
           className={[
             'absolute right-0 z-50 w-60 rounded-2xl border border-border bg-surface p-3 text-xs text-foreground shadow-soft',
             tooltipPosition === 'above' ? 'bottom-full mb-1.5' : 'top-full mt-1.5',

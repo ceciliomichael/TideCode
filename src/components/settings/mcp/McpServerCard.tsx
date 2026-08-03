@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronUp, PencilLine, Power, Server, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import type { McpServerConfig, McpServerStatus } from '../../../types/mcp'
+import { Tooltip } from '../../Tooltip'
 import { McpRemoveDialog } from './McpRemoveDialog'
 
 interface McpServerCardProps {
@@ -87,6 +88,35 @@ export function McpServerCard({
 
   const connectionLabel = isConnecting ? 'Connecting...' : isConnected ? 'Disconnect' : 'Connect'
 
+  const removeButton = (
+    <button
+      type="button"
+      onClick={() => setIsRemoveConfirmationOpen((currentValue) => !currentValue)}
+      disabled={isBusy || isReadOnly}
+      className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-danger-border bg-danger-surface px-2.5 text-xs font-medium leading-none text-danger-foreground transition-colors hover:text-danger-foreground-hover disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <Trash2 className="block h-3.5 w-3.5 shrink-0 self-center" />
+      <span className="relative top-px flex items-center leading-none">Remove</span>
+    </button>
+  )
+
+  const editButton = (
+    <button
+      type="button"
+      onClick={() => onEdit(config)}
+      disabled={isBusy || isReadOnly}
+      className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-2.5 text-xs font-medium leading-none transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+      style={{
+        backgroundColor: 'var(--color-brand-action)',
+        borderColor: 'transparent',
+        color: '#fff',
+      }}
+    >
+      <PencilLine className="block h-3.5 w-3.5 shrink-0 self-center" />
+      <span className="relative top-px flex items-center leading-none">Edit</span>
+    </button>
+  )
+
   return (
     <article className="flex min-w-0 flex-col gap-3 overflow-hidden rounded-xl border border-border bg-surface p-4">
       <div className="flex min-w-0 items-start justify-between">
@@ -143,32 +173,21 @@ export function McpServerCard({
         </button>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsRemoveConfirmationOpen((currentValue) => !currentValue)}
-            disabled={isBusy || isReadOnly}
-            className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-danger-border bg-danger-surface px-2.5 text-xs font-medium leading-none text-danger-foreground transition-colors hover:text-danger-foreground-hover disabled:cursor-not-allowed disabled:opacity-50"
-                    title={isReadOnly ? 'This server is managed outside TideCode.' : undefined}
-          >
-            <Trash2 className="block h-3.5 w-3.5 shrink-0 self-center" />
-            <span className="relative top-px flex items-center leading-none">Remove</span>
-          </button>
+          {isReadOnly ? (
+            <Tooltip content="This server is managed outside TideCode." side="top" noWrap>
+              {removeButton}
+            </Tooltip>
+          ) : (
+            removeButton
+          )}
 
-          <button
-            type="button"
-            onClick={() => onEdit(config)}
-            disabled={isBusy || isReadOnly}
-            className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-2.5 text-xs font-medium leading-none transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-            style={{
-              backgroundColor: 'var(--color-brand-action)',
-              borderColor: 'transparent',
-              color: '#fff',
-            }}
-            title={isReadOnly ? 'This server is managed outside TideCode.' : undefined}
-          >
-            <PencilLine className="block h-3.5 w-3.5 shrink-0 self-center" />
-            <span className="relative top-px flex items-center leading-none">Edit</span>
-          </button>
+          {isReadOnly ? (
+            <Tooltip content="This server is managed outside TideCode." side="top" noWrap>
+              {editButton}
+            </Tooltip>
+          ) : (
+            editButton
+          )}
         </div>
       </div>
 
@@ -230,31 +249,27 @@ export function McpServerCard({
                 <div className="flex flex-wrap gap-2">
                   {status.tools.map((tool) => {
                     const enabled = isToolEnabled(config, tool.name)
+                    const toolTooltip = isReadOnly
+                      ? `${tool.description ?? tool.name} (managed outside TideCode)`
+                      : `${tool.description ?? tool.name} (${enabled ? 'click to disable' : 'click to enable'})`
 
                     return (
-                      <button
-                        key={tool.name}
-                        type="button"
-                        aria-pressed={enabled}
-                        onClick={() => void onToggleTool(config.id, tool.name, !enabled)}
-                        disabled={isToolBusy || isBusy || isReadOnly}
-                        className={[
-                          'rounded-lg border px-3 py-1 text-xs font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60',
-                          enabled ? '' : '',
-                        ].join(' ')}
-                        style={{
-                          backgroundColor: enabled ? 'var(--color-brand-action)' : 'var(--color-surface-muted)',
-                          borderColor: enabled ? 'var(--color-brand-action)' : 'transparent',
-                          color: enabled ? '#fff' : 'var(--color-muted-foreground)',
-                        }}
-                        title={
-                          isReadOnly
-                            ? `${tool.description ?? tool.name} (managed outside TideCode)`
-                            : `${tool.description ?? tool.name} (${enabled ? 'click to disable' : 'click to enable'})`
-                        }
-                      >
-                        {tool.name}
-                      </button>
+                      <Tooltip key={tool.name} content={toolTooltip} side="top">
+                        <button
+                          type="button"
+                          aria-pressed={enabled}
+                          onClick={() => void onToggleTool(config.id, tool.name, !enabled)}
+                          disabled={isToolBusy || isBusy || isReadOnly}
+                          className="rounded-lg border px-3 py-1 text-xs font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                          style={{
+                            backgroundColor: enabled ? 'var(--color-brand-action)' : 'var(--color-surface-muted)',
+                            borderColor: enabled ? 'var(--color-brand-action)' : 'transparent',
+                            color: enabled ? '#fff' : 'var(--color-muted-foreground)',
+                          }}
+                        >
+                          {tool.name}
+                        </button>
+                      </Tooltip>
                     )
                   })}
                 </div>

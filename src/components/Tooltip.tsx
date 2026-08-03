@@ -24,6 +24,7 @@ interface TooltipProps {
   children: ReactElement<TooltipChildProps>
   content: string | ReactNode
   broadcastShowEvent?: boolean
+  disabled?: boolean
   fullWidthTrigger?: boolean
   hideDelayMs?: number
   panelClassName?: string
@@ -32,6 +33,8 @@ interface TooltipProps {
   lockSide?: boolean
   hideWhenTriggerExpanded?: boolean
   noWrap?: boolean
+  triggerClassName?: string
+  triggerLayout?: 'flex' | 'inline' | 'inline-flex'
 }
 
 const TOOLTIP_OFFSET = 6
@@ -59,6 +62,7 @@ export function Tooltip({
   children,
   content,
   broadcastShowEvent = true,
+  disabled = false,
   fullWidthTrigger = false,
   hideDelayMs = 0,
   panelClassName,
@@ -67,6 +71,8 @@ export function Tooltip({
   lockSide = false,
   hideWhenTriggerExpanded = false,
   noWrap = false,
+  triggerClassName,
+  triggerLayout = fullWidthTrigger ? 'flex' : 'inline-flex',
 }: TooltipProps) {
   const tooltipId = useId()
   const triggerRef = useRef<HTMLSpanElement | null>(null)
@@ -115,12 +121,12 @@ export function Tooltip({
   }, [children, hideWhenTriggerExpanded])
 
   useEffect(() => {
-    if (hideWhenTriggerExpanded && isTriggerExpanded && isVisible) {
+    if (disabled || (hideWhenTriggerExpanded && isTriggerExpanded)) {
       setIsVisible(false)
     }
-  }, [hideWhenTriggerExpanded, isTriggerExpanded, isVisible])
+  }, [disabled, hideWhenTriggerExpanded, isTriggerExpanded, isVisible])
 
-  const shouldSuppressTooltip = hideWhenTriggerExpanded && isTriggerExpanded
+  const shouldSuppressTooltip = disabled || (hideWhenTriggerExpanded && isTriggerExpanded)
   const pointerEventsClassName = useMemo(
     () => (interactive ? 'pointer-events-auto' : 'pointer-events-none'),
     [interactive],
@@ -139,7 +145,7 @@ export function Tooltip({
   }, [clearHideTimeout])
 
   const showTooltip = useCallback(() => {
-    if (shouldSuppressTooltip) {
+    if (disabled || shouldSuppressTooltip) {
       setIsVisible(false)
       return
     }
@@ -149,7 +155,7 @@ export function Tooltip({
       window.dispatchEvent(new CustomEvent<string>(TOOLTIP_SHOW_EVENT, { detail: tooltipId }))
     }
     setIsVisible(true)
-  }, [broadcastShowEvent, clearHideTimeout, shouldSuppressTooltip, tooltipId])
+  }, [broadcastShowEvent, clearHideTimeout, disabled, shouldSuppressTooltip, tooltipId])
 
   const hideTooltip = useCallback(() => {
     clearHideTimeout()
@@ -291,7 +297,13 @@ export function Tooltip({
     <>
       <span
         ref={triggerRef}
-        className={fullWidthTrigger ? 'flex w-full' : 'inline-flex'}
+        className={[
+          triggerLayout,
+          fullWidthTrigger ? 'w-full' : '',
+          triggerClassName ?? '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
         onMouseEnter={showTooltip}
         onMouseLeave={hideTooltip}
         onFocus={showTooltip}
@@ -305,6 +317,7 @@ export function Tooltip({
               ref={tooltipRef}
               id={tooltipId}
               role="tooltip"
+              onFocus={interactive ? showTooltip : undefined}
               onMouseEnter={interactive ? showTooltip : undefined}
               onMouseLeave={interactive ? hideTooltip : undefined}
               className={[

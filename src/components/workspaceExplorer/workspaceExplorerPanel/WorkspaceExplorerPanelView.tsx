@@ -3,6 +3,9 @@ import type { DragEvent as ReactDragEvent } from 'react'
 import { useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { resolveFileIconConfig } from '../../../lib/fileIconResolver'
+import { isDocxPreviewablePath } from '../../../lib/docx-preview'
+import { isPdfPreviewablePath } from '../../../lib/pdf-preview'
+import { prefetchWorkspaceFile } from '../../../lib/workspaceFilePreviewCache'
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
 import { normalizeWorkspaceRootPath } from '../../../pages/chatInterface/chatWorkspaceClipboard'
 import { buildExplorerGitStatusMap } from './workspaceExplorerGitStatus'
@@ -37,6 +40,7 @@ export function WorkspaceExplorerPanelView({
     handleExternalDragOver: panelState.handleExternalDragOver,
     handleExternalDrop: panelState.handleExternalDrop,
     openContextMenu: panelState.openContextMenu,
+    prefetchPreviewFile: () => undefined,
   })
   entryRowActionsRef.current = {
     handleDirectoryDragLeave: panelState.handleDirectoryDragLeave,
@@ -49,6 +53,15 @@ export function WorkspaceExplorerPanelView({
     handleExternalDragOver: panelState.handleExternalDragOver,
     handleExternalDrop: panelState.handleExternalDrop,
     openContextMenu: panelState.openContextMenu,
+    prefetchPreviewFile: (relativePath) => {
+      if (
+        !workspaceRootPath ||
+        (!isDocxPreviewablePath(relativePath) && !isPdfPreviewablePath(relativePath))
+      ) {
+        return
+      }
+      prefetchWorkspaceFile({ relativePath, workspaceRootPath }, { priority: true })
+    },
   }
 
   function getDeleteActionLabel() {

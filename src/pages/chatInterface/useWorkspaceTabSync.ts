@@ -7,6 +7,9 @@ import {
   type SetStateAction,
 } from "react";
 import { getPathBasename } from "../../lib/pathPresentation";
+import { isDocxPreviewablePath } from "../../lib/docx-preview";
+import { isPdfPreviewablePath } from "../../lib/pdf-preview";
+import { readWorkspaceFileWithCache } from "../../lib/workspaceFilePreviewCache";
 import type { WorkspaceTab } from "../../components/workspaceExplorer/types";
 import {
   isWorkspacePathWithinTarget,
@@ -138,7 +141,10 @@ export function useWorkspaceTabSync({
           }
   
           try {
-            const result = await window.tidecodeWorkspace.readFile({
+            const readFile = isDocxPreviewablePath(relativePath) || isPdfPreviewablePath(relativePath)
+              ? readWorkspaceFileWithCache
+              : window.tidecodeWorkspace.readFile;
+            const result = await readFile({
               relativePath,
               workspaceRootPath,
             });
@@ -224,7 +230,16 @@ export function useWorkspaceTabSync({
           const normalizedContent = result.content.replace(/\r\n/g, "\n");
   
           if (tab.kind === "file") {
-            if (tab.content === normalizedContent || workspaceAutosaveTimeoutsRef.current.has(tab.relativePath)) {
+            const hasBinaryPreviewChanged =
+              tab.isBinary !== result.isBinary ||
+              tab.modifiedTimeMs !== result.modifiedTimeMs ||
+              tab.previewDataUrl !== result.previewDataUrl ||
+              tab.previewError !== result.previewError ||
+              tab.previewMimeType !== result.previewMimeType;
+            if (
+              (tab.content === normalizedContent && !hasBinaryPreviewChanged) ||
+              workspaceAutosaveTimeoutsRef.current.has(tab.relativePath)
+            ) {
               return tab;
             }
   
@@ -236,6 +251,10 @@ export function useWorkspaceTabSync({
               fileName: getPathBasename(result.relativePath),
               isBinary: result.isBinary,
               isTruncated: result.isTruncated,
+              modifiedTimeMs: result.modifiedTimeMs,
+              previewDataUrl: result.previewDataUrl,
+              previewError: result.previewError,
+              previewMimeType: result.previewMimeType,
               relativePath: result.relativePath,
               sizeBytes: result.sizeBytes,
               status: "ready",

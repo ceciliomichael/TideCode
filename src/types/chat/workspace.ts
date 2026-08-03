@@ -35,6 +35,10 @@ export interface WorkspaceExplorerReadFileResult {
   content: string
   isBinary: boolean
   isTruncated: boolean
+  modifiedTimeMs: number
+  previewDataUrl?: string
+  previewError?: string
+  previewMimeType?: string
   relativePath: string
   sizeBytes: number
 }

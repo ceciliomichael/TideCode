@@ -437,6 +437,46 @@
     height: 0;
   }
 
+  .workspace-document-page-stack {
+    box-sizing: border-box;
+    display: flex;
+    min-height: 100%;
+    min-width: 100%;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  .workspace-docx-preview .docx-canvas {
+    min-height: 100%;
+  }
+
+  .workspace-docx-preview .docx-rendered-styles {
+    display: none;
+  }
+
+  .workspace-docx-preview .docx-rendered-document {
+    width: max-content;
+  }
+
+  .workspace-docx-preview .docx-rendered-document .tidecode-docx-wrapper {
+    display: flex;
+    width: max-content;
+    min-width: 0;
+    padding: 0 !important;
+    background: var(--color-surface) !important;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .workspace-docx-preview .docx-rendered-document .tidecode-docx-wrapper > section.tidecode-docx {
+    margin-bottom: 0;
+    border: 1px solid var(--color-border);
+    background-color: #fff;
+    box-shadow: none;
+  }
+
   .workspace-editor-scrollbar::-webkit-scrollbar {
     width: 6px;
     height: 6px;

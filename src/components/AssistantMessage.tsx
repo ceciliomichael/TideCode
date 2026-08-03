@@ -14,6 +14,7 @@ import { ThinkingBlock } from "./chat/ThinkingBlock";
 import { ThinkingIndicator } from "./chat/ThinkingIndicator";
 import { resolveAssistantWaitingIndicatorVariant } from "./chat/assistantWaitingIndicator";
 import { ToolInvocationGroup } from "./chat/ToolInvocationGroup";
+import { Tooltip } from "./Tooltip";
 import {
   getToolInvocationDisplayEntries,
   type ToolInvocationDisplayEntry,
@@ -204,19 +205,23 @@ export function AssistantMessage({
       ) : null}
 
       {isCopyButtonVisible ? (
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="absolute bottom-1.5 right-1.5 inline-flex h-5 w-5 items-center justify-center text-muted-foreground opacity-0 pointer-events-none transition-[color,opacity,transform] duration-150 hover:scale-105 hover:text-foreground group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
-          aria-label={isCopied ? "Copied message" : "Copy message"}
-          title={isCopied ? "Copied" : "Copy"}
+        <Tooltip
+          content={isCopied ? "Copied" : "Copy"}
+          triggerClassName="absolute bottom-1.5 right-1.5 inline-flex h-5 w-5 pointer-events-none opacity-0 transition-[color,opacity,transform] duration-150 group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto"
         >
-          {isCopied ? (
-            <Check className="h-4 w-4" />
-          ) : (
-            <Copy className="h-4 w-4" />
-          )}
-        </button>
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="inline-flex h-5 w-5 items-center justify-center text-muted-foreground transition-transform hover:scale-105 hover:text-foreground"
+            aria-label={isCopied ? "Copied message" : "Copy message"}
+          >
+            {isCopied ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+          </button>
+        </Tooltip>
       ) : null}
     </div>
   );

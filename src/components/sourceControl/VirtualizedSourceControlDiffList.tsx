@@ -106,7 +106,6 @@ function DiffFileActionButton({
     <button
       type="button"
       aria-label={ariaLabel}
-      title={useTooltips ? undefined : content}
       disabled={disabled}
       onClick={(event) => {
         event.preventDefault()
@@ -292,14 +291,16 @@ function DeletedDiffRow({
         className="group flex min-w-0 flex-1 items-center gap-2.5 px-4 py-2 text-left text-[12.5px] text-muted-foreground"
       >
         <FileIcon size={14} style={{ color: iconConfig.color }} className="shrink-0" />
-        <div className="min-w-0 flex-1" title={normalizedPath}>
-          <div className="relative top-px inline-flex min-w-0 items-center gap-1.5">
-            <span className="min-w-0 truncate text-left text-foreground decoration-white decoration-[1.5px] line-through">{fileName}</span>
-            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-red-500">D</span>
-            <DiffLineSummary addedLineCount={diff.addedLineCount} removedLineCount={diff.removedLineCount} />
+        <Tooltip content={normalizedPath} side="top" noWrap triggerClassName="min-w-0 flex-1">
+          <div className="min-w-0 flex-1">
+            <div className="relative top-px inline-flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0 truncate text-left text-foreground decoration-white decoration-[1.5px] line-through">{fileName}</span>
+              <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-red-500">D</span>
+              <DiffLineSummary addedLineCount={diff.addedLineCount} removedLineCount={diff.removedLineCount} />
+            </div>
+            {directoryPath.length > 0 ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground/80">{directoryPath}</div> : null}
           </div>
-          {directoryPath.length > 0 ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground/80">{directoryPath}</div> : null}
-        </div>
+        </Tooltip>
       </button>
       <span className="ml-3 inline-flex w-[4.5rem] shrink-0 items-center justify-end pr-3">
         <DiffFileActionButtons

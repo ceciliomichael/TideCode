@@ -1,9 +1,9 @@
 import { FileCode } from 'lucide-react'
 import { getPathBasename } from '../../lib/pathPresentation'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
-import { useChatInputMetricTooltip } from '../../hooks/useChatInputMetricTooltip'
 import type { WorkspaceRefactorCandidate } from '../../types/chat'
 import { DashedMetricCircle } from './DashedMetricCircle'
+import { Tooltip } from '../Tooltip'
 
 interface RefactorCandidatesIndicatorProps {
   candidates: readonly WorkspaceRefactorCandidate[]
@@ -26,21 +26,6 @@ export function RefactorCandidatesIndicator({
   isLoading = false,
   onSelectCandidate,
 }: RefactorCandidatesIndicatorProps) {
-  const {
-    buttonRef,
-    containerRef,
-    handleBlur,
-    isOpen,
-    isTopTooltip,
-    openTooltip,
-    scheduleClose,
-    tooltipPosition,
-  } = useChatInputMetricTooltip({
-    disabled,
-    closeDelayMs: 60,
-    hoverKey: 'refactor',
-    minimumTopSpace: 260,
-  })
   const candidateCount = candidates.length
   const indicatorPercent = isLoading ? 100 : Math.min((candidateCount / 10) * 100, 100)
   const isEmpty = !isLoading && candidateCount === 0
@@ -49,7 +34,7 @@ export function RefactorCandidatesIndicator({
     isEmpty ? 'text-subtle-foreground hover:text-muted-foreground' : 'text-muted-foreground hover:text-foreground',
   ].join(' ')
 
-  const tooltipContent = isLoading ? (
+  const tooltipBody = isLoading ? (
     <p className="text-subtle-foreground">Scanning the workspace for large code files.</p>
   ) : isEmpty ? (
     <p className="text-subtle-foreground">No large code files above 300 lines were found.</p>
@@ -91,16 +76,38 @@ export function RefactorCandidatesIndicator({
     </>
   )
 
+  const tooltipContent = (
+    <div className="flex flex-col gap-0">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5">
+          <FileCode size={14} className="text-foreground" />
+          <span className="font-medium text-foreground">Refactor candidates</span>
+        </div>
+        {isLoading ? (
+          <span className="inline-flex min-h-5 items-center justify-center rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-medium leading-none text-subtle-foreground">
+            Scanning
+          </span>
+        ) : (
+          <span className="inline-flex min-h-5 items-center justify-center rounded-full bg-accent px-2 py-0.5 text-[11px] font-medium leading-none text-accent-foreground">
+            {candidateCount} {candidateCount === 1 ? 'file' : 'files'}
+          </span>
+        )}
+      </div>
+
+      {tooltipBody}
+    </div>
+  )
+
   return (
-    <div
-      ref={containerRef}
-      className="relative"
-      onBlur={handleBlur}
-      onMouseEnter={openTooltip}
-      onMouseLeave={scheduleClose}
+    <Tooltip
+      content={tooltipContent}
+      disabled={disabled}
+      side="top"
+      interactive
+      hideDelayMs={60}
+      panelClassName="!block !w-[24rem] !max-w-[calc(100vw-24px)] !rounded-2xl !border-border !bg-surface !p-3 !text-foreground !shadow-soft"
     >
       <button
-        ref={buttonRef}
         type="button"
         aria-label={
           isLoading
@@ -111,7 +118,6 @@ export function RefactorCandidatesIndicator({
         }
         className={buttonClassName}
         disabled={disabled}
-        onFocus={openTooltip}
       >
         <div className={isLoading ? 'animate-spin' : ''}>
           <DashedMetricCircle
@@ -122,35 +128,6 @@ export function RefactorCandidatesIndicator({
           />
         </div>
       </button>
-
-      {isOpen ? (
-        <div
-          role="tooltip"
-          className={[
-            'absolute right-0 z-50 w-[24rem] max-w-[calc(100vw-24px)] rounded-2xl border border-border bg-surface p-3 text-xs text-foreground shadow-soft',
-            tooltipPosition === 'above' ? 'bottom-full mb-2' : 'top-full mt-2',
-          ].join(' ')}
-          style={{ zIndex: isTopTooltip ? 60 : 50 }}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5">
-              <FileCode size={14} className="text-foreground" />
-              <span className="font-medium text-foreground">Refactor candidates</span>
-            </div>
-            {isLoading ? (
-              <span className="inline-flex min-h-5 items-center justify-center rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-medium leading-none text-subtle-foreground">
-                Scanning
-              </span>
-            ) : (
-              <span className="inline-flex min-h-5 items-center justify-center rounded-full bg-accent px-2 py-0.5 text-[11px] font-medium leading-none text-accent-foreground">
-                {candidateCount} {candidateCount === 1 ? 'file' : 'files'}
-              </span>
-            )}
-          </div>
-
-          {tooltipContent}
-        </div>
-      ) : null}
-    </div>
+    </Tooltip>
   )
 }

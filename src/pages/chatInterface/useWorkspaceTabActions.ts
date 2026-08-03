@@ -1,8 +1,11 @@
 import { useCallback, useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import type { WorkspaceFileTab, WorkspaceTab } from '../../components/workspaceExplorer/types'
 import { createMarkdownPreviewTabKey, isMarkdownPreviewablePath } from '../../lib/markdown-preview'
+import { isDocxPreviewablePath } from '../../lib/docx-preview'
 import { getPathBasename } from '../../lib/pathPresentation'
+import { isPdfPreviewablePath } from '../../lib/pdf-preview'
 import { createSvgPreviewTabKey, isSvgPreviewablePath } from '../../lib/svg-preview'
+import { readWorkspaceFileWithCache } from '../../lib/workspaceFilePreviewCache'
 
 interface UseWorkspaceTabActionsInput {
   activeWorkspacePanelWidth: number | null
@@ -63,6 +66,7 @@ export function useWorkspaceTabActions({
             fileName: getPathBasename(relativePath),
             isBinary: false,
             isTruncated: false,
+            modifiedTimeMs: 0,
             relativePath,
             tabKey: relativePath,
             sizeBytes: 0,
@@ -71,8 +75,11 @@ export function useWorkspaceTabActions({
         ]
       })
 
-      void window.tidecodeWorkspace
-        .readFile({ relativePath, workspaceRootPath })
+      const readFile = isDocxPreviewablePath(relativePath) || isPdfPreviewablePath(relativePath)
+        ? (input: { relativePath: string; workspaceRootPath: string }) =>
+            readWorkspaceFileWithCache(input, { priority: true })
+        : window.tidecodeWorkspace.readFile
+      void readFile({ relativePath, workspaceRootPath })
         .then((result) => {
           if (activeWorkspacePathRef.current !== workspaceRootPath) return
 
@@ -88,6 +95,10 @@ export function useWorkspaceTabActions({
                 fileName: getPathBasename(result.relativePath),
                 isBinary: result.isBinary,
                 isTruncated: result.isTruncated,
+                modifiedTimeMs: result.modifiedTimeMs,
+                previewDataUrl: result.previewDataUrl,
+                previewError: result.previewError,
+                previewMimeType: result.previewMimeType,
                 relativePath: result.relativePath,
                 tabKey: result.relativePath,
                 sizeBytes: result.sizeBytes,

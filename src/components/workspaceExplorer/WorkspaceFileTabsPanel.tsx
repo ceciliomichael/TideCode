@@ -8,10 +8,15 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from 'react'
 import { isMarkdownPreviewablePath } from '../../lib/markdown-preview'
+import { isDocxPreviewablePath } from '../../lib/docx-preview'
+import { isImagePreviewablePath } from '../../lib/image-preview'
+import { isPdfPreviewablePath } from '../../lib/pdf-preview'
 import { isSvgPreviewablePath } from '../../lib/svg-preview'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
 import type { GitFileDiff } from '../../types/chat'
+import { Tooltip } from '../Tooltip'
 import type { WorkspaceTab } from './types'
+import type { TextSelectionRange } from './workspaceFileEditor/workspaceFileEditorUtils'
 import { WorkspaceFileTabsPanelContent } from './workspaceFileTabsPanel/WorkspaceFileTabsPanelContent'
 
 interface WorkspaceFileTabsPanelProps {
@@ -43,6 +48,7 @@ export function WorkspaceFileTabsPanel({
 }: WorkspaceFileTabsPanelProps) {
   const hasTabs = tabs.length > 0
   const activeTab = tabs.find((tab) => tab.tabKey === activeTabKey) ?? null
+  const editorSelectionsRef = useRef(new Map<string, TextSelectionRange>())
   const tabsViewportRef = useRef<HTMLDivElement | null>(null)
   const dragStateRef = useRef<{ pointerId: number; startX: number; startThumbLeft: number } | null>(null)
   const [tabsScrollMetrics, setTabsScrollMetrics] = useState({
@@ -50,6 +56,31 @@ export function WorkspaceFileTabsPanel({
     thumbLeft: 0,
     thumbWidth: 0,
   })
+
+  const activeEditorSelection =
+    activeTab?.kind === 'file' ? editorSelectionsRef.current.get(activeTab.tabKey) ?? null : null
+
+  const handleEditorSelectionChange = useCallback((selection: TextSelectionRange | null) => {
+    if (activeTab?.kind !== 'file') {
+      return
+    }
+
+    if (selection) {
+      editorSelectionsRef.current.set(activeTab.tabKey, selection)
+      return
+    }
+
+    editorSelectionsRef.current.delete(activeTab.tabKey)
+  }, [activeTab])
+
+  useEffect(() => {
+    const openTabKeys = new Set(tabs.map((tab) => tab.tabKey))
+    for (const tabKey of editorSelectionsRef.current.keys()) {
+      if (!openTabKeys.has(tabKey)) {
+        editorSelectionsRef.current.delete(tabKey)
+      }
+    }
+  }, [tabs])
 
   const updateTabsScrollMetrics = useCallback(() => {
     const viewport = tabsViewportRef.current
@@ -251,15 +282,21 @@ export function WorkspaceFileTabsPanel({
         ) : null}
       </div>
 
-      {activeTab.kind === 'markdown-preview' || activeTab.kind === 'svg-preview' ? null : (
+      {activeTab.kind === 'markdown-preview' ||
+      activeTab.kind === 'svg-preview' ||
+      (activeTab.kind === 'file' &&
+        activeTab.isBinary &&
+        (isDocxPreviewablePath(activeTab.relativePath) ||
+          isImagePreviewablePath(activeTab.relativePath) ||
+          isPdfPreviewablePath(activeTab.relativePath))) ? null : (
         <div className="flex h-7 items-center bg-surface px-2">
           <div className="flex min-w-0 items-center gap-1 overflow-hidden text-[12px] text-subtle-foreground">
             {breadcrumbSegments.map((segment, index) => (
               <span key={`${segment}-${index}`} className="inline-flex min-w-0 items-center gap-1.5">
                 {index > 0 ? <ChevronRight size={12} className="shrink-0 text-subtle-foreground/70" /> : null}
-                <span className="truncate" title={activeTab.relativePath}>
-                  {segment}
-                </span>
+                <Tooltip content={activeTab.relativePath} side="bottom" noWrap triggerClassName="min-w-0">
+                  <span className="truncate">{segment}</span>
+                </Tooltip>
               </span>
             ))}
           </div>
@@ -271,10 +308,12 @@ export function WorkspaceFileTabsPanel({
           activeTab={activeTab}
           gitFileDiffs={gitFileDiffs}
           hasRepository={hasRepository}
+          initialSelection={activeEditorSelection}
           tabs={tabs}
           onFileContentChange={onFileContentChange}
           onOpenMarkdownPreview={openMarkdownPreviewForActiveFile}
           onOpenSvgPreview={openSvgPreviewForActiveFile}
+          onSelectionChange={handleEditorSelectionChange}
           wordWrapEnabled={wordWrapEnabled}
         />
       </div>

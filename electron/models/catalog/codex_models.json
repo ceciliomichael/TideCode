@@ -9,7 +9,8 @@
       "low",
       "medium",
       "high",
-      "xhigh"
+      "xhigh",
+      "max"
     ],
     "defaultReasoningEffort": "medium"
   },
@@ -23,7 +24,8 @@
       "low",
       "medium",
       "high",
-      "xhigh"
+      "xhigh",
+      "max"
     ],
     "defaultReasoningEffort": "medium"
   },
@@ -37,7 +39,8 @@
       "low",
       "medium",
       "high",
-      "xhigh"
+      "xhigh",
+      "max"
     ],
     "defaultReasoningEffort": "medium"
   },
@@ -46,34 +49,6 @@
     "enabledByDefault": true,
     "id": "gpt-5.5",
     "label": "gpt-5.5",
-    "reasoningCapable": true,
-    "reasoningEfforts": [
-      "low",
-      "medium",
-      "high",
-      "xhigh"
-    ],
-    "defaultReasoningEffort": "medium"
-  },
-  {
-    "apiModelId": "gpt-5.4",
-    "enabledByDefault": true,
-    "id": "gpt-5.4",
-    "label": "gpt-5.4",
-    "reasoningCapable": true,
-    "reasoningEfforts": [
-      "low",
-      "medium",
-      "high",
-      "xhigh"
-    ],
-    "defaultReasoningEffort": "medium"
-  },
-  {
-    "apiModelId": "gpt-5.4-mini",
-    "enabledByDefault": true,
-    "id": "gpt-5.4-mini",
-    "label": "gpt-5.4-mini",
     "reasoningCapable": true,
     "reasoningEfforts": [
       "low",

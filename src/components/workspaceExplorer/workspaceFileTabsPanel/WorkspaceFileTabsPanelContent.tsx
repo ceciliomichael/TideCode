@@ -1,19 +1,28 @@
 import { memo } from 'react'
 import { WorkspaceFileEditor } from '../WorkspaceFileEditor'
+import { WorkspaceDocxPreview } from '../workspaceDocxPreview/WorkspaceDocxPreview'
+import { WorkspaceImagePreview } from '../workspaceImagePreview/WorkspaceImagePreview'
 import { WorkspaceMarkdownPreview } from '../workspaceMarkdownPreview/WorkspaceMarkdownPreview'
+import { WorkspacePdfPreview } from '../workspacePdfPreview/WorkspacePdfPreview'
 import { WorkspaceSvgPreview } from '../workspaceSvgPreview/WorkspaceSvgPreview'
 import type { GitFileDiff } from '../../../types/chat'
 import type { WorkspaceFileTab, WorkspaceTab } from '../types'
+import type { TextSelectionRange } from '../workspaceFileEditor/workspaceFileEditorUtils'
+import { isImagePreviewablePath } from '../../../lib/image-preview'
+import { isDocxPreviewablePath } from '../../../lib/docx-preview'
 import { isSvgPreviewablePath } from '../../../lib/svg-preview'
+import { isPdfPreviewablePath } from '../../../lib/pdf-preview'
 
 interface WorkspaceFileTabsPanelContentProps {
   activeTab: WorkspaceTab
   gitFileDiffs: readonly GitFileDiff[]
-    hasRepository: boolean
+  hasRepository: boolean
+  initialSelection: TextSelectionRange | null
   tabs: readonly WorkspaceTab[]
   onOpenMarkdownPreview?: () => void
   onOpenSvgPreview?: () => void
   onFileContentChange: (relativePath: string, content: string) => void
+  onSelectionChange: (selection: TextSelectionRange | null) => void
   wordWrapEnabled: boolean
 }
 
@@ -34,10 +43,12 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
   activeTab,
   gitFileDiffs,
   hasRepository,
+  initialSelection,
   tabs,
   onOpenMarkdownPreview,
   onOpenSvgPreview,
   onFileContentChange,
+  onSelectionChange,
   wordWrapEnabled,
 }: WorkspaceFileTabsPanelContentProps) {
   if (activeTab.kind === 'markdown-preview') {
@@ -136,6 +147,39 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
   }
 
   if (activeTab.isBinary) {
+    if (isDocxPreviewablePath(activeTab.relativePath)) {
+      return (
+        <WorkspaceDocxPreview
+          fileName={activeTab.fileName}
+          previewDataUrl={activeTab.previewDataUrl}
+          previewError={activeTab.previewError}
+          relativePath={activeTab.relativePath}
+        />
+      )
+    }
+
+    if (isPdfPreviewablePath(activeTab.relativePath)) {
+      return (
+        <WorkspacePdfPreview
+          fileName={activeTab.fileName}
+          previewDataUrl={activeTab.previewDataUrl}
+          previewError={activeTab.previewError}
+          relativePath={activeTab.relativePath}
+        />
+      )
+    }
+
+    if (isImagePreviewablePath(activeTab.relativePath)) {
+      return (
+        <WorkspaceImagePreview
+          fileName={activeTab.fileName}
+          previewDataUrl={activeTab.previewDataUrl}
+          previewError={activeTab.previewError}
+          relativePath={activeTab.relativePath}
+        />
+      )
+    }
+
     return (
       <div className="h-full border-t border-border bg-surface px-4 py-3 text-sm text-subtle-foreground">
         Binary file view is not supported for {activeTab.fileName}.
@@ -145,12 +189,15 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
 
   return (
     <WorkspaceFileEditor
+      key={activeTab.tabKey}
       fileName={activeTab.fileName}
       gitFileDiff={findGitFileDiff(gitFileDiffs, activeTab.relativePath)}
         hasRepository={hasRepository}
+      initialSelection={initialSelection}
       onOpenMarkdownPreview={onOpenMarkdownPreview}
       onOpenSvgPreview={isSvgPreviewablePath(activeTab.relativePath) ? onOpenSvgPreview : undefined}
       originalContent={activeTab.originalContent}
+      onSelectionChange={onSelectionChange}
       value={activeTab.content}
       wordWrapEnabled={wordWrapEnabled}
       onChange={(nextValue) => onFileContentChange(activeTab.relativePath, nextValue)}

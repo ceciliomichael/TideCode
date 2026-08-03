@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { splitChatMentionSegments } from '../../lib/chatMentions'
+import { Tooltip } from '../Tooltip'
 
 interface ChatMentionTextProps {
   className?: string
@@ -62,48 +63,55 @@ export const ChatMentionText = memo(function ChatMentionText({
 
         if (isRendered) {
           return (
-            <span
+            <Tooltip
               key={`mention-${index}`}
-              className="relative inline align-baseline [overflow-wrap:anywhere]"
-              title={segment.path ?? segment.label}
+              content={segment.path ?? segment.label}
+              triggerClassName="align-baseline"
+              triggerLayout="inline"
             >
-              <span className={`relative ${textColorClass}`}>
-                {segment.text}
+              <span className="relative inline align-baseline [overflow-wrap:anywhere]">
+                <span className={`relative ${textColorClass}`}>
+                  {segment.text}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className={`pointer-events-none absolute inset-0 z-[1] ${highlightClass}`}
+                />
               </span>
-              <span
-                aria-hidden="true"
-                className={`pointer-events-none absolute inset-0 z-[1] ${highlightClass}`}
-              />
-            </span>
+            </Tooltip>
           )
         }
 
         if (!isBackdrop) {
           return (
-            <span
+            <Tooltip
               key={`mention-${index}`}
-              className="relative inline-block align-baseline [overflow-wrap:anywhere]"
-              title={segment.path ?? segment.label}
+              content={segment.path ?? segment.label}
+              triggerClassName="align-baseline"
+              triggerLayout="inline"
             >
-              <span className={`relative ${textColorClass}`}>
-                {segment.text}
+              <span className="relative inline-block align-baseline [overflow-wrap:anywhere]">
+                <span className={`relative ${textColorClass}`}>
+                  {segment.text}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className={`pointer-events-none absolute inset-0 z-[1] ${highlightClass}`}
+                />
               </span>
-              <span
-                aria-hidden="true"
-                className={`pointer-events-none absolute inset-0 z-[1] ${highlightClass}`}
-              />
-            </span>
+            </Tooltip>
           )
         }
 
         return (
-          <span
+          <Tooltip
             key={`mention-${index}`}
-            className={`${highlightClass} text-transparent`}
-            title={segment.path ?? segment.label}
+            content={segment.path ?? segment.label}
+            triggerClassName="align-baseline"
+            triggerLayout="inline"
           >
-            {segment.text}
-          </span>
+            <span className={`${highlightClass} text-transparent`}>{segment.text}</span>
+          </Tooltip>
         )
       })}
     </div>
