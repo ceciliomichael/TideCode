@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.20 — Richer workspace previews
+
+TideCode now brings common visual and document files into the workspace, with dedicated previews and more consistent provider model controls for current backend capabilities.
+
+- Preview browser-supported images, PDF files, and DOCX documents directly in workspace tabs with loading, error, caching, zoom, pan, and page navigation support.
+- Preserve existing editor, Markdown, SVG, and workspace navigation flows while routing supported files to the appropriate preview surface.
+- Refresh provider model catalogs and reasoning metadata, including expanded supported effort choices and current model identifiers.
+
 ## 1.0.19 — More accurate provider model controls
 
 TideCode now keeps provider model choices aligned with the capabilities and identifiers exposed by current backends, making reasoning controls more predictable across DeepSeek and Google providers.
