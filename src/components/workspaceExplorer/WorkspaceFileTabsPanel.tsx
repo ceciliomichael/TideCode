@@ -18,6 +18,7 @@ import { Tooltip } from '../Tooltip'
 import type { WorkspaceTab } from './types'
 import type { TextSelectionRange } from './workspaceFileEditor/workspaceFileEditorUtils'
 import { WorkspaceFileTabsPanelContent } from './workspaceFileTabsPanel/WorkspaceFileTabsPanelContent'
+import { findWorkspaceTabByKey } from './workspaceFileTabsPanel/workspaceFileTabsPanelUtils'
 
 interface WorkspaceFileTabsPanelProps {
   activeTabKey: string | null
@@ -47,7 +48,7 @@ export function WorkspaceFileTabsPanel({
   wordWrapEnabled,
 }: WorkspaceFileTabsPanelProps) {
   const hasTabs = tabs.length > 0
-  const activeTab = tabs.find((tab) => tab.tabKey === activeTabKey) ?? null
+  const activeTab = findWorkspaceTabByKey(tabs, activeTabKey)
   const editorSelectionsRef = useRef(new Map<string, TextSelectionRange>())
   const tabsViewportRef = useRef<HTMLDivElement | null>(null)
   const dragStateRef = useRef<{ pointerId: number; startX: number; startThumbLeft: number } | null>(null)

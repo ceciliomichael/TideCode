@@ -176,6 +176,6 @@ export type ChatStreamEvent =
       toolName: string
       type: 'tool_invocation_failed'
     }
-  | { streamId: string; type: 'completed' }
-  | { streamId: string; type: 'aborted' }
-  | { errorMessage: string; streamId: string; type: 'error' }
+  | { conversationId?: string | null; streamId: string; type: 'completed' }
+  | { conversationId?: string | null; streamId: string; type: 'aborted' }
+  | { conversationId?: string | null; errorMessage: string; streamId: string; type: 'error' }

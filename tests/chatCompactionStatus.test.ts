@@ -32,7 +32,7 @@ test('compaction lifecycle transitions from compacting to compacted', () => {
   })
 })
 
-test('failed or terminal compaction clears only an in-flight status', () => {
+test('failed compaction clears in-flight status while committed status remains visible', () => {
   const compacting = reduceChatCompactionStatus(null, startedEvent, 'conversation-1')
   assert.equal(reduceChatCompactionStatus(compacting, {
     attemptId: 'attempt-1',

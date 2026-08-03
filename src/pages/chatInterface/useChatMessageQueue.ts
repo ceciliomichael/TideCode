@@ -23,8 +23,13 @@ interface UseChatMessageQueueInput {
   onSendMessage: (
     message: QueuedMessage,
     reason: QueuedMessageAutoSendReason,
-  ) => Promise<boolean> | boolean
+  ) => Promise<QueuedMessageSendResult> | QueuedMessageSendResult
   successfulToolCompletionSignal: string | null
+}
+
+export interface QueuedMessageSendResult {
+  accepted: boolean
+  retryable: boolean
 }
 
 export function useChatMessageQueue({
@@ -41,7 +46,15 @@ export function useChatMessageQueue({
   const queuedMessageSendInFlightIdsRef = useRef<Set<string>>(new Set())
   const queueLifecycleVersionRef = useRef(0)
   const attemptedAutoSendKeyRef = useRef<string | null>(null)
+  const observedAutoSendBlockedRef = useRef(isAutoSendBlocked)
   const observedSuccessfulToolSignalRef = useRef(successfulToolCompletionSignal)
+
+  useEffect(() => {
+    if (observedAutoSendBlockedRef.current !== isAutoSendBlocked) {
+      attemptedAutoSendKeyRef.current = null
+    }
+    observedAutoSendBlockedRef.current = isAutoSendBlocked
+  }, [isAutoSendBlocked])
 
   useEffect(() => {
     const previousSignal = observedSuccessfulToolSignalRef.current
@@ -109,8 +122,12 @@ export function useChatMessageQueue({
       setQueuedMessages((currentValue) => removeQueuedComposerMessage(currentValue, targetMessage.id))
 
       try {
-        const wasAccepted = await onSendMessage(targetMessage, reason)
-        if (!wasAccepted) {
+        const sendResult = await onSendMessage(targetMessage, reason)
+        if (!sendResult.accepted) {
+          if (sendResult.retryable) {
+            attemptedAutoSendKeyRef.current = null
+          }
+
           if (queueLifecycleVersionRef.current === queueLifecycleVersion) {
             setQueuedMessages((currentValue) =>
               requeueQueuedComposerMessage(currentValue, targetMessage, restoreIndex),
@@ -121,7 +138,7 @@ export function useChatMessageQueue({
           setSuccessfulToolReleaseSignal(null)
         }
 
-        return wasAccepted
+        return sendResult.accepted
       } catch (caughtError) {
         console.error(caughtError)
         if (queueLifecycleVersionRef.current === queueLifecycleVersion) {

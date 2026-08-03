@@ -15,6 +15,7 @@ import { applyPromptCacheBreakpoints } from '../cache/providerPolicies'
 import { readCanonicalHistory } from '../history/eventStore'
 import { projectCanonicalReplay } from '../history/replayProjector'
 import { shouldReplayAssistantReasoning } from './assistantReasoningPolicy'
+import { selectContextUsageMessages } from './contextUsageProjection'
 import { buildChatPrompt } from './messages'
 import { createAgentTools } from './tools'
 import { sortToolSet } from './runtimeToolSet'
@@ -46,14 +47,19 @@ export async function estimateToolEnabledContextUsage(input: {
   let modelMessages = prompt.messages
   if (input.conversationId?.trim() && input.modelId?.trim()) {
     const canonicalHistory = await readCanonicalHistory(input.conversationId.trim())
-    modelMessages = projectCanonicalReplay({
+    const replay = projectCanonicalReplay({
       document: canonicalHistory,
       fallbackMessages: prompt.messages,
       messages: input.messages,
       modelId: input.modelId.trim(),
       options: promptOptions,
       providerId: input.providerId,
-    }).messages
+    })
+    modelMessages = selectContextUsageMessages({
+      canonicalMessages: replay.messages,
+      fallbackMessages: prompt.messages,
+      isCompacted: replay.isCompacted,
+    })
   }
   const systemPrompt = prompt.system
   const messageUsage = estimateModelMessageContextUsage(modelMessages)

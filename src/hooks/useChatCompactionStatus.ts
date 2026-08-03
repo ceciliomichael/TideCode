@@ -4,18 +4,16 @@ import type { ChatCompactionLifecycleState } from '../types/chat'
 
 interface UseChatCompactionStatusInput {
   conversationId: string | null
-  persistedCompactionIds?: readonly string[]
 }
 
 export function useChatCompactionStatus({
   conversationId,
-  persistedCompactionIds = [],
 }: UseChatCompactionStatusInput): ChatCompactionLifecycleState | null {
   const [status, setStatus] = useState<ChatCompactionLifecycleState | null>(null)
 
   useEffect(() => {
+    setStatus(null)
     if (!conversationId) {
-      setStatus(null)
       return
     }
 
@@ -25,15 +23,6 @@ export function useChatCompactionStatus({
 
     return unsubscribe
   }, [conversationId])
-
-  useEffect(() => {
-    if (
-      status?.phase === 'compacted' &&
-      persistedCompactionIds.includes(status.compactionId)
-    ) {
-      setStatus(null)
-    }
-  }, [persistedCompactionIds, status])
 
   return status
 }

@@ -2,6 +2,7 @@ import { createReadStream, promises as fs } from 'node:fs'
 import path from 'node:path'
 import { createInterface } from 'node:readline'
 import {
+  isExplicitlyGitignoredPath,
   isInsideWorkspaceIgnoredPath,
 } from '../../../workspace/gitignoreMatcher'
 import {
@@ -98,7 +99,9 @@ function formatGrepOutput(matches: GrepMatch[], hasErrors: boolean) {
 
 
 export async function createListToolResult(workspaceRootPath: string, absolutePath: string, relativePath: string) {
-  const relaxIgnore = isInsideWorkspaceIgnoredPath(workspaceRootPath, absolutePath)
+  const relaxIgnore =
+    isInsideWorkspaceIgnoredPath(workspaceRootPath, absolutePath) ||
+    (await isExplicitlyGitignoredPath(workspaceRootPath, absolutePath, true))
   const immediateEntries = await listImmediateDirectoryEntries(workspaceRootPath, absolutePath, { relaxIgnore })
   const limitedEntries = immediateEntries.slice(0, LIST_LIMIT)
 
@@ -268,7 +271,11 @@ export async function createGlobToolResult(
     .split(/\r?\n/u)
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0)
-  const ignoreBasePath = isInsideWorkspaceIgnoredPath(workspaceRootPath, absolutePath) ? absolutePath : undefined
+  const ignoreBasePath =
+    isInsideWorkspaceIgnoredPath(workspaceRootPath, absolutePath) ||
+    (await isExplicitlyGitignoredPath(workspaceRootPath, absolutePath, true))
+      ? absolutePath
+      : undefined
   const visibleRelativeMatches = await filterVisibleRelativeFileEntries(workspaceRootPath, absolutePath, relativeMatches, {
     ignoreBasePath,
   })
@@ -346,7 +353,11 @@ export async function createGrepToolResult(
 
   const parsedMatches: GrepMatch[] = []
   const ignoreBasePath =
-    stats.isDirectory() && isInsideWorkspaceIgnoredPath(workspaceRootPath, absolutePath) ? absolutePath : undefined
+    stats.isDirectory() &&
+    (isInsideWorkspaceIgnoredPath(workspaceRootPath, absolutePath) ||
+      (await isExplicitlyGitignoredPath(workspaceRootPath, absolutePath, true)))
+      ? absolutePath
+      : undefined
   const isVisibleEntry = createWorkspaceEntryVisibilityFilter(workspaceRootPath, {
     ignoreBasePath,
   })

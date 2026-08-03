@@ -6,6 +6,22 @@ export interface MutableChatSendScopeGate {
   current: Set<string>
 }
 
+export interface ChatSendBlockedInput {
+  actionInFlight: boolean
+  hasPendingDraftSend: boolean
+  hasSubmissionInFlight: boolean
+  isConversationSending: boolean
+}
+
+export function isChatSendBlocked({
+  actionInFlight,
+  hasPendingDraftSend,
+  hasSubmissionInFlight,
+  isConversationSending,
+}: ChatSendBlockedInput) {
+  return actionInFlight || hasPendingDraftSend || hasSubmissionInFlight || isConversationSending
+}
+
 export function getChatSendScopeKey(conversationId: string | null) {
   return conversationId === null ? 'draft' : `conversation:${conversationId}`
 }

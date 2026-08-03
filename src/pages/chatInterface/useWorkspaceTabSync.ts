@@ -7,6 +7,7 @@ import {
   type SetStateAction,
 } from "react";
 import { getPathBasename } from "../../lib/pathPresentation";
+import { normalizePathSeparators } from "../../lib/filePathUtils";
 import { isDocxPreviewablePath } from "../../lib/docx-preview";
 import { isPdfPreviewablePath } from "../../lib/pdf-preview";
 import { readWorkspaceFileWithCache } from "../../lib/workspaceFilePreviewCache";
@@ -127,7 +128,7 @@ export function useWorkspaceTabSync({
         new Set(
           workspaceFileTabsRef.current
             .filter((tab) => tab.kind === "file" || tab.kind === "markdown-preview")
-            .map((tab) => tab.relativePath),
+            .map((tab) => normalizePathSeparators(tab.relativePath)),
         ),
       );
       if (targetRelativePaths.length === 0) {
@@ -206,7 +207,8 @@ export function useWorkspaceTabSync({
             return tab;
           }
   
-          const refresh = refreshByPath.get(tab.relativePath);
+          const normalizedTabPath = normalizePathSeparators(tab.relativePath);
+          const refresh = refreshByPath.get(normalizedTabPath);
           if (!refresh) {
             return tab;
           }
@@ -228,6 +230,7 @@ export function useWorkspaceTabSync({
   
           const { result } = refresh;
           const normalizedContent = result.content.replace(/\r\n/g, "\n");
+          const normalizedResultPath = normalizePathSeparators(result.relativePath);
   
           if (tab.kind === "file") {
             const hasBinaryPreviewChanged =
@@ -248,17 +251,17 @@ export function useWorkspaceTabSync({
               content: normalizedContent,
               errorMessage: undefined,
               originalContent: normalizedContent,
-              fileName: getPathBasename(result.relativePath),
+              fileName: getPathBasename(normalizedResultPath),
               isBinary: result.isBinary,
               isTruncated: result.isTruncated,
               modifiedTimeMs: result.modifiedTimeMs,
               previewDataUrl: result.previewDataUrl,
               previewError: result.previewError,
               previewMimeType: result.previewMimeType,
-              relativePath: result.relativePath,
+              relativePath: normalizedResultPath,
               sizeBytes: result.sizeBytes,
               status: "ready",
-              tabKey: result.relativePath,
+              tabKey: normalizedResultPath,
             };
           }
   
@@ -271,7 +274,7 @@ export function useWorkspaceTabSync({
               ...tab,
               content: normalizedContent,
               errorMessage: undefined,
-              fileName: getPathBasename(result.relativePath),
+              fileName: getPathBasename(normalizedResultPath),
               isTruncated: result.isTruncated,
               status: "ready",
             };

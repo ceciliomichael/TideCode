@@ -1,21 +1,31 @@
 import type { ModelMessage } from 'ai'
 import type { Message } from '../../../src/types/chat'
 import { buildModelMessages, type BuildChatPromptOptions } from '../shared/messages'
+import { sanitizeModelMessages } from '../shared/modelMessageIntegrity'
 import { decodeModelMessages } from './replayCodec'
-import { getReplaySlotKey, type CanonicalHistoryDocument } from './contracts'
+import {
+  getReplaySlotKey,
+  type CanonicalHistoryDocument,
+  type CanonicalReplayProjection,
+} from './contracts'
 
 export interface ReplayProjectionResult {
   fidelity: 'exact' | 'legacy' | 'migrated_legacy'
   freshnessRevision: number
+  isCompacted: boolean
   messages: ModelMessage[]
   replayRunId: string | null
+}
+
+type CompactionReplayProjection = CanonicalReplayProjection & {
+  isCompacted: true
 }
 
 function findLatestCompactionProjection(input: {
   document: CanonicalHistoryDocument
   modelId: string
-  providerId: string
-}) {
+  providerId: CanonicalReplayProjection['providerId']
+}): CompactionReplayProjection | null {
   const compactionEvents = [...input.document.events].reverse().filter((candidate) => (
     candidate.type === 'compaction_committed' &&
     'projectedMessages' in candidate &&
@@ -43,6 +53,7 @@ function findLatestCompactionProjection(input: {
       contextFingerprint: input.document.contextFingerprint ?? '',
       fidelity: 'exact' as const,
       freshnessRevision: input.document.freshness.revision,
+      isCompacted: true,
       messages: event.projectedMessages,
       modelId: input.modelId,
       providerId: input.providerId,
@@ -54,6 +65,22 @@ function findLatestCompactionProjection(input: {
     console.warn('Canonical compaction projection could not be decoded.', error)
     return null
   }
+}
+
+function replayIncludesCompaction(
+  document: CanonicalHistoryDocument,
+  replay: CanonicalHistoryDocument['replay'],
+) {
+  if (!replay) return false
+
+  return document.events.some((event) => (
+    event.branchId === document.activeBranchId &&
+    event.type === 'compaction_committed' &&
+    'projectedMessages' in event &&
+    event.providerId === replay.providerId &&
+    event.modelId === replay.modelId &&
+    event.revision <= replay.sourceRevision
+  ))
 }
 
 function appendFreshnessNotice(messages: ModelMessage[], invalidatedSubjects: string[]) {
@@ -111,7 +138,8 @@ export function projectCanonicalReplay(input: {
     return {
       fidelity,
       freshnessRevision: input.document.freshness.revision,
-      messages: input.fallbackMessages,
+      isCompacted: false,
+      messages: sanitizeModelMessages(input.fallbackMessages),
       replayRunId: null,
     }
   }
@@ -121,13 +149,14 @@ export function projectCanonicalReplay(input: {
     return {
       fidelity: 'legacy',
       freshnessRevision: input.document.freshness.revision,
-      messages: input.fallbackMessages,
+      isCompacted: false,
+      messages: sanitizeModelMessages(input.fallbackMessages),
       replayRunId: null,
     }
   }
 
   try {
-    const exactPrefix = decodeModelMessages(replay.messages)
+    const exactPrefix = sanitizeModelMessages(decodeModelMessages(replay.messages))
     const appendedUserMessages = input.messages.slice(anchorIndex + 1).filter((message) => message.role === 'user')
     const suffix = buildModelMessages(appendedUserMessages, {
       ...input.options,
@@ -139,7 +168,8 @@ export function projectCanonicalReplay(input: {
     return {
       fidelity: replay.fidelity,
       freshnessRevision: input.document.freshness.revision,
-      messages,
+      isCompacted: replayIncludesCompaction(input.document, replay),
+      messages: sanitizeModelMessages(messages),
       replayRunId: replay.runId,
     }
   } catch (error) {
@@ -147,7 +177,8 @@ export function projectCanonicalReplay(input: {
     return {
       fidelity: 'legacy',
       freshnessRevision: input.document.freshness.revision,
-      messages: input.fallbackMessages,
+      isCompacted: false,
+      messages: sanitizeModelMessages(input.fallbackMessages),
       replayRunId: null,
     }
   }

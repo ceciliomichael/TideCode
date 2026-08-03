@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { isChatSendBlocked } from '../src/lib/chatSendGate'
 import {
   detectSuccessfulToolReleaseSignal,
   resolveQueuedMessageAutoSendReason,
@@ -98,4 +99,16 @@ test('both follow-up modes release when the active turn has ended', () => {
       'turn_completed',
     )
   }
+})
+
+test('queued sending remains blocked while the runtime ref still reports a send', () => {
+  assert.equal(
+    isChatSendBlocked({
+      actionInFlight: false,
+      hasPendingDraftSend: false,
+      hasSubmissionInFlight: false,
+      isConversationSending: true,
+    }),
+    true,
+  )
 })

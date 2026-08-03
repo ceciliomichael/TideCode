@@ -3,7 +3,9 @@ import type { AppTerminalExecutionMode, ChatMode, ChatProviderId, Message, Reaso
 import { approximateTokenCount } from '../../../../src/lib/contextUsage'
 import { normalizeContextCompactionSettings, type ContextCompactionSettings } from '../../../../src/lib/contextCompactionSettings'
 import { recordCompactionCommitted } from '../../history/eventStore'
+import { shouldReplayAssistantReasoning } from '../assistantReasoningPolicy'
 import { buildChatPrompt } from '../messages'
+import { sanitizeModelMessages } from '../modelMessageIntegrity'
 import { compactModelMessages } from './service'
 import type { CompactionStreamFactory, CompactionResult } from './contracts'
 
@@ -28,14 +30,16 @@ export async function compactConversationForProvider(input: CompactConversationI
     chatMode: input.chatMode,
     messages: input.messages,
     options: {
+      includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId),
       terminalExecutionMode: input.terminalExecutionMode,
     },
     workspaceRootPath: input.agentContextRootPath,
   })
+  const safeModelMessages = sanitizeModelMessages(prompt.messages)
   const result = await compactModelMessages({
     createStream: input.createStream,
     force: true,
-    messages: prompt.messages,
+    messages: safeModelMessages,
     model: input.modelId,
     reasoningEffort: input.reasoningEffort,
     systemPromptTokens: approximateTokenCount(prompt.system),

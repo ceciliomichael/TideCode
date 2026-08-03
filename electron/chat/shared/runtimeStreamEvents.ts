@@ -117,6 +117,13 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
   let lastFinishReason: string | null = null
 
       for await (const part of input.fullStream) {
+        // Cancellation is acknowledged by the IPC layer immediately. The
+        // provider/tool iterator may still yield later while it unwinds; do
+        // not forward those late events or persist more run progress.
+        if (input.abortController.signal.aborted) {
+          continue
+        }
+
         if (isStreamPart(part, 'text-delta') && typeof part.text === 'string') {
           emitChatStreamEvent(input.webContents, {
             delta: part.text,
@@ -363,5 +370,6 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
   return {
     completedStepCount,
     lastFinishReason,
+    wasAborted: input.abortController.signal.aborted,
   }
 }

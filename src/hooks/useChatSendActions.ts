@@ -14,6 +14,7 @@ import { restoreChatComposerDraft } from '../lib/chatComposerDraft'
 import {
   acquireChatSendScopeGate,
   getChatSendScopeKey,
+  isChatSendBlocked,
   releaseChatSendScopeGate,
 } from '../lib/chatSendGate'
 import {
@@ -48,6 +49,12 @@ interface UseChatSendActionsInput
 
 interface SendNewMessageOptions {
   resetMainComposerAfterSend?: boolean
+  waitForConversationToSettle?: boolean
+}
+
+interface ChatSendAttemptResult {
+  accepted: boolean
+  retryable: boolean
 }
 
 interface SendProgrammaticMessageOptions {
@@ -86,6 +93,7 @@ function sleep(milliseconds: number) {
 
 export function useChatSendActions(input: UseChatSendActionsInput) {
   const actionInFlightRef = useRef(false)
+  const abortOperationRef = useRef<Promise<void> | null>(null)
   const submissionInFlightRef = useRef<Set<string>>(new Set())
   const pendingAbortBeforeStreamStartRef = useRef(false)
   const revertedUserMessageIdsRef = useRef<Set<string>>(new Set())
@@ -186,48 +194,101 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     return null
   }, [findActiveRunConversationId])
 
+  const waitForSendReadiness = useCallback(
+    async (conversationId: string | null, sendScopeKey: string) => {
+      const startedAt = Date.now()
+
+      while (Date.now() - startedAt < RUN_STATE_SETTLE_TIMEOUT_MS) {
+        const isActiveConversationSending = conversationId
+          ? (getConversationState(conversationId)?.isSending ?? false)
+          : false
+        const hasPendingDraftSend = conversationId === null && input.pendingDraftSendCount > 0
+
+        if (!isChatSendBlocked({
+          actionInFlight: actionInFlightRef.current,
+          hasPendingDraftSend,
+          hasSubmissionInFlight: submissionInFlightRef.current.has(sendScopeKey),
+          isConversationSending: isActiveConversationSending,
+        })) {
+          return true
+        }
+
+        await sleep(25)
+      }
+
+      return false
+    },
+    [getConversationState, input],
+  )
+
   const abortActiveStreamIfNeeded = useCallback(
     async (options?: { requestAbortBeforeStreamStart?: boolean }) => {
       if (options?.requestAbortBeforeStreamStart) {
         pendingAbortBeforeStreamStartRef.current = true
       }
 
-      const conversationId = await waitForAbortableConversationId()
-      if (!conversationId) {
+      const existingAbortOperation = abortOperationRef.current
+      if (existingAbortOperation) {
+        await existingAbortOperation
         return
       }
 
-      let conversationState = getConversationState(conversationId)
-      if (!conversationState) {
-        return
-      }
-
-      if (!conversationState?.isSending && conversationState?.activeStreamId === null) {
-        return
-      }
-
-      if (!conversationState?.activeStreamId && conversationState?.isSending) {
-        if (options?.requestAbortBeforeStreamStart) {
-          // The pending abort flag guarantees the in-flight send will self-abort
-          // before any stream can start, so there is nothing to wait for here.
+      const abortOperation = (async () => {
+        const conversationId = await waitForAbortableConversationId()
+        if (!conversationId) {
           return
         }
 
-        conversationState = await waitForConversationRunState(
+        let conversationState = getConversationState(conversationId)
+        if (!conversationState) {
+          return
+        }
+
+        if (!conversationState.isSending && conversationState.activeStreamId === null) {
+          // A stop click can arrive just after the runtime has already
+          // settled. Do not let that stale click cancel the user's next send.
+          if (options?.requestAbortBeforeStreamStart) {
+            pendingAbortBeforeStreamStartRef.current = false
+          }
+          return
+        }
+
+        if (!conversationState.activeStreamId && conversationState.isSending) {
+          if (options?.requestAbortBeforeStreamStart) {
+            // The send workflow owns the pre-stream abort flag. Wait for its
+            // finally block so stop -> revert cannot race the rollback.
+            await waitForConversationRunState(
+              conversationId,
+              (currentValue) => currentValue?.isSending !== true && currentValue?.activeStreamId === null,
+            )
+            return
+          }
+
+          conversationState = await waitForConversationRunState(
+            conversationId,
+            (currentValue) => !currentValue?.isSending || currentValue.activeStreamId !== null,
+          )
+        }
+
+        const streamId = conversationState.activeStreamId ?? null
+        if (streamId) {
+          await window.tidecodeChat.cancelStream(streamId)
+        }
+
+        await waitForConversationRunState(
           conversationId,
-          (currentValue) => !currentValue?.isSending || currentValue.activeStreamId !== null,
+          (currentValue) => currentValue?.isSending !== true && currentValue?.activeStreamId === null,
         )
-      }
+      })()
 
-      const streamId = conversationState?.activeStreamId ?? null
-      if (streamId) {
-        await window.tidecodeChat.cancelStream(streamId)
+      abortOperationRef.current = abortOperation
+      try {
+        await abortOperation
+      } finally {
+        if (abortOperationRef.current === abortOperation) {
+          abortOperationRef.current = null
+        }
       }
-
-      await waitForConversationRunState(
-        conversationId,
-        (currentValue) => currentValue?.isSending !== true && currentValue?.activeStreamId === null,
-      )
     },
     [getConversationState, waitForAbortableConversationId, waitForConversationRunState],
   )
@@ -238,7 +299,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       messageText?: string,
       attachments = input.mainComposerAttachments,
       options?: SendNewMessageOptions,
-    ) => {
+    ): Promise<ChatSendAttemptResult> => {
       const activeConversationId = input.activeConversationIdRef.current ?? input.activeConversationId
       const sendScopeKey = getChatSendScopeKey(activeConversationId)
       const isActiveConversationSending = activeConversationId
@@ -246,28 +307,48 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         : false
 
       if (
-        submissionInFlightRef.current.has(sendScopeKey) ||
-        actionInFlightRef.current ||
-        isActiveConversationSending ||
-        (activeConversationId === null && input.pendingDraftSendCount > 0)
+        options?.waitForConversationToSettle &&
+        isChatSendBlocked({
+          actionInFlight: actionInFlightRef.current,
+          hasPendingDraftSend: activeConversationId === null && input.pendingDraftSendCount > 0,
+          hasSubmissionInFlight: submissionInFlightRef.current.has(sendScopeKey),
+          isConversationSending: isActiveConversationSending,
+        })
       ) {
-        return false
+        const isReady = await waitForSendReadiness(activeConversationId, sendScopeKey)
+        if (!isReady) {
+          return { accepted: false, retryable: false }
+        }
+      }
+
+      const isSendingAfterWait = activeConversationId
+        ? (getConversationState(activeConversationId)?.isSending ?? false)
+        : false
+      if (
+        isChatSendBlocked({
+          actionInFlight: actionInFlightRef.current,
+          hasPendingDraftSend: activeConversationId === null && input.pendingDraftSendCount > 0,
+          hasSubmissionInFlight: submissionInFlightRef.current.has(sendScopeKey),
+          isConversationSending: isSendingAfterWait,
+        })
+      ) {
+        return { accepted: false, retryable: true }
       }
 
       const nextMessageText = messageText ?? input.mainComposerValue
       const trimmedText = nextMessageText.trim()
       if (trimmedText.length === 0 && attachments.length === 0) {
-        return false
+        return { accepted: false, retryable: false }
       }
 
       if (!acquireChatSendScopeGate(submissionInFlightRef, sendScopeKey)) {
-        return false
+        return { accepted: false, retryable: true }
       }
 
       pendingAbortBeforeStreamStartRef.current = false
 
       try {
-        return await persistAndStreamMessage({
+        const accepted = await persistAndStreamMessage({
           ...input,
           attachments,
           hasPendingAbortRequest: () => pendingAbortBeforeStreamStartRef.current,
@@ -287,11 +368,15 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           targetEditMessageId: null,
           trimmedText,
         })
+        return {
+          accepted,
+          retryable: false,
+        }
       } finally {
         releaseChatSendScopeGate(submissionInFlightRef, sendScopeKey)
       }
     },
-    [clearUserMessageRevert, getConversationState, input, isUserMessageReverted],
+    [clearUserMessageRevert, getConversationState, input, isUserMessageReverted, waitForSendReadiness],
   )
 
   const sendProgrammaticMessage = useCallback(

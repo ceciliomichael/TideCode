@@ -16,6 +16,7 @@ import { decodeReplayValue, encodeModelMessages, encodeReplayValue } from './rep
 import { parseCanonicalHistoryDocument } from './validation'
 import type { ModelMessage } from 'ai'
 import { sha256, stableStringify } from '../cache/canonicalization'
+import { sanitizeModelMessages } from '../shared/modelMessageIntegrity'
 import { stripExecutionModeContext } from '../../../src/lib/executionModeContext'
 
 const CANONICAL_DIRECTORY_NAME = 'canonical-history'
@@ -338,7 +339,7 @@ export async function recordRunStarted(input: {
       anchorUserMessageId: input.anchorUserMessageId,
       contextFingerprint: input.contextFingerprint,
       fidelity: input.fidelity,
-      initialMessages: encodeModelMessages(input.initialMessages),
+      initialMessages: encodeModelMessages(sanitizeModelMessages(input.initialMessages)),
       modelId: input.modelId,
       providerId: input.providerId,
       runId: input.runId,
@@ -425,7 +426,7 @@ export async function recordRunCompleted(input: {
       contextFingerprint: input.contextFingerprint,
       fidelity: input.fidelity,
       freshnessRevision: input.freshnessRevision,
-      messages: encodeModelMessages(input.messages),
+      messages: encodeModelMessages(sanitizeModelMessages(input.messages)),
       modelId: input.modelId,
       providerId: input.providerId,
       runId: input.runId,

@@ -10,6 +10,7 @@ import type { WorkspaceFileTab, WorkspaceTab } from '../types'
 import type { TextSelectionRange } from '../workspaceFileEditor/workspaceFileEditorUtils'
 import { isImagePreviewablePath } from '../../../lib/image-preview'
 import { isDocxPreviewablePath } from '../../../lib/docx-preview'
+import { normalizePathSeparators } from '../../../lib/filePathUtils'
 import { isSvgPreviewablePath } from '../../../lib/svg-preview'
 import { isPdfPreviewablePath } from '../../../lib/pdf-preview'
 
@@ -53,7 +54,9 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
 }: WorkspaceFileTabsPanelContentProps) {
   if (activeTab.kind === 'markdown-preview') {
     const sourceTab = tabs.find(
-      (tab): tab is WorkspaceFileTab => isWorkspaceFileTab(tab) && tab.relativePath === activeTab.relativePath,
+      (tab): tab is WorkspaceFileTab =>
+        isWorkspaceFileTab(tab) &&
+        normalizePathSeparators(tab.relativePath) === normalizePathSeparators(activeTab.relativePath),
     )
     const contentToDisplay = sourceTab ? sourceTab.content : activeTab.content
 
@@ -85,7 +88,9 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
 
   if (activeTab.kind === 'svg-preview') {
     const sourceTab = tabs.find(
-      (tab): tab is WorkspaceFileTab => isWorkspaceFileTab(tab) && tab.relativePath === activeTab.relativePath,
+      (tab): tab is WorkspaceFileTab =>
+        isWorkspaceFileTab(tab) &&
+        normalizePathSeparators(tab.relativePath) === normalizePathSeparators(activeTab.relativePath),
     )
 
     if (!sourceTab) {

@@ -14,7 +14,25 @@ export const WORKSPACE_IGNORED_ENTRY_NAMES: ReadonlySet<string> = new Set<string
   '.tidecode',
   '.git',
   '.next',
+  '.nuxt',
+  '.turbo',
+  '.cache',
+  '.parcel-cache',
+  '.vite',
+  '__pycache__',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.ruff_cache',
+  '.venv',
+  'venv',
+  'env',
   'node_modules',
+  'target',
+  'bin',
+  'obj',
+  'vendor',
+  'Pods',
+  'DerivedData',
 ])
 const EXPLORER_IGNORED_ENTRY_NAMES = new Set<string>(['.git'])
 const gitignoreMatcherCache = new Map<string, Promise<GitignoreMatcherEntry[]>>()
@@ -104,6 +122,22 @@ export function isGitignored(
   return isIgnored
 }
 
+export async function isExplicitlyGitignoredPath(
+  workspaceRootPath: string,
+  targetPath: string,
+  isDirectory: boolean,
+) {
+  const normalizedRootPath = path.resolve(workspaceRootPath)
+  const normalizedTargetPath = path.resolve(targetPath)
+  const relativePath = path.relative(normalizedRootPath, normalizedTargetPath)
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath) || relativePath.length === 0) {
+    return false
+  }
+
+  const matcherEntries = await loadGitignoreMatchers(normalizedRootPath, path.dirname(normalizedTargetPath))
+  return isGitignored(normalizedTargetPath, isDirectory, matcherEntries)
+}
+
 export function shouldAlwaysShowEntry(entryName: string) {
   const normalized = entryName.toLowerCase()
   return normalized.startsWith('.env') || normalized.startsWith('agents.md')
@@ -138,6 +172,18 @@ export function isInsideWorkspaceIgnoredPath(workspaceRootPath: string, absolute
   return relativeSegments.some((segment) => WORKSPACE_IGNORED_ENTRY_NAMES.has(segment))
 }
 
+const WORKSPACE_IGNORED_FILE_PATTERNS: readonly RegExp[] = [
+  /\.pyc$/iu,
+  /\.pyo$/iu,
+  /\.class$/iu,
+  /\.o$/iu,
+  /\.obj$/iu,
+  /\.pdb$/iu,
+  /\.ilk$/iu,
+  /\.map$/iu,
+  /(?:^|[._-])coverage(?:[._-]|$)/iu,
+]
+
 export function shouldIgnoreWorkspaceEntry(entryName: string, visibility: WorkspaceEntryVisibility = 'workspace') {
   if (isWorkspaceExplorerTemporaryDeletingEntryName(entryName)) {
     return true
@@ -151,5 +197,8 @@ export function shouldIgnoreWorkspaceEntry(entryName: string, visibility: Worksp
     return false
   }
 
-  return WORKSPACE_IGNORED_ENTRY_NAMES.has(entryName)
+  return (
+    WORKSPACE_IGNORED_ENTRY_NAMES.has(entryName) ||
+    WORKSPACE_IGNORED_FILE_PATTERNS.some((pattern) => pattern.test(entryName))
+  )
 }
