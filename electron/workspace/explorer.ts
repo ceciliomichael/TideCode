@@ -1,5 +1,8 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { createDocxPreviewDataUrl, isDocxPreviewablePath } from '../../src/lib/docx-preview'
+import { createImagePreviewDataUrl, getImagePreviewMimeType } from '../../src/lib/image-preview'
+import { createPdfPreviewDataUrl, isPdfPreviewablePath } from '../../src/lib/pdf-preview'
 import { notifyWorkspaceExplorerChange } from './explorerNotifications'
 import {
   isGitignored,
@@ -33,6 +36,9 @@ import type {
 } from '../../src/types/chat'
 import type { WorkspaceEntryVisibility } from './gitignoreMatcher'
 const MAX_TEXT_FILE_BYTES = 256 * 1024
+const MAX_IMAGE_PREVIEW_BYTES = 32 * 1024 * 1024
+const MAX_DOCX_PREVIEW_BYTES = 32 * 1024 * 1024
+const MAX_PDF_PREVIEW_BYTES = 64 * 1024 * 1024
 
 function trimBufferToValidUtf8(buffer: Buffer): Buffer {
   if (buffer.length === 0) return buffer
@@ -395,11 +401,61 @@ export async function readWorkspaceFile(input: WorkspaceExplorerReadFileInput): 
       await fileHandle.close()
     }
   }
+
+  const previewMimeType = getImagePreviewMimeType(target.relativePath)
+  const isDocxPreview = isDocxPreviewablePath(target.relativePath)
+  const isPdfPreview = isPdfPreviewablePath(target.relativePath)
+  if (previewMimeType || isDocxPreview || isPdfPreview) {
+    const maxPreviewBytes = isPdfPreview
+      ? MAX_PDF_PREVIEW_BYTES
+      : isDocxPreview
+        ? MAX_DOCX_PREVIEW_BYTES
+        : MAX_IMAGE_PREVIEW_BYTES
+    if (targetStats.size > maxPreviewBytes) {
+      const previewLabel = isPdfPreview ? 'PDF' : isDocxPreview ? 'DOCX' : 'Image'
+      return {
+        content: '',
+        isBinary: true,
+        isTruncated: false,
+        modifiedTimeMs: targetStats.mtimeMs,
+        previewError: `${previewLabel} preview is limited to ${maxPreviewBytes / (1024 * 1024)} MB.`,
+        previewMimeType: isPdfPreview
+          ? 'application/pdf'
+          : isDocxPreview
+            ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            : previewMimeType ?? undefined,
+        relativePath: target.relativePath,
+        sizeBytes: targetStats.size,
+      }
+    }
+
+    const previewBuffer = await fs.readFile(target.absolutePath)
+    return {
+      content: '',
+      isBinary: true,
+      isTruncated: false,
+      modifiedTimeMs: targetStats.mtimeMs,
+      previewDataUrl: isPdfPreview
+        ? createPdfPreviewDataUrl(previewBuffer.toString('base64'))
+        : isDocxPreview
+          ? createDocxPreviewDataUrl(previewBuffer.toString('base64'))
+          : createImagePreviewDataUrl(previewMimeType!, previewBuffer.toString('base64')),
+      previewMimeType: isPdfPreview
+        ? 'application/pdf'
+        : isDocxPreview
+          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          : previewMimeType ?? undefined,
+      relativePath: target.relativePath,
+      sizeBytes: targetStats.size,
+    }
+  }
+
   if (hasBinaryContent(binaryProbe)) {
     return {
       content: '',
       isBinary: true,
       isTruncated: false,
+      modifiedTimeMs: targetStats.mtimeMs,
       relativePath: target.relativePath,
       sizeBytes: targetStats.size,
     }
@@ -423,6 +479,7 @@ export async function readWorkspaceFile(input: WorkspaceExplorerReadFileInput): 
     content,
     isBinary: false,
     isTruncated,
+    modifiedTimeMs: targetStats.mtimeMs,
     relativePath: target.relativePath,
     sizeBytes: targetStats.size,
   }

@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { getPathBasename } from '../../lib/pathPresentation'
+import { Tooltip } from '../Tooltip'
 
 interface PathLabelProps {
   path: string
@@ -24,16 +25,18 @@ export const PathLabel = memo(function PathLabel({ path, className = '' }: PathL
 
   if (parentPath.length === 0) {
     return (
-      <span className={`block min-w-0 flex-1 truncate ${className}`.trim()} title={normalizedPath}>
-        {basename}
-      </span>
+      <Tooltip content={normalizedPath} side="top" noWrap triggerClassName="min-w-0 flex-1">
+        <span className={`block min-w-0 flex-1 truncate ${className}`.trim()}>{basename}</span>
+      </Tooltip>
     )
   }
 
   return (
-    <span className={`inline-flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap ${className}`.trim()} title={normalizedPath}>
-      <span className="min-w-0 shrink truncate text-left">{parentPath}</span>
-      <span className="shrink-0 truncate">{basename}</span>
-    </span>
+    <Tooltip content={normalizedPath} side="top" noWrap triggerClassName="min-w-0 flex-1">
+      <span className={`inline-flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap ${className}`.trim()}>
+        <span className="min-w-0 shrink truncate text-left">{parentPath}</span>
+        <span className="shrink-0 truncate">{basename}</span>
+      </span>
+    </Tooltip>
   )
 })

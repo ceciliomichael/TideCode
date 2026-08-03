@@ -61,7 +61,6 @@ function DiffFileActionButton({
     <button
       type="button"
       aria-label={ariaLabel}
-      title={useTooltips ? undefined : content}
       disabled={disabled}
       onClick={(event) => {
         event.preventDefault()

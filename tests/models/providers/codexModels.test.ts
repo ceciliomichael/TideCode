@@ -11,5 +11,5 @@ test('listCodexModels returns the codex model catalog from codex_models.json', (
     Array.from({ length: models.length }, () => 'codex'),
   )
   assert.equal(models.find((model) => model.id === 'gpt-5.6-sol')?.enabledByDefault, true)
-  assert.equal(models.find((model) => model.id === 'gpt-5.4-mini')?.reasoningCapable, true)
+  assert.equal(models.find((model) => model.id === 'gpt-5.5')?.reasoningCapable, true)
 })

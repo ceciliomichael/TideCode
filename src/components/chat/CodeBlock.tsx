@@ -4,6 +4,7 @@ import { useHighlightedCodeLines } from '../../hooks/useHighlightedCodeLines'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
 import { HighlightedCodeLine } from './HighlightedCodeLine'
 import type { HighlightedCodeLine as HighlightedCodeLineData } from '../../lib/codeHighlighting'
+import { Tooltip } from '../Tooltip'
 
 interface CodeBlockProps {
   code: string
@@ -133,26 +134,27 @@ export const CodeBlock = memo(function CodeBlock({
             <span className="flex h-4 w-4 items-center justify-center">
               <LanguageIcon size={14} style={{ color: iconConfig.color }} aria-hidden="true" />
             </span>
-            <span className="min-w-0 truncate leading-[1] text-foreground" title={titleLabel}>
-              {titleLabel}
-            </span>
+            <Tooltip content={titleLabel} side="top" noWrap triggerClassName="min-w-0 flex-1">
+              <span className="min-w-0 truncate leading-[1] text-foreground">{titleLabel}</span>
+            </Tooltip>
           </span>
           <span className="ml-auto inline-flex shrink-0 items-center gap-3">
             {headerRightLabel ? (
-              <span className="font-mono text-[11px] leading-none text-muted-foreground" title={headerRightLabel}>
-                {headerRightLabel}
-              </span>
+              <Tooltip content={headerRightLabel} side="top" noWrap>
+                <span className="font-mono text-[11px] leading-none text-muted-foreground">{headerRightLabel}</span>
+              </Tooltip>
             ) : null}
             {showCopyButton ? (
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-[color,transform] hover:scale-105 hover:text-foreground"
-                aria-label={isCopied ? 'Copied code' : 'Copy code'}
-                title={isCopied ? 'Copied' : 'Copy'}
-              >
-                {isCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              </button>
+              <Tooltip content={isCopied ? 'Copied' : 'Copy'} side="top" noWrap>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-[color,transform] hover:scale-105 hover:text-foreground"
+                  aria-label={isCopied ? 'Copied code' : 'Copy code'}
+                >
+                  {isCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                </button>
+              </Tooltip>
             ) : null}
           </span>
         </div>

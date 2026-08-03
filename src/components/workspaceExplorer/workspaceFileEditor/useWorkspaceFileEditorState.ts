@@ -10,6 +10,7 @@ import {
   EDITOR_LINE_OVERSCAN_COUNT,
   EDITOR_VIRTUALIZATION_THRESHOLD,
   findLineStartOffsets,
+  type TextSelectionRange,
 } from './workspaceFileEditorUtils'
 import { useWorkspaceFileEditorSearch } from './useWorkspaceFileEditorSearch'
 import { useWorkspaceFileEditorSelection } from './useWorkspaceFileEditorSelection'
@@ -19,9 +20,11 @@ interface WorkspaceFileEditorProps {
   fileName: string
   gitFileDiff: GitFileDiff | null
   hasRepository: boolean
+  initialSelection?: TextSelectionRange | null
   onOpenMarkdownPreview?: () => void
   onOpenSvgPreview?: () => void
   originalContent: string | null
+  onSelectionChange?: (selection: TextSelectionRange | null) => void
   value: string
   wordWrapEnabled: boolean
   onChange: (nextValue: string) => void
@@ -31,9 +34,11 @@ export function useWorkspaceFileEditorState({
   fileName,
   gitFileDiff,
   hasRepository,
+  initialSelection,
   onOpenMarkdownPreview,
   onOpenSvgPreview,
   originalContent,
+  onSelectionChange,
   value,
   wordWrapEnabled,
   onChange,
@@ -68,10 +73,13 @@ export function useWorkspaceFileEditorState({
   const {
     clearEditorSelection,
     handleEditorChange,
+    handleEditorPointerDown,
     handleEditorSelect,
     matchesByLine: selectionMatchesByLine,
   } = useWorkspaceFileEditorSelection({
+    initialSelection,
     onChange,
+    onSelectionChange,
     textAreaRef,
     value,
   })
@@ -455,6 +463,7 @@ export function useWorkspaceFileEditorState({
       focusSearchInput,
       handleKeyDown,
       handleEditorChange,
+      handleEditorPointerDown,
       handleEditorSelect,
       handleReplaceAllMatches,
       handleReplaceCurrentMatch,

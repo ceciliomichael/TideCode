@@ -15,6 +15,7 @@ import { AttachmentPillList } from './AttachmentPillList'
 import type { ChatAttachment, QueuedMessage } from '../../types/chat'
 import { ChatMentionText } from './ChatMentionText'
 import { ChatMentionTextarea } from './ChatMentionTextarea'
+import { Tooltip } from '../Tooltip'
 
 interface ChatQueueItemProps {
   index: number
@@ -205,31 +206,33 @@ export function ChatQueueItem({
           {attachmentError ? <p className="mt-2 text-sm text-danger-foreground">{attachmentError}</p> : null}
 
           <div className="mt-1 flex items-end justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="group flex h-8 w-8 items-center justify-center bg-transparent text-foreground disabled:cursor-not-allowed disabled:text-disabled-foreground"
-              aria-label="Attach files"
-              title="Attach files"
-            >
-              <Paperclip size={14} className="shrink-0 transition-colors duration-150 group-hover:text-foreground" />
-            </button>
+            <Tooltip content="Attach files" side="top" noWrap>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="group flex h-8 w-8 items-center justify-center bg-transparent text-foreground disabled:cursor-not-allowed disabled:text-disabled-foreground"
+                aria-label="Attach files"
+              >
+                <Paperclip size={14} className="shrink-0 transition-colors duration-150 group-hover:text-foreground" />
+              </button>
+            </Tooltip>
 
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={draftContent.trim().length === 0 && draftAttachments.length === 0}
-              aria-label="Save queued message"
-              title="Save queued message"
-              className={[
-                'flex h-9 w-9 items-center justify-center rounded-full transition-all duration-150',
-                draftContent.trim().length > 0 || draftAttachments.length > 0
-                  ? 'chat-send-button-enabled cursor-pointer hover:scale-[1.03] active:scale-95'
-                  : 'chat-send-button-disabled cursor-not-allowed',
-              ].join(' ')}
-            >
-              <Check size={14} strokeWidth={2.5} />
-            </button>
+            <Tooltip content="Save queued message" side="top" noWrap>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={draftContent.trim().length === 0 && draftAttachments.length === 0}
+                aria-label="Save queued message"
+                className={[
+                  'flex h-9 w-9 items-center justify-center rounded-full transition-all duration-150',
+                  draftContent.trim().length > 0 || draftAttachments.length > 0
+                    ? 'chat-send-button-enabled cursor-pointer hover:scale-[1.03] active:scale-95'
+                    : 'chat-send-button-disabled cursor-not-allowed',
+                ].join(' ')}
+              >
+                <Check size={14} strokeWidth={2.5} />
+              </button>
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -264,35 +267,38 @@ export function ChatQueueItem({
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
         <GripVertical size={13} className="shrink-0 text-muted-foreground/70" aria-hidden="true" />
         <span className="shrink-0 text-sm font-medium leading-5 text-muted-foreground">{`${index + 1}.`}</span>
-        <div className="flex min-w-0 flex-1 items-center gap-2" title={message.content}>
-          <ChatMentionText
-            text={message.content}
-            variant="rendered"
-            wrap="nowrap"
-            className="min-w-0 truncate text-sm leading-5 text-foreground"
-          />
-          {attachmentCount > 0 ? (
-            <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              {`${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}`}
-            </span>
-          ) : null}
-        </div>
+        <Tooltip content={message.content} side="top" triggerClassName="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <ChatMentionText
+              text={message.content}
+              variant="rendered"
+              wrap="nowrap"
+              className="min-w-0 truncate text-sm leading-5 text-foreground"
+            />
+            {attachmentCount > 0 ? (
+              <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {`${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}`}
+              </span>
+            ) : null}
+          </div>
+        </Tooltip>
       </div>
 
       {!isDragging ? (
         <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              onRemove(message.id)
-            }}
-            className="inline-flex h-8 w-8 items-center justify-center bg-transparent text-muted-foreground transition-colors hover:text-foreground"
-            aria-label="Remove queued message"
-            title="Remove queued message"
-          >
-            <Undo2 size={14} />
-          </button>
+          <Tooltip content="Remove queued message" side="top" noWrap>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onRemove(message.id)
+              }}
+              className="inline-flex h-8 w-8 items-center justify-center bg-transparent text-muted-foreground transition-colors hover:text-foreground"
+              aria-label="Remove queued message"
+            >
+              <Undo2 size={14} />
+            </button>
+          </Tooltip>
         </div>
       ) : null}
     </div>

@@ -15,6 +15,7 @@ export interface WorkspaceExplorerEntryRowActions {
   handleExternalDragOver: (event: ReactDragEvent<HTMLElement>, targetDirectoryRelativePath: string) => void
   handleExternalDrop: (event: ReactDragEvent<HTMLElement>, targetDirectoryRelativePath: string) => void
   openContextMenu: (event: ReactMouseEvent<HTMLElement>, targetEntry: WorkspaceExplorerEntry | null) => void
+  prefetchPreviewFile: (relativePath: string) => void
 }
 
 interface WorkspaceExplorerEntryRowProps {
@@ -73,6 +74,11 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
         draggable
         onClick={(event) => actionsRef.current?.handleEntryClick(entry, event)}
         onContextMenu={(event) => actionsRef.current?.openContextMenu(event, entry)}
+        onMouseEnter={() => {
+          if (!isDirectory) {
+            actionsRef.current?.prefetchPreviewFile(entry.relativePath)
+          }
+        }}
         onDragStart={(event) => actionsRef.current?.handleEntryDragStart(event, entry)}
         onDragEnd={() => actionsRef.current?.handleEntryDragEnd()}
         onDragOver={(event) => {

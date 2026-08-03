@@ -66,7 +66,7 @@ import {
   VscPackage,
 } from 'react-icons/vsc';
 import { FaDatabase } from 'react-icons/fa6';
-import { BsFileText, BsFiletypeCsv } from 'react-icons/bs';
+import { BsFilePdf, BsFileText, BsFileWord, BsFiletypeCsv } from 'react-icons/bs';
 
 /**
  * File icon configuration with language-specific colors
@@ -196,9 +196,13 @@ export const LANGUAGE_ICONS: Record<string, FileIconConfig> = {
   rst: { icon: VscFile, color: '#6d6d6d', label: 'reStructuredText' },
 
   // Images
+  apng: { icon: VscFileMedia, color: '#a074c4', label: 'Animated PNG' },
+  avif: { icon: VscFileMedia, color: '#a074c4', label: 'AVIF Image' },
+  bmp: { icon: VscFileMedia, color: '#a074c4', label: 'Bitmap Image' },
   png: { icon: VscFileMedia, color: '#a074c4', label: 'PNG Image' },
   jpg: { icon: VscFileMedia, color: '#a074c4', label: 'JPEG Image' },
   jpeg: { icon: VscFileMedia, color: '#a074c4', label: 'JPEG Image' },
+  jfif: { icon: VscFileMedia, color: '#a074c4', label: 'JPEG Image' },
   gif: { icon: VscFileMedia, color: '#a074c4', label: 'GIF Image' },
   svg: { icon: VscFileMedia, color: '#ffb13b', label: 'SVG Image' },
   webp: { icon: VscFileMedia, color: '#a074c4', label: 'WebP Image' },
@@ -305,9 +309,9 @@ export const LANGUAGE_ICONS: Record<string, FileIconConfig> = {
   webm: { icon: VscFileMedia, color: '#9b59b6', label: 'WebM Video' },
 
   // Documents
-  pdf: { icon: VscFile, color: '#e74c3c', label: 'PDF Document' },
-  doc: { icon: VscFile, color: '#2b579a', label: 'Word Document' },
-  docx: { icon: VscFile, color: '#2b579a', label: 'Word Document' },
+  pdf: { icon: BsFilePdf, color: '#e74c3c', label: 'PDF Document' },
+  doc: { icon: BsFileWord, color: '#2b579a', label: 'Word Document' },
+  docx: { icon: BsFileWord, color: '#2b579a', label: 'Word Document' },
   xls: { icon: VscFile, color: '#217346', label: 'Excel Spreadsheet' },
   xlsx: { icon: VscFile, color: '#217346', label: 'Excel Spreadsheet' },
   ppt: { icon: VscFile, color: '#d24726', label: 'PowerPoint' },

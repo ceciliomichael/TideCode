@@ -83,7 +83,7 @@ export function CommitFileRow({ file, indentPx }: { file: GitHistoryCommitFile; 
       >
         <div className="flex h-full min-w-0 flex-1 items-center gap-2.5 border-l border-border/50 px-3 text-[12.5px] text-muted-foreground">
           <FileIcon size={14} style={{ color: iconConfig.color }} className="shrink-0" />
-          <span className="min-w-0 flex-1 truncate text-left" title={normalizedPath}>
+          <span className="min-w-0 flex-1 truncate text-left">
             <span className={isDeleted ? 'text-foreground line-through decoration-red-500 decoration-2' : 'text-foreground'}>{fileName}</span>
             {directoryPath.length > 0 ? <span className="ml-1 text-muted-foreground/80">{directoryPath}</span> : null}
           </span>

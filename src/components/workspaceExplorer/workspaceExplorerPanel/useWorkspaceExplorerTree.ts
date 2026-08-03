@@ -10,6 +10,12 @@ import {
   type SetStateAction,
 } from 'react'
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
+import { isDocxPreviewablePath } from '../../../lib/docx-preview'
+import { isPdfPreviewablePath } from '../../../lib/pdf-preview'
+import {
+  clearWorkspaceFilePreviewCache,
+  prefetchWorkspaceFile,
+} from '../../../lib/workspaceFilePreviewCache'
 import {
   ROOT_DIRECTORY_KEY,
   getAncestorDirectoryPaths,
@@ -136,6 +142,28 @@ export function useWorkspaceExplorerTree({
     [directoryEntriesByPath],
   )
 
+  const discoveredDocxPaths = useMemo(() => {
+    const paths = Array.from(
+      new Set(
+        Object.values(directoryEntriesByPath)
+          .flat()
+          .filter(
+            (entry) =>
+              !entry.isDirectory &&
+              (isDocxPreviewablePath(entry.relativePath) || isPdfPreviewablePath(entry.relativePath)),
+          )
+          .map((entry) => entry.relativePath),
+      ),
+    )
+    if (
+      activeFilePath &&
+      (isDocxPreviewablePath(activeFilePath) || isPdfPreviewablePath(activeFilePath))
+    ) {
+      return [activeFilePath, ...paths.filter((path) => path !== activeFilePath)]
+    }
+    return paths
+  }, [activeFilePath, directoryEntriesByPath])
+
   const resetTree = useCallback(() => {
     setDirectoryEntriesByPath({})
     setExpandedDirectories(new Set())
@@ -152,6 +180,7 @@ export function useWorkspaceExplorerTree({
     let isDisposed = false
     const unsubscribeWorkspaceChanges = window.tidecodeWorkspace.onExplorerChange((event) => {
       if (!isDisposed && event.workspaceRootPath === workspaceRootPath) {
+        clearWorkspaceFilePreviewCache(workspaceRootPath)
         void reloadExplorerTreeRef.current()
       }
     })
@@ -166,6 +195,7 @@ export function useWorkspaceExplorerTree({
 
     return () => {
       isDisposed = true
+      clearWorkspaceFilePreviewCache(workspaceRootPath)
       unsubscribeWorkspaceChanges()
       void window.tidecodeWorkspace
         .updateExplorerWatchPaths({
@@ -182,6 +212,16 @@ export function useWorkspaceExplorerTree({
         })
     }
   }, [loadDirectory, workspaceRootPath])
+
+  useEffect(() => {
+    if (!workspaceRootPath) {
+      return
+    }
+
+    discoveredDocxPaths.slice(0, 3).forEach((relativePath) => {
+      prefetchWorkspaceFile({ relativePath, workspaceRootPath })
+    })
+  }, [discoveredDocxPaths, workspaceRootPath])
 
   useEffect(() => {
     if (!workspaceRootPath) {

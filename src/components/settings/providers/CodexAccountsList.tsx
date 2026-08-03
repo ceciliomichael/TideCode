@@ -1,5 +1,6 @@
 import { Calendar, Clock } from 'lucide-react'
 import type { CodexAccountSummary, CodexUsageWindow } from '../../../types/chat'
+import { Tooltip } from '../../Tooltip'
 
 interface CodexAccountsListProps {
   accounts: CodexAccountSummary[]
@@ -81,7 +82,7 @@ export function CodexAccountsList({ accounts, isBusy, onSwitchAccount }: CodexAc
             </div>
 
             <div className="flex flex-1 flex-col gap-2 md:items-end">
-              <div className="flex flex-wrap items-center justify-between gap-2 md:justify-end" title={usageDetail}>
+              <div className="flex flex-wrap items-center justify-between gap-2 md:justify-end">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[11px] font-medium text-muted-foreground">
                     <Clock size={12} className="-mt-px shrink-0 text-muted-foreground" />
@@ -106,23 +107,23 @@ export function CodexAccountsList({ accounts, isBusy, onSwitchAccount }: CodexAc
 
         if (!canSwitch) {
           return (
-            <div key={account.accountKey} className={baseCardClassName} title={usageDetail}>
-              {content}
-            </div>
+            <Tooltip key={account.accountKey} content={usageDetail} side="top" fullWidthTrigger>
+              <div className={baseCardClassName}>{content}</div>
+            </Tooltip>
           )
         }
 
         return (
-          <button
-            key={account.accountKey}
-            type="button"
-            disabled={isBusy}
-            onClick={() => void onSwitchAccount(account.accountKey)}
-            className={clickableCardClassName}
-            title={usageDetail}
-          >
-            {content}
-          </button>
+          <Tooltip key={account.accountKey} content={usageDetail} side="top" fullWidthTrigger>
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={() => void onSwitchAccount(account.accountKey)}
+              className={clickableCardClassName}
+            >
+              {content}
+            </button>
+          </Tooltip>
         )
       })}
     </div>

@@ -13,6 +13,7 @@ import { KANBAN_COLUMNS } from './kanbanDefaults'
 import type { KanbanCardDisplayMeta } from './kanbanHierarchy'
 import { getKanbanPriorityOption } from './kanbanPresentation'
 import type { KanbanCard, KanbanColumnId } from './kanbanTypes'
+import { Tooltip } from '../Tooltip'
 
 interface KanbanCardItemProps {
   card: KanbanCard
@@ -205,22 +206,24 @@ export function KanbanCardItem({
                 </span>
               ) : null}
               {meta.childCount > 0 ? (
-                <span
-                  className="inline-flex items-center gap-1"
-                  title={`${meta.doneChildCount} of ${meta.childCount} subtasks done`}
-                >
-                  <ListTodo size={13} />
-                  {meta.doneChildCount}/{meta.childCount}
-                </span>
+                <Tooltip content={`${meta.doneChildCount} of ${meta.childCount} subtasks done`} side="top" noWrap>
+                  <span className="inline-flex items-center gap-1">
+                    <ListTodo size={13} />
+                    {meta.doneChildCount}/{meta.childCount}
+                  </span>
+                </Tooltip>
               ) : null}
               {card.acceptanceCriteria.length > 0 ? (
-                <span
-                  className="inline-flex items-center gap-1"
-                  title={`${completedCriteriaCount} of ${card.acceptanceCriteria.length} acceptance criteria complete`}
+                <Tooltip
+                  content={`${completedCriteriaCount} of ${card.acceptanceCriteria.length} acceptance criteria complete`}
+                  side="top"
+                  noWrap
                 >
-                  <CheckSquare2 size={13} />
-                  {completedCriteriaCount}/{card.acceptanceCriteria.length}
-                </span>
+                  <span className="inline-flex items-center gap-1">
+                    <CheckSquare2 size={13} />
+                    {completedCriteriaCount}/{card.acceptanceCriteria.length}
+                  </span>
+                </Tooltip>
               ) : null}
             </div>
           ) : null}

@@ -2,54 +2,59 @@
   {
     "apiModelId": "gpt-5.6-sol",
     "enabledByDefault": true,
-    "id": "openai:gpt-5.6-sol",
-    "label": "GPT-5.6 Sol",
+    "id": "gpt-5.6-sol",
+    "label": "gpt-5.6-sol",
     "reasoningCapable": true,
     "reasoningEfforts": [
       "low",
       "medium",
       "high",
-      "xhigh"
+      "xhigh",
+      "max"
     ],
-    "defaultReasoningEffort": "high"
+    "defaultReasoningEffort": "medium"
   },
   {
     "apiModelId": "gpt-5.6-terra",
     "enabledByDefault": true,
-    "id": "openai:gpt-5.6-terra",
-    "label": "GPT-5.6 Terra",
+    "id": "gpt-5.6-terra",
+    "label": "gpt-5.6-terra",
     "reasoningCapable": true,
     "reasoningEfforts": [
       "low",
       "medium",
-      "high"
+      "high",
+      "xhigh",
+      "max"
     ],
     "defaultReasoningEffort": "medium"
   },
   {
     "apiModelId": "gpt-5.6-luna",
     "enabledByDefault": true,
-    "id": "openai:gpt-5.6-luna",
-    "label": "GPT-5.6 Luna",
+    "id": "gpt-5.6-luna",
+    "label": "gpt-5.6-luna",
     "reasoningCapable": true,
     "reasoningEfforts": [
-      "minimal",
       "low",
-      "medium"
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ],
-    "defaultReasoningEffort": "low"
+    "defaultReasoningEffort": "medium"
   },
   {
     "apiModelId": "gpt-5.5",
     "enabledByDefault": true,
-    "id": "openai:gpt-5.5",
-    "label": "GPT-5.5",
+    "id": "gpt-5.5",
+    "label": "gpt-5.5",
     "reasoningCapable": true,
     "reasoningEfforts": [
-      "minimal",
       "low",
       "medium",
-      "high"
+      "high",
+      "xhigh"
     ],
     "defaultReasoningEffort": "medium"
   },

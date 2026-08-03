@@ -17,6 +17,7 @@ import {
   type WorkspaceEditorLineStatus,
 } from './workspaceFileEditorUtils'
 import type { WorkspaceFileEditorState } from './useWorkspaceFileEditorState'
+import { Tooltip } from '../../Tooltip'
 
 interface WorkspaceFileEditorViewProps {
   editorState: WorkspaceFileEditorState
@@ -79,39 +80,42 @@ function SearchPanel({ editorState }: { editorState: WorkspaceFileEditorState })
               aria-label="Find in current file"
               className="h-7 min-w-0 flex-1 rounded-lg border border-[#3c3c3c] bg-[#252526] px-2 text-[13px] text-[#d4d4d4] outline-none placeholder:text-[#8b8b8b]"
             />
-            <button
-              type="button"
-              onClick={() => search.setIsMatchCaseEnabled((currentValue) => !currentValue)}
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
-                search.isMatchCaseEnabled ? 'bg-[#2a2d2e] text-white' : 'text-[#c5c5c5] hover:bg-[#2a2d2e] hover:text-white'
-              }`}
-              aria-label="Toggle match case"
-              title="Match case"
-            >
-              <VscCaseSensitive size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => search.setIsWholeWordEnabled((currentValue) => !currentValue)}
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
-                search.isWholeWordEnabled ? 'bg-[#2a2d2e] text-white' : 'text-[#c5c5c5] hover:bg-[#2a2d2e] hover:text-white'
-              }`}
-              aria-label="Toggle whole word"
-              title="Match whole word"
-            >
-              <VscWholeWord size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => search.setIsRegexEnabled((currentValue) => !currentValue)}
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
-                search.isRegexEnabled ? 'bg-[#2a2d2e] text-white' : 'text-[#c5c5c5] hover:bg-[#2a2d2e] hover:text-white'
-              }`}
-              aria-label="Toggle regular expression"
-              title="Use regular expression"
-            >
-              <VscRegex size={16} />
-            </button>
+            <Tooltip content="Match case" side="bottom" noWrap>
+              <button
+                type="button"
+                onClick={() => search.setIsMatchCaseEnabled((currentValue) => !currentValue)}
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                  search.isMatchCaseEnabled ? 'bg-[#2a2d2e] text-white' : 'text-[#c5c5c5] hover:bg-[#2a2d2e] hover:text-white'
+                }`}
+                aria-label="Toggle match case"
+              >
+                <VscCaseSensitive size={16} />
+              </button>
+            </Tooltip>
+            <Tooltip content="Match whole word" side="bottom" noWrap>
+              <button
+                type="button"
+                onClick={() => search.setIsWholeWordEnabled((currentValue) => !currentValue)}
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                  search.isWholeWordEnabled ? 'bg-[#2a2d2e] text-white' : 'text-[#c5c5c5] hover:bg-[#2a2d2e] hover:text-white'
+                }`}
+                aria-label="Toggle whole word"
+              >
+                <VscWholeWord size={16} />
+              </button>
+            </Tooltip>
+            <Tooltip content="Use regular expression" side="bottom" noWrap>
+              <button
+                type="button"
+                onClick={() => search.setIsRegexEnabled((currentValue) => !currentValue)}
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                  search.isRegexEnabled ? 'bg-[#2a2d2e] text-white' : 'text-[#c5c5c5] hover:bg-[#2a2d2e] hover:text-white'
+                }`}
+                aria-label="Toggle regular expression"
+              >
+                <VscRegex size={16} />
+              </button>
+            </Tooltip>
             <span className="min-w-16 px-1 text-center text-[12px] text-[#c5c5c5]">
               {search.totalSearchMatchCount > 0 ? `${search.activeSearchMatchIndex + 1} / ${search.totalSearchMatchCount}` : 'No results'}
             </span>
@@ -167,35 +171,38 @@ function SearchPanel({ editorState }: { editorState: WorkspaceFileEditorState })
                 aria-label="Replace in current file"
                 className="h-7 min-w-0 flex-1 rounded-lg border border-[#3c3c3c] bg-[#252526] px-2 text-[13px] text-[#d4d4d4] outline-none placeholder:text-[#8b8b8b]"
               />
-              <button
-                type="button"
-                onClick={actions.handleReplaceCurrentMatch}
-                disabled={search.totalSearchMatchCount === 0}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[#c5c5c5] transition-colors hover:bg-[#2a2d2e] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Replace current match"
-                title="Replace"
-              >
-                <VscReplace size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={actions.handleReplaceAllMatches}
-                disabled={search.totalSearchMatchCount === 0}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[#c5c5c5] transition-colors hover:bg-[#2a2d2e] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Replace all matches"
-                title="Replace All"
-              >
-                <VscReplaceAll size={16} />
-              </button>
-              <button
-                type="button"
-                disabled
-                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[#6f6f6f] opacity-60"
-                aria-label="Preserve case"
-                title="Preserve Case"
-              >
-                <VscPreserveCase size={16} />
-              </button>
+              <Tooltip content="Replace" side="bottom" noWrap>
+                <button
+                  type="button"
+                  onClick={actions.handleReplaceCurrentMatch}
+                  disabled={search.totalSearchMatchCount === 0}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[#c5c5c5] transition-colors hover:bg-[#2a2d2e] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Replace current match"
+                >
+                  <VscReplace size={16} />
+                </button>
+              </Tooltip>
+              <Tooltip content="Replace all" side="bottom" noWrap>
+                <button
+                  type="button"
+                  onClick={actions.handleReplaceAllMatches}
+                  disabled={search.totalSearchMatchCount === 0}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[#c5c5c5] transition-colors hover:bg-[#2a2d2e] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Replace all matches"
+                >
+                  <VscReplaceAll size={16} />
+                </button>
+              </Tooltip>
+              <Tooltip content="Preserve case" side="bottom" noWrap>
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[#6f6f6f] opacity-60"
+                  aria-label="Preserve case"
+                >
+                  <VscPreserveCase size={16} />
+                </button>
+              </Tooltip>
             </div>
           ) : null}
         </div>
@@ -245,6 +252,7 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
             ref={refs.textAreaRef}
             value={value}
             onChange={actions.handleEditorChange}
+            onPointerDown={actions.handleEditorPointerDown}
             onSelect={actions.handleEditorSelect}
             onScroll={actions.handleScroll}
             onKeyDown={actions.handleKeyDown}

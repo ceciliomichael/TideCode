@@ -7,6 +7,10 @@ export interface WorkspaceFileTab {
   fileName: string
   isBinary: boolean
   isTruncated: boolean
+  modifiedTimeMs?: number
+  previewDataUrl?: string
+  previewError?: string
+  previewMimeType?: string
   relativePath: string
   sizeBytes: number
   status: 'error' | 'loading' | 'ready'
