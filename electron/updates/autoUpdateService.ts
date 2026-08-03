@@ -11,6 +11,7 @@ let pendingVersion: string | null = null
 let stateListener: UpdateStateListener | null = null
 let updateInstallInProgress = false
 let downloadPromise: Promise<TideCodeUpdateDownloadResult> | null = null
+let latestDownloadPercent: number | null = null
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'TideCode could not download this update.'
@@ -21,8 +22,9 @@ function emitState(event: TideCodeUpdateStateEvent) {
 }
 
 function handleDownloadProgress(progress: ProgressInfo) {
+  latestDownloadPercent = Math.max(0, Math.min(100, progress.percent))
   emitState({
-    percent: Math.max(0, Math.min(100, progress.percent)),
+    percent: latestDownloadPercent,
     state: 'downloading',
     version: pendingVersion,
   })
@@ -39,9 +41,18 @@ export function configureAutoUpdater(listener: UpdateStateListener) {
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
   autoUpdater.allowPrerelease = false
+  // Disable differential (blockmap) downloads. electron-updater first downloads
+  // only the changed blocks and patches the previously cached installer into
+  // the new one; when that patch fails (stale or mismatched cached installer,
+  // missing old blockmap, antivirus interference) it silently falls back to a
+  // full download. The result is the update being "downloaded" twice in a row:
+  // progress goes 0-100, resets to 0, then runs 0-100 again. A single full
+  // download is predictable and avoids the doubled transfer.
+  autoUpdater.disableDifferentialDownload = true
   autoUpdater.on('download-progress', handleDownloadProgress)
   autoUpdater.on('update-downloaded', () => {
     updateIsDownloaded = true
+    latestDownloadPercent = 100
     emitState({
       percent: 100,
       state: 'downloaded',
@@ -79,9 +90,11 @@ async function downloadLatestUpdateInternal(normalizedVersion: string): Promise<
       }
     }
 
+    latestDownloadPercent = 0
     emitState({ percent: 0, state: 'downloading', version: pendingVersion })
     await autoUpdater.downloadUpdate()
     updateIsDownloaded = true
+    latestDownloadPercent = 100
     emitState({ percent: 100, state: 'downloaded', version: pendingVersion })
 
     return {
@@ -91,6 +104,7 @@ async function downloadLatestUpdateInternal(normalizedVersion: string): Promise<
     }
   } catch (error) {
     const downloadError = getErrorMessage(error)
+    latestDownloadPercent = null
     emitState({
       errorMessage: downloadError,
       percent: null,
@@ -104,6 +118,21 @@ async function downloadLatestUpdateInternal(normalizedVersion: string): Promise<
       downloadState: 'error' as const,
     }
   }
+}
+
+export function getUpdateDownloadState(): Pick<
+  TideCodeUpdateDownloadResult,
+  'downloadPercent' | 'downloadState'
+> {
+  if (updateIsDownloaded) {
+    return { downloadPercent: 100, downloadState: 'downloaded' }
+  }
+
+  if (downloadPromise) {
+    return { downloadPercent: latestDownloadPercent ?? 0, downloadState: 'downloading' }
+  }
+
+  return { downloadPercent: null, downloadState: 'not-available' }
 }
 
 export function downloadLatestUpdate(version: string): Promise<TideCodeUpdateDownloadResult> {
