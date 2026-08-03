@@ -7,10 +7,11 @@
     "reasoningCapable": true,
     "reasoningEfforts": [
       "none",
-      "high",
-      "max"
+      "low",
+      "medium",
+      "high"
     ],
-    "defaultReasoningEffort": "high",
+    "defaultReasoningEffort": "medium",
     "maxTokens": 384000
   },
   {
@@ -21,10 +22,11 @@
     "reasoningCapable": true,
     "reasoningEfforts": [
       "none",
-      "high",
-      "max"
+      "low",
+      "medium",
+      "high"
     ],
-    "defaultReasoningEffort": "high",
+    "defaultReasoningEffort": "medium",
     "maxTokens": 384000
   }
 ]

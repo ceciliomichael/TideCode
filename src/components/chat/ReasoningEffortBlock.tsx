@@ -12,8 +12,9 @@ const REASONING_EFFORT_LABELS: Readonly<Record<string, string>> = {
   xhigh: 'XHigh',
 }
 
-// DeepSeek models expose ['high', 'max'] (and optionally 'none' to disable thinking);
-// show them as Low / High instead of High / Maximum, with 'none' shown as None.
+// Legacy DeepSeek profiles expose ['high', 'max'] (and optionally 'none' to
+// disable thinking); show them as Low / High instead of High / Maximum.
+// New DeepSeek profiles use native none/low/medium/high labels already.
 const DEEPSEEK_EFFORT_LABEL_OVERRIDES: Readonly<Record<string, string>> = {
   high: 'Low',
   max: 'High',

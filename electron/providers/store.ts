@@ -206,7 +206,7 @@ export function toApiKeyProviderStatuses(storedProviders: StoredApiKeyProviders)
     const configured = requiresBaseUrl ? Boolean(provider?.base_url) : Boolean(provider?.api_key)
 
     return {
-      apiKey: null,
+      apiKey: provider?.api_key ?? null,
       baseUrl: provider?.base_url ?? null,
       configured,
       extraBody: formatExtraBody(provider?.extra_body),
