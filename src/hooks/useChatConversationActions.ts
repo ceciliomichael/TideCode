@@ -230,14 +230,18 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
         const conversation = await window.tidecodeHistory.updateConversationArchived(conversationId, isArchived)
         upsertConversation(conversation)
         if (conversationId === activeConversationId) {
-          applyConversation(conversation)
+          if (isArchived) {
+            resetDraft(conversation.folderId)
+          } else {
+            applyConversation(conversation)
+          }
         }
       } catch (caughtError) {
         console.error(caughtError)
         setError(isArchived ? 'Unable to archive that thread.' : 'Unable to unarchive that thread.')
       }
     },
-    [activeConversationId, applyConversation, clearError, conversationRuntimeStatesRef, setError, upsertConversation],
+    [activeConversationId, applyConversation, clearError, conversationRuntimeStatesRef, resetDraft, setError, upsertConversation],
   )
 
   return {

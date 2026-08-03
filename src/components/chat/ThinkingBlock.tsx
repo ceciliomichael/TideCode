@@ -160,7 +160,10 @@ const ThinkingBlockContent = memo(function ThinkingBlockContent({ normalizedCont
   const contentRef = useThinkingAutoScroll({ content: normalizedContent, isStreaming: !isComplete })
 
   return (
-    <div ref={contentRef} className="mt-1.5 max-h-80 w-full min-w-0 overflow-y-auto pr-1 text-sm text-muted-foreground/90 [&>*:last-child]:mb-0">
+    <div
+      ref={contentRef}
+      className="mt-1.5 max-h-80 w-full min-w-0 overflow-y-auto pr-1 text-sm text-muted-foreground/90 [&>*:last-child]:mb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
       {normalizedContent.trim().length > 0 ? (
         <MarkdownRenderer content={normalizedContent} className="opacity-85" isStreaming={!isComplete} preserveLineBreaks />
       ) : (

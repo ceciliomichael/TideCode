@@ -23,6 +23,8 @@ import {
 } from './chatPendingMessageRevert'
 import type { ChatMode, Message } from '../types/chat'
 
+const RUN_STATE_SETTLE_TIMEOUT_MS = 20_000
+
 interface UseChatSendActionsInput
   extends Omit<
     PersistAndStreamMessageInput,
@@ -147,7 +149,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     async (
       conversationId: string,
       predicate: (conversationState: ConversationStateSnapshot) => boolean,
-      timeoutMs = 4_000,
+      timeoutMs = RUN_STATE_SETTLE_TIMEOUT_MS,
     ) => {
       const startedAt = Date.now()
 
@@ -205,6 +207,12 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       }
 
       if (!conversationState?.activeStreamId && conversationState?.isSending) {
+        if (options?.requestAbortBeforeStreamStart) {
+          // The pending abort flag guarantees the in-flight send will self-abort
+          // before any stream can start, so there is nothing to wait for here.
+          return
+        }
+
         conversationState = await waitForConversationRunState(
           conversationId,
           (currentValue) => !currentValue?.isSending || currentValue.activeStreamId !== null,
