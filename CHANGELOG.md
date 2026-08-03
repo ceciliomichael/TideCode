@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.16 — Reliable multiline terminal commands
+
+TideCode now preserves multiline PowerShell commands when AI sends them through the terminal, so commit messages and other structured commands execute as intended instead of entering an invalid continuation state.
+
+- Encodes multiline PowerShell input into one PTY line and decodes the exact original command in the active shell.
+- Adds regression coverage for multiline commit-style commands and their embedded validation text.
+
 ## 1.0.15 — Terminal commands that report completion
 
 TideCode now waits for AI terminal commands to actually finish before returning their output, so long-running commands no longer come back truncated, and same-file edits can no longer conflict with each other.
