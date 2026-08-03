@@ -53,8 +53,10 @@ export function resolveReasoningExtraBody(
         thinking: { type: 'disabled' },
       }
     }
+    // DeepSeek user-facing efforts map to backend values: low -> low,
+    // medium -> high, high -> max. Legacy max/xhigh values stay at max.
     let mappedEffort = reasoningEffort
-    if (reasoningEffort === 'low') mappedEffort = 'high' as typeof reasoningEffort
+    if (reasoningEffort === 'medium') mappedEffort = 'high' as typeof reasoningEffort
     else if (reasoningEffort === 'high' || reasoningEffort === 'max' || reasoningEffort === 'xhigh') mappedEffort = 'max' as typeof reasoningEffort
 
     return {

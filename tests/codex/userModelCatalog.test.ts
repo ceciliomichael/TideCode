@@ -134,6 +134,6 @@ test('reasoning control type is derived independently for each model', () => {
 
 test('native providers only expose reasoning efforts supported by their transport', () => {
   assert.deepEqual(getSelectableUserModelEfforts('mistral'), ['high'])
-  assert.deepEqual(getSelectableUserModelEfforts('deepseek'), ['none', 'high', 'max'])
+  assert.deepEqual(getSelectableUserModelEfforts('deepseek'), ['none', 'low', 'medium', 'high'])
   assert.deepEqual(getSelectableUserModelEfforts('codex'), ['low', 'medium', 'high', 'xhigh'])
 })
