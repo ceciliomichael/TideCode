@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.19 — More accurate provider model controls
+
+TideCode now keeps provider model choices aligned with the capabilities and identifiers exposed by current backends, making reasoning controls more predictable across DeepSeek and Google providers.
+
+- Adds DeepSeek low, medium, and high reasoning choices with the correct backend translation, including an explicit option to disable thinking.
+- Refreshes the built-in Google Gemini Flash and Flash-Lite model identifiers.
+- Preserves configured API keys in provider status responses so provider settings remain accurate after reloads.
+
 ## 1.0.18 — Cleaner sidebar project filter
 
 The sidebar thread filter stays focused on the projects that matter: the Archived option only appears once a thread has actually been archived.
