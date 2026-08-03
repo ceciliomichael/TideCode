@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.17 — Smoother chat cleanup and interruption
+
+TideCode now keeps chat cleanup and interruption behavior predictable while making live thinking output easier to read.
+
+- Hides the thinking panel scrollbar without removing scrolling.
+- Clears the active draft when its conversation is archived, avoiding stale composer content.
+- Settles sends aborted before streaming starts without waiting for a stream transition.
+
 ## 1.0.16 — Reliable multiline terminal commands
 
 TideCode now preserves multiline PowerShell commands when AI sends them through the terminal, so commit messages and other structured commands execute as intended instead of entering an invalid continuation state.
