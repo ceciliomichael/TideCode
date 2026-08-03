@@ -11,6 +11,7 @@ import type { GitBranchStateController } from '../../hooks/useGitBranchState'
 import type {
   AppTerminalExecutionMode,
   ChatAttachment,
+  ChatCompactionLifecycleState,
   ChatCompactionMarker,
   CodexUsageSnapshot,
   ContextUsageEstimate,
@@ -40,6 +41,7 @@ interface ChatConversationSurfaceProps {
   handleSendMainMessage: ChatInputProps['onSend']
   handleToolDecisionSubmit: MessageListProps['onToolDecisionSubmit']
   isCompressingChat: boolean
+  liveCompaction: ChatCompactionLifecycleState | null
   isKanbanBoardOpen: boolean
   messageListBoundaryRef: RefObject<HTMLDivElement>
   onQueueMessage: (value: string, attachments: ChatAttachment[]) => void
@@ -76,6 +78,7 @@ export function ChatConversationSurface({
   handleSendMainMessage,
   handleToolDecisionSubmit,
   isCompressingChat,
+  liveCompaction,
   isKanbanBoardOpen,
   messageListBoundaryRef,
   onQueueMessage,
@@ -119,6 +122,7 @@ export function ChatConversationSurface({
                 <MessageList
                   conversationId={chatMessages.activeConversationId}
                   compactionMarkers={compactionMarkers}
+                  liveCompaction={liveCompaction}
                   messages={chatMessages.messages}
                   chatModeOptions={chatModeOptions}
                   editingMessageId={chatMessages.editingMessageId}

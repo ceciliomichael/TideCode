@@ -31,6 +31,8 @@ import {
 import { projectCanonicalReplay } from '../history/replayProjector'
 import { compactModelMessages } from './compaction/service'
 import { resolveAutomaticCompactionTrigger } from './compaction/automatic'
+import { assertCompactionGate } from './compaction/gate'
+import { calculateModelMessagesBudget, shouldCompactContext } from './compaction/budget'
 import { findLatestCompactionPacket } from './compaction/window'
 import {
   buildChatPrompt,
@@ -193,6 +195,7 @@ export async function runToolEnabledChatStream(input: {
     })
     let replayMessages: ModelMessage[] = [...modelMessages]
     let latestCompactionPacket = findLatestCompactionPacket(modelMessages)
+    const systemPromptTokens = approximateTokenCount(prompt.system)
 
     if (conversationId) {
       await safelyPersistHistory(() => recordRunStarted({
@@ -232,30 +235,93 @@ export async function runToolEnabledChatStream(input: {
         })
         if (!automaticTrigger) return undefined
 
-        const compacted = await compactModelMessages({
-          createStream: (compactionInput) => input.createStream({
-            cacheKey: `${cacheKey}:compaction`,
-            messages: compactionInput.messages,
-            model: compactionInput.model,
-            reasoningEffort: compactionInput.reasoningEffort as StartChatStreamInput['reasoningEffort'],
-            signal: compactionInput.signal,
-            stopWhen: stepCountIs(1),
-            maxSteps: 1,
-            system: compactionInput.system,
-            tools: {},
-          }),
-          messages: stepInput.messages,
-          model: input.startInput.modelId,
-          reasoningEffort: input.startInput.reasoningEffort,
-          systemPromptTokens: approximateTokenCount(prompt.system),
-          toolSchemaTokens: promptContext.toolSchemaTokens,
-          previousPacket: latestCompactionPacket,
+        const compactionBudgetInput = {
           contextWindowTokens: contextCompaction.contextWindowTokens,
+          messages: stepInput.messages,
           reserveTokens: contextCompaction.reserveTokens,
+          systemPromptTokens,
+          toolSchemaTokens: promptContext.toolSchemaTokens,
           triggerRatio: contextCompaction.triggerPercent / 100,
-          signal: input.abortController.signal,
+        }
+        const compactionRequired = shouldCompactContext(calculateModelMessagesBudget(compactionBudgetInput))
+
+        const compactionAttemptId = randomUUID()
+        let compactionStarted = false
+        const emitCompactionFailed = (reason: 'aborted' | 'error' | 'unavailable') => {
+          if (!conversationId || !compactionStarted) return
+          emitChatStreamEvent(input.webContents, {
+            attemptId: compactionAttemptId,
+            conversationId,
+            reason,
+            streamId: input.streamId,
+            type: 'compaction_failed',
+          })
+        }
+
+        let compacted: Awaited<ReturnType<typeof compactModelMessages>>
+        try {
+          compacted = await compactModelMessages({
+            createStream: (compactionInput) => input.createStream({
+              cacheKey: `${cacheKey}:compaction`,
+              messages: compactionInput.messages,
+              model: compactionInput.model,
+              reasoningEffort: compactionInput.reasoningEffort as StartChatStreamInput['reasoningEffort'],
+              signal: compactionInput.signal,
+              stopWhen: stepCountIs(1),
+              maxSteps: 1,
+              system: compactionInput.system,
+              tools: {},
+            }),
+            messages: stepInput.messages,
+            model: input.startInput.modelId,
+            onStarted: () => {
+              compactionStarted = true
+              if (!conversationId) return
+              emitChatStreamEvent(input.webContents, {
+                attemptId: compactionAttemptId,
+                conversationId,
+                streamId: input.streamId,
+                type: 'compaction_started',
+              })
+            },
+            reasoningEffort: input.startInput.reasoningEffort,
+            systemPromptTokens,
+            toolSchemaTokens: promptContext.toolSchemaTokens,
+            previousPacket: latestCompactionPacket,
+            contextWindowTokens: contextCompaction.contextWindowTokens,
+            reserveTokens: contextCompaction.reserveTokens,
+            triggerRatio: contextCompaction.triggerPercent / 100,
+            signal: input.abortController.signal,
+          })
+        } catch (error) {
+          emitCompactionFailed('error')
+          throw error
+        }
+        if (input.abortController.signal.aborted) {
+          emitCompactionFailed('aborted')
+          return undefined
+        }
+        if (!compacted) {
+          emitCompactionFailed('unavailable')
+          assertCompactionGate({
+            aborted: false,
+            compactionResult: null,
+            projectedBudget: null,
+            required: compactionRequired,
+          })
+          return undefined
+        }
+
+        const projectedBudget = calculateModelMessagesBudget({
+          ...compactionBudgetInput,
+          messages: compacted.projectedMessages,
         })
-        if (!compacted || input.abortController.signal.aborted) return undefined
+        assertCompactionGate({
+          aborted: false,
+          compactionResult: compacted,
+          projectedBudget,
+          required: compactionRequired,
+        })
 
         replayMessages = [...compacted.projectedMessages]
         latestCompactionPacket = compacted.packet

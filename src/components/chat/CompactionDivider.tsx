@@ -2,11 +2,13 @@ import { useState } from 'react'
 import type { ChatCompactionMarker } from '../../types/chat'
 
 interface CompactionDividerProps {
-  marker: ChatCompactionMarker
+  marker?: ChatCompactionMarker
+  phase?: 'compacting' | 'compacted'
 }
 
-export function CompactionDivider({ marker }: CompactionDividerProps) {
+export function CompactionDivider({ marker, phase = 'compacted' }: CompactionDividerProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const isCompacting = phase === 'compacting'
 
   return (
     <div className="w-full">
@@ -15,16 +17,21 @@ export function CompactionDivider({ marker }: CompactionDividerProps) {
         <button
           type="button"
           aria-expanded={isOpen}
-          aria-label="Show compacted context details"
+          aria-label={isCompacting ? 'Context compaction in progress' : 'Show compacted context details'}
+          aria-live={isCompacting ? 'polite' : undefined}
           className="flex shrink-0 items-center text-subtle-foreground transition-colors hover:text-foreground"
-          onClick={() => setIsOpen((currentValue) => !currentValue)}
+          onClick={() => {
+            if (!isCompacting) {
+              setIsOpen((currentValue) => !currentValue)
+            }
+          }}
         >
-          <span>Compacted</span>
+          <span>{isCompacting ? 'Compacting' : 'Compacted'}</span>
         </button>
         <div className="h-px flex-1 bg-border" />
       </div>
 
-      {isOpen && marker.detailSections.length > 0 ? (
+      {isOpen && marker && marker.detailSections.length > 0 ? (
         <div className="mx-auto mt-1.5 w-full max-w-3xl space-y-3 text-sm text-muted-foreground/90">
           {marker.detailSections.map((section) => (
             <section key={section.label} className="space-y-1.5">

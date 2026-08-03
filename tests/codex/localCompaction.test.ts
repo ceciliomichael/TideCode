@@ -84,7 +84,7 @@ test('compaction boundaries never split a tool-call and tool-result pair', () =>
   assert.equal(longWindow.sourceMessageIds.at(-1), `model:${longWindow.boundaryIndex - 1}`)
 })
 
-test('compaction still evicts older history when a recent tool result exceeds the target', () => {
+test('compaction evicts a recent oversized tool result only with its matching call', () => {
   const messages = [
     { role: 'user', content: 'Implement the requested change.' },
     { role: 'assistant', content: 'I am reviewing the existing implementation.' },
@@ -111,7 +111,75 @@ test('compaction still evicts older history when a recent tool result exceeds th
   assert.ok(window.boundaryIndex > 0)
   assert.ok(window.evictedMessages.length > 0)
   assert.equal(hasUnresolvedToolCall(window.tailMessages), false)
-  assert.equal(window.tailMessages.some((message) => message.role === 'tool'), true)
+  assert.equal(window.tailMessages.some((message) => message.role === 'tool'), false)
+  assert.equal(window.tailMessages.at(-1)?.role, 'assistant')
+})
+
+test('compaction can evict the latest completed tool pair before the next model step', () => {
+  const messages = [
+    { role: 'user', content: 'Read the workspace and summarize the relevant state.' },
+    {
+      role: 'assistant',
+      content: [{ type: 'tool-call', toolCallId: 'call-latest', toolName: 'read_file', input: { path: 'src/app.ts' } }],
+    },
+    {
+      role: 'tool',
+      content: [{
+        type: 'tool-result',
+        toolCallId: 'call-latest',
+        toolName: 'read_file',
+        output: { type: 'text', value: 'large tool output '.repeat(12_000) },
+      }],
+    },
+  ] as ModelMessage[]
+
+  assert.equal(isSafeCompactionBoundary(messages, messages.length), true)
+  const window = selectCompactionWindow(messages, 1_000)
+
+  assert.ok(window)
+  assert.equal(window.boundaryIndex, messages.length)
+  assert.deepEqual(window.tailMessages, [])
+  assert.deepEqual(window.anchorMessages, [messages[0]])
+  assert.equal(hasUnresolvedToolCall(window.tailMessages), false)
+})
+
+test('automatic compaction reports its start only after the threshold and safe boundary are met', async () => {
+  const messages = [
+    { role: 'user', content: 'Read the workspace and summarize the relevant state.' },
+    {
+      role: 'assistant',
+      content: [{ type: 'tool-call', toolCallId: 'call-lifecycle', toolName: 'read_file', input: { path: 'src/app.ts' } }],
+    },
+    {
+      role: 'tool',
+      content: [{
+        type: 'tool-result',
+        toolCallId: 'call-lifecycle',
+        toolName: 'read_file',
+        output: { type: 'text', value: 'large tool output '.repeat(12_000) },
+      }],
+    },
+  ] as ModelMessage[]
+  let started = 0
+
+  const result = await compactModelMessages({
+    createStream: createTextStreamFactory('not valid packet output'),
+    messages,
+    model: 'test-model',
+    onStarted: () => {
+      started += 1
+    },
+    reasoningEffort: 'low',
+    systemPromptTokens: 100,
+    toolSchemaTokens: 100,
+    contextWindowTokens: 16_000,
+    reserveTokens: 4_000,
+    triggerRatio: 0.8,
+  })
+
+  assert.ok(result)
+  assert.equal(started, 1)
+  assert.equal(result.projectedMessages.some((message) => message.role === 'tool'), false)
 })
 
 test('automatic budget checks compact a completed tool step even when the target cannot fit the recent tail', async () => {

@@ -11,6 +11,7 @@ import { ALL_PROJECTS_FILTER_ID, ARCHIVED_PROJECT_FILTER_ID } from '../../compon
 import { WorkspaceTerminalPanel } from '../../components/chat/WorkspaceTerminalPanel'
 import { useChatContextUsage } from '../../hooks/useChatContextUsage'
 import { useChatCompactionMarkers } from '../../hooks/useChatCompactionMarkers'
+import { useChatCompactionStatus } from '../../hooks/useChatCompactionStatus'
 import type { ChatMessagesController } from '../../hooks/useChatMessages'
 import type { ChatRuntimeConfigState } from '../../hooks/useChatRuntimeConfig'
 import type { ChatInterfaceControllerState } from '../../hooks/useChatInterfaceController'
@@ -168,6 +169,10 @@ export function ChatInterfaceContent({
     conversationId: chatMessages.activeConversationId,
     messagesLength: chatMessages.messages.length,
     refreshSignal: compactionRefreshSignal,
+  })
+  const liveCompaction = useChatCompactionStatus({
+    conversationId: chatMessages.activeConversationId,
+    persistedCompactionIds: compactionMarkers.map((marker) => marker.compactionId),
   })
   const { candidates: refactorCandidates, isLoading: refactorCandidatesLoading } =
     useWorkspaceRefactorCandidates(activeWorkspacePath)
@@ -433,6 +438,7 @@ export function ChatInterfaceContent({
               chatRuntimeConfig={chatRuntimeConfig}
               codexUsage={codexUsage}
               compactionMarkers={compactionMarkers}
+              liveCompaction={liveCompaction}
               contextUsage={contextUsage}
               gitBranchState={gitBranchState}
               handleCancelEditingMessage={handleCancelEditingMessage}
