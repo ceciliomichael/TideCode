@@ -182,6 +182,16 @@ test('resolveSidebarProjectFilter preserves selectedProjectId while history is l
   assert.equal(resolveSidebarProjectFilter('custom-project-id', [], true), 'custom-project-id')
 })
 
+test('resolveSidebarProjectFilter falls back to all projects when the archived filter is selected without archived conversations', () => {
+  const projects = buildSidebarProjectOptions(groups)
+
+  assert.equal(resolveSidebarProjectFilter(ARCHIVED_PROJECT_FILTER_ID, projects, false, true), ARCHIVED_PROJECT_FILTER_ID)
+  assert.equal(resolveSidebarProjectFilter(ARCHIVED_PROJECT_FILTER_ID, projects, false, false), ALL_PROJECTS_FILTER_ID)
+  assert.equal(resolveSidebarProjectFilter(ALL_PROJECTS_FILTER_ID, projects, false, false), ALL_PROJECTS_FILTER_ID)
+  assert.equal(resolveSidebarProjectFilter('project-two', projects, false, false), 'project-two')
+  assert.equal(resolveSidebarProjectFilter(ARCHIVED_PROJECT_FILTER_ID, projects, true, false), ARCHIVED_PROJECT_FILTER_ID)
+})
+
 test('active conversation folder takes precedence over globally latest conversation when filtering all projects', () => {
   const projectOneOlderConv = createConversation('project-one-older', 'project-one', 500, false, false)
   const projectTwoActiveConv = createConversation('project-two-active', 'project-two', 100, false, true)

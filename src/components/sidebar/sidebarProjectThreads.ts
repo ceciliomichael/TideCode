@@ -96,9 +96,17 @@ export function resolveSidebarProjectFilter(
   selectedProjectId: string,
   projects: readonly SidebarProjectOption[],
   isLoading = false,
+  hasArchivedConversations = true,
 ) {
+  if (isLoading) {
+    return selectedProjectId
+  }
+
+  if (selectedProjectId === ARCHIVED_PROJECT_FILTER_ID && !hasArchivedConversations) {
+    return ALL_PROJECTS_FILTER_ID
+  }
+
   if (
-    isLoading ||
     selectedProjectId === ALL_PROJECTS_FILTER_ID ||
     selectedProjectId === CHATS_PROJECT_FILTER_ID ||
     selectedProjectId === ARCHIVED_PROJECT_FILTER_ID ||
