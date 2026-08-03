@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.22 — Safer workspace discovery and steadier chat
+
+TideCode now keeps AI workspace discovery focused while preserving explicit access to known paths, and improves reliability across long-running conversations and workspace navigation.
+
+- Hides .gitignore entries, generated files, and common developer directories from default AI list, glob, grep, and @mention discovery.
+- Allows explicitly targeted ignored directories to be listed, searched, and traversed recursively without exposing them during broad discovery.
+- Strengthens chat stream integrity, context accounting, compaction recovery, queued sending, workspace tabs, and related failure handling.
+- Adds regression coverage for ignored-path access, generated-file filtering, runtime streaming, context usage, and workspace explorer behavior.
+
 ## 1.0.21 — More dependable context compaction
 
 TideCode now keeps long conversations moving through context compaction with clearer progress feedback and a strict safety gate before the next model step continues.
