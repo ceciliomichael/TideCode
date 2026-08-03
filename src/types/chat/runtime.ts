@@ -86,6 +86,19 @@ export interface ChatCompactionMarker {
   detailSections: ChatCompactionDetailSection[]
 }
 
+export type ChatCompactionLifecycleState =
+  | {
+      attemptId: string
+      phase: 'compacting'
+      streamId: string
+    }
+  | {
+      attemptId: string
+      compactionId: string
+      phase: 'compacted'
+      streamId: string
+    }
+
 export interface ChatCompactionDetailSection {
   items: string[]
   label: string
@@ -94,10 +107,23 @@ export interface ChatCompactionDetailSection {
 export type ChatStreamEvent =
   | { streamId: string; type: 'started' }
   | {
+      attemptId: string
+      conversationId: string
+      streamId: string
+      type: 'compaction_started'
+    }
+  | {
       compactionId: string
       conversationId: string
       streamId: string
       type: 'compaction_committed'
+    }
+  | {
+      attemptId: string
+      conversationId: string
+      reason: 'aborted' | 'error' | 'unavailable'
+      streamId: string
+      type: 'compaction_failed'
     }
   | { delta: string; streamId: string; type: 'content_delta' }
   | { delta: string; streamId: string; type: 'reasoning_delta' }

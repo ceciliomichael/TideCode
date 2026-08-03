@@ -4,6 +4,7 @@ import { normalizeAssistantMessageContent } from "../lib/chatMessageContent";
 import type {
   AssistantWaitingIndicatorVariant,
   ChatAttachment,
+  ChatCompactionLifecycleState,
   ChatCompactionMarker,
   ChatMode,
   Message,
@@ -26,6 +27,7 @@ interface MessageListProps {
   chatModeOptions?: readonly ChatModeOption[];
   chatModeSelectorDisabled?: boolean;
   compactionMarkers?: readonly ChatCompactionMarker[];
+  liveCompaction?: ChatCompactionLifecycleState | null;
   conversationId: string | null;
   composerAttachments: ChatAttachment[];
   composerValue: string;
@@ -278,6 +280,7 @@ export function MessageList({
   chatModeOptions,
   chatModeSelectorDisabled,
   compactionMarkers = [],
+  liveCompaction = null,
   composerAttachments,
   conversationId,
   editComposerDirty = false,
@@ -321,6 +324,7 @@ export function MessageList({
     type RenderItem =
       | { type: 'message'; message: Message; index: number }
       | { type: 'compaction_marker'; marker: ChatCompactionMarker }
+      | { type: 'live_compaction'; status: ChatCompactionLifecycleState }
       | { type: 'working_group'; messages: Message[]; trailingMessage?: { message: Message, index: number }; startTime: number; endTime: number; startIndex: number; key: string };
 
     const items: RenderItem[] = [];
@@ -425,9 +429,16 @@ export function MessageList({
     for (const marker of markerPlacement.trailingMarkers) {
       items.push({ marker, type: 'compaction_marker' });
     }
+
+    const hasPersistedLiveCompaction =
+      liveCompaction?.phase === 'compacted' &&
+      compactionMarkers.some((marker) => marker.compactionId === liveCompaction.compactionId)
+    if (liveCompaction && !hasPersistedLiveCompaction) {
+      items.push({ status: liveCompaction, type: 'live_compaction' });
+    }
     
     return items;
-  }, [compactionMarkers, isConversationStreaming, visibleMessages]);
+  }, [compactionMarkers, isConversationStreaming, liveCompaction, visibleMessages]);
 
   useChatAutoScroll({
     conversationId,
@@ -535,6 +546,15 @@ export function MessageList({
         {renderItems.map((item) => {
           if (item.type === 'compaction_marker') {
             return <CompactionDivider key={`compaction-${item.marker.compactionId}`} marker={item.marker} />;
+          }
+
+          if (item.type === 'live_compaction') {
+            return (
+              <CompactionDivider
+                key={`live-compaction-${item.status.phase}-${item.status.phase === 'compacting' ? item.status.attemptId : item.status.compactionId}`}
+                phase={item.status.phase}
+              />
+            );
           }
 
           if (item.type === 'working_group') {

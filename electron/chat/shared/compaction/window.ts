@@ -31,7 +31,8 @@ function getToolResultIds(message: ModelMessage) {
 }
 
 export function isSafeCompactionBoundary(messages: readonly ModelMessage[], boundaryIndex: number) {
-  if (boundaryIndex <= 0 || boundaryIndex >= messages.length) return false
+  if (boundaryIndex <= 0 || boundaryIndex > messages.length) return false
+  if (boundaryIndex === messages.length && messages.at(-1)?.role !== 'tool') return false
 
   const calls = new Set<string>()
   const results = new Set<string>()
@@ -53,8 +54,23 @@ export function hasUnresolvedToolCall(messages: readonly ModelMessage[]) {
   return [...calls].some((id) => !results.has(id)) || [...results].some((id) => !calls.has(id))
 }
 
-function getFirstUserIndex(messages: readonly ModelMessage[]) {
-  return messages.findIndex((message) => message.role === 'user')
+function getAnchorMessages(messages: readonly ModelMessage[], boundaryIndex: number) {
+  const userIndexes = messages.reduce<number[]>((indexes, message, index) => {
+    if (index < boundaryIndex && message.role === 'user') {
+      indexes.push(index)
+    }
+    return indexes
+  }, [])
+
+  const anchorIndexes = new Set<number>()
+  const firstUserIndex = userIndexes[0]
+  const latestUserIndex = userIndexes.at(-1)
+  if (firstUserIndex !== undefined) anchorIndexes.add(firstUserIndex)
+  if (latestUserIndex !== undefined) anchorIndexes.add(latestUserIndex)
+
+  return [...anchorIndexes]
+    .sort((left, right) => left - right)
+    .map((index) => messages[index])
 }
 
 export function buildCompactionSourceDigest(messages: readonly ModelMessage[], boundaryIndex: number) {
@@ -79,17 +95,14 @@ export function selectCompactionWindow(
   messages: readonly ModelMessage[],
   targetHistoryTokens: number,
 ): CompactionWindow | null {
-  if (messages.length < 4 || hasUnresolvedToolCall(messages)) return null
+  if (messages.length < 3 || hasUnresolvedToolCall(messages)) return null
 
   let largestSafeWindow: CompactionWindow | null = null
 
-  for (let boundaryIndex = 1; boundaryIndex < messages.length - 1; boundaryIndex += 1) {
+  for (let boundaryIndex = 1; boundaryIndex <= messages.length; boundaryIndex += 1) {
     if (!isSafeCompactionBoundary(messages, boundaryIndex)) continue
     const tailMessages = messages.slice(boundaryIndex)
-    const firstUserIndex = getFirstUserIndex(messages)
-    const anchorMessages = firstUserIndex >= 0 && firstUserIndex < boundaryIndex
-      ? [messages[firstUserIndex]]
-      : []
+    const anchorMessages = getAnchorMessages(messages, boundaryIndex)
     const window = {
       anchorMessages,
       boundaryIndex,

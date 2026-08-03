@@ -45,6 +45,15 @@ export interface ContextBudget {
   triggerTokens: number
 }
 
+export interface ModelMessagesBudgetInput {
+  contextWindowTokens?: number
+  messages: readonly ModelMessage[]
+  reserveTokens?: number
+  systemPromptTokens: number
+  toolSchemaTokens: number
+  triggerRatio?: number
+}
+
 export function calculateContextBudget(input: ContextBudgetInput): ContextBudget {
   const contextWindowTokens = Math.max(
     16_000,
@@ -72,6 +81,17 @@ export function calculateContextBudget(input: ContextBudgetInput): ContextBudget
     totalTokens,
     triggerTokens: Math.floor(contextWindowTokens * triggerRatio),
   }
+}
+
+export function calculateModelMessagesBudget(input: ModelMessagesBudgetInput) {
+  return calculateContextBudget({
+    contextWindowTokens: input.contextWindowTokens,
+    messageTokens: estimateModelMessagesTokens(input.messages),
+    reserveTokens: input.reserveTokens,
+    systemPromptTokens: input.systemPromptTokens,
+    toolSchemaTokens: input.toolSchemaTokens,
+    triggerRatio: input.triggerRatio,
+  })
 }
 
 export function shouldCompactContext(budget: ContextBudget) {

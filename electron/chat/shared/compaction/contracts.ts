@@ -82,6 +82,7 @@ export interface CompactModelMessagesInput {
   force?: boolean
   messages: ModelMessage[]
   model: string
+  onStarted?: () => void
   reasoningEffort: string
   systemPromptTokens: number
   toolSchemaTokens: number

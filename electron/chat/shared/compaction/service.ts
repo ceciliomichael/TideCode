@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import {
-  calculateContextBudget,
-  estimateModelMessagesTokens,
+  calculateModelMessagesBudget,
   shouldCompactContext,
 } from './budget'
 import {
@@ -65,10 +64,9 @@ function buildCompactionKey(input: CompactModelMessagesInput, boundaryIndex: num
 }
 
 async function compactModelMessagesInternal(input: CompactModelMessagesInput): Promise<CompactionResult | null> {
-  const messageTokens = estimateModelMessagesTokens(input.messages)
-  const budget = calculateContextBudget({
+  const budget = calculateModelMessagesBudget({
     contextWindowTokens: input.contextWindowTokens,
-    messageTokens,
+    messages: input.messages,
     reserveTokens: input.reserveTokens,
     systemPromptTokens: input.systemPromptTokens,
     toolSchemaTokens: input.toolSchemaTokens,
@@ -78,6 +76,9 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
 
   const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens)
   if (!window) return null
+  if (input.signal?.aborted) return null
+
+  input.onStarted?.()
   const sourceDigest = buildCompactionSourceDigest(input.messages, window.boundaryIndex)
   const previousPacket = input.previousPacket ?? findLatestCompactionPacket(input.messages)
   const prompt = buildCompactionRequestPrompt({
@@ -119,10 +120,9 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
 }
 
 export async function compactModelMessages(input: CompactModelMessagesInput) {
-  const messageTokens = estimateModelMessagesTokens(input.messages)
-  const budget = calculateContextBudget({
+  const budget = calculateModelMessagesBudget({
     contextWindowTokens: input.contextWindowTokens,
-    messageTokens,
+    messages: input.messages,
     reserveTokens: input.reserveTokens,
     systemPromptTokens: input.systemPromptTokens,
     toolSchemaTokens: input.toolSchemaTokens,
