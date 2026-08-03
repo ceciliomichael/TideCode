@@ -10,6 +10,7 @@ import {
 
 function createTestSession(): ActiveTerminalSession {
   return {
+    aiTurnId: null,
     cwd: '/workspace',
     enableIdleTimeout: false,
     exitCode: null,

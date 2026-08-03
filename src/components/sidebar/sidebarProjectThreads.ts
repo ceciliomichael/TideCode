@@ -110,3 +110,31 @@ export function resolveSidebarProjectFilter(
   return ALL_PROJECTS_FILTER_ID
 }
 
+export function resolveLatestThreadProject(
+  selectedProjectId: string,
+  threadRows: readonly SidebarThreadRow[],
+  conversationGroups: readonly ConversationGroupPreview[],
+  projectOptions: readonly SidebarProjectOption[],
+): SidebarProjectOption | null {
+  if (selectedProjectId !== ALL_PROJECTS_FILTER_ID) {
+    return projectOptions.find((project) => project.id === selectedProjectId) ?? projectOptions[0] ?? null
+  }
+
+  const activeConversationFolderId =
+    threadRows.find((row) => row.conversation.isActive)?.conversation.folderId ?? null
+  const selectedGroup = conversationGroups.find(
+    (group) => group.folder.isSelected && group.folder.id !== PINNED_FOLDER_ID,
+  )
+  // The selected group is authoritative even when it is the Chats group (folder id null).
+  // Without this, a null folder id falls through to the globally latest thread, which may
+  // belong to an unrelated project.
+  const latestFolderId =
+    activeConversationFolderId !== null
+      ? activeConversationFolderId
+      : selectedGroup !== undefined
+        ? selectedGroup.folder.id
+        : (threadRows[0]?.conversation.folderId ?? null)
+  const targetId = latestFolderId === null ? CHATS_PROJECT_FILTER_ID : latestFolderId
+  return projectOptions.find((project) => project.id === targetId) ?? projectOptions[0] ?? null
+}
+

@@ -10,12 +10,12 @@ import {
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { ConversationGroupPreview } from '../../types/chat'
-import { PINNED_FOLDER_ID } from '../../hooks/chatHistoryViewModels'
 import {
   ALL_PROJECTS_FILTER_ID,
   CHATS_PROJECT_FILTER_ID,
   UNASSIGNED_WORKSPACE_NAME,
   buildSidebarThreadRows,
+  resolveLatestThreadProject,
   type SidebarProjectOption,
   type SidebarThreadRow,
 } from './sidebarProjectThreads'
@@ -80,23 +80,10 @@ export function NewThreadProjectDialog({
     ],
     [conversationGroups, projects],
   )
-  const latestProject = useMemo(() => {
-    if (selectedProjectId !== ALL_PROJECTS_FILTER_ID) {
-      return allProjectOptions.find((project) => project.id === selectedProjectId) ?? allProjectOptions[0] ?? null
-    }
-    const activeConversationFolderId =
-      allThreadRows.find((row) => row.conversation.isActive)?.conversation.folderId ?? null
-    const selectedGroupFolderId =
-      conversationGroups.find((g) => g.folder.isSelected && g.folder.id !== null && g.folder.id !== PINNED_FOLDER_ID)
-        ?.folder.id ?? null
-    const latestFolderId =
-      activeConversationFolderId ??
-      selectedGroupFolderId ??
-      allThreadRows[0]?.conversation.folderId ??
-      null
-    const targetId = latestFolderId === null ? CHATS_PROJECT_FILTER_ID : latestFolderId
-    return allProjectOptions.find((project) => project.id === targetId) ?? allProjectOptions[0] ?? null
-  }, [allThreadRows, allProjectOptions, conversationGroups, selectedProjectId])
+  const latestProject = useMemo(
+    () => resolveLatestThreadProject(selectedProjectId, allThreadRows, conversationGroups, allProjectOptions),
+    [allThreadRows, allProjectOptions, conversationGroups, selectedProjectId],
+  )
   const matchingProjects = useMemo(
     () =>
       allProjectOptions.filter(

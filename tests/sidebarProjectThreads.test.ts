@@ -4,8 +4,10 @@ import {
   ALL_PROJECTS_FILTER_ID,
   ARCHIVED_PROJECT_FILTER_ID,
   CHATS_PROJECT_FILTER_ID,
+  UNASSIGNED_WORKSPACE_NAME,
   buildSidebarProjectOptions,
   buildSidebarThreadRows,
+  resolveLatestThreadProject,
   resolveSidebarProjectFilter,
 } from '../src/components/sidebar/sidebarProjectThreads'
 import type { ConversationGroupPreview, ConversationPreview } from '../src/types/chat'
@@ -198,5 +200,119 @@ test('active conversation folder takes precedence over globally latest conversat
   const rows = buildSidebarThreadRows(activeGroups, ALL_PROJECTS_FILTER_ID)
   const activeRow = rows.find((r) => r.conversation.isActive)
   assert.equal(activeRow?.conversation.folderId, 'project-two')
+})
+
+function buildLatestThreadProjectOptions(
+  conversationGroups: ConversationGroupPreview[],
+): ReturnType<typeof buildSidebarProjectOptions> {
+  const projectOptions = buildSidebarProjectOptions(conversationGroups)
+  return [{ conversationCount: 0, id: CHATS_PROJECT_FILTER_ID, name: UNASSIGNED_WORKSPACE_NAME }, ...projectOptions]
+}
+
+function resolveLatestThreadProjectFor(
+  conversationGroups: ConversationGroupPreview[],
+  selectedProjectId: string,
+) {
+  const threadRows = buildSidebarThreadRows(conversationGroups, ALL_PROJECTS_FILTER_ID)
+  return resolveLatestThreadProject(selectedProjectId, threadRows, conversationGroups, buildLatestThreadProjectOptions(conversationGroups))
+}
+
+test('resolveLatestThreadProject resolves to Chats when the Chats group is selected even if the globally latest thread is in a project', () => {
+  // Regression: the user was in a project, started a new thread in Chats (draft, no active
+  // conversation, Chats group selected), and the modal must not fall back to the globally
+  // latest thread's project.
+  const latestProjectConversation = createConversation('project-one-latest', 'project-one', 500)
+  const chatsDraftContextGroups: ConversationGroupPreview[] = [
+    {
+      folder: {
+        conversationCount: 1,
+        id: 'project-one',
+        isSelected: false,
+        name: 'Movie tracker',
+        path: 'C:/projects/movie-tracker',
+      },
+      conversations: [latestProjectConversation],
+    },
+    {
+      folder: { conversationCount: 0, id: null, isSelected: true, name: 'Chats', path: null },
+      conversations: [],
+    },
+  ]
+
+  const result = resolveLatestThreadProjectFor(chatsDraftContextGroups, ALL_PROJECTS_FILTER_ID)
+
+  assert.equal(result?.id, CHATS_PROJECT_FILTER_ID)
+  assert.equal(result?.name, UNASSIGNED_WORKSPACE_NAME)
+})
+
+test('resolveLatestThreadProject uses the selected project group when a draft is open in it', () => {
+  const groups: ConversationGroupPreview[] = [
+    {
+      folder: {
+        conversationCount: 0,
+        id: 'project-one',
+        isSelected: true,
+        name: 'Movie tracker',
+        path: 'C:/projects/movie-tracker',
+      },
+      conversations: [],
+    },
+    {
+      folder: { conversationCount: 1, id: null, isSelected: false, name: 'Chats', path: null },
+      conversations: [createConversation('chats-latest', null, 500)],
+    },
+  ]
+
+  const result = resolveLatestThreadProjectFor(groups, ALL_PROJECTS_FILTER_ID)
+
+  assert.equal(result?.id, 'project-one')
+})
+
+test('resolveLatestThreadProject prefers the active conversation folder over the selected group', () => {
+  const activeConversation = createConversation('project-two-active', 'project-two', 100, false, true)
+  const groups: ConversationGroupPreview[] = [
+    {
+      folder: {
+        conversationCount: 1,
+        id: 'project-one',
+        isSelected: true,
+        name: 'Movie tracker',
+        path: 'C:/projects/movie-tracker',
+      },
+      conversations: [createConversation('project-one-chat', 'project-one', 500)],
+    },
+    {
+      folder: {
+        conversationCount: 1,
+        id: 'project-two',
+        isSelected: false,
+        name: 'Data science',
+        path: 'C:/projects/data-science',
+      },
+      conversations: [activeConversation],
+    },
+  ]
+
+  const result = resolveLatestThreadProjectFor(groups, ALL_PROJECTS_FILTER_ID)
+
+  assert.equal(result?.id, 'project-two')
+})
+
+test('resolveLatestThreadProject honors an explicit project filter', () => {
+  const result = resolveLatestThreadProjectFor(groups, 'project-two')
+
+  assert.equal(result?.id, 'project-two')
+})
+
+test('resolveLatestThreadProject resolves the Chats filter to the Chats option', () => {
+  const result = resolveLatestThreadProjectFor(groups, CHATS_PROJECT_FILTER_ID)
+
+  assert.equal(result?.id, CHATS_PROJECT_FILTER_ID)
+})
+
+test('resolveLatestThreadProject falls back to the Chats option for the archived filter', () => {
+  const result = resolveLatestThreadProjectFor(groups, ARCHIVED_PROJECT_FILTER_ID)
+
+  assert.equal(result?.id, CHATS_PROJECT_FILTER_ID)
 })
 

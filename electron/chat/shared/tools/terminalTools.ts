@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto'
 import path from 'node:path'
 import type { WebContents } from 'electron'
 import { jsonSchema, tool, type ToolSet } from 'ai'
@@ -22,6 +23,9 @@ const ANSI_CSI_PATTERN = new RegExp(`${ANSI_ESCAPE}\\[[0-?]*[ -/]*[@-~]`, 'g')
 const ANSI_OSC_PATTERN = new RegExp(`${ANSI_ESCAPE}\\][^${TERMINAL_BELL}${ANSI_ESCAPE}]*(?:${TERMINAL_BELL}|${ANSI_ESCAPE}\\\\)`, 'g')
 const ANSI_SINGLE_ESCAPE_PATTERN = new RegExp(`${ANSI_ESCAPE}[@-Z\\-_]`, 'g')
 const MAX_GIT_DIFF_OUTPUT_LENGTH = 20_000
+const MIN_VISIBLE_SESSION_ID = 10_000
+const MAX_VISIBLE_SESSION_ID_EXCLUSIVE = 100_000
+const MAX_VISIBLE_SESSION_ID_ATTEMPTS = 1_000
 
 
 interface TerminalToolDependencies {
@@ -41,6 +45,11 @@ interface TerminalToolDependencies {
     ownerWebContents: WebContents,
     workspaceRootPath: string,
   ) => TerminalSessionInfo[]
+  terminateSessionsForTurn: (
+    ownerWebContents: WebContents,
+    turnId: string,
+    workspaceRootPath: string,
+  ) => void
   terminateSession: (
     ownerWebContents: WebContents,
     sessionId: number,
@@ -105,6 +114,7 @@ async function loadDefaultTerminalToolDependencies(): Promise<TerminalToolDepend
     getSessionOutput: terminalService.getTerminalSessionOutputForWebContents,
     consumeSessionOutput: terminalService.consumeTerminalSessionOutputForWebContents,
     listSessions: terminalService.listSessionsForWebContents,
+    terminateSessionsForTurn: terminalService.terminateAiSessionsForTurnForWebContents,
     terminateSession: terminalService.terminateSessionForWebContents,
     writeToSession: terminalService.writeToTerminalSessionForWebContents,
   }
@@ -235,8 +245,8 @@ interface ThreadAiSession {
 }
 
 interface ThreadSessionStore {
-  nextLocalSessionId: number
   latestLocalSessionId: number | null
+  reservedSessionIds: Set<number>
   sessions: Map<number, ThreadAiSession>
 }
 
@@ -246,8 +256,8 @@ function getOrCreateThreadStore(namespace: string): ThreadSessionStore {
   let store = threadStores.get(namespace)
   if (!store) {
     store = {
-      nextLocalSessionId: 1,
       latestLocalSessionId: null,
+      reservedSessionIds: new Set(),
       sessions: new Map(),
     }
     threadStores.set(namespace, store)
@@ -255,73 +265,18 @@ function getOrCreateThreadStore(namespace: string): ThreadSessionStore {
   return store
 }
 
-async function pruneAndResetThreadStore(
-  store: ThreadSessionStore,
-  ownerWebContents: WebContents,
-  resolvedDependencies: TerminalToolDependencies,
-  workspaceRootPath: string,
-) {
-  if (store.sessions.size === 0) {
-    store.nextLocalSessionId = 1
-    store.latestLocalSessionId = null
-    return
-  }
-
-  const entries = Array.from(store.sessions.entries())
-  for (const [localId, session] of entries) {
-    try {
-      const snapshot = await resolvedDependencies.getSessionOutput(ownerWebContents, {
-        pollingMs: 0,
-        sessionId: session.globalSessionId,
-        workspaceRootPath,
-      })
-
-      const hasPendingOutput = snapshot.pendingOutputBuffer.length > 0
-      const commandFinished =
-        snapshot.hasExited ||
-        (typeof snapshot.outputBuffer === 'string' && snapshot.outputBuffer.includes('__EDONE_'))
-      if (commandFinished && !hasPendingOutput) {
-        try {
-          resolvedDependencies.terminateSession(ownerWebContents, session.globalSessionId, workspaceRootPath)
-        } catch {
-          // ignore
-        }
-        store.sessions.delete(localId)
-      }
-    } catch {
-      store.sessions.delete(localId)
+function allocateVisibleSessionId(store: ThreadSessionStore) {
+  for (let attempt = 0; attempt < MAX_VISIBLE_SESSION_ID_ATTEMPTS; attempt += 1) {
+    const candidate = randomInt(MIN_VISIBLE_SESSION_ID, MAX_VISIBLE_SESSION_ID_EXCLUSIVE)
+    if (store.sessions.has(candidate) || store.reservedSessionIds.has(candidate)) {
+      continue
     }
+
+    store.reservedSessionIds.add(candidate)
+    return candidate
   }
 
-  if (store.sessions.size === 0) {
-    store.nextLocalSessionId = 1
-    store.latestLocalSessionId = null
-  }
-}
-
-export async function cleanUpFinishedSessionsAtTurnEnd(
-  webContents: WebContents,
-  workspaceRootPath: string,
-  conversationId?: string | null,
-) {
-  const terminalService = await loadDefaultTerminalToolDependencies()
-
-  const namespacesToClean: string[] = []
-  const normalizedConversationId = typeof conversationId === 'string'
-    ? conversationId.trim()
-    : ''
-  if (normalizedConversationId) {
-    namespacesToClean.push(`conversation:${normalizedConversationId}`)
-  } else {
-    namespacesToClean.push(...threadStores.keys())
-  }
-
-  for (const ns of namespacesToClean) {
-    const store = threadStores.get(ns)
-    if (!store) continue
-
-    await pruneAndResetThreadStore(store, webContents, terminalService, workspaceRootPath)
-  }
+  throw new Error('Unable to allocate a unique terminal session ID.')
 }
 
 function resolveTerminalWorkspaceCwd(context: AgentToolContext, cwd: string | undefined) {
@@ -341,6 +296,11 @@ function resolveTerminalWorkspaceCwd(context: AgentToolContext, cwd: string | un
 }
 
 function resolveTerminalThreadNamespace(context: AgentToolContext) {
+  const turnId = context.turnId?.trim()
+  if (turnId) {
+    return `turn:${turnId}`
+  }
+
   const conversationId = context.conversationId?.trim()
   if (conversationId && conversationId.length > 0) {
     return `conversation:${conversationId}`
@@ -385,6 +345,7 @@ export function createTerminalToolSet(
       return {
         ...(dependencies as Omit<TerminalToolDependencies, 'consumeSessionOutput'>),
         consumeSessionOutput: dependencies.consumeSessionOutput ?? (() => undefined),
+        terminateSessionsForTurn: dependencies.terminateSessionsForTurn ?? (() => undefined),
       }
     }
 
@@ -503,6 +464,7 @@ export function createTerminalToolSet(
 
             resolvedDependencies.terminateSession(ownerWebContents, session.globalSessionId, context.workspaceRootPath)
             store.sessions.delete(inputValue.session_id)
+            store.reservedSessionIds.delete(session.localSessionId)
             return createSuccessResult({
               body: `Session ${inputValue.session_id} terminated.`,
               summary: `Ended terminal session ${inputValue.session_id}`,
@@ -602,34 +564,38 @@ export function createTerminalToolSet(
             globalSessionId = existing.globalSessionId
             shellLabel = existing.shell
           } else {
-            const sessionOrdinal = store.nextLocalSessionId++
-            const aiSessionKey = inputValue.session_key?.trim() || `__ai__${namespace}__${sessionOrdinal}`
+            localSessionId = allocateVisibleSessionId(store)
+            try {
+              const aiSessionKey = inputValue.session_key?.trim() || `__ai__${namespace}__${localSessionId}`
+              const session = await raceWithAbort(
+                resolvedDependencies.createSession(ownerWebContents, {
+                  cols,
+                  cwd,
+                  enableIdleTimeout: true,
+                  isAiSession: true,
+                  label: inputValue.label ?? null,
+                  rows,
+                  sessionKey: aiSessionKey,
+                  ...(context.turnId?.trim() ? { aiTurnId: context.turnId.trim() } : {}),
+                  workspaceRootPath: context.workspaceRootPath,
+                }),
+                abortSignal,
+              )
 
-            const session = await raceWithAbort(
-              resolvedDependencies.createSession(ownerWebContents, {
-                cols,
-                cwd,
-                enableIdleTimeout: true,
-                isAiSession: true,
+              globalSessionId = session.sessionId
+              shellLabel = session.shell
+              store.sessions.set(localSessionId, {
+                localSessionId,
+                globalSessionId,
                 label: inputValue.label ?? null,
-                rows,
-                sessionKey: aiSessionKey,
-                workspaceRootPath: context.workspaceRootPath,
-              }),
-              abortSignal,
-            )
-
-            globalSessionId = session.sessionId
-            localSessionId = globalSessionId
-            shellLabel = session.shell
-            store.sessions.set(localSessionId, {
-              localSessionId,
-              globalSessionId,
-              label: inputValue.label ?? null,
-              cwd,
-              command,
-              shell: shellLabel,
-            })
+                cwd,
+                command,
+                shell: shellLabel,
+              })
+            } catch (error) {
+              store.reservedSessionIds.delete(localSessionId)
+              throw error
+            }
           }
 
           store.latestLocalSessionId = localSessionId
@@ -717,5 +683,46 @@ export async function terminateAllBackgroundSessions(
       }
     }
     threadStores.delete(ns)
+  }
+}
+
+export async function terminateAllBackgroundSessionsForTurn(
+  webContents: WebContents,
+  workspaceRootPath: string,
+  turnId: string,
+  customTerminateSession?: (webContents: WebContents, sessionId: number, workspaceRootPath: string) => void,
+) {
+  const normalizedTurnId = turnId.trim()
+  if (!normalizedTurnId) {
+    return
+  }
+
+  const namespace = `turn:${normalizedTurnId}`
+  const store = threadStores.get(namespace)
+  const terminalService = customTerminateSession ? null : await loadDefaultTerminalToolDependencies()
+  try {
+    if (store) {
+      for (const session of store.sessions.values()) {
+        try {
+          if (customTerminateSession) {
+            customTerminateSession(webContents, session.globalSessionId, workspaceRootPath)
+          } else if (terminalService) {
+            terminalService.terminateSession(webContents, session.globalSessionId, workspaceRootPath)
+          }
+        } catch {
+          // Continue terminating the remaining sessions in this turn.
+        }
+      }
+    }
+
+    if (terminalService) {
+      try {
+        terminalService.terminateSessionsForTurn(webContents, normalizedTurnId, workspaceRootPath)
+      } catch {
+        // The registry sweep is best effort; the store must still be released.
+      }
+    }
+  } finally {
+    threadStores.delete(namespace)
   }
 }
