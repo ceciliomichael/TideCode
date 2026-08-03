@@ -47,6 +47,9 @@ export function SidebarPanel({
   onSelectProject: controlledOnSelectProject,
 }: SidebarPanelProps) {
   const projects = useMemo(() => buildSidebarProjectOptions(conversationGroups), [conversationGroups])
+  const hasArchivedConversations = conversationGroups.some(
+    (group) => group.folder.id === ARCHIVED_PROJECT_FILTER_ID && group.conversations.length > 0,
+  )
   const [internalSelectedProjectId, setInternalSelectedProjectId] = useState(ALL_PROJECTS_FILTER_ID)
   const [searchQuery, setSearchQuery] = useState('')
   const [isNewThreadProjectDialogOpen, setIsNewThreadProjectDialogOpen] = useState(false)
@@ -63,7 +66,12 @@ export function SidebarPanel({
     [controlledOnSelectProject],
   )
 
-  const resolvedSelectedProjectId = resolveSidebarProjectFilter(activeSelectedProjectId, projects, isLoading)
+  const resolvedSelectedProjectId = resolveSidebarProjectFilter(
+    activeSelectedProjectId,
+    projects,
+    isLoading,
+    hasArchivedConversations,
+  )
 
   useEffect(() => {
     if (isLoading) {
@@ -151,6 +159,7 @@ export function SidebarPanel({
 
         <div className="mt-2 flex items-center justify-between gap-1">
           <ProjectThreadSelector
+            hasArchivedConversations={hasArchivedConversations}
             projects={projects}
             selectedProjectId={resolvedSelectedProjectId}
             onDeleteProject={onDeleteFolder}

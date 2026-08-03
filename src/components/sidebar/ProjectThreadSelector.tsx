@@ -7,6 +7,7 @@ import type { SidebarProjectOption } from './sidebarProjectThreads'
 import { ALL_PROJECTS_FILTER_ID, ARCHIVED_PROJECT_FILTER_ID, CHATS_PROJECT_FILTER_ID } from './sidebarProjectThreads'
 
 interface ProjectThreadSelectorProps {
+  hasArchivedConversations?: boolean
   onDeleteProject: (projectId: string) => Promise<void>
   onRenameProject: (projectId: string, name: string) => Promise<void>
   onSelectProject: (projectId: string) => void
@@ -15,6 +16,7 @@ interface ProjectThreadSelectorProps {
 }
 
 export function ProjectThreadSelector({
+  hasArchivedConversations = true,
   onDeleteProject,
   onRenameProject,
   onSelectProject,
@@ -174,16 +176,18 @@ export function ProjectThreadSelector({
                 <span className="min-w-0 flex-1 truncate font-medium">Chats</span>
               </button>
 
-              <button
-                type="button"
-                role="menuitemradio"
-                aria-checked={selectedProjectId === ARCHIVED_PROJECT_FILTER_ID}
-                onClick={() => selectProject(ARCHIVED_PROJECT_FILTER_ID)}
-                className="flex h-10 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm text-foreground transition-colors hover:bg-[var(--dropdown-option-hover-surface)]"
-              >
-                <Folder size={16} strokeWidth={2} className="shrink-0 text-muted-foreground" />
-                <span className="min-w-0 flex-1 truncate font-medium">Archived</span>
-              </button>
+              {hasArchivedConversations ? (
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={selectedProjectId === ARCHIVED_PROJECT_FILTER_ID}
+                  onClick={() => selectProject(ARCHIVED_PROJECT_FILTER_ID)}
+                  className="flex h-10 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm text-foreground transition-colors hover:bg-[var(--dropdown-option-hover-surface)]"
+                >
+                  <Folder size={16} strokeWidth={2} className="shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate font-medium">Archived</span>
+                </button>
+              ) : null}
 
               {projects.length > 0 ? <div role="separator" className="mx-2 my-1 h-px bg-border" /> : null}
 
