@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.21 — More dependable context compaction
+
+TideCode now keeps long conversations moving through context compaction with clearer progress feedback and a strict safety gate before the next model step continues.
+
+- Shows when compaction starts, completes, is unavailable, or is interrupted directly in the conversation.
+- Uses the same token accounting for automatic compaction and the context usage indicator, while preserving safe tool-call boundaries.
+- Prevents an over-limit conversation from continuing unless compaction produces a valid below-threshold history projection, with regression coverage for lifecycle and failure paths.
+
 ## 1.0.20 — Richer workspace previews
 
 TideCode now brings common visual and document files into the workspace, with dedicated previews and more consistent provider model controls for current backend capabilities.
