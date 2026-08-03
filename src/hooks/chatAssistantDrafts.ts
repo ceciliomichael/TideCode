@@ -312,6 +312,14 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
     shouldStartFreshReasoningDraft = true
   }
 
+  const handleCompactionCommitted = () => {
+    completeReasoningDraft()
+    activeAssistantDraftId = null
+    activeAssistantDraftKind = null
+    reasoningDraftAssistantId = null
+    shouldStartFreshReasoningDraft = false
+  }
+
   const ensureAssistantDraft = (kind: Exclude<DraftAssistantMessageKind, 'placeholder'>) => {
     if (!activeAssistantDraftId) {
       return appendAssistantDraft(kind)
@@ -461,6 +469,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
     handleReasoningCompleted() {
       completeReasoningDraft()
     },
+    handleCompactionCommitted,
     handleSyntheticToolMessage(syntheticMessage: Message) {
       input.appendLocalMessage(input.conversationId, syntheticMessage)
       insertedMessageIds.push(syntheticMessage.id)

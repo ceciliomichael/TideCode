@@ -46,7 +46,6 @@ import {
   getNextSessionId,
   registerSessionWithOwner,
   registerWorkspaceSession,
-  scheduleIdleTerminate,
   sessions,
   terminateAiSessionsForTurn,
   terminateSession,
@@ -192,13 +191,10 @@ async function createTerminalSessionInternal(
   const activeSession: ActiveTerminalSession = {
     aiTurnId,
     cwd,
-    enableIdleTimeout: Boolean(input.enableIdleTimeout),
     exitCode: null,
     hasExited: false,
-    idleTimerId: null,
     isAiSession,
     label: input.label ?? null,
-    lastReadAt: Date.now(),
     outputBuffer: "",
     pendingAiOutputChunks: [],
     outputWaiters: new Set(),
@@ -213,9 +209,6 @@ async function createTerminalSessionInternal(
   sessions.set(sessionId, activeSession);
   registerSessionWithOwner(sender.id, sessionId);
   registerWorkspaceSession(sender.id, workspaceSessionKey, sessionId);
-  if (activeSession.enableIdleTimeout) {
-    scheduleIdleTerminate(sessionId);
-  }
 
   ptyProcess.onData((data) => {
     const sessionForData = sessions.get(sessionId);
@@ -378,8 +371,10 @@ export async function getTerminalSessionOutputForWebContents(
     input.sessionId,
     input.workspaceRootPath,
   );
-  const pollingMs = clampTerminalPollingMs(input.pollingMs);
-  await waitForTerminalSessionExitOrTimeout(activeSession, pollingMs);
+  await waitForTerminalSessionExitOrTimeout(
+    activeSession,
+    clampTerminalPollingMs(input.pollingMs),
+  );
   const refreshedSession = sessions.get(input.sessionId);
   if (!refreshedSession) {
     throw new Error(`Unknown terminal session id: ${input.sessionId}`);
@@ -391,14 +386,7 @@ export async function getTerminalSessionOutputForWebContents(
     );
   }
 
-  // Reset idle timer on every read
-  refreshedSession.lastReadAt = Date.now();
-  if (refreshedSession.enableIdleTimeout) {
-    scheduleIdleTerminate(input.sessionId);
-  }
-
-  const snapshot = createTerminalSessionSnapshot(input.sessionId, refreshedSession);
-  return snapshot;
+  return createTerminalSessionSnapshot(input.sessionId, refreshedSession);
 }
 
 export function consumeTerminalSessionOutputForWebContents(
@@ -431,7 +419,6 @@ export function listSessionsForWebContents(
       cwd: session.cwd,
       hasExited: session.hasExited,
       label: session.label,
-      lastReadAt: session.lastReadAt,
       sessionId,
       shellLabel: session.shellLabel,
       workspaceRootPath: session.workspaceRootPath,

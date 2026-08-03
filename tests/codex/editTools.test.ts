@@ -178,26 +178,28 @@ test('edit requires line bounds together when either bound is provided', async (
   }
 })
 
-test('replace resolves back-to-back parallel tool calls targeting different regions', async () => {
+test('replace serializes concurrent same-file tool calls without dropping changes', async () => {
   const originalContent = ['export const first = 1', 'export const middle = true', 'export const last = 3', ''].join('\n')
   const fixture = await createFixture(originalContent)
   try {
-    const res1 = await createEditToolResult(fixture.context, {
-      path: 'target.ts',
-      allowMultiple: false,
-      endLine: 1,
-      replacementContent: 'export const first = 100',
-      startLine: 1,
-      targetContent: 'export const first = 1',
-    })
-    const res2 = await createEditToolResult(fixture.context, {
-      path: 'target.ts',
-      allowMultiple: false,
-      endLine: 3,
-      replacementContent: 'export const last = 300',
-      startLine: 3,
-      targetContent: 'export const last = 3',
-    })
+    const [res1, res2] = await Promise.all([
+      createEditToolResult(fixture.context, {
+        path: 'target.ts',
+        allowMultiple: false,
+        endLine: 1,
+        replacementContent: 'export const first = 100',
+        startLine: 1,
+        targetContent: 'export const first = 1',
+      }),
+      createEditToolResult(fixture.context, {
+        path: 'target.ts',
+        allowMultiple: false,
+        endLine: 3,
+        replacementContent: 'export const last = 300',
+        startLine: 3,
+        targetContent: 'export const last = 3',
+      }),
+    ])
     assert.equal(res1.status, 'success')
     assert.equal(res2.status, 'success')
     assert.equal(

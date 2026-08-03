@@ -10,6 +10,7 @@ import type {
 } from '../../../../src/types/chat'
 import type { AgentToolContext, AgentToolExecutionResult } from '../toolTypes'
 import type { TerminalSessionSnapshot, TerminalSessionInfo } from '../../../terminal/service'
+import { MAX_TERMINAL_POLLING_MS } from '../../../terminal/configuration'
 import {
   assertSandboxCommandWorkingDirectories,
   assertSandboxPathDoesNotEscapeThroughSymlink,
@@ -26,6 +27,7 @@ const MAX_GIT_DIFF_OUTPUT_LENGTH = 20_000
 const MIN_VISIBLE_SESSION_ID = 10_000
 const MAX_VISIBLE_SESSION_ID_EXCLUSIVE = 100_000
 const MAX_VISIBLE_SESSION_ID_ATTEMPTS = 1_000
+const COMPLETION_MARKER_PROBE_LENGTH = 128
 
 
 interface TerminalToolDependencies {
@@ -156,14 +158,6 @@ function clampInteger(value: number | undefined, min: number, max: number, fallb
   return boundedValue
 }
 
-function normalizeWaitMilliseconds(value: number | undefined, fallback: number) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return fallback
-  }
-
-  return Math.max(0, Math.floor(value))
-}
-
 function isGitDiffCommand(command: string | null) {
   if (!command) {
     return false
@@ -224,6 +218,17 @@ function sanitizeTerminalOutput(value: string) {
     .join('')
 }
 
+function escapeRegularExpression(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function containsCompletionMarker(value: string, marker: string) {
+  // The command itself is echoed by the PTY and contains the marker followed
+  // by the shell expression (`$?`, `$LASTEXITCODE`, or `%ERRORLEVEL%`). Only
+  // the post-command marker has a numeric exit code, so require that suffix.
+  return new RegExp(`${escapeRegularExpression(marker)}:-?\\d+`, 'u').test(value)
+}
+
 
 
 function normalizeCommand(command: string | undefined) {
@@ -236,12 +241,90 @@ function normalizeCommand(command: string | undefined) {
 }
 
 interface ThreadAiSession {
+  commandComplete: boolean
+  completionMarker: string
+  completionMarkerProbe: string
   localSessionId: number
   globalSessionId: number
   label: string | null
   cwd: string
   command: string
   shell: string
+}
+
+interface TerminalReadOutputInput {
+  abortSignal: AbortSignal | undefined
+  consumeSessionOutput: TerminalToolDependencies['consumeSessionOutput']
+  getSessionOutput: TerminalToolDependencies['getSessionOutput']
+  ownerWebContents: WebContents
+  session: ThreadAiSession
+  workspaceRootPath: string
+}
+
+interface TerminalReadOutputResult {
+  output: string
+  snapshot: TerminalSessionSnapshot
+}
+
+async function readTerminalOutput(
+  input: TerminalReadOutputInput,
+): Promise<TerminalReadOutputResult> {
+  const startedAt = Date.now()
+  const effectiveWaitMs = MAX_TERMINAL_POLLING_MS
+  let output = ''
+  let snapshot: TerminalSessionSnapshot | null = null
+  let continueReading = true
+
+  while (continueReading) {
+    throwIfAborted(input.abortSignal)
+    const elapsedMs = Date.now() - startedAt
+    const remainingMs = Math.max(0, effectiveWaitMs - elapsedMs)
+    const pollingMs = input.session.commandComplete
+      ? 0
+      : Math.min(MAX_TERMINAL_POLLING_MS, remainingMs)
+
+    snapshot = await raceWithAbort(
+      input.getSessionOutput(input.ownerWebContents, {
+        pollingMs,
+        sessionId: input.session.globalSessionId,
+        workspaceRootPath: input.workspaceRootPath,
+      }),
+      input.abortSignal,
+    )
+    throwIfAborted(input.abortSignal)
+
+    const pendingOutput = snapshot.pendingOutputBuffer
+    if (pendingOutput.length > 0) {
+      output += pendingOutput
+      const markerProbe = `${input.session.completionMarkerProbe}${pendingOutput}`
+      if (containsCompletionMarker(markerProbe, input.session.completionMarker)) {
+        input.session.commandComplete = true
+        input.session.completionMarkerProbe = ''
+      } else {
+        input.session.completionMarkerProbe = markerProbe.slice(
+          -Math.max(COMPLETION_MARKER_PROBE_LENGTH, input.session.completionMarker.length + 32),
+        )
+      }
+    }
+
+    input.consumeSessionOutput(input.ownerWebContents, {
+      sessionId: input.session.globalSessionId,
+      workspaceRootPath: input.workspaceRootPath,
+    })
+
+    if (snapshot.hasExited) {
+      input.session.commandComplete = true
+    }
+
+    if (input.session.commandComplete || Date.now() - startedAt >= effectiveWaitMs) {
+      continueReading = false
+    }
+  }
+
+  return {
+    output,
+    snapshot: snapshot!,
+  }
 }
 
 interface ThreadSessionStore {
@@ -369,10 +452,6 @@ export function createTerminalToolSet(
             enum: ['execute', 'read', 'list', 'end'],
             description: 'Terminal action to perform.',
           },
-          wait_ms: {
-            type: 'number',
-            description: 'Milliseconds to wait for output in read action.',
-          },
           command: {
             type: 'string',
             description: 'Command to run.',
@@ -409,7 +488,6 @@ export function createTerminalToolSet(
       execute: async (rawInput, options) => {
         const inputValue = rawInput as {
           action: 'execute' | 'read' | 'list' | 'end'
-          wait_ms?: number
           command?: string
           session_id?: number
           label?: string
@@ -422,7 +500,6 @@ export function createTerminalToolSet(
         const abortSignal = options?.abortSignal
         const cols = clampInteger(inputValue.cols, 20, 400, 220)
         const rows = clampInteger(inputValue.rows, 6, 200, 50)
-        const waitMs = normalizeWaitMilliseconds(inputValue.wait_ms, 2000)
 
         try {
           if (!ownerWebContents) {
@@ -489,30 +566,24 @@ export function createTerminalToolSet(
             const session = store.sessions.get(targetSessionId)!
 
             throwIfAborted(abortSignal)
-            const snapshot = await raceWithAbort(
-              resolvedDependencies.getSessionOutput(ownerWebContents, {
-                pollingMs: waitMs,
-                sessionId: session.globalSessionId,
-                workspaceRootPath: context.workspaceRootPath,
-              }),
+            const readResult = await readTerminalOutput({
               abortSignal,
-            )
-
-            throwIfAborted(abortSignal)
-            resolvedDependencies.consumeSessionOutput(ownerWebContents, {
-              sessionId: session.globalSessionId,
+              consumeSessionOutput: resolvedDependencies.consumeSessionOutput,
+              getSessionOutput: resolvedDependencies.getSessionOutput,
+              ownerWebContents,
+              session,
               workspaceRootPath: context.workspaceRootPath,
             })
-
-            const newOutput = sanitizeTerminalOutput(snapshot.pendingOutputBuffer)
+            const newOutput = sanitizeTerminalOutput(readResult.output)
 
             const truncated = truncateTerminalOutput(newOutput, session.command)
 
             return createSuccessResult({
               body: truncated.body || 'No new output.',
               semantics: {
-                has_exited: snapshot.hasExited,
-                exit_code: snapshot.exitCode,
+                command_complete: session.commandComplete,
+                has_exited: readResult.snapshot.hasExited,
+                exit_code: readResult.snapshot.exitCode,
                 session_id: targetSessionId,
                 truncated_output: truncated.truncated,
               },
@@ -557,21 +628,23 @@ export function createTerminalToolSet(
           let localSessionId: number
           let globalSessionId: number
           let shellLabel: string
+          let completionMarker: string
 
           if (typeof inputValue.session_id === 'number' && store.sessions.has(inputValue.session_id)) {
             localSessionId = inputValue.session_id
             const existing = store.sessions.get(localSessionId)!
             globalSessionId = existing.globalSessionId
             shellLabel = existing.shell
+            completionMarker = createCompletionMarker(localSessionId)
           } else {
             localSessionId = allocateVisibleSessionId(store)
+            completionMarker = createCompletionMarker(localSessionId)
             try {
               const aiSessionKey = inputValue.session_key?.trim() || `__ai__${namespace}__${localSessionId}`
               const session = await raceWithAbort(
                 resolvedDependencies.createSession(ownerWebContents, {
                   cols,
                   cwd,
-                  enableIdleTimeout: true,
                   isAiSession: true,
                   label: inputValue.label ?? null,
                   rows,
@@ -585,6 +658,9 @@ export function createTerminalToolSet(
               globalSessionId = session.sessionId
               shellLabel = session.shell
               store.sessions.set(localSessionId, {
+                commandComplete: false,
+                completionMarker,
+                completionMarkerProbe: '',
                 localSessionId,
                 globalSessionId,
                 label: inputValue.label ?? null,
@@ -600,7 +676,6 @@ export function createTerminalToolSet(
 
           store.latestLocalSessionId = localSessionId
 
-          const completionMarker = createCompletionMarker(localSessionId)
           throwIfAborted(abortSignal)
 
           await raceWithAbort(
@@ -610,6 +685,14 @@ export function createTerminalToolSet(
             }),
             abortSignal,
           )
+
+          const storedSession = store.sessions.get(localSessionId)
+          if (storedSession) {
+            storedSession.command = command
+            storedSession.commandComplete = false
+            storedSession.completionMarker = completionMarker
+            storedSession.completionMarkerProbe = ''
+          }
 
           // Post-state is NOT captured here because writeToSession only dispatches
           // the command — the shell hasn't run it yet. Post-state is captured in

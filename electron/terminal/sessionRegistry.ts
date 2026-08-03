@@ -7,8 +7,6 @@ import {
   type ActiveTerminalSession,
 } from "./sessionModel";
 
-const IDLE_TERMINATE_MS = 5 * 60 * 1000; // 5 minutes
-
 export type { TerminalSessionInfo, TerminalSessionSnapshot } from "./sessionModel";
 
 export const sessions = new Map<number, ActiveTerminalSession>();
@@ -132,11 +130,6 @@ export function terminateSession(sessionId: number) {
     return;
   }
 
-  if (activeSession.idleTimerId !== null) {
-    clearTimeout(activeSession.idleTimerId);
-    activeSession.idleTimerId = null;
-  }
-
   notifySessionWaiters(activeSession);
   sessions.delete(sessionId);
   unregisterSessionFromOwner(activeSession.ownerWebContentsId, sessionId);
@@ -166,24 +159,6 @@ function killPtyProcessTree(ptyProcess: IPty) {
 }
 
   killPtyProcessTree(activeSession.ptyProcess);
-}
-
-export function scheduleIdleTerminate(sessionId: number) {
-  const activeSession = sessions.get(sessionId);
-  if (!activeSession || !activeSession.enableIdleTimeout) return;
-
-  if (activeSession.idleTimerId !== null) {
-    clearTimeout(activeSession.idleTimerId);
-  }
-
-  activeSession.idleTimerId = setTimeout(() => {
-    const session = sessions.get(sessionId);
-    if (!session || !session.enableIdleTimeout) return;
-    const idleMs = Date.now() - session.lastReadAt;
-    if (idleMs >= IDLE_TERMINATE_MS) {
-      terminateSession(sessionId);
-    }
-  }, IDLE_TERMINATE_MS);
 }
 
 function terminateSessionsForOwner(ownerWebContentsId: number) {

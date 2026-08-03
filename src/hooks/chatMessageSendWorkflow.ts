@@ -399,6 +399,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       messages: conversationForRun.messages,
       modelId: input.runtimeSelection.modelId,
       onContentDelta: draftManager.handleContentDelta,
+      onCompactionCommitted: draftManager.handleCompactionCommitted,
       onReasoningCompleted: draftManager.handleReasoningCompleted,
       onReasoningDelta: draftManager.handleReasoningDelta,
       onStreamStarted: draftManager.handleStreamStarted,
