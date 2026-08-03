@@ -5,6 +5,7 @@ import { createInterface } from 'node:readline'
 import { minimatch } from 'minimatch'
 import {
   isAgentInstructionsFile,
+  isExplicitlyGitignoredPath,
   isGitignored,
   isInsideWorkspaceIgnoredPath,
   loadGitignoreMatchers,
@@ -437,7 +438,11 @@ export async function runRipgrepFallback(args: string[], cwd: string): Promise<R
 
     const include = normalizeSearchIncludePattern(getPrimaryGlobPattern(args)) ?? undefined
     const ignoreBasePath =
-      searchPathStats.isDirectory() && isInsideWorkspaceIgnoredPath(cwd, searchPath) ? searchPath : undefined
+      searchPathStats.isDirectory() &&
+      (isInsideWorkspaceIgnoredPath(cwd, searchPath) ||
+        (await isExplicitlyGitignoredPath(cwd, searchPath, true)))
+        ? searchPath
+        : undefined
     const result = await searchVisibleFiles(cwd, searchPath, searchPattern, include, undefined, {
       ignoreBasePath,
       ignoreWorkspaceRules: false,

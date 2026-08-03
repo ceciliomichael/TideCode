@@ -139,6 +139,7 @@ test('exact replay replaces display-normalized assistant history and appends onl
     providerId: 'openai',
   })
   assert.equal(result.fidelity, 'exact')
+  assert.equal(result.isCompacted, false)
   assert.deepEqual(result.messages, [...exactMessages, { content: 'second question', role: 'user' }])
 })
 

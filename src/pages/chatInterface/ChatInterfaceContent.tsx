@@ -172,7 +172,6 @@ export function ChatInterfaceContent({
   })
   const liveCompaction = useChatCompactionStatus({
     conversationId: chatMessages.activeConversationId,
-    persistedCompactionIds: compactionMarkers.map((marker) => marker.compactionId),
   })
   const { candidates: refactorCandidates, isLoading: refactorCandidatesLoading } =
     useWorkspaceRefactorCandidates(activeWorkspacePath)
@@ -222,7 +221,12 @@ export function ChatInterfaceContent({
   const successfulToolCompletionSignal = getLatestSuccessfulToolCompletionSignal(
     activeStreamToolInvocations,
   )
-  const isQueueAutoSendBlocked = chatMessages.isLoading || isCompressingChat
+  const isQueueAutoSendBlocked =
+    chatMessages.isLoading ||
+    isCompressingChat ||
+    !chatRuntimeConfig.hasConfiguredProvider ||
+    !chatRuntimeConfig.providerId ||
+    chatRuntimeConfig.selectedRuntimeModelId.trim().length === 0
 
   const sendQueuedMessage = useCallback(
     (
@@ -236,6 +240,7 @@ export function ChatInterfaceContent({
 
         return chatMessages.sendNewMessage(runtimeSelection, queuedMessage.content, queuedMessage.attachments, {
           resetMainComposerAfterSend: false,
+          waitForConversationToSettle: true,
         })
       })()
     },

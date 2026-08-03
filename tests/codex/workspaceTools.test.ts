@@ -56,7 +56,7 @@ async function createWorkspaceFixture() {
 
   await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
   await fs.mkdir(path.join(workspaceRootPath, 'nested', 'package-a', 'src'), { recursive: true })
-  await fs.mkdir(path.join(workspaceRootPath, 'ignored'), { recursive: true })
+  await fs.mkdir(path.join(workspaceRootPath, 'ignored', 'nested'), { recursive: true })
   await fs.mkdir(path.join(workspaceRootPath, '.git', 'objects'), { recursive: true })
   await fs.mkdir(path.join(workspaceRootPath, 'node_modules', 'pkg'), { recursive: true })
   await fs.writeFile(
@@ -83,6 +83,7 @@ async function createWorkspaceFixture() {
   await fs.writeFile(path.join(workspaceRootPath, 'src', 'listable.ts'), 'export const listable = "list"\n', 'utf8')
   await fs.writeFile(path.join(workspaceRootPath, 'notes.md'), 'This note mentions list and needle.\n', 'utf8')
   await fs.writeFile(path.join(workspaceRootPath, 'ignored', 'hidden.ts'), 'export const hidden = "needle"\n', 'utf8')
+  await fs.writeFile(path.join(workspaceRootPath, 'ignored', 'nested', 'deep.ts'), 'export const deep = "needle"\n', 'utf8')
   await fs.writeFile(path.join(workspaceRootPath, '.git', 'config'), 'needle\n', 'utf8')
   await fs.writeFile(path.join(workspaceRootPath, 'plain.secret'), 'needle\n', 'utf8')
   await fs.writeFile(path.join(workspaceRootPath, '.env'), 'SECRET=needle\n', 'utf8')
@@ -109,6 +110,24 @@ test('createListToolResult lists only immediate visible directory entries at the
   }
 })
 
+test('explicitly targeted gitignored directories expose their nested contents', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const ignoredDirectoryPath = path.join(workspaceRootPath, 'ignored')
+
+  try {
+    const listResult = await createListToolResult(workspaceRootPath, ignoredDirectoryPath, 'ignored')
+    const globResult = await createGlobToolResult(workspaceRootPath, ignoredDirectoryPath, 'ignored', '**/*.ts')
+    const grepResult = await createGrepToolResult(workspaceRootPath, ignoredDirectoryPath, 'ignored', 'needle', '**/*.ts')
+
+    assert.match(listResult.body ?? '', /nested\/$/mu)
+    assert.match(globResult.body ?? '', /hidden\.ts/u)
+    assert.match(globResult.body ?? '', /deep\.ts/u)
+    assert.match(grepResult.body ?? '', /deep\.ts/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('createGlobToolResult excludes matches from gitignored directories, even when searching inside an ignored subtree', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
   const ignoredDirectoryPath = path.join(workspaceRootPath, 'ignored')
@@ -123,7 +142,7 @@ test('createGlobToolResult excludes matches from gitignored directories, even wh
     assert.doesNotMatch(workspaceResult.body ?? '', /node_modules/u)
 
     assert.equal(ignoredResult.status, 'success')
-    assert.equal(ignoredResult.body, 'No files found')
+    assert.match(ignoredResult.body ?? '', /hidden\.ts/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

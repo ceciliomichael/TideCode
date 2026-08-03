@@ -42,10 +42,12 @@ export function useChatContextUsage({
   const [usage, setUsage] = useState<ContextUsageEstimate>(EMPTY_CONTEXT_USAGE)
   const messagesRef = useRef(messages)
   const fetchUsageRef = useRef<(() => void) | null>(null)
+  const requestSequenceRef = useRef(0)
   messagesRef.current = messages
 
   useEffect(() => {
     if (!providerId) {
+      requestSequenceRef.current += 1
       setUsage(EMPTY_CONTEXT_USAGE)
       fetchUsageRef.current = null
       return
@@ -54,6 +56,7 @@ export function useChatContextUsage({
     let isCancelled = false
 
     const fetchUsage = () => {
+      const requestSequence = ++requestSequenceRef.current
       void window.tidecodeChat
         .estimateContextUsage({
           agentContextRootPath,
@@ -66,7 +69,7 @@ export function useChatContextUsage({
           terminalExecutionMode,
         })
         .then((nextUsage) => {
-          if (!isCancelled) {
+          if (!isCancelled && requestSequence === requestSequenceRef.current) {
             setUsage(nextUsage)
           }
         })
@@ -78,7 +81,10 @@ export function useChatContextUsage({
     fetchUsageRef.current = fetchUsage
     const timeoutId = window.setTimeout(fetchUsage, 120)
     const unsubscribeChat = window.tidecodeChat.onStreamEvent((event) => {
-      if (event.type === 'compaction_committed' && event.conversationId === conversationId) {
+      const isRelevantCompletion =
+        (event.type === 'completed' || event.type === 'aborted' || event.type === 'error') &&
+        event.conversationId === conversationId
+      if ((event.type === 'compaction_committed' && event.conversationId === conversationId) || isRelevantCompletion) {
         fetchUsage()
       }
     })
@@ -100,6 +106,7 @@ export function useChatContextUsage({
 
     return () => {
       isCancelled = true
+      requestSequenceRef.current += 1
       window.clearTimeout(timeoutId)
       window.clearInterval(intervalId)
       window.removeEventListener('focus', handleFocus)

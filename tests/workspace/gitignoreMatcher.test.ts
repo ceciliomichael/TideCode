@@ -29,6 +29,14 @@ test('shouldAlwaysShowEntry matches .env* and AGENTS.md case-insensitively', () 
   assert.equal(shouldAlwaysShowEntry('node_modules'), false)
 })
 
+test('shouldIgnoreWorkspaceEntry hides generated files and common developer directories in workspace mode', () => {
+  assert.equal(shouldIgnoreWorkspaceEntry('node_modules'), true)
+  assert.equal(shouldIgnoreWorkspaceEntry('__pycache__'), true)
+  assert.equal(shouldIgnoreWorkspaceEntry('bundle.js.map'), true)
+  assert.equal(shouldIgnoreWorkspaceEntry('module.pyc'), true)
+  assert.equal(shouldIgnoreWorkspaceEntry('vendor', 'explorer'), false)
+})
+
 test('isAgentInstructionsFile identifies only AGENTS.md case-insensitively', () => {
   assert.equal(isAgentInstructionsFile('AGENTS.md'), true)
   assert.equal(isAgentInstructionsFile('agents.md'), true)

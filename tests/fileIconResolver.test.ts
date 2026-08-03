@@ -20,3 +20,12 @@ test('resolveFileIconConfig maps environment files to the dotenv icon', () => {
     assert.equal(iconConfig.icon.name, 'SiDotenv', `expected ${fileName} to use the dotenv icon`)
   }
 })
+
+test('resolveFileIconConfig updates as a typed filename reaches a known extension', () => {
+  const incompleteIconConfig = resolveFileIconConfig({ fileName: 'daily-update.' })
+  const markdownIconConfig = resolveFileIconConfig({ fileName: 'daily-update.md' })
+
+  assert.equal(incompleteIconConfig.label, 'File')
+  assert.equal(markdownIconConfig.label, 'Markdown')
+  assert.equal(markdownIconConfig.icon.name, 'SiMarkdown')
+})

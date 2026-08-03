@@ -49,6 +49,34 @@ test('tool result replay preserves oversized model content without truncation', 
   assert.equal(storedResult.body, body)
 })
 
+test('Codex fallback prompts do not synthesize unsupported generic reasoning parts', () => {
+  const prompt = buildChatPrompt({
+    chatMode: 'agent',
+    messages: [
+      {
+        content: 'Inspect the file',
+        id: 'user-1',
+        role: 'user',
+        timestamp: 1,
+      },
+      {
+        content: 'The answer',
+        id: 'assistant-1',
+        reasoningContent: 'Inspecting the repository first.',
+        role: 'assistant',
+        timestamp: 2,
+      },
+    ],
+    options: { includeAssistantReasoningParts: false },
+    workspaceRootPath: 'C:/repo',
+  })
+
+  assert.deepEqual(prompt.messages[1], {
+    content: 'The answer',
+    role: 'assistant',
+  })
+})
+
 test('buildChatPrompt preserves assistant tool calls and matching tool results', () => {
   const messages: Message[] = [
     {

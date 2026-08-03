@@ -158,6 +158,12 @@ async function runCodexChatStream(
           prepareStep: streamInput.prepareStep,
         }),
       onSettled,
+      // Codex uses the OpenAI Responses adapter. Visible reasoning restored
+      // from the UI history is not a valid Responses reasoning item unless it
+      // still carries the provider's item metadata. Exact canonical replay
+      // keeps that metadata; legacy/fallback history must not synthesize a
+      // generic reasoning part that the adapter will discard with a warning.
+      promptOptions: { includeAssistantReasoningParts: false },
       startInput: input,
       streamId,
       webContents,
@@ -175,10 +181,11 @@ async function runCodexChatStream(
 export async function cancelCodexChatStream(streamId: string) {
   const abortController = activeStreams.get(streamId)
   if (!abortController) {
-    return
+    return false
   }
 
   abortController.abort()
+  return true
 }
 
 export async function submitCodexToolDecision(input: SubmitToolDecisionInput): Promise<SubmitToolDecisionResult> {

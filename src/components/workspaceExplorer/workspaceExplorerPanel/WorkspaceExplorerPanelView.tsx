@@ -90,6 +90,11 @@ export function WorkspaceExplorerPanelView({
       return null
     }
 
+    const creationFileIconConfig = draft.isDirectory
+      ? null
+      : resolveFileIconConfig({ fileName: panelState.creationName })
+    const CreationFileIcon = creationFileIconConfig?.icon
+
     return (
       <li
         key={`create-${draft.parentPath}-${draft.isDirectory ? 'folder' : 'file'}`}
@@ -107,6 +112,12 @@ export function WorkspaceExplorerPanelView({
           <span className="w-[14px] shrink-0" />
           {draft.isDirectory ? (
             <Folder size={14} className="shrink-0 text-subtle-foreground" />
+          ) : CreationFileIcon ? (
+            <CreationFileIcon
+              size={14}
+              className="shrink-0"
+              style={{ color: creationFileIconConfig?.color }}
+            />
           ) : (
             <File size={14} className="shrink-0 text-subtle-foreground" />
           )}

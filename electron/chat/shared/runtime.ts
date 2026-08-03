@@ -356,7 +356,7 @@ export async function runToolEnabledChatStream(input: {
       type: 'started',
     })
 
-    await processRuntimeStream({
+    const processedStream = await processRuntimeStream({
       abortController: input.abortController,
       conversationId,
       fullStream: stream.fullStream,
@@ -365,9 +365,25 @@ export async function runToolEnabledChatStream(input: {
       webContents: input.webContents,
     })
 
+    // Some providers close their async iterable normally after receiving an
+    // abort signal instead of throwing an AbortError. Treat that close as an
+    // abort before the normal completion path can update canonical replay or
+    // emit a completed event.
+    if (processedStream.wasAborted || input.abortController.signal.aborted) {
+      throw new Error('Chat stream aborted.')
+    }
+
     if (conversationId) {
       await queuedHistoryWrites
+      if (input.abortController.signal.aborted) {
+        throw new Error('Chat stream aborted.')
+      }
+
       const finalDocument = await readCanonicalHistory(conversationId)
+      if (input.abortController.signal.aborted) {
+        throw new Error('Chat stream aborted.')
+      }
+
       await safelyPersistHistory(() => recordRunCompleted({
         anchorUserMessageId,
         contextFingerprint,
@@ -379,10 +395,23 @@ export async function runToolEnabledChatStream(input: {
         providerId: input.startInput.providerId,
         runId,
       }))
+
+      // Cancellation can arrive while the completion write is flushing. Keep
+      // the frontend terminal event consistent with the user's stop action
+      // and leave the run eligible for an aborted terminal record.
+      if (input.abortController.signal.aborted) {
+        throw new Error('Chat stream aborted.')
+      }
+
       runWasRecorded = false
     }
 
+    if (input.abortController.signal.aborted) {
+      throw new Error('Chat stream aborted.')
+    }
+
     emitChatStreamEvent(input.webContents, {
+      conversationId,
       streamId: input.streamId,
       type: 'completed',
     })
@@ -398,12 +427,14 @@ export async function runToolEnabledChatStream(input: {
     }
     if (input.abortController.signal.aborted) {
       emitChatStreamEvent(input.webContents, {
+        conversationId,
         streamId: input.streamId,
         type: 'aborted',
       })
     } else {
       emitChatStreamEvent(input.webContents, {
         errorMessage: error instanceof Error && error.message.trim().length > 0 ? error.message : 'Chat request failed.',
+        conversationId,
         streamId: input.streamId,
         type: 'error',
       })

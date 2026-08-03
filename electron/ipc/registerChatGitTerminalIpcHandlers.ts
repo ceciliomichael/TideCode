@@ -36,6 +36,7 @@ import {
   startApiKeyChatStream,
   submitApiKeyToolDecision,
 } from '../chat/apiKey/runtime'
+import { emitChatStreamEvent } from '../chat/shared/runtimeStreamEvents'
 import {
   checkoutGitBranch,
   createAndCheckoutGitBranch,
@@ -85,19 +86,34 @@ export function registerChatGitTerminalIpcHandlers(
   })
   ipcMain.handle('chat:stream:cancel', async (_event, streamId: string) => {
     const providerId = activeChatStreamProviders.get(streamId)
+    const wasRegistered = activeChatStreamProviders.has(streamId)
     activeChatStreamProviders.delete(streamId)
+    let wasCancelled = false
 
     if (providerId === 'codex') {
-      await cancelCodexChatStream(streamId)
+      wasCancelled = await cancelCodexChatStream(streamId)
+      if (wasCancelled || wasRegistered) {
+        emitChatStreamEvent(_event.sender, { streamId, type: 'aborted' })
+      }
       return
     }
 
     if (providerId) {
-      await cancelApiKeyChatStream(streamId)
+      wasCancelled = await cancelApiKeyChatStream(streamId)
+      if (wasCancelled || wasRegistered) {
+        emitChatStreamEvent(_event.sender, { streamId, type: 'aborted' })
+      }
       return
     }
 
-    await Promise.all([cancelCodexChatStream(streamId), cancelApiKeyChatStream(streamId)])
+    const cancellationResults = await Promise.all([
+      cancelCodexChatStream(streamId),
+      cancelApiKeyChatStream(streamId),
+    ])
+    wasCancelled = cancellationResults.some(Boolean)
+    if (wasCancelled || wasRegistered) {
+      emitChatStreamEvent(_event.sender, { streamId, type: 'aborted' })
+    }
   })
   ipcMain.handle('chat:compressConversation', async (_event, input: CompressChatHistoryInput) => {
     if (input.providerId === 'codex') {

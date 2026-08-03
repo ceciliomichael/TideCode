@@ -2,6 +2,7 @@ import { useCallback, useEffect, type Dispatch, type MutableRefObject, type SetS
 import type { WorkspaceFileTab, WorkspaceTab } from '../../components/workspaceExplorer/types'
 import { createMarkdownPreviewTabKey, isMarkdownPreviewablePath } from '../../lib/markdown-preview'
 import { isDocxPreviewablePath } from '../../lib/docx-preview'
+import { normalizePathSeparators } from '../../lib/filePathUtils'
 import { getPathBasename } from '../../lib/pathPresentation'
 import { isPdfPreviewablePath } from '../../lib/pdf-preview'
 import { createSvgPreviewTabKey, isSvgPreviewablePath } from '../../lib/svg-preview'
@@ -43,6 +44,8 @@ export function useWorkspaceTabActions({
       const workspaceRootPath = activeWorkspacePathRef.current
       if (!workspaceRootPath) return
 
+      const normalizedRelativePath = normalizePathSeparators(relativePath)
+
       if (activeWorkspacePanelWidth !== null) {
         setWorkspaceExplorerWidth(activeWorkspacePanelWidth)
       }
@@ -50,10 +53,14 @@ export function useWorkspaceTabActions({
       setIsExplorerOpen(true)
       setIsWorkspaceTabsPanelVisible(true)
       onRightPanelOpenChange(false)
-      setActiveWorkspaceFilePath(relativePath)
-      setActiveWorkspaceTabKey(relativePath)
+      setActiveWorkspaceFilePath(normalizedRelativePath)
+      setActiveWorkspaceTabKey(normalizedRelativePath)
       setWorkspaceFileTabs((currentTabs) => {
-        if (currentTabs.some((tab) => tab.kind === 'file' && tab.relativePath === relativePath)) {
+        if (
+          currentTabs.some(
+            (tab) => tab.kind === 'file' && normalizePathSeparators(tab.relativePath) === normalizedRelativePath,
+          )
+        ) {
           return currentTabs
         }
 
@@ -63,44 +70,50 @@ export function useWorkspaceTabActions({
             kind: 'file',
             content: '',
             originalContent: null,
-            fileName: getPathBasename(relativePath),
+            fileName: getPathBasename(normalizedRelativePath),
             isBinary: false,
             isTruncated: false,
             modifiedTimeMs: 0,
-            relativePath,
-            tabKey: relativePath,
+            relativePath: normalizedRelativePath,
+            tabKey: normalizedRelativePath,
             sizeBytes: 0,
             status: 'loading',
           },
         ]
       })
 
-      const readFile = isDocxPreviewablePath(relativePath) || isPdfPreviewablePath(relativePath)
+      const readFile = isDocxPreviewablePath(normalizedRelativePath) || isPdfPreviewablePath(normalizedRelativePath)
         ? (input: { relativePath: string; workspaceRootPath: string }) =>
             readWorkspaceFileWithCache(input, { priority: true })
         : window.tidecodeWorkspace.readFile
-      void readFile({ relativePath, workspaceRootPath })
+      void readFile({ relativePath: normalizedRelativePath, workspaceRootPath })
         .then((result) => {
           if (activeWorkspacePathRef.current !== workspaceRootPath) return
 
           setWorkspaceFileTabs((currentTabs) =>
             currentTabs.map((tab) => {
-              if (tab.kind !== 'file' || tab.relativePath !== relativePath) return tab
+              if (
+                tab.kind !== 'file' ||
+                normalizePathSeparators(tab.relativePath) !== normalizedRelativePath
+              ) {
+                return tab
+              }
 
               const normalizedContent = result.content.replace(/\r\n/g, '\n')
+              const normalizedResultPath = normalizePathSeparators(result.relativePath)
               return {
                 ...tab,
                 content: normalizedContent,
                 originalContent: normalizedContent,
-                fileName: getPathBasename(result.relativePath),
+                fileName: getPathBasename(normalizedResultPath),
                 isBinary: result.isBinary,
                 isTruncated: result.isTruncated,
                 modifiedTimeMs: result.modifiedTimeMs,
                 previewDataUrl: result.previewDataUrl,
                 previewError: result.previewError,
                 previewMimeType: result.previewMimeType,
-                relativePath: result.relativePath,
-                tabKey: result.relativePath,
+                relativePath: normalizedResultPath,
+                tabKey: normalizedResultPath,
                 sizeBytes: result.sizeBytes,
                 status: 'ready',
               }
@@ -112,7 +125,7 @@ export function useWorkspaceTabActions({
 
           setWorkspaceFileTabs((currentTabs) =>
             currentTabs.map((tab) =>
-              tab.kind === 'file' && tab.relativePath === relativePath
+              tab.kind === 'file' && normalizePathSeparators(tab.relativePath) === normalizedRelativePath
                 ? {
                     ...tab,
                     errorMessage: error instanceof Error ? error.message : 'Failed to open file.',
@@ -145,11 +158,12 @@ export function useWorkspaceTabActions({
       initialContent = '',
       initialStatus: 'loading' | 'ready' = 'loading',
     ) => {
+      const normalizedRelativePath = normalizePathSeparators(relativePath)
       setIsSidebarOpen(false)
       setIsExplorerOpen(true)
       setIsWorkspaceTabsPanelVisible(true)
       onRightPanelOpenChange(false)
-      setActiveWorkspaceFilePath(relativePath)
+      setActiveWorkspaceFilePath(normalizedRelativePath)
       setActiveWorkspaceTabKey(tabKey)
 
       setWorkspaceFileTabs((currentTabs) => {
@@ -159,14 +173,14 @@ export function useWorkspaceTabActions({
           kind === 'markdown-preview'
             ? {
                 kind,
-                fileName: getPathBasename(relativePath),
-                relativePath,
+                fileName: getPathBasename(normalizedRelativePath),
+                relativePath: normalizedRelativePath,
                 tabKey,
                 content: initialContent,
                 status: initialStatus,
                 isTruncated: false,
               }
-            : { kind, fileName: getPathBasename(relativePath), relativePath, tabKey }
+            : { kind, fileName: getPathBasename(normalizedRelativePath), relativePath: normalizedRelativePath, tabKey }
 
         return [...currentTabs, newTab]
       })
@@ -184,24 +198,27 @@ export function useWorkspaceTabActions({
 
   const handleOpenWorkspaceMarkdownPreview = useCallback(
     (relativePath: string) => {
-      if (!isMarkdownPreviewablePath(relativePath)) return
+      const normalizedRelativePath = normalizePathSeparators(relativePath)
+      if (!isMarkdownPreviewablePath(normalizedRelativePath)) return
 
       const workspaceRootPath = activeWorkspacePathRef.current
-      const tabKey = createMarkdownPreviewTabKey(relativePath)
+      const tabKey = createMarkdownPreviewTabKey(normalizedRelativePath)
       const sourceTab = workspaceFileTabsRef.current.find(
-        (tab): tab is WorkspaceFileTab => tab.kind === 'file' && tab.relativePath === relativePath,
+        (tab): tab is WorkspaceFileTab =>
+          tab.kind === 'file' && normalizePathSeparators(tab.relativePath) === normalizedRelativePath,
       )
       const initialContent = sourceTab?.content ?? ''
       const initialStatus = sourceTab?.status === 'ready' ? ('ready' as const) : ('loading' as const)
 
-      openWorkspacePreviewTab(relativePath, tabKey, 'markdown-preview', initialContent, initialStatus)
+      openWorkspacePreviewTab(normalizedRelativePath, tabKey, 'markdown-preview', initialContent, initialStatus)
       if (!workspaceRootPath) return
 
       void window.tidecodeWorkspace
-        .readFile({ relativePath, workspaceRootPath })
+        .readFile({ relativePath: normalizedRelativePath, workspaceRootPath })
         .then((result) => {
           if (activeWorkspacePathRef.current !== workspaceRootPath) return
           const normalizedContent = result.content.replace(/\r\n/g, '\n')
+          const normalizedResultPath = normalizePathSeparators(result.relativePath)
           setWorkspaceFileTabs((currentTabs) =>
             currentTabs.map((tab) =>
               tab.kind === 'markdown-preview' && tab.tabKey === tabKey
@@ -210,7 +227,7 @@ export function useWorkspaceTabActions({
                     content: normalizedContent,
                     status: 'ready' as const,
                     isTruncated: result.isTruncated,
-                    fileName: getPathBasename(result.relativePath),
+                    fileName: getPathBasename(normalizedResultPath),
                   }
                 : tab,
             ),
@@ -272,8 +289,13 @@ export function useWorkspaceTabActions({
 
   const handleOpenWorkspaceSvgPreview = useCallback(
     (relativePath: string) => {
-      if (isSvgPreviewablePath(relativePath)) {
-        openWorkspacePreviewTab(relativePath, createSvgPreviewTabKey(relativePath), 'svg-preview')
+      const normalizedRelativePath = normalizePathSeparators(relativePath)
+      if (isSvgPreviewablePath(normalizedRelativePath)) {
+        openWorkspacePreviewTab(
+          normalizedRelativePath,
+          createSvgPreviewTabKey(normalizedRelativePath),
+          'svg-preview',
+        )
       }
     },
     [openWorkspacePreviewTab],

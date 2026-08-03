@@ -173,7 +173,13 @@ async function runApiKeyChatStream(
 }
 
 export async function cancelApiKeyChatStream(streamId: string) {
-  activeStreams.get(streamId)?.abort()
+  const abortController = activeStreams.get(streamId)
+  if (!abortController) {
+    return false
+  }
+
+  abortController.abort()
+  return true
 }
 
 export async function submitApiKeyToolDecision(
