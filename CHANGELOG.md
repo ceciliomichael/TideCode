@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.18 — Cleaner sidebar project filter
+
+The sidebar thread filter stays focused on the projects that matter: the Archived option only appears once a thread has actually been archived.
+
+- Hides the Archived option from the sidebar filter dropdown until at least one chat is archived.
+- Returns the sidebar to All projects automatically when the last archived chat is unarchived while the Archived view is active, instead of leaving it on a hidden, empty filter.
+
 ## 1.0.17 — Smoother chat cleanup and interruption
 
 TideCode now keeps chat cleanup and interruption behavior predictable while making live thinking output easier to read.
