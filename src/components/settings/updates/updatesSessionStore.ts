@@ -189,6 +189,16 @@ export function requestUpdateDownload() {
     return
   }
 
+  // A download for this version is already running or finished: do not reset
+  // the progress bar to 0 and start another attempt.
+  const downloadIsCurrent =
+    (updatesSessionSnapshot.downloadState === 'downloading' ||
+      updatesSessionSnapshot.downloadState === 'downloaded') &&
+    updatesSessionSnapshot.pendingVersion === latestResult.latestVersion
+  if (downloadIsCurrent) {
+    return
+  }
+
   const requestId = latestRequestId + 1
   latestRequestId = requestId
   updateSnapshot({

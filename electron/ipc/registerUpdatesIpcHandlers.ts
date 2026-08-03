@@ -4,7 +4,12 @@ import {
   checkForUpdates,
   TIDECODE_LATEST_RELEASE_URL,
 } from '../updates/githubReleaseService'
-import { downloadLatestUpdate, configureAutoUpdater, restartToInstallUpdate } from '../updates/autoUpdateService'
+import {
+  configureAutoUpdater,
+  downloadLatestUpdate,
+  getUpdateDownloadState,
+  restartToInstallUpdate,
+} from '../updates/autoUpdateService'
 import { requestLatestReleaseWithElectron } from '../updates/electronReleaseRequest'
 import { buildCachedUpdateCheckResult, createUpdateReleaseCacheStore } from '../updates/releaseCache'
 
@@ -39,12 +44,18 @@ export function registerUpdatesIpcHandlers(getWindow: () => Electron.BrowserWind
       return result
     }
 
-    void downloadLatestUpdate(result.latestVersion).catch(() => undefined)
+    const downloadStatus = getUpdateDownloadState()
+    if (downloadStatus.downloadState === 'not-available') {
+      void downloadLatestUpdate(result.latestVersion).catch(() => undefined)
+    }
 
+    // Report the real download state instead of always claiming a download is
+    // starting. Otherwise a repeated check resets the UI to 0% even when the
+    // update is already downloaded (or is mid-download at 60%).
     return {
       ...result,
-      downloadPercent: 0,
-      downloadState: 'downloading' as const,
+      downloadPercent: downloadStatus.downloadPercent,
+      downloadState: downloadStatus.downloadState,
     }
   })
   ipcMain.handle('updates:downloadUpdate', async (_event, version: unknown) => {
