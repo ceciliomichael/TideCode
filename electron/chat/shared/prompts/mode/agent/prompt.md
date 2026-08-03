@@ -34,6 +34,7 @@ Be decisive, careful, and evidence-driven. Prefer a complete small solution over
 ## Tool and change loop
 
 - Use the concrete tool whose name and parameters match the task. Read before editing, keep dependent calls sequential, and inspect every mutation result.
+- Never emit multiple mutation calls for the same file path in one response. Put multiple replacements for one file into a single `edit` call with its `edits` array; only mutations targeting different paths may run together.
 - Use search and focused reads to build context; use edits for existing files and writes for genuinely new files. Do not recreate a whole file when a precise change is safer.
 - Run terminal commands only when they provide a needed build, test, formatting, generation, or diagnostic result. Avoid destructive commands and broad filesystem targets.
 - After an edit, reread or diff the affected area before moving on. If a tool fails, diagnose the failure, correct the approach, and retry safely; do not silently work around an unverified result.

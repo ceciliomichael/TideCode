@@ -15,6 +15,7 @@ import { ChatInput } from "./ChatInput";
 import { UserMessage } from "./UserMessage";
 import { WorkingBlock } from "./chat/WorkingBlock";
 import { CompactionDivider } from "./chat/CompactionDivider";
+import { splitFinishedAssistantRun } from './chat/assistantWorkGrouping';
 import { placeCompactionMarkersAfterTranscript } from './chat/compactionMarkerPlacement';
 import { useChatAutoScroll } from "./chat/useChatAutoScroll";
 import type { ChatModeOption } from "./chat/ChatModeSelectorField";
@@ -344,75 +345,58 @@ export function MessageList({
 
     const processFinishedAssistantRun = () => {
       if (currentAssistantRun.length === 0) return;
-      
-      const lastMsg = currentAssistantRun[currentAssistantRun.length - 1];
-      const normalizedContent = normalizeAssistantMessageContent(lastMsg);
-      
-      const hasReasoning = normalizedContent.reasoningContent.trim().length > 0;
-      const hasTools = (lastMsg.toolInvocations?.length ?? 0) > 0;
-      const hasText = normalizedContent.content.trim().length > 0;
-      
-      if ((hasReasoning || hasTools) && hasText) {
-        const msgWork = {
-          ...lastMsg,
-          id: `${lastMsg.id}-work`,
-          content: '',
-          reasoningContent: normalizedContent.reasoningContent,
-        };
-        const msgText = {
-          ...lastMsg,
-          id: `${lastMsg.id}-text`,
-          content: normalizedContent.content,
-          reasoningContent: undefined,
-          reasoningCompletedAt: undefined,
-          toolInvocations: [],
-        };
-        
-        const workingMessages = [...currentAssistantRun.slice(0, -1), msgWork];
+
+      const presentation = splitFinishedAssistantRun(currentAssistantRun);
+      const lastMessageIndex = currentAssistantRunStartIndex + currentAssistantRun.length - 1;
+
+      if (presentation.workingMessages.length > 0) {
         items.push({
           type: 'working_group',
-          messages: workingMessages,
-          trailingMessage: {
-            message: msgText,
-            index: currentAssistantRunStartIndex + currentAssistantRun.length - 1
-          },
-          startTime: workingMessages[0].timestamp,
-          endTime: getWorkEndTime(lastMsg),
+          messages: presentation.workingMessages,
+          trailingMessage: presentation.trailingMessage
+            ? {
+                message: presentation.trailingMessage,
+                index: lastMessageIndex,
+              }
+            : undefined,
+          startTime: presentation.workingMessages[0].timestamp,
+          endTime: getWorkEndTime(presentation.workingMessages[presentation.workingMessages.length - 1]),
           startIndex: currentAssistantRunStartIndex,
-          key: `wg-${workingMessages[0].id}`
+          key: `wg-${presentation.workingMessages[0].id}`,
         });
-      } else if (currentAssistantRun.length > 1) {
-        items.push({
-          type: 'working_group',
-          messages: currentAssistantRun.slice(0, -1),
-          trailingMessage: {
-            message: lastMsg,
-            index: currentAssistantRunStartIndex + currentAssistantRun.length - 1
-          },
-          startTime: currentAssistantRun[0].timestamp,
-          endTime: getWorkEndTime(currentAssistantRun[currentAssistantRun.length - 1]),
-          startIndex: currentAssistantRunStartIndex,
-          key: `wg-${currentAssistantRun[0].id}`
-        });
-      } else {
+        return;
+      }
+
+      if (presentation.trailingMessage) {
         items.push({
           type: 'message',
-          message: lastMsg,
-          index: currentAssistantRunStartIndex
+          message: presentation.trailingMessage,
+          index: lastMessageIndex,
         });
       }
     };
 
     for (let i = 0; i < visibleMessages.length; i++) {
       const msg = visibleMessages[i];
-      if (msg.role === 'user') {
+      const markersBeforeMessage = markerPlacement.markersBeforeMessageId.get(msg.id) ?? [];
+
+      if (markersBeforeMessage.length > 0) {
         if (currentAssistantRun.length > 0) {
           processFinishedAssistantRun();
           currentAssistantRun = [];
           currentAssistantRunStartIndex = -1;
         }
-        for (const marker of markerPlacement.markersBeforeMessageId.get(msg.id) ?? []) {
+
+        for (const marker of markersBeforeMessage) {
           items.push({ marker, type: 'compaction_marker' });
+        }
+      }
+
+      if (msg.role === 'user') {
+        if (currentAssistantRun.length > 0) {
+          processFinishedAssistantRun();
+          currentAssistantRun = [];
+          currentAssistantRunStartIndex = -1;
         }
         items.push({ type: 'message', message: msg, index: i });
       } else {

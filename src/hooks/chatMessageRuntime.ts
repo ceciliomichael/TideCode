@@ -35,6 +35,7 @@ interface StreamAssistantResponseInput {
   onContentDelta: (delta: string) => void
   onReasoningCompleted: () => void
   onReasoningDelta: (delta: string) => void
+  onCompactionCommitted: () => void
   onStreamStarted: (streamId: string) => void
   onSyntheticToolMessage: (message: Message) => void
   providerId: ChatProviderId
@@ -126,6 +127,11 @@ export async function streamAssistantResponse(
 
       if (event.type === 'reasoning_completed') {
         input.onReasoningCompleted()
+        return
+      }
+
+      if (event.type === 'compaction_committed') {
+        input.onCompactionCommitted()
         return
       }
 

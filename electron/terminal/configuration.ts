@@ -12,6 +12,7 @@ const TERMINAL_MIN_COLS = 20;
 const TERMINAL_MAX_COLS = 400;
 const TERMINAL_MIN_ROWS = 6;
 const TERMINAL_MAX_ROWS = 200;
+export const MAX_TERMINAL_POLLING_MS = 5 * 60 * 1000;
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"]);
 
 interface TerminalShellSpec {
@@ -42,8 +43,9 @@ export function clampTerminalRows(value: number, fallback: number) {
 }
 
 export function clampTerminalPollingMs(pollingMs: number | undefined) {
-  if (pollingMs === undefined || !Number.isFinite(pollingMs)) return 0;
-  return Math.max(0, Math.floor(pollingMs));
+  if (pollingMs === undefined) return MAX_TERMINAL_POLLING_MS;
+  if (!Number.isFinite(pollingMs)) return 0;
+  return Math.min(MAX_TERMINAL_POLLING_MS, Math.max(0, Math.floor(pollingMs)));
 }
 
 function assertDirectoryExists(directoryPath: string) {

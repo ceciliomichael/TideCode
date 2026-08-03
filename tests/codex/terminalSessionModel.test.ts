@@ -12,13 +12,10 @@ function createTestSession(): ActiveTerminalSession {
   return {
     aiTurnId: null,
     cwd: '/workspace',
-    enableIdleTimeout: false,
     exitCode: null,
     hasExited: false,
-    idleTimerId: null,
     isAiSession: true,
     label: null,
-    lastReadAt: Date.now(),
     outputBuffer: '',
     pendingAiOutputChunks: [],
     outputWaiters: new Set(),

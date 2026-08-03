@@ -9,6 +9,7 @@ import {
 } from './textReplacementMatching'
 import type { WorkspaceToolContext } from './workspaceToolPaths'
 import { resolveReadableTargetPath } from './workspaceToolPaths'
+import { enqueueWorkspaceMutation } from './workspaceMutationQueue'
 import {
   aggregateFileChangeItems,
   buildFileChangeResult,
@@ -222,6 +223,17 @@ export async function createEditToolResult(
     context.terminalExecutionMode,
   )
 
+  return enqueueWorkspaceMutation(target.absolutePath, () =>
+    createEditToolResultInternal(context, chunks, target),
+  )
+}
+
+async function createEditToolResultInternal(
+  context: WorkspaceToolContext,
+  chunks: EditChunk[],
+  target: ReturnType<typeof resolveReadableTargetPath>,
+): Promise<AgentToolExecutionResult> {
+
   const oldContent = await fs.readFile(target.absolutePath, 'utf8').catch(() => null)
   if (oldContent === null) {
     if (chunks.length !== 1) {
@@ -283,6 +295,7 @@ export async function createEditToolResult(
   }
 
   let newContent: string
+  let nextSession: ActiveFileEditSession
   if (usedSessionFallback && session) {
     const combinedReplacements = [...session.replacements, ...replacements]
     newContent = applyResolvedTextReplacements(
@@ -290,19 +303,22 @@ export async function createEditToolResult(
       combinedReplacements,
       target.displayPath,
     )
-    session.replacements = combinedReplacements
-    session.lastUpdated = Date.now()
+    nextSession = {
+      baseContent: session.baseContent,
+      lastUpdated: Date.now(),
+      replacements: combinedReplacements,
+    }
   } else {
     newContent = applyResolvedTextReplacements(
       normalizedOld,
       replacements,
       target.displayPath,
     )
-    activeFileEditSessions.set(target.absolutePath, {
+    nextSession = {
       baseContent: normalizedOld,
-      replacements,
       lastUpdated: Date.now(),
-    })
+      replacements,
+    }
   }
 
   if (newContent === normalizedOld) {
@@ -315,6 +331,7 @@ export async function createEditToolResult(
 
   await captureCheckpointFileStateIfNeeded(context.checkpointId, target.absolutePath)
   await fs.writeFile(target.absolutePath, newContent, 'utf8')
+  activeFileEditSessions.set(target.absolutePath, nextSession)
   notifyWorkspaceExplorerChange(context.workspaceRootPath)
 
   const fileChanges = aggregateFileChangeItems([

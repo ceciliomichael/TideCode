@@ -22,17 +22,22 @@ export function placeCompactionMarkersAfterTranscript(
       continue
     }
 
-    const nextUserMessage = visibleMessages
+    const firstPostCompactionMessage = visibleMessages
+      .slice(anchorIndex + 1)
+      .find((message) => message.timestamp > marker.createdAt)
+
+    const nextTranscriptMessage = firstPostCompactionMessage ?? visibleMessages
       .slice(anchorIndex + 1)
       .find((message) => message.role === 'user')
-    if (!nextUserMessage) {
+
+    if (!nextTranscriptMessage) {
       trailingMarkers.push(marker)
       continue
     }
 
-    const anchoredMarkers = markersBeforeMessageId.get(nextUserMessage.id) ?? []
+    const anchoredMarkers = markersBeforeMessageId.get(nextTranscriptMessage.id) ?? []
     anchoredMarkers.push(marker)
-    markersBeforeMessageId.set(nextUserMessage.id, anchoredMarkers)
+    markersBeforeMessageId.set(nextTranscriptMessage.id, anchoredMarkers)
   }
 
   return {

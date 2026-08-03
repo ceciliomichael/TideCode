@@ -116,6 +116,48 @@ test('chat assistant drafts create a fresh think block after a tool boundary', (
   assert.equal(streamedMessages[3]?.toolInvocations?.length ?? 0, 0)
 })
 
+test('chat assistant drafts start a fresh assistant block after compaction', () => {
+  const { draftManager } = createDraftManager()
+
+  draftManager.appendPlaceholderDraft()
+  draftManager.handleToolInvocationStarted('tool-call-1', {
+    argumentsText: '{"path":"C:/repo/src/example.ts"}',
+    startedAt: 10,
+    toolName: 'read',
+  })
+  draftManager.handleToolInvocationCompleted('tool-call-1', {
+    argumentsText: '{"path":"C:/repo/src/example.ts"}',
+    completedAt: 12,
+    resultContent: 'Read src/example.ts',
+    resultPresentation: undefined,
+    toolName: 'read',
+  })
+
+  draftManager.handleCompactionCommitted()
+  draftManager.handleToolInvocationStarted('tool-call-2', {
+    argumentsText: '{"path":"C:/repo/src/next.ts"}',
+    startedAt: 20,
+    toolName: 'read',
+  })
+  draftManager.handleToolInvocationCompleted('tool-call-2', {
+    argumentsText: '{"path":"C:/repo/src/next.ts"}',
+    completedAt: 22,
+    resultContent: 'Read src/next.ts',
+    resultPresentation: undefined,
+    toolName: 'read',
+  })
+
+  const streamedMessages = draftManager.finalizeStreamedMessages(false)
+
+  assert.ok(streamedMessages)
+  const assistantMessages = streamedMessages.filter((message) => message.role === 'assistant')
+  assert.equal(assistantMessages.length, 2)
+  assert.deepEqual(assistantMessages.map((message) => message.toolInvocations?.map((tool) => tool.id)), [
+    ['tool-call-1'],
+    ['tool-call-2'],
+  ])
+})
+
 test('chat assistant drafts keep consecutive reasoning-only segments in the same think block', () => {
   const { draftManager } = createDraftManager()
 

@@ -12,6 +12,7 @@ import {
   terminateAllBackgroundSessions,
   terminateAllBackgroundSessionsForTurn,
 } from '../../electron/chat/shared/tools/terminalTools'
+import { MAX_TERMINAL_POLLING_MS } from '../../electron/terminal/configuration'
 
 const webContentsStub = {
   id: 42,
@@ -37,7 +38,6 @@ type ExecuteTerminalTool = {
       rows?: number
       session_id?: number
       session_key?: string
-      wait_ms?: number
     },
     options?: { abortSignal?: AbortSignal },
   ) => Promise<ExecuteTerminalResult>
@@ -66,7 +66,6 @@ test('execute_terminal action=execute queues command in background and action=re
   const createCalls: Array<{
     cols: number
     cwd?: string
-    enableIdleTimeout?: boolean
     isAiSession?: boolean
     rows: number
     sessionKey?: string | null
@@ -130,7 +129,6 @@ test('execute_terminal action=execute queues command in background and action=re
       {
         cols: 120,
         cwd: nestedPath,
-        enableIdleTimeout: true,
         isAiSession: true,
         label: null,
         rows: 30,
@@ -145,17 +143,83 @@ test('execute_terminal action=execute queues command in background and action=re
     const readResult = await getExecuteTerminalTool(tools).execute({
       action: 'read',
       session_id: visibleSessionId,
-      wait_ms: 120_000,
     })
 
     assert.equal(readResult.status, 'success')
-    assert.equal(getSessionOutputCalls[0]?.pollingMs, 120_000)
+    assert.equal(getSessionOutputCalls[0]?.pollingMs, MAX_TERMINAL_POLLING_MS)
     assert.match(readResult.body ?? '', /line 1/u)
     assert.match(readResult.body ?? '', /line 2/u)
     assert.ok(!(readResult.body ?? '').includes('\u001B'))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
+})
+
+test('execute_terminal action=read keeps polling until the command completion marker arrives', async () => {
+  let readCount = 0
+  const pollingCalls: Array<number | undefined> = []
+  const consumeCalls: number[] = []
+  const writeCalls: WriteTerminalSessionInput[] = []
+  const tools = createTerminalToolSet(
+    {
+      conversationId: 'conversation-default-terminal-wait',
+      webContents: webContentsStub,
+      workspaceRootPath: '/workspace',
+    },
+    {
+      createSession: async () => ({
+        bufferedOutput: '',
+        cwd: '/workspace',
+        isReused: false,
+        sessionId: 702,
+        shell: 'pwsh',
+      }),
+      getSessionOutput: async (_owner, input) => {
+        readCount += 1
+        pollingCalls.push(input.pollingMs)
+        const marker = readCompletionMarker(writeCalls[0]?.data ?? '')
+        const pendingOutputBuffer = readCount === 1
+          ? `PS C:\\workspace>> npm test; echo "${marker}:$([int]$LASTEXITCODE)"\r\nstill working\n`
+          : `${marker}:0\n`
+        return {
+          cwd: '/workspace',
+          exitCode: null,
+          hasExited: false,
+          outputBuffer: pendingOutputBuffer,
+          pendingOutputBuffer,
+          shellLabel: 'pwsh',
+          signal: null,
+          sessionId: input.sessionId,
+        }
+      },
+      consumeSessionOutput: (_owner, input) => {
+        consumeCalls.push(input.sessionId)
+      },
+      listSessions: () => [],
+      terminateSession: () => undefined,
+      writeToSession: async (_owner, input) => {
+        writeCalls.push(input)
+      },
+    },
+  )
+
+  const executeTool = getExecuteTerminalTool(tools)
+  const executeResult = await executeTool.execute({ action: 'execute', command: 'long-running-command' })
+  const visibleSessionId = readVisibleSessionId(executeResult)
+
+  const readResult = await executeTool.execute({ action: 'read', session_id: visibleSessionId })
+
+  assert.equal(readResult.status, 'success')
+  assert.equal(readCount, 2)
+  assert.equal(pollingCalls[0], MAX_TERMINAL_POLLING_MS)
+  assert.ok(
+    typeof pollingCalls[1] === 'number' &&
+      pollingCalls[1] > 0 &&
+      pollingCalls[1] <= MAX_TERMINAL_POLLING_MS,
+  )
+  assert.deepEqual(consumeCalls, [702, 702])
+  assert.equal(readResult.semantics?.command_complete, true)
+  assert.match(readResult.body ?? '', /still working/u)
 })
 
 test('execute_terminal action=read returns the retained buffer after a buffer rollover', async () => {
@@ -180,7 +244,7 @@ test('execute_terminal action=read returns the retained buffer after a buffer ro
         return {
           cwd: '/workspace',
           exitCode: null,
-          hasExited: false,
+          hasExited: true,
           outputBuffer,
           pendingOutputBuffer: outputBuffer,
           shellLabel: 'pwsh',
@@ -228,7 +292,7 @@ test('execute_terminal action=read truncates large git diff output', async () =>
         return {
           cwd: '/workspace',
           exitCode: null,
-          hasExited: false,
+          hasExited: true,
           outputBuffer: `${largeDiffOutput}\n`,
           pendingOutputBuffer: `${largeDiffOutput}\n`,
           shellLabel: 'pwsh',

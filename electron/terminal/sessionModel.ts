@@ -5,13 +5,10 @@ export const MAX_SESSION_OUTPUT_BUFFER_LENGTH = 300_000;
 export interface ActiveTerminalSession {
   aiTurnId: string | null;
   cwd: string;
-  enableIdleTimeout: boolean;
   exitCode: number | null;
   hasExited: boolean;
-  idleTimerId: ReturnType<typeof setTimeout> | null;
   isAiSession: boolean;
   label: string | null;
-  lastReadAt: number;
   outputBuffer: string;
   pendingAiOutputChunks: string[];
   outputWaiters: Set<() => void>;
@@ -40,7 +37,6 @@ export interface TerminalSessionInfo {
   cwd: string;
   hasExited: boolean;
   label: string | null;
-  lastReadAt: number;
   sessionId: number;
   shellLabel: string;
   workspaceRootPath: string;
