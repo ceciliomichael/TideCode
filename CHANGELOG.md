@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.15 — Terminal commands that report completion
+
+TideCode now waits for AI terminal commands to actually finish before returning their output, so long-running commands no longer come back truncated, and same-file edits can no longer conflict with each other.
+
+- Terminal reads keep polling until the queued command completes (up to five minutes) and report command completion, instead of returning after a fixed wait window.
+- AI terminal sessions no longer terminate after five idle minutes, so long-running work stays alive within the turn that started it.
+- Concurrent edits to the same file are applied one at a time, so parallel tool calls can no longer drop each other's changes.
+- Compaction dividers appear before the first message created after a compaction, and a fresh assistant block starts after compaction instead of continuing the previous draft.
+- Finished assistant work keeps tool-only messages inside the collapsed group, showing only the final text outside it.
+
 ## 1.0.14 — One clean update download
 
 Update checks with automatic downloads enabled now download the installer once, with a single continuous progress run, instead of filling to 100%, resetting to 0, and downloading again.
