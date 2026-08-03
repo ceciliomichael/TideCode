@@ -20,6 +20,7 @@ export interface AgentToolExecutionResult {
 export interface AgentToolContext {
   checkpointId?: string | null
   conversationId?: string | null
+  turnId?: string | null
   terminalExecutionMode?: AppTerminalExecutionMode
   workspaceRootPath: string
   webContents?: WebContents | null

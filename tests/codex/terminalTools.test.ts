@@ -7,7 +7,11 @@ import type { WebContents } from 'electron'
 import type { CreateTerminalSessionInput, WriteTerminalSessionInput } from '../../src/types/chat'
 import { createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
 import { getGlobalAgentsDirectory } from '../../electron/chat/shared/tools/sandboxPaths'
-import { createTerminalToolSet, terminateAllBackgroundSessions } from '../../electron/chat/shared/tools/terminalTools'
+import {
+  createTerminalToolSet,
+  terminateAllBackgroundSessions,
+  terminateAllBackgroundSessionsForTurn,
+} from '../../electron/chat/shared/tools/terminalTools'
 
 const webContentsStub = {
   id: 42,
@@ -47,6 +51,12 @@ function readCompletionMarker(writtenCommand: string) {
   const markerMatch = writtenCommand.match(/__EDONE_[A-Za-z0-9_]+__/u)
   assert.ok(markerMatch, 'expected execute_terminal to append a completion marker')
   return markerMatch[0]
+}
+
+function readVisibleSessionId(result: ExecuteTerminalResult) {
+  const sessionIdMatch = result.body?.match(/session_id: (\d{5})/u)
+  assert.ok(sessionIdMatch, 'expected a five-digit visible session ID')
+  return Number(sessionIdMatch[1])
 }
 
 test('execute_terminal action=execute queues command in background and action=read fetches cleaned output', async () => {
@@ -115,7 +125,7 @@ test('execute_terminal action=execute queues command in background and action=re
     })
 
     assert.equal(execResult.status, 'success')
-    assert.match(execResult.body ?? '', /Command started in background\. session_id: 7/u)
+    const visibleSessionId = readVisibleSessionId(execResult)
     assert.deepEqual(createCalls, [
       {
         cols: 120,
@@ -134,7 +144,7 @@ test('execute_terminal action=execute queues command in background and action=re
 
     const readResult = await getExecuteTerminalTool(tools).execute({
       action: 'read',
-      session_id: 7,
+      session_id: visibleSessionId,
       wait_ms: 120_000,
     })
 
@@ -185,12 +195,13 @@ test('execute_terminal action=read returns the retained buffer after a buffer ro
   )
 
   const executeTool = getExecuteTerminalTool(tools)
-  await executeTool.execute({ action: 'execute', command: 'long-running-command' })
+  const executeResult = await executeTool.execute({ action: 'execute', command: 'long-running-command' })
+  const visibleSessionId = readVisibleSessionId(executeResult)
 
-  const firstRead = await executeTool.execute({ action: 'read', session_id: 701 })
+  const firstRead = await executeTool.execute({ action: 'read', session_id: visibleSessionId })
   assert.match(firstRead.body ?? '', /initial output/u)
 
-  const rolloverRead = await executeTool.execute({ action: 'read', session_id: 701 })
+  const rolloverRead = await executeTool.execute({ action: 'read', session_id: visibleSessionId })
   assert.match(rolloverRead.body ?? '', /retained output after rollover/u)
   assert.ok(!(rolloverRead.body ?? '').includes('No new output.'))
 })
@@ -233,16 +244,17 @@ test('execute_terminal action=read truncates large git diff output', async () =>
     },
   )
 
-  await getExecuteTerminalTool(tools).execute({
+  const executeResult = await getExecuteTerminalTool(tools).execute({
     action: 'execute',
     cols: 120,
     command: 'git diff',
     rows: 30,
   })
+  const visibleSessionId = readVisibleSessionId(executeResult)
 
   const readResult = await getExecuteTerminalTool(tools).execute({
     action: 'read',
-    session_id: 91,
+    session_id: visibleSessionId,
   })
 
   assert.equal(readResult.status, 'success')
@@ -555,7 +567,7 @@ test('execute_terminal allows a cwd outside the workspace root in Full Access mo
   }
 })
 
-test('terminateAllBackgroundSessions terminates active tool sessions and resets local session counter to 1', async () => {
+test('terminateAllBackgroundSessions terminates active tool sessions and clears the visible session store', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-terminal-cleanup-'))
   const terminatedSessions: number[] = []
 
@@ -642,6 +654,87 @@ test('terminateAllBackgroundSessions terminates active tool sessions and resets 
     })
 
     assert.equal(execResult.status, 'success')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('terminateAllBackgroundSessionsForTurn terminates every session, including unfinished sessions, and is idempotent', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-terminal-turn-cleanup-'))
+  const terminatedSessions: number[] = []
+  let nextSessionId = 70
+
+  try {
+    const tools = createTerminalToolSet(
+      {
+        conversationId: 'conversation-turn-cleanup',
+        turnId: 'turn-cleanup',
+        webContents: webContentsStub,
+        workspaceRootPath,
+      },
+      {
+        createSession: async () => ({
+          bufferedOutput: '',
+          cwd: workspaceRootPath,
+          isReused: false,
+          sessionId: nextSessionId++,
+          shell: 'pwsh',
+        }),
+        getSessionOutput: async (_owner, input) => ({
+          cwd: workspaceRootPath,
+          exitCode: null,
+          hasExited: false,
+          outputBuffer: 'still running',
+          pendingOutputBuffer: 'still running',
+          shellLabel: 'pwsh',
+          signal: null,
+          sessionId: input.sessionId,
+        }),
+        listSessions: () => [],
+        terminateSession: () => undefined,
+        writeToSession: async () => undefined,
+      },
+    )
+
+    const executeTool = getExecuteTerminalTool(tools)
+    const firstResult = await executeTool.execute({ action: 'execute', command: 'long-running-first' })
+    const firstSessionId = readVisibleSessionId(firstResult)
+    const secondResult = await executeTool.execute({ action: 'execute', command: 'long-running-second' })
+    const secondSessionId = readVisibleSessionId(secondResult)
+    assert.notEqual(firstSessionId, secondSessionId)
+
+    await terminateAllBackgroundSessionsForTurn(
+      webContentsStub,
+      workspaceRootPath,
+      'turn-cleanup',
+      (_owner, sessionId) => {
+        terminatedSessions.push(sessionId)
+      },
+    )
+    await terminateAllBackgroundSessionsForTurn(
+      webContentsStub,
+      workspaceRootPath,
+      'turn-cleanup',
+      (_owner, sessionId) => {
+        terminatedSessions.push(sessionId)
+      },
+    )
+
+    const nextTurnResult = await executeTool.execute({ action: 'execute', command: 'next-turn-command' })
+    const nextTurnSessionId = readVisibleSessionId(nextTurnResult)
+    assert.notEqual(nextTurnSessionId, firstSessionId)
+    assert.notEqual(nextTurnSessionId, secondSessionId)
+
+    await terminateAllBackgroundSessionsForTurn(
+      webContentsStub,
+      workspaceRootPath,
+      'turn-cleanup',
+      (_owner, sessionId) => {
+        terminatedSessions.push(sessionId)
+      },
+    )
+
+    assert.deepEqual(terminatedSessions, [70, 71, 72])
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

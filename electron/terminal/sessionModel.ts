@@ -3,6 +3,7 @@ import type { IPty } from "node-pty";
 export const MAX_SESSION_OUTPUT_BUFFER_LENGTH = 300_000;
 
 export interface ActiveTerminalSession {
+  aiTurnId: string | null;
   cwd: string;
   enableIdleTimeout: boolean;
   exitCode: number | null;

@@ -121,6 +121,7 @@ export interface CreateTerminalSessionInput {
   cols: number
   cwd?: string | null
   enableIdleTimeout?: boolean
+  aiTurnId?: string | null
   isAiSession?: boolean
   label?: string | null
   sessionKey?: string | null

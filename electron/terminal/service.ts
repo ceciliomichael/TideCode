@@ -48,6 +48,7 @@ import {
   registerWorkspaceSession,
   scheduleIdleTerminate,
   sessions,
+  terminateAiSessionsForTurn,
   terminateSession,
   unregisterWorkspaceSession,
 } from "./sessionRegistry";
@@ -97,6 +98,7 @@ function buildCreateSessionResult(input: {
 }
 
 function reuseExistingSession(input: {
+  aiTurnId: string | null;
   cols: number;
   isAiSession?: boolean;
   ownerWebContentsId: number;
@@ -117,7 +119,8 @@ function reuseExistingSession(input: {
     !activeSession ||
     activeSession.ownerWebContentsId !== input.ownerWebContentsId ||
     activeSession.hasExited ||
-    activeSession.isAiSession !== Boolean(input.isAiSession)
+    activeSession.isAiSession !== Boolean(input.isAiSession) ||
+    activeSession.aiTurnId !== input.aiTurnId
   ) {
     unregisterWorkspaceSession(
       input.ownerWebContentsId,
@@ -159,7 +162,9 @@ async function createTerminalSessionInternal(
     input.sessionKey,
   );
   const isAiSession = Boolean(input.isAiSession);
+  const aiTurnId = isAiSession ? input.aiTurnId?.trim() || null : null;
   const reusedSession = reuseExistingSession({
+    aiTurnId,
     cols,
     isAiSession,
     ownerWebContentsId: sender.id,
@@ -185,6 +190,7 @@ async function createTerminalSessionInternal(
   const sessionId = getNextSessionId();
 
   const activeSession: ActiveTerminalSession = {
+    aiTurnId,
     cwd,
     enableIdleTimeout: Boolean(input.enableIdleTimeout),
     exitCode: null,
@@ -447,6 +453,14 @@ export function terminateSessionForWebContents(
     return;
   }
   terminateSession(sessionId);
+}
+
+export function terminateAiSessionsForTurnForWebContents(
+  sender: WebContents,
+  aiTurnId: string,
+  workspaceRootPath: string,
+) {
+  terminateAiSessionsForTurn(sender.id, aiTurnId, workspaceRootPath);
 }
 
 export async function openExternalTerminalLink(

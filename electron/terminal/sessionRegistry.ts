@@ -22,6 +22,33 @@ export function getSessionIdsForOwner(ownerWebContentsId: number) {
   return ownerSessionIds.get(ownerWebContentsId) ?? null;
 }
 
+export function terminateAiSessionsForTurn(
+  ownerWebContentsId: number,
+  aiTurnId: string,
+  workspaceRootPath?: string | null,
+) {
+  const normalizedAiTurnId = aiTurnId.trim();
+  if (!normalizedAiTurnId) {
+    return;
+  }
+
+  const normalizedWorkspaceRootPath = workspaceRootPath?.trim()
+    ? normalizeWorkspacePath(workspaceRootPath)
+    : null;
+  const sessionIds = Array.from(sessions.entries())
+    .filter(([, activeSession]) =>
+      activeSession.ownerWebContentsId === ownerWebContentsId &&
+      activeSession.isAiSession &&
+      activeSession.aiTurnId === normalizedAiTurnId &&
+      (!normalizedWorkspaceRootPath || activeSession.workspaceRootPath === normalizedWorkspaceRootPath),
+    )
+    .map(([sessionId]) => sessionId);
+
+  for (const sessionId of sessionIds) {
+    terminateSession(sessionId);
+  }
+}
+
 export function getNextSessionId() {
   return nextGlobalSessionId++;
 }

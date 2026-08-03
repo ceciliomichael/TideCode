@@ -37,7 +37,7 @@ import {
   ensureCurrentExecutionModeContext,
 } from './messages'
 import { createAgentTools } from './tools'
-import { cleanUpFinishedSessionsAtTurnEnd } from './tools/terminalTools'
+import { terminateAllBackgroundSessionsForTurn } from './tools/terminalTools'
 import { sortToolSet } from './runtimeToolSet'
 import { continueToolLoopUntilModelStops } from './toolLoopPolicy'
 import {
@@ -126,6 +126,7 @@ export async function runToolEnabledChatStream(input: {
       {
         checkpointId: resolveActiveCheckpointId(input.startInput.messages),
         conversationId: input.startInput.conversationId ?? null,
+        turnId: runId,
         workspaceRootPath: input.startInput.agentContextRootPath,
         terminalExecutionMode: input.startInput.terminalExecutionMode,
         webContents: input.webContents,
@@ -343,10 +344,10 @@ export async function runToolEnabledChatStream(input: {
     }
   } finally {
     if (input.startInput.agentContextRootPath) {
-      await cleanUpFinishedSessionsAtTurnEnd(
+      await terminateAllBackgroundSessionsForTurn(
         input.webContents,
         input.startInput.agentContextRootPath,
-        conversationId,
+        runId,
       ).catch(() => undefined)
     }
     input.onSettled?.()
