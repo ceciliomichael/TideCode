@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import type { ConversationRuntimeStatePatch, ConversationRuntimeSnapshot } from './chatMessageSendTypes'
+import { syncChatSelectionRefs } from '../lib/chatSelection'
 
 const TEXT_STREAM_IDLE_GRACE_MS = 1500
 
@@ -17,17 +18,22 @@ export function useChatStreamingState(input: UseChatStreamingStateInput) {
   const conversationRuntimeStatesRef = useRef(input.conversationRuntimeStates)
   const textStreamingIdleTimeoutRef = useRef<Record<string, number>>({})
 
-  useEffect(() => {
-    activeConversationIdRef.current = activeConversationId
-  }, [activeConversationId])
-
-  useEffect(() => {
-    selectedFolderIdRef.current = selectedFolderId
-  }, [selectedFolderId])
-
-  useEffect(() => {
+  // A new-thread selection is rendered before the next click can be handled.
+  // Keep the callback-facing refs in sync before paint so a fast send cannot
+  // observe the previous running conversation.
+  useLayoutEffect(() => {
+    syncChatSelectionRefs(
+      {
+        activeConversationIdRef,
+        selectedFolderIdRef,
+      },
+      {
+        activeConversationId,
+        selectedFolderId,
+      },
+    )
     conversationRuntimeStatesRef.current = conversationRuntimeStates
-  }, [conversationRuntimeStates])
+  }, [activeConversationId, conversationRuntimeStates, selectedFolderId])
 
   const clearTextStreamingIdleTimeout = useCallback((conversationId: string) => {
     const timeoutId = textStreamingIdleTimeoutRef.current[conversationId]
