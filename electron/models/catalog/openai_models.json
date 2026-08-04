@@ -6,6 +6,7 @@
     "label": "gpt-5.6-sol",
     "reasoningCapable": true,
     "reasoningEfforts": [
+      "none",
       "low",
       "medium",
       "high",
@@ -21,6 +22,7 @@
     "label": "gpt-5.6-terra",
     "reasoningCapable": true,
     "reasoningEfforts": [
+      "none",
       "low",
       "medium",
       "high",
@@ -36,6 +38,7 @@
     "label": "gpt-5.6-luna",
     "reasoningCapable": true,
     "reasoningEfforts": [
+      "none",
       "low",
       "medium",
       "high",
@@ -51,38 +54,12 @@
     "label": "gpt-5.5",
     "reasoningCapable": true,
     "reasoningEfforts": [
+      "none",
       "low",
       "medium",
       "high",
       "xhigh"
     ],
     "defaultReasoningEffort": "medium"
-  },
-  {
-    "apiModelId": "gpt-5.4",
-    "enabledByDefault": true,
-    "id": "openai:gpt-5.4",
-    "label": "GPT-5.4",
-    "reasoningCapable": true,
-    "reasoningEfforts": [
-      "minimal",
-      "low",
-      "medium",
-      "high"
-    ],
-    "defaultReasoningEffort": "medium"
-  },
-  {
-    "apiModelId": "gpt-5.4-mini",
-    "enabledByDefault": true,
-    "id": "openai:gpt-5.4-mini",
-    "label": "GPT-5.4 Mini",
-    "reasoningCapable": true,
-    "reasoningEfforts": [
-      "minimal",
-      "low",
-      "medium"
-    ],
-    "defaultReasoningEffort": "low"
   }
 ]

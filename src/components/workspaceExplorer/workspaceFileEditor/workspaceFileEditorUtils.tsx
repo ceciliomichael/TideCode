@@ -334,7 +334,11 @@ export function findLineIndexForOffset(lineStartOffsets: readonly number[], offs
   return Math.max(0, lineStartOffsets.length - 1)
 }
 
-export function renderHighlightedTokens(tokens: readonly HighlightedToken[], searchMatches: readonly TextRange[], selectionMatches: readonly TextRange[] = []): ReactNode {
+export function renderHighlightedTokens(
+  tokens: readonly HighlightedToken[],
+  searchMatches: readonly TextRange[],
+  selectionMatches: readonly TextRange[] = [],
+): ReactNode {
   if (tokens.length === 0) {
     if (selectionMatches.length > 0) {
       // Empty line with selection

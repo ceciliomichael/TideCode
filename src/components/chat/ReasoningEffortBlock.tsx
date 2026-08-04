@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { DropdownField } from '../ui/DropdownField'
 import type { ReasoningEffort } from '../../types/chat'
+import { orderReasoningEfforts } from '../../lib/reasoningEffortOrder'
 
 const REASONING_EFFORT_LABELS: Readonly<Record<string, string>> = {
   high: 'High',
@@ -54,8 +55,9 @@ export function ReasoningEffortBlock({
   value,
 }: ReasoningEffortBlockProps) {
   const reasoningEffortOptions = useMemo(() => {
-    const labelOverrides = getEffortLabelOverrides(options)
-    return options.map((option) => ({
+    const orderedOptions = orderReasoningEfforts(options)
+    const labelOverrides = getEffortLabelOverrides(orderedOptions)
+    return orderedOptions.map((option) => ({
       label: labelOverrides?.[option] ?? REASONING_EFFORT_LABELS[option] ?? option,
       value: option,
     }))
@@ -68,6 +70,7 @@ export function ReasoningEffortBlock({
         className="w-fit max-w-full"
         fitToContent
         variant="text"
+        selectedOptionIconClassName="text-foreground"
         value={value}
         onChange={(nextValue) => onChange(nextValue as ReasoningEffort)}
         options={reasoningEffortOptions}

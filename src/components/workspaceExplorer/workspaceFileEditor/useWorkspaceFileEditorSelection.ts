@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type FocusEvent as ReactFocusEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
   type SyntheticEvent,
@@ -29,6 +30,7 @@ type SelectionDirection = 'backward' | 'forward'
 
 interface ActiveSelectionDrag {
   anchorOffset: number
+  focusOffset: number
   lastBoundaryOffset: number | null
   pointerId: number
 }
@@ -37,12 +39,30 @@ function getSelectionAnchor(textarea: HTMLTextAreaElement) {
   return textarea.selectionDirection === 'backward' ? textarea.selectionEnd : textarea.selectionStart
 }
 
+function getSelectionFocus(textarea: HTMLTextAreaElement, anchorOffset?: number) {
+  if (anchorOffset !== undefined && textarea.selectionStart !== textarea.selectionEnd) {
+    if (textarea.selectionStart === anchorOffset) {
+      return textarea.selectionEnd
+    }
+
+    if (textarea.selectionEnd === anchorOffset) {
+      return textarea.selectionStart
+    }
+  }
+
+  return textarea.selectionDirection === 'backward' ? textarea.selectionStart : textarea.selectionEnd
+}
+
 function getSelectionDirection(anchorOffset: number, focusOffset: number): SelectionDirection {
   return anchorOffset > focusOffset ? 'backward' : 'forward'
 }
 
 function selectionsMatch(first: TextSelectionRange | null, second: TextSelectionRange | null) {
   return first?.start === second?.start && first?.end === second?.end
+}
+
+function isWorkspaceTabSwitchTarget(eventTarget: EventTarget | null) {
+  return eventTarget instanceof Element && eventTarget.closest('[data-workspace-tab-switch]') !== null
 }
 
 function getLineBoundaryOffset(text: string, offset: number, useLineEnd: boolean) {
@@ -96,19 +116,64 @@ export function useWorkspaceFileEditorSelection({
     value.length,
   )
   const selectionRef = useRef<TextSelectionRange | null>(normalizedInitialSelection)
+  const lastNonEmptySelectionRef = useRef<TextSelectionRange | null>(normalizedInitialSelection)
+  const preserveSelectionOnFocusLeaveRef = useRef<TextSelectionRange | null>(null)
+  const pendingCollapsedSelectionClearFrameRef = useRef<number | null>(null)
   const [selection, setSelection] = useState<TextSelectionRange | null>(normalizedInitialSelection)
   const activeSelectionDragRef = useRef<ActiveSelectionDrag | null>(null)
   const normalizedEditorValue = useMemo(() => normalizeEditorLineText(value), [value])
 
-  const updateSelection = useCallback((nextSelection: TextSelectionRange | null) => {
-    if (selectionsMatch(selectionRef.current, nextSelection)) {
+  const cancelPendingCollapsedSelectionClear = useCallback(() => {
+    const frameId = pendingCollapsedSelectionClearFrameRef.current
+    if (frameId === null) {
       return
     }
 
-    selectionRef.current = nextSelection
-    setSelection(nextSelection)
-    onSelectionChange?.(nextSelection)
-  }, [onSelectionChange])
+    window.cancelAnimationFrame(frameId)
+    pendingCollapsedSelectionClearFrameRef.current = null
+  }, [])
+
+  const scheduleCollapsedSelectionClear = useCallback(() => {
+    if (pendingCollapsedSelectionClearFrameRef.current !== null) {
+      return
+    }
+
+    pendingCollapsedSelectionClearFrameRef.current = window.requestAnimationFrame(() => {
+      pendingCollapsedSelectionClearFrameRef.current = null
+      if (
+        selectionRef.current === null &&
+        preserveSelectionOnFocusLeaveRef.current === null &&
+        document.activeElement === textAreaRef.current
+      ) {
+        lastNonEmptySelectionRef.current = null
+      }
+    })
+  }, [textAreaRef])
+
+  const updateSelection = useCallback((nextSelection: TextSelectionRange | null) => {
+    const preservedSelection = nextSelection === null ? preserveSelectionOnFocusLeaveRef.current : null
+    const effectiveSelection = preservedSelection ?? nextSelection
+
+    if (effectiveSelection) {
+      cancelPendingCollapsedSelectionClear()
+      lastNonEmptySelectionRef.current = effectiveSelection
+    }
+
+    if (selectionsMatch(selectionRef.current, effectiveSelection)) {
+      if (effectiveSelection === null) {
+        scheduleCollapsedSelectionClear()
+      }
+      return
+    }
+
+    selectionRef.current = effectiveSelection
+    setSelection(effectiveSelection)
+    onSelectionChange?.(effectiveSelection)
+
+    if (effectiveSelection === null) {
+      scheduleCollapsedSelectionClear()
+    }
+  }, [cancelPendingCollapsedSelectionClear, onSelectionChange, scheduleCollapsedSelectionClear])
 
   const syncSelection = useCallback((textarea: HTMLTextAreaElement) => {
     const nextSelection = normalizeTextSelectionRange(
@@ -116,6 +181,11 @@ export function useWorkspaceFileEditorSelection({
       textarea.selectionEnd,
       textarea.value.length,
     )
+
+    if (nextSelection === null && activeSelectionDragRef.current !== null) {
+      return
+    }
+
     updateSelection(nextSelection)
   }, [updateSelection])
 
@@ -128,6 +198,13 @@ export function useWorkspaceFileEditorSelection({
     syncSelection(event.currentTarget)
   }, [syncSelection])
 
+  const resetSelectionHighlight = useCallback(() => {
+    preserveSelectionOnFocusLeaveRef.current = null
+    lastNonEmptySelectionRef.current = null
+    cancelPendingCollapsedSelectionClear()
+    updateSelection(null)
+  }, [cancelPendingCollapsedSelectionClear, updateSelection])
+
   const updateSelectionForPointer = useCallback((event: PointerEvent) => {
     const textarea = textAreaRef.current
     const dragState = activeSelectionDragRef.current
@@ -135,16 +212,18 @@ export function useWorkspaceFileEditorSelection({
       return
     }
 
-    const activeOffset = textarea.selectionDirection === 'backward' ? textarea.selectionStart : textarea.selectionEnd
-    const boundaryOffset = getPointerBoundaryOffset(textarea, event, activeOffset)
+    const boundaryOffset = getPointerBoundaryOffset(textarea, event, dragState.focusOffset)
     if (boundaryOffset === null || boundaryOffset === dragState.lastBoundaryOffset) {
       if (boundaryOffset === null) {
         dragState.lastBoundaryOffset = null
+        dragState.focusOffset = getSelectionFocus(textarea, dragState.anchorOffset)
+        syncSelection(textarea)
       }
       return
     }
 
     dragState.lastBoundaryOffset = boundaryOffset
+    dragState.focusOffset = boundaryOffset
     textarea.setSelectionRange(
       dragState.anchorOffset,
       boundaryOffset,
@@ -154,7 +233,7 @@ export function useWorkspaceFileEditorSelection({
   }, [syncSelection, textAreaRef])
 
   const handleEditorPointerDown = useCallback((event: ReactPointerEvent<HTMLTextAreaElement>) => {
-    if (event.button !== 0 || event.pointerType !== 'mouse') {
+    if (event.button !== 0 || event.pointerType === 'touch') {
       return
     }
 
@@ -162,15 +241,11 @@ export function useWorkspaceFileEditorSelection({
     const pointerId = event.pointerId
     activeSelectionDragRef.current = {
       anchorOffset: getSelectionAnchor(textarea),
+      focusOffset: getSelectionFocus(textarea),
       lastBoundaryOffset: null,
       pointerId,
     }
-
-    try {
-      textarea.setPointerCapture(pointerId)
-    } catch {
-      // Pointer capture is unavailable in a few embedded browser contexts. The window listeners still cover the drag.
-    }
+    resetSelectionHighlight()
 
     window.requestAnimationFrame(() => {
       const dragState = activeSelectionDragRef.current
@@ -179,22 +254,38 @@ export function useWorkspaceFileEditorSelection({
       }
 
       dragState.anchorOffset = getSelectionAnchor(textarea)
+      dragState.focusOffset = getSelectionFocus(textarea)
     })
-  }, [])
+  }, [resetSelectionHighlight])
+
+  const handleEditorBlur = useCallback((event: ReactFocusEvent<HTMLTextAreaElement>) => {
+    if (
+      preserveSelectionOnFocusLeaveRef.current !== null ||
+      activeSelectionDragRef.current !== null ||
+      isWorkspaceTabSwitchTarget(event.relatedTarget)
+    ) {
+      return
+    }
+
+    resetSelectionHighlight()
+  }, [resetSelectionHighlight])
 
   const clearEditorSelection = useCallback(() => {
     activeSelectionDragRef.current = null
+    preserveSelectionOnFocusLeaveRef.current = null
+    lastNonEmptySelectionRef.current = null
+    cancelPendingCollapsedSelectionClear()
     const textarea = textAreaRef.current
     if (textarea) {
       const caretOffset = textarea.selectionEnd
       textarea.setSelectionRange(caretOffset, caretOffset)
     }
     updateSelection(null)
-  }, [textAreaRef, updateSelection])
+  }, [cancelPendingCollapsedSelectionClear, textAreaRef, updateSelection])
 
   useLayoutEffect(() => {
     const textarea = textAreaRef.current
-    if (!textarea || !initialSelection) {
+    if (!textarea || !initialSelection || activeSelectionDragRef.current !== null) {
       return
     }
 
@@ -208,6 +299,7 @@ export function useWorkspaceFileEditorSelection({
     }
 
     textarea.setSelectionRange(restoredSelection.start, restoredSelection.end)
+    textarea.focus({ preventScroll: true })
     updateSelection(restoredSelection)
   }, [initialSelection, textAreaRef, updateSelection])
 
@@ -224,24 +316,70 @@ export function useWorkspaceFileEditorSelection({
 
       updateSelectionForPointer(event)
       activeSelectionDragRef.current = null
-
-      const textarea = textAreaRef.current
-      if (textarea?.hasPointerCapture(event.pointerId)) {
-        textarea.releasePointerCapture(event.pointerId)
-      }
     }
 
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', finishSelectionDrag)
-    window.addEventListener('pointercancel', finishSelectionDrag)
 
     return () => {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', finishSelectionDrag)
-      window.removeEventListener('pointercancel', finishSelectionDrag)
-      activeSelectionDragRef.current = null
     }
   }, [textAreaRef, updateSelectionForPointer])
+
+  useEffect(() => {
+    function handleDocumentPointerDown(event: PointerEvent) {
+      const textarea = textAreaRef.current
+      if (!textarea || event.button !== 0) {
+        return
+      }
+
+      if (isWorkspaceTabSwitchTarget(event.target)) {
+        preserveSelectionOnFocusLeaveRef.current = selectionRef.current
+        return
+      }
+
+      preserveSelectionOnFocusLeaveRef.current = null
+      const eventTarget = event.target
+      if (eventTarget instanceof Node && textarea.contains(eventTarget)) {
+        return
+      }
+
+      if (activeSelectionDragRef.current === null) {
+        resetSelectionHighlight()
+      }
+    }
+
+    window.addEventListener('pointerdown', handleDocumentPointerDown, true)
+    return () => {
+      window.removeEventListener('pointerdown', handleDocumentPointerDown, true)
+    }
+  }, [resetSelectionHighlight, textAreaRef])
+
+  useEffect(() => {
+    function handleDocumentClick(event: MouseEvent) {
+      const textarea = textAreaRef.current
+      if (!textarea || activeSelectionDragRef.current !== null) {
+        return
+      }
+
+      if (isWorkspaceTabSwitchTarget(event.target)) {
+        return
+      }
+
+      const eventTarget = event.target
+      if (eventTarget instanceof Node && textarea.contains(eventTarget)) {
+        return
+      }
+
+      resetSelectionHighlight()
+    }
+
+    document.addEventListener('click', handleDocumentClick, true)
+    return () => {
+      document.removeEventListener('click', handleDocumentClick, true)
+    }
+  }, [resetSelectionHighlight, textAreaRef])
 
   useEffect(() => {
     let frameId: number | null = null
@@ -268,8 +406,9 @@ export function useWorkspaceFileEditorSelection({
       if (frameId !== null) {
         window.cancelAnimationFrame(frameId)
       }
+      cancelPendingCollapsedSelectionClear()
     }
-  }, [syncSelection, textAreaRef])
+  }, [cancelPendingCollapsedSelectionClear, syncSelection, textAreaRef])
 
   const matchesByLine = useMemo(
     () => buildSelectionRangesByLine(normalizedEditorValue, selection),
@@ -278,6 +417,7 @@ export function useWorkspaceFileEditorSelection({
 
   return {
     clearEditorSelection,
+    handleEditorBlur,
     handleEditorChange,
     handleEditorPointerDown,
     handleEditorSelect,

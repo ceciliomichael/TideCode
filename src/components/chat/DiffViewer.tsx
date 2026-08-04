@@ -215,7 +215,7 @@ function getDiffGutterCellClassName() {
 }
 
 function getDiffContentCellClassName(line: DiffLine, viewOnly: boolean) {
-  return `diff-viewer-content-row min-w-0 px-3 whitespace-pre-wrap [overflow-wrap:anywhere] ${getLineContentClassName(line, viewOnly)}`
+  return `diff-viewer-content-row min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] ${getLineContentClassName(line, viewOnly)}`
 }
 
 function getLineTokens(
@@ -419,46 +419,6 @@ function DiffViewerBody({
   const showsSingleLineNumberColumn = viewOnly || !hasOldSide
   const shouldUseContentVisibility = renderedLines.length >= DIFF_CONTENT_VISIBILITY_THRESHOLD
   const bodyRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const container = bodyRef.current
-    if (!container) return
-
-    const handleSelectionChange = () => {
-      const selection = window.getSelection()
-      const rows = container.querySelectorAll('.diff-viewer-content-row')
-      
-      if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
-        rows.forEach((row) => {
-          row.classList.remove('is-selected')
-        })
-        return
-      }
-
-      const range = selection.getRangeAt(0)
-      
-      // Check if the selection intersects with this container
-      if (!container.contains(range.commonAncestorContainer) && !range.intersectsNode(container)) {
-        rows.forEach((row) => {
-          row.classList.remove('is-selected')
-        })
-        return
-      }
-
-      rows.forEach((row) => {
-        if (range.intersectsNode(row)) {
-          row.classList.add('is-selected')
-        } else {
-          row.classList.remove('is-selected')
-        }
-      })
-    }
-
-    document.addEventListener('selectionchange', handleSelectionChange)
-    return () => {
-      document.removeEventListener('selectionchange', handleSelectionChange)
-    }
-  }, [renderedLines])
 
   if (!shouldRenderDiffContent) {
     return null

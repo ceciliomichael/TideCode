@@ -542,18 +542,18 @@ export function ChatInput({
                         : 'Send message'
                 }
                 className={[
-                  'flex h-9 w-9 items-center justify-center rounded-full transition-all duration-150',
+                  'inline-flex h-9 w-9 items-center justify-center rounded-full p-0 leading-none transition-[background-color,color,transform] duration-150',
                   canAbort || canSend
-                    ? 'chat-send-button-enabled cursor-pointer hover:scale-[1.03] active:scale-95'
+                    ? 'chat-send-button-enabled cursor-pointer active:scale-95'
                     : 'chat-send-button-disabled cursor-not-allowed',
                 ].join(' ')}
               >
                 {canAbort ? (
-                  <Square size={14} strokeWidth={2.5} fill="currentColor" />
+                  <Square className="block shrink-0" size={14} strokeWidth={2.5} fill="currentColor" />
                 ) : canQueue ? (
-                  <Clock size={16} strokeWidth={2.5} />
+                  <Clock className="block shrink-0" size={16} strokeWidth={2.5} />
                 ) : (
-                  <ArrowUp size={16} strokeWidth={2.5} />
+                  <ArrowUp className="block shrink-0" size={16} strokeWidth={2.5} />
                 )}
               </button>
             </Tooltip>

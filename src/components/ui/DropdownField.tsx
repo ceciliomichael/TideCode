@@ -24,6 +24,7 @@ interface DropdownFieldProps {
   id?: string
   onChange: (value: string) => void
   options: readonly DropdownOption[]
+  selectedOptionIconClassName?: string
   triggerClassName?: string
   value: string
   variant?: 'default' | 'text'
@@ -41,6 +42,7 @@ export function DropdownField({
   id,
   onChange,
   options,
+  selectedOptionIconClassName,
   triggerClassName,
   value,
   variant = 'default',
@@ -330,7 +332,13 @@ export function DropdownField({
                           ].join(' ')}
                         >
                           <span className="truncate pr-3">{option.label}</span>
-                          {isSelected ? <Check size={16} strokeWidth={2.2} className="shrink-0 text-brand" /> : null}
+                          {isSelected ? (
+                            <Check
+                              size={16}
+                              strokeWidth={2.2}
+                              className={['shrink-0', selectedOptionIconClassName ?? 'text-brand'].join(' ')}
+                            />
+                          ) : null}
                         </button>
                       )
                     })}
@@ -360,7 +368,13 @@ export function DropdownField({
                       ].join(' ')}
                     >
                       <span className="truncate pr-3">{option.label}</span>
-                      {isSelected ? <Check size={16} strokeWidth={2.2} className="shrink-0 text-brand" /> : null}
+                      {isSelected ? (
+                        <Check
+                          size={16}
+                          strokeWidth={2.2}
+                          className={['shrink-0', selectedOptionIconClassName ?? 'text-brand'].join(' ')}
+                        />
+                      ) : null}
                     </button>
                   )
                 })

@@ -72,6 +72,7 @@ export function useWorkspaceFileEditorState({
 
   const {
     clearEditorSelection,
+    handleEditorBlur,
     handleEditorChange,
     handleEditorPointerDown,
     handleEditorSelect,
@@ -461,6 +462,7 @@ export function useWorkspaceFileEditorState({
       closeSearchPanel,
       focusReplaceInput,
       focusSearchInput,
+      handleEditorBlur,
       handleKeyDown,
       handleEditorChange,
       handleEditorPointerDown,

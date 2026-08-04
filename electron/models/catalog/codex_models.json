@@ -6,6 +6,7 @@
     "label": "gpt-5.6-sol",
     "reasoningCapable": true,
     "reasoningEfforts": [
+      "none",
       "low",
       "medium",
       "high",
@@ -21,6 +22,7 @@
     "label": "gpt-5.6-terra",
     "reasoningCapable": true,
     "reasoningEfforts": [
+      "none",
       "low",
       "medium",
       "high",
@@ -36,6 +38,7 @@
     "label": "gpt-5.6-luna",
     "reasoningCapable": true,
     "reasoningEfforts": [
+      "none",
       "low",
       "medium",
       "high",
@@ -51,6 +54,7 @@
     "label": "gpt-5.5",
     "reasoningCapable": true,
     "reasoningEfforts": [
+      "none",
       "low",
       "medium",
       "high",
