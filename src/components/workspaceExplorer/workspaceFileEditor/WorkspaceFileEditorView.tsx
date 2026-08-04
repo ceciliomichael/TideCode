@@ -252,6 +252,7 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
             ref={refs.textAreaRef}
             value={value}
             onChange={actions.handleEditorChange}
+            onBlur={actions.handleEditorBlur}
             onPointerDown={actions.handleEditorPointerDown}
             onSelect={actions.handleEditorSelect}
             onScroll={actions.handleScroll}
@@ -269,7 +270,7 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
           />
           <div
             ref={refs.highlightedLayerRef}
-            className={`pointer-events-none absolute inset-0 px-3 py-1.5 font-mono text-[12px] leading-5 text-foreground workspace-editor-highlighted-layer workspace-editor-scrollbar ${
+            className={`pointer-events-none absolute inset-0 px-3 py-1.5 font-mono text-[12px] leading-5 text-foreground workspace-editor-highlighted-layer ${
               wordWrapEnabled ? 'overflow-y-scroll overflow-x-hidden' : 'overflow-scroll'
             }`}
             style={{ paddingBottom: `${EDITOR_BOTTOM_BUFFER_PX}px` }}
@@ -293,7 +294,7 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
                         {renderHighlightedTokens(
                           line.tokens, 
                           layout.visibleSearchMatches[index] ?? [], 
-                          selectionMatches
+                          selectionMatches,
                         )}
                       </span>
                     </div>

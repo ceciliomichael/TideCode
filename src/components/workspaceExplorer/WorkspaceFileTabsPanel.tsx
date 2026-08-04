@@ -50,6 +50,7 @@ export function WorkspaceFileTabsPanel({
   const hasTabs = tabs.length > 0
   const activeTab = findWorkspaceTabByKey(tabs, activeTabKey)
   const editorSelectionsRef = useRef(new Map<string, TextSelectionRange>())
+  const activeEditorTabKeyRef = useRef<string | null>(null)
   const tabsViewportRef = useRef<HTMLDivElement | null>(null)
   const dragStateRef = useRef<{ pointerId: number; startX: number; startThumbLeft: number } | null>(null)
   const [tabsScrollMetrics, setTabsScrollMetrics] = useState({
@@ -61,18 +62,21 @@ export function WorkspaceFileTabsPanel({
   const activeEditorSelection =
     activeTab?.kind === 'file' ? editorSelectionsRef.current.get(activeTab.tabKey) ?? null : null
 
+  activeEditorTabKeyRef.current = activeTab?.kind === 'file' ? activeTab.tabKey : null
+
   const handleEditorSelectionChange = useCallback((selection: TextSelectionRange | null) => {
-    if (activeTab?.kind !== 'file') {
+    const activeFileTabKey = activeEditorTabKeyRef.current
+    if (!activeFileTabKey) {
       return
     }
 
     if (selection) {
-      editorSelectionsRef.current.set(activeTab.tabKey, selection)
+      editorSelectionsRef.current.set(activeFileTabKey, selection)
       return
     }
 
-    editorSelectionsRef.current.delete(activeTab.tabKey)
-  }, [activeTab])
+    editorSelectionsRef.current.delete(activeFileTabKey)
+  }, [])
 
   useEffect(() => {
     const openTabKeys = new Set(tabs.map((tab) => tab.tabKey))
@@ -227,6 +231,7 @@ export function WorkspaceFileTabsPanel({
               <div key={tab.tabKey} className="group relative inline-flex h-full shrink-0 items-stretch border-r border-border">
                 <button
                   type="button"
+                  data-workspace-tab-switch="true"
                   onClick={() => onSelectTab(tab.tabKey)}
                   onMouseDown={(event) => {
                     if (event.button !== 1) {

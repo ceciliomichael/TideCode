@@ -72,7 +72,21 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
       <button
         type="button"
         draggable
-        onClick={(event) => actionsRef.current?.handleEntryClick(entry, event)}
+        onClick={(event) => {
+          if (event.button !== 0) {
+            return
+          }
+
+          actionsRef.current?.handleEntryClick(entry, event)
+        }}
+        onMouseDown={(event) => {
+          if (event.button !== 1 || isDirectory) {
+            return
+          }
+
+          event.preventDefault()
+          actionsRef.current?.handleEntryClick(entry, event)
+        }}
         onContextMenu={(event) => actionsRef.current?.openContextMenu(event, entry)}
         onMouseEnter={() => {
           if (!isDirectory) {

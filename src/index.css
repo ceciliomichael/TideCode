@@ -483,7 +483,7 @@
   }
 
   .workspace-editor-scrollbar::-webkit-scrollbar-thumb {
-    background-color: transparent;
+    background-color: var(--color-scrollbar-thumb);
     border-radius: 0;
   }
 
@@ -493,6 +493,11 @@
 
   .workspace-editor-scrollbar:hover::-webkit-scrollbar-thumb:hover {
     background-color: var(--color-scrollbar-thumb-hover);
+  }
+
+  .workspace-editor-highlighted-layer::-webkit-scrollbar {
+    width: 0;
+    height: 0;
   }
 
   .workspace-editor-textarea::selection {
@@ -556,25 +561,6 @@
   .diff-viewer-content-row *::selection {
     background-color: var(--diff-viewer-selection-background);
     color: #fff !important;
-  }
-
-  .diff-viewer-content-row.is-selected {
-    background-color: var(--diff-viewer-selection-background) !important;
-  }
-
-  .diff-viewer-content-row.is-selected,
-  .diff-viewer-content-row.is-selected * {
-    color: #fff !important;
-  }
-
-  .diff-viewer-content-row.is-selected::selection,
-  .diff-viewer-content-row.is-selected *::selection {
-    background-color: transparent !important;
-    color: #fff !important;
-  }
-
-  .diff-viewer-content-row.is-selected * {
-    background-color: transparent !important;
   }
 
 
