@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.23 — More reliable compacted conversations
+
+TideCode now preserves the complete active conversation after compaction and gives clearer feedback while terminal output is still being retrieved.
+
+- Retains assistant and tool responses from turns that occur after a compaction anchor during canonical replay.
+- Shows Waiting for terminal while terminal output reads are still running instead of implying that a file read is occurring.
+- Adds regression coverage for compacted replay suffixes and retained tool results.
+
 ## 1.0.22 — Safer workspace discovery and steadier chat
 
 TideCode now keeps AI workspace discovery focused while preserving explicit access to known paths, and improves reliability across long-running conversations and workspace navigation.
