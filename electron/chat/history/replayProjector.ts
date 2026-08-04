@@ -104,6 +104,23 @@ function appendFreshnessNotice(messages: ModelMessage[], invalidatedSubjects: st
   return next
 }
 
+function buildPostAnchorReplaySuffix(
+  messages: Message[],
+  anchorIndex: number,
+  options?: BuildChatPromptOptions,
+) {
+  const postAnchorMessages = messages.slice(anchorIndex + 1)
+  const firstNewUserIndex = postAnchorMessages.findIndex((message) => message.role === 'user')
+  if (firstNewUserIndex < 0) {
+    return []
+  }
+
+  return buildModelMessages(postAnchorMessages.slice(firstNewUserIndex), {
+    ...options,
+    includeExecutionModeContext: false,
+  })
+}
+
 export function projectCanonicalReplay(input: {
   document: CanonicalHistoryDocument
   fallbackMessages: ModelMessage[]
@@ -157,11 +174,7 @@ export function projectCanonicalReplay(input: {
 
   try {
     const exactPrefix = sanitizeModelMessages(decodeModelMessages(replay.messages))
-    const appendedUserMessages = input.messages.slice(anchorIndex + 1).filter((message) => message.role === 'user')
-    const suffix = buildModelMessages(appendedUserMessages, {
-      ...input.options,
-      includeExecutionModeContext: false,
-    })
+    const suffix = buildPostAnchorReplaySuffix(input.messages, anchorIndex, input.options)
     const messages = replay.freshnessRevision < input.document.freshness.revision
       ? appendFreshnessNotice([...exactPrefix, ...suffix], input.document.freshness.invalidatedSubjects)
       : [...exactPrefix, ...suffix]

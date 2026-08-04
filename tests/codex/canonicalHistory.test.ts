@@ -14,6 +14,7 @@ import { createEmptyCanonicalHistory, getReplaySlotKey } from '../../electron/ch
 import { decodeModelMessages, encodeModelMessages } from '../../electron/chat/history/replayCodec'
 import { projectCanonicalReplay } from '../../electron/chat/history/replayProjector'
 import { createCanonicalToolModelOutput, withCanonicalToolModelOutputs } from '../../electron/chat/shared/toolReplay'
+import { formatStructuredToolResultContent } from '../../src/lib/toolResultContent'
 import type { Message } from '../../src/types/chat'
 
 test('stable prompt manifests and cache keys ignore object insertion order', () => {
@@ -141,6 +142,77 @@ test('exact replay replaces display-normalized assistant history and appends onl
   assert.equal(result.fidelity, 'exact')
   assert.equal(result.isCompacted, false)
   assert.deepEqual(result.messages, [...exactMessages, { content: 'second question', role: 'user' }])
+})
+
+test('compacted replay retains assistant and tool responses from later turns', () => {
+  const document = createEmptyCanonicalHistory('conversation', 1)
+  const compactedMessages = [
+    { content: 'first question', role: 'user' },
+    { content: 'tidecode.compaction_state.v1\nRetained state', role: 'assistant' },
+  ] as ModelMessage[]
+  document.events.push({
+    anchorUserMessageId: 'user-1',
+    branchId: 'main',
+    compactionId: 'compaction-1',
+    createdAt: 2,
+    eventId: 'event-1',
+    modelId: 'model',
+    packet: encodeModelMessages([]),
+    projectedMessages: encodeModelMessages(compactedMessages),
+    providerId: 'openai',
+    revision: 1,
+    runId: null,
+    sourceDigest: 'digest',
+    sourceMessageIds: ['model:0'],
+    type: 'compaction_committed',
+    usedFallback: true,
+  })
+
+  const displayMessages: Message[] = [
+    { content: 'first question', id: 'user-1', role: 'user', timestamp: 1 },
+    { content: 'old response replaced by compaction', id: 'assistant-1', role: 'assistant', timestamp: 2 },
+    { content: 'second question', id: 'user-2', role: 'user', timestamp: 3 },
+    {
+      content: '',
+      id: 'assistant-2',
+      role: 'assistant',
+      timestamp: 4,
+      toolInvocations: [{
+        argumentsText: JSON.stringify({ command: 'npm test' }),
+        completedAt: 5,
+        id: 'tool-call-2',
+        resultContent: 'tests passed',
+        startedAt: 4,
+        state: 'completed',
+        toolName: 'execute_terminal',
+      }],
+    },
+    {
+      content: formatStructuredToolResultContent({
+        arguments: { command: 'npm test' },
+        schema: 'tidecode.tool_result/v1',
+        status: 'success',
+        summary: 'Ran tests',
+        toolCallId: 'tool-call-2',
+        toolName: 'execute_terminal',
+      }, 'tests passed'),
+      id: 'tool-2',
+      role: 'tool',
+      timestamp: 5,
+      toolCallId: 'tool-call-2',
+    },
+  ]
+
+  const result = projectCanonicalReplay({
+    document,
+    fallbackMessages: [{ content: 'legacy', role: 'user' }],
+    messages: displayMessages,
+    modelId: 'model',
+    providerId: 'openai',
+  })
+
+  assert.equal(result.isCompacted, true)
+  assert.deepEqual(result.messages.map((message) => message.role), ['user', 'assistant', 'user', 'assistant', 'tool'])
 })
 
 test('provider and model replay slots survive switching away and back', () => {
