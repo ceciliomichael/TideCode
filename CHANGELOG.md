@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.25 — More reliable fast chat switching
+
+TideCode now keeps chat sends anchored to the conversation and project currently shown, even when a new thread or workspace selection changes immediately before sending.
+
+- Prevents fast sends from targeting a previously active running conversation after creating or switching threads.
+- Keeps selected project context aligned across new-message, programmatic, and edit sends.
+- Makes code block headers more compact while preserving the existing presentation.
+- Includes regression coverage for draft and persisted-thread selection changes.
+
 ## 1.0.24 — Smoother workspace editing and clearer controls
 
 TideCode makes workspace editing more predictable while making model and chat controls easier to read and use.
