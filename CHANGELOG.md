@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.24 — Smoother workspace editing and clearer controls
+
+TideCode makes workspace editing more predictable while making model and chat controls easier to read and use.
+
+- Preserves editor selections across focus changes, typing, tab switches, and middle-click file navigation.
+- Improves workspace tab interactions and keeps diff content aligned with the editor presentation.
+- Orders reasoning effort choices consistently and improves selected-state contrast across model and chat dropdowns.
+- Refreshes provider model catalogs and includes regression coverage for the updated workspace and reasoning behavior.
+
 ## 1.0.23 — More reliable compacted conversations
 
 TideCode now preserves the complete active conversation after compaction and gives clearer feedback while terminal output is still being retrieved.
