@@ -11,6 +11,7 @@ import { persistAndStreamMessage } from './chatMessageSendWorkflow'
 import type { ChatRuntimeSelection } from './chatMessageRuntime'
 import type { PersistAndStreamMessageInput } from './chatMessageSendTypes'
 import { restoreChatComposerDraft } from '../lib/chatComposerDraft'
+import { readChatSelectionFromRefs } from '../lib/chatSelection'
 import {
   acquireChatSendScopeGate,
   getChatSendScopeKey,
@@ -141,7 +142,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
   )
 
   const findActiveRunConversationId = useCallback(() => {
-    const activeConversationId = input.activeConversationIdRef.current ?? input.activeConversationId
+    const activeConversationId = readChatSelectionFromRefs(input).activeConversationId
     if (activeConversationId) {
       return activeConversationId
     }
@@ -151,7 +152,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     )
 
     return activeEntry?.conversation.id ?? null
-  }, [input.activeConversationId, input.activeConversationIdRef, input.conversationRuntimeStatesRef])
+  }, [input])
 
   const waitForConversationRunState = useCallback(
     async (
@@ -300,7 +301,8 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       attachments = input.mainComposerAttachments,
       options?: SendNewMessageOptions,
     ): Promise<ChatSendAttemptResult> => {
-      const activeConversationId = input.activeConversationIdRef.current ?? input.activeConversationId
+      const selection = readChatSelectionFromRefs(input)
+      const activeConversationId = selection.activeConversationId
       const sendScopeKey = getChatSendScopeKey(activeConversationId)
       const isActiveConversationSending = activeConversationId
         ? (getConversationState(activeConversationId)?.isSending ?? false)
@@ -350,6 +352,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       try {
         const accepted = await persistAndStreamMessage({
           ...input,
+          activeConversationId,
           attachments,
           hasPendingAbortRequest: () => pendingAbortBeforeStreamStartRef.current,
           consumePendingAbortBeforeStreamStart: () => {
@@ -365,6 +368,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           originalText: nextMessageText,
           resetMainComposerAfterSend: options?.resetMainComposerAfterSend,
           runtimeSelection,
+          selectedFolderId: selection.selectedFolderId,
           targetEditMessageId: null,
           trimmedText,
         })
@@ -385,9 +389,8 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       messageText: string,
       options?: SendProgrammaticMessageOptions,
     ) => {
-      const activeConversationId = options?.forceNewConversation
-        ? null
-        : input.activeConversationIdRef.current ?? input.activeConversationId
+      const selection = readChatSelectionFromRefs(input)
+      const activeConversationId = options?.forceNewConversation ? null : selection.activeConversationId
       const sendScopeKey = getChatSendScopeKey(activeConversationId)
       const isActiveConversationSending = activeConversationId
         ? (getConversationState(activeConversationId)?.isSending ?? false)
@@ -417,6 +420,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         await persistAndStreamMessage({
           ...input,
           attachments: [],
+          activeConversationId,
           hasPendingAbortRequest: () => pendingAbortBeforeStreamStartRef.current,
           consumePendingAbortBeforeStreamStart: () => {
             if (!pendingAbortBeforeStreamStartRef.current) {
@@ -430,11 +434,11 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           clearUserMessageRevert,
           originalText: messageText,
           draftChatMode: options?.chatMode ?? input.draftChatMode,
-          activeConversationId,
           activeConversationIdRef: options?.forceNewConversation ? { current: null } : input.activeConversationIdRef,
           compactionSourceConversationId: options?.compactionSourceConversationId,
           resetMainComposerAfterSend: false,
           runtimeSelection,
+          selectedFolderId: selection.selectedFolderId,
           targetEditMessageId: null,
           trimmedText,
           syntheticAssistantMessage: options?.syntheticAssistantMessage,
@@ -458,7 +462,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       messageText?: string,
       attachments = input.editComposerAttachments,
     ) => {
-      const conversationId = input.activeConversationIdRef.current ?? input.activeConversationId
+      const conversationId = readChatSelectionFromRefs(input).activeConversationId
       if (
         conversationId === null ||
         submissionInFlightRef.current.has(getChatSendScopeKey(conversationId)) ||
@@ -538,6 +542,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         await persistAndStreamMessage({
           ...input,
           attachments,
+          activeConversationId: conversationId,
           hasPendingAbortRequest: () => pendingAbortBeforeStreamStartRef.current,
           consumePendingAbortBeforeStreamStart: () => {
             if (!pendingAbortBeforeStreamStartRef.current) {
@@ -551,6 +556,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           clearUserMessageRevert,
           originalText: nextMessageText,
           runtimeSelection,
+          selectedFolderId: readChatSelectionFromRefs(input).selectedFolderId,
           targetEditMessageId: input.editingMessageId,
           trimmedText,
         })
@@ -581,7 +587,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       return
     }
 
-    const conversationId = input.activeConversationIdRef.current ?? input.activeConversationId
+    const conversationId = readChatSelectionFromRefs(input).activeConversationId
     if (conversationId) {
       const pendingUserMessage = getActiveUnrespondedUserMessage(getConversationState(conversationId))
       if (pendingUserMessage) {
@@ -599,7 +605,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
 
   const revertUserMessage = useCallback(
     async (messageId: string) => {
-      const conversationId = input.activeConversationIdRef.current ?? input.activeConversationId
+      const conversationId = readChatSelectionFromRefs(input).activeConversationId
       if (actionInFlightRef.current || !conversationId) {
         return
       }
@@ -619,7 +625,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           const rolledBackConversation = await rollbackConversationBeforeUserMessage(conversationId, messageId)
           input.upsertConversation(rolledBackConversation)
           input.updateConversationSummary(rolledBackConversation)
-          if ((input.activeConversationIdRef.current ?? input.activeConversationId) === conversationId) {
+          if (readChatSelectionFromRefs(input).activeConversationId === conversationId) {
             input.applyConversation(rolledBackConversation)
           }
           return
@@ -653,7 +659,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
             const restoredConversation = await persistConversationSnapshot(conversationId, messagesThroughTarget)
             input.upsertConversation(restoredConversation)
             input.updateConversationSummary(restoredConversation)
-            if ((input.activeConversationIdRef.current ?? input.activeConversationId) === conversationId) {
+            if (readChatSelectionFromRefs(input).activeConversationId === conversationId) {
               input.applyConversation(restoredConversation)
             }
           }

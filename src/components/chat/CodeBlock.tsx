@@ -129,7 +129,7 @@ export const CodeBlock = memo(function CodeBlock({
   return (
     <div className={['my-2 overflow-hidden rounded-xl border border-border bg-surface shadow-sm', className ?? ''].join(' ')}>
       {showHeader ? (
-        <div className="flex items-center gap-3 border-b border-border bg-surface px-3 py-3 text-[12px] text-muted-foreground">
+        <div className="flex items-center gap-3 border-b border-border bg-surface px-3 py-1 text-[12px] text-muted-foreground">
           <span className="inline-flex min-h-4 min-w-0 flex-1 items-center gap-2">
             <span className="flex h-4 w-4 items-center justify-center">
               <LanguageIcon size={14} style={{ color: iconConfig.color }} aria-hidden="true" />
