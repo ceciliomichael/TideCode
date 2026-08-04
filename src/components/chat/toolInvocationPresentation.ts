@@ -66,7 +66,7 @@ function getToolVerb(invocation: ToolInvocationTrace) {
     const action = parsedArgs?.action || 'execute'
     if (action === 'read') {
       return invocation.state === 'running'
-        ? 'Reading'
+        ? 'Waiting for terminal'
         : invocation.state === 'completed'
           ? 'Read'
           : 'Read failed'
