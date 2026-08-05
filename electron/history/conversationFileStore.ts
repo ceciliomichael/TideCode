@@ -1,6 +1,5 @@
 import { createReadStream, promises as fs } from 'node:fs'
 import path from 'node:path'
-import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
 import type { ConversationRecord, Message, UserMessageRunCheckpoint } from '../../src/types/chat'
 import {
@@ -17,14 +16,11 @@ import {
   getMessageLogPath,
   MESSAGE_LOG_FILE_NAME,
 } from './paths'
+import { writeConversationFileAtomic } from './conversationFileWriter'
 
 const CONVERSATION_FILE_SUFFIX = '.json'
 const BACKUP_FILE_SUFFIX = `${CONVERSATION_FILE_SUFFIX}.bak`
 const userMessageCheckpointHistoryCache = new Map<string, Map<string, UserMessageRunCheckpoint[]>>()
-
-function getBackupConversationFilePath(conversationFilePath: string) {
-  return `${conversationFilePath}.bak`
-}
 
 function isBackupConversationFileName(fileName: string) {
   return fileName.endsWith(BACKUP_FILE_SUFFIX)
@@ -96,75 +92,9 @@ export async function readConversationFile(conversationId: string) {
   return readConversationRecordFromPath(getConversationFilePath(conversationId))
 }
 
-async function safeUnlink(filePath: string) {
-  try {
-    await fs.unlink(filePath)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return
-    }
-
-    throw error
-  }
-}
-
-async function safeRename(filePath: string, nextPath: string) {
-  try {
-    await fs.rename(filePath, nextPath)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return false
-    }
-
-    throw error
-  }
-
-  return true
-}
-
-async function writeFileAtomic(targetPath: string, content: string) {
-  const directoryPath = path.dirname(targetPath)
-  const tempPath = path.join(directoryPath, `${path.basename(targetPath)}.tmp-${process.pid}-${randomUUID()}`)
-  const backupPath = getBackupConversationFilePath(targetPath)
-
-  await fs.writeFile(tempPath, content, 'utf8')
-
-  try {
-    await fs.rename(tempPath, targetPath)
-    return
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
-    if (code !== 'EEXIST' && code !== 'EPERM') {
-      await safeUnlink(tempPath)
-      throw error
-    }
-  }
-
-  await safeUnlink(backupPath)
-  const hadExistingTarget = await safeRename(targetPath, backupPath)
-
-  try {
-    await fs.rename(tempPath, targetPath)
-  } catch (error) {
-    await safeUnlink(tempPath)
-
-    if (hadExistingTarget) {
-      try {
-        await fs.rename(backupPath, targetPath)
-      } catch (restoreError) {
-        console.error(`Failed to restore conversation file after a write error: ${targetPath}`, restoreError)
-      }
-    }
-
-    throw error
-  }
-
-  await safeUnlink(backupPath)
-}
-
 export async function writeConversationFile(conversation: ConversationRecord) {
   await ensureHistoryDirectory()
-  await writeFileAtomic(getConversationFilePath(conversation.id), JSON.stringify(conversation, null, 2))
+  await writeConversationFileAtomic(getConversationFilePath(conversation.id), JSON.stringify(conversation, null, 2))
 }
 
 export async function appendMessagesToLog(conversationId: string, messages: Message[]) {

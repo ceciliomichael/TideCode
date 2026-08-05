@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import type {
   ConversationFolderSummary,
   ConversationRecord,
@@ -54,9 +54,13 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
     setError,
     upsertConversation,
   } = input
+  const conversationSelectionRequestRef = useRef(0)
+  const requestedConversationIdRef = useRef(activeConversationId)
 
   const resetDraft = useCallback(
     (nextFolderId: string | null) => {
+      conversationSelectionRequestRef.current += 1
+      requestedConversationIdRef.current = null
       resetComposerState()
       clearConversationSelection(nextFolderId)
     },
@@ -125,21 +129,33 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
 
   const selectConversation = useCallback(
     async (conversationId: string) => {
-      if (conversationId === activeConversationId) {
+      if (
+        conversationId === activeConversationId &&
+        requestedConversationIdRef.current === conversationId
+      ) {
         return
       }
 
+      const requestId = conversationSelectionRequestRef.current + 1
+      conversationSelectionRequestRef.current = requestId
+      requestedConversationIdRef.current = conversationId
       clearError()
       resetComposerState()
 
       const cachedConversation = conversationRuntimeStatesRef.current[conversationId]?.conversation
       if (cachedConversation) {
-        applyConversation(cachedConversation)
+        if (conversationSelectionRequestRef.current === requestId) {
+          applyConversation(cachedConversation)
+        }
         return
       }
 
       try {
         const conversation = await window.tidecodeHistory.getConversation(conversationId)
+        if (conversationSelectionRequestRef.current !== requestId) {
+          return
+        }
+
         if (!conversation) {
           setError('That conversation could not be loaded.')
           return
@@ -148,7 +164,9 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
         applyConversation(conversation)
       } catch (caughtError) {
         console.error(caughtError)
-        setError('Unable to switch conversations.')
+        if (conversationSelectionRequestRef.current === requestId) {
+          setError('Unable to switch conversations.')
+        }
       }
     },
     [activeConversationId, applyConversation, clearError, conversationRuntimeStatesRef, resetComposerState, setError],

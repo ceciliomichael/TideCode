@@ -21,6 +21,11 @@ export interface ConversationRuntimeSnapshot {
   isSending?: boolean
 }
 
+export interface PersistedUserTurn {
+  conversationId: string
+  message: Message
+}
+
 export interface PersistAndStreamMessageInput {
   activeConversationId: string | null
   activeConversationIdRef: { current: string | null }
@@ -40,6 +45,8 @@ export interface PersistAndStreamMessageInput {
   selectedFolderIdRef: { current: string | null }
   hasPendingAbortRequest: () => boolean
   consumePendingAbortBeforeStreamStart: () => boolean
+  onUserTurnPersisted?: (turn: PersistedUserTurn) => void
+  onUserTurnSettled?: (turn: PersistedUserTurn) => void
   isUserMessageReverted?: (messageId: string) => boolean
   clearUserMessageRevert?: (messageId: string) => void
   setError: (errorMessage: string | null) => void

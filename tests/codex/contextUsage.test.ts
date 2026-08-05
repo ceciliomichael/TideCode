@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { estimateModelMessageContextUsage, estimateMessageContextUsage } from '../../src/lib/contextUsage'
 import type { Message } from '../../src/types/chat'
-import { estimateModelMessagesTokens } from '../../electron/chat/shared/compaction/budget'
+import {
+  calculateModelMessagesBudget,
+  estimateModelMessagesTokens,
+  shouldCompactContext,
+} from '../../electron/chat/shared/compaction/budget'
 import { selectContextUsageMessages } from '../../electron/chat/shared/contextUsageProjection'
 
 test('context usage counts tool arguments and separates tool result tokens', () => {
@@ -63,7 +67,44 @@ test('automatic compaction uses the same model-content token estimate as the con
   )
 })
 
-test('context usage does not drop while canonical replay is still missing a completed tool turn', () => {
+test('the compaction budget triggers at the configured context percentage', () => {
+  const messages = [
+    { role: 'user', content: 'U'.repeat(96_000) },
+    {
+      role: 'assistant',
+      content: [{
+        input: { path: 'package.json' },
+        toolCallId: 'call-1',
+        toolName: 'read_file',
+        type: 'tool-call',
+      }],
+    },
+    {
+      role: 'tool',
+      content: [{
+        output: { type: 'text', value: 'T'.repeat(528_000) },
+        toolCallId: 'call-1',
+        toolName: 'read_file',
+        type: 'tool-result',
+      }],
+    },
+  ] as const
+
+  const budget = calculateModelMessagesBudget({
+    contextWindowTokens: 200_000,
+    messages,
+    reserveTokens: 24_000,
+    systemPromptTokens: 5_700,
+    toolSchemaTokens: 0,
+    triggerRatio: 0.8,
+  })
+
+  assert.equal(budget.triggerTokens, 160_000)
+  assert.ok(budget.totalTokens >= budget.triggerTokens)
+  assert.equal(shouldCompactContext(budget), true)
+})
+
+test('context usage follows the provider replay instead of stale raw tool entries', () => {
   const canonicalMessages = [
     { content: 'Earlier conversation'.repeat(4_000), role: 'user' },
   ] as const
@@ -92,10 +133,10 @@ test('context usage does not drop while canonical replay is still missing a comp
     isCompacted: false,
   })
 
-  assert.equal(selected.length, liveMessages.length)
-  assert.ok(
-    estimateModelMessageContextUsage(selected).totalTokens >
-      estimateModelMessageContextUsage(canonicalMessages).totalTokens,
+  assert.deepEqual(selected, [...canonicalMessages])
+  assert.equal(
+    estimateModelMessageContextUsage(selected).totalTokens,
+    estimateModelMessageContextUsage(canonicalMessages).totalTokens,
   )
 })
 

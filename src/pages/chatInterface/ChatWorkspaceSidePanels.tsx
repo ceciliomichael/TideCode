@@ -117,6 +117,7 @@ export function ChatWorkspaceSidePanels({
         onUnstageFiles={interfaceController.handleUnstageDiffFiles}
         onUnstageFile={interfaceController.handleUnstageDiffFile}
         pendingFileActionPath={interfaceController.pendingFileActionPath}
+        fileActionErrorMessage={interfaceController.fileActionErrorMessage}
         onWidthCommit={workspaceState.handleSourceControlPanelWidthCommit}
         onWidthChange={workspaceState.handleSourceControlPanelWidthChange}
         sectionOpen={settings.sourceControlSectionOpen}

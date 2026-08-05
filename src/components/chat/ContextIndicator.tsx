@@ -31,6 +31,10 @@ function getUsageColor(usageRatio: number) {
 }
 
 function getEstimatedContextTokens(usage: ContextUsageEstimate) {
+  if (Number.isFinite(usage.totalTokens) && usage.totalTokens >= 0) {
+    return usage.totalTokens
+  }
+
   return usage.systemPromptTokens + usage.historyTokens + usage.toolResultsTokens
 }
 

@@ -19,6 +19,7 @@ import {
 } from './workspaceFileEditorUtils'
 
 interface UseWorkspaceFileEditorSelectionOptions {
+  getPointerLineBoundaryOffset?: (clientY: number, useLineEnd: boolean) => number | null
   initialSelection?: TextSelectionRange | null
   onChange: (nextValue: string) => void
   onSelectionChange?: (selection: TextSelectionRange | null) => void
@@ -32,7 +33,11 @@ interface ActiveSelectionDrag {
   anchorOffset: number
   focusOffset: number
   lastBoundaryOffset: number | null
+  lastClientX: number
+  lastClientY: number
+  pointerType: string
   pointerId: number
+  selectionReady: boolean
 }
 
 function getSelectionAnchor(textarea: HTMLTextAreaElement) {
@@ -76,34 +81,46 @@ function getLineBoundaryOffset(text: string, offset: number, useLineEnd: boolean
   return lineEnd === -1 ? text.length : lineEnd
 }
 
+function isPointerInsideRect(rect: DOMRect, clientX: number, clientY: number) {
+  return (
+    clientX >= rect.left &&
+    clientX <= rect.right &&
+    clientY >= rect.top &&
+    clientY <= rect.bottom
+  )
+}
+
 function getPointerBoundaryOffset(
   textarea: HTMLTextAreaElement,
-  event: PointerEvent,
+  clientX: number,
+  clientY: number,
   activeOffset: number,
+  getPointerLineBoundaryOffset?: (clientY: number, useLineEnd: boolean) => number | null,
 ) {
   const rect = textarea.getBoundingClientRect()
-  const isInsideTextarea =
-    event.clientX >= rect.left &&
-    event.clientX <= rect.right &&
-    event.clientY >= rect.top &&
-    event.clientY <= rect.bottom
-
-  if (isInsideTextarea) {
+  if (isPointerInsideRect(rect, clientX, clientY)) {
     return null
   }
 
-  if (event.clientY < rect.top) {
+  if (clientY < rect.top) {
     return 0
   }
 
-  if (event.clientY > rect.bottom) {
+  if (clientY > rect.bottom) {
     return textarea.value.length
   }
 
-  return getLineBoundaryOffset(textarea.value, activeOffset, event.clientX > rect.right)
+  const useLineEnd = clientX > rect.right
+  const renderedLineBoundaryOffset = getPointerLineBoundaryOffset?.(clientY, useLineEnd)
+  if (renderedLineBoundaryOffset !== null && renderedLineBoundaryOffset !== undefined) {
+    return renderedLineBoundaryOffset
+  }
+
+  return getLineBoundaryOffset(textarea.value, activeOffset, useLineEnd)
 }
 
 export function useWorkspaceFileEditorSelection({
+  getPointerLineBoundaryOffset,
   initialSelection = null,
   onChange,
   onSelectionChange,
@@ -119,6 +136,7 @@ export function useWorkspaceFileEditorSelection({
   const lastNonEmptySelectionRef = useRef<TextSelectionRange | null>(normalizedInitialSelection)
   const preserveSelectionOnFocusLeaveRef = useRef<TextSelectionRange | null>(null)
   const pendingCollapsedSelectionClearFrameRef = useRef<number | null>(null)
+  const outsideReleasePendingRef = useRef(false)
   const [selection, setSelection] = useState<TextSelectionRange | null>(normalizedInitialSelection)
   const activeSelectionDragRef = useRef<ActiveSelectionDrag | null>(null)
   const normalizedEditorValue = useMemo(() => normalizeEditorLineText(value), [value])
@@ -205,14 +223,26 @@ export function useWorkspaceFileEditorSelection({
     updateSelection(null)
   }, [cancelPendingCollapsedSelectionClear, updateSelection])
 
-  const updateSelectionForPointer = useCallback((event: PointerEvent) => {
+  const updateSelectionForPointer = useCallback((clientX: number, clientY: number, pointerId?: number) => {
     const textarea = textAreaRef.current
     const dragState = activeSelectionDragRef.current
-    if (!textarea || !dragState || dragState.pointerId !== event.pointerId) {
+    if (!textarea || !dragState || (pointerId !== undefined && dragState.pointerId !== pointerId)) {
       return
     }
 
-    const boundaryOffset = getPointerBoundaryOffset(textarea, event, dragState.focusOffset)
+    dragState.lastClientX = clientX
+    dragState.lastClientY = clientY
+    if (!dragState.selectionReady) {
+      return
+    }
+
+    const boundaryOffset = getPointerBoundaryOffset(
+      textarea,
+      clientX,
+      clientY,
+      dragState.focusOffset,
+      getPointerLineBoundaryOffset,
+    )
     if (boundaryOffset === null || boundaryOffset === dragState.lastBoundaryOffset) {
       if (boundaryOffset === null) {
         dragState.lastBoundaryOffset = null
@@ -229,8 +259,12 @@ export function useWorkspaceFileEditorSelection({
       boundaryOffset,
       getSelectionDirection(dragState.anchorOffset, boundaryOffset),
     )
-    syncSelection(textarea)
-  }, [syncSelection, textAreaRef])
+    updateSelection(normalizeTextSelectionRange(
+      dragState.anchorOffset,
+      boundaryOffset,
+      textarea.value.length,
+    ))
+  }, [getPointerLineBoundaryOffset, syncSelection, textAreaRef, updateSelection])
 
   const handleEditorPointerDown = useCallback((event: ReactPointerEvent<HTMLTextAreaElement>) => {
     if (event.button !== 0 || event.pointerType === 'touch') {
@@ -243,8 +277,13 @@ export function useWorkspaceFileEditorSelection({
       anchorOffset: getSelectionAnchor(textarea),
       focusOffset: getSelectionFocus(textarea),
       lastBoundaryOffset: null,
+      lastClientX: event.clientX,
+      lastClientY: event.clientY,
+      pointerType: event.pointerType || 'mouse',
       pointerId,
+      selectionReady: false,
     }
+    textarea.setPointerCapture(pointerId)
     resetSelectionHighlight()
 
     window.requestAnimationFrame(() => {
@@ -255,8 +294,10 @@ export function useWorkspaceFileEditorSelection({
 
       dragState.anchorOffset = getSelectionAnchor(textarea)
       dragState.focusOffset = getSelectionFocus(textarea)
+      dragState.selectionReady = true
+      updateSelectionForPointer(dragState.lastClientX, dragState.lastClientY, pointerId)
     })
-  }, [resetSelectionHighlight])
+  }, [resetSelectionHighlight, updateSelectionForPointer])
 
   const handleEditorBlur = useCallback((event: ReactFocusEvent<HTMLTextAreaElement>) => {
     if (
@@ -305,27 +346,87 @@ export function useWorkspaceFileEditorSelection({
 
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {
-      updateSelectionForPointer(event)
+      updateSelectionForPointer(event.clientX, event.clientY, event.pointerId)
     }
 
-    function finishSelectionDrag(event: PointerEvent) {
+    function finishSelectionDrag(clientX: number, clientY: number, pointerId?: number) {
       const dragState = activeSelectionDragRef.current
-      if (!dragState || dragState.pointerId !== event.pointerId) {
+      if (!dragState || (pointerId !== undefined && dragState.pointerId !== pointerId)) {
         return
       }
 
-      updateSelectionForPointer(event)
+      const textarea = textAreaRef.current
+      if (textarea && !dragState.selectionReady) {
+        dragState.anchorOffset = getSelectionAnchor(textarea)
+        dragState.focusOffset = getSelectionFocus(textarea)
+        dragState.selectionReady = true
+      }
+      updateSelectionForPointer(clientX, clientY, pointerId)
+      const releasedOutsideEditor =
+        textarea !== null && !isPointerInsideRect(textarea.getBoundingClientRect(), clientX, clientY)
+      if (releasedOutsideEditor) {
+        preserveSelectionOnFocusLeaveRef.current = selectionRef.current
+        outsideReleasePendingRef.current = true
+      } else {
+        outsideReleasePendingRef.current = false
+      }
+      if (textarea && pointerId !== undefined && textarea.hasPointerCapture(pointerId)) {
+        textarea.releasePointerCapture(pointerId)
+      }
       activeSelectionDragRef.current = null
     }
 
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', finishSelectionDrag)
+    function handlePointerUp(event: PointerEvent) {
+      finishSelectionDrag(event.clientX, event.clientY, event.pointerId)
+    }
+
+    function handleMouseMove(event: MouseEvent) {
+      if (activeSelectionDragRef.current?.pointerType !== 'mouse') {
+        return
+      }
+
+      updateSelectionForPointer(event.clientX, event.clientY)
+    }
+
+    function handleMouseUp(event: MouseEvent) {
+      if (event.button !== 0 || activeSelectionDragRef.current?.pointerType !== 'mouse') {
+        return
+      }
+
+      finishSelectionDrag(event.clientX, event.clientY)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove, true)
+    window.addEventListener('pointerup', handlePointerUp, true)
+    window.addEventListener('mousemove', handleMouseMove, true)
+    window.addEventListener('mouseup', handleMouseUp, true)
 
     return () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', finishSelectionDrag)
+      window.removeEventListener('pointermove', handlePointerMove, true)
+      window.removeEventListener('pointerup', handlePointerUp, true)
+      window.removeEventListener('mousemove', handleMouseMove, true)
+      window.removeEventListener('mouseup', handleMouseUp, true)
     }
   }, [textAreaRef, updateSelectionForPointer])
+
+  useEffect(() => {
+    function clearStaleDragOnPointerDown(event: PointerEvent) {
+      const dragState = activeSelectionDragRef.current
+      if (!dragState || dragState.pointerId === event.pointerId) {
+        return
+      }
+
+      activeSelectionDragRef.current = null
+      outsideReleasePendingRef.current = false
+      preserveSelectionOnFocusLeaveRef.current = selectionRef.current
+    }
+
+    window.addEventListener('pointerdown', clearStaleDragOnPointerDown, true)
+
+    return () => {
+      window.removeEventListener('pointerdown', clearStaleDragOnPointerDown, true)
+    }
+  }, [])
 
   useEffect(() => {
     function handleDocumentPointerDown(event: PointerEvent) {
@@ -334,6 +435,7 @@ export function useWorkspaceFileEditorSelection({
         return
       }
 
+      outsideReleasePendingRef.current = false
       if (isWorkspaceTabSwitchTarget(event.target)) {
         preserveSelectionOnFocusLeaveRef.current = selectionRef.current
         return
@@ -359,7 +461,16 @@ export function useWorkspaceFileEditorSelection({
   useEffect(() => {
     function handleDocumentClick(event: MouseEvent) {
       const textarea = textAreaRef.current
-      if (!textarea || activeSelectionDragRef.current !== null) {
+      if (!textarea) {
+        return
+      }
+
+      if (outsideReleasePendingRef.current) {
+        outsideReleasePendingRef.current = false
+        return
+      }
+
+      if (activeSelectionDragRef.current !== null) {
         return
       }
 
@@ -386,15 +497,21 @@ export function useWorkspaceFileEditorSelection({
 
     function handleDocumentSelectionChange() {
       const textarea = textAreaRef.current
-      const isActiveSelectionDrag = activeSelectionDragRef.current !== null
-      if (!textarea || (!isActiveSelectionDrag && document.activeElement !== textarea) || frameId !== null) {
+      if (
+        !textarea ||
+        document.activeElement !== textarea ||
+        frameId !== null
+      ) {
         return
       }
 
       frameId = window.requestAnimationFrame(() => {
         frameId = null
         const activeTextarea = textAreaRef.current
-        if (activeTextarea && (activeSelectionDragRef.current !== null || document.activeElement === activeTextarea)) {
+        if (
+          activeTextarea &&
+          document.activeElement === activeTextarea
+        ) {
           syncSelection(activeTextarea)
         }
       })

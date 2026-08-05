@@ -9,7 +9,7 @@ import {
 } from './chatHistoryWorkflows'
 import { persistAndStreamMessage } from './chatMessageSendWorkflow'
 import type { ChatRuntimeSelection } from './chatMessageRuntime'
-import type { PersistAndStreamMessageInput } from './chatMessageSendTypes'
+import type { PersistAndStreamMessageInput, PersistedUserTurn } from './chatMessageSendTypes'
 import { restoreChatComposerDraft } from '../lib/chatComposerDraft'
 import { readChatSelectionFromRefs } from '../lib/chatSelection'
 import {
@@ -26,6 +26,7 @@ import {
 import type { ChatMode, Message } from '../types/chat'
 
 const RUN_STATE_SETTLE_TIMEOUT_MS = 20_000
+const STREAM_REGISTRATION_POLL_TIMEOUT_MS = 8_000
 
 interface UseChatSendActionsInput
   extends Omit<
@@ -98,6 +99,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
   const submissionInFlightRef = useRef<Set<string>>(new Set())
   const pendingAbortBeforeStreamStartRef = useRef(false)
   const revertedUserMessageIdsRef = useRef<Set<string>>(new Set())
+  const pendingPersistedUserTurnsRef = useRef<Map<string, PersistedUserTurn>>(new Map())
 
   const isUserMessageReverted = useCallback((messageId: string) => {
     return revertedUserMessageIdsRef.current.has(messageId)
@@ -107,18 +109,43 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     revertedUserMessageIdsRef.current.delete(messageId)
   }, [])
 
+  const registerPersistedUserTurn = useCallback((turn: PersistedUserTurn) => {
+    pendingPersistedUserTurnsRef.current.set(turn.conversationId, turn)
+  }, [])
+
+  const clearPersistedUserTurn = useCallback((turn: PersistedUserTurn) => {
+    const currentTurn = pendingPersistedUserTurnsRef.current.get(turn.conversationId)
+    if (currentTurn?.message.id === turn.message.id) {
+      pendingPersistedUserTurnsRef.current.delete(turn.conversationId)
+    }
+  }, [])
+
+  const restoreUserMessageDraftToMainComposer = useCallback(
+    (message: Message | null) => {
+      if (!message || message.role !== 'user') {
+        return false
+      }
+
+      const restoredComposerDraft = restoreChatComposerDraft(message.content)
+      input.setMainComposerValue(restoredComposerDraft.value)
+      input.setMainComposerAttachments(message.attachments ?? [])
+      input.setMainComposerMentionPathMap(restoredComposerDraft.mentionPathMap)
+      return true
+    },
+    [input],
+  )
+
   const restorePendingUserMessageToMainComposer = useCallback(
-    (conversationId: string, message: Message | null) => {
+    (conversationId: string, message: Message | null, options?: { restoreComposer?: boolean }) => {
       if (!message || message.role !== 'user') {
         return false
       }
 
       revertedUserMessageIdsRef.current.add(message.id)
       input.cancelEditingMessage()
-      const restoredComposerDraft = restoreChatComposerDraft(message.content)
-      input.setMainComposerValue(restoredComposerDraft.value)
-      input.setMainComposerAttachments(message.attachments ?? [])
-      input.setMainComposerMentionPathMap(restoredComposerDraft.mentionPathMap)
+      if (options?.restoreComposer !== false) {
+        restoreUserMessageDraftToMainComposer(message)
+      }
 
       const conversationState = input.conversationRuntimeStatesRef.current[conversationId] ?? null
       const pendingMessageIds = getPendingRevertMessageIds(conversationState, message.id)
@@ -133,12 +160,59 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       })
       return true
     },
-    [input],
+    [input, restoreUserMessageDraftToMainComposer],
   )
 
   const getConversationState = useCallback(
     (conversationId: string) => input.conversationRuntimeStatesRef.current[conversationId] ?? null,
     [input.conversationRuntimeStatesRef],
+  )
+
+  const resolvePendingStopTurn = useCallback(
+    (conversationId: string | null) => {
+      if (conversationId) {
+        const conversationState = getConversationState(conversationId)
+        const pendingUserMessage = getActiveUnrespondedUserMessage(conversationState)
+        if (pendingUserMessage) {
+          return {
+            conversationId,
+            message: pendingUserMessage,
+          } satisfies PersistedUserTurn
+        }
+      }
+
+      const trackedTurn = conversationId
+        ? pendingPersistedUserTurnsRef.current.get(conversationId)
+        : Array.from(pendingPersistedUserTurnsRef.current.values()).at(-1)
+      if (!trackedTurn) {
+        return null
+      }
+
+      const conversationState = getConversationState(trackedTurn.conversationId)
+      if (conversationState && !isActiveUnrespondedUserMessage(conversationState, trackedTurn.message.id)) {
+        return null
+      }
+
+      return trackedTurn
+    },
+    [getConversationState],
+  )
+
+  const rollbackPendingUserMessage = useCallback(
+    async (turn: PersistedUserTurn) => {
+      const rolledBackConversation = await rollbackConversationBeforeUserMessage(turn.conversationId, turn.message.id)
+      input.upsertConversation(rolledBackConversation)
+      input.updateConversationSummary(rolledBackConversation)
+
+      const activeConversationId = readChatSelectionFromRefs(input).activeConversationId
+      if (activeConversationId === turn.conversationId) {
+        input.applyConversation(rolledBackConversation)
+        restoreUserMessageDraftToMainComposer(turn.message)
+      } else if (activeConversationId === null) {
+        restoreUserMessageDraftToMainComposer(turn.message)
+      }
+    },
+    [input, restoreUserMessageDraftToMainComposer],
   )
 
   const findActiveRunConversationId = useCallback(() => {
@@ -176,24 +250,44 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     [getConversationState],
   )
 
-  const waitForAbortableConversationId = useCallback(async () => {
-    const immediateConversationId = findActiveRunConversationId()
-    if (immediateConversationId) {
-      return immediateConversationId
-    }
-
-    const startedAt = Date.now()
-    while (Date.now() - startedAt < 4_000) {
-      const conversationId = findActiveRunConversationId()
-      if (conversationId) {
-        return conversationId
+  const waitForAbortableConversationId = useCallback(
+    async (options?: { preservePendingAbortForSubmission?: boolean }) => {
+      const preservePendingAbortForSubmission = options?.preservePendingAbortForSubmission === true
+      const immediateConversationId = findActiveRunConversationId()
+      if (immediateConversationId) {
+        const immediateState = getConversationState(immediateConversationId)
+        if (
+          !preservePendingAbortForSubmission ||
+          immediateState?.isSending === true ||
+          Boolean(immediateState?.activeStreamId) ||
+          submissionInFlightRef.current.size === 0
+        ) {
+          return immediateConversationId
+        }
       }
 
-      await sleep(25)
-    }
+      const startedAt = Date.now()
+      while (Date.now() - startedAt < 4_000) {
+        const conversationId = findActiveRunConversationId()
+        if (conversationId) {
+          const conversationState = getConversationState(conversationId)
+          if (
+            !preservePendingAbortForSubmission ||
+            conversationState?.isSending === true ||
+            Boolean(conversationState?.activeStreamId) ||
+            submissionInFlightRef.current.size === 0
+          ) {
+            return conversationId
+          }
+        }
 
-    return null
-  }, [findActiveRunConversationId])
+        await sleep(25)
+      }
+
+      return null
+    },
+    [findActiveRunConversationId, getConversationState],
+  )
 
   const waitForSendReadiness = useCallback(
     async (conversationId: string | null, sendScopeKey: string) => {
@@ -235,8 +329,13 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       }
 
       const abortOperation = (async () => {
-        const conversationId = await waitForAbortableConversationId()
+        const conversationId = await waitForAbortableConversationId({
+          preservePendingAbortForSubmission: options?.requestAbortBeforeStreamStart,
+        })
         if (!conversationId) {
+          if (options?.requestAbortBeforeStreamStart && submissionInFlightRef.current.size === 0) {
+            pendingAbortBeforeStreamStartRef.current = false
+          }
           return
         }
 
@@ -248,7 +347,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         if (!conversationState.isSending && conversationState.activeStreamId === null) {
           // A stop click can arrive just after the runtime has already
           // settled. Do not let that stale click cancel the user's next send.
-          if (options?.requestAbortBeforeStreamStart) {
+          if (options?.requestAbortBeforeStreamStart && submissionInFlightRef.current.size === 0) {
             pendingAbortBeforeStreamStartRef.current = false
           }
           return
@@ -256,8 +355,28 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
 
         if (!conversationState.activeStreamId && conversationState.isSending) {
           if (options?.requestAbortBeforeStreamStart) {
-            // The send workflow owns the pre-stream abort flag. Wait for its
-            // finally block so stop -> revert cannot race the rollback.
+            // The send workflow owns the pre-stream abort flag, so a stop
+            // click in the pre-stream window (before the stream id is
+            // registered) must not race the rollback. Wait for the stream id
+            // to appear and cancel it immediately: otherwise the run keeps
+            // streaming (and executing tools) in the background and persists
+            // the reverted user turn back to history.
+            const registrationPollStartedAt = Date.now()
+            while (Date.now() - registrationPollStartedAt < STREAM_REGISTRATION_POLL_TIMEOUT_MS) {
+              const currentState = getConversationState(conversationId)
+              const registeredStreamId = currentState?.activeStreamId ?? null
+              if (registeredStreamId) {
+                await window.tidecodeChat.cancelStream(registeredStreamId)
+                break
+              }
+              if (!currentState?.isSending) {
+                break
+              }
+              await sleep(25)
+            }
+
+            // Wait for the send workflow's finally block so stop -> revert
+            // cannot race the rollback.
             await waitForConversationRunState(
               conversationId,
               (currentValue) => currentValue?.isSending !== true && currentValue?.activeStreamId === null,
@@ -363,6 +482,8 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
             pendingAbortBeforeStreamStartRef.current = false
             return true
           },
+          onUserTurnPersisted: registerPersistedUserTurn,
+          onUserTurnSettled: clearPersistedUserTurn,
           isUserMessageReverted,
           clearUserMessageRevert,
           originalText: nextMessageText,
@@ -380,7 +501,15 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         releaseChatSendScopeGate(submissionInFlightRef, sendScopeKey)
       }
     },
-    [clearUserMessageRevert, getConversationState, input, isUserMessageReverted, waitForSendReadiness],
+    [
+      clearPersistedUserTurn,
+      clearUserMessageRevert,
+      getConversationState,
+      input,
+      isUserMessageReverted,
+      registerPersistedUserTurn,
+      waitForSendReadiness,
+    ],
   )
 
   const sendProgrammaticMessage = useCallback(
@@ -588,20 +717,53 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     }
 
     const conversationId = readChatSelectionFromRefs(input).activeConversationId
-    if (conversationId) {
-      const pendingUserMessage = getActiveUnrespondedUserMessage(getConversationState(conversationId))
-      if (pendingUserMessage) {
-        restorePendingUserMessageToMainComposer(conversationId, pendingUserMessage)
-      }
+    const pendingStopTurn = resolvePendingStopTurn(conversationId)
+    if (pendingStopTurn) {
+      restorePendingUserMessageToMainComposer(pendingStopTurn.conversationId, pendingStopTurn.message, {
+        restoreComposer: false,
+      })
     }
 
+    let rollbackError: unknown = null
+    const pendingRollbackPromise = pendingStopTurn
+      ? rollbackPendingUserMessage(pendingStopTurn).catch((caughtError) => {
+          rollbackError = caughtError
+        })
+      : null
+    let stopError: unknown = null
     try {
       await abortActiveStreamIfNeeded({ requestAbortBeforeStreamStart: true })
     } catch (caughtError) {
-      console.error(caughtError)
+      stopError = caughtError
+      const activeConversationId = readChatSelectionFromRefs(input).activeConversationId
+      if (
+        pendingStopTurn &&
+        (activeConversationId === pendingStopTurn.conversationId || activeConversationId === null)
+      ) {
+        restoreUserMessageDraftToMainComposer(pendingStopTurn.message)
+      }
+    }
+
+    if (pendingRollbackPromise) {
+      await pendingRollbackPromise
+    }
+    if (rollbackError) {
+      stopError = stopError ?? rollbackError
+      console.error(rollbackError)
+    }
+
+    if (stopError) {
+      console.error(stopError)
       input.setError('Unable to stop the current response.')
     }
-  }, [abortActiveStreamIfNeeded, getConversationState, input, restorePendingUserMessageToMainComposer])
+  }, [
+    abortActiveStreamIfNeeded,
+    input,
+    resolvePendingStopTurn,
+    restorePendingUserMessageToMainComposer,
+    restoreUserMessageDraftToMainComposer,
+    rollbackPendingUserMessage,
+  ])
 
   const revertUserMessage = useCallback(
     async (messageId: string) => {
@@ -620,13 +782,13 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         input.clearError()
         if (isPendingSendRevert) {
           const pendingUserMessage = getActiveUnrespondedUserMessage(conversationState, messageId)
-          restorePendingUserMessageToMainComposer(conversationId, pendingUserMessage)
+          restorePendingUserMessageToMainComposer(conversationId, pendingUserMessage, { restoreComposer: false })
           await abortActiveStreamIfNeeded({ requestAbortBeforeStreamStart: true })
-          const rolledBackConversation = await rollbackConversationBeforeUserMessage(conversationId, messageId)
-          input.upsertConversation(rolledBackConversation)
-          input.updateConversationSummary(rolledBackConversation)
-          if (readChatSelectionFromRefs(input).activeConversationId === conversationId) {
-            input.applyConversation(rolledBackConversation)
+          if (pendingUserMessage) {
+            await rollbackPendingUserMessage({
+              conversationId,
+              message: pendingUserMessage,
+            })
           }
           return
         }
@@ -693,6 +855,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       getConversationState,
       input,
       restorePendingUserMessageToMainComposer,
+      rollbackPendingUserMessage,
     ],
   )
 
