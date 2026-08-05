@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.26 — More trustworthy conversation history
+
+TideCode now saves conversation history more reliably and keeps stop, revert, and source-control actions from leaving stale or conflicting state behind.
+
+- Serializes per-conversation history writes with a retrying atomic writer, so overlapping streaming snapshots no longer lose the newest message and Windows file-lock errors are retried instead of failing the save.
+- Stops a reverted user turn from continuing to run in the background and re-inserting itself into history when stop or revert lands during the pre-stream window, and restores the composer draft more consistently.
+- Keeps the context indicator and compaction markers and status accurate while switching conversations, streaming, and compacting.
+- Discarding an unstaged file restores only the worktree diff, avoids a stale diff cache, and surfaces file-action errors; file-heavy actions also pause the commit action until they finish.
+- Cleans up draft context for an abandoned chat only after that conversation is deleted, avoiding a race that could affect an unrelated conversation.
+- Includes regression coverage for history persistence, streaming progress, stop and revert, compaction, and source-control discard.
+
 ## 1.0.25 — More reliable fast chat switching
 
 TideCode now keeps chat sends anchored to the conversation and project currently shown, even when a new thread or workspace selection changes immediately before sending.
