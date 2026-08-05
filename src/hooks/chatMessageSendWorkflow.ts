@@ -8,10 +8,8 @@ import {
 } from './chatHistoryWorkflows'
 import { createChatAssistantDraftManager } from './chatAssistantDrafts'
 import { streamAssistantResponse, toErrorMessage } from './chatMessageRuntime'
-import type { PersistAndStreamMessageInput } from './chatMessageSendTypes'
-
-const STREAM_PROGRESS_PERSIST_DEBOUNCE_MS = 600
-const STREAM_PROGRESS_PERSIST_CHAR_FLUSH_THRESHOLD = 768
+import { createChatStreamProgressPersistenceController } from './chatStreamProgressPersistence'
+import type { PersistAndStreamMessageInput, PersistedUserTurn } from './chatMessageSendTypes'
 
 function validateRuntimeSelection(input: PersistAndStreamMessageInput) {
   if (!input.runtimeSelection.hasConfiguredProvider) {
@@ -50,117 +48,7 @@ function isMessageNotFoundError(error: unknown) {
   return error instanceof Error && /^message not found:/i.test(error.message.trim())
 }
 
-function createStreamProgressPersistenceController(input: {
-  conversationId: string
-  setError: (errorMessage: string | null) => void
-}) {
-  let pendingMessages: Message[] | null = null
-  let pendingFlushTimeoutId: number | null = null
-  let flushPromise: Promise<ConversationRecord | null> | null = null
-  let pendingDeltaCharCount = 0
-
-  const flushPendingMessages = () => {
-    if (flushPromise) {
-      return flushPromise
-    }
-
-    flushPromise = (async () => {
-      let latestSavedConversation: ConversationRecord | null = null
-
-      while (pendingMessages !== null) {
-        const messagesSnapshot = pendingMessages
-        pendingMessages = null
-        latestSavedConversation = await persistConversationSnapshot(input.conversationId, messagesSnapshot)
-      }
-
-      return latestSavedConversation
-    })()
-      .catch((caughtError) => {
-        console.error(caughtError)
-        input.setError(toErrorMessage(caughtError, 'Unable to save the latest assistant progress.'))
-        return null
-      })
-      .finally(() => {
-        flushPromise = null
-      })
-
-    return flushPromise
-  }
-
-  const queueSnapshot = (messages: Message[], options?: { immediate?: boolean }) => {
-    pendingMessages = [...messages]
-    pendingDeltaCharCount = options?.immediate ? 0 : pendingDeltaCharCount
-
-    if (options?.immediate) {
-      if (pendingFlushTimeoutId !== null) {
-        window.clearTimeout(pendingFlushTimeoutId)
-        pendingFlushTimeoutId = null
-      }
-
-      void flushPendingMessages()
-      return
-    }
-
-    if (pendingFlushTimeoutId !== null) {
-      return
-    }
-
-    pendingFlushTimeoutId = window.setTimeout(() => {
-      pendingFlushTimeoutId = null
-      void flushPendingMessages()
-    }, STREAM_PROGRESS_PERSIST_DEBOUNCE_MS)
-  }
-
-  const queueSnapshotWithHint = (
-    messages: Message[],
-    options?: { immediate?: boolean },
-    hint?: { deltaCharCount?: number },
-  ) => {
-    if (typeof hint?.deltaCharCount === 'number' && Number.isFinite(hint.deltaCharCount) && hint.deltaCharCount > 0) {
-      pendingDeltaCharCount += hint.deltaCharCount
-      if (pendingDeltaCharCount >= STREAM_PROGRESS_PERSIST_CHAR_FLUSH_THRESHOLD) {
-        queueSnapshot(messages, { immediate: true })
-        pendingDeltaCharCount = 0
-        return
-      }
-    }
-
-    queueSnapshot(messages, options)
-  }
-
-  const flush = async () => {
-    if (pendingFlushTimeoutId !== null) {
-      window.clearTimeout(pendingFlushTimeoutId)
-      pendingFlushTimeoutId = null
-    }
-
-    pendingDeltaCharCount = 0
-    return flushPendingMessages()
-  }
-
-  const discard = async () => {
-    if (pendingFlushTimeoutId !== null) {
-      window.clearTimeout(pendingFlushTimeoutId)
-      pendingFlushTimeoutId = null
-    }
-
-    pendingMessages = null
-    pendingDeltaCharCount = 0
-
-    if (flushPromise) {
-      await flushPromise
-    }
-  }
-
-  return {
-    discard,
-    flush,
-    queueSnapshot: queueSnapshotWithHint,
-  }
-}
-
 async function rollbackAbortedUserMessage(input: {
-  chatMode: PersistAndStreamMessageInput['draftChatMode']
   conversationId: string
   userMessageId: string
 }) {
@@ -195,13 +83,6 @@ async function rollbackAndRestoreComposer(input: PersistAndStreamMessageInput, o
   shouldKeepSelected: boolean
   userMessageId: string | null
 }) {
-  if (options.shouldKeepSelected) {
-    const restoredComposerDraft = restoreChatComposerDraft(input.originalText)
-    input.setMainComposerValue(restoredComposerDraft.value)
-    input.setMainComposerAttachments(input.attachments)
-    input.setMainComposerMentionPathMap(restoredComposerDraft.mentionPathMap)
-  }
-
   if (options.userMessageId) {
     const localRolledBackConversation = buildLocallyRolledBackConversation({
       chatMode: input.draftChatMode,
@@ -212,25 +93,32 @@ async function rollbackAndRestoreComposer(input: PersistAndStreamMessageInput, o
     })
 
     input.upsertConversation(localRolledBackConversation)
+    input.updateConversationRuntimeState(options.conversationId, {
+      isSending: true,
+    })
     if (options.shouldKeepSelected) {
       input.applyConversation(localRolledBackConversation)
     }
     input.updateConversationSummary(localRolledBackConversation)
 
     const rolledBackConversation = await rollbackAbortedUserMessage({
-      chatMode: input.draftChatMode,
       conversationId: options.conversationId,
       userMessageId: options.userMessageId,
     })
-    if (rolledBackConversation) {
-      input.upsertConversation(rolledBackConversation)
-      if (options.shouldKeepSelected) {
-        input.applyConversation(rolledBackConversation)
-      }
-      input.updateConversationSummary(rolledBackConversation)
+
+    input.upsertConversation(rolledBackConversation)
+    if (options.shouldKeepSelected) {
+      input.applyConversation(rolledBackConversation)
     }
+    input.updateConversationSummary(rolledBackConversation)
   }
 
+  if (options.shouldKeepSelected) {
+    const restoredComposerDraft = restoreChatComposerDraft(input.originalText)
+    input.setMainComposerValue(restoredComposerDraft.value)
+    input.setMainComposerAttachments(input.attachments)
+    input.setMainComposerMentionPathMap(restoredComposerDraft.mentionPathMap)
+  }
 }
 
 export async function persistAndStreamMessage(input: PersistAndStreamMessageInput): Promise<boolean> {
@@ -243,11 +131,12 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
   const initiatingFolderId = input.selectedFolderId
   let conversationIdForCleanup = initiatingConversationId
   let draftManager: ReturnType<typeof createChatAssistantDraftManager> | null = null
-  let streamProgressPersistence: ReturnType<typeof createStreamProgressPersistenceController> | null = null
+  let streamProgressPersistence: ReturnType<typeof createChatStreamProgressPersistenceController> | null = null
   let shouldKeepWaitingIndicatorActive = false
   let hasPendingDraftReservation = false
   let requestAccepted = false
   let persistedUserMessage: Message | null = null
+  let persistedUserTurn: PersistedUserTurn | null = null
   let fallbackConversationForRollback: ConversationRecord | null = null
   const shouldRestoreMainComposerOnAbort = input.targetEditMessageId === null
 
@@ -286,6 +175,11 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       title: input.title,
     })
     persistedUserMessage = userMessage
+    persistedUserTurn = {
+      conversationId: conversation.id,
+      message: userMessage,
+    }
+    input.onUserTurnPersisted?.(persistedUserTurn)
     const conversationForRun =
       conversation.chatMode === input.draftChatMode
         ? conversation
@@ -294,7 +188,6 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
             chatMode: input.draftChatMode,
           }
     fallbackConversationForRollback = conversationForRun
-
     conversationIdForCleanup = conversationForRun.id
     const shouldKeepSelected =
       initiatingConversationId === null
@@ -368,9 +261,11 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       return requestAccepted
     }
 
-    streamProgressPersistence = createStreamProgressPersistenceController({
+    streamProgressPersistence = createChatStreamProgressPersistenceController({
       conversationId: conversationForRun.id,
+      persistSnapshot: persistConversationSnapshot,
       setError: input.setError,
+      shouldDiscard: () => input.isUserMessageReverted?.(persistedUserMessage?.id ?? '') ?? false,
     })
 
     draftManager = createChatAssistantDraftManager({
@@ -426,6 +321,24 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
           userMessageId: persistedUserMessage?.id ?? null,
         })
       }
+
+      return requestAccepted
+    }
+
+    const wasUserMessageReverted = input.isUserMessageReverted?.(persistedUserMessage?.id ?? '') ?? false
+    if (wasUserMessageReverted && shouldRestoreMainComposerOnAbort) {
+      // The UI already reverted this turn (stop/revert landed in the window
+      // before the stream id was registered). Even though the stream managed
+      // to produce output, persisting it would resurrect the reverted user
+      // message in history. Discard the in-flight progress and roll the
+      // stored conversation back so the revert sticks.
+      await streamProgressPersistence?.discard()
+      await rollbackAndRestoreComposer(input, {
+        conversationId: conversationForRun.id,
+        fallbackConversation: conversationForRun,
+        shouldKeepSelected,
+        userMessageId: persistedUserMessage?.id ?? null,
+      })
 
       return requestAccepted
     }
@@ -514,6 +427,9 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
     return requestAccepted
   } finally {
     releasePendingDraftReservation()
+    if (persistedUserTurn) {
+      input.onUserTurnSettled?.(persistedUserTurn)
+    }
     if (persistedUserMessage) {
       input.clearUserMessageRevert?.(persistedUserMessage.id)
     }

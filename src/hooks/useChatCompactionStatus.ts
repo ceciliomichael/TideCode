@@ -9,20 +9,35 @@ interface UseChatCompactionStatusInput {
 export function useChatCompactionStatus({
   conversationId,
 }: UseChatCompactionStatusInput): ChatCompactionLifecycleState | null {
-  const [status, setStatus] = useState<ChatCompactionLifecycleState | null>(null)
+  const [statusState, setStatusState] = useState<{
+    conversationId: string | null
+    status: ChatCompactionLifecycleState | null
+  }>({
+    conversationId: null,
+    status: null,
+  })
 
   useEffect(() => {
-    setStatus(null)
+    setStatusState({ conversationId, status: null })
     if (!conversationId) {
       return
     }
 
     const unsubscribe = window.tidecodeChat.onStreamEvent((event) => {
-      setStatus((currentStatus) => reduceChatCompactionStatus(currentStatus, event, conversationId))
+      setStatusState((currentState) => {
+        if (currentState.conversationId !== conversationId) {
+          return currentState
+        }
+
+        return {
+          conversationId,
+          status: reduceChatCompactionStatus(currentState.status, event, conversationId),
+        }
+      })
     })
 
     return unsubscribe
   }, [conversationId])
 
-  return status
+  return statusState.conversationId === conversationId ? statusState.status : null
 }

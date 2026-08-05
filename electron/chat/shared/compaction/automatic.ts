@@ -1,6 +1,6 @@
 import type { ModelMessage } from 'ai'
 
-export type AutomaticCompactionTrigger = 'user_turn' | 'tool_result'
+export type AutomaticCompactionTrigger = 'user_turn' | 'tool_result' | 'model_step'
 
 interface AutomaticCompactionTriggerInput {
   abortSignal?: AbortSignal
@@ -9,15 +9,20 @@ interface AutomaticCompactionTriggerInput {
   stepNumber: number
 }
 
-function endsWithToolResult(messages: readonly ModelMessage[]) {
-  return messages.at(-1)?.role === 'tool'
+function containsToolResult(messages: readonly ModelMessage[]) {
+  return messages.some((message) => message.role === 'tool')
 }
 
 /**
- * Automatic compaction is only allowed at boundaries where the model is about
- * to receive a user turn or continue after a completed tool step. Keeping the
- * decision separate from the compaction service prevents a provider callback
- * or an abort cleanup from accidentally turning into a compaction trigger.
+ * `prepareStep` is called immediately before each model request. Every live
+ * continuation is a valid point to evaluate the budget; the compaction
+ * service remains responsible for deciding whether the threshold was crossed
+ * and whether a safe history boundary exists.
+ *
+ * Tool-result detection is retained as a descriptive trigger for diagnostics,
+ * but it must not be a gate: providers can append assistant or reasoning
+ * messages after a tool result while still remaining at the same continuation
+ * boundary.
  */
 export function resolveAutomaticCompactionTrigger(
   input: AutomaticCompactionTriggerInput,
@@ -30,13 +35,13 @@ export function resolveAutomaticCompactionTrigger(
     return 'user_turn'
   }
 
-  if (input.stepNumber > 0 && endsWithToolResult(input.responseMessages)) {
+  if (input.stepNumber > 0 && containsToolResult(input.responseMessages)) {
     return 'tool_result'
   }
 
-  if (input.stepNumber > 0 && endsWithToolResult(input.messages)) {
+  if (input.stepNumber > 0 && containsToolResult(input.messages)) {
     return 'tool_result'
   }
 
-  return null
+  return input.stepNumber > 0 ? 'model_step' : null
 }

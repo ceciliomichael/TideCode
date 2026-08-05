@@ -28,11 +28,11 @@ interface WorkspaceFileEditorViewProps {
 
 function getLineNumberRowClassName(status: WorkspaceEditorLineStatus | null) {
   if (status === 'added') {
-    return 'border-r-[3px] border-emerald-500/80'
+    return 'border-r-[3px] border-[var(--workspace-editor-line-added-border)]'
   }
 
   if (status === 'changed') {
-    return 'border-r-[3px] border-brand/80'
+    return 'border-r-[3px] border-[var(--workspace-editor-line-added-border)]'
   }
 
   return 'border-r-[3px] border-transparent'

@@ -53,7 +53,11 @@ export async function discardGitFileChanges(input: GitFileStageInput): Promise<G
 
   try {
     if (await isTrackedGitFile(repoRootPath, filePath)) {
-      await runGit(['restore', '--worktree', '--source=HEAD', '--', filePath], repoRootPath).catch(async () => {
+      // Discarding an item from the Unstaged section must remove only the
+      // worktree diff. The index is the source of truth for the staged
+      // version, so restoring from HEAD would be a no-op for a file whose
+      // worktree was reverted to HEAD while its staged content still differs.
+      await runGit(['restore', '--worktree', '--', filePath], repoRootPath).catch(async () => {
         await runGit(['checkout', '--', filePath], repoRootPath)
       })
     } else {

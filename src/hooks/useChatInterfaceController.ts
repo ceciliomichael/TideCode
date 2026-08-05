@@ -65,6 +65,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
   const [isCommitModalOpen, setIsCommitModalOpen] = useState(false)
   const [commitSuccessDialog, setCommitSuccessDialog] = useState<CommitSuccessDialogState | null>(null)
   const [pendingFileActionPath, setPendingFileActionPath] = useState<string | null>(null)
+  const [fileActionErrorMessage, setFileActionErrorMessage] = useState<string | null>(null)
   const previousWorkspacePathRef = useRef<string | null>(null)
   const activeWorkspacePathRef = useRef<string | null>(activeWorkspacePath?.trim() ?? null)
 
@@ -82,11 +83,13 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
   useEffect(() => {
     if (!hasRepository) {
       setPendingFileActionPath(null)
+      setFileActionErrorMessage(null)
     }
   }, [hasRepository])
 
   useEffect(() => {
     activeWorkspacePathRef.current = activeWorkspacePath?.trim() ?? null
+    setFileActionErrorMessage(null)
   }, [activeWorkspacePath])
 
   useEffect(() => {
@@ -193,6 +196,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
       }
 
       setPendingFileActionPath(filePath)
+      setFileActionErrorMessage(null)
       try {
         if (action === 'stage') {
           await window.tidecodeGit.stageFile({ filePath, workspacePath: normalizedWorkspacePath })
@@ -204,6 +208,9 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
         await onDiffRefresh({ forceRefresh: true, silent: true })
       } catch (error) {
         console.error(`Failed to ${action} file from git panel`, error)
+        setFileActionErrorMessage(
+          `Failed to ${action} ${filePath}: ${error instanceof Error ? error.message : 'Unknown error.'}`,
+        )
       } finally {
         setPendingFileActionPath(null)
       }
@@ -219,6 +226,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
       }
 
       setPendingFileActionPath(filePaths[0] ?? null)
+      setFileActionErrorMessage(null)
       try {
         if (action === 'stage') {
           await window.tidecodeGit.stageFiles({ filePaths, workspacePath: normalizedWorkspacePath })
@@ -232,6 +240,9 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
         await onDiffRefresh({ forceRefresh: true, silent: true })
       } catch (error) {
         console.error(`Failed to ${action} files from git panel`, error)
+        setFileActionErrorMessage(
+          `Failed to ${action} files: ${error instanceof Error ? error.message : 'Unknown error.'}`,
+        )
       } finally {
         setPendingFileActionPath(null)
       }
@@ -368,6 +379,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
     handleUnstageDiffFiles: (filePaths: string[]) => handleGitFileBatchAction(filePaths, 'unstage'),
     handleUnstageDiffFile: (filePath: string) => handleGitFileAction(filePath, 'unstage'),
     isCommitModalOpen,
+    fileActionErrorMessage,
     isDiffPanelOpen,
     isSidebarOpen,
     isSourceControlPanelOpen,

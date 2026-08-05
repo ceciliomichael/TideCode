@@ -40,12 +40,25 @@ test('automatic compaction is eligible after a completed tool result', () => {
   }), 'tool_result')
 })
 
-test('automatic compaction does not run for a non-tool continuation', () => {
+test('automatic compaction remains eligible for a non-tool continuation boundary', () => {
   assert.equal(resolveAutomaticCompactionTrigger({
     messages: [{ role: 'assistant', content: 'Continue.' }],
     responseMessages: [{ role: 'assistant', content: 'Continue.' }],
     stepNumber: 1,
-  }), null)
+  }), 'model_step')
+})
+
+test('automatic compaction detects a tool result even when a provider appends a message', () => {
+  const messages = [
+    ...completedToolStep,
+    { role: 'assistant', content: 'I am continuing after the tool result.' } satisfies ModelMessage,
+  ]
+
+  assert.equal(resolveAutomaticCompactionTrigger({
+    messages,
+    responseMessages: messages,
+    stepNumber: 1,
+  }), 'tool_result')
 })
 
 test('automatic compaction is cancelled when the run is aborted', () => {

@@ -542,10 +542,6 @@ export function useChatMessages(input: UseChatMessagesInput) {
       return
     }
 
-    if (typeof window !== 'undefined' && window.tidecodeHistory?.cleanupDraftAgentContext) {
-      await window.tidecodeHistory.cleanupDraftAgentContext().catch(() => undefined)
-    }
-
     const activeConversationState = sessionState.activeConversationState
     if (
       !activeConversationState ||
@@ -562,6 +558,9 @@ export function useChatMessages(input: UseChatMessagesInput) {
       await window.tidecodeHistory.deleteConversation(conversation.id)
       sessionState.removeConversationRuntime(conversation.id)
       sessionState.replaceConversationSummaries(remainingSummaries)
+      if (typeof window !== 'undefined' && window.tidecodeHistory?.cleanupDraftAgentContext) {
+        void window.tidecodeHistory.cleanupDraftAgentContext().catch(() => undefined)
+      }
     } catch (caughtError) {
       console.warn('Skipped cleanup for abandoned empty chat.', caughtError)
     }

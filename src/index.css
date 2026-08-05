@@ -54,7 +54,7 @@
     --workspace-editor-selection-background-opaque: #bddcf5;
     --workspace-editor-search-highlight-background: #b8d8f4;
     --workspace-editor-search-highlight-active-background: #1267b2;
-    --workspace-editor-line-added-border: rgb(16 185 129 / 0.82);
+    --workspace-editor-line-added-border: rgb(22 163 74 / 0.78);
     --workspace-editor-line-changed-surface: rgb(0 120 215 / 0.12);
     --workspace-editor-line-changed-border: rgb(0 120 215 / 0.5);
     --workspace-editor-line-changed-foreground: rgb(0 92 170);
@@ -131,7 +131,7 @@
     --workspace-editor-selection-background-opaque: #20537f;
     --workspace-editor-search-highlight-background: #294c6b;
     --workspace-editor-search-highlight-active-background: #1976c8;
-    --workspace-editor-line-added-border: rgb(52 211 153 / 0.82);
+    --workspace-editor-line-added-border: rgb(134 239 172 / 0.94);
     --workspace-editor-line-changed-surface: rgb(38 120 190 / 0.24);
     --workspace-editor-line-changed-border: rgb(90 170 255 / 0.72);
     --workspace-editor-line-changed-foreground: rgb(173 214 255);

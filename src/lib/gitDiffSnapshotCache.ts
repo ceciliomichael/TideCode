@@ -106,8 +106,12 @@ export async function loadGitDiffSnapshot(
     }
   }
 
+  // Coalesce concurrent loads only when the caller accepts cached results.
+  // A forced refresh must never join an older in-flight request: that request
+  // may have captured the repository state before a mutation (for example a
+  // discard) finished, and reusing it would keep stale file changes on screen.
   const existingRequest = inFlightDiffSnapshotRequests.get(requestKey)
-  if (existingRequest) {
+  if (existingRequest && !options?.forceRefresh) {
     return existingRequest
   }
 
@@ -117,10 +121,15 @@ export async function loadGitDiffSnapshot(
       const normalizedSnapshot = diffSnapshot.hasRepository
         ? buildFileDiffSnapshot(diffSnapshot.fileDiffs)
         : EMPTY_DIFF_SNAPSHOT
-      if (includeContent) {
-        setCachedDiffSnapshot(normalizedWorkspacePath, normalizedSnapshot)
-      } else {
-        setCachedStatusSnapshot(normalizedWorkspacePath, normalizedSnapshot)
+      // Only the newest request for this key may populate the cache. A request
+      // superseded by a forced refresh could otherwise overwrite fresher
+      // results with the pre-mutation state.
+      if (inFlightDiffSnapshotRequests.get(requestKey) === nextRequest) {
+        if (includeContent) {
+          setCachedDiffSnapshot(normalizedWorkspacePath, normalizedSnapshot)
+        } else {
+          setCachedStatusSnapshot(normalizedWorkspacePath, normalizedSnapshot)
+        }
       }
       return normalizedSnapshot
     })

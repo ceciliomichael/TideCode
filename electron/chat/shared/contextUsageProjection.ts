@@ -1,28 +1,20 @@
 import type { ModelMessage } from 'ai'
-import { estimateModelMessageContextUsage } from '../../../src/lib/contextUsage'
 
 /**
- * Chooses the model-message projection used by the context indicator.
- *
- * Canonical replay is authoritative after compaction, because the raw
- * transcript intentionally remains larger than the model-facing projection.
- * Outside compaction, however, canonical history can briefly lag the live
- * transcript while a tool turn is being persisted. In that window the smaller
- * replay must not make the indicator appear to lose context, so the live
- * projection wins whenever it accounts for more model-visible content.
+ * Chooses the same model-message projection that the runtime sends to the
+ * provider. The display transcript can contain stale, aborted, or
+ * provider-invalid tool entries that are intentionally removed by canonical
+ * replay. Counting those entries would make the indicator claim that the
+ * model is over its threshold when the model never received them.
  */
 export function selectContextUsageMessages(input: {
   canonicalMessages: readonly ModelMessage[]
   fallbackMessages: readonly ModelMessage[]
   isCompacted: boolean
 }): ModelMessage[] {
-  if (input.isCompacted) {
+  if (input.isCompacted || input.canonicalMessages.length > 0) {
     return [...input.canonicalMessages]
   }
 
-  const canonicalUsage = estimateModelMessageContextUsage(input.canonicalMessages)
-  const fallbackUsage = estimateModelMessageContextUsage(input.fallbackMessages)
-  return fallbackUsage.totalTokens > canonicalUsage.totalTokens
-    ? [...input.fallbackMessages]
-    : [...input.canonicalMessages]
+  return [...input.fallbackMessages]
 }

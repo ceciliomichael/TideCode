@@ -69,6 +69,36 @@ export function useWorkspaceFileEditorState({
   const topSpacerHeight = shouldVirtualize ? visibleStartIndex * EDITOR_LINE_HEIGHT_PX : 0
   const bottomSpacerHeight = shouldVirtualize ? (totalLineCount - visibleEndIndex) * EDITOR_LINE_HEIGHT_PX : 0
   const lineStartOffsets = useMemo(() => findLineStartOffsets(value), [value])
+  const getPointerLineBoundaryOffset = useCallback((clientY: number, useLineEnd: boolean) => {
+    const renderedLineEntries = Array.from(highlightedLineElementsRef.current.entries())
+      .sort(([firstLineIndex], [secondLineIndex]) => firstLineIndex - secondLineIndex)
+
+    if (renderedLineEntries.length === 0) {
+      return null
+    }
+
+    let targetLineIndex = renderedLineEntries[0][0]
+    for (const [lineIndex, lineElement] of renderedLineEntries) {
+      const lineRect = lineElement.getBoundingClientRect()
+      if (clientY < lineRect.top) {
+        break
+      }
+
+      targetLineIndex = lineIndex
+      if (clientY <= lineRect.bottom) {
+        break
+      }
+    }
+
+    const lineStart = lineStartOffsets[targetLineIndex]
+    if (lineStart === undefined) {
+      return null
+    }
+
+    const nextLineStart = lineStartOffsets[targetLineIndex + 1]
+    const lineEnd = nextLineStart === undefined ? value.length : Math.max(lineStart, nextLineStart - 1)
+    return useLineEnd ? lineEnd : lineStart
+  }, [lineStartOffsets, value.length])
 
   const {
     clearEditorSelection,
@@ -78,6 +108,7 @@ export function useWorkspaceFileEditorState({
     handleEditorSelect,
     matchesByLine: selectionMatchesByLine,
   } = useWorkspaceFileEditorSelection({
+    getPointerLineBoundaryOffset,
     initialSelection,
     onChange,
     onSelectionChange,

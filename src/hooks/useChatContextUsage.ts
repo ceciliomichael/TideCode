@@ -130,7 +130,7 @@ export function useChatContextUsage({
     if (!providerId) return
     const timeoutId = window.setTimeout(() => fetchUsageRef.current?.(), 250)
     return () => window.clearTimeout(timeoutId)
-  }, [messages.length, providerId, refreshSignal])
+  }, [messages, providerId, refreshSignal])
 
   return usage
 }

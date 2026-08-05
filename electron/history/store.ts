@@ -34,6 +34,7 @@ import {
   cleanupDraftAgentContextDirectory,
   ensureDraftAgentContextDirectory,
 } from './draftAgentContextStore'
+import { runConversationMutation } from './conversationMutationQueue'
 import { getConversationAgentContextPath } from './paths'
 
 export { cleanupDraftAgentContextDirectory, ensureDraftAgentContextDirectory }
@@ -61,7 +62,7 @@ async function resolveAgentContextRootPath(conversationId: string, folderId: str
   return ensureVirtualAgentContextDirectory(conversationId)
 }
 
-async function ensureConversationAgentContext(conversation: ConversationRecord) {
+async function hydrateConversationAgentContext(conversation: ConversationRecord) {
   const chatMode = conversation.chatMode ?? 'agent'
   const agentContextRootPath =
     conversation.agentContextRootPath.trim().length > 0
@@ -80,6 +81,22 @@ async function ensureConversationAgentContext(conversation: ConversationRecord) 
 
   await writeConversationFile(nextConversation)
   return nextConversation
+}
+
+async function ensureConversationAgentContext(conversation: ConversationRecord) {
+  return runConversationMutation(conversation.id, () => hydrateConversationAgentContext(conversation))
+}
+
+async function readConversationForMutation(conversationId: string) {
+  try {
+    return await hydrateConversationAgentContext(await readConversationFile(conversationId))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return null
+    }
+
+    throw error
+  }
 }
 
 export async function listStoredConversations() {
@@ -162,17 +179,14 @@ export async function reorderStoredFolder(input: ReorderConversationFolderInput)
 }
 
 export async function getStoredConversation(conversationId: string) {
-  try {
-    const conversation = await readConversationFile(conversationId)
-    return ensureConversationAgentContext(conversation)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return null
+  return runConversationMutation(conversationId, async () => {
+    try {
+      return await readConversationForMutation(conversationId)
+    } catch (error) {
+      console.error(`Failed to load conversation: ${conversationId}`, error)
+      throw error
     }
-
-    console.error(`Failed to load conversation: ${conversationId}`, error)
-    throw error
-  }
+  })
 }
 
 export async function getStoredUserMessageCheckpointHistory(conversationId: string, messageId: string) {
@@ -318,160 +332,175 @@ export async function deleteStoredFolder(folderId: string) {
 
   await Promise.all([
     writeFolderStore(nextFolders),
-    ...deletedConversationIds.map((conversationId) => deleteConversationFile(conversationId)),
-    ...deletedConversationIds.map((conversationId) => deleteCanonicalHistory(conversationId)),
+    ...deletedConversationIds.map((conversationId) => runConversationMutation(conversationId, async () => {
+      await deleteConversationFile(conversationId)
+      await deleteCanonicalHistory(conversationId)
+    })),
   ])
 
   return deletedConversationIds
 }
 
 export async function appendStoredMessages(input: AppendConversationMessagesInput) {
-  const existingConversation = await getStoredConversation(input.conversationId)
+  return runConversationMutation(input.conversationId, async () => {
+    const existingConversation = await readConversationForMutation(input.conversationId)
 
-  if (!existingConversation) {
-    throw new Error(`Conversation not found: ${input.conversationId}`)
-  }
+    if (!existingConversation) {
+      throw new Error(`Conversation not found: ${input.conversationId}`)
+    }
 
-  const existingMessageIds = new Set(existingConversation.messages.map((message) => message.id))
-  const uniqueMessages = input.messages.filter((message) => !existingMessageIds.has(message.id))
+    const existingMessageIds = new Set(existingConversation.messages.map((message) => message.id))
+    const uniqueMessages = input.messages.filter((message) => !existingMessageIds.has(message.id))
 
-  const nextTitle = input.title?.trim() ? input.title.trim() : existingConversation.title
-  const hasTitleChange = nextTitle !== existingConversation.title
+    const nextTitle = input.title?.trim() ? input.title.trim() : existingConversation.title
+    const hasTitleChange = nextTitle !== existingConversation.title
 
-  if (uniqueMessages.length === 0 && !hasTitleChange) {
-    return existingConversation
-  }
+    if (uniqueMessages.length === 0 && !hasTitleChange) {
+      return existingConversation
+    }
 
-  const nextConversation: ConversationRecord = {
-    ...existingConversation,
-    chatMode: input.chatMode ?? existingConversation.chatMode,
-    isArchived: uniqueMessages.length > 0 ? false : existingConversation.isArchived,
-    title: nextTitle,
-    updatedAt:
-      uniqueMessages.at(-1)?.timestamp ?? (hasTitleChange ? Date.now() : existingConversation.updatedAt),
-    messages: uniqueMessages.length === 0 ? existingConversation.messages : [...existingConversation.messages, ...uniqueMessages],
-  }
+    const nextConversation: ConversationRecord = {
+      ...existingConversation,
+      chatMode: input.chatMode ?? existingConversation.chatMode,
+      isArchived: uniqueMessages.length > 0 ? false : existingConversation.isArchived,
+      title: nextTitle,
+      updatedAt:
+        uniqueMessages.at(-1)?.timestamp ?? (hasTitleChange ? Date.now() : existingConversation.updatedAt),
+      messages: uniqueMessages.length === 0 ? existingConversation.messages : [...existingConversation.messages, ...uniqueMessages],
+    }
 
-  await Promise.all([
-    writeConversationFile(nextConversation),
-    appendMessagesToLog(input.conversationId, uniqueMessages),
-  ])
+    await Promise.all([
+      writeConversationFile(nextConversation),
+      appendMessagesToLog(input.conversationId, uniqueMessages),
+    ])
 
-  return nextConversation
+    return nextConversation
+  })
 }
 
 export async function replaceStoredMessages(input: ReplaceConversationMessagesInput) {
-  const existingConversation = await getStoredConversation(input.conversationId)
+  return runConversationMutation(input.conversationId, async () => {
+    const existingConversation = await readConversationForMutation(input.conversationId)
 
-  if (!existingConversation) {
-    throw new Error(`Conversation not found: ${input.conversationId}`)
-  }
-
-  const existingMessagesById = new Map(existingConversation.messages.map((message) => [message.id, message]))
-  const messagesToLog = input.messages.filter((message) => {
-    const existingMessage = existingMessagesById.get(message.id)
-    if (!existingMessage) {
-      return true
+    if (!existingConversation) {
+      throw new Error(`Conversation not found: ${input.conversationId}`)
     }
 
-    return (
-      message.role === 'user' &&
-      message.runCheckpoint?.id !== undefined &&
-      message.runCheckpoint.id !== existingMessage.runCheckpoint?.id
-    )
+    const existingMessagesById = new Map(existingConversation.messages.map((message) => [message.id, message]))
+    const messagesToLog = input.messages.filter((message) => {
+      const existingMessage = existingMessagesById.get(message.id)
+      if (!existingMessage) {
+        return true
+      }
+
+      return (
+        message.role === 'user' &&
+        message.runCheckpoint?.id !== undefined &&
+        message.runCheckpoint.id !== existingMessage.runCheckpoint?.id
+      )
+    })
+
+    const nextConversation: ConversationRecord = {
+      ...existingConversation,
+      chatMode: input.chatMode ?? existingConversation.chatMode,
+      isArchived: false,
+      title: input.title?.trim() ? input.title.trim() : existingConversation.title,
+      updatedAt: input.messages.at(-1)?.timestamp ?? Date.now(),
+      messages: input.messages,
+    }
+
+    await Promise.all([
+      writeConversationFile(nextConversation),
+      appendMessagesToLog(input.conversationId, messagesToLog),
+    ])
+
+    return nextConversation
   })
-
-  const nextConversation: ConversationRecord = {
-    ...existingConversation,
-    chatMode: input.chatMode ?? existingConversation.chatMode,
-    isArchived: false,
-    title: input.title?.trim() ? input.title.trim() : existingConversation.title,
-    updatedAt: input.messages.at(-1)?.timestamp ?? Date.now(),
-    messages: input.messages,
-  }
-
-  await Promise.all([
-    writeConversationFile(nextConversation),
-    appendMessagesToLog(input.conversationId, messagesToLog),
-  ])
-
-  return nextConversation
 }
 
 export async function updateStoredConversationTitle(conversationId: string, title: string) {
-  const existingConversation = await getStoredConversation(conversationId)
+  return runConversationMutation(conversationId, async () => {
+    const existingConversation = await readConversationForMutation(conversationId)
 
-  if (!existingConversation) {
-    throw new Error(`Conversation not found: ${conversationId}`)
-  }
+    if (!existingConversation) {
+      throw new Error(`Conversation not found: ${conversationId}`)
+    }
 
-  const nextTitle = title.trim()
-  if (nextTitle.length === 0) {
-    return existingConversation
-  }
+    const nextTitle = title.trim()
+    if (nextTitle.length === 0) {
+      return existingConversation
+    }
 
-  const boundedTitle = nextTitle.length > 120 ? nextTitle.slice(0, 120) : nextTitle
-  if (boundedTitle === existingConversation.title) {
-    return existingConversation
-  }
+    const boundedTitle = nextTitle.length > 120 ? nextTitle.slice(0, 120) : nextTitle
+    if (boundedTitle === existingConversation.title) {
+      return existingConversation
+    }
 
-  const nextConversation: ConversationRecord = {
-    ...existingConversation,
-    title: boundedTitle,
-    updatedAt: Date.now(),
-  }
+    const nextConversation: ConversationRecord = {
+      ...existingConversation,
+      title: boundedTitle,
+      updatedAt: Date.now(),
+    }
 
-  await writeConversationFile(nextConversation)
-  return nextConversation
+    await writeConversationFile(nextConversation)
+    return nextConversation
+  })
 }
 
 export async function updateStoredConversationArchived(conversationId: string, isArchived: boolean) {
-  const existingConversation = await getStoredConversation(conversationId)
+  return runConversationMutation(conversationId, async () => {
+    const existingConversation = await readConversationForMutation(conversationId)
 
-  if (!existingConversation) {
-    throw new Error(`Conversation not found: ${conversationId}`)
-  }
+    if (!existingConversation) {
+      throw new Error(`Conversation not found: ${conversationId}`)
+    }
 
-  const nextIsArchived = Boolean(isArchived)
-  if (Boolean(existingConversation.isArchived) === nextIsArchived) {
-    return existingConversation
-  }
+    const nextIsArchived = Boolean(isArchived)
+    if (Boolean(existingConversation.isArchived) === nextIsArchived) {
+      return existingConversation
+    }
 
-  const nextConversation: ConversationRecord = {
-    ...existingConversation,
-    isArchived: nextIsArchived,
-    isPinned: nextIsArchived ? false : existingConversation.isPinned,
-    updatedAt: Date.now(),
-  }
+    const nextConversation: ConversationRecord = {
+      ...existingConversation,
+      isArchived: nextIsArchived,
+      isPinned: nextIsArchived ? false : existingConversation.isPinned,
+      updatedAt: Date.now(),
+    }
 
-  await writeConversationFile(nextConversation)
-  return nextConversation
+    await writeConversationFile(nextConversation)
+    return nextConversation
+  })
 }
 
 export async function updateStoredConversationPinned(conversationId: string, isPinned: boolean) {
-  const existingConversation = await getStoredConversation(conversationId)
+  return runConversationMutation(conversationId, async () => {
+    const existingConversation = await readConversationForMutation(conversationId)
 
-  if (!existingConversation) {
-    throw new Error(`Conversation not found: ${conversationId}`)
-  }
+    if (!existingConversation) {
+      throw new Error(`Conversation not found: ${conversationId}`)
+    }
 
-  if (existingConversation.isArchived || Boolean(existingConversation.isPinned) === isPinned) {
-    return existingConversation
-  }
+    if (existingConversation.isArchived || Boolean(existingConversation.isPinned) === isPinned) {
+      return existingConversation
+    }
 
-  const nextConversation: ConversationRecord = {
-    ...existingConversation,
-    isPinned,
-    updatedAt: Date.now(),
-  }
+    const nextConversation: ConversationRecord = {
+      ...existingConversation,
+      isPinned,
+      updatedAt: Date.now(),
+    }
 
-  await writeConversationFile(nextConversation)
-  return nextConversation
+    await writeConversationFile(nextConversation)
+    return nextConversation
+  })
 }
 export async function deleteStoredConversation(conversationId: string) {
-  const conversation = await getStoredConversation(conversationId)
-  await deleteConversationFile(conversationId)
-  await deleteCanonicalHistory(conversationId)
+  const conversation = await runConversationMutation(conversationId, async () => {
+    const existingConversation = await readConversationForMutation(conversationId)
+    await deleteConversationFile(conversationId)
+    await deleteCanonicalHistory(conversationId)
+    return existingConversation
+  })
 
   const contextOwnerConversationId = conversation?.compaction?.rootConversationId ?? conversationId
   if (

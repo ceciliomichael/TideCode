@@ -40,6 +40,7 @@ interface SourceControlPanelProps {
   onWidthChange: (nextWidth: number) => void
   onWidthCommit?: (nextWidth: number) => void
   pendingFileActionPath: string | null
+  fileActionErrorMessage: string | null
   sectionOpen: Record<'changes' | 'commit' | 'history' | 'staged' | 'unstaged', boolean>
   width: number
   workspacePath: string | null | undefined
@@ -70,6 +71,7 @@ function SourceControlPanelContent({
   onWidthChange,
   onWidthCommit,
   pendingFileActionPath,
+  fileActionErrorMessage,
   sectionOpen,
   width,
   workspacePath,
@@ -110,6 +112,8 @@ function SourceControlPanelContent({
   const pendingSyncOperation = pendingState?.sync ?? null
   const previousPendingCommitOperationRef = useRef(pendingCommitOperation)
   const isSourceControlBusy = pendingCommitOperation !== null || pendingSyncOperation !== null
+  const isFileActionInProgress = pendingFileActionPath !== null
+  const isAnyOperationInProgress = isSourceControlBusy || isFileActionInProgress
   const isUnstagedLikeFileDiff = useCallback(
     (fileDiff: ConversationFileDiff) =>
       fileDiff.isUnstaged || fileDiff.isUntracked || (!fileDiff.isStaged && !fileDiff.isUnstaged && !fileDiff.isUntracked),
@@ -121,6 +125,9 @@ function SourceControlPanelContent({
     [fileDiffs, isUnstagedLikeFileDiff],
   )
   const shouldUseSplitLayout = isChangesSectionOpen
+  const displayedOperationNotice: SourceControlOperationNotice | null = fileActionErrorMessage
+    ? { kind: 'error', message: fileActionErrorMessage }
+    : operationNotice
   const {
     handleHistoryResizePointerDown,
     handleResizePointerDown,
@@ -137,8 +144,8 @@ function SourceControlPanelContent({
     shouldUseSplitLayout,
     width,
   })
-  const canQuickCommit = fileDiffs.length > 0 && !isSourceControlBusy
-  const isCommitActionDisabled = !canQuickCommit || isSourceControlBusy
+  const canQuickCommit = fileDiffs.length > 0 && !isAnyOperationInProgress
+  const isCommitActionDisabled = !canQuickCommit || isAnyOperationInProgress
   const isQuickCommitting = pendingCommitOperation !== null
   const pendingSyncAction: GitSyncAction | 'refresh' | null = pendingSyncOperation?.action ?? null
   const isCommitPrimaryBusy = isQuickCommitting || pendingSyncAction === 'push'
@@ -402,7 +409,7 @@ function SourceControlPanelContent({
             aheadCommitCount={aheadCommitCount}
             commitActionControlsRef={commitActionControlsRef}
             commitMessage={commitMessage}
-            isOperationInProgress={isSourceControlBusy}
+            isOperationInProgress={isAnyOperationInProgress}
             isChangesSectionOpen={isChangesSectionOpen}
             isCommitActionDisabled={isCommitActionDisabled}
             isCommitActionMenuOpen={isCommitActionMenuOpen}
@@ -412,7 +419,7 @@ function SourceControlPanelContent({
             isStagedSectionOpen={isStagedSectionOpen}
             isUnstagedSectionOpen={isUnstagedSectionOpen}
             hasRemote={hasRemote}
-            operationNotice={operationNotice}
+            operationNotice={displayedOperationNotice}
             pendingFileActionPath={pendingFileActionPath}
             pendingOperationLabel={pendingOperationLabel}
             stagedFileCount={stagedFileDiffs.length}
@@ -453,7 +460,7 @@ function SourceControlPanelContent({
             isHistorySectionOpen={isHistorySectionOpen}
             isLoadingHistory={isLoadingHistory}
             isLoadingMoreHistory={isLoadingMoreHistory}
-            isOperationInProgress={isSourceControlBusy}
+            isOperationInProgress={isAnyOperationInProgress}
             loadingCommitHashes={loadingCommitHashes}
             pendingSyncAction={pendingSyncAction}
             selectedCommitHash={selectedCommitHash}
