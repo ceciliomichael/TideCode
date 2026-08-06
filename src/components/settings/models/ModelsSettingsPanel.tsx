@@ -1,5 +1,6 @@
 import { Brain, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { resolveModelReasoningProfile } from '../../../lib/modelReasoningProfiles'
 import type {
   CustomModelConfig,
@@ -30,7 +31,7 @@ function normalizeSearchValue(value: string): string {
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
-  return error instanceof Error && error.message.trim() ? error.message : fallback
+  return toUserFacingErrorMessage(error, fallback)
 }
 
 export function ModelsSettingsPanel({ providersState }: ModelsSettingsPanelProps) {

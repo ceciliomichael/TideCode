@@ -1,6 +1,7 @@
 import type { ITerminalOptions, Terminal } from "@xterm/xterm";
 import type { ResolvedTheme } from "../../../lib/theme";
 import { MIN_TERMINAL_PANEL_HEIGHT } from "../../../lib/terminalPanelSizing";
+import { toUserFacingErrorMessage } from "../../../lib/userFacingError";
 
 export const MIN_TERMINAL_COLS = 20;
 export const MIN_TERMINAL_ROWS = 6;
@@ -24,6 +25,10 @@ export function getErrorMessage(error: unknown) {
   }
 
   return "Failed to process terminal action.";
+}
+
+export function getUserFacingErrorMessage(error: unknown) {
+  return toUserFacingErrorMessage(error, "The terminal action could not be completed.");
 }
 
 export function getSessionDimensions(terminal: Terminal) {

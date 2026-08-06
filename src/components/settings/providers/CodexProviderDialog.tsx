@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Loader2, Plus, Unplug, X } from 'lucide-react'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import type { CodexProviderConnectionStatus } from '../../../types/chat'
 import { CodexAccountDropdown } from './CodexAccountDropdown'
 import { CodexUsagePills } from './CodexUsagePills'
@@ -45,7 +46,7 @@ export function CodexProviderDialog({
     try {
       await action()
     } catch (error) {
-      setLocalError(error instanceof Error ? error.message : 'Codex action failed.')
+      setLocalError(toUserFacingErrorMessage(error, 'Codex could not complete that action.'))
     }
   }
 

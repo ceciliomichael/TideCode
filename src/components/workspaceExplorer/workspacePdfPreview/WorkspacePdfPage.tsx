@@ -6,6 +6,7 @@ import {
   type PdfPageLayout,
   type PdfPageRenderSnapshot,
 } from '../../../lib/pdfPreviewRenderCache'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 
 interface WorkspacePdfPageProps {
   documentProxy: PDFDocumentProxy
@@ -131,7 +132,7 @@ export const WorkspacePdfPage = memo(function WorkspacePdfPage({
         if (isDisposed || (error instanceof Error && error.name === 'RenderingCancelledException')) {
           return
         }
-        setErrorMessage(error instanceof Error ? error.message : 'This PDF page could not be rendered.')
+        setErrorMessage(toUserFacingErrorMessage(error, 'This PDF page could not be rendered.'))
       })
 
     return () => {

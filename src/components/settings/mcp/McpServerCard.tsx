@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp, PencilLine, Power, Server, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import type { McpServerConfig, McpServerStatus } from '../../../types/mcp'
 import { Tooltip } from '../../Tooltip'
 import { McpRemoveDialog } from './McpRemoveDialog'
@@ -78,6 +79,9 @@ export function McpServerCard({
   const isReadOnly = config.isReadOnly
 
   const statusColor = getStatusColor(status)
+  const statusErrorMessage = status?.error
+    ? toUserFacingErrorMessage(status.error, 'The MCP server could not complete that action.')
+    : null
 
   async function handleRemove() {
     const didRemove = await onRemove(config.id)
@@ -154,11 +158,11 @@ export function McpServerCard({
         </div>
       </div>
 
-      {status?.error ? (
+      {statusErrorMessage ? (
         <div
           className="rounded-lg border border-danger-border bg-danger-surface px-3 py-2 text-xs break-words overflow-hidden text-danger-foreground"
         >
-          {status.error}
+          {statusErrorMessage}
         </div>
       ) : null}
 

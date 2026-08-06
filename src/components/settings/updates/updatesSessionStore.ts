@@ -2,6 +2,7 @@ import type {
   TideCodeUpdateCheckResult,
   TideCodeUpdateDownloadState,
 } from '../../../types/updates'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 
 export type UpdateCheckState = 'idle' | 'checking' | 'downloading' | 'success' | 'error'
 
@@ -43,7 +44,7 @@ function updateSnapshot(patch: Partial<UpdatesSessionSnapshot>) {
 }
 
 function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'TideCode could not check for updates right now.'
+  return toUserFacingErrorMessage(error, 'TideCode could not check for updates right now.')
 }
 
 export function hydrateCachedUpdate() {
@@ -120,7 +121,9 @@ function subscribeToMainProcessState() {
       checkState: 'error',
       downloadPercent: null,
       downloadState: 'error',
-      errorMessage: event.errorMessage ?? 'TideCode could not download this update.',
+      errorMessage: event.errorMessage
+        ? toUserFacingErrorMessage(event.errorMessage, 'TideCode could not download this update.')
+        : 'TideCode could not download this update.',
       pendingVersion: event.version,
     })
   })
@@ -165,7 +168,9 @@ export function requestUpdateCheck() {
         currentVersion: result.currentVersion,
         downloadPercent: downloadedUpdateIsStillCurrent ? 100 : result.downloadPercent,
         downloadState: downloadedUpdateIsStillCurrent ? 'downloaded' : result.downloadState,
-        errorMessage: result.downloadError ?? null,
+        errorMessage: result.downloadError
+          ? toUserFacingErrorMessage(result.downloadError, 'TideCode could not download this update.')
+          : null,
         pendingVersion: downloadedUpdateIsStillCurrent ? downloadedVersion : result.latestVersion,
         result,
       })
@@ -220,7 +225,9 @@ export function requestUpdateDownload() {
         checkState: downloadResult.downloadState === 'error' ? 'error' : 'success',
         downloadPercent: downloadResult.downloadPercent,
         downloadState: downloadResult.downloadState,
-        errorMessage: downloadResult.downloadError ?? null,
+        errorMessage: downloadResult.downloadError
+          ? toUserFacingErrorMessage(downloadResult.downloadError, 'TideCode could not download this update.')
+          : null,
       })
     })
     .catch((error: unknown) => {

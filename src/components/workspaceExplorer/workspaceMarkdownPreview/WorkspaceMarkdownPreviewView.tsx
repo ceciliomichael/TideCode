@@ -2,6 +2,7 @@ import React, { memo, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
 import rehypeSlug from 'rehype-slug'
+import remarkBreaks from 'remark-breaks'
 import remarkEmoji from 'remark-emoji'
 import remarkGfm from 'remark-gfm'
 import { handleMarkdownLinkClick, preprocessMarkdown } from '../../../lib/markdown'
@@ -272,7 +273,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
           </div>
         ) : null}
         <div className="min-w-0">
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkEmoji]} rehypePlugins={[rehypeRaw, rehypeSlug]} components={markdownComponents}>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkEmoji, remarkBreaks]} rehypePlugins={[rehypeRaw, rehypeSlug]} components={markdownComponents}>
             {useMemo(() => preprocessMarkdown(content), [content])}
           </ReactMarkdown>
         </div>

@@ -6,6 +6,7 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from 'react'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { getPathBasename, getPathDirname } from '../../../lib/pathPresentation'
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
 import type { WorkspaceClipboardEntry } from '../workspaceClipboardTypes'
@@ -72,7 +73,7 @@ export function useWorkspaceExplorerTransfers({
         }
         await Promise.all(loadOperations)
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to paste workspace entry.')
+        setErrorMessage(toUserFacingErrorMessage(error, 'The workspace item could not be pasted.'))
       }
     },
     [closeContextMenu, loadDirectory, onPasteEntry, reloadExplorerTree, setErrorMessage],
@@ -123,7 +124,7 @@ export function useWorkspaceExplorerTransfers({
         }
         await Promise.all(loadOperations)
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to move workspace entry.')
+        setErrorMessage(toUserFacingErrorMessage(error, 'The workspace item could not be moved.'))
       }
     },
     [
@@ -170,7 +171,7 @@ export function useWorkspaceExplorerTransfers({
         }
         await Promise.all(loadOperations)
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to import workspace entry.')
+        setErrorMessage(toUserFacingErrorMessage(error, 'The workspace item could not be imported.'))
       }
     },
     [
@@ -356,7 +357,7 @@ export function useWorkspaceExplorerTransfers({
       try {
         await submitImportEntries(filePaths, targetDirectoryRelativePath)
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to import workspace entry.')
+        setErrorMessage(toUserFacingErrorMessage(error, 'The workspace item could not be imported.'))
       }
     },
     [setDropTargetDirectoryPath, setErrorMessage, stopDragScroll, submitImportEntries, workspaceRootPath],

@@ -6,6 +6,7 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from "react";
+import { toUserFacingErrorMessage } from "../../lib/userFacingError";
 import { getPathBasename } from "../../lib/pathPresentation";
 import { normalizePathSeparators } from "../../lib/filePathUtils";
 import { isDocxPreviewablePath } from "../../lib/docx-preview";
@@ -219,9 +220,7 @@ export function useWorkspaceTabSync({
               return {
                 ...tab,
                 errorMessage:
-                  refresh.error instanceof Error
-                    ? refresh.error.message
-                    : "Failed to refresh file.",
+                  toUserFacingErrorMessage(refresh.error, "The file could not be refreshed."),
                 status: "error",
               };
             }

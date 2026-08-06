@@ -1,6 +1,7 @@
 import { AlertCircle, CheckCircle2, ExternalLink, PackageCheck, RefreshCw, RotateCw } from 'lucide-react'
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { MarkdownRenderer } from '../../chat/MarkdownRenderer'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { SegmentedField } from '../../ui/SegmentedField'
 import {
   getUpdatesSessionSnapshot,
@@ -113,7 +114,7 @@ export function UpdatesSettingsPanel({ autoDownloadUpdates, isLoading, onUpdateS
       setOpenReleaseError(null)
       await window.tidecodeUpdates.restartToUpdate()
     } catch (error) {
-      setOpenReleaseError(error instanceof Error ? error.message : 'TideCode could not restart to install the update.')
+      setOpenReleaseError(toUserFacingErrorMessage(error, 'TideCode could not restart to install the update.'))
     }
   }, [])
 
@@ -122,7 +123,7 @@ export function UpdatesSettingsPanel({ autoDownloadUpdates, isLoading, onUpdateS
       setOpenReleaseError(null)
       await window.tidecodeUpdates.openLatestRelease()
     } catch (error) {
-      setOpenReleaseError(error instanceof Error ? error.message : 'TideCode could not open the release page.')
+      setOpenReleaseError(toUserFacingErrorMessage(error, 'TideCode could not open the release page.'))
     }
   }, [])
 

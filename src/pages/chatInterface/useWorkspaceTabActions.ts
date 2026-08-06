@@ -1,5 +1,6 @@
 import { useCallback, useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import type { WorkspaceFileTab, WorkspaceTab } from '../../components/workspaceExplorer/types'
+import { toUserFacingErrorMessage } from '../../lib/userFacingError'
 import { createMarkdownPreviewTabKey, isMarkdownPreviewablePath } from '../../lib/markdown-preview'
 import { isDocxPreviewablePath } from '../../lib/docx-preview'
 import { normalizePathSeparators } from '../../lib/filePathUtils'
@@ -128,7 +129,7 @@ export function useWorkspaceTabActions({
               tab.kind === 'file' && normalizePathSeparators(tab.relativePath) === normalizedRelativePath
                 ? {
                     ...tab,
-                    errorMessage: error instanceof Error ? error.message : 'Failed to open file.',
+                    errorMessage: toUserFacingErrorMessage(error, 'The file could not be opened.'),
                     status: 'error',
                   }
                 : tab,
@@ -241,7 +242,7 @@ export function useWorkspaceTabActions({
                 ? {
                     ...tab,
                     status: 'error' as const,
-                    errorMessage: error instanceof Error ? error.message : 'Failed to load file.',
+                    errorMessage: toUserFacingErrorMessage(error, 'The file could not be loaded.'),
                   }
                 : tab,
             ),

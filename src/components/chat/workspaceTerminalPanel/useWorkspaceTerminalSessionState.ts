@@ -18,7 +18,7 @@ import { useTerminalInstanceCleanup } from "./useTerminalInstanceCleanup";
 import {
   createTerminalTabLabel,
   createTerminalTabKey,
-  getErrorMessage,
+  getUserFacingErrorMessage,
   getSessionDimensions,
   reorderTabList,
   resolveTerminalSessionWorkspaceRootPath,
@@ -228,7 +228,7 @@ export function useWorkspaceTerminalSessionState({
       instance.terminal.focus();
       syncTabSize(tabKey, true);
     } catch (error) {
-      const message = getErrorMessage(error);
+      const message = getUserFacingErrorMessage(error);
       setTerminalTabs((currentTabs) =>
         currentTabs.map((tab) =>
           tab.key === tabKey
@@ -386,7 +386,7 @@ export function useWorkspaceTerminalSessionState({
           syncTabSize(tabKey, true);
         }
       } catch (error) {
-        const message = getErrorMessage(error);
+        const message = getUserFacingErrorMessage(error);
         setTerminalTabs((currentTabs) =>
           currentTabs.map((tab) =>
             tab.key === tabKey
