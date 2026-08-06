@@ -6,6 +6,7 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from 'react'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
 import type { WorkspaceClipboardEntry } from '../workspaceClipboardTypes'
 import { ROOT_DIRECTORY_KEY, toDirectoryKey } from './workspaceExplorerPanelUtils'
@@ -243,6 +244,7 @@ export function useWorkspaceExplorerSelection({
             }
           } catch (error) {
             console.error('Failed to read OS clipboard files', error)
+            setErrorMessage(toUserFacingErrorMessage(error, 'The files could not be read from the clipboard.'))
           }
         }
 

@@ -9,6 +9,7 @@ import {
   type RefObject,
   type SetStateAction,
 } from 'react'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
 import { isDocxPreviewablePath } from '../../../lib/docx-preview'
 import { isPdfPreviewablePath } from '../../../lib/pdf-preview'
@@ -76,8 +77,8 @@ export function useWorkspaceExplorerTree({
         }))
         setErrorMessage(null)
       } catch (error) {
-        const errorText = error instanceof Error ? error.message : 'Failed to load workspace files.'
-        if (targetPath !== ROOT_DIRECTORY_KEY && errorText.startsWith('Directory does not exist:')) {
+        const errorText = error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+        if (targetPath !== ROOT_DIRECTORY_KEY && /directory does not exist|enoent/iu.test(errorText)) {
           setDirectoryEntriesByPath((current) => {
             const nextState = { ...current }
             delete nextState[targetPath]
@@ -91,7 +92,7 @@ export function useWorkspaceExplorerTree({
           return
         }
         if (!options?.hideError) {
-          setErrorMessage(errorText)
+          setErrorMessage(toUserFacingErrorMessage(error, 'The workspace files could not be loaded.'))
         }
       } finally {
         setLoadingDirectories((current) => {

@@ -1,5 +1,6 @@
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { McpServerDialog } from './McpAddDialog'
 import { McpServerList } from './McpServerList'
 import type { McpAddServerInput, McpServerConfig, McpState } from '../../../types/mcp'
@@ -41,7 +42,10 @@ export function McpServersSettingsPanel({
   const [dialogState, setDialogState] = useState<McpServerDialogState | null>(null)
   const configs = state?.configs ?? []
   const statuses = state?.statuses ?? {}
-  const visibleErrorMessage = errorMessage ?? state?.errorMessage
+  const rawErrorMessage = errorMessage ?? state?.errorMessage ?? null
+  const visibleErrorMessage = rawErrorMessage
+    ? toUserFacingErrorMessage(rawErrorMessage, 'Unable to update MCP servers.')
+    : null
   const isSubmitting = (activeOperation?.startsWith('add:') ?? false) || (activeOperation?.startsWith('update:') ?? false)
 
   function openAddDialog() {

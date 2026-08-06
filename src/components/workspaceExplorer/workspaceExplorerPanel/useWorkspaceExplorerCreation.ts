@@ -6,9 +6,14 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
 import { getPathDirname } from '../../../lib/pathPresentation'
-import type { PendingExplorerCreation, WorkspaceExplorerContextMenuState } from './workspaceExplorerPanelTypes'
+import type {
+  PendingExplorerCreation,
+  WorkspaceExplorerContextMenuState,
+  WorkspaceExplorerErrorDialogState,
+} from './workspaceExplorerPanelTypes'
 import { ROOT_DIRECTORY_KEY, joinRelativePath } from './workspaceExplorerPanelUtils'
 
 interface UseWorkspaceExplorerCreationOptions {
@@ -18,6 +23,7 @@ interface UseWorkspaceExplorerCreationOptions {
   loadDirectory: (relativePath?: string) => Promise<void>
   onCreateEntry: (relativePath: string, isDirectory: boolean) => Promise<void>
   onOpenFile: (relativePath: string) => void
+  showErrorDialog: (state: WorkspaceExplorerErrorDialogState) => void
   setErrorMessage: Dispatch<SetStateAction<string | null>>
   setExpandedDirectories: Dispatch<SetStateAction<Set<string>>>
 }
@@ -29,6 +35,7 @@ export function useWorkspaceExplorerCreation({
   loadDirectory,
   onCreateEntry,
   onOpenFile,
+  showErrorDialog,
   setErrorMessage,
   setExpandedDirectories,
 }: UseWorkspaceExplorerCreationOptions) {
@@ -109,25 +116,35 @@ export function useWorkspaceExplorerCreation({
     isSubmittingCreationRef.current = true
     try {
       await onCreateEntry(nextRelativePath, draft.isDirectory)
-      setErrorMessage(null)
-      if (draft.isDirectory) {
-        setExpandedDirectories((current) => new Set(current).add(nextRelativePath))
-      }
-      await Promise.all([
-        loadDirectory(draft.parentPath),
-        draft.isDirectory ? loadDirectory(nextRelativePath) : Promise.resolve(),
-      ])
-      setCreationDraft(null)
-      setCreationName('')
-      if (!draft.isDirectory) {
-        onOpenFile(nextRelativePath)
-      }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to create workspace entry.')
+      setErrorMessage(null)
+      showErrorDialog({
+        message: toUserFacingErrorMessage(
+          error,
+          draft.isDirectory ? 'The folder could not be created.' : 'The file could not be created.',
+          { itemKind: draft.isDirectory ? 'folder' : 'file' },
+        ),
+        title: draft.isDirectory ? 'Folder was not created' : 'File was not created',
+      })
+      return
     } finally {
       isSubmittingCreationRef.current = false
     }
-  }, [creationDraft, creationName, loadDirectory, onCreateEntry, onOpenFile, setErrorMessage, setExpandedDirectories])
+
+    setErrorMessage(null)
+    if (draft.isDirectory) {
+      setExpandedDirectories((current) => new Set(current).add(nextRelativePath))
+    }
+    await Promise.all([
+      loadDirectory(draft.parentPath),
+      draft.isDirectory ? loadDirectory(nextRelativePath) : Promise.resolve(),
+    ])
+    setCreationDraft(null)
+    setCreationName('')
+    if (!draft.isDirectory) {
+      onOpenFile(nextRelativePath)
+    }
+  }, [creationDraft, creationName, loadDirectory, onCreateEntry, onOpenFile, setErrorMessage, setExpandedDirectories, showErrorDialog])
 
   const resetCreation = useCallback(() => {
     isSubmittingCreationRef.current = false

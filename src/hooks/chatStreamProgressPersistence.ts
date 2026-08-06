@@ -1,4 +1,5 @@
 import type { ConversationRecord, Message } from '../types/chat'
+import { toUserFacingErrorMessage } from '../lib/userFacingError'
 
 const STREAM_PROGRESS_PERSIST_DEBOUNCE_MS = 600
 const STREAM_PROGRESS_PERSIST_CHAR_FLUSH_THRESHOLD = 768
@@ -21,7 +22,7 @@ export interface ChatStreamProgressPersistenceController {
 }
 
 function toErrorMessage(error: unknown, fallbackMessage: string) {
-  return error instanceof Error && error.message.trim().length > 0 ? error.message : fallbackMessage
+  return toUserFacingErrorMessage(error, fallbackMessage)
 }
 
 export function createChatStreamProgressPersistenceController(

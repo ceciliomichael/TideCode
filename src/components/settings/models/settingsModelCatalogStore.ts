@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { isProviderConfigured } from './modelViewUtils'
 import { PROVIDER_SECTIONS } from './modelCatalog'
 import { mergeProviderModels } from './providerModelMergeUtils'
@@ -92,17 +93,7 @@ function getConfiguredProviderIds(providersState: ProvidersState | null): ChatPr
 }
 
 function getLoadErrorMessage(error: unknown, fallbackMessage: string): string {
-  if (error instanceof Error) {
-    const message = error.message.trim()
-    return message.length > 0 ? message : fallbackMessage
-  }
-
-  if (typeof error === 'string') {
-    const message = error.trim()
-    return message.length > 0 ? message : fallbackMessage
-  }
-
-  return fallbackMessage
+  return toUserFacingErrorMessage(error, fallbackMessage)
 }
 
 async function loadCustomModels() {

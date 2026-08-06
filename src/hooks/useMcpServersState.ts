@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toUserFacingErrorMessage } from '../lib/userFacingError'
 import type { McpAddServerInput, McpState } from '../types/mcp'
 
 interface UseMcpServersStateResult {
@@ -25,7 +26,7 @@ function getMcpApi() {
 }
 
 function getErrorMessage(error: unknown, fallbackMessage: string) {
-  return error instanceof Error && error.message.trim().length > 0 ? error.message : fallbackMessage
+  return toUserFacingErrorMessage(error, fallbackMessage)
 }
 
 export function useMcpServersState(workspacePath?: string | null): UseMcpServersStateResult {
@@ -62,7 +63,11 @@ export function useMcpServersState(workspacePath?: string | null): UseMcpServers
         }
 
         setState(nextState)
-        setErrorMessage(nextState.errorMessage ?? null)
+        setErrorMessage(
+          nextState.errorMessage
+            ? toUserFacingErrorMessage(nextState.errorMessage, 'Unable to update MCP servers.')
+            : null,
+        )
       })
       .catch((error) => {
         if (!isActive) {
@@ -94,7 +99,11 @@ export function useMcpServersState(workspacePath?: string | null): UseMcpServers
       }
 
       setState(payload.state)
-      setErrorMessage(payload.state.errorMessage)
+      setErrorMessage(
+        payload.state.errorMessage
+          ? toUserFacingErrorMessage(payload.state.errorMessage, 'Unable to update MCP servers.')
+          : null,
+      )
       setIsLoading(false)
     })
   }, [])
@@ -113,7 +122,11 @@ export function useMcpServersState(workspacePath?: string | null): UseMcpServers
       try {
         const nextState = await runner()
         setState(nextState)
-        setErrorMessage(nextState.errorMessage ?? null)
+        setErrorMessage(
+          nextState.errorMessage
+            ? toUserFacingErrorMessage(nextState.errorMessage, 'Unable to update MCP servers.')
+            : null,
+        )
         return true
       } catch (error) {
         setErrorMessage(getErrorMessage(error, 'Unable to update MCP servers.'))

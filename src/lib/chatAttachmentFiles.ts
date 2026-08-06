@@ -10,6 +10,7 @@ import {
   normalizeAttachmentText,
 } from './chatAttachments'
 import type { ChatAttachment } from '../types/chat'
+import { toUserFacingErrorMessage } from './userFacingError'
 
 export { CHAT_ATTACHMENT_INPUT_ACCEPT }
 
@@ -110,7 +111,7 @@ export async function readChatAttachmentsFromFiles(
         })
         remainingSlots -= 1
       } catch (error) {
-        errors.push(error instanceof Error ? error.message : `Unable to read ${fileName}.`)
+        errors.push(toUserFacingErrorMessage(error, `Unable to read ${fileName}.`))
       }
 
       continue
@@ -132,7 +133,7 @@ export async function readChatAttachmentsFromFiles(
       })
       remainingSlots -= 1
     } catch (error) {
-      errors.push(error instanceof Error ? error.message : `Unable to read ${fileName}.`)
+      errors.push(toUserFacingErrorMessage(error, `Unable to read ${fileName}.`))
     }
   }
 

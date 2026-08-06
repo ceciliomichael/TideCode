@@ -1,3 +1,5 @@
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
+
 const REMOTE_MODEL_LIST_FAILURE_PREFIX = "Error invoking remote method 'models:provider:list':"
 
 function getErrorMessage(error: unknown): string | null {
@@ -29,5 +31,5 @@ export function getProviderModelLoadErrorMessage(error: unknown): string | null 
     return null
   }
 
-  return getErrorMessage(error) ?? 'Unable to load models.'
+  return toUserFacingErrorMessage(error, 'Unable to load models.')
 }

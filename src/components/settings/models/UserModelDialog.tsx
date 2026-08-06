@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronUp, Loader2, Save, X } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { DropdownField } from '../../ui/DropdownField'
 import { PRIMARY_ACTION_BUTTON_CLASS_NAME } from '../shared/actionButtonStyles'
 import {
@@ -198,7 +199,7 @@ export function UserModelDialog({
       })
       onClose()
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to save this model.')
+      setErrorMessage(toUserFacingErrorMessage(error, 'Unable to save this model.'))
     }
   }
 

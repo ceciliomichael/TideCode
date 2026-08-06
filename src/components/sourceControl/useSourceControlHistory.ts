@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toUserFacingErrorMessage } from '../../lib/userFacingError'
 import type { GitCommitResult, GitHistoryCommitDetailsResult, GitHistoryEntry } from '../../types/chat'
 import { computeSwimlanes } from './historyGraphLayout'
 import { prependCommittedHistoryEntry } from './sourceControlHistoryUtils'
@@ -86,7 +87,7 @@ export function useSourceControlHistory({
         setHeadHash(null)
         setHasMoreHistory(false)
       }
-      setHistoryError(error instanceof Error ? error.message : 'Failed to load git history.')
+      setHistoryError(toUserFacingErrorMessage(error, 'The Git history could not be loaded.'))
     } finally {
       if (!options?.silent) setIsLoadingHistory(false)
     }
@@ -130,7 +131,7 @@ export function useSourceControlHistory({
     try {
       await loadHistoryPage(historyEntries.length, true)
     } catch (error) {
-      setHistoryError(error instanceof Error ? error.message : 'Failed to load more history.')
+      setHistoryError(toUserFacingErrorMessage(error, 'More Git history could not be loaded.'))
     } finally {
       setIsLoadingMoreHistory(false)
     }
@@ -146,7 +147,7 @@ export function useSourceControlHistory({
       })
       setCommitDetailsByHash((currentValue) => ({ ...currentValue, [commitHash]: details }))
     } catch (error) {
-      setHistoryError(error instanceof Error ? error.message : 'Failed to load commit details.')
+      setHistoryError(toUserFacingErrorMessage(error, 'The commit details could not be loaded.'))
     } finally {
       setLoadingCommitHashes((currentValue) => currentValue.filter((value) => value !== commitHash))
     }

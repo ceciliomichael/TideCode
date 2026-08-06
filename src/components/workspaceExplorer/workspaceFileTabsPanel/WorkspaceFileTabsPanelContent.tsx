@@ -13,6 +13,7 @@ import { isDocxPreviewablePath } from '../../../lib/docx-preview'
 import { normalizePathSeparators } from '../../../lib/filePathUtils'
 import { isSvgPreviewablePath } from '../../../lib/svg-preview'
 import { isPdfPreviewablePath } from '../../../lib/pdf-preview'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 
 interface WorkspaceFileTabsPanelContentProps {
   activeTab: WorkspaceTab
@@ -38,6 +39,10 @@ function normalizeWorkspaceFilePath(filePath: string) {
 function findGitFileDiff(gitFileDiffs: readonly GitFileDiff[], relativePath: string) {
   const normalizedRelativePath = normalizeWorkspaceFilePath(relativePath)
   return gitFileDiffs.find((diff) => normalizeWorkspaceFilePath(diff.fileName) === normalizedRelativePath) ?? null
+}
+
+function getTabErrorMessage(errorMessage: string | undefined, fallbackMessage: string) {
+  return errorMessage ? toUserFacingErrorMessage(errorMessage, fallbackMessage) : fallbackMessage
 }
 
 export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPanelContent({
@@ -71,7 +76,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
     if (activeTab.status === 'error' && !sourceTab) {
       return (
         <div className="h-full border-t border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
-          {activeTab.errorMessage ?? 'Failed to load preview.'}
+          {getTabErrorMessage(activeTab.errorMessage, 'The preview could not be loaded.')}
         </div>
       )
     }
@@ -112,7 +117,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
     if (sourceTab.status === 'error') {
       return (
         <div className="h-full border-t border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
-          {sourceTab.errorMessage ?? 'Failed to open file.'}
+          {getTabErrorMessage(sourceTab.errorMessage, 'The file could not be opened.')}
         </div>
       )
     }
@@ -146,7 +151,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
   if (activeTab.status === 'error') {
     return (
       <div className="h-full border-t border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
-        {activeTab.errorMessage ?? 'Failed to open file.'}
+        {getTabErrorMessage(activeTab.errorMessage, 'The file could not be opened.')}
       </div>
     )
   }
