@@ -154,6 +154,18 @@ export function ChatInterfaceContent({
   const handleCompactionComplete = useCallback(() => {
     setCompactionRefreshSignal((current) => current + 1)
   }, [])
+  const compactionMessageRevision = useMemo(
+    () => chatMessages.messages
+      .filter((message) => message.role === 'user')
+      .map((message) => JSON.stringify([
+        message.id,
+        message.timestamp,
+        message.content,
+        message.attachments ?? [],
+      ]))
+      .join('\u001f'),
+    [chatMessages.messages],
+  )
   const contextUsage = useChatContextUsage({
     agentContextRootPath: activeWorkspacePath,
     chatMode: chatMessages.selectedChatMode,
@@ -167,7 +179,7 @@ export function ChatInterfaceContent({
   })
   const compactionMarkers = useChatCompactionMarkers({
     conversationId: chatMessages.activeConversationId,
-    messagesLength: chatMessages.messages.length,
+    messagesRevision: compactionMessageRevision,
     refreshSignal: compactionRefreshSignal,
   })
   const liveCompaction = useChatCompactionStatus({
@@ -266,7 +278,6 @@ export function ChatInterfaceContent({
     activeConversationId: chatMessages.activeConversationId,
     activeWorkspacePath,
     chatMode: chatMessages.selectedChatMode,
-    clearQueuedMessages,
     compressionSelection,
     isBusy: chatMessages.isLoading || chatMessages.isSending,
     isCompressingChat,
@@ -336,6 +347,7 @@ export function ChatInterfaceContent({
     clearQueuedMessages,
     enqueueMessage,
     isCompressingChat,
+    onConversationHistoryChanged: handleCompactionComplete,
     runtimeSelection,
     workspaceState,
   })

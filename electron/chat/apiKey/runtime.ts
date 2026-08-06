@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { WebContents } from 'electron'
 import type {
-  CompressChatHistoryInput,
   CompactConversationInput,
   CompactConversationResult,
   ContextUsageEstimate,
@@ -11,7 +10,6 @@ import type {
   SubmitToolDecisionInput,
   SubmitToolDecisionResult,
 } from '../../../src/types/chat'
-import { compressChatHistory } from '../shared/compression'
 import { shouldReplayAssistantReasoning } from '../shared/assistantReasoningPolicy'
 import { estimateToolEnabledContextUsage, runToolEnabledChatStream } from '../shared/runtime'
 import { createApiKeyChatClient } from './client'
@@ -34,34 +32,6 @@ export async function estimateApiKeyContextUsage(
     providerId: input.providerId,
     terminalExecutionMode: input.terminalExecutionMode,
     webContents,
-  })
-}
-
-export async function compressApiKeyChatHistory(input: CompressChatHistoryInput): Promise<string> {
-  if (input.providerId === 'codex') {
-    throw new Error('Codex compression must use the Codex runtime.')
-  }
-  const modelId = input.modelId.trim()
-  if (!modelId) {
-    throw new Error('Select a model before compressing a chat.')
-  }
-
-  const config = await readApiKeyChatProviderConfig(input.providerId)
-  const client = createApiKeyChatClient(config)
-  return compressChatHistory({
-    agentContextRootPath: input.agentContextRootPath,
-    chatMode: input.chatMode,
-    createStream: (streamInput) =>
-      client.chat.completions.create({
-        messages: streamInput.messages,
-        model: streamInput.model,
-        reasoningEffort: streamInput.reasoningEffort,
-        signal: streamInput.signal,
-        system: streamInput.system,
-      }),
-    messages: input.messages,
-    modelId,
-    reasoningEffort: input.reasoningEffort,
   })
 }
 

@@ -1,34 +1,29 @@
 import type { WebContents } from 'electron'
 import * as electronModule from 'electron'
+import { watch as watchDirectoryRecursively, type FSWatcher as NativeFsWatcher } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import chokidar, { type FSWatcher } from 'chokidar'
 import path from 'node:path'
 import { isWorkspaceExplorerTemporaryDeletingEntryName } from './explorerIgnore'
+import {
+  IGNORED_DIRECTORY_NAMES,
+  IGNORED_FILE_NAMES,
+  shouldIgnoreWorkspaceWatchPath,
+} from './explorerWatchFilter'
 import { WorkspaceExplorerWatchSubscriptions } from './explorerWatchSubscriptions'
 
 const DEFAULT_RELATIVE_PATH = '.'
-const IGNORED_DIRECTORY_NAMES = new Set([
-  '.git',
-  'node_modules',
-  '.next',
-  '.nuxt',
-  '__pycache__',
-  '.cache',
-  '.turbo',
-  '.svelte-kit',
-  '.angular',
-  '.output',
-  'venv',
-  '.venv',
-  '.tox',
-])
-const IGNORED_FILE_NAMES = new Set<string>()
 const RELOAD_DEBOUNCE_MS = 100
 const POLL_INTERVAL_MS = 1500
 const SNAPSHOT_ERROR = '__workspace_snapshot_error__'
+const RECURSIVE_WATCH_SUPPORTED_PLATFORMS: ReadonlySet<NodeJS.Platform> = new Set(['win32', 'darwin'])
+
+type WorkspaceExplorerWatcherKind = 'recursive' | 'directory' | null
+type WorkspaceExplorerFsWatcher = FSWatcher | NativeFsWatcher
 
 interface WorkspaceExplorerWatcherState {
-  watcher: FSWatcher | null
+  watcher: WorkspaceExplorerFsWatcher | null
+  watcherKind: WorkspaceExplorerWatcherKind
   watcherGeneration: number
   pollTimerId: ReturnType<typeof setInterval> | null
   pendingEmitTimerId: ReturnType<typeof setTimeout> | null
@@ -180,6 +175,7 @@ function removeWorkspaceExplorerWatcherState(rootPath: string) {
     void state.watcher.close()
   }
   state.watcher = null
+  state.watcherKind = null
   state.subscribers.clear()
   watcherStates.delete(normalizedRootPath)
 }
@@ -258,7 +254,62 @@ function startPollingWorkspaceRoot(rootPath: string, state: WorkspaceExplorerWat
   }, POLL_INTERVAL_MS)
 }
 
-function startWatchingWorkspaceRoot(rootPath: string, state: WorkspaceExplorerWatcherState) {
+function startRecursiveWorkspaceWatcher(rootPath: string, state: WorkspaceExplorerWatcherState) {
+  if (!RECURSIVE_WATCH_SUPPORTED_PLATFORMS.has(process.platform)) {
+    return false
+  }
+
+  const watcherGeneration = state.watcherGeneration
+  let nativeWatcher: NativeFsWatcher | null = null
+  try {
+    nativeWatcher = watchDirectoryRecursively(
+      rootPath,
+      { persistent: true, recursive: true },
+      (_eventType: string, fileName: string | Buffer | null) => {
+        if (state.watcher !== nativeWatcher) {
+          return
+        }
+
+        if (typeof fileName === 'string' && shouldIgnoreWorkspaceWatchPath(fileName)) {
+          return
+        }
+
+        scheduleWorkspaceExplorerChange(rootPath)
+      },
+    )
+  } catch {
+    return false
+  }
+
+  if (state.watcherGeneration !== watcherGeneration) {
+    try {
+      nativeWatcher.close()
+    } catch {
+      // Ignore close failures for a superseded watcher.
+    }
+    return false
+  }
+
+  state.watcher = nativeWatcher
+  state.watcherKind = 'recursive'
+  nativeWatcher.on('error', () => {
+    if (state.watcher !== nativeWatcher || state.watcherGeneration !== watcherGeneration) {
+      return
+    }
+
+    state.watcher = null
+    state.watcherKind = null
+    try {
+      nativeWatcher?.close()
+    } catch {
+      // Ignore close failures while falling back.
+    }
+    startDirectoryWatchingWorkspaceRoot(rootPath, state)
+  })
+  return true
+}
+
+function startDirectoryWatchingWorkspaceRoot(rootPath: string, state: WorkspaceExplorerWatcherState) {
   const watcherGeneration = state.watcherGeneration
   const watchTargets = Array.from(state.watchedRelativeDirectoryPaths, (relativePath) =>
     relativePath === DEFAULT_RELATIVE_PATH ? rootPath : path.resolve(rootPath, relativePath),
@@ -278,6 +329,7 @@ function startWatchingWorkspaceRoot(rootPath: string, state: WorkspaceExplorerWa
       },
     })
     state.watcher = watcher
+    state.watcherKind = 'directory'
     watcher.on('all', () => {
       scheduleWorkspaceExplorerChange(rootPath)
     })
@@ -287,18 +339,33 @@ function startWatchingWorkspaceRoot(rootPath: string, state: WorkspaceExplorerWa
       }
 
       state.watcher = null
+      state.watcherKind = null
       void watcher.close()
       startPollingWorkspaceRoot(rootPath, state)
     })
     return
   } catch {
-    // Fall back to polling when recursive watching is unavailable.
+    // Fall back to polling when directory watching is unavailable.
   }
 
+  state.watcherKind = null
   startPollingWorkspaceRoot(rootPath, state)
 }
 
+function startWatchingWorkspaceRoot(rootPath: string, state: WorkspaceExplorerWatcherState) {
+  if (startRecursiveWorkspaceWatcher(rootPath, state)) {
+    return
+  }
+
+  startDirectoryWatchingWorkspaceRoot(rootPath, state)
+}
+
 function restartWorkspaceExplorerWatcher(rootPath: string, state: WorkspaceExplorerWatcherState) {
+  if (state.watcherKind === 'recursive') {
+    // The whole workspace tree is already watched; watch path updates are no-ops.
+    return
+  }
+
   if (state.pollTimerId !== null) {
     state.lastSnapshot = null
     void refreshWorkspaceExplorerSnapshot(rootPath)
@@ -330,6 +397,7 @@ function getWorkspaceExplorerWatcherState(rootPath: string) {
 
   const nextState: WorkspaceExplorerWatcherState = {
     watcher: null,
+    watcherKind: null,
     watcherGeneration: 0,
     pollTimerId: null,
     pendingEmitTimerId: null,

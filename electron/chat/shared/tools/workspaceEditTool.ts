@@ -35,7 +35,6 @@ export interface EditInput {
   startLine?: number
   endLine?: number
   allowMultiple?: boolean
-  edits?: readonly EditOperationInput[]
 }
 
 interface ResolvedTextReplacement {
@@ -352,35 +351,6 @@ async function createEditToolResultInternal(
 }
 
 function normalizeEditChunks(input: EditInput): EditChunk[] {
-  if (input.edits !== undefined) {
-    if (input.edits.length === 0 || input.edits.length > 20) {
-      throw new Error('Edit requires between 1 and 20 edit operations.')
-    }
-
-    return input.edits.map((operation, index) => {
-      if (typeof operation.targetContent !== 'string' || operation.targetContent.length === 0) {
-        throw new Error(`Edit operation ${index + 1} requires non-empty targetContent.`)
-      }
-      if (typeof operation.replacementContent !== 'string') {
-        throw new Error(`Edit operation ${index + 1} requires replacementContent.`)
-      }
-      if (typeof operation.allowMultiple !== 'boolean') {
-        throw new Error(`Edit operation ${index + 1} requires boolean allowMultiple.`)
-      }
-      if ((operation.startLine === undefined) !== (operation.endLine === undefined)) {
-        throw new Error(`Edit operation ${index + 1} must provide both startLine and endLine when using a line range.`)
-      }
-
-      return {
-        allowMultiple: operation.allowMultiple,
-        endLine: operation.endLine,
-        replacementContent: normalizeTextMutationContent(operation.replacementContent),
-        startLine: operation.startLine,
-        targetContent: normalizeTextMutationContent(operation.targetContent),
-      }
-    })
-  }
-
   if (typeof input.targetContent !== 'string' || input.targetContent.length === 0) {
     throw new Error('Edit requires non-empty targetContent copied from the latest read result.')
   }

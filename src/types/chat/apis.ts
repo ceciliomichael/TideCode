@@ -70,7 +70,6 @@ import type {
   ChatStreamEvent,
   CompactConversationInput,
   CompactConversationResult,
-  CompressChatHistoryInput,
   ContextUsageEstimate,
   EstimateContextUsageInput,
   StartChatStreamInput,
@@ -165,7 +164,6 @@ export interface TideCodeModelsApi {
 export interface TideCodeChatApi {
   cancelStream: (streamId: string) => Promise<void>
   compactConversation: (input: CompactConversationInput) => Promise<CompactConversationResult>
-  compressConversation: (input: CompressChatHistoryInput) => Promise<string>
   estimateContextUsage: (input: EstimateContextUsageInput) => Promise<ContextUsageEstimate>
   onStreamEvent: (listener: (event: ChatStreamEvent) => void) => () => void
   submitToolDecision: (input: SubmitToolDecisionInput) => Promise<SubmitToolDecisionResult>

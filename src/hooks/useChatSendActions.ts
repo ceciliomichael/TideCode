@@ -818,7 +818,9 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
               throw new Error(`Message not found: ${messageId}`)
             }
 
-            const restoredConversation = await persistConversationSnapshot(conversationId, messagesThroughTarget)
+            const restoredConversation = await persistConversationSnapshot(conversationId, messagesThroughTarget, {
+              synchronizeCanonicalHistory: true,
+            })
             input.upsertConversation(restoredConversation)
             input.updateConversationSummary(restoredConversation)
             if (readChatSelectionFromRefs(input).activeConversationId === conversationId) {

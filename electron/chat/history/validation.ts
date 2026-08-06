@@ -7,8 +7,11 @@ import {
   type CanonicalPromptContext,
   type CanonicalReplayProjection,
   type CanonicalUsageSummary,
+  type EncodedReplayValue,
   type NormalizedUsageRecord,
 } from './contracts'
+import { decodeReplayValue } from './replayCodec'
+import { parseCompactionPacket } from '../shared/compaction/contracts'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -41,6 +44,24 @@ function isUsage(value: unknown): value is NormalizedUsageRecord {
     .every((key) => typeof value[key] === 'number' && Number.isFinite(value[key]))
 }
 
+function isReasoningRetention(value: unknown) {
+  if (!isRecord(value)) return false
+  return (
+    typeof value.modelId === 'string' &&
+    typeof value.note === 'string' &&
+    typeof value.providerId === 'string' &&
+    ['replayed_exact', 'replayed_provider_native', 'summarized_visible', 'unavailable'].includes(String(value.mode))
+  )
+}
+
+function isStoredCompactionPacket(value: unknown) {
+  try {
+    return parseCompactionPacket(decodeReplayValue(value as EncodedReplayValue)) !== null
+  } catch {
+    return false
+  }
+}
+
 function isEvent(value: unknown): value is CanonicalHistoryEvent {
   if (!isRecord(value)) return false
   if (
@@ -67,7 +88,14 @@ function isEvent(value: unknown): value is CanonicalHistoryEvent {
       typeof value.providerId === 'string' &&
       typeof value.sourceDigest === 'string' &&
       isStringArray(value.sourceMessageIds) &&
-      typeof value.usedFallback === 'boolean'
+      typeof value.usedFallback === 'boolean' &&
+      (value.compactionSequence === undefined || (typeof value.compactionSequence === 'number' && Number.isInteger(value.compactionSequence))) &&
+      (value.contextFingerprint === undefined || value.contextFingerprint === null || typeof value.contextFingerprint === 'string') &&
+      (value.parentPacketId === undefined || value.parentPacketId === null || typeof value.parentPacketId === 'string') &&
+      (value.projectionVersion === undefined || typeof value.projectionVersion === 'string') &&
+      (value.degradedDiagnostics === undefined || isStringArray(value.degradedDiagnostics)) &&
+      (value.reasoningRetention === undefined || isReasoningRetention(value.reasoningRetention)) &&
+      isStoredCompactionPacket(value.packet)
   }
 
   return [

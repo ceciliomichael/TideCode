@@ -1,13 +1,27 @@
-import type { LocalCompactionPacket } from './contracts'
+import type { LocalCompactionPacketV2 } from './contracts'
 import { stripExecutionModeContext } from '../../../../src/lib/executionModeContext'
+import { normalizeContinuationMarkdown } from './markdown'
 
 function sanitizeTextList(values: readonly string[]) {
   return values.map(stripExecutionModeContext).filter((value) => value.length > 0)
 }
 
-export function sanitizeCompactionPacket(packet: LocalCompactionPacket): LocalCompactionPacket {
+function sanitizeReasoningEntry(entry: LocalCompactionPacketV2['reasoningContinuity'][number]) {
+  return {
+    ...entry,
+    action: stripExecutionModeContext(entry.action),
+    evidence: entry.evidence.map(stripExecutionModeContext).filter(Boolean),
+    nextCheck: entry.nextCheck === null ? null : stripExecutionModeContext(entry.nextCheck),
+    rationale: stripExecutionModeContext(entry.rationale),
+    situation: stripExecutionModeContext(entry.situation),
+    sourceMessageIds: entry.sourceMessageIds.filter((id) => id.trim().length > 0),
+  }
+}
+
+export function sanitizeCompactionPacketV2(packet: LocalCompactionPacketV2): LocalCompactionPacketV2 {
   return {
     ...packet,
+    continuationMarkdown: normalizeContinuationMarkdown(packet.continuationMarkdown),
     constraints: sanitizeTextList(packet.constraints),
     currentState: sanitizeTextList(packet.currentState),
     completedWork: sanitizeTextList(packet.completedWork),
@@ -24,9 +38,18 @@ export function sanitizeCompactionPacket(packet: LocalCompactionPacket): LocalCo
     omitted: sanitizeTextList(packet.omitted),
     openItems: sanitizeTextList(packet.openItems),
     planState: sanitizeTextList(packet.planState),
+    reasoningContinuity: packet.reasoningContinuity.map(sanitizeReasoningEntry),
+    reasoningRetention: {
+      ...packet.reasoningRetention,
+      modelId: stripExecutionModeContext(packet.reasoningRetention.modelId),
+      note: stripExecutionModeContext(packet.reasoningRetention.note),
+      providerId: stripExecutionModeContext(packet.reasoningRetention.providerId),
+    },
+    sourceMessageIds: packet.sourceMessageIds.filter((id) => id.trim().length > 0),
     toolObservations: packet.toolObservations.map((observation) => ({
       ...observation,
       fact: stripExecutionModeContext(observation.fact),
+      sourceMessageIds: observation.sourceMessageIds.filter((id) => id.trim().length > 0),
       subject: stripExecutionModeContext(observation.subject),
     })),
     validation: sanitizeTextList(packet.validation),

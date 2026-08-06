@@ -41,11 +41,6 @@ export function buildWorkspaceEditorLineStatusMap(
   const lineStatusByLineNumber = new Map<number, WorkspaceEditorLineStatus>()
 
   if (originalContent === null || originalContent === undefined) {
-    const normalizedNextLines = nextContent.split('\n')
-    for (let index = 0; index < normalizedNextLines.length; index += 1) {
-      lineStatusByLineNumber.set(index + 1, 'added')
-    }
-
     return lineStatusByLineNumber
   }
 

@@ -11,8 +11,9 @@ import {
 } from '../../electron/chat/cache/providerPolicies'
 import { normalizeLanguageModelUsage } from '../../electron/chat/cache/usage'
 import { createEmptyCanonicalHistory, getReplaySlotKey } from '../../electron/chat/history/contracts'
-import { decodeModelMessages, encodeModelMessages } from '../../electron/chat/history/replayCodec'
+import { decodeModelMessages, encodeModelMessages, encodeReplayValue } from '../../electron/chat/history/replayCodec'
 import { projectCanonicalReplay } from '../../electron/chat/history/replayProjector'
+import { buildFallbackCompactionPacket } from '../../electron/chat/shared/compaction/fallback'
 import { createCanonicalToolModelOutput, withCanonicalToolModelOutputs } from '../../electron/chat/shared/toolReplay'
 import { formatStructuredToolResultContent } from '../../src/lib/toolResultContent'
 import type { Message } from '../../src/types/chat'
@@ -146,9 +147,16 @@ test('exact replay replaces display-normalized assistant history and appends onl
 
 test('compacted replay retains assistant and tool responses from later turns', () => {
   const document = createEmptyCanonicalHistory('conversation', 1)
+  const packet = buildFallbackCompactionPacket({
+    messages: [{ content: 'first question', role: 'user' }],
+    modelId: 'model',
+    providerId: 'openai',
+    sourceDigest: 'digest',
+    sourceMessageIds: ['model:0'],
+  })
   const compactedMessages = [
     { content: 'first question', role: 'user' },
-    { content: 'tidecode.compaction_state.v1\nRetained state', role: 'assistant' },
+    { content: packet.continuationMarkdown, role: 'assistant' },
   ] as ModelMessage[]
   document.events.push({
     anchorUserMessageId: 'user-1',
@@ -157,7 +165,7 @@ test('compacted replay retains assistant and tool responses from later turns', (
     createdAt: 2,
     eventId: 'event-1',
     modelId: 'model',
-    packet: encodeModelMessages([]),
+    packet: encodeReplayValue(packet),
     projectedMessages: encodeModelMessages(compactedMessages),
     providerId: 'openai',
     revision: 1,
@@ -213,6 +221,50 @@ test('compacted replay retains assistant and tool responses from later turns', (
 
   assert.equal(result.isCompacted, true)
   assert.deepEqual(result.messages.map((message) => message.role), ['user', 'assistant', 'user', 'assistant', 'tool'])
+})
+
+test('compacted replay rebuilds a missing projection from the stored v2 packet', () => {
+  const document = createEmptyCanonicalHistory('conversation', 1)
+  const packet = buildFallbackCompactionPacket({
+    messages: [{ content: 'first question', role: 'user' }],
+    modelId: 'model',
+    providerId: 'openai',
+    sourceDigest: 'digest',
+    sourceMessageIds: ['model:0'],
+  })
+  document.events.push({
+    anchorUserMessageId: 'user-1',
+    branchId: 'main',
+    compactionId: 'compaction-recovery',
+    createdAt: 2,
+    eventId: 'event-recovery',
+    modelId: 'model',
+    packet: encodeReplayValue(packet),
+    projectedMessages: encodeReplayValue({ invalid: 'projection' }),
+    providerId: 'openai',
+    revision: 1,
+    runId: null,
+    sourceDigest: 'digest',
+    sourceMessageIds: ['model:0'],
+    type: 'compaction_committed',
+    usedFallback: true,
+  })
+
+  const result = projectCanonicalReplay({
+    document,
+    fallbackMessages: [{ content: 'legacy', role: 'user' }],
+    messages: [
+      { content: 'first question', id: 'user-1', role: 'user', timestamp: 1 },
+      { content: 'second question', id: 'user-2', role: 'user', timestamp: 3 },
+    ],
+    modelId: 'model',
+    providerId: 'openai',
+  })
+
+  assert.equal(result.fidelity, 'migrated_legacy')
+  assert.equal(result.isCompacted, true)
+  assert.equal(result.compactionPacket?.schema, 'tidecode.compaction_packet/v2')
+  assert.deepEqual(result.messages.map((message) => message.role), ['user', 'assistant', 'user'])
 })
 
 test('provider and model replay slots survive switching away and back', () => {

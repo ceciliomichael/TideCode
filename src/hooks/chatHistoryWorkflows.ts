@@ -267,6 +267,7 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
       chatMode: input.chatMode,
       conversationId: currentConversation.id,
       messages: rewrittenMessages,
+      synchronizeCanonicalHistory: true,
       title:
         targetMessageIndex === 0
           ? input.title?.trim() || getConversationTitleFromInput(input.trimmedText, input.attachments)
@@ -332,10 +333,15 @@ export async function persistAssistantTurn(conversationId: string, messages: Mes
   })
 }
 
-export async function persistConversationSnapshot(conversationId: string, messages: Message[]) {
+export async function persistConversationSnapshot(
+  conversationId: string,
+  messages: Message[],
+  options: { synchronizeCanonicalHistory?: boolean } = {},
+) {
   return window.tidecodeHistory.replaceMessages({
     conversationId,
     messages,
+    synchronizeCanonicalHistory: options.synchronizeCanonicalHistory,
   })
 }
 
@@ -360,7 +366,9 @@ export async function rollbackConversationBeforeUserMessage(conversationId: stri
     return conversation
   }
 
-  return persistConversationSnapshot(conversationId, messagesBeforeUserMessage)
+  return persistConversationSnapshot(conversationId, messagesBeforeUserMessage, {
+    synchronizeCanonicalHistory: true,
+  })
 }
 
 export async function restoreWorkspaceCheckpointForMessage(conversationId: string, messageId: string) {

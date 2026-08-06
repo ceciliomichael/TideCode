@@ -256,7 +256,6 @@ function buildToolResultParts(message: Message, validToolCallIds: Set<string>): 
         type: 'text',
         value: outputText,
       },
-      result: outputText,
       toolCallId: message.toolCallId,
       toolName,
       type: 'tool-result',

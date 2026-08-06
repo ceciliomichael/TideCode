@@ -41,17 +41,24 @@ interface CodeRowsProps {
   showLineNumberDivider?: boolean
 }
 
+const LINE_NUMBER_GUTTER_WIDTH_CH = 5
+
 const CodeRows = memo(function CodeRows({
   lines,
   startLineNumber,
   fillHeight = false,
   showLineNumberDivider = true,
 }: CodeRowsProps) {
-  const gutterWidthCh = Math.max(String(startLineNumber + lines.length - 1).length + 1, 3)
-
   return (
     <div className={['flex min-w-0 bg-surface', fillHeight ? 'h-full' : ''].join(' ')}>
-      <div className={['select-none shrink-0 bg-surface', showLineNumberDivider ? 'border-r border-border' : ''].join(' ')}>
+      <div
+        className={['select-none shrink-0 bg-surface', showLineNumberDivider ? 'border-r border-border' : ''].join(' ')}
+        style={{
+          width: `calc(${LINE_NUMBER_GUTTER_WIDTH_CH}ch + 1rem)`,
+          minWidth: `calc(${LINE_NUMBER_GUTTER_WIDTH_CH}ch + 1rem)`,
+          flex: `0 0 calc(${LINE_NUMBER_GUTTER_WIDTH_CH}ch + 1rem)`,
+        }}
+      >
         <pre className="m-0 py-2 text-[12px] leading-5 text-subtle-foreground">
           <code className="block">
             {lines.map((_, index) => {
@@ -60,7 +67,6 @@ const CodeRows = memo(function CodeRows({
                 <div
                   key={`line-number-${lineNumber}`}
                   className="select-none px-2 text-right"
-                  style={{ minWidth: `${gutterWidthCh}ch` }}
                 >
                   {lineNumber}
                 </div>

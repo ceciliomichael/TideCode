@@ -70,6 +70,7 @@ export function ContextIndicator({
   onCompress,
   usage,
 }: ContextIndicatorProps) {
+  const isIndicatorDisabled = disabled || isCompressing
   const estimatedTotalTokens = getEstimatedContextTokens(usage)
   const effectiveMaxTokens = getEffectiveMaxTokens(usage)
   const usageRatio = Math.min(estimatedTotalTokens / effectiveMaxTokens, 1)
@@ -122,7 +123,7 @@ export function ContextIndicator({
   return (
     <Tooltip
       content={tooltipContent}
-      disabled={disabled}
+      disabled={isIndicatorDisabled}
       side="top"
       interactive
       hideDelayMs={160}
@@ -132,7 +133,7 @@ export function ContextIndicator({
         type="button"
         aria-label={`Estimated context usage ${formatTokenCount(estimatedTotalTokens)} of ${formatTokenCount(effectiveMaxTokens)} tokens`}
         className="flex items-center justify-center bg-transparent p-0 text-muted-foreground transition-colors duration-150 hover:text-foreground disabled:cursor-default disabled:opacity-80"
-        disabled={disabled}
+        disabled={isIndicatorDisabled}
       >
         <span className={isCompressing ? "animate-spin" : undefined}>
           <DashedUsageCircle forceAllActive={isCompressing} usage={usage} />

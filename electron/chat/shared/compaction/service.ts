@@ -11,19 +11,25 @@ import {
   buildFallbackCompactionPacket,
 } from './fallback'
 import {
-  buildCompactionMessage,
   buildCompactionSourceDigest,
-  findLatestCompactionPacket,
   selectCompactionWindow,
 } from './window'
+import { buildCompactionProjection } from './projection'
+import {
+  mergeCompactionPacketState,
+  resolveProviderReasoningCapability,
+  resolveReasoningRetention,
+} from './reasoning'
 import {
   parseCompactionModelOutput,
   normalizeCompactionPacket,
 } from './validate'
+import { buildContinuationMarkdownFromPacket, validateContinuationMarkdown } from './markdown'
 import type {
+  CompactionPacket,
   CompactModelMessagesInput,
   CompactionResult,
-  LocalCompactionPacket,
+  LocalCompactionPacketV2,
 } from './contracts'
 
 const COMPACTION_TIMEOUT_MS = 90_000
@@ -42,6 +48,7 @@ async function collectCompactionText(input: CompactModelMessagesInput, prompt: s
     const stream = await input.createStream({
       messages: [{ role: 'user', content: prompt }],
       model: input.model,
+      providerId: input.providerId,
       reasoningEffort: input.reasoningEffort,
       signal: abortController.signal,
       system: buildCompactionSystemPrompt(),
@@ -59,8 +66,20 @@ async function collectCompactionText(input: CompactModelMessagesInput, prompt: s
   }
 }
 
-function buildCompactionKey(input: CompactModelMessagesInput, boundaryIndex: number, sourceDigest: string) {
-  return JSON.stringify([input.model, input.reasoningEffort, boundaryIndex, sourceDigest])
+function buildCompactionKey(
+  input: CompactModelMessagesInput,
+  boundaryIndex: number,
+  sourceDigest: string,
+  previousPacket: CompactionPacket | null,
+) {
+  return JSON.stringify([
+    input.model,
+    input.providerId ?? 'unknown',
+    input.reasoningEffort,
+    boundaryIndex,
+    sourceDigest,
+    previousPacket?.packetId ?? null,
+  ])
 }
 
 async function compactModelMessagesInternal(input: CompactModelMessagesInput): Promise<CompactionResult | null> {
@@ -74,48 +93,100 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   })
   if (!input.force && !shouldCompactContext(budget)) return null
 
-  const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens)
+  const previousPacket = input.previousPacket ?? null
+  const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens, { previousPacket })
   if (!window) return null
   if (input.signal?.aborted) return null
 
   input.onStarted?.()
-  const sourceDigest = buildCompactionSourceDigest(input.messages, window.boundaryIndex)
-  const previousPacket = input.previousPacket ?? findLatestCompactionPacket(input.messages)
+  const sourceDigest = buildCompactionSourceDigest(
+    input.messages,
+    window.sourceEndIndex,
+    window.sourceStartIndex,
+  )
+  const capability = resolveProviderReasoningCapability({
+    modelId: input.model,
+    providerId: input.providerId,
+  })
+  const actualRetention = resolveReasoningRetention({
+    capability,
+    messages: window.evictedMessages,
+  })
   const prompt = buildCompactionRequestPrompt({
     messages: window.evictedMessages,
     previousPacket,
     sourceDigest,
     sourceMessageIds: window.sourceMessageIds,
+    sourceStartIndex: window.sourceStartIndex,
   })
   const rawSummary = await collectCompactionText(input, prompt)
   if (input.signal?.aborted) return null
-  const modelPacket = rawSummary
+  const parsedModelPacket = rawSummary
     ? parseCompactionModelOutput(rawSummary, {
+        modelId: input.model,
+        parentPacketId: previousPacket?.packetId ?? null,
+        providerId: input.providerId,
+        reasoningMode: actualRetention.mode,
         sourceDigest,
         sourceMessageIds: window.sourceMessageIds,
+        sourceRange: {
+          endIndex: window.sourceEndIndex,
+          startIndex: window.sourceStartIndex,
+        },
       })
     : null
-  const packet = normalizeCompactionPacket(modelPacket ?? buildFallbackCompactionPacket({
+  const fallbackPacket = buildFallbackCompactionPacket({
     messages: window.evictedMessages,
+    modelId: input.model,
+    parentPacketId: previousPacket?.packetId ?? null,
+    providerId: input.providerId,
+    sourceDigest,
+    sourceMessageIds: window.sourceMessageIds,
+    sourceStartIndex: window.sourceStartIndex,
+    sourceRange: {
+      endIndex: window.sourceEndIndex,
+      startIndex: window.sourceStartIndex,
+    },
     previousPacket,
-    sourceDigest,
-    sourceMessageIds: window.sourceMessageIds,
-  }), {
-    sourceDigest,
-    sourceMessageIds: window.sourceMessageIds,
   })
-  if (!packet) return null
+  const plainMarkdown = rawSummary ? validateContinuationMarkdown(rawSummary) : null
+  const modelPacket = parsedModelPacket ?? (plainMarkdown?.valid
+    ? { ...fallbackPacket, continuationMarkdown: plainMarkdown.normalized }
+    : null)
+  const normalizedPacket = normalizeCompactionPacket(modelPacket ?? fallbackPacket, {
+    modelId: input.model,
+    parentPacketId: previousPacket?.packetId ?? null,
+    providerId: input.providerId,
+    reasoningMode: actualRetention.mode,
+    sourceDigest,
+    sourceMessageIds: window.sourceMessageIds,
+    sourceRange: {
+      endIndex: window.sourceEndIndex,
+      startIndex: window.sourceStartIndex,
+    },
+  })
+  if (!normalizedPacket) return null
+
+  const packet = mergeCompactionPacketState({
+    current: normalizedPacket,
+    parentPacketId: previousPacket?.packetId ?? null,
+    previous: previousPacket,
+  })
+  const projectedMessages = buildCompactionProjection({
+    anchorMessages: window.anchorMessages,
+    packet,
+    tailBudgetTokens: budget.targetHistoryTokens,
+    tailMessages: window.tailMessages,
+  })
 
   return {
     boundaryIndex: window.boundaryIndex,
     packet,
-    projectedMessages: [
-      ...window.anchorMessages,
-      buildCompactionMessage(packet),
-      ...window.tailMessages,
-    ],
+    projectedMessages,
+    projectionVersion: 'tidecode.compaction_projection/v2',
+    reasoningRetention: packet.reasoningRetention,
     sourceDigest,
-    usedFallback: modelPacket === null,
+    usedFallback: parsedModelPacket === null && !plainMarkdown?.valid,
   }
 }
 
@@ -130,10 +201,15 @@ export async function compactModelMessages(input: CompactModelMessagesInput) {
   })
   if (!input.force && !shouldCompactContext(budget)) return null
 
-  const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens)
+  const previousPacket = input.previousPacket ?? null
+  const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens, { previousPacket })
   if (!window) return null
-  const sourceDigest = buildCompactionSourceDigest(input.messages, window.boundaryIndex)
-  const key = buildCompactionKey(input, window.boundaryIndex, sourceDigest)
+  const sourceDigest = buildCompactionSourceDigest(
+    input.messages,
+    window.sourceEndIndex,
+    window.sourceStartIndex,
+  )
+  const key = buildCompactionKey(input, window.boundaryIndex, sourceDigest, previousPacket)
   const existing = inFlightCompactions.get(key)
   if (existing) return existing
 
@@ -144,12 +220,21 @@ export async function compactModelMessages(input: CompactModelMessagesInput) {
   return work
 }
 
-export function createEmptyCompactionPacket(sourceDigest: string, sourceMessageIds: string[]): LocalCompactionPacket {
-  return {
-    schema: 'tidecode.compaction_packet/v1',
+export function createEmptyCompactionPacket(sourceDigest: string, sourceMessageIds: string[]): LocalCompactionPacketV2 {
+  const packet: LocalCompactionPacketV2 = {
+    schema: 'tidecode.compaction_packet/v2',
     packetId: randomUUID(),
+    parentPacketId: null,
     sourceDigest,
     sourceMessageIds,
+    continuationMarkdown: '',
+    reasoningRetention: {
+      mode: 'unavailable',
+      modelId: 'unknown-model',
+      note: 'No reasoning representation was supplied.',
+      providerId: 'unknown',
+    },
+    reasoningContinuity: [],
     goal: [],
     constraints: [],
     currentState: [],
@@ -163,5 +248,9 @@ export function createEmptyCompactionPacket(sourceDigest: string, sourceMessageI
     toolObservations: [],
     nextActions: [],
     omitted: [],
+  }
+  return {
+    ...packet,
+    continuationMarkdown: buildContinuationMarkdownFromPacket(packet),
   }
 }

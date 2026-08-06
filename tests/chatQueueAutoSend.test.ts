@@ -4,7 +4,13 @@ import { isChatSendBlocked } from '../src/lib/chatSendGate'
 import {
   detectSuccessfulToolReleaseSignal,
   resolveQueuedMessageAutoSendReason,
+  shouldQueueMainMessage,
 } from '../src/pages/chatInterface/chatQueueAutoSend'
+
+test('messages submitted during compaction are queued until compaction settles', () => {
+  assert.equal(shouldQueueMainMessage({ isCompressingChat: true, isLoading: false, isSending: false }), true)
+  assert.equal(shouldQueueMainMessage({ isCompressingChat: false, isLoading: false, isSending: false }), false)
+})
 
 test('a tool completion that predates the queued message does not release it', () => {
   assert.equal(

@@ -430,10 +430,7 @@ export function MessageList({
       items.push({ marker, type: 'compaction_marker' });
     }
 
-    const hasPersistedLiveCompaction =
-      liveCompaction?.phase === 'compacted' &&
-      compactionMarkers.some((marker) => marker.compactionId === liveCompaction.compactionId)
-    if (liveCompaction && !hasPersistedLiveCompaction) {
+    if (liveCompaction?.phase === 'compacting') {
       items.push({ status: liveCompaction, type: 'live_compaction' });
     }
     
@@ -444,7 +441,7 @@ export function MessageList({
     conversationId,
     messages: visibleMessages,
     scrollContainerRef,
-    shouldAutoScroll: isConversationStreaming,
+    shouldAutoScroll: isConversationStreaming || liveCompaction?.phase === 'compacting',
   });
   const subsequentAssistantTextByMessageId = useMemo(() => {
     const map = new Map<string, boolean>();

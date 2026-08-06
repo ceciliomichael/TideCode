@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import type { ChatMode } from '../../../../../src/types/chat'
 
 const PROMPT_REPO_PATH = 'electron/chat/shared/prompts/compression'
 const SUMMARY_PROMPT_FILE_NAME = 'prompt.md'
@@ -31,8 +30,6 @@ function getPrompt() {
   return cachedPrompt
 }
 
-export function buildChatCompressionSystemPrompt(chatMode: ChatMode, workspaceRootPath: string) {
-  void chatMode
-  void workspaceRootPath
+export function buildChatCompressionSystemPrompt() {
   return getPrompt()
 }

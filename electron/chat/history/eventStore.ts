@@ -10,6 +10,7 @@ import {
   type CanonicalHistoryEvent,
   type CanonicalPromptContext,
   type CanonicalReplayProjection,
+  type CanonicalReasoningRetention,
   type ProviderStepRecord,
 } from './contracts'
 import { decodeReplayValue, encodeModelMessages, encodeReplayValue } from './replayCodec'
@@ -18,6 +19,7 @@ import type { ModelMessage } from 'ai'
 import { sha256, stableStringify } from '../cache/canonicalization'
 import { sanitizeModelMessages } from '../shared/modelMessageIntegrity'
 import { stripExecutionModeContext } from '../../../src/lib/executionModeContext'
+import { parseCompactionPacket, type CompactionPacket } from '../shared/compaction/contracts'
 
 const CANONICAL_DIRECTORY_NAME = 'canonical-history'
 const updateQueues = new Map<string, Promise<void>>()
@@ -158,6 +160,27 @@ export async function readCanonicalHistory(conversationId: string) {
   return readDocumentUnsafe(conversationId)
 }
 
+export async function readLatestCompactionPacket(conversationId: string): Promise<CompactionPacket | null> {
+  const document = await readCanonicalHistory(conversationId)
+  for (const event of [...document.events].reverse()) {
+    if (
+      event.branchId !== document.activeBranchId ||
+      event.type !== 'compaction_committed' ||
+      !('packet' in event)
+    ) {
+      continue
+    }
+
+    try {
+      const packet = parseCompactionPacket(decodeReplayValue(event.packet))
+      if (packet) return packet
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
 export async function listCompactionMarkers(conversationId: string): Promise<ChatCompactionMarker[]> {
   const document = await readCanonicalHistory(conversationId)
   return document.events
@@ -179,41 +202,15 @@ export async function listCompactionMarkers(conversationId: string): Promise<Cha
     })
 }
 
-const COMPACTION_DETAIL_FIELDS: readonly [string, string][] = [
-  ['Goal', 'goal'],
-  ['Current state', 'currentState'],
-  ['Completed work', 'completedWork'],
-  ['Decisions', 'decisions'],
-  ['Open items', 'openItems'],
-  ['Failures and workarounds', 'failuresAndWorkarounds'],
-  ['Validation', 'validation'],
-  ['Next actions', 'nextActions'],
-]
-
-function readCompactionDetailItems(packet: unknown, field: string) {
-  if (!packet || typeof packet !== 'object' || Array.isArray(packet)) {
-    return []
-  }
-
-  const value = (packet as Record<string, unknown>)[field]
-  if (!Array.isArray(value)) {
-    return []
-  }
-
-  return value
-    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-    .slice(0, 8)
-    .map((item) => stripExecutionModeContext(item).slice(0, 400))
-    .filter((item) => item.length > 0)
-}
-
 function buildCompactionDetailSections(encodedPacket: Parameters<typeof decodeReplayValue>[0]): ChatCompactionDetailSection[] {
   try {
-    const packet = decodeReplayValue(encodedPacket)
-    return COMPACTION_DETAIL_FIELDS.flatMap(([label, field]) => {
-      const items = readCompactionDetailItems(packet, field)
-      return items.length > 0 ? [{ items, label }] : []
-    })
+    const packet = parseCompactionPacket(decodeReplayValue(encodedPacket))
+    const continuationMarkdown = packet
+      ? stripExecutionModeContext(packet.continuationMarkdown).trim().slice(0, 32_000)
+      : ''
+    return continuationMarkdown.length > 0
+      ? [{ items: [continuationMarkdown] }]
+      : []
   } catch {
     return []
   }
@@ -352,22 +349,36 @@ export async function recordCompactionCommitted(input: {
   anchorUserMessageId: string | null
   compactionId: string
   conversationId: string
+  contextFingerprint?: string | null
+  degradedDiagnostics?: string[]
   modelId: string
+  parentPacketId?: string | null
   packet: unknown
+  projectionVersion?: string
   projectedMessages: ModelMessage[]
   providerId: CanonicalReplayProjection['providerId']
+  reasoningRetention?: CanonicalReasoningRetention
   sourceDigest: string
   sourceMessageIds: string[]
   usedFallback: boolean
 }) {
   return updateDocument(input.conversationId, (document) => {
+    const compactionSequence = document.events.filter((event) => (
+      event.branchId === document.activeBranchId && event.type === 'compaction_committed' && 'compactionId' in event
+    )).length + 1
     appendEvent(document, {
       anchorUserMessageId: input.anchorUserMessageId,
       compactionId: input.compactionId,
+      compactionSequence,
+      contextFingerprint: input.contextFingerprint ?? document.contextFingerprint,
+      ...(input.degradedDiagnostics ? { degradedDiagnostics: input.degradedDiagnostics } : {}),
       modelId: input.modelId,
+      parentPacketId: input.parentPacketId ?? null,
       packet: encodeReplayValue(input.packet),
+      projectionVersion: input.projectionVersion ?? 'tidecode.compaction_projection/v2',
       projectedMessages: encodeModelMessages(input.projectedMessages),
       providerId: input.providerId,
+      ...(input.reasoningRetention ? { reasoningRetention: input.reasoningRetention } : {}),
       runId: null,
       sourceDigest: input.sourceDigest,
       sourceMessageIds: input.sourceMessageIds,

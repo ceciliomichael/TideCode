@@ -231,5 +231,6 @@ export interface ReplaceConversationMessagesInput {
   chatMode?: ChatMode
   conversationId: string
   messages: Message[]
+  synchronizeCanonicalHistory?: boolean
   title?: string
 }

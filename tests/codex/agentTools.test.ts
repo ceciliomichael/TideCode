@@ -204,7 +204,10 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     const writeTool = tools.write as { description?: string }
 
     assert.equal(readTool.description, 'Read a file or directory.')
-    assert.equal(replaceTool.description, 'Replace exact text in a file.')
+    assert.equal(
+      replaceTool.description,
+      'Replace one unique text block in a file. Exact text is matched first; indentation, line-ending, and line-edge whitespace differences are tolerated when they still identify one unambiguous block.',
+    )
     assert.equal(globTool.description, 'Find files by pattern.')
     assert.equal(grepTool.description, 'Search file contents.')
     assert.equal(writeTool.description, 'Write a complete file.')

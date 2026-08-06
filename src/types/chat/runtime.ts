@@ -22,18 +22,15 @@ export interface StartChatStreamInput {
   terminalExecutionMode: AppTerminalExecutionMode
 }
 
-export interface CompressChatHistoryInput {
+export interface CompactConversationInput {
   agentContextRootPath: string
   chatMode: ChatMode
+  contextCompaction: ContextCompactionSettings
+  conversationId: string
   messages: Message[]
   modelId: string
   providerId: ChatProviderId
   reasoningEffort: ReasoningEffort
-}
-
-export interface CompactConversationInput extends CompressChatHistoryInput {
-  conversationId: string
-  contextCompaction: ContextCompactionSettings
   targetModelId?: string
   targetProviderId?: ChatProviderId
   terminalExecutionMode: AppTerminalExecutionMode
@@ -101,7 +98,7 @@ export type ChatCompactionLifecycleState =
 
 export interface ChatCompactionDetailSection {
   items: string[]
-  label: string
+  label?: string
 }
 
 export type ChatStreamEvent =

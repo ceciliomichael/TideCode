@@ -1,0 +1,153 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import type { ModelMessage } from 'ai'
+import {
+  buildContinuationMessage,
+  validateContinuationMarkdown,
+} from '../../electron/chat/shared/compaction/markdown'
+import { buildFallbackCompactionPacket } from '../../electron/chat/shared/compaction/fallback'
+import { buildCompactionProjection } from '../../electron/chat/shared/compaction/projection'
+import {
+  extractActionLinkedReasoning,
+  mergeCompactionPacketState,
+  resolveProviderReasoningCapability,
+  resolveReasoningRetention,
+} from '../../electron/chat/shared/compaction/reasoning'
+import { derivePromptCacheKey } from '../../electron/chat/cache/providerPolicies'
+
+test('v2 continuation accepts natural Markdown and rejects packet JSON or meta-only output', () => {
+  const markdown = 'The provider prefix remains stable. Run the focused cache test next.'
+  assert.equal(validateContinuationMarkdown(markdown).valid, true)
+  assert.equal(validateContinuationMarkdown('{"schema":"tidecode.compaction_packet/v2"}').valid, false)
+  assert.equal(validateContinuationMarkdown('Acknowledged.').valid, false)
+
+  const message = buildContinuationMessage(markdown)
+  assert.equal(message.role, 'assistant')
+  assert.equal(message.content, markdown)
+  assert.doesNotMatch(String(message.content), /compaction_packet/u)
+})
+
+test('visible action rationale is source-linked without copying provider-private reasoning', () => {
+  const messages: ModelMessage[] = [
+    { role: 'user', content: 'Inspect the entry point before editing it.' },
+    {
+      role: 'assistant',
+      content: [
+        { type: 'reasoning', text: 'private provider reasoning' },
+        { type: 'text', text: 'I will inspect the entry point because the current behavior is unverified.' },
+        { type: 'tool-call', toolCallId: 'call-1', toolName: 'read_file', input: { path: 'src/main.ts' } },
+      ],
+    },
+    {
+      role: 'tool',
+      content: [{
+        type: 'tool-result',
+        toolCallId: 'call-1',
+        toolName: 'read_file',
+        output: { type: 'text', value: 'export function main() {}' },
+      }],
+    },
+  ]
+
+  const entries = extractActionLinkedReasoning(messages)
+  assert.equal(entries.length, 1)
+  assert.match(entries[0]?.rationale ?? '', /inspect the entry point/u)
+  assert.doesNotMatch(entries[0]?.rationale ?? '', /private provider reasoning/u)
+  assert.deepEqual(entries[0]?.sourceMessageIds, ['model:1', 'model:2'])
+
+  const retention = resolveReasoningRetention({
+    capability: resolveProviderReasoningCapability({ modelId: 'deepseek-v4-pro', providerId: 'deepseek' }),
+    messages,
+  })
+  assert.equal(retention.mode, 'replayed_provider_native')
+})
+
+test('packet merging keeps parent lineage and bounds continuity while preserving the stable cache key', () => {
+  const previous = buildFallbackCompactionPacket({
+    messages: [{ role: 'user', content: 'Keep the provider cache prefix stable.' }],
+    modelId: 'deepseek-v4-pro',
+    providerId: 'deepseek',
+    sourceDigest: 'digest-1',
+    sourceMessageIds: ['model:0'],
+  })
+  const current = buildFallbackCompactionPacket({
+    messages: [{ role: 'user', content: 'Validate DeepSeek reasoning replay.' }],
+    modelId: 'deepseek-v4-pro',
+    providerId: 'deepseek',
+    sourceDigest: 'digest-2',
+    sourceMessageIds: ['model:1'],
+  })
+  const merged = mergeCompactionPacketState({
+    current,
+    parentPacketId: previous.packetId,
+    previous,
+  })
+
+  assert.equal(merged.parentPacketId, previous.packetId)
+  assert.equal(merged.schema, 'tidecode.compaction_packet/v2')
+  assert.ok(merged.continuationMarkdown.length > 0)
+  assert.ok(merged.reasoningContinuity.length <= 32)
+  assert.equal(
+    derivePromptCacheKey({
+      cacheScopeId: 'lineage-root',
+      contextFingerprint: 'stable-context',
+      modelId: 'deepseek-v4-pro',
+      providerId: 'deepseek',
+    }),
+    derivePromptCacheKey({
+      cacheScopeId: 'lineage-root',
+      contextFingerprint: 'stable-context',
+      modelId: 'deepseek-v4-pro',
+      providerId: 'deepseek',
+    }),
+  )
+})
+
+test('the projected continuation preserves the AI-generated Markdown across compaction lineage merges', () => {
+  const previous = buildFallbackCompactionPacket({
+    messages: [{ role: 'user', content: 'Keep the existing provider behavior.' }],
+    modelId: 'test-model',
+    sourceDigest: 'digest-previous',
+    sourceMessageIds: ['model:0'],
+  })
+  const generatedMarkdown = 'The release metadata change is complete. The next step is to run the whitespace check.'
+  const current = buildFallbackCompactionPacket({
+    messages: [{ role: 'user', content: 'Run the release validation.' }],
+    modelId: 'test-model',
+    sourceDigest: 'digest-current',
+    sourceMessageIds: ['model:1'],
+  })
+  const merged = mergeCompactionPacketState({
+    current: { ...current, continuationMarkdown: generatedMarkdown },
+    parentPacketId: previous.packetId,
+    previous,
+  })
+
+  assert.equal(merged.continuationMarkdown, generatedMarkdown)
+})
+
+test('projection emits one Markdown continuation and keeps a complete tool interaction in the semantic tail', () => {
+  const packet = buildFallbackCompactionPacket({
+    messages: [{ role: 'user', content: 'Inspect the workspace.' }],
+    modelId: 'test-model',
+    sourceDigest: 'digest',
+    sourceMessageIds: ['model:0'],
+  })
+  const toolCall: ModelMessage = {
+    role: 'assistant',
+    content: [{ type: 'tool-call', toolCallId: 'call-1', toolName: 'read', input: { path: 'src/main.ts' } }],
+  }
+  const toolResult: ModelMessage = {
+    role: 'tool',
+    content: [{ type: 'tool-result', toolCallId: 'call-1', toolName: 'read', output: { type: 'text', value: 'ok' } }],
+  }
+  const projected = buildCompactionProjection({
+    anchorMessages: [{ role: 'user', content: 'Inspect the workspace.' }],
+    packet,
+    tailMessages: [toolCall, toolResult, { role: 'assistant', content: 'The result is ready.' }],
+  })
+
+  assert.equal(projected.filter((message) => message.role === 'assistant' && message.content === packet.continuationMarkdown).length, 1)
+  assert.deepEqual(projected.slice(-3), [toolCall, toolResult, { role: 'assistant', content: 'The result is ready.' }])
+  assert.equal(projected.some((message) => typeof message.content === 'string' && message.content.includes('tidecode.compaction_packet/v2')), false)
+})
