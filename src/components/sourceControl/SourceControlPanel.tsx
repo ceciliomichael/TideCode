@@ -1,5 +1,6 @@
 import { GitCommitHorizontal } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toUserFacingErrorMessage } from '../../lib/userFacingError'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
 import type { DiffPanelScope } from '../chat/ConversationDiffPanel'
 import type {
@@ -263,7 +264,7 @@ function SourceControlPanelContent({
     } catch (error) {
       setOperationNotice({
         kind: 'error',
-        message: error instanceof Error ? error.message : `Failed to ${action}.`,
+        message: toUserFacingErrorMessage(error, `The ${action} action could not be completed.`),
       })
       return false
     } finally {
@@ -289,7 +290,7 @@ function SourceControlPanelContent({
     } catch (error) {
       setOperationNotice({
         kind: 'error',
-        message: error instanceof Error ? error.message : 'Failed to refresh source control.',
+        message: toUserFacingErrorMessage(error, 'Source control could not be refreshed.'),
       })
     } finally {
       if (pendingRefreshOperation) {
@@ -326,7 +327,7 @@ function SourceControlPanelContent({
     } catch (error) {
       setOperationNotice({
         kind: 'error',
-        message: error instanceof Error ? error.message : 'Failed to commit changes.',
+        message: toUserFacingErrorMessage(error, 'The changes could not be committed.'),
       })
     }
   }

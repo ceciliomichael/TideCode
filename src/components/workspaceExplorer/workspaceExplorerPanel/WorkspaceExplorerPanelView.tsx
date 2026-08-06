@@ -1,4 +1,4 @@
-import { ChevronRight, File, Folder, FolderOpen } from 'lucide-react'
+import { AlertCircle, ChevronRight, File, Folder, FolderOpen, X } from 'lucide-react'
 import type { DragEvent as ReactDragEvent } from 'react'
 import { useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
@@ -12,6 +12,7 @@ import { buildExplorerGitStatusMap } from './workspaceExplorerGitStatus'
 import type { WorkspaceExplorerPanelProps } from './workspaceExplorerPanelTypes'
 import type { WorkspaceExplorerPanelState } from './useWorkspaceExplorerPanelState'
 import { WorkspaceExplorerDeleteDialog } from './WorkspaceExplorerDeleteDialog'
+import { WorkspaceExplorerErrorDialog } from './WorkspaceExplorerErrorDialog'
 import { WorkspaceExplorerEntryRow, type WorkspaceExplorerEntryRowActions } from './WorkspaceExplorerEntryRow'
 import { ROOT_DIRECTORY_KEY, isPathWithinTarget, normalizeEntryPath } from './workspaceExplorerPanelUtils'
 
@@ -328,11 +329,27 @@ export function WorkspaceExplorerPanelView({
               </div>
             </div>
           </div>
-        ) : panelState.errorMessage ? (
-          <div className="rounded-xl border border-danger-border bg-danger-surface px-3 py-2 text-sm text-danger-foreground">
-            {panelState.errorMessage}
-          </div>
-        ) : !showExplorerTree ? (
+        ) : (
+          <>
+            {panelState.errorMessage ? (
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="mx-3 mt-2 flex shrink-0 items-start gap-2 rounded-xl border border-danger-border bg-danger-surface px-3 py-2 text-sm text-danger-foreground"
+              >
+                <AlertCircle size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 flex-1 break-words">{panelState.errorMessage}</span>
+                <button
+                  type="button"
+                  aria-label="Dismiss explorer error"
+                  onClick={panelState.clearErrorMessage}
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-danger-foreground transition-colors hover:bg-danger-surface hover:text-danger-foreground-hover"
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </div>
+            ) : null}
+            {!showExplorerTree ? (
           <div
             className="flex flex-1 items-center justify-center px-4 py-6 text-center"
             onDragOver={(event) => {
@@ -409,6 +426,8 @@ export function WorkspaceExplorerPanelView({
               ? renderCreationRow(0)
               : null}
           </ul>
+            )}
+          </>
         )}
       </div>
       {panelState.isDraggingExplorerEntry ? (
@@ -538,6 +557,12 @@ export function WorkspaceExplorerPanelView({
           onClose={panelState.closeDeleteDialog}
           onConfirm={() => void panelState.confirmDeleteEntry()}
           state={panelState.deleteDialogState}
+        />
+      ) : null}
+      {panelState.errorDialogState ? (
+        <WorkspaceExplorerErrorDialog
+          onClose={panelState.closeErrorDialog}
+          state={panelState.errorDialogState}
         />
       ) : null}
       {isOpen ? (

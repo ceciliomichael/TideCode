@@ -41,6 +41,11 @@ export interface WorkspaceExplorerDeleteDialogState {
   targetRelativePaths: string[]
 }
 
+export interface WorkspaceExplorerErrorDialogState {
+  message: string
+  title: string
+}
+
 export interface PendingExplorerCreation {
   isDirectory: boolean
   parentPath: string

@@ -1,5 +1,6 @@
 import { Plus } from 'lucide-react'
 import { useCallback, useState } from 'react'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { SettingsPanelLayout, SETTINGS_SECTION_TITLE_CLASS_NAME } from '../shared/SettingsPanelPrimitives'
 import { SkillAddDialog } from './SkillAddDialog'
 import { SkillList } from './SkillList'
@@ -62,7 +63,10 @@ export function SkillsSettingsPanel({
     }
   }
 
-  const visibleErrorMessage = errorMessage ?? state?.errorMessage ?? null
+  const rawErrorMessage = errorMessage ?? state?.errorMessage ?? null
+  const visibleErrorMessage = rawErrorMessage
+    ? toUserFacingErrorMessage(rawErrorMessage, 'Unable to load skills.')
+    : null
 
   return (
     <SettingsPanelLayout>

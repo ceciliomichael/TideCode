@@ -22,3 +22,25 @@ test('context limit failures explain the manual recovery path', () => {
     'This chat is too large for the selected model. Compress it manually or start a new chat.',
   )
 })
+
+test('workspace duplicate errors explain what the user should do', () => {
+  assert.equal(
+    toUserFacingErrorMessage(
+      new Error("Error invoking remote method 'workspace:explorer:createEntry': Error: Entry already exists: public"),
+      'The folder could not be created.',
+      { itemKind: 'folder' },
+    ),
+    'A folder named “public” already exists. Choose a different name.',
+  )
+})
+
+test('workspace filesystem failures do not expose operating-system error codes', () => {
+  assert.equal(
+    toUserFacingErrorMessage(new Error("Error: EACCES: permission denied, mkdir 'private'"), 'Fallback'),
+    'TideCode does not have permission to change that item. Check the folder permissions and try again.',
+  )
+  assert.equal(
+    toUserFacingErrorMessage(new Error('Error: ENOENT: no such file or directory'), 'Fallback'),
+    'That workspace item is no longer available. Refresh the explorer and try again.',
+  )
+})

@@ -173,7 +173,13 @@
     font-family: inherit;
   }
 
-  /* Remove default focus outline and add custom focus styles */
+  /* TideCode intentionally uses no focus rings anywhere in the interface. */
+  :focus,
+  :focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;

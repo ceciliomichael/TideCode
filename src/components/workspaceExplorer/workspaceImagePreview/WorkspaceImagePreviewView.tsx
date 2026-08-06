@@ -1,5 +1,6 @@
 import { ChevronRight } from 'lucide-react'
 import { memo, useEffect, useMemo, useState } from 'react'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { Tooltip } from '../../Tooltip'
 
 interface WorkspaceImagePreviewViewProps {
@@ -21,6 +22,9 @@ export const WorkspaceImagePreviewView = memo(function WorkspaceImagePreviewView
 }: WorkspaceImagePreviewViewProps) {
   const [hasError, setHasError] = useState(false)
   const pathSegments = useMemo(() => getPathSegments(relativePath), [relativePath])
+  const previewErrorMessage = previewError
+    ? toUserFacingErrorMessage(previewError, `TideCode could not render ${fileName}.`)
+    : null
 
   useEffect(() => {
     setHasError(false)
@@ -48,7 +52,7 @@ export const WorkspaceImagePreviewView = memo(function WorkspaceImagePreviewView
             <div className="max-w-lg text-center">
               <div className="text-sm font-medium text-foreground">Image preview unavailable</div>
               <p className="mt-2 text-sm leading-6 text-subtle-foreground">
-                {previewError ?? `TideCode could not render ${fileName}. You can still keep the file in your workspace.`}
+                {previewErrorMessage ?? `TideCode could not render ${fileName}. You can still keep the file in your workspace.`}
               </p>
             </div>
           ) : (

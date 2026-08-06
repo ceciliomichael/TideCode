@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { toUserFacingErrorMessage } from '../lib/userFacingError'
 import type { ChatProviderId, GitCommitAction, GitCommitResult, GitStatusResult, ReasoningEffort } from '../types/chat'
 import { normalizeGitWorkspacePath } from '../lib/gitBranchStateCache'
 import {
@@ -91,7 +92,7 @@ export function useGitCommit({
     } catch (error) {
       if (requestId === statusRequestIdRef.current && requestWorkspacePath === activeWorkspacePathRef.current) {
         setStatus(EMPTY_STATUS)
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to load git status.')
+        setErrorMessage(toUserFacingErrorMessage(error, 'The Git status could not be loaded.'))
       }
     } finally {
       if (requestId === statusRequestIdRef.current && requestWorkspacePath === activeWorkspacePathRef.current) {
@@ -187,9 +188,9 @@ export function useGitCommit({
         return null
       }
 
-      const nextError = error instanceof Error ? error : new Error('Failed to commit changes.')
-      setErrorMessage(nextError.message)
-      throw nextError
+      const message = toUserFacingErrorMessage(error, 'The changes could not be committed.')
+      setErrorMessage(message)
+      throw error instanceof Error ? error : new Error(message)
     } finally {
       if (pendingCommitOperation) {
         endSourceControlCommitOperation(requestWorkspacePath, pendingCommitOperation.sequence)

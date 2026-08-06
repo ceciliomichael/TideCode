@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Loader2, Plus, Save, X } from 'lucide-react'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { DropdownField, type DropdownOption } from '../../ui/DropdownField'
 import { PRIMARY_ACTION_BUTTON_CLASS_NAME } from '../shared/actionButtonStyles'
 import { LineNumberedTextarea } from '../shared/LineNumberedTextarea'
@@ -201,11 +202,10 @@ export function McpServerDialog({
       onClose()
     } catch (error) {
       setLocalError(
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : mode === 'add'
-            ? 'Unable to add the MCP server.'
-            : 'Unable to save the MCP server.',
+        toUserFacingErrorMessage(
+          error,
+          mode === 'add' ? 'Unable to add the MCP server.' : 'Unable to save the MCP server.',
+        ),
       )
     }
   }

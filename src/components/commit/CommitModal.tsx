@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { GitBranch, GitCommitHorizontal, ArrowUp, X, Loader2 } from 'lucide-react'
 import { FaGithub } from 'react-icons/fa'
+import { toUserFacingErrorMessage } from '../../lib/userFacingError'
 import type { GitBranchState, GitCommitAction, GitStatusResult } from '../../types/chat'
 import type { ConversationDiffSnapshot } from '../../lib/chatDiffs'
 import { normalizeGitBranchName, sanitizeGitBranchInput } from '../../lib/gitBranchName'
@@ -100,7 +101,7 @@ export function CommitModal({
           preferredBranchName: targetBranch.length > 0 ? targetBranch : undefined,
         })
       } catch (error) {
-        setLocalError(error instanceof Error ? error.message : 'Failed to commit')
+        setLocalError(toUserFacingErrorMessage(error, 'The changes could not be committed.'))
       } finally {
         setIsSubmitting(false)
       }

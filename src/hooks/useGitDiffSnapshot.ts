@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { toUserFacingErrorMessage } from '../lib/userFacingError'
 import type { ConversationDiffSnapshot } from '../lib/chatDiffs'
 import {
   getCachedGitDiffSnapshot,
@@ -134,7 +135,7 @@ export function useGitDiffSnapshot({
         return
       }
 
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to load git diffs.')
+      setErrorMessage(toUserFacingErrorMessage(error, 'The Git changes could not be loaded.'))
     } finally {
       if (
         requestId === requestIdRef.current &&
