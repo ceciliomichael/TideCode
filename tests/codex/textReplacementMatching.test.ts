@@ -14,6 +14,29 @@ test('indentation-tolerant matching accepts different leading spaces and tabs', 
   ])
 })
 
+test('indentation-tolerant matching handles terminal newlines and line-edge whitespace', () => {
+  const contentLine = '                  style={{ minWidth: `${gutterWidthCh}ch` }}  '
+  const content = ['<div>', contentLine, '  >'].join('\n')
+  const target = '                   style={{ minWidth: `${gutterWidthCh}ch` }}\n'
+  const startOffset = content.indexOf(contentLine)
+
+  assert.deepEqual(findIndentationTolerantMatchOffsets(content, target), [
+    {
+      endOffset: startOffset + contentLine.length + 1,
+      startOffset,
+    },
+  ])
+})
+
+test('indentation-tolerant matching accepts a terminal newline when the search region ends at EOF', () => {
+  const content = '  return true'
+  const target = '\treturn true\n'
+
+  assert.deepEqual(findIndentationTolerantMatchOffsets(content, target), [
+    { endOffset: content.length, startOffset: 0 },
+  ])
+})
+
 test('indentation-tolerant matching does not ignore meaningful text differences', () => {
   const content = '            return true'
 

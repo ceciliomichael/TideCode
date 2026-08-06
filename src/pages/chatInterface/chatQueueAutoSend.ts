@@ -15,6 +15,14 @@ interface ResolveQueuedMessageAutoSendReasonInput {
   isTurnActive: boolean
 }
 
+export function shouldQueueMainMessage(input: {
+  isCompressingChat: boolean
+  isLoading: boolean
+  isSending: boolean
+}) {
+  return input.isLoading || input.isSending || input.isCompressingChat
+}
+
 export function detectSuccessfulToolReleaseSignal({
   currentSignal,
   hasQueuedMessages,

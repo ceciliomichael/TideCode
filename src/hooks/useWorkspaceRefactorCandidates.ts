@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPathComparison'
 import type { WorkspaceRefactorCandidate } from '../types/chat'
 
 const REFACTOR_CANDIDATE_REFRESH_DEBOUNCE_MS = 250
@@ -6,11 +7,6 @@ const REFACTOR_CANDIDATE_REFRESH_DEBOUNCE_MS = 250
 interface UseWorkspaceRefactorCandidatesResult {
   candidates: WorkspaceRefactorCandidate[]
   isLoading: boolean
-}
-
-function normalizeWorkspaceRootPathForComparison(workspaceRootPath: string) {
-  const normalizedPath = workspaceRootPath.trim().replace(/\\/g, '/').replace(/\/+$/, '')
-  return /^[a-z]:\//i.test(normalizedPath) ? normalizedPath.toLowerCase() : normalizedPath
 }
 
 export function useWorkspaceRefactorCandidates(

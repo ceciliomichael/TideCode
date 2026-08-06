@@ -34,6 +34,13 @@ export interface CanonicalPromptContext {
   toolsHash: string
 }
 
+export interface CanonicalReasoningRetention {
+  mode: 'replayed_exact' | 'replayed_provider_native' | 'summarized_visible' | 'unavailable'
+  modelId: string
+  note: string
+  providerId: string
+}
+
 interface CanonicalHistoryEventBase {
   branchId: string
   createdAt: number
@@ -96,10 +103,16 @@ export type CanonicalHistoryEvent =
   | (CanonicalHistoryEventBase & {
       anchorUserMessageId: string | null
       compactionId: string
+      compactionSequence?: number
+      contextFingerprint?: string | null
+      degradedDiagnostics?: string[]
       modelId: string
+      parentPacketId?: string | null
       packet: EncodedReplayValue
+      projectionVersion?: string
       projectedMessages: EncodedReplayValue
       providerId: ChatProviderId
+      reasoningRetention?: CanonicalReasoningRetention
       sourceDigest: string
       sourceMessageIds: string[]
       type: 'compaction_committed'

@@ -1,9 +1,5 @@
 import type { ChatProviderId } from '../../../src/types/chat'
-
-const PROVIDERS_REQUIRING_ASSISTANT_REASONING_REPLAY: readonly ChatProviderId[] = [
-  'deepseek',
-  'openai',
-]
+import { resolveProviderReasoningCapability } from './compaction/reasoning'
 
 /**
  * Returns whether provider-visible assistant reasoning must be rebuilt into
@@ -15,5 +11,13 @@ const PROVIDERS_REQUIRING_ASSISTANT_REASONING_REPLAY: readonly ChatProviderId[] 
  * later by deepSeekWire.ts because it is not needed on ordinary turns.
  */
 export function shouldReplayAssistantReasoning(providerId: ChatProviderId) {
-  return PROVIDERS_REQUIRING_ASSISTANT_REASONING_REPLAY.includes(providerId)
+  return resolveProviderReasoningCapability({ modelId: 'provider-default', providerId }).mode === 'provider_native'
+}
+
+export function resolveAssistantReasoningReplayPolicy(input: {
+  modelId: string
+  providerId: ChatProviderId
+  exactReplayAvailable?: boolean
+}) {
+  return resolveProviderReasoningCapability(input)
 }

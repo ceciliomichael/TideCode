@@ -4,16 +4,17 @@ import type { ChatCompactionMarker } from '../types/chat'
 
 interface UseChatCompactionMarkersInput {
   conversationId: string | null
-  messagesLength: number
+  messagesRevision: string
   refreshSignal?: number
 }
 
 export function useChatCompactionMarkers({
   conversationId,
-  messagesLength,
+  messagesRevision,
   refreshSignal = 0,
 }: UseChatCompactionMarkersInput) {
   const markersByConversationRef = useRef<Map<string, ChatCompactionMarker[]>>(new Map())
+  const latestLoadRequestRef = useRef(0)
   const [loadedMarkers, setLoadedMarkers] = useState<{
     conversationId: string | null
     markers: ChatCompactionMarker[]
@@ -24,23 +25,32 @@ export function useChatCompactionMarkers({
 
   useEffect(() => {
     if (!conversationId) {
+      latestLoadRequestRef.current += 1
       setLoadedMarkers({ conversationId: null, markers: [] })
       return
     }
 
+    markersByConversationRef.current.delete(conversationId)
+    setLoadedMarkers({ conversationId, markers: [] })
+
     let isCancelled = false
-    const cachedMarkers = markersByConversationRef.current.get(conversationId) ?? []
-    setLoadedMarkers({ conversationId, markers: cachedMarkers })
 
     const loadMarkers = async () => {
+      const requestId = latestLoadRequestRef.current + 1
+      latestLoadRequestRef.current = requestId
+
       try {
         const nextMarkers = await window.tidecodeHistory.listCompactionMarkers(conversationId)
-        markersByConversationRef.current.set(conversationId, nextMarkers)
-        if (!isCancelled) {
-          setLoadedMarkers({ conversationId, markers: nextMarkers })
+        if (isCancelled || latestLoadRequestRef.current !== requestId) {
+          return
         }
+
+        markersByConversationRef.current.set(conversationId, nextMarkers)
+        setLoadedMarkers({ conversationId, markers: nextMarkers })
       } catch (error) {
-        console.error('Failed to load chat compaction markers', error)
+        if (!isCancelled && latestLoadRequestRef.current === requestId) {
+          console.error('Failed to load chat compaction markers', error)
+        }
       }
     }
 
@@ -55,7 +65,7 @@ export function useChatCompactionMarkers({
       isCancelled = true
       unsubscribeStream()
     }
-  }, [conversationId, messagesLength, refreshSignal])
+  }, [conversationId, messagesRevision, refreshSignal])
 
   return getVisibleChatCompactionMarkers(loadedMarkers, markersByConversationRef.current, conversationId)
 }

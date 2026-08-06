@@ -4,7 +4,7 @@ import { createEditToolResult, type WorkspaceToolContext } from './workspaceTool
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 const EDIT_TOOL_DESCRIPTION =
-  'Replace exact text in a file.'
+  'Replace one unique text block in a file. Exact text is matched first; indentation, line-ending, and line-edge whitespace differences are tolerated when they still identify one unambiguous block.'
 
 const EDIT_PATH_SCHEMA = {
   description: 'File path.',
@@ -33,7 +33,7 @@ const EDIT_OPERATION_SCHEMA = {
       type: 'integer',
     },
     targetContent: {
-      description: 'Exact current text from the latest read.',
+      description: 'Current text from the latest read. Matching tries exact text first and tolerates indentation, line-ending, and line-edge whitespace differences when the block remains unique.',
       minLength: 1,
       type: 'string',
     },
@@ -43,40 +43,16 @@ const EDIT_OPERATION_SCHEMA = {
 }
 
 const EDIT_INPUT_SCHEMA = {
+  additionalProperties: false,
   properties: {
+    allowMultiple: EDIT_OPERATION_SCHEMA.properties.allowMultiple,
+    endLine: EDIT_OPERATION_SCHEMA.properties.endLine,
     path: EDIT_PATH_SCHEMA,
+    replacementContent: EDIT_OPERATION_SCHEMA.properties.replacementContent,
+    startLine: EDIT_OPERATION_SCHEMA.properties.startLine,
+    targetContent: EDIT_OPERATION_SCHEMA.properties.targetContent,
   },
-  required: ['path'],
-  oneOf: [
-    {
-      additionalProperties: false,
-      properties: {
-        allowMultiple: EDIT_OPERATION_SCHEMA.properties.allowMultiple,
-        endLine: EDIT_OPERATION_SCHEMA.properties.endLine,
-        path: EDIT_PATH_SCHEMA,
-        replacementContent: EDIT_OPERATION_SCHEMA.properties.replacementContent,
-        startLine: EDIT_OPERATION_SCHEMA.properties.startLine,
-        targetContent: EDIT_OPERATION_SCHEMA.properties.targetContent,
-      },
-      required: ['path', 'targetContent', 'replacementContent'],
-      type: 'object',
-    },
-    {
-      additionalProperties: false,
-      properties: {
-        edits: {
-          description: 'Exact replacements for the top-level path.',
-          items: EDIT_OPERATION_SCHEMA,
-          maxItems: 20,
-          minItems: 1,
-          type: 'array',
-        },
-        path: EDIT_PATH_SCHEMA,
-      },
-      required: ['path', 'edits'],
-      type: 'object',
-    },
-  ],
+  required: ['path', 'targetContent', 'replacementContent'],
   type: 'object',
 }
 
@@ -88,13 +64,10 @@ type EditOperationInput = {
   targetContent: string
 }
 
-type EditToolInput =
-  | ({ path: string } & EditOperationInput)
-  | { edits: EditOperationInput[]; path: string }
+type EditToolInput = { path: string } & EditOperationInput
 
 interface RawEditInput {
   allowMultiple?: unknown
-  edits?: unknown
   endLine?: unknown
   path?: unknown
   replacementContent?: unknown
@@ -110,24 +83,12 @@ export function createEditTool(context: WorkspaceToolContext) {
       const input = rawInput as RawEditInput
       const targetPath = requirePath(input.path)
 
-      let normalizedInput: Parameters<typeof createEditToolResult>[1]
-      if (input.edits !== undefined) {
-        if (!Array.isArray(input.edits) || input.edits.length === 0 || input.edits.length > 20) {
-          throw new Error('Edit requires between 1 and 20 items in "edits".')
-        }
-
-        normalizedInput = {
-          edits: input.edits.map((operation, index) => normalizeEditOperation(operation, index)),
-          path: targetPath,
-        }
-      } else {
-        normalizedInput = {
-          allowMultiple: normalizeAllowMultiple(input.allowMultiple, 'Edit'),
-          ...normalizeLineBounds(input.startLine, input.endLine, 'Edit'),
-          path: targetPath,
-          replacementContent: requireReplacementContent(input.replacementContent),
-          targetContent: requireTargetContent(input.targetContent),
-        }
+      const normalizedInput: Parameters<typeof createEditToolResult>[1] = {
+        allowMultiple: normalizeAllowMultiple(input.allowMultiple, 'Edit'),
+        ...normalizeLineBounds(input.startLine, input.endLine, 'Edit'),
+        path: targetPath,
+        replacementContent: requireReplacementContent(input.replacementContent),
+        targetContent: requireTargetContent(input.targetContent),
       }
 
       try {
@@ -189,18 +150,4 @@ function normalizeLineBounds(startLine: unknown, endLine: unknown, label: string
   }
 
   return { endLine, startLine }
-}
-
-function normalizeEditOperation(value: unknown, index: number): EditOperationInput {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`Edit operation ${index + 1} must be an object.`)
-  }
-
-  const operation = value as RawEditInput
-  return {
-    allowMultiple: normalizeAllowMultiple(operation.allowMultiple, `Edit operation ${index + 1}`),
-    ...normalizeLineBounds(operation.startLine, operation.endLine, `Edit operation ${index + 1}`),
-    replacementContent: requireReplacementContent(operation.replacementContent),
-    targetContent: requireTargetContent(operation.targetContent),
-  }
 }

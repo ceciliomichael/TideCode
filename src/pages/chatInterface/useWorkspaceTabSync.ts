@@ -10,6 +10,7 @@ import { getPathBasename } from "../../lib/pathPresentation";
 import { normalizePathSeparators } from "../../lib/filePathUtils";
 import { isDocxPreviewablePath } from "../../lib/docx-preview";
 import { isPdfPreviewablePath } from "../../lib/pdf-preview";
+import { normalizeWorkspaceRootPathForComparison } from "../../lib/workspaceRootPathComparison";
 import { readWorkspaceFileWithCache } from "../../lib/workspaceFilePreviewCache";
 import type { WorkspaceTab } from "../../components/workspaceExplorer/types";
 import {
@@ -299,8 +300,12 @@ export function useWorkspaceTabSync({
       }
   
       let isDisposed = false
+      const comparableWorkspaceRootPath = normalizeWorkspaceRootPathForComparison(workspaceRootPath)
       const unsubscribeWorkspaceChanges = window.tidecodeWorkspace.onExplorerChange((event) => {
-        if (isDisposed || event.workspaceRootPath !== workspaceRootPath) {
+        if (
+          isDisposed ||
+          normalizeWorkspaceRootPathForComparison(event.workspaceRootPath) !== comparableWorkspaceRootPath
+        ) {
           return
         }
   

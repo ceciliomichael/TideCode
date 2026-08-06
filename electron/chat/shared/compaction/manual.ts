@@ -2,7 +2,7 @@ import type { ModelMessage } from 'ai'
 import type { AppTerminalExecutionMode, ChatMode, ChatProviderId, Message, ReasoningEffort } from '../../../../src/types/chat'
 import { approximateTokenCount } from '../../../../src/lib/contextUsage'
 import { normalizeContextCompactionSettings, type ContextCompactionSettings } from '../../../../src/lib/contextCompactionSettings'
-import { recordCompactionCommitted } from '../../history/eventStore'
+import { readLatestCompactionPacket, recordCompactionCommitted } from '../../history/eventStore'
 import { shouldReplayAssistantReasoning } from '../assistantReasoningPolicy'
 import { buildChatPrompt } from '../messages'
 import { sanitizeModelMessages } from '../modelMessageIntegrity'
@@ -36,11 +36,14 @@ export async function compactConversationForProvider(input: CompactConversationI
     workspaceRootPath: input.agentContextRootPath,
   })
   const safeModelMessages = sanitizeModelMessages(prompt.messages)
+  const previousPacket = await readLatestCompactionPacket(input.conversationId)
   const result = await compactModelMessages({
     createStream: input.createStream,
     force: true,
     messages: safeModelMessages,
     model: input.modelId,
+    providerId: input.providerId,
+    previousPacket,
     reasoningEffort: input.reasoningEffort,
     systemPromptTokens: approximateTokenCount(prompt.system),
     contextWindowTokens: contextCompaction.contextWindowTokens,
@@ -58,6 +61,9 @@ export async function compactConversationForProvider(input: CompactConversationI
     packet: result.packet,
     projectedMessages: result.projectedMessages as ModelMessage[],
     providerId: input.targetProviderId ?? input.providerId,
+    projectionVersion: result.projectionVersion,
+    reasoningRetention: result.reasoningRetention,
+    parentPacketId: result.packet.parentPacketId,
     sourceDigest: result.sourceDigest,
     sourceMessageIds: result.packet.sourceMessageIds,
     usedFallback: result.usedFallback,

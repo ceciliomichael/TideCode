@@ -142,7 +142,7 @@ test('context usage follows the provider replay instead of stale raw tool entrie
 
 test('context usage honors a compacted canonical projection even when raw history is larger', () => {
   const compactedMessages = [
-    { content: 'tidecode.compaction_state.v1\nRetained state', role: 'assistant' },
+    { content: 'The verified continuation context is retained here.', role: 'assistant' },
   ] as const
   const rawMessages = [
     ...compactedMessages,

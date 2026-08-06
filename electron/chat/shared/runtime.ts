@@ -30,10 +30,13 @@ import {
 } from '../history/eventStore'
 import { projectCanonicalReplay } from '../history/replayProjector'
 import { compactModelMessages } from './compaction/service'
-import { resolveAutomaticCompactionTrigger } from './compaction/automatic'
+import {
+  mergeAutomaticCompactionMessages,
+  resolveAutomaticCompactionTrigger,
+} from './compaction/automatic'
 import { assertCompactionGate } from './compaction/gate'
 import { calculateModelMessagesBudget, shouldCompactContext } from './compaction/budget'
-import { findLatestCompactionPacket } from './compaction/window'
+import type { CompactionPacket } from './compaction/contracts'
 import {
   buildChatPrompt,
   ensureCurrentExecutionModeContext,
@@ -163,6 +166,7 @@ export async function runToolEnabledChatStream(input: {
     let modelMessages = prompt.messages
     let freshnessRevision = 0
     let replayFidelity: 'exact' | 'migrated_legacy' = 'migrated_legacy'
+    let replayCompactionPacket: CompactionPacket | null = null
 
     if (conversationId) {
       await safelyPersistHistory(() => synchronizeCanonicalMessages(conversationId, input.startInput.messages))
@@ -179,6 +183,7 @@ export async function runToolEnabledChatStream(input: {
       modelMessages = replay.messages
       freshnessRevision = replay.freshnessRevision
       replayFidelity = replay.fidelity === 'exact' ? 'exact' : 'migrated_legacy'
+      replayCompactionPacket = replay.compactionPacket
     }
     modelMessages = ensureCurrentExecutionModeContext(
       modelMessages,
@@ -194,7 +199,7 @@ export async function runToolEnabledChatStream(input: {
       providerId: input.startInput.providerId,
     })
     let replayMessages: ModelMessage[] = [...modelMessages]
-    let latestCompactionPacket = findLatestCompactionPacket(modelMessages)
+    let latestCompactionPacket: CompactionPacket | null = replayCompactionPacket
     const systemPromptTokens = approximateTokenCount(prompt.system)
 
     if (conversationId) {
@@ -227,9 +232,13 @@ export async function runToolEnabledChatStream(input: {
         }
       },
       prepareStep: async (stepInput) => {
+        const compactionMessages = mergeAutomaticCompactionMessages({
+          messages: stepInput.messages,
+          responseMessages: stepInput.responseMessages,
+        })
         const automaticTrigger = resolveAutomaticCompactionTrigger({
           abortSignal: input.abortController.signal,
-          messages: stepInput.messages,
+          messages: compactionMessages,
           responseMessages: stepInput.responseMessages,
           stepNumber: stepInput.stepNumber,
         })
@@ -237,7 +246,7 @@ export async function runToolEnabledChatStream(input: {
 
         const compactionBudgetInput = {
           contextWindowTokens: contextCompaction.contextWindowTokens,
-          messages: stepInput.messages,
+          messages: compactionMessages,
           reserveTokens: contextCompaction.reserveTokens,
           systemPromptTokens,
           toolSchemaTokens: promptContext.toolSchemaTokens,
@@ -274,6 +283,7 @@ export async function runToolEnabledChatStream(input: {
             }),
             messages: stepInput.messages,
             model: input.startInput.modelId,
+            providerId: input.startInput.providerId,
             onStarted: () => {
               compactionStarted = true
               if (!conversationId) return
@@ -330,10 +340,14 @@ export async function runToolEnabledChatStream(input: {
             anchorUserMessageId,
             compactionId: compacted.packet.packetId,
             conversationId,
+            contextFingerprint,
             modelId: input.startInput.modelId,
             packet: compacted.packet,
             projectedMessages: compacted.projectedMessages,
             providerId: input.startInput.providerId,
+            projectionVersion: compacted.projectionVersion,
+            reasoningRetention: compacted.reasoningRetention,
+            parentPacketId: compacted.packet.parentPacketId,
             sourceDigest: compacted.sourceDigest,
             sourceMessageIds: compacted.packet.sourceMessageIds,
             usedFallback: compacted.usedFallback,

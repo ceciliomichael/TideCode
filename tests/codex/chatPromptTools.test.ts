@@ -157,6 +157,7 @@ test('buildChatPrompt preserves assistant tool calls and matching tool results',
     type: 'text',
     value: 'File: src/example.ts\nRevision: sha256:test-revision\n\n1: export const value = 1;',
   })
+  assert.equal('result' in (toolMessage?.content[0] ?? {}), false)
 })
 
 test('buildChatPrompt preserves image attachments in user messages', () => {

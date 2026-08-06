@@ -5,13 +5,11 @@ import type {
   ContextUsageEstimate,
   CompactConversationInput,
   CompactConversationResult,
-  CompressChatHistoryInput,
   StartChatStreamInput,
   StartChatStreamResult,
   SubmitToolDecisionInput,
   SubmitToolDecisionResult,
 } from '../../../src/types/chat'
-import { compressChatHistory } from '../shared/compression'
 import { estimateToolEnabledContextUsage, runToolEnabledChatStream } from '../shared/runtime'
 import { createCodexClient } from './client'
 import { refreshProvidersCache } from '../../providers/service'
@@ -33,34 +31,6 @@ export async function estimateCodexContextUsage(
     providerId: input.providerId,
     terminalExecutionMode: input.terminalExecutionMode,
     webContents,
-  })
-}
-
-export async function compressCodexChatHistory(input: CompressChatHistoryInput): Promise<string> {
-  if (input.providerId !== 'codex') {
-    throw new Error('The Codex compression runtime only supports the Codex provider.')
-  }
-
-  const modelId = input.modelId.trim()
-  if (!modelId) {
-    throw new Error('Select a model before compressing a chat.')
-  }
-
-  const client = createCodexClient()
-  return compressChatHistory({
-    agentContextRootPath: input.agentContextRootPath,
-    chatMode: input.chatMode,
-    createStream: (streamInput) =>
-      client.chat.completions.create({
-        messages: streamInput.messages,
-        model: streamInput.model,
-        reasoningEffort: streamInput.reasoningEffort,
-        signal: streamInput.signal,
-        system: streamInput.system,
-      }),
-    messages: input.messages,
-    modelId,
-    reasoningEffort: input.reasoningEffort,
   })
 }
 

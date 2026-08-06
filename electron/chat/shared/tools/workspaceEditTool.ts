@@ -353,7 +353,7 @@ async function createEditToolResultInternal(
 
 function normalizeEditChunks(input: EditInput): EditChunk[] {
   if (input.edits !== undefined) {
-    if (input.edits.length === 0 || input.edits.length > 20) {
+    if (!Array.isArray(input.edits) || input.edits.length === 0 || input.edits.length > 20) {
       throw new Error('Edit requires between 1 and 20 edit operations.')
     }
 

@@ -232,6 +232,72 @@ test('replace tolerates indentation differences while preserving exact line text
   }
 })
 
+test('replace tolerates indentation and terminal newline differences', async () => {
+  const originalContent = [
+    '<section>',
+    '  const value = true',
+    '</section>',
+    '',
+  ].join('\n')
+  const fixture = await createFixture(originalContent)
+
+  try {
+    const result = await createEditToolResult(fixture.context, {
+      allowMultiple: false,
+      path: fixture.targetPath,
+      replacementContent: '  const value = false',
+      startLine: 2,
+      endLine: 2,
+      targetContent: '\tconst value = true\n',
+    })
+
+    assert.equal(result.status, 'success')
+    assert.equal(
+      await fs.readFile(fixture.targetPath, 'utf8'),
+      [
+        '<section>',
+        '  const value = false',
+        '</section>',
+        '',
+      ].join('\n'),
+    )
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('replace tolerates model-copied indentation with a terminal newline without line bounds', async () => {
+  const originalContent = [
+    '<div>',
+    '                  style={{ minWidth: `${gutterWidthCh}ch` }}',
+    '  >',
+    '',
+  ].join('\n')
+  const fixture = await createFixture(originalContent)
+
+  try {
+    const result = await createEditToolResult(fixture.context, {
+      allowMultiple: false,
+      path: fixture.targetPath,
+      replacementContent: '                  style={{ width: `${gutterWidthCh}ch` }}\n',
+      targetContent: '                   style={{ minWidth: `${gutterWidthCh}ch` }}\n',
+    })
+
+    assert.equal(result.status, 'success')
+    assert.equal(
+      await fs.readFile(fixture.targetPath, 'utf8'),
+      [
+        '<div>',
+        '                  style={{ width: `${gutterWidthCh}ch` }}',
+        '  >',
+        '',
+      ].join('\n'),
+    )
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('replace tolerates indentation differences across a multi-line block', async () => {
   const originalContent = [
     'function render() {',

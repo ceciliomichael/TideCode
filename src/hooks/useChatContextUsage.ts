@@ -7,6 +7,7 @@ import type {
   Message,
 } from '../types/chat'
 import type { ContextCompactionSettings } from '../lib/contextCompactionSettings'
+import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPathComparison'
 
 const EMPTY_CONTEXT_USAGE: ContextUsageEstimate = {
   historyTokens: 0,
@@ -92,8 +93,9 @@ export function useChatContextUsage({
     let unsubscribeExplorer: (() => void) | null = null
     if (agentContextRootPath?.trim()) {
       const rootPath = agentContextRootPath.trim()
+      const comparableRootPath = normalizeWorkspaceRootPathForComparison(rootPath)
       unsubscribeExplorer = window.tidecodeWorkspace.onExplorerChange((event) => {
-        if (event.workspaceRootPath === rootPath) {
+        if (normalizeWorkspaceRootPathForComparison(event.workspaceRootPath) === comparableRootPath) {
           fetchUsage()
         }
       })

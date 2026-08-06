@@ -10,14 +10,13 @@ import {
 import {
   buildCompactionMessage,
   buildCompactionSourceDigest,
-  findLatestCompactionPacket,
   hasUnresolvedToolCall,
   isSafeCompactionBoundary,
-  parseCompactionMessage,
   selectCompactionWindow,
 } from '../../electron/chat/shared/compaction/window'
 import type { CompactionStreamFactory } from '../../electron/chat/shared/compaction/contracts'
-import { buildCompactionRequestPrompt } from '../../electron/chat/shared/compaction/prompt'
+import { buildCompactionRequestPrompt, buildCompactionSystemPrompt } from '../../electron/chat/shared/compaction/prompt'
+import { buildChatCompressionSystemPrompt } from '../../electron/chat/shared/prompts/compression'
 
 function createConversationMessages(): ModelMessage[] {
   return [
@@ -48,6 +47,31 @@ function createTextStreamFactory(text: string, onCall?: () => void): CompactionS
     })(),
   })
 }
+
+test('the v2 compactor uses the shared Markdown compression prompt', () => {
+  assert.equal(buildCompactionSystemPrompt(), buildChatCompressionSystemPrompt())
+})
+
+test('repeated compaction supplies the previous Markdown continuation before newer transcript data', () => {
+  const previousPacket = buildFallbackCompactionPacket({
+    messages: [{ role: 'user', content: 'Preserve the verified release state.' }],
+    modelId: 'test-model',
+    sourceDigest: 'previous-digest',
+    sourceMessageIds: ['model:0'],
+  })
+  const prompt = buildCompactionRequestPrompt({
+    messages: [{ role: 'assistant', content: 'The release check now has newer evidence.' }],
+    previousPacket,
+    sourceDigest: 'current-digest',
+    sourceMessageIds: ['model:1'],
+    sourceStartIndex: 1,
+  })
+
+  assert.match(prompt, /Previous validated continuation Markdown/u)
+  assert.match(prompt, new RegExp(previousPacket.continuationMarkdown.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'))
+  assert.match(prompt, /complete updated continuation, not only a delta/u)
+  assert.match(prompt, /The release check now has newer evidence/u)
+})
 
 test('compaction boundaries never split a tool-call and tool-result pair', () => {
   const messages = [
@@ -219,16 +243,19 @@ test('automatic budget checks compact a completed tool step even when the target
   assert.ok(result.boundaryIndex > 0)
 })
 
-test('fallback compaction produces a parseable assistant continuation marker', async () => {
+test('fallback compaction produces an ordinary Markdown continuation message', async () => {
   const messages = createConversationMessages()
   const result = await compactModelMessages(createCompactionInput(messages))
 
   assert.ok(result)
   assert.equal(result.usedFallback, true)
   assert.equal(result.projectedMessages[0]?.role, 'user')
-  assert.equal(result.projectedMessages.some((message) => message.role === 'assistant' && typeof message.content === 'string' && message.content.startsWith('tidecode.compaction_state.v1\n')), true)
-  assert.deepEqual(findLatestCompactionPacket(result.projectedMessages), result.packet)
-  assert.deepEqual(parseCompactionMessage(buildCompactionMessage(result.packet)), result.packet)
+  const continuation = result.projectedMessages.find((message) => message.role === 'assistant' && typeof message.content === 'string')
+  assert.equal(typeof continuation?.content, 'string')
+  assert.equal(continuation?.content, result.packet.continuationMarkdown)
+  assert.doesNotMatch(String(continuation?.content), /tidecode\.compaction_packet/u)
+  assert.equal(result.packet.schema, 'tidecode.compaction_packet/v2')
+  assert.equal(buildCompactionMessage(result.packet).content, result.packet.continuationMarkdown)
 })
 
 test('compaction strips execution mode context from prompts, fallback packets, and replay messages', () => {
@@ -275,15 +302,34 @@ test('valid model compaction output is accepted and malformed output falls back 
 
   const accepted = await compactModelMessages(createCompactionInput(
     messages,
-    createTextStreamFactory(`<think>internal reasoning that must never enter the packet</think>\n${JSON.stringify(packet)}`),
+    createTextStreamFactory(JSON.stringify(packet)),
   ))
   assert.ok(accepted)
   assert.equal(accepted.usedFallback, false)
   assert.equal(accepted.packet.sourceDigest, sourceDigest)
 
+  const generatedMarkdown = 'The requested change is complete. Run the release validation next.'
+  const previousPacket = buildFallbackCompactionPacket({
+    messages: [{ role: 'user', content: 'Preserve the release workflow behavior.' }],
+    modelId: 'test-model',
+    sourceDigest: 'previous-digest',
+    sourceMessageIds: ['model:0'],
+  })
+  const acceptedMarkdown = await compactModelMessages({
+    ...createCompactionInput(messages, createTextStreamFactory(generatedMarkdown)),
+    previousPacket,
+  })
+  assert.ok(acceptedMarkdown)
+  assert.equal(acceptedMarkdown.usedFallback, false)
+  assert.equal(acceptedMarkdown.packet.continuationMarkdown, generatedMarkdown)
+  assert.equal(
+    acceptedMarkdown.projectedMessages.find((message) => message.role === 'assistant')?.content,
+    generatedMarkdown,
+  )
+
   const recovered = await compactModelMessages(createCompactionInput(
     [...messages, { role: 'user', content: 'A distinct retry input.' }],
-    createTextStreamFactory('not valid packet output'),
+    createTextStreamFactory('{"not":"a packet"}'),
   ))
   assert.ok(recovered)
   assert.equal(recovered.usedFallback, true)

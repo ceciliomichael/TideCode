@@ -7,7 +7,6 @@ import type {
   ChatProviderId,
   ChatStreamEvent,
   CompactConversationInput,
-  CompressChatHistoryInput,
   EstimateContextUsageInput,
   TideCodeChatApi,
   TideCodeGitApi,
@@ -191,7 +190,6 @@ const modelsApi: TideCodeModelsApi = {
 const chatApi: TideCodeChatApi = {
   cancelStream: (streamId: string) => ipcRenderer.invoke('chat:stream:cancel', streamId),
   compactConversation: (input: CompactConversationInput) => ipcRenderer.invoke('chat:compactConversation', input),
-  compressConversation: (input: CompressChatHistoryInput) => ipcRenderer.invoke('chat:compressConversation', input),
   estimateContextUsage: (input: EstimateContextUsageInput) => ipcRenderer.invoke('chat:context-usage:estimate', input),
   onStreamEvent: (listener: (event: ChatStreamEvent) => void) => {
     const wrappedListener = (_event: unknown, payload: ChatStreamEvent) => listener(payload)

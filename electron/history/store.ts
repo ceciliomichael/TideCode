@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
-import { deleteCanonicalHistory } from '../chat/history/eventStore'
+import { deleteCanonicalHistory, synchronizeCanonicalMessages } from '../chat/history/eventStore'
 import type {
   AppendConversationMessagesInput,
   ChatMode,
@@ -413,6 +413,14 @@ export async function replaceStoredMessages(input: ReplaceConversationMessagesIn
       writeConversationFile(nextConversation),
       appendMessagesToLog(input.conversationId, messagesToLog),
     ])
+
+    if (input.synchronizeCanonicalHistory) {
+      try {
+        await synchronizeCanonicalMessages(input.conversationId, input.messages)
+      } catch (error) {
+        console.error('Canonical chat history synchronization failed after message replacement.', error)
+      }
+    }
 
     return nextConversation
   })

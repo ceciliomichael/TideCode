@@ -1,7 +1,9 @@
 import type { ModelMessage } from 'ai'
+import type { ChatProviderId } from '../../../../src/types/chat'
 import { z } from 'zod'
 
-export const LOCAL_COMPACTION_PACKET_SCHEMA = 'tidecode.compaction_packet/v1' as const
+export const LOCAL_COMPACTION_PACKET_V2_SCHEMA = 'tidecode.compaction_packet/v2' as const
+export const COMPACTION_PROJECTION_VERSION = 'tidecode.compaction_projection/v2' as const
 
 const boundedText = z.string().trim().max(4_000)
 const boundedTextList = z.array(boundedText).max(64)
@@ -20,11 +22,44 @@ const toolObservationSchema = z.object({
   sourceMessageIds: z.array(z.string().trim().min(1).max(200)).max(32),
 }).strict()
 
-export const localCompactionPacketSchema = z.object({
-  schema: z.literal(LOCAL_COMPACTION_PACKET_SCHEMA),
+const reasoningRetentionSchema = z.object({
+  mode: z.enum([
+    'replayed_exact',
+    'replayed_provider_native',
+    'summarized_visible',
+    'unavailable',
+  ]),
+  providerId: z.string().trim().min(1).max(128),
+  modelId: z.string().trim().min(1).max(512),
+  note: boundedText,
+}).strict()
+
+const reasoningContinuitySchema = z.object({
+  id: z.string().trim().min(1).max(128),
+  situation: boundedText,
+  action: boundedText,
+  rationale: boundedText,
+  evidence: z.array(boundedText).max(16),
+  outcome: z.enum(['confirmed', 'rejected', 'inconclusive', 'pending', 'superseded']),
+  confidence: z.enum(['high', 'medium', 'low', 'unknown']),
+  nextCheck: boundedText.nullable(),
+  sourceMessageIds: z.array(z.string().trim().min(1).max(200)).max(32),
+}).strict()
+
+const sourceRangeSchema = z.object({
+  startIndex: z.number().int().min(0),
+  endIndex: z.number().int().min(1),
+}).strict()
+
+export const localCompactionPacketV2Schema = z.object({
+  schema: z.literal(LOCAL_COMPACTION_PACKET_V2_SCHEMA),
   packetId: z.string().trim().min(1).max(128),
+  parentPacketId: z.string().trim().max(128).nullable(),
   sourceDigest: z.string().trim().min(1).max(128),
   sourceMessageIds: z.array(z.string().trim().min(1).max(200)).max(512),
+  continuationMarkdown: z.string().trim().min(1).max(32_000),
+  reasoningRetention: reasoningRetentionSchema,
+  reasoningContinuity: z.array(reasoningContinuitySchema).max(32),
   goal: boundedTextList,
   constraints: boundedTextList,
   currentState: boundedTextList,
@@ -38,9 +73,13 @@ export const localCompactionPacketSchema = z.object({
   toolObservations: z.array(toolObservationSchema).max(96),
   nextActions: boundedTextList,
   omitted: boundedTextList,
+  sourceRange: sourceRangeSchema.optional(),
 }).strict()
 
-export type LocalCompactionPacket = z.infer<typeof localCompactionPacketSchema>
+export type LocalCompactionPacketV2 = z.infer<typeof localCompactionPacketV2Schema>
+export type CompactionPacket = LocalCompactionPacketV2
+
+export type ReasoningRetentionMode = LocalCompactionPacketV2['reasoningRetention']['mode']
 
 export type CompactionReasoningMode =
   | 'replayable_reasoning'
@@ -51,21 +90,27 @@ export interface CompactionWindow {
   anchorMessages: ModelMessage[]
   boundaryIndex: number
   evictedMessages: ModelMessage[]
+  sourceStartIndex: number
+  sourceEndIndex: number
   sourceMessageIds: string[]
   tailMessages: ModelMessage[]
 }
 
 export interface CompactionResult {
   boundaryIndex: number
-  packet: LocalCompactionPacket
+  packet: LocalCompactionPacketV2
   projectedMessages: ModelMessage[]
   sourceDigest: string
   usedFallback: boolean
+  projectionVersion: typeof COMPACTION_PROJECTION_VERSION
+  reasoningRetention: LocalCompactionPacketV2['reasoningRetention']
 }
 
 export interface CompactionStreamInput {
+  cacheKey?: string
   messages: ModelMessage[]
   model: string
+  providerId?: ChatProviderId
   reasoningEffort: string
   signal: AbortSignal
   system: string
@@ -82,6 +127,11 @@ export interface CompactModelMessagesInput {
   force?: boolean
   messages: ModelMessage[]
   model: string
+  providerId?: ChatProviderId
+  reasoningCapability?: {
+    mode: 'exact' | 'provider_native' | 'visible' | 'none'
+    note: string
+  }
   onStarted?: () => void
   reasoningEffort: string
   systemPromptTokens: number
@@ -89,11 +139,11 @@ export interface CompactModelMessagesInput {
   contextWindowTokens?: number
   triggerRatio?: number
   reserveTokens?: number
-  previousPacket?: LocalCompactionPacket | null
+  previousPacket?: CompactionPacket | null
   signal?: AbortSignal
 }
 
-export function parseLocalCompactionPacket(value: unknown) {
-  const result = localCompactionPacketSchema.safeParse(value)
+export function parseCompactionPacket(value: unknown) {
+  const result = localCompactionPacketV2Schema.safeParse(value)
   return result.success ? result.data : null
 }

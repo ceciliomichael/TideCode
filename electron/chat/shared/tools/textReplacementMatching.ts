@@ -3,6 +3,13 @@ export interface TextMatch {
   startOffset: number
 }
 
+interface LineSegment {
+  endOffset: number
+  hasLineBreak: boolean
+  startOffset: number
+  text: string
+}
+
 export function findExactMatchOffsets(
   content: string,
   targetContent: string,
@@ -27,25 +34,36 @@ export function findExactMatchOffsets(
   return matches
 }
 
-function getLineSegments(content: string) {
-  const lines = content.split('\n')
-  const segments: Array<{ endOffset: number; startOffset: number; text: string }> = []
+function getLineSegments(content: string): LineSegment[] {
+  const segments: LineSegment[] = []
   let startOffset = 0
 
-  for (const line of lines) {
+  while (startOffset <= content.length) {
+    const newlineOffset = content.indexOf('\n', startOffset)
+    if (newlineOffset === -1) {
+      segments.push({
+        endOffset: content.length,
+        hasLineBreak: false,
+        startOffset,
+        text: content.slice(startOffset),
+      })
+      break
+    }
+
     segments.push({
-      endOffset: startOffset + line.length,
+      endOffset: newlineOffset + 1,
+      hasLineBreak: true,
       startOffset,
-      text: line,
+      text: content.slice(startOffset, newlineOffset),
     })
-    startOffset += line.length + 1
+    startOffset = newlineOffset + 1
   }
 
   return segments
 }
 
-function normalizeLineIndentation(line: string) {
-  return line.replace(/^\s+/u, '')
+function normalizeLineWhitespace(line: string) {
+  return line.replace(/^[\t ]+/u, '').replace(/[\t ]+$/u, '')
 }
 
 export function findIndentationTolerantMatchOffsets(
@@ -54,13 +72,15 @@ export function findIndentationTolerantMatchOffsets(
   baseOffset = 0,
 ): TextMatch[] {
   const contentSegments = getLineSegments(content)
-  const targetLines = targetContent.split('\n')
+  const targetSegments = getLineSegments(targetContent)
+  const hasTerminalLineBreak = targetContent.endsWith('\n')
+  const targetLines = hasTerminalLineBreak ? targetSegments.slice(0, -1) : targetSegments
   const matches: TextMatch[] = []
 
   for (let startIndex = 0; startIndex <= contentSegments.length - targetLines.length; startIndex += 1) {
     const matchesTarget = targetLines.every((targetLine, targetIndex) => {
       const contentLine = contentSegments[startIndex + targetIndex]?.text
-      return contentLine !== undefined && normalizeLineIndentation(contentLine) === normalizeLineIndentation(targetLine)
+      return contentLine !== undefined && normalizeLineWhitespace(contentLine) === normalizeLineWhitespace(targetLine.text)
     })
 
     if (!matchesTarget) {
@@ -70,6 +90,10 @@ export function findIndentationTolerantMatchOffsets(
     const firstSegment = contentSegments[startIndex]
     const lastSegment = contentSegments[startIndex + targetLines.length - 1]
     if (!firstSegment || !lastSegment) {
+      continue
+    }
+
+    if (hasTerminalLineBreak && !lastSegment.hasLineBreak && lastSegment.endOffset < content.length) {
       continue
     }
 

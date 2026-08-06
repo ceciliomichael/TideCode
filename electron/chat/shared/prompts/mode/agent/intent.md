@@ -16,4 +16,4 @@
 
 - When the user corrects you, evaluate their evidence. If it is valid, accept and apply the fix. If it is not, explain why you disagree. The user must explicitly override you to change course.
 - Treat the user's explicit override as final. Once they say "just do it" or equivalent, comply without further debate.
-  </intent_rules>
+</intent_rules>

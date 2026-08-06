@@ -16,6 +16,7 @@ import {
   clearWorkspaceFilePreviewCache,
   prefetchWorkspaceFile,
 } from '../../../lib/workspaceFilePreviewCache'
+import { normalizeWorkspaceRootPathForComparison } from '../../../lib/workspaceRootPathComparison'
 import {
   ROOT_DIRECTORY_KEY,
   getAncestorDirectoryPaths,
@@ -178,8 +179,12 @@ export function useWorkspaceExplorerTree({
     }
 
     let isDisposed = false
+    const comparableWorkspaceRootPath = normalizeWorkspaceRootPathForComparison(workspaceRootPath)
     const unsubscribeWorkspaceChanges = window.tidecodeWorkspace.onExplorerChange((event) => {
-      if (!isDisposed && event.workspaceRootPath === workspaceRootPath) {
+      if (
+        !isDisposed &&
+        normalizeWorkspaceRootPathForComparison(event.workspaceRootPath) === comparableWorkspaceRootPath
+      ) {
         clearWorkspaceFilePreviewCache(workspaceRootPath)
         void reloadExplorerTreeRef.current()
       }

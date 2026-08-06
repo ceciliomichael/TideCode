@@ -5,6 +5,7 @@ import type { ToolDecisionSubmission } from '../../components/chat/ToolDecisionR
 import type { ChatMessagesController, ChatRuntimeSelection } from '../../hooks/useChatMessages'
 import type { ChatAttachment, ToolInvocationTrace } from '../../types/chat'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
+import { shouldQueueMainMessage } from './chatQueueAutoSend'
 
 interface UseChatMessageActionsInput {
   chatMessages: ChatMessagesController
@@ -12,6 +13,7 @@ interface UseChatMessageActionsInput {
   clearQueuedMessages: () => void
   enqueueMessage: (value: string, attachments: ChatAttachment[]) => void
   isCompressingChat: boolean
+  onConversationHistoryChanged: () => void
   runtimeSelection: ChatRuntimeSelection
   workspaceState: ChatWorkspaceUiState
 }
@@ -22,6 +24,7 @@ export function useChatMessageActions({
   clearQueuedMessages,
   enqueueMessage,
   isCompressingChat,
+  onConversationHistoryChanged,
   runtimeSelection,
   workspaceState,
 }: UseChatMessageActionsInput) {
@@ -29,9 +32,10 @@ export function useChatMessageActions({
     async (messageId: string) => {
       clearQueuedMessages()
       await chatMessages.revertUserMessage(messageId)
+      onConversationHistoryChanged()
       await workspaceState.handleRefreshWorkspaceFileTabs()
     },
-    [chatMessages, clearQueuedMessages, workspaceState],
+    [chatMessages, clearQueuedMessages, onConversationHistoryChanged, workspaceState],
   )
 
   const handleEditUserMessage = useCallback(
@@ -49,20 +53,30 @@ export function useChatMessageActions({
 
   const handleSendMainMessage = useCallback(
     (value: string, attachments: ChatAttachment[]) => {
-      if (chatMessages.isLoading || chatMessages.isSending || isCompressingChat) {
+      if (shouldQueueMainMessage({
+        isCompressingChat,
+        isLoading: chatMessages.isLoading,
+        isSending: chatMessages.isSending,
+      })) {
         enqueueMessage(value, attachments)
         return
       }
-      void chatMessages.sendNewMessage(runtimeSelection, value, attachments)
+       void chatMessages.sendNewMessage(runtimeSelection, value, attachments).then(
+         onConversationHistoryChanged,
+         onConversationHistoryChanged,
+       )
     },
-    [chatMessages, enqueueMessage, isCompressingChat, runtimeSelection],
+    [chatMessages, enqueueMessage, isCompressingChat, onConversationHistoryChanged, runtimeSelection],
   )
 
   const handleSendEditedMessage = useCallback(
     (value: string, attachments: ChatAttachment[]) => {
-      void chatMessages.sendEditedMessage(runtimeSelection, value, attachments)
+      void chatMessages.sendEditedMessage(runtimeSelection, value, attachments).then(
+        onConversationHistoryChanged,
+        onConversationHistoryChanged,
+      )
     },
-    [chatMessages, runtimeSelection],
+    [chatMessages, onConversationHistoryChanged, runtimeSelection],
   )
 
   const isAiBusy =

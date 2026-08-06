@@ -18,6 +18,9 @@ export function placeCompactionMarkersAfterTranscript(
       ? messageIndexById.get(marker.anchorUserMessageId)
       : undefined
     if (anchorIndex === undefined) {
+      if (marker.anchorUserMessageId) {
+        continue
+      }
       trailingMarkers.push(marker)
       continue
     }

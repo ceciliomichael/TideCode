@@ -14,7 +14,6 @@ interface UseChatCompressionInput {
   activeConversationId: string | null;
   activeWorkspacePath: string | null;
   chatMode: ChatMode;
-  clearQueuedMessages: () => void;
   compressionSelection: CompressionSelection;
   isBusy: boolean;
   messages: Message[];
@@ -30,7 +29,6 @@ export function useChatCompression(input: UseChatCompressionInput) {
     activeWorkspacePath,
     activeConversationId,
     chatMode,
-    clearQueuedMessages,
     compressionSelection,
     isBusy,
     isCompressingChat,
@@ -80,7 +78,6 @@ export function useChatCompression(input: UseChatCompressionInput) {
 
     setIsCompressingChat(true);
     setError(null);
-    clearQueuedMessages();
 
     try {
       const result = await window.tidecodeChat.compactConversation({
@@ -113,7 +110,6 @@ export function useChatCompression(input: UseChatCompressionInput) {
     activeWorkspacePath,
     activeConversationId,
     chatMode,
-    clearQueuedMessages,
     compressionSelection,
     isBusy,
     isCompressingChat,

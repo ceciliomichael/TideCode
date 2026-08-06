@@ -1,9 +1,9 @@
+import { randomUUID } from 'node:crypto'
 import { ipcMain } from 'electron'
 import type {
   CheckoutGitBranchInput,
   CloseTerminalSessionInput,
   CompactConversationInput,
-  CompressChatHistoryInput,
   CreateGitBranchInput,
   CreateTerminalSessionInput,
   EstimateContextUsageInput,
@@ -23,7 +23,6 @@ import type {
 import {
   cancelCodexChatStream,
   compactCodexConversation,
-  compressCodexChatHistory,
   estimateCodexContextUsage,
   startCodexChatStream,
   submitCodexToolDecision,
@@ -31,7 +30,6 @@ import {
 import {
   cancelApiKeyChatStream,
   compactApiKeyConversation,
-  compressApiKeyChatHistory,
   estimateApiKeyContextUsage,
   startApiKeyChatStream,
   submitApiKeyToolDecision,
@@ -115,19 +113,49 @@ export function registerChatGitTerminalIpcHandlers(
       emitChatStreamEvent(_event.sender, { streamId, type: 'aborted' })
     }
   })
-  ipcMain.handle('chat:compressConversation', async (_event, input: CompressChatHistoryInput) => {
-    if (input.providerId === 'codex') {
-      return compressCodexChatHistory(input)
-    }
-
-    return compressApiKeyChatHistory(input)
-  })
   ipcMain.handle('chat:compactConversation', async (_event, input: CompactConversationInput) => {
-    if (input.providerId === 'codex') {
-      return compactCodexConversation(input)
-    }
+    const attemptId = randomUUID()
+    const streamId = randomUUID()
+    emitChatStreamEvent(_event.sender, {
+      attemptId,
+      conversationId: input.conversationId,
+      streamId,
+      type: 'compaction_started',
+    })
 
-    return compactApiKeyConversation(input)
+    try {
+      const result = input.providerId === 'codex'
+        ? await compactCodexConversation(input)
+        : await compactApiKeyConversation(input)
+
+      if (!result.compacted || !result.packetId) {
+        emitChatStreamEvent(_event.sender, {
+          attemptId,
+          conversationId: input.conversationId,
+          reason: 'unavailable',
+          streamId,
+          type: 'compaction_failed',
+        })
+        return result
+      }
+
+      emitChatStreamEvent(_event.sender, {
+        compactionId: result.packetId,
+        conversationId: input.conversationId,
+        streamId,
+        type: 'compaction_committed',
+      })
+      return result
+    } catch (error) {
+      emitChatStreamEvent(_event.sender, {
+        attemptId,
+        conversationId: input.conversationId,
+        reason: 'error',
+        streamId,
+        type: 'compaction_failed',
+      })
+      throw error
+    }
   })
   ipcMain.handle('chat:stream:submitToolDecision', async (_event, input: SubmitToolDecisionInput) => {
     const providerId = activeChatStreamProviders.get(input.streamId)

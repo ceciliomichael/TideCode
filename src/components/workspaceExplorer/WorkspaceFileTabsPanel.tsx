@@ -227,6 +227,15 @@ export function WorkspaceFileTabsPanel({
             const isPreviewTab = tab.kind === 'markdown-preview' || tab.kind === 'svg-preview'
             const resolvedIconConfig = isPreviewTab ? null : resolveFileIconConfig({ fileName: tab.relativePath })
 
+            let isNewFile = false
+            if (tab.kind === 'file') {
+              const normalizedRelativePath = tab.relativePath.trim().replace(/\\/g, '/').replace(/^\/+/u, '')
+              const gitDiff = gitFileDiffs.find((diff) => diff.fileName.trim().replace(/\\/g, '/').replace(/^\/+/u, '') === normalizedRelativePath)
+              if (gitDiff) {
+                isNewFile = gitDiff.isUntracked || gitDiff.oldContent === null
+              }
+            }
+
             return (
               <div key={tab.tabKey} className="group relative inline-flex h-full shrink-0 items-stretch border-r border-border">
                 <button
@@ -255,7 +264,7 @@ export function WorkspaceFileTabsPanel({
                       return <FileIcon size={14} className="shrink-0" style={{ color: resolvedIconConfig!.color }} />
                     })()
                   )}
-                  <span className="truncate">{tab.fileName}</span>
+                  <span className={`truncate ${isNewFile ? 'text-[var(--workspace-editor-line-added-border)]' : ''}`}>{tab.fileName}</span>
                   {!isPreviewTab && tab.status === 'loading' ? <LoaderCircle size={12} className="shrink-0 animate-spin" /> : null}
                   {!isPreviewTab && tab.status === 'error' ? <TriangleAlert size={12} className="shrink-0" /> : null}
                 </button>

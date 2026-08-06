@@ -64,11 +64,12 @@ test('the latest compaction marker trails the complete visible transcript', () =
   assert.deepEqual(placement.trailingMarkers.map((item) => item.compactionId), ['compact-1'])
 })
 
-test('markers whose anchors are no longer visible trail the transcript safely', () => {
+test('markers whose anchors were removed by a revert disappear from the transcript', () => {
   const placement = placeCompactionMarkersAfterTranscript(
     [message('user-1', 'user')],
     [marker('compact-1', 'missing-user')],
   )
 
-  assert.deepEqual(placement.trailingMarkers.map((item) => item.compactionId), ['compact-1'])
+  assert.deepEqual(placement.trailingMarkers, [])
+  assert.deepEqual([...placement.markersBeforeMessageId.entries()], [])
 })
