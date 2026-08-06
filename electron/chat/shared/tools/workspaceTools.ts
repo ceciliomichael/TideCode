@@ -18,6 +18,5 @@ export {
   createEditToolResult,
   type EditChunk,
   type EditInput,
-  type EditOperationInput,
 } from './workspaceEditTool'
 export { createToolContext } from './workspaceToolContext'

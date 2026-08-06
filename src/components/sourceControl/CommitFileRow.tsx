@@ -2,6 +2,7 @@ import { resolveFileIconConfig } from '../../lib/fileIconResolver'
 import { getPathBasename } from '../../lib/pathPresentation'
 import type { GitHistoryCommitFile } from '../../types/chat'
 import { Tooltip } from '../Tooltip'
+import { isDeletedCommitFile } from './commitFileStatus'
 
 function FileStatusBadge({ status }: { status: string }) {
   const key = status.toUpperCase().charAt(0)
@@ -17,10 +18,6 @@ function FileStatusBadge({ status }: { status: string }) {
       {key}
     </span>
   )
-}
-
-function isDeletedCommitFile(file: GitHistoryCommitFile) {
-  return file.status.toUpperCase().startsWith('D') || (file.path.length > 0 && file.path === getPathBasename(file.path) && file.path !== '')
 }
 
 function getStatusLabel(status: string) {
