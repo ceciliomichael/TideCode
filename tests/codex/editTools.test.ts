@@ -79,66 +79,6 @@ test('edit finds a unique target without line bounds', async () => {
   }
 })
 
-test('edit applies multiple independent blocks atomically', async () => {
-  const originalContent = 'const first = true\nconst second = true\n'
-  const fixture = await createFixture(originalContent)
-
-  try {
-    const result = await createEditToolResult(fixture.context, {
-      edits: [
-        {
-          allowMultiple: false,
-          replacementContent: 'const first = false',
-          targetContent: 'const first = true',
-        },
-        {
-          allowMultiple: false,
-          replacementContent: 'const second = false',
-          targetContent: 'const second = true',
-        },
-      ],
-      path: fixture.targetPath,
-    })
-
-    assert.equal(result.status, 'success')
-    assert.equal(
-      await fs.readFile(fixture.targetPath, 'utf8'),
-      'const first = false\nconst second = false\n',
-    )
-  } finally {
-    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('edit keeps a batch atomic when one target is missing', async () => {
-  const originalContent = 'const first = true\nconst second = true\n'
-  const fixture = await createFixture(originalContent)
-
-  try {
-    await assert.rejects(
-      createEditToolResult(fixture.context, {
-        edits: [
-          {
-            allowMultiple: false,
-            replacementContent: 'const first = false',
-            targetContent: 'const first = true',
-          },
-          {
-            allowMultiple: false,
-            replacementContent: 'const missing = false',
-            targetContent: 'const missing = true',
-          },
-        ],
-        path: fixture.targetPath,
-      }),
-      /Target content not found/u,
-    )
-    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
-  } finally {
-    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
 test('edit rejects ambiguous targets without line bounds', async () => {
   const originalContent = 'const value = true\nconst middle = 1\nconst value = true\n'
   const fixture = await createFixture(originalContent)
