@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.28 — More dependable Source Control updates
+
+TideCode now keeps Source Control accurate while commits and workspace edits happen both inside and outside the app.
+
+- Refreshes commit history automatically while the Source Control panel is open, including an immediate refresh when the app becomes visible again, without polling hidden panels.
+- Shows top-level modified files as modified instead of incorrectly marking them as deleted.
+- Keeps the workspace edit tool focused on one replacement operation at a time and adds regression coverage for the updated Source Control and editing behavior.
+
 ## 1.0.27 — More reliable long conversations and workspace changes
 
 TideCode now keeps long-running AI conversations more coherent through compaction and reduces noisy workspace updates while editing.
