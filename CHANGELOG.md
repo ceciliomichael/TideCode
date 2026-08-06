@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.27 — More reliable long conversations and workspace changes
+
+TideCode now keeps long-running AI conversations more coherent through compaction and reduces noisy workspace updates while editing.
+
+- Preserves provider-aware reasoning continuity and generates ordinary Markdown continuation context when conversations compact, including safe fallback and repeated-compaction replay.
+- Keeps assistant and tool history, context usage, compaction markers, queued sends, and model switching aligned after compaction and replay.
+- Filters editor temporary files, deletion markers, and ignored directories from workspace watch updates without hiding ordinary build output, while normalizing workspace roots across Windows path casing and separators.
+- Makes text replacement more tolerant of indentation and terminal newline differences while keeping ambiguous edits and stale content protected.
+- Includes regression coverage for compaction lineage, reasoning retention, edit matching, and workspace watch behavior.
+
 ## 1.0.26 — More trustworthy conversation history
 
 TideCode now saves conversation history more reliably and keeps stop, revert, and source-control actions from leaving stale or conflicting state behind.
