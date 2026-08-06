@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.29 — Clearer, actionable error messages
+
+TideCode now explains what went wrong and what to do next instead of showing raw system or technical details, and the workspace explorer surfaces failures in a focused, dismissible way.
+
+- Replaces low-level filesystem, IPC, Git, terminal, provider, MCP, skills, and update errors with plain-language guidance that includes the next step, such as choosing a different name, checking folder permissions, refreshing the explorer, or pulling the latest changes.
+- Detects duplicate files and folders and names the existing item directly in the message.
+- Adds a dedicated error dialog for failed workspace file and folder creation, and makes the explorer error banner dismissible.
+- Stops exposing operating-system error codes and stack details in messages shown to users.
+- Includes regression coverage for duplicate entries and common filesystem failures.
+
 ## 1.0.28 — More dependable Source Control updates
 
 TideCode now keeps Source Control accurate while commits and workspace edits happen both inside and outside the app.
