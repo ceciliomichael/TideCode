@@ -4,7 +4,7 @@ import { createEditToolResult, type WorkspaceToolContext } from './workspaceTool
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 const EDIT_TOOL_DESCRIPTION =
-  'Replace one unique text block in a file with new content. Exact text is matched first; indentation, line-ending, and line-edge whitespace differences are tolerated when they still identify one unambiguous block. To edit multiple locations in the same file, issue parallel edit tool calls.'
+  'Replace one unique text block in a file. Exact text is matched first; indentation, line-ending, and line-edge whitespace differences are tolerated when they still identify one unambiguous block.'
 
 const EDIT_PATH_SCHEMA = {
   description: 'File path.',
