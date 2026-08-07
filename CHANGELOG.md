@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.30 — More useful terminal work and clearer feedback
+
+TideCode now gives the agent a focused terminal workflow while keeping command progress and operational problems readable for people using the app.
+
+- Separates starting commands, reading bounded output ranges, and interacting with running sessions so large terminal results do not flood the conversation.
+- Detects confirmation, password, Enter, key-driven, and interactive-screen prompts, then exposes the clean visible terminal screen or the appropriate input controls.
+- Keeps terminal cards user-facing by hiding session identifiers and internal metadata while preserving useful command status and output counts.
+- Improves plain-language error feedback across terminal, workspace, settings, source-control, and update flows.
+- Preserves workspace sandboxing, shell completion detection, session cleanup, and regression coverage for the updated behavior.
+
 ## 1.0.28 — More dependable Source Control updates
 
 TideCode now keeps Source Control accurate while commits and workspace edits happen both inside and outside the app.
