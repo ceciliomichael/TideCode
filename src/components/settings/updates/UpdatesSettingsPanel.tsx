@@ -128,11 +128,20 @@ export function UpdatesSettingsPanel({ autoDownloadUpdates, isLoading, onUpdateS
   }, [])
 
   const checkedAt = formatCheckedAt(session.result?.checkedAt)
-  const displayedVersion = session.result?.currentVersion ?? session.currentVersion ?? '—'
+  const isDownloading = session.checkState === 'downloading' || session.downloadState === 'downloading'
+  // While a download is in progress (or ready to install), show the version
+  // being downloaded instead of the version that is currently running.
+  const displayedVersion =
+    isDownloading || session.downloadState === 'downloaded'
+      ? session.pendingVersion ??
+        session.result?.latestVersion ??
+        session.result?.currentVersion ??
+        session.currentVersion ??
+        '—'
+      : session.result?.currentVersion ?? session.currentVersion ?? '—'
   const errorMessage = openReleaseError ?? session.errorMessage
   const updateIsReady = session.downloadState === 'downloaded'
   const updateIsAvailable = session.result?.updateAvailable === true
-  const isDownloading = session.checkState === 'downloading' || session.downloadState === 'downloading'
   const statusIcon =
     session.checkState === 'error' ? (
       <AlertCircle size={19} strokeWidth={2} className="text-danger-foreground" aria-hidden="true" />

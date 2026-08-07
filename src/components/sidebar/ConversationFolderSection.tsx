@@ -13,6 +13,7 @@ interface ConversationFolderSectionProps {
   isCollapsed: boolean
   onCreateConversation: (folderId?: string | null) => void
   onArchiveConversation: (conversationId: string, isArchived: boolean) => void
+  onDeleteConversation: (conversationId: string) => void
   onPinConversation: (conversationId: string, isPinned: boolean) => void
   onDeleteFolder: (folderId: string) => Promise<void>
   onRenameFolder: (folderId: string, name: string) => Promise<void>
@@ -38,9 +39,10 @@ export function ConversationFolderSection({
   onRenameFolder,
   onDeleteFolder,
   onSelectFolder,
-  onSelectConversation,
-  onArchiveConversation,
-  onPinConversation,
+   onSelectConversation,
+   onArchiveConversation,
+   onDeleteConversation,
+   onPinConversation,
   dropIndicatorPosition,
   isDraggable,
   isDragging,
@@ -405,9 +407,10 @@ export function ConversationFolderSection({
               <ConversationHistoryItem
                 key={conversation.id}
                 conversation={conversation}
-                onSelectConversation={onSelectConversation}
-                onArchiveConversation={onArchiveConversation}
-                onPinConversation={onPinConversation}
+                 onSelectConversation={onSelectConversation}
+                 onArchiveConversation={onArchiveConversation}
+                 onDeleteConversation={onDeleteConversation}
+                 onPinConversation={onPinConversation}
               />
             ))}
           </div>
@@ -438,10 +441,10 @@ export function ConversationFolderSection({
                   >
                     <ConversationHistoryItem
                       conversation={conversation}
-                      onSelectConversation={onSelectConversation}
-                      onArchiveConversation={onArchiveConversation}
-                      onPinConversation={onPinConversation}
-                    />
+                       onSelectConversation={onSelectConversation}
+                       onArchiveConversation={onArchiveConversation}
+                       onDeleteConversation={onDeleteConversation}
+                       onPinConversation={onPinConversation}                    />
                   </div>
                 )
               })}

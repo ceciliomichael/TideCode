@@ -8,6 +8,7 @@ import { ALL_PROJECTS_FILTER_ID, ARCHIVED_PROJECT_FILTER_ID, buildSidebarThreadR
 interface ConversationHistoryListProps {
   conversationGroups: ConversationGroupPreview[]
   onArchiveConversation: (conversationId: string, isArchived: boolean) => void
+  onDeleteConversation: (conversationId: string) => void
   onPinConversation: (conversationId: string, isPinned: boolean) => void
   onSelectConversation: (conversationId: string) => void
   searchQuery: string
@@ -20,6 +21,7 @@ export function ConversationHistoryList({
   conversationGroups,
   onSelectConversation,
   onArchiveConversation,
+  onDeleteConversation,
   onPinConversation,
   searchQuery,
   selectedProjectId,
@@ -84,6 +86,7 @@ export function ConversationHistoryList({
           workspaceName={isAllProjectsView || isArchivedView ? workspaceName : undefined}
           onSelectConversation={onSelectConversation}
           onArchiveConversation={onArchiveConversation}
+          onDeleteConversation={onDeleteConversation}
           onPinConversation={onPinConversation}
         />
       ))}

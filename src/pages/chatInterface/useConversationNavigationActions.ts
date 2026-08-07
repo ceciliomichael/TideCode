@@ -132,6 +132,14 @@ export function useConversationNavigationActions({
     [chatMessages, clearQueuedMessages],
   )
 
+  const handleDeleteConversation = useCallback(
+    (conversationId: string) => {
+      clearQueuedMessages()
+      void chatMessages.deleteConversation(conversationId)
+    },
+    [chatMessages, clearQueuedMessages],
+  )
+
   const handlePinConversation = useCallback(
     (conversationId: string, isPinned: boolean) => {
       void chatMessages.pinConversation(conversationId, isPinned)
@@ -153,6 +161,7 @@ export function useConversationNavigationActions({
     handleCreateWorkspaceConversation,
     handleCreateWorkspaceFolderFromPath,
     handleArchiveConversation,
+    handleDeleteConversation,
     handleDeleteFolder,
     handlePinConversation,
     handleSelectConversation,
