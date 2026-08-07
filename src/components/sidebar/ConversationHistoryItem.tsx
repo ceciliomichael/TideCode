@@ -1,13 +1,15 @@
-import { Archive, ArchiveRestore, Pin, PinOff } from 'lucide-react'
-import type { MouseEvent } from 'react'
+import { Archive, ArchiveRestore, Pin, PinOff, Trash2 } from 'lucide-react'
+import { useState, type MouseEvent } from 'react'
 import { LuLoader } from 'react-icons/lu'
 import type { ConversationPreview } from '../../types/chat'
 import { Tooltip } from '../Tooltip'
+import { ConversationDeleteDialog } from './ConversationDeleteDialog'
 
 interface ConversationHistoryItemProps {
   conversation: ConversationPreview
   workspaceName?: string
   onArchiveConversation: (conversationId: string, isArchived: boolean) => void
+  onDeleteConversation: (conversationId: string) => void
   onPinConversation: (conversationId: string, isPinned: boolean) => void
   onSelectConversation: (conversationId: string) => void
 }
@@ -16,13 +18,27 @@ export function ConversationHistoryItem({
   conversation,
   onSelectConversation,
   onArchiveConversation,
+  onDeleteConversation,
   onPinConversation,
   workspaceName,
 }: ConversationHistoryItemProps) {
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+
   function handleArchiveClick(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault()
     event.stopPropagation()
     onArchiveConversation(conversation.id, !conversation.isArchived)
+  }
+
+  function handleDeleteClick(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault()
+    event.stopPropagation()
+    setIsDeleteDialogOpen(true)
+  }
+
+  function handleConfirmDelete() {
+    setIsDeleteDialogOpen(false)
+    onDeleteConversation(conversation.id)
   }
 
   function handlePinClick(event: MouseEvent<HTMLButtonElement>) {
@@ -123,7 +139,27 @@ export function ConversationHistoryItem({
             )}
           </button>
         </Tooltip>
+
+        {conversation.isArchived ? (
+          <Tooltip content="Delete archived thread" side="top">
+            <button
+              type="button"
+              onClick={handleDeleteClick}
+              className="hidden h-8 w-8 origin-center transform-gpu items-center justify-center rounded-full text-subtle-foreground transition-[color,opacity,transform] duration-150 ease-out hover:scale-110 hover:text-destructive group-hover:flex"
+              aria-label={`Delete archived thread ${conversation.title}`}
+            >
+              <Trash2 size={15} strokeWidth={2} className="block" />
+            </button>
+          </Tooltip>
+        ) : null}
       </div>
+      {isDeleteDialogOpen ? (
+        <ConversationDeleteDialog
+          conversationTitle={conversation.title}
+          onClose={() => setIsDeleteDialogOpen(false)}
+          onConfirm={handleConfirmDelete}
+        />
+      ) : null}
     </div>
   )
 }

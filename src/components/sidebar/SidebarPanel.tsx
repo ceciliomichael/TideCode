@@ -22,6 +22,7 @@ interface SidebarPanelProps {
   onCreateFolder: () => Promise<void>
   onCreateWorkspaceFolderFromPath: (folderPath: string) => Promise<void>
   onArchiveConversation: (conversationId: string, isArchived: boolean) => void
+  onDeleteConversation: (conversationId: string) => void
   onPinConversation: (conversationId: string, isPinned: boolean) => void
   onDeleteFolder: (folderId: string) => Promise<void>
   onOpenSettings: () => void
@@ -38,6 +39,7 @@ export function SidebarPanel({
   onCreateConversation,
   onCreateWorkspaceFolderFromPath,
   onArchiveConversation,
+  onDeleteConversation,
   onPinConversation,
   onDeleteFolder,
   onOpenSettings,
@@ -188,9 +190,10 @@ export function SidebarPanel({
           conversationGroups={conversationGroups}
           searchQuery={searchQuery}
           selectedProjectId={resolvedSelectedProjectId}
-          onArchiveConversation={onArchiveConversation}
-          onPinConversation={onPinConversation}
-          onSelectConversation={onSelectConversation}
+           onArchiveConversation={onArchiveConversation}
+           onDeleteConversation={onDeleteConversation}
+           onPinConversation={onPinConversation}
+           onSelectConversation={onSelectConversation}
         />
       </div>
 

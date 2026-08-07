@@ -317,9 +317,10 @@ export function ChatInterfaceContent({
     handleCreateFolder,
     handleCreateWorkspaceConversation,
     handleCreateWorkspaceFolderFromPath,
-    handleArchiveConversation,
-    handleDeleteFolder,
-    handlePinConversation,
+     handleArchiveConversation,
+     handleDeleteConversation,
+     handleDeleteFolder,
+     handlePinConversation,
     handleSelectConversation,
     handleSelectProject,
   } = useConversationNavigationActions({
@@ -378,8 +379,9 @@ export function ChatInterfaceContent({
           onCreateFolder={handleCreateFolder}
           onCreateConversation={handleCreateConversation}
           onCreateWorkspaceFolderFromPath={handleCreateWorkspaceFolderFromPath}
-          onArchiveConversation={handleArchiveConversation}
-          onPinConversation={handlePinConversation}
+           onArchiveConversation={handleArchiveConversation}
+           onDeleteConversation={handleDeleteConversation}
+           onPinConversation={handlePinConversation}
           onDeleteFolder={handleDeleteFolder}
           onOpenSettings={onOpenSettings}
           onRenameFolder={chatMessages.renameFolder}
