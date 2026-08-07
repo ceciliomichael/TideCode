@@ -82,10 +82,12 @@ function createSyntheticToolMessage(
   argumentsValue: unknown,
   completedAt: number,
   result: AgentToolExecutionResult,
+  bodyOverride?: string,
 ): Message {
   return {
     content: createCanonicalToolResultContent({
       argumentsValue,
+      ...(bodyOverride === undefined ? {} : { body: bodyOverride }),
       result,
       toolCallId: invocationId,
       toolName,
@@ -278,6 +280,7 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
             displayedInvocation.argumentsValue,
             completedAt,
             normalizedResult,
+            normalizedResult.displayBody,
           )
           const payload = {
             argumentsText: displayedArgumentsText,

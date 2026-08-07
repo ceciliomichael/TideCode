@@ -6,6 +6,14 @@ interface TerminalToolResultProps {
 
 function getTerminalResultLabel(toolName: string) {
   if (toolName === 'execute_terminal') {
+    return 'Terminal command'
+  }
+
+  if (toolName === 'interact_terminal') {
+    return 'Terminal interaction'
+  }
+
+  if (toolName === 'read_terminal') {
     return 'Terminal output'
   }
 

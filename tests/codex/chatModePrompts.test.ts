@@ -65,9 +65,11 @@ test('runtime tool exposure gives the provider the concrete native tools', async
       'execute_terminal',
       'glob',
       'grep',
+      'interact_terminal',
       'kanban_board',
       'list',
       'read',
+      'read_terminal',
       'write',
     ])
     assert.deepEqual(Object.keys(planTools).sort(), [

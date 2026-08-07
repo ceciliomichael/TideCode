@@ -13,7 +13,6 @@ import {
   getToolPath,
   parseCompleteToolArguments,
   readFirstText,
-  readSessionId,
   readSkillName,
 } from './toolInvocationParsing'
 
@@ -62,34 +61,27 @@ function getToolVerb(invocation: ToolInvocationTrace) {
   }
 
   if (invocation.toolName === 'execute_terminal') {
-    const parsedArgs = parseCompleteToolArguments(invocation.argumentsText) as Record<string, unknown>
-    const action = parsedArgs?.action || 'execute'
-    if (action === 'read') {
-      return invocation.state === 'running'
-        ? 'Waiting for terminal'
-        : invocation.state === 'completed'
-          ? 'Read'
-          : 'Read failed'
-    }
-    if (action === 'list') {
-      return invocation.state === 'running'
-        ? 'Listing terminal sessions'
-        : invocation.state === 'completed'
-          ? 'Listed terminal sessions'
-          : 'List sessions failed'
-    }
-    if (action === 'end') {
-      return invocation.state === 'running'
-        ? 'Terminating'
-        : invocation.state === 'completed'
-          ? 'Terminated'
-          : 'Terminate failed'
-    }
     return invocation.state === 'running'
       ? 'Running'
       : invocation.state === 'completed'
         ? 'Ran'
         : 'Run failed'
+  }
+
+  if (invocation.toolName === 'interact_terminal') {
+    return invocation.state === 'running'
+      ? 'Interacting with terminal'
+      : invocation.state === 'completed'
+        ? 'Interacted with terminal'
+        : 'Terminal interaction failed'
+  }
+
+  if (invocation.toolName === 'read_terminal') {
+    return invocation.state === 'running'
+      ? 'Reading terminal'
+      : invocation.state === 'completed'
+        ? 'Read terminal'
+        : 'Terminal read failed'
   }
 
   if (invocation.toolName === 'get_terminal_output') {
@@ -291,29 +283,19 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
   const parsedArguments = parseCompleteToolArguments(invocation.argumentsText) as Record<string, unknown>
 
   if (invocation.toolName === 'execute_terminal') {
-    const action = parsedArguments?.action || 'execute'
-
-    if (action === 'list') {
-      return null
-    }
-    
-    if (action === 'read' || action === 'end') {
-      const sessionIdText = readSessionId(parsedArguments?.session_id)
-      return sessionIdText ? `session ${sessionIdText}` : null
-    }
-
     const commandText = readFirstText([parsedArguments?.command, parsedArguments?.cmd])
     if (commandText) {
       return commandText
     }
+    return null
+  }
 
-    const sessionIdText = readSessionId(parsedArguments?.session_id)
-    return sessionIdText ? `session ${sessionIdText}` : null
+  if (invocation.toolName === 'interact_terminal' || invocation.toolName === 'read_terminal') {
+    return null
   }
 
   if (invocation.toolName === 'get_terminal_output') {
-    const sessionIdText = readSessionId(parsedArguments?.session_id)
-    return sessionIdText ? `session ${sessionIdText}` : null
+    return null
   }
 
   if (invocation.toolName === 'skill') {

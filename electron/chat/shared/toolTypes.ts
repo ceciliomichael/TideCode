@@ -9,6 +9,7 @@ export interface AgentToolResultSubject {
 
 export interface AgentToolExecutionResult {
   body?: string
+  displayBody?: string
   resultPresentation?: ToolInvocationResultPresentation
   semantics?: Record<string, unknown>
   status: 'error' | 'success'
