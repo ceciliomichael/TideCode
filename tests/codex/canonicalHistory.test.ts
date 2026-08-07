@@ -14,8 +14,12 @@ import { createEmptyCanonicalHistory, getReplaySlotKey } from '../../electron/ch
 import { decodeModelMessages, encodeModelMessages, encodeReplayValue } from '../../electron/chat/history/replayCodec'
 import { projectCanonicalReplay } from '../../electron/chat/history/replayProjector'
 import { buildFallbackCompactionPacket } from '../../electron/chat/shared/compaction/fallback'
-import { createCanonicalToolModelOutput, withCanonicalToolModelOutputs } from '../../electron/chat/shared/toolReplay'
-import { formatStructuredToolResultContent } from '../../src/lib/toolResultContent'
+import {
+  createCanonicalToolModelOutput,
+  createCanonicalToolResultContent,
+  withCanonicalToolModelOutputs,
+} from '../../electron/chat/shared/toolReplay'
+import { formatStructuredToolResultContent, getToolResultModelContent } from '../../src/lib/toolResultContent'
 import type { Message } from '../../src/types/chat'
 
 test('stable prompt manifests and cache keys ignore object insertion order', () => {
@@ -323,6 +327,32 @@ test('canonical tool model output is byte-identical for live and wrapped tool ex
   })
   assert.deepEqual(wrapped, expected)
   assert.equal(expected.type, 'text')
+})
+
+test('tool results can keep model metadata separate from the user-facing display body', () => {
+  const result = {
+    body: 'session_id: 48448\nstate: needs_interaction',
+    displayBody: 'Waiting for terminal input.',
+    status: 'success' as const,
+    summary: 'Terminal session needs interaction',
+  }
+  const modelContent = createCanonicalToolModelOutput({
+    argumentsValue: { command: 'interactive-command' },
+    output: result,
+    toolCallId: 'call-terminal-1',
+    toolName: 'execute_terminal',
+  })
+  const displayContent = createCanonicalToolResultContent({
+    argumentsValue: { command: 'interactive-command' },
+    body: result.displayBody,
+    result,
+    toolCallId: 'call-terminal-1',
+    toolName: 'execute_terminal',
+  })
+
+  assert.match(getToolResultModelContent(String(modelContent.value)), /session_id: 48448/u)
+  assert.equal(getToolResultModelContent(displayContent), 'Waiting for terminal input.')
+  assert.doesNotMatch(displayContent, /session_id: 48448/u)
 })
 
 test('usage normalization records cache reads, writes, uncached input, and reasoning', () => {

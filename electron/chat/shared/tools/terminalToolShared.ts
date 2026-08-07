@@ -1,0 +1,841 @@
+import { randomInt } from "node:crypto";
+import path from "node:path";
+import type { WebContents } from "electron";
+import type {
+  CreateTerminalSessionInput,
+  CreateTerminalSessionResult,
+  ResizeTerminalSessionInput,
+  TerminalSessionOutputInput,
+  WriteTerminalSessionInput,
+} from "../../../../src/types/chat";
+import type { AgentToolContext, AgentToolExecutionResult } from "../toolTypes";
+import type { TerminalSessionSnapshot } from "../../../terminal/service";
+import { MAX_TERMINAL_POLLING_MS } from "../../../terminal/configuration";
+import { AiTerminalTranscript } from "../../../terminal/aiTranscript";
+import {
+  formatTerminalScreenForDisplay,
+  formatTerminalScreenForModel,
+  TerminalScreenModel,
+} from "../../../terminal/screenModel";
+import {
+  TerminalInteractionDetector,
+  type TerminalInteractionDetection,
+} from "../../../terminal/interactionDetector";
+import {
+  assertSandboxCommandWorkingDirectories,
+  assertSandboxPathDoesNotEscapeThroughSymlink,
+  getSandboxPathRoots,
+  resolveSandboxPath,
+  type SandboxPathRoots,
+} from "./sandboxPaths";
+
+const MIN_VISIBLE_SESSION_ID = 10_000;
+const MAX_VISIBLE_SESSION_ID_EXCLUSIVE = 100_000;
+const MAX_VISIBLE_SESSION_ID_ATTEMPTS = 1_000;
+const COMPLETION_MARKER_PROBE_LENGTH = 128;
+const MAX_INTERACTION_TEXT_LENGTH = 16_000;
+
+export interface TerminalToolDependencies {
+  createSession: (
+    ownerWebContents: WebContents,
+    input: CreateTerminalSessionInput,
+  ) => Promise<CreateTerminalSessionResult>;
+  getSessionOutput: (
+    ownerWebContents: WebContents,
+    input: TerminalSessionOutputInput,
+  ) => Promise<TerminalSessionSnapshot>;
+  consumeSessionOutput: (
+    ownerWebContents: WebContents,
+    input: TerminalSessionOutputInput,
+  ) => void;
+  terminateSessionsForTurn: (
+    ownerWebContents: WebContents,
+    turnId: string,
+    workspaceRootPath: string,
+  ) => void;
+  terminateSession: (
+    ownerWebContents: WebContents,
+    sessionId: number,
+    workspaceRootPath: string,
+  ) => void;
+  writeToSession: (
+    ownerWebContents: WebContents,
+    input: WriteTerminalSessionInput,
+  ) => Promise<void>;
+  resizeSession: (
+    ownerWebContents: WebContents,
+    input: ResizeTerminalSessionInput,
+  ) => Promise<void>;
+}
+
+export interface TerminalToolRuntime {
+  context: AgentToolContext;
+  getDependencies: () => Promise<TerminalToolDependencies>;
+  namespace: string;
+  ownerWebContents: WebContents | null;
+  terminalExecutionMode: NonNullable<AgentToolContext["terminalExecutionMode"]>;
+}
+
+export type TerminalCommandState = "completed" | "needs_interaction" | "running";
+
+export interface ThreadAiSession {
+  command: string;
+  commandComplete: boolean;
+  commandExitCode: number | null;
+  completionMarker: string;
+  completionMarkerProbe: string;
+  cwd: string;
+  detector: TerminalInteractionDetector;
+  globalSessionId: number;
+  interaction: TerminalInteractionDetection | null;
+  interactionMode: "auto" | "non_interactive" | "interactive";
+  label: string | null;
+  localSessionId: number;
+  screen: TerminalScreenModel;
+  shell: string;
+  transcript: AiTerminalTranscript;
+  lastSnapshot: TerminalSessionSnapshot | null;
+}
+
+export interface ThreadSessionStore {
+  latestLocalSessionId: number | null;
+  reservedSessionIds: Set<number>;
+  sessions: Map<number, ThreadAiSession>;
+}
+
+export interface TerminalCommandSummary {
+  body: string;
+  displayBody: string;
+  semantics: Record<string, unknown>;
+  state: TerminalCommandState;
+  summary: string;
+  truncated: boolean;
+}
+
+export const threadStores = new Map<string, ThreadSessionStore>();
+
+function toAbortError(abortSignal: AbortSignal | undefined) {
+  const reason = abortSignal?.reason;
+  if (reason instanceof Error) {
+    return reason;
+  }
+
+  return new Error("Terminal tool execution aborted.");
+}
+
+export function throwIfAborted(abortSignal: AbortSignal | undefined) {
+  if (abortSignal?.aborted) {
+    throw toAbortError(abortSignal);
+  }
+}
+
+export function raceWithAbort<T>(promise: Promise<T>, abortSignal: AbortSignal | undefined) {
+  if (!abortSignal) {
+    return promise;
+  }
+
+  if (abortSignal.aborted) {
+    return Promise.reject(toAbortError(abortSignal));
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const handleAbort = () => {
+      abortSignal.removeEventListener("abort", handleAbort);
+      reject(toAbortError(abortSignal));
+    };
+
+    abortSignal.addEventListener("abort", handleAbort, { once: true });
+    promise.then(
+      (value) => {
+        abortSignal.removeEventListener("abort", handleAbort);
+        resolve(value);
+      },
+      (error) => {
+        abortSignal.removeEventListener("abort", handleAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+export function createSuccessResult(input: Omit<AgentToolExecutionResult, "status">): AgentToolExecutionResult {
+  return {
+    ...input,
+    status: "success",
+  };
+}
+
+export function createErrorResult(summary: string, body?: string): AgentToolExecutionResult {
+  return {
+    ...(body ? { body } : {}),
+    status: "error",
+    summary,
+  };
+}
+
+export function createTerminalErrorResult(
+  summary: string,
+  displaySummary = summary,
+  body?: string,
+): AgentToolExecutionResult {
+  return {
+    ...createErrorResult(summary, body),
+    displayBody: displaySummary,
+  };
+}
+
+async function loadDefaultTerminalToolDependencies(): Promise<TerminalToolDependencies> {
+  const terminalService = await import("../../../terminal/service");
+  return {
+    consumeSessionOutput: terminalService.consumeTerminalSessionOutputForWebContents,
+    createSession: terminalService.createTerminalSessionForWebContents,
+    getSessionOutput: terminalService.getTerminalSessionOutputForWebContents,
+    resizeSession: terminalService.resizeTerminalSessionForWebContents,
+    terminateSession: terminalService.terminateSessionForWebContents,
+    terminateSessionsForTurn: terminalService.terminateAiSessionsForTurnForWebContents,
+    writeToSession: terminalService.writeToTerminalSessionForWebContents,
+  };
+}
+
+export function createTerminalToolRuntime(
+  context: AgentToolContext,
+  dependencies: Partial<TerminalToolDependencies> = {},
+): TerminalToolRuntime {
+  let resolvedDependencies: Promise<TerminalToolDependencies> | null = null;
+  const getDependencies = async () => {
+    if (!resolvedDependencies) {
+      resolvedDependencies = loadDefaultTerminalToolDependencies().then((defaults) => ({
+        createSession: dependencies.createSession ?? defaults.createSession,
+        getSessionOutput: dependencies.getSessionOutput ?? defaults.getSessionOutput,
+        terminateSession: dependencies.terminateSession ?? defaults.terminateSession,
+        writeToSession: dependencies.writeToSession ?? defaults.writeToSession,
+        consumeSessionOutput: dependencies.consumeSessionOutput ?? defaults.consumeSessionOutput,
+        resizeSession: dependencies.resizeSession ?? defaults.resizeSession,
+        terminateSessionsForTurn:
+          dependencies.terminateSessionsForTurn ?? defaults.terminateSessionsForTurn,
+      }));
+    }
+    return resolvedDependencies;
+  };
+
+  return {
+    context,
+    getDependencies,
+    namespace: resolveTerminalThreadNamespace(context),
+    ownerWebContents: context.webContents ?? null,
+    terminalExecutionMode: context.terminalExecutionMode ?? "sandbox",
+  };
+}
+
+export function getOrCreateThreadStore(namespace: string) {
+  let store = threadStores.get(namespace);
+  if (!store) {
+    store = {
+      latestLocalSessionId: null,
+      reservedSessionIds: new Set(),
+      sessions: new Map(),
+    };
+    threadStores.set(namespace, store);
+  }
+  return store;
+}
+
+export function allocateVisibleSessionId(store: ThreadSessionStore) {
+  for (let attempt = 0; attempt < MAX_VISIBLE_SESSION_ID_ATTEMPTS; attempt += 1) {
+    const candidate = randomInt(MIN_VISIBLE_SESSION_ID, MAX_VISIBLE_SESSION_ID_EXCLUSIVE);
+    if (store.sessions.has(candidate) || store.reservedSessionIds.has(candidate)) {
+      continue;
+    }
+
+    store.reservedSessionIds.add(candidate);
+    return candidate;
+  }
+
+  throw new Error("Unable to allocate a unique terminal session ID.");
+}
+
+export function resolveTerminalThreadNamespace(context: AgentToolContext) {
+  const turnId = context.turnId?.trim();
+  if (turnId) {
+    return `turn:${turnId}`;
+  }
+
+  const conversationId = context.conversationId?.trim();
+  if (conversationId) {
+    return `conversation:${conversationId}`;
+  }
+
+  return `workspace:${context.workspaceRootPath}`;
+}
+
+export function resolveTerminalWorkspaceCwd(context: AgentToolContext, cwd: string | undefined) {
+  const terminalExecutionMode = context.terminalExecutionMode ?? "sandbox";
+  if (terminalExecutionMode === "sandbox") {
+    return resolveSandboxPath(context.workspaceRootPath, cwd);
+  }
+
+  const normalizedCwd = cwd?.trim() ?? "";
+  return {
+    absolutePath:
+      normalizedCwd.length === 0
+        ? context.workspaceRootPath
+        : path.resolve(context.workspaceRootPath, normalizedCwd),
+    roots: getSandboxPathRoots(context.workspaceRootPath),
+  };
+}
+
+function isGitDiffCommand(command: string) {
+  return /(?:^|[;&|]\s*)git(?:\s+--no-pager)?\s+diff(?:\s|$)/iu.test(command.trim());
+}
+
+function preventGitDiffPager(command: string) {
+  return command.replace(/(^|[;&|]\s*)git\s+diff(\s|$)/giu, "$1git --no-pager diff$2");
+}
+
+export function prepareTerminalCommand(command: string) {
+  return isGitDiffCommand(command) ? preventGitDiffPager(command) : command;
+}
+
+export function normalizeCommand(command: unknown) {
+  if (typeof command !== "string") {
+    return null;
+  }
+
+  const trimmed = command.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function clampInteger(value: number | undefined, min: number, max: number, fallback: number) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  const boundedValue = Math.floor(value);
+  return Math.min(max, Math.max(min, boundedValue));
+}
+
+export function createCompletionMarker(localSessionId: number) {
+  return `__EDONE_${localSessionId.toString(36)}_${Date.now().toString(36)}__`;
+}
+
+function encodePowerShellCommand(command: string) {
+  const encodedCommand = Buffer.from(command, "utf8").toString("base64");
+  return `Invoke-Expression ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedCommand}')))`;
+}
+
+export function buildMarkedCommand(command: string, shellLabel: string, marker: string) {
+  const normalizedShellLabel = shellLabel.toLowerCase();
+  const trimmedCommand = command.trimEnd();
+
+  if (normalizedShellLabel.includes("powershell") || normalizedShellLabel.includes("pwsh")) {
+    const shellCommand = /[\r\n]/u.test(trimmedCommand)
+      ? encodePowerShellCommand(trimmedCommand)
+      : trimmedCommand;
+    return `${shellCommand}; echo "${marker}:$([int]$LASTEXITCODE)"\r`;
+  }
+
+  if (
+    normalizedShellLabel.includes("command prompt") ||
+    normalizedShellLabel === "cmd" ||
+    normalizedShellLabel.includes("cmd.exe")
+  ) {
+    return `${trimmedCommand} & echo ${marker}:%ERRORLEVEL%\r`;
+  }
+
+  return `${trimmedCommand}; echo "${marker}:$?"\r`;
+}
+
+function escapeRegularExpression(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function readCompletionCode(value: string, marker: string) {
+  const match = new RegExp(`${escapeRegularExpression(marker)}:(-?\\d+)`, "u").exec(value);
+  return match ? Number.parseInt(match[1], 10) : null;
+}
+
+function observeActiveScreenInteraction(session: ThreadAiSession) {
+  if (
+    session.commandComplete ||
+    session.interactionMode === "non_interactive" ||
+    session.screen.getSnapshot().activeBuffer !== "alternate"
+  ) {
+    return;
+  }
+
+  session.interaction = {
+    confidence: "medium",
+    hint: "An interactive terminal screen is active.",
+    kind: "screen",
+    reason: "active_alternate_screen",
+  };
+}
+
+async function observePendingOutput(
+  session: ThreadAiSession,
+  dependencies: TerminalToolDependencies,
+  ownerWebContents: WebContents,
+  workspaceRootPath: string,
+  snapshot: TerminalSessionSnapshot,
+) {
+  const pendingOutput = snapshot.pendingOutputBuffer;
+  session.lastSnapshot = snapshot;
+
+  if (pendingOutput.length > 0) {
+    await session.screen.write(pendingOutput);
+    const markerProbe = `${session.completionMarkerProbe}${pendingOutput}`;
+    const commandExitCode = readCompletionCode(markerProbe, session.completionMarker);
+    session.transcript.append(pendingOutput);
+
+    if (commandExitCode !== null) {
+      session.commandComplete = true;
+      session.commandExitCode = commandExitCode;
+      session.completionMarkerProbe = "";
+      session.interaction = null;
+    } else {
+      session.completionMarkerProbe = markerProbe.slice(
+        -Math.max(COMPLETION_MARKER_PROBE_LENGTH, session.completionMarker.length + 32),
+      );
+      if (session.interactionMode !== "non_interactive") {
+        const detection = session.detector.observe(pendingOutput, session.interactionMode);
+        if (detection) {
+          session.interaction = detection;
+        }
+      }
+    }
+
+    observeActiveScreenInteraction(session);
+
+    dependencies.consumeSessionOutput(ownerWebContents, {
+      sessionId: session.globalSessionId,
+      workspaceRootPath,
+    });
+  }
+
+  if (snapshot.hasExited) {
+    session.commandComplete = true;
+    if (session.commandExitCode === null) {
+      session.commandExitCode = snapshot.exitCode;
+    }
+    session.interaction = null;
+  }
+
+  observeActiveScreenInteraction(session);
+
+  if (session.commandComplete) {
+    session.transcript.finalize();
+  }
+}
+
+export async function syncTerminalSessionOutput(
+  runtime: TerminalToolRuntime,
+  session: ThreadAiSession,
+  dependencies: TerminalToolDependencies,
+  abortSignal: AbortSignal | undefined,
+  pollingMs: number,
+) {
+  if (!runtime.ownerWebContents) {
+    throw new Error("Terminal execution requires an active renderer context.");
+  }
+
+  throwIfAborted(abortSignal);
+  const snapshot = await raceWithAbort(
+    dependencies.getSessionOutput(runtime.ownerWebContents, {
+      pollingMs,
+      sessionId: session.globalSessionId,
+      workspaceRootPath: runtime.context.workspaceRootPath,
+    }),
+    abortSignal,
+  );
+  await observePendingOutput(
+    session,
+    dependencies,
+    runtime.ownerWebContents,
+    runtime.context.workspaceRootPath,
+    snapshot,
+  );
+  return snapshot;
+}
+
+export async function waitForTerminalCommand(
+  runtime: TerminalToolRuntime,
+  session: ThreadAiSession,
+  dependencies: TerminalToolDependencies,
+  abortSignal: AbortSignal | undefined,
+) {
+  const startedAt = Date.now();
+  let snapshot = session.lastSnapshot;
+
+  while (!session.commandComplete) {
+    throwIfAborted(abortSignal);
+
+    if (session.interaction) {
+      return {
+        snapshot,
+        state: "needs_interaction" as const,
+      };
+    }
+
+    const remainingMs = MAX_TERMINAL_POLLING_MS - (Date.now() - startedAt);
+    if (remainingMs <= 0) {
+      return {
+        snapshot,
+        state: "running" as const,
+      };
+    }
+
+    snapshot = await syncTerminalSessionOutput(
+      runtime,
+      session,
+      dependencies,
+      abortSignal,
+      Math.min(MAX_TERMINAL_POLLING_MS, remainingMs),
+    );
+  }
+
+  session.transcript.finalize();
+  return {
+    snapshot,
+    state: "completed" as const,
+  };
+}
+
+export function getTerminalCommandState(session: ThreadAiSession): TerminalCommandState {
+  if (session.commandComplete) {
+    return "completed";
+  }
+  if (session.interaction) {
+    return "needs_interaction";
+  }
+  return "running";
+}
+
+export function buildTerminalCommandSummary(
+  session: ThreadAiSession,
+  options: { includeScreen?: boolean } = {},
+): TerminalCommandSummary {
+  const state = getTerminalCommandState(session);
+  const transcriptSummary = session.transcript.getSummary();
+  const snapshot = session.lastSnapshot;
+  const exitCode = session.commandExitCode ?? snapshot?.exitCode ?? null;
+  const interaction = session.interaction;
+  const bodyLines = [
+    `session_id: ${session.localSessionId}`,
+    `state: ${state}`,
+    `line_count: ${transcriptSummary.lineCount}`,
+  ];
+  if (state === "completed" && exitCode !== null && exitCode !== 0) {
+    bodyLines.push("result: failed");
+  }
+  if (transcriptSummary.truncated) {
+    bodyLines.push(
+      `available_lines: ${transcriptSummary.firstAvailableLine}-${transcriptSummary.lastAvailableLine}`,
+    );
+  }
+  if (interaction) {
+    bodyLines.push(`input_required: ${interaction.kind}`);
+    bodyLines.push(`prompt: ${interaction.hint}`);
+  }
+  if (options.includeScreen && interaction?.kind === "screen") {
+    bodyLines.push(formatTerminalScreenForModel(session.screen.getSnapshot()));
+  }
+  const body = bodyLines.join("\n");
+  const displayBodyLines: string[] = [];
+
+  if (state === "needs_interaction") {
+    displayBodyLines.push("Waiting for terminal input.");
+    if (interaction?.kind === "screen") {
+      displayBodyLines.push(formatTerminalScreenForDisplay(session.screen.getSnapshot()));
+    } else if (interaction?.hint) {
+      displayBodyLines.push(interaction.hint);
+    }
+  } else if (state === "completed") {
+    displayBodyLines.push(
+      exitCode !== null && exitCode !== 0
+        ? "Terminal command failed."
+        : "Terminal command completed.",
+    );
+  } else {
+    displayBodyLines.push("Terminal command is still running.");
+  }
+
+  if (transcriptSummary.lineCount > 0 && interaction?.kind !== "screen") {
+    displayBodyLines.push(`${transcriptSummary.lineCount} output lines available.`);
+  }
+
+  return {
+    body,
+    displayBody: displayBodyLines.join("\n"),
+    semantics: {
+      available_line_count: transcriptSummary.availableLineCount,
+      first_available_line: transcriptSummary.firstAvailableLine,
+      interaction_confidence: interaction?.confidence ?? null,
+      interaction_kind: interaction?.kind ?? null,
+      interaction_required: interaction !== null,
+      last_available_line: transcriptSummary.lastAvailableLine,
+      line_count: transcriptSummary.lineCount,
+      session_id: session.localSessionId,
+      state,
+      truncated_output: transcriptSummary.truncated,
+    },
+    state,
+    summary: state === "needs_interaction"
+      ? `Terminal session ${session.localSessionId} needs interaction`
+      : state === "completed"
+        ? exitCode !== null && exitCode !== 0
+          ? `Terminal session ${session.localSessionId} failed`
+          : `Completed terminal session ${session.localSessionId}`
+        : `Terminal session ${session.localSessionId} is still running`,
+    truncated: transcriptSummary.truncated,
+  };
+}
+
+export function createTerminalCommandResult(
+  session: ThreadAiSession,
+  summary: TerminalCommandSummary,
+) {
+  return createSuccessResult({
+    body: summary.body,
+    displayBody: summary.displayBody,
+    semantics: summary.semantics,
+    subject: { kind: "session", path: String(session.localSessionId) },
+    summary: summary.summary,
+    truncated: summary.truncated,
+  });
+}
+
+export function getThreadSession(store: ThreadSessionStore, sessionId: number) {
+  return store.sessions.get(sessionId) ?? null;
+}
+
+export function resetThreadSessionForCommand(
+  session: ThreadAiSession,
+  command: string,
+  marker: string,
+  interactionMode: ThreadAiSession["interactionMode"],
+) {
+  session.command = command;
+  session.commandComplete = false;
+  session.commandExitCode = null;
+  session.completionMarker = marker;
+  session.completionMarkerProbe = "";
+  session.detector.reset();
+  session.interaction = null;
+  session.interactionMode = interactionMode;
+  session.lastSnapshot = null;
+  session.screen.reset();
+  session.transcript.reset({ command, marker });
+}
+
+export function createThreadAiSession(input: {
+  cols: number;
+  command: string;
+  cwd: string;
+  globalSessionId: number;
+  interactionMode: ThreadAiSession["interactionMode"];
+  label: string | null;
+  localSessionId: number;
+  marker: string;
+  rows: number;
+  shell: string;
+}) {
+  const session: ThreadAiSession = {
+    command: input.command,
+    commandComplete: false,
+    commandExitCode: null,
+    completionMarker: input.marker,
+    completionMarkerProbe: "",
+    cwd: input.cwd,
+    detector: new TerminalInteractionDetector(),
+    globalSessionId: input.globalSessionId,
+    interaction: null,
+    interactionMode: input.interactionMode,
+    label: input.label,
+    lastSnapshot: null,
+    localSessionId: input.localSessionId,
+    screen: new TerminalScreenModel({ cols: input.cols, rows: input.rows }),
+    shell: input.shell,
+    transcript: new AiTerminalTranscript(),
+  };
+  session.transcript.reset({ command: input.command, marker: input.marker });
+  return session;
+}
+
+export function encodeTerminalInput(text: string | undefined, keys: string[] | undefined) {
+  const normalizedText = text ?? "";
+  if (normalizedText.length > MAX_INTERACTION_TEXT_LENGTH) {
+    throw new Error(`Interactive terminal input cannot exceed ${MAX_INTERACTION_TEXT_LENGTH} characters.`);
+  }
+  if (normalizedText.includes("\u0000")) {
+    throw new Error("Interactive terminal input cannot contain a null character.");
+  }
+
+  const keyMap: Record<string, string> = {
+    ALT_LEFT: "\u001B[D",
+    ALT_RIGHT: "\u001B[C",
+    BACKSPACE: "\u007F",
+    CTRL_C: "\u0003",
+    CTRL_D: "\u0004",
+    CTRL_L: "\u000C",
+    DOWN: "\u001B[B",
+    END: "\u001B[F",
+    ENTER: "\r",
+    ESC: "\u001B",
+    HOME: "\u001B[H",
+    LEFT: "\u001B[D",
+    RIGHT: "\u001B[C",
+    SPACE: " ",
+    TAB: "\t",
+    UP: "\u001B[A",
+  };
+
+  let encodedKeys = "";
+  const requestedKeys = keys ?? [];
+  if (requestedKeys.length > 100) {
+    throw new Error("Interactive terminal input cannot contain more than 100 keys.");
+  }
+
+  for (const key of requestedKeys) {
+    if (key.length === 1 && key >= " " && key !== "\u007F") {
+      encodedKeys += key;
+      continue;
+    }
+
+    const normalizedKey = key.trim().toUpperCase();
+    const encodedKey = keyMap[normalizedKey];
+    if (!encodedKey) {
+      throw new Error(`Unsupported terminal key: ${key}`);
+    }
+    encodedKeys += encodedKey;
+  }
+
+  return `${normalizedText}${encodedKeys}`;
+}
+
+export function removeThreadSession(store: ThreadSessionStore, sessionId: number) {
+  const session = store.sessions.get(sessionId);
+  if (!session) {
+    return;
+  }
+  session.screen.dispose();
+  store.sessions.delete(sessionId);
+  store.reservedSessionIds.delete(session.localSessionId);
+  if (store.latestLocalSessionId === session.localSessionId) {
+    store.latestLocalSessionId = Array.from(store.sessions.keys()).pop() ?? null;
+  }
+}
+
+export function assertSandboxCommand(
+  runtime: TerminalToolRuntime,
+  command: string,
+  cwd: string,
+  roots: SandboxPathRoots,
+) {
+  if (runtime.terminalExecutionMode !== "sandbox") {
+    return Promise.resolve();
+  }
+
+  return Promise.all(
+    [cwd, ...assertSandboxCommandWorkingDirectories(command, runtime.context.workspaceRootPath, cwd)].map(
+      (directoryPath) => assertSandboxPathDoesNotEscapeThroughSymlink(directoryPath, roots),
+    ),
+  ).then(() => undefined);
+}
+
+export function assertTerminalOwner(runtime: TerminalToolRuntime): asserts runtime is TerminalToolRuntime & {
+  ownerWebContents: WebContents;
+} {
+  if (!runtime.ownerWebContents || runtime.ownerWebContents.isDestroyed()) {
+    throw new Error("Terminal execution requires an active renderer context.");
+  }
+}
+
+export async function terminateAllBackgroundSessions(
+  webContents: WebContents,
+  workspaceRootPath: string,
+  conversationIdOrTerminate?: string | null | ((
+    webContents: WebContents,
+    sessionId: number,
+    workspaceRootPath: string,
+  ) => void),
+  customTerminateSession?: (
+    webContents: WebContents,
+    sessionId: number,
+    workspaceRootPath: string,
+  ) => void,
+) {
+  const conversationId = typeof conversationIdOrTerminate === "string"
+    ? conversationIdOrTerminate.trim()
+    : "";
+  const terminateSession = typeof conversationIdOrTerminate === "function"
+    ? conversationIdOrTerminate
+    : customTerminateSession;
+  const dependencies = terminateSession ? null : await loadDefaultTerminalToolDependencies();
+  const namespaces = conversationId
+    ? [`conversation:${conversationId}`]
+    : Array.from(threadStores.keys());
+
+  for (const namespace of namespaces) {
+    const store = threadStores.get(namespace);
+    if (!store) {
+      continue;
+    }
+
+    for (const session of store.sessions.values()) {
+      try {
+        if (terminateSession) {
+          terminateSession(webContents, session.globalSessionId, workspaceRootPath);
+        } else {
+          dependencies?.terminateSession(webContents, session.globalSessionId, workspaceRootPath);
+        }
+      } catch {
+        // Continue terminating the remaining sessions.
+      } finally {
+        session.screen.dispose();
+      }
+    }
+    threadStores.delete(namespace);
+  }
+}
+
+export async function terminateAllBackgroundSessionsForTurn(
+  webContents: WebContents,
+  workspaceRootPath: string,
+  turnId: string,
+  customTerminateSession?: (
+    webContents: WebContents,
+    sessionId: number,
+    workspaceRootPath: string,
+  ) => void,
+) {
+  const normalizedTurnId = turnId.trim();
+  if (!normalizedTurnId) {
+    return;
+  }
+
+  const namespace = `turn:${normalizedTurnId}`;
+  const store = threadStores.get(namespace);
+  const dependencies = customTerminateSession ? null : await loadDefaultTerminalToolDependencies();
+
+  try {
+    if (store) {
+      for (const session of store.sessions.values()) {
+        try {
+          if (customTerminateSession) {
+            customTerminateSession(webContents, session.globalSessionId, workspaceRootPath);
+          } else {
+            dependencies?.terminateSession(webContents, session.globalSessionId, workspaceRootPath);
+          }
+        } catch {
+          // Continue terminating the remaining sessions in this turn.
+        } finally {
+          session.screen.dispose();
+        }
+      }
+    }
+
+    dependencies?.terminateSessionsForTurn(webContents, normalizedTurnId, workspaceRootPath);
+  } finally {
+    threadStores.delete(namespace);
+  }
+}

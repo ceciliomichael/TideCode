@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { toUserFacingErrorMessage } from '../lib/userFacingError'
 import type { GitBranchState } from '../types/chat'
 import {
   getCachedGitBranchState,
@@ -70,7 +71,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
         requestWorkspacePath === activeWorkspacePathRef.current
       ) {
         setBranchState(EMPTY_BRANCH_STATE)
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to load git branches.')
+        setErrorMessage(toUserFacingErrorMessage(error, 'The Git branches could not be loaded.'))
       }
     } finally {
       if (
@@ -109,7 +110,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
       } catch (error) {
         if (!isCancelled && normalizedWorkspacePath === activeWorkspacePathRef.current) {
           setBranchState(EMPTY_BRANCH_STATE)
-          setErrorMessage(error instanceof Error ? error.message : 'Failed to load git branches.')
+          setErrorMessage(toUserFacingErrorMessage(error, 'The Git branches could not be loaded.'))
         }
       } finally {
         if (!isCancelled && normalizedWorkspacePath === activeWorkspacePathRef.current) {
@@ -176,9 +177,9 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
           setBranchState(nextBranchState)
         }
       } catch (error) {
-        const nextError = error instanceof Error ? error : new Error('Failed to switch branches.')
-        setErrorMessage(nextError.message)
-        throw nextError
+        const message = toUserFacingErrorMessage(error, 'The branch could not be switched.')
+        setErrorMessage(message)
+        throw error instanceof Error ? error : new Error(message)
       } finally {
         setIsSwitching(false)
       }
@@ -206,9 +207,9 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
           setBranchState(nextBranchState)
         }
       } catch (error) {
-        const nextError = error instanceof Error ? error : new Error('Failed to create branch.')
-        setErrorMessage(nextError.message)
-        throw nextError
+        const message = toUserFacingErrorMessage(error, 'The branch could not be created.')
+        setErrorMessage(message)
+        throw error instanceof Error ? error : new Error(message)
       } finally {
         setIsSwitching(false)
       }

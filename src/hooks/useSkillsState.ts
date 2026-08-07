@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { toUserFacingErrorMessage } from '../lib/userFacingError'
 import type { CreateSkillInput, SkillsState } from '../types/skills'
 
 interface UseSkillsStateResult {
@@ -19,7 +20,7 @@ function getSkillsApi() {
 }
 
 function getErrorMessage(error: unknown, fallbackMessage: string) {
-  return error instanceof Error && error.message.trim().length > 0 ? error.message : fallbackMessage
+  return toUserFacingErrorMessage(error, fallbackMessage)
 }
 
 export function useSkillsState(workspacePath?: string | null): UseSkillsStateResult {
@@ -43,7 +44,11 @@ export function useSkillsState(workspacePath?: string | null): UseSkillsStateRes
     try {
       const nextState = await api.listSkills(normalizedWorkspacePath)
       setState(nextState)
-      setErrorMessage(nextState.errorMessage)
+      setErrorMessage(
+        nextState.errorMessage
+          ? toUserFacingErrorMessage(nextState.errorMessage, 'Unable to load skills.')
+          : null,
+      )
     } catch (error) {
       setErrorMessage(getErrorMessage(error, 'Unable to load skills.'))
     } finally {
@@ -66,7 +71,7 @@ export function useSkillsState(workspacePath?: string | null): UseSkillsStateRes
       try {
         const result = await api.createSkill(input, normalizedWorkspacePath)
         if (result.error) {
-          setErrorMessage(result.error)
+          setErrorMessage(toUserFacingErrorMessage(result.error, 'The skill could not be created.'))
           return false
         }
 

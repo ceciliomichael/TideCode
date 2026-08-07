@@ -7,6 +7,7 @@ import {
   requestPdfPreviewRender,
   type PdfPreviewRenderSnapshot,
 } from '../../../lib/pdfPreviewRenderCache'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { useWorkspaceDocumentCanvasInteraction } from '../workspaceDocumentPreview/useWorkspaceDocumentCanvasInteraction'
 import { WorkspacePdfPage } from './WorkspacePdfPage'
 import { Tooltip } from '../../Tooltip'
@@ -33,7 +34,9 @@ export const WorkspacePdfPreviewView = memo(function WorkspacePdfPreviewView({
 }: WorkspacePdfPreviewViewProps) {
   const [previewSnapshot, setPreviewSnapshot] = useState<PdfPreviewRenderSnapshot | null>(null)
   const [isLoading, setIsLoading] = useState(Boolean(previewDataUrl))
-  const [errorMessage, setErrorMessage] = useState<string | null>(previewError ?? null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(
+    previewError ? toUserFacingErrorMessage(previewError, `TideCode could not open ${fileName}.`) : null,
+  )
   const {
     changeZoom,
     handleViewportPointerDown,
@@ -51,7 +54,9 @@ export const WorkspacePdfPreviewView = memo(function WorkspacePdfPreviewView({
     let isDisposed = false
     setPreviewSnapshot(null)
     resetZoom()
-    setErrorMessage(previewError ?? null)
+    setErrorMessage(
+      previewError ? toUserFacingErrorMessage(previewError, `TideCode could not open ${fileName}.`) : null,
+    )
     setIsLoading(Boolean(previewDataUrl) && !previewError)
 
     if (!previewDataUrl || previewError) {
@@ -74,17 +79,17 @@ export const WorkspacePdfPreviewView = memo(function WorkspacePdfPreviewView({
             return
           }
           setIsLoading(false)
-          setErrorMessage(error instanceof Error ? error.message : 'This PDF could not be opened.')
+          setErrorMessage(toUserFacingErrorMessage(error, 'This PDF could not be opened.'))
         })
     } catch (error: unknown) {
       setIsLoading(false)
-      setErrorMessage(error instanceof Error ? error.message : 'This PDF preview data was invalid.')
+      setErrorMessage(toUserFacingErrorMessage(error, 'This PDF preview data was invalid.'))
     }
 
     return () => {
       isDisposed = true
     }
-  }, [previewDataUrl, previewError, resetZoom])
+  }, [fileName, previewDataUrl, previewError, resetZoom])
 
   const previewUnavailable = !previewDataUrl || Boolean(errorMessage)
   const pageRenderPromises = useMemo(() => {

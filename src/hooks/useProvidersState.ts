@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { toUserFacingErrorMessage } from '../lib/userFacingError'
 import type { ApiKeyProviderId, ProvidersState, SaveApiKeyProviderInput } from '../types/chat'
 import { applyOptimisticProviderRemoval, applyOptimisticProviderSave } from './providerOptimisticState'
 
@@ -138,7 +139,7 @@ export function useProvidersState() {
         return true
       } catch (error) {
         console.error('Failed to update provider settings', error)
-        const errorMessage = error instanceof Error && error.message.trim().length > 0 ? error.message : DEFAULT_ERROR_MESSAGE
+        const errorMessage = toUserFacingErrorMessage(error, DEFAULT_ERROR_MESSAGE)
         setState((currentValue) => ({
           ...currentValue,
           activeOperation: null,

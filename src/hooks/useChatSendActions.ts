@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react'
+import { toUserFacingErrorMessage } from '../lib/userFacingError'
 import {
   getMessagesThroughUserMessage,
   prepareRevertSessionForMessage,
@@ -80,11 +81,7 @@ function isMessageNotFoundError(error: unknown) {
 }
 
 function toActionErrorMessage(error: unknown, fallbackMessage: string) {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message
-  }
-
-  return fallbackMessage
+  return toUserFacingErrorMessage(error, fallbackMessage)
 }
 
 function sleep(milliseconds: number) {

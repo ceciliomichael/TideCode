@@ -8,7 +8,8 @@ export function isAgentToolExecutionResult(value: unknown): value is AgentToolEx
   return (
     (candidate.status === 'success' || candidate.status === 'error') &&
     typeof candidate.summary === 'string' &&
-    (candidate.body === undefined || typeof candidate.body === 'string')
+    (candidate.body === undefined || typeof candidate.body === 'string') &&
+    (candidate.displayBody === undefined || typeof candidate.displayBody === 'string')
   )
 }
 
@@ -31,6 +32,7 @@ export function normalizeToolExecutionResult(toolName: string, output: unknown):
 
 export function createCanonicalToolResultContent(input: {
   argumentsValue: unknown
+  body?: string
   result: AgentToolExecutionResult
   toolCallId: string
   toolName: string
@@ -50,7 +52,7 @@ export function createCanonicalToolResultContent(input: {
       toolName: input.toolName,
       ...(input.result.truncated === undefined ? {} : { truncated: input.result.truncated }),
     },
-    input.result.body,
+    input.body ?? input.result.body,
   )
 }
 

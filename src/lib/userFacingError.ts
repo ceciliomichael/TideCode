@@ -1,19 +1,149 @@
+export type UserFacingErrorItemKind = 'file' | 'folder' | 'item'
+
+export interface UserFacingErrorOptions {
+  itemKind?: UserFacingErrorItemKind
+}
+
 function readErrorMessage(error: unknown) {
   if (error instanceof Error || typeof error === 'string') {
     const message = (error instanceof Error ? error.message : error).trim()
     return message.length > 0 ? message : null
   }
 
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message.trim()
+    }
+  }
+
   return null
 }
 
-export function toUserFacingErrorMessage(error: unknown, fallbackMessage: string) {
+function unwrapRemoteMethodMessage(message: string) {
+  return message
+    .replace(/^Error invoking remote method\s+['"][^'"]+['"]:\s*/iu, '')
+    .replace(/^(?:Error|TypeError|RangeError|SyntaxError):\s*/u, '')
+    .trim()
+}
+
+function sanitizeItemName(value: string) {
+  const withoutQuotes = value.trim().replace(/^[`'"]+|[`'"]+$/gu, '')
+  const withoutControlCharacters = withoutQuotes.replace(/[\r\n\t]+/gu, ' ').trim()
+  const pathSegments = withoutControlCharacters.split(/[\\/]/u).filter((segment) => segment.length > 0)
+  const itemName = pathSegments[pathSegments.length - 1] ?? withoutControlCharacters
+  if (itemName.length <= 80) {
+    return itemName
+  }
+
+  return `${itemName.slice(0, 77)}...`
+}
+
+function getExistingItemName(message: string) {
+  const namedEntryMatch = /\b(?:entry|file|directory|folder)\s+already\s+exists\b\s*:\s*(.+)$/iu.exec(message)
+  if (namedEntryMatch?.[1]) {
+    return sanitizeItemName(namedEntryMatch[1])
+  }
+
+  const eexistPathMatch = /\b(?:eexist|already exists)\b[^'"]*['"]([^'"]+)['"]/iu.exec(message)
+  return eexistPathMatch?.[1] ? sanitizeItemName(eexistPathMatch[1]) : null
+}
+
+function getDuplicateEntryMessage(message: string, itemKind?: UserFacingErrorItemKind) {
+  const normalizedMessage = message.toLowerCase()
+  if (!normalizedMessage.includes('already exists') && !normalizedMessage.includes('eexist')) {
+    return null
+  }
+
+  const itemLabel = itemKind === 'folder' ? 'folder' : itemKind === 'file' ? 'file' : 'item'
+  const itemName = getExistingItemName(message)
+  return itemName
+    ? `A ${itemLabel} named “${itemName}” already exists. Choose a different name.`
+    : `An ${itemLabel} with that name already exists. Choose a different name.`
+}
+
+export function toUserFacingErrorMessage(
+  error: unknown,
+  fallbackMessage: string,
+  options: UserFacingErrorOptions = {},
+) {
   const message = readErrorMessage(error)
   if (!message) {
     return fallbackMessage
   }
 
-  const normalizedMessage = message.toLowerCase()
+  const isRemoteMethodError = /^Error invoking remote method\s+['"][^'"]+['"]:/iu.test(message)
+  const applicationMessage = unwrapRemoteMethodMessage(message)
+  const normalizedMessage = applicationMessage.toLowerCase()
+  const duplicateEntryMessage = getDuplicateEntryMessage(applicationMessage, options.itemKind)
+  if (duplicateEntryMessage) {
+    return duplicateEntryMessage
+  }
+
+  if (
+    normalizedMessage.includes('permission denied') ||
+    normalizedMessage.includes('operation not permitted') ||
+    normalizedMessage.includes('eacces') ||
+    normalizedMessage.includes('eperm')
+  ) {
+    return 'TideCode does not have permission to change that item. Check the folder permissions and try again.'
+  }
+
+  if (
+    normalizedMessage.includes('invalid name') ||
+    normalizedMessage.includes('illegal name') ||
+    normalizedMessage.includes('invalid argument')
+  ) {
+    return 'That name is not valid here. Choose a different name and try again.'
+  }
+
+  if (normalizedMessage.includes('name too long')) {
+    return 'That name is too long. Choose a shorter name and try again.'
+  }
+
+  if (
+    normalizedMessage.includes('directory does not exist') ||
+    normalizedMessage.includes('file does not exist') ||
+    normalizedMessage.includes('enoent')
+  ) {
+    return 'That workspace item is no longer available. Refresh the explorer and try again.'
+  }
+
+  if (normalizedMessage.includes('not a directory')) {
+    return 'That location is not a folder. Choose a different folder and try again.'
+  }
+
+  if (normalizedMessage.includes('not a git repository')) {
+    return 'This workspace is not connected to a Git repository.'
+  }
+
+  if (normalizedMessage.includes('nothing to commit')) {
+    return 'There are no new changes to commit.'
+  }
+
+  if (normalizedMessage.includes('non-fast-forward')) {
+    return 'The remote has changes that are not in this workspace. Pull the latest changes, then try again.'
+  }
+
+  if (normalizedMessage.includes('conflict') && normalizedMessage.includes('git')) {
+    return 'Git found a conflict. Resolve the conflicting files, then try again.'
+  }
+
+  if (
+    normalizedMessage.includes('unknown terminal session') ||
+    (normalizedMessage.includes('terminal session') && normalizedMessage.includes('already exited'))
+  ) {
+    return 'That terminal session is no longer available. Restart the terminal and try again.'
+  }
+
+  if (
+    normalizedMessage.includes('notreadableerror') ||
+    normalizedMessage.includes('could not be read') ||
+    normalizedMessage.includes('unable to read')
+  ) {
+    return 'The item could not be read. Check that it is still available and try again.'
+  }
+
   if (
     normalizedMessage.includes('context_length') ||
     normalizedMessage.includes('context window') ||
@@ -48,15 +178,15 @@ export function toUserFacingErrorMessage(error: unknown, fallbackMessage: string
   }
 
   if (
-    message.length > 240 ||
-    normalizedMessage.includes('error invoking remote method') ||
+    applicationMessage.length > 240 ||
+    isRemoteMethodError ||
     normalizedMessage.includes('ipcmain') ||
     normalizedMessage.includes('nooutputgeneratederror') ||
     normalizedMessage.includes('ai_') ||
-    /\s+at\s+\S+[:(]/u.test(message)
+    /\s+at\s+\S+[:(]/u.test(applicationMessage)
   ) {
     return fallbackMessage
   }
 
-  return message
+  return applicationMessage
 }

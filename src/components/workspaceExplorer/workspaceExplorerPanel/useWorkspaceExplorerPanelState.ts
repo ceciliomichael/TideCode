@@ -10,6 +10,7 @@ import {
   ROOT_DIRECTORY_KEY,
   normalizeEntryPath,
 } from './workspaceExplorerPanelUtils'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { useWorkspaceExplorerContextMenu } from './useWorkspaceExplorerContextMenu'
 import { useWorkspaceExplorerCreation } from './useWorkspaceExplorerCreation'
 import { useWorkspaceExplorerDeleteDialog } from './useWorkspaceExplorerDeleteDialog'
@@ -21,6 +22,7 @@ import { useWorkspaceExplorerSelection } from './useWorkspaceExplorerSelection'
 import { useWorkspaceExplorerRename } from './useWorkspaceExplorerRename'
 import { useWorkspaceExplorerTree } from './useWorkspaceExplorerTree'
 import { findLoadedExplorerEntry } from './workspaceExplorerSelectionUtils'
+import type { WorkspaceExplorerErrorDialogState } from './workspaceExplorerPanelTypes'
 
 export function useWorkspaceExplorerPanelState({
   activeFilePath,
@@ -41,6 +43,7 @@ export function useWorkspaceExplorerPanelState({
   workspaceRootPath,
 }: WorkspaceExplorerPanelProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [errorDialogState, setErrorDialogState] = useState<WorkspaceExplorerErrorDialogState | null>(null)
   const [dropTargetDirectoryPath, setDropTargetDirectoryPath] = useState<string | null>(null)
   const [selectedEntryPaths, setSelectedEntryPaths] = useState<Set<string>>(() => new Set())
   const [selectionDirectoryPath, setSelectionDirectoryPath] = useState<string>(ROOT_DIRECTORY_KEY)
@@ -50,6 +53,15 @@ export function useWorkspaceExplorerPanelState({
   const isExplorerEditingRef = useRef(false)
   const pendingExplorerReloadRef = useRef(false)
   const isWorkspaceConfigured = typeof workspaceRootPath === 'string' && workspaceRootPath.trim().length > 0
+  const clearErrorMessage = useCallback(() => {
+    setErrorMessage(null)
+  }, [])
+  const closeErrorDialog = useCallback(() => {
+    setErrorDialogState(null)
+  }, [])
+  const showErrorDialog = useCallback((state: WorkspaceExplorerErrorDialogState) => {
+    setErrorDialogState(state)
+  }, [])
 
   const {
     closeContextMenu,
@@ -129,7 +141,7 @@ export function useWorkspaceExplorerPanelState({
         }
         return true
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Explorer action failed.')
+        setErrorMessage(toUserFacingErrorMessage(error, 'Explorer action failed.'))
         return false
       }
     },
@@ -180,6 +192,7 @@ export function useWorkspaceExplorerPanelState({
     loadDirectory,
     onCreateEntry,
     onOpenFile,
+    showErrorDialog,
     setErrorMessage,
     setExpandedDirectories,
   })
@@ -244,6 +257,7 @@ export function useWorkspaceExplorerPanelState({
     resetCreation()
     resetRename()
     setErrorMessage(null)
+    setErrorDialogState(null)
     resetDeleteDialog()
     setSelectedEntryPaths(new Set())
     setSelectionDirectoryPath(ROOT_DIRECTORY_KEY)
@@ -280,7 +294,8 @@ export function useWorkspaceExplorerPanelState({
 
     closeContextMenu()
     resetDeleteDialog()
-  }, [closeContextMenu, isOpen, resetDeleteDialog])
+    closeErrorDialog()
+  }, [closeContextMenu, closeErrorDialog, isOpen, resetDeleteDialog])
 
   const {
     handleDirectoryDragLeave,
@@ -415,6 +430,9 @@ export function useWorkspaceExplorerPanelState({
     directoryEntriesByPath,
     dropTargetDirectoryPath,
     errorMessage,
+    errorDialogState,
+    clearErrorMessage,
+    closeErrorDialog,
     expandedDirectories,
     closeDeleteDialog,
     handleDirectoryDragLeave,

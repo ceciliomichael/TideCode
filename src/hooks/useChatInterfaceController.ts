@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { toUserFacingErrorMessage } from '../lib/userFacingError'
 import { useWorkspaceKeyboardShortcuts } from './useWorkspaceKeyboardShortcuts'
 import type { AppSettings, GitCommitAction, GitCommitResult } from '../types/chat'
 
@@ -209,7 +210,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
       } catch (error) {
         console.error(`Failed to ${action} file from git panel`, error)
         setFileActionErrorMessage(
-          `Failed to ${action} ${filePath}: ${error instanceof Error ? error.message : 'Unknown error.'}`,
+          `Could not ${action} ${filePath}: ${toUserFacingErrorMessage(error, 'The file action could not be completed.')}`,
         )
       } finally {
         setPendingFileActionPath(null)
@@ -241,7 +242,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
       } catch (error) {
         console.error(`Failed to ${action} files from git panel`, error)
         setFileActionErrorMessage(
-          `Failed to ${action} files: ${error instanceof Error ? error.message : 'Unknown error.'}`,
+          `Could not ${action} files: ${toUserFacingErrorMessage(error, 'The file action could not be completed.')}`,
         )
       } finally {
         setPendingFileActionPath(null)

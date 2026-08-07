@@ -414,7 +414,7 @@ test('web search header labels use readable product wording', () => {
   assert.equal(getToolInvocationHeaderLabel(webSearchCompletedInvocation, undefined, WORKSPACE_ROOT_PATH), 'Searched the web')
 })
 
-test('terminal tool header labels prefer the queued command and fall back to the session id', () => {
+test('terminal tool header labels keep internal session ids out of the user-facing header', () => {
   const commandInvocation: ToolInvocationTrace = {
     argumentsText: JSON.stringify({
       command: 'npm run test:unit',
@@ -443,7 +443,7 @@ test('terminal tool header labels prefer the queued command and fall back to the
   )
   assert.equal(
     getToolInvocationHeaderLabel(sessionInvocation, undefined, WORKSPACE_ROOT_PATH),
-    'Polling session 7',
+    'Polling',
   )
 })
 

@@ -1,6 +1,7 @@
 import { ChevronRight, ZoomIn, ZoomOut } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { requestDocxPreviewRender } from '../../../lib/docxPreviewRenderCache'
+import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { useWorkspaceDocumentCanvasInteraction } from '../workspaceDocumentPreview/useWorkspaceDocumentCanvasInteraction'
 import { Tooltip } from '../../Tooltip'
 
@@ -26,7 +27,9 @@ export const WorkspaceDocxPreviewView = memo(function WorkspaceDocxPreviewView({
   relativePath,
 }: WorkspaceDocxPreviewViewProps) {
   const [isRendering, setIsRendering] = useState(Boolean(previewDataUrl) && !previewError)
-  const [errorMessage, setErrorMessage] = useState<string | null>(previewError ?? null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(
+    previewError ? toUserFacingErrorMessage(previewError, `TideCode could not open ${fileName}.`) : null,
+  )
   const [pageCount, setPageCount] = useState(0)
   const [renderedSize, setRenderedSize] = useState({ height: 0, width: 0 })
   const renderedDocumentRef = useRef<HTMLDivElement | null>(null)
@@ -50,7 +53,9 @@ export const WorkspaceDocxPreviewView = memo(function WorkspaceDocxPreviewView({
     setRenderedSize({ height: 0, width: 0 })
     setPageCount(0)
     resetZoom()
-    setErrorMessage(previewError ?? null)
+    setErrorMessage(
+      previewError ? toUserFacingErrorMessage(previewError, `TideCode could not open ${fileName}.`) : null,
+    )
     setIsRendering(Boolean(previewDataUrl) && !previewError)
 
     const renderedDocument = renderedDocumentRef.current
@@ -82,17 +87,17 @@ export const WorkspaceDocxPreviewView = memo(function WorkspaceDocxPreviewView({
           renderedDocument.replaceChildren()
           renderedStyle.replaceChildren()
           setIsRendering(false)
-          setErrorMessage(error instanceof Error ? error.message : 'This DOCX could not be opened.')
+          setErrorMessage(toUserFacingErrorMessage(error, 'This DOCX could not be opened.'))
         })
     } catch (error: unknown) {
       setIsRendering(false)
-      setErrorMessage(error instanceof Error ? error.message : 'This DOCX preview data was invalid.')
+      setErrorMessage(toUserFacingErrorMessage(error, 'This DOCX preview data was invalid.'))
     }
 
     return () => {
       isDisposed = true
     }
-  }, [previewDataUrl, previewError, resetZoom])
+  }, [fileName, previewDataUrl, previewError, resetZoom])
 
   const previewUnavailable = !previewDataUrl || Boolean(errorMessage)
   const hasRenderedDocument = renderedSize.width > 0 && renderedSize.height > 0
