@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.31 — Delete archived chats and clearer upgrade progress
+
+TideCode now lets you permanently remove an archived thread, and Settings shows the version that is actually downloading instead of the one you are currently running.
+
+- Adds a permanent-delete action to archived threads in the sidebar, behind an explicit confirmation dialog, so removing an archived chat can no longer be triggered by mistake.
+- Shows the downloading version in the update status while a release downloads or is ready to install, so the heading matches what is about to be installed rather than the version already running.
+- Preserves safe deletion by canceling any in-flight task on the thread first and guarding against deleting a thread while its task is initializing.
+
 ## 1.0.30 — More useful terminal work and clearer feedback
 
 TideCode now gives the agent a focused terminal workflow while keeping command progress and operational problems readable for people using the app.
