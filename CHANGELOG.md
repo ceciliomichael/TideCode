@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.33 — Reviewable plans and more reliable chat workflows
+
+TideCode makes plan-driven work easier to review while keeping long-running chat, terminal commands, and workspace state reliable during interruptions and rapid changes.
+
+- Adds persisted plan comments, revisions, implementation handoff, and visible plan status transitions in the workspace.
+- Improves workspace explorer synchronization, selection, transfers, undo behavior, file previews, and tabs as files change.
+- Expands provider model metadata and output-token limits while improving API-key runtime handling and model settings controls.
+- Preserves streamed assistant output and aborted tool results correctly, keeps terminal output available across bounded reads, and handles interactive terminal prompts more reliably.
+- Includes regression coverage for plan workflows, workspace behavior, provider limits, chat cancellation, terminal sessions, and tool interactions.
+
 ## 1.0.32 — Reviewable plans and live workspace state
 
 TideCode now turns Plan mode into a reviewable workspace artifact while keeping Source Control and MCP integrations accurate as the workspace changes around it.
