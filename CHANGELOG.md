@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.32 — Reviewable plans and live workspace state
+
+TideCode now turns Plan mode into a reviewable workspace artifact while keeping Source Control and MCP integrations accurate as the workspace changes around it.
+
+- Creates incrementing `.tidecode/plans/plan-###.md` files from Plan mode, opens the rendered plan preview automatically, and supports updating a plan after review feedback without editing source files.
+- Adds plan review actions for comments, requesting changes, implementing a plan, and showing the persisted implementation-started state; chat history and revert/redo keep plan files and chat mode aligned.
+- Refreshes Source Control when external Git commits, branches, or workspace edits change, while preserving subscriber cleanup and focused updates for open panels.
+- Gives MCP servers stable, collision-safe tool namespaces and clearer server context so similarly named tools remain distinguishable.
+- Fixes Markdown preview handling for inline HTML examples and ordered-list markers so plan content stays laid out and colored as intended.
+
 ## 1.0.31 — Delete archived chats and clearer upgrade progress
 
 TideCode now lets you permanently remove an archived thread, and Settings shows the version that is actually downloading instead of the one you are currently running.
