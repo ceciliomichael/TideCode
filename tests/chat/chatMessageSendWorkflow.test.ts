@@ -86,6 +86,7 @@ interface WorkflowHarnessOptions {
   isUserMessageReverted?: boolean
   hasPendingAbortRequest?: boolean
   consumePendingAbortBeforeStreamStart?: boolean
+  originalText?: string
   streamContent?: string | null
   streamOutcome?: 'completed' | 'aborted' | 'error'
 }
@@ -101,6 +102,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
   let streamListener: ((event: Record<string, unknown> & { streamId: string; type: string }) => void) | null = null
   const errors: string[] = []
   const composerValues: string[] = []
+  const originalText = options.originalText ?? 'Please update the README'
 
   const upsertConversationRecord = (nextConversation: ConversationRecord) => {
     const existingState = runtimeStatesRef.current[nextConversation.id]
@@ -174,7 +176,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     hasPendingAbortRequest: () => options.hasPendingAbortRequest ?? false,
     isUserMessageReverted: () => options.isUserMessageReverted ?? false,
     markTextStreamingPulse: () => undefined,
-    originalText: 'Please update the README',
+    originalText,
     removeLocalMessage: (conversationId, messageId) => {
       const existingState = runtimeStatesRef.current[conversationId]
       if (!existingState) {
@@ -213,7 +215,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     setPendingDraftSendCount: () => undefined,
     stopTextStreaming: () => undefined,
     targetEditMessageId: null,
-    trimmedText: 'Please update the README',
+    trimmedText: originalText,
     updateConversationRuntimeState,
     updateConversationSummary: () => undefined,
     updateLocalMessage: (conversationId, messageId, updater) => {
@@ -342,6 +344,23 @@ test('a stop clicked before the stream starts rolls the stored conversation back
     assert.equal(accepted, true)
     assert.deepEqual(harness.history.getStoredMessages(harness.conversation.id), [], 'history must be rolled back')
     assert.equal(harness.history.calls.some((call) => call.type === 'replace'), true)
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
+test('aborting a plan implementation run does not restore its status marker to the composer', async () => {
+  const harness = createWorkflowHarness({
+    originalText: '<plan_123456>Implement the plan in .tidecode/plans/plan-001.md.</plan_123456>',
+    streamOutcome: 'aborted',
+  })
+
+  try {
+    const accepted = await persistAndStreamMessage(harness.input)
+
+    assert.equal(accepted, true)
+    assert.deepEqual(harness.history.getStoredMessages(harness.conversation.id), [], 'history must be rolled back')
+    assert.deepEqual(harness.composerValues, [''], 'the implementation marker must not return to the composer')
   } finally {
     harness.restoreWindow()
   }

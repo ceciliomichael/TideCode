@@ -104,6 +104,22 @@ function getToolVerb(invocation: ToolInvocationTrace) {
         : 'Implementation gate failed'
   }
 
+  if (invocation.toolName === 'plan_create') {
+    return invocation.state === 'running'
+      ? 'Creating plan'
+      : invocation.state === 'completed'
+        ? 'Created plan'
+        : 'Plan creation failed'
+  }
+
+  if (invocation.toolName === 'plan_edit') {
+    return invocation.state === 'running'
+      ? 'Updating plan'
+      : invocation.state === 'completed'
+        ? 'Updated plan'
+        : 'Plan update failed'
+  }
+
   if (invocation.toolName === 'ask_question') {
     if (invocation.state === 'running' && invocation.decisionRequest) {
       return 'Awaiting answer'

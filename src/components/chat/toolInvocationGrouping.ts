@@ -16,6 +16,7 @@ interface ToolInvocationSummaryCounts {
   verifiedCount: number
   exploredFileCount: number
   kanbanCount: number
+  planCount: number
 }
 
 function pluralize(count: number, singular: string) {
@@ -59,6 +60,10 @@ function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts
 
   if (toolName === 'read') {
     return 'exploredFileCount'
+  }
+
+  if (toolName === 'plan_create' || toolName === 'plan_edit') {
+    return 'planCount'
   }
 
   if (isFileWriteTool(toolName)) {
@@ -109,6 +114,9 @@ function getMixedBucketPriority(bucketKey: string) {
   }
   if (bucketKey === 'web-search') {
     return 10
+  }
+  if (bucketKey === 'plan') {
+    return 11
   }
 
   return 13
@@ -172,6 +180,7 @@ export function buildToolInvocationGroupSummary(
     verifiedCount: 0,
     exploredFileCount: 0,
     kanbanCount: 0,
+    planCount: 0,
   }
   const otherToolCounts = new Map<string, number>()
   let hasFileMutationBuckets = false
@@ -225,6 +234,8 @@ export function buildToolInvocationGroupSummary(
         recordMixedBucket('explored-file')
       } else if (classifiedBucket === 'fileCount') {
         recordMixedBucket('file')
+      } else if (classifiedBucket === 'planCount') {
+        recordMixedBucket('plan')
       }
       continue
     }
@@ -269,6 +280,9 @@ export function buildToolInvocationGroupSummary(
       if (bucketKey === 'kanban') {
         return buildKanbanToolInvocationGroupSummary(count)
       }
+      if (bucketKey === 'plan') {
+        return `created ${pluralize(count, 'plan')}`
+      }
 
       return pluralize(count, bucketKey.replace(/^other:/u, ''))
     }
@@ -290,6 +304,7 @@ export function buildToolInvocationGroupSummary(
     counts.deletedCount === 0 &&
     counts.verifiedCount === 0 &&
     counts.exploredFileCount === 0 &&
+    counts.planCount === 0 &&
     otherToolCounts.size === 0
 
   if (hasOnlyWebSearch) {
@@ -313,6 +328,9 @@ export function buildToolInvocationGroupSummary(
   }
   if (counts.kanbanCount > 0) {
     summaryParts.push(buildKanbanToolInvocationGroupSummary(counts.kanbanCount))
+  }
+  if (counts.planCount > 0) {
+    summaryParts.push(`created ${pluralize(counts.planCount, 'plan')}`)
   }
 
   for (const [toolLabel, count] of otherToolCounts) {

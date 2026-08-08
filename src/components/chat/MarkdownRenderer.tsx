@@ -87,7 +87,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         <ul {...props} className="my-2 space-y-1 list-disc pl-6 text-foreground" />
       ),
       ol: (props: React.ComponentPropsWithoutRef<'ol'>) => (
-        <ol {...props} className="my-2 space-y-1 list-decimal pl-6 text-foreground" />
+        <ol {...props} className="my-2 space-y-1 list-decimal marker:text-foreground pl-6 text-foreground" />
       ),
       li: (props: React.ComponentPropsWithoutRef<'li'>) => (
         <li {...props} className="my-0 leading-[1.6] [&>p]:my-0 [&>p]:mb-0 [&>p+p]:mt-1" />

@@ -12,6 +12,8 @@ import { persistAndStreamMessage } from './chatMessageSendWorkflow'
 import type { ChatRuntimeSelection } from './chatMessageRuntime'
 import type { PersistAndStreamMessageInput, PersistedUserTurn } from './chatMessageSendTypes'
 import { restoreChatComposerDraft } from '../lib/chatComposerDraft'
+import { isPlanImplementationStatusMessage } from '../lib/planImplementation'
+import { getPlanPathsCreatedByRevertedUserMessage } from '../lib/planPresentation'
 import { readChatSelectionFromRefs } from '../lib/chatSelection'
 import {
   acquireChatSendScopeGate,
@@ -40,7 +42,16 @@ interface UseChatSendActionsInput
     | 'hasPendingAbortRequest'
     | 'consumePendingAbortBeforeStreamStart'
   > {
-  beginRevertEditingMessage: (conversationId: string, messageId: string, redoCheckpointId: string) => void
+  beginRevertEditingMessage: (
+    conversationId: string,
+    messageId: string,
+    redoCheckpointId: string,
+    revertedPlanPaths?: readonly string[],
+    chatModeTransition?: {
+      chatModeBeforeRevert: ChatMode
+      revertedChatMode: ChatMode
+    },
+  ) => void
   cancelEditingMessage: () => void
   editComposerAttachments: PersistAndStreamMessageInput['attachments']
   editComposerValue: string
@@ -120,6 +131,10 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
   const restoreUserMessageDraftToMainComposer = useCallback(
     (message: Message | null) => {
       if (!message || message.role !== 'user') {
+        return false
+      }
+
+      if (isPlanImplementationStatusMessage(message.content)) {
         return false
       }
 
@@ -763,15 +778,19 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
   ])
 
   const revertUserMessage = useCallback(
-    async (messageId: string) => {
+    async (messageId: string): Promise<boolean> => {
       const conversationId = readChatSelectionFromRefs(input).activeConversationId
       if (actionInFlightRef.current || !conversationId) {
-        return
+        return false
       }
 
       const conversationState = getConversationState(conversationId)
       const isPendingSendRevert = isActiveUnrespondedUserMessage(conversationState, messageId)
       const hasActiveRun = Boolean(conversationState?.isSending || conversationState?.activeStreamId)
+      const revertedPlanPaths = getPlanPathsCreatedByRevertedUserMessage(
+        conversationState?.conversation.messages ?? [],
+        messageId,
+      )
 
       actionInFlightRef.current = true
 
@@ -787,7 +806,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
               message: pendingUserMessage,
             })
           }
-          return
+          return true
         }
 
         // Capture the complete checkpoint sequence before stopping an active
@@ -840,11 +859,22 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           }
         }
 
-        input.beginRevertEditingMessage(conversationId, messageId, revertPreparation.redoCheckpointId)
+        input.beginRevertEditingMessage(
+          conversationId,
+          messageId,
+          revertPreparation.redoCheckpointId,
+          revertedPlanPaths,
+          {
+            chatModeBeforeRevert: input.draftChatMode,
+            revertedChatMode: revertPreparation.revertedChatMode,
+          },
+        )
+        return true
       } catch (caughtError) {
         console.error(caughtError)
         input.cancelEditingMessage()
         input.setError(toActionErrorMessage(caughtError, 'Unable to revert to that checkpoint.'))
+        return false
       } finally {
         actionInFlightRef.current = false
       }

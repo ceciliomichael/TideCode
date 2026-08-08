@@ -18,6 +18,8 @@ import type {
   GitFileStageBatchInput,
   GitHistoryCommitDetailsInput,
   GitHistoryPageInput,
+  GitSourceControlChangeEvent,
+  GitSourceControlWatchChangesInput,
   SaveApiKeyProviderInput,
   SaveCustomModelInput,
   RenameConversationFolderInput,
@@ -238,8 +240,19 @@ const gitApi: TideCodeGitApi = {
   getGitHubAuthStatus: (): Promise<GitHubAuthStatus> => ipcRenderer.invoke('git:getGitHubAuthStatus'),
   connectGitHub: (): Promise<GitHubDeviceLoginResult> => ipcRenderer.invoke('git:connectGitHub'),
   completeGitHubDeviceLogin: (): Promise<GitHubAuthStatus> => ipcRenderer.invoke('git:completeGitHubDeviceLogin'),
+  onSourceControlChange: (listener: (event: GitSourceControlChangeEvent) => void) => {
+    const wrappedListener = (_event: unknown, payload: GitSourceControlChangeEvent) => listener(payload)
+    ipcRenderer.on('git:sourceControl:changed', wrappedListener)
+    return () => {
+      ipcRenderer.off('git:sourceControl:changed', wrappedListener)
+    }
+  },
   getStatus: (workspacePath: string) => ipcRenderer.invoke('git:getStatus', workspacePath),
   sync: (input: GitSyncInput) => ipcRenderer.invoke('git:sync', input),
+  unwatchSourceControlChanges: (input: GitSourceControlWatchChangesInput) =>
+    ipcRenderer.invoke('git:sourceControl:unwatch', input),
+  watchSourceControlChanges: (input: GitSourceControlWatchChangesInput) =>
+    ipcRenderer.invoke('git:sourceControl:watch', input),
   stageFiles: (input: GitFileStageBatchInput) => ipcRenderer.invoke('git:stageFiles', input),
   stageFile: (input: GitFileStageInput) => ipcRenderer.invoke('git:stageFile', input),
   unstageFiles: (input: GitFileStageBatchInput) => ipcRenderer.invoke('git:unstageFiles', input),

@@ -54,6 +54,28 @@ test('validateServerConfig requires explicit url transport type', () => {
   )
 })
 
+test('validateServerConfig preserves safe TideCode identity metadata and drops malformed metadata', () => {
+  const parsed = validateServerConfig({
+    command: 'node',
+    tidecodeId: 'mcp-github-1234abcd',
+    tidecodeToolNamespace: 'github',
+    type: 'stdio',
+  })
+
+  assert.equal(parsed.tidecodeId, 'mcp-github-1234abcd')
+  assert.equal(parsed.tidecodeToolNamespace, 'github')
+
+  const sanitized = validateServerConfig({
+    command: 'node',
+    tidecodeId: 'not-an-mcp-id',
+    tidecodeToolNamespace: 'github namespace',
+    type: 'stdio',
+  })
+
+  assert.equal(sanitized.tidecodeId, undefined)
+  assert.equal(sanitized.tidecodeToolNamespace, undefined)
+})
+
 test('parseMcpAddServerInput normalizes stdio server entries', () => {
   const parsed = parseMcpAddServerInput({
     args: ['server.js', ''],

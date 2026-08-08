@@ -337,6 +337,7 @@ export function ChatInterfaceContent({
     handleCancelEditingMessage,
     handleEditUserMessage,
     handleImplementPlan,
+    handleRequestPlanChanges,
     handleRevertUserMessage,
     handleSendEditedMessage,
     handleSendMainMessage,
@@ -506,6 +507,8 @@ export function ChatInterfaceContent({
             interfaceController={interfaceController}
             onDiffPanelExpandedFilePathsChange={onDiffPanelExpandedFilePathsChange}
             onDiffPanelSelectedScopeChange={onDiffPanelSelectedScopeChange}
+            onImplementPlan={handleImplementPlan}
+            onRequestPlanChanges={handleRequestPlanChanges}
             settings={settings}
             workspaceState={workspaceState}
           />

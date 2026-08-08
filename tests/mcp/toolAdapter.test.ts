@@ -3,6 +3,7 @@ import test from 'node:test'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { McpServerConfig } from '../../src/types/mcp'
 import { createMcpToolSetForServer } from '../../electron/mcp/toolAdapter'
+import { getMcpToolSource } from '../../electron/mcp/toolMetadata'
 
 test('createMcpToolSetForServer namespaces tools and filters disabled entries', async () => {
   const calls: Array<{ arguments: Record<string, unknown>; name: string }> = []
@@ -29,6 +30,7 @@ test('createMcpToolSetForServer namespaces tools and filters disabled entries', 
     name: 'server-one',
     owner: 'tidecode',
     source: 'global',
+    toolNamespace: 'srv',
     toolConfiguration: {
       enabled: true,
       disabledTools: ['hidden-tool'],
@@ -59,10 +61,10 @@ test('createMcpToolSetForServer namespaces tools and filters disabled entries', 
     },
   ])
 
-  assert.ok('mcp_server-one_search' in tools)
-  assert.ok(!('mcp_server-one_hidden-tool' in tools))
+  assert.ok('mcp_srv_search' in tools)
+  assert.ok(!('mcp_srv_hidden_tool' in tools))
 
-  const tool = tools['mcp_server-one_search'] as {
+  const tool = tools['mcp_srv_search'] as {
     execute: (input: { query: string }) => Promise<{ body?: string; status: string; summary: string }>
   }
   const result = await tool.execute({ query: 'atlas' })
@@ -71,6 +73,14 @@ test('createMcpToolSetForServer namespaces tools and filters disabled entries', 
   assert.equal(result.summary, 'Completed search')
   assert.equal(result.body, 'search:{"query":"atlas"}')
   assert.deepEqual(calls, [{ arguments: { query: 'atlas' }, name: 'search' }])
+  assert.deepEqual(getMcpToolSource(tool), {
+    catalogName: 'mcp_srv_search',
+    kind: 'mcp',
+    originalToolName: 'search',
+    serverId: 'server-one',
+    serverName: 'server-one',
+  })
+  assert.match(String((tool as { description?: unknown }).description), /MCP server "server-one"/u)
 
 })
 
@@ -86,6 +96,7 @@ test('same-named tools from different MCP servers retain distinct catalog IDs', 
     name: id,
     owner: 'tidecode',
     source: 'global',
+    toolNamespace: id,
     type: 'stdio',
   })
   const mcpTools = [{ inputSchema: { type: 'object' }, name: 'search' }]
@@ -108,6 +119,7 @@ test('sanitized MCP name collisions receive stable suffixes and exact duplicates
     name: 'collision-server',
     owner: 'tidecode',
     source: 'global',
+    toolNamespace: 'collision',
     type: 'stdio',
   }
 
@@ -118,7 +130,7 @@ test('sanitized MCP name collisions receive stable suffixes and exact duplicates
   const ids = Object.keys(collisionTools)
   assert.equal(ids.length, 2)
   assert.equal(new Set(ids).size, 2)
-  assert.ok(ids.every((id) => /^mcp_collision-server_foo_bar_[a-f0-9]{8}$/u.test(id)))
+  assert.ok(ids.every((id) => /^mcp_collision_foo_bar_[a-f0-9]{6}$/u.test(id)))
 
   assert.throws(
     () =>

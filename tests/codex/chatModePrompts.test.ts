@@ -35,7 +35,7 @@ test('plan prompt is concise and explicitly restricts file editing while support
 
     assert.doesNotMatch(prompt, /caveman|primitive speech/iu)
     assert.doesNotMatch(prompt, /<intent_rules/u)
-    assert.match(prompt, /Plan mode may use Kanban planning actions and discovered MCP tools/u)
+    assert.match(prompt, /Plan mode may use read-only workspace tools, Kanban planning actions, discovered MCP tools/u)
     assert.match(prompt, /concrete tool whose name and parameters match the task/u)
     assert.match(prompt, /Stay under 300 words/u)
   } finally {
@@ -77,6 +77,8 @@ test('runtime tool exposure gives the provider the concrete native tools', async
       'grep',
       'kanban_board',
       'list',
+      'plan_create',
+      'plan_edit',
       'read',
     ])
   } finally {

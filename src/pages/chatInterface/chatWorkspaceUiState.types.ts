@@ -44,6 +44,7 @@ export interface ChatWorkspaceUiState {
   activeWorkspacePath: string | null;
   conversationDiffPanelWidth: number;
   handleCloseWorkspaceTab: (relativePath: string) => void;
+  handleCloseWorkspaceTabsByPath: (relativePath: string) => void;
   handleConversationDiffPanelWidthChange: (nextWidth: number) => void;
   handleConversationDiffPanelWidthCommit: (nextWidth: number) => void;
   handleCopyWorkspaceEntry: (relativePaths: string[]) => Promise<void>;
@@ -65,6 +66,8 @@ export interface ChatWorkspaceUiState {
   handleOpenSourceControlPanel: () => void;
   handleOpenWorkspaceFile: (relativePath: string) => void;
   handleOpenWorkspaceMarkdownPreview: (relativePath: string) => void;
+  handleMarkWorkspacePlanImplementationStarted: (relativePath: string) => Promise<boolean>;
+  handleOpenWorkspacePlanPreview: (relativePath: string) => Promise<void>;
   handleOpenWorkspaceSvgPreview: (relativePath: string) => void;
   handlePasteWorkspaceEntry: (
     targetDirectoryRelativePath: string,

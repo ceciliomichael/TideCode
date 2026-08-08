@@ -14,7 +14,17 @@ test('parseInitialSettingsArg sanitizes persisted edit sessions by conversation'
         'conversation-b': { messageId: '' },
       },
       revertEditSessionsByConversation: {
-        ' conversation-c ': { messageId: ' message-c ', redoCheckpointId: ' redo-c ' },
+        ' conversation-c ': {
+          chatModeBeforeRevert: 'agent',
+          messageId: ' message-c ',
+          redoCheckpointId: ' redo-c ',
+          revertedChatMode: 'plan',
+          revertedPlanPaths: [
+            '.tidecode\\plans\\plan-001.md',
+            '.tidecode/plans/plan-001.md',
+            '.tidecode/plans/not-a-plan.txt',
+          ],
+        },
       },
     }),
   ])
@@ -23,7 +33,13 @@ test('parseInitialSettingsArg sanitizes persisted edit sessions by conversation'
     'conversation-a': { messageId: 'message-a' },
   })
   assert.deepEqual(parsedSettings.revertEditSessionsByConversation, {
-    'conversation-c': { messageId: 'message-c', redoCheckpointId: 'redo-c' },
+    'conversation-c': {
+      chatModeBeforeRevert: 'agent',
+      messageId: 'message-c',
+      redoCheckpointId: 'redo-c',
+      revertedChatMode: 'plan',
+      revertedPlanPaths: ['.tidecode/plans/plan-001.md'],
+    },
   })
 })
 

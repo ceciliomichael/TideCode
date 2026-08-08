@@ -10,6 +10,29 @@ import {
 const WORKSPACE_ROOT_PATH = '/workspace'
 const TARGET_FILE_PATH = `${WORKSPACE_ROOT_PATH}/src/example.ts`
 
+test('plan tool headers use review-oriented labels', () => {
+  assert.equal(
+    getToolInvocationHeaderLabel({
+      argumentsText: '{}',
+      id: 'plan-create',
+      startedAt: 0,
+      state: 'completed',
+      toolName: 'plan_create',
+    }),
+    'Created plan',
+  )
+  assert.equal(
+    getToolInvocationHeaderLabel({
+      argumentsText: JSON.stringify({ path: '.tidecode/plans/plan-001.md' }),
+      id: 'plan-edit',
+      startedAt: 0,
+      state: 'completed',
+      toolName: 'plan_edit',
+    }),
+    'Updated plan plan-001.md',
+  )
+})
+
 function buildFileChangeInvocation(
   kind: 'add' | 'delete' | 'update',
   state: ToolInvocationTrace['state'],

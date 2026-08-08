@@ -11,6 +11,7 @@ import { initializeProvidersState } from './providers/service'
 import { onProvidersStateChanged } from './providers/events'
 import { getMcpServerManager } from './mcp/serverManager'
 import { disposeWorkspaceExplorerWatchers } from './workspace/explorerWatch'
+import { disposeSourceControlWatchers } from './git/sourceControlWatch'
 import { disposeKanbanBoardWatchers } from './kanban/watch'
 import { registerCoreIpcHandlers } from './ipc/registerCoreIpcHandlers'
 import { registerChatGitTerminalIpcHandlers } from './ipc/registerChatGitTerminalIpcHandlers'
@@ -118,6 +119,7 @@ function registerApplicationIpcHandlers() {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     disposeWorkspaceExplorerWatchers()
+    disposeSourceControlWatchers()
     disposeKanbanBoardWatchers()
     app.quit()
     win = null
@@ -127,6 +129,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', (event) => {
   if (isUpdateInstallInProgress()) {
     disposeWorkspaceExplorerWatchers()
+    disposeSourceControlWatchers()
     disposeKanbanBoardWatchers()
     return
   }
@@ -138,6 +141,7 @@ app.on('before-quit', (event) => {
   event.preventDefault()
   isQuitFlushInProgress = true
   disposeWorkspaceExplorerWatchers()
+  disposeSourceControlWatchers()
   disposeKanbanBoardWatchers()
   void closeAllTerminalSessions().catch((error) => {
     console.error('Failed to close terminal sessions on quit', error)

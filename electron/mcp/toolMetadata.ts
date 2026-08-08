@@ -1,4 +1,5 @@
 export interface McpToolSourceMetadata {
+  catalogName: string
   kind: 'mcp'
   originalToolName: string
   serverId: string

@@ -41,6 +41,7 @@ export interface McpServerConfig {
   isReadOnly: boolean
   name: string
   source: McpConfigSource
+  toolNamespace: string
   toolConfiguration?: McpToolConfiguration
   type: McpTransportType
   url?: string

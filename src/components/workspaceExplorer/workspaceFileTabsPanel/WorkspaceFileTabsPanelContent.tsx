@@ -3,10 +3,12 @@ import { WorkspaceFileEditor } from '../WorkspaceFileEditor'
 import { WorkspaceDocxPreview } from '../workspaceDocxPreview/WorkspaceDocxPreview'
 import { WorkspaceImagePreview } from '../workspaceImagePreview/WorkspaceImagePreview'
 import { WorkspaceMarkdownPreview } from '../workspaceMarkdownPreview/WorkspaceMarkdownPreview'
+import { WorkspacePlanPreview } from '../workspacePlanPreview/WorkspacePlanPreview'
 import { WorkspacePdfPreview } from '../workspacePdfPreview/WorkspacePdfPreview'
 import { WorkspaceSvgPreview } from '../workspaceSvgPreview/WorkspaceSvgPreview'
 import type { GitFileDiff } from '../../../types/chat'
 import type { WorkspaceFileTab, WorkspaceTab } from '../types'
+import type { PlanReviewComment } from '../../../lib/planContracts'
 import type { TextSelectionRange } from '../workspaceFileEditor/workspaceFileEditorUtils'
 import { isImagePreviewablePath } from '../../../lib/image-preview'
 import { isDocxPreviewablePath } from '../../../lib/docx-preview'
@@ -24,6 +26,8 @@ interface WorkspaceFileTabsPanelContentProps {
   onOpenMarkdownPreview?: () => void
   onOpenSvgPreview?: () => void
   onFileContentChange: (relativePath: string, content: string) => void
+  onImplementPlan: (relativePath: string) => void
+  onRequestPlanChanges: (relativePath: string, comments: PlanReviewComment[]) => void
   onSelectionChange: (selection: TextSelectionRange | null) => void
   wordWrapEnabled: boolean
 }
@@ -54,6 +58,8 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
   onOpenMarkdownPreview,
   onOpenSvgPreview,
   onFileContentChange,
+  onImplementPlan,
+  onRequestPlanChanges,
   onSelectionChange,
   wordWrapEnabled,
 }: WorkspaceFileTabsPanelContentProps) {
@@ -87,6 +93,34 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
         fileName={activeTab.fileName}
         relativePath={activeTab.relativePath}
         isTruncated={sourceTab ? sourceTab.isTruncated : activeTab.isTruncated}
+      />
+    )
+  }
+
+  if (activeTab.kind === 'plan-preview') {
+    if (activeTab.status === 'loading') {
+      return (
+        <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-subtle-foreground">
+          Loading {activeTab.fileName}...
+        </div>
+      )
+    }
+
+    if (activeTab.status === 'error') {
+      return (
+        <div className="h-full border-t border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
+          {getTabErrorMessage(activeTab.errorMessage, 'The plan could not be loaded.')}
+        </div>
+      )
+    }
+
+    return (
+      <WorkspacePlanPreview
+        content={activeTab.content}
+        isTruncated={activeTab.isTruncated}
+        onImplementPlan={onImplementPlan}
+        onRequestChanges={onRequestPlanChanges}
+        relativePath={activeTab.relativePath}
       />
     )
   }

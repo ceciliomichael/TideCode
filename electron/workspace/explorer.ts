@@ -601,10 +601,16 @@ export async function deleteWorkspaceEntry(
 
   const targetStats = await fs.stat(target.absolutePath).catch((error: unknown) => {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(`Entry does not exist: ${target.relativePath}`)
+      return null
     }
     throw error
   })
+  if (!targetStats) {
+    return {
+      relativePath: target.relativePath,
+    }
+  }
+
   if (!targetStats.isDirectory() && !targetStats.isFile()) {
     throw new Error(`Unsupported entry type: ${target.relativePath}`)
   }

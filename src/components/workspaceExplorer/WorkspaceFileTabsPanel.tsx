@@ -1,4 +1,4 @@
-import { ChevronRight, Eye, LoaderCircle, TriangleAlert, X } from 'lucide-react'
+import { ChevronRight, ClipboardCheck, Eye, LoaderCircle, TriangleAlert, X } from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -16,6 +16,7 @@ import { resolveFileIconConfig } from '../../lib/fileIconResolver'
 import type { GitFileDiff } from '../../types/chat'
 import { Tooltip } from '../Tooltip'
 import type { WorkspaceTab } from './types'
+import type { PlanReviewComment } from '../../lib/planContracts'
 import type { TextSelectionRange } from './workspaceFileEditor/workspaceFileEditorUtils'
 import { WorkspaceFileTabsPanelContent } from './workspaceFileTabsPanel/WorkspaceFileTabsPanelContent'
 import { findWorkspaceTabByKey } from './workspaceFileTabsPanel/workspaceFileTabsPanelUtils'
@@ -27,8 +28,10 @@ interface WorkspaceFileTabsPanelProps {
   isOpen: boolean
   onCloseTab: (tabKey: string) => void
   onFileContentChange: (relativePath: string, content: string) => void
+  onImplementPlan: (relativePath: string) => void
   onOpenMarkdownPreview: (relativePath: string) => void
   onOpenSvgPreview: (relativePath: string) => void
+  onRequestPlanChanges: (relativePath: string, comments: PlanReviewComment[]) => void
   onSelectTab: (tabKey: string) => void
   tabs: readonly WorkspaceTab[]
   wordWrapEnabled: boolean
@@ -41,8 +44,10 @@ export function WorkspaceFileTabsPanel({
   isOpen,
   onCloseTab,
   onFileContentChange,
+  onImplementPlan,
   onOpenMarkdownPreview,
   onOpenSvgPreview,
+  onRequestPlanChanges,
   onSelectTab,
   tabs,
   wordWrapEnabled,
@@ -224,7 +229,7 @@ export function WorkspaceFileTabsPanel({
         >
           {tabs.map((tab) => {
             const isActive = tab.tabKey === activeTab.tabKey
-            const isPreviewTab = tab.kind === 'markdown-preview' || tab.kind === 'svg-preview'
+            const isPreviewTab = tab.kind === 'markdown-preview' || tab.kind === 'plan-preview' || tab.kind === 'svg-preview'
             const resolvedIconConfig = isPreviewTab ? null : resolveFileIconConfig({ fileName: tab.relativePath })
 
             let isNewFile = false
@@ -256,7 +261,9 @@ export function WorkspaceFileTabsPanel({
                       : 'border-t-2 border-t-transparent bg-background text-muted-foreground hover:bg-surface-muted hover:text-foreground',
                   ].join(' ')}
                 >
-                  {isPreviewTab ? (
+                  {tab.kind === 'plan-preview' ? (
+                    <ClipboardCheck size={14} className="shrink-0 text-brand" />
+                  ) : isPreviewTab ? (
                     <Eye size={14} className="shrink-0 text-brand" />
                   ) : (
                     (() => {
@@ -298,6 +305,7 @@ export function WorkspaceFileTabsPanel({
       </div>
 
       {activeTab.kind === 'markdown-preview' ||
+      activeTab.kind === 'plan-preview' ||
       activeTab.kind === 'svg-preview' ||
       (activeTab.kind === 'file' &&
         activeTab.isBinary &&
@@ -326,8 +334,10 @@ export function WorkspaceFileTabsPanel({
           initialSelection={activeEditorSelection}
           tabs={tabs}
           onFileContentChange={onFileContentChange}
+          onImplementPlan={onImplementPlan}
           onOpenMarkdownPreview={openMarkdownPreviewForActiveFile}
           onOpenSvgPreview={openSvgPreviewForActiveFile}
+          onRequestPlanChanges={onRequestPlanChanges}
           onSelectionChange={handleEditorSelectionChange}
           wordWrapEnabled={wordWrapEnabled}
         />

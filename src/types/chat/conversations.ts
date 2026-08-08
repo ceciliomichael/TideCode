@@ -1,4 +1,5 @@
 import type { ChatProviderId, ReasoningEffort } from './providers'
+import type { PlanToolResultPresentation } from '../../lib/planContracts'
 
 export type MessageRole = 'user' | 'assistant' | 'tool'
 export type ChatMode = 'agent' | 'plan'
@@ -50,7 +51,10 @@ export interface ChangeDiffToolResultPresentation {
   kind: 'change_diff'
 }
 
-export type ToolInvocationResultPresentation = FileDiffToolResultPresentation | ChangeDiffToolResultPresentation
+export type ToolInvocationResultPresentation =
+  | ChangeDiffToolResultPresentation
+  | FileDiffToolResultPresentation
+  | PlanToolResultPresentation
 
 interface ChatAttachmentBase {
   fileName: string
@@ -93,6 +97,7 @@ export interface ToolInvocationTrace {
 
 export interface Message {
   attachments?: ChatAttachment[]
+  chatMode?: ChatMode
   id: string
   role: MessageRole
   content: string

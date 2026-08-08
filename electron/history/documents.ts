@@ -93,6 +93,18 @@ function isToolInvocationResultPresentation(value: unknown): value is ToolInvoca
     return Array.isArray(presentation.changes) && presentation.changes.every((change) => isChangeDiffItem(change))
   }
 
+  if (presentation.kind === 'plan') {
+    return (
+      typeof presentation.content === 'string' &&
+      typeof presentation.fileName === 'string' &&
+      (presentation.operation === 'created' || presentation.operation === 'updated') &&
+      typeof presentation.planId === 'string' &&
+      typeof presentation.relativePath === 'string' &&
+      typeof presentation.title === 'string' &&
+      typeof presentation.updatedAt === 'number'
+    )
+  }
+
   return false
 }
 
@@ -148,6 +160,7 @@ function isMessage(value: unknown): value is Message {
   }
 
   const message = value as Partial<Message>
+  const hasValidChatMode = message.chatMode === undefined || message.chatMode === 'agent' || message.chatMode === 'plan'
   const hasValidProviderId = message.providerId === undefined || typeof message.providerId === 'string'
   const hasValidReasoningEffort = message.reasoningEffort === undefined || typeof message.reasoningEffort === 'string'
   const hasValidUserMessageKind =
@@ -171,6 +184,7 @@ function isMessage(value: unknown): value is Message {
     (message.role === 'user' || message.role === 'assistant' || message.role === 'tool') &&
     typeof message.content === 'string' &&
     typeof message.timestamp === 'number' &&
+    hasValidChatMode &&
     (message.modelId === undefined || typeof message.modelId === 'string') &&
     hasValidProviderId &&
     (message.reasoningContent === undefined || typeof message.reasoningContent === 'string') &&

@@ -8,6 +8,8 @@ import {
   normalizeGitWorkspacePath,
   storeCachedGitBranchState,
 } from '../lib/gitBranchStateCache'
+import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPathComparison'
+import { useGitSourceControlWatcher } from './useGitSourceControlWatcher'
 
 const EMPTY_BRANCH_STATE: GitBranchState = getEmptyGitBranchState()
 
@@ -23,6 +25,7 @@ interface UseGitBranchStateResult {
 
 export function useGitBranchState(workspacePath: string | null | undefined): UseGitBranchStateResult {
   const normalizedWorkspacePath = normalizeGitWorkspacePath(workspacePath)
+  useGitSourceControlWatcher(normalizedWorkspacePath)
   const [branchState, setBranchState] = useState<GitBranchState>(
     () => getCachedGitBranchState(normalizedWorkspacePath) ?? EMPTY_BRANCH_STATE,
   )
@@ -126,18 +129,23 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
 
 
   useEffect(() => {
-    if (!workspacePath) {
+    if (!normalizedWorkspacePath) {
       return
     }
 
-    const unsubscribe = window.tidecodeWorkspace.onExplorerChange(() => {
+    const comparableWorkspacePath = normalizeWorkspaceRootPathForComparison(normalizedWorkspacePath)
+    const unsubscribe = window.tidecodeGit.onSourceControlChange((event) => {
+      if (normalizeWorkspaceRootPathForComparison(event.workspacePath) !== comparableWorkspacePath) {
+        return
+      }
+
       void refresh({ forceRefresh: true, silent: true })
     })
 
     return () => {
       unsubscribe()
     }
-  }, [refresh, workspacePath])
+  }, [normalizedWorkspacePath, refresh])
 
   useEffect(() => {
     if (!workspacePath) {

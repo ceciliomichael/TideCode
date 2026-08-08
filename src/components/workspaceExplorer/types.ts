@@ -34,4 +34,21 @@ export interface WorkspaceSvgPreviewTab {
   tabKey: string
 }
 
-export type WorkspaceTab = WorkspaceFileTab | WorkspaceMarkdownPreviewTab | WorkspaceSvgPreviewTab
+export interface WorkspacePlanPreviewTab {
+  kind: 'plan-preview'
+  fileName: string
+  relativePath: string
+  tabKey: string
+  content: string
+  planId: string
+  status: 'error' | 'loading' | 'ready'
+  title: string
+  isTruncated: boolean
+  errorMessage?: string
+}
+
+export type WorkspaceTab =
+  | WorkspaceFileTab
+  | WorkspaceMarkdownPreviewTab
+  | WorkspacePlanPreviewTab
+  | WorkspaceSvgPreviewTab

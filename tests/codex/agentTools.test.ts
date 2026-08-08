@@ -21,6 +21,8 @@ test('createAgentTools omits write tools in plan mode', async () => {
     assert.ok('list' in tools)
     assert.ok('read' in tools)
     assert.ok('kanban_board' in tools)
+    assert.ok('plan_create' in tools)
+    assert.ok('plan_edit' in tools)
     assert.ok(!('write' in tools))
     assert.ok(!('edit' in tools))
     assert.ok(!('apply_patch' in tools))

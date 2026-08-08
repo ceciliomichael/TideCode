@@ -63,3 +63,16 @@ const x = 42
   assert.equal(preprocessMarkdown(input), expected)
 })
 
+test('preprocessMarkdown does not turn inline details examples into HTML blocks', () => {
+  const input = '- Pricing FAQ: native `<details>/<summary>` accordion (no JS needed)\n\n## Styling / Design System'
+
+  assert.equal(preprocessMarkdown(input), input)
+})
+
+test('preprocessMarkdown still separates real details markup from surrounding markdown', () => {
+  const input = '<details><summary>FAQ</summary><p>Answer</p></details>'
+  const expected = '<details>\n<summary>FAQ</summary>\n<p>Answer</p>\n</details>'
+
+  assert.equal(preprocessMarkdown(input).trim(), expected)
+})
+

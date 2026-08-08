@@ -8,6 +8,7 @@ import { useChatSessionState } from './useChatSessionState'
 import { useChatStreamingState } from './useChatStreamingState'
 import { useInitializeChatHistory } from './useInitializeChatHistory'
 import type { AppLanguage } from '../lib/appSettings'
+import { getPlanPathsCreatedByRevertedUserMessage } from '../lib/planPresentation'
 import type { ChatMode, ConversationEditSession, ConversationModelPreference, Message, RevertEditSession } from '../types/chat'
 
 const EMPTY_MESSAGES: Message[] = []
@@ -219,6 +220,12 @@ export function useChatMessages(input: UseChatMessagesInput) {
     }
 
     syncedConversationModeIdRef.current = activeConversationId
+    const activeRevertSession = revertEditSessionsRef.current[activeConversationId]
+    if (activeRevertSession?.revertedChatMode) {
+      setDraftChatMode(activeRevertSession.revertedChatMode)
+      return
+    }
+
     const savedPreference = conversationModelPreferences[activeConversationId]
     if (savedPreference?.chatMode) {
       setDraftChatMode(savedPreference.chatMode)
@@ -290,18 +297,37 @@ export function useChatMessages(input: UseChatMessagesInput) {
   }, [])
 
   const beginRevertEditingMessage = useCallback(
-    (conversationId: string, messageId: string, redoCheckpointId: string) => {
+    (
+      conversationId: string,
+      messageId: string,
+      redoCheckpointId: string,
+      revertedPlanPaths: readonly string[] = [],
+      chatModeTransition?: {
+        chatModeBeforeRevert: ChatMode
+        revertedChatMode: ChatMode
+      },
+    ) => {
       clearDraftEditSession(conversationId)
       const currentValue = revertEditSessionsRef.current
       const nextSession: RevertEditSession = {
         messageId,
         redoCheckpointId,
+        ...(chatModeTransition
+          ? {
+              chatModeBeforeRevert: chatModeTransition.chatModeBeforeRevert,
+              revertedChatMode: chatModeTransition.revertedChatMode,
+            }
+          : {}),
+        revertedPlanPaths: Array.from(new Set(revertedPlanPaths)),
       }
       const existingSession = currentValue[conversationId]
       if (
         !existingSession ||
         existingSession.messageId !== messageId ||
-        existingSession.redoCheckpointId !== redoCheckpointId
+        existingSession.redoCheckpointId !== redoCheckpointId ||
+        existingSession.chatModeBeforeRevert !== nextSession.chatModeBeforeRevert ||
+        existingSession.revertedChatMode !== nextSession.revertedChatMode ||
+        JSON.stringify(existingSession.revertedPlanPaths ?? []) !== JSON.stringify(nextSession.revertedPlanPaths)
       ) {
         setRevertEditSessions({
           ...currentValue,
@@ -312,8 +338,18 @@ export function useChatMessages(input: UseChatMessagesInput) {
       markRevertSessionApplied(conversationId, nextSession)
       upsertEditSession(conversationId, messageId)
       startComposerEditingMessage(messageId)
+      if (chatModeTransition) {
+        draftChatModeByConversationRef.current[conversationId] = chatModeTransition.revertedChatMode
+        setDraftChatMode(chatModeTransition.revertedChatMode)
+      }
     },
-    [clearDraftEditSession, markRevertSessionApplied, setRevertEditSessions, startComposerEditingMessage, upsertEditSession],
+    [
+      clearDraftEditSession,
+      markRevertSessionApplied,
+      setRevertEditSessions,
+      startComposerEditingMessage,
+      upsertEditSession,
+    ],
   )
 
   const completeEditingMessage = useCallback(() => {
@@ -326,44 +362,50 @@ export function useChatMessages(input: UseChatMessagesInput) {
   }, [activeConversationId, cancelComposerEditingMessage, clearDraftEditSession, clearEditSession, clearRevertEditSession])
 
   const redoRevertSession = useCallback(
-    async (_conversationId: string, revertSession: RevertEditSession, failureMessage: string) => {
+    async (conversationId: string, revertSession: RevertEditSession, failureMessage: string) => {
       await window.tidecodeWorkspace.restoreCheckpoint(revertSession.redoCheckpointId).catch((caughtError) => {
         console.error(caughtError)
         throw new Error(failureMessage)
       })
+      if (revertSession.chatModeBeforeRevert) {
+        draftChatModeByConversationRef.current[conversationId] = revertSession.chatModeBeforeRevert
+        setDraftChatMode(revertSession.chatModeBeforeRevert)
+      }
     },
     [],
   )
 
-  const cancelEditingMessage = useCallback(async () => {
+  const cancelEditingMessage = useCallback(async (): Promise<boolean> => {
     const activeEditingMessageId = editingMessageId
     cancelComposerEditingMessage()
 
     if (!activeConversationId || !activeEditingMessageId) {
-      return
+      return true
     }
 
     clearDraftEditSession(activeConversationId)
     clearEditSession(activeConversationId)
     const revertSession = revertEditSessionsRef.current[activeConversationId]
     if (!revertSession || revertSession.messageId !== activeEditingMessageId) {
-      return
+      return true
     }
 
     const shouldRedoRevertSession = hasAppliedRevertSession(activeConversationId, revertSession)
     clearRevertEditSession(activeConversationId)
     if (!shouldRedoRevertSession) {
-      return
+      return true
     }
 
     try {
       await redoRevertSession(activeConversationId, revertSession, 'Unable to redo reverted workspace changes.')
+      return true
     } catch (caughtError) {
       setSessionError(
         caughtError instanceof Error && caughtError.message.trim().length > 0
           ? caughtError.message
           : 'Unable to redo reverted workspace changes.',
       )
+      return false
     }
   }, [
     activeConversationId,
@@ -390,6 +432,10 @@ export function useChatMessages(input: UseChatMessagesInput) {
     }
 
     if (editingMessageId === activeEditSession.messageId) {
+      const activeRevertSession = revertEditSessionsRef.current[activeConversationId]
+      if (activeRevertSession?.messageId === activeEditSession.messageId) {
+        markRevertSessionApplied(activeConversationId, activeRevertSession)
+      }
       return
     }
 
@@ -423,12 +469,13 @@ export function useChatMessages(input: UseChatMessagesInput) {
     activeConversationId,
     editSessionsByConversation,
     editingMessageId,
+    markRevertSessionApplied,
     restoreComposerEditingSession,
     setSessionError,
   ])
 
   const startEditingMessage = useCallback(
-    async (messageId: string) => {
+    async (messageId: string): Promise<boolean> => {
       if (activeConversationId) {
         const activeRevertSession = revertEditSessionsRef.current[activeConversationId]
         if (activeRevertSession && hasAppliedRevertSession(activeConversationId, activeRevertSession)) {
@@ -445,7 +492,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
                 ? caughtError.message
                 : 'Unable to redo reverted workspace changes before editing that message.',
             )
-            return
+            return false
           }
 
           clearRevertEditSession(activeConversationId)
@@ -459,6 +506,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
         upsertEditSession(activeConversationId, messageId)
       }
       conversationActions.startEditingMessage(messageId)
+      return true
     },
     [
       activeConversationId,
@@ -665,6 +713,23 @@ export function useChatMessages(input: UseChatMessagesInput) {
     [captureActiveEditDraftSession, conversationActions, deleteAbandonedActiveConversation, persistConversationLaunchPreference],
   )
 
+  const activeRevertedPlanPaths = (() => {
+    if (!activeConversationId || !editingMessageId) {
+      return []
+    }
+
+    const activeRevertSession = revertEditSessionsRef.current[activeConversationId]
+    if (activeRevertSession?.messageId !== editingMessageId) {
+      return []
+    }
+
+    if (activeRevertSession.revertedPlanPaths !== undefined) {
+      return activeRevertSession.revertedPlanPaths
+    }
+
+    return getPlanPathsCreatedByRevertedUserMessage(messages, editingMessageId)
+  })()
+
   return {
     activeConversationId,
     activeConversationRootPath: activeWorkspacePath,
@@ -694,6 +759,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     mainComposerMentionPathMap: composerState.mainComposerMentionPathMap,
     mainComposerValue: composerState.mainComposerValue,
     messages,
+    revertedPlanPaths: activeRevertedPlanPaths,
     selectedChatMode: draftChatMode,
     selectedFolderId: sessionState.selectedFolderId,
     selectedFolderName: sessionState.selectedFolderName,

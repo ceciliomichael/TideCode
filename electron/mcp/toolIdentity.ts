@@ -1,28 +1,24 @@
-import { createHash } from 'node:crypto'
 import type { McpServerConfig, McpTool } from '../../src/types/mcp'
+import {
+  appendMcpHashSuffix,
+  createMcpCatalogToolName,
+  createMcpToolSegment,
+  normalizeMcpIdentitySegment,
+  MCP_SERVER_NAMESPACE_MAX_LENGTH,
+  MCP_TOOL_SEGMENT_MAX_LENGTH,
+} from './mcpNaming'
 
 export interface IdentifiedMcpTool {
   catalogId: string
   tool: McpTool
 }
 
-function normalizeIdentitySegment(value: string, fallback: string) {
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/gu, '_')
-    .replace(/_+/gu, '_')
-    .replace(/^[_-]+|[_-]+$/gu, '')
-  return (normalized || fallback).slice(0, 64)
-}
-
-function createStableSuffix(value: string) {
-  return createHash('sha256').update(value).digest('hex').slice(0, 8)
-}
-
 function createServerSegment(config: McpServerConfig) {
-  const withoutGeneratedPrefix = config.id.replace(/^mcp[-_]+/iu, '')
-  return normalizeIdentitySegment(withoutGeneratedPrefix || config.name, 'server')
+  return normalizeMcpIdentitySegment(
+    config.toolNamespace || config.name,
+    'server',
+    MCP_SERVER_NAMESPACE_MAX_LENGTH,
+  )
 }
 
 /**
@@ -43,8 +39,8 @@ export function identifyMcpTools(config: McpServerConfig, tools: readonly McpToo
   const serverSegment = createServerSegment(config)
   const toolsByBaseId = new Map<string, McpTool[]>()
   for (const tool of tools) {
-    const toolSegment = normalizeIdentitySegment(tool.name, 'tool')
-    const baseId = `mcp_${serverSegment}_${toolSegment}`
+    const toolSegment = createMcpToolSegment(tool.name)
+    const baseId = createMcpCatalogToolName(serverSegment, toolSegment)
     const matches = toolsByBaseId.get(baseId) ?? []
     matches.push(tool)
     toolsByBaseId.set(baseId, matches)
@@ -54,7 +50,13 @@ export function identifyMcpTools(config: McpServerConfig, tools: readonly McpToo
   const assignedIds = new Set<string>()
   for (const [baseId, matches] of toolsByBaseId.entries()) {
     for (const tool of matches) {
-      const catalogId = matches.length === 1 ? baseId : `${baseId}_${createStableSuffix(tool.name)}`
+      const catalogId =
+        matches.length === 1
+          ? baseId
+          : createMcpCatalogToolName(
+              serverSegment,
+              appendMcpHashSuffix(createMcpToolSegment(tool.name), tool.name, MCP_TOOL_SEGMENT_MAX_LENGTH),
+            )
       if (assignedIds.has(catalogId)) {
         throw new Error(`MCP catalog ID collision for "${catalogId}" on server "${config.name}".`)
       }

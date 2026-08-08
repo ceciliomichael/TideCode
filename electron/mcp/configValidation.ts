@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { McpAddServerInput } from '../../src/types/mcp'
 import type { McpTransportType } from '../../src/types/mcp'
+import { isValidMcpServerId } from './mcpNaming'
 
 export const MCP_VALIDATION_ERRORS = {
   MIXED_FIELDS_ERROR:
@@ -74,6 +75,19 @@ function sanitizeStringRecord(value: unknown): Record<string, string> | undefine
   return Object.keys(sanitized).length > 0 ? sanitized : undefined
 }
 
+function sanitizeInternalIdentifier(value: unknown, maxLength: number) {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  const normalized = value.trim()
+  if (normalized.length === 0 || normalized.length > maxLength || !/^[a-zA-Z0-9_-]+$/u.test(normalized)) {
+    return undefined
+  }
+
+  return normalized
+}
+
 export interface RawMcpServerConfig extends Record<string, unknown> {
   args?: string[]
   command?: string
@@ -82,6 +96,8 @@ export interface RawMcpServerConfig extends Record<string, unknown> {
   alwaysAllow?: string[]
   env?: Record<string, string>
   headers?: Record<string, string>
+  tidecodeId?: string
+  tidecodeToolNamespace?: string
   type?: McpTransportType
   url?: string
 }
@@ -127,6 +143,8 @@ export function validateServerConfig(config: unknown, serverName?: string): RawM
     throw new Error(MCP_VALIDATION_ERRORS.MISSING_FIELDS_ERROR)
   }
 
+  const sanitizedTideCodeToolNamespace = sanitizeInternalIdentifier(rawConfig.tidecodeToolNamespace, 64)
+
   const nextConfig: RawMcpServerConfig = {
     ...(isPlainObject(rawConfig.env) ? { env: sanitizeStringRecord(rawConfig.env) } : {}),
     ...(isPlainObject(rawConfig.headers) ? { headers: sanitizeStringRecord(rawConfig.headers) } : {}),
@@ -139,6 +157,10 @@ export function validateServerConfig(config: unknown, serverName?: string): RawM
       ? { command: rawConfig.command.trim() }
       : {}),
     ...(typeof rawConfig.disabled === 'boolean' ? { disabled: rawConfig.disabled } : {}),
+    ...(typeof rawConfig.tidecodeId === 'string' && isValidMcpServerId(rawConfig.tidecodeId.trim())
+      ? { tidecodeId: rawConfig.tidecodeId.trim() }
+      : {}),
+    ...(sanitizedTideCodeToolNamespace ? { tidecodeToolNamespace: sanitizedTideCodeToolNamespace } : {}),
     ...(typeof rawConfig.url === 'string' && rawConfig.url.trim().length > 0 ? { url: rawConfig.url.trim() } : {}),
     ...(typeof rawConfig.type === 'string'
       ? { type: rawConfig.type as McpTransportType }
