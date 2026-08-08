@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { WebContents } from 'electron'
+import { parseStructuredToolResultContent } from '../../src/lib/toolResultContent'
 import {
   processRuntimeStream,
   type RuntimeStreamPart,
@@ -104,4 +105,48 @@ test('an aborted stream ignores late provider events while the tool unwinds', as
   assert.equal(hasEmittedBeforeAbort, true)
   assert.deepEqual(events, [{ delta: 'before cancellation', streamId: 'stream-3', type: 'content_delta' }])
   assert.equal(result.wasAborted, true)
+})
+
+test('an aborted running tool receives a terminated tool result', async () => {
+  const controller = new AbortController()
+  const events: unknown[] = []
+
+  async function* createAbortedToolStream() {
+    yield { id: 'tool-call-1', toolName: 'execute_terminal', type: 'tool-input-start' }
+    yield { delta: '{"command":"npm run lint"}', id: 'tool-call-1', type: 'tool-input-delta' }
+    controller.abort()
+    yield {
+      input: { command: 'npm run lint' },
+      output: { body: 'late output', status: 'success', summary: 'Completed execute_terminal' },
+      toolCallId: 'tool-call-1',
+      toolName: 'execute_terminal',
+      type: 'tool-result',
+    }
+  }
+
+  const result = await processRuntimeStream({
+    abortController: controller,
+    conversationId: null,
+    fullStream: createAbortedToolStream(),
+    queueHistoryWrite: () => undefined,
+    streamId: 'stream-terminated-tool',
+    webContents: createWebContentsStub(events),
+  })
+
+  const terminatedEvent = events.at(-1) as {
+    errorMessage?: string
+    resultContent?: string
+    syntheticMessage?: { role?: string; toolCallId?: string }
+    type?: string
+  }
+  const parsedResult = parseStructuredToolResultContent(terminatedEvent.resultContent ?? '')
+
+  assert.equal(result.wasAborted, true)
+  assert.equal(terminatedEvent.type, 'tool_invocation_failed')
+  assert.equal(terminatedEvent.errorMessage, 'Tool execution terminated')
+  assert.equal(parsedResult.body, 'Tool execution terminated')
+  assert.equal(parsedResult.metadata?.summary, 'Tool execution terminated')
+  assert.equal(parsedResult.metadata?.status, 'error')
+  assert.equal(terminatedEvent.syntheticMessage?.role, 'tool')
+  assert.equal(terminatedEvent.syntheticMessage?.toolCallId, 'tool-call-1')
 })

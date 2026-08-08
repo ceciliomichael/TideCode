@@ -66,14 +66,42 @@ export function appendSessionOutputBuffer(
   }
 }
 
-export function consumePendingAiOutput(activeSession: ActiveTerminalSession) {
+export function consumePendingAiOutput(
+  activeSession: ActiveTerminalSession,
+  pendingOutputLengthToConsume?: number,
+) {
   if (activeSession.pendingAiOutputChunks.length === 0) {
     return "";
   }
 
-  const pendingOutput = activeSession.pendingAiOutputChunks.join("");
-  activeSession.pendingAiOutputChunks = [];
-  return pendingOutput;
+  if (pendingOutputLengthToConsume === undefined) {
+    const pendingOutput = activeSession.pendingAiOutputChunks.join("");
+    activeSession.pendingAiOutputChunks = [];
+    return pendingOutput;
+  }
+
+  if (!Number.isFinite(pendingOutputLengthToConsume) || pendingOutputLengthToConsume <= 0) {
+    return "";
+  }
+
+  let remainingLength = Math.floor(pendingOutputLengthToConsume);
+  let consumedOutput = "";
+
+  while (remainingLength > 0 && activeSession.pendingAiOutputChunks.length > 0) {
+    const firstChunk = activeSession.pendingAiOutputChunks[0] ?? "";
+    if (firstChunk.length <= remainingLength) {
+      consumedOutput += firstChunk;
+      activeSession.pendingAiOutputChunks.shift();
+      remainingLength -= firstChunk.length;
+      continue;
+    }
+
+    consumedOutput += firstChunk.slice(0, remainingLength);
+    activeSession.pendingAiOutputChunks[0] = firstChunk.slice(remainingLength);
+    remainingLength = 0;
+  }
+
+  return consumedOutput;
 }
 
 export function createTerminalSessionSnapshot(

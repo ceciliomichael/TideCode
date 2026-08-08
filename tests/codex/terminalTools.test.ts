@@ -69,6 +69,8 @@ function createMockDependencies(input: {
     sessionId: number;
     shell: string;
   }>;
+  consumeSessionOutput?: TerminalToolDependencies["consumeSessionOutput"];
+  getSessionOutput?: TerminalToolDependencies["getSessionOutput"];
   getPendingOutput: (writtenCommands: WriteTerminalSessionInput[], callCount: number) => string;
   resizeSession?: TerminalToolDependencies["resizeSession"];
   terminateSession?: TerminalToolDependencies["terminateSession"];
@@ -94,12 +96,12 @@ function createMockDependencies(input: {
         workspaceRootPath: sessionInput.workspaceRootPath ?? "/workspace",
       };
     },
-    consumeSessionOutput: () => undefined,
-    getSessionOutput: async (_owner, sessionInput) => {
+    consumeSessionOutput: input.consumeSessionOutput ?? (() => undefined),
+    getSessionOutput: input.getSessionOutput ?? (async (_owner, sessionInput) => {
       readCallCount += 1;
       const pending = input.getPendingOutput(input.writeCalls, readCallCount);
       return createSnapshot(sessionInput, pending);
-    },
+    }),
     resizeSession: input.resizeSession ?? (async () => undefined),
     terminateSession: input.terminateSession ?? (() => undefined),
     writeToSession: async (_owner, writeInput) => {
@@ -165,6 +167,54 @@ test("execute_terminal waits for the marker and returns metadata instead of outp
   assert.equal(readResult.status, "success");
   assert.match(readResult.body ?? "", /1: line 1/u);
   assert.match(readResult.body ?? "", /2: line 2/u);
+});
+
+test("execute_terminal preserves a completion marker that arrives during output rendering", async () => {
+  const writeCalls: WriteTerminalSessionInput[] = [];
+  const consumedLengths: number[] = [];
+  let pendingOutput = "";
+  let readCallCount = 0;
+  let markerAppended = false;
+  let markerLength = 0;
+
+  const tools = createTools(
+    "terminal-output-race",
+    createMockDependencies({
+      consumeSessionOutput: (_owner, input) => {
+        if (!markerAppended) {
+          const marker = readCompletionMarker(writeCalls[0]?.data ?? "");
+          const completionOutput = `${marker}:0\r\n`;
+          pendingOutput += completionOutput;
+          markerLength = completionOutput.length;
+          markerAppended = true;
+        }
+
+        const consumedLength = input.pendingOutputLengthToConsume;
+        consumedLengths.push(consumedLength ?? -1);
+        pendingOutput = consumedLength === undefined
+          ? ""
+          : pendingOutput.slice(Math.min(consumedLength, pendingOutput.length));
+      },
+      getPendingOutput: () => "",
+      getSessionOutput: async (_owner, sessionInput) => {
+        readCallCount += 1;
+        if (readCallCount === 1) {
+          pendingOutput = "output before completion\r\n";
+        }
+        return createSnapshot(sessionInput, pendingOutput);
+      },
+      writeCalls,
+    }),
+  );
+
+  const result = await getTool(tools, "execute_terminal").execute({
+    command: "git commit -m race-test",
+    interaction_mode: "non_interactive",
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(result.semantics?.state, "completed");
+  assert.deepEqual(consumedLengths, ["output before completion\r\n".length, markerLength]);
 });
 
 test("execute_terminal reports command failure without returning the numeric exit code", async () => {

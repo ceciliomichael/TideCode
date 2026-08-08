@@ -48,3 +48,22 @@ test('AI output remains available after the bounded display buffer rolls over', 
   )
   assert.deepEqual(session.pendingAiOutputChunks, [])
 })
+
+test('snapshot consumption leaves output appended after the snapshot queued', () => {
+  const session = createTestSession()
+
+  appendSessionOutputBuffer(session, 'before-marker')
+  const snapshotLength = session.pendingAiOutputChunks.join('').length
+  appendSessionOutputBuffer(session, '__EDONE_marker__:0\r\n')
+
+  assert.equal(
+    consumePendingAiOutput(session, snapshotLength),
+    'before-marker',
+  )
+  assert.deepEqual(session.pendingAiOutputChunks, ['__EDONE_marker__:0\r\n'])
+  assert.equal(
+    consumePendingAiOutput(session, '__EDONE_marker__:0\r\n'.length),
+    '__EDONE_marker__:0\r\n',
+  )
+  assert.deepEqual(session.pendingAiOutputChunks, [])
+})

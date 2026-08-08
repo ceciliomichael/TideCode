@@ -159,6 +159,7 @@ export interface WriteTerminalSessionInput {
 }
 
 export interface TerminalSessionOutputInput {
+  pendingOutputLengthToConsume?: number
   pollingMs?: number
   sessionId: number
   workspaceRootPath?: string | null

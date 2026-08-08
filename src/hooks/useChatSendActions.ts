@@ -740,18 +740,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     const abortResponseOperation = (async () => {
       const conversationId = readChatSelectionFromRefs(input).activeConversationId
       const pendingStopTurn = resolvePendingStopTurn(conversationId)
-      if (pendingStopTurn) {
-        restorePendingUserMessageToMainComposer(pendingStopTurn.conversationId, pendingStopTurn.message, {
-          restoreComposer: false,
-        })
-      }
-
       let rollbackError: unknown = null
-      const pendingRollbackPromise = pendingStopTurn
-        ? rollbackPendingUserMessage(pendingStopTurn).catch((caughtError) => {
-            rollbackError = caughtError
-          })
-        : null
       let stopError: unknown = null
       try {
         await abortActiveStreamIfNeeded({ requestAbortBeforeStreamStart: true })
@@ -766,8 +755,21 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         }
       }
 
-      if (pendingRollbackPromise) {
-        await pendingRollbackPromise
+      if (
+        pendingStopTurn &&
+        isActiveUnrespondedUserMessage(
+          getConversationState(pendingStopTurn.conversationId),
+          pendingStopTurn.message.id,
+        )
+      ) {
+        restorePendingUserMessageToMainComposer(pendingStopTurn.conversationId, pendingStopTurn.message, {
+          restoreComposer: false,
+        })
+        try {
+          await rollbackPendingUserMessage(pendingStopTurn)
+        } catch (caughtError) {
+          rollbackError = caughtError
+        }
       }
       if (rollbackError) {
         stopError = stopError ?? rollbackError
@@ -791,6 +793,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     }
   }, [
     abortActiveStreamIfNeeded,
+    getConversationState,
     input,
     resolvePendingStopTurn,
     restorePendingUserMessageToMainComposer,

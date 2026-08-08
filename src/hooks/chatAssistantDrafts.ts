@@ -6,6 +6,7 @@ import {
   type ChatRuntimeSelection,
 } from './chatMessageRuntime'
 import { normalizeAssistantMessageContent, splitThinkingContent } from '../lib/chatMessageContent'
+import { createTerminatedToolResultContent } from '../lib/toolResultContent'
 import type { AssistantWaitingIndicatorVariant, Message, ToolInvocationTrace } from '../types/chat'
 import type { ConversationRuntimeStatePatch } from './chatMessageSendTypes'
 
@@ -74,18 +75,74 @@ function buildToolInvocationState(
   } satisfies ToolInvocationTrace
 }
 
-function finalizeIncompleteToolInvocations(
-  message: Message,
-) {
+function parseToolArguments(argumentsText: string) {
+  try {
+    const parsedValue = JSON.parse(argumentsText) as unknown
+    return typeof parsedValue === 'object' && parsedValue !== null && !Array.isArray(parsedValue)
+      ? parsedValue
+      : null
+  } catch {
+    return null
+  }
+}
+
+function createTerminatedToolMessage(invocation: ToolInvocationTrace, completedAt: number): Message {
+  return {
+    content: createTerminatedToolResultContent({
+      argumentsValue: parseToolArguments(invocation.argumentsText),
+      toolCallId: invocation.id,
+      toolName: invocation.toolName,
+    }),
+    id: uuidv4(),
+    role: 'tool',
+    timestamp: completedAt,
+    toolCallId: invocation.id,
+  }
+}
+
+function finalizeIncompleteToolInvocations(message: Message, terminateRunningTools: boolean) {
   if (message.role !== 'assistant' || !message.toolInvocations?.some((invocation) => invocation.state === 'running')) {
-    return message
+    return { message, terminatedToolMessages: [] as Message[] }
   }
 
-  const finalizedToolInvocations = message.toolInvocations.filter((invocation) => invocation.state !== 'running')
+  if (!terminateRunningTools) {
+    return {
+      message: {
+        ...message,
+        toolInvocations: message.toolInvocations.filter((invocation) => invocation.state !== 'running'),
+      },
+      terminatedToolMessages: [] as Message[],
+    }
+  }
+
+  const completedAt = Date.now()
+  const terminatedToolMessages = message.toolInvocations
+    .filter((invocation) => invocation.state === 'running')
+    .map((invocation) => createTerminatedToolMessage(invocation, completedAt))
+  const finalizedToolInvocations = message.toolInvocations.map((invocation) => {
+    if (invocation.state !== 'running') {
+      return invocation
+    }
+
+    return {
+      ...invocation,
+      completedAt,
+      decisionRequest: undefined,
+      resultContent: createTerminatedToolResultContent({
+        argumentsValue: parseToolArguments(invocation.argumentsText),
+        toolCallId: invocation.id,
+        toolName: invocation.toolName,
+      }),
+      state: 'failed' as const,
+    }
+  })
 
   return {
-    ...message,
-    toolInvocations: finalizedToolInvocations.length > 0 ? finalizedToolInvocations : undefined,
+    message: {
+      ...message,
+      toolInvocations: finalizedToolInvocations.length > 0 ? finalizedToolInvocations : undefined,
+    },
+    terminatedToolMessages,
   }
 }
 
@@ -150,6 +207,18 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
   ) => {
     conversationMessagesSnapshot = [...conversationMessagesSnapshot, message]
     notifyConversationMessagesUpdated(options, hint)
+  }
+
+  const appendSyntheticToolMessage = (syntheticMessage: Message, includeInMessageOrder = true) => {
+    input.appendLocalMessage(input.conversationId, syntheticMessage)
+    insertedMessageIds.push(syntheticMessage.id)
+    if (includeInMessageOrder) {
+      streamedMessageOrder.push({
+        kind: 'message',
+        message: syntheticMessage,
+      })
+    }
+    appendSnapshotMessage(syntheticMessage, { immediate: true })
   }
 
   const updateSnapshotMessage = (
@@ -471,13 +540,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
     },
     handleCompactionCommitted,
     handleSyntheticToolMessage(syntheticMessage: Message) {
-      input.appendLocalMessage(input.conversationId, syntheticMessage)
-      insertedMessageIds.push(syntheticMessage.id)
-      streamedMessageOrder.push({
-        kind: 'message',
-        message: syntheticMessage,
-      })
-      appendSnapshotMessage(syntheticMessage, { immediate: true })
+      appendSyntheticToolMessage(syntheticMessage)
     },
     handleStreamStarted(streamId: string) {
       input.updateConversationRuntimeState(input.conversationId, {
@@ -600,8 +663,14 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
           return []
         }
 
+        const finalizedDraft = finalizeIncompleteToolInvocations(draftAssistantMessage, wasAborted)
+        for (const terminatedToolMessage of finalizedDraft.terminatedToolMessages) {
+          appendSyntheticToolMessage(terminatedToolMessage, false)
+        }
+
         return [
-          normalizeAssistantMessage(finalizeIncompleteToolInvocations(draftAssistantMessage)),
+          normalizeAssistantMessage(finalizedDraft.message),
+          ...finalizedDraft.terminatedToolMessages,
         ]
       })
 

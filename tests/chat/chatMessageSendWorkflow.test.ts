@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { persistAndStreamMessage } from '../../src/hooks/chatMessageSendWorkflow'
+import { createTerminatedToolResultContent } from '../../src/lib/toolResultContent'
 import type { ChatRuntimeSelection } from '../../src/hooks/chatMessageRuntime'
 import type { PersistAndStreamMessageInput } from '../../src/hooks/chatMessageSendTypes'
 import type { ConversationRecord, Message } from '../../src/types/chat'
@@ -88,6 +89,7 @@ interface WorkflowHarnessOptions {
   consumePendingAbortBeforeStreamStart?: boolean
   originalText?: string
   streamContent?: string | null
+  streamToolInvocation?: boolean
   streamOutcome?: 'completed' | 'aborted' | 'error'
 }
 
@@ -254,6 +256,39 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
           if (options.streamContent) {
             streamListener?.({ delta: options.streamContent, streamId, type: 'content_delta' })
           }
+          if (options.streamToolInvocation) {
+            const argumentsText = '{"command":"npm run lint"}'
+            const resultContent = createTerminatedToolResultContent({
+              argumentsValue: { command: 'npm run lint' },
+              toolCallId: 'tool-call-1',
+              toolName: 'execute_terminal',
+            })
+            streamListener?.({
+              argumentsText,
+              invocationId: 'tool-call-1',
+              startedAt: 1,
+              streamId,
+              toolName: 'execute_terminal',
+              type: 'tool_invocation_started',
+            })
+            streamListener?.({
+              argumentsText,
+              completedAt: 2,
+              errorMessage: 'Tool execution terminated',
+              invocationId: 'tool-call-1',
+              resultContent,
+              streamId,
+              syntheticMessage: {
+                content: resultContent,
+                id: 'tool-result-1',
+                role: 'tool',
+                timestamp: 2,
+                toolCallId: 'tool-call-1',
+              },
+              toolName: 'execute_terminal',
+              type: 'tool_invocation_failed',
+            })
+          }
           streamListener?.({ streamId, type: options.streamOutcome ?? 'completed' })
         })
         return { streamId }
@@ -327,6 +362,26 @@ test('a normal completed stream persists the user message and the assistant resp
     assert.equal(storedMessages[0]?.role, 'user')
     assert.equal(storedMessages[1]?.role, 'assistant')
     assert.equal(storedMessages[1]?.content, 'Here is the updated README')
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
+test('an aborted tool remains in persisted history with a terminated result', async () => {
+  const harness = createWorkflowHarness({
+    streamOutcome: 'aborted',
+    streamToolInvocation: true,
+  })
+
+  try {
+    const accepted = await persistAndStreamMessage(harness.input)
+
+    assert.equal(accepted, true)
+    const storedMessages = harness.history.getStoredMessages(harness.conversation.id)
+    const storedToolMessage = storedMessages.find((message) => message.role === 'tool')
+    const storedAssistantMessage = storedMessages.find((message) => message.role === 'assistant')
+    assert.ok(storedAssistantMessage?.toolInvocations?.some((invocation) => invocation.state === 'failed'))
+    assert.equal(storedToolMessage?.content.includes('Tool execution terminated'), true)
   } finally {
     harness.restoreWindow()
   }

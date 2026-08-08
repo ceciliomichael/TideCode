@@ -20,6 +20,29 @@ export interface ParsedStructuredToolResultContent {
   metadata: StructuredToolResultMetadata | null
 }
 
+export const TERMINATED_TOOL_EXECUTION_MESSAGE = 'Tool execution terminated'
+
+export function createTerminatedToolResultContent(input: {
+  argumentsValue: unknown
+  toolCallId: string
+  toolName: string
+}) {
+  return formatStructuredToolResultContent(
+    {
+      arguments:
+        typeof input.argumentsValue === 'object' && input.argumentsValue !== null && !Array.isArray(input.argumentsValue)
+          ? (input.argumentsValue as Record<string, unknown>)
+          : undefined,
+      schema: 'tidecode.tool_result/v1',
+      status: 'error',
+      summary: TERMINATED_TOOL_EXECUTION_MESSAGE,
+      toolCallId: input.toolCallId,
+      toolName: input.toolName,
+    },
+    TERMINATED_TOOL_EXECUTION_MESSAGE,
+  )
+}
+
 interface StructuredToolResultEnvelope {
   body?: string
   metadata: StructuredToolResultMetadata
