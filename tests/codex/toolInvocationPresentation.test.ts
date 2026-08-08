@@ -466,8 +466,58 @@ test('terminal tool header labels keep internal session ids out of the user-faci
   )
   assert.equal(
     getToolInvocationHeaderLabel(sessionInvocation, undefined, WORKSPACE_ROOT_PATH),
-    'Polling',
+    'Reading terminal',
   )
+})
+
+test('terminal execution headers move from executing to waiting and then ran', () => {
+  const runningInvocation: ToolInvocationTrace = {
+    argumentsText: JSON.stringify({ command: 'npm run lint' }),
+    id: 'tool-terminal-execution-phase',
+    startedAt: 1_000,
+    state: 'running',
+    toolName: 'execute_terminal',
+  }
+
+  assert.equal(
+    getToolInvocationHeaderLabel(runningInvocation, undefined, WORKSPACE_ROOT_PATH, 1_999),
+    'Executing npm run lint',
+  )
+  assert.equal(
+    getToolInvocationHeaderLabel(runningInvocation, undefined, WORKSPACE_ROOT_PATH, 2_000),
+    'Waiting for npm run lint',
+  )
+  assert.equal(
+    getToolInvocationHeaderLabel(
+      { ...runningInvocation, state: 'completed' },
+      undefined,
+      WORKSPACE_ROOT_PATH,
+      2_000,
+    ),
+    'Ran npm run lint',
+  )
+})
+
+test('terminal interaction and read headers use the paired action labels', () => {
+  const interactionInvocation: ToolInvocationTrace = {
+    argumentsText: JSON.stringify({ session_id: 7 }),
+    id: 'tool-terminal-interaction-labels',
+    startedAt: 0,
+    state: 'running',
+    toolName: 'interact_terminal',
+  }
+  const readInvocation: ToolInvocationTrace = {
+    argumentsText: JSON.stringify({ session_id: 7 }),
+    id: 'tool-terminal-read-labels',
+    startedAt: 0,
+    state: 'running',
+    toolName: 'read_terminal',
+  }
+
+  assert.equal(getToolInvocationHeaderLabel(interactionInvocation), 'Interacting with terminal')
+  assert.equal(getToolInvocationHeaderLabel({ ...interactionInvocation, state: 'completed' }), 'Interacted with terminal')
+  assert.equal(getToolInvocationHeaderLabel(readInvocation), 'Reading terminal')
+  assert.equal(getToolInvocationHeaderLabel({ ...readInvocation, state: 'completed' }), 'Read terminal')
 })
 
 test('terminal tool header labels preserve the full queued command text for UI truncation', () => {

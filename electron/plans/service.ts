@@ -16,6 +16,7 @@ import {
   normalizePlanRelativePath,
   PLAN_DIRECTORY,
   PLAN_FILE_NAME_PATTERN,
+  setPlanTitle,
   setPlanStatus,
   type PlanStatus,
   type PlanToolOperation,
@@ -160,6 +161,7 @@ export async function editPlan(input: {
   beforeMutation?: (absolutePath: string) => Promise<void>
   content: string
   relativePath: string
+  title?: string
   workspaceRootPath: string
 }): Promise<StoredPlanArtifact> {
   const workspaceRootPath = normalizeWorkspacePath(input.workspaceRootPath)
@@ -173,7 +175,11 @@ export async function editPlan(input: {
       throw error
     })
     const normalizedPreviousContent = normalizePlanContent(previousContent)
-    const content = validatePlanContent(input.content, undefined, getPlanStatus(normalizedPreviousContent))
+    const revisedContent =
+      typeof input.title === 'string' && input.title.trim().length > 0
+        ? setPlanTitle(input.content, input.title)
+        : input.content
+    const content = validatePlanContent(revisedContent, undefined, getPlanStatus(normalizedPreviousContent))
     if (normalizedPreviousContent === content) {
       throw new Error(`Plan did not change: ${target.relativePath}`)
     }

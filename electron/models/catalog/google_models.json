@@ -11,7 +11,8 @@
       "medium",
       "high"
     ],
-    "defaultReasoningEffort": "medium"
+    "defaultReasoningEffort": "medium",
+    "maxTokens": 65536
   },
   {
     "apiModelId": "gemini-3.1-pro-preview",
@@ -24,7 +25,8 @@
       "medium",
       "high"
     ],
-    "defaultReasoningEffort": "high"
+    "defaultReasoningEffort": "high",
+    "maxTokens": 65536
   },
   {
     "apiModelId": "gemini-3.5-flash-lite",
@@ -38,6 +40,7 @@
       "medium",
       "high"
     ],
-    "defaultReasoningEffort": "minimal"
+    "defaultReasoningEffort": "minimal",
+    "maxTokens": 65536
   }
 ]

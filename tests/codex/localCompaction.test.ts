@@ -197,7 +197,6 @@ test('automatic compaction reports its start only after the threshold and safe b
     systemPromptTokens: 100,
     toolSchemaTokens: 100,
     contextWindowTokens: 16_000,
-    reserveTokens: 4_000,
     triggerRatio: 0.8,
   })
 
@@ -234,7 +233,6 @@ test('automatic budget checks compact a completed tool step even when the target
     systemPromptTokens: 100,
     toolSchemaTokens: 100,
     contextWindowTokens: 16_000,
-    reserveTokens: 4_000,
     triggerRatio: 0.8,
   })
 

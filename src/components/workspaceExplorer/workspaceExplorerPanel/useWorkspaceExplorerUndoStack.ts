@@ -135,7 +135,7 @@ export function useWorkspaceExplorerUndoStack({
               relativePath: entry.relativePath,
               workspaceRootPath,
             })
-            if (!result.isBinary) {
+            if (result.status === 'ready' && !result.isBinary) {
               const contentBytes = new TextEncoder().encode(result.content).byteLength
               if (
                 budget.fileCount + 1 > MAX_DELETE_UNDO_DIRECTORY_FILES ||
@@ -173,7 +173,7 @@ export function useWorkspaceExplorerUndoStack({
               relativePath: entry.relativePath,
               workspaceRootPath,
             })
-            if (!result.isBinary) {
+            if (result.status === 'ready' && !result.isBinary) {
               subEntries.push({ type: 'delete-file', relativePath: entry.relativePath, content: result.content })
             }
             continue

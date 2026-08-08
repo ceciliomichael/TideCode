@@ -1,6 +1,10 @@
 import { ChevronDown, ChevronUp, Loader2, Save, X } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
+import {
+  getDefaultCustomModelMaxOutputTokens,
+  isValidMaxOutputTokens,
+} from '../../../lib/modelOutputTokens'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { DropdownField } from '../../ui/DropdownField'
 import { PRIMARY_ACTION_BUTTON_CLASS_NAME } from '../shared/actionButtonStyles'
@@ -59,7 +63,9 @@ export function UserModelDialog({
   const [providerId, setProviderId] = useState<CustomModelProviderId>(initialProvider)
   const [apiModelId, setApiModelId] = useState(model?.apiModelId ?? '')
   const [label, setLabel] = useState(model?.label ?? '')
-  const [maxTokens, setMaxTokens] = useState<string>(model?.maxTokens?.toString() ?? '')
+  const [maxTokens, setMaxTokens] = useState<string>(
+    model?.providerId === 'mistral' ? '' : model?.maxTokens?.toString() ?? '',
+  )
   
   const [kvSettings, setKvSettings] = useState<{ id: number; key: string; value: string }[]>(() => {
     if (!model?.extraBody || Object.keys(model.extraBody).length === 0) {
@@ -101,7 +107,24 @@ export function UserModelDialog({
   const [reasoningKind, setReasoningKind] = useState<UserModelReasoningKind>(initialKind)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const firstInputRef = useRef<HTMLInputElement | null>(null)
+  const previousProviderIdRef = useRef<CustomModelProviderId>(initialProvider)
+  const defaultMaxOutputTokens = getDefaultCustomModelMaxOutputTokens(providerId)
+  const maxTokensPlaceholder = defaultMaxOutputTokens === undefined
+    ? 'Provider default'
+    : `Default: ${defaultMaxOutputTokens.toLocaleString()}`
 
+  useEffect(() => {
+    const previousProviderId = previousProviderIdRef.current
+    if (previousProviderId === providerId) return
+
+    if (providerId === 'mistral') {
+      setMaxTokens('')
+    } else {
+      const previousDefault = getDefaultCustomModelMaxOutputTokens(previousProviderId)?.toString() ?? ''
+      setMaxTokens((currentValue) => currentValue.trim() === previousDefault ? '' : currentValue)
+    }
+    previousProviderIdRef.current = providerId
+  }, [providerId])
 
   // Ensure reasoningKind is valid when provider switches
   useEffect(() => {
@@ -132,6 +155,16 @@ export function UserModelDialog({
     const normalizedModelId = apiModelId.trim()
     if (!normalizedModelId) {
       setErrorMessage('Model ID is required.')
+      return
+    }
+    const normalizedMaxTokens = maxTokens.trim()
+    const parsedMaxTokens = providerId === 'mistral'
+      ? undefined
+      : normalizedMaxTokens.length > 0
+        ? Number(normalizedMaxTokens)
+        : getDefaultCustomModelMaxOutputTokens(providerId)
+    if (parsedMaxTokens !== undefined && !isValidMaxOutputTokens(parsedMaxTokens)) {
+      setErrorMessage('Max output tokens must be a positive whole number.')
       return
     }
     try {
@@ -193,7 +226,7 @@ export function UserModelDialog({
         label: label.trim() || normalizedModelId,
         ...(Object.keys(extraBody).length > 0 ? { extraBody } : {}),
         ...(model ? { modelId: model.id } : {}),
-        ...(maxTokens.trim() ? { maxTokens: parseInt(maxTokens, 10) } : {}),
+        ...(parsedMaxTokens !== undefined ? { maxTokens: parsedMaxTokens } : {}),
         providerId,
         ...reasoning,
       })
@@ -275,19 +308,22 @@ export function UserModelDialog({
                   className="h-11 w-full rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
                 />
               </div>
-              <div className="space-y-2">
-                <label htmlFor="user-model-maxtokens" className="text-sm font-medium text-foreground">Max Output Tokens</label>
-                <input
-                  id="user-model-maxtokens"
-                  type="number"
-                  min="0"
-                  value={maxTokens}
-                  onChange={(event) => setMaxTokens(event.target.value)}
-                  placeholder="e.g. 8192 (leave empty for default)"
-                  disabled={isSaving}
-                  className="h-11 w-full rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
-              </div>
+              {providerId !== 'mistral' ? (
+                <div className="space-y-2">
+                  <label htmlFor="user-model-maxtokens" className="text-sm font-medium text-foreground">Max Output Tokens</label>
+                  <input
+                    id="user-model-maxtokens"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={maxTokens}
+                    onChange={(event) => setMaxTokens(event.target.value)}
+                    placeholder={maxTokensPlaceholder}
+                    disabled={isSaving}
+                    className="h-11 w-full rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+              ) : null}
             </div>
 
             {providerId.startsWith('custom:') ? (

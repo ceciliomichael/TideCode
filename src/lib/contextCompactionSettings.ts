@@ -1,23 +1,17 @@
 export interface ContextCompactionSettings {
   contextWindowTokens: number
   triggerPercent: number
-  reserveTokens: number
 }
 
 export const DEFAULT_CONTEXT_COMPACTION_SETTINGS: ContextCompactionSettings = {
   contextWindowTokens: 200_000,
   triggerPercent: 78,
-  reserveTokens: 24_000,
 }
 
 export const CONTEXT_COMPACTION_LIMITS = {
   contextWindowTokens: {
     maximum: 2_000_000,
     minimum: 16_000,
-  },
-  reserveTokens: {
-    maximum: 100_000,
-    minimum: 4_000,
   },
   triggerPercent: {
     maximum: 95,
@@ -48,17 +42,9 @@ export function normalizeContextCompactionSettings(
     CONTEXT_COMPACTION_LIMITS.triggerPercent.maximum,
     DEFAULT_CONTEXT_COMPACTION_SETTINGS.triggerPercent,
   )
-  const reserveTokens = clampInteger(
-    input?.reserveTokens,
-    CONTEXT_COMPACTION_LIMITS.reserveTokens.minimum,
-    Math.min(CONTEXT_COMPACTION_LIMITS.reserveTokens.maximum, Math.floor(contextWindowTokens / 2)),
-    DEFAULT_CONTEXT_COMPACTION_SETTINGS.reserveTokens,
-  )
-
   return {
     contextWindowTokens,
     triggerPercent,
-    reserveTokens,
   }
 }
 

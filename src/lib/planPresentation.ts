@@ -3,6 +3,14 @@ import type { PlanToolResultPresentation } from './planContracts'
 
 const PLAN_TOOL_NAMES = new Set(['plan_create', 'plan_edit'])
 
+export function shouldAutoOpenPlanPreview(
+  previousPlanKey: string | null,
+  nextPlanKey: string | null,
+  isRevertingPlan: boolean,
+) {
+  return nextPlanKey !== null && !isRevertingPlan && previousPlanKey !== nextPlanKey
+}
+
 export function hasPlanToolInvocation(messages: readonly Message[]) {
   return messages.some((message) =>
     message.toolInvocations?.some((invocation) => PLAN_TOOL_NAMES.has(invocation.toolName)),

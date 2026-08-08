@@ -28,6 +28,7 @@
   --color-brand-action-hover: #284f4a;
   --color-brand-soft: #d9e9e6;
   --color-brand-soft-foreground: #315f59;
+  --color-brand-soft-faint: color-mix(in srgb, var(--color-brand-soft) 55%, var(--color-surface));
   --color-brand-border: #789a93;
   --color-accent: var(--color-brand-soft);
   --color-accent-hover: #cfe2de;

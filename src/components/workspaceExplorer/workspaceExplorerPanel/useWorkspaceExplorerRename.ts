@@ -108,6 +108,7 @@ export function useWorkspaceExplorerRename({
     }
     if (/[/\\]/u.test(nextName)) {
       setErrorMessage('Name cannot include path separators.')
+      window.requestAnimationFrame(() => renameInputRef.current?.focus())
       return
     }
 

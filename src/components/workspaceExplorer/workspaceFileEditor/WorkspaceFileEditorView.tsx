@@ -220,7 +220,7 @@ export const WorkspaceFileEditorView = memo(function WorkspaceFileEditorView({
   const { actions, layout, refs, search } = editorState
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 bg-surface">
+    <div data-workspace-code-editor className="flex h-full min-h-0 w-full min-w-0 bg-surface">
       <div className="flex min-h-0 flex-1 min-w-0">
         <div
           ref={refs.lineNumbersRef}

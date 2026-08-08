@@ -9,6 +9,7 @@ import {
   type Dispatch,
   type MouseEvent as ReactMouseEvent,
   type MutableRefObject,
+  type RefObject,
   type SetStateAction,
 } from 'react'
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
@@ -25,6 +26,7 @@ interface UseWorkspaceExplorerContextMenuOptions {
   selectionAnchorEntryPathRef: MutableRefObject<string | null>
   setSelectedEntryPaths: Dispatch<SetStateAction<Set<string>>>
   setSelectionDirectoryPath: Dispatch<SetStateAction<string>>
+  treeContainerRef: RefObject<HTMLDivElement>
 }
 
 export function useWorkspaceExplorerContextMenu({
@@ -33,14 +35,20 @@ export function useWorkspaceExplorerContextMenu({
   selectionAnchorEntryPathRef,
   setSelectedEntryPaths,
   setSelectionDirectoryPath,
+  treeContainerRef,
 }: UseWorkspaceExplorerContextMenuOptions) {
   const [contextMenuState, setContextMenuState] = useState<WorkspaceExplorerContextMenuState | null>(null)
   const [contextMenuDimensions, setContextMenuDimensions] = useState<WorkspaceExplorerContextMenuDimensions | null>(null)
   const contextMenuRef = useRef<HTMLDivElement | null>(null)
+  const wasContextMenuOpenRef = useRef(false)
 
   const closeContextMenu = useCallback(() => {
+    if (wasContextMenuOpenRef.current) {
+      wasContextMenuOpenRef.current = false
+      treeContainerRef.current?.focus({ preventScroll: true })
+    }
     setContextMenuState(null)
-  }, [])
+  }, [treeContainerRef])
 
   const contextMenuStyle = useMemo(() => {
     if (typeof window === 'undefined') {
@@ -137,6 +145,7 @@ export function useWorkspaceExplorerContextMenu({
 
       event.preventDefault()
       event.stopPropagation()
+      wasContextMenuOpenRef.current = true
       if (targetEntry) {
         const nextSelectionDirectoryPath = getSelectionDirectoryPath(targetEntry)
         if (!selectedEntryPaths.has(targetEntry.relativePath)) {

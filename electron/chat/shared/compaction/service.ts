@@ -86,7 +86,6 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   const budget = calculateModelMessagesBudget({
     contextWindowTokens: input.contextWindowTokens,
     messages: input.messages,
-    reserveTokens: input.reserveTokens,
     systemPromptTokens: input.systemPromptTokens,
     toolSchemaTokens: input.toolSchemaTokens,
     triggerRatio: input.triggerRatio,
@@ -194,7 +193,6 @@ export async function compactModelMessages(input: CompactModelMessagesInput) {
   const budget = calculateModelMessagesBudget({
     contextWindowTokens: input.contextWindowTokens,
     messages: input.messages,
-    reserveTokens: input.reserveTokens,
     systemPromptTokens: input.systemPromptTokens,
     toolSchemaTokens: input.toolSchemaTokens,
     triggerRatio: input.triggerRatio,

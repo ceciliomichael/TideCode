@@ -59,7 +59,7 @@ function createMutationInvocation(
   }
 }
 
-test('buildToolInvocationGroupSummary reports list, search, command, and file counts', () => {
+test('buildToolInvocationGroupSummary reports list, search, terminal tool, and file counts', () => {
   const summary = buildToolInvocationGroupSummary([
     createInvocation('list'),
     createInvocation('glob'),
@@ -67,7 +67,7 @@ test('buildToolInvocationGroupSummary reports list, search, command, and file co
     createInvocation('read'),
   ])
 
-  assert.equal(summary, 'Explored 1 list, ran 1 search, ran 1 command, explored 1 file')
+  assert.equal(summary, 'Explored 1 list, ran 1 search, ran 1 terminal tool, explored 1 file')
 })
 
 test('buildToolInvocationGroupSummary pluralizes grouped categories', () => {
@@ -79,7 +79,7 @@ test('buildToolInvocationGroupSummary pluralizes grouped categories', () => {
     createInvocation('read'),
   ])
 
-  assert.equal(summary, 'Ran 2 searches, ran 1 command, explored 2 files')
+  assert.equal(summary, 'Ran 2 searches, ran 1 terminal tool, explored 2 files')
 })
 
 test('buildToolInvocationGroupSummary gives plan tools a readable label', () => {
@@ -112,7 +112,7 @@ test('buildToolInvocationGroupSummary includes kanban tools alongside other work
     createInvocation('create_card'),
   ])
 
-  assert.equal(summary, 'Ran 1 command, ran 1 kanban tool')
+  assert.equal(summary, 'Ran 1 terminal tool, ran 1 kanban tool')
 })
 
 test('buildToolInvocationGroupSummary keeps kanban after file exploration in mixed summaries', () => {
@@ -133,19 +133,19 @@ test('buildToolInvocationGroupSummary uses Ran for search-only summaries', () =>
   assert.equal(summary, 'Ran 2 searches')
 })
 
-test('buildToolInvocationGroupSummary aggregates execute_terminal and get_terminal_output as commands', () => {
+test('buildToolInvocationGroupSummary aggregates execute_terminal and get_terminal_output as terminal tools', () => {
   const summary = buildToolInvocationGroupSummary([
     createInvocation('execute_terminal'),
     createInvocation('get_terminal_output'),
   ])
 
-  assert.equal(summary, 'Ran 2 commands')
+  assert.equal(summary, 'Ran 2 terminal tools')
 })
 
-test('buildToolInvocationGroupSummary uses a plain command label when commands are the only work', () => {
+test('buildToolInvocationGroupSummary uses a terminal tool label when terminal tools are the only work', () => {
   const summary = buildToolInvocationGroupSummary([createInvocation('execute_terminal')])
 
-  assert.equal(summary, 'Ran 1 command')
+  assert.equal(summary, 'Ran 1 terminal tool')
 })
 
 test('buildToolInvocationGroupSummary switches to exploring while a child invocation is active', () => {
@@ -176,7 +176,7 @@ test('buildToolInvocationGroupSummary returns only the exploring label for activ
 test('buildToolInvocationGroupSummary allows the explored label to be overridden', () => {
   const summary = buildToolInvocationGroupSummary([createInvocation('execute_terminal')], 'Explored')
 
-  assert.equal(summary, 'Ran 1 command')
+  assert.equal(summary, 'Ran 1 terminal tool')
 })
 
 test('buildToolInvocationGroupSummary includes uncategorized tools by name', () => {
@@ -207,6 +207,6 @@ test('buildToolInvocationGroupSummary splits mixed file mutations and exploratio
 
   assert.equal(
     summary,
-    'Created 2 files, edited 2 files, explored 1 file, ran 1 search, ran 3 commands',
+    'Created 2 files, edited 2 files, explored 1 file, ran 1 search, ran 3 terminal tools',
   )
 })

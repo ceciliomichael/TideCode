@@ -6,6 +6,7 @@ export interface ProviderModelDefinition {
   enabledByDefault?: boolean
   id: string
   label?: string
+  maxTokens?: number
   reasoningCapable?: boolean
   reasoningBodies?: ReasoningRequestBodies
   reasoningEfforts?: readonly ReasoningEffort[]

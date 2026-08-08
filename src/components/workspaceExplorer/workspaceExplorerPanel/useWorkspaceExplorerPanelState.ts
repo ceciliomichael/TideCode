@@ -48,6 +48,7 @@ export function useWorkspaceExplorerPanelState({
   const [selectedEntryPaths, setSelectedEntryPaths] = useState<Set<string>>(() => new Set())
   const [selectionDirectoryPath, setSelectionDirectoryPath] = useState<string>(ROOT_DIRECTORY_KEY)
   const [isDraggingExplorerEntry, setIsDraggingExplorerEntry] = useState(false)
+  const [isExplorerFocused, setIsExplorerFocused] = useState(false)
   const draggedEntriesRef = useRef<WorkspaceExplorerEntry[]>([])
   const selectionAnchorEntryPathRef = useRef<string | null>(null)
   const isExplorerEditingRef = useRef(false)
@@ -64,6 +65,16 @@ export function useWorkspaceExplorerPanelState({
   }, [])
 
   const {
+    handleExplorerDragLeave,
+    handleExplorerDragOver,
+    handleExplorerScrollbarDragOver,
+    stopDragScroll,
+    treeContainerRef,
+    updateDragScroll,
+  } = useWorkspaceExplorerDragScroll({
+    draggedEntriesRef,
+  })
+  const {
     closeContextMenu,
     contextMenuRef,
     contextMenuState,
@@ -75,6 +86,7 @@ export function useWorkspaceExplorerPanelState({
     selectionAnchorEntryPathRef,
     setSelectedEntryPaths,
     setSelectionDirectoryPath,
+    treeContainerRef,
   })
   const {
     handleResizePointerDown,
@@ -85,16 +97,6 @@ export function useWorkspaceExplorerPanelState({
     onWidthChange,
     onWidthCommit,
     width,
-  })
-  const {
-    handleExplorerDragLeave,
-    handleExplorerDragOver,
-    handleExplorerScrollbarDragOver,
-    stopDragScroll,
-    treeContainerRef,
-    updateDragScroll,
-  } = useWorkspaceExplorerDragScroll({
-    draggedEntriesRef,
   })
 
   const {
@@ -129,6 +131,44 @@ export function useWorkspaceExplorerPanelState({
     pendingExplorerReloadRef.current = false
     void reloadExplorerTree({ force: true })
   }, [reloadExplorerTree])
+
+  useEffect(() => {
+    const treeContainer = treeContainerRef.current
+    if (!treeContainer) {
+      return
+    }
+
+    const isSelectionFocusTarget = (target: EventTarget | null) => {
+      if (!(target instanceof Node)) {
+        return false
+      }
+
+      return treeContainer.contains(target) || (target instanceof Element && target.closest('[data-workspace-code-editor]') !== null)
+    }
+
+    const updateExplorerFocus = () => {
+      setIsExplorerFocused(
+        contextMenuState !== null || isSelectionFocusTarget(document.activeElement),
+      )
+    }
+
+    const handleFocusIn = () => {
+      updateExplorerFocus()
+    }
+
+    const handleFocusOut = () => {
+      window.requestAnimationFrame(updateExplorerFocus)
+    }
+
+    document.addEventListener('focusin', handleFocusIn)
+    document.addEventListener('focusout', handleFocusOut)
+    updateExplorerFocus()
+
+    return () => {
+      document.removeEventListener('focusin', handleFocusIn)
+      document.removeEventListener('focusout', handleFocusOut)
+    }
+  }, [contextMenuState, treeContainerRef])
 
   const runContextAction = useCallback(
     async (action: () => Promise<void>, shouldReload = true) => {
@@ -261,6 +301,7 @@ export function useWorkspaceExplorerPanelState({
     resetDeleteDialog()
     setSelectedEntryPaths(new Set())
     setSelectionDirectoryPath(ROOT_DIRECTORY_KEY)
+    setIsExplorerFocused(false)
     closeContextMenu()
     isExplorerEditingRef.current = false
     pendingExplorerReloadRef.current = false
@@ -295,6 +336,7 @@ export function useWorkspaceExplorerPanelState({
     closeContextMenu()
     resetDeleteDialog()
     closeErrorDialog()
+    setIsExplorerFocused(false)
   }, [closeContextMenu, closeErrorDialog, isOpen, resetDeleteDialog])
 
   const {
@@ -451,6 +493,7 @@ export function useWorkspaceExplorerPanelState({
     handleExplorerScrollbarDragOver,
     handleResizePointerDown,
     isDraggingExplorerEntry,
+    isExplorerFocused,
     isResizing,
     isSubmittingDeleteEntry,
     isSubmittingCreationRef,

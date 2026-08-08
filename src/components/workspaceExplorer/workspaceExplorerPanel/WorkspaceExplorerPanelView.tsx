@@ -130,7 +130,11 @@ export function WorkspaceExplorerPanelView({
               if (panelState.isSubmittingCreationRef.current) {
                 return
               }
-              panelState.cancelCreateEntry()
+              if (panelState.creationName.trim().length === 0) {
+                panelState.cancelCreateEntry()
+                return
+              }
+              void panelState.submitCreateEntry()
             }}
             onKeyDown={(event) => {
               if (event.key === 'Escape') {
@@ -188,7 +192,11 @@ export function WorkspaceExplorerPanelView({
               if (panelState.isSubmittingRenameRef.current) {
                 return
               }
-              panelState.cancelRenameEntry()
+              if (panelState.renameName.trim().length === 0) {
+                panelState.cancelRenameEntry()
+                return
+              }
+              void panelState.submitRenameEntry()
             }}
             onKeyDown={(event) => {
               if (event.key === 'Escape') {
@@ -217,6 +225,7 @@ export function WorkspaceExplorerPanelView({
       const isSelectedEntry =
         panelState.selectedEntryPaths.has(entry.relativePath) ||
         panelState.selectedEntryPaths.has(entryPath)
+      const isActiveFileSelection = isActiveFile && isSelectedEntry
       const isGitignoredEntry = entry.isGitignored === true
       const activeDropTarget = panelState.dropTargetDirectoryPath
       const isDropTarget =
@@ -241,7 +250,7 @@ export function WorkspaceExplorerPanelView({
           depth={depth}
           entry={entry}
           gitStatus={gitStatus}
-          isActiveFile={isActiveFile}
+          isActiveFile={isActiveFileSelection}
           isContextTarget={isContextTarget}
           isCutEntry={isCutEntry}
           isDropTarget={isDropTarget}
@@ -249,6 +258,7 @@ export function WorkspaceExplorerPanelView({
           isGitignoredEntry={isGitignoredEntry}
           isLoading={isLoading}
           isSelectedEntry={isSelectedEntry}
+          isSelectionFocused={panelState.isExplorerFocused}
         />
       )
 

@@ -332,6 +332,26 @@ test('a normal completed stream persists the user message and the assistant resp
   }
 })
 
+test('a completed plan handoff keeps its status divider message in conversation history', async () => {
+  const handoffMessage = '<plan_123456>Implement the plan in .tidecode/plans/plan-001.md.</plan_123456>'
+  const harness = createWorkflowHarness({
+    originalText: handoffMessage,
+    streamContent: 'I will implement the approved plan.',
+    streamOutcome: 'completed',
+  })
+
+  try {
+    const accepted = await persistAndStreamMessage(harness.input)
+
+    assert.equal(accepted, true)
+    const storedMessages = harness.history.getStoredMessages(harness.conversation.id)
+    assert.equal(storedMessages[0]?.content, handoffMessage)
+    assert.equal(storedMessages[1]?.content, 'I will implement the approved plan.')
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
 test('a stop clicked before the stream starts rolls the stored conversation back', async () => {
   const harness = createWorkflowHarness({
     consumePendingAbortBeforeStreamStart: true,
@@ -361,6 +381,24 @@ test('aborting a plan implementation run does not restore its status marker to t
     assert.equal(accepted, true)
     assert.deepEqual(harness.history.getStoredMessages(harness.conversation.id), [], 'history must be rolled back')
     assert.deepEqual(harness.composerValues, [''], 'the implementation marker must not return to the composer')
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
+test('aborting a plan revision request does not restore its status marker to the composer', async () => {
+  const harness = createWorkflowHarness({
+    originalText:
+      '<plan_revision_123456>Please revise the implementation plan at .tidecode/plans/plan-001.md using the review comments below.</plan_revision_123456>',
+    streamOutcome: 'aborted',
+  })
+
+  try {
+    const accepted = await persistAndStreamMessage(harness.input)
+
+    assert.equal(accepted, true)
+    assert.deepEqual(harness.history.getStoredMessages(harness.conversation.id), [], 'history must be rolled back')
+    assert.deepEqual(harness.composerValues, [''], 'the revision marker must not return to the composer')
   } finally {
     harness.restoreWindow()
   }

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { WebContents } from 'electron'
 import type {
+  ApiKeyProviderId,
   CompactConversationInput,
   CompactConversationResult,
   ContextUsageEstimate,
@@ -10,13 +11,19 @@ import type {
   SubmitToolDecisionInput,
   SubmitToolDecisionResult,
 } from '../../../src/types/chat'
+import { ActiveChatStreamRegistry } from '../shared/activeChatStreamRegistry'
 import { shouldReplayAssistantReasoning } from '../shared/assistantReasoningPolicy'
 import { estimateToolEnabledContextUsage, runToolEnabledChatStream } from '../shared/runtime'
+import { emitChatStreamEvent } from '../shared/runtimeStreamEvents'
 import { createApiKeyChatClient } from './client'
-import { readApiKeyChatProviderConfig } from './config'
 import { compactConversationForProvider } from '../shared/compaction/manual'
 
-const activeStreams = new Map<string, AbortController>()
+const activeStreams = new ActiveChatStreamRegistry()
+
+async function loadApiKeyChatProviderConfig(providerId: ApiKeyProviderId) {
+  const { readApiKeyChatProviderConfig } = await import('./config')
+  return readApiKeyChatProviderConfig(providerId)
+}
 
 export async function estimateApiKeyContextUsage(
   webContents: WebContents,
@@ -48,7 +55,7 @@ export async function compactApiKeyConversation(input: CompactConversationInput)
     throw new Error('Select a model before compacting a chat.')
   }
 
-  const config = await readApiKeyChatProviderConfig(input.providerId)
+  const config = await loadApiKeyChatProviderConfig(input.providerId)
   const client = createApiKeyChatClient(config)
   const result = await compactConversationForProvider({
     agentContextRootPath: input.agentContextRootPath,
@@ -93,10 +100,26 @@ export async function startApiKeyChatStream(
 
   const streamId = randomUUID()
   const abortController = new AbortController()
-  activeStreams.set(streamId, abortController)
+  activeStreams.register(streamId, abortController)
 
   queueMicrotask(() => {
-    void runApiKeyChatStream(webContents, streamId, input, abortController, onSettled)
+    void runApiKeyChatStream(webContents, streamId, input, abortController)
+      .catch((error: unknown) => {
+        if (abortController.signal.aborted) {
+          return
+        }
+
+        emitChatStreamEvent(webContents, {
+          errorMessage:
+            error instanceof Error && error.message.trim().length > 0 ? error.message : 'Chat request failed.',
+          streamId,
+          type: 'error',
+        })
+      })
+      .finally(() => {
+        activeStreams.settle(streamId)
+        onSettled?.()
+      })
   })
   return { streamId }
 }
@@ -106,50 +129,38 @@ async function runApiKeyChatStream(
   streamId: string,
   input: StartChatStreamInput,
   abortController: AbortController,
-  onSettled?: () => void,
 ) {
-  try {
-    if (input.providerId === 'codex') {
-      throw new Error('Codex streams must use the Codex runtime.')
-    }
-    const config = await readApiKeyChatProviderConfig(input.providerId)
-    const client = createApiKeyChatClient(config)
-    await runToolEnabledChatStream({
-      abortController,
-      createStream: (streamInput) =>
-        client.chat.completions.create({
-          cacheKey: streamInput.cacheKey,
-          messages: streamInput.messages,
-          model: streamInput.model,
-          reasoningEffort: streamInput.reasoningEffort,
-          signal: streamInput.signal,
-          maxSteps: streamInput.maxSteps,
-          onStepEnd: streamInput.onStepEnd,
-          repairToolCall: streamInput.repairToolCall,
-          stopWhen: streamInput.stopWhen,
-          system: streamInput.system,
-          tools: streamInput.tools,
-          prepareStep: streamInput.prepareStep,
-        }),
-      onSettled,
-      promptOptions: { includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId) },
-      startInput: input,
-      streamId,
-      webContents,
-    })
-  } finally {
-    activeStreams.delete(streamId)
+  if (input.providerId === 'codex') {
+    throw new Error('Codex streams must use the Codex runtime.')
   }
+  const config = await loadApiKeyChatProviderConfig(input.providerId)
+  const client = createApiKeyChatClient(config)
+  await runToolEnabledChatStream({
+    abortController,
+    createStream: (streamInput) =>
+      client.chat.completions.create({
+        cacheKey: streamInput.cacheKey,
+        messages: streamInput.messages,
+        model: streamInput.model,
+        reasoningEffort: streamInput.reasoningEffort,
+        signal: streamInput.signal,
+        maxSteps: streamInput.maxSteps,
+        onStepEnd: streamInput.onStepEnd,
+        repairToolCall: streamInput.repairToolCall,
+        stopWhen: streamInput.stopWhen,
+        system: streamInput.system,
+        tools: streamInput.tools,
+        prepareStep: streamInput.prepareStep,
+      }),
+    promptOptions: { includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId) },
+    startInput: input,
+    streamId,
+    webContents,
+  })
 }
 
-export async function cancelApiKeyChatStream(streamId: string) {
-  const abortController = activeStreams.get(streamId)
-  if (!abortController) {
-    return false
-  }
-
-  abortController.abort()
-  return true
+export function cancelApiKeyChatStream(streamId: string) {
+  return activeStreams.cancel(streamId)
 }
 
 export async function submitApiKeyToolDecision(

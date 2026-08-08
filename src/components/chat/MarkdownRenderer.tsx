@@ -72,13 +72,13 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   const markdownComponents = useMemo(
     () => ({
       h1: (props: React.ComponentPropsWithoutRef<'h1'>) => (
-        <h1 {...props} className="scroll-mt-6 mt-2 mb-2 text-[1.12rem] font-semibold leading-[1.3] text-foreground" />
+        <h1 {...props} className="scroll-mt-6 mt-2 mb-3 text-[1.75rem] font-semibold leading-[1.25] text-foreground" />
       ),
       h2: (props: React.ComponentPropsWithoutRef<'h2'>) => (
-        <h2 {...props} className="scroll-mt-6 mt-2 mb-1.5 text-[1.05rem] font-semibold leading-[1.3] text-foreground" />
+        <h2 {...props} className="scroll-mt-6 mt-3 mb-2 text-[1.4rem] font-semibold leading-[1.3] text-foreground" />
       ),
       h3: (props: React.ComponentPropsWithoutRef<'h3'>) => (
-        <h3 {...props} className="scroll-mt-6 mt-1.5 mb-1 text-[1rem] font-semibold leading-[1.3] text-foreground" />
+        <h3 {...props} className="scroll-mt-6 mt-2 mb-1.5 text-[1.15rem] font-semibold leading-[1.3] text-foreground" />
       ),
       p: (props: React.ComponentPropsWithoutRef<'p'>) => (
         <p {...props} className="my-0 mb-3 leading-[1.65] text-foreground" />
@@ -269,4 +269,3 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
     </div>
   )
 })
-

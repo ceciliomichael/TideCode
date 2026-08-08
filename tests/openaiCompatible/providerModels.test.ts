@@ -7,6 +7,7 @@ test('custom model JSON derives reasoning choices from exact request bodies', ()
   assert.deepEqual(parseConfigurableProviderModels([{
     apiModelId: 'local-reasoner',
     defaultReasoningEffort: 'high',
+    maxTokens: 8192,
     reasoningBodies: {
       none: { thinking: { type: 'disabled' } },
       high: { thinking: { type: 'enabled' } },
@@ -14,6 +15,7 @@ test('custom model JSON derives reasoning choices from exact request bodies', ()
   }]), [{
     apiModelId: 'local-reasoner',
     defaultReasoningEffort: 'high',
+    maxTokens: 8192,
     reasoningBodies: {
       none: { thinking: { type: 'disabled' } },
       high: { thinking: { type: 'enabled' } },

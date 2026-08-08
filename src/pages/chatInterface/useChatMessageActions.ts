@@ -5,8 +5,9 @@ import type { ToolDecisionSubmission } from '../../components/chat/ToolDecisionR
 import type { ChatMessagesController, ChatRuntimeSelection } from '../../hooks/useChatMessages'
 import type { ChatAttachment, ToolInvocationTrace } from '../../types/chat'
 import { isPlanRelativePath, type PlanReviewComment } from '../../lib/planContracts'
+import { persistPlanImplementationHandoff } from '../../lib/planHandoff'
 import { createPlanImplementationMessage } from '../../lib/planImplementation'
-import { formatPlanReviewRequest } from '../../lib/planReview'
+import { createPlanRevisionRequestMessage } from '../../lib/planRevision'
 import { getPlanPathsCreatedByRevertedUserMessage, hasPlanToolInvocation } from '../../lib/planPresentation'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
 import { shouldQueueMainMessage } from './chatQueueAutoSend'
@@ -79,22 +80,14 @@ export function useChatMessageActions({
 
   const handleEditUserMessage = useCallback(
     async (messageId: string) => {
-      const revertedPlanPaths = chatMessages.revertedPlanPaths
-      const didStartEditing = await chatMessages.startEditingMessage(messageId)
-      if (didStartEditing) {
-        await Promise.all(revertedPlanPaths.map((relativePath) => workspaceState.handleOpenWorkspacePlanPreview(relativePath)))
-      }
+      await chatMessages.startEditingMessage(messageId)
       await workspaceState.handleRefreshWorkspaceFileTabs()
     },
     [chatMessages, workspaceState],
   )
 
   const handleCancelEditingMessage = useCallback(async () => {
-    const revertedPlanPaths = chatMessages.revertedPlanPaths
-    const didCancelEditing = await chatMessages.cancelEditingMessage()
-    if (didCancelEditing) {
-      await Promise.all(revertedPlanPaths.map((relativePath) => workspaceState.handleOpenWorkspacePlanPreview(relativePath)))
-    }
+    await chatMessages.cancelEditingMessage()
     await workspaceState.handleRefreshWorkspaceFileTabs()
   }, [chatMessages, workspaceState])
 
@@ -102,6 +95,7 @@ export function useChatMessageActions({
     (value: string, attachments: ChatAttachment[]) => {
       if (shouldQueueMainMessage({
         isCompressingChat,
+        isAbortInProgress: chatMessages.isAbortInProgress,
         isLoading: chatMessages.isLoading,
         isSending: chatMessages.isSending,
       })) {
@@ -138,8 +132,8 @@ export function useChatMessageActions({
     if (planPath && !isPlanRelativePath(planPath)) return
 
     if (planPath) {
-      const didPersistPlanStatus = await workspaceState.handleMarkWorkspacePlanImplementationStarted(planPath)
-      if (!didPersistPlanStatus) {
+      const didHandoffPlan = await persistPlanImplementationHandoff(planPath, workspaceState)
+      if (!didHandoffPlan) {
         return
       }
     }
@@ -160,7 +154,9 @@ export function useChatMessageActions({
       clearQueuedMessages()
       chatMessages.setSelectedChatMode('plan')
       void chatMessages
-        .sendProgrammaticMessage(runtimeSelection, formatPlanReviewRequest(relativePath, comments), { chatMode: 'plan' })
+        .sendProgrammaticMessage(runtimeSelection, createPlanRevisionRequestMessage(relativePath, comments), {
+          chatMode: 'plan',
+        })
         .then(onConversationHistoryChanged, onConversationHistoryChanged)
     },
     [chatMessages, clearQueuedMessages, isAiBusy, onConversationHistoryChanged, runtimeSelection],

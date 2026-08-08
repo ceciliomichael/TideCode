@@ -3,6 +3,8 @@ import { DEFAULT_DIFF_PANEL_WIDTH } from "../../lib/diffPanelSizing";
 import { DEFAULT_TERMINAL_PANEL_HEIGHT } from "../../lib/terminalPanelSizing";
 import { clampWorkspaceExplorerWidth } from "../../lib/workspaceExplorerSizing";
 import type { WorkspaceTab } from "../../components/workspaceExplorer/types";
+import type { PlanReviewComment } from "../../lib/planContracts";
+import { setPlanCommentsForPath, type PlanCommentsByPath } from "../../lib/planComments";
 import type {
   ChatWorkspaceUiState,
   UseChatWorkspaceUiStateInput,
@@ -54,6 +56,7 @@ export function useChatWorkspaceUiState({
   const [workspaceFileTabs, setWorkspaceFileTabs] = useState<
     WorkspaceTab[]
   >([]);
+  const [planCommentsByPath, setPlanCommentsByPath] = useState<PlanCommentsByPath>({});
   const workspaceFileTabsRef = useRef<WorkspaceTab[]>([]);
   const [activeWorkspaceFilePath, setActiveWorkspaceFilePath] = useState<
     string | null
@@ -113,12 +116,14 @@ export function useChatWorkspaceUiState({
       isTerminalFullScreen,
       isRightPanelOpen,
       isWorkspaceTabsPanelVisible,
+      planCommentsByPath,
       onRightPanelOpenChange,
       onRightPanelTabChange,
       previousWorkspaceUiKeyRef,
       setActiveWorkspaceFilePath,
       setActiveWorkspaceTabKey,
       setIsExplorerOpen,
+      setPlanCommentsByPath,
       setIsTerminalOpen,
       setIsTerminalFullScreen,
       setIsWorkspaceTabsPanelVisible,
@@ -135,6 +140,7 @@ export function useChatWorkspaceUiState({
     isTerminalFullScreen,
     isRightPanelOpen,
     isWorkspaceTabsPanelVisible,
+    planCommentsByPath,
     onRightPanelOpenChange,
     onRightPanelTabChange,
     rightPanelTab,
@@ -151,6 +157,7 @@ export function useChatWorkspaceUiState({
       isTerminalFullScreen,
       isRightPanelOpen,
       isWorkspaceTabsPanelVisible,
+      planCommentsByPath,
       rightPanelTab,
       workspaceFileTabs,
       workspaceUiSessionsRef,
@@ -164,6 +171,7 @@ export function useChatWorkspaceUiState({
     isTerminalFullScreen,
     isRightPanelOpen,
     isWorkspaceTabsPanelVisible,
+    planCommentsByPath,
     rightPanelTab,
     workspaceFileTabs,
   ]);
@@ -320,6 +328,15 @@ export function useChatWorkspaceUiState({
     [],
   );
 
+  const handlePlanCommentsChange = useCallback(
+    (relativePath: string, comments: readonly PlanReviewComment[]) => {
+      setPlanCommentsByPath((currentCommentsByPath) =>
+        setPlanCommentsForPath(currentCommentsByPath, relativePath, comments),
+      );
+    },
+    [],
+  );
+
   const {
     handleCopyWorkspaceEntry,
     handleCreateWorkspaceEntry,
@@ -385,6 +402,7 @@ export function useChatWorkspaceUiState({
     handleOpenWorkspaceFile,
     handleOpenWorkspaceMarkdownPreview,
     handleMarkWorkspacePlanImplementationStarted,
+    handlePlanCommentsChange,
     handleOpenWorkspacePlanPreview,
     handleOpenWorkspaceSvgPreview,
     handlePasteWorkspaceEntry,
@@ -404,6 +422,7 @@ export function useChatWorkspaceUiState({
     isTerminalFullScreen,
     isTerminalOpen,
     isWorkspaceTabsPanelOpen,
+    planCommentsByPath,
     sourceControlPanelWidth,
     terminalPanelHeight,
     workspaceClipboard,

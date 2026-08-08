@@ -26,6 +26,7 @@ import type {
   WorkspaceExplorerEntry,
   WorkspaceExplorerListDirectoryInput,
   WorkspaceExplorerReadFileInput,
+  WorkspaceExplorerReadFileMissingResult,
   WorkspaceExplorerReadFileResult,
   WorkspaceExplorerRenameEntryInput,
   WorkspaceExplorerRenameEntryResult,
@@ -39,6 +40,22 @@ const MAX_TEXT_FILE_BYTES = 256 * 1024
 const MAX_IMAGE_PREVIEW_BYTES = 32 * 1024 * 1024
 const MAX_DOCX_PREVIEW_BYTES = 32 * 1024 * 1024
 const MAX_PDF_PREVIEW_BYTES = 64 * 1024 * 1024
+
+function isMissingFileError(error: unknown): error is NodeJS.ErrnoException {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as NodeJS.ErrnoException).code === 'ENOENT'
+  )
+}
+
+function createMissingFileResult(relativePath: string): WorkspaceExplorerReadFileMissingResult {
+  return {
+    relativePath,
+    status: 'missing',
+  }
+}
 
 function trimBufferToValidUtf8(buffer: Buffer): Buffer {
   if (buffer.length === 0) return buffer
@@ -383,42 +400,68 @@ export async function readWorkspaceFile(input: WorkspaceExplorerReadFileInput): 
   await assertWorkspaceDirectory(workspaceRootPath)
   const target = getSafeWorkspaceTargetPath(workspaceRootPath, input.relativePath)
   const targetStats = await fs.stat(target.absolutePath).catch((error: unknown) => {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(`File does not exist: ${target.relativePath}`)
+    if (isMissingFileError(error)) {
+      return null
     }
     throw error
   })
+  if (!targetStats) {
+    return createMissingFileResult(target.relativePath)
+  }
   if (!targetStats.isFile()) {
     throw new Error(`Expected a file: ${target.relativePath}`)
   }
 
-  const binaryProbe = Buffer.alloc(Math.min(targetStats.size, 1024))
-  if (binaryProbe.length > 0) {
-    const fileHandle = await fs.open(target.absolutePath, 'r')
-    try {
-      await fileHandle.read(binaryProbe, 0, binaryProbe.length, 0)
-    } finally {
-      await fileHandle.close()
+  try {
+    const binaryProbe = Buffer.alloc(Math.min(targetStats.size, 1024))
+    if (binaryProbe.length > 0) {
+      const fileHandle = await fs.open(target.absolutePath, 'r')
+      try {
+        await fileHandle.read(binaryProbe, 0, binaryProbe.length, 0)
+      } finally {
+        await fileHandle.close()
+      }
     }
-  }
 
-  const previewMimeType = getImagePreviewMimeType(target.relativePath)
-  const isDocxPreview = isDocxPreviewablePath(target.relativePath)
-  const isPdfPreview = isPdfPreviewablePath(target.relativePath)
-  if (previewMimeType || isDocxPreview || isPdfPreview) {
-    const maxPreviewBytes = isPdfPreview
-      ? MAX_PDF_PREVIEW_BYTES
-      : isDocxPreview
-        ? MAX_DOCX_PREVIEW_BYTES
-        : MAX_IMAGE_PREVIEW_BYTES
-    if (targetStats.size > maxPreviewBytes) {
-      const previewLabel = isPdfPreview ? 'PDF' : isDocxPreview ? 'DOCX' : 'Image'
+    const previewMimeType = getImagePreviewMimeType(target.relativePath)
+    const isDocxPreview = isDocxPreviewablePath(target.relativePath)
+    const isPdfPreview = isPdfPreviewablePath(target.relativePath)
+    if (previewMimeType || isDocxPreview || isPdfPreview) {
+      const maxPreviewBytes = isPdfPreview
+        ? MAX_PDF_PREVIEW_BYTES
+        : isDocxPreview
+          ? MAX_DOCX_PREVIEW_BYTES
+          : MAX_IMAGE_PREVIEW_BYTES
+      if (targetStats.size > maxPreviewBytes) {
+        const previewLabel = isPdfPreview ? 'PDF' : isDocxPreview ? 'DOCX' : 'Image'
+        return {
+          content: '',
+          isBinary: true,
+          isTruncated: false,
+          modifiedTimeMs: targetStats.mtimeMs,
+          previewError: `${previewLabel} preview is limited to ${maxPreviewBytes / (1024 * 1024)} MB.`,
+          previewMimeType: isPdfPreview
+            ? 'application/pdf'
+            : isDocxPreview
+              ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+              : previewMimeType ?? undefined,
+          relativePath: target.relativePath,
+          sizeBytes: targetStats.size,
+          status: 'ready',
+        }
+      }
+
+      const previewBuffer = await fs.readFile(target.absolutePath)
       return {
         content: '',
         isBinary: true,
         isTruncated: false,
         modifiedTimeMs: targetStats.mtimeMs,
-        previewError: `${previewLabel} preview is limited to ${maxPreviewBytes / (1024 * 1024)} MB.`,
+        previewDataUrl: isPdfPreview
+          ? createPdfPreviewDataUrl(previewBuffer.toString('base64'))
+          : isDocxPreview
+            ? createDocxPreviewDataUrl(previewBuffer.toString('base64'))
+            : createImagePreviewDataUrl(previewMimeType!, previewBuffer.toString('base64')),
         previewMimeType: isPdfPreview
           ? 'application/pdf'
           : isDocxPreview
@@ -426,62 +469,50 @@ export async function readWorkspaceFile(input: WorkspaceExplorerReadFileInput): 
             : previewMimeType ?? undefined,
         relativePath: target.relativePath,
         sizeBytes: targetStats.size,
+        status: 'ready',
       }
     }
 
-    const previewBuffer = await fs.readFile(target.absolutePath)
+    if (hasBinaryContent(binaryProbe)) {
+      return {
+        content: '',
+        isBinary: true,
+        isTruncated: false,
+        modifiedTimeMs: targetStats.mtimeMs,
+        relativePath: target.relativePath,
+        sizeBytes: targetStats.size,
+        status: 'ready',
+      }
+    }
+
+    const isTruncated = targetStats.size > MAX_TEXT_FILE_BYTES
+    const bytesToRead = isTruncated ? MAX_TEXT_FILE_BYTES : targetStats.size
+    const fileBuffer = Buffer.alloc(bytesToRead)
+    if (bytesToRead > 0) {
+      const fileHandle = await fs.open(target.absolutePath, 'r')
+      try {
+        await fileHandle.read(fileBuffer, 0, bytesToRead, 0)
+      } finally {
+        await fileHandle.close()
+      }
+    }
+    const safeBuffer = isTruncated ? trimBufferToValidUtf8(fileBuffer) : fileBuffer
+    const content = safeBuffer.toString('utf8')
+
     return {
-      content: '',
-      isBinary: true,
-      isTruncated: false,
+      content,
+      isBinary: false,
+      isTruncated,
       modifiedTimeMs: targetStats.mtimeMs,
-      previewDataUrl: isPdfPreview
-        ? createPdfPreviewDataUrl(previewBuffer.toString('base64'))
-        : isDocxPreview
-          ? createDocxPreviewDataUrl(previewBuffer.toString('base64'))
-          : createImagePreviewDataUrl(previewMimeType!, previewBuffer.toString('base64')),
-      previewMimeType: isPdfPreview
-        ? 'application/pdf'
-        : isDocxPreview
-          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-          : previewMimeType ?? undefined,
       relativePath: target.relativePath,
       sizeBytes: targetStats.size,
+      status: 'ready',
     }
-  }
-
-  if (hasBinaryContent(binaryProbe)) {
-    return {
-      content: '',
-      isBinary: true,
-      isTruncated: false,
-      modifiedTimeMs: targetStats.mtimeMs,
-      relativePath: target.relativePath,
-      sizeBytes: targetStats.size,
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return createMissingFileResult(target.relativePath)
     }
-  }
-
-  const isTruncated = targetStats.size > MAX_TEXT_FILE_BYTES
-  const bytesToRead = isTruncated ? MAX_TEXT_FILE_BYTES : targetStats.size
-  const fileBuffer = Buffer.alloc(bytesToRead)
-  if (bytesToRead > 0) {
-    const fileHandle = await fs.open(target.absolutePath, 'r')
-    try {
-      await fileHandle.read(fileBuffer, 0, bytesToRead, 0)
-    } finally {
-      await fileHandle.close()
-    }
-  }
-  const safeBuffer = isTruncated ? trimBufferToValidUtf8(fileBuffer) : fileBuffer
-  const content = safeBuffer.toString('utf8')
-
-  return {
-    content,
-    isBinary: false,
-    isTruncated,
-    modifiedTimeMs: targetStats.mtimeMs,
-    relativePath: target.relativePath,
-    sizeBytes: targetStats.size,
+    throw error
   }
 }
 

@@ -30,6 +30,7 @@ interface WorkspaceExplorerEntryRowProps {
   isGitignoredEntry: boolean
   isLoading: boolean
   isSelectedEntry: boolean
+  isSelectionFocused: boolean
   gitStatus?: 'modified' | 'untracked'
 }
 
@@ -52,6 +53,7 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
   isGitignoredEntry,
   isLoading,
   isSelectedEntry,
+  isSelectionFocused,
   gitStatus,
 }: WorkspaceExplorerEntryRowProps) {
   const isDirectory = entry.isDirectory
@@ -59,9 +61,14 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
   const fileIconConfig = !isDirectory ? resolveFileIconConfig({ fileName: entry.relativePath }) : null
   const FileIcon = fileIconConfig?.icon
   const gitStatusTextClass = gitStatus === 'untracked' ? 'text-[#5D9F73]' : gitStatus === 'modified' ? 'text-[#C7904A]' : ''
-  const rowStateClass = isSelectedEntry || isActiveFile || isContextTarget || isDropTarget
+  const isHighlightedEntry = isSelectedEntry || isActiveFile || isContextTarget
+  const rowStateClass = isDropTarget
     ? 'bg-brand-soft text-foreground'
-    : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground'
+    : isHighlightedEntry
+      ? isSelectionFocused
+        ? 'bg-brand-soft text-foreground'
+        : 'bg-brand-soft-faint text-foreground'
+      : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground'
   const targetDirectoryPath = isDirectory ? entryPath : getPathDirname(entryPath)
 
   return (
@@ -133,7 +140,16 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
         {!isDirectory && FileIcon ? (
           <FileIcon size={14} className="shrink-0" style={{ color: fileIconConfig?.color }} />
         ) : null}
-        <span className={['truncate', isGitignoredEntry ? 'opacity-60' : '', gitStatusTextClass].join(' ')}>{entry.name}</span>
+        <span
+          className={[
+            'truncate',
+            isGitignoredEntry && !isHighlightedEntry && !isDropTarget ? 'opacity-60' : '',
+            gitStatusTextClass,
+            isGitignoredEntry && (isHighlightedEntry || isDropTarget) ? 'text-white' : '',
+          ].join(' ')}
+        >
+          {entry.name}
+        </span>
         {isLoading && !isExpanded ? (
           <RefreshCw size={12} className="ml-auto shrink-0 animate-spin text-subtle-foreground" />
         ) : null}
@@ -158,6 +174,7 @@ function areWorkspaceExplorerEntryRowPropsEqual(
     left.isGitignoredEntry === right.isGitignoredEntry &&
     left.isLoading === right.isLoading &&
     left.isSelectedEntry === right.isSelectedEntry &&
+    left.isSelectionFocused === right.isSelectionFocused &&
     left.gitStatus === right.gitStatus
   )
 }

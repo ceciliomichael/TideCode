@@ -109,6 +109,7 @@ export function useWorkspaceExplorerCreation({
     }
     if (/[/\\]/u.test(nextName)) {
       setErrorMessage('Name cannot include path separators.')
+      window.requestAnimationFrame(() => creationInputRef.current?.focus())
       return
     }
 

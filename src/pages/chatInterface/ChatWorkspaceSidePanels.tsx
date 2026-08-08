@@ -56,10 +56,12 @@ export function ChatWorkspaceSidePanels({
           isOpen={workspaceState.isWorkspaceTabsPanelOpen}
           onCloseTab={workspaceState.handleCloseWorkspaceTab}
           onFileContentChange={workspaceState.handleWorkspaceFileContentChange}
+          onPlanCommentsChange={workspaceState.handlePlanCommentsChange}
           onImplementPlan={onImplementPlan}
           onOpenMarkdownPreview={workspaceState.handleOpenWorkspaceMarkdownPreview}
           onOpenSvgPreview={workspaceState.handleOpenWorkspaceSvgPreview}
           onRequestPlanChanges={onRequestPlanChanges}
+          planCommentsByPath={workspaceState.planCommentsByPath}
           onSelectTab={workspaceState.handleSelectWorkspaceTab}
           tabs={workspaceState.workspaceFileTabs}
           wordWrapEnabled={settings.workspaceFileEditorWordWrap}

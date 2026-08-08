@@ -3,6 +3,7 @@ import { isReasoningEffort } from '../../../src/lib/reasoningEffort'
 import type { ReasoningRequestBodies } from '../../../src/types/chat'
 import { parseExtraBody } from '../../providers/extraBody'
 import type { ProviderModelDefinition } from './types'
+import { isValidMaxOutputTokens } from '../../../src/lib/modelOutputTokens'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -74,7 +75,7 @@ export function normalizeProviderModelConfig(
     reasoningCapable,
     ...(bodyEfforts.length > 0 ? { reasoningBodies } : {}),
     ...(reasoningEfforts.length > 0 ? { reasoningEfforts } : {}),
-    ...(typeof input.maxTokens === 'number' ? { maxTokens: input.maxTokens } : {}),
+    ...(isValidMaxOutputTokens(input.maxTokens) ? { maxTokens: input.maxTokens } : {}),
   }
 }
 

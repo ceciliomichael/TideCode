@@ -12,6 +12,18 @@ test('messages submitted during compaction are queued until compaction settles',
   assert.equal(shouldQueueMainMessage({ isCompressingChat: false, isLoading: false, isSending: false }), false)
 })
 
+test('messages submitted while stopping a response remain queued until cleanup settles', () => {
+  assert.equal(
+    shouldQueueMainMessage({
+      isAbortInProgress: true,
+      isCompressingChat: false,
+      isLoading: false,
+      isSending: false,
+    }),
+    true,
+  )
+})
+
 test('a tool completion that predates the queued message does not release it', () => {
   assert.equal(
     detectSuccessfulToolReleaseSignal({

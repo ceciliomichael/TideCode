@@ -9,6 +9,7 @@ export function toProviderModelCatalogItems(providerModels: readonly ProviderMod
     ...(model.extraBody ? { extraBody: model.extraBody } : {}),
     id: model.id,
     label: model.label,
+    ...(model.maxTokens !== undefined ? { maxTokens: model.maxTokens } : {}),
     providerId: model.providerId,
     reasoningCapable: model.reasoningCapable,
     ...(model.reasoningBodies ? { reasoningBodies: model.reasoningBodies } : {}),

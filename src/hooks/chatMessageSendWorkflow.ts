@@ -1,6 +1,6 @@
 import type { ConversationRecord, Message } from '../types/chat'
 import { restoreChatComposerDraft } from '../lib/chatComposerDraft'
-import { isPlanImplementationStatusMessage } from '../lib/planImplementation'
+import { isPlanStatusMessage } from '../lib/planStatusMessages'
 import {
   getMessagesBeforeUserMessage,
   persistConversationSnapshot,
@@ -142,7 +142,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
   let fallbackConversationForRollback: ConversationRecord | null = null
   const shouldRollbackUserMessageOnAbort = input.targetEditMessageId === null
   const shouldRestoreMainComposerOnAbort =
-    shouldRollbackUserMessageOnAbort && !isPlanImplementationStatusMessage(input.originalText)
+    shouldRollbackUserMessageOnAbort && !isPlanStatusMessage(input.originalText)
 
   const releasePendingDraftReservation = () => {
     if (!hasPendingDraftReservation) {

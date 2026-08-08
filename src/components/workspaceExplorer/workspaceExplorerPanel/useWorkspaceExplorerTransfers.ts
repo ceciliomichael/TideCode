@@ -12,7 +12,11 @@ import type { WorkspaceExplorerEntry } from '../../../types/chat'
 import type { WorkspaceClipboardEntry } from '../workspaceClipboardTypes'
 import { getExternalClipboardFilePaths, getExternalFilePaths } from './workspaceExplorerDragUtils'
 import { ROOT_DIRECTORY_KEY } from './workspaceExplorerPanelUtils'
-import { findLoadedExplorerEntry, isTreeShortcutTarget } from './workspaceExplorerSelectionUtils'
+import {
+  findLoadedExplorerEntry,
+  isTreeShortcutTarget,
+  resolvePasteTargetDirectoryPath,
+} from './workspaceExplorerSelectionUtils'
 
 interface UseWorkspaceExplorerTransfersOptions {
   clipboardEntry: WorkspaceClipboardEntry | null
@@ -191,11 +195,18 @@ export function useWorkspaceExplorerTransfers({
         return
       }
 
+      const pasteTargetPath = resolvePasteTargetDirectoryPath({
+        directoryEntriesByPath,
+        rootEntries,
+        selectedEntryPaths,
+        selectionDirectoryPath,
+      })
+
       const filePaths = await getExternalClipboardFilePaths(event)
       if (filePaths.length > 0) {
         event.preventDefault()
         event.stopPropagation()
-        await submitImportEntries(filePaths, selectionDirectoryPath)
+        await submitImportEntries(filePaths, pasteTargetPath)
         return
       }
 
@@ -205,9 +216,17 @@ export function useWorkspaceExplorerTransfers({
 
       event.preventDefault()
       event.stopPropagation()
-      await submitPasteEntry(selectionDirectoryPath)
+      await submitPasteEntry(pasteTargetPath)
     },
-    [clipboardEntry, selectionDirectoryPath, submitImportEntries, submitPasteEntry],
+    [
+      clipboardEntry,
+      directoryEntriesByPath,
+      rootEntries,
+      selectedEntryPaths,
+      selectionDirectoryPath,
+      submitImportEntries,
+      submitPasteEntry,
+    ],
   )
 
   const handleEntryDragStart = useCallback(

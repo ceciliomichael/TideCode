@@ -22,7 +22,9 @@ import {
   formatWriteVerb,
 } from './toolInvocationMutationPresentation'
 
-function getToolVerb(invocation: ToolInvocationTrace) {
+export const TERMINAL_EXECUTION_WAITING_THRESHOLD_MS = 1_000
+
+function getToolVerb(invocation: ToolInvocationTrace, currentTimeMs = Date.now()) {
   const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
   const operation =
     parsedResult?.metadata?.semantics && typeof parsedResult.metadata.semantics.operation === 'string'
@@ -61,11 +63,13 @@ function getToolVerb(invocation: ToolInvocationTrace) {
   }
 
   if (invocation.toolName === 'execute_terminal') {
-    return invocation.state === 'running'
-      ? 'Running'
-      : invocation.state === 'completed'
-        ? 'Ran'
-        : 'Run failed'
+    if (invocation.state === 'running') {
+      return currentTimeMs - invocation.startedAt >= TERMINAL_EXECUTION_WAITING_THRESHOLD_MS
+        ? 'Waiting for'
+        : 'Executing'
+    }
+
+    return invocation.state === 'completed' ? 'Ran' : 'Run failed'
   }
 
   if (invocation.toolName === 'interact_terminal') {
@@ -76,20 +80,12 @@ function getToolVerb(invocation: ToolInvocationTrace) {
         : 'Terminal interaction failed'
   }
 
-  if (invocation.toolName === 'read_terminal') {
+  if (invocation.toolName === 'read_terminal' || invocation.toolName === 'get_terminal_output') {
     return invocation.state === 'running'
       ? 'Reading terminal'
       : invocation.state === 'completed'
         ? 'Read terminal'
         : 'Terminal read failed'
-  }
-
-  if (invocation.toolName === 'get_terminal_output') {
-    return invocation.state === 'running'
-      ? 'Polling'
-      : invocation.state === 'completed'
-        ? 'Terminal output'
-        : 'Output fetch failed'
   }
 
   if (invocation.toolName === 'ready_implement') {
@@ -391,6 +387,7 @@ export function getToolInvocationHeaderLabel(
   invocation: ToolInvocationTrace,
   overrideState?: ToolInvocationTrace['state'],
   workspaceRootPath?: string | null,
+  currentTimeMs = Date.now(),
 ) {
   if (isKanbanTool(invocation.toolName)) {
     const effectiveInvocation =
@@ -411,5 +408,6 @@ export function getToolInvocationHeaderLabel(
           state: overrideState,
         }
   const target = getToolTarget(invocation, workspaceRootPath)
-  return target ? `${getToolVerb(effectiveInvocation)} ${target}` : getToolVerb(effectiveInvocation)
+  const verb = getToolVerb(effectiveInvocation, currentTimeMs)
+  return target ? `${verb} ${target}` : verb
 }

@@ -9,7 +9,6 @@ import {
 } from 'ai'
 import type { ReasoningEffort } from '../../../src/types/chat'
 import { normalizeLanguageModelUsage } from '../cache/usage'
-import { findCatalogModel } from '../../models/catalog/catalog'
 import type { ProviderStepRecord } from '../history/contracts'
 import { buildCodexProviderOptions } from './providerOptions'
 import { refreshCodexOAuthTokensIfNeeded } from '../../providers/codex/refresh'
@@ -77,18 +76,13 @@ export function createCodexClient() {
       })
     },
   })
-
-
   async function createChatCompletionStream(
     input: CodexChatCompletionsCreateInput,
   ) {
-    const catalogModel = findCatalogModel('codex', input.model)
-
     return streamText({
       ...(input.stopWhen ? { stopWhen: input.stopWhen } : {}),
       ...(input.maxSteps !== undefined ? { maxSteps: input.maxSteps } : {}),
       ...(input.repairToolCall ? { repairToolCall: input.repairToolCall } : {}),
-      ...(catalogModel?.maxTokens ? { maxTokens: catalogModel.maxTokens } : {}),
       model: provider.responses(input.model),
       messages: input.messages,
       ...(input.system ? { system: input.system } : {}),

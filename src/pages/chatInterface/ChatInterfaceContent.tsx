@@ -234,6 +234,7 @@ export function ChatInterfaceContent({
     activeStreamToolInvocations,
   )
   const isQueueAutoSendBlocked =
+    chatMessages.isAbortInProgress ||
     chatMessages.isLoading ||
     isCompressingChat ||
     !chatRuntimeConfig.hasConfiguredProvider ||

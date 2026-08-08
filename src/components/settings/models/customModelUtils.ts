@@ -9,6 +9,7 @@ export function toCustomModelCatalogItems(customModels: readonly CustomModelConf
     id: model.id,
     isCustom: true,
     label: model.label,
+    ...(model.maxTokens !== undefined ? { maxTokens: model.maxTokens } : {}),
     providerId: model.providerId,
     ...(model.defaultReasoningEffort ? { defaultReasoningEffort: model.defaultReasoningEffort } : {}),
     reasoningCapable: model.reasoningCapable,

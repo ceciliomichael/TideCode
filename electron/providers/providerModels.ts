@@ -1,5 +1,6 @@
 import type { ConfigurableProviderModel, ReasoningEffort, ReasoningRequestBodies } from '../../src/types/chat'
 import { isReasoningEffort } from '../../src/lib/reasoningEffort'
+import { isValidMaxOutputTokens } from '../../src/lib/modelOutputTokens'
 import { parseExtraBody } from './extraBody'
 
 const MAX_PROVIDER_MODELS = 500
@@ -63,6 +64,10 @@ export function parseConfigurableProviderModels(value: unknown): ConfigurablePro
     if (defaultReasoningEffort && !reasoningEfforts.includes(defaultReasoningEffort)) {
       throw new Error(`${apiModelId} defaultReasoningEffort must also appear in reasoningEfforts.`)
     }
+    const maxTokens = entry.maxTokens === undefined ? undefined : entry.maxTokens
+    if (maxTokens !== undefined && !isValidMaxOutputTokens(maxTokens)) {
+      throw new Error(`${apiModelId} maxTokens must be a positive whole number.`)
+    }
 
     const identity = apiModelId.toLowerCase()
     if (models.has(identity)) continue
@@ -73,6 +78,7 @@ export function parseConfigurableProviderModels(value: unknown): ConfigurablePro
       ...(Object.keys(extraBody).length > 0 ? { extraBody } : {}),
       ...(optionalText(entry.id) ? { id: optionalText(entry.id) } : {}),
       ...(optionalText(entry.label) ? { label: optionalText(entry.label) } : {}),
+      ...(maxTokens !== undefined ? { maxTokens } : {}),
       reasoningCapable,
       ...(bodyEfforts.length > 0 ? { reasoningBodies } : {}),
       ...(reasoningCapable ? { reasoningEfforts } : {}),

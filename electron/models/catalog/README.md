@@ -11,6 +11,7 @@ Every entry accepts:
 - `reasoningCapable`: whether the model exposes reasoning choices.
 - `reasoningEfforts`: ordered choices shown in chat. Supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`.
 - `defaultReasoningEffort`: initial choice; it must also appear in `reasoningEfforts`.
+- `maxTokens`: the provider-documented maximum output-token limit for that exact model. Omit it when the provider publishes only a dynamic context limit instead of a fixed output limit; no application default is inferred.
 
 User-added models are managed from Settings → Models and are stored in one catalog per provider under `~/.tidecode/models`. Built-in provider catalogs remain read-only at runtime. Each user model owns its reasoning profile, so changing one model never changes another model from the same provider.
 

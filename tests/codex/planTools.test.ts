@@ -9,9 +9,15 @@ import { getPlanDisplayContent, getPlanLineRange, getPlanStatus, setPlanStatus }
 import { createPlanImplementationMessage, parsePlanImplementationMessage } from '../../src/lib/planImplementation'
 import { formatPlanReviewRequest } from '../../src/lib/planReview'
 import {
+  createPlanRevisionRequestMessage,
+  parsePlanRevisionRequestMessage,
+} from '../../src/lib/planRevision'
+import { PLAN_HANDOFF_SUCCESS_LABEL } from '../../src/lib/planStatusMessages'
+import {
   getLatestCompletedPlanPresentation,
   getPlanPathsCreatedByRevertedUserMessage,
   hasPlanToolInvocation,
+  shouldAutoOpenPlanPreview,
 } from '../../src/lib/planPresentation'
 
 test('plan storage allocates incrementing numbered Markdown artifacts', async () => {
@@ -64,11 +70,33 @@ test('plan editing is limited to an existing numbered plan path', async () => {
     const storedUpdatedPlan = await fs.readFile(path.join(workspaceRootPath, '.tidecode', 'plans', 'plan-001.md'), 'utf8')
     assert.match(storedUpdatedPlan, /^---\nstatus: draft\n---\n/u)
     assert.match(storedUpdatedPlan, /# Reviewable plan\n\nRevised\./u)
+    assert.doesNotMatch(storedUpdatedPlan, /Original/u)
     assert.deepEqual(capturedPaths, [path.join(workspaceRootPath, '.tidecode', 'plans', 'plan-001.md')])
     await assert.rejects(
       editPlan({ content: '# Unsafe', relativePath: '.tidecode/plans/../plan-001.md', workspaceRootPath }),
       /Plan paths must match/u,
     )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('plan editing can override the document title without losing the full revised body', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-plan-title-edit-'))
+
+  try {
+    await createPlan({ content: '# Original title\n\n## Steps\n\n1. Original step.', workspaceRootPath })
+    const updatedPlan = await editPlan({
+      content: '## Steps\n\n1. Revised step.',
+      relativePath: '.tidecode/plans/plan-001.md',
+      title: 'Updated title',
+      workspaceRootPath,
+    })
+
+    assert.equal(updatedPlan.title, 'Updated title')
+    assert.match(updatedPlan.content, /^---\nstatus: draft\n---\n\n# Updated title\n\n## Steps/u)
+    assert.match(updatedPlan.content, /1\. Revised step\./u)
+    assert.doesNotMatch(updatedPlan.content, /Original title|Original step/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -115,6 +143,34 @@ test('plan tool execution returns a persisted plan presentation', async () => {
       result.resultPresentation?.content,
       '---\nstatus: draft\n---\n\n# Executable plan\n\n## Steps\n\n1. Review the change.\n',
     )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('plan_edit accepts an explicit title parameter', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-plan-edit-title-tool-'))
+
+  try {
+    await createPlan({ content: '# Existing title\n\nOriginal body.', workspaceRootPath })
+    const planTools = await createNativeAgentTools({ workspaceRootPath }, { chatMode: 'plan' })
+    const editPlanTool = planTools.plan_edit as unknown as {
+      execute: (input: { content: string; path: string; title: string }) => Promise<{
+        resultPresentation?: {
+          content: string
+          title: string
+        }
+      }>
+    }
+
+    const result = await editPlanTool.execute({
+      content: '## Revised body\n\nThe new plan content.',
+      path: '.tidecode/plans/plan-001.md',
+      title: 'Renamed plan',
+    })
+
+    assert.equal(result.resultPresentation?.title, 'Renamed plan')
+    assert.match(result.resultPresentation?.content ?? '', /# Renamed plan\n\n## Revised body/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -240,6 +296,32 @@ test('implementation requests use a six-digit tag that can be rendered as status
   const message = createPlanImplementationMessage('.tidecode/plans/plan-001.md')
   assert.match(message, /^<plan_\d{6}>Implement the plan in \.tidecode\/plans\/plan-001\.md\.<\/plan_\d{6}>$/u)
   assert.equal(parsePlanImplementationMessage(message)?.message, 'Implement the plan in .tidecode/plans/plan-001.md.')
+})
+
+test('plan handoff status uses the user-facing success label', () => {
+  assert.equal(PLAN_HANDOFF_SUCCESS_LABEL, 'Handoff successful')
+})
+
+test('plan preview auto-opens only for a new execution, never during plan revert', () => {
+  assert.equal(shouldAutoOpenPlanPreview(null, '.tidecode/plans/plan-001.md:1', false), true)
+  assert.equal(shouldAutoOpenPlanPreview('.tidecode/plans/plan-001.md:1', '.tidecode/plans/plan-001.md:1', false), false)
+  assert.equal(shouldAutoOpenPlanPreview(null, '.tidecode/plans/plan-001.md:1', true), false)
+})
+
+test('plan revision requests use a six-digit tag while preserving the review prompt', () => {
+  const message = createPlanRevisionRequestMessage('.tidecode/plans/plan-001.md', [
+    {
+      comment: 'Add a rollback step.',
+      id: 'comment-1',
+      lineEnd: 5,
+      lineStart: 3,
+      quote: '## Steps',
+    },
+  ])
+
+  assert.match(message, /^<plan_revision_\d{6}>[\s\S]*<\/plan_revision_\d{6}>$/u)
+  assert.match(parsePlanRevisionRequestMessage(message)?.message ?? '', /Add a rollback step/u)
+  assert.match(parsePlanRevisionRequestMessage(message)?.message ?? '', /plan_edit/u)
 })
 
 test('plan status frontmatter survives implementation updates without entering the preview body', () => {
