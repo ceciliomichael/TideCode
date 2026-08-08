@@ -16,6 +16,7 @@ import {
   getDirectoryEntriesForSelection,
   getSelectionDirectoryPath,
   isTreeShortcutTarget,
+  resolvePasteTargetDirectoryPath,
 } from './workspaceExplorerSelectionUtils'
 
 interface ExplorerUndoActions {
@@ -226,14 +227,12 @@ export function useWorkspaceExplorerSelection({
 
       event.preventDefault()
       void (async () => {
-        let pasteTargetPath = selectionDirectoryPath
-        if (selectedEntryPaths.size === 1) {
-          const selectedPath = Array.from(selectedEntryPaths)[0]
-          const selectedEntry = findLoadedExplorerEntry(rootEntries, directoryEntriesByPath, selectedPath)
-          if (selectedEntry?.isDirectory) {
-            pasteTargetPath = toDirectoryKey(selectedEntry.relativePath)
-          }
-        }
+        const pasteTargetPath = resolvePasteTargetDirectoryPath({
+          directoryEntriesByPath,
+          rootEntries,
+          selectedEntryPaths,
+          selectionDirectoryPath,
+        })
 
         if (typeof window !== 'undefined' && window.tidecodeClipboard) {
           try {

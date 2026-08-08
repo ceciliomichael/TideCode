@@ -1,0 +1,53 @@
+export interface ActiveChatStreamRegistration {
+  readonly abortController: AbortController
+  readonly settled: Promise<void>
+}
+
+interface StoredActiveChatStreamRegistration extends ActiveChatStreamRegistration {
+  readonly resolveSettled: () => void
+}
+
+export class ActiveChatStreamRegistry {
+  private readonly registrations = new Map<string, StoredActiveChatStreamRegistration>()
+
+  register(streamId: string, abortController: AbortController): ActiveChatStreamRegistration {
+    if (this.registrations.has(streamId)) {
+      throw new Error(`Chat stream is already registered: ${streamId}`)
+    }
+
+    let resolveSettled: () => void = () => undefined
+    const settled = new Promise<void>((resolve) => {
+      resolveSettled = resolve
+    })
+    const registration: StoredActiveChatStreamRegistration = {
+      abortController,
+      resolveSettled,
+      settled,
+    }
+    this.registrations.set(streamId, registration)
+    return registration
+  }
+
+  settle(streamId: string) {
+    const registration = this.registrations.get(streamId)
+    if (!registration) {
+      return
+    }
+
+    this.registrations.delete(streamId)
+    registration.resolveSettled()
+  }
+
+  async cancel(streamId: string): Promise<boolean> {
+    const registration = this.registrations.get(streamId)
+    if (!registration) {
+      return false
+    }
+
+    if (!registration.abortController.signal.aborted) {
+      registration.abortController.abort()
+    }
+    await registration.settled
+    return true
+  }
+}

@@ -398,7 +398,7 @@ export function consumeTerminalSessionOutputForWebContents(
     input.sessionId,
     input.workspaceRootPath,
   );
-  consumePendingAiOutput(activeSession);
+  consumePendingAiOutput(activeSession, input.pendingOutputLengthToConsume);
 }
 
 export function listSessionsForWebContents(

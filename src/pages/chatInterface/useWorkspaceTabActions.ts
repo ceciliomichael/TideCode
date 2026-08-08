@@ -130,6 +130,9 @@ export function useWorkspaceTabActions({
           relativePath: normalizedRelativePath,
           workspaceRootPath,
         })
+        if (result.status === 'missing') {
+          throw new Error(`File does not exist: ${result.relativePath}`)
+        }
         if (activeWorkspacePathRef.current !== workspaceRootPath) {
           return
         }
@@ -191,6 +194,9 @@ export function useWorkspaceTabActions({
         relativePath: normalizedRelativePath,
         workspaceRootPath,
       })
+      if (result.status === 'missing') {
+        throw new Error(`File does not exist: ${result.relativePath}`)
+      }
       const normalizedContent = result.content.replace(/\r\n?/gu, '\n')
       const nextContent = setPlanStatus(normalizedContent, 'implementation_started')
       if (nextContent !== normalizedContent) {
@@ -277,6 +283,9 @@ export function useWorkspaceTabActions({
         : window.tidecodeWorkspace.readFile
       void readFile({ relativePath: normalizedRelativePath, workspaceRootPath })
         .then((result) => {
+          if (result.status === 'missing') {
+            throw new Error(`File does not exist: ${result.relativePath}`)
+          }
           if (activeWorkspacePathRef.current !== workspaceRootPath) return
 
           setWorkspaceFileTabs((currentTabs) =>
@@ -406,6 +415,9 @@ export function useWorkspaceTabActions({
       void window.tidecodeWorkspace
         .readFile({ relativePath: normalizedRelativePath, workspaceRootPath })
         .then((result) => {
+          if (result.status === 'missing') {
+            throw new Error(`File does not exist: ${result.relativePath}`)
+          }
           if (activeWorkspacePathRef.current !== workspaceRootPath) return
           const normalizedContent = result.content.replace(/\r\n/g, '\n')
           const normalizedResultPath = normalizePathSeparators(result.relativePath)

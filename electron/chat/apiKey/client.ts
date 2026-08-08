@@ -13,6 +13,7 @@ import {
   type ToolSet,
 } from 'ai'
 import type { ReasoningEffort } from '../../../src/types/chat'
+import { findCatalogModel } from '../../models/catalog/catalog'
 import { isCustomApiKeyProviderId } from '../../providers/providerIds'
 import { mergeProviderOptions, resolvePromptCacheExtraBody, resolvePromptCacheProviderOptions } from '../cache/providerPolicies'
 import { normalizeLanguageModelUsage } from '../cache/usage'
@@ -108,13 +109,16 @@ export function createApiKeyChatClient(config: ApiKeyChatProviderConfig) {
         : undefined,
     )
     const normalizedModelId = input.model.trim().toLowerCase()
-    const configuredModel = config.models.find((m) => m.apiModelId.trim().toLowerCase() === normalizedModelId)
+    const catalogModel = findCatalogModel(config.providerId, normalizedModelId)
+    const modelConfig = catalogModel ?? config.models.find(
+      (model) => model.apiModelId.trim().toLowerCase() === normalizedModelId,
+    )
 
     return streamText({
       ...(input.stopWhen ? { stopWhen: input.stopWhen } : {}),
       ...(input.maxSteps !== undefined ? { maxSteps: input.maxSteps } : {}),
       ...(input.repairToolCall ? { repairToolCall: input.repairToolCall } : {}),
-      ...(configuredModel?.maxTokens ? { maxTokens: configuredModel.maxTokens } : {}),
+      ...(modelConfig?.maxTokens !== undefined ? { maxOutputTokens: modelConfig.maxTokens } : {}),
       model,
       messages: input.messages,
       ...(input.system ? { system: input.system } : {}),

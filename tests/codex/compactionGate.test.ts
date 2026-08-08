@@ -11,7 +11,6 @@ function createBudget(messageTokens: number) {
   return calculateContextBudget({
     contextWindowTokens: 100_000,
     messageTokens,
-    reserveTokens: 4_000,
     systemPromptTokens: 0,
     toolSchemaTokens: 0,
     triggerRatio: 0.8,

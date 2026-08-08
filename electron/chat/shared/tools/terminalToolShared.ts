@@ -407,6 +407,7 @@ async function observePendingOutput(
     observeActiveScreenInteraction(session);
 
     dependencies.consumeSessionOutput(ownerWebContents, {
+      pendingOutputLengthToConsume: pendingOutput.length,
       sessionId: session.globalSessionId,
       workspaceRootPath,
     });

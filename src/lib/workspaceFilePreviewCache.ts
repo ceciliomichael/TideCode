@@ -33,7 +33,7 @@ function isBackgroundPreviewablePath(relativePath: string) {
 }
 
 function warmPreview(result: WorkspaceExplorerReadFileResult, priority: boolean) {
-  if (!result.previewDataUrl) {
+  if (result.status !== 'ready' || !result.previewDataUrl) {
     return
   }
 
@@ -76,6 +76,11 @@ export function readWorkspaceFileWithCache(
   }
 
   const promise = window.tidecodeWorkspace.readFile(input).then((result) => {
+    if (result.status === 'missing') {
+      workspaceFileCache.delete(key)
+      return result
+    }
+
     warmPreview(result, options?.priority === true)
     return result
   }).catch((error: unknown) => {

@@ -753,6 +753,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     isEditComposerDirty: composerState.isEditComposerDirty,
     isLoading: sessionState.isLoading,
     isSending: sessionState.activeConversationState?.isSending ?? isActiveDraftSending,
+    isAbortInProgress: sendActions.isAbortInProgress,
     isStreamingResponse: sessionState.activeConversationState?.isSending ?? isActiveDraftSending,
     isStreamingTextActive: sessionState.activeConversationState?.isStreamingTextActive ?? false,
     mainComposerAttachments: composerState.mainComposerAttachments,

@@ -110,7 +110,6 @@ function resolveActiveCheckpointId(messages: Message[]) {
 export async function runToolEnabledChatStream(input: {
   abortController: AbortController
   createStream: ProviderStreamFactory
-  onSettled?: () => void
   promptOptions?: RuntimePromptOptions
   startInput: StartChatStreamInput
   streamId: string
@@ -247,7 +246,6 @@ export async function runToolEnabledChatStream(input: {
         const compactionBudgetInput = {
           contextWindowTokens: contextCompaction.contextWindowTokens,
           messages: compactionMessages,
-          reserveTokens: contextCompaction.reserveTokens,
           systemPromptTokens,
           toolSchemaTokens: promptContext.toolSchemaTokens,
           triggerRatio: contextCompaction.triggerPercent / 100,
@@ -299,7 +297,6 @@ export async function runToolEnabledChatStream(input: {
             toolSchemaTokens: promptContext.toolSchemaTokens,
             previousPacket: latestCompactionPacket,
             contextWindowTokens: contextCompaction.contextWindowTokens,
-            reserveTokens: contextCompaction.reserveTokens,
             triggerRatio: contextCompaction.triggerPercent / 100,
             signal: input.abortController.signal,
           })
@@ -461,6 +458,5 @@ export async function runToolEnabledChatStream(input: {
         runId,
       ).catch(() => undefined)
     }
-    input.onSettled?.()
   }
 }

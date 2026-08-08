@@ -18,6 +18,7 @@ test('agent prompt teaches autonomous, reliable, dependency-aware implementation
     assert.match(prompt, /Answer first/u)
     assert.match(prompt, /Default to 1-3 short sentences/u)
     assert.match(prompt, /report only what you verified/iu)
+    assert.match(prompt, /native TideCode tool that accepts a filesystem or plan target.*JSON argument key is exactly `path`/u)
     assert.match(prompt, /<intent_rules/u)
     assert.match(prompt, /understand the outcome, inspect the relevant context, choose the smallest complete approach, implement it, verify it/u)
     assert.match(prompt, /Treat existing user changes as owned work/u)
@@ -27,7 +28,7 @@ test('agent prompt teaches autonomous, reliable, dependency-aware implementation
   }
 })
 
-test('plan prompt is concise and explicitly restricts file editing while supporting kanban tools', async () => {
+test('plan prompt uses plan tools for the full artifact and keeps the saved plan out of chat', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-plan-prompt-'))
 
   try {
@@ -36,8 +37,28 @@ test('plan prompt is concise and explicitly restricts file editing while support
     assert.doesNotMatch(prompt, /caveman|primitive speech/iu)
     assert.doesNotMatch(prompt, /<intent_rules/u)
     assert.match(prompt, /Plan mode may use read-only workspace tools, Kanban planning actions, discovered MCP tools/u)
+    assert.match(prompt, /native TideCode tool that accepts a filesystem or plan target.*JSON argument key is exactly `path`/u)
     assert.match(prompt, /concrete tool whose name and parameters match the task/u)
-    assert.match(prompt, /Stay under 300 words/u)
+    assert.match(prompt, /Do not invoke plan tools as an automatic first response/u)
+    assert.match(prompt, /first use read-only tools to inspect the relevant files, tests, configuration, and documentation/u)
+    assert.match(prompt, /until the convergence gate is complete and the user has confirmed the shared understanding/u)
+    assert.match(prompt, /explicitly asks to skip discovery/u)
+    assert.match(prompt, /Create one complete initial plan artifact and revise that existing artifact when needed/u)
+    assert.match(prompt, /Current state and repository evidence/u)
+    assert.match(prompt, /Data, API, and integration contracts/u)
+    assert.match(prompt, /Make acceptance criteria observable and testable/u)
+    assert.match(prompt, /After a successful plan artifact save or revision, do not restate, summarize, or reproduce the plan in chat/u)
+    assert.match(prompt, /plan should be visible in the plan preview now/u)
+    assert.doesNotMatch(prompt, /Conclude by instructing the user to switch to Agent mode/u)
+
+    const planPromptSource = await fs.readFile(
+      path.join(
+        process.cwd(),
+        'electron/chat/shared/prompts/mode/plan/prompt.md',
+      ),
+      'utf8',
+    )
+    assert.doesNotMatch(planPromptSource, /plan_(?:create|edit)/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

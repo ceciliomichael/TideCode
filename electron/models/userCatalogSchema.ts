@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { isReasoningEffort } from '../../src/lib/reasoningEffort'
+import {
+  getDefaultCustomModelMaxOutputTokens,
+  isValidMaxOutputTokens,
+} from '../../src/lib/modelOutputTokens'
 import type {
   CustomModelConfig,
   CustomModelProviderId,
@@ -9,7 +13,7 @@ import type {
 import { isChatProviderId, isCustomApiKeyProviderId } from '../providers/providerIds'
 import { parseExtraBody } from '../providers/extraBody'
 
-export const USER_MODEL_CATALOG_VERSION = 1
+export const USER_MODEL_CATALOG_VERSION = 2
 
 export interface StoredUserModel {
   api_model_id: string
@@ -18,6 +22,7 @@ export interface StoredUserModel {
   extra_body?: Record<string, unknown>
   id: string
   label: string
+  max_tokens?: number
   reasoning_bodies?: ReasoningRequestBodies
   reasoning_capable: boolean
   reasoning_efforts?: ReasoningEffort[]
@@ -61,6 +66,11 @@ export function sanitizeStoredUserModel(
   const now = new Date().toISOString()
   const id = optionalText(value.id, 512) ?? `${providerId}:custom:${randomUUID()}`
   const label = optionalText(value.label, 160) ?? apiModelId
+  const storedMaxTokens = isValidMaxOutputTokens(value.max_tokens)
+    ? value.max_tokens
+    : isValidMaxOutputTokens(value.maxTokens)
+      ? value.maxTokens
+      : getDefaultCustomModelMaxOutputTokens(providerId)
   const createdAt = optionalText(value.created_at, 64) ?? now
   const updatedAt = optionalText(value.updated_at, 64) ?? createdAt
   const reasoningCapable = value.reasoning_capable === true
@@ -89,6 +99,7 @@ export function sanitizeStoredUserModel(
     ...(extraBody ? { extra_body: extraBody } : {}),
     id,
     label,
+    ...(storedMaxTokens !== undefined ? { max_tokens: storedMaxTokens } : {}),
     ...(reasoningBodies ? { reasoning_bodies: reasoningBodies } : {}),
     reasoning_capable: reasoningCapable,
     ...(reasoningEfforts.length > 0 ? { reasoning_efforts: reasoningEfforts } : {}),
@@ -127,6 +138,7 @@ export function toCustomModelConfig(
     ...(model.extra_body ? { extraBody: model.extra_body } : {}),
     id: model.id,
     label: model.label,
+    ...(model.max_tokens !== undefined ? { maxTokens: model.max_tokens } : {}),
     providerId,
     reasoningCapable: model.reasoning_capable,
     ...(model.reasoning_bodies ? { reasoningBodies: model.reasoning_bodies } : {}),
@@ -147,6 +159,7 @@ export function createStoredUserModel(
     extra_body: input.extraBody,
     id: input.id ?? `${input.providerId}:custom:${randomUUID()}`,
     label: input.label,
+    max_tokens: input.maxTokens,
     reasoning_bodies: input.reasoningBodies,
     reasoning_capable: input.reasoningCapable,
     reasoning_efforts: input.reasoningEfforts,

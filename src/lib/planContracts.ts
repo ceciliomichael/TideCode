@@ -81,6 +81,25 @@ export function normalizePlanContent(content: string) {
   return content.replace(/\r\n?/gu, '\n').trimEnd() + '\n'
 }
 
+export function setPlanTitle(content: string, title: string) {
+  const normalizedContent = normalizePlanContent(content)
+  const normalizedTitle = title.replace(/\s+/gu, ' ').trim()
+  if (normalizedTitle.length === 0) {
+    return normalizedContent
+  }
+
+  const headingMatch = normalizedContent.match(/^#\s+.*$/mu)
+  if (!headingMatch || headingMatch.index === undefined) {
+    return normalizePlanContent(`# ${normalizedTitle}\n\n${normalizedContent}`)
+  }
+
+  return normalizePlanContent(
+    `${normalizedContent.slice(0, headingMatch.index)}# ${normalizedTitle}${normalizedContent.slice(
+      headingMatch.index + headingMatch[0].length,
+    )}`,
+  )
+}
+
 export function getPlanStatus(content: string): PlanStatus {
   const normalizedContent = content.replace(/\r\n?/gu, '\n')
   const frontmatterMatch = normalizedContent.match(PLAN_STATUS_FRONTMATTER_PATTERN)

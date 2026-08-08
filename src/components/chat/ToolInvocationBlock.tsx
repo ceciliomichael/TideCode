@@ -7,7 +7,10 @@ import { ChangeDiffResult } from './FileChangeDiffResult'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { TerminalToolResult } from './TerminalToolResult'
 import { ToolDecisionRequestCard, type ToolDecisionSubmission } from './ToolDecisionRequestCard'
-import { getToolInvocationHeaderLabel } from './toolInvocationPresentation'
+import {
+  getToolInvocationHeaderLabel,
+  TERMINAL_EXECUTION_WAITING_THRESHOLD_MS,
+} from './toolInvocationPresentation'
 import { isFileEditTool, isFileWriteTool } from './toolInvocationKinds'
 import { isKanbanTool } from './kanbanToolInvocationKinds'
 import { KanbanToolResult } from './KanbanToolResult'
@@ -80,6 +83,7 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   const [isOpen, setIsOpen] = useState(false)
   const [submittedDecisionRequestKey, setSubmittedDecisionRequestKey] = useState<string | null>(null)
   const [displayedState, setDisplayedState] = useState<ToolInvocationTrace['state']>(invocation.state)
+  const [terminalExecutionPhaseTick, setTerminalExecutionPhaseTick] = useState(0)
   const decisionRequestKey = invocation.decisionRequest
     ? [
         invocation.id,
@@ -103,7 +107,28 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   useEffect(() => {
     if (displayInvocation.state === 'running') {
       setDisplayedState('running')
-      return undefined
+
+      if (displayInvocation.toolName !== 'execute_terminal') {
+        return undefined
+      }
+
+      const elapsedSinceStart = Date.now() - displayInvocation.startedAt
+      const remainingWaitingLabelTime = Math.max(
+        0,
+        TERMINAL_EXECUTION_WAITING_THRESHOLD_MS - elapsedSinceStart,
+      )
+
+      if (remainingWaitingLabelTime === 0) {
+        return undefined
+      }
+
+      const timeoutId = window.setTimeout(() => {
+        setTerminalExecutionPhaseTick((currentTick) => currentTick + 1)
+      }, remainingWaitingLabelTime)
+
+      return () => {
+        window.clearTimeout(timeoutId)
+      }
     }
 
     if (!shouldHoldRunningLabel(displayInvocation)) {
@@ -127,7 +152,7 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [displayInvocation])
+  }, [displayInvocation, terminalExecutionPhaseTick])
 
   const hasPendingDecision = invocation.decisionRequest !== undefined
   const isRunning = displayedState === 'running'

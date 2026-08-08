@@ -152,7 +152,14 @@ export function useWorkspaceTabSync({
               relativePath,
               workspaceRootPath,
             });
-  
+
+            if (result.status === "missing") {
+              return {
+                error: new Error(`File does not exist: ${result.relativePath}`),
+                relativePath,
+              };
+            }
+
             return {
               relativePath,
               result,
@@ -174,7 +181,10 @@ export function useWorkspaceTabSync({
           }
         | {
             relativePath: string;
-            result: Awaited<ReturnType<typeof window.tidecodeWorkspace.readFile>>;
+            result: Extract<
+              Awaited<ReturnType<typeof window.tidecodeWorkspace.readFile>>,
+              { status: "ready" }
+            >;
           }
       >();
   

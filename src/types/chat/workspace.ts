@@ -31,7 +31,8 @@ export interface WorkspaceExplorerReadFileInput {
   workspaceRootPath: string
 }
 
-export interface WorkspaceExplorerReadFileResult {
+export interface WorkspaceExplorerReadFileReadyResult {
+  status: 'ready'
   content: string
   isBinary: boolean
   isTruncated: boolean
@@ -42,6 +43,15 @@ export interface WorkspaceExplorerReadFileResult {
   relativePath: string
   sizeBytes: number
 }
+
+export interface WorkspaceExplorerReadFileMissingResult {
+  relativePath: string
+  status: 'missing'
+}
+
+export type WorkspaceExplorerReadFileResult =
+  | WorkspaceExplorerReadFileMissingResult
+  | WorkspaceExplorerReadFileReadyResult
 
 export interface WorkspaceRefactorCandidatesInput {
   workspaceRootPath: string
@@ -149,6 +159,7 @@ export interface WriteTerminalSessionInput {
 }
 
 export interface TerminalSessionOutputInput {
+  pendingOutputLengthToConsume?: number
   pollingMs?: number
   sessionId: number
   workspaceRootPath?: string | null

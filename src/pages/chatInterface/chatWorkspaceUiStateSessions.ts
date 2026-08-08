@@ -2,6 +2,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { ChatInterfaceRightPanelTab } from "../../hooks/useChatInterfaceController";
 import type { WorkspaceTab } from "../../components/workspaceExplorer/types";
 import type { WorkspaceUiSession } from "./chatWorkspaceUiState.types";
+import type { PlanCommentsByPath } from "../../lib/planComments";
 
 interface SaveWorkspaceUiSessionInput {
   activeWorkspaceFilePath: string | null;
@@ -12,6 +13,7 @@ interface SaveWorkspaceUiSessionInput {
   isTerminalFullScreen: boolean;
   isRightPanelOpen: boolean;
   isWorkspaceTabsPanelVisible: boolean;
+  planCommentsByPath: PlanCommentsByPath;
   rightPanelTab: ChatInterfaceRightPanelTab;
   workspaceFileTabs: WorkspaceTab[];
   workspaceUiSessionsRef: MutableRefObject<Record<string, WorkspaceUiSession>>;
@@ -26,12 +28,14 @@ interface RestoreWorkspaceUiSessionInput {
   isTerminalFullScreen: boolean;
   isRightPanelOpen: boolean;
   isWorkspaceTabsPanelVisible: boolean;
+  planCommentsByPath: PlanCommentsByPath;
   onRightPanelOpenChange: (nextValue: boolean) => void;
   onRightPanelTabChange: (nextTab: ChatInterfaceRightPanelTab) => void;
   previousWorkspaceUiKeyRef: MutableRefObject<string>;
   setActiveWorkspaceFilePath: Dispatch<SetStateAction<string | null>>;
   setActiveWorkspaceTabKey: Dispatch<SetStateAction<string | null>>;
   setIsExplorerOpen: Dispatch<SetStateAction<boolean>>;
+  setPlanCommentsByPath: Dispatch<SetStateAction<PlanCommentsByPath>>;
   setIsTerminalOpen: Dispatch<SetStateAction<boolean>>;
   setIsTerminalFullScreen: Dispatch<SetStateAction<boolean>>;
   setIsWorkspaceTabsPanelVisible: Dispatch<SetStateAction<boolean>>;
@@ -86,6 +90,7 @@ export function saveWorkspaceUiSession({
   isTerminalFullScreen,
   isRightPanelOpen,
   isWorkspaceTabsPanelVisible,
+  planCommentsByPath,
   rightPanelTab,
   workspaceFileTabs,
   workspaceUiSessionsRef,
@@ -98,6 +103,7 @@ export function saveWorkspaceUiSession({
     isTerminalFullScreen,
     isRightPanelOpen,
     isTabsVisible: isWorkspaceTabsPanelVisible,
+    planCommentsByPath,
     rightPanelTab,
     tabs: workspaceFileTabs,
   };
@@ -112,12 +118,14 @@ export function restoreWorkspaceUiSession({
   isTerminalFullScreen,
   isRightPanelOpen,
   isWorkspaceTabsPanelVisible,
+  planCommentsByPath,
   onRightPanelOpenChange,
   onRightPanelTabChange,
   previousWorkspaceUiKeyRef,
   setActiveWorkspaceFilePath,
   setActiveWorkspaceTabKey,
   setIsExplorerOpen,
+  setPlanCommentsByPath,
   setIsTerminalOpen,
   setIsTerminalFullScreen,
   setIsWorkspaceTabsPanelVisible,
@@ -139,6 +147,7 @@ export function restoreWorkspaceUiSession({
     isTerminalFullScreen,
     isRightPanelOpen,
     isWorkspaceTabsPanelVisible,
+    planCommentsByPath,
     rightPanelTab:
       workspaceUiSessionsRef.current[previousWorkspaceUiKey]?.rightPanelTab ??
       "diff",
@@ -152,6 +161,7 @@ export function restoreWorkspaceUiSession({
     setActiveWorkspaceTabKey(nextSession.activeTabKey ?? nextSession.activeFilePath);
     setIsWorkspaceTabsPanelVisible(nextSession.isTabsVisible);
     setIsExplorerOpen(nextSession.isExplorerOpen);
+    setPlanCommentsByPath(nextSession.planCommentsByPath ?? {});
     setIsTerminalOpen(nextSession.isTerminalOpen);
     setIsTerminalFullScreen(nextSession.isTerminalFullScreen ?? false);
     onRightPanelTabChange(nextSession.rightPanelTab);
@@ -163,6 +173,7 @@ export function restoreWorkspaceUiSession({
     setActiveWorkspaceTabKey(null);
     setIsWorkspaceTabsPanelVisible(false);
     setIsExplorerOpen(false);
+    setPlanCommentsByPath({});
     setIsTerminalOpen(false);
     setIsTerminalFullScreen(false);
     onRightPanelTabChange("diff");

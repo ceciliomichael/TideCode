@@ -1,13 +1,15 @@
-import { ChevronRight } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { MarkdownRenderer } from '../../chat/MarkdownRenderer'
 import { getPlanDisplayContent, getPlanStatus, type PlanReviewComment } from '../../../lib/planContracts'
+import { PLAN_HANDOFF_SUCCESS_LABEL } from '../../../lib/planStatusMessages'
 import { WorkspacePlanActionsMenu } from './WorkspacePlanActionsMenu'
 import { WorkspacePlanCommentsMenu } from './WorkspacePlanCommentsMenu'
 
 interface WorkspacePlanPreviewProps {
+  comments: readonly PlanReviewComment[]
   content: string
   isTruncated: boolean
+  onCommentsChange: (relativePath: string, comments: readonly PlanReviewComment[]) => void
   onImplementPlan: (relativePath: string) => void
   onRequestChanges: (relativePath: string, comments: PlanReviewComment[]) => void
   relativePath: string
@@ -26,13 +28,14 @@ function getPlanLineCount(content: string) {
 }
 
 export function WorkspacePlanPreview({
+  comments,
   content,
   isTruncated,
+  onCommentsChange,
   onImplementPlan,
   onRequestChanges,
   relativePath,
 }: WorkspacePlanPreviewProps) {
-  const [comments, setComments] = useState<PlanReviewComment[]>([])
   const [isImplementationSubmitted, setIsImplementationSubmitted] = useState(
     () => getPlanStatus(content) === 'implementation_started',
   )
@@ -46,10 +49,10 @@ export function WorkspacePlanPreview({
     }
 
     previousContentRef.current = content
-    setComments([])
+    onCommentsChange(relativePath, [])
     setIsImplementationSubmitted(getPlanStatus(content) === 'implementation_started')
     setIsRequestSubmitted(false)
-  }, [content])
+  }, [content, onCommentsChange, relativePath])
 
   const handleAddComment = useCallback((comment: string) => {
     const normalizedComment = comment.trim().slice(0, 2000)
@@ -57,8 +60,8 @@ export function WorkspacePlanPreview({
       return
     }
 
-    setComments((currentComments) => [
-      ...currentComments,
+    onCommentsChange(relativePath, [
+      ...comments,
       {
         comment: normalizedComment,
         id: createCommentId(),
@@ -67,7 +70,7 @@ export function WorkspacePlanPreview({
         quote: 'Entire plan',
       },
     ])
-  }, [content])
+  }, [comments, content, onCommentsChange, relativePath])
 
   const handleRequestChanges = useCallback(() => {
     if (comments.length === 0 || isRequestSubmitted) {
@@ -75,7 +78,7 @@ export function WorkspacePlanPreview({
     }
 
     setIsRequestSubmitted(true)
-    onRequestChanges(relativePath, comments)
+    onRequestChanges(relativePath, [...comments])
   }, [comments, isRequestSubmitted, onRequestChanges, relativePath])
 
   const handleImplement = useCallback(() => {
@@ -83,23 +86,15 @@ export function WorkspacePlanPreview({
       return
     }
 
-    setComments([])
+    onCommentsChange(relativePath, [])
     setIsImplementationSubmitted(true)
     onImplementPlan(relativePath)
-  }, [isImplementationSubmitted, isRequestSubmitted, onImplementPlan, relativePath])
+  }, [isImplementationSubmitted, isRequestSubmitted, onCommentsChange, onImplementPlan, relativePath])
 
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-background text-foreground">
-      <header className="shrink-0 border-b border-border bg-surface px-2">
-        <div className="flex min-h-10 items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-1 overflow-x-auto overflow-y-hidden text-[12px] text-subtle-foreground">
-            {relativePath.split(/[\\/]+/).filter((segment) => segment.length > 0).map((segment, index) => (
-              <span key={`${segment}-${index}`} className="inline-flex min-w-0 shrink-0 items-center gap-1.5">
-                {index > 0 ? <ChevronRight size={12} className="shrink-0 text-subtle-foreground/70" /> : null}
-                <span className="truncate">{segment}</span>
-              </span>
-            ))}
-          </div>
+      <header className="shrink-0 bg-background px-2">
+        <div className="flex min-h-10 items-center justify-end gap-2">
           <div className="flex shrink-0 items-center gap-2">
             {!isImplementationStarted ? (
               <WorkspacePlanCommentsMenu comments={comments} onAddComment={handleAddComment} />
@@ -107,7 +102,7 @@ export function WorkspacePlanPreview({
             <WorkspacePlanActionsMenu
               implementationDisabled={isImplementationStarted || isRequestSubmitted}
               isImplementationStarted={isImplementationStarted}
-              implementationLabel={isImplementationStarted ? 'Implementation started' : 'Implement the plan'}
+              implementationLabel={isImplementationStarted ? PLAN_HANDOFF_SUCCESS_LABEL : 'Implement the plan'}
               onImplement={handleImplement}
               onRequestChanges={handleRequestChanges}
               requestChangesDisabled={comments.length === 0 || isRequestSubmitted || isImplementationStarted}

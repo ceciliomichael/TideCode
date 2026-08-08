@@ -17,6 +17,7 @@ import type { GitFileDiff } from '../../types/chat'
 import { Tooltip } from '../Tooltip'
 import type { WorkspaceTab } from './types'
 import type { PlanReviewComment } from '../../lib/planContracts'
+import type { PlanCommentsByPath } from '../../lib/planComments'
 import type { TextSelectionRange } from './workspaceFileEditor/workspaceFileEditorUtils'
 import { WorkspaceFileTabsPanelContent } from './workspaceFileTabsPanel/WorkspaceFileTabsPanelContent'
 import { findWorkspaceTabByKey } from './workspaceFileTabsPanel/workspaceFileTabsPanelUtils'
@@ -28,10 +29,12 @@ interface WorkspaceFileTabsPanelProps {
   isOpen: boolean
   onCloseTab: (tabKey: string) => void
   onFileContentChange: (relativePath: string, content: string) => void
+  onPlanCommentsChange: (relativePath: string, comments: readonly PlanReviewComment[]) => void
   onImplementPlan: (relativePath: string) => void
   onOpenMarkdownPreview: (relativePath: string) => void
   onOpenSvgPreview: (relativePath: string) => void
   onRequestPlanChanges: (relativePath: string, comments: PlanReviewComment[]) => void
+  planCommentsByPath: PlanCommentsByPath
   onSelectTab: (tabKey: string) => void
   tabs: readonly WorkspaceTab[]
   wordWrapEnabled: boolean
@@ -44,10 +47,12 @@ export function WorkspaceFileTabsPanel({
   isOpen,
   onCloseTab,
   onFileContentChange,
+  onPlanCommentsChange,
   onImplementPlan,
   onOpenMarkdownPreview,
   onOpenSvgPreview,
   onRequestPlanChanges,
+  planCommentsByPath,
   onSelectTab,
   tabs,
   wordWrapEnabled,
@@ -334,10 +339,12 @@ export function WorkspaceFileTabsPanel({
           initialSelection={activeEditorSelection}
           tabs={tabs}
           onFileContentChange={onFileContentChange}
+          onPlanCommentsChange={onPlanCommentsChange}
           onImplementPlan={onImplementPlan}
           onOpenMarkdownPreview={openMarkdownPreviewForActiveFile}
           onOpenSvgPreview={openSvgPreviewForActiveFile}
           onRequestPlanChanges={onRequestPlanChanges}
+          planCommentsByPath={planCommentsByPath}
           onSelectionChange={handleEditorSelectionChange}
           wordWrapEnabled={wordWrapEnabled}
         />

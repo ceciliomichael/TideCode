@@ -5,6 +5,7 @@ import type {
   Message,
   ToolInvocationResultPresentation,
 } from '../../../src/types/chat'
+import { TERMINATED_TOOL_EXECUTION_MESSAGE } from '../../../src/lib/toolResultContent'
 import { recordToolFreshness } from '../history/eventStore'
 import type { AgentToolExecutionResult } from './toolTypes'
 import {
@@ -103,6 +104,54 @@ function getToolResultPresentation(result: AgentToolExecutionResult): ToolInvoca
   return result.resultPresentation
 }
 
+function emitTerminatedToolInvocations(
+  input: ProcessRuntimeStreamInput,
+  invocationStateById: Map<string, ToolInvocationState>,
+) {
+  if (invocationStateById.size === 0) {
+    return
+  }
+
+  const completedAt = Date.now()
+  for (const [invocationId, invocation] of invocationStateById) {
+    const argumentsValue = parseToolArguments(invocation.argumentsText)
+    const terminatedResult: AgentToolExecutionResult = {
+      body: TERMINATED_TOOL_EXECUTION_MESSAGE,
+      displayBody: TERMINATED_TOOL_EXECUTION_MESSAGE,
+      status: 'error',
+      summary: TERMINATED_TOOL_EXECUTION_MESSAGE,
+    }
+    const syntheticMessage = createSyntheticToolMessage(
+      invocationId,
+      invocation.toolName,
+      argumentsValue,
+      completedAt,
+      terminatedResult,
+    )
+    const displaySyntheticMessage = createSyntheticToolMessage(
+      invocationId,
+      invocation.toolName,
+      argumentsValue,
+      completedAt,
+      terminatedResult,
+      TERMINATED_TOOL_EXECUTION_MESSAGE,
+    )
+
+    emitChatStreamEvent(input.webContents, {
+      argumentsText: invocation.argumentsText,
+      completedAt,
+      errorMessage: TERMINATED_TOOL_EXECUTION_MESSAGE,
+      invocationId,
+      resultContent: displaySyntheticMessage.content,
+      streamId: input.streamId,
+      syntheticMessage,
+      toolName: invocation.toolName,
+      type: 'tool_invocation_failed',
+    })
+  }
+  invocationStateById.clear()
+}
+
 interface ProcessRuntimeStreamInput {
   abortController: AbortController
   conversationId: string | null
@@ -118,10 +167,10 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
   let completedStepCount = 0
   let lastFinishReason: string | null = null
 
+  try {
       for await (const part of input.fullStream) {
-        // Cancellation is acknowledged by the IPC layer immediately. The
-        // provider/tool iterator may still yield later while it unwinds; do
-        // not forward those late events or persist more run progress.
+        // The provider/tool iterator may still yield after cancellation while
+        // it unwinds; do not forward those late events or persist more progress.
         if (input.abortController.signal.aborted) {
           continue
         }
@@ -247,7 +296,6 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
           typeof part.toolName === 'string'
         ) {
           if (input.abortController.signal.aborted) {
-            invocationStateById.delete(part.toolCallId)
             continue
           }
   
@@ -318,7 +366,6 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
           typeof part.toolName === 'string'
         ) {
           if (input.abortController.signal.aborted) {
-            invocationStateById.delete(part.toolCallId)
             continue
           }
   
@@ -369,6 +416,16 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
           lastFinishReason = typeof part.finishReason === 'string' ? part.finishReason : null
         }
       }
+  } catch (error) {
+    if (input.abortController.signal.aborted) {
+      emitTerminatedToolInvocations(input, invocationStateById)
+    }
+    throw error
+  }
+
+  if (input.abortController.signal.aborted) {
+    emitTerminatedToolInvocations(input, invocationStateById)
+  }
 
   return {
     completedStepCount,

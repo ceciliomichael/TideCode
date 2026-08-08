@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  createStoredUserModel,
   sanitizeStoredUserModelCatalog,
+  toCustomModelConfig,
   USER_MODEL_CATALOG_VERSION,
 } from '../../electron/models/userCatalogSchema'
 import {
@@ -9,6 +11,53 @@ import {
   getSelectableUserModelEfforts,
   getUserModelReasoningKind,
 } from '../../src/lib/userModelReasoning'
+import { getDefaultCustomModelMaxOutputTokens } from '../../src/lib/modelOutputTokens'
+
+test('custom model output limits use provider defaults and survive catalog conversion', () => {
+  const customProviderModel = createStoredUserModel({
+    apiModelId: 'local-model',
+    label: 'Local model',
+    providerId: 'custom:server01',
+    reasoningCapable: false,
+  })
+  const openAIModel = createStoredUserModel({
+    apiModelId: 'openai-compatible-model',
+    label: 'OpenAI-compatible model',
+    providerId: 'openai',
+    reasoningCapable: false,
+  })
+  const mistralModel = createStoredUserModel({
+    apiModelId: 'mistral-compatible-model',
+    label: 'Mistral-compatible model',
+    providerId: 'mistral',
+    reasoningCapable: false,
+  })
+
+  assert.equal(customProviderModel.max_tokens, 8192)
+  assert.equal(toCustomModelConfig('custom:server01', customProviderModel).maxTokens, 8192)
+  assert.equal(openAIModel.max_tokens, 128000)
+  assert.equal(mistralModel.max_tokens, undefined)
+})
+
+test('custom model defaults match the fixed provider catalog limits', () => {
+  assert.deepEqual({
+    anthropic: getDefaultCustomModelMaxOutputTokens('anthropic'),
+    codex: getDefaultCustomModelMaxOutputTokens('codex'),
+    deepseek: getDefaultCustomModelMaxOutputTokens('deepseek'),
+    google: getDefaultCustomModelMaxOutputTokens('google'),
+    mistral: getDefaultCustomModelMaxOutputTokens('mistral'),
+    openai: getDefaultCustomModelMaxOutputTokens('openai'),
+    custom: getDefaultCustomModelMaxOutputTokens('custom:server01'),
+  }, {
+    anthropic: 128000,
+    codex: 128000,
+    deepseek: 384000,
+    google: 65536,
+    mistral: undefined,
+    openai: 128000,
+    custom: 8192,
+  })
+})
 
 test('user model catalogs retain a model-specific enabled or disabled reasoning profile', () => {
   const catalog = sanitizeStoredUserModelCatalog({

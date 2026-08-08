@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { toUserFacingErrorMessage } from '../lib/userFacingError'
 import {
   getMessagesThroughUserMessage,
@@ -12,7 +12,7 @@ import { persistAndStreamMessage } from './chatMessageSendWorkflow'
 import type { ChatRuntimeSelection } from './chatMessageRuntime'
 import type { PersistAndStreamMessageInput, PersistedUserTurn } from './chatMessageSendTypes'
 import { restoreChatComposerDraft } from '../lib/chatComposerDraft'
-import { isPlanImplementationStatusMessage } from '../lib/planImplementation'
+import { isPlanStatusMessage } from '../lib/planStatusMessages'
 import { getPlanPathsCreatedByRevertedUserMessage } from '../lib/planPresentation'
 import { readChatSelectionFromRefs } from '../lib/chatSelection'
 import {
@@ -104,10 +104,12 @@ function sleep(milliseconds: number) {
 export function useChatSendActions(input: UseChatSendActionsInput) {
   const actionInFlightRef = useRef(false)
   const abortOperationRef = useRef<Promise<void> | null>(null)
+  const abortResponseOperationRef = useRef<Promise<void> | null>(null)
   const submissionInFlightRef = useRef<Set<string>>(new Set())
   const pendingAbortBeforeStreamStartRef = useRef(false)
   const revertedUserMessageIdsRef = useRef<Set<string>>(new Set())
   const pendingPersistedUserTurnsRef = useRef<Map<string, PersistedUserTurn>>(new Map())
+  const [isAbortInProgress, setIsAbortInProgress] = useState(false)
 
   const isUserMessageReverted = useCallback((messageId: string) => {
     return revertedUserMessageIdsRef.current.has(messageId)
@@ -134,7 +136,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         return false
       }
 
-      if (isPlanImplementationStatusMessage(message.content)) {
+      if (isPlanStatusMessage(message.content)) {
         return false
       }
 
@@ -724,52 +726,74 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
   )
 
   const abortStreamingResponse = useCallback(async () => {
+    const existingAbortResponseOperation = abortResponseOperationRef.current
+    if (existingAbortResponseOperation) {
+      await existingAbortResponseOperation
+      return
+    }
+
     if (actionInFlightRef.current) {
       return
     }
 
-    const conversationId = readChatSelectionFromRefs(input).activeConversationId
-    const pendingStopTurn = resolvePendingStopTurn(conversationId)
-    if (pendingStopTurn) {
-      restorePendingUserMessageToMainComposer(pendingStopTurn.conversationId, pendingStopTurn.message, {
-        restoreComposer: false,
-      })
-    }
+    setIsAbortInProgress(true)
+    const abortResponseOperation = (async () => {
+      const conversationId = readChatSelectionFromRefs(input).activeConversationId
+      const pendingStopTurn = resolvePendingStopTurn(conversationId)
+      let rollbackError: unknown = null
+      let stopError: unknown = null
+      try {
+        await abortActiveStreamIfNeeded({ requestAbortBeforeStreamStart: true })
+      } catch (caughtError) {
+        stopError = caughtError
+        const activeConversationId = readChatSelectionFromRefs(input).activeConversationId
+        if (
+          pendingStopTurn &&
+          (activeConversationId === pendingStopTurn.conversationId || activeConversationId === null)
+        ) {
+          restoreUserMessageDraftToMainComposer(pendingStopTurn.message)
+        }
+      }
 
-    let rollbackError: unknown = null
-    const pendingRollbackPromise = pendingStopTurn
-      ? rollbackPendingUserMessage(pendingStopTurn).catch((caughtError) => {
-          rollbackError = caughtError
-        })
-      : null
-    let stopError: unknown = null
-    try {
-      await abortActiveStreamIfNeeded({ requestAbortBeforeStreamStart: true })
-    } catch (caughtError) {
-      stopError = caughtError
-      const activeConversationId = readChatSelectionFromRefs(input).activeConversationId
       if (
         pendingStopTurn &&
-        (activeConversationId === pendingStopTurn.conversationId || activeConversationId === null)
+        isActiveUnrespondedUserMessage(
+          getConversationState(pendingStopTurn.conversationId),
+          pendingStopTurn.message.id,
+        )
       ) {
-        restoreUserMessageDraftToMainComposer(pendingStopTurn.message)
+        restorePendingUserMessageToMainComposer(pendingStopTurn.conversationId, pendingStopTurn.message, {
+          restoreComposer: false,
+        })
+        try {
+          await rollbackPendingUserMessage(pendingStopTurn)
+        } catch (caughtError) {
+          rollbackError = caughtError
+        }
       }
-    }
+      if (rollbackError) {
+        stopError = stopError ?? rollbackError
+        console.error(rollbackError)
+      }
 
-    if (pendingRollbackPromise) {
-      await pendingRollbackPromise
-    }
-    if (rollbackError) {
-      stopError = stopError ?? rollbackError
-      console.error(rollbackError)
-    }
+      if (stopError) {
+        console.error(stopError)
+        input.setError('Unable to stop the current response.')
+      }
+    })()
+    abortResponseOperationRef.current = abortResponseOperation
 
-    if (stopError) {
-      console.error(stopError)
-      input.setError('Unable to stop the current response.')
+    try {
+      await abortResponseOperation
+    } finally {
+      if (abortResponseOperationRef.current === abortResponseOperation) {
+        abortResponseOperationRef.current = null
+      }
+      setIsAbortInProgress(false)
     }
   }, [
     abortActiveStreamIfNeeded,
+    getConversationState,
     input,
     resolvePendingStopTurn,
     restorePendingUserMessageToMainComposer,
@@ -890,6 +914,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
 
   return {
     abortStreamingResponse,
+    isAbortInProgress,
     revertUserMessage,
     sendEditedMessage,
     sendNewMessage,

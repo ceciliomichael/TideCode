@@ -2,6 +2,8 @@ import type { ChatInterfaceRightPanelTab } from "../../hooks/useChatInterfaceCon
 import type { AppSettings } from "../../types/chat";
 import type { WorkspaceTab } from "../../components/workspaceExplorer/types";
 import type { WorkspaceClipboardEntry } from "../../components/workspaceExplorer/workspaceClipboardTypes";
+import type { PlanReviewComment } from "../../lib/planContracts";
+import type { PlanCommentsByPath } from "../../lib/planComments";
 export type { WorkspaceClipboardEntry } from "../../components/workspaceExplorer/workspaceClipboardTypes";
 
 export const DEFAULT_TERMINAL_WORKSPACE_KEY = "__global__";
@@ -14,6 +16,7 @@ export interface WorkspaceUiSession {
   isTerminalFullScreen: boolean;
   isRightPanelOpen: boolean;
   isTabsVisible: boolean;
+  planCommentsByPath: PlanCommentsByPath;
   rightPanelTab: ChatInterfaceRightPanelTab;
   tabs: WorkspaceTab[];
 }
@@ -67,6 +70,7 @@ export interface ChatWorkspaceUiState {
   handleOpenWorkspaceFile: (relativePath: string) => void;
   handleOpenWorkspaceMarkdownPreview: (relativePath: string) => void;
   handleMarkWorkspacePlanImplementationStarted: (relativePath: string) => Promise<boolean>;
+  handlePlanCommentsChange: (relativePath: string, comments: readonly PlanReviewComment[]) => void;
   handleOpenWorkspacePlanPreview: (relativePath: string) => Promise<void>;
   handleOpenWorkspaceSvgPreview: (relativePath: string) => void;
   handlePasteWorkspaceEntry: (
@@ -94,6 +98,7 @@ export interface ChatWorkspaceUiState {
   isTerminalFullScreen: boolean;
   isTerminalOpen: boolean;
   isWorkspaceTabsPanelOpen: boolean;
+  planCommentsByPath: PlanCommentsByPath;
   sourceControlPanelWidth: number;
   terminalPanelHeight: number;
   workspaceClipboard: WorkspaceClipboardEntry | null;

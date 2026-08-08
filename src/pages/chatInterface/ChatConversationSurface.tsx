@@ -18,7 +18,7 @@ import type {
   QueuedMessage,
   WorkspaceRefactorCandidate,
 } from '../../types/chat'
-import { getLatestCompletedPlanPresentation } from '../../lib/planPresentation'
+import { getLatestCompletedPlanPresentation, shouldAutoOpenPlanPreview } from '../../lib/planPresentation'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
 
 type ChatInputProps = ComponentProps<typeof ChatInput>
@@ -101,6 +101,9 @@ export function ChatConversationSurface({
   const latestPlanKey = latestPlanPresentation
     ? `${latestPlanPresentation.relativePath}:${latestPlanPresentation.updatedAt}`
     : null
+  const latestPlanRelativePath = latestPlanPresentation?.relativePath ?? null
+  const isRevertingPlan = chatMessages.isEditingMessage && chatMessages.revertedPlanPaths.length > 0
+  const { handleOpenWorkspacePlanPreview } = workspaceState
   const autoOpenedPlanRef = useRef<{ conversationId: string | null; planKey: string | null }>({
     conversationId: null,
     planKey: null,
@@ -116,22 +119,26 @@ export function ChatConversationSurface({
       return
     }
 
-    if (!latestPlanPresentation || latestPlanKey === null) {
+    if (latestPlanRelativePath === null || latestPlanKey === null) {
       autoOpenState.planKey = null
       return
     }
 
-    if (autoOpenState.planKey === latestPlanKey) {
+    if (!shouldAutoOpenPlanPreview(autoOpenState.planKey, latestPlanKey, isRevertingPlan)) {
+      autoOpenState.planKey = latestPlanKey
       return
     }
 
     autoOpenState.planKey = latestPlanKey
-    workspaceState.handleOpenWorkspacePlanPreview(latestPlanPresentation.relativePath)
+    handleOpenWorkspacePlanPreview(latestPlanRelativePath)
   }, [
     chatMessages.activeConversationId,
+    chatMessages.isEditingMessage,
+    chatMessages.revertedPlanPaths.length,
+    isRevertingPlan,
     latestPlanKey,
-    latestPlanPresentation?.relativePath,
-    workspaceState.handleOpenWorkspacePlanPreview,
+    latestPlanRelativePath,
+    handleOpenWorkspacePlanPreview,
   ])
 
   return (

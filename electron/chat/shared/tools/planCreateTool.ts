@@ -7,16 +7,17 @@ import { captureCheckpointFileStateIfNeeded } from './workspaceToolResults'
 
 export function createPlanCreateTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Create an implementation plan in .tidecode/plans/.',
+    description: 'Create a complete engineering implementation plan in .tidecode/plans/.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
         content: {
-          description: 'Complete implementation plan in Markdown.',
+          description:
+            'Complete self-contained Markdown document. Include context, goals/non-goals, requirements, proposed solution, concrete file-level steps, verification, risks, and acceptance criteria when relevant.',
           type: 'string',
         },
         title: {
-          description: 'Optional plan title used when the Markdown has no heading.',
+          description: 'Optional plan title used when the Markdown has no H1 heading.',
           type: 'string',
         },
       },

@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from 'react'
+import { memo, useCallback } from 'react'
 import { DropdownField } from '../../ui/DropdownField'
 import type { AppSettings } from '../../../types/chat'
 import {
@@ -21,8 +21,6 @@ const CONTEXT_WINDOW_OPTIONS = [
   { label: '2,000,000 tokens', value: '2000000' },
 ] as const
 
-const RESERVE_TOKEN_VALUES = [4_000, 8_000, 16_000, 24_000, 32_000, 48_000, 64_000, 96_000] as const
-
 function formatPercent(value: number) {
   return `${value}%`
 }
@@ -41,12 +39,6 @@ export function ContextSettingsSections({ isLoading, onUpdateSettings, settings 
       })
     },
     [onUpdateSettings, settings],
-  )
-  const reserveOptions = useMemo(
-    () => RESERVE_TOKEN_VALUES
-      .filter((value) => value <= Math.floor(settings.contextWindowTokens / 2))
-      .map((value) => ({ label: `${value.toLocaleString()} tokens`, value: String(value) })),
-    [settings.contextWindowTokens],
   )
   return (
     <>
@@ -97,28 +89,6 @@ export function ContextSettingsSections({ isLoading, onUpdateSettings, settings 
           </SettingsRow>
         </div>
 
-      </SettingsSection>
-
-      <SettingsSection title="Generation reserve">
-        <SettingsRow
-          title="Reserved response space"
-          description="Space held back for the next model response and tool work. Larger values reduce the retained history target but improve headroom."
-        >
-          <div className="w-full md:w-[240px]">
-            <label htmlFor="context-reserve-size" className="sr-only">
-              Reserved response space
-            </label>
-            <DropdownField
-              id="context-reserve-size"
-              ariaLabel="Reserved response space"
-              value={String(settings.reserveTokens)}
-              options={reserveOptions}
-              disabled={isLoading}
-              className="w-full"
-              onChange={(value) => updateContextSettings({ reserveTokens: Number(value) })}
-            />
-          </div>
-        </SettingsRow>
       </SettingsSection>
     </>
   )

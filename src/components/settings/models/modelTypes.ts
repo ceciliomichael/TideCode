@@ -10,6 +10,7 @@ export interface ModelCatalogItem {
   id: string
   isCustom?: boolean
   label: string
+  maxTokens?: number
   providerId: ChatProviderId
   reasoningCapable?: boolean
   reasoningBodies?: Partial<Record<ReasoningEffort, Record<string, unknown>>>

@@ -97,34 +97,21 @@ export function registerChatGitTerminalIpcHandlers(
   })
   ipcMain.handle('chat:stream:cancel', async (_event, streamId: string) => {
     const providerId = activeChatStreamProviders.get(streamId)
-    const wasRegistered = activeChatStreamProviders.has(streamId)
-    activeChatStreamProviders.delete(streamId)
-    let wasCancelled = false
 
     if (providerId === 'codex') {
-      wasCancelled = await cancelCodexChatStream(streamId)
-      if (wasCancelled || wasRegistered) {
-        emitChatStreamEvent(_event.sender, { streamId, type: 'aborted' })
-      }
+      await cancelCodexChatStream(streamId)
       return
     }
 
     if (providerId) {
-      wasCancelled = await cancelApiKeyChatStream(streamId)
-      if (wasCancelled || wasRegistered) {
-        emitChatStreamEvent(_event.sender, { streamId, type: 'aborted' })
-      }
+      await cancelApiKeyChatStream(streamId)
       return
     }
 
-    const cancellationResults = await Promise.all([
+    await Promise.all([
       cancelCodexChatStream(streamId),
       cancelApiKeyChatStream(streamId),
     ])
-    wasCancelled = cancellationResults.some(Boolean)
-    if (wasCancelled || wasRegistered) {
-      emitChatStreamEvent(_event.sender, { streamId, type: 'aborted' })
-    }
   })
   ipcMain.handle('chat:compactConversation', async (_event, input: CompactConversationInput) => {
     const attemptId = randomUUID()

@@ -93,7 +93,6 @@ test('the compaction budget triggers at the configured context percentage', () =
   const budget = calculateModelMessagesBudget({
     contextWindowTokens: 200_000,
     messages,
-    reserveTokens: 24_000,
     systemPromptTokens: 5_700,
     toolSchemaTokens: 0,
     triggerRatio: 0.8,

@@ -17,10 +17,11 @@ interface ResolveQueuedMessageAutoSendReasonInput {
 
 export function shouldQueueMainMessage(input: {
   isCompressingChat: boolean
+  isAbortInProgress?: boolean
   isLoading: boolean
   isSending: boolean
 }) {
-  return input.isLoading || input.isSending || input.isCompressingChat
+  return input.isAbortInProgress === true || input.isLoading || input.isSending || input.isCompressingChat
 }
 
 export function detectSuccessfulToolReleaseSignal({

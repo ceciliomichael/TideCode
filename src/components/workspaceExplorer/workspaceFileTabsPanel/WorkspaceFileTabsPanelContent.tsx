@@ -9,6 +9,7 @@ import { WorkspaceSvgPreview } from '../workspaceSvgPreview/WorkspaceSvgPreview'
 import type { GitFileDiff } from '../../../types/chat'
 import type { WorkspaceFileTab, WorkspaceTab } from '../types'
 import type { PlanReviewComment } from '../../../lib/planContracts'
+import { getPlanCommentsForPath, type PlanCommentsByPath } from '../../../lib/planComments'
 import type { TextSelectionRange } from '../workspaceFileEditor/workspaceFileEditorUtils'
 import { isImagePreviewablePath } from '../../../lib/image-preview'
 import { isDocxPreviewablePath } from '../../../lib/docx-preview'
@@ -26,7 +27,9 @@ interface WorkspaceFileTabsPanelContentProps {
   onOpenMarkdownPreview?: () => void
   onOpenSvgPreview?: () => void
   onFileContentChange: (relativePath: string, content: string) => void
+  onPlanCommentsChange: (relativePath: string, comments: readonly PlanReviewComment[]) => void
   onImplementPlan: (relativePath: string) => void
+  planCommentsByPath: PlanCommentsByPath
   onRequestPlanChanges: (relativePath: string, comments: PlanReviewComment[]) => void
   onSelectionChange: (selection: TextSelectionRange | null) => void
   wordWrapEnabled: boolean
@@ -58,7 +61,9 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
   onOpenMarkdownPreview,
   onOpenSvgPreview,
   onFileContentChange,
+  onPlanCommentsChange,
   onImplementPlan,
+  planCommentsByPath,
   onRequestPlanChanges,
   onSelectionChange,
   wordWrapEnabled,
@@ -116,8 +121,10 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
 
     return (
       <WorkspacePlanPreview
+        comments={getPlanCommentsForPath(planCommentsByPath, activeTab.relativePath)}
         content={activeTab.content}
         isTruncated={activeTab.isTruncated}
+        onCommentsChange={onPlanCommentsChange}
         onImplementPlan={onImplementPlan}
         onRequestChanges={onRequestPlanChanges}
         relativePath={activeTab.relativePath}

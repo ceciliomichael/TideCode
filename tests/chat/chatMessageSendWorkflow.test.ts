@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { persistAndStreamMessage } from '../../src/hooks/chatMessageSendWorkflow'
+import { createTerminatedToolResultContent } from '../../src/lib/toolResultContent'
 import type { ChatRuntimeSelection } from '../../src/hooks/chatMessageRuntime'
 import type { PersistAndStreamMessageInput } from '../../src/hooks/chatMessageSendTypes'
 import type { ConversationRecord, Message } from '../../src/types/chat'
@@ -88,6 +89,7 @@ interface WorkflowHarnessOptions {
   consumePendingAbortBeforeStreamStart?: boolean
   originalText?: string
   streamContent?: string | null
+  streamToolInvocation?: boolean
   streamOutcome?: 'completed' | 'aborted' | 'error'
 }
 
@@ -254,6 +256,39 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
           if (options.streamContent) {
             streamListener?.({ delta: options.streamContent, streamId, type: 'content_delta' })
           }
+          if (options.streamToolInvocation) {
+            const argumentsText = '{"command":"npm run lint"}'
+            const resultContent = createTerminatedToolResultContent({
+              argumentsValue: { command: 'npm run lint' },
+              toolCallId: 'tool-call-1',
+              toolName: 'execute_terminal',
+            })
+            streamListener?.({
+              argumentsText,
+              invocationId: 'tool-call-1',
+              startedAt: 1,
+              streamId,
+              toolName: 'execute_terminal',
+              type: 'tool_invocation_started',
+            })
+            streamListener?.({
+              argumentsText,
+              completedAt: 2,
+              errorMessage: 'Tool execution terminated',
+              invocationId: 'tool-call-1',
+              resultContent,
+              streamId,
+              syntheticMessage: {
+                content: resultContent,
+                id: 'tool-result-1',
+                role: 'tool',
+                timestamp: 2,
+                toolCallId: 'tool-call-1',
+              },
+              toolName: 'execute_terminal',
+              type: 'tool_invocation_failed',
+            })
+          }
           streamListener?.({ streamId, type: options.streamOutcome ?? 'completed' })
         })
         return { streamId }
@@ -332,6 +367,46 @@ test('a normal completed stream persists the user message and the assistant resp
   }
 })
 
+test('an aborted tool remains in persisted history with a terminated result', async () => {
+  const harness = createWorkflowHarness({
+    streamOutcome: 'aborted',
+    streamToolInvocation: true,
+  })
+
+  try {
+    const accepted = await persistAndStreamMessage(harness.input)
+
+    assert.equal(accepted, true)
+    const storedMessages = harness.history.getStoredMessages(harness.conversation.id)
+    const storedToolMessage = storedMessages.find((message) => message.role === 'tool')
+    const storedAssistantMessage = storedMessages.find((message) => message.role === 'assistant')
+    assert.ok(storedAssistantMessage?.toolInvocations?.some((invocation) => invocation.state === 'failed'))
+    assert.equal(storedToolMessage?.content.includes('Tool execution terminated'), true)
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
+test('a completed plan handoff keeps its status divider message in conversation history', async () => {
+  const handoffMessage = '<plan_123456>Implement the plan in .tidecode/plans/plan-001.md.</plan_123456>'
+  const harness = createWorkflowHarness({
+    originalText: handoffMessage,
+    streamContent: 'I will implement the approved plan.',
+    streamOutcome: 'completed',
+  })
+
+  try {
+    const accepted = await persistAndStreamMessage(harness.input)
+
+    assert.equal(accepted, true)
+    const storedMessages = harness.history.getStoredMessages(harness.conversation.id)
+    assert.equal(storedMessages[0]?.content, handoffMessage)
+    assert.equal(storedMessages[1]?.content, 'I will implement the approved plan.')
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
 test('a stop clicked before the stream starts rolls the stored conversation back', async () => {
   const harness = createWorkflowHarness({
     consumePendingAbortBeforeStreamStart: true,
@@ -361,6 +436,24 @@ test('aborting a plan implementation run does not restore its status marker to t
     assert.equal(accepted, true)
     assert.deepEqual(harness.history.getStoredMessages(harness.conversation.id), [], 'history must be rolled back')
     assert.deepEqual(harness.composerValues, [''], 'the implementation marker must not return to the composer')
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
+test('aborting a plan revision request does not restore its status marker to the composer', async () => {
+  const harness = createWorkflowHarness({
+    originalText:
+      '<plan_revision_123456>Please revise the implementation plan at .tidecode/plans/plan-001.md using the review comments below.</plan_revision_123456>',
+    streamOutcome: 'aborted',
+  })
+
+  try {
+    const accepted = await persistAndStreamMessage(harness.input)
+
+    assert.equal(accepted, true)
+    assert.deepEqual(harness.history.getStoredMessages(harness.conversation.id), [], 'history must be rolled back')
+    assert.deepEqual(harness.composerValues, [''], 'the revision marker must not return to the composer')
   } finally {
     harness.restoreWindow()
   }

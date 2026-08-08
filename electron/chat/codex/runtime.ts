@@ -10,12 +10,14 @@ import type {
   SubmitToolDecisionInput,
   SubmitToolDecisionResult,
 } from '../../../src/types/chat'
+import { ActiveChatStreamRegistry } from '../shared/activeChatStreamRegistry'
 import { estimateToolEnabledContextUsage, runToolEnabledChatStream } from '../shared/runtime'
+import { emitChatStreamEvent } from '../shared/runtimeStreamEvents'
 import { createCodexClient } from './client'
 import { refreshProvidersCache } from '../../providers/service'
 import { compactConversationForProvider } from '../shared/compaction/manual'
 
-const activeStreams = new Map<string, AbortController>()
+const activeStreams = new ActiveChatStreamRegistry()
 
 export async function estimateCodexContextUsage(
   webContents: WebContents,
@@ -92,10 +94,26 @@ export async function startCodexChatStream(
 
   const streamId = randomUUID()
   const abortController = new AbortController()
-  activeStreams.set(streamId, abortController)
+  activeStreams.register(streamId, abortController)
 
   queueMicrotask(() => {
-    void runCodexChatStream(webContents, streamId, input, abortController, onSettled)
+    void runCodexChatStream(webContents, streamId, input, abortController)
+      .catch((error: unknown) => {
+        if (abortController.signal.aborted) {
+          return
+        }
+
+        emitChatStreamEvent(webContents, {
+          errorMessage:
+            error instanceof Error && error.message.trim().length > 0 ? error.message : 'Chat request failed.',
+          streamId,
+          type: 'error',
+        })
+      })
+      .finally(() => {
+        activeStreams.settle(streamId)
+        onSettled?.()
+      })
   })
 
   return { streamId }
@@ -106,7 +124,6 @@ async function runCodexChatStream(
   streamId: string,
   input: StartChatStreamInput,
   abortController: AbortController,
-  onSettled?: () => void,
 ) {
   try {
     const client = createCodexClient()
@@ -127,7 +144,6 @@ async function runCodexChatStream(
           tools: streamInput.tools,
           prepareStep: streamInput.prepareStep,
         }),
-      onSettled,
       // Codex uses the OpenAI Responses adapter. Visible reasoning restored
       // from the UI history is not a valid Responses reasoning item unless it
       // still carries the provider's item metadata. Exact canonical replay
@@ -143,19 +159,12 @@ async function runCodexChatStream(
       throw error
     }
   } finally {
-    activeStreams.delete(streamId)
     void refreshProvidersCache(true).catch(() => {})
   }
 }
 
-export async function cancelCodexChatStream(streamId: string) {
-  const abortController = activeStreams.get(streamId)
-  if (!abortController) {
-    return false
-  }
-
-  abortController.abort()
-  return true
+export function cancelCodexChatStream(streamId: string) {
+  return activeStreams.cancel(streamId)
 }
 
 export async function submitCodexToolDecision(input: SubmitToolDecisionInput): Promise<SubmitToolDecisionResult> {

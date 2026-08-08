@@ -1,5 +1,5 @@
 import { memo, useMemo, useRef, type RefObject } from "react";
-import { isPlanImplementationMessage, isVisibleTranscriptMessage } from "../lib/chatMessageMetadata";
+import { isPlanImplementationMessage, isPlanRevisionMessage, isVisibleTranscriptMessage } from "../lib/chatMessageMetadata";
 import { normalizeAssistantMessageContent } from "../lib/chatMessageContent";
 import type {
   AssistantWaitingIndicatorVariant,
@@ -17,6 +17,7 @@ import { UserMessage } from "./UserMessage";
 import { WorkingBlock } from "./chat/WorkingBlock";
 import { CompactionDivider } from "./chat/CompactionDivider";
 import { PlanImplementationDivider } from "./chat/PlanImplementationDivider";
+import { PlanRevisionDivider } from "./chat/PlanRevisionDivider";
 import { splitFinishedAssistantRun } from './chat/assistantWorkGrouping';
 import { placeCompactionMarkersAfterTranscript } from './chat/compactionMarkerPlacement';
 import { useChatAutoScroll } from "./chat/useChatAutoScroll";
@@ -161,6 +162,8 @@ const MessageRow = memo(
         {message.role === "user" ? (
           isPlanImplementationMessage(message) ? (
             <PlanImplementationDivider />
+          ) : isPlanRevisionMessage(message) ? (
+            <PlanRevisionDivider />
           ) : isEditing ? (
             <div className="-mx-4 flex-1 min-w-0 w-[calc(100%+2rem)]">
               <ChatInput
@@ -320,7 +323,8 @@ export function MessageList({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isConversationStreaming = streamingAssistantMessageId !== null;
   const visibleMessages = messages.filter(
-    (message) => isVisibleTranscriptMessage(message) || isPlanImplementationMessage(message),
+    (message) =>
+      isVisibleTranscriptMessage(message) || isPlanImplementationMessage(message) || isPlanRevisionMessage(message),
   );
   
   const renderItems = useMemo(() => {

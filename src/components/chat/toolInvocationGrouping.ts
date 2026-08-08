@@ -272,7 +272,7 @@ export function buildToolInvocationGroupSummary(
         return `ran ${pluralize(count, 'web search')}`
       }
       if (bucketKey === 'command') {
-        return `ran ${pluralize(count, 'command')}`
+        return `ran ${pluralize(count, 'terminal tool')}`
       }
       if (bucketKey === 'file') {
         return `explored ${pluralize(count, 'file')}`
@@ -321,7 +321,7 @@ export function buildToolInvocationGroupSummary(
     summaryParts.push(`ran ${pluralize(counts.webSearchCount, 'web search')}`)
   }
   if (counts.commandCount > 0) {
-    summaryParts.push(`ran ${pluralize(counts.commandCount, 'command')}`)
+    summaryParts.push(`ran ${pluralize(counts.commandCount, 'terminal tool')}`)
   }
   if (counts.exploredFileCount + counts.fileCount > 0) {
     summaryParts.push(`explored ${pluralize(counts.exploredFileCount + counts.fileCount, 'file')}`)

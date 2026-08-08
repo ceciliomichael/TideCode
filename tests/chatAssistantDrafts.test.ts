@@ -193,7 +193,7 @@ test('chat assistant drafts preserve streamed triple-backtick closers across sin
   assert.equal(latestDraftAssistantMessage?.content, '```ts\nconst value = 1\n```')
 })
 
-test('chat assistant drafts remove incomplete tool calls when a stream is aborted', () => {
+test('chat assistant drafts finalize incomplete tool calls when a stream is aborted', () => {
   const { draftManager, getMessages } = createDraftManager()
 
   draftManager.appendPlaceholderDraft()
@@ -205,8 +205,14 @@ test('chat assistant drafts remove incomplete tool calls when a stream is aborte
 
   const streamedMessages = draftManager.finalizeStreamedMessages(true)
 
-  assert.equal(streamedMessages, null)
-  assert.equal(getMessages().length, 0)
+  assert.ok(streamedMessages)
+  const assistantMessage = streamedMessages.find((message) => message.role === 'assistant')
+  const toolMessage = streamedMessages.find((message) => message.role === 'tool')
+  assert.equal(assistantMessage?.toolInvocations?.[0]?.state, 'failed')
+  assert.equal(assistantMessage?.toolInvocations?.[0]?.resultContent?.includes('Tool execution terminated'), true)
+  assert.equal(toolMessage?.role, 'tool')
+  assert.equal(toolMessage?.content.includes('Tool execution terminated'), true)
+  assert.equal(getMessages().some((message) => message.role === 'tool'), true)
 })
 
 test('chat assistant drafts keep failure text but drop incomplete tool calls after an interrupted run', () => {

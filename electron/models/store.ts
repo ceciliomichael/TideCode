@@ -6,6 +6,7 @@ import type {
   CustomModelProviderId,
   SaveCustomModelInput,
 } from '../../src/types/chat'
+import { isValidMaxOutputTokens } from '../../src/lib/modelOutputTokens'
 import { findCatalogModel } from './catalog/catalog'
 import { writeJsonFileAtomic } from '../settings/fileStore'
 import { isChatProviderId, isCustomApiKeyProviderId } from '../providers/providerIds'
@@ -97,6 +98,7 @@ function toLegacyStoredModel(
     extra_body: record.extra_body ?? record.extraBody,
     id: record.id,
     label: record.label,
+    max_tokens: record.max_tokens ?? record.maxTokens,
     reasoning_bodies: record.reasoningBodies,
     reasoning_capable: rawEfforts.length > 0 || hasReasoningBodies,
     reasoning_efforts: rawEfforts,
@@ -133,6 +135,7 @@ function fromLegacyProviderModel(providerId: CustomModelProviderId, model: Confi
     reasoningBodies: model.reasoningBodies,
     reasoningCapable: model.reasoningCapable,
     reasoningEfforts: model.reasoningEfforts,
+    maxTokens: model.maxTokens,
   })
 }
 
@@ -184,6 +187,9 @@ export async function listStoredCustomModels() {
 export async function saveCustomModelConfig(input: SaveCustomModelInput) {
   return queueMutation(async () => {
     if (!isChatProviderId(input.providerId)) throw new Error('Select a supported provider.')
+    if (input.maxTokens !== undefined && !isValidMaxOutputTokens(input.maxTokens)) {
+      throw new Error('Max output tokens must be a positive whole number.')
+    }
     const apiModelId = input.apiModelId.trim()
     if (!apiModelId || apiModelId.length > 256) throw new Error('Enter a valid model ID.')
     if (findCatalogModel(input.providerId, apiModelId)) {
@@ -206,6 +212,7 @@ export async function saveCustomModelConfig(input: SaveCustomModelInput) {
       ...(isCustomApiKeyProviderId(input.providerId) && input.extraBody ? { extraBody: input.extraBody } : {}),
       id: existingEntry?.model.id,
       label: input.label?.trim() || apiModelId,
+      ...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {}),
       providerId: input.providerId,
       reasoningCapable: input.reasoningCapable,
       ...(input.reasoningBodies ? { reasoningBodies: input.reasoningBodies } : {}),

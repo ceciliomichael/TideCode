@@ -138,7 +138,6 @@ export interface CompactModelMessagesInput {
   toolSchemaTokens: number
   contextWindowTokens?: number
   triggerRatio?: number
-  reserveTokens?: number
   previousPacket?: CompactionPacket | null
   signal?: AbortSignal
 }

@@ -71,3 +71,27 @@ export function isTreeShortcutTarget(target: EventTarget | null) {
 
   return !target.matches('input, textarea, [contenteditable="true"]')
 }
+
+export function resolvePasteTargetDirectoryPath({
+  directoryEntriesByPath,
+  rootEntries,
+  selectedEntryPaths,
+  selectionDirectoryPath,
+}: {
+  directoryEntriesByPath: Record<string, WorkspaceExplorerEntry[]>
+  rootEntries: WorkspaceExplorerEntry[]
+  selectedEntryPaths: Set<string>
+  selectionDirectoryPath: string
+}) {
+  if (selectedEntryPaths.size !== 1) {
+    return selectionDirectoryPath
+  }
+
+  const selectedPath = Array.from(selectedEntryPaths)[0]
+  const selectedEntry = findLoadedExplorerEntry(rootEntries, directoryEntriesByPath, selectedPath)
+  if (!selectedEntry?.isDirectory) {
+    return selectionDirectoryPath
+  }
+
+  return toDirectoryKey(selectedEntry.relativePath)
+}
