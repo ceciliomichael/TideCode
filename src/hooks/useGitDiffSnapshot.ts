@@ -9,6 +9,8 @@ import {
 } from '../lib/gitDiffSnapshotCache'
 import { appendNewDiffsToSnapshot } from '../lib/diffSnapshotOrdering'
 import { normalizeGitWorkspacePath } from '../lib/gitBranchStateCache'
+import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPathComparison'
+import { useGitSourceControlWatcher } from './useGitSourceControlWatcher'
 
 interface UseGitDiffSnapshotInput {
   hasRepository: boolean
@@ -64,6 +66,7 @@ export function useGitDiffSnapshot({
   workspacePath,
 }: UseGitDiffSnapshotInput): UseGitDiffSnapshotResult {
   const normalizedWorkspacePath = normalizeGitWorkspacePath(workspacePath)
+  useGitSourceControlWatcher(normalizedWorkspacePath)
   const [snapshot, setSnapshot] = useState<ConversationDiffSnapshot>(
     () =>
       (includeContent ? getCachedGitDiffSnapshot(normalizedWorkspacePath) : getCachedGitStatusSnapshot(normalizedWorkspacePath)) ??
@@ -160,26 +163,31 @@ export function useGitDiffSnapshot({
   }, [includeContent, refresh, workspacePath])
 
   useEffect(() => {
-    if (!pollingEnabled || !hasRepository || !workspacePath) {
+    if (!pollingEnabled || !hasRepository || !normalizedWorkspacePath) {
       return
     }
 
     void refresh({ forceRefresh: true, silent: true })
-  }, [hasRepository, pollingEnabled, refresh, workspacePath])
+  }, [hasRepository, normalizedWorkspacePath, pollingEnabled, refresh, workspacePath])
 
   useEffect(() => {
-    if (!pollingEnabled || !hasRepository || !workspacePath) {
+    if (!pollingEnabled || !hasRepository || !normalizedWorkspacePath) {
       return
     }
 
-    const unsubscribe = window.tidecodeWorkspace.onExplorerChange(() => {
+    const comparableWorkspacePath = normalizeWorkspaceRootPathForComparison(normalizedWorkspacePath)
+    const unsubscribe = window.tidecodeGit.onSourceControlChange((event) => {
+      if (normalizeWorkspaceRootPathForComparison(event.workspacePath) !== comparableWorkspacePath) {
+        return
+      }
+
       void refresh({ forceRefresh: true, silent: true })
     })
 
     return () => {
       unsubscribe()
     }
-  }, [hasRepository, pollingEnabled, refresh, workspacePath])
+  }, [hasRepository, normalizedWorkspacePath, pollingEnabled, refresh])
 
   useEffect(() => {
     if (!pollingEnabled || !hasRepository || !workspacePath) {

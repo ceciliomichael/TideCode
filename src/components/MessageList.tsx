@@ -1,5 +1,5 @@
 import { memo, useMemo, useRef, type RefObject } from "react";
-import { isVisibleTranscriptMessage } from "../lib/chatMessageMetadata";
+import { isPlanImplementationMessage, isVisibleTranscriptMessage } from "../lib/chatMessageMetadata";
 import { normalizeAssistantMessageContent } from "../lib/chatMessageContent";
 import type {
   AssistantWaitingIndicatorVariant,
@@ -16,6 +16,7 @@ import { ChatInput } from "./ChatInput";
 import { UserMessage } from "./UserMessage";
 import { WorkingBlock } from "./chat/WorkingBlock";
 import { CompactionDivider } from "./chat/CompactionDivider";
+import { PlanImplementationDivider } from "./chat/PlanImplementationDivider";
 import { splitFinishedAssistantRun } from './chat/assistantWorkGrouping';
 import { placeCompactionMarkersAfterTranscript } from './chat/compactionMarkerPlacement';
 import { useChatAutoScroll } from "./chat/useChatAutoScroll";
@@ -158,7 +159,9 @@ const MessageRow = memo(
         }
       >
         {message.role === "user" ? (
-          isEditing ? (
+          isPlanImplementationMessage(message) ? (
+            <PlanImplementationDivider />
+          ) : isEditing ? (
             <div className="-mx-4 flex-1 min-w-0 w-[calc(100%+2rem)]">
               <ChatInput
                 attachments={composerAttachments}
@@ -316,8 +319,8 @@ export function MessageList({
 }: MessageListProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isConversationStreaming = streamingAssistantMessageId !== null;
-  const visibleMessages = messages.filter((message) =>
-    isVisibleTranscriptMessage(message),
+  const visibleMessages = messages.filter(
+    (message) => isVisibleTranscriptMessage(message) || isPlanImplementationMessage(message),
   );
   
   const renderItems = useMemo(() => {
@@ -368,16 +371,14 @@ export function MessageList({
           startIndex: currentAssistantRunStartIndex,
           key: `wg-${presentation.workingMessages[0].id}`,
         });
-        return;
-      }
-
-      if (presentation.trailingMessage) {
+      } else if (presentation.trailingMessage) {
         items.push({
           type: 'message',
           message: presentation.trailingMessage,
           index: lastMessageIndex,
         });
       }
+
     };
 
     for (let i = 0; i < visibleMessages.length; i++) {

@@ -4,6 +4,10 @@ import { getNextChatMode, isChatModeToggleShortcut } from '../../components/chat
 import type { ToolDecisionSubmission } from '../../components/chat/ToolDecisionRequestCard'
 import type { ChatMessagesController, ChatRuntimeSelection } from '../../hooks/useChatMessages'
 import type { ChatAttachment, ToolInvocationTrace } from '../../types/chat'
+import { isPlanRelativePath, type PlanReviewComment } from '../../lib/planContracts'
+import { createPlanImplementationMessage } from '../../lib/planImplementation'
+import { formatPlanReviewRequest } from '../../lib/planReview'
+import { getPlanPathsCreatedByRevertedUserMessage, hasPlanToolInvocation } from '../../lib/planPresentation'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
 import { shouldQueueMainMessage } from './chatQueueAutoSend'
 
@@ -18,6 +22,35 @@ interface UseChatMessageActionsInput {
   workspaceState: ChatWorkspaceUiState
 }
 
+function closeRevertedPlanTabs(planPaths: readonly string[], workspaceState: ChatWorkspaceUiState) {
+  if (planPaths.length === 0) {
+    return
+  }
+
+  for (const relativePath of planPaths) {
+    workspaceState.handleCloseWorkspaceTabsByPath(relativePath)
+  }
+}
+
+async function removeRevertedPlanArtifacts(planPaths: readonly string[], workspaceState: ChatWorkspaceUiState) {
+  closeRevertedPlanTabs(planPaths, workspaceState)
+  const workspaceRootPath = workspaceState.activeWorkspacePath
+  if (!workspaceRootPath) {
+    return
+  }
+
+  for (const relativePath of planPaths) {
+    try {
+      await window.tidecodeWorkspace.deleteEntry({
+        relativePath,
+        workspaceRootPath,
+      })
+    } catch (error) {
+      console.error(`Unable to remove reverted plan ${relativePath}.`, error)
+    }
+  }
+}
+
 export function useChatMessageActions({
   chatMessages,
   chatModeOptions,
@@ -30,8 +63,14 @@ export function useChatMessageActions({
 }: UseChatMessageActionsInput) {
   const handleRevertUserMessage = useCallback(
     async (messageId: string) => {
+      const revertedPlanPaths = getPlanPathsCreatedByRevertedUserMessage(chatMessages.messages, messageId)
       clearQueuedMessages()
-      await chatMessages.revertUserMessage(messageId)
+      const didRevert = await chatMessages.revertUserMessage(messageId)
+      if (!didRevert) {
+        return
+      }
+
+      await removeRevertedPlanArtifacts(revertedPlanPaths, workspaceState)
       onConversationHistoryChanged()
       await workspaceState.handleRefreshWorkspaceFileTabs()
     },
@@ -40,14 +79,22 @@ export function useChatMessageActions({
 
   const handleEditUserMessage = useCallback(
     async (messageId: string) => {
-      await chatMessages.startEditingMessage(messageId)
+      const revertedPlanPaths = chatMessages.revertedPlanPaths
+      const didStartEditing = await chatMessages.startEditingMessage(messageId)
+      if (didStartEditing) {
+        await Promise.all(revertedPlanPaths.map((relativePath) => workspaceState.handleOpenWorkspacePlanPreview(relativePath)))
+      }
       await workspaceState.handleRefreshWorkspaceFileTabs()
     },
     [chatMessages, workspaceState],
   )
 
   const handleCancelEditingMessage = useCallback(async () => {
-    await chatMessages.cancelEditingMessage()
+    const revertedPlanPaths = chatMessages.revertedPlanPaths
+    const didCancelEditing = await chatMessages.cancelEditingMessage()
+    if (didCancelEditing) {
+      await Promise.all(revertedPlanPaths.map((relativePath) => workspaceState.handleOpenWorkspacePlanPreview(relativePath)))
+    }
     await workspaceState.handleRefreshWorkspaceFileTabs()
   }, [chatMessages, workspaceState])
 
@@ -81,15 +128,43 @@ export function useChatMessageActions({
 
   const isAiBusy =
     chatMessages.isLoading || chatMessages.isSending || chatMessages.isStreamingResponse || isCompressingChat
+  const hasUsedPlanTool = hasPlanToolInvocation(chatMessages.messages)
   const showImplementPlanButton =
-    chatMessages.selectedChatMode === 'plan' && chatMessages.messages.length > 0 && !isAiBusy
+    chatMessages.selectedChatMode === 'plan' && chatMessages.messages.length > 0 && !isAiBusy && !hasUsedPlanTool
 
-  const handleImplementPlan = useCallback(() => {
-    if (isAiBusy || chatMessages.selectedChatMode !== 'plan') return
+  const handleImplementPlan = useCallback(async (planPath?: string) => {
+    if (isAiBusy || (!planPath && chatMessages.selectedChatMode !== 'plan')) return
+
+    if (planPath && !isPlanRelativePath(planPath)) return
+
+    if (planPath) {
+      const didPersistPlanStatus = await workspaceState.handleMarkWorkspacePlanImplementationStarted(planPath)
+      if (!didPersistPlanStatus) {
+        return
+      }
+    }
 
     chatMessages.setSelectedChatMode('agent')
-    void chatMessages.sendProgrammaticMessage(runtimeSelection, 'Implement the plan', { chatMode: 'agent' })
-  }, [chatMessages, isAiBusy, runtimeSelection])
+    const implementationRequest = planPath
+      ? createPlanImplementationMessage(planPath)
+      : 'Implement the plan.'
+    void chatMessages.sendProgrammaticMessage(runtimeSelection, implementationRequest, { chatMode: 'agent' })
+  }, [chatMessages, isAiBusy, runtimeSelection, workspaceState])
+
+  const handleRequestPlanChanges = useCallback(
+    (relativePath: string, comments: PlanReviewComment[]) => {
+      if (isAiBusy || comments.length === 0 || !isPlanRelativePath(relativePath)) {
+        return
+      }
+
+      clearQueuedMessages()
+      chatMessages.setSelectedChatMode('plan')
+      void chatMessages
+        .sendProgrammaticMessage(runtimeSelection, formatPlanReviewRequest(relativePath, comments), { chatMode: 'plan' })
+        .then(onConversationHistoryChanged, onConversationHistoryChanged)
+    },
+    [chatMessages, clearQueuedMessages, isAiBusy, onConversationHistoryChanged, runtimeSelection],
+  )
 
   const handleToolDecisionSubmit = useCallback(
     (invocation: ToolInvocationTrace, submission: ToolDecisionSubmission) => {
@@ -148,6 +223,7 @@ export function useChatMessageActions({
     handleCancelEditingMessage,
     handleEditUserMessage,
     handleImplementPlan,
+    handleRequestPlanChanges,
     handleRevertUserMessage,
     handleSendEditedMessage,
     handleSendMainMessage,

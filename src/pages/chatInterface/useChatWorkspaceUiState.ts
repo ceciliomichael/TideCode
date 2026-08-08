@@ -339,8 +339,10 @@ export function useChatWorkspaceUiState({
 
   const {
     handleCloseWorkspaceTab,
+    handleMarkWorkspacePlanImplementationStarted,
     handleOpenWorkspaceFile,
     handleOpenWorkspaceMarkdownPreview,
+    handleOpenWorkspacePlanPreview,
     handleOpenWorkspaceSvgPreview,
     handleSelectWorkspaceTab,
   } = useWorkspaceTabActions({
@@ -369,6 +371,7 @@ export function useChatWorkspaceUiState({
     activeWorkspacePath,
     conversationDiffPanelWidth,
     handleCloseWorkspaceTab,
+    handleCloseWorkspaceTabsByPath: closeWorkspaceTabsByPathPrefix,
     handleConversationDiffPanelWidthChange,
     handleConversationDiffPanelWidthCommit,
     handleCopyWorkspaceEntry,
@@ -381,6 +384,8 @@ export function useChatWorkspaceUiState({
     handleOpenSourceControlPanel,
     handleOpenWorkspaceFile,
     handleOpenWorkspaceMarkdownPreview,
+    handleMarkWorkspacePlanImplementationStarted,
+    handleOpenWorkspacePlanPreview,
     handleOpenWorkspaceSvgPreview,
     handlePasteWorkspaceEntry,
     handleRefreshWorkspaceFileTabs,

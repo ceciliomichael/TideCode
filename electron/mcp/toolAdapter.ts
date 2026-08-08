@@ -52,8 +52,9 @@ function toToolBody(content: CallToolResult['content']) {
 
 function createToolDescription(config: McpServerConfig, tool: McpTool) {
   const baseDescription = tool.description?.trim() ?? ''
-  const sourceLabel = config.owner === 'tidecode' ? 'global' : config.owner
-  return baseDescription.length > 0 ? `[${sourceLabel}] ${baseDescription}` : `[${sourceLabel}] MCP tool`
+  const sourceLabel = config.owner === 'tidecode' ? 'TideCode' : config.owner
+  const sourceContext = `${sourceLabel} MCP server "${config.name}"; original tool "${tool.name}"`
+  return baseDescription.length > 0 ? `[${sourceContext}] ${baseDescription}` : `[${sourceContext}] MCP tool`
 }
 
 export function createMcpToolSetForServer(config: McpServerConfig, client: Client, tools: McpTool[]): ToolSet {
@@ -101,6 +102,7 @@ export function createMcpToolSetForServer(config: McpServerConfig, client: Clien
         },
       })
       registerMcpToolSource(adaptedTool, {
+        catalogName: catalogId,
         kind: 'mcp',
         originalToolName: mcpTool.name,
         serverId: config.id,

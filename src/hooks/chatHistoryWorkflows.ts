@@ -11,6 +11,7 @@ import type {
   UserMessageRunCheckpoint,
 } from '../types/chat'
 import { getConversationTitleFromInput } from './chatHistoryViewModels'
+import { hasPlanToolInvocation } from '../lib/planPresentation'
 
 export interface ChatHistorySnapshot {
   conversationSummaries: ConversationSummary[]
@@ -42,6 +43,7 @@ export interface RevertPreparationResult {
   checkpointIds: string[]
   messageId: string
   redoCheckpointId: string
+  revertedChatMode: ChatMode
 }
 
 function buildUserMessage(
@@ -51,10 +53,12 @@ function buildUserMessage(
   reasoningEffort: ReasoningEffort,
   attachments: ChatAttachment[],
   runCheckpoint: UserMessageRunCheckpoint,
+  chatMode: ChatMode,
   forcedId?: string,
 ): Message {
   return {
     attachments: attachments.length > 0 ? attachments : undefined,
+    chatMode,
     content: trimmedText,
     id: forcedId ?? uuidv4(),
     modelId,
@@ -97,6 +101,24 @@ function findUserMessageOrThrow(conversation: ConversationRecord, messageId: str
     targetMessage,
     targetMessageIndex,
   }
+}
+
+function resolveRevertedChatMode(conversation: ConversationRecord, targetMessageIndex: number): ChatMode {
+  const targetMessage = conversation.messages[targetMessageIndex]
+  if (targetMessage?.chatMode) {
+    return targetMessage.chatMode
+  }
+
+  const nextUserMessageIndex = conversation.messages.findIndex(
+    (message, index) => index > targetMessageIndex && message.role === 'user',
+  )
+  const turnEndIndex = nextUserMessageIndex < 0 ? conversation.messages.length : nextUserMessageIndex
+  const turnMessages = conversation.messages.slice(targetMessageIndex + 1, turnEndIndex)
+  if (hasPlanToolInvocation(turnMessages)) {
+    return 'plan'
+  }
+
+  return conversation.chatMode
 }
 
 async function resolveUserMessageCheckpointIdOrThrow(conversation: ConversationRecord, targetMessageIndex: number) {
@@ -252,6 +274,7 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
       input.reasoningEffort,
       input.attachments,
       runCheckpoint,
+      input.chatMode,
       input.targetEditMessageId,
     )
     const targetMessageIndex = currentConversation.messages.findIndex(
@@ -310,6 +333,7 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
     input.reasoningEffort,
     input.attachments,
     runCheckpoint,
+    input.chatMode,
   )
   const conversation = await window.tidecodeHistory.appendMessages({
     chatMode: input.chatMode,
@@ -392,12 +416,13 @@ export async function prepareRevertSessionForMessage(
   messageId: string,
 ): Promise<RevertPreparationResult> {
   const conversation = await loadStoredConversationOrThrow(conversationId)
-  const { checkpointIds, targetMessage } = await findUserMessageForRevertOrThrow(conversation, messageId)
+  const { checkpointIds, targetMessage, targetMessageIndex } = await findUserMessageForRevertOrThrow(conversation, messageId)
   const redoCheckpoint = await window.tidecodeWorkspace.createRedoCheckpointFromSources(checkpointIds)
 
   return {
     checkpointIds,
     messageId: targetMessage.id,
     redoCheckpointId: redoCheckpoint.id,
+    revertedChatMode: resolveRevertedChatMode(conversation, targetMessageIndex),
   }
 }

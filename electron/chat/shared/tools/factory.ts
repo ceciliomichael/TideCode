@@ -10,6 +10,7 @@ import { createKanbanToolSet } from './kanbanTools'
 import { createListTool } from './listTool'
 import { createProviderWebTool } from './providerWebTool'
 import { createReadTool } from './readTool'
+import { createPlanToolSet } from './planTools'
 import { createSkillTool } from './skillTool'
 import { createTerminalToolSet } from './terminalTools'
 import { createToolContext } from './workspaceTools'
@@ -48,6 +49,10 @@ export async function createNativeAgentTools(
     glob: createGlobTool(context),
     grep: createGrepTool(context),
     ...createKanbanToolSet(context),
+  }
+
+  if (isPlanMode) {
+    Object.assign(tools, createPlanToolSet(context))
   }
 
   if (!isPlanMode) {

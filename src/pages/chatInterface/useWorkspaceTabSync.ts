@@ -8,6 +8,7 @@ import {
 } from "react";
 import { toUserFacingErrorMessage } from "../../lib/userFacingError";
 import { getPathBasename } from "../../lib/pathPresentation";
+import { extractPlanTitle } from "../../lib/planContracts";
 import { normalizePathSeparators } from "../../lib/filePathUtils";
 import { isDocxPreviewablePath } from "../../lib/docx-preview";
 import { isPdfPreviewablePath } from "../../lib/pdf-preview";
@@ -129,7 +130,7 @@ export function useWorkspaceTabSync({
       const targetRelativePaths = Array.from(
         new Set(
           workspaceFileTabsRef.current
-            .filter((tab) => tab.kind === "file" || tab.kind === "markdown-preview")
+            .filter((tab) => tab.kind === "file" || tab.kind === "markdown-preview" || tab.kind === "plan-preview")
             .map((tab) => normalizePathSeparators(tab.relativePath)),
         ),
       );
@@ -205,7 +206,7 @@ export function useWorkspaceTabSync({
   
       setWorkspaceFileTabs((currentTabs) =>
         currentTabs.map((tab) => {
-          if (tab.kind !== "file" && tab.kind !== "markdown-preview") {
+          if (tab.kind !== "file" && tab.kind !== "markdown-preview" && tab.kind !== "plan-preview") {
             return tab;
           }
   
@@ -279,7 +280,23 @@ export function useWorkspaceTabSync({
               status: "ready",
             };
           }
-  
+
+          if (tab.kind === "plan-preview") {
+            if (tab.content === normalizedContent && tab.status === "ready") {
+              return tab;
+            }
+
+            return {
+              ...tab,
+              content: normalizedContent,
+              errorMessage: undefined,
+              fileName: getPathBasename(normalizedResultPath),
+              isTruncated: result.isTruncated,
+              status: "ready",
+              title: extractPlanTitle(normalizedContent),
+            };
+          }
+
           return tab;
         }),
       );

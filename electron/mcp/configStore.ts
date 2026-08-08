@@ -3,6 +3,15 @@ import path from 'node:path'
 import { app } from 'electron'
 import type { McpAddServerInput, McpConfigOwner, McpConfigSource, McpServerConfig } from '../../src/types/mcp'
 import { type McpSettingsFile, parseMcpAddServerInput, parseMcpSettings, type RawMcpServerConfig } from './configValidation'
+import {
+  assignMcpToolNamespaces,
+  createLegacyMcpServerId,
+  createMcpServerId,
+  createUniqueMcpServerToolNamespace,
+  isValidMcpServerId,
+  MCP_SERVER_NAMESPACE_MAX_LENGTH,
+  normalizeMcpIdentitySegment,
+} from './mcpNaming'
 
 const CONFIG_ROOT_SEGMENTS = ['.tidecode', 'mcp'] as const
 const GLOBAL_CONFIG_FILENAME = 'mcp.json'
@@ -32,10 +41,6 @@ function getExternalConfigPath(basePath: string, directoryName: string) {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function generateServerId(name: string) {
-  return `mcp-${name.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`
 }
 
 function toRecordOfStrings(value: unknown): Record<string, string> | undefined {
@@ -83,6 +88,12 @@ export function buildMcpServerConfig(
   source: McpConfigSource,
   owner: McpConfigOwner,
 ): McpServerConfig {
+  const persistedId = owner === 'tidecode' && typeof rawConfig.tidecodeId === 'string' ? rawConfig.tidecodeId : undefined
+  const persistedToolNamespace =
+    owner === 'tidecode' && typeof rawConfig.tidecodeToolNamespace === 'string'
+      ? rawConfig.tidecodeToolNamespace
+      : undefined
+
   return {
     autoConnect: false,
     owner,
@@ -94,10 +105,15 @@ export function buildMcpServerConfig(
     enabled: rawConfig.disabled !== true,
     ...(typeof rawConfig.env !== 'undefined' ? { env: toRecordOfStrings(rawConfig.env) } : {}),
     ...(typeof rawConfig.headers !== 'undefined' ? { headers: toRecordOfStrings(rawConfig.headers) } : {}),
-    id: generateServerId(serverName),
+    id: persistedId && isValidMcpServerId(persistedId) ? persistedId : createLegacyMcpServerId(serverName, owner),
     isReadOnly: owner !== 'tidecode',
     name: serverName,
     source,
+    toolNamespace: normalizeMcpIdentitySegment(
+      persistedToolNamespace ?? serverName,
+      'server',
+      MCP_SERVER_NAMESPACE_MAX_LENGTH,
+    ),
     ...(typeof rawConfig.alwaysAllow !== 'undefined' || typeof rawConfig.disabledTools !== 'undefined'
       ? {
           toolConfiguration: {
@@ -125,6 +141,12 @@ function configToRaw(config: McpServerConfig): RawMcpServerConfig {
     ...(config.toolConfiguration?.allowedTools?.length ? { alwaysAllow: [...config.toolConfiguration.allowedTools] } : {}),
     ...(config.toolConfiguration?.disabledTools?.length
       ? { disabledTools: [...config.toolConfiguration.disabledTools] }
+      : {}),
+    ...(config.owner === 'tidecode'
+      ? {
+          tidecodeId: config.id,
+          tidecodeToolNamespace: config.toolNamespace,
+        }
       : {}),
     type: config.type,
     ...(config.url ? { url: config.url } : {}),
@@ -209,7 +231,21 @@ export async function loadMergedMcpConfigs(): Promise<McpServerConfig[]> {
     }
   }
 
-  return Array.from(configsByName.values()).sort((left, right) => left.name.localeCompare(right.name))
+  const configs = Array.from(configsByName.values()).sort((left, right) => left.name.localeCompare(right.name))
+  const configsById = new Map<string, McpServerConfig>()
+
+  for (const config of configs) {
+    const existingConfig = configsById.get(config.id)
+    if (existingConfig) {
+      throw new Error(
+        `MCP server ID collision: "${existingConfig.name}" and "${config.name}" both use "${config.id}".`,
+      )
+    }
+
+    configsById.set(config.id, config)
+  }
+
+  return assignMcpToolNamespaces(configs)
 }
 
 export async function ensureMcpConfigExists() {
@@ -237,17 +273,50 @@ export async function appendMcpServerConfig(
   void parsed.data.saveScope
   const targetPath = getGlobalConfigPath()
   const existing = (await readConfigFile(targetPath)) ?? { mcpServers: {} }
+  const existingServerConfig = existing.mcpServers[serverName]
+  const existingIds = new Set(
+    Object.values(existing.mcpServers)
+      .map((candidate) => candidate.tidecodeId)
+      .filter((candidate): candidate is string => typeof candidate === 'string' && isValidMcpServerId(candidate)),
+  )
+  const persistedId = existingServerConfig?.tidecodeId
+  let tidecodeId =
+    typeof persistedId === 'string' && isValidMcpServerId(persistedId) ? persistedId : createMcpServerId(serverName)
+  while (!persistedId && existingIds.has(tidecodeId)) {
+    tidecodeId = createMcpServerId(serverName)
+  }
+
+  const usedNamespaces = new Set(
+    Object.entries(existing.mcpServers)
+      .filter(([existingName]) => existingName !== serverName)
+      .map(([existingName, candidate]) =>
+        normalizeMcpIdentitySegment(
+          candidate.tidecodeToolNamespace ?? existingName,
+          'server',
+          MCP_SERVER_NAMESPACE_MAX_LENGTH,
+        ),
+      ),
+  )
+  const persistedNamespace = existingServerConfig?.tidecodeToolNamespace
+  const toolNamespace =
+    typeof persistedNamespace === 'string' && persistedNamespace.length > 0
+      ? normalizeMcpIdentitySegment(persistedNamespace, 'server', MCP_SERVER_NAMESPACE_MAX_LENGTH)
+      : createUniqueMcpServerToolNamespace(serverName, `tidecode:${serverName}`, usedNamespaces)
   const rawConfig: RawMcpServerConfig =
     type === 'stdio'
       ? {
           ...(parsed.data.args && parsed.data.args.length > 0 ? { args: parsed.data.args } : {}),
           ...(parsed.data.command ? { command: parsed.data.command } : {}),
           ...(hasStringEntries(parsed.data.env) ? { env: parsed.data.env } : {}),
+          tidecodeId,
+          tidecodeToolNamespace: toolNamespace,
           type,
         }
       : {
           ...(hasStringEntries(parsed.data.headers) ? { headers: parsed.data.headers } : {}),
           ...(parsed.data.url ? { url: parsed.data.url } : {}),
+          tidecodeId,
+          tidecodeToolNamespace: toolNamespace,
           type,
         }
   const nextConfig: McpSettingsFile = {
@@ -287,6 +356,20 @@ export async function replaceMcpServerConfig(
   void config.source
   const targetPath = getGlobalConfigPath()
   const existing = (await readConfigFile(targetPath)) ?? { mcpServers: {} }
+  if (config.name !== previousServerName && Object.prototype.hasOwnProperty.call(existing.mcpServers, config.name)) {
+    throw new Error(`MCP server name already exists: "${config.name}".`)
+  }
+
+  for (const [serverName, rawConfig] of Object.entries(existing.mcpServers)) {
+    if (serverName === previousServerName || typeof rawConfig.tidecodeId !== 'string') {
+      continue
+    }
+
+    if (rawConfig.tidecodeId === config.id) {
+      throw new Error(`MCP server ID already exists: "${config.id}".`)
+    }
+  }
+
   const nextServers: Record<string, RawMcpServerConfig> = {}
 
   for (const [serverName, rawConfig] of Object.entries(existing.mcpServers)) {
@@ -302,7 +385,7 @@ export async function replaceMcpServerConfig(
   await writeConfigFile(targetPath, { mcpServers: nextServers })
 }
 
-export async function deleteMcpConfig(serverId: string, workspacePath?: string | null) {
+export async function deleteMcpConfig(serverNameToDelete: string, workspacePath?: string | null) {
   void workspacePath
   const configPath = getGlobalConfigPath()
   const existing = await readConfigFile(configPath)
@@ -313,13 +396,13 @@ export async function deleteMcpConfig(serverId: string, workspacePath?: string |
   const nextServers: Record<string, RawMcpServerConfig> = {}
   let hasChanges = false
 
-  for (const [serverName, rawConfig] of Object.entries(existing.mcpServers)) {
-    if (generateServerId(serverName) === serverId) {
+  for (const serverName of Object.keys(existing.mcpServers)) {
+    if (serverName === serverNameToDelete) {
       hasChanges = true
       continue
     }
 
-    nextServers[serverName] = rawConfig
+    nextServers[serverName] = existing.mcpServers[serverName]
   }
 
   if (hasChanges) {

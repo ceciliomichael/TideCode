@@ -6,6 +6,13 @@ import { isDocxPreviewablePath } from '../../lib/docx-preview'
 import { normalizePathSeparators } from '../../lib/filePathUtils'
 import { getPathBasename } from '../../lib/pathPresentation'
 import { isPdfPreviewablePath } from '../../lib/pdf-preview'
+import {
+  createPlanPreviewTabKey,
+  extractPlanTitle,
+  getPlanIdFromRelativePath,
+  isPlanRelativePath,
+  setPlanStatus,
+} from '../../lib/planContracts'
 import { createSvgPreviewTabKey, isSvgPreviewablePath } from '../../lib/svg-preview'
 import { readWorkspaceFileWithCache } from '../../lib/workspaceFilePreviewCache'
 
@@ -40,12 +47,193 @@ export function useWorkspaceTabActions({
   workspaceFileTabs,
   workspaceFileTabsRef,
 }: UseWorkspaceTabActionsInput) {
+  const openWorkspacePlanPreviewTab = useCallback(
+    (
+      relativePath: string,
+      initialContent = '',
+      initialStatus: 'loading' | 'ready' = 'loading',
+    ) => {
+      const normalizedRelativePath = normalizePathSeparators(relativePath)
+      const planId = getPlanIdFromRelativePath(normalizedRelativePath)
+      if (!planId) {
+        return null
+      }
+
+      const tabKey = createPlanPreviewTabKey(normalizedRelativePath)
+      if (activeWorkspacePanelWidth !== null) {
+        setWorkspaceExplorerWidth(activeWorkspacePanelWidth)
+      }
+      setIsSidebarOpen(false)
+      setIsExplorerOpen(true)
+      setIsWorkspaceTabsPanelVisible(true)
+      onRightPanelOpenChange(false)
+      setActiveWorkspaceFilePath(normalizedRelativePath)
+      setActiveWorkspaceTabKey(tabKey)
+      setWorkspaceFileTabs((currentTabs) => {
+        if (currentTabs.some((tab) => tab.tabKey === tabKey)) {
+          return currentTabs
+        }
+
+        return [
+          ...currentTabs,
+          {
+            kind: 'plan-preview',
+            content: initialContent,
+            fileName: getPathBasename(normalizedRelativePath),
+            isTruncated: false,
+            planId,
+            relativePath: normalizedRelativePath,
+            status: initialStatus,
+            tabKey,
+            title: extractPlanTitle(initialContent),
+          },
+        ]
+      })
+
+      return { normalizedRelativePath, tabKey }
+    },
+    [
+      activeWorkspacePanelWidth,
+      onRightPanelOpenChange,
+      setActiveWorkspaceFilePath,
+      setActiveWorkspaceTabKey,
+      setIsExplorerOpen,
+      setIsSidebarOpen,
+      setIsWorkspaceTabsPanelVisible,
+      setWorkspaceExplorerWidth,
+      setWorkspaceFileTabs,
+    ],
+  )
+
+  const handleOpenWorkspacePlanPreview = useCallback(
+    async (relativePath: string): Promise<void> => {
+      const normalizedRelativePath = normalizePathSeparators(relativePath)
+      if (!isPlanRelativePath(normalizedRelativePath)) {
+        return
+      }
+
+      const workspaceRootPath = activeWorkspacePathRef.current
+      const existingTab = workspaceFileTabsRef.current.find(
+        (tab) => tab.kind === 'plan-preview' && normalizePathSeparators(tab.relativePath) === normalizedRelativePath,
+      )
+      const openedTab = openWorkspacePlanPreviewTab(
+        normalizedRelativePath,
+        existingTab?.kind === 'plan-preview' ? existingTab.content : '',
+        existingTab?.kind === 'plan-preview' && existingTab.status === 'ready' ? 'ready' : 'loading',
+      )
+      if (!openedTab || !workspaceRootPath) {
+        return
+      }
+
+      try {
+        const result = await window.tidecodeWorkspace.readFile({
+          relativePath: normalizedRelativePath,
+          workspaceRootPath,
+        })
+        if (activeWorkspacePathRef.current !== workspaceRootPath) {
+          return
+        }
+
+        const normalizedContent = result.content.replace(/\r\n?/gu, '\n')
+        const normalizedResultPath = normalizePathSeparators(result.relativePath)
+        setWorkspaceFileTabs((currentTabs) =>
+          currentTabs.map((tab) =>
+            tab.kind === 'plan-preview' && tab.tabKey === openedTab.tabKey
+              ? {
+                  ...tab,
+                  content: normalizedContent,
+                  errorMessage: undefined,
+                  fileName: getPathBasename(normalizedResultPath),
+                  isTruncated: result.isTruncated,
+                  planId: getPlanIdFromRelativePath(normalizedResultPath) ?? tab.planId,
+                  relativePath: normalizedResultPath,
+                  status: 'ready' as const,
+                  title: extractPlanTitle(normalizedContent),
+                }
+              : tab,
+          ),
+        )
+      } catch (error) {
+        if (activeWorkspacePathRef.current !== workspaceRootPath) {
+          return
+        }
+
+        setWorkspaceFileTabs((currentTabs) =>
+          currentTabs.map((tab) =>
+            tab.kind === 'plan-preview' && tab.tabKey === openedTab.tabKey
+              ? {
+                  ...tab,
+                  errorMessage: toUserFacingErrorMessage(error, 'The plan could not be loaded.'),
+                  status: 'error' as const,
+                }
+              : tab,
+          ),
+        )
+      }
+    },
+    [
+      activeWorkspacePathRef,
+      openWorkspacePlanPreviewTab,
+      setWorkspaceFileTabs,
+      workspaceFileTabsRef,
+    ],
+  )
+
+  const handleMarkWorkspacePlanImplementationStarted = useCallback(
+    async (relativePath: string) => {
+      const normalizedRelativePath = normalizePathSeparators(relativePath)
+      const workspaceRootPath = activeWorkspacePathRef.current
+      if (!workspaceRootPath || !isPlanRelativePath(normalizedRelativePath)) {
+        return false
+      }
+
+      const result = await window.tidecodeWorkspace.readFile({
+        relativePath: normalizedRelativePath,
+        workspaceRootPath,
+      })
+      const normalizedContent = result.content.replace(/\r\n?/gu, '\n')
+      const nextContent = setPlanStatus(normalizedContent, 'implementation_started')
+      if (nextContent !== normalizedContent) {
+        await window.tidecodeWorkspace.writeFile({
+          content: nextContent,
+          relativePath: normalizedRelativePath,
+          workspaceRootPath,
+        })
+      }
+
+      const normalizedResultPath = normalizePathSeparators(result.relativePath)
+      setWorkspaceFileTabs((currentTabs) =>
+        currentTabs.map((tab) =>
+          tab.kind === 'plan-preview' && normalizePathSeparators(tab.relativePath) === normalizedRelativePath
+            ? {
+                ...tab,
+                content: nextContent,
+                errorMessage: undefined,
+                isTruncated: result.isTruncated,
+                relativePath: normalizedResultPath,
+                status: 'ready',
+                title: extractPlanTitle(nextContent),
+              }
+            : tab,
+        ),
+      )
+
+      return true
+    },
+    [activeWorkspacePathRef, setWorkspaceFileTabs],
+  )
+
   const handleOpenWorkspaceFile = useCallback(
     (relativePath: string) => {
       const workspaceRootPath = activeWorkspacePathRef.current
       if (!workspaceRootPath) return
 
       const normalizedRelativePath = normalizePathSeparators(relativePath)
+
+      if (isPlanRelativePath(normalizedRelativePath)) {
+        handleOpenWorkspacePlanPreview(normalizedRelativePath)
+        return
+      }
 
       if (activeWorkspacePanelWidth !== null) {
         setWorkspaceExplorerWidth(activeWorkspacePanelWidth)
@@ -140,6 +328,7 @@ export function useWorkspaceTabActions({
     [
       activeWorkspacePanelWidth,
       activeWorkspacePathRef,
+      handleOpenWorkspacePlanPreview,
       onRightPanelOpenChange,
       setActiveWorkspaceFilePath,
       setActiveWorkspaceTabKey,
@@ -375,6 +564,8 @@ export function useWorkspaceTabActions({
     handleCloseWorkspaceTab,
     handleOpenWorkspaceFile,
     handleOpenWorkspaceMarkdownPreview,
+    handleMarkWorkspacePlanImplementationStarted,
+    handleOpenWorkspacePlanPreview,
     handleOpenWorkspaceSvgPreview,
     handleSelectWorkspaceTab,
   }

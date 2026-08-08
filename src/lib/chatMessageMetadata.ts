@@ -1,6 +1,7 @@
 import { getChatAttachmentSummary } from './chatAttachments'
 import { normalizeAssistantMessageContent } from './chatMessageContent'
 import { collapseChatMentionMarkup } from './chatMentions'
+import { isPlanImplementationStatusMessage } from './planImplementation'
 import type { Message, UserMessageKind } from '../types/chat'
 
 function getResolvedUserMessageKind(message: Message): UserMessageKind {
@@ -12,7 +13,15 @@ export function isSyntheticToolResultMessage(message: Message) {
 }
 
 export function isHumanUserMessage(message: Message) {
-  return message.role === 'user' && getResolvedUserMessageKind(message) === 'human'
+  return (
+    message.role === 'user' &&
+    getResolvedUserMessageKind(message) === 'human' &&
+    !isPlanImplementationStatusMessage(message.content)
+  )
+}
+
+export function isPlanImplementationMessage(message: Message) {
+  return message.role === 'user' && isPlanImplementationStatusMessage(message.content)
 }
 
 export function isVisibleTranscriptMessage(message: Message) {

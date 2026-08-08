@@ -86,7 +86,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
         <ul {...props} className="my-3 list-disc space-y-1 pl-6 text-foreground last:mb-0" />
       ),
       ol: (props: React.ComponentPropsWithoutRef<'ol'>) => (
-        <ol {...props} className="my-3 list-decimal space-y-1 pl-6 text-foreground last:mb-0" />
+        <ol {...props} className="my-3 list-decimal marker:text-foreground space-y-1 pl-6 text-foreground last:mb-0" />
       ),
       li: (props: React.ComponentPropsWithoutRef<'li'>) => (
         <li {...props} className="my-0 leading-[1.6] text-foreground [&>p]:my-0 [&>p]:mb-0 [&>p+p]:mt-1" />
@@ -281,4 +281,3 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
     </div>
   )
 })
-

@@ -1,4 +1,4 @@
-import type { ComponentProps, RefObject } from 'react'
+import { useEffect, useRef, type ComponentProps, type RefObject } from 'react'
 import { ChatInput } from '../../components/ChatInput'
 import { EmptyState } from '../../components/EmptyState'
 import { MessageList } from '../../components/MessageList'
@@ -18,6 +18,7 @@ import type {
   QueuedMessage,
   WorkspaceRefactorCandidate,
 } from '../../types/chat'
+import { getLatestCompletedPlanPresentation } from '../../lib/planPresentation'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
 
 type ChatInputProps = ComponentProps<typeof ChatInput>
@@ -35,7 +36,7 @@ interface ChatConversationSurfaceProps {
   handleCancelEditingMessage: MessageListProps['onCancelEditingMessage']
   handleCompressChat: () => void
   handleEditUserMessage: MessageListProps['onEditUserMessage']
-  handleImplementPlan: () => void
+  handleImplementPlan: (planPath?: string) => void
   handleRevertUserMessage: MessageListProps['onRevertUserMessage']
   handleSendEditedMessage: MessageListProps['onSendEditedMessage']
   handleSendMainMessage: ChatInputProps['onSend']
@@ -96,6 +97,43 @@ export function ChatConversationSurface({
   updateQueuedMessage,
   workspaceState,
 }: ChatConversationSurfaceProps) {
+  const latestPlanPresentation = getLatestCompletedPlanPresentation(chatMessages.messages)
+  const latestPlanKey = latestPlanPresentation
+    ? `${latestPlanPresentation.relativePath}:${latestPlanPresentation.updatedAt}`
+    : null
+  const autoOpenedPlanRef = useRef<{ conversationId: string | null; planKey: string | null }>({
+    conversationId: null,
+    planKey: null,
+  })
+
+  useEffect(() => {
+    const conversationId = chatMessages.activeConversationId
+    const autoOpenState = autoOpenedPlanRef.current
+
+    if (autoOpenState.conversationId !== conversationId) {
+      autoOpenState.conversationId = conversationId
+      autoOpenState.planKey = latestPlanKey
+      return
+    }
+
+    if (!latestPlanPresentation || latestPlanKey === null) {
+      autoOpenState.planKey = null
+      return
+    }
+
+    if (autoOpenState.planKey === latestPlanKey) {
+      return
+    }
+
+    autoOpenState.planKey = latestPlanKey
+    workspaceState.handleOpenWorkspacePlanPreview(latestPlanPresentation.relativePath)
+  }, [
+    chatMessages.activeConversationId,
+    latestPlanKey,
+    latestPlanPresentation?.relativePath,
+    workspaceState.handleOpenWorkspacePlanPreview,
+  ])
+
   return (
     <div
       className="flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-hidden"
@@ -179,7 +217,7 @@ export function ChatConversationSurface({
             {showImplementPlanButton ? (
               <button
                 type="button"
-                onClick={handleImplementPlan}
+                onClick={() => handleImplementPlan()}
                 className="absolute -top-[3.25rem] left-1/2 z-10 inline-flex h-11 w-auto max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-2 rounded-2xl border border-border bg-surface px-4 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-surface-muted active:scale-95"
               >
                 <span className="truncate">Implement the plan</span>

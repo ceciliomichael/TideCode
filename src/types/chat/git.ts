@@ -80,6 +80,14 @@ export interface GitStatusResult {
   untrackedFileCount: number
 }
 
+export interface GitSourceControlWatchChangesInput {
+  workspacePath: string
+}
+
+export interface GitSourceControlChangeEvent {
+  workspacePath: string
+}
+
 export interface GitFileStageInput {
   filePath: string
   workspacePath: string

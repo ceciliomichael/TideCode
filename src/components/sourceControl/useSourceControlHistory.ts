@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toUserFacingErrorMessage } from '../../lib/userFacingError'
 import type { GitCommitResult, GitHistoryCommitDetailsResult, GitHistoryEntry } from '../../types/chat'
+import { normalizeWorkspaceRootPathForComparison } from '../../lib/workspaceRootPathComparison'
+import { useGitSourceControlWatcher } from '../../hooks/useGitSourceControlWatcher'
 import { computeSwimlanes } from './historyGraphLayout'
 import { prependCommittedHistoryEntry } from './sourceControlHistoryUtils'
 
@@ -18,6 +20,7 @@ export function useSourceControlHistory({
   isOpen,
   normalizedWorkspacePath,
 }: UseSourceControlHistoryInput) {
+  useGitSourceControlWatcher(normalizedWorkspacePath)
   const historyRowRefMap = useRef(new Map<string, HTMLButtonElement | null>())
   const headHashRef = useRef<string | null>(null)
   const [historyEntries, setHistoryEntries] = useState<GitHistoryEntry[]>([])
@@ -31,17 +34,24 @@ export function useSourceControlHistory({
   const [commitDetailsByHash, setCommitDetailsByHash] =
     useState<Record<string, GitHistoryCommitDetailsResult>>({})
   const [loadingCommitHashes, setLoadingCommitHashes] = useState<string[]>([])
+  const historyRequestIdRef = useRef(0)
   const hasWorkspacePath = normalizedWorkspacePath.length > 0
   const historyViewModels = useMemo(() => computeSwimlanes(historyEntries), [historyEntries])
 
   const loadHistoryPage = useCallback(
     async (offset: number, append: boolean, options?: { skipIfHeadUnchanged?: boolean }) => {
       if (!hasWorkspacePath) return
+      const requestId = historyRequestIdRef.current + 1
+      historyRequestIdRef.current = requestId
       const result = await window.tidecodeGit.getHistoryPage({
         limit: HISTORY_PAGE_SIZE,
         offset,
         workspacePath: normalizedWorkspacePath,
       })
+      if (requestId !== historyRequestIdRef.current) {
+        return
+      }
+
       if (!append && options?.skipIfHeadUnchanged && result.headHash === headHashRef.current) {
         return
       }
@@ -66,6 +76,7 @@ export function useSourceControlHistory({
 
   const refreshHistory = useCallback(async (options?: { silent?: boolean; skipIfHeadUnchanged?: boolean }) => {
     if (!hasWorkspacePath || !hasRepository) {
+      historyRequestIdRef.current += 1
       setHistoryEntries([])
       headHashRef.current = null
       setHeadHash(null)
@@ -178,6 +189,25 @@ export function useSourceControlHistory({
       void refreshHistory()
     }
   }, [hasRepository, hasWorkspacePath, normalizedWorkspacePath, refreshHistory])
+
+  useEffect(() => {
+    if (!hasWorkspacePath) {
+      return
+    }
+
+    const comparableWorkspacePath = normalizeWorkspaceRootPathForComparison(normalizedWorkspacePath)
+    const unsubscribe = window.tidecodeGit.onSourceControlChange((event) => {
+      if (normalizeWorkspaceRootPathForComparison(event.workspacePath) !== comparableWorkspacePath) {
+        return
+      }
+
+      void refreshHistory({ silent: true, skipIfHeadUnchanged: true })
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [hasWorkspacePath, normalizedWorkspacePath, refreshHistory])
 
   useEffect(() => {
     const handleFocus = () => {

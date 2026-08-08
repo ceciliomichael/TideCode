@@ -6,6 +6,8 @@ import {
   beginSourceControlCommitOperation,
   endSourceControlCommitOperation,
 } from '../lib/sourceControlPendingStateStore'
+import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPathComparison'
+import { useGitSourceControlWatcher } from './useGitSourceControlWatcher'
 
 interface UseGitCommitInput {
   hasRepository: boolean
@@ -50,6 +52,7 @@ export function useGitCommit({
   workspacePath,
 }: UseGitCommitInput): UseGitCommitResult {
   const normalizedWorkspacePath = normalizeGitWorkspacePath(workspacePath)
+  useGitSourceControlWatcher(normalizedWorkspacePath)
   const [status, setStatus] = useState<GitStatusResult | null>(null)
   const [isLoadingStatus, setIsLoadingStatus] = useState(false)
   const [isCommitting, setIsCommitting] = useState(false)
@@ -111,18 +114,23 @@ export function useGitCommit({
   }, [hasRepository, refreshStatus])
 
   useEffect(() => {
-    if (!hasRepository || !workspacePath) {
+    if (!hasRepository || !normalizedWorkspacePath) {
       return
     }
 
-    const unsubscribe = window.tidecodeWorkspace.onExplorerChange(() => {
+    const comparableWorkspacePath = normalizeWorkspaceRootPathForComparison(normalizedWorkspacePath)
+    const unsubscribe = window.tidecodeGit.onSourceControlChange((event) => {
+      if (normalizeWorkspaceRootPathForComparison(event.workspacePath) !== comparableWorkspacePath) {
+        return
+      }
+
       void refreshStatus()
     })
 
     return () => {
       unsubscribe()
     }
-  }, [hasRepository, refreshStatus, workspacePath])
+  }, [hasRepository, normalizedWorkspacePath, refreshStatus])
 
   useEffect(() => {
     if (!hasRepository || !workspacePath) {

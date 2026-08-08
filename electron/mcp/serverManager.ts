@@ -43,10 +43,6 @@ function createConnectionSignature(config: McpServerConfig) {
   })
 }
 
-function generateServerId(name: string) {
-  return `mcp-${name.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`
-}
-
 function buildUpdatedConfig(currentConfig: McpServerConfig, input: McpAddServerInput): McpServerConfig {
   const parsed = parseMcpAddServerInput(input)
   if (!parsed.success || !parsed.data) {
@@ -70,7 +66,6 @@ function buildUpdatedConfig(currentConfig: McpServerConfig, input: McpAddServerI
           headers: parsed.data.headers,
           url: parsed.data.url,
         }),
-    id: generateServerId(parsed.data.serverName),
     name: parsed.data.serverName,
     type: parsed.data.type,
   }
@@ -422,7 +417,7 @@ class McpWorkspaceSession {
     }
 
     await this.disconnectRuntime(serverId, runtime, true)
-    await deleteMcpConfig(serverId)
+    await deleteMcpConfig(config.name)
     await this.stateStore.removeServer(config.name, this.workspacePath)
     return this.reload()
   }

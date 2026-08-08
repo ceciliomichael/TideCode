@@ -82,6 +82,13 @@ test('buildToolInvocationGroupSummary pluralizes grouped categories', () => {
   assert.equal(summary, 'Ran 2 searches, ran 1 command, explored 2 files')
 })
 
+test('buildToolInvocationGroupSummary gives plan tools a readable label', () => {
+  assert.equal(
+    buildToolInvocationGroupSummary([createInvocation('plan_create'), createInvocation('plan_edit')]),
+    'Created 2 plans',
+  )
+})
+
 test('buildToolInvocationGroupSummary counts write tools inside explored groups', () => {
   const summary = buildToolInvocationGroupSummary([
     createInvocation('write'),

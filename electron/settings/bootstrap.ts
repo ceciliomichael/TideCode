@@ -7,8 +7,9 @@ import { resetLaunchOnlyAppSettings } from '../../src/hooks/appSettingsLaunchSta
 import { clampStoredWorkspaceEditorWidth } from '../../src/lib/workspaceEditorSizing'
 import { clampStoredWorkspaceExplorerWidth } from '../../src/lib/workspaceExplorerSizing'
 import { normalizeContextCompactionSettings } from '../../src/lib/contextCompactionSettings'
+import { isPlanRelativePath, normalizePlanRelativePath } from '../../src/lib/planContracts'
 import type { AppSettings } from '../../src/types/chat'
-import type { SourceControlSectionId } from '../../src/types/chat'
+import type { ChatMode, SourceControlSectionId } from '../../src/types/chat'
 import { isChatProviderId as isSupportedChatProviderId } from '../providers/providerIds'
 
 const INITIAL_SETTINGS_ARG_PREFIX = '--tidecode-initial-settings='
@@ -147,14 +148,37 @@ function sanitizeRevertEditSessionsByConversation(value: unknown): AppSettings['
       typeof (candidateSession as { redoCheckpointId?: unknown }).redoCheckpointId === 'string'
         ? (candidateSession as { redoCheckpointId: string }).redoCheckpointId.trim()
         : ''
+    const chatModeBeforeRevert =
+      (candidateSession as { chatModeBeforeRevert?: unknown }).chatModeBeforeRevert === 'agent' ||
+      (candidateSession as { chatModeBeforeRevert?: unknown }).chatModeBeforeRevert === 'plan'
+        ? (candidateSession as { chatModeBeforeRevert: ChatMode }).chatModeBeforeRevert
+        : undefined
+    const revertedChatMode =
+      (candidateSession as { revertedChatMode?: unknown }).revertedChatMode === 'agent' ||
+      (candidateSession as { revertedChatMode?: unknown }).revertedChatMode === 'plan'
+        ? (candidateSession as { revertedChatMode: ChatMode }).revertedChatMode
+        : undefined
+    const revertedPlanPaths = Array.isArray((candidateSession as { revertedPlanPaths?: unknown }).revertedPlanPaths)
+      ? Array.from(
+          new Set(
+            ((candidateSession as { revertedPlanPaths: unknown[] }).revertedPlanPaths ?? [])
+              .filter((candidatePath): candidatePath is string => typeof candidatePath === 'string')
+              .map((candidatePath) => normalizePlanRelativePath(candidatePath))
+              .filter(isPlanRelativePath),
+          ),
+        )
+      : []
 
     if (messageId.length === 0 || redoCheckpointId.length === 0) {
       continue
     }
 
     sanitizedValue[normalizedConversationId] = {
+      ...(chatModeBeforeRevert ? { chatModeBeforeRevert } : {}),
       messageId,
       redoCheckpointId,
+      ...(revertedChatMode ? { revertedChatMode } : {}),
+      ...(revertedPlanPaths.length > 0 ? { revertedPlanPaths } : {}),
     }
   }
 

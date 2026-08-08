@@ -7,6 +7,7 @@ import type { ChatInterfaceControllerState } from '../../hooks/useChatInterfaceC
 import type { GitBranchStateController } from '../../hooks/useGitBranchState'
 import type { GitDiffSnapshotController } from '../../hooks/useGitDiffSnapshot'
 import type { AppSettings } from '../../types/chat'
+import type { PlanReviewComment } from '../../lib/planContracts'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
 
 interface ChatWorkspaceSidePanelsProps {
@@ -17,7 +18,9 @@ interface ChatWorkspaceSidePanelsProps {
   interfaceController: ChatInterfaceControllerState
   onDiffPanelExpandedFilePathsChange: (nextFilePaths: string[]) => void
   onDiffPanelSelectedScopeChange: (nextScope: DiffPanelScope) => void
+  onImplementPlan: (relativePath: string) => void
   settings: AppSettings
+  onRequestPlanChanges: (relativePath: string, comments: PlanReviewComment[]) => void
   workspaceState: ChatWorkspaceUiState
 }
 
@@ -29,6 +32,8 @@ export function ChatWorkspaceSidePanels({
   interfaceController,
   onDiffPanelExpandedFilePathsChange,
   onDiffPanelSelectedScopeChange,
+  onImplementPlan,
+  onRequestPlanChanges,
   settings,
   workspaceState,
 }: ChatWorkspaceSidePanelsProps) {
@@ -51,8 +56,10 @@ export function ChatWorkspaceSidePanels({
           isOpen={workspaceState.isWorkspaceTabsPanelOpen}
           onCloseTab={workspaceState.handleCloseWorkspaceTab}
           onFileContentChange={workspaceState.handleWorkspaceFileContentChange}
+          onImplementPlan={onImplementPlan}
           onOpenMarkdownPreview={workspaceState.handleOpenWorkspaceMarkdownPreview}
           onOpenSvgPreview={workspaceState.handleOpenWorkspaceSvgPreview}
+          onRequestPlanChanges={onRequestPlanChanges}
           onSelectTab={workspaceState.handleSelectWorkspaceTab}
           tabs={workspaceState.workspaceFileTabs}
           wordWrapEnabled={settings.workspaceFileEditorWordWrap}

@@ -12,8 +12,11 @@ export interface ConversationEditSession {
 }
 
 export interface RevertEditSession {
+  chatModeBeforeRevert?: ChatMode
   messageId: string
   redoCheckpointId: string
+  revertedChatMode?: ChatMode
+  revertedPlanPaths?: string[]
 }
 
 export interface ConversationModelPreference {

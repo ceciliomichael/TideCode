@@ -1,9 +1,91 @@
+type InlineCodeDelimiter = string | null
+
+interface DetailsTagNormalizationResult {
+  inlineCodeDelimiter: InlineCodeDelimiter
+  line: string
+}
+
+const DETAILS_OR_SUMMARY_TAG_PATTERN = /^<\/?(?:details|summary)>/u
+
+function isEscapedBacktick(line: string, index: number) {
+  let precedingBackslashes = 0
+  for (let cursor = index - 1; cursor >= 0 && line[cursor] === '\\'; cursor -= 1) {
+    precedingBackslashes += 1
+  }
+
+  return precedingBackslashes % 2 === 1
+}
+
+function appendLineBreakBefore(value: string) {
+  return value.endsWith('\n') || value.length === 0 ? value : `${value}\n`
+}
+
+function appendLineBreakAfter(value: string) {
+  return value.endsWith('\n') ? value : `${value}\n`
+}
+
+function normalizeDetailsTagsOutsideInlineCode(
+  line: string,
+  initialInlineCodeDelimiter: InlineCodeDelimiter,
+): DetailsTagNormalizationResult {
+  let normalizedLine = ''
+  let inlineCodeDelimiter = initialInlineCodeDelimiter
+  let index = 0
+
+  while (index < line.length) {
+    if (line[index] === '`' && !isEscapedBacktick(line, index)) {
+      let delimiterEnd = index + 1
+      while (delimiterEnd < line.length && line[delimiterEnd] === '`') {
+        delimiterEnd += 1
+      }
+
+      const delimiter = line.slice(index, delimiterEnd)
+      normalizedLine += delimiter
+      if (inlineCodeDelimiter === null) {
+        inlineCodeDelimiter = delimiter
+      } else if (inlineCodeDelimiter === delimiter) {
+        inlineCodeDelimiter = null
+      }
+      index = delimiterEnd
+      continue
+    }
+
+    if (inlineCodeDelimiter === null) {
+      const tagMatch = line.slice(index).match(DETAILS_OR_SUMMARY_TAG_PATTERN)
+      if (tagMatch) {
+        const tag = tagMatch[0]
+        const isClosingTag = tag.startsWith('</')
+        const isDetailsTag = tag.toLowerCase().includes('details')
+
+        if (isClosingTag && !isDetailsTag) {
+          normalizedLine += tag
+          normalizedLine = appendLineBreakAfter(normalizedLine)
+        } else {
+          normalizedLine = appendLineBreakBefore(normalizedLine)
+          normalizedLine += tag
+          if (isDetailsTag) {
+            normalizedLine = appendLineBreakAfter(normalizedLine)
+          }
+        }
+        index += tag.length
+        continue
+      }
+    }
+
+    normalizedLine += line[index]
+    index += 1
+  }
+
+  return { inlineCodeDelimiter, line: normalizedLine }
+}
+
 export function preprocessMarkdown(markdown: string): string {
   if (!markdown) return ''
 
   const lines = markdown.split('\n')
   const resultLines: string[] = []
   let inCodeBlock = false
+  let inlineCodeDelimiter: InlineCodeDelimiter = null
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
@@ -17,9 +99,11 @@ export function preprocessMarkdown(markdown: string): string {
       if (inCodeBlock) {
         if (trimmedAfter.length === 0) {
           inCodeBlock = false
+          inlineCodeDelimiter = null
           resultLines.push(line)
         } else {
           inCodeBlock = false
+          inlineCodeDelimiter = null
           resultLines.push(`${indent}\`\`\``)
           const remainingLine = `${indent}${trimmedAfter}`
           resultLines.push(remainingLine)
@@ -31,9 +115,11 @@ export function preprocessMarkdown(markdown: string): string {
         if (isMarkdownElement) {
           resultLines.push(`${indent}\`\`\``)
           inCodeBlock = true
+          inlineCodeDelimiter = null
           resultLines.push(`${indent}${trimmedAfter}`)
         } else {
           inCodeBlock = true
+          inlineCodeDelimiter = null
           resultLines.push(line)
         }
         continue
@@ -45,16 +131,9 @@ export function preprocessMarkdown(markdown: string): string {
       continue
     }
 
-    let processedLine = line
-
-    // Normalize details and summary block HTML tags onto separate lines if written inline
-    if (processedLine.includes('<details>') || processedLine.includes('<summary>')) {
-      processedLine = processedLine
-        .replace(/<details>/g, '\n<details>\n')
-        .replace(/<\/details>/g, '\n</details>\n')
-        .replace(/<summary>/g, '\n<summary>')
-        .replace(/<\/summary>/g, '</summary>\n')
-    }
+    const normalizedDetailsLine = normalizeDetailsTagsOutsideInlineCode(line, inlineCodeDelimiter)
+    inlineCodeDelimiter = normalizedDetailsLine.inlineCodeDelimiter
+    let processedLine = normalizedDetailsLine.line
 
     // Process inline highlight: ==text== -> <mark>text</mark>
     processedLine = processedLine.replace(/==([^=]+)==/g, '<mark>$1</mark>')

@@ -23,6 +23,8 @@ type HighlightLanguage = BundledLanguage | 'text'
 
 const SHIKI_LIGHT_THEME = 'github-light-default'
 const SHIKI_DARK_THEME = 'github-dark-default'
+const MARKDOWN_LIST_LANGUAGES = new Set(['markdown', 'mdx'])
+const MARKDOWN_ORDERED_LIST_MARKER_PATTERN = /^\s*\d+\.(?=\s)/u
 
 const HIGHLIGHT_LANGUAGE_ALIASES: Record<string, string> = {
   apache: 'apache',
@@ -182,6 +184,55 @@ function convertTokensToLines(tokens: readonly ThemedToken[][]): HighlightedCode
   })
 }
 
+function neutralizeMarkdownOrderedListMarkers(
+  lines: readonly HighlightedCodeLine[],
+  language: string,
+): HighlightedCodeLine[] {
+  if (!MARKDOWN_LIST_LANGUAGES.has(language)) {
+    return [...lines]
+  }
+
+  return lines.map((line) => {
+    const markerMatch = MARKDOWN_ORDERED_LIST_MARKER_PATTERN.exec(line.text)
+    if (!markerMatch) {
+      return line
+    }
+
+    const markerEnd = markerMatch[0].length
+    let tokenStart = 0
+    let didChange = false
+    const tokens: HighlightedToken[] = []
+
+    for (const token of line.tokens) {
+      const tokenEnd = tokenStart + token.content.length
+      if (tokenStart >= markerEnd || tokenEnd <= 0) {
+        tokens.push(token)
+        tokenStart = tokenEnd
+        continue
+      }
+
+      const markerLength = Math.min(tokenEnd, markerEnd) - tokenStart
+      if (markerLength <= 0) {
+        tokens.push(token)
+        tokenStart = tokenEnd
+        continue
+      }
+
+      const markerContent = token.content.slice(0, markerLength)
+      tokens.push({ ...token, content: markerContent, color: undefined })
+      didChange = didChange || token.color !== undefined
+
+      if (markerLength < token.content.length) {
+        tokens.push({ ...token, content: token.content.slice(markerLength) })
+      }
+
+      tokenStart = tokenEnd
+    }
+
+    return didChange ? { ...line, tokens } : line
+  })
+}
+
 function resolveFileNameLanguage(fileName: string) {
   const extension = getFileExtension(fileName)
   if (extension.length === 0) {
@@ -244,7 +295,10 @@ export async function highlightCodeLines({
       lang: languageToLoad,
       theme: theme === 'dark' ? SHIKI_DARK_THEME : SHIKI_LIGHT_THEME,
     })
-    const highlightedLines = convertTokensToLines(tokens)
+    const highlightedLines = neutralizeMarkdownOrderedListMarkers(
+      convertTokensToLines(tokens),
+      resolvedLanguage,
+    )
     highlightCache.set(cacheKey, highlightedLines)
     return highlightedLines
   } catch {

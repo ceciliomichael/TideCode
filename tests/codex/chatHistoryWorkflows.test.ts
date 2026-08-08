@@ -87,6 +87,15 @@ test('revert helpers rewind the clicked message and every later user turn', asyn
       id: 'assistant-1',
       role: 'assistant',
       timestamp: 20,
+      toolInvocations: [
+        {
+          argumentsText: '{}',
+          id: 'plan-call',
+          startedAt: 20,
+          state: 'completed',
+          toolName: 'plan_create',
+        },
+      ],
     },
     {
       content: 'message 2',
@@ -148,6 +157,7 @@ test('revert helpers rewind the clicked message and every later user turn', asyn
     assert.equal(revertPreparation.redoCheckpointId, redoCheckpoint.id)
     assert.deepEqual(redoCheckpointCalls, [[firstCheckpoint.id, secondCheckpoint.id, thirdCheckpoint.id]])
     assert.deepEqual(restoreCheckpointCalls, [[firstCheckpoint.id, secondCheckpoint.id, thirdCheckpoint.id]])
+    assert.equal(revertPreparation.revertedChatMode, 'plan')
     assert.equal(restoredConversation.conversation.messages.length, 5)
     assert.equal(restoredConversation.targetMessage.id, 'message-1')
   } finally {

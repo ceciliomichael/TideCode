@@ -53,6 +53,8 @@ import type {
   GitPublishInput,
   GitPublishResult,
   GitStatusResult,
+  GitSourceControlChangeEvent,
+  GitSourceControlWatchChangesInput,
   GitSyncInput,
   GitSyncResult,
 } from './git'
@@ -234,10 +236,13 @@ export interface TideCodeGitApi {
   getGitHubAuthStatus: () => Promise<GitHubAuthStatus>
   connectGitHub: () => Promise<GitHubDeviceLoginResult>
   completeGitHubDeviceLogin: () => Promise<GitHubAuthStatus>
+  onSourceControlChange: (listener: (event: GitSourceControlChangeEvent) => void) => () => void
   getStatus: (workspacePath: string) => Promise<GitStatusResult>
   initRepository: (workspacePath: string) => Promise<GitInitResult>
   publishToGitHub: (input: GitPublishInput) => Promise<GitPublishResult>
+  unwatchSourceControlChanges: (input: GitSourceControlWatchChangesInput) => Promise<void>
   sync: (input: GitSyncInput) => Promise<GitSyncResult>
+  watchSourceControlChanges: (input: GitSourceControlWatchChangesInput) => Promise<void>
   stageFiles: (input: GitFileStageBatchInput) => Promise<GitFileStageBatchResult>
   stageFile: (input: GitFileStageInput) => Promise<GitFileStageResult>
   unstageFiles: (input: GitFileStageBatchInput) => Promise<GitFileStageBatchResult>

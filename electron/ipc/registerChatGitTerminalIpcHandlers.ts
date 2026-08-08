@@ -13,6 +13,7 @@ import type {
   GitFileStageInput,
   GitHistoryCommitDetailsInput,
   GitHistoryPageInput,
+  GitSourceControlWatchChangesInput,
   GitSyncInput,
   OpenExternalTerminalLinkInput,
   ResizeTerminalSessionInput,
@@ -57,12 +58,24 @@ import {
   unstageGitFiles,
 } from '../git/service'
 import {
+  subscribeSourceControlChanges,
+  unsubscribeSourceControlChanges,
+} from '../git/sourceControlWatch'
+import {
   closeTerminalSession,
   createTerminalSession,
   openExternalTerminalLink,
   resizeTerminalSession,
   writeToTerminalSession,
 } from '../terminal/service'
+
+function getSourceControlWorkspacePath(input: GitSourceControlWatchChangesInput) {
+  if (!input || typeof input.workspacePath !== 'string') {
+    throw new Error('Workspace path is required.')
+  }
+
+  return input.workspacePath
+}
 
 export function registerChatGitTerminalIpcHandlers(
   activeChatStreamProviders: Map<string, StartChatStreamInput['providerId']>,
@@ -193,6 +206,12 @@ export function registerChatGitTerminalIpcHandlers(
     openExternalTerminalLink(input),
   )
   ipcMain.handle('git:getBranches', async (_event, workspacePath: string) => getGitBranchState(workspacePath))
+  ipcMain.handle('git:sourceControl:watch', async (event, input: GitSourceControlWatchChangesInput) =>
+    subscribeSourceControlChanges(event.sender, getSourceControlWorkspacePath(input)),
+  )
+  ipcMain.handle('git:sourceControl:unwatch', async (event, input: GitSourceControlWatchChangesInput) =>
+    unsubscribeSourceControlChanges(event.sender.id, getSourceControlWorkspacePath(input)),
+  )
   ipcMain.handle(
     'git:getDiffs',
     async (_event, input: { options?: GitDiffLoadOptions; workspacePath: string } | string) => {
