@@ -17,13 +17,29 @@ test('resolveHighlightLanguage preserves explicit fenced language labels when po
 })
 
 test('highlightCodeLines keeps Markdown ordered-list markers in the document color', async () => {
-  const [line] = await highlightCodeLines({
-    code: '10. **Footer** - columns of links, copyright, social icons',
+  const lines = await highlightCodeLines({
+    code: [
+      '1. Web search and browsing',
+      '9. **CTA band** - final conversion banner',
+      '10. **Footer** - columns of links, copyright, social icons',
+      '11. Terminal output reading',
+    ].join('\n'),
     fileName: 'plan-001.md',
     theme: 'dark',
   })
 
-  const markerToken = line.tokens.find((token) => token.content === '10.')
-  assert.ok(markerToken)
-  assert.equal(markerToken.color, undefined)
+  for (const line of lines) {
+    const markerMatch = line.text.match(/^\s*\d+\.(?=\s)/u)
+    assert.ok(markerMatch)
+
+    const markerEnd = markerMatch[0].length
+    let tokenStart = 0
+    for (const token of line.tokens) {
+      const tokenEnd = tokenStart + token.content.length
+      if (tokenStart < markerEnd && tokenEnd > 0) {
+        assert.equal(token.color, undefined, `ordered-list marker token was colored: ${token.content}`)
+      }
+      tokenStart = tokenEnd
+    }
+  }
 })

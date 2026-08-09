@@ -192,6 +192,16 @@ test('buildToolInvocationGroupSummary reports web search with readable labels', 
   )
 })
 
+test('buildToolInvocationGroupSummary groups MCP search and execution as MCP work', () => {
+  assert.equal(
+    buildToolInvocationGroupSummary([
+      createInvocation('mcp_tool_search'),
+      createInvocation('execute_mcp'),
+    ]),
+    'Ran 2 MCPs',
+  )
+})
+
 test('buildToolInvocationGroupSummary splits mixed file mutations and exploration categories', () => {
   const summary = buildToolInvocationGroupSummary([
     createMutationInvocation('tool-write-edit-1', 'update', 'write'),

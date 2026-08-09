@@ -17,15 +17,18 @@ import { getPlanPathsCreatedByRevertedUserMessage } from '../lib/planPresentatio
 import { readChatSelectionFromRefs } from '../lib/chatSelection'
 import {
   acquireChatSendScopeGate,
+  canBeginChatEditedSend,
   getChatSendScopeKey,
   isChatSendBlocked,
   releaseChatSendScopeGate,
+  waitForChatSendScopeGateRelease,
 } from '../lib/chatSendGate'
 import {
   getActiveUnrespondedUserMessage,
   getPendingRevertMessageIds,
   isActiveUnrespondedUserMessage,
 } from './chatPendingMessageRevert'
+import { stopAndRollbackPendingTurn } from './chatPendingTurnWorkflow'
 import type { ChatMode, Message } from '../types/chat'
 
 const RUN_STATE_SETTLE_TIMEOUT_MS = 20_000
@@ -109,6 +112,8 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
   const pendingAbortBeforeStreamStartRef = useRef(false)
   const revertedUserMessageIdsRef = useRef<Set<string>>(new Set())
   const pendingPersistedUserTurnsRef = useRef<Map<string, PersistedUserTurn>>(new Map())
+  const suppressAbortComposerRestoreConversationIdsRef = useRef<Set<string>>(new Set())
+  const suppressAbortRollbackPresentationConversationIdsRef = useRef<Set<string>>(new Set())
   const [isAbortInProgress, setIsAbortInProgress] = useState(false)
 
   const isUserMessageReverted = useCallback((messageId: string) => {
@@ -128,6 +133,8 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     if (currentTurn?.message.id === turn.message.id) {
       pendingPersistedUserTurnsRef.current.delete(turn.conversationId)
     }
+    suppressAbortComposerRestoreConversationIdsRef.current.delete(turn.conversationId)
+    suppressAbortRollbackPresentationConversationIdsRef.current.delete(turn.conversationId)
   }, [])
 
   const restoreUserMessageDraftToMainComposer = useCallback(
@@ -213,7 +220,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
   )
 
   const rollbackPendingUserMessage = useCallback(
-    async (turn: PersistedUserTurn) => {
+    async (turn: PersistedUserTurn, options: { restoreComposer?: boolean } = {}) => {
       const rolledBackConversation = await rollbackConversationBeforeUserMessage(turn.conversationId, turn.message.id)
       input.upsertConversation(rolledBackConversation)
       input.updateConversationSummary(rolledBackConversation)
@@ -221,8 +228,10 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       const activeConversationId = readChatSelectionFromRefs(input).activeConversationId
       if (activeConversationId === turn.conversationId) {
         input.applyConversation(rolledBackConversation)
-        restoreUserMessageDraftToMainComposer(turn.message)
-      } else if (activeConversationId === null) {
+        if (options.restoreComposer !== false) {
+          restoreUserMessageDraftToMainComposer(turn.message)
+        }
+      } else if (activeConversationId === null && options.restoreComposer !== false) {
         restoreUserMessageDraftToMainComposer(turn.message)
       }
     },
@@ -427,6 +436,165 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     [getConversationState, waitForAbortableConversationId, waitForConversationRunState],
   )
 
+  const prepareMessageRevert = useCallback(
+    async (
+      conversationId: string,
+      messageId: string,
+      options: {
+        preservePendingMessageBubble: boolean
+        restorePendingDraftToComposer: boolean
+        suppressActiveRunComposerRestore: boolean
+      },
+    ) => {
+      const conversationState = getConversationState(conversationId)
+      const hasActiveRun = Boolean(conversationState?.isSending || conversationState?.activeStreamId)
+      const isPendingSendRevert = isActiveUnrespondedUserMessage(conversationState, messageId)
+      const shouldSuppressActiveRunComposerRestore =
+        hasActiveRun && options.suppressActiveRunComposerRestore
+
+      const beginSuppressingActiveRunComposerRestore = () => {
+        if (shouldSuppressActiveRunComposerRestore) {
+          suppressAbortComposerRestoreConversationIdsRef.current.add(conversationId)
+          suppressAbortRollbackPresentationConversationIdsRef.current.add(conversationId)
+        }
+      }
+
+      const clearSuppressionIfRunSettled = () => {
+        if (!shouldSuppressActiveRunComposerRestore) {
+          return
+        }
+
+        const currentState = getConversationState(conversationId)
+        if (!currentState?.isSending && !currentState?.activeStreamId) {
+          suppressAbortComposerRestoreConversationIdsRef.current.delete(conversationId)
+          suppressAbortRollbackPresentationConversationIdsRef.current.delete(conversationId)
+        }
+      }
+
+      if (isPendingSendRevert) {
+        const pendingUserMessage = getActiveUnrespondedUserMessage(conversationState, messageId)
+        if (options.preservePendingMessageBubble) {
+          if (pendingUserMessage) {
+            revertedUserMessageIdsRef.current.add(pendingUserMessage.id)
+          }
+          beginSuppressingActiveRunComposerRestore()
+          try {
+            if (hasActiveRun) {
+              await abortActiveStreamIfNeeded({ requestAbortBeforeStreamStart: true })
+            } else {
+              await abortActiveStreamIfNeeded()
+            }
+          } finally {
+            clearSuppressionIfRunSettled()
+          }
+          if (pendingUserMessage) {
+            clearUserMessageRevert(pendingUserMessage.id)
+          }
+          return null
+        }
+
+        try {
+          await stopAndRollbackPendingTurn({
+            prepareLocalRollback: () => {
+              beginSuppressingActiveRunComposerRestore()
+              restorePendingUserMessageToMainComposer(conversationId, pendingUserMessage, {
+                restoreComposer: options.restorePendingDraftToComposer,
+              })
+            },
+            abortActiveRun: () =>
+              hasActiveRun
+                ? abortActiveStreamIfNeeded({ requestAbortBeforeStreamStart: true })
+                : abortActiveStreamIfNeeded(),
+            rollbackPersistedTurn: async () => {
+              if (!pendingUserMessage) {
+                return
+              }
+
+              await rollbackPendingUserMessage(
+                {
+                  conversationId,
+                  message: pendingUserMessage,
+                },
+                { restoreComposer: options.restorePendingDraftToComposer },
+              )
+            },
+          })
+        } finally {
+          clearSuppressionIfRunSettled()
+        }
+        if (pendingUserMessage) {
+          clearUserMessageRevert(pendingUserMessage.id)
+        }
+        return null
+      }
+
+      const activeRunRevertPreparation = hasActiveRun
+        ? await prepareRevertSessionForMessage(conversationId, messageId)
+        : null
+
+      beginSuppressingActiveRunComposerRestore()
+      try {
+        if (hasActiveRun) {
+          await abortActiveStreamIfNeeded({ requestAbortBeforeStreamStart: true })
+        } else {
+          await abortActiveStreamIfNeeded()
+        }
+      } finally {
+        clearSuppressionIfRunSettled()
+      }
+
+      if (activeRunRevertPreparation) {
+        const postAbortConversation = getConversationState(conversationId)?.conversation
+        const targetStillExists = postAbortConversation?.messages.some(
+          (message) => message.id === messageId && message.role === 'user',
+        )
+
+        if (!targetStillExists) {
+          const messagesThroughTarget = getMessagesThroughUserMessage(
+            conversationState?.conversation.messages ?? [],
+            messageId,
+          )
+          if (!messagesThroughTarget) {
+            throw new Error(`Message not found: ${messageId}`)
+          }
+
+          const restoredConversation = await persistConversationSnapshot(conversationId, messagesThroughTarget, {
+            synchronizeCanonicalHistory: true,
+          })
+          input.upsertConversation(restoredConversation)
+          input.updateConversationSummary(restoredConversation)
+          if (readChatSelectionFromRefs(input).activeConversationId === conversationId) {
+            input.applyConversation(restoredConversation)
+          }
+        }
+      }
+
+      const revertPreparation =
+        activeRunRevertPreparation ?? (await prepareRevertSessionForMessage(conversationId, messageId))
+      try {
+        if (activeRunRevertPreparation) {
+          await restoreWorkspaceCheckpointSequence(revertPreparation.checkpointIds)
+        } else {
+          await restoreWorkspaceCheckpointForMessage(conversationId, messageId)
+        }
+      } catch (caughtError) {
+        if (!isMissingCheckpointError(caughtError)) {
+          throw caughtError
+        }
+      }
+
+      return revertPreparation
+    },
+    [
+      abortActiveStreamIfNeeded,
+      clearUserMessageRevert,
+      getConversationState,
+      input,
+      rollbackPendingUserMessage,
+      restorePendingUserMessageToMainComposer,
+    ],
+  )
+
   const sendNewMessage = useCallback(
     async (
       runtimeSelection: ChatRuntimeSelection,
@@ -498,6 +666,12 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           },
           onUserTurnPersisted: registerPersistedUserTurn,
           onUserTurnSettled: clearPersistedUserTurn,
+          shouldApplyAbortRollbackToRuntime: () =>
+            activeConversationId === null ||
+            !suppressAbortRollbackPresentationConversationIdsRef.current.has(activeConversationId),
+          shouldRestoreMainComposerOnAbort: () =>
+            activeConversationId === null ||
+            !suppressAbortComposerRestoreConversationIdsRef.current.has(activeConversationId),
           isUserMessageReverted,
           clearUserMessageRevert,
           originalText: nextMessageText,
@@ -606,16 +780,22 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       attachments = input.editComposerAttachments,
     ) => {
       const conversationId = readChatSelectionFromRefs(input).activeConversationId
-      if (
-        conversationId === null ||
-        submissionInFlightRef.current.has(getChatSendScopeKey(conversationId)) ||
-        actionInFlightRef.current ||
-        input.editingMessageId === null
-      ) {
+      const editingMessageId = input.editingMessageId
+      if (conversationId === null || editingMessageId === null) {
         return
       }
 
       const sendScopeKey = getChatSendScopeKey(conversationId)
+      const conversationState = getConversationState(conversationId)
+      const hasActiveRun = Boolean(conversationState?.isSending || conversationState?.activeStreamId)
+      const hasSubmissionInFlight = submissionInFlightRef.current.has(sendScopeKey)
+      if (!canBeginChatEditedSend({
+        actionInFlight: actionInFlightRef.current,
+        hasActiveRun,
+        hasSubmissionInFlight,
+      })) {
+        return
+      }
 
       const nextMessageText = messageText ?? input.editComposerValue
       const trimmedText = nextMessageText.trim()
@@ -623,10 +803,15 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         return
       }
 
-      if (!acquireChatSendScopeGate(submissionInFlightRef, sendScopeKey)) {
-        return
+      let ownsSendScopeGate = false
+      if (!hasSubmissionInFlight) {
+        ownsSendScopeGate = acquireChatSendScopeGate(submissionInFlightRef, sendScopeKey)
+        if (!ownsSendScopeGate) {
+          return
+        }
       }
 
+      actionInFlightRef.current = true
       try {
         let persistedConversation
         try {
@@ -640,7 +825,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
 
         const hasPersistedEditableMessage = Boolean(
           persistedConversation?.messages.some(
-            (message) => message.id === input.editingMessageId && message.role === 'user',
+            (message) => message.id === editingMessageId && message.role === 'user',
           ),
         )
         if (!hasPersistedEditableMessage) {
@@ -649,10 +834,9 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           return
         }
 
-        const conversationState = getConversationState(conversationId)
         const hasEditableMessage = Boolean(
-          conversationState?.conversation.messages.some(
-            (message) => message.id === input.editingMessageId && message.role === 'user',
+          getConversationState(conversationId)?.conversation.messages.some(
+            (message) => message.id === editingMessageId && message.role === 'user',
           ),
         )
         if (!hasEditableMessage) {
@@ -661,31 +845,38 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           return
         }
 
-        actionInFlightRef.current = true
-        try {
-          input.clearError()
-          await abortActiveStreamIfNeeded()
-          await restoreWorkspaceCheckpointForMessage(conversationId, input.editingMessageId)
-        } catch (caughtError) {
-          if (isMessageNotFoundError(caughtError)) {
-            input.cancelEditingMessage()
-            input.setError('This message is no longer available to edit.')
-            return
+        input.clearError()
+        await prepareMessageRevert(conversationId, editingMessageId, {
+          preservePendingMessageBubble: true,
+          restorePendingDraftToComposer: false,
+          suppressActiveRunComposerRestore: true,
+        })
+
+        await rollbackConversationBeforeUserMessage(conversationId, editingMessageId)
+
+        if (!ownsSendScopeGate) {
+          const previousSendReleased = await waitForChatSendScopeGateRelease(
+            submissionInFlightRef,
+            sendScopeKey,
+          )
+          if (!previousSendReleased) {
+            throw new Error('Timed out while waiting for the stopped response to settle.')
           }
 
-          if (!isMissingCheckpointError(caughtError)) {
-            throw caughtError
+          ownsSendScopeGate = acquireChatSendScopeGate(submissionInFlightRef, sendScopeKey)
+          if (!ownsSendScopeGate) {
+            throw new Error('Unable to reserve the conversation for the edited message.')
           }
-        } finally {
-          actionInFlightRef.current = false
         }
 
         pendingAbortBeforeStreamStartRef.current = false
+        actionInFlightRef.current = false
 
         await persistAndStreamMessage({
           ...input,
           attachments,
           activeConversationId: conversationId,
+          completeEditingAfterPersist: true,
           hasPendingAbortRequest: () => pendingAbortBeforeStreamStartRef.current,
           consumePendingAbortBeforeStreamStart: () => {
             if (!pendingAbortBeforeStreamStartRef.current) {
@@ -695,12 +886,18 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
             pendingAbortBeforeStreamStartRef.current = false
             return true
           },
+          onUserTurnPersisted: registerPersistedUserTurn,
+          onUserTurnSettled: clearPersistedUserTurn,
+          shouldApplyAbortRollbackToRuntime: () =>
+            !suppressAbortRollbackPresentationConversationIdsRef.current.has(conversationId),
+          shouldRestoreMainComposerOnAbort: () =>
+            !suppressAbortComposerRestoreConversationIdsRef.current.has(conversationId),
           isUserMessageReverted,
           clearUserMessageRevert,
           originalText: nextMessageText,
           runtimeSelection,
           selectedFolderId: readChatSelectionFromRefs(input).selectedFolderId,
-          targetEditMessageId: input.editingMessageId,
+          targetEditMessageId: null,
           trimmedText,
         })
       } catch (caughtError) {
@@ -713,15 +910,20 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
 
         input.setError(toActionErrorMessage(caughtError, 'Unable to resend your edit.'))
       } finally {
-        releaseChatSendScopeGate(submissionInFlightRef, sendScopeKey)
+        actionInFlightRef.current = false
+        if (ownsSendScopeGate) {
+          releaseChatSendScopeGate(submissionInFlightRef, sendScopeKey)
+        }
       }
     },
     [
-      abortActiveStreamIfNeeded,
+      clearPersistedUserTurn,
       clearUserMessageRevert,
       getConversationState,
       input,
       isUserMessageReverted,
+      prepareMessageRevert,
+      registerPersistedUserTurn,
     ],
   )
 
@@ -740,40 +942,26 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     const abortResponseOperation = (async () => {
       const conversationId = readChatSelectionFromRefs(input).activeConversationId
       const pendingStopTurn = resolvePendingStopTurn(conversationId)
-      let rollbackError: unknown = null
       let stopError: unknown = null
       try {
-        await abortActiveStreamIfNeeded({ requestAbortBeforeStreamStart: true })
+        if (pendingStopTurn) {
+          await stopAndRollbackPendingTurn({
+            prepareLocalRollback: () => {
+              restorePendingUserMessageToMainComposer(
+                pendingStopTurn.conversationId,
+                pendingStopTurn.message,
+                { restoreComposer: true },
+              )
+            },
+            abortActiveRun: () => abortActiveStreamIfNeeded({ requestAbortBeforeStreamStart: true }),
+            rollbackPersistedTurn: () => rollbackPendingUserMessage(pendingStopTurn),
+          })
+          clearUserMessageRevert(pendingStopTurn.message.id)
+        } else {
+          await abortActiveStreamIfNeeded({ requestAbortBeforeStreamStart: true })
+        }
       } catch (caughtError) {
         stopError = caughtError
-        const activeConversationId = readChatSelectionFromRefs(input).activeConversationId
-        if (
-          pendingStopTurn &&
-          (activeConversationId === pendingStopTurn.conversationId || activeConversationId === null)
-        ) {
-          restoreUserMessageDraftToMainComposer(pendingStopTurn.message)
-        }
-      }
-
-      if (
-        pendingStopTurn &&
-        isActiveUnrespondedUserMessage(
-          getConversationState(pendingStopTurn.conversationId),
-          pendingStopTurn.message.id,
-        )
-      ) {
-        restorePendingUserMessageToMainComposer(pendingStopTurn.conversationId, pendingStopTurn.message, {
-          restoreComposer: false,
-        })
-        try {
-          await rollbackPendingUserMessage(pendingStopTurn)
-        } catch (caughtError) {
-          rollbackError = caughtError
-        }
-      }
-      if (rollbackError) {
-        stopError = stopError ?? rollbackError
-        console.error(rollbackError)
       }
 
       if (stopError) {
@@ -793,11 +981,10 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     }
   }, [
     abortActiveStreamIfNeeded,
-    getConversationState,
+    clearUserMessageRevert,
     input,
     resolvePendingStopTurn,
     restorePendingUserMessageToMainComposer,
-    restoreUserMessageDraftToMainComposer,
     rollbackPendingUserMessage,
   ])
 
@@ -809,8 +996,6 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       }
 
       const conversationState = getConversationState(conversationId)
-      const isPendingSendRevert = isActiveUnrespondedUserMessage(conversationState, messageId)
-      const hasActiveRun = Boolean(conversationState?.isSending || conversationState?.activeStreamId)
       const revertedPlanPaths = getPlanPathsCreatedByRevertedUserMessage(
         conversationState?.conversation.messages ?? [],
         messageId,
@@ -820,67 +1005,13 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
 
       try {
         input.clearError()
-        if (isPendingSendRevert) {
-          const pendingUserMessage = getActiveUnrespondedUserMessage(conversationState, messageId)
-          restorePendingUserMessageToMainComposer(conversationId, pendingUserMessage, { restoreComposer: false })
-          await abortActiveStreamIfNeeded({ requestAbortBeforeStreamStart: true })
-          if (pendingUserMessage) {
-            await rollbackPendingUserMessage({
-              conversationId,
-              message: pendingUserMessage,
-            })
-          }
+        const revertPreparation = await prepareMessageRevert(conversationId, messageId, {
+          preservePendingMessageBubble: false,
+          restorePendingDraftToComposer: true,
+          suppressActiveRunComposerRestore: false,
+        })
+        if (!revertPreparation) {
           return true
-        }
-
-        // Capture the complete checkpoint sequence before stopping an active
-        // run. The normal abort cleanup removes the in-flight user turn, which
-        // would otherwise make the revert target and its later checkpoints
-        // unavailable by the time the revert workflow resumes.
-        const activeRunRevertPreparation = hasActiveRun
-          ? await prepareRevertSessionForMessage(conversationId, messageId)
-          : null
-
-        await abortActiveStreamIfNeeded()
-
-        if (activeRunRevertPreparation) {
-          const postAbortConversation = getConversationState(conversationId)?.conversation
-          const targetStillExists = postAbortConversation?.messages.some(
-            (message) => message.id === messageId && message.role === 'user',
-          )
-
-          if (!targetStillExists) {
-            const messagesThroughTarget = getMessagesThroughUserMessage(
-              conversationState?.conversation.messages ?? [],
-              messageId,
-            )
-            if (!messagesThroughTarget) {
-              throw new Error(`Message not found: ${messageId}`)
-            }
-
-            const restoredConversation = await persistConversationSnapshot(conversationId, messagesThroughTarget, {
-              synchronizeCanonicalHistory: true,
-            })
-            input.upsertConversation(restoredConversation)
-            input.updateConversationSummary(restoredConversation)
-            if (readChatSelectionFromRefs(input).activeConversationId === conversationId) {
-              input.applyConversation(restoredConversation)
-            }
-          }
-        }
-
-        const revertPreparation =
-          activeRunRevertPreparation ?? (await prepareRevertSessionForMessage(conversationId, messageId))
-        try {
-          if (activeRunRevertPreparation) {
-            await restoreWorkspaceCheckpointSequence(revertPreparation.checkpointIds)
-          } else {
-            await restoreWorkspaceCheckpointForMessage(conversationId, messageId)
-          }
-        } catch (caughtError) {
-          if (!isMissingCheckpointError(caughtError)) {
-            throw caughtError
-          }
         }
 
         input.beginRevertEditingMessage(
@@ -904,11 +1035,9 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       }
     },
     [
-      abortActiveStreamIfNeeded,
       getConversationState,
       input,
-      restorePendingUserMessageToMainComposer,
-      rollbackPendingUserMessage,
+      prepareMessageRevert,
     ],
   )
 

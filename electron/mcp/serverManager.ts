@@ -15,6 +15,9 @@ import {
   saveMcpConfig,
 } from './configStore'
 import { parseMcpAddServerInput } from './configValidation'
+import { createMcpToolCatalogEntries, findMcpToolCatalogEntry, type McpToolCatalogEntry } from './mcpToolCatalog'
+import { executeMcpTool } from './mcpToolExecution'
+import { searchMcpToolCatalog } from './mcpToolSearch'
 import { getMcpStateStore } from './stateStore'
 
 interface ManagedRuntime {
@@ -122,7 +125,10 @@ class McpWorkspaceSession {
   private async syncFromDisk() {
     try {
       const configs = await loadMergedMcpConfigs()
-      const storedAutoConnect = await this.stateStore.readAutoConnectMap(this.workspacePath)
+      // Connection preference is global. Runtime sessions remain workspace
+      // scoped so each project can still launch MCP processes with its own
+      // working directory, but the user's connect/disconnect choice is shared.
+      const storedAutoConnect = await this.stateStore.readAutoConnectMap()
 
       const nextConfigsById = new Map<string, McpServerConfig>()
       for (const config of configs) {
@@ -338,9 +344,9 @@ class McpWorkspaceSession {
 
     const currentAutoConnect = config.autoConnect
     if (nextConfig.name !== config.name) {
-      await this.stateStore.removeServer(config.name, this.workspacePath)
+      await this.stateStore.removeServer(config.name)
     }
-    await this.stateStore.setAutoConnect(nextConfig.name, currentAutoConnect, this.workspacePath)
+    await this.stateStore.setAutoConnect(nextConfig.name, currentAutoConnect)
 
     await this.disconnectRuntime(serverId, runtime, true)
     this.configsById.delete(serverId)
@@ -374,7 +380,7 @@ class McpWorkspaceSession {
       throw new Error(`MCP server "${config.name}" is disabled in configuration.`)
     }
 
-    await this.stateStore.setAutoConnect(config.name, true, this.workspacePath)
+    await this.stateStore.setAutoConnect(config.name, true)
     const nextConfig = {
       ...config,
       autoConnect: true,
@@ -393,7 +399,7 @@ class McpWorkspaceSession {
       throw new Error(`MCP server not found: ${serverId}`)
     }
 
-    await this.stateStore.setAutoConnect(config.name, false, this.workspacePath)
+    await this.stateStore.setAutoConnect(config.name, false)
     const nextConfig = {
       ...config,
       autoConnect: false,
@@ -418,7 +424,7 @@ class McpWorkspaceSession {
 
     await this.disconnectRuntime(serverId, runtime, true)
     await deleteMcpConfig(config.name)
-    await this.stateStore.removeServer(config.name, this.workspacePath)
+    await this.stateStore.removeServer(config.name)
     return this.reload()
   }
 
@@ -516,6 +522,55 @@ class McpWorkspaceSession {
     }
 
     return toolSet
+  }
+
+  private async getDynamicToolCatalog(): Promise<McpToolCatalogEntry[]> {
+    await this.ensureLoaded()
+    const catalogEntries: McpToolCatalogEntry[] = []
+    const catalogIds = new Set<string>()
+
+    for (const runtime of this.runtimesById.values()) {
+      if (runtime.status.status !== 'connected' || !runtime.client) {
+        continue
+      }
+
+      try {
+        const serverEntries = createMcpToolCatalogEntries(runtime.config, runtime.client, runtime.tools)
+        const collisions = serverEntries
+          .map((entry) => entry.catalogId)
+          .filter((catalogId) => catalogIds.has(catalogId))
+        if (collisions.length > 0) {
+          throw new Error(`MCP catalog IDs already exist: ${collisions.join(', ')}`)
+        }
+
+        for (const entry of serverEntries) {
+          catalogIds.add(entry.catalogId)
+          catalogEntries.push(entry)
+        }
+      } catch (error) {
+        console.error(`Failed to index MCP tools for server "${runtime.config.name}".`, error)
+      }
+    }
+
+    return catalogEntries
+  }
+
+  async searchTools(input: unknown) {
+    return searchMcpToolCatalog(await this.getDynamicToolCatalog(), input)
+  }
+
+  async executeTool(toolId: string, argumentsValue: Record<string, unknown>) {
+    const normalizedToolId = typeof toolId === 'string' ? toolId.trim() : ''
+    if (normalizedToolId.length === 0) {
+      throw new Error('execute_mcp requires a non-empty "tool_id".')
+    }
+
+    const entry = findMcpToolCatalogEntry(await this.getDynamicToolCatalog(), normalizedToolId)
+    if (!entry) {
+      throw new Error(`Unknown MCP tool "${normalizedToolId}". Search with mcp_tool_search first.`)
+    }
+
+    return executeMcpTool(entry, argumentsValue)
   }
 
   async reload() {
@@ -619,6 +674,14 @@ export class McpServerManager {
 
   async getToolSet(workspacePath?: string | null) {
     return this.getSession(workspacePath).getToolSet()
+  }
+
+  async searchTools(input: unknown, workspacePath?: string | null) {
+    return this.getSession(workspacePath).searchTools(input)
+  }
+
+  async executeTool(toolId: string, argumentsValue: Record<string, unknown>, workspacePath?: string | null) {
+    return this.getSession(workspacePath).executeTool(toolId, argumentsValue)
   }
 
   async addServer(input: McpAddServerInput, workspacePath?: string | null) {

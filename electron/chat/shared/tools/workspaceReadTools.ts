@@ -105,7 +105,7 @@ export async function createListToolResult(workspaceRootPath: string, absolutePa
   const immediateEntries = await listImmediateDirectoryEntries(workspaceRootPath, absolutePath, { relaxIgnore })
   const limitedEntries = immediateEntries.slice(0, LIST_LIMIT)
 
-  const bodyLines = [...limitedEntries]
+  const bodyLines = immediateEntries.length === 0 ? ['Empty directory'] : [...limitedEntries]
   if (immediateEntries.length > LIST_LIMIT) {
     bodyLines.push('', `(Showing ${LIST_LIMIT} of ${immediateEntries.length} entries. Refine the path or use glob/read next.)`)
   }
@@ -119,7 +119,7 @@ export async function createListToolResult(workspaceRootPath: string, absolutePa
       kind: 'directory',
       path: relativePath,
     },
-    summary: `Listed ${relativePath}`,
+    summary: immediateEntries.length === 0 ? 'Empty directory' : `Listed ${relativePath}`,
     truncated: immediateEntries.length > LIST_LIMIT,
   })
 }

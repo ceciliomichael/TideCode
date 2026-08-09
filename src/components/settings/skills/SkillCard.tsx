@@ -3,6 +3,7 @@ import { Fragment, useMemo } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { MarkdownListItem, MarkdownOrderedList } from '../../markdown/MarkdownList'
 import { Switch } from '../../ui/Switch'
 import type { SkillSummary } from '../../../types/skills'
 
@@ -37,8 +38,10 @@ export function SkillCard({ isEnabled, onToggle, skill }: SkillCardProps) {
         />
       ),
       ul: (props: React.ComponentPropsWithoutRef<'ul'>) => <ul {...props} className="my-0 ml-4 list-disc" />,
-      ol: (props: React.ComponentPropsWithoutRef<'ol'>) => <ol {...props} className="my-0 ml-4 list-decimal" />,
-      li: (props: React.ComponentPropsWithoutRef<'li'>) => <li {...props} className="my-0" />,
+      ol: (props: React.ComponentPropsWithoutRef<'ol'>) => (
+        <MarkdownOrderedList {...props} className="my-0 ml-4" />
+      ),
+      li: (props: React.ComponentPropsWithoutRef<'li'>) => <MarkdownListItem {...props} className="my-0" />,
     }),
     [],
   )

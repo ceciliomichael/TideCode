@@ -326,6 +326,36 @@ test('read tool header labels collapse to the basename for the visible toolblock
   assert.equal(getToolInvocationHeaderLabel(invocation, undefined, WORKSPACE_ROOT_PATH), 'Read example.ts')
 })
 
+test('empty list results keep the listed tool header', () => {
+  const invocation: ToolInvocationTrace = {
+    argumentsText: JSON.stringify({}),
+    id: 'tool-list-empty-1',
+    resultContent: formatStructuredToolResultContent(
+      {
+        arguments: {},
+        schema: 'tidecode.tool_result/v1',
+        semantics: {
+          count: 0,
+        },
+        status: 'success',
+        subject: {
+          kind: 'directory',
+          path: '.',
+        },
+        summary: 'Empty directory',
+        toolCallId: 'tool-list-empty-1',
+        toolName: 'list',
+      },
+      'Empty directory',
+    ),
+    startedAt: 0,
+    state: 'completed',
+    toolName: 'list',
+  }
+
+  assert.equal(getToolInvocationHeaderLabel(invocation, undefined, WORKSPACE_ROOT_PATH), 'Listed .')
+})
+
 test('kanban tool header labels use kanban-specific verbs', () => {
   const readBoardRunning: ToolInvocationTrace = {
     argumentsText: '{}',
@@ -435,6 +465,80 @@ test('web search header labels use readable product wording', () => {
 
   assert.equal(getToolInvocationHeaderLabel(webSearchRunningInvocation, undefined, WORKSPACE_ROOT_PATH), 'Searching the web')
   assert.equal(getToolInvocationHeaderLabel(webSearchCompletedInvocation, undefined, WORKSPACE_ROOT_PATH), 'Searched the web')
+})
+
+test('MCP search headers show the exact query', () => {
+  const runningInvocation: ToolInvocationTrace = {
+    argumentsText: JSON.stringify({
+      include_schema: false,
+      limit: 5,
+      query: 'send an invoice to a customer',
+    }),
+    id: 'tool-mcp-search-1',
+    startedAt: 0,
+    state: 'running',
+    toolName: 'mcp_tool_search',
+  }
+
+  assert.equal(
+    getToolInvocationHeaderLabel(runningInvocation, undefined, WORKSPACE_ROOT_PATH),
+    'Searching for MCP send an invoice to a customer',
+  )
+  assert.equal(
+    getToolInvocationHeaderLabel({ ...runningInvocation, state: 'completed' }, undefined, WORKSPACE_ROOT_PATH),
+    'Searched for MCP send an invoice to a customer',
+  )
+})
+
+test('MCP execution headers use the discovered tool name and MCP marker in every state', () => {
+  const runningInvocation: ToolInvocationTrace = {
+    argumentsText: JSON.stringify({
+      arguments: { customer: 'cus_123' },
+      tool_id: 'mcp_stripe_create_invoice',
+      tool_name: 'create_invoice',
+    }),
+    id: 'tool-mcp-execute-1',
+    startedAt: 0,
+    state: 'running',
+    toolName: 'execute_mcp',
+  }
+  const completedInvocation: ToolInvocationTrace = {
+    ...runningInvocation,
+    resultContent: formatStructuredToolResultContent(
+      {
+        arguments: {
+          arguments: { customer: 'cus_123' },
+          tool_id: 'mcp_stripe_create_invoice',
+        },
+        schema: 'tidecode.tool_result/v1',
+        semantics: {
+          mcp_server_name: 'Stripe',
+          mcp_tool_id: 'mcp_stripe_create_invoice',
+          mcp_tool_name: 'create_invoice',
+          operation: 'mcp_execute',
+        },
+        status: 'success',
+        subject: {
+          kind: 'mcp_tool',
+          path: 'create_invoice',
+        },
+        summary: 'Ran create_invoice',
+        toolCallId: 'tool-mcp-execute-1',
+        toolName: 'execute_mcp',
+      },
+      'invoice created',
+    ),
+    state: 'completed',
+  }
+
+  assert.equal(
+    getToolInvocationHeaderLabel(runningInvocation, undefined, WORKSPACE_ROOT_PATH),
+    'Running create_invoice mcp',
+  )
+  assert.equal(
+    getToolInvocationHeaderLabel(completedInvocation, undefined, WORKSPACE_ROOT_PATH),
+    'Ran create_invoice mcp',
+  )
 })
 
 test('terminal tool header labels keep internal session ids out of the user-facing header', () => {

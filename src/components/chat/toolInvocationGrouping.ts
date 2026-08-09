@@ -9,6 +9,7 @@ interface ToolInvocationSummaryCounts {
   commandCount: number
   fileCount: number
   searchCount: number
+  mcpCount: number
   webSearchCount: number
   createdCount: number
   editedCount: number
@@ -46,6 +47,10 @@ function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts
 
   if (toolName === 'web_search') {
     return 'webSearchCount'
+  }
+
+  if (toolName === 'mcp_tool_search' || toolName === 'execute_mcp') {
+    return 'mcpCount'
   }
 
   if (
@@ -115,8 +120,11 @@ function getMixedBucketPriority(bucketKey: string) {
   if (bucketKey === 'web-search') {
     return 10
   }
-  if (bucketKey === 'plan') {
+  if (bucketKey === 'mcp') {
     return 11
+  }
+  if (bucketKey === 'plan') {
+    return 12
   }
 
   return 13
@@ -173,6 +181,7 @@ export function buildToolInvocationGroupSummary(
     commandCount: 0,
     fileCount: 0,
     searchCount: 0,
+    mcpCount: 0,
     webSearchCount: 0,
     createdCount: 0,
     editedCount: 0,
@@ -228,6 +237,8 @@ export function buildToolInvocationGroupSummary(
         recordMixedBucket('search')
       } else if (classifiedBucket === 'webSearchCount') {
         recordMixedBucket('web-search')
+      } else if (classifiedBucket === 'mcpCount') {
+        recordMixedBucket('mcp')
       } else if (classifiedBucket === 'commandCount') {
         recordMixedBucket('command')
       } else if (classifiedBucket === 'exploredFileCount') {
@@ -271,6 +282,9 @@ export function buildToolInvocationGroupSummary(
       if (bucketKey === 'web-search') {
         return `ran ${pluralize(count, 'web search')}`
       }
+      if (bucketKey === 'mcp') {
+        return `ran ${pluralize(count, 'MCP')}`
+      }
       if (bucketKey === 'command') {
         return `ran ${pluralize(count, 'terminal tool')}`
       }
@@ -294,6 +308,7 @@ export function buildToolInvocationGroupSummary(
 
   const hasOnlyWebSearch =
     counts.webSearchCount > 0 &&
+    counts.mcpCount === 0 &&
     counts.listCount === 0 &&
     counts.commandCount === 0 &&
     counts.fileCount === 0 &&
@@ -319,6 +334,9 @@ export function buildToolInvocationGroupSummary(
   }
   if (counts.webSearchCount > 0) {
     summaryParts.push(`ran ${pluralize(counts.webSearchCount, 'web search')}`)
+  }
+  if (counts.mcpCount > 0) {
+    summaryParts.push(`ran ${pluralize(counts.mcpCount, 'MCP')}`)
   }
   if (counts.commandCount > 0) {
     summaryParts.push(`ran ${pluralize(counts.commandCount, 'terminal tool')}`)

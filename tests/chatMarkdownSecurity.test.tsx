@@ -38,3 +38,21 @@ test('chat markdown renders an unfenced HTML document as an HTML code block', ()
   assert.match(markup, /<pre/u)
   assert.match(markup, /DOCTYPE html/u)
 })
+
+test('chat markdown gives ordered lists a shared, sized marker gutter', () => {
+  const markup = renderMarkdown(
+    '1. First item\n2. Second item\n3. Third item\n4. Fourth item\n5. Fifth item\n6. Sixth item\n7. Seventh item\n8. Eighth item\n9. Ninth item\n10. Tenth item',
+  )
+
+  assert.match(markup, /markdown-ordered-list/u)
+  assert.match(markup, /markdown-list-item/u)
+  assert.match(markup, /markdown-list-item-content/u)
+  assert.match(markup, /--markdown-ordered-list-marker-digits:2/u)
+})
+
+test('chat markdown preserves the starting number for custom ordered lists', () => {
+  const markup = renderMarkdown('10. First item\n11. Second item')
+
+  assert.match(markup, /<ol[^>]*start="10"/u)
+  assert.match(markup, /--markdown-ordered-list-counter-start:9/u)
+})

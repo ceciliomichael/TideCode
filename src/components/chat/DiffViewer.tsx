@@ -206,12 +206,17 @@ function getLineNumberDividerClassName() {
   return 'bg-border/80'
 }
 
-function getDiffRowClassName() {
-  return 'grid min-h-5 grid-cols-[5.5rem_minmax(0,1fr)] items-stretch'
+function getDiffRowClassName(showsSingleLineNumberColumn: boolean) {
+  return showsSingleLineNumberColumn
+    ? 'grid min-h-5 grid-cols-[3rem_minmax(0,1fr)] items-stretch'
+    : 'grid min-h-5 grid-cols-[5.5rem_minmax(0,1fr)] items-stretch'
 }
 
-function getDiffGutterCellClassName() {
-  return 'diff-viewer-gutter sticky left-0 z-10 flex shrink-0 items-start border-r border-border bg-surface px-2 text-right'
+function getDiffGutterCellClassName(showsSingleLineNumberColumn: boolean) {
+  return [
+    'diff-viewer-gutter sticky left-0 z-10 flex shrink-0 items-start border-r border-border bg-surface text-right',
+    showsSingleLineNumberColumn ? 'justify-center px-1' : 'px-2',
+  ].join(' ')
 }
 
 function getDiffContentCellClassName(line: DiffLine, viewOnly: boolean) {
@@ -284,11 +289,11 @@ function HighlightedDiffRows({
       {visibleLineItems.map(({ key, line, tokens }) => (
         <DiffRowRender
           key={key}
-          className={getDiffRowClassName()}
+          className={getDiffRowClassName(showsSingleLineNumberColumn)}
           shouldUseContentVisibility={shouldUseContentVisibility}
           lineContent={
             <>
-              <div className={`${getDiffGutterCellClassName()} ${getLineGutterClassName()}`}>
+              <div className={`${getDiffGutterCellClassName(showsSingleLineNumberColumn)} ${getLineGutterClassName()}`}>
                 {showsSingleLineNumberColumn ? (
                   <span className="select-none flex min-h-5 min-w-8 items-start justify-end leading-5">
                     {line.newLineNumber ?? ''}
@@ -334,11 +339,11 @@ function PlainDiffRows({
       {renderedLines.map((line, index) => (
         <DiffRowRender
           key={`row-${line.type}-${index}`}
-          className={getDiffRowClassName()}
+          className={getDiffRowClassName(showsSingleLineNumberColumn)}
           shouldUseContentVisibility={shouldUseContentVisibility}
           lineContent={
             <>
-              <div className={`${getDiffGutterCellClassName()} ${getLineGutterClassName()}`}>
+              <div className={`${getDiffGutterCellClassName(showsSingleLineNumberColumn)} ${getLineGutterClassName()}`}>
                 {showsSingleLineNumberColumn ? (
                   <span className="select-none flex min-h-5 min-w-8 items-start justify-end leading-5">
                     {line.newLineNumber ?? ''}

@@ -163,6 +163,22 @@ function getToolVerb(invocation: ToolInvocationTrace, currentTimeMs = Date.now()
         : 'Web exploration failed'
   }
 
+  if (invocation.toolName === 'mcp_tool_search') {
+    return invocation.state === 'running'
+      ? 'Searching for MCP'
+      : invocation.state === 'completed'
+        ? 'Searched for MCP'
+        : 'MCP search failed'
+  }
+
+  if (invocation.toolName === 'execute_mcp') {
+    return invocation.state === 'running'
+      ? 'Running'
+      : invocation.state === 'completed'
+        ? 'Ran'
+        : 'MCP tool failed'
+  }
+
   return invocation.state === 'running'
     ? `Running ${invocation.toolName}`
     : invocation.state === 'completed'
@@ -294,6 +310,23 @@ export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace)
 function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: string | null) {
   const parsedArguments = parseCompleteToolArguments(invocation.argumentsText) as Record<string, unknown>
 
+  if (invocation.toolName === 'mcp_tool_search') {
+    const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
+    const resultQuery = parsedResult?.metadata?.semantics?.query
+    return readFirstText([parsedArguments?.query, resultQuery])
+  }
+
+  if (invocation.toolName === 'execute_mcp') {
+    const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
+    const resultToolName = parsedResult?.metadata?.semantics?.mcp_tool_name
+    const toolName = readFirstText([resultToolName, parsedArguments?.tool_name])
+    if (!toolName) {
+      return null
+    }
+
+    return `${toolName} mcp`
+  }
+
   if (invocation.toolName === 'execute_terminal') {
     const commandText = readFirstText([parsedArguments?.command, parsedArguments?.cmd])
     if (commandText) {
@@ -407,7 +440,7 @@ export function getToolInvocationHeaderLabel(
           ...invocation,
           state: overrideState,
         }
-  const target = getToolTarget(invocation, workspaceRootPath)
+  const target = getToolTarget(effectiveInvocation, workspaceRootPath)
   const verb = getToolVerb(effectiveInvocation, currentTimeMs)
   return target ? `${verb} ${target}` : verb
 }

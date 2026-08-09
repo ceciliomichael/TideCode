@@ -8,6 +8,7 @@ import { createGlobTool } from './globTool'
 import { createGrepTool } from './grepTool'
 import { createKanbanToolSet } from './kanbanTools'
 import { createListTool } from './listTool'
+import { createMcpToolSet } from './mcpTools'
 import { createProviderWebTool } from './providerWebTool'
 import { createReadTool } from './readTool'
 import { createPlanToolSet } from './planTools'
@@ -22,20 +23,6 @@ export interface CreateAgentToolsOptions {
   providerId?: ChatProviderId
 }
 
-async function addMcpTools(tools: ToolSet, workspaceRootPath: string) {
-  try {
-    const isElectronRuntime = typeof process !== 'undefined' && Boolean(process.versions.electron)
-    if (!isElectronRuntime) {
-      return
-    }
-
-    const { getMcpServerManager } = await import('../../../mcp/serverManager')
-    Object.assign(tools, await getMcpServerManager().getToolSet(workspaceRootPath))
-  } catch (error) {
-    console.error('Failed to load MCP tools', error)
-  }
-}
-
 export async function createNativeAgentTools(
   input: AgentToolContext,
   options: CreateAgentToolsOptions = {},
@@ -48,6 +35,7 @@ export async function createNativeAgentTools(
     read: createReadTool(context),
     glob: createGlobTool(context),
     grep: createGrepTool(context),
+    ...createMcpToolSet(context),
     ...createKanbanToolSet(context),
   }
 
@@ -70,8 +58,6 @@ export async function createNativeAgentTools(
   if (providerWebTool) {
     tools[providerWebTool.name] = providerWebTool.tool
   }
-
-  await addMcpTools(tools, context.workspaceRootPath)
 
   if (isPlanMode) {
     return tools

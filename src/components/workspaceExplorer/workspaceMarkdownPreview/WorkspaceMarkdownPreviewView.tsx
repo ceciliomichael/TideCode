@@ -6,6 +6,7 @@ import remarkBreaks from 'remark-breaks'
 import remarkEmoji from 'remark-emoji'
 import remarkGfm from 'remark-gfm'
 import { handleMarkdownLinkClick, preprocessMarkdown } from '../../../lib/markdown'
+import { MarkdownListItem, MarkdownOrderedList } from '../../markdown/MarkdownList'
 import { CodeBlock } from '../../chat/CodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
 
@@ -86,10 +87,10 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
         <ul {...props} className="my-3 list-disc space-y-1 pl-6 text-foreground last:mb-0" />
       ),
       ol: (props: React.ComponentPropsWithoutRef<'ol'>) => (
-        <ol {...props} className="my-3 list-decimal marker:text-foreground space-y-1 pl-6 text-foreground last:mb-0" />
+        <MarkdownOrderedList {...props} className="my-3 space-y-1 text-foreground last:mb-0" />
       ),
       li: (props: React.ComponentPropsWithoutRef<'li'>) => (
-        <li {...props} className="my-0 leading-[1.6] text-foreground [&>p]:my-0 [&>p]:mb-0 [&>p+p]:mt-1" />
+        <MarkdownListItem {...props} className="text-foreground" />
       ),
       blockquote: (props: React.ComponentPropsWithoutRef<'blockquote'>) => (
         <blockquote
@@ -201,7 +202,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
             className={[
               sectionClassName,
               isFootnoteSection
-                ? 'mt-6 border-t border-border/60 pt-3 text-xs text-muted-foreground [&>ol]:list-decimal [&>ol]:pl-5 [&>ol]:space-y-1.5 [&_a]:text-primary [&_a]:underline'
+                ? 'mt-6 border-t border-border/60 pt-3 text-xs text-muted-foreground [&>ol]:pl-0 [&>ol]:space-y-1.5 [&_a]:text-primary [&_a]:underline'
                 : 'my-3 border-t border-border pt-2 text-xs text-muted-foreground',
             ]
               .filter(Boolean)
@@ -261,7 +262,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
       },
       hr: (props: React.ComponentPropsWithoutRef<'hr'>) => <hr {...props} className="my-5 border-border" />,
     }),
-    [fileName],
+    [fileName, relativePath],
   )
 
   return (

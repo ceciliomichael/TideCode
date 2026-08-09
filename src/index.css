@@ -372,6 +372,53 @@
     word-break: break-word;
   }
 
+  /**
+   * Ordered Markdown markers use a real counter instead of the browser's
+   * outside marker box. The browser marker has no stable width contract,
+   * which can clip two-digit values at narrow chat widths and can paint
+   * individual digits with different inherited colors in preview surfaces.
+   */
+  .markdown-ordered-list {
+    counter-reset: markdown-ordered-list var(--markdown-ordered-list-counter-start, 0);
+    list-style-type: none;
+    padding-inline-start: 0;
+  }
+
+  .markdown-ordered-list > .markdown-list-item {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: calc(var(--markdown-ordered-list-marker-digits, 1) * 1ch + 0.5ch) minmax(0, 1fr);
+    column-gap: 0.5rem;
+    align-items: start;
+    counter-increment: markdown-ordered-list;
+  }
+
+  .markdown-ordered-list > .markdown-list-item::before {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+    overflow: visible;
+    color: inherit;
+    content: counter(markdown-ordered-list) '.';
+    font-family: inherit;
+    font-size: inherit;
+    font-style: inherit;
+    font-variant: inherit;
+    font-variant-numeric: inherit;
+    font-weight: inherit;
+    font-feature-settings: inherit;
+    letter-spacing: inherit;
+    line-height: inherit;
+    text-transform: inherit;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .markdown-ordered-list > .markdown-list-item > .markdown-list-item-content {
+    grid-column: 2;
+    min-width: 0;
+  }
+
   .workspace-terminal-host .xterm .xterm-accessibility-tree:not(.debug) *::selection {
     color: transparent !important;
     background-color: transparent !important;

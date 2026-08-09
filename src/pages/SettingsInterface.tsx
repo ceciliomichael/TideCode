@@ -48,7 +48,7 @@ export function SettingsInterface({
 }: SettingsInterfaceProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [activeItemId, setActiveItemId] = useState<SettingsItemId>(DEFAULT_SETTINGS_ITEM_ID)
-  const mcpSettings = useMcpServersState(activeWorkspacePath)
+  const mcpSettings = useMcpServersState(null)
   const skillsState = useSkillsState(activeWorkspacePath)
   const handleUpdateSettings = useCallback((input: Partial<AppSettings>) => {
     void onUpdateSettings(input)
