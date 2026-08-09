@@ -1,4 +1,5 @@
 export { createAgentTools, createNativeAgentTools } from './factory'
+export { createMcpToolSet } from './mcpTools'
 export { __testOnly } from './ripgrep'
 export { createTerminalToolSet } from './terminalTools'
 export type { AgentToolContext, AgentToolExecutionResult, AgentToolResultSubject } from '../toolTypes'

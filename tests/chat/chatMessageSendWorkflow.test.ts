@@ -88,6 +88,8 @@ interface WorkflowHarnessOptions {
   hasPendingAbortRequest?: boolean
   consumePendingAbortBeforeStreamStart?: boolean
   originalText?: string
+  shouldApplyAbortRollbackToRuntime?: boolean
+  shouldRestoreMainComposerOnAbort?: boolean
   streamContent?: string | null
   streamToolInvocation?: boolean
   streamOutcome?: 'completed' | 'aborted' | 'error'
@@ -204,6 +206,8 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     } as ChatRuntimeSelection,
     selectedFolderId: null,
     selectedFolderIdRef,
+    shouldApplyAbortRollbackToRuntime: () => options.shouldApplyAbortRollbackToRuntime ?? true,
+    shouldRestoreMainComposerOnAbort: () => options.shouldRestoreMainComposerOnAbort ?? true,
     setError: (errorMessage) => {
       if (errorMessage) {
         errors.push(errorMessage)
@@ -419,6 +423,30 @@ test('a stop clicked before the stream starts rolls the stored conversation back
     assert.equal(accepted, true)
     assert.deepEqual(harness.history.getStoredMessages(harness.conversation.id), [], 'history must be rolled back')
     assert.equal(harness.history.calls.some((call) => call.type === 'replace'), true)
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
+test('an edit takeover abort does not move the original message into the main composer', async () => {
+  const harness = createWorkflowHarness({
+    hasPendingAbortRequest: true,
+    shouldApplyAbortRollbackToRuntime: false,
+    shouldRestoreMainComposerOnAbort: false,
+    streamOutcome: 'aborted',
+  })
+
+  try {
+    const accepted = await persistAndStreamMessage(harness.input)
+
+    assert.equal(accepted, true)
+    assert.deepEqual(harness.history.getStoredMessages(harness.conversation.id), [], 'history must be rolled back')
+    assert.deepEqual(harness.composerValues, [''], 'the original message must stay out of the main composer')
+    assert.equal(
+      harness.getRuntimeMessages(harness.conversation.id).some((message) => message.role === 'user'),
+      true,
+      'the edited user bubble must remain mounted while the replacement send takes over',
+    )
   } finally {
     harness.restoreWindow()
   }

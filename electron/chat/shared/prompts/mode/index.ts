@@ -15,8 +15,6 @@ const SHARED_PROMPT_DIRECTORY = {
   directory: 'shared',
   wrapperTag: 'instruction_extensions',
 } as const
-const SHARED_TOOLING_PROMPT_FILE = 'tooling.md'
-const SHARED_TOOLING_PROMPT_PATH = 'shared/tooling.md'
 const MODE_TOOLING_PROMPT_PATHS: Record<ChatMode, string> = {
   agent: 'agent/tooling.md',
   plan: 'plan/tooling.md',
@@ -52,7 +50,6 @@ function readPromptDirectory(relativeDirectory: string) {
     const promptFiles = readdirSync(candidateDirectory, { withFileTypes: true })
       .filter((entry) => (
         entry.isFile() &&
-        entry.name !== SHARED_TOOLING_PROMPT_FILE &&
         SHARED_PROMPT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())
       ))
       .map((entry) => entry.name)
@@ -82,7 +79,6 @@ const cachedPrompts: Partial<Record<ChatMode, string>> = {}
 const cachedSharedPrompts: Partial<Record<ChatMode, string>> = {}
 const cachedModeToolingPrompts: Partial<Record<ChatMode, string>> = {}
 const cachedModeIntentPrompts: Partial<Record<ChatMode, string>> = {}
-let cachedToolingPrompt: string | null = null
 
 export interface ChatSystemPromptComponent {
   content: string
@@ -116,15 +112,6 @@ function getSharedPrompt(chatMode: ChatMode) {
   const prompt = readPromptDirectory(SHARED_PROMPT_DIRECTORY.directory)
   cachedSharedPrompts[chatMode] = prompt
   return prompt
-}
-
-function getToolingPrompt() {
-  if (cachedToolingPrompt !== null) {
-    return cachedToolingPrompt
-  }
-
-  cachedToolingPrompt = readPromptFile(SHARED_TOOLING_PROMPT_PATH)
-  return cachedToolingPrompt
 }
 
 function getModeToolingPrompt(chatMode: ChatMode) {
@@ -172,13 +159,7 @@ export function buildChatModeSystemPromptBreakdown(
 ): ChatSystemPromptBreakdown {
   void options
 
-  const systemRuleComponents: ChatSystemPromptComponent[] = [
-    {
-      content: getToolingPrompt(),
-      id: 'tooling_prompt',
-      section: 'system_contract' as const,
-      source: 'electron/chat/shared/prompts/mode/shared/tooling.md',
-    },
+  const systemRuleComponents = [
     {
       content: getModeToolingPrompt(chatMode),
       id: `${chatMode}_mode_tooling_prompt`,

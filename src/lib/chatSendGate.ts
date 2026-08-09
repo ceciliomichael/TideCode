@@ -13,6 +13,12 @@ export interface ChatSendBlockedInput {
   isConversationSending: boolean
 }
 
+export interface ChatEditedSendAdmissionInput {
+  actionInFlight: boolean
+  hasActiveRun: boolean
+  hasSubmissionInFlight: boolean
+}
+
 export function isChatSendBlocked({
   actionInFlight,
   hasPendingDraftSend,
@@ -20,6 +26,14 @@ export function isChatSendBlocked({
   isConversationSending,
 }: ChatSendBlockedInput) {
   return actionInFlight || hasPendingDraftSend || hasSubmissionInFlight || isConversationSending
+}
+
+export function canBeginChatEditedSend({
+  actionInFlight,
+  hasActiveRun,
+  hasSubmissionInFlight,
+}: ChatEditedSendAdmissionInput) {
+  return !actionInFlight && (!hasSubmissionInFlight || hasActiveRun)
 }
 
 export function getChatSendScopeKey(conversationId: string | null) {
@@ -50,4 +64,29 @@ export function acquireChatSendScopeGate(gate: MutableChatSendScopeGate, scopeKe
 
 export function releaseChatSendScopeGate(gate: MutableChatSendScopeGate, scopeKey: string) {
   gate.current.delete(scopeKey)
+}
+
+export async function waitForChatSendScopeGateRelease(
+  gate: MutableChatSendScopeGate,
+  scopeKey: string,
+  options: {
+    pollIntervalMs?: number
+    timeoutMs?: number
+  } = {},
+) {
+  const pollIntervalMs = options.pollIntervalMs ?? 25
+  const timeoutMs = options.timeoutMs ?? 20_000
+  const startedAt = Date.now()
+
+  while (gate.current.has(scopeKey)) {
+    if (Date.now() - startedAt >= timeoutMs) {
+      return false
+    }
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, pollIntervalMs)
+    })
+  }
+
+  return true
 }

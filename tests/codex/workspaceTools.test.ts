@@ -110,6 +110,22 @@ test('createListToolResult lists only immediate visible directory entries at the
   }
 })
 
+test('createListToolResult reports empty directories explicitly', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const emptyDirectoryPath = path.join(workspaceRootPath, 'empty')
+  await fs.mkdir(emptyDirectoryPath)
+
+  try {
+    const result = await createListToolResult(workspaceRootPath, emptyDirectoryPath, 'empty')
+
+    assert.equal(result.status, 'success')
+    assert.equal(result.body, 'Empty directory')
+    assert.equal(result.summary, 'Empty directory')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('explicitly targeted gitignored directories expose their nested contents', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
   const ignoredDirectoryPath = path.join(workspaceRootPath, 'ignored')

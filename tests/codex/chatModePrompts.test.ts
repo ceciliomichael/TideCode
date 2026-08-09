@@ -23,6 +23,9 @@ test('agent prompt teaches autonomous, reliable, dependency-aware implementation
     assert.match(prompt, /understand the outcome, inspect the relevant context, choose the smallest complete approach, implement it, verify it/u)
     assert.match(prompt, /Treat existing user changes as owned work/u)
     assert.match(prompt, /every external value as untrusted/u)
+    assert.match(prompt, /Individual MCP tools are dynamic and are not available as direct model-facing tool names/u)
+    assert.match(prompt, /mcp_tool_search/u)
+    assert.match(prompt, /execute_mcp/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -50,6 +53,9 @@ test('plan prompt uses plan tools for the full artifact and keeps the saved plan
     assert.match(prompt, /After a successful plan artifact save or revision, do not restate, summarize, or reproduce the plan in chat/u)
     assert.match(prompt, /plan should be visible in the plan preview now/u)
     assert.doesNotMatch(prompt, /Conclude by instructing the user to switch to Agent mode/u)
+    assert.match(prompt, /Individual MCP tools are dynamic and are not available as direct model-facing tool names/u)
+    assert.match(prompt, /mcp_tool_search/u)
+    assert.match(prompt, /execute_mcp/u)
 
     const planPromptSource = await fs.readFile(
       path.join(
@@ -83,21 +89,25 @@ test('runtime tool exposure gives the provider the concrete native tools', async
 
     assert.deepEqual(Object.keys(agentTools).sort(), [
       'edit',
+      'execute_mcp',
       'execute_terminal',
       'glob',
       'grep',
       'interact_terminal',
       'kanban_board',
       'list',
+      'mcp_tool_search',
       'read',
       'read_terminal',
       'write',
     ])
     assert.deepEqual(Object.keys(planTools).sort(), [
+      'execute_mcp',
       'glob',
       'grep',
       'kanban_board',
       'list',
+      'mcp_tool_search',
       'plan_create',
       'plan_edit',
       'read',

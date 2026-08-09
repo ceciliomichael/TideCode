@@ -9,6 +9,7 @@ import remarkBreaks from 'remark-breaks'
 import { chatMarkdownSanitizeSchema } from '../../lib/chatMarkdownSecurity'
 import { handleMarkdownLinkClick, preprocessMarkdown } from '../../lib/markdown'
 import { detectRawHtmlDocument } from '../../lib/markdownCodeDetection'
+import { MarkdownListItem, MarkdownOrderedList } from '../markdown/MarkdownList'
 import { CodeBlock } from './CodeBlock'
 
 interface MarkdownRendererProps {
@@ -87,11 +88,9 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         <ul {...props} className="my-2 space-y-1 list-disc pl-6 text-foreground" />
       ),
       ol: (props: React.ComponentPropsWithoutRef<'ol'>) => (
-        <ol {...props} className="my-2 space-y-1 list-decimal marker:text-foreground pl-6 text-foreground" />
+        <MarkdownOrderedList {...props} className="my-2 space-y-1 text-foreground" />
       ),
-      li: (props: React.ComponentPropsWithoutRef<'li'>) => (
-        <li {...props} className="my-0 leading-[1.6] [&>p]:my-0 [&>p]:mb-0 [&>p+p]:mt-1" />
-      ),
+      li: (props: React.ComponentPropsWithoutRef<'li'>) => <MarkdownListItem {...props} />,
       blockquote: (props: React.ComponentPropsWithoutRef<'blockquote'>) => (
         <blockquote {...props} className="my-2 border-l-2 border-border pl-3 italic text-muted-foreground" />
       ),
@@ -198,7 +197,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
             className={[
               sectionClassName,
               isFootnoteSection
-                ? 'mt-6 border-t border-border/60 pt-3 text-xs text-muted-foreground [&>ol]:list-decimal [&>ol]:pl-5 [&>ol]:space-y-1.5 [&_a]:text-primary [&_a]:underline'
+                ? 'mt-6 border-t border-border/60 pt-3 text-xs text-muted-foreground [&>ol]:pl-0 [&>ol]:space-y-1.5 [&_a]:text-primary [&_a]:underline'
                 : 'my-3 border-t border-border pt-2 text-xs text-muted-foreground',
             ]
               .filter(Boolean)

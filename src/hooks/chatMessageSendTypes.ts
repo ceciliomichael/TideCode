@@ -35,6 +35,7 @@ export interface PersistAndStreamMessageInput {
   clearError: () => void
   clearTextStreamingIdleTimeout: (conversationId: string) => void
   completeEditingMessage: () => void
+  completeEditingAfterPersist?: boolean
   conversationRuntimeStatesRef: { current: Record<string, ConversationRuntimeSnapshot> }
   compactionSourceConversationId?: string
   draftChatMode: ChatMode
@@ -55,6 +56,8 @@ export interface PersistAndStreamMessageInput {
   setMainComposerValue: (value: string) => void
   setPendingDraftSendCount: (updater: (currentValue: number) => number) => void
   resetMainComposerAfterSend?: boolean
+  shouldRestoreMainComposerOnAbort?: () => boolean
+  shouldApplyAbortRollbackToRuntime?: () => boolean
   syntheticAssistantMessage?: Message
   stopTextStreaming: (conversationId: string) => void
   targetEditMessageId: string | null

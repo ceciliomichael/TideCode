@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import test from 'node:test'
+import { WorkspaceMarkdownPreviewView } from '../src/components/workspaceExplorer/workspaceMarkdownPreview/WorkspaceMarkdownPreviewView'
 import {
   createMarkdownPreviewTabKey,
   getMarkdownPreviewSourcePath,
@@ -76,3 +80,31 @@ test('preprocessMarkdown still separates real details markup from surrounding ma
   assert.equal(preprocessMarkdown(input).trim(), expected)
 })
 
+test('workspace Markdown preview uses the shared ordered-list marker layout', () => {
+  const markup = renderToStaticMarkup(
+    createElement(WorkspaceMarkdownPreviewView, {
+      content: '8. FAQ\n9. CTA band\n10. Footer',
+      fileName: 'plan-001.md',
+    }),
+  )
+
+  assert.match(markup, /markdown-ordered-list/u)
+  assert.match(markup, /markdown-list-item-content/u)
+  assert.match(markup, /--markdown-ordered-list-marker-digits:2/u)
+  assert.match(markup, /--markdown-ordered-list-counter-start:7/u)
+})
+
+test('ordered Markdown markers inherit the list item typography', async () => {
+  const stylesheet = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
+  const markerRule = stylesheet.match(
+    /\.markdown-ordered-list > \.markdown-list-item::before \{([\s\S]*?)\n\s{2}\}/u,
+  )?.[1]
+
+  assert.ok(markerRule)
+  assert.match(markerRule, /font-family:\s*inherit;/u)
+  assert.match(markerRule, /font-size:\s*inherit;/u)
+  assert.match(markerRule, /font-weight:\s*inherit;/u)
+  assert.match(markerRule, /font-variant:\s*inherit;/u)
+  assert.match(markerRule, /font-variant-numeric:\s*inherit;/u)
+  assert.doesNotMatch(markerRule, /font-variant-numeric:\s*tabular-nums;/u)
+})

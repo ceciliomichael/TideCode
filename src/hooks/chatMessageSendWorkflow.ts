@@ -86,6 +86,7 @@ async function rollbackAndRestoreComposer(input: PersistAndStreamMessageInput, o
   userMessageId: string | null
 }) {
   if (options.userMessageId) {
+    const shouldApplyRollbackToRuntime = input.shouldApplyAbortRollbackToRuntime?.() ?? true
     const localRolledBackConversation = buildLocallyRolledBackConversation({
       chatMode: input.draftChatMode,
       conversationRuntimeStatesRef: input.conversationRuntimeStatesRef,
@@ -94,25 +95,29 @@ async function rollbackAndRestoreComposer(input: PersistAndStreamMessageInput, o
       userMessageId: options.userMessageId,
     })
 
-    input.upsertConversation(localRolledBackConversation)
-    input.updateConversationRuntimeState(options.conversationId, {
-      isSending: true,
-    })
-    if (options.shouldKeepSelected) {
-      input.applyConversation(localRolledBackConversation)
+    if (shouldApplyRollbackToRuntime) {
+      input.upsertConversation(localRolledBackConversation)
+      input.updateConversationRuntimeState(options.conversationId, {
+        isSending: true,
+      })
+      if (options.shouldKeepSelected) {
+        input.applyConversation(localRolledBackConversation)
+      }
+      input.updateConversationSummary(localRolledBackConversation)
     }
-    input.updateConversationSummary(localRolledBackConversation)
 
     const rolledBackConversation = await rollbackAbortedUserMessage({
       conversationId: options.conversationId,
       userMessageId: options.userMessageId,
     })
 
-    input.upsertConversation(rolledBackConversation)
-    if (options.shouldKeepSelected) {
-      input.applyConversation(rolledBackConversation)
+    if (shouldApplyRollbackToRuntime) {
+      input.upsertConversation(rolledBackConversation)
+      if (options.shouldKeepSelected) {
+        input.applyConversation(rolledBackConversation)
+      }
+      input.updateConversationSummary(rolledBackConversation)
     }
-    input.updateConversationSummary(rolledBackConversation)
   }
 
   if (options.shouldKeepSelected && options.restoreComposer) {
@@ -141,8 +146,10 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
   let persistedUserTurn: PersistedUserTurn | null = null
   let fallbackConversationForRollback: ConversationRecord | null = null
   const shouldRollbackUserMessageOnAbort = input.targetEditMessageId === null
-  const shouldRestoreMainComposerOnAbort =
+  const canRestoreMainComposerOnAbort =
     shouldRollbackUserMessageOnAbort && !isPlanStatusMessage(input.originalText)
+  const shouldRestoreMainComposerOnAbort = () =>
+    canRestoreMainComposerOnAbort && (input.shouldRestoreMainComposerOnAbort?.() ?? true)
 
   const releasePendingDraftReservation = () => {
     if (!hasPendingDraftReservation) {
@@ -208,7 +215,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
         await rollbackAndRestoreComposer(input, {
           conversationId: conversationForRun.id,
           fallbackConversation: conversationForRun,
-          restoreComposer: shouldRestoreMainComposerOnAbort,
+          restoreComposer: shouldRestoreMainComposerOnAbort(),
           shouldKeepSelected,
           userMessageId: persistedUserMessage.id,
         })
@@ -226,11 +233,12 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       input.applyConversation(conversationForRun)
     }
 
-    if (input.targetEditMessageId !== null) {
+    if (input.targetEditMessageId !== null || input.completeEditingAfterPersist) {
       // Always clear edit mode once the edited turn is persisted to avoid stale
       // message ids being reused on later sends after history rewrites.
       input.completeEditingMessage()
-    } else if (shouldKeepSelected && input.resetMainComposerAfterSend !== false) {
+    }
+    if (input.targetEditMessageId === null && shouldKeepSelected && input.resetMainComposerAfterSend !== false) {
       input.setMainComposerValue('')
       input.setMainComposerAttachments([])
       input.setMainComposerMentionPathMap(new Map())
@@ -322,7 +330,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
         await rollbackAndRestoreComposer(input, {
           conversationId: conversationForRun.id,
           fallbackConversation: conversationForRun,
-          restoreComposer: shouldRestoreMainComposerOnAbort,
+          restoreComposer: shouldRestoreMainComposerOnAbort(),
           shouldKeepSelected,
           userMessageId: persistedUserMessage?.id ?? null,
         })
@@ -342,7 +350,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       await rollbackAndRestoreComposer(input, {
         conversationId: conversationForRun.id,
         fallbackConversation: conversationForRun,
-        restoreComposer: shouldRestoreMainComposerOnAbort,
+        restoreComposer: shouldRestoreMainComposerOnAbort(),
         shouldKeepSelected,
         userMessageId: persistedUserMessage?.id ?? null,
       })
@@ -392,7 +400,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
           input.conversationRuntimeStatesRef.current[conversationIdForCleanup]?.conversation ??
           fallbackConversationForRollback ??
           input.conversationRuntimeStatesRef.current[conversationIdForCleanup]?.conversation,
-        restoreComposer: shouldRestoreMainComposerOnAbort,
+        restoreComposer: shouldRestoreMainComposerOnAbort(),
         shouldKeepSelected: input.activeConversationIdRef.current === conversationIdForCleanup,
         userMessageId: persistedUserMessage?.id ?? null,
       })

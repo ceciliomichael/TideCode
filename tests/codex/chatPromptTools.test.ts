@@ -15,7 +15,8 @@ test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
 
   assert.match(agentPrompt, /You are the active builder/u)
   assert.match(agentPrompt, /concrete tool whose name and parameters match the task/u)
-  assert.equal((agentPrompt.match(/<tool_instructions>/gu) ?? []).length, 1)
+  assert.equal((agentPrompt.match(/<agent_tooling_instructions>/gu) ?? []).length, 1)
+  assert.equal((agentPrompt.match(/<tool_instructions>/gu) ?? []).length, 0)
   assert.match(agentPrompt, /Read before editing/u)
   assert.match(agentPrompt, /multiple mutation calls for the same file path/u)
   assert.doesNotMatch(agentPrompt, /\blist_dir\b/u)
