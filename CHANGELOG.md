@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0 — Smarter MCP tools and steadier chat workflows
+
+TideCode 1.1 makes connected tools easier to discover and keeps everyday chat editing, interruption, and workspace feedback dependable as work changes quickly.
+
+- Adds a searchable MCP tool catalog with natural-language matching, stable tool IDs, opt-in input schemas, and exact execution for connected servers while honoring per-server permissions.
+- Keeps send, edit, stop, revert, and queued follow-up actions synchronized when responses are still starting or stopping, preserving pending drafts and persisted conversation state safely.
+- Improves Markdown ordered-list rendering and diff gutters, and makes tool activity, empty directories, and archived-thread deletion confirmation clearer.
+- Keeps existing MCP server configurations compatible while exposing only enabled and allowed tools, with regression coverage across MCP search and execution, chat cancellation and editing, list rendering, and tool presentation.
+
 ## 1.0.33 — Reviewable plans and more reliable chat workflows
 
 TideCode makes plan-driven work easier to review while keeping long-running chat, terminal commands, and workspace state reliable during interruptions and rapid changes.
