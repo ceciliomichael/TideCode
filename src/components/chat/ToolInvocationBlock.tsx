@@ -14,8 +14,8 @@ import {
 import { isFileEditTool, isFileWriteTool } from './toolInvocationKinds'
 import { isKanbanTool } from './kanbanToolInvocationKinds'
 import { KanbanToolResult } from './KanbanToolResult'
-import { WebToolResult } from './WebToolResult'
 import { getToolResultDisplayBody, parseStructuredToolResultContent } from '../../lib/toolResultContent'
+import { normalizeWebSearchMarkdownBody } from '../../lib/webSearchResults'
 
 interface ToolInvocationBlockProps {
   invocation: ToolInvocationTrace
@@ -176,7 +176,10 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
     displayInvocation.resultContent ??
     ''
   const displayResultBody = getToolResultDisplayBody(displayInvocation.toolName, rawResultBody)
-  const normalizedResultBody = useMemo(() => normalizeMarkdownText(displayResultBody), [displayResultBody])
+  const markdownResultBody = displayInvocation.toolName === 'web_search'
+    ? normalizeWebSearchMarkdownBody(displayResultBody)
+    : displayResultBody
+  const normalizedResultBody = useMemo(() => normalizeMarkdownText(markdownResultBody), [markdownResultBody])
   const shouldLimitResultHeight =
     terminalToolName === null && !isFileWriteTool(displayInvocation.toolName) && !isFileEditTool(displayInvocation.toolName)
 
@@ -238,11 +241,6 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
             />
           ) : isKanbanTool(displayInvocation.toolName) ? (
             <KanbanToolResult
-              invocation={displayInvocation}
-              isStreaming={displayedState === 'running'}
-            />
-          ) : displayInvocation.toolName === 'web_search' ? (
-            <WebToolResult
               invocation={displayInvocation}
               isStreaming={displayedState === 'running'}
             />
