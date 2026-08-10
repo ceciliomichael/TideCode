@@ -38,11 +38,11 @@ export function buildExecutionModeContext(terminalExecutionMode: AppTerminalExec
     terminalExecutionMode === 'sandbox'
       ? [
           'Terminal execution mode: sandbox.',
-          'Filesystem access is limited to the workspace, with read/list/glob/grep and terminal working-directory access also allowed under the global ~/.agents directory.',
+          'Filesystem access is limited to the workspace. A loaded skill may provide a specific skill directory for its own referenced resources.',
         ]
       : [
           'Terminal execution mode: full access.',
-          'Filesystem tools and terminal commands may access paths outside the workspace.',
+          'Filesystem tools and terminal commands may access paths outside the workspace only when required by the user request or a loaded skill.',
         ]
 
   return [

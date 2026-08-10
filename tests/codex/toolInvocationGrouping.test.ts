@@ -70,6 +70,13 @@ test('buildToolInvocationGroupSummary reports list, search, terminal tool, and f
   assert.equal(summary, 'Explored 1 list, ran 1 search, ran 1 terminal tool, explored 1 file')
 })
 
+test('buildToolInvocationGroupSummary gives memory tools durable-context labels', () => {
+  assert.equal(
+    buildToolInvocationGroupSummary([createInvocation('memory'), createInvocation('memory')]),
+    'Handled 2 memory operations',
+  )
+})
+
 test('buildToolInvocationGroupSummary pluralizes grouped categories', () => {
   const summary = buildToolInvocationGroupSummary([
     createInvocation('grep'),

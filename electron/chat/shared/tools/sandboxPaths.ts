@@ -35,7 +35,7 @@ function createSandboxPathError(targetPath: string, roots: SandboxPathRoots) {
     [
       `Path is outside the sandbox roots: ${targetPath}.`,
       `Allowed roots are the workspace (${roots.workspaceRootPath})`,
-      `and the global skills directory (${roots.globalAgentsDirectory}).`,
+      'and directories explicitly provided by a loaded skill.',
     ].join(' '),
   )
 }

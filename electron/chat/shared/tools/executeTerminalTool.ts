@@ -5,10 +5,9 @@ import {
   assertSandboxCommand,
   assertTerminalOwner,
   buildMarkedCommand,
-  buildTerminalCommandSummary,
   clampInteger,
   createCompletionMarker,
-  createTerminalCommandResult,
+  createSuccessResult,
   createTerminalErrorResult,
   createThreadAiSession,
   getOrCreateThreadStore,
@@ -18,28 +17,19 @@ import {
   removeThreadSession,
   resetThreadSessionForCommand,
   resolveTerminalWorkspaceCwd,
-  type TerminalToolRuntime,
-  waitForTerminalCommand,
   throwIfAborted,
+  type TerminalToolRuntime,
 } from "./terminalToolShared";
 
 interface ExecuteTerminalInput {
   command?: string;
   cwd?: string;
-  cols?: number;
-  interaction_mode?: "auto" | "interactive" | "non_interactive";
-  label?: string;
-  rows?: number;
-}
-
-function getInteractionMode(value: ExecuteTerminalInput["interaction_mode"]) {
-  return value === "interactive" || value === "non_interactive" ? value : "auto";
 }
 
 export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
   return tool({
     description:
-      "Start a new terminal command and wait until it completes or needs interactive input. This tool creates and returns the session_id; do not provide one. Returns terminal metadata; use read_terminal for output and interact_terminal for input.",
+      "Start a terminal command asynchronously and return its session_id immediately. Use read_terminal to wait for and consume new output. terminate_terminal is optional because every remaining session is terminated automatically when the turn ends.",
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
@@ -50,25 +40,6 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
         cwd: {
           description: "Working directory for the command.",
           type: "string",
-        },
-        cols: {
-          maximum: 400,
-          minimum: 20,
-          type: "number",
-        },
-        interaction_mode: {
-          description: "Whether to automatically detect interactive prompts.",
-          enum: ["auto", "interactive", "non_interactive"],
-          type: "string",
-        },
-        label: {
-          description: "Human-readable session label.",
-          type: "string",
-        },
-        rows: {
-          maximum: 200,
-          minimum: 6,
-          type: "number",
         },
       },
       required: ["command"],
@@ -93,14 +64,12 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
         }
 
         const command = prepareTerminalCommand(requestedCommand);
-
         const resolvedCwd = resolveTerminalWorkspaceCwd(runtime.context, input.cwd);
         const cwd = resolvedCwd.absolutePath;
         await assertSandboxCommand(runtime, command, cwd, resolvedCwd.roots);
 
-        const cols = clampInteger(input.cols, 20, 400, 220);
-        const rows = clampInteger(input.rows, 6, 200, 50);
-        const interactionMode = getInteractionMode(input.interaction_mode);
+        const cols = clampInteger(undefined, 20, 400, 220);
+        const rows = clampInteger(undefined, 6, 200, 50);
         localSessionId = allocateVisibleSessionId(store);
         const marker = createCompletionMarker(localSessionId);
         const aiSessionKey = `__ai__${runtime.namespace}__${localSessionId}`;
@@ -112,7 +81,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
               cols,
               cwd,
               isAiSession: true,
-              label: input.label?.trim() || null,
+              label: null,
               rows,
               sessionKey: aiSessionKey,
               workspaceRootPath: runtime.context.workspaceRootPath,
@@ -125,8 +94,8 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
             command,
             cwd: created.cwd,
             globalSessionId: created.sessionId,
-            interactionMode,
-            label: input.label?.trim() || null,
+            interactionMode: "non_interactive",
+            label: null,
             localSessionId,
             marker,
             rows,
@@ -143,7 +112,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           throw new Error("Unable to prepare the terminal session.");
         }
 
-        resetThreadSessionForCommand(session, command, marker, interactionMode);
+        resetThreadSessionForCommand(session, command, marker, "non_interactive");
         store.latestLocalSessionId = localSessionId;
 
         throwIfAborted(abortSignal);
@@ -156,9 +125,16 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           abortSignal,
         );
 
-        await waitForTerminalCommand(runtime, session, dependencies, abortSignal);
-        const summary = buildTerminalCommandSummary(session);
-        return createTerminalCommandResult(session, summary);
+        return createSuccessResult({
+          body: `session_id: ${session.localSessionId}\nstate: running`,
+          displayBody: "Terminal command started.",
+          semantics: {
+            session_id: session.localSessionId,
+            state: "running",
+          },
+          subject: { kind: "session", path: String(session.localSessionId) },
+          summary: `Started terminal session ${session.localSessionId}`,
+        });
       } catch (error) {
         if (createdSession && globalSessionId !== null && runtime.ownerWebContents) {
           if (localSessionId !== null && storeForCleanup) {
@@ -172,7 +148,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
               runtime.context.workspaceRootPath,
             );
           } catch {
-            // The turn cleanup will make a second best-effort termination attempt.
+            // Turn cleanup performs another best-effort termination attempt.
           }
         }
 
@@ -182,7 +158,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
         return createTerminalErrorResult(
           error instanceof Error && error.message.trim().length > 0
             ? error.message
-            : "Terminal command failed.",
+            : "Terminal command failed to start.",
         );
       }
     },

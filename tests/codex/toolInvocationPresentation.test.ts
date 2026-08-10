@@ -10,6 +10,29 @@ import {
 const WORKSPACE_ROOT_PATH = '/workspace'
 const TARGET_FILE_PATH = `${WORKSPACE_ROOT_PATH}/src/example.ts`
 
+test('memory tool uses durable-context labels and targets', () => {
+  assert.equal(
+    getToolInvocationHeaderLabel({
+      argumentsText: JSON.stringify({ action: 'read_index' }),
+      id: 'memory-index',
+      startedAt: 0,
+      state: 'completed',
+      toolName: 'memory',
+    }),
+    'Read memory index',
+  )
+  assert.equal(
+    getToolInvocationHeaderLabel({
+      argumentsText: JSON.stringify({ action: 'edit', path: '.tidecode/memory/folders/architecture/runtime.md' }),
+      id: 'memory-edit',
+      startedAt: 0,
+      state: 'completed',
+      toolName: 'memory',
+    }),
+    'Edited memory architecture/runtime.md',
+  )
+})
+
 test('plan tool headers use review-oriented labels', () => {
   assert.equal(
     getToolInvocationHeaderLabel({
@@ -566,7 +589,7 @@ test('terminal tool header labels keep internal session ids out of the user-faci
 
   assert.equal(
     getToolInvocationHeaderLabel(commandInvocation, undefined, WORKSPACE_ROOT_PATH),
-    'Ran npm run test:unit',
+    'Started npm run test:unit',
   )
   assert.equal(
     getToolInvocationHeaderLabel(sessionInvocation, undefined, WORKSPACE_ROOT_PATH),
@@ -574,7 +597,7 @@ test('terminal tool header labels keep internal session ids out of the user-faci
   )
 })
 
-test('terminal execution headers move from executing to waiting and then ran', () => {
+test('asynchronous terminal execution headers move from starting to started', () => {
   const runningInvocation: ToolInvocationTrace = {
     argumentsText: JSON.stringify({ command: 'npm run lint' }),
     id: 'tool-terminal-execution-phase',
@@ -584,31 +607,26 @@ test('terminal execution headers move from executing to waiting and then ran', (
   }
 
   assert.equal(
-    getToolInvocationHeaderLabel(runningInvocation, undefined, WORKSPACE_ROOT_PATH, 1_999),
-    'Executing npm run lint',
-  )
-  assert.equal(
-    getToolInvocationHeaderLabel(runningInvocation, undefined, WORKSPACE_ROOT_PATH, 2_000),
-    'Waiting for npm run lint',
+    getToolInvocationHeaderLabel(runningInvocation, undefined, WORKSPACE_ROOT_PATH),
+    'Starting npm run lint',
   )
   assert.equal(
     getToolInvocationHeaderLabel(
       { ...runningInvocation, state: 'completed' },
       undefined,
       WORKSPACE_ROOT_PATH,
-      2_000,
     ),
-    'Ran npm run lint',
+    'Started npm run lint',
   )
 })
 
-test('terminal interaction and read headers use the paired action labels', () => {
-  const interactionInvocation: ToolInvocationTrace = {
+test('terminal read and termination headers use bounded-wait action labels', () => {
+  const terminationInvocation: ToolInvocationTrace = {
     argumentsText: JSON.stringify({ session_id: 7 }),
-    id: 'tool-terminal-interaction-labels',
+    id: 'tool-terminal-termination-labels',
     startedAt: 0,
     state: 'running',
-    toolName: 'interact_terminal',
+    toolName: 'terminate_terminal',
   }
   const readInvocation: ToolInvocationTrace = {
     argumentsText: JSON.stringify({ session_id: 7 }),
@@ -618,10 +636,17 @@ test('terminal interaction and read headers use the paired action labels', () =>
     toolName: 'read_terminal',
   }
 
-  assert.equal(getToolInvocationHeaderLabel(interactionInvocation), 'Interacting with terminal')
-  assert.equal(getToolInvocationHeaderLabel({ ...interactionInvocation, state: 'completed' }), 'Interacted with terminal')
-  assert.equal(getToolInvocationHeaderLabel(readInvocation), 'Reading terminal')
+  assert.equal(getToolInvocationHeaderLabel(terminationInvocation), 'Terminating terminal')
+  assert.equal(getToolInvocationHeaderLabel({ ...terminationInvocation, state: 'completed' }), 'Terminated terminal')
+  assert.equal(getToolInvocationHeaderLabel(readInvocation), 'Waiting for terminal')
   assert.equal(getToolInvocationHeaderLabel({ ...readInvocation, state: 'completed' }), 'Read terminal')
+  assert.equal(
+    getToolInvocationHeaderLabel({
+      ...readInvocation,
+      argumentsText: JSON.stringify({ session_id: 7, wait_seconds: 0 }),
+    }),
+    'Reading terminal',
+  )
 })
 
 test('terminal tool header labels preserve the full queued command text for UI truncation', () => {
@@ -636,7 +661,7 @@ test('terminal tool header labels preserve the full queued command text for UI t
     toolName: 'execute_terminal',
   }
 
-  assert.equal(getToolInvocationHeaderLabel(invocation, undefined, WORKSPACE_ROOT_PATH), `Ran ${command}`)
+  assert.equal(getToolInvocationHeaderLabel(invocation, undefined, WORKSPACE_ROOT_PATH), `Started ${command}`)
 })
 
 test('skill tool header labels use activation wording and the skill name', () => {
