@@ -9,6 +9,7 @@ import { createGrepTool } from './grepTool'
 import { createKanbanToolSet } from './kanbanTools'
 import { createListTool } from './listTool'
 import { createMcpToolSet } from './mcpTools'
+import { createMemoryTool } from './memoryTool'
 import { createProviderWebTool } from './providerWebTool'
 import { createReadTool } from './readTool'
 import { createPlanToolSet } from './planTools'
@@ -37,6 +38,7 @@ export async function createNativeAgentTools(
     grep: createGrepTool(context),
     ...createMcpToolSet(context),
     ...createKanbanToolSet(context),
+    memory: createMemoryTool(context),
   }
 
   if (isPlanMode) {

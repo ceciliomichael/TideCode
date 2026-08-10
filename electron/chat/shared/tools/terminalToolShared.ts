@@ -91,6 +91,7 @@ export interface ThreadAiSession {
   interactionMode: "auto" | "non_interactive" | "interactive";
   label: string | null;
   localSessionId: number;
+  nextUnreadLine: number;
   screen: TerminalScreenModel;
   shell: string;
   transcript: AiTerminalTranscript;
@@ -624,6 +625,7 @@ export function resetThreadSessionForCommand(
   session.interaction = null;
   session.interactionMode = interactionMode;
   session.lastSnapshot = null;
+  session.nextUnreadLine = 1;
   session.screen.reset();
   session.transcript.reset({ command, marker });
 }
@@ -654,12 +656,26 @@ export function createThreadAiSession(input: {
     label: input.label,
     lastSnapshot: null,
     localSessionId: input.localSessionId,
+    nextUnreadLine: 1,
     screen: new TerminalScreenModel({ cols: input.cols, rows: input.rows }),
     shell: input.shell,
     transcript: new AiTerminalTranscript(),
   };
   session.transcript.reset({ command: input.command, marker: input.marker });
   return session;
+}
+
+export function drainUnreadTerminalOutput(session: ThreadAiSession) {
+  session.transcript.finalize();
+  const result = session.transcript.read(session.nextUnreadLine, Number.MAX_SAFE_INTEGER);
+  const lastLine = result.lines[result.lines.length - 1];
+  if (lastLine) {
+    session.nextUnreadLine = lastLine.lineNumber + 1;
+  } else if (result.skippedEvictedLines) {
+    session.nextUnreadLine = Math.max(session.nextUnreadLine, result.summary.firstAvailableLine);
+  }
+
+  return result;
 }
 
 export function encodeTerminalInput(text: string | undefined, keys: string[] | undefined) {

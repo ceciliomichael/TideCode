@@ -17,6 +17,10 @@ function getTerminalResultLabel(toolName: string) {
     return 'Terminal output'
   }
 
+  if (toolName === 'terminate_terminal') {
+    return 'Terminal termination'
+  }
+
   if (toolName === 'get_terminal_output') {
     return 'Terminal session output'
   }

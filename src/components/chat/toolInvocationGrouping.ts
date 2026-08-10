@@ -18,6 +18,7 @@ interface ToolInvocationSummaryCounts {
   exploredFileCount: number
   kanbanCount: number
   planCount: number
+  memoryCount: number
 }
 
 function pluralize(count: number, singular: string) {
@@ -69,6 +70,10 @@ function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts
 
   if (toolName === 'plan_create' || toolName === 'plan_edit') {
     return 'planCount'
+  }
+
+  if (toolName === 'memory') {
+    return 'memoryCount'
   }
 
   if (isFileWriteTool(toolName)) {
@@ -125,6 +130,9 @@ function getMixedBucketPriority(bucketKey: string) {
   }
   if (bucketKey === 'plan') {
     return 12
+  }
+  if (bucketKey === 'memory') {
+    return 13
   }
 
   return 13
@@ -190,6 +198,7 @@ export function buildToolInvocationGroupSummary(
     exploredFileCount: 0,
     kanbanCount: 0,
     planCount: 0,
+    memoryCount: 0,
   }
   const otherToolCounts = new Map<string, number>()
   let hasFileMutationBuckets = false
@@ -247,6 +256,8 @@ export function buildToolInvocationGroupSummary(
         recordMixedBucket('file')
       } else if (classifiedBucket === 'planCount') {
         recordMixedBucket('plan')
+      } else if (classifiedBucket === 'memoryCount') {
+        recordMixedBucket('memory')
       }
       continue
     }
@@ -297,6 +308,9 @@ export function buildToolInvocationGroupSummary(
       if (bucketKey === 'plan') {
         return `created ${pluralize(count, 'plan')}`
       }
+      if (bucketKey === 'memory') {
+        return `handled ${pluralize(count, 'memory operation')}`
+      }
 
       return pluralize(count, bucketKey.replace(/^other:/u, ''))
     }
@@ -320,6 +334,7 @@ export function buildToolInvocationGroupSummary(
     counts.verifiedCount === 0 &&
     counts.exploredFileCount === 0 &&
     counts.planCount === 0 &&
+    counts.memoryCount === 0 &&
     otherToolCounts.size === 0
 
   if (hasOnlyWebSearch) {
@@ -349,6 +364,9 @@ export function buildToolInvocationGroupSummary(
   }
   if (counts.planCount > 0) {
     summaryParts.push(`created ${pluralize(counts.planCount, 'plan')}`)
+  }
+  if (counts.memoryCount > 0) {
+    summaryParts.push(`handled ${pluralize(counts.memoryCount, 'memory operation')}`)
   }
 
   for (const [toolLabel, count] of otherToolCounts) {

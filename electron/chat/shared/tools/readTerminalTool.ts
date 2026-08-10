@@ -3,51 +3,44 @@ import type { AgentToolExecutionResult } from "../toolTypes";
 import {
   assertTerminalOwner,
   buildTerminalCommandSummary,
+  clampInteger,
   createSuccessResult,
   createTerminalErrorResult,
+  drainUnreadTerminalOutput,
   getOrCreateThreadStore,
   getThreadSession,
   syncTerminalSessionOutput,
   type TerminalToolRuntime,
 } from "./terminalToolShared";
-import { formatTerminalScreenForModel } from "../../../terminal/screenModel";
 
-const DEFAULT_READ_LIMIT = 100;
-const MAX_READ_LIMIT = 200;
+const DEFAULT_WAIT_SECONDS = 15;
+const MAX_WAIT_SECONDS = 15;
 
 interface ReadTerminalInput {
-  limit?: number;
-  offset?: number;
   session_id?: number;
+  wait_seconds?: number;
 }
 
-function clampReadValue(value: number | undefined, fallback: number) {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.max(1, Math.floor(value));
+function getWaitMilliseconds(value: number | undefined) {
+  return clampInteger(value, 0, MAX_WAIT_SECONDS, DEFAULT_WAIT_SECONDS) * 1_000;
 }
 
 export function createReadTerminalTool(runtime: TerminalToolRuntime) {
   return tool({
     description:
-      "Read terminal content. For an interactive screen, returns the current visible screen as a user would see it; otherwise returns a bounded normalized line range. Terminal commands return metadata first; use this tool when content is needed.",
+      "Wait up to wait_seconds for a terminal session, then consume and return only output produced since the previous read. Repeated calls never replay already-returned output. The wait is bounded to 15 seconds and returns early when the command finishes.",
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
-        limit: {
-          description: "Maximum number of normalized terminal lines to return.",
-          maximum: MAX_READ_LIMIT,
-          minimum: 1,
-          type: "number",
-        },
-        offset: {
-          description: "One-based first normalized terminal line to return.",
-          minimum: 1,
-          type: "number",
-        },
         session_id: {
-          description: "Terminal session to read.",
+          description: "Terminal session returned by execute_terminal.",
+          type: "number",
+        },
+        wait_seconds: {
+          default: DEFAULT_WAIT_SECONDS,
+          description: "Maximum collection window in seconds. Use 0 for an immediate non-blocking read.",
+          maximum: MAX_WAIT_SECONDS,
+          minimum: 0,
           type: "number",
         },
       },
@@ -74,55 +67,55 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
           );
         }
 
-        await syncTerminalSessionOutput(runtime, session, dependencies, abortSignal, 0);
-        const commandSummary = buildTerminalCommandSummary(session);
-        if (session.interaction?.kind === "screen") {
-          const screenSnapshot = session.screen.getSnapshot();
-          return createSuccessResult({
-            body: formatTerminalScreenForModel(screenSnapshot),
-            semantics: {
-              active_buffer: screenSnapshot.activeBuffer,
-              cursor_column: screenSnapshot.cursorColumn,
-              cursor_row: screenSnapshot.cursorRow,
-              session_id: session.localSessionId,
-              state: commandSummary.state,
-              view: "screen",
-            },
-            subject: { kind: "session", path: String(session.localSessionId) },
-            summary: `Read terminal session ${session.localSessionId} screen`,
-          });
-        }
-
-        const offset = clampReadValue(input.offset, 1);
-        const limit = Math.min(clampReadValue(input.limit, DEFAULT_READ_LIMIT), MAX_READ_LIMIT);
-        const readResult = session.transcript.read(offset, limit);
-        const bodyLines = readResult.lines.map((line) => `${line.lineNumber}: ${line.text}`);
-
-        if (readResult.skippedEvictedLines) {
-          bodyLines.unshift(
-            `(Earlier output is no longer retained. Showing from line ${readResult.summary.firstAvailableLine}.)`,
+        const waitMilliseconds = session.commandComplete ? 0 : getWaitMilliseconds(input.wait_seconds);
+        const deadline = Date.now() + waitMilliseconds;
+        do {
+          const remainingMilliseconds = Math.max(0, deadline - Date.now());
+          await syncTerminalSessionOutput(
+            runtime,
+            session,
+            dependencies,
+            abortSignal,
+            remainingMilliseconds,
           );
+          if (session.commandComplete || session.interaction || remainingMilliseconds === 0) {
+            break;
+          }
+        } while (Date.now() < deadline);
+
+        const unreadOutput = drainUnreadTerminalOutput(session);
+        const commandSummary = buildTerminalCommandSummary(session);
+        const bodyLines = [`state: ${commandSummary.state}`];
+        if (commandSummary.state === "completed" && session.commandExitCode !== null && session.commandExitCode !== 0) {
+          bodyLines.push("result: failed");
+        }
+        if (unreadOutput.lines.length > 0) {
+          bodyLines.push(
+            "",
+            "new_output:",
+            ...unreadOutput.lines.map((line) => `${line.lineNumber}: ${line.text}`),
+          );
+        } else {
+          bodyLines.push("", "No new terminal output.");
         }
 
-        if (bodyLines.length === 0) {
-          bodyLines.push("No terminal output is available in the requested range.");
-        }
-
-        const responseTruncated =
-          commandSummary.truncated || readResult.hasMore || readResult.skippedEvictedLines;
         return createSuccessResult({
           body: bodyLines.join("\n"),
+          displayBody:
+            unreadOutput.lines.length > 0
+              ? unreadOutput.lines.map((line) => line.text).join("\n")
+              : commandSummary.displayBody,
           semantics: {
             ...commandSummary.semantics,
-            has_more: readResult.hasMore,
-            limit,
-            offset,
-            returned_line_count: readResult.lines.length,
-            skipped_evicted_lines: readResult.skippedEvictedLines,
+            new_output_line_count: unreadOutput.lines.length,
+            next_unread_line: session.nextUnreadLine,
+            wait_seconds: waitMilliseconds / 1_000,
           },
           subject: { kind: "session", path: String(session.localSessionId) },
-          summary: `Read terminal session ${session.localSessionId} lines ${offset}-${offset + limit - 1}`,
-          truncated: responseTruncated,
+          summary: commandSummary.state === "completed"
+            ? `Read completed terminal session ${session.localSessionId}`
+            : `Read new output from terminal session ${session.localSessionId}`,
+          truncated: unreadOutput.skippedEvictedLines,
         });
       } catch (error) {
         if (abortSignal?.aborted) {

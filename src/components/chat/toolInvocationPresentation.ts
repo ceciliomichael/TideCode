@@ -22,14 +22,46 @@ import {
   formatWriteVerb,
 } from './toolInvocationMutationPresentation'
 
-export const TERMINAL_EXECUTION_WAITING_THRESHOLD_MS = 1_000
+function readPartialAction(argumentsText: string) {
+  const match = /["']action["']\s*:\s*["']([^"']*)/u.exec(argumentsText)
+  const action = match?.[1]?.trim()
+  return action && action.length > 0 ? action : null
+}
 
-function getToolVerb(invocation: ToolInvocationTrace, currentTimeMs = Date.now()) {
+function getToolVerb(invocation: ToolInvocationTrace) {
   const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
+  const parsedArguments = parseCompleteToolArguments(invocation.argumentsText) as Record<string, unknown> | null
   const operation =
     parsedResult?.metadata?.semantics && typeof parsedResult.metadata.semantics.operation === 'string'
       ? parsedResult.metadata.semantics.operation
       : null
+
+  if (invocation.toolName === 'memory') {
+    const action = readFirstText([
+      parsedArguments?.action,
+      readPartialAction(invocation.argumentsText),
+      parsedResult?.metadata?.semantics?.action,
+    ])
+    if (action === 'read_index') {
+      return invocation.state === 'running' ? 'Reading memory index' : invocation.state === 'completed' ? 'Read memory index' : 'Memory index read failed'
+    }
+    if (action === 'read') {
+      return invocation.state === 'running' ? 'Reading memory' : invocation.state === 'completed' ? 'Read memory' : 'Memory read failed'
+    }
+    if (action === 'write') {
+      if (operation === 'unchanged') {
+        return invocation.state === 'running' ? 'Checking memory' : invocation.state === 'completed' ? 'Kept memory' : 'Memory write failed'
+      }
+      return invocation.state === 'running' ? 'Recording memory' : invocation.state === 'completed' ? 'Recorded memory' : 'Memory write failed'
+    }
+    if (action === 'edit') {
+      return invocation.state === 'running' ? 'Editing memory' : invocation.state === 'completed' ? 'Edited memory' : 'Memory edit failed'
+    }
+    if (action === 'forget') {
+      return invocation.state === 'running' ? 'Forgetting memory' : invocation.state === 'completed' ? 'Forgot memory' : 'Memory forget failed'
+    }
+    return invocation.state === 'running' ? '' : invocation.state === 'completed' ? 'Completed memory' : 'Memory operation failed'
+  }
 
   if (invocation.toolName === 'list') {
     return invocation.state === 'running' ? 'Listing' : invocation.state === 'completed' ? 'Listed' : 'List failed'
@@ -63,13 +95,11 @@ function getToolVerb(invocation: ToolInvocationTrace, currentTimeMs = Date.now()
   }
 
   if (invocation.toolName === 'execute_terminal') {
-    if (invocation.state === 'running') {
-      return currentTimeMs - invocation.startedAt >= TERMINAL_EXECUTION_WAITING_THRESHOLD_MS
-        ? 'Waiting for'
-        : 'Executing'
-    }
-
-    return invocation.state === 'completed' ? 'Ran' : 'Run failed'
+    return invocation.state === 'running'
+      ? 'Starting'
+      : invocation.state === 'completed'
+        ? 'Started'
+        : 'Start failed'
   }
 
   if (invocation.toolName === 'interact_terminal') {
@@ -80,12 +110,31 @@ function getToolVerb(invocation: ToolInvocationTrace, currentTimeMs = Date.now()
         : 'Terminal interaction failed'
   }
 
-  if (invocation.toolName === 'read_terminal' || invocation.toolName === 'get_terminal_output') {
+  if (invocation.toolName === 'get_terminal_output') {
     return invocation.state === 'running'
       ? 'Reading terminal'
       : invocation.state === 'completed'
         ? 'Read terminal'
         : 'Terminal read failed'
+  }
+
+  if (invocation.toolName === 'read_terminal') {
+    const waitSeconds = parsedArguments?.wait_seconds
+    return invocation.state === 'running'
+      ? typeof waitSeconds === 'number' && waitSeconds === 0
+        ? 'Reading terminal'
+        : 'Waiting for terminal'
+      : invocation.state === 'completed'
+        ? 'Read terminal'
+        : 'Terminal read failed'
+  }
+
+  if (invocation.toolName === 'terminate_terminal') {
+    return invocation.state === 'running'
+      ? 'Terminating terminal'
+      : invocation.state === 'completed'
+        ? 'Terminated terminal'
+        : 'Terminal termination failed'
   }
 
   if (invocation.toolName === 'ready_implement') {
@@ -309,6 +358,30 @@ export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace)
 
 function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: string | null) {
   const parsedArguments = parseCompleteToolArguments(invocation.argumentsText) as Record<string, unknown>
+  const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
+
+  if (invocation.toolName === 'memory') {
+    const action = readFirstText([
+      parsedArguments?.action,
+      readPartialAction(invocation.argumentsText),
+      parsedResult?.metadata?.semantics?.action,
+    ])
+    if (action === 'read_index') {
+      return null
+    }
+    const rawPath = readFirstText([
+      parsedArguments?.path,
+      parsedResult?.metadata?.semantics?.path,
+      parsedResult?.metadata?.subject?.path,
+    ])
+    if (!rawPath) {
+      return null
+    }
+    const normalizedPath = rawPath.replace(/\\/g, '/')
+    const foldersMarker = '.tidecode/memory/folders/'
+    const markerIndex = normalizedPath.indexOf(foldersMarker)
+    return markerIndex >= 0 ? normalizedPath.slice(markerIndex + foldersMarker.length) : getBasename(normalizedPath)
+  }
 
   if (invocation.toolName === 'mcp_tool_search') {
     const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
@@ -335,7 +408,11 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
     return null
   }
 
-  if (invocation.toolName === 'interact_terminal' || invocation.toolName === 'read_terminal') {
+  if (
+    invocation.toolName === 'interact_terminal' ||
+    invocation.toolName === 'read_terminal' ||
+    invocation.toolName === 'terminate_terminal'
+  ) {
     return null
   }
 
@@ -382,7 +459,6 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
     return getBasename(applyPatchTargets[0])
   }
 
-  const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
   const structuredPath = parsedResult?.metadata?.subject?.path
   if (typeof structuredPath === 'string' && structuredPath.trim().length > 0) {
     const normalizedStructuredPath = structuredPath.trim()
@@ -420,7 +496,6 @@ export function getToolInvocationHeaderLabel(
   invocation: ToolInvocationTrace,
   overrideState?: ToolInvocationTrace['state'],
   workspaceRootPath?: string | null,
-  currentTimeMs = Date.now(),
 ) {
   if (isKanbanTool(invocation.toolName)) {
     const effectiveInvocation =
@@ -441,6 +516,6 @@ export function getToolInvocationHeaderLabel(
           state: overrideState,
         }
   const target = getToolTarget(effectiveInvocation, workspaceRootPath)
-  const verb = getToolVerb(effectiveInvocation, currentTimeMs)
+  const verb = getToolVerb(effectiveInvocation)
   return target ? `${verb} ${target}` : verb
 }
