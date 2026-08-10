@@ -1,5 +1,11 @@
 import type { ToolResultOutput, ToolSet } from '@ai-sdk/provider-utils'
 import { formatStructuredToolResultContent, getToolResultModelContent } from '../../../src/lib/toolResultContent'
+import {
+  formatWebSearchAction,
+  formatWebSearchResultAsMarkdown,
+  parseWebSearchToolResult,
+  parseWebSearchToolResultBody,
+} from '../../../src/lib/webSearchResults'
 import type { AgentToolExecutionResult } from './toolTypes'
 
 export function isAgentToolExecutionResult(value: unknown): value is AgentToolExecutionResult {
@@ -21,7 +27,49 @@ function stringifyUnknown(value: unknown) {
   }
 }
 
+function parseWebSearchOutput(output: unknown) {
+  if (typeof output === 'string') {
+    return parseWebSearchToolResultBody(output)
+  }
+
+  const directResult = parseWebSearchToolResult(output)
+  if (directResult) {
+    return directResult
+  }
+
+  if (isAgentToolExecutionResult(output) && output.body) {
+    return parseWebSearchToolResultBody(output.body)
+  }
+
+  return null
+}
+
+function normalizeWebSearchExecutionResult(output: unknown): AgentToolExecutionResult | null {
+  const parsedResult = parseWebSearchOutput(output)
+  if (!parsedResult) {
+    return null
+  }
+
+  const existingResult = isAgentToolExecutionResult(output) ? output : null
+  const markdownBody = formatWebSearchResultAsMarkdown(parsedResult)
+
+  return {
+    ...(existingResult ?? {}),
+    body: markdownBody,
+    displayBody: markdownBody,
+    status: existingResult?.status ?? 'success',
+    summary: existingResult?.summary ?? formatWebSearchAction(parsedResult.action),
+  }
+}
+
 export function normalizeToolExecutionResult(toolName: string, output: unknown): AgentToolExecutionResult {
+  if (toolName === 'web_search') {
+    const normalizedWebSearchResult = normalizeWebSearchExecutionResult(output)
+    if (normalizedWebSearchResult) {
+      return normalizedWebSearchResult
+    }
+  }
+
   if (isAgentToolExecutionResult(output)) return output
   return {
     body: typeof output === 'string' ? output : stringifyUnknown(output),
