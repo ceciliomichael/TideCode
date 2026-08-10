@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.1 — Clearer web search results and Source Control polish
+
+TideCode 1.1.1 makes web-search results easier to scan and keeps the same readable presentation when conversations are restored, while adding a small visual cue to the collapsed Source Control history area.
+
+- Renders web-search actions and validated source links as readable Markdown instead of exposing provider response objects.
+- Preserves clickable citations across live results, replayed conversations, and Responses-style provider payloads while rejecting unsafe or malformed URLs.
+- Adds a visible divider when Source Control history is collapsed and includes regression coverage for web-search parsing, replay normalization, and rendering.
+
 ## 1.1.0 — Smarter MCP tools and steadier chat workflows
 
 TideCode 1.1 makes connected tools easier to discover and keeps everyday chat editing, interruption, and workspace feedback dependable as work changes quickly.
