@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.2 — Durable workspace memory and dependable long-running terminals
+
+TideCode 1.1.2 gives agents a secure, workspace-scoped place to retain durable project context and makes long-running terminal work easier to follow and control.
+
+- Adds managed Markdown memory entries with generated indexes, native agent and plan-mode access, checkpoint integration, and path/symlink safety checks.
+- Starts terminal commands asynchronously, preserves output across bounded polling reads, reports completion and failures clearly, and supports explicit session termination.
+- Updates prompts, tool activity presentation, and regression coverage for durable memory, terminal sessions, and related chat workflows.
+
 ## 1.1.1 — Clearer web search results and Source Control polish
 
 TideCode 1.1.1 makes web-search results easier to scan and keeps the same readable presentation when conversations are restored, while adding a small visual cue to the collapsed Source Control history area.
