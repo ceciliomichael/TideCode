@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.4 — Smoother chat continuity and workspace feedback
+
+TideCode 1.1.4 keeps long-running work easier to follow and safer to resume, with more reliable continuation state, interactive terminals, responsive diff views, and faster workspace feedback.
+
+- Reconciles compaction state against newer evidence so completed work does not reappear as an unfinished action after a long conversation is resumed.
+- Lets agents respond to terminal confirmation prompts with literal text or control keys while keeping command progress asynchronous and explicit.
+- Improves chat and reasoning auto-follow behavior, Monaco diff prewarming and model reuse, Git status loading, and compaction-marker loading across changing workspaces.
+- Preserves visible dependency-directory boundaries in the workspace explorer and safely removes empty managed memory folders without deleting folders that still contain entries.
+- Adds regression coverage for continuation reconciliation, terminal interaction, scrolling, diff caching, workspace watching, memory cleanup, and cached workspace metadata.
+
 ## 1.1.3 — A richer workspace editor and visual chat context
 
 TideCode 1.1.3 makes project work easier to inspect and edit in place, while letting conversations use images as structured context and keeping update progress clear during downloads.
