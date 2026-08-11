@@ -37,6 +37,7 @@ interface MessageListProps {
   editComposerDirty?: boolean;
   editComposerMentionPathMap?: ReadonlyMap<string, string>;
   editingMessageId?: string | null;
+  followLatestSignal?: number;
   isSending?: boolean;
   messages: Message[];
   onAbortStreamingResponse?: () => void;
@@ -295,6 +296,7 @@ export function MessageList({
   messages,
   onAbortStreamingResponse,
   editingMessageId = null,
+  followLatestSignal = 0,
   onEditUserMessage,
   onRevertUserMessage,
   composerValue,
@@ -331,6 +333,7 @@ export function MessageList({
   const renderItems = useMemo(() => {
     type RenderItem =
       | { type: 'message'; message: Message; index: number }
+      | { type: 'plan_status_divider'; kind: 'implementation' | 'revision'; messageId: string }
       | { type: 'compaction_marker'; marker: ChatCompactionMarker }
       | { type: 'live_compaction'; status: ChatCompactionLifecycleState }
       | { type: 'working_group'; messages: Message[]; trailingMessage?: { message: Message, index: number }; startTime: number; endTime: number; startIndex: number; key: string };
@@ -402,6 +405,21 @@ export function MessageList({
         }
       }
 
+      if (isPlanImplementationMessage(msg) || isPlanRevisionMessage(msg)) {
+        if (currentAssistantRun.length > 0) {
+          processFinishedAssistantRun();
+          currentAssistantRun = [];
+          currentAssistantRunStartIndex = -1;
+        }
+
+        items.push({
+          kind: isPlanImplementationMessage(msg) ? 'implementation' : 'revision',
+          messageId: msg.id,
+          type: 'plan_status_divider',
+        });
+        continue;
+      }
+
       if (msg.role === 'user') {
         if (currentAssistantRun.length > 0) {
           processFinishedAssistantRun();
@@ -445,9 +463,9 @@ export function MessageList({
 
   useChatAutoScroll({
     conversationId,
+    followLatestSignal,
     messages: visibleMessages,
     scrollContainerRef,
-    shouldAutoScroll: isConversationStreaming || liveCompaction?.phase === 'compacting',
   });
   const subsequentAssistantTextByMessageId = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -543,10 +561,22 @@ export function MessageList({
   return (
     <div
       ref={scrollContainerRef}
-      className="chat-scroll-viewport scroll-stable flex-1 w-full overflow-y-auto"
+      className="chat-scroll-viewport scroll-stable min-h-0 flex-1 w-full overflow-y-auto"
     >
       <div className="chat-column mx-auto space-y-2.5 px-4 pb-6 pt-6">
         {renderItems.map((item) => {
+          if (item.type === 'plan_status_divider') {
+            return (
+              <div
+                key={`plan-status-${item.messageId}`}
+                data-message-id={item.messageId}
+                className="flex w-full min-w-0 justify-start"
+              >
+                {item.kind === 'implementation' ? <PlanImplementationDivider /> : <PlanRevisionDivider />}
+              </div>
+            );
+          }
+
           if (item.type === 'compaction_marker') {
             return <CompactionDivider key={`compaction-${item.marker.compactionId}`} marker={item.marker} />;
           }

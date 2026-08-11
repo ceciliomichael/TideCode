@@ -5,6 +5,7 @@ import type {
   ConversationSummary,
   ReorderConversationFolderInput,
 } from '../types/chat'
+import { loadChatCompactionMarkers } from '../lib/chatCompactionMarkerCache'
 import type { ConversationRuntimeSnapshot } from './chatMessageSendTypes'
 
 interface UseChatConversationActionsInput {
@@ -142,8 +143,14 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       clearError()
       resetComposerState()
 
+      const markerPreload = Promise.resolve()
+        .then(() => loadChatCompactionMarkers(conversationId))
+        .catch((caughtError) => {
+          console.error(`Failed to preload chat compaction markers: ${conversationId}`, caughtError)
+        })
       const cachedConversation = conversationRuntimeStatesRef.current[conversationId]?.conversation
       if (cachedConversation) {
+        await markerPreload
         if (conversationSelectionRequestRef.current === requestId) {
           applyConversation(cachedConversation)
         }
@@ -151,7 +158,10 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
       }
 
       try {
-        const conversation = await window.tidecodeHistory.getConversation(conversationId)
+        const [conversation] = await Promise.all([
+          window.tidecodeHistory.getConversation(conversationId),
+          markerPreload,
+        ])
         if (conversationSelectionRequestRef.current !== requestId) {
           return
         }

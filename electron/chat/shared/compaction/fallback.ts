@@ -87,6 +87,15 @@ function extractValidation(messages: readonly ModelMessage[]) {
     .slice(-24)
 }
 
+function extractCompletedWork(messages: readonly ModelMessage[]) {
+  return messages
+    .filter((message) => message.role === 'assistant')
+    .map((message) => compactText(visibleTextFromContent(message.content)))
+    .filter((value) => /\b(?:implemented|fixed|completed|finished|resolved|verified|passed|successfully)\b/iu.test(value))
+    .slice(-24)
+    .map((value) => `Transcript confirms: ${value}`)
+}
+
 function isV2Packet(packet: CompactionPacket | null | undefined): packet is LocalCompactionPacketV2 {
   return packet?.schema === 'tidecode.compaction_packet/v2'
 }
@@ -128,13 +137,14 @@ export function buildFallbackCompactionPacket(input: {
     goal: users.length > 0 ? users.slice(0, 2) : (previous?.goal ?? []),
     constraints: previous?.constraints ?? [],
     currentState: [
+      ...(users.at(-1) ? [`Latest user request: ${users.at(-1)}`] : []),
       ...(assistants.at(-1) ? [`Latest assistant state: ${assistants.at(-1)}`] : []),
       ...(tools.at(-1) ? [`Latest tool evidence: ${tools.at(-1)}`] : []),
       retention.note,
     ],
-    completedWork: previous?.completedWork ?? [],
+    completedWork: extractCompletedWork(input.messages),
     decisions: previous?.decisions ?? [],
-    openItems: users.length > 0 ? [users.at(-1) as string] : (previous?.openItems ?? []),
+    openItems: previous?.openItems ?? [],
     failuresAndWorkarounds: extractFailures(input.messages),
     filesAndSymbols: paths.map((path) => ({
       path,
@@ -145,9 +155,7 @@ export function buildFallbackCompactionPacket(input: {
     validation: extractValidation(input.messages),
     planState: previous?.planState ?? [],
     toolObservations: extractToolObservations(input.messages, input.sourceStartIndex ?? 0),
-    nextActions: users.length > 0
-      ? ['Continue from the latest user request and verify the next action against retained evidence.']
-      : (previous?.nextActions?.length ? previous.nextActions : ['Re-read the durable history before taking an unverified action.']),
+    nextActions: previous?.nextActions ?? [],
     omitted: [
       'Model summarization was unavailable; unsupported private reasoning and unverified work were not reconstructed.',
     ],

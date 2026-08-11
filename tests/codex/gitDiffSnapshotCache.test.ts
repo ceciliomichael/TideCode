@@ -91,6 +91,8 @@ test('loads status-only git metadata without reading diff content and coalesces 
     assert.equal(calls.length, 2)
     assert.equal(calls[1]?.includeContent, true)
     assert.equal(detailedSnapshot.fileDiffs[0]?.newContent, 'const value = 1\n')
+    assert.equal(detailedSnapshot.totalAddedLineCount, 1)
+    assert.equal(detailedSnapshot.totalRemovedLineCount, 1)
   } finally {
     restoreWindow()
   }

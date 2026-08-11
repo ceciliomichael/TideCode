@@ -166,11 +166,17 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   })
   if (!normalizedPacket) return null
 
-  const packet = mergeCompactionPacketState({
+  const mergedPacket = mergeCompactionPacketState({
     current: normalizedPacket,
     parentPacketId: previousPacket?.packetId ?? null,
     previous: previousPacket,
   })
+  const packet = parsedModelPacket
+    ? {
+        ...mergedPacket,
+        continuationMarkdown: buildContinuationMarkdownFromPacket(mergedPacket),
+      }
+    : mergedPacket
   const projectedMessages = buildCompactionProjection({
     anchorMessages: window.anchorMessages,
     packet,

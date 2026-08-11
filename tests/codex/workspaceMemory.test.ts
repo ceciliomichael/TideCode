@@ -62,6 +62,43 @@ test('workspace memory maintains a generated index and replaces stale entries', 
     })
     assert.equal(forgotten.operation, 'deleted')
     assert.doesNotMatch((await readMemoryIndex(workspaceRootPath)).content, /runtime\.md/u)
+    await assert.rejects(
+      fs.access(path.join(workspaceRootPath, '.tidecode/memory/folders/architecture')),
+      { code: 'ENOENT' },
+    )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('workspace memory preserves non-empty folders after forgetting one entry', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-memory-folder-'))
+
+  try {
+    await writeMemoryEntry({
+      content: 'Keep this entry.',
+      path: 'folders/architecture/keep.md',
+      workspaceRootPath,
+    })
+    await writeMemoryEntry({
+      content: 'Delete this entry.',
+      path: 'folders/architecture/delete.md',
+      workspaceRootPath,
+    })
+
+    await forgetMemoryEntry({
+      path: 'folders/architecture/delete.md',
+      workspaceRootPath,
+    })
+
+    await assert.doesNotReject(
+      fs.access(path.join(workspaceRootPath, '.tidecode/memory/folders/architecture')),
+    )
+    const remaining = await readMemoryEntry({
+      path: 'folders/architecture/keep.md',
+      workspaceRootPath,
+    })
+    assert.match(remaining.content, /Keep this entry/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

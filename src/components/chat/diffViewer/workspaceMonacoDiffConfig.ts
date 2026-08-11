@@ -8,7 +8,7 @@ interface CreateWorkspaceMonacoDiffOptionsParams {
 }
 
 const DEFAULT_EMBEDDED_DIFF_MAX_HEIGHT_PX = 320
-const MINIMUM_DIFF_HEIGHT_PX = 80
+const MINIMUM_DIFF_HEIGHT_PX = 20
 
 export function resolveWorkspaceMonacoDiffMaxHeight(maxBodyHeightClassName?: string) {
   if (!maxBodyHeightClassName) {
@@ -63,6 +63,7 @@ export function createWorkspaceMonacoDiffOptions({
     maxComputationTime: isStreaming ? 1_500 : 5_000,
     minimap: { enabled: false },
     originalEditable: false,
+    padding: { bottom: 0, top: 0 },
     readOnly: true,
     renderGutterMenu: false,
     renderIndicators: false,
@@ -94,6 +95,7 @@ export function createWorkspaceMonacoViewOptions(
     ...createWorkspaceMonacoOptions(true),
     domReadOnly: true,
     lineNumbers: (lineNumber) => String(lineNumber + Math.max(1, Math.trunc(startLineNumber)) - 1),
+    padding: { bottom: 0, top: 0 },
     readOnly: true,
     renderValidationDecorations: 'off',
   }

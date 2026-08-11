@@ -125,15 +125,12 @@ function formatInlineCode(value: string) {
   return normalized.length > 0 ? `\`${normalized}\`` : ''
 }
 
-function appendNarrative(lines: string[], lead: string, values: readonly string[]) {
+function appendSection(lines: string[], heading: string, values: readonly string[], emptyText?: string) {
   const normalizedValues = values.map((value) => value.trim()).filter(Boolean)
-  if (normalizedValues.length === 0) return
-  if (normalizedValues.length === 1) {
-    lines.push(`${lead} ${normalizedValues[0]}`)
-  } else {
-    lines.push(`${lead}`)
-    normalizedValues.forEach((value) => lines.push(`- ${value}`))
-  }
+  if (normalizedValues.length === 0 && !emptyText) return
+  lines.push(heading, '')
+  if (normalizedValues.length > 0) normalizedValues.forEach((value) => lines.push(`- ${value}`))
+  else lines.push(emptyText as string)
   lines.push('')
 }
 
@@ -168,33 +165,32 @@ export function buildContinuationMarkdownFromPacket(
     | 'reasoningContinuity'
   >,
 ) {
-  const lines: string[] = [
-    'The compaction model did not provide a usable summary, so this continuation was reconstructed from verified conversation evidence.',
-    '',
-  ]
+  const lines: string[] = []
 
-  appendNarrative(lines, 'The work is focused on', packet.goal)
-  appendNarrative(lines, 'Keep these constraints in mind:', packet.constraints)
-  appendNarrative(lines, 'The latest verified state is:', packet.currentState)
-  appendNarrative(lines, 'The conversation confirms this completed work:', packet.completedWork)
-  appendNarrative(lines, 'The prior approach and decisions were:', packet.decisions)
+  appendSection(lines, '## What happened', packet.goal)
+  appendSection(lines, '## Constraints', packet.constraints)
+  appendSection(lines, '## Current state', packet.currentState)
+  appendSection(lines, '## Completed work', packet.completedWork, 'No completed work was recorded in the compacted range.')
+  appendSection(lines, '## Important decisions and reasoning', packet.decisions)
 
   if (packet.reasoningContinuity.length > 0) {
-    lines.push('Earlier action-linked reasoning that was visible in the transcript:')
+    lines.push('Visible action-linked reasoning:')
     packet.reasoningContinuity.forEach((entry) => lines.push(renderReasoningEntry(entry)))
     lines.push('')
   }
 
-  appendNarrative(lines, 'Earlier attempts found:', packet.failuresAndWorkarounds)
-  appendNarrative(lines, 'Relevant files and symbols include:', packet.filesAndSymbols.map(renderFileReference))
-  appendNarrative(lines, 'The available tool evidence is:', packet.toolObservations.map((observation) => (
-    `${observation.subject} was ${observation.status}: ${observation.fact}`
-  )))
-  appendNarrative(lines, 'Checks already completed include:', packet.validation)
-  appendNarrative(lines, 'The remaining plan is:', packet.planState)
-  appendNarrative(lines, 'The unfinished work is:', packet.openItems)
-  appendNarrative(lines, 'Continue by:', packet.nextActions)
-  appendNarrative(lines, 'Do not assume these details without further verification:', packet.omitted)
+  appendSection(lines, '## Evidence and files', [
+    ...packet.failuresAndWorkarounds,
+    ...packet.filesAndSymbols.map(renderFileReference),
+    ...packet.toolObservations.map((observation) => (
+      `${observation.subject} was ${observation.status}: ${observation.fact}`
+    )),
+  ])
+  appendSection(lines, '## Validation', packet.validation)
+  appendSection(lines, '## Plan state', packet.planState)
+  appendSection(lines, '## Remaining work', packet.openItems, 'No unfinished work is currently recorded.')
+  appendSection(lines, '## Next actions', packet.nextActions)
+  appendSection(lines, '## Unverified or omitted details', packet.omitted)
 
   return normalizeContinuationMarkdown(lines.join('\n'))
 }

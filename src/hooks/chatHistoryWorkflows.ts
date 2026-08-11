@@ -12,6 +12,10 @@ import type {
 } from '../types/chat'
 import { getConversationTitleFromInput } from './chatHistoryViewModels'
 import { hasPlanToolInvocation } from '../lib/planPresentation'
+import {
+  loadChatCompactionMarkers,
+  prefetchChatCompactionMarkers,
+} from '../lib/chatCompactionMarkerCache'
 
 export interface ChatHistorySnapshot {
   conversationSummaries: ConversationSummary[]
@@ -85,6 +89,18 @@ async function loadStoredConversationOrThrow(conversationId: string) {
 
     throw new Error(`Unable to load conversation: ${conversationId}`)
   }
+}
+
+async function loadConversationForInitialView(conversationId: string) {
+  const conversationPromise = window.tidecodeHistory.getConversation(conversationId)
+  const markerPromise = Promise.resolve()
+    .then(() => loadChatCompactionMarkers(conversationId))
+    .catch((error) => {
+      console.error(`Failed to preload chat compaction markers: ${conversationId}`, error)
+    })
+
+  const [conversation] = await Promise.all([conversationPromise, markerPromise])
+  return conversation
 }
 
 function findUserMessageOrThrow(conversation: ConversationRecord, messageId: string) {
@@ -181,6 +197,7 @@ export async function loadInitialChatHistory(
     window.tidecodeHistory.listConversations(),
     window.tidecodeHistory.listFolders(),
   ])
+  void prefetchChatCompactionMarkers(conversationSummaries.map((conversation) => conversation.id))
 
   const normalizedPreferredDraftFolderId = preferredDraftFolderId?.trim() ?? ''
   const validPreferredFolderId =
@@ -210,7 +227,7 @@ export async function loadInitialChatHistory(
 
   if (preferredConversationSummary) {
     if (!validPreferredFolderId || preferredConversationSummary.folderId === validPreferredFolderId) {
-      const initialConversation = await window.tidecodeHistory.getConversation(preferredConversationSummary.id)
+      const initialConversation = await loadConversationForInitialView(preferredConversationSummary.id)
       if (initialConversation) {
         return {
           conversationSummaries,
@@ -229,7 +246,7 @@ export async function loadInitialChatHistory(
         (summary.preview.trim() === '' || summary.preview === 'New Chat'),
     )
     if (emptyProjectConversationSummary) {
-      const initialConversation = await window.tidecodeHistory.getConversation(emptyProjectConversationSummary.id)
+      const initialConversation = await loadConversationForInitialView(emptyProjectConversationSummary.id)
       if (initialConversation) {
         return {
           conversationSummaries,
@@ -249,7 +266,7 @@ export async function loadInitialChatHistory(
   }
 
   const fallbackSummary = conversationSummaries[0]
-  const initialConversation = await window.tidecodeHistory.getConversation(fallbackSummary.id)
+  const initialConversation = await loadConversationForInitialView(fallbackSummary.id)
 
   return {
     conversationSummaries,

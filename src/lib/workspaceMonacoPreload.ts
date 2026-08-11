@@ -78,8 +78,5 @@ export function scheduleWorkspaceMonacoPreload() {
   }
 
   backgroundPreloadScheduled = true
-  void Promise.allSettled([
-    preloadWorkspaceMonacoEditorView(),
-    preloadWorkspaceMonacoDiffView(),
-  ])
+  void preloadWorkspaceMonacoEditorView().catch(() => undefined)
 }

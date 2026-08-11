@@ -207,7 +207,6 @@
 
   *::-webkit-scrollbar-thumb {
     background-color: var(--color-scrollbar-thumb);
-    border-radius: 2px;
     cursor: pointer;
   }
 

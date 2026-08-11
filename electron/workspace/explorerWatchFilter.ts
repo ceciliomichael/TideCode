@@ -16,6 +16,8 @@ export const IGNORED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
   '.tox',
 ])
 
+export const HIDDEN_DIRECTORY_NAMES: ReadonlySet<string> = new Set(['.git'])
+
 export const IGNORED_FILE_NAMES: ReadonlySet<string> = new Set<string>()
 
 /**
@@ -24,6 +26,18 @@ export const IGNORED_FILE_NAMES: ReadonlySet<string> = new Set<string>()
  * do not trigger explorer refreshes.
  */
 const ATOMIC_WRITE_TEMP_FILE_PATTERN = /\..*\.(sw[px])$|~$|\.subl.*\.tmp/iu
+
+export function shouldIncludeWorkspaceWatchSnapshotEntry(entryName: string, isDirectory: boolean) {
+  if (isWorkspaceExplorerTemporaryDeletingEntryName(entryName)) {
+    return false
+  }
+
+  if (isDirectory) {
+    return !HIDDEN_DIRECTORY_NAMES.has(entryName)
+  }
+
+  return !IGNORED_FILE_NAMES.has(entryName)
+}
 
 /**
  * Decides whether a workspace-relative path observed by the recursive explorer
@@ -38,10 +52,12 @@ export function shouldIgnoreWorkspaceWatchPath(relativePath: string) {
   }
 
   const entryName = segments[segments.length - 1]
+  const ancestorSegments = segments.slice(0, -1)
   return (
     ATOMIC_WRITE_TEMP_FILE_PATTERN.test(entryName) ||
-    isWorkspaceExplorerTemporaryDeletingEntryName(entryName) ||
+    segments.some(isWorkspaceExplorerTemporaryDeletingEntryName) ||
     IGNORED_FILE_NAMES.has(entryName) ||
-    segments.some((segment) => IGNORED_DIRECTORY_NAMES.has(segment))
+    HIDDEN_DIRECTORY_NAMES.has(entryName) ||
+    ancestorSegments.some((segment) => IGNORED_DIRECTORY_NAMES.has(segment))
   )
 }

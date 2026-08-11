@@ -94,7 +94,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
             command,
             cwd: created.cwd,
             globalSessionId: created.sessionId,
-            interactionMode: "non_interactive",
+            interactionMode: "auto",
             label: null,
             localSessionId,
             marker,
@@ -112,7 +112,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           throw new Error("Unable to prepare the terminal session.");
         }
 
-        resetThreadSessionForCommand(session, command, marker, "non_interactive");
+        resetThreadSessionForCommand(session, command, marker, "auto");
         store.latestLocalSessionId = localSessionId;
 
         throwIfAborted(abortSignal);

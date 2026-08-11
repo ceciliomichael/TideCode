@@ -59,7 +59,7 @@ function HeaderDivider() {
 }
 
 interface ChatWorkspaceHeaderControlsProps {
-  addedLineCount: number
+  addedLineCount: number | null
   hasRepository: boolean
   isDiffPanelOpen: boolean
   isExplorerOpen: boolean
@@ -75,7 +75,7 @@ interface ChatWorkspaceHeaderControlsProps {
   onToggleExplorerPanel: () => void
   onToggleTerminalPanel: () => void
   onToggleWorkspaceBoard: () => void
-  removedLineCount: number
+  removedLineCount: number | null
 }
 
 export function ChatWorkspaceHeaderControls({
@@ -149,7 +149,7 @@ export function ChatWorkspaceHeaderControls({
         onClick={onOpenDiffPanel}
       >
         <GitCompareArrows size={16} className="shrink-0" />
-        {hasRepository ? (
+        {hasRepository && addedLineCount !== null && removedLineCount !== null ? (
           <>
             <span className="text-emerald-600 dark:text-emerald-400">{`+${addedLineCount}`}</span>
             <span className="text-red-600 dark:text-red-400">{`-${removedLineCount}`}</span>

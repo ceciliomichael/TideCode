@@ -109,7 +109,6 @@ export function ChatInterface({
     ],
   )
   const gitCommitState = useGitCommit({
-    hasRepository,
     modelId: gitTaskModelSelection.modelId,
     providerId: gitTaskModelSelection.providerId,
     reasoningEffort: chatRuntimeConfig.reasoningEffort,

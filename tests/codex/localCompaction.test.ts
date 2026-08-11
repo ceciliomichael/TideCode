@@ -69,7 +69,8 @@ test('repeated compaction supplies the previous Markdown continuation before new
 
   assert.match(prompt, /Previous validated continuation Markdown/u)
   assert.match(prompt, new RegExp(previousPacket.continuationMarkdown.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'))
-  assert.match(prompt, /complete updated continuation, not only a delta/u)
+  assert.match(prompt, /complete updated state, not only a delta/u)
+  assert.match(prompt, /Never carry an item into openItems or nextActions/u)
   assert.match(prompt, /The release check now has newer evidence/u)
 })
 
@@ -305,6 +306,22 @@ test('valid model compaction output is accepted and malformed output falls back 
   assert.ok(accepted)
   assert.equal(accepted.usedFallback, false)
   assert.equal(accepted.packet.sourceDigest, sourceDigest)
+
+  const reconciled = await compactModelMessages(createCompactionInput(
+    messages,
+    createTextStreamFactory(JSON.stringify({
+      ...packet,
+      continuationMarkdown: '## Remaining work\n- The compaction state ledger is complete.',
+      completedWork: ['Implemented the compaction state ledger.'],
+      openItems: ['The compaction state ledger is complete.', 'Verify the remaining documentation.'],
+      nextActions: ['The compaction state ledger is complete.', 'Verify the remaining documentation.'],
+    })),
+  ))
+  assert.ok(reconciled)
+  assert.deepEqual(reconciled.packet.openItems, ['Verify the remaining documentation.'])
+  assert.deepEqual(reconciled.packet.nextActions, ['Verify the remaining documentation.'])
+  assert.doesNotMatch(reconciled.packet.continuationMarkdown, /## Remaining work[\s\S]*compaction state ledger/iu)
+  assert.match(reconciled.packet.continuationMarkdown, /## Completed work/iu)
 
   const generatedMarkdown = 'The requested change is complete. Run the release validation next.'
   const previousPacket = buildFallbackCompactionPacket({

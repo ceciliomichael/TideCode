@@ -1,6 +1,7 @@
 import type { WebContents } from "electron";
 import type { AgentToolContext } from "../toolTypes";
 import { createExecuteTerminalTool } from "./executeTerminalTool";
+import { createInteractTerminalTool } from "./interactTerminalTool";
 import { createReadTerminalTool } from "./readTerminalTool";
 import { createTerminateTerminalTool } from "./terminateTerminalTool";
 import {
@@ -19,6 +20,7 @@ export function createTerminalToolSet(
   const runtime = createTerminalToolRuntime(context, dependencies);
   return {
     execute_terminal: createExecuteTerminalTool(runtime),
+    interact_terminal: createInteractTerminalTool(runtime),
     read_terminal: createReadTerminalTool(runtime),
     terminate_terminal: createTerminateTerminalTool(runtime),
   };

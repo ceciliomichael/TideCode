@@ -558,7 +558,7 @@ export function buildTerminalCommandSummary(
         : "Terminal command completed.",
     );
   } else {
-    displayBodyLines.push("Terminal command is still running.");
+    displayBodyLines.push("Terminal command is still running. Read terminal for updates.");
   }
 
   if (transcriptSummary.lineCount > 0 && interaction?.kind !== "screen") {

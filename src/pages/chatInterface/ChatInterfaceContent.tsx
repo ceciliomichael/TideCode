@@ -123,8 +123,8 @@ export function ChatInterfaceContent({
   }, [activeConversationIsArchived, onUpdateSettings, selectedProjectId])
 
   const activeWorkspacePath = chatMessages.activeConversationRootPath ?? chatMessages.selectedFolderPath
-  const gitAddedLineCount = gitCommitState.status?.addedLineCount ?? 0
-  const gitRemovedLineCount = gitCommitState.status?.removedLineCount ?? 0
+  const gitAddedLineCount = gitCommitState.status?.hasRepository ? gitCommitState.status.addedLineCount : null
+  const gitRemovedLineCount = gitCommitState.status?.hasRepository ? gitCommitState.status.removedLineCount : null
   const runtimeSelection = useMemo(
     () => buildRuntimeSelection(chatRuntimeConfig, settings.contextCompaction, settings.terminalExecutionMode),
     [chatRuntimeConfig, settings.contextCompaction, settings.terminalExecutionMode],
@@ -154,18 +154,6 @@ export function ChatInterfaceContent({
   const handleCompactionComplete = useCallback(() => {
     setCompactionRefreshSignal((current) => current + 1)
   }, [])
-  const compactionMessageRevision = useMemo(
-    () => chatMessages.messages
-      .filter((message) => message.role === 'user')
-      .map((message) => JSON.stringify([
-        message.id,
-        message.timestamp,
-        message.content,
-        message.attachments ?? [],
-      ]))
-      .join('\u001f'),
-    [chatMessages.messages],
-  )
   const contextUsage = useChatContextUsage({
     agentContextRootPath: activeWorkspacePath,
     chatMode: chatMessages.selectedChatMode,
@@ -179,7 +167,6 @@ export function ChatInterfaceContent({
   })
   const compactionMarkers = useChatCompactionMarkers({
     conversationId: chatMessages.activeConversationId,
-    messagesRevision: compactionMessageRevision,
     refreshSignal: compactionRefreshSignal,
   })
   const liveCompaction = useChatCompactionStatus({

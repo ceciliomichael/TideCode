@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from 'react'
+import { memo, useCallback, useLayoutEffect, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 
 interface WorkingBlockProps {
@@ -24,7 +24,7 @@ export const WorkingBlock = memo(function WorkingBlock({ children, startTime, en
   const [isOpen, setIsOpen] = useState(isStreaming)
   const durationSeconds = Math.max((endTime - startTime) / 1000, 0)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (isStreaming) {
       setIsOpen(true)
     } else {
