@@ -1,5 +1,6 @@
 import { jsonSchema, tool } from "ai";
 import type { AgentToolExecutionResult } from "../toolTypes";
+import { WORKSPACE_PATH_DESCRIPTION } from "./workspaceToolPaths";
 import {
   allocateVisibleSessionId,
   assertSandboxCommand,
@@ -38,7 +39,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           type: "string",
         },
         cwd: {
-          description: "Working directory for the command.",
+          description: `${WORKSPACE_PATH_DESCRIPTION} Omit to start at the workspace root.`,
           type: "string",
         },
       },

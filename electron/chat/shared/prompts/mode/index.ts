@@ -194,10 +194,23 @@ export function buildChatModeSystemPromptBreakdown(
     section: 'workspace_context' as const,
     source: 'electron/chat/shared/prompts/mode/index.ts',
   }
+  const workspacePathContractComponent: ChatSystemPromptComponent = {
+    content: [
+      'Workspace path contract:',
+      '- The host-provided workspace root above is the canonical absolute root for this turn. Treat it as authoritative; never infer a different root from the project name or a directory listing.',
+      '- Native workspace and terminal tools accept either a path relative to that root or the exact absolute path inside that root. Use `.` or omit the optional path to target the root itself.',
+      '- Never append the workspace folder name to an absolute workspace root. For example, if the root is `C:\\repo`, do not invent `C:\\repo\\repo`.',
+      '- If a tool reports that a path does not exist, reuse the exact root shown above and correct only the relative child path. Do not retry the same invented absolute path.',
+    ].join('\n'),
+    id: 'workspace_path_contract',
+    section: 'workspace_context' as const,
+    source: 'electron/chat/shared/prompts/mode/index.ts',
+  }
   const venvPrompt = buildPythonVenvPromptBlock(workspaceRootPath)
   const workspaceInstructions = buildWorkspaceInstructionsBlock(workspaceRootPath)
   const workspaceComponents = [
     workspaceRootComponent,
+    workspacePathContractComponent,
     venvPrompt
       ? {
           content: venvPrompt,

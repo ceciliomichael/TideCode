@@ -76,6 +76,8 @@ import type {
   EstimateContextUsageInput,
   StartChatStreamInput,
   StartChatStreamResult,
+  UpdatePendingSteerMessagesInput,
+  UpdatePendingSteerMessagesResult,
   SubmitToolDecisionInput,
   SubmitToolDecisionResult,
 } from './runtime'
@@ -172,6 +174,9 @@ export interface TideCodeChatApi {
   onStreamEvent: (listener: (event: ChatStreamEvent) => void) => () => void
   submitToolDecision: (input: SubmitToolDecisionInput) => Promise<SubmitToolDecisionResult>
   startStream: (input: StartChatStreamInput) => Promise<StartChatStreamResult>
+  updatePendingSteerMessages: (
+    input: UpdatePendingSteerMessagesInput,
+  ) => Promise<UpdatePendingSteerMessagesResult>
 }
 
 export interface TideCodeKanbanApi {

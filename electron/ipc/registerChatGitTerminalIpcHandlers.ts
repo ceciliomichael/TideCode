@@ -19,6 +19,7 @@ import type {
   ResizeTerminalSessionInput,
   StartChatStreamInput,
   SubmitToolDecisionInput,
+  UpdatePendingSteerMessagesInput,
   WriteTerminalSessionInput,
 } from '../../src/types/chat'
 import {
@@ -27,6 +28,7 @@ import {
   estimateCodexContextUsage,
   startCodexChatStream,
   submitCodexToolDecision,
+  updateCodexPendingSteerMessages,
 } from '../chat/codex/runtime'
 import {
   cancelApiKeyChatStream,
@@ -34,6 +36,7 @@ import {
   estimateApiKeyContextUsage,
   startApiKeyChatStream,
   submitApiKeyToolDecision,
+  updateApiKeyPendingSteerMessages,
 } from '../chat/apiKey/runtime'
 import { emitChatStreamEvent } from '../chat/shared/runtimeStreamEvents'
 import {
@@ -113,6 +116,25 @@ export function registerChatGitTerminalIpcHandlers(
       cancelApiKeyChatStream(streamId),
     ])
   })
+  ipcMain.handle(
+    'chat:stream:updatePendingSteerMessages',
+    async (_event, input: UpdatePendingSteerMessagesInput) => {
+      if (!input || typeof input.streamId !== 'string' || !input.streamId.trim()) {
+        return { accepted: false }
+      }
+      const providerId = activeChatStreamProviders.get(input.streamId)
+
+      if (providerId === 'codex') {
+        return updateCodexPendingSteerMessages(input)
+      }
+
+      if (providerId) {
+        return updateApiKeyPendingSteerMessages(input)
+      }
+
+      return { accepted: false }
+    },
+  )
   ipcMain.handle('chat:compactConversation', async (_event, input: CompactConversationInput) => {
     const attemptId = randomUUID()
     const streamId = randomUUID()

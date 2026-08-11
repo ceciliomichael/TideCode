@@ -3,7 +3,7 @@ import type { PlanToolResultPresentation } from '../../lib/planContracts'
 
 export type MessageRole = 'user' | 'assistant' | 'tool'
 export type ChatMode = 'agent' | 'plan'
-export type UserMessageKind = 'human' | 'tool_result'
+export type UserMessageKind = 'human' | 'steer' | 'tool_result'
 export type ToolInvocationState = 'running' | 'completed' | 'failed'
 export type AssistantWaitingIndicatorVariant = 'thinking' | 'splash' | 'rate_limit_retry'
 export type ChatAttachmentKind = 'image' | 'text'

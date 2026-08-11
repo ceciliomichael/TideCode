@@ -13,6 +13,7 @@ import {
   createReadToolResult,
   createWholeFileWriteToolResult,
   resolveReadableTargetPath,
+  resolveReadOnlyTargetPath,
 } from '../../electron/chat/shared/tools/workspaceTools'
 import { getGlobalAgentsDirectory } from '../../electron/chat/shared/tools/sandboxPaths'
 import { createCanonicalToolModelOutput } from '../../electron/chat/shared/toolReplay'
@@ -435,6 +436,31 @@ test('resolveReadableTargetPath keeps sandbox reads inside the workspace', async
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
     await fs.rm(outsideFilePath, { force: true })
+  }
+})
+
+test('read-only workspace resolution explains duplicated workspace roots', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const duplicatedWorkspaceRootPath = path.join(workspaceRootPath, path.basename(workspaceRootPath))
+
+  try {
+    await assert.rejects(
+      resolveReadOnlyTargetPath(workspaceRootPath, duplicatedWorkspaceRootPath, 'sandbox'),
+      (error: unknown) => {
+        assert.ok(error instanceof Error)
+        assert.match(error.message, /Path repeats the workspace root name/u)
+        assert.ok(error.message.includes(`Workspace root is ${workspaceRootPath}`))
+        assert.match(error.message, /use the path relative to the root instead/iu)
+        return true
+      },
+    )
+
+    assert.throws(
+      () => resolveReadableTargetPath(workspaceRootPath, path.join(duplicatedWorkspaceRootPath, 'src', 'new.ts'), 'sandbox'),
+      /Path repeats the workspace root name/u,
+    )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 

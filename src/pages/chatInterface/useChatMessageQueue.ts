@@ -3,28 +3,27 @@ import type { FollowUpBehavior } from '../../lib/appSettings'
 import type { ChatAttachment, QueuedMessage } from '../../types/chat'
 import {
   createQueuedComposerMessage,
-  dequeueQueuedComposerMessage,
   removeQueuedComposerMessage,
-  requeueQueuedComposerMessage,
+  removeQueuedComposerMessages,
+  requeueQueuedComposerMessages,
   reorderQueuedComposerMessages,
   updateQueuedComposerMessage,
 } from './chatComposerQueue'
 import {
-  detectSuccessfulToolReleaseSignal,
   resolveQueuedMessageAutoSendReason,
+  shouldProcessQueuedMessages,
   type QueuedMessageAutoSendReason,
 } from './chatQueueAutoSend'
 
 interface UseChatMessageQueueInput {
+  activeStreamId: string | null
   followUpBehavior: FollowUpBehavior
-  hasRunningToolInvocations: boolean
   isAutoSendBlocked: boolean
   isTurnActive: boolean
   onSendMessage: (
-    message: QueuedMessage,
+    messages: readonly QueuedMessage[],
     reason: QueuedMessageAutoSendReason,
   ) => Promise<QueuedMessageSendResult> | QueuedMessageSendResult
-  successfulToolCompletionSignal: string | null
 }
 
 export interface QueuedMessageSendResult {
@@ -33,21 +32,22 @@ export interface QueuedMessageSendResult {
 }
 
 export function useChatMessageQueue({
+  activeStreamId,
   followUpBehavior,
-  hasRunningToolInvocations,
   isAutoSendBlocked,
   isTurnActive,
   onSendMessage,
-  successfulToolCompletionSignal,
 }: UseChatMessageQueueInput) {
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([])
-  const [successfulToolReleaseSignal, setSuccessfulToolReleaseSignal] = useState<string | null>(null)
+  const [isProcessingQueue, setIsProcessingQueue] = useState(false)
   const isProcessingQueueRef = useRef(false)
-  const queuedMessageSendInFlightIdsRef = useRef<Set<string>>(new Set())
+  const processingAttemptCounterRef = useRef(0)
+  const activeProcessingAttemptRef = useRef<number | null>(null)
   const queueLifecycleVersionRef = useRef(0)
   const attemptedAutoSendKeyRef = useRef<string | null>(null)
   const observedAutoSendBlockedRef = useRef(isAutoSendBlocked)
-  const observedSuccessfulToolSignalRef = useRef(successfulToolCompletionSignal)
+  const steerSnapshotRevisionRef = useRef(0)
+  const stagedSteerStreamIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (observedAutoSendBlockedRef.current !== isAutoSendBlocked) {
@@ -57,30 +57,43 @@ export function useChatMessageQueue({
   }, [isAutoSendBlocked])
 
   useEffect(() => {
-    const previousSignal = observedSuccessfulToolSignalRef.current
-    observedSuccessfulToolSignalRef.current = successfulToolCompletionSignal
-    const nextReleaseSignal = detectSuccessfulToolReleaseSignal({
-      currentSignal: successfulToolCompletionSignal,
-      hasQueuedMessages: queuedMessages.length > 0,
-      observedSignal: previousSignal,
-    })
-    if (nextReleaseSignal === null) {
-      return
-    }
-
-    attemptedAutoSendKeyRef.current = null
-    setSuccessfulToolReleaseSignal(nextReleaseSignal)
-  }, [queuedMessages.length, successfulToolCompletionSignal])
-
-  useEffect(() => {
     if (queuedMessages.length > 0) {
       return
     }
 
     attemptedAutoSendKeyRef.current = null
-    observedSuccessfulToolSignalRef.current = successfulToolCompletionSignal
-    setSuccessfulToolReleaseSignal(null)
-  }, [queuedMessages.length, successfulToolCompletionSignal])
+  }, [queuedMessages.length])
+
+  useEffect(() => {
+    const previousStreamId = stagedSteerStreamIdRef.current
+    const shouldStage = followUpBehavior === 'steer' && isTurnActive && activeStreamId !== null
+    const targetStreamId = shouldStage ? activeStreamId : previousStreamId
+    if (!targetStreamId) {
+      return
+    }
+
+    steerSnapshotRevisionRef.current += 1
+    const revision = steerSnapshotRevisionRef.current
+    const messages = shouldStage ? queuedMessages : []
+    stagedSteerStreamIdRef.current = shouldStage ? activeStreamId : null
+    void window.tidecodeChat.updatePendingSteerMessages({
+      messages: [...messages],
+      revision,
+      streamId: targetStreamId,
+    }).catch((error) => {
+      console.error('Unable to update pending steer messages.', error)
+    })
+  }, [activeStreamId, followUpBehavior, isTurnActive, queuedMessages])
+
+  useEffect(() => window.tidecodeChat.onStreamEvent((event) => {
+    if (event.type !== 'steer_messages_consumed') {
+      return
+    }
+
+    attemptedAutoSendKeyRef.current = null
+    const consumedMessageIds = event.messages.map((message) => message.id)
+    setQueuedMessages((currentValue) => removeQueuedComposerMessages(currentValue, consumedMessageIds))
+  }), [])
 
   const enqueueMessage = useCallback((content: string, attachments?: ChatAttachment[]) => {
     const nextMessage = createQueuedComposerMessage({ attachments, content })
@@ -103,26 +116,20 @@ export function useChatMessageQueue({
   const clearQueuedMessages = useCallback(() => {
     queueLifecycleVersionRef.current += 1
     attemptedAutoSendKeyRef.current = null
-    setSuccessfulToolReleaseSignal(null)
     setQueuedMessages([])
   }, [])
 
-  const sendQueuedMessage = useCallback(
+  const sendQueuedMessages = useCallback(
     async (
-      targetMessage: QueuedMessage,
+      targetMessages: readonly QueuedMessage[],
       restoreIndex: number,
       reason: QueuedMessageAutoSendReason,
     ) => {
-      if (queuedMessageSendInFlightIdsRef.current.has(targetMessage.id)) {
-        return true
-      }
-
-      queuedMessageSendInFlightIdsRef.current.add(targetMessage.id)
       const queueLifecycleVersion = queueLifecycleVersionRef.current
-      setQueuedMessages((currentValue) => removeQueuedComposerMessage(currentValue, targetMessage.id))
-
+      const targetMessageIds = targetMessages.map((message) => message.id)
+      setQueuedMessages((currentValue) => removeQueuedComposerMessages(currentValue, targetMessageIds))
       try {
-        const sendResult = await onSendMessage(targetMessage, reason)
+        const sendResult = await onSendMessage(targetMessages, reason)
         if (!sendResult.accepted) {
           if (sendResult.retryable) {
             attemptedAutoSendKeyRef.current = null
@@ -130,12 +137,11 @@ export function useChatMessageQueue({
 
           if (queueLifecycleVersionRef.current === queueLifecycleVersion) {
             setQueuedMessages((currentValue) =>
-              requeueQueuedComposerMessage(currentValue, targetMessage, restoreIndex),
+              requeueQueuedComposerMessages(currentValue, targetMessages, restoreIndex),
             )
           }
         } else {
           attemptedAutoSendKeyRef.current = null
-          setSuccessfulToolReleaseSignal(null)
         }
 
         return sendResult.accepted
@@ -143,12 +149,10 @@ export function useChatMessageQueue({
         console.error(caughtError)
         if (queueLifecycleVersionRef.current === queueLifecycleVersion) {
           setQueuedMessages((currentValue) =>
-            requeueQueuedComposerMessage(currentValue, targetMessage, restoreIndex),
+            requeueQueuedComposerMessages(currentValue, targetMessages, restoreIndex),
           )
         }
         return false
-      } finally {
-        queuedMessageSendInFlightIdsRef.current.delete(targetMessage.id)
       }
     },
     [onSendMessage],
@@ -165,54 +169,61 @@ export function useChatMessageQueue({
   }, [])
 
   useEffect(() => {
-    if (isAutoSendBlocked || queuedMessages.length === 0 || isProcessingQueueRef.current) {
+    if (
+      !shouldProcessQueuedMessages({
+        hasQueuedMessages: queuedMessages.length > 0,
+        isAutoSendBlocked,
+        isProcessingQueue,
+      }) ||
+      isProcessingQueueRef.current
+    ) {
       return undefined
     }
 
-    const { nextMessage } = dequeueQueuedComposerMessage(queuedMessages)
+    const targetMessages = [...queuedMessages]
+    const nextMessage = targetMessages[0]
     if (!nextMessage) {
       return undefined
     }
 
     const autoSendReason = resolveQueuedMessageAutoSendReason({
-      followUpBehavior,
-      hasRunningToolInvocations,
-      hasSuccessfulToolRelease: successfulToolReleaseSignal !== null,
       isTurnActive,
     })
     if (!autoSendReason) {
       return undefined
     }
 
-    const releaseSignal =
-      autoSendReason === 'successful_tool'
-        ? successfulToolReleaseSignal
-        : 'turn_completed'
-    const autoSendKey = `${nextMessage.id}:${autoSendReason}:${releaseSignal}`
+    const autoSendKey = `${targetMessages.map((message) => message.id).join(',')}:${autoSendReason}`
     if (attemptedAutoSendKeyRef.current === autoSendKey) {
       return undefined
     }
 
     attemptedAutoSendKeyRef.current = autoSendKey
     isProcessingQueueRef.current = true
+    const processingAttemptId = processingAttemptCounterRef.current + 1
+    processingAttemptCounterRef.current = processingAttemptId
+    activeProcessingAttemptRef.current = processingAttemptId
+    setIsProcessingQueue(true)
 
     void (async () => {
       try {
-        await sendQueuedMessage(nextMessage, 0, autoSendReason)
+        await sendQueuedMessages(targetMessages, 0, autoSendReason)
       } finally {
-        isProcessingQueueRef.current = false
+        if (activeProcessingAttemptRef.current === processingAttemptId) {
+          activeProcessingAttemptRef.current = null
+          isProcessingQueueRef.current = false
+          setIsProcessingQueue(false)
+        }
       }
     })()
 
     return undefined
   }, [
-    followUpBehavior,
-    hasRunningToolInvocations,
     isAutoSendBlocked,
+    isProcessingQueue,
     isTurnActive,
     queuedMessages,
-    sendQueuedMessage,
-    successfulToolReleaseSignal,
+    sendQueuedMessages,
   ])
 
   return {

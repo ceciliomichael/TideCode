@@ -5,7 +5,11 @@ import { getAgentContextsDirectoryPath } from '../history/paths'
 export const DEFAULT_WORKSPACE_RELATIVE_PATH = '.'
 
 export function normalizeWorkspacePath(workspaceRootPath: string) {
-  return path.resolve(workspaceRootPath.trim())
+  if (typeof workspaceRootPath !== 'string' || workspaceRootPath.trim().length === 0) {
+    throw new Error('Workspace root path is required.')
+  }
+
+  return path.normalize(path.resolve(workspaceRootPath.trim()))
 }
 
 export function normalizeWorkspaceRelativePath(relativePath: string | undefined) {
@@ -14,12 +18,19 @@ export function normalizeWorkspaceRelativePath(relativePath: string | undefined)
 }
 
 export function getSafeWorkspaceTargetPath(workspaceRootPath: string, relativePath: string | undefined) {
+  const normalizedWorkspaceRootPath = normalizeWorkspacePath(workspaceRootPath)
   const normalizedRelativePath = normalizeWorkspaceRelativePath(relativePath)
-  const absolutePath = path.resolve(workspaceRootPath, normalizedRelativePath)
-  const workspaceRelativePath = path.relative(workspaceRootPath, absolutePath)
+  const absolutePath = path.resolve(normalizedWorkspaceRootPath, normalizedRelativePath)
+  const workspaceRelativePath = path.relative(normalizedWorkspaceRootPath, absolutePath)
 
   if (workspaceRelativePath.startsWith('..') || path.isAbsolute(workspaceRelativePath)) {
-    throw new Error(`Path is outside the workspace root: ${relativePath ?? DEFAULT_WORKSPACE_RELATIVE_PATH}`)
+    throw new Error(
+      [
+        `Path is outside the workspace root: ${normalizedRelativePath}.`,
+        `Workspace root is ${normalizedWorkspaceRootPath}.`,
+        'Use the exact absolute path under that root or a path relative to the root; do not append the workspace folder name to an absolute root path.',
+      ].join(' '),
+    )
   }
 
   return {

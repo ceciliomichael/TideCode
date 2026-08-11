@@ -15,11 +15,16 @@ export function isSyntheticToolResultMessage(message: Message) {
 }
 
 export function isHumanUserMessage(message: Message) {
+  const messageKind = getResolvedUserMessageKind(message)
   return (
     message.role === 'user' &&
-    getResolvedUserMessageKind(message) === 'human' &&
+    (messageKind === 'human' || messageKind === 'steer') &&
     !isPlanStatusMessage(message.content)
   )
+}
+
+export function isSameTurnSteerMessage(message: Message) {
+  return message.role === 'user' && getResolvedUserMessageKind(message) === 'steer'
 }
 
 export function isPlanImplementationMessage(message: Message) {

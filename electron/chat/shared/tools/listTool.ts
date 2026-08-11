@@ -1,5 +1,10 @@
 import { jsonSchema, tool } from 'ai'
-import { createListToolResult, resolveReadOnlyTargetPath, type WorkspaceToolContext } from './workspaceTools'
+import {
+  createListToolResult,
+  resolveReadOnlyTargetPath,
+  WORKSPACE_PATH_DESCRIPTION,
+  type WorkspaceToolContext,
+} from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createListTool(context: WorkspaceToolContext) {
@@ -9,7 +14,7 @@ export function createListTool(context: WorkspaceToolContext) {
       additionalProperties: false,
       properties: {
         path: {
-          description: 'Directory path. Omit for the workspace root.',
+          description: `${WORKSPACE_PATH_DESCRIPTION} Omit for the workspace root.`,
           type: 'string',
         },
       },

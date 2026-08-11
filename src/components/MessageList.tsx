@@ -151,6 +151,7 @@ const MessageRow = memo(
     workspaceRootPath = null,
     editClickBoundaryRef,
   }: MessageRowProps) {
+    const canRewriteUserMessage = message.userMessageKind !== 'steer'
     return (
       <div
         data-message-id={message.id}
@@ -207,12 +208,12 @@ const MessageRow = memo(
                 attachments={message.attachments}
                 content={message.content}
                 onEdit={
-                  onEditUserMessage
+                  onEditUserMessage && canRewriteUserMessage
                     ? () => onEditUserMessage(message.id)
                     : undefined
                 }
                 onRevert={
-                  onRevertUserMessage
+                  onRevertUserMessage && canRewriteUserMessage
                     ? () => onRevertUserMessage(message.id)
                     : undefined
                 }

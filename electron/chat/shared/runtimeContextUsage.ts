@@ -19,6 +19,7 @@ import { selectContextUsageMessages } from './contextUsageProjection'
 import { buildChatPrompt } from './messages'
 import { createAgentTools } from './tools'
 import { sortToolSet } from './runtimeToolSet'
+import { normalizeWorkspacePath } from '../../workspace/paths'
 
 export async function estimateToolEnabledContextUsage(input: {
   agentContextRootPath: string | null
@@ -32,8 +33,11 @@ export async function estimateToolEnabledContextUsage(input: {
   webContents: WebContents
 }): Promise<ContextUsageEstimate> {
   const contextCompaction = normalizeContextCompactionSettings(input.contextCompaction)
-  const workspaceRootPath = input.agentContextRootPath?.trim() || 'No workspace selected'
-  const enabledSkills = await listEnabledSkills(input.agentContextRootPath)
+  const normalizedWorkspaceRootPath = input.agentContextRootPath?.trim()
+    ? normalizeWorkspacePath(input.agentContextRootPath)
+    : null
+  const workspaceRootPath = normalizedWorkspaceRootPath ?? 'No workspace selected'
+  const enabledSkills = await listEnabledSkills(normalizedWorkspaceRootPath)
   const promptOptions = {
     includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId),
     terminalExecutionMode: input.terminalExecutionMode,
@@ -64,12 +68,12 @@ export async function estimateToolEnabledContextUsage(input: {
   const systemPrompt = prompt.system
   const messageUsage = estimateModelMessageContextUsage(modelMessages)
   let toolSchemaTokens = 0
-  if (input.agentContextRootPath?.trim()) {
+  if (normalizedWorkspaceRootPath) {
     const tools = await createAgentTools(
       {
         checkpointId: null,
         conversationId: null,
-        workspaceRootPath: input.agentContextRootPath,
+        workspaceRootPath: normalizedWorkspaceRootPath,
         terminalExecutionMode: input.terminalExecutionMode,
         webContents: input.webContents,
       },

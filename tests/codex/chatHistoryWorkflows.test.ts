@@ -165,6 +165,100 @@ test('revert helpers rewind the clicked message and every later user turn', asyn
   }
 })
 
+test('revert helpers treat checkpoint-free steer messages as part of their parent turn', async () => {
+  const firstCheckpoint: UserMessageRunCheckpoint = {
+    createdAt: 100,
+    id: 'checkpoint-1',
+  }
+  const secondCheckpoint: UserMessageRunCheckpoint = {
+    createdAt: 200,
+    id: 'checkpoint-2',
+  }
+  const redoCheckpoint: UserMessageRunCheckpoint = {
+    createdAt: 201,
+    id: 'checkpoint-redo',
+  }
+  const conversation = buildConversation([
+    {
+      content: 'original turn',
+      id: 'message-1',
+      role: 'user',
+      runCheckpoint: firstCheckpoint,
+      timestamp: 10,
+    },
+    {
+      content: 'assistant work before steer',
+      id: 'assistant-1',
+      role: 'assistant',
+      timestamp: 20,
+      toolInvocations: [
+        {
+          argumentsText: '{}',
+          id: 'tool-before-steer',
+          startedAt: 20,
+          state: 'completed',
+          toolName: 'read',
+        },
+      ],
+    },
+    {
+      content: 'same-turn correction',
+      id: 'steer-1',
+      role: 'user',
+      timestamp: 30,
+      userMessageKind: 'steer',
+    },
+    {
+      content: 'assistant work after steer',
+      id: 'assistant-2',
+      role: 'assistant',
+      timestamp: 40,
+    },
+    {
+      content: 'next independent turn',
+      id: 'message-2',
+      role: 'user',
+      runCheckpoint: secondCheckpoint,
+      timestamp: 50,
+    },
+  ])
+  const redoCheckpointCalls: string[][] = []
+  const restoreWindow = installWindowMock({
+    tidecodeHistory: {
+      getConversation: async (conversationId) => (conversationId === conversation.id ? conversation : null),
+      listConversations: async () => [],
+      listFolders: async () => [],
+      getUserMessageCheckpointHistory: async (_conversationId, messageId) => {
+        throw new Error(`checkpoint history must not be requested for ${messageId}`)
+      },
+    },
+    tidecodeWorkspace: {
+      createRedoCheckpointFromSource: async () => redoCheckpoint,
+      createRedoCheckpointFromSources: async (sourceCheckpointIds) => {
+        redoCheckpointCalls.push([...sourceCheckpointIds])
+        return redoCheckpoint
+      },
+      restoreCheckpoint: async () => {},
+      restoreCheckpointSequence: async () => {},
+    },
+  })
+
+  try {
+    const originalPreparation = await prepareRevertSessionForMessage(conversation.id, 'message-1')
+    const steerPreparation = await prepareRevertSessionForMessage(conversation.id, 'steer-1')
+
+    assert.deepEqual(originalPreparation.checkpointIds, [firstCheckpoint.id, secondCheckpoint.id])
+    assert.deepEqual(steerPreparation.checkpointIds, [firstCheckpoint.id, secondCheckpoint.id])
+    assert.equal(steerPreparation.messageId, 'message-1')
+    assert.deepEqual(redoCheckpointCalls, [
+      [firstCheckpoint.id, secondCheckpoint.id],
+      [firstCheckpoint.id, secondCheckpoint.id],
+    ])
+  } finally {
+    restoreWindow()
+  }
+})
+
 test('revert helpers fall back to checkpoint history when the message checkpoint is missing', async () => {
   const historicalCheckpoint: UserMessageRunCheckpoint = {
     createdAt: 100,

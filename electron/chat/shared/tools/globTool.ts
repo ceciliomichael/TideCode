@@ -1,5 +1,10 @@
 import { jsonSchema, tool } from 'ai'
-import { createGlobToolResult, resolveReadOnlyTargetPath, type WorkspaceToolContext } from './workspaceTools'
+import {
+  createGlobToolResult,
+  resolveReadOnlyTargetPath,
+  WORKSPACE_PATH_DESCRIPTION,
+  type WorkspaceToolContext,
+} from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createGlobTool(context: WorkspaceToolContext) {
@@ -9,7 +14,7 @@ export function createGlobTool(context: WorkspaceToolContext) {
       additionalProperties: false,
       properties: {
         path: {
-          description: 'Directory path. Omit for the workspace root.',
+          description: `${WORKSPACE_PATH_DESCRIPTION} Omit for the workspace root.`,
           type: 'string',
         },
         pattern: { minLength: 1, type: 'string' },

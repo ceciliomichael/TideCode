@@ -7,10 +7,11 @@ import type {
   CompactConversationResult,
   StartChatStreamInput,
   StartChatStreamResult,
+  UpdatePendingSteerMessagesInput,
   SubmitToolDecisionInput,
   SubmitToolDecisionResult,
 } from '../../../src/types/chat'
-import { ActiveChatStreamRegistry } from '../shared/activeChatStreamRegistry'
+import { ActiveChatStreamRegistry, type ActiveChatStreamRegistration } from '../shared/activeChatStreamRegistry'
 import { estimateToolEnabledContextUsage, runToolEnabledChatStream } from '../shared/runtime'
 import { emitChatStreamEvent } from '../shared/runtimeStreamEvents'
 import { createCodexClient } from './client'
@@ -94,10 +95,10 @@ export async function startCodexChatStream(
 
   const streamId = randomUUID()
   const abortController = new AbortController()
-  activeStreams.register(streamId, abortController)
+  const registration = activeStreams.register(streamId, abortController)
 
   queueMicrotask(() => {
-    void runCodexChatStream(webContents, streamId, input, abortController)
+    void runCodexChatStream(webContents, streamId, input, abortController, registration.steering)
       .catch((error: unknown) => {
         if (abortController.signal.aborted) {
           return
@@ -124,6 +125,7 @@ async function runCodexChatStream(
   streamId: string,
   input: StartChatStreamInput,
   abortController: AbortController,
+  steering: ActiveChatStreamRegistration['steering'],
 ) {
   try {
     const client = createCodexClient()
@@ -151,6 +153,7 @@ async function runCodexChatStream(
       // generic reasoning part that the adapter will discard with a warning.
       promptOptions: { includeAssistantReasoningParts: false },
       startInput: input,
+      steering,
       streamId,
       webContents,
     })
@@ -165,6 +168,12 @@ async function runCodexChatStream(
 
 export function cancelCodexChatStream(streamId: string) {
   return activeStreams.cancel(streamId)
+}
+
+export function updateCodexPendingSteerMessages(input: UpdatePendingSteerMessagesInput) {
+  return {
+    accepted: activeStreams.updatePendingSteerMessages(input.streamId, input),
+  }
 }
 
 export async function submitCodexToolDecision(input: SubmitToolDecisionInput): Promise<SubmitToolDecisionResult> {

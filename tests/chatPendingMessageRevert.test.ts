@@ -76,6 +76,25 @@ test('a later user turn is not treated as the pending revert target', () => {
   )
 })
 
+test('a same-turn steer is never treated as a separately rollbackable pending turn', () => {
+  const originalUserMessage = createUserMessage('user-1')
+  const assistantToolMessage = createAssistantMessage('assistant-tool', 'Tool completed.')
+  const steerMessage: Message = {
+    ...createUserMessage('steer-1'),
+    content: 'Change direction after the tool.',
+    userMessageKind: 'steer',
+  }
+
+  const conversationState = createConversationState([
+    originalUserMessage,
+    assistantToolMessage,
+    steerMessage,
+  ])
+
+  assert.equal(getActiveUnrespondedUserMessage(conversationState), null)
+  assert.equal(isActiveUnrespondedUserMessage(conversationState, steerMessage.id), false)
+})
+
 test('rollback removes the reverted user turn and all response messages generated after it', () => {
   const messages: Message[] = [
     createUserMessage('previous-user'),

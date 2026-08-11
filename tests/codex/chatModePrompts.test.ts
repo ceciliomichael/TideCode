@@ -14,6 +14,9 @@ test('agent prompt teaches autonomous, reliable, dependency-aware implementation
     const prompt = buildChatModeSystemPrompt('agent', workspaceRootPath)
 
     assert.doesNotMatch(prompt, /caveman|primitive speech/iu)
+    assert.match(prompt, /host-provided workspace root above is the canonical absolute root/u)
+    assert.match(prompt, /Never append the workspace folder name to an absolute workspace root/u)
+    assert.match(prompt, /If a tool reports that a path does not exist/u)
     assert.ok(approximateTokenCount(prompt) < 3_200)
     assert.match(prompt, /Use the exact tool and schema for the task/u)
     assert.match(prompt, /keep dependent calls sequential/u)

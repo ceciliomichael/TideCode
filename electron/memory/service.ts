@@ -78,17 +78,19 @@ function validateContent(content: string, title?: string) {
   return titledContent
 }
 
-export function normalizeMemoryEntryPath(candidatePath: string) {
+export function normalizeMemoryEntryPath(candidatePath: string, workspaceRootPath: string) {
   const trimmedPath = candidatePath.trim()
-  if (trimmedPath.length === 0 || path.isAbsolute(trimmedPath)) {
-    throw new Error('Memory path must be a workspace-relative Markdown path.')
+  if (trimmedPath.length === 0) {
+    throw new Error('Memory path must be a workspace-relative or workspace-contained absolute Markdown path.')
   }
 
-  const slashPath = trimmedPath.replace(/\\/gu, '/').replace(/^\.\//u, '')
+  const workspaceRelativePath = path.isAbsolute(trimmedPath)
+    ? path.relative(workspaceRootPath, path.resolve(trimmedPath)).replace(/\\/gu, '/')
+    : trimmedPath.replace(/\\/gu, '/').replace(/^\.\//u, '')
   const memoryPrefix = `${MEMORY_DIRECTORY}/`
-  const relativeMemoryPath = slashPath.startsWith(memoryPrefix)
-    ? slashPath.slice(memoryPrefix.length)
-    : slashPath
+  const relativeMemoryPath = workspaceRelativePath.startsWith(memoryPrefix)
+    ? workspaceRelativePath.slice(memoryPrefix.length)
+    : workspaceRelativePath
   const segments = relativeMemoryPath.split('/')
 
   if (segments.length < 3 || segments[0] !== 'folders') {
@@ -311,7 +313,7 @@ export async function readMemoryIndex(workspaceRootPathInput: string): Promise<M
 export async function readMemoryEntry(input: { path: string; workspaceRootPath: string }): Promise<MemoryDocument> {
   const workspaceRootPath = normalizeWorkspacePath(input.workspaceRootPath)
   await assertWorkspaceDirectory(workspaceRootPath)
-  const relativeMemoryPath = normalizeMemoryEntryPath(input.path)
+  const relativeMemoryPath = normalizeMemoryEntryPath(input.path, workspaceRootPath)
   const target = resolveMemoryTarget(workspaceRootPath, relativeMemoryPath)
   await assertManagedPathContainsNoSymlink(workspaceRootPath, target.absolutePath)
 
@@ -335,7 +337,7 @@ export async function writeMemoryEntry(input: MemoryMutationInput & {
 }): Promise<MemoryMutationResult> {
   const workspaceRootPath = normalizeWorkspacePath(input.workspaceRootPath)
   await assertWorkspaceDirectory(workspaceRootPath)
-  const relativeMemoryPath = normalizeMemoryEntryPath(input.path)
+  const relativeMemoryPath = normalizeMemoryEntryPath(input.path, workspaceRootPath)
   const content = validateContent(input.content, input.title)
 
   return withMemoryLock(workspaceRootPath, async () => {
@@ -374,7 +376,7 @@ export async function editMemoryEntry(input: MemoryMutationInput & {
 }): Promise<MemoryMutationResult> {
   const workspaceRootPath = normalizeWorkspacePath(input.workspaceRootPath)
   await assertWorkspaceDirectory(workspaceRootPath)
-  const relativeMemoryPath = normalizeMemoryEntryPath(input.path)
+  const relativeMemoryPath = normalizeMemoryEntryPath(input.path, workspaceRootPath)
   if (typeof input.oldText !== 'string' || input.oldText.length === 0) {
     throw new Error('Memory edit old text must be a non-empty string.')
   }
@@ -423,7 +425,7 @@ export async function editMemoryEntry(input: MemoryMutationInput & {
 export async function forgetMemoryEntry(input: MemoryMutationInput & { path: string }): Promise<MemoryMutationResult> {
   const workspaceRootPath = normalizeWorkspacePath(input.workspaceRootPath)
   await assertWorkspaceDirectory(workspaceRootPath)
-  const relativeMemoryPath = normalizeMemoryEntryPath(input.path)
+  const relativeMemoryPath = normalizeMemoryEntryPath(input.path, workspaceRootPath)
 
   return withMemoryLock(workspaceRootPath, async () => {
     const target = resolveMemoryTarget(workspaceRootPath, relativeMemoryPath)

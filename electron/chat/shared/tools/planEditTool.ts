@@ -1,6 +1,6 @@
 import { jsonSchema, tool } from 'ai'
 import { editPlan } from '../../../plans/service'
-import type { WorkspaceToolContext } from './workspaceToolPaths'
+import { WORKSPACE_PATH_DESCRIPTION, type WorkspaceToolContext } from './workspaceToolPaths'
 import { createPlanToolResult } from './planToolResult'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 import { captureCheckpointFileStateIfNeeded } from './workspaceToolResults'
@@ -18,7 +18,7 @@ export function createPlanEditTool(context: WorkspaceToolContext) {
           type: 'string',
         },
         path: {
-          description: 'Existing plan path, such as .tidecode/plans/plan-001.md.',
+          description: `${WORKSPACE_PATH_DESCRIPTION} Existing plan path, such as .tidecode/plans/plan-001.md.`,
           type: 'string',
         },
         title: {

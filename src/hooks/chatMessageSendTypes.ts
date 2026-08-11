@@ -26,6 +26,11 @@ export interface PersistedUserTurn {
   message: Message
 }
 
+export interface UserMessageSubmission {
+  attachments: ChatAttachment[]
+  text: string
+}
+
 export interface PersistAndStreamMessageInput {
   activeConversationId: string | null
   activeConversationIdRef: { current: string | null }
@@ -50,6 +55,7 @@ export interface PersistAndStreamMessageInput {
   onUserTurnSettled?: (turn: PersistedUserTurn) => void
   isUserMessageReverted?: (messageId: string) => boolean
   clearUserMessageRevert?: (messageId: string) => void
+  messageBatch?: readonly UserMessageSubmission[]
   setError: (errorMessage: string | null) => void
   setMainComposerAttachments: (attachments: ChatAttachment[]) => void
   setMainComposerMentionPathMap: (mentionPathMap: Map<string, string>) => void

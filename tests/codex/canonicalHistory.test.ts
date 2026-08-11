@@ -149,6 +149,52 @@ test('exact replay replaces display-normalized assistant history and appends onl
   assert.deepEqual(result.messages, [...exactMessages, { content: 'second question', role: 'user' }])
 })
 
+test('same-run steer messages remain inside the replay prefix instead of being duplicated as a new turn', () => {
+  const document = createEmptyCanonicalHistory('conversation', 1)
+  const exactMessages = [
+    { content: 'original request', role: 'user' },
+    { content: 'tool step completed', role: 'assistant' },
+    { content: 'steer after the tool', role: 'user' },
+    { content: 'continued in the same run', role: 'assistant' },
+  ] as ModelMessage[]
+  document.replay = {
+    anchorUserMessageId: 'steer-1',
+    branchId: 'main',
+    contextFingerprint: 'context',
+    fidelity: 'exact',
+    freshnessRevision: 0,
+    messages: encodeModelMessages(exactMessages),
+    modelId: 'model',
+    providerId: 'openai',
+    runId: 'run-1',
+    sourceRevision: 1,
+    updatedAt: 2,
+  }
+  const displayMessages: Message[] = [
+    { content: 'original request', id: 'user-1', role: 'user', timestamp: 1 },
+    { content: 'tool step completed', id: 'assistant-1', role: 'assistant', timestamp: 2 },
+    {
+      content: 'steer after the tool',
+      id: 'steer-1',
+      role: 'user',
+      timestamp: 3,
+      userMessageKind: 'steer',
+    },
+    { content: 'continued in the same run', id: 'assistant-2', role: 'assistant', timestamp: 4 },
+    { content: 'next turn', id: 'user-2', role: 'user', timestamp: 5 },
+  ]
+
+  const result = projectCanonicalReplay({
+    document,
+    fallbackMessages: [],
+    messages: displayMessages,
+    modelId: 'model',
+    providerId: 'openai',
+  })
+
+  assert.deepEqual(result.messages, [...exactMessages, { content: 'next turn', role: 'user' }])
+})
+
 test('compacted replay retains assistant and tool responses from later turns', () => {
   const document = createEmptyCanonicalHistory('conversation', 1)
   const packet = buildFallbackCompactionPacket({

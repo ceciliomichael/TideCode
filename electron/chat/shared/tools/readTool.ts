@@ -1,5 +1,10 @@
 import { jsonSchema, tool } from 'ai'
-import { createReadToolResult, resolveReadOnlyTargetPath, type WorkspaceToolContext } from './workspaceTools'
+import {
+  createReadToolResult,
+  resolveReadOnlyTargetPath,
+  WORKSPACE_PATH_DESCRIPTION,
+  type WorkspaceToolContext,
+} from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createReadTool(context: WorkspaceToolContext) {
@@ -9,7 +14,7 @@ export function createReadTool(context: WorkspaceToolContext) {
       additionalProperties: false,
       properties: {
         path: {
-          description: 'File or directory path.',
+          description: WORKSPACE_PATH_DESCRIPTION,
           type: 'string',
         },
         limit: { minimum: 1, type: 'number' },

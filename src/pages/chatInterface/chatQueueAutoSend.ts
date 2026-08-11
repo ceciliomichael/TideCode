@@ -1,17 +1,6 @@
-import type { FollowUpBehavior } from '../../lib/appSettings'
-
-export type QueuedMessageAutoSendReason = 'successful_tool' | 'turn_completed'
-
-interface DetectSuccessfulToolReleaseSignalInput {
-  currentSignal: string | null
-  hasQueuedMessages: boolean
-  observedSignal: string | null
-}
+export type QueuedMessageAutoSendReason = 'turn_completed'
 
 interface ResolveQueuedMessageAutoSendReasonInput {
-  followUpBehavior: FollowUpBehavior
-  hasRunningToolInvocations: boolean
-  hasSuccessfulToolRelease: boolean
   isTurnActive: boolean
 }
 
@@ -24,38 +13,19 @@ export function shouldQueueMainMessage(input: {
   return input.isAbortInProgress === true || input.isLoading || input.isSending || input.isCompressingChat
 }
 
-export function detectSuccessfulToolReleaseSignal({
-  currentSignal,
-  hasQueuedMessages,
-  observedSignal,
-}: DetectSuccessfulToolReleaseSignalInput) {
-  if (
-    !hasQueuedMessages ||
-    currentSignal === null ||
-    currentSignal === observedSignal
-  ) {
-    return null
-  }
-
-  return currentSignal
+export function shouldProcessQueuedMessages(input: {
+  hasQueuedMessages: boolean
+  isAutoSendBlocked: boolean
+  isProcessingQueue: boolean
+}) {
+  return input.hasQueuedMessages && !input.isAutoSendBlocked && !input.isProcessingQueue
 }
 
 export function resolveQueuedMessageAutoSendReason({
-  followUpBehavior,
-  hasRunningToolInvocations,
-  hasSuccessfulToolRelease,
   isTurnActive,
 }: ResolveQueuedMessageAutoSendReasonInput): QueuedMessageAutoSendReason | null {
   if (!isTurnActive) {
     return 'turn_completed'
-  }
-
-  if (
-    followUpBehavior === 'steer' &&
-    hasSuccessfulToolRelease &&
-    !hasRunningToolInvocations
-  ) {
-    return 'successful_tool'
   }
 
   return null

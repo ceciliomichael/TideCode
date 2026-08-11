@@ -45,6 +45,7 @@ import type {
   ResizeTerminalSessionInput,
   SubmitToolDecisionInput,
   StartChatStreamInput,
+  UpdatePendingSteerMessagesInput,
   WorkspaceExplorerImportEntryInput,
   WorkspaceExplorerPasteClipboardImageInput,
   WorkspaceExplorerChangeEvent,
@@ -203,6 +204,8 @@ const chatApi: TideCodeChatApi = {
   },
   submitToolDecision: (input: SubmitToolDecisionInput) => ipcRenderer.invoke('chat:stream:submitToolDecision', input),
   startStream: (input: StartChatStreamInput) => ipcRenderer.invoke('chat:stream:start', input),
+  updatePendingSteerMessages: (input: UpdatePendingSteerMessagesInput) =>
+    ipcRenderer.invoke('chat:stream:updatePendingSteerMessages', input),
 }
 
 const kanbanApi: TideCodeKanbanApi = {

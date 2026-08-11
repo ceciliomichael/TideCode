@@ -6,7 +6,7 @@ import {
   readMemoryIndex,
   writeMemoryEntry,
 } from '../../../memory/service'
-import type { WorkspaceToolContext } from './workspaceToolPaths'
+import { WORKSPACE_PATH_DESCRIPTION, type WorkspaceToolContext } from './workspaceToolPaths'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 import { captureCheckpointFileStateIfNeeded, createSuccessResult } from './workspaceToolResults'
 
@@ -36,7 +36,7 @@ export function createMemoryTool(context: WorkspaceToolContext) {
         new_text: { description: 'Replacement text for edit; may be empty.', type: 'string' },
         old_text: { description: 'One exact unique text block for edit.', type: 'string' },
         path: {
-          description: 'Memory entry path under .tidecode/memory/folders/, ending in .md. Required except for read_index.',
+          description: `${WORKSPACE_PATH_DESCRIPTION} The target must be a memory entry under .tidecode/memory/folders/, ending in .md. Required except for read_index.`,
           type: 'string',
         },
         title: { description: 'Optional H1 title for write when content has no H1.', type: 'string' },
