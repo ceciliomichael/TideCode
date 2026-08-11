@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.5 — More natural follow-up steering and safer workspace paths
+
+TideCode 1.1.5 keeps follow-up instructions in the active chat turn after tools finish and gives clearer guidance when workspace paths are malformed, so long-running work is easier to redirect without losing conversation continuity.
+
+- Delivers queued steer-mode messages at completed tool boundaries without starting a separate model run.
+- Preserves steer messages through streamed display, canonical replay, history persistence, rollback, and retry races.
+- Normalizes workspace roots across chat tools and memory operations, with actionable errors for duplicated workspace-root paths.
+- Adds regression coverage for steering batches, queue behavior, conversation history, and workspace path safety.
+
 ## 1.1.4 — Smoother chat continuity and workspace feedback
 
 TideCode 1.1.4 keeps long-running work easier to follow and safer to resume, with more reliable continuation state, interactive terminals, responsive diff views, and faster workspace feedback.
