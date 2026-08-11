@@ -11,10 +11,14 @@ interface ConversationDiffFileItemProps {
   isExpanded: boolean
   onDiscardFile: (filePath: string) => Promise<void>
   onExpandedChange: (filePath: string, nextValue: boolean) => void
+  onPreloadDiff: (diff: ConversationFileDiff) => Promise<void>
+  onPrewarmDiff: (filePath: string) => void
   onStageFile: (filePath: string) => Promise<void>
   onUnstageFile: (filePath: string) => Promise<void>
   pendingFileActionPath: string | null
   selectedScope: DiffPanelScope
+  shouldPrewarm: boolean
+  onPrewarmReady: (filePath: string) => void
 }
 
 export type DiffPanelScope = 'branch' | 'last_turn' | 'staged' | 'unstaged'
@@ -147,6 +151,8 @@ interface CollapsedConversationDiffFileRowProps {
   isPending: boolean
   onDiscardFile: (filePath: string) => Promise<void>
   onExpand: () => void
+  onPreloadDiff: (diff: ConversationFileDiff) => Promise<void>
+  onPrewarmDiff: (filePath: string) => void
   onStageFile: (filePath: string) => Promise<void>
   onUnstageFile: (filePath: string) => Promise<void>
   selectedScope: DiffPanelScope
@@ -157,6 +163,8 @@ function CollapsedConversationDiffFileRow({
   isPending,
   onDiscardFile,
   onExpand,
+  onPreloadDiff,
+  onPrewarmDiff,
   onStageFile,
   onUnstageFile,
   selectedScope,
@@ -174,6 +182,14 @@ function CollapsedConversationDiffFileRow({
           type="button"
           aria-expanded={false}
           onClick={onExpand}
+          onFocus={() => {
+            void onPreloadDiff(diff)
+            onPrewarmDiff(diff.fileName)
+          }}
+          onPointerEnter={() => {
+            void onPreloadDiff(diff)
+            onPrewarmDiff(diff.fileName)
+          }}
           className="group flex min-w-0 flex-1 items-center text-left"
         >
           <span className="inline-flex min-h-4 min-w-0 flex-1 items-center gap-2">
@@ -219,10 +235,14 @@ function ConversationDiffFileItemComponent({
   isExpanded,
   onDiscardFile,
   onExpandedChange,
+  onPreloadDiff,
+  onPrewarmDiff,
   onStageFile,
   onUnstageFile,
   pendingFileActionPath,
   selectedScope,
+  shouldPrewarm,
+  onPrewarmReady,
 }: ConversationDiffFileItemProps) {
   const isPending = pendingFileActionPath === diff.fileName
 
@@ -232,14 +252,22 @@ function ConversationDiffFileItemComponent({
     },
     [diff.fileName, onExpandedChange],
   )
+  const handlePrewarmReady = useCallback(() => {
+    onPrewarmReady(diff.fileName)
+  }, [diff.fileName, onPrewarmReady])
 
-  if (!isExpanded) {
+  if (!isExpanded && !shouldPrewarm) {
     return (
       <CollapsedConversationDiffFileRow
         diff={diff}
         isPending={isPending}
         onDiscardFile={onDiscardFile}
-        onExpand={() => handleExpandedChange(true)}
+        onExpand={() => {
+          onPrewarmDiff(diff.fileName)
+          handleExpandedChange(true)
+        }}
+        onPreloadDiff={onPreloadDiff}
+        onPrewarmDiff={onPrewarmDiff}
         onStageFile={onStageFile}
         onUnstageFile={onUnstageFile}
         selectedScope={selectedScope}
@@ -248,36 +276,56 @@ function ConversationDiffFileItemComponent({
   }
 
   return (
-    <DiffViewer
-      collapsible
-      defaultExpanded={false}
-      diffCacheKey={diff.contentSignature}
-      filePath={diff.fileName}
-      isExpanded={isExpanded}
-      newContent={diff.newContent}
-      oldContent={diff.oldContent}
-      contextLines={diff.contextLines}
-      layout="stacked"
-      startLineNumber={diff.startLineNumber}
-      onExpandedChange={handleExpandedChange}
-      headerInlineContent={
-        <span className="inline-flex items-center gap-1 text-xs leading-none">
-          <span className="leading-none text-emerald-600 dark:text-emerald-400">{`+${diff.addedLineCount}`}</span>
-          <span className="leading-none text-red-600 dark:text-red-400">{`-${diff.removedLineCount}`}</span>
-        </span>
-      }
-      headerRightContent={
-        <DiffFileActionButtons
+    <>
+      <DiffViewer
+        collapsible
+        defaultExpanded={false}
+        diffCacheKey={diff.contentSignature}
+        filePath={diff.fileName}
+        isExpanded={isExpanded}
+        newContent={diff.newContent}
+        oldContent={diff.oldContent}
+        prewarm={shouldPrewarm && !isExpanded}
+        contextLines={diff.contextLines}
+        layout="stacked"
+        startLineNumber={diff.startLineNumber}
+        onExpandedChange={handleExpandedChange}
+        onPrewarmReady={handlePrewarmReady}
+        headerInlineContent={
+          <span className="inline-flex items-center gap-1 text-xs leading-none">
+            <span className="leading-none text-emerald-600 dark:text-emerald-400">{`+${diff.addedLineCount}`}</span>
+            <span className="leading-none text-red-600 dark:text-red-400">{`-${diff.removedLineCount}`}</span>
+          </span>
+        }
+        headerRightContent={
+          <DiffFileActionButtons
+            diff={diff}
+            isPending={isPending}
+            selectedScope={selectedScope}
+            useTooltips
+            onDiscardFile={onDiscardFile}
+            onStageFile={onStageFile}
+            onUnstageFile={onUnstageFile}
+          />
+        }
+      />
+      {!isExpanded ? (
+        <CollapsedConversationDiffFileRow
           diff={diff}
           isPending={isPending}
-          selectedScope={selectedScope}
-          useTooltips
           onDiscardFile={onDiscardFile}
+          onExpand={() => {
+            onPrewarmDiff(diff.fileName)
+            handleExpandedChange(true)
+          }}
+          onPreloadDiff={onPreloadDiff}
+          onPrewarmDiff={onPrewarmDiff}
           onStageFile={onStageFile}
           onUnstageFile={onUnstageFile}
+          selectedScope={selectedScope}
         />
-      }
-    />
+      ) : null}
+    </>
   )
 }
 
@@ -290,6 +338,10 @@ function areConversationDiffFileItemPropsEqual(
     left.pendingFileActionPath === right.pendingFileActionPath &&
     left.selectedScope === right.selectedScope &&
     left.diff.fileName === right.diff.fileName &&
+    left.onPreloadDiff === right.onPreloadDiff &&
+    left.onPrewarmDiff === right.onPrewarmDiff &&
+    left.shouldPrewarm === right.shouldPrewarm &&
+    left.onPrewarmReady === right.onPrewarmReady &&
     left.diff.addedLineCount === right.diff.addedLineCount &&
     left.diff.removedLineCount === right.diff.removedLineCount &&
     left.diff.isDeleted === right.diff.isDeleted &&

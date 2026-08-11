@@ -5,15 +5,13 @@ import {
   buildTerminalCommandSummary,
   clampInteger,
   createSuccessResult,
-  createTerminalCommandResult,
   createTerminalErrorResult,
   encodeTerminalInput,
   getOrCreateThreadStore,
   getThreadSession,
   raceWithAbort,
-  removeThreadSession,
+  syncTerminalSessionOutput,
   throwIfAborted,
-  waitForTerminalCommand,
   type TerminalToolRuntime,
 } from "./terminalToolShared";
 
@@ -22,14 +20,13 @@ interface InteractTerminalInput {
   keys?: string[];
   rows?: number;
   session_id?: number;
-  terminate?: boolean;
   text?: string;
 }
 
 export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
   return tool({
     description:
-      "Send input or control keys to a terminal session, resize it, or terminate it. Waits until the command completes or needs more input; screen-based sessions include their updated visible screen when they remain interactive.",
+      "Send literal text or control keys to a running terminal session, optionally resize it, and return immediately with an explicit interaction acknowledgement. Use read_terminal afterward to verify completion or detect the next interaction prompt.",
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
@@ -55,10 +52,6 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
         session_id: {
           description: "Terminal session to control.",
           type: "number",
-        },
-        terminate: {
-          description: "Terminate the terminal session instead of sending input.",
-          type: "boolean",
         },
         text: {
           description: "Literal text to send to the terminal.",
@@ -86,25 +79,6 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
             `Terminal session ${input.session_id} was not found in this chat turn.`,
             "The terminal session is no longer available.",
           );
-        }
-
-        if (input.terminate) {
-          dependencies.terminateSession(
-            runtime.ownerWebContents,
-            session.globalSessionId,
-            runtime.context.workspaceRootPath,
-          );
-          removeThreadSession(store, session.localSessionId);
-          return createSuccessResult({
-            body: `Terminal session ${session.localSessionId} terminated.`,
-            displayBody: "Terminal session terminated.",
-            semantics: {
-              session_id: session.localSessionId,
-              state: "terminated",
-            },
-            subject: { kind: "session", path: String(session.localSessionId) },
-            summary: `Terminated terminal session ${session.localSessionId}`,
-          });
         }
 
         if (session.commandComplete) {
@@ -149,9 +123,43 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
           );
         }
 
-        await waitForTerminalCommand(runtime, session, dependencies, abortSignal);
+        await syncTerminalSessionOutput(
+          runtime,
+          session,
+          dependencies,
+          abortSignal,
+          0,
+        );
         const summary = buildTerminalCommandSummary(session, { includeScreen: true });
-        return createTerminalCommandResult(session, summary);
+        const inputSent = encodedInput.length > 0;
+        const interactionSummary = summary.state === "completed"
+          ? `Interacted with terminal session ${session.localSessionId}; command completed`
+          : summary.state === "needs_interaction"
+            ? `Interacted with terminal session ${session.localSessionId}; more input required`
+            : `Interacted with terminal session ${session.localSessionId}; read_terminal for status`;
+
+        return createSuccessResult({
+          body: [
+            "interaction_applied: true",
+            `input_sent: ${inputSent}`,
+            summary.body,
+          ].join("\n"),
+          displayBody: summary.state === "running"
+            ? inputSent
+              ? "Terminal input sent. Read terminal for updates."
+              : "Terminal interaction applied. Read terminal for updates."
+            : inputSent
+              ? `Terminal input sent. ${summary.displayBody}`
+              : `Terminal interaction applied. ${summary.displayBody}`,
+          semantics: {
+            ...summary.semantics,
+            input_sent: inputSent,
+            interaction_applied: true,
+          },
+          subject: { kind: "session", path: String(session.localSessionId) },
+          summary: interactionSummary,
+          truncated: summary.truncated,
+        });
       } catch (error) {
         if (abortSignal?.aborted) {
           throw error;

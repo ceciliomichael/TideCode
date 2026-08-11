@@ -26,7 +26,7 @@ interface UseChatInterfaceControllerInput {
       message: string
       preferredBranchName?: string
     }) => Promise<GitCommitResult | null>
-    refreshStatus: () => Promise<void>
+    refreshStatus: (options?: { forceRefresh?: boolean }) => Promise<void>
     resetResult: () => void
   }
   hasRepository: boolean
@@ -152,7 +152,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
     }
 
     gitCommitState.resetResult()
-    void gitCommitState.refreshStatus()
+    void gitCommitState.refreshStatus({ forceRefresh: true })
     setIsCommitModalOpen(true)
   }, [gitCommitState, hasRepository, isRightPanelOpen, onRightPanelOpenChange, rightPanelTab])
 
@@ -285,7 +285,11 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
         return null
       }
 
-      await Promise.all([onDiffRefresh({ forceRefresh: true }), gitBranchState.refresh(), gitCommitState.refreshStatus()])
+      await Promise.all([
+        onDiffRefresh({ forceRefresh: true }),
+        gitBranchState.refresh(),
+        gitCommitState.refreshStatus({ forceRefresh: true }),
+      ])
       return commitResult
     },
     [gitBranchState, gitCommitState, onDiffRefresh],

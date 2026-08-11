@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { getVisibleChatCompactionMarkers } from '../lib/chatCompactionMarkerState'
+import {
+  getCachedChatCompactionMarkers,
+  loadChatCompactionMarkers,
+} from '../lib/chatCompactionMarkerCache'
 import type { ChatCompactionMarker } from '../types/chat'
 
 interface UseChatCompactionMarkersInput {
   conversationId: string | null
-  messagesRevision: string
   refreshSignal?: number
 }
 
 export function useChatCompactionMarkers({
   conversationId,
-  messagesRevision,
   refreshSignal = 0,
 }: UseChatCompactionMarkersInput) {
-  const markersByConversationRef = useRef<Map<string, ChatCompactionMarker[]>>(new Map())
   const latestLoadRequestRef = useRef(0)
   const [loadedMarkers, setLoadedMarkers] = useState<{
     conversationId: string | null
@@ -30,22 +30,21 @@ export function useChatCompactionMarkers({
       return
     }
 
-    markersByConversationRef.current.delete(conversationId)
-    setLoadedMarkers({ conversationId, markers: [] })
+    const cachedMarkers = getCachedChatCompactionMarkers(conversationId)
+    setLoadedMarkers({ conversationId, markers: cachedMarkers ?? [] })
 
     let isCancelled = false
 
-    const loadMarkers = async () => {
+    const loadMarkers = async (forceRefresh = false) => {
       const requestId = latestLoadRequestRef.current + 1
       latestLoadRequestRef.current = requestId
 
       try {
-        const nextMarkers = await window.tidecodeHistory.listCompactionMarkers(conversationId)
+        const nextMarkers = await loadChatCompactionMarkers(conversationId, { forceRefresh })
         if (isCancelled || latestLoadRequestRef.current !== requestId) {
           return
         }
 
-        markersByConversationRef.current.set(conversationId, nextMarkers)
         setLoadedMarkers({ conversationId, markers: nextMarkers })
       } catch (error) {
         if (!isCancelled && latestLoadRequestRef.current === requestId) {
@@ -56,16 +55,17 @@ export function useChatCompactionMarkers({
 
     const unsubscribeStream = window.tidecodeChat.onStreamEvent((event) => {
       if (event.type === 'compaction_committed' && event.conversationId === conversationId) {
-        void loadMarkers()
+        void loadMarkers(true)
       }
     })
-    void loadMarkers()
+    void loadMarkers(refreshSignal > 0)
 
     return () => {
       isCancelled = true
       unsubscribeStream()
     }
-  }, [conversationId, messagesRevision, refreshSignal])
+  }, [conversationId, refreshSignal])
 
-  return getVisibleChatCompactionMarkers(loadedMarkers, markersByConversationRef.current, conversationId)
+  return getCachedChatCompactionMarkers(conversationId) ??
+    (loadedMarkers.conversationId === conversationId ? loadedMarkers.markers : [])
 }

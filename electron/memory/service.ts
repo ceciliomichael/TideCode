@@ -115,6 +115,57 @@ function resolveIndexTarget(workspaceRootPath: string) {
   return getSafeWorkspaceTargetPath(workspaceRootPath, MEMORY_INDEX_PATH)
 }
 
+async function removeEmptyMemoryDirectories(
+  workspaceRootPath: string,
+  startingDirectoryPath: string,
+  beforeMutation?: (absolutePath: string) => Promise<void>,
+) {
+  const foldersTarget = getSafeWorkspaceTargetPath(workspaceRootPath, MEMORY_FOLDERS_DIRECTORY)
+  await assertManagedPathContainsNoSymlink(workspaceRootPath, foldersTarget.absolutePath)
+
+  let currentDirectoryPath = path.resolve(startingDirectoryPath)
+  while (currentDirectoryPath !== foldersTarget.absolutePath) {
+    const relativePath = path.relative(foldersTarget.absolutePath, currentDirectoryPath)
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      return
+    }
+
+    await assertManagedPathContainsNoSymlink(workspaceRootPath, currentDirectoryPath)
+
+    let entries: string[]
+    try {
+      entries = await fs.readdir(currentDirectoryPath)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        currentDirectoryPath = path.dirname(currentDirectoryPath)
+        continue
+      }
+      throw error
+    }
+
+    if (entries.length > 0) {
+      return
+    }
+
+    await beforeMutation?.(currentDirectoryPath)
+    try {
+      await fs.rmdir(currentDirectoryPath)
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code === 'ENOENT') {
+        currentDirectoryPath = path.dirname(currentDirectoryPath)
+        continue
+      }
+      if (code === 'ENOTEMPTY' || code === 'EEXIST' || code === 'EISDIR') {
+        return
+      }
+      throw error
+    }
+
+    currentDirectoryPath = path.dirname(currentDirectoryPath)
+  }
+}
+
 async function assertManagedPathContainsNoSymlink(workspaceRootPath: string, absolutePath: string) {
   const relativePath = path.relative(workspaceRootPath, absolutePath)
   if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
@@ -390,6 +441,7 @@ export async function forgetMemoryEntry(input: MemoryMutationInput & { path: str
 
     await input.beforeMutation?.(target.absolutePath)
     await fs.unlink(target.absolutePath)
+    await removeEmptyMemoryDirectories(workspaceRootPath, path.dirname(target.absolutePath), input.beforeMutation)
     await writeIndexIfChanged(workspaceRootPath, input.beforeMutation)
     notifyWorkspaceExplorerChange(workspaceRootPath)
 

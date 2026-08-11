@@ -126,7 +126,7 @@ export function createWorkspaceMonacoOptions(
     cursorSmoothCaretAnimation: 'off',
     cursorStyle: 'line',
     cursorWidth: 2,
-    detectIndentation: false,
+    detectIndentation: true,
     dragAndDrop: true,
     emptySelectionClipboard: true,
     fixedOverflowWidgets: true,

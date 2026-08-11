@@ -150,6 +150,54 @@ test('packet merging keeps parent lineage and bounds continuity while preserving
   )
 })
 
+test('compaction status reconciliation removes completed work from open items and next actions', () => {
+  const previous = buildFallbackCompactionPacket({
+    messages: [{ role: 'user', content: 'Implement the compaction state ledger.' }],
+    modelId: 'test-model',
+    sourceDigest: 'digest-previous-status',
+    sourceMessageIds: ['model:0'],
+  })
+  const current = buildFallbackCompactionPacket({
+    messages: [{ role: 'assistant', content: 'The compaction state ledger was implemented and verified.' }],
+    modelId: 'test-model',
+    sourceDigest: 'digest-current-status',
+    sourceMessageIds: ['model:1'],
+  })
+
+  const merged = mergeCompactionPacketState({
+    current: {
+      ...current,
+      completedWork: ['Implemented the compaction state ledger.'],
+      currentState: ['The new status ledger is the current state.'],
+      openItems: [
+        'The compaction state ledger is complete.',
+        'Verify the compaction state ledger.',
+        'Verify the remaining documentation.',
+      ],
+      nextActions: [
+        'The compaction state ledger is complete.',
+        'Verify the compaction state ledger.',
+        'Verify the remaining documentation.',
+      ],
+      planState: ['The documentation check remains open.'],
+    },
+    parentPacketId: previous.packetId,
+    previous: {
+      ...previous,
+      currentState: ['The old append-only state is stale.'],
+      openItems: ['Implement the compaction state ledger.'],
+      nextActions: ['Implement the compaction state ledger.'],
+      planState: ['Implement the compaction state ledger.'],
+    },
+  })
+
+  assert.deepEqual(merged.openItems, ['Verify the compaction state ledger.', 'Verify the remaining documentation.'])
+  assert.deepEqual(merged.nextActions, ['Verify the compaction state ledger.', 'Verify the remaining documentation.'])
+  assert.deepEqual(merged.currentState, ['The new status ledger is the current state.'])
+  assert.deepEqual(merged.planState, ['The documentation check remains open.'])
+  assert.ok(merged.completedWork.some((item) => /compaction state ledger/iu.test(item)))
+})
+
 test('the projected continuation preserves the AI-generated Markdown across compaction lineage merges', () => {
   const previous = buildFallbackCompactionPacket({
     messages: [{ role: 'user', content: 'Keep the existing provider behavior.' }],

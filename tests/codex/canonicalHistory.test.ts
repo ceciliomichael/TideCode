@@ -225,6 +225,10 @@ test('compacted replay retains assistant and tool responses from later turns', (
 
   assert.equal(result.isCompacted, true)
   assert.deepEqual(result.messages.map((message) => message.role), ['user', 'assistant', 'user', 'assistant', 'tool'])
+  assert.equal(
+    result.messages.some((message) => JSON.stringify(message.content).includes('old response replaced by compaction')),
+    false,
+  )
 })
 
 test('compacted replay rebuilds a missing projection from the stored v2 packet', () => {

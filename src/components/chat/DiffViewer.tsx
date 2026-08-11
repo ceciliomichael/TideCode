@@ -31,7 +31,9 @@ interface DiffViewerProps {
   maxBodyHeightClassName?: string
   newContent: string
   onExpandedChange?: (nextValue: boolean) => void
+  onPrewarmReady?: () => void
   oldContent: string | null | undefined
+  prewarm?: boolean
   startLineNumber?: number
   viewOnly?: boolean
 }
@@ -57,7 +59,9 @@ function areDiffViewerPropsEqual(left: DiffViewerProps, right: DiffViewerProps) 
     left.maxBodyHeightClassName === right.maxBodyHeightClassName &&
     left.newContent === right.newContent &&
     left.onExpandedChange === right.onExpandedChange &&
+    left.onPrewarmReady === right.onPrewarmReady &&
     left.oldContent === right.oldContent &&
+    left.prewarm === right.prewarm &&
     left.startLineNumber === right.startLineNumber &&
     left.viewOnly === right.viewOnly
   )
@@ -80,13 +84,16 @@ function DiffViewerComponent({
   maxBodyHeightClassName,
   newContent,
   onExpandedChange,
+  onPrewarmReady,
   oldContent,
+  prewarm = false,
   startLineNumber = 1,
   viewOnly = false,
 }: DiffViewerProps) {
   const [internalExpanded, setInternalExpanded] = useState(defaultExpanded)
   const isExpanded = expandedProp ?? internalExpanded
-  const shouldRenderDiffContent = !collapsible || isExpanded
+  const shouldRenderDiffContent = !collapsible || isExpanded || prewarm
+  const isPrewarmOnly = prewarm && collapsible && !isExpanded
   const isStackedLayout = layout === 'stacked'
   const iconConfig = useMemo(() => resolveFileIconConfig({ fileName: filePath }), [filePath])
   const FileIcon = iconConfig.icon
@@ -168,23 +175,28 @@ function DiffViewerComponent({
   return (
     <div
       className={[
+        isPrewarmOnly
+          ? 'pointer-events-none absolute left-[-100000px] top-0 z-[-1] h-[360px] w-[900px] overflow-hidden opacity-0'
+          : '',
         isStackedLayout
           ? 'my-0 w-full overflow-hidden rounded-none border-0 border-b border-border bg-surface shadow-none'
           : 'my-2 w-full overflow-hidden rounded-2xl border border-border bg-surface shadow-sm',
         className ?? '',
       ].join(' ')}
     >
-      {header}
+      {!isPrewarmOnly ? header : null}
       {shouldRenderDiffContent ? (
         <div className={isStackedLayout ? 'overflow-hidden bg-surface' : 'overflow-hidden rounded-b-2xl bg-surface'}>
           <Suspense fallback={<WorkspaceMonacoDiffLoadingView height={initialBodyHeight} />}>
             <WorkspaceMonacoDiffView
               key={diffCacheKey ?? filePath}
               contextLines={contextLines}
+              contentSignature={diffCacheKey}
               filePath={filePath}
               isStreaming={isStreaming}
               maxBodyHeightClassName={maxBodyHeightClassName}
               newContent={newContent}
+              onReady={onPrewarmReady}
               oldContent={oldContent}
               startLineNumber={startLineNumber}
               viewOnly={viewOnly}

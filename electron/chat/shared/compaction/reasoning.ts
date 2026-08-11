@@ -298,6 +298,75 @@ function mergeTextList(previous: readonly string[], current: readonly string[], 
   return Array.from(new Set([...current, ...previous].map((value) => value.trim()).filter(Boolean))).slice(0, limit)
 }
 
+const TASK_STATUS_WORDS = new Set([
+  'already', 'complete', 'completed', 'done', 'finished', 'implemented', 'implementation',
+  'pass', 'passed', 'resolved', 'success', 'successful', 'successfully', 'verified',
+])
+
+const TASK_STOP_WORDS = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'in', 'into', 'is',
+  'it', 'of', 'on', 'or', 'that', 'the', 'this', 'to', 'was', 'were', 'with',
+])
+
+const TASK_ACTIONS: readonly [string, RegExp][] = [
+  ['implement', /\b(?:implement(?:ed|ation|ing)?|build|built|create|created)\b/iu],
+  ['fix', /\b(?:fix|fixed|resolve|resolved|repair|repaired)\b/iu],
+  ['verify', /\b(?:check|checked|test|tested|validate|validated|verif(?:y|ied|ication))\b/iu],
+  ['document', /\b(?:document|documented|write|wrote)\b/iu],
+  ['update', /\b(?:update|updated|change|changed|modify|modified)\b/iu],
+  ['read', /\b(?:read|inspect|inspected|review|reviewed)\b/iu],
+  ['run', /\b(?:run|ran|execute|executed)\b/iu],
+]
+
+function taskTokens(value: string) {
+  return new Set(
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/gu, ' ')
+      .split(' ')
+      .map((token) => token.trim())
+      .filter((token) => token.length > 1 && !TASK_STOP_WORDS.has(token) && !TASK_STATUS_WORDS.has(token)),
+  )
+}
+
+function taskAction(value: string) {
+  return TASK_ACTIONS.find(([, pattern]) => pattern.test(value))?.[0] ?? null
+}
+
+function describesSameTask(left: string, right: string) {
+  const leftAction = taskAction(left)
+  const rightAction = taskAction(right)
+  if (leftAction && rightAction && leftAction !== rightAction) return false
+
+  const leftTokens = taskTokens(left)
+  const rightTokens = taskTokens(right)
+  if (leftTokens.size === 0 || rightTokens.size === 0) {
+    return left.trim().toLowerCase() === right.trim().toLowerCase()
+  }
+
+  const intersectionSize = [...leftTokens].filter((token) => rightTokens.has(token)).length
+  const smallerSize = Math.min(leftTokens.size, rightTokens.size)
+  const unionSize = new Set([...leftTokens, ...rightTokens]).size
+  return intersectionSize >= 2 && (
+    intersectionSize / smallerSize >= 0.75 ||
+    intersectionSize / unionSize >= 0.6
+  )
+}
+
+function isExplicitlyComplete(value: string) {
+  const normalized = value.toLowerCase()
+  if (/(?:\bnot\b|\bstill\b|\byet\b|\bunfinish(?:ed)?\b|\bpending\b|\bremaining\b)/u.test(normalized)) {
+    return false
+  }
+  return /\b(?:already\s+)?(?:complete(?:d)?|done|finished|implemented|passed|resolved|successful(?:ly)?|verified)\b/u.test(normalized)
+}
+
+function removeResolvedTasks(values: readonly string[], completedWork: readonly string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
+    .filter((value) => !isExplicitlyComplete(value))
+    .filter((value) => !completedWork.some((completed) => describesSameTask(value, completed)))
+}
+
 function mergeFiles(
   previous: readonly LocalCompactionPacketV2['filesAndSymbols'][number][],
   current: readonly LocalCompactionPacketV2['filesAndSymbols'][number][],
@@ -339,20 +408,21 @@ export function mergeCompactionPacketState(input: {
   previous?: LocalCompactionPacketV2 | null
 }) : LocalCompactionPacketV2 {
   const previous = input.previous
+  const completedWork = mergeTextList(previous?.completedWork ?? [], input.current.completedWork)
   const merged: LocalCompactionPacketV2 = {
     ...input.current,
-    completedWork: mergeTextList(previous?.completedWork ?? [], input.current.completedWork),
+    completedWork,
     constraints: mergeTextList(previous?.constraints ?? [], input.current.constraints),
-    currentState: mergeTextList(previous?.currentState ?? [], input.current.currentState),
+    currentState: input.current.currentState,
     decisions: mergeTextList(previous?.decisions ?? [], input.current.decisions),
     failuresAndWorkarounds: mergeTextList(previous?.failuresAndWorkarounds ?? [], input.current.failuresAndWorkarounds),
     filesAndSymbols: mergeFiles(previous?.filesAndSymbols ?? [], input.current.filesAndSymbols),
     goal: mergeTextList(previous?.goal ?? [], input.current.goal),
-    nextActions: mergeTextList(previous?.nextActions ?? [], input.current.nextActions),
+    nextActions: removeResolvedTasks(input.current.nextActions, completedWork),
     omitted: mergeTextList(previous?.omitted ?? [], input.current.omitted),
-    openItems: mergeTextList(previous?.openItems ?? [], input.current.openItems),
+    openItems: removeResolvedTasks(input.current.openItems, completedWork),
     parentPacketId: input.parentPacketId,
-    planState: mergeTextList(previous?.planState ?? [], input.current.planState),
+    planState: input.current.planState,
     reasoningContinuity: mergeReasoningContinuity(previous?.reasoningContinuity ?? [], input.current.reasoningContinuity),
     toolObservations: mergeObservations(previous?.toolObservations ?? [], input.current.toolObservations),
     validation: mergeTextList(previous?.validation ?? [], input.current.validation),

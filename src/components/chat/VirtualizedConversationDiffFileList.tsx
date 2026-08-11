@@ -10,6 +10,8 @@ import { ConversationDiffFileItem } from './ConversationDiffFileItem'
 interface VirtualizedConversationDiffFileListProps {
   diffs: readonly ConversationFileDiff[]
   expandedFilePathSet: ReadonlySet<string>
+  onPreloadDiff: (diff: ConversationFileDiff) => Promise<void>
+  prewarmEnabled: boolean
   onScrollToFilePath?: () => void
   onDiscardFile: (filePath: string) => Promise<void>
   onExpandedChange: (filePath: string, nextValue: boolean) => void
@@ -27,16 +29,34 @@ interface MeasuredConversationDiffRowProps {
   onDiscardFile: (filePath: string) => Promise<void>
   onExpandedChange: (filePath: string, nextValue: boolean) => void
   onHeightChange: (filePath: string, nextHeight: number) => void
+  onPreloadDiff: (diff: ConversationFileDiff) => Promise<void>
+  onPrewarmDiff: (filePath: string) => void
+  onPrewarmReady: (filePath: string) => void
   onStageFile: (filePath: string) => Promise<void>
   onUnstageFile: (filePath: string) => Promise<void>
   pendingFileActionPath: string | null
   selectedScope: DiffPanelScope
+  shouldPrewarm: boolean
 }
 
 const DEFAULT_COLLAPSED_DIFF_ROW_HEIGHT_PX = 49
 const DEFAULT_EXPANDED_DIFF_ROW_HEIGHT_PX = 360
 const DIFF_LIST_OVERSCAN_PX = 320
 const DIFF_LIST_VIRTUALIZATION_THRESHOLD = 24
+
+function scheduleDiffPrewarmTask(callback: () => void) {
+  const idleWindow = window as Window & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number
+    cancelIdleCallback?: (handle: number) => void
+  }
+  if (idleWindow.requestIdleCallback) {
+    const handle = idleWindow.requestIdleCallback(callback, { timeout: 350 })
+    return () => idleWindow.cancelIdleCallback?.(handle)
+  }
+
+  const handle = window.setTimeout(callback, 32)
+  return () => window.clearTimeout(handle)
+}
 
 function getEstimatedDiffRowHeight(isExpanded: boolean) {
   return isExpanded ? DEFAULT_EXPANDED_DIFF_ROW_HEIGHT_PX : DEFAULT_COLLAPSED_DIFF_ROW_HEIGHT_PX
@@ -55,10 +75,14 @@ const MeasuredConversationDiffRow = memo(function MeasuredConversationDiffRow({
   onDiscardFile,
   onExpandedChange,
   onHeightChange,
+  onPreloadDiff,
+  onPrewarmDiff,
+  onPrewarmReady,
   onStageFile,
   onUnstageFile,
   pendingFileActionPath,
   selectedScope,
+  shouldPrewarm,
 }: MeasuredConversationDiffRowProps) {
   const rowRef = useRef<HTMLDivElement | null>(null)
 
@@ -103,10 +127,14 @@ const MeasuredConversationDiffRow = memo(function MeasuredConversationDiffRow({
         isExpanded={isExpanded}
         onDiscardFile={onDiscardFile}
         onExpandedChange={onExpandedChange}
+        onPreloadDiff={onPreloadDiff}
+        onPrewarmDiff={onPrewarmDiff}
+        onPrewarmReady={onPrewarmReady}
         onStageFile={onStageFile}
         onUnstageFile={onUnstageFile}
         pendingFileActionPath={pendingFileActionPath}
         selectedScope={selectedScope}
+        shouldPrewarm={shouldPrewarm}
       />
     </div>
   )
@@ -115,6 +143,8 @@ const MeasuredConversationDiffRow = memo(function MeasuredConversationDiffRow({
 export const VirtualizedConversationDiffFileList = memo(function VirtualizedConversationDiffFileList({
   diffs,
   expandedFilePathSet,
+  onPreloadDiff,
+  prewarmEnabled,
   onScrollToFilePath,
   onDiscardFile,
   onExpandedChange,
@@ -128,6 +158,12 @@ export const VirtualizedConversationDiffFileList = memo(function VirtualizedConv
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(0)
   const [measuredHeightsByPath, setMeasuredHeightsByPath] = useState<Record<string, number>>({})
+  const [prewarmFilePathSet, setPrewarmFilePathSet] = useState<ReadonlySet<string>>(new Set())
+  const prewarmFilePathSetRef = useRef(new Set<string>())
+  const prewarmQueueRef = useRef<string[]>([])
+  const queuedPrewarmFilePathSetRef = useRef(new Set<string>())
+  const activePrewarmFilePathRef = useRef<string | null>(null)
+  const scheduledPrewarmTaskCancelRef = useRef<(() => void) | null>(null)
 
   const shouldVirtualize = diffs.length >= DIFF_LIST_VIRTUALIZATION_THRESHOLD
   const itemHeights = useMemo(
@@ -168,6 +204,117 @@ export const VirtualizedConversationDiffFileList = memo(function VirtualizedConv
       viewportHeight: resolveVirtualViewportHeight(viewportHeight),
     })
   }, [diffs.length, itemHeights, offsets, scrollTop, shouldVirtualize, viewportHeight])
+
+  const visibleFilePathSet = useMemo(() => {
+    const startIndex = shouldVirtualize ? visibleRange.startIndex : 0
+    const endIndex = shouldVirtualize ? visibleRange.endIndex : diffs.length
+    const visiblePaths = diffs.slice(startIndex, endIndex).map((diff) => diff.fileName)
+    if (visiblePaths.length > 0 || diffs.length === 0) {
+      return new Set(visiblePaths)
+    }
+
+    return new Set([diffs[0].fileName])
+  }, [diffs, shouldVirtualize, visibleRange.endIndex, visibleRange.startIndex])
+
+  const startNextPrewarm = useCallback(() => {
+    if (!prewarmEnabled || activePrewarmFilePathRef.current !== null) {
+      return
+    }
+
+    let nextFilePath: string | undefined
+    while (prewarmQueueRef.current.length > 0 && !nextFilePath) {
+      const queuedFilePath = prewarmQueueRef.current.shift()
+      if (
+        queuedFilePath &&
+        visibleFilePathSet.has(queuedFilePath) &&
+        !prewarmFilePathSetRef.current.has(queuedFilePath)
+      ) {
+        nextFilePath = queuedFilePath
+      }
+    }
+
+    if (!nextFilePath) {
+      nextFilePath = diffs.find(
+        (diff) => visibleFilePathSet.has(diff.fileName) && !prewarmFilePathSetRef.current.has(diff.fileName),
+      )?.fileName
+    }
+
+    if (!nextFilePath) {
+      return
+    }
+
+    queuedPrewarmFilePathSetRef.current.delete(nextFilePath)
+    activePrewarmFilePathRef.current = nextFilePath
+    prewarmFilePathSetRef.current.add(nextFilePath)
+    setPrewarmFilePathSet(new Set(prewarmFilePathSetRef.current))
+  }, [diffs, prewarmEnabled, visibleFilePathSet])
+
+  const requestPrewarm = useCallback(
+    (filePath: string) => {
+      if (
+        !prewarmEnabled ||
+        prewarmFilePathSetRef.current.has(filePath) ||
+        queuedPrewarmFilePathSetRef.current.has(filePath)
+      ) {
+        return
+      }
+
+      queuedPrewarmFilePathSetRef.current.add(filePath)
+      prewarmQueueRef.current.push(filePath)
+      startNextPrewarm()
+    },
+    [prewarmEnabled, startNextPrewarm],
+  )
+
+  const handlePrewarmReady = useCallback(
+    (filePath: string) => {
+      if (activePrewarmFilePathRef.current !== filePath) {
+        return
+      }
+
+      activePrewarmFilePathRef.current = null
+      scheduledPrewarmTaskCancelRef.current?.()
+      scheduledPrewarmTaskCancelRef.current = scheduleDiffPrewarmTask(() => {
+        scheduledPrewarmTaskCancelRef.current = null
+        startNextPrewarm()
+      })
+    },
+    [startNextPrewarm],
+  )
+
+  useEffect(() => {
+    if (!prewarmEnabled) {
+      activePrewarmFilePathRef.current = null
+      scheduledPrewarmTaskCancelRef.current?.()
+      scheduledPrewarmTaskCancelRef.current = null
+      prewarmQueueRef.current = []
+      queuedPrewarmFilePathSetRef.current.clear()
+      prewarmFilePathSetRef.current.clear()
+      setPrewarmFilePathSet(new Set())
+      return
+    }
+
+    startNextPrewarm()
+  }, [prewarmEnabled, startNextPrewarm])
+
+  useEffect(() => {
+    const activeFilePath = activePrewarmFilePathRef.current
+    if (!activeFilePath || visibleFilePathSet.has(activeFilePath)) {
+      return
+    }
+
+    activePrewarmFilePathRef.current = null
+    prewarmFilePathSetRef.current.delete(activeFilePath)
+    setPrewarmFilePathSet(new Set(prewarmFilePathSetRef.current))
+    startNextPrewarm()
+  }, [startNextPrewarm, visibleFilePathSet])
+
+  useEffect(() => {
+    return () => {
+      scheduledPrewarmTaskCancelRef.current?.()
+      scheduledPrewarmTaskCancelRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     if (!scrollToFilePath || !scrollContainerRef.current) {
@@ -285,10 +432,14 @@ export const VirtualizedConversationDiffFileList = memo(function VirtualizedConv
                 onDiscardFile={onDiscardFile}
                 onExpandedChange={onExpandedChange}
                 onHeightChange={handleHeightChange}
+                onPreloadDiff={onPreloadDiff}
+                onPrewarmDiff={requestPrewarm}
+                onPrewarmReady={handlePrewarmReady}
                 onStageFile={onStageFile}
                 onUnstageFile={onUnstageFile}
                 pendingFileActionPath={pendingFileActionPath}
                 selectedScope={selectedScope}
+                shouldPrewarm={prewarmFilePathSet.has(diff.fileName)}
               />
             )
           })}
@@ -301,10 +452,14 @@ export const VirtualizedConversationDiffFileList = memo(function VirtualizedConv
             isExpanded={expandedFilePathSet.has(diff.fileName)}
             onDiscardFile={onDiscardFile}
             onExpandedChange={onExpandedChange}
+            onPreloadDiff={onPreloadDiff}
+            onPrewarmDiff={requestPrewarm}
+            onPrewarmReady={handlePrewarmReady}
             onStageFile={onStageFile}
             onUnstageFile={onUnstageFile}
             pendingFileActionPath={pendingFileActionPath}
             selectedScope={selectedScope}
+            shouldPrewarm={prewarmFilePathSet.has(diff.fileName)}
           />
         ))
       )}

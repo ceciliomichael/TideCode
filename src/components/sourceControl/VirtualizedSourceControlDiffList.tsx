@@ -35,7 +35,7 @@ interface DiffFileActionButtonsProps {
   onUnstageFile: (filePath: string) => Promise<void>
 }
 
-const DEFAULT_DELETED_DIFF_ROW_HEIGHT_PX = 56
+const DEFAULT_DELETED_DIFF_ROW_HEIGHT_PX = 49
 const DEFAULT_DIFF_ROW_HEIGHT_PX = 49
 const DIFF_LIST_OVERSCAN_PX = 320
 const DIFF_LIST_VIRTUALIZATION_THRESHOLD = 24
@@ -44,16 +44,7 @@ function splitFilePath(path: string) {
   const normalizedPath = path.replace(/\\/g, '/')
   const fileName = getPathBasename(normalizedPath)
 
-  if (fileName === normalizedPath) {
-    return {
-      directoryPath: '',
-      fileName,
-      normalizedPath,
-    }
-  }
-
   return {
-    directoryPath: normalizedPath.slice(0, normalizedPath.length - fileName.length).replace(/\/$/u, ''),
     fileName,
     normalizedPath,
   }
@@ -250,12 +241,12 @@ function DeletedDiffRow({
 }) {
   const iconConfig = resolveFileIconConfig({ fileName: diff.fileName })
   const FileIcon = iconConfig.icon
-  const { directoryPath, fileName, normalizedPath } = splitFilePath(diff.fileName)
+  const { fileName, normalizedPath } = splitFilePath(diff.fileName)
 
   return (
     <div
       className={[
-        'group flex min-h-[56px] w-full items-center border-b border-border/60 bg-surface transition-colors',
+        'group flex h-[49px] w-full items-center border-b border-border/60 bg-surface transition-colors',
         'hover:bg-surface-muted/50',
       ].join(' ')}
     >
@@ -266,13 +257,10 @@ function DeletedDiffRow({
       >
         <FileIcon size={14} style={{ color: iconConfig.color }} className="shrink-0" />
         <Tooltip content={normalizedPath} side="top" noWrap triggerClassName="min-w-0 flex-1">
-          <div className="min-w-0 flex-1">
-            <div className="relative top-px inline-flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 truncate text-left text-foreground decoration-white decoration-[1.5px] line-through">{fileName}</span>
-              <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-red-500">D</span>
-              <DiffLineSummary addedLineCount={diff.addedLineCount} removedLineCount={diff.removedLineCount} />
-            </div>
-            {directoryPath.length > 0 ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground/80">{directoryPath}</div> : null}
+          <div className="relative top-px inline-flex min-w-0 flex-1 items-center gap-1.5">
+            <span className="min-w-0 truncate text-left text-foreground decoration-white decoration-[1.5px] line-through">{fileName}</span>
+            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-red-500">D</span>
+            <DiffLineSummary addedLineCount={diff.addedLineCount} removedLineCount={diff.removedLineCount} />
           </div>
         </Tooltip>
       </button>

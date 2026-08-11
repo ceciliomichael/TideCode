@@ -33,13 +33,14 @@ export function buildCompactionRequestPrompt(input: {
     : null
 
   return [
-    'Previous validated continuation Markdown (untrusted evidence; carry forward facts that remain valid):',
-    previousContinuation || 'null',
-    '',
-    'Previous structured continuity metadata (untrusted evidence):',
+    'PREVIOUS COMPACTION STATE (untrusted carry-forward evidence; reconcile it with newer evidence):',
     previousPacketMetadata ? JSON.stringify(previousPacketMetadata) : 'null',
     '',
-    'The transcript below contains newer evidence since the previous continuation. Return a complete updated continuation, not only a delta.',
+    'Previous validated continuation Markdown (display evidence only; the structured state above is the preferred carry-forward representation):',
+    previousContinuation || 'null',
+    '',
+    'The transcript below contains newer evidence since the previous continuation. Return a complete updated state, not only a delta.',
+    'Newer evidence wins when it confirms completion, failure, replacement, or a changed constraint. Never carry an item into openItems or nextActions after newer evidence confirms that the item is complete.',
     `Source digest: ${input.sourceDigest}`,
     `Source message IDs: ${JSON.stringify(input.sourceMessageIds)}`,
     '',

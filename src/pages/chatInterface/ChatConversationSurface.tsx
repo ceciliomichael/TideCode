@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ComponentProps, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type ComponentProps, type RefObject } from 'react'
 import { ChatInput } from '../../components/ChatInput'
 import { EmptyState } from '../../components/EmptyState'
 import { MessageList } from '../../components/MessageList'
@@ -97,6 +97,24 @@ export function ChatConversationSurface({
   updateQueuedMessage,
   workspaceState,
 }: ChatConversationSurfaceProps) {
+  const [followLatestSignal, setFollowLatestSignal] = useState(0)
+  const requestFollowLatest = useCallback(() => {
+    setFollowLatestSignal((currentSignal) => currentSignal + 1)
+  }, [])
+  const handleSendMainMessageAndFollow = useCallback<ChatInputProps['onSend']>(
+    (value, attachments) => {
+      requestFollowLatest()
+      handleSendMainMessage(value, attachments)
+    },
+    [handleSendMainMessage, requestFollowLatest],
+  )
+  const handleSendEditedMessageAndFollow = useCallback<MessageListProps['onSendEditedMessage']>(
+    (value, attachments) => {
+      requestFollowLatest()
+      handleSendEditedMessage(value, attachments)
+    },
+    [handleSendEditedMessage, requestFollowLatest],
+  )
   const latestPlanPresentation = getLatestCompletedPlanPresentation(chatMessages.messages)
   const latestPlanKey = latestPlanPresentation
     ? `${latestPlanPresentation.relativePath}:${latestPlanPresentation.updatedAt}`
@@ -171,6 +189,7 @@ export function ChatConversationSurface({
                   messages={chatMessages.messages}
                   chatModeOptions={chatModeOptions}
                   editingMessageId={chatMessages.editingMessageId}
+                  followLatestSignal={followLatestSignal}
                   editComposerDirty={chatMessages.isEditComposerDirty}
                   editComposerMentionPathMap={chatMessages.editComposerMentionPathMap}
                   onChatModeChange={chatMessages.setSelectedChatMode}
@@ -181,7 +200,7 @@ export function ChatConversationSurface({
                   composerValue={chatMessages.editComposerValue}
                   onComposerAttachmentsChange={chatMessages.setEditComposerAttachments}
                   onComposerValueChange={chatMessages.setEditComposerValue}
-                  onSendEditedMessage={handleSendEditedMessage}
+                  onSendEditedMessage={handleSendEditedMessageAndFollow}
                   onAbortStreamingResponse={chatMessages.abortStreamingResponse}
                   onCancelEditingMessage={handleCancelEditingMessage}
                   composerFocusSignal={chatMessages.editComposerFocusSignal}
@@ -245,7 +264,7 @@ export function ChatConversationSurface({
               onAttachmentsChange={chatMessages.setMainComposerAttachments}
               initialMentionPathMap={chatMessages.mainComposerMentionPathMap}
               onValueChange={chatMessages.setMainComposerValue}
-              onSend={handleSendMainMessage}
+              onSend={handleSendMainMessageAndFollow}
               onQueue={onQueueMessage}
               onAbort={chatMessages.abortStreamingResponse}
               chatModeOptions={chatModeOptions}

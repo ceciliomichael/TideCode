@@ -6,6 +6,7 @@ import type { ConversationFileDiff } from '../../lib/chatDiffs'
 import { getMaxDiffPanelWidth, getMinDiffPanelWidth } from '../../lib/diffPanelSizing'
 import { Tooltip } from '../Tooltip'
 import { VirtualizedConversationDiffFileList } from './VirtualizedConversationDiffFileList'
+import { useWorkspaceMonacoDiffPreload } from './diffViewer/useWorkspaceMonacoDiffPreload'
 
 interface ConversationDiffPanelProps {
   currentBranch: string | null
@@ -99,6 +100,10 @@ function ConversationDiffPanelContent({
   const stagedFileCount = useMemo(() => fileDiffs.filter((fileDiff) => fileDiff.isStaged).length, [fileDiffs])
   const selectedScopeCount = selectedScope === 'unstaged' ? unstagedFileCount : selectedScope === 'staged' ? stagedFileCount : null
   const expandedFilePathSet = useMemo(() => new Set(expandedFilePaths), [expandedFilePaths])
+  const preloadDiff = useWorkspaceMonacoDiffPreload({
+    diffs: displayedFileDiffs,
+    enabled: isOpen,
+  })
   const panelIconButtonClassName =
     'inline-flex h-6 w-6 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent'
 
@@ -448,6 +453,8 @@ function ConversationDiffPanelContent({
           <VirtualizedConversationDiffFileList
             diffs={displayedFileDiffs}
             expandedFilePathSet={expandedFilePathSet}
+            onPreloadDiff={preloadDiff}
+            prewarmEnabled={isOpen}
             onScrollToFilePath={onScrollToFilePath}
             onDiscardFile={onDiscardFile}
             onExpandedChange={handleFileExpandedChange}

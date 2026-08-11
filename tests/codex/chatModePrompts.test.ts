@@ -19,6 +19,7 @@ test('agent prompt teaches autonomous, reliable, dependency-aware implementation
     assert.match(prompt, /keep dependent calls sequential/u)
     assert.match(prompt, /Terminal execution is asynchronous/u)
     assert.match(prompt, /consume only new output with bounded `read_terminal` waits/u)
+    assert.match(prompt, /If `read_terminal` reports `needs_interaction`, use `interact_terminal`/u)
     assert.match(prompt, /Answer first/u)
     assert.match(prompt, /Native filesystem and plan targets always use the JSON key `path`/u)
     assert.match(prompt, /<intent_rules/u)
@@ -115,6 +116,7 @@ test('runtime tool exposure gives the provider the concrete native tools', async
       'execute_terminal',
       'glob',
       'grep',
+      'interact_terminal',
       'kanban_board',
       'list',
       'mcp_tool_search',

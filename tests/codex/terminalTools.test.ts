@@ -285,6 +285,76 @@ test("read_terminal reports command failure without exposing the numeric exit co
   assert.doesNotMatch(result.body ?? "", /17|exit_code/u);
 });
 
+test("read_terminal detects a prompt and interact_terminal sends text plus Enter", async () => {
+  const writeCalls: WriteTerminalSessionInput[] = [];
+  let outputCallCount = 0;
+  const tools = createTools(
+    "terminal-interaction",
+    createMockDependencies({
+      getPendingOutput: (writtenCommands) => {
+        outputCallCount += 1;
+        if (outputCallCount === 1) {
+          return "Continue? [y/N]\r\n";
+        }
+        return `${readCompletionMarker(writtenCommands[0]?.data ?? "")}:0\r\n`;
+      },
+      writeCalls,
+    }),
+  );
+
+  const started = await getTool(tools, "execute_terminal").execute({ command: "interactive-command" });
+  const sessionId = started.semantics?.session_id as number;
+  const promptResult = await getTool(tools, "read_terminal").execute({
+    session_id: sessionId,
+    wait_seconds: 0,
+  });
+
+  assert.equal(promptResult.semantics?.state, "needs_interaction");
+  assert.equal(promptResult.semantics?.interaction_kind, "confirmation");
+  assert.equal(promptResult.semantics?.interaction_required, true);
+  assert.equal(promptResult.semantics?.next_action, undefined);
+  assert.match(promptResult.body ?? "", /Continue\?/u);
+
+  const interactionResult = await getTool(tools, "interact_terminal").execute({
+    keys: ["ENTER"],
+    session_id: sessionId,
+    text: "yes",
+  });
+
+  assert.equal(interactionResult.status, "success");
+  assert.equal(interactionResult.semantics?.state, "completed");
+  assert.equal(interactionResult.semantics?.interaction_applied, true);
+  assert.equal(interactionResult.semantics?.input_sent, true);
+  assert.equal(interactionResult.semantics?.next_action, undefined);
+  assert.match(interactionResult.body ?? "", /interaction_applied: true/u);
+  assert.match(interactionResult.displayBody ?? "", /Terminal input sent/u);
+  assert.equal(writeCalls[1]?.data, "yes\r");
+});
+
+test("interact_terminal acknowledges input while the command is still running", async () => {
+  const writeCalls: WriteTerminalSessionInput[] = [];
+  const tools = createTools(
+    "terminal-interaction-running",
+    createMockDependencies({ writeCalls }),
+  );
+
+  const started = await getTool(tools, "execute_terminal").execute({ command: "long-running-command" });
+  const result = await getTool(tools, "interact_terminal").execute({
+    keys: ["ENTER"],
+    session_id: started.semantics?.session_id,
+    text: "y",
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(result.semantics?.state, "running");
+  assert.equal(result.semantics?.interaction_applied, true);
+  assert.equal(result.semantics?.input_sent, true);
+  assert.equal(result.semantics?.next_action, undefined);
+  assert.doesNotMatch(result.body ?? "", /next_action/u);
+  assert.equal(result.displayBody, "Terminal input sent. Read terminal for updates.");
+  assert.equal(writeCalls[1]?.data, "y\r");
+});
+
 test("execute_terminal preserves multiline PowerShell commands and the completion marker", async () => {
   const multilineCommand = [
     "git commit -m \"preserve multiline input\" -m \"First paragraph.",
@@ -403,10 +473,11 @@ test("agent mode exposes asynchronous terminal tools and plan mode exposes none"
     );
 
     assert.ok("execute_terminal" in agentTools);
+    assert.ok("interact_terminal" in agentTools);
     assert.ok("read_terminal" in agentTools);
     assert.ok("terminate_terminal" in agentTools);
-    assert.ok(!("interact_terminal" in agentTools));
     assert.ok(!("execute_terminal" in planTools));
+    assert.ok(!("interact_terminal" in planTools));
     assert.ok(!("read_terminal" in planTools));
     assert.ok(!("terminate_terminal" in planTools));
   } finally {

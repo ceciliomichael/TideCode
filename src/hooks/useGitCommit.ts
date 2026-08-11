@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toUserFacingErrorMessage } from '../lib/userFacingError'
 import type { ChatProviderId, GitCommitAction, GitCommitResult, GitStatusResult, ReasoningEffort } from '../types/chat'
 import { normalizeGitWorkspacePath } from '../lib/gitBranchStateCache'
+import { getCachedGitStatus, loadGitStatus } from '../lib/gitStatusCache'
 import {
   beginSourceControlCommitOperation,
   endSourceControlCommitOperation,
@@ -10,7 +11,6 @@ import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPat
 import { useGitSourceControlWatcher } from './useGitSourceControlWatcher'
 
 interface UseGitCommitInput {
-  hasRepository: boolean
   modelId: string
   providerId: ChatProviderId | null
   reasoningEffort: ReasoningEffort
@@ -28,7 +28,7 @@ interface UseGitCommitResult {
   isCommitting: boolean
   isLoadingStatus: boolean
   lastCommitResult: GitCommitResult | null
-  refreshStatus: () => Promise<void>
+  refreshStatus: (options?: { forceRefresh?: boolean }) => Promise<void>
   resetResult: () => void
   status: GitStatusResult | null
 }
@@ -45,7 +45,6 @@ const EMPTY_STATUS: GitStatusResult = {
 const GIT_STATUS_POLL_INTERVAL_MS = 10000
 
 export function useGitCommit({
-  hasRepository,
   modelId,
   providerId,
   reasoningEffort,
@@ -53,7 +52,7 @@ export function useGitCommit({
 }: UseGitCommitInput): UseGitCommitResult {
   const normalizedWorkspacePath = normalizeGitWorkspacePath(workspacePath)
   useGitSourceControlWatcher(normalizedWorkspacePath)
-  const [status, setStatus] = useState<GitStatusResult | null>(null)
+  const [status, setStatus] = useState<GitStatusResult | null>(() => getCachedGitStatus(normalizedWorkspacePath))
   const [isLoadingStatus, setIsLoadingStatus] = useState(false)
   const [isCommitting, setIsCommitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -71,9 +70,9 @@ export function useGitCommit({
     setLastCommitResult(null)
   }, [normalizedWorkspacePath])
 
-  const refreshStatus = useCallback(async () => {
+  const refreshStatus = useCallback(async (options?: { forceRefresh?: boolean }) => {
     const requestWorkspacePath = normalizeGitWorkspacePath(workspacePath)
-    if (!requestWorkspacePath || !hasRepository) {
+    if (!requestWorkspacePath) {
       if (requestWorkspacePath === activeWorkspacePathRef.current) {
         setStatus(EMPTY_STATUS)
         setIsLoadingStatus(false)
@@ -88,7 +87,9 @@ export function useGitCommit({
     setErrorMessage(null)
 
     try {
-      const nextStatus = await window.tidecodeGit.getStatus(requestWorkspacePath)
+      const nextStatus = await loadGitStatus(requestWorkspacePath, {
+        forceRefresh: options?.forceRefresh,
+      })
       if (requestId === statusRequestIdRef.current && requestWorkspacePath === activeWorkspacePathRef.current) {
         setStatus(nextStatus)
       }
@@ -102,19 +103,19 @@ export function useGitCommit({
         setIsLoadingStatus(false)
       }
     }
-  }, [hasRepository, workspacePath])
+  }, [workspacePath])
 
   useEffect(() => {
-    if (!hasRepository) {
+    if (!normalizedWorkspacePath) {
       setStatus(null)
       return
     }
 
-    void refreshStatus()
-  }, [hasRepository, refreshStatus])
+    void refreshStatus({ forceRefresh: false })
+  }, [normalizedWorkspacePath, refreshStatus])
 
   useEffect(() => {
-    if (!hasRepository || !normalizedWorkspacePath) {
+    if (!normalizedWorkspacePath) {
       return
     }
 
@@ -124,16 +125,16 @@ export function useGitCommit({
         return
       }
 
-      void refreshStatus()
+      void refreshStatus({ forceRefresh: true })
     })
 
     return () => {
       unsubscribe()
     }
-  }, [hasRepository, normalizedWorkspacePath, refreshStatus])
+  }, [normalizedWorkspacePath, refreshStatus])
 
   useEffect(() => {
-    if (!hasRepository || !workspacePath) {
+    if (!workspacePath) {
       return
     }
 
@@ -142,13 +143,13 @@ export function useGitCommit({
         return
       }
 
-      void refreshStatus()
+      void refreshStatus({ forceRefresh: true })
     }, GIT_STATUS_POLL_INTERVAL_MS)
 
     return () => {
       window.clearInterval(intervalId)
     }
-  }, [hasRepository, refreshStatus, workspacePath])
+  }, [refreshStatus, workspacePath])
 
   const commit = useCallback(async (input: {
     action: GitCommitAction

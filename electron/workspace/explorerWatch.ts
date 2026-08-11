@@ -4,10 +4,9 @@ import { watch as watchDirectoryRecursively, type FSWatcher as NativeFsWatcher }
 import { readdir, stat } from 'node:fs/promises'
 import chokidar, { type FSWatcher } from 'chokidar'
 import path from 'node:path'
-import { isWorkspaceExplorerTemporaryDeletingEntryName } from './explorerIgnore'
 import {
   IGNORED_DIRECTORY_NAMES,
-  IGNORED_FILE_NAMES,
+  shouldIncludeWorkspaceWatchSnapshotEntry,
   shouldIgnoreWorkspaceWatchPath,
 } from './explorerWatchFilter'
 import { WorkspaceExplorerWatchSubscriptions } from './explorerWatchSubscriptions'
@@ -88,18 +87,6 @@ function normalizeRelativeDirectoryPaths(rootPath: string, relativeDirectoryPath
   return normalizedPaths.size > 0 ? normalizedPaths : new Set([DEFAULT_RELATIVE_PATH])
 }
 
-function shouldIncludeEntry(entryName: string, isDirectory: boolean) {
-  if (isWorkspaceExplorerTemporaryDeletingEntryName(entryName)) {
-    return false
-  }
-
-  if (isDirectory) {
-    return !IGNORED_DIRECTORY_NAMES.has(entryName)
-  }
-
-  return !IGNORED_FILE_NAMES.has(entryName)
-}
-
 async function buildWatchedDirectoriesSnapshot(
   rootPath: string,
   watchedRelativeDirectoryPaths: ReadonlySet<string>,
@@ -118,7 +105,9 @@ async function buildWatchedDirectoriesSnapshot(
         throw error
       })
 
-      const fileEntries = directoryEntries.filter((entry) => entry.isFile() && shouldIncludeEntry(entry.name, false))
+      const fileEntries = directoryEntries.filter(
+        (entry) => entry.isFile() && shouldIncludeWorkspaceWatchSnapshotEntry(entry.name, false),
+      )
       const fileStats = await Promise.all(
         fileEntries.map(async (entry) => {
           const filePath = path.join(absolutePath, entry.name)
@@ -135,7 +124,10 @@ async function buildWatchedDirectoriesSnapshot(
         }
 
         const isDirectory = directoryEntry.isDirectory()
-        if ((!isDirectory && !directoryEntry.isFile()) || !shouldIncludeEntry(directoryEntry.name, isDirectory)) {
+        if (
+          (!isDirectory && !directoryEntry.isFile()) ||
+          !shouldIncludeWorkspaceWatchSnapshotEntry(directoryEntry.name, isDirectory)
+        ) {
           continue
         }
 
@@ -320,12 +312,8 @@ function startDirectoryWatchingWorkspaceRoot(rootPath: string, state: WorkspaceE
       depth: 0,
       ignoreInitial: true,
       ignored: (testPath: string) => {
-        const basename = path.basename(testPath)
-        return (
-          IGNORED_DIRECTORY_NAMES.has(basename) ||
-          IGNORED_FILE_NAMES.has(basename) ||
-          isWorkspaceExplorerTemporaryDeletingEntryName(basename)
-        )
+        const relativePath = path.relative(rootPath, testPath)
+        return relativePath.length > 0 && shouldIgnoreWorkspaceWatchPath(relativePath)
       },
     })
     state.watcher = watcher
