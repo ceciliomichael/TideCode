@@ -27,3 +27,46 @@ test('settling an unknown stream is harmless', () => {
 
   assert.doesNotThrow(() => registry.settle('missing-stream'))
 })
+
+test('a stream consumes every currently pending steer message as one boundary batch', () => {
+  const registry = new ActiveChatStreamRegistry()
+  const abortController = new AbortController()
+  const registration = registry.register('stream-1', abortController)
+
+  assert.equal(registry.updatePendingSteerMessages('stream-1', {
+    messages: [
+      { content: 'first', id: 'steer-1', timestamp: 1 },
+      { content: 'second', id: 'steer-2', timestamp: 2 },
+    ],
+    revision: 1,
+  }), true)
+  assert.deepEqual(
+    registration.steering.consumePendingAtToolBoundary().map((message) => message.id),
+    ['steer-1', 'steer-2'],
+  )
+  assert.deepEqual(registration.steering.consumePendingAtToolBoundary(), [])
+  assert.equal(abortController.signal.aborted, false, 'steering must not cancel the active run')
+})
+
+test('consumed steer messages cannot be restored by a delayed queue snapshot', () => {
+  const registry = new ActiveChatStreamRegistry()
+  const registration = registry.register('stream-1', new AbortController())
+  registry.updatePendingSteerMessages('stream-1', {
+    messages: [{ content: 'first', id: 'steer-1', timestamp: 1 }],
+    revision: 1,
+  })
+  registration.steering.consumePendingAtToolBoundary()
+
+  registry.updatePendingSteerMessages('stream-1', {
+    messages: [
+      { content: 'first', id: 'steer-1', timestamp: 1 },
+      { content: 'next boundary', id: 'steer-2', timestamp: 2 },
+    ],
+    revision: 2,
+  })
+
+  assert.deepEqual(
+    registration.steering.consumePendingAtToolBoundary().map((message) => message.id),
+    ['steer-2'],
+  )
+})

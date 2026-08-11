@@ -1,13 +1,17 @@
 import { jsonSchema, tool } from 'ai'
 import type { AgentToolExecutionResult } from '../toolTypes'
-import { createEditToolResult, type WorkspaceToolContext } from './workspaceTools'
+import {
+  createEditToolResult,
+  WORKSPACE_PATH_DESCRIPTION,
+  type WorkspaceToolContext,
+} from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 const EDIT_TOOL_DESCRIPTION =
   'Replace one unique text block in a file. Exact text is matched first; indentation, line-ending, and line-edge whitespace differences are tolerated when they still identify one unambiguous block.'
 
 const EDIT_PATH_SCHEMA = {
-  description: 'File path.',
+  description: WORKSPACE_PATH_DESCRIPTION,
   type: 'string',
 }
 

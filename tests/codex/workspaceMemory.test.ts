@@ -104,6 +104,36 @@ test('workspace memory preserves non-empty folders after forgetting one entry', 
   }
 })
 
+test('workspace memory accepts absolute paths inside the workspace', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-memory-absolute-'))
+  const absoluteMemoryPath = path.join(
+    workspaceRootPath,
+    '.tidecode',
+    'memory',
+    'folders',
+    'architecture',
+    'absolute.md',
+  )
+
+  try {
+    const created = await writeMemoryEntry({
+      content: 'Absolute paths resolve within the selected workspace.',
+      path: absoluteMemoryPath,
+      workspaceRootPath,
+    })
+    assert.equal(created.operation, 'created')
+    assert.equal(created.path, '.tidecode/memory/folders/architecture/absolute.md')
+
+    const document = await readMemoryEntry({
+      path: absoluteMemoryPath,
+      workspaceRootPath,
+    })
+    assert.match(document.content, /Absolute paths resolve/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('workspace memory rejects paths outside managed folders', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-memory-path-'))
 

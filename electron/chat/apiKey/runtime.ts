@@ -8,10 +8,12 @@ import type {
   EstimateContextUsageInput,
   StartChatStreamInput,
   StartChatStreamResult,
+  UpdatePendingSteerMessagesInput,
   SubmitToolDecisionInput,
   SubmitToolDecisionResult,
 } from '../../../src/types/chat'
 import { ActiveChatStreamRegistry } from '../shared/activeChatStreamRegistry'
+import type { ActiveChatStreamRegistration } from '../shared/activeChatStreamRegistry'
 import { shouldReplayAssistantReasoning } from '../shared/assistantReasoningPolicy'
 import { estimateToolEnabledContextUsage, runToolEnabledChatStream } from '../shared/runtime'
 import { emitChatStreamEvent } from '../shared/runtimeStreamEvents'
@@ -100,10 +102,10 @@ export async function startApiKeyChatStream(
 
   const streamId = randomUUID()
   const abortController = new AbortController()
-  activeStreams.register(streamId, abortController)
+  const registration = activeStreams.register(streamId, abortController)
 
   queueMicrotask(() => {
-    void runApiKeyChatStream(webContents, streamId, input, abortController)
+    void runApiKeyChatStream(webContents, streamId, input, abortController, registration.steering)
       .catch((error: unknown) => {
         if (abortController.signal.aborted) {
           return
@@ -129,6 +131,7 @@ async function runApiKeyChatStream(
   streamId: string,
   input: StartChatStreamInput,
   abortController: AbortController,
+  steering: ActiveChatStreamRegistration['steering'],
 ) {
   if (input.providerId === 'codex') {
     throw new Error('Codex streams must use the Codex runtime.')
@@ -154,6 +157,7 @@ async function runApiKeyChatStream(
       }),
     promptOptions: { includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId) },
     startInput: input,
+    steering,
     streamId,
     webContents,
   })
@@ -161,6 +165,12 @@ async function runApiKeyChatStream(
 
 export function cancelApiKeyChatStream(streamId: string) {
   return activeStreams.cancel(streamId)
+}
+
+export function updateApiKeyPendingSteerMessages(input: UpdatePendingSteerMessagesInput) {
+  return {
+    accepted: activeStreams.updatePendingSteerMessages(input.streamId, input),
+  }
 }
 
 export async function submitApiKeyToolDecision(

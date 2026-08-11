@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { isChatSendBlocked } from '../src/lib/chatSendGate'
 import {
-  detectSuccessfulToolReleaseSignal,
   resolveQueuedMessageAutoSendReason,
+  shouldProcessQueuedMessages,
   shouldQueueMainMessage,
 } from '../src/pages/chatInterface/chatQueueAutoSend'
 
@@ -24,99 +24,50 @@ test('messages submitted while stopping a response remain queued until cleanup s
   )
 })
 
-test('a tool completion that predates the queued message does not release it', () => {
+test('queued follow-ups become eligible again after the prior auto-send finishes', () => {
   assert.equal(
-    detectSuccessfulToolReleaseSignal({
-      currentSignal: 'tool-1:100',
+    shouldProcessQueuedMessages({
       hasQueuedMessages: true,
-      observedSignal: 'tool-1:100',
+      isAutoSendBlocked: false,
+      isProcessingQueue: true,
     }),
-    null,
+    false,
   )
-})
-
-test('the next successful tool completion releases a waiting message', () => {
   assert.equal(
-    detectSuccessfulToolReleaseSignal({
-      currentSignal: 'tool-2:200',
+    shouldProcessQueuedMessages({
       hasQueuedMessages: true,
-      observedSignal: 'tool-1:100',
+      isAutoSendBlocked: false,
+      isProcessingQueue: false,
     }),
-    'tool-2:200',
+    true,
   )
 })
 
-test('tool completions are only captured while a message is queued', () => {
-  assert.equal(
-    detectSuccessfulToolReleaseSignal({
-      currentSignal: 'tool-2:200',
-      hasQueuedMessages: false,
-      observedSignal: 'tool-1:100',
-    }),
-    null,
-  )
-})
-
-test('steer releases after a successful tool once every tool has settled', () => {
+test('steer messages are never started as a separate run while the current turn is active', () => {
   assert.equal(
     resolveQueuedMessageAutoSendReason({
-      followUpBehavior: 'steer',
-      hasRunningToolInvocations: false,
-      hasSuccessfulToolRelease: true,
-      isTurnActive: true,
-    }),
-    'successful_tool',
-  )
-})
-
-test('steer waits while another tool is still running', () => {
-  assert.equal(
-    resolveQueuedMessageAutoSendReason({
-      followUpBehavior: 'steer',
-      hasRunningToolInvocations: true,
-      hasSuccessfulToolRelease: true,
       isTurnActive: true,
     }),
     null,
   )
 })
 
-test('steer does not release merely because the assistant is between tool calls', () => {
+test('queue mode waits until the turn ends', () => {
   assert.equal(
     resolveQueuedMessageAutoSendReason({
-      followUpBehavior: 'steer',
-      hasRunningToolInvocations: false,
-      hasSuccessfulToolRelease: false,
       isTurnActive: true,
     }),
     null,
   )
 })
 
-test('queue mode ignores successful tools until the turn ends', () => {
+test('the complete pending batch releases when the active turn ends', () => {
   assert.equal(
     resolveQueuedMessageAutoSendReason({
-      followUpBehavior: 'queue',
-      hasRunningToolInvocations: false,
-      hasSuccessfulToolRelease: true,
-      isTurnActive: true,
+      isTurnActive: false,
     }),
-    null,
+    'turn_completed',
   )
-})
-
-test('both follow-up modes release when the active turn has ended', () => {
-  for (const followUpBehavior of ['queue', 'steer'] as const) {
-    assert.equal(
-      resolveQueuedMessageAutoSendReason({
-        followUpBehavior,
-        hasRunningToolInvocations: false,
-        hasSuccessfulToolRelease: false,
-        isTurnActive: false,
-      }),
-      'turn_completed',
-    )
-  }
 })
 
 test('queued sending remains blocked while the runtime ref still reports a send', () => {

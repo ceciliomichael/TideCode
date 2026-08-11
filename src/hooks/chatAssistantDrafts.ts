@@ -547,6 +547,35 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
         activeStreamId: streamId,
       })
     },
+    handleSteerMessagesConsumed(messages: Message[]) {
+      const existingMessageIds = new Set(conversationMessagesSnapshot.map((message) => message.id))
+      const nextMessages = messages.filter((message) => !existingMessageIds.has(message.id))
+      if (nextMessages.length === 0) {
+        return
+      }
+
+      completeReasoningDraft()
+      for (const message of nextMessages) {
+        existingMessageIds.add(message.id)
+        input.appendLocalMessage(input.conversationId, message)
+        streamedMessageOrder.push({
+          kind: 'message',
+          message,
+        })
+      }
+      conversationMessagesSnapshot = [...conversationMessagesSnapshot, ...nextMessages]
+      notifyConversationMessagesUpdated({ immediate: true })
+
+      activeAssistantDraftId = null
+      activeAssistantDraftKind = null
+      reasoningDraftAssistantId = null
+      shouldStartFreshReasoningDraft = false
+      input.stopTextStreaming(input.conversationId)
+      input.updateConversationRuntimeState(input.conversationId, {
+        streamingAssistantMessageId: null,
+        streamingWaitingIndicatorVariant: null,
+      })
+    },
     handleToolInvocationCompleted(
       invocationId: string,
       nextValue: Pick<

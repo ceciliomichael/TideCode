@@ -166,6 +166,7 @@ function isMessage(value: unknown): value is Message {
   const hasValidUserMessageKind =
     message.userMessageKind === undefined ||
     message.userMessageKind === 'human' ||
+    message.userMessageKind === 'steer' ||
     message.userMessageKind === 'tool_result'
   const hasValidToolCallId = message.toolCallId === undefined || typeof message.toolCallId === 'string'
   const hasRequiredToolCallId =

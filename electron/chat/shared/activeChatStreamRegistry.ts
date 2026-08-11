@@ -1,6 +1,9 @@
+import { ChatStreamSteeringController, type PendingSteerMessageSnapshot } from './streamSteering'
+
 export interface ActiveChatStreamRegistration {
   readonly abortController: AbortController
   readonly settled: Promise<void>
+  readonly steering: ChatStreamSteeringController
 }
 
 interface StoredActiveChatStreamRegistration extends ActiveChatStreamRegistration {
@@ -23,9 +26,19 @@ export class ActiveChatStreamRegistry {
       abortController,
       resolveSettled,
       settled,
+      steering: new ChatStreamSteeringController(),
     }
     this.registrations.set(streamId, registration)
     return registration
+  }
+
+  updatePendingSteerMessages(streamId: string, snapshot: PendingSteerMessageSnapshot) {
+    const registration = this.registrations.get(streamId)
+    if (!registration || registration.abortController.signal.aborted) {
+      return false
+    }
+
+    return registration.steering.replacePending(snapshot)
   }
 
   settle(streamId: string) {

@@ -36,6 +36,14 @@ export function removeQueuedComposerMessage(messages: readonly QueuedMessage[], 
   return messages.filter((message) => message.id !== id)
 }
 
+export function removeQueuedComposerMessages(
+  messages: readonly QueuedMessage[],
+  ids: readonly string[],
+) {
+  const idsToRemove = new Set(ids)
+  return messages.filter((message) => !idsToRemove.has(message.id))
+}
+
 export function reorderQueuedComposerMessages(
   messages: readonly QueuedMessage[],
   sourceId: string,
@@ -74,6 +82,18 @@ export function requeueQueuedComposerMessage(
 
   const nextMessages = [...messages]
   nextMessages.splice(Math.max(restoreIndex, 0), 0, message)
+  return nextMessages
+}
+
+export function requeueQueuedComposerMessages(
+  messages: readonly QueuedMessage[],
+  messagesToRestore: readonly QueuedMessage[],
+  restoreIndex: number,
+) {
+  const existingMessageIds = new Set(messages.map((message) => message.id))
+  const uniqueMessagesToRestore = messagesToRestore.filter((message) => !existingMessageIds.has(message.id))
+  const nextMessages = [...messages]
+  nextMessages.splice(Math.max(restoreIndex, 0), 0, ...uniqueMessagesToRestore)
   return nextMessages
 }
 

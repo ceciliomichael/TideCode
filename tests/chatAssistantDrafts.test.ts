@@ -17,6 +17,7 @@ function createRuntimeSelection(): ChatRuntimeSelection {
 
 function createDraftManager() {
   const messages: Message[] = []
+  const runtimePatches: Record<string, unknown>[] = []
   const runtimeSelection = createRuntimeSelection()
   const getMessages = () => messages
 
@@ -37,7 +38,9 @@ function createDraftManager() {
     },
     runtimeSelection,
     stopTextStreaming: () => {},
-    updateConversationRuntimeState: () => {},
+    updateConversationRuntimeState: (_conversationId, patch) => {
+      runtimePatches.push(patch)
+    },
     updateLocalMessage: (_conversationId, messageId, updater) => {
       const nextMessages = messages.map((message) => (message.id === messageId ? updater(message) : message))
       messages.splice(0, messages.length, ...nextMessages)
@@ -47,8 +50,93 @@ function createDraftManager() {
   return {
     draftManager,
     getMessages,
+    runtimePatches,
   }
 }
+
+test('chat assistant drafts close the previous work block and group later tools after consumed steers', () => {
+  const { draftManager, runtimePatches } = createDraftManager()
+
+  draftManager.appendPlaceholderDraft()
+  draftManager.handleToolInvocationStarted('tool-call-1', {
+    argumentsText: '{}',
+    startedAt: 10,
+    toolName: 'read',
+  })
+  draftManager.handleToolInvocationCompleted('tool-call-1', {
+    argumentsText: '{}',
+    completedAt: 12,
+    resultContent: 'done',
+    resultPresentation: undefined,
+    toolName: 'read',
+  })
+  draftManager.handleSyntheticToolMessage({
+    content: 'done',
+    id: 'tool-result-1',
+    role: 'tool',
+    timestamp: 12,
+    toolCallId: 'tool-call-1',
+  })
+  draftManager.handleSteerMessagesConsumed([
+    {
+      content: 'first steer',
+      id: 'steer-1',
+      role: 'user',
+      timestamp: 13,
+    },
+    {
+      content: 'second steer',
+      id: 'steer-2',
+      role: 'user',
+      timestamp: 14,
+    },
+  ])
+  draftManager.handleToolInvocationStarted('tool-call-2', {
+    argumentsText: '{}',
+    startedAt: 15,
+    toolName: 'write',
+  })
+  draftManager.handleToolInvocationCompleted('tool-call-2', {
+    argumentsText: '{}',
+    completedAt: 16,
+    resultContent: 'written',
+    resultPresentation: undefined,
+    toolName: 'write',
+  })
+  draftManager.handleSyntheticToolMessage({
+    content: 'written',
+    id: 'tool-result-2',
+    role: 'tool',
+    timestamp: 16,
+    toolCallId: 'tool-call-2',
+  })
+
+  const streamedMessages = draftManager.finalizeStreamedMessages(false)
+
+  assert.ok(streamedMessages)
+  assert.deepEqual(streamedMessages.map((message) => message.role), [
+    'assistant',
+    'tool',
+    'user',
+    'user',
+    'assistant',
+    'tool',
+  ])
+  assert.deepEqual(
+    streamedMessages.filter((message) => message.role === 'user').map((message) => message.id),
+    ['steer-1', 'steer-2'],
+  )
+  const assistantMessages = streamedMessages.filter((message) => message.role === 'assistant')
+  assert.deepEqual(assistantMessages[0]?.toolInvocations?.map((invocation) => invocation.id), ['tool-call-1'])
+  assert.deepEqual(assistantMessages[1]?.toolInvocations?.map((invocation) => invocation.id), ['tool-call-2'])
+  assert.ok(
+    runtimePatches.some(
+      (patch) =>
+        patch.streamingAssistantMessageId === null &&
+        patch.streamingWaitingIndicatorVariant === null,
+    ),
+  )
+})
 
 test('chat assistant drafts start a new think block after the previous one has completed', () => {
   const { draftManager } = createDraftManager()

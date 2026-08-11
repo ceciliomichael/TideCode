@@ -41,10 +41,12 @@ import {
   buildChatPrompt,
   ensureCurrentExecutionModeContext,
 } from './messages'
+import { appendStoredMessages } from '../../history/store'
 import { createAgentTools } from './tools'
 import { terminateAllBackgroundSessionsForTurn } from './tools/terminalTools'
 import { sortToolSet } from './runtimeToolSet'
 import { continueToolLoopUntilModelStops } from './toolLoopPolicy'
+import { normalizeWorkspacePath } from '../../workspace/paths'
 import {
   emitChatStreamEvent,
   processRuntimeStream,
@@ -53,6 +55,12 @@ import {
 import {
   withCanonicalToolModelOutputs,
 } from './toolReplay'
+import type { ChatStreamSteeringController } from './streamSteering'
+import {
+  buildSameTurnSteerModelMessages,
+  createSameTurnSteerMessages,
+  hasCompletedToolBoundary,
+} from './runtimeSteering'
 
 export { estimateToolEnabledContextUsage } from './runtimeContextUsage'
 
@@ -112,12 +120,14 @@ export async function runToolEnabledChatStream(input: {
   createStream: ProviderStreamFactory
   promptOptions?: RuntimePromptOptions
   startInput: StartChatStreamInput
+  steering: ChatStreamSteeringController
   streamId: string
   webContents: WebContents
 }) {
   const contextCompaction = normalizeContextCompactionSettings(input.startInput.contextCompaction)
   const runId = randomUUID()
   const conversationId = input.startInput.conversationId?.trim() || null
+  let workspaceRootPath: string | null = null
   let runWasRecorded = false
   let queuedHistoryWrites = Promise.resolve()
   const queueHistoryWrite = (action: () => Promise<unknown>) => {
@@ -125,13 +135,14 @@ export async function runToolEnabledChatStream(input: {
   }
 
   try {
-    const enabledSkills = await listEnabledSkills(input.startInput.agentContextRootPath)
+    workspaceRootPath = normalizeWorkspacePath(input.startInput.agentContextRootPath)
+    const enabledSkills = await listEnabledSkills(workspaceRootPath)
     const rawTools = await createAgentTools(
       {
         checkpointId: resolveActiveCheckpointId(input.startInput.messages),
         conversationId: input.startInput.conversationId ?? null,
         turnId: runId,
-        workspaceRootPath: input.startInput.agentContextRootPath,
+        workspaceRootPath,
         terminalExecutionMode: input.startInput.terminalExecutionMode,
         webContents: input.webContents,
       },
@@ -153,7 +164,7 @@ export async function runToolEnabledChatStream(input: {
       chatMode: input.startInput.chatMode,
       messages: input.startInput.messages,
       options: promptOptions,
-      workspaceRootPath: input.startInput.agentContextRootPath,
+      workspaceRootPath,
     })
     const promptContext = buildPromptContextManifest({
       modelId: input.startInput.modelId,
@@ -191,6 +202,7 @@ export async function runToolEnabledChatStream(input: {
 
     const anchorUserMessageId = [...input.startInput.messages].reverse()
       .find((message) => message.role === 'user')?.id ?? null
+    let replayAnchorUserMessageId = anchorUserMessageId
     const cacheKey = derivePromptCacheKey({
       cacheScopeId: input.startInput.cacheScopeId?.trim() || conversationId || 'ephemeral',
       contextFingerprint,
@@ -231,17 +243,53 @@ export async function runToolEnabledChatStream(input: {
         }
       },
       prepareStep: async (stepInput) => {
+        const queuedSteerMessages = hasCompletedToolBoundary(stepInput.steps)
+          ? input.steering.consumePendingAtToolBoundary()
+          : []
+        const consumedSteerMessages = createSameTurnSteerMessages(
+          queuedSteerMessages,
+          input.startInput,
+        )
+        const consumedSteerModelMessages = buildSameTurnSteerModelMessages(
+          consumedSteerMessages,
+          promptOptions,
+        )
+        const currentStepMessages = consumedSteerModelMessages.length > 0
+          ? [...stepInput.messages, ...consumedSteerModelMessages]
+          : stepInput.messages
         const compactionMessages = mergeAutomaticCompactionMessages({
-          messages: stepInput.messages,
+          messages: currentStepMessages,
           responseMessages: stepInput.responseMessages,
         })
+
+        if (consumedSteerMessages.length > 0) {
+          replayAnchorUserMessageId = consumedSteerMessages.at(-1)?.id ?? replayAnchorUserMessageId
+          if (conversationId) {
+            await appendStoredMessages({
+              chatMode: input.startInput.chatMode,
+              conversationId,
+              messages: consumedSteerMessages,
+            })
+          }
+          replayMessages.push(...consumedSteerModelMessages)
+          emitChatStreamEvent(input.webContents, {
+            messages: consumedSteerMessages,
+            streamId: input.streamId,
+            type: 'steer_messages_consumed',
+          })
+        }
+
         const automaticTrigger = resolveAutomaticCompactionTrigger({
           abortSignal: input.abortController.signal,
           messages: compactionMessages,
           responseMessages: stepInput.responseMessages,
           stepNumber: stepInput.stepNumber,
         })
-        if (!automaticTrigger) return undefined
+        if (!automaticTrigger) {
+          return consumedSteerModelMessages.length > 0
+            ? { messages: currentStepMessages }
+            : undefined
+        }
 
         const compactionBudgetInput = {
           contextWindowTokens: contextCompaction.contextWindowTokens,
@@ -279,7 +327,7 @@ export async function runToolEnabledChatStream(input: {
               system: compactionInput.system,
               tools: {},
             }),
-            messages: stepInput.messages,
+            messages: currentStepMessages,
             model: input.startInput.modelId,
             providerId: input.startInput.providerId,
             onStarted: () => {
@@ -306,7 +354,9 @@ export async function runToolEnabledChatStream(input: {
         }
         if (input.abortController.signal.aborted) {
           emitCompactionFailed('aborted')
-          return undefined
+          return consumedSteerModelMessages.length > 0
+            ? { messages: currentStepMessages }
+            : undefined
         }
         if (!compacted) {
           emitCompactionFailed('unavailable')
@@ -316,7 +366,9 @@ export async function runToolEnabledChatStream(input: {
             projectedBudget: null,
             required: compactionRequired,
           })
-          return undefined
+          return consumedSteerModelMessages.length > 0
+            ? { messages: currentStepMessages }
+            : undefined
         }
 
         const projectedBudget = calculateModelMessagesBudget({
@@ -334,7 +386,7 @@ export async function runToolEnabledChatStream(input: {
         latestCompactionPacket = compacted.packet
         if (conversationId) {
           await safelyPersistHistory(() => recordCompactionCommitted({
-            anchorUserMessageId,
+            anchorUserMessageId: replayAnchorUserMessageId,
             compactionId: compacted.packet.packetId,
             conversationId,
             contextFingerprint,
@@ -396,7 +448,7 @@ export async function runToolEnabledChatStream(input: {
       }
 
       await safelyPersistHistory(() => recordRunCompleted({
-        anchorUserMessageId,
+        anchorUserMessageId: replayAnchorUserMessageId,
         contextFingerprint,
         conversationId,
         freshnessRevision: finalDocument.freshness.revision || freshnessRevision,
@@ -451,10 +503,10 @@ export async function runToolEnabledChatStream(input: {
       })
     }
   } finally {
-    if (input.startInput.agentContextRootPath) {
+    if (workspaceRootPath) {
       await terminateAllBackgroundSessionsForTurn(
         input.webContents,
-        input.startInput.agentContextRootPath,
+        workspaceRootPath,
         runId,
       ).catch(() => undefined)
     }

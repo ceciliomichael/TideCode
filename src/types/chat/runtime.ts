@@ -2,6 +2,7 @@ import type { ContextCompactionSettings } from '../../lib/contextCompactionSetti
 import type {
   ChatMode,
   Message,
+  QueuedMessage,
   ToolDecisionKind,
   ToolDecisionOption,
   ToolInvocationResultPresentation,
@@ -44,6 +45,16 @@ export interface CompactConversationResult {
 
 export interface StartChatStreamResult {
   streamId: string
+}
+
+export interface UpdatePendingSteerMessagesInput {
+  messages: QueuedMessage[]
+  revision: number
+  streamId: string
+}
+
+export interface UpdatePendingSteerMessagesResult {
+  accepted: boolean
 }
 
 export interface SubmitToolDecisionInput {
@@ -172,6 +183,11 @@ export type ChatStreamEvent =
       syntheticMessage: Message
       toolName: string
       type: 'tool_invocation_failed'
+    }
+  | {
+      messages: Message[]
+      streamId: string
+      type: 'steer_messages_consumed'
     }
   | { conversationId?: string | null; streamId: string; type: 'completed' }
   | { conversationId?: string | null; streamId: string; type: 'aborted' }

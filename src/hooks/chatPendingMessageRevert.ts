@@ -1,5 +1,6 @@
 import { hasMeaningfulAssistantOutput } from './chatMessageRuntime'
 import type { Message } from '../types/chat'
+import { isSameTurnSteerMessage } from '../lib/chatMessageMetadata'
 
 interface ConversationStateForPendingRevert {
   conversation: {
@@ -16,6 +17,19 @@ function isAssistantResponse(message: Message) {
   return hasMeaningfulAssistantOutput(message) || (message.toolInvocations?.length ?? 0) > 0
 }
 
+function arePartOfTheSameUserBatch(firstMessage: Message | undefined, secondMessage: Message | undefined) {
+  return Boolean(
+    firstMessage?.role === 'user' &&
+      secondMessage?.role === 'user' &&
+      firstMessage.runCheckpoint?.id &&
+      firstMessage.runCheckpoint.id === secondMessage.runCheckpoint?.id,
+  )
+}
+
+function isRollbackEligibleUserMessage(message: Message) {
+  return message.role === 'user' && !isSameTurnSteerMessage(message)
+}
+
 /**
  * Identifies the narrow send -> revert window where no assistant output has
  * been produced yet. A placeholder assistant draft is intentionally ignored;
@@ -29,17 +43,38 @@ export function getActiveUnrespondedUserMessage(
     return null
   }
 
-  const targetMessageIndex = messageId
+  const requestedMessageIndex = messageId
     ? conversationState.conversation.messages.findIndex(
-        (message) => message.id === messageId && message.role === 'user',
+        (message) => message.id === messageId && isRollbackEligibleUserMessage(message),
       )
-    : conversationState.conversation.messages.findLastIndex((message) => message.role === 'user')
-  if (targetMessageIndex < 0) {
+    : conversationState.conversation.messages.findLastIndex(isRollbackEligibleUserMessage)
+  if (requestedMessageIndex < 0) {
     return null
   }
 
+  let targetMessageIndex = requestedMessageIndex
+
+  while (
+    targetMessageIndex > 0 &&
+    arePartOfTheSameUserBatch(
+      conversationState.conversation.messages[targetMessageIndex - 1],
+      conversationState.conversation.messages[targetMessageIndex],
+    )
+  ) {
+    targetMessageIndex -= 1
+  }
+
   const messagesAfterTarget = conversationState.conversation.messages.slice(targetMessageIndex + 1)
-  if (messagesAfterTarget.some((message) => message.role === 'user' || isAssistantResponse(message))) {
+  const isUserBatch = targetMessageIndex !== requestedMessageIndex ||
+    arePartOfTheSameUserBatch(
+      conversationState.conversation.messages[targetMessageIndex],
+      conversationState.conversation.messages[targetMessageIndex + 1],
+    )
+  if (
+    messagesAfterTarget.some((message) =>
+      isUserBatch ? message.role !== 'user' && isAssistantResponse(message) : message.role === 'user' || isAssistantResponse(message),
+    )
+  ) {
     return null
   }
 

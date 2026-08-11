@@ -16,6 +16,8 @@ import {
   loadChatCompactionMarkers,
   prefetchChatCompactionMarkers,
 } from '../lib/chatCompactionMarkerCache'
+import { isSameTurnSteerMessage } from '../lib/chatMessageMetadata'
+import type { UserMessageSubmission } from './chatMessageSendTypes'
 
 export interface ChatHistorySnapshot {
   conversationSummaries: ConversationSummary[]
@@ -34,6 +36,7 @@ interface PersistUserTurnInput {
   selectedFolderId: string | null
   targetEditMessageId: string | null
   attachments: ChatAttachment[]
+  messages: readonly UserMessageSubmission[]
   trimmedText: string
   title?: string
 }
@@ -119,6 +122,29 @@ function findUserMessageOrThrow(conversation: ConversationRecord, messageId: str
   }
 }
 
+function isIndependentUserTurn(message: Message) {
+  return message.role === 'user' && !isSameTurnSteerMessage(message)
+}
+
+function resolveRevertTarget(conversation: ConversationRecord, messageId: string) {
+  const selectedTarget = findUserMessageOrThrow(conversation, messageId)
+  if (!isSameTurnSteerMessage(selectedTarget.targetMessage)) {
+    return selectedTarget
+  }
+
+  for (let index = selectedTarget.targetMessageIndex - 1; index >= 0; index -= 1) {
+    const message = conversation.messages[index]
+    if (isIndependentUserTurn(message)) {
+      return {
+        targetMessage: message,
+        targetMessageIndex: index,
+      }
+    }
+  }
+
+  throw new Error(`Same-turn steer message does not have a parent user turn: ${messageId}`)
+}
+
 function resolveRevertedChatMode(conversation: ConversationRecord, targetMessageIndex: number): ChatMode {
   const targetMessage = conversation.messages[targetMessageIndex]
   if (targetMessage?.chatMode) {
@@ -126,7 +152,7 @@ function resolveRevertedChatMode(conversation: ConversationRecord, targetMessage
   }
 
   const nextUserMessageIndex = conversation.messages.findIndex(
-    (message, index) => index > targetMessageIndex && message.role === 'user',
+    (message, index) => index > targetMessageIndex && isIndependentUserTurn(message),
   )
   const turnEndIndex = nextUserMessageIndex < 0 ? conversation.messages.length : nextUserMessageIndex
   const turnMessages = conversation.messages.slice(targetMessageIndex + 1, turnEndIndex)
@@ -157,7 +183,7 @@ async function resolveRevertCheckpointIdsOrThrow(conversation: ConversationRecor
 
   for (let index = targetMessageIndex; index < conversation.messages.length; index += 1) {
     const currentMessage = conversation.messages[index]
-    if (currentMessage.role !== 'user') {
+    if (!isIndependentUserTurn(currentMessage)) {
       continue
     }
 
@@ -172,7 +198,7 @@ async function resolveRevertCheckpointIdsOrThrow(conversation: ConversationRecor
 }
 
 async function findUserMessageForRevertOrThrow(conversation: ConversationRecord, messageId: string) {
-  const { targetMessage, targetMessageIndex } = findUserMessageOrThrow(conversation, messageId)
+  const { targetMessage, targetMessageIndex } = resolveRevertTarget(conversation, messageId)
   const checkpointIds = await resolveRevertCheckpointIdsOrThrow(conversation, targetMessageIndex)
 
   return {
@@ -277,19 +303,35 @@ export async function loadInitialChatHistory(
 }
 
 export async function persistUserTurn(input: PersistUserTurnInput): Promise<PersistUserTurnResult> {
+  if (input.messages.length === 0) {
+    throw new Error('Cannot persist an empty user message batch.')
+  }
+
+  const normalizedMessages = input.messages.map((message) => ({
+    attachments: message.attachments,
+    text: message.text.trim(),
+  }))
+  if (normalizedMessages.every((message) => message.text.length === 0 && message.attachments.length === 0)) {
+    throw new Error('Cannot persist an empty user message batch.')
+  }
+
   if (input.targetEditMessageId !== null) {
     if (!input.activeConversationId) {
       throw new Error('Cannot edit a message without an active conversation.')
     }
 
+    if (normalizedMessages.length !== 1) {
+      throw new Error('Cannot edit multiple user messages in one request.')
+    }
+
     const currentConversation = await loadStoredConversationOrThrow(input.activeConversationId)
     const runCheckpoint = await createRunCheckpoint(currentConversation.agentContextRootPath)
     const userMessage = buildUserMessage(
-      input.trimmedText,
+      normalizedMessages[0].text,
       input.modelId,
       input.providerId,
       input.reasoningEffort,
-      input.attachments,
+      normalizedMessages[0].attachments,
       runCheckpoint,
       input.chatMode,
       input.targetEditMessageId,
@@ -310,7 +352,7 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
       synchronizeCanonicalHistory: true,
       title:
         targetMessageIndex === 0
-          ? input.title?.trim() || getConversationTitleFromInput(input.trimmedText, input.attachments)
+          ? input.title?.trim() || getConversationTitleFromInput(normalizedMessages[0].text, normalizedMessages[0].attachments)
           : undefined,
     })
 
@@ -343,21 +385,27 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
 
   const shouldUpdateTitle = currentConversation.messages.length === 0
   const runCheckpoint = await createRunCheckpoint(currentConversation.agentContextRootPath)
-  const userMessage = buildUserMessage(
-    input.trimmedText,
-    input.modelId,
-    input.providerId,
-    input.reasoningEffort,
-    input.attachments,
-    runCheckpoint,
-    input.chatMode,
+  const userMessages = normalizedMessages.map((message) =>
+    buildUserMessage(
+      message.text,
+      input.modelId,
+      input.providerId,
+      input.reasoningEffort,
+      message.attachments,
+      runCheckpoint,
+      input.chatMode,
+    ),
   )
+  const userMessage = userMessages[0]
+  if (!userMessage) {
+    throw new Error('Cannot persist an empty user message batch.')
+  }
   const conversation = await window.tidecodeHistory.appendMessages({
     chatMode: input.chatMode,
     conversationId,
-    messages: [userMessage],
+    messages: userMessages,
     title: shouldUpdateTitle
-      ? input.title?.trim() || getConversationTitleFromInput(input.trimmedText, input.attachments)
+      ? input.title?.trim() || getConversationTitleFromInput(userMessage.content, userMessage.attachments ?? [])
       : undefined,
   })
 

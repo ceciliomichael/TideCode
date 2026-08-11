@@ -371,6 +371,33 @@ test('a normal completed stream persists the user message and the assistant resp
   }
 })
 
+test('a queued batch persists every user message before one assistant response', async () => {
+  const harness = createWorkflowHarness({
+    streamContent: 'I will handle both requests together.',
+    streamOutcome: 'completed',
+  })
+  harness.input.messageBatch = [
+    { attachments: [], text: 'First queued request' },
+    { attachments: [], text: 'Second queued request' },
+  ]
+
+  try {
+    const accepted = await persistAndStreamMessage(harness.input)
+
+    assert.equal(accepted, true)
+    const storedMessages = harness.history.getStoredMessages(harness.conversation.id)
+    assert.deepEqual(
+      storedMessages.slice(0, 2).map((message) => message.content),
+      ['First queued request', 'Second queued request'],
+    )
+    assert.equal(storedMessages[0]?.role, 'user')
+    assert.equal(storedMessages[1]?.role, 'user')
+    assert.equal(storedMessages[2]?.role, 'assistant')
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
 test('an aborted tool remains in persisted history with a terminated result', async () => {
   const harness = createWorkflowHarness({
     streamOutcome: 'aborted',

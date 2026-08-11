@@ -5,7 +5,9 @@ import {
   createQueuedComposerMessage,
   dequeueQueuedComposerMessage,
   removeQueuedComposerMessage,
+  removeQueuedComposerMessages,
   requeueQueuedComposerMessage,
+  requeueQueuedComposerMessages,
   reorderQueuedComposerMessages,
   updateQueuedComposerMessage,
 } from '../src/pages/chatInterface/chatComposerQueue'
@@ -58,6 +60,19 @@ test('removeQueuedComposerMessage deletes the matching queued message', () => {
   const nextMessages = removeQueuedComposerMessage([firstMessage, secondMessage], firstMessage.id)
 
   assert.deepEqual(nextMessages.map((message) => message.content), ['Second'])
+})
+
+test('removeQueuedComposerMessages removes a complete auto-send batch', () => {
+  const firstMessage = createQueuedComposerMessage({ content: 'First' })
+  const secondMessage = createQueuedComposerMessage({ content: 'Second' })
+  const thirdMessage = createQueuedComposerMessage({ content: 'Third' })
+
+  const remainingMessages = removeQueuedComposerMessages(
+    [firstMessage, secondMessage, thirdMessage],
+    [firstMessage.id, secondMessage.id],
+  )
+
+  assert.deepEqual(remainingMessages.map((message) => message.content), ['Third'])
 })
 
 test('reorderQueuedComposerMessages moves a queued item before the drop target', () => {
@@ -113,4 +128,22 @@ test('requeueQueuedComposerMessage does not duplicate a queued item during a ret
   const nextMessages = requeueQueuedComposerMessage(existingMessages, queuedMessage, 0)
 
   assert.deepEqual(nextMessages.map((message) => message.id), [queuedMessage.id])
+})
+
+test('requeueQueuedComposerMessages restores every batch item in order during a retry race', () => {
+  const firstMessage = createQueuedComposerMessage({ content: 'First' })
+  const secondMessage = createQueuedComposerMessage({ content: 'Second' })
+  const laterMessage = createQueuedComposerMessage({ content: 'Later' })
+
+  const restoredMessages = requeueQueuedComposerMessages(
+    [laterMessage],
+    [firstMessage, secondMessage],
+    0,
+  )
+
+  assert.deepEqual(restoredMessages.map((message) => message.content), ['First', 'Second', 'Later'])
+  assert.deepEqual(
+    requeueQueuedComposerMessages(restoredMessages, [firstMessage, secondMessage], 0),
+    restoredMessages,
+  )
 })

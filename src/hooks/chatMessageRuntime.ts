@@ -37,6 +37,7 @@ interface StreamAssistantResponseInput {
   onReasoningDelta: (delta: string) => void
   onCompactionCommitted: () => void
   onStreamStarted: (streamId: string) => void
+  onSteerMessagesConsumed: (messages: Message[]) => void
   onSyntheticToolMessage: (message: Message) => void
   providerId: ChatProviderId
   reasoningEffort: ReasoningEffort
@@ -187,6 +188,11 @@ export async function streamAssistantResponse(
           resultPresentation: event.resultPresentation,
           toolName: event.toolName,
         })
+        return
+      }
+
+      if (event.type === 'steer_messages_consumed') {
+        input.onSteerMessagesConsumed(event.messages)
         return
       }
 

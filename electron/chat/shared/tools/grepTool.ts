@@ -1,5 +1,10 @@
 import { jsonSchema, tool } from 'ai'
-import { createGrepToolResult, resolveReadOnlyTargetPath, type WorkspaceToolContext } from './workspaceTools'
+import {
+  createGrepToolResult,
+  resolveReadOnlyTargetPath,
+  WORKSPACE_PATH_DESCRIPTION,
+  type WorkspaceToolContext,
+} from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createGrepTool(context: WorkspaceToolContext) {
@@ -9,7 +14,7 @@ export function createGrepTool(context: WorkspaceToolContext) {
       additionalProperties: false,
       properties: {
         path: {
-          description: 'File or directory path. Omit for the workspace root.',
+          description: `${WORKSPACE_PATH_DESCRIPTION} Omit for the workspace root.`,
           type: 'string',
         },
         include: { type: 'string' },

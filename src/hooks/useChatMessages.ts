@@ -756,6 +756,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     isAbortInProgress: sendActions.isAbortInProgress,
     isStreamingResponse: sessionState.activeConversationState?.isSending ?? isActiveDraftSending,
     isStreamingTextActive: sessionState.activeConversationState?.isStreamingTextActive ?? false,
+    activeStreamId: sessionState.activeConversationState?.activeStreamId ?? null,
     mainComposerAttachments: composerState.mainComposerAttachments,
     mainComposerMentionPathMap: composerState.mainComposerMentionPathMap,
     mainComposerValue: composerState.mainComposerValue,
@@ -784,6 +785,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     revertUserMessage: sendActions.revertUserMessage,
     sendEditedMessage: sendActions.sendEditedMessage,
     sendNewMessage: sendActions.sendNewMessage,
+    sendNewMessages: sendActions.sendNewMessages,
     sendProgrammaticMessage: sendActions.sendProgrammaticMessage,
   }
 }

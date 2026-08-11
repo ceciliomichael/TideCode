@@ -1,5 +1,9 @@
 import { jsonSchema, tool } from 'ai'
-import { createWholeFileWriteToolResult, type WorkspaceToolContext } from './workspaceTools'
+import {
+  createWholeFileWriteToolResult,
+  WORKSPACE_PATH_DESCRIPTION,
+  type WorkspaceToolContext,
+} from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createWriteTool(context: WorkspaceToolContext) {
@@ -10,7 +14,7 @@ export function createWriteTool(context: WorkspaceToolContext) {
       properties: {
         content: { description: 'Complete file contents.', type: 'string' },
         path: {
-          description: 'File path; use `path`, not `file`.',
+          description: `${WORKSPACE_PATH_DESCRIPTION} Use the JSON key \`path\`, not \`file\`.`,
           type: 'string',
         },
       },

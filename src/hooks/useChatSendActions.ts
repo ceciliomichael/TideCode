@@ -29,7 +29,7 @@ import {
   isActiveUnrespondedUserMessage,
 } from './chatPendingMessageRevert'
 import { stopAndRollbackPendingTurn } from './chatPendingTurnWorkflow'
-import type { ChatMode, Message } from '../types/chat'
+import type { ChatAttachment, ChatMode, Message } from '../types/chat'
 
 const RUN_STATE_SETTLE_TIMEOUT_MS = 20_000
 const STREAM_REGISTRATION_POLL_TIMEOUT_MS = 8_000
@@ -595,13 +595,23 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     ],
   )
 
-  const sendNewMessage = useCallback(
+  const sendNewMessages = useCallback(
     async (
       runtimeSelection: ChatRuntimeSelection,
-      messageText?: string,
-      attachments = input.mainComposerAttachments,
+      messages: readonly { content: string; attachments?: ChatAttachment[] }[],
       options?: SendNewMessageOptions,
     ): Promise<ChatSendAttemptResult> => {
+      const messageBatch = messages
+        .map((message) => ({
+          attachments: message.attachments ? [...message.attachments] : [],
+          text: message.content.trim(),
+        }))
+        .filter((message) => message.text.length > 0 || message.attachments.length > 0)
+      const firstMessage = messageBatch[0]
+      if (!firstMessage) {
+        return { accepted: false, retryable: false }
+      }
+
       const selection = readChatSelectionFromRefs(input)
       const activeConversationId = selection.activeConversationId
       const sendScopeKey = getChatSendScopeKey(activeConversationId)
@@ -638,12 +648,6 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         return { accepted: false, retryable: true }
       }
 
-      const nextMessageText = messageText ?? input.mainComposerValue
-      const trimmedText = nextMessageText.trim()
-      if (trimmedText.length === 0 && attachments.length === 0) {
-        return { accepted: false, retryable: false }
-      }
-
       if (!acquireChatSendScopeGate(submissionInFlightRef, sendScopeKey)) {
         return { accepted: false, retryable: true }
       }
@@ -654,7 +658,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         const accepted = await persistAndStreamMessage({
           ...input,
           activeConversationId,
-          attachments,
+          attachments: firstMessage.attachments,
           hasPendingAbortRequest: () => pendingAbortBeforeStreamStartRef.current,
           consumePendingAbortBeforeStreamStart: () => {
             if (!pendingAbortBeforeStreamStartRef.current) {
@@ -674,12 +678,13 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
             !suppressAbortComposerRestoreConversationIdsRef.current.has(activeConversationId),
           isUserMessageReverted,
           clearUserMessageRevert,
-          originalText: nextMessageText,
+          messageBatch,
+          originalText: firstMessage.text,
           resetMainComposerAfterSend: options?.resetMainComposerAfterSend,
           runtimeSelection,
           selectedFolderId: selection.selectedFolderId,
           targetEditMessageId: null,
-          trimmedText,
+          trimmedText: firstMessage.text,
         })
         return {
           accepted,
@@ -698,6 +703,25 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       registerPersistedUserTurn,
       waitForSendReadiness,
     ],
+  )
+
+  const sendNewMessage = useCallback(
+    async (
+      runtimeSelection: ChatRuntimeSelection,
+      messageText?: string,
+      attachments = input.mainComposerAttachments,
+      options?: SendNewMessageOptions,
+    ): Promise<ChatSendAttemptResult> => {
+      return sendNewMessages(
+        runtimeSelection,
+        [{
+          attachments,
+          content: messageText ?? input.mainComposerValue,
+        }],
+        options,
+      )
+    },
+    [input, sendNewMessages],
   )
 
   const sendProgrammaticMessage = useCallback(
@@ -1047,6 +1071,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     revertUserMessage,
     sendEditedMessage,
     sendNewMessage,
+    sendNewMessages,
     sendProgrammaticMessage,
   }
 }

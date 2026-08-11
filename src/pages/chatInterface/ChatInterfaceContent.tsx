@@ -20,14 +20,10 @@ import type { GitCommitController } from '../../hooks/useGitCommit'
 import type { GitDiffSnapshotController } from '../../hooks/useGitDiffSnapshot'
 import { useWorkspaceRefactorCandidates } from '../../hooks/useWorkspaceRefactorCandidates'
 import { useChatMessageQueue } from './useChatMessageQueue'
-import {
-  canInterruptStreamForSteer,
-  getLatestSuccessfulToolCompletionSignal,
-} from './chatSteerFollowUp'
 import type { QueuedMessageAutoSendReason } from './chatQueueAutoSend'
 import { useChatCompression } from './useChatCompression'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
-import type { AppSettings, ChatAttachment, CodexUsageSnapshot } from '../../types/chat'
+import type { AppSettings, CodexUsageSnapshot, QueuedMessage } from '../../types/chat'
 import type { ResolvedTheme } from '../../lib/theme'
 import { resolveTaskModelSelection } from '../../lib/taskModelSelection'
 import { ChatWorkspaceHeaderControls } from './ChatWorkspaceHeaderControls'
@@ -174,17 +170,6 @@ export function ChatInterfaceContent({
   })
   const { candidates: refactorCandidates, isLoading: refactorCandidatesLoading } =
     useWorkspaceRefactorCandidates(activeWorkspacePath)
-  const streamingAssistantMessage = useMemo(
-    () =>
-      chatMessages.streamingAssistantMessageId
-        ? chatMessages.messages.find(
-            (message) =>
-              message.id === chatMessages.streamingAssistantMessageId && message.role === 'assistant',
-          ) ?? null
-        : null,
-    [chatMessages.messages, chatMessages.streamingAssistantMessageId],
-  )
-  const activeStreamToolInvocations = streamingAssistantMessage?.toolInvocations ?? []
   const [isCompressingChat, setIsCompressingChat] = useState(false)
   const [workspaceViewMode, setWorkspaceViewMode] = useState<ChatWorkspaceViewMode>('chat')
   const isKanbanBoardOpen = workspaceViewMode === 'kanban'
@@ -216,10 +201,6 @@ export function ChatInterfaceContent({
     workspaceState,
   ])
 
-  const hasRunningToolInvocations = !canInterruptStreamForSteer(activeStreamToolInvocations)
-  const successfulToolCompletionSignal = getLatestSuccessfulToolCompletionSignal(
-    activeStreamToolInvocations,
-  )
   const isQueueAutoSendBlocked =
     chatMessages.isAbortInProgress ||
     chatMessages.isLoading ||
@@ -230,19 +211,14 @@ export function ChatInterfaceContent({
 
   const sendQueuedMessage = useCallback(
     (
-      queuedMessage: { content: string; attachments?: ChatAttachment[] },
+      queuedMessages: readonly QueuedMessage[],
       reason: QueuedMessageAutoSendReason,
     ) => {
-      return (async () => {
-        if (reason === 'successful_tool') {
-          await chatMessages.abortStreamingResponse()
-        }
-
-        return chatMessages.sendNewMessage(runtimeSelection, queuedMessage.content, queuedMessage.attachments, {
-          resetMainComposerAfterSend: false,
-          waitForConversationToSettle: true,
-        })
-      })()
+      void reason
+      return chatMessages.sendNewMessages(runtimeSelection, queuedMessages, {
+        resetMainComposerAfterSend: false,
+        waitForConversationToSettle: true,
+      })
     },
     [chatMessages, runtimeSelection],
   )
@@ -255,12 +231,11 @@ export function ChatInterfaceContent({
     reorderQueuedMessages,
     updateQueuedMessage,
   } = useChatMessageQueue({
+    activeStreamId: chatMessages.activeStreamId,
     followUpBehavior: settings.followUpBehavior,
-    hasRunningToolInvocations,
     isAutoSendBlocked: isQueueAutoSendBlocked,
     isTurnActive: chatMessages.isSending,
     onSendMessage: sendQueuedMessage,
-    successfulToolCompletionSignal,
   })
   const { handleCompressChat } = useChatCompression({
     activeConversationId: chatMessages.activeConversationId,
