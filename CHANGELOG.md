@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.3 — A richer workspace editor and visual chat context
+
+TideCode 1.1.3 makes project work easier to inspect and edit in place, while letting conversations use images as structured context and keeping update progress clear during downloads.
+
+- Replaces workspace text and diff views with Monaco-based editing, search and replace, syntax-aware highlighting, Git line indicators, responsive diffs, and copy actions.
+- Adds safe image workflows for clipboard paste, inline chat references, image attachments, and images read from the workspace, with bounded media handling and binary-safe compaction.
+- Improves workspace explorer transfers, previews, virtualization, and cache behavior so large or changing projects remain responsive.
+- Keeps Settings aligned with the release version actually being downloaded and preserves download progress across update checks.
+
 ## 1.1.2 — Durable workspace memory and dependable long-running terminals
 
 TideCode 1.1.2 gives agents a secure, workspace-scoped place to retain durable project context and makes long-running terminal work easier to follow and control.
