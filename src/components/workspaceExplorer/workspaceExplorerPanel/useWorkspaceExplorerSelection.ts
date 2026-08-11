@@ -6,9 +6,7 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from 'react'
-import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
-import type { WorkspaceClipboardEntry } from '../workspaceClipboardTypes'
 import { ROOT_DIRECTORY_KEY, toDirectoryKey } from './workspaceExplorerPanelUtils'
 import {
   collectLoadedExplorerEntryPaths,
@@ -26,12 +24,11 @@ interface ExplorerUndoActions {
 
 interface UseWorkspaceExplorerSelectionOptions {
   activeFilePath: string | null
-  clipboardEntry: WorkspaceClipboardEntry | null
   directoryEntriesByPath: Record<string, WorkspaceExplorerEntry[]>
   expandedDirectories: Set<string>
   loadDirectory: (relativePath?: string, options?: { hideError?: boolean }) => Promise<void>
   onOpenFile: (relativePath: string) => void
-  openDeleteDialog: (targetRelativePaths: readonly string[], targetEntry: WorkspaceExplorerEntry | null) => void
+  requestDeleteEntries: (targetRelativePaths: readonly string[]) => Promise<void>
   requestCopyOrCutEntries: (relativePaths: readonly string[], mode: 'copy' | 'cut') => void
   rootEntries: WorkspaceExplorerEntry[]
   selectedEntryPaths: Set<string>
@@ -41,19 +38,17 @@ interface UseWorkspaceExplorerSelectionOptions {
   setExpandedDirectories: Dispatch<SetStateAction<Set<string>>>
   setSelectedEntryPaths: Dispatch<SetStateAction<Set<string>>>
   setSelectionDirectoryPath: Dispatch<SetStateAction<string>>
-  submitImportEntries: (sourcePaths: readonly string[], targetDirectoryRelativePath: string) => Promise<void>
-  submitPasteEntry: (targetDirectoryRelativePath: string) => Promise<void>
+  submitClipboardContents: (targetDirectoryRelativePath: string) => Promise<void>
   undoStack: ExplorerUndoActions
 }
 
 export function useWorkspaceExplorerSelection({
   activeFilePath,
-  clipboardEntry,
   directoryEntriesByPath,
   expandedDirectories,
   loadDirectory,
   onOpenFile,
-  openDeleteDialog,
+  requestDeleteEntries,
   requestCopyOrCutEntries,
   rootEntries,
   selectedEntryPaths,
@@ -63,8 +58,7 @@ export function useWorkspaceExplorerSelection({
   setExpandedDirectories,
   setSelectedEntryPaths,
   setSelectionDirectoryPath,
-  submitImportEntries,
-  submitPasteEntry,
+  submitClipboardContents,
   undoStack,
 }: UseWorkspaceExplorerSelectionOptions) {
   const selectEntry = useCallback((entry: WorkspaceExplorerEntry) => {
@@ -175,11 +169,7 @@ export function useWorkspaceExplorerSelection({
           return
         }
         event.preventDefault()
-        const firstSelectedPath = Array.from(selectedEntryPaths)[0]
-        openDeleteDialog(
-          Array.from(selectedEntryPaths),
-          findLoadedExplorerEntry(rootEntries, directoryEntriesByPath, firstSelectedPath) ?? null,
-        )
+        void requestDeleteEntries(Array.from(selectedEntryPaths))
         return
       }
 
@@ -234,37 +224,20 @@ export function useWorkspaceExplorerSelection({
           selectionDirectoryPath,
         })
 
-        if (typeof window !== 'undefined' && window.tidecodeClipboard) {
-          try {
-            const osPaths = await window.tidecodeClipboard.readFiles()
-            if (osPaths.length > 0) {
-              await submitImportEntries(osPaths, pasteTargetPath)
-              return
-            }
-          } catch (error) {
-            console.error('Failed to read OS clipboard files', error)
-            setErrorMessage(toUserFacingErrorMessage(error, 'The files could not be read from the clipboard.'))
-          }
-        }
-
-        if (clipboardEntry) {
-          await submitPasteEntry(pasteTargetPath)
-        }
+        await submitClipboardContents(pasteTargetPath)
       })()
     },
     [
       activeFilePath,
-      clipboardEntry,
       directoryEntriesByPath,
-      openDeleteDialog,
+      requestDeleteEntries,
       requestCopyOrCutEntries,
       rootEntries,
       selectAllLoadedEntriesInSelectionDirectory,
       selectedEntryPaths,
       selectionDirectoryPath,
       setErrorMessage,
-      submitImportEntries,
-      submitPasteEntry,
+      submitClipboardContents,
       undoStack,
     ],
   )

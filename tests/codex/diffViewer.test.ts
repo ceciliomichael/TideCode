@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateVisibleDiffRange } from '../../src/components/chat/DiffViewer'
+import { calculateVisibleDiffRange } from '../../src/components/chat/diffViewerVirtualization'
 
 test('calculateVisibleDiffRange advances when the diff body scrolls itself', () => {
   const visibleRange = calculateVisibleDiffRange({

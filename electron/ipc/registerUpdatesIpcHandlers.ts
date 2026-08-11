@@ -39,14 +39,25 @@ export function registerUpdatesIpcHandlers(getWindow: () => Electron.BrowserWind
       console.warn('TideCode could not persist release metadata.', error)
     }
 
+    const existingDownloadStatus = getUpdateDownloadState()
     const shouldDownloadAutomatically = result.updateAvailable && (await getStoredSettings()).autoDownloadUpdates
     if (!shouldDownloadAutomatically || !app.isPackaged) {
-      return result
+      if (existingDownloadStatus.downloadState === 'not-available') {
+        return result
+      }
+
+      return {
+        ...result,
+        downloadPercent: existingDownloadStatus.downloadPercent,
+        downloadState: existingDownloadStatus.downloadState,
+        downloadVersion: existingDownloadStatus.downloadVersion,
+      }
     }
 
-    const downloadStatus = getUpdateDownloadState()
+    let downloadStatus = existingDownloadStatus
     if (downloadStatus.downloadState === 'not-available') {
       void downloadLatestUpdate(result.latestVersion).catch(() => undefined)
+      downloadStatus = getUpdateDownloadState()
     }
 
     // Report the real download state instead of always claiming a download is
@@ -56,6 +67,7 @@ export function registerUpdatesIpcHandlers(getWindow: () => Electron.BrowserWind
       ...result,
       downloadPercent: downloadStatus.downloadPercent,
       downloadState: downloadStatus.downloadState,
+      downloadVersion: downloadStatus.downloadVersion,
     }
   })
   ipcMain.handle('updates:downloadUpdate', async (_event, version: unknown) => {

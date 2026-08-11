@@ -3,16 +3,22 @@ import { isDocxPreviewablePath } from './docx-preview'
 import { isPdfPreviewablePath } from './pdf-preview'
 import { clearPdfPreviewRenderCache, prefetchPdfPreviewRender, requestPdfPreviewRender } from './pdfPreviewRenderCache'
 import { clearDocxPreviewRenderCache, prefetchDocxPreviewRender, requestDocxPreviewRender } from './docxPreviewRenderCache'
+import {
+  isWorkspaceFileCacheEntryFresh,
+  MAX_CACHED_WORKSPACE_FILES,
+  shouldRetainConsumedWorkspaceFile,
+} from './workspaceFileCachePolicy'
 
 interface WorkspaceFileCacheEntry {
+  createdAt: number
   promise: Promise<WorkspaceExplorerReadFileResult>
   workspaceRootPath: string
 }
 
-const MAX_CACHED_PREVIEW_FILES = 3
 const workspaceFileCache = new Map<string, WorkspaceFileCacheEntry>()
 
 interface WorkspaceFileCacheOptions {
+  consume?: boolean
   priority?: boolean
 }
 
@@ -59,13 +65,19 @@ export function readWorkspaceFileWithCache(
   input: { relativePath: string; workspaceRootPath: string },
   options?: WorkspaceFileCacheOptions,
 ) {
-  if (!isBackgroundPreviewablePath(input.relativePath)) {
-    return window.tidecodeWorkspace.readFile(input)
-  }
-
   const key = createCacheKey(input.workspaceRootPath, input.relativePath)
   const cachedEntry = workspaceFileCache.get(key)
-  if (cachedEntry) {
+  const isPersistentPreview = isBackgroundPreviewablePath(input.relativePath)
+  const isCachedEntryFresh = cachedEntry && isWorkspaceFileCacheEntryFresh(
+    cachedEntry.createdAt,
+    Date.now(),
+    isPersistentPreview,
+  )
+  if (cachedEntry && isCachedEntryFresh) {
+    workspaceFileCache.delete(key)
+    if (shouldRetainConsumedWorkspaceFile(options?.consume)) {
+      workspaceFileCache.set(key, cachedEntry)
+    }
     if (options?.priority) {
       return cachedEntry.promise.then((result) => {
         warmPreview(result, true)
@@ -73,6 +85,9 @@ export function readWorkspaceFileWithCache(
       })
     }
     return cachedEntry.promise
+  }
+  if (cachedEntry) {
+    workspaceFileCache.delete(key)
   }
 
   const promise = window.tidecodeWorkspace.readFile(input).then((result) => {
@@ -88,8 +103,20 @@ export function readWorkspaceFileWithCache(
     throw error
   })
 
-  workspaceFileCache.set(key, { promise, workspaceRootPath: input.workspaceRootPath })
-  while (workspaceFileCache.size > MAX_CACHED_PREVIEW_FILES) {
+  workspaceFileCache.set(key, {
+    createdAt: Date.now(),
+    promise,
+    workspaceRootPath: input.workspaceRootPath,
+  })
+  if (options?.consume) {
+    const removeConsumedEntry = () => {
+      if (workspaceFileCache.get(key)?.promise === promise) {
+        workspaceFileCache.delete(key)
+      }
+    }
+    void promise.then(removeConsumedEntry, removeConsumedEntry)
+  }
+  while (workspaceFileCache.size > MAX_CACHED_WORKSPACE_FILES) {
     const oldestKey = workspaceFileCache.keys().next().value
     if (typeof oldestKey !== 'string') {
       break

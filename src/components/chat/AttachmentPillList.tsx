@@ -1,8 +1,8 @@
-import type { ChatAttachment } from '../../types/chat'
+import type { ChatTextAttachment } from '../../types/chat'
 import { AttachmentPill } from './AttachmentPill'
 
 interface AttachmentPillListProps {
-  attachments: readonly ChatAttachment[]
+  attachments: readonly ChatTextAttachment[]
   onRemoveAttachment?: (attachmentId: string) => void
 }
 

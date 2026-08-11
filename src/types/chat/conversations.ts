@@ -51,9 +51,17 @@ export interface ChangeDiffToolResultPresentation {
   kind: 'change_diff'
 }
 
+export interface ImageToolResultPresentation {
+  fileName: string
+  kind: 'image'
+  mediaType: string
+  relativePath: string
+}
+
 export type ToolInvocationResultPresentation =
   | ChangeDiffToolResultPresentation
   | FileDiffToolResultPresentation
+  | ImageToolResultPresentation
   | PlanToolResultPresentation
 
 interface ChatAttachmentBase {
@@ -66,7 +74,9 @@ interface ChatAttachmentBase {
 
 export interface ChatImageAttachment extends ChatAttachmentBase {
   dataUrl: string
+  height?: number
   kind: 'image'
+  width?: number
 }
 
 export interface ChatTextAttachment extends ChatAttachmentBase {

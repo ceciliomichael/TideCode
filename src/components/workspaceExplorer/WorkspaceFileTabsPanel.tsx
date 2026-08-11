@@ -18,7 +18,7 @@ import { Tooltip } from '../Tooltip'
 import type { WorkspaceTab } from './types'
 import type { PlanReviewComment } from '../../lib/planContracts'
 import type { PlanCommentsByPath } from '../../lib/planComments'
-import type { TextSelectionRange } from './workspaceFileEditor/workspaceFileEditorUtils'
+import type { TextSelectionRange } from './workspaceFileEditor/workspaceEditorTypes'
 import { WorkspaceFileTabsPanelContent } from './workspaceFileTabsPanel/WorkspaceFileTabsPanelContent'
 import { findWorkspaceTabByKey } from './workspaceFileTabsPanel/workspaceFileTabsPanelUtils'
 

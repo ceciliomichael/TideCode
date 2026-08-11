@@ -1,11 +1,18 @@
-import { memo } from 'react'
+import { lazy, memo, Suspense } from 'react'
 import type { GitFileDiff } from '../../types/chat'
-import { WorkspaceFileEditorView } from './workspaceFileEditor/WorkspaceFileEditorView'
-import { useWorkspaceFileEditorState } from './workspaceFileEditor/useWorkspaceFileEditorState'
-import type { TextSelectionRange } from './workspaceFileEditor/workspaceFileEditorUtils'
+import { WorkspaceMonacoLoadingView } from './workspaceFileEditor/WorkspaceMonacoLoadingView'
+import { useWorkspaceMonacoEditor } from './workspaceFileEditor/useWorkspaceMonacoEditor'
+import type { TextSelectionRange } from './workspaceFileEditor/workspaceEditorTypes'
+import { preloadWorkspaceMonacoEditorView } from '../../lib/workspaceMonacoPreload'
+
+const WorkspaceMonacoEditorView = lazy(async () => {
+  const editorModule = await preloadWorkspaceMonacoEditorView()
+  return { default: editorModule.WorkspaceMonacoEditorView }
+})
 
 interface WorkspaceFileEditorProps {
   fileName: string
+  filePath: string
   gitFileDiff: GitFileDiff | null
   hasRepository: boolean
   initialSelection?: TextSelectionRange | null
@@ -20,6 +27,7 @@ interface WorkspaceFileEditorProps {
 
 export const WorkspaceFileEditor = memo(function WorkspaceFileEditor({
   fileName,
+  filePath,
   gitFileDiff,
   hasRepository,
   initialSelection,
@@ -31,8 +39,9 @@ export const WorkspaceFileEditor = memo(function WorkspaceFileEditor({
   wordWrapEnabled,
   onChange,
 }: WorkspaceFileEditorProps) {
-  const editorState = useWorkspaceFileEditorState({
+  const editorState = useWorkspaceMonacoEditor({
     fileName,
+    filePath,
     gitFileDiff,
     hasRepository,
     initialSelection,
@@ -46,11 +55,11 @@ export const WorkspaceFileEditor = memo(function WorkspaceFileEditor({
   })
 
   return (
-    <WorkspaceFileEditorView
-      editorState={editorState}
-      fileName={fileName}
-      value={value}
-      wordWrapEnabled={wordWrapEnabled}
-    />
+    <Suspense fallback={<WorkspaceMonacoLoadingView />}>
+      <WorkspaceMonacoEditorView
+        {...editorState}
+        value={value}
+      />
+    </Suspense>
   )
 })

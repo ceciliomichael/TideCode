@@ -35,12 +35,6 @@ export interface WorkspaceExplorerContextMenuDimensions {
   width: number
 }
 
-export interface WorkspaceExplorerDeleteDialogState {
-  primaryEntryKind: 'file' | 'folder'
-  primaryEntryName: string
-  targetRelativePaths: string[]
-}
-
 export interface WorkspaceExplorerErrorDialogState {
   message: string
   title: string

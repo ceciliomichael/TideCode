@@ -110,9 +110,13 @@ export function createCanonicalToolModelOutput(input: {
   toolCallId: string
   toolName: string
 }): ToolResultOutput {
+  const result = normalizeToolExecutionResult(input.toolName, input.output)
+  if (result.modelOutput) {
+    return result.modelOutput
+  }
   const structuredContent = createCanonicalToolResultContent({
     argumentsValue: input.argumentsValue,
-    result: normalizeToolExecutionResult(input.toolName, input.output),
+    result,
     toolCallId: input.toolCallId,
     toolName: input.toolName,
   })

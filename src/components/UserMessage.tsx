@@ -15,17 +15,27 @@ import { Tooltip } from "./Tooltip";
 import { ChatMentionText } from "./chat/ChatMentionText";
 import { parseCompressedHistoryMessage } from "../lib/chatCompression";
 import { CompressedHistoryMessage } from "./chat/CompressedHistoryMessage";
+import type { ChatAttachment } from "../types/chat";
+import {
+  ensureChatImageReferences,
+  getChatImageAttachments,
+} from "../lib/chatImageReferences";
 
 interface UserMessageProps {
+  attachments?: readonly ChatAttachment[];
   content: string;
   onEdit?: () => void;
   onRevert?: () => void;
 }
 
-export function UserMessage({ content, onEdit, onRevert }: UserMessageProps) {
+export function UserMessage({ attachments = [], content, onEdit, onRevert }: UserMessageProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [isMultiline, setIsMultiline] = useState(false);
+  const [isImageReferenceHovered, setIsImageReferenceHovered] = useState(false);
   const trimmedContent = content.trim();
+  const imageAttachments = getChatImageAttachments(attachments);
+  const renderedContent = ensureChatImageReferences(content, attachments);
+  const trimmedRenderedContent = renderedContent.trim();
   const compressedHistoryMessage = useMemo(
     () => parseCompressedHistoryMessage(content),
     [content],
@@ -122,12 +132,17 @@ export function UserMessage({ content, onEdit, onRevert }: UserMessageProps) {
         ref={contentRef}
         className={`min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] ${contentClampClassName}`}
       >
-        {trimmedContent.length > 0 ? (
-          <ChatMentionText text={content} variant="rendered" />
+        {trimmedRenderedContent.length > 0 ? (
+          <ChatMentionText
+            imageAttachments={imageAttachments}
+            onImageReferenceHoverChange={setIsImageReferenceHovered}
+            text={renderedContent}
+            variant="rendered"
+          />
         ) : null}
       </div>
 
-      {onRevert ? (
+      {onRevert && !isImageReferenceHovered ? (
         <Tooltip content="Revert and edit this message" side="right">
           <div
             className={`absolute ${buttonPositionClassName} invisible z-10 flex items-center justify-end opacity-0 transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100`}

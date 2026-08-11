@@ -203,6 +203,7 @@ const MessageRow = memo(
           ) : (
             <div className="-mx-4 flex-1 min-w-0 w-[calc(100%+2rem)]">
               <UserMessage
+                attachments={message.attachments}
                 content={message.content}
                 onEdit={
                   onEditUserMessage

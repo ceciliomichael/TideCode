@@ -67,6 +67,7 @@ async function downloadLatestUpdateInternal(normalizedVersion: string): Promise<
       downloadError: undefined,
       downloadPercent: null,
       downloadState: 'manual' as const,
+      downloadVersion: null,
     }
   }
 
@@ -75,6 +76,7 @@ async function downloadLatestUpdateInternal(normalizedVersion: string): Promise<
       downloadError: undefined,
       downloadPercent: 100,
       downloadState: 'downloaded' as const,
+      downloadVersion: pendingVersion,
     }
   }
 
@@ -87,6 +89,7 @@ async function downloadLatestUpdateInternal(normalizedVersion: string): Promise<
         downloadError: 'The release is available, but this installer could not prepare it automatically.',
         downloadPercent: null,
         downloadState: 'error' as const,
+        downloadVersion: pendingVersion,
       }
     }
 
@@ -101,6 +104,7 @@ async function downloadLatestUpdateInternal(normalizedVersion: string): Promise<
       downloadError: undefined,
       downloadPercent: 100,
       downloadState: 'downloaded' as const,
+      downloadVersion: pendingVersion,
     }
   } catch (error) {
     const downloadError = getErrorMessage(error)
@@ -116,23 +120,28 @@ async function downloadLatestUpdateInternal(normalizedVersion: string): Promise<
       downloadError,
       downloadPercent: null,
       downloadState: 'error' as const,
+      downloadVersion: pendingVersion,
     }
   }
 }
 
 export function getUpdateDownloadState(): Pick<
   TideCodeUpdateDownloadResult,
-  'downloadPercent' | 'downloadState'
+  'downloadPercent' | 'downloadState' | 'downloadVersion'
 > {
   if (updateIsDownloaded) {
-    return { downloadPercent: 100, downloadState: 'downloaded' }
+    return { downloadPercent: 100, downloadState: 'downloaded', downloadVersion: pendingVersion }
   }
 
   if (downloadPromise) {
-    return { downloadPercent: latestDownloadPercent ?? 0, downloadState: 'downloading' }
+    return {
+      downloadPercent: latestDownloadPercent ?? 0,
+      downloadState: 'downloading',
+      downloadVersion: pendingVersion,
+    }
   }
 
-  return { downloadPercent: null, downloadState: 'not-available' }
+  return { downloadPercent: null, downloadState: 'not-available', downloadVersion: null }
 }
 
 export function downloadLatestUpdate(version: string): Promise<TideCodeUpdateDownloadResult> {

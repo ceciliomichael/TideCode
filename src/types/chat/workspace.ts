@@ -131,6 +131,16 @@ export interface WorkspaceExplorerImportEntryResult {
   targetRelativePath: string
 }
 
+export interface WorkspaceExplorerPasteClipboardImageInput {
+  targetDirectoryRelativePath?: string
+  workspaceRootPath: string
+}
+
+export interface WorkspaceExplorerPasteClipboardImageResult {
+  relativePath: string
+  sizeBytes: number
+}
+
 export interface CreateTerminalSessionInput {
   cols: number
   cwd?: string | null

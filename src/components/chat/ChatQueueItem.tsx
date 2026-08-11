@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   type ChangeEvent,
   type DragEvent,
+  type KeyboardEvent,
   type RefObject,
 } from 'react'
 import { Check, GripVertical, Paperclip, Undo2 } from 'lucide-react'
@@ -16,6 +17,13 @@ import type { ChatAttachment, QueuedMessage } from '../../types/chat'
 import { ChatMentionText } from './ChatMentionText'
 import { ChatMentionTextarea } from './ChatMentionTextarea'
 import { Tooltip } from '../Tooltip'
+import {
+  ensureChatImageReferences,
+  findChatImageReferenceForDeletion,
+  getChatImageAttachments,
+  insertChatImageReferences,
+  removeChatImageReference,
+} from '../../lib/chatImageReferences'
 
 interface ChatQueueItemProps {
   index: number
@@ -43,6 +51,8 @@ export function ChatQueueItem({
   const editorRef = useRef<HTMLDivElement>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [draftContent, setDraftContent] = useState(message.content)
+  const draftContentRef = useRef(draftContent)
+  draftContentRef.current = draftContent
   const [draftAttachments, setDraftAttachments] = useState<ChatAttachment[]>(message.attachments ?? [])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -124,9 +134,25 @@ export function ChatQueueItem({
       return
     }
 
-    const result = await readChatAttachmentsFromFiles(files, draftAttachments.length)
+    const initialInsertionPosition = textareaRef.current?.selectionStart ?? draftContent.length
+    const existingImageCount = getChatImageAttachments(draftAttachments).length
+    const result = await readChatAttachmentsFromFiles(files, draftAttachments)
     if (result.attachments.length > 0) {
+      const newImageCount = getChatImageAttachments(result.attachments).length
+      const latestContent = draftContentRef.current
+      const insertionPosition = textareaRef.current?.selectionStart ?? initialInsertionPosition
+      const insertion = insertChatImageReferences({
+        count: newImageCount,
+        firstImageNumber: existingImageCount + 1,
+        position: insertionPosition,
+        text: latestContent,
+      })
       setDraftAttachments((currentValue) => [...currentValue, ...result.attachments])
+      setDraftContent(insertion.text)
+      window.requestAnimationFrame(() => {
+        textareaRef.current?.focus()
+        textareaRef.current?.setSelectionRange(insertion.cursorPosition, insertion.cursorPosition)
+      })
     }
 
     setAttachmentError(result.errors[0] ?? null)
@@ -140,6 +166,39 @@ export function ChatQueueItem({
   function handleRemoveAttachment(attachmentId: string) {
     setDraftAttachments((currentValue) => currentValue.filter((attachment) => attachment.id !== attachmentId))
     setAttachmentError(null)
+  }
+
+  function handleEditorKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Backspace' && event.key !== 'Delete') {
+      return
+    }
+    const textarea = textareaRef.current
+    if (!textarea) {
+      return
+    }
+    const imageReference = findChatImageReferenceForDeletion({
+      imageCount: getChatImageAttachments(draftAttachments).length,
+      key: event.key,
+      selectionEnd: textarea.selectionEnd,
+      selectionStart: textarea.selectionStart,
+      text: draftContent,
+    })
+    if (!imageReference) {
+      return
+    }
+
+    event.preventDefault()
+    const nextState = removeChatImageReference({
+      attachments: draftAttachments,
+      imageNumber: imageReference.imageNumber,
+      text: draftContent,
+    })
+    setDraftAttachments(nextState.attachments)
+    setDraftContent(nextState.text)
+    window.requestAnimationFrame(() => {
+      const cursor = Math.min(imageReference.start, nextState.text.length)
+      textareaRef.current?.setSelectionRange(cursor, cursor)
+    })
   }
 
   useEffect(() => {
@@ -169,6 +228,16 @@ export function ChatQueueItem({
     }
   }, [editCancelBoundaryRef, handleCancel, isEditing])
 
+  useEffect(() => {
+    const nextContent = ensureChatImageReferences(draftContent, draftAttachments)
+    if (nextContent !== draftContent) {
+      setDraftContent(nextContent)
+    }
+  }, [draftAttachments, draftContent])
+
+  const draftImageAttachments = getChatImageAttachments(draftAttachments)
+  const draftNonImageAttachments = draftAttachments.filter((attachment) => attachment.kind !== 'image')
+
   if (isEditing) {
     return (
       <div className="px-2 py-2">
@@ -187,17 +256,18 @@ export function ChatQueueItem({
             tabIndex={-1}
           />
 
-          {draftAttachments.length > 0 ? (
+          {draftNonImageAttachments.length > 0 ? (
             <div className="mb-3">
-              <AttachmentPillList attachments={draftAttachments} onRemoveAttachment={handleRemoveAttachment} />
+              <AttachmentPillList attachments={draftNonImageAttachments} onRemoveAttachment={handleRemoveAttachment} />
             </div>
           ) : null}
 
           <ChatMentionTextarea
+            imageAttachments={draftImageAttachments}
             textareaRef={textareaRef}
             value={draftContent}
             onChange={(event) => setDraftContent(event.target.value)}
-            onKeyDown={() => undefined}
+            onKeyDown={handleEditorKeyDown}
             placeholder="Edit queued message"
             rows={1}
             style={{ fieldSizing: 'content' } as CSSProperties}
@@ -239,7 +309,10 @@ export function ChatQueueItem({
     )
   }
 
-  const attachmentCount = message.attachments?.length ?? 0
+  const messageAttachments = message.attachments ?? []
+  const messageImageAttachments = getChatImageAttachments(messageAttachments)
+  const attachmentCount = messageAttachments.length - messageImageAttachments.length
+  const renderedMessageContent = ensureChatImageReferences(message.content, messageAttachments)
 
   return (
     <div
@@ -270,7 +343,8 @@ export function ChatQueueItem({
         <Tooltip content={message.content} side="top" triggerClassName="min-w-0 flex-1">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <ChatMentionText
-              text={message.content}
+              imageAttachments={messageImageAttachments}
+              text={renderedMessageContent}
               variant="rendered"
               wrap="nowrap"
               className="min-w-0 truncate text-sm leading-5 text-foreground"

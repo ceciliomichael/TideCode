@@ -5,6 +5,7 @@ import type {
   WorkspaceExplorerDeleteEntryInput,
   WorkspaceExplorerImportEntryInput,
   WorkspaceExplorerListDirectoryInput,
+  WorkspaceExplorerPasteClipboardImageInput,
   WorkspaceExplorerReadFileInput,
   WorkspaceExplorerRenameEntryInput,
   WorkspaceExplorerTransferEntryInput,
@@ -36,6 +37,7 @@ import {
   writeWorkspaceFile,
 } from '../workspace/explorer'
 import { windowsClipboard } from '../clipboard/windowsClipboardReader'
+import { writeClipboardImageToWorkspace } from '../workspace/clipboardImage'
 
 export function registerWorkspaceIpcHandlers() {
   ipcMain.handle('workspace:checkpoint:create', async (_event, input: CreateWorkspaceCheckpointInput) =>
@@ -88,6 +90,17 @@ export function registerWorkspaceIpcHandlers() {
   )
   ipcMain.handle('workspace:explorer:importEntry', async (_event, input: WorkspaceExplorerImportEntryInput) =>
     importWorkspaceEntry(input),
+  )
+  ipcMain.handle(
+    'workspace:explorer:pasteClipboardImage',
+    async (_event, input: WorkspaceExplorerPasteClipboardImageInput) => {
+      const image = clipboard.readImage()
+      if (image.isEmpty()) {
+        return null
+      }
+
+      return writeClipboardImageToWorkspace(input, image.toPNG())
+    },
   )
   ipcMain.handle('clipboard:readFiles', async () => {
     if (process.platform === 'win32') {

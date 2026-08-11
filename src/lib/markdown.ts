@@ -5,7 +5,27 @@ interface DetailsTagNormalizationResult {
   line: string
 }
 
+interface MarkdownBacktickFence {
+  delimiter: string
+  indent: string
+  trailingContent: string
+}
+
 const DETAILS_OR_SUMMARY_TAG_PATTERN = /^<\/?(?:details|summary)>/u
+
+function parseMarkdownBacktickFence(line: string): MarkdownBacktickFence | null {
+  const trimmedLine = line.trimStart()
+  const fenceMatch = trimmedLine.match(/^(`{3,})(.*)$/u)
+  if (!fenceMatch) {
+    return null
+  }
+
+  return {
+    delimiter: fenceMatch[1],
+    indent: line.slice(0, line.length - trimmedLine.length),
+    trailingContent: fenceMatch[2],
+  }
+}
 
 function isEscapedBacktick(line: string, index: number) {
   let precedingBackslashes = 0
@@ -84,49 +104,50 @@ export function preprocessMarkdown(markdown: string): string {
 
   const lines = markdown.split('\n')
   const resultLines: string[] = []
-  let inCodeBlock = false
+  let activeCodeFence: MarkdownBacktickFence | null = null
   let inlineCodeDelimiter: InlineCodeDelimiter = null
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
-    const trimmedLine = line.trimStart()
+    const backtickFence = parseMarkdownBacktickFence(line)
 
-    if (trimmedLine.startsWith('```')) {
-      const indent = line.slice(0, line.length - trimmedLine.length)
-      const afterBackticks = trimmedLine.slice(3)
-      const trimmedAfter = afterBackticks.trim()
+    if (backtickFence) {
+      if (activeCodeFence) {
+        if (backtickFence.delimiter.length < activeCodeFence.delimiter.length) {
+          resultLines.push(line)
+          continue
+        }
 
-      if (inCodeBlock) {
+        const trimmedAfter = backtickFence.trailingContent.trim()
         if (trimmedAfter.length === 0) {
-          inCodeBlock = false
+          activeCodeFence = null
           inlineCodeDelimiter = null
           resultLines.push(line)
         } else {
-          inCodeBlock = false
+          activeCodeFence = null
           inlineCodeDelimiter = null
-          resultLines.push(`${indent}\`\`\``)
-          const remainingLine = `${indent}${trimmedAfter}`
+          resultLines.push(`${backtickFence.indent}${backtickFence.delimiter}`)
+          const remainingLine = `${backtickFence.indent}${trimmedAfter}`
           resultLines.push(remainingLine)
         }
         continue
-      } else {
-        const isMarkdownElement = /^(?:#{1,6}\s|#{1,6}$|[-*+]\s|\d+\.\s|>)/u.test(trimmedAfter)
-
-        if (isMarkdownElement) {
-          resultLines.push(`${indent}\`\`\``)
-          inCodeBlock = true
-          inlineCodeDelimiter = null
-          resultLines.push(`${indent}${trimmedAfter}`)
-        } else {
-          inCodeBlock = true
-          inlineCodeDelimiter = null
-          resultLines.push(line)
-        }
-        continue
       }
+
+      const trimmedAfter = backtickFence.trailingContent.trim()
+      const isMarkdownElement = /^(?:#{1,6}\s|#{1,6}$|[-*+]\s|\d+\.\s|>)/u.test(trimmedAfter)
+
+      activeCodeFence = backtickFence
+      inlineCodeDelimiter = null
+      if (isMarkdownElement) {
+        resultLines.push(`${backtickFence.indent}${backtickFence.delimiter}`)
+        resultLines.push(`${backtickFence.indent}${trimmedAfter}`)
+      } else {
+        resultLines.push(line)
+      }
+      continue
     }
 
-    if (inCodeBlock) {
+    if (activeCodeFence) {
       resultLines.push(line)
       continue
     }
@@ -139,7 +160,7 @@ export function preprocessMarkdown(markdown: string): string {
     processedLine = processedLine.replace(/==([^=]+)==/g, '<mark>$1</mark>')
 
     // Process superscript: ^text^ -> <sup>text</sup> (avoid matching GFM footnote refs like [^1])
-    processedLine = processedLine.replace(/(?<!\[)\^([^\^\s\\]+)\^/g, '<sup>$1</sup>')
+    processedLine = processedLine.replace(/(?<!\[)\^([^^\s\\]+)\^/g, '<sup>$1</sup>')
 
     // Process subscript: ~text~ (not ~~strikethrough~~) -> <sub>text</sub>
     processedLine = processedLine.replace(/(?<!~)~([^~\s]+)~(?!~)/g, '<sub>$1</sub>')
@@ -148,7 +169,7 @@ export function preprocessMarkdown(markdown: string): string {
     processedLine = processedLine.replace(/\[\[(?:read:)?([^\]]+)\]\]/g, (_, target) => {
       const cleanTarget = target.trim()
       const [pathPart, anchorPart] = cleanTarget.split('#')
-      const basename = pathPart.split(/[\/\\]/).pop() || pathPart
+      const basename = pathPart.split(/[/\\]/).pop() || pathPart
       const displayText = anchorPart ? `${basename}#${anchorPart}` : basename
       return `[\`${displayText}\`](${cleanTarget})`
     })
@@ -179,8 +200,8 @@ export function preprocessMarkdown(markdown: string): string {
     resultLines.push(processedLine)
   }
 
-  if (inCodeBlock) {
-    resultLines.push('```')
+  if (activeCodeFence) {
+    resultLines.push(activeCodeFence.delimiter)
   }
 
   return resultLines.join('\n')
@@ -189,13 +210,13 @@ export function preprocessMarkdown(markdown: string): string {
 export function resolveRelativePath(basePath: string | undefined, relativeLink: string): string {
   const cleanLink = relativeLink.replace(/^file:\/\/\/?/, '')
 
-  if (!basePath || cleanLink.startsWith('/') || /^[a-zA-Z]:[\\\/]/.test(cleanLink)) {
+  if (!basePath || cleanLink.startsWith('/') || /^[a-zA-Z]:[/\\]/.test(cleanLink)) {
     return cleanLink.replace(/^\.\//, '')
   }
 
   const isExplicitRelative = cleanLink.startsWith('./') || cleanLink.startsWith('../')
-  const baseParts = basePath.split(/[\/\\]/).slice(0, -1)
-  const targetParts = cleanLink.split(/[\/\\]/)
+  const baseParts = basePath.split(/[/\\]/).slice(0, -1)
+  const targetParts = cleanLink.split(/[/\\]/)
 
   if (isExplicitRelative) {
     const resolvedParts = [...baseParts]
@@ -284,5 +305,3 @@ export function handleMarkdownLinkClick(
     )
   }
 }
-
-

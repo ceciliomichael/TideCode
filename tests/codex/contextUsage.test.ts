@@ -8,6 +8,7 @@ import {
   shouldCompactContext,
 } from '../../electron/chat/shared/compaction/budget'
 import { selectContextUsageMessages } from '../../electron/chat/shared/contextUsageProjection'
+import { MODEL_IMAGE_TOKEN_ALLOWANCE } from '../../src/lib/contextUsage'
 
 test('context usage counts tool arguments and separates tool result tokens', () => {
   const messages: Message[] = [
@@ -64,6 +65,56 @@ test('automatic compaction uses the same model-content token estimate as the con
   assert.equal(
     estimateModelMessagesTokens(messages),
     estimateModelMessageContextUsage(messages).totalTokens,
+  )
+})
+
+test('model context usage treats base64 image bytes as image input instead of text tokens', () => {
+  const smallPayloadMessages = [{
+    role: 'user',
+    content: [{
+      image: `data:image/png;base64,${'A'.repeat(128)}`,
+      mediaType: 'image/png',
+      type: 'image',
+    }],
+  }] as const
+  const largePayloadMessages = [{
+    role: 'user',
+    content: [{
+      image: `data:image/png;base64,${'A'.repeat(1_000_000)}`,
+      mediaType: 'image/png',
+      type: 'image',
+    }],
+  }] as const
+
+  const smallUsage = estimateModelMessageContextUsage(smallPayloadMessages)
+  const largeUsage = estimateModelMessageContextUsage(largePayloadMessages)
+
+  assert.equal(largeUsage.totalTokens, smallUsage.totalTokens)
+  assert.ok(largeUsage.totalTokens >= MODEL_IMAGE_TOKEN_ALLOWANCE)
+  assert.ok(largeUsage.totalTokens < MODEL_IMAGE_TOKEN_ALLOWANCE + 100)
+})
+
+test('model context usage also bounds images returned by tools as file parts', () => {
+  const createMessages = (size: number) => [{
+    role: 'tool',
+    content: [{
+      output: {
+        type: 'content',
+        value: [{
+          type: 'file',
+          data: { type: 'data', data: new Uint8Array(size) },
+          mediaType: 'image/png',
+        }],
+      },
+      toolCallId: 'read-image',
+      toolName: 'read',
+      type: 'tool-result',
+    }],
+  }] as const
+
+  assert.equal(
+    estimateModelMessageContextUsage(createMessages(1_000_000)).totalTokens,
+    estimateModelMessageContextUsage(createMessages(10)).totalTokens,
   )
 })
 

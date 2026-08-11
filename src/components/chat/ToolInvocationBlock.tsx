@@ -13,6 +13,7 @@ import { isKanbanTool } from './kanbanToolInvocationKinds'
 import { KanbanToolResult } from './KanbanToolResult'
 import { getToolResultDisplayBody, parseStructuredToolResultContent } from '../../lib/toolResultContent'
 import { normalizeWebSearchMarkdownBody } from '../../lib/webSearchResults'
+import { ToolImageResult } from './ToolImageResult'
 
 interface ToolInvocationBlockProps {
   invocation: ToolInvocationTrace
@@ -145,6 +146,7 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
       : null
   const diffResultPresentation = displayInvocation.resultPresentation?.kind === 'file_diff' ? displayInvocation.resultPresentation : null
   const changeResultPresentation = displayInvocation.resultPresentation?.kind === 'change_diff' ? displayInvocation.resultPresentation : null
+  const imageResultPresentation = displayInvocation.resultPresentation?.kind === 'image' ? displayInvocation.resultPresentation : null
   const parsedStructuredResult = displayInvocation.resultContent ? parseStructuredToolResultContent(displayInvocation.resultContent) : null
   const rawResultBody =
     parsedStructuredResult?.body ??
@@ -209,6 +211,11 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
             />
           ) : changeResultPresentation ? (
             <ChangeDiffResult parsedResult={changeResultPresentation} />
+          ) : imageResultPresentation ? (
+            <ToolImageResult
+              presentation={imageResultPresentation}
+              workspaceRootPath={workspaceRootPath}
+            />
           ) : terminalToolName ? (
             <TerminalToolResult
               content={rawResultBody}

@@ -1,4 +1,4 @@
-import type { ChatAttachment, ChatImageAttachment, ChatTextAttachment } from '../types/chat'
+import type { ChatAttachment, ChatTextAttachment } from '../types/chat'
 
 export const CHAT_ATTACHMENT_MAX_COUNT = 8
 export const CHAT_ATTACHMENT_MAX_IMAGE_BYTES = 8 * 1024 * 1024
@@ -139,10 +139,6 @@ export function buildTextAttachmentPrompt(attachment: ChatTextAttachment) {
   ].join('\n')
 }
 
-export function buildImageAttachmentPrompt(attachment: ChatImageAttachment) {
-  return `[Attached image: ${getChatAttachmentLabel(attachment)}]`
-}
-
 export function isChatAttachment(value: unknown): value is ChatAttachment {
   if (!value || typeof value !== 'object') {
     return false
@@ -160,7 +156,10 @@ export function isChatAttachment(value: unknown): value is ChatAttachment {
   }
 
   if (attachment.kind === 'image') {
-    return typeof attachment.dataUrl === 'string'
+    const hasValidDimensions =
+      (attachment.width === undefined || (Number.isFinite(attachment.width) && attachment.width > 0)) &&
+      (attachment.height === undefined || (Number.isFinite(attachment.height) && attachment.height > 0))
+    return typeof attachment.dataUrl === 'string' && hasValidDimensions
   }
 
   if (attachment.kind === 'text') {

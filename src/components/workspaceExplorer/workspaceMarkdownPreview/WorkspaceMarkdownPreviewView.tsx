@@ -108,7 +108,15 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
             return <MermaidDiagram code={codeText} />
           }
 
-          return <CodeBlock code={codeText} language={language} fileName={fileName} />
+          return (
+            <CodeBlock
+              code={codeText}
+              headerLabel={language}
+              language={language}
+              fileName={language ? undefined : fileName}
+              showHeaderTooltip={false}
+            />
+          )
         }
 
         return (

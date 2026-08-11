@@ -46,6 +46,7 @@ import type {
   SubmitToolDecisionInput,
   StartChatStreamInput,
   WorkspaceExplorerImportEntryInput,
+  WorkspaceExplorerPasteClipboardImageInput,
   WorkspaceExplorerChangeEvent,
   WorkspaceRefactorCandidatesInput,
   WorkspaceExplorerWatchChangesInput,
@@ -272,6 +273,8 @@ const workspaceApi: TideCodeWorkspaceApi = {
   deleteEntry: (input) => ipcRenderer.invoke('workspace:explorer:deleteEntry', input),
   importEntry: (input: WorkspaceExplorerImportEntryInput) =>
     ipcRenderer.invoke('workspace:explorer:importEntry', input),
+  pasteClipboardImage: (input: WorkspaceExplorerPasteClipboardImageInput) =>
+    ipcRenderer.invoke('workspace:explorer:pasteClipboardImage', input),
   onExplorerChange: (listener: (event: WorkspaceExplorerChangeEvent) => void) => {
     const wrappedListener = (_event: unknown, payload: WorkspaceExplorerChangeEvent) => listener(payload)
     ipcRenderer.on('workspace:explorer:changed', wrappedListener)

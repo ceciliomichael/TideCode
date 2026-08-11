@@ -4,8 +4,16 @@ import { EXECUTION_MODE_CONTEXT_PATTERN } from '../../../src/lib/executionModeCo
 import { getToolResultModelContent, parseStructuredToolResultContent } from '../../../src/lib/toolResultContent'
 import type { ChatMode, Message, AppTerminalExecutionMode } from '../../../src/types/chat'
 import { buildChatModeSystemPrompt } from './prompts/mode'
+import {
+  ensureChatImageReferences,
+  getChatImageAttachments,
+  splitChatImageReferenceSegments,
+} from '../../../src/lib/chatImageReferences'
 
 type ToolModelMessage = Extract<ModelMessage, { role: 'tool' }>
+type ToolResultContentPart = ToolModelMessage['content'][number]
+type AssistantModelMessage = Extract<ModelMessage, { role: 'assistant' }>
+type AssistantContentPart = Exclude<AssistantModelMessage['content'], string>[number]
 
 interface CanonicalToolCall {
   argumentsValue: Record<string, unknown>
@@ -23,13 +31,17 @@ type UserTextPart = {
   type: 'text'
 }
 
-type UserImagePart = {
-  image: string
-  mediaType?: string
-  type: 'image'
+type UserFilePart = {
+  data: {
+    data: string
+    type: 'data'
+  }
+  filename?: string
+  mediaType: string
+  type: 'file'
 }
 
-type UserContentPart = UserTextPart | UserImagePart
+type UserContentPart = UserTextPart | UserFilePart
 
 type UserModelMessage = Extract<ModelMessage, { role: 'user' }>
 
@@ -125,26 +137,46 @@ export function ensureCurrentExecutionModeContext(
 
 function buildUserContent(message: Message): ModelMessage['content'] {
   const parts: UserContentPart[] = []
-  const originalContent = message.content
+  const imageAttachments = getChatImageAttachments(message.attachments ?? [])
+  const referencedImageIndexes = new Set<number>()
+  const referencedContent = ensureChatImageReferences(message.content, imageAttachments)
 
-  if (originalContent.trim().length > 0) {
-    parts.push({
-      text: originalContent,
-      type: 'text',
-    })
+  const appendText = (text: string) => {
+    if (text.length === 0) return
+    const previousPart = parts.at(-1)
+    if (previousPart?.type === 'text') {
+      previousPart.text += text
+    } else {
+      parts.push({ text, type: 'text' })
+    }
   }
 
-  for (const attachment of message.attachments ?? []) {
-    if (attachment.kind === 'image') {
-      const normalizedMediaType = attachment.mimeType.trim()
-      parts.push({
-        image: attachment.dataUrl,
-        ...(normalizedMediaType.length > 0 ? { mediaType: normalizedMediaType } : {}),
-        type: 'image',
-      })
+  for (const segment of splitChatImageReferenceSegments(referencedContent, imageAttachments.length)) {
+    if (segment.type === 'text') {
+      appendText(segment.text)
       continue
     }
 
+    appendText(segment.text)
+    const attachment = imageAttachments[segment.imageIndex]
+    if (attachment && !referencedImageIndexes.has(segment.imageIndex)) {
+      const normalizedMediaType = attachment.mimeType.trim() || 'image/png'
+      const separatorIndex = attachment.dataUrl.indexOf(',')
+      const base64Data = separatorIndex >= 0
+        ? attachment.dataUrl.slice(separatorIndex + 1)
+        : attachment.dataUrl
+      parts.push({
+        data: { data: base64Data, type: 'data' },
+        filename: attachment.fileName,
+        mediaType: normalizedMediaType,
+        type: 'file',
+      })
+      referencedImageIndexes.add(segment.imageIndex)
+    }
+  }
+
+  for (const attachment of message.attachments ?? []) {
+    if (attachment.kind === 'image') continue
     const attachmentText = `Attachment ${attachment.fileName}:\n${attachment.textContent}`
     if (attachmentText.trim().length > 0) {
       parts.push({
@@ -206,7 +238,7 @@ function buildAssistantToolCallParts(
   validToolCallIds: Set<string>,
   canonicalToolCalls: ReadonlyMap<string, CanonicalToolCall>,
 ) {
-  const toolCallParts: Array<any> = []
+  const toolCallParts: AssistantContentPart[] = []
 
   for (const invocation of message.toolInvocations ?? []) {
     if (invocation.state === 'running') {
@@ -228,13 +260,13 @@ function buildAssistantToolCallParts(
       toolCallId: invocation.id,
       toolName: canonicalToolCall?.toolName ?? invocation.toolName,
       type: 'tool-call',
-    })
+    } as AssistantContentPart)
   }
 
   return toolCallParts
 }
 
-function buildToolResultParts(message: Message, validToolCallIds: Set<string>): any[] {
+function buildToolResultParts(message: Message, validToolCallIds: Set<string>): ToolResultContentPart[] {
   if (!message.toolCallId || !validToolCallIds.has(message.toolCallId)) {
     return []
   }
@@ -302,7 +334,7 @@ function toAssistantMessage(
     }
   }
 
-  const contentParts: Array<any> = []
+  const contentParts: AssistantContentPart[] = []
 
   if (options.includeAssistantReasoningParts && reasoningText) {
     contentParts.push({

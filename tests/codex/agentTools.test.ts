@@ -170,7 +170,7 @@ test('createAgentTools keeps plan mode tool descriptions literal', async () => {
     const grepTool = tools.grep as { description?: string }
 
     assert.equal(listTool.description, 'List a directory.')
-    assert.equal(readTool.description, 'Read a file or directory.')
+    assert.equal(readTool.description, 'Read a text file, image, or directory.')
     assert.equal(globTool.description, 'Find files by pattern.')
     assert.equal(grepTool.description, 'Search file contents.')
     for (const description of [listTool, readTool, globTool, grepTool].map((tool) => tool.description ?? '')) {
@@ -207,7 +207,7 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     const replaceTool = tools.edit as { description?: string }
     const writeTool = tools.write as { description?: string }
 
-    assert.equal(readTool.description, 'Read a file or directory.')
+    assert.equal(readTool.description, 'Read a text file, image, or directory.')
     assert.equal(
       replaceTool.description,
       'Replace one unique text block in a file. Exact text is matched first; indentation, line-ending, and line-edge whitespace differences are tolerated when they still identify one unambiguous block.',

@@ -3,15 +3,13 @@ import type { DragEvent as ReactDragEvent } from 'react'
 import { useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { resolveFileIconConfig } from '../../../lib/fileIconResolver'
-import { isDocxPreviewablePath } from '../../../lib/docx-preview'
-import { isPdfPreviewablePath } from '../../../lib/pdf-preview'
 import { prefetchWorkspaceFile } from '../../../lib/workspaceFilePreviewCache'
+import { preloadWorkspaceMonacoEditorView } from '../../../lib/workspaceMonacoPreload'
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
 import { normalizeWorkspaceRootPath } from '../../../pages/chatInterface/chatWorkspaceClipboard'
 import { buildExplorerGitStatusMap } from './workspaceExplorerGitStatus'
 import type { WorkspaceExplorerPanelProps } from './workspaceExplorerPanelTypes'
 import type { WorkspaceExplorerPanelState } from './useWorkspaceExplorerPanelState'
-import { WorkspaceExplorerDeleteDialog } from './WorkspaceExplorerDeleteDialog'
 import { WorkspaceExplorerErrorDialog } from './WorkspaceExplorerErrorDialog'
 import { WorkspaceExplorerEntryRow, type WorkspaceExplorerEntryRowActions } from './WorkspaceExplorerEntryRow'
 import { ROOT_DIRECTORY_KEY, isPathWithinTarget, normalizeEntryPath } from './workspaceExplorerPanelUtils'
@@ -55,12 +53,10 @@ export function WorkspaceExplorerPanelView({
     handleExternalDrop: panelState.handleExternalDrop,
     openContextMenu: panelState.openContextMenu,
     prefetchPreviewFile: (relativePath) => {
-      if (
-        !workspaceRootPath ||
-        (!isDocxPreviewablePath(relativePath) && !isPdfPreviewablePath(relativePath))
-      ) {
+      if (!workspaceRootPath) {
         return
       }
+      void preloadWorkspaceMonacoEditorView().catch(() => undefined)
       prefetchWorkspaceFile({ relativePath, workspaceRootPath }, { priority: true })
     },
   }
@@ -220,6 +216,7 @@ export function WorkspaceExplorerPanelView({
       const isRenamingEntry = panelState.renameDraft?.entry.relativePath === entry.relativePath
       const isExpanded = isDirectory && panelState.expandedDirectories.has(entryPath)
       const isLoading = isDirectory && panelState.loadingDirectories.has(entryPath)
+      const isDeleting = panelState.deletingEntryPaths.has(entry.relativePath)
       const isActiveFile = !isDirectory && normalizedActiveFilePath !== null && normalizedActiveFilePath === entryPath
       const isContextTarget = panelState.contextMenuState?.targetEntry?.relativePath === entry.relativePath
       const isSelectedEntry =
@@ -254,6 +251,7 @@ export function WorkspaceExplorerPanelView({
           isContextTarget={isContextTarget}
           isCutEntry={isCutEntry}
           isDropTarget={isDropTarget}
+          isDeleting={isDeleting}
           isExpanded={isExpanded}
           isGitignoredEntry={isGitignoredEntry}
           isLoading={isLoading}
@@ -479,25 +477,21 @@ export function WorkspaceExplorerPanelView({
                   >
                     New Folder
                   </button>
-                  {clipboardEntry ? (
-                    <>
-                      <div className="my-1 h-px bg-border" />
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() =>
-                          void panelState.submitPasteEntry(
-                            panelState.contextMenuState?.targetEntry?.isDirectory
-                              ? panelState.contextMenuState.targetEntry.relativePath
-                              : ROOT_DIRECTORY_KEY,
-                          )
-                        }
-                        className="flex h-10 w-full items-center rounded-lg px-2.5 text-left text-sm text-foreground transition-colors hover:bg-surface-muted"
-                      >
-                        Paste
-                      </button>
-                    </>
-                  ) : null}
+                  <div className="my-1 h-px bg-border" />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() =>
+                      void panelState.submitClipboardContents(
+                        panelState.contextMenuState?.targetEntry?.isDirectory
+                          ? panelState.contextMenuState.targetEntry.relativePath
+                          : ROOT_DIRECTORY_KEY,
+                      )
+                    }
+                    className="flex h-10 w-full items-center rounded-lg px-2.5 text-left text-sm text-foreground transition-colors hover:bg-surface-muted"
+                  >
+                    Paste
+                  </button>
                 </>
               ) : null}
               {panelState.contextMenuState.targetEntry?.isDirectory ? (
@@ -557,18 +551,31 @@ export function WorkspaceExplorerPanelView({
                   </button>
                 </>
               ) : null}
+              {panelState.contextMenuState.targetEntry ? (
+                <>
+                  <div className="my-1 h-px bg-border" />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void panelState.copyContextEntryPath('absolute')}
+                    className="flex h-10 w-full items-center rounded-lg px-2.5 text-left text-sm text-foreground transition-colors hover:bg-surface-muted"
+                  >
+                    Copy Path
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void panelState.copyContextEntryPath('relative')}
+                    className="flex h-10 w-full items-center rounded-lg px-2.5 text-left text-sm text-foreground transition-colors hover:bg-surface-muted"
+                  >
+                    Copy Relative Path
+                  </button>
+                </>
+              ) : null}
             </div>,
             document.body,
           )
         : null}
-      {panelState.deleteDialogState ? (
-        <WorkspaceExplorerDeleteDialog
-          isSubmitting={panelState.isSubmittingDeleteEntry}
-          onClose={panelState.closeDeleteDialog}
-          onConfirm={() => void panelState.confirmDeleteEntry()}
-          state={panelState.deleteDialogState}
-        />
-      ) : null}
       {panelState.errorDialogState ? (
         <WorkspaceExplorerErrorDialog
           onClose={panelState.closeErrorDialog}

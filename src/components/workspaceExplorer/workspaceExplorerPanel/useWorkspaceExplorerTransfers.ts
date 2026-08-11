@@ -189,6 +189,73 @@ export function useWorkspaceExplorerTransfers({
     ],
   )
 
+  const submitClipboardImage = useCallback(
+    async (targetDirectoryRelativePath: string) => {
+      if (!workspaceRootPath) {
+        return false
+      }
+
+      try {
+        const result = await window.tidecodeWorkspace.pasteClipboardImage({
+          targetDirectoryRelativePath,
+          workspaceRootPath,
+        })
+        if (!result) {
+          return false
+        }
+
+        closeContextMenu()
+        setErrorMessage(null)
+        setSelectedEntryPaths(new Set([result.relativePath]))
+        const loadOperations = [reloadExplorerTree({ force: true })]
+        if (targetDirectoryRelativePath !== ROOT_DIRECTORY_KEY) {
+          loadOperations.push(loadDirectory(targetDirectoryRelativePath))
+        }
+        await Promise.all(loadOperations)
+        return true
+      } catch (error) {
+        closeContextMenu()
+        setErrorMessage(toUserFacingErrorMessage(error, 'The clipboard image could not be pasted.'))
+        return true
+      }
+    },
+    [
+      closeContextMenu,
+      loadDirectory,
+      reloadExplorerTree,
+      setErrorMessage,
+      setSelectedEntryPaths,
+      workspaceRootPath,
+    ],
+  )
+
+  const submitClipboardContents = useCallback(
+    async (targetDirectoryRelativePath: string) => {
+      if (typeof window !== 'undefined' && window.tidecodeClipboard) {
+        try {
+          const osPaths = await window.tidecodeClipboard.readFiles()
+          if (osPaths.length > 0) {
+            await submitImportEntries(osPaths, targetDirectoryRelativePath)
+            return
+          }
+        } catch (error) {
+          console.error('Failed to read OS clipboard files', error)
+          setErrorMessage(toUserFacingErrorMessage(error, 'The files could not be read from the clipboard.'))
+          return
+        }
+      }
+
+      if (await submitClipboardImage(targetDirectoryRelativePath)) {
+        return
+      }
+
+      if (clipboardEntry) {
+        await submitPasteEntry(targetDirectoryRelativePath)
+      }
+    },
+    [clipboardEntry, setErrorMessage, submitClipboardImage, submitImportEntries, submitPasteEntry],
+  )
+
   const handleExplorerPaste = useCallback(
     async (event: ReactClipboardEvent<HTMLElement>) => {
       if (!isTreeShortcutTarget(event.target)) {
@@ -210,6 +277,12 @@ export function useWorkspaceExplorerTransfers({
         return
       }
 
+      if (await submitClipboardImage(pasteTargetPath)) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+
       if (!clipboardEntry) {
         return
       }
@@ -225,6 +298,7 @@ export function useWorkspaceExplorerTransfers({
       selectedEntryPaths,
       selectionDirectoryPath,
       submitImportEntries,
+      submitClipboardImage,
       submitPasteEntry,
     ],
   )
@@ -393,7 +467,7 @@ export function useWorkspaceExplorerTransfers({
     handleExternalDragOver,
     handleExternalDrop,
     submitImportEntries,
+    submitClipboardContents,
     submitMoveEntry,
-    submitPasteEntry,
   }
 }

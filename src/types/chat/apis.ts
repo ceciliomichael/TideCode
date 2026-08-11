@@ -98,6 +98,8 @@ import type {
   WorkspaceExplorerImportEntryInput,
   WorkspaceExplorerImportEntryResult,
   WorkspaceExplorerListDirectoryInput,
+  WorkspaceExplorerPasteClipboardImageInput,
+  WorkspaceExplorerPasteClipboardImageResult,
   WorkspaceExplorerReadFileInput,
   WorkspaceExplorerReadFileResult,
   WorkspaceExplorerRenameEntryInput,
@@ -196,6 +198,9 @@ export interface TideCodeWorkspaceApi {
   createEntry: (input: WorkspaceExplorerCreateEntryInput) => Promise<WorkspaceExplorerCreateEntryResult>
   deleteEntry: (input: WorkspaceExplorerDeleteEntryInput) => Promise<WorkspaceExplorerDeleteEntryResult>
   importEntry: (input: WorkspaceExplorerImportEntryInput) => Promise<WorkspaceExplorerImportEntryResult>
+  pasteClipboardImage: (
+    input: WorkspaceExplorerPasteClipboardImageInput,
+  ) => Promise<WorkspaceExplorerPasteClipboardImageResult | null>
   listRefactorCandidates: (input: WorkspaceRefactorCandidatesInput) => Promise<WorkspaceRefactorCandidate[]>
   onExplorerChange: (listener: (event: WorkspaceExplorerChangeEvent) => void) => () => void
   listDirectory: (input: WorkspaceExplorerListDirectoryInput) => Promise<WorkspaceExplorerEntry[]>
