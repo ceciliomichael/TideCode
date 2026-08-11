@@ -15,6 +15,7 @@ export interface TideCodeUpdateCheckResult {
   downloadError?: string
   downloadPercent: number | null
   downloadState: TideCodeUpdateDownloadState
+  downloadVersion?: string | null
   latestVersion: string
   release: TideCodeUpdateRelease
   updateAvailable: boolean
@@ -24,6 +25,7 @@ export interface TideCodeUpdateDownloadResult {
   downloadError?: string
   downloadPercent: number | null
   downloadState: TideCodeUpdateDownloadState
+  downloadVersion?: string | null
 }
 
 export interface TideCodeUpdateStateEvent {

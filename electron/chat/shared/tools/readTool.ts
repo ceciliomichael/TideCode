@@ -4,7 +4,7 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createReadTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Read a file or directory.',
+    description: 'Read a text file, image, or directory.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {

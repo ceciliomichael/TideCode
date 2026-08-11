@@ -100,7 +100,7 @@ export function SourceControlHistorySection({
       className={[
         isHistorySectionOpen
           ? 'min-h-0 shrink-0 flex flex-1 flex-col'
-          : 'mt-auto shrink-0 border-t border-border',
+          : 'mt-auto shrink-0',
       ].join(' ')}
       style={
         isHistorySectionOpen && historyHeight !== null
@@ -136,7 +136,7 @@ export function SourceControlHistorySection({
           event.preventDefault()
           onToggleHistorySection()
         }}
-        className="flex h-10 cursor-pointer items-center justify-between px-4"
+        className="flex h-10 cursor-pointer items-center justify-between border-t border-border px-4"
       >
         <span className="inline-flex items-center gap-2 text-left">
           <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">History</span>

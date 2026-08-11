@@ -14,6 +14,7 @@ import {
   resolveReasoningRetention,
 } from '../../electron/chat/shared/compaction/reasoning'
 import { derivePromptCacheKey } from '../../electron/chat/cache/providerPolicies'
+import { buildCompactionRequestPrompt } from '../../electron/chat/shared/compaction/prompt'
 
 test('v2 continuation accepts natural Markdown and rejects packet JSON or meta-only output', () => {
   const markdown = 'The provider prefix remains stable. Run the focused cache test next.'
@@ -25,6 +26,52 @@ test('v2 continuation accepts natural Markdown and rejects packet JSON or meta-o
   assert.equal(message.role, 'assistant')
   assert.equal(message.content, markdown)
   assert.doesNotMatch(String(message.content), /compaction_packet/u)
+})
+
+test('compaction transcripts replace image payloads with bounded metadata', () => {
+  const dataUrl = `data:image/png;base64,${'A'.repeat(1_000_000)}`
+  const prompt = buildCompactionRequestPrompt({
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Inspect this screenshot.' },
+        { type: 'image', image: dataUrl, mediaType: 'image/png' },
+      ],
+    }],
+    sourceDigest: 'image-digest',
+    sourceMessageIds: ['model:0'],
+  })
+
+  assert.match(prompt, /Binary image payload omitted/u)
+  assert.match(prompt, /image\/png/u)
+  assert.doesNotMatch(prompt, /data:image/u)
+  assert.ok(prompt.length < 5_000)
+})
+
+test('compaction transcripts also redact nested image files returned by tools', () => {
+  const prompt = buildCompactionRequestPrompt({
+    messages: [{
+      role: 'tool',
+      content: [{
+        output: {
+          type: 'content',
+          value: [{
+            type: 'file',
+            data: { type: 'data', data: new Uint8Array(1_000_000) },
+            mediaType: 'image/png',
+          }],
+        },
+        toolCallId: 'read-image',
+        toolName: 'read',
+        type: 'tool-result',
+      }],
+    }],
+    sourceDigest: 'tool-image-digest',
+    sourceMessageIds: ['model:0'],
+  })
+
+  assert.match(prompt, /Binary image payload omitted/u)
+  assert.ok(prompt.length < 5_000)
 })
 
 test('visible action rationale is source-linked without copying provider-private reasoning', () => {

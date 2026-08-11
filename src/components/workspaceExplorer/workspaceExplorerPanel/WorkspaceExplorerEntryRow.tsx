@@ -1,5 +1,12 @@
 import { ChevronRight, RefreshCw } from 'lucide-react'
-import { memo, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type RefObject } from 'react'
+import {
+  memo,
+  useEffect,
+  useRef,
+  type DragEvent as ReactDragEvent,
+  type MouseEvent as ReactMouseEvent,
+  type RefObject,
+} from 'react'
 import { resolveFileIconConfig } from '../../../lib/fileIconResolver'
 import { getPathDirname } from '../../../lib/pathPresentation'
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
@@ -25,6 +32,7 @@ interface WorkspaceExplorerEntryRowProps {
   isActiveFile: boolean
   isContextTarget: boolean
   isCutEntry: boolean
+  isDeleting: boolean
   isDropTarget: boolean
   isExpanded: boolean
   isGitignoredEntry: boolean
@@ -48,6 +56,7 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
   isActiveFile,
   isContextTarget,
   isCutEntry,
+  isDeleting,
   isDropTarget,
   isExpanded,
   isGitignoredEntry,
@@ -56,6 +65,7 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
   isSelectionFocused,
   gitStatus,
 }: WorkspaceExplorerEntryRowProps) {
+  const prefetchTimeoutRef = useRef<number | null>(null)
   const isDirectory = entry.isDirectory
   const entryPath = entry.relativePath
   const fileIconConfig = !isDirectory ? resolveFileIconConfig({ fileName: entry.relativePath }) : null
@@ -71,6 +81,19 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
       : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground'
   const targetDirectoryPath = isDirectory ? entryPath : getPathDirname(entryPath)
 
+  const cancelPendingPrefetch = () => {
+    if (prefetchTimeoutRef.current !== null) {
+      window.clearTimeout(prefetchTimeoutRef.current)
+      prefetchTimeoutRef.current = null
+    }
+  }
+
+  useEffect(() => () => {
+    if (prefetchTimeoutRef.current !== null) {
+      window.clearTimeout(prefetchTimeoutRef.current)
+    }
+  }, [])
+
   return (
     <li
       className="min-w-0"
@@ -78,12 +101,14 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
     >
       <button
         type="button"
-        draggable
+        disabled={isDeleting}
+        draggable={!isDeleting}
         onClick={(event) => {
           if (event.button !== 0) {
             return
           }
 
+          cancelPendingPrefetch()
           actionsRef.current?.handleEntryClick(entry, event)
         }}
         onMouseDown={(event) => {
@@ -92,14 +117,20 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
           }
 
           event.preventDefault()
+          cancelPendingPrefetch()
           actionsRef.current?.handleEntryClick(entry, event)
         }}
         onContextMenu={(event) => actionsRef.current?.openContextMenu(event, entry)}
         onMouseEnter={() => {
           if (!isDirectory) {
-            actionsRef.current?.prefetchPreviewFile(entry.relativePath)
+            cancelPendingPrefetch()
+            prefetchTimeoutRef.current = window.setTimeout(() => {
+              prefetchTimeoutRef.current = null
+              actionsRef.current?.prefetchPreviewFile(entry.relativePath)
+            }, 80)
           }
         }}
+        onMouseLeave={cancelPendingPrefetch}
         onDragStart={(event) => actionsRef.current?.handleEntryDragStart(event, entry)}
         onDragEnd={() => actionsRef.current?.handleEntryDragEnd()}
         onDragOver={(event) => {
@@ -126,18 +157,23 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
         className={[
           'flex h-8 w-full min-w-0 items-center gap-1 rounded-none px-2 text-left text-sm transition-colors outline-none focus:outline-none focus-visible:outline-none',
           isCutEntry ? 'opacity-55' : '',
+          isDeleting ? 'cursor-wait opacity-70' : '',
           rowStateClass,
         ].join(' ')}
         data-workspace-entry-path={entry.relativePath}
         aria-selected={isSelectedEntry || isActiveFile || isContextTarget}
         style={{ paddingLeft: `${Math.max(8, depth * 12 + 8)}px` }}
       >
-        {isDirectory ? (
+        {isDirectory && isDeleting ? (
+          <RefreshCw size={13} className="shrink-0 animate-spin text-subtle-foreground" />
+        ) : isDirectory ? (
           <ChevronRight size={14} className={['shrink-0 transition-transform', isExpanded ? 'rotate-90' : ''].join(' ')} />
         ) : (
           <span className="w-[14px] shrink-0" />
         )}
-        {!isDirectory && FileIcon ? (
+        {!isDirectory && isDeleting ? (
+          <RefreshCw size={13} className="shrink-0 animate-spin text-subtle-foreground" />
+        ) : !isDirectory && FileIcon ? (
           <FileIcon size={14} className="shrink-0" style={{ color: fileIconConfig?.color }} />
         ) : null}
         <span
@@ -169,6 +205,7 @@ function areWorkspaceExplorerEntryRowPropsEqual(
     left.isActiveFile === right.isActiveFile &&
     left.isContextTarget === right.isContextTarget &&
     left.isCutEntry === right.isCutEntry &&
+    left.isDeleting === right.isDeleting &&
     left.isDropTarget === right.isDropTarget &&
     left.isExpanded === right.isExpanded &&
     left.isGitignoredEntry === right.isGitignoredEntry &&

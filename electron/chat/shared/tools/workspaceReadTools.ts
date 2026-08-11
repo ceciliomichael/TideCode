@@ -1,6 +1,8 @@
 import { createReadStream, promises as fs } from 'node:fs'
 import path from 'node:path'
 import { createInterface } from 'node:readline'
+import { detectMediaType } from '@ai-sdk/provider-utils'
+import { CHAT_ATTACHMENT_MAX_IMAGE_BYTES } from '../../../../src/lib/chatAttachments'
 import {
   isExplicitlyGitignoredPath,
   isInsideWorkspaceIgnoredPath,
@@ -162,6 +164,54 @@ export async function createReadToolResult(
     } finally {
       await fileHandle.close()
     }
+  }
+
+  const detectedImageMediaType = detectMediaType({ data: probe, topLevelType: 'image' })
+  if (detectedImageMediaType) {
+    if (stats.size > CHAT_ATTACHMENT_MAX_IMAGE_BYTES) {
+      return createErrorResult(`Cannot read oversized image ${displayPath}`, {
+        body: `Images read by the AI must be ${CHAT_ATTACHMENT_MAX_IMAGE_BYTES} bytes or smaller: ${absolutePath}`,
+        subject: {
+          kind: 'file',
+          path: displayPath,
+        },
+      })
+    }
+
+    const imageData = await fs.readFile(absolutePath)
+    const imageLabel = '[Image #1]'
+    return createSuccessResult({
+      modelOutput: {
+        type: 'content',
+        value: [
+          {
+            type: 'text',
+            text: `${imageLabel}\nFile: ${displayPath}`,
+          },
+          {
+            type: 'file',
+            data: { type: 'data', data: imageData },
+            filename: path.basename(absolutePath),
+            mediaType: detectedImageMediaType,
+          },
+        ],
+      },
+      resultPresentation: {
+        fileName: path.basename(absolutePath),
+        kind: 'image',
+        mediaType: detectedImageMediaType,
+        relativePath: displayPath,
+      },
+      semantics: {
+        image_bytes: stats.size,
+        media_type: detectedImageMediaType,
+      },
+      subject: {
+        kind: 'file',
+        path: displayPath,
+      },
+      summary: `Read image ${displayPath}`,
+    })
   }
 
   if (hasBinaryContent(probe)) {

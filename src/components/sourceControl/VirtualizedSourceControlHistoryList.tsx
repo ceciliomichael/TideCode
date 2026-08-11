@@ -1,6 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { GitHistoryCommitDetailsResult } from '../../types/chat'
+import {
+  calculateVariableSizeVirtualRange,
+  resolveVirtualViewportHeight,
+} from '../virtualization/variableSizeVirtualization'
 import type { HistoryItemViewModel } from './historyGraphLayout'
 import { SourceControlHistoryItem } from './SourceControlHistoryItem'
 
@@ -20,11 +24,6 @@ interface VirtualizedSourceControlHistoryListProps {
   onToggleCommitExpanded: (commitHash: string) => void
 }
 
-interface VirtualizedHistoryListRange {
-  endIndex: number
-  startIndex: number
-}
-
 interface MeasuredSourceControlHistoryRowProps {
   commitDetails: GitHistoryCommitDetailsResult | undefined
   isExpanded: boolean
@@ -42,31 +41,6 @@ const DEFAULT_COLLAPSED_HISTORY_ROW_HEIGHT_PX = 50
 const DEFAULT_EXPANDED_HISTORY_ROW_HEIGHT_PX = 260
 const HISTORY_LIST_OVERSCAN_PX = 320
 const HISTORY_LIST_VIRTUALIZATION_THRESHOLD = 24
-
-function calculateVirtualizedHistoryListRange(input: {
-  itemHeights: readonly number[]
-  offsets: readonly number[]
-  scrollTop: number
-  viewportHeight: number
-}): VirtualizedHistoryListRange {
-  const minVisibleTop = Math.max(0, input.scrollTop - HISTORY_LIST_OVERSCAN_PX)
-  const maxVisibleBottom = input.scrollTop + input.viewportHeight + HISTORY_LIST_OVERSCAN_PX
-  let startIndex = 0
-
-  while (startIndex < input.itemHeights.length && input.offsets[startIndex] + input.itemHeights[startIndex] < minVisibleTop) {
-    startIndex += 1
-  }
-
-  let endIndex = startIndex
-  while (endIndex < input.itemHeights.length && input.offsets[endIndex] < maxVisibleBottom) {
-    endIndex += 1
-  }
-
-  return {
-    endIndex,
-    startIndex,
-  }
-}
 
 const rowWrapperStyle: CSSProperties = {
   left: 0,
@@ -185,18 +159,19 @@ export const VirtualizedSourceControlHistoryList = memo(function VirtualizedSour
     }
   }, [itemHeights])
   const visibleRange = useMemo(() => {
-    if (!shouldVirtualize || viewportHeight <= 0) {
+    if (!shouldVirtualize) {
       return {
         endIndex: historyViewModels.length,
         startIndex: 0,
-      } satisfies VirtualizedHistoryListRange
+      }
     }
 
-    return calculateVirtualizedHistoryListRange({
+    return calculateVariableSizeVirtualRange({
       itemHeights,
       offsets,
+      overscanPx: HISTORY_LIST_OVERSCAN_PX,
       scrollTop,
-      viewportHeight,
+      viewportHeight: resolveVirtualViewportHeight(viewportHeight),
     })
   }, [historyViewModels.length, itemHeights, offsets, scrollTop, shouldVirtualize, viewportHeight])
 

@@ -16,6 +16,7 @@ interface CodeBlockProps {
   maxBodyHeightClassName?: string
   showCopyButton?: boolean
   showHeader?: boolean
+  showHeaderTooltip?: boolean
   fillHeight?: boolean
   showLineNumberDivider?: boolean
   startLineNumber?: number
@@ -99,6 +100,7 @@ export const CodeBlock = memo(function CodeBlock({
   maxBodyHeightClassName,
   showCopyButton = true,
   showHeader = true,
+  showHeaderTooltip = true,
   fillHeight = false,
   showLineNumberDivider = true,
   startLineNumber = 1,
@@ -140,9 +142,13 @@ export const CodeBlock = memo(function CodeBlock({
             <span className="flex h-4 w-4 items-center justify-center">
               <LanguageIcon size={14} style={{ color: iconConfig.color }} aria-hidden="true" />
             </span>
-            <Tooltip content={titleLabel} side="top" noWrap triggerClassName="min-w-0 flex-1">
-              <span className="min-w-0 truncate leading-[1] text-foreground">{titleLabel}</span>
-            </Tooltip>
+            {showHeaderTooltip ? (
+              <Tooltip content={titleLabel} side="top" noWrap triggerClassName="min-w-0 flex-1">
+                <span className="min-w-0 truncate leading-[1] text-foreground">{titleLabel}</span>
+              </Tooltip>
+            ) : (
+              <span className="min-w-0 flex-1 truncate leading-[1] text-foreground">{titleLabel}</span>
+            )}
           </span>
           <span className="ml-auto inline-flex shrink-0 items-center gap-3">
             {headerRightLabel ? (

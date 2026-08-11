@@ -1,10 +1,15 @@
 import { memo } from 'react'
 import { splitChatMentionSegments } from '../../lib/chatMentions'
+import { splitChatImageReferenceSegments } from '../../lib/chatImageReferences'
+import type { ChatImageAttachment } from '../../types/chat'
 import { Tooltip } from '../Tooltip'
+import { ChatImageReferenceLabel } from './ChatImageReferenceLabel'
 
 interface ChatMentionTextProps {
   className?: string
+  imageAttachments?: readonly ChatImageAttachment[]
   mentionPathMap?: ReadonlyMap<string, string>
+  onImageReferenceHoverChange?: (isHovered: boolean) => void
   text: string
   variant?: 'backdrop' | 'inline' | 'rendered'
   wrap?: 'wrap' | 'nowrap'
@@ -16,11 +21,14 @@ const skillHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(168,85,247,0.18)]
 
 export const ChatMentionText = memo(function ChatMentionText({
   className,
+  imageAttachments = [],
   mentionPathMap,
+  onImageReferenceHoverChange,
   text,
   variant = 'inline',
   wrap = 'wrap',
 }: ChatMentionTextProps) {
+  const imageSegments = splitChatImageReferenceSegments(text, imageAttachments.length)
   const segments = splitChatMentionSegments(text, mentionPathMap)
   const rootClassName = [
     wrap === 'nowrap'
@@ -38,8 +46,40 @@ export const ChatMentionText = memo(function ChatMentionText({
     return null
   }
 
+  if (imageSegments.some((segment) => segment.type === 'image')) {
+    return (
+      <span className={rootClassName}>
+        {imageSegments.map((segment, index) => {
+          if (segment.type === 'text') {
+            return (
+              <ChatMentionText
+                key={`image-text-${index}`}
+                mentionPathMap={mentionPathMap}
+                text={segment.text}
+                variant={variant}
+              />
+            )
+          }
+
+          const attachment = imageAttachments[segment.imageIndex]
+          return attachment ? (
+            <ChatImageReferenceLabel
+              key={`image-${segment.imageNumber}-${index}`}
+              attachment={attachment}
+              label={segment.text}
+              onHoverChange={onImageReferenceHoverChange}
+              variant={variant}
+            />
+          ) : (
+            <span key={`missing-image-${index}`}>{segment.text}</span>
+          )
+        })}
+      </span>
+    )
+  }
+
   return (
-    <div className={rootClassName}>
+    <span className={rootClassName}>
       {segments.map((segment, index) => {
         if (segment.type === 'text') {
           return (
@@ -114,6 +154,6 @@ export const ChatMentionText = memo(function ChatMentionText({
           </Tooltip>
         )
       })}
-    </div>
+    </span>
   )
 })

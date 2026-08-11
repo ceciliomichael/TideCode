@@ -3,6 +3,7 @@
 
 @theme {
   --font-sans: 'Google Sans Flex Variable', 'Google Sans Flex', sans-serif;
+  --font-mono: Consolas, 'Courier New', monospace;
 
   --color-background: oklch(0.985 0 0);
   --color-foreground: oklch(0.19 0 0);
@@ -51,18 +52,20 @@
   :root {
     font-family: var(--font-sans);
     color-scheme: light;
-    --workspace-editor-selection-background: rgb(0 120 215 / 0.45);
-    --workspace-editor-selection-background-opaque: #bddcf5;
-    --workspace-editor-search-highlight-background: #b8d8f4;
-    --workspace-editor-search-highlight-active-background: #1267b2;
     --workspace-editor-line-added-border: rgb(22 163 74 / 0.78);
     --workspace-editor-line-changed-surface: rgb(0 120 215 / 0.12);
     --workspace-editor-line-changed-border: rgb(0 120 215 / 0.5);
     --workspace-editor-line-changed-foreground: rgb(0 92 170);
+    --workspace-find-widget-surface: #ffffff;
+    --workspace-find-widget-border: #d7d7da;
+    --workspace-find-widget-input-surface: #f7f7f8;
+    --workspace-find-widget-input-border: #c9c9cd;
+    --workspace-find-widget-foreground: #303033;
+    --workspace-find-widget-muted: #727278;
+    --workspace-find-widget-hover: #ececee;
+    --workspace-find-match-background: #b8d8f4;
+    --workspace-find-match-active-background: #1267b2;
     /* High-opacity selection used in diff viewer so blue cleanly overrides red/green row colors */
-    --diff-viewer-removed-word-background: rgb(250 180 180 / 0.5);
-    --diff-viewer-selection-background: rgb(0 100 200 / 0.88);
-    --diff-viewer-selection-background-opaque: rgb(30 118 206);
     --workspace-shell-surface: var(--color-sidebar);
     --titlebar-surface: var(--workspace-shell-surface);
     --workspace-panel-surface: var(--color-surface);
@@ -128,16 +131,19 @@
     --shadow-soft: 0 14px 34px oklch(0 0 0 / 0.32);
     --shadow-control-inset: inset 0 1px 2px oklch(0 0 0 / 0.34);
     color-scheme: dark;
-    --workspace-editor-selection-background: rgb(38 120 190 / 0.62);
-    --workspace-editor-selection-background-opaque: #20537f;
-    --workspace-editor-search-highlight-background: #294c6b;
-    --workspace-editor-search-highlight-active-background: #1976c8;
     --workspace-editor-line-added-border: rgb(134 239 172 / 0.94);
     --workspace-editor-line-changed-surface: rgb(38 120 190 / 0.24);
     --workspace-editor-line-changed-border: rgb(90 170 255 / 0.72);
     --workspace-editor-line-changed-foreground: rgb(173 214 255);
-    --diff-viewer-selection-background: rgb(38 120 190 / 0.92);
-    --diff-viewer-selection-background-opaque: rgb(36 111 176);
+    --workspace-find-widget-surface: #1e1e1e;
+    --workspace-find-widget-border: #2e2e2e;
+    --workspace-find-widget-input-surface: #252526;
+    --workspace-find-widget-input-border: #3c3c3c;
+    --workspace-find-widget-foreground: #d4d4d4;
+    --workspace-find-widget-muted: #c5c5c5;
+    --workspace-find-widget-hover: #2a2d2e;
+    --workspace-find-match-background: #294c6b;
+    --workspace-find-match-active-background: #1976c8;
     --titlebar-surface: #141415;
     --workspace-shell-surface: #141415;
     --workspace-panel-surface: #121213;
@@ -531,92 +537,58 @@
     box-shadow: none;
   }
 
-  .workspace-editor-scrollbar::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+  .workspace-monaco-editor .monaco-editor .line-numbers,
+  .workspace-monaco-diff .monaco-editor .line-numbers {
+    font-variant-numeric: tabular-nums;
   }
 
-  .workspace-editor-scrollbar::-webkit-scrollbar-thumb {
-    background-color: var(--color-scrollbar-thumb);
-    border-radius: 0;
+  .workspace-monaco-diff .monaco-editor .margin {
+    box-shadow: inset -1px 0 var(--color-border);
   }
 
-  .workspace-editor-scrollbar:hover::-webkit-scrollbar-thumb {
-    background-color: var(--color-scrollbar-thumb);
+  .workspace-monaco-editor .monaco-editor .find-widget {
+    display: none !important;
   }
 
-  .workspace-editor-scrollbar:hover::-webkit-scrollbar-thumb:hover {
-    background-color: var(--color-scrollbar-thumb-hover);
+  .workspace-monaco-search-panel {
+    isolation: isolate;
   }
 
-  .workspace-editor-highlighted-layer::-webkit-scrollbar {
-    width: 0;
-    height: 0;
+  .workspace-monaco-editor[data-folding-tooltip-active='true'] .monaco-hover {
+    display: none !important;
   }
 
-  .workspace-editor-textarea::selection {
-    background-color: transparent;
-    color: transparent !important;
-  }
-  .workspace-editor-textarea::-moz-selection {
-    background-color: transparent;
-    color: transparent !important;
+  .workspace-monaco-search-highlight {
+    border-radius: 2px;
+    background-color: var(--workspace-find-match-background);
   }
 
-  .workspace-editor-text-highlight {
-    --workspace-editor-highlight-color: var(--diff-viewer-selection-background-opaque);
-    background-color: var(--workspace-editor-highlight-color);
-    box-shadow:
-      0 4px 0 var(--workspace-editor-highlight-color),
-      0 -4px 0 var(--workspace-editor-highlight-color);
+  .workspace-monaco-search-highlight-active {
+    border-radius: 2px;
+    background-color: var(--workspace-find-match-active-background);
     color: #fff !important;
   }
 
-  .workspace-editor-search-highlight {
-    --workspace-editor-highlight-color: var(--workspace-editor-search-highlight-background);
-    color: var(--color-foreground) !important;
+  .workspace-monaco-editor .workspace-monaco-line-added {
+    border-right: 3px solid var(--workspace-editor-line-added-border);
+    box-sizing: border-box;
   }
 
-  .workspace-editor-search-highlight-active {
-    --workspace-editor-highlight-color: var(--workspace-editor-search-highlight-active-background);
-    color: #fff !important;
+  .workspace-monaco-editor .workspace-monaco-line-changed {
+    border-right: 3px solid var(--workspace-editor-line-changed-border);
+    box-sizing: border-box;
   }
-
-  .workspace-editor-selection-newline {
-    padding-right: 0.5ch; /* Visual indicator for selected newline */
-    margin-right: -0.5ch; /* Visual indicator without affecting layout width */
-  }
-
 
   /**
    * Gap-free selection for code blocks.
    * Each line is a block-level <div>; browsers leave a 1px gap between
    * consecutive selected block elements. A tiny negative-margin + matching
    * padding trick makes adjacent rows visually seamless when selected.
-   * NOTE: NOT applied to diff-viewer-content-row because those rows have
-   * colored backgrounds (red/green) that would bleed 1px into adjacent rows.
    */
   .code-block-line {
     margin-top: -1px;
     padding-top: 1px;
   }
-
-  /** Diff viewer gutter (line numbers) — never include in selection */
-  .diff-viewer-gutter {
-    user-select: none;
-  }
-
-  /**
-   * Diff viewer selection — use a high-opacity blue so the selection
-   * completely overrides the red/green diff row background instead of
-   * blending with it to produce a muddy purple/brown color.
-   */
-  .diff-viewer-content-row::selection,
-  .diff-viewer-content-row *::selection {
-    background-color: var(--diff-viewer-selection-background);
-    color: #fff !important;
-  }
-
 
   @media (min-width: 1024px) {
     .chat-shell {

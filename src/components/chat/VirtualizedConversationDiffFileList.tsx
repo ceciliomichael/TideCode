@@ -1,5 +1,9 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
+import {
+  calculateVariableSizeVirtualRange,
+  resolveVirtualViewportHeight,
+} from '../virtualization/variableSizeVirtualization'
 import type { DiffPanelScope } from './ConversationDiffFileItem'
 import { ConversationDiffFileItem } from './ConversationDiffFileItem'
 
@@ -14,11 +18,6 @@ interface VirtualizedConversationDiffFileListProps {
   pendingFileActionPath: string | null
   scrollToFilePath?: string | null
   selectedScope: DiffPanelScope
-}
-
-interface VirtualizedDiffListRange {
-  endIndex: number
-  startIndex: number
 }
 
 interface MeasuredConversationDiffRowProps {
@@ -41,34 +40,6 @@ const DIFF_LIST_VIRTUALIZATION_THRESHOLD = 24
 
 function getEstimatedDiffRowHeight(isExpanded: boolean) {
   return isExpanded ? DEFAULT_EXPANDED_DIFF_ROW_HEIGHT_PX : DEFAULT_COLLAPSED_DIFF_ROW_HEIGHT_PX
-}
-
-function calculateVirtualizedDiffListRange(input: {
-  itemHeights: readonly number[]
-  offsets: readonly number[]
-  scrollTop: number
-  viewportHeight: number
-}): VirtualizedDiffListRange {
-  const minVisibleTop = Math.max(0, input.scrollTop - DIFF_LIST_OVERSCAN_PX)
-  const maxVisibleBottom = input.scrollTop + input.viewportHeight + DIFF_LIST_OVERSCAN_PX
-  let startIndex = 0
-
-  while (
-    startIndex < input.itemHeights.length &&
-    input.offsets[startIndex] + input.itemHeights[startIndex] < minVisibleTop
-  ) {
-    startIndex += 1
-  }
-
-  let endIndex = startIndex
-  while (endIndex < input.itemHeights.length && input.offsets[endIndex] < maxVisibleBottom) {
-    endIndex += 1
-  }
-
-  return {
-    endIndex,
-    startIndex,
-  }
 }
 
 const rowWrapperStyle: CSSProperties = {
@@ -182,18 +153,19 @@ export const VirtualizedConversationDiffFileList = memo(function VirtualizedConv
     }
   }, [itemHeights])
   const visibleRange = useMemo(() => {
-    if (!shouldVirtualize || viewportHeight <= 0) {
+    if (!shouldVirtualize) {
       return {
         endIndex: diffs.length,
         startIndex: 0,
-      } satisfies VirtualizedDiffListRange
+      }
     }
 
-    return calculateVirtualizedDiffListRange({
+    return calculateVariableSizeVirtualRange({
       itemHeights,
       offsets,
+      overscanPx: DIFF_LIST_OVERSCAN_PX,
       scrollTop,
-      viewportHeight,
+      viewportHeight: resolveVirtualViewportHeight(viewportHeight),
     })
   }, [diffs.length, itemHeights, offsets, scrollTop, shouldVirtualize, viewportHeight])
 

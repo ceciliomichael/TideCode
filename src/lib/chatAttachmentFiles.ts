@@ -10,6 +10,7 @@ import {
   normalizeAttachmentText,
 } from './chatAttachments'
 import type { ChatAttachment } from '../types/chat'
+import { normalizeChatImageFile } from './chatImageNormalization'
 import { toUserFacingErrorMessage } from './userFacingError'
 
 export { CHAT_ATTACHMENT_INPUT_ACCEPT }
@@ -56,29 +57,18 @@ function getFallbackFileName(file: File, attachmentKind: ChatAttachment['kind'])
   return inferredExtension.length > 0 ? `clipboard-file${inferredExtension}` : 'clipboard-file.txt'
 }
 
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = () => reject(reader.error ?? new Error(`Unable to read ${file.name || 'attachment'}.`))
-    reader.onload = () => {
-      if (typeof reader.result !== 'string') {
-        reject(new Error(`Unable to encode ${file.name || 'attachment'}.`))
-        return
-      }
-
-      resolve(reader.result)
-    }
-    reader.readAsDataURL(file)
-  })
-}
-
 export async function readChatAttachmentsFromFiles(
   files: readonly File[],
-  existingAttachmentCount: number,
+  existingAttachments: readonly ChatAttachment[],
 ): Promise<ReadChatAttachmentsResult> {
   const attachments: ChatAttachment[] = []
   const errors: string[] = []
-  let remainingSlots = Math.max(CHAT_ATTACHMENT_MAX_COUNT - existingAttachmentCount, 0)
+  let remainingSlots = Math.max(CHAT_ATTACHMENT_MAX_COUNT - existingAttachments.length, 0)
+  const attachedImageDataUrls = new Set(
+    existingAttachments
+      .filter((attachment) => attachment.kind === 'image')
+      .map((attachment) => attachment.dataUrl),
+  )
 
   for (const file of files) {
     if (remainingSlots === 0) {
@@ -101,13 +91,21 @@ export async function readChatAttachmentsFromFiles(
       }
 
       try {
+        const normalizedImage = await normalizeChatImageFile(file)
+        if (attachedImageDataUrls.has(normalizedImage.dataUrl)) {
+          errors.push(`${fileName} is already attached.`)
+          continue
+        }
+        attachedImageDataUrls.add(normalizedImage.dataUrl)
         attachments.push({
-          dataUrl: await readFileAsDataUrl(file),
+          dataUrl: normalizedImage.dataUrl,
           fileName,
+          height: normalizedImage.height,
           id: crypto.randomUUID(),
           kind: 'image',
-          mimeType: file.type || 'image/png',
-          sizeBytes: file.size,
+          mimeType: normalizedImage.mimeType,
+          sizeBytes: normalizedImage.sizeBytes,
+          width: normalizedImage.width,
         })
         remainingSlots -= 1
       } catch (error) {

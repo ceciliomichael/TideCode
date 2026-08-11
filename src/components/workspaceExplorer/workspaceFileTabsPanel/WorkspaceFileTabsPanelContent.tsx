@@ -10,13 +10,14 @@ import type { GitFileDiff } from '../../../types/chat'
 import type { WorkspaceFileTab, WorkspaceTab } from '../types'
 import type { PlanReviewComment } from '../../../lib/planContracts'
 import { getPlanCommentsForPath, type PlanCommentsByPath } from '../../../lib/planComments'
-import type { TextSelectionRange } from '../workspaceFileEditor/workspaceFileEditorUtils'
+import type { TextSelectionRange } from '../workspaceFileEditor/workspaceEditorTypes'
 import { isImagePreviewablePath } from '../../../lib/image-preview'
 import { isDocxPreviewablePath } from '../../../lib/docx-preview'
 import { normalizePathSeparators } from '../../../lib/filePathUtils'
 import { isSvgPreviewablePath } from '../../../lib/svg-preview'
 import { isPdfPreviewablePath } from '../../../lib/pdf-preview'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
+import { WorkspaceMonacoLoadingView } from '../workspaceFileEditor/WorkspaceMonacoLoadingView'
 
 interface WorkspaceFileTabsPanelContentProps {
   activeTab: WorkspaceTab
@@ -182,11 +183,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
   }
 
   if (activeTab.status === 'loading') {
-    return (
-      <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-subtle-foreground">
-        Loading {activeTab.fileName}...
-      </div>
-    )
+    return <WorkspaceMonacoLoadingView />
   }
 
   if (activeTab.status === 'error') {
@@ -242,6 +239,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
     <WorkspaceFileEditor
       key={activeTab.tabKey}
       fileName={activeTab.fileName}
+      filePath={activeTab.relativePath}
       gitFileDiff={findGitFileDiff(gitFileDiffs, activeTab.relativePath)}
         hasRepository={hasRepository}
       initialSelection={initialSelection}

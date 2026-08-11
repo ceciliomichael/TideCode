@@ -37,6 +37,15 @@ interface TooltipProps {
   triggerLayout?: 'flex' | 'inline' | 'inline-flex'
 }
 
+interface AnchoredTooltipProps {
+  anchorElement: HTMLElement | null
+  content: string | ReactNode
+  noWrap?: boolean
+  panelClassName?: string
+  side?: 'top' | 'bottom' | 'left' | 'right'
+  visible: boolean
+}
+
 const TOOLTIP_OFFSET = 6
 const TOOLTIP_EDGE_PADDING = 12
 const TOOLTIP_SHOW_EVENT = 'tidecode:tooltip-show'
@@ -335,5 +344,104 @@ export function Tooltip({
           )
         : null}
     </>
+  )
+}
+
+export function AnchoredTooltip({
+  anchorElement,
+  content,
+  noWrap = false,
+  panelClassName,
+  side = 'top',
+  visible,
+}: AnchoredTooltipProps) {
+  const tooltipId = useId()
+  const tooltipRef = useRef<HTMLDivElement | null>(null)
+  const [tooltipStyle, setTooltipStyle] = useState<CSSProperties>({
+    left: 0,
+    top: 0,
+    opacity: 0,
+    visibility: 'hidden',
+  })
+
+  const updateTooltipPosition = useCallback(() => {
+    if (!anchorElement || !tooltipRef.current) {
+      return
+    }
+
+    const anchorRect = anchorElement.getBoundingClientRect()
+    const tooltipRect = tooltipRef.current.getBoundingClientRect()
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+    const fitsTop = anchorRect.top >= tooltipRect.height + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+    const fitsBottom = viewportHeight - anchorRect.bottom >= tooltipRect.height + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+    const fitsLeft = anchorRect.left >= tooltipRect.width + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+    const fitsRight = viewportWidth - anchorRect.right >= tooltipRect.width + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+    const resolvedSide = side === 'top'
+      ? fitsTop || !fitsBottom ? 'top' : 'bottom'
+      : side === 'bottom'
+        ? fitsBottom || !fitsTop ? 'bottom' : 'top'
+        : side === 'left'
+          ? fitsLeft || !fitsRight ? 'left' : 'right'
+          : fitsRight || !fitsLeft ? 'right' : 'left'
+    const minLeft = TOOLTIP_EDGE_PADDING
+    const maxLeft = Math.max(TOOLTIP_EDGE_PADDING, viewportWidth - tooltipRect.width - TOOLTIP_EDGE_PADDING)
+    const minTop = TOOLTIP_EDGE_PADDING
+    const maxTop = Math.max(TOOLTIP_EDGE_PADDING, viewportHeight - tooltipRect.height - TOOLTIP_EDGE_PADDING)
+    const centeredLeft = anchorRect.left + anchorRect.width / 2 - tooltipRect.width / 2
+    const centeredTop = anchorRect.top + anchorRect.height / 2 - tooltipRect.height / 2
+    const left = resolvedSide === 'left'
+      ? Math.max(minLeft, Math.min(anchorRect.left - tooltipRect.width - TOOLTIP_OFFSET, maxLeft))
+      : resolvedSide === 'right'
+        ? Math.max(minLeft, Math.min(anchorRect.right + TOOLTIP_OFFSET, maxLeft))
+        : Math.max(minLeft, Math.min(centeredLeft, maxLeft))
+    const top = resolvedSide === 'top'
+      ? Math.max(minTop, Math.min(anchorRect.top - tooltipRect.height - TOOLTIP_OFFSET, maxTop))
+      : resolvedSide === 'bottom'
+        ? Math.max(minTop, Math.min(anchorRect.bottom + TOOLTIP_OFFSET, maxTop))
+        : Math.max(minTop, Math.min(centeredTop, maxTop))
+
+    setTooltipStyle({ left, top, opacity: 1, visibility: 'visible' })
+  }, [anchorElement, side])
+
+  useLayoutEffect(() => {
+    if (!visible || !anchorElement || !tooltipRef.current) {
+      return
+    }
+
+    window.dispatchEvent(new CustomEvent<string>(TOOLTIP_SHOW_EVENT, { detail: tooltipId }))
+    updateTooltipPosition()
+    window.addEventListener('scroll', updateTooltipPosition, true)
+    window.addEventListener('resize', updateTooltipPosition)
+    const resizeObserver = new ResizeObserver(updateTooltipPosition)
+    resizeObserver.observe(anchorElement)
+    resizeObserver.observe(tooltipRef.current)
+
+    return () => {
+      window.removeEventListener('scroll', updateTooltipPosition, true)
+      window.removeEventListener('resize', updateTooltipPosition)
+      resizeObserver.disconnect()
+    }
+  }, [anchorElement, tooltipId, updateTooltipPosition, visible])
+
+  if (!visible || !anchorElement) {
+    return null
+  }
+
+  return createPortal(
+    <div
+      ref={tooltipRef}
+      id={tooltipId}
+      role="tooltip"
+      className={[
+        'pointer-events-none fixed z-50 inline-flex items-center rounded-xl border border-tooltip-border bg-tooltip-surface px-3 py-2 text-xs font-medium leading-4 text-tooltip-foreground shadow-soft transition-opacity duration-150 ease-out',
+        noWrap ? 'w-max whitespace-nowrap' : 'max-w-[min(18rem,calc(100vw-24px))]',
+        panelClassName ?? '',
+      ].join(' ')}
+      style={tooltipStyle}
+    >
+      {content}
+    </div>,
+    document.body,
   )
 }

@@ -67,6 +67,70 @@ const x = 42
   assert.equal(preprocessMarkdown(input), expected)
 })
 
+test('preprocessMarkdown preserves shorter fences as literal content inside a longer fence', () => {
+  const input = `\`\`\`\`markdown
+## Component example
+\`\`\`tsx
+export const Answer = () => <strong>42</strong>
+\`\`\`
+\`\`\`\``
+
+  assert.equal(preprocessMarkdown(input), input)
+})
+
+test('preprocessMarkdown keeps a longer literal fence when it has no complete nested block', () => {
+  const input = `\`\`\`\`markdown
+Use three backticks to create a code block.
+\`\`\`\``
+
+  assert.equal(preprocessMarkdown(input), input)
+})
+
+test('preprocessMarkdown auto-closes an unmatched fence using its original length', () => {
+  const input = `\`\`\`\`markdown
+\`\`\`json
+{"enabled": true}
+\`\`\``
+
+  const expected = `${input}
+\`\`\`\``
+
+  assert.equal(preprocessMarkdown(input), expected)
+})
+
+test('workspace Markdown preview renders a longer Markdown fence as one literal code block', () => {
+  const markup = renderToStaticMarkup(
+    createElement(WorkspaceMarkdownPreviewView, {
+      content: `\`\`\`\`markdown
+\`\`\`python
+def hello_world():
+    print("Hello, world!")
+\`\`\`
+
+\`\`\`javascript
+function helloWorld() {
+  console.log("Hello, world!")
+}
+\`\`\`
+
+\`\`\`bash
+echo "Hello, world!"
+\`\`\`
+\`\`\`\``,
+      fileName: 'nested-fence.md',
+    }),
+  )
+
+  assert.match(markup, />markdown</u)
+  assert.match(markup, /```python/u)
+  assert.match(markup, /def hello_world/u)
+  assert.match(markup, /```javascript/u)
+  assert.match(markup, /function helloWorld/u)
+  assert.match(markup, /```bash/u)
+  assert.match(markup, /echo &quot;Hello, world!&quot;/u)
+  assert.equal(markup.match(/aria-label="Copy code"/gu)?.length, 1)
+})
+
 test('preprocessMarkdown does not turn inline details examples into HTML blocks', () => {
   const input = '- Pricing FAQ: native `<details>/<summary>` accordion (no JS needed)\n\n## Styling / Design System'
 

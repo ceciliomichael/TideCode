@@ -28,6 +28,13 @@ import { ReasoningEffortBlock } from './chat/ReasoningEffortBlock'
 import { RuntimeTargetSelectorField } from './chat/RuntimeTargetSelectorField'
 import { TerminalExecutionModeSelectorField } from './chat/TerminalExecutionModeSelectorField'
 import { AttachmentPillList } from './chat/AttachmentPillList'
+import {
+  ensureChatImageReferences,
+  findChatImageReferenceForDeletion,
+  getChatImageAttachments,
+  insertChatImageReferences,
+  removeChatImageReference,
+} from '../lib/chatImageReferences'
 
 interface ChatInputProps {
   actionButtonMode?: 'auto' | 'abort' | 'send'
@@ -135,6 +142,8 @@ export function ChatInput({
   editClickBoundaryRef,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const valueRef = useRef(value)
+  valueRef.current = value
   const containerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
@@ -182,6 +191,8 @@ export function ChatInput({
     textareaRef,
     value,
   })
+  const imageAttachments = getChatImageAttachments(attachments)
+  const nonImageAttachments = attachments.filter((attachment) => attachment.kind !== 'image')
   const hasContent = value.trim().length > 0 || attachments.length > 0
   const resolvedActionButtonMode =
     actionButtonMode === 'auto'
@@ -240,6 +251,34 @@ export function ChatInput({
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      const textarea = textareaRef.current
+      const imageReference = textarea
+        ? findChatImageReferenceForDeletion({
+            imageCount: imageAttachments.length,
+            key: e.key,
+            selectionEnd: textarea.selectionEnd,
+            selectionStart: textarea.selectionStart,
+            text: value,
+          })
+        : null
+      if (imageReference) {
+        e.preventDefault()
+        const nextState = removeChatImageReference({
+          attachments,
+          imageNumber: imageReference.imageNumber,
+          text: value,
+        })
+        onAttachmentsChange?.(nextState.attachments)
+        onValueChange(nextState.text)
+        window.requestAnimationFrame(() => {
+          const nextCursor = Math.min(imageReference.start, nextState.text.length)
+          textareaRef.current?.setSelectionRange(nextCursor, nextCursor)
+        })
+        return
+      }
+    }
+
     if (mentionMenu.handleKeyDown(e)) {
       return
     }
@@ -278,10 +317,27 @@ export function ChatInput({
       return
     }
 
-    const result = await readChatAttachmentsFromFiles(files, attachments.length)
+    const initialInsertionPosition = textareaRef.current?.selectionStart ?? value.length
+    const result = await readChatAttachmentsFromFiles(files, attachments)
     if (result.attachments.length > 0) {
-      onAttachmentsChange?.([...attachments, ...result.attachments])
+      const nextAttachments = [...attachments, ...result.attachments]
+      const newImageCount = getChatImageAttachments(result.attachments).length
+      const latestValue = valueRef.current
+      const insertionPosition = textareaRef.current?.selectionStart ?? initialInsertionPosition
+      const insertion = insertChatImageReferences({
+        count: newImageCount,
+        firstImageNumber: imageAttachments.length + 1,
+        position: insertionPosition,
+        text: latestValue,
+      })
+      onAttachmentsChange?.(nextAttachments)
+      if (insertion.text !== latestValue) {
+        onValueChange(insertion.text)
+      }
       textareaRef.current?.focus()
+      window.requestAnimationFrame(() => {
+        textareaRef.current?.setSelectionRange(insertion.cursorPosition, insertion.cursorPosition)
+      })
     }
 
     setAttachmentError(result.errors[0] ?? null)
@@ -379,6 +435,13 @@ export function ChatInput({
     clearMentionPathMap()
   }, [clearMentionPathMap, disabled, value])
 
+  useEffect(() => {
+    const nextValue = ensureChatImageReferences(value, attachments)
+    if (nextValue !== value) {
+      onValueChange(nextValue)
+    }
+  }, [attachments, onValueChange, value])
+
   return (
     <div ref={containerRef} className="w-full">
       <div className={`${chatInputSurfaceClassName} ${chatConversationSurfacePaddingClassName}`}>
@@ -398,14 +461,15 @@ export function ChatInput({
           tabIndex={-1}
         />
 
-        {attachments.length > 0 ? (
+        {nonImageAttachments.length > 0 ? (
           <div className="mb-3">
-            <AttachmentPillList attachments={attachments} onRemoveAttachment={handleRemoveAttachment} />
+            <AttachmentPillList attachments={nonImageAttachments} onRemoveAttachment={handleRemoveAttachment} />
           </div>
         ) : null}
 
         <div ref={mentionMenu.anchorRef} className="relative">
           <ChatMentionTextarea
+            imageAttachments={imageAttachments}
             textareaRef={textareaRef}
             value={value}
             onChange={(event) => mentionMenu.handleValueChange(event.target.value)}

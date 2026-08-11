@@ -12,6 +12,7 @@ import {
   subscribeToUpdatesSession,
   type UpdateCheckState,
 } from './updatesSessionStore'
+import { getDisplayedUpdateVersion } from './updateVersionDisplay'
 import type { AppSettings } from '../../../types/chat'
 import { SettingsPanelLayout, SettingsRow, SettingsSection } from '../shared/SettingsPanelPrimitives'
 
@@ -131,14 +132,13 @@ export function UpdatesSettingsPanel({ autoDownloadUpdates, isLoading, onUpdateS
   const isDownloading = session.checkState === 'downloading' || session.downloadState === 'downloading'
   // While a download is in progress (or ready to install), show the version
   // being downloaded instead of the version that is currently running.
-  const displayedVersion =
-    isDownloading || session.downloadState === 'downloaded'
-      ? session.pendingVersion ??
-        session.result?.latestVersion ??
-        session.result?.currentVersion ??
-        session.currentVersion ??
-        '—'
-      : session.result?.currentVersion ?? session.currentVersion ?? '—'
+  const displayedVersion = getDisplayedUpdateVersion({
+    checkState: session.checkState,
+    currentVersion: session.result?.currentVersion ?? session.currentVersion,
+    downloadState: session.downloadState,
+    latestVersion: session.result?.downloadVersion ?? session.result?.latestVersion ?? null,
+    pendingVersion: session.pendingVersion,
+  })
   const errorMessage = openReleaseError ?? session.errorMessage
   const updateIsReady = session.downloadState === 'downloaded'
   const updateIsAvailable = session.result?.updateAvailable === true

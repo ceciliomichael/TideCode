@@ -70,7 +70,7 @@ export function hydrateCachedUpdate() {
         downloadPercent: null,
         downloadState: 'not-available',
         errorMessage: null,
-        pendingVersion: result.updateAvailable ? result.latestVersion : null,
+        pendingVersion: result.downloadVersion ?? (result.updateAvailable ? result.latestVersion : null),
         result,
       })
     })
@@ -97,12 +97,14 @@ function subscribeToMainProcessState() {
 
   hasSubscribedToMainProcessState = true
   window.tidecodeUpdates.onUpdateState((event) => {
+    const eventVersion = event.version ?? updatesSessionSnapshot.pendingVersion
+
     if (event.state === 'downloading') {
       updateSnapshot({
         checkState: 'downloading',
         downloadPercent: event.percent,
         downloadState: 'downloading',
-        pendingVersion: event.version,
+        pendingVersion: eventVersion,
       })
       return
     }
@@ -112,7 +114,7 @@ function subscribeToMainProcessState() {
         checkState: 'success',
         downloadPercent: 100,
         downloadState: 'downloaded',
-        pendingVersion: event.version,
+        pendingVersion: eventVersion,
       })
       return
     }
@@ -124,7 +126,7 @@ function subscribeToMainProcessState() {
       errorMessage: event.errorMessage
         ? toUserFacingErrorMessage(event.errorMessage, 'TideCode could not download this update.')
         : 'TideCode could not download this update.',
-      pendingVersion: event.version,
+      pendingVersion: eventVersion,
     })
   })
 }
@@ -134,15 +136,19 @@ export function requestUpdateCheck() {
   void hydrateCachedUpdate()
   const requestId = latestRequestId + 1
   latestRequestId = requestId
-  const downloadedVersion =
-    updatesSessionSnapshot.downloadState === 'downloaded' ? updatesSessionSnapshot.pendingVersion : null
+  const activeDownloadState =
+    updatesSessionSnapshot.downloadState === 'downloading' || updatesSessionSnapshot.downloadState === 'downloaded'
+      ? updatesSessionSnapshot.downloadState
+      : null
+  const activeDownloadVersion = activeDownloadState ? updatesSessionSnapshot.pendingVersion : null
+  const activeDownloadPercent = activeDownloadState ? updatesSessionSnapshot.downloadPercent : null
 
   updateSnapshot({
     checkState: 'checking',
-    downloadPercent: downloadedVersion ? 100 : null,
-    downloadState: downloadedVersion ? 'downloaded' : 'not-available',
+    downloadPercent: activeDownloadState ? updatesSessionSnapshot.downloadPercent : null,
+    downloadState: activeDownloadState ?? 'not-available',
     errorMessage: null,
-    pendingVersion: downloadedVersion,
+    pendingVersion: activeDownloadVersion,
   })
 
   void window.tidecodeUpdates
@@ -161,17 +167,32 @@ export function requestUpdateCheck() {
         return
       }
 
-      const downloadedUpdateIsStillCurrent = downloadedVersion === result.latestVersion
+      const reportedDownloadVersion = result.downloadVersion ?? activeDownloadVersion
+      const downloadedUpdateIsStillCurrent =
+        result.downloadState === 'downloaded' && reportedDownloadVersion === result.latestVersion
+      const nextDownloadState =
+        result.downloadState === 'not-available' && activeDownloadState
+          ? activeDownloadState
+          : downloadedUpdateIsStillCurrent
+            ? 'downloaded'
+            : result.downloadState
+      const hasActiveDownload = nextDownloadState === 'downloading' || nextDownloadState === 'downloaded'
 
       updateSnapshot({
         checkState: result.downloadState === 'error' ? 'error' : 'success',
         currentVersion: result.currentVersion,
-        downloadPercent: downloadedUpdateIsStillCurrent ? 100 : result.downloadPercent,
-        downloadState: downloadedUpdateIsStillCurrent ? 'downloaded' : result.downloadState,
+        downloadPercent: nextDownloadState === 'downloaded'
+          ? 100
+          : result.downloadPercent ?? (nextDownloadState === 'downloading' ? activeDownloadPercent : null),
+        downloadState: nextDownloadState,
         errorMessage: result.downloadError
           ? toUserFacingErrorMessage(result.downloadError, 'TideCode could not download this update.')
           : null,
-        pendingVersion: downloadedUpdateIsStillCurrent ? downloadedVersion : result.latestVersion,
+        pendingVersion: hasActiveDownload
+          ? reportedDownloadVersion ?? result.latestVersion
+          : result.updateAvailable
+            ? result.latestVersion
+            : null,
         result,
       })
     })
@@ -199,7 +220,7 @@ export function requestUpdateDownload() {
   const downloadIsCurrent =
     (updatesSessionSnapshot.downloadState === 'downloading' ||
       updatesSessionSnapshot.downloadState === 'downloaded') &&
-    updatesSessionSnapshot.pendingVersion === latestResult.latestVersion
+    updatesSessionSnapshot.pendingVersion === (latestResult.downloadVersion ?? latestResult.latestVersion)
   if (downloadIsCurrent) {
     return
   }
@@ -228,6 +249,8 @@ export function requestUpdateDownload() {
         errorMessage: downloadResult.downloadError
           ? toUserFacingErrorMessage(downloadResult.downloadError, 'TideCode could not download this update.')
           : null,
+        pendingVersion:
+          downloadResult.downloadVersion ?? updatesSessionSnapshot.pendingVersion ?? latestResult.latestVersion,
       })
     })
     .catch((error: unknown) => {

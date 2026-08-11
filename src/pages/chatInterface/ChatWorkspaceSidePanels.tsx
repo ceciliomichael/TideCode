@@ -86,53 +86,57 @@ export function ChatWorkspaceSidePanels({
         width={workspaceState.workspaceExplorerWidth}
         workspaceRootPath={workspaceState.activeWorkspacePath}
       />
-      <ConversationDiffPanel
-        currentBranch={gitBranchState.branchState.currentBranch}
-        expandedFilePaths={diffPanelExpandedFilePaths}
-        fileDiffs={gitDiffSnapshot.snapshot.fileDiffs}
-        isOpen={interfaceController.isDiffPanelOpen}
-        onDiscardFile={interfaceController.handleDiscardDiffFile}
-        onExpandedFilePathsChange={onDiffPanelExpandedFilePathsChange}
-        onScrollToFilePath={handleDiffPanelFileFocusHandled}
-        onSelectedScopeChange={onDiffPanelSelectedScopeChange}
-        onStageFile={interfaceController.handleStageDiffFile}
-        onUnstageFile={interfaceController.handleUnstageDiffFile}
-        pendingFileActionPath={interfaceController.pendingFileActionPath}
-        scrollToFilePath={diffPanelFilePathToFocus}
-        width={workspaceState.conversationDiffPanelWidth}
-        onWidthChange={workspaceState.handleConversationDiffPanelWidthChange}
-        onWidthCommit={workspaceState.handleConversationDiffPanelWidthCommit}
-        selectedScope={diffPanelSelectedScope}
-      />
-      <SourceControlPanel
-        key={workspaceState.activeWorkspacePath?.trim() ?? 'no-workspace'}
-        aheadCommitCount={gitBranchState.branchState.aheadCommitCount}
-        hasRepository={hasRepository}
-        hasRemote={Boolean(gitBranchState.branchState.remoteUrl)}
-        onDiffPanelExpandedFilePathsChange={onDiffPanelExpandedFilePathsChange}
-        onDiffPanelSelectedScopeChange={onDiffPanelSelectedScopeChange}
-        fileDiffs={gitDiffSnapshot.snapshot.fileDiffs}
-        isOpen={interfaceController.isSourceControlPanelOpen}
-        onDiscardFiles={interfaceController.handleDiscardDiffFiles}
-        onDiscardFile={interfaceController.handleDiscardDiffFile}
-        onOpenCommitModal={interfaceController.handleOpenCommitModal}
-        onDiffPanelFileFocus={handleDiffPanelFileFocus}
-        onOpenDiffPanel={workspaceState.handleOpenDiffPanel}
-        onQuickCommit={interfaceController.handleQuickCommit}
-        onRefreshAll={interfaceController.handleRefreshGitUi}
-        onSectionOpenChange={interfaceController.handleSourceControlSectionOpenChange}
-        onStageFiles={interfaceController.handleStageDiffFiles}
-        onStageFile={interfaceController.handleStageDiffFile}
-        onUnstageFiles={interfaceController.handleUnstageDiffFiles}
-        onUnstageFile={interfaceController.handleUnstageDiffFile}
-        pendingFileActionPath={interfaceController.pendingFileActionPath}
-        fileActionErrorMessage={interfaceController.fileActionErrorMessage}
-        onWidthCommit={workspaceState.handleSourceControlPanelWidthCommit}
-        onWidthChange={workspaceState.handleSourceControlPanelWidthChange}
-        sectionOpen={settings.sourceControlSectionOpen}
-        workspacePath={workspaceState.activeWorkspacePath}
-        width={workspaceState.sourceControlPanelWidth}
-      />
+      {interfaceController.isDiffPanelOpen ? (
+        <ConversationDiffPanel
+          currentBranch={gitBranchState.branchState.currentBranch}
+          expandedFilePaths={diffPanelExpandedFilePaths}
+          fileDiffs={gitDiffSnapshot.snapshot.fileDiffs}
+          isOpen
+          onDiscardFile={interfaceController.handleDiscardDiffFile}
+          onExpandedFilePathsChange={onDiffPanelExpandedFilePathsChange}
+          onScrollToFilePath={handleDiffPanelFileFocusHandled}
+          onSelectedScopeChange={onDiffPanelSelectedScopeChange}
+          onStageFile={interfaceController.handleStageDiffFile}
+          onUnstageFile={interfaceController.handleUnstageDiffFile}
+          pendingFileActionPath={interfaceController.pendingFileActionPath}
+          scrollToFilePath={diffPanelFilePathToFocus}
+          width={workspaceState.conversationDiffPanelWidth}
+          onWidthChange={workspaceState.handleConversationDiffPanelWidthChange}
+          onWidthCommit={workspaceState.handleConversationDiffPanelWidthCommit}
+          selectedScope={diffPanelSelectedScope}
+        />
+      ) : null}
+      {interfaceController.isSourceControlPanelOpen ? (
+        <SourceControlPanel
+          key={workspaceState.activeWorkspacePath?.trim() ?? 'no-workspace'}
+          aheadCommitCount={gitBranchState.branchState.aheadCommitCount}
+          hasRepository={hasRepository}
+          hasRemote={Boolean(gitBranchState.branchState.remoteUrl)}
+          onDiffPanelExpandedFilePathsChange={onDiffPanelExpandedFilePathsChange}
+          onDiffPanelSelectedScopeChange={onDiffPanelSelectedScopeChange}
+          fileDiffs={gitDiffSnapshot.snapshot.fileDiffs}
+          isOpen
+          onDiscardFiles={interfaceController.handleDiscardDiffFiles}
+          onDiscardFile={interfaceController.handleDiscardDiffFile}
+          onOpenCommitModal={interfaceController.handleOpenCommitModal}
+          onDiffPanelFileFocus={handleDiffPanelFileFocus}
+          onOpenDiffPanel={workspaceState.handleOpenDiffPanel}
+          onQuickCommit={interfaceController.handleQuickCommit}
+          onRefreshAll={interfaceController.handleRefreshGitUi}
+          onSectionOpenChange={interfaceController.handleSourceControlSectionOpenChange}
+          onStageFiles={interfaceController.handleStageDiffFiles}
+          onStageFile={interfaceController.handleStageDiffFile}
+          onUnstageFiles={interfaceController.handleUnstageDiffFiles}
+          onUnstageFile={interfaceController.handleUnstageDiffFile}
+          pendingFileActionPath={interfaceController.pendingFileActionPath}
+          fileActionErrorMessage={interfaceController.fileActionErrorMessage}
+          onWidthCommit={workspaceState.handleSourceControlPanelWidthCommit}
+          onWidthChange={workspaceState.handleSourceControlPanelWidthChange}
+          sectionOpen={settings.sourceControlSectionOpen}
+          workspacePath={workspaceState.activeWorkspacePath}
+          width={workspaceState.sourceControlPanelWidth}
+        />
+      ) : null}
     </>
   )
 }

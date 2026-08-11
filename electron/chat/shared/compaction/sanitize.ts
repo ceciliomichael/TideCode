@@ -56,19 +56,39 @@ export function sanitizeCompactionPacketV2(packet: LocalCompactionPacketV2): Loc
   }
 }
 
-export function sanitizeCompactionContent(content: string | readonly unknown[]) {
-  if (typeof content === 'string') {
-    return stripExecutionModeContext(content)
+function sanitizeCompactionValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeCompactionValue)
+  }
+  if (typeof value !== 'object' || value === null) {
+    return value
   }
 
-  return content.map((part) => {
-    if (typeof part !== 'object' || part === null || !('text' in part)) {
-      return part
+  const part = value as Record<string, unknown>
+  const isImagePart = part.type === 'image'
+    const isImageFilePart =
+      part.type === 'file' &&
+      typeof part.mediaType === 'string' &&
+      (part.mediaType === 'image' || part.mediaType.startsWith('image/'))
+  if (isImagePart || isImageFilePart) {
+    const mediaType = typeof part.mediaType === 'string' ? part.mediaType : 'image'
+    return {
+      note: 'Binary image payload omitted from the text-only compaction transcript.',
+      type: 'image-reference',
+      mediaType,
     }
+  }
 
-    const text = (part as { text?: unknown }).text
-    return typeof text === 'string'
-      ? { ...part, text: stripExecutionModeContext(text) }
-      : part
-  })
+  return Object.fromEntries(Object.entries(part).map(([key, nestedValue]) => [
+    key,
+    key === 'text' && typeof nestedValue === 'string'
+      ? stripExecutionModeContext(nestedValue)
+      : sanitizeCompactionValue(nestedValue),
+  ]))
+}
+
+export function sanitizeCompactionContent(content: string | readonly unknown[]) {
+  return typeof content === 'string'
+    ? stripExecutionModeContext(content)
+    : sanitizeCompactionValue(content)
 }

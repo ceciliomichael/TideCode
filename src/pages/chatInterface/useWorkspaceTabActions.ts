@@ -2,10 +2,8 @@ import { useCallback, useEffect, type Dispatch, type MutableRefObject, type SetS
 import type { WorkspaceFileTab, WorkspaceTab } from '../../components/workspaceExplorer/types'
 import { toUserFacingErrorMessage } from '../../lib/userFacingError'
 import { createMarkdownPreviewTabKey, isMarkdownPreviewablePath } from '../../lib/markdown-preview'
-import { isDocxPreviewablePath } from '../../lib/docx-preview'
 import { normalizePathSeparators } from '../../lib/filePathUtils'
 import { getPathBasename } from '../../lib/pathPresentation'
-import { isPdfPreviewablePath } from '../../lib/pdf-preview'
 import {
   createPlanPreviewTabKey,
   extractPlanTitle,
@@ -15,6 +13,7 @@ import {
 } from '../../lib/planContracts'
 import { createSvgPreviewTabKey, isSvgPreviewablePath } from '../../lib/svg-preview'
 import { readWorkspaceFileWithCache } from '../../lib/workspaceFilePreviewCache'
+import { preloadWorkspaceMonacoEditorView } from '../../lib/workspaceMonacoPreload'
 
 interface UseWorkspaceTabActionsInput {
   activeWorkspacePanelWidth: number | null
@@ -250,6 +249,7 @@ export function useWorkspaceTabActions({
       onRightPanelOpenChange(false)
       setActiveWorkspaceFilePath(normalizedRelativePath)
       setActiveWorkspaceTabKey(normalizedRelativePath)
+      void preloadWorkspaceMonacoEditorView().catch(() => undefined)
       setWorkspaceFileTabs((currentTabs) => {
         if (
           currentTabs.some(
@@ -277,11 +277,10 @@ export function useWorkspaceTabActions({
         ]
       })
 
-      const readFile = isDocxPreviewablePath(normalizedRelativePath) || isPdfPreviewablePath(normalizedRelativePath)
-        ? (input: { relativePath: string; workspaceRootPath: string }) =>
-            readWorkspaceFileWithCache(input, { priority: true })
-        : window.tidecodeWorkspace.readFile
-      void readFile({ relativePath: normalizedRelativePath, workspaceRootPath })
+      void readWorkspaceFileWithCache(
+        { relativePath: normalizedRelativePath, workspaceRootPath },
+        { consume: true, priority: true },
+      )
         .then((result) => {
           if (result.status === 'missing') {
             throw new Error(`File does not exist: ${result.relativePath}`)

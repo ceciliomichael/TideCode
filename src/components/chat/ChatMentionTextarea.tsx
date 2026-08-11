@@ -1,9 +1,11 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, type CSSProperties, type ClipboardEvent, type ChangeEvent, type KeyboardEvent, type MouseEvent, type RefObject } from 'react'
 import { ChatMentionText } from './ChatMentionText'
+import type { ChatImageAttachment } from '../../types/chat'
 
 interface ChatMentionTextareaProps {
   className?: string
   disabled?: boolean
+  imageAttachments?: readonly ChatImageAttachment[]
   mentionPathMap?: ReadonlyMap<string, string>
   onBlur?: () => void
   onChange: (event: ChangeEvent<HTMLTextAreaElement>) => void
@@ -25,6 +27,7 @@ const MAX_TEXTAREA_HEIGHT_PX = 200
 export function ChatMentionTextarea({
   className,
   disabled = false,
+  imageAttachments = [],
   mentionPathMap,
   onBlur,
   onChange,
@@ -148,21 +151,6 @@ export function ChatMentionTextarea({
 
   return (
     <div className="relative w-full">
-      <div ref={backdropRef} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div
-          ref={backdropContentRef}
-          className={sharedLayerClassName}
-          style={{
-            ...style,
-            overflowWrap: 'break-word',
-            whiteSpace: 'pre-wrap',
-            willChange: 'transform',
-          }}
-        >
-          <ChatMentionText text={value} mentionPathMap={mentionPathMap} variant="backdrop" />
-        </div>
-      </div>
-
       <textarea
         ref={textareaRef}
         value={value}
@@ -182,6 +170,26 @@ export function ChatMentionTextarea({
         className={textareaClassName}
         style={textareaStyle}
       />
+
+      <div ref={backdropRef} aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1] overflow-hidden">
+        <div
+          ref={backdropContentRef}
+          className={sharedLayerClassName}
+          style={{
+            ...style,
+            overflowWrap: 'break-word',
+            whiteSpace: 'pre-wrap',
+            willChange: 'transform',
+          }}
+        >
+          <ChatMentionText
+            imageAttachments={imageAttachments}
+            text={value}
+            mentionPathMap={mentionPathMap}
+            variant="backdrop"
+          />
+        </div>
+      </div>
     </div>
   )
 }

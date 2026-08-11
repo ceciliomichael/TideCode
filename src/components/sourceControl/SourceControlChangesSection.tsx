@@ -149,8 +149,7 @@ export function SourceControlChangesSection({
     <>
     <section
       className={[
-        'border-b border-border',
-        isChangesSectionOpen ? 'min-h-0 flex flex-1 flex-col' : 'shrink-0',
+        isChangesSectionOpen ? 'min-h-0 flex flex-1 flex-col' : 'shrink-0 border-b border-border',
       ].join(' ')}
     >
 

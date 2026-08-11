@@ -1,6 +1,7 @@
 import type { AppTerminalExecutionMode } from '../../../src/types/chat'
 import type { WebContents } from 'electron'
 import type { ToolInvocationResultPresentation } from '../../../src/types/chat'
+import type { ToolResultOutput } from '@ai-sdk/provider-utils'
 
 export interface AgentToolResultSubject {
   kind?: string
@@ -10,6 +11,7 @@ export interface AgentToolResultSubject {
 export interface AgentToolExecutionResult {
   body?: string
   displayBody?: string
+  modelOutput?: ToolResultOutput
   resultPresentation?: ToolInvocationResultPresentation
   semantics?: Record<string, unknown>
   status: 'error' | 'success'

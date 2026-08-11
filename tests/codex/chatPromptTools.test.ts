@@ -194,14 +194,60 @@ test('buildChatPrompt preserves image attachments in user messages', () => {
   assert.equal(userMessage?.role, 'user')
   assert.ok(Array.isArray(userMessage?.content))
   assert.deepEqual(userMessage?.content[0], {
-    text: 'Please review this screenshot',
+    text: 'Please review this screenshot [Image #1]',
     type: 'text',
   })
   assert.deepEqual(userMessage?.content[1], {
-    image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB',
+    data: {
+      data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB',
+      type: 'data',
+    },
+    filename: 'screenshot.png',
     mediaType: 'image/png',
-    type: 'image',
+    type: 'file',
   })
+})
+
+test('buildChatPrompt interleaves numbered images where the user referenced them', () => {
+  const attachments = ['first', 'second'].map((id) => ({
+    dataUrl: `data:image/png;base64,${id}`,
+    fileName: `${id}.png`,
+    id,
+    kind: 'image' as const,
+    mimeType: 'image/png',
+    sizeBytes: 10,
+  }))
+  const prompt = buildChatPrompt({
+    chatMode: 'agent',
+    messages: [{
+      attachments,
+      content: 'Compare [Image #2] with [Image #1].',
+      id: 'user-images',
+      role: 'user',
+      timestamp: 1,
+    }],
+    workspaceRootPath: 'C:/repo',
+  })
+
+  const content = prompt.messages[0]?.content
+  assert.ok(Array.isArray(content))
+  assert.deepEqual(content.slice(0, 5), [
+    { text: 'Compare [Image #2]', type: 'text' },
+    {
+      data: { data: 'second', type: 'data' },
+      filename: 'second.png',
+      mediaType: 'image/png',
+      type: 'file',
+    },
+    { text: ' with [Image #1]', type: 'text' },
+    {
+      data: { data: 'first', type: 'data' },
+      filename: 'first.png',
+      mediaType: 'image/png',
+      type: 'file',
+    },
+    { text: '.', type: 'text' },
+  ])
 })
 
 test('buildChatPrompt preserves freeform apply_patch tool calls', () => {

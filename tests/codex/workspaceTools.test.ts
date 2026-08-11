@@ -15,6 +15,7 @@ import {
   resolveReadableTargetPath,
 } from '../../electron/chat/shared/tools/workspaceTools'
 import { getGlobalAgentsDirectory } from '../../electron/chat/shared/tools/sandboxPaths'
+import { createCanonicalToolModelOutput } from '../../electron/chat/shared/toolReplay'
 
 interface ExecutableToolResult {
   body?: string
@@ -24,6 +25,45 @@ interface ExecutableToolResult {
     path?: string
   }
 }
+
+test('read tool returns image files as numbered multimodal model content', async () => {
+  const fixturePath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-read-image-'))
+  const imagePath = path.join(fixturePath, 'pixel.png')
+  const imageBytes = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  )
+  await fs.writeFile(imagePath, imageBytes)
+
+  try {
+    const result = await createReadToolResult(imagePath, 'pixel.png', undefined, undefined)
+    assert.equal(result.status, 'success')
+    assert.equal(result.body, undefined)
+    assert.deepEqual(result.resultPresentation, {
+      fileName: 'pixel.png',
+      kind: 'image',
+      mediaType: 'image/png',
+      relativePath: 'pixel.png',
+    })
+
+    const modelOutput = createCanonicalToolModelOutput({
+      argumentsValue: { path: 'pixel.png' },
+      output: result,
+      toolCallId: 'read-image-1',
+      toolName: 'read',
+    })
+    assert.equal(modelOutput.type, 'content')
+    if (modelOutput.type !== 'content') return
+    assert.deepEqual(modelOutput.value[0], {
+      text: '[Image #1]\nFile: pixel.png',
+      type: 'text',
+    })
+    assert.equal(modelOutput.value[1]?.type, 'file')
+    assert.equal(modelOutput.value[1]?.mediaType, 'image/png')
+  } finally {
+    await fs.rm(fixturePath, { force: true, recursive: true })
+  }
+})
 
 interface ExecutableListTool {
   execute: (input: { path: string }) => Promise<ExecutableToolResult>
