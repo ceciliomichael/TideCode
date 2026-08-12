@@ -129,40 +129,43 @@ test('skill tool no longer exposes the read_resource action', () => {
   assert.match(description, /List, search, or load an enabled skill\./u)
 })
 
-test('expandChatMentions expands file, folder, and skill mentions with read:, list:, and load_skill:', async () => {
+test('expandChatMentions expands file, folder, skill, and Kanban mentions with read:, list:, load_skill:, and kanban:', async () => {
   const { expandChatMentions, collapseChatMentionMarkup, findChatMentionMatches, buildChatMentionPathMap } = await import('../src/lib/chatMentions')
   const map = new Map<string, string>([
     ['writing', 'load_skill:writing'],
     ['main.ts', 'read:src/main.ts'],
     ['components', 'list:src/components'],
+    ['Fix login bug', 'kanban:card-123'],
     ['AllSpaces AI Engine — Complete Step-by-Step Build Guide.md', 'read:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md'],
   ])
 
   const expanded = expandChatMentions(
-    'Please use @writing to help write @main.ts in @components for @AllSpaces AI Engine — Complete Step-by-Step Build Guide.md',
+    'Please use @writing to help write @main.ts in @components for @Fix login bug and @AllSpaces AI Engine — Complete Step-by-Step Build Guide.md',
     map,
   )
   // All action tags now wrapped in [[...]] delimiters — unambiguous boundaries
   assert.equal(
     expanded,
-    'Please use [[load_skill:writing]] to help write [[read:src/main.ts]] in [[list:src/components]] for [[read:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md]]',
+    'Please use [[load_skill:writing]] to help write [[read:src/main.ts]] in [[list:src/components]] for [[kanban:card-123]] and [[read:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md]]',
   )
 
   const collapsed = collapseChatMentionMarkup(expanded)
   assert.equal(
     collapsed,
-    'Please use @writing to help write @main.ts in @components for @AllSpaces AI Engine — Complete Step-by-Step Build Guide.md',
+    'Please use @writing to help write @main.ts in @components for @card-123 and @AllSpaces AI Engine — Complete Step-by-Step Build Guide.md',
   )
 
   const pathMap = buildChatMentionPathMap(expanded)
-  assert.equal(
-    pathMap.get('AllSpaces AI Engine — Complete Step-by-Step Build Guide.md'),
+  assert.equal(pathMap.get('card-123'), 'kanban:card-123')
+  assert.equal(pathMap.get('AllSpaces AI Engine — Complete Step-by-Step Build Guide.md'),
     'read:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md',
   )
 
   const matches = findChatMentionMatches(expanded)
-  assert.equal(matches.length, 4)
-  assert.equal(matches[3].label, 'AllSpaces AI Engine — Complete Step-by-Step Build Guide.md')
+  assert.equal(matches.length, 5)
+  assert.equal(matches[3].label, 'card-123')
+  assert.equal(matches[3].path, 'kanban:card-123')
+  assert.equal(matches[4].label, 'AllSpaces AI Engine — Complete Step-by-Step Build Guide.md')
 
   // Adjacent mentions with no space-bleed between them
   const adjacent = expandChatMentions('@writing @main.ts', map)

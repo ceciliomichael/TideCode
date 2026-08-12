@@ -18,6 +18,7 @@ interface ChatMentionTextProps {
 const mentionHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(59,130,246,0.18)]'
 const folderHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(245,158,11,0.18)]'
 const skillHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(168,85,247,0.18)]'
+const kanbanHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(16,185,129,0.18)]'
 
 export const ChatMentionText = memo(function ChatMentionText({
   className,
@@ -91,11 +92,14 @@ export const ChatMentionText = memo(function ChatMentionText({
 
         const isSkill = Boolean(segment.path?.startsWith('load_skill:') || segment.path?.startsWith('skill:'))
         const isFolder = Boolean(segment.path?.startsWith('list:') || segment.path?.startsWith('folder:') || segment.path?.endsWith('/'))
+        const isKanban = Boolean(segment.path?.startsWith('kanban:'))
         const isBackdrop = variant === 'backdrop'
         const isRendered = variant === 'rendered'
         const highlightClass = isSkill
           ? skillHighlightSurfaceClassName
-          : isFolder
+          : isKanban
+            ? kanbanHighlightSurfaceClassName
+            : isFolder
             ? folderHighlightSurfaceClassName
             : mentionHighlightSurfaceClassName
 

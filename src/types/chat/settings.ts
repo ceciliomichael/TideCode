@@ -6,7 +6,6 @@ import type { ChatProviderId, ReasoningEffort } from './providers'
 export type SourceControlSectionId = 'commit' | 'changes' | 'history'
 export type SourceControlSectionOpenId = SourceControlSectionId | 'staged' | 'unstaged'
 export type AppTerminalExecutionMode = 'full' | 'sandbox'
-
 export interface ConversationEditSession {
   messageId: string
 }

@@ -5,8 +5,10 @@ import path from 'node:path'
 import test from 'node:test'
 import {
   createEditToolResult,
+  type EditOperationInput,
   type WorkspaceToolContext,
 } from '../../electron/chat/shared/tools/workspaceTools'
+import { createReadTool } from '../../electron/chat/shared/tools/readTool'
 
 async function createFixture(content: string) {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-replace-tools-'))
@@ -15,6 +17,7 @@ async function createFixture(content: string) {
 
   const context: WorkspaceToolContext = {
     checkpointId: null,
+    readScopes: new Map(),
     terminalExecutionMode: 'sandbox',
     workspaceRootPath,
   }
@@ -22,11 +25,22 @@ async function createFixture(content: string) {
   return { context, targetPath, workspaceRootPath }
 }
 
+async function createSingleEditToolResult(
+  context: WorkspaceToolContext,
+  input: { path: string } & Partial<EditOperationInput>,
+) {
+  const { path: editPath, ...edit } = input
+  return createEditToolResult(context, {
+    edits: [edit as EditOperationInput],
+    path: editPath,
+  })
+}
+
 test('replace supports relative path in path parameter', async () => {
   const originalContent = 'const val = 1\n'
   const fixture = await createFixture(originalContent)
   try {
-    const result = await createEditToolResult(fixture.context, {
+    const result = await createSingleEditToolResult(fixture.context, {
       path: 'target.ts',
       allowMultiple: false,
       endLine: 1,
@@ -46,10 +60,12 @@ test('edit creates a missing file from its replacement content', async () => {
   const createdPath = path.join(fixture.workspaceRootPath, 'src', 'blocks.js')
 
   try {
-    const result = await createEditToolResult(fixture.context, {
+    const result = await createSingleEditToolResult(fixture.context, {
+      endLine: 1,
       allowMultiple: false,
       path: 'src/blocks.js',
       replacementContent: 'export const blocks = []\n',
+      startLine: 1,
       targetContent: 'new file',
     })
 
@@ -61,14 +77,16 @@ test('edit creates a missing file from its replacement content', async () => {
   }
 })
 
-test('edit finds a unique target without line bounds', async () => {
+test('edit finds a unique target with line bounds', async () => {
   const fixture = await createFixture('const value = true\n')
 
   try {
-    const result = await createEditToolResult(fixture.context, {
+    const result = await createSingleEditToolResult(fixture.context, {
       allowMultiple: false,
+      endLine: 1,
       path: fixture.targetPath,
       replacementContent: 'const value = false',
+      startLine: 1,
       targetContent: 'const value = true',
     })
 
@@ -79,19 +97,78 @@ test('edit finds a unique target without line bounds', async () => {
   }
 })
 
-test('edit rejects ambiguous targets without line bounds', async () => {
-  const originalContent = 'const value = true\nconst middle = 1\nconst value = true\n'
+test('edit applies multiple hunks atomically within one file', async () => {
+  const originalContent = [
+    'const first = true',
+    'const keep = 1',
+    'const last = false',
+    '',
+  ].join('\n')
+  const fixture = await createFixture(originalContent)
+
+  try {
+    const result = await createEditToolResult(fixture.context, {
+      edits: [
+        {
+          allowMultiple: false,
+          endLine: 1,
+          replacementContent: 'const first = false',
+          startLine: 1,
+          targetContent: 'const first = true',
+        },
+        {
+          allowMultiple: false,
+          endLine: 3,
+          replacementContent: 'const last = true',
+          startLine: 3,
+          targetContent: 'const last = false',
+        },
+      ],
+      path: fixture.targetPath,
+    })
+
+    assert.equal(result.status, 'success')
+    assert.match(result.summary, /2 blocks/u)
+    assert.equal(
+      await fs.readFile(fixture.targetPath, 'utf8'),
+      [
+        'const first = false',
+        'const keep = 1',
+        'const last = true',
+        '',
+      ].join('\n'),
+    )
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('edit applies no multi-hunk changes when any hunk fails', async () => {
+  const originalContent = 'const first = true\nconst keep = 1\n'
   const fixture = await createFixture(originalContent)
 
   try {
     await assert.rejects(
       createEditToolResult(fixture.context, {
-        allowMultiple: false,
+        edits: [
+          {
+            allowMultiple: false,
+            endLine: 1,
+            replacementContent: 'const first = false',
+            startLine: 1,
+            targetContent: 'const first = true',
+          },
+          {
+            allowMultiple: false,
+            endLine: 2,
+            replacementContent: 'const missing = true',
+            startLine: 2,
+            targetContent: 'const missing = false',
+          },
+        ],
         path: fixture.targetPath,
-        replacementContent: 'const value = false',
-        targetContent: 'const value = true',
       }),
-      /Read the file and use a line range that contains one match/u,
+      /Target content not found between lines 2 and 2/u,
     )
     assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
   } finally {
@@ -99,12 +176,100 @@ test('edit rejects ambiguous targets without line bounds', async () => {
   }
 })
 
-test('edit requires line bounds together when either bound is provided', async () => {
+test('edit reports an identical replacement as a successful no-op', async () => {
+  const originalContent = 'const value = true\n'
+  const fixture = await createFixture(originalContent)
+
+  try {
+    const result = await createSingleEditToolResult(fixture.context, {
+      allowMultiple: false,
+      endLine: 1,
+      path: fixture.targetPath,
+      replacementContent: 'const value = true',
+      startLine: 1,
+      targetContent: 'const value = true',
+    })
+
+    assert.equal(result.status, 'success')
+    assert.equal(result.semantics?.operation, 'noop')
+    assert.equal(result.semantics?.reason, 'replacement_identical_to_target')
+    assert.match(result.summary, /Skipped unchanged edit/u)
+    assert.match(result.body ?? '', /No changes were made/u)
+    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('edit without line bounds searches the whole file when no read scope exists', async () => {
+  const originalContent = 'const value = true\nconst middle = 1\nconst value = true\n'
+  const fixture = await createFixture(originalContent)
+
+  try {
+    await assert.rejects(
+      createSingleEditToolResult(fixture.context, {
+        allowMultiple: false,
+        path: fixture.targetPath,
+        replacementContent: 'const value = false',
+        targetContent: 'const value = true',
+      }),
+      /Candidate line ranges: 1-1, 3-3/u,
+    )
+    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('replaceAll uses only the latest successful read scope when line bounds are omitted', async () => {
+  const originalContent = [
+    'const snippet = "old"',
+    'const middle = true',
+    'const snippet = "old"',
+    'const tail = true',
+    '',
+  ].join('\n')
+  const fixture = await createFixture(originalContent)
+
+  try {
+    const readTool = createReadTool(fixture.context)
+    const readResult = await (readTool as any).execute({
+      limit: 2,
+      offset: 1,
+      path: 'target.ts',
+    })
+    assert.equal(readResult.status, 'success')
+    assert.deepEqual(fixture.context.readScopes?.get(fixture.targetPath), { endLine: 2, startLine: 1 })
+
+    const result = await createSingleEditToolResult(fixture.context, {
+      path: fixture.targetPath,
+      replaceAll: true,
+      replacementContent: 'const snippet = "new"',
+      targetContent: 'const snippet = "old"',
+    })
+
+    assert.equal(result.status, 'success')
+    assert.equal(
+      await fs.readFile(fixture.targetPath, 'utf8'),
+      [
+        'const snippet = "new"',
+        'const middle = true',
+        'const snippet = "old"',
+        'const tail = true',
+        '',
+      ].join('\n'),
+    )
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('edit requires both line bounds together', async () => {
   const fixture = await createFixture('const value = true\n')
 
   try {
     await assert.rejects(
-      createEditToolResult(fixture.context, {
+      createSingleEditToolResult(fixture.context, {
         allowMultiple: false,
         path: fixture.targetPath,
         replacementContent: 'const value = false',
@@ -123,7 +288,7 @@ test('replace serializes concurrent same-file tool calls without dropping change
   const fixture = await createFixture(originalContent)
   try {
     const [res1, res2] = await Promise.all([
-      createEditToolResult(fixture.context, {
+      createSingleEditToolResult(fixture.context, {
         path: 'target.ts',
         allowMultiple: false,
         endLine: 1,
@@ -131,7 +296,7 @@ test('replace serializes concurrent same-file tool calls without dropping change
         startLine: 1,
         targetContent: 'export const first = 1',
       }),
-      createEditToolResult(fixture.context, {
+      createSingleEditToolResult(fixture.context, {
         path: 'target.ts',
         allowMultiple: false,
         endLine: 3,
@@ -156,7 +321,7 @@ test('replace tolerates indentation differences while preserving exact line text
   const fixture = await createFixture(originalContent)
 
   try {
-    const result = await createEditToolResult(fixture.context, {
+    const result = await createSingleEditToolResult(fixture.context, {
       path: fixture.targetPath,
       allowMultiple: false,
       endLine: 1,
@@ -182,7 +347,7 @@ test('replace tolerates indentation and terminal newline differences', async () 
   const fixture = await createFixture(originalContent)
 
   try {
-    const result = await createEditToolResult(fixture.context, {
+    const result = await createSingleEditToolResult(fixture.context, {
       allowMultiple: false,
       path: fixture.targetPath,
       replacementContent: '  const value = false',
@@ -206,7 +371,7 @@ test('replace tolerates indentation and terminal newline differences', async () 
   }
 })
 
-test('replace tolerates model-copied indentation with a terminal newline without line bounds', async () => {
+test('replace tolerates model-copied indentation with a terminal newline', async () => {
   const originalContent = [
     '<div>',
     '                  style={{ minWidth: `${gutterWidthCh}ch` }}',
@@ -216,10 +381,12 @@ test('replace tolerates model-copied indentation with a terminal newline without
   const fixture = await createFixture(originalContent)
 
   try {
-    const result = await createEditToolResult(fixture.context, {
+    const result = await createSingleEditToolResult(fixture.context, {
       allowMultiple: false,
+      endLine: 2,
       path: fixture.targetPath,
       replacementContent: '                  style={{ width: `${gutterWidthCh}ch` }}\n',
+      startLine: 2,
       targetContent: '                   style={{ minWidth: `${gutterWidthCh}ch` }}\n',
     })
 
@@ -250,7 +417,7 @@ test('replace tolerates indentation differences across a multi-line block', asyn
   const fixture = await createFixture(originalContent)
 
   try {
-    const result = await createEditToolResult(fixture.context, {
+    const result = await createSingleEditToolResult(fixture.context, {
       path: 'target.ts',
       allowMultiple: false,
       endLine: 4,
@@ -286,7 +453,7 @@ test('replace tolerates indentation differences across a multi-line block', asyn
   }
 })
 
-test('replace finds one exact target when its old line numbers are stale', async () => {
+test('replace treats a supplied line range as an authoritative boundary', async () => {
   const originalContent = [
     'const first = true',
     'const inserted = true',
@@ -296,22 +463,23 @@ test('replace finds one exact target when its old line numbers are stale', async
   const fixture = await createFixture(originalContent)
 
   try {
-    const result = await createEditToolResult(fixture.context, {
-      path: fixture.targetPath,
-      allowMultiple: false,
-      endLine: 1,
-      replacementContent: 'const target = true',
-      startLine: 1,
-      targetContent: 'const target = false',
-    })
-
-    assert.equal(result.status, 'success')
+    await assert.rejects(
+      createSingleEditToolResult(fixture.context, {
+        path: fixture.targetPath,
+        allowMultiple: false,
+        endLine: 1,
+        replacementContent: 'const target = true',
+        startLine: 1,
+        targetContent: 'const target = false',
+      }),
+      /Target content not found between lines 1 and 1/u,
+    )
     assert.equal(
       await fs.readFile(fixture.targetPath, 'utf8'),
       [
         'const first = true',
         'const inserted = true',
-        'const target = true',
+        'const target = false',
         '',
       ].join('\n'),
     )
@@ -320,7 +488,7 @@ test('replace finds one exact target when its old line numbers are stale', async
   }
 })
 
-test('replace does not guess when stale lines leave multiple exact matches', async () => {
+test('replace reports candidate line ranges for an ambiguous ranged target', async () => {
   const originalContent = [
     'const repeated = false',
     'const middle = true',
@@ -331,15 +499,15 @@ test('replace does not guess when stale lines leave multiple exact matches', asy
 
   try {
     await assert.rejects(
-      createEditToolResult(fixture.context, {
+      createSingleEditToolResult(fixture.context, {
         path: fixture.targetPath,
         allowMultiple: false,
-        endLine: 2,
+        endLine: 3,
         replacementContent: 'const repeated = true',
-        startLine: 2,
+        startLine: 1,
         targetContent: 'const repeated = false',
       }),
-      /Target content found 2 times/u,
+      /Target content found 2 times between lines 1 and 3/u,
     )
 
     assert.equal(

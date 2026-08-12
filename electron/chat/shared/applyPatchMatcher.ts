@@ -93,8 +93,32 @@ function findNearbyAnchor(
         index >= startIndex && normalizeWhitespace(line) === normalizedExpected,
     )
     if (whitespaceIndex !== -1) return whitespaceIndex
+
+    // A model sometimes emits only the beginning of a long source line. Do
+    // not apply that unsafe partial replacement, but show the complete line
+    // in the rejection so the next attempt can be generated from fresh text.
+    const partialExpected = expectedLine.trim()
+    if (partialExpected.length >= 12) {
+      const partialIndex = lines.findIndex(
+        (line, index) => index >= startIndex && line !== expectedLine && line.includes(partialExpected),
+      )
+      if (partialIndex !== -1) return partialIndex
+    }
   }
   return -1
+}
+
+function hasPartialAnchor(
+  lines: readonly string[],
+  pattern: readonly string[],
+  startIndex: number,
+) {
+  return pattern.some((expectedLine) => {
+    const partialExpected = expectedLine.trim()
+    return partialExpected.length >= 12 && lines.some(
+      (line, index) => index >= startIndex && line !== expectedLine && line.includes(partialExpected),
+    )
+  })
 }
 
 function createMissingSequenceError(
@@ -105,11 +129,14 @@ function createMissingSequenceError(
   startIndex: number,
 ) {
   const nearbyAnchor = findNearbyAnchor(lines, pattern, startIndex)
+  const partialHint = hasPartialAnchor(lines, pattern, startIndex)
+    ? '\n\nThe patch used a partial source line. Emit the complete current source line in each -/+ hunk; do not use a prefix or suffix as the replacement anchor.'
+    : ''
   const preview = nearbyAnchor === -1
     ? ''
     : `\n\nCurrent source near the match:\n${formatLinePreview(lines, nearbyAnchor)}`
   return new Error(
-    `Patch rejected; no files changed.\nCurrent revision: ${revision}\nFailed to find expected lines in ${filePath}:\n${pattern.join('\n')}${preview}`,
+    `Patch rejected; no files changed.\nCurrent revision: ${revision}\nFailed to find expected lines in ${filePath}. For multiple hunks in one file, emit hunks from top to bottom and retry from a fresh read:\n${pattern.join('\n')}${partialHint}${preview}`,
   )
 }
 
@@ -149,13 +176,7 @@ function resolveSequenceIndex(input: {
   }
 
   const candidates = findCandidatesAtBestFidelity(lines, pattern, startIndex)
-  if (candidates.length === 1) return candidates[0]
-  if (candidates.length > 1) {
-    const lineNumbers = candidates.slice(0, 5).map((index) => index + 1).join(', ')
-    throw new Error(
-      `Ambiguous patch hunk in ${filePath}: the expected lines match at lines ${lineNumbers}. Add more unchanged context and retry.`,
-    )
-  }
+  if (candidates.length > 0) return candidates[0]
 
   throw createMissingSequenceError(filePath, lines, pattern, revision, startIndex)
 }
@@ -165,12 +186,7 @@ function findChangeContextIndex(
   changeContext: string,
   startIndex: number,
 ) {
-  const normalizedContext = normalizeWhitespace(changeContext)
-  const candidates: number[] = []
-  for (let index = startIndex; index < lines.length; index += 1) {
-    if (normalizeWhitespace(lines[index]).includes(normalizedContext)) candidates.push(index)
-  }
-  return candidates
+  return findCandidatesAtBestFidelity(lines, [changeContext], startIndex)[0] ?? -1
 }
 
 function buildReplacementLines(
@@ -205,20 +221,15 @@ export function applyUpdateChunks(
 
   for (const chunk of chunks) {
     if (chunk.changeContext) {
-      const contextCandidates = findChangeContextIndex(
+      const contextIndex = findChangeContextIndex(
         originalLines,
         chunk.changeContext,
         searchStartIndex,
       )
-      if (contextCandidates.length === 0) {
+      if (contextIndex === -1) {
         throw new Error(`Failed to find context "${chunk.changeContext}" in ${filePath}`)
       }
-      if (contextCandidates.length > 1) {
-        throw new Error(
-          `Ambiguous context "${chunk.changeContext}" in ${filePath}. Use a more specific @@ context or include more unchanged lines.`,
-        )
-      }
-      searchStartIndex = contextCandidates[0] + 1
+      searchStartIndex = contextIndex + 1
     }
 
     if (chunk.oldLines.length === 0) {

@@ -19,6 +19,7 @@ interface ToolInvocationSummaryCounts {
   kanbanCount: number
   planCount: number
   memoryCount: number
+  toolSearchCount: number
 }
 
 function pluralize(count: number, singular: string) {
@@ -52,6 +53,10 @@ function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts
 
   if (toolName === 'mcp_tool_search' || toolName === 'execute_mcp') {
     return 'mcpCount'
+  }
+
+  if (toolName === 'tool_search') {
+    return 'toolSearchCount'
   }
 
   if (
@@ -171,6 +176,9 @@ export function buildToolInvocationGroupSummary(
   const hasActiveInvocation = invocations.some(
     (invocation) => invocation.state === 'running' || invocation.decisionRequest !== undefined,
   )
+  const hasFailedCodeMode = invocations.some(
+    (invocation) => invocation.toolName === 'code_mode' && invocation.state === 'failed',
+  )
   if (summaryVerbOverride === 'Exploring' || (summaryVerbOverride === undefined && hasActiveInvocation)) {
     return 'Exploring'
   }
@@ -182,7 +190,8 @@ export function buildToolInvocationGroupSummary(
     summaryVerbOverride === 'Edited'
   ) {
     const summaryVerb = summaryVerbOverride
-    return `${summaryVerb} ${pluralize(invocations.length, 'file')}`
+    const summary = `${summaryVerb} ${pluralize(invocations.length, 'file')}`
+    return hasFailedCodeMode ? `${summary}, local orchestration failed` : summary
   }
   const counts: ToolInvocationSummaryCounts = {
     listCount: 0,
@@ -199,6 +208,7 @@ export function buildToolInvocationGroupSummary(
     kanbanCount: 0,
     planCount: 0,
     memoryCount: 0,
+    toolSearchCount: 0,
   }
   const otherToolCounts = new Map<string, number>()
   let hasFileMutationBuckets = false
@@ -215,6 +225,10 @@ export function buildToolInvocationGroupSummary(
   }
 
   for (const invocation of invocations) {
+    if (invocation.toolName === 'code_mode') {
+      continue
+    }
+
     const mutationKind = getFileMutationSummaryKind(invocation)
     if (mutationKind) {
       hasFileMutationBuckets = true
@@ -267,6 +281,10 @@ export function buildToolInvocationGroupSummary(
     recordMixedBucket(`other:${label}`)
   }
 
+  if (hasFailedCodeMode) {
+    recordMixedBucket('code-mode-failed')
+  }
+
   if (hasFileMutationBuckets) {
     const formatMixedBucket = (bucketKey: string, count: number) => {
       if (bucketKey === 'created') {
@@ -311,6 +329,9 @@ export function buildToolInvocationGroupSummary(
       if (bucketKey === 'memory') {
         return `handled ${pluralize(count, 'memory operation')}`
       }
+      if (bucketKey === 'code-mode-failed') {
+        return 'local orchestration failed'
+      }
 
       return pluralize(count, bucketKey.replace(/^other:/u, ''))
     }
@@ -335,6 +356,7 @@ export function buildToolInvocationGroupSummary(
     counts.exploredFileCount === 0 &&
     counts.planCount === 0 &&
     counts.memoryCount === 0 &&
+    !hasFailedCodeMode &&
     otherToolCounts.size === 0
 
   if (hasOnlyWebSearch) {
@@ -353,6 +375,9 @@ export function buildToolInvocationGroupSummary(
   if (counts.mcpCount > 0) {
     summaryParts.push(`ran ${pluralize(counts.mcpCount, 'MCP')}`)
   }
+  if (counts.toolSearchCount > 0) {
+    summaryParts.push(`ran ${pluralize(counts.toolSearchCount, 'tool search')}`)
+  }
   if (counts.commandCount > 0) {
     summaryParts.push(`ran ${pluralize(counts.commandCount, 'terminal tool')}`)
   }
@@ -367,6 +392,10 @@ export function buildToolInvocationGroupSummary(
   }
   if (counts.memoryCount > 0) {
     summaryParts.push(`handled ${pluralize(counts.memoryCount, 'memory operation')}`)
+  }
+
+  if (hasFailedCodeMode) {
+    summaryParts.push('local orchestration failed')
   }
 
   for (const [toolLabel, count] of otherToolCounts) {

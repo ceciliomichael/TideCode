@@ -66,6 +66,7 @@ export async function compactApiKeyConversation(input: CompactConversationInput)
     contextCompaction: input.contextCompaction,
     createStream: (streamInput) => client.chat.completions.create({
       cacheKey: `manual-compaction:${input.conversationId}`,
+      maxOutputTokens: streamInput.maxOutputTokens,
       messages: streamInput.messages,
       model: streamInput.model,
       reasoningEffort: streamInput.reasoningEffort as typeof input.reasoningEffort,
@@ -83,7 +84,6 @@ export async function compactApiKeyConversation(input: CompactConversationInput)
   return {
     compacted: result !== null,
     packetId: result?.packet.packetId ?? null,
-    usedFallback: result?.usedFallback ?? false,
   }
 }
 
@@ -143,6 +143,7 @@ async function runApiKeyChatStream(
     createStream: (streamInput) =>
       client.chat.completions.create({
         cacheKey: streamInput.cacheKey,
+        maxOutputTokens: streamInput.maxOutputTokens,
         messages: streamInput.messages,
         model: streamInput.model,
         reasoningEffort: streamInput.reasoningEffort,

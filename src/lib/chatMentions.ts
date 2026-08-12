@@ -1,17 +1,17 @@
 // Canonical expanded mention format: [[action:path]]
-// e.g. [[load_skill:natural-writing]], [[read:src/main.ts]], [[list:src/components]]
+// e.g. [[load_skill:natural-writing]], [[read:src/main.ts]], [[list:src/components]], [[kanban:card-id]]
 // The double-bracket delimiters give unambiguous boundaries so no greedy-match
 // issues can bleed into surrounding normal text.
 
 const FULL_MENTION_REGEX_SOURCE = /@\[([^\]]+)\]\(([^)]+)\)/.source
 
 // Matches the NEW canonical [[action:path]] delimited format (may contain spaces)
-const BRACKETED_ACTION_REGEX = /\[\[((?:read|list|load_skill):[^\]]+)\]\]/g
+const BRACKETED_ACTION_REGEX = /\[\[((?:read|list|load_skill|kanban):[^\]]+)\]\]/g
 
 // Legacy bare action tags stored before the [[]] format was introduced.
 // Supports both single-word and multi-word (greedy, stops before next action tag or @) unquoted paths
 // for backwards compatibility with old DB messages, plus quoted variants with spaces.
-const LEGACY_ACTION_REGEX = /(?:^|[\s(])((?:read|list|load_skill):(?:"([^"]+)"|'([^']+)'|((?:(?!\s+(?:read|list|load_skill):|\s+@)[^\r\n,;:!?\])])+)))(?=\.?(?:\s|[,;:!?\])]|$))/g
+const LEGACY_ACTION_REGEX = /(?:^|[\s(])((?:read|list|load_skill|kanban):(?:"([^"]+)"|'([^']+)'|((?:(?!\s+(?:read|list|load_skill|kanban):|\s+@)[^\r\n,;:!?\])])+)))(?=\.?(?:\s|[,;:!?\])]|$))/g
 
 export interface ChatMentionMatch {
   end: number

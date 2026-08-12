@@ -30,7 +30,7 @@ interface UseChatFileMentionMenuInput {
 const MAX_MENTION_RESULTS = 8
 const MAX_SCANNED_FILES = 10000
 const MAX_SCANNED_DIRECTORIES = 1000
-const ROOT_MENU_OPTION_COUNT = 3
+const ROOT_MENU_OPTION_COUNT = 4
 
 function normalizeRelativePath(relativePath: string) {
   return relativePath.replace(/\\/g, '/')
@@ -62,11 +62,13 @@ function compactSearchValue(value: string) {
   return normalizeMentionSearchValue(value).replace(/[.\s_-]+/gu, '')
 }
 
-function scoreMentionResult(relativePath: string, query: string) {
+function scoreMentionResult(relativePath: string, query: string, label = getPathBasename(relativePath)) {
   const normalizedPath = normalizeMentionSearchValue(relativePath)
   const normalizedBasename = getPathBasename(relativePath).toLowerCase()
+  const normalizedLabel = normalizeMentionSearchValue(label)
   const pathWithoutExtension = normalizedPath.replace(/\.[^./\\]+$/u, '')
   const compactQuery = compactSearchValue(query)
+  const compactLabel = compactSearchValue(normalizedLabel)
   const compactBasename = compactSearchValue(pathWithoutExtension.split('/').pop() ?? normalizedBasename)
   const compactPath = compactSearchValue(pathWithoutExtension)
 
@@ -74,12 +76,28 @@ function scoreMentionResult(relativePath: string, query: string) {
     return [0, normalizedPath.length] as const
   }
 
+  if (normalizedLabel === query) {
+    return [1, normalizedLabel.length] as const
+  }
+
+  if (normalizedLabel.startsWith(query)) {
+    return [2, normalizedLabel.length] as const
+  }
+
+  if (compactQuery.length > 0 && compactLabel === compactQuery) {
+    return [2, normalizedLabel.length] as const
+  }
+
+  if (compactQuery.length > 0 && compactLabel.startsWith(compactQuery)) {
+    return [3, normalizedLabel.length] as const
+  }
+
   if (normalizedBasename === query) {
-    return [1, normalizedPath.length] as const
+    return [3, normalizedPath.length] as const
   }
 
   if (normalizedBasename.startsWith(query)) {
-    return [2, normalizedPath.length] as const
+    return [4, normalizedPath.length] as const
   }
 
   if (compactQuery.length > 0 && compactBasename === compactQuery) {
@@ -161,6 +179,22 @@ async function loadWorkspaceMentionIndex(workspaceRootPath: string) {
     })
 
   const skillEntries: ChatMentionMenuItem[] = []
+  const kanbanEntries: ChatMentionMenuItem[] = []
+  if (typeof window !== 'undefined' && window.tidecodeKanban) {
+    try {
+      const boardData = await window.tidecodeKanban.getBoardData({ workspacePath: workspaceRootPath })
+      for (const card of boardData.cards) {
+        kanbanEntries.push({
+          description: `${card.columnId} · ${card.issueType} · ${card.priority}`,
+          kind: 'kanban',
+          label: card.title,
+          relativePath: `kanban:${card.id}`,
+        })
+      }
+    } catch (error) {
+      console.error('Failed to load Kanban mention index', error)
+    }
+  }
   if (typeof window !== 'undefined' && window.tidecodeSkills) {
     try {
       const [skillsState, settings] = await Promise.all([
@@ -186,7 +220,7 @@ async function loadWorkspaceMentionIndex(workspaceRootPath: string) {
     }
   }
 
-  const entries = [...fileAndFolderEntries, ...skillEntries].sort((left, right) =>
+  const entries = [...fileAndFolderEntries, ...skillEntries, ...kanbanEntries].sort((left, right) =>
     left.description.localeCompare(right.description, undefined, { sensitivity: 'base' }),
   )
 
@@ -302,6 +336,14 @@ export function useChatFileMentionMenu({
       setWorkspaceMentionIndexRefreshKey((currentValue) => currentValue + 1)
     })
 
+    const unsubscribeKanbanChanges = window.tidecodeKanban?.onBoardChange((event) => {
+      if (isDisposed || event.workspaceRootPath !== workspaceRootPath) {
+        return
+      }
+
+      setWorkspaceMentionIndexRefreshKey((currentValue) => currentValue + 1)
+    })
+
     void window.tidecodeWorkspace.watchExplorerChanges({
       workspaceRootPath,
     }).catch((error) => {
@@ -311,6 +353,7 @@ export function useChatFileMentionMenu({
     return () => {
       isDisposed = true
       unsubscribeWorkspaceChanges()
+      unsubscribeKanbanChanges?.()
       void window.tidecodeWorkspace.unwatchExplorerChanges({
         workspaceRootPath,
       }).catch((error) => {
@@ -376,7 +419,7 @@ export function useChatFileMentionMenu({
       selectedMenuType === null ? true : item.kind === selectedMenuType,
     )
       .map((item) => {
-        const score = scoreMentionResult(item.relativePath, normalizedQuery)
+        const score = scoreMentionResult(item.relativePath, normalizedQuery, item.label)
         return score
           ? {
               item,
@@ -611,7 +654,7 @@ export function useChatFileMentionMenu({
 
         if (event.key === 'Enter' || event.key === 'Tab') {
           event.preventDefault()
-          handleSelectCategory(selectedIndex === 2 ? 'skill' : selectedIndex === 1 ? 'folder' : 'file')
+          handleSelectCategory(selectedIndex === 3 ? 'kanban' : selectedIndex === 2 ? 'skill' : selectedIndex === 1 ? 'folder' : 'file')
           return true
         }
 

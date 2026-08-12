@@ -4,8 +4,6 @@ import type {
   ParsedApplyPatch,
 } from './applyPatchTypes'
 
-type PatchDialect = 'standard' | 'xml'
-
 interface ParsedPatchHeader {
   filePath: string
   movePath?: string
@@ -15,44 +13,16 @@ interface ParsedPatchHeader {
 
 interface PatchEnvelope {
   beginIndex: number
-  dialect: PatchDialect
   endIndex: number
 }
 
 function normalizePatchInput(patchText: string) {
-  const normalized = patchText.replace(/\r\n?/g, '\n').trim()
-  const heredocPatterns = [
-    /^(?:apply_patch|applypatch)\s*<<['"]?(\w+)['"]?\s*\n([\s\S]*?)\n\1\s*$/u,
-    /^(?:cat\s+)?<<['"]?(\w+)['"]?\s*\n([\s\S]*?)\n\1\s*$/u,
-  ]
-
-  for (const pattern of heredocPatterns) {
-    const match = normalized.match(pattern)
-    if (match) return match[2]
-  }
-
-  return normalized
+  return patchText.replace(/\r\n?/g, '\n').trim()
 }
 
 function findEnvelope(lines: readonly string[]): PatchEnvelope {
-  const standardBeginIndex = lines.findIndex((line) => line.trim() === '*** Begin Patch')
-  if (standardBeginIndex !== -1) {
-    const endIndex = lines.findIndex(
-      (line, index) => index > standardBeginIndex && line.trim() === '*** End Patch',
-    )
-    if (endIndex !== -1) {
-      return { beginIndex: standardBeginIndex, dialect: 'standard', endIndex }
-    }
-  }
-
-  const xmlBeginIndex = lines.findIndex((line) => line.trim() === '<patch>')
-  if (xmlBeginIndex !== -1) {
-    const endIndex = lines.findIndex(
-      (line, index) => index > xmlBeginIndex && line.trim() === '</patch>',
-    )
-    if (endIndex !== -1) {
-      return { beginIndex: xmlBeginIndex, dialect: 'xml', endIndex }
-    }
+  if (lines[0]?.trim() === '*** Begin Patch' && lines.at(-1)?.trim() === '*** End Patch') {
+    return { beginIndex: 0, endIndex: lines.length - 1 }
   }
 
   throw new Error(
@@ -91,25 +61,6 @@ function parseStandardHeader(lines: readonly string[], index: number): ParsedPat
   return null
 }
 
-function parseXmlHeader(lines: readonly string[], index: number): ParsedPatchHeader | null {
-  const line = lines[index]
-  const addMatch = line.match(/^<add\s+path="([^"]+)">$/u)
-  if (addMatch) return { filePath: addMatch[1], nextIndex: index + 1, type: 'add' }
-
-  const deleteMatch = line.match(/^<delete\s+path="([^"]+)"\s*\/>$/u)
-  if (deleteMatch) return { filePath: deleteMatch[1], nextIndex: index + 1, type: 'delete' }
-
-  const updateMatch = line.match(/^<update\s+path="([^"]+)"(?:\s+move_to="([^"]+)")?>$/u)
-  if (!updateMatch) return null
-
-  return {
-    filePath: updateMatch[1],
-    ...(updateMatch[2] ? { movePath: updateMatch[2] } : {}),
-    nextIndex: index + 1,
-    type: 'update',
-  }
-}
-
 function isStandardFileBoundary(line: string) {
   return (
     line === '*** End Patch' ||
@@ -119,26 +70,16 @@ function isStandardFileBoundary(line: string) {
   )
 }
 
-function parseAddedFile(
-  lines: readonly string[],
-  startIndex: number,
-  dialect: PatchDialect,
-) {
+function parseAddedFile(lines: readonly string[], startIndex: number) {
   const contentLines: string[] = []
   let index = startIndex
-  const isTerminator = (line: string) =>
-    dialect === 'standard' ? isStandardFileBoundary(line) : line === '</add>'
+  const isTerminator = (line: string) => isStandardFileBoundary(line)
 
   while (index < lines.length && !isTerminator(lines[index])) {
     if (!lines[index].startsWith('+')) {
       throw new Error(`Invalid add-file line: ${lines[index]}`)
     }
     contentLines.push(lines[index].slice(1))
-    index += 1
-  }
-
-  if (dialect === 'xml') {
-    if (lines[index] !== '</add>') throw new Error('Expected </add> tag')
     index += 1
   }
 
@@ -166,19 +107,18 @@ function parseChunkHeader(line: string) {
 function createUpdateChunk(
   lines: readonly string[],
   startIndex: number,
-  dialect: PatchDialect,
   metadata: Pick<ApplyPatchUpdateChunk, 'changeContext' | 'offset'>,
 ) {
   const contextLineMappings: ApplyPatchUpdateChunk['contextLineMappings'] = []
   const newLines: string[] = []
   const oldLines: string[] = []
-  const endOfFileMarker = dialect === 'standard' ? '*** End of File' : '<end_of_file />'
+  const endOfFileMarker = '*** End of File'
   let index = startIndex
   let isEndOfFile = false
 
   const isTerminator = (line: string) =>
     line.startsWith('@@') ||
-    (dialect === 'standard' ? isStandardFileBoundary(line) : line === '</update>')
+    isStandardFileBoundary(line)
 
   while (index < lines.length && !isTerminator(lines[index])) {
     const line = lines[index]
@@ -203,11 +143,6 @@ function createUpdateChunk(
       newLines.push(line.slice(1))
     } else if (line.startsWith('-')) {
       const deletedLine = line.slice(1)
-      if (dialect === 'xml' && (deletedLine === '</update>' || deletedLine === '</patch>')) {
-        throw new Error(
-          `Invalid legacy XML patch: reserved marker "${deletedLine}" was emitted as source text. Retry with the standard patch format.`,
-        )
-      }
       oldLines.push(deletedLine)
     } else if (line.startsWith('+')) {
       newLines.push(line.slice(1))
@@ -235,15 +170,10 @@ function createUpdateChunk(
   return { chunk, nextIndex: index }
 }
 
-function parseUpdatedFile(
-  lines: readonly string[],
-  startIndex: number,
-  dialect: PatchDialect,
-) {
+function parseUpdatedFile(lines: readonly string[], startIndex: number) {
   const chunks: ApplyPatchUpdateChunk[] = []
   let index = startIndex
-  const isFileTerminator = (line: string) =>
-    dialect === 'standard' ? isStandardFileBoundary(line) : line === '</update>'
+  const isFileTerminator = (line: string) => isStandardFileBoundary(line)
 
   while (index < lines.length && !isFileTerminator(lines[index])) {
     if (chunks.length === 0 && lines[index].trim().length === 0) {
@@ -258,16 +188,12 @@ function parseUpdatedFile(
 
     const metadata = hasExplicitHeader ? parseChunkHeader(lines[index]) : {}
     if (hasExplicitHeader) index += 1
-    const parsedChunk = createUpdateChunk(lines, index, dialect, metadata)
+    const parsedChunk = createUpdateChunk(lines, index, metadata)
     chunks.push(parsedChunk.chunk)
     index = parsedChunk.nextIndex
   }
 
   if (chunks.length === 0) throw new Error('Update file hunk is empty')
-  if (dialect === 'xml') {
-    if (lines[index] !== '</update>') throw new Error('Expected </update> tag')
-    index += 1
-  }
 
   return { chunks, nextIndex: index }
 }
@@ -279,10 +205,7 @@ export function parseApplyPatch(patchText: string): ParsedApplyPatch {
   let index = envelope.beginIndex + 1
 
   while (index < envelope.endIndex) {
-    const header =
-      envelope.dialect === 'standard'
-        ? parseStandardHeader(lines, index)
-        : parseXmlHeader(lines, index)
+    const header = parseStandardHeader(lines, index)
 
     if (!header) {
       if (lines[index].trim().length === 0) {
@@ -293,14 +216,14 @@ export function parseApplyPatch(patchText: string): ParsedApplyPatch {
     }
 
     if (header.type === 'add') {
-      const parsedFile = parseAddedFile(lines, header.nextIndex, envelope.dialect)
+      const parsedFile = parseAddedFile(lines, header.nextIndex)
       hunks.push({ contents: parsedFile.content, path: header.filePath, type: 'add' })
       index = parsedFile.nextIndex
     } else if (header.type === 'delete') {
       hunks.push({ path: header.filePath, type: 'delete' })
       index = header.nextIndex
     } else {
-      const parsedFile = parseUpdatedFile(lines, header.nextIndex, envelope.dialect)
+      const parsedFile = parseUpdatedFile(lines, header.nextIndex)
       hunks.push({
         chunks: parsedFile.chunks,
         ...(header.movePath ? { movePath: header.movePath } : {}),

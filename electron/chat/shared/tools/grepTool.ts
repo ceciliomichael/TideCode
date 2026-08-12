@@ -9,7 +9,7 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createGrepTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Search file contents.',
+    description: 'Search file contents under exactly one existing file or directory; never combine paths with spaces.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {

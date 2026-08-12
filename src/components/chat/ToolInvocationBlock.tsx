@@ -4,6 +4,7 @@ import type { ToolInvocationTrace } from '../../types/chat'
 import { normalizeMarkdownText } from '../../lib/chatMessageContent'
 import { DiffViewer } from './DiffViewer'
 import { ChangeDiffResult } from './FileChangeDiffResult'
+import { LiteralToolResult } from './LiteralToolResult'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { TerminalToolResult } from './TerminalToolResult'
 import { ToolDecisionRequestCard, type ToolDecisionSubmission } from './ToolDecisionRequestCard'
@@ -147,6 +148,7 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   const diffResultPresentation = displayInvocation.resultPresentation?.kind === 'file_diff' ? displayInvocation.resultPresentation : null
   const changeResultPresentation = displayInvocation.resultPresentation?.kind === 'change_diff' ? displayInvocation.resultPresentation : null
   const imageResultPresentation = displayInvocation.resultPresentation?.kind === 'image' ? displayInvocation.resultPresentation : null
+  const isLiteralSourceTool = displayInvocation.toolName === 'read' || displayInvocation.toolName === 'grep'
   const parsedStructuredResult = displayInvocation.resultContent ? parseStructuredToolResultContent(displayInvocation.resultContent) : null
   const rawResultBody =
     parsedStructuredResult?.body ??
@@ -157,7 +159,10 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   const markdownResultBody = displayInvocation.toolName === 'web_search'
     ? normalizeWebSearchMarkdownBody(displayResultBody)
     : displayResultBody
-  const normalizedResultBody = useMemo(() => normalizeMarkdownText(markdownResultBody), [markdownResultBody])
+  const normalizedResultBody = useMemo(
+    () => (isLiteralSourceTool ? '' : normalizeMarkdownText(markdownResultBody)),
+    [isLiteralSourceTool, markdownResultBody],
+  )
   const shouldLimitResultHeight =
     terminalToolName === null && !isFileWriteTool(displayInvocation.toolName) && !isFileEditTool(displayInvocation.toolName)
 
@@ -227,6 +232,8 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
               invocation={displayInvocation}
               isStreaming={displayedState === 'running'}
             />
+          ) : isLiteralSourceTool ? (
+            <LiteralToolResult content={displayResultBody} />
           ) : (
             <MarkdownRenderer
               content={normalizedResultBody}

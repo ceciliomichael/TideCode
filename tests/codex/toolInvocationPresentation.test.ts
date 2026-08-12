@@ -6,6 +6,7 @@ import {
   getToolInvocationDisplayEntries,
   getToolInvocationHeaderLabel,
 } from '../../src/components/chat/toolInvocationPresentation'
+import { buildToolInvocationGroupSummary } from '../../src/components/chat/toolInvocationGrouping'
 
 const WORKSPACE_ROOT_PATH = '/workspace'
 const TARGET_FILE_PATH = `${WORKSPACE_ROOT_PATH}/src/example.ts`
@@ -110,7 +111,7 @@ function buildFileChangeInvocation(
 }
 
 function buildMultiFileWriteInvocation(
-  toolName: 'write' | 'apply_patch',
+  toolName: 'write' | 'edit',
   state: ToolInvocationTrace['state'],
   changes: Array<{
     fileName: string
@@ -198,21 +199,16 @@ test('write tool header labels keep mixed changes on the edit fallback', () => {
 })
 
 test('running file mutation invocations stay hidden until completion', () => {
-  const runningApplyPatchInvocation: ToolInvocationTrace = {
+  const runningEditInvocation: ToolInvocationTrace = {
     argumentsText: JSON.stringify({
-      patchText: [
-        '<patch>',
-        '<update path="src/example.ts">',
-        '@@',
-        '-const value = 1;',
-        '+const value = 2;',
-        '</patch>',
-      ].join('\n'),
+      path: `${WORKSPACE_ROOT_PATH}/src/example.ts`,
+      replacementContent: 'const value = 2;',
+      targetContent: 'const value = 1;',
     }),
-    id: 'tool-apply-running-single',
+    id: 'tool-edit-running-single',
     startedAt: 0,
     state: 'running',
-    toolName: 'apply_patch',
+    toolName: 'edit',
   }
 
   const runningWriteInvocation: ToolInvocationTrace = {
@@ -225,66 +221,191 @@ test('running file mutation invocations stay hidden until completion', () => {
     toolName: 'write',
   }
 
-  assert.deepEqual(getToolInvocationDisplayEntries(runningApplyPatchInvocation), [])
+  assert.deepEqual(getToolInvocationDisplayEntries(runningEditInvocation), [])
   assert.deepEqual(getToolInvocationDisplayEntries(runningWriteInvocation), [])
 })
 
-test('multi-file apply_patch invocations stay hidden until they complete', () => {
-  const invocation: ToolInvocationTrace = {
-    argumentsText: JSON.stringify({
-      patchText: [
-        '<patch>',
-        '<update path="src/first.ts">',
-        '@@',
-        '-const first = 1;',
-        '+const first = 2;',
-        '<update path="src/second.ts">',
-        '@@',
-        '-const second = 1;',
-        '+const second = 2;',
-        '</patch>',
-      ].join('\n'),
-    }),
-    id: 'tool-apply-running-multi',
+test('Code Mode waits until completion before displaying its real nested tool results', () => {
+  const runningInvocation: ToolInvocationTrace = {
+    argumentsText: '{}',
+    id: 'code-mode-running-1',
     startedAt: 0,
     state: 'running',
-    toolName: 'apply_patch',
+    toolName: 'code_mode',
+  }
+  assert.deepEqual(getToolInvocationDisplayEntries(runningInvocation), [])
+  assert.equal(getToolInvocationHeaderLabel(runningInvocation), 'Running local orchestration')
+  assert.deepEqual(
+    getToolInvocationDisplayEntries({
+      ...runningInvocation,
+      id: 'code-mode-completed-without-trace',
+      state: 'completed',
+    }),
+    [],
+  )
+
+  const invocation: ToolInvocationTrace = {
+    argumentsText: JSON.stringify({
+      code: "const file = await tools.read({ path: 'src/example.ts' }); return file",
+    }),
+    completedAt: 100,
+    id: 'code-mode-tools-1',
+    resultContent: formatStructuredToolResultContent(
+      {
+        schema: 'tidecode.tool_result/v1',
+        semantics: {
+          operation: 'code_mode',
+          tool_calls: [
+            {
+              arguments: { path: 'src/example.ts' },
+              body: 'File: src/example.ts\n\nexport const value = 1;',
+              name: 'read',
+              status: 'success',
+              subject: { kind: 'file', path: 'src/example.ts' },
+              summary: 'Read src/example.ts',
+            },
+            {
+              arguments: { query: 'value', path: 'src' },
+              body: 'src/example.ts:1: export const value = 1;',
+              name: 'grep',
+              status: 'success',
+              summary: 'Found 1 match.',
+            },
+            {
+              arguments: { command: 'npm test -- example' },
+              body: 'Tests passed.',
+              name: 'execute_terminal',
+              status: 'success',
+              summary: 'Command completed.',
+            },
+          ],
+        },
+        status: 'success',
+        subject: { kind: 'code_mode', path: 'local' },
+        summary: 'Code Mode completed with 3 tool calls.',
+        toolCallId: 'code-mode-tools-1',
+        toolName: 'code_mode',
+      },
+      '{"done":true}',
+    ),
+    startedAt: 0,
+    state: 'completed',
+    toolName: 'code_mode',
+  }
+
+  const entries = getToolInvocationDisplayEntries(invocation)
+  assert.deepEqual(entries.map((entry) => entry.invocation.toolName), ['read', 'grep', 'execute_terminal'])
+  assert.equal(
+    getToolInvocationHeaderLabel(entries[0].invocation, undefined, WORKSPACE_ROOT_PATH),
+    'Read example.ts',
+  )
+  assert.equal(entries[0].invocation.resultContent?.includes('export const value = 1;'), true)
+  assert.equal(
+    buildToolInvocationGroupSummary(entries.map((entry) => entry.invocation)),
+    'Ran 1 search, ran 1 terminal tool, explored 1 file',
+  )
+})
+
+test('failed Code Mode keeps the outer failure visible alongside nested tool results', () => {
+  const invocation: ToolInvocationTrace = {
+    argumentsText: '{}',
+    completedAt: 100,
+    id: 'code-mode-failed-with-trace',
+    resultContent: formatStructuredToolResultContent(
+      {
+        schema: 'tidecode.tool_result/v1',
+        semantics: {
+          operation: 'code_mode',
+          tool_calls: [
+            {
+              arguments: { path: '.' },
+              body: 'Listed workspace.',
+              name: 'list',
+              status: 'success',
+              summary: 'Listed .',
+            },
+          ],
+        },
+        status: 'error',
+        subject: { kind: 'code_mode', path: 'local' },
+        summary: 'Code Mode failed: returned an unresolved Promise.',
+        toolCallId: 'code-mode-failed-with-trace',
+        toolName: 'code_mode',
+      },
+      'Code Mode failed: returned an unresolved Promise.',
+    ),
+    startedAt: 0,
+    state: 'failed',
+    toolName: 'code_mode',
+  }
+
+  const entries = getToolInvocationDisplayEntries(invocation)
+  assert.deepEqual(entries.map((entry) => entry.invocation.toolName), ['code_mode', 'list'])
+  assert.equal(entries[0]?.invocation.state, 'failed')
+  assert.equal(getToolInvocationHeaderLabel(entries[0]?.invocation ?? invocation), 'Local orchestration failed')
+  assert.equal(buildToolInvocationGroupSummary(entries.map((entry) => entry.invocation)), 'Explored 1 list, local orchestration failed')
+})
+
+test('sub-tool only failure in Code Mode renders child entries independently without outer failure block', () => {
+  const invocation: ToolInvocationTrace = {
+    argumentsText: '{}',
+    completedAt: 100,
+    id: 'code-mode-subtool-failure',
+    resultContent: formatStructuredToolResultContent(
+      {
+        schema: 'tidecode.tool_result/v1',
+        semantics: {
+          operation: 'code_mode',
+          tool_calls: [
+            {
+              arguments: { path: 'src/lib/kanbanContracts.ts' },
+              body: 'export const KANBAN_COLUMN_IDS = ...',
+              name: 'read',
+              status: 'success',
+              summary: 'Read src/lib/kanbanContracts.ts',
+            },
+            {
+              arguments: { path: 'electron/ipc/kanban.ts' },
+              body: 'Path not found: electron/ipc/kanban.ts. Use a path relative to the workspace root.',
+              name: 'read',
+              status: 'error',
+              summary: 'Path not found: electron/ipc/kanban.ts. Use a path relative to the workspace root.',
+            },
+          ],
+        },
+        status: 'error',
+        subject: { kind: 'code_mode', path: 'local' },
+        summary: 'Code Mode finished with 1 failed tool call.',
+        toolCallId: 'code-mode-subtool-failure',
+        toolName: 'code_mode',
+      },
+      'Code Mode finished with 1 failed tool call.',
+    ),
+    startedAt: 0,
+    state: 'failed',
+    toolName: 'code_mode',
+  }
+
+  const entries = getToolInvocationDisplayEntries(invocation)
+  assert.deepEqual(entries.map((entry) => entry.invocation.toolName), ['read', 'read'])
+  assert.equal(entries[0]?.invocation.state, 'completed')
+  assert.equal(entries[1]?.invocation.state, 'failed')
+})
+
+test('multi-file edit invocations stay hidden until they complete', () => {
+  const invocation: ToolInvocationTrace = {
+    argumentsText: JSON.stringify({
+      path: `${WORKSPACE_ROOT_PATH}/src/first.ts`,
+      replacementContent: 'const first = 2;',
+      targetContent: 'const first = 1;',
+    }),
+    id: 'tool-edit-running-multi',
+    startedAt: 0,
+    state: 'running',
+    toolName: 'edit',
   }
 
   assert.deepEqual(getToolInvocationDisplayEntries(invocation), [])
-})
-
-test('multi-file apply_patch invocations expand into separate display blocks', () => {
-  const invocation = buildMultiFileWriteInvocation('apply_patch', 'completed', [
-    {
-      fileName: 'src/first.ts',
-      kind: 'update',
-      oldContent: 'const first = 1;\n',
-      newContent: 'const first = 2;\n',
-    },
-    {
-      fileName: 'src/second.ts',
-      kind: 'add',
-      oldContent: null,
-      newContent: 'export const second = 2;\n',
-    },
-  ])
-
-  const displayEntries = getToolInvocationDisplayEntries(invocation)
-
-  assert.equal(displayEntries.length, 2)
-  assert.equal(
-    getToolInvocationHeaderLabel(displayEntries[0].invocation, undefined, WORKSPACE_ROOT_PATH),
-    'Edited first.ts',
-  )
-  assert.equal(
-    getToolInvocationHeaderLabel(displayEntries[1].invocation, undefined, WORKSPACE_ROOT_PATH),
-    'Created second.ts',
-  )
-  assert.equal(displayEntries[0].invocation.resultPresentation?.kind, 'change_diff')
-  assert.equal(displayEntries[0].invocation.resultPresentation?.changes.length, 1)
-  assert.equal(displayEntries[1].invocation.resultPresentation?.kind, 'change_diff')
-  assert.equal(displayEntries[1].invocation.resultPresentation?.changes.length, 1)
 })
 
 test('multi-file write invocations expand into separate display blocks', () => {
@@ -320,7 +441,7 @@ test('multi-file write invocations expand into separate display blocks', () => {
   assert.equal(displayEntries[1].invocation.resultPresentation?.changes.length, 1)
 })
 
-test('read tool header labels collapse to the basename for the visible toolblock', () => {
+test('read tool header labels include the displayed file line range', () => {
   const invocation: ToolInvocationTrace = {
     argumentsText: JSON.stringify({ path: TARGET_FILE_PATH }),
     id: 'tool-read-1',
@@ -330,6 +451,10 @@ test('read tool header labels collapse to the basename for the visible toolblock
           path: TARGET_FILE_PATH,
         },
         schema: 'tidecode.tool_result/v1',
+        semantics: {
+          end_line: 1,
+          start_line: 1,
+        },
         status: 'success',
         subject: {
           kind: 'file',
@@ -346,7 +471,42 @@ test('read tool header labels collapse to the basename for the visible toolblock
     toolName: 'read',
   }
 
-  assert.equal(getToolInvocationHeaderLabel(invocation, undefined, WORKSPACE_ROOT_PATH), 'Read example.ts')
+  assert.equal(getToolInvocationHeaderLabel(invocation, undefined, WORKSPACE_ROOT_PATH), 'Read example.ts (1-1)')
+})
+
+test('read tool header labels use the result range instead of the requested limit', () => {
+  const invocation: ToolInvocationTrace = {
+    argumentsText: JSON.stringify({ limit: 2000, offset: 12, path: TARGET_FILE_PATH }),
+    id: 'tool-read-range-1',
+    resultContent: formatStructuredToolResultContent(
+      {
+        arguments: {
+          limit: 2000,
+          offset: 12,
+          path: TARGET_FILE_PATH,
+        },
+        schema: 'tidecode.tool_result/v1',
+        semantics: {
+          end_line: 31,
+          start_line: 12,
+        },
+        status: 'success',
+        subject: {
+          kind: 'file',
+          path: 'src/example.ts',
+        },
+        summary: 'Read src/example.ts',
+        toolCallId: 'tool-read-range-1',
+        toolName: 'read',
+      },
+      '12: first\n31: last',
+    ),
+    startedAt: 0,
+    state: 'completed',
+    toolName: 'read',
+  }
+
+  assert.equal(getToolInvocationHeaderLabel(invocation, undefined, WORKSPACE_ROOT_PATH), 'Read example.ts (12-31)')
 })
 
 test('empty list results keep the listed tool header', () => {

@@ -14,10 +14,18 @@ import {
   resolveSandboxPath,
 } from './sandboxPaths'
 
-export type WorkspaceToolContext = Pick<AgentToolContext, 'checkpointId' | 'terminalExecutionMode' | 'workspaceRootPath'>
+export interface WorkspaceReadScope {
+  endLine: number
+  startLine: number
+}
+
+export interface WorkspaceToolContext extends Pick<AgentToolContext, 'checkpointId' | 'terminalExecutionMode' | 'workspaceRootPath'> {
+  /** Latest successful file-read range, keyed by the resolved absolute path. */
+  readScopes?: Map<string, WorkspaceReadScope>
+}
 
 export const WORKSPACE_PATH_DESCRIPTION =
-  'Path relative to the workspace root, or the exact absolute path inside the workspace root.'
+  'Accepts exactly one path; read, list, glob, and grep targets must already exist. Prefer a path relative to the workspace root. Use an absolute path only when copied exactly from the user or a tool result; never construct one. To inspect multiple roots, make separate calls; never join paths with spaces.'
 
 function assertWorkspaceRootIsNotRepeated(workspaceRootPath: string, candidatePath: string) {
   const normalizedCandidatePath = path.resolve(candidatePath)
@@ -34,13 +42,7 @@ function assertWorkspaceRootIsNotRepeated(workspaceRootPath: string, candidatePa
     return
   }
 
-  throw new Error(
-    [
-      `Path repeats the workspace root name: ${normalizedCandidatePath}.`,
-      `Workspace root is ${workspaceRootPath}.`,
-      'Use the path relative to the root instead, or use the exact absolute root without appending its folder name.',
-    ].join(' '),
-  )
+  throw new Error('Invalid path: workspace root repeated. Use a path relative to the workspace root.')
 }
 
 export function resolveWorkspaceTargetPath(workspaceRootPath: string, candidatePath: string | undefined) {
@@ -130,13 +132,12 @@ export async function resolveReadOnlyTargetPath(
     )
   }
 
-  await assertWorkspaceTargetExists(workspaceRootPath, candidatePath, target.absolutePath)
+  await assertWorkspaceTargetExists(candidatePath, target.absolutePath)
 
   return target
 }
 
 async function assertWorkspaceTargetExists(
-  workspaceRootPath: string,
   candidatePath: string | undefined,
   absolutePath: string,
 ) {
@@ -147,15 +148,10 @@ async function assertWorkspaceTargetExists(
       throw error
     }
 
-    const normalizedWorkspaceRootPath = normalizeWorkspacePath(workspaceRootPath)
     const normalizedCandidatePath = candidatePath?.trim() || DEFAULT_WORKSPACE_RELATIVE_PATH
-    throw new Error(
-      [
-        `Path does not exist: ${absolutePath}.`,
-        `Workspace root is ${normalizedWorkspaceRootPath}.`,
-        `Received path: ${normalizedCandidatePath}.`,
-        'Use "." for the workspace root or a path relative to that root; do not append the workspace folder name to an absolute root path.',
-      ].join(' '),
-    )
+    const multiplePathHint = /\s/u.test(normalizedCandidatePath)
+      ? ' The path field accepts one path only; if you meant multiple roots, use one call per root instead of joining them with spaces.'
+      : ''
+    throw new Error(`Path not found: ${normalizedCandidatePath}. Use a path relative to the workspace root.${multiplePathHint}`)
   }
 }

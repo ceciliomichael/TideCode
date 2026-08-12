@@ -17,7 +17,7 @@ import { projectCanonicalReplay } from '../history/replayProjector'
 import { shouldReplayAssistantReasoning } from './assistantReasoningPolicy'
 import { selectContextUsageMessages } from './contextUsageProjection'
 import { buildChatPrompt } from './messages'
-import { createAgentTools } from './tools'
+import { createAgentToolBundle } from './tools'
 import { sortToolSet } from './runtimeToolSet'
 import { normalizeWorkspacePath } from '../../workspace/paths'
 
@@ -38,8 +38,10 @@ export async function estimateToolEnabledContextUsage(input: {
     : null
   const workspaceRootPath = normalizedWorkspaceRootPath ?? 'No workspace selected'
   const enabledSkills = await listEnabledSkills(normalizedWorkspaceRootPath)
+  const orchestrationMode = 'code_mode' as const
   const promptOptions = {
     includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId),
+    orchestrationMode,
     terminalExecutionMode: input.terminalExecutionMode,
   }
   const prompt = buildChatPrompt({
@@ -69,7 +71,7 @@ export async function estimateToolEnabledContextUsage(input: {
   const messageUsage = estimateModelMessageContextUsage(modelMessages)
   let toolSchemaTokens = 0
   if (normalizedWorkspaceRootPath) {
-    const tools = await createAgentTools(
+    const toolBundle = await createAgentToolBundle(
       {
         checkpointId: null,
         conversationId: null,
@@ -80,11 +82,16 @@ export async function estimateToolEnabledContextUsage(input: {
       {
         chatMode: input.chatMode,
         enabledSkills,
+        orchestrationMode,
         providerId: input.providerId,
       },
     )
-    const cacheAwareTools = applyPromptCacheBreakpoints(sortToolSet(tools), input.providerId)
-    toolSchemaTokens = approximateTokenCount(stableStringify(describeTools(cacheAwareTools)))
+    try {
+      const cacheAwareTools = applyPromptCacheBreakpoints(sortToolSet(toolBundle.tools), input.providerId)
+      toolSchemaTokens = approximateTokenCount(stableStringify(describeTools(cacheAwareTools)))
+    } finally {
+      await toolBundle.codeModeExecutor?.dispose()
+    }
   }
   const systemPromptTokens = approximateTokenCount(systemPrompt) + toolSchemaTokens
 

@@ -1,9 +1,18 @@
-<agent_tooling_instructions>
-- Use the exact tool and schema for the task. Read before editing, keep dependent calls sequential, parallelize only independent work, and verify changes.
-- Native filesystem and plan targets always use the JSON key `path`; path aliases are invalid. Discovered tools use their declared schema.
-- Coordinate same-file mutations. Use focused reads; edit existing files and write new files. Avoid destructive actions and broad targets.
-- Terminal execution is asynchronous: start once, consume only new output with bounded `read_terminal` waits, and stop polling when enough evidence exists. If `read_terminal` reports `needs_interaction`, use `interact_terminal` with the same `session_id`, sending either literal `text` plus an `ENTER` key or named control keys, then call `read_terminal` again. `terminate_terminal` is optional; turn cleanup always terminates remaining sessions.
-- Keep source human-readable: never minify or collapse code, markup, styles, configuration, or documentation. Preserve local line structure and formatter style; inspect the resulting file for accidental compression.
-- After editing, inspect the affected diff. Diagnose failures and change the approach before retrying.
-- For MCP execution, copy the exact returned `tool_id` and `name`; derive arguments only from its schema.
+<agent_tooling_instructions description="Choose and use tools deliberately">
+## Tool decision ladder
+- Need an answer from known context: call no tool.
+- Need a workspace fact: use the narrowest `list`, `glob`, `grep`, or `read` call.
+- Need a source change: read the file first, then use `edit` (`await tools.edit({ path: "...", edits: [{ targetContent: "...", replacementContent: "..." }] })`); use `write` only for a new file or complete-file replacement.
+- Need verification: run the smallest focused test, typecheck, diff, or terminal command that proves the change.
+- Need a connected MCP capability: call `tool_search`, then use only the exact returned name and schema.
+
+## Execution rules
+- Every tool call must have one clear purpose and use its exact schema. Filesystem and plan targets use `path`.
+- Dependent calls are sequential; only independent calls may be parallel.
+- For modifying existing files in Code Mode: ALWAYS use `await tools.edit({ path: "...", edits: [{ targetContent: "...", replacementContent: "..." }] })`. Do NOT write custom JS string parsing or replace logic.
+- Terminal calls are asynchronous: start once, read only new output with bounded waits, interact only when requested, and stop when evidence is sufficient.
+- Keep tool results small. Filter intermediate data inside Code Mode and return resolved JSON-compatible values.
+## Mention references
+- Composer Kanban mentions are expanded to `[[kanban:cardId]]`. Use the `kanban_board` tool with the referenced card ID and its `read_card` action to inspect the card.
+
 </agent_tooling_instructions>

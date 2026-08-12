@@ -3,6 +3,7 @@ import test from 'node:test'
 import type { ModelMessage } from 'ai'
 import {
   buildContinuationMessage,
+  repairCompactionPacketContinuation,
   validateContinuationMarkdown,
 } from '../../electron/chat/shared/compaction/markdown'
 import { buildFallbackCompactionPacket } from '../../electron/chat/shared/compaction/fallback'
@@ -21,11 +22,32 @@ test('v2 continuation accepts natural Markdown and rejects packet JSON or meta-o
   assert.equal(validateContinuationMarkdown(markdown).valid, true)
   assert.equal(validateContinuationMarkdown('{"schema":"tidecode.compaction_packet/v2"}').valid, false)
   assert.equal(validateContinuationMarkdown('Acknowledged.').valid, false)
+  assert.equal(
+    validateContinuationMarkdown(
+      '{"schema":"tidecode.compaction_packet/v2","continuationMarkdown":"'.padEnd(4_000, 'x'),
+    ).valid,
+    false,
+  )
 
   const message = buildContinuationMessage(markdown)
   assert.equal(message.role, 'assistant')
   assert.equal(message.content, markdown)
   assert.doesNotMatch(String(message.content), /compaction_packet/u)
+})
+
+test('a persisted packet with malformed continuation text can rebuild safe Markdown from structured state', () => {
+  const packet = buildFallbackCompactionPacket({
+    messages: [{ role: 'user', content: 'Preserve the verified release state.' }],
+    sourceDigest: 'repair-digest',
+    sourceMessageIds: ['model:0'],
+  })
+  const repaired = repairCompactionPacketContinuation({
+    ...packet,
+    continuationMarkdown: '{"schema":"tidecode.compaction_packet/v2","continuationMarkdown":"truncated',
+  })
+
+  assert.match(repaired.continuationMarkdown, /## What happened/u)
+  assert.doesNotMatch(repaired.continuationMarkdown, /tidecode\.compaction_packet/u)
 })
 
 test('compaction transcripts replace image payloads with bounded metadata', () => {

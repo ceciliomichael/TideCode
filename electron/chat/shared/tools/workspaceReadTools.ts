@@ -20,11 +20,12 @@ import {
   normalizeSearchIncludePattern,
 } from './workspaceEntryVisibility'
 
-const DEFAULT_READ_LIMIT = 2000
+const DEFAULT_READ_LIMIT = 500
+const MAX_READ_LIMIT = 500
 const LIST_LIMIT = 100
 const SEARCH_LIMIT = 100
-const MAX_LINE_LENGTH = 50000
-const MAX_READ_BYTES = 256 * 1024
+const MAX_LINE_LENGTH = 2000
+const MAX_READ_BYTES = 50 * 1024
 const RIPGREP_EXCLUDE_GLOBS: string[] = []
 
 interface GrepMatch {
@@ -101,6 +102,11 @@ function formatGrepOutput(matches: GrepMatch[], hasErrors: boolean) {
 
 
 export async function createListToolResult(workspaceRootPath: string, absolutePath: string, relativePath: string) {
+  const stats = await fs.stat(absolutePath)
+  if (!stats.isDirectory()) {
+    throw new Error(`Expected a directory for list, but "${relativePath}" is a file. Use read for the file.`)
+  }
+
   const relaxIgnore =
     isInsideWorkspaceIgnoredPath(workspaceRootPath, absolutePath) ||
     (await isExplicitlyGitignoredPath(workspaceRootPath, absolutePath, true))
@@ -227,7 +233,7 @@ export async function createReadToolResult(
 
 
   const startLine = Math.max(1, offset ?? 1)
-  const maxLines = Math.max(1, limit ?? DEFAULT_READ_LIMIT)
+  const maxLines = Math.min(MAX_READ_LIMIT, Math.max(1, limit ?? DEFAULT_READ_LIMIT))
   const stream = createReadStream(absolutePath, { encoding: 'utf8' })
   const reader = createInterface({
     crlfDelay: Infinity,
@@ -271,15 +277,22 @@ export async function createReadToolResult(
     stream.destroy()
   }
 
-  const numberedLines = collectedLines.map((line, index) => `${startLine + index}: ${line}`)
-  const bodyLines = [...numberedLines]
-  if (!truncatedByBytes && !hasMoreLines && bodyLines.length > 0) {
-    bodyLines.push('', `(End of file - ${lineCount} lines total)`)
+  const body = collectedLines.join('\n')
+  const displayBodyLines = [...collectedLines]
+  if (!truncatedByBytes && !hasMoreLines && collectedLines.length > 0) {
+    displayBodyLines.push('', `(End of file - ${lineCount} lines total)`)
   }
 
   return createSuccessResult({
-    body: bodyLines.join('\n'),
+    body,
+    displayBody: displayBodyLines.join('\n'),
     semantics: {
+      ...(collectedLines.length > 0
+        ? {
+            end_line: startLine + collectedLines.length - 1,
+            start_line: startLine,
+          }
+        : {}),
       is_directory: false,
       line_count: lineCount,
       offset: startLine,

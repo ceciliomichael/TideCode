@@ -122,7 +122,11 @@ export function ChatInterfaceContent({
   const gitAddedLineCount = gitCommitState.status?.hasRepository ? gitCommitState.status.addedLineCount : null
   const gitRemovedLineCount = gitCommitState.status?.hasRepository ? gitCommitState.status.removedLineCount : null
   const runtimeSelection = useMemo(
-    () => buildRuntimeSelection(chatRuntimeConfig, settings.contextCompaction, settings.terminalExecutionMode),
+    () => buildRuntimeSelection(
+      chatRuntimeConfig,
+      settings.contextCompaction,
+      settings.terminalExecutionMode,
+    ),
     [chatRuntimeConfig, settings.contextCompaction, settings.terminalExecutionMode],
   )
   const compressionSelection = useMemo(

@@ -9,7 +9,7 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createGlobTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Find files by pattern.',
+    description: 'Find files by pattern under exactly one directory; use the exact path returned by list or the user.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {

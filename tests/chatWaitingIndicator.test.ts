@@ -12,10 +12,10 @@ test('resolveAssistantWaitingIndicatorVariant promotes write tools to splash whe
   assert.equal(variant, 'splash')
 })
 
-test('resolveAssistantWaitingIndicatorVariant promotes apply_patch tools to splash when no assistant text is visible', () => {
+test('resolveAssistantWaitingIndicatorVariant promotes edit tools to splash when no assistant text is visible', () => {
   const variant = resolveAssistantWaitingIndicatorVariant({
     hasVisibleAssistantText: false,
-    toolInvocations: [{ toolName: 'apply_patch' }],
+    toolInvocations: [{ toolName: 'edit' }],
     waitingIndicatorVariant: 'thinking',
   })
 

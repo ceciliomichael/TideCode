@@ -3,12 +3,14 @@ import { normalizeAssistantMessageContent } from '../../../src/lib/chatMessageCo
 import { EXECUTION_MODE_CONTEXT_PATTERN } from '../../../src/lib/executionModeContext'
 import { getToolResultModelContent, parseStructuredToolResultContent } from '../../../src/lib/toolResultContent'
 import type { ChatMode, Message, AppTerminalExecutionMode } from '../../../src/types/chat'
+import type { AgentOrchestrationMode } from './orchestration'
 import { buildChatModeSystemPrompt } from './prompts/mode'
 import {
   ensureChatImageReferences,
   getChatImageAttachments,
   splitChatImageReferenceSegments,
 } from '../../../src/lib/chatImageReferences'
+import { projectToolOutputForModel } from './tools/toolOutputBudget'
 
 type ToolModelMessage = Extract<ModelMessage, { role: 'tool' }>
 type ToolResultContentPart = ToolModelMessage['content'][number]
@@ -23,6 +25,7 @@ interface CanonicalToolCall {
 export interface BuildChatPromptOptions {
   includeAssistantReasoningParts?: boolean
   includeExecutionModeContext?: boolean
+  orchestrationMode?: AgentOrchestrationMode
   terminalExecutionMode?: AppTerminalExecutionMode
 }
 
@@ -247,8 +250,7 @@ function buildAssistantToolCallParts(
 
     const canonicalToolCall = canonicalToolCalls.get(invocation.id)
     const parsedArguments = canonicalToolCall?.argumentsValue ?? parseToolArguments(invocation.argumentsText)
-    const rawArguments = invocation.argumentsText.trim().length > 0 ? invocation.argumentsText : null
-    const input = parsedArguments ?? (invocation.toolName === 'apply_patch' ? rawArguments : null)
+    const input = parsedArguments
     if (!input) {
       continue
     }
@@ -277,7 +279,7 @@ function buildToolResultParts(message: Message, validToolCallIds: Set<string>): 
     return []
   }
 
-  const outputText = getToolResultModelContent(message.content)
+  const outputText = projectToolOutputForModel(getToolResultModelContent(message.content)).text
   if (!outputText) {
     return []
   }
@@ -417,6 +419,7 @@ function toModelMessage(
 
 export function buildChatSystemPrompt(chatMode: ChatMode, workspaceRootPath: string, options?: BuildChatPromptOptions) {
   return buildChatModeSystemPrompt(chatMode, workspaceRootPath, {
+    orchestrationMode: options?.orchestrationMode,
     terminalExecutionMode: options?.terminalExecutionMode,
   })
 }
@@ -447,6 +450,7 @@ export function buildModelMessages(
   const options: Required<BuildChatPromptOptions> = {
     includeAssistantReasoningParts: inputOptions?.includeAssistantReasoningParts ?? true,
     includeExecutionModeContext: inputOptions?.includeExecutionModeContext ?? true,
+    orchestrationMode: inputOptions?.orchestrationMode ?? 'direct',
     terminalExecutionMode: inputOptions?.terminalExecutionMode ?? 'sandbox',
   }
 

@@ -20,6 +20,11 @@ import { sha256, stableStringify } from '../cache/canonicalization'
 import { sanitizeModelMessages } from '../shared/modelMessageIntegrity'
 import { stripExecutionModeContext } from '../../../src/lib/executionModeContext'
 import { parseCompactionPacket, type CompactionPacket } from '../shared/compaction/contracts'
+import {
+  buildContinuationMarkdownFromPacket,
+  repairCompactionPacketContinuation,
+  validateContinuationMarkdown,
+} from '../shared/compaction/markdown'
 
 const CANONICAL_DIRECTORY_NAME = 'canonical-history'
 const updateQueues = new Map<string, Promise<void>>()
@@ -173,7 +178,7 @@ export async function readLatestCompactionPacket(conversationId: string): Promis
 
     try {
       const packet = parseCompactionPacket(decodeReplayValue(event.packet))
-      if (packet) return packet
+      if (packet) return repairCompactionPacketContinuation(packet)
     } catch {
       continue
     }
@@ -206,7 +211,13 @@ function buildCompactionDetailSections(encodedPacket: Parameters<typeof decodeRe
   try {
     const packet = parseCompactionPacket(decodeReplayValue(encodedPacket))
     const continuationMarkdown = packet
-      ? stripExecutionModeContext(packet.continuationMarkdown).trim().slice(0, 32_000)
+      ? (() => {
+          const repairedPacket = repairCompactionPacketContinuation(packet)
+          const validation = validateContinuationMarkdown(repairedPacket.continuationMarkdown)
+          return validation.valid
+            ? stripExecutionModeContext(validation.normalized).trim().slice(0, 32_000)
+            : buildContinuationMarkdownFromPacket(repairedPacket)
+        })()
       : ''
     return continuationMarkdown.length > 0
       ? [{ items: [continuationMarkdown] }]
@@ -360,7 +371,7 @@ export async function recordCompactionCommitted(input: {
   reasoningRetention?: CanonicalReasoningRetention
   sourceDigest: string
   sourceMessageIds: string[]
-  usedFallback: boolean
+  usedFallback?: boolean
 }) {
   return updateDocument(input.conversationId, (document) => {
     const compactionSequence = document.events.filter((event) => (
@@ -383,7 +394,7 @@ export async function recordCompactionCommitted(input: {
       sourceDigest: input.sourceDigest,
       sourceMessageIds: input.sourceMessageIds,
       type: 'compaction_committed',
-      usedFallback: input.usedFallback,
+      usedFallback: input.usedFallback ?? false,
     })
   })
 }
@@ -474,7 +485,6 @@ export async function recordToolFreshness(input: {
     const invalidated = new Set(document.freshness.invalidatedSubjects)
     const mutationTools = new Set([
       'write',
-      'apply_patch',
       'edit',
     ])
     const type = mutationTools.has(input.toolName) || isTerminalTool

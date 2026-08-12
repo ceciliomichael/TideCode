@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
+import { createAgentToolBundle, createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
 
 test('createAgentTools omits write tools in plan mode', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
@@ -26,7 +26,7 @@ test('createAgentTools omits write tools in plan mode', async () => {
     assert.ok('plan_edit' in tools)
     assert.ok(!('write' in tools))
     assert.ok(!('edit' in tools))
-    assert.ok(!('apply_patch' in tools))
+    assert.ok(!('patch' in tools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -43,9 +43,66 @@ test('createAgentTools exposes write tools in agent mode', async () => {
 
     assert.ok('write' in tools)
     assert.ok('edit' in tools)
-    assert.ok(!('apply_patch' in tools))
+    assert.ok(!('patch' in tools))
     assert.ok('kanban_board' in tools)
     assert.ok('memory' in tools)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode exposes only the meta-tools while registry entries retain native executors', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-tools-'))
+
+  try {
+    const bundle = await createAgentToolBundle(
+      { workspaceRootPath },
+      { chatMode: 'agent', orchestrationMode: 'code_mode' },
+    )
+
+    assert.deepEqual(Object.keys(bundle.tools).sort(), ['code_mode', 'tool_search'])
+    assert.ok(bundle.registry.get('read'))
+    assert.ok(bundle.registry.get('edit'))
+    assert.equal(bundle.registry.get('patch'), undefined)
+    assert.equal(bundle.registry.get('mcp_tool_search'), undefined)
+    assert.equal(bundle.registry.get('execute_mcp'), undefined)
+    assert.equal(typeof bundle.registry.get('read')?.execute, 'function')
+    await bundle.codeModeExecutor?.dispose()
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('createAgentToolBundle defaults agent mode to Code Mode', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-default-code-mode-tools-'))
+
+  try {
+    const bundle = await createAgentToolBundle(
+      { workspaceRootPath },
+      { chatMode: 'agent' },
+    )
+
+    assert.deepEqual(Object.keys(bundle.tools).sort(), ['code_mode', 'tool_search'])
+    assert.ok(bundle.codeModeExecutor)
+    await bundle.codeModeExecutor?.dispose()
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Hybrid orchestration retains direct tools alongside the meta-tools', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-hybrid-tools-'))
+
+  try {
+    const bundle = await createAgentToolBundle(
+      { workspaceRootPath },
+      { chatMode: 'agent', orchestrationMode: 'hybrid' },
+    )
+
+    assert.ok('read' in bundle.tools)
+    assert.ok('code_mode' in bundle.tools)
+    assert.ok('tool_search' in bundle.tools)
+    await bundle.codeModeExecutor?.dispose()
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -108,9 +165,7 @@ test('createAgentTools exposes the same exact replacement tools for every provid
       { chatMode: 'agent', providerId: 'custom:test-provider' },
     )
 
-    for (const toolName of [
-      'edit',
-    ]) {
+    for (const toolName of ['edit']) {
       const codexTool = codexTools[toolName] as {
         description?: string
         inputSchema?: unknown
@@ -144,8 +199,8 @@ test('createAgentTools describes grep mechanics without workflow guidance', asyn
     assert.ok('grep' in tools)
     const grepTool = tools.grep as { description?: string }
 
-    assert.equal(grepTool.description, 'Search file contents.')
-    assert.doesNotMatch(grepTool.description ?? '', /use `read`|apply_patch|should|prefer/iu)
+    assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; never combine paths with spaces.')
+    assert.doesNotMatch(grepTool.description ?? '', /use `read`|patch|should|prefer/iu)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -169,16 +224,16 @@ test('createAgentTools keeps plan mode tool descriptions literal', async () => {
     const globTool = tools.glob as { description?: string }
     const grepTool = tools.grep as { description?: string }
 
-    assert.equal(listTool.description, 'List a directory.')
-    assert.equal(readTool.description, 'Read a text file, image, or directory.')
-    assert.equal(globTool.description, 'Find files by pattern.')
-    assert.equal(grepTool.description, 'Search file contents.')
+    assert.equal(listTool.description, 'List exactly one existing directory; omit path for the workspace root and use read for files.')
+    assert.equal(readTool.description, 'Read exactly one existing text file or image (maximum 500 lines at a time; specify offset and limit for line ranges).')
+    assert.equal(globTool.description, 'Find files by pattern under exactly one directory; use the exact path returned by list or the user.')
+    assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; never combine paths with spaces.')
     for (const description of [listTool, readTool, globTool, grepTool].map((tool) => tool.description ?? '')) {
-      assert.doesNotMatch(description, /use `read`|apply_patch|write|should|prefer/iu)
+      assert.doesNotMatch(description, /patch|write|should|prefer/iu)
     }
     assert.ok(!('write' in tools))
     assert.ok(!('edit' in tools))
-    assert.ok(!('apply_patch' in tools))
+    assert.ok(!('patch' in tools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -199,31 +254,32 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
 
     assert.ok('read' in tools)
     assert.ok('edit' in tools)
+    assert.ok(!('patch' in tools))
     assert.ok('write' in tools)
 
     const readTool = tools.read as { description?: string }
     const globTool = tools.glob as { description?: string }
     const grepTool = tools.grep as { description?: string }
-    const replaceTool = tools.edit as { description?: string }
+    const editTool = tools.edit as { description?: string }
     const writeTool = tools.write as { description?: string }
 
-    assert.equal(readTool.description, 'Read a text file, image, or directory.')
+    assert.equal(readTool.description, 'Read exactly one existing text file or image (maximum 500 lines at a time; specify offset and limit for line ranges).')
     assert.equal(
-      replaceTool.description,
-      'Replace one unique text block in a file. Exact text is matched first; indentation, line-ending, and line-edge whitespace differences are tolerated when they still identify one unambiguous block.',
+      editTool.description,
+      'Edit a file by replacing targetContent with replacementContent. Pass { path, edits: [{ targetContent, replacementContent }] }. Always use tools.edit for modifying existing files.',
     )
-    assert.equal(globTool.description, 'Find files by pattern.')
-    assert.equal(grepTool.description, 'Search file contents.')
+    assert.equal(globTool.description, 'Find files by pattern under exactly one directory; use the exact path returned by list or the user.')
+    assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; never combine paths with spaces.')
     assert.equal(writeTool.description, 'Write a complete file.')
     for (const description of [
       readTool,
       globTool,
       grepTool,
-      replaceTool,
+      editTool,
       writeTool,
     ]
       .map((tool) => tool.description ?? '')) {
-      assert.doesNotMatch(description, /should|prefer|after reading|before editing/iu)
+      assert.doesNotMatch(description, /should|prefer|before editing/iu)
     }
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
