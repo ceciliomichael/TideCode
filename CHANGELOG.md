@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.6 — More capable Codex orchestration and dependable project work
+
+TideCode 1.1.6 gives agent-mode work a safer orchestration layer, clearer file-operation feedback, and more reliable continuity when conversations, providers, or large tool results change over time.
+
+- Adds Code Mode with validated tool discovery, bounded outputs, safe asynchronous execution, and concise model-facing tool contracts for coordinated workspace work.
+- Makes file edits structured and reviewable with multi-hunk operations, read-range awareness, authoritative line bounds, ambiguity guidance, and atomic application.
+- Preserves chat continuity across provider switches and replay, improves compaction budgeting, and presents nested tool activity, mentions, and recovery paths more clearly.
+- Includes regression coverage for Code Mode, tool output limits, provider migration, prompt contracts, workspace editing, and long-running chat workflows.
+
 ## 1.1.5 — More natural follow-up steering and safer workspace paths
 
 TideCode 1.1.5 keeps follow-up instructions in the active chat turn after tools finish and gives clearer guidance when workspace paths are malformed, so long-running work is easier to redirect without losing conversation continuity.
