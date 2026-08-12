@@ -2,8 +2,8 @@ import type { ModelMessage } from 'ai'
 import { stripExecutionModeContext } from '../../../../src/lib/executionModeContext'
 import type { LocalCompactionPacketV2 } from './contracts'
 
-export const COMPACTION_MARKDOWN_MAX_CHARS = 32_000
-export const COMPACTION_MARKDOWN_MAX_LINES = 480
+export const COMPACTION_MARKDOWN_MAX_CHARS = 12_000
+export const COMPACTION_MARKDOWN_MAX_LINES = 180
 
 const MAX_MARKDOWN_LINE_CHARS = 4_000
 
@@ -41,6 +41,14 @@ function isJsonObject(value: string) {
   }
 }
 
+function looksLikeSerializedCompactionPacket(value: string) {
+  const trimmed = value.trimStart()
+  if (!trimmed.startsWith('{')) return false
+
+  return /"schema"\s*:\s*"tidecode\.compaction_packet\/v2"/u.test(trimmed) ||
+    /"continuationMarkdown"\s*:/u.test(trimmed)
+}
+
 function trimToMarkdownBoundary(value: string, maxCharacters: number) {
   if (value.length <= maxCharacters) return value
   const clipped = value.slice(0, maxCharacters - 1)
@@ -51,7 +59,7 @@ function trimToMarkdownBoundary(value: string, maxCharacters: number) {
 
 export function normalizeContinuationMarkdown(value: string, maxCharacters = COMPACTION_MARKDOWN_MAX_CHARS) {
   const withoutUnsupportedState = stripExecutionModeContext(stripReasoningMarkup(value))
-  if (isJsonObject(withoutUnsupportedState)) return ''
+  if (isJsonObject(withoutUnsupportedState) || looksLikeSerializedCompactionPacket(withoutUnsupportedState)) return ''
 
   const lines = stripControlCharacters(withoutUnsupportedState)
     .replace(/\r\n?/gu, '\n')
@@ -84,7 +92,11 @@ export interface ContinuationMarkdownValidation {
 export function validateContinuationMarkdown(value: string): ContinuationMarkdownValidation {
   const normalized = normalizeContinuationMarkdown(value)
   if (normalized.length === 0) {
-    return { normalized, reason: value.trim().startsWith('{') ? 'json' : 'empty', valid: false }
+    return { normalized, reason: value.trimStart().startsWith('{') ? 'json' : 'empty', valid: false }
+  }
+
+  if (looksLikeSerializedCompactionPacket(value)) {
+    return { normalized: '', reason: 'json', valid: false }
   }
 
   const withoutMarkdownSyntax = normalized
@@ -102,10 +114,22 @@ export function validateContinuationMarkdown(value: string): ContinuationMarkdow
   return { normalized, reason: 'valid', valid: true }
 }
 
+export function repairCompactionPacketContinuation<T extends Parameters<typeof buildContinuationMarkdownFromPacket>[0]>(
+  packet: T & { continuationMarkdown: string },
+) {
+  const validation = validateContinuationMarkdown(packet.continuationMarkdown)
+  return validation.valid
+    ? { ...packet, continuationMarkdown: validation.normalized }
+    : { ...packet, continuationMarkdown: buildContinuationMarkdownFromPacket(packet) }
+}
+
 export function isCompactionContinuationMessage(message: ModelMessage, expectedMarkdown?: string) {
   if (message.role !== 'assistant' || typeof message.content !== 'string') return false
+  if (looksLikeSerializedCompactionPacket(message.content)) return true
   if (!expectedMarkdown) return false
-  return normalizeContinuationMarkdown(message.content) === normalizeContinuationMarkdown(expectedMarkdown)
+  const normalizedExpected = normalizeContinuationMarkdown(expectedMarkdown)
+  if (!normalizedExpected) return false
+  return normalizeContinuationMarkdown(message.content) === normalizedExpected
 }
 
 export function buildContinuationMessage(markdown: string): ModelMessage {

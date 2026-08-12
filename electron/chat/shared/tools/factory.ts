@@ -2,6 +2,11 @@ import type { ToolSet } from 'ai'
 import type { ChatMode, ChatProviderId } from '../../../../src/types/chat'
 import type { SkillSummary } from '../../../../src/types/skills'
 import type { AgentToolContext } from '../toolTypes'
+import { DEFAULT_AGENT_ORCHESTRATION_MODE, type AgentOrchestrationMode } from '../orchestration'
+import { CodeModeExecutor } from '../codeMode/executor'
+import { createAgentToolRegistry, isDynamicAgentTool, type AgentToolRegistry } from './registry'
+import { createCodeModeTool, createToolSearchTool } from './metaTools'
+import { createConnectedMcpRegistryTools } from './mcpRegistryTools'
 
 import { createEditTool } from './editTool'
 import { createGlobTool } from './globTool'
@@ -12,6 +17,7 @@ import { createMcpToolSet } from './mcpTools'
 import { createMemoryTool } from './memoryTool'
 import { createProviderWebTool } from './providerWebTool'
 import { createReadTool } from './readTool'
+import { createReadToolOutputTool } from './readToolOutput'
 import { createPlanToolSet } from './planTools'
 import { createSkillTool } from './skillTool'
 import { createTerminalToolSet } from './terminalTools'
@@ -24,6 +30,15 @@ export interface CreateAgentToolsOptions {
   providerId?: ChatProviderId
 }
 
+export interface AgentToolBundle {
+  codeModeExecutor: CodeModeExecutor | null
+  nativeTools: ToolSet
+  registry: AgentToolRegistry
+  tools: ToolSet
+}
+
+const LEGACY_MCP_ORCHESTRATION_TOOLS = new Set(['mcp_tool_search', 'execute_mcp'])
+
 export async function createNativeAgentTools(
   input: AgentToolContext,
   options: CreateAgentToolsOptions = {},
@@ -34,6 +49,7 @@ export async function createNativeAgentTools(
   const tools: ToolSet = {
     list: createListTool(context),
     read: createReadTool(context),
+    read_tool_output: createReadToolOutputTool(),
     glob: createGlobTool(context),
     grep: createGrepTool(context),
     ...createMcpToolSet(context),
@@ -67,8 +83,8 @@ export async function createNativeAgentTools(
 
   return {
     ...tools,
-    write: createWriteTool(context),
     edit: createEditTool(context),
+    write: createWriteTool(context),
   }
 }
 
@@ -78,4 +94,48 @@ export async function createAgentTools(
   options: CreateAgentToolsOptions = {},
 ): Promise<ToolSet> {
   return createNativeAgentTools(input, options)
+}
+
+export async function createAgentToolBundle(
+  input: AgentToolContext,
+  options: CreateAgentToolsOptions & { orchestrationMode?: AgentOrchestrationMode } = {},
+): Promise<AgentToolBundle> {
+  const nativeTools = await createNativeAgentTools(input, options)
+  const orchestrationMode = options.orchestrationMode ?? DEFAULT_AGENT_ORCHESTRATION_MODE
+
+  let registryTools = nativeTools
+  if (options.chatMode !== 'plan' && orchestrationMode !== 'direct') {
+    const connectedMcpTools = await createConnectedMcpRegistryTools(input)
+    registryTools = Object.fromEntries([
+      ...Object.entries(nativeTools).filter(([name]) => !LEGACY_MCP_ORCHESTRATION_TOOLS.has(name)),
+      ...Object.entries(connectedMcpTools),
+    ])
+  }
+
+  const registry = await createAgentToolRegistry(registryTools)
+
+  if (options.chatMode === 'plan' || orchestrationMode === 'direct') {
+    return {
+      codeModeExecutor: null,
+      nativeTools,
+      registry,
+      tools: nativeTools,
+    }
+  }
+
+  const preloadedToolNames = registry.entries
+    .filter((entry) => !isDynamicAgentTool(entry))
+    .map((entry) => entry.name)
+  const codeModeExecutor = new CodeModeExecutor(registry, preloadedToolNames)
+  const metaTools: ToolSet = {
+    code_mode: createCodeModeTool(codeModeExecutor, registry),
+    tool_search: createToolSearchTool(registry, { dynamicOnly: true }),
+  }
+
+  return {
+    codeModeExecutor,
+    nativeTools,
+    registry,
+    tools: orchestrationMode === 'hybrid' ? { ...nativeTools, ...metaTools } : metaTools,
+  }
 }

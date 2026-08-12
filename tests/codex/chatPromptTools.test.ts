@@ -13,22 +13,22 @@ test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
   const agentPrompt = buildChatSystemPrompt('agent', 'C:/repo')
   const planPrompt = buildChatSystemPrompt('plan', 'C:/repo')
 
-  assert.match(agentPrompt, /You are the active builder/u)
-  assert.match(agentPrompt, /Use the exact tool and schema for the task/u)
-  assert.equal((agentPrompt.match(/<agent_tooling_instructions>/gu) ?? []).length, 1)
+  assert.match(agentPrompt, /<decision_priority/u)
+  assert.match(agentPrompt, /Need a source change: read the file first, then use `edit`/u)
+  assert.equal((agentPrompt.match(/<agent_tooling_instructions\b/gu) ?? []).length, 1)
   assert.equal((agentPrompt.match(/<tool_instructions>/gu) ?? []).length, 0)
-  assert.match(agentPrompt, /Read before editing/u)
-  assert.match(agentPrompt, /Coordinate same-file mutations/u)
+  assert.match(agentPrompt, /read the file first/u)
+  assert.match(agentPrompt, /Terminal calls are asynchronous/u)
   assert.doesNotMatch(agentPrompt, /\blist_dir\b/u)
-  assert.match(agentPrompt, /Answer first with the smallest complete response/u)
-  assert.match(agentPrompt, /Native filesystem and plan targets always use the JSON key `path`/u)
+  assert.match(agentPrompt, /Answer first\. Report only the outcome/u)
+  assert.match(agentPrompt, /Filesystem and plan targets use `path`/u)
   assert.doesNotMatch(agentPrompt, /caveman|authorization_override/iu)
 
-  assert.match(planPrompt, /You are a senior software architect and rigorous planning interviewer/u)
-  assert.match(planPrompt, /Ask exactly one focused question per response/u)
-  assert.match(planPrompt, /Create one complete, self-contained Markdown plan/u)
+  assert.match(planPrompt, /Use Plan mode only when the user wants a plan/u)
+  assert.match(planPrompt, /Ask one focused question only for an unresolved judgment call/u)
+  assert.match(planPrompt, /one complete Markdown plan in `\.tidecode\/plans\/`/u)
   assert.match(planPrompt, /After saving, say only that the plan is visible in preview/u)
-  assert.match(planPrompt, /Native filesystem and plan targets always use the JSON key `path`/u)
+  assert.match(planPrompt, /filesystem and plan targets use `path`/u)
   assert.doesNotMatch(planPrompt, /caveman|authorization_override/iu)
 })
 
@@ -50,6 +50,55 @@ test('tool result replay preserves oversized model content without truncation', 
 
   assert.equal(modelContent, body)
   assert.equal(storedResult.body, body)
+})
+
+test('provider replay projects oversized tool content to a bounded model view', () => {
+  const body = Array.from({ length: 4_000 }, (_value, index) => `line ${index} ${'x'.repeat(80)}`).join('\n')
+  const prompt = buildChatPrompt({
+    chatMode: 'agent',
+    messages: [
+      { content: 'Inspect the output.', id: 'user-1', role: 'user', timestamp: 1 },
+      {
+        content: '',
+        id: 'assistant-1',
+        role: 'assistant',
+        timestamp: 2,
+        toolInvocations: [{
+          argumentsText: JSON.stringify({ path: 'src/app.ts' }),
+          completedAt: 3,
+          id: 'tool-call-1',
+          resultContent: '',
+          startedAt: 2,
+          state: 'completed',
+          toolName: 'read',
+        }],
+      },
+      {
+        content: formatStructuredToolResultContent({
+          arguments: { path: 'src/app.ts' },
+          schema: 'tidecode.tool_result/v1',
+          status: 'success',
+          summary: 'Read a large file',
+          toolCallId: 'tool-call-1',
+          toolName: 'read',
+        }, body),
+        id: 'tool-1',
+        role: 'tool',
+        timestamp: 4,
+        toolCallId: 'tool-call-1',
+      },
+    ],
+    workspaceRootPath: 'C:/repo',
+  })
+
+  const toolMessage = prompt.messages.find((message) => message.role === 'tool')
+  const output = toolMessage && Array.isArray(toolMessage.content)
+    ? toolMessage.content[0]
+    : null
+  assert.ok(output && output.type === 'tool-result')
+  assert.equal(typeof output.output.value, 'string')
+  assert.ok(output.output.value.length < body.length)
+  assert.match(output.output.value, /Tool output truncated/u)
 })
 
 test('Codex fallback prompts do not synthesize unsupported generic reasoning parts', () => {
@@ -142,7 +191,7 @@ test('buildChatPrompt preserves assistant tool calls and matching tool results',
   })
 
   assert.equal(prompt.messages.length, 3)
-  assert.match(prompt.system, /Workspace root: C:\/repo/u)
+  assert.match(prompt.system, /<workspace_root authoritative="true" type="absolute">\nC:\/repo\n<\/workspace_root>/u)
 
   const assistantMessage = prompt.messages[1]
   assert.equal(assistantMessage?.role, 'assistant')
@@ -250,14 +299,16 @@ test('buildChatPrompt interleaves numbered images where the user referenced them
   ])
 })
 
-test('buildChatPrompt preserves freeform apply_patch tool calls', () => {
-  const patchText = `<patch>
-<update path="src/example.ts">
-@@
--const value = 1;
-+const value = 2;
-</update>
-</patch>`
+test('buildChatPrompt preserves structured edit tool calls', () => {
+  const editInput = {
+    edits: [{
+      endLine: 1,
+      replacementContent: 'const value = 2;',
+      startLine: 1,
+      targetContent: 'const value = 1;',
+    }],
+    path: 'src/example.ts',
+  }
   const messages: Message[] = [
     {
       content: 'Edit the file',
@@ -272,13 +323,13 @@ test('buildChatPrompt preserves freeform apply_patch tool calls', () => {
       timestamp: 2,
       toolInvocations: [
         {
-          argumentsText: patchText,
+          argumentsText: JSON.stringify(editInput),
           completedAt: 3,
           id: 'tool-call-1',
           resultContent: '',
           startedAt: 2,
           state: 'completed',
-          toolName: 'apply_patch',
+          toolName: 'edit',
         },
       ],
     },
@@ -297,11 +348,11 @@ test('buildChatPrompt preserves freeform apply_patch tool calls', () => {
             kind: 'file',
             path: 'src/example.ts',
           },
-          summary: 'Patched example.ts',
+          summary: 'Edited example.ts',
           toolCallId: 'tool-call-1',
-          toolName: 'apply_patch',
+          toolName: 'edit',
         },
-        'Patched example.ts\nM src/example.ts',
+        'Edited example.ts\nM src/example.ts',
       ),
       id: 'tool-message-1',
       role: 'tool',
@@ -320,7 +371,7 @@ test('buildChatPrompt preserves freeform apply_patch tool calls', () => {
   assert.equal(assistantMessage?.role, 'assistant')
   assert.ok(Array.isArray(assistantMessage?.content))
   assert.equal(assistantMessage?.content[0]?.type, 'tool-call')
-  assert.equal(assistantMessage?.content[0]?.input, patchText)
+  assert.deepEqual(assistantMessage?.content[0]?.input, editInput)
 })
 
 test('buildChatSystemPrompt does not expose skill metadata', () => {

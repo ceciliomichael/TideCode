@@ -9,7 +9,7 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createListTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'List a directory.',
+    description: 'List exactly one existing directory; omit path for the workspace root and use read for files.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {

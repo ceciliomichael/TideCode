@@ -3,12 +3,14 @@ import {
   normalizeWorkspacePath,
 } from '../../../workspace/paths'
 import type { AgentToolContext } from '../toolTypes'
+import type { WorkspaceToolContext } from './workspaceToolPaths'
 
-export async function createToolContext(input: AgentToolContext) {
+export async function createToolContext(input: AgentToolContext): Promise<WorkspaceToolContext> {
   const workspaceRootPath = normalizeWorkspacePath(input.workspaceRootPath)
   await assertWorkspaceDirectory(workspaceRootPath)
   return {
     checkpointId: input.checkpointId?.trim() || null,
+    readScopes: new Map(),
     terminalExecutionMode: input.terminalExecutionMode ?? 'sandbox',
     workspaceRootPath,
   }

@@ -3,548 +3,277 @@ import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { applyPatchInWorkspace } from '../../electron/chat/shared/applyPatch'
+import { applyPatchInWorkspace } from '../../electron/chat/shared/applyPatchWorkspace'
+import { createApplyPatchTool } from '../../electron/chat/shared/tools/applyPatchTool'
+import { createAgentToolBundle } from '../../electron/chat/shared/tools'
 
-test('applyPatchInWorkspace rejects stale update hunks instead of re-anchoring them', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-reanchor-'))
-  const targetFilePath = path.join(workspaceRootPath, 'src', 'accountService.ts')
-  await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
-  await fs.writeFile(
-    targetFilePath,
-    [
-      "import * as fs from 'node:fs/promises';",
-      "import * as path from 'node:path';",
-      "import {",
-      '\tACCOUNTS_DIR,',
-      '\tAUTH_FILE_PATHS,',
-      '\tCODEX_AUTH_FILE_PATH,',
-      '\tdecodeIdTokenClaims,',
-      '\tWORKSPACE_AUTH_FILE_PATH,',
-      '\tdeleteAuthJsonFile,',
-      '\treadAuthJsonFile,',
-      '\twriteAuthJsonFile',
-      "} from './authService';",
-      '',
-      'function isStoredCodexAuthFile(candidate: unknown) {',
-      '  return Boolean(candidate)',
-      '}',
-      '',
-    ].join('\n'),
-    'utf8',
-  )
+function standardPatch(body: string) {
+  return `*** Begin Patch\n${body}\n*** End Patch`
+}
+
+test('apply_patch updates standard Codex patches with whitespace-tolerant context', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-'))
+  const targetPath = path.join(workspaceRootPath, 'src', 'value.ts')
 
   try {
-    await assert.rejects(
-      applyPatchInWorkspace(
-        workspaceRootPath,
-        `<patch>
-<update path="${targetFilePath}">
-@@
- import * as fs from 'node:fs/promises';
-+import { createHash } from 'node:crypto';
- import * as path from 'node:path';
- import {
- \tACCOUNTS_DIR,
- \tAUTH_FILE_PATHS,
- \tCODEX_AUTH_FILE_PATH,
-+\tdecodeIdTokenClaims,
- \tWORKSPACE_AUTH_FILE_PATH,
- \tdeleteAuthJsonFile,
- \treadAuthJsonFile,
- \twriteAuthJsonFile
- } from './authService';
-</update>
-</patch>`,
-      ),
-      /Failed to find expected lines in src[/\\]accountService\.ts/u,
-    )
+    await fs.mkdir(path.dirname(targetPath), { recursive: true })
+    await fs.writeFile(targetPath, 'function value() {\r\n    return 1\r\n}\r\n', 'utf8')
 
-    assert.equal(
-      await fs.readFile(targetFilePath, 'utf8'),
-      [
-        "import * as fs from 'node:fs/promises';",
-        "import * as path from 'node:path';",
-        "import {",
-        '\tACCOUNTS_DIR,',
-        '\tAUTH_FILE_PATHS,',
-        '\tCODEX_AUTH_FILE_PATH,',
-        '\tdecodeIdTokenClaims,',
-        '\tWORKSPACE_AUTH_FILE_PATH,',
-        '\tdeleteAuthJsonFile,',
-        '\treadAuthJsonFile,',
-        '\twriteAuthJsonFile',
-        "} from './authService';",
-        '',
-        'function isStoredCodexAuthFile(candidate: unknown) {',
-        '  return Boolean(candidate)',
-        '}',
-        '',
-      ].join('\n'),
-    )
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-test('applyPatchInWorkspace rejects accidental line-wrap differences in hunk context', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-wrap-'))
-  const targetFilePath = path.join(workspaceRootPath, 'src', 'footer.tsx')
-  await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
-  await fs.writeFile(
-    targetFilePath,
-    [
-      '<footer className="rounded-2xl border border-[#F0F2F6] bg-white p-6 shadow-sm">',
-      '<p className="mt-4 text-sm leading-6 text-[#606266]">',
-      'A simple landing page structure for products that need a',
-      'confident first impression.',
-      '</p>',
-      '</footer>',
-      '',
-    ].join('\n'),
-    'utf8',
-  )
-
-  try {
-    await assert.rejects(
-      applyPatchInWorkspace(
-        workspaceRootPath,
-        `<patch>
-<update path="${targetFilePath}">
-@@
- <footer className="rounded-2xl border border-[#F0F2F6] bg-white p-6 shadow-sm">
- <p className="mt-4 text-sm leading-6 text-[#606266]">
- A simple landing page structure for products that need a confident
- first impression.
- </p>
-</update>
-</patch>`,
-      ),
-      /Failed to find expected lines in src[/\\]footer\.tsx/u,
-    )
-
-    assert.equal(
-      await fs.readFile(targetFilePath, 'utf8'),
-      [
-        '<footer className="rounded-2xl border border-[#F0F2F6] bg-white p-6 shadow-sm">',
-        '<p className="mt-4 text-sm leading-6 text-[#606266]">',
-        'A simple landing page structure for products that need a',
-        'confident first impression.',
-        '</p>',
-        '</footer>',
-        '',
-      ].join('\n'),
-    )
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-test('applyPatchInWorkspace tolerates indentation-only drift in hunk context', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-indent-'))
-  const targetFilePath = path.join(workspaceRootPath, 'src', 'footer.tsx')
-  await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
-  await fs.writeFile(
-    targetFilePath,
-    [
-      '<footer className="rounded-2xl border border-[#F0F2F6] bg-white p-6 shadow-sm">',
-      '    <p className="mt-4 text-sm leading-6 text-[#606266]">',
-      '    A simple landing page structure for products that need a',
-      '    confident first impression.',
-      '    </p>',
-      '</footer>',
-      '',
-    ].join('\n'),
-    'utf8',
-  )
-
-  try {
     const result = await applyPatchInWorkspace(
       workspaceRootPath,
-      `<patch>
-<update path="${targetFilePath}">
-@@
- <footer className="rounded-2xl border border-[#F0F2F6] bg-white p-6 shadow-sm">
- <p className="mt-4 text-sm leading-6 text-[#606266]">
- A simple landing page structure for products that need a
- confident first impression.
- </p>
-+<div className="mt-6 rounded-xl border border-[#F0F2F6] bg-white p-4">
-+<p className="text-sm text-[#606266]">Added through a whitespace-tolerant patch.</p>
-+</div>
-</update>
-</patch>`,
+      standardPatch(`*** Update File: src/value.ts\n@@\n function value() {\n return 1\n }\n+export const ready = true;`),
     )
 
     assert.equal(result.changes.length, 1)
     assert.equal(
-      await fs.readFile(targetFilePath, 'utf8'),
-      [
-        '<footer className="rounded-2xl border border-[#F0F2F6] bg-white p-6 shadow-sm">',
-        '    <p className="mt-4 text-sm leading-6 text-[#606266]">',
-        '    A simple landing page structure for products that need a',
-        '    confident first impression.',
-        '    </p>',
-        '<div className="mt-6 rounded-xl border border-[#F0F2F6] bg-white p-4">',
-        '<p className="text-sm text-[#606266]">Added through a whitespace-tolerant patch.</p>',
-        '</div>',
-        '</footer>',
-        '',
-      ].join('\n'),
+      await fs.readFile(targetPath, 'utf8'),
+      'function value() {\n    return 1\n}\nexport const ready = true;\n',
     )
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('applyPatchInWorkspace rejects update patches that do not change file content', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-noop-'))
-  const targetFilePath = path.join(workspaceRootPath, 'src', 'same.ts')
-  await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
-  await fs.writeFile(targetFilePath, 'alpha\nbeta\n', 'utf8')
+test('apply_patch follows Codex first-match sequencing for repeated hunks', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-sequence-'))
+  const targetPath = path.join(workspaceRootPath, 'repeated.ts')
 
   try {
-    await assert.rejects(
-      applyPatchInWorkspace(
-        workspaceRootPath,
-        `<patch>
-<update path="src/same.ts">
-@@
- alpha
- beta
-</update>
-</patch>`,
-      ),
-      /Patch did not change src[/\\]same\.ts/u,
-    )
+    await fs.writeFile(targetPath, 'repeat\nkeep\nrepeat\nkeep\n', 'utf8')
 
-    assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'alpha\nbeta\n')
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('applyPatchInWorkspace rejects line-ending-only update patches', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-eol-noop-'))
-  const targetFilePath = path.join(workspaceRootPath, 'src', 'same-crlf.ts')
-  await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
-  await fs.writeFile(targetFilePath, 'alpha\r\nbeta\r\n', 'utf8')
-
-  try {
-    await assert.rejects(
-      applyPatchInWorkspace(
-        workspaceRootPath,
-        `<patch>
-<update path="src/same-crlf.ts">
-@@
- alpha
- beta
-</update>
-</patch>`,
-      ),
-      /Patch did not change src[/\\]same-crlf\.ts/u,
-    )
-
-    assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'alpha\r\nbeta\r\n')
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('applyPatchInWorkspace matches CRLF files using LF patch text and writes LF', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-crlf-'))
-  const targetFilePath = path.join(workspaceRootPath, 'src', 'RouteTable.tsx')
-  await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
-  await fs.writeFile(
-    targetFilePath,
-    [
-      'import { SegmentedField } from "../../components/SegmentedField";',
-      'import {',
-      '  getRouteOwnerFilterStorageKey,',
-      '} from "./routeTablePreferences";',
-      '',
-    ].join('\r\n'),
-    'utf8',
-  )
-
-  try {
-    const result = await applyPatchInWorkspace(
-      workspaceRootPath,
-      `<patch>
-<update path="src/RouteTable.tsx">
-@@
- import { SegmentedField } from "../../components/SegmentedField";
- import {
-   getRouteOwnerFilterStorageKey,
-+  ROUTE_OWNER_FILTER_ALL,
- } from "./routeTablePreferences";
-</update>
-</patch>`,
-    )
-
-    assert.equal(result.changes.length, 1)
-    assert.equal(
-      await fs.readFile(targetFilePath, 'utf8'),
-      [
-        'import { SegmentedField } from "../../components/SegmentedField";',
-        'import {',
-        '  getRouteOwnerFilterStorageKey,',
-        '  ROUTE_OWNER_FILTER_ALL,',
-        '} from "./routeTablePreferences";',
-        '',
-      ].join('\n'),
-    )
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('applyPatchInWorkspace treats unified line numbers as hints when the source match is unique', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-offset-'))
-  const targetFilePath = path.join(workspaceRootPath, 'src', 'shifted.ts')
-  await fs.mkdir(path.dirname(targetFilePath), { recursive: true })
-  await fs.writeFile(targetFilePath, 'intro\nunchanged\nconst value = 1\noutro\n', 'utf8')
-
-  try {
     await applyPatchInWorkspace(
       workspaceRootPath,
-      `*** Begin Patch
-*** Update File: src/shifted.ts
-@@ -1,1 +1,1 @@
--const value = 1
-+const value = 2
-*** End Patch`,
-    )
-
-    assert.equal(
-      await fs.readFile(targetFilePath, 'utf8'),
-      'intro\nunchanged\nconst value = 2\noutro\n',
-    )
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('applyPatchInWorkspace rejects ambiguous short hunks instead of editing the wrong match', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-ambiguous-'))
-  const targetFilePath = path.join(workspaceRootPath, 'src', 'repeated.ts')
-  await fs.mkdir(path.dirname(targetFilePath), { recursive: true })
-  await fs.writeFile(targetFilePath, 'const value = 1\nseparator\nconst value = 1\n', 'utf8')
-
-  try {
-    await assert.rejects(
-      applyPatchInWorkspace(
-        workspaceRootPath,
-        `*** Begin Patch
-*** Update File: src/repeated.ts
+      standardPatch(`*** Update File: repeated.ts
 @@
--const value = 1
-+const value = 2
-*** End Patch`,
-      ),
-      /Ambiguous patch hunk in src[/\\]repeated\.ts.*lines 1, 3/u,
-    )
-    assert.equal(
-      await fs.readFile(targetFilePath, 'utf8'),
-      'const value = 1\nseparator\nconst value = 1\n',
-    )
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('applyPatchInWorkspace includes nearby current source when a hunk is stale', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-diagnostic-'))
-  const targetFilePath = path.join(workspaceRootPath, 'src', 'diagnostic.ts')
-  await fs.mkdir(path.dirname(targetFilePath), { recursive: true })
-  await fs.writeFile(targetFilePath, 'start\nconst alpha = 1\nconst current = true\nend\n', 'utf8')
-
-  try {
-    await assert.rejects(
-      applyPatchInWorkspace(
-        workspaceRootPath,
-        `*** Begin Patch
-*** Update File: src/diagnostic.ts
+-repeat
++first
 @@
- const alpha = 1
--const stale = true
-+const current = false
-*** End Patch`,
-      ),
-      /Current source near the match.*2: const alpha = 1.*3: const current = true/su,
+-repeat
++second`),
     )
+
+    assert.equal(await fs.readFile(targetPath, 'utf8'), 'first\nkeep\nsecond\nkeep\n')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('applyPatchInWorkspace normalizes mixed line endings around an insertion to LF', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-mixed-eol-'))
-  const targetFilePath = path.join(workspaceRootPath, 'src', 'mixed.txt')
-  await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
-  await fs.writeFile(targetFilePath, 'alpha\r\nbeta\ngamma\r\ndelta\n', 'utf8')
+test('apply_patch accepts array-of-lines input when source contains template literals', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-lines-'))
+  const targetPath = path.join(workspaceRootPath, 'src', 'panel.tsx')
 
   try {
+    await fs.mkdir(path.dirname(targetPath), { recursive: true })
+    await fs.writeFile(targetPath, 'const width = `${panelWidth}px`\n', 'utf8')
+
     const result = await applyPatchInWorkspace(
       workspaceRootPath,
-      `<patch>
-<update path="src/mixed.txt">
-@@
- beta
-+inserted
- gamma
-</update>
-</patch>`,
+      [
+        '*** Begin Patch',
+        '*** Update File: src/panel.tsx',
+        '@@',
+        '-const width = `${panelWidth}px`',
+        '+const width = `${panelMaxWidth}px`',
+        '*** End Patch',
+      ].join('\n'),
     )
 
     assert.equal(result.changes.length, 1)
-    assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'alpha\nbeta\ninserted\ngamma\ndelta\n')
+    assert.equal(await fs.readFile(targetPath, 'utf8'), 'const width = `${panelMaxWidth}px`\n')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('applyPatchInWorkspace tolerates tab and space indentation mismatches', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-tabs-'))
-  const targetFilePath = path.join(workspaceRootPath, 'src', 'tabs.ts')
-  await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
-  await fs.writeFile(targetFilePath, 'function value() {\r\n\treturn 1\r\n}\r\n', 'utf8')
+test('apply_patch verifies every file before changing any file', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-atomic-'))
+  const existingPath = path.join(workspaceRootPath, 'existing.ts')
+  const createdPath = path.join(workspaceRootPath, 'created.ts')
 
   try {
-    const result = await applyPatchInWorkspace(
-      workspaceRootPath,
-      `<patch>
-<update path="src/tabs.ts">
-@@
- function value() {
-   return 1
- }
-+export const done = true
-</update>
-</patch>`,
-    )
-
-    assert.equal(result.changes.length, 1)
-    assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'function value() {\n\treturn 1\n}\nexport const done = true\n')
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('applyPatchInWorkspace does not write earlier hunks when a later hunk fails', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-atomic-'))
-  const targetFilePath = path.join(workspaceRootPath, 'src', 'existing.ts')
-  const createdFilePath = path.join(workspaceRootPath, 'src', 'created.ts')
-  await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
-  await fs.writeFile(targetFilePath, 'alpha\nbeta\n', 'utf8')
-
-  try {
-    const beforeChanges: Array<{ absolutePath: string; nextAbsolutePath?: string }> = []
+    await fs.writeFile(existingPath, 'alpha\nbeta\n', 'utf8')
 
     await assert.rejects(
       applyPatchInWorkspace(
         workspaceRootPath,
-        `<patch>
-<add path="src/created.ts">
-+export const created = true;
-</add>
-<update path="src/existing.ts">
-@@
- missing
-+replacement
-</update>
-</patch>`,
-        {
-          onBeforeChange: (input) => {
-            beforeChanges.push(input)
-          },
-        },
+        standardPatch(`*** Add File: created.ts\n+created\n*** Update File: existing.ts\n@@\n missing\n+replacement`),
       ),
-      /Failed to find expected lines in src[/\\]existing\.ts/u,
+      /Failed to find expected lines/u,
     )
 
-    await assert.rejects(fs.readFile(createdFilePath, 'utf8'))
-    assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'alpha\nbeta\n')
-    assert.deepEqual(beforeChanges, [])
+    await assert.rejects(fs.readFile(createdPath, 'utf8'))
+    assert.equal(await fs.readFile(existingPath, 'utf8'), 'alpha\nbeta\n')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('applyPatchInWorkspace applies add, update, move, and delete operations', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-'))
-  await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
-  await fs.writeFile(path.join(workspaceRootPath, 'src', 'existing.ts'), 'alpha\nbeta\n', 'utf8')
-  await fs.writeFile(path.join(workspaceRootPath, 'src', 'remove.ts'), 'remove me\n', 'utf8')
+test('apply_patch explains when a long source line was supplied as a partial anchor', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-partial-'))
+  const targetPath = path.join(workspaceRootPath, 'src', 'chatMentions.ts')
+  const currentLine = 'const LEGACY_ACTION_REGEX = /(?:^|[\\s(])((?:read|list|load_skill):(?:(?:"([^"]+)")))/g'
 
   try {
+    await fs.mkdir(path.dirname(targetPath), { recursive: true })
+    await fs.writeFile(targetPath, `${currentLine}\n`, 'utf8')
+
+    await assert.rejects(
+      applyPatchInWorkspace(
+        workspaceRootPath,
+        standardPatch(`*** Update File: src/chatMentions.ts\n@@\n-${currentLine.slice(0, 78)}\n+const LEGACY_ACTION_REGEX = /(?:^|[\\s(])((?:read|list|load_skill|kanban):`),
+      ),
+      (error: unknown) => {
+        assert.ok(error instanceof Error)
+        assert.match(error.message, /partial source line/u)
+        assert.match(error.message, /Current source near the match/u)
+        assert.ok(error.message.includes(currentLine))
+        return true
+      },
+    )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('apply_patch supports add, update, move, and delete in one patch', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-files-'))
+
+  try {
+    await fs.writeFile(path.join(workspaceRootPath, 'old.ts'), 'const value = 1\n', 'utf8')
+    await fs.writeFile(path.join(workspaceRootPath, 'remove.ts'), 'remove\n', 'utf8')
+
     const result = await applyPatchInWorkspace(
       workspaceRootPath,
-      `<patch>
-<add path="src/new.ts">
-+export const created = true;
-</add>
-<update path="src/existing.ts" move_to="src/renamed.ts">
-@@
- alpha
--beta
-+gamma
-</update>
-<delete path="src/remove.ts" />
-</patch>`,
+      standardPatch(`*** Add File: new.ts\n+created\n*** Update File: old.ts\n*** Move to: renamed.ts\n@@\n-const value = 1\n+const value = 2\n*** Delete File: remove.ts`),
     )
 
     assert.equal(result.changes.length, 3)
-    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'src', 'new.ts'), 'utf8'), 'export const created = true;\n')
-    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'src', 'renamed.ts'), 'utf8'), 'alpha\ngamma\n')
-    await assert.rejects(fs.readFile(path.join(workspaceRootPath, 'src', 'existing.ts'), 'utf8'))
-    await assert.rejects(fs.readFile(path.join(workspaceRootPath, 'src', 'remove.ts'), 'utf8'))
+    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'new.ts'), 'utf8'), 'created\n')
+    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'renamed.ts'), 'utf8'), 'const value = 2\n')
+    await assert.rejects(fs.readFile(path.join(workspaceRootPath, 'old.ts'), 'utf8'))
+    await assert.rejects(fs.readFile(path.join(workspaceRootPath, 'remove.ts'), 'utf8'))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('applyPatchInWorkspace reports each path before mutation for checkpoint capture', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-capture-'))
-  await fs.mkdir(path.join(workspaceRootPath, 'src'), { recursive: true })
-  await fs.writeFile(path.join(workspaceRootPath, 'src', 'existing.ts'), 'alpha\nbeta\n', 'utf8')
-  await fs.writeFile(path.join(workspaceRootPath, 'src', 'target.ts'), 'old target\n', 'utf8')
-  await fs.writeFile(path.join(workspaceRootPath, 'src', 'remove.ts'), 'remove me\n', 'utf8')
+test('apply_patch returns the same file diff result contract as edit', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-result-'))
+  const targetPath = path.join(workspaceRootPath, 'value.ts')
 
   try {
-    const beforeChanges: Array<{ absolutePath: string; nextAbsolutePath?: string }> = []
+    await fs.writeFile(targetPath, 'const value = 1\n', 'utf8')
+    const applyPatchTool = createApplyPatchTool({ workspaceRootPath })
+    const execute = (applyPatchTool as {
+      execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
+    }).execute
+    assert.equal(typeof execute, 'function')
 
-    await applyPatchInWorkspace(
-      workspaceRootPath,
-      `<patch>
-<add path="src/new.ts">
-+export const created = true;
-</add>
-<update path="src/existing.ts" move_to="src/target.ts">
-@@
- alpha
--beta
-+gamma
-</update>
-<delete path="src/remove.ts" />
-</patch>`,
-      {
-        onBeforeChange: (input) => {
-          beforeChanges.push(input)
-        },
-      },
+    const result = await execute?.(
+      { patch: standardPatch(`*** Update File: value.ts\n@@\n-const value = 1\n+const value = 2`).split('\n') },
+      { context: {}, messages: [], toolCallId: 'apply-patch-test' },
+    ) as {
+      body?: string
+      resultPresentation?: { kind?: string; changes?: unknown[] }
+      semantics?: Record<string, unknown>
+      status?: string
+      summary?: string
+    }
+
+    assert.equal(result.status, 'success')
+    assert.equal(result.resultPresentation?.kind, 'change_diff')
+    assert.equal(result.resultPresentation?.changes?.length, 1)
+    assert.equal(result.semantics?.operation, 'edit')
+    assert.match(result.summary ?? '', /Applied patch/u)
+    assert.match(result.body ?? '', /M value\.ts/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('apply_patch rejects the legacy string input at the AI-facing boundary', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-input-'))
+  const targetPath = path.join(workspaceRootPath, 'value.ts')
+
+  try {
+    await fs.writeFile(targetPath, 'const value = 1\n', 'utf8')
+    const applyPatchTool = createApplyPatchTool({ workspaceRootPath })
+    const execute = (applyPatchTool as {
+      execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
+    }).execute
+    const result = await execute?.(
+      { patch: standardPatch(`*** Update File: value.ts\n@@\n-const value = 1\n+const value = 2`) },
+      { context: {}, messages: [], toolCallId: 'apply-patch-input-test' },
+    ) as { status?: string; summary?: string }
+
+    assert.equal(result.status, 'error')
+    assert.match(result.summary ?? '', /array of complete patch lines/u)
+    assert.equal(await fs.readFile(targetPath, 'utf8'), 'const value = 1\n')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('apply_patch rejects legacy XML and heredoc wrappers', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-format-'))
+
+  try {
+    const applyPatchTool = createApplyPatchTool({ workspaceRootPath })
+    const execute = (applyPatchTool as {
+      execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
+    }).execute
+
+    for (const patch of [
+      ['<patch>', '<add path="value.ts">', '+const value = 1', '</add>', '</patch>'],
+      ['apply_patch <<EOF', '*** Begin Patch', '*** End Patch', 'EOF'],
+    ]) {
+      const result = await execute?.(
+        { patch },
+        { context: {}, messages: [], toolCallId: 'apply-patch-format-test' },
+      ) as { status?: string; summary?: string }
+
+      assert.equal(result.status, 'error')
+      assert.match(result.summary ?? '', /Invalid patch format/u)
+    }
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode can execute edit without exposing patch as a provider tool', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-edit-code-mode-'))
+  let codeModeExecutor: { dispose: () => Promise<void> } | null = null
+
+  try {
+    await fs.writeFile(path.join(workspaceRootPath, 'value.ts'), 'const value = 1\n', 'utf8')
+    const bundle = await createAgentToolBundle(
+      { workspaceRootPath },
+      { chatMode: 'agent', orchestrationMode: 'code_mode' },
+    )
+    codeModeExecutor = bundle.codeModeExecutor
+    assert.ok(bundle.registry.get('edit'))
+    assert.equal(bundle.registry.get('patch'), undefined)
+    assert.deepEqual(Object.keys(bundle.tools).sort(), ['code_mode', 'tool_search'])
+    assert.match(
+      ((bundle.tools.code_mode as { description?: string }).description ?? ''),
+      /tools\.edit\(\{ edits: Array<object>, path: string \}/u,
     )
 
-    assert.deepEqual(beforeChanges, [
-      {
-        absolutePath: path.join(workspaceRootPath, 'src', 'new.ts'),
-      },
-      {
-        absolutePath: path.join(workspaceRootPath, 'src', 'existing.ts'),
-        nextAbsolutePath: path.join(workspaceRootPath, 'src', 'target.ts'),
-      },
-      {
-        absolutePath: path.join(workspaceRootPath, 'src', 'remove.ts'),
-      },
-    ])
+    const execute = (bundle.tools.code_mode as {
+      execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
+    }).execute
+    const editCode = "const result = await tools.edit({ path: 'value.ts', edits: [{ targetContent: 'const value = 1', replacementContent: 'const value = 2', startLine: 1, endLine: 1 }] }); return { status: result.status }"
+    const result = await execute?.(
+      { code: editCode },
+      { context: {}, messages: [], toolCallId: 'edit-code-mode-test' },
+    ) as { body?: string; status?: string }
+
+    assert.equal(result.status, 'success')
+    assert.match(result.body ?? '', /"status": "success"/u)
+    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'value.ts'), 'utf8'), 'const value = 2\n')
+
   } finally {
+    await codeModeExecutor?.dispose()
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })

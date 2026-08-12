@@ -74,6 +74,26 @@ test('automatic compaction budgets tool results supplied only through accumulate
   assert.deepEqual(mergedMessages, [...messages, ...completedToolStep])
 })
 
+test('automatic compaction does not resurrect pre-compaction response history', () => {
+  const compactedMessages: ModelMessage[] = [
+    { role: 'user', content: 'Continue the task.' },
+    { role: 'assistant', content: 'Compacted continuation state.' },
+  ]
+  const preCompactionResponses: ModelMessage[] = [
+    { role: 'assistant', content: 'A large historical response.' },
+    ...completedToolStep,
+  ]
+
+  assert.deepEqual(
+    mergeAutomaticCompactionMessages({
+      messages: compactedMessages,
+      responseMessages: preCompactionResponses,
+      responseMessagesAreCumulative: true,
+    }),
+    compactedMessages,
+  )
+})
+
 test('automatic compaction is cancelled when the run is aborted', () => {
   const controller = new AbortController()
   controller.abort()

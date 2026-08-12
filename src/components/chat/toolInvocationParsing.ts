@@ -6,7 +6,6 @@ interface ToolArgumentsValue {
   path?: unknown
   command?: unknown
   cmd?: unknown
-  patchText?: unknown
   pattern?: unknown
   polling_ms?: unknown
   query?: unknown
@@ -114,48 +113,6 @@ export function getBasename(absolutePath: string) {
 
 export function getReadToolTarget(path: string, workspaceRootPath?: string | null) {
   return getBasename(workspaceRootPath ? getRelativeDisplayPath(workspaceRootPath, path) : path)
-}
-
-function readPatchText(value: unknown): string | null {
-  if (typeof value !== 'string') {
-    return null
-  }
-
-  const normalizedValue = value.replace(/\r\n?/g, '\n').trim()
-  return normalizedValue.length > 0 ? normalizedValue : null
-}
-
-function extractPatchFilePaths(patchText: string) {
-  const filePaths: string[] = []
-  const seenPaths = new Set<string>()
-  const normalizedPatchText = patchText.replace(/\r\n?/g, '\n')
-  const patchHeaderPattern = /^\*\*\* (?:Add|Delete|Update) File:\s+(.+)$/gmu
-
-  for (const match of normalizedPatchText.matchAll(patchHeaderPattern)) {
-    const filePath = match[1]?.trim()
-    if (!filePath || seenPaths.has(filePath)) {
-      continue
-    }
-
-    seenPaths.add(filePath)
-    filePaths.push(filePath)
-  }
-
-  return filePaths
-}
-
-export function getApplyPatchFileTargets(invocation: ToolInvocationTrace) {
-  if (invocation.toolName !== 'apply_patch') {
-    return []
-  }
-
-  const parsedArguments = parseCompleteToolArguments(invocation.argumentsText)
-  const patchText = readPatchText(parsedArguments?.patchText)
-  if (!patchText) {
-    return []
-  }
-
-  return extractPatchFilePaths(patchText)
 }
 
 export function readFirstText(value: unknown): string | null {

@@ -1,6 +1,5 @@
 import type { CompactionResult } from './contracts'
-import type { ContextBudget } from './budget'
-import { shouldCompactContext } from './budget'
+import { shouldCompactContext, type ContextBudget } from './budget'
 
 export class ContextCompactionRequiredError extends Error {
   readonly code = 'context_compaction_required' as const

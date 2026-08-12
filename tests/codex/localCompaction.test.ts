@@ -2,13 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ModelMessage } from 'ai'
 import {
-  buildFallbackCompactionPacket,
-} from '../../electron/chat/shared/compaction/fallback'
-import {
   compactModelMessages,
 } from '../../electron/chat/shared/compaction/service'
 import {
-  buildCompactionMessage,
   buildCompactionSourceDigest,
   hasUnresolvedToolCall,
   isSafeCompactionBoundary,
@@ -53,12 +49,7 @@ test('the v2 compactor uses the shared Markdown compression prompt', () => {
 })
 
 test('repeated compaction supplies the previous Markdown continuation before newer transcript data', () => {
-  const previousPacket = buildFallbackCompactionPacket({
-    messages: [{ role: 'user', content: 'Preserve the verified release state.' }],
-    modelId: 'test-model',
-    sourceDigest: 'previous-digest',
-    sourceMessageIds: ['model:0'],
-  })
+  const previousPacket = { continuationMarkdown: '## Current state\n- Preserve the verified release state.' }
   const prompt = buildCompactionRequestPrompt({
     messages: [{ role: 'assistant', content: 'The release check now has newer evidence.' }],
     previousPacket,
@@ -67,10 +58,10 @@ test('repeated compaction supplies the previous Markdown continuation before new
     sourceStartIndex: 1,
   })
 
-  assert.match(prompt, /Previous validated continuation Markdown/u)
+  assert.match(prompt, /PREVIOUS SUMMARY/u)
   assert.match(prompt, new RegExp(previousPacket.continuationMarkdown.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'))
-  assert.match(prompt, /complete updated state, not only a delta/u)
-  assert.match(prompt, /Never carry an item into openItems or nextActions/u)
+  assert.match(prompt, /complete, concise Markdown summary, not a delta/u)
+  assert.match(prompt, /Newer evidence wins/u)
   assert.match(prompt, /The release check now has newer evidence/u)
 })
 
@@ -227,37 +218,43 @@ test('automatic budget checks compact a completed tool step even when the target
     { role: 'assistant', content: 'The tool result is available for the next model step.' },
   ] as ModelMessage[]
 
-  const result = await compactModelMessages({
-    messages,
-    model: 'test-model',
-    reasoningEffort: 'low',
-    systemPromptTokens: 100,
-    toolSchemaTokens: 100,
-    contextWindowTokens: 16_000,
-    triggerRatio: 0.8,
-  })
-
-  assert.ok(result)
-  assert.equal(result.usedFallback, true)
-  assert.ok(result.boundaryIndex > 0)
+  await assert.rejects(
+    compactModelMessages({
+      messages,
+      model: 'test-model',
+      reasoningEffort: 'low',
+      systemPromptTokens: 100,
+      toolSchemaTokens: 100,
+      contextWindowTokens: 16_000,
+      triggerRatio: 0.8,
+    }),
+    /no compaction model stream was provided/u,
+  )
 })
 
-test('fallback compaction produces an ordinary Markdown continuation message', async () => {
+test('AI compaction produces a Markdown summary as the new history beginning', async () => {
   const messages = createConversationMessages()
-  const result = await compactModelMessages(createCompactionInput(messages))
+  const summary = '## Goal\n- Continue the requested workspace change.\n\n## Remaining work\n- Verify the implementation.'
+  const result = await compactModelMessages(createCompactionInput(messages, createTextStreamFactory(summary)))
 
   assert.ok(result)
-  assert.equal(result.usedFallback, true)
-  assert.equal(result.projectedMessages[0]?.role, 'user')
-  const continuation = result.projectedMessages.find((message) => message.role === 'assistant' && typeof message.content === 'string')
-  assert.equal(typeof continuation?.content, 'string')
-  assert.equal(continuation?.content, result.packet.continuationMarkdown)
-  assert.doesNotMatch(String(continuation?.content), /tidecode\.compaction_packet/u)
-  assert.equal(result.packet.schema, 'tidecode.compaction_packet/v2')
-  assert.equal(buildCompactionMessage(result.packet).content, result.packet.continuationMarkdown)
+  assert.equal(result.packet.continuationMarkdown, summary)
+  assert.deepEqual(result.projectedMessages[0], { role: 'assistant', content: summary })
+  assert.doesNotMatch(summary, /tidecode\.compaction_packet/u)
 })
 
-test('compaction strips execution mode context from prompts, fallback packets, and replay messages', () => {
+test('invalid non-Markdown AI output fails compaction instead of using a fallback', async () => {
+  const truncatedPacket = '{"schema":"tidecode.compaction_packet/v2","continuationMarkdown":"'.padEnd(4_000, 'x')
+  await assert.rejects(
+    compactModelMessages(createCompactionInput(
+      createConversationMessages(),
+      createTextStreamFactory(truncatedPacket),
+    )),
+    /invalid Markdown \(json\); no fallback summary was generated/u,
+  )
+})
+
+test('compaction strips execution mode context from prompts and summary messages', () => {
   const executionModeContext = [
     '<execution_mode_context mode="full">',
     'Internal execution details that are not conversation state.',
@@ -269,91 +266,41 @@ test('compaction strips execution mode context from prompts, fallback packets, a
     { role: 'user', content: 'Fix the validation behavior.' },
     { role: 'assistant', content: 'The next step is to update the regression test.' },
   ] as ModelMessage[]
-  const sourceDigest = buildCompactionSourceDigest(messages, 2)
-  const sourceMessageIds = ['model:0', 'model:1']
-  const packet = buildFallbackCompactionPacket({
-    messages: messages.slice(0, 2),
-    sourceDigest,
-    sourceMessageIds,
-  })
   const prompt = buildCompactionRequestPrompt({
     messages: messages.slice(0, 2),
-    sourceDigest,
-    sourceMessageIds,
+    sourceDigest: buildCompactionSourceDigest(messages, 2),
+    sourceMessageIds: ['model:0', 'model:1'],
   })
-  const replayMessage = buildCompactionMessage(packet)
+  const replayMessage = { role: 'assistant' as const, content: '## Current state\n- The application code is ready.' }
 
   assert.doesNotMatch(prompt, /execution_mode_context/u)
-  assert.doesNotMatch(JSON.stringify(packet), /execution_mode_context/u)
   assert.doesNotMatch(typeof replayMessage.content === 'string' ? replayMessage.content : '', /execution_mode_context/u)
 })
 
-test('valid model compaction output is accepted and malformed output falls back safely', async () => {
+test('valid AI Markdown is accepted and malformed AI output is rejected', async () => {
   const messages = createConversationMessages()
-  const window = selectCompactionWindow(messages, 10_000)
-  assert.ok(window)
-  const sourceDigest = buildCompactionSourceDigest(messages, window.boundaryIndex)
-  const packet = buildFallbackCompactionPacket({
-    messages: window.evictedMessages,
-    sourceDigest,
-    sourceMessageIds: window.sourceMessageIds,
-  })
-
+  const generatedMarkdown = '## Remaining work\n- Verify the requested workspace change.'
   const accepted = await compactModelMessages(createCompactionInput(
     messages,
-    createTextStreamFactory(JSON.stringify(packet)),
+    createTextStreamFactory(generatedMarkdown),
   ))
   assert.ok(accepted)
-  assert.equal(accepted.usedFallback, false)
-  assert.equal(accepted.packet.sourceDigest, sourceDigest)
+  assert.equal(accepted.packet.continuationMarkdown, generatedMarkdown)
+  assert.equal(accepted.projectedMessages[0]?.content, generatedMarkdown)
 
-  const reconciled = await compactModelMessages(createCompactionInput(
-    messages,
-    createTextStreamFactory(JSON.stringify({
-      ...packet,
-      continuationMarkdown: '## Remaining work\n- The compaction state ledger is complete.',
-      completedWork: ['Implemented the compaction state ledger.'],
-      openItems: ['The compaction state ledger is complete.', 'Verify the remaining documentation.'],
-      nextActions: ['The compaction state ledger is complete.', 'Verify the remaining documentation.'],
-    })),
-  ))
-  assert.ok(reconciled)
-  assert.deepEqual(reconciled.packet.openItems, ['Verify the remaining documentation.'])
-  assert.deepEqual(reconciled.packet.nextActions, ['Verify the remaining documentation.'])
-  assert.doesNotMatch(reconciled.packet.continuationMarkdown, /## Remaining work[\s\S]*compaction state ledger/iu)
-  assert.match(reconciled.packet.continuationMarkdown, /## Completed work/iu)
-
-  const generatedMarkdown = 'The requested change is complete. Run the release validation next.'
-  const previousPacket = buildFallbackCompactionPacket({
-    messages: [{ role: 'user', content: 'Preserve the release workflow behavior.' }],
-    modelId: 'test-model',
-    sourceDigest: 'previous-digest',
-    sourceMessageIds: ['model:0'],
-  })
-  const acceptedMarkdown = await compactModelMessages({
-    ...createCompactionInput(messages, createTextStreamFactory(generatedMarkdown)),
-    previousPacket,
-  })
-  assert.ok(acceptedMarkdown)
-  assert.equal(acceptedMarkdown.usedFallback, false)
-  assert.equal(acceptedMarkdown.packet.continuationMarkdown, generatedMarkdown)
-  assert.equal(
-    acceptedMarkdown.projectedMessages.find((message) => message.role === 'assistant')?.content,
-    generatedMarkdown,
+  await assert.rejects(
+    compactModelMessages(createCompactionInput(
+      [...messages, { role: 'user', content: 'A distinct retry input.' }],
+      createTextStreamFactory('{"not":"a packet"}'),
+    )),
+    /invalid Markdown \(json\); no fallback summary was generated/u,
   )
-
-  const recovered = await compactModelMessages(createCompactionInput(
-    [...messages, { role: 'user', content: 'A distinct retry input.' }],
-    createTextStreamFactory('{"not":"a packet"}'),
-  ))
-  assert.ok(recovered)
-  assert.equal(recovered.usedFallback, true)
 })
 
 test('same compaction digest shares one in-flight summarizer call', async () => {
   const messages = createConversationMessages()
   let calls = 0
-  const createStream = createTextStreamFactory('not valid packet output', () => {
+  const createStream = createTextStreamFactory('## Current state\n- The same compaction is already in flight.', () => {
     calls += 1
   })
   const [first, second] = await Promise.all([

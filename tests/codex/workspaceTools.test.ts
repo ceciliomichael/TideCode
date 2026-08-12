@@ -6,7 +6,6 @@ import path from 'node:path'
 import test from 'node:test'
 import { createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
 import {
-  createApplyPatchToolResult,
   createGlobToolResult,
   createGrepToolResult,
   createListToolResult,
@@ -82,16 +81,6 @@ interface ExecutableWriteTool {
   execute: (input: { content: string; path: string }) => Promise<ExecutableToolResult>
 }
 
-interface ExecutableReplaceTool {
-  execute: (input: {
-    endLine: number
-    path: string
-    replacementContent: string
-    startLine: number
-    targetContent: string
-  }) => Promise<ExecutableToolResult>
-}
-
 async function createWorkspaceFixture() {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-workspace-tools-'))
 
@@ -162,6 +151,45 @@ test('createListToolResult reports empty directories explicitly', async () => {
     assert.equal(result.status, 'success')
     assert.equal(result.body, 'Empty directory')
     assert.equal(result.summary, 'Empty directory')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('read keeps synthetic EOF metadata out of model source content', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const filePath = path.join(workspaceRootPath, 'notes.md')
+
+  try {
+    const result = await createReadToolResult(filePath, 'notes.md', undefined, undefined)
+
+    assert.equal(result.status, 'success')
+    assert.equal(result.body, 'This note mentions list and needle.')
+    assert.doesNotMatch(result.body ?? '', /End of file/u)
+    assert.equal(result.displayBody, 'This note mentions list and needle.\n\n(End of file - 1 lines total)')
+    assert.match(result.displayBody ?? '', /End of file - 1 lines total/u)
+    assert.deepEqual(result.semantics, {
+      end_line: 1,
+      is_directory: false,
+      line_count: 1,
+      offset: 1,
+      start_line: 1,
+      truncated_by_bytes: false,
+      truncated_by_lines: false,
+    })
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('list rejects a file path with an actionable type error', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+
+  try {
+    await assert.rejects(
+      createListToolResult(workspaceRootPath, path.join(workspaceRootPath, 'notes.md'), 'notes.md'),
+      /Expected a directory for list.*Use read for the file/u,
+    )
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -448,16 +476,34 @@ test('read-only workspace resolution explains duplicated workspace roots', async
       resolveReadOnlyTargetPath(workspaceRootPath, duplicatedWorkspaceRootPath, 'sandbox'),
       (error: unknown) => {
         assert.ok(error instanceof Error)
-        assert.match(error.message, /Path repeats the workspace root name/u)
-        assert.ok(error.message.includes(`Workspace root is ${workspaceRootPath}`))
-        assert.match(error.message, /use the path relative to the root instead/iu)
+        assert.equal(error.message, 'Invalid path: workspace root repeated. Use a path relative to the workspace root.')
         return true
       },
     )
 
     assert.throws(
       () => resolveReadableTargetPath(workspaceRootPath, path.join(duplicatedWorkspaceRootPath, 'src', 'new.ts'), 'sandbox'),
-      /Path repeats the workspace root name/u,
+      /Invalid path: workspace root repeated/u,
+    )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('read-only workspace resolution explains that path strings cannot contain multiple roots', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+
+  try {
+    await assert.rejects(
+      resolveReadOnlyTargetPath(workspaceRootPath, 'src electron', 'sandbox'),
+      (error: unknown) => {
+        assert.ok(error instanceof Error)
+        assert.equal(
+          error.message,
+          'Path not found: src electron. Use a path relative to the workspace root. The path field accepts one path only; if you meant multiple roots, use one call per root instead of joining them with spaces.',
+        )
+        return true
+      },
     )
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -562,7 +608,7 @@ test('sandbox list rejects directories outside the workspace and global .agents'
   }
 })
 
-test('sandbox write and replace remain blocked inside global .agents', async () => {
+test('sandbox write remains blocked inside global .agents', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
   const globalSkillFilePath = path.join(
     getGlobalAgentsDirectory(),
@@ -580,18 +626,8 @@ test('sandbox write and replace remain blocked inside global .agents', async () 
       path: globalSkillFilePath,
       content: '# Changed skill\n',
     })
-    const replaceResult = await (tools.edit as unknown as ExecutableReplaceTool).execute({
-      path: globalSkillFilePath,
-      endLine: 1,
-      replacementContent: '# Changed skill',
-      startLine: 1,
-      targetContent: '# Protected skill',
-    })
-
     assert.equal(writeResult.status, 'error')
     assert.match(writeResult.summary ?? '', /outside the workspace root/u)
-    assert.equal(replaceResult.status, 'error')
-    assert.match(replaceResult.summary ?? '', /outside the workspace root/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -659,13 +695,21 @@ test('workspace tool schemas use path consistently for filesystem targets', asyn
       { chatMode: 'agent' },
     )
 
-    for (const toolName of ['list', 'read', 'glob', 'grep', 'write', 'edit']) {
+    for (const toolName of ['list', 'read', 'glob', 'grep', 'edit', 'write']) {
       const tool = tools[toolName] as { inputSchema: unknown }
       const schema = await asSchema(tool.inputSchema).jsonSchema as {
         properties?: Record<string, unknown>
       }
       assert.ok(schema.properties && 'path' in schema.properties, `${toolName} should expose path`)
     }
+
+    const editSchemaTool = tools.edit as { inputSchema: unknown }
+    const editSchema = await asSchema(editSchemaTool.inputSchema).jsonSchema as {
+      properties?: Record<string, unknown>
+    }
+    assert.ok(editSchema.properties && 'path' in editSchema.properties)
+    assert.ok(editSchema.properties && 'edits' in editSchema.properties)
+    assert.equal(tools.patch, undefined)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -742,7 +786,7 @@ test('createAgentTools glob and grep allow explicit external paths in Full Acces
   }
 })
 
-test('createAgentTools write and replace allow explicit external files in Full Access mode', async () => {
+test('createAgentTools write allows explicit external files in Full Access mode', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
   const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-outside-write-'))
   const outsideFilePath = path.join(outsideDirectoryPath, 'external-write.txt')
@@ -764,16 +808,7 @@ test('createAgentTools write and replace allow explicit external files in Full A
     assert.equal(writeResult.status, 'success')
     assert.equal(await fs.readFile(outsideFilePath, 'utf8'), 'written\n')
 
-    const replaceResult = await (tools.edit as unknown as ExecutableReplaceTool).execute({
-      path: outsideFilePath,
-      endLine: 1,
-      replacementContent: 'patched',
-      startLine: 1,
-      targetContent: 'written',
-    })
-
-    assert.equal(replaceResult.status, 'success')
-    assert.equal(await fs.readFile(outsideFilePath, 'utf8'), 'patched\n')
+    assert.equal(await fs.readFile(outsideFilePath, 'utf8'), 'written\n')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
     await fs.rm(outsideDirectoryPath, { force: true, recursive: true })
@@ -851,56 +886,6 @@ test('createAgentTools write rejects line-ending-only rewrites', async () => {
     assert.equal(result.status, 'error')
     assert.match(result.summary ?? '', /Write did not change src[/\\]line-ending-only\.ts/u)
     assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'export const value = 1\r\n')
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('createApplyPatchToolResult diffs against the original file snapshot for repeated file edits', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-workspace-tools-'))
-
-  try {
-    await fs.writeFile(path.join(workspaceRootPath, 'sample.txt'), 'one\ntwo\nthree\n', 'utf8')
-
-    const result = await createApplyPatchToolResult(
-      {
-        checkpointId: null,
-        terminalExecutionMode: 'sandbox',
-        workspaceRootPath,
-      },
-      `<patch>
-<update path="sample.txt">
-@@
--one
-+ONE
-</update>
-<update path="sample.txt">
-@@
--two
-+TWO
-</update>
-</patch>`,
-    )
-
-    assert.equal(result.resultPresentation?.kind, 'change_diff')
-    assert.equal(result.resultPresentation.changes.length, 1)
-
-    const [change] = result.resultPresentation.changes
-    assert.equal(change.fileName, 'sample.txt')
-    assert.equal(change.oldContent, 'one\ntwo\nthree\n')
-    assert.equal(change.newContent, 'ONE\nTWO\nthree\n')
-    assert.equal(change.kind, 'update')
-    assert.match(result.body ?? '', /Patch applied successfully/u)
-    assert.match(result.body ?? '', /M sample\.txt \(\+2 -2\)/u)
-    assert.deepEqual(result.semantics?.changed_paths, ['sample.txt'])
-    assert.deepEqual(result.semantics?.file_changes, [
-      {
-        added_line_count: 2,
-        kind: 'update',
-        path: 'sample.txt',
-        removed_line_count: 2,
-      },
-    ])
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

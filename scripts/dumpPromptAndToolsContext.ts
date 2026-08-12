@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { buildChatModeSystemPromptBreakdown } from '../electron/chat/shared/prompts/mode'
 import { buildChatSystemPrompt } from '../electron/chat/shared/messages'
-import { createAgentTools } from '../electron/chat/shared/tools/factory'
+import { createAgentToolBundle } from '../electron/chat/shared/tools/factory'
 import { describeTools, stableStringify } from '../electron/chat/cache/canonicalization'
 import { listEnabledSkills } from '../electron/skills/service'
 import { approximateTokenCount } from '../src/lib/contextUsage'
@@ -75,14 +75,17 @@ function countOccurrences(value: string, pattern: RegExp) {
 async function run() {
   const workspaceRootPath = process.cwd()
   const chatMode = 'agent' as const
+  const orchestrationMode = 'code_mode' as const
   const providerId = 'openai' as const
   const terminalExecutionMode = 'sandbox' as const
   const outputPath = parseOutputPath(workspaceRootPath)
 
   const promptBreakdown = buildChatModeSystemPromptBreakdown(chatMode, workspaceRootPath, {
+    orchestrationMode,
     terminalExecutionMode,
   })
   const systemPrompt = buildChatSystemPrompt(chatMode, workspaceRootPath, {
+    orchestrationMode,
     terminalExecutionMode,
   })
   if (systemPrompt !== promptBreakdown.systemPrompt) {
@@ -103,7 +106,7 @@ async function run() {
 
   const enabledSkills = await listEnabledSkills(workspaceRootPath)
   const mockWebContents = { send: () => undefined } as unknown as WebContents
-  const tools = await createAgentTools(
+  const toolBundle = await createAgentToolBundle(
     {
       checkpointId: null,
       conversationId: 'prompt-context-audit',
@@ -114,9 +117,11 @@ async function run() {
     {
       chatMode,
       enabledSkills,
+      orchestrationMode,
       providerId,
     },
   )
+  const tools = toolBundle.tools
 
   const sortedTools = sortToolSet(tools)
   const describedTools = describeTools(sortedTools)
@@ -183,6 +188,7 @@ async function run() {
   }
 
   fs.writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
+  await toolBundle.codeModeExecutor?.dispose()
 
   const largestSystemComponents = systemComponents
     .slice()

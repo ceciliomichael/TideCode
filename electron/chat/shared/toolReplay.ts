@@ -7,6 +7,8 @@ import {
   parseWebSearchToolResultBody,
 } from '../../../src/lib/webSearchResults'
 import type { AgentToolExecutionResult } from './toolTypes'
+import { projectToolOutputForModel } from './tools/toolOutputBudget'
+import { persistToolOutput } from './tools/toolOutputStore'
 
 export function isAgentToolExecutionResult(value: unknown): value is AgentToolExecutionResult {
   if (typeof value !== 'object' || value === null) return false
@@ -123,6 +125,71 @@ export function createCanonicalToolModelOutput(input: {
   return { type: 'text', value: getToolResultModelContent(structuredContent) }
 }
 
+export async function prepareToolExecutionResultForModel(input: {
+  result: AgentToolExecutionResult
+  toolName: string
+}) {
+  const body = input.result.body
+  if (typeof body !== 'string') {
+    return input.result
+  }
+
+  const initialProjection = projectToolOutputForModel(body)
+  if (!initialProjection.truncated) {
+    return input.result
+  }
+
+  const existingOutputId =
+    typeof input.result.semantics?.output_id === 'string' ? input.result.semantics.output_id : undefined
+  let outputId = existingOutputId
+  if (!outputId) {
+    try {
+      outputId = await persistToolOutput(input.toolName, body)
+    } catch (error) {
+      console.warn('Unable to persist truncated tool output for later inspection.', error)
+    }
+  }
+
+  const projection = projectToolOutputForModel(body, outputId)
+  return {
+    ...input.result,
+    body: projection.text,
+    ...(outputId
+      ? {
+          semantics: {
+            ...input.result.semantics,
+            output_id: outputId,
+          },
+        }
+      : {}),
+    truncated: true,
+  }
+}
+
+export async function createBoundedCanonicalToolModelOutput(input: {
+  argumentsValue: unknown
+  output: unknown
+  toolCallId: string
+  toolName: string
+}): Promise<ToolResultOutput> {
+  const result = await prepareToolExecutionResultForModel({
+    result: normalizeToolExecutionResult(input.toolName, input.output),
+    toolName: input.toolName,
+  })
+
+  if (result.modelOutput) {
+    return result.modelOutput
+  }
+
+  const structuredContent = createCanonicalToolResultContent({
+    argumentsValue: input.argumentsValue,
+    result,
+    toolCallId: input.toolCallId,
+    toolName: input.toolName,
+  })
+  return { type: 'text', value: getToolResultModelContent(structuredContent) }
+}
+
 export function withCanonicalToolModelOutputs(tools: ToolSet): ToolSet {
   return Object.fromEntries(Object.keys(tools).sort().map((toolName) => {
     const tool = tools[toolName]
@@ -131,13 +198,13 @@ export function withCanonicalToolModelOutputs(tools: ToolSet): ToolSet {
       toolName,
       {
         ...tool,
-        toModelOutput: tool.toModelOutput ?? ((input: { input: unknown; output: unknown; toolCallId: string }) =>
-          createCanonicalToolModelOutput({
+        toModelOutput: (input: { input: unknown; output: unknown; toolCallId: string }) =>
+          createBoundedCanonicalToolModelOutput({
             argumentsValue: input.input,
             output: input.output,
             toolCallId: input.toolCallId,
             toolName,
-          })),
+          }),
       },
     ]
   })) as ToolSet

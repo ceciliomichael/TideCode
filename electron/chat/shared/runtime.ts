@@ -14,6 +14,7 @@ import type {
 } from '../../../src/types/chat'
 import { approximateTokenCount } from '../../../src/lib/contextUsage'
 import { normalizeContextCompactionSettings } from '../../../src/lib/contextCompactionSettings'
+import { getStoredSettings } from '../../settings/store'
 import { listEnabledSkills } from '../../skills/service'
 import { buildPromptContextManifest } from '../cache/canonicalization'
 import { applyPromptCacheBreakpoints, derivePromptCacheKey } from '../cache/providerPolicies'
@@ -42,10 +43,12 @@ import {
   ensureCurrentExecutionModeContext,
 } from './messages'
 import { appendStoredMessages } from '../../history/store'
-import { createAgentTools } from './tools'
+import { createAgentToolBundle } from './tools'
+import type { CodeModeExecutor } from './codeMode/executor'
 import { terminateAllBackgroundSessionsForTurn } from './tools/terminalTools'
 import { sortToolSet } from './runtimeToolSet'
 import { continueToolLoopUntilModelStops } from './toolLoopPolicy'
+import { projectModelMessagesForContext } from './tools/toolOutputBudget'
 import { normalizeWorkspacePath } from '../../workspace/paths'
 import {
   emitChatStreamEvent,
@@ -70,6 +73,7 @@ interface RuntimePromptOptions {
 
 export interface ProviderStreamFactoryInput {
   cacheKey: string
+  maxOutputTokens?: number
   messages: ModelMessage[]
   model: string
   reasoningEffort: StartChatStreamInput['reasoningEffort']
@@ -128,6 +132,7 @@ export async function runToolEnabledChatStream(input: {
   const runId = randomUUID()
   const conversationId = input.startInput.conversationId?.trim() || null
   let workspaceRootPath: string | null = null
+  let codeModeExecutor: CodeModeExecutor | null = null
   let runWasRecorded = false
   let queuedHistoryWrites = Promise.resolve()
   const queueHistoryWrite = (action: () => Promise<unknown>) => {
@@ -137,7 +142,8 @@ export async function runToolEnabledChatStream(input: {
   try {
     workspaceRootPath = normalizeWorkspacePath(input.startInput.agentContextRootPath)
     const enabledSkills = await listEnabledSkills(workspaceRootPath)
-    const rawTools = await createAgentTools(
+    const orchestrationMode = 'code_mode' as const
+    const toolBundle = await createAgentToolBundle(
       {
         checkpointId: resolveActiveCheckpointId(input.startInput.messages),
         conversationId: input.startInput.conversationId ?? null,
@@ -149,15 +155,19 @@ export async function runToolEnabledChatStream(input: {
       {
         chatMode: input.startInput.chatMode,
         enabledSkills,
+        orchestrationMode,
         providerId: input.startInput.providerId,
       },
     )
+    codeModeExecutor = toolBundle.codeModeExecutor
+    const rawTools = toolBundle.tools
     const tools = applyPromptCacheBreakpoints(
       withCanonicalToolModelOutputs(sortToolSet(rawTools)),
       input.startInput.providerId,
     )
     const promptOptions = {
       ...input.promptOptions,
+      orchestrationMode,
       terminalExecutionMode: input.startInput.terminalExecutionMode,
     }
     const prompt = buildChatPrompt({
@@ -227,6 +237,8 @@ export async function runToolEnabledChatStream(input: {
       runWasRecorded = true
     }
 
+    let hasCompactedThisRun = false
+
     const stream = await input.createStream({
       cacheKey,
       messages: modelMessages,
@@ -260,6 +272,7 @@ export async function runToolEnabledChatStream(input: {
         const compactionMessages = mergeAutomaticCompactionMessages({
           messages: currentStepMessages,
           responseMessages: stepInput.responseMessages,
+          responseMessagesAreCumulative: hasCompactedThisRun,
         })
 
         if (consumedSteerMessages.length > 0) {
@@ -291,12 +304,16 @@ export async function runToolEnabledChatStream(input: {
             : undefined
         }
 
+        const liveContextCompaction = await getStoredSettings()
+          .then((settings) => normalizeContextCompactionSettings(settings.contextCompaction))
+          .catch(() => contextCompaction)
+
         const compactionBudgetInput = {
-          contextWindowTokens: contextCompaction.contextWindowTokens,
+          contextWindowTokens: liveContextCompaction.contextWindowTokens,
           messages: compactionMessages,
           systemPromptTokens,
           toolSchemaTokens: promptContext.toolSchemaTokens,
-          triggerRatio: contextCompaction.triggerPercent / 100,
+          triggerRatio: liveContextCompaction.triggerPercent / 100,
         }
         const compactionRequired = shouldCompactContext(calculateModelMessagesBudget(compactionBudgetInput))
 
@@ -318,6 +335,7 @@ export async function runToolEnabledChatStream(input: {
           compacted = await compactModelMessages({
             createStream: (compactionInput) => input.createStream({
               cacheKey: `${cacheKey}:compaction`,
+              maxOutputTokens: compactionInput.maxOutputTokens,
               messages: compactionInput.messages,
               model: compactionInput.model,
               reasoningEffort: compactionInput.reasoningEffort as StartChatStreamInput['reasoningEffort'],
@@ -327,7 +345,7 @@ export async function runToolEnabledChatStream(input: {
               system: compactionInput.system,
               tools: {},
             }),
-            messages: currentStepMessages,
+            messages: compactionMessages,
             model: input.startInput.modelId,
             providerId: input.startInput.providerId,
             onStarted: () => {
@@ -344,8 +362,8 @@ export async function runToolEnabledChatStream(input: {
             systemPromptTokens,
             toolSchemaTokens: promptContext.toolSchemaTokens,
             previousPacket: latestCompactionPacket,
-            contextWindowTokens: contextCompaction.contextWindowTokens,
-            triggerRatio: contextCompaction.triggerPercent / 100,
+            contextWindowTokens: liveContextCompaction.contextWindowTokens,
+            triggerRatio: liveContextCompaction.triggerPercent / 100,
             signal: input.abortController.signal,
           })
         } catch (error) {
@@ -382,6 +400,7 @@ export async function runToolEnabledChatStream(input: {
           required: compactionRequired,
         })
 
+        hasCompactedThisRun = true
         replayMessages = [...compacted.projectedMessages]
         latestCompactionPacket = compacted.packet
         if (conversationId) {
@@ -399,7 +418,6 @@ export async function runToolEnabledChatStream(input: {
             parentPacketId: compacted.packet.parentPacketId,
             sourceDigest: compacted.sourceDigest,
             sourceMessageIds: compacted.packet.sourceMessageIds,
-            usedFallback: compacted.usedFallback,
           }))
           emitChatStreamEvent(input.webContents, {
             compactionId: compacted.packet.packetId,
@@ -434,6 +452,112 @@ export async function runToolEnabledChatStream(input: {
     // emit a completed event.
     if (processedStream.wasAborted || input.abortController.signal.aborted) {
       throw new Error('Chat stream aborted.')
+    }
+
+    // A run can end immediately after a completed tool call. In that case the
+    // provider never asks for another model step, so prepareStep has no chance
+    // to install the compacted projection. Do one final AI-only compaction pass
+    // before committing the completed replay so a finished turn cannot leave
+    // the active canonical context over the configured threshold.
+    if (conversationId) {
+      const finalContextCompaction = await getStoredSettings()
+        .then((settings) => normalizeContextCompactionSettings(settings.contextCompaction))
+        .catch(() => contextCompaction)
+      const finalCompactionMessages = projectModelMessagesForContext(replayMessages)
+      const finalCompactionBudgetInput = {
+        contextWindowTokens: finalContextCompaction.contextWindowTokens,
+        messages: finalCompactionMessages,
+        systemPromptTokens,
+        toolSchemaTokens: promptContext.toolSchemaTokens,
+        triggerRatio: finalContextCompaction.triggerPercent / 100,
+      }
+      const finalCompactionRequired = shouldCompactContext(
+        calculateModelMessagesBudget(finalCompactionBudgetInput),
+      )
+
+      if (finalCompactionRequired) {
+        const compactionAttemptId = randomUUID()
+        let compactionStarted = false
+        const emitFinalCompactionFailed = (reason: 'aborted' | 'error' | 'unavailable') => {
+          if (!compactionStarted) return
+          emitChatStreamEvent(input.webContents, {
+            attemptId: compactionAttemptId,
+            conversationId,
+            reason,
+            streamId: input.streamId,
+            type: 'compaction_failed',
+          })
+        }
+
+        try {
+          const compacted = await compactModelMessages({
+            createStream: (compactionInput) => input.createStream({
+              cacheKey: `${cacheKey}:compaction:final`,
+              maxOutputTokens: compactionInput.maxOutputTokens,
+              messages: compactionInput.messages,
+              model: compactionInput.model,
+              reasoningEffort: compactionInput.reasoningEffort as StartChatStreamInput['reasoningEffort'],
+              signal: compactionInput.signal,
+              stopWhen: stepCountIs(1),
+              maxSteps: 1,
+              system: compactionInput.system,
+              tools: {},
+            }),
+            messages: finalCompactionMessages,
+            model: input.startInput.modelId,
+            providerId: input.startInput.providerId,
+            onStarted: () => {
+              compactionStarted = true
+              emitChatStreamEvent(input.webContents, {
+                attemptId: compactionAttemptId,
+                conversationId,
+                streamId: input.streamId,
+                type: 'compaction_started',
+              })
+            },
+            reasoningEffort: input.startInput.reasoningEffort,
+            systemPromptTokens,
+            toolSchemaTokens: promptContext.toolSchemaTokens,
+            previousPacket: latestCompactionPacket,
+            contextWindowTokens: finalContextCompaction.contextWindowTokens,
+            triggerRatio: finalContextCompaction.triggerPercent / 100,
+            signal: input.abortController.signal,
+          })
+
+          if (input.abortController.signal.aborted) {
+            emitFinalCompactionFailed('aborted')
+          } else if (!compacted) {
+            emitFinalCompactionFailed('unavailable')
+          } else {
+            replayMessages = [...compacted.projectedMessages]
+            latestCompactionPacket = compacted.packet
+            await safelyPersistHistory(() => recordCompactionCommitted({
+              anchorUserMessageId: replayAnchorUserMessageId,
+              compactionId: compacted.packet.packetId,
+              conversationId,
+              contextFingerprint,
+              modelId: input.startInput.modelId,
+              packet: compacted.packet,
+              projectedMessages: compacted.projectedMessages,
+              providerId: input.startInput.providerId,
+              projectionVersion: compacted.projectionVersion,
+              reasoningRetention: compacted.reasoningRetention,
+              parentPacketId: compacted.packet.parentPacketId,
+              sourceDigest: compacted.sourceDigest,
+              sourceMessageIds: compacted.packet.sourceMessageIds,
+            }))
+            emitChatStreamEvent(input.webContents, {
+              compactionId: compacted.packet.packetId,
+              conversationId,
+              streamId: input.streamId,
+              type: 'compaction_committed',
+            })
+          }
+        } catch (error) {
+          emitFinalCompactionFailed(input.abortController.signal.aborted ? 'aborted' : 'error')
+          console.error('Final AI compaction failed; preserving the completed run.', error)
+        }
+      }
     }
 
     if (conversationId) {
@@ -510,5 +634,6 @@ export async function runToolEnabledChatStream(input: {
         runId,
       ).catch(() => undefined)
     }
+    await codeModeExecutor?.dispose().catch(() => undefined)
   }
 }

@@ -58,10 +58,17 @@ export function selectSemanticTailMessages(
   const selected = selectedGroups.flat()
   const latestUser = [...messages].reverse().find((message) => message.role === 'user')
   if (latestUser && !selected.includes(latestUser)) {
-    const withLatestUser = [latestUser, ...selected]
-    if (estimateModelMessagesTokens(withLatestUser) <= targetHistoryTokens || selected.length === 0) {
-      return withLatestUser
+    let withLatestUser = [latestUser, ...selected]
+    // If including the user message pushes us over budget, evict older groups (which are at the start of `selectedGroups` because we unshifted them).
+    // `selectedGroups` is ordered oldest to newest, but wait:
+    // the loop does: for (let index = groups.length - 1; index >= 0; index -= 1) { selectedGroups.unshift(group) }
+    // So `selectedGroups` is actually ordered oldest to newest.
+    // To evict the oldest, we remove from the start of `selectedGroups`.
+    while (estimateModelMessagesTokens(withLatestUser) > targetHistoryTokens && selectedGroups.length > 0) {
+      selectedGroups.shift()
+      withLatestUser = [latestUser, ...selectedGroups.flat()]
     }
+    return withLatestUser
   }
 
   return selected
@@ -75,8 +82,6 @@ export interface CompactionProjectionInput {
 }
 
 export function buildCompactionProjection(input: CompactionProjectionInput) {
-  const anchors = sanitizeModelMessages(input.anchorMessages.map(sanitizeProjectedMessage))
-    .filter((message) => !isCompactionContinuationMessage(message, input.packet.continuationMarkdown))
   const tail = selectSemanticTailMessages(
     input.tailMessages
       .map(sanitizeProjectedMessage)
@@ -84,7 +89,9 @@ export function buildCompactionProjection(input: CompactionProjectionInput) {
     input.tailBudgetTokens ?? Number.MAX_SAFE_INTEGER,
   )
   return sanitizeModelMessages([
-    ...anchors,
+    // The AI-generated summary is the new beginning of provider history. The
+    // original messages remain in durable display history and are not replayed
+    // before this carried-forward summary.
     buildContinuationMessage(input.packet.continuationMarkdown),
     ...tail,
   ])

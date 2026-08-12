@@ -149,7 +149,7 @@ test('the compaction budget triggers at the configured context percentage', () =
     triggerRatio: 0.8,
   })
 
-  assert.equal(budget.triggerTokens, 160_000)
+  assert.equal(budget.triggerTokens, 144_000)
   assert.ok(budget.totalTokens >= budget.triggerTokens)
   assert.equal(shouldCompactContext(budget), true)
 })

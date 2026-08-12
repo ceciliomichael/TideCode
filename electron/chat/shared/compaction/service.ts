@@ -8,23 +8,13 @@ import {
   buildCompactionSystemPrompt,
 } from './prompt'
 import {
-  buildFallbackCompactionPacket,
-} from './fallback'
-import {
   buildCompactionSourceDigest,
   selectCompactionWindow,
 } from './window'
 import { buildCompactionProjection } from './projection'
-import {
-  mergeCompactionPacketState,
-  resolveProviderReasoningCapability,
-  resolveReasoningRetention,
-} from './reasoning'
-import {
-  parseCompactionModelOutput,
-  normalizeCompactionPacket,
-} from './validate'
-import { buildContinuationMarkdownFromPacket, validateContinuationMarkdown } from './markdown'
+import { resolveProviderReasoningCapability, resolveReasoningRetention } from './reasoning'
+import { validateContinuationMarkdown } from './markdown'
+import { COMPACTION_MAX_OUTPUT_TOKENS } from './contracts'
 import type {
   CompactionPacket,
   CompactModelMessagesInput,
@@ -36,7 +26,9 @@ const COMPACTION_TIMEOUT_MS = 90_000
 const inFlightCompactions = new Map<string, Promise<CompactionResult | null>>()
 
 async function collectCompactionText(input: CompactModelMessagesInput, prompt: string) {
-  if (!input.createStream) return null
+  if (!input.createStream) {
+    throw new Error('AI compaction is unavailable because no compaction model stream was provided.')
+  }
   const abortController = new AbortController()
   const timeoutId = setTimeout(() => abortController.abort(), COMPACTION_TIMEOUT_MS)
   if (input.signal) {
@@ -47,6 +39,7 @@ async function collectCompactionText(input: CompactModelMessagesInput, prompt: s
   try {
     const stream = await input.createStream({
       messages: [{ role: 'user', content: prompt }],
+      maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
       model: input.model,
       providerId: input.providerId,
       reasoningEffort: input.reasoningEffort,
@@ -59,8 +52,11 @@ async function collectCompactionText(input: CompactModelMessagesInput, prompt: s
     }
     return text.trim()
   } catch (error) {
-    console.warn('Local compaction summarizer failed; using deterministic recovery.', error)
-    return null
+    if (input.signal?.aborted) return null
+    throw new Error(
+      `AI compaction failed: ${error instanceof Error ? error.message : 'the model stream failed'}`,
+      { cause: error },
+    )
   } finally {
     clearTimeout(timeoutId)
   }
@@ -93,7 +89,10 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   if (!input.force && !shouldCompactContext(budget)) return null
 
   const previousPacket = input.previousPacket ?? null
-  const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens, { previousPacket })
+  const targetHistoryTokens = input.force
+    ? Math.min(budget.targetHistoryTokens, 4_000)
+    : budget.targetHistoryTokens
+  const window = selectCompactionWindow(input.messages, targetHistoryTokens, { previousPacket })
   if (!window) return null
   if (input.signal?.aborted) return null
 
@@ -119,124 +118,21 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
     sourceStartIndex: window.sourceStartIndex,
   })
   const rawSummary = await collectCompactionText(input, prompt)
-  if (input.signal?.aborted) return null
-  const parsedModelPacket = rawSummary
-    ? parseCompactionModelOutput(rawSummary, {
-        modelId: input.model,
-        parentPacketId: previousPacket?.packetId ?? null,
-        providerId: input.providerId,
-        reasoningMode: actualRetention.mode,
-        sourceDigest,
-        sourceMessageIds: window.sourceMessageIds,
-        sourceRange: {
-          endIndex: window.sourceEndIndex,
-          startIndex: window.sourceStartIndex,
-        },
-      })
-    : null
-  const fallbackPacket = buildFallbackCompactionPacket({
-    messages: window.evictedMessages,
-    modelId: input.model,
-    parentPacketId: previousPacket?.packetId ?? null,
-    providerId: input.providerId,
-    sourceDigest,
-    sourceMessageIds: window.sourceMessageIds,
-    sourceStartIndex: window.sourceStartIndex,
-    sourceRange: {
-      endIndex: window.sourceEndIndex,
-      startIndex: window.sourceStartIndex,
-    },
-    previousPacket,
-  })
-  const plainMarkdown = rawSummary ? validateContinuationMarkdown(rawSummary) : null
-  const modelPacket = parsedModelPacket ?? (plainMarkdown?.valid
-    ? { ...fallbackPacket, continuationMarkdown: plainMarkdown.normalized }
-    : null)
-  const normalizedPacket = normalizeCompactionPacket(modelPacket ?? fallbackPacket, {
-    modelId: input.model,
-    parentPacketId: previousPacket?.packetId ?? null,
-    providerId: input.providerId,
-    reasoningMode: actualRetention.mode,
-    sourceDigest,
-    sourceMessageIds: window.sourceMessageIds,
-    sourceRange: {
-      endIndex: window.sourceEndIndex,
-      startIndex: window.sourceStartIndex,
-    },
-  })
-  if (!normalizedPacket) return null
-
-  const mergedPacket = mergeCompactionPacketState({
-    current: normalizedPacket,
-    parentPacketId: previousPacket?.packetId ?? null,
-    previous: previousPacket,
-  })
-  const packet = parsedModelPacket
-    ? {
-        ...mergedPacket,
-        continuationMarkdown: buildContinuationMarkdownFromPacket(mergedPacket),
-      }
-    : mergedPacket
-  const projectedMessages = buildCompactionProjection({
-    anchorMessages: window.anchorMessages,
-    packet,
-    tailBudgetTokens: budget.targetHistoryTokens,
-    tailMessages: window.tailMessages,
-  })
-
-  return {
-    boundaryIndex: window.boundaryIndex,
-    packet,
-    projectedMessages,
-    projectionVersion: 'tidecode.compaction_projection/v2',
-    reasoningRetention: packet.reasoningRetention,
-    sourceDigest,
-    usedFallback: parsedModelPacket === null && !plainMarkdown?.valid,
+  if (input.signal?.aborted || rawSummary === null) return null
+  const summary = validateContinuationMarkdown(rawSummary)
+  if (!summary.valid) {
+    throw new Error(`AI compaction returned invalid Markdown (${summary.reason}); no fallback summary was generated.`)
   }
-}
-
-export async function compactModelMessages(input: CompactModelMessagesInput) {
-  const budget = calculateModelMessagesBudget({
-    contextWindowTokens: input.contextWindowTokens,
-    messages: input.messages,
-    systemPromptTokens: input.systemPromptTokens,
-    toolSchemaTokens: input.toolSchemaTokens,
-    triggerRatio: input.triggerRatio,
-  })
-  if (!input.force && !shouldCompactContext(budget)) return null
-
-  const previousPacket = input.previousPacket ?? null
-  const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens, { previousPacket })
-  if (!window) return null
-  const sourceDigest = buildCompactionSourceDigest(
-    input.messages,
-    window.sourceEndIndex,
-    window.sourceStartIndex,
-  )
-  const key = buildCompactionKey(input, window.boundaryIndex, sourceDigest, previousPacket)
-  const existing = inFlightCompactions.get(key)
-  if (existing) return existing
-
-  const work = compactModelMessagesInternal(input).finally(() => {
-    if (inFlightCompactions.get(key) === work) inFlightCompactions.delete(key)
-  })
-  inFlightCompactions.set(key, work)
-  return work
-}
-
-export function createEmptyCompactionPacket(sourceDigest: string, sourceMessageIds: string[]): LocalCompactionPacketV2 {
   const packet: LocalCompactionPacketV2 = {
     schema: 'tidecode.compaction_packet/v2',
     packetId: randomUUID(),
-    parentPacketId: null,
+    parentPacketId: previousPacket?.packetId ?? null,
     sourceDigest,
-    sourceMessageIds,
-    continuationMarkdown: '',
+    sourceMessageIds: window.sourceMessageIds,
+    continuationMarkdown: summary.normalized,
     reasoningRetention: {
-      mode: 'unavailable',
-      modelId: 'unknown-model',
-      note: 'No reasoning representation was supplied.',
-      providerId: 'unknown',
+      ...actualRetention,
+      providerId: input.providerId?.trim() || actualRetention.providerId,
     },
     reasoningContinuity: [],
     goal: [],
@@ -252,9 +148,56 @@ export function createEmptyCompactionPacket(sourceDigest: string, sourceMessageI
     toolObservations: [],
     nextActions: [],
     omitted: [],
+    sourceRange: {
+      endIndex: window.sourceEndIndex,
+      startIndex: window.sourceStartIndex,
+    },
   }
+  const projectedMessages = buildCompactionProjection({
+    anchorMessages: window.anchorMessages,
+    packet,
+    tailBudgetTokens: budget.targetHistoryTokens,
+    tailMessages: window.tailMessages,
+  })
+
   return {
-    ...packet,
-    continuationMarkdown: buildContinuationMarkdownFromPacket(packet),
+    boundaryIndex: window.boundaryIndex,
+    packet,
+    projectedMessages,
+    projectionVersion: 'tidecode.compaction_projection/v2',
+    reasoningRetention: packet.reasoningRetention,
+    sourceDigest,
   }
+}
+
+export async function compactModelMessages(input: CompactModelMessagesInput) {
+  const budget = calculateModelMessagesBudget({
+    contextWindowTokens: input.contextWindowTokens,
+    messages: input.messages,
+    systemPromptTokens: input.systemPromptTokens,
+    toolSchemaTokens: input.toolSchemaTokens,
+    triggerRatio: input.triggerRatio,
+  })
+  if (!input.force && !shouldCompactContext(budget)) return null
+
+  const previousPacket = input.previousPacket ?? null
+  const targetHistoryTokens = input.force
+    ? Math.min(budget.targetHistoryTokens, 4_000)
+    : budget.targetHistoryTokens
+  const window = selectCompactionWindow(input.messages, targetHistoryTokens, { previousPacket })
+  if (!window) return null
+  const sourceDigest = buildCompactionSourceDigest(
+    input.messages,
+    window.sourceEndIndex,
+    window.sourceStartIndex,
+  )
+  const key = buildCompactionKey(input, window.boundaryIndex, sourceDigest, previousPacket)
+  const existing = inFlightCompactions.get(key)
+  if (existing) return existing
+
+  const work = compactModelMessagesInternal(input).finally(() => {
+    if (inFlightCompactions.get(key) === work) inFlightCompactions.delete(key)
+  })
+  inFlightCompactions.set(key, work)
+  return work
 }

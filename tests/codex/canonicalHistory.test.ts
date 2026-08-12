@@ -277,6 +277,51 @@ test('compacted replay retains assistant and tool responses from later turns', (
   )
 })
 
+test('compacted replay repairs a truncated packet message before context usage reads it', () => {
+  const document = createEmptyCanonicalHistory('conversation', 1)
+  const packet = buildFallbackCompactionPacket({
+    messages: [{ content: 'first question', role: 'user' }],
+    modelId: 'model',
+    providerId: 'openai',
+    sourceDigest: 'digest',
+    sourceMessageIds: ['model:0'],
+  })
+  const truncatedContinuation = '{"schema":"tidecode.compaction_packet/v2","continuationMarkdown":"'.padEnd(4_000, 'x')
+  const malformedPacket = { ...packet, continuationMarkdown: truncatedContinuation }
+  document.events.push({
+    anchorUserMessageId: 'user-1',
+    branchId: 'main',
+    compactionId: 'compaction-repair',
+    createdAt: 2,
+    eventId: 'event-repair',
+    modelId: 'model',
+    packet: encodeReplayValue(malformedPacket),
+    projectedMessages: encodeModelMessages([
+      { content: 'first question', role: 'user' },
+      { content: truncatedContinuation, role: 'assistant' },
+    ]),
+    providerId: 'openai',
+    revision: 1,
+    runId: null,
+    sourceDigest: 'digest',
+    sourceMessageIds: ['model:0'],
+    type: 'compaction_committed',
+    usedFallback: false,
+  })
+
+  const result = projectCanonicalReplay({
+    document,
+    fallbackMessages: [],
+    messages: [{ content: 'first question', id: 'user-1', role: 'user', timestamp: 1 }],
+    modelId: 'model',
+    providerId: 'openai',
+  })
+
+  assert.equal(result.isCompacted, true)
+  assert.match(String(result.messages[1]?.content), /## What happened/u)
+  assert.doesNotMatch(String(result.messages[1]?.content), /tidecode\.compaction_packet/u)
+})
+
 test('compacted replay rebuilds a missing projection from the stored v2 packet', () => {
   const document = createEmptyCanonicalHistory('conversation', 1)
   const packet = buildFallbackCompactionPacket({

@@ -40,7 +40,6 @@ export interface CompactConversationInput {
 export interface CompactConversationResult {
   compacted: boolean
   packetId: string | null
-  usedFallback: boolean
 }
 
 export interface StartChatStreamResult {

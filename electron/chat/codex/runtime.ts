@@ -58,6 +58,7 @@ export async function compactCodexConversation(input: CompactConversationInput):
     contextCompaction: input.contextCompaction,
     createStream: (streamInput) => client.chat.completions.create({
       cacheKey: `manual-compaction:${input.conversationId}`,
+      maxOutputTokens: streamInput.maxOutputTokens,
       messages: streamInput.messages,
       model: streamInput.model,
       reasoningEffort: streamInput.reasoningEffort as typeof input.reasoningEffort,
@@ -75,7 +76,6 @@ export async function compactCodexConversation(input: CompactConversationInput):
   return {
     compacted: result !== null,
     packetId: result?.packet.packetId ?? null,
-    usedFallback: result?.usedFallback ?? false,
   }
 }
 
@@ -134,6 +134,7 @@ async function runCodexChatStream(
       createStream: (streamInput) =>
         client.chat.completions.create({
           cacheKey: streamInput.cacheKey,
+          maxOutputTokens: streamInput.maxOutputTokens,
           messages: streamInput.messages,
           model: streamInput.model,
           reasoningEffort: streamInput.reasoningEffort,

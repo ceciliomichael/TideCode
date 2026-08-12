@@ -65,7 +65,6 @@ export async function compactConversationForProvider(input: CompactConversationI
     parentPacketId: result.packet.parentPacketId,
     sourceDigest: result.sourceDigest,
     sourceMessageIds: result.packet.sourceMessageIds,
-    usedFallback: result.usedFallback,
   })
   return result
 }

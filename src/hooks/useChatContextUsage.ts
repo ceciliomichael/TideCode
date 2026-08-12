@@ -55,6 +55,7 @@ export function useChatContextUsage({
     }
 
     let isCancelled = false
+    const pendingCompactionRefreshes = new Set<number>()
 
     const fetchUsage = () => {
       const requestSequence = ++requestSequenceRef.current
@@ -79,6 +80,19 @@ export function useChatContextUsage({
         })
     }
 
+    const refreshAfterCompaction = () => {
+      fetchUsage()
+      for (const delayMs of [100, 500]) {
+        const timeoutId = window.setTimeout(() => {
+          pendingCompactionRefreshes.delete(timeoutId)
+          if (!isCancelled) {
+            fetchUsage()
+          }
+        }, delayMs)
+        pendingCompactionRefreshes.add(timeoutId)
+      }
+    }
+
     fetchUsageRef.current = fetchUsage
     const timeoutId = window.setTimeout(fetchUsage, 120)
     const unsubscribeChat = window.tidecodeChat.onStreamEvent((event) => {
@@ -86,7 +100,11 @@ export function useChatContextUsage({
         (event.type === 'completed' || event.type === 'aborted' || event.type === 'error') &&
         event.conversationId === conversationId
       if ((event.type === 'compaction_committed' && event.conversationId === conversationId) || isRelevantCompletion) {
-        fetchUsage()
+        if (event.type === 'compaction_committed') {
+          refreshAfterCompaction()
+        } else {
+          fetchUsage()
+        }
       }
     })
 
@@ -111,6 +129,10 @@ export function useChatContextUsage({
       requestSequenceRef.current += 1
       window.clearTimeout(timeoutId)
       window.clearInterval(intervalId)
+      for (const refreshTimeoutId of pendingCompactionRefreshes) {
+        window.clearTimeout(refreshTimeoutId)
+      }
+      pendingCompactionRefreshes.clear()
       window.removeEventListener('focus', handleFocus)
       unsubscribeChat()
 

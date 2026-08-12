@@ -14,6 +14,12 @@ interface StagedFileState {
   target: ApplyPatchTargetPath
 }
 
+interface FileSnapshot {
+  absolutePath: string
+  content: string | null
+  existed: boolean
+}
+
 function resolvePatchTargetPath(
   workspaceRootPath: string,
   candidatePath: string,
@@ -139,15 +145,65 @@ export async function applyPatchInWorkspace(
     })
   }
 
-  for (const stagedFile of stagedFiles.values()) {
-    if (stagedFile.content === null) {
-      await fs.unlink(stagedFile.target.absolutePath)
-      continue
-    }
-
-    await fs.mkdir(path.dirname(stagedFile.target.absolutePath), { recursive: true })
-    await fs.writeFile(stagedFile.target.absolutePath, stagedFile.content, 'utf8')
-  }
+  await commitStagedFiles(stagedFiles)
 
   return { changes, parsedPatch }
+}
+
+async function readFileSnapshot(absolutePath: string): Promise<FileSnapshot> {
+  try {
+    return {
+      absolutePath,
+      content: await fs.readFile(absolutePath, 'utf8'),
+      existed: true,
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { absolutePath, content: null, existed: false }
+    }
+    throw error
+  }
+}
+
+async function restoreFileSnapshot(snapshot: FileSnapshot) {
+  if (!snapshot.existed) {
+    await fs.rm(snapshot.absolutePath, { force: true })
+    return
+  }
+
+  if (snapshot.content === null) {
+    throw new Error(`Cannot restore an empty snapshot for ${snapshot.absolutePath}.`)
+  }
+
+  await fs.mkdir(path.dirname(snapshot.absolutePath), { recursive: true })
+  await fs.writeFile(snapshot.absolutePath, snapshot.content, 'utf8')
+}
+
+async function commitStagedFiles(stagedFiles: Map<string, StagedFileState>) {
+  const snapshots = await Promise.all(
+    [...stagedFiles.keys()].map((absolutePath) => readFileSnapshot(absolutePath)),
+  )
+
+  try {
+    for (const stagedFile of stagedFiles.values()) {
+      if (stagedFile.content === null) {
+        await fs.rm(stagedFile.target.absolutePath, { force: false })
+        continue
+      }
+
+      await fs.mkdir(path.dirname(stagedFile.target.absolutePath), { recursive: true })
+      await fs.writeFile(stagedFile.target.absolutePath, stagedFile.content, 'utf8')
+    }
+  } catch (error) {
+    for (const snapshot of snapshots.reverse()) {
+      try {
+        await restoreFileSnapshot(snapshot)
+      } catch (restoreError) {
+        const originalMessage = error instanceof Error ? error.message : String(error)
+        const restoreMessage = restoreError instanceof Error ? restoreError.message : String(restoreError)
+        throw new Error(`${originalMessage}; rollback also failed: ${restoreMessage}`)
+      }
+    }
+    throw error
+  }
 }

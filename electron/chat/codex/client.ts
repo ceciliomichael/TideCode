@@ -11,6 +11,7 @@ import type { ReasoningEffort } from '../../../src/types/chat'
 import { normalizeLanguageModelUsage } from '../cache/usage'
 import type { ProviderStepRecord } from '../history/contracts'
 import { buildCodexProviderOptions } from './providerOptions'
+import { normalizeCodexRequestBody } from './requestNormalization'
 import { refreshCodexOAuthTokensIfNeeded } from '../../providers/codex/refresh'
 import { maybeRotateCodexAccountForChat } from '../../providers/codex/service'
 import { writeStoredCodexAuthData, type StoredCodexAuthData } from '../../providers/codex/store'
@@ -46,6 +47,7 @@ async function resolveCodexAuthData(): Promise<StoredCodexAuthData> {
 
 export interface CodexChatCompletionsCreateInput {
   cacheKey?: string
+  maxOutputTokens?: number
   messages: ModelMessage[]
   model: string
   reasoningEffort: ReasoningEffort
@@ -70,9 +72,27 @@ export function createCodexClient() {
       nextHeaders.set('authorization', `Bearer ${authData.tokens.access_token}`)
       nextHeaders.set('chatgpt-account-id', authData.tokens.account_id)
 
+      let nextBody = init?.body
+
+      // The Vercel AI SDK may pass the body as a string, Buffer, Uint8Array, or ArrayBuffer.
+      // Decode all binary variants to a UTF-8 string so the JSON interceptor always executes.
+      let bodyString: string | null = null
+      if (typeof nextBody === 'string') {
+        bodyString = nextBody
+      } else if (nextBody instanceof Uint8Array || Buffer.isBuffer(nextBody)) {
+        bodyString = Buffer.from(nextBody as Uint8Array).toString('utf-8')
+      } else if (nextBody instanceof ArrayBuffer) {
+        bodyString = Buffer.from(nextBody).toString('utf-8')
+      }
+
+      if (bodyString !== null) {
+        nextBody = normalizeCodexRequestBody(bodyString)
+      }
+
       return fetch(input, {
         ...init,
         headers: nextHeaders,
+        body: nextBody,
       })
     },
   })
@@ -82,6 +102,7 @@ export function createCodexClient() {
     return streamText({
       ...(input.stopWhen ? { stopWhen: input.stopWhen } : {}),
       ...(input.maxSteps !== undefined ? { maxSteps: input.maxSteps } : {}),
+      ...(input.maxOutputTokens !== undefined ? { maxOutputTokens: input.maxOutputTokens } : {}),
       ...(input.repairToolCall ? { repairToolCall: input.repairToolCall } : {}),
       model: provider.responses(input.model),
       messages: input.messages,

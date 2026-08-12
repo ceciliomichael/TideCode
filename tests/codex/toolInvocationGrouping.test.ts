@@ -17,7 +17,7 @@ function createInvocation(toolName: string): ToolInvocationTrace {
 function createMutationInvocation(
   id: string,
   kind: 'add' | 'delete' | 'update',
-  toolName: 'write' | 'apply_patch',
+  toolName: 'write' | 'edit',
 ): ToolInvocationTrace {
   return {
     argumentsText: JSON.stringify({ path: '/workspace/example.ts' }),
@@ -74,6 +74,26 @@ test('buildToolInvocationGroupSummary gives memory tools durable-context labels'
   assert.equal(
     buildToolInvocationGroupSummary([createInvocation('memory'), createInvocation('memory')]),
     'Handled 2 memory operations',
+  )
+})
+
+test('buildToolInvocationGroupSummary omits the hidden Code Mode implementation detail', () => {
+  assert.equal(
+    buildToolInvocationGroupSummary([createInvocation('tool_search'), createInvocation('code_mode')]),
+    'Ran 1 tool search',
+  )
+})
+
+test('buildToolInvocationGroupSummary reports failed Code Mode even with successful nested work', () => {
+  assert.equal(
+    buildToolInvocationGroupSummary([
+      {
+        ...createInvocation('code_mode'),
+        state: 'failed',
+      },
+      createInvocation('list'),
+    ]),
+    'Explored 1 list, local orchestration failed',
   )
 })
 
@@ -212,9 +232,9 @@ test('buildToolInvocationGroupSummary groups MCP search and execution as MCP wor
 test('buildToolInvocationGroupSummary splits mixed file mutations and exploration categories', () => {
   const summary = buildToolInvocationGroupSummary([
     createMutationInvocation('tool-write-edit-1', 'update', 'write'),
-    createMutationInvocation('tool-write-edit-2', 'update', 'apply_patch'),
+    createMutationInvocation('tool-write-edit-2', 'update', 'edit'),
     createMutationInvocation('tool-write-create-1', 'add', 'write'),
-    createMutationInvocation('tool-write-create-2', 'add', 'apply_patch'),
+    createMutationInvocation('tool-write-create-2', 'add', 'edit'),
     createInvocation('read'),
     createInvocation('glob'),
     createInvocation('execute_terminal'),

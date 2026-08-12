@@ -1,7 +1,6 @@
 import { getDiffSummary } from '../../../../src/lib/textDiff'
 import type { ChangeDiffToolResultItem } from '../../../../src/types/chat'
 import { captureWorkspaceCheckpointFileState } from '../../../workspace/checkpoints'
-import type { ApplyPatchChange } from '../applyPatch'
 import type { AgentToolExecutionResult } from '../toolTypes'
 
 export function createSuccessResult(input: Omit<AgentToolExecutionResult, 'status'>): AgentToolExecutionResult {
@@ -152,17 +151,6 @@ export function aggregateFileChangeItems(
 
     return toFileChangeItem(fileName, getFileChangeKind(change.oldContent, change.kind), change.oldContent, change.newContent)
   })
-}
-
-export function aggregateAppliedPatchChanges(changes: ApplyPatchChange[]): ChangeDiffToolResultItem[] {
-  return aggregateFileChangeItems(
-    changes.map((change) => ({
-      fileName: change.relativePath,
-      kind: change.type,
-      newContent: change.newContent,
-      oldContent: change.oldContent,
-    })),
-  )
 }
 
 export async function captureCheckpointFileStateIfNeeded(checkpointId: string | null | undefined, absolutePath: string) {

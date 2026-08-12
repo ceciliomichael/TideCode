@@ -4,12 +4,18 @@ import { buildModelMessages, type BuildChatPromptOptions } from '../shared/messa
 import { sanitizeModelMessages } from '../shared/modelMessageIntegrity'
 import { parseCompactionPacket, type CompactionPacket } from '../shared/compaction/contracts'
 import { buildCompactionMessage } from '../shared/compaction/window'
+import {
+  isCompactionContinuationMessage,
+  repairCompactionPacketContinuation,
+} from '../shared/compaction/markdown'
 import { decodeModelMessages, decodeReplayValue, encodeModelMessages } from './replayCodec'
 import {
   getReplaySlotKey,
   type CanonicalHistoryDocument,
   type CanonicalReplayProjection,
 } from './contracts'
+import { shouldMigrateCrossProviderHistoryToText } from './providerSwitch'
+import { migrateToolHistoryToUserInput } from './providerToolMigration'
 
 export interface ReplayProjectionResult {
   compactionPacket: CompactionPacket | null
@@ -23,6 +29,19 @@ export interface ReplayProjectionResult {
 type CompactionReplayProjection = CanonicalReplayProjection & {
   compactionPacket: CompactionPacket | null
   isCompacted: true
+}
+
+function repairReplayCompactionMessages(
+  messages: readonly ModelMessage[],
+  packet: CompactionPacket | null,
+) {
+  if (!packet) return [...messages]
+  const repairedPacket = repairCompactionPacketContinuation(packet)
+  return messages.map((message) => (
+    isCompactionContinuationMessage(message, repairedPacket.continuationMarkdown)
+      ? buildCompactionMessage(repairedPacket)
+      : message
+  ))
 }
 
 function findLatestCompactionProjection(input: {
@@ -53,7 +72,14 @@ function findLatestCompactionProjection(input: {
   try {
     const decodedPacket = parseCompactionPacket(decodeReplayValue(event.packet))
     if (!decodedPacket) throw new Error('Stored compaction packet is not a v2 packet.')
-    decodeModelMessages(event.projectedMessages)
+    const repairedPacket = repairCompactionPacketContinuation(decodedPacket)
+    const decodedMessages = decodeModelMessages(event.projectedMessages)
+    const repairedMessages = decodedMessages.map((message) => (
+      (message.role === 'assistant' && typeof message.content === 'string' && message.content === decodedPacket.continuationMarkdown) ||
+      isCompactionContinuationMessage(message, decodedPacket.continuationMarkdown)
+        ? buildCompactionMessage(repairedPacket)
+        : message
+    ))
     return {
       anchorUserMessageId: event.anchorUserMessageId,
       branchId: event.branchId,
@@ -61,8 +87,8 @@ function findLatestCompactionProjection(input: {
       fidelity: 'exact' as const,
       freshnessRevision: input.document.freshness.revision,
       isCompacted: true,
-      messages: event.projectedMessages,
-      compactionPacket: decodedPacket,
+      messages: encodeModelMessages(repairedMessages),
+      compactionPacket: repairedPacket,
       modelId: input.modelId,
       providerId: input.providerId,
       runId: event.compactionId,
@@ -74,12 +100,13 @@ function findLatestCompactionProjection(input: {
       const decodedPacket = parseCompactionPacket(decodeReplayValue(event.packet))
       const anchorMessage = input.messages.find((message) => message.id === event.anchorUserMessageId)
       if (!decodedPacket || !anchorMessage) throw error
+      const repairedPacket = repairCompactionPacketContinuation(decodedPacket)
       const recoveredAnchor = buildModelMessages([anchorMessage], {
         includeExecutionModeContext: false,
       })
       const recoveredMessages = sanitizeModelMessages([
         ...recoveredAnchor,
-        buildCompactionMessage(decodedPacket),
+        buildCompactionMessage(repairedPacket),
       ])
       console.warn('Canonical compaction projection was unavailable; rebuilding it from the stored packet.')
       return {
@@ -90,7 +117,7 @@ function findLatestCompactionProjection(input: {
         freshnessRevision: input.document.freshness.revision,
         isCompacted: true,
         messages: encodeModelMessages(recoveredMessages),
-        compactionPacket: decodedPacket,
+        compactionPacket: repairedPacket,
         modelId: input.modelId,
         providerId: input.providerId,
         runId: event.compactionId,
@@ -141,7 +168,7 @@ function findLatestCompactionPacketForReplay(input: {
     if (event.type !== 'compaction_committed' || !('packet' in event)) continue
     try {
       const packet = parseCompactionPacket(decodeReplayValue(event.packet))
-      if (packet) return packet
+      if (packet) return repairCompactionPacketContinuation(packet)
     } catch {
       continue
     }
@@ -199,6 +226,21 @@ export function projectCanonicalReplay(input: {
       : never
     : never
 }): ReplayProjectionResult {
+  const shouldMigrateToolHistory = shouldMigrateCrossProviderHistoryToText({
+    document: input.document,
+    messages: input.messages,
+    targetProviderId: input.providerId,
+  })
+  const finalizeProjection = (projection: ReplayProjectionResult): ReplayProjectionResult => {
+    if (!shouldMigrateToolHistory) return projection
+
+    return {
+      ...projection,
+      fidelity: 'migrated_legacy',
+      messages: migrateToolHistoryToUserInput(projection.messages),
+      replayRunId: null,
+    }
+  }
   const storedReplay = input.document.replays[getReplaySlotKey(input.providerId, input.modelId)] ?? input.document.replay
   const compactionProjection = findLatestCompactionProjection({
     document: input.document,
@@ -219,58 +261,61 @@ export function projectCanonicalReplay(input: {
     const fidelity = input.messages.some((message) => message.role === 'assistant' || message.role === 'tool')
       ? 'legacy'
       : 'exact'
-    return {
+    return finalizeProjection({
       fidelity,
       freshnessRevision: input.document.freshness.revision,
       isCompacted: false,
       messages: sanitizeModelMessages(input.fallbackMessages),
       replayRunId: null,
       compactionPacket: null,
-    }
+    })
   }
 
   const anchorIndex = input.messages.findIndex((message) => message.id === replay.anchorUserMessageId)
   if (anchorIndex < 0) {
-    return {
+    return finalizeProjection({
       fidelity: 'legacy',
       freshnessRevision: input.document.freshness.revision,
       isCompacted: false,
       messages: sanitizeModelMessages(input.fallbackMessages),
       replayRunId: null,
       compactionPacket: null,
-    }
+    })
   }
 
+  const replayCompactionPacket = compactionProjection?.compactionPacket ?? findLatestCompactionPacketForReplay({
+    document: input.document,
+    modelId: input.modelId,
+    providerId: input.providerId,
+    replay,
+  })
+
   try {
-    const exactPrefix = sanitizeModelMessages(decodeModelMessages(replay.messages))
+    const exactPrefix = sanitizeModelMessages(repairReplayCompactionMessages(
+      decodeModelMessages(replay.messages),
+      replayCompactionPacket,
+    ))
     const suffix = buildPostAnchorReplaySuffix(input.messages, anchorIndex, input.options)
     const messages = replay.freshnessRevision < input.document.freshness.revision
       ? appendFreshnessNotice([...exactPrefix, ...suffix], input.document.freshness.invalidatedSubjects)
       : [...exactPrefix, ...suffix]
-    return {
+    return finalizeProjection({
       fidelity: replay.fidelity,
       freshnessRevision: input.document.freshness.revision,
       isCompacted: replayIncludesCompaction(input.document, replay),
       messages: sanitizeModelMessages(messages),
       replayRunId: replay.runId,
-      compactionPacket: compactionProjection && replay.sourceRevision === compactionProjection.sourceRevision
-        ? compactionProjection.compactionPacket
-        : findLatestCompactionPacketForReplay({
-            document: input.document,
-            modelId: input.modelId,
-            providerId: input.providerId,
-            replay,
-          }),
-    }
+      compactionPacket: replayCompactionPacket,
+    })
   } catch (error) {
     console.warn('Canonical replay could not be decoded; using legacy history projection.', error)
-    return {
+    return finalizeProjection({
       fidelity: 'legacy',
       freshnessRevision: input.document.freshness.revision,
       isCompacted: false,
       messages: sanitizeModelMessages(input.fallbackMessages),
       replayRunId: null,
       compactionPacket: null,
-    }
+    })
   }
 }

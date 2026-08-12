@@ -1,5 +1,6 @@
 import type { ModelMessage } from 'ai'
 import { stableStringify } from '../../cache/canonicalization'
+import { projectModelMessagesForContext } from '../tools/toolOutputBudget'
 
 export type AutomaticCompactionTrigger = 'user_turn' | 'tool_result' | 'model_step'
 
@@ -19,15 +20,23 @@ function messageKey(message: ModelMessage) {
 }
 
 /**
- * The AI SDK exposes the current request messages and the accumulated response
- * messages separately. Tool results can be present only in the latter, so the
- * automatic budget must include response messages that are not already present
- * in the request transcript.
+ * Merges response messages for callers that are building a transcript from
+ * separate message collections.
+ *
+ * AI SDK's `messages` value is already the authoritative carry-forward state
+ * for the live prepareStep path. After returning a compacted projection, the
+ * SDK's responseMessages remains cumulative for the whole run; appending it
+ * again would resurrect messages that compaction deliberately removed.
  */
 export function mergeAutomaticCompactionMessages(input: {
   messages: readonly ModelMessage[]
   responseMessages: readonly ModelMessage[]
+  responseMessagesAreCumulative?: boolean
 }) {
+  if (input.responseMessagesAreCumulative) {
+    return projectModelMessagesForContext(input.messages)
+  }
+
   const remainingMessageCounts = new Map<string, number>()
   for (const message of input.messages) {
     const key = messageKey(message)
@@ -46,7 +55,7 @@ export function mergeAutomaticCompactionMessages(input: {
     mergedMessages.push(responseMessage)
   }
 
-  return mergedMessages
+  return projectModelMessagesForContext(mergedMessages)
 }
 
 /**

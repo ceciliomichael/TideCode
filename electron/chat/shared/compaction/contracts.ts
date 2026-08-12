@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 export const LOCAL_COMPACTION_PACKET_V2_SCHEMA = 'tidecode.compaction_packet/v2' as const
 export const COMPACTION_PROJECTION_VERSION = 'tidecode.compaction_projection/v2' as const
+export const COMPACTION_MAX_OUTPUT_TOKENS = 8192
 
 const boundedText = z.string().trim().max(4_000)
 const boundedTextList = z.array(boundedText).max(64)
@@ -101,7 +102,6 @@ export interface CompactionResult {
   packet: LocalCompactionPacketV2
   projectedMessages: ModelMessage[]
   sourceDigest: string
-  usedFallback: boolean
   projectionVersion: typeof COMPACTION_PROJECTION_VERSION
   reasoningRetention: LocalCompactionPacketV2['reasoningRetention']
 }
@@ -109,6 +109,7 @@ export interface CompactionResult {
 export interface CompactionStreamInput {
   cacheKey?: string
   messages: ModelMessage[]
+  maxOutputTokens?: number
   model: string
   providerId?: ChatProviderId
   reasoningEffort: string

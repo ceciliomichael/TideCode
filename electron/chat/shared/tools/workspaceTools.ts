@@ -3,6 +3,7 @@ export {
   resolveReadOnlyTargetPath,
   resolveWorkspaceTargetPath,
   WORKSPACE_PATH_DESCRIPTION,
+  type WorkspaceReadScope,
   type WorkspaceToolContext,
 } from './workspaceToolPaths'
 export {
@@ -11,13 +12,11 @@ export {
   createListToolResult,
   createReadToolResult,
 } from './workspaceReadTools'
-export {
-  createApplyPatchToolResult,
-  createWholeFileWriteToolResult,
-} from './workspaceMutationTools'
+export { createWholeFileWriteToolResult } from './workspaceMutationTools'
 export {
   createEditToolResult,
   type EditChunk,
   type EditInput,
+  type EditOperationInput,
 } from './workspaceEditTool'
 export { createToolContext } from './workspaceToolContext'

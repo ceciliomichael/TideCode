@@ -1,9 +1,9 @@
-import { File, Folder, Wand2 } from 'lucide-react'
+import { File, Folder, ListTodo, Wand2 } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties, RefObject } from 'react'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
 
-export type ChatMentionMenuType = 'file' | 'folder' | 'skill'
+export type ChatMentionMenuType = 'file' | 'folder' | 'skill' | 'kanban'
 
 export interface ChatMentionMenuItem {
   description: string
@@ -53,6 +53,12 @@ const ROOT_OPTIONS: readonly {
     icon: Wand2,
     kind: 'skill',
     label: 'Skills',
+  },
+  {
+    description: 'Search Kanban items',
+    icon: ListTodo,
+    kind: 'kanban',
+    label: 'Kanban',
   },
 ]
 
@@ -124,7 +130,9 @@ export function ChatMentionMenu({
                           ? 'text-[#2563EB]'
                           : option.kind === 'folder'
                             ? 'text-[#F59E0B]'
-                            : 'text-[#A855F7]'
+                            : option.kind === 'skill'
+                              ? 'text-[#A855F7]'
+                              : 'text-[#10B981]'
                       }`}
                     />
                     <span className="min-w-0 flex-1">
@@ -149,7 +157,9 @@ export function ChatMentionMenu({
               ? 'File mentions'
               : selectedMenuType === 'skill'
                 ? 'Skill mentions'
-                : 'File, folder, and skill mentions'
+                : selectedMenuType === 'kanban'
+                  ? 'Kanban mentions'
+                  : 'File, folder, skill, and Kanban mentions'
         }
         data-floating-menu-root="true"
         className="fixed z-40 w-[min(26rem,calc(100vw-1rem))] overflow-hidden rounded-[22px] border border-border bg-surface shadow-[0_10px_30px_rgba(15,23,42,0.08)]"
@@ -174,7 +184,9 @@ export function ChatMentionMenu({
                     ? 'Type to search files...'
                     : selectedMenuType === 'skill'
                       ? 'Type to search skills...'
-                      : 'Type to search files, folders, or skills...'}
+                      : selectedMenuType === 'kanban'
+                        ? 'Type to search Kanban items...'
+                        : 'Type to search files, folders, skills, or Kanban items...'}
             </div>
           ) : (
             results.map((item, index) => {
@@ -204,6 +216,8 @@ export function ChatMentionMenu({
                 >
                   {item.kind === 'skill' ? (
                     <Wand2 size={14} className="shrink-0 text-[#A855F7]" />
+                  ) : item.kind === 'kanban' ? (
+                    <ListTodo size={14} className="shrink-0 text-[#10B981]" />
                   ) : item.kind === 'folder' ? (
                     <Folder size={14} className="shrink-0 text-[#F59E0B]" />
                   ) : FileIcon ? (

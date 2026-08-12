@@ -1,12 +1,9 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { notifyWorkspaceExplorerChange } from '../../../workspace/explorerNotifications'
-import { DEFAULT_WORKSPACE_RELATIVE_PATH } from '../../../workspace/paths'
-import { applyPatchInWorkspace } from '../applyPatch'
 import type { WorkspaceToolContext } from './workspaceToolPaths'
 import { resolveReadableTargetPath } from './workspaceToolPaths'
 import {
-  aggregateAppliedPatchChanges,
   aggregateFileChangeItems,
   buildFileChangeResult,
   captureCheckpointFileStateIfNeeded,
@@ -54,41 +51,5 @@ export async function createWholeFileWriteToolResult(
     fileChanges,
     'edit',
     subjectPath,
-  )
-}
-export async function createApplyPatchToolResult(context: WorkspaceToolContext, patchText: string, basePath?: string) {
-  const appliedPatch = await applyPatchInWorkspace(context.workspaceRootPath, patchText, {
-    ...(basePath ? { basePath } : {}),
-    onBeforeChange: async ({ absolutePath, nextAbsolutePath }) => {
-      await captureCheckpointFileStateIfNeeded(context.checkpointId, absolutePath)
-      if (nextAbsolutePath && nextAbsolutePath !== absolutePath) {
-        await captureCheckpointFileStateIfNeeded(context.checkpointId, nextAbsolutePath)
-      }
-    },
-    resolveTargetPath:
-      context.terminalExecutionMode === 'full'
-        ? (candidatePath) => {
-            const target = resolveReadableTargetPath(context.workspaceRootPath, candidatePath, context.terminalExecutionMode)
-            return {
-              absolutePath: target.absolutePath,
-              relativePath: target.displayPath,
-            }
-          }
-        : undefined,
-  })
-  if (appliedPatch.changes.length > 0) {
-    notifyWorkspaceExplorerChange(context.workspaceRootPath)
-  }
-  const changes = aggregateAppliedPatchChanges(appliedPatch.changes)
-  const subjectPath = changes.length === 1 ? changes[0].fileName : DEFAULT_WORKSPACE_RELATIVE_PATH
-
-  return buildFileChangeResult(
-    `Patched ${changes.length} file${changes.length === 1 ? '' : 's'}`,
-    changes,
-    changes.length === 0 ? 'noop' : 'edit',
-    subjectPath,
-    changes.length === 0
-      ? 'Patch parsed successfully, but no file content changed.'
-      : 'Patch applied successfully. The files listed below were changed on disk.',
   )
 }

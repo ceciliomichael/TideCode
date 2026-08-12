@@ -30,6 +30,7 @@ import {
 
 export interface ApiKeyChatCompletionsCreateInput {
   cacheKey?: string
+  maxOutputTokens?: number
   messages: ModelMessage[]
   model: string
   reasoningEffort: ReasoningEffort
@@ -113,12 +114,17 @@ export function createApiKeyChatClient(config: ApiKeyChatProviderConfig) {
     const modelConfig = catalogModel ?? config.models.find(
       (model) => model.apiModelId.trim().toLowerCase() === normalizedModelId,
     )
+    const maxOutputTokens = input.maxOutputTokens === undefined
+      ? modelConfig?.maxTokens
+      : modelConfig?.maxTokens === undefined
+        ? input.maxOutputTokens
+        : Math.min(input.maxOutputTokens, modelConfig.maxTokens)
 
     return streamText({
       ...(input.stopWhen ? { stopWhen: input.stopWhen } : {}),
       ...(input.maxSteps !== undefined ? { maxSteps: input.maxSteps } : {}),
       ...(input.repairToolCall ? { repairToolCall: input.repairToolCall } : {}),
-      ...(modelConfig?.maxTokens !== undefined ? { maxOutputTokens: modelConfig.maxTokens } : {}),
+      ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
       model,
       messages: input.messages,
       ...(input.system ? { system: input.system } : {}),

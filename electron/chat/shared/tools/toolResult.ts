@@ -1,8 +1,10 @@
 import type { AgentToolExecutionResult } from '../toolTypes'
 
 export function createToolErrorResult(summary: string, body?: string): AgentToolExecutionResult {
+  const message = body ?? summary
   return {
-    ...(body ? { body } : {}),
+    body: message,
+    displayBody: message,
     status: 'error',
     summary,
   }

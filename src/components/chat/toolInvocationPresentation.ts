@@ -1,12 +1,18 @@
-import type { ChangeDiffToolResultItem, ToolInvocationTrace } from '../../types/chat'
+import type {
+  ChangeDiffToolResultItem,
+  ToolInvocationResultPresentation,
+  ToolInvocationTrace,
+} from '../../types/chat'
 import { getRelativeDisplayPath } from '../../lib/pathPresentation'
-import { parseStructuredToolResultContent } from '../../lib/toolResultContent'
+import {
+  formatStructuredToolResultContent,
+  parseStructuredToolResultContent,
+} from '../../lib/toolResultContent'
 import { getKanbanToolInvocationHeaderLabel } from './kanbanToolInvocationPresentation'
 import { isKanbanTool } from './kanbanToolInvocationKinds'
 import { isFileEditTool, isFileMutationTool, isFileWriteTool } from './toolInvocationKinds'
 
 import {
-  getApplyPatchFileTargets,
   getBasename,
   getReadToolTarget,
   getSearchTarget,
@@ -26,6 +32,43 @@ function readPartialAction(argumentsText: string) {
   const match = /["']action["']\s*:\s*["']([^"']*)/u.exec(argumentsText)
   const action = match?.[1]?.trim()
   return action && action.length > 0 ? action : null
+}
+
+function getReadToolRange(invocation: ToolInvocationTrace) {
+  if (invocation.toolName !== 'read') {
+    return null
+  }
+
+  const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
+  const semantics = parsedResult?.metadata?.semantics
+  const startLine = semantics && typeof semantics.start_line === 'number' ? semantics.start_line : null
+  const endLine = semantics && typeof semantics.end_line === 'number' ? semantics.end_line : null
+
+  if (
+    startLine !== null &&
+    endLine !== null &&
+    Number.isInteger(startLine) &&
+    Number.isInteger(endLine) &&
+    startLine >= 1 &&
+    endLine >= startLine
+  ) {
+    return `${startLine}-${endLine}`
+  }
+
+  const numberedLines = parsedResult?.body
+    ?.split(/\r?\n/u)
+    .map((line) => /^(\d+):(?: |$)/u.exec(line)?.[1])
+    .filter((lineNumber): lineNumber is string => lineNumber !== undefined)
+
+  if (!numberedLines || numberedLines.length === 0) {
+    return null
+  }
+
+  const firstLine = Number.parseInt(numberedLines[0], 10)
+  const lastLine = Number.parseInt(numberedLines[numberedLines.length - 1], 10)
+  return Number.isFinite(firstLine) && Number.isFinite(lastLine) && lastLine >= firstLine
+    ? `${firstLine}-${lastLine}`
+    : null
 }
 
 function getToolVerb(invocation: ToolInvocationTrace) {
@@ -220,6 +263,15 @@ function getToolVerb(invocation: ToolInvocationTrace) {
         : 'MCP search failed'
   }
 
+  if (invocation.toolName === 'tool_search') {
+    const resultQuery = parsedResult?.metadata?.semantics?.query
+    return readFirstText([parsedArguments?.query, resultQuery])
+  }
+
+  if (invocation.toolName === 'code_mode') {
+    return null
+  }
+
   if (invocation.toolName === 'execute_mcp') {
     return invocation.state === 'running'
       ? 'Running'
@@ -238,6 +290,124 @@ function getToolVerb(invocation: ToolInvocationTrace) {
 export interface ToolInvocationDisplayEntry {
   invocation: ToolInvocationTrace
   key: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function readToolInvocationSubject(value: unknown) {
+  if (!isRecord(value)) {
+    return undefined
+  }
+
+  const kind = typeof value.kind === 'string' ? value.kind : undefined
+  const path = typeof value.path === 'string' ? value.path : undefined
+  if (kind === undefined && path === undefined) {
+    return undefined
+  }
+
+  return {
+    ...(kind === undefined ? {} : { kind }),
+    ...(path === undefined ? {} : { path }),
+  }
+}
+
+function readToolInvocationResultPresentation(value: unknown): ToolInvocationResultPresentation | undefined {
+  if (!isRecord(value) || typeof value.kind !== 'string') {
+    return undefined
+  }
+
+  if (value.kind === 'change_diff' && Array.isArray(value.changes)) {
+    return value as unknown as ToolInvocationResultPresentation
+  }
+
+  if (
+    value.kind === 'file_diff' &&
+    typeof value.fileName === 'string' &&
+    typeof value.newContent === 'string' &&
+    (value.oldContent === null || typeof value.oldContent === 'string')
+  ) {
+    return value as unknown as ToolInvocationResultPresentation
+  }
+
+  if (
+    value.kind === 'image' &&
+    typeof value.fileName === 'string' &&
+    typeof value.mediaType === 'string' &&
+    typeof value.relativePath === 'string'
+  ) {
+    return value as unknown as ToolInvocationResultPresentation
+  }
+
+  if (value.kind === 'plan') {
+    return value as unknown as ToolInvocationResultPresentation
+  }
+
+  return undefined
+}
+
+function getCodeModeChildInvocations(invocation: ToolInvocationTrace): ToolInvocationTrace[] {
+  if (!invocation.resultContent) {
+    return []
+  }
+
+  const parsedResult = parseStructuredToolResultContent(invocation.resultContent)
+  const rawToolCalls = parsedResult.metadata?.semantics?.tool_calls
+  if (!Array.isArray(rawToolCalls)) {
+    return []
+  }
+
+  return rawToolCalls.flatMap((rawToolCall, index) => {
+    if (!isRecord(rawToolCall) || typeof rawToolCall.name !== 'string') {
+      return []
+    }
+
+    const toolName = rawToolCall.name.trim()
+    if (toolName.length === 0) {
+      return []
+    }
+
+    const status = rawToolCall.status === 'success' ? 'completed' : 'failed'
+    const summary = typeof rawToolCall.summary === 'string' && rawToolCall.summary.trim().length > 0
+      ? rawToolCall.summary
+      : status === 'completed'
+        ? `Completed ${toolName}`
+        : `Failed ${toolName}`
+    const argumentsValue = isRecord(rawToolCall.arguments) ? rawToolCall.arguments : {}
+    const body = typeof rawToolCall.body === 'string' && rawToolCall.body.length > 0
+      ? rawToolCall.body
+      : summary
+    const subject = readToolInvocationSubject(rawToolCall.subject)
+    const semantics = isRecord(rawToolCall.semantics) ? rawToolCall.semantics : undefined
+    const resultPresentation = readToolInvocationResultPresentation(
+      rawToolCall.result_presentation ?? rawToolCall.resultPresentation,
+    )
+    const childId = `${invocation.id}:code-mode:${index}`
+
+    return [{
+      argumentsText: JSON.stringify(argumentsValue),
+      completedAt: invocation.completedAt,
+      id: childId,
+      resultContent: formatStructuredToolResultContent(
+        {
+          arguments: argumentsValue,
+          schema: 'tidecode.tool_result/v1',
+          ...(semantics ? { semantics } : {}),
+          status: status === 'completed' ? 'success' : 'error',
+          ...(subject ? { subject } : {}),
+          summary,
+          toolCallId: childId,
+          toolName,
+        },
+        body,
+      ),
+      ...(resultPresentation ? { resultPresentation } : {}),
+      startedAt: invocation.startedAt,
+      state: status,
+      toolName,
+    } satisfies ToolInvocationTrace]
+  })
 }
 
 export function getFileMutationGroupType(invocation: ToolInvocationTrace): 'creating' | 'overwriting' | 'editing' | null {
@@ -324,6 +494,35 @@ function getWholeFileChangeSingleChangeTarget(invocation: ToolInvocationTrace) {
 }
 
 export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace): ToolInvocationDisplayEntry[] {
+  if (invocation.toolName === 'code_mode' && invocation.state === 'running') {
+    return []
+  }
+
+  if (invocation.toolName === 'code_mode' && invocation.state !== 'running') {
+    const childInvocations = getCodeModeChildInvocations(invocation)
+    if (childInvocations.length > 0) {
+      const childEntries = childInvocations.flatMap((childInvocation) => getToolInvocationDisplayEntries(childInvocation))
+      if (invocation.state === 'failed') {
+        const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
+        const summaryText = parsedResult?.metadata?.summary ?? parsedResult?.body ?? ''
+        const isSubToolOnlyFailure = summaryText.includes('Code Mode completed with') || summaryText.includes('Code Mode finished with')
+        if (!isSubToolOnlyFailure) {
+          return [
+            { invocation, key: `${invocation.id}:failure` },
+            ...childEntries,
+          ]
+        }
+      }
+      return childEntries
+    }
+
+    // Older persisted Code Mode traces do not contain the nested trace. Do not
+    // resurrect the implementation detail as a user-facing tool row.
+    return invocation.state === 'failed'
+      ? [{ invocation, key: invocation.id }]
+      : []
+  }
+
   if (isFileMutationTool(invocation.toolName) && invocation.state === 'running') {
     return []
   }
@@ -387,6 +586,22 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
     const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
     const resultQuery = parsedResult?.metadata?.semantics?.query
     return readFirstText([parsedArguments?.query, resultQuery])
+  }
+
+  if (invocation.toolName === 'tool_search') {
+    return invocation.state === 'running'
+      ? 'Discovering tools'
+      : invocation.state === 'completed'
+        ? 'Discovered tools'
+        : 'Tool discovery failed'
+  }
+
+  if (invocation.toolName === 'code_mode') {
+    return invocation.state === 'running'
+      ? 'Running local orchestration'
+      : invocation.state === 'completed'
+        ? 'Completed local orchestration'
+        : 'Local orchestration failed'
   }
 
   if (invocation.toolName === 'execute_mcp') {
@@ -454,11 +669,6 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
     return wholeFileChangeSingleChangeTarget
   }
 
-  const applyPatchTargets = getApplyPatchFileTargets(invocation)
-  if (applyPatchTargets.length === 1) {
-    return getBasename(applyPatchTargets[0])
-  }
-
   const structuredPath = parsedResult?.metadata?.subject?.path
   if (typeof structuredPath === 'string' && structuredPath.trim().length > 0) {
     const normalizedStructuredPath = structuredPath.trim()
@@ -517,5 +727,12 @@ export function getToolInvocationHeaderLabel(
         }
   const target = getToolTarget(effectiveInvocation, workspaceRootPath)
   const verb = getToolVerb(effectiveInvocation)
-  return target ? `${verb} ${target}` : verb
+  const readRange = effectiveInvocation.toolName === 'read' ? getReadToolRange(effectiveInvocation) : null
+  const targetWithRange =
+    effectiveInvocation.toolName === 'read' && target
+      ? `${target}${readRange ? ` (${readRange})` : ''}`
+      : target
+  return [verb, targetWithRange]
+    .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+    .join(' ')
 }
