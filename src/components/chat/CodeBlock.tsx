@@ -1,10 +1,16 @@
 import { Check, Copy } from 'lucide-react'
-import { memo, useEffect, useState } from 'react'
+import { lazy, memo, Suspense, useEffect, useState } from 'react'
 import { useHighlightedCodeLines } from '../../hooks/useHighlightedCodeLines'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
 import { HighlightedCodeLine } from './HighlightedCodeLine'
 import type { HighlightedCodeLine as HighlightedCodeLineData } from '../../lib/codeHighlighting'
 import { Tooltip } from '../Tooltip'
+import { preloadWorkspaceMonacoCodeView } from '../../lib/workspaceMonacoPreload'
+
+const WorkspaceMonacoCodeView = lazy(async () => {
+  const module = await preloadWorkspaceMonacoCodeView()
+  return { default: module.WorkspaceMonacoCodeView }
+})
 
 interface CodeBlockProps {
   code: string
@@ -17,6 +23,7 @@ interface CodeBlockProps {
   showCopyButton?: boolean
   showHeader?: boolean
   showHeaderTooltip?: boolean
+  useMonaco?: boolean
   fillHeight?: boolean
   showLineNumberDivider?: boolean
   startLineNumber?: number
@@ -100,7 +107,8 @@ export const CodeBlock = memo(function CodeBlock({
   maxBodyHeightClassName,
   showCopyButton = true,
   showHeader = true,
-  showHeaderTooltip = true,
+  showHeaderTooltip: _showHeaderTooltip = false,
+  useMonaco = true,
   fillHeight = false,
   showLineNumberDivider = true,
   startLineNumber = 1,
@@ -142,13 +150,7 @@ export const CodeBlock = memo(function CodeBlock({
             <span className="flex h-4 w-4 items-center justify-center">
               <LanguageIcon size={14} style={{ color: iconConfig.color }} aria-hidden="true" />
             </span>
-            {showHeaderTooltip ? (
-              <Tooltip content={titleLabel} side="top" noWrap triggerClassName="min-w-0 flex-1">
-                <span className="min-w-0 truncate leading-[1] text-foreground">{titleLabel}</span>
-              </Tooltip>
-            ) : (
-              <span className="min-w-0 flex-1 truncate leading-[1] text-foreground">{titleLabel}</span>
-            )}
+            <span className="min-w-0 flex-1 truncate leading-[1] text-foreground">{titleLabel}</span>
           </span>
           <span className="ml-auto inline-flex shrink-0 items-center gap-3">
             {headerRightLabel ? (
@@ -181,12 +183,24 @@ export const CodeBlock = memo(function CodeBlock({
           .join(' ')}
       >
         <div className={['min-w-0 bg-surface font-mono text-[12px] leading-5', fillHeight ? 'h-full' : ''].join(' ')}>
-          <CodeRows
-            lines={highlightedLines}
-            startLineNumber={startLineNumber}
-            fillHeight={fillHeight}
-            showLineNumberDivider={showLineNumberDivider}
-          />
+          {useMonaco ? (
+            <Suspense fallback={<CodeRows lines={highlightedLines} startLineNumber={startLineNumber} fillHeight={fillHeight} showLineNumberDivider={showLineNumberDivider} />}>
+              <WorkspaceMonacoCodeView
+                code={code}
+                fileName={fileName}
+                language={language}
+                startLineNumber={startLineNumber}
+                maxBodyHeightClassName={maxBodyHeightClassName}
+              />
+            </Suspense>
+          ) : (
+            <CodeRows
+              lines={highlightedLines}
+              startLineNumber={startLineNumber}
+              fillHeight={fillHeight}
+              showLineNumberDivider={showLineNumberDivider}
+            />
+          )}
         </div>
       </div>
     </div>

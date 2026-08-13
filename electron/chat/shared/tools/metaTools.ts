@@ -141,7 +141,7 @@ function buildPreloadedToolDocumentation(registry: AgentToolRegistry) {
 export function createCodeModeTool(executor: CodeModeExecutor, registry: AgentToolRegistry) {
   return tool({
     description: [
-      'Run a temporary local JavaScript orchestration program. Use only documented tools.* functions, write simple sequential calls, await each call, and return a concise JSON-compatible result. For source mutations, read the exact file first and call tools.edit({ path, edits }); use one path per call and complete targetContent/replacementContent hunks. startLine/endLine are optional: when omitted, the edit uses the latest successful read range for that path, otherwise the whole file. replaceAll: true replaces every match only inside that effective range; leave it false for one intended match. Use source text only in targetContent; never include read metadata or the EOF footer.',
+      'Run a temporary local JavaScript orchestration program. Use only documented tools.* functions, write simple sequential calls, await each call, and return a concise JSON-compatible result. For source mutations, call tools.edit({ path, edits }); use one path per call and complete targetContent/replacementContent hunks. startLine/endLine are optional: when omitted, matching searches the entire file. replaceAll: true replaces every match in the file or range; leave it false for one intended match. Use source text only in targetContent; never include read metadata or the EOF footer. When using backticks in Code Mode, escape literal template expressions as \\${var} or use single quotes.',
       buildPreloadedToolDocumentation(registry),
     ].join('\n'),
     inputSchema: jsonSchema<CodeModeInput>(CODE_MODE_INPUT_SCHEMA),

@@ -89,10 +89,10 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   if (!input.force && !shouldCompactContext(budget)) return null
 
   const previousPacket = input.previousPacket ?? null
-  const targetHistoryTokens = input.force
-    ? Math.min(budget.targetHistoryTokens, 4_000)
-    : budget.targetHistoryTokens
-  const window = selectCompactionWindow(input.messages, targetHistoryTokens, { previousPacket })
+  const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens, {
+    force: input.force,
+    previousPacket,
+  })
   if (!window) return null
   if (input.signal?.aborted) return null
 
@@ -156,7 +156,6 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   const projectedMessages = buildCompactionProjection({
     anchorMessages: window.anchorMessages,
     packet,
-    tailBudgetTokens: budget.targetHistoryTokens,
     tailMessages: window.tailMessages,
   })
 
@@ -181,10 +180,10 @@ export async function compactModelMessages(input: CompactModelMessagesInput) {
   if (!input.force && !shouldCompactContext(budget)) return null
 
   const previousPacket = input.previousPacket ?? null
-  const targetHistoryTokens = input.force
-    ? Math.min(budget.targetHistoryTokens, 4_000)
-    : budget.targetHistoryTokens
-  const window = selectCompactionWindow(input.messages, targetHistoryTokens, { previousPacket })
+  const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens, {
+    force: input.force,
+    previousPacket,
+  })
   if (!window) return null
   const sourceDigest = buildCompactionSourceDigest(
     input.messages,

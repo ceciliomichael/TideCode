@@ -36,24 +36,7 @@ export function createReadTool(context: WorkspaceToolContext) {
           targetPath,
           context.terminalExecutionMode,
         )
-        context.readScopes?.delete(target.absolutePath)
-        const result = await createReadToolResult(target.absolutePath, target.displayPath, input.offset, input.limit, input.full_file === true)
-        const semantics = result.semantics
-        const startLine = semantics?.start_line
-        const endLine = semantics?.end_line
-        if (
-          result.status === 'success' &&
-          semantics?.is_directory !== true &&
-          typeof startLine === 'number' &&
-          Number.isInteger(startLine) &&
-          startLine >= 1 &&
-          typeof endLine === 'number' &&
-          Number.isInteger(endLine) &&
-          endLine >= startLine
-        ) {
-          context.readScopes?.set(target.absolutePath, { endLine, startLine })
-        }
-        return result
+        return await createReadToolResult(target.absolutePath, target.displayPath, input.offset, input.limit, input.full_file === true)
       } catch (error) {
         return createToolErrorResult(getToolErrorSummary(error, 'Read failed.'))
       }

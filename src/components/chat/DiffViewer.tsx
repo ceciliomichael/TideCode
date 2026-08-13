@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { lazy, memo, Suspense, useMemo, useState, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
 import { PathLabel } from './PathLabel'
@@ -131,9 +131,6 @@ function DiffViewerComponent({
     [FileIcon, collapsible, filePath, headerInlineContent, headerTrailingContent, iconConfig.color, isExpanded],
   )
 
-  useEffect(() => {
-    void preloadWorkspaceMonacoDiffView().catch(() => undefined)
-  }, [])
 
   const hasRightHeaderContent = Boolean(headerRightContent)
   const header = collapsible ? (

@@ -17,7 +17,10 @@ import { decodeReplayValue, encodeModelMessages, encodeReplayValue } from './rep
 import { parseCanonicalHistoryDocument } from './validation'
 import type { ModelMessage } from 'ai'
 import { sha256, stableStringify } from '../cache/canonicalization'
-import { sanitizeModelMessages } from '../shared/modelMessageIntegrity'
+import {
+  sanitizeCompactedModelMessages,
+  sanitizeModelMessages,
+} from '../shared/modelMessageIntegrity'
 import { stripExecutionModeContext } from '../../../src/lib/executionModeContext'
 import { parseCompactionPacket, type CompactionPacket } from '../shared/compaction/contracts'
 import {
@@ -387,7 +390,7 @@ export async function recordCompactionCommitted(input: {
       parentPacketId: input.parentPacketId ?? null,
       packet: encodeReplayValue(input.packet),
       projectionVersion: input.projectionVersion ?? 'tidecode.compaction_projection/v2',
-      projectedMessages: encodeModelMessages(input.projectedMessages),
+      projectedMessages: encodeModelMessages(sanitizeCompactedModelMessages(input.projectedMessages)),
       providerId: input.providerId,
       ...(input.reasoningRetention ? { reasoningRetention: input.reasoningRetention } : {}),
       runId: null,

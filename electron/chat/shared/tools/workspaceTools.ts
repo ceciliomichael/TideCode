@@ -3,7 +3,6 @@ export {
   resolveReadOnlyTargetPath,
   resolveWorkspaceTargetPath,
   WORKSPACE_PATH_DESCRIPTION,
-  type WorkspaceReadScope,
   type WorkspaceToolContext,
 } from './workspaceToolPaths'
 export {

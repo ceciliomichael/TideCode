@@ -14,15 +14,7 @@ import {
   resolveSandboxPath,
 } from './sandboxPaths'
 
-export interface WorkspaceReadScope {
-  endLine: number
-  startLine: number
-}
-
-export interface WorkspaceToolContext extends Pick<AgentToolContext, 'checkpointId' | 'terminalExecutionMode' | 'workspaceRootPath'> {
-  /** Latest successful file-read range, keyed by the resolved absolute path. */
-  readScopes?: Map<string, WorkspaceReadScope>
-}
+export interface WorkspaceToolContext extends Pick<AgentToolContext, 'checkpointId' | 'terminalExecutionMode' | 'workspaceRootPath'> {}
 
 export const WORKSPACE_PATH_DESCRIPTION =
   'Accepts exactly one path; read, list, glob, and grep targets must already exist. Prefer a path relative to the workspace root. Use an absolute path only when copied exactly from the user or a tool result; never construct one. To inspect multiple roots, make separate calls; never join paths with spaces.'

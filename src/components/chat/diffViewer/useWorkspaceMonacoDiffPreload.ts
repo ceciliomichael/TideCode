@@ -1,29 +1,12 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useRef } from 'react'
 import type { ConversationFileDiff } from '../../../lib/chatDiffs'
 import { preloadWorkspaceMonacoDiffView, preloadWorkspaceMonacoRuntime } from '../../../lib/workspaceMonacoPreload'
 import { resolveWorkspaceMonacoLanguage } from '../../workspaceExplorer/workspaceFileEditor/workspaceMonacoConfig'
 import { ensureWorkspaceMonacoDiffModels } from './workspaceMonacoDiffModelCache'
 
 interface UseWorkspaceMonacoDiffPreloadOptions {
-  diffs: readonly ConversationFileDiff[]
-  enabled: boolean
 }
 
-type IdleWindow = Window & {
-  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number
-  cancelIdleCallback?: (handle: number) => void
-}
-
-function scheduleIdleTask(callback: () => void) {
-  const idleWindow = window as IdleWindow
-  if (idleWindow.requestIdleCallback) {
-    const handle = idleWindow.requestIdleCallback(callback, { timeout: 250 })
-    return () => idleWindow.cancelIdleCallback?.(handle)
-  }
-
-  const handle = window.setTimeout(callback, 16)
-  return () => window.clearTimeout(handle)
-}
 
 function createDiffModelRequest(diff: ConversationFileDiff) {
   return {
@@ -35,7 +18,7 @@ function createDiffModelRequest(diff: ConversationFileDiff) {
   }
 }
 
-export function useWorkspaceMonacoDiffPreload({ diffs, enabled }: UseWorkspaceMonacoDiffPreloadOptions) {
+export function useWorkspaceMonacoDiffPreload(_: UseWorkspaceMonacoDiffPreloadOptions = {}) {
   const runtimePromiseRef = useRef<ReturnType<typeof preloadWorkspaceMonacoRuntime> | null>(null)
   const diffViewPromiseRef = useRef<ReturnType<typeof preloadWorkspaceMonacoDiffView> | null>(null)
   const preloadedDiffKeySetRef = useRef(new Set<string>())
@@ -78,38 +61,6 @@ export function useWorkspaceMonacoDiffPreload({ diffs, enabled }: UseWorkspaceMo
     }
   }, [])
 
-  useEffect(() => {
-    if (!enabled || diffs.length === 0) {
-      return
-    }
-
-    let isCancelled = false
-    let diffIndex = 0
-    let cancelScheduledTask: (() => void) | null = null
-
-    const preloadNextDiff = () => {
-      if (isCancelled || diffIndex >= diffs.length) {
-        return
-      }
-
-      const diff = diffs[diffIndex]
-      diffIndex += 1
-      void preloadDiff(diff)
-        .catch(() => undefined)
-        .finally(() => {
-          if (!isCancelled) {
-            cancelScheduledTask = scheduleIdleTask(preloadNextDiff)
-          }
-        })
-    }
-
-    preloadNextDiff()
-
-    return () => {
-      isCancelled = true
-      cancelScheduledTask?.()
-    }
-  }, [diffs, enabled, preloadDiff])
 
   return preloadDiff
 }

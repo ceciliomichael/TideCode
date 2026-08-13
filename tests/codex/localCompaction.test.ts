@@ -23,6 +23,21 @@ function createConversationMessages(): ModelMessage[] {
   ]
 }
 
+function createTurnHistory(turnCount: number, oversizedFirstTurn = false): ModelMessage[] {
+  const messages: ModelMessage[] = []
+  for (let turn = 1; turn <= turnCount; turn += 1) {
+    messages.push({ role: 'user', content: `User request for turn ${turn}.` })
+    messages.push({ role: 'assistant', content: `Assistant response for turn ${turn}.` })
+    if (oversizedFirstTurn && turn === 1) {
+      messages.push({
+        role: 'assistant',
+        content: `Large historical evidence ${'context '.repeat(12_000)}`,
+      })
+    }
+  }
+  return messages
+}
+
 function createCompactionInput(messages: ModelMessage[], createStream?: CompactionStreamFactory) {
   return {
     createStream,
@@ -100,81 +115,36 @@ test('compaction boundaries never split a tool-call and tool-result pair', () =>
   assert.equal(longWindow.sourceMessageIds.at(-1), `model:${longWindow.boundaryIndex - 1}`)
 })
 
-test('compaction evicts a recent oversized tool result only with its matching call', () => {
+test('compaction retains exactly the latest four complete turns', () => {
   const messages = [
-    { role: 'user', content: 'Implement the requested change.' },
-    { role: 'assistant', content: 'I am reviewing the existing implementation.' },
-    { role: 'user', content: 'Keep the current provider behavior intact.' },
-    {
-      role: 'assistant',
-      content: [{ type: 'tool-call', toolCallId: 'call-large', toolName: 'read_file', input: { path: 'src/app.ts' } }],
-    },
-    {
-      role: 'tool',
-      content: [{
-        type: 'tool-result',
-        toolCallId: 'call-large',
-        toolName: 'read_file',
-        output: { type: 'text', value: 'tool output '.repeat(2_000) },
-      }],
-    },
-    { role: 'assistant', content: 'The file contents are ready for the next step.' },
-  ] as ModelMessage[]
+    ...createTurnHistory(6),
+  ]
 
   const window = selectCompactionWindow(messages, 1_000)
 
   assert.ok(window)
-  assert.ok(window.boundaryIndex > 0)
-  assert.ok(window.evictedMessages.length > 0)
+  assert.equal(window.evictedMessages.filter((message) => message.role === 'user').length, 2)
+  assert.equal(window.tailMessages.filter((message) => message.role === 'user').length, 4)
+  assert.equal(window.tailMessages[0]?.content, 'User request for turn 3.')
   assert.equal(hasUnresolvedToolCall(window.tailMessages), false)
-  assert.equal(window.tailMessages.some((message) => message.role === 'tool'), false)
-  assert.equal(window.tailMessages.at(-1)?.role, 'assistant')
 })
 
-test('compaction can evict the latest completed tool pair before the next model step', () => {
+test('forced compaction can summarize a short history while retaining its latest turn', () => {
   const messages = [
-    { role: 'user', content: 'Read the workspace and summarize the relevant state.' },
-    {
-      role: 'assistant',
-      content: [{ type: 'tool-call', toolCallId: 'call-latest', toolName: 'read_file', input: { path: 'src/app.ts' } }],
-    },
-    {
-      role: 'tool',
-      content: [{
-        type: 'tool-result',
-        toolCallId: 'call-latest',
-        toolName: 'read_file',
-        output: { type: 'text', value: 'large tool output '.repeat(12_000) },
-      }],
-    },
+    ...createTurnHistory(2),
   ] as ModelMessage[]
 
-  assert.equal(isSafeCompactionBoundary(messages, messages.length), true)
-  const window = selectCompactionWindow(messages, 1_000)
+  const window = selectCompactionWindow(messages, 1_000, { force: true })
 
   assert.ok(window)
-  assert.equal(window.boundaryIndex, messages.length)
-  assert.deepEqual(window.tailMessages, [])
-  assert.deepEqual(window.anchorMessages, [messages[0]])
+  assert.equal(window.tailMessages[0]?.content, 'User request for turn 2.')
+  assert.equal(window.tailMessages.filter((message) => message.role === 'user').length, 1)
   assert.equal(hasUnresolvedToolCall(window.tailMessages), false)
 })
 
-test('automatic compaction reports its start only after the threshold and safe boundary are met', async () => {
+test('automatic compaction reports its start after the threshold and four-turn boundary are met', async () => {
   const messages = [
-    { role: 'user', content: 'Read the workspace and summarize the relevant state.' },
-    {
-      role: 'assistant',
-      content: [{ type: 'tool-call', toolCallId: 'call-lifecycle', toolName: 'read_file', input: { path: 'src/app.ts' } }],
-    },
-    {
-      role: 'tool',
-      content: [{
-        type: 'tool-result',
-        toolCallId: 'call-lifecycle',
-        toolName: 'read_file',
-        output: { type: 'text', value: 'large tool output '.repeat(12_000) },
-      }],
-    },
+    ...createTurnHistory(6, true),
   ] as ModelMessage[]
   let started = 0
 
@@ -197,25 +167,9 @@ test('automatic compaction reports its start only after the threshold and safe b
   assert.equal(result.projectedMessages.some((message) => message.role === 'tool'), false)
 })
 
-test('automatic budget checks compact a completed tool step even when the target cannot fit the recent tail', async () => {
+test('automatic compaction requires an AI stream when five or more turns are eligible', async () => {
   const messages = [
-    { role: 'user', content: 'Inspect the workspace and continue the implementation.' },
-    { role: 'assistant', content: 'I am checking the existing files first.' },
-    { role: 'user', content: 'Preserve the current behavior while making the change.' },
-    {
-      role: 'assistant',
-      content: [{ type: 'tool-call', toolCallId: 'call-budget', toolName: 'read_file', input: { path: 'src/app.ts' } }],
-    },
-    {
-      role: 'tool',
-      content: [{
-        type: 'tool-result',
-        toolCallId: 'call-budget',
-        toolName: 'read_file',
-        output: { type: 'text', value: 'large tool output '.repeat(4_000) },
-      }],
-    },
-    { role: 'assistant', content: 'The tool result is available for the next model step.' },
+    ...createTurnHistory(6, true),
   ] as ModelMessage[]
 
   await assert.rejects(

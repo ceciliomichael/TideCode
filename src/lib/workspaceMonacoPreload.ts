@@ -6,10 +6,14 @@ type WorkspaceMonacoEditorViewModule = typeof import(
 type WorkspaceMonacoDiffViewModule = typeof import(
   '../components/chat/diffViewer/WorkspaceMonacoDiffView'
 )
+type WorkspaceMonacoCodeViewModule = typeof import(
+  '../components/chat/WorkspaceMonacoCodeView'
+)
 
 let runtimePromise: Promise<Monaco> | null = null
 let editorViewPromise: Promise<WorkspaceMonacoEditorViewModule> | null = null
 let diffViewPromise: Promise<WorkspaceMonacoDiffViewModule> | null = null
+let codeViewPromise: Promise<WorkspaceMonacoCodeViewModule> | null = null
 let backgroundPreloadScheduled = false
 
 export function preloadWorkspaceMonacoRuntime() {
@@ -52,6 +56,17 @@ export function preloadWorkspaceMonacoEditorView() {
     })
 
   return editorViewPromise
+}
+
+export function preloadWorkspaceMonacoCodeView() {
+  if (codeViewPromise) return codeViewPromise
+  codeViewPromise = Promise.all([preloadWorkspaceMonacoRuntime(), import('../components/chat/WorkspaceMonacoCodeView')])
+    .then(([, codeViewModule]) => codeViewModule)
+    .catch((error: unknown) => {
+      codeViewPromise = null
+      throw error
+    })
+  return codeViewPromise
 }
 
 export function preloadWorkspaceMonacoDiffView() {

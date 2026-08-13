@@ -484,3 +484,29 @@ test("agent mode exposes asynchronous terminal tools and plan mode exposes none"
     await fs.rm(workspaceRootPath, { force: true, recursive: true });
   }
 });
+
+test("execute_terminal with wait_seconds collects initial output directly", async () => {
+  const writeCalls: WriteTerminalSessionInput[] = [];
+  let outputDelivered = false;
+  const mockDeps = createMockDependencies({
+    getPendingOutput: (writtenCommands) => {
+      if (outputDelivered) return "";
+      outputDelivered = true;
+      const marker = readCompletionMarker(writtenCommands[0]?.data ?? "");
+      return `initial output line\n${marker}:0\n`;
+    },
+    writeCalls,
+  });
+
+  const tools = createTools("execute-wait-test", mockDeps);
+
+  const result = await getTool(tools, "execute_terminal").execute({
+    command: "echo test",
+    wait_seconds: 5,
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(result.semantics?.state, "completed");
+  assert.match(result.body ?? "", /session_id: /u);
+  assert.match(result.body ?? "", /initial output line/u);
+});

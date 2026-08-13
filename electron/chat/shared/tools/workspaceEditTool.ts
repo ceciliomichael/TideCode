@@ -99,7 +99,6 @@ function resolveChunkReplacements(
   chunk: EditChunk,
   displayPath: string,
   chunkIndex: number,
-  readScope?: { endLine: number; startLine: number },
 ): ResolvedTextReplacement[] {
   if (chunk.targetContent.length === 0) {
     throw new Error(`Replacement chunk ${chunkIndex + 1} has empty target content.`)
@@ -107,7 +106,7 @@ function resolveChunkReplacements(
 
   const effectiveRange = chunk.startLine !== undefined && chunk.endLine !== undefined
     ? { endLine: chunk.endLine, startLine: chunk.startLine }
-    : readScope
+    : undefined
 
   const rangedTargetContent = chunk.targetContent.endsWith('\n')
     ? chunk.targetContent.slice(0, -1)
@@ -128,7 +127,7 @@ function resolveChunkReplacements(
       )
     }
     throw new Error(
-      `Target content not found in "${displayPath}". Read the current file and retry with the exact current text.`,
+      `Target content not found in "${displayPath}". Verify the target text and retry with the exact current text.`,
     )
   }
 
@@ -275,7 +274,6 @@ async function createEditToolResultInternal(
       chunk,
       target.displayPath,
       index,
-      chunk.startLine === undefined ? context.readScopes?.get(target.absolutePath) : undefined,
     )
   })
 
@@ -324,10 +322,16 @@ function normalizeEditChunks(input: EditInput): EditChunk[] {
     throw new Error('Edit requires a non-empty edits array.')
   }
 
-  return input.edits.map((operation, index) => normalizeEditChunk(
+  const normalized = input.edits.map((operation, index) => normalizeEditChunk(
     operation,
     `Edit hunk ${index + 1}`,
   ))
+
+  const changedChunks = normalized.filter(
+    (chunk) => chunk.targetContent !== chunk.replacementContent,
+  )
+
+  return changedChunks.length > 0 ? changedChunks : normalized
 }
 
 function normalizeEditChunk(
@@ -357,7 +361,7 @@ function normalizeEditChunk(
 
   return {
     endLine: input.endLine,
-    replaceAll: input.replaceAll ?? input.allowMultiple,
+    replaceAll: input.replaceAll ?? input.allowMultiple ?? true,
     replacementContent: normalizeTextMutationContent(input.replacementContent),
     startLine: input.startLine,
     targetContent: normalizeTextMutationContent(input.targetContent),
