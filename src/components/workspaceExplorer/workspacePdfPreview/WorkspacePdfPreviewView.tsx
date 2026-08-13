@@ -1,4 +1,4 @@
-import { ChevronRight, ZoomIn, ZoomOut } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { memo, useEffect, useMemo, useState } from 'react'
 import {
   ensurePdfPageRender,
@@ -21,7 +21,6 @@ interface WorkspacePdfPreviewViewProps {
 
 const MIN_ZOOM = 0.65
 const MAX_ZOOM = 2.5
-const ZOOM_STEP = 0.15
 function getPathSegments(relativePath: string) {
   return relativePath.split(/[\\/]+/).filter((segment) => segment.length > 0)
 }
@@ -38,7 +37,6 @@ export const WorkspacePdfPreviewView = memo(function WorkspacePdfPreviewView({
     previewError ? toUserFacingErrorMessage(previewError, `TideCode could not open ${fileName}.`) : null,
   )
   const {
-    changeZoom,
     handleViewportPointerDown,
     handleViewportPointerEnd,
     handleViewportPointerMove,
@@ -103,7 +101,7 @@ export const WorkspacePdfPreviewView = memo(function WorkspacePdfPreviewView({
 
   return (
     <div className="workspace-pdf-preview flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
-      <div className="flex min-h-9 shrink-0 items-center gap-2 border-b border-border bg-surface px-2">
+      <div className="flex h-7 shrink-0 items-center bg-surface px-2">
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-[12px] text-subtle-foreground">
           {pathSegments.map((segment, index) => (
             <span key={`${segment}-${index}`} className="inline-flex min-w-0 items-center gap-1.5">
@@ -115,34 +113,9 @@ export const WorkspacePdfPreviewView = memo(function WorkspacePdfPreviewView({
           ))}
         </div>
         {previewSnapshot ? (
-          <div className="flex shrink-0 items-center gap-1">
-            <span className="mr-1 text-[12px] text-subtle-foreground">
-              {previewSnapshot.pageLayouts.length} {previewSnapshot.pageLayouts.length === 1 ? 'page' : 'pages'}
-            </span>
-            <Tooltip content="Zoom out" side="bottom" noWrap>
-              <button
-                type="button"
-                onClick={() => changeZoom(-ZOOM_STEP)}
-                disabled={zoom <= MIN_ZOOM}
-                className="inline-flex h-7 w-7 items-center justify-center rounded border border-border text-subtle-foreground transition-colors hover:bg-background hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Zoom out"
-              >
-                <ZoomOut size={14} />
-              </button>
-            </Tooltip>
-            <span className="w-11 text-center text-[12px] text-subtle-foreground">{Math.round(zoom * 100)}%</span>
-            <Tooltip content="Zoom in" side="bottom" noWrap>
-              <button
-                type="button"
-                onClick={() => changeZoom(ZOOM_STEP)}
-                disabled={zoom >= MAX_ZOOM}
-                className="inline-flex h-7 w-7 items-center justify-center rounded border border-border text-subtle-foreground transition-colors hover:bg-background hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Zoom in"
-              >
-                <ZoomIn size={14} />
-              </button>
-            </Tooltip>
-          </div>
+          <span className="shrink-0 text-[12px] text-subtle-foreground">
+            {previewSnapshot.pageLayouts.length} {previewSnapshot.pageLayouts.length === 1 ? 'page' : 'pages'}
+          </span>
         ) : null}
       </div>
       <div

@@ -3,8 +3,10 @@ import test from 'node:test'
 import type { ModelMessage } from 'ai'
 import { createEmptyCanonicalHistory } from '../../electron/chat/history/contracts'
 import { projectCanonicalReplay } from '../../electron/chat/history/replayProjector'
+import { encodeModelMessages, encodeReplayValue } from '../../electron/chat/history/replayCodec'
 import { shouldMigrateCrossProviderHistoryToText } from '../../electron/chat/history/providerSwitch'
 import { migrateToolHistoryToUserInput } from '../../electron/chat/history/providerToolMigration'
+import { buildFallbackCompactionPacket } from '../../electron/chat/shared/compaction/fallback'
 
 test('detects a prior non-Codex provider from canonical run history', () => {
   const document = createEmptyCanonicalHistory('conversation', 1)
@@ -32,6 +34,11 @@ test('detects a prior non-Codex provider from canonical run history', () => {
     document,
     messages: [],
     targetProviderId: 'openai',
+  }), false)
+  assert.equal(shouldMigrateCrossProviderHistoryToText({
+    document,
+    messages: [],
+    targetProviderId: 'mistral',
   }), false)
 })
 
@@ -100,4 +107,67 @@ test('projectCanonicalReplay applies the migration when Codex follows another pr
   assert.equal(result.fidelity, 'migrated_legacy')
   assert.equal(result.messages.some((message) => message.role === 'tool'), false)
   assert.match(JSON.stringify(result.messages), /old result/u)
+})
+
+test('projectCanonicalReplay keeps the compacted window when switching from Codex to Mistral', () => {
+  const document = createEmptyCanonicalHistory('conversation', 1)
+  const packet = buildFallbackCompactionPacket({
+    messages: [{ content: 'Old history that was compacted away.', role: 'user' }],
+    modelId: 'gpt-5.6-luna',
+    providerId: 'codex',
+    sourceDigest: 'digest',
+    sourceMessageIds: ['model:0'],
+  })
+  const compactedMessages: ModelMessage[] = [
+    { content: 'The retained turn.', role: 'user' },
+    {
+      content: [{ input: { path: 'src/app.ts' }, toolCallId: 'retained-call', toolName: 'read', type: 'tool-call' }],
+      role: 'assistant',
+    },
+    {
+      content: [{ output: { type: 'text', value: 'retained result' }, toolCallId: 'retained-call', toolName: 'read', type: 'tool-result' }],
+      role: 'tool',
+    },
+    { content: packet.continuationMarkdown, role: 'assistant' },
+  ]
+  document.events.push({
+    anchorUserMessageId: 'user-1',
+    branchId: 'main',
+    compactionId: 'compaction-1',
+    createdAt: 2,
+    eventId: 'event-1',
+    modelId: 'gpt-5.6-luna',
+    packet: encodeReplayValue(packet),
+    projectedMessages: encodeModelMessages(compactedMessages),
+    providerId: 'codex',
+    revision: 1,
+    runId: null,
+    sourceDigest: 'digest',
+    sourceMessageIds: ['model:0'],
+    type: 'compaction_committed',
+    usedFallback: true,
+  })
+
+  const result = projectCanonicalReplay({
+    document,
+    fallbackMessages: [
+      { content: 'Old history that was compacted away.', role: 'user' },
+      { content: 'A very large old tool result '.repeat(10_000), role: 'tool' },
+    ],
+    messages: [
+      { content: 'Old history that was compacted away.', id: 'user-1', role: 'user', timestamp: 1 },
+      { content: 'Old assistant response', id: 'assistant-old', role: 'assistant', timestamp: 2 },
+      { content: 'A very large old tool result '.repeat(10_000), id: 'tool-old', role: 'tool', timestamp: 3, toolCallId: 'old-call' },
+      { content: 'The next request after compaction.', id: 'user-2', role: 'user', timestamp: 4 },
+    ],
+    modelId: 'mistral-small-latest',
+    providerId: 'mistral',
+  })
+
+  assert.equal(result.isCompacted, true)
+  assert.equal(result.fidelity, 'exact')
+  assert.ok(result.messages.some((message) => message.role === 'tool'))
+  assert.match(JSON.stringify(result.messages), /retained result/u)
+  assert.ok(result.messages.some((message) => String(message.content).includes('The next request after compaction.')))
+  assert.doesNotMatch(JSON.stringify(result.messages), /A very large old tool result/u)
 })

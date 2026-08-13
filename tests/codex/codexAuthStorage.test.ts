@@ -176,3 +176,26 @@ test('Codex auth storage keeps same Gmail accounts separate across workspaces', 
     await fs.rm(homeDirectory, { force: true, recursive: true })
   }
 })
+
+test('Codex auth storage handles 0-byte and corrupted JSON files gracefully', async () => {
+  const homeDirectory = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-codex-corrupt-'))
+  const authFilePath = getCodexAuthFilePath(homeDirectory)
+  const accountFilePath = getStoredCodexAccountFilePath('corrupt-key', homeDirectory)
+
+  try {
+    await fs.mkdir(path.dirname(authFilePath), { recursive: true })
+    await fs.mkdir(path.dirname(accountFilePath), { recursive: true })
+
+    // Create 0-byte corrupted files
+    await fs.writeFile(authFilePath, '')
+    await fs.writeFile(accountFilePath, '')
+
+    const authData = await readStoredCodexAuthData({ homeDirectory })
+    assert.equal(authData, null)
+
+    const accountData = await readStoredCodexAccount('corrupt-key', { homeDirectory })
+    assert.equal(accountData, null)
+  } finally {
+    await fs.rm(homeDirectory, { force: true, recursive: true })
+  }
+})

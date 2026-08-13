@@ -47,6 +47,7 @@ export async function compactConversationForProvider(input: CompactConversationI
     reasoningEffort: input.reasoningEffort,
     systemPromptTokens: approximateTokenCount(prompt.system),
     contextWindowTokens: contextCompaction.contextWindowTokens,
+    retainedTurnCount: contextCompaction.retainedTurnCount,
     triggerRatio: contextCompaction.triggerPercent / 100,
     toolSchemaTokens: 0,
   })

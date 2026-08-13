@@ -138,6 +138,7 @@ export interface CompactModelMessagesInput {
   systemPromptTokens: number
   toolSchemaTokens: number
   contextWindowTokens?: number
+  retainedTurnCount?: number
   triggerRatio?: number
   previousPacket?: CompactionPacket | null
   signal?: AbortSignal

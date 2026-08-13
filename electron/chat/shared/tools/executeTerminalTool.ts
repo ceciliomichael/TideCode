@@ -177,7 +177,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
 
         return createSuccessResult({
           body: bodyLines.join("\n"),
-          displayBody: unreadOutputLines.length > 0 ? "Terminal command completed with output." : "Terminal command started.",
+          displayBody: bodyLines.join("\n"),
           semantics: {
             session_id: session.localSessionId,
             state: commandState,

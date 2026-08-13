@@ -1,10 +1,14 @@
 export interface ContextCompactionSettings {
   contextWindowTokens: number
+  retainedTurnCount: number
   triggerPercent: number
 }
 
+export const DEFAULT_CONTEXT_COMPACTION_RETAINED_TURNS = 4
+
 export const DEFAULT_CONTEXT_COMPACTION_SETTINGS: ContextCompactionSettings = {
   contextWindowTokens: 200_000,
+  retainedTurnCount: DEFAULT_CONTEXT_COMPACTION_RETAINED_TURNS,
   triggerPercent: 80,
 }
 
@@ -12,6 +16,10 @@ export const CONTEXT_COMPACTION_LIMITS = {
   contextWindowTokens: {
     maximum: 2_000_000,
     minimum: 16_000,
+  },
+  retainedTurnCount: {
+    maximum: 12,
+    minimum: 1,
   },
   triggerPercent: {
     maximum: 95,
@@ -36,6 +44,12 @@ export function normalizeContextCompactionSettings(
     CONTEXT_COMPACTION_LIMITS.contextWindowTokens.maximum,
     DEFAULT_CONTEXT_COMPACTION_SETTINGS.contextWindowTokens,
   )
+  const retainedTurnCount = clampInteger(
+    input?.retainedTurnCount,
+    CONTEXT_COMPACTION_LIMITS.retainedTurnCount.minimum,
+    CONTEXT_COMPACTION_LIMITS.retainedTurnCount.maximum,
+    DEFAULT_CONTEXT_COMPACTION_SETTINGS.retainedTurnCount,
+  )
   const triggerPercent = clampInteger(
     input?.triggerPercent,
     CONTEXT_COMPACTION_LIMITS.triggerPercent.minimum,
@@ -44,6 +58,7 @@ export function normalizeContextCompactionSettings(
   )
   return {
     contextWindowTokens,
+    retainedTurnCount,
     triggerPercent,
   }
 }

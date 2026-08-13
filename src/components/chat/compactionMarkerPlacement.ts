@@ -8,10 +8,14 @@ export interface CompactionMarkerPlacement {
 export function placeCompactionMarkersAfterTranscript(
   visibleMessages: readonly Message[],
   markers: readonly ChatCompactionMarker[],
+  options: { preferredMessageId?: string | null } = {},
 ): CompactionMarkerPlacement {
   const messageIndexById = new Map(visibleMessages.map((message, index) => [message.id, index]))
   const markersBeforeMessageId = new Map<string, ChatCompactionMarker[]>()
   const trailingMarkers: ChatCompactionMarker[] = []
+  const preferredMessageIndex = options.preferredMessageId
+    ? messageIndexById.get(options.preferredMessageId)
+    : undefined
 
   for (const marker of markers) {
     const anchorIndex = marker.anchorUserMessageId
@@ -33,14 +37,19 @@ export function placeCompactionMarkersAfterTranscript(
       .slice(anchorIndex + 1)
       .find((message) => message.role === 'user')
 
-    if (!nextTranscriptMessage) {
+    const preferredMessage = preferredMessageIndex !== undefined && preferredMessageIndex > anchorIndex
+      ? visibleMessages[preferredMessageIndex]
+      : undefined
+    const targetMessage = firstPostCompactionMessage ?? nextTranscriptMessage ?? preferredMessage
+
+    if (!targetMessage) {
       trailingMarkers.push(marker)
       continue
     }
 
-    const anchoredMarkers = markersBeforeMessageId.get(nextTranscriptMessage.id) ?? []
+    const anchoredMarkers = markersBeforeMessageId.get(targetMessage.id) ?? []
     anchoredMarkers.push(marker)
-    markersBeforeMessageId.set(nextTranscriptMessage.id, anchoredMarkers)
+    markersBeforeMessageId.set(targetMessage.id, anchoredMarkers)
   }
 
   return {

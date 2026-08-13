@@ -58,16 +58,11 @@ function findLatestCompactionProjection(input: {
     'projectedMessages' in candidate &&
     candidate.branchId === input.document.activeBranchId
   ))
-  const event = compactionEvents.find((candidate) => (
-    candidate.type === 'compaction_committed' &&
-    'projectedMessages' in candidate &&
-    candidate.modelId === input.modelId &&
-    candidate.providerId === input.providerId
-  )) ?? compactionEvents.find((candidate) => (
-    candidate.type === 'compaction_committed' &&
-    'projectedMessages' in candidate &&
-    candidate.providerId === input.providerId
-  ))
+  // A compaction projection is conversation state, not a provider-specific
+  // transcript. Reuse the newest active-branch projection when switching
+  // providers. Provider-specific tool compatibility is handled separately
+  // by shouldMigrateCrossProviderHistoryToText.
+  const event = compactionEvents[0]
   if (!event || event.type !== 'compaction_committed' || !('projectedMessages' in event)) {
     return null
   }
@@ -229,12 +224,12 @@ export function projectCanonicalReplay(input: {
       : never
     : never
 }): ReplayProjectionResult {
-  const shouldMigrateToolHistory = shouldMigrateCrossProviderHistoryToText({
-    document: input.document,
-    messages: input.messages,
-    targetProviderId: input.providerId,
-  })
   const finalizeProjection = (projection: ReplayProjectionResult): ReplayProjectionResult => {
+    const shouldMigrateToolHistory = shouldMigrateCrossProviderHistoryToText({
+      document: input.document,
+      messages: input.messages,
+      targetProviderId: input.providerId,
+    })
     if (!shouldMigrateToolHistory) return projection
 
     return {
@@ -302,10 +297,14 @@ export function projectCanonicalReplay(input: {
     const messages = replay.freshnessRevision < input.document.freshness.revision
       ? appendFreshnessNotice([...exactPrefix, ...suffix], input.document.freshness.invalidatedSubjects)
       : [...exactPrefix, ...suffix]
+    const replayIsCompacted = compactionProjection?.sourceRevision === replay.sourceRevision || replayIncludesCompaction(
+      input.document,
+      replay,
+    )
     return finalizeProjection({
       fidelity: replay.fidelity,
       freshnessRevision: input.document.freshness.revision,
-      isCompacted: replayIncludesCompaction(input.document, replay),
+      isCompacted: replayIsCompacted,
       messages: sanitizeModelMessages(messages),
       replayRunId: replay.runId,
       compactionPacket: replayCompactionPacket,

@@ -457,6 +457,17 @@ export async function openExternalTerminalLink(
   await openExternalWithElectronShell(safeUrl);
 }
 
+export function closeAllTerminalSessionsForWebContents(sender: WebContents) {
+  const sessionIds = getSessionIdsForOwner(sender.id);
+  if (!sessionIds) {
+    return;
+  }
+
+  for (const sessionId of Array.from(sessionIds)) {
+    terminateSession(sessionId);
+  }
+}
+
 export async function closeAllTerminalSessions() {
   const sessionIds = Array.from(sessions.keys());
   for (const sessionId of sessionIds) {

@@ -1,6 +1,7 @@
 import type { ModelMessage } from 'ai'
+import { DEFAULT_CONTEXT_COMPACTION_RETAINED_TURNS } from '../../../../src/lib/contextCompactionSettings'
 
-export const DEFAULT_COMPACTION_RETAINED_TURNS = 4
+export const DEFAULT_COMPACTION_RETAINED_TURNS = DEFAULT_CONTEXT_COMPACTION_RETAINED_TURNS
 
 export interface ConversationTurnRange {
   endIndex: number

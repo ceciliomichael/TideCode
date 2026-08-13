@@ -24,8 +24,24 @@ function resolveLanguage(fileName: string | undefined, language: string | undefi
   return language?.trim() || resolveWorkspaceMonacoLanguage(fileName || 'untitled.txt')
 }
 
+const CODE_LINE_HEIGHT_PX = 20
+const CODE_VERTICAL_PADDING_PX = 8
+
 function resolveCodeLineCount(code: string) {
   return Math.max(1, code.replace(/\r?\n+$/u, '').split(/\r?\n/u).length)
+}
+
+function resolveCodeContentHeight(code: string) {
+  return resolveCodeLineCount(code) * CODE_LINE_HEIGHT_PX + CODE_VERTICAL_PADDING_PX * 2
+}
+
+function createCodeBlockModelPath(fileName: string | undefined, code: string) {
+  let hash = 2166136261
+  for (let index = 0; index < code.length; index += 1) {
+    hash ^= code.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return createWorkspaceMonacoModelPath(`__code_blocks__/${fileName || 'untitled.txt'}-${(hash >>> 0).toString(16)}`)
 }
 
 export function WorkspaceMonacoCodeView({
@@ -38,10 +54,10 @@ export function WorkspaceMonacoCodeView({
   const resolvedTheme = useResolvedDocumentTheme()
   const resolvedLanguage = useMemo(() => resolveLanguage(fileName, language), [fileName, language])
   const modelPath = useMemo(
-    () => createWorkspaceMonacoModelPath(fileName || 'code-block.txt'),
-    [fileName],
+    () => createCodeBlockModelPath(fileName, code),
+    [code, fileName],
   )
-  const [height, setHeight] = useState(() => Math.max(20, resolveCodeLineCount(code) * 20 - 8))
+  const [height, setHeight] = useState(() => resolveCodeContentHeight(code))
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const maxHeight = maxBodyHeightClassName?.includes('max-h-80') ? 320 : null
   const theme = getWorkspaceMonacoTheme(resolvedTheme)
@@ -51,8 +67,10 @@ export function WorkspaceMonacoCodeView({
     const model = editorInstance?.getModel()
     if (!editorInstance || !model) return
 
-    const lineHeight = 20
-    const contentHeight = Math.max(20, model.getLineCount() * lineHeight - 8)
+    const contentHeight = Math.max(
+      CODE_LINE_HEIGHT_PX + CODE_VERTICAL_PADDING_PX * 2,
+      model.getLineCount() * CODE_LINE_HEIGHT_PX + CODE_VERTICAL_PADDING_PX * 2,
+    )
     setHeight(maxHeight === null ? contentHeight : Math.min(maxHeight, contentHeight))
   }, [maxHeight])
 
@@ -69,7 +87,7 @@ export function WorkspaceMonacoCodeView({
 
   useEffect(() => {
     setHeight(() => {
-      const contentHeight = Math.max(20, resolveCodeLineCount(code) * 20 - 8)
+      const contentHeight = resolveCodeContentHeight(code)
       return maxHeight === null ? contentHeight : Math.min(maxHeight, contentHeight)
     })
   }, [code, maxHeight])
@@ -83,7 +101,7 @@ export function WorkspaceMonacoCodeView({
       <Editor
         beforeMount={beforeMount}
         height="100%"
-        keepCurrentModel
+
         language={resolvedLanguage}
         loading={<WorkspaceMonacoDiffLoadingView height={height || 160} />}
         onMount={onMount}
@@ -97,11 +115,13 @@ export function WorkspaceMonacoCodeView({
           lineNumbers: (lineNumber) => String(lineNumber + Math.max(1, Math.trunc(startLineNumber)) - 1),
           lineNumbersMinChars: 5,
           minimap: { enabled: false },
-          padding: { bottom: 0, top: 0 },
+          padding: { bottom: CODE_VERTICAL_PADDING_PX, top: CODE_VERTICAL_PADDING_PX },
           readOnly: true,
           renderLineHighlight: 'none',
+          lineHeight: 20,
+          scrollBeyondLastColumn: 0,
           scrollBeyondLastLine: false,
-          scrollbar: { horizontal: 'auto', horizontalScrollbarSize: 8, useShadows: false, vertical: 'hidden', verticalScrollbarSize: 0 },
+          scrollbar: { alwaysConsumeMouseWheel: false, horizontal: 'hidden', horizontalScrollbarSize: 0, useShadows: false, vertical: maxHeight === null ? 'hidden' : 'auto', verticalScrollbarSize: maxHeight === null ? 0 : 8 },
           stickyScroll: { enabled: false },
           wordWrap: 'on',
           wrappingIndent: 'same',

@@ -6,7 +6,7 @@ import test from 'node:test'
 import { jsonSchema, tool, type ToolExecutionOptions } from 'ai'
 import { CodeModeExecutor } from '../../electron/chat/shared/codeMode/executor'
 import { createAgentToolBundle } from '../../electron/chat/shared/tools'
-import { createToolSearchTool } from '../../electron/chat/shared/tools/metaTools'
+import { createCodeModeTool, createToolSearchTool } from '../../electron/chat/shared/tools/metaTools'
 import { createAgentToolRegistry, type AgentToolRegistry } from '../../electron/chat/shared/tools/registry'
 
 function createTestRegistry(): AgentToolRegistry {
@@ -52,6 +52,20 @@ test('Code Mode runs a filtered program through the registry bridge', async () =
       first: JSON.stringify({ value: 'first' }),
       second: JSON.stringify({ value: 'second' }),
     })
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode preserves an omitted program return as undefined', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry())
+
+  try {
+    const result = await executor.run("await tools.echo({ value: 'completed' })")
+
+    assert.equal(result.status, 'success')
+    assert.equal(result.output, undefined)
+    assert.equal(result.toolCalls.length, 1)
   } finally {
     await executor.dispose()
   }
@@ -103,6 +117,35 @@ test('Code Mode resolves returned tool Promises when a small model omits await',
         },
       },
     })
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode reports bare tool calls without exposing an undefined result', async () => {
+  const registry = createTestRegistry()
+  const executor = new CodeModeExecutor(registry)
+  const codeModeTool = createCodeModeTool(executor, registry)
+
+  try {
+    type ExecutableTestTool = {
+      execute?: (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>
+    }
+    const execute = (codeModeTool as unknown as ExecutableTestTool).execute
+    assert.equal(typeof execute, 'function')
+
+    const result = await execute?.(
+      { code: "tools.echo({ value: 'completed' })" },
+      {
+        context: {},
+        messages: [],
+        toolCallId: 'test-code-mode-bare-call',
+      },
+    ) as { body?: string }
+
+    assert.match(result.body ?? '', /completed tool calls but returned no explicit value/u)
+    assert.match(result.body ?? '', /echo \(success\):[\s\S]*\{"value":"completed"\}/u)
+    assert.doesNotMatch(result.body ?? '', /undefined/u)
   } finally {
     await executor.dispose()
   }
@@ -173,14 +216,84 @@ test('Code Mode rejects unavailable tools before starting execution', async () =
   }
 })
 
-test('Code Mode rejects raw runtime APIs', async () => {
-  const executor = new CodeModeExecutor(createTestRegistry())
+test('Code Mode executes runtime APIs when requested', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
+    terminalExecutionMode: 'full',
+  })
 
   try {
-    const result = await executor.run('return process.env')
+    const result = await executor.run(
+      "const path = require('node:path'); return { directFs: typeof fs.readFileSync === 'function', directHttp: typeof http.request === 'function', directWorker: typeof Worker === 'function', node: typeof process.versions.node === 'string', file: path.basename('/tmp/example.txt'), encoded: Buffer.from('ok').toString('base64') }",
+    )
+
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, {
+      encoded: 'b2s=',
+      file: 'example.txt',
+      directFs: true,
+      directHttp: true,
+      directWorker: true,
+      node: true,
+    })
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode sandbox keeps workspace filesystem access while blocking host capabilities', async () => {
+  const parentRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-sandbox-'))
+  const workspaceRootPath = path.join(parentRootPath, 'workspace')
+  const outsideFilePath = path.join(parentRootPath, 'outside.txt')
+  await fs.mkdir(workspaceRootPath)
+  await fs.writeFile(path.join(workspaceRootPath, 'inside.txt'), 'workspace data', 'utf8')
+  await fs.writeFile(outsideFilePath, 'outside data', 'utf8')
+  const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
+    terminalExecutionMode: 'sandbox',
+    workspaceRootPath,
+  })
+
+  try {
+    const code = [
+      'const fs = require("node:fs")',
+      'const inside = fs.readFileSync(' + JSON.stringify(path.join(workspaceRootPath, 'inside.txt')) + ', "utf8")',
+      'let outsideBlocked = false',
+      'try { fs.readFileSync(' + JSON.stringify(outsideFilePath) + ', "utf8") } catch { outsideBlocked = true }',
+      'let networkBlocked = false',
+      'try { await fetch("http://127.0.0.1:1") } catch { networkBlocked = true }',
+      'let childBlocked = false',
+      'try { require("node:child_process").execFileSync("node", ["--version"]) } catch { childBlocked = true }',
+      'let codeGenerationBlocked = false',
+      'try { Object.getPrototypeOf(async function () {}).constructor("return 1")() } catch { codeGenerationBlocked = true }',
+      'return { childBlocked, codeGenerationBlocked, envKeys: Object.keys(process.env).length, inside, networkBlocked, outsideBlocked, workspace: process.cwd() }',
+    ].join('\n')
+    const result = await executor.run(code)
+
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, {
+      childBlocked: true,
+      codeGenerationBlocked: true,
+      envKeys: 0,
+      inside: 'workspace data',
+      networkBlocked: true,
+      outsideBlocked: true,
+      workspace: path.resolve(workspaceRootPath),
+    })
+  } finally {
+    await executor.dispose()
+    await fs.rm(parentRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode sandbox blocks dynamic module loading', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
+    terminalExecutionMode: 'sandbox',
+  })
+
+  try {
+    const result = await executor.run("return await import('node:process')")
 
     assert.equal(result.status, 'error')
-    assert.match(result.summary, /forbidden runtime API/u)
+    assert.match(result.error ?? '', /does not allow dynamic module loading/u)
   } finally {
     await executor.dispose()
   }
@@ -310,6 +423,20 @@ test('Code Mode repairs Python-style triple quotes in program syntax', async () 
 
     assert.equal(result.status, 'success')
     assert.deepEqual(result.output, { ok: true, text: '<div>hello</div>' })
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode repairs unescaped inner backticks and template expressions in tool arguments', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry())
+
+  try {
+    const nestedProgram = 'const payload = { content: `const val = `${x}` ` }; return { ok: true, val: payload.content };'
+    const result = await executor.run(nestedProgram)
+
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, { ok: true, val: 'const val = `${x}` ' })
   } finally {
     await executor.dispose()
   }

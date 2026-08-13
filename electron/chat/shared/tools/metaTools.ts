@@ -1,8 +1,11 @@
 import { jsonSchema, tool } from 'ai'
+import type { AppTerminalExecutionMode } from '../../../../src/types/chat'
 import type { AgentToolExecutionResult } from '../toolTypes'
 import { createSuccessResult } from './workspaceToolResults'
 import { createToolErrorResult } from './toolResult'
 import type { CodeModeExecutor } from '../codeMode/executor'
+import { CODE_MODE_EXECUTION_CONTRACT } from '../codeMode/promptContract'
+import { formatImplicitCodeModeToolResults } from '../../../../src/lib/codeModeResultOutput'
 import { isDynamicAgentTool, type AgentToolRegistry } from './registry'
 import { createAgentToolCallableContract } from './callableContract'
 
@@ -56,11 +59,15 @@ interface CodeModeInput {
 }
 
 function stringifyOutput(value: unknown) {
+  if (value === undefined) {
+    return ''
+  }
+
   if (typeof value === 'string') {
     return value
   }
   try {
-    return JSON.stringify(value, null, 2)
+    return JSON.stringify(value, null, 2) ?? ''
   } catch {
     return String(value)
   }
@@ -138,10 +145,20 @@ function buildPreloadedToolDocumentation(registry: AgentToolRegistry) {
   ].join('\n')
 }
 
-export function createCodeModeTool(executor: CodeModeExecutor, registry: AgentToolRegistry) {
+export function createCodeModeTool(
+  executor: CodeModeExecutor,
+  registry: AgentToolRegistry,
+  terminalExecutionMode: AppTerminalExecutionMode = 'sandbox',
+) {
+  const runtimePolicy = terminalExecutionMode === 'sandbox'
+    ? 'Sandbox runtime: direct filesystem APIs are limited to the workspace, environment variables are empty, process creation and network APIs are blocked, and nested workers are blocked. Use tools.* for blocked operations.'
+    : 'Full runtime: direct JavaScript runtime APIs are available in the worker. Use tools.* when you need structured application results.'
+
   return tool({
     description: [
-      'Run a temporary local JavaScript orchestration program. Use only documented tools.* functions, write simple sequential calls, await each call, and return a concise JSON-compatible result. For source mutations, call tools.edit({ path, edits }); use one path per call and complete targetContent/replacementContent hunks. startLine/endLine are optional: when omitted, matching searches the entire file. replaceAll: true replaces every match in the file or range; leave it false for one intended match. Use source text only in targetContent; never include read metadata or the EOF footer. When using backticks in Code Mode, escape literal template expressions as \\${var} or use single quotes.',
+      CODE_MODE_EXECUTION_CONTRACT,
+      runtimePolicy,
+      'Run a temporary local JavaScript orchestration program. Write simple sequential calls, await each call, and return a concise JSON-compatible result. For source mutations, call tools.edit({ path, edits }); use one path per call and complete targetContent/replacementContent hunks. startLine/endLine are optional: when omitted, matching searches the entire file. replaceAll: true replaces every match in the file or range; leave it false for one intended match. Use source text only in targetContent; never include read metadata or the EOF footer. When using backticks in Code Mode, escape literal template expressions as \\${var} or use single quotes.',
       buildPreloadedToolDocumentation(registry),
     ].join('\n'),
     inputSchema: jsonSchema<CodeModeInput>(CODE_MODE_INPUT_SCHEMA),
@@ -152,7 +169,9 @@ export function createCodeModeTool(executor: CodeModeExecutor, registry: AgentTo
       const result = await executor.run(code, {
         abortSignal: options.abortSignal,
       })
-      const outputBody = result.output === undefined ? '' : stringifyOutput(result.output)
+      const outputBody = result.output === undefined
+        ? formatImplicitCodeModeToolResults(result.toolCalls)
+        : stringifyOutput(result.output)
       const body = [
         result.status === 'error' ? result.error ?? result.summary : result.summary,
         outputBody.length > 0 ? outputBody : null,

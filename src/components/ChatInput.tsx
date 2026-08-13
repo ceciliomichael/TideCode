@@ -44,6 +44,7 @@ interface ChatInputProps {
   contextUsage?: ContextUsageEstimate
   codexUsage?: CodexUsageSnapshot | null
   isCompressingChat?: boolean
+  compactDisabled?: boolean
   disabled?: boolean
   focusSignal?: number
   gitBranchError?: string | null
@@ -127,6 +128,7 @@ export function ChatInput({
   contextUsage,
   codexUsage,
   isCompressingChat = false,
+  compactDisabled = false,
   refactorCandidates = [],
   refactorCandidatesLoading = false,
   gitBranchError = null,
@@ -574,7 +576,7 @@ export function ChatInput({
             {contextUsage ? (
               <ContextIndicator
                 disabled={disabled && !canAbort}
-                compressDisabled={disabled || isStreaming}
+                compressDisabled={disabled || isStreaming || compactDisabled}
                 isCompressing={isCompressingChat}
                 onCompress={onCompressChat}
                 usage={contextUsage}

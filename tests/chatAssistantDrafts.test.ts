@@ -138,6 +138,42 @@ test('chat assistant drafts close the previous work block and group later tools 
   )
 })
 
+test('chat assistant drafts append a placeholder draft and transition to thinking block after steer messages are consumed', () => {
+  const { draftManager, getMessages, runtimePatches } = createDraftManager()
+
+  draftManager.appendPlaceholderDraft()
+  draftManager.handleSteerMessagesConsumed([
+    {
+      content: 'steer instruction',
+      id: 'steer-1',
+      role: 'user',
+      timestamp: 100,
+    },
+  ])
+
+  // Initial placeholder draft, steer message, and new steer placeholder draft exist
+  const messagesAfterSteer = getMessages()
+  assert.equal(messagesAfterSteer.length, 3)
+  assert.equal(messagesAfterSteer[1]?.id, 'steer-1')
+  assert.equal(messagesAfterSteer[2]?.role, 'assistant')
+
+  // Streaming assistant message ID should point to the new placeholder assistant draft
+  const latestPatch = runtimePatches.at(-1)
+  assert.equal(latestPatch?.streamingAssistantMessageId, messagesAfterSteer[2]?.id)
+  assert.ok(latestPatch?.streamingWaitingIndicatorVariant)
+
+  // When reasoning delta arrives, it updates the draft with reasoningContent
+  draftManager.handleReasoningDelta('AI reasoning after steer')
+  const messagesAfterReasoning = getMessages()
+  assert.equal(messagesAfterReasoning[2]?.reasoningContent?.trim(), 'AI reasoning after steer')
+
+  const streamedMessages = draftManager.finalizeStreamedMessages(false)
+  assert.ok(streamedMessages)
+  assert.equal(streamedMessages.length, 2)
+  assert.equal(streamedMessages[0]?.id, 'steer-1')
+  assert.equal(streamedMessages[1]?.reasoningContent?.trim(), 'AI reasoning after steer')
+})
+
 test('chat assistant drafts start a new think block after the previous one has completed', () => {
   const { draftManager } = createDraftManager()
 
@@ -265,6 +301,27 @@ test('chat assistant drafts keep consecutive reasoning-only segments in the same
     'First reasoning block\n\nSecond reasoning block',
   )
   assert.equal(streamedMessages[0]?.content.trim(), '')
+})
+
+test('chat assistant drafts keep reasoning active when reasoning content arrives after reasoning-end', () => {
+  const { draftManager, getMessages } = createDraftManager()
+
+  draftManager.appendPlaceholderDraft()
+  draftManager.handleReasoningDelta('First reasoning block')
+  draftManager.handleReasoningCompleted()
+
+  let activeMessage = [...getMessages()].reverse().find((message) => message.role === 'assistant')
+  assert.equal(activeMessage?.reasoningCompletedAt, undefined)
+
+  draftManager.handleReasoningDelta('Trailing reasoning block')
+  activeMessage = [...getMessages()].reverse().find((message) => message.role === 'assistant')
+  assert.equal(activeMessage?.reasoningCompletedAt, undefined)
+  assert.match(activeMessage?.reasoningContent ?? '', /First reasoning block/u)
+  assert.match(activeMessage?.reasoningContent ?? '', /Trailing reasoning block/u)
+
+  draftManager.handleContentDelta('Final answer')
+  activeMessage = [...getMessages()].reverse().find((message) => message.role === 'assistant')
+  assert.equal(typeof activeMessage?.reasoningCompletedAt, 'number')
 })
 
 test('chat assistant drafts preserve streamed triple-backtick closers across single-character deltas', () => {

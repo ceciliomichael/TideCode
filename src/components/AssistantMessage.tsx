@@ -24,6 +24,7 @@ import type { ToolDecisionSubmission } from "./chat/ToolDecisionRequestCard";
 interface AssistantMessageProps {
   content: string;
   hasSubsequentAssistantText?: boolean;
+  isCompactionInProgress?: boolean;
   isConversationStreaming?: boolean;
   isStreaming?: boolean;
   isTextStreaming?: boolean;
@@ -84,6 +85,7 @@ function buildRenderedToolBlocks(entries: readonly ToolInvocationDisplayEntry[])
 export function AssistantMessage({
   content,
   hasSubsequentAssistantText = false,
+  isCompactionInProgress = false,
   isConversationStreaming = false,
   isStreaming = false,
   isTextStreaming = false,
@@ -115,6 +117,7 @@ export function AssistantMessage({
   const hasVisibleToolBlocks = renderedToolBlocks.length > 0;
   const shouldShowWaitingIndicator =
     isStreaming &&
+    !isCompactionInProgress &&
     !isTextStreaming &&
     !hasVisibleToolBlocks &&
     !hasActiveReasoningBlock;

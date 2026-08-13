@@ -24,6 +24,11 @@ import type { QueuedMessageAutoSendReason } from './chatQueueAutoSend'
 import { useChatCompression } from './useChatCompression'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
 import type { AppSettings, CodexUsageSnapshot, QueuedMessage } from '../../types/chat'
+import {
+  EMPTY_CHAT_COMPACTION_GATE_STATE,
+  isChatCompactionBlocked,
+  reduceChatCompactionGate,
+} from '../../lib/chatCompactionGate'
 import type { ResolvedTheme } from '../../lib/theme'
 import { resolveTaskModelSelection } from '../../lib/taskModelSelection'
 import { ChatWorkspaceHeaderControls } from './ChatWorkspaceHeaderControls'
@@ -151,9 +156,33 @@ export function ChatInterfaceContent({
     ],
   )
   const [compactionRefreshSignal, setCompactionRefreshSignal] = useState(0)
+  const [chatCompactionGateState, setChatCompactionGateState] = useState(EMPTY_CHAT_COMPACTION_GATE_STATE)
   const handleCompactionComplete = useCallback(() => {
+    const conversationId = chatMessages.activeConversationId
+    if (!conversationId) {
+      return
+    }
+
+    setCompactionRefreshSignal((current) => current + 1)
+    setChatCompactionGateState((currentState) => reduceChatCompactionGate(currentState, {
+      conversationId,
+      type: 'compaction_committed',
+    }))
+  }, [chatMessages.activeConversationId])
+  const handleConversationHistoryChanged = useCallback(() => {
     setCompactionRefreshSignal((current) => current + 1)
   }, [])
+  const handleMainTurnAccepted = useCallback(() => {
+    const conversationId = chatMessages.activeConversationId
+    if (!conversationId) {
+      return
+    }
+
+    setChatCompactionGateState((currentState) => reduceChatCompactionGate(currentState, {
+      conversationId,
+      type: 'real_turn_accepted',
+    }))
+  }, [chatMessages.activeConversationId])
   const contextUsage = useChatContextUsage({
     agentContextRootPath: activeWorkspacePath,
     chatMode: chatMessages.selectedChatMode,
@@ -169,6 +198,15 @@ export function ChatInterfaceContent({
     conversationId: chatMessages.activeConversationId,
     refreshSignal: compactionRefreshSignal,
   })
+  const latestUserMessageId = [...chatMessages.messages].reverse().find((message) => message.role === 'user')?.id ?? null
+  const latestCompactionMarker = compactionMarkers[compactionMarkers.length - 1]
+  const isPersistedCompactionWaitingForTurn = Boolean(
+    latestCompactionMarker?.anchorUserMessageId &&
+      latestCompactionMarker.anchorUserMessageId === latestUserMessageId,
+  )
+  const isChatFreshlyCompacted =
+    isChatCompactionBlocked(chatCompactionGateState, chatMessages.activeConversationId) ||
+    isPersistedCompactionWaitingForTurn
   const liveCompaction = useChatCompactionStatus({
     conversationId: chatMessages.activeConversationId,
   })
@@ -214,17 +252,22 @@ export function ChatInterfaceContent({
     chatRuntimeConfig.selectedRuntimeModelId.trim().length === 0
 
   const sendQueuedMessage = useCallback(
-    (
+    async (
       queuedMessages: readonly QueuedMessage[],
       reason: QueuedMessageAutoSendReason,
     ) => {
       void reason
-      return chatMessages.sendNewMessages(runtimeSelection, queuedMessages, {
+      const result = await chatMessages.sendNewMessages(runtimeSelection, queuedMessages, {
         resetMainComposerAfterSend: false,
         waitForConversationToSettle: true,
       })
+      if (result.accepted) {
+        handleMainTurnAccepted()
+      }
+
+      return result
     },
-    [chatMessages, runtimeSelection],
+    [chatMessages, handleMainTurnAccepted, runtimeSelection],
   )
 
   const {
@@ -247,6 +290,7 @@ export function ChatInterfaceContent({
     chatMode: chatMessages.selectedChatMode,
     compressionSelection,
     isBusy: chatMessages.isLoading || chatMessages.isSending,
+    isChatFreshlyCompacted,
     isCompressingChat,
     messages: chatMessages.messages,
     onCompactionComplete: handleCompactionComplete,
@@ -316,7 +360,8 @@ export function ChatInterfaceContent({
     clearQueuedMessages,
     enqueueMessage,
     isCompressingChat,
-    onConversationHistoryChanged: handleCompactionComplete,
+    onMainTurnAccepted: handleMainTurnAccepted,
+    onConversationHistoryChanged: handleConversationHistoryChanged,
     runtimeSelection,
     workspaceState,
   })
@@ -424,6 +469,7 @@ export function ChatInterfaceContent({
               chatModeOptions={chatModeOptions}
               chatRuntimeConfig={chatRuntimeConfig}
               codexUsage={codexUsage}
+              compactDisabled={isChatFreshlyCompacted}
               compactionMarkers={compactionMarkers}
               liveCompaction={liveCompaction}
               contextUsage={contextUsage}

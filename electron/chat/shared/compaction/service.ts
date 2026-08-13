@@ -75,6 +75,7 @@ function buildCompactionKey(
     boundaryIndex,
     sourceDigest,
     previousPacket?.packetId ?? null,
+    input.retainedTurnCount ?? null,
   ])
 }
 
@@ -92,6 +93,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens, {
     force: input.force,
     previousPacket,
+    retainedTurnCount: input.retainedTurnCount,
   })
   if (!window) return null
   if (input.signal?.aborted) return null
@@ -157,6 +159,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
     anchorMessages: window.anchorMessages,
     packet,
     tailMessages: window.tailMessages,
+    retainedTurnCount: input.retainedTurnCount,
   })
 
   return {
@@ -183,6 +186,7 @@ export async function compactModelMessages(input: CompactModelMessagesInput) {
   const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens, {
     force: input.force,
     previousPacket,
+    retainedTurnCount: input.retainedTurnCount,
   })
   if (!window) return null
   const sourceDigest = buildCompactionSourceDigest(

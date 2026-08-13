@@ -65,6 +65,7 @@ export function ChatWorkspaceSidePanels({
           onSelectTab={workspaceState.handleSelectWorkspaceTab}
           tabs={workspaceState.workspaceFileTabs}
           wordWrapEnabled={settings.workspaceFileEditorWordWrap}
+          workspaceRootPath={workspaceState.activeWorkspacePath}
         />
       ) : null}
       <WorkspaceExplorerPanel

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ToolInvocationTrace } from '../../src/types/chat'
-import { formatStructuredToolResultContent } from '../../src/lib/toolResultContent'
+import { formatStructuredToolResultContent, getToolResultDisplayBody } from '../../src/lib/toolResultContent'
 import {
   getToolInvocationDisplayEntries,
   getToolInvocationHeaderLabel,
@@ -225,7 +225,7 @@ test('running file mutation invocations stay hidden until completion', () => {
   assert.deepEqual(getToolInvocationDisplayEntries(runningWriteInvocation), [])
 })
 
-test('Code Mode waits until completion before displaying its real nested tool results', () => {
+test('Code Mode shows completed outer results when no nested tools ran', () => {
   const runningInvocation: ToolInvocationTrace = {
     argumentsText: '{}',
     id: 'code-mode-running-1',
@@ -234,14 +234,39 @@ test('Code Mode waits until completion before displaying its real nested tool re
     toolName: 'code_mode',
   }
   assert.deepEqual(getToolInvocationDisplayEntries(runningInvocation), [])
-  assert.equal(getToolInvocationHeaderLabel(runningInvocation), 'Running local orchestration')
+  assert.equal(getToolInvocationHeaderLabel(runningInvocation), 'Running code')
+
+  const completedInvocation: ToolInvocationTrace = {
+    ...runningInvocation,
+    id: 'code-mode-completed-without-trace',
+    resultContent: formatStructuredToolResultContent(
+      {
+        schema: 'tidecode.tool_result/v1',
+        semantics: {
+          operation: 'code_mode',
+          tool_call_count: 0,
+          tool_calls: [],
+        },
+        status: 'success',
+        subject: { kind: 'code_mode', path: 'local' },
+        summary: 'Code Mode completed with 0 tool calls.',
+        toolCallId: 'code-mode-completed-without-trace',
+        toolName: 'code_mode',
+      },
+      '{"scrambleCount":10,"solveCount":10}',
+    ),
+    state: 'completed',
+  }
   assert.deepEqual(
-    getToolInvocationDisplayEntries({
-      ...runningInvocation,
-      id: 'code-mode-completed-without-trace',
-      state: 'completed',
-    }),
-    [],
+    getToolInvocationDisplayEntries(completedInvocation).map((entry) => entry.invocation.toolName),
+    ['code_mode'],
+  )
+  assert.equal(getToolInvocationHeaderLabel(completedInvocation), 'Ran code')
+  assert.equal(buildToolInvocationGroupSummary([completedInvocation]), 'Ran code')
+  assert.equal(getToolInvocationDisplayEntries(completedInvocation)[0]?.invocation.resultContent?.includes('scrambleCount'), true)
+  assert.equal(
+    getToolResultDisplayBody('code_mode', 'Code Mode completed with 0 tool calls.\n\n{"scrambleCount":10}'),
+    '{"scrambleCount":10}',
   )
 
   const invocation: ToolInvocationTrace = {
@@ -342,7 +367,7 @@ test('failed Code Mode keeps the outer failure visible alongside nested tool res
   const entries = getToolInvocationDisplayEntries(invocation)
   assert.deepEqual(entries.map((entry) => entry.invocation.toolName), ['code_mode', 'list'])
   assert.equal(entries[0]?.invocation.state, 'failed')
-  assert.equal(getToolInvocationHeaderLabel(entries[0]?.invocation ?? invocation), 'Local orchestration failed')
+  assert.equal(getToolInvocationHeaderLabel(entries[0]?.invocation ?? invocation), 'Code failed')
   assert.equal(buildToolInvocationGroupSummary(entries.map((entry) => entry.invocation)), 'Explored 1 list, local orchestration failed')
 })
 

@@ -193,6 +193,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
   let activeAssistantDraftId: string | null = null
   let activeAssistantDraftKind: DraftAssistantMessageKind | null = null
   let reasoningDraftAssistantId: string | null = null
+  let reasoningCompletionPending = false
   let shouldStartFreshReasoningDraft = false
   let assistantDraftCount = 0
 
@@ -383,6 +384,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
 
   const handleCompactionCommitted = () => {
     completeReasoningDraft()
+    reasoningCompletionPending = false
     activeAssistantDraftId = null
     activeAssistantDraftKind = null
     reasoningDraftAssistantId = null
@@ -500,9 +502,15 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
         content: nextContent,
       }), undefined, { deltaCharCount: appendedCharCount })
 
-      if (hasCompletedThinkBlock) {
+      const hasVisibleContentAfterReasoning =
+        nextContentParts.reasoningContent.trim().length === 0 &&
+        nextContentParts.content.trim().length > 0 &&
+        normalizeAssistantMessageContent(draftAssistantMessage).reasoningContent.trim().length > 0
+
+      if (hasCompletedThinkBlock || hasVisibleContentAfterReasoning) {
         completeReasoningDraft()
       }
+      reasoningCompletionPending = false
     },
     handleReasoningDelta(delta: string) {
       const draftAssistantId = ensureReasoningDraft()
@@ -516,7 +524,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
         const nextReasoningContent = mergeReasoningDelta(
           currentReasoningContent,
           delta,
-          message.reasoningCompletedAt,
+          reasoningCompletionPending ? Date.now() : message.reasoningCompletedAt,
         )
         appendedCharCount = Math.max(0, nextReasoningContent.length - currentReasoningContent.length)
         shouldCompleteReasoning = splitThinkingContent(nextReasoningContent).hasThinkingTags && nextReasoningContent.includes('</think>')
@@ -534,9 +542,14 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
       if (shouldCompleteReasoning) {
         completeReasoningDraft()
       }
+      reasoningCompletionPending = false
     },
     handleReasoningCompleted() {
-      completeReasoningDraft()
+      // Providers may emit reasoning-end before sending a trailing
+      // reasoning_content delta. Keep the block and its timer alive until a
+      // definitive boundary arrives instead of briefly closing and reopening
+      // the thinking UI.
+      reasoningCompletionPending = true
     },
     handleCompactionCommitted,
     handleSyntheticToolMessage(syntheticMessage: Message) {
@@ -575,6 +588,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
         streamingAssistantMessageId: null,
         streamingWaitingIndicatorVariant: null,
       })
+      appendAssistantDraft('placeholder')
     },
     handleToolInvocationCompleted(
       invocationId: string,
@@ -584,6 +598,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
       >,
     ) {
       completeReasoningDraft(nextValue.completedAt)
+      reasoningCompletionPending = false
       markReasoningBoundary()
       input.stopTextStreaming(input.conversationId)
       const draftAssistantId = toolInvocationMessageIds.get(invocationId) ?? ensureAssistantDraft('tool')
@@ -650,6 +665,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
       >,
     ) {
       completeReasoningDraft(nextValue.completedAt)
+      reasoningCompletionPending = false
       markReasoningBoundary()
       input.stopTextStreaming(input.conversationId)
       const draftAssistantId = toolInvocationMessageIds.get(invocationId) ?? ensureAssistantDraft('tool')
@@ -663,6 +679,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
       nextValue: Pick<ToolInvocationTrace, 'argumentsText' | 'startedAt' | 'toolName'>,
     ) {
       completeReasoningDraft(nextValue.startedAt)
+      reasoningCompletionPending = false
       markReasoningBoundary()
       input.stopTextStreaming(input.conversationId)
       const draftAssistantId = ensureAssistantDraft('tool')
@@ -671,6 +688,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
     },
     finalizeStreamedMessages(wasAborted: boolean, failureMessage?: string) {
       completeReasoningDraft()
+      reasoningCompletionPending = false
       input.updateConversationRuntimeState(input.conversationId, {
         activeStreamId: null,
         streamingAssistantMessageId: null,
