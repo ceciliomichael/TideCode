@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.9 — Safer Code Mode and more faithful workspace previews
+
+TideCode 1.1.9 strengthens Code Mode’s execution boundaries, keeps long conversations coherent through compaction and provider changes, and makes workspace previews easier to inspect.
+
+- Strengthens the default Code Mode sandbox with workspace-scoped file permissions and explicit blocking for host process, network, and nested-worker access, while preserving a deliberate full-runtime mode when selected.
+- Keeps complete tool results, compaction thresholds, retained turns, replay projections, and cross-provider history aligned so ongoing work is less likely to lose context or trigger an immediate repeat compaction.
+- Improves activity presentation and terminal completion output, including clearer completed Code Mode results and more useful long-running command output.
+- Makes local Markdown images resolve safely from the workspace and improves image, PDF, and DOCX preview sizing and controls for more comfortable inspection.
+- Adds regression coverage across sandbox enforcement, compaction and replay, corrupted auth storage, tool presentation, preview sizing, and Markdown rendering.
+
 ## 1.1.8 — More reliable long-running work and clearer code review
 
 TideCode 1.1.8 keeps extended agent sessions coherent while making generated code and workspace changes easier to read and review.
