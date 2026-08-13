@@ -6,7 +6,7 @@ import { flushStoredSettingsUpdates } from './settings/store'
 import { applyTideCodeAppIcon } from './window/branding'
 import { applyWindowTheme } from './window/theme'
 import { createApplicationWindow } from './window/createApplicationWindow'
-import { closeAllTerminalSessions } from './terminal/service'
+import { closeAllTerminalSessions, closeAllTerminalSessionsForWebContents } from './terminal/service'
 import { initializeProvidersState } from './providers/service'
 import { onProvidersStateChanged } from './providers/events'
 import { getMcpServerManager } from './mcp/serverManager'
@@ -102,6 +102,11 @@ async function createWindow() {
     devServerUrl: VITE_DEV_SERVER_URL,
     preloadDirectory: __dirname,
     rendererDist: RENDERER_DIST,
+  })
+
+  const currentWindow = win
+  currentWindow.webContents.on('did-start-loading', () => {
+    closeAllTerminalSessionsForWebContents(currentWindow.webContents)
   })
 }
 

@@ -179,6 +179,9 @@ export function buildToolInvocationGroupSummary(
   const hasFailedCodeMode = invocations.some(
     (invocation) => invocation.toolName === 'code_mode' && invocation.state === 'failed',
   )
+  const hasOnlyCodeModeInvocations = invocations.length > 0 && invocations.every(
+    (invocation) => invocation.toolName === 'code_mode',
+  )
   if (summaryVerbOverride === 'Exploring' || (summaryVerbOverride === undefined && hasActiveInvocation)) {
     return 'Exploring'
   }
@@ -193,6 +196,15 @@ export function buildToolInvocationGroupSummary(
     const summary = `${summaryVerb} ${pluralize(invocations.length, 'file')}`
     return hasFailedCodeMode ? `${summary}, local orchestration failed` : summary
   }
+
+  if (hasOnlyCodeModeInvocations) {
+    if (hasFailedCodeMode) {
+      return 'Code failed'
+    }
+
+    return invocations.length === 1 ? 'Ran code' : `Ran code ${invocations.length} times`
+  }
+
   const counts: ToolInvocationSummaryCounts = {
     listCount: 0,
     commandCount: 0,

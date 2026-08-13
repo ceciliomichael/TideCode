@@ -3,6 +3,8 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import test from 'node:test'
 import { MarkdownRenderer } from '../src/components/chat/MarkdownRenderer'
+import { ThinkingBlock } from '../src/components/chat/ThinkingBlock'
+import { AssistantMessage } from '../src/components/AssistantMessage'
 
 function renderMarkdown(content: string) {
   return renderToStaticMarkup(
@@ -12,6 +14,33 @@ function renderMarkdown(content: string) {
     }),
   )
 }
+
+function renderThinking(content: string) {
+  return renderToStaticMarkup(
+    createElement(ThinkingBlock, {
+      content,
+      isComplete: false,
+      startTime: 0,
+    }),
+  )
+}
+
+function renderWaitingAssistant(isCompactionInProgress = false) {
+  return renderToStaticMarkup(
+    createElement(AssistantMessage, {
+      content: '',
+      isCompactionInProgress,
+      isStreaming: true,
+      isTextStreaming: false,
+      timestamp: 0,
+    }),
+  )
+}
+
+test('compaction hides the empty assistant waiting indicator', () => {
+  assert.match(renderWaitingAssistant(), /Thinking/u)
+  assert.equal(renderWaitingAssistant(true), '')
+})
 
 test('chat markdown strips streamed style, script, event, and inline-style injection', () => {
   const markup = renderMarkdown(
@@ -55,4 +84,12 @@ test('chat markdown preserves the starting number for custom ordered lists', () 
 
   assert.match(markup, /<ol[^>]*start="10"/u)
   assert.match(markup, /--markdown-ordered-list-counter-start:9/u)
+})
+
+test('ThinkingBlock keeps spacing between reasoning paragraphs and trims the final paragraph', () => {
+  const markup = renderThinking('**Planning full file replacement using tools.edit**\n\nThe remaining reasoning keeps its paragraph spacing.')
+
+  assert.match(markup, /<p node="\[object Object\]" class="my-0 mb-3 leading-\[1\.65\] text-foreground"><strong>Planning full file replacement using tools\.edit<\/strong><\/p>/u)
+  assert.match(markup, /The remaining reasoning keeps its paragraph spacing/u)
+  assert.match(markup, /\[&amp;&gt;\*:last-child\]:mb-0/u)
 })

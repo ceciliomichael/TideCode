@@ -108,7 +108,7 @@ export function insertChatImageReferences(input: {
   const before = input.text.slice(0, position)
   const after = input.text.slice(position)
   const leadingSpace = before.length > 0 && !/\s$/u.test(before) ? ' ' : ''
-  const trailingSpace = after.length > 0 && !/^\s/u.test(after) ? ' ' : ''
+  const trailingSpace = after.length === 0 || !/^\s/u.test(after) ? ' ' : ''
   const insertion = `${leadingSpace}${labels}${trailingSpace}`
   return {
     cursorPosition: position + insertion.length,

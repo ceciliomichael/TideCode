@@ -76,6 +76,7 @@ interface MessageRowProps {
   composerValue: string;
   editComposerDirty: boolean;
   editComposerMentionPathMap?: ReadonlyMap<string, string>;
+  isCompactionInProgress: boolean;
   isEditing: boolean;
   hasSubsequentAssistantText: boolean;
   isConversationStreaming: boolean;
@@ -120,6 +121,7 @@ const MessageRow = memo(
     composerValue,
     editComposerDirty,
     editComposerMentionPathMap,
+    isCompactionInProgress,
     hasSubsequentAssistantText,
     isConversationStreaming,
     isEditing,
@@ -223,6 +225,7 @@ const MessageRow = memo(
           <AssistantMessage
             content={message.content}
             hasSubsequentAssistantText={hasSubsequentAssistantText}
+            isCompactionInProgress={isCompactionInProgress}
             isConversationStreaming={isConversationStreaming}
             isStreaming={isStreaming}
             onToolDecisionSubmit={(invocation, submission) => {
@@ -245,6 +248,7 @@ const MessageRow = memo(
     if (
       previousProps.message !== nextProps.message ||
       previousProps.hasSubsequentAssistantText !== nextProps.hasSubsequentAssistantText ||
+      previousProps.isCompactionInProgress !== nextProps.isCompactionInProgress ||
       previousProps.isConversationStreaming !== nextProps.isConversationStreaming ||
       previousProps.isEditing !== nextProps.isEditing ||
       previousProps.isStreaming !== nextProps.isStreaming ||
@@ -339,9 +343,36 @@ export function MessageList({
       | { type: 'working_group'; messages: Message[]; trailingMessage?: { message: Message, index: number }; startTime: number; endTime: number; startIndex: number; key: string };
 
     const items: RenderItem[] = [];
-    const markerPlacement = placeCompactionMarkersAfterTranscript(visibleMessages, compactionMarkers);
+    const markerPlacement = placeCompactionMarkersAfterTranscript(visibleMessages, compactionMarkers, {
+      preferredMessageId: streamingAssistantMessageId,
+    });
+    const liveCompactionMarkerIsPersisted = liveCompaction?.phase === 'compacted' &&
+      compactionMarkers.some((marker) => marker.compactionId === liveCompaction.compactionId);
+    const shouldRenderLiveCompaction = liveCompaction?.phase === 'compacting' ||
+      (liveCompaction?.phase === 'compacted' && !liveCompactionMarkerIsPersisted);
+    let liveCompactionInserted = false;
     let currentAssistantRun: Message[] = [];
     let currentAssistantRunStartIndex = -1;
+
+    const isStreamingMessage = (message: Message) => (
+      streamingAssistantMessageId !== null &&
+      (message.id === streamingAssistantMessageId || message.id.startsWith(`${streamingAssistantMessageId}-`))
+    );
+
+    const insertLiveCompaction = () => {
+      if (!shouldRenderLiveCompaction || !liveCompaction || liveCompactionInserted) {
+        return;
+      }
+
+      if (currentAssistantRun.length > 0) {
+        processFinishedAssistantRun();
+        currentAssistantRun = [];
+        currentAssistantRunStartIndex = -1;
+      }
+
+      items.push({ status: liveCompaction, type: 'live_compaction' });
+      liveCompactionInserted = true;
+    };
 
     const getWorkEndTime = (msg: Message): number => {
       let endTime = msg.timestamp;
@@ -405,6 +436,13 @@ export function MessageList({
         }
       }
 
+      // A compaction is a transcript boundary. Put it immediately before the
+      // assistant draft that resumes after the boundary so its waiting state
+      // is rendered underneath the divider rather than above it.
+      if (isStreamingMessage(msg)) {
+        insertLiveCompaction();
+      }
+
       if (isPlanImplementationMessage(msg) || isPlanRevisionMessage(msg)) {
         if (currentAssistantRun.length > 0) {
           processFinishedAssistantRun();
@@ -454,12 +492,12 @@ export function MessageList({
       items.push({ marker, type: 'compaction_marker' });
     }
 
-    if (liveCompaction?.phase === 'compacting') {
-      items.push({ status: liveCompaction, type: 'live_compaction' });
+    if (shouldRenderLiveCompaction && !liveCompactionInserted) {
+      insertLiveCompaction();
     }
     
     return items;
-  }, [compactionMarkers, isConversationStreaming, liveCompaction, visibleMessages]);
+  }, [compactionMarkers, isConversationStreaming, liveCompaction, streamingAssistantMessageId, visibleMessages]);
 
   useChatAutoScroll({
     conversationId,
@@ -517,6 +555,7 @@ export function MessageList({
         hasSubsequentAssistantText={
           subsequentAssistantTextByMessageId.get(msg.id) ?? false
         }
+        isCompactionInProgress={liveCompaction?.phase === 'compacting'}
         isConversationStreaming={isConversationStreaming}
         isEditing={editingMessageId === msg.id}
         isSending={isSending}

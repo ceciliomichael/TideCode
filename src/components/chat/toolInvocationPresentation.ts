@@ -516,11 +516,10 @@ export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace)
       return childEntries
     }
 
-    // Older persisted Code Mode traces do not contain the nested trace. Do not
-    // resurrect the implementation detail as a user-facing tool row.
-    return invocation.state === 'failed'
-      ? [{ invocation, key: invocation.id }]
-      : []
+    // A successful Code Mode program may intentionally perform only local
+    // computation and return a value. Keep that outer result visible instead
+    // of making a successful tool call disappear from the transcript.
+    return [{ invocation, key: invocation.id }]
   }
 
   if (isFileMutationTool(invocation.toolName) && invocation.state === 'running') {
@@ -598,10 +597,10 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
 
   if (invocation.toolName === 'code_mode') {
     return invocation.state === 'running'
-      ? 'Running local orchestration'
+      ? 'Running code'
       : invocation.state === 'completed'
-        ? 'Completed local orchestration'
-        : 'Local orchestration failed'
+        ? 'Ran code'
+        : 'Code failed'
   }
 
   if (invocation.toolName === 'execute_mcp') {

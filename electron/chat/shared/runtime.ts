@@ -49,7 +49,6 @@ import type { CodeModeExecutor } from './codeMode/executor'
 import { terminateAllBackgroundSessionsForTurn } from './tools/terminalTools'
 import { sortToolSet } from './runtimeToolSet'
 import { continueToolLoopUntilModelStops } from './toolLoopPolicy'
-import { projectModelMessagesForContext } from './tools/toolOutputBudget'
 import { normalizeWorkspacePath } from '../../workspace/paths'
 import {
   emitChatStreamEvent,
@@ -317,7 +316,10 @@ export async function runToolEnabledChatStream(input: {
           triggerRatio: liveContextCompaction.triggerPercent / 100,
         }
         const compactionRequired = shouldCompactContext(calculateModelMessagesBudget(compactionBudgetInput)) &&
-          hasCompactionEligibleHistory(compactionMessages, { previousPacket: latestCompactionPacket })
+          hasCompactionEligibleHistory(compactionMessages, {
+            previousPacket: latestCompactionPacket,
+            retainedTurnCount: liveContextCompaction.retainedTurnCount,
+          })
 
         const compactionAttemptId = randomUUID()
         let compactionStarted = false
@@ -365,6 +367,7 @@ export async function runToolEnabledChatStream(input: {
             toolSchemaTokens: promptContext.toolSchemaTokens,
             previousPacket: latestCompactionPacket,
             contextWindowTokens: liveContextCompaction.contextWindowTokens,
+            retainedTurnCount: liveContextCompaction.retainedTurnCount,
             triggerRatio: liveContextCompaction.triggerPercent / 100,
             signal: input.abortController.signal,
           })
@@ -465,7 +468,10 @@ export async function runToolEnabledChatStream(input: {
       const finalContextCompaction = await getStoredSettings()
         .then((settings) => normalizeContextCompactionSettings(settings.contextCompaction))
         .catch(() => contextCompaction)
-      const finalCompactionMessages = projectModelMessagesForContext(replayMessages)
+      // Use the same provider-facing replay that ContextIndicator estimates.
+      // The compaction prompt applies its own bounded tool-output formatting;
+      // truncating here would make the threshold disagree with the indicator.
+      const finalCompactionMessages = replayMessages
       const finalCompactionBudgetInput = {
         contextWindowTokens: finalContextCompaction.contextWindowTokens,
         messages: finalCompactionMessages,
@@ -475,7 +481,10 @@ export async function runToolEnabledChatStream(input: {
       }
       const finalCompactionRequired = shouldCompactContext(
         calculateModelMessagesBudget(finalCompactionBudgetInput),
-      ) && hasCompactionEligibleHistory(finalCompactionMessages, { previousPacket: latestCompactionPacket })
+      ) && hasCompactionEligibleHistory(finalCompactionMessages, {
+        previousPacket: latestCompactionPacket,
+        retainedTurnCount: finalContextCompaction.retainedTurnCount,
+      })
 
       if (finalCompactionRequired) {
         const compactionAttemptId = randomUUID()
@@ -522,6 +531,7 @@ export async function runToolEnabledChatStream(input: {
             toolSchemaTokens: promptContext.toolSchemaTokens,
             previousPacket: latestCompactionPacket,
             contextWindowTokens: finalContextCompaction.contextWindowTokens,
+            retainedTurnCount: finalContextCompaction.retainedTurnCount,
             triggerRatio: finalContextCompaction.triggerPercent / 100,
             signal: input.abortController.signal,
           })

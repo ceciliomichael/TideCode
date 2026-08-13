@@ -1,6 +1,5 @@
 import type { ModelMessage } from 'ai'
 import { stableStringify } from '../../cache/canonicalization'
-import { projectModelMessagesForContext } from '../tools/toolOutputBudget'
 
 export type AutomaticCompactionTrigger = 'user_turn' | 'tool_result' | 'model_step'
 
@@ -34,7 +33,7 @@ export function mergeAutomaticCompactionMessages(input: {
   responseMessagesAreCumulative?: boolean
 }) {
   if (input.responseMessagesAreCumulative) {
-    return projectModelMessagesForContext(input.messages)
+    return [...input.messages]
   }
 
   const remainingMessageCounts = new Map<string, number>()
@@ -55,7 +54,12 @@ export function mergeAutomaticCompactionMessages(input: {
     mergedMessages.push(responseMessage)
   }
 
-  return projectModelMessagesForContext(mergedMessages)
+  // Keep the exact provider-facing message content here. The context
+  // indicator and the automatic threshold must judge the same bytes/tokens.
+  // Tool output is bounded separately when it is serialized into the
+  // compaction summary prompt, so retaining it here does not expose the
+  // compaction model to an unbounded transcript.
+  return mergedMessages
 }
 
 /**

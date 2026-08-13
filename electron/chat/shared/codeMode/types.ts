@@ -40,9 +40,11 @@ export interface CodeModeExecutionResult {
 
 export interface CodeModeWorkerExecuteMessage {
   code: string
+  executionMode: 'full' | 'sandbox'
   limits: CodeModeExecutionLimits
   toolNames: string[]
   type: 'execute'
+  workspaceRootPath: string
 }
 
 export interface CodeModeWorkerToolCallMessage {

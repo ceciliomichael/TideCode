@@ -21,6 +21,21 @@ const CONTEXT_WINDOW_OPTIONS = [
   { label: '2,000,000 tokens', value: '2000000' },
 ] as const
 
+const RETAINED_TURN_OPTIONS = [
+  { label: '1 turn', value: '1' },
+  { label: '2 turns', value: '2' },
+  { label: '3 turns', value: '3' },
+  { label: '4 turns', value: '4' },
+  { label: '5 turns', value: '5' },
+  { label: '6 turns', value: '6' },
+  { label: '7 turns', value: '7' },
+  { label: '8 turns', value: '8' },
+  { label: '9 turns', value: '9' },
+  { label: '10 turns', value: '10' },
+  { label: '11 turns', value: '11' },
+  { label: '12 turns', value: '12' },
+] as const
+
 function formatPercent(value: number) {
   return `${value}%`
 }
@@ -59,6 +74,26 @@ export function ContextSettingsSections({ isLoading, onUpdateSettings, settings 
               disabled={isLoading}
               className="w-full"
               onChange={(value) => updateContextSettings({ contextWindowTokens: Number(value) })}
+            />
+          </div>
+        </SettingsRow>
+
+        <SettingsRow
+          title="Latest turns to keep"
+          description="Keep this many complete recent turns alongside the new compaction summary."
+        >
+          <div className="w-full md:w-[240px]">
+            <label htmlFor="compaction-retained-turns" className="sr-only">
+              Latest turns to keep
+            </label>
+            <DropdownField
+              id="compaction-retained-turns"
+              ariaLabel="Latest turns to keep"
+              value={String(settings.retainedTurnCount)}
+              options={RETAINED_TURN_OPTIONS}
+              disabled={isLoading}
+              className="w-full"
+              onChange={(value) => updateContextSettings({ retainedTurnCount: Number(value) })}
             />
           </div>
         </SettingsRow>

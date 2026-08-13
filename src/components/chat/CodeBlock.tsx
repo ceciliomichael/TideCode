@@ -2,6 +2,7 @@ import { Check, Copy } from 'lucide-react'
 import { lazy, memo, Suspense, useEffect, useState } from 'react'
 import { useHighlightedCodeLines } from '../../hooks/useHighlightedCodeLines'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
+import { DEFAULT_CODE_ICON } from '../../lib/fileIconConfig'
 import { HighlightedCodeLine } from './HighlightedCodeLine'
 import type { HighlightedCodeLine as HighlightedCodeLineData } from '../../lib/codeHighlighting'
 import { Tooltip } from '../Tooltip'
@@ -33,7 +34,7 @@ interface CodeBlockProps {
 
 function toLanguageLabel(language: string | undefined, resolvedLabel: string) {
   if (!language || language.trim().length === 0) {
-    return 'Text'
+    return 'text'
   }
   if (resolvedLabel !== 'Code') {
     return resolvedLabel
@@ -55,7 +56,7 @@ const CodeRows = memo(function CodeRows({
   lines,
   startLineNumber,
   fillHeight = false,
-  showLineNumberDivider = true,
+  showLineNumberDivider = false,
 }: CodeRowsProps) {
   return (
     <div className={['flex min-w-0 bg-surface', fillHeight ? 'h-full' : ''].join(' ')}>
@@ -110,15 +111,18 @@ export const CodeBlock = memo(function CodeBlock({
   showHeaderTooltip: _showHeaderTooltip = false,
   useMonaco = true,
   fillHeight = false,
-  showLineNumberDivider = true,
+  showLineNumberDivider = false,
   startLineNumber = 1,
   className,
   bodyClassName,
 }: CodeBlockProps) {
   const [isCopied, setIsCopied] = useState(false)
   const highlightedLines = useHighlightedCodeLines(code, { fileName, language, stripTrailingNewline: true })
-  const iconConfig = resolveFileIconConfig({ fileName, languageId: language })
-  const titleLabel = headerLabel ?? fileName ?? toLanguageLabel(language, iconConfig.label)
+  const hasNamedCodeType = Boolean(language?.trim() || fileName?.trim())
+  const iconConfig = hasNamedCodeType
+    ? resolveFileIconConfig({ fileName, languageId: language })
+    : DEFAULT_CODE_ICON
+  const titleLabel = headerLabel?.trim() || fileName?.trim() || toLanguageLabel(language, iconConfig.label)
   const LanguageIcon = iconConfig.icon
 
   useEffect(() => {
@@ -175,7 +179,7 @@ export const CodeBlock = memo(function CodeBlock({
       ) : null}
       <div
         className={[
-          'overflow-x-auto',
+          'overflow-hidden',
           maxBodyHeightClassName ? `${maxBodyHeightClassName} overflow-y-auto` : '',
           bodyClassName ?? '',
         ]

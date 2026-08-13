@@ -1,22 +1,3 @@
-const FORBIDDEN_CODE_PATTERNS: readonly RegExp[] = [
-  /\bBun\b/i,
-  /\bDeno\b/i,
-  /\bWebAssembly\b/i,
-  /\bchild_process\b/i,
-  /\b(?:Buffer|Electron|Worker|fs|http|https|module|net|worker_threads)\b/i,
-  /\beval\s*\(/i,
-  /\bfetch\s*\(/i,
-  /\bFunction\s*\(/i,
-  /\bglobalThis\b/i,
-  /\bimport\s*\(/i,
-  /\bprocess\b/i,
-  /\brequire\s*\(/i,
-  /\bnode:/i,
-  /__proto__/i,
-  /\.constructor\b/i,
-  /\.prototype\b/i,
-]
-
 const REGEX_PREFIX_KEYWORDS = new Set([
   'await',
   'case',
@@ -32,6 +13,12 @@ const REGEX_PREFIX_KEYWORDS = new Set([
   'void',
   'yield',
 ])
+
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+
+function validateCodeModeSyntax(code: string) {
+  return new AsyncFunction(code)
+}
 
 const PATCH_ARRAY_DECLARATION = /^\s*(?:const|let|var)\s+patch\s*=\s*\[\s*$/u
 const PATCH_ARRAY_END = /^\s*\]\s*;?\s*$/u
@@ -177,10 +164,23 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
       .replace(/'''([\s\S]*?)'''/gu, (_match, body) => '`' + body.replace(/`/gu, '\\`') + '`')
 
     try {
-      new Script(`(async () => {\n${fixedTripleQuotes}\n})()`, { filename: 'tidecode-code-mode.js' })
+      validateCodeModeSyntax(fixedTripleQuotes)
       return fixedTripleQuotes
     } catch {
       // continue
+    }
+  }
+
+  // Try 0.5: Repair unescaped inner backticks or template expressions inside tools.write / tools.edit template literals
+  if (code.includes('content:') || code.includes('targetContent:') || code.includes('replacementContent:')) {
+    const fixedNestedBackticks = repairNestedTemplateLiterals(code)
+    if (fixedNestedBackticks !== code) {
+      try {
+        validateCodeModeSyntax(fixedNestedBackticks)
+        return fixedNestedBackticks
+      } catch {
+        // continue
+      }
     }
   }
 
@@ -190,7 +190,7 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
   candidate = candidate.replace(/,\s*([}\]])/gu, '$1')
 
   try {
-    new Script(`(async () => {\n${candidate}\n})()`, { filename: 'tidecode-code-mode.js' })
+    validateCodeModeSyntax(candidate)
     return candidate
   } catch {
     // continue
@@ -201,7 +201,7 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
   if (trimmed.endsWith('}')) {
     const withoutLastBrace = trimmed.slice(0, trimmed.lastIndexOf('}')).trimEnd()
     try {
-      new Script(`(async () => {\n${withoutLastBrace}\n})()`, { filename: 'tidecode-code-mode.js' })
+      validateCodeModeSyntax(withoutLastBrace)
       return withoutLastBrace
     } catch {
       // continue
@@ -244,7 +244,7 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
   if (openParens > 0) balanced += ')'.repeat(openParens)
 
   try {
-    new Script(`(async () => {\n${balanced}\n})()`, { filename: 'tidecode-code-mode.js' })
+    validateCodeModeSyntax(balanced)
     return balanced
   } catch {
     // continue
@@ -253,13 +253,50 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
   return null
 }
 
+export function repairNestedTemplateLiterals(code: string): string {
+  const keys = ['content', 'targetContent', 'replacementContent']
+  let result = code
+
+  for (const key of keys) {
+    const keyMarker = `${key}: \``
+    let pos = 0
+    while ((pos = result.indexOf(keyMarker, pos)) !== -1) {
+      const startBodyIndex = pos + keyMarker.length
+      let endBodyIndex = -1
+      for (let i = result.length - 1; i > startBodyIndex; i--) {
+        if (result[i] === '`') {
+          const rest = result.slice(i + 1).trimStart()
+          if (rest.startsWith('}') || rest.startsWith(',') || rest.startsWith(')')) {
+            endBodyIndex = i
+            break
+          }
+        }
+      }
+
+      if (endBodyIndex > startBodyIndex) {
+        const rawBody = result.slice(startBodyIndex, endBodyIndex)
+        const safeBody = rawBody
+          .replace(/(?<!\\)`/gu, '\\`')
+          .replace(/(?<!\\)\$\{/gu, '\\${')
+
+        result = result.slice(0, startBodyIndex) + safeBody + result.slice(endBodyIndex)
+        pos = startBodyIndex + safeBody.length + 1
+      } else {
+        pos += keyMarker.length
+      }
+    }
+  }
+
+  return result
+}
+
 function isRegexStart(source: string, index: number) {
   let previousIndex = index - 1
   while (previousIndex >= 0 && /\s/u.test(source[previousIndex] ?? '')) previousIndex -= 1
   if (previousIndex < 0) return true
 
   const previousCharacter = source[previousIndex]
-  if ('([{=:;,!?&|+\-*%^~<>'.includes(previousCharacter ?? '')) return true
+  if ('([{=:;,!?&+-*%^~<>'.includes(previousCharacter ?? '')) return true
 
   let tokenStart = previousIndex
   while (tokenStart >= 0 && /[A-Za-z0-9_$]/u.test(source[tokenStart] ?? '')) tokenStart -= 1
@@ -267,7 +304,7 @@ function isRegexStart(source: string, index: number) {
   return REGEX_PREFIX_KEYWORDS.has(previousToken)
 }
 
-function maskNonExecutableText(source: string) {
+export function maskNonExecutableText(source: string) {
   const masked = source.split('')
   const blank = (start: number, end: number) => {
     for (let index = start; index < end; index += 1) masked[index] = ' '
@@ -385,6 +422,10 @@ function maskNonExecutableText(source: string) {
   return masked.join('')
 }
 
+export function containsDynamicCodeModeImport(code: string): boolean {
+  return /\bimport\s*\(/u.test(maskNonExecutableText(code))
+}
+
 export function validateCodeModeProgram(code: string, maxCodeBytes: number) {
   if (code.trim().length === 0) return 'Code Mode requires a non-empty JavaScript program.'
   if (new TextEncoder().encode(code).byteLength > maxCodeBytes) {
@@ -392,7 +433,7 @@ export function validateCodeModeProgram(code: string, maxCodeBytes: number) {
   }
 
   try {
-    new Script(`(async () => {\n${code}\n})()`, { filename: 'tidecode-code-mode.js' })
+    validateCodeModeSyntax(code)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     const stack = error instanceof Error ? error.stack ?? '' : ''
@@ -409,15 +450,5 @@ export function validateCodeModeProgram(code: string, maxCodeBytes: number) {
     return `Code Mode program has invalid JavaScript${position}: ${message} ${guidance}`
   }
 
-  // Parse first. If a malformed string exposes prose such as "Node/Electron"
-  // to the lexical scanner, reporting a forbidden API hides the real problem
-  // and sends the model down the wrong recovery path.
-  const executableCode = maskNonExecutableText(code)
-  for (const pattern of FORBIDDEN_CODE_PATTERNS) {
-    const match = pattern.exec(executableCode)
-    if (match) return `Code Mode program contains a forbidden runtime API: ${match[0]}.`
-  }
-
   return null
 }
-import { Script } from 'node:vm'

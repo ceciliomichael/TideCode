@@ -509,4 +509,6 @@ test("execute_terminal with wait_seconds collects initial output directly", asyn
   assert.equal(result.semantics?.state, "completed");
   assert.match(result.body ?? "", /session_id: /u);
   assert.match(result.body ?? "", /initial output line/u);
+  assert.equal(result.displayBody, result.body);
+  assert.match(result.displayBody ?? "", /initial output line/u);
 });

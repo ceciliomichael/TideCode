@@ -30,6 +30,7 @@ interface ChatConversationSurfaceProps {
   chatModeOptions: readonly ChatModeOption[]
   chatRuntimeConfig: ChatRuntimeConfigState
   codexUsage: CodexUsageSnapshot | null | undefined
+  compactDisabled: boolean
   compactionMarkers: ChatCompactionMarker[]
   contextUsage: ContextUsageEstimate | null
   gitBranchState: GitBranchStateController
@@ -67,6 +68,7 @@ export function ChatConversationSurface({
   chatModeOptions,
   chatRuntimeConfig,
   codexUsage,
+  compactDisabled,
   compactionMarkers,
   contextUsage,
   gitBranchState,
@@ -257,6 +259,7 @@ export function ChatConversationSurface({
               contextUsage={contextUsage ?? undefined}
               codexUsage={codexUsage}
               isCompressingChat={isCompressingChat}
+              compactDisabled={compactDisabled}
               onCompressChat={handleCompressChat}
               refactorCandidates={refactorCandidates}
               refactorCandidatesLoading={refactorCandidatesLoading}

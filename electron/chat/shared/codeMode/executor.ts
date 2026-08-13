@@ -1,9 +1,16 @@
 import { randomUUID } from 'node:crypto'
-import { Worker } from 'node:worker_threads'
+import path from 'node:path'
+import { Worker, type WorkerOptions } from 'node:worker_threads'
+import type { AppTerminalExecutionMode } from '../../../../src/types/chat'
 import type { AgentToolRegistry } from '../tools/registry'
 import { isDynamicAgentTool } from '../tools/registry'
 import type { AgentToolExecutionResult } from '../toolTypes'
-import { repairCodeModePatchProgram, repairCodeModeProgramSyntax, validateCodeModeProgram } from './validation'
+import {
+  containsDynamicCodeModeImport,
+  repairCodeModePatchProgram,
+  repairCodeModeProgramSyntax,
+  validateCodeModeProgram,
+} from './validation'
 import {
   DEFAULT_CODE_MODE_EXECUTION_LIMITS,
   type CodeModeExecutionLimits,
@@ -16,8 +23,13 @@ import {
 } from './types'
 
 const CODE_MODE_WORKER_SOURCE = String.raw`
-const { parentPort } = require('node:worker_threads')
-const vm = require('node:vm')
+const { parentPort } = await import('node:worker_threads')
+const hostProcess = process
+const { createRequire } = await import('node:module')
+const { pathToFileURL } = await import('node:url')
+const path = await import('node:path')
+const hostRequire = createRequire(pathToFileURL(path.join(hostProcess.cwd(), 'tidecode-code-mode.js')))
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 
 const pendingToolCalls = new Map()
 const pendingToolPromises = new Set()
@@ -42,22 +54,120 @@ function createTools(toolNames) {
   return Object.freeze(tools)
 }
 
-function createSandbox(toolNames) {
-  return vm.createContext({
-    Array,
-    Boolean,
-    Date,
-    JSON,
-    Map,
-    Math,
-    Number,
-    Object,
-    Promise,
-    RegExp,
-    Set,
-    String,
-    tools: createTools(toolNames),
-  }, { codeGeneration: { strings: false, wasm: false } })
+function createBlockedRuntimeApi(name) {
+  const blocked = () => {
+    throw new Error('Code Mode sandbox blocked ' + name + '. Use the matching tools.* API instead.')
+  }
+  return new Proxy(blocked, {
+    apply() {
+      throw new Error('Code Mode sandbox blocked ' + name + '. Use the matching tools.* API instead.')
+    },
+    get(_target, property) {
+      if (property === 'name') return name
+      if (property === 'toString') return () => '[sandbox-blocked-runtime-api]'
+      throw new Error('Code Mode sandbox blocked ' + name + '. Use the matching tools.* API instead.')
+    },
+  })
+}
+
+function createSandboxProcess(workspaceRootPath) {
+  return Object.freeze({
+    arch: hostProcess.arch,
+    cwd: () => workspaceRootPath,
+    env: Object.freeze({}),
+    platform: hostProcess.platform,
+    release: hostProcess.release,
+    version: hostProcess.version,
+    versions: Object.freeze({ node: hostProcess.versions.node }),
+  })
+}
+
+function createSandboxRequire() {
+  const allowedModules = new Set([
+    'node:buffer',
+    'node:fs',
+    'node:fs/promises',
+    'node:path',
+    'node:punycode',
+    'node:querystring',
+    'node:string_decoder',
+    'node:timers',
+    'node:url',
+    'node:util',
+    'buffer',
+    'fs',
+    'fs/promises',
+    'path',
+    'punycode',
+    'querystring',
+    'string_decoder',
+    'timers',
+    'url',
+    'util',
+  ])
+
+  return (specifier) => {
+    if (typeof specifier !== 'string' || !allowedModules.has(specifier)) {
+      throw new Error('Code Mode sandbox blocked require(' + JSON.stringify(specifier) + '). Use the matching tools.* API instead.')
+    }
+    return hostRequire(specifier)
+  }
+}
+
+function blockSandboxCodeGeneration() {
+  const blocked = createBlockedRuntimeApi('code generation')
+  const functionPrototypes = [
+    Object.getPrototypeOf(function () {}),
+    Object.getPrototypeOf(async function () {}),
+    Object.getPrototypeOf(function* () {}),
+    Object.getPrototypeOf(async function* () {}),
+  ]
+
+  for (const prototype of new Set(functionPrototypes)) {
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, 'constructor')
+    if (!descriptor) continue
+    Object.defineProperty(prototype, 'constructor', {
+      ...descriptor,
+      configurable: false,
+      value: blocked,
+      writable: false,
+    })
+  }
+}
+
+function configureRuntime(message) {
+  if (message.executionMode === 'full') {
+    globalThis.process = hostProcess
+    globalThis.require = hostRequire
+    globalThis.module = { exports: {} }
+    globalThis.fs = hostRequire('node:fs')
+    globalThis.child_process = hostRequire('node:child_process')
+    globalThis.http = hostRequire('node:http')
+    globalThis.https = hostRequire('node:https')
+    globalThis.net = hostRequire('node:net')
+    globalThis.Worker = hostRequire('node:worker_threads').Worker
+    globalThis.worker_threads = hostRequire('node:worker_threads')
+    return
+  }
+
+  globalThis.process = createSandboxProcess(message.workspaceRootPath)
+  globalThis.require = createSandboxRequire()
+  globalThis.module = Object.freeze({ exports: {} })
+  globalThis.fetch = createBlockedRuntimeApi('fetch')
+  globalThis.eval = createBlockedRuntimeApi('eval')
+  globalThis.Function = createBlockedRuntimeApi('Function')
+  globalThis.WebAssembly = createBlockedRuntimeApi('WebAssembly')
+  globalThis.Worker = createBlockedRuntimeApi('Worker')
+  globalThis.worker_threads = createBlockedRuntimeApi('worker_threads')
+  globalThis.child_process = createBlockedRuntimeApi('child_process')
+  globalThis.http = createBlockedRuntimeApi('http')
+  globalThis.https = createBlockedRuntimeApi('https')
+  globalThis.net = createBlockedRuntimeApi('net')
+  globalThis.Electron = createBlockedRuntimeApi('Electron')
+  globalThis.Bun = createBlockedRuntimeApi('Bun')
+  globalThis.Deno = createBlockedRuntimeApi('Deno')
+  globalThis.fs = hostRequire('node:fs')
+  blockSandboxCodeGeneration()
 }
 
 function isPromiseLike(value) {
@@ -107,11 +217,9 @@ function assertCloneable(value) {
 }
 
 async function execute(message) {
-  const sandbox = createSandbox(message.toolNames)
-  const script = new vm.Script('(async () => {\n' + message.code + '\n})()', {
-    filename: 'tidecode-code-mode.js',
-  })
-  const output = await script.runInContext(sandbox, { timeout: message.limits.timeoutMs })
+  configureRuntime(message)
+  const program = new AsyncFunction('tools', message.code)
+  const output = await program(createTools(message.toolNames))
   await Promise.all(Array.from(pendingToolPromises))
   return assertCloneable(await resolveReturnedValue(output))
 }
@@ -154,12 +262,17 @@ function errorResult(
 }
 
 function toJsonSafe(value: unknown): unknown {
+  if (value === undefined) {
+    return undefined
+  }
+
   try {
-    return JSON.parse(JSON.stringify(value, (_key, nestedValue: unknown) => {
+    const serialized = JSON.stringify(value, (_key, nestedValue: unknown) => {
       if (typeof nestedValue === 'bigint') return `${nestedValue}n`
       if (nestedValue instanceof Uint8Array) return Array.from(nestedValue)
       return nestedValue
-    }))
+    })
+    return serialized === undefined ? undefined : JSON.parse(serialized)
   } catch {
     return String(value)
   }
@@ -167,16 +280,12 @@ function toJsonSafe(value: unknown): unknown {
 
 function serializeToolResult(result: AgentToolExecutionResult): unknown {
   const safeResult = toJsonSafe(result) as Record<string, unknown>
-  const {
-    displayBody: _displayBody,
-    modelOutput: _modelOutput,
-    resultPresentation: _resultPresentation,
-    truncated: _truncated,
-    ...modelResult
-  } = safeResult
-  return {
-    ...modelResult,
-  }
+  const modelResult = { ...safeResult }
+  delete modelResult.displayBody
+  delete modelResult.modelOutput
+  delete modelResult.resultPresentation
+  delete modelResult.truncated
+  return modelResult
 }
 
 function capDisplayBody(result: AgentToolExecutionResult) {
@@ -191,6 +300,10 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function capExecutionOutput(output: unknown, maxBytes: number) {
   const safeOutput = toJsonSafe(output)
+  if (safeOutput === undefined) {
+    return { output: undefined, outputTruncated: false }
+  }
+
   const serialized = JSON.stringify(safeOutput)
   if (byteLength(serialized) <= maxBytes) {
     return { output: safeOutput, outputTruncated: false }
@@ -206,12 +319,23 @@ function capExecutionOutput(output: unknown, maxBytes: number) {
 
 export class CodeModeExecutor {
   private readonly activeWorkers = new Set<Worker>()
+  private readonly executionMode: AppTerminalExecutionMode
   private readonly preloadedToolNames: readonly string[]
+  private readonly workspaceRootPath: string
 
-  public constructor(private readonly registry: AgentToolRegistry, preloadedToolNames?: readonly string[]) {
+  public constructor(
+    private readonly registry: AgentToolRegistry,
+    preloadedToolNames?: readonly string[],
+    options: {
+      terminalExecutionMode?: AppTerminalExecutionMode
+      workspaceRootPath?: string
+    } = {},
+  ) {
+    this.executionMode = options.terminalExecutionMode ?? 'sandbox'
     this.preloadedToolNames = preloadedToolNames ?? registry.entries
       .filter((entry) => !isDynamicAgentTool(entry))
       .map((entry) => entry.name)
+    this.workspaceRootPath = path.resolve(options.workspaceRootPath ?? process.cwd())
   }
 
   public async run(
@@ -250,7 +374,24 @@ export class CodeModeExecutor {
       return errorResult(executionId, `Tool "${unavailableToolName}" is not available in the Code Mode registry.`)
     }
 
-    const worker = new Worker(CODE_MODE_WORKER_SOURCE, { eval: true })
+    type ModuleWorkerOptions = WorkerOptions & { type: 'module' }
+    const workerOptions: ModuleWorkerOptions = { eval: true, type: 'module' }
+    if (this.executionMode === 'sandbox') {
+      if (containsDynamicCodeModeImport(executableCode)) {
+        return errorResult(executionId, 'Code Mode sandbox does not allow dynamic module loading. Use the available tools.* APIs instead.')
+      }
+      const nodeMajorVersion = Number.parseInt(process.versions.node.split('.')[0] ?? '', 10)
+      if (!Number.isInteger(nodeMajorVersion) || nodeMajorVersion < 20) {
+        return errorResult(executionId, 'Code Mode sandbox requires Node.js permission support.')
+      }
+      workerOptions.execArgv = [
+        '--permission',
+        '--allow-fs-read=' + this.workspaceRootPath,
+        '--allow-fs-write=' + this.workspaceRootPath,
+      ]
+    }
+
+    const worker = new Worker(CODE_MODE_WORKER_SOURCE, workerOptions)
     this.activeWorkers.add(worker)
     const toolCalls: CodeModeToolCallRecord[] = []
     let settled = false
@@ -381,9 +522,11 @@ export class CodeModeExecutor {
       })
       worker.postMessage({
         code: executableCode,
+        executionMode: this.executionMode,
         limits,
         toolNames,
         type: 'execute',
+        workspaceRootPath: this.workspaceRootPath,
       })
     })
   }

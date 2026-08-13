@@ -165,7 +165,12 @@ const ThinkingBlockContent = memo(function ThinkingBlockContent({ normalizedCont
       className="chat-scroll-viewport mt-1.5 max-h-80 w-full min-w-0 overflow-y-auto pr-1 text-sm text-muted-foreground/90 [&>*:last-child]:mb-0 [scrollbar-width:none] [scrollbar-gutter:stable] [&::-webkit-scrollbar]:hidden"
     >
       {normalizedContent.trim().length > 0 ? (
-        <MarkdownRenderer content={normalizedContent} className="opacity-85" isStreaming={!isComplete} preserveLineBreaks />
+        <MarkdownRenderer
+          content={normalizedContent}
+          className="opacity-85"
+          isStreaming={!isComplete}
+          preserveLineBreaks
+        />
       ) : (
         <p className="italic text-subtle-foreground">Thinking...</p>
       )}

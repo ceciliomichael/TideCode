@@ -541,8 +541,9 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .workspace-monaco-editor .monaco-editor .margin,
   .workspace-monaco-diff .monaco-editor .margin {
-    box-shadow: inset -1px 0 var(--color-border);
+    box-shadow: none !important;
   }
 
   .workspace-monaco-editor .monaco-editor .find-widget {

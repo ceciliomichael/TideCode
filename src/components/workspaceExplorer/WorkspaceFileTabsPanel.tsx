@@ -38,6 +38,7 @@ interface WorkspaceFileTabsPanelProps {
   onSelectTab: (tabKey: string) => void
   tabs: readonly WorkspaceTab[]
   wordWrapEnabled: boolean
+  workspaceRootPath?: string | null
 }
 
 export function WorkspaceFileTabsPanel({
@@ -56,6 +57,7 @@ export function WorkspaceFileTabsPanel({
   onSelectTab,
   tabs,
   wordWrapEnabled,
+  workspaceRootPath,
 }: WorkspaceFileTabsPanelProps) {
   const hasTabs = tabs.length > 0
   const activeTab = findWorkspaceTabByKey(tabs, activeTabKey)
@@ -347,6 +349,7 @@ export function WorkspaceFileTabsPanel({
           planCommentsByPath={planCommentsByPath}
           onSelectionChange={handleEditorSelectionChange}
           wordWrapEnabled={wordWrapEnabled}
+          workspaceRootPath={workspaceRootPath}
         />
       </div>
     </section>

@@ -34,6 +34,7 @@ interface WorkspaceFileTabsPanelContentProps {
   onRequestPlanChanges: (relativePath: string, comments: PlanReviewComment[]) => void
   onSelectionChange: (selection: TextSelectionRange | null) => void
   wordWrapEnabled: boolean
+  workspaceRootPath?: string | null
 }
 
 function isWorkspaceFileTab(tab: WorkspaceTab): tab is WorkspaceFileTab {
@@ -68,6 +69,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
   onRequestPlanChanges,
   onSelectionChange,
   wordWrapEnabled,
+  workspaceRootPath,
 }: WorkspaceFileTabsPanelContentProps) {
   if (activeTab.kind === 'markdown-preview') {
     const sourceTab = tabs.find(
@@ -99,6 +101,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
         fileName={activeTab.fileName}
         relativePath={activeTab.relativePath}
         isTruncated={sourceTab ? sourceTab.isTruncated : activeTab.isTruncated}
+        workspaceRootPath={workspaceRootPath}
       />
     )
   }

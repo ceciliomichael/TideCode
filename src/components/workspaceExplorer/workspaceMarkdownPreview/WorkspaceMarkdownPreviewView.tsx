@@ -9,11 +9,13 @@ import { handleMarkdownLinkClick, preprocessMarkdown } from '../../../lib/markdo
 import { MarkdownListItem, MarkdownOrderedList } from '../../markdown/MarkdownList'
 import { CodeBlock } from '../../chat/CodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
+import { WorkspaceMarkdownImage } from './WorkspaceMarkdownImage'
 
 interface WorkspaceMarkdownPreviewViewProps {
   content: string
   fileName: string
   relativePath?: string
+  workspaceRootPath?: string | null
   isTruncated?: boolean
 }
 
@@ -58,6 +60,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
   content,
   fileName,
   relativePath,
+  workspaceRootPath,
   isTruncated = false,
 }: WorkspaceMarkdownPreviewViewProps) {
   const markdownComponents = useMemo(
@@ -111,9 +114,9 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
           return (
             <CodeBlock
               code={codeText}
-              headerLabel={language}
+              headerLabel={language ?? ''}
               language={language}
-              fileName={language ? undefined : fileName}
+              fileName={undefined}
               showHeaderTooltip={false}
             />
           )
@@ -245,12 +248,12 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
       td: (props: React.ComponentPropsWithoutRef<'td'>) => (
         <td {...props} className="px-3 py-2 align-top text-left text-foreground" />
       ),
-      img: (props: React.ComponentPropsWithoutRef<'img'>) => (
-        <img
-          {...props}
-          loading="lazy"
-          decoding="async"
-          className="my-4 block max-w-full rounded-2xl border border-border bg-surface object-contain"
+      img: ({ src, alt }: React.ComponentPropsWithoutRef<'img'>) => (
+        <WorkspaceMarkdownImage
+          alt={alt}
+          currentRelativePath={relativePath}
+          src={src}
+          workspaceRootPath={workspaceRootPath}
         />
       ),
       input: ({ ...props }: React.ComponentPropsWithoutRef<'input'>) => {
@@ -270,7 +273,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
       },
       hr: (props: React.ComponentPropsWithoutRef<'hr'>) => <hr {...props} className="my-5 border-border" />,
     }),
-    [fileName, relativePath],
+    [fileName, relativePath, workspaceRootPath],
   )
 
   return (

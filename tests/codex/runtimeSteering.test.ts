@@ -12,6 +12,7 @@ const startInput: StartChatStreamInput = {
   chatMode: 'agent',
   contextCompaction: {
     contextWindowTokens: 128_000,
+    retainedTurnCount: 4,
     triggerPercent: 80,
   },
   conversationId: 'conversation-1',

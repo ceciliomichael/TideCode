@@ -7,6 +7,11 @@ import {
   isImagePreviewablePath,
 } from '../src/lib/image-preview'
 import { createPdfPreviewDataUrl, isPdfPreviewablePath } from '../src/lib/pdf-preview'
+import {
+  getImagePreviewCanvasSize,
+  getImagePreviewFitScale,
+  IMAGE_PREVIEW_PADDING_PX,
+} from '../src/components/workspaceExplorer/workspaceImagePreview/imagePreviewSizing'
 
 test('image preview routing recognizes browser-supported workspace image formats', () => {
   assert.equal(getImagePreviewMimeType('assets/photo.PNG'), 'image/png')
@@ -23,6 +28,33 @@ test('image preview routing recognizes browser-supported workspace image formats
 
 test('image preview data URLs preserve the MIME type and base64 payload', () => {
   assert.equal(createImagePreviewDataUrl('image/png', 'iVBORw0KGgo='), 'data:image/png;base64,iVBORw0KGgo=')
+})
+
+test('image preview fits oversized images inside the available viewport by default', () => {
+  const imageSize = { height: 1200, width: 1600 }
+  const viewportSize = { height: 800, width: 1080 }
+
+  assert.equal(getImagePreviewFitScale(imageSize, viewportSize), 0.64)
+  assert.deepEqual(getImagePreviewCanvasSize(imageSize, viewportSize, 1, 0.64), {
+    height: viewportSize.height,
+    imageHeight: 768,
+    imageWidth: 1024,
+    width: viewportSize.width,
+  })
+  assert.equal(IMAGE_PREVIEW_PADDING_PX, 32)
+})
+
+test('image preview keeps smaller images at their natural size until zoomed', () => {
+  const imageSize = { height: 300, width: 400 }
+  const viewportSize = { height: 800, width: 1000 }
+
+  assert.equal(getImagePreviewFitScale(imageSize, viewportSize), 1)
+  assert.deepEqual(getImagePreviewCanvasSize(imageSize, viewportSize, 2, 1), {
+    height: viewportSize.height,
+    imageHeight: 600,
+    imageWidth: 800,
+    width: viewportSize.width,
+  })
 })
 
 test('PDF preview routing accepts PDF files and preserves their data URL MIME type', () => {

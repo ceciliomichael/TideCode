@@ -52,6 +52,34 @@ test('tool result replay preserves oversized model content without truncation', 
   assert.equal(storedResult.body, body)
 })
 
+test('legacy Code Mode undefined output replays the completed nested tool result', () => {
+  const structuredContent = formatStructuredToolResultContent(
+    {
+      schema: 'tidecode.tool_result/v1',
+      semantics: {
+        tool_calls: [{
+          body: 'Successfully wrote 1 file change\nA hello.py (+1 -0)',
+          name: 'write',
+          status: 'success',
+          summary: 'Successfully wrote 1 file change',
+        }],
+      },
+      status: 'success',
+      summary: 'Code Mode completed with 1 tool call.',
+      toolCallId: 'code-mode-legacy-1',
+      toolName: 'code_mode',
+    },
+    'Code Mode completed with 1 tool call.\n\nundefined',
+  )
+
+  const modelContent = getToolResultModelContent(structuredContent)
+
+  assert.doesNotMatch(modelContent, /undefined/u)
+  assert.match(modelContent, /completed tool calls but returned no explicit value/u)
+  assert.match(modelContent, /Successfully wrote 1 file change/u)
+  assert.match(modelContent, /A hello\.py \(\+1 -0\)/u)
+})
+
 test('provider replay preserves oversized tool content without a recovery-tool loop', () => {
   const body = Array.from({ length: 4_000 }, (_value, index) => `line ${index} ${'x'.repeat(80)}`).join('\n')
   const prompt = buildChatPrompt({

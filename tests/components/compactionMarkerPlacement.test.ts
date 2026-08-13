@@ -64,6 +64,20 @@ test('the latest compaction marker trails the complete visible transcript', () =
   assert.deepEqual(placement.trailingMarkers.map((item) => item.compactionId), ['compact-1'])
 })
 
+test('latest markers use the active assistant draft when timestamps cannot identify it', () => {
+  const messages = [
+    message('user-1', 'user'),
+    message('assistant-1', 'assistant'),
+  ]
+
+  const placement = placeCompactionMarkersAfterTranscript(messages, [marker('compact-1', 'user-1', 2)], {
+    preferredMessageId: 'assistant-1',
+  })
+
+  assert.deepEqual(placement.markersBeforeMessageId.get('assistant-1')?.map((item) => item.compactionId), ['compact-1'])
+  assert.equal(placement.trailingMarkers.length, 0)
+})
+
 test('markers whose anchors were removed by a revert disappear from the transcript', () => {
   const placement = placeCompactionMarkersAfterTranscript(
     [message('user-1', 'user')],

@@ -86,6 +86,8 @@ export function parseStoredCodexAuthData(input: unknown): StoredCodexAuthData | 
   }
 }
 
+import { writeJsonFileAtomic } from '../../settings/fileStore'
+
 async function ensureCodexAuthDirectory(homeDirectory?: string) {
   await fs.mkdir(path.dirname(getCodexAuthFilePath(homeDirectory)), { recursive: true })
 }
@@ -96,12 +98,18 @@ export async function readStoredCodexAuthData(options?: CodexStorageOptions) {
     const parsed = parseStoredCodexAuthData(JSON.parse(raw) as unknown)
 
     if (!parsed) {
-      throw new Error('Unsupported Codex auth file format.')
+      console.warn('Ignoring unsupported Codex auth file format.')
+      return null
     }
 
     return parsed
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return null
+    }
+
+    if (error instanceof SyntaxError) {
+      console.warn('Ignoring corrupted Codex auth file')
       return null
     }
 
@@ -111,10 +119,7 @@ export async function readStoredCodexAuthData(options?: CodexStorageOptions) {
 
 export async function writeStoredCodexAuthData(data: StoredCodexAuthData, options?: CodexStorageOptions) {
   await ensureCodexAuthDirectory(options?.homeDirectory)
-  await fs.writeFile(getCodexAuthFilePath(options?.homeDirectory), JSON.stringify(data, null, 2), {
-    encoding: 'utf8',
-    mode: 0o600,
-  })
+  await writeJsonFileAtomic(getCodexAuthFilePath(options?.homeDirectory), JSON.stringify(data, null, 2))
 }
 
 export async function deleteStoredCodexAuthData(options?: CodexStorageOptions) {

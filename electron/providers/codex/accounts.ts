@@ -5,6 +5,8 @@ import { getCodexAccountsDirectoryPath, getLegacyStoredCodexAccountFilePath, get
 import type { StoredCodexAuthData } from './store'
 import { parseStoredCodexAuthData } from './store'
 
+import { writeJsonFileAtomic } from '../../settings/fileStore'
+
 export interface StoredCodexAccountData extends StoredCodexAuthData {
   email: string | null
   label: string
@@ -61,6 +63,14 @@ export async function readStoredCodexAccount(
     return toStoredCodexAccountData(JSON.parse(raw) as unknown)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      const accounts = await listStoredCodexAccounts(options)
+      const legacyMatch = accounts.find(({ account }) => account.tokens.account_key === accountKey)
+
+      return legacyMatch?.account ?? null
+    }
+
+    if (error instanceof SyntaxError) {
+      console.warn(`Ignoring corrupted Codex account file at ${filePath}`)
       const accounts = await listStoredCodexAccounts(options)
       const legacyMatch = accounts.find(({ account }) => account.tokens.account_key === accountKey)
 
@@ -131,7 +141,7 @@ export async function upsertStoredCodexAccount(
 
   const filePath = getStoredCodexAccountFilePath(storageKey, options?.homeDirectory)
   await ensureCodexAccountsDirectory(options?.homeDirectory)
-  await fs.writeFile(filePath, `${JSON.stringify(account, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+  await writeJsonFileAtomic(filePath, `${JSON.stringify(account, null, 2)}\n`)
 
   const legacyFilePath = getLegacyStoredCodexAccountFilePath(authData.tokens.account_id, options?.homeDirectory)
   if (legacyFilePath !== filePath) {

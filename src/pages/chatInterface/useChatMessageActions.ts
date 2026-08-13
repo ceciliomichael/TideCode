@@ -18,6 +18,7 @@ interface UseChatMessageActionsInput {
   clearQueuedMessages: () => void
   enqueueMessage: (value: string, attachments: ChatAttachment[]) => void
   isCompressingChat: boolean
+  onMainTurnAccepted: () => void
   onConversationHistoryChanged: () => void
   runtimeSelection: ChatRuntimeSelection
   workspaceState: ChatWorkspaceUiState
@@ -58,6 +59,7 @@ export function useChatMessageActions({
   clearQueuedMessages,
   enqueueMessage,
   isCompressingChat,
+  onMainTurnAccepted,
   onConversationHistoryChanged,
   runtimeSelection,
   workspaceState,
@@ -102,12 +104,24 @@ export function useChatMessageActions({
         enqueueMessage(value, attachments)
         return
       }
-       void chatMessages.sendNewMessage(runtimeSelection, value, attachments).then(
-         onConversationHistoryChanged,
-         onConversationHistoryChanged,
-       )
+      void chatMessages.sendNewMessage(runtimeSelection, value, attachments).then(
+        (result) => {
+          onConversationHistoryChanged()
+          if (result.accepted) {
+            onMainTurnAccepted()
+          }
+        },
+        onConversationHistoryChanged,
+      )
     },
-    [chatMessages, enqueueMessage, isCompressingChat, onConversationHistoryChanged, runtimeSelection],
+    [
+      chatMessages,
+      enqueueMessage,
+      isCompressingChat,
+      onConversationHistoryChanged,
+      onMainTurnAccepted,
+      runtimeSelection,
+    ],
   )
 
   const handleSendEditedMessage = useCallback(

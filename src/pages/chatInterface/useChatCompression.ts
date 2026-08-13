@@ -16,6 +16,7 @@ interface UseChatCompressionInput {
   chatMode: ChatMode;
   compressionSelection: CompressionSelection;
   isBusy: boolean;
+  isChatFreshlyCompacted: boolean;
   messages: Message[];
   isCompressingChat: boolean;
   onCompactionComplete: () => void;
@@ -31,6 +32,7 @@ export function useChatCompression(input: UseChatCompressionInput) {
     chatMode,
     compressionSelection,
     isBusy,
+    isChatFreshlyCompacted,
     isCompressingChat,
     messages,
     runtimeSelection,
@@ -41,6 +43,11 @@ export function useChatCompression(input: UseChatCompressionInput) {
 
   const handleCompressChat = useCallback(async () => {
     if (isCompressingChat) {
+      return;
+    }
+
+    if (isChatFreshlyCompacted) {
+      setError("Send a new message before compressing this chat again.");
       return;
     }
 
@@ -112,6 +119,7 @@ export function useChatCompression(input: UseChatCompressionInput) {
     chatMode,
     compressionSelection,
     isBusy,
+    isChatFreshlyCompacted,
     isCompressingChat,
     messages,
     onCompactionComplete,

@@ -1,3 +1,5 @@
+import { formatImplicitCodeModeToolResults, type CodeModeToolCallOutput } from './codeModeResultOutput'
+
 export interface StructuredToolResultSubject {
   kind?: string
   path?: string
@@ -51,6 +53,8 @@ interface StructuredToolResultEnvelope {
 
 const SKILL_LOCATION_PREAMBLE_PATTERN =
   /^Skill file:[^\r\n]*\r?\nSkill directory:[^\r\n]*\r?\nResolve relative resource and script paths from the skill directory above\.(?:\r?\n){1,2}/u
+const CODE_MODE_ZERO_TOOL_SUMMARY_PATTERN = /^Code Mode completed with 0 tool calls\.(?:\r?\n)+/u
+const CODE_MODE_LEGACY_UNDEFINED_OUTPUT_PATTERN = /\r?\n\r?\nundefined\s*$/u
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -181,6 +185,55 @@ function formatListToolResultBody(metadata: StructuredToolResultMetadata, body: 
   return `${headerLines.join('\n')}\n\n${bodyText}`
 }
 
+function readLegacyCodeModeToolCalls(metadata: StructuredToolResultMetadata): CodeModeToolCallOutput[] {
+  const rawToolCalls = metadata.semantics?.tool_calls
+  if (!Array.isArray(rawToolCalls)) {
+    return []
+  }
+
+  return rawToolCalls.flatMap((rawToolCall) => {
+    if (!isRecord(rawToolCall) || typeof rawToolCall.name !== 'string') {
+      return []
+    }
+
+    const name = rawToolCall.name.trim()
+    const summary = typeof rawToolCall.summary === 'string' ? rawToolCall.summary.trim() : ''
+    if (name.length === 0 || summary.length === 0) {
+      return []
+    }
+
+    const status = rawToolCall.status === 'error'
+      ? 'error'
+      : rawToolCall.status === 'success'
+        ? 'success'
+        : null
+    if (status === null) {
+      return []
+    }
+
+    return [{
+      ...(typeof rawToolCall.body === 'string' ? { body: rawToolCall.body } : {}),
+      name,
+      status,
+      summary,
+    }]
+  })
+}
+
+function normalizeLegacyCodeModeModelBody(metadata: StructuredToolResultMetadata, body: string | null) {
+  const bodyText = body ?? ''
+  if (
+    metadata.toolName !== 'code_mode' ||
+    !CODE_MODE_LEGACY_UNDEFINED_OUTPUT_PATTERN.test(bodyText)
+  ) {
+    return bodyText
+  }
+
+  const summaryBody = bodyText.replace(CODE_MODE_LEGACY_UNDEFINED_OUTPUT_PATTERN, '').trimEnd()
+  const toolResultBody = formatImplicitCodeModeToolResults(readLegacyCodeModeToolCalls(metadata))
+  return toolResultBody.length > 0 ? `${summaryBody}\n\n${toolResultBody}` : summaryBody
+}
+
 export function formatStructuredToolResultContent(metadata: StructuredToolResultMetadata, body?: string | null) {
   // `body` is the model-facing text. If it is omitted, the summary becomes the fallback.
   const envelope: StructuredToolResultEnvelope = {
@@ -215,7 +268,12 @@ export function getToolResultModelContent(content: string) {
   // This is the final text that gets replayed to the model when history is rebuilt.
   const parsedContent = parseStructuredToolResultContent(content)
   let modelContent: string
-  if (parsedContent.metadata?.toolName === 'read') {
+  if (parsedContent.metadata?.toolName === 'code_mode') {
+    const normalizedCodeModeBody = normalizeLegacyCodeModeModelBody(parsedContent.metadata, parsedContent.body)
+    modelContent = normalizedCodeModeBody.length > 0
+      ? normalizedCodeModeBody
+      : parsedContent.metadata.summary.trim() || content.trim()
+  } else if (parsedContent.metadata?.toolName === 'read') {
     modelContent = formatReadToolResultBody(parsedContent.metadata, parsedContent.body)
   } else if (parsedContent.metadata?.toolName === 'list') {
     modelContent = formatListToolResultBody(parsedContent.metadata, parsedContent.body)
@@ -232,6 +290,10 @@ export function getToolResultModelContent(content: string) {
 
 export function getToolResultDisplayBody(toolName: string, body: string) {
   let displayBody = body
+
+  if (toolName === 'code_mode') {
+    displayBody = displayBody.replace(CODE_MODE_ZERO_TOOL_SUMMARY_PATTERN, '')
+  }
 
   if (toolName === 'edit') {
     displayBody = removeInternalNextFieldsFromJson(displayBody)

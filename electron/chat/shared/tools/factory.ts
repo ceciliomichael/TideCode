@@ -132,9 +132,12 @@ export async function createAgentToolBundle(
   // model-visible documentation until tools.tool_search returns their names.
   // This permits discovery and invocation in one temporary program.
   const preloadedToolNames = registry.entries.map((entry) => entry.name)
-  const codeModeExecutor = new CodeModeExecutor(registry, preloadedToolNames)
+  const codeModeExecutor = new CodeModeExecutor(registry, preloadedToolNames, {
+    terminalExecutionMode: input.terminalExecutionMode,
+    workspaceRootPath: input.workspaceRootPath,
+  })
   const metaTools: ToolSet = {
-    code_mode: createCodeModeTool(codeModeExecutor, registry),
+    code_mode: createCodeModeTool(codeModeExecutor, registry, input.terminalExecutionMode),
   }
 
   return {

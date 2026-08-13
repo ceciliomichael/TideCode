@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { ChatMode, AppTerminalExecutionMode } from '../../../../../src/types/chat'
 import type { AgentOrchestrationMode } from '../../orchestration'
+import { CODE_MODE_EXECUTION_CONTRACT } from '../../codeMode/promptContract'
 import { buildWorkspaceInstructionsBlock } from '../workspaceInstructions'
 import { buildPythonVenvPromptBlock } from '../../../../python/venv'
 
@@ -63,11 +64,11 @@ const CORE_DECISION_PROMPT = [
 const CODE_MODE_AGENT_PROMPT = [
   '<agent_code_mode_rules description="Local Code Mode contract">',
   '- The only model-facing tool in this turn is `code_mode`.',
+  `- ${CODE_MODE_EXECUTION_CONTRACT}`,
   '- Local workspace APIs are preloaded in the `code_mode` description. Call them directly as `tools.<name>(args)`. For connected MCP APIs, call `tools.tool_search({ query })` inside Code Mode and invoke an exact returned function in that same program; never call tool_search as a separate native tool.',
   '- Every `path` argument is exactly one existing file or directory path. `read` is for one file (a directory returns entries), `list` is for one directory, and `glob`/`grep` discover paths. Never invent an index file or combine roots with spaces (for example, `"src electron"`); use one call per root or omit `path` to search the workspace root.',
   '- Write boring sequential JavaScript: await each `tools.*` call, keep intermediate data inside the program, and return small JSON-compatible data. Use `Promise.all` only for independent calls.',
-  '- Use only documented `tools.*` APIs. Do not use imports, runtime APIs, filesystem APIs, shell APIs, network APIs, or dynamic code loading.',
-  '- For source changes, use `tools.edit({ path, edits })`. One call has one path; its `edits` array may contain multiple hunks for that file. Every hunk requires complete `targetContent` and `replacementContent`. `startLine`/`endLine` are optional: when omitted, matching searches the entire file. Use `replaceAll: true` to replace every match in the file or range; leave it false for one intended match. Use source text only in targetContent; never include read metadata or the EOF footer, edit unchanged content (where targetContent and replacementContent are identical), or mix paths in one call. When wrapping targetContent/replacementContent in backticks inside Code Mode, escape literal template expressions as `\\${var}` or use single quotes; do NOT use Python triple quotes (""").',
+  '- For source changes, use `tools.edit({ path, edits })`. One call has one path; its `edits` array may contain multiple hunks for that file. Every hunk requires complete `targetContent` and `replacementContent`. `startLine`/`endLine` are optional: when omitted, matching searches the entire file. Use `replaceAll: true` to replace every match in the file or range; leave it false for one intended match. Use source text only in targetContent; never include read metadata or the EOF footer, edit unchanged content (where targetContent and replacementContent are identical), or mix paths in one call. When wrapping targetContent/replacementContent/content in backticks inside Code Mode, escape inner backticks as `\\`` and literal template expressions as `\\${var}`, or use single quotes; do NOT use Python triple quotes (""").',
   '- After a tool failure or source drift, reread the target and generate a new narrow action. Preserve permissions and approvals, verify the requested result, then stop.',
   '</agent_code_mode_rules>',
 ].join('\n')

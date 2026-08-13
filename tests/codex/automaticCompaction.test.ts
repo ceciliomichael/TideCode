@@ -5,6 +5,10 @@ import {
   mergeAutomaticCompactionMessages,
   resolveAutomaticCompactionTrigger,
 } from '../../electron/chat/shared/compaction/automatic'
+import {
+  calculateModelMessagesBudget,
+  shouldCompactContext,
+} from '../../electron/chat/shared/compaction/budget'
 
 const completedToolStep: ModelMessage[] = [
   {
@@ -72,6 +76,38 @@ test('automatic compaction budgets tool results supplied only through accumulate
   })
 
   assert.deepEqual(mergedMessages, [...messages, ...completedToolStep])
+})
+
+test('automatic compaction keeps oversized tool output in the threshold estimate', () => {
+  const oversizedToolOutput = 'x'.repeat(700_000)
+  const toolResult: ModelMessage = {
+    role: 'tool',
+    content: [{
+      output: { type: 'text', value: oversizedToolOutput },
+      toolCallId: 'call-large-output',
+      toolName: 'read_file',
+      type: 'tool-result',
+    }],
+  }
+
+  const mergedMessages = mergeAutomaticCompactionMessages({
+    messages: [{ role: 'user', content: 'Inspect the workspace.' }],
+    responseMessages: [toolResult],
+  })
+
+  assert.deepEqual(mergedMessages, [
+    { role: 'user', content: 'Inspect the workspace.' },
+    toolResult,
+  ])
+
+  const budget = calculateModelMessagesBudget({
+    contextWindowTokens: 200_000,
+    messages: mergedMessages,
+    systemPromptTokens: 0,
+    toolSchemaTokens: 0,
+    triggerRatio: 0.8,
+  })
+  assert.equal(shouldCompactContext(budget), true)
 })
 
 test('automatic compaction does not resurrect pre-compaction response history', () => {
