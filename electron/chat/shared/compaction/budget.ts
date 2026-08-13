@@ -8,7 +8,7 @@ import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../../../src/lib/context
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = DEFAULT_CONTEXT_COMPACTION_SETTINGS.contextWindowTokens
 export const DEFAULT_COMPACTION_TRIGGER_RATIO = DEFAULT_CONTEXT_COMPACTION_SETTINGS.triggerPercent / 100
 export const DEFAULT_CONTEXT_OUTPUT_RESERVE_TOKENS = 20_000
-const COMPACTION_RETENTION_RATIO = 0.25
+const COMPACTION_RETENTION_RATIO = 0.1
 
 function stringifyForTokenEstimate(value: unknown) {
   try {
@@ -81,7 +81,10 @@ export function calculateContextBudget(input: ContextBudgetInput): ContextBudget
     outputReserveTokens,
     targetHistoryTokens,
     totalTokens,
-    triggerTokens: Math.floor(usableContextWindowTokens * triggerRatio),
+    // Match the percentage displayed by ContextIndicator. The output reserve
+    // still protects generation capacity and shapes the retained history, but
+    // it must not silently lower an 80% user setting to 72% of the full window.
+    triggerTokens: Math.floor(contextWindowTokens * triggerRatio),
     usableContextWindowTokens,
   }
 }

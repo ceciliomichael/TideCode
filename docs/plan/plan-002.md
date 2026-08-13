@@ -292,11 +292,12 @@ interface CodeModeLimits {
   maxToolCalls: number
   maxOutputBytes: number
   maxOutputDepth: number
-  maxParallelInvocations: number
 }
 ```
 
 Start with conservative development values such as 30 seconds, 100,000 code bytes, 100 tool calls, and 1 MB returned output. Tune these with long-session fixtures. The executor must support cancellation from the existing run abort signal and terminate the worker on timeout or cancellation.
+
+Code Mode does not impose a separate concurrent-tool-call cap. Parallel calls remain governed by the per-program tool-call total, timeout, cancellation, tool permissions, and the underlying tool implementations.
 
 `maxToolCalls` limits one generated program only. It must not change the existing unlimited outer model continuation behavior.
 

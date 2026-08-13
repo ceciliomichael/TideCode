@@ -51,7 +51,7 @@ test('createAgentTools exposes write tools in agent mode', async () => {
   }
 })
 
-test('Code Mode exposes only the meta-tools while registry entries retain native executors', async () => {
+test('Code Mode exposes one provider tool while discovery and native executors stay in its registry', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-tools-'))
 
   try {
@@ -60,7 +60,8 @@ test('Code Mode exposes only the meta-tools while registry entries retain native
       { chatMode: 'agent', orchestrationMode: 'code_mode' },
     )
 
-    assert.deepEqual(Object.keys(bundle.tools).sort(), ['code_mode', 'tool_search'])
+    assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
+    assert.ok(bundle.registry.get('tool_search'))
     assert.ok(bundle.registry.get('read'))
     assert.ok(bundle.registry.get('edit'))
     assert.equal(bundle.registry.get('patch'), undefined)
@@ -82,7 +83,8 @@ test('createAgentToolBundle defaults agent mode to Code Mode', async () => {
       { chatMode: 'agent' },
     )
 
-    assert.deepEqual(Object.keys(bundle.tools).sort(), ['code_mode', 'tool_search'])
+    assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
+    assert.ok(bundle.registry.get('tool_search'))
     assert.ok(bundle.codeModeExecutor)
     await bundle.codeModeExecutor?.dispose()
   } finally {
@@ -101,7 +103,8 @@ test('Hybrid orchestration retains direct tools alongside the meta-tools', async
 
     assert.ok('read' in bundle.tools)
     assert.ok('code_mode' in bundle.tools)
-    assert.ok('tool_search' in bundle.tools)
+    assert.ok(!('tool_search' in bundle.tools))
+    assert.ok(bundle.registry.get('tool_search'))
     await bundle.codeModeExecutor?.dispose()
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -225,7 +228,7 @@ test('createAgentTools keeps plan mode tool descriptions literal', async () => {
     const grepTool = tools.grep as { description?: string }
 
     assert.equal(listTool.description, 'List exactly one existing directory; omit path for the workspace root and use read for files.')
-    assert.equal(readTool.description, 'Read exactly one existing text file or image (maximum 500 lines at a time; specify offset and limit for line ranges).')
+    assert.equal(readTool.description, 'Read exactly one existing text file or image. By default, returns up to 500 lines. Set full_file: true to read the complete text file; full_file takes precedence over offset and limit.')
     assert.equal(globTool.description, 'Find files by pattern under exactly one directory; use the exact path returned by list or the user.')
     assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; never combine paths with spaces.')
     for (const description of [listTool, readTool, globTool, grepTool].map((tool) => tool.description ?? '')) {
@@ -263,7 +266,7 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     const editTool = tools.edit as { description?: string }
     const writeTool = tools.write as { description?: string }
 
-    assert.equal(readTool.description, 'Read exactly one existing text file or image (maximum 500 lines at a time; specify offset and limit for line ranges).')
+    assert.equal(readTool.description, 'Read exactly one existing text file or image. By default, returns up to 500 lines. Set full_file: true to read the complete text file; full_file takes precedence over offset and limit.')
     assert.equal(
       editTool.description,
       'Edit a file by replacing targetContent with replacementContent. Pass { path, edits: [{ targetContent, replacementContent }] }. Always use tools.edit for modifying existing files.',

@@ -7,7 +7,7 @@ import {
   TOOL_OUTPUT_MAX_LINES,
 } from '../../electron/chat/shared/tools/toolOutputBudget'
 
-test('tool output stays bounded by bytes and exposes a recovery id', () => {
+test('context-only output projection stays bounded without a recovery tool', () => {
   const result = projectToolOutputForModel(
     Array.from({ length: 8_000 }, (_value, index) => `line ${index} ${'x'.repeat(80)}`).join('\n'),
     'read-123',
@@ -15,8 +15,8 @@ test('tool output stays bounded by bytes and exposes a recovery id', () => {
 
   assert.equal(result.truncated, true)
   assert.ok(Buffer.byteLength(result.text, 'utf8') < TOOL_OUTPUT_MAX_BYTES)
-  assert.match(result.text, /Full output saved as read-123/u)
-  assert.match(result.text, /read_tool_output/u)
+  assert.match(result.text, /Full output reference: read-123/u)
+  assert.doesNotMatch(result.text, /read_tool_output/u)
   assert.doesNotMatch(result.text, /line 7999/u)
 })
 

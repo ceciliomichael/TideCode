@@ -52,7 +52,7 @@ test('tool result replay preserves oversized model content without truncation', 
   assert.equal(storedResult.body, body)
 })
 
-test('provider replay projects oversized tool content to a bounded model view', () => {
+test('provider replay preserves oversized tool content without a recovery-tool loop', () => {
   const body = Array.from({ length: 4_000 }, (_value, index) => `line ${index} ${'x'.repeat(80)}`).join('\n')
   const prompt = buildChatPrompt({
     chatMode: 'agent',
@@ -97,8 +97,8 @@ test('provider replay projects oversized tool content to a bounded model view', 
     : null
   assert.ok(output && output.type === 'tool-result')
   assert.equal(typeof output.output.value, 'string')
-  assert.ok(output.output.value.length < body.length)
-  assert.match(output.output.value, /Tool output truncated/u)
+  assert.equal(output.output.value.includes(body), true)
+  assert.doesNotMatch(output.output.value, /Tool output truncated|read_tool_output/u)
 })
 
 test('Codex fallback prompts do not synthesize unsupported generic reasoning parts', () => {
@@ -461,7 +461,7 @@ test('buildChatPrompt formats list tool results with structured directory metada
   assert.ok(Array.isArray(toolMessage?.content))
   assert.deepEqual(toolMessage?.content[0]?.output, {
     type: 'text',
-    value: 'Directory: src\nEntries: 2\n\ncomponents/\nlib/',
+    value: 'Directory: src\nEntries: 2 of 2\n\ncomponents/\nlib/',
   })
 })
 

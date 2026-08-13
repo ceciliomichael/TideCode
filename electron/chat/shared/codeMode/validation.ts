@@ -377,12 +377,6 @@ export function validateCodeModeProgram(code: string, maxCodeBytes: number) {
     return `Code Mode program exceeds the ${maxCodeBytes}-byte limit.`
   }
 
-  const executableCode = maskNonExecutableText(code)
-  for (const pattern of FORBIDDEN_CODE_PATTERNS) {
-    const match = pattern.exec(executableCode)
-    if (match) return `Code Mode program contains a forbidden runtime API: ${match[0]}.`
-  }
-
   try {
     new Script(`(async () => {\n${code}\n})()`, { filename: 'tidecode-code-mode.js' })
   } catch (error) {
@@ -395,6 +389,15 @@ export function validateCodeModeProgram(code: string, maxCodeBytes: number) {
       ? ''
       : ` at generated code line ${line}${column === null ? '' : `, column ${column}`}`
     return `Code Mode program has invalid JavaScript${position}: ${message} No tool ran. Retry with plain sequential tools.* calls. For source changes use tools.edit({ path, edits }); keep one path per call, use complete source text in targetContent/replacementContent, and do not include read metadata or the EOF footer.`
+  }
+
+  // Parse first. If a malformed string exposes prose such as "Node/Electron"
+  // to the lexical scanner, reporting a forbidden API hides the real problem
+  // and sends the model down the wrong recovery path.
+  const executableCode = maskNonExecutableText(code)
+  for (const pattern of FORBIDDEN_CODE_PATTERNS) {
+    const match = pattern.exec(executableCode)
+    if (match) return `Code Mode program contains a forbidden runtime API: ${match[0]}.`
   }
 
   return null

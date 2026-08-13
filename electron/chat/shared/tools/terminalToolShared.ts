@@ -110,7 +110,6 @@ export interface TerminalCommandSummary {
   semantics: Record<string, unknown>;
   state: TerminalCommandState;
   summary: string;
-  truncated: boolean;
 }
 
 export const threadStores = new Map<string, ThreadSessionStore>();
@@ -578,7 +577,7 @@ export function buildTerminalCommandSummary(
       line_count: transcriptSummary.lineCount,
       session_id: session.localSessionId,
       state,
-      truncated_output: transcriptSummary.truncated,
+      output_evicted: transcriptSummary.truncated,
     },
     state,
     summary: state === "needs_interaction"
@@ -588,7 +587,6 @@ export function buildTerminalCommandSummary(
           ? `Terminal session ${session.localSessionId} failed`
           : `Completed terminal session ${session.localSessionId}`
         : `Terminal session ${session.localSessionId} is still running`,
-    truncated: transcriptSummary.truncated,
   };
 }
 
@@ -602,7 +600,6 @@ export function createTerminalCommandResult(
     semantics: summary.semantics,
     subject: { kind: "session", path: String(session.localSessionId) },
     summary: summary.summary,
-    truncated: summary.truncated,
   });
 }
 

@@ -156,6 +156,46 @@ test('createListToolResult reports empty directories explicitly', async () => {
   }
 })
 
+test('list, glob, and grep expose clean continuation metadata instead of truncation flags', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const pageDirectoryPath = path.join(workspaceRootPath, 'pages')
+  await fs.mkdir(pageDirectoryPath)
+  await Promise.all(Array.from({ length: 120 }, async (_value, index) => {
+    await fs.writeFile(
+      path.join(pageDirectoryPath, `item-${String(index).padStart(3, '0')}.ts`),
+      `export const item${index} = 'paged-needle'\n`,
+      'utf8',
+    )
+  }))
+
+  try {
+    const listResult = await createListToolResult(workspaceRootPath, pageDirectoryPath, 'pages', 100, 20)
+    const globResult = await createGlobToolResult(workspaceRootPath, pageDirectoryPath, 'pages', '**/*.ts', 100, 20)
+    const grepResult = await createGrepToolResult(
+      workspaceRootPath,
+      pageDirectoryPath,
+      'pages',
+      'paged-needle',
+      '**/*.ts',
+      100,
+      20,
+    )
+
+    for (const result of [listResult, globResult, grepResult]) {
+      assert.equal(result.status, 'success')
+      assert.equal(result.truncated, undefined)
+      assert.equal(result.semantics?.total_count, 120)
+      assert.equal(result.semantics?.returned_count, 20)
+      assert.equal(result.semantics?.offset, 100)
+      assert.equal(result.semantics?.has_more, false)
+      assert.equal(result.semantics?.next_offset, null)
+      assert.doesNotMatch(result.body ?? '', /truncat|showing .* of|omitted/iu)
+    }
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('read keeps synthetic EOF metadata out of model source content', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
   const filePath = path.join(workspaceRootPath, 'notes.md')
@@ -166,17 +206,60 @@ test('read keeps synthetic EOF metadata out of model source content', async () =
     assert.equal(result.status, 'success')
     assert.equal(result.body, 'This note mentions list and needle.')
     assert.doesNotMatch(result.body ?? '', /End of file/u)
-    assert.equal(result.displayBody, 'This note mentions list and needle.\n\n(End of file - 1 lines total)')
-    assert.match(result.displayBody ?? '', /End of file - 1 lines total/u)
+    assert.equal(result.displayBody, 'This note mentions list and needle.')
     assert.deepEqual(result.semantics, {
       end_line: 1,
+      has_more: false,
       is_directory: false,
-      line_count: 1,
-      offset: 1,
+      next_offset: null,
+      returned_line_count: 1,
       start_line: 1,
-      truncated_by_bytes: false,
-      truncated_by_lines: false,
+      total_line_count: 1,
     })
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('read defaults to 500 lines and permits a full-file opt-in', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const filePath = path.join(workspaceRootPath, 'large.txt')
+  const lines = Array.from({ length: 750 }, (_, index) => `${index + 1}:${'x'.repeat(100)}`)
+  await fs.writeFile(filePath, `${lines.join('\n')}\n`, 'utf8')
+
+  try {
+    const initialResult = await createReadToolResult(filePath, 'large.txt', undefined, undefined)
+    const offsetResult = await createReadToolResult(filePath, 'large.txt', 251, undefined)
+
+    assert.equal(initialResult.status, 'success')
+    assert.equal(initialResult.truncated, undefined)
+    assert.match(initialResult.body ?? '', /^1:/u)
+    assert.match(initialResult.body ?? '', /500:x{100}$/u)
+    assert.doesNotMatch(initialResult.body ?? '', /501:x{100}/u)
+    assert.equal(initialResult.semantics?.end_line, 500)
+    assert.equal(initialResult.semantics?.total_line_count, 750)
+    assert.equal(initialResult.semantics?.has_more, true)
+    assert.equal(initialResult.semantics?.next_offset, 501)
+
+    assert.equal(offsetResult.status, 'success')
+    assert.equal(offsetResult.truncated, undefined)
+    assert.match(offsetResult.body ?? '', /^251:/u)
+    assert.match(offsetResult.body ?? '', /750:x{100}$/u)
+    assert.equal(offsetResult.semantics?.start_line, 251)
+    assert.equal(offsetResult.semantics?.end_line, 750)
+    assert.equal(offsetResult.semantics?.total_line_count, 750)
+    assert.equal(offsetResult.semantics?.has_more, false)
+    assert.equal(offsetResult.semantics?.next_offset, null)
+
+    const fullFileResult = await createReadToolResult(filePath, 'large.txt', 501, 10, true)
+    assert.equal(fullFileResult.status, 'success')
+    assert.equal(fullFileResult.semantics?.start_line, 1)
+    assert.equal(fullFileResult.semantics?.end_line, 750)
+    assert.equal(fullFileResult.semantics?.total_line_count, 750)
+    assert.equal(fullFileResult.semantics?.has_more, false)
+    assert.equal(fullFileResult.semantics?.next_offset, null)
+    assert.match(fullFileResult.body ?? '', /750:x{100}$/u)
+
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -268,7 +351,7 @@ test('createGrepToolResult returns the ripgrep-style workspace match set', async
     const result = await createGrepToolResult(workspaceRootPath, workspaceRootPath, '.', 'needle', '**/{*,.*}')
 
     assert.equal(result.status, 'success')
-    assert.equal(result.semantics?.matches, 3)
+    assert.equal(result.semantics?.total_count, 3)
     assert.match(result.body ?? '', /visible\.ts/u)
     assert.match(result.body ?? '', /notes\.md/u)
     assert.match(result.body ?? '', /nested[\\/]package-a[\\/]src[\\/]kept\.ts/u)
@@ -320,7 +403,7 @@ test('createGrepToolResult supports searching a specific file path', async () =>
 
     assert.equal(result.status, 'success')
     assert.equal(result.subject?.kind, 'file')
-    assert.equal(result.semantics?.matches, 1)
+    assert.equal(result.semantics?.total_count, 1)
     assert.match(result.body ?? '', /src[\\/]+visible\.ts/u)
     assert.doesNotMatch(result.body ?? '', /notes\.md/u)
   } finally {
@@ -417,7 +500,7 @@ test('createGrepToolResult finds matches inside node_modules when explicitly tar
     )
 
     assert.equal(result.status, 'success')
-    assert.equal(result.semantics?.matches, 1)
+    assert.equal(result.semantics?.total_count, 1)
     assert.match(result.body ?? '', /node_modules[\\/]pkg[\\/]index\.ts/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

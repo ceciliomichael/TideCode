@@ -8,6 +8,10 @@ export function approximateTokenCount(value: string) {
 
 export const MODEL_IMAGE_TOKEN_ALLOWANCE = 1_024
 
+const MIGRATED_TOOL_EXCHANGE_MARKER = 'Previous tool exchange from another provider:'
+const MIGRATED_TOOL_RESULT_MARKER = 'Previous tool result:'
+const MIGRATED_TOOL_RESULT_SEPARATOR = '\nResult:\n'
+
 interface SanitizedModelContent {
   imageCount: number
   value: unknown
@@ -113,14 +117,101 @@ export function estimateModelMessageContextUsage(messages: readonly ModelMessage
     const messageTokens = estimateModelContentTokens(message.content)
     if (message.role === 'tool') {
       toolResultsTokens += messageTokens
-    } else {
-      historyTokens += messageTokens
+      continue
     }
+
+    if (message.role === 'user' && typeof message.content === 'string') {
+      const migratedUsage = estimateMigratedToolResultUsage(message.content, messageTokens)
+      historyTokens += migratedUsage.historyTokens
+      toolResultsTokens += migratedUsage.toolResultsTokens
+      continue
+    }
+
+    historyTokens += messageTokens
   }
 
   return {
     historyTokens,
     toolResultsTokens,
     totalTokens: historyTokens + toolResultsTokens,
+  }
+}
+
+interface MigratedToolResultSection {
+  contentEnd: number
+  resultStart: number
+}
+
+function findNextMigratedToolMarker(content: string, offset: number) {
+  const exchangeIndex = content.indexOf(MIGRATED_TOOL_EXCHANGE_MARKER, offset)
+  const resultIndex = content.indexOf(MIGRATED_TOOL_RESULT_MARKER, offset)
+  if (exchangeIndex < 0) return resultIndex
+  if (resultIndex < 0) return exchangeIndex
+  return Math.min(exchangeIndex, resultIndex)
+}
+
+function findMigratedToolResultSections(content: string) {
+  const sections: MigratedToolResultSection[] = []
+  let markerStart = findNextMigratedToolMarker(content, 0)
+
+  while (markerStart >= 0) {
+    const nextMarkerStart = findNextMigratedToolMarker(content, markerStart + 1)
+    const contentEnd = nextMarkerStart >= 0 ? nextMarkerStart : content.length
+    const isExchange = content.startsWith(MIGRATED_TOOL_EXCHANGE_MARKER, markerStart)
+    const resultStart = isExchange
+      ? content.indexOf(MIGRATED_TOOL_RESULT_SEPARATOR, markerStart + MIGRATED_TOOL_EXCHANGE_MARKER.length)
+      : markerStart + MIGRATED_TOOL_RESULT_MARKER.length
+
+    if (resultStart >= 0 && resultStart < contentEnd) {
+      sections.push({
+        contentEnd,
+        resultStart: isExchange ? resultStart + MIGRATED_TOOL_RESULT_SEPARATOR.length : resultStart,
+      })
+    }
+
+    if (nextMarkerStart < 0) break
+    markerStart = nextMarkerStart
+  }
+
+  return sections
+}
+
+/**
+ * Cross-provider replay cannot retain native tool-role messages, so it embeds
+ * prior tool exchanges in user text. Split only the exact migration format and
+ * preserve the original aggregate estimate while attributing result bodies to
+ * the Tool results row in the context indicator.
+ */
+function estimateMigratedToolResultUsage(content: string, messageTokens: number) {
+  const sections = findMigratedToolResultSections(content)
+  if (sections.length === 0 || messageTokens === 0) {
+    return { historyTokens: messageTokens, toolResultsTokens: 0 }
+  }
+
+  const toolResultText = sections
+    .map(({ contentEnd, resultStart }) => content.slice(resultStart, contentEnd))
+    .join('\n')
+  const historyTextParts: string[] = []
+  let cursor = 0
+  for (const { contentEnd, resultStart } of sections) {
+    historyTextParts.push(content.slice(cursor, resultStart))
+    cursor = contentEnd
+  }
+  historyTextParts.push(content.slice(cursor))
+
+  const rawToolTokens = approximateTokenCount(toolResultText)
+  const rawHistoryTokens = approximateTokenCount(historyTextParts.join('\n'))
+  const rawTotalTokens = rawToolTokens + rawHistoryTokens
+  if (rawToolTokens === 0 || rawTotalTokens === 0) {
+    return { historyTokens: messageTokens, toolResultsTokens: 0 }
+  }
+
+  const toolResultsTokens = Math.min(
+    messageTokens,
+    Math.max(1, Math.round(messageTokens * rawToolTokens / rawTotalTokens)),
+  )
+  return {
+    historyTokens: messageTokens - toolResultsTokens,
+    toolResultsTokens,
   }
 }

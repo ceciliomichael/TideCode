@@ -11,7 +11,6 @@ import type { AgentToolExecutionResult } from './toolTypes'
 import {
   createCanonicalToolResultContent,
   normalizeToolExecutionResult,
-  prepareToolExecutionResultForModel,
 } from './toolReplay'
 
 const CHAT_STREAM_EVENT_CHANNEL = 'chat:stream:event'
@@ -303,10 +302,7 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
           const completedAt = Date.now()
           const toolName = part.toolName
           const normalizedResult = normalizeToolExecutionResult(toolName, part.output ?? part.result)
-          const modelResult = await prepareToolExecutionResultForModel({
-            result: normalizedResult,
-            toolName,
-          })
+          const modelResult = normalizedResult
           const displayedInvocation = resolveDisplayedInvocation(
             toolName,
             part.input ?? part.args,

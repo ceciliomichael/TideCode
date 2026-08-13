@@ -109,13 +109,13 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
             ...commandSummary.semantics,
             new_output_line_count: unreadOutput.lines.length,
             next_unread_line: session.nextUnreadLine,
+            output_evicted: unreadOutput.skippedEvictedLines,
             wait_seconds: waitMilliseconds / 1_000,
           },
           subject: { kind: "session", path: String(session.localSessionId) },
           summary: commandSummary.state === "completed"
             ? `Read completed terminal session ${session.localSessionId}`
             : `Read new output from terminal session ${session.localSessionId}`,
-          truncated: unreadOutput.skippedEvictedLines,
         });
       } catch (error) {
         if (abortSignal?.aborted) {

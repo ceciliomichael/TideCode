@@ -1,5 +1,4 @@
 import type { ModelMessage } from 'ai'
-import { projectToolOutputForModel } from './tools/toolOutputBudget'
 
 type MessagePart = Record<string, unknown>
 
@@ -121,13 +120,7 @@ function sanitizeToolMessage(message: ModelMessage, pendingToolCallIds: Set<stri
         if (!isMessagePart(part) || part.type !== 'tool-result') return part
         const output = part.output
         if (!isMessagePart(output) || output.type !== 'text' || typeof output.value !== 'string') return part
-        return {
-          ...part,
-          output: {
-            ...output,
-            value: projectToolOutputForModel(output.value).text,
-          },
-        }
+        return part
       }),
     } as ModelMessage,
     pendingToolCallIds,

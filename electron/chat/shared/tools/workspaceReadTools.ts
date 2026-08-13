@@ -20,12 +20,9 @@ import {
   normalizeSearchIncludePattern,
 } from './workspaceEntryVisibility'
 
-const DEFAULT_READ_LIMIT = 500
-const MAX_READ_LIMIT = 500
-const LIST_LIMIT = 100
-const SEARCH_LIMIT = 100
-const MAX_LINE_LENGTH = 2000
-const MAX_READ_BYTES = 50 * 1024
+const DIRECTORY_READ_DEFAULT_LIMIT = 500
+const DEFAULT_FILE_READ_LIMIT = 500
+const MAX_RESULT_PAGE_SIZE = 500
 const RIPGREP_EXCLUDE_GLOBS: string[] = []
 
 interface GrepMatch {
@@ -52,19 +49,38 @@ function parseRipgrepOutputLine(line: string) {
   }
 }
 
-function formatGrepOutput(matches: GrepMatch[], hasErrors: boolean) {
+function normalizeResultPage(offset: number | undefined, limit: number | undefined) {
+  return {
+    limit: Math.min(MAX_RESULT_PAGE_SIZE, Math.max(1, Math.floor(limit ?? 100))),
+    offset: Math.max(0, Math.floor(offset ?? 0)),
+  }
+}
+
+function buildPageSemantics(total: number, offset: number, returnedCount: number) {
+  const nextOffset = offset + returnedCount
+  const hasMore = nextOffset < total
+  return {
+    has_more: hasMore,
+    next_offset: hasMore ? nextOffset : null,
+    offset,
+    returned_count: returnedCount,
+    total_count: total,
+  }
+}
+
+function formatGrepOutput(matches: GrepMatch[], hasErrors: boolean, offset?: number, limit?: number) {
   if (matches.length === 0) {
     return {
       body: 'No files found',
+      page: buildPageSemantics(0, 0, 0),
       summary: 'No files found',
-      truncated: false,
     }
   }
 
   const totalMatches = matches.length
-  const truncated = totalMatches > SEARCH_LIMIT
-  const visibleMatches = truncated ? matches.slice(0, SEARCH_LIMIT) : matches
-  const outputLines = [`Found ${totalMatches} matches${truncated ? ` (showing first ${SEARCH_LIMIT})` : ''}`]
+  const page = normalizeResultPage(offset, limit)
+  const visibleMatches = matches.slice(page.offset, page.offset + page.limit)
+  const outputLines: string[] = []
 
   let currentFilePath = ''
   for (const match of visibleMatches) {
@@ -76,16 +92,7 @@ function formatGrepOutput(matches: GrepMatch[], hasErrors: boolean) {
       outputLines.push(`${match.filePath}:`)
     }
 
-    const truncatedLineText =
-      match.lineText.length > MAX_LINE_LENGTH ? `${match.lineText.slice(0, MAX_LINE_LENGTH)}...` : match.lineText
-    outputLines.push(`  Line ${match.lineNumber}: ${truncatedLineText}`)
-  }
-
-  if (truncated) {
-    outputLines.push('')
-    outputLines.push(
-      `(Results truncated: showing ${SEARCH_LIMIT} of ${totalMatches} matches (${totalMatches - SEARCH_LIMIT} hidden). Consider using a more specific path or pattern.)`,
-    )
+    outputLines.push(`  Line ${match.lineNumber}: ${match.lineText}`)
   }
 
   if (hasErrors) {
@@ -95,13 +102,19 @@ function formatGrepOutput(matches: GrepMatch[], hasErrors: boolean) {
 
   return {
     body: outputLines.join('\n'),
+    page: buildPageSemantics(totalMatches, page.offset, visibleMatches.length),
     summary: `Found ${totalMatches} matches`,
-    truncated,
   }
 }
 
 
-export async function createListToolResult(workspaceRootPath: string, absolutePath: string, relativePath: string) {
+export async function createListToolResult(
+  workspaceRootPath: string,
+  absolutePath: string,
+  relativePath: string,
+  offset?: number,
+  limit?: number,
+) {
   const stats = await fs.stat(absolutePath)
   if (!stats.isDirectory()) {
     throw new Error(`Expected a directory for list, but "${relativePath}" is a file. Use read for the file.`)
@@ -111,24 +124,20 @@ export async function createListToolResult(workspaceRootPath: string, absolutePa
     isInsideWorkspaceIgnoredPath(workspaceRootPath, absolutePath) ||
     (await isExplicitlyGitignoredPath(workspaceRootPath, absolutePath, true))
   const immediateEntries = await listImmediateDirectoryEntries(workspaceRootPath, absolutePath, { relaxIgnore })
-  const limitedEntries = immediateEntries.slice(0, LIST_LIMIT)
-
-  const bodyLines = immediateEntries.length === 0 ? ['Empty directory'] : [...limitedEntries]
-  if (immediateEntries.length > LIST_LIMIT) {
-    bodyLines.push('', `(Showing ${LIST_LIMIT} of ${immediateEntries.length} entries. Refine the path or use glob/read next.)`)
-  }
+  const page = normalizeResultPage(offset, limit)
+  const visibleEntries = immediateEntries.slice(page.offset, page.offset + page.limit)
+  const bodyLines = immediateEntries.length === 0 ? ['Empty directory'] : visibleEntries
 
   return createSuccessResult({
     body: bodyLines.join('\n'),
     semantics: {
-      count: immediateEntries.length,
+      ...buildPageSemantics(immediateEntries.length, page.offset, visibleEntries.length),
     },
     subject: {
       kind: 'directory',
       path: relativePath,
     },
     summary: immediateEntries.length === 0 ? 'Empty directory' : `Listed ${relativePath}`,
-    truncated: immediateEntries.length > LIST_LIMIT,
   })
 }
 export async function createReadToolResult(
@@ -136,12 +145,17 @@ export async function createReadToolResult(
   displayPath: string,
   offset: number | undefined,
   limit: number | undefined,
+  fullFile = false,
 ) {
   const stats = await fs.stat(absolutePath)
   if (stats.isDirectory()) {
+    if (fullFile) {
+      throw new Error('full_file is only supported for text files, not directories.')
+    }
+
     const entries = await fs.readdir(absolutePath, { withFileTypes: true })
     const start = Math.max(0, (offset ?? 1) - 1)
-    const maxEntries = limit ?? DEFAULT_READ_LIMIT
+    const maxEntries = Math.min(MAX_RESULT_PAGE_SIZE, Math.max(1, Math.floor(limit ?? DIRECTORY_READ_DEFAULT_LIMIT)))
     const lines = entries
       .map((entry) => `${entry.name}${entry.isDirectory() ? '/' : ''}`)
       .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }))
@@ -150,7 +164,7 @@ export async function createReadToolResult(
     return createSuccessResult({
       body: sliced.join('\n'),
       semantics: {
-        entry_count: lines.length,
+        ...buildPageSemantics(lines.length, start, sliced.length),
         is_directory: true,
       },
       subject: {
@@ -158,7 +172,6 @@ export async function createReadToolResult(
         path: displayPath,
       },
       summary: `Read directory ${displayPath}`,
-      truncated: start + sliced.length < lines.length,
     })
   }
 
@@ -232,8 +245,10 @@ export async function createReadToolResult(
 
 
 
-  const startLine = Math.max(1, offset ?? 1)
-  const maxLines = Math.min(MAX_READ_LIMIT, Math.max(1, limit ?? DEFAULT_READ_LIMIT))
+  const startLine = fullFile ? 1 : Math.max(1, offset ?? 1)
+  const maxLines = fullFile
+    ? Number.MAX_SAFE_INTEGER
+    : Math.min(DEFAULT_FILE_READ_LIMIT, Math.max(1, Math.floor(limit ?? DEFAULT_FILE_READ_LIMIT)))
   const stream = createReadStream(absolutePath, { encoding: 'utf8' })
   const reader = createInterface({
     crlfDelay: Infinity,
@@ -241,10 +256,8 @@ export async function createReadToolResult(
   })
 
   const collectedLines: string[] = []
-  let byteCount = 0
   let hasMoreLines = false
   let lineCount = 0
-  let truncatedByBytes = false
 
   try {
     for await (const line of reader) {
@@ -258,19 +271,7 @@ export async function createReadToolResult(
         continue
       }
 
-      const limitedLine =
-        line.length > MAX_LINE_LENGTH
-          ? `${line.slice(0, MAX_LINE_LENGTH)}... (line truncated, ${line.length} chars total)`
-          : line
-      const nextBytes = Buffer.byteLength(limitedLine, 'utf8') + (collectedLines.length > 0 ? 1 : 0)
-      if (byteCount + nextBytes > MAX_READ_BYTES) {
-        truncatedByBytes = true
-        hasMoreLines = true
-        break
-      }
-
-      collectedLines.push(limitedLine)
-      byteCount += nextBytes
+      collectedLines.push(line)
     }
   } finally {
     reader.close()
@@ -278,33 +279,29 @@ export async function createReadToolResult(
   }
 
   const body = collectedLines.join('\n')
-  const displayBodyLines = [...collectedLines]
-  if (!truncatedByBytes && !hasMoreLines && collectedLines.length > 0) {
-    displayBodyLines.push('', `(End of file - ${lineCount} lines total)`)
-  }
+  const endLine = collectedLines.length > 0 ? startLine + collectedLines.length - 1 : startLine - 1
 
   return createSuccessResult({
     body,
-    displayBody: displayBodyLines.join('\n'),
+    displayBody: body,
     semantics: {
       ...(collectedLines.length > 0
         ? {
-            end_line: startLine + collectedLines.length - 1,
+            end_line: endLine,
             start_line: startLine,
           }
         : {}),
+      has_more: hasMoreLines,
       is_directory: false,
-      line_count: lineCount,
-      offset: startLine,
-      truncated_by_bytes: truncatedByBytes,
-      truncated_by_lines: hasMoreLines && !truncatedByBytes,
+      next_offset: hasMoreLines ? endLine + 1 : null,
+      returned_line_count: collectedLines.length,
+      total_line_count: lineCount,
     },
     subject: {
       kind: 'file',
       path: displayPath,
     },
     summary: `Read ${displayPath}`,
-    truncated: truncatedByBytes || hasMoreLines,
   })
 }
 
@@ -313,6 +310,8 @@ export async function createGlobToolResult(
   absolutePath: string,
   relativePath: string,
   pattern: string,
+  offset?: number,
+  limit?: number,
 ) {
   const args = ['--files', '--hidden', '--glob', pattern]
   for (const globPattern of RIPGREP_EXCLUDE_GLOBS) {
@@ -343,17 +342,14 @@ export async function createGlobToolResult(
     ignoreBasePath,
   })
   const matches = visibleRelativeMatches.map((entry) => path.resolve(absolutePath, entry))
-  const limitedMatches = matches.slice(0, SEARCH_LIMIT)
-  const bodyLines = limitedMatches.length === 0 ? ['No files found'] : limitedMatches
-
-  if (matches.length > SEARCH_LIMIT) {
-    bodyLines.push('', `(Showing ${SEARCH_LIMIT} of ${matches.length} matches. Narrow the pattern or path.)`)
-  }
+  const page = normalizeResultPage(offset, limit)
+  const visibleMatches = matches.slice(page.offset, page.offset + page.limit)
+  const bodyLines = matches.length === 0 ? ['No files found'] : visibleMatches
 
   return createSuccessResult({
     body: bodyLines.join('\n'),
     semantics: {
-      count: matches.length,
+      ...buildPageSemantics(matches.length, page.offset, visibleMatches.length),
       pattern,
     },
     subject: {
@@ -364,7 +360,6 @@ export async function createGlobToolResult(
       matches.length === 0
         ? `No files matched ${pattern} in ${relativePath}`
         : `Found ${matches.length} file${matches.length === 1 ? '' : 's'} matching ${pattern}`,
-    truncated: matches.length > SEARCH_LIMIT,
   })
 }
 
@@ -374,6 +369,8 @@ export async function createGrepToolResult(
   relativePath: string,
   pattern: string,
   include: string | undefined,
+  offset?: number,
+  limit?: number,
 ) {
   const stats = await fs.stat(absolutePath)
   if (!stats.isDirectory() && !stats.isFile()) {
@@ -399,8 +396,7 @@ export async function createGrepToolResult(
     return createSuccessResult({
       body: 'No files found',
       semantics: {
-        matches: 0,
-        truncated: false,
+        ...buildPageSemantics(0, 0, 0),
       },
       subject: {
         kind: subjectKind,
@@ -453,18 +449,16 @@ export async function createGrepToolResult(
     return left.lineNumber - right.lineNumber
   })
 
-  const formatted = formatGrepOutput(parsedMatches, result.exitCode === 2)
+  const formatted = formatGrepOutput(parsedMatches, result.exitCode === 2, offset, limit)
   return createSuccessResult({
     body: formatted.body,
     semantics: {
-      matches: parsedMatches.length,
-      truncated: formatted.truncated,
+      ...formatted.page,
     },
     subject: {
       kind: subjectKind,
       path: relativePath,
     },
     summary: formatted.summary,
-    truncated: formatted.truncated,
   })
 }

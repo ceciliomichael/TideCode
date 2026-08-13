@@ -4,7 +4,7 @@ import type { SkillSummary } from '../../../../src/types/skills'
 import type { AgentToolContext } from '../toolTypes'
 import { DEFAULT_AGENT_ORCHESTRATION_MODE, type AgentOrchestrationMode } from '../orchestration'
 import { CodeModeExecutor } from '../codeMode/executor'
-import { createAgentToolRegistry, isDynamicAgentTool, type AgentToolRegistry } from './registry'
+import { createAgentToolRegistry, type AgentToolRegistry } from './registry'
 import { createCodeModeTool, createToolSearchTool } from './metaTools'
 import { createConnectedMcpRegistryTools } from './mcpRegistryTools'
 
@@ -17,7 +17,6 @@ import { createMcpToolSet } from './mcpTools'
 import { createMemoryTool } from './memoryTool'
 import { createProviderWebTool } from './providerWebTool'
 import { createReadTool } from './readTool'
-import { createReadToolOutputTool } from './readToolOutput'
 import { createPlanToolSet } from './planTools'
 import { createSkillTool } from './skillTool'
 import { createTerminalToolSet } from './terminalTools'
@@ -37,7 +36,7 @@ export interface AgentToolBundle {
   tools: ToolSet
 }
 
-const LEGACY_MCP_ORCHESTRATION_TOOLS = new Set(['mcp_tool_search', 'execute_mcp'])
+const CODE_MODE_EXCLUDED_TOOLS = new Set(['mcp_tool_search', 'execute_mcp'])
 
 export async function createNativeAgentTools(
   input: AgentToolContext,
@@ -49,7 +48,6 @@ export async function createNativeAgentTools(
   const tools: ToolSet = {
     list: createListTool(context),
     read: createReadTool(context),
-    read_tool_output: createReadToolOutputTool(),
     glob: createGlobTool(context),
     grep: createGrepTool(context),
     ...createMcpToolSet(context),
@@ -107,29 +105,36 @@ export async function createAgentToolBundle(
   if (options.chatMode !== 'plan' && orchestrationMode !== 'direct') {
     const connectedMcpTools = await createConnectedMcpRegistryTools(input)
     registryTools = Object.fromEntries([
-      ...Object.entries(nativeTools).filter(([name]) => !LEGACY_MCP_ORCHESTRATION_TOOLS.has(name)),
+      ...Object.entries(nativeTools).filter(([name]) => !CODE_MODE_EXCLUDED_TOOLS.has(name)),
       ...Object.entries(connectedMcpTools),
     ])
   }
 
-  const registry = await createAgentToolRegistry(registryTools)
+  const baseRegistry = await createAgentToolRegistry(registryTools)
 
   if (options.chatMode === 'plan' || orchestrationMode === 'direct') {
     return {
       codeModeExecutor: null,
       nativeTools,
-      registry,
+      registry: baseRegistry,
       tools: nativeTools,
     }
   }
 
-  const preloadedToolNames = registry.entries
-    .filter((entry) => !isDynamicAgentTool(entry))
-    .map((entry) => entry.name)
+  // Discovery is itself a Code Mode API. Building the final registry in a
+  // second pass keeps tool_search backed by the same catalog while avoiding a
+  // separate provider-native tool call that some providers treat as terminal.
+  const registry = await createAgentToolRegistry({
+    ...registryTools,
+    tool_search: createToolSearchTool(baseRegistry, { dynamicOnly: true }),
+  })
+  // Dynamic MCP functions exist in the sandbox but remain absent from the
+  // model-visible documentation until tools.tool_search returns their names.
+  // This permits discovery and invocation in one temporary program.
+  const preloadedToolNames = registry.entries.map((entry) => entry.name)
   const codeModeExecutor = new CodeModeExecutor(registry, preloadedToolNames)
   const metaTools: ToolSet = {
     code_mode: createCodeModeTool(codeModeExecutor, registry),
-    tool_search: createToolSearchTool(registry, { dynamicOnly: true }),
   }
 
   return {

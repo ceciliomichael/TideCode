@@ -85,7 +85,8 @@ test('Code Mode prompt exposes only its meta-tool surface and compact async cont
   const directPrompt = buildChatModeSystemPrompt('agent', 'C:/workspace', { orchestrationMode: 'direct' })
 
   assert.match(codeModePrompt, /<agent_code_mode_rules/u)
-  assert.match(codeModePrompt, /The only model-facing tools in this turn are `tool_search` and `code_mode`/u)
+  assert.match(codeModePrompt, /The only model-facing tool in this turn is `code_mode`/u)
+  assert.match(codeModePrompt, /tools\.tool_search\(\{ query \}\)/u)
   assert.match(codeModePrompt, /<decision_priority/u)
   assert.ok(codeModePrompt.includes('Write boring sequential JavaScript'))
   assert.ok(codeModePrompt.includes('Use only documented `tools.*` APIs'))
@@ -97,7 +98,7 @@ test('Code Mode prompt exposes only its meta-tool surface and compact async cont
   assert.doesNotMatch(codeModePrompt, /mcp_tool_search|execute_mcp/u)
   assert.doesNotMatch(codeModePrompt, /inspect with `list`, `glob`, or `grep`/u)
   assert.ok(approximateTokenCount(codeModePrompt) < 1_900)
-  assert.match(hybridPrompt, /`tool_search` and `code_mode`/u)
+  assert.match(hybridPrompt, /tools\.tool_search/u)
   assert.doesNotMatch(directPrompt, /<agent_code_mode_rules/u)
 })
 
@@ -171,7 +172,6 @@ test('runtime tool exposure gives the provider the concrete native tools', async
       'memory',
       'read',
       'read_terminal',
-      'read_tool_output',
       'terminate_terminal',
       'write',
     ])
@@ -186,7 +186,6 @@ test('runtime tool exposure gives the provider the concrete native tools', async
       'plan_create',
       'plan_edit',
       'read',
-      'read_tool_output',
     ])
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

@@ -3,19 +3,15 @@ import type { AgentToolResultSubject } from '../toolTypes'
 
 export interface CodeModeExecutionLimits {
   maxCodeBytes: number
-  maxConcurrentToolCalls: number
   maxOutputBytes: number
   maxToolCalls: number
-  maxToolResultBytes: number
   timeoutMs: number
 }
 
 export const DEFAULT_CODE_MODE_EXECUTION_LIMITS: CodeModeExecutionLimits = {
   maxCodeBytes: 100_000,
-  maxConcurrentToolCalls: 16,
   maxOutputBytes: 1_000_000,
   maxToolCalls: 100,
-  maxToolResultBytes: 1_000_000,
   timeoutMs: 30_000,
 }
 

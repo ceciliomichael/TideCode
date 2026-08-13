@@ -112,9 +112,14 @@ function formatReadToolResultBody(metadata: StructuredToolResultMetadata, body: 
     headerLines.push(`${metadata.subject?.kind === 'directory' ? 'Directory' : 'File'}: ${subjectPath}`)
   }
 
-  const offset = metadata.semantics && typeof metadata.semantics.offset === 'number' ? metadata.semantics.offset : null
-  const entryCount =
-    metadata.semantics && typeof metadata.semantics.entry_count === 'number' ? metadata.semantics.entry_count : null
+  const startLine = metadata.semantics && typeof metadata.semantics.start_line === 'number' ? metadata.semantics.start_line : null
+  const endLine = metadata.semantics && typeof metadata.semantics.end_line === 'number' ? metadata.semantics.end_line : null
+  const totalLineCount = metadata.semantics && typeof metadata.semantics.total_line_count === 'number'
+    ? metadata.semantics.total_line_count
+    : null
+  const nextOffset = metadata.semantics && typeof metadata.semantics.next_offset === 'number'
+    ? metadata.semantics.next_offset
+    : null
   const revision =
     metadata.semantics && typeof metadata.semantics.revision === 'string' ? metadata.semantics.revision : null
 
@@ -122,12 +127,11 @@ function formatReadToolResultBody(metadata: StructuredToolResultMetadata, body: 
     headerLines.push(`Revision: ${revision}`)
   }
 
-  if (typeof offset === 'number' && offset > 1) {
-    headerLines.push(`Offset: ${offset}`)
+  if (startLine !== null && endLine !== null && totalLineCount !== null) {
+    headerLines.push(`Lines: ${startLine}-${endLine} of ${totalLineCount}`)
   }
-
-  if (typeof entryCount === 'number') {
-    headerLines.push(`Entry count: ${entryCount}`)
+  if (nextOffset !== null) {
+    headerLines.push(`Next offset: ${nextOffset}`)
   }
 
   if (bodyText.length === 0) {
@@ -146,10 +150,24 @@ function formatListToolResultBody(metadata: StructuredToolResultMetadata, body: 
   const bodyText = body?.trim() ?? ''
   const headerLines = subjectPath.length > 0 ? [`Directory: ${subjectPath}`] : []
 
-  const count = metadata.semantics && typeof metadata.semantics.count === 'number' ? metadata.semantics.count : null
+  const legacyCount = metadata.semantics && typeof metadata.semantics.count === 'number'
+    ? metadata.semantics.count
+    : null
+  const totalCount = metadata.semantics && typeof metadata.semantics.total_count === 'number'
+    ? metadata.semantics.total_count
+    : legacyCount
+  const returnedCount = metadata.semantics && typeof metadata.semantics.returned_count === 'number'
+    ? metadata.semantics.returned_count
+    : legacyCount
+  const nextOffset = metadata.semantics && typeof metadata.semantics.next_offset === 'number'
+    ? metadata.semantics.next_offset
+    : null
 
-  if (typeof count === 'number') {
-    headerLines.push(`Entries: ${count}`)
+  if (totalCount !== null && returnedCount !== null) {
+    headerLines.push(`Entries: ${returnedCount} of ${totalCount}`)
+  }
+  if (nextOffset !== null) {
+    headerLines.push(`Next offset: ${nextOffset}`)
   }
 
   if (bodyText.length === 0) {
