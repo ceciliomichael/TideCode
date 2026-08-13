@@ -165,27 +165,17 @@ function toJsonSafe(value: unknown): unknown {
   }
 }
 
-function capToolResult(result: AgentToolExecutionResult, maxBytes: number): unknown {
+function serializeToolResult(result: AgentToolExecutionResult): unknown {
   const safeResult = toJsonSafe(result) as Record<string, unknown>
-  if (byteLength(JSON.stringify(safeResult)) <= maxBytes) {
-    return {
-      ...safeResult,
-      displayBody: typeof safeResult.displayBody === 'string' ? safeResult.displayBody : (typeof safeResult.body === 'string' ? safeResult.body : ''),
-    }
-  }
-
-  const body = typeof safeResult.body === 'string' ? safeResult.body : ''
-  const availableBytes = Math.max(0, maxBytes - 500)
-  const truncatedBody = body.slice(0, availableBytes)
-  const displayBody = typeof safeResult.displayBody === 'string' ? safeResult.displayBody.slice(0, availableBytes) : truncatedBody
-
+  const {
+    displayBody: _displayBody,
+    modelOutput: _modelOutput,
+    resultPresentation: _resultPresentation,
+    truncated: _truncated,
+    ...modelResult
+  } = safeResult
   return {
-    ...safeResult,
-    body: truncatedBody,
-    displayBody: displayBody,
-    status: safeResult.status === 'error' ? 'error' : 'success',
-    summary: safeResult.summary ?? 'Tool result was truncated.',
-    truncated: true,
+    ...modelResult,
   }
 }
 
@@ -263,7 +253,6 @@ export class CodeModeExecutor {
     const worker = new Worker(CODE_MODE_WORKER_SOURCE, { eval: true })
     this.activeWorkers.add(worker)
     const toolCalls: CodeModeToolCallRecord[] = []
-    let activeToolCalls = 0
     let settled = false
     let timeoutId: NodeJS.Timeout | undefined
     let abortHandler: (() => void) | undefined
@@ -333,16 +322,6 @@ export class CodeModeExecutor {
           worker.postMessage(response)
           return
         }
-        if (activeToolCalls >= limits.maxConcurrentToolCalls) {
-          const response: CodeModeWorkerToolResultMessage = {
-            callId: message.callId,
-            error: `Code Mode exceeded the ${limits.maxConcurrentToolCalls}-concurrent-tool-call limit.`,
-            type: 'tool_result',
-          }
-          worker.postMessage(response)
-          return
-        }
-
         const entry = this.registry.get(message.name)
         if (!entry) {
           worker.postMessage({
@@ -353,13 +332,11 @@ export class CodeModeExecutor {
           return
         }
 
-        activeToolCalls += 1
         const toolStartedAt = Date.now()
         void entry.execute(message.arguments, {
           abortSignal: options.abortSignal,
           toolCallId: `${executionId}-${message.callId}`,
         }).then((result) => {
-          activeToolCalls -= 1
           toolCalls.push({
             arguments: toJsonSafe(message.arguments),
             body: capDisplayBody(result),
@@ -379,11 +356,10 @@ export class CodeModeExecutor {
           })
           worker.postMessage({
             callId: message.callId,
-            result: capToolResult(result, limits.maxToolResultBytes),
+            result: serializeToolResult(result),
             type: 'tool_result',
           } satisfies CodeModeWorkerToolResultMessage)
         }).catch((error: unknown) => {
-          activeToolCalls -= 1
           toolCalls.push({
             arguments: toJsonSafe(message.arguments),
             body: error instanceof Error ? error.message : String(error),

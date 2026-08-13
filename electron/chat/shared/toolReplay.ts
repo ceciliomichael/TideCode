@@ -199,7 +199,7 @@ export function withCanonicalToolModelOutputs(tools: ToolSet): ToolSet {
       {
         ...tool,
         toModelOutput: (input: { input: unknown; output: unknown; toolCallId: string }) =>
-          createBoundedCanonicalToolModelOutput({
+          createCanonicalToolModelOutput({
             argumentsValue: input.input,
             output: input.output,
             toolCallId: input.toolCallId,

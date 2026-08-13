@@ -6,6 +6,7 @@ import test from 'node:test'
 import { jsonSchema, tool, type ToolExecutionOptions } from 'ai'
 import { CodeModeExecutor } from '../../electron/chat/shared/codeMode/executor'
 import { createAgentToolBundle } from '../../electron/chat/shared/tools'
+import { createToolSearchTool } from '../../electron/chat/shared/tools/metaTools'
 import { createAgentToolRegistry, type AgentToolRegistry } from '../../electron/chat/shared/tools/registry'
 
 function createTestRegistry(): AgentToolRegistry {
@@ -56,6 +57,25 @@ test('Code Mode runs a filtered program through the registry bridge', async () =
   }
 })
 
+test('Code Mode allows more than sixteen concurrent tool calls', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry())
+
+  try {
+    const result = await executor.run(
+      `const calls = Array.from({ length: 32 }, (_, index) => tools.echo({ index }))
+       const values = await Promise.all(calls)
+       return { count: values.length }`,
+      { allowedToolNames: ['echo'] },
+    )
+
+    assert.equal(result.status, 'success')
+    assert.equal(result.toolCalls.length, 32)
+    assert.deepEqual(result.output, { count: 32 })
+  } finally {
+    await executor.dispose()
+  }
+})
+
 test('Code Mode resolves returned tool Promises when a small model omits await', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
 
@@ -72,14 +92,12 @@ test('Code Mode resolves returned tool Promises when a small model omits await',
     assert.deepEqual(result.output, {
       first: {
         body: JSON.stringify({ value: 'first' }),
-        displayBody: JSON.stringify({ value: 'first' }),
         status: 'success',
         summary: 'Returned test value.',
       },
       nested: {
         second: {
           body: JSON.stringify({ value: 'second' }),
-          displayBody: JSON.stringify({ value: 'second' }),
           status: 'success',
           summary: 'Returned test value.',
         },
@@ -189,6 +207,23 @@ test('Code Mode allows forbidden words in filenames, URLs, comments, and regex l
   }
 })
 
+test('Code Mode reports malformed template text before scanning prose for runtime APIs', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry())
+
+  try {
+    const result = await executor.run(
+      'const content = `Architecture uses \\\\`electron/preload.ts\\\\` without raw Node/Electron access.`; return content',
+    )
+
+    assert.equal(result.status, 'error')
+    assert.equal(result.toolCalls.length, 0)
+    assert.match(result.summary, /invalid JavaScript/u)
+    assert.doesNotMatch(result.summary, /forbidden runtime API: electron/iu)
+  } finally {
+    await executor.dispose()
+  }
+})
+
 test('Code Mode reports generated syntax errors before starting a worker', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
 
@@ -249,16 +284,6 @@ test('Code Mode repairs simple malformed patch arrays before running the patch t
     assert.equal(result.toolCalls.length, 1)
     assert.deepEqual(result.output, {
       body: JSON.stringify({
-        patch: [
-          '*** Begin Patch',
-          '*** Update File: src/example.ts',
-          '@@',
-          '-old',
-          '+new',
-          '*** End Patch',
-        ],
-      }),
-      displayBody: JSON.stringify({
         patch: [
           '*** Begin Patch',
           '*** Update File: src/example.ts',
@@ -337,7 +362,7 @@ test('Code Mode terminates a synchronous infinite loop', async () => {
   }
 })
 
-test('tool_search and code_mode compose over an existing workspace tool', async () => {
+test('tool_search runs inside Code Mode while local tools remain preloaded', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-e2e-'))
   let codeModeExecutor: CodeModeExecutor | null = null
 
@@ -362,15 +387,8 @@ test('tool_search and code_mode compose over an existing workspace tool', async 
       })
     }
 
-    const searchResult = await invoke(bundle.tools.tool_search, { limit: 5, query: 'read file' }) as { body?: string }
-    assert.equal(typeof searchResult.body, 'string')
-    const searchDocument = JSON.parse(searchResult.body ?? '{}') as {
-      allowedToolNames?: string[]
-      tools?: Array<{ inputSchema?: unknown; name?: string; signature?: string }>
-    }
-    assert.equal(searchDocument.allowedToolNames?.includes('read'), false)
-    assert.equal(searchDocument.tools?.some((item) => item.name === 'read'), false)
-    assert.ok((searchResult.body?.length ?? 0) < 4_000)
+    assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
+    assert.ok(bundle.registry.get('tool_search'))
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
       /tools\.read\(\{ path: string/u,
@@ -391,13 +409,65 @@ test('tool_search and code_mode compose over an existing workspace tool', async 
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
       /offset\?: number \(>= 1\)/u,
     )
+    assert.match(
+      ((bundle.tools.code_mode as { description?: string }).description ?? ''),
+      /tools\.tool_search\(\{ limit\?: number/u,
+    )
 
     const codeResult = await invoke(bundle.tools.code_mode, {
-      code: "const file = await tools.read({ path: 'package.json' }); return { hasVersion: file.body.includes('1.2.3') }",
+      code: "const search = await tools.tool_search({ query: 'connected memory service', limit: 5 }); const file = await tools.read({ path: 'package.json' }); return { hasVersion: file.body.includes('1.2.3'), searchStatus: search.status }",
     }) as { body?: string }
     assert.match(codeResult.body ?? '', /"hasVersion": true/u)
+    assert.match(codeResult.body ?? '', /"searchStatus": "success"/u)
   } finally {
     await codeModeExecutor?.dispose()
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode discovers and invokes an MCP tool in the same program', async () => {
+  const mcpTools = {
+    mcp_project_memory: tool({
+      description: 'Read connected project memory.',
+      inputSchema: jsonSchema<{ topic: string }>({
+        additionalProperties: false,
+        properties: { topic: { type: 'string' } },
+        required: ['topic'],
+        type: 'object',
+      }),
+      execute: async ({ topic }) => ({
+        body: `memory:${topic}`,
+        status: 'success' as const,
+        summary: 'Read connected project memory.',
+      }),
+    }),
+  }
+  const searchableRegistry = await createAgentToolRegistry(mcpTools)
+  const registry = await createAgentToolRegistry({
+    ...mcpTools,
+    tool_search: createToolSearchTool(searchableRegistry, { dynamicOnly: true }),
+  })
+  const executor = new CodeModeExecutor(registry, registry.entries.map((entry) => entry.name))
+
+  try {
+    const result = await executor.run(
+      `const search = await tools.tool_search({ query: 'connected project memory' })
+       const catalog = JSON.parse(search.body)
+       const name = catalog.tools[0].name
+       const memory = await tools[name]({ topic: 'architecture' })
+       return { discovered: name, value: memory.body }`,
+    )
+
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, {
+      discovered: 'mcp_project_memory',
+      value: 'memory:architecture',
+    })
+    assert.deepEqual(result.toolCalls.map((call) => call.name), [
+      'tool_search',
+      'mcp_project_memory',
+    ])
+  } finally {
+    await executor.dispose()
   }
 })

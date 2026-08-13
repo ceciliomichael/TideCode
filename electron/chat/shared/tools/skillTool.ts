@@ -100,21 +100,14 @@ export function createSkillTool(context: WorkspaceToolContext, enabledSkills: Sk
             }
 
             const formattedMatches = matches
-              .slice(0, 10)
               .map((skill, idx) => `${idx + 1}. **${skill.name}**\n   ${skill.description}`)
               .join('\n\n')
-
-            const totalNotice =
-              matches.length > 10
-                ? `\n\n*(Showing top 10 of ${matches.length} matching skills)*`
-                : ''
 
             return {
               body: [
                 `### Search Results for "${query}" (${matches.length} match${matches.length === 1 ? '' : 'es'})`,
                 '',
                 formattedMatches,
-                totalNotice,
               ].join('\n'),
               status: 'success',
               summary: `Searched skills for "${query}" (${matches.length} matches)`,

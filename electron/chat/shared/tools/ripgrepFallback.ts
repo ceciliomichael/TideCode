@@ -12,7 +12,6 @@ import {
   shouldIgnoreWorkspaceEntry,
 } from '../../../workspace/gitignoreMatcher'
 
-const MAX_LINE_LENGTH = 2000
 const ALL_FILES_GLOBS = new Set(['**/*', '**/{*,.*}', '**'])
 
 interface SearchMatch {
@@ -286,7 +285,7 @@ export async function searchVisibleFiles(
         matches.push({
           absolutePath: fileAbsolutePath,
           lineNumber,
-          lineText: line.trimEnd().slice(0, MAX_LINE_LENGTH),
+          lineText: line.trimEnd(),
           relativePath: fileRelativePath,
         })
 

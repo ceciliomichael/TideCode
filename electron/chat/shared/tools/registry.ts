@@ -49,8 +49,7 @@ function resolveToolNamespace(name: string) {
     normalizedName === 'edit' ||
     normalizedName === 'glob' ||
     normalizedName === 'grep' ||
-    normalizedName === 'list' ||
-    normalizedName === 'read_tool_output'
+    normalizedName === 'list'
   ) {
     return 'filesystem'
   }

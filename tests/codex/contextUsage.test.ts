@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { estimateModelMessageContextUsage, estimateMessageContextUsage } from '../../src/lib/contextUsage'
+import {
+  estimateModelContentTokens,
+  estimateModelMessageContextUsage,
+  estimateMessageContextUsage,
+} from '../../src/lib/contextUsage'
 import type { Message } from '../../src/types/chat'
 import {
+  calculateContextBudget,
   calculateModelMessagesBudget,
   estimateModelMessagesTokens,
   shouldCompactContext,
@@ -118,6 +123,39 @@ test('model context usage also bounds images returned by tools as file parts', (
   )
 })
 
+test('context usage separates tool results embedded by cross-provider migration', () => {
+  const messages = [{
+    role: 'user',
+    content: [
+      'Continue the task.',
+      '',
+      'Previous tool exchange from another provider:',
+      'Tool: read',
+      'Arguments:',
+      '{"path":"src/app.ts"}',
+      'Result:',
+      'export const answer = 42'.repeat(200),
+    ].join('\n'),
+  }] as const
+
+  const usage = estimateModelMessageContextUsage(messages)
+  assert.ok(usage.historyTokens > 0)
+  assert.ok(usage.toolResultsTokens > 0)
+  assert.ok(usage.toolResultsTokens > usage.historyTokens)
+  assert.equal(usage.totalTokens, estimateModelContentTokens(messages[0].content))
+})
+
+test('ordinary user text mentioning tool results remains chat history', () => {
+  const messages = [{
+    role: 'user',
+    content: 'Why does the context indicator show Tool results as zero?',
+  }] as const
+
+  const usage = estimateModelMessageContextUsage(messages)
+  assert.equal(usage.toolResultsTokens, 0)
+  assert.equal(usage.historyTokens, usage.totalTokens)
+})
+
 test('the compaction budget triggers at the configured context percentage', () => {
   const messages = [
     { role: 'user', content: 'U'.repeat(96_000) },
@@ -149,9 +187,33 @@ test('the compaction budget triggers at the configured context percentage', () =
     triggerRatio: 0.8,
   })
 
-  assert.equal(budget.triggerTokens, 144_000)
+  assert.equal(budget.triggerTokens, 160_000)
   assert.ok(budget.totalTokens >= budget.triggerTokens)
   assert.equal(shouldCompactContext(budget), true)
+})
+
+test('automatic compaction trigger matches the full-window percentage shown by the indicator', () => {
+  const below = calculateContextBudget({
+    contextWindowTokens: 200_000,
+    messageTokens: 155_699,
+    systemPromptTokens: 4_300,
+    toolSchemaTokens: 0,
+    triggerRatio: 0.8,
+  })
+  const atTrigger = calculateContextBudget({
+    contextWindowTokens: 200_000,
+    messageTokens: 155_700,
+    systemPromptTokens: 4_300,
+    toolSchemaTokens: 0,
+    triggerRatio: 0.8,
+  })
+
+  assert.equal(below.totalTokens, 159_999)
+  assert.equal(atTrigger.totalTokens, 160_000)
+  assert.equal(below.triggerTokens, 160_000)
+  assert.equal(atTrigger.triggerTokens, 160_000)
+  assert.equal(shouldCompactContext(below), false)
+  assert.equal(shouldCompactContext(atTrigger), true)
 })
 
 test('context usage follows the provider replay instead of stale raw tool entries', () => {

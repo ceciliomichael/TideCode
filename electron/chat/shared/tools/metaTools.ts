@@ -33,14 +33,6 @@ const TOOL_SEARCH_INPUT_SCHEMA = {
 const CODE_MODE_INPUT_SCHEMA = {
   additionalProperties: false,
   properties: {
-    allowedToolNames: {
-      description: 'Optional exact MCP tool names returned by tool_search. Local tools are already available and do not need to be listed.',
-      items: {
-        minLength: 1,
-        type: 'string',
-      },
-      type: 'array',
-    },
     code: {
       description: 'Temporary async JavaScript. Every tools.* function returns Promise<ToolResult>; always await calls before reading or returning them. Return only concise JSON-compatible data.',
       minLength: 1,
@@ -60,7 +52,6 @@ interface ToolSearchInput {
 }
 
 interface CodeModeInput {
-  allowedToolNames?: string[]
   code?: string
 }
 
@@ -90,7 +81,6 @@ function buildBoundedToolSearchResult(
   for (const match of matches) {
     const candidateMatches = [...boundedMatches, match]
     const candidate = {
-      allowedToolNames: candidateMatches.map((item) => item.name),
       query,
       tools: candidateMatches.map(toModelTool),
     }
@@ -99,7 +89,6 @@ function buildBoundedToolSearchResult(
   }
 
   return {
-    allowedToolNames: boundedMatches.map((match) => match.name),
     query,
     tools: boundedMatches.map(toModelTool),
   }
@@ -126,7 +115,7 @@ export function createToolSearchTool(registry: AgentToolRegistry, options: { dyn
           query,
         },
         subject: { kind: 'tool_search', path: query },
-        summary: `Found ${matches.length} local tool${matches.length === 1 ? '' : 's'} for ${query}.`,
+        summary: `Found ${matches.length} connected tool${matches.length === 1 ? '' : 's'} for ${query}.`,
       })
     },
   })
@@ -138,14 +127,14 @@ function buildPreloadedToolDocumentation(registry: AgentToolRegistry) {
     .map((entry) => createAgentToolCallableContract(entry))
 
   if (contracts.length === 0) {
-    return 'No local tools are preloaded. Use tool_search for dynamic capabilities.'
+    return 'No local tools are preloaded. Use tools.tool_search({ query }) inside Code Mode for dynamic capabilities.'
   }
 
   return [
     'Path rule: every path argument is one exact existing workspace-relative file or directory. `read` is for one file (a directory returns entries), `list` is for one directory, and `glob`/`grep` discover existing paths. Never invent an index file, combine roots with spaces, or treat a path list as one path.',
     'Preloaded local APIs (call directly inside the program):',
     ...contracts.map((contract) => `- ${contract.signature} — ${contract.description}`),
-    'Connected MCP APIs are dynamic; call tool_search first and pass returned MCP names in allowedToolNames.',
+    'Connected MCP APIs are dynamic. Inside the same program, call tools.tool_search({ query }), then invoke an exact returned tools.<name>(args) function. Do not guess MCP names.',
   ].join('\n')
 }
 
@@ -159,17 +148,9 @@ export function createCodeModeTool(executor: CodeModeExecutor, registry: AgentTo
     execute: async (input, options): Promise<AgentToolExecutionResult> => {
       const code = typeof input.code === 'string' ? input.code : ''
       if (code.trim().length === 0) return createToolErrorResult('code_mode requires a non-empty JavaScript program.')
-      if (
-        input.allowedToolNames !== undefined &&
-        (!Array.isArray(input.allowedToolNames) ||
-          input.allowedToolNames.some((name) => typeof name !== 'string' || name.trim().length === 0))
-      ) {
-        return createToolErrorResult('code_mode allowedToolNames must contain only non-empty tool names when provided.')
-      }
 
       const result = await executor.run(code, {
         abortSignal: options.abortSignal,
-        allowedToolNames: input.allowedToolNames,
       })
       const outputBody = result.output === undefined ? '' : stringifyOutput(result.output)
       const body = [
@@ -182,8 +163,7 @@ export function createCodeModeTool(executor: CodeModeExecutor, registry: AgentTo
         semantics: {
           execution_id: result.executionId,
           operation: 'code_mode',
-          output_truncated: result.outputTruncated ?? false,
-          truncated: result.truncated,
+          output_limited: result.outputTruncated ?? false,
           tool_call_count: result.toolCalls.length,
           tool_calls: result.toolCalls.map((call) => ({
             arguments: call.arguments,
@@ -200,7 +180,6 @@ export function createCodeModeTool(executor: CodeModeExecutor, registry: AgentTo
         status: result.status === 'success' ? 'success' : 'error',
         subject: { kind: 'code_mode', path: 'local' },
         summary: result.summary,
-        truncated: result.truncated,
       }
     },
   })

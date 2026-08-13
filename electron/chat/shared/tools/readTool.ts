@@ -9,7 +9,7 @@ import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createReadTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Read exactly one existing text file or image (maximum 500 lines at a time; specify offset and limit for line ranges).',
+    description: 'Read exactly one existing text file or image. By default, returns up to 500 lines. Set full_file: true to read the complete text file; full_file takes precedence over offset and limit.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
@@ -17,14 +17,15 @@ export function createReadTool(context: WorkspaceToolContext) {
           description: WORKSPACE_PATH_DESCRIPTION,
           type: 'string',
         },
-        limit: { description: 'Maximum number of lines to read (maximum 500 lines at a time). Defaults to 500.', maximum: 500, minimum: 1, type: 'number' },
+        full_file: { description: 'Read the complete text file. When true, this takes precedence over offset and limit.', type: 'boolean' },
+        limit: { description: 'Optional number of lines to read, up to 500. Omit for the default 500-line window.', maximum: 500, minimum: 1, type: 'number' },
         offset: { description: 'Starting line number (1-based index). Defaults to 1.', minimum: 1, type: 'number' },
       },
       required: ['path'],
       type: 'object',
     }),
     execute: async (rawInput) => {
-      const input = rawInput as { limit?: number; offset?: number; path?: string }
+      const input = rawInput as { full_file?: boolean; limit?: number; offset?: number; path?: string }
       try {
         const targetPath = input.path
         if (!targetPath) {
@@ -36,7 +37,7 @@ export function createReadTool(context: WorkspaceToolContext) {
           context.terminalExecutionMode,
         )
         context.readScopes?.delete(target.absolutePath)
-        const result = await createReadToolResult(target.absolutePath, target.displayPath, input.offset, input.limit)
+        const result = await createReadToolResult(target.absolutePath, target.displayPath, input.offset, input.limit, input.full_file === true)
         const semantics = result.semantics
         const startLine = semantics?.start_line
         const endLine = semantics?.end_line

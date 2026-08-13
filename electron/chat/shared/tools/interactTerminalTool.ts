@@ -158,7 +158,6 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
           },
           subject: { kind: "session", path: String(session.localSessionId) },
           summary: interactionSummary,
-          truncated: summary.truncated,
         });
       } catch (error) {
         if (abortSignal?.aborted) {

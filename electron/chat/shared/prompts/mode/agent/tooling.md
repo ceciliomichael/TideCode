@@ -4,7 +4,7 @@
 - Need a workspace fact: use the narrowest `list`, `glob`, `grep`, or `read` call.
 - Need a source change: read the file first, then use `edit` (`await tools.edit({ path: "...", edits: [{ targetContent: "...", replacementContent: "..." }] })`); use `write` only for a new file or complete-file replacement.
 - Need verification: run the smallest focused test, typecheck, diff, or terminal command that proves the change.
-- Need a connected MCP capability: call `tool_search`, then use only the exact returned name and schema.
+- Need a connected MCP capability: inside Code Mode call `tools.tool_search({ query })`, then invoke only an exact returned function in that same program.
 
 ## Execution rules
 - Every tool call must have one clear purpose and use its exact schema. Filesystem and plan targets use `path`.

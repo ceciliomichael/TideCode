@@ -10,7 +10,6 @@ import {
   getChatImageAttachments,
   splitChatImageReferenceSegments,
 } from '../../../src/lib/chatImageReferences'
-import { projectToolOutputForModel } from './tools/toolOutputBudget'
 
 type ToolModelMessage = Extract<ModelMessage, { role: 'tool' }>
 type ToolResultContentPart = ToolModelMessage['content'][number]
@@ -279,7 +278,7 @@ function buildToolResultParts(message: Message, validToolCallIds: Set<string>): 
     return []
   }
 
-  const outputText = projectToolOutputForModel(getToolResultModelContent(message.content)).text
+  const outputText = getToolResultModelContent(message.content)
   if (!outputText) {
     return []
   }

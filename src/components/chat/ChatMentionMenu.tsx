@@ -132,7 +132,7 @@ export function ChatMentionMenu({
                             ? 'text-[#F59E0B]'
                             : option.kind === 'skill'
                               ? 'text-[#A855F7]'
-                              : 'text-[#10B981]'
+                              : 'text-[#16A34A]'
                       }`}
                     />
                     <span className="min-w-0 flex-1">

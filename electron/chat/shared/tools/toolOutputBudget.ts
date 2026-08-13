@@ -29,7 +29,7 @@ function truncateLine(value: string) {
 
 function buildRecoveryHint(outputId?: string) {
   if (outputId) {
-    return `Full output saved as ${outputId}. Use read_tool_output with output_id "${outputId}" and offset/limit to inspect more.`
+    return `Full output reference: ${outputId}. Use the original operation with a narrower query only if more context is needed.`
   }
 
   return 'Use the tool again with a narrower path, pattern, offset, or limit to inspect more.'

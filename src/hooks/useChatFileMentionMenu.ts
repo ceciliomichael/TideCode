@@ -92,6 +92,14 @@ function scoreMentionResult(relativePath: string, query: string, label = getPath
     return [3, normalizedLabel.length] as const
   }
 
+  if (normalizedLabel.includes(query)) {
+    return [4, normalizedLabel.length] as const
+  }
+
+  if (compactQuery.length > 0 && compactLabel.includes(compactQuery)) {
+    return [5, normalizedLabel.length] as const
+  }
+
   if (normalizedBasename === query) {
     return [3, normalizedPath.length] as const
   }

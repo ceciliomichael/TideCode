@@ -62,8 +62,8 @@ const CORE_DECISION_PROMPT = [
 
 const CODE_MODE_AGENT_PROMPT = [
   '<agent_code_mode_rules description="Local Code Mode contract">',
-  '- The only model-facing tools in this turn are `tool_search` and `code_mode`.',
-  '- Local workspace APIs are preloaded in the `code_mode` description. Call them directly as `tools.<name>(args)`; use `tool_search` only for connected MCP APIs, then pass exact returned names in `allowedToolNames`.',
+  '- The only model-facing tool in this turn is `code_mode`.',
+  '- Local workspace APIs are preloaded in the `code_mode` description. Call them directly as `tools.<name>(args)`. For connected MCP APIs, call `tools.tool_search({ query })` inside Code Mode and invoke an exact returned function in that same program; never call tool_search as a separate native tool.',
   '- Every `path` argument is exactly one existing file or directory path. `read` is for one file (a directory returns entries), `list` is for one directory, and `glob`/`grep` discover paths. Never invent an index file or combine roots with spaces (for example, `"src electron"`); use one call per root or omit `path` to search the workspace root.',
   '- Write boring sequential JavaScript: await each `tools.*` call, keep intermediate data inside the program, and return small JSON-compatible data. Use `Promise.all` only for independent calls.',
   '- Use only documented `tools.*` APIs. Do not use imports, runtime APIs, filesystem APIs, shell APIs, network APIs, or dynamic code loading.',
@@ -224,9 +224,9 @@ export function buildChatModeSystemPromptBreakdown(
     systemRuleComponents.push({
       content: [
         '<code_mode_contract>',
-        'This hybrid turn exposes direct tools plus `tool_search` and `code_mode`.',
+        'This hybrid turn exposes direct tools plus `code_mode`; tool discovery is available inside it as `tools.tool_search({ query })`.',
         'Use direct tools for one simple operation; use code_mode for related calls, loops, filtering, or batching.',
-        'Local tools are preloaded in code_mode. Use tool_search only for connected MCP capabilities and pass exact returned names to code_mode.',
+        'Local tools are preloaded in code_mode. For connected MCP capabilities, call tools.tool_search inside the Code Mode program and invoke only an exact returned function.',
         '</code_mode_contract>',
       ].join('\n'),
       id: 'agent_code_mode_contract',
@@ -252,7 +252,7 @@ export function buildChatModeSystemPromptBreakdown(
       '- Prefer paths relative to that root. Use `.` or omit an optional path for the root itself.',
       '- Never guess or construct an absolute path from a project name, display name, process directory, or previous turn. Copy an absolute path only when the user or a tool provided it.',
       isCodeModeAgent
-        ? '- Use the preloaded filesystem APIs for path inspection. Use `tool_search` only when the required capability is a connected MCP tool.'
+        ? '- Use the preloaded filesystem APIs for path inspection. Use `tools.tool_search({ query })` inside Code Mode only when the required capability is a connected MCP tool.'
         : '- If unsure, inspect with `list`, `glob`, or `grep` before choosing a path.',
       '- If a path fails, correct the relative child path; do not retry the same guessed absolute path.',
       '</workspace_path_rules>',

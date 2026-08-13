@@ -5,7 +5,7 @@ export interface ContextCompactionSettings {
 
 export const DEFAULT_CONTEXT_COMPACTION_SETTINGS: ContextCompactionSettings = {
   contextWindowTokens: 200_000,
-  triggerPercent: 78,
+  triggerPercent: 80,
 }
 
 export const CONTEXT_COMPACTION_LIMITS = {

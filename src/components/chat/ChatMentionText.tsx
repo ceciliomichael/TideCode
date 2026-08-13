@@ -18,7 +18,7 @@ interface ChatMentionTextProps {
 const mentionHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(59,130,246,0.18)]'
 const folderHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(245,158,11,0.18)]'
 const skillHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(168,85,247,0.18)]'
-const kanbanHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(16,185,129,0.18)]'
+const kanbanHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(34,197,94,0.2)]'
 
 export const ChatMentionText = memo(function ChatMentionText({
   className,
