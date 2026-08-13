@@ -1,7 +1,10 @@
 import type { ModelMessage } from 'ai'
 import type { Message } from '../../../src/types/chat'
 import { buildModelMessages, type BuildChatPromptOptions } from '../shared/messages'
-import { sanitizeModelMessages } from '../shared/modelMessageIntegrity'
+import {
+  sanitizeCompactedModelMessages,
+  sanitizeModelMessages,
+} from '../shared/modelMessageIntegrity'
 import { parseCompactionPacket, type CompactionPacket } from '../shared/compaction/contracts'
 import { buildCompactionMessage } from '../shared/compaction/window'
 import {
@@ -74,12 +77,12 @@ function findLatestCompactionProjection(input: {
     if (!decodedPacket) throw new Error('Stored compaction packet is not a v2 packet.')
     const repairedPacket = repairCompactionPacketContinuation(decodedPacket)
     const decodedMessages = decodeModelMessages(event.projectedMessages)
-    const repairedMessages = decodedMessages.map((message) => (
+    const repairedMessages = sanitizeCompactedModelMessages(decodedMessages.map((message): ModelMessage => (
       (message.role === 'assistant' && typeof message.content === 'string' && message.content === decodedPacket.continuationMarkdown) ||
       isCompactionContinuationMessage(message, decodedPacket.continuationMarkdown)
         ? buildCompactionMessage(repairedPacket)
         : message
-    ))
+    )))
     return {
       anchorUserMessageId: event.anchorUserMessageId,
       branchId: event.branchId,
@@ -291,10 +294,10 @@ export function projectCanonicalReplay(input: {
   })
 
   try {
-    const exactPrefix = sanitizeModelMessages(repairReplayCompactionMessages(
+    const exactPrefix = sanitizeCompactedModelMessages(repairReplayCompactionMessages(
       decodeModelMessages(replay.messages),
       replayCompactionPacket,
-    ))
+    ) as ModelMessage[])
     const suffix = buildPostAnchorReplaySuffix(input.messages, anchorIndex, input.options)
     const messages = replay.freshnessRevision < input.document.freshness.revision
       ? appendFreshnessNotice([...exactPrefix, ...suffix], input.document.freshness.invalidatedSubjects)

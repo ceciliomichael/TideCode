@@ -6,11 +6,13 @@ import {
   assertSandboxCommand,
   assertTerminalOwner,
   buildMarkedCommand,
+  buildTerminalCommandSummary,
   clampInteger,
   createCompletionMarker,
   createSuccessResult,
   createTerminalErrorResult,
   createThreadAiSession,
+  drainUnreadTerminalOutput,
   getOrCreateThreadStore,
   normalizeCommand,
   prepareTerminalCommand,
@@ -18,6 +20,7 @@ import {
   removeThreadSession,
   resetThreadSessionForCommand,
   resolveTerminalWorkspaceCwd,
+  syncTerminalSessionOutput,
   throwIfAborted,
   type TerminalToolRuntime,
 } from "./terminalToolShared";
@@ -25,12 +28,13 @@ import {
 interface ExecuteTerminalInput {
   command?: string;
   cwd?: string;
+  wait_seconds?: number;
 }
 
 export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
   return tool({
     description:
-      "Start a terminal command asynchronously and return its session_id immediately. Use read_terminal to wait for and consume new output. terminate_terminal is optional because every remaining session is terminated automatically when the turn ends.",
+      "Start a terminal command asynchronously and return its session_id immediately (or wait up to wait_seconds for output if specified). Use read_terminal to wait for or consume additional output.",
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
@@ -41,6 +45,12 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
         cwd: {
           description: `${WORKSPACE_PATH_DESCRIPTION} Omit to start at the workspace root.`,
           type: "string",
+        },
+        wait_seconds: {
+          description: "Optional. Maximum collection window in seconds to wait for initial output. Omit or set to 0 for an immediate non-blocking start.",
+          maximum: 15,
+          minimum: 0,
+          type: "number",
         },
       },
       required: ["command"],
@@ -126,12 +136,51 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           abortSignal,
         );
 
+        let unreadOutputLines: string[] = [];
+        let commandState = "running";
+
+        if (typeof input.wait_seconds === "number" && input.wait_seconds > 0) {
+          const waitMs = clampInteger(input.wait_seconds, 0, 15, 0) * 1_000;
+          const deadline = Date.now() + waitMs;
+          do {
+            const remainingMilliseconds = Math.max(0, deadline - Date.now());
+            await syncTerminalSessionOutput(
+              runtime,
+              session,
+              dependencies,
+              abortSignal,
+              remainingMilliseconds,
+            );
+            if (session.commandComplete || session.interaction || remainingMilliseconds === 0) {
+              break;
+            }
+          } while (Date.now() < deadline);
+
+          const unreadOutput = drainUnreadTerminalOutput(session);
+          const commandSummary = buildTerminalCommandSummary(session);
+          commandState = commandSummary.state;
+          unreadOutputLines = unreadOutput.lines.map((line) => `${line.lineNumber}: ${line.text}`);
+        }
+
+        const bodyLines = [
+          `session_id: ${session.localSessionId}`,
+          `state: ${commandState}`,
+        ];
+
+        if (commandState === "completed" && session.commandExitCode !== null && session.commandExitCode !== 0) {
+          bodyLines.push("result: failed");
+        }
+
+        if (unreadOutputLines.length > 0) {
+          bodyLines.push("", "new_output:", ...unreadOutputLines);
+        }
+
         return createSuccessResult({
-          body: `session_id: ${session.localSessionId}\nstate: running`,
-          displayBody: "Terminal command started.",
+          body: bodyLines.join("\n"),
+          displayBody: unreadOutputLines.length > 0 ? "Terminal command completed with output." : "Terminal command started.",
           semantics: {
             session_id: session.localSessionId,
-            state: "running",
+            state: commandState,
           },
           subject: { kind: "session", path: String(session.localSessionId) },
           summary: `Started terminal session ${session.localSessionId}`,

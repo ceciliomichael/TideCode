@@ -2,8 +2,48 @@ import type { ModelMessage } from 'ai'
 
 type MessagePart = Record<string, unknown>
 
+const COMPACTED_IMAGE_NOTE = 'Image content was omitted from the compacted context.'
+
 function isMessagePart(value: unknown): value is MessagePart {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function sanitizeCompactedValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeCompactedValue)
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    return value
+  }
+
+  if (value instanceof Uint8Array || value instanceof ArrayBuffer) {
+    return value
+  }
+
+  const part = value as Record<string, unknown>
+  // `image-reference` is an internal text-only compaction marker, not an AI
+  // SDK content part. Real image/file parts from the live conversation are
+  // already provider-valid and must remain intact in the retained turns.
+  if (part.type === 'image-reference') {
+    return {
+      text: typeof part.note === 'string' && part.note.trim().length > 0 ? part.note : COMPACTED_IMAGE_NOTE,
+      type: 'text',
+    }
+  }
+
+  return Object.fromEntries(
+    Object.entries(part).map(([key, nestedValue]) => [key, sanitizeCompactedValue(nestedValue)]),
+  )
+}
+
+/**
+ * Converts only the internal compaction image placeholder into an ordinary
+ * text part accepted by every provider. Real image content is retained in the
+ * latest conversation turns instead of being converted or discarded.
+ */
+export function sanitizeCompactedModelContent(content: ModelMessage['content']) {
+  return sanitizeCompactedValue(content) as ModelMessage['content']
 }
 
 function getMessageParts(message: ModelMessage): readonly unknown[] | null {
@@ -164,4 +204,11 @@ export function sanitizeModelMessages(messages: readonly ModelMessage[]) {
   }
 
   return sanitizedMessages
+}
+
+export function sanitizeCompactedModelMessages(messages: readonly ModelMessage[]): ModelMessage[] {
+  return sanitizeModelMessages(messages).map((message) => ({
+    ...message,
+    content: sanitizeCompactedModelContent(message.content),
+  }) as ModelMessage)
 }

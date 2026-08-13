@@ -101,5 +101,8 @@ export function calculateModelMessagesBudget(input: ModelMessagesBudgetInput) {
 }
 
 export function shouldCompactContext(budget: ContextBudget) {
-  return budget.totalTokens >= budget.triggerTokens && budget.messageTokens > budget.targetHistoryTokens
+  // This is intentionally the same full-window comparison shown by the
+  // context indicator. Whether there is enough complete history to reduce is
+  // decided by the turn-aware compaction window, not by a second token target.
+  return budget.totalTokens >= budget.triggerTokens && budget.messageTokens > 0
 }

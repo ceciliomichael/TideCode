@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import type { ModelMessage } from 'ai'
 import { stableStringify, sha256 } from '../../cache/canonicalization'
-import { estimateModelMessagesTokens } from './budget'
 import type {
   CompactionPacket,
   CompactionWindow,
 } from './contracts'
 import { buildContinuationMessage, isCompactionContinuationMessage } from './markdown'
+import {
+  DEFAULT_COMPACTION_RETAINED_TURNS,
+  findConversationTurnRanges,
+} from './turns'
 
 const MAX_SOURCE_MESSAGE_IDS = 64
 
@@ -34,7 +37,6 @@ function getToolResultIds(message: ModelMessage) {
 
 export function isSafeCompactionBoundary(messages: readonly ModelMessage[], boundaryIndex: number) {
   if (boundaryIndex <= 0 || boundaryIndex > messages.length) return false
-  if (boundaryIndex === messages.length && messages.at(-1)?.role !== 'tool') return false
 
   const calls = new Set<string>()
   const results = new Set<string>()
@@ -100,44 +102,82 @@ function findLatestContinuationIndex(messages: readonly ModelMessage[], previous
 }
 
 export interface CompactionWindowSelectionOptions {
+  force?: boolean
   previousPacket?: CompactionPacket | null
+  retainedTurnCount?: number
+}
+
+function resolveCompactionSourceStartIndex(
+  messages: readonly ModelMessage[],
+  previousPacket?: CompactionPacket | null,
+) {
+  const continuationIndex = previousPacket
+    ? findLatestContinuationIndex(messages, previousPacket)
+    : -1
+  return continuationIndex >= 0 ? continuationIndex + 1 : 0
+}
+
+function resolveRetainedTurnCount(options?: CompactionWindowSelectionOptions) {
+  return Math.max(
+    1,
+    Math.floor(options?.retainedTurnCount ?? DEFAULT_COMPACTION_RETAINED_TURNS),
+  )
+}
+
+/**
+ * Reports whether a threshold crossing has older complete turns that can be
+ * replaced by the AI summary while retaining the configured recent tail.
+ * This keeps the threshold decision separate from the token target used to
+ * size a normal context estimate.
+ */
+export function hasCompactionEligibleHistory(
+  messages: readonly ModelMessage[],
+  options?: CompactionWindowSelectionOptions,
+) {
+  const sourceStartIndex = resolveCompactionSourceStartIndex(messages, options?.previousPacket)
+  const retainedTurnCount = resolveRetainedTurnCount(options)
+  return findConversationTurnRanges(messages, sourceStartIndex).length > retainedTurnCount
 }
 
 export function selectCompactionWindow(
   messages: readonly ModelMessage[],
-  targetHistoryTokens: number,
+  _targetHistoryTokens: number,
   options?: CompactionWindowSelectionOptions,
 ): CompactionWindow | null {
   if (messages.length < 3 || hasUnresolvedToolCall(messages)) return null
 
-  const continuationIndex = options?.previousPacket
-    ? findLatestContinuationIndex(messages, options.previousPacket)
-    : -1
-  const sourceStartIndex = continuationIndex >= 0 ? continuationIndex + 1 : 0
-  let largestSafeWindow: CompactionWindow | null = null
+  const sourceStartIndex = resolveCompactionSourceStartIndex(messages, options?.previousPacket)
+  const retainedTurnCount = resolveRetainedTurnCount(options)
+  const turnRanges = findConversationTurnRanges(messages, sourceStartIndex)
+  if (turnRanges.length <= retainedTurnCount && !options?.force) return null
 
-  for (let boundaryIndex = Math.max(1, sourceStartIndex + 1); boundaryIndex <= messages.length; boundaryIndex += 1) {
-    if (!isSafeCompactionBoundary(messages, boundaryIndex)) continue
-    const evictedMessages = messages.slice(sourceStartIndex, boundaryIndex)
-    if (evictedMessages.length === 0) continue
-    const tailMessages = messages.slice(boundaryIndex)
-    const window: CompactionWindow = {
-      anchorMessages: getAnchorMessages(messages, boundaryIndex),
-      boundaryIndex,
-      evictedMessages,
-      sourceStartIndex,
-      sourceEndIndex: boundaryIndex,
-      sourceMessageIds: buildSourceMessageIds(sourceStartIndex, boundaryIndex),
-      tailMessages,
-    }
-
-    largestSafeWindow = window
-    if (estimateModelMessagesTokens(tailMessages) <= targetHistoryTokens) {
-      return window
-    }
+  // The retained history is defined by complete turns, not by a token or
+  // character cutoff. The boundary should be exactly where the oldest of the
+  // retained turns begins. If a malformed/provider-specific sequence makes
+  // that index unsafe, walk backward to the nearest complete boundary rather
+  // than splitting a tool call from its result.
+  const oldestRetainedTurn = turnRanges.length > retainedTurnCount
+    ? turnRanges[turnRanges.length - retainedTurnCount]
+    : turnRanges[1]
+  let boundaryIndex = oldestRetainedTurn?.startIndex ?? messages.length
+  while (boundaryIndex > sourceStartIndex && !isSafeCompactionBoundary(messages, boundaryIndex)) {
+    boundaryIndex -= 1
   }
 
-  return largestSafeWindow
+  if (!isSafeCompactionBoundary(messages, boundaryIndex)) return null
+
+  const evictedMessages = messages.slice(sourceStartIndex, boundaryIndex)
+  if (evictedMessages.length === 0) return null
+
+  return {
+    anchorMessages: getAnchorMessages(messages, boundaryIndex),
+    boundaryIndex,
+    evictedMessages,
+    sourceStartIndex,
+    sourceEndIndex: boundaryIndex,
+    sourceMessageIds: buildSourceMessageIds(sourceStartIndex, boundaryIndex),
+    tailMessages: messages.slice(boundaryIndex),
+  }
 }
 
 export function buildCompactionMessage(packet: CompactionPacket): ModelMessage {

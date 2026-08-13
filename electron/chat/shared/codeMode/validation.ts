@@ -170,6 +170,20 @@ export function repairCodeModePatchProgram(code: string) {
 }
 
 export function repairCodeModeProgramSyntax(code: string): string | null {
+  // Try 0: Fix invalid Python-style triple quotes `"""..."""` or `'''...'''` by replacing them with JS template literal backticks
+  if (code.includes('"""') || code.includes("'''")) {
+    const fixedTripleQuotes = code
+      .replace(/"""([\s\S]*?)"""/gu, (_match, body) => '`' + body.replace(/`/gu, '\\`') + '`')
+      .replace(/'''([\s\S]*?)'''/gu, (_match, body) => '`' + body.replace(/`/gu, '\\`') + '`')
+
+    try {
+      new Script(`(async () => {\n${fixedTripleQuotes}\n})()`, { filename: 'tidecode-code-mode.js' })
+      return fixedTripleQuotes
+    } catch {
+      // continue
+    }
+  }
+
   // Try 1: Fix extra braces before closing brackets `}, }` -> `}` or `}, ]` -> `}]`
   let candidate = code.replace(/\},\s*\}/gu, '}')
   candidate = candidate.replace(/\},\s*\]/gu, '}]')
@@ -388,7 +402,11 @@ export function validateCodeModeProgram(code: string, maxCodeBytes: number) {
     const position = line === null
       ? ''
       : ` at generated code line ${line}${column === null ? '' : `, column ${column}`}`
-    return `Code Mode program has invalid JavaScript${position}: ${message} No tool ran. Retry with plain sequential tools.* calls. For source changes use tools.edit({ path, edits }); keep one path per call, use complete source text in targetContent/replacementContent, and do not include read metadata or the EOF footer.`
+    let guidance = "No tool ran. Retry with plain sequential tools.* calls. For source changes use tools.edit({ path, edits }); keep one path per call, use complete source text in targetContent/replacementContent, and do not include read metadata or the EOF footer."
+    if (message.includes("Unexpected identifier") || message.includes("Invalid or unexpected token") || message.includes("Unexpected token")) {
+      guidance += " If embedding code snippets or template literals inside script strings, make sure backticks (`) and template expressions (${...}) are properly escaped."
+    }
+    return `Code Mode program has invalid JavaScript${position}: ${message} ${guidance}`
   }
 
   // Parse first. If a malformed string exposes prose such as "Node/Electron"

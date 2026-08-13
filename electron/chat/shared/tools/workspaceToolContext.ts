@@ -10,7 +10,6 @@ export async function createToolContext(input: AgentToolContext): Promise<Worksp
   await assertWorkspaceDirectory(workspaceRootPath)
   return {
     checkpointId: input.checkpointId?.trim() || null,
-    readScopes: new Map(),
     terminalExecutionMode: input.terminalExecutionMode ?? 'sandbox',
     workspaceRootPath,
   }

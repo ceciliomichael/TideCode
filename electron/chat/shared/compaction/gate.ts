@@ -1,5 +1,5 @@
 import type { CompactionResult } from './contracts'
-import { shouldCompactContext, type ContextBudget } from './budget'
+import type { ContextBudget } from './budget'
 
 export class ContextCompactionRequiredError extends Error {
   readonly code = 'context_compaction_required' as const
@@ -17,7 +17,11 @@ export function assertCompactionGate(input: {
   required: boolean
 }) {
   if (input.aborted || !input.required) return
-  if (!input.compactionResult || !input.projectedBudget || shouldCompactContext(input.projectedBudget)) {
+  if (
+    !input.compactionResult ||
+    !input.projectedBudget ||
+    input.projectedBudget.totalTokens >= input.projectedBudget.contextWindowTokens
+  ) {
     throw new ContextCompactionRequiredError()
   }
 }

@@ -268,3 +268,67 @@ test('projection emits one Markdown continuation and keeps a complete tool inter
   assert.deepEqual(projected.slice(-3), [toolCall, toolResult, { role: 'assistant', content: 'The result is ready.' }])
   assert.equal(projected.some((message) => typeof message.content === 'string' && message.content.includes('tidecode.compaction_packet/v2')), false)
 })
+
+test('projection converts image placeholders into provider-valid text parts', () => {
+  const packet = buildFallbackCompactionPacket({
+    messages: [{ role: 'user', content: 'Inspect the screenshot.' }],
+    modelId: 'test-model',
+    sourceDigest: 'image-projection-digest',
+    sourceMessageIds: ['model:0'],
+  })
+  const projected = buildCompactionProjection({
+    anchorMessages: [],
+    packet,
+    tailMessages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: 'The screenshot is attached.' },
+        { type: 'image-reference', mediaType: 'image/png', note: 'Binary image payload omitted from the text-only compaction transcript.' },
+      ],
+    }],
+  })
+
+  const tail = projected.at(-1)
+  assert.equal(tail?.role, 'user')
+  assert.deepEqual(tail?.content, [
+    { type: 'text', text: 'The screenshot is attached.' },
+    { type: 'text', text: 'Binary image payload omitted from the text-only compaction transcript.' },
+  ])
+  assert.doesNotMatch(JSON.stringify(projected), /image-reference/u)
+})
+
+test('turn projection retains real image content inside the latest four turns', () => {
+  const packet = buildFallbackCompactionPacket({
+    messages: [{ role: 'user', content: 'Keep the recent visual context.' }],
+    modelId: 'test-model',
+    sourceDigest: 'retained-image-digest',
+    sourceMessageIds: ['model:0'],
+  })
+  const imagePart = {
+    data: { data: 'encoded-image', type: 'data' },
+    mediaType: 'image/png',
+    type: 'file',
+  } as const
+  const tailMessages: ModelMessage[] = []
+  for (let turn = 1; turn <= 5; turn += 1) {
+    tailMessages.push({
+      role: 'user',
+      content: turn === 3 ? [{ text: `Turn ${turn}`, type: 'text' }, imagePart] : `Turn ${turn}`,
+    })
+    tailMessages.push({ role: 'assistant', content: `Response ${turn}` })
+  }
+
+  const projected = buildCompactionProjection({
+    anchorMessages: [],
+    packet,
+    tailMessages,
+  })
+
+  const retainedUsers = projected.filter((message) => message.role === 'user')
+  assert.deepEqual(retainedUsers.map((message) => message.content), [
+    'Turn 2',
+    [{ text: 'Turn 3', type: 'text' }, imagePart],
+    'Turn 4',
+    'Turn 5',
+  ])
+})

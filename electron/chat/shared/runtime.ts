@@ -38,6 +38,7 @@ import {
 import { assertCompactionGate } from './compaction/gate'
 import { calculateModelMessagesBudget, shouldCompactContext } from './compaction/budget'
 import type { CompactionPacket } from './compaction/contracts'
+import { hasCompactionEligibleHistory } from './compaction/window'
 import {
   buildChatPrompt,
   ensureCurrentExecutionModeContext,
@@ -315,7 +316,8 @@ export async function runToolEnabledChatStream(input: {
           toolSchemaTokens: promptContext.toolSchemaTokens,
           triggerRatio: liveContextCompaction.triggerPercent / 100,
         }
-        const compactionRequired = shouldCompactContext(calculateModelMessagesBudget(compactionBudgetInput))
+        const compactionRequired = shouldCompactContext(calculateModelMessagesBudget(compactionBudgetInput)) &&
+          hasCompactionEligibleHistory(compactionMessages, { previousPacket: latestCompactionPacket })
 
         const compactionAttemptId = randomUUID()
         let compactionStarted = false
@@ -473,7 +475,7 @@ export async function runToolEnabledChatStream(input: {
       }
       const finalCompactionRequired = shouldCompactContext(
         calculateModelMessagesBudget(finalCompactionBudgetInput),
-      )
+      ) && hasCompactionEligibleHistory(finalCompactionMessages, { previousPacket: latestCompactionPacket })
 
       if (finalCompactionRequired) {
         const compactionAttemptId = randomUUID()

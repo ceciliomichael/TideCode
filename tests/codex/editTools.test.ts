@@ -17,7 +17,6 @@ async function createFixture(content: string) {
 
   const context: WorkspaceToolContext = {
     checkpointId: null,
-    readScopes: new Map(),
     terminalExecutionMode: 'sandbox',
     workspaceRootPath,
   }
@@ -201,14 +200,64 @@ test('edit reports an identical replacement as a successful no-op', async () => 
   }
 })
 
-test('edit without line bounds searches the whole file when no read scope exists', async () => {
+test('edit replaces all matching occurrences by default when target appears multiple times', async () => {
+  const originalContent = 'const item = "old"\nconst middle = 1\nconst item = "old"\n'
+  const fixture = await createFixture(originalContent)
+
+  try {
+    const result = await createSingleEditToolResult(fixture.context, {
+      path: fixture.targetPath,
+      replacementContent: 'const item = "new"',
+      targetContent: 'const item = "old"',
+    })
+
+    assert.equal(result.status, 'success')
+    assert.equal(
+      await fs.readFile(fixture.targetPath, 'utf8'),
+      'const item = "new"\nconst middle = 1\nconst item = "new"\n',
+    )
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('edit filters out identical context anchor hunks when active edits exist', async () => {
+  const originalContent = 'const a = 1\nconst b = 2\nconst c = 3\n'
+  const fixture = await createFixture(originalContent)
+
+  try {
+    const result = await createEditToolResult(fixture.context, {
+      edits: [
+        {
+          replacementContent: 'const a = 1',
+          targetContent: 'const a = 1',
+        },
+        {
+          replacementContent: 'const b = 20',
+          targetContent: 'const b = 2',
+        },
+      ],
+      path: fixture.targetPath,
+    })
+
+    assert.equal(result.status, 'success')
+    assert.equal(
+      await fs.readFile(fixture.targetPath, 'utf8'),
+      'const a = 1\nconst b = 20\nconst c = 3\n',
+    )
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('edit enforces single-match when replaceAll: false is explicitly set', async () => {
   const originalContent = 'const value = true\nconst middle = 1\nconst value = true\n'
   const fixture = await createFixture(originalContent)
 
   try {
     await assert.rejects(
       createSingleEditToolResult(fixture.context, {
-        allowMultiple: false,
+        replaceAll: false,
         path: fixture.targetPath,
         replacementContent: 'const value = false',
         targetContent: 'const value = true',
@@ -221,7 +270,7 @@ test('edit without line bounds searches the whole file when no read scope exists
   }
 })
 
-test('replaceAll uses only the latest successful read scope when line bounds are omitted', async () => {
+test('replaceAll searches entire file when line bounds are omitted', async () => {
   const originalContent = [
     'const snippet = "old"',
     'const middle = true',
@@ -239,7 +288,6 @@ test('replaceAll uses only the latest successful read scope when line bounds are
       path: 'target.ts',
     })
     assert.equal(readResult.status, 'success')
-    assert.deepEqual(fixture.context.readScopes?.get(fixture.targetPath), { endLine: 2, startLine: 1 })
 
     const result = await createSingleEditToolResult(fixture.context, {
       path: fixture.targetPath,
@@ -254,7 +302,7 @@ test('replaceAll uses only the latest successful read scope when line bounds are
       [
         'const snippet = "new"',
         'const middle = true',
-        'const snippet = "old"',
+        'const snippet = "new"',
         'const tail = true',
         '',
       ].join('\n'),

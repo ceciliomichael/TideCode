@@ -301,6 +301,20 @@ test('Code Mode repairs simple malformed patch arrays before running the patch t
   }
 })
 
+test('Code Mode repairs Python-style triple quotes in program syntax', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry())
+
+  try {
+    const tripleQuoteProgram = 'const snippet = """<div>hello</div>"""; return { ok: true, text: snippet };'
+    const result = await executor.run(tripleQuoteProgram)
+
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, { ok: true, text: '<div>hello</div>' })
+  } finally {
+    await executor.dispose()
+  }
+})
+
 test('the registry validates Code Mode arguments before invoking a native tool', async () => {
   let wasInvoked = false
   const registry = await createAgentToolRegistry({
