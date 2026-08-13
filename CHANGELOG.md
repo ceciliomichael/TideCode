@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.8 — More reliable long-running work and clearer code review
+
+TideCode 1.1.8 keeps extended agent sessions coherent while making generated code and workspace changes easier to read and review.
+
+- Retains complete recent conversation turns and matching tool results during automatic and repeated compaction, with safer replay and recovery for interrupted or older history.
+- Preserves long-running terminal output and tightens workspace tool contracts so agents can continue working without losing context or receiving ambiguous results.
+- Lets users edit or revert steering messages from chat history and renders code blocks and diffs with consistent Monaco highlighting, line numbers, and theme behavior.
+- Includes regression coverage for compaction boundaries, replay integrity, tool output handling, steering history actions, and code previews.
+
 ## 1.1.7 — More faithful tool context and inspectable workspace results
 
 TideCode 1.1.7 keeps agent work grounded in complete tool context while making large workspace results easier to inspect progressively and Code Mode behavior more predictable.
