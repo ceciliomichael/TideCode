@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.7 — More faithful tool context and inspectable workspace results
+
+TideCode 1.1.7 keeps agent work grounded in complete tool context while making large workspace results easier to inspect progressively and Code Mode behavior more predictable.
+
+- Preserves complete model-facing tool results through replay, provider migration, and compaction while keeping the visible activity stream concise.
+- Adds consistent pagination metadata for workspace listing, file discovery, grep, and directory reads, with an explicit opt-in path for reading a complete text file.
+- Aligns Code Mode tool discovery and prompt contracts, improves malformed-program recovery, and keeps context compaction aligned with the percentage shown in the UI.
+- Expands regression coverage for oversized tool results, pagination, full-file reads, Code Mode discovery, and context budgeting.
+
 ## 1.1.6 — More capable Codex orchestration and dependable project work
 
 TideCode 1.1.6 gives agent-mode work a safer orchestration layer, clearer file-operation feedback, and more reliable continuity when conversations, providers, or large tool results change over time.
