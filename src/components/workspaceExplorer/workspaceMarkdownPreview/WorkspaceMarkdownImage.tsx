@@ -85,7 +85,7 @@ export function WorkspaceMarkdownImage({
       alt={alt}
       loading="lazy"
       decoding="async"
-      className="my-4 block max-h-[48rem] max-w-5xl rounded-2xl border border-border bg-surface object-contain"
+      className="my-4 block max-h-[40rem] max-w-5xl rounded-2xl border border-border bg-surface object-contain"
     />
   )
 }

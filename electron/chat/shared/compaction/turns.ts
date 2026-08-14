@@ -1,7 +1,4 @@
 import type { ModelMessage } from 'ai'
-import { DEFAULT_CONTEXT_COMPACTION_RETAINED_TURNS } from '../../../../src/lib/contextCompactionSettings'
-
-export const DEFAULT_COMPACTION_RETAINED_TURNS = DEFAULT_CONTEXT_COMPACTION_RETAINED_TURNS
 
 export interface ConversationTurnRange {
   endIndex: number
@@ -53,20 +50,4 @@ export function findConversationTurnRanges(
   }
 
   return ranges
-}
-
-export function selectLatestConversationTurns(
-  messages: readonly ModelMessage[],
-  retainedTurnCount = DEFAULT_COMPACTION_RETAINED_TURNS,
-) {
-  if (messages.length === 0) return []
-
-  const normalizedTurnCount = Math.max(1, Math.floor(retainedTurnCount))
-  const ranges = findConversationTurnRanges(messages)
-  if (ranges.length === 0 || ranges.length <= normalizedTurnCount) {
-    return [...messages]
-  }
-
-  const firstRetainedTurn = ranges[ranges.length - normalizedTurnCount]
-  return [...messages.slice(firstRetainedTurn.startIndex)]
 }

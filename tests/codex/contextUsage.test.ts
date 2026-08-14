@@ -10,6 +10,7 @@ import {
   calculateContextBudget,
   calculateModelMessagesBudget,
   estimateModelMessagesTokens,
+  resolveRetainedContextTokens,
   shouldCompactContext,
 } from '../../electron/chat/shared/compaction/budget'
 import { selectContextUsageMessages } from '../../electron/chat/shared/contextUsageProjection'
@@ -214,6 +215,18 @@ test('automatic compaction trigger matches the full-window percentage shown by t
   assert.equal(atTrigger.triggerTokens, 160_000)
   assert.equal(shouldCompactContext(below), false)
   assert.equal(shouldCompactContext(atTrigger), true)
+})
+
+test('retained context is capped by the safe history budget for small context windows', () => {
+  const budget = calculateContextBudget({
+    contextWindowTokens: 16_000,
+    messageTokens: 8_000,
+    systemPromptTokens: 1_000,
+    toolSchemaTokens: 500,
+    triggerRatio: 0.8,
+  })
+
+  assert.equal(resolveRetainedContextTokens(100_000, budget), budget.targetHistoryTokens)
 })
 
 test('context usage follows the provider replay instead of stale raw tool entries', () => {

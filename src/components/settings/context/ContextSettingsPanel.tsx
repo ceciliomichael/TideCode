@@ -3,6 +3,7 @@ import { DropdownField } from '../../ui/DropdownField'
 import type { AppSettings } from '../../../types/chat'
 import {
   CONTEXT_COMPACTION_LIMITS,
+  CONTEXT_COMPACTION_RETAINED_TOKEN_OPTIONS,
   mergeContextCompactionSettings,
   type ContextCompactionSettings,
 } from '../../../lib/contextCompactionSettings'
@@ -21,20 +22,22 @@ const CONTEXT_WINDOW_OPTIONS = [
   { label: '2,000,000 tokens', value: '2000000' },
 ] as const
 
-const RETAINED_TURN_OPTIONS = [
-  { label: '1 turn', value: '1' },
-  { label: '2 turns', value: '2' },
-  { label: '3 turns', value: '3' },
-  { label: '4 turns', value: '4' },
-  { label: '5 turns', value: '5' },
-  { label: '6 turns', value: '6' },
-  { label: '7 turns', value: '7' },
-  { label: '8 turns', value: '8' },
-  { label: '9 turns', value: '9' },
-  { label: '10 turns', value: '10' },
-  { label: '11 turns', value: '11' },
-  { label: '12 turns', value: '12' },
-] as const
+const RETAINED_CONTEXT_OPTIONS = CONTEXT_COMPACTION_RETAINED_TOKEN_OPTIONS.map((value) => ({
+  label: `${value.toLocaleString()} tokens`,
+  value: String(value),
+}))
+
+function getRetainedContextOptions(currentValue: number) {
+  const currentValueString = String(currentValue)
+  if (RETAINED_CONTEXT_OPTIONS.some((option) => option.value === currentValueString)) {
+    return RETAINED_CONTEXT_OPTIONS
+  }
+
+  return [
+    { label: `${currentValue.toLocaleString()} tokens (current)`, value: currentValueString },
+    ...RETAINED_CONTEXT_OPTIONS,
+  ]
+}
 
 function formatPercent(value: number) {
   return `${value}%`
@@ -79,21 +82,21 @@ export function ContextSettingsSections({ isLoading, onUpdateSettings, settings 
         </SettingsRow>
 
         <SettingsRow
-          title="Latest turns to keep"
-          description="Keep this many complete recent turns alongside the new compaction summary."
+          title="Latest context to keep"
+          description="Keep approximately this many newest tokens alongside the new compaction summary. Recent user messages and images stay complete."
         >
           <div className="w-full md:w-[240px]">
-            <label htmlFor="compaction-retained-turns" className="sr-only">
-              Latest turns to keep
+            <label htmlFor="compaction-retained-context" className="sr-only">
+              Latest context tokens to keep
             </label>
             <DropdownField
-              id="compaction-retained-turns"
-              ariaLabel="Latest turns to keep"
-              value={String(settings.retainedTurnCount)}
-              options={RETAINED_TURN_OPTIONS}
-              disabled={isLoading}
+              id="compaction-retained-context"
+              aria-label="Latest context tokens to keep"
               className="w-full"
-              onChange={(value) => updateContextSettings({ retainedTurnCount: Number(value) })}
+              disabled={isLoading}
+              options={getRetainedContextOptions(settings.retainedContextTokens)}
+              value={String(settings.retainedContextTokens)}
+              onChange={(value) => updateContextSettings({ retainedContextTokens: Number(value) })}
             />
           </div>
         </SettingsRow>

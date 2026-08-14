@@ -17,6 +17,7 @@ import { decodeReplayValue, encodeModelMessages, encodeReplayValue } from './rep
 import { parseCanonicalHistoryDocument } from './validation'
 import type { ModelMessage } from 'ai'
 import { sha256, stableStringify } from '../cache/canonicalization'
+import { carryCompletedReplaysAcrossBranch } from './branchReplay'
 import {
   sanitizeCompactedModelMessages,
   sanitizeModelMessages,
@@ -258,7 +259,16 @@ export async function synchronizeCanonicalMessages(conversationId: string, messa
         : [...document.events].reverse().find((event) => (
             event.type === 'run_started' && event.anchorUserMessageId === retryAnchorId
           ))
-      document.replays = {}
+      const carriedReplayState = wasEdited
+        ? { replay: null, replays: {} }
+        : carryCompletedReplaysAcrossBranch({
+            activeBranchId: document.activeBranchId,
+            messageIds,
+            replay: document.replay,
+            replays: document.replays,
+          })
+      document.replays = carriedReplayState.replays
+      document.replay = carriedReplayState.replay
       if (!wasEdited && retryAnchorId) {
         for (const event of [...document.events].reverse()) {
           if (event.type !== 'run_started' || event.anchorUserMessageId !== retryAnchorId) continue
@@ -279,21 +289,21 @@ export async function synchronizeCanonicalMessages(conversationId: string, messa
           }
         }
       }
-      document.replay = retryEvent && retryEvent.type === 'run_started'
-        ? document.replays[getReplaySlotKey(retryEvent.providerId, retryEvent.modelId)] ?? {
-            anchorUserMessageId: retryAnchorId,
-            branchId: document.activeBranchId,
-            contextFingerprint: retryEvent.contextFingerprint,
-            fidelity: retryEvent.fidelity,
-            freshnessRevision: document.freshness.revision,
-            messages: retryEvent.initialMessages,
-            modelId: retryEvent.modelId,
-            providerId: retryEvent.providerId,
-            runId: retryEvent.runId ?? retryEvent.eventId,
-            sourceRevision: retryEvent.revision,
-            updatedAt: Date.now(),
-          }
-        : null
+      if (!document.replay && retryEvent && retryEvent.type === 'run_started') {
+        document.replay = document.replays[getReplaySlotKey(retryEvent.providerId, retryEvent.modelId)] ?? {
+          anchorUserMessageId: retryAnchorId,
+          branchId: document.activeBranchId,
+          contextFingerprint: retryEvent.contextFingerprint,
+          fidelity: retryEvent.fidelity,
+          freshnessRevision: document.freshness.revision,
+          messages: retryEvent.initialMessages,
+          modelId: retryEvent.modelId,
+          providerId: retryEvent.providerId,
+          runId: retryEvent.runId ?? retryEvent.eventId,
+          sourceRevision: retryEvent.revision,
+          updatedAt: Date.now(),
+        }
+      }
       appendEvent(document, {
         fromBranchId: previousBranchId,
         reason: wasEdited ? 'edited' : 'history_replaced',

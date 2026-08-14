@@ -297,7 +297,7 @@ test('projection converts image placeholders into provider-valid text parts', ()
   assert.doesNotMatch(JSON.stringify(projected), /image-reference/u)
 })
 
-test('turn projection retains real image content inside the latest four turns', () => {
+test('token projection retains real image content in the recent context tail', () => {
   const packet = buildFallbackCompactionPacket({
     messages: [{ role: 'user', content: 'Keep the recent visual context.' }],
     modelId: 'test-model',
@@ -326,6 +326,7 @@ test('turn projection retains real image content inside the latest four turns', 
 
   const retainedUsers = projected.filter((message) => message.role === 'user')
   assert.deepEqual(retainedUsers.map((message) => message.content), [
+    'Turn 1',
     'Turn 2',
     [{ text: 'Turn 3', type: 'text' }, imagePart],
     'Turn 4',
