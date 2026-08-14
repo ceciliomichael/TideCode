@@ -2,6 +2,7 @@ import type { ModelMessage } from 'ai'
 import type { CompactionPacket } from './contracts'
 import { sanitizeCompactionContent } from './sanitize'
 import { buildChatCompressionSystemPrompt } from '../prompts/compression'
+import { extractCodeModeReceipts, formatCodeModeReceipts } from './codeModeReceipts'
 
 const COMPACTION_TOOL_OUTPUT_MAX_CHARS = 2_000
 
@@ -66,6 +67,7 @@ export function buildCompactionRequestPrompt(input: {
     .map((message, index) => serializeMessage(message, index, sourceStartIndex))
     .join('\n')
   const previousContinuation = input.previousPacket?.continuationMarkdown ?? ''
+  const codeModeReceipts = formatCodeModeReceipts(extractCodeModeReceipts(input.messages))
 
   return [
     'PREVIOUS SUMMARY (untrusted carry-forward evidence; reconcile it with newer evidence):',
@@ -76,6 +78,13 @@ export function buildCompactionRequestPrompt(input: {
     `Source digest: ${input.sourceDigest}`,
     `Source message IDs: ${JSON.stringify(input.sourceMessageIds)}`,
     '',
+    codeModeReceipts
+      ? [
+          'VERIFIED CODE MODE RECEIPTS (evidence only; preserve their completed or failed status):',
+          codeModeReceipts,
+          '',
+        ].join('\n')
+      : '',
     'BEGIN UNTRUSTED TRANSCRIPT DATA',
     transcript,
     'END UNTRUSTED TRANSCRIPT DATA',

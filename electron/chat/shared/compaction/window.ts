@@ -6,10 +6,11 @@ import type {
   CompactionWindow,
 } from './contracts'
 import { buildContinuationMessage, isCompactionContinuationMessage } from './markdown'
+import { DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS } from '../../../../src/lib/contextCompactionSettings'
 import {
-  DEFAULT_COMPACTION_RETAINED_TURNS,
-  findConversationTurnRanges,
-} from './turns'
+  projectRetainedMessagesForContext,
+  selectLatestContextByTokens,
+} from './retention'
 
 const MAX_SOURCE_MESSAGE_IDS = 64
 
@@ -104,7 +105,7 @@ function findLatestContinuationIndex(messages: readonly ModelMessage[], previous
 export interface CompactionWindowSelectionOptions {
   force?: boolean
   previousPacket?: CompactionPacket | null
-  retainedTurnCount?: number
+  retainedContextTokens?: number
 }
 
 function resolveCompactionSourceStartIndex(
@@ -117,16 +118,9 @@ function resolveCompactionSourceStartIndex(
   return continuationIndex >= 0 ? continuationIndex + 1 : 0
 }
 
-function resolveRetainedTurnCount(options?: CompactionWindowSelectionOptions) {
-  return Math.max(
-    1,
-    Math.floor(options?.retainedTurnCount ?? DEFAULT_COMPACTION_RETAINED_TURNS),
-  )
-}
-
 /**
  * Reports whether a threshold crossing has older complete turns that can be
- * replaced by the AI summary while retaining the configured recent tail.
+ * replaced by the AI summary while retaining the configured recent token tail.
  * This keeps the threshold decision separate from the token target used to
  * size a normal context estimate.
  */
@@ -135,31 +129,41 @@ export function hasCompactionEligibleHistory(
   options?: CompactionWindowSelectionOptions,
 ) {
   const sourceStartIndex = resolveCompactionSourceStartIndex(messages, options?.previousPacket)
-  const retainedTurnCount = resolveRetainedTurnCount(options)
-  return findConversationTurnRanges(messages, sourceStartIndex).length > retainedTurnCount
+  const retainedContextTokens = Math.max(
+    1,
+    Math.floor(options?.retainedContextTokens ?? DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS),
+  )
+  const selection = selectLatestContextByTokens(
+    messages.slice(sourceStartIndex),
+    retainedContextTokens,
+  )
+  const boundaryIndex = sourceStartIndex + selection.startIndex
+  return boundaryIndex > sourceStartIndex && isSafeCompactionBoundary(messages, boundaryIndex)
 }
 
 export function selectCompactionWindow(
   messages: readonly ModelMessage[],
-  _targetHistoryTokens: number,
+  targetHistoryTokens: number,
   options?: CompactionWindowSelectionOptions,
 ): CompactionWindow | null {
   if (messages.length < 3 || hasUnresolvedToolCall(messages)) return null
 
   const sourceStartIndex = resolveCompactionSourceStartIndex(messages, options?.previousPacket)
-  const retainedTurnCount = resolveRetainedTurnCount(options)
-  const turnRanges = findConversationTurnRanges(messages, sourceStartIndex)
-  if (turnRanges.length <= retainedTurnCount && !options?.force) return null
+  const retainedContextTokens = Math.max(
+    1,
+    Math.floor(options?.retainedContextTokens ?? targetHistoryTokens),
+  )
+  const selection = selectLatestContextByTokens(
+    messages.slice(sourceStartIndex),
+    retainedContextTokens,
+    { force: options?.force },
+  )
 
-  // The retained history is defined by complete turns, not by a token or
-  // character cutoff. The boundary should be exactly where the oldest of the
-  // retained turns begins. If a malformed/provider-specific sequence makes
-  // that index unsafe, walk backward to the nearest complete boundary rather
-  // than splitting a tool call from its result.
-  const oldestRetainedTurn = turnRanges.length > retainedTurnCount
-    ? turnRanges[turnRanges.length - retainedTurnCount]
-    : turnRanges[1]
-  let boundaryIndex = oldestRetainedTurn?.startIndex ?? messages.length
+  // The retained history is selected by token budget, but the boundary remains
+  // a complete user turn. If a malformed/provider-specific sequence makes the
+  // selected index unsafe, walk backward to the nearest complete boundary
+  // rather than splitting a tool call from its result.
+  let boundaryIndex = sourceStartIndex + selection.startIndex
   while (boundaryIndex > sourceStartIndex && !isSafeCompactionBoundary(messages, boundaryIndex)) {
     boundaryIndex -= 1
   }
@@ -168,6 +172,7 @@ export function selectCompactionWindow(
 
   const evictedMessages = messages.slice(sourceStartIndex, boundaryIndex)
   if (evictedMessages.length === 0) return null
+  const selectedBoundaryIndex = sourceStartIndex + selection.startIndex
 
   return {
     anchorMessages: getAnchorMessages(messages, boundaryIndex),
@@ -176,7 +181,13 @@ export function selectCompactionWindow(
     sourceStartIndex,
     sourceEndIndex: boundaryIndex,
     sourceMessageIds: buildSourceMessageIds(sourceStartIndex, boundaryIndex),
-    tailMessages: messages.slice(boundaryIndex),
+    // A partial retained turn is already projected and truncated by the
+    // token selector. Keep that projection instead of rebuilding the raw
+    // suffix, otherwise a large assistant/tool payload would immediately
+    // restore the history that the selector intentionally removed.
+    tailMessages: boundaryIndex === selectedBoundaryIndex
+      ? selection.messages
+      : projectRetainedMessagesForContext(messages.slice(boundaryIndex)),
   }
 }
 

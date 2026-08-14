@@ -11,6 +11,7 @@ import {
 } from '../../electron/chat/cache/providerPolicies'
 import { normalizeLanguageModelUsage } from '../../electron/chat/cache/usage'
 import { createEmptyCanonicalHistory, getReplaySlotKey } from '../../electron/chat/history/contracts'
+import { carryCompletedReplaysAcrossBranch } from '../../electron/chat/history/branchReplay'
 import { decodeModelMessages, encodeModelMessages, encodeReplayValue } from '../../electron/chat/history/replayCodec'
 import { projectCanonicalReplay } from '../../electron/chat/history/replayProjector'
 import { buildFallbackCompactionPacket } from '../../electron/chat/shared/compaction/fallback'
@@ -147,6 +148,57 @@ test('exact replay replaces display-normalized assistant history and appends onl
   assert.equal(result.fidelity, 'exact')
   assert.equal(result.isCompacted, false)
   assert.deepEqual(result.messages, [...exactMessages, { content: 'second question', role: 'user' }])
+})
+
+test('rollback branches carry the latest completed assistant result instead of pre-response run state', () => {
+  const completedMessages: ModelMessage[] = [
+    { content: 'make image bigger', role: 'user' },
+    { content: 'Made it larger again: 64rem by 48rem.', role: 'assistant' },
+    { content: 'more', role: 'user' },
+  ]
+  const completedReplay = {
+    anchorUserMessageId: 'more-id',
+    branchId: 'old-branch',
+    contextFingerprint: 'context',
+    fidelity: 'exact' as const,
+    freshnessRevision: 0,
+    messages: encodeModelMessages(completedMessages),
+    modelId: 'model',
+    providerId: 'openai' as const,
+    runId: 'completed-run',
+    sourceRevision: 10,
+    updatedAt: 10,
+  }
+  const carried = carryCompletedReplaysAcrossBranch({
+    activeBranchId: 'rollback-branch',
+    messageIds: ['make-image-id', 'assistant-id', 'more-id'],
+    replay: completedReplay,
+    replays: { [getReplaySlotKey('openai', 'model')]: completedReplay },
+  })
+
+  assert.equal(carried.replay?.branchId, 'rollback-branch')
+  assert.equal(carried.replay?.runId, 'completed-run')
+  assert.deepEqual(carried.replays[getReplaySlotKey('openai', 'model')], carried.replay)
+
+  const document = createEmptyCanonicalHistory('conversation', 1)
+  document.activeBranchId = 'rollback-branch'
+  document.replay = carried.replay
+  document.replays = carried.replays
+  const result = projectCanonicalReplay({
+    document,
+    fallbackMessages: [],
+    messages: [
+      { content: 'make image bigger', id: 'make-image-id', role: 'user', timestamp: 1 },
+      { content: 'Made it larger again: 64rem by 48rem.', id: 'assistant-id', role: 'assistant', timestamp: 2 },
+      { content: 'more', id: 'more-id', role: 'user', timestamp: 3 },
+      { content: 'ty', id: 'next-id', role: 'user', timestamp: 4 },
+    ],
+    modelId: 'model',
+    providerId: 'openai',
+  })
+
+  assert.equal(result.fidelity, 'exact')
+  assert.match(JSON.stringify(result.messages), /64rem by 48rem/u)
 })
 
 test('same-run steer messages remain inside the replay prefix instead of being duplicated as a new turn', () => {

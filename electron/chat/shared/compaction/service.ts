@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import {
   calculateModelMessagesBudget,
+  resolveRetainedContextTokens,
   shouldCompactContext,
 } from './budget'
 import {
@@ -12,6 +13,7 @@ import {
   selectCompactionWindow,
 } from './window'
 import { buildCompactionProjection } from './projection'
+import { appendCodeModeReceiptsToSummary } from './codeModeReceipts'
 import { resolveProviderReasoningCapability, resolveReasoningRetention } from './reasoning'
 import { validateContinuationMarkdown } from './markdown'
 import { COMPACTION_MAX_OUTPUT_TOKENS } from './contracts'
@@ -67,6 +69,7 @@ function buildCompactionKey(
   boundaryIndex: number,
   sourceDigest: string,
   previousPacket: CompactionPacket | null,
+  retainedContextTokens: number,
 ) {
   return JSON.stringify([
     input.model,
@@ -75,7 +78,7 @@ function buildCompactionKey(
     boundaryIndex,
     sourceDigest,
     previousPacket?.packetId ?? null,
-    input.retainedTurnCount ?? null,
+    retainedContextTokens,
   ])
 }
 
@@ -87,13 +90,14 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
     toolSchemaTokens: input.toolSchemaTokens,
     triggerRatio: input.triggerRatio,
   })
+  const retainedContextTokens = resolveRetainedContextTokens(input.retainedContextTokens, budget)
   if (!input.force && !shouldCompactContext(budget)) return null
 
   const previousPacket = input.previousPacket ?? null
   const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens, {
     force: input.force,
     previousPacket,
-    retainedTurnCount: input.retainedTurnCount,
+    retainedContextTokens,
   })
   if (!window) return null
   if (input.signal?.aborted) return null
@@ -125,13 +129,18 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   if (!summary.valid) {
     throw new Error(`AI compaction returned invalid Markdown (${summary.reason}); no fallback summary was generated.`)
   }
+  const continuationMarkdown = appendCodeModeReceiptsToSummary(
+    summary.normalized,
+    window.evictedMessages,
+    previousPacket?.continuationMarkdown,
+  )
   const packet: LocalCompactionPacketV2 = {
     schema: 'tidecode.compaction_packet/v2',
     packetId: randomUUID(),
     parentPacketId: previousPacket?.packetId ?? null,
     sourceDigest,
     sourceMessageIds: window.sourceMessageIds,
-    continuationMarkdown: summary.normalized,
+    continuationMarkdown,
     reasoningRetention: {
       ...actualRetention,
       providerId: input.providerId?.trim() || actualRetention.providerId,
@@ -159,7 +168,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
     anchorMessages: window.anchorMessages,
     packet,
     tailMessages: window.tailMessages,
-    retainedTurnCount: input.retainedTurnCount,
+    retainedContextTokens,
   })
 
   return {
@@ -180,13 +189,14 @@ export async function compactModelMessages(input: CompactModelMessagesInput) {
     toolSchemaTokens: input.toolSchemaTokens,
     triggerRatio: input.triggerRatio,
   })
+  const retainedContextTokens = resolveRetainedContextTokens(input.retainedContextTokens, budget)
   if (!input.force && !shouldCompactContext(budget)) return null
 
   const previousPacket = input.previousPacket ?? null
   const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens, {
     force: input.force,
     previousPacket,
-    retainedTurnCount: input.retainedTurnCount,
+    retainedContextTokens,
   })
   if (!window) return null
   const sourceDigest = buildCompactionSourceDigest(
@@ -194,7 +204,7 @@ export async function compactModelMessages(input: CompactModelMessagesInput) {
     window.sourceEndIndex,
     window.sourceStartIndex,
   )
-  const key = buildCompactionKey(input, window.boundaryIndex, sourceDigest, previousPacket)
+  const key = buildCompactionKey(input, window.boundaryIndex, sourceDigest, previousPacket, retainedContextTokens)
   const existing = inFlightCompactions.get(key)
   if (existing) return existing
 

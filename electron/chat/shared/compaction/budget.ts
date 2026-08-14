@@ -100,6 +100,21 @@ export function calculateModelMessagesBudget(input: ModelMessagesBudgetInput) {
   })
 }
 
+export function resolveRetainedContextTokens(
+  requestedTokens: number | undefined,
+  budget: ContextBudget,
+) {
+  const requested = Math.max(
+    1,
+    Math.floor(requestedTokens ?? budget.targetHistoryTokens),
+  )
+  // The target-history budget already reserves generation capacity and static
+  // prompt overhead. Cap the user preference here so a small context window
+  // cannot produce a compacted projection that immediately remains over its
+  // own automatic-compaction trigger.
+  return Math.min(requested, budget.targetHistoryTokens)
+}
+
 export function shouldCompactContext(budget: ContextBudget) {
   // This is intentionally the same full-window comparison shown by the
   // context indicator. Whether there is enough complete history to reduce is

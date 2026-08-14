@@ -24,7 +24,7 @@ function sanitizeCompactedValue(value: unknown): unknown {
   const part = value as Record<string, unknown>
   // `image-reference` is an internal text-only compaction marker, not an AI
   // SDK content part. Real image/file parts from the live conversation are
-  // already provider-valid and must remain intact in the retained turns.
+  // already provider-valid and must remain intact in the retained context.
   if (part.type === 'image-reference') {
     return {
       text: typeof part.note === 'string' && part.note.trim().length > 0 ? part.note : COMPACTED_IMAGE_NOTE,

@@ -36,7 +36,11 @@ import {
   resolveAutomaticCompactionTrigger,
 } from './compaction/automatic'
 import { assertCompactionGate } from './compaction/gate'
-import { calculateModelMessagesBudget, shouldCompactContext } from './compaction/budget'
+import {
+  calculateModelMessagesBudget,
+  resolveRetainedContextTokens,
+  shouldCompactContext,
+} from './compaction/budget'
 import type { CompactionPacket } from './compaction/contracts'
 import { hasCompactionEligibleHistory } from './compaction/window'
 import {
@@ -315,10 +319,15 @@ export async function runToolEnabledChatStream(input: {
           toolSchemaTokens: promptContext.toolSchemaTokens,
           triggerRatio: liveContextCompaction.triggerPercent / 100,
         }
-        const compactionRequired = shouldCompactContext(calculateModelMessagesBudget(compactionBudgetInput)) &&
+        const compactionBudget = calculateModelMessagesBudget(compactionBudgetInput)
+        const retainedContextTokens = resolveRetainedContextTokens(
+          liveContextCompaction.retainedContextTokens,
+          compactionBudget,
+        )
+        const compactionRequired = shouldCompactContext(compactionBudget) &&
           hasCompactionEligibleHistory(compactionMessages, {
             previousPacket: latestCompactionPacket,
-            retainedTurnCount: liveContextCompaction.retainedTurnCount,
+            retainedContextTokens,
           })
 
         const compactionAttemptId = randomUUID()
@@ -367,7 +376,7 @@ export async function runToolEnabledChatStream(input: {
             toolSchemaTokens: promptContext.toolSchemaTokens,
             previousPacket: latestCompactionPacket,
             contextWindowTokens: liveContextCompaction.contextWindowTokens,
-            retainedTurnCount: liveContextCompaction.retainedTurnCount,
+            retainedContextTokens,
             triggerRatio: liveContextCompaction.triggerPercent / 100,
             signal: input.abortController.signal,
           })
@@ -479,11 +488,15 @@ export async function runToolEnabledChatStream(input: {
         toolSchemaTokens: promptContext.toolSchemaTokens,
         triggerRatio: finalContextCompaction.triggerPercent / 100,
       }
-      const finalCompactionRequired = shouldCompactContext(
-        calculateModelMessagesBudget(finalCompactionBudgetInput),
-      ) && hasCompactionEligibleHistory(finalCompactionMessages, {
+      const finalCompactionBudget = calculateModelMessagesBudget(finalCompactionBudgetInput)
+      const finalRetainedContextTokens = resolveRetainedContextTokens(
+        finalContextCompaction.retainedContextTokens,
+        finalCompactionBudget,
+      )
+      const finalCompactionRequired = shouldCompactContext(finalCompactionBudget) &&
+        hasCompactionEligibleHistory(finalCompactionMessages, {
         previousPacket: latestCompactionPacket,
-        retainedTurnCount: finalContextCompaction.retainedTurnCount,
+        retainedContextTokens: finalRetainedContextTokens,
       })
 
       if (finalCompactionRequired) {
@@ -531,7 +544,7 @@ export async function runToolEnabledChatStream(input: {
             toolSchemaTokens: promptContext.toolSchemaTokens,
             previousPacket: latestCompactionPacket,
             contextWindowTokens: finalContextCompaction.contextWindowTokens,
-            retainedTurnCount: finalContextCompaction.retainedTurnCount,
+            retainedContextTokens: finalRetainedContextTokens,
             triggerRatio: finalContextCompaction.triggerPercent / 100,
             signal: input.abortController.signal,
           })

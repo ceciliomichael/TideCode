@@ -41,7 +41,7 @@ function createTurnHistory(turnCount: number, oversizedFirstTurn = false): Model
 function createCompactionInput(
   messages: ModelMessage[],
   createStream?: CompactionStreamFactory,
-  retainedTurnCount?: number,
+  retainedContextTokens?: number,
 ) {
   return {
     createStream,
@@ -51,8 +51,23 @@ function createCompactionInput(
     reasoningEffort: 'low',
     systemPromptTokens: 100,
     toolSchemaTokens: 100,
-    ...(retainedTurnCount === undefined ? {} : { retainedTurnCount }),
+    ...(retainedContextTokens === undefined ? {} : { retainedContextTokens }),
   }
+}
+
+function createSizedTurnHistory(turnCount: number): ModelMessage[] {
+  const messages: ModelMessage[] = []
+  for (let turn = 1; turn <= turnCount; turn += 1) {
+    messages.push({
+      role: 'user',
+      content: `User request for turn ${turn}. ${'user-context '.repeat(400)}`,
+    })
+    messages.push({
+      role: 'assistant',
+      content: `Assistant response for turn ${turn}. ${'assistant-context '.repeat(400)}`,
+    })
+  }
+  return messages
 }
 
 function createTextStreamFactory(text: string, onCall?: () => void): CompactionStreamFactory {
@@ -120,31 +135,15 @@ test('compaction boundaries never split a tool-call and tool-result pair', () =>
   assert.equal(longWindow.sourceMessageIds.at(-1), `model:${longWindow.boundaryIndex - 1}`)
 })
 
-test('compaction retains exactly the latest four complete turns', () => {
-  const messages = [
-    ...createTurnHistory(6),
-  ]
+test('compaction retains a partial older turn when that fills the token target', () => {
+  const messages = createSizedTurnHistory(6)
 
-  const window = selectCompactionWindow(messages, 1_000)
+  const window = selectCompactionWindow(messages, 7_000, { retainedContextTokens: 7_000 })
 
   assert.ok(window)
-  assert.equal(window.evictedMessages.filter((message) => message.role === 'user').length, 2)
-  assert.equal(window.tailMessages.filter((message) => message.role === 'user').length, 4)
-  assert.equal(window.tailMessages[0]?.content, 'User request for turn 3.')
-  assert.equal(hasUnresolvedToolCall(window.tailMessages), false)
-})
-
-test('compaction retains the configured number of latest complete turns', () => {
-  const messages = [
-    ...createTurnHistory(6),
-  ]
-
-  const window = selectCompactionWindow(messages, 1_000, { retainedTurnCount: 2 })
-
-  assert.ok(window)
-  assert.equal(window.evictedMessages.filter((message) => message.role === 'user').length, 4)
-  assert.equal(window.tailMessages.filter((message) => message.role === 'user').length, 2)
-  assert.equal(window.tailMessages[0]?.content, 'User request for turn 5.')
+  assert.equal(window.evictedMessages.filter((message) => message.role === 'user').length, 3)
+  assert.equal(window.tailMessages.filter((message) => message.role === 'user').length, 3)
+  assert.match(String(window.tailMessages[0]?.content), /User request for turn 4/u)
   assert.equal(hasUnresolvedToolCall(window.tailMessages), false)
 })
 
@@ -161,7 +160,7 @@ test('forced compaction can summarize a short history while retaining its latest
   assert.equal(hasUnresolvedToolCall(window.tailMessages), false)
 })
 
-test('automatic compaction reports its start after the threshold and four-turn boundary are met', async () => {
+test('automatic compaction reports its start after the threshold and token boundary are met', async () => {
   const messages = [
     ...createTurnHistory(6, true),
   ] as ModelMessage[]
@@ -216,20 +215,21 @@ test('AI compaction produces a Markdown summary as the new history beginning', a
   assert.doesNotMatch(summary, /tidecode\.compaction_packet/u)
 })
 
-test('AI compaction applies the configured retention count to projected history', async () => {
+test('AI compaction applies the configured retention token target to projected history', async () => {
   const result = await compactModelMessages(createCompactionInput(
-    createTurnHistory(6),
+    createSizedTurnHistory(6),
     createTextStreamFactory('## Goal\n- Continue the requested workspace change.'),
-    2,
+    7_000,
   ))
 
   assert.ok(result)
-  assert.deepEqual(
-    result.projectedMessages
-      .filter((message) => message.role === 'user')
-      .map((message) => message.content),
-    ['User request for turn 5.', 'User request for turn 6.'],
-  )
+  const retainedUsers = result.projectedMessages
+    .filter((message) => message.role === 'user')
+    .map((message) => String(message.content))
+  assert.equal(retainedUsers.length, 3)
+  assert.match(retainedUsers[0] ?? '', /User request for turn 4/u)
+  assert.match(retainedUsers[1] ?? '', /User request for turn 5/u)
+  assert.match(retainedUsers[2] ?? '', /User request for turn 6/u)
 })
 
 test('invalid non-Markdown AI output fails compaction instead of using a fallback', async () => {
