@@ -6,6 +6,7 @@ const CHAT_MARKDOWN_STRIPPED_TAG_NAMES = [
   'embed',
   'form',
   'iframe',
+  'input',
   'object',
   'style',
   'template',
@@ -14,6 +15,11 @@ const CHAT_MARKDOWN_STRIPPED_TAG_NAMES = [
 
 function appendUniqueValues(values: readonly string[], additions: readonly string[]) {
   return [...new Set([...values, ...additions])]
+}
+
+function removeValues(values: readonly string[], removals: readonly string[]) {
+  const removalSet = new Set(removals)
+  return values.filter((value) => !removalSet.has(value))
 }
 
 /**
@@ -28,5 +34,8 @@ export const chatMarkdownSanitizeSchema: RehypeSanitizeOptions = {
     mark: [],
   },
   strip: appendUniqueValues(defaultSchema.strip ?? [], CHAT_MARKDOWN_STRIPPED_TAG_NAMES),
-  tagNames: appendUniqueValues(defaultSchema.tagNames ?? [], CHAT_MARKDOWN_EXTRA_TAG_NAMES),
+  tagNames: appendUniqueValues(
+    removeValues(defaultSchema.tagNames ?? [], CHAT_MARKDOWN_STRIPPED_TAG_NAMES),
+    CHAT_MARKDOWN_EXTRA_TAG_NAMES,
+  ),
 }

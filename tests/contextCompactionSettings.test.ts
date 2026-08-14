@@ -1,19 +1,20 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  capRetainedContextTokens,
   CONTEXT_COMPACTION_LIMITS,
-  CONTEXT_COMPACTION_RETAINED_TOKEN_OPTIONS,
   DEFAULT_CONTEXT_COMPACTION_SETTINGS,
+  MAX_CONTEXT_COMPACTION_RETAINED_TOKENS,
   mergeContextCompactionSettings,
   normalizeContextCompactionSettings,
 } from '../src/lib/contextCompactionSettings'
 
-test('context compaction settings use a configurable ten-thousand-token default', () => {
+test('context compaction settings use a fixed ten-thousand-token internal default', () => {
   assert.equal(DEFAULT_CONTEXT_COMPACTION_SETTINGS.retainedContextTokens, 10_000)
   assert.deepEqual(normalizeContextCompactionSettings({}), DEFAULT_CONTEXT_COMPACTION_SETTINGS)
 })
 
-test('context compaction settings clamp invalid retention tokens to the supported range', () => {
+test('context compaction settings clamp legacy retention tokens to the hard cap', () => {
   assert.equal(
     normalizeContextCompactionSettings({ retainedContextTokens: 0 }).retainedContextTokens,
     CONTEXT_COMPACTION_LIMITS.retainedContextTokens.minimum,
@@ -27,14 +28,11 @@ test('context compaction settings clamp invalid retention tokens to the supporte
   assert.equal(normalizeContextCompactionSettings({ retainedTurnCount: 4 }).retainedContextTokens, 10_000)
 })
 
-test('retention token presets stay within the normalized supported range', () => {
-  assert.deepEqual(
-    [...CONTEXT_COMPACTION_RETAINED_TOKEN_OPTIONS],
-    [4_000, 8_000, 10_000, 12_000, 16_000, 20_000],
-  )
-  for (const value of CONTEXT_COMPACTION_RETAINED_TOKEN_OPTIONS) {
-    assert.equal(normalizeContextCompactionSettings({ retainedContextTokens: value }).retainedContextTokens, value)
-  }
+test('retention targets stay within the hard cap', () => {
+  assert.equal(MAX_CONTEXT_COMPACTION_RETAINED_TOKENS, 20_000)
+  assert.equal(capRetainedContextTokens(999_999), MAX_CONTEXT_COMPACTION_RETAINED_TOKENS)
+  assert.equal(capRetainedContextTokens(Number.NaN), 10_000)
+  assert.equal(capRetainedContextTokens(2_600.4), 2_600)
 })
 
 test('merging a retention token update preserves and normalizes the other context settings', () => {

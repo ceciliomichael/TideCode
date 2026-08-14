@@ -6,7 +6,7 @@ import {
 import { validateContinuationMarkdown } from './markdown'
 import { sanitizeCompactionPacketV2 } from './sanitize'
 
-const MAX_PROJECTED_PACKET_CHARS = 48_000
+const MAX_PROJECTED_PACKET_CHARS = 128_000
 const MAX_PROJECTED_PACKET_TEXT_CHARS = 800
 const MAX_PROJECTED_PACKET_LIST_ITEMS = 24
 
@@ -22,6 +22,7 @@ type PacketListKey =
   | 'planState'
   | 'filesAndSymbols'
   | 'toolObservations'
+  | 'userPromptLedger'
   | 'nextActions'
   | 'omitted'
 
@@ -39,7 +40,7 @@ function boundTextList(values: readonly string[]) {
 function boundPacket(packet: LocalCompactionPacketV2): LocalCompactionPacketV2 {
   const bounded: LocalCompactionPacketV2 = {
     ...packet,
-    continuationMarkdown: packet.continuationMarkdown.slice(0, 32_000),
+    continuationMarkdown: packet.continuationMarkdown.slice(0, 96_000),
     constraints: boundTextList(packet.constraints),
     currentState: boundTextList(packet.currentState),
     completedWork: boundTextList(packet.completedWork),
@@ -72,11 +73,19 @@ function boundPacket(packet: LocalCompactionPacketV2): LocalCompactionPacketV2 {
       sourceMessageIds: observation.sourceMessageIds.slice(0, MAX_PROJECTED_PACKET_LIST_ITEMS),
       subject: clipText(observation.subject),
     })),
+    userPromptLedger: (packet.userPromptLedger ?? []).slice(-128).map((entry) => ({
+      ...entry,
+      prompt: entry.prompt.length <= 16_000
+        ? entry.prompt
+        : `${entry.prompt.slice(0, 15_999).trimEnd()}…`,
+      sourceMessageIds: entry.sourceMessageIds.slice(0, 8),
+    })),
     validation: boundTextList(packet.validation),
   }
 
   const dropOrder: PacketListKey[] = [
     'omitted',
+    'userPromptLedger',
     'planState',
     'toolObservations',
     'filesAndSymbols',

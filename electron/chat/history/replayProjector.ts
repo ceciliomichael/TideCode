@@ -1,6 +1,10 @@
 import type { ModelMessage } from 'ai'
 import type { Message } from '../../../src/types/chat'
-import { buildModelMessages, type BuildChatPromptOptions } from '../shared/messages'
+import {
+  buildModelMessages,
+  stripLegacyCompactionContainers,
+  type BuildChatPromptOptions,
+} from '../shared/messages'
 import {
   sanitizeCompactedModelMessages,
   sanitizeModelMessages,
@@ -225,17 +229,21 @@ export function projectCanonicalReplay(input: {
     : never
 }): ReplayProjectionResult {
   const finalizeProjection = (projection: ReplayProjectionResult): ReplayProjectionResult => {
+    const legacySafeProjection = {
+      ...projection,
+      messages: stripLegacyCompactionContainers(projection.messages),
+    }
     const shouldMigrateToolHistory = shouldMigrateCrossProviderHistoryToText({
       document: input.document,
       messages: input.messages,
       targetProviderId: input.providerId,
     })
-    if (!shouldMigrateToolHistory) return projection
+    if (!shouldMigrateToolHistory) return legacySafeProjection
 
     return {
-      ...projection,
+      ...legacySafeProjection,
       fidelity: 'migrated_legacy',
-      messages: migrateToolHistoryToUserInput(projection.messages),
+      messages: migrateToolHistoryToUserInput(legacySafeProjection.messages),
       replayRunId: null,
     }
   }
@@ -271,6 +279,21 @@ export function projectCanonicalReplay(input: {
 
   const anchorIndex = input.messages.findIndex((message) => message.id === replay.anchorUserMessageId)
   if (anchorIndex < 0) {
+    if (compactionProjection) {
+      try {
+        return finalizeProjection({
+          fidelity: compactionProjection.fidelity,
+          freshnessRevision: input.document.freshness.revision,
+          isCompacted: true,
+          messages: sanitizeCompactedModelMessages(decodeModelMessages(compactionProjection.messages)),
+          replayRunId: compactionProjection.runId,
+          compactionPacket: compactionProjection.compactionPacket,
+        })
+      } catch (error) {
+        console.warn('Canonical compaction projection could not be used for stale display history.', error)
+      }
+    }
+
     return finalizeProjection({
       fidelity: 'legacy',
       freshnessRevision: input.document.freshness.revision,

@@ -1,5 +1,9 @@
 import type { ModelMessage } from 'ai'
 import { normalizeAssistantMessageContent } from '../../../src/lib/chatMessageContent'
+import {
+  COMPRESSION_ACKNOWLEDGEMENT_TEXT,
+  parseCompressedHistoryMessage,
+} from '../../../src/lib/chatCompression'
 import { EXECUTION_MODE_CONTEXT_PATTERN } from '../../../src/lib/executionModeContext'
 import { getToolResultModelContent, parseStructuredToolResultContent } from '../../../src/lib/toolResultContent'
 import type { ChatMode, Message, AppTerminalExecutionMode } from '../../../src/types/chat'
@@ -383,6 +387,42 @@ function appendModelMessage(messages: ModelMessage[], nextMessage: ModelMessage)
   messages.push(nextMessage)
 }
 
+function buildLegacyCompactionHandoff(content: string): ModelMessage | null {
+  const parsed = parseCompressedHistoryMessage(content)
+  if (!parsed || parsed.summary.trim().length === 0) return null
+
+  return {
+    content: parsed.summary,
+    role: 'assistant',
+  }
+}
+
+export function stripLegacyCompactionContainers(messages: readonly ModelMessage[]) {
+  const projectedMessages: ModelMessage[] = []
+
+  for (const message of messages) {
+    if (message.role === 'user' && typeof message.content === 'string') {
+      const handoff = buildLegacyCompactionHandoff(message.content)
+      if (handoff) {
+        appendModelMessage(projectedMessages, handoff)
+        continue
+      }
+    }
+
+    if (
+      message.role === 'assistant' &&
+      typeof message.content === 'string' &&
+      message.content.trim() === COMPRESSION_ACKNOWLEDGEMENT_TEXT
+    ) {
+      continue
+    }
+
+    appendModelMessage(projectedMessages, message)
+  }
+
+  return projectedMessages
+}
+
 function toModelMessage(
   message: Message,
   validToolCallIds: Set<string>,
@@ -414,6 +454,15 @@ function toModelMessage(
   }
 
   return null
+}
+
+function toLegacyCompactionHandoff(message: Message): ModelMessage | null {
+  if (message.role !== 'user' || typeof message.content !== 'string') return null
+  return buildLegacyCompactionHandoff(message.content)
+}
+
+function isLegacyCompactionAcknowledgement(message: Message) {
+  return message.role === 'assistant' && message.content.trim() === COMPRESSION_ACKNOWLEDGEMENT_TEXT
 }
 
 export function buildChatSystemPrompt(chatMode: ChatMode, workspaceRootPath: string, options?: BuildChatPromptOptions) {
@@ -454,6 +503,16 @@ export function buildModelMessages(
   }
 
   for (const message of inputMessages) {
+    const legacyCompactionHandoff = toLegacyCompactionHandoff(message)
+    if (legacyCompactionHandoff) {
+      appendModelMessage(messages, legacyCompactionHandoff)
+      continue
+    }
+
+    if (isLegacyCompactionAcknowledgement(message)) {
+      continue
+    }
+
     const modelMessage = toModelMessage(message, validToolCallIds, canonicalToolCalls, options)
     if (!modelMessage) {
       continue
@@ -462,7 +521,8 @@ export function buildModelMessages(
     appendModelMessage(messages, modelMessage)
   }
 
+  const legacySafeMessages = stripLegacyCompactionContainers(messages)
   return options.includeExecutionModeContext
-    ? ensureCurrentExecutionModeContext(messages, options.terminalExecutionMode)
-    : messages
+    ? ensureCurrentExecutionModeContext(legacySafeMessages, options.terminalExecutionMode)
+    : legacySafeMessages
 }

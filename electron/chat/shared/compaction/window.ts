@@ -6,7 +6,10 @@ import type {
   CompactionWindow,
 } from './contracts'
 import { buildContinuationMessage, isCompactionContinuationMessage } from './markdown'
-import { DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS } from '../../../../src/lib/contextCompactionSettings'
+import {
+  capRetainedContextTokens,
+  DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS,
+} from '../../../../src/lib/contextCompactionSettings'
 import {
   projectRetainedMessagesForContext,
   selectLatestContextByTokens,
@@ -129,9 +132,8 @@ export function hasCompactionEligibleHistory(
   options?: CompactionWindowSelectionOptions,
 ) {
   const sourceStartIndex = resolveCompactionSourceStartIndex(messages, options?.previousPacket)
-  const retainedContextTokens = Math.max(
-    1,
-    Math.floor(options?.retainedContextTokens ?? DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS),
+  const retainedContextTokens = capRetainedContextTokens(
+    options?.retainedContextTokens ?? DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS,
   )
   const selection = selectLatestContextByTokens(
     messages.slice(sourceStartIndex),
@@ -149,10 +151,7 @@ export function selectCompactionWindow(
   if (messages.length < 3 || hasUnresolvedToolCall(messages)) return null
 
   const sourceStartIndex = resolveCompactionSourceStartIndex(messages, options?.previousPacket)
-  const retainedContextTokens = Math.max(
-    1,
-    Math.floor(options?.retainedContextTokens ?? targetHistoryTokens),
-  )
+  const retainedContextTokens = capRetainedContextTokens(options?.retainedContextTokens ?? targetHistoryTokens)
   const selection = selectLatestContextByTokens(
     messages.slice(sourceStartIndex),
     retainedContextTokens,

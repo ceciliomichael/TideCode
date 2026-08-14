@@ -10,6 +10,10 @@ import {
 } from './reasoning'
 import { buildContinuationMarkdownFromPacket } from './markdown'
 import { sanitizeCompactionPacketV2 } from './sanitize'
+import {
+  extractUserPromptLedgerEntries,
+  mergeUserPromptLedger,
+} from './userPromptLedger'
 
 function compactText(value: string, maxLength = 1_500) {
   const normalized = stripExecutionModeContext(value).replace(/\s+/gu, ' ').trim()
@@ -155,6 +159,10 @@ export function buildFallbackCompactionPacket(input: {
     validation: extractValidation(input.messages),
     planState: previous?.planState ?? [],
     toolObservations: extractToolObservations(input.messages, input.sourceStartIndex ?? 0),
+    userPromptLedger: mergeUserPromptLedger(
+      previous?.userPromptLedger ?? [],
+      extractUserPromptLedgerEntries(input.messages, input.sourceStartIndex ?? 0),
+    ),
     nextActions: previous?.nextActions ?? [],
     omitted: [
       'Model summarization was unavailable; unsupported private reasoning and unverified work were not reconstructed.',

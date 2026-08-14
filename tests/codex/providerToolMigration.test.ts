@@ -7,6 +7,10 @@ import { encodeModelMessages, encodeReplayValue } from '../../electron/chat/hist
 import { shouldMigrateCrossProviderHistoryToText } from '../../electron/chat/history/providerSwitch'
 import { migrateToolHistoryToUserInput } from '../../electron/chat/history/providerToolMigration'
 import { buildFallbackCompactionPacket } from '../../electron/chat/shared/compaction/fallback'
+import {
+  buildCompressedHistoryAcknowledgementMessage,
+  buildCompressedHistoryMessage,
+} from '../../src/lib/chatCompression'
 
 test('detects a prior non-Codex provider from canonical run history', () => {
   const document = createEmptyCanonicalHistory('conversation', 1)
@@ -109,6 +113,33 @@ test('projectCanonicalReplay applies the migration when Codex follows another pr
   assert.match(JSON.stringify(result.messages), /old result/u)
 })
 
+test('projectCanonicalReplay strips legacy compressed-history containers from provider context', () => {
+  const summary = '## Current state\n- The legacy handoff is still useful.'
+  const compressedContent = buildCompressedHistoryMessage(summary)
+  const acknowledgement = buildCompressedHistoryAcknowledgementMessage('ack', 2)
+  const displayMessages = [
+    { content: compressedContent, id: 'compressed', role: 'user' as const, timestamp: 1 },
+    acknowledgement,
+    { content: 'Continue from the handoff.', id: 'current', role: 'user' as const, timestamp: 3 },
+  ]
+  const result = projectCanonicalReplay({
+    document: createEmptyCanonicalHistory('conversation', 1),
+    fallbackMessages: [
+      { content: compressedContent, role: 'user' },
+      { content: acknowledgement.content, role: 'assistant' },
+      { content: 'Continue from the handoff.', role: 'user' },
+    ] as ModelMessage[],
+    messages: displayMessages,
+    modelId: 'model',
+    providerId: 'openai',
+  })
+
+  assert.deepEqual(result.messages, [
+    { content: summary, role: 'assistant' },
+    { content: 'Continue from the handoff.', role: 'user' },
+  ])
+})
+
 test('projectCanonicalReplay keeps the compacted window when switching from Codex to Mistral', () => {
   const document = createEmptyCanonicalHistory('conversation', 1)
   const packet = buildFallbackCompactionPacket({
@@ -170,4 +201,46 @@ test('projectCanonicalReplay keeps the compacted window when switching from Code
   assert.match(JSON.stringify(result.messages), /retained result/u)
   assert.ok(result.messages.some((message) => String(message.content).includes('The next request after compaction.')))
   assert.doesNotMatch(JSON.stringify(result.messages), /A very large old tool result/u)
+})
+
+test('projectCanonicalReplay does not resurrect raw history when another instance compacted a newer anchor', () => {
+  const document = createEmptyCanonicalHistory('conversation', 1)
+  const packet = buildFallbackCompactionPacket({
+    messages: [{ content: 'The newer instance compacted this history.', role: 'user' }],
+    modelId: 'model',
+    providerId: 'openai',
+    sourceDigest: 'stale-anchor-digest',
+    sourceMessageIds: ['model:0'],
+  })
+  document.events.push({
+    anchorUserMessageId: 'newer-user',
+    branchId: 'main',
+    compactionId: 'newer-compaction',
+    createdAt: 2,
+    eventId: 'newer-event',
+    modelId: 'model',
+    packet: encodeReplayValue(packet),
+    projectedMessages: encodeModelMessages([
+      { content: packet.continuationMarkdown, role: 'assistant' },
+    ]),
+    providerId: 'openai',
+    revision: 1,
+    runId: null,
+    sourceDigest: 'stale-anchor-digest',
+    sourceMessageIds: ['model:0'],
+    type: 'compaction_committed',
+    usedFallback: true,
+  })
+
+  const result = projectCanonicalReplay({
+    document,
+    fallbackMessages: [{ content: 'Raw history that must stay compacted.', role: 'user' }],
+    messages: [{ content: 'Stale display history.', id: 'old-user', role: 'user', timestamp: 1 }],
+    modelId: 'model',
+    providerId: 'openai',
+  })
+
+  assert.equal(result.isCompacted, true)
+  assert.match(JSON.stringify(result.messages), /newer instance compacted/u)
+  assert.doesNotMatch(JSON.stringify(result.messages), /Raw history that must stay compacted/u)
 })

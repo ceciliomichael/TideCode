@@ -243,7 +243,7 @@ test('the projected continuation preserves the AI-generated Markdown across comp
   assert.equal(merged.continuationMarkdown, generatedMarkdown)
 })
 
-test('projection emits one Markdown continuation and keeps a complete tool interaction in the semantic tail', () => {
+test('projection emits one Markdown continuation and removes raw tool history from the semantic tail', () => {
   const packet = buildFallbackCompactionPacket({
     messages: [{ role: 'user', content: 'Inspect the workspace.' }],
     modelId: 'test-model',
@@ -265,7 +265,9 @@ test('projection emits one Markdown continuation and keeps a complete tool inter
   })
 
   assert.equal(projected.filter((message) => message.role === 'assistant' && message.content === packet.continuationMarkdown).length, 1)
-  assert.deepEqual(projected.slice(-3), [toolCall, toolResult, { role: 'assistant', content: 'The result is ready.' }])
+  assert.deepEqual(projected.slice(-1), [{ role: 'assistant', content: 'The result is ready.' }])
+  assert.equal(projected.some((message) => message.role === 'tool'), false)
+  assert.doesNotMatch(JSON.stringify(projected), /tool-call|tool-result/u)
   assert.equal(projected.some((message) => typeof message.content === 'string' && message.content.includes('tidecode.compaction_packet/v2')), false)
 })
 

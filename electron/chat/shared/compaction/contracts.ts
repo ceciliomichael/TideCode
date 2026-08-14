@@ -47,6 +47,13 @@ const reasoningContinuitySchema = z.object({
   sourceMessageIds: z.array(z.string().trim().min(1).max(200)).max(32),
 }).strict()
 
+const userPromptLedgerEntrySchema = z.object({
+  prompt: z.string().trim().min(1).max(16_000),
+  sourceMessageIds: z.array(z.string().trim().min(1).max(200)).max(8),
+  status: z.enum(['completed', 'open', 'superseded', 'aborted', 'unknown']),
+  truncated: z.boolean(),
+}).strict()
+
 const sourceRangeSchema = z.object({
   startIndex: z.number().int().min(0),
   endIndex: z.number().int().min(1),
@@ -58,7 +65,7 @@ export const localCompactionPacketV2Schema = z.object({
   parentPacketId: z.string().trim().max(128).nullable(),
   sourceDigest: z.string().trim().min(1).max(128),
   sourceMessageIds: z.array(z.string().trim().min(1).max(200)).max(512),
-  continuationMarkdown: z.string().trim().min(1).max(32_000),
+  continuationMarkdown: z.string().trim().min(1).max(96_000),
   reasoningRetention: reasoningRetentionSchema,
   reasoningContinuity: z.array(reasoningContinuitySchema).max(32),
   goal: boundedTextList,
@@ -72,6 +79,7 @@ export const localCompactionPacketV2Schema = z.object({
   validation: boundedTextList,
   planState: boundedTextList,
   toolObservations: z.array(toolObservationSchema).max(96),
+  userPromptLedger: z.array(userPromptLedgerEntrySchema).max(128).default([]),
   nextActions: boundedTextList,
   omitted: boundedTextList,
   sourceRange: sourceRangeSchema.optional(),
@@ -79,6 +87,7 @@ export const localCompactionPacketV2Schema = z.object({
 
 export type LocalCompactionPacketV2 = z.infer<typeof localCompactionPacketV2Schema>
 export type CompactionPacket = LocalCompactionPacketV2
+export type UserPromptLedgerEntry = z.infer<typeof userPromptLedgerEntrySchema>
 
 export type ReasoningRetentionMode = LocalCompactionPacketV2['reasoningRetention']['mode']
 

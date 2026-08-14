@@ -3,7 +3,10 @@ import {
   approximateTokenCount,
   estimateModelMessageContextUsage,
 } from '../../../../src/lib/contextUsage'
-import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../../../src/lib/contextCompactionSettings'
+import {
+  capRetainedContextTokens,
+  DEFAULT_CONTEXT_COMPACTION_SETTINGS,
+} from '../../../../src/lib/contextCompactionSettings'
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = DEFAULT_CONTEXT_COMPACTION_SETTINGS.contextWindowTokens
 export const DEFAULT_COMPACTION_TRIGGER_RATIO = DEFAULT_CONTEXT_COMPACTION_SETTINGS.triggerPercent / 100
@@ -104,12 +107,9 @@ export function resolveRetainedContextTokens(
   requestedTokens: number | undefined,
   budget: ContextBudget,
 ) {
-  const requested = Math.max(
-    1,
-    Math.floor(requestedTokens ?? budget.targetHistoryTokens),
-  )
+  const requested = capRetainedContextTokens(requestedTokens ?? budget.targetHistoryTokens)
   // The target-history budget already reserves generation capacity and static
-  // prompt overhead. Cap the user preference here so a small context window
+  // prompt overhead. Cap the retention target here so a small context window
   // cannot produce a compacted projection that immediately remains over its
   // own automatic-compaction trigger.
   return Math.min(requested, budget.targetHistoryTokens)

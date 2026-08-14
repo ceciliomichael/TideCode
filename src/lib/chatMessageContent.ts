@@ -47,6 +47,19 @@ function looksLikeRawToolArgumentFragment(line: string) {
   )
 }
 
+function isMarkdownCodeFenceLine(line: string) {
+  const trimmedLine = line.trimStart()
+  if (trimmedLine.startsWith('>')) {
+    return /^>\s*`{3,}[^`\r\n]*\s*$/u.test(trimmedLine)
+  }
+
+  return /^`{3,}[^`\r\n]*\s*$/u.test(trimmedLine)
+}
+
+function countMarkdownCodeFenceLines(input: string) {
+  return input.split('\n').filter(isMarkdownCodeFenceLine).length
+}
+
 export function stripInternalToolCallLeakage(input: string) {
   const normalizedInput = input.replace(/\r\n/g, '\n')
   const lines = normalizedInput.split('\n')
@@ -77,14 +90,13 @@ export function normalizeMarkdownText(input: string) {
     .replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n')
     .replace(/(?<=\w)([.!?])(?=[A-Z])/g, '$1\n\n')
 
-  const fenceMatches = normalized.match(/```/g)
-  const tripleFenceCount = fenceMatches?.length ?? 0
+  const codeFenceLineCount = countMarkdownCodeFenceLines(normalized)
 
-  if (tripleFenceCount % 2 === 1 && /``\s*$/.test(normalized) && !/```\s*$/.test(normalized)) {
+  if (codeFenceLineCount % 2 === 1 && /``\s*$/.test(normalized) && !/```\s*$/.test(normalized)) {
     return normalized.replace(/``(\s*)$/, '```$1')
   }
 
-  if (tripleFenceCount % 2 === 1 && !/```\s*$/.test(normalized)) {
+  if (codeFenceLineCount % 2 === 1 && !/```\s*$/.test(normalized)) {
     return `${normalized}\n\`\`\``
   }
 

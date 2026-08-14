@@ -51,6 +51,13 @@ test('chat markdown strips streamed style, script, event, and inline-style injec
   assert.doesNotMatch(markup, /<style|<script|display:\s*none|position:\s*fixed|onclick|alert\(/iu)
 })
 
+test('chat markdown does not render interactive input controls from compacted text', () => {
+  const markup = renderMarkdown('The summary ended with an accidental <input type="text" /> control.')
+
+  assert.match(markup, /The summary ended with an accidental/u)
+  assert.doesNotMatch(markup, /<input/u)
+})
+
 test('chat markdown keeps the intentionally supported safe formatting tags', () => {
   const markup = renderMarkdown('<details><summary>Sources</summary><mark>Important</mark> ^2^ ~n~</details>')
 
