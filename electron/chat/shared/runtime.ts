@@ -598,6 +598,7 @@ export async function runToolEnabledChatStream(input: {
 
       await safelyPersistHistory(() => recordRunCompleted({
         anchorUserMessageId: replayAnchorUserMessageId,
+        compactionId: latestCompactionPacket?.packetId ?? null,
         contextFingerprint,
         conversationId,
         freshnessRevision: finalDocument.freshness.revision || freshnessRevision,

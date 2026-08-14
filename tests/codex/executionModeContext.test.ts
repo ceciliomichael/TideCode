@@ -9,6 +9,10 @@ import {
   ensureCurrentExecutionModeContext,
 } from '../../electron/chat/shared/messages'
 import { stripExecutionModeContext } from '../../src/lib/executionModeContext'
+import {
+  buildCompressedHistoryAcknowledgementMessage,
+  buildCompressedHistoryMessage,
+} from '../../src/lib/chatCompression'
 import { createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
 import type { Message } from '../../src/types/chat'
 
@@ -105,6 +109,33 @@ test('execution mode changes do not alter the system prompt or tool context fing
   assert.equal(sandboxManifest.systemHash, fullAccessManifest.systemHash)
   assert.equal(sandboxManifest.toolsHash, fullAccessManifest.toolsHash)
   assert.equal(sandboxManifest.fingerprint, fullAccessManifest.fingerprint)
+})
+
+test('legacy compressed history sends only the handoff while preserving the UI container source', () => {
+  const summary = '## Current state\n- The previous workspace task is complete.'
+  const messages: Message[] = [
+    {
+      content: buildCompressedHistoryMessage(summary),
+      id: 'compressed-history',
+      role: 'user',
+      timestamp: 1,
+    },
+    buildCompressedHistoryAcknowledgementMessage('compression-ack', 2),
+    {
+      content: 'What should we do next?',
+      id: 'current-user',
+      role: 'user',
+      timestamp: 3,
+    },
+  ]
+
+  const modelMessages = buildModelMessages(messages, { includeExecutionModeContext: false })
+
+  assert.deepEqual(modelMessages, [
+    { content: summary, role: 'assistant' },
+    { content: 'What should we do next?', role: 'user' },
+  ])
+  assert.match(messages[0]?.content ?? '', /<tidecode:compressed_history>/u)
 })
 
 test('execution mode context is removed from compacted text', () => {

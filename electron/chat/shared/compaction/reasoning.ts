@@ -4,6 +4,7 @@ import { sha256, stableStringify } from '../../cache/canonicalization'
 import { stripExecutionModeContext } from '../../../../src/lib/executionModeContext'
 import { buildContinuationMarkdownFromPacket } from './markdown'
 import type { LocalCompactionPacketV2, ReasoningRetentionMode } from './contracts'
+import { mergeUserPromptLedger } from './userPromptLedger'
 
 export type ProviderReasoningCapabilityMode = 'exact' | 'provider_native' | 'visible' | 'none'
 
@@ -425,6 +426,7 @@ export function mergeCompactionPacketState(input: {
     planState: input.current.planState,
     reasoningContinuity: mergeReasoningContinuity(previous?.reasoningContinuity ?? [], input.current.reasoningContinuity),
     toolObservations: mergeObservations(previous?.toolObservations ?? [], input.current.toolObservations),
+    userPromptLedger: mergeUserPromptLedger(previous?.userPromptLedger ?? [], input.current.userPromptLedger ?? []),
     validation: mergeTextList(previous?.validation ?? [], input.current.validation),
   }
 

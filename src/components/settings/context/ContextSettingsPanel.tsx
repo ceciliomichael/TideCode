@@ -3,7 +3,6 @@ import { DropdownField } from '../../ui/DropdownField'
 import type { AppSettings } from '../../../types/chat'
 import {
   CONTEXT_COMPACTION_LIMITS,
-  CONTEXT_COMPACTION_RETAINED_TOKEN_OPTIONS,
   mergeContextCompactionSettings,
   type ContextCompactionSettings,
 } from '../../../lib/contextCompactionSettings'
@@ -21,23 +20,6 @@ const CONTEXT_WINDOW_OPTIONS = [
   { label: '1,000,000 tokens', value: '1000000' },
   { label: '2,000,000 tokens', value: '2000000' },
 ] as const
-
-const RETAINED_CONTEXT_OPTIONS = CONTEXT_COMPACTION_RETAINED_TOKEN_OPTIONS.map((value) => ({
-  label: `${value.toLocaleString()} tokens`,
-  value: String(value),
-}))
-
-function getRetainedContextOptions(currentValue: number) {
-  const currentValueString = String(currentValue)
-  if (RETAINED_CONTEXT_OPTIONS.some((option) => option.value === currentValueString)) {
-    return RETAINED_CONTEXT_OPTIONS
-  }
-
-  return [
-    { label: `${currentValue.toLocaleString()} tokens (current)`, value: currentValueString },
-    ...RETAINED_CONTEXT_OPTIONS,
-  ]
-}
 
 function formatPercent(value: number) {
   return `${value}%`
@@ -77,26 +59,6 @@ export function ContextSettingsSections({ isLoading, onUpdateSettings, settings 
               disabled={isLoading}
               className="w-full"
               onChange={(value) => updateContextSettings({ contextWindowTokens: Number(value) })}
-            />
-          </div>
-        </SettingsRow>
-
-        <SettingsRow
-          title="Latest context to keep"
-          description="Keep approximately this many newest tokens alongside the new compaction summary. Recent user messages and images stay complete."
-        >
-          <div className="w-full md:w-[240px]">
-            <label htmlFor="compaction-retained-context" className="sr-only">
-              Latest context tokens to keep
-            </label>
-            <DropdownField
-              id="compaction-retained-context"
-              aria-label="Latest context tokens to keep"
-              className="w-full"
-              disabled={isLoading}
-              options={getRetainedContextOptions(settings.retainedContextTokens)}
-              value={String(settings.retainedContextTokens)}
-              onChange={(value) => updateContextSettings({ retainedContextTokens: Number(value) })}
             />
           </div>
         </SettingsRow>

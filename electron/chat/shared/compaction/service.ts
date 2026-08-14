@@ -17,6 +17,14 @@ import { appendCodeModeReceiptsToSummary } from './codeModeReceipts'
 import { resolveProviderReasoningCapability, resolveReasoningRetention } from './reasoning'
 import { validateContinuationMarkdown } from './markdown'
 import { COMPACTION_MAX_OUTPUT_TOKENS } from './contracts'
+import { estimateModelMessageContextUsage } from '../../../../src/lib/contextUsage'
+import {
+  appendUserPromptLedgerToSummary,
+  extractUserPromptLedgerEntries,
+  extractHistoricalUserPromptLedgerEntries,
+  mergeUserPromptLedger,
+  selectNewestUserPromptLedger,
+} from './userPromptLedger'
 import type {
   CompactionPacket,
   CompactModelMessagesInput,
@@ -129,18 +137,37 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   if (!summary.valid) {
     throw new Error(`AI compaction returned invalid Markdown (${summary.reason}); no fallback summary was generated.`)
   }
-  const continuationMarkdown = appendCodeModeReceiptsToSummary(
+  const summaryWithReceipts = appendCodeModeReceiptsToSummary(
     summary.normalized,
     window.evictedMessages,
     previousPacket?.continuationMarkdown,
   )
+  const allUserPromptLedger = mergeUserPromptLedger(
+    previousPacket?.userPromptLedger ?? [],
+    mergeUserPromptLedger(
+      extractUserPromptLedgerEntries(window.evictedMessages, window.sourceStartIndex),
+      extractHistoricalUserPromptLedgerEntries(window.tailMessages, window.sourceEndIndex),
+    ),
+  )
+  const summaryTokens = estimateModelMessageContextUsage([{
+    content: summaryWithReceipts,
+    role: 'assistant',
+  }]).totalTokens
+  const tailReserveTokens = Math.max(1, Math.floor(retainedContextTokens * 0.3))
+  const ledgerBudget = Math.max(0, retainedContextTokens - summaryTokens - tailReserveTokens)
+  const userPromptLedger = selectNewestUserPromptLedger(allUserPromptLedger, ledgerBudget)
+  const continuationCandidate = appendUserPromptLedgerToSummary(summaryWithReceipts, userPromptLedger)
+  const continuation = validateContinuationMarkdown(continuationCandidate)
+  if (!continuation.valid) {
+    throw new Error(`Compaction handoff became invalid after adding the user prompt ledger (${continuation.reason}).`)
+  }
   const packet: LocalCompactionPacketV2 = {
     schema: 'tidecode.compaction_packet/v2',
     packetId: randomUUID(),
     parentPacketId: previousPacket?.packetId ?? null,
     sourceDigest,
     sourceMessageIds: window.sourceMessageIds,
-    continuationMarkdown,
+    continuationMarkdown: continuation.normalized,
     reasoningRetention: {
       ...actualRetention,
       providerId: input.providerId?.trim() || actualRetention.providerId,
@@ -157,6 +184,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
     validation: [],
     planState: [],
     toolObservations: [],
+    userPromptLedger,
     nextActions: [],
     omitted: [],
     sourceRange: {

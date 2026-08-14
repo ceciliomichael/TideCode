@@ -210,9 +210,54 @@ test('AI compaction produces a Markdown summary as the new history beginning', a
   const result = await compactModelMessages(createCompactionInput(messages, createTextStreamFactory(summary)))
 
   assert.ok(result)
-  assert.equal(result.packet.continuationMarkdown, summary)
-  assert.deepEqual(result.projectedMessages[0], { role: 'assistant', content: summary })
-  assert.doesNotMatch(summary, /tidecode\.compaction_packet/u)
+  assert.match(result.packet.continuationMarkdown, /^## Goal\n- Continue the requested workspace change\./u)
+  assert.match(result.packet.continuationMarkdown, /## Prior user prompts/u)
+  assert.deepEqual(result.projectedMessages[0], { role: 'assistant', content: result.packet.continuationMarkdown })
+  assert.doesNotMatch(result.packet.continuationMarkdown, /tidecode\.compaction_packet/u)
+})
+
+test('repeated compaction carries the prior handoff and ledger across the new barrier', async () => {
+  const first = await compactModelMessages(createCompactionInput(
+    createConversationMessages(),
+    createTextStreamFactory('## Completed work\n- The first barrier was created.'),
+    7_000,
+  ))
+
+  assert.ok(first)
+  assert.ok(first.packet.userPromptLedger.some((entry) => entry.prompt.includes('Implement the requested workspace change.')))
+
+  const secondMessages: ModelMessage[] = [
+    ...first.projectedMessages,
+    { role: 'user', content: 'Continue with the post-barrier verification.' },
+    { role: 'assistant', content: 'The post-barrier verification is complete.' },
+    { role: 'user', content: 'Record the final state.' },
+    { role: 'assistant', content: 'The final state is recorded.' },
+  ]
+  let secondCompactionPrompt = ''
+  const secondStream: CompactionStreamFactory = async ({ messages }) => ({
+    fullStream: (async function* () {
+      secondCompactionPrompt = String(messages[0]?.content ?? '')
+      yield { type: 'text-delta', text: '## Current state\n- The second barrier was created.' }
+    })(),
+  })
+  const second = await compactModelMessages({
+    ...createCompactionInput(
+      secondMessages,
+      secondStream,
+      7_000,
+    ),
+    previousPacket: first.packet,
+  })
+
+  assert.ok(second)
+  assert.equal(second.packet.parentPacketId, first.packet.packetId)
+  assert.match(second.packet.continuationMarkdown, /The second barrier was created/u)
+  assert.match(second.packet.continuationMarkdown, /Implement the requested workspace change\./u)
+  assert.match(second.packet.continuationMarkdown, /Continue with the post-barrier verification\./u)
+  assert.match(secondCompactionPrompt, /The first barrier was created\./u)
+  assert.match(secondCompactionPrompt, /Continue with the post-barrier verification\./u)
+  assert.doesNotMatch(secondCompactionPrompt, /I am inspecting the relevant files\./u)
+  assert.equal(second.projectedMessages.some((message) => message.role === 'tool'), false)
 })
 
 test('AI compaction applies the configured retention token target to projected history', async () => {
@@ -226,10 +271,12 @@ test('AI compaction applies the configured retention token target to projected h
   const retainedUsers = result.projectedMessages
     .filter((message) => message.role === 'user')
     .map((message) => String(message.content))
-  assert.equal(retainedUsers.length, 3)
-  assert.match(retainedUsers[0] ?? '', /User request for turn 4/u)
-  assert.match(retainedUsers[1] ?? '', /User request for turn 5/u)
-  assert.match(retainedUsers[2] ?? '', /User request for turn 6/u)
+  assert.equal(retainedUsers.length, 1)
+  assert.match(retainedUsers[0] ?? '', /User request for turn 6/u)
+  assert.deepEqual(
+    result.packet.userPromptLedger.map((entry) => entry.prompt.match(/turn \d+/u)?.[0]),
+    ['turn 3', 'turn 4', 'turn 5'],
+  )
 })
 
 test('invalid non-Markdown AI output fails compaction instead of using a fallback', async () => {
@@ -274,8 +321,9 @@ test('valid AI Markdown is accepted and malformed AI output is rejected', async 
     createTextStreamFactory(generatedMarkdown),
   ))
   assert.ok(accepted)
-  assert.equal(accepted.packet.continuationMarkdown, generatedMarkdown)
-  assert.equal(accepted.projectedMessages[0]?.content, generatedMarkdown)
+  assert.ok(accepted.packet.continuationMarkdown.startsWith(generatedMarkdown))
+  assert.match(accepted.packet.continuationMarkdown, /## Prior user prompts/u)
+  assert.equal(accepted.projectedMessages[0]?.content, accepted.packet.continuationMarkdown)
 
   await assert.rejects(
     compactModelMessages(createCompactionInput(

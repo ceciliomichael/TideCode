@@ -1,19 +1,12 @@
 export interface ContextCompactionSettings {
   contextWindowTokens: number
+  /** Internal compatibility value; retention is no longer user-configurable. */
   retainedContextTokens: number
   triggerPercent: number
 }
 
 export const DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS = 10_000
-
-export const CONTEXT_COMPACTION_RETAINED_TOKEN_OPTIONS = [
-  4_000,
-  8_000,
-  DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS,
-  12_000,
-  16_000,
-  20_000,
-] as const
+export const MAX_CONTEXT_COMPACTION_RETAINED_TOKENS = 20_000
 
 export const DEFAULT_CONTEXT_COMPACTION_SETTINGS: ContextCompactionSettings = {
   contextWindowTokens: 200_000,
@@ -27,7 +20,7 @@ export const CONTEXT_COMPACTION_LIMITS = {
     minimum: 16_000,
   },
   retainedContextTokens: {
-    maximum: 20_000,
+    maximum: MAX_CONTEXT_COMPACTION_RETAINED_TOKENS,
     minimum: 4_000,
   },
   triggerPercent: {
@@ -42,6 +35,11 @@ function clampInteger(value: unknown, minimum: number, maximum: number, fallback
   }
 
   return Math.min(maximum, Math.max(minimum, Math.round(value)))
+}
+
+export function capRetainedContextTokens(value: number | undefined, fallback = DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS) {
+  const candidate = typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : fallback
+  return Math.min(MAX_CONTEXT_COMPACTION_RETAINED_TOKENS, Math.max(1, candidate))
 }
 
 export function normalizeContextCompactionSettings(

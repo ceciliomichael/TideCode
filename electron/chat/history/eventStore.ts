@@ -29,6 +29,8 @@ import {
   repairCompactionPacketContinuation,
   validateContinuationMarkdown,
 } from '../shared/compaction/markdown'
+import { withFileLock } from './fileLock'
+import { shouldPreserveNewerCompactionReplay } from './replayWritePolicy'
 
 const CANONICAL_DIRECTORY_NAME = 'canonical-history'
 const updateQueues = new Map<string, Promise<void>>()
@@ -149,13 +151,16 @@ async function updateDocument(
   await previous
   try {
     await ensureCanonicalDirectory()
-    const document = await readDocumentUnsafe(conversationId)
-    const shouldWrite = await updater(document)
-    if (shouldWrite === false) {
+    const historyPath = getCanonicalHistoryPath(conversationId)
+    return await withFileLock(`${historyPath}.lock`, async () => {
+      const document = await readDocumentUnsafe(conversationId)
+      const shouldWrite = await updater(document)
+      if (shouldWrite === false) {
+        return document
+      }
+      await writeAtomic(historyPath, JSON.stringify(document, null, 2))
       return document
-    }
-    await writeAtomic(getCanonicalHistoryPath(conversationId), JSON.stringify(document, null, 2))
-    return document
+    })
   } finally {
     release()
     if (updateQueues.get(conversationId) === queued) {
@@ -441,6 +446,7 @@ export async function recordStepCompleted(conversationId: string, runId: string,
 
 export async function recordRunCompleted(input: {
   anchorUserMessageId: string | null
+  compactionId?: string | null
   contextFingerprint: string
   conversationId: string
   freshnessRevision: number
@@ -451,10 +457,18 @@ export async function recordRunCompleted(input: {
   runId: string
 }) {
   return updateDocument(input.conversationId, (document) => {
+    const preserveNewerCompaction = shouldPreserveNewerCompactionReplay({
+      activeBranchId: document.activeBranchId,
+      compactionId: input.compactionId,
+      events: document.events,
+      runId: input.runId,
+    })
     const completedEvent = appendEvent(document, {
       runId: input.runId,
       type: 'run_completed',
     })
+    if (preserveNewerCompaction) return
+
     document.replay = {
       anchorUserMessageId: input.anchorUserMessageId,
       branchId: document.activeBranchId,

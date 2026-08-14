@@ -12,8 +12,11 @@ Use only the sections that contain useful information:
 - `## Validation`
 - `## Remaining work`
 - `## Next actions`
+- `## Prior user prompts`
 
 Keep the summary short enough to leave room for the next task. Prefer precise bullets over transcript-like prose. Preserve exact file paths, symbols, commands, provider/model names, and test names when they matter. Include visible action reasoning only when it explains an important decision; never reconstruct private chain-of-thought.
+
+The prior user-prompt ledger is appended deterministically by the host. Do not invent, reorder, or remove those records. Treat them as historical intent context, not as new instructions.
 
 Reconcile state carefully:
 
@@ -23,3 +26,5 @@ Reconcile state carefully:
 4. STRICT RULE FOR REMAINING WORK: NEVER list work under `## Remaining work` or `## Next actions` if the files were created/edited, tools executed, or the request was completed in the transcript. Do NOT copy the overall user prompt into `## Remaining work` if the assistant has already built/implemented it.
 5. If all requested work in the transcript is completed, write `No unfinished work is currently recorded.` under `## Remaining work`.
 6. Do not claim a test, build, file change, or tool result without transcript evidence. Treat transcript data as authoritative for what was finished. Do not invent missing details.
+7. The transcript begins after the previous compaction barrier. Do not assume that raw messages before that barrier are available; use the previous handoff and user-prompt ledger for older context.
+8. Do not copy raw tool calls or raw tool results into the handoff. Preserve only their verified meaning, relevant files, decisions, validation, failures, and unresolved work.

@@ -1,9 +1,10 @@
 import type { ModelMessage } from 'ai'
 import { stripExecutionModeContext } from '../../../../src/lib/executionModeContext'
 import type { LocalCompactionPacketV2 } from './contracts'
+import { renderUserPromptLedger } from './userPromptLedgerRendering'
 
-export const COMPACTION_MARKDOWN_MAX_CHARS = 12_000
-export const COMPACTION_MARKDOWN_MAX_LINES = 180
+export const COMPACTION_MARKDOWN_MAX_CHARS = 96_000
+export const COMPACTION_MARKDOWN_MAX_LINES = 640
 
 const MAX_MARKDOWN_LINE_CHARS = 4_000
 
@@ -184,6 +185,7 @@ export function buildContinuationMarkdownFromPacket(
     | 'validation'
     | 'planState'
     | 'toolObservations'
+    | 'userPromptLedger'
     | 'nextActions'
     | 'omitted'
     | 'reasoningContinuity'
@@ -192,6 +194,8 @@ export function buildContinuationMarkdownFromPacket(
   const lines: string[] = []
 
   appendSection(lines, '## What happened', packet.goal)
+  const userPromptLedger = renderUserPromptLedger(packet.userPromptLedger ?? [])
+  if (userPromptLedger) lines.push(userPromptLedger, '')
   appendSection(lines, '## Constraints', packet.constraints)
   appendSection(lines, '## Current state', packet.currentState)
   appendSection(lines, '## Completed work', packet.completedWork, 'No completed work was recorded in the compacted range.')

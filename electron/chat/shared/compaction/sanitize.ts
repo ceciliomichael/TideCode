@@ -52,6 +52,11 @@ export function sanitizeCompactionPacketV2(packet: LocalCompactionPacketV2): Loc
       sourceMessageIds: observation.sourceMessageIds.filter((id) => id.trim().length > 0),
       subject: stripExecutionModeContext(observation.subject),
     })),
+    userPromptLedger: (packet.userPromptLedger ?? []).map((entry) => ({
+      ...entry,
+      prompt: stripExecutionModeContext(entry.prompt),
+      sourceMessageIds: entry.sourceMessageIds.filter((id) => id.trim().length > 0),
+    })),
     validation: sanitizeTextList(packet.validation),
   }
 }

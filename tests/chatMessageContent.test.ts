@@ -15,6 +15,18 @@ test('normalizeMarkdownText appends a closing code fence for unmatched blocks', 
   assert.equal(normalizeMarkdownText(input), '```html\n<section>hero</section>\n```')
 })
 
+test('normalizeMarkdownText does not close inline fences mentioned in quoted user prompts', () => {
+  const input = [
+    '### Prompt 1 (completed)',
+    '> if the codeblock has no title in ``` then it should be blank',
+    '',
+    '### Prompt 2 (completed)',
+    '> make image bigger',
+  ].join('\n')
+
+  assert.equal(normalizeMarkdownText(input), input)
+})
+
 test('normalizeMarkdownText inserts paragraph spacing between glued reasoning sections', () => {
   const input = "Let's make it functional and easy to paste!Designing the hero section\nNext line"
   assert.equal(

@@ -1,12 +1,17 @@
 import type { ModelMessage } from 'ai'
+import { estimateModelMessageContextUsage } from '../../../../src/lib/contextUsage'
 import type { LocalCompactionPacketV2 } from './contracts'
 import { buildContinuationMessage, isCompactionContinuationMessage } from './markdown'
 import {
   sanitizeCompactedModelContent,
   sanitizeCompactedModelMessages,
 } from '../modelMessageIntegrity'
-import { DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS } from '../../../../src/lib/contextCompactionSettings'
+import {
+  capRetainedContextTokens,
+  DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS,
+} from '../../../../src/lib/contextCompactionSettings'
 import { selectLatestContextByTokens } from './retention'
+import { removeRawToolHistory } from './toolFreeContext'
 
 function sanitizeProjectedMessage(message: ModelMessage): ModelMessage {
   return {
@@ -23,9 +28,16 @@ export interface CompactionProjectionInput {
 }
 
 export function buildCompactionProjection(input: CompactionProjectionInput) {
-  const selectedTail = selectLatestContextByTokens(
-    input.tailMessages,
+  const handoffMessage = buildContinuationMessage(input.packet.continuationMarkdown)
+  const handoffTokens = estimateModelMessageContextUsage([handoffMessage]).totalTokens
+  const retainedContextTokens = capRetainedContextTokens(
     input.retainedContextTokens ?? DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS,
+  )
+  const tailBudget = Math.max(1, retainedContextTokens - handoffTokens)
+  const toolFreeTailMessages = removeRawToolHistory(input.tailMessages)
+  const selectedTail = selectLatestContextByTokens(
+    toolFreeTailMessages,
+    tailBudget,
   ).messages
   const tail = selectedTail
     .map(sanitizeProjectedMessage)
@@ -34,7 +46,7 @@ export function buildCompactionProjection(input: CompactionProjectionInput) {
     // The AI-generated summary is the new beginning of provider history. The
     // original messages remain in durable display history and are not replayed
     // before this carried-forward summary.
-    buildContinuationMessage(input.packet.continuationMarkdown),
+    handoffMessage,
     ...tail,
   ])
 }
