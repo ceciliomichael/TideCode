@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.10 — More accurate conversation continuity
+
+TideCode 1.1.10 keeps recent chat work understandable after compaction, provider changes, and interrupted follow-up turns, while making visual workspace previews easier to inspect.
+
+- Retains a configurable recent token window with complete user messages and images, bounded tool evidence, Code Mode completion receipts, and final assistant results from large turns.
+- Preserves completed assistant replay state when an aborted follow-up creates a new history branch, preventing finished work from reverting to an earlier pre-response state.
+- Keeps compaction decisions aligned with the context indicator and offers 4k, 8k, 10k, 12k, 16k, and 20k recent-token settings.
+- Improves Markdown image preview sizing while preserving aspect ratio, alongside the existing PDF and DOCX preview controls.
+- Adds regression coverage for rollback replay continuity, semantic retention, Code Mode compaction evidence, and context budgeting.
+
 ## 1.1.9 — Safer Code Mode and more faithful workspace previews
 
 TideCode 1.1.9 strengthens Code Mode’s execution boundaries, keeps long conversations coherent through compaction and provider changes, and makes workspace previews easier to inspect.
