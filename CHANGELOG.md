@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.11 — Safer compaction handoffs and history persistence
+
+TideCode 1.1.11 keeps long-running chats grounded after repeated context compaction, overlapping runs, and provider history reconstruction, while making streamed Markdown output safer and easier to continue.
+
+- Preserves exact historical user prompts and verified handoff facts across compaction barriers, so earlier intent and unfinished work remain available without replaying raw tool calls or results to the provider.
+- Protects newer compaction state from stale run completions and serializes concurrent history-file updates, including recovery from transient Windows file locks.
+- Keeps legacy compressed histories readable, converts their handoff into safe provider context, and retains the original conversation display without requiring a migration.
+- Hardens streamed Markdown and chat HTML handling by avoiding accidental fence repair inside quoted prompts and rejecting interactive input controls.
+- Simplifies context settings by keeping the compaction retention budget internally bounded rather than exposing a separate retention-token selector.
+
 ## 1.1.10 — More accurate conversation continuity
 
 TideCode 1.1.10 keeps recent chat work understandable after compaction, provider changes, and interrupted follow-up turns, while making visual workspace previews easier to inspect.
