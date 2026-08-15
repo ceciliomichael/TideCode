@@ -104,6 +104,9 @@ export function registerChatGitTerminalIpcHandlers(
     })
     .catch((error) => console.error('Unable to connect Electron to the Tidecode run service.', error))
 
+  ipcMain.handle('runs:getProjection', async (_event, runId: string) =>
+    (await ensureRunServiceClient()).getRunProjection(runId),
+  )
   ipcMain.handle('runs:listActive', async () => (await ensureRunServiceClient()).listActiveRuns())
   ipcMain.handle('chat:stream:start', async (_event, input: StartChatStreamInput) => {
     const result = await (await ensureRunServiceClient()).startStream(input)

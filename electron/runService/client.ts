@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import net from 'node:net'
 import type {
+  SharedRunProjection,
   SharedRunSnapshot,
   StartChatStreamInput,
   StartChatStreamResult,
@@ -75,6 +76,11 @@ export class TideCodeRunServiceClient {
   onEvent(listener: (event: TideCodeRunEvent) => void) {
     this.eventListeners.add(listener)
     return () => this.eventListeners.delete(listener)
+  }
+
+  async getRunProjection(runId: string) {
+    await this.connect()
+    return this.requestRaw<SharedRunProjection | null>('getRunProjection', { runId })
   }
 
   async listActiveRuns() {

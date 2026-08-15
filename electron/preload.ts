@@ -208,6 +208,7 @@ const modelsApi: TideCodeModelsApi = {
 }
 
 const runsApi: TideCodeRunsApi = {
+  getRunProjection: (runId: string) => ipcRenderer.invoke('runs:getProjection', runId),
   listActiveRuns: () => ipcRenderer.invoke('runs:listActive'),
   onEvent: (listener) => {
     const wrappedListener = (_event: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)

@@ -2,6 +2,7 @@ import net from 'node:net'
 import type { Socket } from 'node:net'
 import type {
   ChatStreamEvent,
+  SharedRunProjection,
   SharedRunStatus,
   StartChatStreamInput,
   TideCodeRunEvent,
@@ -28,6 +29,7 @@ import { SharedRunRegistry } from './runRegistry'
 import { SharedStreamPersistence } from './streamPersistence'
 
 const TERMINAL_RUN_RETENTION_MS = 60_000
+const TEXT_STREAM_IDLE_GRACE_MS = 1_500
 
 function toErrorMessage(error: unknown) {
   return error instanceof Error && error.message.trim().length > 0 ? error.message : String(error)
@@ -89,6 +91,8 @@ export class TideCodeRunServiceServer {
   private readonly clients = new Set<Socket>()
   private readonly registry = new SharedRunRegistry()
   private readonly nextSeqByRunId = new Map<string, number>()
+  private readonly projectionsByRunId = new Map<string, SharedRunProjection>()
+  private readonly projectionTextIdleTimers = new Map<string, NodeJS.Timeout>()
   private token = ''
 
   async start() {
@@ -154,6 +158,13 @@ export class TideCodeRunServiceServer {
             result: { protocolVersion: RUN_SERVICE_PROTOCOL_VERSION },
           })
           return
+        case 'getRunProjection':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: this.projectionsByRunId.get(parsed.params.runId) ?? null,
+          })
+          return
         case 'listActiveRuns':
           this.sendResponse(socket, { id: parsed.id, ok: true, result: this.registry.listActive() })
           return
@@ -213,6 +224,50 @@ export class TideCodeRunServiceServer {
       })
     }
 
+    const baseMessageCount = sharedInput.messages.length
+    const projection: SharedRunProjection = {
+      baseMessageCount,
+      conversationId,
+      isStreamingTextActive: false,
+      messages: [],
+      runId: createdRun.runId,
+      streamingAssistantMessageId: null,
+      streamingWaitingIndicatorVariant: null,
+    }
+    this.projectionsByRunId.set(createdRun.runId, projection)
+    const emitProjection = () => {
+      this.emitEvent(createdRun.runId, {
+        type: 'run_projection',
+        projection: {
+          ...projection,
+          messages: [...projection.messages],
+        },
+        seq: 0,
+      })
+    }
+    const stopProjectionTextStreaming = () => {
+      const timeout = this.projectionTextIdleTimers.get(createdRun.runId)
+      if (timeout) clearTimeout(timeout)
+      this.projectionTextIdleTimers.delete(createdRun.runId)
+      if (!projection.isStreamingTextActive) return
+      projection.isStreamingTextActive = false
+      emitProjection()
+    }
+    const pulseProjectionTextStreaming = () => {
+      const timeout = this.projectionTextIdleTimers.get(createdRun.runId)
+      if (timeout) clearTimeout(timeout)
+      projection.isStreamingTextActive = true
+      emitProjection()
+      const nextTimeout = setTimeout(() => {
+        this.projectionTextIdleTimers.delete(createdRun.runId)
+        if (!projection.isStreamingTextActive) return
+        projection.isStreamingTextActive = false
+        emitProjection()
+      }, TEXT_STREAM_IDLE_GRACE_MS)
+      nextTimeout.unref?.()
+      this.projectionTextIdleTimers.set(createdRun.runId, nextTimeout)
+    }
+
     let latestSnapshot = [...input.messages]
     const persistence = new SharedStreamPersistence({
       chatMode: sharedInput.chatMode,
@@ -233,6 +288,21 @@ export class TideCodeRunServiceServer {
         latestSnapshot = messages
         persistence.queue(messages, options, hint)
       },
+      onConversationRuntimeStateUpdated: (runtimePatch) => {
+        if (runtimePatch.streamingAssistantMessageId !== undefined) {
+          projection.streamingAssistantMessageId = runtimePatch.streamingAssistantMessageId
+        }
+        if (runtimePatch.streamingWaitingIndicatorVariant !== undefined) {
+          projection.streamingWaitingIndicatorVariant = runtimePatch.streamingWaitingIndicatorVariant
+        }
+        emitProjection()
+      },
+      onProjectionUpdated: (messages) => {
+        projection.messages = messages.slice(baseMessageCount)
+        emitProjection()
+      },
+      onTextStreamingPulse: pulseProjectionTextStreaming,
+      onTextStreamingStopped: stopProjectionTextStreaming,
     })
 
     let terminalStatus: SharedRunStatus | null = null
@@ -268,6 +338,11 @@ export class TideCodeRunServiceServer {
 
     const settleRun = async () => {
       const finalizedMessages = collector.finalize()
+      projection.messages = [...finalizedMessages]
+      projection.isStreamingTextActive = false
+      projection.streamingAssistantMessageId = null
+      projection.streamingWaitingIndicatorVariant = null
+      emitProjection()
       latestSnapshot = finalizedMessages.length > 0 ? [...sharedInput.messages, ...finalizedMessages] : latestSnapshot
       const shouldPersistFinalSnapshot = !(terminalStatus === 'cancelled' && finalizedMessages.length === 0)
       if (shouldPersistFinalSnapshot) {
@@ -280,7 +355,15 @@ export class TideCodeRunServiceServer {
       const status = terminalStatus ?? (current.status === 'cancelled' ? 'cancelled' : 'completed')
       this.registry.updateStatus(createdRun.runId, status)
       this.emitRunState(createdRun.runId)
-      setTimeout(() => this.registry.remove(createdRun.runId), TERMINAL_RUN_RETENTION_MS).unref?.()
+      stopProjectionTextStreaming()
+      const retentionTimer = setTimeout(() => {
+        this.registry.remove(createdRun.runId)
+        this.projectionsByRunId.delete(createdRun.runId)
+        const textIdleTimer = this.projectionTextIdleTimers.get(createdRun.runId)
+        if (textIdleTimer) clearTimeout(textIdleTimer)
+        this.projectionTextIdleTimers.delete(createdRun.runId)
+      }, TERMINAL_RUN_RETENTION_MS)
+      retentionTimer.unref?.()
     }
 
     const result = input.providerId === 'codex'

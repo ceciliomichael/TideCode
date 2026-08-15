@@ -23,6 +23,16 @@ export interface SharedRunSnapshot {
   lastEventSeq: number
 }
 
+export interface SharedRunProjection {
+  runId: string
+  conversationId: string
+  baseMessageCount: number
+  messages: ConversationRecord['messages']
+  streamingAssistantMessageId: string | null
+  streamingWaitingIndicatorVariant: 'thinking' | 'splash' | 'rate_limit_retry' | null
+  isStreamingTextActive: boolean
+}
+
 export type TideCodeRunEvent =
   | {
       type: 'run_state'
@@ -43,8 +53,14 @@ export type TideCodeRunEvent =
       conversationId: string
       conversation: ConversationRecord
     }
+  | {
+      type: 'run_projection'
+      seq: number
+      projection: SharedRunProjection
+    }
 
 export interface TideCodeRunsApi {
+  getRunProjection: (runId: string) => Promise<SharedRunProjection | null>
   listActiveRuns: () => Promise<SharedRunSnapshot[]>
   onEvent: (listener: (event: TideCodeRunEvent) => void) => () => void
 }

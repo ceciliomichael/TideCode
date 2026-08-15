@@ -1,4 +1,5 @@
 import type {
+  SharedRunProjection,
   SharedRunSnapshot,
   StartChatStreamInput,
   StartChatStreamResult,
@@ -9,10 +10,11 @@ import type {
   UpdatePendingSteerMessagesResult,
 } from '../../src/types/chat'
 
-export const RUN_SERVICE_PROTOCOL_VERSION = 1
+export const RUN_SERVICE_PROTOCOL_VERSION = 2
 
 export type RunServiceRequest =
   | { id: string; token: string; method: 'hello'; params?: undefined }
+  | { id: string; token: string; method: 'getRunProjection'; params: { runId: string } }
   | { id: string; token: string; method: 'listActiveRuns'; params?: undefined }
   | { id: string; token: string; method: 'startStream'; params: StartChatStreamInput }
   | { id: string; token: string; method: 'cancelStream'; params: { streamId: string } }
@@ -21,6 +23,7 @@ export type RunServiceRequest =
 
 export type RunServiceResponseResult =
   | { protocolVersion: number }
+  | SharedRunProjection
   | SharedRunSnapshot[]
   | StartChatStreamResult
   | UpdatePendingSteerMessagesResult

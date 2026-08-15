@@ -7,6 +7,7 @@ import type {
   ReorderConversationFolderInput,
   ConversationSummary,
   Message,
+  SharedRunProjection,
   SharedRunSnapshot,
 } from '../types/chat'
 import {
@@ -68,6 +69,40 @@ function updateConversationRecord(
   }
 }
 
+function applySharedRunProjection(
+  conversation: ConversationRecord,
+  projection: SharedRunProjection,
+): ConversationRecord {
+  return {
+    ...conversation,
+    messages: [
+      ...conversation.messages.slice(0, projection.baseMessageCount),
+      ...projection.messages,
+    ],
+  }
+}
+
+function attachSharedRunToRuntimeState(
+  runtimeState: ConversationRuntimeState,
+  run: SharedRunSnapshot,
+  projection?: SharedRunProjection,
+): ConversationRuntimeState {
+  return {
+    ...runtimeState,
+    activeStreamId: run.streamId,
+    conversation: projection
+      ? applySharedRunProjection(runtimeState.conversation, projection)
+      : runtimeState.conversation,
+    isSending: true,
+    sharedRunId: run.runId,
+    isStreamingTextActive: projection?.isStreamingTextActive ?? runtimeState.isStreamingTextActive,
+    streamingAssistantMessageId:
+      projection?.streamingAssistantMessageId ?? runtimeState.streamingAssistantMessageId,
+    streamingWaitingIndicatorVariant:
+      projection?.streamingWaitingIndicatorVariant ?? runtimeState.streamingWaitingIndicatorVariant,
+  }
+}
+
 export function useChatSessionState(language: AppLanguage) {
   const [conversationSummaries, setConversationSummaries] = useState<ConversationSummary[]>([])
   const [folderSummaries, setFolderSummaries] = useState<ConversationFolderSummary[]>([])
@@ -76,6 +111,7 @@ export function useChatSessionState(language: AppLanguage) {
   const [activeConversationChatMode, setActiveConversationChatMode] = useState<ChatMode | null>(null)
   const [conversationRuntimeStates, setConversationRuntimeStates] = useState<ConversationRuntimeStateMap>({})
   const sharedRunsByConversationIdRef = useRef(new Map<string, SharedRunSnapshot>())
+  const sharedRunProjectionsByConversationIdRef = useRef(new Map<string, SharedRunProjection>())
   const [sharedRunningConversationIds, setSharedRunningConversationIds] = useState<Set<string>>(() => new Set())
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -111,14 +147,14 @@ export function useChatSessionState(language: AppLanguage) {
       const currentState = currentValue[conversation.id]
       const nextState = createConversationRuntimeState(conversation, currentState)
       const sharedRun = sharedRunsByConversationIdRef.current.get(conversation.id)
-      if (sharedRun && (!currentState || (!currentState.isSending && currentState.activeStreamId === null))) {
-        nextState.isSending = true
-        nextState.activeStreamId = sharedRun.streamId
-        nextState.sharedRunId = sharedRun.runId
-      }
+      const projection = sharedRunProjectionsByConversationIdRef.current.get(conversation.id)
+      const shouldAttachSharedRun = sharedRun
+        && (!currentState || (!currentState.isSending && currentState.activeStreamId === null) || currentState.sharedRunId === sharedRun.runId)
       return {
         ...currentValue,
-        [conversation.id]: nextState,
+        [conversation.id]: shouldAttachSharedRun
+          ? attachSharedRunToRuntimeState(nextState, sharedRun, projection)
+          : nextState,
       }
     })
   }, [])
@@ -156,14 +192,14 @@ export function useChatSessionState(language: AppLanguage) {
         const currentState = currentValue[initialConversation.id]
         const nextState = createConversationRuntimeState(initialConversation, currentState)
         const sharedRun = sharedRunsByConversationIdRef.current.get(initialConversation.id)
-        if (sharedRun && (!currentState || (!currentState.isSending && currentState.activeStreamId === null))) {
-          nextState.isSending = true
-          nextState.activeStreamId = sharedRun.streamId
-          nextState.sharedRunId = sharedRun.runId
-        }
+        const projection = sharedRunProjectionsByConversationIdRef.current.get(initialConversation.id)
+        const shouldAttachSharedRun = sharedRun
+          && (!currentState || (!currentState.isSending && currentState.activeStreamId === null) || currentState.sharedRunId === sharedRun.runId)
         return {
           ...currentValue,
-          [initialConversation.id]: nextState,
+          [initialConversation.id]: shouldAttachSharedRun
+            ? attachSharedRunToRuntimeState(nextState, sharedRun, projection)
+            : nextState,
         }
       })
       setActiveConversationSelection(initialConversation, normalizedInitialSelectedFolderId)
@@ -240,10 +276,44 @@ export function useChatSessionState(language: AppLanguage) {
   useEffect(() => {
     let disposed = false
 
+    const applyProjection = (projection: SharedRunProjection) => {
+      if (disposed) return
+      const sharedRun = sharedRunsByConversationIdRef.current.get(projection.conversationId)
+      if (!sharedRun || sharedRun.runId !== projection.runId) return
+      sharedRunProjectionsByConversationIdRef.current.set(projection.conversationId, projection)
+      setConversationRuntimeStates((currentValue) => {
+        const currentState = currentValue[projection.conversationId]
+        if (!currentState) return currentValue
+        const isLocallyOwnedRuntime = currentState.sharedRunId === null
+          && (currentState.isSending || currentState.activeStreamId !== null)
+        if (isLocallyOwnedRuntime) return currentValue
+        return {
+          ...currentValue,
+          [projection.conversationId]: attachSharedRunToRuntimeState(currentState, sharedRun, projection),
+        }
+      })
+    }
+
+    const loadProjection = (run: SharedRunSnapshot) => {
+      const existingProjection = sharedRunProjectionsByConversationIdRef.current.get(run.conversationId)
+      if (existingProjection?.runId === run.runId) return
+      void window.tidecodeRuns.getRunProjection(run.runId)
+        .then((projection) => {
+          if (projection) applyProjection(projection)
+        })
+        .catch((caughtError) => console.error('Unable to load shared Tidecode run projection.', caughtError))
+    }
+
     const reconcileSharedRuns = (runs: SharedRunSnapshot[]) => {
       if (disposed) return
       const runsByConversationId = new Map(runs.map((run) => [run.conversationId, run]))
       sharedRunsByConversationIdRef.current = runsByConversationId
+      for (const [conversationId, projection] of sharedRunProjectionsByConversationIdRef.current.entries()) {
+        const run = runsByConversationId.get(conversationId)
+        if (!run || run.runId !== projection.runId) {
+          sharedRunProjectionsByConversationIdRef.current.delete(conversationId)
+        }
+      }
       setSharedRunningConversationIds(new Set(runsByConversationId.keys()))
       setConversationRuntimeStates((currentValue) => {
         let hasChanges = false
@@ -266,30 +336,22 @@ export function useChatSessionState(language: AppLanguage) {
               continue
             }
 
-            if (currentState.activeStreamId !== sharedRun.streamId || !currentState.isSending) {
-              nextValue[conversationId] = {
-                ...currentState,
-                activeStreamId: sharedRun.streamId,
-                isSending: true,
-              }
-              hasChanges = true
-            }
+            const projection = sharedRunProjectionsByConversationIdRef.current.get(conversationId)
+            nextValue[conversationId] = attachSharedRunToRuntimeState(currentState, sharedRun, projection)
+            hasChanges = true
             continue
           }
 
           if (sharedRun && !currentState.isSending && currentState.activeStreamId === null) {
-            nextValue[conversationId] = {
-              ...currentState,
-              activeStreamId: sharedRun.streamId,
-              isSending: true,
-              sharedRunId: sharedRun.runId,
-            }
+            const projection = sharedRunProjectionsByConversationIdRef.current.get(conversationId)
+            nextValue[conversationId] = attachSharedRunToRuntimeState(currentState, sharedRun, projection)
             hasChanges = true
           }
         }
 
         return hasChanges ? nextValue : currentValue
       })
+      for (const run of runs) loadProjection(run)
     }
 
     const refreshSharedRuns = () => {
@@ -306,8 +368,16 @@ export function useChatSessionState(language: AppLanguage) {
         const isRunning = event.run.status === 'starting'
           || event.run.status === 'running'
           || event.run.status === 'waiting_for_input'
-        if (isRunning) sharedRunsByConversationIdRef.current.set(event.run.conversationId, event.run)
-        else sharedRunsByConversationIdRef.current.delete(event.run.conversationId)
+        if (isRunning) {
+          sharedRunsByConversationIdRef.current.set(event.run.conversationId, event.run)
+          loadProjection(event.run)
+        } else {
+          sharedRunsByConversationIdRef.current.delete(event.run.conversationId)
+          const projection = sharedRunProjectionsByConversationIdRef.current.get(event.run.conversationId)
+          if (projection?.runId === event.run.runId) {
+            sharedRunProjectionsByConversationIdRef.current.delete(event.run.conversationId)
+          }
+        }
         setSharedRunningConversationIds((currentValue) => {
           const nextValue = new Set(currentValue)
           if (isRunning) nextValue.add(event.run.conversationId)
@@ -350,6 +420,11 @@ export function useChatSessionState(language: AppLanguage) {
         return
       }
 
+      if (event.type === 'run_projection') {
+        applyProjection(event.projection)
+        return
+      }
+
       if (event.type !== 'conversation_updated') return
       const conversation = event.conversation
       setConversationSummaries((currentValue) => upsertConversationSummary(currentValue, conversation))
@@ -359,9 +434,13 @@ export function useChatSessionState(language: AppLanguage) {
         if (currentState.activeStreamId !== null && currentState.sharedRunId !== event.runId) {
           return currentValue
         }
+        const projection = sharedRunProjectionsByConversationIdRef.current.get(conversation.id)
+        const nextConversation = currentState.sharedRunId === event.runId && projection?.runId === event.runId
+          ? applySharedRunProjection(conversation, projection)
+          : conversation
         return {
           ...currentValue,
-          [conversation.id]: createConversationRuntimeState(conversation, currentState),
+          [conversation.id]: createConversationRuntimeState(nextConversation, currentState),
         }
       })
     })
