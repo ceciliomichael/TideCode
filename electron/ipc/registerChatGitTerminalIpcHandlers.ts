@@ -55,6 +55,7 @@ import {
   gitSync,
   initGitRepository,
   publishToGitHub,
+  publishToRemote,
   stageGitFile,
   stageGitFiles,
   unstageGitFile,
@@ -250,5 +251,5 @@ export function registerChatGitTerminalIpcHandlers(
   ipcMain.handle('git:unstageFiles', async (_event, input: GitFileStageBatchInput) => unstageGitFiles(input))
   ipcMain.handle('git:init', async (_event, workspacePath: string) => initGitRepository(workspacePath))
   ipcMain.handle('git:publishToGitHub', async (_event, input) => publishToGitHub(input))
-
+  ipcMain.handle('git:publishToRemote', async (_event, input) => publishToRemote(input))
 }

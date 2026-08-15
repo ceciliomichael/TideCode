@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useRef,
   type ClipboardEvent as ReactClipboardEvent,
   type Dispatch,
   type DragEvent as ReactDragEvent,
@@ -65,6 +66,8 @@ export function useWorkspaceExplorerTransfers({
   updateDragScroll,
   workspaceRootPath,
 }: UseWorkspaceExplorerTransfersOptions) {
+  const isPastingRef = useRef(false)
+
   const submitPasteEntry = useCallback(
     async (targetDirectoryRelativePath: string) => {
       closeContextMenu()
@@ -231,26 +234,34 @@ export function useWorkspaceExplorerTransfers({
 
   const submitClipboardContents = useCallback(
     async (targetDirectoryRelativePath: string) => {
-      if (typeof window !== 'undefined' && window.tidecodeClipboard) {
-        try {
-          const osPaths = await window.tidecodeClipboard.readFiles()
-          if (osPaths.length > 0) {
-            await submitImportEntries(osPaths, targetDirectoryRelativePath)
-            return
-          }
-        } catch (error) {
-          console.error('Failed to read OS clipboard files', error)
-          setErrorMessage(toUserFacingErrorMessage(error, 'The files could not be read from the clipboard.'))
-          return
-        }
-      }
-
-      if (await submitClipboardImage(targetDirectoryRelativePath)) {
+      if (isPastingRef.current) {
         return
       }
+      isPastingRef.current = true
+      try {
+        if (typeof window !== 'undefined' && window.tidecodeClipboard) {
+          try {
+            const osPaths = await window.tidecodeClipboard.readFiles()
+            if (osPaths.length > 0) {
+              await submitImportEntries(osPaths, targetDirectoryRelativePath)
+              return
+            }
+          } catch (error) {
+            console.error('Failed to read OS clipboard files', error)
+            setErrorMessage(toUserFacingErrorMessage(error, 'The files could not be read from the clipboard.'))
+            return
+          }
+        }
 
-      if (clipboardEntry) {
-        await submitPasteEntry(targetDirectoryRelativePath)
+        if (await submitClipboardImage(targetDirectoryRelativePath)) {
+          return
+        }
+
+        if (clipboardEntry) {
+          await submitPasteEntry(targetDirectoryRelativePath)
+        }
+      } finally {
+        isPastingRef.current = false
       }
     },
     [clipboardEntry, setErrorMessage, submitClipboardImage, submitImportEntries, submitPasteEntry],
@@ -262,34 +273,45 @@ export function useWorkspaceExplorerTransfers({
         return
       }
 
-      const pasteTargetPath = resolvePasteTargetDirectoryPath({
-        directoryEntriesByPath,
-        rootEntries,
-        selectedEntryPaths,
-        selectionDirectoryPath,
-      })
-
-      const filePaths = await getExternalClipboardFilePaths(event)
-      if (filePaths.length > 0) {
-        event.preventDefault()
-        event.stopPropagation()
-        await submitImportEntries(filePaths, pasteTargetPath)
-        return
-      }
-
-      if (await submitClipboardImage(pasteTargetPath)) {
+      if (isPastingRef.current) {
         event.preventDefault()
         event.stopPropagation()
         return
       }
 
-      if (!clipboardEntry) {
-        return
-      }
+      isPastingRef.current = true
+      try {
+        const pasteTargetPath = resolvePasteTargetDirectoryPath({
+          directoryEntriesByPath,
+          rootEntries,
+          selectedEntryPaths,
+          selectionDirectoryPath,
+        })
 
-      event.preventDefault()
-      event.stopPropagation()
-      await submitPasteEntry(pasteTargetPath)
+        const filePaths = await getExternalClipboardFilePaths(event)
+        if (filePaths.length > 0) {
+          event.preventDefault()
+          event.stopPropagation()
+          await submitImportEntries(filePaths, pasteTargetPath)
+          return
+        }
+
+        if (await submitClipboardImage(pasteTargetPath)) {
+          event.preventDefault()
+          event.stopPropagation()
+          return
+        }
+
+        if (!clipboardEntry) {
+          return
+        }
+
+        event.preventDefault()
+        event.stopPropagation()
+        await submitPasteEntry(pasteTargetPath)
+      } finally {
+        isPastingRef.current = false
+      }
     },
     [
       clipboardEntry,

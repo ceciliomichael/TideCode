@@ -620,6 +620,31 @@ export async function renameWorkspaceEntry(
   }
 }
 
+const DISPOSABLE_DIRECTORY_NAMES = new Set([
+  '.angular',
+  '.cache',
+  '.next',
+  '.nuxt',
+  '.output',
+  '.parcel-cache',
+  '.pytest_cache',
+  '.rollup.cache',
+  '.svelte-kit',
+  '.turbo',
+  '.venv',
+  '__pycache__',
+  'build',
+  'coverage',
+  'dist',
+  'node_modules',
+  'venv',
+])
+
+function isDisposableDirectory(relativePath: string): boolean {
+  const segments = relativePath.split(/[/\\]/u).map((segment) => segment.trim().toLowerCase())
+  return segments.some((segment) => DISPOSABLE_DIRECTORY_NAMES.has(segment))
+}
+
 export async function deleteWorkspaceEntry(
   input: WorkspaceExplorerDeleteEntryInput,
 ): Promise<WorkspaceExplorerDeleteEntryResult> {
@@ -646,16 +671,25 @@ export async function deleteWorkspaceEntry(
     throw new Error(`Unsupported entry type: ${target.relativePath}`)
   }
 
-  try {
-    const { shell } = await import('electron')
-    await shell.trashItem(target.absolutePath)
-  } catch (error) {
+  if (targetStats.isDirectory() && isDisposableDirectory(target.relativePath)) {
     await fs.rm(target.absolutePath, {
       force: true,
       maxRetries: 3,
-      recursive: targetStats.isDirectory(),
+      recursive: true,
       retryDelay: 100,
     })
+  } else {
+    try {
+      const { shell } = await import('electron')
+      await shell.trashItem(target.absolutePath)
+    } catch {
+      await fs.rm(target.absolutePath, {
+        force: true,
+        maxRetries: 3,
+        recursive: targetStats.isDirectory(),
+        retryDelay: 100,
+      })
+    }
   }
 
   notifyWorkspaceExplorerChange(workspaceRootPath)

@@ -100,6 +100,21 @@
 !macroend
 
 !macro customInstall
+  ; Register TideCode bin directory in user or machine PATH
+  ${if} $installMode == "all"
+    ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path"
+    ${if} $0 != ""
+      WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$0;$INSTDIR\resources\bin"
+    ${endif}
+  ${else}
+    ReadRegStr $0 HKCU "Environment" "Path"
+    ${if} $0 != ""
+      WriteRegExpandStr HKCU "Environment" "Path" "$0;$INSTDIR\resources\bin"
+    ${else}
+      WriteRegExpandStr HKCU "Environment" "Path" "$INSTDIR\resources\bin"
+    ${endif}
+  ${endif}
+
   ; electron-updater starts a non-silent installer for the user-visible
   ; update flow. Once the files are installed, launch the new app and close
   ; NSIS directly instead of showing a finish page or waiting for a click.

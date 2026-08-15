@@ -167,6 +167,14 @@ function configureRuntime(message) {
   globalThis.Bun = createBlockedRuntimeApi('Bun')
   globalThis.Deno = createBlockedRuntimeApi('Deno')
   globalThis.fs = hostRequire('node:fs')
+  globalThis.console = {
+    ...globalThis.console,
+    log: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+    dir: () => {},
+  }
   blockSandboxCodeGeneration()
 }
 
@@ -375,7 +383,7 @@ export class CodeModeExecutor {
     }
 
     type ModuleWorkerOptions = WorkerOptions & { type: 'module' }
-    const workerOptions: ModuleWorkerOptions = { eval: true, type: 'module' }
+    const workerOptions: ModuleWorkerOptions = { eval: true, type: 'module', stdout: true, stderr: true }
     if (this.executionMode === 'sandbox') {
       if (containsDynamicCodeModeImport(executableCode)) {
         return errorResult(executionId, 'Code Mode sandbox does not allow dynamic module loading. Use the available tools.* APIs instead.')
@@ -412,7 +420,9 @@ export class CodeModeExecutor {
         void settle().then(() => resolve(result))
       }
 
-      timeoutId = setTimeout(() => finish(errorResult(executionId, `Code Mode execution exceeded the ${limits.timeoutMs}ms timeout.`, toolCalls)), limits.timeoutMs)
+      if (typeof limits.timeoutMs === 'number' && limits.timeoutMs > 0) {
+        timeoutId = setTimeout(() => finish(errorResult(executionId, `Code Mode execution exceeded the ${limits.timeoutMs}ms timeout.`, toolCalls)), limits.timeoutMs)
+      }
       abortHandler = () => finish(errorResult(executionId, 'Code Mode execution was aborted.', toolCalls, 'aborted'))
       options.abortSignal?.addEventListener('abort', abortHandler, { once: true })
 

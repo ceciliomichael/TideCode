@@ -1,5 +1,5 @@
-import electron from 'electron'
 import path from 'node:path'
+import { electronApp } from '../../electronApp'
 
 const CODEX_STORAGE_ROOT_SEGMENTS = ['.tidecode', 'config', 'providers', 'codex'] as const
 
@@ -9,12 +9,7 @@ function resolveHomeDirectory(homeDirectory?: string) {
     return normalizedHomeDirectory
   }
 
-  const app = (electron as { app?: { getPath: (name: string) => string } }).app
-  if (!app) {
-    throw new Error('Electron app is not available.')
-  }
-
-  return app.getPath('home')
+  return electronApp.getPath('home')
 }
 
 export function getCodexStorageRootPath(homeDirectory?: string) {

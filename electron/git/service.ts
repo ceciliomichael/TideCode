@@ -24,4 +24,5 @@ export {
   connectGitHub,
   getGitHubAuthStatus,
   publishToGitHub,
+  publishToRemote,
 } from './servicePublish'

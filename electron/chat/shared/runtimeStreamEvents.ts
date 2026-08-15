@@ -26,12 +26,29 @@ export interface RuntimeStreamPart {
   [key: string]: unknown
 }
 
-export function emitChatStreamEvent(webContents: WebContents, payload: ChatStreamEvent) {
-  if (webContents.isDestroyed()) {
+export interface ChatStreamEventTarget {
+  send?: (channel: string, payload: unknown) => void
+  emit?: (event: ChatStreamEvent) => void
+  isDestroyed?: () => boolean
+}
+
+export function emitChatStreamEvent(
+  target: WebContents | ChatStreamEventTarget | null | undefined,
+  payload: ChatStreamEvent,
+) {
+  if (!target) {
     return
   }
 
-  webContents.send(CHAT_STREAM_EVENT_CHANNEL, payload)
+  if (typeof target.isDestroyed === 'function' && target.isDestroyed()) {
+    return
+  }
+
+  if (typeof target.send === 'function') {
+    target.send(CHAT_STREAM_EVENT_CHANNEL, payload)
+  } else if (typeof (target as { emit?: (e: ChatStreamEvent) => void }).emit === 'function') {
+    ;(target as { emit: (e: ChatStreamEvent) => void }).emit(payload)
+  }
 }
 
 function isStreamPart(part: RuntimeStreamPart, type: string): boolean {
@@ -158,7 +175,7 @@ interface ProcessRuntimeStreamInput {
   fullStream: AsyncIterable<RuntimeStreamPart>
   queueHistoryWrite: (action: () => Promise<unknown>) => void
   streamId: string
-  webContents: WebContents
+  webContents: WebContents | ChatStreamEventTarget
 }
 
 export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {

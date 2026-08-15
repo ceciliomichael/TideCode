@@ -108,7 +108,7 @@ function createPowerShellInteractiveArgs() {
     "-Command",
     [
       "$ErrorActionPreference = 'SilentlyContinue'",
-      "if ($env:VIRTUAL_ENV) { $vName = Split-Path $env:VIRTUAL_ENV -Leaf; function prompt { \"($vName) \" + (Get-Location) + '> ' } }",
+      "function prompt { $esc = [char]27; $vName = if ($env:VIRTUAL_ENV) { '(' + (Split-Path $env:VIRTUAL_ENV -Leaf) + ') ' } else { '' }; \"$esc]133;D;$LASTEXITCODE`a$esc]133;A`a$vName$($executionContext.SessionState.Path.CurrentLocation)> $esc]133;B`a\" }",
       "if (Get-Module -ListAvailable PSReadLine) { Import-Module PSReadLine -ErrorAction SilentlyContinue }",
       "if (Get-Command Set-PSReadLineOption -ErrorAction SilentlyContinue) {",
       "  try { Set-PSReadLineOption -PredictionSource History -PredictionView InlineView -BellStyle None } catch {}",
@@ -158,6 +158,9 @@ export function createTerminalEnvironment(cwd: string, workspaceRootPath: string
     TERM: "xterm-256color",
     COLORTERM: "truecolor",
     PYTHONUNBUFFERED: "1",
+    PAGER: "cat",
+    GIT_PAGER: "cat",
+    CI: "1",
   };
   delete environment.ELECTRON_RUN_AS_NODE;
   const venvPath = findVenvPath(cwd, workspaceRootPath);

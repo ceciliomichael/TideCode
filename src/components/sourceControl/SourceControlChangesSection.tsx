@@ -1,4 +1,4 @@
-import { ChevronDown, Github } from 'lucide-react'
+import { ChevronDown, Globe } from 'lucide-react'
 import type { RefObject } from 'react'
 import { useState } from 'react'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
@@ -197,8 +197,8 @@ export function SourceControlChangesSection({
                       isPrimaryActionDisabled ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
                     ].join(' ')}
                   >
-                    <Github size={13} />
-                    Publish to GitHub
+                    <Globe size={13} />
+                    Publish Branch
                   </button>
                 ) : (
                   <div ref={commitActionControlsRef} className="relative inline-flex items-center">
@@ -263,7 +263,7 @@ export function SourceControlChangesSection({
                               }}
                               className="flex h-9 w-full items-center rounded-lg px-2.5 text-left text-xs text-foreground transition-colors hover:bg-surface-muted"
                             >
-                              Publish to GitHub
+                              Publish Branch…
                             </button>
                           )}
                         </div>

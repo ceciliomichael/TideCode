@@ -1,0 +1,315 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { TerminalScreen } from '../../electron/cli/terminalScreen'
+import type { TerminalOutput } from '../../electron/cli/terminalOutput'
+import { stripAnsi } from '../../electron/cli/terminalText'
+import { TerminalGridOutput } from './terminalHarness'
+import type { Message } from '../../src/types/chat'
+
+class RecordingOutput implements TerminalOutput {
+  writes: string[] = []
+  cursorColumns: number[] = []
+  moves: Array<{ dx: number; dy: number }> = []
+
+  write(text: string): void {
+    this.writes.push(text)
+  }
+
+  moveCursor(dx: number, dy: number): void {
+    this.moves.push({ dx, dy })
+  }
+
+  cursorTo(column: number): void {
+    this.cursorColumns.push(column)
+  }
+}
+
+function createScreen(output: TerminalOutput): TerminalScreen {
+  return new TerminalScreen({
+    workspace: 'C:/workspace',
+    model: 'gpt-test',
+    provider: 'codex',
+    mode: 'agent',
+    version: 'test',
+    permissions: 'full access',
+  }, { output })
+}
+
+test('screen lifecycle renders session before compose and keeps cursor in compose while streaming', () => {
+  const output = new RecordingOutput()
+  const screen = createScreen(output)
+  screen.start()
+
+  assert.equal(output.writes[0], '\x1b[2J\x1b[3J\x1b[H')
+  const intro = stripAnsi(output.writes.join(''))
+  assert.ok(intro.indexOf('╭─ TideCode') >= 0)
+  assert.ok(intro.indexOf('╭─ TideCode') < intro.indexOf('/help'))
+  assert.equal(intro.includes('╭─ compose'), false)
+
+  screen.addUserMessage('hi')
+  screen.beginTurn()
+  assert.match(stripAnsi(output.writes.at(-1) ?? ''), /Enter steer · Tab queue · Esc stop/)
+  assert.equal(output.cursorColumns.at(-1), 4)
+
+  screen.eventPresentation.onContentStart()
+  assert.ok(output.writes.map(stripAnsi).some((write) => write.includes('Enter steer · Tab queue · Esc stop')))
+  assert.equal(output.writes.map(stripAnsi).some((write) => write.includes('Writing')), false)
+  assert.equal(output.cursorColumns.at(-1), 4)
+
+  screen.eventPresentation.onContentDelta('Hello! How can I help?')
+  assert.ok(output.writes.map(stripAnsi).some((write) => write.includes('Hello! How can I help?')))
+  assert.equal(output.cursorColumns.at(-1), 4)
+
+  screen.eventPresentation.onCompleted()
+  assert.ok(output.writes.map(stripAnsi).includes('\n  Hello! How can I help?\n'))
+})
+
+test('screen lifecycle leaves one intact active compose frame in a terminal grid', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+  screen.addUserMessage('hi')
+  screen.beginTurn()
+  screen.eventPresentation.onContentStart()
+  screen.eventPresentation.onContentDelta('Hello response')
+
+  const rows = output.visibleRows()
+  assert.equal(rows.filter((row) => row.includes('╭─ compose')).length, 1)
+  assert.equal(rows.filter((row) => row.includes('Enter steer · Tab queue · Esc stop')).length, 1)
+  const userRow = rows.findIndex((row) => row.includes('› hi'))
+  const responseRow = rows.findIndex((row) => row.includes('Hello response'))
+  const composeRow = rows.findIndex((row) => row.includes('╭─ compose'))
+  assert.ok(userRow >= 0)
+  assert.ok(responseRow > userRow)
+  assert.ok(composeRow > responseRow)
+})
+
+test('screen lifecycle streams reasoning text and commits its duration label', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+  screen.addUserMessage('hi')
+  screen.beginTurn()
+  screen.eventPresentation.onReasoningDelta('Inspecting the workspace')
+
+  const streamingRows = output.visibleRows()
+  assert.equal(streamingRows.filter((row) => row.includes('⠋ Thinking')).length, 1)
+  assert.equal(streamingRows.filter((row) => row.includes('Inspecting the workspace')).length, 1)
+
+  screen.eventPresentation.onReasoningCompleted(1.2)
+  const completedRows = output.visibleRows()
+  assert.ok(completedRows.some((row) => row.includes('Thought for 1.2s')))
+  assert.equal(completedRows.some((row) => row.includes('Inspecting the workspace')), false)
+})
+
+test('screen lifecycle updates later reasoning in the same single-row live indicator', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+  screen.addUserMessage('hi')
+  screen.beginTurn()
+  screen.eventPresentation.onReasoningDelta('First reasoning segment')
+  screen.eventPresentation.onReasoningCompleted(0.8)
+  screen.eventPresentation.onReasoningDelta('Second reasoning segment')
+  screen.eventPresentation.onReasoningCompleted(0.4)
+
+  const rows = output.visibleRows()
+  const firstThought = rows.findIndex((row) => row.includes('Thought for 1.2s'))
+  assert.ok(firstThought >= 0)
+  assert.equal(rows.filter((row) => row.includes('Thought for')).length, 1)
+  assert.equal(rows.some((row) => row.includes('Second reasoning segment')), false)
+  assert.equal(rows.some((row) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Thinking/u.test(row)), false)
+})
+
+test('screen lifecycle wraps long assistant lines before redrawing the active region', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  const response = 'I’m an AI assistant that can help with questions, writing, analysis, coding, and—when requested—inspect or modify files in your workspace. I follow the instructions and constraints provided for the conversation, protect private system details, and clearly report what I can or can’t do.'
+  screen.start()
+  screen.addUserMessage('what is system about')
+  screen.beginTurn()
+  screen.eventPresentation.onContentStart()
+  screen.eventPresentation.onContentDelta(response)
+
+  const rows = output.visibleRows()
+  assert.equal(rows.filter((row) => row.includes('I’m an AI assistant')).length, 1)
+  assert.equal(rows.filter((row) => row.includes('╭─ compose')).length, 1)
+  assert.match(rows.join(' '), /clearly\s+report\s+what I can or\s+can’t do\./)
+})
+
+test('screen clears active steer and queue submissions so more messages can be entered', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  const submissions: Array<{ behavior: 'steer' | 'queue'; text: string }> = []
+  screen.start()
+  screen.addUserMessage('inspect the workspace')
+  screen.beginTurn()
+
+  void screen.ask({
+    mode: 'agent',
+    modelId: 'gpt-test',
+    providerId: 'codex',
+    onActiveMessage: (text, behavior) => submissions.push({ behavior, text }),
+  })
+  screen.handleInputAction({ type: 'insert', text: 'then run the tests' })
+  screen.eventPresentation.onContentStart()
+  screen.eventPresentation.onContentDelta('I am inspecting the workspace now.')
+
+  const streamingRows = output.visibleRows()
+  assert.equal(streamingRows.filter((row) => row.includes('then run the tests')).length, 1)
+  assert.equal(streamingRows.filter((row) => row.includes('╭─ compose')).length, 1)
+
+  screen.handleInputAction({ type: 'submit' })
+  screen.handleInputAction({ type: 'insert', text: 'and check the build' })
+  screen.handleInputAction({ type: 'alternate-submit' })
+  const submittedRows = output.visibleRows()
+  assert.deepEqual(submissions, [
+    { behavior: 'steer', text: 'then run the tests' },
+    { behavior: 'queue', text: 'and check the build' },
+  ])
+  assert.equal(submittedRows.filter((row) => row.includes('[Steer] then run the tests')).length, 1)
+  assert.equal(submittedRows.filter((row) => row.includes('[Queued] and check the build')).length, 1)
+  assert.equal(submittedRows.filter((row) => row.includes('╭─ compose')).length, 1)
+  assert.equal(submittedRows.some((row) => row.includes('Enter steer · Tab queue · Esc stop')), true)
+
+  screen.eventPresentation.onCompleted()
+})
+
+test('screen routes Escape to active turn cancellation without erasing the draft', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  let cancellationCount = 0
+  screen.start()
+  screen.addUserMessage('inspect the workspace')
+  screen.beginTurn()
+  void screen.ask({
+    mode: 'agent',
+    modelId: 'gpt-test',
+    providerId: 'codex',
+    onCancelTurn: () => { cancellationCount += 1 },
+  })
+  screen.handleInputAction({ type: 'insert', text: 'keep this draft' })
+  screen.handleInputAction({ type: 'cancel' })
+
+  assert.equal(cancellationCount, 1)
+  assert.equal(output.visibleRows().filter((row) => row.includes('keep this draft')).length, 1)
+})
+
+test('screen omits transitional activity labels after tools finish', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+  screen.addUserMessage('inspect')
+  screen.beginTurn()
+  screen.eventPresentation.onToolStarted('Reading workspace')
+  assert.equal(output.visibleRows().some((row) => row.includes('Reading workspace')), false)
+  screen.eventPresentation.onToolCompleted('Read workspace')
+
+  let rows = output.visibleRows()
+  assert.equal(rows.some((row) => row.includes('Continuing')), false)
+
+  screen.eventPresentation.onToolStarted('Updating workspace')
+  screen.eventPresentation.onToolFailed('Update failed', 'permission denied')
+  rows = output.visibleRows()
+  assert.equal(rows.some((row) => row.includes('Recovering')), false)
+})
+
+test('screen hides the caret for an empty active composer and restores it after the turn', () => {
+  const output = new RecordingOutput()
+  const screen = createScreen(output)
+  screen.start()
+  screen.addUserMessage('inspect')
+  screen.beginTurn()
+  void screen.ask({ mode: 'agent', modelId: 'gpt-test', providerId: 'codex' })
+
+  let terminalWrites = output.writes.join('')
+  assert.ok(terminalWrites.lastIndexOf('\x1b[?25l') > terminalWrites.lastIndexOf('\x1b[?25h'))
+
+  screen.eventPresentation.onCompleted()
+  terminalWrites = output.writes.join('')
+  assert.ok(terminalWrites.lastIndexOf('\x1b[?25h') > terminalWrites.lastIndexOf('\x1b[?25l'))
+  assert.ok(terminalWrites.includes('\x1b[6 q\x1b[?25h'))
+})
+
+test('screen keeps response, tool, thought, and later response blocks in chronological order', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+  screen.addUserMessage('inspect and explain')
+  screen.beginTurn()
+  screen.eventPresentation.onContentStart()
+  screen.eventPresentation.onContentDelta('First response segment')
+  screen.eventPresentation.onToolStarted('Reading files')
+  screen.eventPresentation.onToolCompleted('Read files')
+  screen.eventPresentation.onReasoningDelta('Checking the result')
+  screen.eventPresentation.onReasoningCompleted(0.5)
+  screen.eventPresentation.onContentDelta('Later response segment')
+
+  const rows = output.visibleRows()
+  const firstResponse = rows.findIndex((row) => row.includes('First response segment'))
+  const tool = rows.findIndex((row) => row.includes('[Read] files'))
+  const thought = rows.findIndex((row) => row.includes('Thought for 0.5s'))
+  const laterResponse = rows.findIndex((row) => row.includes('Later response segment'))
+  assert.ok(firstResponse >= 0)
+  assert.ok(tool > firstResponse)
+  assert.ok(thought > tool)
+  assert.ok(laterResponse > thought)
+})
+
+test('screen restores a resumed desktop transcript before accepting the next message', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  const messages: Message[] = [
+    { content: 'Previous question', id: 'user-old', role: 'user', timestamp: 1 },
+    {
+      content: 'Previous answer',
+      id: 'assistant-old',
+      reasoningCompletedAt: 2,
+      reasoningContent: 'Previous reasoning',
+      role: 'assistant',
+      timestamp: 2,
+      toolInvocations: [{
+        argumentsText: '{"path":"README.md"}',
+        completedAt: 2,
+        id: 'tool-old',
+        resultContent: 'contents',
+        startedAt: 1,
+        state: 'completed',
+        toolName: 'read',
+      }],
+    },
+  ]
+
+  screen.start()
+  screen.restoreConversation(messages, {}, true)
+
+  const rows = output.visibleRows()
+  const user = rows.findIndex((row) => row.includes('Previous question'))
+  const thought = rows.findIndex((row) => row.includes('Thought'))
+  const tool = rows.findIndex((row) => row.includes('[Read] README.md'))
+  const assistant = rows.findIndex((row) => row.includes('Previous answer'))
+  assert.ok(user >= 0)
+  assert.ok(thought > user)
+  assert.ok(tool > thought)
+  assert.ok(assistant > tool)
+  const outputText = output.writes.join('')
+  const resumeClearIndex = outputText.lastIndexOf('\x1b[2J\x1b[3J\x1b[H')
+  assert.ok(resumeClearIndex >= 0)
+  assert.ok(resumeClearIndex < outputText.lastIndexOf('Previous question'))
+})
+
+test('screen restores only one thought marker for multiple desktop reasoning segments in one turn', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  const messages: Message[] = [
+    { content: 'Inspect', id: 'user-1', role: 'user', timestamp: 1 },
+    { content: '', id: 'assistant-1', reasoningContent: 'First thought', role: 'assistant', timestamp: 2 },
+    { content: '', id: 'assistant-2', reasoningContent: 'Second thought', role: 'assistant', timestamp: 3 },
+    { content: 'Done', id: 'assistant-3', role: 'assistant', timestamp: 4 },
+  ]
+
+  screen.start()
+  screen.restoreConversation(messages)
+
+  assert.equal(output.visibleRows().filter((row) => row.includes('Thought')).length, 1)
+})

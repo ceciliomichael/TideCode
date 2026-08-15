@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { app } from 'electron'
+import { electronApp } from '../electronApp'
 import type { McpAddServerInput, McpConfigOwner, McpConfigSource, McpServerConfig } from '../../src/types/mcp'
 import { type McpSettingsFile, parseMcpAddServerInput, parseMcpSettings, type RawMcpServerConfig } from './configValidation'
 import {
@@ -28,7 +28,7 @@ interface McpConfigCandidate {
 }
 
 function getConfigRootPath() {
-  return path.join(app.getPath('home'), ...CONFIG_ROOT_SEGMENTS)
+  return path.join(electronApp.getPath('home'), ...CONFIG_ROOT_SEGMENTS)
 }
 
 function getGlobalConfigPath() {
@@ -203,7 +203,7 @@ export async function loadMergedMcpConfigs(): Promise<McpServerConfig[]> {
   for (const provider of EXTERNAL_PROVIDER_CONFIGS) {
     candidates.push({
       owner: provider.owner,
-      path: getExternalConfigPath(app.getPath('home'), provider.directoryName),
+      path: getExternalConfigPath(electronApp.getPath('home'), provider.directoryName),
       scope: 'global',
     })
   }

@@ -1,5 +1,6 @@
-import { app } from 'electron'
+import { app, clipboard } from 'electron'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { readClipboardFilesDirect } from './windowsDropFilesParser.ts'
 
 class WindowsClipboardReader {
   private ps: ChildProcessWithoutNullStreams | null = null
@@ -46,12 +47,36 @@ class WindowsClipboardReader {
   }
 
   public async readFiles(): Promise<string[]> {
+    // 1. Direct memory reading first (zero-latency < 1ms)
+    try {
+      const directPaths = readClipboardFilesDirect(clipboard)
+      if (directPaths.length > 0) {
+        return directPaths
+      }
+    } catch (directError) {
+      console.warn('Direct clipboard buffer parsing encountered an issue, trying fallback:', directError)
+    }
+
+    // 2. PowerShell fallback only if direct memory parsing returned no files
     return new Promise((resolve) => {
       if (this.isShuttingDown) {
         resolve([])
         return
       }
-      this.pendingRequests.push(resolve)
+
+      const timeoutId = setTimeout(() => {
+        const index = this.pendingRequests.indexOf(resolve)
+        if (index !== -1) {
+          this.pendingRequests.splice(index, 1)
+          resolve([])
+        }
+      }, 1500)
+
+      this.pendingRequests.push((paths) => {
+        clearTimeout(timeoutId)
+        resolve(paths)
+      })
+
       const ps = this.getProcess()
       if (ps) {
         ps.stdin.write(`
@@ -63,6 +88,9 @@ if ([System.Windows.Forms.Clipboard]::ContainsFileDropList()) {
     foreach ($file in $files) { Write-Host $file }
 }
 Write-Host "EOF"\n`)
+      } else {
+        clearTimeout(timeoutId)
+        resolve([])
       }
     })
   }

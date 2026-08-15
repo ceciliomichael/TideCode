@@ -160,6 +160,20 @@ export interface GitPublishResult {
   success: boolean
 }
 
+export interface GitPublishRemoteInput {
+  workspacePath: string
+  remoteUrl: string
+  remoteName?: string
+  defaultBranch?: string
+}
+
+export interface GitPublishRemoteResult {
+  remoteName: string
+  remoteUrl: string
+  repoUrl?: string
+  success: boolean
+}
+
 export interface GitHistoryPageInput {
   limit: number
   offset: number

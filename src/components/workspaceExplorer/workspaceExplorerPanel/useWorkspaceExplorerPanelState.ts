@@ -196,7 +196,8 @@ export function useWorkspaceExplorerPanelState({
     async (relativePaths: string[]) => {
       const entriesForUndo = relativePaths.map((relativePath) => {
         const entry = findLoadedExplorerEntry(rootEntries, directoryEntriesByPath, relativePath)
-        return { relativePath, isDirectory: entry?.isDirectory ?? false }
+        const isDirectory = entry?.isDirectory ?? (directoryEntriesByPath[relativePath] !== undefined)
+        return { relativePath, isDirectory }
       })
       await undoStack.recordDeleteEntries(entriesForUndo)
       await onDeleteEntry(relativePaths)

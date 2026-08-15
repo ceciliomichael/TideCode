@@ -18,7 +18,7 @@ test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
   assert.equal((agentPrompt.match(/<agent_tooling_instructions\b/gu) ?? []).length, 1)
   assert.equal((agentPrompt.match(/<tool_instructions>/gu) ?? []).length, 0)
   assert.match(agentPrompt, /read the file first/u)
-  assert.match(agentPrompt, /Terminal calls are asynchronous/u)
+  assert.match(agentPrompt, /Terminal calls: start with `execute_terminal`/u)
   assert.doesNotMatch(agentPrompt, /\blist_dir\b/u)
   assert.match(agentPrompt, /Answer first\. Report only the outcome/u)
   assert.match(agentPrompt, /Filesystem and plan targets use `path`/u)

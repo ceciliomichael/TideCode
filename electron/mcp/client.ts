@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { electronApp } from '../electronApp'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { McpServerConfig, McpTool } from '../../src/types/mcp'
@@ -34,8 +34,8 @@ export async function connectMcpServer(
   const transport = createMcpTransport(config, workspacePath)
   const client = new Client(
     {
-      name: app.getName() || 'TideCode',
-      version: app.getVersion() || '0.0.0',
+      name: (typeof electronApp.getName === 'function' ? electronApp.getName() : null) || 'TideCode',
+      version: (typeof electronApp.getVersion === 'function' ? electronApp.getVersion() : null) || '1.1.11',
     },
     {
       capabilities: {

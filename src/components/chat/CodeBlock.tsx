@@ -23,7 +23,6 @@ interface CodeBlockProps {
   maxBodyHeightClassName?: string
   showCopyButton?: boolean
   showHeader?: boolean
-  showHeaderTooltip?: boolean
   useMonaco?: boolean
   fillHeight?: boolean
   showLineNumberDivider?: boolean
@@ -108,7 +107,6 @@ export const CodeBlock = memo(function CodeBlock({
   maxBodyHeightClassName,
   showCopyButton = true,
   showHeader = true,
-  showHeaderTooltip: _showHeaderTooltip = false,
   useMonaco = true,
   fillHeight = false,
   showLineNumberDivider = false,
@@ -147,7 +145,10 @@ export const CodeBlock = memo(function CodeBlock({
   }
 
   return (
-    <div className={['my-2 overflow-hidden rounded-xl border border-border bg-surface shadow-sm', className ?? ''].join(' ')}>
+    <div
+      className={['my-2 overflow-hidden rounded-xl border border-border bg-surface shadow-sm', className ?? ''].join(' ')}
+      data-code-renderer={useMonaco ? 'monaco' : 'static'}
+    >
       {showHeader ? (
         <div className="flex items-center gap-3 border-b border-border bg-surface px-3 py-1 text-[12px] text-muted-foreground">
           <span className="inline-flex min-h-4 min-w-0 flex-1 items-center gap-2">
@@ -179,8 +180,9 @@ export const CodeBlock = memo(function CodeBlock({
       ) : null}
       <div
         className={[
-          'overflow-hidden',
-          maxBodyHeightClassName ? `${maxBodyHeightClassName} overflow-y-auto` : '',
+          maxBodyHeightClassName
+            ? `${maxBodyHeightClassName} overflow-x-auto overflow-y-auto`
+            : 'overflow-x-auto overflow-y-hidden',
           bodyClassName ?? '',
         ]
           .filter((value) => value.length > 0)

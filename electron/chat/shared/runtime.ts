@@ -57,6 +57,7 @@ import { normalizeWorkspacePath } from '../../workspace/paths'
 import {
   emitChatStreamEvent,
   processRuntimeStream,
+  type ChatStreamEventTarget,
   type RuntimeStreamPart,
 } from './runtimeStreamEvents'
 import {
@@ -130,7 +131,7 @@ export async function runToolEnabledChatStream(input: {
   startInput: StartChatStreamInput
   steering: ChatStreamSteeringController
   streamId: string
-  webContents: WebContents
+  webContents: WebContents | ChatStreamEventTarget
 }) {
   const contextCompaction = normalizeContextCompactionSettings(input.startInput.contextCompaction)
   const runId = randomUUID()

@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { app } from 'electron'
+import { electronApp } from '../electronApp'
 
 const CONFIG_ROOT_SEGMENTS = ['.tidecode', 'mcp'] as const
 const STATE_FILENAME = 'state.json'
@@ -27,7 +27,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 function getRootPath() {
-  return path.join(app.getPath('home'), ...CONFIG_ROOT_SEGMENTS)
+  return path.join(electronApp.getPath('home'), ...CONFIG_ROOT_SEGMENTS)
 }
 
 function getGlobalStatePath() {
@@ -283,4 +283,3 @@ export function getMcpStateStore() {
 
   return stateStoreInstance
 }
-

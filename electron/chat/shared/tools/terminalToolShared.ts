@@ -1,6 +1,7 @@
 import { randomInt } from "node:crypto";
 import path from "node:path";
 import type { WebContents } from "electron";
+import type { ChatStreamEventTarget } from "../runtimeStreamEvents";
 import type {
   CreateTerminalSessionInput,
   CreateTerminalSessionResult,
@@ -89,6 +90,7 @@ export interface ThreadAiSession {
   globalSessionId: number;
   interaction: TerminalInteractionDetection | null;
   interactionMode: "auto" | "non_interactive" | "interactive";
+  isDaemon: boolean;
   label: string | null;
   localSessionId: number;
   nextUnreadLine: number;
@@ -201,15 +203,17 @@ export function createTerminalToolRuntime(
   context: AgentToolContext,
   dependencies: Partial<TerminalToolDependencies> = {},
 ): TerminalToolRuntime {
-  let resolvedDependencies: Promise<TerminalToolDependencies> | null = null;
+  let resolvedDependencies: TerminalToolDependencies | null = null;
   const getDependencies = async () => {
     if (!resolvedDependencies) {
-      resolvedDependencies = loadDefaultTerminalToolDependencies().then((defaults) => ({
+      const defaults = await loadDefaultTerminalToolDependencies();
+      resolvedDependencies = Object.freeze(Object.assign({}, defaults, {
+        consumeSessionOutput:
+          dependencies.consumeSessionOutput ?? defaults.consumeSessionOutput,
         createSession: dependencies.createSession ?? defaults.createSession,
         getSessionOutput: dependencies.getSessionOutput ?? defaults.getSessionOutput,
         terminateSession: dependencies.terminateSession ?? defaults.terminateSession,
         writeToSession: dependencies.writeToSession ?? defaults.writeToSession,
-        consumeSessionOutput: dependencies.consumeSessionOutput ?? defaults.consumeSessionOutput,
         resizeSession: dependencies.resizeSession ?? defaults.resizeSession,
         terminateSessionsForTurn:
           dependencies.terminateSessionsForTurn ?? defaults.terminateSessionsForTurn,
@@ -222,7 +226,7 @@ export function createTerminalToolRuntime(
     context,
     getDependencies,
     namespace: resolveTerminalThreadNamespace(context),
-    ownerWebContents: context.webContents ?? null,
+    ownerWebContents: (context.webContents as WebContents | null) ?? null,
     terminalExecutionMode: context.terminalExecutionMode ?? "sandbox",
   };
 }
@@ -349,7 +353,54 @@ function escapeRegularExpression(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+export function readOsc133CompletionCode(value: string): number | null {
+  const match = /\x1b\]133;D(?:;(-?\d+))?(?:\x07|\x1b\\)/u.exec(value);
+  if (match) {
+    return match[1] !== undefined ? Number.parseInt(match[1], 10) : 0;
+  }
+  return null;
+}
+
+const DAEMON_SERVER_PATTERNS = [
+  /Local:\s+https?:\/\/[^\s]+/i,
+  /Network:\s+https?:\/\/[^\s]+/i,
+  /listening on (?:port |http|\/|::|\d)/i,
+  /ready in \d+(?:\.\d+)?\s*(?:ms|s)/i,
+  /Compiled successfully/i,
+  /webpack (?:compiled|\d+\.\d+)/i,
+  /watching for (?:file )?changes/i,
+  /Application (?:started|running at)/i,
+  /Uvicorn running on/i,
+  /Development server is running at/i,
+  /Server running at/i,
+  /Started development server/i,
+  /press h \+ enter to show help/i,
+];
+
+export function detectDaemonOrServer(value: string): boolean {
+  return DAEMON_SERVER_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+export function getRecentTranscriptTail(
+  session: ThreadAiSession,
+  maxLines = 5,
+): { lineNumber: number; text: string }[] {
+  session.transcript.finalize();
+  const summary = session.transcript.getSummary();
+  if (summary.lineCount === 0) {
+    return [];
+  }
+  const startLine = Math.max(1, summary.lineCount - maxLines + 1);
+  const result = session.transcript.read(startLine, maxLines);
+  return result.lines;
+}
+
 export function readCompletionCode(value: string, marker: string) {
+  const osc133ExitCode = readOsc133CompletionCode(value);
+  if (osc133ExitCode !== null) {
+    return osc133ExitCode;
+  }
+
   const match = new RegExp(`${escapeRegularExpression(marker)}:(-?\\d+)`, "u").exec(value);
   return match ? Number.parseInt(match[1], 10) : null;
 }
@@ -401,6 +452,9 @@ async function observePendingOutput(
         if (detection) {
           session.interaction = detection;
         }
+      }
+      if (!session.isDaemon && detectDaemonOrServer(markerProbe)) {
+        session.isDaemon = true;
       }
     }
 
@@ -501,6 +555,8 @@ export async function waitForTerminalCommand(
   };
 }
 
+export const MAX_TERMINAL_WAIT_SECONDS = 300;
+
 export function getTerminalCommandState(session: ThreadAiSession): TerminalCommandState {
   if (session.commandComplete) {
     return "completed";
@@ -520,10 +576,21 @@ export function buildTerminalCommandSummary(
   const snapshot = session.lastSnapshot;
   const exitCode = session.commandExitCode ?? snapshot?.exitCode ?? null;
   const interaction = session.interaction;
+  const status = state === "running"
+    ? session.isDaemon
+      ? "daemon_listening"
+      : "actively_executing"
+    : state === "needs_interaction"
+      ? "waiting_for_input"
+      : exitCode !== null && exitCode !== 0
+        ? "failed"
+        : "completed";
+
   const bodyLines = [
     `session_id: ${session.localSessionId}`,
     `state: ${state}`,
-    `line_count: ${transcriptSummary.lineCount}`,
+    `status: ${status}`,
+    `total_output_lines: ${transcriptSummary.lineCount}`,
   ];
   if (state === "completed" && exitCode !== null && exitCode !== 0) {
     bodyLines.push("result: failed");
@@ -540,34 +607,41 @@ export function buildTerminalCommandSummary(
   if (options.includeScreen && interaction?.kind === "screen") {
     bodyLines.push(formatTerminalScreenForModel(session.screen.getSnapshot()));
   }
+  if (state === "running") {
+    if (session.isDaemon) {
+      bodyLines.push(
+        "",
+        "guidance: A long-running web server or background daemon was detected and is running. It will not exit on its own. Do not wait in a polling loop; proceed with other tasks or send Ctrl+C using interact_terminal to stop it.",
+      );
+    } else {
+      bodyLines.push(
+        "",
+        "guidance: Process is actively executing in the background and has not exited. Use interact_terminal to wait for output or send Ctrl+C to cancel. Do not re-run this command while the session is active.",
+      );
+    }
+  }
   const body = bodyLines.join("\n");
   const displayBodyLines: string[] = [];
 
   if (state === "needs_interaction") {
-    displayBodyLines.push("Waiting for terminal input.");
     if (interaction?.kind === "screen") {
       displayBodyLines.push(formatTerminalScreenForDisplay(session.screen.getSnapshot()));
     } else if (interaction?.hint) {
       displayBodyLines.push(interaction.hint);
+    } else {
+      displayBodyLines.push("Waiting for terminal input.");
     }
   } else if (state === "completed") {
-    displayBodyLines.push(
-      exitCode !== null && exitCode !== 0
-        ? "Terminal command failed."
-        : "Terminal command completed.",
-    );
-  } else {
-    displayBodyLines.push("Terminal command is still running. Read terminal for updates.");
-  }
-
-  if (transcriptSummary.lineCount > 0 && interaction?.kind !== "screen") {
-    displayBodyLines.push(`${transcriptSummary.lineCount} output lines available.`);
+    if (exitCode !== null && exitCode !== 0) {
+      displayBodyLines.push("Terminal command failed.");
+    }
   }
 
   return {
     body,
     displayBody: displayBodyLines.join("\n"),
     semantics: {
+      active: state === "running",
       available_line_count: transcriptSummary.availableLineCount,
       first_available_line: transcriptSummary.firstAvailableLine,
       interaction_confidence: interaction?.confidence ?? null,
@@ -577,6 +651,7 @@ export function buildTerminalCommandSummary(
       line_count: transcriptSummary.lineCount,
       session_id: session.localSessionId,
       state,
+      status: state === "running" ? "actively_executing" : state === "needs_interaction" ? "waiting_for_input" : exitCode !== null && exitCode !== 0 ? "failed" : "completed",
       output_evicted: transcriptSummary.truncated,
     },
     state,
@@ -621,6 +696,7 @@ export function resetThreadSessionForCommand(
   session.detector.reset();
   session.interaction = null;
   session.interactionMode = interactionMode;
+  session.isDaemon = false;
   session.lastSnapshot = null;
   session.nextUnreadLine = 1;
   session.screen.reset();
@@ -650,6 +726,7 @@ export function createThreadAiSession(input: {
     globalSessionId: input.globalSessionId,
     interaction: null,
     interactionMode: input.interactionMode,
+    isDaemon: false,
     label: input.label,
     lastSnapshot: null,
     localSessionId: input.localSessionId,
@@ -765,15 +842,15 @@ export function assertTerminalOwner(runtime: TerminalToolRuntime): asserts runti
 }
 
 export async function terminateAllBackgroundSessions(
-  webContents: WebContents,
+  webContents: WebContents | ChatStreamEventTarget | null | undefined,
   workspaceRootPath: string,
   conversationIdOrTerminate?: string | null | ((
-    webContents: WebContents,
+    webContents: WebContents | ChatStreamEventTarget | null | undefined,
     sessionId: number,
     workspaceRootPath: string,
   ) => void),
   customTerminateSession?: (
-    webContents: WebContents,
+    webContents: WebContents | ChatStreamEventTarget | null | undefined,
     sessionId: number,
     workspaceRootPath: string,
   ) => void,
@@ -798,9 +875,9 @@ export async function terminateAllBackgroundSessions(
     for (const session of store.sessions.values()) {
       try {
         if (terminateSession) {
-          terminateSession(webContents, session.globalSessionId, workspaceRootPath);
-        } else {
-          dependencies?.terminateSession(webContents, session.globalSessionId, workspaceRootPath);
+          terminateSession(webContents as any, session.globalSessionId, workspaceRootPath);
+        } else if (webContents && dependencies) {
+          dependencies.terminateSession(webContents as any, session.globalSessionId, workspaceRootPath);
         }
       } catch {
         // Continue terminating the remaining sessions.
@@ -813,11 +890,11 @@ export async function terminateAllBackgroundSessions(
 }
 
 export async function terminateAllBackgroundSessionsForTurn(
-  webContents: WebContents,
+  webContents: WebContents | ChatStreamEventTarget | null | undefined,
   workspaceRootPath: string,
   turnId: string,
   customTerminateSession?: (
-    webContents: WebContents,
+    webContents: WebContents | ChatStreamEventTarget | null | undefined,
     sessionId: number,
     workspaceRootPath: string,
   ) => void,
@@ -836,9 +913,9 @@ export async function terminateAllBackgroundSessionsForTurn(
       for (const session of store.sessions.values()) {
         try {
           if (customTerminateSession) {
-            customTerminateSession(webContents, session.globalSessionId, workspaceRootPath);
-          } else {
-            dependencies?.terminateSession(webContents, session.globalSessionId, workspaceRootPath);
+            customTerminateSession(webContents as any, session.globalSessionId, workspaceRootPath);
+          } else if (webContents && dependencies) {
+            dependencies.terminateSession(webContents as any, session.globalSessionId, workspaceRootPath);
           }
         } catch {
           // Continue terminating the remaining sessions in this turn.
@@ -848,7 +925,9 @@ export async function terminateAllBackgroundSessionsForTurn(
       }
     }
 
-    dependencies?.terminateSessionsForTurn(webContents, normalizedTurnId, workspaceRootPath);
+    if (webContents && dependencies) {
+      dependencies.terminateSessionsForTurn(webContents as any, normalizedTurnId, workspaceRootPath);
+    }
   } finally {
     threadStores.delete(namespace);
   }

@@ -12,7 +12,7 @@ export const DEFAULT_CODE_MODE_EXECUTION_LIMITS: CodeModeExecutionLimits = {
   maxCodeBytes: 100_000,
   maxOutputBytes: 1_000_000,
   maxToolCalls: 100,
-  timeoutMs: 30_000,
+  timeoutMs: 1_800_000,
 }
 
 export interface CodeModeToolCallRecord {

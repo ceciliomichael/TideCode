@@ -38,6 +38,7 @@ import type {
   GitSyncInput,
   ReplaceConversationMessagesInput,
   GitPublishInput,
+  GitPublishRemoteInput,
 
   CloseTerminalSessionInput,
   CreateTerminalSessionInput,
@@ -263,6 +264,7 @@ const gitApi: TideCodeGitApi = {
   unstageFile: (input: GitFileStageInput) => ipcRenderer.invoke('git:unstageFile', input),
   initRepository: (workspacePath: string) => ipcRenderer.invoke('git:init', workspacePath),
   publishToGitHub: (input: GitPublishInput) => ipcRenderer.invoke('git:publishToGitHub', input),
+  publishToRemote: (input: GitPublishRemoteInput) => ipcRenderer.invoke('git:publishToRemote', input),
 }
 
 

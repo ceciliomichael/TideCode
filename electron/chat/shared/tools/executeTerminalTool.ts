@@ -14,6 +14,7 @@ import {
   createThreadAiSession,
   drainUnreadTerminalOutput,
   getOrCreateThreadStore,
+  MAX_TERMINAL_WAIT_SECONDS,
   normalizeCommand,
   prepareTerminalCommand,
   raceWithAbort,
@@ -48,7 +49,6 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
         },
         wait_seconds: {
           description: "Optional. Maximum collection window in seconds to wait for initial output. Omit or set to 0 for an immediate non-blocking start.",
-          maximum: 15,
           minimum: 0,
           type: "number",
         },
@@ -136,11 +136,12 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           abortSignal,
         );
 
+        let unreadOutput: ReturnType<typeof drainUnreadTerminalOutput> | null = null;
         let unreadOutputLines: string[] = [];
         let commandState = "running";
 
         if (typeof input.wait_seconds === "number" && input.wait_seconds > 0) {
-          const waitMs = clampInteger(input.wait_seconds, 0, 15, 0) * 1_000;
+          const waitMs = clampInteger(input.wait_seconds, 0, MAX_TERMINAL_WAIT_SECONDS, 0) * 1_000;
           const deadline = Date.now() + waitMs;
           do {
             const remainingMilliseconds = Math.max(0, deadline - Date.now());
@@ -156,15 +157,26 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
             }
           } while (Date.now() < deadline);
 
-          const unreadOutput = drainUnreadTerminalOutput(session);
+          unreadOutput = drainUnreadTerminalOutput(session);
           const commandSummary = buildTerminalCommandSummary(session);
           commandState = commandSummary.state;
           unreadOutputLines = unreadOutput.lines.map((line) => `${line.lineNumber}: ${line.text}`);
         }
 
+        const status = commandState === "running"
+          ? session.isDaemon
+            ? "daemon_listening"
+            : "actively_executing"
+          : commandState === "needs_interaction"
+            ? "waiting_for_input"
+            : session.commandExitCode !== null && session.commandExitCode !== 0
+              ? "failed"
+              : "completed";
+
         const bodyLines = [
           `session_id: ${session.localSessionId}`,
           `state: ${commandState}`,
+          `status: ${status}`,
         ];
 
         if (commandState === "completed" && session.commandExitCode !== null && session.commandExitCode !== 0) {
@@ -172,15 +184,59 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
         }
 
         if (unreadOutputLines.length > 0) {
-          bodyLines.push("", "new_output:", ...unreadOutputLines);
+          bodyLines.push(
+            `new_output_lines: ${unreadOutputLines.length}`,
+            "",
+            "new_output:",
+            ...unreadOutputLines,
+          );
+          if (commandState === "running") {
+            if (session.isDaemon) {
+              bodyLines.push(
+                "",
+                "guidance: Web server or background watcher started and is listening on port. Do not wait in a polling loop; proceed with tasks or send Ctrl+C using interact_terminal when finished.",
+              );
+            } else {
+              bodyLines.push(
+                "",
+                "guidance: Command is actively executing in the background. Use interact_terminal to wait for output, send input, or stop it with Ctrl+C.",
+              );
+            }
+          }
+        } else if (commandState === "running") {
+          if (session.isDaemon) {
+            bodyLines.push(
+              "",
+              "guidance: Web server started and is listening in background. Do not poll in a loop; proceed with next steps or send Ctrl+C via interact_terminal to stop it.",
+            );
+          } else {
+            bodyLines.push(
+              "",
+              "guidance: Command started and is actively executing in the background. Call interact_terminal with session_id to wait for output or send Ctrl+C. Do not re-run the command.",
+            );
+          }
         }
+
+        const displayBody = unreadOutput && unreadOutput.lines.length > 0
+          ? unreadOutput.lines.map((line) => line.text).join("\n")
+          : commandState === "needs_interaction"
+            ? "Waiting for terminal input."
+            : commandState === "completed" && session.commandExitCode !== null && session.commandExitCode !== 0
+              ? "Terminal command failed."
+              : "";
 
         return createSuccessResult({
           body: bodyLines.join("\n"),
-          displayBody: bodyLines.join("\n"),
+          displayBody,
           semantics: {
+            active: commandState === "running",
+            new_output_line_count: unreadOutputLines.length,
             session_id: session.localSessionId,
             state: commandState,
+            status,
+            wait_seconds: typeof input.wait_seconds === "number" && input.wait_seconds > 0
+              ? clampInteger(input.wait_seconds, 0, MAX_TERMINAL_WAIT_SECONDS, 0)
+              : 0,
           },
           subject: { kind: "session", path: String(session.localSessionId) },
           summary: `Started terminal session ${session.localSessionId}`,

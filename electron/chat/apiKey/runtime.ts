@@ -16,7 +16,7 @@ import { ActiveChatStreamRegistry } from '../shared/activeChatStreamRegistry'
 import type { ActiveChatStreamRegistration } from '../shared/activeChatStreamRegistry'
 import { shouldReplayAssistantReasoning } from '../shared/assistantReasoningPolicy'
 import { estimateToolEnabledContextUsage, runToolEnabledChatStream } from '../shared/runtime'
-import { emitChatStreamEvent } from '../shared/runtimeStreamEvents'
+import { emitChatStreamEvent, type ChatStreamEventTarget } from '../shared/runtimeStreamEvents'
 import { createApiKeyChatClient } from './client'
 import { compactConversationForProvider } from '../shared/compaction/manual'
 
@@ -28,7 +28,7 @@ async function loadApiKeyChatProviderConfig(providerId: ApiKeyProviderId) {
 }
 
 export async function estimateApiKeyContextUsage(
-  webContents: WebContents,
+  webContents: WebContents | ChatStreamEventTarget,
   input: EstimateContextUsageInput,
 ): Promise<ContextUsageEstimate> {
   return estimateToolEnabledContextUsage({
@@ -88,7 +88,7 @@ export async function compactApiKeyConversation(input: CompactConversationInput)
 }
 
 export async function startApiKeyChatStream(
-  webContents: WebContents,
+  webContents: WebContents | ChatStreamEventTarget,
   input: StartChatStreamInput,
   onSettled?: () => void,
 ): Promise<StartChatStreamResult> {
@@ -127,7 +127,7 @@ export async function startApiKeyChatStream(
 }
 
 async function runApiKeyChatStream(
-  webContents: WebContents,
+  webContents: WebContents | ChatStreamEventTarget,
   streamId: string,
   input: StartChatStreamInput,
   abortController: AbortController,

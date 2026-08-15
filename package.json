@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "cli": "tsx electron/cli/index.ts",
     "postinstall": "node ./scripts/sync-ripgrep-binary.mjs",
     "predev": "node ./scripts/sync-ripgrep-binary.mjs && node ./scripts/generate-electron-icons.mjs",
     "clean:build": "node ./scripts/clean-build-output.mjs",

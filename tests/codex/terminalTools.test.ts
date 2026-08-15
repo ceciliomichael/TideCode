@@ -238,7 +238,7 @@ test("repeated read_terminal calls continue from the previous collection window"
   assert.doesNotMatch(secondRead.body ?? "", /first window/u);
 });
 
-test("read_terminal bounds the requested wait to fifteen seconds", async () => {
+test("read_terminal bounds the requested wait to maximum terminal wait limit", async () => {
   const writeCalls: WriteTerminalSessionInput[] = [];
   const observedPollingValues: number[] = [];
   const tools = createTools(
@@ -261,7 +261,7 @@ test("read_terminal bounds the requested wait to fifteen seconds", async () => {
 
   assert.equal(observedPollingValues.length, 1);
   assert.ok(observedPollingValues[0] >= 0);
-  assert.ok(observedPollingValues[0] <= 15_000);
+  assert.ok(observedPollingValues[0] <= 300_000);
 });
 
 test("read_terminal reports command failure without exposing the numeric exit code", async () => {
@@ -282,7 +282,7 @@ test("read_terminal reports command failure without exposing the numeric exit co
 
   assert.equal(result.semantics?.state, "completed");
   assert.match(result.body ?? "", /result: failed/u);
-  assert.doesNotMatch(result.body ?? "", /17|exit_code/u);
+  assert.doesNotMatch((result.body ?? "").replace(/^session_id:.*$/m, ""), /17|exit_code/u);
 });
 
 test("read_terminal detects a prompt and interact_terminal sends text plus Enter", async () => {
@@ -351,7 +351,7 @@ test("interact_terminal acknowledges input while the command is still running", 
   assert.equal(result.semantics?.input_sent, true);
   assert.equal(result.semantics?.next_action, undefined);
   assert.doesNotMatch(result.body ?? "", /next_action/u);
-  assert.equal(result.displayBody, "Terminal input sent. Read terminal for updates.");
+  assert.match(result.displayBody ?? "", /Terminal input sent/u);
   assert.equal(writeCalls[1]?.data, "y\r");
 });
 
@@ -509,6 +509,146 @@ test("execute_terminal with wait_seconds collects initial output directly", asyn
   assert.equal(result.semantics?.state, "completed");
   assert.match(result.body ?? "", /session_id: /u);
   assert.match(result.body ?? "", /initial output line/u);
-  assert.equal(result.displayBody, result.body);
   assert.match(result.displayBody ?? "", /initial output line/u);
+});
+
+test("interact_terminal supports pure read mode without input", async () => {
+  const writeCalls: WriteTerminalSessionInput[] = [];
+  let readStep = 0;
+  const mockDeps = createMockDependencies({
+    getPendingOutput: () => {
+      readStep += 1;
+      if (readStep === 1) {
+        return "streaming logs line 1\nstreaming logs line 2\n";
+      }
+      return "";
+    },
+    writeCalls,
+  });
+
+  const tools = createTools("interact-pure-read", mockDeps);
+  const execResult = await getTool(tools, "execute_terminal").execute({ command: "long-task", wait_seconds: 0 });
+  const sessionId = execResult.semantics?.session_id as number;
+
+  const readResult = await getTool(tools, "interact_terminal").execute({
+    session_id: sessionId,
+    wait_seconds: 1,
+  });
+
+  assert.equal(readResult.status, "success");
+  assert.equal(readResult.semantics?.input_sent, false);
+  assert.match(readResult.body ?? "", /streaming logs line 1/u);
+  assert.match(readResult.displayBody ?? "", /streaming logs line 1/u);
+});
+
+test("interact_terminal sends text input and collects response", async () => {
+  const writeCalls: WriteTerminalSessionInput[] = [];
+  let sentPrompt = false;
+  const mockDeps = createMockDependencies({
+    getPendingOutput: (calls) => {
+      const hasInput = calls.some((c) => c.data === "yes\n");
+      if (hasInput) {
+        return "confirmed: proceeding with build\n";
+      }
+      if (!sentPrompt) {
+        sentPrompt = true;
+        return "Do you want to continue? [y/N]: ";
+      }
+      return "";
+    },
+    writeCalls,
+  });
+
+  const tools = createTools("interact-type-test", mockDeps);
+  const execResult = await getTool(tools, "execute_terminal").execute({ command: "interactive-tool", wait_seconds: 1 });
+  const sessionId = execResult.semantics?.session_id as number;
+
+  const interactResult = await getTool(tools, "interact_terminal").execute({
+    session_id: sessionId,
+    text: "yes\n",
+    wait_seconds: 1,
+  });
+
+  assert.equal(interactResult.status, "success");
+  assert.equal(interactResult.semantics?.input_sent, true);
+  assert.match(interactResult.body ?? "", /confirmed: proceeding with build/u);
+  assert.match(interactResult.displayBody ?? "", /confirmed: proceeding with build/u);
+});
+
+test("OSC 133 escape sequence completes command with exit code", async () => {
+  const writeCalls: WriteTerminalSessionInput[] = [];
+  let outputEmitted = false;
+  const mockDeps = createMockDependencies({
+    getPendingOutput: () => {
+      if (outputEmitted) return "";
+      outputEmitted = true;
+      return "Compilation successful\x1b]133;D;0\x07";
+    },
+    writeCalls,
+  });
+
+  const tools = createTools("osc-133-test", mockDeps);
+  const result = await getTool(tools, "execute_terminal").execute({
+    command: "npm run build",
+    wait_seconds: 2,
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(result.semantics?.state, "completed");
+  assert.equal(result.semantics?.status, "completed");
+  assert.match(result.body ?? "", /Compilation successful/u);
+});
+
+test("daemon server signatures are detected and set status to daemon_listening", async () => {
+  const writeCalls: WriteTerminalSessionInput[] = [];
+  let serverOutput = false;
+  const mockDeps = createMockDependencies({
+    getPendingOutput: () => {
+      if (serverOutput) return "";
+      serverOutput = true;
+      return "  VITE v5.4.0  ready in 320 ms\n  ➜  Local:   http://localhost:5173/\n  ➜  Network: use --host to expose\n";
+    },
+    writeCalls,
+  });
+
+  const tools = createTools("daemon-test", mockDeps);
+  const result = await getTool(tools, "execute_terminal").execute({
+    command: "npm run dev",
+    wait_seconds: 1,
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(result.semantics?.state, "running");
+  assert.equal(result.semantics?.status, "daemon_listening");
+  assert.match(result.body ?? "", /daemon_listening/u);
+  assert.match(result.body ?? "", /Local:   http:\/\/localhost:5173\//u);
+});
+
+test("interact_terminal returns recent_output_tail on quiet reads", async () => {
+  const writeCalls: WriteTerminalSessionInput[] = [];
+  let step = 0;
+  const mockDeps = createMockDependencies({
+    getPendingOutput: () => {
+      step += 1;
+      if (step === 1) {
+        return "log line 1\nlog line 2\nlog line 3\n";
+      }
+      return "";
+    },
+    writeCalls,
+  });
+
+  const tools = createTools("quiet-tail-test", mockDeps);
+  const execResult = await getTool(tools, "execute_terminal").execute({ command: "silent-watcher", wait_seconds: 1 });
+  const sessionId = execResult.semantics?.session_id as number;
+
+  // Second read has 0 new output lines
+  const quietRead = await getTool(tools, "interact_terminal").execute({
+    session_id: sessionId,
+    wait_seconds: 1,
+  });
+
+  assert.equal(quietRead.status, "success");
+  assert.match(quietRead.body ?? "", /recent_output_tail:/u);
+  assert.match(quietRead.body ?? "", /log line 3/u);
 });

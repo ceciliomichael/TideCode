@@ -117,7 +117,6 @@ function helloWorld() {
 echo "Hello, world!"
 \`\`\`
 \`\`\`\``,
-      fileName: 'nested-fence.md',
     }),
   )
 
@@ -129,6 +128,20 @@ echo "Hello, world!"
   assert.match(markup, /```bash/u)
   assert.match(markup, /echo &quot;Hello, world!&quot;/u)
   assert.equal(markup.match(/aria-label="Copy code"/gu)?.length, 1)
+  assert.match(markup, /data-code-renderer="static"/u)
+  assert.match(markup, /overflow-x-auto overflow-y-hidden/u)
+})
+
+test('workspace Markdown preview uses static code blocks so wheel input reaches the preview scroller', () => {
+  const markup = renderToStaticMarkup(
+    createElement(WorkspaceMarkdownPreviewView, {
+      content: 'Before\n\n```ts\nconst value = 42\n```\n\nAfter',
+    }),
+  )
+
+  assert.match(markup, /workspace-markdown-preview h-full min-h-0 overflow-auto/u)
+  assert.match(markup, /data-code-renderer="static"/u)
+  assert.doesNotMatch(markup, /data-code-renderer="monaco"/u)
 })
 
 test('preprocessMarkdown does not turn inline details examples into HTML blocks', () => {
@@ -148,7 +161,6 @@ test('workspace Markdown preview uses the shared ordered-list marker layout', ()
   const markup = renderToStaticMarkup(
     createElement(WorkspaceMarkdownPreviewView, {
       content: '8. FAQ\n9. CTA band\n10. Footer',
-      fileName: 'plan-001.md',
     }),
   )
 

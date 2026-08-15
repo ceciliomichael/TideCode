@@ -19,6 +19,8 @@ import { registerWorkspaceIpcHandlers } from './ipc/registerWorkspaceIpcHandlers
 import { registerMcpHandlers } from './ipc/registerMcpHandlers'
 import { registerUpdatesIpcHandlers } from './ipc/registerUpdatesIpcHandlers'
 import { isUpdateInstallInProgress } from './updates/autoUpdateService'
+import { installLatestRequestedUpdate } from './updates/externalUpdateRequest'
+import { hasExternalUpdateRequest } from '../src/lib/updateRequest'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // The built directory structure
@@ -80,7 +82,13 @@ if (!gotSingleInstanceLock) {
   process.exit(0)
 }
 
-app.on('second-instance', () => {
+app.on('second-instance', (_event, argv) => {
+  if (hasExternalUpdateRequest(argv)) {
+    void installLatestRequestedUpdate().catch((error) => {
+      console.error('Failed to install the CLI-requested update.', error)
+    })
+    return
+  }
   // Someone tried to run a second instance, focus our window instead.
   if (win) {
     if (win.isMinimized()) {
@@ -195,6 +203,11 @@ app.whenReady().then(() => {
   })
 
   void createWindow()
+  if (hasExternalUpdateRequest(process.argv)) {
+    void installLatestRequestedUpdate().catch((error) => {
+      console.error('Failed to install the CLI-requested update.', error)
+    })
+  }
 
   nativeTheme.on('updated', () => {
     const currentWindow = win
