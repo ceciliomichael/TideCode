@@ -61,7 +61,7 @@ test('screen lifecycle renders session before compose and keeps cursor in compos
   assert.equal(output.cursorColumns.at(-1), 4)
 
   screen.eventPresentation.onCompleted()
-  assert.ok(output.writes.map(stripAnsi).includes('\n  Hello! How can I help?\n'))
+  assert.ok(output.writes.map(stripAnsi).includes('\n  Hello! How can I help?\n\n'))
 })
 
 test('screen lifecycle leaves one intact active compose frame in a terminal grid', () => {
@@ -82,6 +82,7 @@ test('screen lifecycle leaves one intact active compose frame in a terminal grid
   assert.ok(userRow >= 0)
   assert.ok(responseRow > userRow)
   assert.ok(composeRow > responseRow)
+  assert.equal(rows[composeRow - 1], '')
 })
 
 test('screen lifecycle streams reasoning text and commits its duration label', () => {

@@ -9,6 +9,7 @@ import {
   loadGitignoreMatchers,
   shouldAlwaysShowEntry,
   shouldIgnoreWorkspaceEntry,
+  WORKSPACE_IGNORED_ENTRY_NAMES,
 } from './gitignoreMatcher'
 import {
   assertWorkspaceDirectory,
@@ -16,6 +17,7 @@ import {
   getSafeWorkspaceTargetPath,
   normalizeWorkspacePath,
 } from './paths'
+import { isSkippableWorkspaceTraversalError } from './workspaceTraversal'
 import type {
   WorkspaceRefactorCandidate,
   WorkspaceRefactorCandidatesInput,
@@ -107,6 +109,10 @@ const REFACTOR_CODE_EXTENSIONS = new Set([
   '.vb',
   '.vue',
 ])
+const REFACTOR_IGNORED_DIRECTORY_NAMES = new Set(
+  [...WORKSPACE_IGNORED_ENTRY_NAMES, 'AppData', 'Application Data', 'Local Settings']
+    .map((entryName) => entryName.toLowerCase()),
+)
 
 function sortWorkspaceEntries(entries: WorkspaceExplorerEntry[]) {
   return entries.sort((left, right) => {
@@ -136,7 +142,7 @@ function isRefactorCandidateFile(fileName: string) {
 
 async function countCandidateFileLines(targetPath: string, threshold: number) {
   const targetStats = await fs.stat(targetPath).catch((error: unknown) => {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    if (isSkippableWorkspaceTraversalError(error)) {
       return null
     }
     throw error
@@ -152,7 +158,7 @@ async function countCandidateFileLines(targetPath: string, threshold: number) {
   }
 
   const fileBuffer = await fs.readFile(targetPath).catch((error: unknown) => {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    if (isSkippableWorkspaceTraversalError(error)) {
       return null
     }
     throw error
@@ -327,7 +333,7 @@ export async function listWorkspaceRefactorCandidates(
     directoryRelativePath: string = DEFAULT_WORKSPACE_RELATIVE_PATH,
   ) {
     const directoryEntries = await fs.readdir(directoryAbsolutePath, { withFileTypes: true }).catch((error: unknown) => {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if (isSkippableWorkspaceTraversalError(error)) {
         return null
       }
       throw error
@@ -336,7 +342,14 @@ export async function listWorkspaceRefactorCandidates(
       return
     }
 
-    const gitignoreMatchers = await loadGitignoreMatchers(workspaceRootPath, directoryAbsolutePath)
+    const gitignoreMatchers = await loadGitignoreMatchers(workspaceRootPath, directoryAbsolutePath).catch(
+      (error: unknown) => {
+        if (isSkippableWorkspaceTraversalError(error)) {
+          return []
+        }
+        throw error
+      },
+    )
 
     for (const directoryEntry of directoryEntries) {
       if (directoryEntry.isSymbolicLink()) {
@@ -349,6 +362,10 @@ export async function listWorkspaceRefactorCandidates(
       }
 
       if (shouldIgnoreWorkspaceEntry(directoryEntry.name, 'workspace')) {
+        continue
+      }
+
+      if (isDirectory && REFACTOR_IGNORED_DIRECTORY_NAMES.has(directoryEntry.name.toLowerCase())) {
         continue
       }
 

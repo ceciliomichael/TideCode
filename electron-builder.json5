@@ -27,6 +27,13 @@
   ],
   "extraResources": [
     {
+      "from": "dist-cli-runtime",
+      "to": "cli",
+      "filter": [
+        "**/*"
+      ]
+    },
+    {
       "from": "bin",
       "to": "bin",
       "filter": [

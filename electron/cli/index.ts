@@ -14,6 +14,7 @@ import { SLASH_COMMANDS } from './commands'
 import { initializeCliConversation } from './cliHistory'
 import { resolveReasoningEffortTransition } from '../../src/lib/reasoningEffortTransition'
 import { getStoredSettings } from '../settings/store'
+import { readPipedPrompt, resolveHeadlessPrompt } from './stdinPrompt'
 
 function parseArgs(args: string[]): CliOptions {
   const options: CliOptions = {
@@ -159,10 +160,12 @@ export async function main() {
     return
   }
 
-  // Check if stdin has data or -p passed
-  const hasPipedData = !process.stdin.isTTY
-  if (options.prompt || hasPipedData) {
-    const exitCode = await runHeadlessPrompt(options.prompt || '', state, options)
+  const pipedPrompt = options.prompt === undefined
+    ? await readPipedPrompt(process.stdin)
+    : null
+  const headlessPrompt = resolveHeadlessPrompt(options.prompt, pipedPrompt)
+  if (headlessPrompt) {
+    const exitCode = await runHeadlessPrompt(headlessPrompt, state, options)
     process.exit(exitCode)
   }
 
