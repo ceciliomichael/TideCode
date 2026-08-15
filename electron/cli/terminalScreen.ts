@@ -1,19 +1,29 @@
 import { randomUUID } from 'node:crypto'
 import readline from 'node:readline'
-import type { ChatMode } from '../../src/types/chat'
+import type { ChatAttachment, ChatMode } from '../../src/types/chat'
 import {
   applyComposerAction,
+  attachImagesToComposer,
   composerText,
   createComposerState,
   getComposerCursorPosition,
   getComposerVisualLines,
+  insertTextIntoComposer,
   recordComposerHistory,
+  setComposerText,
   type ComposerState,
 } from './composer'
+import {
+  extractPastedImageFilePaths,
+  formatCliImageReferenceInText,
+  readCliImageAttachmentSync,
+} from './cliImageAttachments'
+import { readSystemClipboardImageOrText } from './cliClipboardImage'
 import { interactiveConfirm, interactiveSelect, type SelectOptions } from './interactiveSelect'
 import { interactiveChecklist, type ChecklistOptions } from './interactiveChecklist'
+import { interactiveTextInput, type TextInputOptions } from './interactiveTextInput'
 import { createActiveTurnPromptPanel, renderActiveTurn as renderActiveTurnView, renderCommittedTurn, renderConversationHistory } from './terminalActiveTurn'
-import { TerminalLifecycle } from './terminalLifecycle'
+import { ensureKeypressEvents, TerminalLifecycle } from './terminalLifecycle'
 import { getTerminalInputAction, type TerminalInputAction } from './terminalInput'
 import { colors, renderDiffLines, stripAnsi } from './renderer'
 import { StreamingTerminalMarkdown } from './terminalMarkdown'
@@ -37,9 +47,16 @@ import { getFollowUpKeyHint, resolveFollowUpKeyBehavior } from './terminalFollow
 import type { FollowUpBehavior } from '../../src/lib/appSettings'
 import { renderTerminalComposerStatus } from './terminalComposerStatus'
 import type { ReasoningEffort } from '../../src/types/chat'
+import { BracketedPasteDecoder } from './terminalBracketedPaste'
+import { interactiveResumeSelect, type ResumeSelectionResult } from './interactiveResumeSelect'
+import type { ResumeConversationItem } from './resumeCatalog'
+import type { ResumePage } from './terminalResumeView'
+import { formatThoughtDuration } from './terminalDuration'
 
 let activeTerminalScreen: TerminalScreen | null = null
 const CLEAR_TERMINAL_SEQUENCE = '\x1b[2J\x1b[3J\x1b[H'
+const RESIZE_FRAME_INTERVAL_MS = 16
+const TERMINAL_SIZE_POLL_INTERVAL_MS = 32
 
 export function getActiveTerminalScreen(): TerminalScreen | null {
   return activeTerminalScreen
@@ -72,9 +89,14 @@ export interface TerminalScreenEventPresentation {
   onCompleted: () => void
 }
 
+export interface TerminalPromptSubmission {
+  text: string
+  attachments: ChatAttachment[]
+}
+
 interface PendingPrompt {
   context: TerminalPromptContext
-  resolve: (value: string) => void
+  resolve: (value: TerminalPromptSubmission) => void
 }
 
 export class TerminalScreen {
@@ -92,6 +114,7 @@ export class TerminalScreen {
   private activeAssistantId: string | null = null
   private activeThought = ''
   private activeThoughtEntryId: string | null = null
+  private activeTurnCancel: (() => void) | null = null
   private activeThoughtDurationSeconds = 0
   private activityLabel = ''
   private hasTurnOutput = false
@@ -104,6 +127,14 @@ export class TerminalScreen {
   private activeThinkingFrameIndex = 0
   private activeThinkingTimer: NodeJS.Timeout | null = null
   private activeFollowUps: ActiveTurnFollowUpView[] = []
+  private nextPromptDraft: { text: string; attachments: ChatAttachment[] } | null = null
+  private readonly bracketedPasteDecoder = new BracketedPasteDecoder()
+  private suppressKeypressEvents = false
+  private keypressSuppressionHandle: NodeJS.Immediate | null = null
+  private resizeRedrawTimer: NodeJS.Timeout | null = null
+  private terminalSizePollTimer: NodeJS.Timeout | null = null
+  private resizeRedrawPending = false
+  private lastTerminalSize: { columns: number; rows: number } | null = null
   private composerStatus: { contextPercent: number; codexUsage?: string; reasoningEffort: ReasoningEffort } = {
     contextPercent: 0,
     reasoningEffort: 'medium',
@@ -120,14 +151,31 @@ export class TerminalScreen {
     if (this.lifecycle.active) return
     this.lifecycle.start()
     setActiveTerminalScreen(this)
-    if (this.usesProcessOutput && process.stdout.isTTY) process.stdout.on('resize', this.handleResize)
+    if (this.usesProcessOutput) {
+      if (process.stdout.isTTY) process.stdout.on('resize', this.handleResize)
+      this.lastTerminalSize = this.readTerminalSize()
+      this.terminalSizePollTimer = setInterval(this.checkTerminalSize, TERMINAL_SIZE_POLL_INTERVAL_MS)
+      this.terminalSizePollTimer.unref()
+    }
     this.output.write(CLEAR_TERMINAL_SEQUENCE)
     this.printSessionIntro()
   }
 
   stop(): void {
+    if (this.resizeRedrawTimer) {
+      clearTimeout(this.resizeRedrawTimer)
+      this.resizeRedrawTimer = null
+    }
+    if (this.terminalSizePollTimer) {
+      clearInterval(this.terminalSizePollTimer)
+      this.terminalSizePollTimer = null
+    }
+    this.resizeRedrawPending = false
+    this.lastTerminalSize = null
+    this.activeTurnCancel = null
     process.stdin.removeListener('keypress', this.handleKeypress)
     this.lifecycle.disableRawInput()
+    this.resetBracketedPasteInput()
     if (this.usesProcessOutput) process.stdout.removeListener('resize', this.handleResize)
     this.clearPromptDisplay()
     this.clearActiveTurnDisplay()
@@ -149,6 +197,7 @@ export class TerminalScreen {
   }
 
   clearSession(): void {
+    this.activeTurnCancel = null
     this.clearPromptDisplay()
     this.clearActiveTurnDisplay()
     this.stopActivity()
@@ -167,6 +216,7 @@ export class TerminalScreen {
   }
 
   restoreConversation(messages: readonly Message[], sessionPatch: Partial<TerminalSessionView> = {}, clearScreen = false): void {
+    this.activeTurnCancel = null
     this.clearPromptDisplay()
     this.clearActiveTurnDisplay()
     this.stopActivity()
@@ -194,11 +244,12 @@ export class TerminalScreen {
 
   addUserMessage(text: string, print = true): void {
     this.view.entries.push({ kind: 'user', id: nextTranscriptId('user'), text })
-    if (print) this.output.write(`\n${colors.accent}›${colors.reset} ${text}\n`)
+    if (print) this.output.write(`\n${colors.accent}›${colors.reset} ${formatCliImageReferenceInText(text)}\n`)
   }
 
-  beginTurn(): void {
+  beginTurn(onCancelTurn?: () => void): void {
     this.activeTurn = true
+    this.activeTurnCancel = onCancelTurn ?? null
     this.activeTurnStartIndex = this.view.entries.length
     this.activeTurnLines = []
     this.activeTurnCursorRow = 0
@@ -234,7 +285,6 @@ export class TerminalScreen {
     const lastUserIndex = this.view.entries.map((entry) => entry.kind).lastIndexOf('user')
     if (lastUserIndex < 0) return
     this.view.entries.splice(lastUserIndex)
-    this.addNotice('info', 'Last turn removed from the active session.')
   }
 
   setActivity(kind: 'idle' | 'thinking' | 'tool', label: string, detail?: string): void {
@@ -292,7 +342,7 @@ export class TerminalScreen {
       this.renderActiveTurn()
       return
     }
-    this.output.write(`\n  ${colors.subtle}Thought for${colors.reset} ${colors.foreground}${durationSeconds.toFixed(1)}s${colors.reset}\n`)
+    this.output.write(`\n  ${colors.subtle}Thought for${colors.reset} ${colors.foreground}${formatThoughtDuration(durationSeconds)}${colors.reset}\n`)
   }
 
   appendThought(delta: string): void {
@@ -352,9 +402,10 @@ export class TerminalScreen {
   finishTurn(): void {
     if (this.activeTurn) {
       const turnEntries = this.view.entries.slice(this.activeTurnStartIndex)
+      const deferVisualCommit = this.resizeRedrawPending && this.usesProcessOutput
       this.stopActivity()
       this.clearActiveTurnDisplay()
-      this.output.write(`${renderCommittedTurn(turnEntries).join('\n')}\n`)
+      if (!deferVisualCommit) this.output.write(`${renderCommittedTurn(turnEntries).join('\n')}\n`)
       this.activeTurn = false
       this.activeTurnStartIndex = 0
       this.activeTurnLines = []
@@ -365,6 +416,7 @@ export class TerminalScreen {
       this.activeThoughtEntryId = null
       this.activeThoughtDurationSeconds = 0
       this.activeAssistantId = null
+      this.activeTurnCancel = null
       this.view.isStreaming = false
       this.hasTurnOutput = false
       this.activeFollowUps = []
@@ -376,6 +428,7 @@ export class TerminalScreen {
     this.stopActivity()
     if (this.activeAssistantId) this.markdown.finish()
     this.activeAssistantId = null
+    this.activeTurnCancel = null
     this.activeThought = ''
     this.activeThoughtEntryId = null
     this.activeThoughtDurationSeconds = 0
@@ -412,26 +465,55 @@ export class TerminalScreen {
     }
   }
 
-  async ask(context: TerminalPromptContext): Promise<string> {
+  attachImages(attachments: readonly ChatAttachment[]): void {
+    this.composer = attachImagesToComposer(this.composer, attachments)
+    if (this.pendingPrompt) this.renderCurrentPrompt()
+  }
+
+  getComposerAttachments(): ChatAttachment[] {
+    return [...this.composer.attachments]
+  }
+
+  setNextPromptDraft(text: string, attachments: readonly ChatAttachment[] = []): void {
+    this.nextPromptDraft = { text, attachments: [...attachments] }
+    this.composer = setComposerText(this.composer, text, attachments)
+    if (this.pendingPrompt) {
+      this.renderCurrentPrompt()
+    }
+  }
+
+  async ask(context: TerminalPromptContext): Promise<TerminalPromptSubmission> {
     if (!process.stdin.isTTY && this.usesProcessOutput) {
       const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
       return new Promise((resolve) => {
         rl.question('> ', (answer) => {
           rl.close()
-          resolve(answer)
+          resolve({ text: answer, attachments: [] })
         })
       })
     }
 
     if (this.pendingPrompt) throw new Error('A terminal prompt is already active.')
     this.updateSession({ mode: context.mode, model: context.modelId, provider: context.providerId })
-    this.composer = createComposerState(this.history)
+    if (this.nextPromptDraft) {
+      this.composer = setComposerText(createComposerState(this.history), this.nextPromptDraft.text, this.nextPromptDraft.attachments)
+      this.nextPromptDraft = null
+    } else {
+      this.composer = createComposerState(this.history)
+    }
+    this.resetBracketedPasteInput()
+    this.pendingPrompt = { context, resolve: () => undefined }
     if (this.usesProcessOutput) {
-      this.lifecycle.enableRawInput()
+      // Register our listeners before resuming stdin. A key sent while the
+      // prompt is being armed can already be buffered by the TTY; resuming
+      // first would let Node drain it before the composer can see it.
+      ensureKeypressEvents()
+      process.stdin.removeListener('data', this.handleRawStdinData)
+      process.stdin.prependListener('data', this.handleRawStdinData)
       process.stdin.removeListener('keypress', this.handleKeypress)
       process.stdin.on('keypress', this.handleKeypress)
+      this.lifecycle.enableRawInput()
     }
-    this.pendingPrompt = { context, resolve: () => undefined }
     this.updateCompletionItems(context)
     this.renderCurrentPrompt()
 
@@ -450,13 +532,30 @@ export class TerminalScreen {
     this.view.completionIndex = 0
     if (this.usesProcessOutput) {
       this.lifecycle.disableRawInput()
+      process.stdin.removeListener('data', this.handleRawStdinData)
       process.stdin.removeListener('keypress', this.handleKeypress)
     }
+    this.resetBracketedPasteInput()
   }
 
   async select<T>(options: SelectOptions<T>): Promise<T | null> {
     this.clearPromptDisplay()
     return interactiveSelect(options)
+  }
+
+  async input(options: TextInputOptions): Promise<string | null> {
+    this.clearPromptDisplay()
+    return interactiveTextInput(options)
+  }
+
+  async selectResume(
+    items: readonly ResumeConversationItem[],
+    workspacePath: string,
+    projectLabel: string,
+    page: ResumePage = 'active',
+  ): Promise<ResumeSelectionResult | null> {
+    this.clearPromptDisplay()
+    return interactiveResumeSelect({ items, workspacePath, projectLabel, page })
   }
 
   async checklist<T>(options: ChecklistOptions<T>): Promise<T[] | null> {
@@ -473,12 +572,32 @@ export class TerminalScreen {
     this.handlePromptAction(action)
   }
 
+  private readonly handleRawStdinData = (data: Buffer | string) => {
+    const str = typeof data === 'string' ? data : data.toString('utf8')
+    if (!this.pendingPrompt) {
+      this.bracketedPasteDecoder.reset()
+      return
+    }
+
+    const decoded = this.bracketedPasteDecoder.consume(str)
+    if (!decoded.containsPasteSequence) return
+
+    this.suppressKeypressesUntilDataCycleCompletes()
+    for (const pastedText of decoded.pastedTexts) {
+      this.composer = this.applyActionWithPaste({ type: 'insert', text: pastedText })
+    }
+    if (decoded.pastedTexts.length > 0) {
+      this.updateCompletionItems(this.pendingPrompt.context)
+      this.renderCurrentPrompt()
+    }
+  }
+
   private readonly handleKeypress = (input: string, key: readline.Key) => {
-    if (input === '\u0003' || (key.ctrl && key.name === 'c')) {
-      if (this.activeTurn && this.pendingPrompt?.context.onCancelTurn) {
-        this.pendingPrompt.context.onCancelTurn()
-        return
-      }
+    if (this.suppressKeypressEvents || this.bracketedPasteDecoder.isConsuming) return
+    const isCtrlC = input === '\u0003' || (key.ctrl && key.name === 'c')
+    const isEscape = input === '\u001b' || key.name === 'escape'
+    if (isCtrlC) {
+      if (this.requestActiveTurnCancellation()) return
       if (composerText(this.composer).length > 0) {
         this.handlePromptAction({ type: 'cancel' })
         return
@@ -487,10 +606,23 @@ export class TerminalScreen {
       this.output.write('\n')
       process.exit(0)
     }
+    if (isEscape) {
+      if (this.requestActiveTurnCancellation()) return
+      if (!this.pendingPrompt) return
+      this.handlePromptAction({ type: 'cancel' })
+      return
+    }
     if (!this.pendingPrompt) return
     const action = getTerminalInputAction(input, key)
     if (!action) return
     this.handlePromptAction(action)
+  }
+
+  private requestActiveTurnCancellation(): boolean {
+    if (!this.activeTurn) return false
+    const onCancelTurn = this.pendingPrompt?.context.onCancelTurn ?? this.activeTurnCancel
+    onCancelTurn?.()
+    return true
   }
 
   private handlePromptAction(action: TerminalInputAction): void {
@@ -509,12 +641,31 @@ export class TerminalScreen {
 
     if (action.type === 'cancel') {
       if (this.activeTurn) {
-        pending.context.onCancelTurn?.()
+        this.requestActiveTurnCancellation()
         return
       }
       this.composer = createComposerState(this.history)
       this.updateCompletionItems(pending.context)
       this.renderCurrentPrompt()
+      return
+    }
+
+    if (action.type === 'paste-clipboard') {
+      void readSystemClipboardImageOrText(this.view.session.workspace).then((clipboardResult) => {
+        if (!this.pendingPrompt) return
+        if (clipboardResult.image) {
+          this.composer = attachImagesToComposer(this.composer, [clipboardResult.image])
+          this.updateCompletionItems(pending.context)
+          this.renderCurrentPrompt()
+          return
+        }
+        if (clipboardResult.text) {
+          this.composer = this.applyActionWithPaste({ type: 'insert', text: clipboardResult.text })
+          this.updateCompletionItems(pending.context)
+          this.renderCurrentPrompt()
+          return
+        }
+      })
       return
     }
 
@@ -534,6 +685,7 @@ export class TerminalScreen {
 
     if (action.type === 'submit') {
       const text = composerText(this.composer).trim()
+      const attachments = [...this.composer.attachments]
       const completion = this.view.completionItems[this.view.completionIndex]
       if (completion && text.startsWith('/') && !text.includes(' ') && text !== completion.value) {
         this.composer = this.insertCompletion(completion, false)
@@ -554,10 +706,12 @@ export class TerminalScreen {
       this.pendingPrompt = null
       if (this.usesProcessOutput) {
         this.lifecycle.disableRawInput()
+        process.stdin.removeListener('data', this.handleRawStdinData)
         process.stdin.removeListener('keypress', this.handleKeypress)
       }
+      this.resetBracketedPasteInput()
       this.finishPrompt(text)
-      resolve(text)
+      resolve({ text, attachments })
       return
     }
 
@@ -601,18 +755,48 @@ export class TerminalScreen {
     if (!match || match.index === undefined) return this.composer
     const start = match.index + (match[0].startsWith(' ') ? 1 : 0)
     const nextText = `${text.slice(0, start)}${item.value}${appendSpace ? ' ' : ''}${text.slice(cursorIndex)}`
-    const next = createComposerState(this.history)
+    const next = createComposerState(this.history, this.composer.attachments)
     const lines = nextText.split('\n')
     return { ...next, lines, lineIndex: lines.length - 1, column: lines.at(-1)?.length ?? 0 }
   }
 
   private applyActionWithPaste(action: TerminalInputAction): ComposerState {
-    if (action.type !== 'insert' || !action.text.includes('\n')) return applyComposerAction(this.composer, action)
-    let next = this.composer
-    for (const character of action.text) {
-      next = applyComposerAction(next, character === '\n' ? { type: 'newline' } : { type: 'insert', text: character })
+    if (action.type === 'insert') {
+      const imagePaths = extractPastedImageFilePaths(action.text, this.view.session.workspace)
+      if (imagePaths.length > 0) {
+        const validAttachments: ChatAttachment[] = []
+        for (const imgPath of imagePaths) {
+          const attachment = readCliImageAttachmentSync(imgPath, this.view.session.workspace)
+          if (attachment) {
+            validAttachments.push(attachment)
+          }
+        }
+        if (validAttachments.length > 0) {
+          return attachImagesToComposer(this.composer, validAttachments)
+        }
+      }
+      return insertTextIntoComposer(this.composer, action.text)
     }
-    return next
+    return applyComposerAction(this.composer, action)
+  }
+
+  private suppressKeypressesUntilDataCycleCompletes(): void {
+    this.suppressKeypressEvents = true
+    if (this.keypressSuppressionHandle) return
+
+    this.keypressSuppressionHandle = setImmediate(() => {
+      this.keypressSuppressionHandle = null
+      this.suppressKeypressEvents = false
+    })
+  }
+
+  private resetBracketedPasteInput(): void {
+    this.bracketedPasteDecoder.reset()
+    this.suppressKeypressEvents = false
+    if (this.keypressSuppressionHandle) {
+      clearImmediate(this.keypressSuppressionHandle)
+      this.keypressSuppressionHandle = null
+    }
   }
 
   private updateCompletionItems(context: TerminalPromptContext): void {
@@ -666,6 +850,8 @@ export class TerminalScreen {
   }
 
   private patchActiveThinkingFrame(): void {
+    if (this.resizeRedrawPending) return
+
     const activityRow = this.activeTurnActivityRow
     if (
       activityRow === null ||
@@ -700,6 +886,13 @@ export class TerminalScreen {
 
   private clearActiveTurnDisplay(): void {
     if (this.activeTurnLines.length === 0) return
+    if (this.resizeRedrawPending && this.usesProcessOutput) {
+      this.activeTurnLines = []
+      this.activeTurnCursorRow = 0
+      this.activeTurnCursorColumn = 0
+      this.activeTurnActivityRow = null
+      return
+    }
     clearTerminalRegion(this.activeTurnLines.length, this.activeTurnCursorRow, this.output)
     this.activeTurnLines = []
     this.activeTurnCursorRow = 0
@@ -707,11 +900,13 @@ export class TerminalScreen {
     this.activeTurnActivityRow = null
   }
 
-  private renderActiveTurn(): void {
+  private renderActiveTurn(outputOverride?: TerminalOutput): void {
     if (!this.activeTurn) return
-    const redrawOutput = this.usesProcessOutput && process.stdout.isTTY
+    if (outputOverride === undefined && this.resizeRedrawPending) return
+    const redrawOutput = outputOverride ?? (this.usesProcessOutput && process.stdout.isTTY
       ? new TerminalOutputBuffer()
-      : this.output
+      : this.output)
+    const ownsOutputBuffer = outputOverride === undefined && redrawOutput instanceof TerminalOutputBuffer
     redrawOutput.write('\x1b[?25l')
     const panelWidth = getTerminalPanelWidth()
     const composerWidth = Math.max(1, panelWidth - 6)
@@ -761,17 +956,23 @@ export class TerminalScreen {
     }
     redrawOutput.cursorTo(render.cursorColumn)
     if (this.shouldShowActiveComposerCaret()) redrawOutput.write('\x1b[6 q\x1b[?25h')
-    if (redrawOutput instanceof TerminalOutputBuffer) redrawOutput.flushTo(this.output)
+    if (ownsOutputBuffer && redrawOutput instanceof TerminalOutputBuffer) redrawOutput.flushTo(this.output)
   }
 
-  private printSessionIntro(): void {
+  private printSessionIntro(output: TerminalOutput = this.output): void {
     const panel = renderSessionPanel(this.view.session)
-    this.output.write(`\n${panel.join('\n')}\n`)
-    this.output.write(`${colors.subtle}  /help${colors.reset} ${colors.muted}commands${colors.reset}  ${colors.separator}·${colors.reset}  ${colors.subtle}@${colors.reset} ${colors.muted}files${colors.reset}  ${colors.separator}·${colors.reset}  ${colors.subtle}Shift+Tab${colors.reset} ${colors.muted}mode${colors.reset}\n\n`)
+    output.write(`\n${panel.join('\n')}\n`)
+    output.write(`${colors.subtle}  /help${colors.reset} ${colors.muted}commands${colors.reset}  ${colors.separator}·${colors.reset}  ${colors.subtle}@${colors.reset} ${colors.muted}files${colors.reset}  ${colors.separator}·${colors.reset}  ${colors.subtle}Shift+Tab${colors.reset} ${colors.muted}mode${colors.reset}\n\n`)
   }
 
   private clearPromptDisplay(): void {
     if (this.renderedPromptRows === 0) return
+    if (this.resizeRedrawPending && this.usesProcessOutput) {
+      this.renderedPromptRows = 0
+      this.renderedPromptLines = []
+      this.renderedPromptCursorRow = 0
+      return
+    }
     clearTerminalRegion(this.renderedPromptRows, this.renderedPromptCursorRow, this.output)
     this.renderedPromptRows = 0
     this.renderedPromptLines = []
@@ -780,10 +981,11 @@ export class TerminalScreen {
 
   private finishPrompt(text: string): void {
     this.clearPromptDisplay()
+    if (text.startsWith('/')) return
     const lines = text.split('\n')
     lines.forEach((line, index) => {
       const prefix = index === 0 ? `${colors.accent}›${colors.reset} ` : '  '
-      this.output.write(`${prefix}${line}\n`)
+      this.output.write(`${prefix}${formatCliImageReferenceInText(line)}\n`)
     })
   }
 
@@ -803,18 +1005,88 @@ export class TerminalScreen {
   }
 
   private readonly handleResize = () => {
-    if (this.activeTurn) {
-      this.renderActiveTurn()
+    if (!this.usesProcessOutput) {
+      this.redrawAfterResize()
       return
     }
-    if (this.pendingPrompt) this.renderPrompt()
+
+    this.resizeRedrawPending = true
+    if (this.resizeRedrawTimer) return
+
+    this.resizeRedrawTimer = setTimeout(() => {
+      this.resizeRedrawTimer = null
+      if (!this.resizeRedrawPending) return
+      this.resizeRedrawPending = false
+      this.redrawAfterResize()
+      if (this.resizeRedrawPending) this.handleResize()
+    }, RESIZE_FRAME_INTERVAL_MS)
   }
 
-  private renderPrompt(): void {
+  private readonly checkTerminalSize = () => {
+    const nextSize = this.readTerminalSize()
+    if (!nextSize) return
+    if (
+      this.lastTerminalSize &&
+      this.lastTerminalSize.columns === nextSize.columns &&
+      this.lastTerminalSize.rows === nextSize.rows
+    ) {
+      return
+    }
+    this.lastTerminalSize = nextSize
+    this.handleResize()
+  }
+
+  private readTerminalSize(): { columns: number; rows: number } | null {
+    const columns = process.stdout.columns
+    const rows = process.stdout.rows
+    if (!columns || !rows) return null
+    return { columns, rows }
+  }
+
+  private redrawAfterResize(): void {
+    // Terminal hosts reflow lines when their width changes, so the old cursor
+    // row and frame dimensions are no longer trustworthy. Repaint from the
+    // in-memory session state instead of diffing against a reflowed frame.
+    const bufferedOutput = new TerminalOutputBuffer()
+    // A resized terminal has already reflowed the old rows. Erase that stale
+    // grid as part of the same synchronized write as the new frame so the
+    // terminal never presents the intermediate, broken layout to the user.
+    bufferedOutput.write('\x1b[?25l\x1b[2J\x1b[H')
+    const redrawOutput = bufferedOutput
+    this.renderedPromptRows = 0
+    this.renderedPromptLines = []
+    this.renderedPromptCursorRow = 0
+    this.activeTurnLines = []
+    this.activeTurnCursorRow = 0
+    this.activeTurnCursorColumn = 0
+    this.activeTurnActivityRow = null
+
+    this.printSessionIntro(redrawOutput)
+
+    const historyEntries = this.activeTurn
+      ? this.view.entries.slice(0, this.activeTurnStartIndex)
+      : this.view.entries
+    const historyLines = renderConversationHistory(historyEntries)
+    if (historyLines.length > 0) redrawOutput.write(`${historyLines.join('\n')}\n`)
+
+    if (this.activeTurn) {
+      this.renderActiveTurn(redrawOutput)
+    } else if (this.pendingPrompt) {
+      this.renderPrompt(redrawOutput)
+    } else {
+      redrawOutput.write('\x1b[?25h')
+    }
+
+    bufferedOutput.flushTo(this.output)
+  }
+
+  private renderPrompt(outputOverride?: TerminalOutput): void {
     if (!this.pendingPrompt) return
-    const redrawOutput = this.usesProcessOutput && process.stdout.isTTY
+    if (outputOverride === undefined && this.resizeRedrawPending) return
+    const redrawOutput = outputOverride ?? (this.usesProcessOutput && process.stdout.isTTY
       ? new TerminalOutputBuffer()
-      : this.output
+      : this.output)
+    const ownsOutputBuffer = outputOverride === undefined && redrawOutput instanceof TerminalOutputBuffer
     redrawOutput.write('\x1b[?25l')
     const panelWidth = getTerminalPanelWidth()
     const composerWidth = Math.max(1, panelWidth - 6)
@@ -853,6 +1125,6 @@ export class TerminalScreen {
     }
     redrawOutput.cursorTo(panel.cursorColumn)
     redrawOutput.write('\x1b[6 q\x1b[?25h')
-    if (redrawOutput instanceof TerminalOutputBuffer) redrawOutput.flushTo(this.output)
+    if (ownsOutputBuffer && redrawOutput instanceof TerminalOutputBuffer) redrawOutput.flushTo(this.output)
   }
 }

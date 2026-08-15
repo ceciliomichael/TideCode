@@ -82,6 +82,7 @@ export function parseConfigurableProviderModels(value: unknown): ConfigurablePro
       reasoningCapable,
       ...(bodyEfforts.length > 0 ? { reasoningBodies } : {}),
       ...(reasoningCapable ? { reasoningEfforts } : {}),
+      ...(typeof entry.supportsImageInput === 'boolean' ? { supportsImageInput: entry.supportsImageInput } : {}),
     })
   }
   return Array.from(models.values())

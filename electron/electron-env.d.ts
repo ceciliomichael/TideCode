@@ -24,6 +24,7 @@ declare namespace NodeJS {
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   ipcRenderer: import('electron').IpcRenderer
+  tidecodeApp: import('../src/types/chat').TideCodeAppApi
   tidecodeChat: import('../src/types/chat').TideCodeChatApi
   tidecodeGit: import('../src/types/chat').TideCodeGitApi
   tidecodeHistory: import('../src/types/chat').TideCodeHistoryApi

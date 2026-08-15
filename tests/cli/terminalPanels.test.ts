@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { renderPromptPanel, renderSessionPanel } from '../../electron/cli/terminalPanels'
+import { getTerminalPanelWidth, renderPromptPanel, renderSessionPanel } from '../../electron/cli/terminalPanels'
 import { stripAnsi, visibleWidth } from '../../electron/cli/terminalText'
 
 test('session panel keeps workspace context structured and bounded', () => {
@@ -17,6 +17,7 @@ test('session panel keeps workspace context structured and bounded', () => {
   assert.ok(widths.every((width) => width === widths[0]))
   assert.ok(lines.some((line) => stripAnsi(line).includes('workspace')))
   assert.ok(lines.some((line) => stripAnsi(line).includes('full access')))
+  assert.ok(widths[0] < getTerminalPanelWidth())
 })
 
 test('session panel hides internal custom provider identifiers', () => {

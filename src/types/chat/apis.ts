@@ -84,6 +84,7 @@ import type {
   SubmitToolDecisionResult,
 } from './runtime'
 import type { AppSettings } from './settings'
+import type { TideCodeLaunchRequest } from '../../lib/appLaunchRequest'
 import type {
   CloseTerminalSessionInput,
   CreateTerminalSessionInput,
@@ -148,6 +149,12 @@ export interface TideCodeSettingsApi {
   getInitialSettings: () => AppSettings
   getSettings: () => Promise<AppSettings>
   updateSettings: (input: Partial<AppSettings>) => Promise<AppSettings>
+}
+
+export interface TideCodeAppApi {
+  consumeApiKeyHandoff: (token: string) => Promise<string | null>
+  getInitialLaunchRequest: () => TideCodeLaunchRequest | null
+  onLaunchRequest: (listener: (request: TideCodeLaunchRequest) => void) => () => void
 }
 
 export interface TideCodeProvidersApi {

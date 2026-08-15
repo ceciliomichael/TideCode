@@ -2,8 +2,8 @@ import type { ChatMode } from '../../src/types/chat'
 import { colors, getTerminalWidth } from './renderer'
 import { padVisible, truncateVisible, visibleWidth } from './terminalText'
 import type { CompletionItemView } from './terminalView'
+import { formatCliImageReferenceInText } from './cliImageAttachments'
 
-const MAX_PANEL_WIDTH = 88
 const LABEL_WIDTH = 10
 
 export interface TerminalSessionPanelData {
@@ -33,7 +33,7 @@ export interface TerminalPromptPanel {
 }
 
 export function getTerminalPanelWidth(): number {
-  return Math.max(20, Math.min(MAX_PANEL_WIDTH, getTerminalWidth()))
+  return Math.max(20, getTerminalWidth())
 }
 
 function borderLine(left: string, right: string, width: number, color: string): string {
@@ -73,10 +73,17 @@ function providerDisplayName(provider: string): string {
 }
 
 export function renderSessionPanel(session: TerminalSessionPanelData): string[] {
-  const width = getTerminalPanelWidth()
+  const terminalWidth = getTerminalPanelWidth()
   const permission = session.permissions || 'sandboxed'
   const provider = providerDisplayName(session.provider)
-  const sessionValue = `${modeValue(session.mode)} ${colors.subtle}·${colors.reset} ${colors.foreground}${truncateVisible(session.model, Math.max(8, width - 42))}${colors.reset} ${colors.subtle}[${truncateVisible(provider, 14)}]${colors.reset}`
+  const sessionValue = `${modeValue(session.mode)} ${colors.subtle}·${colors.reset} ${colors.foreground}${session.model}${colors.reset} ${colors.subtle}[${truncateVisible(provider, 14)}]${colors.reset}`
+  const widestValue = Math.max(
+    visibleWidth(session.workspace),
+    visibleWidth(sessionValue),
+    visibleWidth(permission),
+  )
+  const fittedWidth = LABEL_WIDTH + 1 + widestValue + 4
+  const width = Math.min(terminalWidth, Math.max(20, fittedWidth))
   return [
     titledBorder('TideCode', width),
     detailRow('workspace', session.workspace, width),
@@ -108,7 +115,7 @@ export function renderPromptPanel(data: TerminalPromptPanelData): TerminalPrompt
 
   bodyLines.forEach((line, index) => {
     const prefix = index === 0 ? `${colors.accent}›${colors.reset} ` : '  '
-    const body = hasText ? line : index === 0 ? `${colors.subtle}${data.placeholder}${colors.reset}` : line
+    const body = hasText ? formatCliImageReferenceInText(line) : index === 0 ? `${colors.subtle}${data.placeholder}${colors.reset}` : line
     lines.push(promptRow(`${prefix}${truncateVisible(body, composerWidth)}`, width))
   })
 

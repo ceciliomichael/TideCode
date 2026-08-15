@@ -68,6 +68,7 @@ export async function readApiKeyChatProviderConfig(providerId: ApiKeyProviderId)
           ...(model.reasoningBodies ? { reasoningBodies: model.reasoningBodies } : {}),
           ...(model.reasoningEfforts ? { reasoningEfforts: model.reasoningEfforts } : {}),
           ...(model.maxTokens !== undefined ? { maxTokens: model.maxTokens } : {}),
+          ...(model.supportsImageInput !== undefined ? { supportsImageInput: model.supportsImageInput } : {}),
         })),
       ...(provider?.models ?? []),
     ],

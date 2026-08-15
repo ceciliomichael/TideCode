@@ -8,6 +8,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { getStoredSettings } from '../settings/store'
 import { serializeInitialSettingsArg } from '../settings/bootstrap'
+import { serializeTideCodeLaunchRequest, type TideCodeLaunchRequest } from '../../src/lib/appLaunchRequest'
 import { applyTideCodeAppIcon, getTideCodeAppIconPath } from './branding'
 import {
   applyWindowTheme,
@@ -31,6 +32,7 @@ function getInitialWindowBounds() {
 
 export async function createApplicationWindow(input: {
   devServerUrl?: string
+  initialLaunchRequest?: TideCodeLaunchRequest | null
   preloadDirectory: string
   rendererDist: string
 }) {
@@ -51,7 +53,10 @@ export async function createApplicationWindow(input: {
     x: initialBounds.x,
     y: initialBounds.y,
     webPreferences: {
-      additionalArguments: initialSettings ? [serializeInitialSettingsArg(initialSettings)] : [],
+      additionalArguments: [
+        ...(initialSettings ? [serializeInitialSettingsArg(initialSettings)] : []),
+        ...(input.initialLaunchRequest ? [serializeTideCodeLaunchRequest(input.initialLaunchRequest)] : []),
+      ],
       preload: path.join(input.preloadDirectory, 'preload.mjs'),
     },
   }

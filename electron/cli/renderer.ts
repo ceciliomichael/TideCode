@@ -1,4 +1,5 @@
 import { padVisible, stripAnsi as stripAnsiText, truncateVisible, visibleWidth, wrapVisible } from './terminalText'
+import { TIDECODE_VERSION } from '../appVersion'
 
 export const colors = {
   reset: '\x1b[0m',
@@ -60,7 +61,10 @@ export function stripAnsi(text: string): string {
 }
 
 export function getTerminalWidth(): number {
-  return Math.max(40, Math.min((process.stdout.columns || 100) - 1, 200))
+  // Leave two columns unused so a panel border never lands in the terminal's
+  // wrap-pending column, which is especially important while Windows Terminal
+  // or cmd.exe is being resized or zoomed.
+  return Math.max(20, (process.stdout.columns || 100) - 2)
 }
 
 export function renderBanner() {
@@ -97,7 +101,7 @@ export function renderSessionHeader(session: {
   const providerDisplay = session.provider.startsWith('custom:') ? 'custom' : session.provider
   const isPlan = session.mode === 'plan'
   const modeBadge = isPlan ? `${colors.warning}[plan]${colors.reset}` : `${colors.success}[agent]${colors.reset}`
-  const titleText = `⚡ TideCode (v1.1.11) ${modeBadge}`
+  const titleText = `⚡ TideCode (v${TIDECODE_VERSION}) ${modeBadge}`
   const titleLen = stripAnsi(titleText).length
   const topDashes = Math.max(2, width - titleLen - 5)
 

@@ -13,6 +13,13 @@ test('Shift+Tab keeps mode switching separate from queue submission', () => {
   assert.deepEqual(getTerminalInputAction('\t', { name: 'tab', shift: true }), { type: 'toggle-mode' })
 })
 
+test('Ctrl+V and Alt+V map to paste-clipboard action', () => {
+  assert.deepEqual(getTerminalInputAction('\u0016', { name: 'v', ctrl: true }), { type: 'paste-clipboard' })
+  assert.deepEqual(getTerminalInputAction('\u001bv', { name: 'v', meta: true }), { type: 'paste-clipboard' })
+  assert.deepEqual(getTerminalInputAction('\x1b[118;3u', undefined), { type: 'paste-clipboard' })
+  assert.deepEqual(getTerminalInputAction('\u0016', undefined), { type: 'paste-clipboard' })
+})
+
 test('uses a short escape disambiguation timeout for responsive cancellation', () => {
   assert.ok(TERMINAL_ESCAPE_CODE_TIMEOUT_MS <= 50)
 })

@@ -9,28 +9,39 @@ import { PRIMARY_ACTION_BUTTON_CLASS_NAME } from '../shared/actionButtonStyles'
 import type { ApiKeyProviderSchema } from './providerSchemas'
 
 interface ProviderConfigDialogProps {
+  initialWarning?: string
   isCustom: boolean
   isSubmitting: boolean
   onClose: () => void
   onRemove?: () => Promise<boolean>
   onSubmit: (input: SaveApiKeyProviderInput) => Promise<boolean>
+  initialValues?: ProviderConfigInitialValues
   schema: ApiKeyProviderSchema<ApiKeyProviderStatus['id']>
   status?: ApiKeyProviderStatus
 }
 
+export interface ProviderConfigInitialValues {
+  apiKey?: string
+  baseUrl?: string
+  label?: string
+}
+
 export function ProviderConfigDialog({
+  initialWarning,
   isCustom,
   isSubmitting,
+  initialValues,
   onClose,
   onRemove,
   onSubmit,
   schema,
   status,
 }: ProviderConfigDialogProps) {
-  const [apiKey, setApiKey] = useState(status?.apiKey ?? '')
-  const [baseUrl, setBaseUrl] = useState(status?.baseUrl ?? '')
-  const [label, setLabel] = useState(status?.label ?? (isCustom ? '' : schema.label))
+  const [apiKey, setApiKey] = useState(initialValues?.apiKey ?? status?.apiKey ?? '')
+  const [baseUrl, setBaseUrl] = useState(initialValues?.baseUrl ?? status?.baseUrl ?? '')
+  const [label, setLabel] = useState(initialValues?.label ?? status?.label ?? (isCustom ? '' : schema.label))
   const [isApiKeyVisible, setIsApiKeyVisible] = useState(false)
+  const [warning, setWarning] = useState<string | null>(initialWarning ?? null)
   const [localError, setLocalError] = useState<string | null>(null)
   const firstInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -139,7 +150,10 @@ export function ProviderConfigDialog({
                     ref={isCustom ? undefined : firstInputRef}
                     type={isApiKeyVisible ? 'text' : 'password'}
                     value={apiKey}
-                    onChange={(event) => setApiKey(event.target.value)}
+                    onChange={(event) => {
+                      setApiKey(event.target.value)
+                      if (warning) setWarning(null)
+                    }}
                     placeholder={status?.hasApiKey ? 'Stored locally' : 'Paste API key'}
                     disabled={isSubmitting}
                     className="h-11 w-full rounded-xl border border-border bg-surface-muted px-3 pr-12 text-sm text-foreground outline-none placeholder:text-muted-foreground"
@@ -173,6 +187,10 @@ export function ProviderConfigDialog({
               ) : null}
 
             </div>
+
+            {warning ? (
+              <p className="mt-5 rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm text-muted-foreground">{warning}</p>
+            ) : null}
 
             {localError ? (
               <p className="mt-5 rounded-xl border border-danger-border bg-danger-surface px-3 py-2 text-sm text-danger-foreground">{localError}</p>

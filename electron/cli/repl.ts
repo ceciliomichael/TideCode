@@ -1,13 +1,16 @@
+import type { ChatAttachment } from '../../src/types/chat'
 import { cancelApiKeyChatStream } from '../chat/apiKey/runtime'
 import { cancelCodexChatStream } from '../chat/codex/runtime'
 import { executeSlashCommand } from './commands'
 import { createReplCommandHelpers } from './replCommands'
 import { runReplTurn } from './replTurn'
 import { TerminalCompletionCatalog } from './terminalCompletions'
-import { TerminalScreen, type TerminalPromptContext } from './terminalScreen'
+import { TerminalScreen, type TerminalPromptContext, type TerminalPromptSubmission } from './terminalScreen'
 import type { CliSessionState } from './types'
 import { refreshCliComposerStatus } from './cliComposerStatus'
 import { getStoredSettings } from '../settings/store'
+import { warmSystemClipboardReader } from './cliClipboardImage'
+import { TIDECODE_VERSION } from '../appVersion'
 
 function createPromptContext(
   state: CliSessionState,
@@ -44,7 +47,7 @@ export async function startInteractiveRepl(state: CliSessionState): Promise<void
     model: state.modelId,
     provider: state.providerId,
     mode: state.chatMode,
-    version: '1.1.11',
+    version: TIDECODE_VERSION,
     permissions: state.terminalExecutionMode === 'full' ? 'full access' : 'sandboxed',
   })
   const completions = new TerminalCompletionCatalog()
@@ -55,28 +58,55 @@ export async function startInteractiveRepl(state: CliSessionState): Promise<void
     void completions.preloadWorkspace(state.workspaceRootPath)
     refreshComposerStatus(options?.refreshCodexUsage === true)
   })
-  let pendingInput: Promise<string> | null = null
-  const queuedInputs: string[] = []
+  let pendingInput: Promise<TerminalPromptSubmission> | null = null
+  const queuedInputs: Array<{ text: string; attachments?: ChatAttachment[] }> = []
 
+  warmSystemClipboardReader()
   screen.start()
   screen.restoreConversation(state.messages)
   screen.updateComposerStatus({ reasoningEffort: state.reasoningEffort })
-  refreshComposerStatus(true)
-  void completions.preloadWorkspace(state.workspaceRootPath)
+  let startupPreparationStarted = false
 
   for (;;) {
     const isQueuedInput = queuedInputs.length > 0
     if (isQueuedInput) screen.dismissPrompt()
-    if (!isQueuedInput && !pendingInput) {
-      const latestSettings = await getStoredSettings()
-      state.followUpBehavior = latestSettings.followUpBehavior
+
+    let rawSubmission: TerminalPromptSubmission
+    if (isQueuedInput) {
+      const queuedSubmission = queuedInputs.shift() ?? { text: '' }
+      rawSubmission = {
+        text: queuedSubmission.text,
+        attachments: queuedSubmission.attachments ?? [],
+      }
+    } else if (pendingInput) {
+      rawSubmission = await pendingInput
+    } else {
+      const promptContext = createPromptContext(state, screen, completions)
+      const prompt = screen.ask(promptContext)
+      pendingInput = prompt
+
+      if (!startupPreparationStarted) {
+        startupPreparationStarted = true
+        refreshComposerStatus(true)
+        void completions.preloadWorkspace(state.workspaceRootPath)
+      }
+
+      // Arm the prompt before refreshing settings. The settings read is
+      // intentionally background work so startup keystrokes cannot be
+      // consumed while the terminal is already showing the composer.
+      void getStoredSettings()
+        .then((latestSettings) => {
+          state.followUpBehavior = latestSettings.followUpBehavior
+          promptContext.enterFollowUpBehavior = latestSettings.followUpBehavior
+        })
+        .catch(() => undefined)
+
+      rawSubmission = await prompt
     }
-    const rawInput = isQueuedInput
-      ? queuedInputs.shift() ?? ''
-      : await (pendingInput ?? screen.ask(createPromptContext(state, screen, completions)))
     pendingInput = null
-    const input = rawInput.trim()
-    if (!input) continue
+    const input = rawSubmission.text.trim()
+    const attachments = rawSubmission.attachments ?? []
+    if (!input && attachments.length === 0) continue
 
     if (input.startsWith('/')) {
       await executeSlashCommand(input, state, helpers)
@@ -89,9 +119,9 @@ export async function startInteractiveRepl(state: CliSessionState): Promise<void
         state,
         screen,
         createPromptContext(state, screen, completions),
-        { printUserMessage: isQueuedInput },
+        { attachments, printUserMessage: isQueuedInput },
       )
-      queuedInputs.push(...result.queuedInputs)
+      queuedInputs.push(...result.queuedInputs.map((text) => ({ text })))
       pendingInput = result.nextInput
       refreshComposerStatus()
     } catch (error) {

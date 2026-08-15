@@ -102,6 +102,7 @@ function toLegacyStoredModel(
     reasoning_bodies: record.reasoningBodies,
     reasoning_capable: rawEfforts.length > 0 || hasReasoningBodies,
     reasoning_efforts: rawEfforts,
+    supports_image_input: record.supports_image_input ?? record.supportsImageInput,
     updated_at: record.updated_at,
   }, providerId)
 }
@@ -136,6 +137,7 @@ function fromLegacyProviderModel(providerId: CustomModelProviderId, model: Confi
     reasoningCapable: model.reasoningCapable,
     reasoningEfforts: model.reasoningEfforts,
     maxTokens: model.maxTokens,
+    supportsImageInput: model.supportsImageInput,
   })
 }
 
@@ -217,6 +219,7 @@ export async function saveCustomModelConfig(input: SaveCustomModelInput) {
       reasoningCapable: input.reasoningCapable,
       ...(input.reasoningBodies ? { reasoningBodies: input.reasoningBodies } : {}),
       ...(input.reasoningEfforts ? { reasoningEfforts: input.reasoningEfforts } : {}),
+      ...(input.supportsImageInput !== undefined ? { supportsImageInput: input.supportsImageInput } : {}),
     }, {
       createdAt: existingEntry?.model.created_at,
     })

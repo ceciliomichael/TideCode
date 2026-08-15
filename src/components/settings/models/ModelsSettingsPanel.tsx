@@ -1,5 +1,5 @@
 import { Brain, Pencil, Plus, Search, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { resolveModelReasoningProfile } from '../../../lib/modelReasoningProfiles'
 import type {
@@ -7,6 +7,7 @@ import type {
   ProvidersState,
   SaveCustomModelInput,
 } from '../../../types/chat'
+import type { TideCodeSettingsLaunchRequest } from '../../../lib/appLaunchRequest'
 import { Switch } from '../../ui/Switch'
 import { SETTINGS_SECTION_TITLE_CLASS_NAME } from '../shared/SettingsPanelPrimitives'
 import { buildModelProviderSections, listConfiguredModelProviders } from './modelViewUtils'
@@ -23,6 +24,8 @@ const ADD_MODEL_BUTTON_CLASS_NAME =
   'provider-primary-action-button inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl px-3.5 text-sm font-medium transition-transform active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 md:h-10 md:w-auto'
 
 interface ModelsSettingsPanelProps {
+  launchRequest: TideCodeSettingsLaunchRequest | null
+  onLaunchRequestHandled: (request: TideCodeSettingsLaunchRequest) => void
   providersState: ProvidersState | null
 }
 
@@ -34,10 +37,11 @@ function getErrorMessage(error: unknown, fallback: string) {
   return toUserFacingErrorMessage(error, fallback)
 }
 
-export function ModelsSettingsPanel({ providersState }: ModelsSettingsPanelProps) {
+export function ModelsSettingsPanel({ launchRequest, onLaunchRequestHandled, providersState }: ModelsSettingsPanelProps) {
   const [searchValue, setSearchValue] = useState('')
   const [toggleState, setToggleState] = useState<ModelToggleState>(() => readStoredModelToggleState())
   const [dialogState, setDialogState] = useState<{
+    instanceKey?: number
     model?: CustomModelConfig
     providerId: CustomModelConfig['providerId']
   } | null>(null)
@@ -45,6 +49,8 @@ export function ModelsSettingsPanel({ providersState }: ModelsSettingsPanelProps
   const [isSavingModel, setIsSavingModel] = useState(false)
   const [isRemovingModel, setIsRemovingModel] = useState(false)
   const [operationError, setOperationError] = useState<string | null>(null)
+  const handledLaunchRequest = useRef<TideCodeSettingsLaunchRequest | null>(null)
+  const nextExternalDialogKey = useRef(0)
   const {
     customModels,
     customModelsErrorMessage,
@@ -77,6 +83,36 @@ export function ModelsSettingsPanel({ providersState }: ModelsSettingsPanelProps
   useEffect(() => {
     writeStoredModelToggleState(toggleState)
   }, [toggleState])
+
+  useEffect(() => {
+    if (!launchRequest || launchRequest.section !== 'models' || launchRequest.action !== 'add-model') {
+      handledLaunchRequest.current = null
+      return
+    }
+    if (handledLaunchRequest.current === launchRequest || providersState === null) {
+      return
+    }
+
+    handledLaunchRequest.current = launchRequest
+    const requestedProvider = launchRequest.providerId
+      ? configuredProviders.find((provider) => provider.id === launchRequest.providerId)
+      : undefined
+    if (launchRequest.providerId && !requestedProvider) {
+      setOperationError(`Provider "${launchRequest.providerId}" is not configured in desktop Settings → Providers. Configure it there first, then retry adding the model.`)
+      onLaunchRequestHandled(launchRequest)
+      return
+    }
+
+    const firstProvider = requestedProvider ?? configuredProviders[0]
+    if (!firstProvider) {
+      onLaunchRequestHandled(launchRequest)
+      return
+    }
+
+    nextExternalDialogKey.current += 1
+    setDialogState({ instanceKey: nextExternalDialogKey.current, providerId: firstProvider.id })
+    onLaunchRequestHandled(launchRequest)
+  }, [configuredProviders, launchRequest, onLaunchRequestHandled, providersState])
 
   async function saveUserModel(input: SaveCustomModelInput) {
     setIsSavingModel(true)
@@ -252,6 +288,7 @@ export function ModelsSettingsPanel({ providersState }: ModelsSettingsPanelProps
 
       {dialogState ? (
         <UserModelDialog
+          key={dialogState.instanceKey ?? 'model-dialog'}
           initialProviderId={dialogState.providerId}
           isSaving={isSavingModel}
           model={dialogState.model}

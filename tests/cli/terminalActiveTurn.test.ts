@@ -143,7 +143,7 @@ test('reasoning has one blank row after a completed tool and before following ou
     { id: 'assistant-1', kind: 'assistant', text: 'Done.' },
   ]).map(stripAnsi)
   const toolIndex = renderedLines.findIndex((line) => line.includes('[Read] file.ts'))
-  const thoughtIndex = renderedLines.findIndex((line) => line.includes('Thought for 0.6s'))
+  const thoughtIndex = renderedLines.findIndex((line) => line.includes('Thought for 0.60s'))
   const answerIndex = renderedLines.findIndex((line) => line.includes('Done.'))
 
   assert.equal(thoughtIndex, toolIndex + 2)

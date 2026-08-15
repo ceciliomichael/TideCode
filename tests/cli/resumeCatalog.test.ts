@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ConversationFolderRecord, ConversationRecord } from '../../src/types/chat'
-import { buildResumeConversationSections } from '../../electron/cli/resumeCatalog'
+import {
+  buildResumeConversationItems,
+  buildResumeConversationSections,
+  filterResumeConversationItems,
+  getResumeProjectLabel,
+} from '../../electron/cli/resumeCatalog'
 import { stripAnsi } from '../../electron/cli/terminalText'
 
 function conversation(id: string, updatedAt: number, isArchived = false): ConversationRecord {
@@ -17,6 +22,32 @@ function conversation(id: string, updatedAt: number, isArchived = false): Conver
     updatedAt,
   }
 }
+
+test('resume catalog scopes conversations to the active project path', () => {
+  const folders: ConversationFolderRecord[] = [
+    {
+      createdAt: 1,
+      id: 'project-1',
+      name: 'Project One',
+      path: 'C:/projects/project1',
+      updatedAt: 1,
+    },
+    {
+      createdAt: 1,
+      id: 'project-2',
+      name: 'Project Two',
+      path: 'C:/projects/project2',
+      updatedAt: 1,
+    },
+  ]
+  const items = buildResumeConversationItems([
+    { ...conversation('project-one', 20), agentContextRootPath: 'c:\\projects\\PROJECT1\\' },
+    { ...conversation('project-two', 30), agentContextRootPath: 'C:/projects/project2' },
+  ], folders)
+
+  assert.equal(getResumeProjectLabel('C:/projects/project1', folders), 'Project One')
+  assert.deepEqual(filterResumeConversationItems(items, 'C:/projects/project1').map((item) => item.id), ['project-one'])
+})
 
 test('resume catalog keeps active and archived conversations separate and newest first', () => {
   const folders: ConversationFolderRecord[] = [{

@@ -7,6 +7,7 @@ import { colors, renderBoxMessage } from './renderer'
 import { startApiKeyChatStream } from '../chat/apiKey/runtime'
 import { startCodexChatStream } from '../chat/codex/runtime'
 import type { ChatStreamEventTarget } from '../chat/shared/runtimeStreamEvents'
+import { TIDECODE_VERSION } from '../appVersion'
 
 export async function startRemoteRelayDaemon(
   state: CliSessionState,
@@ -35,7 +36,7 @@ export async function startRemoteRelayDaemon(
           workspace: state.workspaceRootPath,
           model: state.modelId,
           provider: state.providerId,
-          version: '1.1.11',
+          version: TIDECODE_VERSION,
         }),
       )
       return

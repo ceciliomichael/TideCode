@@ -114,6 +114,25 @@ test('custom provider catalogs retain validated model-specific extra settings', 
   })
 })
 
+test('custom model catalogs retain an explicit image capability override', () => {
+  const catalog = sanitizeStoredUserModelCatalog({
+    models: [{
+      api_model_id: 'text-only-model',
+      id: 'custom:server01:custom:text-only-model',
+      label: 'Text-only model',
+      reasoning_capable: false,
+      supports_image_input: false,
+    }],
+    provider_id: 'custom:server01',
+    version: USER_MODEL_CATALOG_VERSION,
+  })
+
+  const model = catalog?.models[0]
+  assert.ok(model)
+  assert.equal(model.supports_image_input, false)
+  assert.equal(toCustomModelConfig('custom:server01', model).supportsImageInput, false)
+})
+
 test('built-in provider catalogs discard arbitrary model extra settings', () => {
   const catalog = sanitizeStoredUserModelCatalog({
     models: [{

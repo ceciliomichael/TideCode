@@ -26,6 +26,7 @@ export interface StoredUserModel {
   reasoning_bodies?: ReasoningRequestBodies
   reasoning_capable: boolean
   reasoning_efforts?: ReasoningEffort[]
+  supports_image_input?: boolean
   updated_at: string
 }
 
@@ -84,6 +85,11 @@ export function sanitizeStoredUserModel(
     ? value.default_reasoning_effort
     : reasoningEfforts[0]
   const reasoningBodies = sanitizeReasoningBodies(value.reasoning_bodies, reasoningEfforts)
+  const supportsImageInput = typeof value.supports_image_input === 'boolean'
+    ? value.supports_image_input
+    : typeof value.supportsImageInput === 'boolean'
+      ? value.supportsImageInput
+      : undefined
   let extraBody: Record<string, unknown> | undefined
   try {
     const parsedExtraBody = isCustomApiKeyProviderId(providerId) ? parseExtraBody(value.extra_body) : {}
@@ -103,6 +109,7 @@ export function sanitizeStoredUserModel(
     ...(reasoningBodies ? { reasoning_bodies: reasoningBodies } : {}),
     reasoning_capable: reasoningCapable,
     ...(reasoningEfforts.length > 0 ? { reasoning_efforts: reasoningEfforts } : {}),
+    ...(supportsImageInput !== undefined ? { supports_image_input: supportsImageInput } : {}),
     updated_at: updatedAt,
   }
 }
@@ -143,6 +150,7 @@ export function toCustomModelConfig(
     reasoningCapable: model.reasoning_capable,
     ...(model.reasoning_bodies ? { reasoningBodies: model.reasoning_bodies } : {}),
     ...(model.reasoning_efforts ? { reasoningEfforts: model.reasoning_efforts } : {}),
+    ...(model.supports_image_input !== undefined ? { supportsImageInput: model.supports_image_input } : {}),
     updatedAt: model.updated_at,
   }
 }
@@ -163,6 +171,7 @@ export function createStoredUserModel(
     reasoning_bodies: input.reasoningBodies,
     reasoning_capable: input.reasoningCapable,
     reasoning_efforts: input.reasoningEfforts,
+    supports_image_input: input.supportsImageInput,
     updated_at: timestamps?.updatedAt ?? now,
   }, input.providerId)
   if (!candidate) throw new Error('The model reasoning configuration is incomplete.')

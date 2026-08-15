@@ -13,6 +13,7 @@ import type { TerminalScreen } from './terminalScreen'
 import { resumeCliConversation } from './cliHistory'
 import { persistCliReasoningEffort } from './cliReasoningEffortSettings'
 import { shouldRefreshCodexUsage } from './cliComposerStatus'
+import { updateStoredConversationArchived } from '../history/store'
 
 const execFileAsync = promisify(execFile)
 
@@ -42,7 +43,6 @@ export function createReplCommandHelpers(
       onRuntimeChanged?.({
         refreshCodexUsage: shouldRefreshCodexUsage(previousProviderId, state.providerId),
       })
-      screen.addNotice('success', `Now using ${state.modelId} (${state.providerId}).`)
     },
     switchReasoningEffort: async (effort, modelLabel) => {
       await persistCliReasoningEffort(state, effort, modelLabel)
@@ -83,6 +83,10 @@ export function createReplCommandHelpers(
         screen.addNotice('warning', 'There is no previous turn to remove.')
         return
       }
+      const lastUserMessage = state.messages[lastUserIndex]
+      const undoneText = typeof lastUserMessage.content === 'string' ? lastUserMessage.content : ''
+      const undoneAttachments = lastUserMessage.attachments ?? []
+
       state.messages = state.messages.slice(0, lastUserIndex)
       const conversation = await replaceStoredMessages({
         chatMode: state.chatMode,
@@ -91,7 +95,13 @@ export function createReplCommandHelpers(
         synchronizeCanonicalHistory: true,
       })
       state.messages = [...conversation.messages]
-      screen.removeLastTurn()
+      screen.restoreConversation(state.messages, {
+        mode: state.chatMode,
+        model: state.modelId,
+        provider: state.providerId,
+        workspace: state.workspaceRootPath,
+      }, true)
+      screen.setNextPromptDraft(undoneText, undoneAttachments)
     },
     loadSession: async (conversationId: string) => {
       try {
@@ -109,6 +119,25 @@ export function createReplCommandHelpers(
         return false
       }
     },
+    setConversationArchived: async (conversationId: string, isArchived: boolean) => {
+      if (isArchived && conversationId === state.conversationId && state.isStreaming) {
+        screen.addNotice('warning', 'Wait for the current turn to finish before archiving this chat.')
+        return false
+      }
+
+      try {
+        await updateStoredConversationArchived(conversationId, isArchived)
+        if (isArchived && conversationId === state.conversationId) {
+          state.conversationId = randomUUID()
+          state.messages = []
+          screen.clearSession()
+        }
+        return true
+      } catch (error) {
+        screen.addNotice('error', `Could not ${isArchived ? 'archive' : 'unarchive'} this chat: ${error instanceof Error ? error.message : String(error)}`)
+        return false
+      }
+    },
     clearSession: async () => {
       state.conversationId = randomUUID()
       state.messages = []
@@ -118,6 +147,8 @@ export function createReplCommandHelpers(
       await startRemoteRelayDaemon(state)
     },
     select: (options) => screen.select(options),
+    input: (options) => screen.input(options),
+    selectResume: (items, workspacePath, projectLabel, page) => screen.selectResume(items, workspacePath, projectLabel, page),
     checklist: (options) => screen.checklist(options),
     confirm: (question, defaultYes) => screen.confirm(question, defaultYes),
     exit: () => {

@@ -8,6 +8,10 @@ import type {
 import type { SelectOptions } from './interactiveSelect'
 import type { ChecklistOptions } from './interactiveChecklist'
 import type { FollowUpBehavior } from '../../src/lib/appSettings'
+import type { ResumeConversationItem } from './resumeCatalog'
+import type { ResumeSelectionResult } from './interactiveResumeSelect'
+import type { ResumePage } from './terminalResumeView'
+import type { TextInputOptions } from './interactiveTextInput'
 
 export interface CliOptions {
   prompt?: string
@@ -68,9 +72,17 @@ export interface SlashCommandHelpers {
   compactHistory: () => Promise<void>
   undoLastTurn: () => Promise<void>
   loadSession: (conversationId: string) => Promise<boolean>
+  setConversationArchived: (conversationId: string, isArchived: boolean) => Promise<boolean>
+  selectResume: (
+    items: readonly ResumeConversationItem[],
+    workspacePath: string,
+    projectLabel: string,
+    page?: ResumePage,
+  ) => Promise<ResumeSelectionResult | null>
   clearSession: () => Promise<void>
   startRemoteDaemon: () => Promise<void>
   select: <T>(options: SelectOptions<T>) => Promise<T | null>
+  input: (options: TextInputOptions) => Promise<string | null>
   checklist: <T>(options: ChecklistOptions<T>) => Promise<T[] | null>
   confirm: (question: string, defaultYes?: boolean) => Promise<boolean>
   exit: () => void

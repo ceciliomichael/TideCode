@@ -18,9 +18,11 @@ import { registerChatGitTerminalIpcHandlers } from './ipc/registerChatGitTermina
 import { registerWorkspaceIpcHandlers } from './ipc/registerWorkspaceIpcHandlers'
 import { registerMcpHandlers } from './ipc/registerMcpHandlers'
 import { registerUpdatesIpcHandlers } from './ipc/registerUpdatesIpcHandlers'
+import { registerAppIpcHandlers } from './ipc/registerAppIpcHandlers'
 import { isUpdateInstallInProgress } from './updates/autoUpdateService'
 import { installLatestRequestedUpdate } from './updates/externalUpdateRequest'
 import { hasExternalUpdateRequest } from '../src/lib/updateRequest'
+import { parseTideCodeLaunchRequest, type TideCodeLaunchRequest } from '../src/lib/appLaunchRequest'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // The built directory structure
@@ -82,6 +84,29 @@ if (!gotSingleInstanceLock) {
   process.exit(0)
 }
 
+function focusApplicationWindow(currentWindow: BrowserWindow) {
+  if (currentWindow.isMinimized()) {
+    currentWindow.restore()
+  }
+  currentWindow.show()
+  currentWindow.focus()
+}
+
+function deliverLaunchRequest(currentWindow: BrowserWindow, request: TideCodeLaunchRequest) {
+  const sendRequest = () => {
+    if (!currentWindow.isDestroyed()) {
+      currentWindow.webContents.send('app:launchRequest', request)
+    }
+  }
+
+  if (currentWindow.webContents.isLoading()) {
+    currentWindow.webContents.once('did-finish-load', sendRequest)
+    return
+  }
+
+  sendRequest()
+}
+
 app.on('second-instance', (_event, argv) => {
   if (hasExternalUpdateRequest(argv)) {
     void installLatestRequestedUpdate().catch((error) => {
@@ -89,25 +114,26 @@ app.on('second-instance', (_event, argv) => {
     })
     return
   }
+  const launchRequest = parseTideCodeLaunchRequest(argv)
   // Someone tried to run a second instance, focus our window instead.
-  if (win) {
-    if (win.isMinimized()) {
-      win.restore()
+  if (win && !win.isDestroyed()) {
+    focusApplicationWindow(win)
+    if (launchRequest) {
+      deliverLaunchRequest(win, launchRequest)
     }
-    win.show()
-    win.focus()
     return
   }
 
   // If we don't currently have a window (e.g. it was closed), recreate it.
-  void createWindow()
+  void createWindow(launchRequest)
 })
 
 let isQuitFlushInProgress = false
 
-async function createWindow() {
+async function createWindow(initialLaunchRequest: TideCodeLaunchRequest | null = null) {
   win = await createApplicationWindow({
     devServerUrl: VITE_DEV_SERVER_URL,
+    initialLaunchRequest,
     preloadDirectory: __dirname,
     rendererDist: RENDERER_DIST,
   })
@@ -119,6 +145,7 @@ async function createWindow() {
 }
 
 function registerApplicationIpcHandlers() {
+  registerAppIpcHandlers()
   registerCoreIpcHandlers(() => win)
   registerChatGitTerminalIpcHandlers(activeChatStreamProviders)
   registerWorkspaceIpcHandlers()
@@ -202,7 +229,7 @@ app.whenReady().then(() => {
     console.error('Failed to preload providers state', error)
   })
 
-  void createWindow()
+  void createWindow(parseTideCodeLaunchRequest(process.argv))
   if (hasExternalUpdateRequest(process.argv)) {
     void installLatestRequestedUpdate().catch((error) => {
       console.error('Failed to install the CLI-requested update.', error)

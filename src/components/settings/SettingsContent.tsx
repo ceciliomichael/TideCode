@@ -12,6 +12,7 @@ import type { ApiKeyProviderId, AppSettings, ProvidersState, SaveApiKeyProviderI
 import type { McpAddServerInput, McpState } from '../../types/mcp'
 import type { CreateSkillInput, SkillsState } from '../../types/skills'
 import type { ContextCompactionSettings } from '../../lib/contextCompactionSettings'
+import type { TideCodeSettingsLaunchRequest } from '../../lib/appLaunchRequest'
 
 interface GeneralSettingsViewModel {
   isLoading: boolean
@@ -55,6 +56,8 @@ interface SettingsContentProps {
     state: SkillsState | null
   }
   modelsSettings: {
+    launchRequest: TideCodeSettingsLaunchRequest | null
+    onLaunchRequestHandled: (request: TideCodeSettingsLaunchRequest) => void
     providersState: ProvidersState | null
   }
   providersSettings: {
@@ -68,6 +71,8 @@ interface SettingsContentProps {
     onRemoveApiKeyProvider: (providerId: ApiKeyProviderId) => Promise<boolean>
     onSaveApiKeyProvider: (input: SaveApiKeyProviderInput) => Promise<boolean>
     onSwitchCodexAccount: (accountId: string) => Promise<boolean>
+    launchRequest: TideCodeSettingsLaunchRequest | null
+    onLaunchRequestHandled: (request: TideCodeSettingsLaunchRequest) => void
     providersState: ProvidersState | null
   }
 }

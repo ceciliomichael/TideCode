@@ -7,6 +7,7 @@ import { useAppSettings } from './hooks/useAppSettings'
 import { useChatMessages } from './hooks/useChatMessages'
 import { useDocumentTheme } from './hooks/useDocumentTheme'
 import { useProvidersState } from './hooks/useProvidersState'
+import type { TideCodeLaunchRequest } from './lib/appLaunchRequest'
 
 type AppScreen = 'chat' | 'settings'
 
@@ -17,7 +18,9 @@ interface BootConversationLaunchState {
 }
 
 export default function App() {
-  const [activeScreen, setActiveScreen] = useState<AppScreen>('chat')
+  const [initialLaunchRequest] = useState<TideCodeLaunchRequest | null>(() => window.tidecodeApp.getInitialLaunchRequest())
+  const [activeScreen, setActiveScreen] = useState<AppScreen>(initialLaunchRequest ? 'settings' : 'chat')
+  const [pendingLaunchRequest, setPendingLaunchRequest] = useState<TideCodeLaunchRequest | null>(initialLaunchRequest)
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false)
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>('diff')
   const [diffPanelSelectedScope, setDiffPanelSelectedScope] = useState<DiffPanelScope>('unstaged')
@@ -82,6 +85,17 @@ export default function App() {
   )
 
   const resolvedTheme = useDocumentTheme(settings.appearance)
+
+  useEffect(() => {
+    return window.tidecodeApp.onLaunchRequest((request) => {
+      setActiveScreen('settings')
+      setPendingLaunchRequest(request)
+    })
+  }, [])
+
+  const consumeLaunchRequest = useCallback(() => {
+    setPendingLaunchRequest(null)
+  }, [])
 
   useLayoutEffect(() => {
     setDiffPanelWidth(settings.diffPanelWidth)
@@ -211,6 +225,7 @@ export default function App() {
         <div className="absolute inset-0 z-50">
           <SettingsInterface
             activeWorkspacePath={activeWorkspacePath}
+            onLaunchRequestConsumed={consumeLaunchRequest}
             settings={settings}
             isSettingsLoading={isLoading}
             onBackToApp={() => setActiveScreen('chat')}
@@ -230,6 +245,7 @@ export default function App() {
               providersState: providersState.providersState,
             }}
             sidebarWidth={settings.sidebarWidth}
+            pendingLaunchRequest={pendingLaunchRequest}
           />
         </div>
       ) : null}

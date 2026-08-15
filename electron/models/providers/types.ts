@@ -10,6 +10,7 @@ export interface ProviderModelDefinition {
   reasoningCapable?: boolean
   reasoningBodies?: ReasoningRequestBodies
   reasoningEfforts?: readonly ReasoningEffort[]
+  supportsImageInput?: boolean
 }
 
 export interface ProviderModelJsonSource {

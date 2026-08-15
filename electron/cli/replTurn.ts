@@ -1,4 +1,4 @@
-import type { StartChatStreamInput } from '../../src/types/chat'
+import type { ChatAttachment, StartChatStreamInput } from '../../src/types/chat'
 import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../src/lib/contextCompactionSettings'
 import { startApiKeyChatStream } from '../chat/apiKey/runtime'
 import { startCodexChatStream } from '../chat/codex/runtime'
@@ -8,14 +8,15 @@ import { createAndPersistCliUserMessage, persistCliAssistantMessages } from './c
 import { CliTurnMessageCollector } from './cliTurnMessageCollector'
 import { CliTurnFollowUpController } from './cliTurnFollowUps'
 import type { CliSessionState } from './types'
-import type { TerminalPromptContext, TerminalScreen } from './terminalScreen'
+import type { TerminalPromptContext, TerminalPromptSubmission, TerminalScreen } from './terminalScreen'
 
 export interface ReplTurnResult {
-  nextInput: Promise<string>
+  nextInput: Promise<TerminalPromptSubmission>
   queuedInputs: string[]
 }
 
 export interface ReplTurnOptions {
+  attachments?: readonly ChatAttachment[]
   printUserMessage?: boolean
 }
 
@@ -26,18 +27,21 @@ export async function runReplTurn(
   nextPromptContext: TerminalPromptContext,
   options: ReplTurnOptions = {},
 ): Promise<ReplTurnResult> {
+  const attachments = options.attachments ?? []
   const { expandedText } = await expandMentionsIntoContext(input, state.workspaceRootPath)
-  const userMessage = await createAndPersistCliUserMessage(state, input)
+  const userMessage = await createAndPersistCliUserMessage(state, input, attachments)
   const runtimeMessages = state.messages.map((message) => (
-    message.id === userMessage.id ? { ...message, content: expandedText } : message
+    message.id === userMessage.id
+      ? { ...message, content: expandedText, attachments: attachments.length > 0 ? [...attachments] : undefined }
+      : message
   ))
   screen.addUserMessage(input, options.printUserMessage === true)
-  screen.beginTurn()
+  screen.beginTurn(nextPromptContext.onCancelTurn)
   const messageCollector = new CliTurnMessageCollector(state)
   let followUpController: CliTurnFollowUpController | null = null
 
   state.isStreaming = true
-  let nextInput: Promise<string> | null = null
+  let nextInput: Promise<TerminalPromptSubmission> | null = null
   let settleTurn: () => void = () => undefined
   const turnSettled = new Promise<void>((resolve) => {
     settleTurn = resolve

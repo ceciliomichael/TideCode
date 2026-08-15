@@ -1,6 +1,4 @@
-import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
-import path from 'node:path'
 import { electronApp } from '../electronApp'
 import {
   buildLatestReleaseRequestUrl,
@@ -9,6 +7,8 @@ import {
 } from '../updates/githubReleaseService'
 import { TIDECODE_INSTALL_UPDATE_ARGUMENT } from '../../src/lib/updateRequest'
 import type { SlashCommandHelpers } from './types'
+import { TIDECODE_VERSION } from '../appVersion'
+import { findInstalledTideCodeExecutable } from './desktopAppLaunch'
 
 async function requestLatestRelease(): Promise<unknown> {
   const response = await fetch(buildLatestReleaseRequestUrl(), {
@@ -24,21 +24,9 @@ async function requestLatestRelease(): Promise<unknown> {
   return response.json()
 }
 
-export function findInstalledTideCodeExecutable(): string | null {
-  const candidates = process.platform === 'win32'
-    ? [
-        process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Programs', 'TideCode', 'TideCode.exe') : '',
-        process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Programs', 'tidecode', 'tidecode.exe') : '',
-      ]
-    : process.platform === 'darwin'
-      ? ['/Applications/TideCode.app/Contents/MacOS/TideCode', '/Applications/tidecode.app/Contents/MacOS/tidecode']
-      : [process.env.APPIMAGE ?? '', '/opt/TideCode/tidecode', '/usr/bin/tidecode']
-  return candidates.find((candidate) => candidate.length > 0 && existsSync(candidate)) ?? null
-}
-
 export async function runCliUpdateCommand(helpers: SlashCommandHelpers): Promise<void> {
   helpers.renderInfo('Checking the official TideCode release…')
-  const result = await checkForUpdates(electronApp.getVersion?.() ?? '1.1.11', requestLatestRelease)
+  const result = await checkForUpdates(electronApp.getVersion?.() ?? TIDECODE_VERSION, requestLatestRelease)
   if (!result.updateAvailable) {
     helpers.renderSuccess(`TideCode ${result.currentVersion} is up to date.`)
     return

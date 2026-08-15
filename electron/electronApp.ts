@@ -1,6 +1,7 @@
 import os from 'node:os'
 import path from 'node:path'
 import * as electronModule from 'electron'
+import { TIDECODE_VERSION } from './appVersion'
 
 interface ElectronAppLike {
   getPath(name: 'home' | 'userData' | 'appData'): string
@@ -28,7 +29,7 @@ const fallbackApp: ElectronAppLike = {
     return 'TideCode'
   },
   getVersion() {
-    return '1.1.11'
+    return TIDECODE_VERSION
   },
   getAppPath() {
     return process.cwd()

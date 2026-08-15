@@ -5,7 +5,8 @@ import { normalizeContextCompactionSettings, type ContextCompactionSettings } fr
 import { readCanonicalHistory, readLatestCompactionPacket, recordCompactionCommitted } from '../../history/eventStore'
 import { projectCanonicalReplay } from '../../history/replayProjector'
 import { shouldReplayAssistantReasoning } from '../assistantReasoningPolicy'
-import { buildChatPrompt } from '../messages'
+import { buildChatPrompt, stripImageAttachmentsFromModelMessages } from '../messages'
+import { resolveModelImageInputSupport } from '../modelImageSupport'
 import { sanitizeModelMessages } from '../modelMessageIntegrity'
 import { compactModelMessages } from './service'
 import type { CompactionStreamFactory, CompactionResult } from './contracts'
@@ -27,11 +28,13 @@ export interface CompactConversationInput {
 
 export async function compactConversationForProvider(input: CompactConversationInput): Promise<CompactionResult | null> {
   const contextCompaction = normalizeContextCompactionSettings(input.contextCompaction)
+  const includeImageAttachments = await resolveModelImageInputSupport(input.providerId, input.modelId)
   const prompt = buildChatPrompt({
     chatMode: input.chatMode,
     messages: input.messages,
     options: {
       includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId),
+      includeImageAttachments,
       terminalExecutionMode: input.terminalExecutionMode,
     },
     workspaceRootPath: input.agentContextRootPath,
@@ -44,11 +47,16 @@ export async function compactConversationForProvider(input: CompactConversationI
     modelId: input.modelId,
     options: {
       includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId),
+      includeImageAttachments,
       terminalExecutionMode: input.terminalExecutionMode,
     },
     providerId: input.providerId,
   })
-  const safeModelMessages = sanitizeModelMessages(replay.messages)
+  const safeModelMessages = sanitizeModelMessages(
+    includeImageAttachments
+      ? replay.messages
+      : stripImageAttachmentsFromModelMessages(replay.messages),
+  )
   const previousPacket = await readLatestCompactionPacket(input.conversationId)
   const result = await compactModelMessages({
     createStream: input.createStream,

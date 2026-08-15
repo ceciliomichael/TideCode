@@ -139,6 +139,7 @@ export function removeChatImageReference(input: {
     })
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/^ +/gm, '')
     .replace(/ +\n/g, '\n')
     .trimEnd()
 

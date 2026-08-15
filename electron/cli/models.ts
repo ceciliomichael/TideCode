@@ -1,4 +1,4 @@
-import type { ChatProviderId, ReasoningEffort } from '../../src/types/chat'
+import type { ChatProviderId, ConfigurableProviderModel, ReasoningEffort } from '../../src/types/chat'
 import { listCatalogModels } from '../models/catalog/catalog'
 import { listStoredCustomModels } from '../models/store'
 import {
@@ -11,6 +11,7 @@ import { getCodexProviderStatus } from '../providers/codex/service'
 import { getStoredSettings } from '../settings/store'
 import { colors } from './renderer'
 import { resolveReasoningEffortTransition } from '../../src/lib/reasoningEffortTransition'
+import { isCustomApiKeyProviderId } from '../providers/providerIds'
 
 export interface SystemModelItem {
   id: string
@@ -24,6 +25,7 @@ export interface SystemModelItem {
   reasoningCapable?: boolean
   reasoningEfforts?: readonly ReasoningEffort[]
   defaultReasoningEffort?: ReasoningEffort
+  supportsImageInput?: boolean
 }
 
 export interface SystemModelsSnapshot {
@@ -43,10 +45,33 @@ const KNOWN_PROVIDERS: ChatProviderId[] = [
   'mistral',
 ]
 
+function toSystemModelItem(
+  providerId: ChatProviderId,
+  providerConfig: StoredApiKeyProviderConfig,
+  model: ConfigurableProviderModel,
+  isCustom: boolean,
+  configuredProviders: ReadonlySet<string>,
+): SystemModelItem {
+  return {
+    id: model.id || `${providerId}:${model.apiModelId}`,
+    apiModelId: model.apiModelId,
+    label: model.label || model.apiModelId,
+    providerId,
+    providerLabel: providerConfig.label || PROVIDER_LABELS[providerId as keyof typeof PROVIDER_LABELS] || providerId,
+    isCustom,
+    isConfigured: configuredProviders.has(providerId),
+    maxTokens: model.maxTokens,
+    reasoningCapable: model.reasoningCapable,
+    reasoningEfforts: model.reasoningEfforts,
+    defaultReasoningEffort: model.defaultReasoningEffort,
+    supportsImageInput: model.supportsImageInput,
+  }
+}
+
 export async function getTideCodeSystemModels(): Promise<SystemModelsSnapshot> {
   const [storedApiKeyProviders, codexStatus, customModels, storedSettings] = await Promise.all([
     readStoredApiKeyProviders().catch(() => ({} as StoredApiKeyProviders)),
-    getCodexProviderStatus(false).catch(() => ({ accounts: [], activeAccountId: null })),
+    getCodexProviderStatus(false).catch(() => ({ isAuthenticated: false })),
     listStoredCustomModels().catch(() => []),
     getStoredSettings().catch(() => null),
   ])
@@ -69,7 +94,7 @@ export async function getTideCodeSystemModels(): Promise<SystemModelsSnapshot> {
   if (process.env.MISTRAL_API_KEY || storedApiKeyProviders.mistral?.api_key) {
     configuredProviders.add('mistral')
   }
-  if (codexStatus.accounts && codexStatus.accounts.length > 0) {
+  if (codexStatus.isAuthenticated) {
     configuredProviders.add('codex')
   }
 
@@ -81,6 +106,20 @@ export async function getTideCodeSystemModels(): Promise<SystemModelsSnapshot> {
   }
 
   const allModels: SystemModelItem[] = []
+  const modelIndexes = new Map<string, number>()
+  const addModel = (model: SystemModelItem) => {
+    const identity = `${model.providerId}\u0000${model.apiModelId.toLowerCase()}`
+    const existingIndex = modelIndexes.get(identity)
+    if (existingIndex === undefined) {
+      modelIndexes.set(identity, allModels.length)
+      allModels.push(model)
+      return
+    }
+
+    // Standalone custom model records are the current source of truth for
+    // models migrated from the older provider.models storage format.
+    if (model.isCustom) allModels[existingIndex] = model
+  }
 
   // 1. Built-in Catalog Models from TideCode
   for (const providerId of KNOWN_PROVIDERS) {
@@ -89,7 +128,7 @@ export async function getTideCodeSystemModels(): Promise<SystemModelsSnapshot> {
       const friendlyProviderLabel = (PROVIDER_LABELS as Record<string, string>)[providerId] || providerId.toUpperCase()
 
       for (const m of catalogModels) {
-        allModels.push({
+        addModel({
           id: m.id || `${providerId}:${m.apiModelId}`,
           apiModelId: m.apiModelId,
           label: m.label || m.apiModelId,
@@ -101,6 +140,7 @@ export async function getTideCodeSystemModels(): Promise<SystemModelsSnapshot> {
           reasoningCapable: m.reasoningCapable,
           reasoningEfforts: m.reasoningEfforts,
           defaultReasoningEffort: m.defaultReasoningEffort,
+          supportsImageInput: m.supportsImageInput,
         })
       }
     } catch {
@@ -108,12 +148,23 @@ export async function getTideCodeSystemModels(): Promise<SystemModelsSnapshot> {
     }
   }
 
-  // 2. Custom User Models from TideCode Store
+  // 2. Legacy custom-provider models are still readable. New CLI and desktop
+  // edits are stored in the standalone model catalogs below, but showing this
+  // data here keeps existing provider configurations usable during migration.
+  for (const [providerKey, providerConfig] of Object.entries(storedApiKeyProviders)) {
+    if (!isCustomApiKeyProviderId(providerKey)) continue
+    if (!providerConfig) continue
+    for (const model of providerConfig?.models ?? []) {
+      addModel(toSystemModelItem(providerKey, providerConfig, model, true, configuredProviders))
+    }
+  }
+
+  // 3. Custom User Models from TideCode Store
   for (const cm of customModels) {
     const customConfig = (storedApiKeyProviders as Record<string, StoredApiKeyProviderConfig | undefined>)[cm.providerId]
     const customLabel = customConfig?.label || (cm.providerId.startsWith('custom:') ? 'Custom Provider' : cm.providerId)
 
-    allModels.push({
+    addModel({
       id: cm.id,
       apiModelId: cm.apiModelId,
       label: cm.label || cm.apiModelId,
@@ -125,12 +176,13 @@ export async function getTideCodeSystemModels(): Promise<SystemModelsSnapshot> {
       reasoningCapable: cm.reasoningCapable,
       reasoningEfforts: cm.reasoningEfforts,
       defaultReasoningEffort: cm.defaultReasoningEffort,
+      supportsImageInput: cm.supportsImageInput,
     })
   }
 
   const configuredModels = allModels.filter((m) => m.isConfigured)
 
-  // 3. Resolve default model from Stored App Settings or first configured provider
+  // 4. Resolve default model from Stored App Settings or first configured provider
   let defaultModelId = storedSettings?.agentModelId || storedSettings?.chatModelId || 'claude-3-7-sonnet'
   let defaultProviderId: ChatProviderId = (storedSettings?.agentModelProviderId || storedSettings?.chatModelProviderId || 'anthropic') as ChatProviderId
 
