@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.3 — A more capable TideCode CLI
+
+TideCode 1.2.3 makes the bundled CLI easier to configure, resume, and use for multimodal work while keeping desktop and terminal settings aligned.
+
+- Adds richer CLI model and provider setup, including secure one-time API-key handoff into desktop Settings without exposing secrets in process arguments or saved command history.
+- Adds clipboard and file image attachments in the terminal, preserves image references in conversation history, and falls back cleanly for models that do not accept image input.
+- Improves terminal composition, multiline and bracketed paste handling, cancellation, resize rendering, reasoning history, and project-scoped active or archived conversation resume flows.
+- Keeps CLI, desktop, MCP, and update version reporting aligned with the packaged application version and adds regression coverage for the new workflows.
+
 ## 1.2.2 — A smoother desktop and terminal workspace
 
 TideCode 1.2.2 keeps the desktop workspace responsive while making the bundled terminal experience safer to launch and continue.
