@@ -49,6 +49,7 @@ test('screen lifecycle renders session before compose and keeps cursor in compos
 
   screen.addUserMessage('hi')
   screen.beginTurn()
+  assert.ok(output.writes.map(stripAnsi).some((write) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Thinking/u.test(write)))
   assert.match(stripAnsi(output.writes.at(-1) ?? ''), /Enter steer · Tab queue · Esc stop/)
   assert.equal(output.cursorColumns.at(-1), 4)
 
@@ -461,6 +462,26 @@ test('screen restores a resumed desktop transcript before accepting the next mes
   const resumeClearIndex = outputText.lastIndexOf('\x1b[2J\x1b[3J\x1b[H')
   assert.ok(resumeClearIndex >= 0)
   assert.ok(resumeClearIndex < outputText.lastIndexOf('Previous question'))
+})
+
+test('screen redraws the active composer after an external conversation replacement', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+  screen.restoreConversation([
+    { content: 'Keep this', id: 'user-keep', role: 'user', timestamp: 1 },
+    { content: 'Remove this response', id: 'assistant-remove', role: 'assistant', timestamp: 2 },
+  ])
+  void screen.ask({ mode: 'agent', modelId: 'gpt-test', providerId: 'codex' })
+
+  screen.restoreConversation([
+    { content: 'Keep this', id: 'user-keep', role: 'user', timestamp: 1 },
+  ], {}, true)
+
+  const rows = output.visibleRows()
+  assert.equal(rows.some((row) => row.includes('Remove this response')), false)
+  assert.equal(rows.some((row) => row.includes('Keep this')), true)
+  assert.equal(rows.filter((row) => row.includes('╭─ compose')).length, 1)
 })
 
 test('screen restores each thought marker for multiple desktop reasoning segments in order', () => {

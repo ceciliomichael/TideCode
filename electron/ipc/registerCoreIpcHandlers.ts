@@ -44,12 +44,12 @@ import {
   renameStoredFolder,
   reorderStoredFolder,
   updateStoredConversationArchived,
-  replaceStoredMessages,
   updateStoredConversationPinned,
   updateStoredConversationTitle,
 } from '../history/store'
 import { listCompactionMarkers } from '../chat/history/eventStore'
 import { getDraftAgentContextPath } from '../history/paths'
+import { ensureRunServiceClient } from '../runService/ensureService'
 import { getStoredSettings, updateStoredSettings } from '../settings/store'
 import { applyTideCodeAppIcon } from '../window/branding'
 import { applyWindowTheme } from '../window/theme'
@@ -142,7 +142,7 @@ export function registerCoreIpcHandlers(getWindow: () => BrowserWindow | null) {
     appendStoredMessages(input),
   )
   ipcMain.handle('history:replaceMessages', async (_event, input: ReplaceConversationMessagesInput) =>
-    replaceStoredMessages(input),
+    (await ensureRunServiceClient()).replaceMessages(input),
   )
   ipcMain.handle('history:updateTitle', async (_event, conversationId: string, title: string) =>
     updateStoredConversationTitle(conversationId, title),

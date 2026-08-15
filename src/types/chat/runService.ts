@@ -58,6 +58,12 @@ export type TideCodeRunEvent =
       seq: number
       projection: SharedRunProjection
     }
+  | {
+      type: 'conversation_replaced'
+      seq: number
+      conversationId: string
+      conversation: ConversationRecord
+    }
 
 export interface TideCodeRunsApi {
   getRunProjection: (runId: string) => Promise<SharedRunProjection | null>

@@ -425,6 +425,36 @@ export function useChatSessionState(language: AppLanguage) {
         return
       }
 
+      if (event.type === 'conversation_replaced') {
+        const conversation = event.conversation
+        sharedRunProjectionsByConversationIdRef.current.delete(conversation.id)
+        sharedRunsByConversationIdRef.current.delete(conversation.id)
+        setSharedRunningConversationIds((currentValue) => {
+          if (!currentValue.has(conversation.id)) return currentValue
+          const nextValue = new Set(currentValue)
+          nextValue.delete(conversation.id)
+          return nextValue
+        })
+        setConversationSummaries((currentValue) => upsertConversationSummary(currentValue, conversation))
+        setConversationRuntimeStates((currentValue) => {
+          const currentState = currentValue[conversation.id]
+          if (!currentState) return currentValue
+          return {
+            ...currentValue,
+            [conversation.id]: {
+              ...createConversationRuntimeState(conversation, currentState),
+              activeStreamId: null,
+              isSending: false,
+              sharedRunId: null,
+              isStreamingTextActive: false,
+              streamingAssistantMessageId: null,
+              streamingWaitingIndicatorVariant: null,
+            },
+          }
+        })
+        return
+      }
+
       if (event.type !== 'conversation_updated') return
       const conversation = event.conversation
       setConversationSummaries((currentValue) => upsertConversationSummary(currentValue, conversation))

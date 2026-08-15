@@ -2,6 +2,7 @@ import net from 'node:net'
 import type { Socket } from 'node:net'
 import type {
   ChatStreamEvent,
+  ConversationRecord,
   SharedRunProjection,
   SharedRunStatus,
   StartChatStreamInput,
@@ -21,7 +22,7 @@ import {
 } from '../chat/codex/runtime'
 import type { ChatStreamEventTarget } from '../chat/shared/runtimeStreamEvents'
 import { CliTurnMessageCollector } from '../cli/cliTurnMessageCollector'
-import { getStoredConversation } from '../history/store'
+import { getStoredConversation, replaceStoredMessages } from '../history/store'
 import type { CliSessionState } from '../cli/types'
 import { RUN_SERVICE_PROTOCOL_VERSION, isRunServiceRequest, type RunServiceResponse } from './protocol'
 import { ensureRunServiceToken, getRunServiceEndpoint, removeStaleRunServiceSocket } from './paths'
@@ -93,6 +94,7 @@ export class TideCodeRunServiceServer {
   private readonly nextSeqByRunId = new Map<string, number>()
   private readonly projectionsByRunId = new Map<string, SharedRunProjection>()
   private readonly projectionTextIdleTimers = new Map<string, NodeJS.Timeout>()
+  private nextConversationEventSeq = 0
   private token = ''
 
   async start() {
@@ -168,6 +170,12 @@ export class TideCodeRunServiceServer {
         case 'listActiveRuns':
           this.sendResponse(socket, { id: parsed.id, ok: true, result: this.registry.listActive() })
           return
+        case 'replaceMessages': {
+          const conversation = await replaceStoredMessages(parsed.params)
+          this.emitConversationReplacement(conversation)
+          this.sendResponse(socket, { id: parsed.id, ok: true, result: conversation })
+          return
+        }
         case 'startStream': {
           const result = await this.startSharedStream(parsed.params)
           this.sendResponse(socket, { id: parsed.id, ok: true, result })
@@ -395,6 +403,19 @@ export class TideCodeRunServiceServer {
       : event
     const withSeq = { ...normalizedEvent, seq } as TideCodeRunEvent
     const payload = `${JSON.stringify({ type: 'event', event: withSeq })}\n`
+    for (const client of this.clients) {
+      if (!client.destroyed) client.write(payload)
+    }
+  }
+
+  private emitConversationReplacement(conversation: ConversationRecord) {
+    const event: TideCodeRunEvent = {
+      type: 'conversation_replaced',
+      seq: ++this.nextConversationEventSeq,
+      conversationId: conversation.id,
+      conversation,
+    }
+    const payload = `${JSON.stringify({ type: 'event', event })}\n`
     for (const client of this.clients) {
       if (!client.destroyed) client.write(payload)
     }

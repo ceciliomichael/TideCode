@@ -67,6 +67,24 @@ export async function startInteractiveRepl(
   screen.start()
   screen.restoreConversation(state.messages)
   screen.updateComposerStatus({ reasoningEffort: state.reasoningEffort })
+
+  const runService = await ensureRunServiceClient()
+  runService.onEvent((event) => {
+    if (event.type !== 'conversation_replaced' || event.conversationId !== state.conversationId) return
+    const conversation = event.conversation
+    state.messages = [...conversation.messages]
+    state.chatMode = conversation.chatMode
+    state.workspaceRootPath = conversation.agentContextRootPath
+    state.isStreaming = false
+    state.activeStreamId = null
+    screen.restoreConversation(conversation.messages, {
+      mode: conversation.chatMode,
+      model: state.modelId,
+      provider: state.providerId,
+      workspace: conversation.agentContextRootPath,
+    }, true)
+  })
+
   if (options.openResumePicker) {
     await executeSlashCommand('/resume', state, helpers)
   } else {

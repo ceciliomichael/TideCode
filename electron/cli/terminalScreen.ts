@@ -236,6 +236,7 @@ export class TerminalScreen {
     }
     const historyLines = renderConversationHistory(this.view.entries)
     if (historyLines.length > 0) this.output.write(`${historyLines.join('\n')}\n`)
+    if (this.pendingPrompt) this.renderCurrentPrompt()
   }
 
   setNotification(level: 'info' | 'success' | 'warning' | 'error', text: string): void {
