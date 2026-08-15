@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0 — A synchronized terminal workspace
+
+TideCode 1.2.0 brings the desktop chat experience into the terminal with shared history, settings, tools, and a more reliable workspace workflow across both interfaces.
+
+- Adds a bundled interactive CLI/TUI with desktop-compatible conversation history, exact resume ordering, active and archived chat pagination, multiline composition, mentions, headless prompts, and responsive Esc cancellation.
+- Adds `/settings`, `/model`, `/effort`, `/mcp`, `/skills`, and `/update`, including shared model defaults, queue/steer key preferences, MCP and skill toggles, configured-provider filtering, and packaged-app update handoff.
+- Matches desktop tool and reasoning presentation in the terminal with concise completed tool rows, semantic success/failure colors, single-row thinking indicators, context usage, Codex week usage, model, mode, and effort status.
+- Improves long-running terminal commands with bounded output collection, session state and status reporting, recent output context, interaction guidance, and reliable cancellation without replaying consumed output.
+- Improves workspace previews, source-control publishing, Windows file drops, provider environment-key configuration, reasoning-effort presentation, and bundled CLI installation through the desktop installer.
+- Includes regression coverage for CLI history synchronization, TUI rendering and controls, terminal execution, workspace publishing, previews, provider behavior, and update handling.
+
 ## 1.1.11 — Safer compaction handoffs and history persistence
 
 TideCode 1.1.11 keeps long-running chats grounded after repeated context compaction, overlapping runs, and provider history reconstruction, while making streamed Markdown output safer and easier to continue.
