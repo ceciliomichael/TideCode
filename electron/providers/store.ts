@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { app } from 'electron'
+import { electronApp } from '../electronApp'
 import type {
   ApiKeyProviderId,
   ApiKeyProviderStatus,
@@ -49,7 +49,7 @@ function hasText(value: unknown): value is string {
 }
 
 function getConfigDirectoryPath() {
-  return path.join(app.getPath('home'), ...CONFIG_ROOT_SEGMENTS)
+  return path.join(electronApp.getPath('home'), ...CONFIG_ROOT_SEGMENTS)
 }
 
 function getProvidersSettingsFilePath() {

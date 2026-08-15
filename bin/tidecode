@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export ELECTRON_RUN_AS_NODE=1
+
+if [ -f "$SCRIPT_DIR/../TideCode" ]; then
+  exec "$SCRIPT_DIR/../TideCode" "$SCRIPT_DIR/../resources/app.asar/dist-electron/cli/index.js" "$@"
+elif [ -f "$SCRIPT_DIR/../dist-electron/cli/index.js" ]; then
+  exec node "$SCRIPT_DIR/../dist-electron/cli/index.js" "$@"
+else
+  exec npx tsx "$SCRIPT_DIR/../electron/cli/index.ts" "$@"
+fi

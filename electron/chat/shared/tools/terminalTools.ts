@@ -1,5 +1,6 @@
 import type { WebContents } from "electron";
 import type { AgentToolContext } from "../toolTypes";
+import type { ChatStreamEventTarget } from "../runtimeStreamEvents";
 import { createExecuteTerminalTool } from "./executeTerminalTool";
 import { createInteractTerminalTool } from "./interactTerminalTool";
 import { createReadTerminalTool } from "./readTerminalTool";
@@ -27,15 +28,15 @@ export function createTerminalToolSet(
 }
 
 export async function terminateAllBackgroundSessions(
-  webContents: WebContents,
+  webContents: WebContents | ChatStreamEventTarget | null | undefined,
   workspaceRootPath: string,
   conversationIdOrTerminate?: string | null | ((
-    webContents: WebContents,
+    webContents: WebContents | ChatStreamEventTarget | null | undefined,
     sessionId: number,
     workspaceRootPath: string,
   ) => void),
   customTerminateSession?: (
-    webContents: WebContents,
+    webContents: WebContents | ChatStreamEventTarget | null | undefined,
     sessionId: number,
     workspaceRootPath: string,
   ) => void,
@@ -49,11 +50,11 @@ export async function terminateAllBackgroundSessions(
 }
 
 export async function terminateAllBackgroundSessionsForTurn(
-  webContents: WebContents,
+  webContents: WebContents | ChatStreamEventTarget | null | undefined,
   workspaceRootPath: string,
   turnId: string,
   customTerminateSession?: (
-    webContents: WebContents,
+    webContents: WebContents | ChatStreamEventTarget | null | undefined,
     sessionId: number,
     workspaceRootPath: string,
   ) => void,

@@ -13,7 +13,7 @@ import type {
 } from '../../../src/types/chat'
 import { ActiveChatStreamRegistry, type ActiveChatStreamRegistration } from '../shared/activeChatStreamRegistry'
 import { estimateToolEnabledContextUsage, runToolEnabledChatStream } from '../shared/runtime'
-import { emitChatStreamEvent } from '../shared/runtimeStreamEvents'
+import { emitChatStreamEvent, type ChatStreamEventTarget } from '../shared/runtimeStreamEvents'
 import { createCodexClient } from './client'
 import { refreshProvidersCache } from '../../providers/service'
 import { compactConversationForProvider } from '../shared/compaction/manual'
@@ -21,7 +21,7 @@ import { compactConversationForProvider } from '../shared/compaction/manual'
 const activeStreams = new ActiveChatStreamRegistry()
 
 export async function estimateCodexContextUsage(
-  webContents: WebContents,
+  webContents: WebContents | ChatStreamEventTarget,
   input: EstimateContextUsageInput,
 ): Promise<ContextUsageEstimate> {
   return estimateToolEnabledContextUsage({
@@ -80,7 +80,7 @@ export async function compactCodexConversation(input: CompactConversationInput):
 }
 
 export async function startCodexChatStream(
-  webContents: WebContents,
+  webContents: WebContents | ChatStreamEventTarget,
   input: StartChatStreamInput,
   onSettled?: () => void,
 ): Promise<StartChatStreamResult> {
@@ -121,7 +121,7 @@ export async function startCodexChatStream(
 }
 
 async function runCodexChatStream(
-  webContents: WebContents,
+  webContents: WebContents | ChatStreamEventTarget,
   streamId: string,
   input: StartChatStreamInput,
   abortController: AbortController,

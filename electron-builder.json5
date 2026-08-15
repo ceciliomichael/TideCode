@@ -27,6 +27,13 @@
   ],
   "extraResources": [
     {
+      "from": "bin",
+      "to": "bin",
+      "filter": [
+        "**/*"
+      ]
+    },
+    {
       "from": "resources/ripgrep",
       "to": "ripgrep",
       "filter": [

@@ -54,8 +54,6 @@ type UndoEntry =
   | BatchDeleteUndoEntry
 
 const MAX_UNDO_STACK_SIZE = 50
-const MAX_DELETE_UNDO_DIRECTORY_FILES = 200
-const MAX_DELETE_UNDO_DIRECTORY_BYTES = 1024 * 1024
 const DELETE_UNDO_SKIPPED_DIRECTORY_NAMES = new Set([
   '.angular',
   '.cache',
@@ -71,11 +69,6 @@ const DELETE_UNDO_SKIPPED_DIRECTORY_NAMES = new Set([
   'node_modules',
   'venv',
 ])
-
-interface DeleteDirectorySnapshotBudget {
-  fileCount: number
-  totalBytes: number
-}
 
 function getRelativePathBasename(relativePath: string) {
   const normalizedPath = relativePath.replace(/\\/gu, '/')
@@ -107,57 +100,6 @@ export function useWorkspaceExplorerUndoStack({
     }
   }, [])
 
-  // Recursively collect small text file snapshots for undoable directory deletes.
-  const snapshotDirectory = useCallback(
-    async (
-      directoryRelativePath: string,
-      budget: DeleteDirectorySnapshotBudget = { fileCount: 0, totalBytes: 0 },
-    ): Promise<Array<{ relativePath: string; content: string }> | null> => {
-      if (!workspaceRootPath || shouldSkipDeleteUndoDirectorySnapshot(directoryRelativePath)) return null
-
-      const files: Array<{ relativePath: string; content: string }> = []
-      const entries = await window.tidecodeWorkspace.listDirectory({
-        relativePath: directoryRelativePath,
-        workspaceRootPath,
-        visibility: 'explorer',
-      })
-
-      for (const entry of entries) {
-        if (entry.isDirectory) {
-          const nested = await snapshotDirectory(entry.relativePath, budget)
-          if (!nested) {
-            return null
-          }
-          files.push(...nested)
-        } else {
-          try {
-            const result = await window.tidecodeWorkspace.readFile({
-              relativePath: entry.relativePath,
-              workspaceRootPath,
-            })
-            if (result.status === 'ready' && !result.isBinary) {
-              const contentBytes = new TextEncoder().encode(result.content).byteLength
-              if (
-                budget.fileCount + 1 > MAX_DELETE_UNDO_DIRECTORY_FILES ||
-                budget.totalBytes + contentBytes > MAX_DELETE_UNDO_DIRECTORY_BYTES
-              ) {
-                return null
-              }
-              budget.fileCount += 1
-              budget.totalBytes += contentBytes
-              files.push({ relativePath: entry.relativePath, content: result.content })
-            }
-          } catch {
-            // Skip files that can't be read (binary, locked, etc.)
-          }
-        }
-      }
-
-      return files
-    },
-    [workspaceRootPath],
-  )
-
   // Record a delete before it happens, so we can undo it
   const recordDeleteEntries = useCallback(
     async (entries: { relativePath: string; isDirectory?: boolean }[]) => {
@@ -166,31 +108,21 @@ export function useWorkspaceExplorerUndoStack({
       const subEntries: Array<DeleteFileUndoEntry | DeleteDirectoryUndoEntry> = []
 
       for (const entry of entries) {
-        // First try reading as a file if it's not explicitly a directory
-        if (!entry.isDirectory) {
-          try {
-            const result = await window.tidecodeWorkspace.readFile({
-              relativePath: entry.relativePath,
-              workspaceRootPath,
-            })
-            if (result.status === 'ready' && !result.isBinary) {
-              subEntries.push({ type: 'delete-file', relativePath: entry.relativePath, content: result.content })
-            }
-            continue
-          } catch {
-            // readFile failed — this is likely a directory
-          }
+        if (entry.isDirectory || shouldSkipDeleteUndoDirectorySnapshot(entry.relativePath)) {
+          continue
         }
 
-        // Fall back to directory snapshot
+        // Try reading as a text file for undo if it's not a directory
         try {
-          const files = await snapshotDirectory(entry.relativePath)
-          if (!files) {
-            continue
+          const result = await window.tidecodeWorkspace.readFile({
+            relativePath: entry.relativePath,
+            workspaceRootPath,
+          })
+          if (result.status === 'ready' && !result.isBinary) {
+            subEntries.push({ type: 'delete-file', relativePath: entry.relativePath, content: result.content })
           }
-          subEntries.push({ type: 'delete-directory', relativePath: entry.relativePath, files })
         } catch {
-          // Can't snapshot directory either — won't be able to undo
+          // readFile failed — likely a directory or binary/unreadable file, skip
         }
       }
 
@@ -202,7 +134,7 @@ export function useWorkspaceExplorerUndoStack({
         pushUndo({ type: 'batch-delete', entries: subEntries })
       }
     },
-    [pushUndo, snapshotDirectory, workspaceRootPath],
+    [pushUndo, workspaceRootPath],
   )
 
   const recordCreate = useCallback(

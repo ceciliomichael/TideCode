@@ -1,4 +1,4 @@
-import { GitBranch, FolderGit2, Github, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { GitBranch, FolderGit2, Globe, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useState } from 'react'
 import { PublishToGitHubModal } from './PublishToGitHubModal'
 
@@ -105,7 +105,7 @@ export function SourceControlNoRepoView({ workspacePath, onRefreshAll }: SourceC
                 : 'Initialize Repository'}
           </button>
 
-          {/* Publish to GitHub */}
+          {/* Publish Repository */}
           <button
             type="button"
             id="sc-publish-github-button"
@@ -115,18 +115,18 @@ export function SourceControlNoRepoView({ workspacePath, onRefreshAll }: SourceC
               'group relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl border px-4 py-3 text-sm font-medium transition-all duration-200',
               initStep === 'loading'
                 ? 'cursor-not-allowed border-border bg-surface-muted text-muted-foreground opacity-50'
-                : 'cursor-pointer border-[#24292e]/30 bg-[#24292e]/5 text-foreground hover:bg-[#24292e]/10 hover:border-[#24292e]/50 active:scale-[0.98] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10',
+                : 'cursor-pointer border-border bg-surface-muted text-foreground hover:bg-surface hover:border-border/80 active:scale-[0.98]',
             ].join(' ')}
           >
             <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/5 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-            <Github size={15} className="text-[#24292e] dark:text-white/80" />
-            <span>Publish to GitHub</span>
+            <Globe size={15} className="text-muted-foreground group-hover:text-foreground transition-colors" />
+            <span>Publish Repository</span>
           </button>
         </div>
 
         {/* Hint */}
         <p className="text-center text-[11px] text-muted-foreground leading-relaxed max-w-[220px]">
-          "Publish to GitHub" will initialize the repo and push it to your GitHub account in one step.
+          Initialize locally, or publish directly to GitLab, Bitbucket, GitHub, or any remote Git server.
         </p>
       </div>
 

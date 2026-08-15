@@ -2,6 +2,7 @@ import type { AppTerminalExecutionMode } from '../../../src/types/chat'
 import type { WebContents } from 'electron'
 import type { ToolInvocationResultPresentation } from '../../../src/types/chat'
 import type { ToolResultOutput } from '@ai-sdk/provider-utils'
+import type { ChatStreamEventTarget } from './runtimeStreamEvents'
 
 export interface AgentToolResultSubject {
   kind?: string
@@ -26,5 +27,5 @@ export interface AgentToolContext {
   turnId?: string | null
   terminalExecutionMode?: AppTerminalExecutionMode
   workspaceRootPath: string
-  webContents?: WebContents | null
+  webContents?: WebContents | ChatStreamEventTarget | null
 }

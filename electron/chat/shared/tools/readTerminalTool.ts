@@ -8,13 +8,15 @@ import {
   createTerminalErrorResult,
   drainUnreadTerminalOutput,
   getOrCreateThreadStore,
+  getRecentTranscriptTail,
   getThreadSession,
+  MAX_TERMINAL_WAIT_SECONDS,
   syncTerminalSessionOutput,
   type TerminalToolRuntime,
 } from "./terminalToolShared";
 
 const DEFAULT_WAIT_SECONDS = 15;
-const MAX_WAIT_SECONDS = 15;
+const MAX_WAIT_SECONDS = MAX_TERMINAL_WAIT_SECONDS;
 
 interface ReadTerminalInput {
   session_id?: number;
@@ -28,7 +30,7 @@ function getWaitMilliseconds(value: number | undefined) {
 export function createReadTerminalTool(runtime: TerminalToolRuntime) {
   return tool({
     description:
-      "Wait up to wait_seconds for a terminal session, then consume and return only output produced since the previous read. Repeated calls never replay already-returned output. The wait is bounded to 15 seconds and returns early when the command finishes.",
+      "Wait up to wait_seconds for a terminal session, then consume and return only output produced since the previous read. Repeated calls never replay already-returned output. The wait returns early when the command finishes.",
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
@@ -38,8 +40,7 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
         },
         wait_seconds: {
           default: DEFAULT_WAIT_SECONDS,
-          description: "Maximum collection window in seconds. Use 0 for an immediate non-blocking read.",
-          maximum: MAX_WAIT_SECONDS,
+          description: "Optional. Maximum collection window in seconds to wait for output. Defaults to 15s. Use 0 for an immediate non-blocking read.",
           minimum: 0,
           type: "number",
         },
@@ -85,37 +86,105 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
 
         const unreadOutput = drainUnreadTerminalOutput(session);
         const commandSummary = buildTerminalCommandSummary(session);
-        const bodyLines = [`state: ${commandSummary.state}`];
+        const transcriptSummary = session.transcript.getSummary();
+        const waitedSeconds = waitMilliseconds / 1_000;
+
+        const status = commandSummary.state === "running"
+          ? session.isDaemon
+            ? "daemon_listening"
+            : "actively_executing"
+          : commandSummary.state === "needs_interaction"
+            ? "waiting_for_input"
+            : session.commandExitCode !== null && session.commandExitCode !== 0
+              ? "failed"
+              : "completed";
+
+        const bodyLines: string[] = [
+          `session_id: ${session.localSessionId}`,
+          `state: ${commandSummary.state}`,
+          `status: ${status}`,
+        ];
+
         if (commandSummary.state === "completed" && session.commandExitCode !== null && session.commandExitCode !== 0) {
           bodyLines.push("result: failed");
         }
+
         if (unreadOutput.lines.length > 0) {
           bodyLines.push(
+            `new_output_lines: ${unreadOutput.lines.length}`,
+            `total_output_lines: ${transcriptSummary.lineCount}`,
             "",
             "new_output:",
             ...unreadOutput.lines.map((line) => `${line.lineNumber}: ${line.text}`),
           );
+          if (commandSummary.state === "running") {
+            if (session.isDaemon) {
+              bodyLines.push(
+                "",
+                "guidance: Web server or watcher is running and listening. Do not wait in a polling loop; proceed with your tasks or send Ctrl+C to stop it.",
+              );
+            } else {
+              bodyLines.push(
+                "",
+                "guidance: Command is actively executing in the background. Use interact_terminal to wait for output or send Ctrl+C to cancel.",
+              );
+            }
+          }
         } else {
-          bodyLines.push("", "No new terminal output.");
+          if (commandSummary.state === "running") {
+            bodyLines.push(
+              `waited_seconds: ${waitedSeconds}`,
+              `total_output_lines_so_far: ${transcriptSummary.lineCount}`,
+              "",
+              "No new terminal output was emitted during this collection window.",
+            );
+
+            const recentTail = getRecentTranscriptTail(session, 5);
+            if (recentTail.length > 0) {
+              bodyLines.push(
+                "",
+                "recent_output_tail:",
+                ...recentTail.map((line) => `${line.lineNumber}: ${line.text}`),
+              );
+            }
+
+            if (session.isDaemon) {
+              bodyLines.push(
+                "",
+                "guidance: Process is an active web server or watcher (listening on port). It will not exit on its own. Do not poll in a loop; proceed with next steps or send Ctrl+C to stop it.",
+              );
+            } else {
+              bodyLines.push(
+                "",
+                "guidance: The command process is actively executing in the background and has not exited. Call interact_terminal with a wait_seconds window to continue waiting for completion or output. Do not re-run this command while the session is active.",
+              );
+            }
+          } else {
+            bodyLines.push("", "No new terminal output.");
+          }
         }
+
+        const displayBody = unreadOutput.lines.length > 0
+          ? unreadOutput.lines.map((line) => line.text).join("\n")
+          : commandSummary.displayBody;
 
         return createSuccessResult({
           body: bodyLines.join("\n"),
-          displayBody:
-            unreadOutput.lines.length > 0
-              ? unreadOutput.lines.map((line) => line.text).join("\n")
-              : commandSummary.displayBody,
+          displayBody,
           semantics: {
             ...commandSummary.semantics,
+            active: commandSummary.state === "running",
             new_output_line_count: unreadOutput.lines.length,
             next_unread_line: session.nextUnreadLine,
             output_evicted: unreadOutput.skippedEvictedLines,
-            wait_seconds: waitMilliseconds / 1_000,
+            status,
+            total_output_lines: transcriptSummary.lineCount,
+            wait_seconds: waitedSeconds,
           },
           subject: { kind: "session", path: String(session.localSessionId) },
           summary: commandSummary.state === "completed"
             ? `Read completed terminal session ${session.localSessionId}`
-            : `Read new output from terminal session ${session.localSessionId}`,
+            : `Read output from terminal session ${session.localSessionId}`,
         });
       } catch (error) {
         if (abortSignal?.aborted) {

@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { app } from 'electron'
+import { electronApp } from '../electronApp'
 import type {
   ConfigurableProviderModel,
   CustomModelProviderId,
@@ -27,11 +27,11 @@ const LEGACY_MODELS_FILE_SEGMENTS = ['config', 'custom-models.json'] as const
 let mutationQueue: Promise<unknown> = Promise.resolve()
 
 function getModelsDirectoryPath() {
-  return path.join(app.getPath('home'), ...CONFIG_ROOT_SEGMENTS, MODELS_DIRECTORY_NAME)
+  return path.join(electronApp.getPath('home'), ...CONFIG_ROOT_SEGMENTS, MODELS_DIRECTORY_NAME)
 }
 
 function getLegacyModelsFilePath() {
-  return path.join(app.getPath('home'), ...CONFIG_ROOT_SEGMENTS, ...LEGACY_MODELS_FILE_SEGMENTS)
+  return path.join(electronApp.getPath('home'), ...CONFIG_ROOT_SEGMENTS, ...LEGACY_MODELS_FILE_SEGMENTS)
 }
 
 function getProviderCatalogFilePath(providerId: CustomModelProviderId) {

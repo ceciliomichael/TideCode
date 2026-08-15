@@ -98,7 +98,6 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
     return (
       <WorkspaceMarkdownPreview
         content={contentToDisplay}
-        fileName={activeTab.fileName}
         relativePath={activeTab.relativePath}
         isTruncated={sourceTab ? sourceTab.isTruncated : activeTab.isTruncated}
         workspaceRootPath={workspaceRootPath}

@@ -4,6 +4,7 @@ import type {
   Message,
   StartChatStreamInput,
 } from '../../../src/types/chat'
+import type { ChatStreamEventTarget } from './runtimeStreamEvents'
 import {
   approximateTokenCount,
   estimateModelMessageContextUsage,
@@ -30,7 +31,7 @@ export async function estimateToolEnabledContextUsage(input: {
   modelId?: string
   providerId: StartChatStreamInput['providerId']
   terminalExecutionMode: StartChatStreamInput['terminalExecutionMode']
-  webContents: WebContents
+  webContents?: WebContents | ChatStreamEventTarget | null
 }): Promise<ContextUsageEstimate> {
   const contextCompaction = normalizeContextCompactionSettings(input.contextCompaction)
   const normalizedWorkspaceRootPath = input.agentContextRootPath?.trim()

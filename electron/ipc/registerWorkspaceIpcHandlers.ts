@@ -37,6 +37,7 @@ import {
   writeWorkspaceFile,
 } from '../workspace/explorer'
 import { windowsClipboard } from '../clipboard/windowsClipboardReader'
+import { readClipboardFilesDirect } from '../clipboard/windowsDropFilesParser'
 import { writeClipboardImageToWorkspace } from '../workspace/clipboardImage'
 
 export function registerWorkspaceIpcHandlers() {
@@ -103,6 +104,17 @@ export function registerWorkspaceIpcHandlers() {
     },
   )
   ipcMain.handle('clipboard:readFiles', async () => {
+    // 1. Direct memory binary reading (< 1ms)
+    try {
+      const directPaths = readClipboardFilesDirect(clipboard)
+      if (directPaths.length > 0) {
+        return directPaths
+      }
+    } catch (directError) {
+      console.warn('Direct clipboard extraction failed, trying fallbacks:', directError)
+    }
+
+    // 2. Windows-specific fallback if direct buffers were not populated
     if (process.platform === 'win32') {
       if (clipboard.has('FileNameW') || clipboard.has('FileName')) {
         try {
@@ -112,16 +124,6 @@ export function registerWorkspaceIpcHandlers() {
           }
         } catch (e) {
           console.error('Failed to read files from persistent clipboard reader', e)
-        }
-      }
-
-      // Fallback if powershell fails: read FileNameW directly (only returns the 1st file)
-      const raw = clipboard.readBuffer('FileNameW')
-      if (raw && raw.length > 0) {
-        const pathStr = raw.toString('utf16le')
-        const paths = pathStr.split('\0').filter((s) => s.trim().length > 0)
-        if (paths.length > 0) {
-          return paths
         }
       }
     }

@@ -1,8 +1,12 @@
 import os from 'node:os'
+import path from 'node:path'
 import * as electronModule from 'electron'
 
 interface ElectronAppLike {
-  getPath(name: 'home'): string
+  getPath(name: 'home' | 'userData' | 'appData'): string
+  getName?(): string
+  getVersion?(): string
+  getAppPath?(): string
 }
 
 function isElectronAppLike(value: unknown): value is ElectronAppLike {
@@ -14,8 +18,20 @@ const fallbackApp: ElectronAppLike = {
     if (name === 'home') {
       return os.homedir()
     }
+    if (name === 'userData' || name === 'appData') {
+      return path.join(os.homedir(), '.tidecode')
+    }
 
-    throw new Error(`Unsupported fallback Electron path request: ${name}`)
+    return os.homedir()
+  },
+  getName() {
+    return 'TideCode'
+  },
+  getVersion() {
+    return '1.1.11'
+  },
+  getAppPath() {
+    return process.cwd()
   },
 }
 

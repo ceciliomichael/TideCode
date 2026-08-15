@@ -120,6 +120,69 @@ async function attachRemoteAndPush(input: {
   }
 }
 
+export interface GitPublishRemoteInput {
+  workspacePath: string
+  remoteUrl: string
+  remoteName?: string
+  defaultBranch?: string
+}
+
+export interface GitPublishRemoteResult {
+  remoteName: string
+  remoteUrl: string
+  repoUrl?: string
+  success: boolean
+}
+
+export async function publishToRemote(input: GitPublishRemoteInput): Promise<GitPublishRemoteResult> {
+  const normalizedPath = input.workspacePath.trim()
+  const remoteUrl = input.remoteUrl.trim()
+  if (!remoteUrl) {
+    throw new Error('Remote URL is required.')
+  }
+  const remoteName = input.remoteName?.trim() || 'origin'
+  const defaultBranch = input.defaultBranch?.trim() || 'main'
+
+  const repoRootPath = await initializeRepositoryIfNeeded(normalizedPath)
+  await ensureInitialCommit(repoRootPath, defaultBranch)
+
+  try {
+    const { stdout: remotes } = await runGit(['remote'], repoRootPath)
+    const existingRemotes = remotes.split(/\r?\n/).map((r) => r.trim()).filter(Boolean)
+    if (existingRemotes.includes(remoteName)) {
+      await runGit(['remote', 'set-url', remoteName, remoteUrl], repoRootPath)
+    } else {
+      await runGit(['remote', 'add', remoteName, remoteUrl], repoRootPath)
+    }
+  } catch (error) {
+    throw new Error(`Failed to configure remote "${remoteName}": ${getErrorMessage(error)}`)
+  }
+
+  const branchName = (await readSymbolicHeadBranchName(repoRootPath)) || defaultBranch
+  try {
+    await runGit(['push', '--set-upstream', remoteName, branchName], repoRootPath)
+  } catch (error) {
+    throw new Error(`Remote "${remoteName}" was added (${remoteUrl}), but initial push failed: ${getErrorMessage(error)}`)
+  }
+
+  let repoUrl: string | undefined = undefined
+  if (remoteUrl.startsWith('https://') || remoteUrl.startsWith('http://')) {
+    repoUrl = remoteUrl.replace(/\.git$/iu, '')
+  } else if (remoteUrl.startsWith('git@')) {
+    const match = remoteUrl.match(/^git@([^:]+):(.+?)(?:\.git)?$/u)
+    if (match) {
+      repoUrl = `https://${match[1]}/${match[2]}`
+    }
+  }
+
+  return {
+    remoteName,
+    remoteUrl,
+    repoUrl,
+    success: true,
+  }
+}
+
 export async function publishToGitHub(input: GitPublishInput): Promise<GitPublishResult> {
   const options = normalizeGitPublishOptions(input)
   const repoRootPath = await initializeRepositoryIfNeeded(options.workspacePath)

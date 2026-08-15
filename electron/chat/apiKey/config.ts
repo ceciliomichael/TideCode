@@ -11,6 +11,14 @@ const DEFAULT_BASE_URLS: Partial<Record<ApiKeyProviderId, string>> = {
   openai: 'https://api.openai.com/v1',
 }
 
+const ENV_API_KEYS: Partial<Record<ApiKeyProviderId, string | undefined>> = {
+  anthropic: process.env.ANTHROPIC_API_KEY,
+  openai: process.env.OPENAI_API_KEY,
+  google: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY,
+  deepseek: process.env.DEEPSEEK_API_KEY,
+  mistral: process.env.MISTRAL_API_KEY,
+}
+
 export interface ApiKeyChatProviderConfig {
   apiKey: string
   baseUrl: string
@@ -34,7 +42,9 @@ export async function readApiKeyChatProviderConfig(providerId: ApiKeyProviderId)
     ? provider?.base_url?.trim() ?? ''
     : DEFAULT_BASE_URLS[providerId] ?? ''
 
-  if (!provider?.api_key?.trim() && !usesCustomBaseUrl) {
+  const resolvedApiKey = provider?.api_key?.trim() || ENV_API_KEYS[providerId]?.trim() || ''
+
+  if (!resolvedApiKey && !usesCustomBaseUrl) {
     throw new Error(`Configure ${providerId} before using this provider.`)
   }
   if (!baseUrl) {
@@ -42,7 +52,7 @@ export async function readApiKeyChatProviderConfig(providerId: ApiKeyProviderId)
   }
 
   return {
-    apiKey: provider?.api_key?.trim() ?? '',
+    apiKey: resolvedApiKey,
     baseUrl,
     extraBody: provider?.extra_body ?? {},
     models: [

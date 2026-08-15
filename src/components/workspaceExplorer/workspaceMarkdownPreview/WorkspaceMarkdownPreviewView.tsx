@@ -13,7 +13,6 @@ import { WorkspaceMarkdownImage } from './WorkspaceMarkdownImage'
 
 interface WorkspaceMarkdownPreviewViewProps {
   content: string
-  fileName: string
   relativePath?: string
   workspaceRootPath?: string | null
   isTruncated?: boolean
@@ -58,7 +57,6 @@ function isSummaryElement(child: React.ReactNode): boolean {
 
 export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPreviewView({
   content,
-  fileName,
   relativePath,
   workspaceRootPath,
   isTruncated = false,
@@ -117,7 +115,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
               headerLabel={language ?? ''}
               language={language}
               fileName={undefined}
-              showHeaderTooltip={false}
+              useMonaco={false}
             />
           )
         }
@@ -273,7 +271,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
       },
       hr: (props: React.ComponentPropsWithoutRef<'hr'>) => <hr {...props} className="my-5 border-border" />,
     }),
-    [fileName, relativePath, workspaceRootPath],
+    [relativePath, workspaceRootPath],
   )
 
   return (
