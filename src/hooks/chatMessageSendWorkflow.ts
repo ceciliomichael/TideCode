@@ -10,6 +10,7 @@ import {
 import { createChatAssistantDraftManager } from './chatAssistantDrafts'
 import { streamAssistantResponse, toErrorMessage } from './chatMessageRuntime'
 import { createChatStreamProgressPersistenceController } from './chatStreamProgressPersistence'
+
 import type { PersistAndStreamMessageInput, PersistedUserTurn } from './chatMessageSendTypes'
 
 function validateRuntimeSelection(input: PersistAndStreamMessageInput) {
@@ -139,6 +140,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
   let conversationIdForCleanup = initiatingConversationId
   let draftManager: ReturnType<typeof createChatAssistantDraftManager> | null = null
   let streamProgressPersistence: ReturnType<typeof createChatStreamProgressPersistenceController> | null = null
+  const usesSharedRunPersistence = typeof window !== 'undefined' && window.tidecodeRuns !== undefined
   let shouldKeepWaitingIndicatorActive = false
   let hasPendingDraftReservation = false
   let requestAccepted = false
@@ -275,12 +277,15 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       return requestAccepted
     }
 
-    streamProgressPersistence = createChatStreamProgressPersistenceController({
-      conversationId: conversationForRun.id,
-      persistSnapshot: persistConversationSnapshot,
-      setError: input.setError,
-      shouldDiscard: () => input.isUserMessageReverted?.(persistedUserMessage?.id ?? '') ?? false,
-    })
+
+    if (!usesSharedRunPersistence) {
+      streamProgressPersistence = createChatStreamProgressPersistenceController({
+        conversationId: conversationForRun.id,
+        persistSnapshot: persistConversationSnapshot,
+        setError: input.setError,
+        shouldDiscard: () => input.isUserMessageReverted?.(persistedUserMessage?.id ?? '') ?? false,
+      })
+    }
 
     draftManager = createChatAssistantDraftManager({
       appendLocalMessage: input.appendLocalMessage,
@@ -375,9 +380,14 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       return requestAccepted
     }
 
-    const savedConversation =
-      (await streamProgressPersistence?.flush()) ??
-      (await persistConversationSnapshot(conversationForRun.id, finalizedConversationMessages))
+    const savedConversation: ConversationRecord = streamProgressPersistence
+      ? (await streamProgressPersistence.flush())
+        ?? (await persistConversationSnapshot(conversationForRun.id, finalizedConversationMessages))
+      : {
+          ...conversationForRun,
+          messages: finalizedConversationMessages,
+          updatedAt: finalizedConversationMessages.at(-1)?.timestamp ?? Date.now(),
+        }
     const savedConversationForRun =
       savedConversation.chatMode === input.draftChatMode
         ? savedConversation
@@ -420,12 +430,21 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
     const failureMessage = toErrorMessage(caughtError, `Unable to get a response from ${providerLabel} right now.`)
 
     if (draftManager) {
-      if (shouldRetainProgress) {
+      if (streamProgressPersistence) {
+      const savedConversation = await streamProgressPersistence.flush()
+      if (savedConversation && savedConversation.id in input.conversationRuntimeStatesRef.current) {
+        input.upsertConversation(savedConversation)
+        input.updateConversationSummary(savedConversation)
+      }
+    }
+
+    if (shouldRetainProgress) {
         draftManager.showRateLimitRetryIndicator()
       } else {
         draftManager.finalizeStreamedMessages(false, failureMessage)
       }
     }
+
 
     if (streamProgressPersistence) {
       const savedConversation = await streamProgressPersistence.flush()

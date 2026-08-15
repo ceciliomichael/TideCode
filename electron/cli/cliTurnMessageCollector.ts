@@ -3,18 +3,26 @@ import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../src/lib/contextCompac
 import { createChatAssistantDraftManager } from '../../src/hooks/chatAssistantDrafts'
 import type { CliSessionState } from './types'
 
+export interface CliTurnMessageCollectorOptions {
+  onConversationMessagesUpdated?: (
+    messages: Message[],
+    options?: { immediate?: boolean },
+    hint?: { deltaCharCount?: number },
+  ) => void
+}
+
 export class CliTurnMessageCollector {
   private readonly manager: ReturnType<typeof createChatAssistantDraftManager>
   private wasAborted = false
   private failureMessage: string | undefined
 
-  constructor(state: CliSessionState) {
+  constructor(state: CliSessionState, options: CliTurnMessageCollectorOptions = {}) {
     this.manager = createChatAssistantDraftManager({
       appendLocalMessage: () => undefined,
       conversationId: state.conversationId,
       initialConversationMessages: state.messages,
       markTextStreamingPulse: () => undefined,
-      onConversationMessagesUpdated: () => undefined,
+      onConversationMessagesUpdated: options.onConversationMessagesUpdated ?? (() => undefined),
       providerId: state.providerId,
       removeLocalMessage: () => undefined,
       runtimeSelection: {

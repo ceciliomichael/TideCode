@@ -13,6 +13,7 @@ import type { TerminalScreen } from './terminalScreen'
 import { resumeCliConversation } from './cliHistory'
 import { persistCliReasoningEffort } from './cliReasoningEffortSettings'
 import { shouldRefreshCodexUsage } from './cliComposerStatus'
+import { attachCliToActiveSharedRun } from './sharedRunAttachment'
 import { updateStoredConversationArchived } from '../history/store'
 
 const execFileAsync = promisify(execFile)
@@ -114,6 +115,7 @@ export function createReplCommandHelpers(
           workspace: state.workspaceRootPath,
         }, true)
         onRuntimeChanged?.({ refreshCodexUsage: state.providerId === 'codex' })
+        await attachCliToActiveSharedRun(state, screen)
         return true
       } catch {
         return false

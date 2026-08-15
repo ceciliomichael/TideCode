@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type {
   AssistantWaitingIndicatorVariant,
   ChatMode,
@@ -71,19 +71,20 @@ export function useChatSessionState(language: AppLanguage) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
   const [activeConversationChatMode, setActiveConversationChatMode] = useState<ChatMode | null>(null)
   const [conversationRuntimeStates, setConversationRuntimeStates] = useState<ConversationRuntimeStateMap>({})
+  const [sharedRunningConversationIds, setSharedRunningConversationIds] = useState<Set<string>>(() => new Set())
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const activeConversationState = activeConversationId ? conversationRuntimeStates[activeConversationId] ?? null : null
-  const runningConversationIds = useMemo(
-    () =>
-      new Set(
-        Object.values(conversationRuntimeStates)
-          .filter((conversationState) => conversationState.isSending || conversationState.activeStreamId !== null)
-          .map((conversationState) => conversationState.conversation.id),
-      ),
-    [conversationRuntimeStates],
-  )
+  const runningConversationIds = useMemo(() => {
+    const runningIds = new Set(sharedRunningConversationIds)
+    for (const conversationState of Object.values(conversationRuntimeStates)) {
+      if (conversationState.isSending || conversationState.activeStreamId !== null) {
+        runningIds.add(conversationState.conversation.id)
+      }
+    }
+    return runningIds
+  }, [conversationRuntimeStates, sharedRunningConversationIds])
 
   const clearConversationSelection = useCallback((nextFolderId: string | null) => {
     setActiveConversationId(null)
@@ -210,6 +211,51 @@ export function useChatSessionState(language: AppLanguage) {
     },
     [upsertConversationRecord, upsertConversationSummaryOnly],
   )
+
+  useEffect(() => {
+    let disposed = false
+    void window.tidecodeRuns.listActiveRuns()
+      .then((runs) => {
+        if (!disposed) {
+          setSharedRunningConversationIds(new Set(runs.map((run) => run.conversationId)))
+        }
+      })
+      .catch((caughtError) => console.error('Unable to load shared Tidecode runs.', caughtError))
+
+    const unsubscribe = window.tidecodeRuns.onEvent((event) => {
+      if (event.type === 'run_state') {
+        const isRunning = event.run.status === 'starting'
+          || event.run.status === 'running'
+          || event.run.status === 'waiting_for_input'
+        setSharedRunningConversationIds((currentValue) => {
+          const nextValue = new Set(currentValue)
+          if (isRunning) nextValue.add(event.run.conversationId)
+          else nextValue.delete(event.run.conversationId)
+          return nextValue
+        })
+        return
+      }
+
+      if (event.type !== 'conversation_updated') return
+      const conversation = event.conversation
+      setConversationSummaries((currentValue) => upsertConversationSummary(currentValue, conversation))
+      setConversationRuntimeStates((currentValue) => {
+        const currentState = currentValue[conversation.id]
+        if (!currentState || currentState.activeStreamId !== null) {
+          return currentValue
+        }
+        return {
+          ...currentValue,
+          [conversation.id]: createConversationRuntimeState(conversation, currentState),
+        }
+      })
+    })
+
+    return () => {
+      disposed = true
+      unsubscribe()
+    }
+  }, [])
 
   const updateConversationRuntimeState = useCallback(
     (conversationId: string, input: UpdateConversationRuntimeInput) => {

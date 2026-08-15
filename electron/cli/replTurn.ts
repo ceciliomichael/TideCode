@@ -1,11 +1,10 @@
-import type { ChatAttachment, StartChatStreamInput } from '../../src/types/chat'
+import type { ChatAttachment, ChatStreamEvent, StartChatStreamInput } from '../../src/types/chat'
 import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../src/lib/contextCompactionSettings'
-import { startApiKeyChatStream } from '../chat/apiKey/runtime'
-import { startCodexChatStream } from '../chat/codex/runtime'
+import { getStoredConversation } from '../history/store'
+import { ensureRunServiceClient } from '../runService/ensureService'
 import { createTerminalChatEventSink } from './events'
 import { expandMentionsIntoContext } from './mentions'
-import { createAndPersistCliUserMessage, persistCliAssistantMessages } from './cliHistory'
-import { CliTurnMessageCollector } from './cliTurnMessageCollector'
+import { createAndPersistCliUserMessage } from './cliHistory'
 import { CliTurnFollowUpController } from './cliTurnFollowUps'
 import type { CliSessionState } from './types'
 import type { TerminalPromptContext, TerminalPromptSubmission, TerminalScreen } from './terminalScreen'
@@ -37,7 +36,6 @@ export async function runReplTurn(
   ))
   screen.addUserMessage(input, options.printUserMessage === true)
   screen.beginTurn(nextPromptContext.onCancelTurn)
-  const messageCollector = new CliTurnMessageCollector(state)
   let followUpController: CliTurnFollowUpController | null = null
 
   state.isStreaming = true
@@ -54,7 +52,6 @@ export async function runReplTurn(
     workspaceRootPath: state.workspaceRootPath,
     presentation: screen.eventPresentation,
     onEvent: (event) => {
-      messageCollector.handleEvent(event)
       if (event.type === 'steer_messages_consumed') followUpController?.markConsumed(event.messages)
     },
     onComplete: () => {
@@ -80,12 +77,35 @@ export async function runReplTurn(
     terminalExecutionMode: state.terminalExecutionMode,
   }
 
+  const queuedEvents: ChatStreamEvent[] = []
+  let streamId: string | null = null
+  let unsubscribeRunEvents: (() => void) | null = null
+
+  const deliverEvent = (event: ChatStreamEvent) => {
+    if (typeof sink.emit === 'function') sink.emit(event)
+    else sink.send?.('chat:stream:event', event)
+  }
+
   try {
-    const streamResult = state.providerId === 'codex'
-      ? await startCodexChatStream(sink, streamInput)
-      : await startApiKeyChatStream(sink, streamInput)
+    const runService = await ensureRunServiceClient()
+    unsubscribeRunEvents = runService.onEvent((event) => {
+      if (event.type !== 'chat_event' || event.conversationId !== state.conversationId) return
+      if (!streamId) {
+        queuedEvents.push(event.event)
+        return
+      }
+      if (event.event.streamId === streamId) deliverEvent(event.event)
+    })
+
+    const streamResult = await runService.startStream(streamInput)
+    streamId = streamResult.streamId
     state.activeStreamId = streamResult.streamId
     followUpController = new CliTurnFollowUpController(state.providerId, streamResult.streamId)
+
+    for (const event of queuedEvents.splice(0)) {
+      if (event.streamId === streamResult.streamId) deliverEvent(event)
+    }
+
     nextInput = screen.ask({
       ...nextPromptContext,
       onActiveMessage: (text, behavior) => {
@@ -94,16 +114,14 @@ export async function runReplTurn(
     })
     await turnSettled
 
-    try {
-      await persistCliAssistantMessages(state, messageCollector.finalize())
-    } catch (error) {
-      screen.addNotice('error', `Could not save the completed turn: ${error instanceof Error ? error.message : String(error)}`)
-    }
+    const conversation = await getStoredConversation(state.conversationId).catch(() => null)
+    if (conversation) state.messages = [...conversation.messages]
   } catch (error) {
     state.isStreaming = false
     screen.finishTurn()
     screen.addNotice('error', `Could not start the turn: ${error instanceof Error ? error.message : String(error)}`)
   } finally {
+    unsubscribeRunEvents?.()
     state.isStreaming = false
     state.activeStreamId = null
   }

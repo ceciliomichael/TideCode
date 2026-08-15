@@ -32,6 +32,7 @@ interface Window {
   tidecodeModels: import('../src/types/chat').TideCodeModelsApi
   tidecodeMcp: import('../src/types/mcp').TideCodeMcpApi
   tidecodeProviders: import('../src/types/chat').TideCodeProvidersApi
+  tidecodeRuns: import('../src/types/chat').TideCodeRunsApi
   tidecodeSkills: import('../src/types/skills').TideCodeSkillsApi
   tidecodeSettings: import('../src/types/chat').TideCodeSettingsApi
   tidecodeUpdates: import('../src/types/updates').TideCodeUpdatesApi

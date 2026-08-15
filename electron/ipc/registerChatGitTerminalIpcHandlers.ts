@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import type {
   CheckoutGitBranchInput,
   CloseTerminalSessionInput,
@@ -23,21 +23,14 @@ import type {
   WriteTerminalSessionInput,
 } from '../../src/types/chat'
 import {
-  cancelCodexChatStream,
   compactCodexConversation,
   estimateCodexContextUsage,
-  startCodexChatStream,
-  submitCodexToolDecision,
-  updateCodexPendingSteerMessages,
 } from '../chat/codex/runtime'
 import {
-  cancelApiKeyChatStream,
   compactApiKeyConversation,
   estimateApiKeyContextUsage,
-  startApiKeyChatStream,
-  submitApiKeyToolDecision,
-  updateApiKeyPendingSteerMessages,
 } from '../chat/apiKey/runtime'
+import { ensureRunServiceClient } from '../runService/ensureService'
 import { emitChatStreamEvent } from '../chat/shared/runtimeStreamEvents'
 import {
   checkoutGitBranch,
@@ -84,38 +77,41 @@ function getSourceControlWorkspacePath(input: GitSourceControlWatchChangesInput)
 export function registerChatGitTerminalIpcHandlers(
   activeChatStreamProviders: Map<string, StartChatStreamInput['providerId']>,
 ) {
-  ipcMain.handle('chat:stream:start', async (event, input: StartChatStreamInput) => {
-    if (input.providerId === 'codex') {
-      const result = await startCodexChatStream(event.sender, input, () => {
-        activeChatStreamProviders.delete(result.streamId)
-      })
-      activeChatStreamProviders.set(result.streamId, input.providerId)
-      return result
-    }
+  void ensureRunServiceClient()
+    .then((runService) => {
+      runService.onEvent((runEvent) => {
+        if (runEvent.type === 'chat_event') {
+          if (
+            runEvent.event.type === 'completed'
+            || runEvent.event.type === 'aborted'
+            || runEvent.event.type === 'error'
+          ) {
+            activeChatStreamProviders.delete(runEvent.event.streamId)
+          }
+          for (const window of BrowserWindow.getAllWindows()) {
+            if (!window.webContents.isDestroyed()) {
+              window.webContents.send('chat:stream:event', runEvent.event)
+            }
+          }
+        }
 
-    const result = await startApiKeyChatStream(event.sender, input, () => {
-      activeChatStreamProviders.delete(result.streamId)
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (!window.webContents.isDestroyed()) {
+            window.webContents.send('run-service:event', runEvent)
+          }
+        }
+      })
     })
+    .catch((error) => console.error('Unable to connect Electron to the Tidecode run service.', error))
+
+  ipcMain.handle('runs:listActive', async () => (await ensureRunServiceClient()).listActiveRuns())
+  ipcMain.handle('chat:stream:start', async (_event, input: StartChatStreamInput) => {
+    const result = await (await ensureRunServiceClient()).startStream(input)
     activeChatStreamProviders.set(result.streamId, input.providerId)
     return result
   })
   ipcMain.handle('chat:stream:cancel', async (_event, streamId: string) => {
-    const providerId = activeChatStreamProviders.get(streamId)
-
-    if (providerId === 'codex') {
-      await cancelCodexChatStream(streamId)
-      return
-    }
-
-    if (providerId) {
-      await cancelApiKeyChatStream(streamId)
-      return
-    }
-
-    await Promise.all([
-      cancelCodexChatStream(streamId),
-      cancelApiKeyChatStream(streamId),
-    ])
+    await (await ensureRunServiceClient()).cancelStream(streamId)
   })
   ipcMain.handle(
     'chat:stream:updatePendingSteerMessages',
@@ -123,17 +119,7 @@ export function registerChatGitTerminalIpcHandlers(
       if (!input || typeof input.streamId !== 'string' || !input.streamId.trim()) {
         return { accepted: false }
       }
-      const providerId = activeChatStreamProviders.get(input.streamId)
-
-      if (providerId === 'codex') {
-        return updateCodexPendingSteerMessages(input)
-      }
-
-      if (providerId) {
-        return updateApiKeyPendingSteerMessages(input)
-      }
-
-      return { accepted: false }
+      return (await ensureRunServiceClient()).updatePendingSteerMessages(input)
     },
   )
   ipcMain.handle('chat:compactConversation', async (_event, input: CompactConversationInput) => {
@@ -180,19 +166,9 @@ export function registerChatGitTerminalIpcHandlers(
       throw error
     }
   })
-  ipcMain.handle('chat:stream:submitToolDecision', async (_event, input: SubmitToolDecisionInput) => {
-    const providerId = activeChatStreamProviders.get(input.streamId)
-
-    if (providerId === 'codex') {
-      return submitCodexToolDecision(input)
-    }
-
-    if (providerId) {
-      return submitApiKeyToolDecision(input)
-    }
-
-    throw new Error('Unable to determine which provider owns this tool decision stream.')
-  })
+  ipcMain.handle('chat:stream:submitToolDecision', async (_event, input: SubmitToolDecisionInput) =>
+    (await ensureRunServiceClient()).submitToolDecision(input),
+  )
   ipcMain.handle('chat:context-usage:estimate', async (event, input: EstimateContextUsageInput) => {
     if (input.providerId === 'codex') {
       return estimateCodexContextUsage(event.sender, input)

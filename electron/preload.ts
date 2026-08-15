@@ -15,6 +15,7 @@ import type {
   TideCodeKanbanApi,
   TideCodeModelsApi,
   TideCodeProvidersApi,
+  TideCodeRunsApi,
   TideCodeTerminalApi,
   GitCommitInput,
   GitFileStageBatchInput,
@@ -206,6 +207,17 @@ const modelsApi: TideCodeModelsApi = {
   removeCustomModel: (modelId: string) => ipcRenderer.invoke('models:custom:remove', modelId),
 }
 
+const runsApi: TideCodeRunsApi = {
+  listActiveRuns: () => ipcRenderer.invoke('runs:listActive'),
+  onEvent: (listener) => {
+    const wrappedListener = (_event: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)
+    ipcRenderer.on('run-service:event', wrappedListener)
+    return () => {
+      ipcRenderer.off('run-service:event', wrappedListener)
+    }
+  },
+}
+
 const chatApi: TideCodeChatApi = {
   cancelStream: (streamId: string) => ipcRenderer.invoke('chat:stream:cancel', streamId),
   compactConversation: (input: CompactConversationInput) => ipcRenderer.invoke('chat:compactConversation', input),
@@ -359,6 +371,7 @@ contextBridge.exposeInMainWorld('tidecodeUpdates', updatesApi)
 contextBridge.exposeInMainWorld('tidecodeProviders', providersApi)
 contextBridge.exposeInMainWorld('tidecodeSkills', skillsApi)
 contextBridge.exposeInMainWorld('tidecodeChat', chatApi)
+contextBridge.exposeInMainWorld('tidecodeRuns', runsApi)
 contextBridge.exposeInMainWorld('tidecodeGit', gitApi)
 contextBridge.exposeInMainWorld('tidecodeFileDrop', fileDropApi)
 contextBridge.exposeInMainWorld('tidecodeClipboard', clipboardApi)

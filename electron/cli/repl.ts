@@ -1,6 +1,5 @@
 import type { ChatAttachment } from '../../src/types/chat'
-import { cancelApiKeyChatStream } from '../chat/apiKey/runtime'
-import { cancelCodexChatStream } from '../chat/codex/runtime'
+import { ensureRunServiceClient } from '../runService/ensureService'
 import { executeSlashCommand } from './commands'
 import { createReplCommandHelpers } from './replCommands'
 import { runReplTurn } from './replTurn'
@@ -11,6 +10,7 @@ import { refreshCliComposerStatus } from './cliComposerStatus'
 import { getStoredSettings } from '../settings/store'
 import { warmSystemClipboardReader } from './cliClipboardImage'
 import { TIDECODE_VERSION } from '../appVersion'
+import { attachCliToActiveSharedRun } from './sharedRunAttachment'
 
 function createPromptContext(
   state: CliSessionState,
@@ -31,12 +31,11 @@ function createPromptContext(
       const streamId = state.activeStreamId
       if (!streamId) return
       screen.setActivity('thinking', 'Stopping')
-      const cancellation = state.providerId === 'codex'
-        ? cancelCodexChatStream(streamId)
-        : cancelApiKeyChatStream(streamId)
-      void cancellation.catch((error) => {
-        screen.addNotice('error', `Could not stop the turn: ${error instanceof Error ? error.message : String(error)}`)
-      })
+      void ensureRunServiceClient()
+        .then((client) => client.cancelStream(streamId))
+        .catch((error) => {
+          screen.addNotice('error', `Could not stop the turn: ${error instanceof Error ? error.message : String(error)}`)
+        })
     },
   }
 }
@@ -65,6 +64,7 @@ export async function startInteractiveRepl(state: CliSessionState): Promise<void
   screen.start()
   screen.restoreConversation(state.messages)
   screen.updateComposerStatus({ reasoningEffort: state.reasoningEffort })
+  await attachCliToActiveSharedRun(state, screen)
   let startupPreparationStarted = false
 
   for (;;) {
