@@ -2,12 +2,20 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INSTALL_DIR="$SCRIPT_DIR/../.."
 export ELECTRON_RUN_AS_NODE=1
 
-if [ -f "$SCRIPT_DIR/../TideCode" ]; then
-  exec "$SCRIPT_DIR/../TideCode" "$SCRIPT_DIR/../resources/app.asar/dist-electron/cli/index.js" "$@"
+if [ -x "$INSTALL_DIR/TideCode" ]; then
+  exec "$INSTALL_DIR/TideCode" "$INSTALL_DIR/resources/app.asar/dist-electron/cli/index.js" "$@"
+elif [ -x "$INSTALL_DIR/tidecode" ]; then
+  exec "$INSTALL_DIR/tidecode" "$INSTALL_DIR/resources/app.asar/dist-electron/cli/index.js" "$@"
+elif [ -x "$INSTALL_DIR/MacOS/TideCode" ]; then
+  exec "$INSTALL_DIR/MacOS/TideCode" "$SCRIPT_DIR/../app.asar/dist-electron/cli/index.js" "$@"
 elif [ -f "$SCRIPT_DIR/../dist-electron/cli/index.js" ]; then
   exec node "$SCRIPT_DIR/../dist-electron/cli/index.js" "$@"
-else
+elif [ -f "$SCRIPT_DIR/../electron/cli/index.ts" ]; then
   exec npx tsx "$SCRIPT_DIR/../electron/cli/index.ts" "$@"
+else
+  echo "TideCode CLI is not available in this installation." >&2
+  exit 1
 fi
