@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.1 — Reliable bundled CLI launching
+
+TideCode 1.2.1 fixes the installed terminal launcher so the `tidecode` command starts the bundled CLI correctly after installation.
+
+- Resolves the packaged Electron executable and `app.asar` CLI entrypoint from the installer’s `resources/bin` directory on Windows.
+- Supports the corresponding packaged Linux and macOS layouts while preserving source-checkout fallbacks for development.
+- Adds regression coverage for the installed launcher paths so future packaging changes do not point users at unavailable source files.
+
 ## 1.2.0 — A synchronized terminal workspace
 
 TideCode 1.2.0 brings the desktop chat experience into the terminal with shared history, settings, tools, and a more reliable workspace workflow across both interfaces.
