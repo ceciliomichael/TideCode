@@ -11,6 +11,7 @@ import {
   terminateAllBackgroundSessionsForTurn,
   type TerminalToolDependencies,
 } from "../../electron/chat/shared/tools/terminalTools";
+import { createTerminalSessionOwner } from "../../electron/chat/shared/tools/terminalToolShared";
 
 const webContentsStub = {
   id: 42,
@@ -124,6 +125,50 @@ function createTools(
     dependencies,
   );
 }
+
+test("headless chat targets receive a terminal owner that supports WebContents lifecycle methods", async () => {
+  const writeCalls: WriteTerminalSessionInput[] = [];
+  const emittedEvents: unknown[] = [];
+  const headlessTarget = {
+    emit: (event: unknown) => emittedEvents.push(event),
+    isDestroyed: () => false,
+  };
+  const terminalOwner = createTerminalSessionOwner(headlessTarget);
+  let observedOwnerId: number | null = null;
+
+  const tools = createTerminalToolSet(
+    {
+      conversationId: "headless-terminal-owner",
+      webContents: terminalOwner,
+      workspaceRootPath: "/workspace",
+    },
+    createMockDependencies({
+      createSession: async (sessionInput) => {
+        observedOwnerId = terminalOwner.id;
+        terminalOwner.once("destroyed", () => undefined);
+        return {
+          cwd: sessionInput.cwd ?? "/workspace",
+          isReused: false,
+          sessionId: 7,
+          shell: "pwsh",
+        };
+      },
+      writeCalls,
+    }),
+  );
+
+  const result = await getTool(tools, "execute_terminal").execute({ command: "npm test" });
+
+  assert.equal(result.status, "success");
+  assert.equal(typeof terminalOwner.id, "number");
+  assert.ok((terminalOwner.id as number) < 0);
+  assert.equal(observedOwnerId, terminalOwner.id);
+  assert.equal(writeCalls.length, 1);
+
+  terminalOwner.send("chat:stream:event", { type: "completed" });
+  terminalOwner.send("terminal:session:data", { ignored: true });
+  assert.deepEqual(emittedEvents, [{ type: "completed" }]);
+});
 
 test("execute_terminal starts asynchronously and returns a session id without polling", async () => {
   const writeCalls: WriteTerminalSessionInput[] = [];
