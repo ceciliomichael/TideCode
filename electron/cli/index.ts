@@ -37,6 +37,8 @@ function parseArgs(args: string[]): CliOptions {
       options.mode = args[++i] as ChatMode
     } else if (arg === '--continue' || arg === '-c') {
       options.continueId = args[++i]
+    } else if (arg === 'resume') {
+      options.resume = true
     } else if (arg === 'remote' || arg === '--remote') {
       options.remote = true
     } else if (arg === '--port') {
@@ -67,6 +69,7 @@ function showHelp() {
   console.log(`
 ${colors.bold}Usage:${colors.reset}
   tidecode [options] [path]
+  tidecode resume
   tidecode -p "prompt" [options]
   tidecode remote [options]
 
@@ -75,7 +78,8 @@ ${colors.bold}Options:${colors.reset}
   -m, --model <id>        Specify model (e.g. claude-3-7-sonnet, gpt-4o, codex)
   --provider <id>         Specify provider (anthropic, openai, google, deepseek, codex)
   --mode <agent|plan>     Execution mode: "agent" (default) or "plan"
-  -c, --continue <id>     Resume an existing conversation session
+  -c, --continue <id>     Resume an existing conversation session directly
+  resume                   Open the interactive conversation resume picker
   --remote                Start mobile pairing relay daemon
   --port <number>         Port for remote relay daemon (default: 38472)
   -v, --version           Print TideCode version
@@ -171,7 +175,7 @@ export async function main() {
   }
 
   // Default to interactive REPL
-  await startInteractiveRepl(state)
+  await startInteractiveRepl(state, { openResumePicker: options.resume === true })
 }
 
 process.on('SIGINT', () => {

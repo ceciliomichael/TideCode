@@ -19,6 +19,7 @@ export interface CliOptions {
   provider?: ApiKeyProviderId | 'codex'
   mode?: ChatMode
   continueId?: string
+  resume?: boolean
   remote?: boolean
   port?: number
   help?: boolean

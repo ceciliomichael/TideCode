@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   AssistantWaitingIndicatorVariant,
   ChatMode,
@@ -7,6 +7,7 @@ import type {
   ReorderConversationFolderInput,
   ConversationSummary,
   Message,
+  SharedRunSnapshot,
 } from '../types/chat'
 import {
   buildConversationGroups,
@@ -25,6 +26,7 @@ interface ConversationRuntimeState {
   conversation: ConversationRecord
   isSending: boolean
   activeStreamId: string | null
+  sharedRunId: string | null
   isStreamingTextActive: boolean
   streamingAssistantMessageId: string | null
   streamingWaitingIndicatorVariant: AssistantWaitingIndicatorVariant | null
@@ -35,6 +37,7 @@ type ConversationRuntimeStateMap = Record<string, ConversationRuntimeState>
 interface UpdateConversationRuntimeInput {
   activeStreamId?: string | null
   isSending?: boolean
+  sharedRunId?: string | null
   isStreamingTextActive?: boolean
   streamingAssistantMessageId?: string | null
   streamingWaitingIndicatorVariant?: AssistantWaitingIndicatorVariant | null
@@ -48,6 +51,7 @@ function createConversationRuntimeState(
     activeStreamId: currentValue?.activeStreamId ?? null,
     conversation,
     isSending: currentValue?.isSending ?? false,
+    sharedRunId: currentValue?.sharedRunId ?? null,
     isStreamingTextActive: currentValue?.isStreamingTextActive ?? false,
     streamingAssistantMessageId: currentValue?.streamingAssistantMessageId ?? null,
     streamingWaitingIndicatorVariant: currentValue?.streamingWaitingIndicatorVariant ?? null,
@@ -71,6 +75,7 @@ export function useChatSessionState(language: AppLanguage) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
   const [activeConversationChatMode, setActiveConversationChatMode] = useState<ChatMode | null>(null)
   const [conversationRuntimeStates, setConversationRuntimeStates] = useState<ConversationRuntimeStateMap>({})
+  const sharedRunsByConversationIdRef = useRef(new Map<string, SharedRunSnapshot>())
   const [sharedRunningConversationIds, setSharedRunningConversationIds] = useState<Set<string>>(() => new Set())
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -102,10 +107,20 @@ export function useChatSessionState(language: AppLanguage) {
   )
 
   const upsertConversationRecord = useCallback((conversation: ConversationRecord) => {
-    setConversationRuntimeStates((currentValue) => ({
-      ...currentValue,
-      [conversation.id]: createConversationRuntimeState(conversation, currentValue[conversation.id]),
-    }))
+    setConversationRuntimeStates((currentValue) => {
+      const currentState = currentValue[conversation.id]
+      const nextState = createConversationRuntimeState(conversation, currentState)
+      const sharedRun = sharedRunsByConversationIdRef.current.get(conversation.id)
+      if (sharedRun && (!currentState || (!currentState.isSending && currentState.activeStreamId === null))) {
+        nextState.isSending = true
+        nextState.activeStreamId = sharedRun.streamId
+        nextState.sharedRunId = sharedRun.runId
+      }
+      return {
+        ...currentValue,
+        [conversation.id]: nextState,
+      }
+    })
   }, [])
 
   const applyConversation = useCallback(
@@ -137,10 +152,20 @@ export function useChatSessionState(language: AppLanguage) {
           ? initialConversation.folderId
           : null
 
-      setConversationRuntimeStates((currentValue) => ({
-        ...currentValue,
-        [initialConversation.id]: createConversationRuntimeState(initialConversation, currentValue[initialConversation.id]),
-      }))
+      setConversationRuntimeStates((currentValue) => {
+        const currentState = currentValue[initialConversation.id]
+        const nextState = createConversationRuntimeState(initialConversation, currentState)
+        const sharedRun = sharedRunsByConversationIdRef.current.get(initialConversation.id)
+        if (sharedRun && (!currentState || (!currentState.isSending && currentState.activeStreamId === null))) {
+          nextState.isSending = true
+          nextState.activeStreamId = sharedRun.streamId
+          nextState.sharedRunId = sharedRun.runId
+        }
+        return {
+          ...currentValue,
+          [initialConversation.id]: nextState,
+        }
+      })
       setActiveConversationSelection(initialConversation, normalizedInitialSelectedFolderId)
     },
     [clearConversationSelection, setActiveConversationSelection],
@@ -214,24 +239,113 @@ export function useChatSessionState(language: AppLanguage) {
 
   useEffect(() => {
     let disposed = false
-    void window.tidecodeRuns.listActiveRuns()
-      .then((runs) => {
-        if (!disposed) {
-          setSharedRunningConversationIds(new Set(runs.map((run) => run.conversationId)))
+
+    const reconcileSharedRuns = (runs: SharedRunSnapshot[]) => {
+      if (disposed) return
+      const runsByConversationId = new Map(runs.map((run) => [run.conversationId, run]))
+      sharedRunsByConversationIdRef.current = runsByConversationId
+      setSharedRunningConversationIds(new Set(runsByConversationId.keys()))
+      setConversationRuntimeStates((currentValue) => {
+        let hasChanges = false
+        const nextValue = { ...currentValue }
+
+        for (const [conversationId, currentState] of Object.entries(currentValue)) {
+          const sharedRun = runsByConversationId.get(conversationId)
+          if (currentState.sharedRunId) {
+            if (!sharedRun || sharedRun.runId !== currentState.sharedRunId) {
+              nextValue[conversationId] = {
+                ...currentState,
+                activeStreamId: null,
+                isSending: false,
+                sharedRunId: null,
+                isStreamingTextActive: false,
+                streamingAssistantMessageId: null,
+                streamingWaitingIndicatorVariant: null,
+              }
+              hasChanges = true
+              continue
+            }
+
+            if (currentState.activeStreamId !== sharedRun.streamId || !currentState.isSending) {
+              nextValue[conversationId] = {
+                ...currentState,
+                activeStreamId: sharedRun.streamId,
+                isSending: true,
+              }
+              hasChanges = true
+            }
+            continue
+          }
+
+          if (sharedRun && !currentState.isSending && currentState.activeStreamId === null) {
+            nextValue[conversationId] = {
+              ...currentState,
+              activeStreamId: sharedRun.streamId,
+              isSending: true,
+              sharedRunId: sharedRun.runId,
+            }
+            hasChanges = true
+          }
         }
+
+        return hasChanges ? nextValue : currentValue
       })
-      .catch((caughtError) => console.error('Unable to load shared Tidecode runs.', caughtError))
+    }
+
+    const refreshSharedRuns = () => {
+      void window.tidecodeRuns.listActiveRuns()
+        .then(reconcileSharedRuns)
+        .catch((caughtError) => console.error('Unable to load shared Tidecode runs.', caughtError))
+    }
+
+    refreshSharedRuns()
+    const reconciliationIntervalId = window.setInterval(refreshSharedRuns, 2_000)
 
     const unsubscribe = window.tidecodeRuns.onEvent((event) => {
       if (event.type === 'run_state') {
         const isRunning = event.run.status === 'starting'
           || event.run.status === 'running'
           || event.run.status === 'waiting_for_input'
+        if (isRunning) sharedRunsByConversationIdRef.current.set(event.run.conversationId, event.run)
+        else sharedRunsByConversationIdRef.current.delete(event.run.conversationId)
         setSharedRunningConversationIds((currentValue) => {
           const nextValue = new Set(currentValue)
           if (isRunning) nextValue.add(event.run.conversationId)
           else nextValue.delete(event.run.conversationId)
           return nextValue
+        })
+        setConversationRuntimeStates((currentValue) => {
+          const currentState = currentValue[event.run.conversationId]
+          if (!currentState) return currentValue
+
+          if (isRunning) {
+            const isLocallyOwnedRuntime = currentState.sharedRunId === null
+              && (currentState.isSending || currentState.activeStreamId !== null)
+            if (isLocallyOwnedRuntime) return currentValue
+            return {
+              ...currentValue,
+              [event.run.conversationId]: {
+                ...currentState,
+                activeStreamId: event.run.streamId,
+                isSending: true,
+                sharedRunId: event.run.runId,
+              },
+            }
+          }
+
+          if (currentState.sharedRunId !== event.run.runId) return currentValue
+          return {
+            ...currentValue,
+            [event.run.conversationId]: {
+              ...currentState,
+              activeStreamId: null,
+              isSending: false,
+              sharedRunId: null,
+              isStreamingTextActive: false,
+              streamingAssistantMessageId: null,
+              streamingWaitingIndicatorVariant: null,
+            },
+          }
         })
         return
       }
@@ -241,7 +355,8 @@ export function useChatSessionState(language: AppLanguage) {
       setConversationSummaries((currentValue) => upsertConversationSummary(currentValue, conversation))
       setConversationRuntimeStates((currentValue) => {
         const currentState = currentValue[conversation.id]
-        if (!currentState || currentState.activeStreamId !== null) {
+        if (!currentState) return currentValue
+        if (currentState.activeStreamId !== null && currentState.sharedRunId !== event.runId) {
           return currentValue
         }
         return {
@@ -253,6 +368,7 @@ export function useChatSessionState(language: AppLanguage) {
 
     return () => {
       disposed = true
+      window.clearInterval(reconciliationIntervalId)
       unsubscribe()
     }
   }, [])
@@ -271,6 +387,7 @@ export function useChatSessionState(language: AppLanguage) {
             ...conversationState,
             ...(input.activeStreamId !== undefined ? { activeStreamId: input.activeStreamId } : {}),
             ...(input.isSending !== undefined ? { isSending: input.isSending } : {}),
+            ...(input.sharedRunId !== undefined ? { sharedRunId: input.sharedRunId } : {}),
             ...(input.isStreamingTextActive !== undefined
               ? { isStreamingTextActive: input.isStreamingTextActive }
               : {}),

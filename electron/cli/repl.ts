@@ -40,7 +40,10 @@ function createPromptContext(
   }
 }
 
-export async function startInteractiveRepl(state: CliSessionState): Promise<void> {
+export async function startInteractiveRepl(
+  state: CliSessionState,
+  options: { openResumePicker?: boolean } = {},
+): Promise<void> {
   const screen = new TerminalScreen({
     workspace: state.workspaceRootPath,
     model: state.modelId,
@@ -64,7 +67,11 @@ export async function startInteractiveRepl(state: CliSessionState): Promise<void
   screen.start()
   screen.restoreConversation(state.messages)
   screen.updateComposerStatus({ reasoningEffort: state.reasoningEffort })
-  await attachCliToActiveSharedRun(state, screen)
+  if (options.openResumePicker) {
+    await executeSlashCommand('/resume', state, helpers)
+  } else {
+    await attachCliToActiveSharedRun(state, screen)
+  }
   let startupPreparationStarted = false
 
   for (;;) {

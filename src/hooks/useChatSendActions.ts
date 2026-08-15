@@ -193,6 +193,9 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     (conversationId: string | null) => {
       if (conversationId) {
         const conversationState = getConversationState(conversationId)
+        if (conversationState?.sharedRunId) {
+          return null
+        }
         const pendingUserMessage = getActiveUnrespondedUserMessage(conversationState)
         if (pendingUserMessage) {
           return {
@@ -341,7 +344,12 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
 
   const abortActiveStreamIfNeeded = useCallback(
     async (options?: { requestAbortBeforeStreamStart?: boolean }) => {
-      if (options?.requestAbortBeforeStreamStart) {
+      const selectedConversationId = readChatSelectionFromRefs(input).activeConversationId
+      const isAttachedSharedRun = selectedConversationId
+        ? Boolean(getConversationState(selectedConversationId)?.sharedRunId)
+        : false
+      const shouldRequestPreStreamAbort = options?.requestAbortBeforeStreamStart === true && !isAttachedSharedRun
+      if (shouldRequestPreStreamAbort) {
         pendingAbortBeforeStreamStartRef.current = true
       }
 
@@ -353,10 +361,10 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
 
       const abortOperation = (async () => {
         const conversationId = await waitForAbortableConversationId({
-          preservePendingAbortForSubmission: options?.requestAbortBeforeStreamStart,
+          preservePendingAbortForSubmission: shouldRequestPreStreamAbort,
         })
         if (!conversationId) {
-          if (options?.requestAbortBeforeStreamStart && submissionInFlightRef.current.size === 0) {
+          if (shouldRequestPreStreamAbort && submissionInFlightRef.current.size === 0) {
             pendingAbortBeforeStreamStartRef.current = false
           }
           return
@@ -370,14 +378,14 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         if (!conversationState.isSending && conversationState.activeStreamId === null) {
           // A stop click can arrive just after the runtime has already
           // settled. Do not let that stale click cancel the user's next send.
-          if (options?.requestAbortBeforeStreamStart && submissionInFlightRef.current.size === 0) {
+          if (shouldRequestPreStreamAbort && submissionInFlightRef.current.size === 0) {
             pendingAbortBeforeStreamStartRef.current = false
           }
           return
         }
 
         if (!conversationState.activeStreamId && conversationState.isSending) {
-          if (options?.requestAbortBeforeStreamStart) {
+          if (shouldRequestPreStreamAbort) {
             // The send workflow owns the pre-stream abort flag, so a stop
             // click in the pre-stream window (before the stream id is
             // registered) must not race the rollback. Wait for the stream id
@@ -433,7 +441,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         }
       }
     },
-    [getConversationState, waitForAbortableConversationId, waitForConversationRunState],
+    [getConversationState, input, waitForAbortableConversationId, waitForConversationRunState],
   )
 
   const prepareMessageRevert = useCallback(

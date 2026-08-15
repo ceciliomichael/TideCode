@@ -19,6 +19,7 @@ export interface ConversationRuntimeSnapshot {
   activeStreamId: string | null
   conversation: ConversationRecord
   isSending?: boolean
+  sharedRunId?: string | null
 }
 
 export interface PersistedUserTurn {
