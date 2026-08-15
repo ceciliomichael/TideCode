@@ -380,6 +380,9 @@ export class TerminalScreen {
   addTool(label: string, status: 'running' | 'completed' | 'failed', detail?: string, diff?: string): void {
     this.closeAssistantSegment()
     this.stopActivity()
+    this.activeThought = ''
+    this.activeThoughtEntryId = null
+    this.activeThoughtDurationSeconds = 0
     const cleanLabel = stripAnsi(label)
     this.view.entries.push({
       kind: 'tool',
@@ -450,6 +453,8 @@ export class TerminalScreen {
       onReasoningCompleted: (durationSeconds) => this.addThought(durationSeconds, this.activeThought),
       onContentStart: () => {
         this.activeThought = ''
+        this.activeThoughtEntryId = null
+        this.activeThoughtDurationSeconds = 0
         this.stopActivity()
         this.startAssistant()
       },

@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { TerminalScreen } from '../../electron/cli/terminalScreen'
+import { createTerminalChatEventSink } from '../../electron/cli/events'
 import type { TerminalOutput } from '../../electron/cli/terminalOutput'
 import { stripAnsi } from '../../electron/cli/terminalText'
 import { TerminalGridOutput } from './terminalHarness'
@@ -181,7 +182,7 @@ test('screen lifecycle streams reasoning text and commits its duration label', (
   assert.equal(completedRows.some((row) => row.includes('Inspecting the workspace')), false)
 })
 
-test('screen lifecycle updates later reasoning in the same single-row live indicator', () => {
+test('screen lifecycle keeps repeated reasoning completions in one thought until a semantic boundary', () => {
   const output = new TerminalGridOutput()
   const screen = createScreen(output)
   screen.start()
@@ -198,6 +199,73 @@ test('screen lifecycle updates later reasoning in the same single-row live indic
   assert.equal(rows.filter((row) => row.includes('Thought for')).length, 1)
   assert.equal(rows.some((row) => row.includes('Second reasoning segment')), false)
   assert.equal(rows.some((row) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Thinking/u.test(row)), false)
+})
+
+test('live shared-run presentation commits each reasoning phase at tool boundaries', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+  screen.addUserMessage('create a landing page')
+  screen.beginTurn()
+  const { sink } = createTerminalChatEventSink({
+    presentation: screen.eventPresentation,
+    workspaceRootPath: 'C:/workspace',
+  })
+
+  sink.emit?.({ delta: 'Inspecting the project', streamId: 'stream-live', type: 'reasoning_delta' })
+  sink.emit?.({ streamId: 'stream-live', type: 'reasoning_completed' })
+  sink.emit?.({
+    argumentsText: '{"path":"C:/workspace/index.html"}',
+    invocationId: 'tool-1',
+    startedAt: Date.now(),
+    streamId: 'stream-live',
+    toolName: 'read',
+    type: 'tool_invocation_started',
+  })
+  sink.emit?.({
+    argumentsText: '{"path":"C:/workspace/index.html"}',
+    completedAt: Date.now(),
+    invocationId: 'tool-1',
+    resultContent: 'html',
+    streamId: 'stream-live',
+    syntheticMessage: { content: 'html', id: 'tool-message-1', role: 'tool', timestamp: Date.now(), toolCallId: 'tool-1' },
+    toolName: 'read',
+    type: 'tool_invocation_completed',
+  })
+
+  // Some providers transition straight from reasoning into the next tool and
+  // omit/delay reasoning_completed. The tool boundary must still commit it.
+  sink.emit?.({ delta: 'Planning the CSS changes', streamId: 'stream-live', type: 'reasoning_delta' })
+  sink.emit?.({
+    argumentsText: '{"path":"C:/workspace/styles.css"}',
+    invocationId: 'tool-2',
+    startedAt: Date.now(),
+    streamId: 'stream-live',
+    toolName: 'read',
+    type: 'tool_invocation_started',
+  })
+  sink.emit?.({
+    argumentsText: '{"path":"C:/workspace/styles.css"}',
+    completedAt: Date.now(),
+    invocationId: 'tool-2',
+    resultContent: 'css',
+    streamId: 'stream-live',
+    syntheticMessage: { content: 'css', id: 'tool-message-2', role: 'tool', timestamp: Date.now(), toolCallId: 'tool-2' },
+    toolName: 'read',
+    type: 'tool_invocation_completed',
+  })
+
+  const rows = output.visibleRows()
+  const thoughtRows = rows.filter((row) => row.includes('Thought for'))
+  const firstToolIndex = rows.findIndex((row) => row.includes('[Read] index.html'))
+  const secondThoughtIndex = rows.findIndex((row, index) => index > firstToolIndex && row.includes('Thought for'))
+  const secondToolIndex = rows.findIndex((row) => row.includes('[Read] styles.css'))
+
+  assert.equal(thoughtRows.length, 2)
+  assert.ok(firstToolIndex >= 0)
+  assert.ok(secondThoughtIndex > firstToolIndex)
+  assert.ok(secondToolIndex > secondThoughtIndex)
+  assert.equal(rows.some((row) => row.includes('Planning the CSS changes')), false)
 })
 
 test('screen lifecycle wraps long assistant lines before redrawing the active region', () => {
