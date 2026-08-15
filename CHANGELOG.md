@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.2 — A smoother desktop and terminal workspace
+
+TideCode 1.2.2 keeps the desktop workspace responsive while making the bundled terminal experience safer to launch and continue.
+
+- Stops recursive workspace and source-control watchers from exhausting Windows handles and memory while keeping Explorer updates realtime for the workspace root and expanded folders.
+- Skips inaccessible operating-system-managed directories during refactor-candidate discovery instead of repeatedly failing the workspace handler.
+- Ships the bundled CLI runtime and launcher fixes, including safer empty-input handling and stable terminal history and spacing across packaged installs.
+
 ## 1.2.1 — Reliable bundled CLI launching
 
 TideCode 1.2.1 fixes the installed terminal launcher so the `tidecode` command starts the bundled CLI correctly after installation.
