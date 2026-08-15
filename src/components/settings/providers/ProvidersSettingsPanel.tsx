@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type {
   ApiKeyProviderId,
   ApiKeyProviderStatus,
@@ -7,10 +7,12 @@ import type {
   ProvidersState,
   SaveApiKeyProviderInput,
 } from '../../../types/chat'
+import type { TideCodeSettingsLaunchRequest } from '../../../lib/appLaunchRequest'
 import { SettingsPanelLayout, SETTINGS_SECTION_TITLE_CLASS_NAME } from '../shared/SettingsPanelPrimitives'
 import { CodexProviderDialog } from './CodexProviderDialog'
 import { ProviderCard } from './ProviderCard'
 import { ProviderConfigDialog } from './ProviderConfigDialog'
+import type { ProviderConfigInitialValues } from './ProviderConfigDialog'
 import { API_KEY_PROVIDER_SCHEMAS, type ApiKeyProviderSchema } from './providerSchemas'
 
 const ADD_PROVIDER_BUTTON_CLASS_NAME =
@@ -27,13 +29,15 @@ interface ProvidersSettingsPanelProps {
   onRemoveApiKeyProvider: (providerId: ApiKeyProviderId) => Promise<boolean>
   onSaveApiKeyProvider: (input: SaveApiKeyProviderInput) => Promise<boolean>
   onSwitchCodexAccount: (accountKey: string) => Promise<boolean>
+  launchRequest: TideCodeSettingsLaunchRequest | null
+  onLaunchRequestHandled: (request: TideCodeSettingsLaunchRequest) => void
   providersState: ProvidersState | null
 }
 
 type ProviderDialogState =
   | { kind: 'codex' }
   | { kind: 'built-in'; schema: ApiKeyProviderSchema; status?: ApiKeyProviderStatus }
-  | { kind: 'custom'; status?: ApiKeyProviderStatus }
+  | { kind: 'custom'; initialValues?: ProviderConfigInitialValues; initialWarning?: string; instanceKey?: number; status?: ApiKeyProviderStatus }
 
 const CUSTOM_PROVIDER_SCHEMA = {
   apiKeyOptional: true,
@@ -47,9 +51,50 @@ const CUSTOM_PROVIDER_SCHEMA = {
 
 export function ProvidersSettingsPanel(props: ProvidersSettingsPanelProps) {
   const [dialog, setDialog] = useState<ProviderDialogState | null>(null)
+  const handledLaunchRequest = useRef<TideCodeSettingsLaunchRequest | null>(null)
+  const nextExternalDialogKey = useRef(0)
+  const { launchRequest, onLaunchRequestHandled } = props
   const statuses = props.providersState?.apiKeyProviders ?? []
   const customStatuses = statuses.filter((status) => status.isCustom)
   const isApiKeyOperation = props.activeOperation?.startsWith('apikey:') ?? false
+
+  useEffect(() => {
+    if (!launchRequest || launchRequest.section !== 'providers' || launchRequest.action !== 'add-custom-provider') {
+      handledLaunchRequest.current = null
+      return
+    }
+    if (handledLaunchRequest.current === launchRequest) {
+      return
+    }
+
+    handledLaunchRequest.current = launchRequest
+    let cancelled = false
+    void (async () => {
+      const apiKey = launchRequest.apiKeyHandoffToken
+        ? await window.tidecodeApp.consumeApiKeyHandoff(launchRequest.apiKeyHandoffToken).catch(() => null)
+        : null
+      if (cancelled) return
+
+      nextExternalDialogKey.current += 1
+      setDialog({
+        initialValues: {
+          ...(apiKey ? { apiKey } : {}),
+          ...(launchRequest.baseUrl ? { baseUrl: launchRequest.baseUrl } : {}),
+          ...(launchRequest.providerName ? { label: launchRequest.providerName } : {}),
+        },
+        ...(launchRequest.apiKeyHandoffToken && !apiKey
+          ? { initialWarning: 'The API key could not be transferred. Enter it again.' }
+          : {}),
+        instanceKey: nextExternalDialogKey.current,
+        kind: 'custom',
+      })
+      onLaunchRequestHandled(launchRequest)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [launchRequest, onLaunchRequestHandled])
 
   function findStatus(providerId: BuiltInApiKeyProviderId) {
     return statuses.find((status) => status.id === providerId)
@@ -145,7 +190,10 @@ export function ProvidersSettingsPanel(props: ProvidersSettingsPanelProps) {
 
       {dialog?.kind === 'custom' ? (
         <ProviderConfigDialog
+          key={dialog.instanceKey ?? 'custom-provider'}
           isCustom
+          initialValues={dialog.initialValues}
+          initialWarning={dialog.initialWarning}
           isSubmitting={props.isLoading || isApiKeyOperation}
           onClose={() => setDialog(null)}
           onRemove={dialog.status ? () => removeProvider(dialog.status!.id) : undefined}

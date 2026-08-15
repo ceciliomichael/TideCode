@@ -38,6 +38,7 @@ export class TerminalLifecycle {
     ensureKeypressEvents()
     try {
       process.stdin.setRawMode(true)
+      process.stdout.write('\x1b[?2004h')
     } catch {
       // Non-standard TTY implementations may not expose raw mode.
     }
@@ -46,6 +47,7 @@ export class TerminalLifecycle {
 
   disableRawInput(): void {
     try {
+      process.stdout.write('\x1b[?2004l')
       process.stdin.setRawMode(false)
     } catch {
       // Non-standard TTY implementations may not expose raw mode.

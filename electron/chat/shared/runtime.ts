@@ -46,7 +46,10 @@ import { hasCompactionEligibleHistory } from './compaction/window'
 import {
   buildChatPrompt,
   ensureCurrentExecutionModeContext,
+  hasImageAttachmentsInModelMessages,
+  stripImageAttachmentsFromModelMessages,
 } from './messages'
+import { isUnsupportedImageInputError, resolveModelImageInputSupport } from './modelImageSupport'
 import { appendStoredMessages } from '../../history/store'
 import { createAgentToolBundle } from './tools'
 import type { CodeModeExecutor } from './codeMode/executor'
@@ -74,6 +77,7 @@ export { estimateToolEnabledContextUsage } from './runtimeContextUsage'
 
 interface RuntimePromptOptions {
   includeAssistantReasoningParts?: boolean
+  includeImageAttachments?: boolean
 }
 
 export interface ProviderStreamFactoryInput {
@@ -172,6 +176,10 @@ export async function runToolEnabledChatStream(input: {
     )
     const promptOptions = {
       ...input.promptOptions,
+      includeImageAttachments: await resolveModelImageInputSupport(
+        input.startInput.providerId,
+        input.startInput.modelId,
+      ),
       orchestrationMode,
       terminalExecutionMode: input.startInput.terminalExecutionMode,
     }
@@ -214,6 +222,9 @@ export async function runToolEnabledChatStream(input: {
       modelMessages,
       input.startInput.terminalExecutionMode,
     )
+    if (!promptOptions.includeImageAttachments) {
+      modelMessages = stripImageAttachmentsFromModelMessages(modelMessages)
+    }
 
     const anchorUserMessageId = [...input.startInput.messages].reverse()
       .find((message) => message.role === 'user')?.id ?? null
@@ -244,7 +255,35 @@ export async function runToolEnabledChatStream(input: {
 
     let hasCompactedThisRun = false
 
-    const stream = await input.createStream({
+    let shouldStripImageAttachments = promptOptions.includeImageAttachments === false
+    const createProviderStream = async (streamInput: ProviderStreamFactoryInput) => {
+      const providerMessages = shouldStripImageAttachments
+        ? stripImageAttachmentsFromModelMessages(streamInput.messages)
+        : streamInput.messages
+
+      try {
+        return await input.createStream({
+          ...streamInput,
+          messages: providerMessages,
+        })
+      } catch (error) {
+        if (
+          shouldStripImageAttachments ||
+          !hasImageAttachmentsInModelMessages(streamInput.messages) ||
+          !isUnsupportedImageInputError(error)
+        ) {
+          throw error
+        }
+
+        shouldStripImageAttachments = true
+        return input.createStream({
+          ...streamInput,
+          messages: stripImageAttachmentsFromModelMessages(streamInput.messages),
+        })
+      }
+    }
+
+    const initialStreamInput: ProviderStreamFactoryInput = {
       cacheKey,
       messages: modelMessages,
       model: input.startInput.modelId,
@@ -347,7 +386,7 @@ export async function runToolEnabledChatStream(input: {
         let compacted: Awaited<ReturnType<typeof compactModelMessages>>
         try {
           compacted = await compactModelMessages({
-            createStream: (compactionInput) => input.createStream({
+            createStream: (compactionInput) => createProviderStream({
               cacheKey: `${cacheKey}:compaction`,
               maxOutputTokens: compactionInput.maxOutputTokens,
               messages: compactionInput.messages,
@@ -445,21 +484,44 @@ export async function runToolEnabledChatStream(input: {
           messages: compacted.projectedMessages,
         }
       },
-    })
+    }
+    let stream = await createProviderStream(initialStreamInput)
 
     emitChatStreamEvent(input.webContents, {
       streamId: input.streamId,
       type: 'started',
     })
 
-    const processedStream = await processRuntimeStream({
-      abortController: input.abortController,
-      conversationId,
-      fullStream: stream.fullStream,
-      queueHistoryWrite,
-      streamId: input.streamId,
-      webContents: input.webContents,
-    })
+    let processedStream: Awaited<ReturnType<typeof processRuntimeStream>>
+    try {
+      processedStream = await processRuntimeStream({
+        abortController: input.abortController,
+        conversationId,
+        fullStream: stream.fullStream,
+        queueHistoryWrite,
+        streamId: input.streamId,
+        webContents: input.webContents,
+      })
+    } catch (error) {
+      if (
+        shouldStripImageAttachments ||
+        !hasImageAttachmentsInModelMessages(initialStreamInput.messages) ||
+        !isUnsupportedImageInputError(error)
+      ) {
+        throw error
+      }
+
+      shouldStripImageAttachments = true
+      stream = await createProviderStream(initialStreamInput)
+      processedStream = await processRuntimeStream({
+        abortController: input.abortController,
+        conversationId,
+        fullStream: stream.fullStream,
+        queueHistoryWrite,
+        streamId: input.streamId,
+        webContents: input.webContents,
+      })
+    }
 
     // Some providers close their async iterable normally after receiving an
     // abort signal instead of throwing an AbortError. Treat that close as an
@@ -516,7 +578,7 @@ export async function runToolEnabledChatStream(input: {
 
         try {
           const compacted = await compactModelMessages({
-            createStream: (compactionInput) => input.createStream({
+            createStream: (compactionInput) => createProviderStream({
               cacheKey: `${cacheKey}:compaction:final`,
               maxOutputTokens: compactionInput.maxOutputTokens,
               messages: compactionInput.messages,

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
-import type { ConversationModelPreference, ConversationRecord, Message } from '../../src/types/chat'
+import type { ChatAttachment, ConversationModelPreference, ConversationRecord, Message } from '../../src/types/chat'
 import { getConversationTitleFromInput } from '../../src/hooks/chatHistoryViewModels'
 import { appendStoredMessages, getStoredConversation } from '../history/store'
 import { readPrunedFolderStore } from '../history/folderStore'
@@ -103,11 +103,16 @@ export async function resumeCliConversation(state: CliSessionState, conversation
   return conversation
 }
 
-export async function createAndPersistCliUserMessage(state: CliSessionState, content: string): Promise<Message> {
+export async function createAndPersistCliUserMessage(
+  state: CliSessionState,
+  content: string,
+  attachments: readonly ChatAttachment[] = [],
+): Promise<Message> {
   const existingConversation = await getStoredConversation(state.conversationId)
   if (!existingConversation) await createCliConversationRecord(state)
   const checkpoint = await createWorkspaceCheckpoint({ workspaceRootPath: state.workspaceRootPath })
   const message: Message = {
+    attachments: attachments.length > 0 ? [...attachments] : undefined,
     chatMode: state.chatMode,
     content,
     id: randomUUID(),
@@ -124,7 +129,7 @@ export async function createAndPersistCliUserMessage(state: CliSessionState, con
     chatMode: state.chatMode,
     conversationId: state.conversationId,
     messages: [message],
-    title: shouldSetTitle ? getConversationTitleFromInput(content, []) : undefined,
+    title: shouldSetTitle ? getConversationTitleFromInput(content, attachments) : undefined,
   })
   state.messages = [...conversation.messages]
   return message

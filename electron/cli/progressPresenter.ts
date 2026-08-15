@@ -1,6 +1,7 @@
 import { colors, getTerminalWidth } from './renderer'
 import { formatInlineMarkdown } from './terminalMarkdown'
 import type { ChatMode } from '../../src/types/chat'
+import { formatThoughtDuration } from './terminalDuration'
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
@@ -81,13 +82,13 @@ export class TerminalProgressPresenter {
 
     if (!this.hasPrintedThoughtForTurn) {
       this.hasPrintedThoughtForTurn = true
-      process.stdout.write(`  ${colors.dim}› Thought for ${durationSec.toFixed(1)}s${colors.reset}\n`)
+      process.stdout.write(`  ${colors.dim}Thought for ${formatThoughtDuration(durationSec)}${colors.reset}\n`)
     }
 
     this.reasoningBuffer = ''
   }
 
-  onToolStart(_toolName: string) {
+  onToolStart() {
     this.completeReasoning()
     this.cleanupLiveDisplay()
     this.state = 'tool'

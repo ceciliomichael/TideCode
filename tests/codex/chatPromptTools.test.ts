@@ -7,7 +7,22 @@ import {
 } from '../../src/lib/toolResultContent'
 import type { Message } from '../../src/types/chat'
 import { buildChatPrompt, buildChatSystemPrompt } from '../../electron/chat/shared/messages'
+import {
+  isUnsupportedImageInputError,
+  supportsModelImageInput,
+} from '../../electron/chat/shared/modelImageSupport'
 import { buildSkillToolDescription } from '../../electron/skills/service'
+
+function createPromptImageAttachment() {
+  return {
+    dataUrl: 'data:image/png;base64,c2FtcGxl',
+    fileName: 'screenshot.png',
+    id: 'image-1',
+    kind: 'image' as const,
+    mimeType: 'image/png',
+    sizeBytes: 6,
+  }
+}
 
 test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
   const agentPrompt = buildChatSystemPrompt('agent', 'C:/repo')
@@ -406,6 +421,39 @@ test('buildChatSystemPrompt does not expose skill metadata', () => {
   const prompt = buildChatSystemPrompt('agent', 'C:/repo')
 
   assert.doesNotMatch(prompt, /<available_skills>|<names>|skill/iu)
+})
+
+test('text-only models retain the raw image reference without an image content part', () => {
+  const prompt = buildChatPrompt({
+    chatMode: 'agent',
+    messages: [{
+      attachments: [createPromptImageAttachment()],
+      content: 'Review this [Image #1]',
+      id: 'user-image-1',
+      role: 'user',
+      timestamp: 1,
+    }],
+    options: { includeImageAttachments: false },
+    workspaceRootPath: 'C:/repo',
+  })
+
+  const userMessage = prompt.messages[0]
+  assert.equal(userMessage?.role, 'user')
+  assert.equal(typeof userMessage?.content, 'string')
+  assert.match(String(userMessage?.content), /Review this \[Image #1\]/u)
+  assert.doesNotMatch(String(userMessage?.content), /data:image\/png/u)
+})
+
+test('DeepSeek catalog models are treated as text-only for image prompts', () => {
+  assert.equal(supportsModelImageInput('deepseek', 'deepseek-v4-flash'), false)
+  assert.equal(supportsModelImageInput('deepseek', 'unlisted-deepseek-model'), false)
+})
+
+test('unsupported image API errors are recognized for text-only fallback', () => {
+  assert.equal(isUnsupportedImageInputError(new Error(
+    'Failed to deserialize messages[1]: unknown variant `image_url`, expected `text`',
+  )), true)
+  assert.equal(isUnsupportedImageInputError(new Error('Invalid API key')), false)
 })
 
 test('buildSkillToolDescription states only the literal skill operation', () => {

@@ -76,6 +76,7 @@ export function normalizeProviderModelConfig(
     ...(bodyEfforts.length > 0 ? { reasoningBodies } : {}),
     ...(reasoningEfforts.length > 0 ? { reasoningEfforts } : {}),
     ...(isValidMaxOutputTokens(input.maxTokens) ? { maxTokens: input.maxTokens } : {}),
+    ...(typeof input.supportsImageInput === 'boolean' ? { supportsImageInput: input.supportsImageInput } : {}),
   }
 }
 

@@ -1,18 +1,19 @@
-import type { ChatMode, ChatProviderId, ReasoningEffort } from '../../src/types/chat'
+import type { ChatMode, ReasoningEffort } from '../../src/types/chat'
 import { isReasoningEffort } from '../../src/lib/reasoningEffort'
 import type { CliSessionState, SlashCommandDefinition, SlashCommandHelpers } from './types'
 import { listConversationRecords } from '../history/conversationFileStore'
 import { readPrunedFolderStore } from '../history/folderStore'
-import { colors } from './renderer'
-import { getTideCodeSystemModels, findSystemModel, getConfiguredProviderModels } from './models'
 import type { SelectItem } from './interactiveSelect'
-import { buildResumeConversationSections } from './resumeCatalog'
+import { findSystemModel, getTideCodeSystemModels } from './models'
+import { buildResumeConversationItems, getResumeProjectLabel } from './resumeCatalog'
+import type { ResumePage } from './terminalResumeView'
 import { buildTerminalReasoningEffortItems } from './terminalReasoningEffort'
 import { runCliSettingsCommand } from './cliSettingsCommand'
 import { runCliSkillsCommand } from './cliSkillsCommand'
 import { runCliMcpCommand } from './cliMcpCommand'
 import { runCliUpdateCommand } from './cliUpdateCommand'
-
+import { runCliProviderCommand } from './cliProviderCommand'
+import { runCliModelCommand } from './cliModelCommand'
 export const SLASH_COMMANDS: SlashCommandDefinition[] = [
   {
     name: 'settings',
@@ -25,6 +26,13 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     description: 'Enable or disable MCP servers and their tools',
     usage: '/mcp',
     execute: async (_args, state, helpers) => runCliMcpCommand(state, helpers),
+  },
+  {
+    name: 'provider',
+    alias: 'p',
+    description: 'Configure, add, and switch API providers and OpenAI-compatible endpoints',
+    usage: '/provider [list|add [name] [baseUrl] [apiKey]|setup|remove|providerId]',
+    execute: async (args, state, helpers) => runCliProviderCommand(args, state, helpers),
   },
   {
     name: 'skills',
@@ -50,62 +58,9 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
   {
     name: 'model',
     alias: 'm',
-    description: 'Browse and switch LLM models from the TideCode catalog & custom models',
-    usage: '/model [modelId] [providerId]',
-    execute: async (args, state, helpers) => {
-      const snapshot = await getTideCodeSystemModels()
-      const selectableModels = getConfiguredProviderModels(snapshot)
-
-      if (args.length > 0) {
-        const query = args[0]
-        const targetProvider = args[1]
-        const match = findSystemModel(selectableModels, query, targetProvider)
-
-        if (!match) {
-          helpers.renderError(`Model "${query}" was not found among configured providers.`)
-          return
-        }
-
-        await helpers.switchModel(match.apiModelId, match.providerId)
-        return
-      }
-
-      // Interactive Model Picker
-      if (selectableModels.length === 0) {
-        helpers.renderWarning('No configured model providers are available. Configure a provider in the desktop app first.')
-        return
-      }
-
-      const items: SelectItem<{ modelId: string; providerId: ChatProviderId }>[] = selectableModels.map((m) => {
-        const isCurrent =
-          m.apiModelId.toLowerCase() === state.modelId.toLowerCase() &&
-          m.providerId.toLowerCase() === state.providerId.toLowerCase()
-
-        const providerBadge = m.isCustom
-          ? `${colors.yellow}[${m.providerLabel} (custom)]${colors.reset}`
-          : `${colors.cyan}[${m.providerLabel}]${colors.reset}`
-
-        return {
-          value: { modelId: m.apiModelId, providerId: m.providerId as ChatProviderId },
-          label: m.apiModelId,
-          description: `${m.label}${m.reasoningCapable ? ' [reasoning]' : ''}`,
-          badge: providerBadge,
-          isCurrent,
-        }
-      })
-
-      const currentIndex = items.findIndex((i) => i.isCurrent)
-      const selected = await helpers.select<{ modelId: string; providerId: ChatProviderId }>({
-        title: 'Select LLM Model',
-        items,
-        initialIndex: currentIndex >= 0 ? currentIndex : 0,
-        pageSize: 6,
-      })
-
-      if (selected) {
-        await helpers.switchModel(selected.modelId, selected.providerId)
-      }
-    },
+    description: 'Browse and switch models, or open desktop model management',
+    usage: '/model [id|add|edit|remove|list|help] [providerId]',
+    execute: async (args, state, helpers) => runCliModelCommand(args, state, helpers),
   },
   {
     name: 'effort',
@@ -188,9 +143,9 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
   {
     name: 'resume',
     alias: 'r',
-    description: 'Browse and resume prior conversation sessions with project origin tags',
+    description: 'Search and resume conversation sessions for the current project',
     usage: '/resume [conversationId]',
-    execute: async (args, _state, helpers) => {
+    execute: async (args, state, helpers) => {
       if (args.length > 0) {
         const targetId = args[0]
         const success = await helpers.loadSession(targetId)
@@ -201,30 +156,55 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
       }
 
       try {
-        const [records, folders] = await Promise.all([
-          listConversationRecords(),
-          readPrunedFolderStore(),
-        ])
+        let page: ResumePage = 'active'
+        while (page === 'active' || page === 'archived') {
+          const [records, folders] = await Promise.all([
+            listConversationRecords(),
+            readPrunedFolderStore(),
+          ])
 
-        if (records.length === 0) {
-          helpers.renderInfo('No saved conversations found.')
-          return
-        }
+          if (records.length === 0) {
+            helpers.renderInfo('No saved conversations found.')
+            return
+          }
 
-        const sections = buildResumeConversationSections(records, folders)
+          const items = buildResumeConversationItems(records, folders)
+          const projectLabel = getResumeProjectLabel(state.workspaceRootPath, folders)
+          const selection = await helpers.selectResume(items, state.workspaceRootPath, projectLabel, page)
 
-        const selectedId = await helpers.select<string>({
-          title: 'Resume Conversation',
-          sections,
-          pageSize: 10,
-        })
+          if (!selection) return
+          if (selection.kind === 'resume') {
+            await helpers.loadSession(selection.conversationId)
+            return
+          }
 
-        if (selectedId) {
-          await helpers.loadSession(selectedId)
+          const isArchived = selection.kind === 'archive'
+          const changed = await helpers.setConversationArchived(selection.conversationId, isArchived)
+          if (!changed) return
+
+          // Reload the catalog so the selected conversation visibly moves to
+          // the other page while the user remains in the resume workflow.
+          page = isArchived ? 'archived' : 'active'
         }
       } catch (error) {
         helpers.renderError(`Failed to load sessions: ${error instanceof Error ? error.message : String(error)}`)
       }
+    },
+  },
+  {
+    name: 'archive',
+    description: 'Archive the current conversation and start a fresh chat',
+    usage: '/archive',
+    execute: async (_args, _state, helpers) => {
+      await helpers.setConversationArchived(_state.conversationId, true)
+    },
+  },
+  {
+    name: 'unarchive',
+    description: 'Remove the archived status from the current conversation',
+    usage: '/unarchive',
+    execute: async (_args, _state, helpers) => {
+      await helpers.setConversationArchived(_state.conversationId, false)
     },
   },
   {
@@ -240,13 +220,10 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
   },
   {
     name: 'undo',
-    description: 'Revert file changes made during the last agent turn (Checkpoints)',
+    description: 'Undo the last turn and restore the message to the composer for editing',
     usage: '/undo',
     execute: async (_args, _state, helpers) => {
-      const confirmed = await helpers.confirm('Revert file modifications made during the last turn?', true)
-      if (confirmed) {
-        await helpers.undoLastTurn()
-      }
+      await helpers.undoLastTurn()
     },
   },
   {

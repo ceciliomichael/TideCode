@@ -1,6 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { applyComposerAction, composerText, createComposerState, getComposerCursorPosition, getComposerVisualLines, recordComposerHistory } from '../../electron/cli/composer'
+import {
+  applyComposerAction,
+  composerText,
+  createComposerState,
+  getComposerCursorPosition,
+  getComposerVisualLines,
+  recordComposerHistory,
+  sanitizeComposerHistoryText,
+} from '../../electron/cli/composer'
 
 test('composer supports multiline editing and joining lines', () => {
   let state = createComposerState()
@@ -25,6 +33,15 @@ test('composer keeps bounded history and navigates it from an empty prompt', () 
   assert.equal(composerText(state), 'first request')
   state = applyComposerAction(state, { type: 'move-down' })
   assert.equal(composerText(state), 'second request')
+})
+
+test('composer history redacts API keys from provider-add commands', () => {
+  const command = '/provider add Example https://example.test/v1 sk-secret-value'
+  assert.equal(sanitizeComposerHistoryText(command), '/provider add Example https://example.test/v1 [redacted]')
+  assert.equal(
+    recordComposerHistory(createComposerState(), command).history[0],
+    '/provider add Example https://example.test/v1 [redacted]',
+  )
 })
 
 test('composer reports wrapped cursor positions within terminal bounds', () => {

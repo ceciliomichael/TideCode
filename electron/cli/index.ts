@@ -15,6 +15,7 @@ import { initializeCliConversation } from './cliHistory'
 import { resolveReasoningEffortTransition } from '../../src/lib/reasoningEffortTransition'
 import { getStoredSettings } from '../settings/store'
 import { readPipedPrompt, resolveHeadlessPrompt } from './stdinPrompt'
+import { TIDECODE_VERSION } from '../appVersion'
 
 function parseArgs(args: string[]): CliOptions {
   const options: CliOptions = {
@@ -123,7 +124,7 @@ export async function main() {
   const options = parseArgs(process.argv.slice(2))
 
   if (options.version) {
-    console.log('TideCode CLI v1.1.11')
+    console.log(`TideCode CLI v${TIDECODE_VERSION}`)
     process.exit(0)
   }
 

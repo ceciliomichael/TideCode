@@ -3,6 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { McpServerConfig, McpTool } from '../../src/types/mcp'
 import { createMcpTransport } from './transportFactory'
+import { TIDECODE_VERSION } from '../appVersion'
 
 export interface ConnectedMcpServer {
   client: Client
@@ -35,7 +36,7 @@ export async function connectMcpServer(
   const client = new Client(
     {
       name: (typeof electronApp.getName === 'function' ? electronApp.getName() : null) || 'TideCode',
-      version: (typeof electronApp.getVersion === 'function' ? electronApp.getVersion() : null) || '1.1.11',
+      version: (typeof electronApp.getVersion === 'function' ? electronApp.getVersion() : null) || TIDECODE_VERSION,
     },
     {
       capabilities: {

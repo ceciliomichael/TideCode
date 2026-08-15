@@ -64,6 +64,30 @@ test('screen lifecycle renders session before compose and keeps cursor in compos
   assert.ok(output.writes.map(stripAnsi).includes('\n  Hello! How can I help?\n\n'))
 })
 
+test('screen rebuilds one responsive compose frame after a terminal resize', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+  void screen.ask({
+    mode: 'agent',
+    modelId: 'gpt-test',
+    providerId: 'codex',
+  })
+
+  const internals = screen as unknown as { handleResize: () => void }
+  internals.handleResize()
+
+  const rows = output.visibleRows()
+  assert.equal(rows.filter((row) => row.includes('╭─ compose')).length, 1)
+  assert.equal(rows.filter((row) => row.includes('╰')).length >= 1, true)
+  const resizeFrame = output.writes.at(-1) ?? ''
+  const escape = String.fromCharCode(27)
+  assert.equal(resizeFrame.startsWith(`${escape}[?2026h${escape}[?25l${escape}[2J${escape}[H`), true)
+  assert.equal(resizeFrame.endsWith(`${escape}[?2026l`), true)
+
+  screen.dismissPrompt()
+})
+
 test('screen lifecycle leaves one intact active compose frame in a terminal grid', () => {
   const output = new TerminalGridOutput()
   const screen = createScreen(output)
@@ -83,6 +107,60 @@ test('screen lifecycle leaves one intact active compose frame in a terminal grid
   assert.ok(responseRow > userRow)
   assert.ok(composeRow > responseRow)
   assert.equal(rows[composeRow - 1], '')
+})
+
+test('screen keeps a bracketed multiline paste in the composer instead of submitting it', async () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+
+  const submissionPromise = screen.ask({
+    mode: 'agent',
+    modelId: 'gpt-test',
+    providerId: 'codex',
+  })
+  let submission: Awaited<typeof submissionPromise> | null = null
+  void submissionPromise.then((value) => {
+    submission = value
+  })
+
+  const inputInternals = screen as unknown as {
+    handleKeypress: (input: string, key: { ctrl?: boolean; name?: string }) => void
+    handleRawStdinData: (data: string) => void
+  }
+  inputInternals.handleRawStdinData('\x1b[200~first line\nsecond line\x1b[201~')
+
+  // readline emits keypress events for the same raw chunk after the paste
+  // decoder sees it. A trailing Enter from that duplicate stream must not
+  // submit the draft.
+  inputInternals.handleKeypress('\r', { name: 'return' })
+  await new Promise<void>((resolve) => setImmediate(resolve))
+
+  assert.equal(submission, null)
+  assert.ok(output.visibleRows().some((row) => row.includes('first line')))
+  assert.ok(output.visibleRows().some((row) => row.includes('second line')))
+
+  screen.handleInputAction({ type: 'submit' })
+  const submitted = await submissionPromise
+  assert.equal(submitted.text, 'first line\nsecond line')
+})
+
+test('screen does not add slash commands to the user transcript', async () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+
+  const submissionPromise = screen.ask({
+    mode: 'agent',
+    modelId: 'gpt-test',
+    providerId: 'codex',
+  })
+  screen.handleInputAction({ type: 'insert', text: '/model' })
+  screen.handleInputAction({ type: 'submit' })
+
+  await submissionPromise
+
+  assert.equal(output.visibleRows().some((row) => row.includes('› /model')), false)
 })
 
 test('screen lifecycle streams reasoning text and commits its duration label', () => {
@@ -196,6 +274,24 @@ test('screen routes Escape to active turn cancellation without erasing the draft
   assert.equal(output.visibleRows().filter((row) => row.includes('keep this draft')).length, 1)
 })
 
+test('screen routes Escape and Ctrl+C to the same active turn cancellation handler', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  let cancellationCount = 0
+  const internals = screen as unknown as {
+    handleKeypress: (input: string, key: { ctrl?: boolean; name?: string }) => void
+  }
+
+  screen.start()
+  screen.addUserMessage('inspect the workspace')
+  screen.beginTurn(() => { cancellationCount += 1 })
+
+  internals.handleKeypress('\u001b', { name: 'escape' })
+  internals.handleKeypress('\u0003', { ctrl: true, name: 'c' })
+
+  assert.equal(cancellationCount, 2)
+})
+
 test('screen omits transitional activity labels after tools finish', () => {
   const output = new TerminalGridOutput()
   const screen = createScreen(output)
@@ -249,7 +345,7 @@ test('screen keeps response, tool, thought, and later response blocks in chronol
   const rows = output.visibleRows()
   const firstResponse = rows.findIndex((row) => row.includes('First response segment'))
   const tool = rows.findIndex((row) => row.includes('[Read] files'))
-  const thought = rows.findIndex((row) => row.includes('Thought for 0.5s'))
+  const thought = rows.findIndex((row) => row.includes('Thought for 0.50s'))
   const laterResponse = rows.findIndex((row) => row.includes('Later response segment'))
   assert.ok(firstResponse >= 0)
   assert.ok(tool > firstResponse)
@@ -299,7 +395,7 @@ test('screen restores a resumed desktop transcript before accepting the next mes
   assert.ok(resumeClearIndex < outputText.lastIndexOf('Previous question'))
 })
 
-test('screen restores only one thought marker for multiple desktop reasoning segments in one turn', () => {
+test('screen restores each thought marker for multiple desktop reasoning segments in order', () => {
   const output = new TerminalGridOutput()
   const screen = createScreen(output)
   const messages: Message[] = [
@@ -312,5 +408,13 @@ test('screen restores only one thought marker for multiple desktop reasoning seg
   screen.start()
   screen.restoreConversation(messages)
 
-  assert.equal(output.visibleRows().filter((row) => row.includes('Thought')).length, 1)
+  const rows = output.visibleRows()
+  const thoughtRows = rows
+    .map((row, index) => row.includes('Thought') ? index : -1)
+    .filter((index) => index >= 0)
+  const doneRow = rows.findIndex((row) => row.includes('Done'))
+
+  assert.equal(thoughtRows.length, 2)
+  assert.ok(thoughtRows[1] > thoughtRows[0])
+  assert.ok(doneRow > thoughtRows[1])
 })

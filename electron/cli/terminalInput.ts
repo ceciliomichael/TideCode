@@ -1,7 +1,17 @@
 import type readline from 'node:readline'
 
+const CLIPBOARD_PASTE_SEQUENCES = new Set([
+  '\x1b[118;3u',
+  '\x1b[118;5u',
+  '\x1b[118;6u',
+  '\x1b[86;3u',
+  '\x1b[86;5u',
+  '\x1b[86;6u',
+])
+
 export type TerminalInputAction =
   | { type: 'insert'; text: string }
+  | { type: 'paste-clipboard' }
   | { type: 'submit' }
   | { type: 'alternate-submit' }
   | { type: 'cancel' }
@@ -29,6 +39,19 @@ export function getTerminalInputAction(input: string, key: readline.Key | undefi
   if (input === '\u0004' || (key?.ctrl && key.name === 'd')) return { type: 'delete' }
   if (input === '\u001b' || key?.name === 'escape') return { type: 'cancel' }
 
+  if (
+    input === '\u0016' ||
+    input === '\u001bv' ||
+    input === '\x16' ||
+    input === '\x1bv' ||
+    CLIPBOARD_PASTE_SEQUENCES.has(input) ||
+    (key?.ctrl && (key.name === 'v' || key.sequence === '\u0016' || key.sequence === '\x16')) ||
+    (key?.meta && (key.name === 'v' || key.sequence === '\u001bv' || key.sequence === '\x1bv')) ||
+    (key?.name === 'insert' && key.shift)
+  ) {
+    return { type: 'paste-clipboard' }
+  }
+
   if (key?.ctrl && key.name === 'home') return { type: 'scroll-top' }
   if (key?.ctrl && key.name === 'end') return { type: 'scroll-bottom' }
   if (key?.ctrl && key.name === 'a') return { type: 'home' }
@@ -52,6 +75,11 @@ export function getTerminalInputAction(input: string, key: readline.Key | undefi
   if (key?.name === 'end') return { type: 'end' }
   if (key?.name === 'pageup') return { type: 'page-up' }
   if (key?.name === 'pagedown') return { type: 'page-down' }
+
+  if (input && (input.startsWith('\x1b[200~') || input.includes('\x1b[200~'))) {
+    const cleanText = input.split('\x1b[200~').join('').split('\x1b[201~').join('')
+    return { type: 'insert', text: cleanText }
+  }
 
   if (input && input.length > 0 && !key?.ctrl && !key?.meta) {
     return { type: 'insert', text: input }

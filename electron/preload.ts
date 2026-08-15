@@ -1,4 +1,5 @@
 import { ipcRenderer, contextBridge, webUtils } from 'electron'
+import { parseTideCodeLaunchRequest } from '../src/lib/appLaunchRequest'
 import { parseInitialSettingsArg } from './settings/bootstrap'
 import type {
   AppendConversationMessagesInput,
@@ -9,6 +10,7 @@ import type {
   CompactConversationInput,
   EstimateContextUsageInput,
   TideCodeChatApi,
+  TideCodeAppApi,
   TideCodeGitApi,
   TideCodeKanbanApi,
   TideCodeModelsApi,
@@ -117,6 +119,18 @@ const settingsApi: TideCodeSettingsApi = {
   getInitialSettings: () => parseInitialSettingsArg(process.argv),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   updateSettings: (input: Partial<AppSettings>) => ipcRenderer.invoke('settings:update', input),
+}
+
+const appApi: TideCodeAppApi = {
+  getInitialLaunchRequest: () => parseTideCodeLaunchRequest(process.argv),
+  consumeApiKeyHandoff: (token: string) => ipcRenderer.invoke('app:consumeApiKeyHandoff', token),
+  onLaunchRequest: (listener) => {
+    const wrappedListener = (_event: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)
+    ipcRenderer.on('app:launchRequest', wrappedListener)
+    return () => {
+      ipcRenderer.off('app:launchRequest', wrappedListener)
+    }
+  },
 }
 
 const updatesApi: TideCodeUpdatesApi = {
@@ -336,6 +350,7 @@ const terminalApi: TideCodeTerminalApi = {
 }
 
 contextBridge.exposeInMainWorld('tidecodeHistory', historyApi)
+contextBridge.exposeInMainWorld('tidecodeApp', appApi)
 contextBridge.exposeInMainWorld('tidecodeKanban', kanbanApi)
 contextBridge.exposeInMainWorld('tidecodeModels', modelsApi)
 contextBridge.exposeInMainWorld('tidecodeMcp', mcpApi)

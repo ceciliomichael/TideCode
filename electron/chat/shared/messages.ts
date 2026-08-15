@@ -28,6 +28,7 @@ interface CanonicalToolCall {
 export interface BuildChatPromptOptions {
   includeAssistantReasoningParts?: boolean
   includeExecutionModeContext?: boolean
+  includeImageAttachments?: boolean
   orchestrationMode?: AgentOrchestrationMode
   terminalExecutionMode?: AppTerminalExecutionMode
 }
@@ -141,7 +142,10 @@ export function ensureCurrentExecutionModeContext(
   return nextMessages
 }
 
-function buildUserContent(message: Message): ModelMessage['content'] {
+function buildUserContent(
+  message: Message,
+  includeImageAttachments: boolean,
+): ModelMessage['content'] {
   const parts: UserContentPart[] = []
   const imageAttachments = getChatImageAttachments(message.attachments ?? [])
   const referencedImageIndexes = new Set<number>()
@@ -157,27 +161,31 @@ function buildUserContent(message: Message): ModelMessage['content'] {
     }
   }
 
-  for (const segment of splitChatImageReferenceSegments(referencedContent, imageAttachments.length)) {
-    if (segment.type === 'text') {
-      appendText(segment.text)
-      continue
-    }
+  if (!includeImageAttachments) {
+    appendText(referencedContent)
+  } else {
+    for (const segment of splitChatImageReferenceSegments(referencedContent, imageAttachments.length)) {
+      if (segment.type === 'text') {
+        appendText(segment.text)
+        continue
+      }
 
-    appendText(segment.text)
-    const attachment = imageAttachments[segment.imageIndex]
-    if (attachment && !referencedImageIndexes.has(segment.imageIndex)) {
-      const normalizedMediaType = attachment.mimeType.trim() || 'image/png'
-      const separatorIndex = attachment.dataUrl.indexOf(',')
-      const base64Data = separatorIndex >= 0
-        ? attachment.dataUrl.slice(separatorIndex + 1)
-        : attachment.dataUrl
-      parts.push({
-        data: { data: base64Data, type: 'data' },
-        filename: attachment.fileName,
-        mediaType: normalizedMediaType,
-        type: 'file',
-      })
-      referencedImageIndexes.add(segment.imageIndex)
+      appendText(segment.text)
+      const attachment = imageAttachments[segment.imageIndex]
+      if (attachment && !referencedImageIndexes.has(segment.imageIndex)) {
+        const normalizedMediaType = attachment.mimeType.trim() || 'image/png'
+        const separatorIndex = attachment.dataUrl.indexOf(',')
+        const base64Data = separatorIndex >= 0
+          ? attachment.dataUrl.slice(separatorIndex + 1)
+          : attachment.dataUrl
+        parts.push({
+          data: { data: base64Data, type: 'data' },
+          filename: attachment.fileName,
+          mediaType: normalizedMediaType,
+          type: 'file',
+        })
+        referencedImageIndexes.add(segment.imageIndex)
+      }
     }
   }
 
@@ -201,6 +209,71 @@ function buildUserContent(message: Message): ModelMessage['content'] {
   }
 
   return parts
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isImageModelContentPart(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.type !== 'string') {
+    return false
+  }
+
+  if (value.type === 'image' || value.type === 'image_url' || value.type === 'input_image') {
+    return true
+  }
+
+  return value.type === 'file' && typeof value.mediaType === 'string' && /^image\//iu.test(value.mediaType)
+}
+
+function isTextModelContentPart(value: unknown): value is { text: string; type: 'text' } {
+  return isRecord(value) && value.type === 'text' && typeof value.text === 'string'
+}
+
+export function hasImageAttachmentsInModelMessages(messages: readonly ModelMessage[]) {
+  return messages.some((message) => (
+    message.role === 'user' &&
+    Array.isArray(message.content) &&
+    message.content.some((part) => isImageModelContentPart(part))
+  ))
+}
+
+export function stripImageAttachmentsFromModelMessages(messages: readonly ModelMessage[]): ModelMessage[] {
+  return messages.map((message) => {
+    if (message.role !== 'user' || typeof message.content === 'string') {
+      return message
+    }
+
+    const textContent = message.content
+      .filter((part) => isTextModelContentPart(part))
+      .map((part) => part.text)
+      .join('')
+    let imageNumber = 0
+    const nextContent: Array<Record<string, unknown>> = []
+
+    for (const part of message.content) {
+      if (!isImageModelContentPart(part)) {
+        nextContent.push(part as unknown as Record<string, unknown>)
+        continue
+      }
+
+      imageNumber += 1
+      const label = `[Image #${imageNumber}]`
+      if (!textContent.includes(label)) {
+        nextContent.push({ text: label, type: 'text' })
+      }
+    }
+
+    if (!hasImageAttachmentsInModelMessages([message])) {
+      return message
+    }
+
+    return {
+      ...message,
+      content: nextContent as unknown as UserModelMessage['content'],
+    }
+  })
 }
 
 function parseToolArguments(argumentsText: string) {
@@ -430,7 +503,7 @@ function toModelMessage(
   options: Required<BuildChatPromptOptions>,
 ): ModelMessage | null {
   if (message.role === 'user') {
-    const content = buildUserContent(message)
+    const content = buildUserContent(message, options.includeImageAttachments)
     if (typeof content === 'string') {
       if (!content.trim()) {
         return null
@@ -498,6 +571,7 @@ export function buildModelMessages(
   const options: Required<BuildChatPromptOptions> = {
     includeAssistantReasoningParts: inputOptions?.includeAssistantReasoningParts ?? true,
     includeExecutionModeContext: inputOptions?.includeExecutionModeContext ?? true,
+    includeImageAttachments: inputOptions?.includeImageAttachments ?? true,
     orchestrationMode: inputOptions?.orchestrationMode ?? 'direct',
     terminalExecutionMode: inputOptions?.terminalExecutionMode ?? 'sandbox',
   }

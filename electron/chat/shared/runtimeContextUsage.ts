@@ -17,7 +17,8 @@ import { readCanonicalHistory } from '../history/eventStore'
 import { projectCanonicalReplay } from '../history/replayProjector'
 import { shouldReplayAssistantReasoning } from './assistantReasoningPolicy'
 import { selectContextUsageMessages } from './contextUsageProjection'
-import { buildChatPrompt } from './messages'
+import { buildChatPrompt, stripImageAttachmentsFromModelMessages } from './messages'
+import { resolveModelImageInputSupport } from './modelImageSupport'
 import { createAgentToolBundle } from './tools'
 import { sortToolSet } from './runtimeToolSet'
 import { normalizeWorkspacePath } from '../../workspace/paths'
@@ -42,6 +43,7 @@ export async function estimateToolEnabledContextUsage(input: {
   const orchestrationMode = 'code_mode' as const
   const promptOptions = {
     includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId),
+    includeImageAttachments: await resolveModelImageInputSupport(input.providerId, input.modelId ?? ''),
     orchestrationMode,
     terminalExecutionMode: input.terminalExecutionMode,
   }
@@ -67,6 +69,9 @@ export async function estimateToolEnabledContextUsage(input: {
       fallbackMessages: prompt.messages,
       isCompacted: replay.isCompacted,
     })
+  }
+  if (!promptOptions.includeImageAttachments) {
+    modelMessages = stripImageAttachmentsFromModelMessages(modelMessages)
   }
   const systemPrompt = prompt.system
   const messageUsage = estimateModelMessageContextUsage(modelMessages)

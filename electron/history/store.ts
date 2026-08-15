@@ -472,7 +472,10 @@ export async function updateStoredConversationArchived(conversationId: string, i
       ...existingConversation,
       isArchived: nextIsArchived,
       isPinned: nextIsArchived ? false : existingConversation.isPinned,
-      updatedAt: Date.now(),
+      // Archiving changes where the conversation appears, not when it was
+      // last used. Keeping this timestamp stable preserves the row's "ago"
+      // value across the Active and Archived pages.
+      updatedAt: existingConversation.updatedAt,
     }
 
     await writeConversationFile(nextConversation)

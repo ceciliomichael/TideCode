@@ -12,7 +12,8 @@
       "high"
     ],
     "defaultReasoningEffort": "medium",
-    "maxTokens": 384000
+    "maxTokens": 384000,
+    "supportsImageInput": false
   },
   {
     "apiModelId": "deepseek-v4-pro",
@@ -27,6 +28,7 @@
       "high"
     ],
     "defaultReasoningEffort": "medium",
-    "maxTokens": 384000
+    "maxTokens": 384000,
+    "supportsImageInput": false
   }
 ]

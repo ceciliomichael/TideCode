@@ -1,5 +1,6 @@
 import readline from 'node:readline'
 import { colors } from './renderer'
+import { formatThoughtDuration } from './terminalDuration'
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
@@ -58,7 +59,7 @@ export class TerminalReasoningBlock {
     }
 
     // Print the clean collapsed badge with subtle indentation
-    console.log(`  ${colors.dim}Thought for ${durationSec.toFixed(1)}s${colors.reset}`)
+    console.log(`  ${colors.dim}Thought for ${formatThoughtDuration(durationSec)}${colors.reset}`)
     return durationSec
   }
 

@@ -6,6 +6,8 @@ import type { ActiveTurnFollowUpView, CompletionItemView, TerminalActivityView, 
 import { renderTerminalToolRowText } from './terminalToolRow'
 import { renderTerminalActivityLine } from './terminalActivity'
 import { getThinkingSpinnerFrame } from './thinkingIndicator'
+import { formatCliImageReferenceInText } from './cliImageAttachments'
+import { formatThoughtDuration } from './terminalDuration'
 
 export interface ActiveTurnComposerData {
   composerWidth: number
@@ -58,7 +60,8 @@ function renderUserMessage(text: string, width: number): string[] {
   let isFirstVisualLine = true
 
   for (const logicalLine of text.split(/\r?\n/u)) {
-    for (const visualLine of wrapVisible(logicalLine, availableWidth)) {
+    const formatted = formatCliImageReferenceInText(logicalLine)
+    for (const visualLine of wrapVisible(formatted, availableWidth)) {
       lines.push(`${isFirstVisualLine ? firstPrefix : continuationPrefix}${visualLine}`)
       isFirstVisualLine = false
     }
@@ -70,8 +73,8 @@ function renderUserMessage(text: string, width: number): string[] {
 function renderTurnEntry(entry: TranscriptEntry, width: number): string[] {
   if (entry.kind === 'thought') {
     const label = entry.durationSeconds === undefined ? 'Thought' : 'Thought for'
-    const duration = entry.durationSeconds === undefined ? '' : ` ${entry.durationSeconds.toFixed(1)}s`
-    return [`  ${colors.subtle}› ${label}${duration}${colors.reset}`]
+    const duration = entry.durationSeconds === undefined ? '' : ` ${formatThoughtDuration(entry.durationSeconds)}`
+    return [`  ${colors.subtle}${label}${duration}${colors.reset}`]
   }
 
   if (entry.kind === 'tool') {

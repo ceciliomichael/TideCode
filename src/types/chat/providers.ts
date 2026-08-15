@@ -61,6 +61,7 @@ export interface ConfigurableProviderModel {
   reasoningBodies?: ReasoningRequestBodies
   reasoningEfforts?: ReasoningEffort[]
   maxTokens?: number
+  supportsImageInput?: boolean
 }
 
 export interface ApiKeyProviderStatus {
@@ -101,6 +102,7 @@ export interface CustomModelConfig {
   reasoningBodies?: ReasoningRequestBodies
   reasoningEfforts?: ReasoningEffort[]
   maxTokens?: number
+  supportsImageInput?: boolean
   updatedAt: string
 }
 
@@ -115,6 +117,7 @@ export interface SaveCustomModelInput {
   reasoningBodies?: ReasoningRequestBodies
   reasoningEfforts?: ReasoningEffort[]
   maxTokens?: number
+  supportsImageInput?: boolean
 }
 
 export interface ProviderModelConfig {
@@ -129,4 +132,5 @@ export interface ProviderModelConfig {
   reasoningBodies?: ReasoningRequestBodies
   maxTokens?: number
   reasoningEfforts?: ReasoningEffort[]
+  supportsImageInput?: boolean
 }

@@ -22,20 +22,26 @@ export function createTerminalHistoryEntries(
 
     const entries: TranscriptEntry[] = []
     const presentation = splitFinishedAssistantRun(group.messages)
-    let thoughtEntry: Extract<TranscriptEntry, { kind: 'thought' }> | undefined
     const appendAssistantMessage = (message: Message, section: 'work' | 'answer') => {
       const normalized = normalizeAssistantMessageContent(message)
-      if (normalized.reasoningContent.trim()) {
+      // A provider can complete a reasoning block before its final text is
+      // persisted, and some adapters expose the completion timestamp without
+      // retaining visible reasoning text. Keep the durable Thought marker in
+      // both cases so CLI history matches the desktop transcript.
+      const hasReasoning = normalized.reasoningContent.trim().length > 0 || message.reasoningCompletedAt !== undefined
+      if (hasReasoning) {
         const durationSeconds = message.reasoningCompletedAt === undefined
           ? undefined
-          : Math.max(0, (message.reasoningCompletedAt - message.timestamp) / 1000)
+          : Math.max(0.01, (message.reasoningCompletedAt - message.timestamp) / 1000)
 
-        if (!thoughtEntry) {
-          thoughtEntry = { id: `${message.id}-thought`, kind: 'thought', durationSeconds }
-          entries.push(thoughtEntry)
-        } else if (durationSeconds !== undefined) {
-          thoughtEntry.durationSeconds = (thoughtEntry.durationSeconds ?? 0) + durationSeconds
-        }
+        entries.push({ id: `${message.id}-thought`, kind: 'thought', durationSeconds })
+      }
+
+      // AssistantMessage renders reasoning, text, and tools in this order.
+      // Keeping that order here is important for resumed conversations where
+      // one persisted assistant message can contain both text and tools.
+      if (normalized.content.trim()) {
+        entries.push({ id: `${message.id}-content`, kind: 'assistant', section, text: normalized.content })
       }
 
       for (const invocation of message.toolInvocations ?? []) {
@@ -48,10 +54,6 @@ export function createTerminalHistoryEntries(
             status: tool.status,
           })
         }
-      }
-
-      if (normalized.content.trim()) {
-        entries.push({ id: `${message.id}-content`, kind: 'assistant', section, text: normalized.content })
       }
     }
 

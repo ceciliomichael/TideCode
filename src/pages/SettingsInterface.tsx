@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppWorkspaceShell } from '../components/layout/AppWorkspaceShell'
 import { WorkspaceFloatingControls } from '../components/layout/WorkspaceFloatingControls'
 import { WorkspacePanel } from '../components/layout/WorkspacePanel'
@@ -12,15 +12,18 @@ import { useMcpServersState } from '../hooks/useMcpServersState'
 import { useSkillsState } from '../hooks/useSkillsState'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
 import type { AppSettings, ApiKeyProviderId, ProvidersState, SaveApiKeyProviderInput } from '../types/chat'
+import type { TideCodeLaunchRequest, TideCodeSettingsLaunchRequest } from '../lib/appLaunchRequest'
 
 interface SettingsInterfaceProps {
   activeWorkspacePath: string | null
   isSettingsLoading: boolean
+  onLaunchRequestConsumed: () => void
   onBackToApp: () => void
   onSidebarWidthChange: (sidebarWidth: number) => void
   onUpdateSettings: (input: Partial<AppSettings>) => Promise<AppSettings | null>
   sidebarWidth: number
   settings: AppSettings
+  pendingLaunchRequest: TideCodeLaunchRequest | null
   providersState: {
     activeOperation: string | null
     addCodexAccountWithOAuth: () => Promise<boolean>
@@ -39,20 +42,33 @@ interface SettingsInterfaceProps {
 export function SettingsInterface({
   activeWorkspacePath,
   isSettingsLoading,
+  onLaunchRequestConsumed,
   onBackToApp,
   onSidebarWidthChange,
   onUpdateSettings,
   providersState,
   sidebarWidth,
   settings,
+  pendingLaunchRequest,
 }: SettingsInterfaceProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [activeItemId, setActiveItemId] = useState<SettingsItemId>(DEFAULT_SETTINGS_ITEM_ID)
+  const [panelLaunchRequest, setPanelLaunchRequest] = useState<TideCodeSettingsLaunchRequest | null>(null)
   const mcpSettings = useMcpServersState(null)
   const skillsState = useSkillsState(activeWorkspacePath)
   const handleUpdateSettings = useCallback((input: Partial<AppSettings>) => {
     void onUpdateSettings(input)
   }, [onUpdateSettings])
+  const handleLaunchRequestHandled = useCallback((request: TideCodeSettingsLaunchRequest) => {
+    setPanelLaunchRequest((currentRequest) => currentRequest === request ? null : currentRequest)
+  }, [])
+  useEffect(() => {
+    if (!pendingLaunchRequest) return
+
+    setActiveItemId(pendingLaunchRequest.section === 'providers' ? 'settings-item2' : 'settings-item3')
+    setPanelLaunchRequest(pendingLaunchRequest.action ? pendingLaunchRequest : null)
+    onLaunchRequestConsumed()
+  }, [onLaunchRequestConsumed, pendingLaunchRequest])
   const generalSettings = useMemo(
     () => ({
       isLoading: isSettingsLoading,
@@ -132,6 +148,8 @@ export function SettingsInterface({
             state: skillsState.state,
           }}
           modelsSettings={{
+            launchRequest: panelLaunchRequest,
+            onLaunchRequestHandled: handleLaunchRequestHandled,
             providersState: providersState.providersState,
           }}
           providersSettings={{
@@ -145,6 +163,8 @@ export function SettingsInterface({
             onRemoveApiKeyProvider: providersState.onRemoveApiKeyProvider,
             onSaveApiKeyProvider: providersState.onSaveApiKeyProvider,
             onSwitchCodexAccount: providersState.onSwitchCodexAccount,
+            launchRequest: panelLaunchRequest,
+            onLaunchRequestHandled: handleLaunchRequestHandled,
             providersState: providersState.providersState,
           }}
         />
