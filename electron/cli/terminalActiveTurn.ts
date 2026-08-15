@@ -93,15 +93,17 @@ function renderTurnEntry(entry: TranscriptEntry, width: number): string[] {
   return []
 }
 
-function isAssistantToolBoundary(previousEntry: TranscriptEntry | undefined, entry: TranscriptEntry): boolean {
-  return (
-    (previousEntry?.kind === 'assistant' && entry.kind === 'tool') ||
-    (previousEntry?.kind === 'tool' && entry.kind === 'assistant')
-  )
+function appendBlankRow(lines: string[]): void {
+  if (lines.at(-1) !== '') lines.push('')
 }
 
-function isThoughtOutputBoundary(previousEntry: TranscriptEntry | undefined, entry: TranscriptEntry): boolean {
-  return previousEntry?.kind === 'thought' && (entry.kind === 'assistant' || entry.kind === 'tool')
+function isVisibleTurnEntry(entry: TranscriptEntry): boolean {
+  return entry.kind !== 'assistant' || entry.text.length > 0
+}
+
+function isTurnEntryBoundary(previousEntry: TranscriptEntry | undefined, entry: TranscriptEntry): boolean {
+  if (!previousEntry || previousEntry.kind === 'user' || entry.kind === 'user') return false
+  return previousEntry.kind !== entry.kind
 }
 
 function renderTurnEntries(entries: readonly TranscriptEntry[], width: number): string[] {
@@ -109,7 +111,8 @@ function renderTurnEntries(entries: readonly TranscriptEntry[], width: number): 
   let previousEntry: TranscriptEntry | undefined
 
   for (const entry of entries) {
-    if (isAssistantToolBoundary(previousEntry, entry) || isThoughtOutputBoundary(previousEntry, entry)) lines.push('')
+    if (!isVisibleTurnEntry(entry)) continue
+    if (isTurnEntryBoundary(previousEntry, entry)) appendBlankRow(lines)
     lines.push(...renderTurnEntry(entry, width))
     previousEntry = entry
   }
@@ -120,7 +123,11 @@ function renderTurnEntries(entries: readonly TranscriptEntry[], width: number): 
 export function renderCommittedTurn(entries: readonly TranscriptEntry[]): string[] {
   const width = getTerminalPanelWidth()
   const lines = renderTurnEntries(entries, width)
-  return lines.length > 0 ? ['', ...lines] : ['', `  ${colors.subtle}Turn completed without response text.${colors.reset}`]
+  const committedLines = lines.length > 0
+    ? ['', ...lines]
+    : ['', `  ${colors.subtle}Turn completed without response text.${colors.reset}`]
+  appendBlankRow(committedLines)
+  return committedLines
 }
 
 export function renderConversationHistory(entries: readonly TranscriptEntry[]): string[] {
@@ -130,22 +137,18 @@ export function renderConversationHistory(entries: readonly TranscriptEntry[]): 
 
   for (const entry of entries) {
     if (entry.kind === 'user') {
-      lines.push(...(lines.length === 0 ? [''] : ['', '']))
+      appendBlankRow(lines)
       lines.push(...renderUserMessage(entry.text, width))
-      lines.push('')
+      appendBlankRow(lines)
     } else {
-      if (
-        isAssistantToolBoundary(previousEntry, entry) ||
-        isThoughtOutputBoundary(previousEntry, entry) ||
-        (entry.kind === 'assistant' && entry.section === 'answer' && previousEntry?.kind !== 'user')
-      ) {
-        lines.push('')
-      }
+      if (!isVisibleTurnEntry(entry)) continue
+      if (isTurnEntryBoundary(previousEntry, entry)) appendBlankRow(lines)
       lines.push(...renderTurnEntry(entry, width))
     }
     previousEntry = entry
   }
 
+  if (lines.length > 0) appendBlankRow(lines)
   return lines
 }
 
@@ -156,6 +159,9 @@ export function renderActiveTurn(data: ActiveTurnRenderData): ActiveTurnRender {
   let activityRow: number | null = null
   const thinkingFrame = data.thinkingFrame ?? getThinkingSpinnerFrame(0)
   if (data.activity.kind !== 'idle') {
+    const lastVisibleEntry = [...data.entries].reverse().find(isVisibleTurnEntry)
+    const activityEntryKind = data.activity.kind === 'thinking' ? 'thought' : 'tool'
+    if (lastVisibleEntry && lastVisibleEntry.kind !== activityEntryKind) appendBlankRow(outputLines)
     activityRow = outputLines.length
     outputLines.push(renderTerminalActivityLine(data.activity, width, thinkingFrame))
   }
@@ -165,7 +171,7 @@ export function renderActiveTurn(data: ActiveTurnRenderData): ActiveTurnRender {
     if (activityRow !== null) activityRow = Math.max(0, activityRow - hiddenLineCount + 1)
   }
   if (data.followUps?.length) {
-    if (outputLines.length > 0) outputLines.push('')
+    if (outputLines.length > 0) appendBlankRow(outputLines)
     for (const followUp of data.followUps) outputLines.push(...renderActiveFollowUp(followUp, width))
   }
 

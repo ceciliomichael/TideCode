@@ -3,9 +3,15 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$SCRIPT_DIR/../.."
+CLI_RUNTIME="$SCRIPT_DIR/../cli"
 export ELECTRON_RUN_AS_NODE=1
 
-if [ -x "$INSTALL_DIR/TideCode" ]; then
+if [ -x "$CLI_RUNTIME/node" ] && [ -f "$CLI_RUNTIME/index.mjs" ]; then
+  unset ELECTRON_RUN_AS_NODE
+  export APP_ROOT="$CLI_RUNTIME"
+  export TIDECODE_RESOURCES_PATH="$SCRIPT_DIR/.."
+  exec "$CLI_RUNTIME/node" "$CLI_RUNTIME/index.mjs" "$@"
+elif [ -x "$INSTALL_DIR/TideCode" ]; then
   exec "$INSTALL_DIR/TideCode" "$INSTALL_DIR/resources/app.asar/dist-electron/cli/index.js" "$@"
 elif [ -x "$INSTALL_DIR/tidecode" ]; then
   exec "$INSTALL_DIR/tidecode" "$INSTALL_DIR/resources/app.asar/dist-electron/cli/index.js" "$@"

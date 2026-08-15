@@ -25,6 +25,7 @@ build
 dist
 dist-ssr
 dist-electron
+dist-cli-runtime
 release
 out
 

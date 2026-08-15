@@ -138,6 +138,11 @@ function emitSourceControlChange(workspacePath: string) {
 function startWatcher(workspacePath: string, state: SourceControlWatcherState, watchTargets: readonly string[]) {
   const watcherGeneration = state.watcherGeneration
   const watcher = chokidar.watch([...watchTargets], {
+    // The renderer already refreshes Git status/diffs on a short interval, so
+    // this watcher only needs to cover direct workspace changes and explicit
+    // Git metadata notifications. A recursive worktree walk creates one native
+    // handle per directory on Windows and makes large workspaces unusable.
+    depth: 0,
     followSymlinks: false,
     ignoreInitial: true,
     ignorePermissionErrors: true,

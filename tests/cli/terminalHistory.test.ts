@@ -54,7 +54,8 @@ test('desktop history rebuilds as ordered user, work, answer turns with visible 
   assert.equal(rendered[firstAnswer - 1], '')
   assert.ok(firstAnswer >= 0)
   assert.ok(secondPrompt > firstAnswer)
-  assert.deepEqual(rendered.slice(secondPrompt - 2, secondPrompt), ['', ''])
+  assert.deepEqual(rendered.slice(secondPrompt - 1, secondPrompt), [''])
+  assert.equal(rendered.at(-1), '')
 })
 
 test('resumed multiline and visually wrapped user messages render one prompt marker', () => {

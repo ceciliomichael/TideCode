@@ -15,17 +15,10 @@ export async function runHeadlessPrompt(
   _options: CliOptions = {},
 ): Promise<number> {
   void _options
-  // Check for piped stdin if available without a prompt
-  let fullPrompt = prompt
-  if (!process.stdin.isTTY && !prompt) {
-    let pipedData = ''
-    process.stdin.setEncoding('utf8')
-    for await (const chunk of process.stdin) {
-      pipedData += chunk
-    }
-    if (pipedData.trim()) {
-      fullPrompt = pipedData.trim()
-    }
+  const fullPrompt = prompt.trim()
+  if (!fullPrompt) {
+    console.error(`${colors.red}A non-empty prompt is required for headless mode.${colors.reset}`)
+    return 1
   }
 
   // Statically resolve and expand @ mentions

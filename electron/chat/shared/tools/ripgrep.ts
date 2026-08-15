@@ -58,14 +58,21 @@ function normalizeResourcesRoot(candidatePath: string) {
   return normalizedCandidatePath
 }
 
+function resolveConfiguredResourcesPath(options: ResolveRipgrepCommandCandidatesOptions) {
+  const environmentResourcesPath = process.env.TIDECODE_RESOURCES_PATH?.trim()
+  return options.resourcesPath ??
+    (environmentResourcesPath ? environmentResourcesPath : null) ??
+    (typeof process.resourcesPath === 'string' && process.resourcesPath.trim().length > 0
+      ? process.resourcesPath
+      : null)
+}
+
 function isPackagedRuntime(options: ResolveRipgrepCommandCandidatesOptions = {}) {
   if (typeof options.isPackagedApp === 'boolean') {
     return options.isPackagedApp
   }
 
-  const candidateResourcesPath =
-    options.resourcesPath ??
-    (typeof process.resourcesPath === 'string' && process.resourcesPath.trim().length > 0 ? process.resourcesPath : null)
+  const candidateResourcesPath = resolveConfiguredResourcesPath(options)
 
   if (candidateResourcesPath) {
     return true
@@ -81,9 +88,7 @@ function isPackagedRuntime(options: ResolveRipgrepCommandCandidatesOptions = {})
 function resolveCanonicalRipgrepPath(options: ResolveRipgrepCommandCandidatesOptions = {}) {
   const isPackagedApp = isPackagedRuntime(options)
   if (isPackagedApp) {
-    const candidateResourcesPath =
-      options.resourcesPath ??
-      (typeof process.resourcesPath === 'string' && process.resourcesPath.trim().length > 0 ? process.resourcesPath : null)
+    const candidateResourcesPath = resolveConfiguredResourcesPath(options)
 
     const packagedResourcesRoot = candidateResourcesPath ? normalizeResourcesRoot(candidateResourcesPath) : null
     if (packagedResourcesRoot) {

@@ -12,6 +12,18 @@ test('keeps a subscriber attached until every consumer releases the workspace', 
   assert.equal(subscriptions.unsubscribe(7, 'C:\\workspace'), false)
 })
 
+test('preserves expanded Explorer paths when another consumer subscribes to the same workspace', () => {
+  const subscriptions = new WorkspaceExplorerWatchSubscriptions()
+
+  subscriptions.subscribe(8, 'C:\\workspace', new Set(['.', 'src', 'src/components']))
+  subscriptions.subscribe(8, 'C:\\workspace', new Set(['.']))
+
+  assert.deepEqual(
+    Array.from(subscriptions.getWatchPaths('C:\\workspace')).sort(),
+    ['.', 'src', 'src/components'],
+  )
+})
+
 test('tracks workspace subscriptions independently for the same window', () => {
   const subscriptions = new WorkspaceExplorerWatchSubscriptions()
 

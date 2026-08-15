@@ -78,7 +78,7 @@ test('committed turn contains response content without a response heading or use
   ]
   const lines = renderCommittedTurn(entries).map(stripAnsi).join('\n')
 
-  assert.equal(lines, '\n  The workspace is ready.')
+  assert.equal(lines, '\n  The workspace is ready.\n')
   assert.doesNotMatch(lines, /TideCode response|you/i)
 })
 
@@ -134,4 +134,35 @@ test('thought summaries have one blank row before following assistant text', () 
   assert.ok(renderedLines[thoughtIndex].includes(colors.subtle))
   assert.equal(lines[thoughtIndex + 1], '')
   assert.equal(answerIndex, thoughtIndex + 2)
+})
+
+test('reasoning has one blank row after a completed tool and before following output', () => {
+  const renderedLines = renderCommittedTurn([
+    { id: 'tool-1', kind: 'tool', label: 'Read file.ts', status: 'completed' },
+    { durationSeconds: 0.6, id: 'thought-1', kind: 'thought' },
+    { id: 'assistant-1', kind: 'assistant', text: 'Done.' },
+  ]).map(stripAnsi)
+  const toolIndex = renderedLines.findIndex((line) => line.includes('[Read] file.ts'))
+  const thoughtIndex = renderedLines.findIndex((line) => line.includes('Thought for 0.6s'))
+  const answerIndex = renderedLines.findIndex((line) => line.includes('Done.'))
+
+  assert.equal(thoughtIndex, toolIndex + 2)
+  assert.equal(renderedLines[toolIndex + 1], '')
+  assert.equal(answerIndex, thoughtIndex + 2)
+  assert.equal(renderedLines.at(-1), '')
+})
+
+test('live reasoning has one blank row after the previous tool', () => {
+  const render = renderActiveTurn({
+    activity: { detail: 'Checking the result', kind: 'thinking', label: 'Thinking' },
+    entries: [{ id: 'tool-1', kind: 'tool', label: 'Read file.ts', status: 'completed' }],
+    panel: createPanel(),
+    thinkingFrame: '⠙',
+  })
+  const lines = render.lines.map(stripAnsi)
+  const toolIndex = lines.findIndex((line) => line.includes('[Read] file.ts'))
+  const thinkingIndex = lines.findIndex((line) => line.includes('Thinking'))
+
+  assert.equal(thinkingIndex, toolIndex + 2)
+  assert.equal(lines[toolIndex + 1], '')
 })

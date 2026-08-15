@@ -10,7 +10,11 @@ export class WorkspaceExplorerWatchSubscriptions {
     this.rootsBySubscriber.set(subscriberId, rootSubscriptions)
 
     const subscriberWatchPaths = this.watchPathsBySubscriber.get(subscriberId) ?? new Map<string, Set<string>>()
-    subscriberWatchPaths.set(rootPath, new Set(watchPaths))
+    const mergedWatchPaths = new Set(subscriberWatchPaths.get(rootPath) ?? [])
+    for (const watchPath of watchPaths) {
+      mergedWatchPaths.add(watchPath)
+    }
+    subscriberWatchPaths.set(rootPath, mergedWatchPaths)
     this.watchPathsBySubscriber.set(subscriberId, subscriberWatchPaths)
 
     return currentCount === 0
