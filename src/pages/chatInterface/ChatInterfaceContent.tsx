@@ -26,6 +26,7 @@ import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
 import type { AppSettings, CodexUsageSnapshot, QueuedMessage } from '../../types/chat'
 import {
   EMPTY_CHAT_COMPACTION_GATE_STATE,
+  hasMinimumCompactionMessages,
   isChatCompactionBlocked,
   reduceChatCompactionGate,
 } from '../../lib/chatCompactionGate'
@@ -198,15 +199,15 @@ export function ChatInterfaceContent({
     conversationId: chatMessages.activeConversationId,
     refreshSignal: compactionRefreshSignal,
   })
-  const latestUserMessageId = [...chatMessages.messages].reverse().find((message) => message.role === 'user')?.id ?? null
-  const latestCompactionMarker = compactionMarkers[compactionMarkers.length - 1]
-  const isPersistedCompactionWaitingForTurn = Boolean(
-    latestCompactionMarker?.anchorUserMessageId &&
-      latestCompactionMarker.anchorUserMessageId === latestUserMessageId,
+  const hasCompactionMessageMinimum = hasMinimumCompactionMessages(
+    chatMessages.messages,
+    compactionMarkers,
   )
-  const isChatFreshlyCompacted =
-    isChatCompactionBlocked(chatCompactionGateState, chatMessages.activeConversationId) ||
-    isPersistedCompactionWaitingForTurn
+  const isChatFreshlyCompacted = isChatCompactionBlocked(
+    chatCompactionGateState,
+    chatMessages.activeConversationId,
+  )
+  const isCompactionUnavailable = isChatFreshlyCompacted || !hasCompactionMessageMinimum
   const liveCompaction = useChatCompactionStatus({
     conversationId: chatMessages.activeConversationId,
   })
@@ -290,7 +291,7 @@ export function ChatInterfaceContent({
     chatMode: chatMessages.selectedChatMode,
     compressionSelection,
     isBusy: chatMessages.isLoading || chatMessages.isSending,
-    isChatFreshlyCompacted,
+    isCompactionUnavailable,
     isCompressingChat,
     messages: chatMessages.messages,
     onCompactionComplete: handleCompactionComplete,
@@ -469,7 +470,7 @@ export function ChatInterfaceContent({
               chatModeOptions={chatModeOptions}
               chatRuntimeConfig={chatRuntimeConfig}
               codexUsage={codexUsage}
-              compactDisabled={isChatFreshlyCompacted}
+              compactDisabled={isCompactionUnavailable}
               compactionMarkers={compactionMarkers}
               liveCompaction={liveCompaction}
               contextUsage={contextUsage}

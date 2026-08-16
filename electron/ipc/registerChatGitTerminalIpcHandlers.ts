@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+
 import { BrowserWindow, ipcMain } from 'electron'
 import type {
   CheckoutGitBranchInput,
@@ -19,19 +19,13 @@ import type {
   ResizeTerminalSessionInput,
   StartChatStreamInput,
   SubmitToolDecisionInput,
+  UpdateConversationRuntimeInput,
   UpdatePendingSteerMessagesInput,
   WriteTerminalSessionInput,
 } from '../../src/types/chat'
-import {
-  compactCodexConversation,
-  estimateCodexContextUsage,
-} from '../chat/codex/runtime'
-import {
-  compactApiKeyConversation,
-  estimateApiKeyContextUsage,
-} from '../chat/apiKey/runtime'
+import { estimateCodexContextUsage } from '../chat/codex/runtime'
+import { estimateApiKeyContextUsage } from '../chat/apiKey/runtime'
 import { ensureRunServiceClient } from '../runService/ensureService'
-import { emitChatStreamEvent } from '../chat/shared/runtimeStreamEvents'
 import {
   checkoutGitBranch,
   createAndCheckoutGitBranch,
@@ -88,6 +82,9 @@ export function registerChatGitTerminalIpcHandlers(
           ) {
             activeChatStreamProviders.delete(runEvent.event.streamId)
           }
+        }
+
+        if (runEvent.type === 'chat_event' || runEvent.type === 'compaction_event') {
           for (const window of BrowserWindow.getAllWindows()) {
             if (!window.webContents.isDestroyed()) {
               window.webContents.send('chat:stream:event', runEvent.event)
@@ -104,10 +101,19 @@ export function registerChatGitTerminalIpcHandlers(
     })
     .catch((error) => console.error('Unable to connect Electron to the Tidecode run service.', error))
 
+  ipcMain.handle('runs:getCompactionState', async (_event, conversationId: string) =>
+    (await ensureRunServiceClient()).getCompactionState(conversationId),
+  )
+  ipcMain.handle('runs:getConversationRuntime', async (_event, conversationId: string) =>
+    (await ensureRunServiceClient()).getConversationRuntime(conversationId),
+  )
   ipcMain.handle('runs:getProjection', async (_event, runId: string) =>
     (await ensureRunServiceClient()).getRunProjection(runId),
   )
   ipcMain.handle('runs:listActive', async () => (await ensureRunServiceClient()).listActiveRuns())
+  ipcMain.handle('runs:updateConversationRuntime', async (_event, input: UpdateConversationRuntimeInput) =>
+    (await ensureRunServiceClient()).updateConversationRuntime(input),
+  )
   ipcMain.handle('chat:stream:start', async (_event, input: StartChatStreamInput) => {
     const result = await (await ensureRunServiceClient()).startStream(input)
     activeChatStreamProviders.set(result.streamId, input.providerId)
@@ -125,50 +131,9 @@ export function registerChatGitTerminalIpcHandlers(
       return (await ensureRunServiceClient()).updatePendingSteerMessages(input)
     },
   )
-  ipcMain.handle('chat:compactConversation', async (_event, input: CompactConversationInput) => {
-    const attemptId = randomUUID()
-    const streamId = randomUUID()
-    emitChatStreamEvent(_event.sender, {
-      attemptId,
-      conversationId: input.conversationId,
-      streamId,
-      type: 'compaction_started',
-    })
-
-    try {
-      const result = input.providerId === 'codex'
-        ? await compactCodexConversation(input)
-        : await compactApiKeyConversation(input)
-
-      if (!result.compacted || !result.packetId) {
-        emitChatStreamEvent(_event.sender, {
-          attemptId,
-          conversationId: input.conversationId,
-          reason: 'unavailable',
-          streamId,
-          type: 'compaction_failed',
-        })
-        return result
-      }
-
-      emitChatStreamEvent(_event.sender, {
-        compactionId: result.packetId,
-        conversationId: input.conversationId,
-        streamId,
-        type: 'compaction_committed',
-      })
-      return result
-    } catch (error) {
-      emitChatStreamEvent(_event.sender, {
-        attemptId,
-        conversationId: input.conversationId,
-        reason: 'error',
-        streamId,
-        type: 'compaction_failed',
-      })
-      throw error
-    }
-  })
+  ipcMain.handle('chat:compactConversation', async (_event, input: CompactConversationInput) =>
+    (await ensureRunServiceClient()).compactConversation(input),
+  )
   ipcMain.handle('chat:stream:submitToolDecision', async (_event, input: SubmitToolDecisionInput) =>
     (await ensureRunServiceClient()).submitToolDecision(input),
   )

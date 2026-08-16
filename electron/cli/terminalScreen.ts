@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import readline from 'node:readline'
-import type { ChatAttachment, ChatMode } from '../../src/types/chat'
+import type { ChatAttachment, ChatCompactionLifecycleState, ChatCompactionMarker, ChatMode } from '../../src/types/chat'
 import {
   applyComposerAction,
   attachImagesToComposer,
@@ -126,6 +126,10 @@ export class TerminalScreen {
   private renderedPromptRows = 0
   private renderedPromptLines: string[] = []
   private renderedPromptCursorRow = 0
+  private compactionState: ChatCompactionLifecycleState | null = null
+  private compactionMarkers: ChatCompactionMarker[] = []
+  private compactionFrameIndex = 0
+  private compactionTimer: NodeJS.Timeout | null = null
   private activeAssistantId: string | null = null
   private activeThought = ''
   private activeThoughtEntryId: string | null = null
@@ -195,6 +199,7 @@ export class TerminalScreen {
       clearInterval(this.terminalSizePollTimer)
       this.terminalSizePollTimer = null
     }
+    this.stopCompactionSpinner()
     this.resizeRedrawPending = false
     this.interactiveResizeHandler = null
     this.lastTerminalSize = null
@@ -215,6 +220,7 @@ export class TerminalScreen {
     if (patch.provider && patch.provider !== 'codex') {
       this.composerStatus = { ...this.composerStatus, codexUsage: undefined }
     }
+    if (this.pendingPrompt) this.renderCurrentPrompt()
   }
 
   updateComposerStatus(patch: Partial<typeof this.composerStatus>): void {
@@ -222,9 +228,34 @@ export class TerminalScreen {
     if (this.pendingPrompt) this.renderCurrentPrompt()
   }
 
+  setCompactionState(state: ChatCompactionLifecycleState | null): void {
+    const isSameState = this.compactionState?.phase === state?.phase
+      && this.compactionState?.attemptId === state?.attemptId
+      && this.compactionState?.streamId === state?.streamId
+      && (this.compactionState?.phase !== 'compacted'
+        || state?.phase !== 'compacted'
+        || this.compactionState.compactionId === state.compactionId)
+    if (isSameState) return
+
+    this.compactionState = state
+    this.stopCompactionSpinner()
+    if (state?.phase === 'compacting') {
+      this.compactionFrameIndex = 0
+      this.compactionTimer = setInterval(() => {
+        this.compactionFrameIndex = (this.compactionFrameIndex + 1) % THINKING_SPINNER_FRAMES.length
+        if (this.pendingPrompt && !this.activeTurn) this.renderPrompt()
+      }, THINKING_SPINNER_INTERVAL_MS)
+      this.compactionTimer.unref()
+    }
+    if (this.pendingPrompt && !this.activeTurn) this.renderPrompt()
+  }
+
   clearSession(): void {
     this.activeTurnCancel = null
     this.activeTurnLeadingSpacer = true
+    this.compactionState = null
+    this.compactionMarkers = []
+    this.stopCompactionSpinner()
     this.clearPromptDisplay()
     this.clearActiveTurnDisplay()
     this.stopActivity()
@@ -247,14 +278,18 @@ export class TerminalScreen {
     messages: readonly Message[],
     sessionPatch: Partial<TerminalSessionView> = {},
     clearScreen = false,
-    options: { selectedUserMessageId?: string | null } = {},
+    options: {
+      compactionMarkers?: readonly ChatCompactionMarker[]
+      selectedUserMessageId?: string | null
+    } = {},
   ): void {
     this.activeTurnCancel = null
     this.clearPromptDisplay()
     this.clearActiveTurnDisplay()
     this.stopActivity()
     this.view.session = { ...this.view.session, ...sessionPatch }
-    this.view.entries = createTerminalHistoryEntries(messages, this.view.session.workspace)
+    if (options.compactionMarkers) this.compactionMarkers = [...options.compactionMarkers]
+    this.view.entries = createTerminalHistoryEntries(messages, this.view.session.workspace, this.compactionMarkers)
     if ('selectedUserMessageId' in options) {
       this.selectedHistoryUserMessageId = options.selectedUserMessageId ?? null
     } else if (
@@ -932,6 +967,12 @@ export class TerminalScreen {
     }
   }
 
+  refreshPromptCompletions(): void {
+    if (!this.pendingPrompt) return
+    this.updateCompletionItems(this.pendingPrompt.context)
+    this.renderCurrentPrompt()
+  }
+
   private updateCompletionItems(context: TerminalPromptContext): void {
     const cursorIndex = this.composer.lines.slice(0, this.composer.lineIndex).reduce((total, line) => total + line.length + 1, 0) + this.composer.column
     const items = context.getCompletionItems?.(composerText(this.composer), cursorIndex) ?? []
@@ -1229,7 +1270,8 @@ export class TerminalScreen {
     const completionRows = this.view.completionItems.length > 0
       ? 1 + Math.min(6, this.view.completionItems.length)
       : 0
-    const promptRows = 1 + composerLineCount + completionRows + 1 + 1
+    const compactionRows = this.compactionState ? 2 : 0
+    const promptRows = compactionRows + 1 + composerLineCount + completionRows + 1 + 1
     const sessionIntroRows = 8
 
     return Math.max(4, rows - sessionIntroRows - promptRows)
@@ -1275,6 +1317,20 @@ export class TerminalScreen {
     bufferedOutput.flushTo(this.output)
   }
 
+  private stopCompactionSpinner(): void {
+    if (!this.compactionTimer) return
+    clearInterval(this.compactionTimer)
+    this.compactionTimer = null
+  }
+
+  private renderCompactionLine(): string | null {
+    if (!this.compactionState) return null
+    if (this.compactionState.phase === 'compacting') {
+      return ` ${colors.accent}${getThinkingSpinnerFrame(this.compactionFrameIndex)}${colors.reset} ${colors.subtle}Compacting${colors.reset}`
+    }
+    return ` ${colors.success}✓${colors.reset} ${colors.subtle}Compacted${colors.reset}`
+  }
+
   private renderPrompt(outputOverride?: TerminalOutput): void {
     if (!this.pendingPrompt) return
     if (outputOverride === undefined && this.resizeRedrawPending) return
@@ -1301,21 +1357,24 @@ export class TerminalScreen {
         model: this.view.session.model,
       }, panelWidth),
     })
+    const compactionLine = this.renderCompactionLine()
+    const promptLines = compactionLine ? [compactionLine, '', ...panel.lines] : panel.lines
+    const promptCursorRow = panel.cursorRow + (compactionLine ? 2 : 0)
     const cursorIsAtTop = this.renderedPromptLines.length > 0
     if (!cursorIsAtTop) {
-      redrawOutput.write(panel.lines.join('\n'))
+      redrawOutput.write(promptLines.join('\n'))
     } else {
       redrawOutput.moveCursor(0, -this.renderedPromptCursorRow)
       redrawOutput.cursorTo(0)
-      updateTerminalRegion(this.renderedPromptLines, panel.lines, redrawOutput)
+      updateTerminalRegion(this.renderedPromptLines, promptLines, redrawOutput)
     }
-    this.renderedPromptRows = panel.lines.length
-    this.renderedPromptLines = panel.lines
-    this.renderedPromptCursorRow = panel.cursorRow
+    this.renderedPromptRows = promptLines.length
+    this.renderedPromptLines = promptLines
+    this.renderedPromptCursorRow = promptCursorRow
     if (cursorIsAtTop) {
-      if (panel.cursorRow > 0) redrawOutput.moveCursor(0, panel.cursorRow)
+      if (promptCursorRow > 0) redrawOutput.moveCursor(0, promptCursorRow)
     } else {
-      const cursorOffsetFromBottom = panel.lines.length - 1 - panel.cursorRow
+      const cursorOffsetFromBottom = promptLines.length - 1 - promptCursorRow
       if (cursorOffsetFromBottom > 0) redrawOutput.moveCursor(0, -cursorOffsetFromBottom)
     }
     redrawOutput.cursorTo(panel.cursorColumn)

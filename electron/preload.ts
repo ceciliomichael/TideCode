@@ -49,6 +49,7 @@ import type {
   ResizeTerminalSessionInput,
   SubmitToolDecisionInput,
   StartChatStreamInput,
+  UpdateConversationRuntimeInput,
   UpdatePendingSteerMessagesInput,
   WorkspaceExplorerImportEntryInput,
   WorkspaceExplorerPasteClipboardImageInput,
@@ -208,6 +209,9 @@ const modelsApi: TideCodeModelsApi = {
 }
 
 const runsApi: TideCodeRunsApi = {
+  compactConversation: (input: CompactConversationInput) => ipcRenderer.invoke('chat:compactConversation', input),
+  getCompactionState: (conversationId: string) => ipcRenderer.invoke('runs:getCompactionState', conversationId),
+  getConversationRuntime: (conversationId: string) => ipcRenderer.invoke('runs:getConversationRuntime', conversationId),
   getRunProjection: (runId: string) => ipcRenderer.invoke('runs:getProjection', runId),
   listActiveRuns: () => ipcRenderer.invoke('runs:listActive'),
   onEvent: (listener) => {
@@ -217,6 +221,8 @@ const runsApi: TideCodeRunsApi = {
       ipcRenderer.off('run-service:event', wrappedListener)
     }
   },
+  updateConversationRuntime: (input: UpdateConversationRuntimeInput) =>
+    ipcRenderer.invoke('runs:updateConversationRuntime', input),
 }
 
 const chatApi: TideCodeChatApi = {

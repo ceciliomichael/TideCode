@@ -1,3 +1,4 @@
+import '../configureAppRoot'
 import assert from 'node:assert/strict'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'

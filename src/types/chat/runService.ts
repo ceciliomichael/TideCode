@@ -1,5 +1,6 @@
-import type { ChatStreamEvent, StartChatStreamInput } from './runtime'
-import type { ConversationRecord } from './conversations'
+import type { ChatCompactionLifecycleState, ChatStreamEvent, CompactConversationInput, CompactConversationResult, StartChatStreamInput } from './runtime'
+import type { ChatMode, ConversationRecord } from './conversations'
+import type { ChatProviderId, ReasoningEffort } from './providers'
 
 export type SharedRunStatus =
   | 'starting'
@@ -31,6 +32,32 @@ export interface SharedRunProjection {
   streamingAssistantMessageId: string | null
   streamingWaitingIndicatorVariant: 'thinking' | 'splash' | 'rate_limit_retry' | null
   isStreamingTextActive: boolean
+}
+
+export type ChatCompactionEvent = Extract<
+  ChatStreamEvent,
+  { type: 'compaction_started' | 'compaction_committed' | 'compaction_failed' }
+>
+
+export interface SharedConversationRuntimeModel {
+  label: string
+  modelId: string
+  providerId: ChatProviderId | null
+  reasoningEffort?: ReasoningEffort
+  runtimeModelId?: string
+}
+
+export interface SharedConversationRuntimeSnapshot {
+  conversationId: string
+  chatMode: ChatMode
+  model: SharedConversationRuntimeModel | null
+  updatedAt: number
+}
+
+export interface UpdateConversationRuntimeInput {
+  conversationId: string
+  chatMode?: ChatMode
+  model?: SharedConversationRuntimeModel
 }
 
 export type TideCodeRunEvent =
@@ -70,9 +97,25 @@ export type TideCodeRunEvent =
       conversationId: string
       conversation: ConversationRecord
     }
+  | {
+      type: 'compaction_event'
+      seq: number
+      conversationId: string
+      event: ChatCompactionEvent
+    }
+  | {
+      type: 'conversation_runtime_updated'
+      seq: number
+      conversationId: string
+      runtime: SharedConversationRuntimeSnapshot
+    }
 
 export interface TideCodeRunsApi {
+  compactConversation: (input: CompactConversationInput) => Promise<CompactConversationResult>
+  getCompactionState: (conversationId: string) => Promise<ChatCompactionLifecycleState | null>
+  getConversationRuntime: (conversationId: string) => Promise<SharedConversationRuntimeSnapshot | null>
   getRunProjection: (runId: string) => Promise<SharedRunProjection | null>
   listActiveRuns: () => Promise<SharedRunSnapshot[]>
   onEvent: (listener: (event: TideCodeRunEvent) => void) => () => void
+  updateConversationRuntime: (input: UpdateConversationRuntimeInput) => Promise<SharedConversationRuntimeSnapshot>
 }

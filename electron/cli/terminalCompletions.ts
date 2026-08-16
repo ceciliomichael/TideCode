@@ -1,5 +1,6 @@
 import path from 'node:path'
-import { SLASH_COMMANDS } from './commands'
+import { getAvailableSlashCommands } from './commands'
+import type { CliSessionState } from './types'
 import type { CompletionItemView } from './terminalView'
 import { listWorkspaceDirectory } from '../workspace/explorer'
 import { listEnabledSkills } from '../skills/service'
@@ -73,13 +74,14 @@ export class TerminalCompletionCatalog {
     return this.preloadPromise
   }
 
-  getItems(text: string, cursorIndex: number): readonly CompletionItemView[] {
+  getItems(text: string, cursorIndex: number, state?: CliSessionState): readonly CompletionItemView[] {
     const beforeCursor = text.slice(0, Math.max(0, cursorIndex))
     const trimmed = beforeCursor.trimStart()
 
     if (trimmed.startsWith('/') && !trimmed.includes(' ')) {
       const query = trimmed.toLowerCase()
-      return SLASH_COMMANDS
+      const commands = getAvailableSlashCommands(state)
+      return commands
         .filter((command) => `/${command.name}`.startsWith(query) || (command.alias && `/${command.alias}`.startsWith(query)))
         .slice(0, MAX_VISIBLE_COMPLETIONS)
         .map((command) => ({

@@ -1,21 +1,16 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
+import { getTideCodeRuntimeRoot } from '../../../../runtime/runtimeRoot'
 
 const PROMPT_REPO_PATH = 'electron/chat/shared/prompts/compression'
 const SUMMARY_PROMPT_FILE_NAME = 'prompt.md'
 
 function readPromptFile(fileName: string) {
-  const appRoot = process.env.APP_ROOT?.trim()
-  const searchRoots = [appRoot, process.cwd()].filter((value): value is string => Boolean(value))
-
-  for (const root of searchRoots) {
-    const candidatePath = path.join(root, PROMPT_REPO_PATH, fileName)
-    if (existsSync(candidatePath)) {
-      return readFileSync(candidatePath, 'utf8').trim()
-    }
+  const promptPath = path.join(getTideCodeRuntimeRoot(), PROMPT_REPO_PATH, fileName)
+  if (!existsSync(promptPath)) {
+    throw new Error(`Unable to load chat compression prompt file: ${fileName}`)
   }
-
-  throw new Error(`Unable to load chat compression prompt file: ${fileName}`)
+  return readFileSync(promptPath, 'utf8').trim()
 }
 
 let cachedPrompt: string | null = null

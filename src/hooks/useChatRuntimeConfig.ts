@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MODEL_CATALOG, PROVIDER_SECTIONS } from '../components/settings/models/modelCatalog'
 import { useSettingsModelCatalog } from '../components/settings/models/settingsModelCatalogStore'
 import { toCustomModelCatalogItems } from '../components/settings/models/customModelUtils'
@@ -17,6 +17,7 @@ import type {
   ProviderModelConfig,
   ProvidersState,
   ReasoningEffort,
+  SharedConversationRuntimeSnapshot,
 } from '../types/chat'
 import type { ModelCatalogItem } from '../components/settings/models/modelTypes'
 
@@ -217,6 +218,7 @@ export function useChatRuntimeConfig({
   settings,
   updateSettings,
 }: UseChatRuntimeConfigInput) {
+  const [sharedConversationRuntime, setSharedConversationRuntime] = useState<SharedConversationRuntimeSnapshot | null>(null)
   const { customModels, customModelsLoading, providerModels, providerModelsLoading } = useSettingsModelCatalog(providersState)
   const allModelCatalog = useMemo(
     () => dedupeModelCatalogItems([
@@ -238,10 +240,45 @@ export function useChatRuntimeConfig({
     () => getModeSelectionFields(activeChatMode, settings),
     [activeChatMode, settings],
   )
+  useEffect(() => {
+    setSharedConversationRuntime(null)
+    if (!activeConversationId) return
+
+    let cancelled = false
+    let receivedLiveUpdate = false
+    const unsubscribe = window.tidecodeRuns.onEvent((event) => {
+      if (event.type !== 'conversation_runtime_updated' || event.conversationId !== activeConversationId) return
+      receivedLiveUpdate = true
+      if (!cancelled) setSharedConversationRuntime(event.runtime)
+    })
+
+    void window.tidecodeRuns.getConversationRuntime(activeConversationId)
+      .then((runtime) => {
+        if (!cancelled && !receivedLiveUpdate) setSharedConversationRuntime(runtime)
+      })
+      .catch(() => undefined)
+
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [activeConversationId])
+
   const conversationModelPreference = useMemo(() => {
     if (!activeConversationId) return null
+    if (sharedConversationRuntime?.conversationId === activeConversationId && sharedConversationRuntime.model) {
+      return {
+        chatMode: sharedConversationRuntime.chatMode,
+        label: sharedConversationRuntime.model.label,
+        modelId: sharedConversationRuntime.model.modelId,
+        providerId: sharedConversationRuntime.model.providerId,
+        ...(sharedConversationRuntime.model.reasoningEffort
+          ? { reasoningEffort: sharedConversationRuntime.model.reasoningEffort }
+          : {}),
+      }
+    }
     return settings.conversationModelPreferences?.[activeConversationId] ?? null
-  }, [activeConversationId, settings.conversationModelPreferences])
+  }, [activeConversationId, settings.conversationModelPreferences, sharedConversationRuntime])
   const effectiveModeSelection = useMemo(() => {
     if (!conversationModelPreference) return modeSelection
     return {
@@ -508,7 +545,31 @@ export function useChatRuntimeConfig({
         supportedEfforts: selectedOption?.reasoningEfforts,
       })
 
-      const globalUpdate: Partial<AppSettings> = {
+      if (activeConversationId) {
+        const sharedModel = {
+          label: selectedOption?.label ?? chatModelId,
+          modelId: chatModelId,
+          providerId: nextProviderId,
+          reasoningEffort: nextReasoningEffort,
+          runtimeModelId: selectedOption?.runtimeModelId ?? chatModelId,
+        }
+        setSharedConversationRuntime({
+          chatMode: activeChatMode,
+          conversationId: activeConversationId,
+          model: sharedModel,
+          updatedAt: Date.now(),
+        })
+        void window.tidecodeRuns.updateConversationRuntime({
+          chatMode: activeChatMode,
+          conversationId: activeConversationId,
+          model: sharedModel,
+        }).catch((error) => {
+          console.error('Failed to sync conversation model', error)
+        })
+        return
+      }
+
+      void updateSettings({
         [modeSelection.updateKeys.modelId]: chatModelId,
         [modeSelection.updateKeys.providerId]: nextProviderId,
         [modeSelection.updateKeys.modelLabel]: selectedOption?.label ?? chatModelId,
@@ -516,24 +577,7 @@ export function useChatRuntimeConfig({
         chatModelProviderId: nextProviderId,
         chatModelLabel: selectedOption?.label ?? chatModelId,
         chatReasoningEffort: nextReasoningEffort,
-      }
-
-      if (activeConversationId) {
-        const prev = settings.conversationModelPreferences?.[activeConversationId]
-        const pref: AppSettings['conversationModelPreferences'][string] = {
-          label: selectedOption?.label ?? chatModelId,
-          modelId: chatModelId,
-          providerId: nextProviderId,
-          chatMode: prev?.chatMode ?? activeChatMode,
-        }
-        if (prev?.reasoningEffort !== undefined) pref.reasoningEffort = prev.reasoningEffort
-        globalUpdate.conversationModelPreferences = {
-          ...settings.conversationModelPreferences,
-          [activeConversationId]: pref,
-        }
-      }
-
-      void updateSettings(globalUpdate)
+      })
     },
     [
       activeChatMode,
@@ -545,7 +589,6 @@ export function useChatRuntimeConfig({
       modeSelection.updateKeys.providerId,
       runtimeModelOptions,
       settings.chatReasoningEffort,
-      settings.conversationModelPreferences,
       updateSettings,
     ],
   )

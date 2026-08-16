@@ -17,6 +17,14 @@ function buildFullStoredSettings() {
     language: 'fil-PH' as const,
     sendMessageOnEnter: false,
     terminalExecutionMode: 'full' as const,
+    conversationModelPreferences: {
+      'thread-agent': {
+        chatMode: 'agent' as const,
+        label: 'Thread model',
+        modelId: 'thread-model',
+        providerId: 'codex' as const,
+      },
+    },
   }
 }
 
@@ -62,6 +70,7 @@ test('updateStoredSettings preserves saved preferences when the cache is availab
   const originalReadFile = fs.readFile.bind(fs)
   const previousSettingsHome = process.env.TIDECODE_SETTINGS_HOME
   const initialWorkspaceUiState = {
+    conversationModelPreferences: initialSettings.conversationModelPreferences,
     diffPanelWidth: initialSettings.diffPanelWidth,
     editSessionsByConversation: initialSettings.editSessionsByConversation,
     lastActiveConversationId: initialSettings.lastActiveConversationId,
@@ -90,6 +99,7 @@ test('updateStoredSettings preserves saved preferences when the cache is availab
 
     assert.equal(loadedSettings.appearance, 'dark')
     assert.equal(loadedSettings.chatModelId, 'gpt-5.4')
+    assert.equal(loadedSettings.conversationModelPreferences['thread-agent']?.chatMode, 'agent')
 
     mock.method(fs, 'readFile', async () => {
       throw new Error('settings read should not be needed after the cache is populated')

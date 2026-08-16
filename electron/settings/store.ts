@@ -189,8 +189,8 @@ function sanitizeConversationModelPreferences(value: unknown): AppSettings['conv
         ? (preference.providerId ?? null)
         : null
     const chatMode =
-      typeof preference.chatMode === 'string' && preference.chatMode === 'plan'
-        ? ('plan' as const)
+      preference.chatMode === 'agent' || preference.chatMode === 'plan'
+        ? preference.chatMode
         : undefined
     const reasoningEffort =
       typeof preference.reasoningEffort === 'string' && isReasoningEffort(preference.reasoningEffort)

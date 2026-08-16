@@ -1,4 +1,5 @@
-import type { ChatAttachment, ConversationRecord } from '../../src/types/chat'
+import type { ChatAttachment, ChatCompactionLifecycleState, ConversationRecord } from '../../src/types/chat'
+import { reduceChatCompactionStatus } from '../../src/lib/chatCompactionStatus'
 import { ensureRunServiceClient } from '../runService/ensureService'
 import { executeSlashCommand } from './commands'
 import { createReplCommandHelpers } from './replCommands'
@@ -14,22 +15,23 @@ import { attachCliToActiveSharedRun } from './sharedRunAttachment'
 import { navigateUndoEditSelection } from './undoEditNavigation'
 import { resolveCliUndoCheckpointPlan, runWithCliUndoWorkspaceReverted } from './cliUndoCheckpoints'
 import { getStoredConversation } from '../history/store'
+import { applyCliConversationRuntime } from './cliConversationRuntime'
+import { listCompactionMarkers } from '../chat/history/eventStore'
+import { hasMinimumCompactionMessages } from '../../src/lib/chatCompactionGate'
 
 function createPromptContext(
   state: CliSessionState,
   screen: TerminalScreen,
   completions: TerminalCompletionCatalog,
+  onToggleMode: (mode: CliSessionState['chatMode']) => void,
 ): TerminalPromptContext {
   return {
     mode: state.chatMode,
     modelId: state.modelId,
     providerId: state.providerId,
     enterFollowUpBehavior: state.followUpBehavior ?? 'steer',
-    getCompletionItems: (text, cursorIndex) => completions.getItems(text, cursorIndex),
-    onToggleMode: (mode) => {
-      state.chatMode = mode
-      screen.updateSession({ mode })
-    },
+    getCompletionItems: (text, cursorIndex) => completions.getItems(text, cursorIndex, state),
+    onToggleMode,
     onCancelTurn: () => {
       const streamId = state.activeStreamId
       if (!streamId) return
@@ -82,15 +84,24 @@ export async function startInteractiveRepl(
     void completions.preloadWorkspace(state.workspaceRootPath)
     refreshComposerStatus(options?.refreshCodexUsage === true)
   })
+  const createCurrentPromptContext = () => createPromptContext(
+    state,
+    screen,
+    completions,
+    (mode) => helpers.switchMode(mode),
+  )
   let pendingInput: Promise<TerminalPromptSubmission> | null = null
   const queuedInputs: Array<{ text: string; attachments?: ChatAttachment[] }> = []
 
   warmSystemClipboardReader()
   screen.start()
-  screen.restoreConversation(state.messages)
+  const initialCompactionMarkers = await listCompactionMarkers(state.conversationId).catch(() => [])
+  state.compactionLocked = !hasMinimumCompactionMessages(state.messages, initialCompactionMarkers)
+  screen.restoreConversation(state.messages, {}, false, { compactionMarkers: initialCompactionMarkers })
   screen.updateComposerStatus({ reasoningEffort: state.reasoningEffort })
 
   const runService = await ensureRunServiceClient()
+  let compactionState: ChatCompactionLifecycleState | null = null
   let applyingPendingUndoMutation = false
   let sharedRunAttachmentPromise: Promise<boolean> | null = null
   const attachToSharedRunIfIdle = (): Promise<boolean> | null => {
@@ -129,11 +140,64 @@ export async function startInteractiveRepl(
   }
 
   runService.onEvent((event) => {
+    if (event.type === 'compaction_event' && event.conversationId === state.conversationId) {
+      compactionState = reduceChatCompactionStatus(compactionState, event.event, state.conversationId)
+      if (event.event.type === 'compaction_started' || event.event.type === 'compaction_committed') {
+        state.compactionLocked = true
+        screen.refreshPromptCompletions()
+      }
+      screen.setCompactionState(compactionState)
+      if (event.event.type === 'compaction_committed') {
+        void listCompactionMarkers(state.conversationId)
+          .then((compactionMarkers) => {
+            if (event.conversationId !== state.conversationId) return
+            compactionState = null
+            state.compactionLocked = !hasMinimumCompactionMessages(state.messages, compactionMarkers)
+            screen.setCompactionState(null)
+            screen.refreshPromptCompletions()
+            screen.restoreConversation(state.messages, {
+              mode: state.chatMode,
+              model: state.modelId,
+              provider: state.providerId,
+              workspace: state.workspaceRootPath,
+            }, true, { compactionMarkers })
+          })
+          .catch((error) => {
+            screen.addNotice('error', `Could not load compacted history marker: ${error instanceof Error ? error.message : String(error)}`)
+          })
+      } else if (event.event.type === 'compaction_failed') {
+        void listCompactionMarkers(state.conversationId)
+          .then((compactionMarkers) => {
+            if (event.conversationId !== state.conversationId) return
+            state.compactionLocked = !hasMinimumCompactionMessages(state.messages, compactionMarkers)
+            screen.refreshPromptCompletions()
+          })
+          .catch(() => undefined)
+      }
+      return
+    }
+
+    if (event.type === 'conversation_runtime_updated' && event.conversationId === state.conversationId) {
+      void applyCliConversationRuntime(state, screen, event.runtime)
+        .then((change) => refreshComposerStatus(change.refreshCodexUsage))
+        .catch((error) => {
+          screen.addNotice('error', `Could not apply shared conversation settings: ${error instanceof Error ? error.message : String(error)}`)
+        })
+      return
+    }
+
     if (
       (event.type === 'conversation_appended' || event.type === 'conversation_replaced' || event.type === 'conversation_updated')
       && event.conversationId === state.conversationId
     ) {
       applySharedConversationSnapshot(event.conversation)
+      void listCompactionMarkers(event.conversationId)
+        .then((compactionMarkers) => {
+          if (event.conversationId !== state.conversationId) return
+          state.compactionLocked = !hasMinimumCompactionMessages(state.messages, compactionMarkers)
+          screen.refreshPromptCompletions()
+        })
+        .catch(() => undefined)
       return
     }
 
@@ -143,6 +207,19 @@ export async function startInteractiveRepl(
       || event.run.status === 'waiting_for_input'
     if (isActive) attachToSharedRunIfIdle()
   })
+
+  const [initialRuntime, initialCompactionState] = await Promise.all([
+    runService.getConversationRuntime(state.conversationId).catch(() => null),
+    runService.getCompactionState(state.conversationId).catch(() => null),
+  ])
+  if (initialRuntime) {
+    const runtimeChange = await applyCliConversationRuntime(state, screen, initialRuntime)
+    refreshComposerStatus(runtimeChange.refreshCodexUsage)
+  }
+  const initialCompactionIsPersisted = initialCompactionState?.phase === 'compacted' &&
+    initialCompactionMarkers.some((marker) => marker.compactionId === initialCompactionState.compactionId)
+  compactionState = initialCompactionIsPersisted ? null : initialCompactionState
+  screen.setCompactionState(compactionState)
 
   if (options.openResumePicker) {
     await executeSlashCommand('/resume', state, helpers)
@@ -165,7 +242,7 @@ export async function startInteractiveRepl(
     } else if (pendingInput) {
       rawSubmission = await pendingInput
     } else {
-      const promptContext = createPromptContext(state, screen, completions)
+      const promptContext = createCurrentPromptContext()
       const prompt = screen.ask(promptContext)
       pendingInput = prompt
 
@@ -251,6 +328,10 @@ export async function startInteractiveRepl(
           )
 
           state.messages = [...conversation.messages]
+          state.compactionLocked = !hasMinimumCompactionMessages(
+            state.messages,
+            await listCompactionMarkers(state.conversationId).catch(() => []),
+          )
           state.pendingUndoEdit = undefined
           screen.restoreConversation(state.messages, {
             mode: state.chatMode,
@@ -273,7 +354,7 @@ export async function startInteractiveRepl(
         input,
         state,
         screen,
-        createPromptContext(state, screen, completions),
+        createCurrentPromptContext(),
         { attachments, printUserMessage, userMessageLeadingSpacer },
       )
       queuedInputs.push(...result.queuedInputs.map((text) => ({ text })))

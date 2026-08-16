@@ -79,6 +79,10 @@ function renderTurnEntry(entry: TranscriptEntry, width: number): string[] {
     return [`  ${colors.subtle}${label}${duration}${colors.reset}`]
   }
 
+  if (entry.kind === 'compaction') {
+    return [`  ${colors.success}✓${colors.reset} ${colors.subtle}Compacted${colors.reset}`]
+  }
+
   if (entry.kind === 'tool') {
     const lines = wrapPrefixed(renderTerminalToolRowText(entry.label, entry.status, entry.detail), '  ', width)
     if (entry.diff) lines.push(...entry.diff.split(/\r?\n/).flatMap((line) => wrapPrefixed(line, '    ', width)))

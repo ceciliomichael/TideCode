@@ -1,7 +1,11 @@
 import type {
   AppendConversationMessagesInput,
+  ChatCompactionLifecycleState,
+  CompactConversationInput,
+  CompactConversationResult,
   ConversationRecord,
   ReplaceConversationMessagesInput,
+  SharedConversationRuntimeSnapshot,
   SharedRunProjection,
   SharedRunSnapshot,
   StartChatStreamInput,
@@ -9,26 +13,34 @@ import type {
   SubmitToolDecisionInput,
   SubmitToolDecisionResult,
   TideCodeRunEvent,
+  UpdateConversationRuntimeInput,
   UpdatePendingSteerMessagesInput,
   UpdatePendingSteerMessagesResult,
 } from '../../src/types/chat'
 
-export const RUN_SERVICE_PROTOCOL_VERSION = 4
+export const RUN_SERVICE_PROTOCOL_VERSION = 8
 
 export type RunServiceRequest =
   | { id: string; token: string; method: 'hello'; params?: undefined }
+  | { id: string; token: string; method: 'getCompactionState'; params: { conversationId: string } }
+  | { id: string; token: string; method: 'getConversationRuntime'; params: { conversationId: string } }
   | { id: string; token: string; method: 'getRunProjection'; params: { runId: string } }
   | { id: string; token: string; method: 'listActiveRuns'; params?: undefined }
   | { id: string; token: string; method: 'appendMessages'; params: AppendConversationMessagesInput }
   | { id: string; token: string; method: 'replaceMessages'; params: ReplaceConversationMessagesInput }
+  | { id: string; token: string; method: 'compactConversation'; params: CompactConversationInput }
   | { id: string; token: string; method: 'startStream'; params: StartChatStreamInput }
   | { id: string; token: string; method: 'cancelStream'; params: { streamId: string } }
   | { id: string; token: string; method: 'updatePendingSteerMessages'; params: UpdatePendingSteerMessagesInput }
   | { id: string; token: string; method: 'submitToolDecision'; params: SubmitToolDecisionInput }
+  | { id: string; token: string; method: 'updateConversationRuntime'; params: UpdateConversationRuntimeInput }
 
 export type RunServiceResponseResult =
   | { protocolVersion: number }
+  | ChatCompactionLifecycleState
+  | CompactConversationResult
   | ConversationRecord
+  | SharedConversationRuntimeSnapshot
   | SharedRunProjection
   | SharedRunSnapshot[]
   | StartChatStreamResult

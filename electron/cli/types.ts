@@ -39,6 +39,7 @@ export interface CliSessionState {
   messages: Message[]
   isStreaming: boolean
   activeStreamId: string | null
+  compactionLocked?: boolean
   followUpBehavior?: FollowUpBehavior
   pendingUndoEdit?: {
     targetUserMessageId: string
@@ -57,11 +58,17 @@ export interface SlashCommandDefinition {
   alias?: string
   description: string
   usage: string
+  isAvailable?: (state: CliSessionState) => boolean
   execute: (
     args: string[],
     state: CliSessionState,
     helpers: SlashCommandHelpers,
   ) => Promise<boolean | void>
+}
+
+export interface CliModelSelectionMetadata {
+  label: string
+  preferenceModelId: string
 }
 
 export interface SlashCommandHelpers {
@@ -70,9 +77,14 @@ export interface SlashCommandHelpers {
   renderWarning: (message: string) => void
   renderError: (message: string) => void
   renderDiff: (diffText: string) => void
-  switchModel: (modelId: string, providerId?: ApiKeyProviderId | 'codex') => Promise<void>
+  switchModel: (
+    modelId: string,
+    providerId?: ApiKeyProviderId | 'codex',
+    metadata?: CliModelSelectionMetadata,
+  ) => Promise<void>
   switchReasoningEffort: (effort: ReasoningEffort, modelLabel: string) => Promise<void>
   switchMode: (mode: ChatMode) => void
+  canCompactHistory: () => Promise<boolean>
   compactHistory: () => Promise<void>
   undoLastTurn: () => Promise<void>
   loadSession: (conversationId: string) => Promise<boolean>
