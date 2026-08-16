@@ -1,4 +1,5 @@
 import { colors } from './renderer'
+import { formatInlineMarkdown } from './terminalMarkdown'
 import { truncateVisible, visibleWidth } from './terminalText'
 import type { TerminalActivityView } from './terminalView'
 
@@ -15,8 +16,9 @@ export function renderTerminalActivityLine(
   const detailWidth = activity.detail
     ? textWidth - visibleWidth(activity.label) - visibleWidth(' · ')
     : 0
+  const formattedDetail = activity.detail ? formatInlineMarkdown(activity.detail) : ''
   const detail = activity.detail && detailWidth > 0 && label === activity.label
-    ? ` ${colors.separator}·${colors.reset} ${colors.subtle}${truncateVisible(activity.detail, detailWidth)}${colors.reset}`
+    ? ` ${colors.separator}·${colors.reset} ${colors.subtle}${truncateVisible(formattedDetail, detailWidth)}${colors.reset}`
     : ''
   const content = `${glyphColor}${glyph}${colors.reset} ${colors.subtle}${label}${colors.reset}${detail}`
   return `  ${content}`
