@@ -23,6 +23,7 @@ import { isUpdateInstallInProgress } from './updates/autoUpdateService'
 import { installLatestRequestedUpdate } from './updates/externalUpdateRequest'
 import { hasExternalUpdateRequest } from '../src/lib/updateRequest'
 import { parseTideCodeLaunchRequest, type TideCodeLaunchRequest } from '../src/lib/appLaunchRequest'
+import { configureTideCodeRuntimeRoot } from './runtime/runtimeRoot'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // The built directory structure
@@ -35,6 +36,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // │ │ └── preload.mjs
 // │
 process.env.APP_ROOT = path.join(__dirname, '..')
+configureTideCodeRuntimeRoot(process.env.APP_ROOT)
 // 🚧 Use ['ENV_NAME'] avoid vite:define plugin - Vite@2.x
 export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')

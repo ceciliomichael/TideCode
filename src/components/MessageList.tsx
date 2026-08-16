@@ -392,8 +392,13 @@ export function MessageList({
     const processFinishedAssistantRun = () => {
       if (currentAssistantRun.length === 0) return;
 
-      const presentation = splitFinishedAssistantRun(currentAssistantRun);
-      const lastMessageIndex = currentAssistantRunStartIndex + currentAssistantRun.length - 1;
+      const assistantRun = currentAssistantRun;
+      const assistantRunStartIndex = currentAssistantRunStartIndex;
+      currentAssistantRun = [];
+      currentAssistantRunStartIndex = -1;
+
+      const presentation = splitFinishedAssistantRun(assistantRun);
+      const lastMessageIndex = assistantRunStartIndex + assistantRun.length - 1;
 
       if (presentation.workingMessages.length > 0) {
         items.push({
@@ -407,7 +412,7 @@ export function MessageList({
             : undefined,
           startTime: presentation.workingMessages[0].timestamp,
           endTime: getWorkEndTime(presentation.workingMessages[presentation.workingMessages.length - 1]),
-          startIndex: currentAssistantRunStartIndex,
+          startIndex: assistantRunStartIndex,
           key: `wg-${presentation.workingMessages[0].id}`,
         });
       } else if (presentation.trailingMessage) {

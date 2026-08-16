@@ -211,7 +211,9 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     name: 'compact',
     description: 'Condense current conversation context into a compacted state summary (Plan 001)',
     usage: '/compact',
+    isAvailable: (state) => !state.compactionLocked,
     execute: async (_args, _state, helpers) => {
+      if (!(await helpers.canCompactHistory())) return
       const confirmed = await helpers.confirm('Compact conversation context to free token window?', true)
       if (confirmed) {
         await helpers.compactHistory()
@@ -278,7 +280,8 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     description: 'Show available slash commands and mention shortcuts',
     usage: '/help',
     execute: async (_args, _state, helpers) => {
-      const items: SelectItem<string>[] = SLASH_COMMANDS.map((cmd) => ({
+      const availableCommands = getAvailableSlashCommands(_state)
+      const items: SelectItem<string>[] = availableCommands.map((cmd) => ({
         value: cmd.name,
         label: `/${cmd.name}${cmd.alias ? ` (/${cmd.alias})` : ''}`,
         description: cmd.description,
@@ -292,7 +295,7 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
       })
 
       if (chosenCommand) {
-        const cmd = SLASH_COMMANDS.find((c) => c.name === chosenCommand)
+        const cmd = availableCommands.find((c) => c.name === chosenCommand)
         if (cmd) {
           await cmd.execute([], _state, helpers)
         }
@@ -300,6 +303,10 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     },
   },
 ]
+
+export function getAvailableSlashCommands(state?: CliSessionState) {
+  return SLASH_COMMANDS.filter((command) => !state || command.isAvailable?.(state) !== false)
+}
 
 export async function executeSlashCommand(
   rawInput: string,
@@ -316,7 +323,7 @@ export async function executeSlashCommand(
   const args = parts.slice(1)
 
   const command = SLASH_COMMANDS.find((c) => c.name === commandName || c.alias === commandName)
-  if (!command) {
+  if (!command || command.isAvailable?.(state) === false) {
     helpers.renderError(`Unknown command: /${commandName}. Type /help for available commands.`)
     return true
   }

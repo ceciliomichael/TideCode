@@ -23,6 +23,13 @@ export function useChatCompactionStatus({
       return
     }
 
+    let cancelled = false
+    void window.tidecodeRuns.getCompactionState(conversationId)
+      .then((status) => {
+        if (!cancelled) setStatusState({ conversationId, status })
+      })
+      .catch(() => undefined)
+
     const unsubscribe = window.tidecodeChat.onStreamEvent((event) => {
       setStatusState((currentState) => {
         if (currentState.conversationId !== conversationId) {
@@ -36,7 +43,10 @@ export function useChatCompactionStatus({
       })
     })
 
-    return unsubscribe
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
   }, [conversationId])
 
   return statusState.conversationId === conversationId ? statusState.status : null

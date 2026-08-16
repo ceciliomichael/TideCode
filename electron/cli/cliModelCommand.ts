@@ -230,7 +230,10 @@ export async function runCliModelCommand(
       helpers.renderError(`Model "${normalizedArgs[0]}" was not found among configured providers.`)
       return
     }
-    await helpers.switchModel(match.apiModelId, match.providerId)
+    await helpers.switchModel(match.apiModelId, match.providerId, {
+      label: match.label,
+      preferenceModelId: match.id,
+    })
     return
   }
 
@@ -273,6 +276,9 @@ export async function runCliModelCommand(
       'Open TideCode desktop Settings → Models to manage custom models.',
     )
   } else {
-    await helpers.switchModel(selected.model.apiModelId, selected.model.providerId)
+    await helpers.switchModel(selected.model.apiModelId, selected.model.providerId, {
+      label: selected.model.label,
+      preferenceModelId: selected.model.id,
+    })
   }
 }

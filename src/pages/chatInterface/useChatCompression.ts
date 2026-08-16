@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { ChatMode, Message } from "../../types/chat";
 import type { ChatRuntimeSelection } from "../../hooks/chatMessageRuntime";
+import { MIN_COMPACTION_MESSAGE_COUNT } from "../../lib/chatCompactionGate";
 import { toUserFacingErrorMessage } from "../../lib/userFacingError";
 
 interface CompressionSelection {
@@ -16,7 +17,7 @@ interface UseChatCompressionInput {
   chatMode: ChatMode;
   compressionSelection: CompressionSelection;
   isBusy: boolean;
-  isChatFreshlyCompacted: boolean;
+  isCompactionUnavailable: boolean;
   messages: Message[];
   isCompressingChat: boolean;
   onCompactionComplete: () => void;
@@ -32,7 +33,7 @@ export function useChatCompression(input: UseChatCompressionInput) {
     chatMode,
     compressionSelection,
     isBusy,
-    isChatFreshlyCompacted,
+    isCompactionUnavailable,
     isCompressingChat,
     messages,
     runtimeSelection,
@@ -46,13 +47,8 @@ export function useChatCompression(input: UseChatCompressionInput) {
       return;
     }
 
-    if (isChatFreshlyCompacted) {
-      setError("Send a new message before compressing this chat again.");
-      return;
-    }
-
-    if (messages.length === 0) {
-      setError("Send at least one message before compressing the chat.");
+    if (isCompactionUnavailable) {
+      setError(`At least ${MIN_COMPACTION_MESSAGE_COUNT} conversation messages are required since the latest compaction boundary before compressing.`);
       return;
     }
 
@@ -119,7 +115,7 @@ export function useChatCompression(input: UseChatCompressionInput) {
     chatMode,
     compressionSelection,
     isBusy,
-    isChatFreshlyCompacted,
+    isCompactionUnavailable,
     isCompressingChat,
     messages,
     onCompactionComplete,

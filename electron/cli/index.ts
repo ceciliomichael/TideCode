@@ -16,6 +16,9 @@ import { resolveReasoningEffortTransition } from '../../src/lib/reasoningEffortT
 import { getStoredSettings } from '../settings/store'
 import { readPipedPrompt, resolveHeadlessPrompt } from './stdinPrompt'
 import { TIDECODE_VERSION } from '../appVersion'
+import { initializeCliAppRoot } from './appRoot'
+
+initializeCliAppRoot()
 
 function parseArgs(args: string[]): CliOptions {
   const options: CliOptions = {
@@ -153,6 +156,7 @@ export async function main() {
     messages: [],
     isStreaming: false,
     activeStreamId: null,
+    compactionLocked: false,
     followUpBehavior: storedSettings.followUpBehavior,
   }
 

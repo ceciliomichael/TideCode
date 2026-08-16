@@ -426,6 +426,22 @@ export async function replaceStoredMessages(input: ReplaceConversationMessagesIn
   })
 }
 
+export async function updateStoredConversationChatMode(conversationId: string, chatMode: ChatMode) {
+  return runConversationMutation(conversationId, async () => {
+    const existingConversation = await readConversationForMutation(conversationId)
+    if (!existingConversation) return null
+    if (existingConversation.chatMode === chatMode) return existingConversation
+
+    const nextConversation: ConversationRecord = {
+      ...existingConversation,
+      chatMode,
+      updatedAt: existingConversation.updatedAt,
+    }
+    await writeConversationFile(nextConversation)
+    return nextConversation
+  })
+}
+
 export async function updateStoredConversationTitle(conversationId: string, title: string) {
   return runConversationMutation(conversationId, async () => {
     const existingConversation = await readConversationForMutation(conversationId)

@@ -69,6 +69,19 @@ test('screen lifecycle renders session before compose and keeps cursor in compos
   assert.ok(output.writes.map(stripAnsi).includes('\n  Hello! How can I help?\n\n'))
 })
 
+test('session model changes redraw the active composer footer immediately', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+  void screen.ask({ mode: 'agent', modelId: 'gpt-test', providerId: 'codex' })
+
+  assert.match(output.visibleRows().at(-1) ?? '', /agent · gpt-test/)
+  screen.updateSession({ model: 'gpt-next' })
+
+  assert.match(output.visibleRows().at(-1) ?? '', /agent · gpt-next/)
+  screen.dismissPrompt()
+})
+
 test('screen rebuilds one responsive compose frame after a terminal resize', () => {
   const output = new TerminalGridOutput()
   const screen = createScreen(output)
@@ -726,6 +739,41 @@ test('screen keeps the compose panel visible when a remote history update redraw
   const rows = output.visibleRows()
   assert.equal(rows.filter((row) => row.includes('Replacement user message')).length, 1)
   assert.equal(rows.filter((row) => row.includes('╭─ compose')).length, 1)
+  screen.dismissPrompt()
+})
+
+test('screen keeps the compose panel visible while compaction moves from Compacting to Compacted', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+  void screen.ask({ mode: 'agent', modelId: 'gpt-test', providerId: 'codex' })
+
+  screen.setCompactionState({ attemptId: 'attempt-1', phase: 'compacting', streamId: 'compact-stream' })
+
+  let rows = output.visibleRows()
+  assert.equal(rows.filter((row) => row.includes('╭─ compose')).length, 1)
+  assert.equal(rows.filter((row) => row.includes('Compacting')).length, 1)
+  assert.equal(rows.some((row) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Compacting/u.test(row)), true)
+  const compactingRow = rows.findIndex((row) => row.includes('Compacting'))
+  const compactingComposerRow = rows.findIndex((row) => row.includes('╭─ compose'))
+  assert.equal(compactingComposerRow, compactingRow + 2)
+  assert.equal(rows[compactingRow + 1], '')
+
+  screen.setCompactionState({
+    attemptId: 'attempt-1',
+    compactionId: 'compaction-1',
+    phase: 'compacted',
+    streamId: 'compact-stream',
+  })
+
+  rows = output.visibleRows()
+  assert.equal(rows.filter((row) => row.includes('╭─ compose')).length, 1)
+  assert.equal(rows.filter((row) => row.includes('Compacted')).length, 1)
+  assert.equal(rows.some((row) => row.includes('Compacting')), false)
+  const compactedRow = rows.findIndex((row) => row.includes('Compacted'))
+  const compactedComposerRow = rows.findIndex((row) => row.includes('╭─ compose'))
+  assert.equal(compactedComposerRow, compactedRow + 2)
+  assert.equal(rows[compactedRow + 1], '')
   screen.dismissPrompt()
 })
 

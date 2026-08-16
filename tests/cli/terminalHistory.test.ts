@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Message } from '../../src/types/chat'
+import type { ChatCompactionMarker, Message } from '../../src/types/chat'
 import { createTerminalHistoryEntries } from '../../electron/cli/terminalHistory'
 import { renderConversationHistory } from '../../electron/cli/terminalActiveTurn'
 import { stripAnsi } from '../../electron/cli/terminalText'
@@ -56,6 +56,46 @@ test('desktop history rebuilds as ordered user, work, answer turns with visible 
   assert.ok(secondPrompt > firstAnswer)
   assert.deepEqual(rendered.slice(secondPrompt - 1, secondPrompt), [''])
   assert.equal(rendered.at(-1), '')
+})
+
+test('resumed history restores persisted compaction markers in transcript order', () => {
+  const messages: Message[] = [
+    { content: 'First prompt', id: 'user-compact-1', role: 'user', timestamp: 1 },
+    { content: 'First answer', id: 'assistant-compact-1', role: 'assistant', timestamp: 2 },
+    { content: 'Second prompt', id: 'user-compact-2', role: 'user', timestamp: 5 },
+  ]
+  const markers: ChatCompactionMarker[] = [{
+    anchorUserMessageId: 'user-compact-1',
+    compactionId: 'compact-1',
+    createdAt: 3,
+    detailSections: [],
+  }]
+
+  const entries = createTerminalHistoryEntries(messages, 'C:/workspace', markers)
+  const rendered = renderConversationHistory(entries).map(stripAnsi)
+  const answer = rendered.findIndex((line) => line.includes('First answer'))
+  const compacted = rendered.findIndex((line) => line.includes('Compacted'))
+  const secondPrompt = rendered.findIndex((line) => line.includes('Second prompt'))
+
+  assert.ok(compacted > answer)
+  assert.ok(secondPrompt > compacted)
+  assert.equal(rendered.filter((line) => line.includes('Compacted')).length, 1)
+})
+
+test('latest persisted compaction marker remains visible at the end of resumed history', () => {
+  const messages: Message[] = [
+    { content: 'Prompt', id: 'user-compact-tail', role: 'user', timestamp: 1 },
+    { content: 'Answer', id: 'assistant-compact-tail', role: 'assistant', timestamp: 2 },
+  ]
+  const entries = createTerminalHistoryEntries(messages, 'C:/workspace', [{
+    anchorUserMessageId: 'user-compact-tail',
+    compactionId: 'compact-tail',
+    createdAt: 3,
+    detailSections: [],
+  }])
+  const rendered = renderConversationHistory(entries).map(stripAnsi)
+
+  assert.ok(rendered.findIndex((line) => line.includes('Compacted')) > rendered.findIndex((line) => line.includes('Answer')))
 })
 
 test('resumed multiline and visually wrapped user messages render one prompt marker', () => {

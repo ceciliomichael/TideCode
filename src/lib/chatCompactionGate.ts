@@ -1,3 +1,7 @@
+import type { ChatCompactionMarker, Message } from '../types/chat'
+
+export const MIN_COMPACTION_MESSAGE_COUNT = 3
+
 export interface ChatCompactionGateState {
   blockedConversationIds: ReadonlySet<string>
 }
@@ -45,4 +49,22 @@ export function isChatCompactionBlocked(
 ) {
   const normalizedConversationId = conversationId?.trim() ?? ''
   return normalizedConversationId.length > 0 && state.blockedConversationIds.has(normalizedConversationId)
+}
+
+export function getCompactionBoundaryMessageCount(
+  messages: readonly Message[],
+  markers: readonly ChatCompactionMarker[],
+) {
+  const latestMarker = markers.at(-1)
+  return messages.filter((message) => {
+    if (message.role !== 'user' && message.role !== 'assistant') return false
+    return !latestMarker || message.timestamp > latestMarker.createdAt
+  }).length
+}
+
+export function hasMinimumCompactionMessages(
+  messages: readonly Message[],
+  markers: readonly ChatCompactionMarker[],
+) {
+  return getCompactionBoundaryMessageCount(messages, markers) >= MIN_COMPACTION_MESSAGE_COUNT
 }

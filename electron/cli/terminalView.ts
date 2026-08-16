@@ -4,6 +4,7 @@ export type TranscriptEntry =
   | { kind: 'user'; id: string; text: string }
   | { kind: 'assistant'; id: string; text: string; section?: 'work' | 'answer' }
   | { kind: 'thought'; id: string; text?: string; durationSeconds?: number }
+  | { kind: 'compaction'; id: string }
   | { kind: 'tool'; id: string; label: string; status: 'running' | 'completed' | 'failed'; detail?: string; diff?: string }
   | { kind: 'notice'; id: string; level: 'info' | 'success' | 'warning' | 'error'; text: string }
 

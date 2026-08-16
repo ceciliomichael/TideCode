@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { getTideCodeRuntimeRoot } from '../runtime/runtimeRoot'
 import { TideCodeRunServiceClient } from './client'
 
 let sharedClientPromise: Promise<TideCodeRunServiceClient> | null = null
@@ -14,55 +14,71 @@ function isElectronRuntime() {
   return Boolean(process.versions.electron)
 }
 
+export function buildRunServiceEnvironment(runtimeRoot: string, electronRunAsNode: boolean) {
+  return {
+    ...process.env,
+    TIDECODE_RUNTIME_ROOT: path.resolve(runtimeRoot),
+    ...(electronRunAsNode ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
+  }
+}
+
+export function getPackagedRunServiceLaunch(resourcesPath: string) {
+  const cliDirectory = path.join(resourcesPath, 'cli')
+  const serviceEntry = path.join(cliDirectory, 'run-service.mjs')
+  const nodeExecutable = path.join(cliDirectory, process.platform === 'win32' ? 'node.exe' : 'node')
+  if (!existsSync(serviceEntry) || !existsSync(nodeExecutable)) return null
+
+  return {
+    executable: nodeExecutable,
+    args: [serviceEntry],
+    env: buildRunServiceEnvironment(cliDirectory, false),
+  }
+}
+
 function getServiceLaunch() {
+  const hostRuntimeRoot = getTideCodeRuntimeRoot()
   const explicitEntry = process.env.TIDECODE_RUN_SERVICE_ENTRY?.trim()
   if (explicitEntry) {
+    const explicitRuntimeRoot = process.env.TIDECODE_RUN_SERVICE_RUNTIME_ROOT?.trim()
+    if (!explicitRuntimeRoot) {
+      throw new Error('TIDECODE_RUN_SERVICE_RUNTIME_ROOT is required with TIDECODE_RUN_SERVICE_ENTRY.')
+    }
     return {
       executable: process.execPath,
       args: [explicitEntry],
-      env: isElectronRuntime() ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : process.env,
+      env: buildRunServiceEnvironment(explicitRuntimeRoot, isElectronRuntime()),
     }
   }
 
   const argvEntry = process.argv[1] ? path.resolve(process.argv[1]) : ''
   if (argvEntry) {
-    const siblingService = path.join(path.dirname(argvEntry), 'run-service.mjs')
+    const runtimeDirectory = path.dirname(argvEntry)
+    const siblingService = path.join(runtimeDirectory, 'run-service.mjs')
     if (existsSync(siblingService)) {
       return {
         executable: process.execPath,
         args: [siblingService],
-        env: isElectronRuntime() ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : process.env,
+        env: buildRunServiceEnvironment(runtimeDirectory, isElectronRuntime()),
       }
-    }
-  }
-
-  const cwdSourceEntry = path.join(process.cwd(), 'electron', 'runService', 'index.ts')
-  if (existsSync(cwdSourceEntry)) {
-    return {
-      executable: process.execPath,
-      args: ['--import', 'tsx', cwdSourceEntry],
-      env: isElectronRuntime() ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : process.env,
     }
   }
 
   const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
   if (resourcesPath) {
-    const cliDirectory = path.join(resourcesPath, 'cli')
-    const serviceEntry = path.join(cliDirectory, 'run-service.mjs')
-    const nodeExecutable = path.join(cliDirectory, process.platform === 'win32' ? 'node.exe' : 'node')
-    if (existsSync(serviceEntry) && existsSync(nodeExecutable)) {
-      return { executable: nodeExecutable, args: [serviceEntry], env: process.env }
+    const packagedLaunch = getPackagedRunServiceLaunch(resourcesPath)
+    if (packagedLaunch) return packagedLaunch
+  }
+
+  const sourceEntry = path.join(hostRuntimeRoot, 'electron', 'runService', 'index.ts')
+  if (existsSync(sourceEntry)) {
+    return {
+      executable: process.execPath,
+      args: ['--import', 'tsx', sourceEntry],
+      env: buildRunServiceEnvironment(hostRuntimeRoot, isElectronRuntime()),
     }
   }
 
-  const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
-  const projectRoot = path.resolve(moduleDirectory, '..', '..')
-  const sourceEntry = path.join(projectRoot, 'electron', 'runService', 'index.ts')
-  return {
-    executable: process.execPath,
-    args: ['--import', 'tsx', sourceEntry],
-    env: isElectronRuntime() ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : process.env,
-  }
+  throw new Error('Unable to locate the TideCode run service from the configured runtime root.')
 }
 
 async function connectExistingService() {

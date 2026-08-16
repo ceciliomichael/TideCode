@@ -7,6 +7,7 @@ const STREAM_PROGRESS_PERSIST_CHAR_FLUSH_THRESHOLD = 768
 export interface SharedStreamPersistenceOptions {
   conversationId: string
   chatMode: ChatMode
+  getChatMode?: () => ChatMode
   onPersisted?: (conversation: ConversationRecord) => void
   onError?: (error: unknown) => void
 }
@@ -66,7 +67,7 @@ export class SharedStreamPersistence {
         const messages = this.pendingMessages
         this.pendingMessages = null
         latest = await replaceStoredMessages({
-          chatMode: this.options.chatMode,
+          chatMode: this.options.getChatMode?.() ?? this.options.chatMode,
           conversationId: this.options.conversationId,
           messages,
         })

@@ -2,8 +2,12 @@ import { randomUUID } from 'node:crypto'
 import net from 'node:net'
 import type {
   AppendConversationMessagesInput,
+  ChatCompactionLifecycleState,
+  CompactConversationInput,
+  CompactConversationResult,
   ConversationRecord,
   ReplaceConversationMessagesInput,
+  SharedConversationRuntimeSnapshot,
   SharedRunProjection,
   SharedRunSnapshot,
   StartChatStreamInput,
@@ -11,6 +15,7 @@ import type {
   SubmitToolDecisionInput,
   SubmitToolDecisionResult,
   TideCodeRunEvent,
+  UpdateConversationRuntimeInput,
   UpdatePendingSteerMessagesInput,
   UpdatePendingSteerMessagesResult,
 } from '../../src/types/chat'
@@ -81,6 +86,16 @@ export class TideCodeRunServiceClient {
     return () => this.eventListeners.delete(listener)
   }
 
+  async getCompactionState(conversationId: string) {
+    await this.connect()
+    return this.requestRaw<ChatCompactionLifecycleState | null>('getCompactionState', { conversationId })
+  }
+
+  async getConversationRuntime(conversationId: string) {
+    await this.connect()
+    return this.requestRaw<SharedConversationRuntimeSnapshot | null>('getConversationRuntime', { conversationId })
+  }
+
   async getRunProjection(runId: string) {
     await this.connect()
     return this.requestRaw<SharedRunProjection | null>('getRunProjection', { runId })
@@ -101,6 +116,11 @@ export class TideCodeRunServiceClient {
     return this.requestRaw<ConversationRecord>('replaceMessages', input)
   }
 
+  async compactConversation(input: CompactConversationInput) {
+    await this.connect()
+    return this.requestRaw<CompactConversationResult>('compactConversation', input)
+  }
+
   async startStream(input: StartChatStreamInput) {
     await this.connect()
     return this.requestRaw<StartChatStreamResult>('startStream', input)
@@ -119,6 +139,11 @@ export class TideCodeRunServiceClient {
   async submitToolDecision(input: SubmitToolDecisionInput) {
     await this.connect()
     return this.requestRaw<SubmitToolDecisionResult>('submitToolDecision', input)
+  }
+
+  async updateConversationRuntime(input: UpdateConversationRuntimeInput) {
+    await this.connect()
+    return this.requestRaw<SharedConversationRuntimeSnapshot>('updateConversationRuntime', input)
   }
 
   close() {

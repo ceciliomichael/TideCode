@@ -1,33 +1,44 @@
+import { randomUUID } from 'node:crypto'
 import net from 'node:net'
 import type { Socket } from 'node:net'
 import type {
+  ChatCompactionLifecycleState,
   ChatStreamEvent,
+  CompactConversationInput,
+  CompactConversationResult,
   ConversationRecord,
+  SharedConversationRuntimeSnapshot,
   SharedRunProjection,
   SharedRunStatus,
   StartChatStreamInput,
   TideCodeRunEvent,
+  UpdateConversationRuntimeInput,
 } from '../../src/types/chat'
 import {
   cancelApiKeyChatStream,
+  compactApiKeyConversation,
   startApiKeyChatStream,
   submitApiKeyToolDecision,
   updateApiKeyPendingSteerMessages,
 } from '../chat/apiKey/runtime'
 import {
   cancelCodexChatStream,
+  compactCodexConversation,
   startCodexChatStream,
   submitCodexToolDecision,
   updateCodexPendingSteerMessages,
 } from '../chat/codex/runtime'
 import type { ChatStreamEventTarget } from '../chat/shared/runtimeStreamEvents'
 import { CliTurnMessageCollector } from '../cli/cliTurnMessageCollector'
-import { appendStoredMessages, getStoredConversation, replaceStoredMessages } from '../history/store'
+import { appendStoredMessages, getStoredConversation, replaceStoredMessages, updateStoredConversationChatMode } from '../history/store'
+import { getStoredSettings, updateStoredSettings } from '../settings/store'
 import type { CliSessionState } from '../cli/types'
 import { RUN_SERVICE_PROTOCOL_VERSION, isRunServiceRequest, type RunServiceResponse } from './protocol'
 import { ensureRunServiceToken, getRunServiceEndpoint, removeStaleRunServiceSocket } from './paths'
 import { SharedRunRegistry } from './runRegistry'
 import { SharedStreamPersistence } from './streamPersistence'
+import { listCompactionMarkers } from '../chat/history/eventStore'
+import { hasMinimumCompactionMessages, MIN_COMPACTION_MESSAGE_COUNT } from '../../src/lib/chatCompactionGate'
 
 const TERMINAL_RUN_RETENTION_MS = 60_000
 const TEXT_STREAM_IDLE_GRACE_MS = 1_500
@@ -94,6 +105,8 @@ export class TideCodeRunServiceServer {
   private readonly nextSeqByRunId = new Map<string, number>()
   private readonly projectionsByRunId = new Map<string, SharedRunProjection>()
   private readonly projectionTextIdleTimers = new Map<string, NodeJS.Timeout>()
+  private readonly compactionStateByConversationId = new Map<string, ChatCompactionLifecycleState>()
+  private readonly runtimeByConversationId = new Map<string, SharedConversationRuntimeSnapshot>()
   private nextConversationEventSeq = 0
   private token = ''
 
@@ -160,6 +173,20 @@ export class TideCodeRunServiceServer {
             result: { protocolVersion: RUN_SERVICE_PROTOCOL_VERSION },
           })
           return
+        case 'getCompactionState':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: this.compactionStateByConversationId.get(parsed.params.conversationId) ?? null,
+          })
+          return
+        case 'getConversationRuntime':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: await this.getConversationRuntime(parsed.params.conversationId),
+          })
+          return
         case 'getRunProjection':
           this.sendResponse(socket, {
             id: parsed.id,
@@ -180,6 +207,11 @@ export class TideCodeRunServiceServer {
           const conversation = await replaceStoredMessages(parsed.params)
           this.emitConversationReplacement(conversation)
           this.sendResponse(socket, { id: parsed.id, ok: true, result: conversation })
+          return
+        }
+        case 'compactConversation': {
+          const result = await this.compactConversation(parsed.params)
+          this.sendResponse(socket, { id: parsed.id, ok: true, result })
           return
         }
         case 'startStream': {
@@ -213,9 +245,149 @@ export class TideCodeRunServiceServer {
           this.sendResponse(socket, { id: parsed.id, ok: true, result })
           return
         }
+        case 'updateConversationRuntime': {
+          const result = await this.updateConversationRuntime(parsed.params)
+          this.sendResponse(socket, { id: parsed.id, ok: true, result })
+          return
+        }
       }
     } catch (error) {
       this.sendResponse(socket, { id: parsed.id, ok: false, error: toErrorMessage(error) })
+    }
+  }
+
+  private async getConversationRuntime(conversationId: string): Promise<SharedConversationRuntimeSnapshot | null> {
+    const cached = this.runtimeByConversationId.get(conversationId)
+    if (cached) return cached
+
+    const conversation = await getStoredConversation(conversationId).catch(() => null)
+    if (!conversation) return null
+    const settings = await getStoredSettings().catch(() => null)
+    const preference = settings?.conversationModelPreferences[conversationId]
+    return {
+      chatMode: preference?.chatMode ?? conversation.chatMode,
+      conversationId,
+      model: preference
+        ? {
+            label: preference.label,
+            modelId: preference.modelId,
+            providerId: preference.providerId,
+            ...(preference.reasoningEffort ? { reasoningEffort: preference.reasoningEffort } : {}),
+          }
+        : null,
+      updatedAt: conversation.updatedAt,
+    }
+  }
+
+  private async updateConversationRuntime(input: UpdateConversationRuntimeInput): Promise<SharedConversationRuntimeSnapshot> {
+    const conversationId = input.conversationId.trim()
+    if (!conversationId) throw new Error('A conversation ID is required to update shared runtime state.')
+
+    const previous = await this.getConversationRuntime(conversationId)
+    const conversation = await getStoredConversation(conversationId).catch(() => null)
+    const chatMode = input.chatMode ?? previous?.chatMode ?? conversation?.chatMode ?? 'agent'
+    const model = input.model ?? previous?.model ?? null
+
+    if (conversation && input.chatMode) {
+      await updateStoredConversationChatMode(conversationId, input.chatMode)
+    }
+
+    if (conversation && model && (input.model || input.chatMode)) {
+      const settings = await getStoredSettings()
+      const existingPreference = settings.conversationModelPreferences[conversationId]
+      await updateStoredSettings({
+        conversationModelPreferences: {
+          ...settings.conversationModelPreferences,
+          [conversationId]: {
+            chatMode,
+            label: model.label,
+            modelId: model.modelId,
+            providerId: model.providerId,
+            ...(model.reasoningEffort ?? existingPreference?.reasoningEffort
+              ? { reasoningEffort: model.reasoningEffort ?? existingPreference?.reasoningEffort }
+              : {}),
+          },
+        },
+      })
+    }
+
+    const runtime: SharedConversationRuntimeSnapshot = {
+      chatMode,
+      conversationId,
+      model,
+      updatedAt: Date.now(),
+    }
+    this.runtimeByConversationId.set(conversationId, runtime)
+    this.emitGlobalEvent({
+      type: 'conversation_runtime_updated',
+      seq: 0,
+      conversationId,
+      runtime,
+    })
+    return runtime
+  }
+
+  private async compactConversation(input: CompactConversationInput): Promise<CompactConversationResult> {
+    const conversationId = input.conversationId.trim()
+    const [conversation, compactionMarkers] = await Promise.all([
+      getStoredConversation(conversationId),
+      listCompactionMarkers(conversationId),
+    ])
+    if (!hasMinimumCompactionMessages(conversation?.messages ?? input.messages, compactionMarkers)) {
+      throw new Error(`At least ${MIN_COMPACTION_MESSAGE_COUNT} conversation messages are required since the latest compaction boundary before compacting.`)
+    }
+    const existingState = this.compactionStateByConversationId.get(conversationId)
+    if (existingState?.phase === 'compacting') {
+      throw new Error('Conversation compaction is already in progress.')
+    }
+
+    const attemptId = randomUUID()
+    const streamId = randomUUID()
+    this.compactionStateByConversationId.set(conversationId, { attemptId, phase: 'compacting', streamId })
+    this.emitGlobalEvent({
+      type: 'compaction_event',
+      seq: 0,
+      conversationId,
+      event: { attemptId, conversationId, streamId, type: 'compaction_started' },
+    })
+
+    try {
+      const result = input.providerId === 'codex'
+        ? await compactCodexConversation(input)
+        : await compactApiKeyConversation(input)
+      if (!result.compacted || !result.packetId) {
+        this.compactionStateByConversationId.delete(conversationId)
+        this.emitGlobalEvent({
+          type: 'compaction_event',
+          seq: 0,
+          conversationId,
+          event: { attemptId, conversationId, reason: 'unavailable', streamId, type: 'compaction_failed' },
+        })
+        return result
+      }
+
+      this.compactionStateByConversationId.set(conversationId, {
+        attemptId,
+        compactionId: result.packetId,
+        phase: 'compacted',
+        streamId,
+      })
+      this.emitGlobalEvent({
+        type: 'compaction_event',
+        seq: 0,
+        conversationId,
+        event: { compactionId: result.packetId, conversationId, streamId, type: 'compaction_committed' },
+      })
+      return result
+    } catch (error) {
+      this.compactionStateByConversationId.delete(conversationId)
+      this.emitGlobalEvent({
+        type: 'compaction_event',
+        seq: 0,
+        conversationId,
+        event: { attemptId, conversationId, reason: 'error', streamId, type: 'compaction_failed' },
+      })
+      throw error
     }
   }
 
@@ -286,6 +458,7 @@ export class TideCodeRunServiceServer {
     const persistence = new SharedStreamPersistence({
       chatMode: sharedInput.chatMode,
       conversationId,
+      getChatMode: () => this.runtimeByConversationId.get(conversationId)?.chatMode ?? sharedInput.chatMode,
       onError: (error) => console.error('[run-service] Failed to persist stream progress.', error),
       onPersisted: (conversation) => {
         this.emitEvent(createdRun.runId, {
@@ -426,13 +599,17 @@ export class TideCodeRunServiceServer {
     type: 'conversation_appended' | 'conversation_replaced',
     conversation: ConversationRecord,
   ) {
-    const event: TideCodeRunEvent = {
+    this.emitGlobalEvent({
       type,
-      seq: ++this.nextConversationEventSeq,
+      seq: 0,
       conversationId: conversation.id,
       conversation,
-    }
-    const payload = `${JSON.stringify({ type: 'event', event })}\n`
+    })
+  }
+
+  private emitGlobalEvent(event: TideCodeRunEvent) {
+    const withSeq = { ...event, seq: ++this.nextConversationEventSeq } as TideCodeRunEvent
+    const payload = `${JSON.stringify({ type: 'event', event: withSeq })}\n`
     for (const client of this.clients) {
       if (!client.destroyed) client.write(payload)
     }

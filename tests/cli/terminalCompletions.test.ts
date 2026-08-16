@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { TerminalCompletionCatalog } from '../../electron/cli/terminalCompletions'
+import type { CliSessionState } from '../../electron/cli/types'
 
 test('completion catalog derives slash commands from the command registry', () => {
   const catalog = new TerminalCompletionCatalog()
@@ -15,6 +16,31 @@ test('completion catalog derives slash commands from the command registry', () =
   const effortItems = catalog.getItems('/eff', 4)
   assert.equal(effortItems[0]?.value, '/effort')
   assert.match(effortItems[0]?.description ?? '', /reasoning effort/i)
+})
+
+test('completion catalog hides compact while the current thread is below the compaction message minimum', () => {
+  const catalog = new TerminalCompletionCatalog()
+  const state: CliSessionState = {
+    activeStreamId: null,
+    chatMode: 'agent',
+    compactionLocked: true,
+    conversationId: 'conversation-1',
+    isStreaming: false,
+    messages: [
+      { content: 'Prompt', id: 'user-1', role: 'user', timestamp: 1 },
+      { content: 'Answer', id: 'assistant-1', role: 'assistant', timestamp: 2 },
+    ],
+    modelId: 'gpt-test',
+    providerId: 'codex',
+    reasoningEffort: 'medium',
+    terminalExecutionMode: 'full',
+    workspaceRootPath: 'C:/workspace',
+  }
+
+  assert.equal(catalog.getItems('/comp', 5, state).some((item) => item.value === '/compact'), false)
+  state.compactionLocked = false
+  state.messages.push({ content: 'Next prompt', id: 'user-2', role: 'user', timestamp: 3 })
+  assert.equal(catalog.getItems('/comp', 5, state).some((item) => item.value === '/compact'), true)
 })
 
 test('completion catalog matches desktop workspace visibility and supports files, folders, and skills', async () => {

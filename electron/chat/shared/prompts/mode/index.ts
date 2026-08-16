@@ -5,6 +5,7 @@ import type { AgentOrchestrationMode } from '../../orchestration'
 import { CODE_MODE_EXECUTION_CONTRACT } from '../../codeMode/promptContract'
 import { buildWorkspaceInstructionsBlock } from '../workspaceInstructions'
 import { buildPythonVenvPromptBlock } from '../../../../python/venv'
+import { getTideCodeRuntimeRoot } from '../../../../runtime/runtimeRoot'
 
 const PROMPT_REPO_PATH = 'electron/chat/shared/prompts/mode'
 const MODE_PROMPT_PATHS: Record<ChatMode, string> = {
@@ -27,17 +28,11 @@ const MODE_INTENT_PROMPT_PATHS: Partial<Record<ChatMode, string>> = {
 }
 
 function readPromptFile(relativePath: string) {
-  const appRoot = process.env.APP_ROOT?.trim()
-  const searchRoots = [appRoot, process.cwd()].filter((value): value is string => Boolean(value))
-
-  for (const root of searchRoots) {
-    const candidatePath = path.join(root, PROMPT_REPO_PATH, relativePath)
-    if (existsSync(candidatePath)) {
-      return readFileSync(candidatePath, 'utf8').trim()
-    }
+  const promptPath = path.join(getTideCodeRuntimeRoot(), PROMPT_REPO_PATH, relativePath)
+  if (!existsSync(promptPath)) {
+    throw new Error(`Unable to load chat prompt file: ${relativePath}`)
   }
-
-  throw new Error(`Unable to load chat prompt file: ${relativePath}`)
+  return readFileSync(promptPath, 'utf8').trim()
 }
 
 function escapePromptMarkup(content: string) {

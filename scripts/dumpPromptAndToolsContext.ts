@@ -1,14 +1,20 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { buildChatModeSystemPromptBreakdown } from '../electron/chat/shared/prompts/mode'
 import { buildChatSystemPrompt } from '../electron/chat/shared/messages'
 import { createAgentToolBundle } from '../electron/chat/shared/tools/factory'
 import { describeTools, stableStringify } from '../electron/chat/cache/canonicalization'
 import { listEnabledSkills } from '../electron/skills/service'
 import { approximateTokenCount } from '../src/lib/contextUsage'
+import { configureTideCodeRuntimeRoot } from '../electron/runtime/runtimeRoot'
 import type { ToolSet } from 'ai'
 
 const DEFAULT_OUTPUT_FILE = 'prompt_context_audit.json'
+const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
+const workspaceRoot = path.resolve(scriptDirectory, '..')
+process.env.APP_ROOT ??= workspaceRoot
+configureTideCodeRuntimeRoot(workspaceRoot)
 
 interface AuditComponent {
   chars: number

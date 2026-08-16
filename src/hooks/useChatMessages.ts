@@ -37,7 +37,6 @@ export function useChatMessages(input: UseChatMessagesInput) {
     conversationModelPreferences,
     editSessionsByConversation: persistedEditSessionsByConversation,
     language,
-    onPersistConversationModelPreferences,
     persistConversationLaunchPreference,
     persistEditSessionsByConversation,
     persistRevertEditSessionsByConversation,
@@ -253,21 +252,45 @@ export function useChatMessages(input: UseChatMessagesInput) {
     draftChatModeByConversationRef.current[activeConversationId] = draftChatMode
   }, [activeConversationId, draftChatMode])
 
+  useEffect(() => {
+    if (!activeConversationId) return
+    let cancelled = false
+    const applySharedMode = (chatMode: ChatMode) => {
+      if (cancelled) return
+      draftChatModeByConversationRef.current[activeConversationId] = chatMode
+      setDraftChatMode(chatMode)
+    }
+
+    void window.tidecodeRuns.getConversationRuntime(activeConversationId)
+      .then((runtime) => {
+        if (runtime) applySharedMode(runtime.chatMode)
+      })
+      .catch(() => undefined)
+
+    const unsubscribe = window.tidecodeRuns.onEvent((event) => {
+      if (event.type !== 'conversation_runtime_updated' || event.conversationId !== activeConversationId) return
+      applySharedMode(event.runtime.chatMode)
+    })
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [activeConversationId])
+
   const setSelectedChatMode = useCallback(
     (nextMode: ChatMode) => {
       setDraftChatMode(nextMode)
       if (activeConversationId) {
         draftChatModeByConversationRef.current[activeConversationId] = nextMode
-        const existing = conversationModelPreferences[activeConversationId]
-        if (existing) {
-          onPersistConversationModelPreferences({
-            ...conversationModelPreferences,
-            [activeConversationId]: { ...existing, chatMode: nextMode },
-          })
-        }
+        void window.tidecodeRuns.updateConversationRuntime({
+          chatMode: nextMode,
+          conversationId: activeConversationId,
+        }).catch((error) => {
+          console.error('Failed to sync conversation mode', error)
+        })
       }
     },
-    [activeConversationId, conversationModelPreferences, onPersistConversationModelPreferences],
+    [activeConversationId],
   )
 
   const captureActiveEditDraftSession = useCallback(() => {
