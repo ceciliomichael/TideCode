@@ -146,3 +146,32 @@ test('gitCommit creates and checks out a preferred branch for a local commit', a
     assert.equal(currentBranchStdout.trim(), 'feat/local-branch')
   })
 })
+
+test('gitCommit commit-and-push preserves the selected branch and its configured upstream', async () => {
+  await withTemporaryDirectory(async (tempRootPath) => {
+    const { repoPath } = await setupRepositoryWithOrigin(tempRootPath)
+    await runGit(['push', 'origin', 'main:shared-target'], repoPath)
+    await runGit(['fetch', 'origin'], repoPath)
+    await runGit(['checkout', '-b', 'local-work'], repoPath)
+    await runGit(['branch', '--set-upstream-to', 'origin/shared-target', 'local-work'], repoPath)
+    await fs.writeFile(path.join(repoPath, 'selected-branch.txt'), 'selected branch work\n', 'utf8')
+
+    const result = await gitCommit({
+      action: 'commit-and-push',
+      message: 'fix: preserve selected branch upstream',
+      workspacePath: repoPath,
+    })
+
+    assert.equal(result.success, true)
+    assert.equal(result.branchName, 'local-work')
+
+    const { stdout: currentBranchStdout } = await runGit(['symbolic-ref', '--short', 'HEAD'], repoPath)
+    const { stdout: localHeadStdout } = await runGit(['rev-parse', 'HEAD'], repoPath)
+    const { stdout: targetRemoteStdout } = await runGit(['ls-remote', '--heads', 'origin', 'shared-target'], repoPath)
+    const { stdout: unexpectedRemoteStdout } = await runGit(['ls-remote', '--heads', 'origin', 'local-work'], repoPath)
+
+    assert.equal(currentBranchStdout.trim(), 'local-work')
+    assert.equal(targetRemoteStdout.startsWith(localHeadStdout.trim()), true)
+    assert.equal(unexpectedRemoteStdout.trim(), '')
+  })
+})

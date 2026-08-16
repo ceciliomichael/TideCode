@@ -1,5 +1,5 @@
 import { jsonSchema, tool } from 'ai'
-import type { AppTerminalExecutionMode } from '../../../../src/types/chat'
+
 import type { AgentToolExecutionResult } from '../toolTypes'
 import { createSuccessResult } from './workspaceToolResults'
 import { createToolErrorResult } from './toolResult'
@@ -37,7 +37,7 @@ const CODE_MODE_INPUT_SCHEMA = {
   additionalProperties: false,
   properties: {
     code: {
-      description: 'Temporary async JavaScript. Every tools.* function returns Promise<ToolResult>; always await calls before reading or returning them. Return only concise JSON-compatible data.',
+      description: 'Temporary tool-only async JavaScript. Every tools.* function returns Promise<ToolResult>; always await calls before reading or returning them. Use ordinary JavaScript only for in-memory orchestration and return concise JSON-compatible data.',
       minLength: 1,
       type: 'string',
     },
@@ -138,7 +138,7 @@ function buildPreloadedToolDocumentation(registry: AgentToolRegistry) {
   }
 
   return [
-    'Path rule: every path argument is one exact existing workspace-relative file or directory. `read` is for one file (a directory returns entries), `list` is for one directory, and `glob`/`grep` discover existing paths. Never invent an index file, combine roots with spaces, or treat a path list as one path.',
+    'Path rule: every supplied path argument is one exact workspace-relative file or directory. For root-capable `read`, `list`, `glob`, and `grep` calls, an omitted path where the schema permits omission, an empty string, or `.` refers to the bound workspace root. Never invent an index file, combine roots with spaces, or treat a path list as one path.',
     'Preloaded local APIs (call directly inside the program):',
     ...contracts.map((contract) => `- ${contract.signature} — ${contract.description}`),
     'Connected MCP APIs are dynamic. Inside the same program, call tools.tool_search({ query }), then invoke an exact returned tools.<name>(args) function. Do not guess MCP names.',
@@ -148,11 +148,8 @@ function buildPreloadedToolDocumentation(registry: AgentToolRegistry) {
 export function createCodeModeTool(
   executor: CodeModeExecutor,
   registry: AgentToolRegistry,
-  terminalExecutionMode: AppTerminalExecutionMode = 'sandbox',
 ) {
-  const runtimePolicy = terminalExecutionMode === 'sandbox'
-    ? 'Sandbox runtime: direct filesystem APIs are limited to the workspace, environment variables are empty, process creation and network APIs are blocked, and nested workers are blocked. Use tools.* for blocked operations.'
-    : 'Full runtime: direct JavaScript runtime APIs are available in the worker. Use tools.* when you need structured application results.'
+  const runtimePolicy = "Tool-only runtime: direct Node.js and host access is blocked. Use tools.* for every filesystem, terminal, process, network, memory, plan, mutation, or connected-service action. Ordinary JavaScript remains available for in-memory computation and orchestration. Structured tools apply the app's sandbox/full execution policy themselves."
 
   return tool({
     description: [

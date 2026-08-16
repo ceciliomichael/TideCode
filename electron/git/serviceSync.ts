@@ -6,6 +6,7 @@ import {
   isFastForwardOnlyPullFailure,
   isGitUnavailable,
   isWorkingTreeConflictFailure,
+  pushCheckedOutBranch,
   readCurrentUpstreamBranch,
   readSymbolicHeadBranchName,
   resolveRepositoryRoot,
@@ -36,19 +37,6 @@ async function pullCurrentBranch(repoRootPath: string, branchName: string) {
   await runGit(['pull', '--ff-only', '--no-rebase'], repoRootPath)
 }
 
-async function pushCurrentBranch(repoRootPath: string, branchName: string) {
-  const upstreamBranch = await readCurrentUpstreamBranch(repoRootPath)
-  if (upstreamBranch) {
-    await runGit(['push'], repoRootPath)
-  } else {
-    const remoteName = await getPreferredRemoteName(repoRootPath)
-    if (!remoteName) {
-      throw new Error('No remote is configured for this repository.')
-    }
-
-    await runGit(['push', '-u', remoteName, branchName], repoRootPath)
-  }
-}
 
 export async function gitSync(input: GitSyncInput): Promise<GitSyncResult> {
   const workspacePath = input.workspacePath.trim()
@@ -81,7 +69,7 @@ export async function gitSync(input: GitSyncInput): Promise<GitSyncResult> {
         throw new Error('Cannot push from detached HEAD. Checkout a branch first.')
       }
 
-      await pushCurrentBranch(repoRootPath, branchName)
+      await pushCheckedOutBranch(repoRootPath, branchName)
       message = `Pushed '${branchName}' to remote.`
     } else if (action === 'sync') {
       if (!branchName) {
@@ -92,7 +80,7 @@ export async function gitSync(input: GitSyncInput): Promise<GitSyncResult> {
       if (upstreamBranch) {
         await runGit(['pull', '--ff-only', '--no-rebase'], repoRootPath)
       }
-      await pushCurrentBranch(repoRootPath, branchName)
+      await pushCheckedOutBranch(repoRootPath, branchName)
       message = `Synchronized '${branchName}' with remote.`
     } else {
       throw new Error(`Unsupported sync action: ${String(action)}`)

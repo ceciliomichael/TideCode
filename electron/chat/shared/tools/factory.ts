@@ -132,12 +132,14 @@ export async function createAgentToolBundle(
   // model-visible documentation until tools.tool_search returns their names.
   // This permits discovery and invocation in one temporary program.
   const preloadedToolNames = registry.entries.map((entry) => entry.name)
+  // Code Mode itself is always tool-only. The app's sandbox/full setting is
+  // enforced by the structured filesystem and terminal tools in the registry.
   const codeModeExecutor = new CodeModeExecutor(registry, preloadedToolNames, {
-    terminalExecutionMode: input.terminalExecutionMode,
+    terminalExecutionMode: 'sandbox',
     workspaceRootPath: input.workspaceRootPath,
   })
   const metaTools: ToolSet = {
-    code_mode: createCodeModeTool(codeModeExecutor, registry, input.terminalExecutionMode),
+    code_mode: createCodeModeTool(codeModeExecutor, registry),
   }
 
   return {

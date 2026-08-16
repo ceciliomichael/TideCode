@@ -240,51 +240,34 @@ test('Code Mode executes runtime APIs when requested', async () => {
   }
 })
 
-test('Code Mode sandbox keeps workspace filesystem access while blocking host capabilities', async () => {
-  const parentRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-sandbox-'))
-  const workspaceRootPath = path.join(parentRootPath, 'workspace')
-  const outsideFilePath = path.join(parentRootPath, 'outside.txt')
-  await fs.mkdir(workspaceRootPath)
-  await fs.writeFile(path.join(workspaceRootPath, 'inside.txt'), 'workspace data', 'utf8')
-  await fs.writeFile(outsideFilePath, 'outside data', 'utf8')
+test('Code Mode tool-only runtime blocks direct Node and host APIs', async () => {
   const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
     terminalExecutionMode: 'sandbox',
-    workspaceRootPath,
   })
 
   try {
-    const code = [
-      'const fs = require("node:fs")',
-      'const inside = fs.readFileSync(' + JSON.stringify(path.join(workspaceRootPath, 'inside.txt')) + ', "utf8")',
-      'let outsideBlocked = false',
-      'try { fs.readFileSync(' + JSON.stringify(outsideFilePath) + ', "utf8") } catch { outsideBlocked = true }',
-      'let networkBlocked = false',
-      'try { await fetch("http://127.0.0.1:1") } catch { networkBlocked = true }',
-      'let childBlocked = false',
-      'try { require("node:child_process").execFileSync("node", ["--version"]) } catch { childBlocked = true }',
-      'let codeGenerationBlocked = false',
-      'try { Object.getPrototypeOf(async function () {}).constructor("return 1")() } catch { codeGenerationBlocked = true }',
-      'return { childBlocked, codeGenerationBlocked, envKeys: Object.keys(process.env).length, inside, networkBlocked, outsideBlocked, workspace: process.cwd() }',
-    ].join('\n')
-    const result = await executor.run(code)
+    const blockedPrograms = [
+      'return process.cwd()',
+      'return global.process.version',
+      "return (() => {}).constructor('return process')().cwd()",
+      "return require('node:fs')",
+      "return fs.readFileSync('package.json', 'utf8')",
+      "return Buffer.from('ok').toString('base64')",
+      "return await fetch('https://example.com')",
+    ]
 
-    assert.equal(result.status, 'success')
-    assert.deepEqual(result.output, {
-      childBlocked: true,
-      codeGenerationBlocked: true,
-      envKeys: 0,
-      inside: 'workspace data',
-      networkBlocked: true,
-      outsideBlocked: true,
-      workspace: path.resolve(workspaceRootPath),
-    })
+    for (const program of blockedPrograms) {
+      const result = await executor.run(program)
+      assert.equal(result.status, 'error')
+      assert.match(result.summary, /tool-only runtime blocked|Use the matching tools/u)
+      assert.equal(result.toolCalls.length, 0)
+    }
   } finally {
     await executor.dispose()
-    await fs.rm(parentRootPath, { force: true, recursive: true })
   }
 })
 
-test('Code Mode sandbox blocks dynamic module loading', async () => {
+test('Code Mode tool-only runtime blocks dynamic module loading', async () => {
   const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
     terminalExecutionMode: 'sandbox',
   })
@@ -293,7 +276,7 @@ test('Code Mode sandbox blocks dynamic module loading', async () => {
     const result = await executor.run("return await import('node:process')")
 
     assert.equal(result.status, 'error')
-    assert.match(result.error ?? '', /does not allow dynamic module loading/u)
+    assert.match(result.error ?? '', /tool-only runtime does not allow dynamic module loading/u)
   } finally {
     await executor.dispose()
   }
@@ -620,7 +603,11 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
     )
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
-      /Path rule: every path argument is one exact existing workspace-relative file or directory/u,
+      /Path rule: every supplied path argument is one exact workspace-relative file or directory/u,
+    )
+    assert.match(
+      ((bundle.tools.code_mode as { description?: string }).description ?? ''),
+      /omitted path where the schema permits omission, an empty string, or `\.` refers to the bound workspace root/u,
     )
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
@@ -630,12 +617,45 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
       /tools\.tool_search\(\{ limit\?: number/u,
     )
+    assert.match(
+      ((bundle.tools.code_mode as { description?: string }).description ?? ''),
+      /Tool-only runtime: direct Node\.js and host access is blocked/u,
+    )
 
     const codeResult = await invoke(bundle.tools.code_mode, {
-      code: "const search = await tools.tool_search({ query: 'connected memory service', limit: 5 }); const file = await tools.read({ path: 'package.json' }); return { hasVersion: file.body.includes('1.2.3'), searchStatus: search.status }",
+      code: "const search = await tools.tool_search({ query: 'connected memory service', limit: 5 }); const file = await tools.read({ path: 'package.json' }); const root = await tools.read({ path: '' }); return { hasVersion: file.body.includes('1.2.3'), rootPath: root.subject?.path, searchStatus: search.status }",
     }) as { body?: string }
     assert.match(codeResult.body ?? '', /"hasVersion": true/u)
+    assert.match(codeResult.body ?? '', /"rootPath": "\."/u)
     assert.match(codeResult.body ?? '', /"searchStatus": "success"/u)
+  } finally {
+    await codeModeExecutor?.dispose()
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('full terminal mode does not grant direct Node access inside provider-facing Code Mode', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-full-terminal-'))
+  let codeModeExecutor: CodeModeExecutor | null = null
+
+  try {
+    const bundle = await createAgentToolBundle(
+      { terminalExecutionMode: 'full', workspaceRootPath },
+      { chatMode: 'agent', orchestrationMode: 'code_mode' },
+    )
+    codeModeExecutor = bundle.codeModeExecutor
+    const codeModeTool = bundle.tools.code_mode as {
+      execute?: (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>
+    }
+    assert.equal(typeof codeModeTool.execute, 'function')
+
+    const result = await codeModeTool.execute?.(
+      { code: 'return process.version' },
+      { context: {}, messages: [], toolCallId: 'full-terminal-code-mode' },
+    ) as { body?: string; status?: string }
+
+    assert.equal(result.status, 'error')
+    assert.match(result.body ?? '', /tool-only runtime blocked process/u)
   } finally {
     await codeModeExecutor?.dispose()
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

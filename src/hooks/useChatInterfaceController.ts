@@ -274,10 +274,10 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
   }, [gitBranchState, onDiffRefresh])
 
   const handleQuickCommit = useCallback(
-    async (commitInput: { message: string }) => {
+    async (commitInput: { action: 'commit' | 'commit-and-push'; message: string }) => {
       const workspacePathAtStart = activeWorkspacePathRef.current
       const commitResult = await gitCommitState.commit({
-        action: 'commit',
+        action: commitInput.action,
         message: commitInput.message,
       })
 

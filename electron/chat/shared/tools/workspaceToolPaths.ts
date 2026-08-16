@@ -19,6 +19,12 @@ export interface WorkspaceToolContext extends Pick<AgentToolContext, 'checkpoint
 export const WORKSPACE_PATH_DESCRIPTION =
   'Accepts exactly one path; read, list, glob, and grep targets must already exist. Prefer a path relative to the workspace root. Use an absolute path only when copied exactly from the user or a tool result; never construct one. To inspect multiple roots, make separate calls; never join paths with spaces.'
 
+export const ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION =
+  `${WORKSPACE_PATH_DESCRIPTION} An empty string or "." refers to the bound workspace root.`
+
+export const OPTIONAL_ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION =
+  `${WORKSPACE_PATH_DESCRIPTION} An omitted path, empty string, or "." refers to the bound workspace root.`
+
 export class WorkspaceTargetNotFoundError extends Error {
   constructor(
     public readonly requestedPath: string,

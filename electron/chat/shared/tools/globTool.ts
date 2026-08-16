@@ -1,20 +1,20 @@
 import { jsonSchema, tool } from 'ai'
 import {
   createGlobToolResult,
+  OPTIONAL_ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION,
   resolveReadOnlyTargetPath,
-  WORKSPACE_PATH_DESCRIPTION,
   type WorkspaceToolContext,
 } from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createGlobTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Find files by pattern under exactly one directory; use the exact path returned by list or the user.',
+    description: 'Find files by pattern under exactly one directory; an omitted path, empty string, or "." refers to the bound workspace root.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
         path: {
-          description: `${WORKSPACE_PATH_DESCRIPTION} Omit for the workspace root.`,
+          description: OPTIONAL_ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION,
           type: 'string',
         },
         pattern: { minLength: 1, type: 'string' },

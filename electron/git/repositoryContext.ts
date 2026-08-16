@@ -300,6 +300,26 @@ export async function readCurrentUpstreamBranch(repoRootPath: string) {
   }
 }
 
+export async function pushCheckedOutBranch(repoRootPath: string, branchName: string) {
+  const { stdout: upstreamStdout } = await runGit(
+    ['for-each-ref', '--format=%(upstream:remotename)%00%(upstream:remoteref)', `refs/heads/${branchName}`],
+    repoRootPath,
+  )
+  const [upstreamRemoteName = '', upstreamRemoteRef = ''] = upstreamStdout.trim().split('\0')
+
+  if (upstreamRemoteName.length > 0 && upstreamRemoteRef.length > 0) {
+    await runGit(['push', upstreamRemoteName, `HEAD:${upstreamRemoteRef}`], repoRootPath)
+    return
+  }
+
+  const remoteName = await getPreferredRemoteName(repoRootPath)
+  if (!remoteName) {
+    throw new Error('No remote is configured for this repository.')
+  }
+
+  await runGit(['push', '-u', remoteName, branchName], repoRootPath)
+}
+
 export async function readAheadBehindCounts(repoRootPath: string) {
   const upstreamBranch = await readCurrentUpstreamBranch(repoRootPath)
   if (!upstreamBranch) {

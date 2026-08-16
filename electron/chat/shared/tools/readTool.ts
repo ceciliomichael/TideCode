@@ -3,8 +3,8 @@ import { classifyWorkspaceMemoryPath, MEMORY_INDEX_PATH } from '../../../memory/
 import {
   createReadToolResult,
   resolveReadOnlyTargetPath,
+  ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION,
   WorkspaceTargetNotFoundError,
-  WORKSPACE_PATH_DESCRIPTION,
   type WorkspaceToolContext,
 } from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
@@ -45,12 +45,12 @@ function createMissingWorkspaceMemoryReadResult(
 
 export function createReadTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Read exactly one existing text file or image. By default, returns up to 500 lines. Set full_file: true to read the complete text file; full_file takes precedence over offset and limit.',
+    description: 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. By default, returns up to 500 lines. Set full_file: true to read the complete text file; full_file takes precedence over offset and limit.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
         path: {
-          description: WORKSPACE_PATH_DESCRIPTION,
+          description: ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION,
           type: 'string',
         },
         full_file: { description: 'Read the complete text file. When true, this takes precedence over offset and limit.', type: 'boolean' },
@@ -63,10 +63,10 @@ export function createReadTool(context: WorkspaceToolContext) {
     execute: async (rawInput) => {
       const input = rawInput as { full_file?: boolean; limit?: number; offset?: number; path?: string }
       try {
-        const targetPath = input.path
-        if (!targetPath) {
+        if (typeof input.path !== 'string') {
           throw new Error('File path ("path") is required.')
         }
+        const targetPath = input.path === '' ? '.' : input.path
         const target = await resolveReadOnlyTargetPath(
           context.workspaceRootPath,
           targetPath,

@@ -56,65 +56,22 @@ function createTools(toolNames) {
 
 function createBlockedRuntimeApi(name) {
   const blocked = () => {
-    throw new Error('Code Mode sandbox blocked ' + name + '. Use the matching tools.* API instead.')
+    throw new Error('Code Mode tool-only runtime blocked ' + name + '. Use the matching tools.* API instead.')
   }
   return new Proxy(blocked, {
     apply() {
-      throw new Error('Code Mode sandbox blocked ' + name + '. Use the matching tools.* API instead.')
+      throw new Error('Code Mode tool-only runtime blocked ' + name + '. Use the matching tools.* API instead.')
     },
     get(_target, property) {
       if (property === 'name') return name
-      if (property === 'toString') return () => '[sandbox-blocked-runtime-api]'
-      throw new Error('Code Mode sandbox blocked ' + name + '. Use the matching tools.* API instead.')
+      if (property === 'toString') return () => '[tool-only-blocked-runtime-api]'
+      throw new Error('Code Mode tool-only runtime blocked ' + name + '. Use the matching tools.* API instead.')
     },
   })
 }
 
-function createSandboxProcess(workspaceRootPath) {
-  return Object.freeze({
-    arch: hostProcess.arch,
-    cwd: () => workspaceRootPath,
-    env: Object.freeze({}),
-    platform: hostProcess.platform,
-    release: hostProcess.release,
-    version: hostProcess.version,
-    versions: Object.freeze({ node: hostProcess.versions.node }),
-  })
-}
 
-function createSandboxRequire() {
-  const allowedModules = new Set([
-    'node:buffer',
-    'node:fs',
-    'node:fs/promises',
-    'node:path',
-    'node:punycode',
-    'node:querystring',
-    'node:string_decoder',
-    'node:timers',
-    'node:url',
-    'node:util',
-    'buffer',
-    'fs',
-    'fs/promises',
-    'path',
-    'punycode',
-    'querystring',
-    'string_decoder',
-    'timers',
-    'url',
-    'util',
-  ])
-
-  return (specifier) => {
-    if (typeof specifier !== 'string' || !allowedModules.has(specifier)) {
-      throw new Error('Code Mode sandbox blocked require(' + JSON.stringify(specifier) + '). Use the matching tools.* API instead.')
-    }
-    return hostRequire(specifier)
-  }
-}
-
-function blockSandboxCodeGeneration() {
+function blockToolOnlyCodeGeneration() {
   const blocked = createBlockedRuntimeApi('code generation')
   const functionPrototypes = [
     Object.getPrototypeOf(function () {}),
@@ -150,9 +107,11 @@ function configureRuntime(message) {
     return
   }
 
-  globalThis.process = createSandboxProcess(message.workspaceRootPath)
-  globalThis.require = createSandboxRequire()
-  globalThis.module = Object.freeze({ exports: {} })
+  globalThis.global = createBlockedRuntimeApi('global')
+  globalThis.process = createBlockedRuntimeApi('process')
+  globalThis.require = createBlockedRuntimeApi('require')
+  globalThis.module = createBlockedRuntimeApi('module')
+  globalThis.Buffer = createBlockedRuntimeApi('Buffer')
   globalThis.fetch = createBlockedRuntimeApi('fetch')
   globalThis.eval = createBlockedRuntimeApi('eval')
   globalThis.Function = createBlockedRuntimeApi('Function')
@@ -166,7 +125,7 @@ function configureRuntime(message) {
   globalThis.Electron = createBlockedRuntimeApi('Electron')
   globalThis.Bun = createBlockedRuntimeApi('Bun')
   globalThis.Deno = createBlockedRuntimeApi('Deno')
-  globalThis.fs = hostRequire('node:fs')
+  globalThis.fs = createBlockedRuntimeApi('fs')
   globalThis.console = {
     ...globalThis.console,
     log: () => {},
@@ -175,7 +134,7 @@ function configureRuntime(message) {
     error: () => {},
     dir: () => {},
   }
-  blockSandboxCodeGeneration()
+  blockToolOnlyCodeGeneration()
 }
 
 function isPromiseLike(value) {
@@ -386,17 +345,13 @@ export class CodeModeExecutor {
     const workerOptions: ModuleWorkerOptions = { eval: true, type: 'module', stdout: true, stderr: true }
     if (this.executionMode === 'sandbox') {
       if (containsDynamicCodeModeImport(executableCode)) {
-        return errorResult(executionId, 'Code Mode sandbox does not allow dynamic module loading. Use the available tools.* APIs instead.')
+        return errorResult(executionId, 'Code Mode tool-only runtime does not allow dynamic module loading. Use the available tools.* APIs instead.')
       }
       const nodeMajorVersion = Number.parseInt(process.versions.node.split('.')[0] ?? '', 10)
       if (!Number.isInteger(nodeMajorVersion) || nodeMajorVersion < 20) {
-        return errorResult(executionId, 'Code Mode sandbox requires Node.js permission support.')
+        return errorResult(executionId, 'Code Mode tool-only runtime requires Node.js permission support.')
       }
-      workerOptions.execArgv = [
-        '--permission',
-        '--allow-fs-read=' + this.workspaceRootPath,
-        '--allow-fs-write=' + this.workspaceRootPath,
-      ]
+      workerOptions.execArgv = ['--permission']
     }
 
     const worker = new Worker(CODE_MODE_WORKER_SOURCE, workerOptions)

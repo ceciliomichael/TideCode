@@ -31,7 +31,7 @@ interface SourceControlPanelProps {
   onOpenCommitModal: () => void
   onDiffPanelFileFocus: (filePath: string) => void
   onOpenDiffPanel: () => void
-  onQuickCommit: (input: { message: string }) => Promise<GitCommitResult | null>
+  onQuickCommit: (input: { action: 'commit' | 'commit-and-push'; message: string }) => Promise<GitCommitResult | null>
   onRefreshAll: () => Promise<void>
   onSectionOpenChange: (nextValue: Record<'changes' | 'commit' | 'history' | 'staged' | 'unstaged', boolean>) => void
   onStageFiles: (filePaths: string[]) => Promise<void>
@@ -309,6 +309,7 @@ function SourceControlPanelContent({
 
     try {
       const commitResult = await onQuickCommit({
+        action,
         message: commitMessage,
       })
 
@@ -316,14 +317,10 @@ function SourceControlPanelContent({
         await appendCommittedHistoryEntry(commitResult)
       }
       setCommitMessage('')
-      if (action === 'commit-and-push') {
-        const isPushSuccessful = await performSyncAction('push')
-        if (!isPushSuccessful) {
-          return
-        }
-      } else {
-        setOperationNotice({ kind: 'success', message: 'Committed changes.' })
-      }
+      setOperationNotice({
+        kind: 'success',
+        message: action === 'commit-and-push' ? 'Committed and pushed changes.' : 'Committed changes.',
+      })
     } catch (error) {
       setOperationNotice({
         kind: 'error',

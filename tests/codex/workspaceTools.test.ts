@@ -65,20 +65,28 @@ test('read tool returns image files as numbered multimodal model content', async
   }
 })
 
+interface ExecutableReadTool {
+  execute: (input: { full_file?: boolean; limit?: number; offset?: number; path: string }) => Promise<ExecutableToolResult>
+}
+
 interface ExecutableListTool {
-  execute: (input: { path: string }) => Promise<ExecutableToolResult>
+  execute: (input: { path?: string }) => Promise<ExecutableToolResult>
 }
 
 interface ExecutableGlobTool {
-  execute: (input: { path: string; pattern: string }) => Promise<ExecutableToolResult>
+  execute: (input: { path?: string; pattern: string }) => Promise<ExecutableToolResult>
 }
 
 interface ExecutableGrepTool {
-  execute: (input: { include?: string; path: string; pattern: string }) => Promise<ExecutableToolResult>
+  execute: (input: { include?: string; path?: string; pattern: string }) => Promise<ExecutableToolResult>
 }
 
 interface ExecutableWriteTool {
   execute: (input: { content: string; path: string }) => Promise<ExecutableToolResult>
+}
+
+interface ExecutableEditTool {
+  execute: (input: { edits: Array<{ replacementContent: string; targetContent: string }>; path: string }) => Promise<ExecutableToolResult>
 }
 
 async function createWorkspaceFixture() {
@@ -121,6 +129,75 @@ async function createWorkspaceFixture() {
 
   return workspaceRootPath
 }
+
+test('public workspace tools treat empty read and search paths as the canonical root', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+
+  try {
+    const tools = await createAgentTools(
+      { workspaceRootPath },
+      { chatMode: 'agent' },
+    )
+    const read = tools.read as unknown as ExecutableReadTool
+    const list = tools.list as unknown as ExecutableListTool
+    const glob = tools.glob as unknown as ExecutableGlobTool
+    const grep = tools.grep as unknown as ExecutableGrepTool
+
+    const [readEmpty, readDot] = await Promise.all([read.execute({ path: '' }), read.execute({ path: '.' })])
+    const [listEmpty, listDot, listOmitted] = await Promise.all([list.execute({ path: '' }), list.execute({ path: '.' }), list.execute({})])
+    const [globEmpty, globDot, globOmitted] = await Promise.all([
+      glob.execute({ path: '', pattern: '**/*.ts' }),
+      glob.execute({ path: '.', pattern: '**/*.ts' }),
+      glob.execute({ pattern: '**/*.ts' }),
+    ])
+    const [grepEmpty, grepDot, grepOmitted] = await Promise.all([
+      grep.execute({ path: '', pattern: 'needle' }),
+      grep.execute({ path: '.', pattern: 'needle' }),
+      grep.execute({ pattern: 'needle' }),
+    ])
+
+    for (const result of [readEmpty, listEmpty, globEmpty, grepEmpty]) {
+      assert.equal(result.status, 'success')
+      assert.equal(result.subject?.path, '.')
+    }
+    assert.equal(readEmpty.body, readDot.body)
+    assert.equal(listEmpty.body, listDot.body)
+    assert.equal(listEmpty.body, listOmitted.body)
+    assert.equal(globEmpty.body, globDot.body)
+    assert.equal(globEmpty.body, globOmitted.body)
+    assert.equal(grepEmpty.body, grepDot.body)
+    assert.equal(grepEmpty.body, grepOmitted.body)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('public workspace tools keep empty mutation targets and workspace selection invalid', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+
+  try {
+    const tools = await createAgentTools(
+      { workspaceRootPath },
+      { chatMode: 'agent' },
+    )
+    const write = tools.write as unknown as ExecutableWriteTool
+    const edit = tools.edit as unknown as ExecutableEditTool
+
+    const writeResult = await write.execute({ content: 'unsafe', path: '' })
+    assert.equal(writeResult.status, 'error')
+    assert.match(writeResult.summary ?? '', /path.*required/iu)
+    await assert.rejects(
+      edit.execute({ edits: [{ replacementContent: 'y', targetContent: 'x' }], path: '' }),
+      /non-empty "path"/u,
+    )
+    await assert.rejects(
+      createAgentTools({ workspaceRootPath: '' }, { chatMode: 'agent' }),
+      /Workspace root path is required/u,
+    )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
 
 test('createListToolResult lists only immediate visible directory entries at the requested path', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
@@ -779,11 +856,18 @@ test('workspace tool schemas use path consistently for filesystem targets', asyn
     )
 
     for (const toolName of ['list', 'read', 'glob', 'grep', 'edit', 'write']) {
-      const tool = tools[toolName] as { inputSchema: unknown }
+      const tool = tools[toolName] as { description?: string; inputSchema: unknown }
       const schema = await asSchema(tool.inputSchema).jsonSchema as {
-        properties?: Record<string, unknown>
+        properties?: Record<string, { description?: string }>
       }
       assert.ok(schema.properties && 'path' in schema.properties, `${toolName} should expose path`)
+      if (['list', 'read', 'glob', 'grep'].includes(toolName)) {
+        assert.match(tool.description ?? '', /empty string/u)
+        assert.match(schema.properties?.path?.description ?? '', /empty string/u)
+      } else {
+        assert.doesNotMatch(tool.description ?? '', /empty string/u)
+        assert.doesNotMatch(schema.properties?.path?.description ?? '', /empty string/u)
+      }
     }
 
     const editSchemaTool = tools.edit as { inputSchema: unknown }
