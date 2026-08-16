@@ -1,5 +1,5 @@
 import type { TerminalInputAction } from './terminalInput'
-import { visibleWidth, wrapVisible } from './terminalText'
+import { visibleWidth } from './terminalText'
 import type { ChatAttachment } from '../../src/types/chat'
 import {
   findChatImageReferenceForDeletion,
@@ -392,6 +392,50 @@ export function recordComposerHistory(state: ComposerState, text: string): Compo
   return createComposerState(history)
 }
 
+interface ComposerWrapChunk {
+  text: string
+  renderedLength: number
+  consumedLength: number
+}
+
+function getComposerWrapChunk(text: string, maxWidth: number): ComposerWrapChunk {
+  let rendered = ''
+  let renderedWidth = 0
+  let renderedLength = 0
+  let consumedLength = 0
+
+  for (const token of text.split(/(\s+)/)) {
+    if (token.length === 0) continue
+    const tokenWidth = visibleWidth(token)
+
+    if (tokenWidth > maxWidth) {
+      for (const character of token) {
+        const characterWidth = visibleWidth(character)
+        if (renderedWidth + characterWidth > maxWidth && rendered.length > 0) {
+          return { text: rendered, renderedLength, consumedLength }
+        }
+        rendered += character
+        renderedWidth += characterWidth
+        renderedLength += character.length
+        consumedLength += character.length
+      }
+      continue
+    }
+
+    if (renderedWidth + tokenWidth > maxWidth && rendered.length > 0) {
+      if (/^\s+$/.test(token)) consumedLength += token.length
+      return { text: rendered, renderedLength, consumedLength }
+    }
+
+    rendered += token
+    renderedWidth += tokenWidth
+    renderedLength += token.length
+    consumedLength += token.length
+  }
+
+  return { text: rendered, renderedLength, consumedLength }
+}
+
 export function getComposerVisualLines(state: ComposerState, width: number): ComposerVisualLine[] {
   const safeWidth = Math.max(1, width)
   const visualLines: ComposerVisualLine[] = []
@@ -402,15 +446,17 @@ export function getComposerVisualLines(state: ComposerState, width: number): Com
       return
     }
 
-    let remaining = line
     let startColumn = 0
-    while (remaining.length > 0) {
-      const wrapped = wrapVisible(remaining, safeWidth)[0] ?? ''
-      const chunk = wrapped.length > 0 ? wrapped : remaining.slice(0, 1)
-      const endColumn = startColumn + chunk.length
-      visualLines.push({ text: chunk, sourceLineIndex, sourceStartColumn: startColumn, sourceEndColumn: endColumn })
-      remaining = remaining.slice(chunk.length)
-      startColumn = endColumn
+    while (startColumn < line.length) {
+      const chunk = getComposerWrapChunk(line.slice(startColumn), safeWidth)
+      const renderedEndColumn = startColumn + chunk.renderedLength
+      visualLines.push({
+        text: chunk.text,
+        sourceLineIndex,
+        sourceStartColumn: startColumn,
+        sourceEndColumn: renderedEndColumn,
+      })
+      startColumn += chunk.consumedLength
     }
   })
 
@@ -423,7 +469,9 @@ export function getComposerCursorPosition(state: ComposerState, width: number): 
     .map((line, index) => ({ line, index }))
     .filter(({ line }) => line.sourceLineIndex === state.lineIndex)
 
-  const target = matching.find(({ line }) => state.column <= line.sourceEndColumn) ?? matching.at(-1)
+  const target = matching.find(({ line }) => (
+    state.column >= line.sourceStartColumn && state.column <= line.sourceEndColumn
+  )) ?? matching.find(({ line }) => state.column < line.sourceStartColumn) ?? matching.at(-1)
   if (!target) return { lineIndex: 0, column: 0 }
 
   const relativeColumn = Math.max(0, Math.min(state.column - target.line.sourceStartColumn, target.line.text.length))
