@@ -28,6 +28,7 @@ export interface ActiveTurnRenderData {
   panel: TerminalPromptPanel
   maxOutputLines?: number
   thinkingFrame?: string
+  leadingSpacer?: boolean
 }
 
 function renderActiveFollowUp(followUp: ActiveTurnFollowUpView, width: number): string[] {
@@ -123,12 +124,16 @@ function renderTurnEntries(entries: readonly TranscriptEntry[], width: number): 
   return lines
 }
 
-export function renderCommittedTurn(entries: readonly TranscriptEntry[]): string[] {
+export function renderCommittedTurn(
+  entries: readonly TranscriptEntry[],
+  options: { leadingSpacer?: boolean } = {},
+): string[] {
   const width = getTerminalPanelWidth()
   const lines = renderTurnEntries(entries, width)
-  const committedLines = lines.length > 0
-    ? ['', ...lines]
-    : ['', `  ${colors.subtle}Turn completed without response text.${colors.reset}`]
+  const contentLines = lines.length > 0
+    ? lines
+    : [`  ${colors.subtle}Turn completed without response text.${colors.reset}`]
+  const committedLines = options.leadingSpacer === false ? [...contentLines] : ['', ...contentLines]
   appendBlankRow(committedLines)
   return committedLines
 }
@@ -179,8 +184,8 @@ export function renderActiveTurn(data: ActiveTurnRenderData): ActiveTurnRender {
   }
 
   const panel = data.panel
-  const spacedOutputLines = ['', ...outputLines]
-  if (activityRow !== null) activityRow += 1
+  const spacedOutputLines = data.leadingSpacer === false ? [...outputLines] : ['', ...outputLines]
+  if (activityRow !== null && data.leadingSpacer !== false) activityRow += 1
   return {
     lines: [...spacedOutputLines, '', ...panel.lines],
     cursorRow: spacedOutputLines.length + 1 + panel.cursorRow,

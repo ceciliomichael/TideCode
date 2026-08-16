@@ -37,6 +37,9 @@ function createPromptContext(
           screen.addNotice('error', `Could not stop the turn: ${error instanceof Error ? error.message : String(error)}`)
         })
     },
+    onCancelDraft: () => {
+      state.pendingUndoEdit = undefined
+    },
   }
 }
 
@@ -69,6 +72,7 @@ export async function startInteractiveRepl(
   screen.updateComposerStatus({ reasoningEffort: state.reasoningEffort })
 
   const runService = await ensureRunServiceClient()
+  let applyingPendingUndoMutation = false
   let sharedRunAttachmentPromise: Promise<boolean> | null = null
   const attachToSharedRunIfIdle = (): Promise<boolean> | null => {
     if (state.isStreaming) return null
@@ -88,7 +92,7 @@ export async function startInteractiveRepl(
     state.messages = [...conversation.messages]
     state.chatMode = conversation.chatMode
     state.workspaceRootPath = conversation.agentContextRootPath
-    if (!state.isStreaming) {
+    if (!state.isStreaming && !applyingPendingUndoMutation) {
       state.activeStreamId = null
       screen.restoreConversation(conversation.messages, {
         mode: conversation.chatMode,
@@ -164,22 +168,82 @@ export async function startInteractiveRepl(
     if (!input && attachments.length === 0) continue
 
     if (input.startsWith('/')) {
+      // A slash command means the staged edit was abandoned. /undo itself can
+      // immediately create a fresh staged edit again.
+      state.pendingUndoEdit = undefined
       await executeSlashCommand(input, state, helpers)
       continue
     }
 
     try {
+      let printUserMessage = isQueuedInput
+      let userMessageLeadingSpacer: boolean | undefined
+      const pendingUndoEdit = state.pendingUndoEdit
+      if (pendingUndoEdit) {
+        const targetUserIndex = state.messages.findIndex((message) => message.id === pendingUndoEdit.targetUserMessageId)
+        if (targetUserIndex < 0) {
+          state.pendingUndoEdit = undefined
+          screen.restoreConversation(state.messages, {
+            mode: state.chatMode,
+            model: state.modelId,
+            provider: state.providerId,
+            workspace: state.workspaceRootPath,
+          }, true)
+          screen.setNextPromptDraft(input, attachments)
+          screen.addNotice('warning', 'That turn changed before the edit was submitted. Nothing was reverted.')
+          continue
+        }
+
+        applyingPendingUndoMutation = true
+        try {
+          const conversation = await runService.replaceMessages({
+            chatMode: state.chatMode,
+            conversationId: state.conversationId,
+            messages: state.messages.slice(0, targetUserIndex),
+            synchronizeCanonicalHistory: true,
+          })
+          state.messages = [...conversation.messages]
+          state.pendingUndoEdit = undefined
+          screen.restoreConversation(state.messages, {
+            mode: state.chatMode,
+            model: state.modelId,
+            provider: state.providerId,
+            workspace: state.workspaceRootPath,
+          }, true)
+          // ask() already printed the edited draft before returning it to this
+          // loop. The history redraw above intentionally removes that stale
+          // line, so print the submitted edit once as the new user turn. The
+          // restored history already owns the spacer immediately above it.
+          printUserMessage = true
+          userMessageLeadingSpacer = false
+        } finally {
+          applyingPendingUndoMutation = false
+        }
+      }
+
       const result = await runReplTurn(
         input,
         state,
         screen,
         createPromptContext(state, screen, completions),
-        { attachments, printUserMessage: isQueuedInput },
+        { attachments, printUserMessage, userMessageLeadingSpacer },
       )
       queuedInputs.push(...result.queuedInputs.map((text) => ({ text })))
       pendingInput = result.nextInput
       refreshComposerStatus()
     } catch (error) {
+      if (state.pendingUndoEdit) {
+        // A failed staged-revert write must leave the original history intact
+        // and return the edited text to the composer so the user can retry or
+        // cancel it explicitly.
+        screen.restoreConversation(state.messages, {
+          mode: state.chatMode,
+          model: state.modelId,
+          provider: state.providerId,
+          workspace: state.workspaceRootPath,
+        }, true)
+        screen.setNextPromptDraft(input, attachments)
+      }
       screen.addNotice('error', `Could not save or start the turn: ${error instanceof Error ? error.message : String(error)}`)
     }
   }

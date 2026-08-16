@@ -108,6 +108,11 @@ export async function attachCliToActiveSharedRun(
       void runService.cancelStream(streamId).catch((error) => {
         screen.addNotice('error', `Could not stop the turn: ${error instanceof Error ? error.message : String(error)}`)
       })
+    }, {
+      // restoreConversation already leaves one blank transcript row after the
+      // latest user message. Reuse it instead of adding a second spacer when a
+      // Desktop-started run is attached live in the CLI.
+      leadingSpacer: !(latestConversation?.messages.length),
     })
     presentationReady = true
     flushQueuedEvents()

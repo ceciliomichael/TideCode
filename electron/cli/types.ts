@@ -40,6 +40,9 @@ export interface CliSessionState {
   isStreaming: boolean
   activeStreamId: string | null
   followUpBehavior?: FollowUpBehavior
+  pendingUndoEdit?: {
+    targetUserMessageId: string
+  }
 }
 
 export interface MentionMatch {

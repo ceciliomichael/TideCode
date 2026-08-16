@@ -2,10 +2,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { TerminalScreen } from '../../electron/cli/terminalScreen'
 import { createTerminalChatEventSink } from '../../electron/cli/events'
+import { createReplCommandHelpers } from '../../electron/cli/replCommands'
 import type { TerminalOutput } from '../../electron/cli/terminalOutput'
 import { stripAnsi } from '../../electron/cli/terminalText'
 import { TerminalGridOutput } from './terminalHarness'
 import type { Message } from '../../src/types/chat'
+import type { CliSessionState } from '../../electron/cli/types'
 
 class RecordingOutput implements TerminalOutput {
   writes: string[] = []
@@ -120,21 +122,75 @@ test('screen atomically replaces an idle composer when a remote shared run start
     { content: 'Edited desktop prompt', id: 'user-remote', role: 'user', timestamp: 1 },
   ], {}, true)
 
-  screen.beginTurn()
+  screen.beginTurn(undefined, { leadingSpacer: false })
   screen.eventPresentation.onReasoningDelta('Inspecting')
 
   const activeRows = output.visibleRows()
+  const remoteUserRow = activeRows.findIndex((row) => row.includes('Edited desktop prompt'))
+  const remoteThinkingRow = activeRows.findIndex((row) => row.includes('Thinking'))
+  assert.equal(remoteThinkingRow - remoteUserRow, 2)
+  assert.equal(activeRows[remoteUserRow + 1], '')
   assert.equal(activeRows.filter((row) => row.includes('╭─ compose')).length, 1)
   assert.equal(activeRows.filter((row) => row.includes('Enter steer · Tab queue · Esc stop')).length, 1)
   assert.equal(activeRows.filter((row) => row.includes('Ask TideCode to inspect or change your workspace')).length, 0)
   assert.equal(activeRows.filter((row) => row.includes('Edited desktop prompt')).length, 1)
 
+  screen.eventPresentation.onReasoningCompleted(0.1)
   screen.eventPresentation.onCompleted()
 
   const completedRows = output.visibleRows()
   assert.equal(completedRows.filter((row) => row.includes('╭─ compose')).length, 1)
   assert.equal(completedRows.filter((row) => row.includes('Enter steer · Tab queue · Esc stop')).length, 0)
   assert.equal(completedRows.filter((row) => row.includes('Edited desktop prompt')).length, 1)
+  const completedUserRow = completedRows.findIndex((row) => row.includes('Edited desktop prompt'))
+  const completedThoughtRow = completedRows.findIndex((row) => row.includes('Thought for'))
+  assert.equal(completedThoughtRow - completedUserRow, 2)
+  assert.equal(completedRows[completedUserRow + 1], '')
+  screen.dismissPrompt()
+})
+
+test('/undo stages the last turn for editing and cancellation preserves the transcript', async () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  const messages: Message[] = [
+    { content: 'original prompt', id: 'user-1', role: 'user', timestamp: 1, userMessageKind: 'human' },
+    { content: 'original answer', id: 'assistant-1', role: 'assistant', timestamp: 2 },
+  ]
+  const state: CliSessionState = {
+    activeStreamId: null,
+    chatMode: 'agent',
+    conversationId: 'conversation-1',
+    isStreaming: false,
+    messages: [...messages],
+    modelId: 'gpt-test',
+    providerId: 'codex',
+    reasoningEffort: 'medium',
+    terminalExecutionMode: 'full',
+    workspaceRootPath: 'C:/workspace',
+  }
+
+  screen.start()
+  screen.restoreConversation(state.messages)
+  const helpers = createReplCommandHelpers(state, screen)
+  await helpers.undoLastTurn()
+
+  assert.deepEqual(state.messages.map((message) => message.id), ['user-1', 'assistant-1'])
+  assert.equal(state.pendingUndoEdit?.targetUserMessageId, 'user-1')
+
+  void screen.ask({
+    mode: 'agent',
+    modelId: 'gpt-test',
+    providerId: 'codex',
+    onCancelDraft: () => {
+      state.pendingUndoEdit = undefined
+    },
+  })
+  assert.equal(output.visibleRows().some((row) => row.includes('original answer')), true)
+
+  screen.handleInputAction({ type: 'cancel' })
+  assert.equal(state.pendingUndoEdit, undefined)
+  assert.deepEqual(state.messages.map((message) => message.id), ['user-1', 'assistant-1'])
+  assert.equal(output.visibleRows().some((row) => row.includes('original answer')), true)
   screen.dismissPrompt()
 })
 

@@ -72,6 +72,7 @@ export interface TerminalPromptContext {
   providerId: string
   onToggleMode?: (newMode: ChatMode) => void
   onCancelTurn?: () => void
+  onCancelDraft?: () => void
   onActiveMessage?: (text: string, behavior: ActiveTurnFollowUpView['behavior']) => void
   enterFollowUpBehavior?: FollowUpBehavior
   getCompletionItems?: (text: string, cursorIndex: number) => readonly CompletionItemView[]
@@ -124,6 +125,7 @@ export class TerminalScreen {
   private activeTurnCursorRow = 0
   private activeTurnCursorColumn = 0
   private activeTurnActivityRow: number | null = null
+  private activeTurnLeadingSpacer = true
   private activeThinkingFrameIndex = 0
   private activeThinkingTimer: NodeJS.Timeout | null = null
   private activeFollowUps: ActiveTurnFollowUpView[] = []
@@ -198,6 +200,7 @@ export class TerminalScreen {
 
   clearSession(): void {
     this.activeTurnCancel = null
+    this.activeTurnLeadingSpacer = true
     this.clearPromptDisplay()
     this.clearActiveTurnDisplay()
     this.stopActivity()
@@ -227,6 +230,7 @@ export class TerminalScreen {
     this.activeThoughtEntryId = null
     this.activeThoughtDurationSeconds = 0
     this.activeTurn = false
+    this.activeTurnLeadingSpacer = true
     this.activeTurnStartIndex = 0
     this.activeFollowUps = []
 
@@ -243,18 +247,29 @@ export class TerminalScreen {
     this.view.notification = { level, text: stripAnsi(text) }
   }
 
-  addUserMessage(text: string, print = true): void {
+  addUserMessage(
+    text: string,
+    print = true,
+    options: { leadingSpacer?: boolean } = {},
+  ): void {
     this.view.entries.push({ kind: 'user', id: nextTranscriptId('user'), text })
-    if (print) this.output.write(`\n${colors.accent}›${colors.reset} ${formatCliImageReferenceInText(text)}\n`)
+    if (print) {
+      const leadingSpacer = options.leadingSpacer === false ? '' : '\n'
+      this.output.write(`${leadingSpacer}${colors.accent}›${colors.reset} ${formatCliImageReferenceInText(text)}\n`)
+    }
   }
 
-  beginTurn(onCancelTurn?: () => void): void {
+  beginTurn(
+    onCancelTurn?: () => void,
+    options: { leadingSpacer?: boolean } = {},
+  ): void {
     // A shared run can begin while the REPL is already waiting on an idle
     // composer. Remove that rendered frame before the active-turn frame takes
     // ownership of the same terminal rows; the pending prompt itself remains
     // alive so it can become the steer/queue composer for the run.
     this.clearPromptDisplay()
     this.activeTurn = true
+    this.activeTurnLeadingSpacer = options.leadingSpacer !== false
     this.activeTurnCancel = onCancelTurn ?? null
     this.activeTurnStartIndex = this.view.entries.length
     this.activeTurnLines = []
@@ -414,8 +429,11 @@ export class TerminalScreen {
       const deferVisualCommit = this.resizeRedrawPending && this.usesProcessOutput
       this.stopActivity()
       this.clearActiveTurnDisplay()
-      if (!deferVisualCommit) this.output.write(`${renderCommittedTurn(turnEntries).join('\n')}\n`)
+      if (!deferVisualCommit) {
+        this.output.write(`${renderCommittedTurn(turnEntries, { leadingSpacer: this.activeTurnLeadingSpacer }).join('\n')}\n`)
+      }
       this.activeTurn = false
+      this.activeTurnLeadingSpacer = true
       this.activeTurnStartIndex = 0
       this.activeTurnLines = []
       this.activeTurnCursorRow = 0
@@ -655,6 +673,7 @@ export class TerminalScreen {
         this.requestActiveTurnCancellation()
         return
       }
+      pending.context.onCancelDraft?.()
       this.composer = createComposerState(this.history)
       this.updateCompletionItems(pending.context)
       this.renderCurrentPrompt()
@@ -927,6 +946,7 @@ export class TerminalScreen {
       activity: this.view.activity,
       entries: this.view.entries.slice(this.activeTurnStartIndex),
       followUps: this.activeFollowUps,
+      leadingSpacer: this.activeTurnLeadingSpacer,
       panel: createActiveTurnPromptPanel({
         composerWidth,
         placeholder: getFollowUpKeyHint(this.pendingPrompt?.context.enterFollowUpBehavior ?? 'steer'),

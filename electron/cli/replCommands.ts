@@ -6,7 +6,6 @@ import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../src/lib/contextCompac
 import { compactApiKeyConversation } from '../chat/apiKey/runtime'
 import { compactCodexConversation } from '../chat/codex/runtime'
 import { startRemoteRelayDaemon } from './remoteDaemon'
-import { replaceStoredMessages } from '../history/store'
 import { isHumanUserMessage } from '../../src/lib/chatMessageMetadata'
 import type { CliSessionState, SlashCommandHelpers } from './types'
 import type { TerminalScreen } from './terminalScreen'
@@ -81,27 +80,17 @@ export function createReplCommandHelpers(
     undoLastTurn: async () => {
       const lastUserIndex = state.messages.map((message) => isHumanUserMessage(message)).lastIndexOf(true)
       if (lastUserIndex < 0) {
-        screen.addNotice('warning', 'There is no previous turn to remove.')
+        screen.addNotice('warning', 'There is no previous turn to edit.')
         return
       }
       const lastUserMessage = state.messages[lastUserIndex]
       const undoneText = typeof lastUserMessage.content === 'string' ? lastUserMessage.content : ''
       const undoneAttachments = lastUserMessage.attachments ?? []
 
-      state.messages = state.messages.slice(0, lastUserIndex)
-      const conversation = await replaceStoredMessages({
-        chatMode: state.chatMode,
-        conversationId: state.conversationId,
-        messages: state.messages,
-        synchronizeCanonicalHistory: true,
-      })
-      state.messages = [...conversation.messages]
-      screen.restoreConversation(state.messages, {
-        mode: state.chatMode,
-        model: state.modelId,
-        provider: state.providerId,
-        workspace: state.workspaceRootPath,
-      }, true)
+      // /undo is a staged edit, not an immediate history mutation. The
+      // existing transcript remains authoritative until the user submits the
+      // edited draft. Esc/Ctrl+C can therefore cancel without losing history.
+      state.pendingUndoEdit = { targetUserMessageId: lastUserMessage.id }
       screen.setNextPromptDraft(undoneText, undoneAttachments)
     },
     loadSession: async (conversationId: string) => {
@@ -132,6 +121,7 @@ export function createReplCommandHelpers(
         if (isArchived && conversationId === state.conversationId) {
           state.conversationId = randomUUID()
           state.messages = []
+          state.pendingUndoEdit = undefined
           screen.clearSession()
         }
         return true
@@ -143,6 +133,7 @@ export function createReplCommandHelpers(
     clearSession: async () => {
       state.conversationId = randomUUID()
       state.messages = []
+      state.pendingUndoEdit = undefined
       screen.clearSession()
     },
     startRemoteDaemon: async () => {

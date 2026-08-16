@@ -17,6 +17,7 @@ export interface ReplTurnResult {
 export interface ReplTurnOptions {
   attachments?: readonly ChatAttachment[]
   printUserMessage?: boolean
+  userMessageLeadingSpacer?: boolean
 }
 
 export async function runReplTurn(
@@ -34,7 +35,9 @@ export async function runReplTurn(
       ? { ...message, content: expandedText, attachments: attachments.length > 0 ? [...attachments] : undefined }
       : message
   ))
-  screen.addUserMessage(input, options.printUserMessage === true)
+  screen.addUserMessage(input, options.printUserMessage === true, {
+    leadingSpacer: options.userMessageLeadingSpacer,
+  })
   screen.beginTurn(nextPromptContext.onCancelTurn)
   let followUpController: CliTurnFollowUpController | null = null
 
