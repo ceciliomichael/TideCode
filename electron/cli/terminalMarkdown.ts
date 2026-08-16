@@ -22,20 +22,30 @@ export function highlightCodeLine(line: string): string {
     })
 }
 
-export function formatInlineMarkdown(text: string): string {
-  if (!text) return ''
-
+function formatNonCodeMarkdown(text: string): string {
   return text
     // Bold **text** or __text__ first
     .replace(/\*\*([^*]+)\*\*/g, `${colors.bold}${colors.foreground}$1${colors.reset}`)
     .replace(/__([^_]+)__/g, `${colors.bold}${colors.foreground}$1${colors.reset}`)
-    // Inline code `code`
-    .replace(/`([^`]+)`/g, `${colors.info}$1${colors.reset}`)
     // Italic *text* or _text_
     .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, `${colors.italic}$1${colors.reset}`)
     .replace(/(?<!_)_([^_]+)_(?!_)/g, `${colors.italic}$1${colors.reset}`)
     // Markdown Links [title](url)
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, `${colors.accent}$1${colors.reset} ${colors.subtle}($2)${colors.reset}`)
+}
+
+export function formatInlineMarkdown(text: string): string {
+  if (!text) return ''
+
+  return text
+    .split(/(`[^`]+`)/g)
+    .map((segment) => {
+      if (segment.startsWith('`') && segment.endsWith('`')) {
+        return `${colors.info}${segment.slice(1, -1)}${colors.reset}`
+      }
+      return formatNonCodeMarkdown(segment)
+    })
+    .join('')
 }
 
 export class StreamingTerminalMarkdown {
