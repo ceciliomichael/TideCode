@@ -73,6 +73,9 @@ export interface TerminalPromptContext {
   onToggleMode?: (newMode: ChatMode) => void
   onCancelTurn?: () => void
   onCancelDraft?: () => void
+  onNavigateUndoEdit?: (
+    direction: 'older' | 'newer',
+  ) => { text: string; attachments: readonly ChatAttachment[] } | null | undefined
   onActiveMessage?: (text: string, behavior: ActiveTurnFollowUpView['behavior']) => void
   enterFollowUpBehavior?: FollowUpBehavior
   getCompletionItems?: (text: string, cursorIndex: number) => readonly CompletionItemView[]
@@ -474,7 +477,10 @@ export class TerminalScreen {
     return {
       onWaiting: (label) => this.setActivity('thinking', label),
       onReasoningDelta: (delta) => this.appendThought(delta),
-      onReasoningCompleted: (durationSeconds) => this.addThought(durationSeconds, this.activeThought),
+      onReasoningCompleted: (durationSeconds) => {
+        this.addThought(durationSeconds, this.activeThought)
+        if (this.activeTurn) this.setActivity('thinking', 'Thinking')
+      },
       onContentStart: () => {
         this.activeThought = ''
         this.activeThoughtEntryId = null
@@ -486,9 +492,11 @@ export class TerminalScreen {
       onToolStarted: () => undefined,
       onToolCompleted: (label, detail, diff) => {
         this.addTool(label, 'completed', detail, diff)
+        if (this.activeTurn) this.setActivity('thinking', 'Thinking')
       },
       onToolFailed: (label, detail) => {
         this.addTool(label, 'failed', detail)
+        if (this.activeTurn) this.setActivity('thinking', 'Thinking')
       },
       onCompleted: () => this.finishTurn(),
     }
@@ -750,6 +758,16 @@ export class TerminalScreen {
         const increment = action.type === 'move-up' ? -1 : 1
         const count = this.view.completionItems.length
         this.view.completionIndex = (this.view.completionIndex + increment + count) % count
+        this.renderCurrentPrompt()
+        return
+      }
+
+      const undoNavigation = pending.context.onNavigateUndoEdit?.(action.type === 'move-up' ? 'older' : 'newer')
+      if (undoNavigation !== undefined) {
+        if (undoNavigation) {
+          this.composer = setComposerText(this.composer, undoNavigation.text, undoNavigation.attachments)
+          this.updateCompletionItems(pending.context)
+        }
         this.renderCurrentPrompt()
         return
       }

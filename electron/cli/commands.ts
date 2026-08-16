@@ -220,7 +220,7 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
   },
   {
     name: 'undo',
-    description: 'Edit the last turn; history is only rewound when the edited message is submitted',
+    description: 'Edit a previous turn; use Up/Down to browse turns and Esc to cancel',
     usage: '/undo',
     execute: async (_args, _state, helpers) => {
       await helpers.undoLastTurn()

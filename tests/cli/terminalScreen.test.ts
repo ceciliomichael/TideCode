@@ -8,6 +8,7 @@ import { stripAnsi } from '../../electron/cli/terminalText'
 import { TerminalGridOutput } from './terminalHarness'
 import type { Message } from '../../src/types/chat'
 import type { CliSessionState } from '../../electron/cli/types'
+import { navigateUndoEditSelection } from '../../electron/cli/undoEditNavigation'
 
 class RecordingOutput implements TerminalOutput {
   writes: string[] = []
@@ -149,12 +150,16 @@ test('screen atomically replaces an idle composer when a remote shared run start
   screen.dismissPrompt()
 })
 
-test('/undo stages the last turn for editing and cancellation preserves the transcript', async () => {
+test('/undo browses previous user turns without mutating history until submission', async () => {
   const output = new TerminalGridOutput()
   const screen = createScreen(output)
   const messages: Message[] = [
-    { content: 'original prompt', id: 'user-1', role: 'user', timestamp: 1, userMessageKind: 'human' },
-    { content: 'original answer', id: 'assistant-1', role: 'assistant', timestamp: 2 },
+    { content: 'first prompt', id: 'user-1', role: 'user', timestamp: 1, userMessageKind: 'human' },
+   { content: 'first answer', id: 'assistant-1', role: 'assistant', timestamp: 2 },
+   { content: 'second prompt', id: 'user-2', role: 'user', timestamp: 3, userMessageKind: 'human' },
+    { content: 'second answer', id: 'assistant-2', role: 'assistant', timestamp: 4 },
+    { content: 'third prompt', id: 'user-3', role: 'user', timestamp: 5, userMessageKind: 'human' },
+   { content: 'third answer', id: 'assistant-3', role: 'assistant', timestamp: 6 },
   ]
   const state: CliSessionState = {
     activeStreamId: null,
@@ -174,9 +179,75 @@ test('/undo stages the last turn for editing and cancellation preserves the tran
   const helpers = createReplCommandHelpers(state, screen)
   await helpers.undoLastTurn()
 
-  assert.deepEqual(state.messages.map((message) => message.id), ['user-1', 'assistant-1'])
+  assert.deepEqual(state.messages.map((message) => message.id), messages.map((message) => message.id))
+  assert.equal(state.pendingUndoEdit?.targetUserMessageId, 'user-3')
+
+  const submissionPromise = screen.ask({
+    mode: 'agent',
+    modelId: 'gpt-test',
+    providerId: 'codex',
+    onCancelDraft: () => {
+      state.pendingUndoEdit = undefined
+    },
+    onNavigateUndoEdit: (direction) => {
+      const pendingUndoEdit = state.pendingUndoEdit
+      if (!pendingUndoEdit) return undefined
+      const selection = navigateUndoEditSelection(
+        state.messages,
+        pendingUndoEdit.targetUserMessageId,
+        direction,
+      )
+      if (!selection) return null
+      state.pendingUndoEdit = { targetUserMessageId: selection.targetUserMessageId }
+      return { text: selection.text, attachments: selection.attachments }
+    },
+  })
+
+  screen.handleInputAction({ type: 'move-up' })
+  assert.equal(state.pendingUndoEdit?.targetUserMessageId, 'user-2')
+
+  screen.handleInputAction({ type: 'move-up' })
   assert.equal(state.pendingUndoEdit?.targetUserMessageId, 'user-1')
 
+  // The oldest/newest boundaries do not wrap around.
+  screen.handleInputAction({ type: 'move-up' })
+  assert.equal(state.pendingUndoEdit?.targetUserMessageId, 'user-1')
+
+  screen.handleInputAction({ type: 'move-down' })
+  assert.equal(state.pendingUndoEdit?.targetUserMessageId, 'user-2')
+  assert.deepEqual(state.messages.map((message) => message.id), messages.map((message) => message.id))
+
+  screen.handleInputAction({ type: 'submit' })
+  const submission = await submissionPromise
+  assert.equal(submission.text, 'second prompt')
+  assert.equal(state.pendingUndoEdit?.targetUserMessageId, 'user-2')
+  assert.deepEqual(state.messages.map((message) => message.id), messages.map((message) => message.id))
+})
+
+test('/undo cancellation leaves the full transcript untouched', async () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  const messages: Message[] = [
+    { content: 'keep this prompt', id: 'user-cancel', role: 'user', timestamp: 1, userMessageKind: 'human' },
+    { content: 'keep this answer', id: 'assistant-cancel', role: 'assistant', timestamp: 2 },
+  ]
+  const state: CliSessionState = {
+    activeStreamId: null,
+    chatMode: 'agent',
+    conversationId: 'conversation-cancel',
+    isStreaming: false,
+    messages: [...messages],
+    modelId: 'gpt-test',
+    providerId: 'codex',
+    reasoningEffort: 'medium',
+    terminalExecutionMode: 'full',
+    workspaceRootPath: 'C:/workspace',
+  }
+
+  screen.start()
+  screen.restoreConversation(state.messages)
+  const helpers = createReplCommandHelpers(state, screen)
+  await helpers.undoLastTurn()
   void screen.ask({
     mode: 'agent',
     modelId: 'gpt-test',
@@ -185,12 +256,11 @@ test('/undo stages the last turn for editing and cancellation preserves the tran
       state.pendingUndoEdit = undefined
     },
   })
-  assert.equal(output.visibleRows().some((row) => row.includes('original answer')), true)
 
   screen.handleInputAction({ type: 'cancel' })
   assert.equal(state.pendingUndoEdit, undefined)
-  assert.deepEqual(state.messages.map((message) => message.id), ['user-1', 'assistant-1'])
-  assert.equal(output.visibleRows().some((row) => row.includes('original answer')), true)
+  assert.deepEqual(state.messages.map((message) => message.id), messages.map((message) => message.id))
+  assert.equal(output.visibleRows().some((row) => row.includes('keep this answer')), true)
   screen.dismissPrompt()
 })
 
@@ -264,6 +334,7 @@ test('screen lifecycle streams reasoning text and commits its duration label', (
   const completedRows = output.visibleRows()
   assert.ok(completedRows.some((row) => row.includes('Thought for 1.2s')))
   assert.equal(completedRows.some((row) => row.includes('Inspecting the workspace')), false)
+  assert.equal(completedRows.some((row) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Thinking/u.test(row)), true)
 })
 
 test('screen lifecycle keeps repeated reasoning completions in one thought until a semantic boundary', () => {
@@ -282,7 +353,7 @@ test('screen lifecycle keeps repeated reasoning completions in one thought until
   assert.ok(firstThought >= 0)
   assert.equal(rows.filter((row) => row.includes('Thought for')).length, 1)
   assert.equal(rows.some((row) => row.includes('Second reasoning segment')), false)
-  assert.equal(rows.some((row) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Thinking/u.test(row)), false)
+  assert.equal(rows.some((row) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Thinking/u.test(row)), true)
 })
 
 test('live shared-run presentation commits each reasoning phase at tool boundaries', () => {
@@ -350,6 +421,7 @@ test('live shared-run presentation commits each reasoning phase at tool boundari
   assert.ok(secondThoughtIndex > firstToolIndex)
   assert.ok(secondToolIndex > secondThoughtIndex)
   assert.equal(rows.some((row) => row.includes('Planning the CSS changes')), false)
+  assert.equal(rows.some((row) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Thinking/u.test(row)), true)
 })
 
 test('screen lifecycle wraps long assistant lines before redrawing the active region', () => {

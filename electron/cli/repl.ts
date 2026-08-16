@@ -11,6 +11,7 @@ import { getStoredSettings } from '../settings/store'
 import { warmSystemClipboardReader } from './cliClipboardImage'
 import { TIDECODE_VERSION } from '../appVersion'
 import { attachCliToActiveSharedRun } from './sharedRunAttachment'
+import { navigateUndoEditSelection } from './undoEditNavigation'
 
 function createPromptContext(
   state: CliSessionState,
@@ -39,6 +40,21 @@ function createPromptContext(
     },
     onCancelDraft: () => {
       state.pendingUndoEdit = undefined
+    },
+    onNavigateUndoEdit: (direction) => {
+      const pendingUndoEdit = state.pendingUndoEdit
+      if (!pendingUndoEdit) return undefined
+      const selection = navigateUndoEditSelection(
+        state.messages,
+        pendingUndoEdit.targetUserMessageId,
+        direction,
+      )
+      if (!selection) return null
+      state.pendingUndoEdit = { targetUserMessageId: selection.targetUserMessageId }
+      return {
+        text: selection.text,
+        attachments: selection.attachments,
+      }
     },
   }
 }

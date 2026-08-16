@@ -6,7 +6,7 @@ import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../src/lib/contextCompac
 import { compactApiKeyConversation } from '../chat/apiKey/runtime'
 import { compactCodexConversation } from '../chat/codex/runtime'
 import { startRemoteRelayDaemon } from './remoteDaemon'
-import { isHumanUserMessage } from '../../src/lib/chatMessageMetadata'
+import { getLatestUndoEditSelection } from './undoEditNavigation'
 import type { CliSessionState, SlashCommandHelpers } from './types'
 import type { TerminalScreen } from './terminalScreen'
 import { resumeCliConversation } from './cliHistory'
@@ -78,20 +78,18 @@ export function createReplCommandHelpers(
       }
     },
     undoLastTurn: async () => {
-      const lastUserIndex = state.messages.map((message) => isHumanUserMessage(message)).lastIndexOf(true)
-      if (lastUserIndex < 0) {
+      const selection = getLatestUndoEditSelection(state.messages)
+      if (!selection) {
         screen.addNotice('warning', 'There is no previous turn to edit.')
         return
       }
-      const lastUserMessage = state.messages[lastUserIndex]
-      const undoneText = typeof lastUserMessage.content === 'string' ? lastUserMessage.content : ''
-      const undoneAttachments = lastUserMessage.attachments ?? []
 
       // /undo is a staged edit, not an immediate history mutation. The
       // existing transcript remains authoritative until the user submits the
-      // edited draft. Esc/Ctrl+C can therefore cancel without losing history.
-      state.pendingUndoEdit = { targetUserMessageId: lastUserMessage.id }
-      screen.setNextPromptDraft(undoneText, undoneAttachments)
+      // edited draft. Up/Down can browse earlier/later user turns, while
+      // Esc/Ctrl+C cancels without losing history.
+      state.pendingUndoEdit = { targetUserMessageId: selection.targetUserMessageId }
+      screen.setNextPromptDraft(selection.text, selection.attachments)
     },
     loadSession: async (conversationId: string) => {
       try {
