@@ -12,6 +12,8 @@ import { warmSystemClipboardReader } from './cliClipboardImage'
 import { TIDECODE_VERSION } from '../appVersion'
 import { attachCliToActiveSharedRun } from './sharedRunAttachment'
 import { navigateUndoEditSelection } from './undoEditNavigation'
+import { resolveCliUndoCheckpointPlan, runWithCliUndoWorkspaceReverted } from './cliUndoCheckpoints'
+import { getStoredConversation } from '../history/store'
 
 function createPromptContext(
   state: CliSessionState,
@@ -212,12 +214,26 @@ export async function startInteractiveRepl(
 
         applyingPendingUndoMutation = true
         try {
-          const conversation = await runService.replaceMessages({
-            chatMode: state.chatMode,
-            conversationId: state.conversationId,
-            messages: state.messages.slice(0, targetUserIndex),
-            synchronizeCanonicalHistory: true,
-          })
+          const storedConversation = await getStoredConversation(state.conversationId)
+          if (!storedConversation) {
+            throw new Error(`Conversation not found: ${state.conversationId}`)
+          }
+
+          const undoPlan = await resolveCliUndoCheckpointPlan(
+            state.conversationId,
+            storedConversation.messages,
+            pendingUndoEdit.targetUserMessageId,
+          )
+          const conversation = await runWithCliUndoWorkspaceReverted(
+            undoPlan,
+            () => runService.replaceMessages({
+              chatMode: state.chatMode,
+              conversationId: state.conversationId,
+              messages: storedConversation.messages.slice(0, undoPlan.targetUserIndex),
+              synchronizeCanonicalHistory: true,
+            }),
+          )
+
           state.messages = [...conversation.messages]
           state.pendingUndoEdit = undefined
           screen.restoreConversation(state.messages, {
