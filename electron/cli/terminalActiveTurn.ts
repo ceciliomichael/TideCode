@@ -53,8 +53,9 @@ function wrapPrefixed(text: string, prefix: string, width: number): string[] {
   return wrapVisible(text, availableWidth).map((line) => `${prefix}${line}`)
 }
 
-function renderUserMessage(text: string, width: number): string[] {
-  const firstPrefix = `${colors.accent}›${colors.reset} `
+function renderUserMessage(text: string, width: number, isSelected = false): string[] {
+  const marker = isSelected ? '▸' : '›'
+  const firstPrefix = `${isSelected ? colors.bold : ''}${colors.accent}${marker}${colors.reset} `
   const continuationPrefix = '  '
   const availableWidth = Math.max(1, width - visibleWidth(continuationPrefix))
   const lines: string[] = []
@@ -138,7 +139,10 @@ export function renderCommittedTurn(
   return committedLines
 }
 
-export function renderConversationHistory(entries: readonly TranscriptEntry[]): string[] {
+export function renderConversationHistory(
+  entries: readonly TranscriptEntry[],
+  options: { selectedUserMessageId?: string | null } = {},
+): string[] {
   const width = getTerminalPanelWidth()
   const lines: string[] = []
   let previousEntry: TranscriptEntry | undefined
@@ -146,7 +150,7 @@ export function renderConversationHistory(entries: readonly TranscriptEntry[]): 
   for (const entry of entries) {
     if (entry.kind === 'user') {
       appendBlankRow(lines)
-      lines.push(...renderUserMessage(entry.text, width))
+      lines.push(...renderUserMessage(entry.text, width, entry.id === options.selectedUserMessageId))
       appendBlankRow(lines)
     } else {
       if (!isVisibleTurnEntry(entry)) continue

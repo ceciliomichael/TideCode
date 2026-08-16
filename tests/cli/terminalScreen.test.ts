@@ -8,7 +8,7 @@ import { stripAnsi } from '../../electron/cli/terminalText'
 import { TerminalGridOutput } from './terminalHarness'
 import type { Message } from '../../src/types/chat'
 import type { CliSessionState } from '../../electron/cli/types'
-import { getUndoEditPreviewMessages, navigateUndoEditSelection } from '../../electron/cli/undoEditNavigation'
+import { navigateUndoEditSelection } from '../../electron/cli/undoEditNavigation'
 
 class RecordingOutput implements TerminalOutput {
   writes: string[] = []
@@ -181,9 +181,10 @@ test('/undo browses previous user turns without mutating history until submissio
 
   assert.deepEqual(state.messages.map((message) => message.id), messages.map((message) => message.id))
   assert.equal(state.pendingUndoEdit?.targetUserMessageId, 'user-3')
-  assert.equal(output.visibleRows().some((row) => row.includes('third prompt')), false)
-  assert.equal(output.visibleRows().some((row) => row.includes('third answer')), false)
+  assert.equal(output.visibleRows().some((row) => row.includes('third prompt')), true)
+  assert.equal(output.visibleRows().some((row) => row.includes('third answer')), true)
   assert.equal(output.visibleRows().some((row) => row.includes('second answer')), true)
+  assert.equal(output.visibleRows().some((row) => row.includes('▸ third prompt')), true)
 
   const submissionPromise = screen.ask({
     mode: 'agent',
@@ -201,23 +202,28 @@ test('/undo browses previous user turns without mutating history until submissio
         direction,
       )
       if (!selection) return null
-      const previewMessages = getUndoEditPreviewMessages(state.messages, selection.targetUserMessageId)
-      if (!previewMessages) return null
       state.pendingUndoEdit = { targetUserMessageId: selection.targetUserMessageId }
-      return { text: selection.text, attachments: selection.attachments, previewMessages }
+      return {
+        text: selection.text,
+        attachments: selection.attachments,
+        targetUserMessageId: selection.targetUserMessageId,
+      }
     },
   })
 
   screen.handleInputAction({ type: 'move-up' })
   assert.equal(state.pendingUndoEdit?.targetUserMessageId, 'user-2')
   assert.equal(output.visibleRows().some((row) => row.includes('first answer')), true)
-  assert.equal(output.visibleRows().filter((row) => row.includes('second prompt')).length, 1)
-  assert.equal(output.visibleRows().some((row) => row.includes('second answer')), false)
+  assert.equal(output.visibleRows().some((row) => row.includes('second answer')), true)
+  assert.equal(output.visibleRows().some((row) => row.includes('third answer')), true)
+  assert.equal(output.visibleRows().some((row) => row.includes('▸ second prompt')), true)
 
   screen.handleInputAction({ type: 'move-up' })
   assert.equal(state.pendingUndoEdit?.targetUserMessageId, 'user-1')
-  assert.equal(output.visibleRows().filter((row) => row.includes('first prompt')).length, 1)
-  assert.equal(output.visibleRows().some((row) => row.includes('first answer')), false)
+  assert.equal(output.visibleRows().some((row) => row.includes('first answer')), true)
+  assert.equal(output.visibleRows().some((row) => row.includes('second answer')), true)
+  assert.equal(output.visibleRows().some((row) => row.includes('third answer')), true)
+  assert.equal(output.visibleRows().some((row) => row.includes('▸ first prompt')), true)
 
   // The oldest/newest boundaries do not wrap around.
   screen.handleInputAction({ type: 'move-up' })
@@ -226,7 +232,9 @@ test('/undo browses previous user turns without mutating history until submissio
   screen.handleInputAction({ type: 'move-down' })
   assert.equal(state.pendingUndoEdit?.targetUserMessageId, 'user-2')
   assert.equal(output.visibleRows().some((row) => row.includes('first answer')), true)
-  assert.equal(output.visibleRows().some((row) => row.includes('second answer')), false)
+  assert.equal(output.visibleRows().some((row) => row.includes('second answer')), true)
+  assert.equal(output.visibleRows().some((row) => row.includes('third answer')), true)
+  assert.equal(output.visibleRows().some((row) => row.includes('▸ second prompt')), true)
   assert.deepEqual(state.messages.map((message) => message.id), messages.map((message) => message.id))
 
   screen.handleInputAction({ type: 'submit' })
@@ -260,21 +268,24 @@ test('/undo cancellation leaves the full transcript untouched', async () => {
   screen.restoreConversation(state.messages)
   const helpers = createReplCommandHelpers(state, screen)
   await helpers.undoLastTurn()
-  assert.equal(output.visibleRows().some((row) => row.includes('keep this answer')), false)
+  assert.equal(output.visibleRows().some((row) => row.includes('keep this answer')), true)
+  assert.equal(output.visibleRows().some((row) => row.includes('▸ keep this prompt')), true)
   void screen.ask({
     mode: 'agent',
     modelId: 'gpt-test',
     providerId: 'codex',
     onCancelDraft: () => {
       state.pendingUndoEdit = undefined
-      return { restoreMessages: state.messages }
     },
   })
 
-  screen.handleInputAction({ type: 'cancel' })
+  const rawScreen = screen as unknown as { handleRawStdinData(data: string): void }
+  rawScreen.handleRawStdinData('\u001b')
   assert.equal(state.pendingUndoEdit, undefined)
   assert.deepEqual(state.messages.map((message) => message.id), messages.map((message) => message.id))
   assert.equal(output.visibleRows().some((row) => row.includes('keep this answer')), true)
+  assert.equal(output.visibleRows().some((row) => row.includes('▸ keep this prompt')), false)
+  assert.equal(output.visibleRows().some((row) => row.includes('› keep this prompt')), true)
   screen.dismissPrompt()
 })
 

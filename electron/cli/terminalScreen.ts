@@ -76,13 +76,13 @@ export interface TerminalPromptContext {
   providerId: string
   onToggleMode?: (newMode: ChatMode) => void
   onCancelTurn?: () => void
-  onCancelDraft?: () => void | { restoreMessages: readonly Message[] }
+  onCancelDraft?: () => void
   onNavigateUndoEdit?: (
     direction: 'older' | 'newer',
   ) => {
     text: string
     attachments: readonly ChatAttachment[]
-    previewMessages?: readonly Message[]
+    targetUserMessageId: string
   } | null | undefined
   onActiveMessage?: (text: string, behavior: ActiveTurnFollowUpView['behavior']) => void
   enterFollowUpBehavior?: FollowUpBehavior
@@ -121,6 +121,7 @@ export class TerminalScreen {
   private composer: ComposerState = createComposerState()
   private readonly mentionPathMap = new Map<string, string>()
   private pendingPrompt: PendingPrompt | null = null
+  private selectedHistoryUserMessageId: string | null = null
   private renderedPromptRows = 0
   private renderedPromptLines: string[] = []
   private renderedPromptCursorRow = 0
@@ -220,6 +221,7 @@ export class TerminalScreen {
     this.stopActivity()
     this.output.write(CLEAR_TERMINAL_SEQUENCE)
     this.view.entries = []
+    this.selectedHistoryUserMessageId = null
     this.view.activity = { kind: 'idle', label: '' }
     this.view.notification = null
     this.activeAssistantId = null
@@ -232,13 +234,26 @@ export class TerminalScreen {
     this.printSessionIntro()
   }
 
-  restoreConversation(messages: readonly Message[], sessionPatch: Partial<TerminalSessionView> = {}, clearScreen = false): void {
+  restoreConversation(
+    messages: readonly Message[],
+    sessionPatch: Partial<TerminalSessionView> = {},
+    clearScreen = false,
+    options: { selectedUserMessageId?: string | null } = {},
+  ): void {
     this.activeTurnCancel = null
     this.clearPromptDisplay()
     this.clearActiveTurnDisplay()
     this.stopActivity()
     this.view.session = { ...this.view.session, ...sessionPatch }
     this.view.entries = createTerminalHistoryEntries(messages, this.view.session.workspace)
+    if ('selectedUserMessageId' in options) {
+      this.selectedHistoryUserMessageId = options.selectedUserMessageId ?? null
+    } else if (
+      this.selectedHistoryUserMessageId &&
+      !this.view.entries.some((entry) => entry.kind === 'user' && entry.id === this.selectedHistoryUserMessageId)
+    ) {
+      this.selectedHistoryUserMessageId = null
+    }
     this.activeAssistantId = null
     this.activeThought = ''
     this.activeThoughtEntryId = null
@@ -252,7 +267,9 @@ export class TerminalScreen {
       this.output.write(CLEAR_TERMINAL_SEQUENCE)
       this.printSessionIntro()
     }
-    const historyLines = renderConversationHistory(this.view.entries)
+    const historyLines = renderConversationHistory(this.view.entries, {
+      selectedUserMessageId: this.selectedHistoryUserMessageId,
+    })
     if (historyLines.length > 0) this.output.write(`${historyLines.join('\n')}\n`)
     if (this.pendingPrompt) this.renderCurrentPrompt()
   }
@@ -642,6 +659,13 @@ export class TerminalScreen {
       return
     }
 
+    if (str === '\u001b') {
+      this.suppressKeypressesUntilDataCycleCompletes()
+      if (this.requestActiveTurnCancellation()) return
+      this.handlePromptAction({ type: 'cancel' })
+      return
+    }
+
     const decoded = this.bracketedPasteDecoder.consume(str)
     if (!decoded.containsPasteSequence) return
 
@@ -707,15 +731,12 @@ export class TerminalScreen {
         this.requestActiveTurnCancellation()
         return
       }
-      const cancelResult = pending.context.onCancelDraft?.()
+      pending.context.onCancelDraft?.()
+      this.selectedHistoryUserMessageId = null
       this.mentionPathMap.clear()
       this.composer = createComposerState(this.history)
       this.updateCompletionItems(pending.context)
-      if (cancelResult && typeof cancelResult === 'object' && 'restoreMessages' in cancelResult) {
-        this.restoreConversation(cancelResult.restoreMessages, {}, true)
-      } else {
-        this.renderCurrentPrompt()
-      }
+      this.redrawFromState()
       return
     }
 
@@ -780,6 +801,7 @@ export class TerminalScreen {
       }
       this.resetBracketedPasteInput()
       const expandedText = expandChatMentions(text, this.mentionPathMap)
+      this.selectedHistoryUserMessageId = null
       this.finishPrompt(text)
       this.mentionPathMap.clear()
       resolve({ text: expandedText, attachments })
@@ -798,14 +820,13 @@ export class TerminalScreen {
       const undoNavigation = pending.context.onNavigateUndoEdit?.(action.type === 'move-up' ? 'older' : 'newer')
       if (undoNavigation !== undefined) {
         if (undoNavigation) {
+          this.selectedHistoryUserMessageId = undoNavigation.targetUserMessageId
           this.composer = setComposerText(this.composer, undoNavigation.text, undoNavigation.attachments)
           this.updateCompletionItems(pending.context)
-          if (undoNavigation.previewMessages) {
-            this.restoreConversation(undoNavigation.previewMessages, {}, true)
-            return
-          }
+          this.redrawFromState()
+        } else {
+          this.renderCurrentPrompt()
         }
-        this.renderCurrentPrompt()
         return
       }
     }
@@ -1163,6 +1184,10 @@ export class TerminalScreen {
     return { columns, rows }
   }
 
+  private redrawFromState(): void {
+    this.redrawAfterResize()
+  }
+
   private redrawAfterResize(): void {
     // Terminal hosts reflow lines when their width changes, so the old cursor
     // row and frame dimensions are no longer trustworthy. Repaint from the
@@ -1186,7 +1211,9 @@ export class TerminalScreen {
     const historyEntries = this.activeTurn
       ? this.view.entries.slice(0, this.activeTurnStartIndex)
       : this.view.entries
-    const historyLines = renderConversationHistory(historyEntries)
+    const historyLines = renderConversationHistory(historyEntries, {
+      selectedUserMessageId: this.selectedHistoryUserMessageId,
+    })
     if (historyLines.length > 0) redrawOutput.write(`${historyLines.join('\n')}\n`)
 
     if (this.activeTurn) {

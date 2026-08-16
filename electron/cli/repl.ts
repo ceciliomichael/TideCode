@@ -1,4 +1,4 @@
-import type { ChatAttachment, ConversationRecord, Message } from '../../src/types/chat'
+import type { ChatAttachment, ConversationRecord } from '../../src/types/chat'
 import { ensureRunServiceClient } from '../runService/ensureService'
 import { executeSlashCommand } from './commands'
 import { createReplCommandHelpers } from './replCommands'
@@ -11,7 +11,7 @@ import { getStoredSettings } from '../settings/store'
 import { warmSystemClipboardReader } from './cliClipboardImage'
 import { TIDECODE_VERSION } from '../appVersion'
 import { attachCliToActiveSharedRun } from './sharedRunAttachment'
-import { getUndoEditPreviewMessages, navigateUndoEditSelection } from './undoEditNavigation'
+import { navigateUndoEditSelection } from './undoEditNavigation'
 import { resolveCliUndoCheckpointPlan, runWithCliUndoWorkspaceReverted } from './cliUndoCheckpoints'
 import { getStoredConversation } from '../history/store'
 
@@ -41,9 +41,7 @@ function createPromptContext(
         })
     },
     onCancelDraft: () => {
-      if (!state.pendingUndoEdit) return
       state.pendingUndoEdit = undefined
-      return { restoreMessages: state.messages }
     },
     onNavigateUndoEdit: (direction) => {
       const pendingUndoEdit = state.pendingUndoEdit
@@ -54,13 +52,11 @@ function createPromptContext(
         direction,
       )
       if (!selection) return null
-      const previewMessages = getUndoEditPreviewMessages(state.messages, selection.targetUserMessageId)
-      if (!previewMessages) return null
       state.pendingUndoEdit = { targetUserMessageId: selection.targetUserMessageId }
       return {
         text: selection.text,
         attachments: selection.attachments,
-        previewMessages,
+        targetUserMessageId: selection.targetUserMessageId,
       }
     },
   }
@@ -117,19 +113,13 @@ export async function startInteractiveRepl(
     state.workspaceRootPath = conversation.agentContextRootPath
     if (!state.isStreaming && !applyingPendingUndoMutation) {
       state.activeStreamId = null
-      let visibleMessages: readonly Message[] = conversation.messages
-      if (state.pendingUndoEdit) {
-        const previewMessages = getUndoEditPreviewMessages(
-          conversation.messages,
-          state.pendingUndoEdit.targetUserMessageId,
-        )
-        if (previewMessages) {
-          visibleMessages = previewMessages
-        } else {
-          state.pendingUndoEdit = undefined
-        }
+      if (
+        state.pendingUndoEdit &&
+        !conversation.messages.some((message) => message.id === state.pendingUndoEdit?.targetUserMessageId)
+      ) {
+        state.pendingUndoEdit = undefined
       }
-      screen.restoreConversation(visibleMessages, {
+      screen.restoreConversation(conversation.messages, {
         mode: conversation.chatMode,
         model: state.modelId,
         provider: state.providerId,
@@ -213,7 +203,7 @@ export async function startInteractiveRepl(
           model: state.modelId,
           provider: state.providerId,
           workspace: state.workspaceRootPath,
-        }, true)
+        }, true, { selectedUserMessageId: null })
       }
       await executeSlashCommand(input, state, helpers)
       continue
@@ -291,14 +281,10 @@ export async function startInteractiveRepl(
       refreshComposerStatus()
     } catch (error) {
       if (state.pendingUndoEdit) {
-        // A failed staged-revert write must leave the original history intact
-        // while preserving the selected historical preview so the user can
-        // retry the edit or cancel back to the authoritative transcript.
-        const previewMessages = getUndoEditPreviewMessages(
-          state.messages,
-          state.pendingUndoEdit.targetUserMessageId,
-        )
-        screen.restoreConversation(previewMessages ?? state.messages, {
+        // A failed staged-revert write keeps the authoritative transcript
+        // visible and leaves the selected edit marker in place so the user can
+        // retry the edit or exit it explicitly.
+        screen.restoreConversation(state.messages, {
           mode: state.chatMode,
           model: state.modelId,
           provider: state.providerId,

@@ -6,7 +6,7 @@ import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../src/lib/contextCompac
 import { compactApiKeyConversation } from '../chat/apiKey/runtime'
 import { compactCodexConversation } from '../chat/codex/runtime'
 import { startRemoteRelayDaemon } from './remoteDaemon'
-import { getLatestUndoEditSelection, getUndoEditPreviewMessages } from './undoEditNavigation'
+import { getLatestUndoEditSelection } from './undoEditNavigation'
 import type { CliSessionState, SlashCommandHelpers } from './types'
 import type { TerminalScreen } from './terminalScreen'
 import { resumeCliConversation } from './cliHistory'
@@ -84,22 +84,17 @@ export function createReplCommandHelpers(
         return
       }
 
-      // /undo is a staged edit, not an immediate history mutation. Preview the
-      // conversation exactly at the selected branch point while keeping the
-      // full authoritative transcript in state until the user submits. Up/Down
-      // visibly scrub earlier/later user turns; Esc/Ctrl+C restores everything.
-      const previewMessages = getUndoEditPreviewMessages(state.messages, selection.targetUserMessageId)
-      if (!previewMessages) {
-        screen.addNotice('warning', 'That previous turn is no longer available to edit.')
-        return
-      }
+      // /undo is a staged edit, not an immediate history mutation. Keep the
+      // complete transcript visible while marking the selected historical user
+      // turn. Up/Down moves that marker and the editable composer draft; Esc
+      // exits edit mode without changing history or workspace checkpoints.
       state.pendingUndoEdit = { targetUserMessageId: selection.targetUserMessageId }
-      screen.restoreConversation(previewMessages, {
+      screen.restoreConversation(state.messages, {
         mode: state.chatMode,
         model: state.modelId,
         provider: state.providerId,
         workspace: state.workspaceRootPath,
-      }, true)
+      }, true, { selectedUserMessageId: selection.targetUserMessageId })
       screen.setNextPromptDraft(selection.text, selection.attachments)
     },
     loadSession: async (conversationId: string) => {
