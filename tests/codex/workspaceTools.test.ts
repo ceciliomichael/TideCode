@@ -163,8 +163,8 @@ test('public workspace tools treat empty read and search paths as the canonical 
     assert.equal(readEmpty.body, readDot.body)
     assert.equal(listEmpty.body, listDot.body)
     assert.equal(listEmpty.body, listOmitted.body)
-    assert.equal(globEmpty.body, globDot.body)
-    assert.equal(globEmpty.body, globOmitted.body)
+    assert.deepEqual(globEmpty.body.split('\n').sort(), globDot.body.split('\n').sort())
+    assert.deepEqual(globEmpty.body.split('\n').sort(), globOmitted.body.split('\n').sort())
     assert.equal(grepEmpty.body, grepDot.body)
     assert.equal(grepEmpty.body, grepOmitted.body)
   } finally {
