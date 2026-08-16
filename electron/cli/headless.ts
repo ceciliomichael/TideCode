@@ -1,13 +1,12 @@
-import type { StartChatStreamInput } from '../../src/types/chat'
+import type { ChatStreamEvent, StartChatStreamInput } from '../../src/types/chat'
 import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../src/lib/contextCompactionSettings'
+import { getStoredConversation } from '../history/store'
+import { ensureRunServiceClient } from '../runService/ensureService'
 import type { CliOptions, CliSessionState } from './types'
 import { expandMentionsIntoContext } from './mentions'
 import { createTerminalChatEventSink } from './events'
-import { startApiKeyChatStream } from '../chat/apiKey/runtime'
-import { startCodexChatStream } from '../chat/codex/runtime'
 import { colors } from './renderer'
-import { createAndPersistCliUserMessage, persistCliAssistantMessages } from './cliHistory'
-import { CliTurnMessageCollector } from './cliTurnMessageCollector'
+import { createAndPersistCliUserMessage } from './cliHistory'
 
 export async function runHeadlessPrompt(
   prompt: string,
@@ -21,37 +20,38 @@ export async function runHeadlessPrompt(
     return 1
   }
 
-  // Statically resolve and expand @ mentions
   const { expandedText } = await expandMentionsIntoContext(fullPrompt, state.workspaceRootPath)
-
   const userMessage = await createAndPersistCliUserMessage(state, fullPrompt)
   const runtimeMessages = state.messages.map((message) => (
     message.id === userMessage.id ? { ...message, content: expandedText } : message
   ))
-  const messageCollector = new CliTurnMessageCollector(state)
 
   return new Promise((resolve) => {
-    let hasError = false
     let hasSettled = false
+    let streamId: string | null = null
+    let unsubscribe: (() => void) | null = null
+    const queuedEvents: ChatStreamEvent[] = []
 
     const settle = async (exitCode: number) => {
       if (hasSettled) return
       hasSettled = true
-      await persistCliAssistantMessages(state, messageCollector.finalize())
+      unsubscribe?.()
+      const conversation = await getStoredConversation(state.conversationId).catch(() => null)
+      if (conversation) state.messages = [...conversation.messages]
       resolve(exitCode)
     }
 
     const { sink } = createTerminalChatEventSink({
-      onEvent: (event) => messageCollector.handleEvent(event),
-      onComplete: () => {
-        void settle(hasError ? 1 : 0)
-      },
+      onComplete: () => { void settle(0) },
       onError: (errMsg) => {
-        hasError = true
         console.error(`\n${colors.red}Error: ${errMsg}${colors.reset}`)
         void settle(1)
       },
     })
+    const deliverEvent = (event: ChatStreamEvent) => {
+      if (typeof sink.emit === 'function') sink.emit(event)
+      else sink.send?.('chat:stream:event', event)
+    }
 
     const streamInput: StartChatStreamInput = {
       agentContextRootPath: state.workspaceRootPath,
@@ -65,16 +65,28 @@ export async function runHeadlessPrompt(
       terminalExecutionMode: state.terminalExecutionMode,
     }
 
-    if (state.providerId === 'codex') {
-      startCodexChatStream(sink, streamInput).catch((err) => {
-        console.error(`\n${colors.red}Failed to start Codex stream: ${err instanceof Error ? err.message : String(err)}${colors.reset}`)
+    void ensureRunServiceClient()
+      .then((runService) => {
+        unsubscribe = runService.onEvent((event) => {
+          if (event.type !== 'chat_event' || event.conversationId !== state.conversationId) return
+          if (!streamId) {
+            queuedEvents.push(event.event)
+            return
+          }
+          if (event.event.streamId === streamId) deliverEvent(event.event)
+        })
+        return runService.startStream(streamInput)
+      })
+      .then((result) => {
+        streamId = result.streamId
+        state.activeStreamId = result.streamId
+        for (const event of queuedEvents.splice(0)) {
+          if (event.streamId === result.streamId) deliverEvent(event)
+        }
+      })
+      .catch((error) => {
+        console.error(`\n${colors.red}Failed to start shared chat stream: ${error instanceof Error ? error.message : String(error)}${colors.reset}`)
         void settle(1)
       })
-    } else {
-      startApiKeyChatStream(sink, streamInput).catch((err) => {
-        console.error(`\n${colors.red}Failed to start chat stream: ${err instanceof Error ? err.message : String(err)}${colors.reset}`)
-        void settle(1)
-      })
-    }
   })
 }

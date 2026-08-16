@@ -3,6 +3,7 @@ import path from "node:path";
 import type { WebContents } from "electron";
 import type { ChatStreamEventTarget } from "../runtimeStreamEvents";
 import type {
+  ChatStreamEvent,
   CreateTerminalSessionInput,
   CreateTerminalSessionResult,
   ResizeTerminalSessionInput,
@@ -35,6 +36,51 @@ const MAX_VISIBLE_SESSION_ID_EXCLUSIVE = 100_000;
 const MAX_VISIBLE_SESSION_ID_ATTEMPTS = 1_000;
 const COMPLETION_MARKER_PROBE_LENGTH = 128;
 const MAX_INTERACTION_TEXT_LENGTH = 16_000;
+
+let nextSyntheticTerminalOwnerId = -1;
+
+function isTerminalSessionOwner(
+  target: WebContents | ChatStreamEventTarget,
+): target is WebContents {
+  const candidate = target as Partial<WebContents>;
+  return (
+    typeof candidate.id === "number" &&
+    typeof candidate.isDestroyed === "function" &&
+    typeof candidate.once === "function" &&
+    typeof candidate.send === "function"
+  );
+}
+
+/**
+ * Terminal sessions need a WebContents-like owner for identity and lifecycle,
+ * while CLI/run-service chats only provide a lightweight stream-event target.
+ * Wrap headless targets with a run-scoped owner instead of casting them to
+ * WebContents and crashing when the terminal service calls `once()`.
+ */
+export function createTerminalSessionOwner(
+  target: WebContents | ChatStreamEventTarget,
+): WebContents {
+  if (isTerminalSessionOwner(target)) {
+    return target;
+  }
+
+  const owner = {
+    id: nextSyntheticTerminalOwnerId--,
+    isDestroyed: () => target.isDestroyed?.() ?? false,
+    once: () => owner,
+    send: (channel: string, payload: unknown) => {
+      if (channel !== "chat:stream:event") {
+        return;
+      }
+      if (typeof target.send === "function") {
+        target.send(channel, payload);
+        return;
+      }
+      target.emit?.(payload as ChatStreamEvent);
+    },
+  } as unknown as WebContents;
+  return owner;
+}
 
 export interface TerminalToolDependencies {
   createSession: (

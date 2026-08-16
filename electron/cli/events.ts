@@ -55,6 +55,17 @@ export function createTerminalChatEventSink(options: TerminalEventSinkOptions = 
     isDestroyed: () => false,
   }
 
+  function completePresentedReasoningBoundary() {
+    if (!options.presentation || reasoningStartedAt === 0 || reasoningAccumulator.text.trim().length === 0) {
+      return
+    }
+
+    const durationSeconds = Math.max(0.1, (Date.now() - reasoningStartedAt) / 1000)
+    reasoningStartedAt = 0
+    options.presentation.onReasoningCompleted(durationSeconds)
+    reasoningAccumulator.reset()
+  }
+
   function handleChatStreamEvent(event: ChatStreamEvent) {
     if (!event) return
     options.onEvent?.(event)
@@ -64,6 +75,7 @@ export function createTerminalChatEventSink(options: TerminalEventSinkOptions = 
         const delta = contentAccumulator.append(event.delta)
         if (!delta) break
         if (options.presentation) {
+          completePresentedReasoningBoundary()
           if (!hasStartedContent) {
             hasStartedContent = true
             options.presentation.onContentStart()
@@ -103,10 +115,7 @@ export function createTerminalChatEventSink(options: TerminalEventSinkOptions = 
 
       case 'reasoning_completed': {
         if (options.presentation) {
-          const durationSeconds = reasoningStartedAt > 0 ? Math.max(0.1, (Date.now() - reasoningStartedAt) / 1000) : 0.1
-          reasoningStartedAt = 0
-          options.presentation.onReasoningCompleted(durationSeconds)
-          reasoningAccumulator.reset()
+          completePresentedReasoningBoundary()
           return
         }
         progress.completeReasoning()
@@ -120,6 +129,7 @@ export function createTerminalChatEventSink(options: TerminalEventSinkOptions = 
       case 'tool_invocation_started': {
         toolStartedAt.set(event.invocationId, event.startedAt)
         if (options.presentation) {
+          completePresentedReasoningBoundary()
           return
         }
         break

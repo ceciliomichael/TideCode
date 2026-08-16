@@ -19,6 +19,7 @@ export interface CliOptions {
   provider?: ApiKeyProviderId | 'codex'
   mode?: ChatMode
   continueId?: string
+  resume?: boolean
   remote?: boolean
   port?: number
   help?: boolean
@@ -39,6 +40,9 @@ export interface CliSessionState {
   isStreaming: boolean
   activeStreamId: string | null
   followUpBehavior?: FollowUpBehavior
+  pendingUndoEdit?: {
+    targetUserMessageId: string
+  }
 }
 
 export interface MentionMatch {

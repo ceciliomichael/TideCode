@@ -72,6 +72,26 @@ test('resumed multiline and visually wrapped user messages render one prompt mar
   assert.ok(contentLines.slice(1).every((line) => line.startsWith('  ')))
 })
 
+test('undo history viewport follows the selected user turn with surrounding context', () => {
+  const entries = Array.from({ length: 8 }, (_, index) => ({
+    id: `user-${index + 1}`,
+    kind: 'user' as const,
+    text: `Prompt ${index + 1}`,
+  }))
+  const rendered = renderConversationHistory(entries, {
+    maxLines: 7,
+    selectedUserMessageId: 'user-5',
+  }).map(stripAnsi)
+
+  assert.ok(rendered.length <= 7)
+  const selectedIndex = rendered.findIndex((line) => line.includes('▸ Prompt 5'))
+  assert.ok(selectedIndex >= 1)
+  assert.ok(selectedIndex < rendered.length - 1)
+  assert.equal(rendered.some((line) => line.includes('Prompt 4')), true)
+  assert.equal(rendered.some((line) => line.includes('Prompt 6')), true)
+  assert.equal(rendered.some((line) => line.includes('Prompt 1')), false)
+})
+
 test('resumed reasoning restores each saved thought duration in place', () => {
   const entries = createTerminalHistoryEntries([
     { content: 'Inspect', id: 'user-duration', role: 'user', timestamp: 1_000 },

@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import type { Message, QueuedMessage } from '../../src/types/chat'
-import { updateApiKeyPendingSteerMessages } from '../chat/apiKey/runtime'
-import { updateCodexPendingSteerMessages } from '../chat/codex/runtime'
+import type { Message, QueuedMessage, UpdatePendingSteerMessagesInput } from '../../src/types/chat'
+import { ensureRunServiceClient } from '../runService/ensureService'
 import type { CliSessionState } from './types'
 
 export type CliFollowUpBehavior = 'steer' | 'queue'
@@ -12,13 +11,20 @@ interface CliTurnFollowUp {
   message: QueuedMessage
 }
 
+type SteerPublisher = (input: UpdatePendingSteerMessagesInput) => void | Promise<unknown>
+
+function publishThroughSharedRunService(input: UpdatePendingSteerMessagesInput) {
+  return ensureRunServiceClient().then((client) => client.updatePendingSteerMessages(input))
+}
+
 export class CliTurnFollowUpController {
   private readonly followUps: CliTurnFollowUp[] = []
   private revision = 0
 
   constructor(
-    private readonly providerId: CliSessionState['providerId'],
+    _providerId: CliSessionState['providerId'],
     private readonly streamId: string,
+    private readonly publishSteers: SteerPublisher = publishThroughSharedRunService,
   ) {}
 
   add(content: string, behavior: CliFollowUpBehavior): QueuedMessage | null {
@@ -61,7 +67,6 @@ export class CliTurnFollowUpController {
       streamId: this.streamId,
     }
     this.revision += 1
-    if (this.providerId === 'codex') updateCodexPendingSteerMessages(input)
-    else updateApiKeyPendingSteerMessages(input)
+    void Promise.resolve(this.publishSteers(input)).catch(() => undefined)
   }
 }

@@ -28,6 +28,7 @@ export interface ActiveTurnRenderData {
   panel: TerminalPromptPanel
   maxOutputLines?: number
   thinkingFrame?: string
+  leadingSpacer?: boolean
 }
 
 function renderActiveFollowUp(followUp: ActiveTurnFollowUpView, width: number): string[] {
@@ -52,8 +53,9 @@ function wrapPrefixed(text: string, prefix: string, width: number): string[] {
   return wrapVisible(text, availableWidth).map((line) => `${prefix}${line}`)
 }
 
-function renderUserMessage(text: string, width: number): string[] {
-  const firstPrefix = `${colors.accent}›${colors.reset} `
+function renderUserMessage(text: string, width: number, isSelected = false): string[] {
+  const marker = isSelected ? '▸' : '›'
+  const firstPrefix = `${isSelected ? colors.bold : ''}${colors.accent}${marker}${colors.reset} `
   const continuationPrefix = '  '
   const availableWidth = Math.max(1, width - visibleWidth(continuationPrefix))
   const lines: string[] = []
@@ -123,25 +125,36 @@ function renderTurnEntries(entries: readonly TranscriptEntry[], width: number): 
   return lines
 }
 
-export function renderCommittedTurn(entries: readonly TranscriptEntry[]): string[] {
+export function renderCommittedTurn(
+  entries: readonly TranscriptEntry[],
+  options: { leadingSpacer?: boolean } = {},
+): string[] {
   const width = getTerminalPanelWidth()
   const lines = renderTurnEntries(entries, width)
-  const committedLines = lines.length > 0
-    ? ['', ...lines]
-    : ['', `  ${colors.subtle}Turn completed without response text.${colors.reset}`]
+  const contentLines = lines.length > 0
+    ? lines
+    : [`  ${colors.subtle}Turn completed without response text.${colors.reset}`]
+  const committedLines = options.leadingSpacer === false ? [...contentLines] : ['', ...contentLines]
   appendBlankRow(committedLines)
   return committedLines
 }
 
-export function renderConversationHistory(entries: readonly TranscriptEntry[]): string[] {
+export function renderConversationHistory(
+  entries: readonly TranscriptEntry[],
+  options: { selectedUserMessageId?: string | null; maxLines?: number } = {},
+): string[] {
   const width = getTerminalPanelWidth()
   const lines: string[] = []
   let previousEntry: TranscriptEntry | undefined
+  let selectedLineIndex: number | null = null
 
   for (const entry of entries) {
     if (entry.kind === 'user') {
       appendBlankRow(lines)
-      lines.push(...renderUserMessage(entry.text, width))
+      if (entry.id === options.selectedUserMessageId) {
+        selectedLineIndex = lines.length
+      }
+      lines.push(...renderUserMessage(entry.text, width, entry.id === options.selectedUserMessageId))
       appendBlankRow(lines)
     } else {
       if (!isVisibleTurnEntry(entry)) continue
@@ -152,7 +165,26 @@ export function renderConversationHistory(entries: readonly TranscriptEntry[]): 
   }
 
   if (lines.length > 0) appendBlankRow(lines)
-  return lines
+
+  const maxLines = options.maxLines
+  if (
+    selectedLineIndex === null ||
+    maxLines === undefined ||
+    maxLines <= 0 ||
+    lines.length <= maxLines
+  ) {
+    return lines
+  }
+
+  const visibleLineCount = Math.max(1, Math.floor(maxLines))
+  const preferredContextAbove = Math.max(1, Math.floor(visibleLineCount * 0.4))
+  let startIndex = Math.max(0, selectedLineIndex - preferredContextAbove)
+  let endIndex = Math.min(lines.length, startIndex + visibleLineCount)
+  if (endIndex - startIndex < visibleLineCount) {
+    startIndex = Math.max(0, endIndex - visibleLineCount)
+  }
+
+  return lines.slice(startIndex, endIndex)
 }
 
 export function renderActiveTurn(data: ActiveTurnRenderData): ActiveTurnRender {
@@ -164,7 +196,10 @@ export function renderActiveTurn(data: ActiveTurnRenderData): ActiveTurnRender {
   if (data.activity.kind !== 'idle') {
     const lastVisibleEntry = [...data.entries].reverse().find(isVisibleTurnEntry)
     const activityEntryKind = data.activity.kind === 'thinking' ? 'thought' : 'tool'
-    if (lastVisibleEntry && lastVisibleEntry.kind !== activityEntryKind) appendBlankRow(outputLines)
+    const startsNewWaitingPhase = data.activity.kind === 'thinking' && lastVisibleEntry?.kind === 'thought'
+    if (lastVisibleEntry && (lastVisibleEntry.kind !== activityEntryKind || startsNewWaitingPhase)) {
+      appendBlankRow(outputLines)
+    }
     activityRow = outputLines.length
     outputLines.push(renderTerminalActivityLine(data.activity, width, thinkingFrame))
   }
@@ -179,8 +214,8 @@ export function renderActiveTurn(data: ActiveTurnRenderData): ActiveTurnRender {
   }
 
   const panel = data.panel
-  const spacedOutputLines = ['', ...outputLines]
-  if (activityRow !== null) activityRow += 1
+  const spacedOutputLines = data.leadingSpacer === false ? [...outputLines] : ['', ...outputLines]
+  if (activityRow !== null && data.leadingSpacer !== false) activityRow += 1
   return {
     lines: [...spacedOutputLines, '', ...panel.lines],
     cursorRow: spacedOutputLines.length + 1 + panel.cursorRow,

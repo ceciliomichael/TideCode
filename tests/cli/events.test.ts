@@ -67,6 +67,49 @@ test('presented streams do not duplicate cumulative provider snapshots', () => {
   assert.equal(getAccumulatedText(), 'The app is TideCode, a desktop AI workspace.')
 })
 
+test('presented reasoning is committed before content even when the provider omits reasoning_completed', () => {
+  const calls: string[] = []
+  const { sink } = createTerminalChatEventSink({
+    presentation: {
+      ...createPresentation(),
+      onReasoningDelta: () => calls.push('reasoning_delta'),
+      onReasoningCompleted: () => calls.push('reasoning_completed'),
+      onContentStart: () => calls.push('content_start'),
+      onContentDelta: () => calls.push('content_delta'),
+    },
+  })
+
+  sink.emit?.({ delta: 'Checking the answer', streamId: 'stream-content-boundary', type: 'reasoning_delta' })
+  sink.emit?.({ delta: 'Done.', streamId: 'stream-content-boundary', type: 'content_delta' })
+
+  assert.deepEqual(calls, ['reasoning_delta', 'reasoning_completed', 'content_start', 'content_delta'])
+})
+
+test('a late reasoning_completed after a tool boundary does not commit the same thought twice', () => {
+  let completedReasoning = 0
+  const { sink } = createTerminalChatEventSink({
+    presentation: {
+      ...createPresentation(),
+      onReasoningCompleted: () => {
+        completedReasoning += 1
+      },
+    },
+  })
+
+  sink.emit?.({ delta: 'Planning the edit', streamId: 'stream-late-boundary', type: 'reasoning_delta' })
+  sink.emit?.({
+    argumentsText: '{}',
+    invocationId: 'tool-late',
+    startedAt: Date.now(),
+    streamId: 'stream-late-boundary',
+    toolName: 'read',
+    type: 'tool_invocation_started',
+  })
+  sink.emit?.({ streamId: 'stream-late-boundary', type: 'reasoning_completed' })
+
+  assert.equal(completedReasoning, 1)
+})
+
 test('presented tool completion keeps result bodies out of the CLI transcript', () => {
   let startedTools = 0
   let completedTool: { label: string; detail?: string; diff?: string } | null = null

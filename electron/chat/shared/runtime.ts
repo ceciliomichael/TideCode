@@ -54,6 +54,7 @@ import { appendStoredMessages } from '../../history/store'
 import { createAgentToolBundle } from './tools'
 import type { CodeModeExecutor } from './codeMode/executor'
 import { terminateAllBackgroundSessionsForTurn } from './tools/terminalTools'
+import { createTerminalSessionOwner } from './tools/terminalToolShared'
 import { sortToolSet } from './runtimeToolSet'
 import { continueToolLoopUntilModelStops } from './toolLoopPolicy'
 import { normalizeWorkspacePath } from '../../workspace/paths'
@@ -142,6 +143,7 @@ export async function runToolEnabledChatStream(input: {
   const conversationId = input.startInput.conversationId?.trim() || null
   let workspaceRootPath: string | null = null
   let codeModeExecutor: CodeModeExecutor | null = null
+  let terminalOwner: WebContents | null = null
   let runWasRecorded = false
   let queuedHistoryWrites = Promise.resolve()
   const queueHistoryWrite = (action: () => Promise<unknown>) => {
@@ -150,6 +152,7 @@ export async function runToolEnabledChatStream(input: {
 
   try {
     workspaceRootPath = normalizeWorkspacePath(input.startInput.agentContextRootPath)
+    terminalOwner = createTerminalSessionOwner(input.webContents)
     const enabledSkills = await listEnabledSkills(workspaceRootPath)
     const orchestrationMode = 'code_mode' as const
     const toolBundle = await createAgentToolBundle(
@@ -159,7 +162,7 @@ export async function runToolEnabledChatStream(input: {
         turnId: runId,
         workspaceRootPath,
         terminalExecutionMode: input.startInput.terminalExecutionMode,
-        webContents: input.webContents,
+        webContents: terminalOwner,
       },
       {
         chatMode: input.startInput.chatMode,
@@ -718,7 +721,7 @@ export async function runToolEnabledChatStream(input: {
   } finally {
     if (workspaceRootPath) {
       await terminateAllBackgroundSessionsForTurn(
-        input.webContents,
+        terminalOwner ?? input.webContents,
         workspaceRootPath,
         runId,
       ).catch(() => undefined)

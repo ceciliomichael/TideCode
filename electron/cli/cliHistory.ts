@@ -34,6 +34,7 @@ export function applyConversationRecordToCliState(
 ): void {
   state.conversationId = conversation.id
   state.messages = [...conversation.messages]
+  state.pendingUndoEdit = undefined
   state.chatMode = conversation.chatMode
   state.workspaceRootPath = conversation.agentContextRootPath
 

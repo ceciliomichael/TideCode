@@ -17,19 +17,46 @@ test('completion catalog derives slash commands from the command registry', () =
   assert.match(effortItems[0]?.description ?? '', /reasoning effort/i)
 })
 
-test('completion catalog discovers workspace mentions and skips dependency folders', async () => {
+test('completion catalog matches desktop workspace visibility and supports files, folders, and skills', async () => {
   const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-completions-'))
   try {
     await fs.mkdir(path.join(workspace, 'src'), { recursive: true })
+    await fs.mkdir(path.join(workspace, 'ignored'), { recursive: true })
     await fs.mkdir(path.join(workspace, 'node_modules', 'ignored'), { recursive: true })
+    await fs.mkdir(path.join(workspace, 'skills', 'review'), { recursive: true })
+    await fs.writeFile(path.join(workspace, '.gitignore'), 'ignored/\n*.secret\n')
     await fs.writeFile(path.join(workspace, 'src', 'composer.ts'), 'export {}\n')
+    await fs.writeFile(path.join(workspace, 'src', 'componentMap.ts'), 'export {}\n')
+    await fs.writeFile(path.join(workspace, 'ignored', 'should-not-appear.ts'), 'export {}\n')
+    await fs.writeFile(path.join(workspace, 'hidden.secret'), 'secret\n')
     await fs.writeFile(path.join(workspace, 'node_modules', 'ignored', 'package.ts'), 'export {}\n')
+    await fs.writeFile(
+      path.join(workspace, 'skills', 'review', 'SKILL.md'),
+      ['---', 'name: code-review', 'description: Reviews code carefully.', '---', '', '# Review', '', 'Check the diff.'].join('\n'),
+    )
 
     const catalog = new TerminalCompletionCatalog()
     await catalog.preloadWorkspace(workspace)
-    const items = catalog.getItems('please inspect @comp', 'please inspect @comp'.length)
 
-    assert.deepEqual(items.map((item) => item.value), ['@src/composer.ts'])
+    const fileItems = catalog.getItems('please inspect @comp', 'please inspect @comp'.length)
+    assert.equal(fileItems[0]?.value, '@composer.ts')
+    assert.equal(fileItems[0]?.mentionKind, 'file')
+    assert.equal(fileItems[0]?.mentionPath, 'read:src/composer.ts')
+    assert.match(fileItems[0]?.description ?? '', /src\/composer\.ts/)
+
+    const folderItems = catalog.getItems('@src', '@src'.length)
+    assert.equal(folderItems[0]?.value, '@src')
+    assert.equal(folderItems[0]?.mentionKind, 'folder')
+    assert.equal(folderItems[0]?.mentionPath, 'list:src')
+
+    const skillItems = catalog.getItems('@code-rev', '@code-rev'.length)
+    assert.equal(skillItems[0]?.value, '@code-review')
+    assert.equal(skillItems[0]?.mentionKind, 'skill')
+    assert.equal(skillItems[0]?.mentionPath, 'load_skill:code-review')
+    assert.match(skillItems[0]?.description ?? '', /Reviews code carefully/)
+
+    assert.equal(catalog.getItems('@should-not', '@should-not'.length).length, 0)
+    assert.equal(catalog.getItems('@hidden', '@hidden'.length).length, 0)
     assert.equal(catalog.getItems('@package', '@package'.length).length, 0)
   } finally {
     await fs.rm(workspace, { force: true, recursive: true })

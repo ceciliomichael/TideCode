@@ -158,7 +158,7 @@ export function AssistantMessage({
   if (
     !hasContent &&
     !hasReasoningContent &&
-    toolInvocations.length === 0 &&
+    !hasVisibleToolBlocks &&
     !shouldShowWaitingIndicator
   ) {
     return null;

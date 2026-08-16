@@ -32,9 +32,12 @@ import { clearTerminalRegion, updateTerminalRegion } from './terminalRedraw'
 import { processTerminalOutput, type TerminalOutput } from './terminalOutput'
 import {
   getThinkingSpinnerFrame,
+  getThinkingStatusMessage,
   TerminalThinkingIndicator,
   THINKING_SPINNER_FRAMES,
   THINKING_SPINNER_INTERVAL_MS,
+  THINKING_STATUS_MESSAGES,
+  THINKING_STATUS_ROTATION_INTERVAL_MS,
 } from './thinkingIndicator'
 import type { ActiveTurnFollowUpView, CompletionItemView, TerminalScreenViewState } from './terminalView'
 import { createTerminalScreenView, nextTranscriptId, type TerminalSessionView } from './terminalView'
@@ -52,6 +55,7 @@ import { interactiveResumeSelect, type ResumeSelectionResult } from './interacti
 import type { ResumeConversationItem } from './resumeCatalog'
 import type { ResumePage } from './terminalResumeView'
 import { formatThoughtDuration } from './terminalDuration'
+import { expandChatMentions } from '../../src/lib/chatMentions'
 
 let activeTerminalScreen: TerminalScreen | null = null
 const CLEAR_TERMINAL_SEQUENCE = '\x1b[2J\x1b[3J\x1b[H'
@@ -72,6 +76,14 @@ export interface TerminalPromptContext {
   providerId: string
   onToggleMode?: (newMode: ChatMode) => void
   onCancelTurn?: () => void
+  onCancelDraft?: () => void
+  onNavigateUndoEdit?: (
+    direction: 'older' | 'newer',
+  ) => {
+    text: string
+    attachments: readonly ChatAttachment[]
+    targetUserMessageId: string
+  } | null | undefined
   onActiveMessage?: (text: string, behavior: ActiveTurnFollowUpView['behavior']) => void
   enterFollowUpBehavior?: FollowUpBehavior
   getCompletionItems?: (text: string, cursorIndex: number) => readonly CompletionItemView[]
@@ -107,7 +119,9 @@ export class TerminalScreen {
   private readonly output: TerminalOutput
   private view: TerminalScreenViewState
   private composer: ComposerState = createComposerState()
+  private readonly mentionPathMap = new Map<string, string>()
   private pendingPrompt: PendingPrompt | null = null
+  private selectedHistoryUserMessageId: string | null = null
   private renderedPromptRows = 0
   private renderedPromptLines: string[] = []
   private renderedPromptCursorRow = 0
@@ -124,7 +138,10 @@ export class TerminalScreen {
   private activeTurnCursorRow = 0
   private activeTurnCursorColumn = 0
   private activeTurnActivityRow: number | null = null
+  private activeTurnLeadingSpacer = true
   private activeThinkingFrameIndex = 0
+  private activeThinkingMessageIndex = 0
+  private activeThinkingMessageStartedAt = 0
   private activeThinkingTimer: NodeJS.Timeout | null = null
   private activeFollowUps: ActiveTurnFollowUpView[] = []
   private nextPromptDraft: { text: string; attachments: ChatAttachment[] } | null = null
@@ -198,11 +215,13 @@ export class TerminalScreen {
 
   clearSession(): void {
     this.activeTurnCancel = null
+    this.activeTurnLeadingSpacer = true
     this.clearPromptDisplay()
     this.clearActiveTurnDisplay()
     this.stopActivity()
     this.output.write(CLEAR_TERMINAL_SEQUENCE)
     this.view.entries = []
+    this.selectedHistoryUserMessageId = null
     this.view.activity = { kind: 'idle', label: '' }
     this.view.notification = null
     this.activeAssistantId = null
@@ -215,18 +234,32 @@ export class TerminalScreen {
     this.printSessionIntro()
   }
 
-  restoreConversation(messages: readonly Message[], sessionPatch: Partial<TerminalSessionView> = {}, clearScreen = false): void {
+  restoreConversation(
+    messages: readonly Message[],
+    sessionPatch: Partial<TerminalSessionView> = {},
+    clearScreen = false,
+    options: { selectedUserMessageId?: string | null } = {},
+  ): void {
     this.activeTurnCancel = null
     this.clearPromptDisplay()
     this.clearActiveTurnDisplay()
     this.stopActivity()
     this.view.session = { ...this.view.session, ...sessionPatch }
     this.view.entries = createTerminalHistoryEntries(messages, this.view.session.workspace)
+    if ('selectedUserMessageId' in options) {
+      this.selectedHistoryUserMessageId = options.selectedUserMessageId ?? null
+    } else if (
+      this.selectedHistoryUserMessageId &&
+      !this.view.entries.some((entry) => entry.kind === 'user' && entry.id === this.selectedHistoryUserMessageId)
+    ) {
+      this.selectedHistoryUserMessageId = null
+    }
     this.activeAssistantId = null
     this.activeThought = ''
     this.activeThoughtEntryId = null
     this.activeThoughtDurationSeconds = 0
     this.activeTurn = false
+    this.activeTurnLeadingSpacer = true
     this.activeTurnStartIndex = 0
     this.activeFollowUps = []
 
@@ -234,21 +267,41 @@ export class TerminalScreen {
       this.output.write(CLEAR_TERMINAL_SEQUENCE)
       this.printSessionIntro()
     }
-    const historyLines = renderConversationHistory(this.view.entries)
+    const historyLines = renderConversationHistory(this.view.entries, {
+      selectedUserMessageId: this.selectedHistoryUserMessageId,
+      maxLines: this.getSelectedHistoryViewportMaxLines(),
+    })
     if (historyLines.length > 0) this.output.write(`${historyLines.join('\n')}\n`)
+    if (this.pendingPrompt) this.renderCurrentPrompt()
   }
 
   setNotification(level: 'info' | 'success' | 'warning' | 'error', text: string): void {
     this.view.notification = { level, text: stripAnsi(text) }
   }
 
-  addUserMessage(text: string, print = true): void {
+  addUserMessage(
+    text: string,
+    print = true,
+    options: { leadingSpacer?: boolean } = {},
+  ): void {
     this.view.entries.push({ kind: 'user', id: nextTranscriptId('user'), text })
-    if (print) this.output.write(`\n${colors.accent}›${colors.reset} ${formatCliImageReferenceInText(text)}\n`)
+    if (print) {
+      const leadingSpacer = options.leadingSpacer === false ? '' : '\n'
+      this.output.write(`${leadingSpacer}${colors.accent}›${colors.reset} ${formatCliImageReferenceInText(text)}\n`)
+    }
   }
 
-  beginTurn(onCancelTurn?: () => void): void {
+  beginTurn(
+    onCancelTurn?: () => void,
+    options: { leadingSpacer?: boolean } = {},
+  ): void {
+    // A shared run can begin while the REPL is already waiting on an idle
+    // composer. Remove that rendered frame before the active-turn frame takes
+    // ownership of the same terminal rows; the pending prompt itself remains
+    // alive so it can become the steer/queue composer for the run.
+    this.clearPromptDisplay()
     this.activeTurn = true
+    this.activeTurnLeadingSpacer = options.leadingSpacer !== false
     this.activeTurnCancel = onCancelTurn ?? null
     this.activeTurnStartIndex = this.view.entries.length
     this.activeTurnLines = []
@@ -259,6 +312,7 @@ export class TerminalScreen {
     this.activeThought = ''
     this.activeThoughtEntryId = null
     this.activeThoughtDurationSeconds = 0
+    this.mentionPathMap.clear()
     this.composer = createComposerState(this.history)
     this.view.completionItems = []
     this.view.completionIndex = 0
@@ -293,6 +347,17 @@ export class TerminalScreen {
     const detailText = detail ? stripAnsi(detail) : undefined
     this.view.activity = { kind, label: cleanLabel, detail: detailText }
     this.view.isStreaming = kind !== 'idle'
+    const startsGenericWaitingPhase =
+      kind === 'thinking' &&
+      cleanLabel === 'Thinking' &&
+      !detailText &&
+      (previousActivity.kind !== 'thinking' ||
+        previousActivity.label !== cleanLabel ||
+        previousActivity.detail !== detailText)
+    if (startsGenericWaitingPhase) {
+      this.activeThinkingMessageIndex = 0
+      this.activeThinkingMessageStartedAt = Date.now()
+    }
     if (kind === 'idle') {
       this.stopActivity()
       return
@@ -308,8 +373,9 @@ export class TerminalScreen {
     }
     this.activityLabel = cleanLabel
     if (!this.activeTurn) {
-      this.thinkingIndicator.setText(cleanLabel || 'Thinking')
-      this.thinkingIndicator.start(cleanLabel || 'Thinking')
+      const indicatorText = cleanLabel === 'Thinking' && !detailText ? null : cleanLabel || 'Thinking'
+      this.thinkingIndicator.setText(indicatorText)
+      this.thinkingIndicator.start(indicatorText ?? undefined)
     } else {
       if (kind === 'thinking') this.startActiveThinkingAnimation()
       else this.stopActiveThinkingAnimation()
@@ -380,6 +446,9 @@ export class TerminalScreen {
   addTool(label: string, status: 'running' | 'completed' | 'failed', detail?: string, diff?: string): void {
     this.closeAssistantSegment()
     this.stopActivity()
+    this.activeThought = ''
+    this.activeThoughtEntryId = null
+    this.activeThoughtDurationSeconds = 0
     const cleanLabel = stripAnsi(label)
     this.view.entries.push({
       kind: 'tool',
@@ -405,8 +474,11 @@ export class TerminalScreen {
       const deferVisualCommit = this.resizeRedrawPending && this.usesProcessOutput
       this.stopActivity()
       this.clearActiveTurnDisplay()
-      if (!deferVisualCommit) this.output.write(`${renderCommittedTurn(turnEntries).join('\n')}\n`)
+      if (!deferVisualCommit) {
+        this.output.write(`${renderCommittedTurn(turnEntries, { leadingSpacer: this.activeTurnLeadingSpacer }).join('\n')}\n`)
+      }
       this.activeTurn = false
+      this.activeTurnLeadingSpacer = true
       this.activeTurnStartIndex = 0
       this.activeTurnLines = []
       this.activeTurnCursorRow = 0
@@ -447,9 +519,14 @@ export class TerminalScreen {
     return {
       onWaiting: (label) => this.setActivity('thinking', label),
       onReasoningDelta: (delta) => this.appendThought(delta),
-      onReasoningCompleted: (durationSeconds) => this.addThought(durationSeconds, this.activeThought),
+      onReasoningCompleted: (durationSeconds) => {
+        this.addThought(durationSeconds, this.activeThought)
+        if (this.activeTurn) this.setActivity('thinking', 'Thinking')
+      },
       onContentStart: () => {
         this.activeThought = ''
+        this.activeThoughtEntryId = null
+        this.activeThoughtDurationSeconds = 0
         this.stopActivity()
         this.startAssistant()
       },
@@ -457,9 +534,11 @@ export class TerminalScreen {
       onToolStarted: () => undefined,
       onToolCompleted: (label, detail, diff) => {
         this.addTool(label, 'completed', detail, diff)
+        if (this.activeTurn) this.setActivity('thinking', 'Thinking')
       },
       onToolFailed: (label, detail) => {
         this.addTool(label, 'failed', detail)
+        if (this.activeTurn) this.setActivity('thinking', 'Thinking')
       },
       onCompleted: () => this.finishTurn(),
     }
@@ -494,6 +573,7 @@ export class TerminalScreen {
     }
 
     if (this.pendingPrompt) throw new Error('A terminal prompt is already active.')
+    this.mentionPathMap.clear()
     this.updateSession({ mode: context.mode, model: context.modelId, provider: context.providerId })
     if (this.nextPromptDraft) {
       this.composer = setComposerText(createComposerState(this.history), this.nextPromptDraft.text, this.nextPromptDraft.attachments)
@@ -527,6 +607,7 @@ export class TerminalScreen {
     if (this.activeTurn) this.clearActiveTurnDisplay()
     else this.clearPromptDisplay()
     this.pendingPrompt = null
+    this.mentionPathMap.clear()
     this.composer = createComposerState(this.history)
     this.view.completionItems = []
     this.view.completionIndex = 0
@@ -576,6 +657,13 @@ export class TerminalScreen {
     const str = typeof data === 'string' ? data : data.toString('utf8')
     if (!this.pendingPrompt) {
       this.bracketedPasteDecoder.reset()
+      return
+    }
+
+    if (str === '\u001b') {
+      this.suppressKeypressesUntilDataCycleCompletes()
+      if (this.requestActiveTurnCancellation()) return
+      this.handlePromptAction({ type: 'cancel' })
       return
     }
 
@@ -644,9 +732,12 @@ export class TerminalScreen {
         this.requestActiveTurnCancellation()
         return
       }
+      pending.context.onCancelDraft?.()
+      this.selectedHistoryUserMessageId = null
+      this.mentionPathMap.clear()
       this.composer = createComposerState(this.history)
       this.updateCompletionItems(pending.context)
-      this.renderCurrentPrompt()
+      this.redrawFromState()
       return
     }
 
@@ -710,8 +801,11 @@ export class TerminalScreen {
         process.stdin.removeListener('keypress', this.handleKeypress)
       }
       this.resetBracketedPasteInput()
+      const expandedText = expandChatMentions(text, this.mentionPathMap)
+      this.selectedHistoryUserMessageId = null
       this.finishPrompt(text)
-      resolve({ text, attachments })
+      this.mentionPathMap.clear()
+      resolve({ text: expandedText, attachments })
       return
     }
 
@@ -721,6 +815,19 @@ export class TerminalScreen {
         const count = this.view.completionItems.length
         this.view.completionIndex = (this.view.completionIndex + increment + count) % count
         this.renderCurrentPrompt()
+        return
+      }
+
+      const undoNavigation = pending.context.onNavigateUndoEdit?.(action.type === 'move-up' ? 'older' : 'newer')
+      if (undoNavigation !== undefined) {
+        if (undoNavigation) {
+          this.selectedHistoryUserMessageId = undoNavigation.targetUserMessageId
+          this.composer = setComposerText(this.composer, undoNavigation.text, undoNavigation.attachments)
+          this.updateCompletionItems(pending.context)
+          this.redrawFromState()
+        } else {
+          this.renderCurrentPrompt()
+        }
         return
       }
     }
@@ -737,12 +844,14 @@ export class TerminalScreen {
   private submitActiveMessage(pending: PendingPrompt, behavior: ActiveTurnFollowUpView['behavior']): void {
     const text = composerText(this.composer).trim()
     if (!text) return
+    const expandedText = expandChatMentions(text, this.mentionPathMap)
     this.history.splice(0, this.history.length, ...recordComposerHistory(this.composer, text).history)
     this.activeFollowUps.push({ behavior, text })
     this.composer = createComposerState(this.history)
+    this.mentionPathMap.clear()
     this.view.completionItems = []
     this.view.completionIndex = 0
-    pending.context.onActiveMessage?.(text, behavior)
+    pending.context.onActiveMessage?.(expandedText, behavior)
     this.updateCompletionItems(pending.context)
     this.renderActiveTurn()
   }
@@ -754,6 +863,9 @@ export class TerminalScreen {
     const match = before.match(/(?:^|\s)([/@][^\s]*)$/)
     if (!match || match.index === undefined) return this.composer
     const start = match.index + (match[0].startsWith(' ') ? 1 : 0)
+    if (item.mentionPath && item.value.startsWith('@')) {
+      this.mentionPathMap.set(item.value.slice(1), item.mentionPath)
+    }
     const nextText = `${text.slice(0, start)}${item.value}${appendSpace ? ' ' : ''}${text.slice(cursorIndex)}`
     const next = createComposerState(this.history, this.composer.attachments)
     const lines = nextText.split('\n')
@@ -830,12 +942,25 @@ export class TerminalScreen {
   private startActiveThinkingAnimation(): void {
     if (this.activeThinkingTimer || !this.usesProcessOutput || !process.stdout.isTTY) return
     this.activeThinkingFrameIndex = 0
+    if (this.activeThinkingMessageStartedAt === 0) {
+      this.activeThinkingMessageIndex = 0
+      this.activeThinkingMessageStartedAt = Date.now()
+    }
     this.activeThinkingTimer = setInterval(() => {
       if (!this.activeTurn || this.view.activity.kind !== 'thinking') {
         this.stopActiveThinkingAnimation()
         return
       }
       this.activeThinkingFrameIndex = (this.activeThinkingFrameIndex + 1) % THINKING_SPINNER_FRAMES.length
+      if (
+        this.view.activity.label === 'Thinking' &&
+        !this.view.activity.detail &&
+        Date.now() - this.activeThinkingMessageStartedAt >= THINKING_STATUS_ROTATION_INTERVAL_MS
+      ) {
+        this.activeThinkingMessageIndex =
+          (this.activeThinkingMessageIndex + 1) % THINKING_STATUS_MESSAGES.length
+        this.activeThinkingMessageStartedAt = Date.now()
+      }
       this.patchActiveThinkingFrame()
     }, THINKING_SPINNER_INTERVAL_MS)
     this.activeThinkingTimer.unref()
@@ -847,6 +972,8 @@ export class TerminalScreen {
       this.activeThinkingTimer = null
     }
     this.activeThinkingFrameIndex = 0
+    this.activeThinkingMessageIndex = 0
+    this.activeThinkingMessageStartedAt = 0
   }
 
   private patchActiveThinkingFrame(): void {
@@ -862,7 +989,7 @@ export class TerminalScreen {
     }
 
     const nextLine = renderTerminalActivityLine(
-      this.view.activity,
+      this.getRenderedActivity(),
       getTerminalPanelWidth(),
       getThinkingSpinnerFrame(this.activeThinkingFrameIndex),
     )
@@ -878,6 +1005,20 @@ export class TerminalScreen {
     if (this.shouldShowActiveComposerCaret()) redrawOutput.write('\x1b[6 q\x1b[?25h')
     redrawOutput.flushTo(this.output)
     this.activeTurnLines[activityRow] = nextLine
+  }
+
+  private getRenderedActivity() {
+    if (
+      this.view.activity.kind === 'thinking' &&
+      this.view.activity.label === 'Thinking' &&
+      !this.view.activity.detail
+    ) {
+      return {
+        ...this.view.activity,
+        label: getThinkingStatusMessage(this.activeThinkingMessageIndex),
+      }
+    }
+    return this.view.activity
   }
 
   private shouldShowActiveComposerCaret(): boolean {
@@ -913,9 +1054,10 @@ export class TerminalScreen {
     const visualLines = getComposerVisualLines(this.composer, composerWidth)
     const cursor = getComposerCursorPosition(this.composer, composerWidth)
     const render = renderActiveTurnView({
-      activity: this.view.activity,
+      activity: this.getRenderedActivity(),
       entries: this.view.entries.slice(this.activeTurnStartIndex),
       followUps: this.activeFollowUps,
+      leadingSpacer: this.activeTurnLeadingSpacer,
       panel: createActiveTurnPromptPanel({
         composerWidth,
         placeholder: getFollowUpKeyHint(this.pendingPrompt?.context.enterFollowUpBehavior ?? 'steer'),
@@ -1043,6 +1185,27 @@ export class TerminalScreen {
     return { columns, rows }
   }
 
+  private redrawFromState(): void {
+    this.redrawAfterResize()
+  }
+
+  private getSelectedHistoryViewportMaxLines(): number | undefined {
+    if (!this.selectedHistoryUserMessageId) return undefined
+    const rows = process.stdout.rows
+    if (!rows) return undefined
+
+    const panelWidth = getTerminalPanelWidth()
+    const composerWidth = Math.max(1, panelWidth - 6)
+    const composerLineCount = Math.max(1, getComposerVisualLines(this.composer, composerWidth).length)
+    const completionRows = this.view.completionItems.length > 0
+      ? 1 + Math.min(6, this.view.completionItems.length)
+      : 0
+    const promptRows = 1 + composerLineCount + completionRows + 1 + 1
+    const sessionIntroRows = 8
+
+    return Math.max(4, rows - sessionIntroRows - promptRows)
+  }
+
   private redrawAfterResize(): void {
     // Terminal hosts reflow lines when their width changes, so the old cursor
     // row and frame dimensions are no longer trustworthy. Repaint from the
@@ -1066,7 +1229,10 @@ export class TerminalScreen {
     const historyEntries = this.activeTurn
       ? this.view.entries.slice(0, this.activeTurnStartIndex)
       : this.view.entries
-    const historyLines = renderConversationHistory(historyEntries)
+    const historyLines = renderConversationHistory(historyEntries, {
+      selectedUserMessageId: this.selectedHistoryUserMessageId,
+      maxLines: this.getSelectedHistoryViewportMaxLines(),
+    })
     if (historyLines.length > 0) redrawOutput.write(`${historyLines.join('\n')}\n`)
 
     if (this.activeTurn) {

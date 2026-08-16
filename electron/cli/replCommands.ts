@@ -6,13 +6,13 @@ import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../src/lib/contextCompac
 import { compactApiKeyConversation } from '../chat/apiKey/runtime'
 import { compactCodexConversation } from '../chat/codex/runtime'
 import { startRemoteRelayDaemon } from './remoteDaemon'
-import { replaceStoredMessages } from '../history/store'
-import { isHumanUserMessage } from '../../src/lib/chatMessageMetadata'
+import { getLatestUndoEditSelection } from './undoEditNavigation'
 import type { CliSessionState, SlashCommandHelpers } from './types'
 import type { TerminalScreen } from './terminalScreen'
 import { resumeCliConversation } from './cliHistory'
 import { persistCliReasoningEffort } from './cliReasoningEffortSettings'
 import { shouldRefreshCodexUsage } from './cliComposerStatus'
+import { attachCliToActiveSharedRun } from './sharedRunAttachment'
 import { updateStoredConversationArchived } from '../history/store'
 
 const execFileAsync = promisify(execFile)
@@ -78,30 +78,26 @@ export function createReplCommandHelpers(
       }
     },
     undoLastTurn: async () => {
-      const lastUserIndex = state.messages.map((message) => isHumanUserMessage(message)).lastIndexOf(true)
-      if (lastUserIndex < 0) {
-        screen.addNotice('warning', 'There is no previous turn to remove.')
+      const selection = getLatestUndoEditSelection(state.messages)
+      if (!selection) {
+        screen.addNotice('warning', 'There is no previous turn to edit.')
         return
       }
-      const lastUserMessage = state.messages[lastUserIndex]
-      const undoneText = typeof lastUserMessage.content === 'string' ? lastUserMessage.content : ''
-      const undoneAttachments = lastUserMessage.attachments ?? []
 
-      state.messages = state.messages.slice(0, lastUserIndex)
-      const conversation = await replaceStoredMessages({
-        chatMode: state.chatMode,
-        conversationId: state.conversationId,
-        messages: state.messages,
-        synchronizeCanonicalHistory: true,
-      })
-      state.messages = [...conversation.messages]
+      // /undo is a staged edit, not an immediate history mutation. Keep the
+      // complete transcript visible while marking the selected historical user
+      // turn. Up/Down moves that marker and the editable composer draft; Esc
+      // exits edit mode without changing history or workspace checkpoints.
+      state.pendingUndoEdit = { targetUserMessageId: selection.targetUserMessageId }
+      // Seed the editable draft before computing the history viewport so a
+      // multiline historical prompt reserves its full sticky-composer height.
+      screen.setNextPromptDraft(selection.text, selection.attachments)
       screen.restoreConversation(state.messages, {
         mode: state.chatMode,
         model: state.modelId,
         provider: state.providerId,
         workspace: state.workspaceRootPath,
-      }, true)
-      screen.setNextPromptDraft(undoneText, undoneAttachments)
+      }, true, { selectedUserMessageId: selection.targetUserMessageId })
     },
     loadSession: async (conversationId: string) => {
       try {
@@ -114,6 +110,7 @@ export function createReplCommandHelpers(
           workspace: state.workspaceRootPath,
         }, true)
         onRuntimeChanged?.({ refreshCodexUsage: state.providerId === 'codex' })
+        await attachCliToActiveSharedRun(state, screen)
         return true
       } catch {
         return false
@@ -130,6 +127,7 @@ export function createReplCommandHelpers(
         if (isArchived && conversationId === state.conversationId) {
           state.conversationId = randomUUID()
           state.messages = []
+          state.pendingUndoEdit = undefined
           screen.clearSession()
         }
         return true
@@ -141,6 +139,7 @@ export function createReplCommandHelpers(
     clearSession: async () => {
       state.conversationId = randomUUID()
       state.messages = []
+      state.pendingUndoEdit = undefined
       screen.clearSession()
     },
     startRemoteDaemon: async () => {

@@ -28,7 +28,6 @@ import type {
   KanbanWorkspaceInput,
 } from '../../src/lib/kanban'
 import {
-  appendStoredMessages,
   cleanupDraftAgentContextDirectory,
   createStoredConversation,
   createStoredFolder,
@@ -44,12 +43,12 @@ import {
   renameStoredFolder,
   reorderStoredFolder,
   updateStoredConversationArchived,
-  replaceStoredMessages,
   updateStoredConversationPinned,
   updateStoredConversationTitle,
 } from '../history/store'
 import { listCompactionMarkers } from '../chat/history/eventStore'
 import { getDraftAgentContextPath } from '../history/paths'
+import { ensureRunServiceClient } from '../runService/ensureService'
 import { getStoredSettings, updateStoredSettings } from '../settings/store'
 import { applyTideCodeAppIcon } from '../window/branding'
 import { applyWindowTheme } from '../window/theme'
@@ -139,10 +138,10 @@ export function registerCoreIpcHandlers(getWindow: () => BrowserWindow | null) {
     await shell.openPath(folderPath)
   })
   ipcMain.handle('history:appendMessages', async (_event, input: AppendConversationMessagesInput) =>
-    appendStoredMessages(input),
+    (await ensureRunServiceClient()).appendMessages(input),
   )
   ipcMain.handle('history:replaceMessages', async (_event, input: ReplaceConversationMessagesInput) =>
-    replaceStoredMessages(input),
+    (await ensureRunServiceClient()).replaceMessages(input),
   )
   ipcMain.handle('history:updateTitle', async (_event, conversationId: string, title: string) =>
     updateStoredConversationTitle(conversationId, title),

@@ -7,6 +7,7 @@ import { getRelativeDisplayPath } from '../../lib/pathPresentation'
 import {
   formatStructuredToolResultContent,
   parseStructuredToolResultContent,
+  TERMINATED_TOOL_EXECUTION_MESSAGE,
 } from '../../lib/toolResultContent'
 import { getKanbanToolInvocationHeaderLabel } from './kanbanToolInvocationPresentation'
 import { isKanbanTool } from './kanbanToolInvocationKinds'
@@ -496,6 +497,16 @@ function getWholeFileChangeSingleChangeTarget(invocation: ToolInvocationTrace) {
 export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace): ToolInvocationDisplayEntry[] {
   if (invocation.toolName === 'code_mode' && invocation.state === 'running') {
     return []
+  }
+
+  if (invocation.toolName === 'code_mode' && invocation.state === 'failed' && invocation.resultContent) {
+    const parsedResult = parseStructuredToolResultContent(invocation.resultContent)
+    if (
+      parsedResult.metadata?.toolName === 'code_mode' &&
+      parsedResult.metadata.summary === TERMINATED_TOOL_EXECUTION_MESSAGE
+    ) {
+      return []
+    }
   }
 
   if (invocation.toolName === 'code_mode' && invocation.state !== 'running') {

@@ -1,6 +1,5 @@
-import type { ChatAttachment } from '../../src/types/chat'
-import { cancelApiKeyChatStream } from '../chat/apiKey/runtime'
-import { cancelCodexChatStream } from '../chat/codex/runtime'
+import type { ChatAttachment, ConversationRecord } from '../../src/types/chat'
+import { ensureRunServiceClient } from '../runService/ensureService'
 import { executeSlashCommand } from './commands'
 import { createReplCommandHelpers } from './replCommands'
 import { runReplTurn } from './replTurn'
@@ -11,6 +10,10 @@ import { refreshCliComposerStatus } from './cliComposerStatus'
 import { getStoredSettings } from '../settings/store'
 import { warmSystemClipboardReader } from './cliClipboardImage'
 import { TIDECODE_VERSION } from '../appVersion'
+import { attachCliToActiveSharedRun } from './sharedRunAttachment'
+import { navigateUndoEditSelection } from './undoEditNavigation'
+import { resolveCliUndoCheckpointPlan, runWithCliUndoWorkspaceReverted } from './cliUndoCheckpoints'
+import { getStoredConversation } from '../history/store'
 
 function createPromptContext(
   state: CliSessionState,
@@ -31,17 +34,38 @@ function createPromptContext(
       const streamId = state.activeStreamId
       if (!streamId) return
       screen.setActivity('thinking', 'Stopping')
-      const cancellation = state.providerId === 'codex'
-        ? cancelCodexChatStream(streamId)
-        : cancelApiKeyChatStream(streamId)
-      void cancellation.catch((error) => {
-        screen.addNotice('error', `Could not stop the turn: ${error instanceof Error ? error.message : String(error)}`)
-      })
+      void ensureRunServiceClient()
+        .then((client) => client.cancelStream(streamId))
+        .catch((error) => {
+          screen.addNotice('error', `Could not stop the turn: ${error instanceof Error ? error.message : String(error)}`)
+        })
+    },
+    onCancelDraft: () => {
+      state.pendingUndoEdit = undefined
+    },
+    onNavigateUndoEdit: (direction) => {
+      const pendingUndoEdit = state.pendingUndoEdit
+      if (!pendingUndoEdit) return undefined
+      const selection = navigateUndoEditSelection(
+        state.messages,
+        pendingUndoEdit.targetUserMessageId,
+        direction,
+      )
+      if (!selection) return null
+      state.pendingUndoEdit = { targetUserMessageId: selection.targetUserMessageId }
+      return {
+        text: selection.text,
+        attachments: selection.attachments,
+        targetUserMessageId: selection.targetUserMessageId,
+      }
     },
   }
 }
 
-export async function startInteractiveRepl(state: CliSessionState): Promise<void> {
+export async function startInteractiveRepl(
+  state: CliSessionState,
+  options: { openResumePicker?: boolean } = {},
+): Promise<void> {
   const screen = new TerminalScreen({
     workspace: state.workspaceRootPath,
     model: state.modelId,
@@ -65,6 +89,66 @@ export async function startInteractiveRepl(state: CliSessionState): Promise<void
   screen.start()
   screen.restoreConversation(state.messages)
   screen.updateComposerStatus({ reasoningEffort: state.reasoningEffort })
+
+  const runService = await ensureRunServiceClient()
+  let applyingPendingUndoMutation = false
+  let sharedRunAttachmentPromise: Promise<boolean> | null = null
+  const attachToSharedRunIfIdle = (): Promise<boolean> | null => {
+    if (state.isStreaming) return null
+    if (sharedRunAttachmentPromise) return sharedRunAttachmentPromise
+    sharedRunAttachmentPromise = attachCliToActiveSharedRun(state, screen)
+      .catch((error) => {
+        screen.addNotice('error', `Could not attach to the shared Tidecode run: ${error instanceof Error ? error.message : String(error)}`)
+        return false
+      })
+      .finally(() => {
+        sharedRunAttachmentPromise = null
+      })
+    return sharedRunAttachmentPromise
+  }
+
+  const applySharedConversationSnapshot = (conversation: ConversationRecord) => {
+    state.messages = [...conversation.messages]
+    state.chatMode = conversation.chatMode
+    state.workspaceRootPath = conversation.agentContextRootPath
+    if (!state.isStreaming && !applyingPendingUndoMutation) {
+      state.activeStreamId = null
+      if (
+        state.pendingUndoEdit &&
+        !conversation.messages.some((message) => message.id === state.pendingUndoEdit?.targetUserMessageId)
+      ) {
+        state.pendingUndoEdit = undefined
+      }
+      screen.restoreConversation(conversation.messages, {
+        mode: conversation.chatMode,
+        model: state.modelId,
+        provider: state.providerId,
+        workspace: conversation.agentContextRootPath,
+      }, true)
+    }
+  }
+
+  runService.onEvent((event) => {
+    if (
+      (event.type === 'conversation_appended' || event.type === 'conversation_replaced' || event.type === 'conversation_updated')
+      && event.conversationId === state.conversationId
+    ) {
+      applySharedConversationSnapshot(event.conversation)
+      return
+    }
+
+    if (event.type !== 'run_state' || event.run.conversationId !== state.conversationId) return
+    const isActive = event.run.status === 'starting'
+      || event.run.status === 'running'
+      || event.run.status === 'waiting_for_input'
+    if (isActive) attachToSharedRunIfIdle()
+  })
+
+  if (options.openResumePicker) {
+    await executeSlashCommand('/resume', state, helpers)
+  } else {
+    await (attachToSharedRunIfIdle() ?? Promise.resolve(false))
+  }
   let startupPreparationStarted = false
 
   for (;;) {
@@ -109,22 +193,105 @@ export async function startInteractiveRepl(state: CliSessionState): Promise<void
     if (!input && attachments.length === 0) continue
 
     if (input.startsWith('/')) {
+      // A slash command means the staged edit was abandoned. Restore the
+      // authoritative transcript before running the command; /undo itself can
+      // immediately create a fresh staged preview again.
+      if (state.pendingUndoEdit) {
+        state.pendingUndoEdit = undefined
+        screen.restoreConversation(state.messages, {
+          mode: state.chatMode,
+          model: state.modelId,
+          provider: state.providerId,
+          workspace: state.workspaceRootPath,
+        }, true, { selectedUserMessageId: null })
+      }
       await executeSlashCommand(input, state, helpers)
       continue
     }
 
     try {
+      let printUserMessage = isQueuedInput
+      let userMessageLeadingSpacer: boolean | undefined
+      const pendingUndoEdit = state.pendingUndoEdit
+      if (pendingUndoEdit) {
+        const targetUserIndex = state.messages.findIndex((message) => message.id === pendingUndoEdit.targetUserMessageId)
+        if (targetUserIndex < 0) {
+          state.pendingUndoEdit = undefined
+          screen.restoreConversation(state.messages, {
+            mode: state.chatMode,
+            model: state.modelId,
+            provider: state.providerId,
+            workspace: state.workspaceRootPath,
+          }, true)
+          screen.setNextPromptDraft(input, attachments)
+          screen.addNotice('warning', 'That turn changed before the edit was submitted. Nothing was reverted.')
+          continue
+        }
+
+        applyingPendingUndoMutation = true
+        try {
+          const storedConversation = await getStoredConversation(state.conversationId)
+          if (!storedConversation) {
+            throw new Error(`Conversation not found: ${state.conversationId}`)
+          }
+
+          const undoPlan = await resolveCliUndoCheckpointPlan(
+            state.conversationId,
+            storedConversation.messages,
+            pendingUndoEdit.targetUserMessageId,
+          )
+          const conversation = await runWithCliUndoWorkspaceReverted(
+            undoPlan,
+            () => runService.replaceMessages({
+              chatMode: state.chatMode,
+              conversationId: state.conversationId,
+              messages: storedConversation.messages.slice(0, undoPlan.targetUserIndex),
+              synchronizeCanonicalHistory: true,
+            }),
+          )
+
+          state.messages = [...conversation.messages]
+          state.pendingUndoEdit = undefined
+          screen.restoreConversation(state.messages, {
+            mode: state.chatMode,
+            model: state.modelId,
+            provider: state.providerId,
+            workspace: state.workspaceRootPath,
+          }, true)
+          // ask() already printed the edited draft before returning it to this
+          // loop. The history redraw above intentionally removes that stale
+          // line, so print the submitted edit once as the new user turn. The
+          // restored history already owns the spacer immediately above it.
+          printUserMessage = true
+          userMessageLeadingSpacer = false
+        } finally {
+          applyingPendingUndoMutation = false
+        }
+      }
+
       const result = await runReplTurn(
         input,
         state,
         screen,
         createPromptContext(state, screen, completions),
-        { attachments, printUserMessage: isQueuedInput },
+        { attachments, printUserMessage, userMessageLeadingSpacer },
       )
       queuedInputs.push(...result.queuedInputs.map((text) => ({ text })))
       pendingInput = result.nextInput
       refreshComposerStatus()
     } catch (error) {
+      if (state.pendingUndoEdit) {
+        // A failed staged-revert write keeps the authoritative transcript
+        // visible and leaves the selected edit marker in place so the user can
+        // retry the edit or exit it explicitly.
+        screen.restoreConversation(state.messages, {
+          mode: state.chatMode,
+          model: state.modelId,
+          provider: state.providerId,
+          workspace: state.workspaceRootPath,
+        }, true)
+        screen.setNextPromptDraft(input, attachments)
+      }
       screen.addNotice('error', `Could not save or start the turn: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
