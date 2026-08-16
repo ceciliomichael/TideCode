@@ -106,6 +106,37 @@ export function normalizeMemoryEntryPath(candidatePath: string, workspaceRootPat
   return segments.join('/')
 }
 
+export type WorkspaceMemoryPathClassification =
+  | { kind: 'index'; path: string }
+  | { kind: 'entry'; path: string }
+  | { kind: 'invalid'; path: string }
+
+export function classifyWorkspaceMemoryPath(
+  absolutePathInput: string,
+  workspaceRootPathInput: string,
+): WorkspaceMemoryPathClassification | null {
+  const workspaceRootPath = normalizeWorkspacePath(workspaceRootPathInput)
+  const absolutePath = path.resolve(absolutePathInput)
+  const memoryRoot = getSafeWorkspaceTargetPath(workspaceRootPath, MEMORY_DIRECTORY).absolutePath
+  const relativeToMemory = path.relative(memoryRoot, absolutePath)
+
+  if (relativeToMemory.startsWith('..') || path.isAbsolute(relativeToMemory)) {
+    return null
+  }
+
+  const workspaceRelativePath = path.relative(workspaceRootPath, absolutePath).replace(/\\/gu, '/')
+  if (workspaceRelativePath === MEMORY_INDEX_PATH) {
+    return { kind: 'index', path: MEMORY_INDEX_PATH }
+  }
+
+  try {
+    const relativeMemoryPath = normalizeMemoryEntryPath(workspaceRelativePath, workspaceRootPath)
+    return { kind: 'entry', path: `${MEMORY_DIRECTORY}/${relativeMemoryPath}` }
+  } catch {
+    return { kind: 'invalid', path: workspaceRelativePath || MEMORY_DIRECTORY }
+  }
+}
+
 function resolveMemoryTarget(workspaceRootPath: string, relativeMemoryPath: string) {
   return getSafeWorkspaceTargetPath(
     workspaceRootPath,
@@ -297,38 +328,6 @@ async function writeIndexIfChanged(workspaceRootPath: string, beforeMutation?: (
   return { changed: previousContent !== content, content }
 }
 
-export async function readMemoryIndex(workspaceRootPathInput: string): Promise<MemoryDocument> {
-  const workspaceRootPath = normalizeWorkspacePath(workspaceRootPathInput)
-  await assertWorkspaceDirectory(workspaceRootPath)
-
-  return withMemoryLock(workspaceRootPath, async () => {
-    const index = await writeIndexIfChanged(workspaceRootPath)
-    if (index.changed) {
-      notifyWorkspaceExplorerChange(workspaceRootPath)
-    }
-    return { content: index.content, path: MEMORY_INDEX_PATH }
-  })
-}
-
-export async function readMemoryEntry(input: { path: string; workspaceRootPath: string }): Promise<MemoryDocument> {
-  const workspaceRootPath = normalizeWorkspacePath(input.workspaceRootPath)
-  await assertWorkspaceDirectory(workspaceRootPath)
-  const relativeMemoryPath = normalizeMemoryEntryPath(input.path, workspaceRootPath)
-  const target = resolveMemoryTarget(workspaceRootPath, relativeMemoryPath)
-  await assertManagedPathContainsNoSymlink(workspaceRootPath, target.absolutePath)
-
-  try {
-    return {
-      content: await fs.readFile(target.absolutePath, 'utf8'),
-      path: `${MEMORY_DIRECTORY}/${relativeMemoryPath}`,
-    }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(`Memory entry does not exist: ${MEMORY_DIRECTORY}/${relativeMemoryPath}`)
-    }
-    throw error
-  }
-}
 
 export async function writeMemoryEntry(input: MemoryMutationInput & {
   content: string

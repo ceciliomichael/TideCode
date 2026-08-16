@@ -1,17 +1,18 @@
 import type { CheckoutGitBranchInput, CreateGitBranchInput, GitBranchState } from '../../src/types/chat'
 import {
   getErrorMessage,
+  getPreferredRemoteName,
   getRemoteUrl,
-  isFastForwardOnlyPullFailure,
+  hasRemoteTrackingBranch,
   isGitUnavailable,
   isWorkingTreeConflictFailure,
   readAheadBehindCounts,
   readCurrentBranch,
   readDefaultBranch,
   readLocalBranches,
+  readRemoteBranches,
   resolveRepositoryRoot,
   runGit,
-  syncCheckedOutBranchWithRemote,
   validateBranchName,
 } from './repositoryContext'
 
@@ -22,6 +23,7 @@ function createEmptyBranchState(): GitBranchState {
     behindCommitCount: 0,
     branches: [],
     currentBranch: null,
+    remoteBranches: [],
     defaultBranch: null,
     hasRepository: false,
     hasUpstream: false,
@@ -38,9 +40,10 @@ export async function getGitBranchState(workspacePath: string): Promise<GitBranc
     return createEmptyBranchState()
   }
 
-  const [branchState, branches, defaultBranch, remoteUrl, aheadBehindCounts] = await Promise.all([
+  const [branchState, branches, remoteBranches, defaultBranch, remoteUrl, aheadBehindCounts] = await Promise.all([
     readCurrentBranch(repoRootPath),
     readLocalBranches(repoRootPath),
+    readRemoteBranches(repoRootPath),
     readDefaultBranch(repoRootPath),
     getRemoteUrl(repoRootPath).catch(() => null),
     readAheadBehindCounts(repoRootPath),
@@ -51,6 +54,7 @@ export async function getGitBranchState(workspacePath: string): Promise<GitBranc
     branches,
     currentBranch: branchState.currentBranch,
     defaultBranch,
+    remoteBranches,
     hasRepository: true,
     isDetachedHead: branchState.isDetachedHead,
     remoteUrl: remoteUrl ?? null,
@@ -77,8 +81,18 @@ export async function checkoutGitBranch(input: CheckoutGitBranchInput): Promise<
   }
 
   try {
-    await runGit(['checkout', '--quiet', branchName], repoRootPath)
-    await syncCheckedOutBranchWithRemote(repoRootPath, branchName)
+    const localBranches = await readLocalBranches(repoRootPath)
+    if (localBranches.includes(branchName)) {
+      await runGit(['checkout', '--quiet', branchName], repoRootPath)
+    } else if (await hasRemoteTrackingBranch(repoRootPath, branchName)) {
+      const remoteName = await getPreferredRemoteName(repoRootPath)
+      if (!remoteName) {
+        throw new Error(`No remote is configured for branch '${branchName}'.`)
+      }
+      await runGit(['checkout', '--quiet', '--track', '-b', branchName, `${remoteName}/${branchName}`], repoRootPath)
+    } else {
+      await runGit(['checkout', '--quiet', branchName], repoRootPath)
+    }
   } catch (error) {
     if (isGitUnavailable(error)) {
       throw new Error('Git is not available in the current environment.')
@@ -87,12 +101,6 @@ export async function checkoutGitBranch(input: CheckoutGitBranchInput): Promise<
     if (isWorkingTreeConflictFailure(error)) {
       throw new Error(
         'Cannot switch branches because local changes would be overwritten. Commit, stash, or discard changes first.',
-      )
-    }
-
-    if (isFastForwardOnlyPullFailure(error)) {
-      throw new Error(
-        `Switched to '${branchName}' but it cannot be fast-forwarded from origin. Resolve divergence (merge/rebase) before continuing.`,
       )
     }
 

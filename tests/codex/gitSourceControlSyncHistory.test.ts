@@ -173,6 +173,32 @@ test('gitSync push sets upstream when pushing a new local branch', async () => {
   })
 })
 
+test('gitSync push preserves a differently named configured upstream branch', async () => {
+  await withTemporaryDirectory(async (tempRootPath) => {
+    const { clonePath } = await setupRemoteAndClone(tempRootPath)
+    await runGit(['push', 'origin', 'main:shared-target'], clonePath)
+    await runGit(['fetch', 'origin'], clonePath)
+    await runGit(['checkout', '-b', 'local-work'], clonePath)
+    await runGit(['branch', '--set-upstream-to', 'origin/shared-target', 'local-work'], clonePath)
+    await commitFile(clonePath, 'branch.txt', 'branch work\n', 'fix: preserve push upstream')
+
+    const result = await gitSync({
+      action: 'push',
+      workspacePath: clonePath,
+    })
+
+    assert.equal(result.success, true)
+    assert.equal(result.branchName, 'local-work')
+
+    const { stdout: localHeadStdout } = await runGit(['rev-parse', 'HEAD'], clonePath)
+    const { stdout: targetRemoteStdout } = await runGit(['ls-remote', '--heads', 'origin', 'shared-target'], clonePath)
+    const { stdout: unexpectedRemoteStdout } = await runGit(['ls-remote', '--heads', 'origin', 'local-work'], clonePath)
+
+    assert.equal(targetRemoteStdout.startsWith(localHeadStdout.trim()), true)
+    assert.equal(unexpectedRemoteStdout.trim(), '')
+  })
+})
+
 test('gitSync sync pushes a committed local change to the tracked remote branch', async () => {
   await withTemporaryDirectory(async (tempRootPath) => {
     const { clonePath, seedPath } = await setupRemoteAndClone(tempRootPath)

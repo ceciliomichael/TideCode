@@ -204,6 +204,26 @@ export async function readLocalBranches(repoRootPath: string) {
     .filter((branchName) => branchName.length > 0)
 }
 
+export async function readRemoteBranches(repoRootPath: string) {
+  const remoteName = await getPreferredRemoteName(repoRootPath)
+  if (!remoteName) {
+    return []
+  }
+
+  const { stdout } = await runGit(
+    ['for-each-ref', '--format=%(refname:short)', '--sort=-committerdate', `refs/remotes/${remoteName}`],
+    repoRootPath,
+  )
+  const remotePrefix = `${remoteName}/`
+
+  return stdout
+    .split(/\r?\n/)
+    .map((remoteBranchName) => remoteBranchName.trim())
+    .filter((remoteBranchName) => remoteBranchName.startsWith(remotePrefix))
+    .map((remoteBranchName) => remoteBranchName.slice(remotePrefix.length))
+    .filter((branchName) => branchName.length > 0 && branchName !== 'HEAD')
+}
+
 export async function readDefaultBranch(repoRootPath: string) {
   const remoteName = await getPreferredRemoteName(repoRootPath)
   if (!remoteName) {
@@ -278,6 +298,26 @@ export async function readCurrentUpstreamBranch(repoRootPath: string) {
   } catch {
     return null
   }
+}
+
+export async function pushCheckedOutBranch(repoRootPath: string, branchName: string) {
+  const { stdout: upstreamStdout } = await runGit(
+    ['for-each-ref', '--format=%(upstream:remotename)%00%(upstream:remoteref)', `refs/heads/${branchName}`],
+    repoRootPath,
+  )
+  const [upstreamRemoteName = '', upstreamRemoteRef = ''] = upstreamStdout.trim().split('\0')
+
+  if (upstreamRemoteName.length > 0 && upstreamRemoteRef.length > 0) {
+    await runGit(['push', upstreamRemoteName, `HEAD:${upstreamRemoteRef}`], repoRootPath)
+    return
+  }
+
+  const remoteName = await getPreferredRemoteName(repoRootPath)
+  if (!remoteName) {
+    throw new Error('No remote is configured for this repository.')
+  }
+
+  await runGit(['push', '-u', remoteName, branchName], repoRootPath)
 }
 
 export async function readAheadBehindCounts(repoRootPath: string) {

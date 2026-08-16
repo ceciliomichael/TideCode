@@ -19,16 +19,6 @@ const TARGET_FILE_PATH = `${WORKSPACE_ROOT_PATH}/src/example.ts`
 test('memory tool uses durable-context labels and targets', () => {
   assert.equal(
     getToolInvocationHeaderLabel({
-      argumentsText: JSON.stringify({ action: 'read_index' }),
-      id: 'memory-index',
-      startedAt: 0,
-      state: 'completed',
-      toolName: 'memory',
-    }),
-    'Read memory index',
-  )
-  assert.equal(
-    getToolInvocationHeaderLabel({
       argumentsText: JSON.stringify({ action: 'edit', path: '.tidecode/memory/folders/architecture/runtime.md' }),
       id: 'memory-edit',
       startedAt: 0,

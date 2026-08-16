@@ -654,6 +654,7 @@ export function ChatInput({
                 <GitBranchSelectorField
                   branches={gitBranchState.branches}
                   currentBranch={gitBranchState.currentBranch}
+                  remoteBranches={gitBranchState.remoteBranches}
                   disabled={disabled}
                   errorMessage={gitBranchError}
                   hasRepository={gitBranchState.hasRepository}

@@ -4,6 +4,7 @@ import { clearTerminalRegion, updateTerminalRegion } from './terminalRedraw'
 import { ensureKeypressEvents } from './terminalLifecycle'
 import { buildSelectionLines } from './terminalSelectionView'
 import { cycleSelectionSectionIndex } from './selectionNavigation'
+import type { InteractiveResizeHost } from './interactiveResize'
 
 export interface SelectItem<T = string> {
   value: T
@@ -31,7 +32,10 @@ export type SelectOptions<T = string> = SelectOptionsBase & (
   | { items?: never; sections: SelectSection<T>[]; initialSectionIndex?: number }
 )
 
-export async function interactiveSelect<T = string>(options: SelectOptions<T>): Promise<T | null> {
+export async function interactiveSelect<T = string>(
+  options: SelectOptions<T>,
+  resizeHost?: InteractiveResizeHost,
+): Promise<T | null> {
   const { title, initialIndex = 0, pageSize = 6, footer } = options
   const sections = options.sections ?? null
   let sectionIndex = sections
@@ -83,6 +87,7 @@ export async function interactiveSelect<T = string>(options: SelectOptions<T>): 
       // Restore terminal cursor
       process.stdout.write('\x1b[?25h')
       process.stdin.removeListener('keypress', onKeypress)
+      resizeHost?.registerResizeHandler(null)
       try {
         process.stdin.setRawMode(false)
       } catch {
@@ -123,6 +128,15 @@ export async function interactiveSelect<T = string>(options: SelectOptions<T>): 
         totalRenderedLines = lines.length
         renderedLines = lines
       }
+    }
+
+    const redrawAfterResize = () => {
+      if (isFinished) return
+      resizeHost?.redrawBackground()
+      totalRenderedLines = 0
+      renderedLines = []
+      isInitialized = false
+      render()
     }
 
     const onKeypress = (_str: string, key: readline.Key) => {
@@ -202,11 +216,16 @@ export async function interactiveSelect<T = string>(options: SelectOptions<T>): 
 
     ensureKeypressEvents()
     process.stdin.on('keypress', onKeypress)
+    resizeHost?.registerResizeHandler(redrawAfterResize)
     render()
   })
 }
 
-export async function interactiveConfirm(question: string, defaultYes = true): Promise<boolean> {
+export async function interactiveConfirm(
+  question: string,
+  defaultYes = true,
+  resizeHost?: InteractiveResizeHost,
+): Promise<boolean> {
   const result = await interactiveSelect<boolean>({
     title: question,
     items: [
@@ -215,7 +234,7 @@ export async function interactiveConfirm(question: string, defaultYes = true): P
     ],
     initialIndex: defaultYes ? 0 : 1,
     pageSize: 2,
-  })
+  }, resizeHost)
 
   return result ?? false
 }

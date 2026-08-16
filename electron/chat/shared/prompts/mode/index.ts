@@ -227,6 +227,7 @@ export function buildChatModeSystemPromptBreakdown(
         '<code_mode_contract>',
         'This hybrid turn exposes direct tools plus `code_mode`; tool discovery is available inside it as `tools.tool_search({ query })`.',
         'Use direct tools for one simple operation; use code_mode for related calls, loops, filtering, or batching.',
+        'Code Mode is tool-only: use ordinary JavaScript for in-memory orchestration and route every external action through tools.*.',
         'Local tools are preloaded in code_mode. For connected MCP capabilities, call tools.tool_search inside the Code Mode program and invoke only an exact returned function.',
         '</code_mode_contract>',
       ].join('\n'),

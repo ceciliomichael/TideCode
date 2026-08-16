@@ -1,20 +1,20 @@
 import { jsonSchema, tool } from 'ai'
 import {
   createGrepToolResult,
+  OPTIONAL_ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION,
   resolveReadOnlyTargetPath,
-  WORKSPACE_PATH_DESCRIPTION,
   type WorkspaceToolContext,
 } from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createGrepTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Search file contents under exactly one existing file or directory; never combine paths with spaces.',
+    description: 'Search file contents under exactly one existing file or directory; an omitted path, empty string, or "." refers to the bound workspace root.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
         path: {
-          description: `${WORKSPACE_PATH_DESCRIPTION} Omit for the workspace root.`,
+          description: OPTIONAL_ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION,
           type: 'string',
         },
         include: { type: 'string' },

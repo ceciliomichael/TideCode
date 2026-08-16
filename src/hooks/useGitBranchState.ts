@@ -20,6 +20,7 @@ interface UseGitBranchStateResult {
   errorMessage: string | null
   isLoading: boolean
   refresh: (options?: { forceRefresh?: boolean; silent?: boolean }) => Promise<void>
+  refreshRemoteBranches: () => Promise<void>
   isSwitching: boolean
 }
 
@@ -33,6 +34,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
   const [isLoading, setIsLoading] = useState(false)
   const [isSwitching, setIsSwitching] = useState(false)
   const requestIdRef = useRef(0)
+  const isSwitchingRef = useRef(false)
   const activeWorkspacePathRef = useRef(normalizedWorkspacePath)
 
   useEffect(() => {
@@ -47,6 +49,10 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
         setErrorMessage(null)
         setIsLoading(false)
       }
+      return
+    }
+
+    if (isSwitchingRef.current) {
       return
     }
 
@@ -165,6 +171,29 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
     }
   }, [refresh, workspacePath])
 
+  const refreshRemoteBranches = useCallback(async () => {
+    const normalizedWorkspacePath = normalizeGitWorkspacePath(workspacePath)
+    if (!normalizedWorkspacePath || isSwitchingRef.current) {
+      return
+    }
+
+    setIsLoading(true)
+    setErrorMessage(null)
+
+    try {
+      await window.tidecodeGit.sync({
+        action: 'fetch-all',
+        workspacePath: normalizedWorkspacePath,
+      })
+      await refresh({ forceRefresh: true })
+    } catch (error) {
+      if (normalizedWorkspacePath === activeWorkspacePathRef.current) {
+        setErrorMessage(toUserFacingErrorMessage(error, 'The remote branches could not be refreshed.'))
+        setIsLoading(false)
+      }
+    }
+  }, [refresh, workspacePath])
+
   const changeBranch = useCallback(
     async (branchName: string) => {
       const normalizedWorkspacePath = normalizeGitWorkspacePath(workspacePath)
@@ -172,6 +201,9 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
         return
       }
 
+      isSwitchingRef.current = true
+      requestIdRef.current += 1
+      setIsLoading(false)
       setIsSwitching(true)
       setErrorMessage(null)
 
@@ -189,6 +221,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
         setErrorMessage(message)
         throw error instanceof Error ? error : new Error(message)
       } finally {
+        isSwitchingRef.current = false
         setIsSwitching(false)
       }
     },
@@ -202,6 +235,9 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
         return
       }
 
+      isSwitchingRef.current = true
+      requestIdRef.current += 1
+      setIsLoading(false)
       setIsSwitching(true)
       setErrorMessage(null)
 
@@ -219,6 +255,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
         setErrorMessage(message)
         throw error instanceof Error ? error : new Error(message)
       } finally {
+        isSwitchingRef.current = false
         setIsSwitching(false)
       }
     },
@@ -232,6 +269,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
     errorMessage,
     isLoading,
     refresh,
+    refreshRemoteBranches,
     isSwitching,
   }
 }

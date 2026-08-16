@@ -100,6 +100,39 @@ test('getGitBranchState reports outgoing commits relative to the configured upst
   })
 })
 
+test('getGitBranchState exposes known remote-only branches without network access', async () => {
+  await withTemporaryDirectory(async (workspacePath) => {
+    const remotePath = path.join(workspacePath, 'remote.git')
+    const seedPath = path.join(workspacePath, 'seed')
+    const clonePath = path.join(workspacePath, 'clone')
+    await fs.mkdir(seedPath)
+    await runGit(['init', '--bare', remotePath], workspacePath)
+    await runGit(['init', '-b', 'main'], seedPath)
+    await runGit(['config', 'user.name', 'Test User'], seedPath)
+    await runGit(['config', 'user.email', 'test@example.com'], seedPath)
+    await fs.writeFile(path.join(seedPath, 'README.md'), 'main\n', 'utf8')
+    await runGit(['add', '.'], seedPath)
+    await runGit(['commit', '-m', 'initial'], seedPath)
+    await runGit(['remote', 'add', 'origin', remotePath], seedPath)
+    await runGit(['push', '-u', 'origin', 'main'], seedPath)
+    await runGit(['checkout', '-b', 'feature/remote-only'], seedPath)
+    await fs.writeFile(path.join(seedPath, 'remote.txt'), 'remote\n', 'utf8')
+    await runGit(['add', '.'], seedPath)
+    await runGit(['commit', '-m', 'remote branch'], seedPath)
+    await runGit(['push', '-u', 'origin', 'feature/remote-only'], seedPath)
+    await runGit(['symbolic-ref', 'HEAD', 'refs/heads/main'], remotePath)
+    await runGit(['clone', remotePath, clonePath], workspacePath)
+
+    const state = await getGitBranchState(clonePath)
+
+    assert.ok(state.branches.includes('main'))
+    assert.equal(state.branches.includes('feature/remote-only'), false)
+    assert.ok(state.remoteBranches.includes('main'))
+    assert.ok(state.remoteBranches.includes('feature/remote-only'))
+    assert.equal(state.remoteBranches.includes('HEAD'), false)
+  })
+})
+
 test('getGitBranchState recognizes a configured remote even when it is not named origin', async () => {
   await withTemporaryDirectory(async (workspacePath) => {
     const remotePath = path.join(workspacePath, 'remote.git')

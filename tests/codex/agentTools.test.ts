@@ -202,7 +202,7 @@ test('createAgentTools describes grep mechanics without workflow guidance', asyn
     assert.ok('grep' in tools)
     const grepTool = tools.grep as { description?: string }
 
-    assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; never combine paths with spaces.')
+    assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; an omitted path, empty string, or "." refers to the bound workspace root.')
     assert.doesNotMatch(grepTool.description ?? '', /use `read`|patch|should|prefer/iu)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -227,10 +227,10 @@ test('createAgentTools keeps plan mode tool descriptions literal', async () => {
     const globTool = tools.glob as { description?: string }
     const grepTool = tools.grep as { description?: string }
 
-    assert.equal(listTool.description, 'List exactly one existing directory; omit path for the workspace root and use read for files.')
-    assert.equal(readTool.description, 'Read exactly one existing text file or image. By default, returns up to 500 lines. Set full_file: true to read the complete text file; full_file takes precedence over offset and limit.')
-    assert.equal(globTool.description, 'Find files by pattern under exactly one directory; use the exact path returned by list or the user.')
-    assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; never combine paths with spaces.')
+    assert.equal(listTool.description, 'List exactly one existing directory; an omitted path, empty string, or "." refers to the bound workspace root. Use read for files.')
+    assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. By default, returns up to 500 lines. Set full_file: true to read the complete text file; full_file takes precedence over offset and limit.')
+    assert.equal(globTool.description, 'Find files by pattern under exactly one directory; an omitted path, empty string, or "." refers to the bound workspace root.')
+    assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; an omitted path, empty string, or "." refers to the bound workspace root.')
     for (const description of [listTool, readTool, globTool, grepTool].map((tool) => tool.description ?? '')) {
       assert.doesNotMatch(description, /patch|write|should|prefer/iu)
     }
@@ -266,13 +266,13 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     const editTool = tools.edit as { description?: string }
     const writeTool = tools.write as { description?: string }
 
-    assert.equal(readTool.description, 'Read exactly one existing text file or image. By default, returns up to 500 lines. Set full_file: true to read the complete text file; full_file takes precedence over offset and limit.')
+    assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. By default, returns up to 500 lines. Set full_file: true to read the complete text file; full_file takes precedence over offset and limit.')
     assert.equal(
       editTool.description,
       'Edit a file by replacing targetContent with replacementContent. Pass { path, edits: [{ targetContent, replacementContent }] }. Always use tools.edit for modifying existing files.',
     )
-    assert.equal(globTool.description, 'Find files by pattern under exactly one directory; use the exact path returned by list or the user.')
-    assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; never combine paths with spaces.')
+    assert.equal(globTool.description, 'Find files by pattern under exactly one directory; an omitted path, empty string, or "." refers to the bound workspace root.')
+    assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; an omitted path, empty string, or "." refers to the bound workspace root.')
     assert.equal(writeTool.description, 'Write a complete file.')
     for (const description of [
       readTool,

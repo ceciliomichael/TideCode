@@ -170,24 +170,26 @@ export function CommitModal({
         <form onSubmit={handleSubmit}>
           {/* Branch row */}
           <div className="px-6 py-2.5">
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-sm font-medium text-foreground shrink-0">Branch override</span>
-              <div className="relative min-w-0 flex-1">
-                <div className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-muted-foreground">
-                  {isSwitchingBranch ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <GitBranch size={14} />
-                  )}
+            <div className="flex items-start justify-between gap-4">
+              <span className="flex h-10 shrink-0 items-center text-sm font-medium text-foreground">Branch override</span>
+              <div className="min-w-0 flex-1">
+                <div className="relative">
+                  <div className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-muted-foreground">
+                    {isSwitchingBranch ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <GitBranch size={14} />
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={commitBranchName}
+                    onChange={(e) => setCommitBranchName(sanitizeGitBranchInput(e.target.value))}
+                    disabled={disableFields}
+                    placeholder="Optional branch name"
+                    className="h-10 w-full rounded-xl border border-border bg-surface pl-8 pr-3 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus:border-border focus:outline-none focus:ring-0"
+                  />
                 </div>
-                <input
-                  type="text"
-                  value={commitBranchName}
-                  onChange={(e) => setCommitBranchName(sanitizeGitBranchInput(e.target.value))}
-                  disabled={disableFields}
-                  placeholder="Optional branch name"
-                  className="h-10 w-full rounded-xl border border-border bg-surface pl-8 pr-3 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus:border-border focus:outline-none focus:ring-0"
-                />
                 <p className="mt-1.5 text-xs text-muted-foreground">
                   This branch will be used for the commit and pull request. Missing branches are created automatically.
                 </p>

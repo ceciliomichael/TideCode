@@ -1,20 +1,20 @@
 import { jsonSchema, tool } from 'ai'
 import {
   createListToolResult,
+  OPTIONAL_ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION,
   resolveReadOnlyTargetPath,
-  WORKSPACE_PATH_DESCRIPTION,
   type WorkspaceToolContext,
 } from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 
 export function createListTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'List exactly one existing directory; omit path for the workspace root and use read for files.',
+    description: 'List exactly one existing directory; an omitted path, empty string, or "." refers to the bound workspace root. Use read for files.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
         path: {
-          description: `${WORKSPACE_PATH_DESCRIPTION} Omit for the workspace root.`,
+          description: OPTIONAL_ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION,
           type: 'string',
         },
         limit: { description: 'Maximum entries to return (1-500). Defaults to 100.', maximum: 500, minimum: 1, type: 'integer' },

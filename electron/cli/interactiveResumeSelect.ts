@@ -2,6 +2,7 @@ import readline from 'node:readline'
 import { getTerminalWidth } from './renderer'
 import { clearTerminalRegion, updateTerminalRegion } from './terminalRedraw'
 import { ensureKeypressEvents } from './terminalLifecycle'
+import type { InteractiveResizeHost } from './interactiveResize'
 import {
   buildTerminalResumeLines,
   type ResumeFilterScope,
@@ -67,10 +68,11 @@ function renderNonInteractive(options: InteractiveResumeSelectOptions): ResumeSe
 
 export async function interactiveResumeSelect(
   options: InteractiveResumeSelectOptions,
+  resizeHost?: InteractiveResizeHost,
 ): Promise<ResumeSelectionResult | null> {
   if (!process.stdin.isTTY) return renderNonInteractive(options)
 
-  const pageSize = options.pageSize ?? getDefaultPageSize()
+  const getPageSize = () => options.pageSize ?? getDefaultPageSize()
   let scope: ResumeFilterScope = 'cwd'
   let sortMode: ResumeSortMode = 'updated'
   let page: ResumePage = options.page ?? 'active'
@@ -90,6 +92,7 @@ export async function interactiveResumeSelect(
       clearTerminalRegion(totalRenderedLines)
       process.stdout.write('\x1b[?25h')
       process.stdin.removeListener('keypress', onKeypress)
+      resizeHost?.registerResizeHandler(null)
       try {
         process.stdin.setRawMode(false)
       } catch {
@@ -101,6 +104,7 @@ export async function interactiveResumeSelect(
     const render = () => {
       if (isFinished) return
       const items = getItems()
+      const pageSize = getPageSize()
       selectedIndex = Math.max(0, Math.min(selectedIndex, Math.max(0, items.length - 1)))
       const lines = buildTerminalResumeLines({
         items,
@@ -126,6 +130,15 @@ export async function interactiveResumeSelect(
       updateTerminalRegion(renderedLines, lines)
       totalRenderedLines = lines.length
       renderedLines = lines
+    }
+
+    const redrawAfterResize = () => {
+      if (isFinished) return
+      resizeHost?.redrawBackground()
+      totalRenderedLines = 0
+      renderedLines = []
+      isInitialized = false
+      render()
     }
 
     const moveSelection = (direction: -1 | 1) => {
@@ -170,12 +183,12 @@ export async function interactiveResumeSelect(
       }
 
       if (key.name === 'pageup') {
-        selectedIndex = Math.max(0, selectedIndex - pageSize)
+        selectedIndex = Math.max(0, selectedIndex - getPageSize())
         render()
         return
       }
       if (key.name === 'pagedown') {
-        selectedIndex = Math.min(Math.max(0, getItems().length - 1), selectedIndex + pageSize)
+        selectedIndex = Math.min(Math.max(0, getItems().length - 1), selectedIndex + getPageSize())
         render()
         return
       }
@@ -242,6 +255,7 @@ export async function interactiveResumeSelect(
     process.stdin.resume()
     ensureKeypressEvents()
     process.stdin.on('keypress', onKeypress)
+    resizeHost?.registerResizeHandler(redrawAfterResize)
     render()
   })
 }

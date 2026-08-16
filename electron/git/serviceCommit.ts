@@ -9,6 +9,7 @@ import {
   isGhAuthError,
   isGhUnavailable,
   isGitUnavailable,
+  pushCheckedOutBranch,
   readCurrentBranch,
   readDefaultBranch,
   readHeadCommitHash,
@@ -509,12 +510,15 @@ export async function gitCommit(input: GitCommitInput): Promise<GitCommitResult>
         )
       }
 
-      const remoteName = await getPreferredRemoteName(repoRootPath)
-      if (!remoteName) {
-        throw new Error('No remote is configured for this repository.')
+      if (input.action === 'commit-and-create-pr') {
+        const remoteName = await getPreferredRemoteName(repoRootPath)
+        if (!remoteName) {
+          throw new Error('No remote is configured for this repository.')
+        }
+        await runGit(['push', '-u', remoteName, currentBranch], repoRootPath)
+      } else {
+        await pushCheckedOutBranch(repoRootPath, currentBranch)
       }
-
-      await runGit(['push', '-u', remoteName, currentBranch], repoRootPath)
 
       if (input.action === 'commit-and-create-pr') {
         const remoteUrl = await getRemoteUrl(repoRootPath)

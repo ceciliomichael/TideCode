@@ -59,42 +59,93 @@ async function setupRemoteAndClone(tempRootPath: string) {
   }
 }
 
-test('checkoutGitBranch fast-forwards branch with latest origin commits', async () => {
+test('checkoutGitBranch switches locally without fetching or pulling remote commits', async () => {
   await withTemporaryDirectory(async (tempRootPath) => {
     const { clonePath, seedPath } = await setupRemoteAndClone(tempRootPath)
+    const { stdout: localMainStdout } = await runGit(['rev-parse', 'main'], clonePath)
+    const localMainHead = localMainStdout.trim()
+    await runGit(['checkout', '-b', 'feature/local-work'], clonePath)
 
     await commitFile(seedPath, 'README.md', 'initial\nupstream change\n', 'fix: update upstream readme')
     await runGit(['push', 'origin', 'main'], seedPath)
     const { stdout: remoteHeadStdout } = await runGit(['rev-parse', 'HEAD'], seedPath)
     const remoteHead = remoteHeadStdout.trim()
+    assert.notEqual(remoteHead, localMainHead)
 
-    await checkoutGitBranch({
+    const state = await checkoutGitBranch({
       branchName: 'main',
       workspacePath: clonePath,
     })
 
     const { stdout: localHeadStdout } = await runGit(['rev-parse', 'HEAD'], clonePath)
-    assert.equal(localHeadStdout.trim(), remoteHead)
+    assert.equal(state.currentBranch, 'main')
+    assert.equal(localHeadStdout.trim(), localMainHead)
+    assert.notEqual(localHeadStdout.trim(), remoteHead)
   })
 })
 
-test('checkoutGitBranch surfaces divergence when branch cannot fast-forward', async () => {
+test('checkoutGitBranch creates a local tracking branch from a known remote-only branch without network access', async () => {
+  await withTemporaryDirectory(async (tempRootPath) => {
+    const { clonePath, seedPath } = await setupRemoteAndClone(tempRootPath)
+    await runGit(['checkout', '-b', 'feature/remote-only'], seedPath)
+    await commitFile(seedPath, 'remote-only.txt', 'remote branch\n', 'feat: remote-only branch')
+    await runGit(['push', '-u', 'origin', 'feature/remote-only'], seedPath)
+    await runGit(['fetch', 'origin'], clonePath)
+    await runGit(['remote', 'set-url', 'origin', path.join(tempRootPath, 'missing-remote.git')], clonePath)
+
+    const state = await checkoutGitBranch({
+      branchName: 'feature/remote-only',
+      workspacePath: clonePath,
+    })
+    const { stdout: upstreamStdout } = await runGit(
+      ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'],
+      clonePath,
+    )
+
+    assert.equal(state.currentBranch, 'feature/remote-only')
+    assert.ok(state.branches.includes('feature/remote-only'))
+    assert.ok(state.remoteBranches.includes('feature/remote-only'))
+    assert.equal(upstreamStdout.trim(), 'origin/feature/remote-only')
+    await fs.access(path.join(clonePath, 'remote-only.txt'))
+  })
+})
+
+test('checkoutGitBranch succeeds when the configured remote is unavailable', async () => {
+  await withTemporaryDirectory(async (tempRootPath) => {
+    const { clonePath } = await setupRemoteAndClone(tempRootPath)
+    await runGit(['checkout', '-b', 'feature/local-work'], clonePath)
+    await runGit(['remote', 'set-url', 'origin', path.join(tempRootPath, 'missing-remote.git')], clonePath)
+
+    const state = await checkoutGitBranch({
+      branchName: 'main',
+      workspacePath: clonePath,
+    })
+
+    assert.equal(state.currentBranch, 'main')
+  })
+})
+
+test('checkoutGitBranch does not block local switching on remote divergence', async () => {
   await withTemporaryDirectory(async (tempRootPath) => {
     const { clonePath, seedPath } = await setupRemoteAndClone(tempRootPath)
 
-    await commitFile(clonePath, 'local.txt', 'local change\n', 'feat: local commit before pulling')
-    await commitFile(seedPath, 'remote.txt', 'remote change\n', 'fix: remote commit after local change')
+    await commitFile(clonePath, 'local.txt', 'local change\n', 'feat: local commit')
+    const { stdout: localMainStdout } = await runGit(['rev-parse', 'HEAD'], clonePath)
+    const localMainHead = localMainStdout.trim()
+    await runGit(['checkout', '-b', 'feature/local-work'], clonePath)
+
+    await commitFile(seedPath, 'remote.txt', 'remote change\n', 'fix: remote commit')
     await runGit(['push', 'origin', 'main'], seedPath)
 
-    await assert.rejects(
-      checkoutGitBranch({
-        branchName: 'main',
-        workspacePath: clonePath,
-      }),
-      (error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error)
-        return message.includes("cannot be fast-forwarded from origin")
-      },
-    )
+    const state = await checkoutGitBranch({
+      branchName: 'main',
+      workspacePath: clonePath,
+    })
+
+    const { stdout: localHeadStdout } = await runGit(['rev-parse', 'HEAD'], clonePath)
+    assert.equal(state.currentBranch, 'main')
+    assert.equal(localHeadStdout.trim(), localMainHead)
+    await fs.access(path.join(clonePath, 'local.txt'))
+    await assert.rejects(fs.access(path.join(clonePath, 'remote.txt')))
   })
 })

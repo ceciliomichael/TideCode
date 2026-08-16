@@ -87,10 +87,31 @@ test('screen rebuilds one responsive compose frame after a terminal resize', () 
   assert.equal(rows.filter((row) => row.includes('╰')).length >= 1, true)
   const resizeFrame = output.writes.at(-1) ?? ''
   const escape = String.fromCharCode(27)
-  assert.equal(resizeFrame.startsWith(`${escape}[?2026h${escape}[?25l${escape}[2J${escape}[H`), true)
+  assert.equal(resizeFrame.startsWith(`${escape}[?2026h${escape}[?25l${escape}[2J${escape}[3J${escape}[H`), true)
   assert.equal(resizeFrame.endsWith(`${escape}[?2026l`), true)
 
   screen.dismissPrompt()
+})
+
+test('screen delegates resize redraw while an interactive overlay owns the terminal', () => {
+  const output = new RecordingOutput()
+  const screen = createScreen(output)
+  screen.start()
+
+  let overlayRedraws = 0
+  const internals = screen as unknown as {
+    handleResize: () => void
+    interactiveResizeHandler: (() => void) | null
+  }
+  internals.interactiveResizeHandler = () => {
+    overlayRedraws += 1
+  }
+  const writesBeforeResize = output.writes.length
+
+  internals.handleResize()
+
+  assert.equal(overlayRedraws, 1)
+  assert.equal(output.writes.length, writesBeforeResize)
 })
 
 test('screen lifecycle leaves one intact active compose frame in a terminal grid', () => {
@@ -343,7 +364,7 @@ test('screen does not add slash commands to the user transcript', async () => {
   assert.equal(output.visibleRows().some((row) => row.includes('› /model')), false)
 })
 
-test('screen expands selected mention completions with the same canonical action used by desktop', async () => {
+test('screen selects an active mention completion with Enter before submitting it', async () => {
   const output = new TerminalGridOutput()
   const screen = createScreen(output)
   screen.start()
@@ -352,7 +373,7 @@ test('screen expands selected mention completions with the same canonical action
     mode: 'agent',
     modelId: 'gpt-test',
     providerId: 'codex',
-    getCompletionItems: (text) => text.includes('@code')
+    getCompletionItems: (text) => /@code[^\s]*$/u.test(text)
       ? [{
           value: '@code-review',
           label: '@code-review',
@@ -362,14 +383,71 @@ test('screen expands selected mention completions with the same canonical action
         }]
       : [],
   })
+  let submission: Awaited<typeof submissionPromise> | null = null
+  void submissionPromise.then((value) => {
+    submission = value
+  })
 
   screen.handleInputAction({ type: 'insert', text: '@code-rev' })
-  screen.handleInputAction({ type: 'insert', text: '\t' })
+  screen.handleInputAction({ type: 'submit' })
+  await new Promise<void>((resolve) => setImmediate(resolve))
+
+  assert.equal(submission, null)
   assert.equal(output.visibleRows().some((row) => row.includes('@code-review')), true)
 
   screen.handleInputAction({ type: 'submit' })
-  const submission = await submissionPromise
-  assert.equal(submission.text, '[[load_skill:code-review]]')
+  const submitted = await submissionPromise
+  assert.equal(submitted.text, '[[load_skill:code-review]]')
+})
+
+test('screen keypress Enter selects the highlighted mention completion before submitting', async () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+
+  const submissionPromise = screen.ask({
+    mode: 'agent',
+    modelId: 'gpt-test',
+    providerId: 'codex',
+    getCompletionItems: (text) => /@code[^\s]*$/u.test(text)
+      ? [
+          {
+            value: '@code-review',
+            label: '@code-review',
+            description: 'skill · Reviews code carefully.',
+            mentionKind: 'skill',
+            mentionPath: 'load_skill:code-review',
+          },
+          {
+            value: '@code-search',
+            label: '@code-search',
+            description: 'skill · Searches code carefully.',
+            mentionKind: 'skill',
+            mentionPath: 'load_skill:code-search',
+          },
+        ]
+      : [],
+  })
+  let submission: Awaited<typeof submissionPromise> | null = null
+  void submissionPromise.then((value) => {
+    submission = value
+  })
+
+  const inputInternals = screen as unknown as {
+    handleKeypress: (input: string, key: { ctrl?: boolean; name?: string }) => void
+  }
+
+  screen.handleInputAction({ type: 'insert', text: '@code' })
+  inputInternals.handleKeypress('', { name: 'down' })
+  inputInternals.handleKeypress('\r', { name: 'return' })
+  await new Promise<void>((resolve) => setImmediate(resolve))
+
+  assert.equal(submission, null)
+  assert.equal(output.visibleRows().some((row) => row.includes('@code-search')), true)
+
+  inputInternals.handleKeypress('\r', { name: 'return' })
+  const submitted = await submissionPromise
+  assert.equal(submitted.text, '[[load_skill:code-search]]')
 })
 
 test('screen lifecycle streams reasoning text and commits its duration label', () => {
