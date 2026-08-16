@@ -249,6 +249,11 @@ export class TerminalScreen {
   }
 
   beginTurn(onCancelTurn?: () => void): void {
+    // A shared run can begin while the REPL is already waiting on an idle
+    // composer. Remove that rendered frame before the active-turn frame takes
+    // ownership of the same terminal rows; the pending prompt itself remains
+    // alive so it can become the steer/queue composer for the run.
+    this.clearPromptDisplay()
     this.activeTurn = true
     this.activeTurnCancel = onCancelTurn ?? null
     this.activeTurnStartIndex = this.view.entries.length

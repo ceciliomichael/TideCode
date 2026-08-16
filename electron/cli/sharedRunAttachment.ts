@@ -16,6 +16,8 @@ export async function attachCliToActiveSharedRun(
   const runService = await ensureRunServiceClient()
   let streamId: string | null = null
   let runId: string | null = null
+  let presentationReady = false
+  let runEnded = false
   const queuedEvents: ChatStreamEvent[] = []
   let settle: () => void = () => undefined
   const settled = new Promise<void>((resolve) => {
@@ -34,6 +36,12 @@ export async function attachCliToActiveSharedRun(
     if (typeof sink.emit === 'function') sink.emit(event)
     else sink.send?.('chat:stream:event', event)
   }
+  const flushQueuedEvents = () => {
+    if (!presentationReady || !streamId) return
+    for (const queuedEvent of queuedEvents.splice(0)) {
+      if (queuedEvent.streamId === streamId) deliverEvent(queuedEvent)
+    }
+  }
 
   const unsubscribe = runService.onEvent((event) => {
     if (event.type === 'run_state' && event.run.conversationId === state.conversationId) {
@@ -42,16 +50,17 @@ export async function attachCliToActiveSharedRun(
       if (event.run.streamId) {
         streamId = event.run.streamId
         state.activeStreamId = event.run.streamId
-        for (const queuedEvent of queuedEvents.splice(0)) {
-          if (queuedEvent.streamId === streamId) deliverEvent(queuedEvent)
-        }
+        flushQueuedEvents()
       }
-      if (isTerminalStatus(event.run.status)) settle()
+      if (isTerminalStatus(event.run.status)) {
+        runEnded = true
+        settle()
+      }
       return
     }
 
     if (event.type !== 'chat_event' || event.conversationId !== state.conversationId) return
-    if (!streamId) {
+    if (!streamId || !presentationReady) {
       queuedEvents.push(event.event)
       return
     }
@@ -78,7 +87,21 @@ export async function attachCliToActiveSharedRun(
       }, true)
     }
 
-    screen.addNotice('info', 'Attached to the active shared Tidecode run.')
+    if (runEnded) {
+      await settled
+      const finalConversation = await getStoredConversation(state.conversationId).catch(() => null)
+      if (finalConversation) {
+        state.messages = [...finalConversation.messages]
+        screen.restoreConversation(finalConversation.messages, {
+          mode: state.chatMode,
+          model: state.modelId,
+          provider: state.providerId,
+          workspace: state.workspaceRootPath,
+        }, true)
+      }
+      return true
+    }
+
     screen.beginTurn(() => {
       if (!streamId) return
       screen.setActivity('thinking', 'Stopping')
@@ -86,12 +109,14 @@ export async function attachCliToActiveSharedRun(
         screen.addNotice('error', `Could not stop the turn: ${error instanceof Error ? error.message : String(error)}`)
       })
     })
-
-    for (const queuedEvent of queuedEvents.splice(0)) {
-      if (!streamId || queuedEvent.streamId === streamId) deliverEvent(queuedEvent)
-    }
+    presentationReady = true
+    flushQueuedEvents()
 
     await settled
+    // A provider should emit a terminal chat event, but the run-state event is
+    // authoritative. Finish idempotently here as a fallback so cancellation or
+    // an interrupted provider can never leave a zombie active composer behind.
+    screen.finishTurn()
     const finalConversation = await getStoredConversation(state.conversationId).catch(() => null)
     if (finalConversation) state.messages = [...finalConversation.messages]
     return true

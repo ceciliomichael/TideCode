@@ -111,6 +111,33 @@ test('screen lifecycle leaves one intact active compose frame in a terminal grid
   assert.equal(rows[composeRow - 1], '')
 })
 
+test('screen atomically replaces an idle composer when a remote shared run starts', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+  void screen.ask({ mode: 'agent', modelId: 'gpt-test', providerId: 'codex' })
+  screen.restoreConversation([
+    { content: 'Edited desktop prompt', id: 'user-remote', role: 'user', timestamp: 1 },
+  ], {}, true)
+
+  screen.beginTurn()
+  screen.eventPresentation.onReasoningDelta('Inspecting')
+
+  const activeRows = output.visibleRows()
+  assert.equal(activeRows.filter((row) => row.includes('╭─ compose')).length, 1)
+  assert.equal(activeRows.filter((row) => row.includes('Enter steer · Tab queue · Esc stop')).length, 1)
+  assert.equal(activeRows.filter((row) => row.includes('Ask TideCode to inspect or change your workspace')).length, 0)
+  assert.equal(activeRows.filter((row) => row.includes('Edited desktop prompt')).length, 1)
+
+  screen.eventPresentation.onCompleted()
+
+  const completedRows = output.visibleRows()
+  assert.equal(completedRows.filter((row) => row.includes('╭─ compose')).length, 1)
+  assert.equal(completedRows.filter((row) => row.includes('Enter steer · Tab queue · Esc stop')).length, 0)
+  assert.equal(completedRows.filter((row) => row.includes('Edited desktop prompt')).length, 1)
+  screen.dismissPrompt()
+})
+
 test('screen keeps a bracketed multiline paste in the composer instead of submitting it', async () => {
   const output = new TerminalGridOutput()
   const screen = createScreen(output)
