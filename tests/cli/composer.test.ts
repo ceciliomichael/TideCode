@@ -53,3 +53,18 @@ test('composer reports wrapped cursor positions within terminal bounds', () => {
   assert.equal(cursor.lineIndex, 2)
   assert.ok(cursor.column < 4)
 })
+
+test('composer consumes boundary whitespace without rendering a stray continuation row', () => {
+  let state = createComposerState()
+  state = applyComposerAction(state, { type: 'insert', text: '123456 thanks' })
+
+  const lines = getComposerVisualLines(state, 6)
+  assert.deepEqual(lines.map((line) => line.text), ['123456', 'thanks'])
+  assert.deepEqual(
+    lines.map((line) => [line.sourceStartColumn, line.sourceEndColumn]),
+    [[0, 6], [7, 13]],
+  )
+
+  const afterBoundarySpace = { ...state, column: 7 }
+  assert.deepEqual(getComposerCursorPosition(afterBoundarySpace, 6), { lineIndex: 1, column: 0 })
+})
