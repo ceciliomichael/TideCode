@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.5 - Smoother CLI and safer workspace tools
+
+TideCode 1.2.5 makes terminal workflows and workspace tooling more predictable, with cleaner live output, faster local Git navigation, safer Code Mode execution, and more consistent workspace memory access.
+
+- Improves CLI live rendering across terminal resizes, trims older transient output without placeholder noise, and lets Enter accept the highlighted `@` mention before submitting the message.
+- Routes workspace memory reads through the standard read tool while keeping durable-memory mutations isolated to memory actions, with clearer handling for missing or invalid managed paths.
+- Tightens Code Mode to tool-only host access and more reliably repairs malformed mutation arguments before execution.
+- Makes Git branch switching local-first and nonblocking, recognizes known remote-only branches without network access, and reduces refresh contention during branch changes.
+- Validated with 1,039 automated tests, TypeScript type checking, and the production build.
+
 ## 1.2.4 — Shared live work across desktop and CLI
 
 TideCode 1.2.4 makes desktop and terminal chats behave like one shared live session, with durable handoff between clients and more natural editing and navigation in the CLI.
