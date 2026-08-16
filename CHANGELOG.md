@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.4 — Shared live work across desktop and CLI
+
+TideCode 1.2.4 makes desktop and terminal chats behave like one shared live session, with durable handoff between clients and more natural editing and navigation in the CLI.
+
+- Shares active AI runs through a local TideCode run service so reasoning, tools, streamed text, running state, cancellation, and final history stay synchronized between desktop and CLI even when the initiating client closes or reconnects.
+- Keeps conversation edits and resends synchronized across clients, and upgrades CLI `/undo` into a non-destructive, checkpoint-aware edit mode with previous-turn navigation, visible history targeting, automatic viewport following, reliable Esc exit, and workspace rollback only when the edited turn is submitted.
+- Aligns CLI `@` mentions with desktop behavior for files, folders, and enabled skills, including workspace ignore rules and canonical mention expansion, while improving waiting/thinking feedback and spacing between reasoning phases.
+- Hides cancellation-only Code Mode failure blocks, preserves genuine Code Mode errors, and keeps existing saved conversations compatible without a migration.
+
 ## 1.2.3 — A more capable TideCode CLI
 
 TideCode 1.2.3 makes the bundled CLI easier to configure, resume, and use for multimodal work while keeping desktop and terminal settings aligned.
