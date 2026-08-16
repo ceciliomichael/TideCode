@@ -56,6 +56,7 @@ import type { ResumeConversationItem } from './resumeCatalog'
 import type { ResumePage } from './terminalResumeView'
 import { formatThoughtDuration } from './terminalDuration'
 import { expandChatMentions } from '../../src/lib/chatMentions'
+import type { InteractiveResizeHost } from './interactiveResize'
 
 let activeTerminalScreen: TerminalScreen | null = null
 const CLEAR_TERMINAL_SEQUENCE = '\x1b[2J\x1b[3J\x1b[H'
@@ -151,7 +152,14 @@ export class TerminalScreen {
   private resizeRedrawTimer: NodeJS.Timeout | null = null
   private terminalSizePollTimer: NodeJS.Timeout | null = null
   private resizeRedrawPending = false
+  private interactiveResizeHandler: (() => void) | null = null
   private lastTerminalSize: { columns: number; rows: number } | null = null
+  private readonly interactiveResizeHost: InteractiveResizeHost = {
+    registerResizeHandler: (handler) => {
+      this.interactiveResizeHandler = handler
+    },
+    redrawBackground: () => this.redrawAfterResize(),
+  }
   private composerStatus: { contextPercent: number; codexUsage?: string; reasoningEffort: ReasoningEffort } = {
     contextPercent: 0,
     reasoningEffort: 'medium',
@@ -188,6 +196,7 @@ export class TerminalScreen {
       this.terminalSizePollTimer = null
     }
     this.resizeRedrawPending = false
+    this.interactiveResizeHandler = null
     this.lastTerminalSize = null
     this.activeTurnCancel = null
     process.stdin.removeListener('keypress', this.handleKeypress)
@@ -619,14 +628,21 @@ export class TerminalScreen {
     this.resetBracketedPasteInput()
   }
 
-  async select<T>(options: SelectOptions<T>): Promise<T | null> {
+  private async runInteractiveOverlay<T>(run: (resizeHost: InteractiveResizeHost) => Promise<T>): Promise<T> {
     this.clearPromptDisplay()
-    return interactiveSelect(options)
+    try {
+      return await run(this.interactiveResizeHost)
+    } finally {
+      this.interactiveResizeHandler = null
+    }
+  }
+
+  async select<T>(options: SelectOptions<T>): Promise<T | null> {
+    return this.runInteractiveOverlay((resizeHost) => interactiveSelect(options, resizeHost))
   }
 
   async input(options: TextInputOptions): Promise<string | null> {
-    this.clearPromptDisplay()
-    return interactiveTextInput(options)
+    return this.runInteractiveOverlay((resizeHost) => interactiveTextInput(options, resizeHost))
   }
 
   async selectResume(
@@ -635,18 +651,17 @@ export class TerminalScreen {
     projectLabel: string,
     page: ResumePage = 'active',
   ): Promise<ResumeSelectionResult | null> {
-    this.clearPromptDisplay()
-    return interactiveResumeSelect({ items, workspacePath, projectLabel, page })
+    return this.runInteractiveOverlay((resizeHost) => (
+      interactiveResumeSelect({ items, workspacePath, projectLabel, page }, resizeHost)
+    ))
   }
 
   async checklist<T>(options: ChecklistOptions<T>): Promise<T[] | null> {
-    this.clearPromptDisplay()
-    return interactiveChecklist(options)
+    return this.runInteractiveOverlay((resizeHost) => interactiveChecklist(options, resizeHost))
   }
 
   async confirm(question: string, defaultYes = true): Promise<boolean> {
-    this.clearPromptDisplay()
-    return interactiveConfirm(question, defaultYes)
+    return this.runInteractiveOverlay((resizeHost) => interactiveConfirm(question, defaultYes, resizeHost))
   }
 
   handleInputAction(action: TerminalInputAction): void {
@@ -1146,9 +1161,17 @@ export class TerminalScreen {
     if (restorePrompt) this.renderPrompt()
   }
 
+  private runResizeRedraw(): void {
+    if (this.interactiveResizeHandler) {
+      this.interactiveResizeHandler()
+      return
+    }
+    this.redrawAfterResize()
+  }
+
   private readonly handleResize = () => {
     if (!this.usesProcessOutput) {
-      this.redrawAfterResize()
+      this.runResizeRedraw()
       return
     }
 
@@ -1159,7 +1182,7 @@ export class TerminalScreen {
       this.resizeRedrawTimer = null
       if (!this.resizeRedrawPending) return
       this.resizeRedrawPending = false
-      this.redrawAfterResize()
+      this.runResizeRedraw()
       if (this.resizeRedrawPending) this.handleResize()
     }, RESIZE_FRAME_INTERVAL_MS)
   }

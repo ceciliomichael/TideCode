@@ -5,6 +5,7 @@ import { ensureKeypressEvents } from './terminalLifecycle'
 import { clearTerminalRegion, updateTerminalRegion } from './terminalRedraw'
 import { colors, getTerminalWidth } from './renderer'
 import { padVisible, truncateVisible, visibleWidth } from './terminalText'
+import type { InteractiveResizeHost } from './interactiveResize'
 
 export interface TextInputOptions {
   title: string
@@ -113,7 +114,10 @@ function deletePreviousWord(value: string, cursor: number): { value: string; cur
   }
 }
 
-export async function interactiveTextInput(options: TextInputOptions): Promise<string | null> {
+export async function interactiveTextInput(
+  options: TextInputOptions,
+  resizeHost?: InteractiveResizeHost,
+): Promise<string | null> {
   if (!process.stdin.isTTY) {
     const readlineInterface = readline.createInterface({ input: process.stdin, output: process.stdout })
     return new Promise((resolve) => {
@@ -160,6 +164,15 @@ export async function interactiveTextInput(options: TextInputOptions): Promise<s
       renderedFrame = frame
     }
 
+    const redrawAfterResize = () => {
+      if (finished) return
+      resizeHost?.redrawBackground()
+      renderedLines = []
+      renderedFrame = null
+      initialized = false
+      render()
+    }
+
     const finish = (result: string | null) => {
       if (finished) return
       finished = true
@@ -167,6 +180,7 @@ export async function interactiveTextInput(options: TextInputOptions): Promise<s
       pasteDecoder.reset()
       process.stdin.removeListener('data', onData)
       process.stdin.removeListener('keypress', onKeypress)
+      resizeHost?.registerResizeHandler(null)
       if (renderedFrame) {
         clearTerminalRegion(renderedLines.length, renderedFrame.cursorRow)
       }
@@ -263,6 +277,7 @@ export async function interactiveTextInput(options: TextInputOptions): Promise<s
     ensureKeypressEvents()
     process.stdin.prependListener('data', onData)
     process.stdin.on('keypress', onKeypress)
+    resizeHost?.registerResizeHandler(redrawAfterResize)
     try {
       process.stdin.setRawMode(true)
     } catch {

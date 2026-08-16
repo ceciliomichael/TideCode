@@ -8,6 +8,7 @@ The workspace durable memory currently contains these entries:
 - `folders/architecture/ipc-capability-contracts.md`: renderer/main boundary, exposed APIs, IPC registration modules, event cleanup, and extension checklist.
 - `folders/persistence/data-layout-and-invariants.md`: application-home and workspace-local storage, concrete paths, schema roles, locking, atomic writes, and the workspace memory contract.
 - `folders/chat/runtime-and-history.md`: provider routing, shared tool-enabled runtime, canonical replay, compaction, stream lifecycle, and long-running work invariants.
+- `folders/cli/terminal-rendering.md`: CLI terminal redraw ownership, resize delegation, interactive overlays, and regression guidance.
 - `folders/security/workspace-tools-and-safety.md`: path safety, checkpoints, terminal ownership, tool freshness, Markdown/MCP/skill trust boundaries, and security rules.
 - `folders/development/workflow-and-verification.md`: toolchain, scripts, repository layout, implementation sequence, test priorities, release awareness, and verification expectations.
 - `folders/product/long-term-goal.md`: north-star product outcome, principles, continuity model, and what durable assistant memory should retain.
