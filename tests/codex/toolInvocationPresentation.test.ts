@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ToolInvocationTrace } from '../../src/types/chat'
-import { formatStructuredToolResultContent, getToolResultDisplayBody } from '../../src/lib/toolResultContent'
+import {
+  createTerminatedToolResultContent,
+  formatStructuredToolResultContent,
+  getToolResultDisplayBody,
+} from '../../src/lib/toolResultContent'
 import {
   getToolInvocationDisplayEntries,
   getToolInvocationHeaderLabel,
 } from '../../src/components/chat/toolInvocationPresentation'
 import { buildToolInvocationGroupSummary } from '../../src/components/chat/toolInvocationGrouping'
+import { getTerminalToolPresentationItems } from '../../electron/cli/desktopToolPresentation'
 
 const WORKSPACE_ROOT_PATH = '/workspace'
 const TARGET_FILE_PATH = `${WORKSPACE_ROOT_PATH}/src/example.ts`
@@ -369,6 +374,25 @@ test('failed Code Mode keeps the outer failure visible alongside nested tool res
   assert.equal(entries[0]?.invocation.state, 'failed')
   assert.equal(getToolInvocationHeaderLabel(entries[0]?.invocation ?? invocation), 'Code failed')
   assert.equal(buildToolInvocationGroupSummary(entries.map((entry) => entry.invocation)), 'Explored 1 list, local orchestration failed')
+})
+
+test('cancelled Code Mode hides the outer tool block in desktop and CLI presentation', () => {
+  const invocation: ToolInvocationTrace = {
+    argumentsText: JSON.stringify({ code: 'await tools.list({ path: "." })' }),
+    completedAt: 100,
+    id: 'code-mode-cancelled',
+    resultContent: createTerminatedToolResultContent({
+      argumentsValue: { code: 'await tools.list({ path: "." })' },
+      toolCallId: 'code-mode-cancelled',
+      toolName: 'code_mode',
+    }),
+    startedAt: 0,
+    state: 'failed',
+    toolName: 'code_mode',
+  }
+
+  assert.deepEqual(getToolInvocationDisplayEntries(invocation), [])
+  assert.deepEqual(getTerminalToolPresentationItems(invocation, WORKSPACE_ROOT_PATH), [])
 })
 
 test('sub-tool only failure in Code Mode renders child entries independently without outer failure block', () => {
