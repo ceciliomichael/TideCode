@@ -2,7 +2,6 @@ import type { CheckoutGitBranchInput, CreateGitBranchInput, GitBranchState } fro
 import {
   getErrorMessage,
   getRemoteUrl,
-  isFastForwardOnlyPullFailure,
   isGitUnavailable,
   isWorkingTreeConflictFailure,
   readAheadBehindCounts,
@@ -11,7 +10,6 @@ import {
   readLocalBranches,
   resolveRepositoryRoot,
   runGit,
-  syncCheckedOutBranchWithRemote,
   validateBranchName,
 } from './repositoryContext'
 
@@ -78,7 +76,6 @@ export async function checkoutGitBranch(input: CheckoutGitBranchInput): Promise<
 
   try {
     await runGit(['checkout', '--quiet', branchName], repoRootPath)
-    await syncCheckedOutBranchWithRemote(repoRootPath, branchName)
   } catch (error) {
     if (isGitUnavailable(error)) {
       throw new Error('Git is not available in the current environment.')
@@ -87,12 +84,6 @@ export async function checkoutGitBranch(input: CheckoutGitBranchInput): Promise<
     if (isWorkingTreeConflictFailure(error)) {
       throw new Error(
         'Cannot switch branches because local changes would be overwritten. Commit, stash, or discard changes first.',
-      )
-    }
-
-    if (isFastForwardOnlyPullFailure(error)) {
-      throw new Error(
-        `Switched to '${branchName}' but it cannot be fast-forwarded from origin. Resolve divergence (merge/rebase) before continuing.`,
       )
     }
 

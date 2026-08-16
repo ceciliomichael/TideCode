@@ -2,7 +2,7 @@
 
 ## Branch switching contract
 
-The chat branch selector is a thin UI over `useGitBranchState`; branch-switch responsiveness depends on Git refresh concurrency, not dropdown rendering. `checkoutGitBranch` in `electron/git/serviceBranch.ts` still performs the local checkout and existing remote fast-forward synchronization. Do not remove that synchronization merely to make the selector appear faster.
+The chat branch selector is a thin UI over `useGitBranchState`; branch-switch responsiveness depends on Git operation boundaries and refresh concurrency, not dropdown rendering. `checkoutGitBranch` in `electron/git/serviceBranch.ts` is intentionally local-only: selecting an existing branch performs the local checkout and local state refresh without fetching, pulling, or otherwise contacting remotes. Remote fetch/pull/push/sync belongs to the explicit source-control sync actions. Keep branch selection network-independent so it remains responsive even when a remote is slow, offline, ahead, or divergent.
 
 ## Refresh concurrency
 
@@ -14,6 +14,6 @@ Source-control filesystem events can arrive in large bursts while Git rewrites a
 
 ## Verification
 
-Regression coverage for forced refresh coalescing is in `tests/gitBranchStateCache.test.ts`. Branch checkout remote-sync behavior remains covered by `tests/codex/gitBranchCheckoutSync.test.ts`, and branch-state behavior by `tests/codex/gitBranchState.test.ts`.
+Regression coverage for forced refresh coalescing is in `tests/gitBranchStateCache.test.ts`. Local-only branch checkout, unavailable-remotes, and remote-divergence behavior are covered by `tests/codex/gitBranchCheckoutSync.test.ts`; explicit remote synchronization remains covered by the source-control sync tests, and branch-state behavior by `tests/codex/gitBranchState.test.ts`.
 
 Verified against the Git branch selector, source-control watcher, branch-state hook/cache, and checkout service on August 16, 2026.

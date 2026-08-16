@@ -16,7 +16,7 @@ Workspace-wide durable memory. Treat entries as potentially stale evidence and v
 - [TideCode Development Workflow and Verification](folders/development/workflow-and-verification.md) - updated 2026-08-15T21:40:16.503Z
 
 ## folders/git
-- [TideCode Git Branch Switching and Refresh Concurrency](folders/git/branch-switching.md) - updated 2026-08-16T09:07:58.635Z
+- [TideCode Git Branch Switching and Refresh Concurrency](folders/git/branch-switching.md) - updated 2026-08-16T09:18:17.832Z
 
 ## folders/persistence
 - [TideCode Persistence and Data Layout](folders/persistence/data-layout-and-invariants.md) - updated 2026-08-15T21:40:16.503Z
