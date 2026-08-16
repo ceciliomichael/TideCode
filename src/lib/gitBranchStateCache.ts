@@ -5,6 +5,7 @@ const EMPTY_BRANCH_STATE: GitBranchState = {
   behindCommitCount: 0,
   branches: [],
   currentBranch: null,
+  remoteBranches: [],
   defaultBranch: null,
   hasRepository: false,
   hasUpstream: false,

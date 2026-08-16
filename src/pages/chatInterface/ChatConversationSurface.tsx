@@ -281,7 +281,7 @@ export function ChatConversationSurface({
               onChatModeChange={chatMessages.setSelectedChatMode}
               onGitBranchCreate={gitBranchState.createBranch}
               onGitBranchChange={gitBranchState.changeBranch}
-              onGitBranchRefresh={gitBranchState.refresh}
+              onGitBranchRefresh={gitBranchState.refreshRemoteBranches}
               modelOptions={selectorOptions}
               modelOptionsLoading={chatRuntimeConfig.isModelOptionsLoading}
               modelSelectorDisabled={false}

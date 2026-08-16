@@ -6,6 +6,7 @@ import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
 interface GitBranchSelectorFieldProps {
   branches: readonly string[]
   currentBranch: string | null
+  remoteBranches?: readonly string[]
   disabled?: boolean
   errorMessage?: string | null
   hasRepository: boolean
@@ -25,10 +26,12 @@ function normalizeSearch(value: string) {
 export function GitBranchSelectorField({
   branches,
   currentBranch,
+  remoteBranches = [],
   disabled = false,
   errorMessage = null,
   hasRepository,
   isDetachedHead = false,
+  isLoading = false,
   isSwitching = false,
   onChange,
   onCreateBranch,
@@ -53,13 +56,19 @@ export function GitBranchSelectorField({
   })
   const isControlDisabled = disabled || isSwitching || !hasRepository
   const isCreateDisabled = isSwitching || newBranchName.trim().length === 0
+  const localBranchSet = useMemo(() => new Set(branches), [branches])
+  const remoteBranchSet = useMemo(() => new Set(remoteBranches), [remoteBranches])
+  const selectableBranches = useMemo(
+    () => [...branches, ...remoteBranches.filter((branchName) => !localBranchSet.has(branchName))],
+    [branches, localBranchSet, remoteBranches],
+  )
   const visibleBranches = useMemo(() => {
     if (normalizedSearch.length === 0) {
-      return branches
+      return selectableBranches
     }
 
-    return branches.filter((branchName) => branchName.toLowerCase().includes(normalizedSearch))
-  }, [branches, normalizedSearch])
+    return selectableBranches.filter((branchName) => branchName.toLowerCase().includes(normalizedSearch))
+  }, [normalizedSearch, selectableBranches])
 
   useEffect(() => {
     if (!isOpen) {
@@ -217,10 +226,11 @@ export function GitBranchSelectorField({
                 <button
                   type="button"
                   aria-label="Refresh branch list"
+                  disabled={isLoading}
                   onClick={() => void onRefresh?.()}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-muted text-muted-foreground transition-colors hover:text-foreground"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-muted text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <RefreshCw size={14} />
+                  <RefreshCw size={14} className={isLoading ? 'animate-spin' : undefined} />
                 </button>
               </div>
 
@@ -234,6 +244,7 @@ export function GitBranchSelectorField({
                   visibleBranches.map((branchName) => {
                     const isSelected = branchName === currentBranch
                     const isHighlighted = branchName === highlightedBranch
+                    const isRemoteOnly = remoteBranchSet.has(branchName) && !localBranchSet.has(branchName)
 
                     return (
                       <button
@@ -254,7 +265,13 @@ export function GitBranchSelectorField({
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[15px] leading-5">{branchName}</span>
                           <span className="mt-0.5 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                            {isSelected ? (isDetachedHead ? 'Detached HEAD' : 'Current branch') : 'Local branch'}
+                            {isSelected
+                              ? isDetachedHead
+                                ? 'Detached HEAD'
+                                : 'Current branch'
+                              : isRemoteOnly
+                                ? 'Remote branch'
+                                : 'Local branch'}
                           </span>
                         </span>
                         {isSelected ? <Check size={16} strokeWidth={2.2} className="mt-0.5 shrink-0 text-brand" /> : null}

@@ -84,6 +84,32 @@ test('checkoutGitBranch switches locally without fetching or pulling remote comm
   })
 })
 
+test('checkoutGitBranch creates a local tracking branch from a known remote-only branch without network access', async () => {
+  await withTemporaryDirectory(async (tempRootPath) => {
+    const { clonePath, seedPath } = await setupRemoteAndClone(tempRootPath)
+    await runGit(['checkout', '-b', 'feature/remote-only'], seedPath)
+    await commitFile(seedPath, 'remote-only.txt', 'remote branch\n', 'feat: remote-only branch')
+    await runGit(['push', '-u', 'origin', 'feature/remote-only'], seedPath)
+    await runGit(['fetch', 'origin'], clonePath)
+    await runGit(['remote', 'set-url', 'origin', path.join(tempRootPath, 'missing-remote.git')], clonePath)
+
+    const state = await checkoutGitBranch({
+      branchName: 'feature/remote-only',
+      workspacePath: clonePath,
+    })
+    const { stdout: upstreamStdout } = await runGit(
+      ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'],
+      clonePath,
+    )
+
+    assert.equal(state.currentBranch, 'feature/remote-only')
+    assert.ok(state.branches.includes('feature/remote-only'))
+    assert.ok(state.remoteBranches.includes('feature/remote-only'))
+    assert.equal(upstreamStdout.trim(), 'origin/feature/remote-only')
+    await fs.access(path.join(clonePath, 'remote-only.txt'))
+  })
+})
+
 test('checkoutGitBranch succeeds when the configured remote is unavailable', async () => {
   await withTemporaryDirectory(async (tempRootPath) => {
     const { clonePath } = await setupRemoteAndClone(tempRootPath)

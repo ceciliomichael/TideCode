@@ -5,6 +5,7 @@ export interface GitBranchState {
   behindCommitCount: number
   branches: string[]
   currentBranch: string | null
+  remoteBranches: string[]
   defaultBranch: string | null
   hasRepository: boolean
   hasUpstream: boolean

@@ -204,6 +204,26 @@ export async function readLocalBranches(repoRootPath: string) {
     .filter((branchName) => branchName.length > 0)
 }
 
+export async function readRemoteBranches(repoRootPath: string) {
+  const remoteName = await getPreferredRemoteName(repoRootPath)
+  if (!remoteName) {
+    return []
+  }
+
+  const { stdout } = await runGit(
+    ['for-each-ref', '--format=%(refname:short)', '--sort=-committerdate', `refs/remotes/${remoteName}`],
+    repoRootPath,
+  )
+  const remotePrefix = `${remoteName}/`
+
+  return stdout
+    .split(/\r?\n/)
+    .map((remoteBranchName) => remoteBranchName.trim())
+    .filter((remoteBranchName) => remoteBranchName.startsWith(remotePrefix))
+    .map((remoteBranchName) => remoteBranchName.slice(remotePrefix.length))
+    .filter((branchName) => branchName.length > 0 && branchName !== 'HEAD')
+}
+
 export async function readDefaultBranch(repoRootPath: string) {
   const remoteName = await getPreferredRemoteName(repoRootPath)
   if (!remoteName) {
