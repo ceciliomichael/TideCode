@@ -1237,7 +1237,7 @@ export class TerminalScreen {
     // A resized terminal has already reflowed the old rows. Erase that stale
     // grid as part of the same synchronized write as the new frame so the
     // terminal never presents the intermediate, broken layout to the user.
-    bufferedOutput.write('\x1b[?25l\x1b[2J\x1b[H')
+    bufferedOutput.write(`\x1b[?25l${CLEAR_TERMINAL_SEQUENCE}`)
     const redrawOutput = bufferedOutput
     this.renderedPromptRows = 0
     this.renderedPromptLines = []

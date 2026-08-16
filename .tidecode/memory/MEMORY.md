@@ -10,7 +10,7 @@ Workspace-wide durable memory. Treat entries as potentially stale evidence and v
 - [TideCode Chat Runtime and Long-Running Work](folders/chat/runtime-and-history.md) - updated 2026-08-15T21:40:16.502Z
 
 ## folders/cli
-- [TideCode CLI Terminal Rendering and Resize Ownership](folders/cli/terminal-rendering.md) - updated 2026-08-16T08:39:00.567Z
+- [TideCode CLI Terminal Rendering and Resize Ownership](folders/cli/terminal-rendering.md) - updated 2026-08-16T08:54:27.007Z
 
 ## folders/development
 - [TideCode Development Workflow and Verification](folders/development/workflow-and-verification.md) - updated 2026-08-15T21:40:16.503Z
