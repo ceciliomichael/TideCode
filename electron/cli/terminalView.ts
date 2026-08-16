@@ -31,6 +31,8 @@ export interface CompletionItemView {
   value: string
   label: string
   description?: string
+  mentionPath?: string
+  mentionKind?: 'file' | 'folder' | 'skill'
 }
 
 export interface TerminalSelectionView<T = unknown> {

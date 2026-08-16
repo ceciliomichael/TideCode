@@ -52,7 +52,7 @@ test('screen lifecycle renders session before compose and keeps cursor in compos
 
   screen.addUserMessage('hi')
   screen.beginTurn()
-  assert.ok(output.writes.map(stripAnsi).some((write) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Thinking/u.test(write)))
+  assert.ok(output.writes.map(stripAnsi).some((write) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] I am working on it/u.test(write)))
   assert.match(stripAnsi(output.writes.at(-1) ?? ''), /Enter steer · Tab queue · Esc stop/)
   assert.equal(output.cursorColumns.at(-1), 4)
 
@@ -318,6 +318,35 @@ test('screen does not add slash commands to the user transcript', async () => {
   assert.equal(output.visibleRows().some((row) => row.includes('› /model')), false)
 })
 
+test('screen expands selected mention completions with the same canonical action used by desktop', async () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+
+  const submissionPromise = screen.ask({
+    mode: 'agent',
+    modelId: 'gpt-test',
+    providerId: 'codex',
+    getCompletionItems: (text) => text.includes('@code')
+      ? [{
+          value: '@code-review',
+          label: '@code-review',
+          description: 'skill · Reviews code carefully.',
+          mentionKind: 'skill',
+          mentionPath: 'load_skill:code-review',
+        }]
+      : [],
+  })
+
+  screen.handleInputAction({ type: 'insert', text: '@code-rev' })
+  screen.handleInputAction({ type: 'insert', text: '\t' })
+  assert.equal(output.visibleRows().some((row) => row.includes('@code-review')), true)
+
+  screen.handleInputAction({ type: 'submit' })
+  const submission = await submissionPromise
+  assert.equal(submission.text, '[[load_skill:code-review]]')
+})
+
 test('screen lifecycle streams reasoning text and commits its duration label', () => {
   const output = new TerminalGridOutput()
   const screen = createScreen(output)
@@ -334,7 +363,11 @@ test('screen lifecycle streams reasoning text and commits its duration label', (
   const completedRows = output.visibleRows()
   assert.ok(completedRows.some((row) => row.includes('Thought for 1.2s')))
   assert.equal(completedRows.some((row) => row.includes('Inspecting the workspace')), false)
-  assert.equal(completedRows.some((row) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Thinking/u.test(row)), true)
+  const waitingRow = completedRows.findIndex((row) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] I am working on it/u.test(row))
+  assert.equal(waitingRow >= 0, true)
+  const thoughtRow = completedRows.findIndex((row) => row.includes('Thought for 1.2s'))
+  assert.equal(waitingRow - thoughtRow, 2)
+  assert.equal(completedRows[thoughtRow + 1], '')
 })
 
 test('screen lifecycle keeps repeated reasoning completions in one thought until a semantic boundary', () => {
@@ -353,7 +386,7 @@ test('screen lifecycle keeps repeated reasoning completions in one thought until
   assert.ok(firstThought >= 0)
   assert.equal(rows.filter((row) => row.includes('Thought for')).length, 1)
   assert.equal(rows.some((row) => row.includes('Second reasoning segment')), false)
-  assert.equal(rows.some((row) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Thinking/u.test(row)), true)
+  assert.equal(rows.some((row) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] I am working on it/u.test(row)), true)
 })
 
 test('live shared-run presentation commits each reasoning phase at tool boundaries', () => {
@@ -421,7 +454,7 @@ test('live shared-run presentation commits each reasoning phase at tool boundari
   assert.ok(secondThoughtIndex > firstToolIndex)
   assert.ok(secondToolIndex > secondThoughtIndex)
   assert.equal(rows.some((row) => row.includes('Planning the CSS changes')), false)
-  assert.equal(rows.some((row) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Thinking/u.test(row)), true)
+  assert.equal(rows.some((row) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] I am working on it/u.test(row)), true)
 })
 
 test('screen lifecycle wraps long assistant lines before redrawing the active region', () => {

@@ -169,7 +169,10 @@ export function renderActiveTurn(data: ActiveTurnRenderData): ActiveTurnRender {
   if (data.activity.kind !== 'idle') {
     const lastVisibleEntry = [...data.entries].reverse().find(isVisibleTurnEntry)
     const activityEntryKind = data.activity.kind === 'thinking' ? 'thought' : 'tool'
-    if (lastVisibleEntry && lastVisibleEntry.kind !== activityEntryKind) appendBlankRow(outputLines)
+    const startsNewWaitingPhase = data.activity.kind === 'thinking' && lastVisibleEntry?.kind === 'thought'
+    if (lastVisibleEntry && (lastVisibleEntry.kind !== activityEntryKind || startsNewWaitingPhase)) {
+      appendBlankRow(outputLines)
+    }
     activityRow = outputLines.length
     outputLines.push(renderTerminalActivityLine(data.activity, width, thinkingFrame))
   }

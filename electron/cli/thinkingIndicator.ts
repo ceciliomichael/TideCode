@@ -1,18 +1,26 @@
 import { colors } from './renderer'
 
-const SPLASH_MESSAGES = [
+export const THINKING_STATUS_MESSAGES = [
   'I am working on it',
-  'Thinking',
-  'Analyzing context',
-  'Inspecting workspace',
-  'Finishing execution',
-]
+  'Almost there',
+  'Still working on your request',
+  'Finishing this up',
+] as const
 
+export const THINKING_STATUS_ROTATION_INTERVAL_MS = 5000
 export const THINKING_SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const
 export const THINKING_SPINNER_INTERVAL_MS = 80
 
 export function getThinkingSpinnerFrame(index: number): string {
-  return THINKING_SPINNER_FRAMES[((index % THINKING_SPINNER_FRAMES.length) + THINKING_SPINNER_FRAMES.length) % THINKING_SPINNER_FRAMES.length]
+  return THINKING_SPINNER_FRAMES[
+    ((index % THINKING_SPINNER_FRAMES.length) + THINKING_SPINNER_FRAMES.length) % THINKING_SPINNER_FRAMES.length
+  ]
+}
+
+export function getThinkingStatusMessage(index: number): string {
+  return THINKING_STATUS_MESSAGES[
+    ((index % THINKING_STATUS_MESSAGES.length) + THINKING_STATUS_MESSAGES.length) % THINKING_STATUS_MESSAGES.length
+  ]
 }
 
 export class TerminalThinkingIndicator {
@@ -39,10 +47,10 @@ export class TerminalThinkingIndicator {
 
     this.messageTimer = setInterval(() => {
       if (!this.customText) {
-        this.messageIndex = (this.messageIndex + 1) % SPLASH_MESSAGES.length
+        this.messageIndex = (this.messageIndex + 1) % THINKING_STATUS_MESSAGES.length
         this.render()
       }
-    }, 3000)
+    }, THINKING_STATUS_ROTATION_INTERVAL_MS)
     this.messageTimer.unref()
 
     this.render()
@@ -76,7 +84,7 @@ export class TerminalThinkingIndicator {
     if (!this.isRunning) return
 
     const frame = getThinkingSpinnerFrame(this.frameIndex)
-    const text = this.customText || SPLASH_MESSAGES[this.messageIndex]
+    const text = this.customText || getThinkingStatusMessage(this.messageIndex)
     if (!process.stdout.isTTY) {
       if (!this.fallbackRendered) {
         process.stdout.write(`${colors.accent}${frame}${colors.reset} ${colors.subtle}${text}${colors.reset}\n`)
