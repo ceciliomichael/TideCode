@@ -28,7 +28,6 @@ import type {
   KanbanWorkspaceInput,
 } from '../../src/lib/kanban'
 import {
-  appendStoredMessages,
   cleanupDraftAgentContextDirectory,
   createStoredConversation,
   createStoredFolder,
@@ -139,7 +138,7 @@ export function registerCoreIpcHandlers(getWindow: () => BrowserWindow | null) {
     await shell.openPath(folderPath)
   })
   ipcMain.handle('history:appendMessages', async (_event, input: AppendConversationMessagesInput) =>
-    appendStoredMessages(input),
+    (await ensureRunServiceClient()).appendMessages(input),
   )
   ipcMain.handle('history:replaceMessages', async (_event, input: ReplaceConversationMessagesInput) =>
     (await ensureRunServiceClient()).replaceMessages(input),

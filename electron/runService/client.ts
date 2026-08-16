@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import net from 'node:net'
 import type {
+  AppendConversationMessagesInput,
   ConversationRecord,
   ReplaceConversationMessagesInput,
   SharedRunProjection,
@@ -88,6 +89,11 @@ export class TideCodeRunServiceClient {
   async listActiveRuns() {
     await this.connect()
     return this.requestRaw<SharedRunSnapshot[]>('listActiveRuns')
+  }
+
+  async appendMessages(input: AppendConversationMessagesInput) {
+    await this.connect()
+    return this.requestRaw<ConversationRecord>('appendMessages', input)
   }
 
   async replaceMessages(input: ReplaceConversationMessagesInput) {

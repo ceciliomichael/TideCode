@@ -59,6 +59,12 @@ export type TideCodeRunEvent =
       projection: SharedRunProjection
     }
   | {
+      type: 'conversation_appended'
+      seq: number
+      conversationId: string
+      conversation: ConversationRecord
+    }
+  | {
       type: 'conversation_replaced'
       seq: number
       conversationId: string

@@ -422,6 +422,22 @@ test('screen keeps response, tool, thought, and later response blocks in chronol
   assert.ok(laterResponse > thought)
 })
 
+test('screen keeps the compose panel visible when a remote history update redraws an idle conversation', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+  void screen.ask({ mode: 'agent', modelId: 'gpt-test', providerId: 'codex' })
+
+  screen.restoreConversation([
+    { content: 'Replacement user message', id: 'user-remote', role: 'user', timestamp: 1 },
+  ], {}, true)
+
+  const rows = output.visibleRows()
+  assert.equal(rows.filter((row) => row.includes('Replacement user message')).length, 1)
+  assert.equal(rows.filter((row) => row.includes('╭─ compose')).length, 1)
+  screen.dismissPrompt()
+})
+
 test('screen restores a resumed desktop transcript before accepting the next message', () => {
   const output = new TerminalGridOutput()
   const screen = createScreen(output)

@@ -1,4 +1,4 @@
-import type { ChatAttachment } from '../../src/types/chat'
+import type { ChatAttachment, ConversationRecord } from '../../src/types/chat'
 import { ensureRunServiceClient } from '../runService/ensureService'
 import { executeSlashCommand } from './commands'
 import { createReplCommandHelpers } from './replCommands'
@@ -69,26 +69,56 @@ export async function startInteractiveRepl(
   screen.updateComposerStatus({ reasoningEffort: state.reasoningEffort })
 
   const runService = await ensureRunServiceClient()
-  runService.onEvent((event) => {
-    if (event.type !== 'conversation_replaced' || event.conversationId !== state.conversationId) return
-    const conversation = event.conversation
+  let sharedRunAttachmentPromise: Promise<boolean> | null = null
+  const attachToSharedRunIfIdle = (): Promise<boolean> | null => {
+    if (state.isStreaming) return null
+    if (sharedRunAttachmentPromise) return sharedRunAttachmentPromise
+    sharedRunAttachmentPromise = attachCliToActiveSharedRun(state, screen)
+      .catch((error) => {
+        screen.addNotice('error', `Could not attach to the shared Tidecode run: ${error instanceof Error ? error.message : String(error)}`)
+        return false
+      })
+      .finally(() => {
+        sharedRunAttachmentPromise = null
+      })
+    return sharedRunAttachmentPromise
+  }
+
+  const applySharedConversationSnapshot = (conversation: ConversationRecord) => {
     state.messages = [...conversation.messages]
     state.chatMode = conversation.chatMode
     state.workspaceRootPath = conversation.agentContextRootPath
-    state.isStreaming = false
-    state.activeStreamId = null
-    screen.restoreConversation(conversation.messages, {
-      mode: conversation.chatMode,
-      model: state.modelId,
-      provider: state.providerId,
-      workspace: conversation.agentContextRootPath,
-    }, true)
+    if (!state.isStreaming) {
+      state.activeStreamId = null
+      screen.restoreConversation(conversation.messages, {
+        mode: conversation.chatMode,
+        model: state.modelId,
+        provider: state.providerId,
+        workspace: conversation.agentContextRootPath,
+      }, true)
+    }
+  }
+
+  runService.onEvent((event) => {
+    if (
+      (event.type === 'conversation_appended' || event.type === 'conversation_replaced' || event.type === 'conversation_updated')
+      && event.conversationId === state.conversationId
+    ) {
+      applySharedConversationSnapshot(event.conversation)
+      return
+    }
+
+    if (event.type !== 'run_state' || event.run.conversationId !== state.conversationId) return
+    const isActive = event.run.status === 'starting'
+      || event.run.status === 'running'
+      || event.run.status === 'waiting_for_input'
+    if (isActive) attachToSharedRunIfIdle()
   })
 
   if (options.openResumePicker) {
     await executeSlashCommand('/resume', state, helpers)
   } else {
-    await attachCliToActiveSharedRun(state, screen)
+    await (attachToSharedRunIfIdle() ?? Promise.resolve(false))
   }
   let startupPreparationStarted = false
 

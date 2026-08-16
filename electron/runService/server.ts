@@ -22,7 +22,7 @@ import {
 } from '../chat/codex/runtime'
 import type { ChatStreamEventTarget } from '../chat/shared/runtimeStreamEvents'
 import { CliTurnMessageCollector } from '../cli/cliTurnMessageCollector'
-import { getStoredConversation, replaceStoredMessages } from '../history/store'
+import { appendStoredMessages, getStoredConversation, replaceStoredMessages } from '../history/store'
 import type { CliSessionState } from '../cli/types'
 import { RUN_SERVICE_PROTOCOL_VERSION, isRunServiceRequest, type RunServiceResponse } from './protocol'
 import { ensureRunServiceToken, getRunServiceEndpoint, removeStaleRunServiceSocket } from './paths'
@@ -170,6 +170,12 @@ export class TideCodeRunServiceServer {
         case 'listActiveRuns':
           this.sendResponse(socket, { id: parsed.id, ok: true, result: this.registry.listActive() })
           return
+        case 'appendMessages': {
+          const conversation = await appendStoredMessages(parsed.params)
+          this.emitConversationAppend(conversation)
+          this.sendResponse(socket, { id: parsed.id, ok: true, result: conversation })
+          return
+        }
         case 'replaceMessages': {
           const conversation = await replaceStoredMessages(parsed.params)
           this.emitConversationReplacement(conversation)
@@ -408,9 +414,20 @@ export class TideCodeRunServiceServer {
     }
   }
 
+  private emitConversationAppend(conversation: ConversationRecord) {
+    this.emitConversationMutation('conversation_appended', conversation)
+  }
+
   private emitConversationReplacement(conversation: ConversationRecord) {
+    this.emitConversationMutation('conversation_replaced', conversation)
+  }
+
+  private emitConversationMutation(
+    type: 'conversation_appended' | 'conversation_replaced',
+    conversation: ConversationRecord,
+  ) {
     const event: TideCodeRunEvent = {
-      type: 'conversation_replaced',
+      type,
       seq: ++this.nextConversationEventSeq,
       conversationId: conversation.id,
       conversation,

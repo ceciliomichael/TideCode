@@ -425,6 +425,20 @@ export function useChatSessionState(language: AppLanguage) {
         return
       }
 
+      if (event.type === 'conversation_appended') {
+        const conversation = event.conversation
+        setConversationSummaries((currentValue) => upsertConversationSummary(currentValue, conversation))
+        setConversationRuntimeStates((currentValue) => {
+          const currentState = currentValue[conversation.id]
+          if (!currentState) return currentValue
+          return {
+            ...currentValue,
+            [conversation.id]: createConversationRuntimeState(conversation, currentState),
+          }
+        })
+        return
+      }
+
       if (event.type === 'conversation_replaced') {
         const conversation = event.conversation
         sharedRunProjectionsByConversationIdRef.current.delete(conversation.id)
