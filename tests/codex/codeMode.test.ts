@@ -617,10 +617,15 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
       /tools\.tool_search\(\{ limit\?: number/u,
     )
+    const codeModeDescription = (bundle.tools.code_mode as { description?: string }).description ?? ''
     assert.match(
-      ((bundle.tools.code_mode as { description?: string }).description ?? ''),
+      codeModeDescription,
       /Tool-only runtime: direct Node\.js and host access is blocked/u,
     )
+    assert.match(codeModeDescription, /Unavailable host\/runtime APIs in Code Mode include/u)
+    assert.match(codeModeDescription, /`fs` \/ `node:fs`/u)
+    assert.match(codeModeDescription, /`child_process` \/ `node:child_process`/u)
+    assert.match(codeModeDescription, /dynamic `import\(\)` are blocked/u)
 
     const codeResult = await invoke(bundle.tools.code_mode, {
       code: "const search = await tools.tool_search({ query: 'connected memory service', limit: 5 }); const file = await tools.read({ path: 'package.json' }); const root = await tools.read({ path: '' }); return { hasVersion: file.body.includes('1.2.3'), rootPath: root.subject?.path, searchStatus: search.status }",

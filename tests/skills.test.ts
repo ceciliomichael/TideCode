@@ -129,14 +129,14 @@ test('skill tool no longer exposes the read_resource action', () => {
   assert.match(description, /List, search, or load an enabled skill\./u)
 })
 
-test('expandChatMentions expands file, folder, skill, and Kanban mentions with read:, list:, load_skill:, and kanban:', async () => {
+test('expandChatMentions expands file, folder, skill, and Kanban mentions with read_file:, list:, load_skill:, and kanban:', async () => {
   const { expandChatMentions, collapseChatMentionMarkup, findChatMentionMatches, buildChatMentionPathMap } = await import('../src/lib/chatMentions')
   const map = new Map<string, string>([
     ['writing', 'load_skill:writing'],
-    ['main.ts', 'read:src/main.ts'],
+    ['main.ts', 'read_file:src/main.ts'],
     ['components', 'list:src/components'],
     ['Fix login bug', 'kanban:card-123'],
-    ['AllSpaces AI Engine — Complete Step-by-Step Build Guide.md', 'read:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md'],
+    ['AllSpaces AI Engine — Complete Step-by-Step Build Guide.md', 'read_file:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md'],
   ])
 
   const expanded = expandChatMentions(
@@ -146,7 +146,7 @@ test('expandChatMentions expands file, folder, skill, and Kanban mentions with r
   // All action tags now wrapped in [[...]] delimiters — unambiguous boundaries
   assert.equal(
     expanded,
-    'Please use [[load_skill:writing]] to help write [[read:src/main.ts]] in [[list:src/components]] for [[kanban:card-123]] and [[read:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md]]',
+    'Please use [[load_skill:writing]] to help write [[read_file:src/main.ts]] in [[list:src/components]] for [[kanban:card-123]] and [[read_file:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md]]',
   )
 
   const collapsed = collapseChatMentionMarkup(expanded)
@@ -158,7 +158,7 @@ test('expandChatMentions expands file, folder, skill, and Kanban mentions with r
   const pathMap = buildChatMentionPathMap(expanded)
   assert.equal(pathMap.get('card-123'), 'kanban:card-123')
   assert.equal(pathMap.get('AllSpaces AI Engine — Complete Step-by-Step Build Guide.md'),
-    'read:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md',
+    'read_file:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md',
   )
 
   const matches = findChatMentionMatches(expanded)
@@ -169,7 +169,7 @@ test('expandChatMentions expands file, folder, skill, and Kanban mentions with r
 
   // Adjacent mentions with no space-bleed between them
   const adjacent = expandChatMentions('@writing @main.ts', map)
-  assert.equal(adjacent, '[[load_skill:writing]] [[read:src/main.ts]]')
+  assert.equal(adjacent, '[[load_skill:writing]] [[read_file:src/main.ts]]')
   const adjacentCollapsed = collapseChatMentionMarkup(adjacent)
   assert.equal(adjacentCollapsed, '@writing @main.ts')
 
@@ -180,14 +180,13 @@ test('expandChatMentions expands file, folder, skill, and Kanban mentions with r
   assert.equal(withNormalMatches[0].label, 'natural-writing')
   assert.equal(withNormalMatches[0].end, '[[load_skill:natural-writing]]'.length)
 
-  // Legacy bare action tags in DB still parsed for backwards compat
-  const legacyUnquoted = 'u study read:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md'
-  const legacyMatches = findChatMentionMatches(legacyUnquoted)
-  assert.equal(legacyMatches.length, 1)
-  assert.equal(legacyMatches[0].label, 'AllSpaces AI Engine — Complete Step-by-Step Build Guide.md')
+  const removedLegacyRead = 'u study [[read:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md]]'
+  assert.equal(findChatMentionMatches(removedLegacyRead).length, 0)
+  assert.equal(collapseChatMentionMarkup(removedLegacyRead), removedLegacyRead)
 
-  const legacyCollapsed = collapseChatMentionMarkup(legacyUnquoted)
-  assert.equal(legacyCollapsed, 'u study @AllSpaces AI Engine — Complete Step-by-Step Build Guide.md')
+  const removedBareRead = 'u study read:AllSpaces AI Engine — Complete Step-by-Step Build Guide.md'
+  assert.equal(findChatMentionMatches(removedBareRead).length, 0)
+  assert.equal(collapseChatMentionMarkup(removedBareRead), removedBareRead)
 
   // Verify getChatMentionTriggerState returns null when typing normal text after a completed mention
   const { getChatMentionTriggerState } = await import('../src/lib/chatMentions')

@@ -90,8 +90,8 @@ export const ChatMentionText = memo(function ChatMentionText({
           )
         }
 
-        const isSkill = Boolean(segment.path?.startsWith('load_skill:') || segment.path?.startsWith('skill:'))
-        const isFolder = Boolean(segment.path?.startsWith('list:') || segment.path?.startsWith('folder:') || segment.path?.endsWith('/'))
+        const isSkill = Boolean(segment.path?.startsWith('load_skill:'))
+        const isFolder = Boolean(segment.path?.startsWith('list:'))
         const isKanban = Boolean(segment.path?.startsWith('kanban:'))
         const isBackdrop = variant === 'backdrop'
         const isRendered = variant === 'rendered'

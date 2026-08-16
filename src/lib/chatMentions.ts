@@ -1,17 +1,11 @@
 // Canonical expanded mention format: [[action:path]]
-// e.g. [[load_skill:natural-writing]], [[read:src/main.ts]], [[list:src/components]], [[kanban:card-id]]
+// e.g. [[load_skill:natural-writing]], [[read_file:src/main.ts]], [[list:src/components]], [[kanban:card-id]]
 // The double-bracket delimiters give unambiguous boundaries so no greedy-match
 // issues can bleed into surrounding normal text.
 
-const FULL_MENTION_REGEX_SOURCE = /@\[([^\]]+)\]\(([^)]+)\)/.source
 
 // Matches the NEW canonical [[action:path]] delimited format (may contain spaces)
-const BRACKETED_ACTION_REGEX = /\[\[((?:read|list|load_skill|kanban):[^\]]+)\]\]/g
-
-// Legacy bare action tags stored before the [[]] format was introduced.
-// Supports both single-word and multi-word (greedy, stops before next action tag or @) unquoted paths
-// for backwards compatibility with old DB messages, plus quoted variants with spaces.
-const LEGACY_ACTION_REGEX = /(?:^|[\s(])((?:read|list|load_skill|kanban):(?:"([^"]+)"|'([^']+)'|((?:(?!\s+(?:read|list|load_skill|kanban):|\s+@)[^\r\n,;:!?\])])+)))(?=\.?(?:\s|[,;:!?\])]|$))/g
+const BRACKETED_ACTION_REGEX = /\[\[((?:read_file|list|load_skill|kanban):[^\]]+)\]\]/g
 
 export interface ChatMentionMatch {
   end: number
@@ -89,21 +83,10 @@ export function findChatMentionMatches(
   const matches: ChatMentionMatch[] = []
   let match: RegExpExecArray | null
 
-  // 1. Fully resolved @[label](path) markup — highest priority
-  const resolvedMentionRegex = new RegExp(FULL_MENTION_REGEX_SOURCE, 'g')
-  while ((match = resolvedMentionRegex.exec(text)) !== null) {
-    matches.push({
-      end: match.index + match[0].length,
-      label: match[1],
-      path: match[2] ?? null,
-      start: match.index,
-    })
-  }
-
-  // 2. NEW canonical format: [[action:path]] — unambiguous boundaries
+  // 1. Canonical format: [[action:path]] with unambiguous boundaries
   const bracketedRegex = new RegExp(BRACKETED_ACTION_REGEX.source, 'g')
   while ((match = bracketedRegex.exec(text)) !== null) {
-    const actionTag = match[1] // e.g. "read:src/main.ts" or "load_skill:natural-writing"
+    const actionTag = match[1] // e.g. "read_file:src/main.ts" or "load_skill:natural-writing"
     const colonIndex = actionTag.indexOf(':')
     const targetPath = actionTag.slice(colonIndex + 1)
     const start = match.index
@@ -121,30 +104,7 @@ export function findChatMentionMatches(
     })
   }
 
-  // 3. Legacy bare format: read:path list:path load_skill:name (no brackets)
-  //    Kept for backwards compatibility with messages stored in DB before [[]] format.
-  //    Unquoted paths are single-word (no spaces); quoted paths allow spaces.
-  const legacyRegex = new RegExp(LEGACY_ACTION_REGEX.source, 'g')
-  while ((match = legacyRegex.exec(text)) !== null) {
-    const fullMatch = match[0]
-    const actionTag = match[1]
-    const targetPath = match[2] ?? match[3] ?? match[4]
-    const start = match.index + (fullMatch.length - actionTag.length)
-    const end = start + actionTag.length
-
-    if (matches.some((existingMatch) => start < existingMatch.end && end > existingMatch.start)) {
-      continue
-    }
-
-    matches.push({
-      end,
-      label: getPathBasename(targetPath),
-      path: actionTag,
-      start,
-    })
-  }
-
-  // 4. Plain @label mentions (only when knownMentionLabels provided — in-composer use)
+  // 2. Plain @label mentions (only when knownMentionLabels provided — in-composer use)
   const plainMentionRegex = buildPlainMentionRegex(knownMentionLabels)
   if (plainMentionRegex) {
     while ((match = plainMentionRegex.exec(text)) !== null) {

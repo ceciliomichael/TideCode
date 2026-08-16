@@ -7,7 +7,7 @@ import {
 
 test('an unselected mention becomes normal text after a space', () => {
   const value = '@not-a-real-file '
-  const knownMentions = new Map([['main.ts', 'read:src/main.ts']])
+  const knownMentions = new Map([['main.ts', 'read_file:src/main.ts']])
   const triggerState = getChatMentionTriggerState(value, value.length, knownMentions)
 
   assert.deepEqual(triggerState, {

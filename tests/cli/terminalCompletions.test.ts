@@ -67,7 +67,7 @@ test('completion catalog matches desktop workspace visibility and supports files
     const fileItems = catalog.getItems('please inspect @comp', 'please inspect @comp'.length)
     assert.equal(fileItems[0]?.value, '@composer.ts')
     assert.equal(fileItems[0]?.mentionKind, 'file')
-    assert.equal(fileItems[0]?.mentionPath, 'read:src/composer.ts')
+    assert.equal(fileItems[0]?.mentionPath, 'read_file:src/composer.ts')
     assert.match(fileItems[0]?.description ?? '', /src\/composer\.ts/)
 
     const folderItems = catalog.getItems('@src', '@src'.length)

@@ -150,7 +150,7 @@ export class TerminalCompletionCatalog {
             label: `@${label}`,
             description: `file · ${normalizedPath}`,
             mentionKind: 'file',
-            mentionPath: `read:${normalizedPath}`,
+            mentionPath: `read_file:${normalizedPath}`,
             searchLabel: label,
             searchPath: normalizedPath,
           })
