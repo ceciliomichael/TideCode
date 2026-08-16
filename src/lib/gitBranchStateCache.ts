@@ -72,8 +72,11 @@ export async function loadGitBranchState(
     }
   }
 
+  // forceRefresh bypasses cached data, not an already-running repository read.
+  // Reusing the active read prevents watcher/poll bursts from spawning a growing
+  // queue of Git subprocesses that can contend with branch checkout.
   const existingRequest = inFlightBranchStateRequests.get(normalizedWorkspacePath)
-  if (existingRequest && !options?.forceRefresh) {
+  if (existingRequest) {
     return existingRequest
   }
 

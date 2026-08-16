@@ -33,6 +33,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
   const [isLoading, setIsLoading] = useState(false)
   const [isSwitching, setIsSwitching] = useState(false)
   const requestIdRef = useRef(0)
+  const isSwitchingRef = useRef(false)
   const activeWorkspacePathRef = useRef(normalizedWorkspacePath)
 
   useEffect(() => {
@@ -47,6 +48,10 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
         setErrorMessage(null)
         setIsLoading(false)
       }
+      return
+    }
+
+    if (isSwitchingRef.current) {
       return
     }
 
@@ -172,6 +177,9 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
         return
       }
 
+      isSwitchingRef.current = true
+      requestIdRef.current += 1
+      setIsLoading(false)
       setIsSwitching(true)
       setErrorMessage(null)
 
@@ -189,6 +197,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
         setErrorMessage(message)
         throw error instanceof Error ? error : new Error(message)
       } finally {
+        isSwitchingRef.current = false
         setIsSwitching(false)
       }
     },
@@ -202,6 +211,9 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
         return
       }
 
+      isSwitchingRef.current = true
+      requestIdRef.current += 1
+      setIsLoading(false)
       setIsSwitching(true)
       setErrorMessage(null)
 
@@ -219,6 +231,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
         setErrorMessage(message)
         throw error instanceof Error ? error : new Error(message)
       } finally {
+        isSwitchingRef.current = false
         setIsSwitching(false)
       }
     },

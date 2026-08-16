@@ -101,8 +101,12 @@ function removeWatcherState(workspacePath: string) {
 
 function scheduleSourceControlChange(workspacePath: string) {
   const state = watcherStates.get(workspacePath)
-  if (!state || state.pendingEmitTimerId !== null) {
+  if (!state) {
     return
+  }
+
+  if (state.pendingEmitTimerId !== null) {
+    clearTimeout(state.pendingEmitTimerId)
   }
 
   state.pendingEmitTimerId = setTimeout(() => {
