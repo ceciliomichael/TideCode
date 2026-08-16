@@ -793,6 +793,12 @@ export class TerminalScreen {
       const text = composerText(this.composer).trim()
       const attachments = [...this.composer.attachments]
       const completion = this.view.completionItems[this.view.completionIndex]
+      if (completion?.mentionKind) {
+        this.composer = this.insertCompletion(completion, true)
+        this.updateCompletionItems(pending.context)
+        this.renderCurrentPrompt()
+        return
+      }
       if (completion && text.startsWith('/') && !text.includes(' ') && text !== completion.value) {
         this.composer = this.insertCompletion(completion, false)
         this.updateCompletionItems(pending.context)
