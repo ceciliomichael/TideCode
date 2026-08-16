@@ -165,9 +165,12 @@ export function preprocessMarkdown(markdown: string): string {
     // Process subscript: ~text~ (not ~~strikethrough~~) -> <sub>text</sub>
     processedLine = processedLine.replace(/(?<!~)~([^~\s]+)~(?!~)/g, '<sub>$1</sub>')
 
-    // Process custom/wiki [[read:path/to/file]] or [[path/to/file]] links
-    processedLine = processedLine.replace(/\[\[(?:read:)?([^\]]+)\]\]/g, (_, target) => {
+    // Process custom/wiki [[read_file:path/to/file]] or [[path/to/file]] links
+    processedLine = processedLine.replace(/\[\[(?:read_file:)?([^\]]+)\]\]/g, (fullMatch, target) => {
       const cleanTarget = target.trim()
+      if (cleanTarget.startsWith('read:')) {
+        return fullMatch
+      }
       const [pathPart, anchorPart] = cleanTarget.split('#')
       const basename = pathPart.split(/[/\\]/).pop() || pathPart
       const displayText = anchorPart ? `${basename}#${anchorPart}` : basename

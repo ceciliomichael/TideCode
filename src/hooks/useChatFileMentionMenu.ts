@@ -182,7 +182,7 @@ async function loadWorkspaceMentionIndex(workspaceRootPath: string) {
         description: normalizedRelativePath,
         kind: entry.isDirectory ? ('folder' as const) : ('file' as const),
         label: toMentionLabel(entry.relativePath),
-        relativePath: entry.isDirectory ? `list:${normalizedRelativePath}` : `read:${normalizedRelativePath}`,
+        relativePath: entry.isDirectory ? `list:${normalizedRelativePath}` : `read_file:${normalizedRelativePath}`,
       }
     })
 

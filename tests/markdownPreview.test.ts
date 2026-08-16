@@ -35,6 +35,11 @@ test('isMermaidErrorSvg detects Mermaid syntax error output', () => {
   assert.equal(isMermaidErrorSvg('<svg><text>diagram rendered successfully</text></svg>'), false)
 })
 
+test('preprocessMarkdown only recognizes read_file mention links, not removed read aliases', () => {
+  assert.equal(preprocessMarkdown('[[read_file:src/main.ts]]'), '[`main.ts`](src/main.ts)')
+  assert.equal(preprocessMarkdown('[[read:src/main.ts]]'), '[[read:src/main.ts]]')
+})
+
 test('preprocessMarkdown separates glued closing backticks from subsequent headers/markdown', () => {
   const input = `\`\`\`html
 <h1>Hello World</h1>
