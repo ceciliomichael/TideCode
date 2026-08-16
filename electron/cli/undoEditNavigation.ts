@@ -9,6 +9,16 @@ export interface UndoEditSelection {
   attachments: ChatAttachment[]
 }
 
+export function getUndoEditPreviewMessages(
+  messages: readonly Message[],
+  targetUserMessageId: string,
+): Message[] | null {
+  const targetIndex = messages.findIndex(
+    (message) => message.id === targetUserMessageId && isHumanUserMessage(message),
+  )
+  return targetIndex >= 0 ? messages.slice(0, targetIndex) : null
+}
+
 function toSelection(message: Message): UndoEditSelection {
   return {
     targetUserMessageId: message.id,

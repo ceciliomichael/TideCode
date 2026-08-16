@@ -76,10 +76,14 @@ export interface TerminalPromptContext {
   providerId: string
   onToggleMode?: (newMode: ChatMode) => void
   onCancelTurn?: () => void
-  onCancelDraft?: () => void
+  onCancelDraft?: () => void | { restoreMessages: readonly Message[] }
   onNavigateUndoEdit?: (
     direction: 'older' | 'newer',
-  ) => { text: string; attachments: readonly ChatAttachment[] } | null | undefined
+  ) => {
+    text: string
+    attachments: readonly ChatAttachment[]
+    previewMessages?: readonly Message[]
+  } | null | undefined
   onActiveMessage?: (text: string, behavior: ActiveTurnFollowUpView['behavior']) => void
   enterFollowUpBehavior?: FollowUpBehavior
   getCompletionItems?: (text: string, cursorIndex: number) => readonly CompletionItemView[]
@@ -703,11 +707,15 @@ export class TerminalScreen {
         this.requestActiveTurnCancellation()
         return
       }
-      pending.context.onCancelDraft?.()
+      const cancelResult = pending.context.onCancelDraft?.()
       this.mentionPathMap.clear()
       this.composer = createComposerState(this.history)
       this.updateCompletionItems(pending.context)
-      this.renderCurrentPrompt()
+      if (cancelResult && typeof cancelResult === 'object' && 'restoreMessages' in cancelResult) {
+        this.restoreConversation(cancelResult.restoreMessages, {}, true)
+      } else {
+        this.renderCurrentPrompt()
+      }
       return
     }
 
@@ -792,6 +800,10 @@ export class TerminalScreen {
         if (undoNavigation) {
           this.composer = setComposerText(this.composer, undoNavigation.text, undoNavigation.attachments)
           this.updateCompletionItems(pending.context)
+          if (undoNavigation.previewMessages) {
+            this.restoreConversation(undoNavigation.previewMessages, {}, true)
+            return
+          }
         }
         this.renderCurrentPrompt()
         return

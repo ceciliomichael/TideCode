@@ -6,7 +6,7 @@ import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../src/lib/contextCompac
 import { compactApiKeyConversation } from '../chat/apiKey/runtime'
 import { compactCodexConversation } from '../chat/codex/runtime'
 import { startRemoteRelayDaemon } from './remoteDaemon'
-import { getLatestUndoEditSelection } from './undoEditNavigation'
+import { getLatestUndoEditSelection, getUndoEditPreviewMessages } from './undoEditNavigation'
 import type { CliSessionState, SlashCommandHelpers } from './types'
 import type { TerminalScreen } from './terminalScreen'
 import { resumeCliConversation } from './cliHistory'
@@ -84,11 +84,22 @@ export function createReplCommandHelpers(
         return
       }
 
-      // /undo is a staged edit, not an immediate history mutation. The
-      // existing transcript remains authoritative until the user submits the
-      // edited draft. Up/Down can browse earlier/later user turns, while
-      // Esc/Ctrl+C cancels without losing history.
+      // /undo is a staged edit, not an immediate history mutation. Preview the
+      // conversation exactly at the selected branch point while keeping the
+      // full authoritative transcript in state until the user submits. Up/Down
+      // visibly scrub earlier/later user turns; Esc/Ctrl+C restores everything.
+      const previewMessages = getUndoEditPreviewMessages(state.messages, selection.targetUserMessageId)
+      if (!previewMessages) {
+        screen.addNotice('warning', 'That previous turn is no longer available to edit.')
+        return
+      }
       state.pendingUndoEdit = { targetUserMessageId: selection.targetUserMessageId }
+      screen.restoreConversation(previewMessages, {
+        mode: state.chatMode,
+        model: state.modelId,
+        provider: state.providerId,
+        workspace: state.workspaceRootPath,
+      }, true)
       screen.setNextPromptDraft(selection.text, selection.attachments)
     },
     loadSession: async (conversationId: string) => {

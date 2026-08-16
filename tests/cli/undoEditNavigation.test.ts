@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import type { Message } from '../../src/types/chat'
 import {
   getLatestUndoEditSelection,
+  getUndoEditPreviewMessages,
   navigateUndoEditSelection,
 } from '../../electron/cli/undoEditNavigation'
 
@@ -19,6 +20,15 @@ test('undo edit selection starts at the latest human user turn', () => {
   const selection = getLatestUndoEditSelection(messages)
   assert.equal(selection?.targetUserMessageId, 'user-3')
   assert.equal(selection?.text, 'third prompt')
+})
+
+test('undo edit preview shows the conversation immediately before the selected user turn', () => {
+  assert.deepEqual(
+    getUndoEditPreviewMessages(messages, 'user-2')?.map((message) => message.id),
+    ['user-1', 'assistant-1', 'user-context'],
+  )
+  assert.deepEqual(getUndoEditPreviewMessages(messages, 'user-1'), [])
+  assert.equal(getUndoEditPreviewMessages(messages, 'missing-user'), null)
 })
 
 test('undo edit selection navigates older and newer human turns without wrapping', () => {
