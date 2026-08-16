@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.6 — Canonical mentions and clearer Code Mode boundaries
+
+TideCode 1.2.6 standardizes how composer references are sent to agents and makes the restricted Code Mode runtime more explicit, reducing ambiguity between mention metadata and callable tool APIs.
+
+- Uses `read_file:` for file mentions, `list:` for folder mentions, and `load_skill:` for skill mentions consistently across desktop and CLI.
+- Removes legacy mention fallback formats such as `read:`, `skill:`, `folder:`, bare action tags, and the older resolved mention markup; previously stored messages using those removed forms are no longer interpreted as active mentions.
+- Expands the Code Mode contract with an explicit list of unavailable direct host and Node.js APIs, including filesystem, process, networking, worker, and dynamic module access, and directs agents to the documented `tools.*` APIs.
+- Validated with 1,059 automated tests, TypeScript type checking, and the production build.
+
 ## 1.2.5 - Smoother CLI and safer workspace tools
 
 TideCode 1.2.5 makes terminal workflows and workspace tooling more predictable, with cleaner live output, faster local Git navigation, safer Code Mode execution, and more consistent workspace memory access.
