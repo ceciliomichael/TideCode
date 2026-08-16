@@ -355,6 +355,82 @@ test('Code Mode reports generated syntax errors before starting a worker', async
   }
 })
 
+test('Code Mode repairs nested quote delimiters in edit source payloads', async () => {
+  const entries = [{
+    description: 'Capture edit input.',
+    execute: async (input: unknown) => ({
+      body: JSON.stringify(input),
+      status: 'success' as const,
+      summary: 'Captured edit input.',
+    }),
+    inputSchema: { type: 'object' as const },
+    name: 'edit',
+    namespace: 'filesystem',
+  }]
+  const registry: AgentToolRegistry = {
+    entries,
+    get(name) {
+      return entries.find((entry) => entry.name === name)
+    },
+    search() {
+      return entries.map((entry) => ({ ...entry, score: 1 }))
+    },
+  }
+  const executor = new CodeModeExecutor(registry)
+  const cases = [
+    {
+      expected: {
+        edits: [{
+          replacementContent: 'const label = `new ${name}`',
+          targetContent: 'const label = `old ${name}`',
+        }],
+        path: 'value.ts',
+      },
+      program: [
+        "return await tools.edit({ path: 'value.ts', edits: [{",
+        '  targetContent: `const label = `old ${name}``,',
+        '  replacementContent: `const label = `new ${name}``,',
+        '}] })',
+      ].join('\n'),
+    },
+    {
+      expected: {
+        edits: [{ replacementContent: "const label = 'new'", targetContent: "const label = 'old'" }],
+        path: 'value.ts',
+      },
+      program: [
+        "return await tools.edit({ path: 'value.ts', edits: [{",
+        "  targetContent: 'const label = 'old'',",
+        "  replacementContent: 'const label = 'new'',",
+        '}] })',
+      ].join('\n'),
+    },
+    {
+      expected: {
+        edits: [{ replacementContent: 'const label = "new"', targetContent: 'const label = "old"' }],
+        path: 'value.ts',
+      },
+      program: [
+        "return await tools.edit({ path: 'value.ts', edits: [{",
+        '  targetContent: "const label = "old"",',
+        '  replacementContent: "const label = "new"",',
+        '}] })',
+      ].join('\n'),
+    },
+  ]
+
+  try {
+    for (const testCase of cases) {
+      const result = await executor.run(testCase.program, { allowedToolNames: ['edit'] })
+      assert.equal(result.status, 'success')
+      assert.equal(result.toolCalls.length, 1)
+      assert.deepEqual(result.toolCalls[0]?.arguments, testCase.expected)
+    }
+  } finally {
+    await executor.dispose()
+  }
+})
+
 test('Code Mode repairs simple malformed patch arrays before running the patch tool', async () => {
   const entries = [
     {

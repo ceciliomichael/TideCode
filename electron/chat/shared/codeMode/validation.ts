@@ -171,13 +171,13 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
     }
   }
 
-  // Try 0.5: Repair unescaped inner backticks or template expressions inside tools.write / tools.edit template literals
+  // Try 0.5: Repair malformed string literals in tools.write / tools.edit source payloads.
   if (code.includes('content:') || code.includes('targetContent:') || code.includes('replacementContent:')) {
-    const fixedNestedBackticks = repairNestedTemplateLiterals(code)
-    if (fixedNestedBackticks !== code) {
+    const fixedMutationStrings = repairSourceMutationStringLiterals(code)
+    if (fixedMutationStrings !== code) {
       try {
-        validateCodeModeSyntax(fixedNestedBackticks)
-        return fixedNestedBackticks
+        validateCodeModeSyntax(fixedMutationStrings)
+        return fixedMutationStrings
       } catch {
         // continue
       }
@@ -253,41 +253,111 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
   return null
 }
 
-export function repairNestedTemplateLiterals(code: string): string {
-  const keys = ['content', 'targetContent', 'replacementContent']
-  let result = code
+type SourceMutationStringKey = 'content' | 'targetContent' | 'replacementContent'
+type SourceMutationStringQuote = "'" | '"' | '`'
 
-  for (const key of keys) {
-    const keyMarker = `${key}: \``
-    let pos = 0
-    while ((pos = result.indexOf(keyMarker, pos)) !== -1) {
-      const startBodyIndex = pos + keyMarker.length
-      let endBodyIndex = -1
-      for (let i = result.length - 1; i > startBodyIndex; i--) {
-        if (result[i] === '`') {
-          const rest = result.slice(i + 1).trimStart()
-          if (rest.startsWith('}') || rest.startsWith(',') || rest.startsWith(')')) {
-            endBodyIndex = i
-            break
-          }
-        }
+const SOURCE_MUTATION_STRING_FIELD = /\b(content|targetContent|replacementContent)\s*:\s*(['"`])/gu
+const SOURCE_MUTATION_NEXT_PROPERTY = /^\s*,\s*(?:content|path|targetContent|replacementContent|startLine|endLine|replaceAll)\s*:/u
+
+function hasSourceMutationStringTerminator(source: string, key: SourceMutationStringKey, quoteIndex: number) {
+  const suffix = source.slice(quoteIndex + 1)
+  if (SOURCE_MUTATION_NEXT_PROPERTY.test(suffix)) return true
+  if (key === 'content') return /^\s*,?\s*\}/u.test(suffix)
+  return /^\s*,?\s*\}\s*(?:,\s*\{|\]\s*\}\s*\))/u.test(suffix)
+}
+
+function escapeSourceMutationStringBody(value: string, quote: SourceMutationStringQuote) {
+  let escaped = ''
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]
+    const nextCharacter = value[index + 1]
+
+    if (quote !== '`') {
+      if (character === '\r') {
+        if (nextCharacter === '\n') index += 1
+        escaped += nextCharacter === '\n' ? '\\r\\n' : '\\r'
+        continue
       }
-
-      if (endBodyIndex > startBodyIndex) {
-        const rawBody = result.slice(startBodyIndex, endBodyIndex)
-        const safeBody = rawBody
-          .replace(/(?<!\\)`/gu, '\\`')
-          .replace(/(?<!\\)\$\{/gu, '\\${')
-
-        result = result.slice(0, startBodyIndex) + safeBody + result.slice(endBodyIndex)
-        pos = startBodyIndex + safeBody.length + 1
-      } else {
-        pos += keyMarker.length
+      if (character === '\n') {
+        escaped += '\\n'
+        continue
+      }
+      if (character === '\u2028') {
+        escaped += '\\u2028'
+        continue
+      }
+      if (character === '\u2029') {
+        escaped += '\\u2029'
+        continue
       }
     }
+
+    if (character === quote && !isEscaped(value, index)) {
+      escaped += `\\${character}`
+      continue
+    }
+
+    if (quote === '`' && character === '$' && nextCharacter === '{' && !isEscaped(value, index)) {
+      escaped += '\\${'
+      index += 1
+      continue
+    }
+
+    escaped += character
+  }
+
+  return escaped
+}
+
+/**
+ * Repairs malformed model-generated source payload strings for tools.write and
+ * tools.edit. Only content/targetContent/replacementContent values are touched,
+ * and only when a same-delimiter quote, raw line break, backtick, or template
+ * expression would otherwise terminate or interpolate the generated program.
+ */
+export function repairSourceMutationStringLiterals(code: string): string {
+  let result = code
+  let searchFrom = 0
+
+  while (searchFrom < result.length) {
+    SOURCE_MUTATION_STRING_FIELD.lastIndex = searchFrom
+    const match = SOURCE_MUTATION_STRING_FIELD.exec(result)
+    if (!match || match.index === undefined) break
+
+    const key = match[1] as SourceMutationStringKey
+    const quote = match[2] as SourceMutationStringQuote
+    const startBodyIndex = SOURCE_MUTATION_STRING_FIELD.lastIndex
+    let endBodyIndex = -1
+
+    for (let index = startBodyIndex; index < result.length; index += 1) {
+      if (result[index] !== quote || isEscaped(result, index)) continue
+      if (!hasSourceMutationStringTerminator(result, key, index)) continue
+      endBodyIndex = index
+      break
+    }
+
+    if (endBodyIndex === -1) {
+      searchFrom = startBodyIndex
+      continue
+    }
+
+    const rawBody = result.slice(startBodyIndex, endBodyIndex)
+    const safeBody = escapeSourceMutationStringBody(rawBody, quote)
+    if (safeBody === rawBody) {
+      searchFrom = endBodyIndex + 1
+      continue
+    }
+
+    result = result.slice(0, startBodyIndex) + safeBody + result.slice(endBodyIndex)
+    searchFrom = startBodyIndex + safeBody.length + 1
   }
 
   return result
+}
+
+export function repairNestedTemplateLiterals(code: string): string {
+  return repairSourceMutationStringLiterals(code)
 }
 
 function isRegexStart(source: string, index: number) {
