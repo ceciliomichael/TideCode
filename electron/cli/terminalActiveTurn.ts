@@ -141,15 +141,19 @@ export function renderCommittedTurn(
 
 export function renderConversationHistory(
   entries: readonly TranscriptEntry[],
-  options: { selectedUserMessageId?: string | null } = {},
+  options: { selectedUserMessageId?: string | null; maxLines?: number } = {},
 ): string[] {
   const width = getTerminalPanelWidth()
   const lines: string[] = []
   let previousEntry: TranscriptEntry | undefined
+  let selectedLineIndex: number | null = null
 
   for (const entry of entries) {
     if (entry.kind === 'user') {
       appendBlankRow(lines)
+      if (entry.id === options.selectedUserMessageId) {
+        selectedLineIndex = lines.length
+      }
       lines.push(...renderUserMessage(entry.text, width, entry.id === options.selectedUserMessageId))
       appendBlankRow(lines)
     } else {
@@ -161,7 +165,26 @@ export function renderConversationHistory(
   }
 
   if (lines.length > 0) appendBlankRow(lines)
-  return lines
+
+  const maxLines = options.maxLines
+  if (
+    selectedLineIndex === null ||
+    maxLines === undefined ||
+    maxLines <= 0 ||
+    lines.length <= maxLines
+  ) {
+    return lines
+  }
+
+  const visibleLineCount = Math.max(1, Math.floor(maxLines))
+  const preferredContextAbove = Math.max(1, Math.floor(visibleLineCount * 0.4))
+  let startIndex = Math.max(0, selectedLineIndex - preferredContextAbove)
+  let endIndex = Math.min(lines.length, startIndex + visibleLineCount)
+  if (endIndex - startIndex < visibleLineCount) {
+    startIndex = Math.max(0, endIndex - visibleLineCount)
+  }
+
+  return lines.slice(startIndex, endIndex)
 }
 
 export function renderActiveTurn(data: ActiveTurnRenderData): ActiveTurnRender {

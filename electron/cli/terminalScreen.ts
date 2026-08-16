@@ -269,6 +269,7 @@ export class TerminalScreen {
     }
     const historyLines = renderConversationHistory(this.view.entries, {
       selectedUserMessageId: this.selectedHistoryUserMessageId,
+      maxLines: this.getSelectedHistoryViewportMaxLines(),
     })
     if (historyLines.length > 0) this.output.write(`${historyLines.join('\n')}\n`)
     if (this.pendingPrompt) this.renderCurrentPrompt()
@@ -1188,6 +1189,23 @@ export class TerminalScreen {
     this.redrawAfterResize()
   }
 
+  private getSelectedHistoryViewportMaxLines(): number | undefined {
+    if (!this.selectedHistoryUserMessageId) return undefined
+    const rows = process.stdout.rows
+    if (!rows) return undefined
+
+    const panelWidth = getTerminalPanelWidth()
+    const composerWidth = Math.max(1, panelWidth - 6)
+    const composerLineCount = Math.max(1, getComposerVisualLines(this.composer, composerWidth).length)
+    const completionRows = this.view.completionItems.length > 0
+      ? 1 + Math.min(6, this.view.completionItems.length)
+      : 0
+    const promptRows = 1 + composerLineCount + completionRows + 1 + 1
+    const sessionIntroRows = 8
+
+    return Math.max(4, rows - sessionIntroRows - promptRows)
+  }
+
   private redrawAfterResize(): void {
     // Terminal hosts reflow lines when their width changes, so the old cursor
     // row and frame dimensions are no longer trustworthy. Repaint from the
@@ -1213,6 +1231,7 @@ export class TerminalScreen {
       : this.view.entries
     const historyLines = renderConversationHistory(historyEntries, {
       selectedUserMessageId: this.selectedHistoryUserMessageId,
+      maxLines: this.getSelectedHistoryViewportMaxLines(),
     })
     if (historyLines.length > 0) redrawOutput.write(`${historyLines.join('\n')}\n`)
 

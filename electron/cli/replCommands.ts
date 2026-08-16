@@ -89,13 +89,15 @@ export function createReplCommandHelpers(
       // turn. Up/Down moves that marker and the editable composer draft; Esc
       // exits edit mode without changing history or workspace checkpoints.
       state.pendingUndoEdit = { targetUserMessageId: selection.targetUserMessageId }
+      // Seed the editable draft before computing the history viewport so a
+      // multiline historical prompt reserves its full sticky-composer height.
+      screen.setNextPromptDraft(selection.text, selection.attachments)
       screen.restoreConversation(state.messages, {
         mode: state.chatMode,
         model: state.modelId,
         provider: state.providerId,
         workspace: state.workspaceRootPath,
       }, true, { selectedUserMessageId: selection.targetUserMessageId })
-      screen.setNextPromptDraft(selection.text, selection.attachments)
     },
     loadSession: async (conversationId: string) => {
       try {
