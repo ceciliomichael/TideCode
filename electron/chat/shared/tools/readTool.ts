@@ -1,11 +1,47 @@
 import { jsonSchema, tool } from 'ai'
+import { classifyWorkspaceMemoryPath, MEMORY_INDEX_PATH } from '../../../memory/service'
 import {
   createReadToolResult,
   resolveReadOnlyTargetPath,
+  WorkspaceTargetNotFoundError,
   WORKSPACE_PATH_DESCRIPTION,
   type WorkspaceToolContext,
 } from './workspaceTools'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
+import { createSuccessResult } from './workspaceToolResults'
+
+function createMissingWorkspaceMemoryReadResult(
+  workspaceRootPath: string,
+  error: WorkspaceTargetNotFoundError,
+) {
+  const memoryPath = classifyWorkspaceMemoryPath(error.absolutePath, workspaceRootPath)
+  if (!memoryPath) return null
+
+  if (memoryPath.kind === 'index') {
+    return createSuccessResult({
+      body: 'No workspace memory yet.',
+      semantics: { memory_state: 'empty', path: memoryPath.path },
+      subject: { kind: 'file', path: memoryPath.path },
+      summary: 'No workspace memory yet.',
+    })
+  }
+
+  if (memoryPath.kind === 'entry') {
+    return createSuccessResult({
+      body: `Workspace memory entry does not exist: ${memoryPath.path}. Read ${MEMORY_INDEX_PATH} for available entries.`,
+      semantics: { memory_state: 'missing_entry', path: memoryPath.path },
+      subject: { kind: 'file', path: memoryPath.path },
+      summary: `Workspace memory entry does not exist: ${memoryPath.path}`,
+    })
+  }
+
+  return createSuccessResult({
+    body: `Invalid workspace memory path: ${memoryPath.path}. Read ${MEMORY_INDEX_PATH} or a Markdown entry under .tidecode/memory/folders/.../.`,
+    semantics: { memory_state: 'invalid_path', path: memoryPath.path },
+    subject: { kind: 'file', path: memoryPath.path },
+    summary: `Invalid workspace memory path: ${memoryPath.path}`,
+  })
+}
 
 export function createReadTool(context: WorkspaceToolContext) {
   return tool({
@@ -38,6 +74,10 @@ export function createReadTool(context: WorkspaceToolContext) {
         )
         return await createReadToolResult(target.absolutePath, target.displayPath, input.offset, input.limit, input.full_file === true)
       } catch (error) {
+        if (error instanceof WorkspaceTargetNotFoundError) {
+          const memoryResult = createMissingWorkspaceMemoryReadResult(context.workspaceRootPath, error)
+          if (memoryResult) return memoryResult
+        }
         return createToolErrorResult(getToolErrorSummary(error, 'Read failed.'))
       }
     },

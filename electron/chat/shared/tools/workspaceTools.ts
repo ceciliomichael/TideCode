@@ -2,6 +2,7 @@ export {
   resolveReadableTargetPath,
   resolveReadOnlyTargetPath,
   resolveWorkspaceTargetPath,
+  WorkspaceTargetNotFoundError,
   WORKSPACE_PATH_DESCRIPTION,
   type WorkspaceToolContext,
 } from './workspaceToolPaths'

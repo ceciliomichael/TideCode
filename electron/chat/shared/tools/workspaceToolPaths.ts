@@ -19,6 +19,17 @@ export interface WorkspaceToolContext extends Pick<AgentToolContext, 'checkpoint
 export const WORKSPACE_PATH_DESCRIPTION =
   'Accepts exactly one path; read, list, glob, and grep targets must already exist. Prefer a path relative to the workspace root. Use an absolute path only when copied exactly from the user or a tool result; never construct one. To inspect multiple roots, make separate calls; never join paths with spaces.'
 
+export class WorkspaceTargetNotFoundError extends Error {
+  constructor(
+    public readonly requestedPath: string,
+    public readonly absolutePath: string,
+    multiplePathHint = '',
+  ) {
+    super(`Path not found: ${requestedPath}. Use a path relative to the workspace root.${multiplePathHint}`)
+    this.name = 'WorkspaceTargetNotFoundError'
+  }
+}
+
 function assertWorkspaceRootIsNotRepeated(workspaceRootPath: string, candidatePath: string) {
   const normalizedCandidatePath = path.resolve(candidatePath)
   const workspaceFolderName = path.basename(workspaceRootPath)
@@ -144,6 +155,6 @@ async function assertWorkspaceTargetExists(
     const multiplePathHint = /\s/u.test(normalizedCandidatePath)
       ? ' The path field accepts one path only; if you meant multiple roots, use one call per root instead of joining them with spaces.'
       : ''
-    throw new Error(`Path not found: ${normalizedCandidatePath}. Use a path relative to the workspace root.${multiplePathHint}`)
+    throw new WorkspaceTargetNotFoundError(normalizedCandidatePath, absolutePath, multiplePathHint)
   }
 }

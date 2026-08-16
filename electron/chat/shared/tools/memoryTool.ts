@@ -2,18 +2,16 @@ import { jsonSchema, tool } from 'ai'
 import {
   editMemoryEntry,
   forgetMemoryEntry,
-  readMemoryEntry,
-  readMemoryIndex,
   writeMemoryEntry,
 } from '../../../memory/service'
 import { WORKSPACE_PATH_DESCRIPTION, type WorkspaceToolContext } from './workspaceToolPaths'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 import { captureCheckpointFileStateIfNeeded, createSuccessResult } from './workspaceToolResults'
 
-type MemoryAction = 'edit' | 'forget' | 'read' | 'read_index' | 'write'
+type MemoryAction = 'edit' | 'forget' | 'write'
 
 interface MemoryToolInput {
-  action?: MemoryAction
+  action?: string
   content?: string
   new_text?: string
   old_text?: string
@@ -21,22 +19,26 @@ interface MemoryToolInput {
   title?: string
 }
 
+function isMemoryAction(action: string): action is MemoryAction {
+  return action === 'write' || action === 'edit' || action === 'forget'
+}
+
 export function createMemoryTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Read or maintain durable workspace memory under .tidecode/memory/.',
+    description: 'Maintain durable workspace memory under .tidecode/memory/. Use the normal read tool to inspect the memory index and entries.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
         action: {
-          description: 'read_index lists memory; read opens one entry; write creates or replaces; edit replaces one exact text block; forget removes.',
-          enum: ['read_index', 'read', 'write', 'edit', 'forget'],
+          description: 'write creates or replaces; edit replaces one exact text block; forget removes.',
+          enum: ['write', 'edit', 'forget'],
           type: 'string',
         },
         content: { description: 'Complete Markdown content for write.', type: 'string' },
         new_text: { description: 'Replacement text for edit; may be empty.', type: 'string' },
         old_text: { description: 'One exact unique text block for edit.', type: 'string' },
         path: {
-          description: `${WORKSPACE_PATH_DESCRIPTION} The target must be a memory entry under .tidecode/memory/folders/, ending in .md. Required except for read_index.`,
+          description: `${WORKSPACE_PATH_DESCRIPTION} The target must be a memory entry under .tidecode/memory/folders/, ending in .md. Required for every action.`,
           type: 'string',
         },
         title: { description: 'Optional H1 title for write when content has no H1.', type: 'string' },
@@ -51,32 +53,11 @@ export function createMemoryTool(context: WorkspaceToolContext) {
         if (!action) {
           throw new Error('memory requires an "action".')
         }
-
-        if (action === 'read_index') {
-          const document = await readMemoryIndex(context.workspaceRootPath)
-          return createSuccessResult({
-            body: document.content,
-            semantics: { action, path: document.path },
-            subject: { kind: 'memory_index', path: document.path },
-            summary: `Read workspace memory index: ${document.path}`,
-          })
+        if (!isMemoryAction(action)) {
+          throw new Error(`Unsupported memory action: ${action}. Use write, edit, or forget.`)
         }
-
         if (typeof input.path !== 'string' || input.path.trim().length === 0) {
           throw new Error(`memory ${action} requires "path".`)
-        }
-
-        if (action === 'read') {
-          const document = await readMemoryEntry({
-            path: input.path,
-            workspaceRootPath: context.workspaceRootPath,
-          })
-          return createSuccessResult({
-            body: document.content,
-            semantics: { action, path: document.path },
-            subject: { kind: 'memory', path: document.path },
-            summary: `Read workspace memory: ${document.path}`,
-          })
         }
 
         if (action === 'write') {

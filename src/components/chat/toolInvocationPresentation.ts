@@ -86,12 +86,7 @@ function getToolVerb(invocation: ToolInvocationTrace) {
       readPartialAction(invocation.argumentsText),
       parsedResult?.metadata?.semantics?.action,
     ])
-    if (action === 'read_index') {
-      return invocation.state === 'running' ? 'Reading memory index' : invocation.state === 'completed' ? 'Read memory index' : 'Memory index read failed'
-    }
-    if (action === 'read') {
-      return invocation.state === 'running' ? 'Reading memory' : invocation.state === 'completed' ? 'Read memory' : 'Memory read failed'
-    }
+
     if (action === 'write') {
       if (operation === 'unchanged') {
         return invocation.state === 'running' ? 'Checking memory' : invocation.state === 'completed' ? 'Kept memory' : 'Memory write failed'
@@ -570,14 +565,6 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
   const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
 
   if (invocation.toolName === 'memory') {
-    const action = readFirstText([
-      parsedArguments?.action,
-      readPartialAction(invocation.argumentsText),
-      parsedResult?.metadata?.semantics?.action,
-    ])
-    if (action === 'read_index') {
-      return null
-    }
     const rawPath = readFirstText([
       parsedArguments?.path,
       parsedResult?.metadata?.semantics?.path,

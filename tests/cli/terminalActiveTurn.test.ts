@@ -61,6 +61,26 @@ test('long streamed reasoning stays faded after the preview is truncated', () =>
   assert.ok(visibleWidth(activityLine) <= 42)
 })
 
+test('active turn drops older live lines without rendering a placeholder row', () => {
+  const render = renderActiveTurn({
+    activity: { detail: 'Checking the latest state', kind: 'thinking', label: 'Thinking' },
+    entries: [
+      { id: 'assistant-1', kind: 'assistant', text: 'oldest line\nolder line\nnewer line\nnewest line' },
+    ],
+    maxOutputLines: 4,
+    panel: createPanel(),
+    thinkingFrame: '⠙',
+  })
+  const lines = render.lines.map(stripAnsi)
+  const outputLines = lines.slice(1, 5)
+
+  assert.equal(outputLines.some((line) => line.includes('earlier live lines')), false)
+  assert.equal(outputLines.some((line) => line.includes('oldest line')), false)
+  assert.equal(outputLines.some((line) => line.includes('newest line')), true)
+  assert.equal(outputLines.some((line) => line.includes('Checking the latest state')), true)
+  assert.equal(stripAnsi(render.lines[render.activityRow ?? -1] ?? '').includes('Checking the latest state'), true)
+})
+
 test('thinking row disappears as soon as assistant content starts', () => {
   const render = renderActiveTurn({
     activity: { kind: 'idle', label: '' },

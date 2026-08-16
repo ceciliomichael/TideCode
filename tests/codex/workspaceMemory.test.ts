@@ -8,13 +8,15 @@ import { createNativeAgentTools } from '../../electron/chat/shared/tools'
 import {
   editMemoryEntry,
   forgetMemoryEntry,
-  readMemoryEntry,
-  readMemoryIndex,
   writeMemoryEntry,
 } from '../../electron/memory/service'
 
 interface ExecutableTool {
   execute: (input: Record<string, unknown>) => Promise<AgentToolExecutionResult>
+}
+
+async function readWorkspaceFile(workspaceRootPath: string, relativePath: string) {
+  return fs.readFile(path.join(workspaceRootPath, ...relativePath.split('/')), 'utf8')
 }
 
 test('workspace memory maintains a generated index and replaces stale entries', async () => {
@@ -30,8 +32,8 @@ test('workspace memory maintains a generated index and replaces stale entries', 
     assert.equal(created.operation, 'created')
     assert.equal(created.path, '.tidecode/memory/folders/architecture/runtime.md')
 
-    const firstIndex = await readMemoryIndex(workspaceRootPath)
-    assert.match(firstIndex.content, /\[Runtime architecture\]\(folders\/architecture\/runtime\.md\)/u)
+    const firstIndex = await readWorkspaceFile(workspaceRootPath, '.tidecode/memory/MEMORY.md')
+    assert.match(firstIndex, /\[Runtime architecture\]\(folders\/architecture\/runtime\.md\)/u)
 
     const updated = await writeMemoryEntry({
       content: '# Runtime architecture\n\nCanonical replay is authoritative; legacy replay is fallback only.',
@@ -40,12 +42,9 @@ test('workspace memory maintains a generated index and replaces stale entries', 
     })
     assert.equal(updated.operation, 'updated')
 
-    const document = await readMemoryEntry({
-      path: 'folders/architecture/runtime.md',
-      workspaceRootPath,
-    })
-    assert.doesNotMatch(document.content, /The runtime uses canonical replay/u)
-    assert.match(document.content, /legacy replay is fallback only/u)
+    const document = await readWorkspaceFile(workspaceRootPath, '.tidecode/memory/folders/architecture/runtime.md')
+    assert.doesNotMatch(document, /The runtime uses canonical replay/u)
+    assert.match(document, /legacy replay is fallback only/u)
 
     const edited = await editMemoryEntry({
       newText: 'legacy replay is used only for migration.',
@@ -61,7 +60,7 @@ test('workspace memory maintains a generated index and replaces stale entries', 
       workspaceRootPath,
     })
     assert.equal(forgotten.operation, 'deleted')
-    assert.doesNotMatch((await readMemoryIndex(workspaceRootPath)).content, /runtime\.md/u)
+    assert.doesNotMatch(await readWorkspaceFile(workspaceRootPath, '.tidecode/memory/MEMORY.md'), /runtime\.md/u)
     await assert.rejects(
       fs.access(path.join(workspaceRootPath, '.tidecode/memory/folders/architecture')),
       { code: 'ENOENT' },
@@ -94,11 +93,10 @@ test('workspace memory preserves non-empty folders after forgetting one entry', 
     await assert.doesNotReject(
       fs.access(path.join(workspaceRootPath, '.tidecode/memory/folders/architecture')),
     )
-    const remaining = await readMemoryEntry({
-      path: 'folders/architecture/keep.md',
-      workspaceRootPath,
-    })
-    assert.match(remaining.content, /Keep this entry/u)
+    assert.match(
+      await readWorkspaceFile(workspaceRootPath, '.tidecode/memory/folders/architecture/keep.md'),
+      /Keep this entry/u,
+    )
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -123,12 +121,7 @@ test('workspace memory accepts absolute paths inside the workspace', async () =>
     })
     assert.equal(created.operation, 'created')
     assert.equal(created.path, '.tidecode/memory/folders/architecture/absolute.md')
-
-    const document = await readMemoryEntry({
-      path: absoluteMemoryPath,
-      workspaceRootPath,
-    })
-    assert.match(document.content, /Absolute paths resolve/u)
+    assert.match(await fs.readFile(absoluteMemoryPath, 'utf8'), /Absolute paths resolve/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -159,13 +152,33 @@ test('workspace memory rejects paths outside managed folders', async () => {
   }
 })
 
-test('native memory tool is available in plan mode and operates on its workspace', async () => {
+test('normal read owns workspace memory reads and memory tool is mutation-only', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-memory-tools-'))
 
   try {
     const tools = await createNativeAgentTools({ workspaceRootPath }, { chatMode: 'plan' })
     const memoryTool = tools.memory as unknown as ExecutableTool
+    const readTool = tools.read as unknown as ExecutableTool
     assert.ok(memoryTool)
+    assert.ok(readTool)
+
+    const emptyIndex = await readTool.execute({ path: '.tidecode/memory/MEMORY.md' })
+    assert.equal(emptyIndex.status, 'success')
+    assert.equal(emptyIndex.body, 'No workspace memory yet.')
+    await assert.rejects(fs.access(path.join(workspaceRootPath, '.tidecode')), { code: 'ENOENT' })
+
+    const missingEntry = await readTool.execute({ path: '.tidecode/memory/folders/preferences/missing.md' })
+    assert.equal(missingEntry.status, 'success')
+    assert.match(missingEntry.body ?? '', /Workspace memory entry does not exist/u)
+    assert.match(missingEntry.body ?? '', /\.tidecode\/memory\/MEMORY\.md/u)
+
+    const invalidPath = await readTool.execute({ path: '.tidecode/memory/folders/preferences' })
+    assert.equal(invalidPath.status, 'success')
+    assert.match(invalidPath.body ?? '', /Invalid workspace memory path/u)
+
+    const removedReadIndex = await memoryTool.execute({ action: 'read_index' })
+    assert.equal(removedReadIndex.status, 'error')
+    await assert.rejects(fs.access(path.join(workspaceRootPath, '.tidecode')), { code: 'ENOENT' })
 
     const memoryResult = await memoryTool.execute({
       action: 'write',
@@ -173,9 +186,24 @@ test('native memory tool is available in plan mode and operates on its workspace
       path: '.tidecode/memory/folders/preferences/prompts.md',
     })
     assert.equal(memoryResult.status, 'success')
-    const indexResult = await memoryTool.execute({ action: 'read_index' })
+
+    const indexResult = await readTool.execute({ path: '.tidecode/memory/MEMORY.md' })
     assert.equal(indexResult.status, 'success')
     assert.match(indexResult.body ?? '', /folders\/preferences\/prompts\.md/u)
+
+    const entryResult = await readTool.execute({ path: '.tidecode/memory/folders/preferences/prompts.md' })
+    assert.equal(entryResult.status, 'success')
+    assert.match(entryResult.body ?? '', /Keep system instructions compact/u)
+
+    const removedRead = await memoryTool.execute({
+      action: 'read',
+      path: '.tidecode/memory/folders/preferences/prompts.md',
+    })
+    assert.equal(removedRead.status, 'error')
+    assert.match(
+      await readWorkspaceFile(workspaceRootPath, '.tidecode/memory/folders/preferences/prompts.md'),
+      /Keep system instructions compact/u,
+    )
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

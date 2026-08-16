@@ -179,7 +179,7 @@ export function renderConversationHistory(
   const visibleLineCount = Math.max(1, Math.floor(maxLines))
   const preferredContextAbove = Math.max(1, Math.floor(visibleLineCount * 0.4))
   let startIndex = Math.max(0, selectedLineIndex - preferredContextAbove)
-  let endIndex = Math.min(lines.length, startIndex + visibleLineCount)
+  const endIndex = Math.min(lines.length, startIndex + visibleLineCount)
   if (endIndex - startIndex < visibleLineCount) {
     startIndex = Math.max(0, endIndex - visibleLineCount)
   }
@@ -204,9 +204,9 @@ export function renderActiveTurn(data: ActiveTurnRenderData): ActiveTurnRender {
     outputLines.push(renderTerminalActivityLine(data.activity, width, thinkingFrame))
   }
   if (data.maxOutputLines && outputLines.length > data.maxOutputLines) {
-    const hiddenLineCount = outputLines.length - data.maxOutputLines + 1
-    outputLines.splice(0, hiddenLineCount, `  ${colors.subtle}↑ ${hiddenLineCount} earlier live lines${colors.reset}`)
-    if (activityRow !== null) activityRow = Math.max(0, activityRow - hiddenLineCount + 1)
+    const hiddenLineCount = outputLines.length - data.maxOutputLines
+    outputLines.splice(0, hiddenLineCount)
+    if (activityRow !== null) activityRow = Math.max(0, activityRow - hiddenLineCount)
   }
   if (data.followUps?.length) {
     if (outputLines.length > 0) appendBlankRow(outputLines)
