@@ -48,6 +48,19 @@ test('active reasoning uses the shared loader with faded text instead of a stati
   assert.doesNotMatch(stripAnsi(activityLine), /· Thinking/u)
 })
 
+test('active reasoning parses inline Markdown in preview detail', () => {
+  const activityLine = renderTerminalActivityLine({
+    detail: '**Diagnosing extraction bug and planning fix**',
+    kind: 'thinking',
+    label: 'Thinking',
+  }, 100, '⠙')
+  const plain = stripAnsi(activityLine)
+
+  assert.equal(plain.trim(), '⠙ Thinking · Diagnosing extraction bug and planning fix')
+  assert.doesNotMatch(plain, /\*\*/u)
+  assert.ok(activityLine.includes(`${colors.bold}${colors.foreground}Diagnosing extraction bug and planning fix${colors.reset}`))
+})
+
 test('long streamed reasoning stays faded after the preview is truncated', () => {
   const activityLine = renderTerminalActivityLine({
     detail: 'This reasoning preview is intentionally long enough to require truncation.',
@@ -59,6 +72,20 @@ test('long streamed reasoning stays faded after the preview is truncated', () =>
   assert.ok(activityLine.includes(`${colors.separator}·${colors.reset} ${colors.subtle}`))
   assert.ok(activityLine.includes(`…${colors.reset}`))
   assert.ok(visibleWidth(activityLine) <= 42)
+})
+
+test('truncated reasoning Markdown stays clean and width bounded', () => {
+  const activityLine = renderTerminalActivityLine({
+    detail: '**Diagnosing extraction bug and planning fix**',
+    kind: 'thinking',
+    label: 'Thinking',
+  }, 32, '⠙')
+  const plain = stripAnsi(activityLine)
+
+  assert.match(plain, /Thinking · Diagnosing/u)
+  assert.doesNotMatch(plain, /\*/u)
+  assert.match(plain, /…/u)
+  assert.ok(visibleWidth(activityLine) <= 32)
 })
 
 test('active turn drops older live lines without rendering a placeholder row', () => {
