@@ -87,10 +87,31 @@ test('screen rebuilds one responsive compose frame after a terminal resize', () 
   assert.equal(rows.filter((row) => row.includes('╰')).length >= 1, true)
   const resizeFrame = output.writes.at(-1) ?? ''
   const escape = String.fromCharCode(27)
-  assert.equal(resizeFrame.startsWith(`${escape}[?2026h${escape}[?25l${escape}[2J${escape}[H`), true)
+  assert.equal(resizeFrame.startsWith(`${escape}[?2026h${escape}[?25l${escape}[2J${escape}[3J${escape}[H`), true)
   assert.equal(resizeFrame.endsWith(`${escape}[?2026l`), true)
 
   screen.dismissPrompt()
+})
+
+test('screen delegates resize redraw while an interactive overlay owns the terminal', () => {
+  const output = new RecordingOutput()
+  const screen = createScreen(output)
+  screen.start()
+
+  let overlayRedraws = 0
+  const internals = screen as unknown as {
+    handleResize: () => void
+    interactiveResizeHandler: (() => void) | null
+  }
+  internals.interactiveResizeHandler = () => {
+    overlayRedraws += 1
+  }
+  const writesBeforeResize = output.writes.length
+
+  internals.handleResize()
+
+  assert.equal(overlayRedraws, 1)
+  assert.equal(output.writes.length, writesBeforeResize)
 })
 
 test('screen lifecycle leaves one intact active compose frame in a terminal grid', () => {

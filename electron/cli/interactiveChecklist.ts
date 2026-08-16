@@ -3,6 +3,7 @@ import { getTerminalWidth } from './renderer'
 import { clearTerminalRegion, updateTerminalRegion } from './terminalRedraw'
 import { ensureKeypressEvents } from './terminalLifecycle'
 import { buildSelectionLines, type SelectionViewItem } from './terminalSelectionView'
+import type { InteractiveResizeHost } from './interactiveResize'
 
 export interface ChecklistItem<T = string> {
   value: T
@@ -32,7 +33,10 @@ export function buildChecklistViewItems<T>(
   }))
 }
 
-export async function interactiveChecklist<T>(options: ChecklistOptions<T>): Promise<T[] | null> {
+export async function interactiveChecklist<T>(
+  options: ChecklistOptions<T>,
+  resizeHost?: InteractiveResizeHost,
+): Promise<T[] | null> {
   const { items, pageSize = 10, footer } = options
   if (items.length === 0) return []
   const enabledIndices = new Set(items.flatMap((item, index) => item.enabled ? [index] : []))
@@ -57,6 +61,7 @@ export async function interactiveChecklist<T>(options: ChecklistOptions<T>): Pro
       clearTerminalRegion(renderedLines.length)
       process.stdout.write('\x1b[?25h')
       process.stdin.removeListener('keypress', onKeypress)
+      resizeHost?.registerResizeHandler(null)
       try {
         process.stdin.setRawMode(false)
       } catch {
@@ -82,6 +87,14 @@ export async function interactiveChecklist<T>(options: ChecklistOptions<T>): Pro
       }
       updateTerminalRegion(renderedLines, lines)
       renderedLines = lines
+    }
+
+    const redrawAfterResize = () => {
+      if (finished) return
+      resizeHost?.redrawBackground()
+      renderedLines = []
+      initialized = false
+      render()
     }
 
     const onKeypress = (input: string, key: readline.Key) => {
@@ -131,6 +144,7 @@ export async function interactiveChecklist<T>(options: ChecklistOptions<T>): Pro
 
     ensureKeypressEvents()
     process.stdin.on('keypress', onKeypress)
+    resizeHost?.registerResizeHandler(redrawAfterResize)
     render()
   })
 }
