@@ -9,6 +9,7 @@ import {
 } from "../src/lib/chatPanelSizing";
 
 test("chat panel minimum includes the composer side insets", () => {
+assert.equal(MIN_CHAT_PANEL_WIDTH, 512);
   assert.equal(
     MIN_CHAT_PANEL_WIDTH,
     CHAT_INPUT_SURFACE_MIN_WIDTH + CHAT_COMPOSER_SIDE_INSET * 2,

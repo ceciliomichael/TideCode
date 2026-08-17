@@ -21,7 +21,28 @@ import { buildChatPrompt, stripImageAttachmentsFromModelMessages } from './messa
 import { resolveModelImageInputSupport } from './modelImageSupport'
 import { createAgentToolBundle } from './tools'
 import { sortToolSet } from './runtimeToolSet'
-import { normalizeWorkspacePath } from '../../workspace/paths'
+import { assertWorkspaceDirectory, normalizeWorkspacePath } from '../../workspace/paths'
+
+function isMissingWorkspacePathError(error: unknown) {
+  return error instanceof Error && error.message.startsWith('Workspace path does not exist:')
+}
+
+async function resolveAvailableWorkspaceRootPath(workspaceRootPath: string | null) {
+  if (!workspaceRootPath?.trim()) {
+    return null
+  }
+
+  const normalizedWorkspaceRootPath = normalizeWorkspacePath(workspaceRootPath)
+  try {
+    await assertWorkspaceDirectory(normalizedWorkspaceRootPath)
+    return normalizedWorkspaceRootPath
+  } catch (error) {
+    if (isMissingWorkspacePathError(error)) {
+      return null
+    }
+    throw error
+  }
+}
 
 export async function estimateToolEnabledContextUsage(input: {
   agentContextRootPath: string | null
@@ -35,9 +56,7 @@ export async function estimateToolEnabledContextUsage(input: {
   webContents?: WebContents | ChatStreamEventTarget | null
 }): Promise<ContextUsageEstimate> {
   const contextCompaction = normalizeContextCompactionSettings(input.contextCompaction)
-  const normalizedWorkspaceRootPath = input.agentContextRootPath?.trim()
-    ? normalizeWorkspacePath(input.agentContextRootPath)
-    : null
+  const normalizedWorkspaceRootPath = await resolveAvailableWorkspaceRootPath(input.agentContextRootPath)
   const workspaceRootPath = normalizedWorkspaceRootPath ?? 'No workspace selected'
   const enabledSkills = await listEnabledSkills(normalizedWorkspaceRootPath)
   const orchestrationMode = 'code_mode' as const
@@ -77,26 +96,32 @@ export async function estimateToolEnabledContextUsage(input: {
   const messageUsage = estimateModelMessageContextUsage(modelMessages)
   let toolSchemaTokens = 0
   if (normalizedWorkspaceRootPath) {
-    const toolBundle = await createAgentToolBundle(
-      {
-        checkpointId: null,
-        conversationId: null,
-        workspaceRootPath: normalizedWorkspaceRootPath,
-        terminalExecutionMode: input.terminalExecutionMode,
-        webContents: input.webContents,
-      },
-      {
-        chatMode: input.chatMode,
-        enabledSkills,
-        orchestrationMode,
-        providerId: input.providerId,
-      },
-    )
     try {
-      const cacheAwareTools = applyPromptCacheBreakpoints(sortToolSet(toolBundle.tools), input.providerId)
-      toolSchemaTokens = approximateTokenCount(stableStringify(describeTools(cacheAwareTools)))
-    } finally {
-      await toolBundle.codeModeExecutor?.dispose()
+      const toolBundle = await createAgentToolBundle(
+        {
+          checkpointId: null,
+          conversationId: null,
+          workspaceRootPath: normalizedWorkspaceRootPath,
+          terminalExecutionMode: input.terminalExecutionMode,
+          webContents: input.webContents,
+        },
+        {
+          chatMode: input.chatMode,
+          enabledSkills,
+          orchestrationMode,
+          providerId: input.providerId,
+        },
+      )
+      try {
+        const cacheAwareTools = applyPromptCacheBreakpoints(sortToolSet(toolBundle.tools), input.providerId)
+        toolSchemaTokens = approximateTokenCount(stableStringify(describeTools(cacheAwareTools)))
+      } finally {
+        await toolBundle.codeModeExecutor?.dispose()
+      }
+    } catch (error) {
+      if (!isMissingWorkspacePathError(error)) {
+        throw error
+      }
     }
   }
   const systemPromptTokens = approximateTokenCount(systemPrompt) + toolSchemaTokens

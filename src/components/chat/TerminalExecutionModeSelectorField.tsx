@@ -85,7 +85,7 @@ export function TerminalExecutionModeSelectorField({
   }, [isOpen, value])
 
   return (
-    <div ref={containerRef} className="relative w-fit max-w-full">
+    <div ref={containerRef} className="relative min-w-0 w-full max-w-full">
       <button
         ref={buttonRef}
         type="button"
@@ -93,10 +93,10 @@ export function TerminalExecutionModeSelectorField({
         aria-expanded={isOpen}
         data-open={isOpen ? 'true' : 'false'}
         onClick={() => setIsOpen((currentValue) => !currentValue)}
-        className={['chat-runtime-control-trigger w-auto max-w-full', triggerClassName].filter(Boolean).join(' ')}
+        className={['chat-runtime-control-trigger min-w-0 w-full max-w-full', triggerClassName].filter(Boolean).join(' ')}
       >
         <SelectedIcon size={14} className="mr-1.5 shrink-0 text-current" />
-        <span className="chat-runtime-control-label">{selectedOption.label}</span>
+        <span className="chat-runtime-control-label min-w-0 truncate text-left">{selectedOption.label}</span>
         <ChevronDown
           size={14}
           className={['ml-1.5 shrink-0 text-current transition-transform', isOpen ? 'rotate-180' : ''].join(' ')}

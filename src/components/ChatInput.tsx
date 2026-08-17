@@ -628,8 +628,8 @@ export function ChatInput({
       </div>
 
       {showDetachedFooterControls ? (
-        <div className="mt-2 flex items-center justify-between gap-3 px-2">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        <div className="mt-2 flex min-w-0 items-center gap-3 px-2">
+          <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2">
             {showRuntimeTargetControl ? (
               <Tooltip content="Select runtime target" hideWhenTriggerExpanded>
                 <RuntimeTargetSelectorField triggerClassName="chat-footer-control-trigger" />
@@ -637,7 +637,11 @@ export function ChatInput({
             ) : null}
 
             {showTerminalExecutionModeControl ? (
-              <Tooltip content="Select terminal execution mode" hideWhenTriggerExpanded>
+              <Tooltip
+                content="Select terminal execution mode"
+                hideWhenTriggerExpanded
+                triggerClassName="min-w-0 max-w-full"
+              >
                 <TerminalExecutionModeSelectorField
                   triggerClassName="chat-footer-control-trigger"
                   value={terminalExecutionMode}
@@ -647,10 +651,18 @@ export function ChatInput({
             ) : null}
           </div>
 
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {codexUsage ? <CodexUsageIndicator usage={codexUsage} /> : null}
+          <div className="flex min-w-0 max-w-[50%] shrink items-center justify-end gap-2">
+            {codexUsage ? (
+              <div className="shrink-0">
+                <CodexUsageIndicator usage={codexUsage} />
+              </div>
+            ) : null}
             {showGitBranchSelector && gitBranchState ? (
-              <Tooltip content={gitBranchTooltip} hideWhenTriggerExpanded>
+              <Tooltip
+                content={gitBranchTooltip}
+                hideWhenTriggerExpanded
+                triggerClassName="min-w-0 max-w-full flex-1"
+              >
                 <GitBranchSelectorField
                   branches={gitBranchState.branches}
                   currentBranch={gitBranchState.currentBranch}
@@ -664,7 +676,7 @@ export function ChatInput({
                   onChange={onGitBranchChange ?? (() => undefined)}
                   onCreateBranch={onGitBranchCreate ?? (() => undefined)}
                   onRefresh={onGitBranchRefresh}
-                  triggerClassName="chat-footer-control-trigger"
+                  triggerClassName="chat-footer-control-trigger w-full"
                 />
               </Tooltip>
             ) : null}

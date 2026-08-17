@@ -48,6 +48,7 @@ import {
 } from '../history/store'
 import { listCompactionMarkers } from '../chat/history/eventStore'
 import { getDraftAgentContextPath } from '../history/paths'
+import { refreshProjectPathWatcher } from '../history/projectPathWatch'
 import { ensureRunServiceClient } from '../runService/ensureService'
 import { getStoredSettings, updateStoredSettings } from '../settings/store'
 import { applyTideCodeAppIcon } from '../window/branding'
@@ -102,9 +103,11 @@ export function registerCoreIpcHandlers(getWindow: () => BrowserWindow | null) {
     getStoredUserMessageCheckpointHistory(conversationId, messageId),
   )
   ipcMain.handle('history:create', async (_event, input?: CreateConversationInput) => createStoredConversation(input))
-  ipcMain.handle('history:createFolder', async (_event, input: CreateConversationFolderInput) =>
-    createStoredFolder(input),
-  )
+  ipcMain.handle('history:createFolder', async (_event, input: CreateConversationFolderInput) => {
+    const folder = await createStoredFolder(input)
+    refreshProjectPathWatcher()
+    return folder
+  })
   ipcMain.handle('history:moveFolder', async (_event, folderId: string, direction: FolderMoveDirection) =>
     moveStoredFolder(folderId, direction),
   )
@@ -114,7 +117,11 @@ export function registerCoreIpcHandlers(getWindow: () => BrowserWindow | null) {
   ipcMain.handle('history:renameFolder', async (_event, input: RenameConversationFolderInput) =>
     renameStoredFolder(input),
   )
-  ipcMain.handle('history:deleteFolder', async (_event, folderId: string) => deleteStoredFolder(folderId))
+  ipcMain.handle('history:deleteFolder', async (_event, folderId: string) => {
+    const deletedConversationIds = await deleteStoredFolder(folderId)
+    refreshProjectPathWatcher()
+    return deletedConversationIds
+  })
   ipcMain.handle('history:pickFolder', async () => {
     const dialogOptions: OpenDialogOptions = {
       properties: ['openDirectory', 'createDirectory'],
@@ -129,11 +136,15 @@ export function registerCoreIpcHandlers(getWindow: () => BrowserWindow | null) {
       return null
     }
 
-    return createStoredFolderFromPath(result.filePaths[0])
+    const folder = await createStoredFolderFromPath(result.filePaths[0])
+    refreshProjectPathWatcher()
+    return folder
   })
-  ipcMain.handle('history:createFolderFromPath', async (_event, folderPath: string) =>
-    createStoredFolderFromPath(folderPath),
-  )
+  ipcMain.handle('history:createFolderFromPath', async (_event, folderPath: string) => {
+    const folder = await createStoredFolderFromPath(folderPath)
+    refreshProjectPathWatcher()
+    return folder
+  })
   ipcMain.handle('history:openFolderPath', async (_event, folderPath: string) => {
     await shell.openPath(folderPath)
   })

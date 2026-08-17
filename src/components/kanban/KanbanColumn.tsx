@@ -26,7 +26,7 @@ interface KanbanColumnProps {
   onCardOpen: (cardId: string) => void
 }
 
-const COLUMN_MARKER_CLASS_NAMES: Record<KanbanColumnId, string> = {
+export const COLUMN_MARKER_CLASS_NAMES: Record<KanbanColumnId, string> = {
   backlog: 'bg-slate-400',
   blocked: 'bg-red-500',
   done: 'bg-emerald-500',
@@ -90,16 +90,16 @@ export function KanbanColumn({
           : 'bg-surface-muted',
       ].join(' ')}
     >
-      <header className="flex shrink-0 items-start justify-between gap-3 px-3.5 pb-2 pt-3.5">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
+      <header className="relative shrink-0 px-3.5 pb-2 pt-3.5">
+        <div className="min-w-0 pr-12">
+          <div className="flex h-5 items-center gap-2 whitespace-nowrap">
             <span
-              className={`h-2 w-2 rounded-full ${COLUMN_MARKER_CLASS_NAMES[column.id]}`}
+              className={`h-2 w-2 shrink-0 rounded-full ${COLUMN_MARKER_CLASS_NAMES[column.id]}`}
             />
-            <h2 className="text-xs font-bold uppercase tracking-[0.13em] text-foreground">
+            <h2 className="shrink-0 text-xs font-bold uppercase leading-none tracking-[0.13em] text-foreground">
               {column.title}
             </h2>
-            <span className="rounded-md bg-surface px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
+            <span className="shrink-0 rounded-md bg-surface px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
               {count}
             </span>
           </div>
@@ -111,7 +111,7 @@ export function KanbanColumn({
           type="button"
           onClick={() => onAdd(column.id)}
           aria-label={`Add task to ${column.title}`}
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface hover:text-foreground active:scale-95"
+          className="absolute right-3.5 top-3.5 inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface hover:text-foreground"
         >
           <Plus size={15} />
         </button>
