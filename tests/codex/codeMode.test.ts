@@ -267,6 +267,68 @@ test('Code Mode tool-only runtime blocks direct Node and host APIs', async () =>
   }
 })
 
+test('Code Mode preflights blocked runtime access before any tool call can run', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
+    terminalExecutionMode: 'sandbox',
+  })
+
+  try {
+    const result = await executor.run(
+      "await tools.echo({ value: 'would-run-first' }); return process.version",
+      { allowedToolNames: ['echo'] },
+    )
+
+    assert.equal(result.status, 'error')
+    assert.equal(result.toolCalls.length, 0)
+    assert.match(result.summary, /blocked process before execution/u)
+    assert.match(result.summary, /No tool ran/u)
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode preflight ignores blocked runtime names in non-executable tool data', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
+    terminalExecutionMode: 'sandbox',
+  })
+
+  try {
+    const program = [
+      "// process.version and require('node:fs') are source text here",
+      "const payload = \"process.version require('node:fs') fetch('https://example.com')\"",
+      "const templateText = `process.version require('node:fs')`",
+      "const pattern = /process\\.version|require\\('node:fs'\\)/u",
+      "const response = await tools.echo({ payload, templateText, pattern: String(pattern) })",
+      "return response.body",
+    ].join('\n')
+    const result = await executor.run(program, { allowedToolNames: ['echo'] })
+
+    assert.equal(result.status, 'success')
+    assert.equal(result.toolCalls.length, 1)
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode preflight still scans executable template expressions', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
+    terminalExecutionMode: 'sandbox',
+  })
+
+  try {
+    const result = await executor.run(
+      "await tools.echo({ value: 'would-run-first' }); return `node: ${process.version}`",
+      { allowedToolNames: ['echo'] },
+    )
+
+    assert.equal(result.status, 'error')
+    assert.equal(result.toolCalls.length, 0)
+    assert.match(result.summary, /blocked process before execution/u)
+  } finally {
+    await executor.dispose()
+  }
+})
+
 test('Code Mode tool-only runtime blocks dynamic module loading', async () => {
   const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
     terminalExecutionMode: 'sandbox',
@@ -626,6 +688,8 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
     assert.match(codeModeDescription, /`fs` \/ `node:fs`/u)
     assert.match(codeModeDescription, /`child_process` \/ `node:child_process`/u)
     assert.match(codeModeDescription, /dynamic `import\(\)` are blocked/u)
+    assert.match(codeModeDescription, /rejected before execution/u)
+    assert.match(codeModeDescription, /non-executable string, comment, regex, and template-literal text/u)
 
     const codeResult = await invoke(bundle.tools.code_mode, {
       code: "const search = await tools.tool_search({ query: 'connected memory service', limit: 5 }); const file = await tools.read({ path: 'package.json' }); const root = await tools.read({ path: '' }); return { hasVersion: file.body.includes('1.2.3'), rootPath: root.subject?.path, searchStatus: search.status }",
