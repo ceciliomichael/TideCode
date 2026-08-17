@@ -278,6 +278,81 @@ test('/undo browses previous user turns without mutating history until submissio
   assert.deepEqual(state.messages.map((message) => message.id), messages.map((message) => message.id))
 })
 
+test('/undo restores canonical file mentions as editable @mentions without losing the action path', async () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  const messages: Message[] = [
+    {
+      content: 'hi look [[read_file:AGENTS.md]]',
+      id: 'user-mention',
+      role: 'user',
+      timestamp: 1,
+      userMessageKind: 'human',
+    },
+    { content: 'mention answer', id: 'assistant-mention', role: 'assistant', timestamp: 2 },
+  ]
+  const state: CliSessionState = {
+    activeStreamId: null,
+    chatMode: 'agent',
+    conversationId: 'conversation-mention',
+    isStreaming: false,
+    messages: [...messages],
+    modelId: 'gpt-test',
+    providerId: 'codex',
+    reasoningEffort: 'medium',
+    terminalExecutionMode: 'full',
+    workspaceRootPath: 'C:/workspace',
+  }
+
+  screen.start()
+  screen.restoreConversation(state.messages)
+  const helpers = createReplCommandHelpers(state, screen)
+  await helpers.undoLastTurn()
+
+  const submissionPromise = screen.ask({
+    mode: 'agent',
+    modelId: 'gpt-test',
+    providerId: 'codex',
+    getCompletionItems: (text) => /@AGENTS\.md$/u.test(text)
+      ? [{
+          value: '@AGENTS.md',
+          label: '@AGENTS.md',
+          description: 'file · AGENTS.md',
+          mentionKind: 'file',
+          mentionPath: 'read_file:AGENTS.md',
+        }]
+      : [],
+  })
+
+  assert.equal(output.visibleRows().some((row) => row.includes('[[read_file:AGENTS.md]]')), false)
+  assert.equal(output.visibleRows().some((row) => row.includes('hi look @AGENTS.md')), true)
+  assert.equal(output.visibleRows().some((row) => row.includes('file · AGENTS.md')), false)
+
+  screen.handleInputAction({ type: 'submit' })
+  const submission = await submissionPromise
+  assert.equal(submission.text, 'hi look [[read_file:AGENTS.md]]')
+})
+
+test('/undo removes a restored mention atomically with Backspace', async () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.setNextPromptDraft('hi look [[read_file:AGENTS.md]]')
+
+  const submissionPromise = screen.ask({
+    mode: 'agent',
+    modelId: 'gpt-test',
+    providerId: 'codex',
+  })
+
+  screen.handleInputAction({ type: 'backspace' })
+  assert.equal(output.visibleRows().some((row) => row.includes('@AGENTS.md')), false)
+  assert.equal(output.visibleRows().some((row) => row.includes('› hi look')), true)
+
+  screen.handleInputAction({ type: 'submit' })
+  const submission = await submissionPromise
+  assert.equal(submission.text, 'hi look')
+})
+
 test('/undo cancellation leaves the full transcript untouched', async () => {
   const output = new TerminalGridOutput()
   const screen = createScreen(output)

@@ -7,6 +7,7 @@ import { isDynamicAgentTool } from '../tools/registry'
 import type { AgentToolExecutionResult } from '../toolTypes'
 import {
   containsDynamicCodeModeImport,
+  findBlockedCodeModeRuntimeApi,
   repairCodeModePatchProgram,
   repairCodeModeProgramSyntax,
   validateCodeModeProgram,
@@ -345,7 +346,14 @@ export class CodeModeExecutor {
     const workerOptions: ModuleWorkerOptions = { eval: true, type: 'module', stdout: true, stderr: true }
     if (this.executionMode === 'sandbox') {
       if (containsDynamicCodeModeImport(executableCode)) {
-        return errorResult(executionId, 'Code Mode tool-only runtime does not allow dynamic module loading. Use the available tools.* APIs instead.')
+        return errorResult(executionId, 'Code Mode tool-only runtime does not allow dynamic module loading. No tool ran. Use the available tools.* APIs instead.')
+      }
+      const blockedRuntimeApi = findBlockedCodeModeRuntimeApi(executableCode)
+      if (blockedRuntimeApi !== null) {
+        return errorResult(
+          executionId,
+          `Code Mode tool-only runtime blocked ${blockedRuntimeApi} before execution. No tool ran. Use the matching tools.* API instead.`,
+        )
       }
       const nodeMajorVersion = Number.parseInt(process.versions.node.split('.')[0] ?? '', 10)
       if (!Number.isInteger(nodeMajorVersion) || nodeMajorVersion < 20) {

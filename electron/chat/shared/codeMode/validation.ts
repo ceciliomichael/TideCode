@@ -496,6 +496,37 @@ export function containsDynamicCodeModeImport(code: string): boolean {
   return /\bimport\s*\(/u.test(maskNonExecutableText(code))
 }
 
+const BLOCKED_CODE_MODE_RUNTIME_APIS = [
+  { name: 'process', pattern: /\bprocess\b/u },
+  { name: 'global', pattern: /\bglobal\b/u },
+  { name: 'require', pattern: /\brequire\s*\(/u },
+  { name: 'module', pattern: /\bmodule\b/u },
+  { name: 'fs', pattern: /\bfs\s*\./u },
+  { name: 'child_process', pattern: /\bchild_process\b/u },
+  { name: 'http', pattern: /\bhttp\b/u },
+  { name: 'https', pattern: /\bhttps\b/u },
+  { name: 'net', pattern: /\bnet\b/u },
+  { name: 'fetch', pattern: /\bfetch\s*\(/u },
+  { name: 'Worker', pattern: /\bWorker\b/u },
+  { name: 'worker_threads', pattern: /\bworker_threads\b/u },
+  { name: 'Buffer', pattern: /\bBuffer\b/u },
+  { name: 'WebAssembly', pattern: /\bWebAssembly\b/u },
+  { name: 'Electron', pattern: /\bElectron\b/u },
+  { name: 'Bun', pattern: /\bBun\b/u },
+  { name: 'Deno', pattern: /\bDeno\b/u },
+  { name: 'eval', pattern: /\beval\s*\(/u },
+  { name: 'Function', pattern: /\bFunction\s*\(/u },
+  { name: 'Function constructor', pattern: /\.constructor\s*\(/u },
+] as const
+
+export function findBlockedCodeModeRuntimeApi(code: string): string | null {
+  const executableCode = maskNonExecutableText(code)
+  for (const blockedApi of BLOCKED_CODE_MODE_RUNTIME_APIS) {
+    if (blockedApi.pattern.test(executableCode)) return blockedApi.name
+  }
+  return null
+}
+
 export function validateCodeModeProgram(code: string, maxCodeBytes: number) {
   if (code.trim().length === 0) return 'Code Mode requires a non-empty JavaScript program.'
   if (new TextEncoder().encode(code).byteLength > maxCodeBytes) {

@@ -6,10 +6,12 @@ import {
   attachImagesToComposer,
   composerText,
   createComposerState,
+  getComposerCursorIndex,
   getComposerCursorPosition,
   getComposerVisualLines,
   insertTextIntoComposer,
   recordComposerHistory,
+  setComposerCursorIndex,
   setComposerText,
   type ComposerState,
 } from './composer'
@@ -55,7 +57,14 @@ import { interactiveResumeSelect, type ResumeSelectionResult } from './interacti
 import type { ResumeConversationItem } from './resumeCatalog'
 import type { ResumePage } from './terminalResumeView'
 import { formatThoughtDuration } from './terminalDuration'
-import { expandChatMentions } from '../../src/lib/chatMentions'
+import {
+  buildChatMentionPathMap,
+  collapseChatMentionMarkup,
+  expandChatMentions,
+  findChatMentionMatches,
+  getChatMentionAtPosition,
+  getChatMentionBeforePosition,
+} from '../../src/lib/chatMentions'
 import type { InteractiveResizeHost } from './interactiveResize'
 
 let activeTerminalScreen: TerminalScreen | null = null
@@ -597,9 +606,21 @@ export class TerminalScreen {
     return [...this.composer.attachments]
   }
 
+  private restoreComposerDraft(
+    composer: ComposerState,
+    text: string,
+    attachments: readonly ChatAttachment[] = [],
+  ): ComposerState {
+    this.mentionPathMap.clear()
+    for (const [label, mentionPath] of buildChatMentionPathMap(text)) {
+      this.mentionPathMap.set(label, mentionPath)
+    }
+    return setComposerText(composer, collapseChatMentionMarkup(text), attachments)
+  }
+
   setNextPromptDraft(text: string, attachments: readonly ChatAttachment[] = []): void {
     this.nextPromptDraft = { text, attachments: [...attachments] }
-    this.composer = setComposerText(this.composer, text, attachments)
+    this.composer = this.restoreComposerDraft(this.composer, text, attachments)
     if (this.pendingPrompt) {
       this.renderCurrentPrompt()
     }
@@ -617,12 +638,16 @@ export class TerminalScreen {
     }
 
     if (this.pendingPrompt) throw new Error('A terminal prompt is already active.')
-    this.mentionPathMap.clear()
     this.updateSession({ mode: context.mode, model: context.modelId, provider: context.providerId })
     if (this.nextPromptDraft) {
-      this.composer = setComposerText(createComposerState(this.history), this.nextPromptDraft.text, this.nextPromptDraft.attachments)
+      this.composer = this.restoreComposerDraft(
+        createComposerState(this.history),
+        this.nextPromptDraft.text,
+        this.nextPromptDraft.attachments,
+      )
       this.nextPromptDraft = null
     } else {
+      this.mentionPathMap.clear()
       this.composer = createComposerState(this.history)
     }
     this.resetBracketedPasteInput()
@@ -878,7 +903,7 @@ export class TerminalScreen {
       if (undoNavigation !== undefined) {
         if (undoNavigation) {
           this.selectedHistoryUserMessageId = undoNavigation.targetUserMessageId
-          this.composer = setComposerText(this.composer, undoNavigation.text, undoNavigation.attachments)
+          this.composer = this.restoreComposerDraft(this.composer, undoNavigation.text, undoNavigation.attachments)
           this.updateCompletionItems(pending.context)
           this.redrawFromState()
         } else {
@@ -928,7 +953,52 @@ export class TerminalScreen {
     return { ...next, lines, lineIndex: lines.length - 1, column: lines.at(-1)?.length ?? 0 }
   }
 
+  private applyCommittedMentionAction(action: TerminalInputAction): ComposerState | null {
+    if (!['backspace', 'delete', 'move-left', 'move-right'].includes(action.type)) return null
+
+    const text = composerText(this.composer)
+    const cursorIndex = getComposerCursorIndex(this.composer)
+    const mentionBefore = getChatMentionBeforePosition(text, cursorIndex, this.mentionPathMap)
+    const mentionAt = getChatMentionAtPosition(text, cursorIndex, this.mentionPathMap)
+
+    if (action.type === 'backspace') {
+      const mention = mentionBefore ?? mentionAt
+      if (!mention) return null
+      const nextText = text.slice(0, mention.start) + text.slice(mention.end)
+      const nextState = setComposerCursorIndex(setComposerText(this.composer, nextText), mention.start)
+      const labelStillPresent = findChatMentionMatches(nextText, this.mentionPathMap)
+        .some((match) => match.label === mention.label)
+      if (!labelStillPresent) this.mentionPathMap.delete(mention.label)
+      return nextState
+    }
+
+    if (action.type === 'delete') {
+      const mention = findChatMentionMatches(text, this.mentionPathMap)
+        .find((match) => match.start === cursorIndex)
+      if (!mention) return null
+      const nextText = text.slice(0, mention.start) + text.slice(mention.end)
+      const nextState = setComposerCursorIndex(setComposerText(this.composer, nextText), mention.start)
+      const labelStillPresent = findChatMentionMatches(nextText, this.mentionPathMap)
+        .some((match) => match.label === mention.label)
+      if (!labelStillPresent) this.mentionPathMap.delete(mention.label)
+      return nextState
+    }
+
+    if (action.type === 'move-left') {
+      const mention = mentionBefore ?? mentionAt
+      return mention ? setComposerCursorIndex(this.composer, mention.start) : null
+    }
+
+    if (mentionAt && cursorIndex >= mentionAt.start && cursorIndex < mentionAt.end) {
+      return setComposerCursorIndex(this.composer, mentionAt.end)
+    }
+    return null
+  }
+
   private applyActionWithPaste(action: TerminalInputAction): ComposerState {
+    const mentionActionState = this.applyCommittedMentionAction(action)
+    if (mentionActionState) return mentionActionState
+
     if (action.type === 'insert') {
       const imagePaths = extractPastedImageFilePaths(action.text, this.view.session.workspace)
       if (imagePaths.length > 0) {
@@ -974,8 +1044,12 @@ export class TerminalScreen {
   }
 
   private updateCompletionItems(context: TerminalPromptContext): void {
+    const text = composerText(this.composer)
     const cursorIndex = this.composer.lines.slice(0, this.composer.lineIndex).reduce((total, line) => total + line.length + 1, 0) + this.composer.column
-    const items = context.getCompletionItems?.(composerText(this.composer), cursorIndex) ?? []
+    const committedMention = /@([^\s]*)$/u.exec(text.slice(0, cursorIndex))
+    const items = committedMention && this.mentionPathMap.has(committedMention[1])
+      ? []
+      : context.getCompletionItems?.(text, cursorIndex) ?? []
     this.view.completionItems = items
     this.view.completionIndex = Math.max(0, Math.min(this.view.completionIndex, Math.max(0, items.length - 1)))
   }
