@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.7 — Safer Code Mode and reliable CLI mentions
+
+TideCode 1.2.7 hardens restricted Code Mode execution and makes restored CLI file references behave like normal editable mentions, improving safety and continuity when resuming or undoing terminal work.
+
+- Rejects unsupported direct host and runtime API access before any Code Mode tool call can execute, while still allowing blocked API names when they appear only as inert tool data.
+- Restores canonical CLI file references as editable `@` mentions during undo and draft restoration, preserves their action paths on resubmission, and handles cursor movement and deletion atomically.
+- Requires no migration or configuration changes.
+- Validated with 1,064 automated tests, TypeScript type checking, and the production build.
+
 ## 1.2.6 — Canonical mentions and clearer Code Mode boundaries
 
 TideCode 1.2.6 standardizes how composer references are sent to agents and makes the restricted Code Mode runtime more explicit, reducing ambiguity between mention metadata and callable tool APIs.
