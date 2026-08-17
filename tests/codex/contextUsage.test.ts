@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { promises as fs } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 import {
   estimateModelContentTokens,
@@ -15,6 +18,32 @@ import {
 } from '../../electron/chat/shared/compaction/budget'
 import { selectContextUsageMessages } from '../../electron/chat/shared/contextUsageProjection'
 import { MODEL_IMAGE_TOKEN_ALLOWANCE } from '../../src/lib/contextUsage'
+import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../src/lib/contextCompactionSettings'
+import { estimateToolEnabledContextUsage } from '../../electron/chat/shared/runtimeContextUsage'
+
+test('context usage estimation tolerates a workspace deleted before the estimate runs', async () => {
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-context-usage-missing-workspace-'))
+  const deletedWorkspacePath = path.join(tempRootPath, 'deleted-project')
+
+  try {
+    await fs.mkdir(deletedWorkspacePath)
+    await fs.rm(deletedWorkspacePath, { recursive: true })
+
+    const usage = await estimateToolEnabledContextUsage({
+      agentContextRootPath: deletedWorkspacePath,
+      chatMode: 'agent',
+      contextCompaction: DEFAULT_CONTEXT_COMPACTION_SETTINGS,
+      messages: [],
+      providerId: 'codex',
+      terminalExecutionMode: 'sandbox',
+    })
+
+    assert.equal(usage.maxTokens, DEFAULT_CONTEXT_COMPACTION_SETTINGS.contextWindowTokens)
+    assert.ok(usage.systemPromptTokens > 0)
+  } finally {
+    await fs.rm(tempRootPath, { force: true, recursive: true })
+  }
+})
 
 test('context usage counts tool arguments and separates tool result tokens', () => {
   const messages: Message[] = [

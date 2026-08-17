@@ -22,6 +22,7 @@ import type {
   ConversationFolderRecord,
   ConversationFolderSummary,
   ConversationRecord,
+  ProjectFolderPrunedEvent,
   ConversationSummary,
   CreateConversationFolderInput,
   CreateConversationInput,
@@ -125,6 +126,7 @@ export interface TideCodeHistoryApi {
   cleanupDraftAgentContext: () => Promise<void>
   listConversations: () => Promise<ConversationSummary[]>
   listFolders: () => Promise<ConversationFolderSummary[]>
+  onProjectFolderPruned: (listener: (event: ProjectFolderPrunedEvent) => void) => () => void
   getConversation: (conversationId: string) => Promise<ConversationRecord | null>
   listCompactionMarkers: (conversationId: string) => Promise<ChatCompactionMarker[]>
   getUserMessageCheckpointHistory: (conversationId: string, messageId: string) => Promise<UserMessageRunCheckpoint[]>

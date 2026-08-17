@@ -5,7 +5,7 @@ import { DropdownField, type DropdownOption } from '../ui/DropdownField'
 import { KANBAN_COLUMNS } from './kanbanDefaults'
 import { buildKanbanBoardDisplayData } from './kanbanHierarchy'
 import { doesKanbanCardMatchQuery } from './kanbanPresentation'
-import { KanbanColumn } from './KanbanColumn'
+import { COLUMN_MARKER_CLASS_NAMES, KanbanColumn } from './KanbanColumn'
 import { KanbanErrorDialog } from './KanbanErrorDialog'
 import { KanbanTaskDetails } from './KanbanTaskDetails'
 import { KanbanTaskDialog } from './KanbanTaskDialog'
@@ -148,7 +148,7 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
             <button
               type="button"
               onClick={() => openComposer()}
-              className="hidden h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted active:scale-[0.98] md:inline-flex"
+              className="hidden h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted md:inline-flex"
             >
               <Plus size={16} />
               New task
@@ -261,7 +261,7 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
             <button
               type="button"
               onClick={() => openComposer()}
-              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted active:scale-[0.98]"
+              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted"
             >
               <Plus size={16} />
               New task
@@ -275,10 +275,27 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
           {KANBAN_COLUMNS.map((column) => (
             <div
               key={column.id}
-              className="rounded-2xl border border-border bg-surface-muted p-3"
+              className="overflow-hidden rounded-2xl border border-border bg-surface-muted"
             >
-              <div className="h-5 w-24 animate-pulse rounded bg-border" />
-              <div className="mt-5 space-y-2">
+              <header className="relative shrink-0 px-3.5 pb-2 pt-3.5">
+                <div className="min-w-0 pr-12">
+                  <div className="flex h-5 items-center gap-2 whitespace-nowrap">
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${COLUMN_MARKER_CLASS_NAMES[column.id]}`}
+                    />
+                    <h2 className="shrink-0 text-xs font-bold uppercase leading-none tracking-[0.13em] text-foreground">
+                      {column.title}
+                    </h2>
+                    <span className="invisible shrink-0 rounded-md bg-surface px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
+                      0
+                    </span>
+                  </div>
+                  <p className="mt-1.5 line-clamp-1 text-[11px] text-subtle-foreground">
+                    {column.description}
+                  </p>
+                </div>
+              </header>
+              <div className="space-y-2 px-2 pb-2">
                 <div className="h-28 animate-pulse rounded-xl bg-surface" />
                 <div className="h-24 animate-pulse rounded-xl bg-surface" />
               </div>
@@ -365,7 +382,7 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
               <button
                 type="button"
                 onClick={() => openComposer(mobileColumnId)}
-                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-action text-sm font-semibold text-white active:scale-[0.99]"
+                                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-action text-sm font-semibold text-white"
               >
                 <Plus size={17} />
                 Add to{' '}

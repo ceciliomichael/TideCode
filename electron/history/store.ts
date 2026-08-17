@@ -24,6 +24,7 @@ import {
 import { buildConversationSummary } from './documents'
 import {
   ensureStoredFolderExists,
+  readFolderStore,
   readPrunedFolderStore,
   toFolderSummaries,
   writeFolderStore,
@@ -319,19 +320,19 @@ export async function renameStoredFolder(input: RenameConversationFolderInput) {
 }
 
 export async function deleteStoredFolder(folderId: string) {
-  const folders = await readPrunedFolderStore()
+  const folders = await readFolderStore()
   const hasFolder = folders.some((folder) => folder.id === folderId)
-  if (!hasFolder) {
-    return []
-  }
-
   const nextFolders = folders.filter((folder) => folder.id !== folderId)
   const conversations = await listConversationRecords()
   const conversationsToDelete = conversations.filter((conversation) => conversation.folderId === folderId)
   const deletedConversationIds = conversationsToDelete.map((conversation) => conversation.id)
 
+  if (!hasFolder && deletedConversationIds.length === 0) {
+    return []
+  }
+
   await Promise.all([
-    writeFolderStore(nextFolders),
+    ...(hasFolder ? [writeFolderStore(nextFolders)] : []),
     ...deletedConversationIds.map((conversationId) => runConversationMutation(conversationId, async () => {
       await deleteConversationFile(conversationId)
       await deleteCanonicalHistory(conversationId)

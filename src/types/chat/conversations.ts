@@ -197,6 +197,11 @@ export interface ConversationFolderSummary {
   updatedAt: number
 }
 
+export interface ProjectFolderPrunedEvent {
+  deletedConversationIds: string[]
+  folderId: string
+}
+
 export interface ConversationFolderPreview {
   id: string | null
   name: string

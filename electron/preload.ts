@@ -27,6 +27,7 @@ import type {
   SaveCustomModelInput,
   RenameConversationFolderInput,
   ReorderConversationFolderInput,
+  ProjectFolderPrunedEvent,
   CreateConversationFolderInput,
   FolderMoveDirection,
   CreateConversationInput,
@@ -91,6 +92,13 @@ const historyApi: TideCodeHistoryApi = {
   cleanupDraftAgentContext: () => ipcRenderer.invoke('history:cleanupDraftAgentContext'),
   listConversations: () => ipcRenderer.invoke('history:list'),
   listFolders: () => ipcRenderer.invoke('history:listFolders'),
+  onProjectFolderPruned: (listener: (event: ProjectFolderPrunedEvent) => void) => {
+    const wrappedListener = (_event: unknown, payload: ProjectFolderPrunedEvent) => listener(payload)
+    ipcRenderer.on('history:projectFolderPruned', wrappedListener)
+    return () => {
+      ipcRenderer.off('history:projectFolderPruned', wrappedListener)
+    }
+  },
   getConversation: (conversationId: string) => ipcRenderer.invoke('history:get', conversationId),
   listCompactionMarkers: (conversationId: string) => ipcRenderer.invoke('history:listCompactionMarkers', conversationId),
   getUserMessageCheckpointHistory: (conversationId: string, messageId: string) =>

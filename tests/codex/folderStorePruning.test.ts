@@ -38,3 +38,26 @@ test('filterResolvableFolderRecords removes folders whose paths no longer resolv
     await fs.rm(tempRootPath, { force: true, recursive: true })
   }
 })
+
+test('renaming a project folder makes the original stored path unresolvable', async () => {
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-folder-store-rename-'))
+  const originalFolderPath = path.join(tempRootPath, 'original-project')
+  const renamedFolderPath = path.join(tempRootPath, 'renamed-project')
+
+  try {
+    await fs.mkdir(originalFolderPath)
+    const folder = buildFolderRecord({ id: 'project', name: 'Project', path: originalFolderPath })
+
+    assert.deepEqual(
+      (await filterResolvableFolderRecords([folder])).map((entry) => entry.id),
+      ['project'],
+    )
+
+    await fs.rename(originalFolderPath, renamedFolderPath)
+
+    assert.deepEqual(await filterResolvableFolderRecords([folder]), [])
+    assert.equal((await fs.stat(renamedFolderPath)).isDirectory(), true)
+  } finally {
+    await fs.rm(tempRootPath, { force: true, recursive: true })
+  }
+})

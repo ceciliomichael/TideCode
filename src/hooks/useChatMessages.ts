@@ -185,6 +185,12 @@ export function useChatMessages(input: UseChatMessagesInput) {
     setIsLoading: sessionState.setIsLoading,
   })
 
+  useEffect(() => {
+    return window.tidecodeHistory.onProjectFolderPruned(({ deletedConversationIds, folderId }) => {
+      sessionState.removeFolder(folderId, deletedConversationIds)
+    })
+  }, [sessionState.removeFolder])
+
   const conversationActions = useChatConversationActions({
     activeConversationId,
     activeWorkspacePath,

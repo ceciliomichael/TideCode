@@ -4,7 +4,7 @@
  * the attachment, mode, model, reasoning, context, and send controls do not
  * get compressed into a second row when the editor is open.
  */
-export const CHAT_INPUT_SURFACE_MIN_WIDTH = 560;
+export const CHAT_INPUT_SURFACE_MIN_WIDTH = 480;
 export const CHAT_COMPOSER_SIDE_INSET = 16;
 export const MIN_CHAT_PANEL_WIDTH =
   CHAT_INPUT_SURFACE_MIN_WIDTH + CHAT_COMPOSER_SIDE_INSET * 2;

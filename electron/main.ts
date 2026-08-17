@@ -11,6 +11,7 @@ import { initializeProvidersState } from './providers/service'
 import { onProvidersStateChanged } from './providers/events'
 import { getMcpServerManager } from './mcp/serverManager'
 import { disposeWorkspaceExplorerWatchers } from './workspace/explorerWatch'
+import { disposeProjectPathWatcher, startProjectPathWatcher } from './history/projectPathWatch'
 import { disposeSourceControlWatchers } from './git/sourceControlWatch'
 import { disposeKanbanBoardWatchers } from './kanban/watch'
 import { registerCoreIpcHandlers } from './ipc/registerCoreIpcHandlers'
@@ -161,6 +162,7 @@ function registerApplicationIpcHandlers() {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     disposeWorkspaceExplorerWatchers()
+    disposeProjectPathWatcher()
     disposeSourceControlWatchers()
     disposeKanbanBoardWatchers()
     app.quit()
@@ -171,6 +173,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', (event) => {
   if (isUpdateInstallInProgress()) {
     disposeWorkspaceExplorerWatchers()
+    disposeProjectPathWatcher()
     disposeSourceControlWatchers()
     disposeKanbanBoardWatchers()
     return
@@ -183,6 +186,7 @@ app.on('before-quit', (event) => {
   event.preventDefault()
   isQuitFlushInProgress = true
   disposeWorkspaceExplorerWatchers()
+  disposeProjectPathWatcher()
   disposeSourceControlWatchers()
   disposeKanbanBoardWatchers()
   void closeAllTerminalSessions().catch((error) => {
@@ -212,9 +216,19 @@ app.on('activate', () => {
   }
 })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   registerApplicationIpcHandlers()
   registerMcpHandlers(mcpServerManager)
+  await startProjectPathWatcher((event) => {
+    const currentWindow = win
+    if (!currentWindow || currentWindow.isDestroyed()) {
+      return
+    }
+
+    currentWindow.webContents.send('history:projectFolderPruned', event)
+  }).catch((error) => {
+    console.error('Failed to start the Project path watcher.', error)
+  })
   mcpServerManager.onStateChange(({ state, workspacePath }) => {
     const currentWindow = win
     if (!currentWindow) {
