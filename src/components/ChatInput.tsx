@@ -637,7 +637,11 @@ export function ChatInput({
             ) : null}
 
             {showTerminalExecutionModeControl ? (
-              <Tooltip content="Select terminal execution mode" hideWhenTriggerExpanded>
+              <Tooltip
+                content="Select terminal execution mode"
+                hideWhenTriggerExpanded
+                triggerClassName="min-w-0 max-w-full"
+              >
                 <TerminalExecutionModeSelectorField
                   triggerClassName="chat-footer-control-trigger"
                   value={terminalExecutionMode}

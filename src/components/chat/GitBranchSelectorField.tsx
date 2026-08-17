@@ -179,7 +179,7 @@ export function GitBranchSelectorField({
     <div
       ref={containerRef}
       data-open={isOpen || isCreateModalOpen ? 'true' : 'false'}
-      className="relative min-w-0 w-fit max-w-full"
+      className="relative min-w-0 w-full max-w-full"
     >
       <button
         ref={buttonRef}
@@ -189,7 +189,7 @@ export function GitBranchSelectorField({
         data-open={isOpen ? 'true' : 'false'}
         disabled={isControlDisabled}
         onClick={() => setIsOpen((currentValue) => !currentValue)}
-        className={['chat-runtime-control-trigger min-w-0 w-auto max-w-full disabled:cursor-not-allowed', triggerClassName]
+        className={['chat-runtime-control-trigger min-w-0 w-full max-w-full disabled:cursor-not-allowed', triggerClassName]
           .filter(Boolean)
           .join(' ')}
       >
