@@ -108,7 +108,7 @@ export function KanbanTaskDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[1400] flex items-end justify-center bg-black/20 md:items-center md:px-5 md:py-5"
+            className="fixed inset-0 z-[1400] flex items-center justify-center bg-black/20 p-3 sm:p-4 md:p-5"
       style={{ top: 'env(titlebar-area-height, 0px)' }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !isSubmitting) {
@@ -120,7 +120,7 @@ export function KanbanTaskDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="kanban-task-dialog-title"
-        className="flex h-[calc(100vh-0.75rem)] w-full flex-col overflow-hidden rounded-t-2xl border border-border bg-surface [&_input:focus]:!border-border [&_input:focus]:!shadow-none [&_input:focus]:!outline-none [&_input:focus]:!ring-0 [&_textarea:focus]:!border-border [&_textarea:focus]:!shadow-none [&_textarea:focus]:!outline-none [&_textarea:focus]:!ring-0 [&_*:focus-visible]:outline-none [&_*:focus-visible]:ring-0 md:h-[min(760px,calc(100vh-3rem))] md:max-w-4xl md:rounded-2xl"
+                className="flex h-[min(760px,calc(100dvh-1.5rem))] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-surface [&_input:focus]:!border-border [&_input:focus]:!shadow-none [&_input:focus]:!outline-none [&_input:focus]:!ring-0 [&_textarea:focus]:!border-border [&_textarea:focus]:!shadow-none [&_textarea:focus]:!outline-none [&_textarea:focus]:!ring-0 [&_*:focus-visible]:outline-none [&_*:focus-visible]:ring-0 sm:h-[min(760px,calc(100dvh-2rem))] md:h-[min(760px,calc(100dvh-3rem))]"
       >
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4 md:px-7 md:py-5">
           <div className="min-w-0">
@@ -180,7 +180,7 @@ export function KanbanTaskDialog({
             <div className="grid gap-6 md:grid-cols-[minmax(0,1.55fr)_minmax(240px,0.75fr)]">
               <div className="space-y-5">
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
+                                    <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                     <label
                       htmlFor="kanban-task-title"
                       className="text-sm font-semibold text-foreground"
@@ -275,7 +275,7 @@ export function KanbanTaskDialog({
                 <p className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
                   Planning details
                 </p>
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-1">
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-1">
                   <div className="space-y-2">
                     <label
                       htmlFor="kanban-task-type"

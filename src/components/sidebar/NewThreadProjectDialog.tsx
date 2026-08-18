@@ -242,7 +242,7 @@ export function NewThreadProjectDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[2100] flex items-start justify-center bg-black/60 px-5 pt-[8vh]"
+            className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/60 p-3 sm:p-5"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
@@ -254,7 +254,7 @@ export function NewThreadProjectDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Commands, projects, and threads"
-        className="flex max-h-[60vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-soft"
+                className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-soft sm:max-h-[min(720px,calc(100dvh-2.5rem))]"
       >
         <div className="relative shrink-0 border-b border-border">
           <Search
@@ -277,7 +277,7 @@ export function NewThreadProjectDialog({
         </div>
 
 
-        <div ref={listRef} className="min-h-0 max-h-[calc(60vh-6rem)] overflow-y-auto px-2 py-3">
+                <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
           {page === 'root' && actionItems.length > 0 ? (
             <section aria-labelledby="new-thread-actions-label">
               <h2
@@ -403,7 +403,7 @@ export function NewThreadProjectDialog({
           ) : null}
         </div>
 
-        <footer className="flex h-12 shrink-0 items-center gap-4 border-t border-border px-4 text-xs text-subtle-foreground">
+                <footer className="hidden h-12 shrink-0 items-center gap-4 border-t border-border px-4 text-xs text-subtle-foreground md:flex">
           <span>
             <kbd className="rounded-md bg-surface-muted px-1.5 py-1 text-foreground">↑</kbd>{' '}
             <kbd className="rounded-md bg-surface-muted px-1.5 py-1 text-foreground">↓</kbd> Navigate
