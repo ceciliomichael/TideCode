@@ -2,6 +2,7 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import type {
   CheckoutGitBranchInput,
+  ClaimSharedFollowUpsInput,
   CloseTerminalSessionInput,
   CompactConversationInput,
   CreateGitBranchInput,
@@ -20,12 +21,14 @@ import type {
   StartChatStreamInput,
   SubmitToolDecisionInput,
   UpdateConversationRuntimeInput,
+  UpdateSharedFollowUpsInput,
   UpdatePendingSteerMessagesInput,
   WriteTerminalSessionInput,
 } from '../../src/types/chat'
 import { estimateCodexContextUsage } from '../chat/codex/runtime'
 import { estimateApiKeyContextUsage } from '../chat/apiKey/runtime'
 import { ensureRunServiceClient } from '../runService/ensureService'
+import { refreshProjectPathWatcher } from '../history/projectPathWatch'
 import {
   checkoutGitBranch,
   createAndCheckoutGitBranch,
@@ -84,6 +87,10 @@ export function registerChatGitTerminalIpcHandlers(
           }
         }
 
+        if (runEvent.type === 'project_registered') {
+          refreshProjectPathWatcher()
+        }
+
         if (runEvent.type === 'chat_event' || runEvent.type === 'compaction_event') {
           for (const window of BrowserWindow.getAllWindows()) {
             if (!window.webContents.isDestroyed()) {
@@ -107,10 +114,19 @@ export function registerChatGitTerminalIpcHandlers(
   ipcMain.handle('runs:getConversationRuntime', async (_event, conversationId: string) =>
     (await ensureRunServiceClient()).getConversationRuntime(conversationId),
   )
+  ipcMain.handle('runs:getPendingFollowUps', async (_event, streamId: string) =>
+    (await ensureRunServiceClient()).getPendingFollowUps(streamId),
+  )
   ipcMain.handle('runs:getProjection', async (_event, runId: string) =>
     (await ensureRunServiceClient()).getRunProjection(runId),
   )
   ipcMain.handle('runs:listActive', async () => (await ensureRunServiceClient()).listActiveRuns())
+  ipcMain.handle('runs:claimPendingFollowUps', async (_event, input: ClaimSharedFollowUpsInput) =>
+    (await ensureRunServiceClient()).claimPendingFollowUps(input),
+  )
+  ipcMain.handle('runs:updatePendingFollowUps', async (_event, input: UpdateSharedFollowUpsInput) =>
+    (await ensureRunServiceClient()).updatePendingFollowUps(input),
+  )
   ipcMain.handle('runs:updateConversationRuntime', async (_event, input: UpdateConversationRuntimeInput) =>
     (await ensureRunServiceClient()).updateConversationRuntime(input),
   )

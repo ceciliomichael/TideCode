@@ -43,6 +43,14 @@ export function resolveProjectSwitchTarget({
   return { type: 'create_new_conversation', folderId: targetFolderId }
 }
 
+export function resolveProjectFilterDraftFolderId(projectId: string): string | null | undefined {
+  if (projectId === ALL_PROJECTS_FILTER_ID || projectId === ARCHIVED_PROJECT_FILTER_ID) {
+    return undefined
+  }
+
+  return projectId === CHATS_PROJECT_FILTER_ID ? null : projectId
+}
+
 export function shouldResetProjectFilterToAllProjects(
   selectedProjectId: string,
   activeThreadFolderId: string | null,

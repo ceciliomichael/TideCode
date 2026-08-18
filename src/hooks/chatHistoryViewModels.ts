@@ -358,7 +358,12 @@ export function insertFolderSummary(
   folderSummaries: ConversationFolderSummary[],
   nextFolder: ConversationFolderSummary,
 ) {
-  return [...folderSummaries, nextFolder]
+  const existingIndex = folderSummaries.findIndex((folder) => folder.id === nextFolder.id)
+  if (existingIndex < 0) return [...folderSummaries, nextFolder]
+
+  const nextFolders = [...folderSummaries]
+  nextFolders[existingIndex] = nextFolder
+  return nextFolders
 }
 
 export function moveFolderSummary(

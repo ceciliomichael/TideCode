@@ -101,6 +101,19 @@ export function resolveTerminalCwd(
   return resolvedPath;
 }
 
+function isTerminalShellCommandAvailable(command: string) {
+  if (path.isAbsolute(command)) return existsSync(command);
+  const searchPath = process.env.PATH?.trim();
+  if (!searchPath) return false;
+  const hasExtension = process.platform === "win32" && path.extname(command).length > 0;
+  const extensions = process.platform === "win32" && !hasExtension
+    ? (process.env.PATHEXT?.split(';').filter(Boolean) ?? ['.COM', '.EXE', '.BAT', '.CMD'])
+    : [''];
+  return searchPath.split(path.delimiter).some((directory) =>
+    extensions.some((extension) => existsSync(path.join(directory, `${command}${extension}`))),
+  );
+}
+
 function createPowerShellInteractiveArgs() {
   return [
     "-NoLogo",
@@ -118,9 +131,10 @@ function createPowerShellInteractiveArgs() {
 }
 
 function resolveUnixShellSpecs(): TerminalShellSpec[] {
-  const shells = [process.env.SHELL?.trim(), "/bin/zsh", "/bin/bash", "/bin/sh"].filter(
-    (value): value is string => typeof value === "string" && value.length > 0,
-  );
+  const shells = [process.env.SHELL?.trim(), "/bin/zsh", "/bin/bash", "/bin/sh"]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .filter(isTerminalShellCommandAvailable);
   return shells.map((shellPath) => ({
     args: ["-l"],
     command: shellPath,
@@ -138,18 +152,28 @@ function resolveWindowsShellSpecs(): TerminalShellSpec[] {
   const pwshPath = path.join(programFilesDirectory, "PowerShell", "7", "pwsh.exe");
   const args = createPowerShellInteractiveArgs();
   const candidates: TerminalShellSpec[] = [];
-  if (existsSync(pwshPath)) candidates.push({ args, command: pwshPath, label: "PowerShell 7" });
-  candidates.push({ args, command: "pwsh.exe", label: "PowerShell 7" });
-  if (existsSync(windowsPowerShellPath)) {
+  if (isTerminalShellCommandAvailable(pwshPath)) candidates.push({ args, command: pwshPath, label: "PowerShell 7" });
+  if (isTerminalShellCommandAvailable("pwsh.exe")) candidates.push({ args, command: "pwsh.exe", label: "PowerShell 7" });
+  if (isTerminalShellCommandAvailable(windowsPowerShellPath)) {
     candidates.push({ args, command: windowsPowerShellPath, label: "PowerShell" });
   }
-  candidates.push({ args, command: "powershell.exe", label: "PowerShell" });
+  if (isTerminalShellCommandAvailable("powershell.exe")) {
+    candidates.push({ args, command: "powershell.exe", label: "PowerShell" });
+  }
   candidates.push({
     args: [],
     command: comSpec && comSpec.length > 0 ? comSpec : "cmd.exe",
     label: "Command Prompt",
   });
   return candidates;
+}
+
+export function resolveTerminalShellSpecs() {
+  return process.platform === "win32" ? resolveWindowsShellSpecs() : resolveUnixShellSpecs();
+}
+
+export function resolvePreferredTerminalShell() {
+  return resolveTerminalShellSpecs()[0] ?? null;
 }
 
 export function createTerminalEnvironment(cwd: string, workspaceRootPath: string | null) {
@@ -188,9 +212,7 @@ export function spawnTerminalFromCandidates(input: {
   env: NodeJS.ProcessEnv;
   rows: number;
 }) {
-  const shellSpecs = process.platform === "win32"
-    ? resolveWindowsShellSpecs()
-    : resolveUnixShellSpecs();
+  const shellSpecs = resolveTerminalShellSpecs();
   const spawnErrors: string[] = [];
   for (const shellSpec of shellSpecs) {
     try {

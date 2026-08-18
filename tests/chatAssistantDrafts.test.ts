@@ -77,6 +77,7 @@ test('chat assistant drafts close the previous work block and group later tools 
     timestamp: 12,
     toolCallId: 'tool-call-1',
   })
+  const runtimePatchCountBeforeSteer = runtimePatches.length
   draftManager.handleSteerMessagesConsumed([
     {
       content: 'first steer',
@@ -91,6 +92,7 @@ test('chat assistant drafts close the previous work block and group later tools 
       timestamp: 14,
     },
   ])
+  const runtimePatchCountAfterSteer = runtimePatches.length
   draftManager.handleToolInvocationStarted('tool-call-2', {
     argumentsText: '{}',
     startedAt: 15,
@@ -129,12 +131,11 @@ test('chat assistant drafts close the previous work block and group later tools 
   const assistantMessages = streamedMessages.filter((message) => message.role === 'assistant')
   assert.deepEqual(assistantMessages[0]?.toolInvocations?.map((invocation) => invocation.id), ['tool-call-1'])
   assert.deepEqual(assistantMessages[1]?.toolInvocations?.map((invocation) => invocation.id), ['tool-call-2'])
-  assert.ok(
-    runtimePatches.some(
-      (patch) =>
-        patch.streamingAssistantMessageId === null &&
-        patch.streamingWaitingIndicatorVariant === null,
-    ),
+  const steerRuntimePatches = runtimePatches.slice(runtimePatchCountBeforeSteer, runtimePatchCountAfterSteer)
+  assert.equal(
+    steerRuntimePatches.some((patch) => patch.streamingAssistantMessageId === null),
+    false,
+    'consuming a steer must not publish a transient non-streaming frame',
   )
 })
 

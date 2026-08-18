@@ -39,7 +39,7 @@ export function useConversationNavigationActions({
       const targetFolderId = folderId ?? null
       if (shouldResetProjectFilterToAllProjects(selectedProjectId, targetFolderId)) {
         setSelectedProjectId(ALL_PROJECTS_FILTER_ID)
-        void onUpdateSettings({ selectedProjectId: ALL_PROJECTS_FILTER_ID })
+        void onUpdateSettings({ selectedProjectId: ALL_PROJECTS_FILTER_ID, selectedProjectName: null })
       }
 
       await chatMessages.createConversation(folderId)
@@ -49,8 +49,15 @@ export function useConversationNavigationActions({
 
   const handleSelectProject = useCallback(
     (projectId: string) => {
+      const selectedProjectName =
+        projectId === ALL_PROJECTS_FILTER_ID ||
+        projectId === CHATS_PROJECT_FILTER_ID ||
+        projectId === ARCHIVED_PROJECT_FILTER_ID
+          ? null
+          : (chatMessages.conversationGroups.find((group) => group.folder.id === projectId)?.folder.name ?? null)
+
       setSelectedProjectId(projectId)
-      onUpdateSettings({ selectedProjectId: projectId })
+      onUpdateSettings({ selectedProjectId: projectId, selectedProjectName })
 
       const action = resolveProjectSwitchTarget({
         activeConversationId: chatMessages.activeConversationId,
@@ -79,7 +86,7 @@ export function useConversationNavigationActions({
 
     if (selectedProjectId === ARCHIVED_PROJECT_FILTER_ID) {
       setSelectedProjectId(ALL_PROJECTS_FILTER_ID)
-      void onUpdateSettings({ selectedProjectId: ALL_PROJECTS_FILTER_ID })
+      void onUpdateSettings({ selectedProjectId: ALL_PROJECTS_FILTER_ID, selectedProjectName: null })
     }
 
     const folderId =
@@ -103,7 +110,7 @@ export function useConversationNavigationActions({
         shouldResetProjectFilterToAllProjects(selectedProjectId, conversationFolderId)
       ) {
         setSelectedProjectId(ALL_PROJECTS_FILTER_ID)
-        void onUpdateSettings({ selectedProjectId: ALL_PROJECTS_FILTER_ID })
+        void onUpdateSettings({ selectedProjectId: ALL_PROJECTS_FILTER_ID, selectedProjectName: null })
       }
 
       void chatMessages.selectConversation(conversationId)

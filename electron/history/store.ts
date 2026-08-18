@@ -289,6 +289,35 @@ export async function createStoredFolderFromPath(folderPath: string) {
   })
 }
 
+function normalizeStoredFolderPathForComparison(folderPath: string) {
+  const resolvedFolderPath = path.resolve(folderPath.trim())
+  return process.platform === 'win32' ? resolvedFolderPath.toLowerCase() : resolvedFolderPath
+}
+
+export async function ensureStoredFolderFromPath(folderPath: string) {
+  const normalizedFolderPath = folderPath.trim()
+  if (normalizedFolderPath.length === 0) {
+    throw new Error('Folder path is required.')
+  }
+
+  const comparisonPath = normalizeStoredFolderPathForComparison(normalizedFolderPath)
+  const findExistingFolder = async () =>
+    (await readPrunedFolderStore()).find(
+      (folder) => normalizeStoredFolderPathForComparison(folder.path) === comparisonPath,
+    ) ?? null
+
+  const existingFolder = await findExistingFolder()
+  if (existingFolder) return existingFolder
+
+  try {
+    return await createStoredFolderFromPath(normalizedFolderPath)
+  } catch (error) {
+    const racedFolder = await findExistingFolder()
+    if (racedFolder) return racedFolder
+    throw error
+  }
+}
+
 export async function renameStoredFolder(input: RenameConversationFolderInput) {
   const nextName = input.name.trim()
   if (nextName.length === 0) {

@@ -141,6 +141,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
   let draftManager: ReturnType<typeof createChatAssistantDraftManager> | null = null
   let streamProgressPersistence: ReturnType<typeof createChatStreamProgressPersistenceController> | null = null
   const usesSharedRunPersistence = typeof window !== 'undefined' && window.tidecodeRuns !== undefined
+  let sharedStreamStarted = false
   let shouldKeepWaitingIndicatorActive = false
   let hasPendingDraftReservation = false
   let requestAccepted = false
@@ -287,23 +288,24 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       })
     }
 
-    draftManager = createChatAssistantDraftManager({
-      appendLocalMessage: input.appendLocalMessage,
+    const manager = createChatAssistantDraftManager({
+      appendLocalMessage: usesSharedRunPersistence ? () => undefined : input.appendLocalMessage,
       conversationId: conversationForRun.id,
       initialConversationMessages: conversationForRun.messages,
-      markTextStreamingPulse: input.markTextStreamingPulse,
+      markTextStreamingPulse: usesSharedRunPersistence ? () => undefined : input.markTextStreamingPulse,
       onConversationMessagesUpdated: (messages, options, hint) => {
         streamProgressPersistence?.queueSnapshot(messages, options, hint)
       },
       providerId,
-      removeLocalMessage: input.removeLocalMessage,
+      removeLocalMessage: usesSharedRunPersistence ? () => undefined : input.removeLocalMessage,
       runtimeSelection: input.runtimeSelection,
-      stopTextStreaming: input.stopTextStreaming,
-      updateConversationRuntimeState: input.updateConversationRuntimeState,
-      updateLocalMessage: input.updateLocalMessage,
+      stopTextStreaming: usesSharedRunPersistence ? () => undefined : input.stopTextStreaming,
+      updateConversationRuntimeState: usesSharedRunPersistence ? () => undefined : input.updateConversationRuntimeState,
+      updateLocalMessage: usesSharedRunPersistence ? () => undefined : input.updateLocalMessage,
     })
+    draftManager = manager
 
-    draftManager.appendPlaceholderDraft()
+    manager.appendPlaceholderDraft()
     const streamedAssistant = await streamAssistantResponse({
       agentContextRootPath: conversationForRun.agentContextRootPath,
       cacheScopeId: conversationForRun.compaction?.rootConversationId ?? conversationForRun.id,
@@ -312,18 +314,28 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       contextCompaction: input.runtimeSelection.contextCompaction,
       messages: conversationForRun.messages,
       modelId: input.runtimeSelection.modelId,
-      onContentDelta: draftManager.handleContentDelta,
-      onCompactionCommitted: draftManager.handleCompactionCommitted,
-      onReasoningCompleted: draftManager.handleReasoningCompleted,
-      onReasoningDelta: draftManager.handleReasoningDelta,
-      onStreamStarted: draftManager.handleStreamStarted,
-      onSteerMessagesConsumed: draftManager.handleSteerMessagesConsumed,
-      onSyntheticToolMessage: draftManager.handleSyntheticToolMessage,
-      onToolInvocationCompleted: draftManager.handleToolInvocationCompleted,
-      onToolInvocationDecisionRequested: draftManager.handleToolInvocationDecisionRequested,
-      onToolInvocationDelta: draftManager.handleToolInvocationDelta,
-      onToolInvocationFailed: draftManager.handleToolInvocationFailed,
-      onToolInvocationStarted: draftManager.handleToolInvocationStarted,
+      onContentDelta: manager.handleContentDelta,
+      onCompactionCommitted: manager.handleCompactionCommitted,
+      onReasoningCompleted: manager.handleReasoningCompleted,
+      onReasoningDelta: manager.handleReasoningDelta,
+      onStreamStarted: (streamId) => {
+        if (usesSharedRunPersistence) {
+          sharedStreamStarted = true
+          input.updateConversationRuntimeState(conversationForRun.id, {
+            activeStreamId: streamId,
+            isSending: true,
+          })
+          return
+        }
+        manager.handleStreamStarted(streamId)
+      },
+      onSteerMessagesConsumed: manager.handleSteerMessagesConsumed,
+      onSyntheticToolMessage: manager.handleSyntheticToolMessage,
+      onToolInvocationCompleted: manager.handleToolInvocationCompleted,
+      onToolInvocationDecisionRequested: manager.handleToolInvocationDecisionRequested,
+      onToolInvocationDelta: manager.handleToolInvocationDelta,
+      onToolInvocationFailed: manager.handleToolInvocationFailed,
+      onToolInvocationStarted: manager.handleToolInvocationStarted,
       providerId,
       reasoningEffort: input.runtimeSelection.reasoningEffort,
       terminalExecutionMode: input.runtimeSelection.terminalExecutionMode,
@@ -362,6 +374,10 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
         userMessageId: persistedUserMessage?.id ?? null,
       })
 
+      return requestAccepted
+    }
+
+    if (usesSharedRunPersistence) {
       return requestAccepted
     }
 
@@ -471,7 +487,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       input.clearUserMessageRevert?.(persistedUserMessage.id)
     }
 
-    if (conversationIdForCleanup) {
+    if (conversationIdForCleanup && !(usesSharedRunPersistence && sharedStreamStarted)) {
       if (shouldKeepWaitingIndicatorActive) {
         input.updateConversationRuntimeState(conversationIdForCleanup, {
           activeStreamId: null,

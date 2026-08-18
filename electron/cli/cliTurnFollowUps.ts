@@ -1,30 +1,38 @@
 import { randomUUID } from 'node:crypto'
-import type { Message, QueuedMessage, UpdatePendingSteerMessagesInput } from '../../src/types/chat'
+import type {
+  Message,
+  QueuedMessage,
+  SharedFollowUpBehavior,
+  SharedFollowUpItem,
+  SharedFollowUpSnapshot,
+  UpdateSharedFollowUpsInput,
+} from '../../src/types/chat'
 import { ensureRunServiceClient } from '../runService/ensureService'
 import type { CliSessionState } from './types'
 
-export type CliFollowUpBehavior = 'steer' | 'queue'
+export type CliFollowUpBehavior = SharedFollowUpBehavior
 
-interface CliTurnFollowUp {
-  behavior: CliFollowUpBehavior
-  consumed: boolean
-  message: QueuedMessage
+type FollowUpPublisher = (input: UpdateSharedFollowUpsInput) => void | Promise<unknown>
+type FollowUpClaimer = (streamId: string) => Promise<QueuedMessage[]>
+
+function publishThroughSharedRunService(input: UpdateSharedFollowUpsInput) {
+  return ensureRunServiceClient().then((client) => client.updatePendingFollowUps(input))
 }
 
-type SteerPublisher = (input: UpdatePendingSteerMessagesInput) => void | Promise<unknown>
-
-function publishThroughSharedRunService(input: UpdatePendingSteerMessagesInput) {
-  return ensureRunServiceClient().then((client) => client.updatePendingSteerMessages(input))
+async function claimThroughSharedRunService(streamId: string) {
+  const client = await ensureRunServiceClient()
+  const result = await client.claimPendingFollowUps({ streamId })
+  return result.messages
 }
 
 export class CliTurnFollowUpController {
-  private readonly followUps: CliTurnFollowUp[] = []
-  private revision = 0
+  private followUps: SharedFollowUpItem[] = []
 
   constructor(
     _providerId: CliSessionState['providerId'],
     private readonly streamId: string,
-    private readonly publishSteers: SteerPublisher = publishThroughSharedRunService,
+    private readonly publishFollowUp: FollowUpPublisher = publishThroughSharedRunService,
+    private readonly claimFollowUps: FollowUpClaimer = claimThroughSharedRunService,
   ) {}
 
   add(content: string, behavior: CliFollowUpBehavior): QueuedMessage | null {
@@ -36,37 +44,39 @@ export class CliTurnFollowUpController {
       id: randomUUID(),
       timestamp: Date.now(),
     }
-    this.followUps.push({ behavior, consumed: false, message })
-    if (behavior === 'steer') this.publishPendingSteers()
+    const item: SharedFollowUpItem = { behavior, message }
+    this.followUps.push(item)
+    void Promise.resolve(this.publishFollowUp({
+      mutation: { type: 'add', item },
+      streamId: this.streamId,
+    })).catch(() => undefined)
     return message
+  }
+
+  applySnapshot(snapshot: SharedFollowUpSnapshot): void {
+    if (snapshot.streamId !== this.streamId) return
+    this.followUps = snapshot.items.map((item) => ({ ...item, message: { ...item.message } }))
   }
 
   markConsumed(messages: readonly Message[]): void {
     if (messages.length === 0) return
     const consumedIds = new Set(messages.map((message) => message.id))
-    for (const followUp of this.followUps) {
-      if (followUp.behavior === 'steer' && consumedIds.has(followUp.message.id)) {
-        followUp.consumed = true
-      }
-    }
+    this.followUps = this.followUps.filter((followUp) => !(
+      followUp.behavior === 'steer' && consumedIds.has(followUp.message.id)
+    ))
   }
 
-  getQueuedTurnInputs(): string[] {
-    return this.followUps
-      .filter((followUp) => followUp.behavior === 'queue' || !followUp.consumed)
-      .map((followUp) => followUp.message.content)
+  getQueuedTurnMessages(): QueuedMessage[] {
+    return this.followUps.map((followUp) => ({ ...followUp.message }))
   }
 
-  private publishPendingSteers(): void {
-    const messages = this.followUps
-      .filter((followUp) => followUp.behavior === 'steer' && !followUp.consumed)
-      .map((followUp) => followUp.message)
-    const input = {
-      messages,
-      revision: this.revision,
-      streamId: this.streamId,
+  async claimQueuedTurnMessages(): Promise<QueuedMessage[]> {
+    try {
+      const messages = await this.claimFollowUps(this.streamId)
+      this.followUps = []
+      return messages
+    } catch {
+      return []
     }
-    this.revision += 1
-    void Promise.resolve(this.publishSteers(input)).catch(() => undefined)
   }
 }

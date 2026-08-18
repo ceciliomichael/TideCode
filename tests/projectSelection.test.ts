@@ -7,6 +7,7 @@ import {
 } from '../src/components/sidebar/sidebarProjectThreads'
 import {
   findFolderIdForConversation,
+  resolveProjectFilterDraftFolderId,
   resolveProjectSwitchTarget,
   shouldResetProjectFilterToAllProjects,
 } from '../src/lib/projectSelectionUtils'
@@ -148,6 +149,13 @@ test('switching to Archived only changes the filter and keeps the active chat op
     }),
     { type: 'preserve_active_thread' },
   )
+})
+
+test('project filters resolve to the draft folder used by an empty chat', () => {
+  assert.equal(resolveProjectFilterDraftFolderId('project-1'), 'project-1')
+  assert.equal(resolveProjectFilterDraftFolderId(CHATS_PROJECT_FILTER_ID), null)
+  assert.equal(resolveProjectFilterDraftFolderId(ALL_PROJECTS_FILTER_ID), undefined)
+  assert.equal(resolveProjectFilterDraftFolderId(ARCHIVED_PROJECT_FILTER_ID), undefined)
 })
 
 test('shouldResetProjectFilterToAllProjects returns true only when selected filter does not match active thread project', () => {

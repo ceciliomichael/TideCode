@@ -3,12 +3,18 @@ import { useEffect, useMemo, useState } from 'react'
 import { ARCHIVED_FOLDER_ID, PINNED_FOLDER_ID } from '../../hooks/chatHistoryViewModels'
 import type { ConversationGroupPreview } from '../../types/chat'
 import { ConversationHistoryItem } from './ConversationHistoryItem'
-import { ALL_PROJECTS_FILTER_ID, ARCHIVED_PROJECT_FILTER_ID, buildSidebarThreadRows } from './sidebarProjectThreads'
+import {
+  ALL_PROJECTS_FILTER_ID,
+  ARCHIVED_PROJECT_FILTER_ID,
+  buildSidebarThreadRows,
+  resolveSidebarHistoryEmptyState,
+} from './sidebarProjectThreads'
 
 interface ConversationHistoryListProps {
   conversationGroups: ConversationGroupPreview[]
   onArchiveConversation: (conversationId: string, isArchived: boolean) => void
   onDeleteConversation: (conversationId: string) => void
+  isLoading?: boolean
   onPinConversation: (conversationId: string, isPinned: boolean) => void
   onSelectConversation: (conversationId: string) => void
   searchQuery: string
@@ -22,6 +28,7 @@ export function ConversationHistoryList({
   onSelectConversation,
   onArchiveConversation,
   onDeleteConversation,
+  isLoading = false,
   onPinConversation,
   searchQuery,
   selectedProjectId,
@@ -44,7 +51,20 @@ export function ConversationHistoryList({
   }, [searchQuery, selectedProjectId])
 
   if (threadRows.length === 0) {
-    const hasSearchQuery = searchQuery.trim().length > 0
+    const emptyState = resolveSidebarHistoryEmptyState({
+      hasProjects,
+      isLoading,
+      searchQuery,
+      selectedProjectId,
+    })
+
+    if (emptyState === 'loading') {
+      return (
+        <div className="flex min-h-full flex-1 items-center justify-center px-4 py-8 text-center">
+          <p className="text-sm text-subtle-foreground">Loading threads...</p>
+        </div>
+      )
+    }
 
     return (
       <div className="flex min-h-full flex-1 items-center justify-center px-4 py-8 text-center">
@@ -54,20 +74,20 @@ export function ConversationHistoryList({
           </div>
           <div className="space-y-1">
             <p className="text-sm font-medium text-foreground">
-              {hasSearchQuery
+              {emptyState === 'no-matches'
                 ? 'No matching threads'
-                : isArchivedView
+                : emptyState === 'no-archived'
                   ? 'No archived chats'
-                  : hasProjects
+                  : emptyState === 'no-threads'
                     ? 'No threads here yet'
                     : 'No projects yet'}
             </p>
             <p className="text-sm leading-6 text-subtle-foreground">
-              {hasSearchQuery
+              {emptyState === 'no-matches'
                 ? 'Try another title or project name'
-                : isArchivedView
+                : emptyState === 'no-archived'
                   ? 'Archived chats will appear here when you archive a thread'
-                  : hasProjects
+                  : emptyState === 'no-threads'
                     ? 'Start a thread in this project to see it here'
                     : 'Add a project folder to start a thread'}
             </p>

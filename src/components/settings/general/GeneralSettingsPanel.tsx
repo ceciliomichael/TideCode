@@ -117,7 +117,7 @@ export function GeneralSettingsPanel({
         <div className="border-t border-border">
           <SettingsRow
             title="Follow-up behavior"
-            description="Queue waits for the full turn. Steer sends after the next successful tool call, or when the turn ends."
+            description="Queue waits for the full turn. Steer sends after the next successful tool call, or when the turn ends. During an active response, Enter uses this choice and Ctrl+Enter or Cmd+Enter uses the other."
           >
             <SegmentedField
               ariaLabel="Follow-up behavior"

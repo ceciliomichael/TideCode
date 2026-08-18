@@ -25,6 +25,7 @@ interface UseChatMessagesInput {
   }) => void
   persistEditSessionsByConversation: (nextValue: Record<string, ConversationEditSession>) => void
   preferredDraftFolderId: string | null
+  preferredDraftFolderName: string | null
   preferredConversationId: string | null
   revertEditSessionsByConversation: Record<string, RevertEditSession>
   persistRevertEditSessionsByConversation: (nextValue: Record<string, RevertEditSession>) => void
@@ -41,12 +42,16 @@ export function useChatMessages(input: UseChatMessagesInput) {
     persistEditSessionsByConversation,
     persistRevertEditSessionsByConversation,
     preferredDraftFolderId,
+    preferredDraftFolderName,
     preferredConversationId,
     revertEditSessionsByConversation: persistedRevertEditSessionsByConversation,
     openEmptyConversationOnLaunch,
     shouldInitializeHistory,
   } = input
-  const sessionState = useChatSessionState(language)
+  const sessionState = useChatSessionState(language, {
+    initialSelectedFolderId: preferredDraftFolderId,
+    initialSelectedFolderName: preferredDraftFolderName,
+  })
   const messages = sessionState.activeConversationState?.conversation.messages ?? EMPTY_MESSAGES
   // Read the draft agent context path synchronously so the Explorer panel
   // always has a valid path on the very first render — no "Explorer is waiting" flash.
@@ -728,6 +733,22 @@ export function useChatMessages(input: UseChatMessagesInput) {
     ],
   )
 
+  const synchronizeDraftFolder = useCallback(
+    (folderId: string | null) => {
+      if (sessionState.activeConversationId !== null || sessionState.selectedFolderId === folderId) {
+        return
+      }
+
+      sessionState.synchronizeDraftFolder(folderId)
+      persistConversationLaunchPreference({
+        conversationId: null,
+        draftFolderId: folderId,
+        openEmptyConversationOnLaunch: true,
+      })
+    },
+    [persistConversationLaunchPreference, sessionState],
+  )
+
   const selectFolder = useCallback(
     async (folderId: string | null) => {
       captureActiveEditDraftSession()
@@ -781,6 +802,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     isEditingMessage: editingMessageId !== null,
     isEditComposerDirty: composerState.isEditComposerDirty,
     isLoading: sessionState.isLoading,
+    isOpeningEmptyConversation: sessionState.isLoading && openEmptyConversationOnLaunch,
     isSending: sessionState.activeConversationState?.isSending ?? isActiveDraftSending,
     isAbortInProgress: sendActions.isAbortInProgress,
     isStreamingResponse: sessionState.activeConversationState?.isSending ?? isActiveDraftSending,
@@ -797,6 +819,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     selectedFolderPath: sessionState.selectedFolderPath,
     selectConversation,
     selectFolder,
+    synchronizeDraftFolder,
     renameConversationTitle: conversationActions.renameConversationTitle,
     pinConversation: conversationActions.pinConversation,
     renameFolder: conversationActions.renameFolder,

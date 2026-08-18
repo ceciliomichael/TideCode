@@ -702,6 +702,36 @@ test('screen clears active steer and queue submissions so more messages can be e
   screen.eventPresentation.onCompleted()
 })
 
+test('screen renders consumed shared steers as live user transcript rows without duplication', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  const steerMessage: Message = {
+    content: 'run the focused tests now',
+    id: 'shared-steer-1',
+    role: 'user',
+    timestamp: Date.now(),
+  }
+
+  screen.start()
+  screen.addUserMessage('inspect the workspace')
+  screen.beginTurn()
+  screen.eventPresentation.onToolCompleted('[Searched] README*,package.json,*.md,*.mdx')
+  screen.addConsumedUserMessages([steerMessage])
+
+  let rows = output.visibleRows()
+  const steerIndex = rows.findIndex((row) => row.includes('run the focused tests now'))
+  assert.ok(steerIndex > 0)
+  assert.equal(rows[steerIndex - 1], '')
+  assert.equal(rows[steerIndex + 1], '')
+  assert.equal(rows.filter((row) => row.includes('run the focused tests now')).length, 1)
+
+  screen.addConsumedUserMessages([steerMessage])
+  rows = output.visibleRows()
+  assert.equal(rows.filter((row) => row.includes('run the focused tests now')).length, 1)
+
+  screen.eventPresentation.onCompleted()
+})
+
 test('screen routes Escape to active turn cancellation without erasing the draft', () => {
   const output = new TerminalGridOutput()
   const screen = createScreen(output)

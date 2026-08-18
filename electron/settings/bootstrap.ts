@@ -425,6 +425,10 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
       typeof candidate?.selectedProjectId === 'string' && candidate.selectedProjectId.trim().length > 0
         ? candidate.selectedProjectId.trim()
         : DEFAULT_APP_SETTINGS.selectedProjectId,
+    selectedProjectName:
+      typeof candidate?.selectedProjectName === 'string' && candidate.selectedProjectName.trim().length > 0
+        ? candidate.selectedProjectName.trim()
+        : null,
     modelToggleState:
       typeof candidate?.modelToggleState === 'object' && candidate.modelToggleState !== null
         ? (candidate.modelToggleState as Record<string, boolean>)

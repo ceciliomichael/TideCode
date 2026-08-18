@@ -49,11 +49,18 @@ export function SettingsSidebarPanel({
                     onClick={() => onSelectItem(item.id)}
                     className={[
                       'min-w-0 flex-1 rounded-lg px-2 py-2 text-left transition-colors',
-                      isActive ? 'text-brand-soft-foreground' : 'text-muted-foreground hover:text-foreground',
+                      isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
                     ].join(' ')}
                     aria-current={isActive ? 'page' : undefined}
                   >
-                    <span className="block truncate text-sm font-medium text-inherit">{item.label}</span>
+                    <span
+                      className={[
+                        'block truncate text-sm font-medium',
+                        isActive ? 'text-foreground' : 'text-inherit',
+                      ].join(' ')}
+                    >
+                      {item.label}
+                    </span>
                     <span className="mt-1 block text-xs leading-5 text-muted-foreground">{item.description}</span>
                   </button>
                 </div>

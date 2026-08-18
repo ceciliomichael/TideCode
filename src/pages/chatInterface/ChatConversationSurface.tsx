@@ -20,6 +20,7 @@ import type {
 } from '../../types/chat'
 import { getLatestCompletedPlanPresentation, shouldAutoOpenPlanPreview } from '../../lib/planPresentation'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
+import type { FollowUpBehavior } from '../../lib/appSettings'
 
 type ChatInputProps = ComponentProps<typeof ChatInput>
 type MessageListProps = ComponentProps<typeof MessageList>
@@ -34,6 +35,8 @@ interface ChatConversationSurfaceProps {
   compactionMarkers: ChatCompactionMarker[]
   contextUsage: ContextUsageEstimate | null
   gitBranchState: GitBranchStateController
+  emptyStateFolderName: string
+  followUpBehavior: FollowUpBehavior
   handleCancelEditingMessage: MessageListProps['onCancelEditingMessage']
   handleCompressChat: () => void
   handleEditUserMessage: MessageListProps['onEditUserMessage']
@@ -47,6 +50,7 @@ interface ChatConversationSurfaceProps {
   isKanbanBoardOpen: boolean
   messageListBoundaryRef: RefObject<HTMLDivElement>
   onQueueMessage: (value: string, attachments: ChatAttachment[]) => void
+  onAlternateFollowUpMessage: (value: string, attachments: ChatAttachment[]) => void
   onTerminalExecutionModeChange: (mode: AppTerminalExecutionMode) => void
   queuedMessages: QueuedMessage[]
   refactorCandidates: WorkspaceRefactorCandidate[]
@@ -72,6 +76,8 @@ export function ChatConversationSurface({
   compactionMarkers,
   contextUsage,
   gitBranchState,
+  emptyStateFolderName,
+  followUpBehavior,
   handleCancelEditingMessage,
   handleCompressChat,
   handleEditUserMessage,
@@ -85,6 +91,7 @@ export function ChatConversationSurface({
   isKanbanBoardOpen,
   messageListBoundaryRef,
   onQueueMessage,
+  onAlternateFollowUpMessage,
   onTerminalExecutionModeChange,
   queuedMessages,
   refactorCandidates,
@@ -176,12 +183,12 @@ export function ChatConversationSurface({
                 {chatMessages.error}
               </div>
             ) : null}
-            {chatMessages.isLoading ? (
+            {chatMessages.isLoading && !chatMessages.isOpeningEmptyConversation ? (
               <div className="flex flex-1 items-center justify-center px-4 text-sm text-subtle-foreground">
                 Loading conversations...
               </div>
             ) : chatMessages.messages.length === 0 ? (
-              <EmptyState folderName={chatMessages.selectedFolderName} />
+              <EmptyState folderName={emptyStateFolderName} />
             ) : (
               <div ref={messageListBoundaryRef} className="flex min-h-0 flex-1 flex-col">
                 <MessageList
@@ -269,7 +276,9 @@ export function ChatConversationSurface({
               onValueChange={chatMessages.setMainComposerValue}
               onSend={handleSendMainMessageAndFollow}
               onQueue={onQueueMessage}
+              onAlternateFollowUp={onAlternateFollowUpMessage}
               onAbort={chatMessages.abortStreamingResponse}
+              followUpBehavior={followUpBehavior}
               chatModeOptions={chatModeOptions}
               isStreaming={chatMessages.isStreamingResponse || chatMessages.isSending}
               sendOnEnter={sendMessageOnEnter}

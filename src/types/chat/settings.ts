@@ -72,5 +72,6 @@ export interface AppSettings {
   terminalPanelHeightsByWorkspace: Record<string, number>
   terminalExecutionMode: AppTerminalExecutionMode
   selectedProjectId?: string
+  selectedProjectName: string | null
   modelToggleState?: Record<string, boolean>
 }

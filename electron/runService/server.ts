@@ -8,6 +8,7 @@ import type {
   CompactConversationResult,
   ConversationRecord,
   SharedConversationRuntimeSnapshot,
+  SharedFollowUpSnapshot,
   SharedRunProjection,
   SharedRunStatus,
   StartChatStreamInput,
@@ -30,11 +31,12 @@ import {
 } from '../chat/codex/runtime'
 import type { ChatStreamEventTarget } from '../chat/shared/runtimeStreamEvents'
 import { CliTurnMessageCollector } from '../cli/cliTurnMessageCollector'
-import { appendStoredMessages, getStoredConversation, replaceStoredMessages, updateStoredConversationChatMode } from '../history/store'
+import { appendStoredMessages, ensureStoredFolderFromPath, getStoredConversation, replaceStoredMessages, updateStoredConversationChatMode } from '../history/store'
 import { getStoredSettings, updateStoredSettings } from '../settings/store'
 import type { CliSessionState } from '../cli/types'
 import { RUN_SERVICE_PROTOCOL_VERSION, isRunServiceRequest, type RunServiceResponse } from './protocol'
 import { ensureRunServiceToken, getRunServiceEndpoint, removeStaleRunServiceSocket } from './paths'
+import { SharedFollowUpStore } from './followUpStore'
 import { SharedRunRegistry } from './runRegistry'
 import { SharedStreamPersistence } from './streamPersistence'
 import { listCompactionMarkers } from '../chat/history/eventStore'
@@ -102,6 +104,7 @@ export class TideCodeRunServiceServer {
   private readonly server = net.createServer((socket) => this.acceptClient(socket))
   private readonly clients = new Set<Socket>()
   private readonly registry = new SharedRunRegistry()
+  private readonly followUps = new SharedFollowUpStore()
   private readonly nextSeqByRunId = new Map<string, number>()
   private readonly projectionsByRunId = new Map<string, SharedRunProjection>()
   private readonly projectionTextIdleTimers = new Map<string, NodeJS.Timeout>()
@@ -187,6 +190,9 @@ export class TideCodeRunServiceServer {
             result: await this.getConversationRuntime(parsed.params.conversationId),
           })
           return
+        case 'getPendingFollowUps':
+          this.sendResponse(socket, { id: parsed.id, ok: true, result: this.followUps.get(parsed.params.streamId) })
+          return
         case 'getRunProjection':
           this.sendResponse(socket, {
             id: parsed.id,
@@ -197,6 +203,12 @@ export class TideCodeRunServiceServer {
         case 'listActiveRuns':
           this.sendResponse(socket, { id: parsed.id, ok: true, result: this.registry.listActive() })
           return
+        case 'ensureWorkspaceProject': {
+          const folder = await ensureStoredFolderFromPath(parsed.params.workspacePath)
+          this.emitGlobalEvent({ type: 'project_registered', seq: 0, folder })
+          this.sendResponse(socket, { id: parsed.id, ok: true, result: folder })
+          return
+        }
         case 'appendMessages': {
           const conversation = await appendStoredMessages(parsed.params)
           this.emitConversationAppend(conversation)
@@ -233,6 +245,25 @@ export class TideCodeRunServiceServer {
             : providerId
               ? updateApiKeyPendingSteerMessages(parsed.params)
               : { accepted: false }
+          this.sendResponse(socket, { id: parsed.id, ok: true, result })
+          return
+        }
+        case 'updatePendingFollowUps': {
+          const snapshot = this.followUps.update(parsed.params.streamId, parsed.params.mutation)
+          this.syncProviderSteers(snapshot)
+          this.emitFollowUps(snapshot)
+          this.sendResponse(socket, { id: parsed.id, ok: true, result: snapshot })
+          return
+        }
+        case 'claimPendingFollowUps': {
+          const run = this.registry.getByStreamId(parsed.params.streamId)
+          if (!run) throw new Error('Unable to find the shared run for these follow-ups.')
+          if (run.status === 'starting' || run.status === 'running' || run.status === 'waiting_for_input') {
+            throw new Error('Follow-ups cannot be claimed until the active turn has ended.')
+          }
+          const result = this.followUps.claim(parsed.params.streamId)
+          const snapshot = this.followUps.get(parsed.params.streamId)
+          if (snapshot) this.emitFollowUps(snapshot)
           this.sendResponse(socket, { id: parsed.id, ok: true, result })
           return
         }
@@ -414,6 +445,7 @@ export class TideCodeRunServiceServer {
     const projection: SharedRunProjection = {
       baseMessageCount,
       conversationId,
+      revision: 0,
       isStreamingTextActive: false,
       messages: [],
       runId: createdRun.runId,
@@ -421,14 +453,21 @@ export class TideCodeRunServiceServer {
       streamingWaitingIndicatorVariant: null,
     }
     this.projectionsByRunId.set(createdRun.runId, projection)
+    let projectionEmitScheduled = false
     const emitProjection = () => {
-      this.emitEvent(createdRun.runId, {
-        type: 'run_projection',
-        projection: {
-          ...projection,
-          messages: [...projection.messages],
-        },
-        seq: 0,
+      if (projectionEmitScheduled) return
+      projectionEmitScheduled = true
+      queueMicrotask(() => {
+        projectionEmitScheduled = false
+        projection.revision += 1
+        this.emitEvent(createdRun.runId, {
+          type: 'run_projection',
+          projection: {
+            ...projection,
+            messages: [...projection.messages],
+          },
+          seq: 0,
+        })
       })
     }
     const stopProjectionTextStreaming = () => {
@@ -518,6 +557,14 @@ export class TideCodeRunServiceServer {
           seq: 0,
         })
 
+        if (event.type === 'steer_messages_consumed') {
+          const snapshot = this.followUps.consume(event.streamId, event.messages.map((message) => message.id))
+          if (snapshot) {
+            this.syncProviderSteers(snapshot)
+            this.emitFollowUps(snapshot)
+          }
+        }
+
         const nextTerminalStatus = terminalStatusForEvent(event)
         if (nextTerminalStatus) terminalStatus = nextTerminalStatus
       },
@@ -544,6 +591,8 @@ export class TideCodeRunServiceServer {
       this.emitRunState(createdRun.runId)
       stopProjectionTextStreaming()
       const retentionTimer = setTimeout(() => {
+        const retainedRun = this.registry.getByRunId(createdRun.runId)
+        if (retainedRun?.streamId) this.followUps.remove(retainedRun.streamId)
         this.registry.remove(createdRun.runId)
         this.projectionsByRunId.delete(createdRun.runId)
         const textIdleTimer = this.projectionTextIdleTimers.get(createdRun.runId)
@@ -558,8 +607,25 @@ export class TideCodeRunServiceServer {
       : await startApiKeyChatStream(target, sharedInput, () => { void settleRun() })
 
     this.registry.attachStream(createdRun.runId, result.streamId)
+    const followUpSnapshot = this.followUps.register(createdRun.runId, result.streamId, conversationId)
     this.emitRunState(createdRun.runId)
+    this.emitFollowUps(followUpSnapshot)
     return result
+  }
+
+  private syncProviderSteers(snapshot: SharedFollowUpSnapshot) {
+    const input = {
+      messages: snapshot.items.filter((item) => item.behavior === 'steer').map((item) => item.message),
+      revision: snapshot.revision,
+      streamId: snapshot.streamId,
+    }
+    const providerId = this.registry.getProviderByStreamId(snapshot.streamId)
+    if (providerId === 'codex') updateCodexPendingSteerMessages(input)
+    else if (providerId) updateApiKeyPendingSteerMessages(input)
+  }
+
+  private emitFollowUps(snapshot: SharedFollowUpSnapshot) {
+    this.emitEvent(snapshot.runId, { type: 'follow_ups_updated', seq: 0, snapshot })
   }
 
   private nextSeq(runId: string) {

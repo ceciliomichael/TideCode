@@ -51,6 +51,17 @@ test('insertFolderSummary preserves explicit folder ordering', () => {
   assert.deepEqual(nextFolders.map((folder) => folder.id), ['folder-a', 'folder-b', 'folder-c'])
 })
 
+test('insertFolderSummary refreshes an existing project without duplicating it', () => {
+  const nextFolders = insertFolderSummary(folderSummaries, {
+    ...folderSummaries[0],
+    name: 'Project Alpha Updated',
+    updatedAt: 4,
+  })
+
+  assert.deepEqual(nextFolders.map((folder) => folder.id), ['folder-a', 'folder-b'])
+  assert.equal(nextFolders[0]?.name, 'Project Alpha Updated')
+})
+
 test('moveFolderSummary reorders folders by moving a folder up or down', () => {
   const movedDown = moveFolderSummary(folderSummaries, 'folder-a', 'down')
   assert.deepEqual(movedDown.map((folder) => folder.id), ['folder-b', 'folder-a'])

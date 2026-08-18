@@ -73,6 +73,10 @@ function renderUserMessage(text: string, width: number, isSelected = false): str
 }
 
 function renderTurnEntry(entry: TranscriptEntry, width: number): string[] {
+  if (entry.kind === 'user') {
+    return renderUserMessage(entry.text, width)
+  }
+
   if (entry.kind === 'thought') {
     const label = entry.durationSeconds === undefined ? 'Thought' : 'Thought for'
     const duration = entry.durationSeconds === undefined ? '' : ` ${formatThoughtDuration(entry.durationSeconds)}`
@@ -111,7 +115,8 @@ function isVisibleTurnEntry(entry: TranscriptEntry): boolean {
 }
 
 function isTurnEntryBoundary(previousEntry: TranscriptEntry | undefined, entry: TranscriptEntry): boolean {
-  if (!previousEntry || previousEntry.kind === 'user' || entry.kind === 'user') return false
+  if (!previousEntry) return false
+  if (previousEntry.kind === 'user' || entry.kind === 'user') return true
   return previousEntry.kind !== entry.kind
 }
 

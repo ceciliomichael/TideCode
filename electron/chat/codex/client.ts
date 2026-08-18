@@ -106,6 +106,7 @@ export function createCodexClient() {
       ...(input.repairToolCall ? { repairToolCall: input.repairToolCall } : {}),
       model: provider.responses(input.model),
       messages: input.messages,
+      temperature: 0.1,
       ...(input.system ? { system: input.system } : {}),
       ...(input.tools ? { tools: input.tools } : {}),
       providerOptions: buildCodexProviderOptions(input),

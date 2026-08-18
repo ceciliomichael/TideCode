@@ -72,6 +72,7 @@ function useScrollFollower({
     if (
       !isAutoFollowEnabledRef.current ||
       !isFollowingLatestRef.current ||
+      userGestureActiveRef.current ||
       scheduledFrameRef.current !== null ||
       typeof window === 'undefined'
     ) {
@@ -143,7 +144,8 @@ function useScrollFollower({
 
   const handleUserInteractionEnd = useCallback(() => {
     userGestureActiveRef.current = false
-  }, [])
+    scheduleAutoScroll()
+  }, [scheduleAutoScroll])
 
   const handleTouchStart = useCallback((event: TouchEvent) => {
     userGestureActiveRef.current = true
@@ -168,7 +170,8 @@ function useScrollFollower({
   const handleTouchEnd = useCallback(() => {
     userGestureActiveRef.current = false
     lastTouchYRef.current = null
-  }, [])
+    scheduleAutoScroll()
+  }, [scheduleAutoScroll])
 
   useLayoutEffect(() => {
     if (Object.is(previousResetSignalRef.current, resetSignal)) {
@@ -200,9 +203,6 @@ function useScrollFollower({
       return
     }
 
-    if (isAutoFollowEnabledRef.current && isFollowingLatestRef.current && !userGestureActiveRef.current) {
-      performInstantScrollToLatest()
-    }
     scheduleAutoScroll()
   }, [
     cancelScheduledFollow,

@@ -2,20 +2,14 @@ import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import type { DiffPanelScope } from './components/chat/ConversationDiffPanel'
 import { ChatInterface, type RightPanelTab } from './pages/ChatInterface'
 import { SettingsInterface } from './pages/SettingsInterface'
-import { ALL_PROJECTS_FILTER_ID, CHATS_PROJECT_FILTER_ID } from './components/sidebar/sidebarProjectThreads'
 import { useAppSettings } from './hooks/useAppSettings'
 import { useChatMessages } from './hooks/useChatMessages'
 import { useDocumentTheme } from './hooks/useDocumentTheme'
 import { useProvidersState } from './hooks/useProvidersState'
 import type { TideCodeLaunchRequest } from './lib/appLaunchRequest'
+import { resolveBootConversationLaunchState } from './pages/chatInterface/chatLaunchState'
 
 type AppScreen = 'chat' | 'settings'
-
-interface BootConversationLaunchState {
-  preferredDraftFolderId: string | null
-  preferredConversationId: string | null
-  openEmptyConversationOnLaunch: boolean
-}
 
 export default function App() {
   const [initialLaunchRequest] = useState<TideCodeLaunchRequest | null>(() => window.tidecodeApp.getInitialLaunchRequest())
@@ -29,9 +23,7 @@ export default function App() {
   const providersState = useProvidersState()
   const { refreshInBackground } = providersState
   const [diffPanelWidth, setDiffPanelWidth] = useState(settings.diffPanelWidth)
-  const [bootConversationLaunchState, setBootConversationLaunchState] = useState<BootConversationLaunchState | undefined>(
-    undefined,
-  )
+  const [bootConversationLaunchState] = useState(() => resolveBootConversationLaunchState(settings))
   const persistConversationLaunchPreference = useCallback(
     (input: {
       conversationId: string | null
@@ -53,7 +45,7 @@ export default function App() {
     onPersistConversationModelPreferences: (nextValue) => {
       void updateSettings({ conversationModelPreferences: nextValue })
     },
-    openEmptyConversationOnLaunch: bootConversationLaunchState?.openEmptyConversationOnLaunch ?? false,
+    openEmptyConversationOnLaunch: bootConversationLaunchState.openEmptyConversationOnLaunch,
     persistConversationLaunchPreference,
     persistEditSessionsByConversation: (nextValue) => {
       void updateSettings({ editSessionsByConversation: nextValue })
@@ -61,10 +53,11 @@ export default function App() {
     persistRevertEditSessionsByConversation: (nextValue) => {
       void updateSettings({ revertEditSessionsByConversation: nextValue })
     },
-    preferredDraftFolderId: bootConversationLaunchState?.preferredDraftFolderId ?? null,
-    preferredConversationId: bootConversationLaunchState?.preferredConversationId ?? null,
+    preferredDraftFolderId: bootConversationLaunchState.preferredDraftFolderId,
+    preferredDraftFolderName: bootConversationLaunchState.preferredDraftFolderName,
+    preferredConversationId: bootConversationLaunchState.preferredConversationId,
     revertEditSessionsByConversation: settings.revertEditSessionsByConversation,
-    shouldInitializeHistory: bootConversationLaunchState !== undefined,
+    shouldInitializeHistory: true,
   })
   const activeWorkspacePath = chatMessages.activeConversationRootPath ?? chatMessages.selectedFolderPath
   const handleSidebarWidthChange = useCallback((sidebarWidth: number) => {
@@ -108,32 +101,6 @@ export default function App() {
 
     void refreshInBackground()
   }, [activeScreen, refreshInBackground])
-
-  useEffect(() => {
-    if (isLoading || bootConversationLaunchState !== undefined) {
-      return
-    }
-
-    const preferredDraftFolderId =
-      settings.lastActiveDraftFolderId ??
-      (settings.selectedProjectId && settings.selectedProjectId !== ALL_PROJECTS_FILTER_ID && settings.selectedProjectId !== CHATS_PROJECT_FILTER_ID
-        ? settings.selectedProjectId
-        : null)
-
-
-    setBootConversationLaunchState({
-      preferredDraftFolderId,
-      openEmptyConversationOnLaunch: settings.openEmptyConversationOnLaunch,
-      preferredConversationId: settings.lastActiveConversationId,
-    })
-  }, [
-    bootConversationLaunchState,
-    isLoading,
-    settings.lastActiveConversationId,
-    settings.lastActiveDraftFolderId,
-    settings.openEmptyConversationOnLaunch,
-    settings.selectedProjectId,
-  ])
 
   useEffect(() => {
     if (isLoading || chatMessages.isLoading) {
@@ -183,14 +150,6 @@ export default function App() {
     settings.openEmptyConversationOnLaunch,
     updateSettings,
   ])
-
-  if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-[var(--workspace-shell-surface)] px-4 text-sm text-subtle-foreground">
-        Loading workspace...
-      </div>
-    )
-  }
 
   return (
     <div className="relative h-screen w-screen">

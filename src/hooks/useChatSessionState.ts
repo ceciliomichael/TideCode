@@ -35,6 +35,11 @@ interface ConversationRuntimeState {
 
 type ConversationRuntimeStateMap = Record<string, ConversationRuntimeState>
 
+interface InitialChatSessionSelection {
+  initialSelectedFolderId: string | null
+  initialSelectedFolderName: string | null
+}
+
 interface UpdateConversationRuntimeInput {
   activeStreamId?: string | null
   isSending?: boolean
@@ -103,11 +108,11 @@ function attachSharedRunToRuntimeState(
   }
 }
 
-export function useChatSessionState(language: AppLanguage) {
+export function useChatSessionState(language: AppLanguage, initialSelection?: InitialChatSessionSelection) {
   const [conversationSummaries, setConversationSummaries] = useState<ConversationSummary[]>([])
   const [folderSummaries, setFolderSummaries] = useState<ConversationFolderSummary[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(() => initialSelection?.initialSelectedFolderId ?? null)
   const [activeConversationChatMode, setActiveConversationChatMode] = useState<ChatMode | null>(null)
   const [conversationRuntimeStates, setConversationRuntimeStates] = useState<ConversationRuntimeStateMap>({})
   const sharedRunsByConversationIdRef = useRef(new Map<string, SharedRunSnapshot>())
@@ -130,6 +135,10 @@ export function useChatSessionState(language: AppLanguage) {
   const clearConversationSelection = useCallback((nextFolderId: string | null) => {
     setActiveConversationId(null)
     setActiveConversationChatMode(null)
+    setSelectedFolderId(nextFolderId)
+  }, [])
+
+  const synchronizeDraftFolder = useCallback((nextFolderId: string | null) => {
     setSelectedFolderId(nextFolderId)
   }, [])
 
@@ -280,13 +289,17 @@ export function useChatSessionState(language: AppLanguage) {
       if (disposed) return
       const sharedRun = sharedRunsByConversationIdRef.current.get(projection.conversationId)
       if (!sharedRun || sharedRun.runId !== projection.runId) return
+      const currentProjection = sharedRunProjectionsByConversationIdRef.current.get(projection.conversationId)
+      if (
+        currentProjection?.runId === projection.runId &&
+        currentProjection.revision >= projection.revision
+      ) {
+        return
+      }
       sharedRunProjectionsByConversationIdRef.current.set(projection.conversationId, projection)
       setConversationRuntimeStates((currentValue) => {
         const currentState = currentValue[projection.conversationId]
         if (!currentState) return currentValue
-        const isLocallyOwnedRuntime = currentState.sharedRunId === null
-          && (currentState.isSending || currentState.activeStreamId !== null)
-        if (isLocallyOwnedRuntime) return currentValue
         return {
           ...currentValue,
           [projection.conversationId]: attachSharedRunToRuntimeState(currentState, sharedRun, projection),
@@ -342,7 +355,7 @@ export function useChatSessionState(language: AppLanguage) {
             continue
           }
 
-          if (sharedRun && !currentState.isSending && currentState.activeStreamId === null) {
+          if (sharedRun) {
             const projection = sharedRunProjectionsByConversationIdRef.current.get(conversationId)
             nextValue[conversationId] = attachSharedRunToRuntimeState(currentState, sharedRun, projection)
             hasChanges = true
@@ -389,9 +402,6 @@ export function useChatSessionState(language: AppLanguage) {
           if (!currentState) return currentValue
 
           if (isRunning) {
-            const isLocallyOwnedRuntime = currentState.sharedRunId === null
-              && (currentState.isSending || currentState.activeStreamId !== null)
-            if (isLocallyOwnedRuntime) return currentValue
             return {
               ...currentValue,
               [event.run.conversationId]: {
@@ -422,6 +432,11 @@ export function useChatSessionState(language: AppLanguage) {
 
       if (event.type === 'run_projection') {
         applyProjection(event.projection)
+        return
+      }
+
+      if (event.type === 'project_registered') {
+        setFolderSummaries((currentValue) => insertFolderSummary(currentValue, event.folder))
         return
       }
 
@@ -475,16 +490,20 @@ export function useChatSessionState(language: AppLanguage) {
       setConversationRuntimeStates((currentValue) => {
         const currentState = currentValue[conversation.id]
         if (!currentState) return currentValue
-        if (currentState.activeStreamId !== null && currentState.sharedRunId !== event.runId) {
+        if (currentState.sharedRunId !== null && currentState.sharedRunId !== event.runId) {
           return currentValue
         }
         const projection = sharedRunProjectionsByConversationIdRef.current.get(conversation.id)
-        const nextConversation = currentState.sharedRunId === event.runId && projection?.runId === event.runId
+        const nextConversation = projection?.runId === event.runId
           ? applySharedRunProjection(conversation, projection)
           : conversation
+        const nextState = createConversationRuntimeState(nextConversation, currentState)
+        const sharedRun = sharedRunsByConversationIdRef.current.get(conversation.id)
         return {
           ...currentValue,
-          [conversation.id]: createConversationRuntimeState(nextConversation, currentState),
+          [conversation.id]: sharedRun?.runId === event.runId
+            ? attachSharedRunToRuntimeState(nextState, sharedRun, projection)
+            : nextState,
         }
       })
     })
@@ -633,6 +652,12 @@ export function useChatSessionState(language: AppLanguage) {
   }, [])
 
   const clearError = useCallback(() => setError(null), [])
+  const selectedFolderName =
+    selectedFolderId !== null &&
+    selectedFolderId === initialSelection?.initialSelectedFolderId &&
+    !folderSummaries.some((folder) => folder.id === selectedFolderId)
+      ? initialSelection.initialSelectedFolderName?.trim() || 'Project'
+      : getSelectedFolderName(folderSummaries, selectedFolderId)
   const resolveFolderIdForWorkspacePath = useCallback(
     (workspacePath: string | null) => getFolderIdForWorkspacePath(folderSummaries, workspacePath),
     [folderSummaries],
@@ -669,11 +694,12 @@ export function useChatSessionState(language: AppLanguage) {
     replaceConversationSummaries: setConversationSummaries,
     runningConversationIds,
     selectedFolderId,
-    selectedFolderName: getSelectedFolderName(folderSummaries, selectedFolderId),
+    selectedFolderName,
     selectedFolderPath: selectedFolderId === null ? null : folderSummaries.find((folder) => folder.id === selectedFolderId)?.path ?? null,
     resolveFolderIdForWorkspacePath,
     setError,
     setIsLoading,
+    synchronizeDraftFolder,
     updateConversationRuntimeState,
     updateConversationSummary: upsertConversationSummaryOnly,
     updateLocalMessage,

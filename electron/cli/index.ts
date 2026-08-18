@@ -17,6 +17,7 @@ import { getStoredSettings } from '../settings/store'
 import { readPipedPrompt, resolveHeadlessPrompt } from './stdinPrompt'
 import { TIDECODE_VERSION } from '../appVersion'
 import { initializeCliAppRoot } from './appRoot'
+import { ensureRunServiceClient } from '../runService/ensureService'
 
 initializeCliAppRoot()
 
@@ -163,6 +164,10 @@ export async function main() {
   await initializeCliConversation(state, options.continueId, {
     preserveModelSelection: Boolean(options.model || options.provider),
   })
+
+  if (!options.continueId) {
+    await (await ensureRunServiceClient()).ensureWorkspaceProject(state.workspaceRootPath)
+  }
 
   if (options.remote) {
     await startRemoteRelayDaemon(state, options.port)

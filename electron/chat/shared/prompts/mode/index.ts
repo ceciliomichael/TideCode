@@ -6,6 +6,7 @@ import { CODE_MODE_EXECUTION_CONTRACT } from '../../codeMode/promptContract'
 import { buildWorkspaceInstructionsBlock } from '../workspaceInstructions'
 import { buildPythonVenvPromptBlock } from '../../../../python/venv'
 import { getTideCodeRuntimeRoot } from '../../../../runtime/runtimeRoot'
+import { resolvePreferredTerminalShell } from '../../../../terminal/configuration'
 
 const PROMPT_REPO_PATH = 'electron/chat/shared/prompts/mode'
 const MODE_PROMPT_PATHS: Record<ChatMode, string> = {
@@ -259,10 +260,27 @@ export function buildChatModeSystemPromptBreakdown(
     source: 'electron/chat/shared/prompts/mode/index.ts',
   }
   const venvPrompt = buildPythonVenvPromptBlock(workspaceRootPath)
+  const terminalShell = chatMode === 'agent' ? resolvePreferredTerminalShell() : null
+  const terminalShellPrompt = terminalShell
+    ? [
+        '<terminal_environment>',
+        '- Active terminal shell: ' + escapePromptMarkup(terminalShell.label) + ' (' + escapePromptMarkup(terminalShell.command) + ').',
+        '- Write terminal commands using this shell syntax. Do not assume another shell.',
+        '</terminal_environment>',
+      ].join('\n')
+    : ''
   const workspaceInstructions = buildWorkspaceInstructionsBlock(workspaceRootPath)
   const workspaceComponents = [
     workspaceRootComponent,
     workspacePathContractComponent,
+    terminalShellPrompt
+      ? {
+          content: terminalShellPrompt,
+          id: 'terminal_shell_context',
+          section: 'workspace_context' as const,
+          source: 'electron/terminal/configuration.ts',
+        }
+      : null,
     venvPrompt
       ? {
           content: venvPrompt,

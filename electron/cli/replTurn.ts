@@ -1,4 +1,4 @@
-import type { ChatAttachment, ChatStreamEvent, StartChatStreamInput } from '../../src/types/chat'
+import type { ChatAttachment, ChatStreamEvent, QueuedMessage, StartChatStreamInput } from '../../src/types/chat'
 import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../src/lib/contextCompactionSettings'
 import { getStoredConversation } from '../history/store'
 import { ensureRunServiceClient } from '../runService/ensureService'
@@ -11,7 +11,7 @@ import type { TerminalPromptContext, TerminalPromptSubmission, TerminalScreen } 
 
 export interface ReplTurnResult {
   nextInput: Promise<TerminalPromptSubmission>
-  queuedInputs: string[]
+  queuedInputs: QueuedMessage[]
 }
 
 export interface ReplTurnOptions {
@@ -40,6 +40,11 @@ export async function runReplTurn(
   })
   screen.beginTurn(nextPromptContext.onCancelTurn)
   let followUpController: CliTurnFollowUpController | null = null
+  let queuedInputs: QueuedMessage[] = []
+  let settleSharedRun: () => void = () => undefined
+  const sharedRunSettled = new Promise<void>((resolve) => {
+    settleSharedRun = resolve
+  })
 
   state.isStreaming = true
   let nextInput: Promise<TerminalPromptSubmission> | null = null
@@ -55,7 +60,10 @@ export async function runReplTurn(
     workspaceRootPath: state.workspaceRootPath,
     presentation: screen.eventPresentation,
     onEvent: (event) => {
-      if (event.type === 'steer_messages_consumed') followUpController?.markConsumed(event.messages)
+      if (event.type === 'steer_messages_consumed') {
+        followUpController?.markConsumed(event.messages)
+        screen.addConsumedUserMessages(event.messages)
+      }
     },
     onComplete: () => {
       state.isStreaming = false
@@ -92,6 +100,25 @@ export async function runReplTurn(
   try {
     const runService = await ensureRunServiceClient()
     unsubscribeRunEvents = runService.onEvent((event) => {
+      if (event.type === 'follow_ups_updated') {
+        if (streamId && event.snapshot.streamId === streamId) {
+          followUpController?.applySnapshot(event.snapshot)
+          screen.setActiveFollowUps(event.snapshot.items.map((item) => ({
+            behavior: item.behavior,
+            text: item.message.content,
+          })))
+        }
+        return
+      }
+      if (event.type === 'run_state') {
+        if (streamId && event.run.streamId === streamId && (
+          event.run.status === 'completed' ||
+          event.run.status === 'failed' ||
+          event.run.status === 'cancelled' ||
+          event.run.status === 'interrupted'
+        )) settleSharedRun()
+        return
+      }
       if (event.type !== 'chat_event' || event.conversationId !== state.conversationId) return
       if (!streamId) {
         queuedEvents.push(event.event)
@@ -104,6 +131,14 @@ export async function runReplTurn(
     streamId = streamResult.streamId
     state.activeStreamId = streamResult.streamId
     followUpController = new CliTurnFollowUpController(state.providerId, streamResult.streamId)
+    const initialFollowUps = await runService.getPendingFollowUps(streamResult.streamId).catch(() => null)
+    if (initialFollowUps) {
+      followUpController.applySnapshot(initialFollowUps)
+      screen.setActiveFollowUps(initialFollowUps.items.map((item) => ({
+        behavior: item.behavior,
+        text: item.message.content,
+      })))
+    }
 
     for (const event of queuedEvents.splice(0)) {
       if (event.streamId === streamResult.streamId) deliverEvent(event)
@@ -116,6 +151,8 @@ export async function runReplTurn(
       },
     })
     await turnSettled
+    await sharedRunSettled
+    queuedInputs = await followUpController.claimQueuedTurnMessages()
 
     const conversation = await getStoredConversation(state.conversationId).catch(() => null)
     if (conversation) state.messages = [...conversation.messages]
@@ -131,6 +168,6 @@ export async function runReplTurn(
 
   return {
     nextInput: nextInput ?? screen.ask(nextPromptContext),
-    queuedInputs: followUpController?.getQueuedTurnInputs() ?? [],
+    queuedInputs,
   }
 }

@@ -29,6 +29,7 @@ interface SidebarPanelProps {
   onRenameFolder: (folderId: string, name: string) => Promise<void>
   onSelectConversation: (conversationId: string) => void
   selectedProjectId?: string
+  selectedProjectName?: string | null
   onSelectProject?: (projectId: string) => void
 }
 
@@ -46,6 +47,7 @@ export function SidebarPanel({
   onRenameFolder,
   onSelectConversation,
   selectedProjectId: controlledSelectedProjectId,
+  selectedProjectName = null,
   onSelectProject: controlledOnSelectProject,
 }: SidebarPanelProps) {
   const projects = useMemo(() => buildSidebarProjectOptions(conversationGroups), [conversationGroups])
@@ -161,6 +163,7 @@ export function SidebarPanel({
 
         <div className="mt-2 flex items-center justify-between gap-1">
           <ProjectThreadSelector
+            cachedSelectedProjectName={selectedProjectName}
             hasArchivedConversations={hasArchivedConversations}
             projects={projects}
             selectedProjectId={resolvedSelectedProjectId}
@@ -188,6 +191,7 @@ export function SidebarPanel({
       <div className="scroll-stable mt-2 flex-1 overflow-y-auto pr-6 md:pr-7">
         <ConversationHistoryList
           conversationGroups={conversationGroups}
+          isLoading={isLoading}
           searchQuery={searchQuery}
           selectedProjectId={resolvedSelectedProjectId}
            onArchiveConversation={onArchiveConversation}

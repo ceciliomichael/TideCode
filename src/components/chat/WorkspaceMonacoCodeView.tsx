@@ -10,6 +10,11 @@ import {
 } from '../workspaceExplorer/workspaceFileEditor/workspaceMonacoConfig'
 import '../workspaceExplorer/workspaceFileEditor/workspaceMonacoEnvironment'
 import { WorkspaceMonacoDiffLoadingView } from './diffViewer/WorkspaceMonacoDiffLoadingView'
+import {
+  clampRenderedCodeContentHeight,
+  CODE_VERTICAL_PADDING_PX,
+  resolveInitialCodeContentHeight,
+} from './workspaceMonacoCodeSizing'
 
 interface WorkspaceMonacoCodeViewProps {
   code: string
@@ -22,17 +27,6 @@ interface WorkspaceMonacoCodeViewProps {
 
 function resolveLanguage(fileName: string | undefined, language: string | undefined) {
   return language?.trim() || resolveWorkspaceMonacoLanguage(fileName || 'untitled.txt')
-}
-
-const CODE_LINE_HEIGHT_PX = 20
-const CODE_VERTICAL_PADDING_PX = 8
-
-function resolveCodeLineCount(code: string) {
-  return Math.max(1, code.replace(/\r?\n+$/u, '').split(/\r?\n/u).length)
-}
-
-function resolveCodeContentHeight(code: string) {
-  return resolveCodeLineCount(code) * CODE_LINE_HEIGHT_PX + CODE_VERTICAL_PADDING_PX * 2
 }
 
 function createCodeBlockModelPath(fileName: string | undefined, code: string) {
@@ -57,22 +51,21 @@ export function WorkspaceMonacoCodeView({
     () => createCodeBlockModelPath(fileName, code),
     [code, fileName],
   )
-  const [height, setHeight] = useState(() => resolveCodeContentHeight(code))
+  const [height, setHeight] = useState(() => resolveInitialCodeContentHeight(code))
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
+  const contentSizeDisposableRef = useRef<{ dispose: () => void } | null>(null)
   const maxHeight = maxBodyHeightClassName?.includes('max-h-80') ? 320 : null
+  const maxHeightRef = useRef<number | null>(maxHeight)
+  maxHeightRef.current = maxHeight
   const theme = getWorkspaceMonacoTheme(resolvedTheme)
 
   const updateHeight = useCallback(() => {
     const editorInstance = editorRef.current
-    const model = editorInstance?.getModel()
-    if (!editorInstance || !model) return
+    if (!editorInstance) return
 
-    const contentHeight = Math.max(
-      CODE_LINE_HEIGHT_PX + CODE_VERTICAL_PADDING_PX * 2,
-      model.getLineCount() * CODE_LINE_HEIGHT_PX + CODE_VERTICAL_PADDING_PX * 2,
-    )
-    setHeight(maxHeight === null ? contentHeight : Math.min(maxHeight, contentHeight))
-  }, [maxHeight])
+    const currentMaxHeight = maxHeightRef.current
+    setHeight(clampRenderedCodeContentHeight(editorInstance.getContentHeight(), currentMaxHeight))
+  }, [])
 
   const beforeMount = useCallback<BeforeMount>((monaco) => {
     defineWorkspaceMonacoThemes(monaco)
@@ -80,19 +73,25 @@ export function WorkspaceMonacoCodeView({
 
   const onMount = useCallback<OnMount>((editorInstance) => {
     editorRef.current = editorInstance
+    contentSizeDisposableRef.current?.dispose()
+    contentSizeDisposableRef.current = editorInstance.onDidContentSizeChange(updateHeight)
     updateHeight()
-    const disposable = editorInstance.onDidContentSizeChange(updateHeight)
-    return () => disposable.dispose()
   }, [updateHeight])
 
   useEffect(() => {
+    if (editorRef.current) {
+      updateHeight()
+      return
+    }
     setHeight(() => {
-      const contentHeight = resolveCodeContentHeight(code)
+      const contentHeight = resolveInitialCodeContentHeight(code)
       return maxHeight === null ? contentHeight : Math.min(maxHeight, contentHeight)
     })
-  }, [code, maxHeight])
+  }, [code, maxHeight, updateHeight])
 
   useEffect(() => () => {
+    contentSizeDisposableRef.current?.dispose()
+    contentSizeDisposableRef.current = null
     editorRef.current = null
   }, [])
 

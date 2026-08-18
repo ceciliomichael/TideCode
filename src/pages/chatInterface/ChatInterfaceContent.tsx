@@ -7,7 +7,7 @@ import { AppWorkspaceShell } from '../../components/layout/AppWorkspaceShell'
 import { WorkspaceFloatingControls } from '../../components/layout/WorkspaceFloatingControls'
 import { WorkspacePanel } from '../../components/layout/WorkspacePanel'
 import { SidebarPanel } from '../../components/sidebar/SidebarPanel'
-import { ALL_PROJECTS_FILTER_ID, ARCHIVED_PROJECT_FILTER_ID } from '../../components/sidebar/sidebarProjectThreads'
+import { ALL_PROJECTS_FILTER_ID, ARCHIVED_PROJECT_FILTER_ID, CHATS_PROJECT_FILTER_ID } from '../../components/sidebar/sidebarProjectThreads'
 import { WorkspaceTerminalPanel } from '../../components/chat/WorkspaceTerminalPanel'
 import { useChatContextUsage } from '../../hooks/useChatContextUsage'
 import { useChatCompactionMarkers } from '../../hooks/useChatCompactionMarkers'
@@ -20,10 +20,11 @@ import type { GitCommitController } from '../../hooks/useGitCommit'
 import type { GitDiffSnapshotController } from '../../hooks/useGitDiffSnapshot'
 import { useWorkspaceRefactorCandidates } from '../../hooks/useWorkspaceRefactorCandidates'
 import { useChatMessageQueue } from './useChatMessageQueue'
+import { createQueuedComposerMessage } from './chatComposerQueue'
 import type { QueuedMessageAutoSendReason } from './chatQueueAutoSend'
 import { useChatCompression } from './useChatCompression'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
-import type { AppSettings, CodexUsageSnapshot, QueuedMessage } from '../../types/chat'
+import type { AppSettings, ChatAttachment, CodexUsageSnapshot, QueuedMessage, SharedFollowUpItem } from '../../types/chat'
 import {
   EMPTY_CHAT_COMPACTION_GATE_STATE,
   hasMinimumCompactionMessages,
@@ -31,7 +32,9 @@ import {
   reduceChatCompactionGate,
 } from '../../lib/chatCompactionGate'
 import type { ResolvedTheme } from '../../lib/theme'
+import { resolveProjectFilterDraftFolderId } from '../../lib/projectSelectionUtils'
 import { resolveTaskModelSelection } from '../../lib/taskModelSelection'
+import { resolveFollowUpBehaviorForAction } from '../../lib/appSettings'
 import { ChatWorkspaceHeaderControls } from './ChatWorkspaceHeaderControls'
 import { ChatWorkspaceSidePanels } from './ChatWorkspaceSidePanels'
 import { useResizableChatPanel } from './useResizableChatPanel'
@@ -120,9 +123,81 @@ export function ChatInterfaceContent({
       activeConversationIsArchived === false
     ) {
       setSelectedProjectId(ALL_PROJECTS_FILTER_ID)
-      onUpdateSettings({ selectedProjectId: ALL_PROJECTS_FILTER_ID })
+      onUpdateSettings({ selectedProjectId: ALL_PROJECTS_FILTER_ID, selectedProjectName: null })
     }
   }, [activeConversationIsArchived, onUpdateSettings, selectedProjectId])
+
+  useEffect(() => {
+    if (chatMessages.isLoading) return
+    if (
+      selectedProjectId === ALL_PROJECTS_FILTER_ID ||
+      selectedProjectId === ARCHIVED_PROJECT_FILTER_ID
+    ) {
+      return
+    }
+
+    const selectedProjectName = chatMessages.conversationGroups.find(
+      (group) => group.folder.id === selectedProjectId,
+    )?.folder.name
+    if (selectedProjectName && selectedProjectName !== settings.selectedProjectName) {
+      onUpdateSettings({ selectedProjectName })
+    }
+  }, [
+    chatMessages.conversationGroups,
+    chatMessages.isLoading,
+    onUpdateSettings,
+    selectedProjectId,
+    settings.selectedProjectName,
+  ])
+
+  useEffect(() => {
+    if (chatMessages.isLoading || chatMessages.activeConversationId !== null) {
+      return
+    }
+
+    const targetDraftFolderId = resolveProjectFilterDraftFolderId(selectedProjectId)
+    if (targetDraftFolderId === undefined || targetDraftFolderId === chatMessages.selectedFolderId) {
+      return
+    }
+
+    chatMessages.synchronizeDraftFolder(targetDraftFolderId)
+  }, [
+    chatMessages.activeConversationId,
+    chatMessages.isLoading,
+    chatMessages.selectedFolderId,
+    chatMessages.synchronizeDraftFolder,
+    selectedProjectId,
+  ])
+
+  const emptyStateFolderName = useMemo(() => {
+    if (selectedProjectId === CHATS_PROJECT_FILTER_ID) {
+      return 'Chats'
+    }
+
+    const targetDraftFolderId = resolveProjectFilterDraftFolderId(selectedProjectId)
+    if (typeof targetDraftFolderId !== 'string') {
+      return chatMessages.selectedFolderName
+    }
+
+    const loadedProjectName = chatMessages.conversationGroups.find(
+      (group) => group.folder.id === targetDraftFolderId,
+    )?.folder.name
+    if (loadedProjectName) {
+      return loadedProjectName
+    }
+
+    if (settings.selectedProjectId === selectedProjectId) {
+      return settings.selectedProjectName?.trim() || 'Project'
+    }
+
+    return 'Project'
+  }, [
+    chatMessages.conversationGroups,
+    chatMessages.selectedFolderName,
+    selectedProjectId,
+    settings.selectedProjectId,
+    settings.selectedProjectName,
+  ])
 
   const activeWorkspacePath = chatMessages.activeConversationRootPath ?? chatMessages.selectedFolderPath
   const gitAddedLineCount = gitCommitState.status?.hasRepository ? gitCommitState.status.addedLineCount : null
@@ -285,6 +360,45 @@ export function ChatInterfaceContent({
     isTurnActive: chatMessages.isSending,
     onSendMessage: sendQueuedMessage,
   })
+  const pendingAlternateFollowUpsRef = useRef<SharedFollowUpItem[]>([])
+  const publishAlternateFollowUp = useCallback((streamId: string, item: SharedFollowUpItem) => {
+    void window.tidecodeRuns.updatePendingFollowUps({
+      mutation: { type: 'add', item },
+      streamId,
+    }).catch((error) => {
+      console.error('Unable to add alternate shared follow-up message.', error)
+      pendingAlternateFollowUpsRef.current.push(item)
+    })
+  }, [])
+  const enqueueAlternateFollowUpMessage = useCallback((value: string, attachments: ChatAttachment[]) => {
+    const item: SharedFollowUpItem = {
+      behavior: resolveFollowUpBehaviorForAction('alternate', settings.followUpBehavior),
+      message: createQueuedComposerMessage({ attachments, content: value }),
+    }
+    const streamId = chatMessages.activeStreamId
+    if (streamId) {
+      publishAlternateFollowUp(streamId, item)
+      return
+    }
+    pendingAlternateFollowUpsRef.current.push(item)
+  }, [chatMessages.activeStreamId, publishAlternateFollowUp, settings.followUpBehavior])
+
+  useEffect(() => {
+    const streamId = chatMessages.activeStreamId
+    if (!streamId || pendingAlternateFollowUpsRef.current.length === 0) return
+    const pendingItems = pendingAlternateFollowUpsRef.current.splice(0)
+    for (const item of pendingItems) publishAlternateFollowUp(streamId, item)
+  }, [chatMessages.activeStreamId, publishAlternateFollowUp])
+
+  useEffect(() => {
+    if (chatMessages.activeStreamId || chatMessages.isSending || chatMessages.isStreamingResponse) return
+    if (pendingAlternateFollowUpsRef.current.length === 0) return
+    const pendingItems = pendingAlternateFollowUpsRef.current.splice(0)
+    for (const item of pendingItems) {
+      enqueueMessage(item.message.content, item.message.attachments ?? [])
+    }
+  }, [chatMessages.activeStreamId, chatMessages.isSending, chatMessages.isStreamingResponse, enqueueMessage])
+
   const { handleCompressChat } = useChatCompression({
     activeConversationId: chatMessages.activeConversationId,
     activeWorkspacePath,
@@ -392,15 +506,21 @@ export function ChatInterfaceContent({
           isLoading={chatMessages.isLoading}
           onCreateFolder={handleCreateFolder}
           onCreateConversation={handleCreateConversation}
-          onCreateWorkspaceFolderFromPath={handleCreateWorkspaceFolderFromPath}
+           onCreateWorkspaceFolderFromPath={handleCreateWorkspaceFolderFromPath}
            onArchiveConversation={handleArchiveConversation}
            onDeleteConversation={handleDeleteConversation}
            onPinConversation={handlePinConversation}
-          onDeleteFolder={handleDeleteFolder}
+           onDeleteFolder={handleDeleteFolder}
           onOpenSettings={onOpenSettings}
-          onRenameFolder={chatMessages.renameFolder}
+          onRenameFolder={async (folderId, name) => {
+            await chatMessages.renameFolder(folderId, name)
+            if (folderId === selectedProjectId) {
+              onUpdateSettings({ selectedProjectName: name.trim() || settings.selectedProjectName })
+            }
+          }}
           onSelectConversation={handleSelectConversation}
           selectedProjectId={selectedProjectId}
+          selectedProjectName={settings.selectedProjectName}
           onSelectProject={handleSelectProject}
         />
       }
@@ -475,6 +595,8 @@ export function ChatInterfaceContent({
               liveCompaction={liveCompaction}
               contextUsage={contextUsage}
               gitBranchState={gitBranchState}
+              emptyStateFolderName={emptyStateFolderName}
+              followUpBehavior={settings.followUpBehavior}
               handleCancelEditingMessage={handleCancelEditingMessage}
               handleCompressChat={handleCompressChat}
               handleEditUserMessage={handleEditUserMessage}
@@ -487,6 +609,7 @@ export function ChatInterfaceContent({
               isKanbanBoardOpen={isKanbanBoardOpen}
               messageListBoundaryRef={messageListBoundaryRef}
               onQueueMessage={enqueueMessage}
+              onAlternateFollowUpMessage={enqueueAlternateFollowUpMessage}
               onTerminalExecutionModeChange={interfaceController.handleTerminalExecutionModeChange}
               queuedMessages={queuedMessages}
               refactorCandidates={refactorCandidates}

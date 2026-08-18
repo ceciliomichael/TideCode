@@ -372,6 +372,36 @@ export class TerminalScreen {
     this.setActivity('thinking', 'Thinking')
   }
 
+  setPendingActiveMessageHandler(handler: TerminalPromptContext['onActiveMessage']): boolean {
+    if (!this.pendingPrompt) return false
+    this.pendingPrompt.context = { ...this.pendingPrompt.context, onActiveMessage: handler }
+    return true
+  }
+
+  setActiveFollowUps(followUps: readonly ActiveTurnFollowUpView[]): void {
+    this.activeFollowUps = followUps.map((followUp) => ({ ...followUp }))
+    if (this.activeTurn) this.renderActiveTurn()
+  }
+
+  addConsumedUserMessages(messages: readonly Message[]): void {
+    const existingEntryIds = new Set(this.view.entries.map((entry) => entry.id))
+    const nextMessages = messages.filter((message) => message.role === 'user' && !existingEntryIds.has(message.id))
+    if (nextMessages.length === 0) return
+
+    this.closeAssistantSegment()
+    this.activeThought = ''
+    this.activeThoughtEntryId = null
+    this.activeThoughtDurationSeconds = 0
+    for (const message of nextMessages) {
+      existingEntryIds.add(message.id)
+      this.view.entries.push({ kind: 'user', id: message.id, text: stripAnsi(message.content) })
+    }
+
+    if (this.activeTurn) {
+      this.setActivity('thinking', 'Thinking')
+    }
+  }
+
   addNotice(level: 'info' | 'success' | 'warning' | 'error', text: string): void {
     this.stopActivity()
     const cleanText = stripAnsi(text)
