@@ -76,3 +76,11 @@ test('Remote login page never embeds saved credentials', () => {
   assert.match(unconfigured, /not been configured/)
   assert.doesNotMatch(configured, /value="[^"]+"/)
 })
+
+test('Remote login page is constrained to the mobile viewport', () => {
+  const html = getLoginPageHtml(true)
+  assert.match(html, /name="viewport" content="width=device-width,initial-scale=1.0"/)
+  assert.match(html, /min-height:100dvh/)
+assert.equal(html.includes('width:min(420px,100%)'), true)
+assert.equal(html.includes('*{box-sizing:border-box}'), true)
+})
