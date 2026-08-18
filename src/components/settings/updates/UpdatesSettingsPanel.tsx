@@ -6,9 +6,9 @@ import { SegmentedField } from '../../ui/SegmentedField'
 import {
   getUpdatesSessionSnapshot,
   hydrateCachedUpdate,
-  requestAutomaticUpdateCheck,
   requestUpdateDownload,
   requestUpdateCheck,
+  requestUpdateCheckForSettingsOpen,
   subscribeToUpdatesSession,
   type UpdateCheckState,
 } from './updatesSessionStore'
@@ -23,6 +23,7 @@ const BOOLEAN_SEGMENT_OPTIONS = [
 
 interface UpdatesSettingsPanelProps {
   autoDownloadUpdates: boolean
+  checkForUpdatesOnLaunch: boolean
   isLoading: boolean
   onUpdateSettings: (input: Partial<AppSettings>) => void
 }
@@ -80,7 +81,12 @@ function getStatusCopy(
   return 'You are running the latest version of TideCode.'
 }
 
-export function UpdatesSettingsPanel({ autoDownloadUpdates, isLoading, onUpdateSettings }: UpdatesSettingsPanelProps) {
+export function UpdatesSettingsPanel({
+  autoDownloadUpdates,
+  checkForUpdatesOnLaunch,
+  isLoading,
+  onUpdateSettings,
+}: UpdatesSettingsPanelProps) {
   const session = useSyncExternalStore(
     subscribeToUpdatesSession,
     getUpdatesSessionSnapshot,
@@ -90,7 +96,7 @@ export function UpdatesSettingsPanel({ autoDownloadUpdates, isLoading, onUpdateS
 
   useEffect(() => {
     void hydrateCachedUpdate()
-    requestAutomaticUpdateCheck()
+    requestUpdateCheckForSettingsOpen()
   }, [])
 
   const handleManualCheck = useCallback(() => {
@@ -102,6 +108,13 @@ export function UpdatesSettingsPanel({ autoDownloadUpdates, isLoading, onUpdateS
     setOpenReleaseError(null)
     requestUpdateDownload()
   }, [])
+
+  const handleCheckForUpdatesOnLaunchChange = useCallback(
+    (nextValue: string) => {
+      onUpdateSettings({ checkForUpdatesOnLaunch: nextValue === 'on' })
+    },
+    [onUpdateSettings],
+  )
 
   const handleAutomaticDownloadsChange = useCallback(
     (nextValue: string) => {
@@ -279,6 +292,18 @@ export function UpdatesSettingsPanel({ autoDownloadUpdates, isLoading, onUpdateS
       ) : null}
 
       <SettingsSection title="Update preferences">
+        <SettingsRow
+          title="Check for updates at launch"
+                    description="When enabled, TideCode checks the official releases when the app starts. When disabled, opening Updates checks for a new version instead."
+        >
+          <SegmentedField
+            ariaLabel="Check for updates at launch"
+            disabled={isLoading}
+            onChange={handleCheckForUpdatesOnLaunchChange}
+            options={BOOLEAN_SEGMENT_OPTIONS}
+            value={checkForUpdatesOnLaunch ? 'on' : 'off'}
+          />
+        </SettingsRow>
         <SettingsRow
           title="Automatic downloads"
           description="When enabled, TideCode downloads a new release after finding it. Updates still require your approval to restart and install."

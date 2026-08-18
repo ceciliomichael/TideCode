@@ -35,7 +35,7 @@ interface ExecuteTerminalInput {
 export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
   return tool({
     description:
-      "Start a terminal command asynchronously and return its session_id immediately (or wait up to wait_seconds for output if specified). Use read_terminal to wait for or consume additional output.",
+      "Start a terminal command asynchronously and return its session_id immediately (or wait up to wait_seconds for initial output). Keep using that same session: read_terminal observes later output and interact_terminal supplies input only when the terminal needs it.",
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
@@ -199,7 +199,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
             } else {
               bodyLines.push(
                 "",
-                "guidance: Command is actively executing in the background. Use interact_terminal to wait for output, send input, or stop it with Ctrl+C.",
+"guidance: Command is actively executing in the background. Use read_terminal with this session_id for more output. If it reports or shows an input prompt, use interact_terminal on the same session.",
               );
             }
           }
@@ -212,7 +212,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           } else {
             bodyLines.push(
               "",
-              "guidance: Command started and is actively executing in the background. Call interact_terminal with session_id to wait for output or send Ctrl+C. Do not re-run the command.",
+"guidance: Command started and is actively executing in the background. Use read_terminal with this session_id instead of starting the command again. If input is requested, use interact_terminal on this same session.",
             );
           }
         }

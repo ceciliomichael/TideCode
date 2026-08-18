@@ -5,9 +5,37 @@ import path from 'node:path'
 import test from 'node:test'
 import { jsonSchema, tool, type ToolExecutionOptions } from 'ai'
 import { CodeModeExecutor } from '../../electron/chat/shared/codeMode/executor'
+import { CODE_MODE_EXECUTION_CONTRACT } from '../../electron/chat/shared/codeMode/promptContract'
 import { createAgentToolBundle } from '../../electron/chat/shared/tools'
 import { createCodeModeTool, createToolSearchTool } from '../../electron/chat/shared/tools/metaTools'
 import { createAgentToolRegistry, type AgentToolRegistry } from '../../electron/chat/shared/tools/registry'
+
+function createTerminalTestRegistry(): AgentToolRegistry {
+  const entries = [
+    {
+      description: 'Capture a terminal command and return a running session.',
+      execute: async (input: unknown) => ({
+        body: JSON.stringify(input),
+        semantics: { session_id: 43440, state: 'running' },
+        status: 'success' as const,
+        summary: 'Started terminal session 43440.',
+      }),
+      inputSchema: { type: 'object' as const },
+      name: 'execute_terminal',
+      namespace: 'terminal',
+    },
+  ]
+
+  return {
+    entries,
+    get(name) {
+      return entries.find((entry) => entry.name === name)
+    },
+    search() {
+      return entries.map((entry) => ({ ...entry, score: 1 }))
+    },
+  }
+}
 
 function createTestRegistry(): AgentToolRegistry {
   const entries = [
@@ -563,6 +591,65 @@ test('Code Mode repairs unescaped inner backticks and template expressions in to
   }
 })
 
+test('Code Mode repairs malformed quoted execute_terminal commands from generated programs', async () => {
+  const executor = new CodeModeExecutor(createTerminalTestRegistry())
+  const expectedBindingCommand = "$payload = @{ quote = ''a b''; slash = ''C:\\temp\\x''; unicode = ''✓ 漢字 🚀''; delimiters = ''{}[],:; <>&'' }"
+  const escapedBindingCommand = expectedBindingCommand.replaceAll('\\', '\\\\')
+  const expectedFieldCommand = "Write-Output ''quoted''"
+  const cases = [
+    {
+      expected: { command: expectedBindingCommand, cwd: '.', wait_seconds: 10 },
+      program: "const cmd = '" + escapedBindingCommand + "';\nreturn await tools.execute_terminal({ command: cmd, cwd: '.', wait_seconds: 10 })",
+    },
+    {
+      expected: { command: expectedFieldCommand, cwd: '.' },
+      program: "return await tools.execute_terminal({ command: '" + expectedFieldCommand + "', cwd: '.' })",
+    },
+  ]
+
+  try {
+    for (const testCase of cases) {
+      const result = await executor.run(testCase.program)
+      assert.equal(result.status, 'success')
+      assert.equal(result.toolCalls.length, 1)
+      assert.deepEqual(result.toolCalls[0]?.arguments, testCase.expected)
+    }
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode exposes terminal session_id directly as well as in semantics', async () => {
+  const executor = new CodeModeExecutor(createTerminalTestRegistry())
+
+  try {
+    const result = await executor.run([
+      "const started = await tools.execute_terminal({ command: 'long-running' })",
+      'return { direct: started.session_id, nested: started.semantics.session_id }',
+    ].join('\n'))
+
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, { direct: 43440, nested: 43440 })
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode repairs multiline Markdown content with nested backticks and template text', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry())
+  const markdown = "# Stress report\nUse `inline code` and ${literal} as literal text."
+  const malformedProgram = 'return await tools.echo({ content: `' + markdown + '` })'
+
+  try {
+    const result = await executor.run(malformedProgram)
+    assert.equal(result.status, 'success')
+    assert.equal(result.toolCalls.length, 1)
+    assert.deepEqual(result.toolCalls[0]?.arguments, { content: markdown })
+  } finally {
+    await executor.dispose()
+  }
+})
+
 test('the registry validates Code Mode arguments before invoking a native tool', async () => {
   let wasInvoked = false
   const registry = await createAgentToolRegistry({
@@ -661,7 +748,7 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
     )
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
-      /await each call/u,
+      /Await every `tools\.\*` call/u,
     )
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
@@ -680,13 +767,17 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
       /tools\.tool_search\(\{ limit\?: number/u,
     )
     const codeModeDescription = (bundle.tools.code_mode as { description?: string }).description ?? ''
-    assert.match(
-      codeModeDescription,
-      /Tool-only runtime: direct Node\.js and host access is blocked/u,
-    )
+    assert.equal(codeModeDescription.split(CODE_MODE_EXECUTION_CONTRACT).length - 1, 1)
+    assert.match(codeModeDescription, /temporary asynchronous JavaScript program running in a tool-only worker/u)
+    assert.match(codeModeDescription, /Choose the purpose-built inner API for the scenario/u)
+    assert.match(codeModeDescription, /`tools\.edit`: make a targeted change to an existing text file/u)
+    assert.match(codeModeDescription, /`tools\.execute_terminal`: run an actual command\/process/u)
+    assert.match(codeModeDescription, /Never use shell, PowerShell, Python, or Node just to read, search, edit, or write workspace files/u)
+    assert.doesNotMatch(codeModeDescription, /Tool-only runtime: direct Node\.js and host access is blocked/u)
     assert.match(codeModeDescription, /Unavailable host\/runtime APIs in Code Mode include/u)
     assert.match(codeModeDescription, /`fs` \/ `node:fs`/u)
     assert.match(codeModeDescription, /`child_process` \/ `node:child_process`/u)
+    assert.match(codeModeDescription, /session_id.*directly/u)
     assert.match(codeModeDescription, /dynamic `import\(\)` are blocked/u)
     assert.match(codeModeDescription, /rejected before execution/u)
     assert.match(codeModeDescription, /non-executable string, comment, regex, and template-literal text/u)

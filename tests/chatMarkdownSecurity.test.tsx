@@ -42,6 +42,41 @@ test('compaction hides the empty assistant waiting indicator', () => {
   assert.equal(renderWaitingAssistant(true), '')
 })
 
+test('running tool keeps the waiting indicator visible while assistant text is idle', () => {
+  const toolInvocations = [
+    {
+      argumentsText: JSON.stringify({ path: 'src/example.ts' }),
+      id: 'tool-read-running',
+      startedAt: 1,
+      state: 'running' as const,
+      toolName: 'read',
+    },
+  ]
+  const idleMarkup = renderToStaticMarkup(
+    createElement(AssistantMessage, {
+      content: '',
+      isStreaming: true,
+      isTextStreaming: false,
+      timestamp: 0,
+      toolInvocations,
+    }),
+  )
+  const activeTextMarkup = renderToStaticMarkup(
+    createElement(AssistantMessage, {
+      content: '',
+      isStreaming: true,
+      isTextStreaming: true,
+      timestamp: 0,
+      toolInvocations,
+    }),
+  )
+
+  assert.match(idleMarkup, /Reading example.ts/u)
+  assert.match(idleMarkup, /Thinking/u)
+  assert.match(activeTextMarkup, /Reading example.ts/u)
+  assert.doesNotMatch(activeTextMarkup, /Thinking/u)
+})
+
 test('chat markdown strips streamed style, script, event, and inline-style injection', () => {
   const markup = renderMarkdown(
     '<style>body { display: none }</style><script>alert("xss")</script><div style="position:fixed" onclick="alert(1)">Visible text</div>',

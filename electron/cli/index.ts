@@ -99,7 +99,7 @@ async function resolveDefaultProviderAndModel(options: CliOptions): Promise<{
   modelId: string
   reasoningEffort: ReasoningEffort
 }> {
-  const snapshot = await getTideCodeSystemModels()
+  const snapshot = await getTideCodeSystemModels(options.mode || 'agent')
 
   if (options.model) {
     const match = findSystemModel(snapshot.allModels, options.model, options.provider)

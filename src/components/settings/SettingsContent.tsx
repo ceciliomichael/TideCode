@@ -113,6 +113,7 @@ export function SettingsContent({
         ) : activeItemId === 'settings-item7' ? (
           <UpdatesSettingsPanel
             autoDownloadUpdates={appSettings.autoDownloadUpdates}
+            checkForUpdatesOnLaunch={appSettings.checkForUpdatesOnLaunch}
             isLoading={generalSettings.isLoading}
             onUpdateSettings={generalSettings.onUpdateSettings}
           />

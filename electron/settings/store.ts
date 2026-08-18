@@ -516,6 +516,10 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     typeof input?.autoDownloadUpdates === 'boolean'
       ? input.autoDownloadUpdates
       : DEFAULT_APP_SETTINGS.autoDownloadUpdates
+  const checkForUpdatesOnLaunch =
+    typeof input?.checkForUpdatesOnLaunch === 'boolean'
+      ? input.checkForUpdatesOnLaunch
+      : DEFAULT_APP_SETTINGS.checkForUpdatesOnLaunch
   const chatModelId = typeof input?.chatModelId === 'string' ? input.chatModelId.trim() : DEFAULT_APP_SETTINGS.chatModelId
   const chatModelProviderId = isChatProviderId(input?.chatModelProviderId)
     ? input.chatModelProviderId
@@ -626,6 +630,7 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
   return {
     appearance,
     autoDownloadUpdates,
+    checkForUpdatesOnLaunch,
     chatModelId,
     chatModelProviderId,
     chatModelLabel,

@@ -1,5 +1,5 @@
-import { FolderPlus, Settings, SquarePen } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react'
+import { Download, FolderPlus, LoaderCircle, RotateCw, Settings, SquarePen } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type DragEvent } from 'react'
 import { getExternalFilePaths } from '../../lib/externalFileDrop'
 import { Tooltip } from '../Tooltip'
 import type { ConversationGroupPreview } from '../../types/chat'
@@ -7,6 +7,11 @@ import { ConversationHistoryList } from './ConversationHistoryList'
 import { NewThreadProjectDialog } from './NewThreadProjectDialog'
 import { ProjectThreadSelector } from './ProjectThreadSelector'
 import { SidebarThreadSearch } from './SidebarThreadSearch'
+import {
+  getUpdatesSessionSnapshot,
+  requestUpdateDownload,
+  subscribeToUpdatesSession,
+} from '../settings/updates/updatesSessionStore'
 import {
   ALL_PROJECTS_FILTER_ID,
   ARCHIVED_PROJECT_FILTER_ID,
@@ -57,6 +62,25 @@ export function SidebarPanel({
   const [internalSelectedProjectId, setInternalSelectedProjectId] = useState(ALL_PROJECTS_FILTER_ID)
   const [searchQuery, setSearchQuery] = useState('')
   const [isNewThreadProjectDialogOpen, setIsNewThreadProjectDialogOpen] = useState(false)
+  const updatesSession = useSyncExternalStore(
+    subscribeToUpdatesSession,
+    getUpdatesSessionSnapshot,
+    getUpdatesSessionSnapshot,
+  )
+  const updateIsAvailable = updatesSession.result?.updateAvailable === true
+  const updateIsDownloading =
+    updatesSession.checkState === 'downloading' || updatesSession.downloadState === 'downloading'
+  const updateIsReady = updatesSession.downloadState === 'downloaded'
+  const updateVersion =
+    updatesSession.pendingVersion ??
+    updatesSession.result?.downloadVersion ??
+    updatesSession.result?.latestVersion ??
+    null
+  const updateActionLabel = updateIsReady
+    ? `Restart to install TideCode ${updateVersion ?? 'update'}`
+    : updateIsDownloading
+      ? `Downloading TideCode ${updateVersion ?? 'update'}`
+      : `Download TideCode ${updateVersion ?? 'update'}`
 
   const activeSelectedProjectId = controlledSelectedProjectId ?? internalSelectedProjectId
   const handleSelectProject = useCallback(
@@ -91,6 +115,17 @@ export function SidebarPanel({
     'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-150 ease-out hover:bg-[var(--sidebar-hover-surface)] hover:text-foreground'
   const footerButtonClassName =
     'flex min-h-11 w-full items-center gap-3 rounded-xl px-2 py-3 text-left text-sm font-medium text-foreground transition-colors duration-200 ease-out hover:bg-[var(--sidebar-hover-surface)]'
+  const handleSidebarUpdateAction = useCallback(() => {
+    if (updateIsReady) {
+      void window.tidecodeUpdates.restartToUpdate().catch((error) => {
+        console.error('Unable to restart TideCode for update.', error)
+      })
+      return
+    }
+
+    requestUpdateDownload()
+  }, [updateIsReady])
+
   const handleWorkspaceFolderDragOver = useCallback((event: DragEvent<HTMLElement>) => {
     const hasExternalFiles = Array.from(event.dataTransfer.types).includes('Files')
     if (!hasExternalFiles) {
@@ -202,15 +237,44 @@ export function SidebarPanel({
       </div>
 
       <div className="pt-4 pr-6 md:pr-7">
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          className={footerButtonClassName}
-          aria-label="Open settings"
-        >
-          <Settings size={18} strokeWidth={2.2} className="shrink-0 text-muted-foreground" />
-          <span>Settings</span>
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className={`${footerButtonClassName}${updateIsAvailable ? ' pr-24' : ''}`}
+            aria-label="Open settings"
+          >
+            <Settings size={18} strokeWidth={2.2} className="shrink-0 text-muted-foreground" />
+            <span>Settings</span>
+          </button>
+
+          {updateIsAvailable ? (
+            <Tooltip content={updateActionLabel} side="right">
+              <button
+                type="button"
+                onClick={handleSidebarUpdateAction}
+                disabled={updateIsDownloading}
+                className="absolute right-1.5 top-1/2 z-10 inline-flex h-8 -translate-y-1/2 items-center gap-1.5 rounded-lg border border-brand-border bg-brand-soft px-2.5 text-xs font-semibold text-brand-soft-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label={updateActionLabel}
+              >
+                {updateIsReady ? (
+                  <RotateCw size={14} strokeWidth={2.2} aria-hidden="true" />
+                ) : updateIsDownloading ? (
+                  <LoaderCircle size={14} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <Download size={14} strokeWidth={2.2} aria-hidden="true" />
+                )}
+                <span>
+                  {updateIsReady
+                    ? 'Restart'
+                    : updateIsDownloading && updatesSession.downloadPercent !== null
+                      ? `${Math.round(updatesSession.downloadPercent)}%`
+                      : 'New update'}
+                </span>
+              </button>
+            </Tooltip>
+          ) : null}
+        </div>
       </div>
 
       {isNewThreadProjectDialogOpen ? (

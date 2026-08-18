@@ -33,12 +33,13 @@ test('agent prompt puts tool decisions before scoped execution', async () => {
     assert.match(prompt, /2\. Keep it inside the latest user request/u)
     assert.match(prompt, /3\. Use the narrowest exact tool and the smallest complete sequence/u)
     assert.match(prompt, /4\. Verify the requested result after the final mutation/u)
-    assert.match(prompt, /Need a workspace fact: use the narrowest/u)
-    assert.match(prompt, /Need a source change: read the file first, then use `edit`/u)
-    assert.match(prompt, /Every tool call must have one clear purpose and use its exact schema/u)
+    assert.match(prompt, /`read`: inspect one known file or one known directory/u)
+    assert.match(prompt, /`edit`: make a targeted change to an existing text file/u)
+    assert.match(prompt, /`execute_terminal` is for running real commands\/processes, never as a substitute/u)
+    assert.match(prompt, /Do not use terminal commands such as/u)
+    assert.match(prompt, /Every call has one clear purpose and uses its exact schema/u)
     assert.match(prompt, /If a tool fails, use its evidence to change the next action/u)
     assert.match(prompt, /Answer first/u)
-    assert.match(prompt, /Filesystem and plan targets use `path`/u)
     assert.match(prompt, /<intent_rules/u)
     assert.doesNotMatch(prompt, /global ~\/\.agents|C:\\Users\\[^\s]+\\\.agents/iu)
     assert.match(prompt, /Latest compatible user request and current source evidence win/u)
@@ -47,9 +48,8 @@ test('agent prompt puts tool decisions before scoped execution', async () => {
     assert.match(prompt, /Memory is workspace-wide but may be stale/u)
     assert.match(prompt, /Write only durable decisions, non-obvious conventions, or reusable solved causes/u)
     assert.doesNotMatch(prompt, /identify the most impactful change that matches the request, and do it/u)
-    assert.match(prompt, /MCP capabilities are dynamic/u)
-    assert.match(prompt, /mcp_tool_search/u)
-    assert.match(prompt, /execute_mcp/u)
+    assert.match(prompt, /`mcp_tool_search`: discover a connected-service capability/u)
+    assert.match(prompt, /`execute_mcp`: invoke only the exact MCP tool returned by discovery/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -77,6 +77,7 @@ test('prompt assembly has one stable priority layer before mode and workspace co
     'agent_mode_prompt',
     'shared_mindset_prompt',
   ])
+  assert.ok(!componentIds.includes('shared_tooling_prompt'))
   assert.ok(
     breakdown.systemPrompt.indexOf('<decision_priority') <
       breakdown.systemPrompt.indexOf('<workspace_context>'),
@@ -90,23 +91,15 @@ test('Code Mode prompt exposes only its meta-tool surface and compact async cont
 
   assert.match(codeModePrompt, /<agent_code_mode_rules/u)
   assert.match(codeModePrompt, /The only model-facing tool in this turn is `code_mode`/u)
-  assert.match(codeModePrompt, /tools\.tool_search\(\{ query \}\)/u)
   assert.match(codeModePrompt, /<decision_priority/u)
-  assert.ok(codeModePrompt.includes('Write boring sequential JavaScript'))
-  assert.ok(codeModePrompt.includes('documented `tools.*` APIs'))
-  assert.ok(codeModePrompt.includes('temporary asynchronous JavaScript program'))
-  assert.ok(codeModePrompt.includes('tool-only worker'))
-  assert.ok(codeModePrompt.includes('must go through the documented `tools.*` APIs'))
-  assert.doesNotMatch(codeModePrompt, /available runtime APIs/u)
-  assert.ok(codeModePrompt.includes('await each `tools.*` call'))
-  assert.ok(codeModePrompt.includes('Every `path` argument is exactly one existing file or directory path'))
-  assert.ok(codeModePrompt.includes('For source changes, use `tools.edit({ path, edits })`'))
-  assert.match(codeModePrompt, /Every hunk requires complete `targetContent` and `replacementContent`/u)
-  assert.doesNotMatch(codeModePrompt, /tools\.patch|`patch`/u)
+  assert.match(codeModePrompt, /Treat the `code_mode` tool description as the authoritative contract/u)
+  assert.match(codeModePrompt, /smallest complete inspect, mutate, or verify sequence/u)
+  assert.doesNotMatch(codeModePrompt, /Unavailable host\/runtime APIs|Await every `tools\.\*` call|tools\.tool_search/u)
+  assert.doesNotMatch(codeModePrompt, /Every `path` argument|targetContent|replacementContent/u)
   assert.doesNotMatch(codeModePrompt, /mcp_tool_search|execute_mcp/u)
-  assert.doesNotMatch(codeModePrompt, /inspect with `list`, `glob`, or `grep`/u)
-  assert.ok(approximateTokenCount(codeModePrompt) < 1_900)
-  assert.match(hybridPrompt, /tools\.tool_search/u)
+  assert.ok(approximateTokenCount(codeModePrompt) < 1_500)
+  assert.match(hybridPrompt, /Use a direct tool for one simple operation; use `code_mode` for related calls/u)
+  assert.match(hybridPrompt, /tool description as authoritative for its inner APIs/u)
   assert.doesNotMatch(directPrompt, /<agent_code_mode_rules/u)
 })
 
@@ -121,7 +114,7 @@ test('plan prompt uses plan tools for the full artifact and keeps the saved plan
     assert.doesNotMatch(prompt, /<intent_rules/u)
     assert.doesNotMatch(prompt, /global ~\/\.agents|C:\\Users\\[^\s]+\\\.agents/iu)
     assert.match(prompt, /Available surface: read-only workspace inspection/u)
-    assert.match(prompt, /Source mutation tools are unavailable/u)
+    assert.match(prompt, /Source mutation and terminal tools are unavailable/u)
     assert.doesNotMatch(prompt, /terminal commands/iu)
     assert.doesNotMatch(prompt, /<terminal_environment>/u)
     assert.match(prompt, /Use Plan mode only when the user wants a plan/u)
@@ -134,9 +127,10 @@ test('plan prompt uses plan tools for the full artifact and keeps the saved plan
     assert.doesNotMatch(prompt, /relentless planning interviewer/u)
     assert.doesNotMatch(prompt, /initial prompt as a high-level proposal/u)
     assert.match(prompt, /After saving, say only that the plan is visible in preview/u)
-    assert.match(prompt, /MCP capabilities are dynamic/u)
-    assert.match(prompt, /mcp_tool_search/u)
-    assert.match(prompt, /execute_mcp/u)
+    assert.match(prompt, /`mcp_tool_search`: discover a connected-service capability/u)
+    assert.match(prompt, /`execute_mcp`: invoke only an exact discovered MCP tool/u)
+    assert.match(prompt, /`plan_create`: after planning has converged/u)
+    assert.match(prompt, /`plan_edit`: revise the exact existing Tidecode plan artifact/u)
 
     const planPromptSource = await fs.readFile(
       path.join(

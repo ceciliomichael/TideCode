@@ -130,6 +130,7 @@ export function createTerminalChatEventSink(options: TerminalEventSinkOptions = 
         toolStartedAt.set(event.invocationId, event.startedAt)
         if (options.presentation) {
           completePresentedReasoningBoundary()
+          options.presentation.onToolStarted(event.toolName)
           return
         }
         break

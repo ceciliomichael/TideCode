@@ -799,13 +799,18 @@ export function drainUnreadTerminalOutput(session: ThreadAiSession) {
 }
 
 export function encodeTerminalInput(text: string | undefined, keys: string[] | undefined) {
-  const normalizedText = text ?? "";
-  if (normalizedText.length > MAX_INTERACTION_TEXT_LENGTH) {
+  const rawText = text ?? "";
+  if (rawText.length > MAX_INTERACTION_TEXT_LENGTH) {
     throw new Error(`Interactive terminal input cannot exceed ${MAX_INTERACTION_TEXT_LENGTH} characters.`);
   }
-  if (normalizedText.includes("\u0000")) {
+  if (rawText.includes("\u0000")) {
     throw new Error("Interactive terminal input cannot contain a null character.");
   }
+
+  // PTY Enter is carriage return. Normalize model-friendly text newlines so
+  // line-oriented console readers such as PowerShell [Console]::In.ReadLine()
+  // receive the same input as an actual Enter keypress.
+  const normalizedText = rawText.replace(/\r\n|\n/gu, "\r");
 
   const keyMap: Record<string, string> = {
     ALT_LEFT: "\u001B[D",
@@ -817,6 +822,7 @@ export function encodeTerminalInput(text: string | undefined, keys: string[] | u
     DOWN: "\u001B[B",
     END: "\u001B[F",
     ENTER: "\r",
+    RETURN: "\r",
     ESC: "\u001B",
     HOME: "\u001B[H",
     LEFT: "\u001B[D",

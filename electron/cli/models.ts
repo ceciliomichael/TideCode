@@ -1,4 +1,4 @@
-import type { ChatProviderId, ConfigurableProviderModel, ReasoningEffort } from '../../src/types/chat'
+import type { AppSettings, ChatMode, ChatProviderId, ConfigurableProviderModel, ReasoningEffort } from '../../src/types/chat'
 import { listCatalogModels } from '../models/catalog/catalog'
 import { listStoredCustomModels } from '../models/store'
 import {
@@ -68,7 +68,60 @@ function toSystemModelItem(
   }
 }
 
-export async function getTideCodeSystemModels(): Promise<SystemModelsSnapshot> {
+type CliDefaultModelSettings = Pick<
+  AppSettings,
+  | 'agentModelId'
+  | 'agentModelProviderId'
+  | 'chatModelId'
+  | 'chatModelProviderId'
+  | 'chatReasoningEffort'
+  | 'planModelId'
+  | 'planModelProviderId'
+>
+
+export function resolveCliDefaultModelSelection(
+  chatMode: ChatMode,
+  allModels: readonly SystemModelItem[],
+  settings: CliDefaultModelSettings | null | undefined,
+) {
+  const configuredModels = allModels.filter((model) => model.isConfigured)
+  const modeModelId = chatMode === 'plan' ? settings?.planModelId : settings?.agentModelId
+  const modeProviderId = chatMode === 'plan' ? settings?.planModelProviderId : settings?.agentModelProviderId
+  let defaultModelId = modeModelId?.trim() || settings?.chatModelId?.trim() || 'claude-3-7-sonnet'
+  let defaultProviderId: ChatProviderId = modeProviderId ?? settings?.chatModelProviderId ?? 'anthropic'
+
+  let foundMatch = allModels.find(
+    (model) =>
+      model.providerId === defaultProviderId &&
+      (model.apiModelId.toLowerCase() === defaultModelId.toLowerCase() || model.id.toLowerCase() === defaultModelId.toLowerCase()),
+  )
+
+  if (!foundMatch) {
+    foundMatch = configuredModels.find(
+      (model) => model.apiModelId.toLowerCase() === defaultModelId.toLowerCase() || model.id.toLowerCase() === defaultModelId.toLowerCase(),
+    )
+  }
+
+  if (!foundMatch && configuredModels.length > 0) foundMatch = configuredModels[0]
+
+  if (foundMatch) {
+    defaultModelId = foundMatch.apiModelId
+    defaultProviderId = foundMatch.providerId
+  }
+
+  const storedReasoningEffort = settings?.chatReasoningEffort ?? 'medium'
+  const selectedReasoningEffort = foundMatch
+    ? resolveReasoningEffortTransition({
+        currentEffort: storedReasoningEffort,
+        defaultEffort: foundMatch.defaultReasoningEffort,
+        supportedEfforts: foundMatch.reasoningEfforts,
+      })
+    : storedReasoningEffort
+
+  return { defaultModelId, defaultProviderId, selectedReasoningEffort }
+}
+
+export async function getTideCodeSystemModels(chatMode: ChatMode = 'agent'): Promise<SystemModelsSnapshot> {
   const [storedApiKeyProviders, codexStatus, customModels, storedSettings] = await Promise.all([
     readStoredApiKeyProviders().catch(() => ({} as StoredApiKeyProviders)),
     getCodexProviderStatus(false).catch(() => ({ isAuthenticated: false })),
@@ -180,44 +233,12 @@ export async function getTideCodeSystemModels(): Promise<SystemModelsSnapshot> {
     })
   }
 
-  const configuredModels = allModels.filter((m) => m.isConfigured)
-
-  // 4. Resolve default model from Stored App Settings or first configured provider
-  let defaultModelId = storedSettings?.agentModelId || storedSettings?.chatModelId || 'claude-3-7-sonnet'
-  let defaultProviderId: ChatProviderId = (storedSettings?.agentModelProviderId || storedSettings?.chatModelProviderId || 'anthropic') as ChatProviderId
-
-  // First try matching both model ID and provider ID
-  let foundMatch = allModels.find(
-    (m) =>
-      m.providerId === defaultProviderId &&
-      (m.apiModelId.toLowerCase() === defaultModelId.toLowerCase() || m.id.toLowerCase() === defaultModelId.toLowerCase()),
+  const configuredModels = allModels.filter((model) => model.isConfigured)
+  const { defaultModelId, defaultProviderId, selectedReasoningEffort } = resolveCliDefaultModelSelection(
+    chatMode,
+    allModels,
+    storedSettings,
   )
-
-  // If not found, try matching any configured model with that ID
-  if (!foundMatch) {
-    foundMatch = configuredModels.find(
-      (m) => m.apiModelId.toLowerCase() === defaultModelId.toLowerCase() || m.id.toLowerCase() === defaultModelId.toLowerCase(),
-    )
-  }
-
-  // If still not found, fallback to first configured model
-  if (!foundMatch && configuredModels.length > 0) {
-    foundMatch = configuredModels[0]
-  }
-
-  if (foundMatch) {
-    defaultModelId = foundMatch.apiModelId
-    defaultProviderId = foundMatch.providerId
-  }
-
-  const storedReasoningEffort = storedSettings?.chatReasoningEffort ?? 'medium'
-  const selectedReasoningEffort = foundMatch
-    ? resolveReasoningEffortTransition({
-        currentEffort: storedReasoningEffort,
-        defaultEffort: foundMatch.defaultReasoningEffort,
-        supportedEfforts: foundMatch.reasoningEfforts,
-      })
-    : storedReasoningEffort
 
   return {
     allModels,

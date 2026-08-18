@@ -30,6 +30,7 @@ const INITIAL_UPDATES_SESSION_SNAPSHOT: UpdatesSessionSnapshot = {
 
 let updatesSessionSnapshot = INITIAL_UPDATES_SESSION_SNAPSHOT
 let latestRequestId = 0
+let hasRequestedUpdateCheck = false
 const listeners = new Set<() => void>()
 let hasHydratedCachedUpdate = false
 let cachedUpdateHydrationPromise: Promise<void> | null = null
@@ -133,6 +134,7 @@ function subscribeToMainProcessState() {
 
 export function requestUpdateCheck() {
   subscribeToMainProcessState()
+  hasRequestedUpdateCheck = true
   void hydrateCachedUpdate()
   const requestId = latestRequestId + 1
   latestRequestId = requestId
@@ -208,6 +210,14 @@ export function requestUpdateCheck() {
   })
 }
 
+export function requestUpdateCheckForSettingsOpen() {
+  if (updatesSessionSnapshot.hasAutoChecked) {
+    return
+  }
+
+  requestUpdateCheck()
+}
+
 export function requestUpdateDownload() {
   subscribeToMainProcessState()
   const latestResult = updatesSessionSnapshot.result
@@ -274,6 +284,10 @@ export function requestAutomaticUpdateCheck() {
   }
 
   updateSnapshot({ hasAutoChecked: true })
+  if (hasRequestedUpdateCheck) {
+    return
+  }
+
   void hydrateCachedUpdate()
   requestUpdateCheck()
 }

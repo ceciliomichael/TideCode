@@ -297,6 +297,10 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
       typeof candidate?.autoDownloadUpdates === 'boolean'
         ? candidate.autoDownloadUpdates
         : DEFAULT_APP_SETTINGS.autoDownloadUpdates,
+    checkForUpdatesOnLaunch:
+      typeof candidate?.checkForUpdatesOnLaunch === 'boolean'
+        ? candidate.checkForUpdatesOnLaunch
+        : DEFAULT_APP_SETTINGS.checkForUpdatesOnLaunch,
     chatModelId: typeof candidate?.chatModelId === 'string' ? candidate.chatModelId.trim() : DEFAULT_APP_SETTINGS.chatModelId,
     chatModelProviderId: isChatProviderId(candidate?.chatModelProviderId)
       ? candidate.chatModelProviderId

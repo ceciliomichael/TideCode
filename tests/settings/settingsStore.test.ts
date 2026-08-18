@@ -10,6 +10,7 @@ function buildFullStoredSettings() {
   return {
     ...DEFAULT_APP_SETTINGS,
     appearance: 'dark' as const,
+    checkForUpdatesOnLaunch: false,
     chatModelId: 'gpt-5.4',
     chatModelProviderId: 'codex' as const,
     chatModelLabel: 'gpt-5.4',
@@ -98,6 +99,7 @@ test('updateStoredSettings preserves saved preferences when the cache is availab
     const loadedSettings = await getStoredSettings()
 
     assert.equal(loadedSettings.appearance, 'dark')
+    assert.equal(loadedSettings.checkForUpdatesOnLaunch, false)
     assert.equal(loadedSettings.chatModelId, 'gpt-5.4')
     assert.equal(loadedSettings.conversationModelPreferences['thread-agent']?.chatMode, 'agent')
 
@@ -108,6 +110,7 @@ test('updateStoredSettings preserves saved preferences when the cache is availab
     const updatedSettings = await updateStoredSettings({ appearance: 'light' })
 
     assert.equal(updatedSettings.appearance, 'light')
+    assert.equal(updatedSettings.checkForUpdatesOnLaunch, false)
     assert.equal(updatedSettings.chatModelId, 'gpt-5.4')
     assert.equal(updatedSettings.chatModelProviderId, 'codex')
     assert.equal(updatedSettings.language, 'fil-PH')
@@ -115,6 +118,7 @@ test('updateStoredSettings preserves saved preferences when the cache is availab
 
     const persistedSettings = JSON.parse(await originalReadFile(settingsFilePath, 'utf8')) as typeof initialSettings
     assert.equal(persistedSettings.appearance, 'light')
+    assert.equal(persistedSettings.checkForUpdatesOnLaunch, false)
     assert.equal(persistedSettings.chatModelId, 'gpt-5.4')
     assert.equal(persistedSettings.chatModelProviderId, 'codex')
   } finally {

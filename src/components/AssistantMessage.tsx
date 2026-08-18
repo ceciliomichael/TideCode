@@ -119,7 +119,6 @@ export function AssistantMessage({
     isStreaming &&
     !isCompactionInProgress &&
     !isTextStreaming &&
-    !hasVisibleToolBlocks &&
     !hasActiveReasoningBlock;
   const effectiveWaitingIndicatorVariant = resolveAssistantWaitingIndicatorVariant({
     hasVisibleAssistantText,

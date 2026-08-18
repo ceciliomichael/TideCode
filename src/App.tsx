@@ -8,6 +8,7 @@ import { useDocumentTheme } from './hooks/useDocumentTheme'
 import { useProvidersState } from './hooks/useProvidersState'
 import type { TideCodeLaunchRequest } from './lib/appLaunchRequest'
 import { resolveBootConversationLaunchState } from './pages/chatInterface/chatLaunchState'
+import { hydrateCachedUpdate, requestAutomaticUpdateCheck } from './components/settings/updates/updatesSessionStore'
 
 type AppScreen = 'chat' | 'settings'
 
@@ -23,6 +24,7 @@ export default function App() {
   const providersState = useProvidersState()
   const { refreshInBackground } = providersState
   const [diffPanelWidth, setDiffPanelWidth] = useState(settings.diffPanelWidth)
+  const [checkForUpdatesOnLaunchAtBoot] = useState(() => settings.checkForUpdatesOnLaunch)
   const [bootConversationLaunchState] = useState(() => resolveBootConversationLaunchState(settings))
   const persistConversationLaunchPreference = useCallback(
     (input: {
@@ -78,6 +80,13 @@ export default function App() {
   )
 
   const resolvedTheme = useDocumentTheme(settings.appearance)
+
+  useEffect(() => {
+    void hydrateCachedUpdate()
+    if (checkForUpdatesOnLaunchAtBoot) {
+      requestAutomaticUpdateCheck()
+    }
+  }, [checkForUpdatesOnLaunchAtBoot])
 
   useEffect(() => {
     return window.tidecodeApp.onLaunchRequest((request) => {

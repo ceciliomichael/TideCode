@@ -9,6 +9,7 @@ import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from './contextCompactionSettings
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   appearance: DEFAULT_APP_APPEARANCE,
   autoDownloadUpdates: false,
+  checkForUpdatesOnLaunch: true,
   chatModelId: '',
   chatModelProviderId: null,
   chatModelLabel: '',
