@@ -97,8 +97,6 @@ export function SidebarPanel({
 
   const actionButtonClassName =
     'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-150 ease-out hover:bg-[var(--sidebar-hover-surface)] hover:text-foreground'
-  const footerButtonClassName =
-    'flex min-h-11 w-full items-center gap-3 rounded-xl px-2 py-3 text-left text-sm font-medium text-foreground transition-colors duration-200 ease-out hover:bg-[var(--sidebar-hover-surface)]'
 
   const handleWorkspaceFolderDragOver = useCallback((event: DragEvent<HTMLElement>) => {
     const hasExternalFiles = Array.from(event.dataTransfer.types).includes('Files')
@@ -211,11 +209,11 @@ export function SidebarPanel({
       </div>
 
       <div className="pt-4 pr-6 md:pr-7">
-        <div className="relative">
+        <div className="flex min-h-11 w-full items-center rounded-xl transition-colors duration-200 ease-out hover:bg-[var(--sidebar-hover-surface)]">
           <button
             type="button"
             onClick={() => onOpenSettings()}
-            className={`${footerButtonClassName}${updateIsAvailable ? ' pr-12' : ''}`}
+            className="flex min-h-11 min-w-0 flex-1 items-center gap-3 px-2 py-3 text-left text-sm font-medium text-foreground"
             aria-label="Open settings"
           >
             <Settings size={18} strokeWidth={2.2} className="shrink-0 text-muted-foreground" />
@@ -223,16 +221,14 @@ export function SidebarPanel({
           </button>
 
           {updateIsAvailable ? (
-            <Tooltip content="Open Updates" side="right">
-              <button
-                type="button"
-                onClick={() => onOpenSettings('settings-item7')}
-                className="absolute right-1.5 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-brand-border bg-brand-soft text-brand-soft-foreground transition-colors hover:bg-accent-hover"
-                aria-label="Open Updates"
-              >
-                <Download size={15} strokeWidth={2.2} aria-hidden="true" />
-              </button>
-            </Tooltip>
+            <button
+              type="button"
+              onClick={() => onOpenSettings('settings-item7')}
+              className="mr-1.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-soft p-0 text-brand-soft-foreground transition-colors hover:bg-accent-hover"
+              aria-label="Open Updates"
+            >
+                                                        <Download size={16} strokeWidth={2} className="block shrink-0" aria-hidden="true" />
+            </button>
           ) : null}
         </div>
       </div>
