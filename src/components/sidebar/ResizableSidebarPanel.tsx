@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { clampSidebarWidth } from '../../lib/sidebarSizing'
+import { useIsMobileViewport } from '../../hooks/useIsMobileViewport'
 
 interface ResizableSidebarPanelProps {
   disableSidebarTransition?: boolean
@@ -18,6 +19,7 @@ export function ResizableSidebarPanel({
   sidebarWidth,
   children,
 }: ResizableSidebarPanelProps) {
+  const isMobileViewport = useIsMobileViewport()
   const [renderedSidebarWidth, setRenderedSidebarWidth] = useState(() =>
     typeof window === 'undefined' ? sidebarWidth : clampSidebarWidth(sidebarWidth, window.innerWidth),
   )
@@ -94,32 +96,45 @@ export function ResizableSidebarPanel({
 
   return (
     <div className="relative flex h-full min-w-0 flex-1 overflow-hidden">
-      <div
-        data-sidebar-root="true"
-        className={[
-          'hidden h-full shrink-0 overflow-hidden lg:flex',
-          disableSidebarTransition || isResizing ? '' : 'transition-[width,opacity] duration-300 ease-out',
-          isSidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
-        ].join(' ')}
-        style={{ width: `${visibleSidebarWidth}px` }}
-        aria-hidden={!isSidebarOpen}
-      >
-        <div className="h-full shrink-0" style={{ width: `${renderedSidebarWidth}px` }}>
-          {sidebar}
-        </div>
-      </div>
-
-      <div className="relative flex min-w-0 flex-1 z-10">
+      {isMobileViewport && isSidebarOpen ? (
         <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize sidebar"
-          onPointerDown={handlePointerDown}
+          data-sidebar-root="true"
+          className="absolute inset-0 z-50 flex h-full w-full overflow-hidden bg-[var(--sidebar-panel-surface)]"
+        >
+          <div className="h-full min-w-0 flex-1">{sidebar}</div>
+        </div>
+      ) : null}
+
+      {!isMobileViewport ? (
+        <div
+          data-sidebar-root="true"
           className={[
-            'absolute inset-y-0 left-0 z-20 hidden w-3 -translate-x-1/2 cursor-col-resize lg:block',
-            isSidebarOpen ? '' : 'pointer-events-none opacity-0',
+            'flex h-full shrink-0 overflow-hidden',
+            disableSidebarTransition || isResizing ? '' : 'transition-[width,opacity] duration-300 ease-out',
+            isSidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
           ].join(' ')}
-        />
+          style={{ width: `${visibleSidebarWidth}px` }}
+          aria-hidden={!isSidebarOpen}
+        >
+          <div className="h-full shrink-0" style={{ width: `${renderedSidebarWidth}px` }}>
+            {sidebar}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="relative z-10 flex min-w-0 flex-1">
+        {!isMobileViewport ? (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar"
+            onPointerDown={handlePointerDown}
+            className={[
+              'absolute inset-y-0 left-0 z-20 w-3 -translate-x-1/2 cursor-col-resize',
+              isSidebarOpen ? '' : 'pointer-events-none opacity-0',
+            ].join(' ')}
+          />
+        ) : null}
         {children}
       </div>
     </div>

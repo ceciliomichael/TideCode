@@ -25,6 +25,8 @@ import { installLatestRequestedUpdate } from './updates/externalUpdateRequest'
 import { hasExternalUpdateRequest } from '../src/lib/updateRequest'
 import { parseTideCodeLaunchRequest, type TideCodeLaunchRequest } from '../src/lib/appLaunchRequest'
 import { configureTideCodeRuntimeRoot } from './runtime/runtimeRoot'
+import { RemoteWorkspaceHost } from './remote/host'
+import { registerRemoteWorkspaceHostIpc } from './remote/ipc'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // The built directory structure
@@ -51,6 +53,15 @@ app.commandLine.appendSwitch(
 )
 
 let win: BrowserWindow | null
+const configuredRemotePort = Number.parseInt(process.env.TIDECODE_REMOTE_PORT ?? '', 10)
+const remoteWorkspaceHost = new RemoteWorkspaceHost({
+  devServerUrl: VITE_DEV_SERVER_URL,
+  getWindow: () => win,
+  portOverride: Number.isInteger(configuredRemotePort) && configuredRemotePort > 0 && configuredRemotePort <= 65_535
+    ? configuredRemotePort
+    : undefined,
+  rendererDist: RENDERER_DIST,
+})
 const activeChatStreamProviders = new Map<string, StartChatStreamInput['providerId']>()
 const mcpServerManager = getMcpServerManager()
 onProvidersStateChanged(() => {
@@ -145,6 +156,19 @@ async function createWindow(initialLaunchRequest: TideCodeLaunchRequest | null =
   currentWindow.webContents.on('did-start-loading', () => {
     closeAllTerminalSessionsForWebContents(currentWindow.webContents)
   })
+  currentWindow.once('closed', () => {
+    if (win === currentWindow) win = null
+    void remoteWorkspaceHost.stop().catch((error) => {
+      console.error('Failed to stop TideCode Remote Workspace host.', error)
+    })
+  })
+
+  if (!currentWindow.isDestroyed() && currentWindow.webContents.isLoading()) {
+    await new Promise<void>((resolve) => currentWindow.webContents.once('did-finish-load', () => resolve()))
+  }
+  await remoteWorkspaceHost.start().catch((error) => {
+    console.error('Failed to start TideCode Remote Workspace host.', error)
+  })
 }
 
 function registerApplicationIpcHandlers() {
@@ -189,13 +213,17 @@ app.on('before-quit', (event) => {
   disposeProjectPathWatcher()
   disposeSourceControlWatchers()
   disposeKanbanBoardWatchers()
-  void closeAllTerminalSessions().catch((error) => {
-    console.error('Failed to close terminal sessions on quit', error)
-  })
-  void flushStoredSettingsUpdates()
-    .catch((error) => {
+  void Promise.all([
+    closeAllTerminalSessions().catch((error) => {
+      console.error('Failed to close terminal sessions on quit', error)
+    }),
+    remoteWorkspaceHost.stop().catch((error) => {
+      console.error('Failed to stop TideCode Remote Workspace host on quit.', error)
+    }),
+    flushStoredSettingsUpdates().catch((error) => {
       console.error('Failed to flush settings updates on quit', error)
-    })
+    }),
+  ])
     .finally(() =>
       mcpServerManager
         .dispose()
@@ -219,6 +247,7 @@ app.on('activate', () => {
 app.whenReady().then(async () => {
   registerApplicationIpcHandlers()
   registerMcpHandlers(mcpServerManager)
+  registerRemoteWorkspaceHostIpc(remoteWorkspaceHost, () => win)
   await startProjectPathWatcher((event) => {
     const currentWindow = win
     if (!currentWindow || currentWindow.isDestroyed()) {
@@ -245,7 +274,7 @@ app.whenReady().then(async () => {
     console.error('Failed to preload providers state', error)
   })
 
-  void createWindow(parseTideCodeLaunchRequest(process.argv))
+  await createWindow(parseTideCodeLaunchRequest(process.argv))
   if (hasExternalUpdateRequest(process.argv)) {
     void installLatestRequestedUpdate().catch((error) => {
       console.error('Failed to install the CLI-requested update.', error)

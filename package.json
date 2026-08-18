@@ -77,11 +77,13 @@
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",
     "uuid": "^13.0.0",
+    "ws": "^8.21.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^7.1.1",
     "@typescript-eslint/parser": "^7.1.1",
     "@vitejs/plugin-react": "^4.2.1",

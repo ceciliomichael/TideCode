@@ -284,6 +284,62 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
 
   useEffect(() => {
     let disposed = false
+    const unsubscribe = window.tidecodeHistory.onRemoteChange((event) => {
+      void (async () => {
+        const [nextConversationSummaries, nextFolderSummaries, changedConversation] = await Promise.all([
+          window.tidecodeHistory.listConversations(),
+          window.tidecodeHistory.listFolders(),
+          event.conversationId ? window.tidecodeHistory.getConversation(event.conversationId) : Promise.resolve(null),
+        ])
+        if (disposed) return
+
+        setConversationSummaries(nextConversationSummaries)
+        setFolderSummaries(nextFolderSummaries)
+        const validConversationIds = new Set(nextConversationSummaries.map((summary) => summary.id))
+        setConversationRuntimeStates((currentValue) => {
+          let changed = false
+          const nextValue: ConversationRuntimeStateMap = {}
+          for (const [conversationId, runtimeState] of Object.entries(currentValue)) {
+            if (!validConversationIds.has(conversationId)) {
+              changed = true
+              continue
+            }
+            nextValue[conversationId] = runtimeState
+          }
+          return changed ? nextValue : currentValue
+        })
+        setSelectedFolderId((currentValue) =>
+          currentValue && !nextFolderSummaries.some((folder) => folder.id === currentValue) ? null : currentValue,
+        )
+
+        if (changedConversation) {
+          upsertConversationRecord(changedConversation)
+          if (event.activateConversation) {
+            setActiveConversationSelection(changedConversation)
+          }
+          return
+        }
+
+        if (event.method === 'deleteConversation' && event.conversationId) {
+          setActiveConversationId((currentValue) => {
+            if (currentValue !== event.conversationId) return currentValue
+            setActiveConversationChatMode(null)
+            return null
+          })
+        }
+      })().catch((caughtError) => {
+        console.error('Unable to reconcile remote TideCode history change.', caughtError)
+      })
+    })
+
+    return () => {
+      disposed = true
+      unsubscribe()
+    }
+  }, [setActiveConversationSelection, upsertConversationRecord])
+
+  useEffect(() => {
+    let disposed = false
 
     const applyProjection = (projection: SharedRunProjection) => {
       if (disposed) return

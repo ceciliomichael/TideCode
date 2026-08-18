@@ -51,12 +51,12 @@ export function CodexProviderDialog({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 md:px-4 md:py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-3 sm:p-4">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="codex-provider-dialog-title"
-        className="flex h-full w-full flex-col overflow-hidden border-border bg-surface md:h-auto md:max-h-[calc(100dvh-3rem)] md:max-w-2xl md:rounded-xl md:border md:shadow-soft"
+                className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-soft sm:max-h-[calc(100dvh-2rem)]"
       >
         <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-4 md:px-6">
           <div>

@@ -1,6 +1,8 @@
 @import '@fontsource-variable/google-sans-flex';
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
 @theme {
   --font-sans: 'Google Sans Flex Variable', 'Google Sans Flex', sans-serif;
   --font-mono: Consolas, 'Courier New', monospace;

@@ -4,6 +4,7 @@ import { ModelsSettingsPanel } from './models/ModelsSettingsPanel'
 import { ProvidersSettingsPanel } from './providers/ProvidersSettingsPanel'
 import { SkillsSettingsPanel } from './skills/SkillsSettingsPanel'
 import { MemoizedTaskModelsSettingsPanel } from './taskModels/TaskModelsSettingsPanel'
+import { RemoteSettingsPanel } from './remote/RemoteSettingsPanel'
 import { UpdatesSettingsPanel } from './updates/UpdatesSettingsPanel'
 import { SettingsPlaceholderPanel } from './SettingsPlaceholderPanel'
 import { getSettingsItem, type SettingsItemId } from './settingsItems'
@@ -90,7 +91,7 @@ export function SettingsContent({
   const activeItem = getSettingsItem(activeItemId)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-12 md:px-5 md:pt-16">
+    <div className="scroll-stable flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-14 md:px-5 md:pb-0 md:pt-16">
       <div className="flex w-full justify-center">
         {activeItemId === 'settings-item1' ? (
           <MemoizedGeneralSettingsPanel {...generalSettings} />
@@ -110,6 +111,8 @@ export function SettingsContent({
             providersState={providersSettings.providersState}
             settings={appSettings}
           />
+        ) : activeItemId === 'settings-item8' ? (
+          <RemoteSettingsPanel />
         ) : activeItemId === 'settings-item7' ? (
           <UpdatesSettingsPanel
             autoDownloadUpdates={appSettings.autoDownloadUpdates}

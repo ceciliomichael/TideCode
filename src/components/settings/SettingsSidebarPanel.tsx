@@ -13,7 +13,7 @@ export function SettingsSidebarPanel({
   onSelectItem,
 }: SettingsSidebarPanelProps) {
   return (
-    <aside className="flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] px-4 pb-5 pt-3 md:px-5">
+    <aside className="scroll-stable flex h-full min-w-0 flex-1 flex-col overflow-y-auto bg-[var(--sidebar-panel-surface)] px-4 pb-5 pt-3 md:px-5">
       <div className="pb-4">
         <div className="h-10" aria-hidden="true" />
 
@@ -33,7 +33,7 @@ export function SettingsSidebarPanel({
           </div>
 
           <nav className="mt-3 space-y-2" aria-label="Settings navigation">
-            {SETTINGS_ITEMS.map((item) => {
+            {SETTINGS_ITEMS.filter((item) => item.id !== 'settings-item8' || Boolean(window.tidecodeRemoteHost)).map((item) => {
               const isActive = item.id === activeItemId
 
               return (

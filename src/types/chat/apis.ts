@@ -95,6 +95,7 @@ import type {
   ResizeTerminalSessionInput,
   TerminalDataEvent,
   TerminalExitEvent,
+  TerminalTabClosedEvent,
   WorkspaceExplorerChangeEvent,
   WorkspaceExplorerCreateEntryInput,
   WorkspaceExplorerCreateEntryResult,
@@ -120,6 +121,12 @@ import type {
   WriteTerminalSessionInput,
 } from './workspace'
 
+export interface RemoteHistoryChangeEvent {
+  activateConversation: boolean
+  conversationId: string | null
+  method: string
+}
+
 export interface TideCodeHistoryApi {
   getDraftAgentContextPathSync: () => string
   ensureDraftAgentContext: () => Promise<string>
@@ -127,6 +134,7 @@ export interface TideCodeHistoryApi {
   listConversations: () => Promise<ConversationSummary[]>
   listFolders: () => Promise<ConversationFolderSummary[]>
   onProjectFolderPruned: (listener: (event: ProjectFolderPrunedEvent) => void) => () => void
+  onRemoteChange: (listener: (event: RemoteHistoryChangeEvent) => void) => () => void
   getConversation: (conversationId: string) => Promise<ConversationRecord | null>
   listCompactionMarkers: (conversationId: string) => Promise<ChatCompactionMarker[]>
   getUserMessageCheckpointHistory: (conversationId: string, messageId: string) => Promise<UserMessageRunCheckpoint[]>
@@ -150,6 +158,7 @@ export interface TideCodeHistoryApi {
 export interface TideCodeSettingsApi {
   getInitialSettings: () => AppSettings
   getSettings: () => Promise<AppSettings>
+  onRemoteChange: (listener: (settings: AppSettings) => void) => () => void
   updateSettings: (input: Partial<AppSettings>) => Promise<AppSettings>
 }
 
@@ -241,6 +250,7 @@ export interface TideCodeTerminalApi {
   openExternalLink: (input: OpenExternalTerminalLinkInput) => Promise<void>
   onData: (listener: (event: TerminalDataEvent) => void) => () => void
   onExit: (listener: (event: TerminalExitEvent) => void) => () => void
+  onTabClosed: (listener: (event: TerminalTabClosedEvent) => void) => () => void
   resizeSession: (input: ResizeTerminalSessionInput) => Promise<void>
   writeToSession: (input: WriteTerminalSessionInput) => Promise<void>
 }

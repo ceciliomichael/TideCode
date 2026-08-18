@@ -184,6 +184,13 @@ export interface ResizeTerminalSessionInput {
 
 export interface CloseTerminalSessionInput {
   sessionId: number
+  tabKey?: string | null
+  workspaceRootPath?: string | null
+}
+
+export interface TerminalTabClosedEvent {
+  sessionId: number
+  tabKey: string | null
   workspaceRootPath?: string | null
 }
 

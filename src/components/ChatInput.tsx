@@ -654,7 +654,7 @@ export function ChatInput({
       </div>
 
       {showDetachedFooterControls ? (
-        <div className="mt-2 flex min-w-0 items-center gap-3 px-2">
+<div className="mt-2 hidden min-w-0 items-center gap-3 px-2 md:flex">
           <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2">
             {showRuntimeTargetControl ? (
               <Tooltip content="Select runtime target" hideWhenTriggerExpanded>

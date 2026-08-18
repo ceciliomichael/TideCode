@@ -19,6 +19,7 @@ import type { GitBranchStateController } from '../../hooks/useGitBranchState'
 import type { GitCommitController } from '../../hooks/useGitCommit'
 import type { GitDiffSnapshotController } from '../../hooks/useGitDiffSnapshot'
 import { useWorkspaceRefactorCandidates } from '../../hooks/useWorkspaceRefactorCandidates'
+import { useIsMobileViewport } from '../../hooks/useIsMobileViewport'
 import { useChatMessageQueue } from './useChatMessageQueue'
 import { createQueuedComposerMessage } from './chatComposerQueue'
 import type { QueuedMessageAutoSendReason } from './chatQueueAutoSend'
@@ -43,6 +44,7 @@ import { useChatMessageActions } from './useChatMessageActions'
 import { useConversationNavigationActions } from './useConversationNavigationActions'
 import { buildRuntimeSelection, CHAT_MODE_OPTIONS } from './chatInterfaceRuntime'
 import type { SettingsItemId } from '../../components/settings/settingsItems'
+import { MobileWorkspaceNavigation, type MobileWorkspaceSurface } from './MobileWorkspaceNavigation'
 
 type ChatWorkspaceViewMode = 'chat' | 'kanban'
 
@@ -151,6 +153,8 @@ export function ChatInterfaceContent({
     settings.selectedProjectName,
   ])
 
+  const synchronizeDraftFolder = chatMessages.synchronizeDraftFolder
+
   useEffect(() => {
     if (chatMessages.isLoading || chatMessages.activeConversationId !== null) {
       return
@@ -161,12 +165,12 @@ export function ChatInterfaceContent({
       return
     }
 
-    chatMessages.synchronizeDraftFolder(targetDraftFolderId)
+synchronizeDraftFolder(targetDraftFolderId)
   }, [
     chatMessages.activeConversationId,
     chatMessages.isLoading,
     chatMessages.selectedFolderId,
-    chatMessages.synchronizeDraftFolder,
+synchronizeDraftFolder,
     selectedProjectId,
   ])
 
@@ -290,9 +294,22 @@ export function ChatInterfaceContent({
   const { candidates: refactorCandidates, isLoading: refactorCandidatesLoading } =
     useWorkspaceRefactorCandidates(activeWorkspacePath)
   const [isCompressingChat, setIsCompressingChat] = useState(false)
+  const isMobileViewport = useIsMobileViewport()
   const [workspaceViewMode, setWorkspaceViewMode] = useState<ChatWorkspaceViewMode>('chat')
-  const isKanbanBoardOpen = workspaceViewMode === 'kanban'
+  const [mobileSurface, setMobileSurface] = useState<MobileWorkspaceSurface>('chat')
+  const isKanbanBoardOpen = isMobileViewport ? mobileSurface === 'board' : workspaceViewMode === 'kanban'
+  const isMobileTerminalOpen = isMobileViewport && mobileSurface === 'terminal'
+  const isTerminalSurfaceOpen = isMobileTerminalOpen || (
+    !isMobileViewport && workspaceState.isTerminalOpen && workspaceState.isTerminalFullScreen
+  )
   const isWorkspaceHeaderControlDisabled = isKanbanBoardOpen
+  const setIsSidebarOpen = interfaceController.setIsSidebarOpen
+
+  useEffect(() => {
+    if (!isMobileViewport) return
+    setIsSidebarOpen(false)
+    setMobileSurface('chat')
+  }, [isMobileViewport, setIsSidebarOpen])
   const handleToggleWorkspaceBoard = useCallback(() => {
     if (isKanbanBoardOpen) {
       setWorkspaceViewMode('chat')
@@ -482,6 +499,32 @@ export function ChatInterfaceContent({
     workspaceState,
   })
 
+  const handleMobileSurfaceChange = useCallback((surface: MobileWorkspaceSurface) => {
+    setMobileSurface(surface)
+    setIsSidebarOpen(false)
+  }, [setIsSidebarOpen])
+
+  const handleSidebarConversationSelect = useCallback((conversationId: string) => {
+    handleSelectConversation(conversationId)
+    if (!isMobileViewport) return
+    setMobileSurface('chat')
+    setIsSidebarOpen(false)
+  }, [handleSelectConversation, isMobileViewport, setIsSidebarOpen])
+
+  const handleSidebarCreateConversation = useCallback((folderId?: string | null) => {
+    void handleCreateConversation(folderId)
+    if (!isMobileViewport) return
+    setMobileSurface('chat')
+    setIsSidebarOpen(false)
+  }, [handleCreateConversation, isMobileViewport, setIsSidebarOpen])
+
+  const handleSidebarOpenSettings = useCallback((itemId?: SettingsItemId) => {
+    if (isMobileViewport) setIsSidebarOpen(false)
+    onOpenSettings(itemId)
+  }, [isMobileViewport, onOpenSettings, setIsSidebarOpen])
+
+  const isDesktopWorkspaceTabsPanelOpen = !isMobileViewport && workspaceState.isWorkspaceTabsPanelOpen
+
   const showQueueBlock =
     queuedMessages.length > 0 &&
     typeof removeQueuedMessage === 'function' &&
@@ -493,33 +536,35 @@ export function ChatInterfaceContent({
       isSidebarOpen={interfaceController.isSidebarOpen}
       onSidebarWidthChange={onSidebarWidthChange}
       floatingControls={
-        <WorkspaceFloatingControls
-          isSidebarOpen={interfaceController.isSidebarOpen}
-          onToggleSidebar={interfaceController.handleToggleSidebar}
-          newThreadButton={{
-            onClick: handleCreateWorkspaceConversation,
-          }}
-        />
+        !isMobileViewport || mobileSurface === 'chat' ? (
+          <WorkspaceFloatingControls
+            isSidebarOpen={interfaceController.isSidebarOpen}
+            onToggleSidebar={interfaceController.handleToggleSidebar}
+            newThreadButton={{
+              onClick: handleCreateWorkspaceConversation,
+            }}
+          />
+        ) : null
       }
       sidebar={
         <SidebarPanel
           conversationGroups={chatMessages.conversationGroups}
           isLoading={chatMessages.isLoading}
           onCreateFolder={handleCreateFolder}
-          onCreateConversation={handleCreateConversation}
-           onCreateWorkspaceFolderFromPath={handleCreateWorkspaceFolderFromPath}
-           onArchiveConversation={handleArchiveConversation}
-           onDeleteConversation={handleDeleteConversation}
-           onPinConversation={handlePinConversation}
-           onDeleteFolder={handleDeleteFolder}
-          onOpenSettings={onOpenSettings}
+          onCreateConversation={handleSidebarCreateConversation}
+          onCreateWorkspaceFolderFromPath={handleCreateWorkspaceFolderFromPath}
+          onArchiveConversation={handleArchiveConversation}
+          onDeleteConversation={handleDeleteConversation}
+          onPinConversation={handlePinConversation}
+          onDeleteFolder={handleDeleteFolder}
+          onOpenSettings={handleSidebarOpenSettings}
           onRenameFolder={async (folderId, name) => {
             await chatMessages.renameFolder(folderId, name)
             if (folderId === selectedProjectId) {
               onUpdateSettings({ selectedProjectName: name.trim() || settings.selectedProjectName })
             }
           }}
-          onSelectConversation={handleSelectConversation}
+          onSelectConversation={handleSidebarConversationSelect}
           selectedProjectId={selectedProjectId}
           selectedProjectName={settings.selectedProjectName}
           onSelectProject={handleSelectProject}
@@ -528,38 +573,40 @@ export function ChatInterfaceContent({
       sidebarWidth={sidebarWidth}
     >
       <WorkspacePanel isSidebarOpen={interfaceController.isSidebarOpen} showRightBorder={false}>
-        <ChatHeader
-          title={chatMessages.activeConversationTitle}
-          isSidebarOpen={interfaceController.isSidebarOpen}
-          trailingContent={
-            <ChatWorkspaceHeaderControls
-              addedLineCount={gitAddedLineCount}
-              hasRepository={hasRepository}
-              isDiffPanelOpen={interfaceController.isDiffPanelOpen}
-              isExplorerOpen={workspaceState.isExplorerOpen}
-              isKanbanBoardOpen={isKanbanBoardOpen}
-              isSourceControlPanelOpen={interfaceController.isSourceControlPanelOpen}
-              isSourceControlButtonDisabled={isSourceControlButtonDisabled}
-              isTerminalOpen={workspaceState.isTerminalOpen}
-              isWorkspaceHeaderControlDisabled={isWorkspaceHeaderControlDisabled}
-              isWorkspaceRepoHeaderControlDisabled={isWorkspaceRepoHeaderControlDisabled}
-              onOpenCommitModal={interfaceController.handleOpenCommitModal}
-              onOpenDiffPanel={workspaceState.handleOpenDiffPanel}
-              onOpenSourceControlPanel={workspaceState.handleOpenSourceControlPanel}
-              onToggleExplorerPanel={workspaceState.handleToggleExplorerPanel}
-              onToggleTerminalPanel={() => workspaceState.handleTerminalOpenChange(!workspaceState.isTerminalOpen)}
-              onToggleWorkspaceBoard={handleToggleWorkspaceBoard}
-              removedLineCount={gitRemovedLineCount}
-            />
-          }
-          onRenameTitle={(nextTitle) => {
-            if (!chatMessages.activeConversationId) {
-              return
+        {!isMobileViewport || mobileSurface === 'chat' ? (
+          <ChatHeader
+            title={chatMessages.activeConversationTitle}
+            isSidebarOpen={interfaceController.isSidebarOpen}
+            trailingContent={
+              <ChatWorkspaceHeaderControls
+                addedLineCount={gitAddedLineCount}
+                hasRepository={hasRepository}
+                isDiffPanelOpen={interfaceController.isDiffPanelOpen}
+                isExplorerOpen={workspaceState.isExplorerOpen}
+                isKanbanBoardOpen={isKanbanBoardOpen}
+                isSourceControlPanelOpen={interfaceController.isSourceControlPanelOpen}
+                isSourceControlButtonDisabled={isSourceControlButtonDisabled}
+                isTerminalOpen={workspaceState.isTerminalOpen}
+                isWorkspaceHeaderControlDisabled={isWorkspaceHeaderControlDisabled}
+                isWorkspaceRepoHeaderControlDisabled={isWorkspaceRepoHeaderControlDisabled}
+                onOpenCommitModal={interfaceController.handleOpenCommitModal}
+                onOpenDiffPanel={workspaceState.handleOpenDiffPanel}
+                onOpenSourceControlPanel={workspaceState.handleOpenSourceControlPanel}
+                onToggleExplorerPanel={workspaceState.handleToggleExplorerPanel}
+                onToggleTerminalPanel={() => workspaceState.handleTerminalOpenChange(!workspaceState.isTerminalOpen)}
+                onToggleWorkspaceBoard={handleToggleWorkspaceBoard}
+                removedLineCount={gitRemovedLineCount}
+              />
             }
+            onRenameTitle={(nextTitle) => {
+              if (!chatMessages.activeConversationId) {
+                return
+              }
 
-            return chatMessages.renameConversationTitle(chatMessages.activeConversationId, nextTitle)
-          }}
-        />
+              return chatMessages.renameConversationTitle(chatMessages.activeConversationId, nextTitle)
+            }}
+          />
+        ) : null}
 
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
           {/* Chat panel — fixed width when file editor is open, flex-1 when alone */}
@@ -567,16 +614,16 @@ export function ChatInterfaceContent({
             ref={chatPanelRef}
             className={[
               'relative flex min-h-0 flex-col overflow-hidden',
-              workspaceState.isWorkspaceTabsPanelOpen ? 'shrink-0' : 'flex-1',
+              isDesktopWorkspaceTabsPanelOpen ? 'shrink-0' : 'flex-1',
             ].join(' ')}
             style={
-              workspaceState.isWorkspaceTabsPanelOpen
+              isDesktopWorkspaceTabsPanelOpen
                 ? { width: `${chatPanelWidth}px`, minWidth: `${chatPanelMinWidth}px`, maxWidth: `${chatPanelMaxWidth}px` }
                 : undefined
             }
           >
             {/* Chat resize handle — only shown when file editor is open */}
-            {workspaceState.isWorkspaceTabsPanelOpen ? (
+            {isDesktopWorkspaceTabsPanelOpen ? (
               <div
                 role="separator"
                 aria-orientation="vertical"
@@ -608,6 +655,7 @@ export function ChatInterfaceContent({
               handleToolDecisionSubmit={handleToolDecisionSubmit}
               isCompressingChat={isCompressingChat}
               isKanbanBoardOpen={isKanbanBoardOpen}
+              isTerminalSurfaceOpen={isTerminalSurfaceOpen}
               messageListBoundaryRef={messageListBoundaryRef}
               onQueueMessage={enqueueMessage}
               onAlternateFollowUpMessage={enqueueAlternateFollowUpMessage}
@@ -626,32 +674,43 @@ export function ChatInterfaceContent({
               workspaceState={workspaceState}
             />
             <WorkspaceTerminalPanel
-              isOpen={workspaceState.isTerminalOpen}
-              onClose={() => workspaceState.handleTerminalOpenChange(false)}
+              isOpen={isMobileViewport ? isMobileTerminalOpen : workspaceState.isTerminalOpen}
+              onClose={() => {
+                if (isMobileViewport) {
+                  setMobileSurface('chat')
+                  return
+                }
+                workspaceState.handleTerminalOpenChange(false)
+              }}
               onHeightCommit={interfaceController.handleTerminalPanelHeightCommit}
               resolvedTheme={resolvedTheme}
               storedHeight={workspaceState.terminalPanelHeight}
               workspaceKey={workspaceState.activeTerminalWorkspaceKey}
               workspacePath={workspaceState.activeWorkspacePath}
-              isFullScreen={workspaceState.isTerminalFullScreen}
-              onFullScreenChange={workspaceState.handleTerminalFullScreenChange}
+              isFullScreen={isMobileViewport ? true : workspaceState.isTerminalFullScreen}
+              onFullScreenChange={isMobileViewport ? undefined : workspaceState.handleTerminalFullScreenChange}
             />
           </div>
-          <ChatWorkspaceSidePanels
-            diffPanelExpandedFilePaths={diffPanelExpandedFilePaths}
-            diffPanelSelectedScope={diffPanelSelectedScope}
-            gitBranchState={gitBranchState}
-            gitDiffSnapshot={gitDiffSnapshot}
-            interfaceController={interfaceController}
-            onDiffPanelExpandedFilePathsChange={onDiffPanelExpandedFilePathsChange}
-            onDiffPanelSelectedScopeChange={onDiffPanelSelectedScopeChange}
-            onImplementPlan={handleImplementPlan}
-            onRequestPlanChanges={handleRequestPlanChanges}
-            settings={settings}
-            workspaceState={workspaceState}
-          />
+          {!isMobileViewport ? (
+            <ChatWorkspaceSidePanels
+              diffPanelExpandedFilePaths={diffPanelExpandedFilePaths}
+              diffPanelSelectedScope={diffPanelSelectedScope}
+              gitBranchState={gitBranchState}
+              gitDiffSnapshot={gitDiffSnapshot}
+              interfaceController={interfaceController}
+              onDiffPanelExpandedFilePathsChange={onDiffPanelExpandedFilePathsChange}
+              onDiffPanelSelectedScopeChange={onDiffPanelSelectedScopeChange}
+              onImplementPlan={handleImplementPlan}
+              onRequestPlanChanges={handleRequestPlanChanges}
+              settings={settings}
+              workspaceState={workspaceState}
+            />
+          ) : null}
 
         </div>
+        {isMobileViewport ? (
+          <MobileWorkspaceNavigation activeSurface={mobileSurface} onSurfaceChange={handleMobileSurfaceChange} />
+        ) : null}
       </WorkspacePanel>
 
       {interfaceController.isCommitModalOpen ? (

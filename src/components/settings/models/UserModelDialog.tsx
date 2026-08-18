@@ -238,7 +238,7 @@ export function UserModelDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 md:px-4 md:py-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-3 sm:p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !isSaving) onClose()
       }}
@@ -247,7 +247,7 @@ export function UserModelDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="user-model-dialog-title"
-        className="flex h-full w-full flex-col overflow-hidden border-border bg-surface md:h-[650px] md:max-h-[calc(100dvh-3rem)] md:max-w-3xl md:rounded-xl md:border md:shadow-soft"
+                className="flex h-[min(650px,calc(100dvh-1.5rem))] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-soft sm:h-[min(650px,calc(100dvh-2rem))]"
       >
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-4 py-4 md:px-6">
           <div>
