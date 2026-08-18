@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.9 - Cleaner update navigation
+
+TideCode 1.2.9 keeps update status and controls in the dedicated Updates view while making the sidebar shortcut smaller, stable, and easier to understand.
+
+- Replaces the sidebar update progress/status pill with a centered circular download icon that stays visually consistent while an update is available.
+- Opens Settings > Updates directly from the sidebar update shortcut instead of starting, tracking, restarting, or otherwise controlling the update from the sidebar.
+- Preserves the normal Settings button behavior and keeps download progress, installation, and restart controls in the Updates page.
+- Requires no migration or configuration changes.
+- Validated with 1,102 automated tests, TypeScript type checking, and the production build.
+
 ## 1.2.8 - Smoother updates, terminals, and shared chat
 
 TideCode 1.2.8 makes desktop and CLI sessions feel like one continuous workspace, improves terminal interaction and startup continuity, and brings update checks into the normal app launch flow without redundant requests.
