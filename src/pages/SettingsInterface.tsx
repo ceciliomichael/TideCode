@@ -16,6 +16,7 @@ import type { TideCodeLaunchRequest, TideCodeSettingsLaunchRequest } from '../li
 
 interface SettingsInterfaceProps {
   activeWorkspacePath: string | null
+  initialItemId: SettingsItemId | null
   isSettingsLoading: boolean
   onLaunchRequestConsumed: () => void
   onBackToApp: () => void
@@ -41,6 +42,7 @@ interface SettingsInterfaceProps {
 
 export function SettingsInterface({
   activeWorkspacePath,
+  initialItemId,
   isSettingsLoading,
   onLaunchRequestConsumed,
   onBackToApp,
@@ -52,7 +54,7 @@ export function SettingsInterface({
   pendingLaunchRequest,
 }: SettingsInterfaceProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
-  const [activeItemId, setActiveItemId] = useState<SettingsItemId>(DEFAULT_SETTINGS_ITEM_ID)
+  const [activeItemId, setActiveItemId] = useState<SettingsItemId>(initialItemId ?? DEFAULT_SETTINGS_ITEM_ID)
   const [panelLaunchRequest, setPanelLaunchRequest] = useState<TideCodeSettingsLaunchRequest | null>(null)
   const mcpSettings = useMcpServersState(null)
   const skillsState = useSkillsState(activeWorkspacePath)

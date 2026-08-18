@@ -42,6 +42,7 @@ import { ChatConversationSurface } from './ChatConversationSurface'
 import { useChatMessageActions } from './useChatMessageActions'
 import { useConversationNavigationActions } from './useConversationNavigationActions'
 import { buildRuntimeSelection, CHAT_MODE_OPTIONS } from './chatInterfaceRuntime'
+import type { SettingsItemId } from '../../components/settings/settingsItems'
 
 type ChatWorkspaceViewMode = 'chat' | 'kanban'
 
@@ -56,7 +57,7 @@ interface ChatInterfaceContentProps {
   interfaceController: ChatInterfaceControllerState
   onDiffPanelExpandedFilePathsChange: (nextFilePaths: string[]) => void
   onDiffPanelSelectedScopeChange: (nextScope: DiffPanelScope) => void
-  onOpenSettings: () => void
+  onOpenSettings: (itemId?: SettingsItemId) => void
   onSidebarWidthChange: (sidebarWidth: number) => void
   onUpdateSettings: (settings: Partial<AppSettings>) => void
   onCreateWorkspaceFolderFromPath: (folderPath: string) => Promise<void>

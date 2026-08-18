@@ -9,12 +9,14 @@ import { useProvidersState } from './hooks/useProvidersState'
 import type { TideCodeLaunchRequest } from './lib/appLaunchRequest'
 import { resolveBootConversationLaunchState } from './pages/chatInterface/chatLaunchState'
 import { hydrateCachedUpdate, requestAutomaticUpdateCheck } from './components/settings/updates/updatesSessionStore'
+import type { SettingsItemId } from './components/settings/settingsItems'
 
 type AppScreen = 'chat' | 'settings'
 
 export default function App() {
   const [initialLaunchRequest] = useState<TideCodeLaunchRequest | null>(() => window.tidecodeApp.getInitialLaunchRequest())
   const [activeScreen, setActiveScreen] = useState<AppScreen>(initialLaunchRequest ? 'settings' : 'chat')
+  const [settingsInitialItemId, setSettingsInitialItemId] = useState<SettingsItemId | null>(null)
   const [pendingLaunchRequest, setPendingLaunchRequest] = useState<TideCodeLaunchRequest | null>(initialLaunchRequest)
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false)
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>('diff')
@@ -90,6 +92,7 @@ export default function App() {
 
   useEffect(() => {
     return window.tidecodeApp.onLaunchRequest((request) => {
+      setSettingsInitialItemId(null)
       setActiveScreen('settings')
       setPendingLaunchRequest(request)
     })
@@ -97,6 +100,10 @@ export default function App() {
 
   const consumeLaunchRequest = useCallback(() => {
     setPendingLaunchRequest(null)
+  }, [])
+  const handleOpenSettings = useCallback((itemId?: SettingsItemId) => {
+    setSettingsInitialItemId(itemId ?? null)
+    setActiveScreen('settings')
   }, [])
 
   useLayoutEffect(() => {
@@ -182,7 +189,7 @@ export default function App() {
         onSidebarWidthChange={handleSidebarWidthChange}
         sendMessageOnEnter={settings.sendMessageOnEnter}
         sidebarWidth={settings.sidebarWidth}
-        onOpenSettings={() => setActiveScreen('settings')}
+        onOpenSettings={handleOpenSettings}
         providersState={{
           isLoading: providersState.isLoading,
           providersState: providersState.providersState,
@@ -193,6 +200,7 @@ export default function App() {
         <div className="absolute inset-0 z-50">
           <SettingsInterface
             activeWorkspacePath={activeWorkspacePath}
+            initialItemId={settingsInitialItemId}
             onLaunchRequestConsumed={consumeLaunchRequest}
             settings={settings}
             isSettingsLoading={isLoading}
