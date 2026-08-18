@@ -1,4 +1,4 @@
-import { Download, FolderPlus, LoaderCircle, RotateCw, Settings, SquarePen } from 'lucide-react'
+import { Download, FolderPlus, Settings, SquarePen } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type DragEvent } from 'react'
 import { getExternalFilePaths } from '../../lib/externalFileDrop'
 import { Tooltip } from '../Tooltip'
@@ -7,11 +7,8 @@ import { ConversationHistoryList } from './ConversationHistoryList'
 import { NewThreadProjectDialog } from './NewThreadProjectDialog'
 import { ProjectThreadSelector } from './ProjectThreadSelector'
 import { SidebarThreadSearch } from './SidebarThreadSearch'
-import {
-  getUpdatesSessionSnapshot,
-  requestUpdateDownload,
-  subscribeToUpdatesSession,
-} from '../settings/updates/updatesSessionStore'
+import { getUpdatesSessionSnapshot, subscribeToUpdatesSession } from '../settings/updates/updatesSessionStore'
+import type { SettingsItemId } from '../settings/settingsItems'
 import {
   ALL_PROJECTS_FILTER_ID,
   ARCHIVED_PROJECT_FILTER_ID,
@@ -30,7 +27,7 @@ interface SidebarPanelProps {
   onDeleteConversation: (conversationId: string) => void
   onPinConversation: (conversationId: string, isPinned: boolean) => void
   onDeleteFolder: (folderId: string) => Promise<void>
-  onOpenSettings: () => void
+  onOpenSettings: (itemId?: SettingsItemId) => void
   onRenameFolder: (folderId: string, name: string) => Promise<void>
   onSelectConversation: (conversationId: string) => void
   selectedProjectId?: string
@@ -68,19 +65,6 @@ export function SidebarPanel({
     getUpdatesSessionSnapshot,
   )
   const updateIsAvailable = updatesSession.result?.updateAvailable === true
-  const updateIsDownloading =
-    updatesSession.checkState === 'downloading' || updatesSession.downloadState === 'downloading'
-  const updateIsReady = updatesSession.downloadState === 'downloaded'
-  const updateVersion =
-    updatesSession.pendingVersion ??
-    updatesSession.result?.downloadVersion ??
-    updatesSession.result?.latestVersion ??
-    null
-  const updateActionLabel = updateIsReady
-    ? `Restart to install TideCode ${updateVersion ?? 'update'}`
-    : updateIsDownloading
-      ? `Downloading TideCode ${updateVersion ?? 'update'}`
-      : `Download TideCode ${updateVersion ?? 'update'}`
 
   const activeSelectedProjectId = controlledSelectedProjectId ?? internalSelectedProjectId
   const handleSelectProject = useCallback(
@@ -115,16 +99,6 @@ export function SidebarPanel({
     'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-150 ease-out hover:bg-[var(--sidebar-hover-surface)] hover:text-foreground'
   const footerButtonClassName =
     'flex min-h-11 w-full items-center gap-3 rounded-xl px-2 py-3 text-left text-sm font-medium text-foreground transition-colors duration-200 ease-out hover:bg-[var(--sidebar-hover-surface)]'
-  const handleSidebarUpdateAction = useCallback(() => {
-    if (updateIsReady) {
-      void window.tidecodeUpdates.restartToUpdate().catch((error) => {
-        console.error('Unable to restart TideCode for update.', error)
-      })
-      return
-    }
-
-    requestUpdateDownload()
-  }, [updateIsReady])
 
   const handleWorkspaceFolderDragOver = useCallback((event: DragEvent<HTMLElement>) => {
     const hasExternalFiles = Array.from(event.dataTransfer.types).includes('Files')
@@ -240,8 +214,8 @@ export function SidebarPanel({
         <div className="relative">
           <button
             type="button"
-            onClick={onOpenSettings}
-            className={`${footerButtonClassName}${updateIsAvailable ? ' pr-24' : ''}`}
+            onClick={() => onOpenSettings()}
+            className={`${footerButtonClassName}${updateIsAvailable ? ' pr-12' : ''}`}
             aria-label="Open settings"
           >
             <Settings size={18} strokeWidth={2.2} className="shrink-0 text-muted-foreground" />
@@ -249,28 +223,14 @@ export function SidebarPanel({
           </button>
 
           {updateIsAvailable ? (
-            <Tooltip content={updateActionLabel} side="right">
+            <Tooltip content="Open Updates" side="right">
               <button
                 type="button"
-                onClick={handleSidebarUpdateAction}
-                disabled={updateIsDownloading}
-                className="absolute right-1.5 top-1/2 z-10 inline-flex h-8 -translate-y-1/2 items-center gap-1.5 rounded-lg border border-brand-border bg-brand-soft px-2.5 text-xs font-semibold text-brand-soft-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
-                aria-label={updateActionLabel}
+                onClick={() => onOpenSettings('settings-item7')}
+                className="absolute right-1.5 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-brand-border bg-brand-soft text-brand-soft-foreground transition-colors hover:bg-accent-hover"
+                aria-label="Open Updates"
               >
-                {updateIsReady ? (
-                  <RotateCw size={14} strokeWidth={2.2} aria-hidden="true" />
-                ) : updateIsDownloading ? (
-                  <LoaderCircle size={14} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
-                ) : (
-                  <Download size={14} strokeWidth={2.2} aria-hidden="true" />
-                )}
-                <span>
-                  {updateIsReady
-                    ? 'Restart'
-                    : updateIsDownloading && updatesSession.downloadPercent !== null
-                      ? `${Math.round(updatesSession.downloadPercent)}%`
-                      : 'New update'}
-                </span>
+                <Download size={15} strokeWidth={2.2} aria-hidden="true" />
               </button>
             </Tooltip>
           ) : null}

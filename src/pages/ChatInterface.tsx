@@ -16,6 +16,7 @@ import type { DiffPanelScope } from '../components/chat/ConversationDiffPanel'
 import { selectActiveCodexUsageSnapshot } from '../components/chat/codexUsage'
 import type { ResolvedTheme } from '../lib/theme'
 import { resolveTaskModelSelection } from '../lib/taskModelSelection'
+import type { SettingsItemId } from '../components/settings/settingsItems'
 
 export type RightPanelTab = ChatInterfaceRightPanelTab
 
@@ -33,7 +34,7 @@ interface ChatInterfaceProps {
   onDiffPanelSelectedScopeChange: (nextScope: DiffPanelScope) => void
   onDiffPanelWidthChange: (nextWidth: number) => void
   onDiffPanelWidthCommit: (nextWidth: number) => void
-  onOpenSettings: () => void
+  onOpenSettings: (itemId?: SettingsItemId) => void
   onSidebarWidthChange: (sidebarWidth: number) => void
   onUpdateSettings: (input: Partial<AppSettings>) => Promise<AppSettings | null>
   providersState: {
