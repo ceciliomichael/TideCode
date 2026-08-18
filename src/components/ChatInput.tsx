@@ -645,7 +645,7 @@ export function ChatInput({
                 ) : canQueue ? (
                   <Clock className="block shrink-0" size={16} strokeWidth={2.5} />
                 ) : (
-                  <ArrowUp className="block shrink-0" size={16} strokeWidth={2.5} />
+                  <ArrowUp className="block shrink-0" size={16} strokeWidth={2} />
                 )}
               </button>
             </Tooltip>
