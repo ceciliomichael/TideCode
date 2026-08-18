@@ -76,7 +76,7 @@ export function SkillAddDialog({
   const activeError = validationError ?? errorMessage
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6">
+<div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
@@ -86,9 +86,9 @@ export function SkillAddDialog({
       />
 
       {/* Modal Dialog */}
-      <div className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl transition-all">
+<div className="relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl transition-all sm:max-h-[calc(100dvh-2rem)]">
         {/* Header */}
-        <div className="flex items-start justify-between border-b border-border px-6 pt-6 pb-4">
+<div className="flex items-start justify-between border-b border-border px-4 pb-4 pt-5 sm:px-6 sm:pt-6">
           <div>
             <h3 className="text-base font-semibold text-foreground">Add Skill</h3>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
@@ -108,7 +108,7 @@ export function SkillAddDialog({
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           {/* Scrollable Form Body */}
-          <div className="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-6">
+<div className="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4 sm:p-6">
             {activeError ? (
               <div className="rounded-xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
                 {activeError}
@@ -149,7 +149,7 @@ export function SkillAddDialog({
             </div>
 
             {/* Instructions Field */}
-            <div className="flex min-h-[320px] flex-1 flex-col space-y-1.5">
+<div className="flex min-h-[240px] flex-1 flex-col space-y-1.5 sm:min-h-[320px]">
               <label htmlFor="skill-content" className="text-sm font-medium text-foreground">
                 Instructions
               </label>
@@ -160,13 +160,13 @@ export function SkillAddDialog({
                 onChange={(e) => setContent(e.target.value)}
                 placeholder={`# Instructions for ${name || 'Skill'}\n\nSpecify workflow rules, guidelines, or formatting rules...`}
                 disabled={isSubmitting}
-                className="min-h-[300px] w-full flex-1 resize-none overflow-y-auto rounded-xl border border-border bg-surface-muted p-3 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:border-brand"
+className="min-h-[220px] w-full flex-1 resize-none overflow-y-auto rounded-xl border border-border bg-surface-muted p-3 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:border-brand sm:min-h-[300px]"
               />
             </div>
           </div>
 
           {/* Border-t Footer Actions */}
-          <div className="shrink-0 border-t border-border bg-surface px-6 py-4">
+<div className="shrink-0 border-t border-border bg-surface px-4 py-4 sm:px-6">
             <div className="flex items-center justify-end gap-3">
               <button
                 type="button"

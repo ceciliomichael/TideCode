@@ -238,7 +238,7 @@ export function UserModelDialog({
 
   return createPortal(
     <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-3 sm:p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-3 sm:p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !isSaving) onClose()
       }}
@@ -247,7 +247,7 @@ export function UserModelDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="user-model-dialog-title"
-                className="flex h-[min(650px,calc(100dvh-1.5rem))] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-soft sm:h-[min(650px,calc(100dvh-2rem))]"
+        className="flex h-[min(650px,calc(100dvh-1.5rem))] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-soft sm:h-[min(650px,calc(100dvh-2rem))]"
       >
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-4 py-4 md:px-6">
           <div>
@@ -336,7 +336,7 @@ export function UserModelDialog({
                 </div>
                 <div className="space-y-2">
                   {kvSettings.map((kv, index) => (
-                    <div key={kv.id} className="flex gap-2">
+                    <div key={kv.id} className="flex flex-col gap-2 sm:flex-row">
                       <input
                         value={kv.key}
                         onChange={(e) => {
@@ -346,7 +346,7 @@ export function UserModelDialog({
                         }}
                         placeholder="Key (e.g. enable_thinking)"
                         disabled={isSaving}
-                        className="h-10 w-1/2 rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                        className="h-10 w-full min-w-0 rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground sm:w-1/2"
                       />
                       <input
                         value={kv.value}
@@ -357,7 +357,7 @@ export function UserModelDialog({
                         }}
                         placeholder="Value (e.g. true)"
                         disabled={isSaving}
-                        className="h-10 w-1/2 rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                        className="h-10 w-full min-w-0 rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground sm:w-1/2"
                       />
                       <button
                         type="button"
@@ -369,7 +369,7 @@ export function UserModelDialog({
                           }
                         }}
                         disabled={isSaving}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                        className="flex h-10 w-10 shrink-0 self-end items-center justify-center rounded-xl border border-border text-muted-foreground hover:bg-surface-muted hover:text-foreground"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -408,7 +408,7 @@ export function UserModelDialog({
                 {customReasoningLevels.map((level, levelIndex) => {
                   return (
                     <div key={level.id} className="space-y-3 rounded-xl border border-border p-4">
-                      <div className="flex items-start justify-between gap-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                         <div className="flex-1 flex flex-col gap-2">
                           <label className="text-sm font-medium text-foreground">Custom Reasoning Level</label>
                           <input
@@ -423,7 +423,7 @@ export function UserModelDialog({
                             className="h-10 w-full max-w-sm rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
                           />
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex flex-wrap items-center gap-1 sm:shrink-0">
                           <button
                             type="button"
                             aria-label="Move level up"
@@ -476,7 +476,7 @@ export function UserModelDialog({
                       <div className="space-y-2 pt-2">
                         <label className="text-sm font-medium text-foreground">Payload</label>
                         {level.settings.map((kv, kvIndex) => (
-                          <div key={kv.id} className="flex gap-2">
+                          <div key={kv.id} className="flex flex-col gap-2 sm:flex-row">
                             <input
                               value={kv.key}
                               onChange={(e) => {
@@ -486,7 +486,7 @@ export function UserModelDialog({
                               }}
                               placeholder="Key (e.g. chat_template_kwargs)"
                               disabled={isSaving}
-                              className="h-10 w-1/2 rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                              className="h-10 w-full min-w-0 rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground sm:w-1/2"
                             />
                             <input
                               value={kv.value}
@@ -497,7 +497,7 @@ export function UserModelDialog({
                               }}
                               placeholder='Value (e.g. {"thinking":true})'
                               disabled={isSaving}
-                              className="h-10 w-1/2 rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                              className="h-10 w-full min-w-0 rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground sm:w-1/2"
                             />
                             <button
                               type="button"
@@ -511,7 +511,7 @@ export function UserModelDialog({
                                 setCustomReasoningLevels(newLevels)
                               }}
                               disabled={isSaving}
-                              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                              className="flex h-10 w-10 shrink-0 self-end items-center justify-center rounded-xl border border-border text-muted-foreground hover:bg-surface-muted hover:text-foreground"
                             >
                               <X className="h-4 w-4" />
                             </button>
