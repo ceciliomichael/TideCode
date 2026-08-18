@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.8 - Smoother updates, terminals, and shared chat
+
+TideCode 1.2.8 makes desktop and CLI sessions feel like one continuous workspace, improves terminal interaction and startup continuity, and brings update checks into the normal app launch flow without redundant requests.
+
+- Keeps live assistant output, queue and steer follow-ups, resumed conversations, and project registration synchronized between Desktop and CLI.
+- Restores project and conversation context faster at startup, preserves the correct empty or existing-chat state, and fixes compact one-line code rendering.
+- Improves CLI model defaults, composer visibility, reasoning and tool presentation, and interactive terminal input so child processes stay in the same PTY session.
+- Checks for updates at launch when enabled, surfaces available downloads beside Settings, reuses the launch result when Updates is opened, and still checks on opening Updates when launch checking is disabled.
+- Tightens Code Mode tool routing and recovers malformed generated terminal command quoting, while model requests use temperature 0.1 where the selected transport supports it.
+- Requires no migration or configuration changes.
+- Validated with 1,102 automated tests, TypeScript type checking, and the production build.
+
 ## 1.2.7 — Safer Code Mode and reliable CLI mentions
 
 TideCode 1.2.7 hardens restricted Code Mode execution and makes restored CLI file references behave like normal editable mentions, improving safety and continuity when resuming or undoing terminal work.
