@@ -2,7 +2,9 @@
 status: draft
 ---
 
-# TideCode Remote Workspace
+---
+status: active
+---
 
 # TideCode Remote Workspace
 
@@ -34,10 +36,37 @@ The same architecture must later support access through a hosted entry point suc
 6. **Same UI codebase.** Reuse the existing React application and components. Introduce transport abstraction rather than create a separate remote UI implementation.
 7. **Mobile-first responsive behavior.** Preserve TideCode capabilities while adapting layout for phone and tablet screens.
 8. **TypeScript first.** Keep the host, protocol, web client, and initial relay implementation in TypeScript. Do not introduce Go or Rust unless a later concrete systems requirement justifies it.
-9. **Secure by default.** Remote control grants effective access to local source code, terminals, Git, tools, and potentially sensitive context. Authentication and authorization are part of the first usable LAN milestone.
+9. **Explicit web security boundary.** Remote control grants effective access to local source code, terminals, Git, tools, and potentially sensitive context. The LAN web surface supports optional username/password authentication managed only by the desktop app. Desktop and CLI are not gated by web credentials.
 10. **LAN first, cloud second.** Direct local-network access is the first production-quality vertical slice. Cloud relay support is built afterward on the same client protocol.
 
-## 3. Target Architecture
+## 3. Verified Implementation Snapshot
+
+Verified on 2026-08-19 on branch `feat/remote-mobile-workspace`:
+
+- [x] TideCode Desktop serves the same React application over the LAN through an HTTP/WebSocket Remote host.
+- [x] Browser RPC is forwarded into the running desktop renderer through a validated compatibility bridge, so browser actions use the same preload-backed TideCode services instead of a second agent/runtime implementation.
+- [x] The host exposes detected LAN/overlay addresses and a configurable port in **Settings → Remote**. The current machine correctly prefers its Wi-Fi address over virtual WSL/Hyper-V adapters.
+- [x] Optional browser-only username/password authentication uses a one-way scrypt password verifier plus HttpOnly SameSite session cookies. WebSocket access is gated by the authenticated session when auth is enabled. Desktop and CLI do not require these credentials.
+- [x] Browser and desktop share canonical conversation/history/run APIs and live event channels. History/settings invalidation is broadcast so remote mutations reconcile into the desktop UI.
+- [x] The browser terminal resolves through the same desktop renderer identity and deterministic terminal session key, so desktop and browser attach to the same PTY. Explicit terminal-tab-close events synchronize tab removal across clients.
+- [x] Mobile phone mode uses a single-surface layout with **Chat / Terminal / Board** as the only persistent bottom destinations.
+- [x] Main app sidebar and Settings navigation open as full-screen mobile surfaces. Desktop-only workspace panel controls are removed from phone UI.
+- [x] Provider, Codex, Model, MCP, Skill, New Thread, and Board task actions retain dialog/modal behavior where appropriate and are constrained to the dynamic mobile viewport.
+- [x] A real Chromium run at **390 × 844** verified Chat, full-screen sidebar, New Thread, Terminal, Board, Board task create/details, Settings navigation, all major Settings pages, and Provider/Model/MCP/Skill dialogs with no horizontal overflow or runtime exceptions.
+- [x] Final verification: `npm run typecheck`, `npm test` (**1112/1112**), and `npm run build` including renderer, Electron main/preload, run service, CLI, and console CLI runtime.
+- [ ] Physical iOS/Android software-keyboard behavior, phone landscape, and tablet breakpoints still require device-level validation.
+- [ ] PWA installability is not implemented.
+- [ ] Cloud relay and `console.tidecode.com` are not implemented.
+
+### Material implementation decisions
+
+1. **LAN auth changed from pairing tokens to optional username/password.** Earlier QR/device-pairing requirements are superseded for the current LAN phase. Account/machine pairing can be introduced with the future cloud relay.
+2. **The desktop renderer is the current LAN compatibility bridge.** Instead of first migrating all React code to a new aggregate `TideCodeClient` object, the browser installs compatible `window.tidecode*` APIs before React boots and forwards RPC through the running desktop renderer. This preserves one React UI and one canonical runtime with much less migration risk.
+3. **Terminal sharing currently reuses the desktop renderer owner.** This satisfies LAN desktop/browser PTY sharing today, but a future independent daemon/cloud topology may still require the deeper host-owned multi-subscriber terminal refactor described later in this plan.
+4. **Remote management remains desktop-only.** `window.tidecodeRemoteHost` is a trusted preload API and is intentionally not exposed to the remote browser RPC surface.
+5. **No floating Remote badge.** Remote status, addresses, port, and web-auth configuration live under **Settings → Remote**.
+
+## 4. Target Architecture
 
 ```text
                          TideCode Host on Laptop
@@ -87,7 +116,7 @@ TideCode Host on Laptop
 
 The relay is a transport intermediary. It must not become the canonical owner of a user's local workspace or agent execution state.
 
-## 4. Current Architecture Constraints to Address
+## 5. Current Architecture Constraints to Address
 
 The current codebase already provides strong foundations:
 
@@ -107,7 +136,7 @@ The main blockers for true remote parity are:
 5. The existing `electron/cli/remoteDaemon.ts` is a local HTTP/SSE prototype, not the final remote-workspace architecture.
 6. There is no authenticated, versioned remote protocol covering the TideCode capabilities required by the shared React application.
 
-## 5. Transport-Independent TideCode Client API
+## 6. Transport-Independent TideCode Client API
 
 Introduce an application-facing client layer that the React UI uses instead of directly depending on Electron preload globals.
 
@@ -143,7 +172,7 @@ The objective is not to rewrite every backend service. The objective is to make 
 - Existing desktop behavior remains functionally unchanged.
 - API contracts are shared TypeScript types rather than manually duplicated request and response shapes.
 
-## 6. Remote Protocol
+## 7. Remote Protocol
 
 Define one versioned protocol shared by the host and web client.
 
@@ -199,7 +228,7 @@ The LAN MVP must support:
 
 Capabilities can be negotiated so unsupported desktop-only actions are clearly disabled rather than silently failing.
 
-## 7. Canonical State and Synchronization Rules
+## 8. Canonical State and Synchronization Rules
 
 ### 7.1 Conversation state
 
@@ -229,7 +258,7 @@ The protocol should track connected devices and client IDs. Multiple clients may
 
 For destructive or execution actions, the host remains the arbitration point. Request IDs and idempotency rules must prevent accidental duplicate execution after reconnect/retry.
 
-## 8. Terminal Multiplexing
+## 9. Terminal Multiplexing
 
 True terminal mirroring is a required feature, not an optional enhancement.
 
@@ -267,7 +296,7 @@ Refactor terminal ownership so that:
 - Typing on desktop produces output visible on the remote terminal.
 - Resize conflicts are handled predictably. One practical initial policy is that each viewer has its own render dimensions while the PTY uses the dimensions of the currently active writer or a stable host-selected size.
 
-## 9. Web Application and UI Reuse
+## 10. Web Application and UI Reuse
 
 The web client should be built from the same React/TypeScript codebase as the Electron renderer.
 
@@ -314,61 +343,46 @@ Phone uses a mobile navigation model where chat remains primary and Files, Termi
 
 After the LAN web client is stable, add PWA support so the same web application can be installed to the phone home screen. PWA support must reuse the existing web client and must not create a second mobile implementation.
 
-## 10. LAN Remote Host
+## 11. LAN Remote Host
 
 The first complete user-facing milestone is direct LAN access while TideCode Desktop is open.
 
 ### Host behavior
 
-Add a Remote Access setting/control with at least:
+Current LAN host behavior:
 
-- enable/disable local remote server
-- configured or automatically selected port
-- displayed LAN URL
-- pairing action
-- QR code for pairing
-- list of paired/connected devices
-- revoke device/session action
-- clear status when the host is unreachable from other devices
+- the Remote host runs while TideCode Desktop is open
+- the port is configurable under **Settings → Remote**
+- the page shows the preferred LAN URL and all detected reachable LAN/overlay addresses, including Tailscale/ZeroTier-style interfaces when present
+- the page shows connected browser count and host errors/status
+- browser authentication is optional and is configured with a username/password under **Settings → Remote**
+- changing credentials invalidates existing browser sessions
+- changing the port restarts the listener transactionally
+- Remote management APIs are desktop-only and are not exposed through browser RPC
+- there is no persistent floating Remote status badge
 
-The server should bind only when remote access is enabled. Binding policy must be explicit. Localhost-only is insufficient for phone access; LAN mode needs a reachable interface while still applying authentication.
+Localhost-only is insufficient for phone access. The host binds to a LAN-reachable interface while the desktop app is running. Users who enable web authentication must log in before the protected UI and WebSocket are available.
 
-### Suggested initial UX
-
-```text
-Remote Access
-
-[On] Allow access on local network
-
-This device
-TideCode on DESKTOP-ABC
-192.168.1.9:38472
-
-[Show QR Code]
-
-Connected devices
-- iPhone
-- iPad
-```
-
-## 11. LAN Security Model
+## 12. LAN Security Model
 
 Do not rely on network location as authentication.
 
 ### Required controls
 
-1. Generate a high-entropy pairing secret using a cryptographically secure random source.
-2. Pair through a short-lived or single-use credential, preferably encoded in a QR code for mobile convenience.
-3. Exchange the pairing credential for a longer-lived device session credential.
-4. Store paired-device credentials securely on the host.
-5. Authenticate the WebSocket before exposing TideCode APIs.
-6. Authorize commands server-side, not only in the UI.
-7. Provide device revocation.
-8. Do not expose sensitive host metadata from unauthenticated endpoints beyond the minimum needed to render a pairing page.
-9. Apply origin and CSRF considerations to browser-facing HTTP endpoints.
-10. Validate all protocol payloads at the host boundary.
-11. Enforce message-size and rate limits sufficient to avoid trivial local-network abuse.
-12. Log security-relevant pairing and connection failures without logging secrets.
+Current LAN phase:
+
+1. Optional username/password authentication is browser-only and managed by the trusted desktop Settings UI.
+2. Passwords are stored as one-way scrypt verifiers, never plaintext.
+3. Successful login establishes an HttpOnly SameSite session cookie. Credentials are not placed in the URL or sent with every RPC.
+4. When web auth is enabled, both protected HTTP UI access and WebSocket control require an authenticated session.
+5. Credential changes invalidate existing sessions and disconnect affected browser clients.
+6. Browser WebSocket use is constrained to the TideCode-served origin rather than wildcard CORS.
+7. Protocol payloads are validated at the host boundary.
+8. Login attempts are throttled.
+9. Desktop and CLI bypass the web authentication gate by design.
+10. Remote management APIs themselves remain desktop-only and are not remotely callable.
+
+Future hardening still requires an explicit encrypted-LAN/TLS story, broader rate/message-size limits, and a documented threat model. Account/device pairing and revocation move to the future cloud/account phase unless product requirements change.
 
 The current prototype behavior of permissive CORS, unauthenticated metadata, and a generic bearer-token prompt endpoint must not define the production LAN protocol.
 
@@ -376,7 +390,7 @@ The current prototype behavior of permissive CORS, unauthenticated metadata, and
 
 Plain HTTP may be acceptable for an early developer-only proof of concept, but the product plan should not assume that LAN traffic is trustworthy. Before treating LAN remote mode as generally safe, evaluate an authenticated encrypted LAN transport strategy or clearly scope the security guarantees. The protocol and client abstractions must not depend on plaintext transport.
 
-## 12. Existing Remote Prototype Migration
+## 13. Existing Remote Prototype Migration
 
 `electron/cli/remoteDaemon.ts` should not remain the architectural center of remote access.
 
@@ -402,7 +416,7 @@ electron/remote/
 
 Exact filenames are implementation details and may change after inspection. Responsibilities should remain separated even if the final module boundaries differ.
 
-## 13. Cloud Relay and console.tidecode.com
+## 14. Cloud Relay and console.tidecode.com
 
 Cloud access is Phase 2 of the product, after LAN mode proves the host/client architecture.
 
@@ -442,7 +456,7 @@ Before production cloud release, define:
 
 E2EE should be evaluated explicitly rather than implied by TLS alone.
 
-## 14. Technology Choices
+## 15. Technology Choices
 
 ### Initial implementation
 
@@ -464,7 +478,7 @@ E2EE should be evaluated explicitly rather than implied by TLS alone.
 
 Go or Rust can be reconsidered if TideCode later needs an always-running OS service independent of Electron, unusually low memory overhead, stronger native isolation, or relay-scale requirements that materially justify a second runtime.
 
-## 15. Implementation Milestones
+## 16. Implementation Milestones
 
 Tracking legend:
 
@@ -475,64 +489,64 @@ Tracking legend:
 
 ### Milestone 0: Architecture boundary and protocol inventory
 
-- [ ] Inventory renderer calls to Electron preload APIs used by the main TideCode workspace UI.
-- [ ] Classify APIs into remote-required, desktop-only, and later/deferred capabilities.
-- [ ] Define shared TideCode client interfaces.
-- [ ] Define protocol versioning, envelope, error model, capability negotiation, and request correlation.
-- [ ] Define canonical ownership rules for conversation state, active runs, terminal sessions, and presentation-only UI state.
-- [ ] Add protocol/client contract tests before wiring the remote server.
+- [x] Inventory renderer calls to Electron preload APIs used by the main TideCode workspace UI.
+- [x] Classify remote-required APIs and keep Remote host management desktop-only.
+- [!] A new aggregate `TideCodeClient` interface was intentionally deferred in favor of a browser compatibility layer that installs the existing typed `window.tidecode*` contracts before React boots.
+- [x] Define protocol versioning, request correlation, event envelopes, validation, and structured errors for the LAN bridge.
+- [x] Define canonical ownership rules: laptop host is authoritative; execution/state is shared while responsive presentation state remains per-client.
+- [x] Add focused protocol/host/auth contract tests.
 
 **Exit criteria:** A browser-capable client contract exists without changing desktop behavior, and the core protocol shape is covered by focused tests.
 
-### Milestone 1: Client abstraction for existing Electron UI
+### Milestone 1: Shared React browser compatibility bridge
 
-- [ ] Implement the transport-independent `TideCodeClient` boundary.
-- [ ] Implement the Electron transport adapter using existing preload APIs.
-- [ ] Migrate remote-required React hooks/components to use the client boundary.
-- [ ] Preserve existing desktop chat, history, workspace, Git, and terminal behavior.
-- [ ] Keep unsupported desktop-only behavior explicit rather than hiding it behind unsafe browser fallbacks.
+- [x] Reuse the existing typed preload API surface as the application contract for the LAN phase.
+- [x] Install a browser-side compatibility layer before importing/rendering the React application.
+- [x] Forward browser RPC through the authenticated/versioned Remote host into a validated desktop-renderer dispatcher.
+- [x] Reuse the same React components instead of forking a remote-only frontend.
+- [x] Preserve existing desktop chat, history, workspace, Git, and terminal behavior in the verified test/build suite.
+- [x] Keep trusted Remote host management desktop-only rather than exposing it through browser fallbacks.
 
 **Exit criteria:** The desktop application runs through the new client abstraction with no intended UX regression.
 
-### Milestone 2: Authenticated LAN host foundation
+### Milestone 2: LAN host foundation and optional web authentication
 
-- [ ] Replace the remote HTTP/SSE prototype with a dedicated remote host service.
-- [ ] Serve the web application/bootstrap endpoint from TideCode or a clearly integrated local web host.
-- [ ] Add authenticated WebSocket connection handling.
-- [ ] Implement pairing and device sessions.
-- [ ] Add Remote Access enable/disable lifecycle.
-- [ ] Display reachable LAN address and port.
-- [ ] Add device connection state and revocation.
-- [ ] Add host-side protocol validation and structured errors.
+- [x] Add a dedicated Remote host service independent of the old CLI HTTP/SSE daemon.
+- [x] Serve the production React application from the running TideCode desktop host.
+- [x] Add WebSocket RPC/event handling with same-origin enforcement.
+- [x] Add optional username/password web authentication with scrypt verification and HttpOnly SameSite sessions.
+- [x] Add transactional configurable-port restart behavior.
+- [x] Display preferred and alternate detected LAN/overlay addresses plus the configured port.
+- [x] Display connected browser count and host status/errors under **Settings → Remote**.
+- [x] Add host-side protocol validation and structured errors.
+- [!] QR/token pairing and per-device revocation were superseded for the current LAN phase by the user's username/password decision.
+- [ ] Add an explicit user-facing enable/disable Remote host toggle if product requirements still call for one.
 
 **Exit criteria:** An authenticated browser on the same LAN can connect to the running TideCode desktop host and retrieve basic host/session/conversation information without exposing an unauthenticated control surface.
 
 ### Milestone 3: Shared chat and live run synchronization
 
-- [ ] List and open canonical desktop/CLI conversations remotely.
-- [ ] Create conversations remotely.
-- [ ] Submit prompts into the canonical TideCode chat runtime.
-- [ ] Broadcast user-message and assistant stream events to all subscribed clients.
-- [ ] Allow a web client to attach to a run that was started on desktop.
-- [ ] Allow desktop to observe a run started from web without reload.
-- [ ] Synchronize cancellation and supported steer/follow-up actions.
-- [ ] Support tool approval requests and decisions when required.
-- [ ] Test reconnect during an active run and state recovery after reconnect.
-- [ ] Prevent duplicate turn execution during retry/reconnect.
+- [x] List and open canonical desktop/CLI conversations remotely.
+- [x] Create conversations remotely.
+- [x] Submit prompts into the canonical TideCode chat runtime through the same desktop API surface.
+- [x] Forward canonical chat/run stream events to connected web clients.
+- [x] Broadcast history invalidation so remote conversation mutations reconcile into the desktop UI without manual refresh.
+- [x] Expose active-run discovery and existing cancellation/steer/follow-up APIs through the web compatibility surface.
+- [x] Expose the existing tool-decision API through the web compatibility surface.
+- [ ] Add a dedicated two-client active-run reconnect/idempotency E2E test before calling the original Milestone 3 exit criteria fully verified.
 
 **Exit criteria:** Start a turn on phone, watch it stream on laptop, then start a turn on laptop and watch it stream on phone, both against the same conversation and history.
 
-### Milestone 4: Shared terminal sessions
+### Milestone 4: Shared terminal behavior for the LAN browser bridge
 
-- [ ] Refactor PTY session ownership away from one `WebContents` owner.
-- [ ] Introduce host-owned terminal sessions with subscriber tracking.
-- [ ] Broadcast terminal output and exit events to subscribed clients.
-- [ ] Allow authenticated remote input to the same PTY.
-- [ ] Support terminal session discovery and attachment after connection.
-- [ ] Preserve or expose buffered output for reconnect.
-- [ ] Define terminal lifecycle when desktop/web clients disconnect.
-- [ ] Define and test resize arbitration.
-- [ ] Preserve AI terminal execution behavior.
+- [!] The deeper host-owned PTY refactor is deferred. The current LAN bridge intentionally routes browser terminal calls through the same Electron renderer owner used by the desktop UI.
+- [x] Desktop and browser resolve the same deterministic workspace/session key and therefore attach to the same PTY rather than creating a second shell.
+- [x] Forward terminal data/exit events to the web client.
+- [x] Allow remote terminal input/write/resize through the shared terminal API.
+- [x] Synchronize explicit terminal-tab close events browser ↔ desktop without treating terminal restart as tab removal.
+- [x] Preserve existing buffered terminal/session behavior and AI terminal execution in the full test suite.
+- [ ] Add a dedicated runtime E2E that types a command from browser and asserts the exact output appears in both browser and desktop views.
+- [ ] Revisit host-owned multi-subscriber PTY ownership before an architecture where the desktop renderer is no longer the bridge.
 
 **Exit criteria:** One real laptop PTY can be viewed and controlled from desktop and phone, with output visible on both clients and no duplicate terminal process.
 
@@ -551,31 +565,36 @@ Tracking legend:
 
 ### Milestone 6: Responsive and mobile UI
 
-- [ ] Establish responsive layout primitives and breakpoints.
-- [ ] Convert desktop-only sidebars/panels to responsive drawers/tabs/full-screen routes where needed.
-- [ ] Make chat composer keyboard-safe on iOS and Android browsers.
-- [ ] Make message/tool/diff cards usable on narrow screens.
-- [ ] Make terminal usable on touch devices.
-- [ ] Add mobile navigation for Chat, Files, Terminal, and Git/Diff.
-- [ ] Verify dialogs, approvals, menus, and selectors on phone widths.
-- [ ] Test portrait and landscape layouts.
-- [ ] Test tablet layouts.
-- [ ] Ensure desktop layout remains unchanged at desktop breakpoints unless deliberately improved.
+- [x] Establish an explicit phone breakpoint at 767px and mobile workspace state rather than compressing the desktop shell.
+- [x] Convert the main sidebar and Settings navigation to full-screen mobile surfaces.
+- [x] Remove desktop-only panel controls and secondary workspace panes from the persistent phone UI.
+- [x] Add the agreed persistent bottom navigation: **Chat / Terminal / Board**.
+- [x] Make Terminal and Board full mobile surfaces while keeping their shared host state intact.
+- [x] Keep Provider/Codex/Model/MCP/Skill/New Thread/Board task actions as mobile-safe dialogs where they are conceptually dialogs.
+- [x] Use `100dvh` and safe-area-aware bottom padding in the mobile shell.
+- [x] Verify phone portrait at 390 × 844 in real Chromium with no document/visible-element horizontal overflow across 21 checkpoints, including real Board task create/details.
+- [x] Ensure desktop-only workspace controls are absent from the phone viewport.
+- [x] Preserve desktop behavior under the full typecheck/test/build verification.
+- [ ] Validate software-keyboard behavior on physical iOS and Android devices.
+- [ ] Validate phone landscape.
+- [ ] Validate tablet breakpoints.
+- [ ] Add dedicated narrow diff/code-content tests if those contextual surfaces become primary mobile workflows.
 
 **Exit criteria:** A phone can perform a complete remote TideCode workflow without switching to desktop-site mode or fighting a compressed desktop layout.
 
 ### Milestone 7: LAN product hardening
 
-- [ ] Add QR pairing UX.
-- [ ] Add paired-device management.
-- [ ] Add reconnect/backoff and clear offline state.
-- [ ] Add protocol compatibility handling between desktop and cached web clients.
-- [ ] Add rate/message-size limits and security tests.
-- [ ] Audit unauthenticated endpoints and metadata exposure.
+- [!] QR/token pairing and paired-device management are not part of the current username/password LAN design.
+- [x] Add authenticated-host integration coverage for login gating, wrong-password rejection, session cookie establishment, authenticated WebSocket readiness, and port migration/session invalidation.
+- [x] Add mobile Chromium UI smoke coverage for the shared web application at 390 × 844.
+- [x] Add protocol/auth unit tests and same-origin WebSocket enforcement.
+- [ ] Add reconnect/backoff and explicit offline UX coverage.
+- [ ] Add broader rate/message-size limits and security tests.
+- [ ] Complete a formal unauthenticated-endpoint/metadata audit.
 - [ ] Add LAN threat-model documentation.
-- [ ] Decide and implement the encryption story required for supported LAN release.
-- [ ] Add integration tests covering two simultaneous clients.
-- [ ] Add end-to-end smoke coverage for chat sync and terminal sync.
+- [ ] Decide and implement the encryption/TLS story required for a supported LAN release.
+- [ ] Add integration tests covering two simultaneous browser clients.
+- [ ] Add a dedicated E2E for bidirectional chat-stream and terminal-output synchronization.
 
 **Exit criteria:** LAN Remote Access is suitable for normal user testing with documented security properties and reliable reconnect behavior.
 
@@ -603,7 +622,7 @@ Tracking legend:
 
 **Exit criteria:** A user away from their LAN can open `console.tidecode.com`, select their online laptop, and use the same TideCode web experience through the relay.
 
-## 16. Testing Strategy
+## 17. Testing Strategy
 
 ### Unit tests
 
@@ -651,15 +670,15 @@ npm run build
 
 Focused tests should run during development before the full suite.
 
-## 17. Security Review Checklist
+## 18. Security Review Checklist
 
 Before declaring LAN or cloud remote access production-ready, verify:
 
-- [ ] No unauthenticated endpoint can execute commands, start prompts, read conversations, or inspect sensitive workspace metadata.
-- [ ] Pairing secrets are high entropy and short lived or one time.
-- [ ] Device session credentials can be revoked.
-- [ ] Secrets never appear in logs, URLs that leak through referrers/history unnecessarily, or UI diagnostics.
-- [ ] WebSocket authentication is enforced before subscription or command handling.
+- [~] When web auth is enabled, protected UI and WebSocket control are gated by the authenticated session. Auth-disabled LAN mode intentionally remains accessible to reachable LAN clients.
+- [!] Pairing secrets are superseded by optional username/password for the current LAN phase.
+- [!] Per-device revocation is deferred with the pairing model; credential changes invalidate all current web sessions.
+- [x] Web credentials are not placed in URLs, and stored passwords use one-way verifiers rather than plaintext.
+- [x] WebSocket authentication is enforced before command handling when web auth is enabled.
 - [ ] Every state-changing command is authorized server-side.
 - [ ] Payload validation rejects malformed and oversized messages.
 - [ ] Retry/reconnect cannot duplicate destructive actions.
@@ -668,7 +687,7 @@ Before declaring LAN or cloud remote access production-ready, verify:
 - [ ] File path validation prevents escaping authorized workspace semantics.
 - [ ] Cloud relay threat model explicitly covers relay compromise, account compromise, stolen device, and replay.
 
-## 18. Non-Goals for the LAN MVP
+## 19. Non-Goals for the LAN MVP
 
 The first LAN milestone does not require:
 
@@ -683,7 +702,7 @@ The first LAN milestone does not require:
 
 The goal is TideCode workspace control and synchronization, not generic OS remote desktop software.
 
-## 19. Definition of Done for the Overall Remote Workspace Project
+## 20. Definition of Done for the Overall Remote Workspace Project
 
 The project is considered complete when:
 
@@ -698,7 +717,7 @@ The project is considered complete when:
 9. The same web client can be installed as a PWA.
 10. The architecture supports, and eventually implements, remote access through `console.tidecode.com` using an outbound laptop connection and relay without duplicating the TideCode runtime.
 
-## 20. Tracking Rules
+## 21. Tracking Rules
 
 This file is the canonical implementation tracker for Remote Workspace work.
 
@@ -709,7 +728,7 @@ This file is the canonical implementation tracker for Remote Workspace work.
 - Do not reopen completed CLI implementation work unless Remote Workspace integration exposes a concrete compatibility defect.
 - Prefer completing one vertical slice with tests before broadening capability coverage.
 
-## 21. Recommended First Implementation Slice
+## 22. Recommended First Implementation Slice
 
 The first implementation slice should be Milestones 0 through the smallest useful portion of Milestone 2:
 
