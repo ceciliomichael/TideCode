@@ -4,6 +4,7 @@ import { parseInitialSettingsArg } from './settings/bootstrap'
 import type {
   AppendConversationMessagesInput,
   ApiKeyProviderId,
+  ClaimSharedFollowUpsInput,
   AppSettings,
   ChatProviderId,
   ChatStreamEvent,
@@ -51,6 +52,7 @@ import type {
   SubmitToolDecisionInput,
   StartChatStreamInput,
   UpdateConversationRuntimeInput,
+  UpdateSharedFollowUpsInput,
   UpdatePendingSteerMessagesInput,
   WorkspaceExplorerImportEntryInput,
   WorkspaceExplorerPasteClipboardImageInput,
@@ -220,8 +222,10 @@ const runsApi: TideCodeRunsApi = {
   compactConversation: (input: CompactConversationInput) => ipcRenderer.invoke('chat:compactConversation', input),
   getCompactionState: (conversationId: string) => ipcRenderer.invoke('runs:getCompactionState', conversationId),
   getConversationRuntime: (conversationId: string) => ipcRenderer.invoke('runs:getConversationRuntime', conversationId),
+  getPendingFollowUps: (streamId: string) => ipcRenderer.invoke('runs:getPendingFollowUps', streamId),
   getRunProjection: (runId: string) => ipcRenderer.invoke('runs:getProjection', runId),
   listActiveRuns: () => ipcRenderer.invoke('runs:listActive'),
+  claimPendingFollowUps: (input: ClaimSharedFollowUpsInput) => ipcRenderer.invoke('runs:claimPendingFollowUps', input),
   onEvent: (listener) => {
     const wrappedListener = (_event: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)
     ipcRenderer.on('run-service:event', wrappedListener)
@@ -231,6 +235,8 @@ const runsApi: TideCodeRunsApi = {
   },
   updateConversationRuntime: (input: UpdateConversationRuntimeInput) =>
     ipcRenderer.invoke('runs:updateConversationRuntime', input),
+  updatePendingFollowUps: (input: UpdateSharedFollowUpsInput) =>
+    ipcRenderer.invoke('runs:updatePendingFollowUps', input),
 }
 
 const chatApi: TideCodeChatApi = {

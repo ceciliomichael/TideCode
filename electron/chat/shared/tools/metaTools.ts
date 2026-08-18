@@ -128,6 +128,25 @@ export function createToolSearchTool(registry: AgentToolRegistry, options: { dyn
   })
 }
 
+const CODE_MODE_TOOL_ROUTING = [
+  'Choose the purpose-built inner API for the scenario. Do not use terminal commands as a substitute for structured workspace APIs.',
+  '- `tools.read`: inspect one known file or directory.',
+  '- `tools.list`: inspect immediate entries of one directory.',
+  '- `tools.glob`: discover files by path or filename pattern.',
+  '- `tools.grep`: search workspace text, symbols, imports, or references.',
+  '- `tools.edit`: make a targeted change to an existing text file after reading the relevant source.',
+  '- `tools.write`: create a new text file or intentionally replace a complete file; use edit for targeted existing-file changes.',
+  '- `tools.execute_terminal`: run an actual command/process such as tests, typecheck, build, package manager, compiler, Git command, or app/script. Never use shell, PowerShell, Python, or Node just to read, search, edit, or write workspace files when the structured APIs above apply.',
+  '- `tools.read_terminal`: collect new output from an existing terminal session instead of starting the command again; it returns early when input is detected.',
+  '- `tools.interact_terminal`: answer a prompt or send control/navigation keys to that same terminal session. For ordinary line input, send text with ENTER.',
+  '- `tools.terminate_terminal`: stop a persistent terminal session started for the current work.',
+  'Terminal interaction loop: execute once, read the same session, interact only when its output/state needs input, then continue reading that same session. Do not retry equivalent newline, CRLF, Enter, or Return variants unless fresh output shows the first normal interaction was not accepted.',
+  '- `tools.memory`: read or maintain durable project/planning context, not project source.',
+  '- `tools.kanban_board`: inspect or update Kanban task data when the request concerns cards, subtasks, status, or board planning.',
+  '- `tools.tool_search`: discover a connected MCP capability that is not preloaded, then invoke only an exact returned function.',
+  'Any additional preloaded API should be used only for the capability described by its generated contract below.',
+].join('\n')
+
 function buildPreloadedToolDocumentation(registry: AgentToolRegistry) {
   const contracts = registry.entries
     .filter((entry) => !isDynamicAgentTool(entry))
@@ -149,13 +168,10 @@ export function createCodeModeTool(
   executor: CodeModeExecutor,
   registry: AgentToolRegistry,
 ) {
-  const runtimePolicy = "Tool-only runtime: direct Node.js and host access is blocked. Use tools.* for every filesystem, terminal, process, network, memory, plan, mutation, or connected-service action. Ordinary JavaScript remains available for in-memory computation and orchestration. Structured tools apply the app's sandbox/full execution policy themselves."
-
   return tool({
     description: [
       CODE_MODE_EXECUTION_CONTRACT,
-      runtimePolicy,
-      'Run a temporary local JavaScript orchestration program. Write simple sequential calls, await each call, and return a concise JSON-compatible result. For source mutations, call tools.edit({ path, edits }); use one path per call and complete targetContent/replacementContent hunks. startLine/endLine are optional: when omitted, matching searches the entire file. replaceAll: true replaces every match in the file or range; leave it false for one intended match. Use source text only in targetContent; never include read metadata or the EOF footer. When using backticks in Code Mode, escape literal template expressions as \\${var} or use single quotes.',
+      CODE_MODE_TOOL_ROUTING,
       buildPreloadedToolDocumentation(registry),
     ].join('\n'),
     inputSchema: jsonSchema<CodeModeInput>(CODE_MODE_INPUT_SCHEMA),

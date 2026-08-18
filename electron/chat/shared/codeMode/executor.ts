@@ -249,6 +249,10 @@ function toJsonSafe(value: unknown): unknown {
 function serializeToolResult(result: AgentToolExecutionResult): unknown {
   const safeResult = toJsonSafe(result) as Record<string, unknown>
   const modelResult = { ...safeResult }
+  const semantics = asRecord(safeResult.semantics)
+  if (modelResult.session_id === undefined && typeof semantics?.session_id === 'number') {
+    modelResult.session_id = semantics.session_id
+  }
   delete modelResult.displayBody
   delete modelResult.modelOutput
   delete modelResult.resultPresentation

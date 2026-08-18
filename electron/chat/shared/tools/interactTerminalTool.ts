@@ -19,6 +19,7 @@ import {
 } from "./terminalToolShared";
 
 const DEFAULT_READ_WAIT_SECONDS = 15;
+const DEFAULT_INPUT_WAIT_SECONDS = 1;
 
 interface InteractTerminalInput {
   cols?: number;
@@ -32,7 +33,7 @@ interface InteractTerminalInput {
 export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
   return tool({
     description:
-      "Control an active terminal session: wait for/read new output, type text/prompts into stdin, or send control keys like CTRL_C to stop the process. Omit text and keys for a pure read.",
+      "Send input or control keys to an existing terminal session. Use the same session_id returned by execute_terminal after read_terminal shows that input is needed. For ordinary line prompts, send text with the ENTER key. input_sent confirms only that input was written to the PTY; verify acceptance from returned output/state or read_terminal. A short post-input wait observes the command response.",
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
@@ -43,7 +44,7 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
           type: "number",
         },
         keys: {
-          description: "Optional named control keys to send: ENTER, CTRL_C, CTRL_D, TAB, ESC, UP, DOWN, LEFT, RIGHT.",
+          description: "Optional named control keys to send: ENTER/RETURN, CTRL_C, CTRL_D, TAB, ESC, UP, DOWN, LEFT, RIGHT.",
           items: {
             maxLength: 32,
             type: "string",
@@ -62,7 +63,7 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
           type: "number",
         },
         text: {
-          description: "Literal text or characters to send to the running process (e.g. 'yes\\n' or '\\u0003' for Ctrl+C).",
+          description: "Literal text to send to the running process. For a normal line prompt, provide the text here and include ENTER in keys. Use named keys for control or navigation input.",
           type: "string",
         },
         wait_seconds: {
@@ -139,7 +140,7 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
           );
         }
 
-        const defaultWait = isPureRead ? DEFAULT_READ_WAIT_SECONDS : 0;
+        const defaultWait = isPureRead ? DEFAULT_READ_WAIT_SECONDS : DEFAULT_INPUT_WAIT_SECONDS;
         const requestedWait = typeof input.wait_seconds === "number" ? input.wait_seconds : defaultWait;
         const waitMilliseconds = session.commandComplete
           ? 0
@@ -182,7 +183,7 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
         ];
 
         if (inputSent) {
-          bodyLines.push("interaction_applied: true", `input_sent: true`);
+          bodyLines.push("input_sent: true");
         }
 
         if (summary.state === "completed" && session.commandExitCode !== null && session.commandExitCode !== 0) {
@@ -206,7 +207,7 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
             } else {
               bodyLines.push(
                 "",
-                "guidance: Command is actively executing in the background. Call interact_terminal again to continue waiting for output or completion.",
+                "guidance: Input was written to the PTY and the command is still running. Use read_terminal with the same session_id to verify whether the process accepted it and to collect more output.",
               );
             }
           }
@@ -236,7 +237,7 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
             } else {
               bodyLines.push(
                 "",
-                "guidance: Process is actively executing in background and has not exited. Use interact_terminal to wait for output or send Ctrl+C to cancel. Do not re-run this command while the session is active.",
+                "guidance: The terminal session is still active. Use read_terminal with the same session_id to verify the process state; use interact_terminal again only when fresh output shows that more input or a control key is needed.",
               );
             }
           } else {
@@ -269,7 +270,6 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
             ...summary.semantics,
             active: summary.state === "running",
             input_sent: inputSent,
-            interaction_applied: inputSent,
             is_daemon: session.isDaemon,
             new_output_line_count: unreadOutput.lines.length,
             next_unread_line: session.nextUnreadLine,

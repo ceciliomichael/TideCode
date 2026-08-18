@@ -17,6 +17,33 @@ export interface SidebarThreadRow {
   workspaceName: string
 }
 
+export type SidebarHistoryEmptyState = 'loading' | 'no-matches' | 'no-archived' | 'no-threads' | 'no-projects'
+
+export function resolveSidebarHistoryEmptyState(input: {
+  hasProjects: boolean
+  isLoading: boolean
+  searchQuery: string
+  selectedProjectId: string
+}): SidebarHistoryEmptyState {
+  if (input.isLoading) return 'loading'
+  if (input.searchQuery.trim().length > 0) return 'no-matches'
+  if (input.selectedProjectId === ARCHIVED_PROJECT_FILTER_ID) return 'no-archived'
+  return input.hasProjects ? 'no-threads' : 'no-projects'
+}
+
+export function resolveSidebarProjectLabel(
+  selectedProjectId: string,
+  projects: readonly SidebarProjectOption[],
+  cachedProjectName: string | null = null,
+) {
+  if (selectedProjectId === ALL_PROJECTS_FILTER_ID) return 'All projects'
+  if (selectedProjectId === CHATS_PROJECT_FILTER_ID) return 'Chats'
+  if (selectedProjectId === ARCHIVED_PROJECT_FILTER_ID) return 'Archived'
+
+  const cachedName = cachedProjectName?.trim()
+  return projects.find((project) => project.id === selectedProjectId)?.name ?? (cachedName || 'Project')
+}
+
 function isProjectGroup(group: ConversationGroupPreview) {
   return group.folder.id !== null && group.folder.id !== PINNED_FOLDER_ID && group.folder.id !== ARCHIVED_FOLDER_ID
 }

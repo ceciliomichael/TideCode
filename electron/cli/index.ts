@@ -17,6 +17,7 @@ import { getStoredSettings } from '../settings/store'
 import { readPipedPrompt, resolveHeadlessPrompt } from './stdinPrompt'
 import { TIDECODE_VERSION } from '../appVersion'
 import { initializeCliAppRoot } from './appRoot'
+import { ensureRunServiceClient } from '../runService/ensureService'
 
 initializeCliAppRoot()
 
@@ -98,7 +99,7 @@ async function resolveDefaultProviderAndModel(options: CliOptions): Promise<{
   modelId: string
   reasoningEffort: ReasoningEffort
 }> {
-  const snapshot = await getTideCodeSystemModels()
+  const snapshot = await getTideCodeSystemModels(options.mode || 'agent')
 
   if (options.model) {
     const match = findSystemModel(snapshot.allModels, options.model, options.provider)
@@ -163,6 +164,10 @@ export async function main() {
   await initializeCliConversation(state, options.continueId, {
     preserveModelSelection: Boolean(options.model || options.provider),
   })
+
+  if (!options.continueId) {
+    await (await ensureRunServiceClient()).ensureWorkspaceProject(state.workspaceRootPath)
+  }
 
   if (options.remote) {
     await startRemoteRelayDaemon(state, options.port)

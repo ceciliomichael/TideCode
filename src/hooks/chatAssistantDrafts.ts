@@ -583,11 +583,6 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
       activeAssistantDraftKind = null
       reasoningDraftAssistantId = null
       shouldStartFreshReasoningDraft = false
-      input.stopTextStreaming(input.conversationId)
-      input.updateConversationRuntimeState(input.conversationId, {
-        streamingAssistantMessageId: null,
-        streamingWaitingIndicatorVariant: null,
-      })
       appendAssistantDraft('placeholder')
     },
     handleToolInvocationCompleted(

@@ -2,10 +2,10 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { ChatMode, AppTerminalExecutionMode } from '../../../../../src/types/chat'
 import type { AgentOrchestrationMode } from '../../orchestration'
-import { CODE_MODE_EXECUTION_CONTRACT } from '../../codeMode/promptContract'
 import { buildWorkspaceInstructionsBlock } from '../workspaceInstructions'
 import { buildPythonVenvPromptBlock } from '../../../../python/venv'
 import { getTideCodeRuntimeRoot } from '../../../../runtime/runtimeRoot'
+import { resolvePreferredTerminalShell } from '../../../../terminal/configuration'
 
 const PROMPT_REPO_PATH = 'electron/chat/shared/prompts/mode'
 const MODE_PROMPT_PATHS: Record<ChatMode, string> = {
@@ -14,7 +14,6 @@ const MODE_PROMPT_PATHS: Record<ChatMode, string> = {
 }
 const SHARED_PROMPT_FILES = [
   { id: 'shared_mindset_prompt', relativePath: 'shared/mindset.md' },
-  { id: 'shared_tooling_prompt', relativePath: 'shared/tooling.md' },
   { id: 'shared_memory_prompt', relativePath: 'shared/memory.md' },
   { id: 'shared_response_prompt', relativePath: 'shared/response.md' },
   { id: 'shared_continuation_prompt', relativePath: 'shared/continuation.md' },
@@ -57,14 +56,10 @@ const CORE_DECISION_PROMPT = [
 ].join('\n')
 
 const CODE_MODE_AGENT_PROMPT = [
-  '<agent_code_mode_rules description="Local Code Mode contract">',
+  '<agent_code_mode_rules description="Use the Code Mode contract without duplicating it">',
   '- The only model-facing tool in this turn is `code_mode`.',
-  `- ${CODE_MODE_EXECUTION_CONTRACT}`,
-  '- Local workspace APIs are preloaded in the `code_mode` description. Call them directly as `tools.<name>(args)`. For connected MCP APIs, call `tools.tool_search({ query })` inside Code Mode and invoke an exact returned function in that same program; never call tool_search as a separate native tool.',
-  '- Every `path` argument is exactly one existing file or directory path. `read` is for one file (a directory returns entries), `list` is for one directory, and `glob`/`grep` discover paths. Never invent an index file or combine roots with spaces (for example, `"src electron"`); use one call per root or omit `path` to search the workspace root.',
-  '- Write boring sequential JavaScript: await each `tools.*` call, keep intermediate data inside the program, and return small JSON-compatible data. Use `Promise.all` only for independent calls.',
-  '- For source changes, use `tools.edit({ path, edits })`. One call has one path; its `edits` array may contain multiple hunks for that file. Every hunk requires complete `targetContent` and `replacementContent`. `startLine`/`endLine` are optional: when omitted, matching searches the entire file. Use `replaceAll: true` to replace every match in the file or range; leave it false for one intended match. Use source text only in targetContent; never include read metadata or the EOF footer, edit unchanged content (where targetContent and replacementContent are identical), or mix paths in one call. When wrapping targetContent/replacementContent/content in backticks inside Code Mode, escape inner backticks as `\\`` and literal template expressions as `\\${var}`, or use single quotes; do NOT use Python triple quotes (""").',
-  '- After a tool failure or source drift, reread the target and generate a new narrow action. Preserve permissions and approvals, verify the requested result, then stop.',
+  '- Treat the `code_mode` tool description as the authoritative contract for inner APIs, restrictions, schemas, and scenario routing. Do not duplicate or override those mechanics in the system prompt.',
+  '- Keep each Code Mode program scoped to the smallest complete inspect, mutate, or verify sequence needed for the current decision.',
   '</agent_code_mode_rules>',
 ].join('\n')
 
@@ -80,16 +75,13 @@ export interface ChatSystemPromptBreakdown {
   systemPrompt: string
 }
 
-function getSharedPromptComponents(includeDirectMcpSurface: boolean): ChatSystemPromptComponent[] {
-  if (cachedSharedPromptComponents !== null && includeDirectMcpSurface) {
+function getSharedPromptComponents(): ChatSystemPromptComponent[] {
+  if (cachedSharedPromptComponents !== null) {
     return cachedSharedPromptComponents
   }
 
   const components: ChatSystemPromptComponent[] = []
   for (const { id, relativePath } of SHARED_PROMPT_FILES) {
-    if (!includeDirectMcpSurface && id === 'shared_tooling_prompt') {
-      continue
-    }
 
     let content = ''
     try {
@@ -110,9 +102,7 @@ function getSharedPromptComponents(includeDirectMcpSurface: boolean): ChatSystem
     })
   }
 
-  if (includeDirectMcpSurface) {
-    cachedSharedPromptComponents = components
-  }
+  cachedSharedPromptComponents = components
   return components
 }
 
@@ -213,17 +203,15 @@ export function buildChatModeSystemPromptBreakdown(
   const systemRuleComponents: ChatSystemPromptComponent[] = [
     coreDecisionComponent,
     ...modeComponents,
-    ...getSharedPromptComponents(!isCodeModeAgent),
+...getSharedPromptComponents(),
   ]
 
   if (isHybridAgent) {
     systemRuleComponents.push({
       content: [
         '<code_mode_contract>',
-        'This hybrid turn exposes direct tools plus `code_mode`; tool discovery is available inside it as `tools.tool_search({ query })`.',
-        'Use direct tools for one simple operation; use code_mode for related calls, loops, filtering, or batching.',
-        'Code Mode is tool-only: use ordinary JavaScript for in-memory orchestration and route every external action through tools.*.',
-        'Local tools are preloaded in code_mode. For connected MCP capabilities, call tools.tool_search inside the Code Mode program and invoke only an exact returned function.',
+        'Use a direct tool for one simple operation; use `code_mode` for related calls, loops, filtering, or batching.',
+        'Treat the `code_mode` tool description as authoritative for its inner APIs, restrictions, and discovery mechanics.',
         '</code_mode_contract>',
       ].join('\n'),
       id: 'agent_code_mode_contract',
@@ -249,7 +237,7 @@ export function buildChatModeSystemPromptBreakdown(
       '- Prefer paths relative to that root. Use `.` or omit an optional path for the root itself.',
       '- Never guess or construct an absolute path from a project name, display name, process directory, or previous turn. Copy an absolute path only when the user or a tool provided it.',
       isCodeModeAgent
-        ? '- Use the preloaded filesystem APIs for path inspection. Use `tools.tool_search({ query })` inside Code Mode only when the required capability is a connected MCP tool.'
+        ? '- Follow the path rules in the `code_mode` tool description for inner workspace calls.'
         : '- If unsure, inspect with `list`, `glob`, or `grep` before choosing a path.',
       '- If a path fails, correct the relative child path; do not retry the same guessed absolute path.',
       '</workspace_path_rules>',
@@ -259,10 +247,27 @@ export function buildChatModeSystemPromptBreakdown(
     source: 'electron/chat/shared/prompts/mode/index.ts',
   }
   const venvPrompt = buildPythonVenvPromptBlock(workspaceRootPath)
+  const terminalShell = chatMode === 'agent' ? resolvePreferredTerminalShell() : null
+  const terminalShellPrompt = terminalShell
+    ? [
+        '<terminal_environment>',
+        '- Active terminal shell: ' + escapePromptMarkup(terminalShell.label) + ' (' + escapePromptMarkup(terminalShell.command) + ').',
+        '- Write terminal commands using this shell syntax. Do not assume another shell.',
+        '</terminal_environment>',
+      ].join('\n')
+    : ''
   const workspaceInstructions = buildWorkspaceInstructionsBlock(workspaceRootPath)
   const workspaceComponents = [
     workspaceRootComponent,
     workspacePathContractComponent,
+    terminalShellPrompt
+      ? {
+          content: terminalShellPrompt,
+          id: 'terminal_shell_context',
+          section: 'workspace_context' as const,
+          source: 'electron/terminal/configuration.ts',
+        }
+      : null,
     venvPrompt
       ? {
           content: venvPrompt,

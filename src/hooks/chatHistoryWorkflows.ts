@@ -95,15 +95,10 @@ async function loadStoredConversationOrThrow(conversationId: string) {
 }
 
 async function loadConversationForInitialView(conversationId: string) {
-  const conversationPromise = window.tidecodeHistory.getConversation(conversationId)
-  const markerPromise = Promise.resolve()
-    .then(() => loadChatCompactionMarkers(conversationId))
-    .catch((error) => {
-      console.error(`Failed to preload chat compaction markers: ${conversationId}`, error)
-    })
-
-  const [conversation] = await Promise.all([conversationPromise, markerPromise])
-  return conversation
+  void loadChatCompactionMarkers(conversationId).catch((error) => {
+    console.error(`Failed to preload chat compaction markers: ${conversationId}`, error)
+  })
+  return window.tidecodeHistory.getConversation(conversationId)
 }
 
 function findUserMessageOrThrow(conversation: ConversationRecord, messageId: string) {
@@ -219,9 +214,15 @@ export async function loadInitialChatHistory(
   openEmptyConversationOnLaunch = false,
   preferredDraftFolderId?: string | null,
 ): Promise<ChatHistorySnapshot> {
-  const [conversationSummaries, folderSummaries] = await Promise.all([
+  const normalizedPreferredConversationId = preferredConversationId?.trim() ?? ''
+  const preferredConversationPromise =
+    !openEmptyConversationOnLaunch && normalizedPreferredConversationId.length > 0
+      ? loadConversationForInitialView(normalizedPreferredConversationId)
+      : Promise.resolve(null)
+  const [conversationSummaries, folderSummaries, prefetchedPreferredConversation] = await Promise.all([
     window.tidecodeHistory.listConversations(),
     window.tidecodeHistory.listFolders(),
+    preferredConversationPromise,
   ])
   void prefetchChatCompactionMarkers(conversationSummaries.map((conversation) => conversation.id))
 
@@ -245,7 +246,6 @@ export async function loadInitialChatHistory(
     }
   }
 
-  const normalizedPreferredConversationId = preferredConversationId?.trim() ?? ''
   const preferredConversationSummary =
     normalizedPreferredConversationId.length > 0
       ? conversationSummaries.find((summary) => summary.id === normalizedPreferredConversationId)
@@ -253,7 +253,7 @@ export async function loadInitialChatHistory(
 
   if (preferredConversationSummary) {
     if (!validPreferredFolderId || preferredConversationSummary.folderId === validPreferredFolderId) {
-      const initialConversation = await loadConversationForInitialView(preferredConversationSummary.id)
+      const initialConversation = prefetchedPreferredConversation
       if (initialConversation) {
         return {
           conversationSummaries,

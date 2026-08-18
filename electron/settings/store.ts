@@ -40,6 +40,7 @@ const WORKSPACE_UI_SETTINGS_KEYS = [
   'terminalOpenByWorkspace',
   'terminalPanelHeightsByWorkspace',
   'selectedProjectId',
+  'selectedProjectName',
 ] as const satisfies readonly (keyof AppSettings)[]
 
 type WorkspaceUiSettingsKey = (typeof WORKSPACE_UI_SETTINGS_KEYS)[number]
@@ -364,6 +365,7 @@ function pickDurableAppSettings(settings: AppSettings): DurableAppSettings {
     sourceControlSectionSizes: _sourceControlSectionSizes,
     terminalOpenByWorkspace: _terminalOpenByWorkspace,
     terminalPanelHeightsByWorkspace: _terminalPanelHeightsByWorkspace,
+    selectedProjectName: _selectedProjectName,
     ...durableSettings
   } = settings
 
@@ -388,6 +390,7 @@ function pickWorkspaceUiSettings(settings: AppSettings): WorkspaceUiSettings {
     terminalOpenByWorkspace: settings.terminalOpenByWorkspace,
     terminalPanelHeightsByWorkspace: settings.terminalPanelHeightsByWorkspace,
     selectedProjectId: settings.selectedProjectId,
+    selectedProjectName: settings.selectedProjectName,
   }
 }
 
@@ -513,6 +516,10 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     typeof input?.autoDownloadUpdates === 'boolean'
       ? input.autoDownloadUpdates
       : DEFAULT_APP_SETTINGS.autoDownloadUpdates
+  const checkForUpdatesOnLaunch =
+    typeof input?.checkForUpdatesOnLaunch === 'boolean'
+      ? input.checkForUpdatesOnLaunch
+      : DEFAULT_APP_SETTINGS.checkForUpdatesOnLaunch
   const chatModelId = typeof input?.chatModelId === 'string' ? input.chatModelId.trim() : DEFAULT_APP_SETTINGS.chatModelId
   const chatModelProviderId = isChatProviderId(input?.chatModelProviderId)
     ? input.chatModelProviderId
@@ -623,6 +630,7 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
   return {
     appearance,
     autoDownloadUpdates,
+    checkForUpdatesOnLaunch,
     chatModelId,
     chatModelProviderId,
     chatModelLabel,
@@ -667,6 +675,10 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     terminalPanelHeightsByWorkspace,
     terminalExecutionMode,
     selectedProjectId: typeof input?.selectedProjectId === 'string' ? input.selectedProjectId : DEFAULT_APP_SETTINGS.selectedProjectId,
+    selectedProjectName:
+      typeof input?.selectedProjectName === 'string' && input.selectedProjectName.trim().length > 0
+        ? input.selectedProjectName.trim()
+        : null,
     modelToggleState: typeof input?.modelToggleState === 'object' && input.modelToggleState !== null ? (input.modelToggleState as Record<string, boolean>) : DEFAULT_APP_SETTINGS.modelToggleState,
   }
 }

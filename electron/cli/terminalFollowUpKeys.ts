@@ -1,13 +1,12 @@
-import type { FollowUpBehavior } from '../../src/lib/appSettings'
+import { resolveFollowUpBehaviorForAction, type FollowUpBehavior, type FollowUpBehaviorAction } from '../../src/lib/appSettings'
 
-export type ActiveFollowUpKeyAction = 'primary' | 'alternate'
+export type ActiveFollowUpKeyAction = FollowUpBehaviorAction
 
 export function resolveFollowUpKeyBehavior(
   action: ActiveFollowUpKeyAction,
   primaryBehavior: FollowUpBehavior,
 ): FollowUpBehavior {
-  if (action === 'primary') return primaryBehavior
-  return primaryBehavior === 'steer' ? 'queue' : 'steer'
+  return resolveFollowUpBehaviorForAction(action, primaryBehavior)
 }
 
 export function getFollowUpKeyHint(primaryBehavior: FollowUpBehavior): string {

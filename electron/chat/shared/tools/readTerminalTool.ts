@@ -30,7 +30,7 @@ function getWaitMilliseconds(value: number | undefined) {
 export function createReadTerminalTool(runtime: TerminalToolRuntime) {
   return tool({
     description:
-      "Wait up to wait_seconds for a terminal session, then consume and return only output produced since the previous read. Repeated calls never replay already-returned output. The wait returns early when the command finishes.",
+      "Wait up to wait_seconds for an existing terminal session and return only new output since the previous read. The wait returns early when the command finishes or interactive input is detected. If input is needed, use interact_terminal with this same session_id.",
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
@@ -126,7 +126,7 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
             } else {
               bodyLines.push(
                 "",
-                "guidance: Command is actively executing in the background. Use interact_terminal to wait for output or send Ctrl+C to cancel.",
+"guidance: Command is still running. Read this same session again when more output is needed. Use interact_terminal only if an input prompt appears or a control key is required.",
               );
             }
           }
@@ -156,7 +156,7 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
             } else {
               bodyLines.push(
                 "",
-                "guidance: The command process is actively executing in the background and has not exited. Call interact_terminal with a wait_seconds window to continue waiting for completion or output. Do not re-run this command while the session is active.",
+"guidance: The command is still running. Keep the same session_id and call read_terminal again later. If the terminal asks for input, answer with interact_terminal on this session instead of re-running the command.",
               );
             }
           } else {

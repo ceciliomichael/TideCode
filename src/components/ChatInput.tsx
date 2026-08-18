@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, typ
 import { ArrowUp, Clock, Paperclip, Square } from 'lucide-react'
 import { CHAT_ATTACHMENT_INPUT_ACCEPT, readChatAttachmentsFromFiles } from '../lib/chatAttachmentFiles'
 import { chatConversationSurfacePaddingClassName, chatInputSurfaceClassName } from '../lib/chatStyles'
+import { DEFAULT_FOLLOW_UP_BEHAVIOR, type FollowUpBehavior } from '../lib/appSettings'
+import { resolveChatFollowUpShortcutAction } from '../lib/chatFollowUpShortcuts'
 import { ChatMentionMenu } from './chat/ChatMentionMenu'
 import { ChatMentionTextarea } from './chat/ChatMentionTextarea'
 import { CodexUsageIndicator } from './chat/CodexUsageIndicator'
@@ -51,6 +53,7 @@ interface ChatInputProps {
   gitBranchLoading?: boolean
   gitBranchState?: GitBranchState
   gitBranchSwitching?: boolean
+  followUpBehavior?: FollowUpBehavior
   isEditing?: boolean
   isStreaming?: boolean
   modelOptions?: readonly ModelSelectorOption[]
@@ -65,6 +68,7 @@ interface ChatInputProps {
   onGitBranchChange?: (branchName: string) => void
   onGitBranchRefresh?: () => void
   onModelChange?: (modelId: string) => void
+  onAlternateFollowUp?: (value: string, attachments: ChatAttachment[]) => void
   onReasoningEffortChange?: (effort: ReasoningEffort) => void
   onRefactorCandidateSelect?: (relativePath: string) => void
   onTerminalExecutionModeChange?: (mode: AppTerminalExecutionMode) => void
@@ -104,6 +108,7 @@ export function ChatInput({
   modelSelectorDisabled,
   onChatModeChange,
   onModelChange,
+  onAlternateFollowUp,
   onReasoningEffortChange,
   onRefactorCandidateSelect,
   onTerminalExecutionModeChange,
@@ -135,6 +140,7 @@ export function ChatInput({
   gitBranchLoading = false,
   gitBranchState,
   gitBranchSwitching = false,
+  followUpBehavior = DEFAULT_FOLLOW_UP_BEHAVIOR,
   onGitBranchChange,
   onGitBranchCreate,
   onGitBranchRefresh,
@@ -206,6 +212,7 @@ export function ChatInput({
       : actionButtonMode
   const canAbort = resolvedActionButtonMode === 'abort' && typeof onAbort === 'function'
   const canQueue = resolvedActionButtonMode === 'queue' && typeof onQueue === 'function'
+  const canAlternateFollowUp = isStreaming && typeof onAlternateFollowUp === 'function'
   const gitBranchTooltip = gitBranchState?.hasRepository ? 'Switch branch' : 'Open a git-backed folder to view branches'
 
   const canSend = (value.trim().length > 0 || attachments.length > 0) && !disabled
@@ -218,17 +225,24 @@ export function ChatInput({
     onAbort()
   }
 
-  function handleQueue() {
-    if (!canQueue || !canSend) {
-      return
-    }
-
+  function submitFollowUp(callback: (value: string, attachments: ChatAttachment[]) => void) {
+    if (!canSend) return
     mentionMenu.closeMenu()
-    onQueue(mentionMenu.expandValueForSend(value), attachments)
+    callback(mentionMenu.expandValueForSend(value), attachments)
     onValueChange('')
     onAttachmentsChange?.([])
     mentionMenu.clearMentionPathMap()
     setAttachmentError(null)
+  }
+
+  function handleQueue() {
+    if (!canQueue || !onQueue) return
+    submitFollowUp(onQueue)
+  }
+
+  function handleAlternateFollowUp() {
+    if (!canAlternateFollowUp || !onAlternateFollowUp) return
+    submitFollowUp(onAlternateFollowUp)
   }
 
   function handleSend() {
@@ -298,12 +312,22 @@ export function ChatInput({
       return
     }
 
+    if (canQueue && canAlternateFollowUp) {
+      const followUpShortcutAction = resolveChatFollowUpShortcutAction(e)
+      if (followUpShortcutAction) {
+        e.preventDefault()
+        if (followUpShortcutAction === 'alternate') handleAlternateFollowUp()
+        else handleQueue()
+        return
+      }
+    }
+
     if (sendOnEnter && e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handlePrimaryAction()
     }
 
-    if (!sendOnEnter && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    if (!sendOnEnter && e.key === 'Enter' && !e.shiftKey && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
       handlePrimaryAction()
     }
@@ -443,6 +467,8 @@ export function ChatInput({
       onValueChange(nextValue)
     }
   }, [attachments, onValueChange, value])
+
+  const followUpActionLabel = followUpBehavior === 'steer' ? 'Steer message' : 'Queue message'
 
   return (
     <div ref={containerRef} className="w-full">
@@ -588,7 +614,7 @@ export function ChatInput({
                 canAbort
                   ? 'Stop generating'
                   : canQueue
-                    ? 'Queue message'
+                    ? followUpActionLabel
                     : isEditing
                       ? 'Send edited message'
                       : 'Send message'
@@ -602,7 +628,7 @@ export function ChatInput({
                   canAbort
                     ? 'Stop generating'
                     : canQueue
-                      ? 'Queue message'
+                      ? followUpActionLabel
                       : isEditing
                         ? 'Send edited message'
                         : 'Send message'

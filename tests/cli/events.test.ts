@@ -146,7 +146,7 @@ test('presented tool completion keeps result bodies out of the CLI transcript', 
     type: 'tool_invocation_completed',
   })
 
-  assert.equal(startedTools, 0)
+  assert.equal(startedTools, 1)
   assert.equal(stripAnsi(completedTool?.label ?? ''), 'Read README.md')
   assert.equal(completedTool?.detail, undefined)
   assert.equal(completedTool?.diff, undefined)

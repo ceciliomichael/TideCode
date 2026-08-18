@@ -127,6 +127,7 @@ export function createApiKeyChatClient(config: ApiKeyChatProviderConfig) {
       ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
       model,
       messages: input.messages,
+      temperature: 0.1,
       ...(input.system ? { system: input.system } : {}),
       ...(input.tools ? { tools: input.tools } : {}),
       ...(providerOptions ? { providerOptions } : {}),

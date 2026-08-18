@@ -104,16 +104,35 @@ export async function startInteractiveRepl(
   let compactionState: ChatCompactionLifecycleState | null = null
   let applyingPendingUndoMutation = false
   let sharedRunAttachmentPromise: Promise<boolean> | null = null
+  let sharedRunAttachmentRetryPending = false
   const attachToSharedRunIfIdle = (): Promise<boolean> | null => {
-    if (state.isStreaming) return null
+    if (state.isStreaming) {
+      sharedRunAttachmentRetryPending = true
+      return null
+    }
     if (sharedRunAttachmentPromise) return sharedRunAttachmentPromise
-    sharedRunAttachmentPromise = attachCliToActiveSharedRun(state, screen)
+    sharedRunAttachmentRetryPending = false
+    sharedRunAttachmentPromise = attachCliToActiveSharedRun(state, screen, {
+      ensurePrompt: () => {
+        if (!pendingInput) pendingInput = screen.ask(createCurrentPromptContext())
+      },
+      onClaimedFollowUps: (messages) => {
+        queuedInputs.push(...messages.map((message) => ({
+          text: message.content,
+          attachments: message.attachments,
+        })))
+      },
+    })
       .catch((error) => {
         screen.addNotice('error', `Could not attach to the shared Tidecode run: ${error instanceof Error ? error.message : String(error)}`)
         return false
       })
       .finally(() => {
         sharedRunAttachmentPromise = null
+        if (sharedRunAttachmentRetryPending && !state.isStreaming) {
+          sharedRunAttachmentRetryPending = false
+          queueMicrotask(() => { void attachToSharedRunIfIdle() })
+        }
       })
     return sharedRunAttachmentPromise
   }
@@ -205,7 +224,10 @@ export async function startInteractiveRepl(
     const isActive = event.run.status === 'starting'
       || event.run.status === 'running'
       || event.run.status === 'waiting_for_input'
-    if (isActive) attachToSharedRunIfIdle()
+    if (isActive) {
+      sharedRunAttachmentRetryPending = true
+      attachToSharedRunIfIdle()
+    }
   })
 
   const [initialRuntime, initialCompactionState] = await Promise.all([
@@ -357,9 +379,15 @@ export async function startInteractiveRepl(
         createCurrentPromptContext(),
         { attachments, printUserMessage, userMessageLeadingSpacer },
       )
-      queuedInputs.push(...result.queuedInputs.map((text) => ({ text })))
+      queuedInputs.push(...result.queuedInputs.map((message) => ({
+        text: message.content,
+        attachments: message.attachments,
+      })))
       pendingInput = result.nextInput
       refreshComposerStatus()
+      if (sharedRunAttachmentRetryPending) {
+        void attachToSharedRunIfIdle()
+      }
     } catch (error) {
       if (state.pendingUndoEdit) {
         // A failed staged-revert write keeps the authoritative transcript

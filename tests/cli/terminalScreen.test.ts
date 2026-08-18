@@ -69,6 +69,37 @@ test('screen lifecycle renders session before compose and keeps cursor in compos
   assert.ok(output.writes.map(stripAnsi).includes('\n  Hello! How can I help?\n\n'))
 })
 
+test('tool execution restores the thinking indicator until the active turn continues', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+  screen.addUserMessage('run the check')
+  screen.beginTurn()
+  const { sink } = createTerminalChatEventSink({
+    presentation: screen.eventPresentation,
+    workspaceRootPath: 'C:/workspace',
+  })
+
+  sink.emit?.({ streamId: 'stream-tool-thinking', type: 'content_delta', delta: 'I will check that.' })
+  assert.equal(output.visibleRows().some((row) => row.includes('I am working on it')), false)
+
+  sink.emit?.({
+    argumentsText: '{}',
+    invocationId: 'tool-1',
+    startedAt: Date.now(),
+    streamId: 'stream-tool-thinking',
+    toolName: 'read',
+    type: 'tool_invocation_started',
+  })
+
+  const toolRows = output.visibleRows()
+  assert.equal(toolRows.some((row) => row.includes('I am working on it')), true)
+  assert.equal(toolRows.some((row) => row.includes('╭─ compose')), true)
+  assert.equal(toolRows.some((row) => row.includes('Enter steer · Tab queue · Esc stop')), true)
+
+  sink.emit?.({ conversationId: 'conversation-tool-thinking', streamId: 'stream-tool-thinking', type: 'completed' })
+})
+
 test('session model changes redraw the active composer footer immediately', () => {
   const output = new TerminalGridOutput()
   const screen = createScreen(output)
@@ -80,6 +111,48 @@ test('session model changes redraw the active composer footer immediately', () =
 
   assert.match(output.visibleRows().at(-1) ?? '', /agent · gpt-next/)
   screen.dismissPrompt()
+})
+
+test('/new resets a stale CLI model to the current mode default from Settings', async () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  const state: CliSessionState = {
+    activeStreamId: null,
+    chatMode: 'plan',
+    conversationId: 'old-conversation',
+    isStreaming: false,
+    messages: [{ content: 'old prompt', id: 'old-user', role: 'user', timestamp: 1, userMessageKind: 'human' }],
+    modelId: 'stale-model',
+    providerId: 'openai',
+    reasoningEffort: 'high',
+    terminalExecutionMode: 'full',
+    workspaceRootPath: 'C:/workspace',
+  }
+  let requestedMode: string | undefined
+  const helpers = createReplCommandHelpers(
+    state,
+    screen,
+    undefined,
+    async (mode = 'agent') => {
+      requestedMode = mode
+      return {
+        allModels: [],
+        configuredModels: [],
+        defaultModelId: 'plan-default',
+        defaultProviderId: 'anthropic',
+        selectedReasoningEffort: 'medium',
+      }
+    },
+  )
+
+  await helpers.clearSession()
+
+  assert.notEqual(state.conversationId, 'old-conversation')
+  assert.equal(requestedMode, 'plan')
+  assert.equal(state.modelId, 'plan-default')
+  assert.equal(state.providerId, 'anthropic')
+  assert.equal(state.reasoningEffort, 'medium')
+  assert.deepEqual(state.messages, [])
 })
 
 test('screen rebuilds one responsive compose frame after a terminal resize', () => {
@@ -162,8 +235,9 @@ test('screen atomically replaces an idle composer when a remote shared run start
 
   const activeRows = output.visibleRows()
   const remoteUserRow = activeRows.findIndex((row) => row.includes('Edited desktop prompt'))
-  const remoteThinkingRow = activeRows.findIndex((row) => row.includes('Thinking'))
-  assert.equal(remoteThinkingRow - remoteUserRow, 2)
+  const remoteReasoningRow = activeRows.findIndex((row) => row.includes('Inspecting'))
+  assert.equal(remoteReasoningRow - remoteUserRow, 2)
+  assert.equal(activeRows[remoteReasoningRow].includes('Thinking'), false)
   assert.equal(activeRows[remoteUserRow + 1], '')
   assert.equal(activeRows.filter((row) => row.includes('╭─ compose')).length, 1)
   assert.equal(activeRows.filter((row) => row.includes('Enter steer · Tab queue · Esc stop')).length, 1)
@@ -547,8 +621,8 @@ test('screen lifecycle streams reasoning text and commits its duration label', (
   screen.eventPresentation.onReasoningDelta('Inspecting the workspace')
 
   const streamingRows = output.visibleRows()
-  assert.equal(streamingRows.filter((row) => row.includes('⠋ Thinking')).length, 1)
-  assert.equal(streamingRows.filter((row) => row.includes('Inspecting the workspace')).length, 1)
+  assert.equal(streamingRows.filter((row) => row.includes('Thinking')).length, 0)
+  assert.equal(streamingRows.filter((row) => row.includes('⠋ Inspecting the workspace')).length, 1)
 
   screen.eventPresentation.onReasoningCompleted(1.2)
   const completedRows = output.visibleRows()
@@ -698,6 +772,36 @@ test('screen clears active steer and queue submissions so more messages can be e
   assert.equal(submittedRows.filter((row) => row.includes('[Queued] and check the build')).length, 1)
   assert.equal(submittedRows.filter((row) => row.includes('╭─ compose')).length, 1)
   assert.equal(submittedRows.some((row) => row.includes('Enter steer · Tab queue · Esc stop')), true)
+
+  screen.eventPresentation.onCompleted()
+})
+
+test('screen renders consumed shared steers as live user transcript rows without duplication', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  const steerMessage: Message = {
+    content: 'run the focused tests now',
+    id: 'shared-steer-1',
+    role: 'user',
+    timestamp: Date.now(),
+  }
+
+  screen.start()
+  screen.addUserMessage('inspect the workspace')
+  screen.beginTurn()
+  screen.eventPresentation.onToolCompleted('[Searched] README*,package.json,*.md,*.mdx')
+  screen.addConsumedUserMessages([steerMessage])
+
+  let rows = output.visibleRows()
+  const steerIndex = rows.findIndex((row) => row.includes('run the focused tests now'))
+  assert.ok(steerIndex > 0)
+  assert.equal(rows[steerIndex - 1], '')
+  assert.equal(rows[steerIndex + 1], '')
+  assert.equal(rows.filter((row) => row.includes('run the focused tests now')).length, 1)
+
+  screen.addConsumedUserMessages([steerMessage])
+  rows = output.visibleRows()
+  assert.equal(rows.filter((row) => row.includes('run the focused tests now')).length, 1)
 
   screen.eventPresentation.onCompleted()
 })

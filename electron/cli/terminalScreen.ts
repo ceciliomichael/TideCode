@@ -372,6 +372,36 @@ export class TerminalScreen {
     this.setActivity('thinking', 'Thinking')
   }
 
+  setPendingActiveMessageHandler(handler: TerminalPromptContext['onActiveMessage']): boolean {
+    if (!this.pendingPrompt) return false
+    this.pendingPrompt.context = { ...this.pendingPrompt.context, onActiveMessage: handler }
+    return true
+  }
+
+  setActiveFollowUps(followUps: readonly ActiveTurnFollowUpView[]): void {
+    this.activeFollowUps = followUps.map((followUp) => ({ ...followUp }))
+    if (this.activeTurn) this.renderActiveTurn()
+  }
+
+  addConsumedUserMessages(messages: readonly Message[]): void {
+    const existingEntryIds = new Set(this.view.entries.map((entry) => entry.id))
+    const nextMessages = messages.filter((message) => message.role === 'user' && !existingEntryIds.has(message.id))
+    if (nextMessages.length === 0) return
+
+    this.closeAssistantSegment()
+    this.activeThought = ''
+    this.activeThoughtEntryId = null
+    this.activeThoughtDurationSeconds = 0
+    for (const message of nextMessages) {
+      existingEntryIds.add(message.id)
+      this.view.entries.push({ kind: 'user', id: message.id, text: stripAnsi(message.content) })
+    }
+
+    if (this.activeTurn) {
+      this.setActivity('thinking', 'Thinking')
+    }
+  }
+
   addNotice(level: 'info' | 'success' | 'warning' | 'error', text: string): void {
     this.stopActivity()
     const cleanText = stripAnsi(text)
@@ -584,7 +614,9 @@ export class TerminalScreen {
         this.startAssistant()
       },
       onContentDelta: (delta) => this.appendAssistant(delta),
-      onToolStarted: () => undefined,
+      onToolStarted: () => {
+        if (this.activeTurn) this.setActivity('thinking', 'Thinking')
+      },
       onToolCompleted: (label, detail, diff) => {
         this.addTool(label, 'completed', detail, diff)
         if (this.activeTurn) this.setActivity('thinking', 'Thinking')
@@ -1189,31 +1221,48 @@ export class TerminalScreen {
     const composerWidth = Math.max(1, panelWidth - 6)
     const visualLines = getComposerVisualLines(this.composer, composerWidth)
     const cursor = getComposerCursorPosition(this.composer, composerWidth)
+    const panel = createActiveTurnPromptPanel({
+      composerWidth,
+      placeholder: getFollowUpKeyHint(this.pendingPrompt?.context.enterFollowUpBehavior ?? 'steer'),
+      visualLines: visualLines.map((line) => line.text),
+      completionItems: this.view.completionItems,
+      completionIndex: this.view.completionIndex,
+      cursorColumn: cursor.column,
+      cursorRow: cursor.lineIndex,
+      queued: false,
+      statusLine: renderTerminalComposerStatus({
+        ...this.composerStatus,
+        mode: this.view.session.mode,
+        model: this.view.session.model,
+      }, panelWidth),
+    })
+    const terminalRows = process.stdout.rows
+    const maxFrameLines = terminalRows
+      ? Math.max(panel.lines.length + 1, terminalRows - 1)
+      : undefined
     const render = renderActiveTurnView({
       activity: this.getRenderedActivity(),
       entries: this.view.entries.slice(this.activeTurnStartIndex),
       followUps: this.activeFollowUps,
       leadingSpacer: this.activeTurnLeadingSpacer,
-      panel: createActiveTurnPromptPanel({
-        composerWidth,
-        placeholder: getFollowUpKeyHint(this.pendingPrompt?.context.enterFollowUpBehavior ?? 'steer'),
-        visualLines: visualLines.map((line) => line.text),
-        completionItems: this.view.completionItems,
-        completionIndex: this.view.completionIndex,
-        cursorColumn: cursor.column,
-        cursorRow: cursor.lineIndex,
-        queued: false,
-        statusLine: renderTerminalComposerStatus({
-          ...this.composerStatus,
-          mode: this.view.session.mode,
-          model: this.view.session.model,
-        }, panelWidth),
-      }),
-      maxOutputLines: process.stdout.rows ? Math.max(4, process.stdout.rows - 10) : undefined,
+      panel,
+      maxFrameLines,
       thinkingFrame: getThinkingSpinnerFrame(this.activeThinkingFrameIndex),
     })
 
     const hasExistingFrame = this.activeTurnLines.length > 0
+    const reachesViewportBoundary = terminalRows !== undefined &&
+      Math.max(this.activeTurnLines.length, render.lines.length) >= Math.max(1, terminalRows - 2)
+    if (
+      outputOverride === undefined &&
+      this.usesProcessOutput &&
+      hasExistingFrame &&
+      render.lines.length !== this.activeTurnLines.length &&
+      reachesViewportBoundary
+    ) {
+      this.redrawAfterResize()
+      return
+    }
     if (!hasExistingFrame) {
       redrawOutput.write(render.lines.join('\n'))
     } else {

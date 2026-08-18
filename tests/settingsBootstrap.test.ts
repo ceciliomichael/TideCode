@@ -58,6 +58,20 @@ test('parseInitialSettingsArg resets launch-only terminal open state', () => {
   assert.deepEqual(parsedSettings.terminalOpenByWorkspace, {})
 })
 
+test('parseInitialSettingsArg preserves the selected project label for first-frame sidebar restore', () => {
+  const parsedSettings = parseInitialSettingsArg([
+    'tidecode.exe',
+    serializeInitialSettingsArg({
+      ...DEFAULT_APP_SETTINGS,
+      selectedProjectId: 'project-one',
+      selectedProjectName: ' Project One ',
+    }),
+  ])
+
+  assert.equal(parsedSettings.selectedProjectId, 'project-one')
+  assert.equal(parsedSettings.selectedProjectName, 'Project One')
+})
+
 test('parseInitialSettingsArg preserves empty chat launch preference', () => {
   const parsedSettings = parseInitialSettingsArg([
     'tidecode.exe',

@@ -93,6 +93,7 @@ interface WorkflowHarnessOptions {
   streamContent?: string | null
   streamToolInvocation?: boolean
   streamOutcome?: 'completed' | 'aborted' | 'error'
+  usesSharedRunPersistence?: boolean
 }
 
 function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
@@ -302,6 +303,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     tidecodeWorkspace: {
       createCheckpoint: async () => ({ createdAt: Date.now(), id: 'checkpoint-1' }),
     },
+    ...(options.usesSharedRunPersistence ? { tidecodeRuns: {} } : {}),
   }
 
   const globalScope = globalThis as Record<string, unknown>
@@ -316,6 +318,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     errors,
     getRuntimeMessages: (conversationId: string) =>
       runtimeStatesRef.current[conversationId]?.conversation.messages ?? [],
+    getRuntimeState: (conversationId: string) => runtimeStatesRef.current[conversationId] ?? null,
     history,
     input,
     restoreWindow: () => {
@@ -366,6 +369,33 @@ test('a normal completed stream persists the user message and the assistant resp
     assert.equal(storedMessages[0]?.role, 'user')
     assert.equal(storedMessages[1]?.role, 'assistant')
     assert.equal(storedMessages[1]?.content, 'Here is the updated README')
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
+test('a shared run leaves assistant rendering to the run-service projection', async () => {
+  const harness = createWorkflowHarness({
+    streamContent: 'Shared projection owns this assistant response',
+    streamOutcome: 'completed',
+    usesSharedRunPersistence: true,
+  })
+
+  try {
+    const accepted = await persistAndStreamMessage(harness.input)
+
+    assert.equal(accepted, true)
+    assert.deepEqual(
+      harness.getRuntimeMessages(harness.conversation.id).map((message) => message.role),
+      ['user'],
+      'the renderer must not create a competing local assistant draft for a shared run',
+    )
+    assert.equal(harness.getRuntimeState(harness.conversation.id)?.activeStreamId, 'stream-1')
+    assert.deepEqual(
+      harness.history.getStoredMessages(harness.conversation.id).map((message) => message.role),
+      ['user'],
+      'shared-run persistence owns assistant history writes',
+    )
   } finally {
     harness.restoreWindow()
   }

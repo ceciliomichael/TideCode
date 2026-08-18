@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { createActiveTurnPromptPanel, renderActiveTurn, renderCommittedTurn } from '../../electron/cli/terminalActiveTurn'
 import { renderTerminalActivityLine } from '../../electron/cli/terminalActivity'
 import { colors } from '../../electron/cli/renderer'
+import { renderTerminalToolRowText } from '../../electron/cli/terminalToolRow'
 import { stripAnsi, visibleWidth } from '../../electron/cli/terminalText'
 import type { TranscriptEntry } from '../../electron/cli/terminalView'
 
@@ -42,10 +43,9 @@ test('active reasoning uses the shared loader with faded text instead of a stati
   const activityLine = render.lines[render.activityRow ?? -1] ?? ''
 
   assert.equal(render.lines[0], '')
-  assert.equal(stripAnsi(activityLine).trim(), '⠙ Thinking · Inspecting the workspace')
-  assert.ok(activityLine.includes(`${colors.subtle}Thinking${colors.reset}`))
+  assert.equal(stripAnsi(activityLine).trim(), '⠙ Inspecting the workspace')
+  assert.equal(stripAnsi(activityLine).includes('Thinking'), false)
   assert.ok(activityLine.includes(`${colors.subtle}Inspecting the workspace${colors.reset}`))
-  assert.doesNotMatch(stripAnsi(activityLine), /· Thinking/u)
 })
 
 test('active reasoning parses inline Markdown in preview detail', () => {
@@ -56,7 +56,8 @@ test('active reasoning parses inline Markdown in preview detail', () => {
   }, 100, '⠙')
   const plain = stripAnsi(activityLine)
 
-  assert.equal(plain.trim(), '⠙ Thinking · Diagnosing extraction bug and planning fix')
+  assert.equal(plain.trim(), '⠙ Diagnosing extraction bug and planning fix')
+  assert.equal(plain.includes('Thinking'), false)
   assert.doesNotMatch(plain, /\*\*/u)
   assert.ok(activityLine.includes(`${colors.bold}${colors.foreground}Diagnosing extraction bug and planning fix${colors.reset}`))
 })
@@ -68,8 +69,8 @@ test('long streamed reasoning stays faded after the preview is truncated', () =>
     label: 'Thinking',
   }, 42, '⠙')
 
-  assert.ok(activityLine.includes(`${colors.subtle}Thinking${colors.reset}`))
-  assert.ok(activityLine.includes(`${colors.separator}·${colors.reset} ${colors.subtle}`))
+  assert.equal(stripAnsi(activityLine).includes('Thinking'), false)
+  assert.equal(stripAnsi(activityLine).includes('·'), false)
   assert.ok(activityLine.includes(`…${colors.reset}`))
   assert.ok(visibleWidth(activityLine) <= 42)
 })
@@ -82,10 +83,35 @@ test('truncated reasoning Markdown stays clean and width bounded', () => {
   }, 32, '⠙')
   const plain = stripAnsi(activityLine)
 
-  assert.match(plain, /Thinking · Diagnosing/u)
+  assert.match(plain, /⠙ Diagnosing/u)
+  assert.equal(plain.includes('Thinking'), false)
   assert.doesNotMatch(plain, /\*/u)
   assert.match(plain, /…/u)
   assert.ok(visibleWidth(activityLine) <= 32)
+})
+
+test('active turn keeps the compose panel inside a strict frame budget after many tools', () => {
+  const entries: TranscriptEntry[] = Array.from({ length: 30 }, (_, index) => ({
+    id: `tool-${index}`,
+    kind: 'tool' as const,
+    label: `Read file-${index}.ts`,
+    status: 'completed' as const,
+  }))
+  const render = renderActiveTurn({
+    activity: { detail: 'Waiting for the next step', kind: 'thinking', label: 'Thinking' },
+    entries,
+    followUps: [{ behavior: 'queue', text: 'keep this queued follow-up visible' }],
+    maxFrameLines: 12,
+    panel: createPanel(),
+    thinkingFrame: '⠙',
+  })
+  const lines = render.lines.map(stripAnsi)
+
+  assert.ok(render.lines.length <= 12)
+  assert.match(lines.at(-2) ?? '', /│ › Working · type your next message\s+│/u)
+  assert.equal(lines.filter((line) => line.includes('╭─ compose')).length, 1)
+  assert.equal(lines.some((line) => line.includes('keep this queued follow-up visible')), true)
+  assert.equal(lines.some((line) => line.includes('file-0.ts')), false)
 })
 
 test('active turn drops older live lines without rendering a placeholder row', () => {
@@ -127,6 +153,27 @@ test('committed turn contains response content without a response heading or use
 
   assert.equal(lines, '\n  The workspace is ready.\n')
   assert.doesNotMatch(lines, /TideCode response|you/i)
+})
+
+test('long multiline tool labels are collapsed and truncated to one terminal row', () => {
+  const command = `powershell -NoProfile -Command \"${'Write-Output very-long-command; '.repeat(12)}\nWrite-Output finished\"`
+  const rendered = renderTerminalToolRowText(`Started ${command}`, 'completed', undefined, 48)
+  const plain = stripAnsi(rendered)
+
+  assert.equal(plain.includes('\n'), false)
+  assert.ok(visibleWidth(rendered) <= 48)
+  assert.match(plain, /^\[Started\] /u)
+  assert.match(plain, /…$/u)
+
+  const active = renderActiveTurn({
+    activity: { kind: 'idle', label: '' },
+    entries: [{ id: 'tool-long', kind: 'tool', label: `Started ${command}`, status: 'completed' }],
+    panel: createPanel(),
+  })
+
+  assert.equal(active.lines.some((line) => line.includes('\n')), false)
+  assert.equal(active.lines.map(stripAnsi).filter((line) => line.includes('[Started]')).length, 1)
+  assert.match(stripAnsi(active.lines.at(-2) ?? ''), /│ › Working · type your next message\s+│/u)
 })
 
 test('tool rows use plain labels with spacing at assistant boundaries', () => {
@@ -208,8 +255,9 @@ test('live reasoning has one blank row after the previous tool', () => {
   })
   const lines = render.lines.map(stripAnsi)
   const toolIndex = lines.findIndex((line) => line.includes('[Read] file.ts'))
-  const thinkingIndex = lines.findIndex((line) => line.includes('Thinking'))
+  const reasoningIndex = lines.findIndex((line) => line.includes('Checking the result'))
 
-  assert.equal(thinkingIndex, toolIndex + 2)
+  assert.equal(reasoningIndex, toolIndex + 2)
+  assert.equal(lines[reasoningIndex].includes('Thinking'), false)
   assert.equal(lines[toolIndex + 1], '')
 })

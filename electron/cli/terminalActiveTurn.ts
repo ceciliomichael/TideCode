@@ -27,6 +27,7 @@ export interface ActiveTurnRenderData {
   followUps?: readonly ActiveTurnFollowUpView[]
   panel: TerminalPromptPanel
   maxOutputLines?: number
+  maxFrameLines?: number
   thinkingFrame?: string
   leadingSpacer?: boolean
 }
@@ -73,6 +74,10 @@ function renderUserMessage(text: string, width: number, isSelected = false): str
 }
 
 function renderTurnEntry(entry: TranscriptEntry, width: number): string[] {
+  if (entry.kind === 'user') {
+    return renderUserMessage(entry.text, width)
+  }
+
   if (entry.kind === 'thought') {
     const label = entry.durationSeconds === undefined ? 'Thought' : 'Thought for'
     const duration = entry.durationSeconds === undefined ? '' : ` ${formatThoughtDuration(entry.durationSeconds)}`
@@ -84,7 +89,9 @@ function renderTurnEntry(entry: TranscriptEntry, width: number): string[] {
   }
 
   if (entry.kind === 'tool') {
-    const lines = wrapPrefixed(renderTerminalToolRowText(entry.label, entry.status, entry.detail), '  ', width)
+    const prefix = '  '
+    const toolWidth = Math.max(1, width - visibleWidth(prefix))
+    const lines = [`${prefix}${renderTerminalToolRowText(entry.label, entry.status, entry.detail, toolWidth)}`]
     if (entry.diff) lines.push(...entry.diff.split(/\r?\n/).flatMap((line) => wrapPrefixed(line, '    ', width)))
     return lines
   }
@@ -111,7 +118,8 @@ function isVisibleTurnEntry(entry: TranscriptEntry): boolean {
 }
 
 function isTurnEntryBoundary(previousEntry: TranscriptEntry | undefined, entry: TranscriptEntry): boolean {
-  if (!previousEntry || previousEntry.kind === 'user' || entry.kind === 'user') return false
+  if (!previousEntry) return false
+  if (previousEntry.kind === 'user' || entry.kind === 'user') return true
   return previousEntry.kind !== entry.kind
 }
 
@@ -194,6 +202,15 @@ export function renderConversationHistory(
 export function renderActiveTurn(data: ActiveTurnRenderData): ActiveTurnRender {
   const width = getTerminalPanelWidth()
   const outputLines: string[] = []
+  const trimOutputLines = (maxLines: number) => {
+    const visibleLineCount = Math.max(0, Math.floor(maxLines))
+    if (outputLines.length <= visibleLineCount) return
+    const hiddenLineCount = outputLines.length - visibleLineCount
+    outputLines.splice(0, hiddenLineCount)
+    if (activityRow !== null) {
+      activityRow = activityRow < hiddenLineCount ? null : activityRow - hiddenLineCount
+    }
+  }
   outputLines.push(...renderTurnEntries(data.entries, width))
   let activityRow: number | null = null
   const thinkingFrame = data.thinkingFrame ?? getThinkingSpinnerFrame(0)
@@ -207,19 +224,26 @@ export function renderActiveTurn(data: ActiveTurnRenderData): ActiveTurnRender {
     activityRow = outputLines.length
     outputLines.push(renderTerminalActivityLine(data.activity, width, thinkingFrame))
   }
-  if (data.maxOutputLines && outputLines.length > data.maxOutputLines) {
-    const hiddenLineCount = outputLines.length - data.maxOutputLines
-    outputLines.splice(0, hiddenLineCount)
-    if (activityRow !== null) activityRow = Math.max(0, activityRow - hiddenLineCount)
-  }
+  if (data.maxOutputLines !== undefined) trimOutputLines(data.maxOutputLines)
   if (data.followUps?.length) {
     if (outputLines.length > 0) appendBlankRow(outputLines)
     for (const followUp of data.followUps) outputLines.push(...renderActiveFollowUp(followUp, width))
   }
 
   const panel = data.panel
-  const spacedOutputLines = data.leadingSpacer === false ? [...outputLines] : ['', ...outputLines]
-  if (activityRow !== null && data.leadingSpacer !== false) activityRow += 1
+  let includeLeadingSpacer = data.leadingSpacer !== false
+  if (data.maxFrameLines !== undefined) {
+    const maxFrameLines = Math.max(1, Math.floor(data.maxFrameLines))
+    const panelAndSeparatorRows = panel.lines.length + 1
+    if (includeLeadingSpacer && panelAndSeparatorRows + 1 > maxFrameLines) {
+      includeLeadingSpacer = false
+    }
+    const reservedRows = panelAndSeparatorRows + (includeLeadingSpacer ? 1 : 0)
+    trimOutputLines(Math.max(0, maxFrameLines - reservedRows))
+  }
+
+  const spacedOutputLines = includeLeadingSpacer ? ['', ...outputLines] : [...outputLines]
+  if (activityRow !== null && includeLeadingSpacer) activityRow += 1
   return {
     lines: [...spacedOutputLines, '', ...panel.lines],
     cursorRow: spacedOutputLines.length + 1 + panel.cursorRow,

@@ -4,10 +4,14 @@ import type {
   AppendConversationMessagesInput,
   ChatCompactionLifecycleState,
   CompactConversationInput,
+  ClaimSharedFollowUpsInput,
+  ClaimSharedFollowUpsResult,
   CompactConversationResult,
+  ConversationFolderRecord,
   ConversationRecord,
   ReplaceConversationMessagesInput,
   SharedConversationRuntimeSnapshot,
+  SharedFollowUpSnapshot,
   SharedRunProjection,
   SharedRunSnapshot,
   StartChatStreamInput,
@@ -16,6 +20,7 @@ import type {
   SubmitToolDecisionResult,
   TideCodeRunEvent,
   UpdateConversationRuntimeInput,
+  UpdateSharedFollowUpsInput,
   UpdatePendingSteerMessagesInput,
   UpdatePendingSteerMessagesResult,
 } from '../../src/types/chat'
@@ -96,6 +101,11 @@ export class TideCodeRunServiceClient {
     return this.requestRaw<SharedConversationRuntimeSnapshot | null>('getConversationRuntime', { conversationId })
   }
 
+  async getPendingFollowUps(streamId: string) {
+    await this.connect()
+    return this.requestRaw<SharedFollowUpSnapshot | null>('getPendingFollowUps', { streamId })
+  }
+
   async getRunProjection(runId: string) {
     await this.connect()
     return this.requestRaw<SharedRunProjection | null>('getRunProjection', { runId })
@@ -104,6 +114,11 @@ export class TideCodeRunServiceClient {
   async listActiveRuns() {
     await this.connect()
     return this.requestRaw<SharedRunSnapshot[]>('listActiveRuns')
+  }
+
+  async ensureWorkspaceProject(workspacePath: string) {
+    await this.connect()
+    return this.requestRaw<ConversationFolderRecord>('ensureWorkspaceProject', { workspacePath })
   }
 
   async appendMessages(input: AppendConversationMessagesInput) {
@@ -134,6 +149,16 @@ export class TideCodeRunServiceClient {
   async updatePendingSteerMessages(input: UpdatePendingSteerMessagesInput) {
     await this.connect()
     return this.requestRaw<UpdatePendingSteerMessagesResult>('updatePendingSteerMessages', input)
+  }
+
+  async updatePendingFollowUps(input: UpdateSharedFollowUpsInput) {
+    await this.connect()
+    return this.requestRaw<SharedFollowUpSnapshot>('updatePendingFollowUps', input)
+  }
+
+  async claimPendingFollowUps(input: ClaimSharedFollowUpsInput) {
+    await this.connect()
+    return this.requestRaw<ClaimSharedFollowUpsResult>('claimPendingFollowUps', input)
   }
 
   async submitToolDecision(input: SubmitToolDecisionInput) {

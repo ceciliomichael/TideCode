@@ -9,5 +9,6 @@ export const CODE_MODE_EXECUTION_CONTRACT = [
   'Node modules such as `node:path` and `node:os` are also unavailable because `require` and dynamic `import()` are blocked. Use the documented `tools.*` APIs instead.',
   'Direct blocked runtime access is rejected before execution, so no `tools.*` call runs first. Restriction scanning ignores non-executable string, comment, regex, and template-literal text, so source code passed as tool data may mention unavailable API names.',
   'Await every `tools.*` call. If you need its data, assign it and return a concise JSON-compatible value; for an action-only call, await it before ending the program. Do not use a bare `tools.*` expression as the program result.',
+  'Terminal tool results that identify a session expose `session_id` directly; use `result.session_id` for follow-up terminal calls.',
   'If a needed capability is not preloaded, use `tools.tool_search` before attempting another mechanism.',
 ].join(' ')

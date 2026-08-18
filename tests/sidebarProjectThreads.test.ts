@@ -9,6 +9,7 @@ import {
   buildSidebarThreadRows,
   resolveLatestThreadProject,
   resolveSidebarProjectFilter,
+  resolveSidebarProjectLabel,
 } from '../src/components/sidebar/sidebarProjectThreads'
 import type { ConversationGroupPreview, ConversationPreview } from '../src/types/chat'
 
@@ -180,6 +181,12 @@ test('resolveSidebarProjectFilter falls back to all projects after a project dis
 test('resolveSidebarProjectFilter preserves selectedProjectId while history is loading', () => {
   assert.equal(resolveSidebarProjectFilter('project-two', [], true), 'project-two')
   assert.equal(resolveSidebarProjectFilter('custom-project-id', [], true), 'custom-project-id')
+})
+
+test('resolveSidebarProjectLabel keeps the persisted project name before history loads', () => {
+  assert.equal(resolveSidebarProjectLabel('project-two', [], 'Data science'), 'Data science')
+  assert.equal(resolveSidebarProjectLabel('project-two', buildSidebarProjectOptions(groups), 'Old name'), 'Data science')
+  assert.equal(resolveSidebarProjectLabel(ALL_PROJECTS_FILTER_ID, [], 'Ignored'), 'All projects')
 })
 
 test('resolveSidebarProjectFilter falls back to all projects when the archived filter is selected without archived conversations', () => {

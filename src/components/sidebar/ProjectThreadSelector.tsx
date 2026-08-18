@@ -4,9 +4,15 @@ import { createPortal } from 'react-dom'
 import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
 import { RemoveProjectFolderDialog } from './RemoveProjectFolderDialog'
 import type { SidebarProjectOption } from './sidebarProjectThreads'
-import { ALL_PROJECTS_FILTER_ID, ARCHIVED_PROJECT_FILTER_ID, CHATS_PROJECT_FILTER_ID } from './sidebarProjectThreads'
+import {
+  ALL_PROJECTS_FILTER_ID,
+  ARCHIVED_PROJECT_FILTER_ID,
+  CHATS_PROJECT_FILTER_ID,
+  resolveSidebarProjectLabel,
+} from './sidebarProjectThreads'
 
 interface ProjectThreadSelectorProps {
+  cachedSelectedProjectName?: string | null
   hasArchivedConversations?: boolean
   onDeleteProject: (projectId: string) => Promise<void>
   onRenameProject: (projectId: string, name: string) => Promise<void>
@@ -16,6 +22,7 @@ interface ProjectThreadSelectorProps {
 }
 
 export function ProjectThreadSelector({
+  cachedSelectedProjectName = null,
   hasArchivedConversations = true,
   onDeleteProject,
   onRenameProject,
@@ -32,13 +39,7 @@ export function ProjectThreadSelector({
   const menuRef = useRef<HTMLDivElement | null>(null)
   const actionsButtonRef = useRef<HTMLButtonElement | null>(null)
   const actionsMenuRef = useRef<HTMLDivElement | null>(null)
-  const selectedProject = projects.find((project) => project.id === selectedProjectId)
-  const selectedLabel =
-    selectedProjectId === CHATS_PROJECT_FILTER_ID
-      ? 'Chats'
-      : selectedProjectId === ARCHIVED_PROJECT_FILTER_ID
-        ? 'Archived'
-        : (selectedProject?.name ?? 'All projects')
+  const selectedLabel = resolveSidebarProjectLabel(selectedProjectId, projects, cachedSelectedProjectName)
   const menuStyle = useFloatingMenuPosition({
     anchorRef: buttonRef,
     isOpen,

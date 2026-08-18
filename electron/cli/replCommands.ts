@@ -16,6 +16,7 @@ import { updateStoredConversationArchived } from '../history/store'
 import { applyCliConversationRuntime } from './cliConversationRuntime'
 import { listCompactionMarkers } from '../chat/history/eventStore'
 import { hasMinimumCompactionMessages, MIN_COMPACTION_MESSAGE_COUNT } from '../../src/lib/chatCompactionGate'
+import { getTideCodeSystemModels } from './models'
 
 const execFileAsync = promisify(execFile)
 
@@ -23,7 +24,21 @@ export function createReplCommandHelpers(
   state: CliSessionState,
   screen: TerminalScreen,
   onRuntimeChanged?: (options?: { refreshCodexUsage?: boolean }) => void,
+  getSystemModels: typeof getTideCodeSystemModels = getTideCodeSystemModels,
 ): SlashCommandHelpers {
+  const resetFreshSessionModel = async () => {
+    const previousProviderId = state.providerId
+    const snapshot = await getSystemModels(state.chatMode)
+    state.modelId = snapshot.defaultModelId
+    state.providerId = snapshot.defaultProviderId
+    state.reasoningEffort = snapshot.selectedReasoningEffort
+    screen.updateSession({ mode: state.chatMode, model: state.modelId, provider: state.providerId })
+    screen.updateComposerStatus({ reasoningEffort: state.reasoningEffort })
+    onRuntimeChanged?.({
+      refreshCodexUsage: shouldRefreshCodexUsage(previousProviderId, state.providerId),
+    })
+  }
+
   const helpers: SlashCommandHelpers = {
     renderInfo: (message) => screen.addNotice('info', message),
     renderSuccess: (message) => screen.addNotice('success', message),
@@ -182,6 +197,7 @@ export function createReplCommandHelpers(
           state.messages = []
           state.pendingUndoEdit = undefined
           state.compactionLocked = true
+          await resetFreshSessionModel()
           screen.clearSession()
         }
         return true
@@ -195,6 +211,7 @@ export function createReplCommandHelpers(
       state.messages = []
       state.pendingUndoEdit = undefined
       state.compactionLocked = true
+      await resetFreshSessionModel()
       screen.clearSession()
     },
     startRemoteDaemon: async () => {

@@ -184,6 +184,19 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
     }
   }
 
+  // Try 0.75: Repair malformed string literals used as execute_terminal commands.
+  if (code.includes('tools.execute_terminal') && code.includes('command')) {
+    const fixedTerminalCommands = repairTerminalCommandStringLiterals(code)
+    if (fixedTerminalCommands !== code) {
+      try {
+        validateCodeModeSyntax(fixedTerminalCommands)
+        return fixedTerminalCommands
+      } catch {
+        // continue
+      }
+    }
+  }
+
   // Try 1: Fix extra braces before closing brackets `}, }` -> `}` or `}, ]` -> `}]`
   let candidate = code.replace(/\},\s*\}/gu, '}')
   candidate = candidate.replace(/\},\s*\]/gu, '}]')
@@ -351,6 +364,109 @@ export function repairSourceMutationStringLiterals(code: string): string {
 
     result = result.slice(0, startBodyIndex) + safeBody + result.slice(endBodyIndex)
     searchFrom = startBodyIndex + safeBody.length + 1
+  }
+
+  return result
+}
+
+type TerminalCommandStringQuote = "'" | '"' | '`'
+
+const TERMINAL_COMMAND_STRING_FIELD = /\bcommand\s*:\s*(['"`])/gu
+const TERMINAL_COMMAND_STRING_REFERENCE = /\bcommand\s*:\s*([A-Za-z_$][\w$]*)/gu
+const TERMINAL_COMMAND_STRING_BINDING = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(['"`])/gu
+
+function hasTerminalCommandFieldTerminator(source: string, quoteIndex: number) {
+  const suffix = source.slice(quoteIndex + 1)
+  return /^\s*(?:,\s*[A-Za-z_$][\w$]*\s*:|,?\s*\})/u.test(suffix)
+}
+
+function hasTerminalCommandBindingTerminator(source: string, quoteIndex: number) {
+  const suffix = source.slice(quoteIndex + 1)
+  return (
+    /^\s*;?\s*(?:\r?\n|$)/u.test(suffix) ||
+    /^\s*;\s*(?:const|let|var|return|await)\b/u.test(suffix)
+  )
+}
+
+function repairGeneratedStringLiteral(
+  source: string,
+  openingQuoteIndex: number,
+  quote: TerminalCommandStringQuote,
+  hasTerminator: (source: string, quoteIndex: number) => boolean,
+) {
+  const startBodyIndex = openingQuoteIndex + 1
+  let endBodyIndex = -1
+
+  for (let index = startBodyIndex; index < source.length; index += 1) {
+    if (source[index] !== quote || isEscaped(source, index)) continue
+    if (!hasTerminator(source, index)) continue
+    endBodyIndex = index
+    break
+  }
+
+  if (endBodyIndex === -1) return source
+
+  const rawBody = source.slice(startBodyIndex, endBodyIndex)
+  const safeBody = escapeSourceMutationStringBody(rawBody, quote)
+  if (safeBody === rawBody) return source
+
+  return source.slice(0, startBodyIndex) + safeBody + source.slice(endBodyIndex)
+}
+
+/**
+ * Repairs generated execute_terminal commands without broadly rewriting JS.
+ * It handles quoted command properties and quoted variables referenced by a
+ * command property, escaping only the string body while preserving its value.
+ */
+export function repairTerminalCommandStringLiterals(code: string): string {
+  let result = code
+  let searchFrom = 0
+
+  while (searchFrom < result.length) {
+    TERMINAL_COMMAND_STRING_FIELD.lastIndex = searchFrom
+    const match = TERMINAL_COMMAND_STRING_FIELD.exec(result)
+    if (!match || match.index === undefined) break
+
+    const quote = match[1] as TerminalCommandStringQuote
+    const openingQuoteIndex = TERMINAL_COMMAND_STRING_FIELD.lastIndex - 1
+    const repaired = repairGeneratedStringLiteral(result, openingQuoteIndex, quote, hasTerminalCommandFieldTerminator)
+    if (repaired === result) {
+      searchFrom = openingQuoteIndex + 1
+      continue
+    }
+
+    result = repaired
+    searchFrom = openingQuoteIndex + 1
+  }
+
+  const referencedBindings = new Set<string>()
+  TERMINAL_COMMAND_STRING_REFERENCE.lastIndex = 0
+  for (let match = TERMINAL_COMMAND_STRING_REFERENCE.exec(result); match; match = TERMINAL_COMMAND_STRING_REFERENCE.exec(result)) {
+    if (match[1]) referencedBindings.add(match[1])
+  }
+
+  searchFrom = 0
+  while (searchFrom < result.length) {
+    TERMINAL_COMMAND_STRING_BINDING.lastIndex = searchFrom
+    const match = TERMINAL_COMMAND_STRING_BINDING.exec(result)
+    if (!match || match.index === undefined) break
+
+    const bindingName = match[1] ?? ''
+    const quote = match[2] as TerminalCommandStringQuote
+    const openingQuoteIndex = TERMINAL_COMMAND_STRING_BINDING.lastIndex - 1
+    if (!referencedBindings.has(bindingName)) {
+      searchFrom = openingQuoteIndex + 1
+      continue
+    }
+
+    const repaired = repairGeneratedStringLiteral(result, openingQuoteIndex, quote, hasTerminalCommandBindingTerminator)
+    if (repaired === result) {
+      searchFrom = openingQuoteIndex + 1
+      continue
+    }
+
+    result = repaired
+    searchFrom = openingQuoteIndex + 1
   }
 
   return result

@@ -11,7 +11,7 @@ import {
   terminateAllBackgroundSessionsForTurn,
   type TerminalToolDependencies,
 } from "../../electron/chat/shared/tools/terminalTools";
-import { createTerminalSessionOwner } from "../../electron/chat/shared/tools/terminalToolShared";
+import { buildMarkedCommand, createTerminalSessionOwner, encodeTerminalInput } from "../../electron/chat/shared/tools/terminalToolShared";
 
 const webContentsStub = {
   id: 42,
@@ -341,6 +341,9 @@ test("read_terminal detects a prompt and interact_terminal sends text plus Enter
         if (outputCallCount === 1) {
           return "Continue? [y/N]\r\n";
         }
+        if (outputCallCount === 2) {
+          return "";
+        }
         return `${readCompletionMarker(writtenCommands[0]?.data ?? "")}:0\r\n`;
       },
       writeCalls,
@@ -368,12 +371,93 @@ test("read_terminal detects a prompt and interact_terminal sends text plus Enter
 
   assert.equal(interactionResult.status, "success");
   assert.equal(interactionResult.semantics?.state, "completed");
-  assert.equal(interactionResult.semantics?.interaction_applied, true);
   assert.equal(interactionResult.semantics?.input_sent, true);
+  assert.equal(interactionResult.semantics?.interaction_applied, undefined);
   assert.equal(interactionResult.semantics?.next_action, undefined);
-  assert.match(interactionResult.body ?? "", /interaction_applied: true/u);
+  assert.match(interactionResult.body ?? "", /input_sent: true/u);
   assert.match(interactionResult.displayBody ?? "", /Terminal input sent/u);
   assert.equal(writeCalls[1]?.data, "yes\r");
+});
+
+test("read_terminal detects a generic line-input prompt and answers it on the same session", async () => {
+  const writeCalls: WriteTerminalSessionInput[] = [];
+  let outputCallCount = 0;
+  const tools = createTools(
+    "terminal-line-input",
+    createMockDependencies({
+      getPendingOutput: (writtenCommands) => {
+        outputCallCount += 1;
+        if (outputCallCount === 1) return "INPUT: ";
+        return `${readCompletionMarker(writtenCommands[0]?.data ?? "")}:0\r\n`;
+      },
+      writeCalls,
+    }),
+  );
+
+  const started = await getTool(tools, "execute_terminal").execute({ command: "interactive-command" });
+  const sessionId = started.semantics?.session_id as number;
+  const promptResult = await getTool(tools, "read_terminal").execute({
+    session_id: sessionId,
+    wait_seconds: 0,
+  });
+
+  assert.equal(promptResult.semantics?.state, "needs_interaction");
+  assert.equal(promptResult.semantics?.interaction_kind, "line_input");
+  assert.match(promptResult.body ?? "", /INPUT:/u);
+
+  const result = await getTool(tools, "interact_terminal").execute({
+    keys: ["ENTER"],
+    session_id: sessionId,
+    text: "yes",
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(result.semantics?.state, "completed");
+  assert.equal(writeCalls[1]?.data, "yes\r");
+});
+
+
+test("interactive child commands keep one PTY session through input and completion", async () => {
+  const commands = [
+    `pwsh -NoLogo -NoProfile -Command "Read-Host 'INPUT'"`,
+    `pwsh -NoLogo -NoProfile -Command '[Console]::In.ReadLine()'`,
+    `cmd.exe /d /v:on /c "set /p answer=INPUT: & echo ANSWER=!answer!"`,
+  ];
+
+  for (const [index, command] of commands.entries()) {
+    const writeCalls: WriteTerminalSessionInput[] = [];
+    let outputCallCount = 0;
+    const terminalTools = createTools(
+      `terminal-child-input-${index}`,
+      createMockDependencies({
+        getPendingOutput: (writtenCommands) => {
+          outputCallCount += 1;
+          if (outputCallCount === 1) return "INPUT: ";
+          const marker = readCompletionMarker(writtenCommands[0]?.data ?? "");
+          return `ANSWER=yes\r\n${marker}:0\r\n`;
+        },
+        writeCalls,
+      }),
+    );
+
+    const started = await getTool(terminalTools, "execute_terminal").execute({ command });
+    const sessionId = started.semantics?.session_id as number;
+    const prompt = await getTool(terminalTools, "read_terminal").execute({ session_id: sessionId, wait_seconds: 0 });
+    assert.equal(prompt.semantics?.state, "needs_interaction");
+
+    const result = await getTool(terminalTools, "interact_terminal").execute({
+      keys: ["ENTER"],
+      session_id: sessionId,
+      text: "yes",
+    });
+
+    assert.equal(result.semantics?.state, "completed");
+    assert.equal(result.semantics?.session_id, sessionId);
+    assert.equal(result.semantics?.input_sent, true);
+    assert.match(result.body ?? "", /ANSWER=yes/u);
+    assert.equal(writeCalls[1]?.sessionId, writeCalls[0]?.sessionId);
+    assert.equal(writeCalls[1]?.data, "yes\r");
+  }
 });
 
 test("interact_terminal acknowledges input while the command is still running", async () => {
@@ -388,12 +472,13 @@ test("interact_terminal acknowledges input while the command is still running", 
     keys: ["ENTER"],
     session_id: started.semantics?.session_id,
     text: "y",
+    wait_seconds: 0,
   });
 
   assert.equal(result.status, "success");
   assert.equal(result.semantics?.state, "running");
-  assert.equal(result.semantics?.interaction_applied, true);
   assert.equal(result.semantics?.input_sent, true);
+  assert.equal(result.semantics?.interaction_applied, undefined);
   assert.equal(result.semantics?.next_action, undefined);
   assert.doesNotMatch(result.body ?? "", /next_action/u);
   assert.match(result.displayBody ?? "", /Terminal input sent/u);
@@ -557,6 +642,30 @@ test("execute_terminal with wait_seconds collects initial output directly", asyn
   assert.match(result.displayBody ?? "", /initial output line/u);
 });
 
+test("terminal text newlines are normalized to PTY Enter carriage returns", () => {
+  assert.equal(encodeTerminalInput("expected-input|✓|漢字\n", []), "expected-input|✓|漢字\r");
+  assert.equal(encodeTerminalInput("first\r\nsecond\n", []), "first\rsecond\r");
+  assert.equal(encodeTerminalInput("already-entered\r", []), "already-entered\r");
+  assert.equal(encodeTerminalInput("answer", ["ENTER"]), "answer\r");
+  assert.equal(encodeTerminalInput("answer", ["RETURN"]), "answer\r");
+});
+
+test("terminal command wrappers preserve foreground child-process input commands", () => {
+  const marker = "__EDONE_test__";
+  const commands = [
+    `pwsh -NoLogo -NoProfile -Command "Read-Host 'INPUT'"`,
+    `pwsh -NoLogo -NoProfile -Command '[Console]::In.ReadLine()'`,
+    `cmd.exe /d /v:on /c "set /p answer=INPUT: & echo ANSWER=!answer!"`,
+  ];
+
+  for (const command of commands) {
+    const wrapped = buildMarkedCommand(command, "pwsh", marker);
+    assert.ok(wrapped.startsWith(`${command}; echo `));
+    assert.ok(wrapped.endsWith("\r"));
+    assert.match(wrapped, /__EDONE_test__:/u);
+  }
+});
+
 test("interact_terminal supports pure read mode without input", async () => {
   const writeCalls: WriteTerminalSessionInput[] = [];
   let readStep = 0;
@@ -591,7 +700,7 @@ test("interact_terminal sends text input and collects response", async () => {
   let sentPrompt = false;
   const mockDeps = createMockDependencies({
     getPendingOutput: (calls) => {
-      const hasInput = calls.some((c) => c.data === "yes\n");
+      const hasInput = calls.some((c) => c.data === "yes\r");
       if (hasInput) {
         return "confirmed: proceeding with build\n";
       }

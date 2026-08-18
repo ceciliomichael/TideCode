@@ -1,5 +1,5 @@
 import type { ChatCompactionLifecycleState, ChatStreamEvent, CompactConversationInput, CompactConversationResult, StartChatStreamInput } from './runtime'
-import type { ChatMode, ConversationRecord } from './conversations'
+import type { ChatMode, ConversationFolderRecord, ConversationRecord, QueuedMessage } from './conversations'
 import type { ChatProviderId, ReasoningEffort } from './providers'
 
 export type SharedRunStatus =
@@ -27,6 +27,7 @@ export interface SharedRunSnapshot {
 export interface SharedRunProjection {
   runId: string
   conversationId: string
+  revision: number
   baseMessageCount: number
   messages: ConversationRecord['messages']
   streamingAssistantMessageId: string | null
@@ -60,6 +61,40 @@ export interface UpdateConversationRuntimeInput {
   model?: SharedConversationRuntimeModel
 }
 
+export type SharedFollowUpBehavior = 'steer' | 'queue'
+
+export interface SharedFollowUpItem {
+  behavior: SharedFollowUpBehavior
+  message: QueuedMessage
+}
+
+export interface SharedFollowUpSnapshot {
+  conversationId: string
+  items: SharedFollowUpItem[]
+  revision: number
+  runId: string
+  streamId: string
+}
+
+export type SharedFollowUpMutation =
+  | { type: 'add'; item: SharedFollowUpItem }
+  | { type: 'update'; message: QueuedMessage }
+  | { type: 'remove'; id: string }
+  | { type: 'reorder'; sourceId: string; targetId: string }
+
+export interface UpdateSharedFollowUpsInput {
+  mutation: SharedFollowUpMutation
+  streamId: string
+}
+
+export interface ClaimSharedFollowUpsInput {
+  streamId: string
+}
+
+export interface ClaimSharedFollowUpsResult {
+  messages: QueuedMessage[]
+}
+
 export type TideCodeRunEvent =
   | {
       type: 'run_state'
@@ -86,6 +121,11 @@ export type TideCodeRunEvent =
       projection: SharedRunProjection
     }
   | {
+      type: 'project_registered'
+      seq: number
+      folder: ConversationFolderRecord
+    }
+  | {
       type: 'conversation_appended'
       seq: number
       conversationId: string
@@ -109,13 +149,21 @@ export type TideCodeRunEvent =
       conversationId: string
       runtime: SharedConversationRuntimeSnapshot
     }
+  | {
+      type: 'follow_ups_updated'
+      seq: number
+      snapshot: SharedFollowUpSnapshot
+    }
 
 export interface TideCodeRunsApi {
   compactConversation: (input: CompactConversationInput) => Promise<CompactConversationResult>
   getCompactionState: (conversationId: string) => Promise<ChatCompactionLifecycleState | null>
   getConversationRuntime: (conversationId: string) => Promise<SharedConversationRuntimeSnapshot | null>
+  getPendingFollowUps: (streamId: string) => Promise<SharedFollowUpSnapshot | null>
   getRunProjection: (runId: string) => Promise<SharedRunProjection | null>
   listActiveRuns: () => Promise<SharedRunSnapshot[]>
   onEvent: (listener: (event: TideCodeRunEvent) => void) => () => void
+  claimPendingFollowUps: (input: ClaimSharedFollowUpsInput) => Promise<ClaimSharedFollowUpsResult>
   updateConversationRuntime: (input: UpdateConversationRuntimeInput) => Promise<SharedConversationRuntimeSnapshot>
+  updatePendingFollowUps: (input: UpdateSharedFollowUpsInput) => Promise<SharedFollowUpSnapshot>
 }
