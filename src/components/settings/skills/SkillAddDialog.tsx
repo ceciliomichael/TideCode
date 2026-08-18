@@ -97,6 +97,7 @@ export function SkillAddDialog({
           </div>
           <button
             type="button"
+            aria-label="Close skill dialog"
             onClick={onClose}
             disabled={isSubmitting}
             className="inline-flex h-8 w-8 items-center justify-center rounded-lg p-1 text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground disabled:opacity-50"
