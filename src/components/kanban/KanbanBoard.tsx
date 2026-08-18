@@ -126,7 +126,7 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
-      <header className="shrink-0 border-b border-border bg-surface px-4 py-3 md:px-5">
+<header className="shrink-0 border-b border-border bg-surface py-3 pl-14 pr-4 md:px-5">
         <div className="space-y-3 xl:hidden">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">

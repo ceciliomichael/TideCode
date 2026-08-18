@@ -60,7 +60,7 @@ export function WorkspaceTerminalPanelView({
           ].join(" ")}
         />
       ) : null}
-      <div className="flex h-10 shrink-0 items-stretch border-b border-border bg-background">
+<div className="flex h-10 shrink-0 items-stretch border-b border-border bg-background pl-12 md:pl-0">
         <div className="flex min-w-0 flex-1 items-stretch overflow-hidden">
           <div className="workspace-tabs-scroll-viewport flex min-w-0 flex-1 items-stretch gap-0 overflow-x-auto overflow-y-hidden">
             {panelState.terminalTabs.map((tab) => {

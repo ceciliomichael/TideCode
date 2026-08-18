@@ -536,15 +536,13 @@ synchronizeDraftFolder,
       isSidebarOpen={interfaceController.isSidebarOpen}
       onSidebarWidthChange={onSidebarWidthChange}
       floatingControls={
-        !isMobileViewport || mobileSurface === 'chat' ? (
-          <WorkspaceFloatingControls
-            isSidebarOpen={interfaceController.isSidebarOpen}
-            onToggleSidebar={interfaceController.handleToggleSidebar}
-            newThreadButton={{
-              onClick: handleCreateWorkspaceConversation,
-            }}
-          />
-        ) : null
+        <WorkspaceFloatingControls
+          isSidebarOpen={interfaceController.isSidebarOpen}
+          onToggleSidebar={interfaceController.handleToggleSidebar}
+          newThreadButton={{
+            onClick: handleCreateWorkspaceConversation,
+          }}
+        />
       }
       sidebar={
         <SidebarPanel
