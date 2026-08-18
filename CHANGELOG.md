@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.10 - Polished update and send controls
+
+TideCode 1.2.10 refines the small action controls around updates and chat sending so their icons sit cleanly and consistently within the surrounding interface.
+
+- Integrates the available-update shortcut directly into the Settings footer row, removes its tooltip and border, and keeps a dedicated click target that opens Settings > Updates.
+- Uses pixel-aligned 16px icon geometry for the update shortcut so the download glyph is visually centered without manual translation offsets.
+- Matches the chat send arrow to the same 16px, integer-stroke treatment for a cleaner centered appearance.
+- Requires no migration or configuration changes.
+- Validated with 1,102 automated tests, TypeScript type checking, and the production build.
+
 ## 1.2.9 - Cleaner update navigation
 
 TideCode 1.2.9 keeps update status and controls in the dedicated Updates view while making the sidebar shortcut smaller, stable, and easier to understand.
