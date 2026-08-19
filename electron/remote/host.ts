@@ -27,7 +27,9 @@ import {
   readRemoteConfiguration,
   writeRemoteConfiguration,
 } from './configStore'
-import { getLoginPageHtml, readAuthJsonBody, RemoteWebSessionStore, writeJson } from './webAuth'
+import { getLoginPageHtml, readAuthJsonBody, writeJson } from './webAuth'
+import { RemoteWebSessionStore } from './sessionStore'
+import { getRemoteStateRoot } from './statePath'
 
 const MAX_CLIENT_MESSAGE_BYTES = 16 * 1024 * 1024
 const LOGIN_FAILURE_WINDOW_MS = 60_000
@@ -90,7 +92,7 @@ export function getRemoteHostAddresses(port: number): RemoteHostAddress[] {
   if (candidates.length === 0) {
     return [{ address: '127.0.0.1', interfaceName: 'Loopback', kind: 'other', url: `http://127.0.0.1:${port}` }]
   }
-  return candidates.map(({ priority: _priority, ...address }) => address)
+  return candidates.map(({ address, interfaceName, kind, url }) => ({ address, interfaceName, kind, url }))
 }
 
 function writeUpgradeError(socket: Duplex, statusCode: number, statusText: string) {
@@ -140,7 +142,7 @@ export class RemoteWorkspaceHost {
   private readonly clients = new Set<WebSocket>()
   private readonly clientSessionTimers = new Map<WebSocket, ReturnType<typeof setTimeout>>()
   private readonly loginFailures = new Map<string, { count: number; firstFailureAt: number }>()
-  private readonly sessions = new RemoteWebSessionStore()
+  private readonly sessions: RemoteWebSessionStore
   private readonly statusListeners = new Set<(status: RemoteHostStatus) => void>()
   private readonly options: RemoteWorkspaceHostOptions
   private configuration: RemoteHostConfiguration = { port: DEFAULT_REMOTE_PORT, webAuthEnabled: false, webUsername: '' }
@@ -167,6 +169,9 @@ export class RemoteWorkspaceHost {
 
   constructor(options: RemoteWorkspaceHostOptions) {
     this.options = options
+    this.sessions = new RemoteWebSessionStore({
+      persistencePath: path.join(getRemoteStateRoot(), 'remote-sessions.json'),
+    })
   }
 
   getStatus() {
@@ -202,6 +207,7 @@ export class RemoteWorkspaceHost {
 
   private async startWithConfiguration(configuration: RemoteHostConfiguration, lifecycleState: 'starting' | 'restarting') {
     if (this.server) return this.getStatus()
+    await this.sessions.load()
     this.configuration = { ...configuration }
     const preferredPort = this.getEffectivePort(configuration)
     this.setStatus({
@@ -269,7 +275,7 @@ export class RemoteWorkspaceHost {
     this.clientSessionTimers.clear()
     for (const socket of this.clients) socket.close(1001, reason)
     this.clients.clear()
-    this.sessions.clear()
+    this.sessions.clear(false)
     this.setStatus({ connectedClientCount: 0 })
     if (server) await new Promise<void>((resolve) => server.close(() => resolve()))
   }
@@ -411,6 +417,7 @@ export class RemoteWorkspaceHost {
 
     if (requestUrl.pathname === '/remote/auth/logout' && request.method === 'POST') {
       this.sessions.delete(request, response)
+      await this.sessions.flush()
       writeJson(response, 200, { ok: true })
       return
     }
@@ -441,6 +448,9 @@ export class RemoteWorkspaceHost {
       const password = body && typeof body === 'object' && 'password' in body && typeof (body as { password?: unknown }).password === 'string'
         ? (body as { password: string }).password
         : ''
+      const rememberMe = body && typeof body === 'object' && 'rememberMe' in body && typeof (body as { rememberMe?: unknown }).rememberMe === 'boolean'
+        ? (body as { rememberMe: boolean }).rememberMe
+        : true
       const valid = username === this.configuration.webUsername && await verifyRemotePassword(password)
       if (!valid) {
         this.recordLoginFailure(request)
@@ -448,7 +458,8 @@ export class RemoteWorkspaceHost {
         return
       }
       this.clearLoginFailures(request)
-      this.sessions.create(request, response)
+      this.sessions.create(request, response, rememberMe)
+      await this.sessions.flush()
       writeJson(response, 200, { ok: true })
       return
     }
@@ -573,13 +584,22 @@ export class RemoteWorkspaceHost {
     upstream.on('error', () => socket.destroy())
   }
 
+  private scheduleClientSessionExpiry(socket: WebSocket, sessionId: string) {
+    const remainingMs = this.sessions.getRemainingMs(sessionId)
+    if (remainingMs <= 0) {
+      socket.close(4001, 'TideCode Remote session expired')
+      return
+    }
+    const timer = setTimeout(() => {
+      this.clientSessionTimers.delete(socket)
+      this.scheduleClientSessionExpiry(socket, sessionId)
+    }, Math.min(remainingMs, 2_147_000_000))
+    this.clientSessionTimers.set(socket, timer)
+  }
+
   private acceptClient(socket: WebSocket, sessionId: string | null) {
     this.clients.add(socket)
-    if (sessionId) {
-      const remainingMs = this.sessions.getRemainingMs(sessionId)
-      const timer = setTimeout(() => socket.close(4001, 'TideCode Remote session expired'), Math.max(1, remainingMs))
-      this.clientSessionTimers.set(socket, timer)
-    }
+    if (sessionId) this.scheduleClientSessionExpiry(socket, sessionId)
     this.setStatus({ connectedClientCount: this.clients.size })
     socket.on('message', (raw) => this.handleClientMessage(socket, raw))
     socket.on('close', () => {

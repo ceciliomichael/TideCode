@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { promises as fs } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import test from 'node:test'
 import {
@@ -8,6 +11,7 @@ import {
 } from '../electron/remote/configStore'
 import {
   REMOTE_SESSION_COOKIE_NAME,
+  REMOTE_SESSION_TTL_MS,
   RemoteWebSessionStore,
   getLoginPageHtml,
 } from '../electron/remote/webAuth'
@@ -73,6 +77,42 @@ test('Remote web sessions are carried only by the HttpOnly SameSite cookie', () 
   store.delete(authenticatedRequest, response)
 assert.equal(store.validate(authenticatedRequest), null)
   assert.match(headers.get('set-cookie') ?? '', /Max-Age=0/)
+})
+
+test('Remembered Remote sessions survive a desktop host restart without persisting the token', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-remote-session-test-'))
+  const persistencePath = path.join(directory, 'sessions.json')
+  const request = {
+    headers: { origin: 'https://remote.example.test' },
+  } as unknown as IncomingMessage
+  const headers = new Map<string, string>()
+  const response = {
+    setHeader(name: string, value: string) { headers.set(name.toLowerCase(), value) },
+  } as unknown as ServerResponse
+
+  try {
+    const firstStore = new RemoteWebSessionStore({ persistencePath })
+    const sessionId = firstStore.create(request, response, true)
+    await firstStore.flush()
+    const persisted = await fs.readFile(persistencePath, 'utf8')
+    assert.doesNotMatch(persisted, new RegExp(sessionId))
+    assert.match(headers.get('set-cookie') ?? '', new RegExp('Max-Age=' + Math.floor(REMOTE_SESSION_TTL_MS / 1000)))
+
+    const secondStore = new RemoteWebSessionStore({ persistencePath })
+    await secondStore.load()
+    const authenticatedRequest = {
+      headers: { cookie: (headers.get('set-cookie') ?? '').split(';', 1)[0], origin: 'https://remote.example.test' },
+    } as unknown as IncomingMessage
+    assert.equal(secondStore.validate(authenticatedRequest), sessionId)
+
+    secondStore.delete(authenticatedRequest)
+    await secondStore.flush()
+    const thirdStore = new RemoteWebSessionStore({ persistencePath })
+    await thirdStore.load()
+    assert.equal(thirdStore.validate(authenticatedRequest), null)
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true })
+  }
 })
 
 test('Remote login page never embeds saved credentials', () => {
