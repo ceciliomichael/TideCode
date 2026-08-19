@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.11 - Remote workspace and mobile web access
+
+TideCode 1.2.11 adds secure browser access to the workspace running on your computer and introduces a phone-focused interface for chat, terminals, the work board, history, and settings.
+
+- Adds Settings > Remote with a configurable network port, detected LAN and overlay addresses, and optional username/password authentication for browser access.
+- Mirrors chats, terminal sessions, project files, source control, and the work board through the browser while execution continues on the laptop.
+- Supports authenticated HTTPS reverse tunnels, including public tunnel hostnames whose traffic is forwarded locally to TideCode.
+- Adds persistent mobile navigation for History, Chat, Terminal, Board, and Settings; mobile Terminal now waits for an explicit New terminal action, and the work board opens directly in its status-filter layout.
+- Improves mobile file mentions, composer sizing, Settings navigation, dialogs, and board interactions while preserving the desktop workspace layout.
+- On Windows, the installer manages a Private/Domain inbound firewall rule for TideCode and removes it during uninstall.
+- Direct LAN Remote access remains HTTP, so use a trusted LAN or an encrypted/tunneled connection when transport confidentiality is required.
+- Validated with 1,112 automated tests, TypeScript type checking, production builds, and focused 390x844 mobile runtime checks.
+
 ## 1.2.10 - Polished update and send controls
 
 TideCode 1.2.10 refines the small action controls around updates and chat sending so their icons sit cleanly and consistently within the surrounding interface.
