@@ -194,7 +194,7 @@ function createRemoteApi(
   })
 }
 
-const IS_REMOTE_BROWSER_RUNTIME = typeof window.tidecodeApp === 'undefined'
+const IS_REMOTE_BROWSER_RUNTIME = typeof window !== 'undefined' && typeof window.tidecodeApp === 'undefined'
 
 export function isRemoteBrowserRuntime() {
   return IS_REMOTE_BROWSER_RUNTIME
