@@ -557,7 +557,16 @@ synchronizeDraftFolder,
           onPinConversation={handlePinConversation}
           onDeleteFolder={handleDeleteFolder}
           onOpenSettings={handleSidebarOpenSettings}
-          onCloseMobile={() => setIsSidebarOpen(false)}
+          isMobileLayout={isMobileViewport}
+          mobileFooter={
+            <MobileWorkspaceNavigation
+              activeSurface={mobileSurface}
+              isMenuOpen
+              onOpenSettings={() => handleSidebarOpenSettings()}
+              onToggleMenu={() => setIsSidebarOpen(false)}
+              onSurfaceChange={handleMobileSurfaceChange}
+            />
+          }
           onRenameFolder={async (folderId, name) => {
             await chatMessages.renameFolder(folderId, name)
             if (folderId === selectedProjectId) {
@@ -573,7 +582,7 @@ synchronizeDraftFolder,
       sidebarWidth={sidebarWidth}
     >
       <WorkspacePanel isSidebarOpen={interfaceController.isSidebarOpen} showRightBorder={false}>
-        {!isMobileViewport || mobileSurface === 'chat' ? (
+        {!isMobileViewport ? (
           <ChatHeader
             title={chatMessages.activeConversationTitle}
             isSidebarOpen={interfaceController.isSidebarOpen}
@@ -674,6 +683,7 @@ synchronizeDraftFolder,
               workspaceState={workspaceState}
             />
             <WorkspaceTerminalPanel
+              autoCreateTabOnOpen={!isMobileViewport}
               isOpen={isMobileViewport ? isMobileTerminalOpen : workspaceState.isTerminalOpen}
               onClose={() => {
                 if (isMobileViewport) {
@@ -711,7 +721,8 @@ synchronizeDraftFolder,
         {isMobileViewport ? (
           <MobileWorkspaceNavigation
             activeSurface={mobileSurface}
-            onOpenMenu={() => setIsSidebarOpen(true)}
+            onOpenSettings={() => handleSidebarOpenSettings()}
+            onToggleMenu={() => setIsSidebarOpen(true)}
             onSurfaceChange={handleMobileSurfaceChange}
           />
         ) : null}

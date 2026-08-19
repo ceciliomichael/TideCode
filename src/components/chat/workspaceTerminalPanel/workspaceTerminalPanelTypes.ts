@@ -7,6 +7,7 @@ import type { ResolvedTheme } from "../../../lib/theme";
 export type TerminalTabStatus = "connecting" | "ready" | "error" | "exited";
 
 export interface WorkspaceTerminalPanelProps {
+  autoCreateTabOnOpen?: boolean;
   isOpen: boolean;
   onClose: () => void;
   onHeightCommit: (nextHeight: number) => void;
@@ -31,6 +32,7 @@ export interface TerminalTabState {
 
 export interface WorkspaceTerminalPanelState {
   activeTerminalTab: TerminalTabState | null;
+  autoCreateTabOnOpen: boolean;
   activeTerminalTabKey: string | null;
   closeTerminalTab: (tabKey: string) => void;
   clearTerminalTab: (tabKey: string) => void;

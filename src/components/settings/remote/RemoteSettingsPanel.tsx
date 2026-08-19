@@ -1,6 +1,7 @@
 import { Check, Copy, Eye, EyeOff, RefreshCw, ShieldCheck, Wifi } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { RemoteHostConfiguration, RemoteHostStatus } from '../../../remote/protocol'
+import { useIsMobileViewport } from '../../../hooks/useIsMobileViewport'
 import { SegmentedField } from '../../ui/SegmentedField'
 import { SettingsPanelLayout, SettingsRow, SettingsSection } from '../shared/SettingsPanelPrimitives'
 
@@ -25,6 +26,7 @@ function kindLabel(kind: RemoteHostStatus['addresses'][number]['kind']) {
 }
 
 export function RemoteSettingsPanel() {
+  const isMobileViewport = useIsMobileViewport()
   const bridge = window.tidecodeRemoteHost
   const [configuration, setConfiguration] = useState<RemoteHostConfiguration | null>(null)
   const [status, setStatus] = useState<RemoteHostStatus | null>(null)
@@ -205,7 +207,7 @@ export function RemoteSettingsPanel() {
               <button
                 type="button"
                 aria-label={copiedUrl === entry.url ? 'Remote URL copied' : `Copy ${entry.url}`}
-                title={copiedUrl === entry.url ? 'Copied' : 'Copy URL'}
+                title={isMobileViewport ? undefined : copiedUrl === entry.url ? 'Copied' : 'Copy URL'}
                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center bg-transparent p-0 text-muted-foreground transition-colors hover:text-foreground"
                 onClick={() => void copyUrl(entry.url)}
               >

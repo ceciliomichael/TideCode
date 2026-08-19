@@ -1,10 +1,12 @@
-import { Columns3, Menu, MessageSquareText, Terminal } from 'lucide-react'
+import { Columns3, Menu, MessageSquareText, Settings, Terminal } from 'lucide-react'
 
 export type MobileWorkspaceSurface = 'chat' | 'terminal' | 'board'
 
 interface MobileWorkspaceNavigationProps {
   activeSurface: MobileWorkspaceSurface
-  onOpenMenu: () => void
+  isMenuOpen?: boolean
+  onOpenSettings: () => void
+  onToggleMenu: () => void
   onSurfaceChange: (surface: MobileWorkspaceSurface) => void
 }
 
@@ -14,7 +16,13 @@ const ITEMS: readonly { icon: typeof MessageSquareText; label: string; surface: 
   { icon: Columns3, label: 'Board', surface: 'board' },
 ]
 
-export function MobileWorkspaceNavigation({ activeSurface, onOpenMenu, onSurfaceChange }: MobileWorkspaceNavigationProps) {
+export function MobileWorkspaceNavigation({
+  activeSurface,
+  isMenuOpen = false,
+  onOpenSettings,
+  onToggleMenu,
+  onSurfaceChange,
+}: MobileWorkspaceNavigationProps) {
   return (
     <nav
       className="shrink-0 border-t border-border bg-surface md:hidden"
@@ -24,14 +32,18 @@ export function MobileWorkspaceNavigation({ activeSurface, onOpenMenu, onSurface
       <div className="flex h-14 items-stretch px-2">
         <button
           type="button"
-          onClick={onOpenMenu}
-          aria-label="Open navigation menu"
-          className="flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] font-medium text-muted-foreground transition-colors"
+          onClick={onToggleMenu}
+aria-label={isMenuOpen ? 'Close history' : 'Open history'}
+          aria-current={isMenuOpen ? 'page' : undefined}
+          className={[
+            'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] font-medium transition-colors',
+            isMenuOpen ? 'text-foreground' : 'text-muted-foreground',
+          ].join(' ')}
         >
-          <Menu size={18} strokeWidth={2} />
-          <span>Menu</span>
+          <Menu size={18} strokeWidth={isMenuOpen ? 2.3 : 2} />
+<span>History</span>
         </button>
-        {ITEMS.map(({ icon: Icon, label, surface }) => {
+{ITEMS.map(({ icon: Icon, label, surface }) => {
           const isActive = activeSurface === surface
           return (
             <button
@@ -49,6 +61,15 @@ export function MobileWorkspaceNavigation({ activeSurface, onOpenMenu, onSurface
             </button>
           )
         })}
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          aria-label="Open settings"
+          className="flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] font-medium text-muted-foreground transition-colors"
+        >
+          <Settings size={18} strokeWidth={2} />
+          <span>Settings</span>
+        </button>
       </div>
     </nav>
   )

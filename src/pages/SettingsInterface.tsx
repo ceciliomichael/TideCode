@@ -112,11 +112,13 @@ export function SettingsInterface({
       isSidebarOpen={isSidebarOpen}
       onSidebarWidthChange={onSidebarWidthChange}
       floatingControls={
-        <WorkspaceFloatingControls
-          isSidebarOpen={isSidebarOpen}
-          mobileTitle={isSidebarOpen ? 'Settings' : getSettingsItem(activeItemId).label}
-          onToggleSidebar={() => setIsSidebarOpen((currentValue) => !currentValue)}
-        />
+        isMobileViewport && isSidebarOpen ? null : (
+          <WorkspaceFloatingControls
+            isSidebarOpen={isSidebarOpen}
+            mobileTitle={getSettingsItem(activeItemId).label}
+            onToggleSidebar={() => setIsSidebarOpen((currentValue) => !currentValue)}
+          />
+        )
       }
       sidebar={
         <SettingsSidebarPanel

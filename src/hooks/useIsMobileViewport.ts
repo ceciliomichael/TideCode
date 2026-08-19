@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
+import { isRemoteBrowserRuntime } from '../remote/webBridge'
 
 export const MOBILE_VIEWPORT_QUERY = '(max-width: 767px)'
 
 function readMobileViewportMatch() {
-  return typeof window !== 'undefined' && window.matchMedia(MOBILE_VIEWPORT_QUERY).matches
+  return typeof window !== 'undefined'
+    && isRemoteBrowserRuntime()
+    && window.matchMedia(MOBILE_VIEWPORT_QUERY).matches
 }
 
 export function useIsMobileViewport() {
@@ -11,7 +14,7 @@ export function useIsMobileViewport() {
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(MOBILE_VIEWPORT_QUERY)
-    const handleChange = () => setIsMobileViewport(mediaQuery.matches)
+    const handleChange = () => setIsMobileViewport(isRemoteBrowserRuntime() && mediaQuery.matches)
 
     handleChange()
     mediaQuery.addEventListener('change', handleChange)

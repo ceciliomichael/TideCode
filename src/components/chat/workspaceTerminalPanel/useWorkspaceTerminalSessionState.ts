@@ -28,6 +28,7 @@ import {
 import "@xterm/xterm/css/xterm.css";
 
 export function useWorkspaceTerminalSessionState({
+  autoCreateTabOnOpen = true,
   isOpen,
   isResizing,
   onClose,
@@ -481,7 +482,9 @@ export function useWorkspaceTerminalSessionState({
     }
 
     if (terminalTabsRef.current.length === 0) {
-      void openTerminalTab();
+      if (autoCreateTabOnOpen) {
+        void openTerminalTab();
+      }
       return;
     }
 
@@ -496,7 +499,7 @@ export function useWorkspaceTerminalSessionState({
 
     setActiveTerminalTabKey(nextActiveTab.key);
     updateTabVisibility(nextActiveTab.key);
-  }, [isOpen, openTerminalTab, updateTabVisibility]);
+  }, [autoCreateTabOnOpen, isOpen, openTerminalTab, updateTabVisibility]);
 
   useTerminalWorkspacePersistence({
     activeSessionIdRef,
