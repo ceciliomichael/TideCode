@@ -87,6 +87,9 @@ test('Remote login page never embeds saved credentials', () => {
   assert.doesNotMatch(configured, /value="[^"]+"/)
   assert.doesNotMatch(configured, /Authentication applies only to browser access/)
   assert.doesNotMatch(configured, /gradient\(/)
+  assert.match(configured, /id="password-toggle"/)
+  assert.match(configured, /aria-label="Show password"/)
+  assert.match(configured, /class="eye-off"/)
 })
 
 test('Remote login page is constrained to the mobile viewport', () => {

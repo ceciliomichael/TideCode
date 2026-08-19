@@ -1,4 +1,4 @@
-import { Copy, RefreshCw, ShieldCheck, Wifi } from 'lucide-react'
+import { Check, Copy, Eye, EyeOff, RefreshCw, ShieldCheck, Wifi } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { RemoteHostConfiguration, RemoteHostStatus } from '../../../remote/protocol'
 import { SegmentedField } from '../../ui/SegmentedField'
@@ -11,7 +11,7 @@ const AUTH_OPTIONS = [
 
 const INPUT_CLASS = 'h-10 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none placeholder:text-subtle-foreground disabled:cursor-not-allowed disabled:opacity-60'
 const BUTTON_CLASS = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border bg-surface px-3.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50'
-const PRIMARY_BUTTON_CLASS = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-brand-border bg-brand-soft px-3.5 text-sm font-semibold text-brand-soft-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50'
+const PRIMARY_BUTTON_CLASS = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-brand-border bg-brand-soft px-3.5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50'
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'The Remote setting could not be updated.'
@@ -33,6 +33,9 @@ export function RemoteSettingsPanel() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false)
+  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false)
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const [busy, setBusy] = useState<'network' | 'auth' | 'clear' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -75,7 +78,9 @@ export function RemoteSettingsPanel() {
   const copyUrl = async (url: string) => {
     try {
       await navigator.clipboard.writeText(url)
+      setCopiedUrl(url)
       setError(null)
+      window.setTimeout(() => setCopiedUrl((current) => current === url ? null : current), 1400)
     } catch {
       setError('Unable to copy the Remote URL.')
     }
@@ -189,16 +194,23 @@ export function RemoteSettingsPanel() {
 
       <SettingsSection title="Access addresses">
         <div className="divide-y divide-border">
-          {(status?.addresses ?? []).map((entry, index) => (
-            <div key={entry.interfaceName + entry.address} className="flex flex-col gap-3 px-4 py-3.5 md:flex-row md:items-center md:justify-between md:px-5">
+          {(status?.addresses ?? []).map((entry) => (
+            <div key={entry.interfaceName + entry.address} className="flex items-center justify-between gap-3 px-4 py-3.5 md:px-5">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="break-all text-sm font-medium text-foreground">{entry.url}</p>
-                  {index === 0 ? <span className="rounded-md bg-brand-soft px-1.5 py-0.5 text-[10px] font-semibold text-brand-soft-foreground">Preferred</span> : null}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">{entry.interfaceName} · {kindLabel(entry.kind)}</p>
               </div>
-              <button type="button" className={BUTTON_CLASS} onClick={() => void copyUrl(entry.url)}><Copy size={15} />Copy</button>
+              <button
+                type="button"
+                aria-label={copiedUrl === entry.url ? 'Remote URL copied' : `Copy ${entry.url}`}
+                title={copiedUrl === entry.url ? 'Copied' : 'Copy URL'}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center bg-transparent p-0 text-muted-foreground transition-colors hover:text-foreground"
+                onClick={() => void copyUrl(entry.url)}
+              >
+                {copiedUrl === entry.url ? <Check size={16} className="text-brand" /> : <Copy size={16} />}
+              </button>
             </div>
           ))}
           {(status?.addresses.length ?? 0) === 0 ? <div className="px-4 py-4 text-sm text-muted-foreground md:px-5">No network address is currently available.</div> : null}
@@ -208,7 +220,7 @@ export function RemoteSettingsPanel() {
       <SettingsSection title="Network">
         <SettingsRow title="Remote port" description="The TCP port used by the browser UI and Remote WebSocket server. Changing it restarts Remote access.">
           <div className="flex w-full gap-2 md:w-[300px]">
-<input aria-label="Remote port" inputMode="numeric" className={INPUT_CLASS} value={portValue} placeholder="38472" disabled={busy !== null || status?.portOverrideActive} onChange={(event) => setPortValue(event.target.value)} />
+            <input aria-label="Remote port" inputMode="numeric" className={INPUT_CLASS} value={portValue} placeholder="38472" disabled={busy !== null || status?.portOverrideActive} onChange={(event) => setPortValue(event.target.value)} />
             <button type="button" className={PRIMARY_BUTTON_CLASS} disabled={busy !== null || status?.portOverrideActive || portValue === String(configuration?.port ?? '')} onClick={() => void savePort()}>Apply</button>
           </div>
         </SettingsRow>
@@ -228,15 +240,30 @@ export function RemoteSettingsPanel() {
             </div>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-<label className="text-xs font-medium text-muted-foreground md:col-span-2">Username<input className={INPUT_CLASS + ' mt-1.5'} value={username} disabled={busy !== null} autoComplete="off" placeholder="e.g. admin" onChange={(event) => setUsername(event.target.value)} /></label>
-            <label className="text-xs font-medium text-muted-foreground">New password<input type="password" className={INPUT_CLASS + ' mt-1.5'} value={password} disabled={busy !== null} autoComplete="new-password" placeholder={status?.webCredentialsConfigured ? 'Leave blank to keep current' : 'At least 8 characters'} onChange={(event) => setPassword(event.target.value)} /></label>
-<label className="text-xs font-medium text-muted-foreground">Confirm password<input type="password" className={INPUT_CLASS + ' mt-1.5'} value={confirmPassword} disabled={busy !== null} autoComplete="new-password" placeholder="Re-enter password" onChange={(event) => setConfirmPassword(event.target.value)} /></label>
+            <label className="text-xs font-medium text-muted-foreground md:col-span-2">Username<input className={INPUT_CLASS + ' mt-1.5'} value={username} disabled={busy !== null} autoComplete="off" placeholder="e.g. admin" onChange={(event) => setUsername(event.target.value)} /></label>
+            <label className="text-xs font-medium text-muted-foreground">
+              New password
+              <div className="relative mt-1.5">
+                <input type={isPasswordVisible ? 'text' : 'password'} className={INPUT_CLASS + ' pr-10'} value={password} disabled={busy !== null} autoComplete="new-password" placeholder={status?.webCredentialsConfigured ? 'Leave blank to keep current' : 'At least 8 characters'} onChange={(event) => setPassword(event.target.value)} />
+                <button type="button" aria-label={isPasswordVisible ? 'Hide Remote password' : 'Show Remote password'} onClick={() => setIsPasswordVisible((current) => !current)} className="absolute right-0 top-0 flex h-10 w-10 items-center justify-center text-muted-foreground hover:text-foreground">
+                  {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              Confirm password
+              <div className="relative mt-1.5">
+                <input type={isConfirmPasswordVisible ? 'text' : 'password'} className={INPUT_CLASS + ' pr-10'} value={confirmPassword} disabled={busy !== null} autoComplete="new-password" placeholder="Re-enter password" onChange={(event) => setConfirmPassword(event.target.value)} />
+                <button type="button" aria-label={isConfirmPasswordVisible ? 'Hide Remote password confirmation' : 'Show Remote password confirmation'} onClick={() => setIsConfirmPasswordVisible((current) => !current)} className="absolute right-0 top-0 flex h-10 w-10 items-center justify-center text-muted-foreground hover:text-foreground">
+                  {isConfirmPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </label>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" className={PRIMARY_BUTTON_CLASS} disabled={busy !== null} onClick={() => void saveAuth()}>{busy === 'auth' ? 'Saving...' : 'Save authentication'}</button>
             <button type="button" className={BUTTON_CLASS} disabled={busy !== null || !status?.webCredentialsConfigured} onClick={() => void clearCredentials()}>{busy === 'clear' ? 'Clearing...' : 'Clear credentials'}</button>
           </div>
-          <p className="mt-4 text-xs leading-5 text-muted-foreground">This login protects browser access only. The TideCode desktop app and CLI do not require these credentials. Remote currently uses HTTP on the local network, so use a trusted LAN or an encrypted overlay such as Tailscale when credentials could otherwise be observed in transit.</p>
         </div>
       </SettingsSection>
     </SettingsPanelLayout>
