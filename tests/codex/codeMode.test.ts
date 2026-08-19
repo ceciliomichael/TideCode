@@ -193,7 +193,8 @@ test('Code Mode explains non-serializable returned data instead of exposing a cl
   }
 })
 
-test('Code Mode surfaces failed registry tools instead of reporting false success', async () => {
+test('Code Mode rejects failed tool promises and stops uncaught sequential execution', async () => {
+  let secondToolWasInvoked = false
   const entries = [
     {
       description: 'Return a failed test result.',
@@ -203,6 +204,16 @@ test('Code Mode surfaces failed registry tools instead of reporting false succes
       }),
       inputSchema: { type: 'object' as const },
       name: 'failing_tool',
+      namespace: 'test',
+    },
+    {
+      description: 'Record whether sequential execution continued.',
+      execute: async () => {
+        secondToolWasInvoked = true
+        return { status: 'success' as const, summary: 'Second tool ran.' }
+      },
+      inputSchema: { type: 'object' as const },
+      name: 'second_tool',
       namespace: 'test',
     },
   ]
@@ -218,13 +229,67 @@ test('Code Mode surfaces failed registry tools instead of reporting false succes
 
   try {
     const result = await executor.run(
-      "const toolResult = await tools.failing_tool({}); return { status: toolResult.status }",
-      { allowedToolNames: ['failing_tool'] },
+      'await tools.failing_tool({}); await tools.second_tool({}); return true',
+      { allowedToolNames: ['failing_tool', 'second_tool'] },
+    )
+
+    assert.equal(result.status, 'error')
+    assert.match(result.summary, /The test tool failed/u)
+    assert.deepEqual(result.toolCalls.map((call) => call.name), ['failing_tool'])
+    assert.equal(secondToolWasInvoked, false)
+    assert.equal(result.output, undefined)
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode allows explicit recovery from a failed tool promise', async () => {
+  const entries = [
+    {
+      description: 'Return a failed test result.',
+      execute: async () => ({
+        status: 'error' as const,
+        summary: 'The recoverable tool failed.',
+      }),
+      inputSchema: { type: 'object' as const },
+      name: 'failing_tool',
+      namespace: 'test',
+    },
+    {
+      description: 'Return a recovery result.',
+      execute: async () => ({
+        body: 'recovered',
+        status: 'success' as const,
+        summary: 'Recovery tool ran.',
+      }),
+      inputSchema: { type: 'object' as const },
+      name: 'recovery_tool',
+      namespace: 'test',
+    },
+  ]
+  const executor = new CodeModeExecutor({
+    entries,
+    get(name) {
+      return entries.find((entry) => entry.name === name)
+    },
+    search() {
+      return entries.map((entry) => ({ ...entry, score: 1 }))
+    },
+  })
+
+  try {
+    const result = await executor.run(
+      "let failure = ''; try { await tools.failing_tool({}) } catch (error) { failure = error.message }; const recovery = await tools.recovery_tool({}); return { failure, recovery: recovery.body }",
+      { allowedToolNames: ['failing_tool', 'recovery_tool'] },
     )
 
     assert.equal(result.status, 'error')
     assert.match(result.summary, /1 failed tool call/u)
-    assert.deepEqual(result.output, { status: 'error' })
+    assert.deepEqual(result.toolCalls.map((call) => call.name), ['failing_tool', 'recovery_tool'])
+    assert.deepEqual(result.output, {
+      failure: 'The recoverable tool failed.',
+      recovery: 'recovered',
+    })
   } finally {
     await executor.dispose()
   }
