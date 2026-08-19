@@ -472,6 +472,15 @@ export class CodeModeExecutor {
               : {}),
             summary: result.summary,
           })
+          if (result.status === 'error') {
+            worker.postMessage({
+              callId: message.callId,
+              error: result.summary || capDisplayBody(result) || `Tool "${message.name}" failed.`,
+              type: 'tool_result',
+            } satisfies CodeModeWorkerToolResultMessage)
+            return
+          }
+
           worker.postMessage({
             callId: message.callId,
             result: serializeToolResult(result),
