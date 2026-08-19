@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { REMOTE_EVENT_CHANNELS } from "../../../remote/protocol";
+import { isRemoteMobileViewportRuntime } from "../../../hooks/useIsMobileViewport";
 import type { TerminalTabState } from "./workspaceTerminalPanelTypes";
 import {
   createTerminalInstance,
@@ -28,7 +29,7 @@ import {
 import "@xterm/xterm/css/xterm.css";
 
 export function useWorkspaceTerminalSessionState({
-  autoCreateTabOnOpen = true,
+autoCreateTabOnOpen = false,
   isOpen,
   isResizing,
   onClose,
@@ -482,7 +483,7 @@ export function useWorkspaceTerminalSessionState({
     }
 
     if (terminalTabsRef.current.length === 0) {
-      if (autoCreateTabOnOpen) {
+      if (autoCreateTabOnOpen && !isRemoteMobileViewportRuntime()) {
         void openTerminalTab();
       }
       return;

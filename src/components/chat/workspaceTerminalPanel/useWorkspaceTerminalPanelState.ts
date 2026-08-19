@@ -6,7 +6,7 @@ import { useWorkspaceTerminalPanelSizing } from "./useWorkspaceTerminalPanelSizi
 import { useWorkspaceTerminalSessionState } from "./useWorkspaceTerminalSessionState";
 
 export function useWorkspaceTerminalPanelState({
-  autoCreateTabOnOpen = true,
+  autoCreateTabOnOpen = false,
   isOpen,
   onClose,
   onHeightCommit,

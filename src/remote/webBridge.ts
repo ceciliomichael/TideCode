@@ -196,12 +196,18 @@ function createRemoteApi(
 
 const IS_REMOTE_BROWSER_RUNTIME = typeof window !== 'undefined' && typeof window.tidecodeApp === 'undefined'
 
+function hasRemoteBrowserRuntimeMarker() {
+  return typeof document !== 'undefined'
+    && document.documentElement.dataset.tidecodeRuntime === 'remote-browser'
+}
+
 export function isRemoteBrowserRuntime() {
-  return IS_REMOTE_BROWSER_RUNTIME
+  return IS_REMOTE_BROWSER_RUNTIME || hasRemoteBrowserRuntimeMarker()
 }
 
 export async function installRemoteBrowserBridge() {
   if (!isRemoteBrowserRuntime()) return
+  document.documentElement.dataset.tidecodeRuntime = 'remote-browser'
   const connection = new RemoteConnection()
   await connection.connect()
   const [initialSettings, draftAgentContextPath] = await Promise.all([
