@@ -26,7 +26,7 @@ async function reservePort() {
   })
 }
 
-async function requestText(port: number, pathname: string, options: { body?: string; cookie?: string; method?: string } = {}) {
+async function requestText(port: number, pathname: string, options: { body?: string; cookie?: string; headers?: Record<string, string>; method?: string } = {}) {
   const http = await import('node:http')
   return new Promise<{ body: string; headers: import('node:http').IncomingHttpHeaders; statusCode: number }>((resolve, reject) => {
     const request = http.request({
@@ -37,6 +37,7 @@ async function requestText(port: number, pathname: string, options: { body?: str
       headers: {
         ...(options.cookie ? { Cookie: options.cookie } : {}),
         ...(options.body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(options.body) } : {}),
+        ...options.headers,
       },
     }, (response) => {
       const chunks: Buffer[] = []
@@ -53,12 +54,17 @@ async function requestText(port: number, pathname: string, options: { body?: str
   })
 }
 
-async function connectWebSocket(port: number, cookie?: string) {
+async function connectWebSocket(
+  port: number,
+  cookie?: string,
+  headers: Record<string, string> = {},
+) {
   return new Promise<{ ready: string; socket: WebSocket }>((resolve, reject) => {
     const socket = new WebSocket('ws://127.0.0.1:' + port + '/remote/ws', {
       headers: {
         Origin: 'http://127.0.0.1:' + port,
         ...(cookie ? { Cookie: cookie } : {}),
+        ...headers,
       },
     })
     let opened = false
@@ -85,7 +91,7 @@ test('Remote host gates browser UI and WebSocket, then restarts on a new port', 
   await writeRemoteConfiguration({ port: firstPort, webAuthEnabled: false, webUsername: '' })
 
   const host = new RemoteWorkspaceHost({ getWindow: () => null, rendererDist: rendererRoot })
-  let socket: WebSocket | null = null
+const sockets: WebSocket[] = []
   try {
     const started = await host.start()
     assert.equal(started.boundPort, firstPort)
@@ -112,6 +118,7 @@ test('Remote host gates browser UI and WebSocket, then restarts on a new port', 
 
     const login = await requestText(firstPort, '/remote/auth/login', {
       body: JSON.stringify({ username: 'alice', password: 'correct horse battery staple' }),
+      headers: { Origin: 'https://tcode.routegate.cc' },
       method: 'POST',
     })
     assert.equal(login.statusCode, 200)
@@ -123,10 +130,21 @@ test('Remote host gates browser UI and WebSocket, then restarts on a new port', 
     assert.equal(authenticatedPage.statusCode, 200)
     assert.match(authenticatedPage.body, new RegExp(marker))
 
-    const connected = await connectWebSocket(firstPort, cookie)
-    socket = connected.socket
-    assert.match(connected.ready, /"kind":"ready"/)
-    assert.equal(host.getStatus().connectedClientCount, 1)
+    const direct = await connectWebSocket(firstPort, cookie)
+    sockets.push(direct.socket)
+    assert.match(direct.ready, /"kind":"ready"/)
+
+    await assert.rejects(() => connectWebSocket(firstPort, cookie, {
+      Origin: 'https://other.example.test',
+    }), /unexpected-response:403/)
+
+    const tunneled = await connectWebSocket(firstPort, cookie, {
+      Host: '127.0.0.1:' + firstPort,
+      Origin: 'https://tcode.routegate.cc',
+    })
+    sockets.push(tunneled.socket)
+    assert.match(tunneled.ready, /"kind":"ready"/)
+    assert.equal(host.getStatus().connectedClientCount, 2)
 
     const restarted = await host.updateNetwork({ port: secondPort })
     assert.equal(restarted.boundPort, secondPort)
@@ -141,7 +159,9 @@ test('Remote host gates browser UI and WebSocket, then restarts on a new port', 
 
     await assert.rejects(() => requestText(firstPort, '/'), /ECONNREFUSED|socket hang up/)
   } finally {
-    if (socket && socket.readyState === WebSocket.OPEN) socket.close()
+    for (const socket of sockets) {
+      if (socket.readyState === WebSocket.OPEN) socket.close()
+    }
     await host.stop().catch(() => undefined)
     await clearRemotePassword().catch(() => undefined)
     delete process.env.TIDECODE_REMOTE_STATE_HOME

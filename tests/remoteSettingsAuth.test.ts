@@ -49,7 +49,10 @@ test('Remote web sessions are carried only by the HttpOnly SameSite cookie', () 
     setHeader(name: string, value: string) { headers.set(name.toLowerCase(), value) },
   } as unknown as ServerResponse
   const store = new RemoteWebSessionStore()
-  const sessionId = store.create(response)
+  const request = {
+    headers: { origin: 'https://remote.example.test' },
+  } as unknown as IncomingMessage
+  const sessionId = store.create(request, response)
   const cookie = headers.get('set-cookie')
   assert.ok(cookie)
   assert.match(cookie, new RegExp('^' + REMOTE_SESSION_COOKIE_NAME + '='))
@@ -58,13 +61,17 @@ test('Remote web sessions are carried only by the HttpOnly SameSite cookie', () 
   assert.equal(cookie.includes('Path=/'), true)
   assert.equal(cookie.includes(sessionId), true)
 
-  const request = {
-    headers: { cookie: cookie.split(';', 1)[0] },
+  const authenticatedRequest = {
+    headers: { cookie: cookie.split(';', 1)[0], origin: 'https://remote.example.test' },
   } as unknown as IncomingMessage
-  assert.equal(store.validate(request), sessionId)
+  assert.equal(store.validate(authenticatedRequest), sessionId)
+  assert.equal(store.matchesOrigin(sessionId, authenticatedRequest), true)
+  assert.equal(store.matchesOrigin(sessionId, {
+    headers: { origin: 'https://other.example.test' },
+  } as unknown as IncomingMessage), false)
 
-  store.delete(request, response)
-  assert.equal(store.validate(request), null)
+  store.delete(authenticatedRequest, response)
+assert.equal(store.validate(authenticatedRequest), null)
   assert.match(headers.get('set-cookie') ?? '', /Max-Age=0/)
 })
 
@@ -78,6 +85,8 @@ test('Remote login page never embeds saved credentials', () => {
   assert.match(configured, /Settings &gt; Remote/)
   assert.match(unconfigured, /not been configured/)
   assert.doesNotMatch(configured, /value="[^"]+"/)
+  assert.doesNotMatch(configured, /Authentication applies only to browser access/)
+  assert.doesNotMatch(configured, /gradient\(/)
 })
 
 test('Remote login page is constrained to the mobile viewport', () => {

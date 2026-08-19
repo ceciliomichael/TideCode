@@ -98,12 +98,39 @@ function writeUpgradeError(socket: Duplex, statusCode: number, statusText: strin
   socket.destroy()
 }
 
+function getFirstHeaderValue(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value
+  return raw?.split(',', 1)[0]?.trim() || null
+}
+
+function getForwardedHost(request: IncomingMessage) {
+  const forwardedHost = getFirstHeaderValue(request.headers['x-forwarded-host'])
+  if (forwardedHost) return forwardedHost
+
+  const forwarded = getFirstHeaderValue(request.headers.forwarded)
+  if (!forwarded) return null
+  for (const part of forwarded.split(';')) {
+    const separator = part.indexOf('=')
+    if (separator <= 0 || part.slice(0, separator).trim().toLowerCase() !== 'host') continue
+    return part.slice(separator + 1).trim().replace(/^"|"$/g, '') || null
+  }
+  return null
+}
+
+function isLoopbackPeer(request: IncomingMessage) {
+  const address = request.socket.remoteAddress?.toLowerCase() ?? ''
+  return address === '127.0.0.1' || address === '::1' || address.startsWith('::ffff:127.')
+}
+
 function isSameOriginRequest(request: IncomingMessage) {
   const origin = request.headers.origin
   const host = request.headers.host
   if (!origin || !host) return false
   try {
-    return new URL(origin).host === host
+    const originHost = new URL(origin).host.toLowerCase()
+    if (originHost === host.toLowerCase()) return true
+    if (!isLoopbackPeer(request)) return false
+    return originHost === getForwardedHost(request)?.toLowerCase()
   } catch {
     return false
   }
@@ -421,7 +448,7 @@ export class RemoteWorkspaceHost {
         return
       }
       this.clearLoginFailures(request)
-      this.sessions.create(response)
+      this.sessions.create(request, response)
       writeJson(response, 200, { ok: true })
       return
     }
@@ -510,7 +537,10 @@ export class RemoteWorkspaceHost {
       return
     }
 
-    if (!isSameOriginRequest(request)) {
+    const originAllowed = sessionId
+      ? this.sessions.matchesOrigin(sessionId, request) || isSameOriginRequest(request)
+      : isSameOriginRequest(request)
+    if (!originAllowed) {
       writeUpgradeError(socket, 403, 'Forbidden')
       return
     }
