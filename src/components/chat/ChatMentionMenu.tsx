@@ -110,7 +110,7 @@ export function ChatMentionMenu({
                     role="option"
                     aria-selected={isHighlighted}
                     data-mention-index={index}
-                    onMouseDown={(event) => {
+                    onPointerDown={(event) => {
                       event.preventDefault()
                       onItemMouseDown?.()
                     }}
@@ -201,7 +201,7 @@ export function ChatMentionMenu({
                   role="option"
                   aria-selected={isHighlighted}
                   data-mention-index={index}
-                  onMouseDown={(event) => {
+                  onPointerDown={(event) => {
                     event.preventDefault()
                     onItemMouseDown?.()
                   }}

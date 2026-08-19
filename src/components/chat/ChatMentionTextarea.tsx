@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, type CSSProperties, type ClipboardEvent, type ChangeEvent, type KeyboardEvent, type MouseEvent, type RefObject } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, type CSSProperties, type ClipboardEvent, type ChangeEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type RefObject } from 'react'
 import { ChatMentionText } from './ChatMentionText'
 import type { ChatImageAttachment } from '../../types/chat'
 
@@ -7,6 +7,7 @@ interface ChatMentionTextareaProps {
   disabled?: boolean
   imageAttachments?: readonly ChatImageAttachment[]
   mentionPathMap?: ReadonlyMap<string, string>
+  onBeforeInput?: (event: FormEvent<HTMLTextAreaElement>) => void
   onBlur?: () => void
   onChange: (event: ChangeEvent<HTMLTextAreaElement>) => void
   onFocus?: () => void
@@ -29,6 +30,7 @@ export function ChatMentionTextarea({
   disabled = false,
   imageAttachments = [],
   mentionPathMap,
+  onBeforeInput,
   onBlur,
   onChange,
   onFocus,
@@ -154,6 +156,7 @@ export function ChatMentionTextarea({
       <textarea
         ref={textareaRef}
         value={value}
+        onBeforeInput={onBeforeInput}
         onBlur={onBlur}
         onChange={onChange}
         onFocus={onFocus}

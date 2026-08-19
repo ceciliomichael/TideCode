@@ -1,5 +1,6 @@
-import { useCallback, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react'
+import { useCallback, type FormEvent as ReactFormEvent, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react'
 import {
+  findChatMentionForDeletion,
   getChatMentionAtPosition,
   getChatMentionBeforePosition,
   findChatMentionMatches,
@@ -27,8 +28,8 @@ export function useChatMentionNavigation({
   textareaRef,
   value,
 }: UseChatMentionNavigationInput) {
-  const handleKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+  const handleMentionDeletion = useCallback(
+    (direction: 'backward' | 'forward', preventDefault: () => void) => {
       const textarea = textareaRef.current
       if (!textarea) {
         return false
@@ -36,36 +37,59 @@ export function useChatMentionNavigation({
 
       const cursorPosition = textarea.selectionStart ?? 0
       const selectionEnd = textarea.selectionEnd ?? cursorPosition
+      const validationMap = mentionPathMap && mentionPathMap.size > 0 ? mentionPathMap : undefined
+      const mention = findChatMentionForDeletion({
+        direction,
+        knownMentionLabels: validationMap,
+        selectionEnd,
+        selectionStart: cursorPosition,
+        text: value,
+      })
+      if (!mention) {
+        return false
+      }
+
+      preventDefault()
+      onValueChange(`${value.slice(0, mention.start)}${value.slice(mention.end)}`)
+      setTextareaCursor(textarea, mention.start)
+      return true
+    },
+    [mentionPathMap, onValueChange, textareaRef, value],
+  )
+
+  const handleBeforeInput = useCallback(
+    (event: ReactFormEvent<HTMLTextAreaElement>) => {
+      const inputType = (event.nativeEvent as InputEvent).inputType
+      if (inputType === 'deleteContentBackward') {
+        return handleMentionDeletion('backward', () => event.preventDefault())
+      }
+      if (inputType === 'deleteContentForward') {
+        return handleMentionDeletion('forward', () => event.preventDefault())
+      }
+      return false
+    },
+    [handleMentionDeletion],
+  )
+
+const handleKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+      const textarea = textareaRef.current
+      if (!textarea) {
+        return false
+      }
+
+      if (event.key === 'Backspace' && handleMentionDeletion('backward', () => event.preventDefault())) {
+        return true
+      }
+
+      if (event.key === 'Delete' && handleMentionDeletion('forward', () => event.preventDefault())) {
+        return true
+      }
+
+      const cursorPosition = textarea.selectionStart ?? 0
+      const selectionEnd = textarea.selectionEnd ?? cursorPosition
       const hasSelection = cursorPosition !== selectionEnd
       const validationMap = mentionPathMap && mentionPathMap.size > 0 ? mentionPathMap : undefined
-
-      if (event.key === 'Backspace' && !hasSelection) {
-        const mentionBefore = getChatMentionBeforePosition(value, cursorPosition, validationMap)
-        if (mentionBefore) {
-          event.preventDefault()
-          onValueChange(`${value.slice(0, mentionBefore.start)}${value.slice(mentionBefore.end)}`)
-          setTextareaCursor(textarea, mentionBefore.start)
-          return true
-        }
-
-        const mentionAt = getChatMentionAtPosition(value, cursorPosition, validationMap)
-        if (mentionAt) {
-          event.preventDefault()
-          onValueChange(`${value.slice(0, mentionAt.start)}${value.slice(mentionAt.end)}`)
-          setTextareaCursor(textarea, mentionAt.start)
-          return true
-        }
-      }
-
-      if (event.key === 'Delete' && !hasSelection) {
-        const mentionAt = findChatMentionMatches(value, validationMap).find((match) => match.start === cursorPosition)
-        if (mentionAt) {
-          event.preventDefault()
-          onValueChange(`${value.slice(0, mentionAt.start)}${value.slice(mentionAt.end)}`)
-          setTextareaCursor(textarea, mentionAt.start)
-          return true
-        }
-      }
 
       if (event.key === 'ArrowLeft' && !hasSelection && !event.shiftKey) {
         const mentionBefore = getChatMentionBeforePosition(value, cursorPosition, validationMap)
@@ -97,7 +121,7 @@ export function useChatMentionNavigation({
 
       return false
     },
-    [mentionPathMap, onMentionBoundaryJump, onValueChange, textareaRef, value],
+    [handleMentionDeletion, mentionPathMap, onMentionBoundaryJump, textareaRef, value],
   )
 
   const handleClick = useCallback(() => {
@@ -128,6 +152,7 @@ export function useChatMentionNavigation({
   )
 
   return {
+    handleBeforeInput,
     handleClick,
     handleKeyDown,
   }

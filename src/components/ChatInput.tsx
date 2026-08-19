@@ -502,6 +502,7 @@ export function ChatInput({
             imageAttachments={imageAttachments}
             textareaRef={textareaRef}
             value={value}
+            onBeforeInput={mentionNavigation.handleBeforeInput}
             onChange={(event) => mentionMenu.handleValueChange(event.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
