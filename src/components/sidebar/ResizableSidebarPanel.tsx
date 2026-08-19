@@ -5,6 +5,7 @@ import { useIsMobileViewport } from '../../hooks/useIsMobileViewport'
 interface ResizableSidebarPanelProps {
   disableSidebarTransition?: boolean
   isSidebarOpen: boolean
+  mobileSidebarBottomInset?: string
   onSidebarWidthChange: (sidebarWidth: number) => void
   sidebar: ReactNode
   sidebarWidth: number
@@ -14,6 +15,7 @@ interface ResizableSidebarPanelProps {
 export function ResizableSidebarPanel({
   disableSidebarTransition = false,
   isSidebarOpen,
+  mobileSidebarBottomInset,
   onSidebarWidthChange,
   sidebar,
   sidebarWidth,
@@ -99,7 +101,8 @@ export function ResizableSidebarPanel({
       {isMobileViewport && isSidebarOpen ? (
         <div
           data-sidebar-root="true"
-          className="absolute inset-0 z-50 flex h-full w-full overflow-hidden bg-[var(--sidebar-panel-surface)]"
+          className="absolute inset-x-0 top-0 z-50 flex overflow-hidden bg-[var(--sidebar-panel-surface)]"
+          style={{ bottom: mobileSidebarBottomInset ?? 0 }}
         >
           <div className="h-full min-w-0 flex-1">{sidebar}</div>
         </div>

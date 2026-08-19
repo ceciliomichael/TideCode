@@ -1,3 +1,4 @@
+import { ArrowLeft } from 'lucide-react'
 import { MemoizedGeneralSettingsPanel } from './general/GeneralSettingsPanel'
 import { McpServersSettingsPanel } from './mcp/McpServersSettingsPanel'
 import { ModelsSettingsPanel } from './models/ModelsSettingsPanel'
@@ -30,6 +31,7 @@ interface GeneralSettingsViewModel {
 interface SettingsContentProps {
   activeItemId: SettingsItemId
   appSettings: AppSettings
+  onBackToSettings: () => void
   contextSettings: {
     isLoading: boolean
     onUpdateSettings: (input: Partial<AppSettings>) => void
@@ -81,6 +83,7 @@ interface SettingsContentProps {
 export function SettingsContent({
   activeItemId,
   appSettings,
+  onBackToSettings,
   contextSettings,
   generalSettings,
   mcpSettings,
@@ -91,8 +94,17 @@ export function SettingsContent({
   const activeItem = getSettingsItem(activeItemId)
 
   return (
-    <div className="scroll-stable flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-14 md:px-5 md:pb-0 md:pt-16">
-      <div className="flex w-full justify-center">
+    <div className="scroll-stable flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-3 md:px-5 md:pb-0 md:pt-16">
+      <button
+        type="button"
+        onClick={onBackToSettings}
+        className="mt-4 flex min-h-11 w-full items-center gap-3 rounded-xl px-2 py-3 text-left text-sm font-medium text-foreground transition-colors duration-200 ease-out hover:bg-[var(--sidebar-hover-surface)] md:hidden"
+      >
+        <ArrowLeft size={18} strokeWidth={2.2} className="shrink-0 text-muted-foreground" />
+        <span>Back to settings</span>
+      </button>
+
+      <div className="mt-5 flex w-full justify-center md:mt-0">
         {activeItemId === 'settings-item1' ? (
           <MemoizedGeneralSettingsPanel {...generalSettings} />
         ) : activeItemId === 'settings-item2' ? (

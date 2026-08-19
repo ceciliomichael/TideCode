@@ -6,6 +6,7 @@ import { isRemoteBrowserRuntime } from '../../remote/webBridge'
 interface AppWorkspaceShellProps {
   disableSidebarTransition?: boolean
   isSidebarOpen: boolean
+  mobileSidebarBottomInset?: string
   onSidebarWidthChange: (sidebarWidth: number) => void
   sidebar: ReactNode
   sidebarWidth: number
@@ -16,6 +17,7 @@ interface AppWorkspaceShellProps {
 export function AppWorkspaceShell({
   disableSidebarTransition = false,
   isSidebarOpen,
+  mobileSidebarBottomInset,
   onSidebarWidthChange,
   sidebar,
   sidebarWidth,
@@ -45,6 +47,7 @@ export function AppWorkspaceShell({
       <ResizableSidebarPanel
         disableSidebarTransition={disableSidebarTransition}
         isSidebarOpen={isSidebarOpen}
+        mobileSidebarBottomInset={mobileSidebarBottomInset}
         onSidebarWidthChange={onSidebarWidthChange}
         sidebar={sidebar}
         sidebarWidth={sidebarWidth}

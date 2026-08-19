@@ -44,7 +44,11 @@ import { useChatMessageActions } from './useChatMessageActions'
 import { useConversationNavigationActions } from './useConversationNavigationActions'
 import { buildRuntimeSelection, CHAT_MODE_OPTIONS } from './chatInterfaceRuntime'
 import type { SettingsItemId } from '../../components/settings/settingsItems'
-import { MobileWorkspaceNavigation, type MobileWorkspaceSurface } from './MobileWorkspaceNavigation'
+import {
+  MOBILE_WORKSPACE_NAV_BOTTOM_INSET,
+  MobileWorkspaceNavigation,
+  type MobileWorkspaceSurface,
+} from './MobileWorkspaceNavigation'
 
 type ChatWorkspaceViewMode = 'chat' | 'kanban'
 
@@ -534,6 +538,7 @@ synchronizeDraftFolder,
   return (
     <AppWorkspaceShell
       isSidebarOpen={interfaceController.isSidebarOpen}
+      mobileSidebarBottomInset={isMobileViewport ? MOBILE_WORKSPACE_NAV_BOTTOM_INSET : undefined}
       onSidebarWidthChange={onSidebarWidthChange}
       floatingControls={
         <WorkspaceFloatingControls
@@ -558,15 +563,6 @@ synchronizeDraftFolder,
           onDeleteFolder={handleDeleteFolder}
           onOpenSettings={handleSidebarOpenSettings}
           isMobileLayout={isMobileViewport}
-          mobileFooter={
-            <MobileWorkspaceNavigation
-              activeSurface={mobileSurface}
-              isMenuOpen
-              onOpenSettings={() => handleSidebarOpenSettings()}
-              onToggleMenu={() => setIsSidebarOpen(false)}
-              onSurfaceChange={handleMobileSurfaceChange}
-            />
-          }
           onRenameFolder={async (folderId, name) => {
             await chatMessages.renameFolder(folderId, name)
             if (folderId === selectedProjectId) {
@@ -581,7 +577,11 @@ synchronizeDraftFolder,
       }
       sidebarWidth={sidebarWidth}
     >
-      <WorkspacePanel isSidebarOpen={interfaceController.isSidebarOpen} showRightBorder={false}>
+      <WorkspacePanel
+        isMobileLayout={isMobileViewport}
+        isSidebarOpen={interfaceController.isSidebarOpen}
+        showRightBorder={false}
+      >
         {!isMobileViewport ? (
           <ChatHeader
             title={chatMessages.activeConversationTitle}
@@ -721,8 +721,9 @@ synchronizeDraftFolder,
         {isMobileViewport ? (
           <MobileWorkspaceNavigation
             activeSurface={mobileSurface}
+            isMenuOpen={interfaceController.isSidebarOpen}
             onOpenSettings={() => handleSidebarOpenSettings()}
-            onToggleMenu={() => setIsSidebarOpen(true)}
+            onToggleMenu={() => setIsSidebarOpen((currentValue) => !currentValue)}
             onSurfaceChange={handleMobileSurfaceChange}
           />
         ) : null}

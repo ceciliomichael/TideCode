@@ -6,7 +6,6 @@ import { SettingsContent } from '../components/settings/SettingsContent'
 import { SettingsSidebarPanel } from '../components/settings/SettingsSidebarPanel'
 import {
   DEFAULT_SETTINGS_ITEM_ID,
-  getSettingsItem,
   type SettingsItemId,
 } from '../components/settings/settingsItems'
 import { useMcpServersState } from '../hooks/useMcpServersState'
@@ -112,10 +111,9 @@ export function SettingsInterface({
       isSidebarOpen={isSidebarOpen}
       onSidebarWidthChange={onSidebarWidthChange}
       floatingControls={
-        isMobileViewport && isSidebarOpen ? null : (
+        isMobileViewport ? null : (
           <WorkspaceFloatingControls
             isSidebarOpen={isSidebarOpen}
-            mobileTitle={getSettingsItem(activeItemId).label}
             onToggleSidebar={() => setIsSidebarOpen((currentValue) => !currentValue)}
           />
         )
@@ -133,6 +131,7 @@ export function SettingsInterface({
         <SettingsContent
           activeItemId={activeItemId}
           appSettings={settings}
+          onBackToSettings={() => setIsSidebarOpen(true)}
           contextSettings={{
             isLoading: isSettingsLoading,
             onUpdateSettings: handleUpdateSettings,

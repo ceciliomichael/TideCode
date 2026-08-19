@@ -1,5 +1,5 @@
 import { Download, FolderPlus, Settings, SquarePen } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type DragEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type DragEvent } from 'react'
 import { getExternalFilePaths } from '../../lib/externalFileDrop'
 import { Tooltip } from '../Tooltip'
 import type { ConversationGroupPreview } from '../../types/chat'
@@ -29,7 +29,6 @@ interface SidebarPanelProps {
   onDeleteFolder: (folderId: string) => Promise<void>
   onOpenSettings: (itemId?: SettingsItemId) => void
   isMobileLayout?: boolean
-  mobileFooter?: ReactNode
   onRenameFolder: (folderId: string, name: string) => Promise<void>
   onSelectConversation: (conversationId: string) => void
   selectedProjectId?: string
@@ -49,7 +48,6 @@ export function SidebarPanel({
   onDeleteFolder,
   onOpenSettings,
   isMobileLayout = false,
-  mobileFooter,
   onRenameFolder,
   onSelectConversation,
   selectedProjectId: controlledSelectedProjectId,
@@ -131,7 +129,7 @@ export function SidebarPanel({
   return (
     <aside
       className={isMobileLayout
-        ? 'relative flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] pb-16 pl-4 pr-0 pt-3'
+? 'relative flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] pb-3 pl-4 pr-0 pt-3'
         : 'flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] pb-5 pl-4 pr-0 pt-3 md:pl-5 md:pr-0'}
       onDragOver={handleWorkspaceFolderDragOver}
       onDrop={(event) => {
@@ -243,9 +241,6 @@ export function SidebarPanel({
         </div>
       ) : null}
 
-      {isMobileLayout && mobileFooter ? (
-        <div className="absolute inset-x-0 bottom-0 z-20">{mobileFooter}</div>
-      ) : null}
 
       {isNewThreadProjectDialogOpen ? (
         <NewThreadProjectDialog

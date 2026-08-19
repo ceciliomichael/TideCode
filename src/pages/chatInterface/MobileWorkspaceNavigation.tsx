@@ -1,4 +1,7 @@
-import { Columns3, Menu, MessageSquareText, Settings, Terminal } from 'lucide-react'
+import { Columns3, History, MessageSquareText, Settings, Terminal } from 'lucide-react'
+
+// 56px navigation row + 1px nav border + 1px mobile workspace bottom border.
+export const MOBILE_WORKSPACE_NAV_BOTTOM_INSET = 'calc(3.5rem + 2px + env(safe-area-inset-bottom, 0px))'
 
 export type MobileWorkspaceSurface = 'chat' | 'terminal' | 'board'
 
@@ -33,15 +36,15 @@ export function MobileWorkspaceNavigation({
         <button
           type="button"
           onClick={onToggleMenu}
-aria-label={isMenuOpen ? 'Close history' : 'Open history'}
+          aria-label={isMenuOpen ? 'Close history' : 'Open history'}
           aria-current={isMenuOpen ? 'page' : undefined}
           className={[
             'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] font-medium transition-colors',
             isMenuOpen ? 'text-foreground' : 'text-muted-foreground',
           ].join(' ')}
         >
-          <Menu size={18} strokeWidth={isMenuOpen ? 2.3 : 2} />
-<span>History</span>
+          <History size={18} strokeWidth={isMenuOpen ? 2.3 : 2} />
+          <span>History</span>
         </button>
 {ITEMS.map(({ icon: Icon, label, surface }) => {
           const isActive = activeSurface === surface
