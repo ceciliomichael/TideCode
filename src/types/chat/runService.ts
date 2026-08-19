@@ -1,4 +1,4 @@
-import type { ChatCompactionLifecycleState, ChatStreamEvent, CompactConversationInput, CompactConversationResult, StartChatStreamInput } from './runtime'
+import type { ChatCompactionLifecycleState, ChatStreamEvent, CompactConversationInput, CompactConversationResult, ContextUsageEstimate, StartChatStreamInput } from './runtime'
 import type { ChatMode, ConversationFolderRecord, ConversationRecord, QueuedMessage } from './conversations'
 import type { ChatProviderId, ReasoningEffort } from './providers'
 
@@ -18,6 +18,7 @@ export interface SharedRunSnapshot {
   providerId: StartChatStreamInput['providerId']
   modelId: string
   workspaceRootPath: string
+  contextUsage: ContextUsageEstimate | null
   status: SharedRunStatus
   startedAt: number
   updatedAt: number

@@ -55,9 +55,11 @@ export function useChatContextUsage({
     }
 
     let isCancelled = false
+    let liveStreamId: string | null = null
     const pendingCompactionRefreshes = new Set<number>()
 
-    const fetchUsage = () => {
+    const fetchUsage = (force = false) => {
+      if (liveStreamId && !force) return
       const requestSequence = ++requestSequenceRef.current
       void window.tidecodeChat
         .estimateContextUsage({
@@ -94,19 +96,45 @@ export function useChatContextUsage({
     }
 
     fetchUsageRef.current = fetchUsage
-    const timeoutId = window.setTimeout(fetchUsage, 120)
     const unsubscribeChat = window.tidecodeChat.onStreamEvent((event) => {
+      if (event.type === 'context_usage_updated' && event.conversationId === conversationId) {
+        liveStreamId = event.streamId
+        requestSequenceRef.current += 1
+        setUsage(event.usage)
+        return
+      }
+
+      if (event.type === 'compaction_committed' && event.conversationId === conversationId) {
+        if (liveStreamId === event.streamId) return
+        refreshAfterCompaction()
+        return
+      }
+
       const isRelevantCompletion =
         (event.type === 'completed' || event.type === 'aborted' || event.type === 'error') &&
         event.conversationId === conversationId
-      if ((event.type === 'compaction_committed' && event.conversationId === conversationId) || isRelevantCompletion) {
-        if (event.type === 'compaction_committed') {
-          refreshAfterCompaction()
-        } else {
-          fetchUsage()
-        }
-      }
+      if (!isRelevantCompletion) return
+      if (liveStreamId && liveStreamId !== event.streamId) return
+
+      liveStreamId = null
+      fetchUsage(true)
     })
+
+    void window.tidecodeRuns.listActiveRuns()
+      .then((runs) => {
+        if (isCancelled || liveStreamId || !conversationId) return
+        const activeRun = runs.find((run) => run.conversationId === conversationId)
+        if (activeRun?.streamId && activeRun.contextUsage) {
+          liveStreamId = activeRun.streamId
+          requestSequenceRef.current += 1
+          setUsage(activeRun.contextUsage)
+          return
+        }
+        fetchUsage()
+      })
+      .catch(() => {
+        if (!isCancelled) fetchUsage()
+      })
 
     let unsubscribeExplorer: (() => void) | null = null
     if (agentContextRootPath?.trim()) {
@@ -127,7 +155,6 @@ export function useChatContextUsage({
     return () => {
       isCancelled = true
       requestSequenceRef.current += 1
-      window.clearTimeout(timeoutId)
       window.clearInterval(intervalId)
       for (const refreshTimeoutId of pendingCompactionRefreshes) {
         window.clearTimeout(refreshTimeoutId)

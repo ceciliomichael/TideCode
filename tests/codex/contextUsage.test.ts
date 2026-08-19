@@ -12,6 +12,7 @@ import type { Message } from '../../src/types/chat'
 import {
   calculateContextBudget,
   calculateModelMessagesBudget,
+  calculateModelMessagesContextState,
   estimateModelMessagesTokens,
   resolveRetainedContextTokens,
   shouldCompactContext,
@@ -101,6 +102,38 @@ test('automatic compaction uses the same model-content token estimate as the con
     estimateModelMessagesTokens(messages),
     estimateModelMessageContextUsage(messages).totalTokens,
   )
+})
+
+test('live context usage and automatic compaction share one calculated state', () => {
+  const messages = [
+    { role: 'user', content: 'H'.repeat(120_000) },
+    {
+      role: 'tool',
+      content: [{
+        output: { type: 'text', value: 'T'.repeat(500_000) },
+        toolCallId: 'call-live',
+        toolName: 'read_file',
+        type: 'tool-result',
+      }],
+    },
+  ] as const
+  const state = calculateModelMessagesContextState({
+    contextWindowTokens: 200_000,
+    messages,
+    systemPromptTokens: 4_300,
+    toolSchemaTokens: 700,
+    triggerRatio: 0.8,
+  })
+
+  assert.equal(state.usage.maxTokens, state.budget.contextWindowTokens)
+  assert.equal(state.usage.systemPromptTokens, 5_000)
+  assert.equal(state.usage.totalTokens, state.budget.totalTokens)
+  assert.equal(
+    state.usage.totalTokens,
+    state.usage.systemPromptTokens + state.usage.historyTokens + state.usage.toolResultsTokens,
+  )
+  assert.ok(state.usage.toolResultsTokens > 0)
+  assert.equal(shouldCompactContext(state.budget), state.usage.totalTokens >= 160_000)
 })
 
 test('model context usage treats base64 image bytes as image input instead of text tokens', () => {
