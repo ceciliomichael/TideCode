@@ -675,6 +675,79 @@ test('the registry validates Code Mode arguments before invoking a native tool',
   assert.match(result?.summary ?? '', /Invalid arguments/u)
 })
 
+test('the registry omits unsupported false properties while preserving supported false values', async () => {
+  let receivedInput: unknown
+  const registry = await createAgentToolRegistry({
+    configurable: tool({
+      description: 'Accepts a strict nested configuration.',
+      inputSchema: jsonSchema({
+        additionalProperties: false,
+        properties: {
+          enabled: { type: 'boolean' },
+          options: {
+            additionalProperties: false,
+            properties: { mode: { type: 'string' } },
+            required: ['mode'],
+            type: 'object',
+          },
+        },
+        required: ['enabled', 'options'],
+        type: 'object',
+      }),
+      execute: async (input) => {
+        receivedInput = input
+        return { status: 'success' as const, summary: 'configured' }
+      },
+    }),
+  })
+
+  const result = await registry.get('configurable')?.execute({
+    enabled: false,
+    ignoredFlag: false,
+    options: { mode: 'safe', replaceAll: false },
+  })
+
+  assert.equal(result?.status, 'success')
+  assert.deepEqual(receivedInput, {
+    enabled: false,
+    options: { mode: 'safe' },
+  })
+})
+
+test('the registry still rejects unsupported truthy properties', async () => {
+  let wasInvoked = false
+  const registry = await createAgentToolRegistry({
+    configurable: tool({
+      description: 'Accepts a strict nested configuration.',
+      inputSchema: jsonSchema({
+        additionalProperties: false,
+        properties: {
+          options: {
+            additionalProperties: false,
+            properties: { mode: { type: 'string' } },
+            required: ['mode'],
+            type: 'object',
+          },
+        },
+        required: ['options'],
+        type: 'object',
+      }),
+      execute: async () => {
+        wasInvoked = true
+        return { status: 'success' as const, summary: 'configured' }
+      },
+    }),
+  })
+
+  const result = await registry.get('configurable')?.execute({
+    options: { mode: 'safe', replaceAll: true },
+  })
+
+  assert.equal(wasInvoked, false)
+  assert.equal(result?.status, 'error')
+  assert.match(result?.summary ?? '', /additional properties/u)
+})
+
 test('the registry maps a zero-based first-line offset to the read API contract', async () => {
   let receivedInput: unknown
   const registry = await createAgentToolRegistry({
