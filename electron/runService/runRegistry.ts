@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { SharedRunSnapshot, SharedRunStatus, StartChatStreamInput } from '../../src/types/chat'
+import type { ContextUsageEstimate, SharedRunSnapshot, SharedRunStatus, StartChatStreamInput } from '../../src/types/chat'
 
 interface RegisteredRun {
   snapshot: SharedRunSnapshot
@@ -29,6 +29,7 @@ export class SharedRunRegistry {
       providerId: input.providerId,
       modelId: input.modelId,
       workspaceRootPath: input.agentContextRootPath,
+      contextUsage: null,
       status: 'starting',
       startedAt: now,
       updatedAt: now,
@@ -56,6 +57,16 @@ export class SharedRunRegistry {
     run.snapshot = {
       ...run.snapshot,
       status,
+      updatedAt: Date.now(),
+    }
+    return run.snapshot
+  }
+
+  updateContextUsage(runId: string, contextUsage: ContextUsageEstimate) {
+    const run = this.requireRun(runId)
+    run.snapshot = {
+      ...run.snapshot,
+      contextUsage,
       updatedAt: Date.now(),
     }
     return run.snapshot

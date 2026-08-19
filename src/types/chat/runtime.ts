@@ -114,6 +114,12 @@ export interface ChatCompactionDetailSection {
 export type ChatStreamEvent =
   | { streamId: string; type: 'started' }
   | {
+      conversationId: string
+      streamId: string
+      type: 'context_usage_updated'
+      usage: ContextUsageEstimate
+    }
+  | {
       attemptId: string
       conversationId: string
       streamId: string

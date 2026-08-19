@@ -9,6 +9,7 @@ import {
   type ToolSet,
 } from 'ai'
 import type {
+  ContextUsageEstimate,
   Message,
   StartChatStreamInput,
 } from '../../../src/types/chat'
@@ -37,7 +38,7 @@ import {
 } from './compaction/automatic'
 import { assertCompactionGate } from './compaction/gate'
 import {
-  calculateModelMessagesBudget,
+  calculateModelMessagesContextState,
   resolveRetainedContextTokens,
   shouldCompactContext,
 } from './compaction/budget'
@@ -241,6 +242,15 @@ export async function runToolEnabledChatStream(input: {
     let replayMessages: ModelMessage[] = [...modelMessages]
     let latestCompactionPacket: CompactionPacket | null = replayCompactionPacket
     const systemPromptTokens = approximateTokenCount(prompt.system)
+    const emitContextUsage = (usage: ContextUsageEstimate) => {
+      if (!conversationId) return
+      emitChatStreamEvent(input.webContents, {
+        conversationId,
+        streamId: input.streamId,
+        type: 'context_usage_updated',
+        usage,
+      })
+    }
 
     if (conversationId) {
       await safelyPersistHistory(() => recordRunStarted({
@@ -362,7 +372,9 @@ export async function runToolEnabledChatStream(input: {
           toolSchemaTokens: promptContext.toolSchemaTokens,
           triggerRatio: liveContextCompaction.triggerPercent / 100,
         }
-        const compactionBudget = calculateModelMessagesBudget(compactionBudgetInput)
+        const compactionContextState = calculateModelMessagesContextState(compactionBudgetInput)
+        const compactionBudget = compactionContextState.budget
+        emitContextUsage(compactionContextState.usage)
         const retainedContextTokens = resolveRetainedContextTokens(
           liveContextCompaction.retainedContextTokens,
           compactionBudget,
@@ -446,10 +458,11 @@ export async function runToolEnabledChatStream(input: {
             : undefined
         }
 
-        const projectedBudget = calculateModelMessagesBudget({
+        const projectedContextState = calculateModelMessagesContextState({
           ...compactionBudgetInput,
           messages: compacted.projectedMessages,
         })
+        const projectedBudget = projectedContextState.budget
         assertCompactionGate({
           aborted: false,
           compactionResult: compacted,
@@ -483,6 +496,7 @@ export async function runToolEnabledChatStream(input: {
             type: 'compaction_committed',
           })
         }
+        emitContextUsage(projectedContextState.usage)
         return {
           messages: compacted.projectedMessages,
         }
@@ -554,7 +568,9 @@ export async function runToolEnabledChatStream(input: {
         toolSchemaTokens: promptContext.toolSchemaTokens,
         triggerRatio: finalContextCompaction.triggerPercent / 100,
       }
-      const finalCompactionBudget = calculateModelMessagesBudget(finalCompactionBudgetInput)
+      const finalContextState = calculateModelMessagesContextState(finalCompactionBudgetInput)
+      const finalCompactionBudget = finalContextState.budget
+      emitContextUsage(finalContextState.usage)
       const finalRetainedContextTokens = resolveRetainedContextTokens(
         finalContextCompaction.retainedContextTokens,
         finalCompactionBudget,
@@ -620,6 +636,10 @@ export async function runToolEnabledChatStream(input: {
           } else if (!compacted) {
             emitFinalCompactionFailed('unavailable')
           } else {
+            const projectedFinalContextState = calculateModelMessagesContextState({
+              ...finalCompactionBudgetInput,
+              messages: compacted.projectedMessages,
+            })
             replayMessages = [...compacted.projectedMessages]
             latestCompactionPacket = compacted.packet
             await safelyPersistHistory(() => recordCompactionCommitted({
@@ -643,6 +663,7 @@ export async function runToolEnabledChatStream(input: {
               streamId: input.streamId,
               type: 'compaction_committed',
             })
+            emitContextUsage(projectedFinalContextState.usage)
           }
         } catch (error) {
           emitFinalCompactionFailed(input.abortController.signal.aborted ? 'aborted' : 'error')

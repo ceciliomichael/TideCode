@@ -538,6 +538,10 @@ export class TideCodeRunServiceServer {
         collector.handleEvent(event)
         latestSnapshot = latestSnapshot.length > 0 ? latestSnapshot : [...input.messages]
 
+        if (event.type === 'context_usage_updated') {
+          this.registry.updateContextUsage(createdRun.runId, event.usage)
+        }
+
         if (event.type === 'tool_invocation_decision_requested') {
           this.registry.updateStatus(createdRun.runId, 'waiting_for_input')
           this.emitRunState(createdRun.runId)

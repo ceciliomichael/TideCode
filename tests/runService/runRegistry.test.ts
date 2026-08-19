@@ -44,3 +44,24 @@ test('stream ids resolve to the owning provider and active run', () => {
   assert.equal(registry.getByStreamId('stream-1')?.conversationId, 'conversation-1')
   assert.deepEqual(registry.listActive().map((entry) => entry.runId), [run.runId])
 })
+
+test('active runs retain the latest live context usage for reconnecting clients', () => {
+  const registry = new SharedRunRegistry()
+  const run = registry.create(createInput())
+  registry.attachStream(run.runId, 'stream-1')
+  registry.updateContextUsage(run.runId, {
+    historyTokens: 42_000,
+    maxTokens: 200_000,
+    systemPromptTokens: 5_000,
+    toolResultsTokens: 80_000,
+    totalTokens: 127_000,
+  })
+
+  assert.deepEqual(registry.listActive()[0]?.contextUsage, {
+    historyTokens: 42_000,
+    maxTokens: 200_000,
+    systemPromptTokens: 5_000,
+    toolResultsTokens: 80_000,
+    totalTokens: 127_000,
+  })
+})

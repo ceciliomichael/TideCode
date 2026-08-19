@@ -1,4 +1,5 @@
 import type { ModelMessage } from 'ai'
+import type { ContextUsageEstimate } from '../../../../src/types/chat'
 import {
   approximateTokenCount,
   estimateModelMessageContextUsage,
@@ -58,6 +59,11 @@ export interface ModelMessagesBudgetInput {
   triggerRatio?: number
 }
 
+export interface ModelMessagesContextState {
+  budget: ContextBudget
+  usage: ContextUsageEstimate
+}
+
 export function calculateContextBudget(input: ContextBudgetInput): ContextBudget {
   const contextWindowTokens = Math.max(
     16_000,
@@ -92,15 +98,32 @@ export function calculateContextBudget(input: ContextBudgetInput): ContextBudget
   }
 }
 
-export function calculateModelMessagesBudget(input: ModelMessagesBudgetInput) {
-  return calculateContextBudget({
+export function calculateModelMessagesContextState(input: ModelMessagesBudgetInput): ModelMessagesContextState {
+  const messageUsage = estimateModelMessageContextUsage(input.messages)
+  const budget = calculateContextBudget({
     contextWindowTokens: input.contextWindowTokens,
-    messageTokens: estimateModelMessagesTokens(input.messages),
+    messageTokens: messageUsage.totalTokens,
     outputReserveTokens: input.outputReserveTokens,
     systemPromptTokens: input.systemPromptTokens,
     toolSchemaTokens: input.toolSchemaTokens,
     triggerRatio: input.triggerRatio,
   })
+  const systemPromptTokens = Math.max(0, Math.floor(input.systemPromptTokens + input.toolSchemaTokens))
+
+  return {
+    budget,
+    usage: {
+      historyTokens: messageUsage.historyTokens,
+      maxTokens: budget.contextWindowTokens,
+      systemPromptTokens,
+      toolResultsTokens: messageUsage.toolResultsTokens,
+      totalTokens: budget.totalTokens,
+    },
+  }
+}
+
+export function calculateModelMessagesBudget(input: ModelMessagesBudgetInput) {
+  return calculateModelMessagesContextState(input).budget
 }
 
 export function resolveRetainedContextTokens(
