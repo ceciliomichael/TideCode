@@ -206,6 +206,54 @@ try {
     `Boolean(window.tidecodeHistory && document.querySelector('nav[aria-label="Mobile workspace navigation"]'))`,
     'seeded mobile shell',
   )
+  await clickButton('Chat')
+  await waitFor(`Boolean(document.querySelector('.chat-input-shell textarea'))`, 'mobile chat composer')
+  const composerMetrics = await evaluate(`(() => {
+    const controls = document.querySelector('[data-mobile-runtime-controls="true"]')
+    if (!(controls instanceof HTMLElement)) return null
+    const rect = controls.getBoundingClientRect()
+    const modelButton = [...controls.querySelectorAll('button')].find((button) => button.getAttribute('aria-haspopup') === 'listbox' && button.textContent?.includes('gpt'))
+    const modelRect = modelButton instanceof HTMLElement ? modelButton.getBoundingClientRect() : null
+    const modelLabel = modelButton?.querySelector('.chat-runtime-control-label')
+    const modelLabelRect = modelLabel instanceof HTMLElement ? modelLabel.getBoundingClientRect() : null
+    const sendButton = [...document.querySelectorAll('button')].find((button) => ['Send message', 'Stop generating', 'Queue message', 'Steer message'].includes(button.getAttribute('aria-label') ?? ''))
+    const sendRect = sendButton instanceof HTMLElement ? sendButton.getBoundingClientRect() : null
+    const contextButton = [...document.querySelectorAll('button')].find((button) => (button.getAttribute('aria-label') ?? '').startsWith('Estimated context usage'))
+    const children = [...controls.children].map((child) => child.getBoundingClientRect())
+    return {
+      left: rect.left,
+      right: rect.right,
+      centerY: rect.top + rect.height / 2,
+      sendCenterY: sendRect ? sendRect.top + sendRect.height / 2 : null,
+      modelWidth: modelRect?.width ?? null,
+      modelLabelWidth: modelLabelRect?.width ?? null,
+      contextVisible: contextButton instanceof HTMLElement && contextButton.getBoundingClientRect().width > 0,
+      childBounds: children.map((child) => ({ left: child.left, right: child.right })),
+    }
+  })()` )
+  assert(composerMetrics, 'Mobile chat runtime controls are missing')
+  assert(composerMetrics.childBounds.every((child) => child.left >= composerMetrics.left - 1 && child.right <= composerMetrics.right + 1), 'Mobile chat runtime selectors overflow the composer')
+  if (composerMetrics.modelWidth !== null) assert(composerMetrics.modelWidth <= 86, 'Mobile model selector is too wide')
+  if (composerMetrics.modelLabelWidth !== null) assert(composerMetrics.modelLabelWidth <= 61, 'Mobile model label is not tightly truncated')
+  assert(composerMetrics.sendCenterY !== null && Math.abs(composerMetrics.sendCenterY - composerMetrics.centerY) < 4, 'Mobile send button is not aligned with runtime selectors')
+  assert(composerMetrics.contextVisible, 'Mobile context indicator is missing')
+
+  const tooltipSuppressed = await evaluate(`(async () => {
+    const attachButton = document.querySelector('button[aria-label="Attach files"]')
+    if (!(attachButton instanceof HTMLElement)) return false
+    attachButton.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }))
+    attachButton.focus()
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    return !document.querySelector('[role="tooltip"]')
+  })()` )
+  assert(tooltipSuppressed, 'Mobile UI still renders tooltips')
+
+  const remoteMentionFiles = await evaluate(`window.tidecodeWorkspace.listDirectory({
+    recursive: true,
+    workspaceRootPath: ${JSON.stringify(workspacePath)},
+  })`)
+  assert(Array.isArray(remoteMentionFiles), 'Remote workspace recursive listing is unavailable for file mentions')
+  assert(remoteMentionFiles.some((entry) => !entry.isDirectory && entry.name === 'package.json'), 'Remote workspace recursive listing did not return package.json for file mentions')
   checkpoints.push(await measure('Chat with workspace'))
 
   const desktopControlsVisible = await evaluate(`(() => {
@@ -218,7 +266,7 @@ try {
   })()`)
   assert(!desktopControlsVisible, 'Desktop workspace panel controls are visible on mobile')
 
-  await clickAria('Open navigation menu')
+  await clickAria('Open history')
   await waitFor(`Boolean(document.querySelector('[data-sidebar-root="true"]'))`, 'mobile navigation menu')
   const sidebarRect = await evaluate(`(() => {
     const rect = document.querySelector('[data-sidebar-root="true"]')?.getBoundingClientRect()
@@ -226,6 +274,28 @@ try {
   })()`)
   assert(sidebarRect && sidebarRect.width >= viewport.width - 1, 'Mobile sidebar is not full-width')
   assert(sidebarRect && sidebarRect.height >= viewport.height - 1, 'Mobile sidebar is not full-height')
+  const sidebarNavigation = await evaluate(`(() => {
+    const root = document.querySelector('[data-sidebar-root="true"]')
+    const closeMenu = root?.querySelector('button[aria-label="Close history"]')
+    const hasNavigationTitle = [...(root?.querySelectorAll('p') ?? [])].some((element) => element.textContent?.trim() === 'Navigation')
+    return { closeMenuActive: closeMenu?.getAttribute('aria-current') === 'page', hasNavigationTitle }
+  })()`)
+  assert(sidebarNavigation?.closeMenuActive, 'Open History does not show the bottom History item as active')
+  assert(!sidebarNavigation?.hasNavigationTitle, 'Open mobile menu still renders the Navigation title')
+  const settingsPlacement = await evaluate(`(() => {
+    const root = document.querySelector('[data-sidebar-root="true"]')
+    const visibleSettings = [...(root?.querySelectorAll('button') ?? [])].filter((button) => {
+      if (button.textContent?.trim() !== 'Settings') return false
+      const rect = button.getBoundingClientRect()
+      const style = getComputedStyle(button)
+      return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+    })
+    return {
+      count: visibleSettings.length,
+      allInBottomNav: visibleSettings.every((button) => Boolean(button.closest('nav[aria-label="Mobile workspace navigation"]'))),
+    }
+  })()`)
+  assert(settingsPlacement?.count === 1 && settingsPlacement.allInBottomNav, 'Settings still appears inside the main mobile menu instead of only in bottom navigation')
   checkpoints.push(await measure('Full-screen sidebar'))
 
   await clickAria('Start new thread')
@@ -241,18 +311,48 @@ try {
   await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
   await waitFor(`!document.querySelector('[aria-label="Commands, projects, and threads"]')`, 'New Thread dialog close')
 
-  await clickAria('Close navigation menu')
+  await clickAria('Close history')
 
   await clickButton('Terminal')
   await waitFor(`Boolean(document.querySelector('button[aria-label="New terminal tab"]'))`, 'terminal surface')
-  const terminalHasMenu = await evaluate(`Boolean(document.querySelector('button[aria-label="Open navigation menu"]'))`)
-  assert(terminalHasMenu, 'Navigation menu is not reachable from Terminal')
+  await waitFor(`document.body.textContent?.includes('No terminal sessions') ?? false`, 'empty mobile terminal state')
+  const terminalBeforeCreate = await evaluate(`(() => ({
+    hasMenu: Boolean(document.querySelector('button[aria-label="Open history"]')),
+    tabCount: document.querySelectorAll('.workspace-tabs-scroll-viewport > *').length,
+    hasNewTerminalAction: [...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'New terminal'),
+  }))()`)
+  assert(terminalBeforeCreate?.hasMenu, 'History is not reachable from Terminal')
+  assert(terminalBeforeCreate?.tabCount === 0, 'Opening mobile Terminal automatically created a terminal tab')
+  assert(terminalBeforeCreate?.hasNewTerminalAction, 'Mobile Terminal empty state does not expose New terminal')
+  checkpoints.push(await measure('Terminal empty state'))
+  await clickButton('New terminal')
+  await waitFor(`Boolean(document.querySelector('.workspace-tabs-scroll-viewport button'))`, 'explicit mobile terminal creation')
+  const terminalTabLeft = await evaluate(`document.querySelector('.workspace-tabs-scroll-viewport button')?.getBoundingClientRect().left ?? null`)
+  assert(typeof terminalTabLeft === 'number' && terminalTabLeft < 8, 'Terminal header still reserves the old mobile menu gutter')
   checkpoints.push(await measure('Terminal'))
 
   await clickButton('Board')
   await waitFor(`document.body.textContent?.includes('Work board') ?? false`, 'board surface')
-  const boardHasMenu = await evaluate(`Boolean(document.querySelector('button[aria-label="Open navigation menu"]'))`)
-  assert(boardHasMenu, 'Navigation menu is not reachable from Board')
+  const boardMetrics = await evaluate(`(() => {
+    const hasMenu = Boolean(document.querySelector('button[aria-label="Open history"]'))
+    const heading = [...document.querySelectorAll('h1')].find((element) => element.textContent?.trim() === 'Work board')
+    const left = heading instanceof HTMLElement ? heading.getBoundingClientRect().left : null
+    return { hasMenu, left }
+  })()`)
+  assert(boardMetrics?.hasMenu, 'History is not reachable from Board')
+  assert(typeof boardMetrics?.left === 'number' && boardMetrics.left < 24, 'Board header still reserves the old mobile menu gutter')
+  const boardLayoutMetrics = await evaluate(`(() => {
+    const nav = document.querySelector('nav[aria-label="Board columns"]')
+    const buttons = nav ? [...nav.querySelectorAll('button')] : []
+    const widths = buttons.map((button) => button.getBoundingClientRect().width)
+    const cardScroll = document.querySelector('[data-kanban-card-scroll="true"]')
+    const scrollStyle = cardScroll instanceof HTMLElement ? getComputedStyle(cardScroll) : null
+    const scrollRect = cardScroll instanceof HTMLElement ? cardScroll.getBoundingClientRect() : null
+    return { widths, overflowY: scrollStyle?.overflowY ?? null, height: scrollRect?.height ?? 0 }
+  })()` )
+  assert(boardLayoutMetrics?.widths.length === 4, 'Board does not expose four mobile column filters')
+  assert(Math.max(...boardLayoutMetrics.widths) - Math.min(...boardLayoutMetrics.widths) < 1, 'Board mobile column filters are not equal width')
+  assert(boardLayoutMetrics.overflowY === 'auto' && boardLayoutMetrics.height > 0, 'Board card list is not independently scrollable')
   checkpoints.push(await measure('Board'))
 
   await waitFor(`Boolean(document.querySelector('button[aria-label="Add task to Backlog"]'))`, 'Board task controls')
@@ -279,11 +379,11 @@ try {
   assert(titleSet, 'Could not populate Board task title')
   await clickButton('Create task')
   await waitFor(`!document.querySelector('[aria-labelledby="kanban-task-dialog-title"]')`, 'Board task creation')
-await waitFor(`Boolean(document.querySelector(${JSON.stringify(smokeTaskCardSelector)}))`, 'new Board task card')
+  await waitFor(`Boolean(document.querySelector(${JSON.stringify(smokeTaskCardSelector)}))`, 'new Board task card')
   checkpoints.push(await measure('Board after task creation'))
 
   const taskOpened = await evaluate(`(() => {
-const card = document.querySelector(${JSON.stringify(smokeTaskCardSelector)})
+    const card = document.querySelector(${JSON.stringify(smokeTaskCardSelector)})
     if (!(card instanceof HTMLElement)) return false
     card.click()
     return true
@@ -293,7 +393,6 @@ const card = document.querySelector(${JSON.stringify(smokeTaskCardSelector)})
   checkpoints.push(await measure('Board task details'))
   await clickAria('Close task details')
 
-  await clickAria('Open navigation menu')
   await clickButton('Settings')
   await waitFor(`Boolean(document.querySelector('nav[aria-label="Settings navigation"]'))`, 'Settings mobile navigation')
   checkpoints.push(await measure('Settings navigation'))
@@ -305,6 +404,20 @@ const card = document.querySelector(${JSON.stringify(smokeTaskCardSelector)})
     return rect ? { width: rect.width, height: rect.height } : null
   })()`)
   assert(settingsSidebarRect && settingsSidebarRect.width >= viewport.width - 1, 'Settings sidebar is not full-width')
+  const settingsOpenControls = await evaluate(`(() => {
+    const backButton = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Back to app')
+    const collapseButton = document.querySelector('button[aria-label="Collapse sidebar"]')
+    const isTopmost = (element) => {
+      if (!(element instanceof HTMLElement)) return false
+      const rect = element.getBoundingClientRect()
+      if (rect.width <= 0 || rect.height <= 0) return false
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+      return Boolean(hit && element.contains(hit))
+    }
+    return { backToAppVisible: isTopmost(backButton), collapseVisible: isTopmost(collapseButton) }
+  })()`)
+  assert(settingsOpenControls?.backToAppVisible, 'Settings mobile navigation does not expose Back to app')
+  assert(!settingsOpenControls?.collapseVisible, 'Settings mobile navigation still exposes the top X/collapse control')
 
   const settingsPages = ['General', 'Providers', 'Models', 'MCP Servers', 'Skills', 'Configuration', 'Updates']
   for (const page of settingsPages) {

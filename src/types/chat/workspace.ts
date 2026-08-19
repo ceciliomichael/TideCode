@@ -5,6 +5,7 @@ export interface CreateWorkspaceCheckpointInput {
 export type WorkspaceDirectoryVisibility = 'explorer' | 'workspace'
 
 export interface WorkspaceExplorerListDirectoryInput {
+  recursive?: boolean
   relativePath?: string
   workspaceRootPath: string
   visibility?: WorkspaceDirectoryVisibility
