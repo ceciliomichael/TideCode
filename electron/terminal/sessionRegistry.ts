@@ -145,7 +145,12 @@ function killPtyProcessTree(ptyProcess: IPty) {
   try {
     const pid = ptyProcess.pid;
     if (process.platform === "win32" && typeof pid === "number" && pid > 0) {
-      spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" });
+      spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], {
+        stdio: "ignore",
+        // Electron is a GUI process on Windows. Without windowsHide, taskkill.exe
+        // can briefly create a real console window while an AI PTY is cleaned up.
+        windowsHide: true,
+      });
     } else {
       ptyProcess.kill();
     }

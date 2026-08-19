@@ -248,10 +248,7 @@ export function ChatInput({
   }
 
   function handleSend() {
-    if (!canSend) return
-    mentionMenu.closeMenu()
-    onSend(mentionMenu.expandValueForSend(value), attachments)
-    mentionMenu.clearMentionPathMap()
+    submitFollowUp(onSend)
   }
 
   function handlePrimaryAction() {

@@ -242,7 +242,7 @@ export function NewThreadProjectDialog({
 
   return createPortal(
     <div
-            className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/60 p-3 sm:p-5"
+      className="fixed inset-0 z-[2100] flex items-start justify-center overflow-y-auto bg-black/60 px-3 pb-3 pt-[calc(env(safe-area-inset-top,0px)+4.25rem)] sm:px-5 sm:pb-5 sm:pt-[10vh]"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
@@ -254,7 +254,7 @@ export function NewThreadProjectDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Commands, projects, and threads"
-                className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-soft sm:max-h-[min(720px,calc(100dvh-2.5rem))]"
+        className="flex max-h-[calc(100dvh-env(safe-area-inset-top,0px)-5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-soft sm:max-h-[min(720px,calc(90dvh-1.25rem))]"
       >
         <div className="relative shrink-0 border-b border-border">
           <Search
