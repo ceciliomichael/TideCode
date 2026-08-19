@@ -24,6 +24,29 @@ test('composer supports multiline editing and joining lines', () => {
   assert.equal(composerText(state), 'hello\nworl')
 })
 
+test('composer deletes the previous word with Ctrl+Backspace semantics', () => {
+  let state = createComposerState()
+  state = applyComposerAction(state, { type: 'insert', text: 'hello brave world   ' })
+  state = applyComposerAction(state, { type: 'delete-word-left' })
+  assert.equal(composerText(state), 'hello brave ')
+  assert.equal(state.column, 'hello brave '.length)
+
+  state = applyComposerAction(state, { type: 'delete-word-left' })
+  assert.equal(composerText(state), 'hello ')
+})
+
+test('composer word deletion crosses a newline from the start of the next line', () => {
+  let state = createComposerState()
+  state = applyComposerAction(state, { type: 'insert', text: 'first word' })
+  state = applyComposerAction(state, { type: 'newline' })
+  state = applyComposerAction(state, { type: 'insert', text: 'second' })
+  state = applyComposerAction(state, { type: 'home' })
+  state = applyComposerAction(state, { type: 'delete-word-left' })
+  assert.equal(composerText(state), 'first second')
+  assert.equal(state.lineIndex, 0)
+  assert.equal(state.column, 'first '.length)
+})
+
 test('composer keeps bounded history and navigates it from an empty prompt', () => {
   const first = recordComposerHistory(createComposerState(), 'first request')
   const second = recordComposerHistory(first, 'second request')

@@ -262,6 +262,29 @@ export function applyComposerAction(state: ComposerState, action: TerminalInputA
       lines.splice(state.lineIndex, 1, line.slice(0, state.column), line.slice(state.column))
       return { ...state, lines, lineIndex: state.lineIndex + 1, column: 0, historyIndex: null }
     }
+    case 'delete-word-left': {
+      const fullText = composerText(state)
+      const cursorIndex = getComposerCursorIndex(state)
+      if (cursorIndex === 0) return state
+
+      let deleteFrom = cursorIndex
+      while (deleteFrom > 0 && /\s/u.test(fullText[deleteFrom - 1])) deleteFrom -= 1
+      while (deleteFrom > 0 && !/\s/u.test(fullText[deleteFrom - 1])) deleteFrom -= 1
+
+      const images = getChatImageAttachments(state.attachments)
+      if (images.length === 0) {
+        const nextText = `${fullText.slice(0, deleteFrom)}${fullText.slice(cursorIndex)}`
+        return setComposerCursorIndex(setComposerText(state, nextText), deleteFrom)
+      }
+
+      let nextState = state
+      while (getComposerCursorIndex(nextState) > deleteFrom) {
+        const previousState = nextState
+        nextState = applyComposerAction(nextState, { type: 'backspace' })
+        if (nextState === previousState) break
+      }
+      return nextState
+    }
     case 'backspace': {
       const images = getChatImageAttachments(state.attachments)
       if (images.length > 0) {
