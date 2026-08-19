@@ -44,11 +44,7 @@ import { useChatMessageActions } from './useChatMessageActions'
 import { useConversationNavigationActions } from './useConversationNavigationActions'
 import { buildRuntimeSelection, CHAT_MODE_OPTIONS } from './chatInterfaceRuntime'
 import type { SettingsItemId } from '../../components/settings/settingsItems'
-import {
-  MOBILE_WORKSPACE_NAV_BOTTOM_INSET,
-  MobileWorkspaceNavigation,
-  type MobileWorkspaceSurface,
-} from './MobileWorkspaceNavigation'
+import { MobileWorkspaceHeader, type MobileWorkspaceSurface } from './MobileWorkspaceHeader'
 
 type ChatWorkspaceViewMode = 'chat' | 'kanban'
 
@@ -98,6 +94,7 @@ export function ChatInterfaceContent({
   workspaceState,
 }: ChatInterfaceContentProps) {
   const [selectedProjectId, setSelectedProjectId] = useState<string>(settings.selectedProjectId ?? ALL_PROJECTS_FILTER_ID)
+  const [mobileNewThreadDialogOpenSignal, setMobileNewThreadDialogOpenSignal] = useState(0)
   const previousActiveConversationArchivedRef = useRef<boolean | null>(null)
 
   // Sync selectedProjectId with settings
@@ -508,6 +505,20 @@ synchronizeDraftFolder,
     setIsSidebarOpen(false)
   }, [setIsSidebarOpen])
 
+  const handleMobileCreateConversation = useCallback(() => {
+    setMobileSurface('chat')
+    setIsSidebarOpen(false)
+    setMobileNewThreadDialogOpenSignal((currentSignal) => currentSignal + 1)
+  }, [setIsSidebarOpen])
+
+  const handleCloseMobileSidebar = useCallback(() => {
+    setIsSidebarOpen(false)
+  }, [setIsSidebarOpen])
+
+  const handleToggleMobileSidebar = useCallback(() => {
+    setIsSidebarOpen((currentValue) => !currentValue)
+  }, [setIsSidebarOpen])
+
   const handleSidebarConversationSelect = useCallback((conversationId: string) => {
     handleSelectConversation(conversationId)
     if (!isMobileViewport) return
@@ -538,7 +549,8 @@ synchronizeDraftFolder,
   return (
     <AppWorkspaceShell
       isSidebarOpen={interfaceController.isSidebarOpen}
-      mobileSidebarBottomInset={isMobileViewport ? MOBILE_WORKSPACE_NAV_BOTTOM_INSET : undefined}
+      mobileSidebarPresentation={isMobileViewport ? 'drawer' : undefined}
+      onMobileSidebarRequestClose={isMobileViewport ? handleCloseMobileSidebar : undefined}
       onSidebarWidthChange={onSidebarWidthChange}
       floatingControls={
         <WorkspaceFloatingControls
@@ -563,6 +575,7 @@ synchronizeDraftFolder,
           onDeleteFolder={handleDeleteFolder}
           onOpenSettings={handleSidebarOpenSettings}
           isMobileLayout={isMobileViewport}
+          newThreadDialogOpenSignal={mobileNewThreadDialogOpenSignal}
           onRenameFolder={async (folderId, name) => {
             await chatMessages.renameFolder(folderId, name)
             if (folderId === selectedProjectId) {
@@ -582,7 +595,15 @@ synchronizeDraftFolder,
         isSidebarOpen={interfaceController.isSidebarOpen}
         showRightBorder={false}
       >
-        {!isMobileViewport ? (
+        {isMobileViewport ? (
+          <MobileWorkspaceHeader
+            activeSurface={mobileSurface}
+            isMenuOpen={interfaceController.isSidebarOpen}
+            onCreateConversation={handleMobileCreateConversation}
+            onSurfaceChange={handleMobileSurfaceChange}
+            onToggleMenu={handleToggleMobileSidebar}
+          />
+        ) : (
           <ChatHeader
             title={chatMessages.activeConversationTitle}
             isSidebarOpen={interfaceController.isSidebarOpen}
@@ -615,7 +636,7 @@ synchronizeDraftFolder,
               return chatMessages.renameConversationTitle(chatMessages.activeConversationId, nextTitle)
             }}
           />
-        ) : null}
+        )}
 
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
           {/* Chat panel — fixed width when file editor is open, flex-1 when alone */}
@@ -718,15 +739,6 @@ synchronizeDraftFolder,
           ) : null}
 
         </div>
-        {isMobileViewport ? (
-          <MobileWorkspaceNavigation
-            activeSurface={mobileSurface}
-            isMenuOpen={interfaceController.isSidebarOpen}
-            onOpenSettings={() => handleSidebarOpenSettings()}
-            onToggleMenu={() => setIsSidebarOpen((currentValue) => !currentValue)}
-            onSurfaceChange={handleMobileSurfaceChange}
-          />
-        ) : null}
       </WorkspacePanel>
 
       {interfaceController.isCommitModalOpen ? (

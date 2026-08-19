@@ -1,5 +1,5 @@
 import { useLayoutEffect, useState, type ReactNode } from 'react'
-import { ResizableSidebarPanel } from '../sidebar/ResizableSidebarPanel'
+import { ResizableSidebarPanel, type MobileSidebarPresentation } from '../sidebar/ResizableSidebarPanel'
 import { BrandWordmark } from '../branding/BrandWordmark'
 import { isRemoteBrowserRuntime } from '../../remote/webBridge'
 import { useIsMobileViewport } from '../../hooks/useIsMobileViewport'
@@ -12,7 +12,8 @@ interface MobileVisualViewportFrame {
 interface AppWorkspaceShellProps {
   disableSidebarTransition?: boolean
   isSidebarOpen: boolean
-  mobileSidebarBottomInset?: string
+  mobileSidebarPresentation?: MobileSidebarPresentation
+  onMobileSidebarRequestClose?: () => void
   onSidebarWidthChange: (sidebarWidth: number) => void
   sidebar: ReactNode
   sidebarWidth: number
@@ -23,7 +24,8 @@ interface AppWorkspaceShellProps {
 export function AppWorkspaceShell({
   disableSidebarTransition = false,
   isSidebarOpen,
-  mobileSidebarBottomInset,
+  mobileSidebarPresentation,
+  onMobileSidebarRequestClose,
   onSidebarWidthChange,
   sidebar,
   sidebarWidth,
@@ -97,7 +99,8 @@ export function AppWorkspaceShell({
       <ResizableSidebarPanel
         disableSidebarTransition={disableSidebarTransition}
         isSidebarOpen={isSidebarOpen}
-        mobileSidebarBottomInset={mobileSidebarBottomInset}
+        mobileSidebarPresentation={mobileSidebarPresentation}
+        onMobileSidebarRequestClose={onMobileSidebarRequestClose}
         onSidebarWidthChange={onSidebarWidthChange}
         sidebar={sidebar}
         sidebarWidth={sidebarWidth}

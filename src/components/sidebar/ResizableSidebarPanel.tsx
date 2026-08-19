@@ -2,10 +2,13 @@ import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as Reac
 import { clampSidebarWidth } from '../../lib/sidebarSizing'
 import { useIsMobileViewport } from '../../hooks/useIsMobileViewport'
 
+export type MobileSidebarPresentation = 'overlay' | 'drawer'
+
 interface ResizableSidebarPanelProps {
   disableSidebarTransition?: boolean
   isSidebarOpen: boolean
-  mobileSidebarBottomInset?: string
+  mobileSidebarPresentation?: MobileSidebarPresentation
+  onMobileSidebarRequestClose?: () => void
   onSidebarWidthChange: (sidebarWidth: number) => void
   sidebar: ReactNode
   sidebarWidth: number
@@ -15,7 +18,8 @@ interface ResizableSidebarPanelProps {
 export function ResizableSidebarPanel({
   disableSidebarTransition = false,
   isSidebarOpen,
-  mobileSidebarBottomInset,
+  mobileSidebarPresentation = 'overlay',
+  onMobileSidebarRequestClose,
   onSidebarWidthChange,
   sidebar,
   sidebarWidth,
@@ -82,6 +86,26 @@ export function ResizableSidebarPanel({
     }
   }, [onSidebarWidthChange, sidebarWidth])
 
+  useEffect(() => {
+    if (
+      !isMobileViewport ||
+      mobileSidebarPresentation !== 'drawer' ||
+      !isSidebarOpen ||
+      !onMobileSidebarRequestClose
+    ) {
+      return
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onMobileSidebarRequestClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isMobileViewport, isSidebarOpen, mobileSidebarPresentation, onMobileSidebarRequestClose])
+
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     dragStateRef.current = {
       pointerId: event.pointerId,
@@ -98,11 +122,42 @@ export function ResizableSidebarPanel({
 
   return (
     <div className="relative flex h-full min-w-0 flex-1 overflow-hidden">
-      {isMobileViewport && isSidebarOpen ? (
+      {isMobileViewport && mobileSidebarPresentation === 'drawer' ? (
+        <div
+          className={[
+            'absolute inset-0 z-50 md:hidden transition-[visibility] duration-300',
+            isSidebarOpen ? 'visible' : 'pointer-events-none invisible',
+          ].join(' ')}
+          aria-hidden={!isSidebarOpen}
+        >
+          <button
+            type="button"
+            aria-label="Close chat sidebar"
+            onClick={onMobileSidebarRequestClose}
+            className={[
+              'absolute inset-0 bg-black/35 transition-opacity duration-300 ease-out',
+              isSidebarOpen ? 'opacity-100' : 'opacity-0',
+            ].join(' ')}
+          />
+          <div
+            data-sidebar-root="true"
+            role="dialog"
+            aria-modal={isSidebarOpen ? 'true' : undefined}
+            aria-label="Chat sidebar"
+            className={[
+              'absolute inset-y-0 left-0 flex w-[min(88vw,22rem)] max-w-full overflow-hidden bg-[var(--sidebar-panel-surface)] shadow-2xl transition-transform duration-300 ease-out',
+              isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
+            ].join(' ')}
+          >
+            <div className="h-full min-w-0 flex-1">{sidebar}</div>
+          </div>
+        </div>
+      ) : null}
+
+      {isMobileViewport && mobileSidebarPresentation === 'overlay' && isSidebarOpen ? (
         <div
           data-sidebar-root="true"
-          className="absolute inset-x-0 top-0 z-50 flex overflow-hidden bg-[var(--sidebar-panel-surface)]"
-          style={{ bottom: mobileSidebarBottomInset ?? 0 }}
+          className="absolute inset-0 z-50 flex overflow-hidden bg-[var(--sidebar-panel-surface)]"
         >
           <div className="h-full min-w-0 flex-1">{sidebar}</div>
         </div>

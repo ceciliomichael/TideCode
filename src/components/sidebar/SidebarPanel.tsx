@@ -1,5 +1,5 @@
 import { Download, FolderPlus, Settings, SquarePen } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type DragEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from 'react'
 import { getExternalFilePaths } from '../../lib/externalFileDrop'
 import { Tooltip } from '../Tooltip'
 import type { ConversationGroupPreview } from '../../types/chat'
@@ -29,6 +29,7 @@ interface SidebarPanelProps {
   onDeleteFolder: (folderId: string) => Promise<void>
   onOpenSettings: (itemId?: SettingsItemId) => void
   isMobileLayout?: boolean
+  newThreadDialogOpenSignal?: number
   onRenameFolder: (folderId: string, name: string) => Promise<void>
   onSelectConversation: (conversationId: string) => void
   selectedProjectId?: string
@@ -48,6 +49,7 @@ export function SidebarPanel({
   onDeleteFolder,
   onOpenSettings,
   isMobileLayout = false,
+  newThreadDialogOpenSignal = 0,
   onRenameFolder,
   onSelectConversation,
   selectedProjectId: controlledSelectedProjectId,
@@ -61,6 +63,7 @@ export function SidebarPanel({
   const [internalSelectedProjectId, setInternalSelectedProjectId] = useState(ALL_PROJECTS_FILTER_ID)
   const [searchQuery, setSearchQuery] = useState('')
   const [isNewThreadProjectDialogOpen, setIsNewThreadProjectDialogOpen] = useState(false)
+  const previousNewThreadDialogOpenSignalRef = useRef(newThreadDialogOpenSignal)
   const updatesSession = useSyncExternalStore(
     subscribeToUpdatesSession,
     getUpdatesSessionSnapshot,
@@ -96,6 +99,14 @@ export function SidebarPanel({
     }
   }, [isLoading, activeSelectedProjectId, handleSelectProject, resolvedSelectedProjectId])
 
+  useEffect(() => {
+    if (newThreadDialogOpenSignal === previousNewThreadDialogOpenSignalRef.current) {
+      return
+    }
+
+    previousNewThreadDialogOpenSignalRef.current = newThreadDialogOpenSignal
+    setIsNewThreadProjectDialogOpen(true)
+  }, [newThreadDialogOpenSignal])
 
   const actionButtonClassName =
     'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-150 ease-out hover:bg-[var(--sidebar-hover-surface)] hover:text-foreground'
@@ -129,7 +140,7 @@ export function SidebarPanel({
   return (
     <aside
       className={isMobileLayout
-? 'relative flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] pb-3 pl-4 pr-0 pt-3'
+        ? 'relative flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pl-4 pr-0 pt-3'
         : 'flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] pb-5 pl-4 pr-0 pt-3 md:pl-5 md:pr-0'}
       onDragOver={handleWorkspaceFolderDragOver}
       onDrop={(event) => {
@@ -214,8 +225,7 @@ export function SidebarPanel({
         />
       </div>
 
-      {!isMobileLayout ? (
-        <div className="pt-4 pr-6 md:pr-7">
+      <div className="pt-4 pr-6 md:pr-7">
         <div className="flex min-h-11 w-full items-center rounded-xl transition-colors duration-200 ease-out hover:bg-[var(--sidebar-hover-surface)]">
           <button
             type="button"
@@ -234,12 +244,11 @@ export function SidebarPanel({
               className="mr-1.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-soft p-0 text-brand-soft-foreground transition-colors hover:bg-accent-hover"
               aria-label="Open Updates"
             >
-                                                        <Download size={16} strokeWidth={2} className="block shrink-0" aria-hidden="true" />
+              <Download size={16} strokeWidth={2} className="block shrink-0" aria-hidden="true" />
             </button>
           ) : null}
         </div>
-        </div>
-      ) : null}
+      </div>
 
 
       {isNewThreadProjectDialogOpen ? (
