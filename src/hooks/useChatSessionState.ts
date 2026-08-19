@@ -23,6 +23,8 @@ import {
 import type { ChatHistorySnapshot } from './chatHistoryWorkflows'
 import type { AppLanguage } from '../lib/appSettings'
 
+const SHARED_RUN_RECONCILIATION_INTERVAL_MS = 5_000
+
 interface ConversationRuntimeState {
   conversation: ConversationRecord
   isSending: boolean
@@ -341,6 +343,16 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
   useEffect(() => {
     let disposed = false
 
+    const refreshPersistedConversation = (conversationId: string) => {
+      void window.tidecodeHistory.getConversation(conversationId)
+        .then((conversation) => {
+          if (disposed || !conversation) return
+          setConversationSummaries((currentValue) => upsertConversationSummary(currentValue, conversation))
+          upsertConversationRecord(conversation)
+        })
+        .catch((caughtError) => console.error('Unable to reconcile persisted Tidecode conversation.', caughtError))
+    }
+
     const applyProjection = (projection: SharedRunProjection) => {
       if (disposed) return
       const sharedRun = sharedRunsByConversationIdRef.current.get(projection.conversationId)
@@ -365,7 +377,12 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
 
     const loadProjection = (run: SharedRunSnapshot) => {
       const existingProjection = sharedRunProjectionsByConversationIdRef.current.get(run.conversationId)
-      if (existingProjection?.runId === run.runId) return
+      if (
+        existingProjection?.runId === run.runId &&
+        existingProjection.revision >= run.projectionRevision
+      ) {
+        return
+      }
       void window.tidecodeRuns.getRunProjection(run.runId)
         .then((projection) => {
           if (projection) applyProjection(projection)
@@ -375,8 +392,15 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
 
     const reconcileSharedRuns = (runs: SharedRunSnapshot[]) => {
       if (disposed) return
+      const previousRunsByConversationId = sharedRunsByConversationIdRef.current
       const runsByConversationId = new Map(runs.map((run) => [run.conversationId, run]))
       sharedRunsByConversationIdRef.current = runsByConversationId
+      for (const [conversationId, previousRun] of previousRunsByConversationId.entries()) {
+        const currentRun = runsByConversationId.get(conversationId)
+        if (!currentRun || currentRun.runId !== previousRun.runId) {
+          refreshPersistedConversation(conversationId)
+        }
+      }
       for (const [conversationId, projection] of sharedRunProjectionsByConversationIdRef.current.entries()) {
         const run = runsByConversationId.get(conversationId)
         if (!run || run.runId !== projection.runId) {
@@ -430,7 +454,9 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
     }
 
     refreshSharedRuns()
-    const reconciliationIntervalId = window.setInterval(refreshSharedRuns, 2_000)
+    const reconciliationIntervalId = window.setInterval(refreshSharedRuns, SHARED_RUN_RECONCILIATION_INTERVAL_MS)
+    const handleFocus = () => refreshSharedRuns()
+    window.addEventListener('focus', handleFocus)
 
     const unsubscribe = window.tidecodeRuns.onEvent((event) => {
       if (event.type === 'run_state') {
@@ -446,6 +472,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
           if (projection?.runId === event.run.runId) {
             sharedRunProjectionsByConversationIdRef.current.delete(event.run.conversationId)
           }
+          refreshPersistedConversation(event.run.conversationId)
         }
         setSharedRunningConversationIds((currentValue) => {
           const nextValue = new Set(currentValue)
@@ -567,9 +594,10 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
     return () => {
       disposed = true
       window.clearInterval(reconciliationIntervalId)
+      window.removeEventListener('focus', handleFocus)
       unsubscribe()
     }
-  }, [])
+  }, [upsertConversationRecord])
 
   const updateConversationRuntimeState = useCallback(
     (conversationId: string, input: UpdateConversationRuntimeInput) => {

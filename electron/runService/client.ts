@@ -32,6 +32,21 @@ interface PendingRequest {
   reject: (error: Error) => void
 }
 
+export interface RunServiceClientOptions {
+  recoverService?: () => Promise<void>
+  reconnectDelayMs?: number
+  startupRetryCount?: number
+  startupRetryDelayMs?: number
+}
+
+const DEFAULT_RECONNECT_DELAY_MS = 250
+const DEFAULT_STARTUP_RETRY_COUNT = 60
+const DEFAULT_STARTUP_RETRY_DELAY_MS = 50
+
+function sleep(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds))
+}
+
 export class TideCodeRunServiceClient {
   private socket: net.Socket | null = null
   private connectPromise: Promise<void> | null = null
@@ -39,51 +54,93 @@ export class TideCodeRunServiceClient {
   private readonly eventListeners = new Set<(event: TideCodeRunEvent) => void>()
   private buffered = ''
   private token = ''
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private intentionalClose = false
+
+  constructor(private readonly options: RunServiceClientOptions = {}) {}
 
   async connect() {
     if (this.socket && !this.socket.destroyed) return
     if (this.connectPromise) return this.connectPromise
 
-    this.connectPromise = (async () => {
-      this.token = await ensureRunServiceToken()
-      const socket = net.createConnection(getRunServiceEndpoint())
-      socket.setEncoding('utf8')
-      this.socket = socket
+    this.intentionalClose = false
+    this.connectPromise = this.connectWithRecovery().finally(() => {
+      this.connectPromise = null
+    })
 
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const onConnect = () => {
-            socket.off('error', onError)
-            resolve()
-          }
-          const onError = (error: Error) => {
-            socket.off('connect', onConnect)
-            reject(error)
-          }
-          socket.once('connect', onConnect)
-          socket.once('error', onError)
-        })
-      } catch (error) {
-        socket.destroy()
-        if (this.socket === socket) this.socket = null
-        throw error
+    return this.connectPromise
+  }
+
+  private async connectWithRecovery() {
+    try {
+      await this.connectOnce()
+      return
+    } catch (firstError) {
+      if (!this.options.recoverService) throw firstError
+
+      await this.options.recoverService()
+      let lastError: unknown = firstError
+      const retryCount = this.options.startupRetryCount ?? DEFAULT_STARTUP_RETRY_COUNT
+      const retryDelayMs = this.options.startupRetryDelayMs ?? DEFAULT_STARTUP_RETRY_DELAY_MS
+
+      for (let attempt = 0; attempt < retryCount; attempt += 1) {
+        await sleep(retryDelayMs)
+        try {
+          await this.connectOnce()
+          return
+        } catch (error) {
+          lastError = error
+        }
       }
 
-      socket.on('data', (chunk: string) => this.handleData(chunk))
-      socket.on('error', (error) => this.handleDisconnect(error))
-      socket.on('close', () => this.handleDisconnect(new Error('Tidecode run service disconnected.')))
+      throw lastError
+    }
+  }
 
+  private async connectOnce() {
+    this.token = await ensureRunServiceToken()
+    const socket = net.createConnection(getRunServiceEndpoint())
+    socket.setEncoding('utf8')
+    this.buffered = ''
+    this.socket = socket
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const onConnect = () => {
+          socket.off('error', onError)
+          resolve()
+        }
+        const onError = (error: Error) => {
+          socket.off('connect', onConnect)
+          reject(error)
+        }
+        socket.once('connect', onConnect)
+        socket.once('error', onError)
+      })
+    } catch (error) {
+      socket.destroy()
+      if (this.socket === socket) this.socket = null
+      throw error
+    }
+
+    socket.on('data', (chunk: string) => {
+      if (this.socket === socket) this.handleData(chunk)
+    })
+    socket.on('error', (error) => this.handleDisconnect(socket, error))
+    socket.on('close', () => this.handleDisconnect(socket, new Error('Tidecode run service disconnected.')))
+
+    try {
       const hello = await this.requestRaw<{ protocolVersion: number }>('hello')
       if (hello.protocolVersion !== RUN_SERVICE_PROTOCOL_VERSION) {
         throw new Error(
           `Tidecode run-service protocol mismatch: expected ${RUN_SERVICE_PROTOCOL_VERSION}, got ${hello.protocolVersion}.`,
         )
       }
-    })().finally(() => {
-      this.connectPromise = null
-    })
-
-    return this.connectPromise
+    } catch (error) {
+      if (this.socket === socket) this.socket = null
+      socket.destroy()
+      throw error
+    }
   }
 
   onEvent(listener: (event: TideCodeRunEvent) => void) {
@@ -104,6 +161,11 @@ export class TideCodeRunServiceClient {
   async getPendingFollowUps(streamId: string) {
     await this.connect()
     return this.requestRaw<SharedFollowUpSnapshot | null>('getPendingFollowUps', { streamId })
+  }
+
+  async getRunByStreamId(streamId: string) {
+    await this.connect()
+    return this.requestRaw<SharedRunSnapshot | null>('getRunByStreamId', { streamId })
   }
 
   async getRunProjection(runId: string) {
@@ -172,8 +234,18 @@ export class TideCodeRunServiceClient {
   }
 
   close() {
-    this.socket?.destroy()
+    this.intentionalClose = true
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+    const socket = this.socket
     this.socket = null
+    socket?.destroy()
+    const error = new Error('Tidecode run-service client closed.')
+    for (const pending of this.pending.values()) pending.reject(error)
+    this.pending.clear()
+    this.buffered = ''
   }
 
   private requestRaw<T>(method: string, params?: unknown): Promise<T> {
@@ -220,9 +292,24 @@ export class TideCodeRunServiceClient {
     }
   }
 
-  private handleDisconnect(error: Error) {
+  private handleDisconnect(socket: net.Socket, error: Error) {
+    if (this.socket !== socket) return
     this.socket = null
+    this.buffered = ''
     for (const pending of this.pending.values()) pending.reject(error)
     this.pending.clear()
+    if (!this.intentionalClose && this.eventListeners.size > 0) {
+      this.scheduleReconnect()
+    }
+  }
+
+  private scheduleReconnect() {
+    if (this.reconnectTimer || this.intentionalClose) return
+    const delayMs = this.options.reconnectDelayMs ?? DEFAULT_RECONNECT_DELAY_MS
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      void this.connect().catch(() => this.scheduleReconnect())
+    }, delayMs)
+    this.reconnectTimer.unref?.()
   }
 }

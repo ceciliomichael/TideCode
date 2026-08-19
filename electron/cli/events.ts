@@ -37,6 +37,7 @@ export function createTerminalChatEventSink(options: TerminalEventSinkOptions = 
   const reasoningAccumulator = new TerminalStreamAccumulator()
   let hasStartedContent = false
   let reasoningStartedAt = 0
+  let reasoningCompletionPending = false
   const toolStartedAt = new Map<string, number>()
 
   // Hide blinking cursor during turn execution
@@ -66,16 +67,26 @@ export function createTerminalChatEventSink(options: TerminalEventSinkOptions = 
     reasoningAccumulator.reset()
   }
 
+  function completeReasoningBoundary() {
+    reasoningCompletionPending = false
+    if (options.presentation) {
+      completePresentedReasoningBoundary()
+      return
+    }
+    progress.completeReasoning()
+    reasoningAccumulator.reset()
+  }
+
   function handleChatStreamEvent(event: ChatStreamEvent) {
     if (!event) return
     options.onEvent?.(event)
 
     switch (event.type) {
       case 'content_delta': {
+        completeReasoningBoundary()
         const delta = contentAccumulator.append(event.delta)
         if (!delta) break
         if (options.presentation) {
-          completePresentedReasoningBoundary()
           if (!hasStartedContent) {
             hasStartedContent = true
             options.presentation.onContentStart()
@@ -99,6 +110,7 @@ export function createTerminalChatEventSink(options: TerminalEventSinkOptions = 
       }
 
       case 'reasoning_delta': {
+        if (reasoningCompletionPending) reasoningCompletionPending = false
         const delta = reasoningAccumulator.append(event.delta)
         if (!delta) break
         if (options.presentation) {
@@ -114,22 +126,17 @@ export function createTerminalChatEventSink(options: TerminalEventSinkOptions = 
       }
 
       case 'reasoning_completed': {
-        if (options.presentation) {
-          completePresentedReasoningBoundary()
-          return
-        }
-        progress.completeReasoning()
-        reasoningAccumulator.reset()
-        if (!hasStartedContent) {
-          progress.startWaiting()
-        }
+        // Some providers emit reasoning-end before a trailing reasoning delta.
+        // Treat it as a boundary hint and commit only when content, a tool, or
+        // the turn itself establishes a definitive boundary.
+        reasoningCompletionPending = true
         break
       }
 
       case 'tool_invocation_started': {
+        completeReasoningBoundary()
         toolStartedAt.set(event.invocationId, event.startedAt)
         if (options.presentation) {
-          completePresentedReasoningBoundary()
           options.presentation.onToolStarted(event.toolName)
           return
         }
@@ -137,6 +144,7 @@ export function createTerminalChatEventSink(options: TerminalEventSinkOptions = 
       }
 
       case 'tool_invocation_completed': {
+        completeReasoningBoundary()
         const invocation: ToolInvocationTrace = {
           argumentsText: event.argumentsText,
           completedAt: event.completedAt,
@@ -170,6 +178,7 @@ export function createTerminalChatEventSink(options: TerminalEventSinkOptions = 
       }
 
       case 'tool_invocation_failed': {
+        completeReasoningBoundary()
         const invocation: ToolInvocationTrace = {
           argumentsText: event.argumentsText,
           completedAt: event.completedAt,
@@ -202,6 +211,7 @@ export function createTerminalChatEventSink(options: TerminalEventSinkOptions = 
       }
 
       case 'completed': {
+        completeReasoningBoundary()
         if (options.presentation) {
           options.presentation.onCompleted()
           options.onComplete?.()
@@ -217,6 +227,7 @@ export function createTerminalChatEventSink(options: TerminalEventSinkOptions = 
       }
 
       case 'aborted': {
+        completeReasoningBoundary()
         if (options.presentation) {
           options.presentation.onCompleted()
           options.onComplete?.()
@@ -232,6 +243,7 @@ export function createTerminalChatEventSink(options: TerminalEventSinkOptions = 
       }
 
       case 'error': {
+        completeReasoningBoundary()
         if (options.presentation) {
           options.presentation.onCompleted()
           options.onError?.(event.errorMessage || 'Unknown error')

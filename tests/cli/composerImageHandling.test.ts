@@ -55,6 +55,16 @@ test('composer atomically removes [Image #2] and renumbers subsequent references
   assert.equal(state.attachments[0].id, 'img-1')
 })
 
+test('Ctrl+Backspace removes an image reference atomically instead of slicing through it', () => {
+  let state = createComposerState()
+  const image1 = createSampleImageAttachment('shot1.png', 'img-1')
+  state = attachImagesToComposer(state, [image1])
+  state = applyComposerAction(state, { type: 'delete-word-left' })
+
+  assert.equal(composerText(state), '')
+  assert.equal(state.attachments.length, 0)
+})
+
 test('removeAttachmentFromComposer removes attachment and re-indexes text', () => {
   let state = createComposerState()
   const image1 = createSampleImageAttachment('shot1.png', 'img-1')

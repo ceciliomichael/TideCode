@@ -5,6 +5,7 @@ import { ensureRunServiceClient } from '../runService/ensureService'
 import type { CliOptions, CliSessionState } from './types'
 import { expandMentionsIntoContext } from './mentions'
 import { createTerminalChatEventSink } from './events'
+import { watchSharedRunSettlement } from './sharedRunReconciliation'
 import { colors } from './renderer'
 import { createAndPersistCliUserMessage } from './cliHistory'
 
@@ -30,11 +31,13 @@ export async function runHeadlessPrompt(
     let hasSettled = false
     let streamId: string | null = null
     let unsubscribe: (() => void) | null = null
+    let stopRunReconciliation: (() => void) | null = null
     const queuedEvents: ChatStreamEvent[] = []
 
     const settle = async (exitCode: number) => {
       if (hasSettled) return
       hasSettled = true
+      stopRunReconciliation?.()
       unsubscribe?.()
       const conversation = await getStoredConversation(state.conversationId).catch(() => null)
       if (conversation) state.messages = [...conversation.messages]
@@ -68,6 +71,12 @@ export async function runHeadlessPrompt(
     void ensureRunServiceClient()
       .then((runService) => {
         unsubscribe = runService.onEvent((event) => {
+          if (event.type === 'run_state' && streamId && event.run.streamId === streamId) {
+            if (event.run.status === 'completed') void settle(0)
+            else if (event.run.status === 'failed' || event.run.status === 'interrupted') void settle(1)
+            else if (event.run.status === 'cancelled') void settle(0)
+            return
+          }
           if (event.type !== 'chat_event' || event.conversationId !== state.conversationId) return
           if (!streamId) {
             queuedEvents.push(event.event)
@@ -75,11 +84,17 @@ export async function runHeadlessPrompt(
           }
           if (event.event.streamId === streamId) deliverEvent(event.event)
         })
-        return runService.startStream(streamInput)
+        return runService.startStream(streamInput).then((result) => ({ result, runService }))
       })
-      .then((result) => {
+      .then(({ result, runService }) => {
         streamId = result.streamId
         state.activeStreamId = result.streamId
+        stopRunReconciliation = watchSharedRunSettlement(runService, result.streamId, {
+          onMissing: () => { void settle(1) },
+          onTerminal: (run) => {
+            void settle(run.status === 'failed' || run.status === 'interrupted' ? 1 : 0)
+          },
+        })
         for (const event of queuedEvents.splice(0)) {
           if (event.streamId === result.streamId) deliverEvent(event)
         }

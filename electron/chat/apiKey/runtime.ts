@@ -122,6 +122,9 @@ export async function startApiKeyChatStream(
         activeStreams.settle(streamId)
         onSettled?.()
       })
+      .catch((error: unknown) => {
+        console.error('[chat] API-key stream lifecycle failed.', error)
+      })
   })
   return { streamId }
 }

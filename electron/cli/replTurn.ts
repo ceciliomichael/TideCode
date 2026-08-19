@@ -6,6 +6,7 @@ import { createTerminalChatEventSink } from './events'
 import { expandMentionsIntoContext } from './mentions'
 import { createAndPersistCliUserMessage } from './cliHistory'
 import { CliTurnFollowUpController } from './cliTurnFollowUps'
+import { isSharedRunTerminalStatus, watchSharedRunSettlement } from './sharedRunReconciliation'
 import type { CliSessionState } from './types'
 import type { TerminalPromptContext, TerminalPromptSubmission, TerminalScreen } from './terminalScreen'
 
@@ -49,6 +50,7 @@ export async function runReplTurn(
   state.isStreaming = true
   let nextInput: Promise<TerminalPromptSubmission> | null = null
   let settleTurn: () => void = () => undefined
+  let turnPresentationSettled = false
   const turnSettled = new Promise<void>((resolve) => {
     settleTurn = resolve
   })
@@ -66,10 +68,12 @@ export async function runReplTurn(
       }
     },
     onComplete: () => {
+      turnPresentationSettled = true
       state.isStreaming = false
       settleTurn()
     },
     onError: (error) => {
+      turnPresentationSettled = true
       state.isStreaming = false
       screen.addNotice('error', `Turn failed: ${error}`)
       settleTurn()
@@ -91,6 +95,7 @@ export async function runReplTurn(
   const queuedEvents: ChatStreamEvent[] = []
   let streamId: string | null = null
   let unsubscribeRunEvents: (() => void) | null = null
+  let stopRunReconciliation: (() => void) | null = null
 
   const deliverEvent = (event: ChatStreamEvent) => {
     if (typeof sink.emit === 'function') sink.emit(event)
@@ -111,12 +116,9 @@ export async function runReplTurn(
         return
       }
       if (event.type === 'run_state') {
-        if (streamId && event.run.streamId === streamId && (
-          event.run.status === 'completed' ||
-          event.run.status === 'failed' ||
-          event.run.status === 'cancelled' ||
-          event.run.status === 'interrupted'
-        )) settleSharedRun()
+        if (streamId && event.run.streamId === streamId && isSharedRunTerminalStatus(event.run.status)) {
+          settleSharedRun()
+        }
         return
       }
       if (event.type !== 'chat_event' || event.conversationId !== state.conversationId) return
@@ -130,6 +132,24 @@ export async function runReplTurn(
     const streamResult = await runService.startStream(streamInput)
     streamId = streamResult.streamId
     state.activeStreamId = streamResult.streamId
+    stopRunReconciliation = watchSharedRunSettlement(runService, streamResult.streamId, {
+      onMissing: () => {
+        if (!turnPresentationSettled) {
+          turnPresentationSettled = true
+          screen.finishTurn()
+          settleTurn()
+        }
+        settleSharedRun()
+      },
+      onTerminal: () => {
+        if (!turnPresentationSettled) {
+          turnPresentationSettled = true
+          screen.finishTurn()
+          settleTurn()
+        }
+        settleSharedRun()
+      },
+    })
     followUpController = new CliTurnFollowUpController(state.providerId, streamResult.streamId)
     const initialFollowUps = await runService.getPendingFollowUps(streamResult.streamId).catch(() => null)
     if (initialFollowUps) {
@@ -161,6 +181,7 @@ export async function runReplTurn(
     screen.finishTurn()
     screen.addNotice('error', `Could not start the turn: ${error instanceof Error ? error.message : String(error)}`)
   } finally {
+    stopRunReconciliation?.()
     unsubscribeRunEvents?.()
     state.isStreaming = false
     state.activeStreamId = null

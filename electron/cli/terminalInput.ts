@@ -1,5 +1,12 @@
 import type readline from 'node:readline'
 
+const DELETE_WORD_LEFT_SEQUENCES = new Set([
+  '\x1b[8;5u',
+  '\x1b[8;6u',
+  '\x1b[127;5u',
+  '\x1b[127;6u',
+])
+
 const CLIPBOARD_PASTE_SEQUENCES = new Set([
   '\x1b[118;3u',
   '\x1b[118;5u',
@@ -17,6 +24,7 @@ export type TerminalInputAction =
   | { type: 'cancel' }
   | { type: 'toggle-mode' }
   | { type: 'backspace' }
+  | { type: 'delete-word-left' }
   | { type: 'delete' }
   | { type: 'newline' }
   | { type: 'move-left' }
@@ -56,6 +64,13 @@ export function getTerminalInputAction(input: string, key: readline.Key | undefi
   if (key?.ctrl && key.name === 'end') return { type: 'scroll-bottom' }
   if (key?.ctrl && key.name === 'a') return { type: 'home' }
   if (key?.ctrl && key.name === 'e') return { type: 'end' }
+  if (
+    input === '\u0017' ||
+    DELETE_WORD_LEFT_SEQUENCES.has(input) ||
+    (key?.sequence ? DELETE_WORD_LEFT_SEQUENCES.has(key.sequence) : false) ||
+    (key?.ctrl && key.name === 'w') ||
+    (key?.ctrl && key.name === 'backspace')
+  ) return { type: 'delete-word-left' }
   if (key?.ctrl && key.name === 'u') return { type: 'word-left' }
   if (key?.ctrl && key.name === 'k') return { type: 'word-right' }
   if (key?.ctrl && key.name === 'l') return { type: 'scroll-bottom' }

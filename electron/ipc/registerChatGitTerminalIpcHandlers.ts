@@ -117,6 +117,9 @@ export function registerChatGitTerminalIpcHandlers(
   ipcMain.handle('runs:getPendingFollowUps', async (_event, streamId: string) =>
     (await ensureRunServiceClient()).getPendingFollowUps(streamId),
   )
+  ipcMain.handle('runs:getByStreamId', async (_event, streamId: string) =>
+    (await ensureRunServiceClient()).getRunByStreamId(streamId),
+  )
   ipcMain.handle('runs:getProjection', async (_event, runId: string) =>
     (await ensureRunServiceClient()).getRunProjection(runId),
   )

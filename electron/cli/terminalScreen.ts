@@ -986,14 +986,14 @@ export class TerminalScreen {
   }
 
   private applyCommittedMentionAction(action: TerminalInputAction): ComposerState | null {
-    if (!['backspace', 'delete', 'move-left', 'move-right'].includes(action.type)) return null
+if (!['backspace', 'delete-word-left', 'delete', 'move-left', 'move-right'].includes(action.type)) return null
 
     const text = composerText(this.composer)
     const cursorIndex = getComposerCursorIndex(this.composer)
     const mentionBefore = getChatMentionBeforePosition(text, cursorIndex, this.mentionPathMap)
     const mentionAt = getChatMentionAtPosition(text, cursorIndex, this.mentionPathMap)
 
-    if (action.type === 'backspace') {
+    if (action.type === 'backspace' || action.type === 'delete-word-left') {
       const mention = mentionBefore ?? mentionAt
       if (!mention) return null
       const nextText = text.slice(0, mention.start) + text.slice(mention.end)

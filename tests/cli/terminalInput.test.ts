@@ -20,6 +20,14 @@ test('Ctrl+V and Alt+V map to paste-clipboard action', () => {
   assert.deepEqual(getTerminalInputAction('\u0016', undefined), { type: 'paste-clipboard' })
 })
 
+test('Ctrl+Backspace and Ctrl+W delete the previous composer word', () => {
+  assert.deepEqual(getTerminalInputAction('\b', { name: 'backspace', ctrl: true }), { type: 'delete-word-left' })
+  assert.deepEqual(getTerminalInputAction('\u0017', { name: 'w', ctrl: true }), { type: 'delete-word-left' })
+  assert.deepEqual(getTerminalInputAction('\u0017', undefined), { type: 'delete-word-left' })
+  assert.deepEqual(getTerminalInputAction('', { sequence: '\x1b[8;5u', ctrl: true }), { type: 'delete-word-left' })
+  assert.deepEqual(getTerminalInputAction('\x1b[127;5u', undefined), { type: 'delete-word-left' })
+})
+
 test('uses a short escape disambiguation timeout for responsive cancellation', () => {
   assert.ok(TERMINAL_ESCAPE_CODE_TIMEOUT_MS <= 50)
 })
