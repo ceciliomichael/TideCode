@@ -126,6 +126,7 @@ export function ContextIndicator({
       disabled={isIndicatorDisabled}
       side="top"
       interactive
+      mobilePressToOpen
       hideDelayMs={160}
       panelClassName="!block !w-56 !max-w-[calc(100vw-24px)] !rounded-2xl !border-border !bg-surface !p-3 !text-foreground !shadow-soft"
     >

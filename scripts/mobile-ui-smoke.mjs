@@ -128,6 +128,45 @@ async function clickAria(label) {
   await delay(150)
 }
 
+async function touchElement(selector, exactText = null) {
+  const expression = '(() => {'
+    + 'const candidates=[...document.querySelectorAll(' + JSON.stringify(selector) + ')];'
+    + 'const element=' + (exactText === null
+      ? 'candidates[0];'
+      : 'candidates.find((candidate)=>candidate.textContent?.trim().startsWith(' + JSON.stringify(exactText) + '));')
+    + 'if(!(element instanceof HTMLElement)) return null;'
+    + 'const rect=element.getBoundingClientRect();'
+    + 'return {x:rect.left+rect.width/2,y:rect.top+rect.height/2};'
+    + '})()'
+  const point = await evaluate(expression)
+  assert(point, 'Could not find touch target: ' + selector + (exactText ? ' (' + exactText + ')' : ''))
+  await send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x: point.x,
+    y: point.y,
+    button: 'left',
+    buttons: 1,
+    clickCount: 1,
+  })
+  await send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: point.x,
+    y: point.y,
+    button: 'left',
+    buttons: 0,
+    clickCount: 1,
+  })
+  const fallbackExpression = '(() => {'
+    + 'const candidates=[...document.querySelectorAll(' + JSON.stringify(selector) + ')];'
+    + 'const element=' + (exactText === null
+      ? 'candidates[0];'
+      : 'candidates.find((candidate)=>candidate.textContent?.trim().startsWith(' + JSON.stringify(exactText) + '));')
+    + 'if(!(element instanceof HTMLElement)) return false;'
+    + 'element.click(); return true;'
+    + '})()'
+  await evaluate(fallbackExpression)
+}
+
 async function measure(label) {
   const metrics = await evaluate(`(() => {
     const visible = (element) => {
@@ -238,6 +277,100 @@ try {
   assert(composerMetrics.sendCenterY !== null && Math.abs(composerMetrics.sendCenterY - composerMetrics.centerY) < 4, 'Mobile send button is not aligned with runtime selectors')
   assert(composerMetrics.contextVisible, 'Mobile context indicator is missing')
 
+  const visualViewportMetrics = await evaluate(`(() => {
+    const shell = document.querySelector('[data-mobile-visual-viewport="true"]')
+    const visualViewport = window.visualViewport
+    if (!(shell instanceof HTMLElement) || !visualViewport) return null
+    const rect = shell.getBoundingClientRect()
+    return {
+      shellHeight: rect.height,
+      shellTop: rect.top,
+      viewportHeight: visualViewport.height,
+      viewportTop: visualViewport.offsetTop,
+    }
+  })()` )
+  assert(visualViewportMetrics, 'Mobile workspace shell is not tracking the visual viewport')
+  assert(Math.abs(visualViewportMetrics.shellHeight - visualViewportMetrics.viewportHeight) <= 1, 'Mobile workspace shell height does not match visual viewport height')
+  assert(Math.abs(visualViewportMetrics.shellTop - visualViewportMetrics.viewportTop) <= 1, 'Mobile workspace shell top does not match visual viewport offset')
+
+  const keyboardViewportHeight = 600
+  await send('Emulation.setDeviceMetricsOverride', {
+    width: viewport.width,
+    height: keyboardViewportHeight,
+    deviceScaleFactor: 2,
+    mobile: true,
+    screenWidth: viewport.width,
+    screenHeight: viewport.height,
+  })
+  await evaluate(`window.dispatchEvent(new Event('resize'))`)
+  await delay(180)
+  const keyboardSafeLayout = await evaluate(`(() => {
+    const shell = document.querySelector('[data-mobile-visual-viewport="true"]')
+    const composer = document.querySelector('.chat-input-shell')
+    const nav = document.querySelector('nav[aria-label="Mobile workspace navigation"]')
+    const visualViewport = window.visualViewport
+    if (!(shell instanceof HTMLElement) || !(composer instanceof HTMLElement) || !(nav instanceof HTMLElement) || !visualViewport) return null
+    const shellRect = shell.getBoundingClientRect()
+    const composerRect = composer.getBoundingClientRect()
+    const navRect = nav.getBoundingClientRect()
+    const viewportBottom = visualViewport.offsetTop + visualViewport.height
+    return {
+      shellBottom: shellRect.bottom,
+      composerBottom: composerRect.bottom,
+      navTop: navRect.top,
+      navBottom: navRect.bottom,
+      viewportBottom,
+      viewportHeight: visualViewport.height,
+    }
+  })()` )
+  assert(keyboardSafeLayout, 'Could not measure keyboard-safe mobile layout')
+  assert(keyboardSafeLayout.viewportHeight <= keyboardViewportHeight + 1, 'Simulated mobile keyboard did not shrink the visible viewport')
+  assert(keyboardSafeLayout.shellBottom <= keyboardSafeLayout.viewportBottom + 1, 'Mobile workspace shell extends behind the simulated keyboard')
+  assert(keyboardSafeLayout.navBottom <= keyboardSafeLayout.viewportBottom + 1, 'Mobile navigation extends behind the simulated keyboard')
+  assert(keyboardSafeLayout.composerBottom <= keyboardSafeLayout.navTop + 1, 'Mobile chat composer overlaps the bottom navigation after keyboard resize')
+
+  await send('Emulation.setDeviceMetricsOverride', {
+    width: viewport.width,
+    height: viewport.height,
+    deviceScaleFactor: 2,
+    mobile: true,
+    screenWidth: viewport.width,
+    screenHeight: viewport.height,
+  })
+  await evaluate(`window.dispatchEvent(new Event('resize'))`)
+  await delay(180)
+
+  const interactiveIndicators = await evaluate(`(async () => {
+    const buttons = [...document.querySelectorAll('button')]
+    const contextButton = buttons.find((button) => (button.getAttribute('aria-label') ?? '').startsWith('Estimated context usage'))
+    const refactorButton = buttons.find((button) => (button.getAttribute('aria-label') ?? '').toLowerCase().includes('refactor candidates'))
+    if (!(contextButton instanceof HTMLElement) || !(refactorButton instanceof HTMLElement)) return null
+
+    contextButton.click()
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    const contextTooltip = document.querySelector('[role="tooltip"]')
+    const contextOpened = Boolean(contextTooltip?.textContent?.includes('Context estimate'))
+      && contextButton.getAttribute('aria-expanded') === 'true'
+    contextButton.click()
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    const contextClosed = !document.querySelector('[role="tooltip"]')
+
+    refactorButton.click()
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    const refactorTooltip = document.querySelector('[role="tooltip"]')
+    const refactorOpened = Boolean(refactorTooltip?.textContent?.includes('Refactor candidates'))
+      && refactorButton.getAttribute('aria-expanded') === 'true'
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    const refactorClosedOutside = !document.querySelector('[role="tooltip"]')
+
+    return { contextOpened, contextClosed, refactorOpened, refactorClosedOutside }
+  })()` )
+  assert(interactiveIndicators?.contextOpened, 'Mobile context indicator does not open on press')
+  assert(interactiveIndicators?.contextClosed, 'Mobile context indicator does not close on second press')
+  assert(interactiveIndicators?.refactorOpened, 'Mobile refactor candidates indicator does not open on press')
+  assert(interactiveIndicators?.refactorClosedOutside, 'Mobile refactor candidates indicator does not close on outside press')
+
   const tooltipSuppressed = await evaluate(`(async () => {
     const attachButton = document.querySelector('button[aria-label="Attach files"]')
     if (!(attachButton instanceof HTMLElement)) return false
@@ -246,7 +379,7 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 200))
     return !document.querySelector('[role="tooltip"]')
   })()` )
-  assert(tooltipSuppressed, 'Mobile UI still renders tooltips')
+  assert(tooltipSuppressed, 'Non-interactive mobile tooltips are no longer suppressed')
 
   const remoteMentionFiles = await evaluate(`window.tidecodeWorkspace.listDirectory({
     recursive: true,
@@ -254,6 +387,60 @@ try {
   })`)
   assert(Array.isArray(remoteMentionFiles), 'Remote workspace recursive listing is unavailable for file mentions')
   assert(remoteMentionFiles.some((entry) => !entry.isDirectory && entry.name === 'package.json'), 'Remote workspace recursive listing did not return package.json for file mentions')
+
+  const mentionMenuOpened = await evaluate('(() => { const textarea=document.querySelector(".chat-input-shell textarea"); if(!(textarea instanceof HTMLTextAreaElement)) return false; textarea.focus(); const setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")?.set; setter?.call(textarea,"@"); textarea.setSelectionRange(1,1); textarea.dispatchEvent(new InputEvent("input",{bubbles:true,data:"@",inputType:"insertText"})); return true; })()')
+  assert(mentionMenuOpened, 'Could not open the mobile mention menu')
+  await waitFor('Boolean(document.querySelector("[data-floating-menu-root=true]"))', 'mobile mention root menu')
+  await evaluate('(() => { window.__tidecodeMentionSamples=[]; const capture=()=>{ const textarea=document.querySelector(".chat-input-shell textarea"); const menu=document.querySelector("[data-floating-menu-root=true]"); if(textarea instanceof HTMLTextAreaElement && menu instanceof HTMLElement){ const textareaRect=textarea.getBoundingClientRect(); const menuRect=menu.getBoundingClientRect(); window.__tidecodeMentionSamples.push({activeTextarea:document.activeElement===textarea,height:menuRect.height,side:menuRect.top<textareaRect.top?"above":"below",isRoot:(menu.textContent||"").includes("Search for folder"),text:(menu.textContent||"").trim().slice(0,120),top:menuRect.top,visibility:getComputedStyle(menu).visibility}); } }; window.__tidecodeMentionObserver?.disconnect?.(); window.__tidecodeMentionObserver=new MutationObserver(capture); window.__tidecodeMentionObserver.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:["style"]}); capture(); })()')
+
+  await touchElement('[data-floating-menu-root=true] button[role=option]', 'File')
+  await waitFor('(() => { const menu=document.querySelector("[data-floating-menu-root=true]"); return menu instanceof HTMLElement && !menu.textContent?.includes("Loading mentions...") && menu.querySelectorAll("button[role=option]").length>0; })()', 'loaded mobile file mention results')
+  await delay(250)
+  const mentionTransition = await evaluate('(() => { window.__tidecodeMentionObserver?.disconnect?.(); const textarea=document.querySelector(".chat-input-shell textarea"); const menu=document.querySelector("[data-floating-menu-root=true]"); const samples=Array.isArray(window.__tidecodeMentionSamples)?window.__tidecodeMentionSamples:[]; return {activeTextarea:document.activeElement===textarea,categorySamples:samples.filter((sample)=>!sample.isRoot),finalText:menu?.textContent?.trim()??null,sampleCount:samples.length,sampleTexts:[...new Set(samples.map((sample)=>sample.text))]}; })()')
+  assert(mentionTransition?.activeTextarea, 'Touching File blurred the mobile composer textarea')
+  const visibleMentionSamples = mentionTransition?.categorySamples?.filter((sample) => sample.visibility !== 'hidden') ?? []
+  assert(visibleMentionSamples.length > 0, 'No visible mobile file-menu transition samples were captured')
+  const mentionSides = new Set(visibleMentionSamples.map((sample) => sample.side))
+  assert(mentionSides.size === 1, 'Mobile mention menu visibly flipped sides while files loaded: ' + JSON.stringify(visibleMentionSamples))
+  const loadingMentionSample = visibleMentionSamples.find((sample) => sample.text.includes('Loading mentions...'))
+  const loadedMentionSample = [...visibleMentionSamples].reverse().find((sample) => !sample.text.includes('Loading mentions...'))
+  assert(loadingMentionSample && loadingMentionSample.height < 80, 'Mobile mention loading state is oversized: ' + JSON.stringify(visibleMentionSamples))
+  assert(loadedMentionSample && loadedMentionSample.height <= 205, 'Mobile mention results exceed the intended list height: ' + JSON.stringify(visibleMentionSamples))
+
+  const noMatchApplied = await evaluate('(() => { const textarea=document.querySelector(".chat-input-shell textarea"); if(!(textarea instanceof HTMLTextAreaElement)) return false; const nextValue="@__tidecode_no_match__"; const setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")?.set; setter?.call(textarea,nextValue); textarea.setSelectionRange(nextValue.length,nextValue.length); textarea.dispatchEvent(new InputEvent("input",{bubbles:true,data:"__tidecode_no_match__",inputType:"insertText"})); return true; })()')
+  assert(noMatchApplied, 'Could not enter a no-match mobile mention query')
+  await waitFor('document.querySelector("[data-floating-menu-root=true]")?.textContent?.includes("No matching options") === true', 'compact mobile mention no-match state')
+  const noMatchMetrics = await evaluate('(() => { const textarea=document.querySelector(".chat-input-shell textarea"); const menu=document.querySelector("[data-floating-menu-root=true]"); if(!(textarea instanceof HTMLTextAreaElement)||!(menu instanceof HTMLElement)) return null; const textareaRect=textarea.getBoundingClientRect(); const menuRect=menu.getBoundingClientRect(); return {height:menuRect.height,side:menuRect.top<textareaRect.top?"above":"below"}; })()')
+  assert(noMatchMetrics && noMatchMetrics.height < 80, 'Mobile mention no-match state is oversized: ' + JSON.stringify(noMatchMetrics))
+  assert(noMatchMetrics.side === [...mentionSides][0], 'Mobile mention no-match state changed placement side: ' + JSON.stringify(noMatchMetrics))
+
+  const resetMentionQuery = await evaluate('(() => { const textarea=document.querySelector(".chat-input-shell textarea"); if(!(textarea instanceof HTMLTextAreaElement)) return false; const setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")?.set; setter?.call(textarea,"@"); textarea.setSelectionRange(1,1); textarea.dispatchEvent(new InputEvent("input",{bubbles:true,data:null,inputType:"deleteContentBackward"})); return true; })()')
+  assert(resetMentionQuery, 'Could not reset the mobile mention query')
+  await waitFor('document.querySelectorAll("[data-floating-menu-root=true] button[role=option]").length > 0', 'restored mobile mention results')
+  await touchElement('[data-floating-menu-root=true] button[role=option]')
+  await waitFor('!document.querySelector("[data-floating-menu-root=true]")', 'mobile mention selection')
+  await delay(80)
+  const mentionBeforeDeletion = await evaluate('document.querySelector(".chat-input-shell textarea")?.value ?? null')
+  assert(typeof mentionBeforeDeletion === 'string' && mentionBeforeDeletion.startsWith('@') && mentionBeforeDeletion.endsWith(' '), 'Mobile file mention was not inserted: ' + mentionBeforeDeletion)
+
+  const nativeDeletionApplied = await evaluate('(() => { const textarea=document.querySelector(".chat-input-shell textarea"); if(!(textarea instanceof HTMLTextAreaElement)||!textarea.value.endsWith(" ")) return false; const mentionEnd=textarea.value.length-1; if(mentionEnd<=1) return false; const partialValue=textarea.value.slice(0,mentionEnd-1)+textarea.value.slice(mentionEnd); const setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")?.set; setter?.call(textarea,partialValue); textarea.setSelectionRange(mentionEnd-1,mentionEnd-1); textarea.dispatchEvent(new InputEvent("input",{bubbles:true,inputType:"deleteContentBackward"})); return true; })()')
+  assert(nativeDeletionApplied, 'Could not simulate a native mobile mention deletion')
+  await delay(100)
+  const mentionAfterDeletion = await evaluate('(() => { const textarea=document.querySelector(".chat-input-shell textarea"); return textarea instanceof HTMLTextAreaElement ? {value:textarea.value,cursor:textarea.selectionStart} : null; })()')
+  assert(mentionAfterDeletion && !mentionAfterDeletion.value.includes('@'), 'Mobile mention was only partially deleted: ' + JSON.stringify(mentionAfterDeletion))
+  assert(mentionAfterDeletion.cursor === 0, 'Mobile mention deletion did not restore the caret to the mention boundary: ' + JSON.stringify(mentionAfterDeletion))
+
+  const mentionCheckpoint = {
+    label: 'Mobile mentions',
+    menuSide: [...mentionSides][0],
+    loadingHeight: loadingMentionSample.height,
+    loadedHeight: loadedMentionSample.height,
+    noMatchHeight: noMatchMetrics.height,
+    mentionBeforeDeletion,
+    mentionAfterDeletion,
+  }
+  checkpoints.push(mentionCheckpoint)
+  console.log('[mobile-smoke] passed', JSON.stringify(mentionCheckpoint))
   checkpoints.push(await measure('Chat with workspace'))
 
   const desktopControlsVisible = await evaluate(`(() => {
@@ -270,21 +457,28 @@ try {
   await waitFor(`Boolean(document.querySelector('[data-sidebar-root="true"]'))`, 'mobile navigation menu')
   const sidebarRect = await evaluate(`(() => {
     const rect = document.querySelector('[data-sidebar-root="true"]')?.getBoundingClientRect()
-    return rect ? { width: rect.width, height: rect.height, left: rect.left, top: rect.top } : null
+    const navRect = document.querySelector('nav[aria-label="Mobile workspace navigation"]')?.getBoundingClientRect()
+    return rect ? {
+      width: rect.width,
+      left: rect.left,
+      top: rect.top,
+      bottom: rect.bottom,
+      navTop: navRect?.top ?? null,
+    } : null
   })()`)
   assert(sidebarRect && sidebarRect.width >= viewport.width - 1, 'Mobile sidebar is not full-width')
-  assert(sidebarRect && sidebarRect.height >= viewport.height - 1, 'Mobile sidebar is not full-height')
+  assert(sidebarRect && sidebarRect.top <= 1, 'Mobile sidebar does not start at the visible viewport top')
+  assert(sidebarRect && sidebarRect.navTop !== null && Math.abs(sidebarRect.bottom - sidebarRect.navTop) <= 2, 'Mobile sidebar does not fill the area above persistent navigation')
   const sidebarNavigation = await evaluate(`(() => {
     const root = document.querySelector('[data-sidebar-root="true"]')
-    const closeMenu = root?.querySelector('button[aria-label="Close history"]')
+    const closeMenu = document.querySelector('nav[aria-label="Mobile workspace navigation"] button[aria-label="Close history"]')
     const hasNavigationTitle = [...(root?.querySelectorAll('p') ?? [])].some((element) => element.textContent?.trim() === 'Navigation')
     return { closeMenuActive: closeMenu?.getAttribute('aria-current') === 'page', hasNavigationTitle }
   })()`)
   assert(sidebarNavigation?.closeMenuActive, 'Open History does not show the bottom History item as active')
   assert(!sidebarNavigation?.hasNavigationTitle, 'Open mobile menu still renders the Navigation title')
   const settingsPlacement = await evaluate(`(() => {
-    const root = document.querySelector('[data-sidebar-root="true"]')
-    const visibleSettings = [...(root?.querySelectorAll('button') ?? [])].filter((button) => {
+    const visibleSettings = [...document.querySelectorAll('button')].filter((button) => {
       if (button.textContent?.trim() !== 'Settings') return false
       const rect = button.getBoundingClientRect()
       const style = getComputedStyle(button)

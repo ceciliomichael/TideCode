@@ -26,6 +26,20 @@ export interface ChatMentionTriggerState {
   start: number
 }
 
+export interface ChatMentionDeletionInput {
+  direction: 'backward' | 'forward'
+  knownMentionLabels?: ReadonlyMap<string, string>
+  selectionEnd: number
+  selectionStart: number
+  text: string
+}
+
+export interface ChatMentionNativeDeletionChangeInput {
+  knownMentionLabels?: ReadonlyMap<string, string>
+  nextText: string
+  previousText: string
+}
+
 export function shouldCloseChatMentionMenuForNormalText(triggerState: ChatMentionTriggerState | null) {
   return triggerState !== null && /\s/u.test(triggerState.query)
 }
@@ -282,6 +296,77 @@ export function getChatMentionBeforePosition(
 ) {
   const clampedCursorPosition = Math.max(0, Math.min(cursorPosition, text.length))
   return findChatMentionMatches(text, knownMentionLabels).find((match) => match.end === clampedCursorPosition) ?? null
+}
+
+export function findChatMentionForDeletion({
+  direction,
+  knownMentionLabels,
+  selectionEnd,
+  selectionStart,
+  text,
+}: ChatMentionDeletionInput) {
+  if (selectionStart !== selectionEnd) {
+    return null
+  }
+
+  if (direction === 'backward') {
+    return (
+      getChatMentionBeforePosition(text, selectionStart, knownMentionLabels)
+      ?? getChatMentionAtPosition(text, selectionStart, knownMentionLabels)
+    )
+  }
+
+  return findChatMentionMatches(text, knownMentionLabels).find((match) => match.start === selectionStart) ?? null
+}
+
+export function resolveChatMentionNativeDeletionChange({
+  knownMentionLabels,
+  nextText,
+  previousText,
+}: ChatMentionNativeDeletionChangeInput) {
+  if (nextText.length >= previousText.length) {
+    return null
+  }
+
+  let commonPrefixLength = 0
+  const maxPrefixLength = Math.min(previousText.length, nextText.length)
+  while (
+    commonPrefixLength < maxPrefixLength
+    && previousText[commonPrefixLength] === nextText[commonPrefixLength]
+  ) {
+    commonPrefixLength += 1
+  }
+
+  let previousSuffixStart = previousText.length
+  let nextSuffixStart = nextText.length
+  while (
+    previousSuffixStart > commonPrefixLength
+    && nextSuffixStart > commonPrefixLength
+    && previousText[previousSuffixStart - 1] === nextText[nextSuffixStart - 1]
+  ) {
+    previousSuffixStart -= 1
+    nextSuffixStart -= 1
+  }
+
+  // Only repair pure deletions. Replacements/composition edits should remain normal text edits.
+  if (nextSuffixStart !== commonPrefixLength || previousSuffixStart <= commonPrefixLength) {
+    return null
+  }
+
+  const touchedMentions = findChatMentionMatches(previousText, knownMentionLabels).filter(
+    (match) => commonPrefixLength < match.end && previousSuffixStart > match.start,
+  )
+  if (touchedMentions.length === 0) {
+    return null
+  }
+
+  const removalStart = Math.min(commonPrefixLength, ...touchedMentions.map((match) => match.start))
+  const removalEnd = Math.max(previousSuffixStart, ...touchedMentions.map((match) => match.end))
+
+  return {
+    nextCursorPosition: removalStart,
+    nextValue: `${previousText.slice(0, removalStart)}${previousText.slice(removalEnd)}`,
+  }
 }
 
 export function expandChatMentions(text: string, knownMentionLabels: ReadonlyMap<string, string>) {

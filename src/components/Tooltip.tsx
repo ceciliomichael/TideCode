@@ -18,6 +18,7 @@ import { useIsMobileViewport } from '../hooks/useIsMobileViewport'
 interface TooltipChildProps {
   className?: string
   'aria-describedby'?: string
+  'aria-expanded'?: boolean
 }
 
 interface TooltipProps {
@@ -30,6 +31,7 @@ interface TooltipProps {
   hideDelayMs?: number
   panelClassName?: string
   interactive?: boolean
+  mobilePressToOpen?: boolean
   side?: 'top' | 'bottom' | 'left' | 'right'
   lockSide?: boolean
   hideWhenTriggerExpanded?: boolean
@@ -77,6 +79,7 @@ export function Tooltip({
   hideDelayMs = 0,
   panelClassName,
   interactive = false,
+  mobilePressToOpen = false,
   side = 'top',
   lockSide = false,
   hideWhenTriggerExpanded = false,
@@ -132,12 +135,13 @@ export function Tooltip({
   }, [children, hideWhenTriggerExpanded])
 
   useEffect(() => {
-    if (isMobileViewport || disabled || (hideWhenTriggerExpanded && isTriggerExpanded)) {
+    if ((isMobileViewport && !mobilePressToOpen) || disabled || (hideWhenTriggerExpanded && isTriggerExpanded)) {
       setIsVisible(false)
     }
-  }, [disabled, hideWhenTriggerExpanded, isMobileViewport, isTriggerExpanded, isVisible])
+  }, [disabled, hideWhenTriggerExpanded, isMobileViewport, isTriggerExpanded, mobilePressToOpen])
 
-  const shouldSuppressTooltip = isMobileViewport || disabled || (hideWhenTriggerExpanded && isTriggerExpanded)
+  const shouldSuppressTooltip =
+    (isMobileViewport && !mobilePressToOpen) || disabled || (hideWhenTriggerExpanded && isTriggerExpanded)
   const pointerEventsClassName = useMemo(
     () => (interactive ? 'pointer-events-auto' : 'pointer-events-none'),
     [interactive],
@@ -182,6 +186,26 @@ export function Tooltip({
   }, [clearHideTimeout, hideDelayMs, hideTooltipImmediate])
 
   useEffect(() => {
+    if (!isMobileViewport || !mobilePressToOpen || !isVisible) {
+      return
+    }
+
+    function handleOutsidePointerDown(event: PointerEvent) {
+      const target = event.target
+      if (!(target instanceof Node)) {
+        return
+      }
+      if (triggerRef.current?.contains(target) || tooltipRef.current?.contains(target)) {
+        return
+      }
+      hideTooltipImmediate()
+    }
+
+    document.addEventListener('pointerdown', handleOutsidePointerDown, true)
+    return () => document.removeEventListener('pointerdown', handleOutsidePointerDown, true)
+  }, [hideTooltipImmediate, isMobileViewport, isVisible, mobilePressToOpen])
+
+  useEffect(() => {
     if (!broadcastShowEvent) {
       return
     }
@@ -206,15 +230,22 @@ export function Tooltip({
 
     const triggerRect = triggerRef.current.getBoundingClientRect()
     const tooltipRect = tooltipRef.current.getBoundingClientRect()
-    const viewportWidth = window.innerWidth
-    const viewportHeight = window.innerHeight
+    const visualViewport = window.visualViewport
+    const viewportLeft = visualViewport?.offsetLeft ?? 0
+    const viewportTop = visualViewport?.offsetTop ?? 0
+    const viewportWidth = visualViewport?.width ?? window.innerWidth
+    const viewportHeight = visualViewport?.height ?? window.innerHeight
+    const viewportRight = viewportLeft + viewportWidth
+    const viewportBottom = viewportTop + viewportHeight
     const preferredSide = side
-    const fitsTop = triggerRect.top >= tooltipRect.height + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+    const fitsTop =
+      triggerRect.top - viewportTop >= tooltipRect.height + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
     const fitsBottom =
-      viewportHeight - triggerRect.bottom >= tooltipRect.height + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
-    const fitsLeft = triggerRect.left >= tooltipRect.width + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+      viewportBottom - triggerRect.bottom >= tooltipRect.height + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+    const fitsLeft =
+      triggerRect.left - viewportLeft >= tooltipRect.width + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
     const fitsRight =
-      viewportWidth - triggerRect.right >= tooltipRect.width + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+      viewportRight - triggerRect.right >= tooltipRect.width + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
 
     const nextSide = lockSide
       ? preferredSide
@@ -234,10 +265,10 @@ export function Tooltip({
               ? 'right'
               : 'left'
 
-    const minLeft = TOOLTIP_EDGE_PADDING
-    const maxLeft = Math.max(TOOLTIP_EDGE_PADDING, viewportWidth - tooltipRect.width - TOOLTIP_EDGE_PADDING)
-    const minTop = TOOLTIP_EDGE_PADDING
-    const maxTop = Math.max(TOOLTIP_EDGE_PADDING, viewportHeight - tooltipRect.height - TOOLTIP_EDGE_PADDING)
+    const minLeft = viewportLeft + TOOLTIP_EDGE_PADDING
+    const maxLeft = Math.max(minLeft, viewportRight - tooltipRect.width - TOOLTIP_EDGE_PADDING)
+    const minTop = viewportTop + TOOLTIP_EDGE_PADDING
+    const maxTop = Math.max(minTop, viewportBottom - tooltipRect.height - TOOLTIP_EDGE_PADDING)
     const centeredLeft = triggerRect.left + triggerRect.width / 2 - tooltipRect.width / 2
     const centeredTop = triggerRect.top + triggerRect.height / 2 - tooltipRect.height / 2
 
@@ -270,6 +301,8 @@ export function Tooltip({
     updateTooltipPosition()
     window.addEventListener('scroll', updateTooltipPosition, true)
     window.addEventListener('resize', updateTooltipPosition)
+    window.visualViewport?.addEventListener('resize', updateTooltipPosition)
+    window.visualViewport?.addEventListener('scroll', updateTooltipPosition)
 
     const resizeObserver = new ResizeObserver(() => {
       updateTooltipPosition()
@@ -281,6 +314,8 @@ export function Tooltip({
     return () => {
       window.removeEventListener('scroll', updateTooltipPosition, true)
       window.removeEventListener('resize', updateTooltipPosition)
+      window.visualViewport?.removeEventListener('resize', updateTooltipPosition)
+      window.visualViewport?.removeEventListener('scroll', updateTooltipPosition)
       resizeObserver.disconnect()
     }
   }, [isVisible, shouldSuppressTooltip, updateTooltipPosition])
@@ -298,6 +333,7 @@ export function Tooltip({
 
   const enhancedChild = cloneElement(children, {
     'aria-describedby': isVisible && !shouldSuppressTooltip ? tooltipId : undefined,
+    'aria-expanded': isMobileViewport && mobilePressToOpen ? isVisible : children.props['aria-expanded'],
     className: mergeClassNames(
       typeof children.props.className === 'string' ? children.props.className : undefined,
       'outline-none',
@@ -315,10 +351,19 @@ export function Tooltip({
         ]
           .filter(Boolean)
           .join(' ')}
-        onMouseEnter={showTooltip}
-        onMouseLeave={hideTooltip}
-        onFocus={showTooltip}
-        onBlur={hideTooltip}
+        onClick={isMobileViewport && mobilePressToOpen
+          ? () => {
+              if (isVisible) {
+                hideTooltipImmediate()
+              } else {
+                showTooltip()
+              }
+            }
+          : undefined}
+        onMouseEnter={isMobileViewport ? undefined : showTooltip}
+        onMouseLeave={isMobileViewport ? undefined : hideTooltip}
+        onFocus={isMobileViewport ? undefined : showTooltip}
+        onBlur={isMobileViewport ? undefined : hideTooltip}
       >
         {enhancedChild}
       </span>

@@ -7,6 +7,7 @@ import {
   findChatMentionMatches,
   getChatMentionTriggerState,
   insertChatMention,
+  resolveChatMentionNativeDeletionChange,
   shouldCloseChatMentionMenuForNormalText,
 } from '../lib/chatMentions'
 import type { WorkspaceExplorerEntry } from '../types/chat'
@@ -28,6 +29,7 @@ interface UseChatFileMentionMenuInput {
 }
 
 const MAX_MENTION_RESULTS = 8
+const MENTION_MENU_PLACEMENT_HEIGHT_PX = 240
 const ROOT_MENU_OPTION_COUNT = 4
 
 function normalizeRelativePath(relativePath: string) {
@@ -251,6 +253,8 @@ export function useChatFileMentionMenu({
     isOpen,
     matchAnchorWidth: false,
     menuRef,
+    placementHeight: MENTION_MENU_PLACEMENT_HEIGHT_PX,
+    positionKey: `${selectedMenuType ?? 'root'}:${isIndexLoading ? 'loading' : 'ready'}:${workspaceMentionIndexLoadedKey}:${searchQuery}`,
     preferredPlacement: 'above',
   })
 
@@ -429,7 +433,7 @@ export function useChatFileMentionMenu({
       return
     }
 
-    function handlePointerDown(event: MouseEvent) {
+function handlePointerDown(event: PointerEvent) {
       const target = event.target
       if (!(target instanceof Node)) {
         return
@@ -450,10 +454,10 @@ export function useChatFileMentionMenu({
       }
     }
 
-    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('pointerdown', handlePointerDown)
     document.addEventListener('keydown', handleKeyDown)
     return () => {
-      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('pointerdown', handlePointerDown)
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [isOpen])
@@ -561,11 +565,33 @@ export function useChatFileMentionMenu({
 
   const handleValueChange = useCallback(
     (nextValue: string) => {
+      const validationMap = mentionPathMapRef.current.size > 0 ? mentionPathMapRef.current : undefined
+      const repairedDeletion = resolveChatMentionNativeDeletionChange({
+        knownMentionLabels: validationMap,
+        nextText: nextValue,
+        previousText: value,
+      })
+
+      if (repairedDeletion) {
+        onValueChange(repairedDeletion.nextValue)
+        updateTriggerState(repairedDeletion.nextValue, repairedDeletion.nextCursorPosition)
+        queueMicrotask(() => {
+          const textarea = textareaRef.current
+          if (!textarea) {
+            return
+          }
+
+          textarea.focus()
+          textarea.setSelectionRange(repairedDeletion.nextCursorPosition, repairedDeletion.nextCursorPosition)
+        })
+        return
+      }
+
       onValueChange(nextValue)
       const cursorPosition = textareaRef.current?.selectionStart ?? nextValue.length
       updateTriggerState(nextValue, cursorPosition)
     },
-    [onValueChange, textareaRef, updateTriggerState],
+    [onValueChange, textareaRef, updateTriggerState, value],
   )
 
   const handleSelectMention = useCallback(
