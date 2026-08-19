@@ -2,6 +2,9 @@
 ; The generated header and sidebar bitmaps provide the brand without replacing
 ; the installer with a custom-styled interface.
 
+!define TIDECODE_REMOTE_FIREWALL_RULE "TideCode Remote"
+!define TIDECODE_REMOTE_FIREWALL_REGKEY "Software\TideCode\Remote"
+
 !macro customWelcomePage
   ; An updater launch already has the user's approval. A manually launched
   ; installer with an existing install should also go directly to the native
@@ -115,6 +118,32 @@
     ${endif}
   ${endif}
 
+  ; Register the packaged TideCode executable for inbound Remote TCP access on
+  ; trusted Windows network profiles. The rule is program-scoped instead of
+  ; port-scoped so changing the Remote port in Settings keeps working. A marker
+  ; prevents repeated UAC prompts during normal in-app updates while still
+  ; migrating existing installations the first time they receive this build.
+  StrCpy $R5 ""
+  ${if} $installMode == "all"
+    ReadRegStr $R5 HKLM "${TIDECODE_REMOTE_FIREWALL_REGKEY}" "FirewallRuleInstalled"
+  ${else}
+    ReadRegStr $R5 HKCU "${TIDECODE_REMOTE_FIREWALL_REGKEY}" "FirewallRuleInstalled"
+  ${endif}
+
+  ${if} $R5 != "1"
+    ClearErrors
+    ExecShellWait "runas" "$SYSDIR\netsh.exe" 'advfirewall firewall add rule name="${TIDECODE_REMOTE_FIREWALL_RULE}" dir=in action=allow program="$INSTDIR\${APP_EXECUTABLE_FILENAME}" enable=yes profile=private,domain protocol=TCP' SW_HIDE
+    ${if} ${Errors}
+      DetailPrint "TideCode Remote firewall access was not registered."
+    ${else}
+      ${if} $installMode == "all"
+        WriteRegStr HKLM "${TIDECODE_REMOTE_FIREWALL_REGKEY}" "FirewallRuleInstalled" "1"
+      ${else}
+        WriteRegStr HKCU "${TIDECODE_REMOTE_FIREWALL_REGKEY}" "FirewallRuleInstalled" "1"
+      ${endif}
+    ${endif}
+  ${endif}
+
   ; electron-updater starts a non-silent installer for the user-visible
   ; update flow. Once the files are installed, launch the new app and close
   ; NSIS directly instead of showing a finish page or waiting for a click.
@@ -125,4 +154,16 @@
     SetErrorLevel 0
     Quit
   ${endif}
+!macroend
+
+!macro customUnInstall
+  ; Remove only the firewall rule created for this installed TideCode binary.
+  ; Per-user uninstallers can still request elevation specifically for netsh.
+  ClearErrors
+  ExecShellWait "runas" "$SYSDIR\netsh.exe" 'advfirewall firewall delete rule name="${TIDECODE_REMOTE_FIREWALL_RULE}" program="$INSTDIR\${APP_EXECUTABLE_FILENAME}"' SW_HIDE
+
+  DeleteRegValue HKCU "${TIDECODE_REMOTE_FIREWALL_REGKEY}" "FirewallRuleInstalled"
+  DeleteRegKey /ifempty HKCU "${TIDECODE_REMOTE_FIREWALL_REGKEY}"
+  DeleteRegValue HKLM "${TIDECODE_REMOTE_FIREWALL_REGKEY}" "FirewallRuleInstalled"
+  DeleteRegKey /ifempty HKLM "${TIDECODE_REMOTE_FIREWALL_REGKEY}"
 !macroend
