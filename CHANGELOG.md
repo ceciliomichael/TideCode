@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.12 — Smoother mobile workspace interactions
+
+TideCode 1.2.12 makes mobile chat and workspace interactions more reliable, especially while the on-screen keyboard, touch input, and asynchronous file mentions change the available layout.
+
+- Keeps file mentions atomic when users tap mention options or delete them with native mobile Backspace and Delete input.
+- Keeps file mention menus on a stable side while results load, preserves compact loading and no-match states, and restores the composer caret after deletion.
+- Keeps the mobile workspace shell, composer, navigation, and interactive context indicators aligned with the visible viewport when the keyboard resizes the page.
+- Requires no migration or configuration changes.
+
 ## 1.2.11 - Remote workspace and mobile web access
 
 TideCode 1.2.11 adds secure browser access to the workspace running on your computer and introduces a phone-focused interface for chat, terminals, the work board, history, and settings.
