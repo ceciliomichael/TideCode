@@ -1,15 +1,17 @@
 import { GitBranch, FolderGit2, Globe, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useState } from 'react'
+import type { GitCommitModelSelection } from '../../types/chat'
 import { PublishToGitHubModal } from './PublishToGitHubModal'
 
 interface SourceControlNoRepoViewProps {
+  commitModelSelection: GitCommitModelSelection
   workspacePath: string
   onRefreshAll: () => Promise<void>
 }
 
 type InitStep = 'idle' | 'loading' | 'success' | 'error'
 
-export function SourceControlNoRepoView({ workspacePath, onRefreshAll }: SourceControlNoRepoViewProps) {
+export function SourceControlNoRepoView({ commitModelSelection, workspacePath, onRefreshAll }: SourceControlNoRepoViewProps) {
   const [initStep, setInitStep] = useState<InitStep>('idle')
   const [initError, setInitError] = useState<string | null>(null)
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false)
@@ -132,6 +134,7 @@ export function SourceControlNoRepoView({ workspacePath, onRefreshAll }: SourceC
 
       {isPublishModalOpen && (
         <PublishToGitHubModal
+          commitModelSelection={commitModelSelection}
           workspacePath={workspacePath}
           onClose={() => setIsPublishModalOpen(false)}
           onPublishSuccess={handlePublishSuccess}

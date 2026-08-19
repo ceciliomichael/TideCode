@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toUserFacingErrorMessage } from '../lib/userFacingError'
-import type { ChatProviderId, GitCommitAction, GitCommitResult, GitStatusResult, ReasoningEffort } from '../types/chat'
+import type { ChatProviderId, GitCommitAction, GitCommitModelSelection, GitCommitResult, GitStatusResult, ReasoningEffort } from '../types/chat'
 import { normalizeGitWorkspacePath } from '../lib/gitBranchStateCache'
 import { getCachedGitStatus, loadGitStatus } from '../lib/gitStatusCache'
 import {
@@ -28,6 +28,7 @@ interface UseGitCommitResult {
   isCommitting: boolean
   isLoadingStatus: boolean
   lastCommitResult: GitCommitResult | null
+  modelSelection: GitCommitModelSelection
   refreshStatus: (options?: { forceRefresh?: boolean }) => Promise<void>
   resetResult: () => void
   status: GitStatusResult | null
@@ -221,6 +222,11 @@ export function useGitCommit({
     isCommitting,
     isLoadingStatus,
     lastCommitResult,
+    modelSelection: {
+      modelId: modelId.trim(),
+      providerId,
+      reasoningEffort,
+    },
     refreshStatus,
     resetResult,
     status,

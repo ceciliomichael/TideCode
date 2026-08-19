@@ -4,6 +4,7 @@ import { toUserFacingErrorMessage } from '../../lib/userFacingError'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
 import type { DiffPanelScope } from '../chat/ConversationDiffPanel'
 import type {
+  GitCommitModelSelection,
   GitCommitResult,
   GitSyncAction,
 } from '../../types/chat'
@@ -18,6 +19,7 @@ import { useSourceControlHistory } from './useSourceControlHistory'
 
 interface SourceControlPanelProps {
   aheadCommitCount: number
+  commitModelSelection: GitCommitModelSelection
   hasRepository: boolean
   hasRemote: boolean
   onDiffPanelExpandedFilePathsChange: (nextFilePaths: string[]) => void
@@ -49,6 +51,7 @@ interface SourceControlPanelProps {
 
 function SourceControlPanelContent({
   aheadCommitCount,
+  commitModelSelection,
   hasRepository,
   hasRemote,
   onDiffPanelExpandedFilePathsChange,
@@ -397,6 +400,7 @@ function SourceControlPanelContent({
         >
           {!hasRepository && hasWorkspacePath ? (
             <SourceControlNoRepoView
+              commitModelSelection={commitModelSelection}
               workspacePath={normalizedWorkspacePath}
               onRefreshAll={onRefreshAll}
             />
@@ -405,6 +409,7 @@ function SourceControlPanelContent({
 
           <SourceControlChangesSection
             aheadCommitCount={aheadCommitCount}
+            commitModelSelection={commitModelSelection}
             commitActionControlsRef={commitActionControlsRef}
             commitMessage={commitMessage}
             isOperationInProgress={isAnyOperationInProgress}

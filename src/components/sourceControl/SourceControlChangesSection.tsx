@@ -2,6 +2,7 @@ import { ChevronDown, Globe } from 'lucide-react'
 import type { RefObject } from 'react'
 import { useState } from 'react'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
+import type { GitCommitModelSelection } from '../../types/chat'
 import type { DiffPanelScope } from '../chat/ConversationDiffFileItem'
 import { Tooltip } from '../Tooltip'
 import { SourceControlDiffSection } from './SourceControlDiffSection'
@@ -14,6 +15,7 @@ import {
 
 interface SourceControlChangesSectionProps {
   aheadCommitCount: number
+  commitModelSelection: GitCommitModelSelection
   commitActionControlsRef: RefObject<HTMLDivElement>
   commitMessage: string
   hasRemote: boolean
@@ -55,6 +57,7 @@ interface SourceControlChangesSectionProps {
 
 export function SourceControlChangesSection({
   aheadCommitCount,
+  commitModelSelection,
   commitActionControlsRef,
   commitMessage,
   hasRemote,
@@ -434,6 +437,7 @@ export function SourceControlChangesSection({
 
     {isPublishModalOpen && workspacePath ? (
       <PublishToGitHubModal
+        commitModelSelection={commitModelSelection}
         workspacePath={workspacePath}
         onClose={() => setIsPublishModalOpen(false)}
         onPublishSuccess={onPublishSuccess}

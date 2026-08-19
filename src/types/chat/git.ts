@@ -47,6 +47,12 @@ export interface GitDiffLoadOptions {
 
 export type GitCommitAction = 'commit' | 'commit-and-push' | 'commit-and-create-pr'
 
+export interface GitCommitModelSelection {
+  modelId: string
+  providerId: ChatProviderId | null
+  reasoningEffort: ReasoningEffort
+}
+
 export interface GitCommitInput {
   action: GitCommitAction
   includeUnstaged?: boolean
@@ -153,6 +159,7 @@ export interface GitPublishInput {
   description?: string
   isPrivate: boolean
   defaultBranch: string
+  commitModelSelection?: GitCommitModelSelection
 }
 
 export interface GitPublishResult {
@@ -166,6 +173,7 @@ export interface GitPublishRemoteInput {
   remoteUrl: string
   remoteName?: string
   defaultBranch?: string
+  commitModelSelection?: GitCommitModelSelection
 }
 
 export interface GitPublishRemoteResult {
