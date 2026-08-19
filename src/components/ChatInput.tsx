@@ -10,6 +10,7 @@ import { CodexUsageIndicator } from './chat/CodexUsageIndicator'
 import { getNextChatMode, isChatModeToggleShortcut } from './chat/chatModeShortcut'
 import { useChatFileMentionMenu } from '../hooks/useChatFileMentionMenu'
 import { useChatMentionNavigation } from '../hooks/useChatMentionNavigation'
+import { useIsMobileViewport } from '../hooks/useIsMobileViewport'
 import type {
   AppTerminalExecutionMode,
   ChatAttachment,
@@ -155,6 +156,7 @@ export function ChatInput({
   const containerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const isMobileViewport = useIsMobileViewport()
   const isInline = variant === 'inline'
   const canManageAttachments = typeof onAttachmentsChange === 'function'
   const showChatModeSelector = chatModeOptions.length > 0 && typeof onChatModeChange === 'function'
@@ -537,9 +539,18 @@ export function ChatInput({
 
         {attachmentError ? <p className="mt-2 text-sm text-danger-foreground">{attachmentError}</p> : null}
 
-        <div className="mt-1 flex items-end justify-between gap-3">
+        <div
+          className={isMobileViewport
+            ? 'mt-2 flex min-w-0 items-center gap-1.5'
+            : 'mt-1 flex items-end justify-between gap-3'}
+        >
           {showRuntimeControls ? (
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 md:flex-nowrap">
+            <div
+              data-mobile-runtime-controls={isMobileViewport ? 'true' : undefined}
+              className={isMobileViewport
+                ? 'grid min-w-0 flex-1 grid-cols-[auto_auto_5.25rem_auto] items-center justify-start gap-1.5'
+                : 'flex min-w-0 flex-1 flex-wrap items-center gap-2 md:flex-nowrap'}
+            >
               {canManageAttachments ? (
                 <Tooltip content="Attach files">
                   <button
@@ -555,7 +566,7 @@ export function ChatInput({
               ) : null}
 
               {showChatModeSelector ? (
-                <Tooltip content="Select mode (Ctrl + .)" hideWhenTriggerExpanded>
+                <Tooltip content="Select mode (Ctrl + .)" hideWhenTriggerExpanded triggerClassName={isMobileViewport ? 'min-w-0' : undefined}>
                   <ChatModeSelectorField
                     value={selectedChatMode}
                     onChange={onChatModeChange ?? (() => undefined)}
@@ -566,19 +577,27 @@ export function ChatInput({
               ) : null}
 
               {showModelSelector ? (
-                <Tooltip content={modelSelectorTooltipContent} hideWhenTriggerExpanded>
+                <Tooltip content={modelSelectorTooltipContent} hideWhenTriggerExpanded triggerClassName={isMobileViewport ? 'min-w-0 w-full' : undefined}>
                   <ModelSelectorField
                     value={selectedModelId}
                     onChange={onModelChange ?? (() => undefined)}
                     options={modelOptions}
+                    className={isMobileViewport ? 'min-w-0 w-[5.25rem]' : undefined}
                     disabled={isModelSelectorDisabled}
+                    fullWidth={isMobileViewport}
                     isLoading={isModelSelectorLoading}
+                    labelClassName={isMobileViewport ? 'max-w-[3.75rem]' : undefined}
+                    triggerClassName={isMobileViewport ? 'min-w-0 overflow-hidden' : undefined}
                   />
                 </Tooltip>
               ) : null}
 
               {showReasoningControl ? (
-                <Tooltip content={hasReasoningToggle ? 'Turn reasoning on or off' : 'Set reasoning effort'} hideWhenTriggerExpanded>
+                <Tooltip
+                  content={hasReasoningToggle ? 'Turn reasoning on or off' : 'Set reasoning effort'}
+                  hideWhenTriggerExpanded
+                  triggerClassName={isMobileViewport ? 'min-w-0' : undefined}
+                >
                   <ReasoningEffortBlock
                     options={reasoningEffortOptions}
                     value={reasoningEffort}
@@ -590,7 +609,11 @@ export function ChatInput({
             </div>
           ) : null}
 
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 self-end">
+          <div
+            className={isMobileViewport
+              ? 'flex shrink-0 items-center justify-end gap-1.5'
+              : 'flex shrink-0 flex-wrap items-center justify-end gap-2 self-end'}
+          >
             {showRefactorCandidatesIndicator ? (
               <RefactorCandidatesIndicator
                 candidates={refactorCandidates}

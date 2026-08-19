@@ -14,9 +14,11 @@ interface ModelSelectorFieldProps {
   disabled?: boolean
   fullWidth?: boolean
   isLoading?: boolean
+  labelClassName?: string
   onChange: (value: string) => void
   options: readonly ModelSelectorOption[]
   size?: 'default' | 'comfortable'
+  triggerClassName?: string
   value: string
 }
 
@@ -29,9 +31,11 @@ export function ModelSelectorField({
   disabled = false,
   fullWidth = false,
   isLoading = false,
+  labelClassName,
   onChange,
   options,
   size = 'default',
+  triggerClassName,
   value,
 }: ModelSelectorFieldProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -138,6 +142,7 @@ export function ModelSelectorField({
           'chat-runtime-control-trigger max-w-full disabled:cursor-not-allowed hover:bg-[var(--dropdown-control-hover-surface)] hover:border-[var(--dropdown-control-hover-border)] hover:text-foreground',
           fullWidth ? 'w-full' : 'w-auto',
           triggerSizeClassName,
+          triggerClassName ?? '',
         ].join(' ')}
       >
         {isLoading ? (
@@ -146,7 +151,12 @@ export function ModelSelectorField({
             <span className="chat-runtime-control-label min-w-0 truncate text-subtle-foreground">Loading models...</span>
           </span>
         ) : (
-          <span className="chat-runtime-control-label min-w-0 max-w-[18rem] truncate text-left">
+          <span
+            className={[
+              'chat-runtime-control-label block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-left',
+              labelClassName ?? 'max-w-[18rem]',
+            ].join(' ')}
+          >
             {selectedOption?.label ?? 'No models available'}
           </span>
         )}
