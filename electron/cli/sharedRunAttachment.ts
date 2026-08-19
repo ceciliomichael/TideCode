@@ -3,12 +3,9 @@ import { getStoredConversation } from '../history/store'
 import { ensureRunServiceClient } from '../runService/ensureService'
 import { CliTurnFollowUpController } from './cliTurnFollowUps'
 import { createTerminalChatEventSink } from './events'
+import { isSharedRunTerminalStatus, watchSharedRunSettlement } from './sharedRunReconciliation'
 import type { CliSessionState } from './types'
 import type { TerminalScreen } from './terminalScreen'
-
-function isTerminalStatus(status: string) {
-  return status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'interrupted'
-}
 
 interface SharedRunAttachmentOptions {
   ensurePrompt?: () => void
@@ -27,6 +24,7 @@ export async function attachCliToActiveSharedRun(
   let runEnded = false
   let followUpController: CliTurnFollowUpController | null = null
   let pendingFollowUpSnapshot: SharedFollowUpSnapshot | null = null
+  let stopRunReconciliation: (() => void) | null = null
   const queuedEvents: ChatStreamEvent[] = []
   let settle: () => void = () => undefined
   const settled = new Promise<void>((resolve) => {
@@ -101,7 +99,7 @@ export async function attachCliToActiveSharedRun(
         void attachFollowUpController()
         flushQueuedEvents()
       }
-      if (isTerminalStatus(event.run.status)) {
+if (isSharedRunTerminalStatus(event.run.status)) {
         runEnded = true
         settle()
       }
@@ -124,6 +122,18 @@ export async function attachCliToActiveSharedRun(
     streamId = activeRun.streamId
     state.activeStreamId = activeRun.streamId
     state.isStreaming = true
+    if (activeRun.streamId) {
+      stopRunReconciliation = watchSharedRunSettlement(runService, activeRun.streamId, {
+        onMissing: () => {
+          runEnded = true
+          settle()
+        },
+        onTerminal: () => {
+          runEnded = true
+          settle()
+        },
+      })
+    }
     await attachFollowUpController()
 
     const latestConversation = await getStoredConversation(state.conversationId).catch(() => null)
@@ -175,6 +185,7 @@ export async function attachCliToActiveSharedRun(
     if (finalConversation) state.messages = [...finalConversation.messages]
     return true
   } finally {
+    stopRunReconciliation?.()
     unsubscribe()
     state.isStreaming = false
     state.activeStreamId = null

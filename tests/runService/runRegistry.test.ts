@@ -45,6 +45,17 @@ test('stream ids resolve to the owning provider and active run', () => {
   assert.deepEqual(registry.listActive().map((entry) => entry.runId), [run.runId])
 })
 
+test('active runs expose the latest projection revision for reconnecting clients', () => {
+  const registry = new SharedRunRegistry()
+  const run = registry.create(createInput())
+
+  assert.equal(run.projectionRevision, 0)
+  registry.setProjectionRevision(run.runId, 7)
+
+  assert.equal(registry.getByRunId(run.runId)?.projectionRevision, 7)
+  assert.equal(registry.listActive()[0]?.projectionRevision, 7)
+})
+
 test('active runs retain the latest live context usage for reconnecting clients', () => {
   const registry = new SharedRunRegistry()
   const run = registry.create(createInput())

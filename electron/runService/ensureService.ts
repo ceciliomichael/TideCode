@@ -6,10 +6,6 @@ import { TideCodeRunServiceClient } from './client'
 
 let sharedClientPromise: Promise<TideCodeRunServiceClient> | null = null
 
-function sleep(milliseconds: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds))
-}
-
 function isElectronRuntime() {
   return Boolean(process.versions.electron)
 }
@@ -81,20 +77,7 @@ function getServiceLaunch() {
   throw new Error('Unable to locate the TideCode run service from the configured runtime root.')
 }
 
-async function connectExistingService() {
-  const client = new TideCodeRunServiceClient()
-  await client.connect()
-  return client
-}
-
-async function launchAndConnectService() {
-  try {
-    return await connectExistingService()
-  } catch {
-    // No shared service is currently reachable. Starting more than one process
-    // is safe because only one can bind the deterministic local endpoint.
-  }
-
+async function launchRunServiceProcess() {
   const launch = getServiceLaunch()
   const child = spawn(launch.executable, launch.args, {
     cwd: process.cwd(),
@@ -104,18 +87,14 @@ async function launchAndConnectService() {
     windowsHide: true,
   })
   child.unref()
+}
 
-  let lastError: unknown = null
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    await sleep(50)
-    try {
-      return await connectExistingService()
-    } catch (error) {
-      lastError = error
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error('Unable to start the Tidecode run service.')
+async function launchAndConnectService() {
+  const client = new TideCodeRunServiceClient({
+    recoverService: launchRunServiceProcess,
+  })
+  await client.connect()
+  return client
 }
 
 export function ensureRunServiceClient() {

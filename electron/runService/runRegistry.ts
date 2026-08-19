@@ -34,6 +34,7 @@ export class SharedRunRegistry {
       startedAt: now,
       updatedAt: now,
       lastEventSeq: 0,
+      projectionRevision: 0,
     }
     this.runsById.set(runId, { snapshot, providerId: input.providerId })
     this.runIdByConversationId.set(input.conversationId, runId)
@@ -77,6 +78,16 @@ export class SharedRunRegistry {
     run.snapshot = {
       ...run.snapshot,
       lastEventSeq,
+      updatedAt: Date.now(),
+    }
+    return run.snapshot
+  }
+
+  setProjectionRevision(runId: string, projectionRevision: number) {
+    const run = this.requireRun(runId)
+    run.snapshot = {
+      ...run.snapshot,
+      projectionRevision,
       updatedAt: Date.now(),
     }
     return run.snapshot

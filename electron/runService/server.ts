@@ -193,6 +193,9 @@ export class TideCodeRunServiceServer {
         case 'getPendingFollowUps':
           this.sendResponse(socket, { id: parsed.id, ok: true, result: this.followUps.get(parsed.params.streamId) })
           return
+        case 'getRunByStreamId':
+          this.sendResponse(socket, { id: parsed.id, ok: true, result: this.registry.getByStreamId(parsed.params.streamId) })
+          return
         case 'getRunProjection':
           this.sendResponse(socket, {
             id: parsed.id,
@@ -460,6 +463,7 @@ export class TideCodeRunServiceServer {
       queueMicrotask(() => {
         projectionEmitScheduled = false
         projection.revision += 1
+        this.registry.setProjectionRevision(createdRun.runId, projection.revision)
         this.emitEvent(createdRun.runId, {
           type: 'run_projection',
           projection: {
@@ -574,6 +578,22 @@ export class TideCodeRunServiceServer {
       },
     }
 
+    let retentionScheduled = false
+    const scheduleRunRetention = () => {
+      if (retentionScheduled) return
+      retentionScheduled = true
+      const retentionTimer = setTimeout(() => {
+        const retainedRun = this.registry.getByRunId(createdRun.runId)
+        if (retainedRun?.streamId) this.followUps.remove(retainedRun.streamId)
+        this.registry.remove(createdRun.runId)
+        this.projectionsByRunId.delete(createdRun.runId)
+        const textIdleTimer = this.projectionTextIdleTimers.get(createdRun.runId)
+        if (textIdleTimer) clearTimeout(textIdleTimer)
+        this.projectionTextIdleTimers.delete(createdRun.runId)
+      }, TERMINAL_RUN_RETENTION_MS)
+      retentionTimer.unref?.()
+    }
+
     const settleRun = async () => {
       const finalizedMessages = collector.finalize()
       projection.messages = [...finalizedMessages]
@@ -594,21 +614,36 @@ export class TideCodeRunServiceServer {
       this.registry.updateStatus(createdRun.runId, status)
       this.emitRunState(createdRun.runId)
       stopProjectionTextStreaming()
-      const retentionTimer = setTimeout(() => {
-        const retainedRun = this.registry.getByRunId(createdRun.runId)
-        if (retainedRun?.streamId) this.followUps.remove(retainedRun.streamId)
-        this.registry.remove(createdRun.runId)
-        this.projectionsByRunId.delete(createdRun.runId)
-        const textIdleTimer = this.projectionTextIdleTimers.get(createdRun.runId)
-        if (textIdleTimer) clearTimeout(textIdleTimer)
-        this.projectionTextIdleTimers.delete(createdRun.runId)
-      }, TERMINAL_RUN_RETENTION_MS)
-      retentionTimer.unref?.()
+      scheduleRunRetention()
+    }
+
+    let settlementStarted = false
+    const settleRunSafely = () => {
+      if (settlementStarted) return
+      settlementStarted = true
+      void settleRun().catch((error) => {
+        console.error('[run-service] Failed to finalize shared run.', error)
+        try {
+          projection.isStreamingTextActive = false
+          projection.streamingAssistantMessageId = null
+          projection.streamingWaitingIndicatorVariant = null
+          emitProjection()
+          stopProjectionTextStreaming()
+          const current = this.registry.getByRunId(createdRun.runId)
+          if (current && (current.status === 'starting' || current.status === 'running' || current.status === 'waiting_for_input')) {
+            this.registry.updateStatus(createdRun.runId, 'failed')
+            this.emitRunState(createdRun.runId)
+          }
+          scheduleRunRetention()
+        } catch (recoveryError) {
+          console.error('[run-service] Failed to recover shared run finalization state.', recoveryError)
+        }
+      })
     }
 
     const result = input.providerId === 'codex'
-      ? await startCodexChatStream(target, sharedInput, () => { void settleRun() })
-      : await startApiKeyChatStream(target, sharedInput, () => { void settleRun() })
+      ? await startCodexChatStream(target, sharedInput, settleRunSafely)
+      : await startApiKeyChatStream(target, sharedInput, settleRunSafely)
 
     this.registry.attachStream(createdRun.runId, result.streamId)
     const followUpSnapshot = this.followUps.register(createdRun.runId, result.streamId, conversationId)

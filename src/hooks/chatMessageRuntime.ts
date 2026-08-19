@@ -14,6 +14,8 @@ import {
   normalizeAssistantMessageContent,
 } from '../lib/chatMessageContent'
 
+const SHARED_RUN_SETTLEMENT_RECONCILE_MS = 5_000
+
 export interface ChatRuntimeSelection {
   contextCompaction: ContextCompactionSettings
   hasConfiguredProvider: boolean
@@ -114,8 +116,81 @@ export async function streamAssistantResponse(
 
   return new Promise<StreamAssistantResponseOutput>((resolve, reject) => {
     const queuedEvents: Parameters<Parameters<typeof window.tidecodeChat.onStreamEvent>[0]>[0][] = []
+    let settled = false
+    let reconcileTimeoutId: number | null = null
+    let unsubscribeChat: () => void = () => undefined
+    let unsubscribeRuns: () => void = () => undefined
+
+    const cleanup = () => {
+      unsubscribeChat()
+      unsubscribeRuns()
+      if (reconcileTimeoutId !== null) {
+        window.clearTimeout(reconcileTimeoutId)
+        reconcileTimeoutId = null
+      }
+    }
+
+    const resolveOnce = (output: StreamAssistantResponseOutput) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve(output)
+    }
+
+    const rejectOnce = (error: Error) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(error)
+    }
+
+    const settleFromSharedRunStatus = (status: string) => {
+      if (status === 'completed') {
+        resolveOnce({ wasAborted: false })
+        return true
+      }
+      if (status === 'cancelled') {
+        resolveOnce({ wasAborted: true })
+        return true
+      }
+      if (status === 'failed') {
+        rejectOnce(new Error('The shared Tidecode run failed before its terminal stream event was delivered.'))
+        return true
+      }
+      if (status === 'interrupted') {
+        resolveOnce({ wasAborted: false })
+        return true
+      }
+      return false
+    }
+
+    const scheduleRunReconciliation = () => {
+      if (
+        settled ||
+        !streamId ||
+        typeof window.tidecodeRuns?.getRunByStreamId !== 'function'
+      ) return
+      if (reconcileTimeoutId !== null) window.clearTimeout(reconcileTimeoutId)
+      reconcileTimeoutId = window.setTimeout(() => {
+        reconcileTimeoutId = null
+        const expectedStreamId = streamId
+        if (!expectedStreamId || settled) return
+        void window.tidecodeRuns.getRunByStreamId(expectedStreamId)
+          .then((run) => {
+            if (settled || streamId !== expectedStreamId) return
+            if (!run) {
+              resolveOnce({ wasAborted: false })
+              return
+            }
+            if (!settleFromSharedRunStatus(run.status)) scheduleRunReconciliation()
+          })
+          .catch(() => scheduleRunReconciliation())
+      }, SHARED_RUN_SETTLEMENT_RECONCILE_MS)
+    }
 
     const handleStreamEvent = (event: Parameters<Parameters<typeof window.tidecodeChat.onStreamEvent>[0]>[0]) => {
+      scheduleRunReconciliation()
+
       if (event.type === 'content_delta') {
         input.onContentDelta(event.delta)
         return
@@ -197,24 +272,21 @@ export async function streamAssistantResponse(
       }
 
       if (event.type === 'completed') {
-        unsubscribe()
-        resolve({ wasAborted: false })
+        resolveOnce({ wasAborted: false })
         return
       }
 
       if (event.type === 'aborted') {
-        unsubscribe()
-        resolve({ wasAborted: true })
+        resolveOnce({ wasAborted: true })
         return
       }
 
       if (event.type === 'error') {
-        unsubscribe()
-        reject(new Error(event.errorMessage))
+        rejectOnce(new Error(event.errorMessage))
       }
     }
 
-    const unsubscribe = window.tidecodeChat.onStreamEvent((event) => {
+    unsubscribeChat = window.tidecodeChat.onStreamEvent((event) => {
       if (!streamId) {
         queuedEvents.push(event)
         return
@@ -226,6 +298,14 @@ export async function streamAssistantResponse(
 
       handleStreamEvent(event)
     })
+
+    if (typeof window.tidecodeRuns?.onEvent === 'function') {
+      unsubscribeRuns = window.tidecodeRuns.onEvent((event) => {
+        if (event.type !== 'run_state' || !streamId || event.run.streamId !== streamId) return
+        scheduleRunReconciliation()
+        settleFromSharedRunStatus(event.run.status)
+      })
+    }
 
     void window.tidecodeChat
       .startStream({
@@ -253,10 +333,10 @@ export async function streamAssistantResponse(
         }
 
         queuedEvents.length = 0
+        scheduleRunReconciliation()
       })
       .catch((error) => {
-        unsubscribe()
-        reject(error)
+        rejectOnce(error instanceof Error ? error : new Error(String(error)))
       })
   })
 }

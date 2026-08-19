@@ -67,6 +67,34 @@ test('presented streams do not duplicate cumulative provider snapshots', () => {
   assert.equal(getAccumulatedText(), 'The app is TideCode, a desktop AI workspace.')
 })
 
+test('presented reasoning stays open when reasoning_completed is followed by a trailing reasoning delta', () => {
+  const calls: string[] = []
+  const reasoning: string[] = []
+  const { sink } = createTerminalChatEventSink({
+    presentation: {
+      ...createPresentation(),
+      onReasoningDelta: (delta) => {
+        calls.push('reasoning_delta')
+        reasoning.push(delta)
+      },
+      onReasoningCompleted: () => calls.push('reasoning_completed'),
+      onContentStart: () => calls.push('content_start'),
+      onContentDelta: () => calls.push('content_delta'),
+    },
+  })
+
+  sink.emit?.({ delta: 'Checking the workspace', streamId: 'stream-trailing-reasoning', type: 'reasoning_delta' })
+  sink.emit?.({ streamId: 'stream-trailing-reasoning', type: 'reasoning_completed' })
+  assert.deepEqual(calls, ['reasoning_delta'])
+
+  sink.emit?.({ delta: ' and one more file', streamId: 'stream-trailing-reasoning', type: 'reasoning_delta' })
+  assert.deepEqual(calls, ['reasoning_delta', 'reasoning_delta'])
+  assert.deepEqual(reasoning, ['Checking the workspace', ' and one more file'])
+
+  sink.emit?.({ delta: 'Done.', streamId: 'stream-trailing-reasoning', type: 'content_delta' })
+  assert.deepEqual(calls, ['reasoning_delta', 'reasoning_delta', 'reasoning_completed', 'content_start', 'content_delta'])
+})
+
 test('presented reasoning is committed before content even when the provider omits reasoning_completed', () => {
   const calls: string[] = []
   const { sink } = createTerminalChatEventSink({

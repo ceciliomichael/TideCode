@@ -238,6 +238,7 @@ const runsApi: TideCodeRunsApi = {
   getCompactionState: (conversationId: string) => ipcRenderer.invoke('runs:getCompactionState', conversationId),
   getConversationRuntime: (conversationId: string) => ipcRenderer.invoke('runs:getConversationRuntime', conversationId),
   getPendingFollowUps: (streamId: string) => ipcRenderer.invoke('runs:getPendingFollowUps', streamId),
+  getRunByStreamId: (streamId: string) => ipcRenderer.invoke('runs:getByStreamId', streamId),
   getRunProjection: (runId: string) => ipcRenderer.invoke('runs:getProjection', runId),
   listActiveRuns: () => ipcRenderer.invoke('runs:listActive'),
   claimPendingFollowUps: (input: ClaimSharedFollowUpsInput) => ipcRenderer.invoke('runs:claimPendingFollowUps', input),

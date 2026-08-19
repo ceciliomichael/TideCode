@@ -23,6 +23,7 @@ export interface SharedRunSnapshot {
   startedAt: number
   updatedAt: number
   lastEventSeq: number
+  projectionRevision: number
 }
 
 export interface SharedRunProjection {
@@ -161,6 +162,7 @@ export interface TideCodeRunsApi {
   getCompactionState: (conversationId: string) => Promise<ChatCompactionLifecycleState | null>
   getConversationRuntime: (conversationId: string) => Promise<SharedConversationRuntimeSnapshot | null>
   getPendingFollowUps: (streamId: string) => Promise<SharedFollowUpSnapshot | null>
+  getRunByStreamId: (streamId: string) => Promise<SharedRunSnapshot | null>
   getRunProjection: (runId: string) => Promise<SharedRunProjection | null>
   listActiveRuns: () => Promise<SharedRunSnapshot[]>
   onEvent: (listener: (event: TideCodeRunEvent) => void) => () => void

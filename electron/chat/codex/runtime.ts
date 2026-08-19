@@ -115,6 +115,9 @@ export async function startCodexChatStream(
         activeStreams.settle(streamId)
         onSettled?.()
       })
+      .catch((error: unknown) => {
+        console.error('[chat] Codex stream lifecycle failed.', error)
+      })
   })
 
   return { streamId }
