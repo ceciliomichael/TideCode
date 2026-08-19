@@ -537,6 +537,7 @@ synchronizeDraftFolder,
       onSidebarWidthChange={onSidebarWidthChange}
       floatingControls={
         <WorkspaceFloatingControls
+          hideMobile
           isSidebarOpen={interfaceController.isSidebarOpen}
           onToggleSidebar={interfaceController.handleToggleSidebar}
           newThreadButton={{
@@ -556,6 +557,7 @@ synchronizeDraftFolder,
           onPinConversation={handlePinConversation}
           onDeleteFolder={handleDeleteFolder}
           onOpenSettings={handleSidebarOpenSettings}
+          onCloseMobile={() => setIsSidebarOpen(false)}
           onRenameFolder={async (folderId, name) => {
             await chatMessages.renameFolder(folderId, name)
             if (folderId === selectedProjectId) {
@@ -707,7 +709,11 @@ synchronizeDraftFolder,
 
         </div>
         {isMobileViewport ? (
-          <MobileWorkspaceNavigation activeSurface={mobileSurface} onSurfaceChange={handleMobileSurfaceChange} />
+          <MobileWorkspaceNavigation
+            activeSurface={mobileSurface}
+            onOpenMenu={() => setIsSidebarOpen(true)}
+            onSurfaceChange={handleMobileSurfaceChange}
+          />
         ) : null}
       </WorkspacePanel>
 

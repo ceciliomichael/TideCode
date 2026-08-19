@@ -2,7 +2,9 @@ import { FolderTree, Menu, PanelLeft, SquarePen, X } from 'lucide-react'
 import { Tooltip } from '../Tooltip'
 
 interface WorkspaceFloatingControlsProps {
+  hideMobile?: boolean
   isSidebarOpen: boolean
+  mobileTitle?: string
   onToggleSidebar: () => void
   newThreadButton?: {
     onClick: () => void
@@ -16,7 +18,9 @@ interface WorkspaceFloatingControlsProps {
 }
 
 export function WorkspaceFloatingControls({
+  hideMobile = false,
   isSidebarOpen,
+  mobileTitle,
   onToggleSidebar,
   newThreadButton,
   explorerButton,
@@ -27,7 +31,10 @@ export function WorkspaceFloatingControls({
 
   return (
     <div
-      className="pointer-events-none fixed left-4 z-[70] flex items-center gap-0"
+      className={[
+        'pointer-events-none fixed left-4 z-[70] items-center gap-0',
+        hideMobile ? 'hidden md:flex' : 'flex',
+      ].join(' ')}
       style={{ top: 'calc(env(titlebar-area-height, 0px) + 8px)' }}
     >
       <Tooltip content={sidebarTooltip} side={isSidebarOpen ? 'right' : 'bottom'}>
@@ -45,6 +52,15 @@ export function WorkspaceFloatingControls({
           <PanelLeft size={18} strokeWidth={2.2} className="hidden md:block" />
         </button>
       </Tooltip>
+
+      {mobileTitle ? (
+        <span
+          data-mobile-page-title="true"
+          className="pointer-events-none max-w-[calc(100vw-5rem)] truncate pl-1 pr-3 text-sm font-semibold text-foreground md:hidden"
+        >
+          {mobileTitle}
+        </span>
+      ) : null}
 
       {newThreadButton ? (
         <div className="hidden md:block">

@@ -36,7 +36,7 @@ export function SegmentedField({
       role="group"
       aria-label={ariaLabel}
       className={[
-        'inline-flex gap-1 rounded-xl border border-border bg-background p-1 shadow-[var(--shadow-control-inset)]',
+'inline-flex w-full gap-1 rounded-xl border border-border bg-background p-1 shadow-[var(--shadow-control-inset)] md:w-auto',
         disabled ? 'opacity-70' : '',
         className ?? '',
       ].join(' ')}
@@ -52,7 +52,7 @@ export function SegmentedField({
             aria-pressed={isActive}
             onClick={() => onChange(option.value)}
             className={[
-               'min-w-[56px] rounded-lg px-3 py-1.5 text-[13px] font-normal transition-colors md:text-sm',
+'min-w-0 flex-1 rounded-lg px-3 py-1.5 text-[13px] font-normal transition-colors md:min-w-[56px] md:flex-none md:text-sm',
               isActive
                 ? 'bg-[var(--segmented-control-active-surface)] text-foreground shadow-sm'
                 : 'bg-transparent text-muted-foreground hover:bg-[var(--segmented-control-hover-surface)] hover:text-foreground',

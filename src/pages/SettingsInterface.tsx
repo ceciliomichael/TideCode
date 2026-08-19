@@ -6,6 +6,7 @@ import { SettingsContent } from '../components/settings/SettingsContent'
 import { SettingsSidebarPanel } from '../components/settings/SettingsSidebarPanel'
 import {
   DEFAULT_SETTINGS_ITEM_ID,
+  getSettingsItem,
   type SettingsItemId,
 } from '../components/settings/settingsItems'
 import { useMcpServersState } from '../hooks/useMcpServersState'
@@ -113,6 +114,7 @@ export function SettingsInterface({
       floatingControls={
         <WorkspaceFloatingControls
           isSidebarOpen={isSidebarOpen}
+          mobileTitle={isSidebarOpen ? 'Settings' : getSettingsItem(activeItemId).label}
           onToggleSidebar={() => setIsSidebarOpen((currentValue) => !currentValue)}
         />
       }

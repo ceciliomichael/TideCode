@@ -1,4 +1,4 @@
-import { Download, FolderPlus, Settings, SquarePen } from 'lucide-react'
+import { Download, FolderPlus, Settings, SquarePen, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type DragEvent } from 'react'
 import { getExternalFilePaths } from '../../lib/externalFileDrop'
 import { Tooltip } from '../Tooltip'
@@ -28,6 +28,7 @@ interface SidebarPanelProps {
   onPinConversation: (conversationId: string, isPinned: boolean) => void
   onDeleteFolder: (folderId: string) => Promise<void>
   onOpenSettings: (itemId?: SettingsItemId) => void
+  onCloseMobile?: () => void
   onRenameFolder: (folderId: string, name: string) => Promise<void>
   onSelectConversation: (conversationId: string) => void
   selectedProjectId?: string
@@ -46,6 +47,7 @@ export function SidebarPanel({
   onPinConversation,
   onDeleteFolder,
   onOpenSettings,
+  onCloseMobile,
   onRenameFolder,
   onSelectConversation,
   selectedProjectId: controlledSelectedProjectId,
@@ -135,7 +137,19 @@ export function SidebarPanel({
       }}
     >
       <div className="pr-6 md:pr-7">
-        <div className="h-10" aria-hidden="true" />
+        <div className="flex h-10 items-center justify-between md:block">
+          <p className="truncate text-sm font-semibold text-foreground md:hidden">Navigation</p>
+          {onCloseMobile ? (
+            <button
+              type="button"
+              onClick={onCloseMobile}
+              aria-label="Close navigation menu"
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-[var(--sidebar-hover-surface)] hover:text-foreground md:hidden"
+            >
+              <X size={19} strokeWidth={2.2} />
+            </button>
+          ) : null}
+        </div>
 
         <div className="mt-4 flex items-center gap-1">
           <div className="min-w-0 flex-1">

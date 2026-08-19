@@ -1,3 +1,4 @@
+/* eslint-env node */
 import http from 'node:http'
 import WebSocket from 'ws'
 
@@ -217,8 +218,8 @@ try {
   })()`)
   assert(!desktopControlsVisible, 'Desktop workspace panel controls are visible on mobile')
 
-  await clickAria('Open sidebar')
-  await waitFor(`Boolean(document.querySelector('[data-sidebar-root="true"]'))`, 'mobile sidebar')
+  await clickAria('Open navigation menu')
+  await waitFor(`Boolean(document.querySelector('[data-sidebar-root="true"]'))`, 'mobile navigation menu')
   const sidebarRect = await evaluate(`(() => {
     const rect = document.querySelector('[data-sidebar-root="true"]')?.getBoundingClientRect()
     return rect ? { width: rect.width, height: rect.height, left: rect.left, top: rect.top } : null
@@ -240,18 +241,18 @@ try {
   await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
   await waitFor(`!document.querySelector('[aria-label="Commands, projects, and threads"]')`, 'New Thread dialog close')
 
-  await clickAria('Collapse sidebar')
+  await clickAria('Close navigation menu')
 
   await clickButton('Terminal')
   await waitFor(`Boolean(document.querySelector('button[aria-label="New terminal tab"]'))`, 'terminal surface')
-  const terminalHasMenu = await evaluate(`Boolean(document.querySelector('button[aria-label="Open sidebar"]'))`)
-  assert(terminalHasMenu, 'Sidebar menu is not reachable from Terminal')
+  const terminalHasMenu = await evaluate(`Boolean(document.querySelector('button[aria-label="Open navigation menu"]'))`)
+  assert(terminalHasMenu, 'Navigation menu is not reachable from Terminal')
   checkpoints.push(await measure('Terminal'))
 
   await clickButton('Board')
   await waitFor(`document.body.textContent?.includes('Work board') ?? false`, 'board surface')
-  const boardHasMenu = await evaluate(`Boolean(document.querySelector('button[aria-label="Open sidebar"]'))`)
-  assert(boardHasMenu, 'Sidebar menu is not reachable from Board')
+  const boardHasMenu = await evaluate(`Boolean(document.querySelector('button[aria-label="Open navigation menu"]'))`)
+  assert(boardHasMenu, 'Navigation menu is not reachable from Board')
   checkpoints.push(await measure('Board'))
 
   await waitFor(`Boolean(document.querySelector('button[aria-label="Add task to Backlog"]'))`, 'Board task controls')
@@ -292,7 +293,7 @@ const card = document.querySelector(${JSON.stringify(smokeTaskCardSelector)})
   checkpoints.push(await measure('Board task details'))
   await clickAria('Close task details')
 
-  await clickAria('Open sidebar')
+  await clickAria('Open navigation menu')
   await clickButton('Settings')
   await waitFor(`Boolean(document.querySelector('nav[aria-label="Settings navigation"]'))`, 'Settings mobile navigation')
   checkpoints.push(await measure('Settings navigation'))
@@ -313,6 +314,23 @@ const card = document.querySelector(${JSON.stringify(smokeTaskCardSelector)})
     }
     await clickButton(page)
     await waitFor(`!document.querySelector('nav[aria-label="Settings navigation"]')`, `${page} settings content`)
+    const mobilePageTitle = await evaluate(`document.querySelector('[data-mobile-page-title="true"]')?.textContent?.trim() === ${JSON.stringify(page)}`)
+    assert(mobilePageTitle, `${page}: active Settings page title is not shown beside the menu control`)
+    if (page === 'Updates') {
+      const toggleMetrics = await evaluate(`(() => {
+        const group = document.querySelector('[role="group"][aria-label="Check for updates at launch"]')
+        if (!(group instanceof HTMLElement)) return null
+        const buttons = [...group.querySelectorAll('button')]
+        const groupRect = group.getBoundingClientRect()
+        return {
+          groupWidth: groupRect.width,
+          buttonWidths: buttons.map((button) => button.getBoundingClientRect().width),
+        }
+      })()`)
+      assert(toggleMetrics?.buttonWidths?.length === 2, 'Updates segmented toggle does not have two options')
+      assert(Math.abs(toggleMetrics.buttonWidths[0] - toggleMetrics.buttonWidths[1]) < 1, 'Updates segmented toggle options are not equal width')
+      assert(toggleMetrics.buttonWidths[0] + toggleMetrics.buttonWidths[1] > toggleMetrics.groupWidth * 0.85, 'Updates segmented toggle options do not fill the mobile control')
+    }
     checkpoints.push(await measure(`Settings: ${page}`))
   }
 
