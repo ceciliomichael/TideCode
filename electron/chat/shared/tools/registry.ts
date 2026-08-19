@@ -80,21 +80,82 @@ function isExecutableTool(tool: ToolSet[string]): tool is ToolSet[string] & {
   return typeof tool.execute === 'function'
 }
 
-function normalizeCodeModeInput(input: unknown, inputSchema: JSONSchema7) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) return input
+function decodeJsonPointer(instancePath: string) {
+  if (instancePath.length === 0) return []
+  return instancePath
+    .slice(1)
+    .split('/')
+    .map((part) => part.replace(/~1/gu, '/').replace(/~0/gu, '~'))
+}
 
-  const properties = inputSchema.properties
-  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return input
+function getValueAtPath(value: unknown, pathParts: string[]): unknown {
+  let current = value
+  for (const part of pathParts) {
+    if (!current || typeof current !== 'object') return undefined
+    current = (current as Record<string, unknown>)[part]
+  }
+  return current
+}
 
-  const offsetSchema = properties.offset
-  if (!offsetSchema || typeof offsetSchema !== 'object' || Array.isArray(offsetSchema)) return input
+function omitUnsupportedFalseProperties(input: unknown, validateInput: ValidateFunction) {
+  let normalizedInput = input
 
-  const record = input as Record<string, unknown>
-  if (offsetSchema.minimum !== 1 || record.offset !== 0) return input
+  for (;;) {
+    if (validateInput(normalizedInput)) return normalizedInput
 
-  // Code Mode models often use zero-based offsets. The concrete read APIs are
-  // intentionally one-based, so map the harmless first-line spelling here.
-  return { ...record, offset: 1 }
+    const removablePaths = (validateInput.errors ?? []).flatMap((validationError) => {
+      if (validationError.keyword !== 'additionalProperties') return []
+      const additionalProperty = (validationError.params as { additionalProperty?: unknown }).additionalProperty
+      if (typeof additionalProperty !== 'string') return []
+
+      const parentPath = decodeJsonPointer(validationError.instancePath)
+      const parentValue = getValueAtPath(normalizedInput, parentPath)
+      if (!parentValue || typeof parentValue !== 'object' || Array.isArray(parentValue)) return []
+      if ((parentValue as Record<string, unknown>)[additionalProperty] !== false) return []
+
+      return [[...parentPath, additionalProperty]]
+    })
+
+    if (removablePaths.length === 0) return normalizedInput
+
+    const nextInput = structuredClone(normalizedInput)
+    let removedAny = false
+    for (const propertyPath of removablePaths) {
+      const parentPath = propertyPath.slice(0, -1)
+      const propertyName = propertyPath.at(-1)
+      const parentValue = getValueAtPath(nextInput, parentPath)
+      if (!propertyName || !parentValue || typeof parentValue !== 'object' || Array.isArray(parentValue)) continue
+      if ((parentValue as Record<string, unknown>)[propertyName] !== false) continue
+      delete (parentValue as Record<string, unknown>)[propertyName]
+      removedAny = true
+    }
+
+    if (!removedAny) return normalizedInput
+    normalizedInput = nextInput
+  }
+}
+
+function normalizeCodeModeInput(input: unknown, inputSchema: JSONSchema7, validateInput: ValidateFunction) {
+  let normalizedInput = input
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
+    const properties = inputSchema.properties
+    if (properties && typeof properties === 'object' && !Array.isArray(properties)) {
+      const offsetSchema = properties.offset
+      const record = input as Record<string, unknown>
+      if (offsetSchema && typeof offsetSchema === 'object' && !Array.isArray(offsetSchema) &&
+          offsetSchema.minimum === 1 && record.offset === 0) {
+        // Code Mode models often use zero-based offsets. The concrete read APIs are
+        // intentionally one-based, so map the harmless first-line spelling here.
+        normalizedInput = { ...record, offset: 1 }
+      }
+    }
+  }
+
+  // A false value for a property that the concrete tool schema does not support
+  // is equivalent to omitting that optional capability. Strip only properties
+  // Ajv identifies as additional, and only when their value is exactly false.
+  // Supported false values and unsupported truthy values are preserved.
+  return omitUnsupportedFalseProperties(normalizedInput, validateInput)
 }
 
 function scoreMatch(entry: AgentToolRegistryEntry, queryTerms: string[]) {
@@ -137,7 +198,7 @@ export async function createAgentToolRegistry(nativeTools: ToolSet): Promise<Age
     entries.push({
       description: getToolDescription(tool, name),
       execute: async (input, options = {}) => {
-        const normalizedInput = normalizeCodeModeInput(input, inputSchema)
+        const normalizedInput = normalizeCodeModeInput(input, inputSchema, validateInput)
         if (!validateInput(normalizedInput)) {
           const validationDetails = (validateInput.errors ?? [])
             .map((validationError) => `${validationError.instancePath || '/'} ${validationError.message ?? 'is invalid'}`)
