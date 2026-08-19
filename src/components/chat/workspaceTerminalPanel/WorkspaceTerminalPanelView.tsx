@@ -60,7 +60,7 @@ export function WorkspaceTerminalPanelView({
           ].join(" ")}
         />
       ) : null}
-      <div className="flex h-10 shrink-0 items-stretch border-b border-border bg-background">
+<div className="flex h-10 shrink-0 items-stretch border-b border-border bg-background">
         <div className="flex min-w-0 flex-1 items-stretch overflow-hidden">
           <div className="workspace-tabs-scroll-viewport flex min-w-0 flex-1 items-stretch gap-0 overflow-x-auto overflow-y-hidden">
             {panelState.terminalTabs.map((tab) => {
@@ -156,11 +156,27 @@ export function WorkspaceTerminalPanelView({
           </Tooltip>
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-hidden bg-[var(--workspace-panel-surface)] px-4 py-3">
+      <div className="relative flex-1 min-h-0 overflow-hidden bg-[var(--workspace-panel-surface)] px-4 py-3">
         <div
           ref={panelState.terminalHostRef}
           className="workspace-terminal-host relative h-full w-full overflow-hidden text-foreground bg-[var(--workspace-panel-surface)]"
         />
+        {!panelState.autoCreateTabOnOpen && panelState.terminalTabs.length === 0 ? (
+          <div className="absolute inset-0 flex items-center justify-center p-6">
+            <div className="flex max-w-xs flex-col items-center text-center">
+              <p className="text-sm font-medium text-foreground">No terminal sessions</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Start a terminal when you need one.</p>
+              <button
+                type="button"
+                onClick={() => void panelState.openTerminalTab()}
+                className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-action px-4 text-sm font-semibold text-white"
+              >
+                <Plus size={15} />
+                New terminal
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
       {activeTerminalTab?.status === "error" &&
       activeTerminalTab.errorMessage ? (

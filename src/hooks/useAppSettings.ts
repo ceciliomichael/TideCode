@@ -86,6 +86,17 @@ export function useAppSettings() {
   }, [settings.language])
 
   useEffect(() => {
+    return window.tidecodeSettings.onRemoteChange((nextSettings) => {
+      const normalizedSettings = resetLaunchOnlyAppSettings(nextSettings)
+      requestIdRef.current += 1
+      settingsRef.current = normalizedSettings
+      setSettings(normalizedSettings)
+      setErrorMessage(null)
+      setSaveState('idle')
+    })
+  }, [])
+
+  useEffect(() => {
     if (saveState !== 'saved') {
       return
     }

@@ -117,7 +117,7 @@ export function KanbanColumn({
         </button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+<div data-kanban-card-scroll="true" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {cards.length > 0 ? (
           <ul className="space-y-2">
             {cards.map((card, index) => (

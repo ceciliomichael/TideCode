@@ -5,6 +5,7 @@ export interface CreateWorkspaceCheckpointInput {
 export type WorkspaceDirectoryVisibility = 'explorer' | 'workspace'
 
 export interface WorkspaceExplorerListDirectoryInput {
+  recursive?: boolean
   relativePath?: string
   workspaceRootPath: string
   visibility?: WorkspaceDirectoryVisibility
@@ -184,6 +185,13 @@ export interface ResizeTerminalSessionInput {
 
 export interface CloseTerminalSessionInput {
   sessionId: number
+  tabKey?: string | null
+  workspaceRootPath?: string | null
+}
+
+export interface TerminalTabClosedEvent {
+  sessionId: number
+  tabKey: string | null
   workspaceRootPath?: string | null
 }
 

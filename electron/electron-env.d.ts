@@ -44,4 +44,5 @@ interface Window {
   }
   tidecodeTerminal: import('../src/types/chat').TideCodeTerminalApi
   tidecodeWorkspace: import('../src/types/chat').TideCodeWorkspaceApi
+  tidecodeRemoteHost: import('../src/remote/protocol').TideCodeRemoteHostBridgeApi
 }

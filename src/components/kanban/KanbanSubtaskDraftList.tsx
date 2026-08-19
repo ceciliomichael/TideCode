@@ -53,7 +53,7 @@ export function KanbanSubtaskDraftList({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h3 className="text-sm font-semibold text-foreground">Subtasks</h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Break the work into clear steps now, or add them later.
@@ -63,7 +63,7 @@ export function KanbanSubtaskDraftList({
           type="button"
           disabled={disabled}
           onClick={() => onChange([...subtasks, createEmptySubtask()])}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-foreground transition hover:-translate-y-px hover:bg-surface-muted active:translate-y-0 disabled:pointer-events-none disabled:opacity-50"
+className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-foreground transition hover:-translate-y-px hover:bg-surface-muted active:translate-y-0 disabled:pointer-events-none disabled:opacity-50"
         >
           <Plus size={14} />
           Add subtask

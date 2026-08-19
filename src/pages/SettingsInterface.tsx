@@ -11,6 +11,7 @@ import {
 import { useMcpServersState } from '../hooks/useMcpServersState'
 import { useSkillsState } from '../hooks/useSkillsState'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
+import { useIsMobileViewport } from '../hooks/useIsMobileViewport'
 import type { AppSettings, ApiKeyProviderId, ProvidersState, SaveApiKeyProviderInput } from '../types/chat'
 import type { TideCodeLaunchRequest, TideCodeSettingsLaunchRequest } from '../lib/appLaunchRequest'
 
@@ -53,7 +54,8 @@ export function SettingsInterface({
   settings,
   pendingLaunchRequest,
 }: SettingsInterfaceProps) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const isMobileViewport = useIsMobileViewport()
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => !isMobileViewport || initialItemId === null)
   const [activeItemId, setActiveItemId] = useState<SettingsItemId>(initialItemId ?? DEFAULT_SETTINGS_ITEM_ID)
   const [panelLaunchRequest, setPanelLaunchRequest] = useState<TideCodeSettingsLaunchRequest | null>(null)
   const mcpSettings = useMcpServersState(null)
@@ -68,9 +70,10 @@ export function SettingsInterface({
     if (!pendingLaunchRequest) return
 
     setActiveItemId(pendingLaunchRequest.section === 'providers' ? 'settings-item2' : 'settings-item3')
+    if (isMobileViewport) setIsSidebarOpen(false)
     setPanelLaunchRequest(pendingLaunchRequest.action ? pendingLaunchRequest : null)
     onLaunchRequestConsumed()
-  }, [onLaunchRequestConsumed, pendingLaunchRequest])
+  }, [isMobileViewport, onLaunchRequestConsumed, pendingLaunchRequest])
   const generalSettings = useMemo(
     () => ({
       isLoading: isSettingsLoading,
@@ -94,6 +97,11 @@ export function SettingsInterface({
     ],
   )
 
+  const handleSelectSettingsItem = useCallback((itemId: SettingsItemId) => {
+    setActiveItemId(itemId)
+    if (isMobileViewport) setIsSidebarOpen(false)
+  }, [isMobileViewport])
+
   useWorkspaceKeyboardShortcuts({
     onToggleSidebar: () => setIsSidebarOpen((currentValue) => !currentValue),
   })
@@ -103,16 +111,18 @@ export function SettingsInterface({
       isSidebarOpen={isSidebarOpen}
       onSidebarWidthChange={onSidebarWidthChange}
       floatingControls={
-        <WorkspaceFloatingControls
-          isSidebarOpen={isSidebarOpen}
-          onToggleSidebar={() => setIsSidebarOpen((currentValue) => !currentValue)}
-        />
+        isMobileViewport ? null : (
+          <WorkspaceFloatingControls
+            isSidebarOpen={isSidebarOpen}
+            onToggleSidebar={() => setIsSidebarOpen((currentValue) => !currentValue)}
+          />
+        )
       }
       sidebar={
         <SettingsSidebarPanel
           activeItemId={activeItemId}
           onBackToApp={onBackToApp}
-          onSelectItem={setActiveItemId}
+          onSelectItem={handleSelectSettingsItem}
         />
       }
       sidebarWidth={sidebarWidth}
@@ -121,6 +131,7 @@ export function SettingsInterface({
         <SettingsContent
           activeItemId={activeItemId}
           appSettings={settings}
+          onBackToSettings={() => setIsSidebarOpen(true)}
           contextSettings={{
             isLoading: isSettingsLoading,
             onUpdateSettings: handleUpdateSettings,

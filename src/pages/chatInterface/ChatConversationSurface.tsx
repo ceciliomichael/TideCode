@@ -48,6 +48,7 @@ interface ChatConversationSurfaceProps {
   isCompressingChat: boolean
   liveCompaction: ChatCompactionLifecycleState | null
   isKanbanBoardOpen: boolean
+  isTerminalSurfaceOpen: boolean
   messageListBoundaryRef: RefObject<HTMLDivElement>
   onQueueMessage: (value: string, attachments: ChatAttachment[]) => void
   onAlternateFollowUpMessage: (value: string, attachments: ChatAttachment[]) => void
@@ -89,6 +90,7 @@ export function ChatConversationSurface({
   isCompressingChat,
   liveCompaction,
   isKanbanBoardOpen,
+  isTerminalSurfaceOpen,
   messageListBoundaryRef,
   onQueueMessage,
   onAlternateFollowUpMessage,
@@ -171,7 +173,7 @@ export function ChatConversationSurface({
   return (
     <div
       className="flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-hidden"
-      style={{ display: workspaceState.isTerminalFullScreen && workspaceState.isTerminalOpen ? 'none' : 'flex' }}
+            style={{ display: isTerminalSurfaceOpen ? 'none' : 'flex' }}
     >
       <div className="flex min-h-0 w-full flex-1 flex-col">
         {isKanbanBoardOpen ? (

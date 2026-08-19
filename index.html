@@ -11,6 +11,9 @@
         var systemDarkModeQuery = '(prefers-color-scheme: dark)'
         var darkThemeColor = '#171717'
         var lightThemeColor = '#EEF4EE'
+        var root = document.documentElement
+        var isRemoteBrowser = typeof window.tidecodeApp === 'undefined'
+        root.dataset.tidecodeRuntime = isRemoteBrowser ? 'remote-browser' : 'desktop'
 
         try {
           var cachedPreference = window.localStorage.getItem(storageKey)
@@ -25,7 +28,6 @@
               window.matchMedia(systemDarkModeQuery).matches)
               ? 'dark'
               : 'light'
-          var root = document.documentElement
           root.dataset.theme = resolvedTheme
           root.dataset.themePreference = appearance
           root.style.colorScheme = resolvedTheme

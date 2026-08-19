@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { useIsMobileViewport } from '../hooks/useIsMobileViewport'
 
 interface TooltipChildProps {
   className?: string
@@ -83,6 +84,7 @@ export function Tooltip({
   triggerClassName,
   triggerLayout = fullWidthTrigger ? 'flex' : 'inline-flex',
 }: TooltipProps) {
+  const isMobileViewport = useIsMobileViewport()
   const tooltipId = useId()
   const triggerRef = useRef<HTMLSpanElement | null>(null)
   const tooltipRef = useRef<HTMLDivElement | null>(null)
@@ -130,12 +132,12 @@ export function Tooltip({
   }, [children, hideWhenTriggerExpanded])
 
   useEffect(() => {
-    if (disabled || (hideWhenTriggerExpanded && isTriggerExpanded)) {
+    if (isMobileViewport || disabled || (hideWhenTriggerExpanded && isTriggerExpanded)) {
       setIsVisible(false)
     }
-  }, [disabled, hideWhenTriggerExpanded, isTriggerExpanded, isVisible])
+  }, [disabled, hideWhenTriggerExpanded, isMobileViewport, isTriggerExpanded, isVisible])
 
-  const shouldSuppressTooltip = disabled || (hideWhenTriggerExpanded && isTriggerExpanded)
+  const shouldSuppressTooltip = isMobileViewport || disabled || (hideWhenTriggerExpanded && isTriggerExpanded)
   const pointerEventsClassName = useMemo(
     () => (interactive ? 'pointer-events-auto' : 'pointer-events-none'),
     [interactive],
@@ -355,6 +357,7 @@ export function AnchoredTooltip({
   side = 'top',
   visible,
 }: AnchoredTooltipProps) {
+  const isMobileViewport = useIsMobileViewport()
   const tooltipId = useId()
   const tooltipRef = useRef<HTMLDivElement | null>(null)
   const [tooltipStyle, setTooltipStyle] = useState<CSSProperties>({
@@ -405,7 +408,7 @@ export function AnchoredTooltip({
   }, [anchorElement, side])
 
   useLayoutEffect(() => {
-    if (!visible || !anchorElement || !tooltipRef.current) {
+    if (isMobileViewport || !visible || !anchorElement || !tooltipRef.current) {
       return
     }
 
@@ -422,9 +425,9 @@ export function AnchoredTooltip({
       window.removeEventListener('resize', updateTooltipPosition)
       resizeObserver.disconnect()
     }
-  }, [anchorElement, tooltipId, updateTooltipPosition, visible])
+  }, [anchorElement, isMobileViewport, tooltipId, updateTooltipPosition, visible])
 
-  if (!visible || !anchorElement) {
+  if (isMobileViewport || !visible || !anchorElement) {
     return null
   }
 

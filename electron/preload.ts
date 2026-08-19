@@ -64,6 +64,7 @@ import type {
 import type { TideCodeMcpApi, McpAddServerInput, McpState } from '../src/types/mcp'
 import type { TideCodeSkillsApi } from '../src/types/skills'
 import type { TideCodeUpdatesApi } from '../src/types/updates'
+import type { RemoteBridgeEvent, TideCodeRemoteHostBridgeApi } from '../src/remote/protocol'
 
 // --------- Expose some API to the Renderer process ---------
 contextBridge.exposeInMainWorld('ipcRenderer', {
@@ -101,6 +102,13 @@ const historyApi: TideCodeHistoryApi = {
       ipcRenderer.off('history:projectFolderPruned', wrappedListener)
     }
   },
+  onRemoteChange: (listener) => {
+    const wrappedListener = (_event: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)
+    ipcRenderer.on('history:remoteChanged', wrappedListener)
+    return () => {
+      ipcRenderer.off('history:remoteChanged', wrappedListener)
+    }
+  },
   getConversation: (conversationId: string) => ipcRenderer.invoke('history:get', conversationId),
   listCompactionMarkers: (conversationId: string) => ipcRenderer.invoke('history:listCompactionMarkers', conversationId),
   getUserMessageCheckpointHistory: (conversationId: string, messageId: string) =>
@@ -130,6 +138,13 @@ const historyApi: TideCodeHistoryApi = {
 const settingsApi: TideCodeSettingsApi = {
   getInitialSettings: () => parseInitialSettingsArg(process.argv),
   getSettings: () => ipcRenderer.invoke('settings:get'),
+  onRemoteChange: (listener) => {
+    const wrappedListener = (_event: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)
+    ipcRenderer.on('settings:remoteChanged', wrappedListener)
+    return () => {
+      ipcRenderer.off('settings:remoteChanged', wrappedListener)
+    }
+  },
   updateSettings: (input: Partial<AppSettings>) => ipcRenderer.invoke('settings:update', input),
 }
 
@@ -378,8 +393,31 @@ const terminalApi: TideCodeTerminalApi = {
       ipcRenderer.off('terminal:session:exit', wrappedListener)
     }
   },
+  onTabClosed: (listener) => {
+    const wrappedListener = (_event: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)
+    ipcRenderer.on('terminal:remoteTabClosed', wrappedListener)
+    return () => {
+      ipcRenderer.off('terminal:remoteTabClosed', wrappedListener)
+    }
+  },
   resizeSession: (input: ResizeTerminalSessionInput) => ipcRenderer.invoke('terminal:resizeSession', input),
   writeToSession: (input: WriteTerminalSessionInput) => ipcRenderer.invoke('terminal:writeToSession', input),
+}
+
+const remoteHostApi: TideCodeRemoteHostBridgeApi = {
+  clearWebCredentials: () => ipcRenderer.invoke('remote:host:clearWebCredentials'),
+  emitEvent: (event: RemoteBridgeEvent) => ipcRenderer.send('remote:bridge:event', event),
+  getConfiguration: () => ipcRenderer.invoke('remote:host:getConfiguration'),
+  getStatus: () => ipcRenderer.invoke('remote:host:getStatus'),
+  onStatus: (listener) => {
+    const wrappedListener = (_event: unknown, status: Parameters<typeof listener>[0]) => listener(status)
+    ipcRenderer.on('remote:host:status', wrappedListener)
+    return () => {
+      ipcRenderer.off('remote:host:status', wrappedListener)
+    }
+  },
+  updateNetwork: (input) => ipcRenderer.invoke('remote:host:updateNetwork', input),
+  updateWebAuth: (input) => ipcRenderer.invoke('remote:host:updateWebAuth', input),
 }
 
 contextBridge.exposeInMainWorld('tidecodeHistory', historyApi)
@@ -398,3 +436,4 @@ contextBridge.exposeInMainWorld('tidecodeFileDrop', fileDropApi)
 contextBridge.exposeInMainWorld('tidecodeClipboard', clipboardApi)
 contextBridge.exposeInMainWorld('tidecodeWorkspace', workspaceApi)
 contextBridge.exposeInMainWorld('tidecodeTerminal', terminalApi)
+contextBridge.exposeInMainWorld('tidecodeRemoteHost', remoteHostApi)

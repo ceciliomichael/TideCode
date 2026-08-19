@@ -169,8 +169,15 @@ export default function App() {
 
   return (
     <div className="relative h-screen w-screen">
-      <ChatInterface
-        chatMessages={chatMessages}
+      <div
+        className={[
+          'absolute inset-0',
+          activeScreen === 'chat' ? 'visible' : 'invisible',
+        ].join(' ')}
+        aria-hidden={activeScreen !== 'chat'}
+      >
+        <ChatInterface
+          chatMessages={chatMessages}
         diffPanelWidth={diffPanelWidth}
         diffPanelExpandedFilePaths={diffPanelExpandedFilePaths}
         diffPanelSelectedScope={diffPanelSelectedScope}
@@ -190,11 +197,12 @@ export default function App() {
         sendMessageOnEnter={settings.sendMessageOnEnter}
         sidebarWidth={settings.sidebarWidth}
         onOpenSettings={handleOpenSettings}
-        providersState={{
-          isLoading: providersState.isLoading,
-          providersState: providersState.providersState,
-        }}
-      />
+          providersState={{
+            isLoading: providersState.isLoading,
+            providersState: providersState.providersState,
+          }}
+        />
+      </div>
 
       {activeScreen === 'settings' ? (
         <div className="absolute inset-0 z-50">

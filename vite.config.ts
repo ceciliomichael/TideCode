@@ -16,8 +16,8 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              // Keep node-pty external so its native conpty.node loader resolves from node_modules at runtime.
-              external: ['node-pty'],
+              // Keep native/optional Node dependencies external so their runtime loaders resolve from node_modules.
+              external: ['node-pty', 'ws'],
             },
           },
         },

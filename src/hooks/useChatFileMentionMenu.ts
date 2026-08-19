@@ -28,8 +28,6 @@ interface UseChatFileMentionMenuInput {
 }
 
 const MAX_MENTION_RESULTS = 8
-const MAX_SCANNED_FILES = 10000
-const MAX_SCANNED_DIRECTORIES = 1000
 const ROOT_MENU_OPTION_COUNT = 4
 
 function normalizeRelativePath(relativePath: string) {
@@ -132,48 +130,10 @@ function scoreMentionResult(relativePath: string, query: string, label = getPath
 }
 
 async function loadWorkspaceMentionIndex(workspaceRootPath: string) {
-  const seenDirectoryPaths = new Set<string>()
-  const discoveredEntries: WorkspaceExplorerEntry[] = []
-  let fileCount = 0
-  let directoryCount = 0
-
-  async function visitDirectory(relativePath?: string) {
-    if (fileCount >= MAX_SCANNED_FILES || directoryCount >= MAX_SCANNED_DIRECTORIES) {
-      return
-    }
-
-    const directoryKey = normalizeRelativePath(relativePath?.trim() ?? '.')
-    if (seenDirectoryPaths.has(directoryKey)) {
-      return
-    }
-
-    seenDirectoryPaths.add(directoryKey)
-    if (directoryKey !== '.') {
-      directoryCount += 1
-    }
-
-    const entries = await window.tidecodeWorkspace.listDirectory({
-      relativePath: directoryKey === '.' ? undefined : directoryKey,
-      workspaceRootPath,
-    })
-
-    for (const entry of entries) {
-      if (fileCount >= MAX_SCANNED_FILES || directoryCount >= MAX_SCANNED_DIRECTORIES) {
-        return
-      }
-
-      if (entry.isDirectory) {
-        discoveredEntries.push(entry)
-        await visitDirectory(entry.relativePath)
-        continue
-      }
-
-      discoveredEntries.push(entry)
-      fileCount += 1
-    }
-  }
-
-  await visitDirectory()
+  const discoveredEntries: WorkspaceExplorerEntry[] = await window.tidecodeWorkspace.listDirectory({
+    recursive: true,
+    workspaceRootPath,
+  })
   const basenameCounts = buildLabelCounts(discoveredEntries)
   const fileAndFolderEntries = discoveredEntries
     .map((entry) => {

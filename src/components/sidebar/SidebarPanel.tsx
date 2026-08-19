@@ -28,6 +28,7 @@ interface SidebarPanelProps {
   onPinConversation: (conversationId: string, isPinned: boolean) => void
   onDeleteFolder: (folderId: string) => Promise<void>
   onOpenSettings: (itemId?: SettingsItemId) => void
+  isMobileLayout?: boolean
   onRenameFolder: (folderId: string, name: string) => Promise<void>
   onSelectConversation: (conversationId: string) => void
   selectedProjectId?: string
@@ -46,6 +47,7 @@ export function SidebarPanel({
   onPinConversation,
   onDeleteFolder,
   onOpenSettings,
+  isMobileLayout = false,
   onRenameFolder,
   onSelectConversation,
   selectedProjectId: controlledSelectedProjectId,
@@ -126,7 +128,9 @@ export function SidebarPanel({
 
   return (
     <aside
-      className="flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] pb-5 pl-4 pr-0 pt-3 md:pl-5 md:pr-0"
+      className={isMobileLayout
+? 'relative flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] pb-3 pl-4 pr-0 pt-3'
+        : 'flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] pb-5 pl-4 pr-0 pt-3 md:pl-5 md:pr-0'}
       onDragOver={handleWorkspaceFolderDragOver}
       onDrop={(event) => {
         void handleWorkspaceFolderDrop(event).catch((error) => {
@@ -135,9 +139,11 @@ export function SidebarPanel({
       }}
     >
       <div className="pr-6 md:pr-7">
-        <div className="h-10" aria-hidden="true" />
-
-        <div className="mt-4 flex items-center gap-1">
+        {!isMobileLayout ? <div className="h-10" aria-hidden="true" /> : null}
+        <div className={[
+          'flex items-center gap-1',
+          !isMobileLayout ? 'mt-4' : '',
+        ].join(' ')}>
           <div className="min-w-0 flex-1">
             <SidebarThreadSearch value={searchQuery} onChange={setSearchQuery} />
           </div>
@@ -208,7 +214,8 @@ export function SidebarPanel({
         />
       </div>
 
-      <div className="pt-4 pr-6 md:pr-7">
+      {!isMobileLayout ? (
+        <div className="pt-4 pr-6 md:pr-7">
         <div className="flex min-h-11 w-full items-center rounded-xl transition-colors duration-200 ease-out hover:bg-[var(--sidebar-hover-surface)]">
           <button
             type="button"
@@ -231,7 +238,9 @@ export function SidebarPanel({
             </button>
           ) : null}
         </div>
-      </div>
+        </div>
+      ) : null}
+
 
       {isNewThreadProjectDialogOpen ? (
         <NewThreadProjectDialog

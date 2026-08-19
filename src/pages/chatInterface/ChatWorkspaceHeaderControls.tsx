@@ -98,7 +98,7 @@ export function ChatWorkspaceHeaderControls({
   removedLineCount,
 }: ChatWorkspaceHeaderControlsProps) {
   return (
-    <div className="flex items-center gap-1">
+        <div className="hidden items-center gap-1 md:flex">
       <HeaderControl
         active={isKanbanBoardOpen}
         ariaPressed={isKanbanBoardOpen}

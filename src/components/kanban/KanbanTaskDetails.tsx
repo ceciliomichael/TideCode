@@ -532,8 +532,8 @@ export function KanbanTaskDetails({
           </div>
         </div>
 
-        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-surface px-5 py-4 md:px-6">
-          <div className="flex min-w-0 items-center gap-3">
+                <footer className="flex shrink-0 flex-col gap-3 border-t border-border bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between md:px-6">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
             <button
               type="button"
               disabled={isBusy}
@@ -567,7 +567,7 @@ export function KanbanTaskDetails({
             type="button"
             onClick={() => void handleClose()}
             disabled={isBusy}
-            className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-surface px-4 text-xs font-semibold text-foreground transition-colors hover:bg-surface-muted disabled:opacity-50"
+                        className="inline-flex h-10 w-full items-center justify-center rounded-xl border border-border bg-surface px-4 text-xs font-semibold text-foreground transition-colors hover:bg-surface-muted disabled:opacity-50 sm:w-auto"
           >
             Close
           </button>

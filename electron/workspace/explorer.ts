@@ -42,6 +42,8 @@ const MAX_TEXT_FILE_BYTES = 256 * 1024
 const MAX_IMAGE_PREVIEW_BYTES = 32 * 1024 * 1024
 const MAX_DOCX_PREVIEW_BYTES = 32 * 1024 * 1024
 const MAX_PDF_PREVIEW_BYTES = 64 * 1024 * 1024
+const MAX_RECURSIVE_WORKSPACE_FILES = 10_000
+const MAX_RECURSIVE_WORKSPACE_DIRECTORIES = 1_000
 
 function isMissingFileError(error: unknown): error is NodeJS.ErrnoException {
   return (
@@ -318,7 +320,46 @@ export async function listWorkspaceDirectory(input: WorkspaceExplorerListDirecto
     })
   }
 
-  return sortWorkspaceEntries(explorerEntries)
+  const sortedEntries = sortWorkspaceEntries(explorerEntries)
+  if (!input.recursive) {
+    return sortedEntries
+  }
+
+  const recursiveEntries: WorkspaceExplorerEntry[] = []
+  let fileCount = 0
+  let directoryCount = 0
+  const isAtLimit = () =>
+    fileCount >= MAX_RECURSIVE_WORKSPACE_FILES ||
+    directoryCount >= MAX_RECURSIVE_WORKSPACE_DIRECTORIES
+
+  async function collectEntries(entries: readonly WorkspaceExplorerEntry[]) {
+    for (const entry of entries) {
+      if (isAtLimit()) {
+        return
+      }
+
+      recursiveEntries.push(entry)
+      if (!entry.isDirectory) {
+        fileCount += 1
+        continue
+      }
+
+      directoryCount += 1
+      if (isAtLimit()) {
+        return
+      }
+
+      const childEntries = await listWorkspaceDirectory({
+        relativePath: entry.relativePath,
+        visibility,
+        workspaceRootPath,
+      })
+      await collectEntries(childEntries)
+    }
+  }
+
+  await collectEntries(sortedEntries)
+  return recursiveEntries
 }
 
 export async function listWorkspaceRefactorCandidates(

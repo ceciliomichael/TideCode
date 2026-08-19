@@ -6,6 +6,7 @@ import { useWorkspaceTerminalPanelSizing } from "./useWorkspaceTerminalPanelSizi
 import { useWorkspaceTerminalSessionState } from "./useWorkspaceTerminalSessionState";
 
 export function useWorkspaceTerminalPanelState({
+  autoCreateTabOnOpen = false,
   isOpen,
   onClose,
   onHeightCommit,
@@ -22,6 +23,7 @@ export function useWorkspaceTerminalPanelState({
     storedHeight,
   });
   const sessionState = useWorkspaceTerminalSessionState({
+    autoCreateTabOnOpen,
     isOpen,
     isResizing: sizingState.isResizing,
     onClose,
@@ -32,6 +34,7 @@ export function useWorkspaceTerminalPanelState({
 
   return {
     activeTerminalTab: sessionState.activeTerminalTab,
+    autoCreateTabOnOpen,
     activeTerminalTabKey: sessionState.activeTerminalTabKey,
     closeTerminalTab: sessionState.closeTerminalTab,
     clearTerminalTab: sessionState.clearTerminalTab,

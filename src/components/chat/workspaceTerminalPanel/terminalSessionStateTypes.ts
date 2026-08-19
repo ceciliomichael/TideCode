@@ -10,7 +10,7 @@ export interface TerminalWorkspaceState {
 export interface UseWorkspaceTerminalSessionStateArgs
   extends Pick<
     WorkspaceTerminalPanelProps,
-    "isOpen" | "onClose" | "resolvedTheme" | "workspaceKey" | "workspacePath"
+    "autoCreateTabOnOpen" | "isOpen" | "onClose" | "resolvedTheme" | "workspaceKey" | "workspacePath"
   > {
   isResizing: boolean;
 }

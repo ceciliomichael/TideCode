@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { CheckCircle2, Plus, Search, X } from 'lucide-react'
 import type { Message } from '../../types/chat'
+import { useIsMobileViewport } from '../../hooks/useIsMobileViewport'
 import { DropdownField, type DropdownOption } from '../ui/DropdownField'
 import { KANBAN_COLUMNS } from './kanbanDefaults'
 import { buildKanbanBoardDisplayData } from './kanbanHierarchy'
@@ -36,6 +37,7 @@ const PRIORITY_FILTERS: readonly DropdownOption[] = [
 ]
 
 export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
+  const isMobileViewport = useIsMobileViewport()
   const [composerState, setComposerState] = useState<TaskComposerState | null>(
     null,
   )
@@ -126,7 +128,7 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
-      <header className="shrink-0 border-b border-border bg-surface px-4 py-3 md:px-5">
+<header className="shrink-0 border-b border-border bg-surface px-4 py-3 md:px-5">
         <div className="space-y-3 xl:hidden">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
@@ -270,7 +272,7 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
         </div>
       </header>
 
-      {isLoading ? (
+      {isLoading && !isMobileViewport ? (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-4 md:grid-cols-4 md:p-5">
           {KANBAN_COLUMNS.map((column) => (
             <div
@@ -334,14 +336,14 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:hidden">
-            <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-surface px-3 py-2">
+<nav aria-label="Board columns" className="grid shrink-0 grid-cols-4 gap-1 border-b border-border bg-surface px-3 py-2">
               {KANBAN_COLUMNS.map((column) => (
                 <button
                   key={column.id}
                   type="button"
                   onClick={() => setMobileColumnId(column.id)}
                   className={[
-                    'inline-flex h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-xs font-semibold transition-colors',
+'inline-flex h-11 min-w-0 items-center justify-center gap-1 rounded-xl px-1.5 text-[11px] font-semibold transition-colors sm:gap-2 sm:px-3 sm:text-xs',
                     mobileColumnId === column.id
                       ? 'bg-action text-white'
                       : 'bg-surface text-muted-foreground',
@@ -354,35 +356,48 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
                 </button>
               ))}
             </nav>
-            <div className="min-h-0 flex-1 p-3 pb-20">
-              {KANBAN_COLUMNS.filter(
-                (column) => column.id === mobileColumnId,
-              ).map((column) => (
-                <KanbanColumn
-                  key={column.id}
-                  cards={boardDisplayData.orderedCardsByColumn[column.id]}
-                  cardMetaById={boardDisplayData.cardMetaById}
-                  column={column}
-                  count={columnCounts[column.id]}
-                  draggedCardId={draggedCardId}
-                  onAdd={(columnId) => openComposer(columnId)}
-                  onCardOpen={setSelectedCardId}
-                  onCardDragEnd={() => setDraggedCardId(null)}
-                  onCardDragStart={setDraggedCardId}
-                  onCardDropAt={(cardId, targetColumnId, targetIndex) => {
-                    void reorderCard({ cardId, targetColumnId, targetIndex })
-                  }}
-                  onCardMove={(cardId, targetColumnId) => {
-                    void moveCard({ cardId, targetColumnId })
-                  }}
-                />
-              ))}
+            <div className="flex min-h-0 flex-1 overflow-hidden p-3 pb-20">
+              {isLoading ? (
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-surface-muted">
+                  <div className="space-y-2 p-3">
+                    <div className="h-4 w-28 animate-pulse rounded bg-surface" />
+                    <div className="h-3 w-48 max-w-full animate-pulse rounded bg-surface" />
+                  </div>
+                  <div className="min-h-0 flex-1 space-y-2 overflow-hidden px-2 pb-2">
+                    <div className="h-28 animate-pulse rounded-xl bg-surface" />
+                    <div className="h-24 animate-pulse rounded-xl bg-surface" />
+                  </div>
+                </div>
+              ) : (
+                KANBAN_COLUMNS.filter(
+                  (column) => column.id === mobileColumnId,
+                ).map((column) => (
+                  <KanbanColumn
+                    key={column.id}
+                    cards={boardDisplayData.orderedCardsByColumn[column.id]}
+                    cardMetaById={boardDisplayData.cardMetaById}
+                    column={column}
+                    count={columnCounts[column.id]}
+                    draggedCardId={draggedCardId}
+                    onAdd={(columnId) => openComposer(columnId)}
+                    onCardOpen={setSelectedCardId}
+                    onCardDragEnd={() => setDraggedCardId(null)}
+                    onCardDragStart={setDraggedCardId}
+                    onCardDropAt={(cardId, targetColumnId, targetIndex) => {
+                      void reorderCard({ cardId, targetColumnId, targetIndex })
+                    }}
+                    onCardMove={(cardId, targetColumnId) => {
+                      void moveCard({ cardId, targetColumnId })
+                    }}
+                  />
+                ))
+              )}
             </div>
             <div className="absolute bottom-0 left-0 right-0 z-20 border-t border-border bg-surface p-3">
               <button
                 type="button"
                 onClick={() => openComposer(mobileColumnId)}
-                                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-action text-sm font-semibold text-white"
+className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-action text-sm font-semibold text-white"
               >
                 <Plus size={17} />
                 Add to{' '}

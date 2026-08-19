@@ -53,22 +53,26 @@ test('workspace directory listings can expose dependency folders in explorer mod
   }
 })
 
-test('workspace directory listings keep workspace-mode pruning for mention/search consumers', async () => {
+test('recursive workspace directory listings support mention/search consumers without exposing pruned paths', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
 
   try {
     const workspaceEntries = await listWorkspaceDirectory({
+      recursive: true,
       relativePath: '.',
       workspaceRootPath,
     })
     const workspaceEntryNames = workspaceEntries.map((entry) => entry.name)
+    const workspaceRelativePaths = workspaceEntries.map((entry) => entry.relativePath.replace(/\\/g, '/'))
 
     assert.ok(workspaceEntryNames.includes('src'))
     assert.ok(workspaceEntryNames.includes('.env'))
+    assert.ok(workspaceRelativePaths.includes('src/visible.ts'))
     assert.ok(!workspaceEntryNames.includes('node_modules'))
     assert.ok(!workspaceEntryNames.includes('node_modules.echodeleting_1234567890'))
     assert.ok(!workspaceEntryNames.includes('.next'))
     assert.ok(!workspaceEntryNames.includes('.git'))
+    assert.ok(!workspaceRelativePaths.includes('ignored/hidden.ts'))
     assert.equal(workspaceEntries.some((entry) => entry.isGitignored), false)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

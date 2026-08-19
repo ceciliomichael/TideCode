@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { REMOTE_EVENT_CHANNELS } from "../../../remote/protocol";
+import { isRemoteMobileViewportRuntime } from "../../../hooks/useIsMobileViewport";
 import type { TerminalTabState } from "./workspaceTerminalPanelTypes";
 import {
   createTerminalInstance,
@@ -27,6 +29,7 @@ import {
 import "@xterm/xterm/css/xterm.css";
 
 export function useWorkspaceTerminalSessionState({
+autoCreateTabOnOpen = false,
   isOpen,
   isResizing,
   onClose,
@@ -247,25 +250,15 @@ export function useWorkspaceTerminalSessionState({
     }
   }, [ensureTabInstance, syncTabSize, updateTabVisibility, workspaceKey]);
 
-  const closeTerminalTab = useCallback(
-    async (tabKey: string) => {
+  const removeTerminalTabFromUi = useCallback(
+    (tabKey: string) => {
       const currentTabs = terminalTabsRef.current;
       const currentTabIndex = currentTabs.findIndex((tab) => tab.key === tabKey);
-      if (currentTabIndex === -1) {
-        return;
-      }
+      if (currentTabIndex === -1) return;
 
       const currentTab = currentTabs[currentTabIndex];
       if (currentTab.sessionId !== null) {
         sessionIdToTabKeyRef.current.delete(currentTab.sessionId);
-        void window.tidecodeTerminal
-          .closeSession({
-            sessionId: currentTab.sessionId,
-            workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(currentTab.workspaceRootPath),
-          })
-          .catch((error) => {
-            console.error("Failed to close terminal session", error);
-          });
       }
 
       disposeTabInstance(tabKey);
@@ -273,7 +266,6 @@ export function useWorkspaceTerminalSessionState({
 
       const nextTabs = currentTabs.filter((tab) => tab.key !== tabKey);
       const wasActive = activeTabKeyRef.current === tabKey;
-
       setTerminalTabs(nextTabs);
 
       if (nextTabs.length === 0) {
@@ -288,16 +280,50 @@ export function useWorkspaceTerminalSessionState({
       const nextActiveTab = wasActive
         ? (nextTabs[currentTabIndex] ?? nextTabs[currentTabIndex - 1] ?? nextTabs[0] ?? null)
         : (nextTabs.find((tab) => tab.key === activeTabKeyRef.current) ?? nextTabs[0] ?? null);
-
-      if (!nextActiveTab) {
-        return;
-      }
+      if (!nextActiveTab) return;
 
       setActiveTerminalTabKey(nextActiveTab.key);
       updateTabVisibility(nextActiveTab.key);
     },
     [disposeTabInstance, onClose, updateTabVisibility],
   );
+
+  const closeTerminalTab = useCallback(
+    async (tabKey: string) => {
+      const currentTab = terminalTabsRef.current.find((tab) => tab.key === tabKey);
+      if (!currentTab) return;
+
+      if (currentTab.sessionId !== null) {
+        const payload = {
+          sessionId: currentTab.sessionId,
+          tabKey,
+          workspaceRootPath: resolveTerminalSessionWorkspaceRootPath(currentTab.workspaceRootPath),
+        };
+        sessionIdToTabKeyRef.current.delete(currentTab.sessionId);
+        void window.tidecodeTerminal.closeSession(payload).catch((error) => {
+          console.error("Failed to close terminal session", error);
+        });
+        window.tidecodeRemoteHost?.emitEvent({
+          channel: REMOTE_EVENT_CHANNELS.terminalTabClosed,
+          payload,
+        });
+      }
+
+      removeTerminalTabFromUi(tabKey);
+    },
+    [removeTerminalTabFromUi],
+  );
+
+  useEffect(() => {
+    return window.tidecodeTerminal.onTabClosed((event) => {
+      const explicitTabKey = event.tabKey && terminalTabsRef.current.some((tab) => tab.key === event.tabKey)
+        ? event.tabKey
+        : null;
+      const tabKey = explicitTabKey ?? sessionIdToTabKeyRef.current.get(event.sessionId) ?? null;
+      if (!tabKey) return;
+      removeTerminalTabFromUi(tabKey);
+    });
+  }, [removeTerminalTabFromUi]);
 
   const clearTerminalTab = useCallback((tabKey: string) => {
     const instance = tabInstancesRef.current.get(tabKey);
@@ -457,7 +483,9 @@ export function useWorkspaceTerminalSessionState({
     }
 
     if (terminalTabsRef.current.length === 0) {
-      void openTerminalTab();
+      if (autoCreateTabOnOpen && !isRemoteMobileViewportRuntime()) {
+        void openTerminalTab();
+      }
       return;
     }
 
@@ -472,7 +500,7 @@ export function useWorkspaceTerminalSessionState({
 
     setActiveTerminalTabKey(nextActiveTab.key);
     updateTabVisibility(nextActiveTab.key);
-  }, [isOpen, openTerminalTab, updateTabVisibility]);
+  }, [autoCreateTabOnOpen, isOpen, openTerminalTab, updateTabVisibility]);
 
   useTerminalWorkspacePersistence({
     activeSessionIdRef,
