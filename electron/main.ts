@@ -165,9 +165,6 @@ async function createWindow(initialLaunchRequest: TideCodeLaunchRequest | null =
     })
   })
 
-  if (!currentWindow.isDestroyed() && currentWindow.webContents.isLoading()) {
-    await new Promise<void>((resolve) => currentWindow.webContents.once('did-finish-load', () => resolve()))
-  }
   await remoteWorkspaceHost.start().catch((error) => {
     console.error('Failed to start TideCode Remote Workspace host.', error)
   })

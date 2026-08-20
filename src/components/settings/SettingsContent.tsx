@@ -42,7 +42,7 @@ interface GeneralSettingsViewModel {
 }
 
 interface SettingsContentProps {
-  activeItemId: SettingsItemId
+  activeItemId: SettingsItemId | null
   appSettings: AppSettings
   onBackToSettings: () => void
   contextSettings: {

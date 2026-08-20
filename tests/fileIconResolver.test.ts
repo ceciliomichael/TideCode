@@ -21,6 +21,17 @@ test('resolveFileIconConfig maps environment files to the dotenv icon', () => {
   }
 })
 
+test('resolveFileIconConfig maps special filename variants to their base icon family', () => {
+  const variants = [
+    ['Dockerfile.dev', 'Dockerfile'],
+    ['Makefile.local', 'Makefile'],
+  ] as const
+
+  for (const [fileName, expectedLabel] of variants) {
+    assert.equal(resolveFileIconConfig({ fileName }).label, expectedLabel)
+  }
+})
+
 test('resolveFileIconConfig updates as a typed filename reaches a known extension', () => {
   const incompleteIconConfig = resolveFileIconConfig({ fileName: 'daily-update.' })
   const markdownIconConfig = resolveFileIconConfig({ fileName: 'daily-update.md' })

@@ -11,6 +11,7 @@ export {
 } from './workspaceMonacoTheme'
 
 const SPECIAL_FILE_LANGUAGES: Readonly<Record<string, string>> = {
+  '.env': 'ini',
   dockerfile: 'dockerfile',
   makefile: 'makefile',
 }
@@ -86,7 +87,9 @@ function getNormalizedFileName(filePath: string) {
 
 export function resolveWorkspaceMonacoLanguage(filePath: string) {
   const fileName = getNormalizedFileName(filePath)
-  const specialLanguage = SPECIAL_FILE_LANGUAGES[fileName]
+  const specialLanguage = Object.entries(SPECIAL_FILE_LANGUAGES).find(
+    ([specialFileName]) => fileName === specialFileName || fileName.startsWith(specialFileName + '.'),
+  )?.[1]
   if (specialLanguage) {
     return specialLanguage
   }

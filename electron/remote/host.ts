@@ -27,6 +27,7 @@ import {
   readRemoteConfiguration,
   writeRemoteConfiguration,
 } from './configStore'
+import { listenWithPortFallback } from './portBinding'
 import { getLoginPageHtml, readAuthJsonBody, writeJson } from './webAuth'
 import { RemoteWebSessionStore } from './sessionStore'
 import { getRemoteStateRoot } from './statePath'
@@ -198,7 +199,21 @@ export class RemoteWorkspaceHost {
     if (this.server) return this.getStatus()
     this.configuration = await readRemoteConfiguration()
     this.credentialsConfigured = await hasRemoteCredential()
-    return this.startWithConfiguration(this.configuration, 'starting')
+    const requestedConfiguration = { ...this.configuration }
+    await this.startWithConfiguration(requestedConfiguration, 'starting')
+
+    if (
+      this.options.portOverride === undefined
+      && this.configuration.port !== requestedConfiguration.port
+    ) {
+      try {
+        this.configuration = await writeRemoteConfiguration(this.configuration)
+      } catch (error) {
+        console.error('Failed to persist the TideCode Remote fallback port.', error)
+      }
+    }
+
+    return this.getStatus()
   }
 
   private getEffectivePort(configuration: RemoteHostConfiguration) {
@@ -230,13 +245,13 @@ export class RemoteWorkspaceHost {
     this.webSocketServer = webSocketServer
     server.on('upgrade', (request, socket, head) => { void this.handleUpgrade(request, socket, head) })
 
+    let boundPort = preferredPort
     try {
-      await new Promise<void>((resolve, reject) => {
-        const onError = (error: Error) => { server.off('listening', onListening); reject(error) }
-        const onListening = () => { server.off('error', onError); resolve() }
-        server.once('error', onError)
-        server.once('listening', onListening)
-        server.listen(preferredPort, '0.0.0.0')
+      boundPort = await listenWithPortFallback(server, {
+        allowIncrement: this.options.portOverride === undefined,
+        host: '0.0.0.0',
+        maxPort: MAX_REMOTE_PORT,
+        preferredPort,
       })
     } catch (error) {
       this.server = null
@@ -246,13 +261,20 @@ export class RemoteWorkspaceHost {
     }
 
     const address = server.address()
-    const port = typeof address === 'object' && address ? address.port : preferredPort
+    const port = typeof address === 'object' && address ? address.port : boundPort
+    if (port !== preferredPort && this.options.portOverride === undefined) {
+      console.warn(`TideCode Remote port ${preferredPort} is already in use. Using ${port} instead.`)
+    }
+    const effectiveConfiguration = this.options.portOverride === undefined && port !== configuration.port
+      ? { ...configuration, port }
+      : configuration
+    this.configuration = { ...effectiveConfiguration }
     const addresses = getRemoteHostAddresses(port)
     const urls = addresses.map((entry) => entry.url)
     this.setStatus({
       addresses,
       boundPort: port,
-      configuredPort: configuration.port,
+      configuredPort: effectiveConfiguration.port,
       enabled: true,
       error: null,
       lifecycleState: 'running',
@@ -314,9 +336,9 @@ export class RemoteWorkspaceHost {
       this.setStatus({ lifecycleState: 'restarting', error: null })
       await this.stopServer('TideCode remote port changed')
       try {
-        const status = await this.startWithConfiguration(next, 'restarting')
-        await writeRemoteConfiguration(next)
-        return status
+        await this.startWithConfiguration(next, 'restarting')
+        this.configuration = await writeRemoteConfiguration(this.configuration)
+        return this.getStatus()
       } catch (error) {
         await this.stopServer('Restoring previous TideCode Remote port').catch((stopError) => {
           console.error('Failed to stop TideCode Remote before restoring the previous port.', stopError)

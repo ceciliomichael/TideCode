@@ -106,11 +106,12 @@ export async function createApplicationWindow(input: {
     }
   })
 
-  if (input.devServerUrl) {
-    win.loadURL(input.devServerUrl)
-  } else {
-    // win.loadFile('dist/index.html')
-    win.loadFile(path.join(input.rendererDist, 'index.html'))
-  }
+  const rendererLoad = input.devServerUrl
+    ? win.loadURL(input.devServerUrl)
+    : win.loadFile(path.join(input.rendererDist, 'index.html'))
+  void rendererLoad.catch((error) => {
+    console.error('Failed to load the TideCode renderer.', error)
+  })
+
   return win
 }

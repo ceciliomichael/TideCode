@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { loadGitBranchState, prefetchGitBranchStates } from '../lib/gitBranchStateCache'
 import { prefetchGitStatuses } from '../lib/gitStatusCache'
 import { loadInitialChatHistory } from './chatHistoryWorkflows'
@@ -23,14 +23,14 @@ export function useInitializeChatHistory(input: UseInitializeChatHistoryInput) {
     setError,
     setIsLoading,
   } = input
-  const didStartInitializationRef = useRef(false)
-
   useEffect(() => {
-    if (!enabled || didStartInitializationRef.current) {
+    if (!enabled) {
       return
     }
 
-    didStartInitializationRef.current = true
+    // React StrictMode intentionally runs effects through a setup/cleanup/setup cycle in
+    // development. Do not guard this effect with a persistent "did start" ref: the first
+    // async request is cancelled by cleanup, so the second setup must be allowed to start.
     let isMounted = true
 
     async function initializeConversations() {

@@ -59,8 +59,9 @@ export function SettingsInterface({
   pendingLaunchRequest,
 }: SettingsInterfaceProps) {
   const isMobileViewport = useIsMobileViewport()
+  const defaultItemId = initialItemId ?? (isMobileViewport ? null : DEFAULT_SETTINGS_ITEM_ID)
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => !isMobileViewport || initialItemId === null)
-  const [activeItemId, setActiveItemId] = useState<SettingsItemId>(initialItemId ?? DEFAULT_SETTINGS_ITEM_ID)
+  const [activeItemId, setActiveItemId] = useState<SettingsItemId | null>(defaultItemId)
   const [panelLaunchRequest, setPanelLaunchRequest] = useState<TideCodeSettingsLaunchRequest | null>(null)
   const wasActiveScreenRef = useRef(false)
   const handleUpdateSettings = useCallback((input: Partial<AppSettings>) => {
@@ -74,7 +75,7 @@ export function SettingsInterface({
     wasActiveScreenRef.current = isActiveScreen
     if (!becameActive) return
 
-    setActiveItemId(initialItemId ?? DEFAULT_SETTINGS_ITEM_ID)
+    setActiveItemId(initialItemId ?? (isMobileViewport ? null : DEFAULT_SETTINGS_ITEM_ID))
     setIsSidebarOpen(!isMobileViewport || initialItemId === null)
   }, [initialItemId, isActiveScreen, isMobileViewport])
 

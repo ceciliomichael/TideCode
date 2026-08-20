@@ -47,9 +47,12 @@ export function RemoteSettingsPanel() {
     let disposed = false
     void Promise.all([bridge.getConfiguration(), bridge.getStatus()]).then(([nextConfiguration, nextStatus]) => {
       if (disposed) return
-      setConfiguration(nextConfiguration)
+      const resolvedConfiguration = nextStatus.lifecycleState === 'running' && !nextStatus.portOverrideActive
+        ? { ...nextConfiguration, port: nextStatus.configuredPort }
+        : nextConfiguration
+      setConfiguration(resolvedConfiguration)
       setStatus(nextStatus)
-      setPortValue(String(nextConfiguration.port))
+      setPortValue(String(resolvedConfiguration.port))
       setAuthEnabled(nextConfiguration.webAuthEnabled)
       setUsername(nextConfiguration.webUsername)
     }).catch((cause) => {
@@ -58,6 +61,15 @@ export function RemoteSettingsPanel() {
     const unsubscribe = bridge.onStatus((nextStatus) => setStatus(nextStatus))
     return () => { disposed = true; unsubscribe() }
   }, [bridge])
+
+  const statusConfiguredPort = status?.configuredPort
+  const statusLifecycleState = status?.lifecycleState
+  const statusPortOverrideActive = status?.portOverrideActive
+  useEffect(() => {
+    if (statusConfiguredPort === undefined || statusLifecycleState !== 'running' || statusPortOverrideActive) return
+    setConfiguration((current) => current ? { ...current, port: statusConfiguredPort } : current)
+    setPortValue(String(statusConfiguredPort))
+  }, [statusConfiguredPort, statusLifecycleState, statusPortOverrideActive])
 
   const statusLabel = useMemo(() => {
     if (!status) return 'Loading'

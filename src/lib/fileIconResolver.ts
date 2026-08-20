@@ -7,6 +7,12 @@ interface ResolveFileIconOptions {
   mimeType?: string
 }
 
+const SPECIAL_FILE_EXTENSION_FAMILIES: Readonly<Record<string, string>> = {
+  '.env': 'env',
+  dockerfile: 'dockerfile',
+  makefile: 'makefile',
+}
+
 function getExtensionFromFileName(fileName: string) {
   const trimmedName = fileName.trim()
   if (trimmedName.length === 0) {
@@ -21,12 +27,11 @@ function getExtensionFromFileName(fileName: string) {
     return ''
   }
 
-  if (basename === 'dockerfile' || basename === 'makefile') {
-    return basename
-  }
-
-  if (basename === '.env' || basename.startsWith('.env.')) {
-    return 'env'
+  const specialExtension = Object.entries(SPECIAL_FILE_EXTENSION_FAMILIES).find(
+    ([specialFileName]) => basename === specialFileName || basename.startsWith(specialFileName + '.'),
+  )?.[1]
+  if (specialExtension) {
+    return specialExtension
   }
 
   if (basename.startsWith('.') && basename.indexOf('.', 1) < 0) {

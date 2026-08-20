@@ -81,7 +81,7 @@ export function SkillsSettingsPanel({
             <button
               type="button"
               onClick={() => setIsDialogOpen(true)}
-              disabled={isLoading}
+              disabled={isLoading && !state}
               className={`${ADD_SKILL_BUTTON_CLASS_NAME} md:shrink-0`}
             >
               <Plus size={15} /> Add Skill
@@ -102,8 +102,21 @@ export function SkillsSettingsPanel({
             skills={state.skills}
           />
         ) : (
-          <div className="rounded-xl border border-border bg-surface px-4 py-10 text-sm text-muted-foreground">
-            Loading skills…
+          <div className="flex min-h-[276px] flex-col gap-3" role="status" aria-label="Loading skills">
+            {[0, 1, 2].map((index) => (
+              <div key={index} className="h-[84px] rounded-xl border border-border bg-surface p-4">
+                <div className="flex items-start gap-3">
+                  <div className="h-9 w-9 shrink-0 rounded-lg bg-surface-muted" />
+                  <div className="min-w-0 flex-1 space-y-2 pt-0.5">
+                    <div className="h-4 w-32 rounded-sm bg-surface-muted" />
+                    <div className="h-3 w-full max-w-md rounded-sm bg-surface-muted" />
+                    <div className="h-3 w-2/3 max-w-xs rounded-sm bg-surface-muted" />
+                  </div>
+                  <div className="h-5 w-9 shrink-0 rounded-full bg-surface-muted" />
+                </div>
+              </div>
+            ))}
+            <span className="sr-only">Loading skills</span>
           </div>
         )}
       </div>

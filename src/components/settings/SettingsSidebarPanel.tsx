@@ -2,7 +2,7 @@ import { ArrowLeft, Settings2 } from 'lucide-react'
 import { SETTINGS_ITEMS, type SettingsItemId } from './settingsItems'
 
 interface SettingsSidebarPanelProps {
-  activeItemId: SettingsItemId
+  activeItemId: SettingsItemId | null
   onBackToApp: () => void
   onSelectItem: (itemId: SettingsItemId) => void
 }
