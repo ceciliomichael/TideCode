@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MODEL_CATALOG, PROVIDER_SECTIONS } from '../components/settings/models/modelCatalog'
 import { useSettingsModelCatalog } from '../components/settings/models/settingsModelCatalogStore'
 import { toCustomModelCatalogItems } from '../components/settings/models/customModelUtils'
@@ -6,7 +6,6 @@ import { toProviderModelCatalogItems } from '../components/settings/models/provi
 import { dedupeModelCatalogItems } from '../components/settings/models/modelCatalogDedupe'
 import { filterEnabledModelCatalogItems, readStoredModelToggleState } from '../components/settings/models/modelStorage'
 import { isProviderConfigured } from '../components/settings/models/modelViewUtils'
-import { createConversationModelPreference } from '../lib/conversationModelPreference'
 import { resolveModelReasoningProfile } from '../lib/modelReasoningProfiles'
 import { resolveReasoningEffortTransition } from '../lib/reasoningEffortTransition'
 import type {
@@ -219,6 +218,7 @@ export function useChatRuntimeConfig({
   updateSettings,
 }: UseChatRuntimeConfigInput) {
   const [sharedConversationRuntime, setSharedConversationRuntime] = useState<SharedConversationRuntimeSnapshot | null>(null)
+  const sharedRuntimeMutationRef = useRef(0)
   const { customModels, customModelsLoading, providerModels, providerModelsLoading } = useSettingsModelCatalog(providersState)
   const allModelCatalog = useMemo(
     () => dedupeModelCatalogItems([
@@ -242,19 +242,22 @@ export function useChatRuntimeConfig({
   )
   useEffect(() => {
     setSharedConversationRuntime(null)
+    const requestVersion = sharedRuntimeMutationRef.current + 1
+    sharedRuntimeMutationRef.current = requestVersion
     if (!activeConversationId) return
 
     let cancelled = false
-    let receivedLiveUpdate = false
     const unsubscribe = window.tidecodeRuns.onEvent((event) => {
       if (event.type !== 'conversation_runtime_updated' || event.conversationId !== activeConversationId) return
-      receivedLiveUpdate = true
+      sharedRuntimeMutationRef.current += 1
       if (!cancelled) setSharedConversationRuntime(event.runtime)
     })
 
     void window.tidecodeRuns.getConversationRuntime(activeConversationId)
       .then((runtime) => {
-        if (!cancelled && !receivedLiveUpdate) setSharedConversationRuntime(runtime)
+        if (!cancelled && sharedRuntimeMutationRef.current === requestVersion) {
+          setSharedConversationRuntime(runtime)
+        }
       })
       .catch(() => undefined)
 
@@ -553,6 +556,7 @@ export function useChatRuntimeConfig({
           reasoningEffort: nextReasoningEffort,
           runtimeModelId: selectedOption?.runtimeModelId ?? chatModelId,
         }
+        sharedRuntimeMutationRef.current += 1
         setSharedConversationRuntime({
           chatMode: activeChatMode,
           conversationId: activeConversationId,
@@ -599,29 +603,32 @@ export function useChatRuntimeConfig({
         return
       }
 
-      const update: Partial<AppSettings> = { chatReasoningEffort }
       if (activeConversationId) {
-        const preference = createConversationModelPreference({
-          activeChatMode,
-          activeSelection: {
-            label: effectiveModeSelection.modelLabel,
-            modelId: effectiveModeSelection.modelId,
-            providerId: effectiveModeSelection.providerId,
-          },
-          previousPreference: settings.conversationModelPreferences?.[activeConversationId],
+        const sharedModel = {
+          label: selectedModel?.label ?? (effectiveModeSelection.modelLabel.trim() || effectiveModeSelection.modelId),
+          modelId: effectiveModeSelection.modelId,
+          providerId: effectiveModeSelection.providerId,
           reasoningEffort: chatReasoningEffort,
-          selectedModelLabel: selectedModel?.label,
-        })
-
-        if (preference) {
-          update.conversationModelPreferences = {
-            ...settings.conversationModelPreferences,
-            [activeConversationId]: preference,
-          }
+          runtimeModelId: selectedModel?.runtimeModelId ?? effectiveModeSelection.modelId,
         }
+        sharedRuntimeMutationRef.current += 1
+        setSharedConversationRuntime({
+          chatMode: activeChatMode,
+          conversationId: activeConversationId,
+          model: sharedModel,
+          updatedAt: Date.now(),
+        })
+        void window.tidecodeRuns.updateConversationRuntime({
+          chatMode: activeChatMode,
+          conversationId: activeConversationId,
+          model: sharedModel,
+        }).catch((error) => {
+          console.error('Failed to sync conversation reasoning effort', error)
+        })
+        return
       }
 
-      void updateSettings(update)
+      void updateSettings({ chatReasoningEffort })
     },
     [
       activeChatMode,
@@ -631,7 +638,7 @@ export function useChatRuntimeConfig({
       effectiveModeSelection.providerId,
       effectiveReasoningEffort,
       selectedModel?.label,
-      settings.conversationModelPreferences,
+      selectedModel?.runtimeModelId,
       updateSettings,
     ],
   )

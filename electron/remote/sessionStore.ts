@@ -98,12 +98,18 @@ export class RemoteWebSessionStore {
 
   create(request: IncomingMessage, response: ServerResponse, rememberMe = true) {
     const sessionId = randomUUID()
+    const expiresAt = Date.now() + REMOTE_SESSION_TTL_MS
     this.sessions.set(hashSessionId(sessionId), {
-      expiresAt: Date.now() + REMOTE_SESSION_TTL_MS,
+      expiresAt,
       originHost: getOriginHost(request),
     })
-    const maxAge = rememberMe ? '; Max-Age=' + Math.floor(REMOTE_SESSION_TTL_MS / 1000) : ''
-    response.setHeader('Set-Cookie', REMOTE_SESSION_COOKIE_NAME + '=' + sessionId + '; HttpOnly; SameSite=Strict; Path=/' + maxAge)
+    const persistenceAttributes = rememberMe
+      ? '; Max-Age=' + Math.floor(REMOTE_SESSION_TTL_MS / 1000) + '; Expires=' + new Date(expiresAt).toUTCString()
+      : ''
+    response.setHeader(
+      'Set-Cookie',
+      REMOTE_SESSION_COOKIE_NAME + '=' + sessionId + '; HttpOnly; SameSite=Lax; Path=/' + persistenceAttributes,
+    )
     if (rememberMe) this.schedulePersist()
     return sessionId
   }
@@ -116,7 +122,12 @@ export class RemoteWebSessionStore {
   delete(request: IncomingMessage, response?: ServerResponse) {
     const sessionId = getRemoteSessionId(request)
     if (sessionId) this.sessions.delete(hashSessionId(sessionId))
-    if (response) response.setHeader('Set-Cookie', REMOTE_SESSION_COOKIE_NAME + '=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
+    if (response) {
+      response.setHeader(
+        'Set-Cookie',
+        REMOTE_SESSION_COOKIE_NAME + '=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+      )
+    }
     this.schedulePersist()
   }
 

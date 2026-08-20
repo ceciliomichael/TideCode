@@ -32,7 +32,7 @@ import {
 import type { ChatStreamEventTarget } from '../chat/shared/runtimeStreamEvents'
 import { CliTurnMessageCollector } from '../cli/cliTurnMessageCollector'
 import { appendStoredMessages, ensureStoredFolderFromPath, getStoredConversation, replaceStoredMessages, updateStoredConversationChatMode } from '../history/store'
-import { getStoredSettings, updateStoredSettings } from '../settings/store'
+import { getStoredSettings, updateStoredConversationModelPreference } from '../settings/store'
 import type { CliSessionState } from '../cli/types'
 import { RUN_SERVICE_PROTOCOL_VERSION, isRunServiceRequest, type RunServiceResponse } from './protocol'
 import { ensureRunServiceToken, getRunServiceEndpoint, removeStaleRunServiceSocket } from './paths'
@@ -326,19 +326,14 @@ export class TideCodeRunServiceServer {
     if (conversation && model && (input.model || input.chatMode)) {
       const settings = await getStoredSettings()
       const existingPreference = settings.conversationModelPreferences[conversationId]
-      await updateStoredSettings({
-        conversationModelPreferences: {
-          ...settings.conversationModelPreferences,
-          [conversationId]: {
-            chatMode,
-            label: model.label,
-            modelId: model.modelId,
-            providerId: model.providerId,
-            ...(model.reasoningEffort ?? existingPreference?.reasoningEffort
-              ? { reasoningEffort: model.reasoningEffort ?? existingPreference?.reasoningEffort }
-              : {}),
-          },
-        },
+      await updateStoredConversationModelPreference(conversationId, {
+        chatMode,
+        label: model.label,
+        modelId: model.modelId,
+        providerId: model.providerId,
+        ...(model.reasoningEffort ?? existingPreference?.reasoningEffort
+          ? { reasoningEffort: model.reasoningEffort ?? existingPreference?.reasoningEffort }
+          : {}),
       })
     }
 

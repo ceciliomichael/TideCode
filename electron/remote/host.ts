@@ -647,11 +647,6 @@ export class RemoteWorkspaceHost {
       this.broadcastEvent({ channel: REMOTE_EVENT_CHANNELS.historyChanged, payload })
       return
     }
-    if (namespace === 'tidecodeSettings' && method === 'updateSettings' && result && typeof result === 'object') {
-      window.webContents.send('settings:remoteChanged', result)
-      this.broadcastEvent({ channel: REMOTE_EVENT_CHANNELS.settingsChanged, payload: result })
-      return
-    }
     if (namespace === 'tidecodeTerminal' && method === 'closeSession') {
       const input = args[0]
       if (!input || typeof input !== 'object') return

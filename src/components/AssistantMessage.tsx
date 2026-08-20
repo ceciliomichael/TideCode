@@ -205,7 +205,7 @@ export function AssistantMessage({
       {isCopyButtonVisible ? (
         <Tooltip
           content={isCopied ? "Copied" : "Copy"}
-          triggerClassName="absolute bottom-1.5 right-1.5 inline-flex h-5 w-5 pointer-events-none opacity-0 transition-[color,opacity,transform] duration-150 group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto"
+          triggerClassName="absolute bottom-1.5 right-1.5 inline-flex h-5 w-5 pointer-events-auto opacity-100 transition-[color,opacity,transform] duration-150 md:pointer-events-none md:opacity-0 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:focus-within:opacity-100 md:focus-within:pointer-events-auto"
         >
           <button
             type="button"

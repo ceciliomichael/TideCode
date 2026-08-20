@@ -157,6 +157,10 @@ const sockets: WebSocket[] = []
     assert.match(newPortPage.body, /TideCode Remote/)
     assert.doesNotMatch(newPortPage.body, new RegExp(marker))
 
+    const rememberedPageAfterRestart = await requestText(secondPort, '/', { cookie })
+    assert.equal(rememberedPageAfterRestart.statusCode, 200)
+    assert.match(rememberedPageAfterRestart.body, new RegExp(marker))
+
     await assert.rejects(() => requestText(firstPort, '/'), /ECONNREFUSED|socket hang up/)
   } finally {
     for (const socket of sockets) {
