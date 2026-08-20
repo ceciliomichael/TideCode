@@ -4,14 +4,20 @@ import type { Monaco } from '@monaco-editor/react'
 import {
   createWorkspaceMonacoModelPath,
   createWorkspaceMonacoOptions,
+  createWorkspaceMonacoTypeScriptFilePath,
   defineWorkspaceMonacoThemes,
   getWorkspaceMonacoTheme,
+  getWorkspaceRelativePathFromMonacoUri,
   resolveWorkspaceMonacoLanguage,
   WORKSPACE_MONACO_DARK_THEME,
   WORKSPACE_MONACO_DARK_THEME_DATA,
   WORKSPACE_MONACO_LIGHT_THEME,
   WORKSPACE_MONACO_LIGHT_THEME_DATA,
 } from '../../../src/components/workspaceExplorer/workspaceFileEditor/workspaceMonacoConfig'
+import {
+  createWorkspaceMonacoTypeScriptCompilerOptions,
+  createWorkspaceMonacoVirtualDirectoryPath,
+} from '../../../src/components/workspaceExplorer/workspaceFileEditor/workspaceMonacoTypeScriptConfig'
 
 test('workspace Monaco uses VS Code wrapping indentation when word wrap is enabled', () => {
   const options = createWorkspaceMonacoOptions(true)
@@ -27,6 +33,8 @@ test('workspace Monaco uses VS Code wrapping indentation when word wrap is enabl
   assert.equal(options.folding, true)
   assert.equal(options.showFoldingControls, 'mouseover')
   assert.equal(options.renderLineHighlight, 'none')
+  assert.equal(options.links, false)
+assert.deepEqual(options.hover, { enabled: false })
 })
 
 test('workspace Monaco disables wrapping without changing wrapped indentation semantics', () => {
@@ -47,9 +55,50 @@ test('workspace Monaco resolves common and special file languages', () => {
 test('workspace Monaco creates stable encoded file model paths', () => {
   assert.equal(
     createWorkspaceMonacoModelPath('src\\feature folder\\index.ts'),
-    'file:///workspace/src/feature%20folder/index.ts',
+'file:///workspace/src/feature%20folder/index.ts',
   )
   assert.equal(createWorkspaceMonacoModelPath(''), 'file:///workspace/untitled')
+  assert.equal(
+    createWorkspaceMonacoTypeScriptFilePath('node_modules/@types/react/index.d.ts'),
+        'file:///workspace/node_modules/@types/react/index.d.ts',
+  )
+  assert.equal(
+    createWorkspaceMonacoTypeScriptFilePath('src/feature folder/index.ts'),
+        'file:///workspace/src/feature folder/index.ts',
+  )
+  assert.equal(
+    getWorkspaceRelativePathFromMonacoUri('file:///workspace/src/feature%20folder/index.ts'),
+    'src/feature folder/index.ts',
+  )
+  assert.equal(
+    getWorkspaceRelativePathFromMonacoUri('file:///workspace/src/legacy.ts'),
+    'src/legacy.ts',
+  )
+})
+
+test('workspace Monaco converts project compiler options for the Monaco TypeScript worker', () => {
+  const options = createWorkspaceMonacoTypeScriptCompilerOptions({
+    compilerOptions: {
+      baseUrl: '.',
+      jsx: 'react-jsx',
+      module: 'ESNext',
+      moduleResolution: 'Bundler',
+      paths: { '@/*': ['src/*'] },
+      strict: true,
+      target: 'ES2022',
+    },
+  })
+
+assert.equal(options.baseUrl, 'file:///workspace')
+  assert.equal(options.jsx, 4)
+  assert.equal(options.module, 99)
+  assert.equal(options.moduleResolution, 100)
+  assert.equal(options.strict, true)
+  assert.equal(options.target, 9)
+  assert.equal(options.noEmit, true)
+  assert.equal(options.allowNonTsExtensions, true)
+  assert.deepEqual(options.paths, { '@/*': ['src/*'] })
+assert.equal(createWorkspaceMonacoVirtualDirectoryPath('src/components'), 'file:///workspace/src/components')
 })
 
 test('workspace Monaco maps TideCode appearance to registered editor themes', () => {

@@ -1,5 +1,6 @@
-import Editor from '@monaco-editor/react'
-import { useRef, type ComponentProps } from 'react'
+import Editor, { type Monaco } from '@monaco-editor/react'
+import { useCallback, useRef, useState, type ComponentProps } from 'react'
+import type { editor } from 'monaco-editor'
 import { WorkspaceMonacoLoadingView } from './WorkspaceMonacoLoadingView'
 import {
   WorkspaceMonacoSearchPanel,
@@ -32,6 +33,13 @@ export function WorkspaceMonacoEditorView({
   value,
 }: WorkspaceMonacoEditorViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const [mountedEditor, setMountedEditor] = useState<editor.IStandaloneCodeEditor | null>(null)
+  const [mountedMonaco, setMountedMonaco] = useState<Monaco | null>(null)
+  const handleMount = useCallback<NonNullable<ComponentProps<typeof Editor>['onMount']>>((editorInstance, monacoInstance) => {
+    setMountedEditor(editorInstance)
+    setMountedMonaco(monacoInstance)
+    onMount(editorInstance, monacoInstance)
+  }, [onMount])
 
   return (
     <div ref={containerRef} data-workspace-code-editor className="workspace-monaco-editor relative h-full min-h-0 w-full min-w-0 bg-surface">
@@ -43,7 +51,7 @@ export function WorkspaceMonacoEditorView({
         language={language}
         loading={<WorkspaceMonacoLoadingView />}
         onChange={handleChange}
-        onMount={onMount}
+        onMount={handleMount}
         options={options}
         path={modelPath}
         saveViewState
@@ -52,7 +60,11 @@ export function WorkspaceMonacoEditorView({
         width="100%"
       />
       <WorkspaceMonacoSearchPanel {...searchPanel} />
-      <WorkspaceMonacoTooltipBridge containerRef={containerRef} />
+      <WorkspaceMonacoTooltipBridge
+        containerRef={containerRef}
+        editorInstance={mountedEditor}
+        monacoInstance={mountedMonaco}
+      />
     </div>
   )
 }

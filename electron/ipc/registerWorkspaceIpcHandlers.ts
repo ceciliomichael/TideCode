@@ -7,6 +7,7 @@ import type {
   WorkspaceExplorerListDirectoryInput,
   WorkspaceExplorerPasteClipboardImageInput,
   WorkspaceExplorerReadFileInput,
+  WorkspaceTypeScriptProjectInput,
   WorkspaceExplorerRenameEntryInput,
   WorkspaceExplorerTransferEntryInput,
   WorkspaceExplorerWatchChangesInput,
@@ -39,6 +40,7 @@ import {
 import { windowsClipboard } from '../clipboard/windowsClipboardReader'
 import { readClipboardFilesDirect } from '../clipboard/windowsDropFilesParser'
 import { writeClipboardImageToWorkspace } from '../workspace/clipboardImage'
+import { getWorkspaceTypeScriptProject } from '../workspace/typescriptProject'
 
 export function registerWorkspaceIpcHandlers() {
   ipcMain.handle('workspace:checkpoint:create', async (_event, input: CreateWorkspaceCheckpointInput) =>
@@ -73,6 +75,9 @@ export function registerWorkspaceIpcHandlers() {
   )
   ipcMain.handle('workspace:explorer:readFile', async (_event, input: WorkspaceExplorerReadFileInput) =>
     readWorkspaceFile(input),
+  )
+  ipcMain.handle('workspace:typescript:getProject', async (_event, input: WorkspaceTypeScriptProjectInput) =>
+    getWorkspaceTypeScriptProject(input),
   )
   ipcMain.handle('workspace:explorer:writeFile', async (_event, input: WorkspaceExplorerWriteFileInput) =>
     writeWorkspaceFile(input),

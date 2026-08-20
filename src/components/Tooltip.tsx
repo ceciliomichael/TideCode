@@ -40,8 +40,18 @@ interface TooltipProps {
   triggerLayout?: 'flex' | 'inline' | 'inline-flex'
 }
 
+export interface AnchoredTooltipRect {
+  bottom: number
+  height: number
+  left: number
+  right: number
+  top: number
+  width: number
+}
+
 interface AnchoredTooltipProps {
   anchorElement: HTMLElement | null
+  anchorRect?: AnchoredTooltipRect | null
   content: string | ReactNode
   noWrap?: boolean
   panelClassName?: string
@@ -396,6 +406,7 @@ export function Tooltip({
 
 export function AnchoredTooltip({
   anchorElement,
+  anchorRect,
   content,
   noWrap = false,
   panelClassName,
@@ -413,18 +424,19 @@ export function AnchoredTooltip({
   })
 
   const updateTooltipPosition = useCallback(() => {
-    if (!anchorElement || !tooltipRef.current) {
+    if ((!anchorElement && !anchorRect) || !tooltipRef.current) {
       return
     }
 
-    const anchorRect = anchorElement.getBoundingClientRect()
+    const resolvedAnchorRect = anchorRect ?? anchorElement?.getBoundingClientRect()
+    if (!resolvedAnchorRect) return
     const tooltipRect = tooltipRef.current.getBoundingClientRect()
     const viewportWidth = window.innerWidth
     const viewportHeight = window.innerHeight
-    const fitsTop = anchorRect.top >= tooltipRect.height + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
-    const fitsBottom = viewportHeight - anchorRect.bottom >= tooltipRect.height + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
-    const fitsLeft = anchorRect.left >= tooltipRect.width + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
-    const fitsRight = viewportWidth - anchorRect.right >= tooltipRect.width + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+    const fitsTop = resolvedAnchorRect.top >= tooltipRect.height + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+    const fitsBottom = viewportHeight - resolvedAnchorRect.bottom >= tooltipRect.height + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+    const fitsLeft = resolvedAnchorRect.left >= tooltipRect.width + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
+    const fitsRight = viewportWidth - resolvedAnchorRect.right >= tooltipRect.width + TOOLTIP_OFFSET + TOOLTIP_EDGE_PADDING
     const resolvedSide = side === 'top'
       ? fitsTop || !fitsBottom ? 'top' : 'bottom'
       : side === 'bottom'
@@ -436,24 +448,24 @@ export function AnchoredTooltip({
     const maxLeft = Math.max(TOOLTIP_EDGE_PADDING, viewportWidth - tooltipRect.width - TOOLTIP_EDGE_PADDING)
     const minTop = TOOLTIP_EDGE_PADDING
     const maxTop = Math.max(TOOLTIP_EDGE_PADDING, viewportHeight - tooltipRect.height - TOOLTIP_EDGE_PADDING)
-    const centeredLeft = anchorRect.left + anchorRect.width / 2 - tooltipRect.width / 2
-    const centeredTop = anchorRect.top + anchorRect.height / 2 - tooltipRect.height / 2
+    const centeredLeft = resolvedAnchorRect.left + resolvedAnchorRect.width / 2 - tooltipRect.width / 2
+    const centeredTop = resolvedAnchorRect.top + resolvedAnchorRect.height / 2 - tooltipRect.height / 2
     const left = resolvedSide === 'left'
-      ? Math.max(minLeft, Math.min(anchorRect.left - tooltipRect.width - TOOLTIP_OFFSET, maxLeft))
+      ? Math.max(minLeft, Math.min(resolvedAnchorRect.left - tooltipRect.width - TOOLTIP_OFFSET, maxLeft))
       : resolvedSide === 'right'
-        ? Math.max(minLeft, Math.min(anchorRect.right + TOOLTIP_OFFSET, maxLeft))
+        ? Math.max(minLeft, Math.min(resolvedAnchorRect.right + TOOLTIP_OFFSET, maxLeft))
         : Math.max(minLeft, Math.min(centeredLeft, maxLeft))
     const top = resolvedSide === 'top'
-      ? Math.max(minTop, Math.min(anchorRect.top - tooltipRect.height - TOOLTIP_OFFSET, maxTop))
+      ? Math.max(minTop, Math.min(resolvedAnchorRect.top - tooltipRect.height - TOOLTIP_OFFSET, maxTop))
       : resolvedSide === 'bottom'
-        ? Math.max(minTop, Math.min(anchorRect.bottom + TOOLTIP_OFFSET, maxTop))
+        ? Math.max(minTop, Math.min(resolvedAnchorRect.bottom + TOOLTIP_OFFSET, maxTop))
         : Math.max(minTop, Math.min(centeredTop, maxTop))
 
     setTooltipStyle({ left, top, opacity: 1, visibility: 'visible' })
-  }, [anchorElement, side])
+}, [anchorElement, anchorRect, side])
 
   useLayoutEffect(() => {
-    if (isMobileViewport || !visible || !anchorElement || !tooltipRef.current) {
+    if (isMobileViewport || !visible || (!anchorElement && !anchorRect) || !tooltipRef.current) {
       return
     }
 
@@ -462,7 +474,7 @@ export function AnchoredTooltip({
     window.addEventListener('scroll', updateTooltipPosition, true)
     window.addEventListener('resize', updateTooltipPosition)
     const resizeObserver = new ResizeObserver(updateTooltipPosition)
-    resizeObserver.observe(anchorElement)
+    if (anchorElement) resizeObserver.observe(anchorElement)
     resizeObserver.observe(tooltipRef.current)
 
     return () => {
@@ -470,9 +482,9 @@ export function AnchoredTooltip({
       window.removeEventListener('resize', updateTooltipPosition)
       resizeObserver.disconnect()
     }
-  }, [anchorElement, isMobileViewport, tooltipId, updateTooltipPosition, visible])
+  }, [anchorElement, anchorRect, isMobileViewport, tooltipId, updateTooltipPosition, visible])
 
-  if (isMobileViewport || !visible || !anchorElement) {
+  if (isMobileViewport || !visible || (!anchorElement && !anchorRect)) {
     return null
   }
 

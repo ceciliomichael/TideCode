@@ -31,6 +31,7 @@ interface WorkspaceFileTabsPanelProps {
   onFileContentChange: (relativePath: string, content: string) => void
   onPlanCommentsChange: (relativePath: string, comments: readonly PlanReviewComment[]) => void
   onImplementPlan: (relativePath: string) => void
+  onOpenFile: (relativePath: string) => void
   onOpenMarkdownPreview: (relativePath: string) => void
   onOpenSvgPreview: (relativePath: string) => void
   onRequestPlanChanges: (relativePath: string, comments: PlanReviewComment[]) => void
@@ -50,6 +51,7 @@ export function WorkspaceFileTabsPanel({
   onFileContentChange,
   onPlanCommentsChange,
   onImplementPlan,
+  onOpenFile,
   onOpenMarkdownPreview,
   onOpenSvgPreview,
   onRequestPlanChanges,
@@ -343,6 +345,7 @@ export function WorkspaceFileTabsPanel({
           onFileContentChange={onFileContentChange}
           onPlanCommentsChange={onPlanCommentsChange}
           onImplementPlan={onImplementPlan}
+          onOpenFile={onOpenFile}
           onOpenMarkdownPreview={openMarkdownPreviewForActiveFile}
           onOpenSvgPreview={openSvgPreviewForActiveFile}
           onRequestPlanChanges={onRequestPlanChanges}

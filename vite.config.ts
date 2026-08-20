@@ -5,7 +5,31 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 // https://vitejs.dev/config/
+const workspaceTypeScriptWorkerPath = path.resolve(
+  __dirname,
+  'src/components/workspaceExplorer/workspaceFileEditor/workspaceTypeScript.worker.js',
+)
+
 export default defineConfig({
+  server: {
+    watch: {
+      ignored: [
+        '**/build/**',
+        '**/dist/**',
+        '**/dist-electron/**',
+        '**/dist-cli-runtime/**',
+        '**/release/**',
+      ],
+    },
+  },
+  resolve: {
+    alias: [
+      {
+        find: /^monaco-editor\/esm\/vs\/language\/typescript\/ts\.worker(?:\.js)?$/,
+        replacement: workspaceTypeScriptWorkerPath,
+      },
+    ],
+  },
   plugins: [
     react(),
     tailwindcss(),

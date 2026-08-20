@@ -561,6 +561,10 @@
     display: none !important;
   }
 
+  .workspace-monaco-tooltip-code {
+    color: var(--color-tooltip-foreground);
+  }
+
   .workspace-monaco-search-highlight {
     border-radius: 2px;
     background-color: var(--workspace-find-match-background);

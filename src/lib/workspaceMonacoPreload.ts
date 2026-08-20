@@ -11,6 +11,7 @@ type WorkspaceMonacoCodeViewModule = typeof import(
 )
 
 let runtimePromise: Promise<Monaco> | null = null
+let runtimeInstance: Monaco | null = null
 let editorViewPromise: Promise<WorkspaceMonacoEditorViewModule> | null = null
 let diffViewPromise: Promise<WorkspaceMonacoDiffViewModule> | null = null
 let codeViewPromise: Promise<WorkspaceMonacoCodeViewModule> | null = null
@@ -27,17 +28,27 @@ export function preloadWorkspaceMonacoRuntime() {
     import('../components/workspaceExplorer/workspaceFileEditor/workspaceMonacoTheme'),
     import('../components/workspaceExplorer/workspaceFileEditor/workspaceMonacoShiki'),
   ])
-    .then(async ([monaco, { defineWorkspaceMonacoThemes }, { configureWorkspaceMonacoShiki }]) => {
+    .then(async ([
+      monaco,
+      { defineWorkspaceMonacoThemes },
+      { configureWorkspaceMonacoShiki },
+    ]) => {
       defineWorkspaceMonacoThemes(monaco)
       await configureWorkspaceMonacoShiki(monaco)
+      runtimeInstance = monaco
       return monaco
     })
     .catch((error: unknown) => {
       runtimePromise = null
+      runtimeInstance = null
       throw error
     })
 
   return runtimePromise
+}
+
+export function getPreloadedWorkspaceMonacoRuntime() {
+  return runtimeInstance
 }
 
 export function preloadWorkspaceMonacoEditorView() {

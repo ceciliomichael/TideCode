@@ -60,6 +60,7 @@ export function ChatWorkspaceSidePanels({
           onFileContentChange={workspaceState.handleWorkspaceFileContentChange}
           onPlanCommentsChange={workspaceState.handlePlanCommentsChange}
           onImplementPlan={onImplementPlan}
+          onOpenFile={workspaceState.handleOpenWorkspaceFile}
           onOpenMarkdownPreview={workspaceState.handleOpenWorkspaceMarkdownPreview}
           onOpenSvgPreview={workspaceState.handleOpenWorkspaceSvgPreview}
           onRequestPlanChanges={onRequestPlanChanges}
