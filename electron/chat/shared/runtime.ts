@@ -33,7 +33,7 @@ import {
 import { projectCanonicalReplay } from '../history/replayProjector'
 import { compactModelMessages } from './compaction/service'
 import {
-  mergeAutomaticCompactionMessages,
+  resolveAutomaticCompactionMessages,
   resolveAutomaticCompactionTrigger,
 } from './compaction/automatic'
 import { assertCompactionGate } from './compaction/gate'
@@ -266,8 +266,6 @@ export async function runToolEnabledChatStream(input: {
       runWasRecorded = true
     }
 
-    let hasCompactedThisRun = false
-
     let shouldStripImageAttachments = promptOptions.includeImageAttachments === false
     const createProviderStream = async (streamInput: ProviderStreamFactoryInput) => {
       const providerMessages = shouldStripImageAttachments
@@ -326,10 +324,9 @@ export async function runToolEnabledChatStream(input: {
         const currentStepMessages = consumedSteerModelMessages.length > 0
           ? [...stepInput.messages, ...consumedSteerModelMessages]
           : stepInput.messages
-        const compactionMessages = mergeAutomaticCompactionMessages({
+        const compactionMessages = resolveAutomaticCompactionMessages({
           messages: currentStepMessages,
           responseMessages: stepInput.responseMessages,
-          responseMessagesAreCumulative: hasCompactedThisRun,
         })
 
         if (consumedSteerMessages.length > 0) {
@@ -470,7 +467,6 @@ export async function runToolEnabledChatStream(input: {
           required: compactionRequired,
         })
 
-        hasCompactedThisRun = true
         replayMessages = [...compacted.projectedMessages]
         latestCompactionPacket = compacted.packet
         if (conversationId) {

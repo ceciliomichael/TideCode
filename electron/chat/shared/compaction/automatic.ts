@@ -1,5 +1,4 @@
 import type { ModelMessage } from 'ai'
-import { stableStringify } from '../../cache/canonicalization'
 
 export type AutomaticCompactionTrigger = 'user_turn' | 'tool_result' | 'model_step'
 
@@ -14,52 +13,21 @@ function containsToolResult(messages: readonly ModelMessage[]) {
   return messages.some((message) => message.role === 'tool')
 }
 
-function messageKey(message: ModelMessage) {
-  return stableStringify(message)
-}
-
 /**
- * Merges response messages for callers that are building a transcript from
- * separate message collections.
+ * Returns the exact message state that AI SDK will send for the current step.
  *
- * AI SDK's `messages` value is already the authoritative carry-forward state
- * for the live prepareStep path. After returning a compacted projection, the
- * SDK's responseMessages remains cumulative for the whole run; appending it
- * again would resurrect messages that compaction deliberately removed.
+ * In AI SDK 7, `prepareStep.messages` already contains the initial input plus
+ * every accumulated assistant/tool response that belongs to the current loop
+ * state. `responseMessages` is the same run broken out separately for callers
+ * that need to rebuild a different state. Appending it here double-counts
+ * messages and can make the live context meter and compaction trigger jump
+ * above the context that is actually sent to the provider.
  */
-export function mergeAutomaticCompactionMessages(input: {
+export function resolveAutomaticCompactionMessages(input: {
   messages: readonly ModelMessage[]
   responseMessages: readonly ModelMessage[]
-  responseMessagesAreCumulative?: boolean
 }) {
-  if (input.responseMessagesAreCumulative) {
-    return [...input.messages]
-  }
-
-  const remainingMessageCounts = new Map<string, number>()
-  for (const message of input.messages) {
-    const key = messageKey(message)
-    remainingMessageCounts.set(key, (remainingMessageCounts.get(key) ?? 0) + 1)
-  }
-
-  const mergedMessages = [...input.messages]
-  for (const responseMessage of input.responseMessages) {
-    const key = messageKey(responseMessage)
-    const remainingCount = remainingMessageCounts.get(key) ?? 0
-    if (remainingCount > 0) {
-      remainingMessageCounts.set(key, remainingCount - 1)
-      continue
-    }
-
-    mergedMessages.push(responseMessage)
-  }
-
-  // Keep the exact provider-facing message content here. The context
-  // indicator and the automatic threshold must judge the same bytes/tokens.
-  // Tool output is bounded separately when it is serialized into the
-  // compaction summary prompt, so retaining it here does not expose the
-  // compaction model to an unbounded transcript.
-  return mergedMessages
+  return [...input.messages]
 }
 
 /**

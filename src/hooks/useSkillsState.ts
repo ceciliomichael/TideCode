@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toUserFacingErrorMessage } from '../lib/userFacingError'
 import type { CreateSkillInput, SkillsState } from '../types/skills'
 
-interface UseSkillsStateResult {
+export interface UseSkillsStateResult {
   createSkill: (input: CreateSkillInput) => Promise<boolean>
   errorMessage: string | null
   isLoading: boolean

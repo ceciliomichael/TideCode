@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AppWorkspaceShell } from '../components/layout/AppWorkspaceShell'
 import { WorkspaceFloatingControls } from '../components/layout/WorkspaceFloatingControls'
 import { WorkspacePanel } from '../components/layout/WorkspacePanel'
@@ -8,17 +8,18 @@ import {
   DEFAULT_SETTINGS_ITEM_ID,
   type SettingsItemId,
 } from '../components/settings/settingsItems'
-import { useMcpServersState } from '../hooks/useMcpServersState'
-import { useSkillsState } from '../hooks/useSkillsState'
+import type { UseMcpServersStateResult } from '../hooks/useMcpServersState'
+import type { UseSkillsStateResult } from '../hooks/useSkillsState'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
 import { useIsMobileViewport } from '../hooks/useIsMobileViewport'
 import type { AppSettings, ApiKeyProviderId, ProvidersState, SaveApiKeyProviderInput } from '../types/chat'
 import type { TideCodeLaunchRequest, TideCodeSettingsLaunchRequest } from '../lib/appLaunchRequest'
 
 interface SettingsInterfaceProps {
-  activeWorkspacePath: string | null
   initialItemId: SettingsItemId | null
+  isActiveScreen: boolean
   isSettingsLoading: boolean
+  mcpSettings: UseMcpServersStateResult
   onLaunchRequestConsumed: () => void
   onBackToApp: () => void
   onSidebarWidthChange: (sidebarWidth: number) => void
@@ -39,17 +40,20 @@ interface SettingsInterfaceProps {
     onSwitchCodexAccount: (accountId: string) => Promise<boolean>
     providersState: ProvidersState | null
   }
+  skillsState: UseSkillsStateResult
 }
 
 export function SettingsInterface({
-  activeWorkspacePath,
   initialItemId,
+  isActiveScreen,
   isSettingsLoading,
+  mcpSettings,
   onLaunchRequestConsumed,
   onBackToApp,
   onSidebarWidthChange,
   onUpdateSettings,
   providersState,
+  skillsState,
   sidebarWidth,
   settings,
   pendingLaunchRequest,
@@ -58,15 +62,23 @@ export function SettingsInterface({
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => !isMobileViewport || initialItemId === null)
   const [activeItemId, setActiveItemId] = useState<SettingsItemId>(initialItemId ?? DEFAULT_SETTINGS_ITEM_ID)
   const [panelLaunchRequest, setPanelLaunchRequest] = useState<TideCodeSettingsLaunchRequest | null>(null)
-  const mcpSettings = useMcpServersState(null)
-  const skillsState = useSkillsState(activeWorkspacePath)
+  const wasActiveScreenRef = useRef(false)
   const handleUpdateSettings = useCallback((input: Partial<AppSettings>) => {
     void onUpdateSettings(input)
   }, [onUpdateSettings])
   const handleLaunchRequestHandled = useCallback((request: TideCodeSettingsLaunchRequest) => {
     setPanelLaunchRequest((currentRequest) => currentRequest === request ? null : currentRequest)
   }, [])
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const becameActive = isActiveScreen && !wasActiveScreenRef.current
+    wasActiveScreenRef.current = isActiveScreen
+    if (!becameActive) return
+
+    setActiveItemId(initialItemId ?? DEFAULT_SETTINGS_ITEM_ID)
+    setIsSidebarOpen(!isMobileViewport || initialItemId === null)
+  }, [initialItemId, isActiveScreen, isMobileViewport])
+
+  useLayoutEffect(() => {
     if (!pendingLaunchRequest) return
 
     setActiveItemId(pendingLaunchRequest.section === 'providers' ? 'settings-item2' : 'settings-item3')
@@ -103,6 +115,7 @@ export function SettingsInterface({
   }, [isMobileViewport])
 
   useWorkspaceKeyboardShortcuts({
+    enabled: isActiveScreen,
     onToggleSidebar: () => setIsSidebarOpen((currentValue) => !currentValue),
   })
 

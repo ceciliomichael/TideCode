@@ -476,7 +476,8 @@
     scrollbar-gutter: stable both-edges;
   }
 
-  .chat-scroll-viewport {
+  .chat-scroll-viewport,
+  .settings-scroll-viewport {
     overflow-anchor: none;
   }
 
