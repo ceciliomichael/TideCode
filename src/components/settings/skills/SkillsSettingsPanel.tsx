@@ -95,11 +95,11 @@ export function SkillsSettingsPanel({
           </div>
         ) : null}
 
-        {!isLoading ? (
+        {state ? (
           <SkillList
             disabledSkillsByPath={settings.disabledSkillsByPath}
             onToggleSkill={handleToggleSkill}
-            skills={state?.skills ?? []}
+            skills={state.skills}
           />
         ) : (
           <div className="rounded-xl border border-border bg-surface px-4 py-10 text-sm text-muted-foreground">

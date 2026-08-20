@@ -1,5 +1,4 @@
-import type { ModelMessage } from 'ai'
-import type { ChatProviderId, ReasoningEffort } from '../../src/types/chat'
+import { generateGitModelText, type GitModelSelection } from './modelTextGeneration'
 import { parseTouchedFilesFromNumstat } from './serviceHelpers'
 import {
   collectIdentifiers,
@@ -29,16 +28,10 @@ const MODEL_SYSTEM_PROMPT = [
   'You must exclusively use the English language.',
 ].join(' ')
 
-interface ActiveModelSelection {
-  modelId: string
-  providerId: ChatProviderId
-  reasoningEffort: ReasoningEffort
-}
-
 interface GenerateCommitMessageInput {
   diffText: string
   numstatText: string
-  selection: ActiveModelSelection | null
+  selection: GitModelSelection | null
 }
 
 export function buildCommitMessagePrompt(input: { diffText: string; numstatText: string }): CommitMessagePromptContext {
@@ -149,53 +142,6 @@ export function buildHeuristicCommitMessageFromDiff(input: { diffText: string; n
   return `${subject}\n\n${bodyLines.join('\n')}`
 }
 
-async function readCommitMessageFromStream(stream: { fullStream: AsyncIterable<{ [key: string]: unknown; type: string }> }) {
-  let generatedText = ''
-
-  for await (const part of stream.fullStream) {
-    if (part.type === 'text-delta' && typeof part.text === 'string') {
-      generatedText += part.text
-    }
-  }
-
-  return generatedText.trim()
-}
-
-async function generateCommitMessageWithModel(promptText: string, selection: ActiveModelSelection) {
-  const messages: ModelMessage[] = [
-    {
-      content: promptText,
-      role: 'user',
-    },
-  ]
-
-  if (selection.providerId === 'codex') {
-    const { createCodexClient } = await import('../chat/codex/client')
-    const client = createCodexClient()
-    const stream = await client.chat.completions.create({
-      messages,
-      model: selection.modelId,
-      reasoningEffort: selection.reasoningEffort,
-      system: MODEL_SYSTEM_PROMPT,
-    })
-
-    return readCommitMessageFromStream(stream)
-  }
-
-  const { readApiKeyChatProviderConfig } = await import('../chat/apiKey/config')
-  const { createApiKeyChatClient } = await import('../chat/apiKey/client')
-  const providerConfig = await readApiKeyChatProviderConfig(selection.providerId)
-  const client = createApiKeyChatClient(providerConfig)
-  const stream = await client.chat.completions.create({
-    messages,
-    model: selection.modelId,
-    reasoningEffort: selection.reasoningEffort,
-    system: MODEL_SYSTEM_PROMPT,
-  })
-
-  return readCommitMessageFromStream(stream)
-}
-
 export async function generateCommitMessageFromDiff(input: GenerateCommitMessageInput) {
   const promptContext = buildCommitMessagePrompt({
     diffText: input.diffText,
@@ -204,7 +150,11 @@ export async function generateCommitMessageFromDiff(input: GenerateCommitMessage
 
   if (input.selection) {
     try {
-      const generatedMessage = await generateCommitMessageWithModel(promptContext.promptText, input.selection)
+      const generatedMessage = await generateGitModelText({
+        promptText: promptContext.promptText,
+        selection: input.selection,
+        systemPrompt: MODEL_SYSTEM_PROMPT,
+      })
       if (generatedMessage.length > 0) {
         return generatedMessage
       }

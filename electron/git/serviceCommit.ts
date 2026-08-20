@@ -1,5 +1,7 @@
 import type { GitCommitInput, GitCommitResult, GitHistoryEntry } from '../../src/types/chat'
-import { normalizeGeneratedCommitMessageWithDescription } from './commitMessageFormatting'
+import type { GitModelSelection } from './modelTextGeneration'
+import { generatePullRequestDetails } from './pullRequestMessageGenerator'
+import { generateStagedCommitMessage } from './stagedCommitMessage'
 import {
   fetchOrigin,
   getErrorMessage,
@@ -14,7 +16,9 @@ import {
   readDefaultBranch,
   readHeadCommitHash,
   readLocalBranches,
-  readStagedDiffText,
+  readPullRequestCommitLogText,
+  readPullRequestDiffText,
+  readPullRequestNumstatText,
   readStagedNumstatText,
   readSymbolicHeadBranchName,
   resolveRepositoryRoot,
@@ -31,7 +35,6 @@ import {
   getCommitMessageSubject,
   isDefaultBranchName,
   parseGitHubRepositoryRef,
-  parseTouchedFilesFromNumstat,
   remoteUrlToHttpsBase,
   parseGitHistoryLine,
   trimInvalidBranchTail,
@@ -39,6 +42,19 @@ import {
 } from './serviceHelpers'
 
 const HISTORY_LOG_FORMAT = '%x1f%H%x1f%h%x1f%P%x1f%an%x1f%aI%x1f%ar%x1f%s%x1f%D'
+
+function resolveCommitModelSelection(input: GitCommitInput): GitModelSelection | null {
+  const modelId = input.modelId?.trim() ?? ''
+  if (!input.providerId || modelId.length === 0) {
+    return null
+  }
+
+  return {
+    modelId,
+    providerId: input.providerId,
+    reasoningEffort: input.reasoningEffort ?? 'medium',
+  }
+}
 
 async function readLatestHistoryEntry(repoRootPath: string): Promise<GitHistoryEntry | null> {
   const headHash = await readHeadCommitHash(repoRootPath)
@@ -75,8 +91,10 @@ async function createOrGetGitHubPullRequest(input: {
   baseBranchName: string
   commitMessage: string
   currentBranchName: string
+  remoteName: string
   repoRootPath: string
   repositoryRef: GitHubRepositoryRef
+  selection: GitModelSelection | null
 }) {
   const repositorySlug = `${input.repositoryRef.owner}/${input.repositoryRef.repo}`
   try {
@@ -117,6 +135,28 @@ async function createOrGetGitHubPullRequest(input: {
     throw new Error(`Failed to check existing pull requests: ${getErrorMessage(error)}`)
   }
 
+  let pullRequestTitle = getCommitMessageSubject(input.commitMessage)
+  let pullRequestBody = getCommitMessageBody(input.commitMessage)
+  try {
+    const baseRef = `${input.remoteName}/${input.baseBranchName}`
+    const [diffText, numstatText, commitLogText] = await Promise.all([
+      readPullRequestDiffText(input.repoRootPath, baseRef, input.currentBranchName),
+      readPullRequestNumstatText(input.repoRootPath, baseRef, input.currentBranchName),
+      readPullRequestCommitLogText(input.repoRootPath, baseRef, input.currentBranchName),
+    ])
+    const generatedDetails = await generatePullRequestDetails({
+      commitLogText,
+      diffText,
+      fallbackCommitMessage: input.commitMessage,
+      numstatText,
+      selection: input.selection,
+    })
+    pullRequestTitle = generatedDetails.title
+    pullRequestBody = generatedDetails.body
+  } catch {
+    // Keep the commit-derived title and body when branch context cannot be read.
+  }
+
   try {
     const { stdout: createPrStdout } = await runGh(
       [
@@ -127,9 +167,9 @@ async function createOrGetGitHubPullRequest(input: {
         '--head',
         input.currentBranchName,
         '--title',
-        getCommitMessageSubject(input.commitMessage),
+        pullRequestTitle,
         '--body',
-        getCommitMessageBody(input.commitMessage),
+        pullRequestBody,
         '--repo',
         repositorySlug,
       ],
@@ -408,34 +448,19 @@ export async function gitCommit(input: GitCommitInput): Promise<GitCommitResult>
     }
   }
 
-  const stagedDiffText = await readStagedDiffText(repoRootPath)
-  const stagedNumstatText = await readStagedNumstatText(repoRootPath)
+  let stagedNumstatText = await readStagedNumstatText(repoRootPath)
   const trimmedMessage = input.message.trim()
-  const generatedCommitMessage =
-    trimmedMessage.length > 0
-      ? null
-      : await (async () => {
-          const { generateCommitMessageFromDiff } = await import('./commitMessageGenerator')
-          return generateCommitMessageFromDiff({
-            diffText: stagedDiffText,
-            numstatText: stagedNumstatText,
-            selection:
-              input.providerId && input.modelId
-                ? {
-                    modelId: input.modelId,
-                    providerId: input.providerId,
-                    reasoningEffort: input.reasoningEffort ?? 'medium',
-                  }
-                : null,
-          })
-        })()
-  const effectiveCommitMessage =
-    trimmedMessage.length > 0
-      ? trimmedMessage
-      : normalizeGeneratedCommitMessageWithDescription(
-          generatedCommitMessage ?? '',
-          parseTouchedFilesFromNumstat(stagedNumstatText),
-        )
+  const commitModelSelection = resolveCommitModelSelection(input)
+  let effectiveCommitMessage = trimmedMessage
+
+  if (trimmedMessage.length === 0) {
+    const generatedCommit = await generateStagedCommitMessage({
+      repoRootPath,
+      selection: commitModelSelection,
+    })
+    stagedNumstatText = generatedCommit.numstatText
+    effectiveCommitMessage = generatedCommit.message
+  }
 
   let activeBranchName = await readSymbolicHeadBranchName(repoRootPath)
   const preferredBranchName = input.preferredBranchName?.trim() ?? ''
@@ -501,6 +526,7 @@ export async function gitCommit(input: GitCommitInput): Promise<GitCommitResult>
       }
 
       activeBranchName = currentBranch
+      let pullRequestRemoteName: string | null = null
 
       if (input.action === 'commit-and-create-pr') {
         await ensureBranchReadyForPullRequest(
@@ -515,6 +541,7 @@ export async function gitCommit(input: GitCommitInput): Promise<GitCommitResult>
         if (!remoteName) {
           throw new Error('No remote is configured for this repository.')
         }
+        pullRequestRemoteName = remoteName
         await runGit(['push', '-u', remoteName, currentBranch], repoRootPath)
       } else {
         await pushCheckedOutBranch(repoRootPath, currentBranch)
@@ -528,12 +555,17 @@ export async function gitCommit(input: GitCommitInput): Promise<GitCommitResult>
           const githubRepositoryRef = parseGitHubRepositoryRef(remoteUrl)
 
           if (githubRepositoryRef) {
+            if (!pullRequestRemoteName) {
+              throw new Error('No remote is configured for this repository.')
+            }
             prUrl = await createOrGetGitHubPullRequest({
               baseBranchName: effectiveDefaultBranch,
               commitMessage: effectiveCommitMessage,
               currentBranchName: currentBranch,
+              remoteName: pullRequestRemoteName,
               repoRootPath,
               repositoryRef: githubRepositoryRef,
+              selection: commitModelSelection,
             })
           } else {
             const httpsBase = remoteUrlToHttpsBase(remoteUrl)

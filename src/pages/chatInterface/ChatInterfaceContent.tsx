@@ -727,6 +727,7 @@ synchronizeDraftFolder,
               diffPanelExpandedFilePaths={diffPanelExpandedFilePaths}
               diffPanelSelectedScope={diffPanelSelectedScope}
               gitBranchState={gitBranchState}
+              gitCommitModelSelection={gitCommitState.modelSelection}
               gitDiffSnapshot={gitDiffSnapshot}
               interfaceController={interfaceController}
               onDiffPanelExpandedFilePathsChange={onDiffPanelExpandedFilePathsChange}

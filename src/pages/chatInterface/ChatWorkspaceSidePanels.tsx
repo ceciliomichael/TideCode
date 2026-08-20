@@ -6,12 +6,13 @@ import { WorkspaceFileTabsPanel } from '../../components/workspaceExplorer/Works
 import type { ChatInterfaceControllerState } from '../../hooks/useChatInterfaceController'
 import type { GitBranchStateController } from '../../hooks/useGitBranchState'
 import type { GitDiffSnapshotController } from '../../hooks/useGitDiffSnapshot'
-import type { AppSettings } from '../../types/chat'
+import type { AppSettings, GitCommitModelSelection } from '../../types/chat'
 import type { PlanReviewComment } from '../../lib/planContracts'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
 
 interface ChatWorkspaceSidePanelsProps {
   diffPanelExpandedFilePaths: readonly string[]
+  gitCommitModelSelection: GitCommitModelSelection
   diffPanelSelectedScope: DiffPanelScope
   gitBranchState: GitBranchStateController
   gitDiffSnapshot: GitDiffSnapshotController
@@ -26,6 +27,7 @@ interface ChatWorkspaceSidePanelsProps {
 
 export function ChatWorkspaceSidePanels({
   diffPanelExpandedFilePaths,
+  gitCommitModelSelection,
   diffPanelSelectedScope,
   gitBranchState,
   gitDiffSnapshot,
@@ -111,6 +113,7 @@ export function ChatWorkspaceSidePanels({
         <SourceControlPanel
           key={workspaceState.activeWorkspacePath?.trim() ?? 'no-workspace'}
           aheadCommitCount={gitBranchState.branchState.aheadCommitCount}
+          commitModelSelection={gitCommitModelSelection}
           hasRepository={hasRepository}
           hasRemote={Boolean(gitBranchState.branchState.remoteUrl)}
           onDiffPanelExpandedFilePathsChange={onDiffPanelExpandedFilePathsChange}

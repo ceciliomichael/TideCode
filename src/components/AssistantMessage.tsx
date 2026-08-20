@@ -1,6 +1,7 @@
 import { Check, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { chatMessageContentWidthClassName } from "../lib/chatStyles";
+import { copyTextToClipboard } from "../lib/clipboard";
 import {
   getCopyableAssistantMessageText,
   normalizeAssistantMessageContent,
@@ -146,12 +147,7 @@ export function AssistantMessage({
   }, [isCopied]);
 
   async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(copyableText);
-      setIsCopied(true);
-    } catch {
-      setIsCopied(false);
-    }
+    setIsCopied(await copyTextToClipboard(copyableText));
   }
 
   if (

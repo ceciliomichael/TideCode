@@ -539,3 +539,31 @@ export async function readStagedNumstatText(repoRootPath: string) {
   return stdout
 }
 
+export async function readPullRequestDiffText(repoRootPath: string, baseRef: string, headRef: string) {
+  const { stdout, truncated } = await readGitStdout(
+    ['diff', '--no-color', '--no-ext-diff', '--unified=3', baseRef + '...' + headRef, '--', '.'],
+    repoRootPath,
+    { charLimit: 24_000 },
+  )
+
+  return truncated ? stdout + '\n\n...[branch diff truncated for prompt size]' : stdout
+}
+
+export async function readPullRequestNumstatText(repoRootPath: string, baseRef: string, headRef: string) {
+  const { stdout } = await readGitStdout(
+    ['diff', '--numstat', baseRef + '...' + headRef, '--', '.'],
+    repoRootPath,
+    { charLimit: 8_000 },
+  )
+  return stdout
+}
+
+export async function readPullRequestCommitLogText(repoRootPath: string, baseRef: string, headRef: string) {
+  const { stdout } = await readGitStdout(
+    ['log', '--no-merges', '--pretty=format:%h %s', '-n', '20', baseRef + '..' + headRef],
+    repoRootPath,
+    { charLimit: 6_000 },
+  )
+  return stdout
+}
+

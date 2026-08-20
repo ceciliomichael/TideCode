@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
+  GitCommitModelSelection,
   GitHubAuthStatus,
   GitHubDeviceLoginResult,
   GitPublishInput,
@@ -20,6 +21,7 @@ import type {
 } from '../../types/chat'
 
 interface PublishToGitHubModalProps {
+  commitModelSelection: GitCommitModelSelection
   workspacePath: string
   onClose: () => void
   onPublishSuccess: () => void
@@ -59,7 +61,7 @@ function detectRemoteProvider(url: string): { name: string; dotColor: string } {
 type PublishTab = 'remote' | 'github'
 type PublishStep = 'form' | 'publishing' | 'success' | 'error'
 
-export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess }: PublishToGitHubModalProps) {
+export function PublishToGitHubModal({ commitModelSelection, workspacePath, onClose, onPublishSuccess }: PublishToGitHubModalProps) {
   const [activeTab, setActiveTab] = useState<PublishTab>('remote')
   const [step, setStep] = useState<PublishStep>('form')
   const [remoteUrl, setRemoteUrl] = useState('')
@@ -158,6 +160,7 @@ export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess 
       remoteUrl: trimmedUrl,
       remoteName: remoteName.trim() || 'origin',
       defaultBranch: defaultBranch.trim() || 'main',
+      commitModelSelection,
     }
 
     try {
@@ -195,6 +198,7 @@ export function PublishToGitHubModal({ workspacePath, onClose, onPublishSuccess 
       description: description.trim() || undefined,
       isPrivate,
       defaultBranch: defaultBranch.trim() || 'main',
+      commitModelSelection,
     }
 
     try {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ModelMessage } from 'ai'
 import {
-  mergeAutomaticCompactionMessages,
+  resolveAutomaticCompactionMessages,
   resolveAutomaticCompactionTrigger,
 } from '../../electron/chat/shared/compaction/automatic'
 import {
@@ -68,49 +68,53 @@ test('automatic compaction detects a tool result even when a provider appends a 
   }), 'tool_result')
 })
 
-test('automatic compaction budgets tool results supplied only through accumulated responses', () => {
-  const messages: ModelMessage[] = [{ role: 'user', content: 'Inspect the workspace.' }]
-  const mergedMessages = mergeAutomaticCompactionMessages({
-    messages,
-    responseMessages: completedToolStep,
-  })
+test('automatic compaction uses the exact AI SDK current-step message state', () => {
+  const currentStepMessages: ModelMessage[] = [
+    { role: 'user', content: 'Inspect the workspace.' },
+    ...completedToolStep,
+  ]
 
-  assert.deepEqual(mergedMessages, [...messages, ...completedToolStep])
+  assert.deepEqual(
+    resolveAutomaticCompactionMessages({
+      messages: currentStepMessages,
+      responseMessages: completedToolStep,
+    }),
+    currentStepMessages,
+  )
 })
 
-test('automatic compaction keeps oversized tool output in the threshold estimate', () => {
-  const oversizedToolOutput = 'x'.repeat(700_000)
-  const toolResult: ModelMessage = {
-    role: 'tool',
-    content: [{
-      output: { type: 'text', value: oversizedToolOutput },
-      toolCallId: 'call-large-output',
-      toolName: 'read_file',
-      type: 'tool-result',
-    }],
-  }
-
-  const mergedMessages = mergeAutomaticCompactionMessages({
-    messages: [{ role: 'user', content: 'Inspect the workspace.' }],
-    responseMessages: [toolResult],
+test('automatic compaction does not cross the threshold by re-appending accumulated responses', () => {
+  const currentStepMessages: ModelMessage[] = [
+    { role: 'user', content: 'H'.repeat(600_000) },
+  ]
+  const accumulatedResponses: ModelMessage[] = [
+    { role: 'assistant', content: 'R'.repeat(80_000) },
+  ]
+  const providerMessages = resolveAutomaticCompactionMessages({
+    messages: currentStepMessages,
+    responseMessages: accumulatedResponses,
   })
-
-  assert.deepEqual(mergedMessages, [
-    { role: 'user', content: 'Inspect the workspace.' },
-    toolResult,
-  ])
-
-  const budget = calculateModelMessagesBudget({
+  const actualBudget = calculateModelMessagesBudget({
     contextWindowTokens: 200_000,
-    messages: mergedMessages,
+    messages: providerMessages,
     systemPromptTokens: 0,
     toolSchemaTokens: 0,
     triggerRatio: 0.8,
   })
-  assert.equal(shouldCompactContext(budget), true)
+  const incorrectlyInflatedBudget = calculateModelMessagesBudget({
+    contextWindowTokens: 200_000,
+    messages: [...providerMessages, ...accumulatedResponses],
+    systemPromptTokens: 0,
+    toolSchemaTokens: 0,
+    triggerRatio: 0.8,
+  })
+
+  assert.deepEqual(providerMessages, currentStepMessages)
+  assert.equal(shouldCompactContext(actualBudget), false)
+  assert.equal(shouldCompactContext(incorrectlyInflatedBudget), true)
 })
 
-test('automatic compaction does not resurrect pre-compaction response history', () => {
+test('automatic compaction does not resurrect response history removed by a persisted message override', () => {
   const compactedMessages: ModelMessage[] = [
     { role: 'user', content: 'Continue the task.' },
     { role: 'assistant', content: 'Compacted continuation state.' },
@@ -121,10 +125,9 @@ test('automatic compaction does not resurrect pre-compaction response history', 
   ]
 
   assert.deepEqual(
-    mergeAutomaticCompactionMessages({
+    resolveAutomaticCompactionMessages({
       messages: compactedMessages,
       responseMessages: preCompactionResponses,
-      responseMessagesAreCumulative: true,
     }),
     compactedMessages,
   )

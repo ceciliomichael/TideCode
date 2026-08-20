@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toUserFacingErrorMessage } from '../lib/userFacingError'
 import type { McpAddServerInput, McpState } from '../types/mcp'
 
-interface UseMcpServersStateResult {
+export interface UseMcpServersStateResult {
   activeOperation: string | null
   addServer: (input: McpAddServerInput) => Promise<boolean>
   connectServer: (serverId: string) => Promise<boolean>

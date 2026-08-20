@@ -5,7 +5,9 @@ import { SettingsInterface } from './pages/SettingsInterface'
 import { useAppSettings } from './hooks/useAppSettings'
 import { useChatMessages } from './hooks/useChatMessages'
 import { useDocumentTheme } from './hooks/useDocumentTheme'
+import { useMcpServersState } from './hooks/useMcpServersState'
 import { useProvidersState } from './hooks/useProvidersState'
+import { useSkillsState } from './hooks/useSkillsState'
 import type { TideCodeLaunchRequest } from './lib/appLaunchRequest'
 import { resolveBootConversationLaunchState } from './pages/chatInterface/chatLaunchState'
 import { hydrateCachedUpdate, requestAutomaticUpdateCheck } from './components/settings/updates/updatesSessionStore'
@@ -64,6 +66,8 @@ export default function App() {
     shouldInitializeHistory: true,
   })
   const activeWorkspacePath = chatMessages.activeConversationRootPath ?? chatMessages.selectedFolderPath
+  const skillsState = useSkillsState(activeWorkspacePath)
+  const mcpSettings = useMcpServersState(null)
   const handleSidebarWidthChange = useCallback((sidebarWidth: number) => {
     void updateSettings({ sidebarWidth })
   }, [updateSettings])
@@ -204,35 +208,41 @@ export default function App() {
         />
       </div>
 
-      {activeScreen === 'settings' ? (
-        <div className="absolute inset-0 z-50">
-          <SettingsInterface
-            activeWorkspacePath={activeWorkspacePath}
-            initialItemId={settingsInitialItemId}
-            onLaunchRequestConsumed={consumeLaunchRequest}
-            settings={settings}
-            isSettingsLoading={isLoading}
-            onBackToApp={() => setActiveScreen('chat')}
-            onSidebarWidthChange={handleSidebarWidthChange}
-            onUpdateSettings={updateSettings}
-            providersState={{
-              activeOperation: providersState.activeOperation,
-              addCodexAccountWithOAuth: providersState.addCodexAccountWithOAuth,
-              connectCodexWithOAuth: providersState.connectCodexWithOAuth,
-              disconnectCodex: providersState.disconnectCodex,
-              removeCodexAccount: providersState.removeCodexAccount,
-              errorMessage: providersState.errorMessage,
-              isLoading: providersState.isLoading,
-              onRemoveApiKeyProvider: providersState.removeApiKeyProvider,
-              onSaveApiKeyProvider: providersState.saveApiKeyProvider,
-              onSwitchCodexAccount: providersState.switchCodexAccount,
-              providersState: providersState.providersState,
-            }}
-            sidebarWidth={settings.sidebarWidth}
-            pendingLaunchRequest={pendingLaunchRequest}
-          />
-        </div>
-      ) : null}
+      <div
+        className={[
+          'absolute inset-0 z-50',
+          activeScreen === 'settings' ? 'visible' : 'invisible pointer-events-none',
+        ].join(' ')}
+        aria-hidden={activeScreen !== 'settings'}
+      >
+        <SettingsInterface
+          isActiveScreen={activeScreen === 'settings'}
+          initialItemId={settingsInitialItemId}
+          onLaunchRequestConsumed={consumeLaunchRequest}
+          settings={settings}
+          isSettingsLoading={isLoading}
+          onBackToApp={() => setActiveScreen('chat')}
+          onSidebarWidthChange={handleSidebarWidthChange}
+          onUpdateSettings={updateSettings}
+          mcpSettings={mcpSettings}
+          providersState={{
+            activeOperation: providersState.activeOperation,
+            addCodexAccountWithOAuth: providersState.addCodexAccountWithOAuth,
+            connectCodexWithOAuth: providersState.connectCodexWithOAuth,
+            disconnectCodex: providersState.disconnectCodex,
+            removeCodexAccount: providersState.removeCodexAccount,
+            errorMessage: providersState.errorMessage,
+            isLoading: providersState.isLoading,
+            onRemoveApiKeyProvider: providersState.removeApiKeyProvider,
+            onSaveApiKeyProvider: providersState.saveApiKeyProvider,
+            onSwitchCodexAccount: providersState.switchCodexAccount,
+            providersState: providersState.providersState,
+          }}
+          skillsState={skillsState}
+          sidebarWidth={settings.sidebarWidth}
+          pendingLaunchRequest={pendingLaunchRequest}
+        />
+      </div>
     </div>
   )
 }

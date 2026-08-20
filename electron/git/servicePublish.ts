@@ -1,4 +1,5 @@
 import type {
+  GitCommitModelSelection,
   GitHubAuthStatus,
   GitHubDeviceLoginResult,
   GitInitResult,
@@ -24,10 +25,31 @@ import {
   validateBranchName,
 } from './repositoryContext'
 import { runGitWithAccessToken } from './gitCredentialRunner'
+import type { GitModelSelection } from './modelTextGeneration'
+import { generateStagedCommitMessage } from './stagedCommitMessage'
 
 export { completeGitHubDeviceLogin, connectGitHub, getGitHubAuthStatus }
 
-async function ensureInitialCommit(repoRootPath: string, defaultBranch: string) {
+function resolveInitialCommitModelSelection(
+  selection: GitCommitModelSelection | undefined,
+): GitModelSelection | null {
+  const modelId = selection?.modelId.trim() ?? ''
+  if (!selection?.providerId || modelId.length === 0) {
+    return null
+  }
+
+  return {
+    modelId,
+    providerId: selection.providerId,
+    reasoningEffort: selection.reasoningEffort,
+  }
+}
+
+async function ensureInitialCommit(
+  repoRootPath: string,
+  defaultBranch: string,
+  commitModelSelection?: GitCommitModelSelection,
+) {
   await validateBranchName(defaultBranch, repoRootPath)
 
   const currentBranch = await readSymbolicHeadBranchName(repoRootPath)
@@ -41,21 +63,30 @@ async function ensureInitialCommit(repoRootPath: string, defaultBranch: string) 
     throw new Error(`Failed to set the default branch: ${getErrorMessage(error)}`)
   }
 
+  if (await readHeadCommitHash(repoRootPath)) {
+    return
+  }
+
   try {
     await runGit(['add', '-A'], repoRootPath)
   } catch (error) {
     throw new Error(`Failed to stage files: ${getErrorMessage(error)}`)
   }
 
-  if (await readHeadCommitHash(repoRootPath)) {
-    return
-  }
-
   try {
     const { stdout: statusOutput } = await runGit(['status', '--porcelain'], repoRootPath)
-    const commitArgs = statusOutput.trim().length > 0
-      ? ['commit', '-m', 'Initial commit']
-      : ['commit', '--allow-empty', '-m', 'Initial commit']
+    const hasStagedChanges = statusOutput.trim().length > 0
+    const commitMessage = hasStagedChanges
+      ? (
+          await generateStagedCommitMessage({
+            repoRootPath,
+            selection: resolveInitialCommitModelSelection(commitModelSelection),
+          })
+        ).message
+      : 'chore: initialize repository'
+    const commitArgs = hasStagedChanges
+      ? ['commit', '-m', commitMessage]
+      : ['commit', '--allow-empty', '-m', commitMessage]
     await runGit(commitArgs, repoRootPath)
   } catch (error) {
     const message = getErrorMessage(error)
@@ -125,6 +156,7 @@ export interface GitPublishRemoteInput {
   remoteUrl: string
   remoteName?: string
   defaultBranch?: string
+  commitModelSelection?: GitCommitModelSelection
 }
 
 export interface GitPublishRemoteResult {
@@ -144,7 +176,7 @@ export async function publishToRemote(input: GitPublishRemoteInput): Promise<Git
   const defaultBranch = input.defaultBranch?.trim() || 'main'
 
   const repoRootPath = await initializeRepositoryIfNeeded(normalizedPath)
-  await ensureInitialCommit(repoRootPath, defaultBranch)
+  await ensureInitialCommit(repoRootPath, defaultBranch, input.commitModelSelection)
 
   try {
     const { stdout: remotes } = await runGit(['remote'], repoRootPath)
@@ -192,7 +224,7 @@ export async function publishToGitHub(input: GitPublishInput): Promise<GitPublis
   }
 
   const accessToken = await getGitHubAccessToken()
-  await ensureInitialCommit(repoRootPath, options.defaultBranch)
+  await ensureInitialCommit(repoRootPath, options.defaultBranch, input.commitModelSelection)
 
   const repository = await createGitHubRepository({
     accessToken,

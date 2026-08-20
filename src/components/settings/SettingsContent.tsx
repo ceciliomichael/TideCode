@@ -1,4 +1,5 @@
 import { ArrowLeft } from 'lucide-react'
+import { useLayoutEffect, useRef, type ReactNode } from 'react'
 import { MemoizedGeneralSettingsPanel } from './general/GeneralSettingsPanel'
 import { McpServersSettingsPanel } from './mcp/McpServersSettingsPanel'
 import { ModelsSettingsPanel } from './models/ModelsSettingsPanel'
@@ -7,14 +8,26 @@ import { SkillsSettingsPanel } from './skills/SkillsSettingsPanel'
 import { MemoizedTaskModelsSettingsPanel } from './taskModels/TaskModelsSettingsPanel'
 import { RemoteSettingsPanel } from './remote/RemoteSettingsPanel'
 import { UpdatesSettingsPanel } from './updates/UpdatesSettingsPanel'
-import { SettingsPlaceholderPanel } from './SettingsPlaceholderPanel'
-import { getSettingsItem, type SettingsItemId } from './settingsItems'
+import type { SettingsItemId } from './settingsItems'
 import type { AppAppearance, AppLanguage, FollowUpBehavior } from '../../lib/appSettings'
 import type { ApiKeyProviderId, AppSettings, ProvidersState, SaveApiKeyProviderInput } from '../../types/chat'
 import type { McpAddServerInput, McpState } from '../../types/mcp'
 import type { CreateSkillInput, SkillsState } from '../../types/skills'
 import type { ContextCompactionSettings } from '../../lib/contextCompactionSettings'
 import type { TideCodeSettingsLaunchRequest } from '../../lib/appLaunchRequest'
+
+interface SettingsPanelSlotProps {
+  active: boolean
+  children: ReactNode
+}
+
+function SettingsPanelSlot({ active, children }: SettingsPanelSlotProps) {
+  return (
+    <div aria-hidden={!active} className="flex w-full justify-center" hidden={!active}>
+      {children}
+    </div>
+  )
+}
 
 interface GeneralSettingsViewModel {
   isLoading: boolean
@@ -91,10 +104,19 @@ export function SettingsContent({
   modelsSettings,
   providersSettings,
 }: SettingsContentProps) {
-  const activeItem = getSettingsItem(activeItemId)
+  const scrollViewportRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    if (scrollViewportRef.current) {
+      scrollViewportRef.current.scrollTop = 0
+    }
+  }, [activeItemId])
 
   return (
-    <div className="scroll-stable flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-3 md:px-5 md:pb-0 md:pt-16">
+    <div
+      ref={scrollViewportRef}
+      className="settings-scroll-viewport scroll-stable flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-3 md:px-5 md:pb-0 md:pt-16"
+    >
       <button
         type="button"
         onClick={onBackToSettings}
@@ -105,17 +127,22 @@ export function SettingsContent({
       </button>
 
       <div className="mt-5 flex w-full justify-center md:mt-0">
-        {activeItemId === 'settings-item1' ? (
+        <SettingsPanelSlot active={activeItemId === 'settings-item1'}>
           <MemoizedGeneralSettingsPanel {...generalSettings} />
-        ) : activeItemId === 'settings-item2' ? (
+        </SettingsPanelSlot>
+        <SettingsPanelSlot active={activeItemId === 'settings-item2'}>
           <ProvidersSettingsPanel {...providersSettings} />
-        ) : activeItemId === 'settings-item3' ? (
+        </SettingsPanelSlot>
+        <SettingsPanelSlot active={activeItemId === 'settings-item3'}>
           <ModelsSettingsPanel {...modelsSettings} />
-        ) : activeItemId === 'settings-item4' ? (
+        </SettingsPanelSlot>
+        <SettingsPanelSlot active={activeItemId === 'settings-item4'}>
           <McpServersSettingsPanel {...mcpSettings} />
-        ) : activeItemId === 'settings-item5' ? (
+        </SettingsPanelSlot>
+        <SettingsPanelSlot active={activeItemId === 'settings-item5'}>
           <SkillsSettingsPanel {...skillsSettings} />
-        ) : activeItemId === 'settings-item6' ? (
+        </SettingsPanelSlot>
+        <SettingsPanelSlot active={activeItemId === 'settings-item6'}>
           <MemoizedTaskModelsSettingsPanel
             contextSettings={contextSettings}
             isLoading={generalSettings.isLoading}
@@ -123,18 +150,18 @@ export function SettingsContent({
             providersState={providersSettings.providersState}
             settings={appSettings}
           />
-        ) : activeItemId === 'settings-item8' ? (
+        </SettingsPanelSlot>
+        <SettingsPanelSlot active={activeItemId === 'settings-item8'}>
           <RemoteSettingsPanel />
-        ) : activeItemId === 'settings-item7' ? (
+        </SettingsPanelSlot>
+        <SettingsPanelSlot active={activeItemId === 'settings-item7'}>
           <UpdatesSettingsPanel
             autoDownloadUpdates={appSettings.autoDownloadUpdates}
             checkForUpdatesOnLaunch={appSettings.checkForUpdatesOnLaunch}
             isLoading={generalSettings.isLoading}
             onUpdateSettings={generalSettings.onUpdateSettings}
           />
-        ) : (
-          <SettingsPlaceholderPanel item={activeItem} />
-        )}
+        </SettingsPanelSlot>
       </div>
     </div>
   )
