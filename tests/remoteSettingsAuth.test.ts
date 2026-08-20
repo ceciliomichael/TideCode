@@ -47,7 +47,7 @@ test('Remote configuration trims the username and falls back safely', () => {
   })
 })
 
-test('Remote web sessions are carried only by the HttpOnly SameSite cookie', () => {
+test('Remote web sessions use a persistent PWA-safe HttpOnly cookie', () => {
   const headers = new Map<string, string>()
   const response = {
     setHeader(name: string, value: string) { headers.set(name.toLowerCase(), value) },
@@ -61,9 +61,11 @@ test('Remote web sessions are carried only by the HttpOnly SameSite cookie', () 
   assert.ok(cookie)
   assert.match(cookie, new RegExp('^' + REMOTE_SESSION_COOKIE_NAME + '='))
   assert.match(cookie, /HttpOnly/)
-  assert.match(cookie, /SameSite=Strict/)
+  assert.match(cookie, /SameSite=Lax/)
   assert.equal(cookie.includes('Path=/'), true)
   assert.equal(cookie.includes(sessionId), true)
+  assert.match(cookie, new RegExp('Max-Age=' + Math.floor(REMOTE_SESSION_TTL_MS / 1000)))
+  assert.match(cookie, /Expires=/)
 
   const authenticatedRequest = {
     headers: { cookie: cookie.split(';', 1)[0], origin: 'https://remote.example.test' },
@@ -75,8 +77,26 @@ test('Remote web sessions are carried only by the HttpOnly SameSite cookie', () 
   } as unknown as IncomingMessage), false)
 
   store.delete(authenticatedRequest, response)
-assert.equal(store.validate(authenticatedRequest), null)
+  assert.equal(store.validate(authenticatedRequest), null)
   assert.match(headers.get('set-cookie') ?? '', /Max-Age=0/)
+  assert.match(headers.get('set-cookie') ?? '', /Expires=Thu, 01 Jan 1970 00:00:00 GMT/)
+})
+
+test('Remote session cookie stays non-persistent when remember me is disabled', () => {
+  const headers = new Map<string, string>()
+  const response = {
+    setHeader(name: string, value: string) { headers.set(name.toLowerCase(), value) },
+  } as unknown as ServerResponse
+  const store = new RemoteWebSessionStore()
+  const request = {
+    headers: { origin: 'https://remote.example.test' },
+  } as unknown as IncomingMessage
+
+  store.create(request, response, false)
+  const cookie = headers.get('set-cookie') ?? ''
+  assert.match(cookie, /SameSite=Lax/)
+  assert.doesNotMatch(cookie, /Max-Age=/)
+  assert.doesNotMatch(cookie, /Expires=/)
 })
 
 test('Remembered Remote sessions survive a desktop host restart without persisting the token', async () => {

@@ -1,7 +1,7 @@
 import { app, BrowserWindow, nativeTheme } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import type { StartChatStreamInput } from '../src/types/chat'
+import type { AppSettings, StartChatStreamInput } from '../src/types/chat'
 import { flushStoredSettingsUpdates } from './settings/store'
 import { applyTideCodeAppIcon } from './window/branding'
 import { applyWindowTheme } from './window/theme'
@@ -27,6 +27,8 @@ import { parseTideCodeLaunchRequest, type TideCodeLaunchRequest } from '../src/l
 import { configureTideCodeRuntimeRoot } from './runtime/runtimeRoot'
 import { RemoteWorkspaceHost } from './remote/host'
 import { registerRemoteWorkspaceHostIpc } from './remote/ipc'
+import { REMOTE_EVENT_CHANNELS } from '../src/remote/protocol'
+import { hasDurableAppSettingsInput } from '../src/lib/appSettingsScopes'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // The built directory structure
@@ -173,7 +175,18 @@ async function createWindow(initialLaunchRequest: TideCodeLaunchRequest | null =
 
 function registerApplicationIpcHandlers() {
   registerAppIpcHandlers()
-  registerCoreIpcHandlers(() => win)
+  registerCoreIpcHandlers(() => win, (settings: AppSettings, input: Partial<AppSettings>) => {
+    if (!hasDurableAppSettingsInput(input)) return
+
+    const currentWindow = win
+    if (currentWindow && !currentWindow.isDestroyed()) {
+      currentWindow.webContents.send('settings:remoteChanged', settings)
+    }
+    remoteWorkspaceHost.broadcastEvent({
+      channel: REMOTE_EVENT_CHANNELS.settingsChanged,
+      payload: settings,
+    })
+  })
   registerChatGitTerminalIpcHandlers(activeChatStreamProviders)
   registerWorkspaceIpcHandlers()
   registerUpdatesIpcHandlers(() => win)

@@ -2,10 +2,31 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { DEFAULT_APP_SETTINGS } from '../lib/defaultAppSettings'
 import { resetLaunchOnlyAppSettings } from './appSettingsLaunchState'
 import { getCachedAppearancePreference } from '../lib/theme'
+import { preserveLocalWorkspaceUiSettings } from '../lib/appSettingsScopes'
 import type { AppSettings } from '../types/chat'
 import { shouldDeferRendererSettingsCommit } from './appSettingsUpdatePolicy'
 
 export type AppSettingsSaveState = 'idle' | 'saving' | 'saved' | 'error'
+
+interface PendingSettingsUpdate {
+  deferRendererCommit: boolean
+  input: Partial<AppSettings>
+}
+
+export function applyPendingSettingsUpdates(
+  baseSettings: AppSettings,
+  pendingUpdates: Iterable<PendingSettingsUpdate>,
+) {
+  let nextSettings = baseSettings
+  for (const pendingUpdate of pendingUpdates) {
+    if (pendingUpdate.deferRendererCommit) continue
+    nextSettings = {
+      ...nextSettings,
+      ...pendingUpdate.input,
+    }
+  }
+  return nextSettings
+}
 
 function getInitialAppSettings(): AppSettings {
   const fallbackSettings: AppSettings = {
@@ -37,6 +58,8 @@ export function useAppSettings() {
   const [saveState, setSaveState] = useState<AppSettingsSaveState>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const settingsRef = useRef<AppSettings>(initialSettings)
+  const canonicalSettingsRef = useRef<AppSettings>(initialSettings)
+  const pendingUpdatesRef = useRef(new Map<number, PendingSettingsUpdate>())
   const requestIdRef = useRef(0)
 
   useEffect(() => {
@@ -55,10 +78,12 @@ export function useAppSettings() {
           return
         }
 
-        settingsRef.current = nextSettings
-        setSettings(nextSettings)
+        canonicalSettingsRef.current = nextSettings
+        const visibleSettings = applyPendingSettingsUpdates(nextSettings, pendingUpdatesRef.current.values())
+        settingsRef.current = visibleSettings
+        setSettings(visibleSettings)
         setErrorMessage(null)
-        setSaveState('idle')
+        setSaveState(pendingUpdatesRef.current.size > 0 ? 'saving' : 'idle')
       } catch (error) {
         console.error('Failed to load app settings', error)
         if (!isMounted) {
@@ -88,11 +113,13 @@ export function useAppSettings() {
   useEffect(() => {
     return window.tidecodeSettings.onRemoteChange((nextSettings) => {
       const normalizedSettings = resetLaunchOnlyAppSettings(nextSettings)
-      requestIdRef.current += 1
-      settingsRef.current = normalizedSettings
-      setSettings(normalizedSettings)
+      const mergedSettings = preserveLocalWorkspaceUiSettings(normalizedSettings, settingsRef.current)
+      canonicalSettingsRef.current = mergedSettings
+      const visibleSettings = applyPendingSettingsUpdates(mergedSettings, pendingUpdatesRef.current.values())
+      settingsRef.current = visibleSettings
+      setSettings(visibleSettings)
       setErrorMessage(null)
-      setSaveState('idle')
+      setSaveState(pendingUpdatesRef.current.size > 0 ? 'saving' : 'idle')
     })
   }, [])
 
@@ -111,17 +138,20 @@ export function useAppSettings() {
   }, [saveState])
 
   const updateSettings = useCallback((input: Partial<AppSettings>) => {
-    const previousSettings = settingsRef.current
-    const shouldDeferRendererCommit = shouldDeferRendererSettingsCommit(input)
-    const optimisticSettings = {
-      ...previousSettings,
-      ...input,
-    }
     const requestId = requestIdRef.current + 1
     requestIdRef.current = requestId
+    const pendingUpdate: PendingSettingsUpdate = {
+      deferRendererCommit: shouldDeferRendererSettingsCommit(input),
+      input,
+    }
+    pendingUpdatesRef.current.set(requestId, pendingUpdate)
 
+    const optimisticSettings = applyPendingSettingsUpdates(
+      canonicalSettingsRef.current,
+      pendingUpdatesRef.current.values(),
+    )
     settingsRef.current = optimisticSettings
-    if (!shouldDeferRendererCommit) {
+    if (!pendingUpdate.deferRendererCommit) {
       setSettings(optimisticSettings)
     }
     setSaveState('saving')
@@ -130,26 +160,33 @@ export function useAppSettings() {
     return window.tidecodeSettings
       .updateSettings(input)
       .then((nextSettings) => {
-        if (requestId !== requestIdRef.current) {
-          return null
+        const localSettingsAtCommit = {
+          ...settingsRef.current,
+          ...input,
         }
-
-        settingsRef.current = nextSettings
-        setSettings(nextSettings)
-        setSaveState('saved')
-        return nextSettings
+        pendingUpdatesRef.current.delete(requestId)
+        const normalizedSettings = resetLaunchOnlyAppSettings(nextSettings)
+        const mergedSettings = preserveLocalWorkspaceUiSettings(normalizedSettings, localSettingsAtCommit)
+        canonicalSettingsRef.current = mergedSettings
+        const visibleSettings = applyPendingSettingsUpdates(
+          mergedSettings,
+          pendingUpdatesRef.current.values(),
+        )
+        settingsRef.current = visibleSettings
+        setSettings(visibleSettings)
+        setSaveState(pendingUpdatesRef.current.size > 0 ? 'saving' : 'saved')
+        return mergedSettings
       })
       .catch((error) => {
         console.error('Failed to update app settings', error)
-        if (requestId !== requestIdRef.current) {
-          return null
-        }
-
-        settingsRef.current = previousSettings
-        if (!shouldDeferRendererCommit) {
-          setSettings(previousSettings)
-        }
-        setSaveState('error')
+        pendingUpdatesRef.current.delete(requestId)
+        const visibleSettings = applyPendingSettingsUpdates(
+          canonicalSettingsRef.current,
+          pendingUpdatesRef.current.values(),
+        )
+        settingsRef.current = visibleSettings
+        setSettings(visibleSettings)
+        setSaveState(pendingUpdatesRef.current.size > 0 ? 'saving' : 'error')
         setErrorMessage('Unable to save your settings right now.')
         return null
       })

@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { AppSettings } from '../../src/types/chat'
 import { DEFAULT_APP_SETTINGS } from '../../src/lib/defaultAppSettings'
+import { WORKSPACE_UI_SETTINGS_KEYS } from '../../src/lib/appSettingsScopes'
 import { isAppAppearance, isAppLanguage, isFollowUpBehavior } from '../../src/lib/appSettings'
 import { clampStoredDiffPanelWidth } from '../../src/lib/diffPanelSizing'
 import { clampStoredTerminalPanelHeight } from '../../src/lib/terminalPanelSizing'
@@ -19,30 +20,14 @@ import { isChatProviderId as isSupportedChatProviderId } from '../providers/prov
 const CONFIG_ROOT_SEGMENTS = ['.tidecode', 'config'] as const
 const SETTINGS_FILE_NAME = 'settings.json'
 const WORKSPACE_UI_STATE_FILE_NAME = 'workspace-ui-state.json'
+const SETTINGS_LOCK_FILE_NAME = 'settings.lock'
 const SETTINGS_HOME_OVERRIDE_ENV = 'TIDECODE_SETTINGS_HOME'
+const SETTINGS_LOCK_RETRY_MS = 20
+const SETTINGS_LOCK_STALE_MS = 30_000
+const SETTINGS_LOCK_TIMEOUT_MS = 5_000
 let settingsUpdateQueue: Promise<void> = Promise.resolve()
 let cachedStoredSettings: AppSettings | null = null
 const SOURCE_CONTROL_SECTION_IDS: readonly SourceControlSectionId[] = ['commit', 'changes', 'history']
-const WORKSPACE_UI_SETTINGS_KEYS = [
-  'conversationModelPreferences',
-  'diffPanelWidth',
-  'editSessionsByConversation',
-  'lastActiveConversationId',
-  'lastActiveDraftFolderId',
-  'openEmptyConversationOnLaunch',
-  'revertEditSessionsByConversation',
-  'sidebarWidth',
-  'workspaceEditorWidth',
-  'workspaceExplorerWidth',
-  'sourceControlSectionOrder',
-  'sourceControlSectionOpen',
-  'sourceControlSectionSizes',
-  'terminalOpenByWorkspace',
-  'terminalPanelHeightsByWorkspace',
-  'selectedProjectId',
-  'selectedProjectName',
-] as const satisfies readonly (keyof AppSettings)[]
-
 type WorkspaceUiSettingsKey = (typeof WORKSPACE_UI_SETTINGS_KEYS)[number]
 type WorkspaceUiSettings = Pick<AppSettings, WorkspaceUiSettingsKey>
 type DurableAppSettings = Omit<AppSettings, WorkspaceUiSettingsKey>
@@ -340,8 +325,64 @@ function getWorkspaceUiStateFilePath() {
   return path.join(getConfigDirectoryPath(), WORKSPACE_UI_STATE_FILE_NAME)
 }
 
+function getSettingsLockFilePath() {
+  return path.join(getConfigDirectoryPath(), SETTINGS_LOCK_FILE_NAME)
+}
+
 async function ensureConfigDirectory() {
   await fs.mkdir(getConfigDirectoryPath(), { recursive: true })
+}
+
+async function waitForSettingsLockRetry() {
+  await new Promise<void>((resolve) => setTimeout(resolve, SETTINGS_LOCK_RETRY_MS))
+}
+
+async function removeStaleSettingsLock(lockPath: string) {
+  try {
+    const stats = await fs.stat(lockPath)
+    if (Date.now() - stats.mtimeMs < SETTINGS_LOCK_STALE_MS) {
+      return false
+    }
+    await fs.unlink(lockPath)
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return true
+    }
+    return false
+  }
+}
+
+async function withSettingsFileLock<T>(operation: () => Promise<T>): Promise<T> {
+  await ensureConfigDirectory()
+  const lockPath = getSettingsLockFilePath()
+  const deadline = Date.now() + SETTINGS_LOCK_TIMEOUT_MS
+
+  while (Date.now() < deadline) {
+    try {
+      const handle = await fs.open(lockPath, 'wx')
+      try {
+        return await operation()
+      } finally {
+        await handle.close().catch(() => undefined)
+        await fs.unlink(lockPath).catch((error) => {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            console.warn('Failed to release TideCode settings lock', error)
+          }
+        })
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+        throw error
+      }
+      if (await removeStaleSettingsLock(lockPath)) {
+        continue
+      }
+      await waitForSettingsLockRetry()
+    }
+  }
+
+  throw new Error('Timed out waiting for the TideCode settings lock.')
 }
 
 function isRecoverableSettingsParseError(error: unknown) {
@@ -349,27 +390,11 @@ function isRecoverableSettingsParseError(error: unknown) {
 }
 
 function pickDurableAppSettings(settings: AppSettings): DurableAppSettings {
-  const {
-    conversationModelPreferences: _conversationModelPreferences,
-    diffPanelWidth: _diffPanelWidth,
-    editSessionsByConversation: _editSessionsByConversation,
-    lastActiveConversationId: _lastActiveConversationId,
-    lastActiveDraftFolderId: _lastActiveDraftFolderId,
-    openEmptyConversationOnLaunch: _openEmptyConversationOnLaunch,
-    revertEditSessionsByConversation: _revertEditSessionsByConversation,
-    sidebarWidth: _sidebarWidth,
-    workspaceEditorWidth: _workspaceEditorWidth,
-    workspaceExplorerWidth: _workspaceExplorerWidth,
-    sourceControlSectionOrder: _sourceControlSectionOrder,
-    sourceControlSectionOpen: _sourceControlSectionOpen,
-    sourceControlSectionSizes: _sourceControlSectionSizes,
-    terminalOpenByWorkspace: _terminalOpenByWorkspace,
-    terminalPanelHeightsByWorkspace: _terminalPanelHeightsByWorkspace,
-    selectedProjectName: _selectedProjectName,
-    ...durableSettings
-  } = settings
-
-  return durableSettings
+  const durableSettings: Partial<AppSettings> = { ...settings }
+  for (const key of WORKSPACE_UI_SETTINGS_KEYS) {
+    delete durableSettings[key]
+  }
+  return durableSettings as DurableAppSettings
 }
 
 function pickWorkspaceUiSettings(settings: AppSettings): WorkspaceUiSettings {
@@ -407,14 +432,16 @@ async function writeWorkspaceUiStateFile(settings: WorkspaceUiSettings) {
 function splitSettingsInput(input: Partial<AppSettings>) {
   const durableInput: Partial<DurableAppSettings> = {}
   const workspaceUiInput: Partial<WorkspaceUiSettings> = {}
+  const writableDurableInput = durableInput as Partial<Record<keyof AppSettings, AppSettings[keyof AppSettings]>>
+  const writableWorkspaceUiInput = workspaceUiInput as Partial<Record<keyof AppSettings, AppSettings[keyof AppSettings]>>
 
   for (const [key, value] of Object.entries(input) as [keyof AppSettings, AppSettings[keyof AppSettings]][]) {
     if (WORKSPACE_UI_SETTINGS_KEY_SET.has(key)) {
-      ;(workspaceUiInput as Partial<Record<keyof AppSettings, AppSettings[keyof AppSettings]>>)[key] = value
+      writableWorkspaceUiInput[key] = value
       continue
     }
 
-    ;(durableInput as Partial<Record<keyof AppSettings, AppSettings[keyof AppSettings]>>)[key] = value
+    writableDurableInput[key] = value
   }
 
   return {
@@ -683,17 +710,50 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
   }
 }
 
-export async function getStoredSettings() {
-  const storedSettings = await readStoredSettingsFiles()
-  if (!hasLaunchOnlyAppSettings(storedSettings)) {
-    cachedStoredSettings = storedSettings
-    return storedSettings
-  }
+async function commitStoredSettingsInput(currentSettings: AppSettings, input: Partial<AppSettings>) {
+  const { durableInput, hasDurableInput, hasWorkspaceUiInput, workspaceUiInput } = splitSettingsInput(input)
+  const currentDurableSettings = pickDurableAppSettings(currentSettings)
+  const currentWorkspaceUiSettings = pickWorkspaceUiSettings(currentSettings)
+  const nextDurableSettings = hasDurableInput
+    ? pickDurableAppSettings(sanitizeSettings({
+        ...currentSettings,
+        ...durableInput,
+      }))
+    : currentDurableSettings
+  const nextWorkspaceUiSettings = hasWorkspaceUiInput
+    ? pickWorkspaceUiSettings(sanitizeSettings({
+        ...currentSettings,
+        ...workspaceUiInput,
+      }))
+    : currentWorkspaceUiSettings
 
-  const launchSafeSettings = resetLaunchOnlyAppSettings(storedSettings)
-  await writeStoredSettingsFiles(launchSafeSettings)
-  cachedStoredSettings = launchSafeSettings
-  return launchSafeSettings
+  const nextSettings = sanitizeSettings({
+    ...nextDurableSettings,
+    ...nextWorkspaceUiSettings,
+  })
+
+  await Promise.all([
+    hasDurableInput ? writeDurableSettingsFile(nextDurableSettings) : Promise.resolve(),
+    hasWorkspaceUiInput ? writeWorkspaceUiStateFile(nextWorkspaceUiSettings) : Promise.resolve(),
+  ])
+  cachedStoredSettings = nextSettings
+  return nextSettings
+}
+
+export async function getStoredSettings() {
+  await settingsUpdateQueue.catch(() => undefined)
+  return withSettingsFileLock(async () => {
+    const storedSettings = await readStoredSettingsFiles()
+    if (!hasLaunchOnlyAppSettings(storedSettings)) {
+      cachedStoredSettings = storedSettings
+      return storedSettings
+    }
+
+    const launchSafeSettings = resetLaunchOnlyAppSettings(storedSettings)
+    await writeStoredSettingsFiles(launchSafeSettings)
+    cachedStoredSettings = launchSafeSettings
+    return launchSafeSettings
+  })
 }
 
 export async function updateStoredSettings(input: Partial<AppSettings>) {
@@ -702,33 +762,39 @@ export async function updateStoredSettings(input: Partial<AppSettings>) {
   settingsUpdateQueue = settingsUpdateQueue
     .catch(() => undefined)
     .then(async () => {
-      const currentSettings = cachedStoredSettings ?? (await readStoredSettingsFiles().catch(() => DEFAULT_APP_SETTINGS))
-      const { durableInput, hasDurableInput, hasWorkspaceUiInput, workspaceUiInput } = splitSettingsInput(input)
-      const currentDurableSettings = pickDurableAppSettings(currentSettings)
-      const currentWorkspaceUiSettings = pickWorkspaceUiSettings(currentSettings)
-      const nextDurableSettings = hasDurableInput
-        ? pickDurableAppSettings(sanitizeSettings({
-            ...currentSettings,
-            ...durableInput,
-          }))
-        : currentDurableSettings
-      const nextWorkspaceUiSettings = hasWorkspaceUiInput
-        ? pickWorkspaceUiSettings(sanitizeSettings({
-            ...currentSettings,
-            ...workspaceUiInput,
-          }))
-        : currentWorkspaceUiSettings
-
-      nextSettings = sanitizeSettings({
-        ...nextDurableSettings,
-        ...nextWorkspaceUiSettings,
+      nextSettings = await withSettingsFileLock(async () => {
+        const currentSettings = await readStoredSettingsFiles().catch(() => cachedStoredSettings ?? DEFAULT_APP_SETTINGS)
+        return commitStoredSettingsInput(currentSettings, input)
       })
-      cachedStoredSettings = nextSettings
+    })
 
-      await Promise.all([
-        hasDurableInput ? writeDurableSettingsFile(nextDurableSettings) : Promise.resolve(),
-        hasWorkspaceUiInput ? writeWorkspaceUiStateFile(nextWorkspaceUiSettings) : Promise.resolve(),
-      ])
+  await settingsUpdateQueue
+  return nextSettings
+}
+
+export async function updateStoredConversationModelPreference(
+  conversationId: string,
+  preference: AppSettings['conversationModelPreferences'][string] | null,
+) {
+  const normalizedConversationId = conversationId.trim()
+  if (!normalizedConversationId) {
+    throw new Error('A conversation ID is required to update model preferences.')
+  }
+
+  let nextSettings = DEFAULT_APP_SETTINGS
+  settingsUpdateQueue = settingsUpdateQueue
+    .catch(() => undefined)
+    .then(async () => {
+      nextSettings = await withSettingsFileLock(async () => {
+        const currentSettings = await readStoredSettingsFiles().catch(() => cachedStoredSettings ?? DEFAULT_APP_SETTINGS)
+        const conversationModelPreferences = { ...currentSettings.conversationModelPreferences }
+        if (preference) {
+          conversationModelPreferences[normalizedConversationId] = preference
+        } else {
+          delete conversationModelPreferences[normalizedConversationId]
+        }
+        return commitStoredSettingsInput(currentSettings, { conversationModelPreferences })
+      })
     })
 
   await settingsUpdateQueue

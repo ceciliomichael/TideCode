@@ -86,7 +86,10 @@ import {
   saveCustomModel,
 } from '../models/service'
 
-export function registerCoreIpcHandlers(getWindow: () => BrowserWindow | null) {
+export function registerCoreIpcHandlers(
+  getWindow: () => BrowserWindow | null,
+  onSettingsChanged?: (settings: AppSettings, input: Partial<AppSettings>) => void,
+) {
   // Synchronous channel: lets the renderer read the draft path on first paint without an async round-trip
   ipcMain.on('history:getDraftAgentContextPathSync', (event) => {
     event.returnValue = getDraftAgentContextPath()
@@ -175,6 +178,7 @@ export function registerCoreIpcHandlers(getWindow: () => BrowserWindow | null) {
       applyWindowTheme(activeWindow, nextSettings.appearance)
       applyTideCodeAppIcon(activeWindow)
     }
+    onSettingsChanged?.(nextSettings, input)
 
     return nextSettings
   })

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ResizableSidebarPanel, type MobileSidebarPresentation } from '../sidebar/ResizableSidebarPanel'
 import { BrandWordmark } from '../branding/BrandWordmark'
 import { isRemoteBrowserRuntime } from '../../remote/webBridge'
@@ -7,6 +7,14 @@ import { useIsMobileViewport } from '../../hooks/useIsMobileViewport'
 interface MobileVisualViewportFrame {
   height: number
   offsetTop: number
+}
+
+function isTextEntryElement(element: Element | null) {
+  return (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    (element instanceof HTMLElement && element.isContentEditable)
+  )
 }
 
 interface AppWorkspaceShellProps {
@@ -34,6 +42,7 @@ export function AppWorkspaceShell({
 }: AppWorkspaceShellProps) {
   const isRemoteBrowser = isRemoteBrowserRuntime()
   const isMobileViewport = useIsMobileViewport()
+  const shellRef = useRef<HTMLDivElement | null>(null)
   const [mobileVisualViewportFrame, setMobileVisualViewportFrame] = useState<MobileVisualViewportFrame | null>(null)
 
   useLayoutEffect(() => {
@@ -43,7 +52,19 @@ export function AppWorkspaceShell({
     }
 
     const visualViewport = window.visualViewport
-    const syncVisualViewport = () => {
+    const syncVisualViewport = (force = false) => {
+      const activeElement = document.activeElement
+      const shellElement = shellRef.current
+      const textEntryIsOutsideWorkspace =
+        !force &&
+        shellElement !== null &&
+        isTextEntryElement(activeElement) &&
+        !shellElement.contains(activeElement)
+
+      if (textEntryIsOutsideWorkspace) {
+        return
+      }
+
       const nextFrame = {
         height: Math.max(1, Math.round(visualViewport.height)),
         offsetTop: Math.max(0, Math.round(visualViewport.offsetTop)),
@@ -54,23 +75,26 @@ export function AppWorkspaceShell({
           : nextFrame,
       )
     }
+    const handleVisualViewportChange = () => syncVisualViewport()
+    const handleOrientationChange = () => syncVisualViewport(true)
 
     syncVisualViewport()
-    visualViewport.addEventListener('resize', syncVisualViewport)
-    visualViewport.addEventListener('scroll', syncVisualViewport)
-    window.addEventListener('resize', syncVisualViewport)
-    window.addEventListener('orientationchange', syncVisualViewport)
+    visualViewport.addEventListener('resize', handleVisualViewportChange)
+    visualViewport.addEventListener('scroll', handleVisualViewportChange)
+    window.addEventListener('resize', handleVisualViewportChange)
+    window.addEventListener('orientationchange', handleOrientationChange)
 
     return () => {
-      visualViewport.removeEventListener('resize', syncVisualViewport)
-      visualViewport.removeEventListener('scroll', syncVisualViewport)
-      window.removeEventListener('resize', syncVisualViewport)
-      window.removeEventListener('orientationchange', syncVisualViewport)
+      visualViewport.removeEventListener('resize', handleVisualViewportChange)
+      visualViewport.removeEventListener('scroll', handleVisualViewportChange)
+      window.removeEventListener('resize', handleVisualViewportChange)
+      window.removeEventListener('orientationchange', handleOrientationChange)
     }
   }, [isMobileViewport])
 
   return (
     <div
+      ref={shellRef}
       data-mobile-visual-viewport={isMobileViewport ? 'true' : undefined}
       className="relative flex h-screen h-[100dvh] overflow-hidden bg-[var(--workspace-shell-surface)]"
       style={{
