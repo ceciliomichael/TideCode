@@ -16,12 +16,14 @@ interface WorkspaceFileEditorProps {
   gitFileDiff: GitFileDiff | null
   hasRepository: boolean
   initialSelection?: TextSelectionRange | null
+  onOpenFile: (relativePath: string) => void
   onOpenMarkdownPreview?: () => void
   onOpenSvgPreview?: () => void
   originalContent: string | null
   onSelectionChange?: (selection: TextSelectionRange | null) => void
   value: string
   wordWrapEnabled: boolean
+  workspaceRootPath?: string | null
   onChange: (nextValue: string) => void
 }
 
@@ -31,12 +33,14 @@ export const WorkspaceFileEditor = memo(function WorkspaceFileEditor({
   gitFileDiff,
   hasRepository,
   initialSelection,
+  onOpenFile,
   onOpenMarkdownPreview,
   onOpenSvgPreview,
   originalContent,
   onSelectionChange,
   value,
   wordWrapEnabled,
+  workspaceRootPath,
   onChange,
 }: WorkspaceFileEditorProps) {
   const editorState = useWorkspaceMonacoEditor({
@@ -45,6 +49,7 @@ export const WorkspaceFileEditor = memo(function WorkspaceFileEditor({
     gitFileDiff,
     hasRepository,
     initialSelection,
+    onOpenFile,
     onOpenMarkdownPreview,
     onOpenSvgPreview,
     originalContent,
@@ -52,6 +57,7 @@ export const WorkspaceFileEditor = memo(function WorkspaceFileEditor({
     onChange,
     value,
     wordWrapEnabled,
+    workspaceRootPath,
   })
 
   return (

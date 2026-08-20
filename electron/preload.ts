@@ -353,6 +353,7 @@ const workspaceApi: TideCodeWorkspaceApi = {
   listRefactorCandidates: (input: WorkspaceRefactorCandidatesInput) =>
     ipcRenderer.invoke('workspace:refactorCandidates:list', input),
   readFile: (input) => ipcRenderer.invoke('workspace:explorer:readFile', input),
+  getTypeScriptProject: (input) => ipcRenderer.invoke('workspace:typescript:getProject', input),
   renameEntry: (input) => ipcRenderer.invoke('workspace:explorer:renameEntry', input),
   unwatchExplorerChanges: (input: WorkspaceExplorerWatchChangesInput) =>
     ipcRenderer.invoke('workspace:explorer:unwatch', input),

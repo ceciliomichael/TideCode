@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { BeforeMount, Monaco, OnMount } from '@monaco-editor/react'
-import type { editor, IDisposable } from 'monaco-editor'
+import type { editor, IDisposable, Uri } from 'monaco-editor'
 import type { GitFileDiff } from '../../../types/chat'
 import { useResolvedDocumentTheme } from '../../../hooks/useResolvedDocumentTheme'
 import { isMarkdownPreviewablePath } from '../../../lib/markdown-preview'
@@ -12,6 +12,7 @@ import {
   createWorkspaceMonacoOptions,
   defineWorkspaceMonacoThemes,
   getWorkspaceMonacoTheme,
+  getWorkspaceRelativePathFromMonacoUri,
   resolveWorkspaceMonacoLanguage,
 } from './workspaceMonacoConfig'
 import {
@@ -19,7 +20,12 @@ import {
   toMonacoModelDecorations,
 } from './workspaceMonacoDecorations'
 import { useWorkspaceMonacoSearch } from './useWorkspaceMonacoSearch'
+import { useWorkspaceMonacoTypeScriptProject } from './useWorkspaceMonacoTypeScriptProject'
 import { releaseWorkspaceMonacoModel, retainWorkspaceMonacoModel } from './workspaceMonacoModelCache'
+import {
+  getWorkspaceMonacoScriptLanguage,
+  suspendWorkspaceMonacoTypeScriptDiagnostics,
+} from './workspaceMonacoTypeScriptProject'
 
 interface UseWorkspaceMonacoEditorOptions {
   fileName: string
@@ -28,16 +34,19 @@ interface UseWorkspaceMonacoEditorOptions {
   hasRepository: boolean
   initialSelection?: TextSelectionRange | null
   onChange: (nextValue: string) => void
+  onOpenFile: (relativePath: string) => void
   onOpenMarkdownPreview?: () => void
   onOpenSvgPreview?: () => void
   onSelectionChange?: (selection: TextSelectionRange | null) => void
   originalContent: string | null
   value: string
   wordWrapEnabled: boolean
+  workspaceRootPath?: string | null
 }
 
 interface LatestCallbacks {
   onChange: (nextValue: string) => void
+  onOpenFile?: (relativePath: string) => void
   onOpenMarkdownPreview?: () => void
   onOpenSvgPreview?: () => void
   onSelectionChange?: (selection: TextSelectionRange | null) => void
@@ -97,12 +106,14 @@ export function useWorkspaceMonacoEditor({
   hasRepository,
   initialSelection = null,
   onChange,
+  onOpenFile,
   onOpenMarkdownPreview,
   onOpenSvgPreview,
   onSelectionChange,
   originalContent,
   value,
   wordWrapEnabled,
+  workspaceRootPath,
 }: UseWorkspaceMonacoEditorOptions) {
   const resolvedTheme = useResolvedDocumentTheme()
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
@@ -113,6 +124,7 @@ export function useWorkspaceMonacoEditor({
   const callbacksRef = useRef<LatestCallbacks>({ onChange })
   callbacksRef.current = {
     onChange,
+    onOpenFile,
     onOpenMarkdownPreview,
     onOpenSvgPreview,
     onSelectionChange,
@@ -138,6 +150,12 @@ export function useWorkspaceMonacoEditor({
     () => createWorkspaceMonacoOptions(wordWrapEnabled),
     [wordWrapEnabled],
   )
+  useWorkspaceMonacoTypeScriptProject({
+    filePath: filePath || fileName,
+    language,
+    monacoRef,
+    workspaceRootPath,
+  })
   const theme = getWorkspaceMonacoTheme(resolvedTheme)
   const lineDecorations = useMemo(() => {
     if (!hasRepository) {
@@ -168,7 +186,11 @@ export function useWorkspaceMonacoEditor({
 
   const beforeMount = useCallback<BeforeMount>((monacoInstance) => {
     defineWorkspaceMonacoThemes(monacoInstance)
-  }, [])
+    const scriptLanguage = getWorkspaceMonacoScriptLanguage(language)
+    if (scriptLanguage && workspaceRootPath?.trim()) {
+suspendWorkspaceMonacoTypeScriptDiagnostics(monacoInstance, scriptLanguage, workspaceRootPath)
+    }
+  }, [language, workspaceRootPath])
 
   const onMount = useCallback<OnMount>((editorInstance, monacoInstance) => {
     editorRef.current = editorInstance
@@ -180,6 +202,17 @@ export function useWorkspaceMonacoEditor({
     }
 
     disposablesRef.current.push(
+      monacoInstance.editor.registerEditorOpener({
+openCodeEditor: (_source: editor.ICodeEditor, resource: Uri) => {
+          const relativePath = getWorkspaceRelativePathFromMonacoUri(resource.toString())
+          if (!relativePath || relativePath.startsWith('__code_blocks__/')) {
+            return false
+          }
+
+          callbacksRef.current.onOpenFile?.(relativePath)
+          return true
+        },
+      }),
       editorInstance.onDidChangeCursorSelection(() => {
         callbacksRef.current.onSelectionChange?.(getEditorSelectionOffsets(editorInstance))
       }),
@@ -227,7 +260,7 @@ export function useWorkspaceMonacoEditor({
 
     const nextDecorations = toMonacoModelDecorations(monacoInstance, lineDecorations)
     decorationsRef.current = editorInstance.createDecorationsCollection(nextDecorations)
-  }, [fileName, initialSelection, lineDecorations])
+}, [fileName, initialSelection, lineDecorations])
 
   const handleChange = useCallback((nextValue: string | undefined) => {
     if (nextValue !== undefined && nextValue !== value) {

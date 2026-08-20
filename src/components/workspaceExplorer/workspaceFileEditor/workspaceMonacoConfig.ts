@@ -99,15 +99,47 @@ export function resolveWorkspaceMonacoLanguage(filePath: string) {
   return EXTENSION_LANGUAGES[fileName.slice(extensionIndex + 1)] ?? 'plaintext'
 }
 
+function normalizeWorkspaceMonacoRelativePath(filePath: string) {
+  return filePath.trim().replace(/\\/g, '/').replace(/^\/+/, '')
+}
+
+export function createWorkspaceMonacoTypeScriptFilePath(filePath: string) {
+  const normalizedPath = normalizeWorkspaceMonacoRelativePath(filePath)
+return `file:///workspace/${normalizedPath || 'untitled'}`
+}
+
 export function createWorkspaceMonacoModelPath(filePath: string) {
-  const normalizedPath = filePath.trim().replace(/\\/g, '/').replace(/^\/+/, '')
+  const normalizedPath = normalizeWorkspaceMonacoRelativePath(filePath)
   const encodedPath = normalizedPath
     .split('/')
     .filter((segment) => segment.length > 0)
     .map((segment) => encodeURIComponent(segment))
     .join('/')
 
-  return `file:///workspace/${encodedPath || 'untitled'}`
+return `file:///workspace/${encodedPath || 'untitled'}`
+}
+
+export function getWorkspaceRelativePathFromMonacoUri(resourceUri: string) {
+  const match = /^(?:file:\/\/workspace|file:\/\/\/workspace)\/+(.*)$/iu.exec(resourceUri.trim())
+  if (!match) {
+    return null
+  }
+
+  const encodedPath = match[1].split(/[?#]/u, 1)[0]
+  if (!encodedPath) {
+    return null
+  }
+
+  try {
+    const relativePath = encodedPath
+      .split('/')
+      .filter((segment) => segment.length > 0)
+      .map((segment) => decodeURIComponent(segment))
+      .join('/')
+    return relativePath || null
+  } catch {
+    return null
+  }
 }
 
 export function createWorkspaceMonacoOptions(
@@ -140,6 +172,7 @@ export function createWorkspaceMonacoOptions(
     formatOnPaste: false,
     formatOnType: false,
     glyphMargin: false,
+hover: { enabled: false },
     guides: {
       bracketPairs: false,
       bracketPairsHorizontal: false,
@@ -153,7 +186,7 @@ export function createWorkspaceMonacoOptions(
     lineHeight: 20,
     lineNumbers: 'on',
     lineNumbersMinChars: 5,
-    links: true,
+    links: false,
     matchBrackets: 'always',
     minimap: { enabled: false },
     mouseWheelZoom: true,

@@ -25,6 +25,7 @@ interface WorkspaceFileTabsPanelContentProps {
   hasRepository: boolean
   initialSelection: TextSelectionRange | null
   tabs: readonly WorkspaceTab[]
+  onOpenFile: (relativePath: string) => void
   onOpenMarkdownPreview?: () => void
   onOpenSvgPreview?: () => void
   onFileContentChange: (relativePath: string, content: string) => void
@@ -60,6 +61,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
   hasRepository,
   initialSelection,
   tabs,
+  onOpenFile,
   onOpenMarkdownPreview,
   onOpenSvgPreview,
   onFileContentChange,
@@ -243,14 +245,16 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
       fileName={activeTab.fileName}
       filePath={activeTab.relativePath}
       gitFileDiff={findGitFileDiff(gitFileDiffs, activeTab.relativePath)}
-        hasRepository={hasRepository}
+      hasRepository={hasRepository}
       initialSelection={initialSelection}
+      onOpenFile={onOpenFile}
       onOpenMarkdownPreview={onOpenMarkdownPreview}
       onOpenSvgPreview={isSvgPreviewablePath(activeTab.relativePath) ? onOpenSvgPreview : undefined}
       originalContent={activeTab.originalContent}
       onSelectionChange={onSelectionChange}
       value={activeTab.content}
       wordWrapEnabled={wordWrapEnabled}
+      workspaceRootPath={workspaceRootPath}
       onChange={(nextValue) => onFileContentChange(activeTab.relativePath, nextValue)}
     />
   )

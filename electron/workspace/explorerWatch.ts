@@ -11,6 +11,7 @@ import {
   type WorkspaceDirectoryWatcher,
 } from './explorerDirectoryWatcher'
 import { WorkspaceExplorerWatchSubscriptions } from './explorerWatchSubscriptions'
+import { invalidateWorkspaceTypeScriptProjectCache } from './typescriptProject'
 
 const DEFAULT_RELATIVE_PATH = '.'
 const RELOAD_DEBOUNCE_MS = 100
@@ -169,6 +170,7 @@ function removeWorkspaceExplorerWatcherState(rootPath: string) {
 
 function scheduleWorkspaceExplorerChange(rootPath: string) {
   const normalizedRootPath = normalizeWorkspaceRootPath(rootPath)
+  invalidateWorkspaceTypeScriptProjectCache(normalizedRootPath)
   const state = watcherStates.get(normalizedRootPath)
   if (!state || state.pendingEmitTimerId !== null) {
     return

@@ -109,6 +109,8 @@ import type {
   WorkspaceExplorerPasteClipboardImageResult,
   WorkspaceExplorerReadFileInput,
   WorkspaceExplorerReadFileResult,
+  WorkspaceTypeScriptProjectInput,
+  WorkspaceTypeScriptProjectSnapshot,
   WorkspaceExplorerRenameEntryInput,
   WorkspaceExplorerRenameEntryResult,
   WorkspaceExplorerTransferEntryInput,
@@ -230,6 +232,7 @@ export interface TideCodeWorkspaceApi {
   onExplorerChange: (listener: (event: WorkspaceExplorerChangeEvent) => void) => () => void
   listDirectory: (input: WorkspaceExplorerListDirectoryInput) => Promise<WorkspaceExplorerEntry[]>
   readFile: (input: WorkspaceExplorerReadFileInput) => Promise<WorkspaceExplorerReadFileResult>
+  getTypeScriptProject: (input: WorkspaceTypeScriptProjectInput) => Promise<WorkspaceTypeScriptProjectSnapshot>
   renameEntry: (input: WorkspaceExplorerRenameEntryInput) => Promise<WorkspaceExplorerRenameEntryResult>
   updateExplorerWatchPaths: (input: WorkspaceExplorerWatchChangesInput) => Promise<void>
   unwatchExplorerChanges: (input: WorkspaceExplorerWatchChangesInput) => Promise<void>

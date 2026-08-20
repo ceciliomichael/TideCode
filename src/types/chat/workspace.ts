@@ -32,6 +32,33 @@ export interface WorkspaceExplorerReadFileInput {
   workspaceRootPath: string
 }
 
+export type WorkspaceTypeScriptCompilerOptionValue =
+  | boolean
+  | number
+  | string
+  | string[]
+  | Record<string, string[]>
+  | null
+
+export interface WorkspaceTypeScriptProjectInput {
+  includeDependencyDeclarations?: boolean
+  relativePath: string
+  workspaceRootPath: string
+}
+
+export interface WorkspaceTypeScriptProjectFile {
+  content: string
+  filePath: string
+}
+
+export interface WorkspaceTypeScriptProjectSnapshot {
+  compilerOptions: Record<string, WorkspaceTypeScriptCompilerOptionValue>
+  configPath: string | null
+  files: WorkspaceTypeScriptProjectFile[]
+  projectKey: string
+  truncated: boolean
+}
+
 export interface WorkspaceExplorerReadFileReadyResult {
   status: 'ready'
   content: string
