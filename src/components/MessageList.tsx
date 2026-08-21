@@ -493,6 +493,11 @@ export function MessageList({
             index: currentAssistantRunStartIndex + j
           });
         }
+        // The active transcript has already been emitted above. Clear the
+        // accumulator so a trailing live compaction divider cannot process
+        // the same assistant work a second time as a WorkingBlock.
+        currentAssistantRun = [];
+        currentAssistantRunStartIndex = -1;
       }
     }
 
@@ -545,10 +550,13 @@ export function MessageList({
       (index === visibleMessages.length - 1 ||
         visibleMessages[index + 1]?.role !== "assistant");
 
+    const isPreCompactionTranscript = liveCompaction?.phase === 'compacting';
     const isMsgStreaming =
+      !isPreCompactionTranscript &&
       streamingAssistantMessageId !== null &&
       (msg.id === streamingAssistantMessageId ||
         msg.id.startsWith(`${streamingAssistantMessageId}-`));
+    const isMessageConversationStreaming = isConversationStreaming && !isPreCompactionTranscript;
 
     return (
       <MessageRow
@@ -564,7 +572,7 @@ export function MessageList({
           subsequentAssistantTextByMessageId.get(msg.id) ?? false
         }
         isCompactionInProgress={liveCompaction?.phase === 'compacting'}
-        isConversationStreaming={isConversationStreaming}
+        isConversationStreaming={isMessageConversationStreaming}
         isEditing={editingMessageId === msg.id}
         isSending={isSending}
         isStreaming={isMsgStreaming}
@@ -639,6 +647,7 @@ export function MessageList({
 
           if (item.type === 'working_group') {
             const isWorkingGroupStreaming =
+              liveCompaction?.phase !== 'compacting' &&
               streamingAssistantMessageId !== null &&
               item.messages.some(
                 (m) =>

@@ -65,12 +65,15 @@ test('live compaction renders completed tool work above the compacting divider',
   ], 'assistant-stream')
 
   const assistantIndex = html.indexOf('I will read the release instructions first.')
-  const toolIndex = html.indexOf('RELEASE_INSTRUCTIONS.md')
+  const exploredIndex = html.indexOf('Explored 1 file')
   const compactingIndex = html.indexOf('Compacting')
 
   assert.ok(assistantIndex >= 0)
-  assert.ok(toolIndex >= 0)
+  assert.ok(exploredIndex >= 0)
   assert.ok(compactingIndex >= 0)
   assert.ok(assistantIndex < compactingIndex)
-  assert.ok(toolIndex < compactingIndex)
+  assert.ok(exploredIndex < compactingIndex)
+  assert.equal(html.match(/I will read the release instructions first\./g)?.length ?? 0, 1)
+  assert.equal(html.includes('Working...'), false)
+  assert.equal(html.includes('Exploring'), false)
 })
