@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.14 - DeepSeek vision and reliable service refresh
+
+TideCode 1.2.14 adds image-capable DeepSeek chat and makes desktop and CLI updates take effect reliably even when an older shared background service is still running.
+
+- Adds DeepSeek V4 Flash Vision with image attachment support through the existing OpenAI-compatible message format.
+- Keeps unknown DeepSeek models text-only unless the model catalog explicitly marks them as image-capable.
+- Detects stale run-service builds, shuts them down safely, and starts the current build instead of silently reusing outdated background code.
+- Requires no migration or configuration changes.
+- Validated with 1,166 automated tests, TypeScript type checking, the production build, and pull-request CI.
+
 ## 1.2.13 — More reliable workspaces and smoother settings
 
 TideCode 1.2.13 improves workspace navigation, remote and settings reliability, and the code editor experience across desktop and mobile.
