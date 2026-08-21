@@ -441,10 +441,13 @@ export function MessageList({
         }
       }
 
-      // A compaction is a transcript boundary. Put it immediately before the
-      // assistant draft that resumes after the boundary so its waiting state
-      // is rendered underneath the divider rather than above it.
-      if (isStreamingMessage(msg)) {
+      // A committed compaction is a transcript boundary. Put it immediately
+      // before the assistant draft that resumes after the boundary. While
+      // compaction is still running, however, every currently rendered piece
+      // of the active assistant turn happened before that boundary. Keep the
+      // live "Compacting" divider trailing those completed reasoning/tool
+      // blocks until the compacted continuation actually exists.
+      if (liveCompaction?.phase === 'compacted' && isStreamingMessage(msg)) {
         insertLiveCompaction();
       }
 
