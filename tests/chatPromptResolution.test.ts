@@ -61,6 +61,8 @@ test('packaged Desktop launches the shared service with the CLI runtime as its a
     assert.equal(launch.args[0], path.join(cliRoot, 'run-service.mjs'))
     assert.equal(launch.executable, path.join(cliRoot, nodeName))
     assert.equal(launch.env.TIDECODE_RUNTIME_ROOT, path.resolve(cliRoot))
+    assert.equal(launch.env.TIDECODE_RUN_SERVICE_BUILD_ID, launch.buildId)
+    assert.match(launch.buildId, /^[a-f0-9]{64}$/u)
   } finally {
     await rm(resourcesRoot, { force: true, recursive: true })
   }

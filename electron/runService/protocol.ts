@@ -23,10 +23,16 @@ import type {
   UpdatePendingSteerMessagesResult,
 } from '../../src/types/chat'
 
-export const RUN_SERVICE_PROTOCOL_VERSION = 11
+export const RUN_SERVICE_PROTOCOL_VERSION = 12
+
+export interface RunServiceHello {
+  buildId: string
+  protocolVersion: number
+}
 
 export type RunServiceRequest =
   | { id: string; token: string; method: 'hello'; params?: undefined }
+  | { id: string; token: string; method: 'shutdown'; params?: undefined }
   | { id: string; token: string; method: 'getCompactionState'; params: { conversationId: string } }
   | { id: string; token: string; method: 'getConversationRuntime'; params: { conversationId: string } }
   | { id: string; token: string; method: 'getPendingFollowUps'; params: { streamId: string } }
@@ -45,7 +51,7 @@ export type RunServiceRequest =
   | { id: string; token: string; method: 'updateConversationRuntime'; params: UpdateConversationRuntimeInput }
 
 export type RunServiceResponseResult =
-  | { protocolVersion: number }
+  | RunServiceHello
   | ChatCompactionLifecycleState
   | ClaimSharedFollowUpsResult
   | CompactConversationResult

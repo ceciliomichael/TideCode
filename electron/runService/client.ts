@@ -24,12 +24,24 @@ import type {
   UpdatePendingSteerMessagesInput,
   UpdatePendingSteerMessagesResult,
 } from '../../src/types/chat'
-import { RUN_SERVICE_PROTOCOL_VERSION, type RunServiceResponse, type RunServiceWireMessage } from './protocol'
+import {
+  RUN_SERVICE_PROTOCOL_VERSION,
+  type RunServiceHello,
+  type RunServiceResponse,
+  type RunServiceWireMessage,
+} from './protocol'
 import { ensureRunServiceToken, getRunServiceEndpoint } from './paths'
 
 interface PendingRequest {
   resolve: (value: unknown) => void
   reject: (error: Error) => void
+}
+
+export class RunServiceBuildMismatchError extends Error {
+  constructor(expectedBuildId: string, actualBuildId: string) {
+    super(`Tidecode run-service build mismatch: expected ${expectedBuildId}, got ${actualBuildId || 'missing'}.`)
+    this.name = 'RunServiceBuildMismatchError'
+  }
 }
 
 export class TideCodeRunServiceClient {
@@ -39,6 +51,8 @@ export class TideCodeRunServiceClient {
   private readonly eventListeners = new Set<(event: TideCodeRunEvent) => void>()
   private buffered = ''
   private token = ''
+
+  constructor(private readonly expectedBuildId?: string) {}
 
   async connect() {
     if (this.socket && !this.socket.destroyed) return
@@ -73,11 +87,19 @@ export class TideCodeRunServiceClient {
       socket.on('error', (error) => this.handleDisconnect(error))
       socket.on('close', () => this.handleDisconnect(new Error('Tidecode run service disconnected.')))
 
-      const hello = await this.requestRaw<{ protocolVersion: number }>('hello')
+      const hello = await this.requestRaw<RunServiceHello>('hello')
       if (hello.protocolVersion !== RUN_SERVICE_PROTOCOL_VERSION) {
+        socket.destroy()
+        if (this.socket === socket) this.socket = null
         throw new Error(
           `Tidecode run-service protocol mismatch: expected ${RUN_SERVICE_PROTOCOL_VERSION}, got ${hello.protocolVersion}.`,
         )
+      }
+      if (this.expectedBuildId && hello.buildId !== this.expectedBuildId) {
+        await this.requestRaw<null>('shutdown').catch(() => undefined)
+        socket.destroy()
+        if (this.socket === socket) this.socket = null
+        throw new RunServiceBuildMismatchError(this.expectedBuildId, hello.buildId)
       }
     })().finally(() => {
       this.connectPromise = null

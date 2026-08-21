@@ -18,6 +18,7 @@ const EXPECTED_LIMITS: Record<ChatProviderId, Record<string, number | undefined>
   },
   deepseek: {
     'deepseek-v4-flash': 384000,
+    'deepseek-v4-flash-vision-exp': 384000,
     'deepseek-v4-pro': 384000,
   },
   google: {

@@ -2,7 +2,12 @@ import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { getTideCodeRuntimeRoot } from '../runtime/runtimeRoot'
-import { TideCodeRunServiceClient } from './client'
+import {
+  computeRunServiceBuildId,
+  computeSourceRunServiceBuildId,
+  RUN_SERVICE_BUILD_ID_ENV,
+} from './buildIdentity'
+import { RunServiceBuildMismatchError, TideCodeRunServiceClient } from './client'
 
 let sharedClientPromise: Promise<TideCodeRunServiceClient> | null = null
 
@@ -14,10 +19,15 @@ function isElectronRuntime() {
   return Boolean(process.versions.electron)
 }
 
-export function buildRunServiceEnvironment(runtimeRoot: string, electronRunAsNode: boolean) {
+export function buildRunServiceEnvironment(
+  runtimeRoot: string,
+  electronRunAsNode: boolean,
+  buildId: string,
+) {
   return {
     ...process.env,
     TIDECODE_RUNTIME_ROOT: path.resolve(runtimeRoot),
+    [RUN_SERVICE_BUILD_ID_ENV]: buildId,
     ...(electronRunAsNode ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
   }
 }
@@ -28,10 +38,12 @@ export function getPackagedRunServiceLaunch(resourcesPath: string) {
   const nodeExecutable = path.join(cliDirectory, process.platform === 'win32' ? 'node.exe' : 'node')
   if (!existsSync(serviceEntry) || !existsSync(nodeExecutable)) return null
 
+  const buildId = computeRunServiceBuildId(serviceEntry)
   return {
     executable: nodeExecutable,
     args: [serviceEntry],
-    env: buildRunServiceEnvironment(cliDirectory, false),
+    buildId,
+    env: buildRunServiceEnvironment(cliDirectory, false, buildId),
   }
 }
 
@@ -43,10 +55,12 @@ function getServiceLaunch() {
     if (!explicitRuntimeRoot) {
       throw new Error('TIDECODE_RUN_SERVICE_RUNTIME_ROOT is required with TIDECODE_RUN_SERVICE_ENTRY.')
     }
+    const buildId = computeRunServiceBuildId(explicitEntry)
     return {
       executable: process.execPath,
       args: [explicitEntry],
-      env: buildRunServiceEnvironment(explicitRuntimeRoot, isElectronRuntime()),
+      buildId,
+      env: buildRunServiceEnvironment(explicitRuntimeRoot, isElectronRuntime(), buildId),
     }
   }
 
@@ -55,10 +69,12 @@ function getServiceLaunch() {
     const runtimeDirectory = path.dirname(argvEntry)
     const siblingService = path.join(runtimeDirectory, 'run-service.mjs')
     if (existsSync(siblingService)) {
+      const buildId = computeRunServiceBuildId(siblingService)
       return {
         executable: process.execPath,
         args: [siblingService],
-        env: buildRunServiceEnvironment(runtimeDirectory, isElectronRuntime()),
+        buildId,
+        env: buildRunServiceEnvironment(runtimeDirectory, isElectronRuntime(), buildId),
       }
     }
   }
@@ -71,31 +87,50 @@ function getServiceLaunch() {
 
   const sourceEntry = path.join(hostRuntimeRoot, 'electron', 'runService', 'index.ts')
   if (existsSync(sourceEntry)) {
+    const buildId = computeSourceRunServiceBuildId(hostRuntimeRoot)
     return {
       executable: process.execPath,
       args: ['--import', 'tsx', sourceEntry],
-      env: buildRunServiceEnvironment(hostRuntimeRoot, isElectronRuntime()),
+      buildId,
+      env: buildRunServiceEnvironment(hostRuntimeRoot, isElectronRuntime(), buildId),
     }
   }
 
   throw new Error('Unable to locate the TideCode run service from the configured runtime root.')
 }
 
-async function connectExistingService() {
-  const client = new TideCodeRunServiceClient()
+async function connectExistingService(buildId: string) {
+  const client = new TideCodeRunServiceClient(buildId)
   await client.connect()
   return client
 }
 
+async function waitForStaleServiceExit(buildId: string) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    await sleep(50)
+    try {
+      return await connectExistingService(buildId)
+    } catch (error) {
+      if (error instanceof RunServiceBuildMismatchError) continue
+      return null
+    }
+  }
+  return null
+}
+
 async function launchAndConnectService() {
+  const launch = getServiceLaunch()
   try {
-    return await connectExistingService()
-  } catch {
-    // No shared service is currently reachable. Starting more than one process
+    return await connectExistingService(launch.buildId)
+  } catch (error) {
+    if (error instanceof RunServiceBuildMismatchError) {
+      const replacement = await waitForStaleServiceExit(launch.buildId)
+      if (replacement) return replacement
+    }
+    // No compatible shared service is currently reachable. Starting more than one process
     // is safe because only one can bind the deterministic local endpoint.
   }
 
-  const launch = getServiceLaunch()
   const child = spawn(launch.executable, launch.args, {
     cwd: process.cwd(),
     detached: true,
@@ -109,7 +144,7 @@ async function launchAndConnectService() {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     await sleep(50)
     try {
-      return await connectExistingService()
+      return await connectExistingService(launch.buildId)
     } catch (error) {
       lastError = error
     }
