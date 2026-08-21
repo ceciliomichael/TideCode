@@ -1,12 +1,25 @@
+import { resolveRunServiceBuildIdFromEnvironment } from './buildIdentity'
 import { TideCodeRunServiceServer } from './server'
 
-const service = new TideCodeRunServiceServer()
+let shuttingDown = false
+let service: TideCodeRunServiceServer
+
+function shutdown() {
+  if (shuttingDown) return
+  shuttingDown = true
+  void service.close().finally(() => process.exit(0))
+}
+
+service = new TideCodeRunServiceServer({
+  buildId: resolveRunServiceBuildIdFromEnvironment(),
+  onShutdownRequested: shutdown,
+})
 
 async function main() {
   try {
     await service.start()
-    process.on('SIGINT', () => { void service.close().finally(() => process.exit(0)) })
-    process.on('SIGTERM', () => { void service.close().finally(() => process.exit(0)) })
+    process.on('SIGINT', shutdown)
+    process.on('SIGTERM', shutdown)
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
     if (code === 'EADDRINUSE') process.exit(0)

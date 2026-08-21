@@ -45,6 +45,11 @@ import { hasMinimumCompactionMessages, MIN_COMPACTION_MESSAGE_COUNT } from '../.
 const TERMINAL_RUN_RETENTION_MS = 60_000
 const TEXT_STREAM_IDLE_GRACE_MS = 1_500
 
+export interface TideCodeRunServiceServerOptions {
+  buildId: string
+  onShutdownRequested?: () => void
+}
+
 function toErrorMessage(error: unknown) {
   return error instanceof Error && error.message.trim().length > 0 ? error.message : String(error)
 }
@@ -113,6 +118,8 @@ export class TideCodeRunServiceServer {
   private nextConversationEventSeq = 0
   private token = ''
 
+  constructor(private readonly options: TideCodeRunServiceServerOptions) {}
+
   async start() {
     this.token = await ensureRunServiceToken()
     const endpoint = getRunServiceEndpoint()
@@ -173,8 +180,15 @@ export class TideCodeRunServiceServer {
           this.sendResponse(socket, {
             id: parsed.id,
             ok: true,
-            result: { protocolVersion: RUN_SERVICE_PROTOCOL_VERSION },
+            result: {
+              buildId: this.options.buildId,
+              protocolVersion: RUN_SERVICE_PROTOCOL_VERSION,
+            },
           })
+          return
+        case 'shutdown':
+          this.sendResponse(socket, { id: parsed.id, ok: true, result: null })
+          queueMicrotask(() => this.options.onShutdownRequested?.())
           return
         case 'getCompactionState':
           this.sendResponse(socket, {

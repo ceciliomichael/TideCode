@@ -16,6 +16,22 @@
     "supportsImageInput": false
   },
   {
+    "apiModelId": "deepseek-v4-flash-vision-exp",
+    "enabledByDefault": true,
+    "id": "deepseek:deepseek-v4-flash-vision-exp",
+    "label": "DeepSeek V4 Flash Vision",
+    "reasoningCapable": true,
+    "reasoningEfforts": [
+      "none",
+      "low",
+      "medium",
+      "high"
+    ],
+    "defaultReasoningEffort": "medium",
+    "maxTokens": 384000,
+    "supportsImageInput": true
+  },
+  {
     "apiModelId": "deepseek-v4-pro",
     "enabledByDefault": true,
     "id": "deepseek:deepseek-v4-pro",

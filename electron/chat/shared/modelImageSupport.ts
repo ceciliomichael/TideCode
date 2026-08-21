@@ -10,8 +10,8 @@ export function supportsModelImageInput(providerId: ChatProviderId, modelId: str
     return catalogModel.supportsImageInput
   }
 
-  // DeepSeek's chat endpoint currently accepts text-only message content. Keep
-  // this provider-level fallback for model IDs that are not in the catalog.
+  // DeepSeek vision is model-specific. Unknown DeepSeek models stay text-only
+  // unless the catalog explicitly marks them as supporting image input.
   if (providerId === 'deepseek') {
     return false
   }
