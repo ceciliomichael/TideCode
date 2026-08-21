@@ -206,8 +206,8 @@ synchronizeDraftFolder,
   ])
 
   const activeWorkspacePath = chatMessages.activeConversationRootPath ?? chatMessages.selectedFolderPath
-  const gitAddedLineCount = gitCommitState.status?.hasRepository ? gitCommitState.status.addedLineCount : null
-  const gitRemovedLineCount = gitCommitState.status?.hasRepository ? gitCommitState.status.removedLineCount : null
+  const gitAddedLineCount = gitBranchState.branchState.hasRepository ? gitDiffSnapshot.snapshot.totalAddedLineCount : null
+  const gitRemovedLineCount = gitBranchState.branchState.hasRepository ? gitDiffSnapshot.snapshot.totalRemovedLineCount : null
   const runtimeSelection = useMemo(
     () => buildRuntimeSelection(
       chatRuntimeConfig,
