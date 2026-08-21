@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.13 — More reliable workspaces and smoother settings
+
+TideCode 1.2.13 improves workspace navigation, remote and settings reliability, and the code editor experience across desktop and mobile.
+
+- Adds TypeScript-aware Monaco navigation with module resolution, project diagnostics, hover information, and safer workspace file tracking.
+- Makes Settings updates synchronize reliably across processes and keeps Skills and MCP content ready before navigation to reduce loading jumps.
+- Improves mobile workspace controls and layout behavior, including smoother Settings navigation and more predictable chat and terminal interactions.
+- Improves Code Mode and compaction recovery, preserving assistant work blocks and failing fast on unsupported tool execution.
+- Adds AI-assisted Git publish and pull-request workflows, plus more reliable remembered remote web sessions.
+- Requires no migration or configuration changes.
+- Validated with the full automated test suite, TypeScript type checking, and the production build.
+
 ## 1.2.12 — Smoother mobile workspace interactions
 
 TideCode 1.2.12 makes mobile chat and workspace interactions more reliable, especially while the on-screen keyboard, touch input, and asynchronous file mentions change the available layout.
