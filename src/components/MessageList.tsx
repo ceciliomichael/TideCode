@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, type RefObject } from "react";
+import { Fragment, memo, useMemo, useRef, type ReactNode, type RefObject } from "react";
 import { isPlanImplementationMessage, isPlanRevisionMessage, isVisibleTranscriptMessage } from "../lib/chatMessageMetadata";
 import { normalizeAssistantMessageContent } from "../lib/chatMessageContent";
 import type {
@@ -335,12 +335,15 @@ export function MessageList({
   );
   
   const renderItems = useMemo(() => {
+    type WorkingGroupCompaction =
+      | { beforeMessageId?: string; key: string; marker: ChatCompactionMarker; type: 'marker' }
+      | { beforeMessageId?: string; key: string; status: ChatCompactionLifecycleState; type: 'live' };
     type RenderItem =
       | { type: 'message'; message: Message; index: number }
       | { type: 'plan_status_divider'; kind: 'implementation' | 'revision'; messageId: string }
       | { type: 'compaction_marker'; marker: ChatCompactionMarker }
       | { type: 'live_compaction'; status: ChatCompactionLifecycleState }
-      | { type: 'working_group'; messages: Message[]; trailingMessage?: { message: Message, index: number }; startTime: number; endTime: number; startIndex: number; key: string };
+      | { type: 'working_group'; compactions: WorkingGroupCompaction[]; messages: Message[]; trailingMessage?: { message: Message, index: number }; startTime: number; endTime: number; startIndex: number; key: string };
 
     const items: RenderItem[] = [];
     const markerPlacement = placeCompactionMarkersAfterTranscript(visibleMessages, compactionMarkers, {
@@ -352,6 +355,7 @@ export function MessageList({
       (liveCompaction?.phase === 'compacted' && !liveCompactionMarkerIsPersisted);
     let liveCompactionInserted = false;
     let currentAssistantRun: Message[] = [];
+    let currentAssistantRunCompactions: WorkingGroupCompaction[] = [];
     let currentAssistantRunStartIndex = -1;
 
     const isStreamingMessage = (message: Message) => (
@@ -359,18 +363,17 @@ export function MessageList({
       (message.id === streamingAssistantMessageId || message.id.startsWith(`${streamingAssistantMessageId}-`))
     );
 
-    const insertLiveCompaction = () => {
+    const insertLiveCompaction = (beforeMessageId?: string) => {
       if (!shouldRenderLiveCompaction || !liveCompaction || liveCompactionInserted) {
         return;
       }
 
-      if (currentAssistantRun.length > 0) {
-        processFinishedAssistantRun();
-        currentAssistantRun = [];
-        currentAssistantRunStartIndex = -1;
-      }
-
-      items.push({ status: liveCompaction, type: 'live_compaction' });
+      currentAssistantRunCompactions.push({
+        beforeMessageId,
+        key: `live-${liveCompaction.phase}-${liveCompaction.phase === 'compacting' ? liveCompaction.attemptId : liveCompaction.compactionId}`,
+        status: liveCompaction,
+        type: 'live',
+      });
       liveCompactionInserted = true;
     };
 
@@ -393,16 +396,30 @@ export function MessageList({
       if (currentAssistantRun.length === 0) return;
 
       const assistantRun = currentAssistantRun;
+      const assistantRunCompactions = currentAssistantRunCompactions;
       const assistantRunStartIndex = currentAssistantRunStartIndex;
       currentAssistantRun = [];
+      currentAssistantRunCompactions = [];
       currentAssistantRunStartIndex = -1;
 
       const presentation = splitFinishedAssistantRun(assistantRun);
       const lastMessageIndex = assistantRunStartIndex + assistantRun.length - 1;
 
       if (presentation.workingMessages.length > 0) {
+        const lastWorkingMessageEndTime = getWorkEndTime(
+          presentation.workingMessages[presentation.workingMessages.length - 1],
+        );
+        const latestCompactionTime = assistantRunCompactions.reduce(
+          (latest, compaction) =>
+            compaction.type === 'marker'
+              ? Math.max(latest, compaction.marker.createdAt)
+              : latest,
+          lastWorkingMessageEndTime,
+        );
+
         items.push({
           type: 'working_group',
+          compactions: assistantRunCompactions,
           messages: presentation.workingMessages,
           trailingMessage: presentation.trailingMessage
             ? {
@@ -411,11 +428,18 @@ export function MessageList({
               }
             : undefined,
           startTime: presentation.workingMessages[0].timestamp,
-          endTime: getWorkEndTime(presentation.workingMessages[presentation.workingMessages.length - 1]),
+          endTime: latestCompactionTime,
           startIndex: assistantRunStartIndex,
           key: `wg-${presentation.workingMessages[0].id}`,
         });
       } else if (presentation.trailingMessage) {
+        for (const compaction of assistantRunCompactions) {
+          if (compaction.type === 'marker') {
+            items.push({ marker: compaction.marker, type: 'compaction_marker' });
+          } else {
+            items.push({ status: compaction.status, type: 'live_compaction' });
+          }
+        }
         items.push({
           type: 'message',
           message: presentation.trailingMessage,
@@ -425,30 +449,57 @@ export function MessageList({
 
     };
 
+    const processStreamingAssistantRun = () => {
+      if (currentAssistantRun.length === 0) return;
+
+      const assistantRun = currentAssistantRun;
+      const assistantRunCompactions = currentAssistantRunCompactions;
+      const assistantRunStartIndex = currentAssistantRunStartIndex;
+      currentAssistantRun = [];
+      currentAssistantRunCompactions = [];
+      currentAssistantRunStartIndex = -1;
+
+      items.push({
+        type: 'working_group',
+        compactions: assistantRunCompactions,
+        messages: assistantRun,
+        startTime: assistantRun[0].timestamp,
+        endTime: getWorkEndTime(assistantRun[assistantRun.length - 1]),
+        startIndex: assistantRunStartIndex,
+        key: `wg-live-${assistantRun[0].id}`,
+      });
+    };
+
     for (let i = 0; i < visibleMessages.length; i++) {
       const msg = visibleMessages[i];
       const markersBeforeMessage = markerPlacement.markersBeforeMessageId.get(msg.id) ?? [];
 
       if (markersBeforeMessage.length > 0) {
-        if (currentAssistantRun.length > 0) {
-          processFinishedAssistantRun();
-          currentAssistantRun = [];
-          currentAssistantRunStartIndex = -1;
-        }
+        if (msg.role === 'assistant') {
+          for (const marker of markersBeforeMessage) {
+            currentAssistantRunCompactions.push({
+              beforeMessageId: msg.id,
+              key: `marker-${marker.compactionId}`,
+              marker,
+              type: 'marker',
+            });
+          }
+        } else {
+          if (currentAssistantRun.length > 0) {
+            processFinishedAssistantRun();
+          }
 
-        for (const marker of markersBeforeMessage) {
-          items.push({ marker, type: 'compaction_marker' });
+          for (const marker of markersBeforeMessage) {
+            items.push({ marker, type: 'compaction_marker' });
+          }
         }
       }
 
-      // A committed compaction is a transcript boundary. Put it immediately
-      // before the assistant draft that resumes after the boundary. While
-      // compaction is still running, however, every currently rendered piece
-      // of the active assistant turn happened before that boundary. Keep the
-      // live "Compacting" divider trailing those completed reasoning/tool
-      // blocks until the compacted continuation actually exists.
+      // Keep compaction as an internal boundary of the active assistant work.
+      // Once the compacted continuation exists, place the divider immediately
+      // before that continuation without splitting the surrounding Working block.
       if (liveCompaction?.phase === 'compacted' && isStreamingMessage(msg)) {
-        insertLiveCompaction();
+        insertLiveCompaction(msg.id);
       }
 
       if (isPlanImplementationMessage(msg) || isPlanRevisionMessage(msg)) {
@@ -482,9 +533,22 @@ export function MessageList({
     }
 
     if (currentAssistantRun.length > 0) {
-      const isFinished = !isConversationStreaming;
-      if (isFinished) {
+      for (const marker of markerPlacement.trailingMarkers) {
+        currentAssistantRunCompactions.push({
+          key: `marker-${marker.compactionId}`,
+          marker,
+          type: 'marker',
+        });
+      }
+
+      if (shouldRenderLiveCompaction && !liveCompactionInserted) {
+        insertLiveCompaction();
+      }
+
+      if (!isConversationStreaming) {
         processFinishedAssistantRun();
+      } else if (currentAssistantRunCompactions.length > 0) {
+        processStreamingAssistantRun();
       } else {
         for (let j = 0; j < currentAssistantRun.length; j++) {
           items.push({
@@ -493,20 +557,19 @@ export function MessageList({
             index: currentAssistantRunStartIndex + j
           });
         }
-        // The active transcript has already been emitted above. Clear the
-        // accumulator so a trailing live compaction divider cannot process
-        // the same assistant work a second time as a WorkingBlock.
         currentAssistantRun = [];
+        currentAssistantRunCompactions = [];
         currentAssistantRunStartIndex = -1;
       }
-    }
+    } else {
+      for (const marker of markerPlacement.trailingMarkers) {
+        items.push({ marker, type: 'compaction_marker' });
+      }
 
-    for (const marker of markerPlacement.trailingMarkers) {
-      items.push({ marker, type: 'compaction_marker' });
-    }
-
-    if (shouldRenderLiveCompaction && !liveCompactionInserted) {
-      insertLiveCompaction();
+      if (shouldRenderLiveCompaction && !liveCompactionInserted && liveCompaction) {
+        items.push({ status: liveCompaction, type: 'live_compaction' });
+        liveCompactionInserted = true;
+      }
     }
     
     return items;
@@ -647,13 +710,44 @@ export function MessageList({
 
           if (item.type === 'working_group') {
             const isWorkingGroupStreaming =
-              liveCompaction?.phase !== 'compacting' &&
               streamingAssistantMessageId !== null &&
               item.messages.some(
                 (m) =>
                   m.id === streamingAssistantMessageId ||
                   m.id.startsWith(`${streamingAssistantMessageId}-`),
               );
+            const workingGroupChildren: ReactNode[] = [];
+            const renderedCompactionKeys = new Set<string>();
+
+            const renderWorkingGroupCompaction = (compaction: (typeof item.compactions)[number]) => {
+              renderedCompactionKeys.add(compaction.key);
+              if (compaction.type === 'marker') {
+                return <CompactionDivider key={compaction.key} marker={compaction.marker} />;
+              }
+              return <CompactionDivider key={compaction.key} phase={compaction.status.phase} />;
+            };
+
+            item.messages.forEach((msg, idx) => {
+              for (const compaction of item.compactions) {
+                if (
+                  compaction.beforeMessageId &&
+                  (compaction.beforeMessageId === msg.id || msg.id === `${compaction.beforeMessageId}-work`)
+                ) {
+                  workingGroupChildren.push(renderWorkingGroupCompaction(compaction));
+                }
+              }
+              workingGroupChildren.push(
+                <Fragment key={`working-message-${msg.id}`}>
+                  {renderMessageRow(msg, item.startIndex + idx)}
+                </Fragment>,
+              );
+            });
+
+            for (const compaction of item.compactions) {
+              if (!renderedCompactionKeys.has(compaction.key)) {
+                workingGroupChildren.push(renderWorkingGroupCompaction(compaction));
+              }
+            }
 
             return (
               <div key={item.key} className="flex flex-col gap-1.5 w-full">
@@ -662,7 +756,7 @@ export function MessageList({
                   endTime={item.endTime}
                   isStreaming={isWorkingGroupStreaming}
                 >
-                  {item.messages.map((msg, idx) => renderMessageRow(msg, item.startIndex + idx))}
+                  {workingGroupChildren}
                 </WorkingBlock>
                 {item.trailingMessage ? renderMessageRow(item.trailingMessage.message, item.trailingMessage.index) : null}
               </div>
