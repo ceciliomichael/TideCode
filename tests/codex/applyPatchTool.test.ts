@@ -257,7 +257,7 @@ test('Code Mode can execute edit without exposing patch as a provider tool', asy
     assert.ok(bundle.registry.get('tool_search'))
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
-      /tools\.edit\(\{ edits: Array<object>, path: string \}/u,
+            /tools\.edit\(\{ edits: Array<object>, expectedRevision\?: string, path: string \}/u,
     )
 
     const execute = (bundle.tools.code_mode as {

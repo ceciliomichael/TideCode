@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { jsonSchema, tool, type ToolExecutionOptions } from 'ai'
+import { asSchema, jsonSchema, tool, type ToolExecutionOptions } from 'ai'
 import { CodeModeExecutor } from '../../electron/chat/shared/codeMode/executor'
 import { CODE_MODE_EXECUTION_CONTRACT } from '../../electron/chat/shared/codeMode/promptContract'
 import { createAgentToolBundle } from '../../electron/chat/shared/tools'
@@ -876,6 +876,10 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
 
     assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
     assert.ok(bundle.registry.get('tool_search'))
+    const codeModeSchema = await asSchema((bundle.tools.code_mode as { inputSchema: unknown }).inputSchema).jsonSchema as {
+      properties?: Record<string, unknown>
+    }
+    assert.ok(codeModeSchema.properties && 'payloads' in codeModeSchema.properties)
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
       /tools\.read\(\{ path: string/u,
@@ -908,6 +912,7 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
     assert.equal(codeModeDescription.split(CODE_MODE_EXECUTION_CONTRACT).length - 1, 1)
     assert.match(codeModeDescription, /temporary asynchronous JavaScript program running in a tool-only worker/u)
     assert.match(codeModeDescription, /Choose the purpose-built inner API for the scenario/u)
+    assert.match(codeModeDescription, /top-level code_mode payloads object/u)
     assert.match(codeModeDescription, /`tools\.edit`: make a targeted change to an existing text file/u)
     assert.match(codeModeDescription, /`tools\.execute_terminal`: run an actual command\/process/u)
     assert.match(codeModeDescription, /Never use shell, PowerShell, Python, or Node just to read, search, edit, or write workspace files/u)

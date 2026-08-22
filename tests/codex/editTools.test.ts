@@ -54,23 +54,28 @@ test('replace supports relative path in path parameter', async () => {
   }
 })
 
-test('edit creates a missing file from its replacement content', async () => {
+test('edit rejects missing files instead of creating them', async () => {
   const fixture = await createFixture('const value = true\n')
   const createdPath = path.join(fixture.workspaceRootPath, 'src', 'blocks.js')
 
   try {
-    const result = await createSingleEditToolResult(fixture.context, {
-      endLine: 1,
-      allowMultiple: false,
-      path: 'src/blocks.js',
-      replacementContent: 'export const blocks = []\n',
-      startLine: 1,
-      targetContent: 'new file',
-    })
-
-    assert.equal(result.status, 'success')
-    assert.match(result.body ?? '', /A .*blocks\.js/u)
-    assert.equal(await fs.readFile(createdPath, 'utf8'), 'export const blocks = []\n')
+    await assert.rejects(
+      createSingleEditToolResult(fixture.context, {
+        endLine: 1,
+        allowMultiple: false,
+        path: 'src/blocks.js',
+        replacementContent: 'export const blocks = []\n',
+        startLine: 1,
+        targetContent: 'new file',
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error)
+        assert.equal((error as { code?: string }).code, 'FILE_NOT_FOUND')
+        assert.match(error.message, /Use write to create new files/u)
+        return true
+      },
+    )
+    await assert.rejects(fs.stat(createdPath), /ENOENT/u)
   } finally {
     await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
   }
@@ -200,22 +205,25 @@ test('edit reports an identical replacement as a successful no-op', async () => 
   }
 })
 
-test('edit replaces all matching occurrences by default when target appears multiple times', async () => {
+test('edit rejects ambiguous targets by default instead of replacing every occurrence', async () => {
   const originalContent = 'const item = "old"\nconst middle = 1\nconst item = "old"\n'
   const fixture = await createFixture(originalContent)
 
   try {
-    const result = await createSingleEditToolResult(fixture.context, {
-      path: fixture.targetPath,
-      replacementContent: 'const item = "new"',
-      targetContent: 'const item = "old"',
-    })
-
-    assert.equal(result.status, 'success')
-    assert.equal(
-      await fs.readFile(fixture.targetPath, 'utf8'),
-      'const item = "new"\nconst middle = 1\nconst item = "new"\n',
+    await assert.rejects(
+      createSingleEditToolResult(fixture.context, {
+        path: fixture.targetPath,
+        replacementContent: 'const item = "new"',
+        targetContent: 'const item = "old"',
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error)
+        assert.equal((error as { code?: string }).code, 'TARGET_AMBIGUOUS')
+        assert.match(error.message, /Candidate line ranges: 1-1, 3-3/u)
+        return true
+      },
     )
+    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
   } finally {
     await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
   }
@@ -281,8 +289,10 @@ test('replaceAll searches entire file when line bounds are omitted', async () =>
   const fixture = await createFixture(originalContent)
 
   try {
-    const readTool = createReadTool(fixture.context)
-    const readResult = await (readTool as any).execute({
+    const readTool = createReadTool(fixture.context) as unknown as {
+      execute: (input: { limit: number; offset: number; path: string }) => Promise<{ status: string }>
+    }
+    const readResult = await readTool.execute({
       limit: 2,
       offset: 1,
       path: 'target.ts',

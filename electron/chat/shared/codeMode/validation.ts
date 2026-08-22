@@ -660,7 +660,7 @@ export function validateCodeModeProgram(code: string, maxCodeBytes: number) {
     const position = line === null
       ? ''
       : ` at generated code line ${line}${column === null ? '' : `, column ${column}`}`
-    let guidance = "No tool ran. Retry with plain sequential tools.* calls. For source changes use tools.edit({ path, edits }); keep one path per call, use complete source text in targetContent/replacementContent, and do not include read metadata or the EOF footer."
+let guidance = "No tool ran. Retry with plain sequential tools.* calls. For source changes use tools.edit({ path, edits }); keep one path per call, use complete source text in targetContent/replacementContent, and do not include read metadata or the EOF footer. Put raw source strings in the top-level code_mode payloads object and reference payloads.<name> inside the program instead of nesting complex source inside JavaScript string literals."
     if (message.includes("Unexpected identifier") || message.includes("Invalid or unexpected token") || message.includes("Unexpected token")) {
       guidance += " If embedding code snippets or template literals inside script strings, make sure backticks (`) and template expressions (${...}) are properly escaped."
     }

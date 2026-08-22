@@ -6,10 +6,13 @@ import {
   type WorkspaceToolContext,
   type EditOperationInput,
 } from './workspaceTools'
-import { createToolErrorResult, getToolErrorSummary } from './toolResult'
+import {
+  createWorkspaceMutationErrorResult,
+  WorkspaceMutationError,
+} from './workspaceMutationErrors'
 
 const EDIT_TOOL_DESCRIPTION =
-  'Edit a file by replacing targetContent with replacementContent. Pass { path, edits: [{ targetContent, replacementContent }] }. Always use tools.edit for modifying existing files.'
+  'Edit an existing file with structured source text by replacing targetContent with replacementContent. Ambiguous targets fail unless replaceAll is explicitly true. Pass expectedRevision from the latest read when available.'
 
 const EDIT_PATH_SCHEMA = {
   description: WORKSPACE_PATH_DESCRIPTION,
@@ -23,6 +26,10 @@ const EDIT_OPERATION_SCHEMA = {
       description: 'Optional inclusive 1-indexed end line.',
       minimum: 1,
       type: 'integer',
+    },
+    replaceAll: {
+      description: 'Replace every matching occurrence. Defaults to false so ambiguous targets fail safely.',
+      type: 'boolean',
     },
     replacementContent: {
       description: 'Replacement text.',
@@ -54,6 +61,11 @@ const EDIT_INPUT_SCHEMA = {
   additionalProperties: false,
   properties: {
     edits: EDIT_HUNKS_SCHEMA,
+    expectedRevision: {
+      description: 'Optional sha256 revision returned by the latest read of this file. The edit fails if the file changed since that read.',
+      minLength: 1,
+      type: 'string',
+    },
     path: EDIT_PATH_SCHEMA,
   },
   required: ['path', 'edits'],
@@ -63,10 +75,12 @@ const EDIT_INPUT_SCHEMA = {
 type EditToolInput = {
   path: string
   edits: EditOperationInput[]
+  expectedRevision?: string
 }
 
 interface RawEditInput {
   edits?: unknown
+  expectedRevision?: unknown
   path?: unknown
 }
 
@@ -75,18 +89,16 @@ export function createEditTool(context: WorkspaceToolContext) {
     description: EDIT_TOOL_DESCRIPTION,
     inputSchema: jsonSchema<EditToolInput>(EDIT_INPUT_SCHEMA),
     execute: async (rawInput): Promise<AgentToolExecutionResult> => {
-      const input = rawInput as RawEditInput
-      const targetPath = requirePath(input.path)
-
-      const normalizedInput: Parameters<typeof createEditToolResult>[1] = {
-        edits: requireEditOperations(input.edits),
-        path: targetPath,
-      }
-
       try {
+        const input = rawInput as RawEditInput
+        const normalizedInput: Parameters<typeof createEditToolResult>[1] = {
+          edits: requireEditOperations(input.edits),
+          expectedRevision: requireOptionalRevision(input.expectedRevision),
+          path: requirePath(input.path),
+        }
         return await createEditToolResult(context, normalizedInput)
       } catch (error) {
-        return createToolErrorResult(getToolErrorSummary(error, 'Edit failed.'))
+        return createWorkspaceMutationErrorResult(error, 'Edit failed.')
       }
     },
   })
@@ -94,38 +106,37 @@ export function createEditTool(context: WorkspaceToolContext) {
 
 function requirePath(value: unknown) {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error('Edit requires a non-empty "path".')
+throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', 'Edit requires a non-empty "path".')
   }
   return value
 }
 
 function requireTargetContent(value: unknown) {
   if (typeof value !== 'string' || value.length === 0) {
-    throw new Error('Edit requires non-empty "targetContent" copied from the latest read result.')
+throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', 'Edit requires non-empty "targetContent" copied from the latest read result.')
   }
   return value
 }
 
 function requireReplacementContent(value: unknown) {
   if (typeof value !== 'string') {
-    throw new Error('Edit requires "replacementContent". Use an empty string when deleting the target.')
+throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', 'Edit requires "replacementContent". Use an empty string when deleting the target.')
   }
   return value
 }
 
 function requireEditOperations(value: unknown): EditOperationInput[] {
   if (!Array.isArray(value) || value.length === 0) {
-    throw new Error('Edit requires a non-empty edits array.')
+throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', 'Edit requires a non-empty edits array.')
   }
 
   return value.map((rawOperation, index) => {
     if (typeof rawOperation !== 'object' || rawOperation === null || Array.isArray(rawOperation)) {
-      throw new Error(`Edit hunk ${index + 1} must be an object.`)
+throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', `Edit hunk ${index + 1} must be an object.`)
     }
 
     const operation = rawOperation as Record<string, unknown>
     return {
-      allowMultiple: typeof operation.allowMultiple === 'boolean' ? operation.allowMultiple : undefined,
       replaceAll: typeof operation.replaceAll === 'boolean' ? operation.replaceAll : undefined,
       ...requireLineBounds(operation.startLine, operation.endLine, `Edit hunk ${index + 1}`),
       replacementContent: requireReplacementContent(operation.replacementContent),
@@ -134,9 +145,17 @@ function requireEditOperations(value: unknown): EditOperationInput[] {
   })
 }
 
+function requireOptionalRevision(value: unknown) {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', 'expectedRevision must be a non-empty revision string when provided.')
+  }
+  return value
+}
+
 function requireLineBounds(startLine: unknown, endLine: unknown, label: string) {
   if ((startLine === undefined) !== (endLine === undefined)) {
-    throw new Error(`${label} must provide both startLine and endLine when using a line range.`)
+throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', `${label} must provide both startLine and endLine when using a line range.`)
   }
 
   if (startLine === undefined && endLine === undefined) {
@@ -151,7 +170,7 @@ function requireLineBounds(startLine: unknown, endLine: unknown, label: string) 
     !Number.isInteger(endLine) ||
     endLine < 1
   ) {
-    throw new Error(`${label} requires integer startLine and endLine values of at least 1 when using a line range.`)
+throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', `${label} requires integer startLine and endLine values of at least 1 when using a line range.`)
   }
 
   return { endLine: endLine as number, startLine: startLine as number }

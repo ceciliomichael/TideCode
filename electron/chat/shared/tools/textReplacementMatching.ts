@@ -70,32 +70,12 @@ function normalizeLineWhitespaceCollapsed(line: string) {
   return line.replace(/\r/g, '').trim().replace(/[\t ]+/g, ' ')
 }
 
-function normalizeBackslashes(line: string) {
-  return line.replace(/\\\\/g, '\\')
-}
+function linesMatchTolerantly(contentLineText: string, targetLineText: string): boolean {
+  const contentNormalized = normalizeLineWhitespace(contentLineText)
+  const targetNormalized = normalizeLineWhitespace(targetLineText)
 
-function normalizeEscapedPunctuation(line: string) {
-  return line.replace(/\\([^\w\s])/g, '$1')
-}
-
-function linesMatchTolerantly(contentLineText: string, targetLineText: string, isFirstLine: boolean, isLastLine: boolean): boolean {
-  const cNorm = normalizeLineWhitespace(contentLineText)
-  const tNorm = normalizeLineWhitespace(targetLineText)
-
-  if (cNorm === tNorm) return true
-  if (normalizeLineWhitespaceCollapsed(contentLineText) === normalizeLineWhitespaceCollapsed(targetLineText)) return true
-  if (normalizeBackslashes(cNorm) === normalizeBackslashes(tNorm)) return true
-  if (normalizeBackslashes(normalizeLineWhitespaceCollapsed(contentLineText)) === normalizeBackslashes(normalizeLineWhitespaceCollapsed(targetLineText))) return true
-
-  const cPunct = normalizeEscapedPunctuation(cNorm)
-  const tPunct = normalizeEscapedPunctuation(tNorm)
-  if (cPunct === tPunct) return true
-  if (normalizeLineWhitespaceCollapsed(cPunct) === normalizeLineWhitespaceCollapsed(tPunct)) return true
-
-  if (isFirstLine && (cNorm.endsWith(tNorm) || cPunct.endsWith(tPunct))) return true
-  if (isLastLine && (cNorm.startsWith(tNorm) || cPunct.startsWith(tPunct))) return true
-
-  return false
+  if (contentNormalized === targetNormalized) return true
+  return normalizeLineWhitespaceCollapsed(contentLineText) === normalizeLineWhitespaceCollapsed(targetLineText)
 }
 
 export function findIndentationTolerantMatchOffsets(
@@ -120,9 +100,7 @@ export function findIndentationTolerantMatchOffsets(
         return false
       }
 
-      const isFirst = targetIndex === 0
-      const isLast = targetIndex === targetLines.length - 1
-      return linesMatchTolerantly(contentLine, targetLine.text, isFirst, isLast)
+      return linesMatchTolerantly(contentLine, targetLine.text)
     })
 
     if (!matchesTarget) {

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { createReadStream, promises as fs } from 'node:fs'
 import path from 'node:path'
 import { createInterface } from 'node:readline'
@@ -249,7 +250,9 @@ export async function createReadToolResult(
   const maxLines = fullFile
     ? Number.MAX_SAFE_INTEGER
     : Math.min(DEFAULT_FILE_READ_LIMIT, Math.max(1, Math.floor(limit ?? DEFAULT_FILE_READ_LIMIT)))
-  const stream = createReadStream(absolutePath, { encoding: 'utf8' })
+  const revisionHash = createHash('sha256')
+  const stream = createReadStream(absolutePath)
+stream.on('data', (chunk) => revisionHash.update(chunk))
   const reader = createInterface({
     crlfDelay: Infinity,
     input: stream,
@@ -278,6 +281,7 @@ export async function createReadToolResult(
     stream.destroy()
   }
 
+  const revision = 'sha256:' + revisionHash.digest('hex')
   const body = collectedLines.join('\n')
   const endLine = collectedLines.length > 0 ? startLine + collectedLines.length - 1 : startLine - 1
 
@@ -295,6 +299,7 @@ export async function createReadToolResult(
       is_directory: false,
       next_offset: hasMoreLines ? endLine + 1 : null,
       returned_line_count: collectedLines.length,
+      revision,
       total_line_count: lineCount,
     },
     subject: {
