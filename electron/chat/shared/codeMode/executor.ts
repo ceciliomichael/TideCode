@@ -186,8 +186,9 @@ function assertCloneable(value) {
 
 async function execute(message) {
   configureRuntime(message)
-  const program = new AsyncFunction('tools', message.code)
-  const output = await program(createTools(message.toolNames))
+  const program = new AsyncFunction('tools', 'payloads', message.code)
+  const payloads = Object.freeze({ ...(message.payloads ?? {}) })
+  const output = await program(createTools(message.toolNames), payloads)
   await Promise.all(Array.from(pendingToolPromises))
   return assertCloneable(await resolveReturnedValue(output))
 }
@@ -316,6 +317,7 @@ export class CodeModeExecutor {
       abortSignal?: AbortSignal
       allowedToolNames?: readonly string[]
       limits?: Partial<CodeModeExecutionLimits>
+      payloads?: Readonly<Record<string, string>>
     } = {},
   ): Promise<CodeModeExecutionResult> {
     const limits = { ...DEFAULT_CODE_MODE_EXECUTION_LIMITS, ...options.limits }
@@ -510,6 +512,7 @@ export class CodeModeExecutor {
         code: executableCode,
         executionMode: this.executionMode,
         limits,
+        payloads: { ...(options.payloads ?? {}) },
         toolNames,
         type: 'execute',
         workspaceRootPath: this.workspaceRootPath,

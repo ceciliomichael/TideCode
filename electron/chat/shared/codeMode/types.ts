@@ -42,6 +42,7 @@ export interface CodeModeWorkerExecuteMessage {
   code: string
   executionMode: 'full' | 'sandbox'
   limits: CodeModeExecutionLimits
+  payloads: Record<string, string>
   toolNames: string[]
   type: 'execute'
   workspaceRootPath: string
