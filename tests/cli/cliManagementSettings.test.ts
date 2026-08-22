@@ -6,12 +6,12 @@ import { buildDisabledSkillsByPath } from '../../electron/cli/cliSkillsCommand'
 import { buildCliMcpConfigUpdate } from '../../electron/cli/cliMcpCommand'
 import type { McpServerConfig } from '../../src/types/mcp'
 
-test('CLI follow-up setting persists the Enter behavior shared with desktop', () => {
+test('CLI follow-up setting builds a CLI-local preference patch', () => {
   assert.deepEqual(buildCliSettingsPatch('follow-up', 'steer'), { followUpBehavior: 'steer' })
   assert.deepEqual(buildCliSettingsPatch('follow-up', 'queue'), { followUpBehavior: 'queue' })
 })
 
-test('CLI default model selectors persist model identity and provider for desktop', () => {
+test('CLI default model selectors build CLI-local model patches while summarization stays shared', () => {
   assert.deepEqual(
     buildCliDefaultModelSettingsPatch('agent-model', {
       kind: 'model',

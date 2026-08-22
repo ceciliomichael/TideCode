@@ -2,7 +2,7 @@ export const SETTINGS_ITEMS = [
   {
     id: 'settings-item1',
     label: 'General',
-    description: 'Language and application-wide preferences.',
+description: 'Theme, language, and preferences for this client.',
   },
   {
     id: 'settings-item2',
@@ -12,7 +12,7 @@ export const SETTINGS_ITEMS = [
   {
     id: 'settings-item3',
     label: 'Models',
-    description: 'Choose which models are available per provider.',
+description: 'Choose shared model availability per provider.',
   },
   {
     id: 'settings-item4',
@@ -27,7 +27,7 @@ export const SETTINGS_ITEMS = [
   {
     id: 'settings-item6',
     label: 'Configuration',
-    description: 'Set default models for Agent, Plan, summarization, and Git/PR flows.',
+description: 'Set client chat defaults and shared task models.',
   },
   {
     id: 'settings-item8',
@@ -45,6 +45,14 @@ export type SettingsItem = (typeof SETTINGS_ITEMS)[number]
 export type SettingsItemId = SettingsItem['id']
 
 export const DEFAULT_SETTINGS_ITEM_ID: SettingsItemId = SETTINGS_ITEMS[0].id
+
+export function getVisibleSettingsItems(surface: 'desktop' | 'web', hasRemoteHost: boolean) {
+  return SETTINGS_ITEMS.filter((item) => {
+    if (item.id === 'settings-item8') return surface === 'desktop' && hasRemoteHost
+    if (item.id === 'settings-item7') return surface === 'desktop'
+    return true
+  })
+}
 
 export function getSettingsItem(itemId: SettingsItemId) {
   return SETTINGS_ITEMS.find((item) => item.id === itemId) ?? SETTINGS_ITEMS[0]

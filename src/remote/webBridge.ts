@@ -211,7 +211,7 @@ export async function installRemoteBrowserBridge() {
   const connection = new RemoteConnection()
   await connection.connect()
   const [initialSettings, draftAgentContextPath] = await Promise.all([
-    connection.rpc('tidecodeSettings', 'getSettings', []) as Promise<AppSettings>,
+connection.rpc('tidecodeSettings', 'getSettings', ['web']) as Promise<AppSettings>,
     connection.rpc('tidecodeHistory', 'getDraftAgentContextPathSync', []) as Promise<string>,
   ])
 
@@ -245,12 +245,19 @@ export async function installRemoteBrowserBridge() {
   })
   globals.tidecodeRuns = createRemoteApi(connection, 'tidecodeRuns', {
     onEvent: { channel: REMOTE_EVENT_CHANNELS.runsEvent },
+  }, {
+    getConversationRuntime: (conversationId: string) =>
+      connection.rpc('tidecodeRuns', 'getConversationRuntime', [conversationId, 'web']),
+    updateConversationRuntime: (input: Record<string, unknown>) =>
+      connection.rpc('tidecodeRuns', 'updateConversationRuntime', [{ ...input, surface: 'web' }]),
   })
   globals.tidecodeSkills = createRemoteApi(connection, 'tidecodeSkills')
   globals.tidecodeSettings = createRemoteApi(connection, 'tidecodeSettings', {
     onRemoteChange: { channel: REMOTE_EVENT_CHANNELS.settingsChanged },
   }, {
     getInitialSettings: () => initialSettings,
+    getSettings: () => connection.rpc('tidecodeSettings', 'getSettings', ['web']),
+    updateSettings: (input: Partial<AppSettings>) => connection.rpc('tidecodeSettings', 'updateSettings', [input, 'web']),
   })
   globals.tidecodeUpdates = createRemoteApi(connection, 'tidecodeUpdates', {
     onUpdateState: { channel: REMOTE_EVENT_CHANNELS.updatesState },

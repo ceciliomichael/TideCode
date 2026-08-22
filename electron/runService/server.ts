@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import net from 'node:net'
 import type { Socket } from 'node:net'
 import type {
+  AppSettingsSurface,
   ChatCompactionLifecycleState,
   ChatStreamEvent,
   CompactConversationInput,
@@ -41,9 +42,14 @@ import { SharedRunRegistry } from './runRegistry'
 import { SharedStreamPersistence } from './streamPersistence'
 import { listCompactionMarkers } from '../chat/history/eventStore'
 import { hasMinimumCompactionMessages, MIN_COMPACTION_MESSAGE_COUNT } from '../../src/lib/chatCompactionGate'
+import { isAppSettingsSurface } from '../../src/lib/appSettingsScopes'
 
 const TERMINAL_RUN_RETENTION_MS = 60_000
 const TEXT_STREAM_IDLE_GRACE_MS = 1_500
+
+function getConversationRuntimeKey(surface: AppSettingsSurface, conversationId: string) {
+  return surface + ':' + conversationId
+}
 
 export interface TideCodeRunServiceServerOptions {
   buildId: string
@@ -114,7 +120,8 @@ export class TideCodeRunServiceServer {
   private readonly projectionsByRunId = new Map<string, SharedRunProjection>()
   private readonly projectionTextIdleTimers = new Map<string, NodeJS.Timeout>()
   private readonly compactionStateByConversationId = new Map<string, ChatCompactionLifecycleState>()
-  private readonly runtimeByConversationId = new Map<string, SharedConversationRuntimeSnapshot>()
+  private readonly runtimeBySurfaceConversationKey = new Map<string, SharedConversationRuntimeSnapshot>()
+  private readonly chatModeByConversationId = new Map<string, SharedConversationRuntimeSnapshot['chatMode']>()
   private nextConversationEventSeq = 0
   private token = ''
 
@@ -201,7 +208,7 @@ export class TideCodeRunServiceServer {
           this.sendResponse(socket, {
             id: parsed.id,
             ok: true,
-            result: await this.getConversationRuntime(parsed.params.conversationId),
+result: await this.getConversationRuntime(parsed.params.conversationId, parsed.params.surface),
           })
           return
         case 'getPendingFollowUps':
@@ -301,16 +308,21 @@ export class TideCodeRunServiceServer {
     }
   }
 
-  private async getConversationRuntime(conversationId: string): Promise<SharedConversationRuntimeSnapshot | null> {
-    const cached = this.runtimeByConversationId.get(conversationId)
+  private async getConversationRuntime(
+    conversationId: string,
+    requestedSurface?: AppSettingsSurface,
+  ): Promise<SharedConversationRuntimeSnapshot | null> {
+    const surface = isAppSettingsSurface(requestedSurface) ? requestedSurface : 'desktop'
+    const cacheKey = getConversationRuntimeKey(surface, conversationId)
+    const cached = this.runtimeBySurfaceConversationKey.get(cacheKey)
     if (cached) return cached
 
     const conversation = await getStoredConversation(conversationId).catch(() => null)
     if (!conversation) return null
-    const settings = await getStoredSettings().catch(() => null)
+    const settings = await getStoredSettings(surface).catch(() => null)
     const preference = settings?.conversationModelPreferences[conversationId]
-    return {
-      chatMode: preference?.chatMode ?? conversation.chatMode,
+    const runtime: SharedConversationRuntimeSnapshot = {
+      chatMode: this.chatModeByConversationId.get(conversationId) ?? conversation.chatMode,
       conversationId,
       model: preference
         ? {
@@ -320,25 +332,30 @@ export class TideCodeRunServiceServer {
             ...(preference.reasoningEffort ? { reasoningEffort: preference.reasoningEffort } : {}),
           }
         : null,
+      surface,
       updatedAt: conversation.updatedAt,
     }
+    this.runtimeBySurfaceConversationKey.set(cacheKey, runtime)
+    return runtime
   }
 
   private async updateConversationRuntime(input: UpdateConversationRuntimeInput): Promise<SharedConversationRuntimeSnapshot> {
     const conversationId = input.conversationId.trim()
     if (!conversationId) throw new Error('A conversation ID is required to update shared runtime state.')
+    const surface = isAppSettingsSurface(input.surface) ? input.surface : 'desktop'
 
-    const previous = await this.getConversationRuntime(conversationId)
+    const previous = await this.getConversationRuntime(conversationId, surface)
     const conversation = await getStoredConversation(conversationId).catch(() => null)
-    const chatMode = input.chatMode ?? previous?.chatMode ?? conversation?.chatMode ?? 'agent'
+    const chatMode = input.chatMode ?? this.chatModeByConversationId.get(conversationId) ?? conversation?.chatMode ?? previous?.chatMode ?? 'agent'
     const model = input.model ?? previous?.model ?? null
 
     if (conversation && input.chatMode) {
       await updateStoredConversationChatMode(conversationId, input.chatMode)
+      this.chatModeByConversationId.set(conversationId, input.chatMode)
     }
 
     if (conversation && model && (input.model || input.chatMode)) {
-      const settings = await getStoredSettings()
+      const settings = await getStoredSettings(surface)
       const existingPreference = settings.conversationModelPreferences[conversationId]
       await updateStoredConversationModelPreference(conversationId, {
         chatMode,
@@ -348,16 +365,32 @@ export class TideCodeRunServiceServer {
         ...(model.reasoningEffort ?? existingPreference?.reasoningEffort
           ? { reasoningEffort: model.reasoningEffort ?? existingPreference?.reasoningEffort }
           : {}),
-      })
+      }, surface)
     }
 
     const runtime: SharedConversationRuntimeSnapshot = {
       chatMode,
       conversationId,
       model,
+      surface,
       updatedAt: Date.now(),
     }
-    this.runtimeByConversationId.set(conversationId, runtime)
+    this.runtimeBySurfaceConversationKey.set(getConversationRuntimeKey(surface, conversationId), runtime)
+
+    if (input.chatMode) {
+      for (const [cacheKey, cachedRuntime] of this.runtimeBySurfaceConversationKey) {
+        if (cachedRuntime.conversationId !== conversationId || cachedRuntime.surface === surface) continue
+        const synchronizedRuntime = { ...cachedRuntime, chatMode, updatedAt: runtime.updatedAt }
+        this.runtimeBySurfaceConversationKey.set(cacheKey, synchronizedRuntime)
+        this.emitGlobalEvent({
+          type: 'conversation_runtime_updated',
+          seq: 0,
+          conversationId,
+          runtime: synchronizedRuntime,
+        })
+      }
+    }
+
     this.emitGlobalEvent({
       type: 'conversation_runtime_updated',
       seq: 0,
@@ -506,7 +539,7 @@ export class TideCodeRunServiceServer {
     const persistence = new SharedStreamPersistence({
       chatMode: sharedInput.chatMode,
       conversationId,
-      getChatMode: () => this.runtimeByConversationId.get(conversationId)?.chatMode ?? sharedInput.chatMode,
+getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedInput.chatMode,
       onError: (error) => console.error('[run-service] Failed to persist stream progress.', error),
       onPersisted: (conversation) => {
         this.emitEvent(createdRun.runId, {

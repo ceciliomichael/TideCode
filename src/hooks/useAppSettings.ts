@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { DEFAULT_APP_SETTINGS } from '../lib/defaultAppSettings'
 import { resetLaunchOnlyAppSettings } from './appSettingsLaunchState'
 import { getCachedAppearancePreference } from '../lib/theme'
-import { preserveLocalWorkspaceUiSettings } from '../lib/appSettingsScopes'
+import { preserveLocalSurfaceSettings } from '../lib/appSettingsScopes'
 import type { AppSettings } from '../types/chat'
 import { shouldDeferRendererSettingsCommit } from './appSettingsUpdatePolicy'
 
@@ -113,7 +113,7 @@ export function useAppSettings() {
   useEffect(() => {
     return window.tidecodeSettings.onRemoteChange((nextSettings) => {
       const normalizedSettings = resetLaunchOnlyAppSettings(nextSettings)
-      const mergedSettings = preserveLocalWorkspaceUiSettings(normalizedSettings, settingsRef.current)
+      const mergedSettings = preserveLocalSurfaceSettings(normalizedSettings, settingsRef.current)
       canonicalSettingsRef.current = mergedSettings
       const visibleSettings = applyPendingSettingsUpdates(mergedSettings, pendingUpdatesRef.current.values())
       settingsRef.current = visibleSettings
@@ -166,7 +166,7 @@ export function useAppSettings() {
         }
         pendingUpdatesRef.current.delete(requestId)
         const normalizedSettings = resetLaunchOnlyAppSettings(nextSettings)
-        const mergedSettings = preserveLocalWorkspaceUiSettings(normalizedSettings, localSettingsAtCommit)
+        const mergedSettings = preserveLocalSurfaceSettings(normalizedSettings, localSettingsAtCommit)
         canonicalSettingsRef.current = mergedSettings
         const visibleSettings = applyPendingSettingsUpdates(
           mergedSettings,

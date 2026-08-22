@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import net from 'node:net'
 import type {
+  AppSettingsSurface,
   AppendConversationMessagesInput,
   ChatCompactionLifecycleState,
   CompactConversationInput,
@@ -118,9 +119,9 @@ export class TideCodeRunServiceClient {
     return this.requestRaw<ChatCompactionLifecycleState | null>('getCompactionState', { conversationId })
   }
 
-  async getConversationRuntime(conversationId: string) {
+  async getConversationRuntime(conversationId: string, surface: AppSettingsSurface = 'desktop') {
     await this.connect()
-    return this.requestRaw<SharedConversationRuntimeSnapshot | null>('getConversationRuntime', { conversationId })
+    return this.requestRaw<SharedConversationRuntimeSnapshot | null>('getConversationRuntime', { conversationId, surface })
   }
 
   async getPendingFollowUps(streamId: string) {

@@ -88,7 +88,7 @@ export async function runCliMcpCommand(state: CliSessionState, helpers: SlashCom
       ? `Managed by ${config.owner}; change it in the owning app's MCP config`
       : tools.length === 0
         ? 'Connect this server to discover and configure its tools'
-        : 'Server and tool state is shared with desktop',
+        : 'Server and tool state is shared across TideCode',
   })
   if (!enabledItems || config.isReadOnly) return
 

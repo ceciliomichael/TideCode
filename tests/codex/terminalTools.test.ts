@@ -650,19 +650,23 @@ test("terminal text newlines are normalized to PTY Enter carriage returns", () =
   assert.equal(encodeTerminalInput("answer", ["RETURN"]), "answer\r");
 });
 
-test("terminal command wrappers preserve foreground child-process input commands", () => {
+test("PowerShell command wrappers isolate parsing and always retain a completion marker", () => {
   const marker = "__EDONE_test__";
   const commands = [
     `pwsh -NoLogo -NoProfile -Command "Read-Host 'INPUT'"`,
     `pwsh -NoLogo -NoProfile -Command '[Console]::In.ReadLine()'`,
-    `cmd.exe /d /v:on /c "set /p answer=INPUT: & echo ANSWER=!answer!"`,
+    `git switch -c test && git status`,
   ];
 
   for (const command of commands) {
     const wrapped = buildMarkedCommand(command, "pwsh", marker);
-    assert.ok(wrapped.startsWith(`${command}; echo `));
+    const encodedCommand = wrapped.match(/FromBase64String\('([^']+)'\)/u)?.[1];
+    assert.ok(encodedCommand);
+    assert.equal(Buffer.from(encodedCommand, "base64").toString("utf8"), command);
     assert.ok(wrapped.endsWith("\r"));
-    assert.match(wrapped, /__EDONE_test__:/u);
+    assert.match(wrapped, /try \{/u);
+    assert.match(wrapped, /catch \{/u);
+    assert.match(wrapped, /__EDONE_test__:\$__tidecodeExit/u);
   }
 });
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { MODEL_CATALOG, PROVIDER_SECTIONS } from '../components/settings/models/modelCatalog'
 import { useSettingsModelCatalog } from '../components/settings/models/settingsModelCatalogStore'
 import { toCustomModelCatalogItems } from '../components/settings/models/customModelUtils'
@@ -8,6 +8,8 @@ import { filterEnabledModelCatalogItems, readStoredModelToggleState } from '../c
 import { isProviderConfigured } from '../components/settings/models/modelViewUtils'
 import { resolveModelReasoningProfile } from '../lib/modelReasoningProfiles'
 import { resolveReasoningEffortTransition } from '../lib/reasoningEffortTransition'
+import { getRendererAppSettingsSurface } from '../lib/appSettingsScopes'
+import { buildSurfaceModelSelectionSettingsPatch, resolveSurfaceModeModelSelection } from '../lib/surfaceModelSettings'
 import type {
   AppSettings,
   ChatMode,
@@ -16,7 +18,6 @@ import type {
   ProviderModelConfig,
   ProvidersState,
   ReasoningEffort,
-  SharedConversationRuntimeSnapshot,
 } from '../types/chat'
 import type { ModelCatalogItem } from '../components/settings/models/modelTypes'
 
@@ -102,7 +103,6 @@ interface UseChatRuntimeConfigInput {
     | 'chatModelLabel'
     | 'chatModelProviderId'
     | 'chatReasoningEffort'
-    | 'conversationModelPreferences'
     | 'planModelId'
     | 'planModelLabel'
     | 'planModelProviderId'
@@ -169,46 +169,6 @@ function toStaticChatModelOption(model: ModelCatalogItem): ChatModelOption {
   }
 }
 
-function getModeSelectionFields(
-  activeChatMode: ChatMode,
-  settings: Pick<
-    AppSettings,
-    | 'agentModelId'
-    | 'agentModelLabel'
-    | 'agentModelProviderId'
-    | 'chatModelId'
-    | 'chatModelLabel'
-    | 'chatModelProviderId'
-    | 'planModelId'
-    | 'planModelLabel'
-    | 'planModelProviderId'
-  >,
-) {
-  if (activeChatMode === 'plan') {
-    return {
-      modelId: settings.planModelId.trim().length > 0 ? settings.planModelId : settings.chatModelId,
-      modelLabel: settings.planModelLabel.trim().length > 0 ? settings.planModelLabel : settings.chatModelLabel,
-      providerId: settings.planModelProviderId ?? settings.chatModelProviderId,
-      updateKeys: {
-        modelId: 'planModelId',
-        modelLabel: 'planModelLabel',
-        providerId: 'planModelProviderId',
-      } as const,
-    }
-  }
-
-  return {
-    modelId: settings.agentModelId.trim().length > 0 ? settings.agentModelId : settings.chatModelId,
-    modelLabel: settings.agentModelLabel.trim().length > 0 ? settings.agentModelLabel : settings.chatModelLabel,
-    providerId: settings.agentModelProviderId ?? settings.chatModelProviderId,
-    updateKeys: {
-      modelId: 'agentModelId',
-      modelLabel: 'agentModelLabel',
-      providerId: 'agentModelProviderId',
-    } as const,
-  }
-}
-
 export function useChatRuntimeConfig({
   activeChatMode,
   activeConversationId,
@@ -217,8 +177,7 @@ export function useChatRuntimeConfig({
   settings,
   updateSettings,
 }: UseChatRuntimeConfigInput) {
-  const [sharedConversationRuntime, setSharedConversationRuntime] = useState<SharedConversationRuntimeSnapshot | null>(null)
-  const sharedRuntimeMutationRef = useRef(0)
+  const runtimeSurface = getRendererAppSettingsSurface()
   const { customModels, customModelsLoading, providerModels, providerModelsLoading } = useSettingsModelCatalog(providersState)
   const allModelCatalog = useMemo(
     () => dedupeModelCatalogItems([
@@ -237,60 +196,10 @@ export function useChatRuntimeConfig({
     [customModels, providerModels, providersState],
   )
   const modeSelection = useMemo(
-    () => getModeSelectionFields(activeChatMode, settings),
+    () => resolveSurfaceModeModelSelection(activeChatMode, settings),
     [activeChatMode, settings],
   )
-  useEffect(() => {
-    setSharedConversationRuntime(null)
-    const requestVersion = sharedRuntimeMutationRef.current + 1
-    sharedRuntimeMutationRef.current = requestVersion
-    if (!activeConversationId) return
-
-    let cancelled = false
-    const unsubscribe = window.tidecodeRuns.onEvent((event) => {
-      if (event.type !== 'conversation_runtime_updated' || event.conversationId !== activeConversationId) return
-      sharedRuntimeMutationRef.current += 1
-      if (!cancelled) setSharedConversationRuntime(event.runtime)
-    })
-
-    void window.tidecodeRuns.getConversationRuntime(activeConversationId)
-      .then((runtime) => {
-        if (!cancelled && sharedRuntimeMutationRef.current === requestVersion) {
-          setSharedConversationRuntime(runtime)
-        }
-      })
-      .catch(() => undefined)
-
-    return () => {
-      cancelled = true
-      unsubscribe()
-    }
-  }, [activeConversationId])
-
-  const conversationModelPreference = useMemo(() => {
-    if (!activeConversationId) return null
-    if (sharedConversationRuntime?.conversationId === activeConversationId && sharedConversationRuntime.model) {
-      return {
-        chatMode: sharedConversationRuntime.chatMode,
-        label: sharedConversationRuntime.model.label,
-        modelId: sharedConversationRuntime.model.modelId,
-        providerId: sharedConversationRuntime.model.providerId,
-        ...(sharedConversationRuntime.model.reasoningEffort
-          ? { reasoningEffort: sharedConversationRuntime.model.reasoningEffort }
-          : {}),
-      }
-    }
-    return settings.conversationModelPreferences?.[activeConversationId] ?? null
-  }, [activeConversationId, settings.conversationModelPreferences, sharedConversationRuntime])
-  const effectiveModeSelection = useMemo(() => {
-    if (!conversationModelPreference) return modeSelection
-    return {
-      ...modeSelection,
-      modelId: conversationModelPreference.modelId,
-      modelLabel: conversationModelPreference.label,
-      providerId: conversationModelPreference.providerId,
-    }
-  }, [conversationModelPreference, modeSelection])
+  const effectiveModeSelection = modeSelection
   const selectedProviderConfigured = useMemo(() => {
     if (effectiveModeSelection.providerId === null) {
       return false
@@ -391,21 +300,12 @@ export function useChatRuntimeConfig({
     }),
     [availableReasoningEfforts, selectedModel?.defaultReasoningEffort, settings.chatReasoningEffort],
   )
-  const effectiveReasoningEffort = useMemo(() => {
-    if (conversationModelPreference?.reasoningEffort) {
-      return conversationModelPreference.reasoningEffort
-    }
-    return reasoningEffort
-  }, [conversationModelPreference, reasoningEffort])
+  const effectiveReasoningEffort = reasoningEffort
   const hasSavedModelId = effectiveModeSelection.modelId.trim().length > 0
   const isModelOptionsLoading =
     !hasSavedModelId && (isProvidersLoading || customModelsLoading || providerModelsLoading)
 
   useEffect(() => {
-    if (conversationModelPreference) {
-      return
-    }
-
     if (modeSelection.modelId.trim().length > 0) {
       return
     }
@@ -424,7 +324,6 @@ export function useChatRuntimeConfig({
       chatModelLabel: nextModel.label,
     })
   }, [
-    conversationModelPreference,
     modelOptions,
     modeSelection.modelId,
     modeSelection.updateKeys.modelId,
@@ -434,10 +333,6 @@ export function useChatRuntimeConfig({
   ])
 
   useEffect(() => {
-    if (conversationModelPreference) {
-      return
-    }
-
     const normalizedSavedModelId = modeSelection.modelId.trim()
     if (normalizedSavedModelId.length === 0) {
       return
@@ -490,7 +385,6 @@ export function useChatRuntimeConfig({
     })
   }, [
     allModelCatalog,
-    conversationModelPreference,
     modelOptions,
     modeSelection.modelId,
     modeSelection.providerId,
@@ -502,7 +396,7 @@ export function useChatRuntimeConfig({
   ])
 
   useEffect(() => {
-    if (!selectedModel?.isCatalogBacked || conversationModelPreference) {
+    if (!selectedModel?.isCatalogBacked) {
       return
     }
 
@@ -514,7 +408,7 @@ export function useChatRuntimeConfig({
       [modeSelection.updateKeys.providerId]: selectedModel.providerId,
       chatModelProviderId: selectedModel.providerId,
     })
-  }, [conversationModelPreference, modeSelection.providerId, modeSelection.updateKeys.providerId, selectedModel, updateSettings])
+  }, [modeSelection.providerId, modeSelection.updateKeys.providerId, selectedModel, updateSettings])
 
   useEffect(() => {
     if (!selectedModel?.isCatalogBacked) {
@@ -548,50 +442,40 @@ export function useChatRuntimeConfig({
         supportedEfforts: selectedOption?.reasoningEfforts,
       })
 
+      const modelLabel = selectedOption?.label ?? chatModelId
+      const sharedModel = {
+        label: modelLabel,
+        modelId: chatModelId,
+        providerId: nextProviderId,
+        reasoningEffort: nextReasoningEffort,
+        runtimeModelId: selectedOption?.runtimeModelId ?? chatModelId,
+      }
+
+      void updateSettings(buildSurfaceModelSelectionSettingsPatch(activeChatMode, {
+        modelId: chatModelId,
+        modelLabel,
+        providerId: nextProviderId,
+        reasoningEffort: nextReasoningEffort,
+      }))
+
       if (activeConversationId) {
-        const sharedModel = {
-          label: selectedOption?.label ?? chatModelId,
-          modelId: chatModelId,
-          providerId: nextProviderId,
-          reasoningEffort: nextReasoningEffort,
-          runtimeModelId: selectedOption?.runtimeModelId ?? chatModelId,
-        }
-        sharedRuntimeMutationRef.current += 1
-        setSharedConversationRuntime({
-          chatMode: activeChatMode,
-          conversationId: activeConversationId,
-          model: sharedModel,
-          updatedAt: Date.now(),
-        })
         void window.tidecodeRuns.updateConversationRuntime({
           chatMode: activeChatMode,
           conversationId: activeConversationId,
           model: sharedModel,
+          surface: runtimeSurface,
         }).catch((error) => {
           console.error('Failed to sync conversation model', error)
         })
-        return
       }
-
-      void updateSettings({
-        [modeSelection.updateKeys.modelId]: chatModelId,
-        [modeSelection.updateKeys.providerId]: nextProviderId,
-        [modeSelection.updateKeys.modelLabel]: selectedOption?.label ?? chatModelId,
-        chatModelId,
-        chatModelProviderId: nextProviderId,
-        chatModelLabel: selectedOption?.label ?? chatModelId,
-        chatReasoningEffort: nextReasoningEffort,
-      })
     },
     [
       activeChatMode,
       activeConversationId,
       effectiveModeSelection.modelId,
       effectiveModeSelection.providerId,
-      modeSelection.updateKeys.modelId,
-      modeSelection.updateKeys.modelLabel,
-      modeSelection.updateKeys.providerId,
       runtimeModelOptions,
+      runtimeSurface,
       settings.chatReasoningEffort,
       updateSettings,
     ],
@@ -603,6 +487,8 @@ export function useChatRuntimeConfig({
         return
       }
 
+      void updateSettings({ chatReasoningEffort })
+
       if (activeConversationId) {
         const sharedModel = {
           label: selectedModel?.label ?? (effectiveModeSelection.modelLabel.trim() || effectiveModeSelection.modelId),
@@ -611,24 +497,15 @@ export function useChatRuntimeConfig({
           reasoningEffort: chatReasoningEffort,
           runtimeModelId: selectedModel?.runtimeModelId ?? effectiveModeSelection.modelId,
         }
-        sharedRuntimeMutationRef.current += 1
-        setSharedConversationRuntime({
-          chatMode: activeChatMode,
-          conversationId: activeConversationId,
-          model: sharedModel,
-          updatedAt: Date.now(),
-        })
         void window.tidecodeRuns.updateConversationRuntime({
           chatMode: activeChatMode,
           conversationId: activeConversationId,
           model: sharedModel,
+          surface: runtimeSurface,
         }).catch((error) => {
           console.error('Failed to sync conversation reasoning effort', error)
         })
-        return
       }
-
-      void updateSettings({ chatReasoningEffort })
     },
     [
       activeChatMode,
@@ -639,6 +516,7 @@ export function useChatRuntimeConfig({
       effectiveReasoningEffort,
       selectedModel?.label,
       selectedModel?.runtimeModelId,
+      runtimeSurface,
       updateSettings,
     ],
   )

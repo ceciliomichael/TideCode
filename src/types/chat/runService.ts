@@ -1,6 +1,7 @@
 import type { ChatCompactionLifecycleState, ChatStreamEvent, CompactConversationInput, CompactConversationResult, ContextUsageEstimate, StartChatStreamInput } from './runtime'
 import type { ChatMode, ConversationFolderRecord, ConversationRecord, QueuedMessage } from './conversations'
 import type { ChatProviderId, ReasoningEffort } from './providers'
+import type { AppSettingsSurface } from './settings'
 
 export type SharedRunStatus =
   | 'starting'
@@ -53,6 +54,7 @@ export interface SharedConversationRuntimeSnapshot {
   conversationId: string
   chatMode: ChatMode
   model: SharedConversationRuntimeModel | null
+  surface: AppSettingsSurface
   updatedAt: number
 }
 
@@ -60,6 +62,7 @@ export interface UpdateConversationRuntimeInput {
   conversationId: string
   chatMode?: ChatMode
   model?: SharedConversationRuntimeModel
+  surface?: AppSettingsSurface
 }
 
 export type SharedFollowUpBehavior = 'steer' | 'queue'
@@ -159,7 +162,7 @@ export type TideCodeRunEvent =
 export interface TideCodeRunsApi {
   compactConversation: (input: CompactConversationInput) => Promise<CompactConversationResult>
   getCompactionState: (conversationId: string) => Promise<ChatCompactionLifecycleState | null>
-  getConversationRuntime: (conversationId: string) => Promise<SharedConversationRuntimeSnapshot | null>
+  getConversationRuntime: (conversationId: string, surface?: AppSettingsSurface) => Promise<SharedConversationRuntimeSnapshot | null>
   getPendingFollowUps: (streamId: string) => Promise<SharedFollowUpSnapshot | null>
   getRunProjection: (runId: string) => Promise<SharedRunProjection | null>
   listActiveRuns: () => Promise<SharedRunSnapshot[]>
