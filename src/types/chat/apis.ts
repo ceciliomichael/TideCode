@@ -84,7 +84,7 @@ import type {
   SubmitToolDecisionInput,
   SubmitToolDecisionResult,
 } from './runtime'
-import type { AppSettings } from './settings'
+import type { AppSettings, AppSettingsSurface } from './settings'
 import type { TideCodeLaunchRequest } from '../../lib/appLaunchRequest'
 import type {
   CloseTerminalSessionInput,
@@ -159,9 +159,9 @@ export interface TideCodeHistoryApi {
 
 export interface TideCodeSettingsApi {
   getInitialSettings: () => AppSettings
-  getSettings: () => Promise<AppSettings>
+  getSettings: (surface?: AppSettingsSurface) => Promise<AppSettings>
   onRemoteChange: (listener: (settings: AppSettings) => void) => () => void
-  updateSettings: (input: Partial<AppSettings>) => Promise<AppSettings>
+  updateSettings: (input: Partial<AppSettings>, surface?: AppSettingsSurface) => Promise<AppSettings>
 }
 
 export interface TideCodeAppApi {

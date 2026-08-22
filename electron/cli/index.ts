@@ -143,7 +143,7 @@ export async function main() {
 
   const [{ providerId, modelId, reasoningEffort }, storedSettings] = await Promise.all([
     resolveDefaultProviderAndModel(options),
-    getStoredSettings(),
+        getStoredSettings('cli'),
   ])
 
   const state: CliSessionState = {
@@ -161,9 +161,7 @@ export async function main() {
     followUpBehavior: storedSettings.followUpBehavior,
   }
 
-  await initializeCliConversation(state, options.continueId, {
-    preserveModelSelection: Boolean(options.model || options.provider),
-  })
+  await initializeCliConversation(state, options.continueId, { preserveModelSelection: true })
 
   if (!options.continueId) {
     await (await ensureRunServiceClient()).ensureWorkspaceProject(state.workspaceRootPath)

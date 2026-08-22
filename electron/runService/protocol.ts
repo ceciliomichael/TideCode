@@ -18,12 +18,13 @@ import type {
   SubmitToolDecisionResult,
   TideCodeRunEvent,
   UpdateConversationRuntimeInput,
+  AppSettingsSurface,
   UpdateSharedFollowUpsInput,
   UpdatePendingSteerMessagesInput,
   UpdatePendingSteerMessagesResult,
 } from '../../src/types/chat'
 
-export const RUN_SERVICE_PROTOCOL_VERSION = 12
+export const RUN_SERVICE_PROTOCOL_VERSION = 13
 
 export interface RunServiceHello {
   buildId: string
@@ -34,7 +35,7 @@ export type RunServiceRequest =
   | { id: string; token: string; method: 'hello'; params?: undefined }
   | { id: string; token: string; method: 'shutdown'; params?: undefined }
   | { id: string; token: string; method: 'getCompactionState'; params: { conversationId: string } }
-  | { id: string; token: string; method: 'getConversationRuntime'; params: { conversationId: string } }
+  | { id: string; token: string; method: 'getConversationRuntime'; params: { conversationId: string; surface?: AppSettingsSurface } }
   | { id: string; token: string; method: 'getPendingFollowUps'; params: { streamId: string } }
   | { id: string; token: string; method: 'getRunProjection'; params: { runId: string } }
   | { id: string; token: string; method: 'listActiveRuns'; params?: undefined }

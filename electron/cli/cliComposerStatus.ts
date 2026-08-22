@@ -22,7 +22,7 @@ export async function refreshCliComposerStatus(
     providerId: state.providerId,
     terminalExecutionMode: state.terminalExecutionMode,
   }
-  const settings = await getStoredSettings()
+  const settings = await getStoredSettings('cli')
   const [usage, codexStatus] = await Promise.all([
     estimateToolEnabledContextUsage({
       agentContextRootPath: state.workspaceRootPath,

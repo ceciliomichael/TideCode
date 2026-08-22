@@ -126,7 +126,7 @@ export async function getTideCodeSystemModels(chatMode: ChatMode = 'agent'): Pro
     readStoredApiKeyProviders().catch(() => ({} as StoredApiKeyProviders)),
     getCodexProviderStatus(false).catch(() => ({ isAuthenticated: false })),
     listStoredCustomModels().catch(() => []),
-    getStoredSettings().catch(() => null),
+        getStoredSettings('cli').catch(() => null),
   ])
 
   // Determine which providers are configured with API keys / accounts / env vars

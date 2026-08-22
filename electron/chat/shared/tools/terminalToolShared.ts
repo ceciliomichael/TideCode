@@ -378,10 +378,14 @@ export function buildMarkedCommand(command: string, shellLabel: string, marker: 
   const trimmedCommand = command.trimEnd();
 
   if (normalizedShellLabel.includes("powershell") || normalizedShellLabel.includes("pwsh")) {
-    const shellCommand = /[\r\n]/u.test(trimmedCommand)
-      ? encodePowerShellCommand(trimmedCommand)
-      : trimmedCommand;
-    return `${shellCommand}; echo "${marker}:$([int]$LASTEXITCODE)"\r`;
+    const shellCommand = encodePowerShellCommand(trimmedCommand);
+    return [
+      "$global:LASTEXITCODE = 0",
+      "$__tidecodeSucceeded = $true",
+      `try { ${shellCommand}; $__tidecodeSucceeded = $? } catch { Write-Error $_; $__tidecodeSucceeded = $false }`,
+      "$__tidecodeExit = if ($__tidecodeSucceeded) { [int]$LASTEXITCODE } elseif ([int]$LASTEXITCODE -ne 0) { [int]$LASTEXITCODE } else { 1 }",
+      `Write-Output "${marker}:$__tidecodeExit"`,
+    ].join("; ") + "\r";
   }
 
   if (

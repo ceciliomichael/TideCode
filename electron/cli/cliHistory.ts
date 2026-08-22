@@ -82,7 +82,7 @@ export async function initializeCliConversation(
 
   const [conversation, settings] = await Promise.all([
     getStoredConversation(continueId),
-    getStoredSettings(),
+        getStoredSettings('cli'),
   ])
   if (!conversation) throw new Error(`Conversation not found: ${continueId}`)
   applyConversationRecordToCliState(state, conversation, {
@@ -93,14 +93,9 @@ export async function initializeCliConversation(
 }
 
 export async function resumeCliConversation(state: CliSessionState, conversationId: string): Promise<ConversationRecord | null> {
-  const [conversation, settings] = await Promise.all([
-    getStoredConversation(conversationId),
-    getStoredSettings(),
-  ])
+  const conversation = await getStoredConversation(conversationId)
   if (!conversation) return null
-  applyConversationRecordToCliState(state, conversation, {
-    conversationPreference: settings.conversationModelPreferences[conversationId],
-  })
+  applyConversationRecordToCliState(state, conversation, { preserveModelSelection: true })
   return conversation
 }
 

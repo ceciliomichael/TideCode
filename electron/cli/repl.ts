@@ -231,11 +231,11 @@ export async function startInteractiveRepl(
   })
 
   const [initialRuntime, initialCompactionState] = await Promise.all([
-    runService.getConversationRuntime(state.conversationId).catch(() => null),
+        runService.getConversationRuntime(state.conversationId, 'cli').catch(() => null),
     runService.getCompactionState(state.conversationId).catch(() => null),
   ])
   if (initialRuntime) {
-    const runtimeChange = await applyCliConversationRuntime(state, screen, initialRuntime)
+    const runtimeChange = await applyCliConversationRuntime(state, screen, initialRuntime, { applyModelSelection: false })
     refreshComposerStatus(runtimeChange.refreshCodexUsage)
   }
   const initialCompactionIsPersisted = initialCompactionState?.phase === 'compacted' &&
@@ -277,7 +277,7 @@ export async function startInteractiveRepl(
       // Arm the prompt before refreshing settings. The settings read is
       // intentionally background work so startup keystrokes cannot be
       // consumed while the terminal is already showing the composer.
-      void getStoredSettings()
+      void getStoredSettings('cli')
         .then((latestSettings) => {
           state.followUpBehavior = latestSettings.followUpBehavior
           promptContext.enterFollowUpBehavior = latestSettings.followUpBehavior

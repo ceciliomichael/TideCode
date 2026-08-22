@@ -75,21 +75,24 @@ export function findVenvPath(cwd: string, workspaceRootPath: string | null): str
 export function activateVenvInEnvironment(
   env: NodeJS.ProcessEnv,
   venvPath: string,
+  platform: NodeJS.Platform = process.platform,
 ): NodeJS.ProcessEnv {
-  const isWindows = process.platform === 'win32'
+  const isWindows = platform === 'win32'
   const venvBin = isWindows
     ? path.join(venvPath, 'Scripts')
     : path.join(venvPath, 'bin')
   const pathSeparator = isWindows ? ';' : ':'
-
-  const existingPath = env.PATH ?? ''
+  const pathKey = isWindows
+    ? Object.keys(env).find((key) => key.toLowerCase() === 'path') ?? 'Path'
+    : 'PATH'
+  const existingPath = env[pathKey] ?? ''
   const prependedPath = existingPath.length > 0
     ? `${venvBin}${pathSeparator}${existingPath}`
     : venvBin
 
   return {
     ...env,
-    PATH: prependedPath,
+    [pathKey]: prependedPath,
     VIRTUAL_ENV: venvPath,
   }
 }

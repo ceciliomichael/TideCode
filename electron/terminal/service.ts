@@ -22,7 +22,7 @@ import {
   parseExternalTerminalLink,
   resolveTerminalCwd,
   resolveTerminalWorkspaceRootPath,
-  spawnTerminalFromCandidates,
+spawnResolvedTerminalShell,
   toWorkspaceKey,
   toWorkspaceSessionKey,
 } from "./configuration";
@@ -179,7 +179,7 @@ async function createTerminalSessionInternal(
   const venvInfo = detectVenvInfo(workspaceRootPath ?? cwd, cwd);
   const venvName = venvInfo?.name ?? null;
 
-  const { ptyProcess, shellLabel } = spawnTerminalFromCandidates({
+const { ptyProcess, shellLabel } = spawnResolvedTerminalShell({
     cols,
     cwd,
     env: terminalEnvironment,

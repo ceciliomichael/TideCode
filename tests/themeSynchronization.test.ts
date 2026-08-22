@@ -3,8 +3,9 @@ import test from 'node:test'
 import { shouldDeferRendererSettingsCommit } from '../src/hooks/appSettingsUpdatePolicy'
 import { applyPendingSettingsUpdates } from '../src/hooks/useAppSettings'
 import { DEFAULT_APP_SETTINGS } from '../src/lib/defaultAppSettings'
-import { hasDurableAppSettingsInput, preserveLocalWorkspaceUiSettings } from '../src/lib/appSettingsScopes'
+import { hasSharedAppSettingsInput, preserveLocalSurfaceSettings } from '../src/lib/appSettingsScopes'
 import { cacheAppearancePreference, THEME_STORAGE_KEY } from '../src/lib/theme'
+import { getVisibleSettingsItems } from '../src/components/settings/settingsItems'
 
 test('appearance updates wait for the native window theme before committing in the renderer', () => {
   assert.equal(shouldDeferRendererSettingsCommit({ appearance: 'dark' }), true)
@@ -82,29 +83,44 @@ test('deferred appearance updates wait for the committed canonical snapshot', ()
 })
 
 
-test('remote durable settings preserve local workspace UI state', () => {
+test('remote shared settings preserve all local surface preferences', () => {
   const localSettings = {
     ...DEFAULT_APP_SETTINGS,
     appearance: 'dark' as const,
     lastActiveConversationId: 'desktop-chat',
     sidebarWidth: 320,
+    disabledSkillsByPath: { local: true },
   }
   const remoteSettings = {
     ...DEFAULT_APP_SETTINGS,
     appearance: 'light' as const,
     lastActiveConversationId: 'web-chat',
     sidebarWidth: 220,
+    disabledSkillsByPath: { shared: true },
   }
 
-  const merged = preserveLocalWorkspaceUiSettings(remoteSettings, localSettings)
-  assert.equal(merged.appearance, 'light')
+  const merged = preserveLocalSurfaceSettings(remoteSettings, localSettings)
+  assert.equal(merged.appearance, 'dark')
   assert.equal(merged.lastActiveConversationId, 'desktop-chat')
   assert.equal(merged.sidebarWidth, 320)
+  assert.deepEqual(merged.disabledSkillsByPath, { shared: true })
 })
 
-test('workspace-only updates are not broadcast as durable settings changes', () => {
-  assert.equal(hasDurableAppSettingsInput({ lastActiveConversationId: 'web-chat' }), false)
-  assert.equal(hasDurableAppSettingsInput({ sidebarWidth: 280 }), false)
-  assert.equal(hasDurableAppSettingsInput({ chatReasoningEffort: 'high' }), true)
-  assert.equal(hasDurableAppSettingsInput({ appearance: 'dark' }), true)
+test('only shared configuration is broadcast across surfaces', () => {
+  assert.equal(hasSharedAppSettingsInput({ lastActiveConversationId: 'web-chat' }), false)
+  assert.equal(hasSharedAppSettingsInput({ sidebarWidth: 280 }), false)
+  assert.equal(hasSharedAppSettingsInput({ chatReasoningEffort: 'high' }), false)
+  assert.equal(hasSharedAppSettingsInput({ appearance: 'dark' }), false)
+  assert.equal(hasSharedAppSettingsInput({ disabledSkillsByPath: { shared: true } }), true)
+  assert.equal(hasSharedAppSettingsInput({ kanbanAiPlanningEnabled: false }), true)
+})
+
+test('web hides desktop-only Remote and Updates settings sections', () => {
+  const webIds = getVisibleSettingsItems('web', false).map((item) => item.id)
+  assert.equal(webIds.includes('settings-item7'), false)
+  assert.equal(webIds.includes('settings-item8'), false)
+
+  const desktopIds = getVisibleSettingsItems('desktop', true).map((item) => item.id)
+  assert.equal(desktopIds.includes('settings-item7'), true)
+  assert.equal(desktopIds.includes('settings-item8'), true)
 })
