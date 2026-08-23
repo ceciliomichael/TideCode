@@ -12,6 +12,7 @@ import type { AppSettings } from '../../../types/chat'
 import { DropdownField } from '../../ui/DropdownField'
 import { SegmentedField } from '../../ui/SegmentedField'
 import { SettingsPanelLayout, SettingsRow, SettingsSection } from '../shared/SettingsPanelPrimitives'
+import { GeneralSettingsSkeleton } from './GeneralSettingsSkeleton'
 
 const BOOLEAN_SEGMENT_OPTIONS = [
   { label: 'Off', value: 'off' },
@@ -75,6 +76,10 @@ export function GeneralSettingsPanel({
     },
     [onUpdateSettings],
   )
+
+  if (isLoading) {
+    return <GeneralSettingsSkeleton />
+  }
 
   return (
     <SettingsPanelLayout>

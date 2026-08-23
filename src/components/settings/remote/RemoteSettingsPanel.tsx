@@ -4,6 +4,7 @@ import type { RemoteHostConfiguration, RemoteHostStatus } from '../../../remote/
 import { useIsMobileViewport } from '../../../hooks/useIsMobileViewport'
 import { SegmentedField } from '../../ui/SegmentedField'
 import { SettingsPanelLayout, SettingsRow, SettingsSection } from '../shared/SettingsPanelPrimitives'
+import { RemoteSettingsSkeleton } from './RemoteSettingsSkeleton'
 
 const AUTH_OPTIONS = [
   { label: 'Off', value: 'off' },
@@ -75,6 +76,10 @@ export function RemoteSettingsPanel() {
         </SettingsSection>
       </SettingsPanelLayout>
     )
+  }
+
+  if ((configuration === null || status === null) && error === null) {
+    return <RemoteSettingsSkeleton />
   }
 
   const copyUrl = async (url: string) => {

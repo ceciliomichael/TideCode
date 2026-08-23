@@ -137,7 +137,8 @@ export function createToolSearchTool(registry: AgentToolRegistry, options: { dyn
 const CODE_MODE_TOOL_ROUTING = [
   'Choose the purpose-built inner API for the scenario. Do not use terminal commands as a substitute for structured workspace APIs.',
   'For source mutations containing quotes, backticks, template expressions, Markdown fences, regexes, Windows paths, or other arbitrary text, put the raw strings in the top-level code_mode payloads object and reference payloads.<name> inside tools.edit/tools.write. Do not embed complex source text inside generated JavaScript string literals when payloads can carry it unchanged.',
-  '- `tools.read`: inspect one known file or directory.',
+  '- `tools.read`: inspect one known file or directory. A path is known only when the user supplied it or a prior workspace tool returned that exact path. Never infer filenames from conventions.',
+  '- If the exact file path is unknown, discover it first with `tools.list`, `tools.glob`, or `tools.grep`, then pass the returned path to `tools.read` or `tools.edit`.',
   '- `tools.list`: inspect immediate entries of one directory.',
   '- `tools.glob`: discover files by path or filename pattern.',
   '- `tools.grep`: search workspace text, symbols, imports, or references.',
@@ -164,7 +165,7 @@ function buildPreloadedToolDocumentation(registry: AgentToolRegistry) {
   }
 
   return [
-    'Path rule: every supplied path argument is one exact workspace-relative file or directory. For root-capable `read`, `list`, `glob`, and `grep` calls, an omitted path where the schema permits omission, an empty string, or `.` refers to the bound workspace root. Never invent an index file, combine roots with spaces, or treat a path list as one path.',
+    'Path rule: every supplied path argument is one exact workspace-relative file or directory. For root-capable `read`, `list`, `glob`, and `grep` calls, an omitted path where the schema permits omission, an empty string, or `.` refers to the bound workspace root. Never invent filenames or index files, combine roots with spaces, or treat a path list as one path. If an exact child path has not been supplied by the user or returned by a prior workspace tool, discover it with list, glob, or grep before reading or editing it.',
     'Preloaded local APIs (call directly inside the program):',
     ...contracts.map((contract) => `- ${contract.signature} — ${contract.description}`),
     'Connected MCP APIs are dynamic. Inside the same program, call tools.tool_search({ query }), then invoke an exact returned tools.<name>(args) function. Do not guess MCP names.',

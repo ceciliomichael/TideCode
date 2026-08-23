@@ -5,6 +5,7 @@ import type { AppTerminalExecutionMode } from '../../../../src/types/chat'
 import type { AgentToolRegistry } from '../tools/registry'
 import { isDynamicAgentTool } from '../tools/registry'
 import type { AgentToolExecutionResult } from '../toolTypes'
+import { getCodeModeToolCallStatus } from './toolCallStatus'
 import {
   containsDynamicCodeModeImport,
   findBlockedCodeModeRuntimeApi,
@@ -34,6 +35,28 @@ const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 
 const pendingToolCalls = new Map()
 const pendingToolPromises = new Set()
+const pendingPromiseThen = new WeakMap()
+
+function trackPendingPromise(promise) {
+  if (pendingToolPromises.has(promise)) return promise
+
+  pendingToolPromises.add(promise)
+  const originalThen = promise.then.bind(promise)
+  pendingPromiseThen.set(promise, originalThen)
+  Object.defineProperty(promise, 'then', {
+    configurable: false,
+    enumerable: false,
+    value(onFulfilled, onRejected) {
+      return trackPendingPromise(originalThen(onFulfilled, onRejected))
+    },
+    writable: false,
+  })
+  void originalThen(
+    () => pendingToolPromises.delete(promise),
+    () => pendingToolPromises.delete(promise),
+  )
+  return promise
+}
 
 function createTools(toolNames) {
   const tools = {}
@@ -44,12 +67,7 @@ function createTools(toolNames) {
         pendingToolCalls.set(callId, { reject, resolve })
         parentPort.postMessage({ arguments: input, callId, name, type: 'tool_call' })
       })
-      pendingToolPromises.add(promise)
-      void promise.then(
-        () => pendingToolPromises.delete(promise),
-        () => pendingToolPromises.delete(promise),
-      )
-      return promise
+      return trackPendingPromise(promise)
     }
   }
   return Object.freeze(tools)
@@ -184,12 +202,30 @@ function assertCloneable(value) {
   return value
 }
 
+async function drainPendingToolPromises() {
+  let emptyPasses = 0
+  while (emptyPasses < 2) {
+    const tracked = Array.from(pendingToolPromises)
+    if (tracked.length === 0) {
+      emptyPasses += 1
+      await Promise.resolve()
+      continue
+    }
+    emptyPasses = 0
+    const pending = tracked.map((promise) => new Promise((resolve, reject) => {
+      const originalThen = pendingPromiseThen.get(promise)
+      originalThen(resolve, reject)
+    }))
+    await Promise.all(pending)
+  }
+}
+
 async function execute(message) {
   configureRuntime(message)
   const program = new AsyncFunction('tools', 'payloads', message.code)
   const payloads = Object.freeze({ ...(message.payloads ?? {}) })
   const output = await program(createTools(message.toolNames), payloads)
-  await Promise.all(Array.from(pendingToolPromises))
+  await drainPendingToolPromises()
   return assertCloneable(await resolveReturnedValue(output))
 }
 
@@ -371,6 +407,10 @@ export class CodeModeExecutor {
     const worker = new Worker(CODE_MODE_WORKER_SOURCE, workerOptions)
     this.activeWorkers.add(worker)
     const toolCalls: CodeModeToolCallRecord[] = []
+    let acceptedToolCallCount = 0
+    let inFlightToolCallCount = 0
+    let workerCompletionReceived = false
+    let pendingWorkerCompletion: CodeModeWorkerResultMessage | CodeModeWorkerErrorMessage | undefined
     let settled = false
     let timeoutId: NodeJS.Timeout | undefined
     let abortHandler: (() => void) | undefined
@@ -389,6 +429,47 @@ export class CodeModeExecutor {
         void settle().then(() => resolve(result))
       }
 
+      const finishWorkerCompletion = (message: CodeModeWorkerResultMessage | CodeModeWorkerErrorMessage) => {
+        if (message.type === 'error') {
+          finish(errorResult(executionId, `Code Mode failed: ${message.error}`, toolCalls))
+          return
+        }
+
+        const output = capExecutionOutput(message.output, limits.maxOutputBytes)
+        const failedToolCalls = toolCalls.filter((toolCall) => toolCall.status === 'error')
+        if (failedToolCalls.length > 0) {
+          const failureCount = failedToolCalls.length
+          finish({
+            error: `Code Mode completed with ${failureCount} failed tool call${failureCount === 1 ? '' : 's'}.`,
+            executionId,
+            output: output.output,
+            outputTruncated: output.outputTruncated,
+            status: 'error',
+            summary: `Code Mode finished with ${failureCount} failed tool call${failureCount === 1 ? '' : 's'}.`,
+            toolCalls,
+            truncated: output.outputTruncated,
+          })
+          return
+        }
+
+        finish({
+          executionId,
+          output: output.output,
+          outputTruncated: output.outputTruncated,
+          status: 'success',
+          summary: `Code Mode completed with ${toolCalls.length} tool call${toolCalls.length === 1 ? '' : 's'}.`,
+          toolCalls,
+          truncated: output.outputTruncated,
+        })
+      }
+
+      const maybeFinishWorkerCompletion = () => {
+        if (settled || inFlightToolCallCount > 0 || !pendingWorkerCompletion) return
+        const completion = pendingWorkerCompletion
+        pendingWorkerCompletion = undefined
+        finishWorkerCompletion(completion)
+      }
+
       if (typeof limits.timeoutMs === 'number' && limits.timeoutMs > 0) {
         timeoutId = setTimeout(() => finish(errorResult(executionId, `Code Mode execution exceeded the ${limits.timeoutMs}ms timeout.`, toolCalls)), limits.timeoutMs)
       }
@@ -397,43 +478,23 @@ export class CodeModeExecutor {
 
       worker.on('message', (message: CodeModeWorkerResultMessage | CodeModeWorkerErrorMessage | CodeModeWorkerToolCallMessage) => {
         if (settled) return
-        if (message.type === 'result') {
-          const output = capExecutionOutput(message.output, limits.maxOutputBytes)
-          const failedToolCalls = toolCalls.filter((toolCall) => toolCall.status === 'error')
-          if (failedToolCalls.length > 0) {
-            const failureCount = failedToolCalls.length
-            finish({
-              error: `Code Mode completed with ${failureCount} failed tool call${failureCount === 1 ? '' : 's'}.`,
-              executionId,
-              output: output.output,
-              outputTruncated: output.outputTruncated,
-              status: 'error',
-              summary: `Code Mode finished with ${failureCount} failed tool call${failureCount === 1 ? '' : 's'}.`,
-              toolCalls,
-              truncated: output.outputTruncated,
-            })
-            return
-          }
-
-          finish({
-            executionId,
-            output: output.output,
-            outputTruncated: output.outputTruncated,
-            status: 'success',
-            summary: `Code Mode completed with ${toolCalls.length} tool call${toolCalls.length === 1 ? '' : 's'}.`,
-            toolCalls,
-            truncated: output.outputTruncated,
-          })
-          return
-        }
-
-        if (message.type === 'error') {
-          finish(errorResult(executionId, `Code Mode failed: ${message.error}`, toolCalls))
+        if (message.type === 'result' || message.type === 'error') {
+          workerCompletionReceived = true
+          pendingWorkerCompletion = message
+          maybeFinishWorkerCompletion()
           return
         }
 
         if (message.type !== 'tool_call') return
-        if (toolCalls.length >= limits.maxToolCalls) {
+        if (workerCompletionReceived) {
+          worker.postMessage({
+            callId: message.callId,
+            error: 'Code Mode execution already completed.',
+            type: 'tool_result',
+          } satisfies CodeModeWorkerToolResultMessage)
+          return
+        }
+        if (acceptedToolCallCount >= limits.maxToolCalls) {
           const response: CodeModeWorkerToolResultMessage = {
             callId: message.callId,
             error: `Code Mode exceeded the ${limits.maxToolCalls}-tool-call limit.`,
@@ -452,11 +513,14 @@ export class CodeModeExecutor {
           return
         }
 
+        acceptedToolCallCount += 1
+        inFlightToolCallCount += 1
         const toolStartedAt = Date.now()
         void entry.execute(message.arguments, {
           abortSignal: options.abortSignal,
           toolCallId: `${executionId}-${message.callId}`,
         }).then((result) => {
+          const toolCallStatus = getCodeModeToolCallStatus(result)
           toolCalls.push({
             arguments: toJsonSafe(message.arguments),
             body: capDisplayBody(result),
@@ -468,12 +532,13 @@ export class CodeModeExecutor {
             ...(result.semantics
               ? { semantics: asRecord(toJsonSafe(result.semantics)) }
               : {}),
-            status: result.status,
+            status: toolCallStatus,
             ...(result.subject
               ? { subject: asRecord(toJsonSafe(result.subject)) as CodeModeToolCallRecord['subject'] }
               : {}),
             summary: result.summary,
           })
+          if (settled) return
           if (result.status === 'error') {
             worker.postMessage({
               callId: message.callId,
@@ -497,11 +562,15 @@ export class CodeModeExecutor {
             status: 'error',
             summary: error instanceof Error ? error.message : String(error),
           })
+          if (settled) return
           worker.postMessage({
             callId: message.callId,
             error: error instanceof Error ? error.message : String(error),
             type: 'tool_result',
           } satisfies CodeModeWorkerToolResultMessage)
+        }).finally(() => {
+          inFlightToolCallCount = Math.max(0, inFlightToolCallCount - 1)
+          maybeFinishWorkerCompletion()
         })
       })
       worker.on('error', (error) => finish(errorResult(executionId, `Code Mode worker failed: ${error.message}`, toolCalls)))

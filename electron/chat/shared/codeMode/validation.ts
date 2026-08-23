@@ -156,18 +156,107 @@ export function repairCodeModePatchProgram(code: string) {
     .join('\n')
 }
 
-export function repairCodeModeProgramSyntax(code: string): string | null {
-  // Try 0: Fix invalid Python-style triple quotes `"""..."""` or `'''...'''` by replacing them with JS template literal backticks
-  if (code.includes('"""') || code.includes("'''")) {
-    const fixedTripleQuotes = code
-      .replace(/"""([\s\S]*?)"""/gu, (_match, body) => '`' + body.replace(/`/gu, '\\`') + '`')
-      .replace(/'''([\s\S]*?)'''/gu, (_match, body) => '`' + body.replace(/`/gu, '\\`') + '`')
+function repairPythonTripleQuotedStrings(code: string) {
+  let cursor = 0
+  let output = ''
+  let changed = false
 
-    try {
-      validateCodeModeSyntax(fixedTripleQuotes)
-      return fixedTripleQuotes
-    } catch {
-      // continue
+  while (cursor < code.length) {
+    let index = cursor
+    let quote: "'" | '"' | '`' | null = null
+    let inLineComment = false
+    let inBlockComment = false
+    let openingIndex = -1
+    let delimiter: '"""' | "'''" | null = null
+
+    while (index < code.length) {
+      const character = code[index]
+      const nextCharacter = code[index + 1]
+
+      if (inLineComment) {
+        if (character === '\n' || character === '\r') inLineComment = false
+        index += 1
+        continue
+      }
+      if (inBlockComment) {
+        if (character === '*' && nextCharacter === '/') {
+          inBlockComment = false
+          index += 2
+        } else {
+          index += 1
+        }
+        continue
+      }
+      if (quote !== null) {
+        if (character === '\\') {
+          index += 2
+          continue
+        }
+        if (character === quote) quote = null
+        index += 1
+        continue
+      }
+
+      if (character === '/' && nextCharacter === '/') {
+        inLineComment = true
+        index += 2
+        continue
+      }
+      if (character === '/' && nextCharacter === '*') {
+        inBlockComment = true
+        index += 2
+        continue
+      }
+      if (character === '"' && code.startsWith('"""', index)) {
+        openingIndex = index
+        delimiter = '"""'
+        break
+      }
+      if (character === "'" && code.startsWith("'''", index)) {
+        openingIndex = index
+        delimiter = "'''"
+        break
+      }
+      if (character === "'" || character === '"' || character === '`') {
+        quote = character
+      }
+      index += 1
+    }
+
+    if (openingIndex === -1 || delimiter === null) {
+      output += code.slice(cursor)
+      break
+    }
+
+    let closingIndex = code.indexOf(delimiter, openingIndex + delimiter.length)
+    while (closingIndex !== -1 && isEscaped(code, closingIndex)) {
+      closingIndex = code.indexOf(delimiter, closingIndex + delimiter.length)
+    }
+    if (closingIndex === -1) {
+      output += code.slice(cursor)
+      break
+    }
+
+    output += code.slice(cursor, openingIndex)
+    output += JSON.stringify(code.slice(openingIndex + delimiter.length, closingIndex))
+    cursor = closingIndex + delimiter.length
+    changed = true
+  }
+
+  return changed ? output : code
+}
+
+export function repairCodeModeProgramSyntax(code: string): string | null {
+  // Try 0: Repair Python-style triple-quoted strings without interpreting opposite delimiters or template expressions.
+  if (code.includes('"""') || code.includes("'''")) {
+    const fixedTripleQuotes = repairPythonTripleQuotedStrings(code)
+    if (fixedTripleQuotes !== code) {
+      try {
+        validateCodeModeSyntax(fixedTripleQuotes)
+        return fixedTripleQuotes
+      } catch {
+        // continue
+      }
     }
   }
 

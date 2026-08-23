@@ -8,6 +8,7 @@ import { useSettingsModelCatalog } from '../models/settingsModelCatalogStore'
 import { filterEnabledModelCatalogItems, readStoredModelToggleState } from '../models/modelStorage'
 import { MemoizedContextSettingsSections } from '../context/ContextSettingsPanel'
 import type { ContextCompactionSettings } from '../../../lib/contextCompactionSettings'
+import { TaskModelsSettingsSkeleton } from './TaskModelsSettingsSkeleton'
 
 interface ModelOption {
   label: string
@@ -270,6 +271,10 @@ export function TaskModelsSettingsPanel({
       ),
     [kanbanMissingOption, settings.kanbanModelId, settings.kanbanModelProviderId, sharedOptions],
   )
+
+  if (isLoading || providersState === null || isModelsLoading) {
+    return <TaskModelsSettingsSkeleton />
+  }
 
   return (
     <SettingsPanelLayout>

@@ -20,6 +20,7 @@
 
 ## Execution rules
 - Every call has one clear purpose and uses its exact schema. Dependent calls are sequential; independent calls may be parallel.
+- Treat a file path as known only when the user supplied it or a prior workspace tool returned that exact path. Never invent a likely filename from project conventions. If the exact path is unknown, discover it with `list`, `glob`, or `grep` before `read` or `edit`.
 - Do not retry equivalent terminal submission variants unless fresh output shows the normal text + `ENTER` interaction was not accepted.
 - Do not use terminal commands such as `cat`, `type`, `dir`, `ls`, `rg`, `grep`, `sed`, shell redirection, `Set-Content`, Python, or Node merely to perform an operation covered by the structured workspace APIs above.
 - Verify mutations with the narrowest decisive check, broaden only when risk requires it, then stop.

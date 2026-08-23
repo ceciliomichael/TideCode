@@ -237,8 +237,8 @@ export function buildChatModeSystemPromptBreakdown(
       '- Prefer paths relative to that root. Use `.` or omit an optional path for the root itself.',
       '- Never guess or construct an absolute path from a project name, display name, process directory, or previous turn. Copy an absolute path only when the user or a tool provided it.',
       isCodeModeAgent
-        ? '- Follow the path rules in the `code_mode` tool description for inner workspace calls.'
-        : '- If unsure, inspect with `list`, `glob`, or `grep` before choosing a path.',
+        ? '- Follow the path rules in the `code_mode` tool description for inner workspace calls. Do not infer child filenames; discover unknown paths with `list`, `glob`, or `grep` first.'
+        : '- If unsure, inspect with `list`, `glob`, or `grep` before choosing a path. Do not infer child filenames from naming conventions.',
       '- If a path fails, correct the relative child path; do not retry the same guessed absolute path.',
       '</workspace_path_rules>',
     ].join('\n'),

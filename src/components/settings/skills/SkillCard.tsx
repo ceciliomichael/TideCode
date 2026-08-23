@@ -1,6 +1,5 @@
 import { Braces } from 'lucide-react'
-import { Fragment, useMemo } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { MarkdownListItem, MarkdownOrderedList } from '../../markdown/MarkdownList'
@@ -46,7 +45,7 @@ export function SkillCard({ isEnabled, onToggle, skill }: SkillCardProps) {
     [],
   )
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const descriptionContainer = descriptionContainerRef.current
     if (!descriptionContainer) {
       return
@@ -84,7 +83,7 @@ export function SkillCard({ isEnabled, onToggle, skill }: SkillCardProps) {
   }, [collapsedLineCount, skill.description])
 
   return (
-    <article className="flex min-w-0 flex-col gap-3 overflow-hidden rounded-xl border border-border bg-surface p-4">
+    <article className="flex min-w-0 flex-col gap-3 overflow-hidden rounded-xl border border-border bg-surface p-4 min-h-[132px]">
       <div className="flex min-w-0 items-start justify-between gap-4">
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <div className="shrink-0 rounded-lg bg-surface-muted p-2">
@@ -93,7 +92,7 @@ export function SkillCard({ isEnabled, onToggle, skill }: SkillCardProps) {
 
           <div className="min-w-0 flex-1">
             <h3 className="break-words text-sm font-medium text-foreground">{skill.name}</h3>
-            <div ref={descriptionContainerRef} className="relative mt-1">
+            <div ref={descriptionContainerRef} className="relative mt-1 min-h-10">
               <div
                 ref={descriptionMeasureRef}
                 className={[
@@ -106,15 +105,15 @@ export function SkillCard({ isEnabled, onToggle, skill }: SkillCardProps) {
                 </ReactMarkdown>
               </div>
 
-              {isExpandable ? (
-                <button
-                  type="button"
-                  onClick={() => setIsExpanded((currentValue) => !currentValue)}
-                  className="mt-1 text-left"
-                >
-                  <span className={actionClassName}>{isExpanded ? 'Show less' : 'Show more'}</span>
-                </button>
-              ) : null}
+              <button
+                type="button"
+                aria-hidden={!isExpandable}
+                tabIndex={isExpandable ? 0 : -1}
+                onClick={() => setIsExpanded((currentValue) => !currentValue)}
+                className={isExpandable ? 'mt-1 h-4 text-left' : 'invisible mt-1 h-4 text-left'}
+              >
+                <span className={actionClassName}>{isExpanded ? 'Show less' : 'Show more'}</span>
+              </button>
             </div>
           </div>
         </div>

@@ -661,7 +661,7 @@ test('read-only workspace resolution explains that path strings cannot contain m
         assert.ok(error instanceof Error)
         assert.equal(
           error.message,
-          'Path not found: src electron. Use a path relative to the workspace root. The path field accepts one path only; if you meant multiple roots, use one call per root instead of joining them with spaces.',
+          'Path not found: src electron. Use a path relative to the workspace root. Do not guess a replacement filename; discover the actual path with list, glob, or grep from a known directory. The path field accepts one path only; if you meant multiple roots, use one call per root instead of joining them with spaces.',
         )
         return true
       },

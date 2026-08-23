@@ -7,6 +7,11 @@ import {
   getSafeWorkspaceTargetPath,
   normalizeWorkspacePath,
 } from "../workspace/paths";
+import {
+  isExecutableFile,
+  resolveWindowsSystemShell,
+  type WindowsShellKind,
+} from "./windowsShell";
 
 const TERMINAL_MIN_COLS = 20;
 const TERMINAL_MAX_COLS = 400;
@@ -129,7 +134,7 @@ function isTerminalShellCommandAvailable(
   environment: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
 ) {
-  if (path.isAbsolute(command)) return existsSync(command);
+  if (path.isAbsolute(command)) return isExecutableFile(command);
   const isWindows = platform === "win32";
   const searchPath = readEnvironmentValue(environment, "PATH", isWindows);
   if (!searchPath) return false;
@@ -154,16 +159,31 @@ function createPowerShellInteractiveArgs() {
   ];
 }
 
+function createWindowsInteractiveArgs(kind: WindowsShellKind, profileArgs: string[]) {
+  return kind === "powershell"
+    ? [...profileArgs, ...createPowerShellInteractiveArgs()]
+    : profileArgs;
+}
+
 function resolveUnixLoginShell(
   environment: NodeJS.ProcessEnv,
   isAvailable: (command: string, env: NodeJS.ProcessEnv) => boolean,
+  platform: "darwin" | "linux",
 ): TerminalShellSpec {
-  const shellPath = environment.SHELL?.trim();
+  const configuredShell = readEnvironmentValue(environment, "TIDECODE_TERMINAL_SHELL");
+  const loginShell = readEnvironmentValue(environment, "SHELL");
+  const fallbackShells = platform === "darwin"
+    ? ["/bin/zsh", "/bin/bash", "/bin/sh"]
+    : ["/bin/bash", "/bin/zsh", "/bin/sh"];
+  const candidates = [configuredShell, loginShell, ...fallbackShells]
+    .filter((candidate): candidate is string => Boolean(candidate));
+  const shellPath = candidates.find((candidate, index) =>
+    candidates.indexOf(candidate) === index && isAvailable(candidate, environment));
   if (!shellPath) {
-    throw new Error("Unable to determine the account login shell because SHELL is not set.");
-  }
-  if (!isAvailable(shellPath, environment)) {
-    throw new Error(`Configured login shell is unavailable: ${shellPath}`);
+    throw new Error(
+      "TideCode could not find an interactive system shell. Check SHELL, "
+        + "or set TIDECODE_TERMINAL_SHELL to a usable shell executable.",
+    );
   }
   return {
     args: ["-l"],
@@ -172,37 +192,15 @@ function resolveUnixLoginShell(
   };
 }
 
-function resolveWindowsPowerShell7(
+function resolveWindowsShellSpec(
   environment: NodeJS.ProcessEnv,
   isAvailable: (command: string, env: NodeJS.ProcessEnv) => boolean,
 ): TerminalShellSpec {
-  const localAppData = readEnvironmentValue(environment, "LOCALAPPDATA", true);
-  const programFiles = readEnvironmentValue(environment, "ProgramFiles", true);
-  const programW6432 = readEnvironmentValue(environment, "ProgramW6432", true);
-  const candidates = [
-    "pwsh.exe",
-    localAppData
-      ? path.join(localAppData, "Microsoft", "WindowsApps", "pwsh.exe")
-      : null,
-    programFiles
-      ? path.join(programFiles, "PowerShell", "7", "pwsh.exe")
-      : null,
-    programW6432
-      ? path.join(programW6432, "PowerShell", "7", "pwsh.exe")
-      : null,
-  ].filter((value): value is string => Boolean(value));
-
-  const command = candidates.find((candidate) => isAvailable(candidate, environment));
-  if (!command) {
-    throw new Error(
-      "PowerShell 7 (pwsh) is required on Windows, but TideCode could not resolve it from PATH, the WindowsApps alias, or the standard PowerShell 7 install directory.",
-    );
-  }
-
+  const { args, command, kind, label } = resolveWindowsSystemShell(environment, isAvailable);
   return {
-    args: createPowerShellInteractiveArgs(),
+    args: createWindowsInteractiveArgs(kind, args),
     command,
-    label: "PowerShell 7",
+    label,
   };
 }
 
@@ -215,10 +213,10 @@ export function resolveTerminalShellSpec(
     ?? ((command: string, env: NodeJS.ProcessEnv) => isTerminalShellCommandAvailable(command, env, platform));
 
   if (platform === "win32") {
-    return resolveWindowsPowerShell7(environment, isAvailable);
+    return resolveWindowsShellSpec(environment, isAvailable);
   }
   if (platform === "darwin" || platform === "linux") {
-    return resolveUnixLoginShell(environment, isAvailable);
+    return resolveUnixLoginShell(environment, isAvailable, platform);
   }
   throw new Error(`Unsupported terminal platform: ${platform}`);
 }
@@ -267,7 +265,7 @@ export function spawnResolvedTerminalShell(input: {
   env: NodeJS.ProcessEnv;
   rows: number;
 }) {
-const shellSpec = resolveTerminalShellSpec();
+  const shellSpec = resolveTerminalShellSpec({ env: input.env });
   try {
     return {
       ptyProcess: spawn(shellSpec.command, shellSpec.args, {
