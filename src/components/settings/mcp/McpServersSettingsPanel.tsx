@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { McpServerDialog } from './McpAddDialog'
 import { McpServerList } from './McpServerList'
+import { McpServersSettingsSkeleton } from './McpServersSettingsSkeleton'
 import type { McpAddServerInput, McpServerConfig, McpState } from '../../../types/mcp'
 import { SETTINGS_SECTION_TITLE_CLASS_NAME, SettingsPanelLayout } from '../shared/SettingsPanelPrimitives'
 
@@ -64,6 +65,10 @@ export function McpServersSettingsPanel({
 
   function closeDialog() {
     setDialogState(null)
+  }
+
+  if (isLoading && state === null && visibleErrorMessage === null) {
+    return <McpServersSettingsSkeleton />
   }
 
   return (

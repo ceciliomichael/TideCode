@@ -6,6 +6,7 @@ import type {
   ApiKeyProviderId,
   ClaimSharedFollowUpsInput,
   AppSettings,
+  AppSettingsSurface,
   ChatProviderId,
   ChatStreamEvent,
   CompactConversationInput,
@@ -137,7 +138,7 @@ const historyApi: TideCodeHistoryApi = {
 
 const settingsApi: TideCodeSettingsApi = {
   getInitialSettings: () => parseInitialSettingsArg(process.argv),
-  getSettings: () => ipcRenderer.invoke('settings:get'),
+getSettings: (surface?: AppSettingsSurface) => ipcRenderer.invoke('settings:get', surface),
   onRemoteChange: (listener) => {
     const wrappedListener = (_event: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)
     ipcRenderer.on('settings:remoteChanged', wrappedListener)
@@ -145,7 +146,8 @@ const settingsApi: TideCodeSettingsApi = {
       ipcRenderer.off('settings:remoteChanged', wrappedListener)
     }
   },
-  updateSettings: (input: Partial<AppSettings>) => ipcRenderer.invoke('settings:update', input),
+  updateSettings: (input: Partial<AppSettings>, surface?: AppSettingsSurface) =>
+    ipcRenderer.invoke('settings:update', input, surface),
 }
 
 const appApi: TideCodeAppApi = {
@@ -236,7 +238,8 @@ const modelsApi: TideCodeModelsApi = {
 const runsApi: TideCodeRunsApi = {
   compactConversation: (input: CompactConversationInput) => ipcRenderer.invoke('chat:compactConversation', input),
   getCompactionState: (conversationId: string) => ipcRenderer.invoke('runs:getCompactionState', conversationId),
-  getConversationRuntime: (conversationId: string) => ipcRenderer.invoke('runs:getConversationRuntime', conversationId),
+  getConversationRuntime: (conversationId: string, surface?: AppSettingsSurface) =>
+    ipcRenderer.invoke('runs:getConversationRuntime', conversationId, surface),
   getPendingFollowUps: (streamId: string) => ipcRenderer.invoke('runs:getPendingFollowUps', streamId),
   getRunProjection: (runId: string) => ipcRenderer.invoke('runs:getProjection', runId),
   listActiveRuns: () => ipcRenderer.invoke('runs:listActive'),

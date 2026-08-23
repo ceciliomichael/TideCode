@@ -102,7 +102,7 @@ export async function runCliDefaultModelSetting(
   id: CliDefaultModelSettingId,
   helpers: SlashCommandHelpers,
 ): Promise<void> {
-  const [settings, snapshot] = await Promise.all([getStoredSettings(), getTideCodeSystemModels()])
+  const [settings, snapshot] = await Promise.all([getStoredSettings('cli'), getTideCodeSystemModels()])
   const configuredModels = getConfiguredProviderModels(snapshot)
   const fields = MODEL_SETTING_FIELDS[id]
   const inheritsChatModel = settings[fields.modelId].trim().length === 0 || settings[fields.providerId] === null
@@ -133,10 +133,12 @@ export async function runCliDefaultModelSetting(
     items,
     initialIndex: currentIndex >= 0 ? currentIndex : 0,
     pageSize: 7,
-    footer: 'Only configured providers are shown · Shared with the desktop app',
+    footer: id === 'summarization-model'
+      ? 'Only configured providers are shown · Summarization is shared across TideCode'
+      : 'Only configured providers are shown · Saved for CLI only',
   })
   if (selected === null) return
 
-  await updateStoredSettings(buildCliDefaultModelSettingsPatch(id, selected))
+    await updateStoredSettings(buildCliDefaultModelSettingsPatch(id, selected), 'cli')
   helpers.renderSuccess(`${setting?.label ?? 'Default model'} saved.`)
 }

@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { jsonSchema, tool, type ToolExecutionOptions } from 'ai'
+import { asSchema, jsonSchema, tool, type ToolExecutionOptions } from 'ai'
 import { CodeModeExecutor } from '../../electron/chat/shared/codeMode/executor'
 import { CODE_MODE_EXECUTION_CONTRACT } from '../../electron/chat/shared/codeMode/promptContract'
 import { createAgentToolBundle } from '../../electron/chat/shared/tools'
@@ -113,6 +113,93 @@ test('Code Mode allows more than sixteen concurrent tool calls', async () => {
     assert.equal(result.status, 'success')
     assert.equal(result.toolCalls.length, 32)
     assert.deepEqual(result.output, { count: 32 })
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode enforces the tool-call limit against concurrent arrivals', async () => {
+  let invoked = 0
+  const entries = [{
+    description: 'Resolve slowly so concurrent calls arrive before earlier calls finish.',
+    execute: async () => {
+      invoked += 1
+      await new Promise((resolve) => setTimeout(resolve, 25))
+      return { status: 'success' as const, summary: 'Slow tool completed.' }
+    },
+    inputSchema: { type: 'object' as const },
+    name: 'slow',
+    namespace: 'test',
+  }]
+  const registry: AgentToolRegistry = {
+    entries,
+    get(name) {
+      return entries.find((entry) => entry.name === name)
+    },
+    search() {
+      return entries.map((entry) => ({ ...entry, score: 1 }))
+    },
+  }
+  const executor = new CodeModeExecutor(registry)
+
+  try {
+    const result = await executor.run(
+      `const calls = Array.from({ length: 20 }, () => tools.slow({}))
+       const settled = await Promise.allSettled(calls)
+       return {
+         fulfilled: settled.filter((item) => item.status === 'fulfilled').length,
+         rejected: settled.filter((item) => item.status === 'rejected').length,
+       }`,
+      { allowedToolNames: ['slow'], limits: { maxToolCalls: 5 } },
+    )
+
+    assert.equal(invoked, 5)
+    assert.equal(result.toolCalls.length, 5)
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, { fulfilled: 5, rejected: 15 })
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode drains detached tool promise chains before completing', async () => {
+  const invoked: number[] = []
+  const entries = [{
+    description: 'Resolve slowly and record the requested sequence number.',
+    execute: async (input: unknown) => {
+      const value = typeof input === 'object' && input !== null && 'value' in input
+        ? Number((input as { value?: unknown }).value)
+        : 0
+      invoked.push(value)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      return { body: String(value), status: 'success' as const, summary: `Completed ${value}.` }
+    },
+    inputSchema: { type: 'object' as const },
+    name: 'slow',
+    namespace: 'test',
+  }]
+  const registry: AgentToolRegistry = {
+    entries,
+    get(name) {
+      return entries.find((entry) => entry.name === name)
+    },
+    search() {
+      return entries.map((entry) => ({ ...entry, score: 1 }))
+    },
+  }
+  const executor = new CodeModeExecutor(registry)
+
+  try {
+    const result = await executor.run(
+      'tools.slow({ value: 1 }).then(() => tools.slow({ value: 2 })); return true',
+      { allowedToolNames: ['slow'] },
+    )
+
+    assert.equal(result.status, 'success')
+    assert.deepEqual(invoked, [1, 2])
+    assert.equal(result.toolCalls.length, 2)
+    assert.deepEqual(result.toolCalls.map((call) => call.arguments), [{ value: 1 }, { value: 2 }])
+    assert.match(result.summary, /2 tool calls/u)
   } finally {
     await executor.dispose()
   }
@@ -289,6 +376,49 @@ test('Code Mode allows explicit recovery from a failed tool promise', async () =
     assert.deepEqual(result.output, {
       failure: 'The recoverable tool failed.',
       recovery: 'recovered',
+    })
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode marks semantic process failures as failed inner calls without hiding the result', async () => {
+  const entries = [
+    {
+      description: 'Return a terminal result whose process exited unsuccessfully.',
+      execute: async () => ({
+        body: 'status: failed\nresult: failed',
+        semantics: { state: 'completed', status: 'failed' },
+        status: 'success' as const,
+        summary: 'Started terminal session 43440',
+      }),
+      inputSchema: { type: 'object' as const },
+      name: 'execute_terminal',
+      namespace: 'terminal',
+    },
+  ]
+  const executor = new CodeModeExecutor({
+    entries,
+    get(name) {
+      return entries.find((entry) => entry.name === name)
+    },
+    search() {
+      return entries.map((entry) => ({ ...entry, score: 1 }))
+    },
+  })
+
+  try {
+    const result = await executor.run(
+      "const terminal = await tools.execute_terminal({ command: 'npm test', wait_seconds: 1 }); return { toolStatus: terminal.status, processStatus: terminal.semantics.status }",
+      { allowedToolNames: ['execute_terminal'] },
+    )
+
+    assert.equal(result.status, 'error')
+    assert.match(result.summary, /1 failed tool call/u)
+    assert.equal(result.toolCalls[0]?.status, 'error')
+    assert.deepEqual(result.output, {
+      processStatus: 'failed',
+      toolStatus: 'success',
     })
   } finally {
     await executor.dispose()
@@ -642,6 +772,36 @@ test('Code Mode repairs Python-style triple quotes in program syntax', async () 
   }
 })
 
+test('Code Mode triple-quote repair preserves opposite delimiters and multiple strings', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry())
+  const doubleTriple = '"'.repeat(3)
+  const singleTriple = "'".repeat(3)
+  const cases = [
+    {
+      expected: `alpha ${singleTriple}beta${singleTriple} gamma`,
+      program: `const snippet = ${doubleTriple}alpha ${singleTriple}beta${singleTriple} gamma${doubleTriple}; return snippet`,
+    },
+    {
+      expected: `alpha ${doubleTriple}beta${doubleTriple} gamma`,
+      program: `const snippet = ${singleTriple}alpha ${doubleTriple}beta${doubleTriple} gamma${singleTriple}; return snippet`,
+    },
+    {
+      expected: { first: 'one', second: 'two' },
+      program: `const first = ${doubleTriple}one${doubleTriple}; const second = ${singleTriple}two${singleTriple}; return { first, second }`,
+    },
+  ]
+
+  try {
+    for (const testCase of cases) {
+      const result = await executor.run(testCase.program)
+      assert.equal(result.status, 'success')
+      assert.deepEqual(result.output, testCase.expected)
+    }
+  } finally {
+    await executor.dispose()
+  }
+})
+
 test('Code Mode repairs unescaped inner backticks and template expressions in tool arguments', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
 
@@ -876,6 +1036,10 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
 
     assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
     assert.ok(bundle.registry.get('tool_search'))
+    const codeModeSchema = await asSchema((bundle.tools.code_mode as { inputSchema: unknown }).inputSchema).jsonSchema as {
+      properties?: Record<string, unknown>
+    }
+    assert.ok(codeModeSchema.properties && 'payloads' in codeModeSchema.properties)
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
       /tools\.read\(\{ path: string/u,
@@ -894,6 +1058,14 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
     )
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
+      /Never invent filenames or index files/u,
+    )
+    assert.match(
+      ((bundle.tools.code_mode as { description?: string }).description ?? ''),
+      /discover it with list, glob, or grep before reading or editing it/u,
+    )
+    assert.match(
+      ((bundle.tools.code_mode as { description?: string }).description ?? ''),
       /omitted path where the schema permits omission, an empty string, or `\.` refers to the bound workspace root/u,
     )
     assert.match(
@@ -908,6 +1080,7 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
     assert.equal(codeModeDescription.split(CODE_MODE_EXECUTION_CONTRACT).length - 1, 1)
     assert.match(codeModeDescription, /temporary asynchronous JavaScript program running in a tool-only worker/u)
     assert.match(codeModeDescription, /Choose the purpose-built inner API for the scenario/u)
+    assert.match(codeModeDescription, /top-level code_mode payloads object/u)
     assert.match(codeModeDescription, /`tools\.edit`: make a targeted change to an existing text file/u)
     assert.match(codeModeDescription, /`tools\.execute_terminal`: run an actual command\/process/u)
     assert.match(codeModeDescription, /Never use shell, PowerShell, Python, or Node just to read, search, edit, or write workspace files/u)

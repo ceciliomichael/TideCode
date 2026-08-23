@@ -8,11 +8,12 @@ export async function applyCliConversationRuntime(
   state: CliSessionState,
   screen: TerminalScreen,
   runtime: SharedConversationRuntimeSnapshot,
+  options: { applyModelSelection?: boolean } = {},
 ): Promise<{ refreshCodexUsage: boolean }> {
   const previousProviderId = state.providerId
   state.chatMode = runtime.chatMode
 
-  if (runtime.model?.providerId) {
+  if (options.applyModelSelection !== false && runtime.model?.providerId) {
     let runtimeModelId = runtime.model.runtimeModelId?.trim() || ''
     if (!runtimeModelId) {
       const snapshot = await getTideCodeSystemModels()

@@ -1,6 +1,7 @@
 
 import { BrowserWindow, ipcMain } from 'electron'
 import type {
+  AppSettingsSurface,
   CheckoutGitBranchInput,
   ClaimSharedFollowUpsInput,
   CloseTerminalSessionInput,
@@ -111,8 +112,8 @@ export function registerChatGitTerminalIpcHandlers(
   ipcMain.handle('runs:getCompactionState', async (_event, conversationId: string) =>
     (await ensureRunServiceClient()).getCompactionState(conversationId),
   )
-  ipcMain.handle('runs:getConversationRuntime', async (_event, conversationId: string) =>
-    (await ensureRunServiceClient()).getConversationRuntime(conversationId),
+  ipcMain.handle('runs:getConversationRuntime', async (_event, conversationId: string, surface?: AppSettingsSurface) =>
+    (await ensureRunServiceClient()).getConversationRuntime(conversationId, surface),
   )
   ipcMain.handle('runs:getPendingFollowUps', async (_event, streamId: string) =>
     (await ensureRunServiceClient()).getPendingFollowUps(streamId),

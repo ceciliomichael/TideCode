@@ -1,5 +1,6 @@
 import { ArrowLeft, Settings2 } from 'lucide-react'
-import { SETTINGS_ITEMS, type SettingsItemId } from './settingsItems'
+import { getVisibleSettingsItems, type SettingsItemId } from './settingsItems'
+import { getRendererAppSettingsSurface } from '../../lib/appSettingsScopes'
 
 interface SettingsSidebarPanelProps {
   activeItemId: SettingsItemId
@@ -12,6 +13,9 @@ export function SettingsSidebarPanel({
   onBackToApp,
   onSelectItem,
 }: SettingsSidebarPanelProps) {
+  const surface = getRendererAppSettingsSurface()
+  const visibleItems = getVisibleSettingsItems(surface, Boolean(window.tidecodeRemoteHost))
+
   return (
     <aside className="scroll-stable flex h-full min-w-0 flex-1 flex-col overflow-y-auto bg-[var(--sidebar-panel-surface)] px-4 pb-5 pt-3 md:px-5">
       <div className="pb-4">
@@ -33,7 +37,7 @@ export function SettingsSidebarPanel({
           </div>
 
           <nav className="mt-3 space-y-2" aria-label="Settings navigation">
-            {SETTINGS_ITEMS.filter((item) => item.id !== 'settings-item8' || Boolean(window.tidecodeRemoteHost)).map((item) => {
+{visibleItems.map((item) => {
               const isActive = item.id === activeItemId
 
               return (

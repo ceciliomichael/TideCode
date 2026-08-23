@@ -78,6 +78,15 @@ test('activateVenvInEnvironment sets VIRTUAL_ENV and prepends PATH', () => {
   assert.ok(updatedEnv.PATH?.startsWith(expectedBin))
 })
 
+test('activateVenvInEnvironment preserves Windows Path casing and existing executables', () => {
+  const initialEnv = { Path: 'C:\\Windows\\System32;C:\\Tools' }
+  const venvPath = 'C:\\workspace\\.venv'
+  const updatedEnv = activateVenvInEnvironment(initialEnv, venvPath, 'win32')
+
+  assert.equal(updatedEnv.PATH, undefined)
+  assert.equal(updatedEnv.Path, 'C:\\workspace\\.venv\\Scripts;C:\\Windows\\System32;C:\\Tools')
+})
+
 test('detectVenvInfo handles custom venv names like asjdajsd', async () => {
   const workspaceDir = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-venv-custom-ws-'))
   const venvDir = path.join(workspaceDir, 'asjdajsd')

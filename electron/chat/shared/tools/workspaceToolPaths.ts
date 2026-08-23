@@ -31,7 +31,7 @@ export class WorkspaceTargetNotFoundError extends Error {
     public readonly absolutePath: string,
     multiplePathHint = '',
   ) {
-    super(`Path not found: ${requestedPath}. Use a path relative to the workspace root.${multiplePathHint}`)
+    super(`Path not found: ${requestedPath}. Use a path relative to the workspace root. Do not guess a replacement filename; discover the actual path with list, glob, or grep from a known directory.${multiplePathHint}`)
     this.name = 'WorkspaceTargetNotFoundError'
   }
 }

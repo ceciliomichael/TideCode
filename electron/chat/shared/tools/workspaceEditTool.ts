@@ -1,5 +1,4 @@
 import { promises as fs } from 'node:fs'
-import path from 'node:path'
 import { notifyWorkspaceExplorerChange } from '../../../workspace/explorerNotifications'
 import type { AgentToolExecutionResult } from '../toolTypes'
 import {
@@ -9,7 +8,13 @@ import {
 } from './textReplacementMatching'
 import type { WorkspaceToolContext } from './workspaceToolPaths'
 import { resolveReadableTargetPath } from './workspaceToolPaths'
+import { WorkspaceMutationError } from './workspaceMutationErrors'
 import { enqueueWorkspaceMutation } from './workspaceMutationQueue'
+import {
+  computeContentRevision,
+  preserveExistingTextFormat,
+  writeTextFileAtomically,
+} from './workspaceMutationSafety'
 import {
   aggregateFileChangeItems,
   buildFileChangeResult,
@@ -39,6 +44,7 @@ export interface EditChunk {
 export interface EditInput {
   path: string
   edits: EditOperationInput[]
+  expectedRevision?: string
 }
 
 interface ResolvedTextReplacement {
@@ -116,18 +122,19 @@ function resolveChunkReplacements(
   if (matches.length === 0) {
     matches = findIndentationTolerantMatchOffsets(fileContent, rangedTargetContent)
   }
-  if (matches.length === 0) {
-    matches = findFuzzyLineMatchOffsets(fileContent, rangedTargetContent)
-  }
 
   if (matches.length === 0) {
-    if (effectiveRange) {
-      throw new Error(
-        `Target content not found between lines ${effectiveRange.startLine} and ${effectiveRange.endLine} in "${displayPath}".`,
-      )
-    }
-    throw new Error(
-      `Target content not found in "${displayPath}". Verify the target text and retry with the exact current text.`,
+    const fuzzyCandidates = findFuzzyLineMatchOffsets(fileContent, rangedTargetContent)
+    const candidateHint = fuzzyCandidates.length > 0
+      ? ` Closest candidate line range: ${formatMatchLineRange(fileContent, fuzzyCandidates[0])}.`
+      : ''
+    const rangeDescription = effectiveRange
+      ? ` between lines ${effectiveRange.startLine} and ${effectiveRange.endLine}`
+      : ''
+    throw new WorkspaceMutationError(
+      'TARGET_NOT_FOUND',
+      'TARGET_MATCH',
+      `Target content not found${rangeDescription} in "${displayPath}".${candidateHint} Reread the file and retry with exact current text.`,
     )
   }
 
@@ -145,8 +152,10 @@ function resolveChunkReplacements(
       (match) => match.startOffset >= range.startOffset && match.endOffset <= range.endOffset,
     )
     if (matches.length === 0) {
-      throw new Error(
-        `Target content not found between lines ${effectiveRange.startLine} and ${effectiveRange.endLine} in "${displayPath}".`,
+      throw new WorkspaceMutationError(
+        'TARGET_NOT_FOUND',
+        'TARGET_MATCH',
+        `Target content not found between lines ${effectiveRange.startLine} and ${effectiveRange.endLine} in "${displayPath}". Reread the file and retry with exact current text.`,
       )
     }
   }
@@ -156,8 +165,10 @@ function resolveChunkReplacements(
     const rangeDescription = effectiveRange
       ? ` between lines ${effectiveRange.startLine} and ${effectiveRange.endLine}`
       : ''
-    throw new Error(
-      `Target content found ${matches.length} times${rangeDescription} in "${displayPath}". Candidate line ranges: ${candidateRanges}.`,
+    throw new WorkspaceMutationError(
+      'TARGET_AMBIGUOUS',
+      'TARGET_MATCH',
+      `Target content found ${matches.length} times${rangeDescription} in "${displayPath}". Candidate line ranges: ${candidateRanges}. Use a larger exact target, line bounds, or set replaceAll: true intentionally.`,
     )
   }
 
@@ -188,26 +199,20 @@ function applyResolvedTextReplacements(
       left.startOffset - right.startOffset || left.endOffset - right.endOffset,
   )
 
-  const nonOverlapping: ResolvedTextReplacement[] = []
-  for (const current of sortedAscending) {
-    if (nonOverlapping.length === 0) {
-      nonOverlapping.push(current)
-    } else {
-      const previous = nonOverlapping[nonOverlapping.length - 1]
-      if (current.startOffset >= previous.endOffset) {
-        nonOverlapping.push(current)
-      } else if (current.chunkIndex === previous.chunkIndex) {
-        // Skip duplicate match from same chunk if it overlaps
-        continue
-      } else {
-        // Gracefully resolve overlap across distinct chunks by skipping the overlapping candidate
-        continue
-      }
+  for (let index = 1; index < sortedAscending.length; index += 1) {
+    const previous = sortedAscending[index - 1]
+    const current = sortedAscending[index]
+    if (current.startOffset < previous.endOffset) {
+      throw new WorkspaceMutationError(
+        'OVERLAPPING_EDITS',
+        'TARGET_MATCH',
+        `Edit hunks ${previous.chunkIndex + 1} and ${current.chunkIndex + 1} resolve to overlapping source ranges. No changes were made. Reread the file and retry with non-overlapping targets.`,
+      )
     }
   }
 
   let updatedContent = fileContent
-  for (const replacement of nonOverlapping.reverse()) {
+  for (const replacement of sortedAscending.reverse()) {
     updatedContent =
       updatedContent.slice(0, replacement.startOffset) +
       replacement.replacementContent +
@@ -229,7 +234,7 @@ export async function createEditToolResult(
   )
 
   return enqueueWorkspaceMutation(target.absolutePath, () =>
-    createEditToolResultInternal(context, chunks, target),
+    createEditToolResultInternal(context, chunks, target, input.expectedRevision),
   )
 }
 
@@ -237,36 +242,34 @@ async function createEditToolResultInternal(
   context: WorkspaceToolContext,
   chunks: EditChunk[],
   target: ReturnType<typeof resolveReadableTargetPath>,
+  expectedRevision?: string,
 ): Promise<AgentToolExecutionResult> {
-  const oldContent = await fs.readFile(target.absolutePath, 'utf8').catch(() => null)
-  if (oldContent === null) {
-    if (chunks.length !== 1) {
-      throw new Error(`File not found: "${target.displayPath}".`)
+  let oldBytes: Buffer
+  try {
+    oldBytes = await fs.readFile(target.absolutePath)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new WorkspaceMutationError(
+        'FILE_NOT_FOUND',
+        'TARGET_MATCH',
+        `File not found: "${target.displayPath}". Use write to create new files.`,
+      )
     }
-
-    const newContent = chunks[0].replacementContent
-    await captureCheckpointFileStateIfNeeded(context.checkpointId, target.absolutePath)
-    await fs.mkdir(path.dirname(target.absolutePath), { recursive: true })
-    await fs.writeFile(target.absolutePath, newContent, 'utf8')
-    notifyWorkspaceExplorerChange(context.workspaceRootPath)
-
-    const fileChanges = aggregateFileChangeItems([
-      {
-        fileName: target.displayPath,
-        newContent,
-        oldContent: null,
-      },
-    ])
-
-    return buildFileChangeResult(
-      'Created 1 file',
-      fileChanges,
-      'edit',
-      target.displayPath,
-      'File created successfully.',
-    )
+    throw error
   }
 
+  if (expectedRevision !== undefined) {
+    const currentRevision = computeContentRevision(oldBytes)
+    if (currentRevision !== expectedRevision) {
+      throw new WorkspaceMutationError(
+        'REVISION_CONFLICT',
+        'REVISION_CHECK',
+        `Revision conflict for "${target.displayPath}". The file changed since the latest read. Reread it and retry the edit.`,
+      )
+    }
+  }
+
+  const oldContent = oldBytes.toString('utf8')
   const normalizedOld = normalizeTextMutationContent(oldContent)
   const replacements = chunks.flatMap((chunk, index) => {
     return resolveChunkReplacements(
@@ -296,8 +299,21 @@ async function createEditToolResultInternal(
     })
   }
 
+  const serializedNewContent = preserveExistingTextFormat(newContent, oldContent)
   await captureCheckpointFileStateIfNeeded(context.checkpointId, target.absolutePath)
-  await fs.writeFile(target.absolutePath, newContent, 'utf8')
+  try {
+    await writeTextFileAtomically(target.absolutePath, serializedNewContent)
+  } catch (error) {
+    const stage = error instanceof Error && error.message.includes('Post-write verification failed')
+      ? 'POST_WRITE_VERIFY'
+      : 'FILESYSTEM_WRITE'
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new WorkspaceMutationError(
+      'WRITE_FAILED',
+      stage,
+      `Edit failed while persisting "${target.displayPath}": ${detail}`,
+    )
+  }
   notifyWorkspaceExplorerChange(context.workspaceRootPath)
 
   const fileChanges = aggregateFileChangeItems([
@@ -361,7 +377,7 @@ function normalizeEditChunk(
 
   return {
     endLine: input.endLine,
-    replaceAll: input.replaceAll ?? input.allowMultiple ?? true,
+replaceAll: input.replaceAll ?? input.allowMultiple ?? false,
     replacementContent: normalizeTextMutationContent(input.replacementContent),
     startLine: input.startLine,
     targetContent: normalizeTextMutationContent(input.targetContent),

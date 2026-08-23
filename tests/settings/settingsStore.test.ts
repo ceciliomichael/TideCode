@@ -6,26 +6,44 @@ import test, { mock } from 'node:test'
 import { writeJsonFileAtomic } from '../../electron/settings/fileStore'
 import { DEFAULT_APP_SETTINGS } from '../../src/lib/defaultAppSettings'
 
-function buildFullStoredSettings() {
+function buildLegacySettings() {
   return {
     ...DEFAULT_APP_SETTINGS,
     appearance: 'dark' as const,
     checkForUpdatesOnLaunch: false,
-    chatModelId: 'gpt-5.4',
+    chatModelId: 'legacy-model',
     chatModelProviderId: 'codex' as const,
-    chatModelLabel: 'gpt-5.4',
+    chatModelLabel: 'Legacy model',
     chatReasoningEffort: 'high' as const,
     language: 'fil-PH' as const,
     sendMessageOnEnter: false,
-    terminalExecutionMode: 'full' as const,
+    disabledSkillsByPath: { 'skills/shared': true },
+    modelToggleState: { 'codex:gpt-5.4': false },
     conversationModelPreferences: {
       'thread-agent': {
         chatMode: 'agent' as const,
-        label: 'Thread model',
-        modelId: 'thread-model',
+        label: 'Legacy thread model',
+        modelId: 'legacy-thread-model',
         providerId: 'codex' as const,
+        reasoningEffort: 'high' as const,
       },
     },
+  }
+}
+
+async function withSettingsHome(run: (input: { configDirectoryPath: string; tempHomePath: string }) => Promise<void>) {
+  const tempHomePath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-surface-settings-'))
+  const configDirectoryPath = path.join(tempHomePath, '.tidecode', 'config')
+  const previousSettingsHome = process.env.TIDECODE_SETTINGS_HOME
+  try {
+    process.env.TIDECODE_SETTINGS_HOME = tempHomePath
+    await fs.mkdir(configDirectoryPath, { recursive: true })
+    await run({ configDirectoryPath, tempHomePath })
+  } finally {
+    mock.restoreAll()
+    if (previousSettingsHome === undefined) delete process.env.TIDECODE_SETTINGS_HOME
+    else process.env.TIDECODE_SETTINGS_HOME = previousSettingsHome
+    await fs.rm(tempHomePath, { force: true, recursive: true })
   }
 }
 
@@ -39,160 +57,144 @@ test('writeJsonFileAtomic replaces an existing file without leaving a partial wr
 
   try {
     await fs.writeFile(targetPath, originalContent, 'utf8')
-
     mock.method(fs, 'rename', async (source, destination) => {
-      const normalizedDestination = String(destination)
-      if (shouldForceFallback && normalizedDestination === targetPath) {
+      if (shouldForceFallback && String(destination) === targetPath) {
         shouldForceFallback = false
         const error = new Error('File exists') as NodeJS.ErrnoException
         error.code = 'EEXIST'
         throw error
       }
-
       return originalRename(source, destination)
     })
-
     await writeJsonFileAtomic(targetPath, nextContent)
-
     assert.equal(await fs.readFile(targetPath, 'utf8'), nextContent)
-    await assert.rejects(fs.access(`${targetPath}.bak`), { code: 'ENOENT' })
+    await assert.rejects(fs.access(targetPath + '.bak'), { code: 'ENOENT' })
   } finally {
     mock.restoreAll()
     await fs.rm(tempRootPath, { force: true, recursive: true })
   }
 })
 
-test('updateStoredSettings preserves newer settings written by another process', async () => {
-  const tempHomePath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-settings-cache-'))
-  const configDirectoryPath = path.join(tempHomePath, '.tidecode', 'config')
-  const settingsFilePath = path.join(configDirectoryPath, 'settings.json')
-  const workspaceUiStateFilePath = path.join(configDirectoryPath, 'workspace-ui-state.json')
-  const initialSettings = buildFullStoredSettings()
-  const originalReadFile = fs.readFile.bind(fs)
-  const previousSettingsHome = process.env.TIDECODE_SETTINGS_HOME
-  const initialWorkspaceUiState = {
-    conversationModelPreferences: initialSettings.conversationModelPreferences,
-    diffPanelWidth: initialSettings.diffPanelWidth,
-    editSessionsByConversation: initialSettings.editSessionsByConversation,
-    lastActiveConversationId: initialSettings.lastActiveConversationId,
-    lastActiveDraftFolderId: initialSettings.lastActiveDraftFolderId,
-    openEmptyConversationOnLaunch: initialSettings.openEmptyConversationOnLaunch,
-    revertEditSessionsByConversation: initialSettings.revertEditSessionsByConversation,
-    sidebarWidth: initialSettings.sidebarWidth,
-    sourceControlSectionOrder: initialSettings.sourceControlSectionOrder,
-    sourceControlSectionOpen: initialSettings.sourceControlSectionOpen,
-    sourceControlSectionSizes: initialSettings.sourceControlSectionSizes,
-    terminalOpenByWorkspace: initialSettings.terminalOpenByWorkspace,
-    terminalPanelHeightsByWorkspace: initialSettings.terminalPanelHeightsByWorkspace,
-    workspaceEditorWidth: initialSettings.workspaceEditorWidth,
-    workspaceExplorerWidth: initialSettings.workspaceExplorerWidth,
-  }
+test('legacy settings migrate into independent desktop, web, and cli surface files', async () => {
+  await withSettingsHome(async ({ configDirectoryPath }) => {
+    const legacySettings = buildLegacySettings()
+    await fs.writeFile(path.join(configDirectoryPath, 'settings.json'), JSON.stringify(legacySettings, null, 2), 'utf8')
+    await fs.writeFile(path.join(configDirectoryPath, 'workspace-ui-state.json'), JSON.stringify({
+      ...legacySettings,
+sidebarWidth: 360,
+    }, null, 2), 'utf8')
 
-  try {
-    process.env.TIDECODE_SETTINGS_HOME = tempHomePath
+    const { getStoredSettings } = await import('../../electron/settings/store')
+    const [desktop, web, cli] = await Promise.all([
+      getStoredSettings('desktop'),
+      getStoredSettings('web'),
+      getStoredSettings('cli'),
+    ])
 
-    await fs.mkdir(configDirectoryPath, { recursive: true })
-    await fs.writeFile(settingsFilePath, JSON.stringify(initialSettings, null, 2), 'utf8')
-    await fs.writeFile(workspaceUiStateFilePath, JSON.stringify(initialWorkspaceUiState, null, 2), 'utf8')
-
-    const { getStoredSettings, updateStoredSettings } = await import('../../electron/settings/store')
-    const loadedSettings = await getStoredSettings()
-
-    assert.equal(loadedSettings.appearance, 'dark')
-    assert.equal(loadedSettings.checkForUpdatesOnLaunch, false)
-    assert.equal(loadedSettings.chatModelId, 'gpt-5.4')
-    assert.equal(loadedSettings.conversationModelPreferences['thread-agent']?.chatMode, 'agent')
-
-    const externallyUpdatedSettings = {
-      ...initialSettings,
-      appearance: 'light' as const,
-      chatModelId: 'gpt-5.6',
-      chatModelLabel: 'gpt-5.6',
-      chatReasoningEffort: 'medium' as const,
+    for (const settings of [desktop, web, cli]) {
+      assert.equal(settings.appearance, 'dark')
+      assert.equal(settings.chatModelId, 'legacy-model')
+      assert.equal(settings.chatReasoningEffort, 'high')
+assert.equal(settings.sidebarWidth, 360)
+      assert.equal(settings.disabledSkillsByPath['skills/shared'], true)
     }
-    await fs.writeFile(settingsFilePath, JSON.stringify(externallyUpdatedSettings, null, 2), 'utf8')
 
-    const updatedSettings = await updateStoredSettings({ sendMessageOnEnter: true })
-
-    assert.equal(updatedSettings.appearance, 'light')
-    assert.equal(updatedSettings.checkForUpdatesOnLaunch, false)
-    assert.equal(updatedSettings.chatModelId, 'gpt-5.6')
-    assert.equal(updatedSettings.chatModelProviderId, 'codex')
-    assert.equal(updatedSettings.chatReasoningEffort, 'medium')
-    assert.equal(updatedSettings.language, 'fil-PH')
-    assert.equal(updatedSettings.sendMessageOnEnter, true)
-    assert.equal(updatedSettings.terminalExecutionMode, 'full')
-
-    const persistedSettings = JSON.parse(await originalReadFile(settingsFilePath, 'utf8')) as typeof externallyUpdatedSettings
-    assert.equal(persistedSettings.appearance, 'light')
-    assert.equal(persistedSettings.chatModelId, 'gpt-5.6')
-    assert.equal(persistedSettings.chatReasoningEffort, 'medium')
-    assert.equal(persistedSettings.sendMessageOnEnter, true)
-  } finally {
-    mock.restoreAll()
-    if (previousSettingsHome === undefined) {
-      delete process.env.TIDECODE_SETTINGS_HOME
-    } else {
-      process.env.TIDECODE_SETTINGS_HOME = previousSettingsHome
+    for (const surface of ['desktop', 'web', 'cli']) {
+      await fs.access(path.join(configDirectoryPath, 'surface-settings.' + surface + '.json'))
     }
-    await fs.rm(tempHomePath, { force: true, recursive: true })
-  }
+
+    const sharedFile = JSON.parse(await fs.readFile(path.join(configDirectoryPath, 'settings.json'), 'utf8')) as Record<string, unknown>
+    assert.equal('appearance' in sharedFile, false)
+    assert.equal('chatModelId' in sharedFile, false)
+    assert.equal('conversationModelPreferences' in sharedFile, false)
+    assert.deepEqual(sharedFile.disabledSkillsByPath, { 'skills/shared': true })
+    assert.deepEqual(sharedFile.modelToggleState, { 'codex:gpt-5.4': false })
+  })
 })
 
+test('desktop, web, and cli preferences diverge while shared settings converge', async () => {
+  await withSettingsHome(async () => {
+    const { getStoredSettings, updateStoredSettings } = await import('../../electron/settings/store')
 
-test('updateStoredConversationModelPreference preserves other conversation preferences', async () => {
-  const tempHomePath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-settings-conversation-'))
-  const configDirectoryPath = path.join(tempHomePath, '.tidecode', 'config')
-  const settingsFilePath = path.join(configDirectoryPath, 'settings.json')
-  const workspaceUiStateFilePath = path.join(configDirectoryPath, 'workspace-ui-state.json')
-  const initialSettings = buildFullStoredSettings()
-  const previousSettingsHome = process.env.TIDECODE_SETTINGS_HOME
-  const initialWorkspaceUiState = {
-    conversationModelPreferences: initialSettings.conversationModelPreferences,
-    diffPanelWidth: initialSettings.diffPanelWidth,
-    editSessionsByConversation: initialSettings.editSessionsByConversation,
-    lastActiveConversationId: initialSettings.lastActiveConversationId,
-    lastActiveDraftFolderId: initialSettings.lastActiveDraftFolderId,
-    openEmptyConversationOnLaunch: initialSettings.openEmptyConversationOnLaunch,
-    revertEditSessionsByConversation: initialSettings.revertEditSessionsByConversation,
-    sidebarWidth: initialSettings.sidebarWidth,
-    sourceControlSectionOrder: initialSettings.sourceControlSectionOrder,
-    sourceControlSectionOpen: initialSettings.sourceControlSectionOpen,
-    sourceControlSectionSizes: initialSettings.sourceControlSectionSizes,
-    terminalOpenByWorkspace: initialSettings.terminalOpenByWorkspace,
-    terminalPanelHeightsByWorkspace: initialSettings.terminalPanelHeightsByWorkspace,
-    workspaceEditorWidth: initialSettings.workspaceEditorWidth,
-    workspaceExplorerWidth: initialSettings.workspaceExplorerWidth,
-  }
+    await updateStoredSettings({
+      appearance: 'light',
+      chatModelId: 'desktop-model',
+      chatModelLabel: 'Desktop model',
+      chatReasoningEffort: 'high',
+    }, 'desktop')
+    await updateStoredSettings({
+      appearance: 'dark',
+      chatModelId: 'web-model',
+      chatModelLabel: 'Web model',
+      chatReasoningEffort: 'medium',
+    }, 'web')
+    await updateStoredSettings({
+      agentModelId: 'cli-agent-model',
+      agentModelLabel: 'CLI agent model',
+      chatReasoningEffort: 'low',
+    }, 'cli')
 
-  try {
-    process.env.TIDECODE_SETTINGS_HOME = tempHomePath
-    await fs.mkdir(configDirectoryPath, { recursive: true })
-    await fs.writeFile(settingsFilePath, JSON.stringify(initialSettings, null, 2), 'utf8')
-    await fs.writeFile(workspaceUiStateFilePath, JSON.stringify(initialWorkspaceUiState, null, 2), 'utf8')
+    await updateStoredSettings({
+      disabledSkillsByPath: { 'skills/shared': true },
+      modelToggleState: { 'codex:gpt-5.4': false },
+      kanbanAiPlanningEnabled: false,
+    }, 'web')
 
-    const { updateStoredConversationModelPreference } = await import('../../electron/settings/store')
-    const nextSettings = await updateStoredConversationModelPreference('thread-web', {
+    const desktop = await getStoredSettings('desktop')
+    const web = await getStoredSettings('web')
+    const cli = await getStoredSettings('cli')
+
+    assert.equal(desktop.appearance, 'light')
+    assert.equal(desktop.chatModelId, 'desktop-model')
+    assert.equal(desktop.chatReasoningEffort, 'high')
+    assert.equal(web.appearance, 'dark')
+    assert.equal(web.chatModelId, 'web-model')
+    assert.equal(web.chatReasoningEffort, 'medium')
+    assert.equal(cli.agentModelId, 'cli-agent-model')
+    assert.equal(cli.chatReasoningEffort, 'low')
+
+    for (const settings of [desktop, web, cli]) {
+      assert.deepEqual(settings.disabledSkillsByPath, { 'skills/shared': true })
+      assert.deepEqual(settings.modelToggleState, { 'codex:gpt-5.4': false })
+      assert.equal(settings.kanbanAiPlanningEnabled, false)
+    }
+  })
+})
+
+test('conversation model and reasoning preferences are isolated per surface', async () => {
+  await withSettingsHome(async () => {
+    const { getStoredSettings, updateStoredConversationModelPreference } = await import('../../electron/settings/store')
+
+    await updateStoredConversationModelPreference('thread-1', {
       chatMode: 'agent',
-      label: 'Web model',
-      modelId: 'gpt-5.6',
+      label: 'Desktop thread model',
+      modelId: 'desktop-thread-model',
+      providerId: 'codex',
+      reasoningEffort: 'high',
+    }, 'desktop')
+    await updateStoredConversationModelPreference('thread-1', {
+      chatMode: 'agent',
+      label: 'Web thread model',
+      modelId: 'web-thread-model',
       providerId: 'codex',
       reasoningEffort: 'medium',
-    })
+    }, 'web')
+    await updateStoredConversationModelPreference('thread-1', {
+      chatMode: 'agent',
+      label: 'CLI thread model',
+      modelId: 'cli-thread-model',
+      providerId: 'codex',
+      reasoningEffort: 'low',
+    }, 'cli')
 
-    assert.equal(nextSettings.conversationModelPreferences['thread-agent']?.modelId, 'thread-model')
-    assert.equal(nextSettings.conversationModelPreferences['thread-web']?.modelId, 'gpt-5.6')
-    assert.equal(nextSettings.conversationModelPreferences['thread-web']?.reasoningEffort, 'medium')
-
-    const persistedWorkspaceState = JSON.parse(await fs.readFile(workspaceUiStateFilePath, 'utf8')) as typeof initialWorkspaceUiState
-    assert.equal(persistedWorkspaceState.conversationModelPreferences['thread-agent']?.modelId, 'thread-model')
-    assert.equal(persistedWorkspaceState.conversationModelPreferences['thread-web']?.modelId, 'gpt-5.6')
-  } finally {
-    if (previousSettingsHome === undefined) {
-      delete process.env.TIDECODE_SETTINGS_HOME
-    } else {
-      process.env.TIDECODE_SETTINGS_HOME = previousSettingsHome
-    }
-    await fs.rm(tempHomePath, { force: true, recursive: true })
-  }
+    const desktop = await getStoredSettings('desktop')
+    const web = await getStoredSettings('web')
+    const cli = await getStoredSettings('cli')
+    assert.equal(desktop.conversationModelPreferences['thread-1']?.modelId, 'desktop-thread-model')
+    assert.equal(desktop.conversationModelPreferences['thread-1']?.reasoningEffort, 'high')
+    assert.equal(web.conversationModelPreferences['thread-1']?.modelId, 'web-thread-model')
+    assert.equal(web.conversationModelPreferences['thread-1']?.reasoningEffort, 'medium')
+    assert.equal(cli.conversationModelPreferences['thread-1']?.modelId, 'cli-thread-model')
+    assert.equal(cli.conversationModelPreferences['thread-1']?.reasoningEffort, 'low')
+  })
 })

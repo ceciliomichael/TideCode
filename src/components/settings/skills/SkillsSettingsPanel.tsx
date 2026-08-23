@@ -4,6 +4,7 @@ import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { SettingsPanelLayout, SETTINGS_SECTION_TITLE_CLASS_NAME } from '../shared/SettingsPanelPrimitives'
 import { SkillAddDialog } from './SkillAddDialog'
 import { SkillList } from './SkillList'
+import { SkillsSettingsSkeleton } from './SkillsSettingsSkeleton'
 import type { AppSettings } from '../../../types/chat'
 import type { CreateSkillInput, SkillSummary, SkillsState } from '../../../types/skills'
 
@@ -68,6 +69,10 @@ export function SkillsSettingsPanel({
     ? toUserFacingErrorMessage(rawErrorMessage, 'Unable to load skills.')
     : null
 
+  if (isLoading && state === null && visibleErrorMessage === null) {
+    return <SkillsSettingsSkeleton />
+  }
+
   return (
     <SettingsPanelLayout>
       <div className="flex flex-col gap-4">
@@ -101,11 +106,7 @@ export function SkillsSettingsPanel({
             onToggleSkill={handleToggleSkill}
             skills={state.skills}
           />
-        ) : (
-          <div className="rounded-xl border border-border bg-surface px-4 py-10 text-sm text-muted-foreground">
-            Loading skills…
-          </div>
-        )}
+        ) : null}
       </div>
 
       {isDialogOpen ? (

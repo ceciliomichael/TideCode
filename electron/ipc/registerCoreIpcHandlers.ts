@@ -3,6 +3,7 @@ import type {
   ApiKeyProviderId,
   AppendConversationMessagesInput,
   AppSettings,
+  AppSettingsSurface,
   ChatProviderId,
   CreateConversationFolderInput,
   CreateConversationInput,
@@ -51,6 +52,7 @@ import { getDraftAgentContextPath } from '../history/paths'
 import { refreshProjectPathWatcher } from '../history/projectPathWatch'
 import { ensureRunServiceClient } from '../runService/ensureService'
 import { getStoredSettings, updateStoredSettings } from '../settings/store'
+import { isAppSettingsSurface } from '../../src/lib/appSettingsScopes'
 import { applyTideCodeAppIcon } from '../window/branding'
 import { applyWindowTheme } from '../window/theme'
 import { createSkill, listAvailableSkills } from '../skills/service'
@@ -88,7 +90,7 @@ import {
 
 export function registerCoreIpcHandlers(
   getWindow: () => BrowserWindow | null,
-  onSettingsChanged?: (settings: AppSettings, input: Partial<AppSettings>) => void,
+onSettingsChanged?: (settings: AppSettings, input: Partial<AppSettings>, surface: AppSettingsSurface) => void | Promise<void>,
 ) {
   // Synchronous channel: lets the renderer read the draft path on first paint without an async round-trip
   ipcMain.on('history:getDraftAgentContextPathSync', (event) => {
@@ -169,16 +171,20 @@ export function registerCoreIpcHandlers(
   ipcMain.handle('history:delete', async (_event, conversationId: string) =>
     deleteStoredConversation(conversationId),
   )
-  ipcMain.handle('settings:get', async () => getStoredSettings())
-  ipcMain.handle('settings:update', async (_event, input: Partial<AppSettings>) => {
-    const nextSettings = await updateStoredSettings(input)
+  ipcMain.handle('settings:get', async (_event, requestedSurface?: AppSettingsSurface) => {
+    const surface = isAppSettingsSurface(requestedSurface) ? requestedSurface : 'desktop'
+    return getStoredSettings(surface)
+  })
+  ipcMain.handle('settings:update', async (_event, input: Partial<AppSettings>, requestedSurface?: AppSettingsSurface) => {
+    const surface = isAppSettingsSurface(requestedSurface) ? requestedSurface : 'desktop'
+    const nextSettings = await updateStoredSettings(input, surface)
 
     const activeWindow = getWindow()
-    if (activeWindow) {
+    if (surface === 'desktop' && activeWindow) {
       applyWindowTheme(activeWindow, nextSettings.appearance)
       applyTideCodeAppIcon(activeWindow)
     }
-    onSettingsChanged?.(nextSettings, input)
+    await onSettingsChanged?.(nextSettings, input, surface)
 
     return nextSettings
   })

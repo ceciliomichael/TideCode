@@ -7,6 +7,11 @@ import {
   getSafeWorkspaceTargetPath,
   normalizeWorkspacePath,
 } from "../workspace/paths";
+import {
+  isExecutableFile,
+  resolveWindowsSystemShell,
+  type WindowsShellKind,
+} from "./windowsShell";
 
 const TERMINAL_MIN_COLS = 20;
 const TERMINAL_MAX_COLS = 400;
@@ -15,10 +20,16 @@ const TERMINAL_MAX_ROWS = 200;
 export const MAX_TERMINAL_POLLING_MS = 5 * 60 * 1000;
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"]);
 
-interface TerminalShellSpec {
+export interface TerminalShellSpec {
   args: string[];
   command: string;
   label: string;
+}
+
+interface TerminalShellResolutionOptions {
+  env?: NodeJS.ProcessEnv;
+  isCommandAvailable?: (command: string, env: NodeJS.ProcessEnv) => boolean;
+  platform?: NodeJS.Platform;
 }
 
 export function clampInteger(
@@ -101,13 +112,36 @@ export function resolveTerminalCwd(
   return resolvedPath;
 }
 
-function isTerminalShellCommandAvailable(command: string) {
-  if (path.isAbsolute(command)) return existsSync(command);
-  const searchPath = process.env.PATH?.trim();
+function readEnvironmentValue(
+  environment: NodeJS.ProcessEnv,
+  key: string,
+  caseInsensitive = false,
+) {
+  const directValue = environment[key]?.trim();
+  if (directValue) return directValue;
+  if (!caseInsensitive) return undefined;
+  const normalizedKey = key.toLowerCase();
+  for (const [environmentKey, value] of Object.entries(environment)) {
+    if (environmentKey.toLowerCase() !== normalizedKey) continue;
+    const normalizedValue = value?.trim();
+    if (normalizedValue) return normalizedValue;
+  }
+  return undefined;
+}
+
+function isTerminalShellCommandAvailable(
+  command: string,
+  environment: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+) {
+  if (path.isAbsolute(command)) return isExecutableFile(command);
+  const isWindows = platform === "win32";
+  const searchPath = readEnvironmentValue(environment, "PATH", isWindows);
   if (!searchPath) return false;
-  const hasExtension = process.platform === "win32" && path.extname(command).length > 0;
-  const extensions = process.platform === "win32" && !hasExtension
-    ? (process.env.PATHEXT?.split(';').filter(Boolean) ?? ['.COM', '.EXE', '.BAT', '.CMD'])
+  const hasExtension = isWindows && path.extname(command).length > 0;
+  const pathExt = readEnvironmentValue(environment, "PATHEXT", isWindows);
+  const extensions = isWindows && !hasExtension
+    ? (pathExt?.split(';').filter(Boolean) ?? ['.COM', '.EXE', '.BAT', '.CMD'])
     : [''];
   return searchPath.split(path.delimiter).some((directory) =>
     extensions.some((extension) => existsSync(path.join(directory, `${command}${extension}`))),
@@ -120,60 +154,79 @@ function createPowerShellInteractiveArgs() {
     "-NoExit",
     "-Command",
     [
-      "$ErrorActionPreference = 'SilentlyContinue'",
       "function prompt { $esc = [char]27; $vName = if ($env:VIRTUAL_ENV) { '(' + (Split-Path $env:VIRTUAL_ENV -Leaf) + ') ' } else { '' }; \"$esc]133;D;$LASTEXITCODE`a$esc]133;A`a$vName$($executionContext.SessionState.Path.CurrentLocation)> $esc]133;B`a\" }",
-      "if (Get-Module -ListAvailable PSReadLine) { Import-Module PSReadLine -ErrorAction SilentlyContinue }",
-      "if (Get-Command Set-PSReadLineOption -ErrorAction SilentlyContinue) {",
-      "  try { Set-PSReadLineOption -PredictionSource History -PredictionView InlineView -BellStyle None } catch {}",
-      "}",
     ].join("; "),
   ];
 }
 
-function resolveUnixShellSpecs(): TerminalShellSpec[] {
-  const shells = [process.env.SHELL?.trim(), "/bin/zsh", "/bin/bash", "/bin/sh"]
-    .filter((value): value is string => typeof value === "string" && value.length > 0)
-    .filter((value, index, values) => values.indexOf(value) === index)
-    .filter(isTerminalShellCommandAvailable);
-  return shells.map((shellPath) => ({
+function createWindowsInteractiveArgs(kind: WindowsShellKind, profileArgs: string[]) {
+  return kind === "powershell"
+    ? [...profileArgs, ...createPowerShellInteractiveArgs()]
+    : profileArgs;
+}
+
+function resolveUnixLoginShell(
+  environment: NodeJS.ProcessEnv,
+  isAvailable: (command: string, env: NodeJS.ProcessEnv) => boolean,
+  platform: "darwin" | "linux",
+): TerminalShellSpec {
+  const configuredShell = readEnvironmentValue(environment, "TIDECODE_TERMINAL_SHELL");
+  const loginShell = readEnvironmentValue(environment, "SHELL");
+  const fallbackShells = platform === "darwin"
+    ? ["/bin/zsh", "/bin/bash", "/bin/sh"]
+    : ["/bin/bash", "/bin/zsh", "/bin/sh"];
+  const candidates = [configuredShell, loginShell, ...fallbackShells]
+    .filter((candidate): candidate is string => Boolean(candidate));
+  const shellPath = candidates.find((candidate, index) =>
+    candidates.indexOf(candidate) === index && isAvailable(candidate, environment));
+  if (!shellPath) {
+    throw new Error(
+      "TideCode could not find an interactive system shell. Check SHELL, "
+        + "or set TIDECODE_TERMINAL_SHELL to a usable shell executable.",
+    );
+  }
+  return {
     args: ["-l"],
     command: shellPath,
     label: path.basename(shellPath),
-  }));
+  };
 }
 
-function resolveWindowsShellSpecs(): TerminalShellSpec[] {
-  const windowsDirectory = process.env.WINDIR?.trim() || "C:\\Windows";
-  const programFilesDirectory = process.env.ProgramFiles?.trim() || "C:\\Program Files";
-  const comSpec = process.env.ComSpec?.trim();
-  const windowsPowerShellPath = path.join(
-    windowsDirectory, "System32", "WindowsPowerShell", "v1.0", "powershell.exe",
-  );
-  const pwshPath = path.join(programFilesDirectory, "PowerShell", "7", "pwsh.exe");
-  const args = createPowerShellInteractiveArgs();
-  const candidates: TerminalShellSpec[] = [];
-  if (isTerminalShellCommandAvailable(pwshPath)) candidates.push({ args, command: pwshPath, label: "PowerShell 7" });
-  if (isTerminalShellCommandAvailable("pwsh.exe")) candidates.push({ args, command: "pwsh.exe", label: "PowerShell 7" });
-  if (isTerminalShellCommandAvailable(windowsPowerShellPath)) {
-    candidates.push({ args, command: windowsPowerShellPath, label: "PowerShell" });
-  }
-  if (isTerminalShellCommandAvailable("powershell.exe")) {
-    candidates.push({ args, command: "powershell.exe", label: "PowerShell" });
-  }
-  candidates.push({
-    args: [],
-    command: comSpec && comSpec.length > 0 ? comSpec : "cmd.exe",
-    label: "Command Prompt",
-  });
-  return candidates;
+function resolveWindowsShellSpec(
+  environment: NodeJS.ProcessEnv,
+  isAvailable: (command: string, env: NodeJS.ProcessEnv) => boolean,
+): TerminalShellSpec {
+  const { args, command, kind, label } = resolveWindowsSystemShell(environment, isAvailable);
+  return {
+    args: createWindowsInteractiveArgs(kind, args),
+    command,
+    label,
+  };
 }
 
-export function resolveTerminalShellSpecs() {
-  return process.platform === "win32" ? resolveWindowsShellSpecs() : resolveUnixShellSpecs();
+export function resolveTerminalShellSpec(
+  options: TerminalShellResolutionOptions = {},
+): TerminalShellSpec {
+  const environment = options.env ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const isAvailable = options.isCommandAvailable
+    ?? ((command: string, env: NodeJS.ProcessEnv) => isTerminalShellCommandAvailable(command, env, platform));
+
+  if (platform === "win32") {
+    return resolveWindowsShellSpec(environment, isAvailable);
+  }
+  if (platform === "darwin" || platform === "linux") {
+    return resolveUnixLoginShell(environment, isAvailable, platform);
+  }
+  throw new Error(`Unsupported terminal platform: ${platform}`);
 }
 
 export function resolvePreferredTerminalShell() {
-  return resolveTerminalShellSpecs()[0] ?? null;
+  try {
+    return resolveTerminalShellSpec();
+  } catch {
+    return null;
+  }
 }
 
 export function createTerminalEnvironment(cwd: string, workspaceRootPath: string | null) {
@@ -206,32 +259,28 @@ export function parseExternalTerminalLink(rawUrl: string) {
   return parsedUrl.toString();
 }
 
-export function spawnTerminalFromCandidates(input: {
+export function spawnResolvedTerminalShell(input: {
   cols: number;
   cwd: string;
   env: NodeJS.ProcessEnv;
   rows: number;
 }) {
-  const shellSpecs = resolveTerminalShellSpecs();
-  const spawnErrors: string[] = [];
-  for (const shellSpec of shellSpecs) {
-    try {
-      return {
-        ptyProcess: spawn(shellSpec.command, shellSpec.args, {
-          cols: input.cols,
-          cwd: input.cwd,
-          env: input.env,
-          name: "xterm-256color",
-          rows: input.rows,
-        }),
-        shellLabel: shellSpec.label,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      spawnErrors.push(`${shellSpec.command}: ${message}`);
-    }
+  const shellSpec = resolveTerminalShellSpec({ env: input.env });
+  try {
+    return {
+      ptyProcess: spawn(shellSpec.command, shellSpec.args, {
+        cols: input.cols,
+        cwd: input.cwd,
+        env: input.env,
+        name: "xterm-256color",
+        rows: input.rows,
+      }),
+      shellLabel: shellSpec.label,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to start ${shellSpec.label} at ${shellSpec.command}: ${message}`);
   }
-  throw new Error(`Failed to start terminal shell. Attempts: ${spawnErrors.join(" | ")}`);
 }
 
 export function toWorkspaceKey(cwd: string) {

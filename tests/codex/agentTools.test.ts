@@ -60,7 +60,7 @@ test('Code Mode exposes one provider tool while discovery and native executors s
       { chatMode: 'agent', orchestrationMode: 'code_mode' },
     )
 
-    assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
+assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
     assert.ok(bundle.registry.get('tool_search'))
     assert.ok(bundle.registry.get('read'))
     assert.ok(bundle.registry.get('edit'))
@@ -83,7 +83,7 @@ test('createAgentToolBundle defaults agent mode to Code Mode', async () => {
       { chatMode: 'agent' },
     )
 
-    assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
+assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
     assert.ok(bundle.registry.get('tool_search'))
     assert.ok(bundle.codeModeExecutor)
     await bundle.codeModeExecutor?.dispose()
@@ -269,11 +269,14 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. By default, returns up to 500 lines. Set full_file: true to read the complete text file; full_file takes precedence over offset and limit.')
     assert.equal(
       editTool.description,
-      'Edit a file by replacing targetContent with replacementContent. Pass { path, edits: [{ targetContent, replacementContent }] }. Always use tools.edit for modifying existing files.',
+'Edit an existing file with structured source text by replacing targetContent with replacementContent. Ambiguous targets fail unless replaceAll is explicitly true. Pass expectedRevision from the latest read when available.',
     )
     assert.equal(globTool.description, 'Find files by pattern under exactly one directory; an omitted path, empty string, or "." refers to the bound workspace root.')
     assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; an omitted path, empty string, or "." refers to the bound workspace root.')
-    assert.equal(writeTool.description, 'Write a complete file.')
+    assert.equal(
+      writeTool.description,
+      'Write a complete file using structured content. Use this tool to create files or intentionally replace an entire file. Pass expectedRevision from the latest read when replacing an existing file when available.',
+    )
     for (const description of [
       readTool,
       globTool,

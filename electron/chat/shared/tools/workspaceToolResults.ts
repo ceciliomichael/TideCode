@@ -2,6 +2,7 @@ import { getDiffSummary } from '../../../../src/lib/textDiff'
 import type { ChangeDiffToolResultItem } from '../../../../src/types/chat'
 import { captureWorkspaceCheckpointFileState } from '../../../workspace/checkpoints'
 import type { AgentToolExecutionResult } from '../toolTypes'
+import { normalizeMutationText } from './workspaceMutationSafety'
 
 export function createSuccessResult(input: Omit<AgentToolExecutionResult, 'status'>): AgentToolExecutionResult {
   return {
@@ -20,7 +21,7 @@ export function createErrorResult(summary: string, input?: Pick<AgentToolExecuti
 }
 
 export function normalizeTextMutationContent(content: string) {
-  return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  return normalizeMutationText(content)
 }
 
 export function hasBinaryContent(buffer: Buffer) {
@@ -55,7 +56,7 @@ function toFileChangeItem(
 export function buildFileChangeResult(
   summary: string,
   changes: ChangeDiffToolResultItem[],
-  operation: 'edit' | 'noop',
+operation: 'edit' | 'noop' | 'write',
   subjectPath: string,
   bodyPrefix?: string,
 ) {

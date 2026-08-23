@@ -12,6 +12,7 @@ import { SettingsPanelLayout, SETTINGS_SECTION_TITLE_CLASS_NAME } from '../share
 import { CodexProviderDialog } from './CodexProviderDialog'
 import { ProviderCard } from './ProviderCard'
 import { ProviderConfigDialog } from './ProviderConfigDialog'
+import { ProvidersSettingsSkeleton } from './ProvidersSettingsSkeleton'
 import type { ProviderConfigInitialValues } from './ProviderConfigDialog'
 import { API_KEY_PROVIDER_SCHEMAS, type ApiKeyProviderSchema } from './providerSchemas'
 
@@ -106,6 +107,10 @@ export function ProvidersSettingsPanel(props: ProvidersSettingsPanelProps) {
 
   async function removeProvider(providerId: ApiKeyProviderId) {
     return props.onRemoveApiKeyProvider(providerId)
+  }
+
+  if (props.isLoading && props.providersState === null && props.errorMessage === null) {
+    return <ProvidersSettingsSkeleton />
   }
 
   return (

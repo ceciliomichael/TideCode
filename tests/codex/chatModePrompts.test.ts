@@ -34,6 +34,8 @@ test('agent prompt puts tool decisions before scoped execution', async () => {
     assert.match(prompt, /3\. Use the narrowest exact tool and the smallest complete sequence/u)
     assert.match(prompt, /4\. Verify the requested result after the final mutation/u)
     assert.match(prompt, /`read`: inspect one known file or one known directory/u)
+    assert.match(prompt, /Treat a file path as known only when the user supplied it or a prior workspace tool returned that exact path/u)
+    assert.match(prompt, /Never invent a likely filename from project conventions/u)
     assert.match(prompt, /`edit`: make a targeted change to an existing text file/u)
     assert.match(prompt, /`execute_terminal` is for running real commands\/processes, never as a substitute/u)
     assert.match(prompt, /Do not use terminal commands such as/u)

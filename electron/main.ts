@@ -1,8 +1,8 @@
 import { app, BrowserWindow, nativeTheme } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import type { AppSettings, StartChatStreamInput } from '../src/types/chat'
-import { flushStoredSettingsUpdates } from './settings/store'
+import type { AppSettings, AppSettingsSurface, StartChatStreamInput } from '../src/types/chat'
+import { flushStoredSettingsUpdates, getStoredSettings } from './settings/store'
 import { applyTideCodeAppIcon } from './window/branding'
 import { applyWindowTheme } from './window/theme'
 import { createApplicationWindow } from './window/createApplicationWindow'
@@ -28,7 +28,7 @@ import { configureTideCodeRuntimeRoot } from './runtime/runtimeRoot'
 import { RemoteWorkspaceHost } from './remote/host'
 import { registerRemoteWorkspaceHostIpc } from './remote/ipc'
 import { REMOTE_EVENT_CHANNELS } from '../src/remote/protocol'
-import { hasDurableAppSettingsInput } from '../src/lib/appSettingsScopes'
+import { hasSharedAppSettingsInput } from '../src/lib/appSettingsScopes'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // The built directory structure
@@ -175,17 +175,28 @@ async function createWindow(initialLaunchRequest: TideCodeLaunchRequest | null =
 
 function registerApplicationIpcHandlers() {
   registerAppIpcHandlers()
-  registerCoreIpcHandlers(() => win, (settings: AppSettings, input: Partial<AppSettings>) => {
-    if (!hasDurableAppSettingsInput(input)) return
-
+  registerCoreIpcHandlers(() => win, async (
+    settings: AppSettings,
+    input: Partial<AppSettings>,
+    surface: AppSettingsSurface,
+  ) => {
+    const hasSharedChanges = hasSharedAppSettingsInput(input)
     const currentWindow = win
-    if (currentWindow && !currentWindow.isDestroyed()) {
-      currentWindow.webContents.send('settings:remoteChanged', settings)
+
+    if (surface === 'desktop' || hasSharedChanges) {
+      const desktopSettings = surface === 'desktop' ? settings : await getStoredSettings('desktop')
+      if (currentWindow && !currentWindow.isDestroyed()) {
+        currentWindow.webContents.send('settings:remoteChanged', desktopSettings)
+      }
     }
-    remoteWorkspaceHost.broadcastEvent({
-      channel: REMOTE_EVENT_CHANNELS.settingsChanged,
-      payload: settings,
-    })
+
+    if (surface === 'web' || hasSharedChanges) {
+      const webSettings = surface === 'web' ? settings : await getStoredSettings('web')
+      remoteWorkspaceHost.broadcastEvent({
+        channel: REMOTE_EVENT_CHANNELS.settingsChanged,
+        payload: webSettings,
+      })
+    }
   })
   registerChatGitTerminalIpcHandlers(activeChatStreamProviders)
   registerWorkspaceIpcHandlers()

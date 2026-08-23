@@ -19,6 +19,7 @@ import {
   useSettingsModelCatalog,
 } from './settingsModelCatalogStore'
 import { UserModelDialog } from './UserModelDialog'
+import { ModelsSettingsSkeleton } from './ModelsSettingsSkeleton'
 
 const ADD_MODEL_BUTTON_CLASS_NAME =
   'provider-primary-action-button inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl px-3.5 text-sm font-medium transition-transform active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 md:h-10 md:w-auto'
@@ -141,6 +142,10 @@ export function ModelsSettingsPanel({ launchRequest, onLaunchRequestHandled, pro
     } finally {
       setIsRemovingModel(false)
     }
+  }
+
+  if (providersState === null || isAnyModelsLoading) {
+    return <ModelsSettingsSkeleton />
   }
 
   return (

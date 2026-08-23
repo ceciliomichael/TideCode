@@ -18,7 +18,7 @@ export function buildDisabledSkillsByPath(
 export async function runCliSkillsCommand(state: CliSessionState, helpers: SlashCommandHelpers): Promise<void> {
   const [skillsState, settings] = await Promise.all([
     listAvailableSkills(state.workspaceRootPath),
-    getStoredSettings(),
+        getStoredSettings('cli'),
   ])
   if (skillsState.errorMessage) helpers.renderWarning(skillsState.errorMessage)
   if (skillsState.skills.length === 0) {
@@ -35,7 +35,7 @@ export async function runCliSkillsCommand(state: CliSessionState, helpers: Slash
       enabled: settings.disabledSkillsByPath[skill.location] !== true,
     })),
     pageSize: 10,
-    footer: 'Changes are shared with desktop immediately',
+        footer: 'Skill availability is shared across TideCode',
   })
   if (!selectedPaths) return
 
@@ -45,6 +45,6 @@ export async function runCliSkillsCommand(state: CliSessionState, helpers: Slash
     skillsState.skills.map((skill) => skill.location),
     selected,
   )
-  await updateStoredSettings({ disabledSkillsByPath })
+    await updateStoredSettings({ disabledSkillsByPath }, 'cli')
   helpers.renderSuccess(`Saved ${selected.size} enabled skill${selected.size === 1 ? '' : 's'}.`)
 }

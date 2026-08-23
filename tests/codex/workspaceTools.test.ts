@@ -186,10 +186,9 @@ test('public workspace tools keep empty mutation targets and workspace selection
     const writeResult = await write.execute({ content: 'unsafe', path: '' })
     assert.equal(writeResult.status, 'error')
     assert.match(writeResult.summary ?? '', /path.*required/iu)
-    await assert.rejects(
-      edit.execute({ edits: [{ replacementContent: 'y', targetContent: 'x' }], path: '' }),
-      /non-empty "path"/u,
-    )
+    const editResult = await edit.execute({ edits: [{ replacementContent: 'y', targetContent: 'x' }], path: '' })
+    assert.equal(editResult.status, 'error')
+    assert.match(editResult.summary ?? '', /non-empty "path"/u)
     await assert.rejects(
       createAgentTools({ workspaceRootPath: '' }, { chatMode: 'agent' }),
       /Workspace root path is required/u,
@@ -284,7 +283,9 @@ test('read keeps synthetic EOF metadata out of model source content', async () =
     assert.equal(result.body, 'This note mentions list and needle.')
     assert.doesNotMatch(result.body ?? '', /End of file/u)
     assert.equal(result.displayBody, 'This note mentions list and needle.')
-    assert.deepEqual(result.semantics, {
+    const { revision, ...readSemantics } = result.semantics ?? {}
+    assert.match(String(revision), /^sha256:[a-f0-9]{64}$/u)
+    assert.deepEqual(readSemantics, {
       end_line: 1,
       has_more: false,
       is_directory: false,
@@ -660,7 +661,7 @@ test('read-only workspace resolution explains that path strings cannot contain m
         assert.ok(error instanceof Error)
         assert.equal(
           error.message,
-          'Path not found: src electron. Use a path relative to the workspace root. The path field accepts one path only; if you meant multiple roots, use one call per root instead of joining them with spaces.',
+          'Path not found: src electron. Use a path relative to the workspace root. Do not guess a replacement filename; discover the actual path with list, glob, or grep from a known directory. The path field accepts one path only; if you meant multiple roots, use one call per root instead of joining them with spaces.',
         )
         return true
       },
@@ -808,7 +809,7 @@ test('resolveReadableTargetPath allows Full Access reads outside the workspace a
 
     assert.equal(result.status, 'success')
     assert.match(result.body ?? '', /outside workspace/u)
-    assert.equal(result.semantics?.revision, undefined)
+assert.match(String(result.semantics?.revision), /^sha256:[a-f0-9]{64}$/u)
     assert.equal(result.subject?.path, outsideFilePath)
     assert.match(result.summary, /Read /u)
     assert.match(result.summary, new RegExp(`${outsideFilePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`))
@@ -872,10 +873,20 @@ test('workspace tool schemas use path consistently for filesystem targets', asyn
 
     const editSchemaTool = tools.edit as { inputSchema: unknown }
     const editSchema = await asSchema(editSchemaTool.inputSchema).jsonSchema as {
-      properties?: Record<string, unknown>
+      properties?: Record<string, {
+        items?: { properties?: Record<string, unknown> }
+      }>
     }
     assert.ok(editSchema.properties && 'path' in editSchema.properties)
     assert.ok(editSchema.properties && 'edits' in editSchema.properties)
+    assert.ok(editSchema.properties && 'expectedRevision' in editSchema.properties)
+    assert.ok(editSchema.properties?.edits?.items?.properties && 'replaceAll' in editSchema.properties.edits.items.properties)
+
+    const writeSchemaTool = tools.write as { inputSchema: unknown }
+    const writeSchema = await asSchema(writeSchemaTool.inputSchema).jsonSchema as {
+      properties?: Record<string, unknown>
+    }
+    assert.ok(writeSchema.properties && 'expectedRevision' in writeSchema.properties)
     assert.equal(tools.patch, undefined)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -982,7 +993,7 @@ test('createAgentTools write allows explicit external files in Full Access mode'
   }
 })
 
-test('createAgentTools write rejects identical file content', async () => {
+test('createAgentTools write reports identical file content as a successful no-op', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
   const targetFilePath = path.join(workspaceRootPath, 'src', 'same-write.ts')
   await fs.writeFile(targetFilePath, 'export const value = 1\n', 'utf8')
@@ -1000,15 +1011,15 @@ test('createAgentTools write rejects identical file content', async () => {
       content: 'export const value = 1\n',
     })
 
-    assert.equal(result.status, 'error')
-    assert.match(result.summary ?? '', /Write did not change src[/\\]same-write\.ts/u)
+    assert.equal(result.status, 'success')
+    assert.match(result.summary ?? '', /Skipped unchanged write/u)
     assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'export const value = 1\n')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('createAgentTools write normalizes CRLF content to LF', async () => {
+test('createAgentTools write preserves requested line endings for new files', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
   const targetFilePath = path.join(workspaceRootPath, 'src', 'line-endings.ts')
 
@@ -1026,13 +1037,13 @@ test('createAgentTools write normalizes CRLF content to LF', async () => {
     })
 
     assert.equal(result.status, 'success')
-    assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'export const first = 1\nexport const second = 2\n')
+assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'export const first = 1\r\nexport const second = 2\r\n')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('createAgentTools write rejects line-ending-only rewrites', async () => {
+test('createAgentTools write treats line-ending-only rewrites as a no-op and preserves existing format', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
   const targetFilePath = path.join(workspaceRootPath, 'src', 'line-ending-only.ts')
   await fs.writeFile(targetFilePath, 'export const value = 1\r\n', 'utf8')
@@ -1050,8 +1061,8 @@ test('createAgentTools write rejects line-ending-only rewrites', async () => {
       content: 'export const value = 1\n',
     })
 
-    assert.equal(result.status, 'error')
-    assert.match(result.summary ?? '', /Write did not change src[/\\]line-ending-only\.ts/u)
+    assert.equal(result.status, 'success')
+    assert.match(result.summary ?? '', /Skipped unchanged write/u)
     assert.equal(await fs.readFile(targetFilePath, 'utf8'), 'export const value = 1\r\n')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
