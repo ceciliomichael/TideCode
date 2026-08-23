@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.15 — Reliable workspace changes and surface-specific settings
+
+TideCode 1.2.15 makes file changes safer, keeps Desktop, Web, and CLI preferences independent where they should be, and makes settings, terminals, and Code Mode more dependable across surfaces.
+
+- Makes Code Mode execution reliable for concurrent and nested tool work, including returned promises, detached asynchronous calls, semantic failures, cancellation, MCP discovery, and bounded output.
+- Hardens workspace edits, replacements, writes, and patch application with atomic multi-hunk behavior, stale-read protection, same-file serialization, ambiguity checks, line-range boundaries, safe path handling, and preserved BOM and line-ending formats.
+- Adds clearer mutation failure stages and structured tool results so failed or partial file operations do not silently overwrite newer work.
+- Separates Desktop, Web, and CLI settings while keeping shared configuration synchronized, migrates existing settings automatically, and preserves per-surface model, reasoning, follow-up, and terminal preferences.
+- Adds stable loading and empty states for Settings sections and improves optimistic provider, model, Skills, and MCP updates so navigation does not jump while data is loading.
+- Improves Windows terminal discovery by honoring configured shells, Windows Terminal profiles, installed PowerShell versions, Microsoft Store aliases, App Paths, and safe Command Prompt fallbacks; macOS and Linux continue to use the configured login shell when available.
+- Keeps CLI and Desktop runtime settings, conversations, follow-ups, history, and model defaults aligned while retaining the controls that are intentionally surface-specific.
+- Keeps source-control diff summaries based on the current working-tree snapshot so added and removed line counts stay accurate.
+- Requires no manual migration or configuration changes; legacy settings are migrated automatically.
+- Validated with 1,198 automated tests, TypeScript type checking, the production build, and pull-request CI.
+
 ## 1.2.14 - DeepSeek vision and reliable service refresh
 
 TideCode 1.2.14 adds image-capable DeepSeek chat and makes desktop and CLI updates take effect reliably even when an older shared background service is still running.
