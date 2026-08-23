@@ -548,7 +548,7 @@ test('read tool header labels use the result range instead of the requested limi
   assert.equal(getToolInvocationHeaderLabel(invocation, undefined, WORKSPACE_ROOT_PATH), 'Read example.ts (12-31)')
 })
 
-test('read_tool_output uses the same running and completed presentation as read', () => {
+test('read_tool_output stays internal for both running and completed invocations', () => {
   const outputId = 'execute_terminal-1234'
   const runningInvocation: ToolInvocationTrace = {
     argumentsText: JSON.stringify({ limit: 20, offset: 41, output_id: outputId }),
@@ -580,8 +580,55 @@ test('read_tool_output uses the same running and completed presentation as read'
     state: 'completed',
   }
 
-  assert.equal(getToolInvocationHeaderLabel(runningInvocation), `Reading ${outputId}`)
-  assert.equal(getToolInvocationHeaderLabel(completedInvocation), `Read ${outputId} (41-60)`)
+  assert.deepEqual(getToolInvocationDisplayEntries(runningInvocation), [])
+  assert.deepEqual(getToolInvocationDisplayEntries(completedInvocation), [])
+})
+
+test('Code Mode hides nested read_tool_output while preserving ordinary child tools', () => {
+  const invocation: ToolInvocationTrace = {
+    argumentsText: '{}',
+    completedAt: 100,
+    id: 'code-mode-hidden-read-output',
+    resultContent: formatStructuredToolResultContent(
+      {
+        schema: 'tidecode.tool_result/v1',
+        semantics: {
+          operation: 'code_mode',
+          tool_calls: [
+            {
+              arguments: { output_id: 'execute_terminal-1234' },
+              body: 'internal recovered output',
+              name: 'read_tool_output',
+              status: 'success',
+              summary: 'Read saved tool output',
+            },
+            {
+              arguments: { path: 'src/example.ts' },
+              body: 'export const value = 1;',
+              name: 'read',
+              status: 'success',
+              subject: { kind: 'file', path: 'src/example.ts' },
+              summary: 'Read src/example.ts',
+            },
+          ],
+        },
+        status: 'success',
+        subject: { kind: 'code_mode', path: 'local' },
+        summary: 'Code Mode completed with 2 tool calls.',
+        toolCallId: 'code-mode-hidden-read-output',
+        toolName: 'code_mode',
+      },
+      '{"done":true}',
+    ),
+    startedAt: 0,
+    state: 'completed',
+    toolName: 'code_mode',
+  }
+
+  assert.deepEqual(
+    getToolInvocationDisplayEntries(invocation).map((entry) => entry.invocation.toolName),
+    ['read'],
+  )
 })
 
 test('empty list results keep the listed tool header', () => {
