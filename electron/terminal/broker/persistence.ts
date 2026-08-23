@@ -67,7 +67,7 @@ export class TerminalBrokerPersistence {
       .then(async () => {
         await ensureRunServiceDirectory()
         const temporaryPath = `${this.filePath}.tmp-${process.pid}-${randomUUID()}`
-        await fs.writeFile(temporaryPath, JSON.stringify(document, null, 2), {
+        await fs.writeFile(temporaryPath, JSON.stringify(document), {
           encoding: 'utf8',
           mode: 0o600,
         })
