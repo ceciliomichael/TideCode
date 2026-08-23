@@ -89,6 +89,7 @@ function buildCreateSessionResult(input: {
     bufferedOutput: input.activeSession.outputBuffer,
     cwd: input.activeSession.cwd,
     isReused: input.isReused,
+    processId: input.activeSession.ptyProcess.pid,
     sessionId: input.sessionId,
     shell: input.activeSession.shellLabel,
     venvName: input.activeSession.venvName,
@@ -439,7 +440,7 @@ export function terminateSessionForWebContents(
   if (options?.aiOnly && (!activeSession || !activeSession.isAiSession)) {
     return;
   }
-  terminateSession(sessionId);
+  return terminateSession(sessionId);
 }
 
 export function terminateAiSessionsForTurnForWebContents(

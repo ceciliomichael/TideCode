@@ -41,8 +41,11 @@ import { SharedFollowUpStore } from './followUpStore'
 import { SharedRunRegistry } from './runRegistry'
 import { SharedStreamPersistence } from './streamPersistence'
 import { listCompactionMarkers } from '../chat/history/eventStore'
+import { getCompactionAfterMessageId } from '../../src/lib/chatCompactionBoundary'
 import { hasMinimumCompactionMessages, MIN_COMPACTION_MESSAGE_COUNT } from '../../src/lib/chatCompactionGate'
+import { reduceChatCompactionStatus } from '../../src/lib/chatCompactionStatus'
 import { isAppSettingsSurface } from '../../src/lib/appSettingsScopes'
+import { getTerminalBroker } from '../terminal/broker/instance'
 
 const TERMINAL_RUN_RETENTION_MS = 60_000
 const TEXT_STREAM_IDLE_GRACE_MS = 1_500
@@ -114,6 +117,7 @@ async function listenOnEndpoint(server: net.Server, endpoint: string) {
 export class TideCodeRunServiceServer {
   private readonly server = net.createServer((socket) => this.acceptClient(socket))
   private readonly clients = new Set<Socket>()
+  private readonly terminalClientIdsBySocket = new Map<Socket, Set<string>>()
   private readonly registry = new SharedRunRegistry()
   private readonly followUps = new SharedFollowUpStore()
   private readonly nextSeqByRunId = new Map<string, number>()
@@ -122,12 +126,16 @@ export class TideCodeRunServiceServer {
   private readonly compactionStateByConversationId = new Map<string, ChatCompactionLifecycleState>()
   private readonly runtimeBySurfaceConversationKey = new Map<string, SharedConversationRuntimeSnapshot>()
   private readonly chatModeByConversationId = new Map<string, SharedConversationRuntimeSnapshot['chatMode']>()
+  private readonly terminalBroker = getTerminalBroker()
   private nextConversationEventSeq = 0
   private token = ''
 
-  constructor(private readonly options: TideCodeRunServiceServerOptions) {}
+  constructor(private readonly options: TideCodeRunServiceServerOptions) {
+    this.terminalBroker.onEvent((event) => this.emitTerminalEvent(event))
+  }
 
   async start() {
+    await this.terminalBroker.start()
     this.token = await ensureRunServiceToken()
     const endpoint = getRunServiceEndpoint()
 
@@ -143,6 +151,7 @@ export class TideCodeRunServiceServer {
   }
 
   async close() {
+    await this.terminalBroker.shutdown()
     for (const client of this.clients) client.destroy()
     await new Promise<void>((resolve) => this.server.close(() => resolve()))
   }
@@ -163,7 +172,12 @@ export class TideCodeRunServiceServer {
         void this.handleLine(socket, line)
       }
     })
-    socket.on('close', () => this.clients.delete(socket))
+    socket.on('close', () => {
+      this.clients.delete(socket)
+      const terminalClientIds = this.terminalClientIdsBySocket.get(socket)
+      this.terminalClientIdsBySocket.delete(socket)
+      for (const clientId of terminalClientIds ?? []) this.terminalBroker.disconnectClient(clientId)
+    })
     socket.on('error', () => this.clients.delete(socket))
   }
 
@@ -179,6 +193,21 @@ export class TideCodeRunServiceServer {
     if (parsed.token !== this.token) {
       this.sendResponse(socket, { id: parsed.id, ok: false, error: 'Unauthorized Tidecode run-service client.' })
       return
+    }
+
+    if (parsed.method.startsWith('terminal') && 'params' in parsed) {
+      const clientId = typeof parsed.params === 'object'
+        && parsed.params !== null
+        && 'clientId' in parsed.params
+        && typeof parsed.params.clientId === 'string'
+        ? parsed.params.clientId
+        : null
+      if (clientId) {
+        const clientIds = this.terminalClientIdsBySocket.get(socket) ?? new Set<string>()
+        clientIds.add(clientId)
+        this.terminalClientIdsBySocket.set(socket, clientIds)
+        this.terminalBroker.touchClient(clientId)
+      }
     }
 
     try {
@@ -254,8 +283,11 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
         }
         case 'cancelStream': {
           const providerId = this.registry.getProviderByStreamId(parsed.params.streamId)
-          if (providerId === 'codex') await cancelCodexChatStream(parsed.params.streamId)
-          else if (providerId) await cancelApiKeyChatStream(parsed.params.streamId)
+          if (providerId === 'codex') {
+            await cancelCodexChatStream(parsed.params.streamId, parsed.params.cancellation)
+          } else if (providerId) {
+            await cancelApiKeyChatStream(parsed.params.streamId, parsed.params.cancellation)
+          }
           this.sendResponse(socket, { id: parsed.id, ok: true, result: null })
           return
         }
@@ -302,6 +334,63 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
           this.sendResponse(socket, { id: parsed.id, ok: true, result })
           return
         }
+        case 'terminalCreateSession':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: await this.terminalBroker.createSession(parsed.params),
+          })
+          return
+        case 'terminalAttachSession':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: this.terminalBroker.attach(parsed.params),
+          })
+          return
+        case 'terminalDetachSession':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: this.terminalBroker.detach(parsed.params),
+          })
+          return
+        case 'terminalListSessions':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: this.terminalBroker.listSessions(parsed.params.clientId),
+          })
+          return
+        case 'terminalGetSession':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: this.terminalBroker.getSession(parsed.params),
+          })
+          return
+        case 'terminalRead':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: await this.terminalBroker.read(parsed.params),
+          })
+          return
+        case 'terminalWrite':
+          await this.terminalBroker.write(parsed.params)
+          this.sendResponse(socket, { id: parsed.id, ok: true, result: null })
+          return
+        case 'terminalResize':
+          await this.terminalBroker.resize(parsed.params)
+          this.sendResponse(socket, { id: parsed.id, ok: true, result: null })
+          return
+        case 'terminalTerminate':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: await this.terminalBroker.terminate(parsed.params),
+          })
+          return
       }
     } catch (error) {
       this.sendResponse(socket, { id: parsed.id, ok: false, error: toErrorMessage(error) })
@@ -406,7 +495,8 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
       getStoredConversation(conversationId),
       listCompactionMarkers(conversationId),
     ])
-    if (!hasMinimumCompactionMessages(conversation?.messages ?? input.messages, compactionMarkers)) {
+    const compactionMessages = conversation?.messages ?? input.messages
+    if (!hasMinimumCompactionMessages(compactionMessages, compactionMarkers)) {
       throw new Error(`At least ${MIN_COMPACTION_MESSAGE_COUNT} conversation messages are required since the latest compaction boundary before compacting.`)
     }
     const existingState = this.compactionStateByConversationId.get(conversationId)
@@ -416,12 +506,23 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
 
     const attemptId = randomUUID()
     const streamId = randomUUID()
-    this.compactionStateByConversationId.set(conversationId, { attemptId, phase: 'compacting', streamId })
+    const afterMessageId = getCompactionAfterMessageId(compactionMessages)
+    const startedEvent = {
+      afterMessageId,
+      attemptId,
+      conversationId,
+      streamId,
+      type: 'compaction_started' as const,
+    }
+    const startedState = reduceChatCompactionStatus(existingState ?? null, startedEvent, conversationId)
+    if (startedState) {
+      this.compactionStateByConversationId.set(conversationId, startedState)
+    }
     this.emitGlobalEvent({
       type: 'compaction_event',
       seq: 0,
       conversationId,
-      event: { attemptId, conversationId, streamId, type: 'compaction_started' },
+      event: startedEvent,
     })
 
     try {
@@ -439,17 +540,26 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
         return result
       }
 
-      this.compactionStateByConversationId.set(conversationId, {
-        attemptId,
+      const committedEvent = {
+        afterMessageId,
         compactionId: result.packetId,
-        phase: 'compacted',
+        conversationId,
         streamId,
-      })
+        type: 'compaction_committed' as const,
+      }
+      const compactedState = reduceChatCompactionStatus(
+        this.compactionStateByConversationId.get(conversationId) ?? null,
+        committedEvent,
+        conversationId,
+      )
+      if (compactedState) {
+        this.compactionStateByConversationId.set(conversationId, compactedState)
+      }
       this.emitGlobalEvent({
         type: 'compaction_event',
         seq: 0,
         conversationId,
-        event: { compactionId: result.packetId, conversationId, streamId, type: 'compaction_committed' },
+        event: committedEvent,
       })
       return result
     } catch (error) {
@@ -580,11 +690,39 @@ getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedIn
         collector.handleEvent(event)
         latestSnapshot = latestSnapshot.length > 0 ? latestSnapshot : [...input.messages]
 
-        if (event.type === 'context_usage_updated') {
-          this.registry.updateContextUsage(createdRun.runId, event.usage)
+        let forwardedEvent = event
+        if (event.type === 'compaction_started' || event.type === 'compaction_committed') {
+          const currentCompaction = this.compactionStateByConversationId.get(conversationId) ?? null
+          const afterMessageId = event.afterMessageId
+            ?? (currentCompaction?.streamId === event.streamId ? currentCompaction.afterMessageId : null)
+            ?? getCompactionAfterMessageId([...sharedInput.messages, ...projection.messages])
+          forwardedEvent = { ...event, afterMessageId }
+          const nextCompaction = reduceChatCompactionStatus(currentCompaction, forwardedEvent, conversationId)
+          if (nextCompaction) {
+            this.compactionStateByConversationId.set(conversationId, nextCompaction)
+          } else {
+            this.compactionStateByConversationId.delete(conversationId)
+          }
+        } else if (
+          event.type === 'compaction_failed'
+          || event.type === 'completed'
+          || event.type === 'aborted'
+          || event.type === 'error'
+        ) {
+          const currentCompaction = this.compactionStateByConversationId.get(conversationId) ?? null
+          const nextCompaction = reduceChatCompactionStatus(currentCompaction, event, conversationId)
+          if (nextCompaction) {
+            this.compactionStateByConversationId.set(conversationId, nextCompaction)
+          } else {
+            this.compactionStateByConversationId.delete(conversationId)
+          }
         }
 
-        if (event.type === 'tool_invocation_decision_requested') {
+        if (forwardedEvent.type === 'context_usage_updated') {
+          this.registry.updateContextUsage(createdRun.runId, forwardedEvent.usage)
+        }
+
+        if (forwardedEvent.type === 'tool_invocation_decision_requested') {
           this.registry.updateStatus(createdRun.runId, 'waiting_for_input')
           this.emitRunState(createdRun.runId)
         } else if (
@@ -599,19 +737,19 @@ getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedIn
           type: 'chat_event',
           runId: createdRun.runId,
           conversationId,
-          event,
+          event: forwardedEvent,
           seq: 0,
         })
 
-        if (event.type === 'steer_messages_consumed') {
-          const snapshot = this.followUps.consume(event.streamId, event.messages.map((message) => message.id))
+        if (forwardedEvent.type === 'steer_messages_consumed') {
+          const snapshot = this.followUps.consume(forwardedEvent.streamId, forwardedEvent.messages.map((message) => message.id))
           if (snapshot) {
             this.syncProviderSteers(snapshot)
             this.emitFollowUps(snapshot)
           }
         }
 
-        const nextTerminalStatus = terminalStatusForEvent(event)
+        const nextTerminalStatus = terminalStatusForEvent(forwardedEvent)
         if (nextTerminalStatus) terminalStatus = nextTerminalStatus
       },
     }
@@ -722,6 +860,13 @@ getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedIn
   private emitGlobalEvent(event: TideCodeRunEvent) {
     const withSeq = { ...event, seq: ++this.nextConversationEventSeq } as TideCodeRunEvent
     const payload = `${JSON.stringify({ type: 'event', event: withSeq })}\n`
+    for (const client of this.clients) {
+      if (!client.destroyed) client.write(payload)
+    }
+  }
+
+  private emitTerminalEvent(event: import('../../src/types/chat').TerminalBrokerEvent) {
+    const payload = `${JSON.stringify({ type: 'terminal_event', event })}\n`
     for (const client of this.clients) {
       if (!client.destroyed) client.write(payload)
     }

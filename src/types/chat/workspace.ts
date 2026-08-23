@@ -182,10 +182,13 @@ export interface CreateTerminalSessionInput {
 
 export interface CreateTerminalSessionResult {
   bufferedOutput: string
+  brokerSessionId?: string
   cwd: string
   isReused: boolean
+  processId?: number | null
   sessionId: number
   shell: string
+  shellMetadata?: import('./terminalBroker').TerminalBrokerShellMetadata
   venvName?: string | null
   workspaceRootPath: string | null
 }
@@ -227,11 +230,14 @@ export interface OpenExternalTerminalLinkInput {
 }
 
 export interface TerminalDataEvent {
+  brokerSessionId?: string
+  cursor?: number
   data: string
   sessionId: number
 }
 
 export interface TerminalExitEvent {
+  brokerSessionId?: string
   exitCode: number
   sessionId: number
   signal: number | null

@@ -14,6 +14,7 @@ import {
   MAX_TERMINAL_WAIT_SECONDS,
   raceWithAbort,
   syncTerminalSessionOutput,
+  synchronizeBrokerOperation,
   throwIfAborted,
   type TerminalToolRuntime,
 } from "./terminalToolShared";
@@ -162,6 +163,7 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
         } while (Date.now() < deadline);
 
         const unreadOutput = drainUnreadTerminalOutput(session);
+        await synchronizeBrokerOperation(session, dependencies);
         const summary = buildTerminalCommandSummary(session, { includeScreen: true });
         const transcriptSummary = session.transcript.getSummary();
         const rawOutputText = unreadOutput.lines.map((line) => line.text).join("\n");
@@ -268,6 +270,8 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
           displayBody,
           semantics: {
             ...summary.semantics,
+            broker_session_id: session.brokerSessionId,
+            operation_id: session.brokerOperationId,
             active: summary.state === "running",
             input_sent: inputSent,
             is_daemon: session.isDaemon,

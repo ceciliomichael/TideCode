@@ -157,7 +157,12 @@ export async function attachCliToActiveSharedRun(
     screen.beginTurn(() => {
       if (!streamId) return
       screen.setActivity('thinking', 'Stopping')
-      void runService.cancelStream(streamId).catch((error) => {
+      void runService.cancelStream(streamId, {
+        policy: 'terminate',
+        reason: 'user_stop',
+        requestedAt: Date.now(),
+        surface: 'cli',
+      }).catch((error) => {
         screen.addNotice('error', 'Could not stop the turn: ' + (error instanceof Error ? error.message : String(error)))
       })
     }, {

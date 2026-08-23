@@ -9,6 +9,8 @@ import type {
   ResizeTerminalSessionInput,
   TerminalSessionOutputInput,
   WriteTerminalSessionInput,
+  TerminalBrokerOperationSnapshot,
+  TerminalBrokerOperationState,
 } from "../../../../src/types/chat";
 import type { AgentToolContext, AgentToolExecutionResult } from "../toolTypes";
 import type { TerminalSessionSnapshot } from "../../../terminal/service";
@@ -83,6 +85,10 @@ export function createTerminalSessionOwner(
 }
 
 export interface TerminalToolDependencies {
+  createOperation?: (
+    ownerWebContents: WebContents,
+    input: { command: string; cwd: string; sessionId: number; toolCallId?: string | null },
+  ) => Promise<TerminalBrokerOperationSnapshot>;
   createSession: (
     ownerWebContents: WebContents,
     input: CreateTerminalSessionInput,
@@ -100,6 +106,11 @@ export interface TerminalToolDependencies {
     turnId: string,
     workspaceRootPath: string,
   ) => void;
+  transitionOperation?: (
+    operationId: string,
+    state: TerminalBrokerOperationState,
+    update?: Partial<Pick<TerminalBrokerOperationSnapshot, "endCursor" | "exitCode" | "termination">>,
+  ) => Promise<TerminalBrokerOperationSnapshot>;
   terminateSession: (
     ownerWebContents: WebContents,
     sessionId: number,
@@ -126,6 +137,9 @@ export interface TerminalToolRuntime {
 export type TerminalCommandState = "completed" | "needs_interaction" | "running";
 
 export interface ThreadAiSession {
+  brokerOperationId: string | null;
+  brokerOperationState: TerminalBrokerOperationState | null;
+  brokerSessionId: string | null;
   command: string;
   commandComplete: boolean;
   commandExitCode: number | null;
@@ -232,17 +246,9 @@ export function createTerminalErrorResult(
   };
 }
 
-async function loadDefaultTerminalToolDependencies(): Promise<TerminalToolDependencies> {
-  const terminalService = await import("../../../terminal/service");
-  return {
-    consumeSessionOutput: terminalService.consumeTerminalSessionOutputForWebContents,
-    createSession: terminalService.createTerminalSessionForWebContents,
-    getSessionOutput: terminalService.getTerminalSessionOutputForWebContents,
-    resizeSession: terminalService.resizeTerminalSessionForWebContents,
-    terminateSession: terminalService.terminateSessionForWebContents,
-    terminateSessionsForTurn: terminalService.terminateAiSessionsForTurnForWebContents,
-    writeToSession: terminalService.writeToTerminalSessionForWebContents,
-  };
+async function loadDefaultTerminalToolDependencies(context: AgentToolContext): Promise<TerminalToolDependencies> {
+  const { createTerminalBrokerToolDependencies } = await import("./terminalBrokerAdapter");
+  return createTerminalBrokerToolDependencies(context);
 }
 
 export function createTerminalToolRuntime(
@@ -252,17 +258,21 @@ export function createTerminalToolRuntime(
   let resolvedDependencies: TerminalToolDependencies | null = null;
   const getDependencies = async () => {
     if (!resolvedDependencies) {
-      const defaults = await loadDefaultTerminalToolDependencies();
+      const defaults = await loadDefaultTerminalToolDependencies(context);
       resolvedDependencies = Object.freeze(Object.assign({}, defaults, {
         consumeSessionOutput:
           dependencies.consumeSessionOutput ?? defaults.consumeSessionOutput,
         createSession: dependencies.createSession ?? defaults.createSession,
+        createOperation: dependencies.createOperation
+          ?? (dependencies.createSession ? undefined : defaults.createOperation),
         getSessionOutput: dependencies.getSessionOutput ?? defaults.getSessionOutput,
         terminateSession: dependencies.terminateSession ?? defaults.terminateSession,
         writeToSession: dependencies.writeToSession ?? defaults.writeToSession,
         resizeSession: dependencies.resizeSession ?? defaults.resizeSession,
         terminateSessionsForTurn:
           dependencies.terminateSessionsForTurn ?? defaults.terminateSessionsForTurn,
+        transitionOperation: dependencies.transitionOperation
+          ?? (dependencies.createSession ? undefined : defaults.transitionOperation),
       }));
     }
     return resolvedDependencies;
@@ -754,6 +764,7 @@ export function resetThreadSessionForCommand(
 }
 
 export function createThreadAiSession(input: {
+  brokerSessionId?: string | null;
   cols: number;
   command: string;
   cwd: string;
@@ -766,6 +777,9 @@ export function createThreadAiSession(input: {
   shell: string;
 }) {
   const session: ThreadAiSession = {
+    brokerOperationId: null,
+    brokerOperationState: null,
+    brokerSessionId: input.brokerSessionId ?? null,
     command: input.command,
     commandComplete: false,
     commandExitCode: null,
@@ -787,6 +801,26 @@ export function createThreadAiSession(input: {
   };
   session.transcript.reset({ command: input.command, marker: input.marker });
   return session;
+}
+
+export async function synchronizeBrokerOperation(
+  session: ThreadAiSession,
+  dependencies: TerminalToolDependencies,
+) {
+  if (!session.brokerOperationId || !dependencies.transitionOperation) return;
+  const nextState: TerminalBrokerOperationState = session.commandComplete
+    ? session.commandExitCode !== null && session.commandExitCode !== 0
+      ? "command_failed"
+      : "completed"
+    : session.interaction
+      ? "needs_interaction"
+      : "running";
+  if (session.brokerOperationState === nextState) return;
+  const update = session.commandComplete
+    ? { exitCode: session.commandExitCode }
+    : undefined;
+  await dependencies.transitionOperation(session.brokerOperationId, nextState, update);
+  session.brokerOperationState = nextState;
 }
 
 export function drainUnreadTerminalOutput(session: ThreadAiSession) {
@@ -917,7 +951,11 @@ export async function terminateAllBackgroundSessions(
   const terminateSession = typeof conversationIdOrTerminate === "function"
     ? conversationIdOrTerminate
     : customTerminateSession;
-  const dependencies = terminateSession ? null : await loadDefaultTerminalToolDependencies();
+  const dependencies = terminateSession ? null : await loadDefaultTerminalToolDependencies({
+    conversationId: conversationId || null,
+    workspaceRootPath,
+    webContents,
+  });
   const namespaces = conversationId
     ? [`conversation:${conversationId}`]
     : Array.from(threadStores.keys());
@@ -962,7 +1000,11 @@ export async function terminateAllBackgroundSessionsForTurn(
 
   const namespace = `turn:${normalizedTurnId}`;
   const store = threadStores.get(namespace);
-  const dependencies = customTerminateSession ? null : await loadDefaultTerminalToolDependencies();
+  const dependencies = customTerminateSession ? null : await loadDefaultTerminalToolDependencies({
+    turnId: normalizedTurnId,
+    workspaceRootPath,
+    webContents,
+  });
 
   try {
     if (store) {
@@ -987,4 +1029,15 @@ export async function terminateAllBackgroundSessionsForTurn(
   } finally {
     threadStores.delete(namespace);
   }
+}
+
+export function releaseTerminalToolStateForTurn(turnId: string) {
+  const normalizedTurnId = turnId.trim();
+  if (!normalizedTurnId) return;
+  const namespace = `turn:${normalizedTurnId}`;
+  const store = threadStores.get(namespace);
+  if (store) {
+    for (const session of store.sessions.values()) session.screen.dispose();
+  }
+  threadStores.delete(namespace);
 }

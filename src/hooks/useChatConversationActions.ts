@@ -202,7 +202,12 @@ export function useChatConversationActions(input: UseChatConversationActionsInpu
 
       if (conversationState?.activeStreamId) {
         try {
-          await window.tidecodeChat.cancelStream(conversationState.activeStreamId)
+          await window.tidecodeChat.cancelStream(conversationState.activeStreamId, {
+            policy: 'terminate',
+            reason: 'conversation_delete',
+            requestedAt: Date.now(),
+            surface: 'desktop',
+          })
         } catch (caughtError) {
           console.error(caughtError)
           setError('Unable to stop the current thread task before deleting it.')

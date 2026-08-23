@@ -24,6 +24,18 @@ import type {
   UpdateSharedFollowUpsInput,
   UpdatePendingSteerMessagesInput,
   UpdatePendingSteerMessagesResult,
+  TerminalBrokerAttachInput,
+  TerminalBrokerAttachResult,
+  TerminalBrokerCreateSessionInput,
+  TerminalBrokerCreateSessionResult,
+  TerminalBrokerEvent,
+  TerminalBrokerReadInput,
+  TerminalBrokerResizeInput,
+  TerminalBrokerSessionReference,
+  TerminalBrokerSessionSnapshot,
+  TerminalBrokerTerminateInput,
+  TerminalBrokerWriteInput,
+  ChatStreamCancellation,
 } from '../../src/types/chat'
 import {
   RUN_SERVICE_PROTOCOL_VERSION,
@@ -50,6 +62,8 @@ export class TideCodeRunServiceClient {
   private connectPromise: Promise<void> | null = null
   private readonly pending = new Map<string, PendingRequest>()
   private readonly eventListeners = new Set<(event: TideCodeRunEvent) => void>()
+  private readonly terminalEventListeners = new Set<(event: TerminalBrokerEvent) => void>()
+  readonly terminalClientId = randomUUID()
   private buffered = ''
   private token = ''
 
@@ -114,6 +128,11 @@ export class TideCodeRunServiceClient {
     return () => this.eventListeners.delete(listener)
   }
 
+  onTerminalEvent(listener: (event: TerminalBrokerEvent) => void) {
+    this.terminalEventListeners.add(listener)
+    return () => this.terminalEventListeners.delete(listener)
+  }
+
   async getCompactionState(conversationId: string) {
     await this.connect()
     return this.requestRaw<ChatCompactionLifecycleState | null>('getCompactionState', { conversationId })
@@ -164,9 +183,14 @@ export class TideCodeRunServiceClient {
     return this.requestRaw<StartChatStreamResult>('startStream', input)
   }
 
-  async cancelStream(streamId: string) {
+  async cancelStream(streamId: string, cancellation: ChatStreamCancellation = {
+    policy: 'terminate',
+    reason: 'user_stop',
+    requestedAt: Date.now(),
+    surface: 'desktop',
+  }) {
     await this.connect()
-    await this.requestRaw<null>('cancelStream', { streamId })
+    await this.requestRaw<null>('cancelStream', { cancellation, streamId })
   }
 
   async updatePendingSteerMessages(input: UpdatePendingSteerMessagesInput) {
@@ -192,6 +216,71 @@ export class TideCodeRunServiceClient {
   async updateConversationRuntime(input: UpdateConversationRuntimeInput) {
     await this.connect()
     return this.requestRaw<SharedConversationRuntimeSnapshot>('updateConversationRuntime', input)
+  }
+
+  async terminalCreateSession(input: Omit<TerminalBrokerCreateSessionInput, 'clientId'>) {
+    await this.connect()
+    return this.requestRaw<TerminalBrokerCreateSessionResult>('terminalCreateSession', {
+      ...input,
+      clientId: this.terminalClientId,
+    })
+  }
+
+  async terminalAttachSession(input: Omit<TerminalBrokerAttachInput, 'clientId'>) {
+    await this.connect()
+    return this.requestRaw<TerminalBrokerAttachResult>('terminalAttachSession', {
+      ...input,
+      clientId: this.terminalClientId,
+    })
+  }
+
+  async terminalDetachSession(input: Omit<TerminalBrokerSessionReference, 'clientId'>) {
+    await this.connect()
+    return this.requestRaw<TerminalBrokerSessionSnapshot>('terminalDetachSession', {
+      ...input,
+      clientId: this.terminalClientId,
+    })
+  }
+
+  async terminalListSessions() {
+    await this.connect()
+    return this.requestRaw<TerminalBrokerSessionSnapshot[]>('terminalListSessions', {
+      clientId: this.terminalClientId,
+    })
+  }
+
+  async terminalGetSession(input: Omit<TerminalBrokerSessionReference, 'clientId'>) {
+    await this.connect()
+    return this.requestRaw<TerminalBrokerSessionSnapshot>('terminalGetSession', {
+      ...input,
+      clientId: this.terminalClientId,
+    })
+  }
+
+  async terminalRead(input: Omit<TerminalBrokerReadInput, 'clientId'>) {
+    await this.connect()
+    return this.requestRaw<TerminalBrokerAttachResult>('terminalRead', {
+      ...input,
+      clientId: this.terminalClientId,
+    })
+  }
+
+  async terminalWrite(input: Omit<TerminalBrokerWriteInput, 'clientId'>) {
+    await this.connect()
+    await this.requestRaw<null>('terminalWrite', { ...input, clientId: this.terminalClientId })
+  }
+
+  async terminalResize(input: Omit<TerminalBrokerResizeInput, 'clientId'>) {
+    await this.connect()
+    await this.requestRaw<null>('terminalResize', { ...input, clientId: this.terminalClientId })
+  }
+
+  async terminalTerminate(input: Omit<TerminalBrokerTerminateInput, 'clientId'>) {
+    await this.connect()
+    return this.requestRaw<TerminalBrokerSessionSnapshot>('terminalTerminate', {
+      ...input,
+      clientId: this.terminalClientId,
+    })
   }
 
   close() {
@@ -231,6 +320,12 @@ export class TideCodeRunServiceClient {
 
       if ('type' in message && message.type === 'event') {
         for (const listener of this.eventListeners) listener(message.event)
+        continue
+      }
+      if ('type' in message && message.type === 'terminal_event') {
+        if (message.event.clientIds.includes(this.terminalClientId)) {
+          for (const listener of this.terminalEventListeners) listener(message.event)
+        }
         continue
       }
 

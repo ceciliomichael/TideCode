@@ -9,6 +9,18 @@ import type {
 } from './conversations'
 import type { ChatProviderId, ReasoningEffort } from './providers'
 import type { AppTerminalExecutionMode } from './settings'
+import type {
+  TerminalBrokerClientKind,
+  TerminalCancellationPolicy,
+  TerminalCancellationReason,
+} from './terminalBroker'
+
+export interface ChatStreamCancellation {
+  policy: TerminalCancellationPolicy
+  reason: TerminalCancellationReason
+  requestedAt: number
+  surface: TerminalBrokerClientKind
+}
 
 export interface StartChatStreamInput {
   agentContextRootPath: string
@@ -95,11 +107,13 @@ export interface ChatCompactionMarker {
 
 export type ChatCompactionLifecycleState =
   | {
+      afterMessageId: string | null
       attemptId: string
       phase: 'compacting'
       streamId: string
     }
   | {
+      afterMessageId: string | null
       attemptId: string
       compactionId: string
       phase: 'compacted'
@@ -120,12 +134,14 @@ export type ChatStreamEvent =
       usage: ContextUsageEstimate
     }
   | {
+      afterMessageId?: string | null
       attemptId: string
       conversationId: string
       streamId: string
       type: 'compaction_started'
     }
   | {
+      afterMessageId?: string | null
       compactionId: string
       conversationId: string
       streamId: string

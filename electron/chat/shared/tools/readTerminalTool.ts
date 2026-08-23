@@ -12,6 +12,7 @@ import {
   getThreadSession,
   MAX_TERMINAL_WAIT_SECONDS,
   syncTerminalSessionOutput,
+  synchronizeBrokerOperation,
   type TerminalToolRuntime,
 } from "./terminalToolShared";
 
@@ -85,6 +86,7 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
         } while (Date.now() < deadline);
 
         const unreadOutput = drainUnreadTerminalOutput(session);
+        await synchronizeBrokerOperation(session, dependencies);
         const commandSummary = buildTerminalCommandSummary(session);
         const transcriptSummary = session.transcript.getSummary();
         const waitedSeconds = waitMilliseconds / 1_000;
@@ -174,7 +176,9 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
           semantics: {
             ...commandSummary.semantics,
             active: commandSummary.state === "running",
+            broker_session_id: session.brokerSessionId,
             new_output_line_count: unreadOutput.lines.length,
+            operation_id: session.brokerOperationId,
             next_unread_line: session.nextUnreadLine,
             output_evicted: unreadOutput.skippedEvictedLines,
             status,

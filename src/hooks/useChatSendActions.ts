@@ -343,7 +343,16 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
   )
 
   const abortActiveStreamIfNeeded = useCallback(
-    async (options?: { requestAbortBeforeStreamStart?: boolean }) => {
+    async (options?: {
+      cancellationReason?: import('../types/chat').TerminalCancellationReason
+      requestAbortBeforeStreamStart?: boolean
+    }) => {
+      const cancellation = {
+        policy: 'terminate' as const,
+        reason: options?.cancellationReason ?? 'user_stop' as const,
+        requestedAt: Date.now(),
+        surface: 'desktop' as const,
+      }
       const selectedConversationId = readChatSelectionFromRefs(input).activeConversationId
       const isAttachedSharedRun = selectedConversationId
         ? Boolean(getConversationState(selectedConversationId)?.sharedRunId)
@@ -397,7 +406,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
               const currentState = getConversationState(conversationId)
               const registeredStreamId = currentState?.activeStreamId ?? null
               if (registeredStreamId) {
-                await window.tidecodeChat.cancelStream(registeredStreamId)
+                await window.tidecodeChat.cancelStream(registeredStreamId, cancellation)
                 break
               }
               if (!currentState?.isSending) {
@@ -423,7 +432,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
 
         const streamId = conversationState.activeStreamId ?? null
         if (streamId) {
-          await window.tidecodeChat.cancelStream(streamId)
+          await window.tidecodeChat.cancelStream(streamId, cancellation)
         }
 
         await waitForConversationRunState(
@@ -488,9 +497,12 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           beginSuppressingActiveRunComposerRestore()
           try {
             if (hasActiveRun) {
-              await abortActiveStreamIfNeeded({ requestAbortBeforeStreamStart: true })
+              await abortActiveStreamIfNeeded({
+                cancellationReason: 'message_revert',
+                requestAbortBeforeStreamStart: true,
+              })
             } else {
-              await abortActiveStreamIfNeeded()
+              await abortActiveStreamIfNeeded({ cancellationReason: 'message_revert' })
             }
           } finally {
             clearSuppressionIfRunSettled()
@@ -511,8 +523,11 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
             },
             abortActiveRun: () =>
               hasActiveRun
-                ? abortActiveStreamIfNeeded({ requestAbortBeforeStreamStart: true })
-                : abortActiveStreamIfNeeded(),
+                ? abortActiveStreamIfNeeded({
+                    cancellationReason: 'message_revert',
+                    requestAbortBeforeStreamStart: true,
+                  })
+                : abortActiveStreamIfNeeded({ cancellationReason: 'message_revert' }),
             rollbackPersistedTurn: async () => {
               if (!pendingUserMessage) {
                 return
@@ -543,9 +558,12 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       beginSuppressingActiveRunComposerRestore()
       try {
         if (hasActiveRun) {
-          await abortActiveStreamIfNeeded({ requestAbortBeforeStreamStart: true })
+          await abortActiveStreamIfNeeded({
+            cancellationReason: 'message_revert',
+            requestAbortBeforeStreamStart: true,
+          })
         } else {
-          await abortActiveStreamIfNeeded()
+          await abortActiveStreamIfNeeded({ cancellationReason: 'message_revert' })
         }
       } finally {
         clearSuppressionIfRunSettled()

@@ -14,6 +14,7 @@ export function reduceChatCompactionStatus(
 
   if (event.type === 'compaction_started') {
     return {
+      afterMessageId: event.afterMessageId ?? null,
       attemptId: event.attemptId,
       phase: 'compacting',
       streamId: event.streamId,
@@ -21,8 +22,10 @@ export function reduceChatCompactionStatus(
   }
 
   if (event.type === 'compaction_committed') {
+    const matchingStatus = currentStatus?.streamId === event.streamId ? currentStatus : null
     return {
-      attemptId: currentStatus?.attemptId ?? event.compactionId,
+      afterMessageId: event.afterMessageId ?? matchingStatus?.afterMessageId ?? null,
+      attemptId: matchingStatus?.attemptId ?? event.compactionId,
       compactionId: event.compactionId,
       phase: 'compacted',
       streamId: event.streamId,

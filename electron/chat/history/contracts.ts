@@ -1,4 +1,4 @@
-import type { ChatProviderId } from '../../../src/types/chat'
+import type { ChatProviderId, ChatStreamCancellation } from '../../../src/types/chat'
 
 export const CANONICAL_HISTORY_SCHEMA = 'tidecode.canonical_history/v1' as const
 export const REPLAY_CODEC_SCHEMA = 'tidecode.replay_value/v1' as const
@@ -88,6 +88,7 @@ export type CanonicalHistoryEvent =
       type: 'run_completed'
     })
   | (CanonicalHistoryEventBase & {
+      cancellation?: ChatStreamCancellation
       reason: string
       type: 'run_aborted' | 'run_failed'
     })

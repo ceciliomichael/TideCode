@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { loadGitBranchState, prefetchGitBranchStates } from '../lib/gitBranchStateCache'
 import { prefetchGitStatuses } from '../lib/gitStatusCache'
+import { createSingleFlightTask, type SingleFlightTask } from '../lib/singleFlightTask'
 import { loadInitialChatHistory } from './chatHistoryWorkflows'
 
 interface UseInitializeChatHistoryInput {
@@ -23,23 +24,25 @@ export function useInitializeChatHistory(input: UseInitializeChatHistoryInput) {
     setError,
     setIsLoading,
   } = input
-  const didStartInitializationRef = useRef(false)
+  const initializationTaskRef = useRef<SingleFlightTask<Awaited<ReturnType<typeof loadInitialChatHistory>>> | null>(null)
 
   useEffect(() => {
-    if (!enabled || didStartInitializationRef.current) {
+    if (!enabled) {
       return
     }
 
-    didStartInitializationRef.current = true
     let isMounted = true
 
     async function initializeConversations() {
       try {
-        const snapshot = await loadInitialChatHistory(
-          preferredConversationId,
-          openEmptyConversationOnLaunch,
-          preferredDraftFolderId,
+        initializationTaskRef.current ??= createSingleFlightTask(() =>
+          loadInitialChatHistory(
+            preferredConversationId,
+            openEmptyConversationOnLaunch,
+            preferredDraftFolderId,
+          ),
         )
+        const snapshot = await initializationTaskRef.current.run()
         const initialWorkspacePath = snapshot.initialConversation?.agentContextRootPath ?? null
 
         if (!isMounted) {

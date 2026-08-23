@@ -10,6 +10,7 @@ import {
 } from 'ai'
 import type {
   ContextUsageEstimate,
+  ChatStreamCancellation,
   Message,
   StartChatStreamInput,
 } from '../../../src/types/chat'
@@ -54,8 +55,8 @@ import { isUnsupportedImageInputError, resolveModelImageInputSupport } from './m
 import { appendStoredMessages } from '../../history/store'
 import { createAgentToolBundle } from './tools'
 import type { CodeModeExecutor } from './codeMode/executor'
-import { terminateAllBackgroundSessionsForTurn } from './tools/terminalTools'
-import { createTerminalSessionOwner } from './tools/terminalToolShared'
+import { createTerminalSessionOwner, releaseTerminalToolStateForTurn } from './tools/terminalToolShared'
+import { getTerminalBroker } from '../../terminal/broker/instance'
 import { sortToolSet } from './runtimeToolSet'
 import { continueToolLoopUntilModelStops } from './toolLoopPolicy'
 import { normalizeWorkspacePath } from '../../workspace/paths'
@@ -80,6 +81,27 @@ export { estimateToolEnabledContextUsage } from './runtimeContextUsage'
 interface RuntimePromptOptions {
   includeAssistantReasoningParts?: boolean
   includeImageAttachments?: boolean
+}
+
+function resolveStreamCancellation(signal: AbortSignal): ChatStreamCancellation {
+  const reason = signal.reason
+  if (reason && typeof reason === 'object') {
+    const candidate = reason as Partial<ChatStreamCancellation>
+    if (
+      typeof candidate.reason === 'string'
+      && typeof candidate.surface === 'string'
+      && typeof candidate.policy === 'string'
+      && typeof candidate.requestedAt === 'number'
+    ) {
+      return candidate as ChatStreamCancellation
+    }
+  }
+  return {
+    policy: 'terminate',
+    reason: 'unknown',
+    requestedAt: Date.now(),
+    surface: 'system',
+  }
 }
 
 export interface ProviderStreamFactoryInput {
@@ -146,6 +168,7 @@ export async function runToolEnabledChatStream(input: {
   let codeModeExecutor: CodeModeExecutor | null = null
   let terminalOwner: WebContents | null = null
   let runWasRecorded = false
+  let terminalOutcome: 'completed' | 'failed' = 'failed'
   let queuedHistoryWrites = Promise.resolve()
   const queueHistoryWrite = (action: () => Promise<unknown>) => {
     queuedHistoryWrites = queuedHistoryWrites.then(() => safelyPersistHistory(action))
@@ -711,14 +734,19 @@ export async function runToolEnabledChatStream(input: {
       streamId: input.streamId,
       type: 'completed',
     })
+    terminalOutcome = 'completed'
   } catch (error) {
     await queuedHistoryWrites
     if (conversationId && runWasRecorded) {
+      const cancellation = input.abortController.signal.aborted
+        ? resolveStreamCancellation(input.abortController.signal)
+        : undefined
       await safelyPersistHistory(() => recordRunTerminal(
         conversationId,
         runId,
         input.abortController.signal.aborted ? 'run_aborted' : 'run_failed',
         error instanceof Error ? error.message : String(error),
+        cancellation,
       ))
     }
     if (input.abortController.signal.aborted) {
@@ -737,11 +765,27 @@ export async function runToolEnabledChatStream(input: {
     }
   } finally {
     if (workspaceRootPath) {
-      await terminateAllBackgroundSessionsForTurn(
-        terminalOwner ?? input.webContents,
-        workspaceRootPath,
+      const cancellation = input.abortController.signal.aborted
+        ? resolveStreamCancellation(input.abortController.signal)
+        : terminalOutcome === 'completed'
+          ? {
+              policy: 'terminate' as const,
+              reason: 'run_completed' as const,
+              requestedAt: Date.now(),
+              surface: 'system' as const,
+            }
+          : {
+              policy: 'terminate_after_grace' as const,
+              reason: 'provider_failure' as const,
+              requestedAt: Date.now(),
+              surface: 'system' as const,
+            }
+      await getTerminalBroker().applyRunCancellation(runId, {
+        ...cancellation,
+        conversationId,
         runId,
-      ).catch(() => undefined)
+      }).catch(() => undefined)
+      releaseTerminalToolStateForTurn(runId)
     }
     await codeModeExecutor?.dispose().catch(() => undefined)
   }

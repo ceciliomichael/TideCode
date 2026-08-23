@@ -18,8 +18,14 @@ import { WorkingBlock } from "./chat/WorkingBlock";
 import { CompactionDivider } from "./chat/CompactionDivider";
 import { PlanImplementationDivider } from "./chat/PlanImplementationDivider";
 import { PlanRevisionDivider } from "./chat/PlanRevisionDivider";
-import { splitFinishedAssistantRun } from './chat/assistantWorkGrouping';
+import { hasAssistantWork, splitFinishedAssistantRun } from './chat/assistantWorkGrouping';
+import {
+  buildAssistantWorkTimeline,
+  type AssistantWorkCompactionBoundary,
+  type AssistantWorkTimelineEntry,
+} from './chat/assistantWorkTimeline';
 import { placeCompactionMarkersAfterTranscript } from './chat/compactionMarkerPlacement';
+import { resolveLiveCompactionPlacement } from './chat/liveCompactionPlacement';
 import { useChatAutoScroll } from "./chat/useChatAutoScroll";
 import type { ChatModeOption } from "./chat/ChatModeSelectorField";
 import type { ModelSelectorOption } from "./chat/ModelSelectorField";
@@ -340,7 +346,15 @@ export function MessageList({
       | { type: 'plan_status_divider'; kind: 'implementation' | 'revision'; messageId: string }
       | { type: 'compaction_marker'; marker: ChatCompactionMarker }
       | { type: 'live_compaction'; status: ChatCompactionLifecycleState }
-      | { type: 'working_group'; messages: Message[]; trailingMessage?: { message: Message, index: number }; startTime: number; endTime: number; startIndex: number; key: string };
+      | {
+          type: 'working_group';
+          entries: AssistantWorkTimelineEntry[];
+          messages: Message[];
+          trailingMessage?: { message: Message, index: number };
+          startTime: number;
+          endTime: number;
+          key: string;
+        };
 
     const items: RenderItem[] = [];
     const markerPlacement = placeCompactionMarkersAfterTranscript(visibleMessages, compactionMarkers, {
@@ -350,29 +364,13 @@ export function MessageList({
       compactionMarkers.some((marker) => marker.compactionId === liveCompaction.compactionId);
     const shouldRenderLiveCompaction = liveCompaction?.phase === 'compacting' ||
       (liveCompaction?.phase === 'compacted' && !liveCompactionMarkerIsPersisted);
+    const liveCompactionPlacement = shouldRenderLiveCompaction
+      ? resolveLiveCompactionPlacement(visibleMessages, liveCompaction)
+      : null;
     let liveCompactionInserted = false;
     let currentAssistantRun: Message[] = [];
+    let currentAssistantRunBoundaries: AssistantWorkCompactionBoundary[] = [];
     let currentAssistantRunStartIndex = -1;
-
-    const isStreamingMessage = (message: Message) => (
-      streamingAssistantMessageId !== null &&
-      (message.id === streamingAssistantMessageId || message.id.startsWith(`${streamingAssistantMessageId}-`))
-    );
-
-    const insertLiveCompaction = () => {
-      if (!shouldRenderLiveCompaction || !liveCompaction || liveCompactionInserted) {
-        return;
-      }
-
-      if (currentAssistantRun.length > 0) {
-        processFinishedAssistantRun();
-        currentAssistantRun = [];
-        currentAssistantRunStartIndex = -1;
-      }
-
-      items.push({ status: liveCompaction, type: 'live_compaction' });
-      liveCompactionInserted = true;
-    };
 
     const getWorkEndTime = (msg: Message): number => {
       let endTime = msg.timestamp;
@@ -389,20 +387,58 @@ export function MessageList({
       return endTime;
     };
 
+    const getTimelineEndTime = (
+      workMessages: readonly Message[],
+      boundaries: readonly AssistantWorkCompactionBoundary[],
+    ) => {
+      let endTime = getWorkEndTime(workMessages[workMessages.length - 1]);
+      for (const boundary of boundaries) {
+        if (boundary.type === 'compaction_marker') {
+          endTime = Math.max(endTime, boundary.marker.createdAt);
+        }
+      }
+      return endTime;
+    };
+
+    const pushCompactionBoundary = (boundary: AssistantWorkCompactionBoundary) => {
+      if (boundary.type === 'compaction_marker') {
+        items.push({ marker: boundary.marker, type: 'compaction_marker' });
+      } else {
+        items.push({ status: boundary.status, type: 'live_compaction' });
+      }
+    };
+
+    const resetCurrentAssistantRun = () => {
+      currentAssistantRun = [];
+      currentAssistantRunBoundaries = [];
+      currentAssistantRunStartIndex = -1;
+    };
+
     const processFinishedAssistantRun = () => {
       if (currentAssistantRun.length === 0) return;
 
       const assistantRun = currentAssistantRun;
+      const assistantRunBoundaries = currentAssistantRunBoundaries;
       const assistantRunStartIndex = currentAssistantRunStartIndex;
-      currentAssistantRun = [];
-      currentAssistantRunStartIndex = -1;
+      resetCurrentAssistantRun();
 
       const presentation = splitFinishedAssistantRun(assistantRun);
       const lastMessageIndex = assistantRunStartIndex + assistantRun.length - 1;
 
       if (presentation.workingMessages.length > 0) {
+        const timeline = buildAssistantWorkTimeline(
+          presentation.workingMessages,
+          assistantRunStartIndex,
+          assistantRunBoundaries,
+        );
+        const inlineBoundaryCount = assistantRunBoundaries.length - timeline.overflowBoundaries.length;
+        const inlineBoundaries = inlineBoundaryCount > 0
+          ? assistantRunBoundaries.filter((boundary) => boundary.afterMessageCount <= presentation.workingMessages.length)
+          : [];
+
         items.push({
           type: 'working_group',
+          entries: timeline.entries,
           messages: presentation.workingMessages,
           trailingMessage: presentation.trailingMessage
             ? {
@@ -411,18 +447,69 @@ export function MessageList({
               }
             : undefined,
           startTime: presentation.workingMessages[0].timestamp,
-          endTime: getWorkEndTime(presentation.workingMessages[presentation.workingMessages.length - 1]),
-          startIndex: assistantRunStartIndex,
+          endTime: getTimelineEndTime(presentation.workingMessages, inlineBoundaries),
           key: `wg-${presentation.workingMessages[0].id}`,
         });
-      } else if (presentation.trailingMessage) {
-        items.push({
-          type: 'message',
-          message: presentation.trailingMessage,
-          index: lastMessageIndex,
-        });
+
+        for (const boundary of timeline.overflowBoundaries) {
+          pushCompactionBoundary(boundary);
+        }
+      } else {
+        if (presentation.trailingMessage) {
+          items.push({
+            type: 'message',
+            message: presentation.trailingMessage,
+            index: lastMessageIndex,
+          });
+        }
+        for (const boundary of assistantRunBoundaries) {
+          pushCompactionBoundary(boundary);
+        }
+      }
+    };
+
+    const processStreamingAssistantRun = () => {
+      if (currentAssistantRun.length === 0) return;
+
+      const assistantRun = currentAssistantRun;
+      const assistantRunBoundaries = currentAssistantRunBoundaries;
+      const assistantRunStartIndex = currentAssistantRunStartIndex;
+      resetCurrentAssistantRun();
+      const timeline = buildAssistantWorkTimeline(assistantRun, assistantRunStartIndex, assistantRunBoundaries);
+
+      items.push({
+        type: 'working_group',
+        entries: timeline.entries,
+        messages: assistantRun,
+        startTime: assistantRun[0].timestamp,
+        endTime: getTimelineEndTime(assistantRun, assistantRunBoundaries),
+        key: `wg-${assistantRun[0].id}`,
+      });
+
+      for (const boundary of timeline.overflowBoundaries) {
+        pushCompactionBoundary(boundary);
+      }
+    };
+
+    const insertLiveCompaction = (allowInline: boolean) => {
+      if (!shouldRenderLiveCompaction || !liveCompaction || liveCompactionInserted) {
+        return;
       }
 
+      const boundary: AssistantWorkCompactionBoundary = {
+        afterMessageCount: currentAssistantRun.length,
+        status: liveCompaction,
+        type: 'live_compaction',
+      };
+      if (allowInline && currentAssistantRun.length > 0 && hasAssistantWork(currentAssistantRun)) {
+        currentAssistantRunBoundaries.push(boundary);
+      } else {
+        if (currentAssistantRun.length > 0) {
+          processFinishedAssistantRun();
+        }
+        pushCompactionBoundary(boundary);
+      }
+      liveCompactionInserted = true;
     };
 
     for (let i = 0; i < visibleMessages.length; i++) {
@@ -430,29 +517,36 @@ export function MessageList({
       const markersBeforeMessage = markerPlacement.markersBeforeMessageId.get(msg.id) ?? [];
 
       if (markersBeforeMessage.length > 0) {
-        if (currentAssistantRun.length > 0) {
-          processFinishedAssistantRun();
-          currentAssistantRun = [];
-          currentAssistantRunStartIndex = -1;
-        }
+        const canInlineMarkers =
+          msg.role === 'assistant' &&
+          currentAssistantRun.length > 0 &&
+          hasAssistantWork(currentAssistantRun);
 
-        for (const marker of markersBeforeMessage) {
-          items.push({ marker, type: 'compaction_marker' });
+        if (canInlineMarkers) {
+          for (const marker of markersBeforeMessage) {
+            currentAssistantRunBoundaries.push({
+              afterMessageCount: currentAssistantRun.length,
+              marker,
+              type: 'compaction_marker',
+            });
+          }
+        } else {
+          if (currentAssistantRun.length > 0) {
+            processFinishedAssistantRun();
+          }
+          for (const marker of markersBeforeMessage) {
+            items.push({ marker, type: 'compaction_marker' });
+          }
         }
       }
 
-      // A compaction is a transcript boundary. Put it immediately before the
-      // assistant draft that resumes after the boundary so its waiting state
-      // is rendered underneath the divider rather than above it.
-      if (isStreamingMessage(msg)) {
-        insertLiveCompaction();
+      if (liveCompactionPlacement?.beforeMessageId === msg.id) {
+        insertLiveCompaction(msg.role === 'assistant');
       }
 
       if (isPlanImplementationMessage(msg) || isPlanRevisionMessage(msg)) {
         if (currentAssistantRun.length > 0) {
           processFinishedAssistantRun();
-          currentAssistantRun = [];
-          currentAssistantRunStartIndex = -1;
         }
 
         items.push({
@@ -466,8 +560,6 @@ export function MessageList({
       if (msg.role === 'user') {
         if (currentAssistantRun.length > 0) {
           processFinishedAssistantRun();
-          currentAssistantRun = [];
-          currentAssistantRunStartIndex = -1;
         }
         items.push({ type: 'message', message: msg, index: i });
       } else {
@@ -478,10 +570,16 @@ export function MessageList({
       }
     }
 
+    if (liveCompactionPlacement?.trailing && !liveCompactionInserted) {
+      insertLiveCompaction(true);
+    }
+
     if (currentAssistantRun.length > 0) {
       const isFinished = !isConversationStreaming;
       if (isFinished) {
         processFinishedAssistantRun();
+      } else if (currentAssistantRunBoundaries.length > 0) {
+        processStreamingAssistantRun();
       } else {
         for (let j = 0; j < currentAssistantRun.length; j++) {
           items.push({
@@ -495,10 +593,6 @@ export function MessageList({
 
     for (const marker of markerPlacement.trailingMarkers) {
       items.push({ marker, type: 'compaction_marker' });
-    }
-
-    if (shouldRenderLiveCompaction && !liveCompactionInserted) {
-      insertLiveCompaction();
     }
     
     return items;
@@ -650,7 +744,25 @@ export function MessageList({
                   endTime={item.endTime}
                   isStreaming={isWorkingGroupStreaming}
                 >
-                  {item.messages.map((msg, idx) => renderMessageRow(msg, item.startIndex + idx))}
+                  {item.entries.map((entry) => {
+                    if (entry.type === 'message') {
+                      return renderMessageRow(entry.message, entry.index);
+                    }
+                    if (entry.type === 'compaction_marker') {
+                      return (
+                        <CompactionDivider
+                          key={`compaction-${entry.marker.compactionId}`}
+                          marker={entry.marker}
+                        />
+                      );
+                    }
+                    return (
+                      <CompactionDivider
+                        key={`live-compaction-${entry.status.phase}-${entry.status.phase === 'compacting' ? entry.status.attemptId : entry.status.compactionId}`}
+                        phase={entry.status.phase}
+                      />
+                    );
+                  })}
                 </WorkingBlock>
                 {item.trailingMessage ? renderMessageRow(item.trailingMessage.message, item.trailingMessage.index) : null}
               </div>

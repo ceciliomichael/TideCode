@@ -190,7 +190,7 @@ export interface TideCodeModelsApi {
 }
 
 export interface TideCodeChatApi {
-  cancelStream: (streamId: string) => Promise<void>
+  cancelStream: (streamId: string, cancellation?: import('./runtime').ChatStreamCancellation) => Promise<void>
   compactConversation: (input: CompactConversationInput) => Promise<CompactConversationResult>
   estimateContextUsage: (input: EstimateContextUsageInput) => Promise<ContextUsageEstimate>
   onStreamEvent: (listener: (event: ChatStreamEvent) => void) => () => void
@@ -248,8 +248,18 @@ export interface KanbanBoardChangeEvent {
 }
 
 export interface TideCodeTerminalApi {
+  attachSession: (
+    input: Omit<import('./terminalBroker').TerminalBrokerAttachInput, 'clientId'>,
+  ) => Promise<import('./terminalBroker').TerminalBrokerAttachResult>
   closeSession: (input: CloseTerminalSessionInput) => Promise<void>
   createSession: (input: CreateTerminalSessionInput) => Promise<CreateTerminalSessionResult>
+  detachSession: (
+    input: Omit<import('./terminalBroker').TerminalBrokerSessionReference, 'clientId'>,
+  ) => Promise<import('./terminalBroker').TerminalBrokerSessionSnapshot>
+  getSession: (
+    input: Omit<import('./terminalBroker').TerminalBrokerSessionReference, 'clientId'>,
+  ) => Promise<import('./terminalBroker').TerminalBrokerSessionSnapshot>
+  listSessions: () => Promise<import('./terminalBroker').TerminalBrokerSessionSnapshot[]>
   openExternalLink: (input: OpenExternalTerminalLinkInput) => Promise<void>
   onData: (listener: (event: TerminalDataEvent) => void) => () => void
   onExit: (listener: (event: TerminalExitEvent) => void) => () => void
