@@ -12,4 +12,3 @@ export async function shutdownTerminalBroker() {
   terminalBroker = null
   await current?.shutdown()
 }
-

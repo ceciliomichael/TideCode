@@ -85,4 +85,3 @@ export function terminatePtyProcessTree(
     terminated: processId === null || !isProcessAlive(processId),
   }
 }
-

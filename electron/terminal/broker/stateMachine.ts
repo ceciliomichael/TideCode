@@ -67,4 +67,3 @@ export function isTerminalOperationFinal(state: TerminalBrokerOperationState) {
     || state === 'terminated'
     || state === 'session_lost'
 }
-
