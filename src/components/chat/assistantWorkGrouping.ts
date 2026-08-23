@@ -6,6 +6,16 @@ export interface FinishedAssistantRunPresentation {
   workingMessages: Message[]
 }
 
+export function hasAssistantWork(messages: readonly Message[]) {
+  return messages.some((message) => {
+    const normalizedContent = normalizeAssistantMessageContent(message)
+    return (
+      normalizedContent.reasoningContent.trim().length > 0 ||
+      (message.toolInvocations?.length ?? 0) > 0
+    )
+  })
+}
+
 export function splitFinishedAssistantRun(
   assistantMessages: readonly Message[],
 ): FinishedAssistantRunPresentation {

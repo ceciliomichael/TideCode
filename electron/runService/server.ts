@@ -41,7 +41,9 @@ import { SharedFollowUpStore } from './followUpStore'
 import { SharedRunRegistry } from './runRegistry'
 import { SharedStreamPersistence } from './streamPersistence'
 import { listCompactionMarkers } from '../chat/history/eventStore'
+import { getCompactionAfterMessageId } from '../../src/lib/chatCompactionBoundary'
 import { hasMinimumCompactionMessages, MIN_COMPACTION_MESSAGE_COUNT } from '../../src/lib/chatCompactionGate'
+import { reduceChatCompactionStatus } from '../../src/lib/chatCompactionStatus'
 import { isAppSettingsSurface } from '../../src/lib/appSettingsScopes'
 
 const TERMINAL_RUN_RETENTION_MS = 60_000
@@ -406,7 +408,8 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
       getStoredConversation(conversationId),
       listCompactionMarkers(conversationId),
     ])
-    if (!hasMinimumCompactionMessages(conversation?.messages ?? input.messages, compactionMarkers)) {
+    const compactionMessages = conversation?.messages ?? input.messages
+    if (!hasMinimumCompactionMessages(compactionMessages, compactionMarkers)) {
       throw new Error(`At least ${MIN_COMPACTION_MESSAGE_COUNT} conversation messages are required since the latest compaction boundary before compacting.`)
     }
     const existingState = this.compactionStateByConversationId.get(conversationId)
@@ -416,12 +419,23 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
 
     const attemptId = randomUUID()
     const streamId = randomUUID()
-    this.compactionStateByConversationId.set(conversationId, { attemptId, phase: 'compacting', streamId })
+    const afterMessageId = getCompactionAfterMessageId(compactionMessages)
+    const startedEvent = {
+      afterMessageId,
+      attemptId,
+      conversationId,
+      streamId,
+      type: 'compaction_started' as const,
+    }
+    const startedState = reduceChatCompactionStatus(existingState ?? null, startedEvent, conversationId)
+    if (startedState) {
+      this.compactionStateByConversationId.set(conversationId, startedState)
+    }
     this.emitGlobalEvent({
       type: 'compaction_event',
       seq: 0,
       conversationId,
-      event: { attemptId, conversationId, streamId, type: 'compaction_started' },
+      event: startedEvent,
     })
 
     try {
@@ -439,17 +453,26 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
         return result
       }
 
-      this.compactionStateByConversationId.set(conversationId, {
-        attemptId,
+      const committedEvent = {
+        afterMessageId,
         compactionId: result.packetId,
-        phase: 'compacted',
+        conversationId,
         streamId,
-      })
+        type: 'compaction_committed' as const,
+      }
+      const compactedState = reduceChatCompactionStatus(
+        this.compactionStateByConversationId.get(conversationId) ?? null,
+        committedEvent,
+        conversationId,
+      )
+      if (compactedState) {
+        this.compactionStateByConversationId.set(conversationId, compactedState)
+      }
       this.emitGlobalEvent({
         type: 'compaction_event',
         seq: 0,
         conversationId,
-        event: { compactionId: result.packetId, conversationId, streamId, type: 'compaction_committed' },
+        event: committedEvent,
       })
       return result
     } catch (error) {
@@ -580,11 +603,39 @@ getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedIn
         collector.handleEvent(event)
         latestSnapshot = latestSnapshot.length > 0 ? latestSnapshot : [...input.messages]
 
-        if (event.type === 'context_usage_updated') {
-          this.registry.updateContextUsage(createdRun.runId, event.usage)
+        let forwardedEvent = event
+        if (event.type === 'compaction_started' || event.type === 'compaction_committed') {
+          const currentCompaction = this.compactionStateByConversationId.get(conversationId) ?? null
+          const afterMessageId = event.afterMessageId
+            ?? (currentCompaction?.streamId === event.streamId ? currentCompaction.afterMessageId : null)
+            ?? getCompactionAfterMessageId([...sharedInput.messages, ...projection.messages])
+          forwardedEvent = { ...event, afterMessageId }
+          const nextCompaction = reduceChatCompactionStatus(currentCompaction, forwardedEvent, conversationId)
+          if (nextCompaction) {
+            this.compactionStateByConversationId.set(conversationId, nextCompaction)
+          } else {
+            this.compactionStateByConversationId.delete(conversationId)
+          }
+        } else if (
+          event.type === 'compaction_failed'
+          || event.type === 'completed'
+          || event.type === 'aborted'
+          || event.type === 'error'
+        ) {
+          const currentCompaction = this.compactionStateByConversationId.get(conversationId) ?? null
+          const nextCompaction = reduceChatCompactionStatus(currentCompaction, event, conversationId)
+          if (nextCompaction) {
+            this.compactionStateByConversationId.set(conversationId, nextCompaction)
+          } else {
+            this.compactionStateByConversationId.delete(conversationId)
+          }
         }
 
-        if (event.type === 'tool_invocation_decision_requested') {
+        if (forwardedEvent.type === 'context_usage_updated') {
+          this.registry.updateContextUsage(createdRun.runId, forwardedEvent.usage)
+        }
+
+        if (forwardedEvent.type === 'tool_invocation_decision_requested') {
           this.registry.updateStatus(createdRun.runId, 'waiting_for_input')
           this.emitRunState(createdRun.runId)
         } else if (
@@ -599,19 +650,19 @@ getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedIn
           type: 'chat_event',
           runId: createdRun.runId,
           conversationId,
-          event,
+          event: forwardedEvent,
           seq: 0,
         })
 
-        if (event.type === 'steer_messages_consumed') {
-          const snapshot = this.followUps.consume(event.streamId, event.messages.map((message) => message.id))
+        if (forwardedEvent.type === 'steer_messages_consumed') {
+          const snapshot = this.followUps.consume(forwardedEvent.streamId, forwardedEvent.messages.map((message) => message.id))
           if (snapshot) {
             this.syncProviderSteers(snapshot)
             this.emitFollowUps(snapshot)
           }
         }
 
-        const nextTerminalStatus = terminalStatusForEvent(event)
+        const nextTerminalStatus = terminalStatusForEvent(forwardedEvent)
         if (nextTerminalStatus) terminalStatus = nextTerminalStatus
       },
     }

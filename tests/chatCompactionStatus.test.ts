@@ -4,6 +4,7 @@ import { reduceChatCompactionStatus } from '../src/lib/chatCompactionStatus'
 import type { ChatStreamEvent } from '../src/types/chat'
 
 const startedEvent: ChatStreamEvent = {
+  afterMessageId: 'assistant-before-compaction',
   attemptId: 'attempt-1',
   conversationId: 'conversation-1',
   streamId: 'stream-1',
@@ -13,6 +14,7 @@ const startedEvent: ChatStreamEvent = {
 test('compaction lifecycle transitions from compacting to compacted', () => {
   const compacting = reduceChatCompactionStatus(null, startedEvent, 'conversation-1')
   assert.deepEqual(compacting, {
+    afterMessageId: 'assistant-before-compaction',
     attemptId: 'attempt-1',
     phase: 'compacting',
     streamId: 'stream-1',
@@ -25,6 +27,7 @@ test('compaction lifecycle transitions from compacting to compacted', () => {
     type: 'compaction_committed',
   }, 'conversation-1')
   assert.deepEqual(compacted, {
+    afterMessageId: 'assistant-before-compaction',
     attemptId: 'attempt-1',
     compactionId: 'compaction-1',
     phase: 'compacted',
@@ -43,6 +46,7 @@ test('failed compaction clears in-flight status while committed status remains v
   }, 'conversation-1'), null)
 
   const compacted = {
+    afterMessageId: 'assistant-before-compaction',
     attemptId: 'attempt-1',
     compactionId: 'compaction-1',
     phase: 'compacted' as const,
@@ -52,6 +56,29 @@ test('failed compaction clears in-flight status while committed status remains v
     streamId: 'stream-1',
     type: 'completed',
   }, 'conversation-1'), compacted)
+})
+
+test('a commit from another stream does not inherit a stale transcript boundary', () => {
+  const previous = {
+    afterMessageId: 'assistant-old',
+    attemptId: 'attempt-old',
+    compactionId: 'compaction-old',
+    phase: 'compacted' as const,
+    streamId: 'stream-old',
+  }
+
+  assert.deepEqual(reduceChatCompactionStatus(previous, {
+    compactionId: 'compaction-new',
+    conversationId: 'conversation-1',
+    streamId: 'stream-new',
+    type: 'compaction_committed',
+  }, 'conversation-1'), {
+    afterMessageId: null,
+    attemptId: 'compaction-new',
+    compactionId: 'compaction-new',
+    phase: 'compacted',
+    streamId: 'stream-new',
+  })
 })
 
 test('compaction lifecycle ignores events from another conversation', () => {

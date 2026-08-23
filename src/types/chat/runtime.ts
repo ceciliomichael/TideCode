@@ -95,11 +95,13 @@ export interface ChatCompactionMarker {
 
 export type ChatCompactionLifecycleState =
   | {
+      afterMessageId: string | null
       attemptId: string
       phase: 'compacting'
       streamId: string
     }
   | {
+      afterMessageId: string | null
       attemptId: string
       compactionId: string
       phase: 'compacted'
@@ -120,12 +122,14 @@ export type ChatStreamEvent =
       usage: ContextUsageEstimate
     }
   | {
+      afterMessageId?: string | null
       attemptId: string
       conversationId: string
       streamId: string
       type: 'compaction_started'
     }
   | {
+      afterMessageId?: string | null
       compactionId: string
       conversationId: string
       streamId: string
