@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.17 — Clearer tool output and recovery activity
+
+TideCode 1.2.17 keeps internal recovery work out of the visible chat transcript and makes multiline Code Mode results easier to read.
+
+- Hides internal `read_tool_output` recovery calls from tool summaries and rendered chat activity while preserving ordinary user-facing tool results.
+- Preserves literal line breaks in explicitly returned Code Mode output instead of exposing escaped JSON text.
+- Requires no migration or configuration changes.
+- Validated with the full automated test suite, TypeScript type checking, the production build, and pull-request CI.
+
 ## 1.2.16 — More reliable assistant work and terminal sessions
 
 TideCode 1.2.16 keeps long-running assistant work understandable and terminal sessions dependable across compaction, interruptions, and Desktop/CLI handoffs.
