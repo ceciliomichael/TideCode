@@ -17,7 +17,7 @@ interface TerminateTerminalInput {
 export function createTerminateTerminalTool(runtime: TerminalToolRuntime) {
   return tool({
     description:
-      "Optionally terminate a terminal session early. This is not required for cleanup because every session is terminated automatically when the turn ends.",
+      "Terminate an existing broker-owned terminal session early and retain its final lifecycle record.",
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {

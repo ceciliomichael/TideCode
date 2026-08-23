@@ -9,6 +9,7 @@ import type {
   StartChatStreamInput,
   StartChatStreamResult,
   UpdatePendingSteerMessagesInput,
+  ChatStreamCancellation,
   SubmitToolDecisionInput,
   SubmitToolDecisionResult,
 } from '../../../src/types/chat'
@@ -164,8 +165,8 @@ async function runApiKeyChatStream(
   })
 }
 
-export function cancelApiKeyChatStream(streamId: string) {
-  return activeStreams.cancel(streamId)
+export function cancelApiKeyChatStream(streamId: string, cancellation: ChatStreamCancellation) {
+  return activeStreams.cancel(streamId, cancellation)
 }
 
 export function updateApiKeyPendingSteerMessages(input: UpdatePendingSteerMessagesInput) {

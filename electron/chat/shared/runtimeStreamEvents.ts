@@ -5,7 +5,10 @@ import type {
   Message,
   ToolInvocationResultPresentation,
 } from '../../../src/types/chat'
-import { TERMINATED_TOOL_EXECUTION_MESSAGE } from '../../../src/lib/toolResultContent'
+import {
+  CANCELLED_TOOL_REQUEST_MESSAGE,
+  TERMINATED_TOOL_EXECUTION_MESSAGE,
+} from '../../../src/lib/toolResultContent'
 import { recordToolFreshness } from '../history/eventStore'
 import type { AgentToolExecutionResult } from './toolTypes'
 import {
@@ -17,6 +20,7 @@ const CHAT_STREAM_EVENT_CHANNEL = 'chat:stream:event'
 
 interface ToolInvocationState {
   argumentsText: string
+  executionAccepted: boolean
   startedAt: number
   toolName: string
 }
@@ -131,12 +135,15 @@ function emitTerminatedToolInvocations(
 
   const completedAt = Date.now()
   for (const [invocationId, invocation] of invocationStateById) {
+    const interruptionMessage = invocation.executionAccepted
+      ? TERMINATED_TOOL_EXECUTION_MESSAGE
+      : CANCELLED_TOOL_REQUEST_MESSAGE
     const argumentsValue = parseToolArguments(invocation.argumentsText)
     const terminatedResult: AgentToolExecutionResult = {
-      body: TERMINATED_TOOL_EXECUTION_MESSAGE,
-      displayBody: TERMINATED_TOOL_EXECUTION_MESSAGE,
+      body: interruptionMessage,
+      displayBody: interruptionMessage,
       status: 'error',
-      summary: TERMINATED_TOOL_EXECUTION_MESSAGE,
+      summary: interruptionMessage,
     }
     const syntheticMessage = createSyntheticToolMessage(
       invocationId,
@@ -151,13 +158,13 @@ function emitTerminatedToolInvocations(
       argumentsValue,
       completedAt,
       terminatedResult,
-      TERMINATED_TOOL_EXECUTION_MESSAGE,
+      interruptionMessage,
     )
 
     emitChatStreamEvent(input.webContents, {
       argumentsText: invocation.argumentsText,
       completedAt,
-      errorMessage: TERMINATED_TOOL_EXECUTION_MESSAGE,
+      errorMessage: interruptionMessage,
       invocationId,
       resultContent: displaySyntheticMessage.content,
       streamId: input.streamId,
@@ -223,6 +230,7 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
           const displayedInvocation = resolveDisplayedInvocation(part.toolName, undefined)
           invocationStateById.set(part.id, {
             argumentsText: '',
+            executionAccepted: false,
             startedAt,
             toolName: displayedInvocation.toolName,
           })
@@ -240,6 +248,7 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
         if (isStreamPart(part, 'tool-input-delta') && typeof part.id === 'string' && typeof part.delta === 'string') {
           const currentState = invocationStateById.get(part.id) ?? {
             argumentsText: '',
+            executionAccepted: false,
             startedAt: Date.now(),
             toolName: 'tool',
           }
@@ -276,6 +285,7 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
             const startedAt = Date.now()
             invocationStateById.set(part.toolCallId, {
               argumentsText,
+              executionAccepted: true,
               startedAt,
               toolName: displayedInvocation.toolName,
             })
@@ -290,12 +300,13 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
             continue
           }
   
+          invocationStateById.set(part.toolCallId, {
+            ...currentState,
+            argumentsText,
+            executionAccepted: true,
+            toolName: displayedInvocation.toolName,
+          })
           if (currentState.argumentsText !== argumentsText) {
-            invocationStateById.set(part.toolCallId, {
-              ...currentState,
-              argumentsText,
-              toolName: displayedInvocation.toolName,
-            })
             emitChatStreamEvent(input.webContents, {
               argumentsText,
               invocationId: part.toolCallId,

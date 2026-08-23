@@ -8,6 +8,10 @@ const RUN_SERVICE_DIRECTORY = path.join(os.homedir(), '.tidecode', 'run-service'
 const TOKEN_PATH = path.join(RUN_SERVICE_DIRECTORY, 'token')
 const SOCKET_PATH = path.join(RUN_SERVICE_DIRECTORY, `service-v${RUN_SERVICE_PROTOCOL_VERSION}.sock`)
 
+export function getRunServiceDirectory() {
+  return RUN_SERVICE_DIRECTORY
+}
+
 function getStableUserKey() {
   return createHash('sha256').update(os.homedir()).digest('hex').slice(0, 16)
 }

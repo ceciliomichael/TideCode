@@ -9,6 +9,18 @@ import type {
 } from './conversations'
 import type { ChatProviderId, ReasoningEffort } from './providers'
 import type { AppTerminalExecutionMode } from './settings'
+import type {
+  TerminalBrokerClientKind,
+  TerminalCancellationPolicy,
+  TerminalCancellationReason,
+} from './terminalBroker'
+
+export interface ChatStreamCancellation {
+  policy: TerminalCancellationPolicy
+  reason: TerminalCancellationReason
+  requestedAt: number
+  surface: TerminalBrokerClientKind
+}
 
 export interface StartChatStreamInput {
   agentContextRootPath: string

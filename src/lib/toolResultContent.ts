@@ -23,6 +23,7 @@ export interface ParsedStructuredToolResultContent {
 }
 
 export const TERMINATED_TOOL_EXECUTION_MESSAGE = 'Tool execution terminated'
+export const CANCELLED_TOOL_REQUEST_MESSAGE = 'Tool request cancelled before execution'
 
 export function createTerminatedToolResultContent(input: {
   argumentsValue: unknown

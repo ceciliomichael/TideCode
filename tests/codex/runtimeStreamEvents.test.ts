@@ -107,7 +107,7 @@ test('an aborted stream ignores late provider events while the tool unwinds', as
   assert.equal(result.wasAborted, true)
 })
 
-test('an aborted running tool receives a terminated tool result', async () => {
+test('an aborted partial tool request is reported as cancelled before execution', async () => {
   const controller = new AbortController()
   const events: unknown[] = []
 
@@ -143,10 +143,40 @@ test('an aborted running tool receives a terminated tool result', async () => {
 
   assert.equal(result.wasAborted, true)
   assert.equal(terminatedEvent.type, 'tool_invocation_failed')
-  assert.equal(terminatedEvent.errorMessage, 'Tool execution terminated')
-  assert.equal(parsedResult.body, 'Tool execution terminated')
-  assert.equal(parsedResult.metadata?.summary, 'Tool execution terminated')
+  assert.equal(terminatedEvent.errorMessage, 'Tool request cancelled before execution')
+  assert.equal(parsedResult.body, 'Tool request cancelled before execution')
+  assert.equal(parsedResult.metadata?.summary, 'Tool request cancelled before execution')
   assert.equal(parsedResult.metadata?.status, 'error')
   assert.equal(terminatedEvent.syntheticMessage?.role, 'tool')
   assert.equal(terminatedEvent.syntheticMessage?.toolCallId, 'tool-call-1')
+})
+
+test('an aborted accepted tool call is reported as terminated during execution', async () => {
+  const controller = new AbortController()
+  const events: unknown[] = []
+
+  async function* createAbortedToolStream() {
+    yield {
+      input: { command: 'npm run lint' },
+      toolCallId: 'tool-call-accepted',
+      toolName: 'execute_terminal',
+      type: 'tool-call',
+    }
+    controller.abort()
+  }
+
+  await processRuntimeStream({
+    abortController: controller,
+    conversationId: null,
+    fullStream: createAbortedToolStream(),
+    queueHistoryWrite: () => undefined,
+    streamId: 'stream-accepted-tool',
+    webContents: createWebContentsStub(events),
+  })
+
+  const terminatedEvent = events.at(-1) as { errorMessage?: string; resultContent?: string; type?: string }
+  const parsedResult = parseStructuredToolResultContent(terminatedEvent.resultContent ?? '')
+  assert.equal(terminatedEvent.type, 'tool_invocation_failed')
+  assert.equal(terminatedEvent.errorMessage, 'Tool execution terminated')
+  assert.equal(parsedResult.body, 'Tool execution terminated')
 })

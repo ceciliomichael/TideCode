@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { getHistoryDirectoryPath } from '../../history/paths'
-import type { ChatCompactionDetailSection, ChatCompactionMarker, Message } from '../../../src/types/chat'
+import type { ChatCompactionDetailSection, ChatCompactionMarker, ChatStreamCancellation, Message } from '../../../src/types/chat'
 import {
   createEmptyCanonicalHistory,
   getReplaySlotKey,
@@ -491,9 +491,10 @@ export async function recordRunTerminal(
   runId: string,
   type: 'run_aborted' | 'run_failed',
   reason: string,
+  cancellation?: ChatStreamCancellation,
 ) {
   return updateDocument(conversationId, (document) => {
-    appendEvent(document, { reason, runId, type })
+    appendEvent(document, { ...(cancellation ? { cancellation } : {}), reason, runId, type })
   })
 }
 

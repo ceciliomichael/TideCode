@@ -37,7 +37,12 @@ function createPromptContext(
       if (!streamId) return
       screen.setActivity('thinking', 'Stopping')
       void ensureRunServiceClient()
-        .then((client) => client.cancelStream(streamId))
+        .then((client) => client.cancelStream(streamId, {
+          policy: 'terminate',
+          reason: 'user_stop',
+          requestedAt: Date.now(),
+          surface: 'cli',
+        }))
         .catch((error) => {
           screen.addNotice('error', `Could not stop the turn: ${error instanceof Error ? error.message : String(error)}`)
         })

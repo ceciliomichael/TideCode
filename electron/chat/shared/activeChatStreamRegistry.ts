@@ -1,4 +1,5 @@
 import { ChatStreamSteeringController, type PendingSteerMessageSnapshot } from './streamSteering'
+import type { ChatStreamCancellation } from '../../../src/types/chat'
 
 export interface ActiveChatStreamRegistration {
   readonly abortController: AbortController
@@ -51,14 +52,14 @@ export class ActiveChatStreamRegistry {
     registration.resolveSettled()
   }
 
-  async cancel(streamId: string): Promise<boolean> {
+  async cancel(streamId: string, cancellation: ChatStreamCancellation): Promise<boolean> {
     const registration = this.registrations.get(streamId)
     if (!registration) {
       return false
     }
 
     if (!registration.abortController.signal.aborted) {
-      registration.abortController.abort()
+      registration.abortController.abort(cancellation)
     }
     await registration.settled
     return true

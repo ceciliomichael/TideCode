@@ -258,7 +258,7 @@ const runsApi: TideCodeRunsApi = {
 }
 
 const chatApi: TideCodeChatApi = {
-  cancelStream: (streamId: string) => ipcRenderer.invoke('chat:stream:cancel', streamId),
+  cancelStream: (streamId: string, cancellation) => ipcRenderer.invoke('chat:stream:cancel', streamId, cancellation),
   compactConversation: (input: CompactConversationInput) => ipcRenderer.invoke('chat:compactConversation', input),
   estimateContextUsage: (input: EstimateContextUsageInput) => ipcRenderer.invoke('chat:context-usage:estimate', input),
   onStreamEvent: (listener: (event: ChatStreamEvent) => void) => {
@@ -380,8 +380,12 @@ const clipboardApi = {
 }
 
 const terminalApi: TideCodeTerminalApi = {
+  attachSession: (input) => ipcRenderer.invoke('terminal:attachSession', input),
   closeSession: (input: CloseTerminalSessionInput) => ipcRenderer.invoke('terminal:closeSession', input),
   createSession: (input: CreateTerminalSessionInput) => ipcRenderer.invoke('terminal:createSession', input),
+  detachSession: (input) => ipcRenderer.invoke('terminal:detachSession', input),
+  getSession: (input) => ipcRenderer.invoke('terminal:getSession', input),
+  listSessions: () => ipcRenderer.invoke('terminal:listSessions'),
   openExternalLink: (input: OpenExternalTerminalLinkInput) => ipcRenderer.invoke('terminal:openExternalLink', input),
   onData: (listener) => {
     const wrappedListener = (_event: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)

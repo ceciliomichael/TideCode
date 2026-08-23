@@ -45,6 +45,7 @@ import { getCompactionAfterMessageId } from '../../src/lib/chatCompactionBoundar
 import { hasMinimumCompactionMessages, MIN_COMPACTION_MESSAGE_COUNT } from '../../src/lib/chatCompactionGate'
 import { reduceChatCompactionStatus } from '../../src/lib/chatCompactionStatus'
 import { isAppSettingsSurface } from '../../src/lib/appSettingsScopes'
+import { getTerminalBroker } from '../terminal/broker/instance'
 
 const TERMINAL_RUN_RETENTION_MS = 60_000
 const TEXT_STREAM_IDLE_GRACE_MS = 1_500
@@ -116,6 +117,7 @@ async function listenOnEndpoint(server: net.Server, endpoint: string) {
 export class TideCodeRunServiceServer {
   private readonly server = net.createServer((socket) => this.acceptClient(socket))
   private readonly clients = new Set<Socket>()
+  private readonly terminalClientIdsBySocket = new Map<Socket, Set<string>>()
   private readonly registry = new SharedRunRegistry()
   private readonly followUps = new SharedFollowUpStore()
   private readonly nextSeqByRunId = new Map<string, number>()
@@ -124,12 +126,16 @@ export class TideCodeRunServiceServer {
   private readonly compactionStateByConversationId = new Map<string, ChatCompactionLifecycleState>()
   private readonly runtimeBySurfaceConversationKey = new Map<string, SharedConversationRuntimeSnapshot>()
   private readonly chatModeByConversationId = new Map<string, SharedConversationRuntimeSnapshot['chatMode']>()
+  private readonly terminalBroker = getTerminalBroker()
   private nextConversationEventSeq = 0
   private token = ''
 
-  constructor(private readonly options: TideCodeRunServiceServerOptions) {}
+  constructor(private readonly options: TideCodeRunServiceServerOptions) {
+    this.terminalBroker.onEvent((event) => this.emitTerminalEvent(event))
+  }
 
   async start() {
+    await this.terminalBroker.start()
     this.token = await ensureRunServiceToken()
     const endpoint = getRunServiceEndpoint()
 
@@ -145,6 +151,7 @@ export class TideCodeRunServiceServer {
   }
 
   async close() {
+    await this.terminalBroker.shutdown()
     for (const client of this.clients) client.destroy()
     await new Promise<void>((resolve) => this.server.close(() => resolve()))
   }
@@ -165,7 +172,12 @@ export class TideCodeRunServiceServer {
         void this.handleLine(socket, line)
       }
     })
-    socket.on('close', () => this.clients.delete(socket))
+    socket.on('close', () => {
+      this.clients.delete(socket)
+      const terminalClientIds = this.terminalClientIdsBySocket.get(socket)
+      this.terminalClientIdsBySocket.delete(socket)
+      for (const clientId of terminalClientIds ?? []) this.terminalBroker.disconnectClient(clientId)
+    })
     socket.on('error', () => this.clients.delete(socket))
   }
 
@@ -181,6 +193,21 @@ export class TideCodeRunServiceServer {
     if (parsed.token !== this.token) {
       this.sendResponse(socket, { id: parsed.id, ok: false, error: 'Unauthorized Tidecode run-service client.' })
       return
+    }
+
+    if (parsed.method.startsWith('terminal') && 'params' in parsed) {
+      const clientId = typeof parsed.params === 'object'
+        && parsed.params !== null
+        && 'clientId' in parsed.params
+        && typeof parsed.params.clientId === 'string'
+        ? parsed.params.clientId
+        : null
+      if (clientId) {
+        const clientIds = this.terminalClientIdsBySocket.get(socket) ?? new Set<string>()
+        clientIds.add(clientId)
+        this.terminalClientIdsBySocket.set(socket, clientIds)
+        this.terminalBroker.touchClient(clientId)
+      }
     }
 
     try {
@@ -256,8 +283,11 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
         }
         case 'cancelStream': {
           const providerId = this.registry.getProviderByStreamId(parsed.params.streamId)
-          if (providerId === 'codex') await cancelCodexChatStream(parsed.params.streamId)
-          else if (providerId) await cancelApiKeyChatStream(parsed.params.streamId)
+          if (providerId === 'codex') {
+            await cancelCodexChatStream(parsed.params.streamId, parsed.params.cancellation)
+          } else if (providerId) {
+            await cancelApiKeyChatStream(parsed.params.streamId, parsed.params.cancellation)
+          }
           this.sendResponse(socket, { id: parsed.id, ok: true, result: null })
           return
         }
@@ -304,6 +334,63 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
           this.sendResponse(socket, { id: parsed.id, ok: true, result })
           return
         }
+        case 'terminalCreateSession':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: await this.terminalBroker.createSession(parsed.params),
+          })
+          return
+        case 'terminalAttachSession':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: this.terminalBroker.attach(parsed.params),
+          })
+          return
+        case 'terminalDetachSession':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: this.terminalBroker.detach(parsed.params),
+          })
+          return
+        case 'terminalListSessions':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: this.terminalBroker.listSessions(parsed.params.clientId),
+          })
+          return
+        case 'terminalGetSession':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: this.terminalBroker.getSession(parsed.params),
+          })
+          return
+        case 'terminalRead':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: await this.terminalBroker.read(parsed.params),
+          })
+          return
+        case 'terminalWrite':
+          await this.terminalBroker.write(parsed.params)
+          this.sendResponse(socket, { id: parsed.id, ok: true, result: null })
+          return
+        case 'terminalResize':
+          await this.terminalBroker.resize(parsed.params)
+          this.sendResponse(socket, { id: parsed.id, ok: true, result: null })
+          return
+        case 'terminalTerminate':
+          this.sendResponse(socket, {
+            id: parsed.id,
+            ok: true,
+            result: await this.terminalBroker.terminate(parsed.params),
+          })
+          return
       }
     } catch (error) {
       this.sendResponse(socket, { id: parsed.id, ok: false, error: toErrorMessage(error) })
@@ -773,6 +860,13 @@ getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedIn
   private emitGlobalEvent(event: TideCodeRunEvent) {
     const withSeq = { ...event, seq: ++this.nextConversationEventSeq } as TideCodeRunEvent
     const payload = `${JSON.stringify({ type: 'event', event: withSeq })}\n`
+    for (const client of this.clients) {
+      if (!client.destroyed) client.write(payload)
+    }
+  }
+
+  private emitTerminalEvent(event: import('../../src/types/chat').TerminalBrokerEvent) {
+    const payload = `${JSON.stringify({ type: 'terminal_event', event })}\n`
     for (const client of this.clients) {
       if (!client.destroyed) client.write(payload)
     }

@@ -1,7 +1,6 @@
-import { spawnSync } from "node:child_process";
 import type { WebContents } from "electron";
-import type { IPty } from "node-pty";
 import { normalizeWorkspacePath } from "../workspace/paths";
+import { terminatePtyProcessTree } from "./broker/processTermination";
 import {
   notifySessionWaiters,
   type ActiveTerminalSession,
@@ -131,6 +130,10 @@ export function terminateSession(sessionId: number) {
   }
 
   notifySessionWaiters(activeSession);
+  const terminationResult = terminatePtyProcessTree(activeSession.ptyProcess);
+  if (!terminationResult.terminated) {
+    return terminationResult;
+  }
   sessions.delete(sessionId);
   unregisterSessionFromOwner(activeSession.ownerWebContentsId, sessionId);
   unregisterWorkspaceSession(
@@ -138,32 +141,7 @@ export function terminateSession(sessionId: number) {
     activeSession.workspaceSessionKey,
     sessionId,
   );
-
-
-
-function killPtyProcessTree(ptyProcess: IPty) {
-  try {
-    const pid = ptyProcess.pid;
-    if (process.platform === "win32" && typeof pid === "number" && pid > 0) {
-      spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], {
-        stdio: "ignore",
-        // Electron is a GUI process on Windows. Without windowsHide, taskkill.exe
-        // can briefly create a real console window while an AI PTY is cleaned up.
-        windowsHide: true,
-      });
-    } else {
-      ptyProcess.kill();
-    }
-  } catch (error) {
-    try {
-      ptyProcess.kill();
-    } catch {
-      // ignore
-    }
-  }
-}
-
-  killPtyProcessTree(activeSession.ptyProcess);
+  return terminationResult;
 }
 
 function terminateSessionsForOwner(ownerWebContentsId: number) {

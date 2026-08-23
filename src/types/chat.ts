@@ -6,6 +6,7 @@ export * from './chat/workspace'
 export * from './chat/git'
 export * from './chat/apis'
 export * from './chat/runService'
+export * from './chat/terminalBroker'
 
 declare module './chat/settings' {
   interface AppSettings {

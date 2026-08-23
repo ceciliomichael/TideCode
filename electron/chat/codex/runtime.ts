@@ -8,6 +8,7 @@ import type {
   StartChatStreamInput,
   StartChatStreamResult,
   UpdatePendingSteerMessagesInput,
+  ChatStreamCancellation,
   SubmitToolDecisionInput,
   SubmitToolDecisionResult,
 } from '../../../src/types/chat'
@@ -167,8 +168,8 @@ async function runCodexChatStream(
   }
 }
 
-export function cancelCodexChatStream(streamId: string) {
-  return activeStreams.cancel(streamId)
+export function cancelCodexChatStream(streamId: string, cancellation: ChatStreamCancellation) {
+  return activeStreams.cancel(streamId, cancellation)
 }
 
 export function updateCodexPendingSteerMessages(input: UpdatePendingSteerMessagesInput) {

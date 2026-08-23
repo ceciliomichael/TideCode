@@ -25,6 +25,7 @@ import type {
   UpdateSharedFollowUpsInput,
   UpdatePendingSteerMessagesInput,
   WriteTerminalSessionInput,
+  ChatStreamCancellation,
 } from '../../src/types/chat'
 import { estimateCodexContextUsage } from '../chat/codex/runtime'
 import { estimateApiKeyContextUsage } from '../chat/apiKey/runtime'
@@ -57,11 +58,7 @@ import {
   unsubscribeSourceControlChanges,
 } from '../git/sourceControlWatch'
 import {
-  closeTerminalSession,
-  createTerminalSession,
   openExternalTerminalLink,
-  resizeTerminalSession,
-  writeToTerminalSession,
 } from '../terminal/service'
 
 function getSourceControlWorkspacePath(input: GitSourceControlWatchChangesInput) {
@@ -75,6 +72,7 @@ function getSourceControlWorkspacePath(input: GitSourceControlWatchChangesInput)
 export function registerChatGitTerminalIpcHandlers(
   activeChatStreamProviders: Map<string, StartChatStreamInput['providerId']>,
 ) {
+  const emittedTerminalExitSessionIds = new Set<string>()
   void ensureRunServiceClient()
     .then((runService) => {
       runService.onEvent((runEvent) => {
@@ -104,6 +102,45 @@ export function registerChatGitTerminalIpcHandlers(
           if (!window.webContents.isDestroyed()) {
             window.webContents.send('run-service:event', runEvent)
           }
+        }
+      })
+      runService.onTerminalEvent((terminalEvent) => {
+        if (terminalEvent.type === 'terminal_output') {
+          for (const window of BrowserWindow.getAllWindows()) {
+            if (!window.webContents.isDestroyed()) {
+              window.webContents.send('terminal:session:data', {
+                brokerSessionId: terminalEvent.output.brokerSessionId,
+                cursor: terminalEvent.output.endCursor,
+                data: terminalEvent.output.data,
+                sessionId: terminalEvent.legacySessionId,
+              })
+            }
+          }
+          return
+        }
+
+        if (
+          terminalEvent.type === 'terminal_session_changed'
+          && (terminalEvent.session.state === 'exited' || terminalEvent.session.state === 'terminated')
+          && !emittedTerminalExitSessionIds.has(terminalEvent.session.brokerSessionId)
+        ) {
+          emittedTerminalExitSessionIds.add(terminalEvent.session.brokerSessionId)
+          for (const window of BrowserWindow.getAllWindows()) {
+            if (!window.webContents.isDestroyed()) {
+              window.webContents.send('terminal:session:exit', {
+                brokerSessionId: terminalEvent.session.brokerSessionId,
+                exitCode: terminalEvent.session.exitCode ?? -1,
+                sessionId: terminalEvent.session.legacySessionId,
+                signal: terminalEvent.session.signal,
+              })
+            }
+          }
+        }
+
+        if (terminalEvent.type === 'terminal_cleanup_failed') {
+          console.error(
+            `Terminal cleanup failed for ${terminalEvent.session.brokerSessionId}: ${terminalEvent.error}`,
+          )
         }
       })
     })
@@ -136,8 +173,17 @@ export function registerChatGitTerminalIpcHandlers(
     activeChatStreamProviders.set(result.streamId, input.providerId)
     return result
   })
-  ipcMain.handle('chat:stream:cancel', async (_event, streamId: string) => {
-    await (await ensureRunServiceClient()).cancelStream(streamId)
+  ipcMain.handle('chat:stream:cancel', async (
+    _event,
+    streamId: string,
+    cancellation?: ChatStreamCancellation,
+  ) => {
+    await (await ensureRunServiceClient()).cancelStream(streamId, cancellation ?? {
+      policy: 'terminate',
+      reason: 'user_stop',
+      requestedAt: Date.now(),
+      surface: 'desktop',
+    })
   })
   ipcMain.handle(
     'chat:stream:updatePendingSteerMessages',
@@ -161,18 +207,69 @@ export function registerChatGitTerminalIpcHandlers(
 
     return estimateApiKeyContextUsage(event.sender, input)
   })
-  ipcMain.handle('terminal:createSession', async (event, input: CreateTerminalSessionInput) =>
-    createTerminalSession(event, input),
+  ipcMain.handle('terminal:createSession', async (_event, input: CreateTerminalSessionInput) => {
+    const created = await (await ensureRunServiceClient()).terminalCreateSession({
+      cols: input.cols,
+      cwd: input.cwd,
+      label: input.label,
+      ownerKind: input.isAiSession ? 'ai' : 'visible',
+      rows: input.rows,
+      runId: input.aiTurnId,
+      sessionKey: input.sessionKey,
+      workspaceRootPath: input.workspaceRootPath,
+    })
+    return {
+      bufferedOutput: created.bufferedOutput,
+      brokerSessionId: created.brokerSessionId,
+      cwd: created.cwd,
+      isReused: created.isReused,
+      processId: created.snapshot.processId,
+      sessionId: created.legacySessionId,
+      shell: created.shell.label,
+      shellMetadata: created.shell,
+      venvName: created.venvName,
+      workspaceRootPath: created.workspaceRootPath,
+    }
+  })
+  ipcMain.handle('terminal:attachSession', async (_event, input) =>
+    (await ensureRunServiceClient()).terminalAttachSession(input),
   )
-  ipcMain.handle('terminal:writeToSession', async (event, input: WriteTerminalSessionInput) =>
-    writeToTerminalSession(event, input),
+  ipcMain.handle('terminal:detachSession', async (_event, input) =>
+    (await ensureRunServiceClient()).terminalDetachSession(input),
   )
-  ipcMain.handle('terminal:resizeSession', async (event, input: ResizeTerminalSessionInput) =>
-    resizeTerminalSession(event, input),
+  ipcMain.handle('terminal:getSession', async (_event, input) =>
+    (await ensureRunServiceClient()).terminalGetSession(input),
   )
-  ipcMain.handle('terminal:closeSession', async (event, input: CloseTerminalSessionInput) =>
-    closeTerminalSession(event, input),
+  ipcMain.handle('terminal:listSessions', async () =>
+    (await ensureRunServiceClient()).terminalListSessions(),
   )
+  ipcMain.handle('terminal:writeToSession', async (_event, input: WriteTerminalSessionInput) =>
+    (await ensureRunServiceClient()).terminalWrite({
+      data: input.data,
+      legacySessionId: input.sessionId,
+      workspaceRootPath: input.workspaceRootPath,
+    }),
+  )
+  ipcMain.handle('terminal:resizeSession', async (_event, input: ResizeTerminalSessionInput) =>
+    (await ensureRunServiceClient()).terminalResize({
+      cols: input.cols,
+      legacySessionId: input.sessionId,
+      rows: input.rows,
+      workspaceRootPath: input.workspaceRootPath,
+    }),
+  )
+  ipcMain.handle('terminal:closeSession', async (_event, input: CloseTerminalSessionInput) => {
+    await (await ensureRunServiceClient()).terminalTerminate({
+      legacySessionId: input.sessionId,
+      provenance: {
+        policy: 'terminate',
+        reason: 'user_stop',
+        requestedAt: Date.now(),
+        surface: 'desktop',
+      },
+      workspaceRootPath: input.workspaceRootPath,
+    })
+  })
   ipcMain.handle('terminal:openExternalLink', async (_event, input: OpenExternalTerminalLinkInput) =>
     openExternalTerminalLink(input),
   )

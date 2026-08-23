@@ -22,6 +22,7 @@ import {
   resetThreadSessionForCommand,
   resolveTerminalWorkspaceCwd,
   syncTerminalSessionOutput,
+  synchronizeBrokerOperation,
   throwIfAborted,
   type TerminalToolRuntime,
 } from "./terminalToolShared";
@@ -101,6 +102,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           );
           globalSessionId = created.sessionId;
           session = createThreadAiSession({
+            brokerSessionId: created.brokerSessionId,
             cols,
             command,
             cwd: created.cwd,
@@ -113,6 +115,16 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
             shell: created.shell,
           });
           store.sessions.set(localSessionId, session);
+          if (dependencies.createOperation) {
+            const operation = await dependencies.createOperation(runtime.ownerWebContents, {
+              command,
+              cwd: created.cwd,
+              sessionId: created.sessionId,
+              toolCallId: (options as { toolCallId?: string } | undefined)?.toolCallId,
+            });
+            session.brokerOperationId = operation.operationId;
+            session.brokerOperationState = operation.state;
+          }
           createdSession = true;
         } catch (error) {
           store.reservedSessionIds.delete(localSessionId);
@@ -127,6 +139,10 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
         store.latestLocalSessionId = localSessionId;
 
         throwIfAborted(abortSignal);
+        if (session.brokerOperationId && dependencies.transitionOperation) {
+          await dependencies.transitionOperation(session.brokerOperationId, "writing");
+          session.brokerOperationState = "writing";
+        }
         await raceWithAbort(
           dependencies.writeToSession(runtime.ownerWebContents, {
             data: buildMarkedCommand(command, session.shell, marker),
@@ -135,6 +151,10 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           }),
           abortSignal,
         );
+        if (session.brokerOperationId && dependencies.transitionOperation) {
+          await dependencies.transitionOperation(session.brokerOperationId, "running");
+          session.brokerOperationState = "running";
+        }
 
         let unreadOutput: ReturnType<typeof drainUnreadTerminalOutput> | null = null;
         let unreadOutputLines: string[] = [];
@@ -162,6 +182,8 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           commandState = commandSummary.state;
           unreadOutputLines = unreadOutput.lines.map((line) => `${line.lineNumber}: ${line.text}`);
         }
+
+        await synchronizeBrokerOperation(session, dependencies);
 
         const status = commandState === "running"
           ? session.isDaemon
@@ -230,8 +252,10 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           displayBody,
           semantics: {
             active: commandState === "running",
+            broker_session_id: session.brokerSessionId,
             new_output_line_count: unreadOutputLines.length,
             session_id: session.localSessionId,
+            operation_id: session.brokerOperationId,
             state: commandState,
             status,
             wait_seconds: typeof input.wait_seconds === "number" && input.wait_seconds > 0
