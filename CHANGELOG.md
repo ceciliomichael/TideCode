@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.16 — More reliable assistant work and terminal sessions
+
+TideCode 1.2.16 keeps long-running assistant work understandable and terminal sessions dependable across compaction, interruptions, and Desktop/CLI handoffs.
+
+- Keeps assistant work grouped correctly across live and persisted compaction boundaries, so progress remains readable before and after context reduction.
+- Distinguishes a tool request cancelled before execution from an accepted tool execution that was terminated, with clearer user-facing status.
+- Centralizes visible and AI terminal ownership in the run-service broker with durable sessions, retained output, reconnect support, and verified cleanup.
+- Isolates development run-service instances from packaged services so local development cannot replace the service that owns a packaged terminal process tree.
+- Requires no migration or configuration changes.
+- Validated with the full automated test suite, TypeScript type checking, the production build, and pull-request CI.
+
 ## 1.2.15 — Reliable workspace changes and surface-specific settings
 
 TideCode 1.2.15 makes file changes safer, keeps Desktop, Web, and CLI preferences independent where they should be, and makes settings, terminals, and Code Mode more dependable across surfaces.
