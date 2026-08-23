@@ -548,6 +548,42 @@ test('read tool header labels use the result range instead of the requested limi
   assert.equal(getToolInvocationHeaderLabel(invocation, undefined, WORKSPACE_ROOT_PATH), 'Read example.ts (12-31)')
 })
 
+test('read_tool_output uses the same running and completed presentation as read', () => {
+  const outputId = 'execute_terminal-1234'
+  const runningInvocation: ToolInvocationTrace = {
+    argumentsText: JSON.stringify({ limit: 20, offset: 41, output_id: outputId }),
+    id: 'tool-read-output-1',
+    startedAt: 0,
+    state: 'running',
+    toolName: 'read_tool_output',
+  }
+  const completedInvocation: ToolInvocationTrace = {
+    ...runningInvocation,
+    resultContent: formatStructuredToolResultContent(
+      {
+        arguments: { limit: 20, offset: 41, output_id: outputId },
+        schema: 'tidecode.tool_result/v1',
+        semantics: {
+          end_line: 60,
+          output_id: outputId,
+          start_line: 41,
+          total_line_count: 200,
+        },
+        status: 'success',
+        subject: { kind: 'tool_output', path: outputId },
+        summary: `Read tool output ${outputId}`,
+        toolCallId: 'tool-read-output-1',
+        toolName: 'read_tool_output',
+      },
+      'selected output',
+    ),
+    state: 'completed',
+  }
+
+  assert.equal(getToolInvocationHeaderLabel(runningInvocation), `Reading ${outputId}`)
+  assert.equal(getToolInvocationHeaderLabel(completedInvocation), `Read ${outputId} (41-60)`)
+})
+
 test('empty list results keep the listed tool header', () => {
   const invocation: ToolInvocationTrace = {
     argumentsText: JSON.stringify({}),

@@ -2,7 +2,7 @@ import { asSchema, type ToolExecutionOptions, type ToolSet } from 'ai'
 import type { JSONSchema7 } from '@ai-sdk/provider'
 import Ajv, { type ValidateFunction } from 'ajv'
 import type { AgentToolExecutionResult } from '../toolTypes'
-import { normalizeToolExecutionResult } from '../toolReplay'
+import { normalizeToolExecutionResult, prepareToolExecutionResultForModel } from '../toolReplay'
 import { createToolErrorResult } from './toolResult'
 
 export interface AgentToolRegistryExecutionOptions {
@@ -45,6 +45,7 @@ function resolveToolNamespace(name: string) {
   }
   if (
     normalizedName === 'read' ||
+    normalizedName === 'read_tool_output' ||
     normalizedName === 'write' ||
     normalizedName === 'edit' ||
     normalizedName === 'glob' ||
@@ -213,7 +214,14 @@ export async function createAgentToolRegistry(nativeTools: ToolSet): Promise<Age
           toolCallId: options.toolCallId ?? `code-mode-${name}`,
         }
         const output = await execute(normalizedInput, toolOptions)
-        return normalizeToolExecutionResult(name, output)
+        const normalizedOutput = normalizeToolExecutionResult(name, output)
+        const boundedOutput = await prepareToolExecutionResultForModel({
+          result: normalizedOutput,
+          toolName: name,
+        })
+        return normalizedOutput.body !== undefined && normalizedOutput.displayBody === undefined
+          ? { ...boundedOutput, displayBody: normalizedOutput.body }
+          : boundedOutput
       },
       inputSchema,
       name,

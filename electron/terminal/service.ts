@@ -52,6 +52,10 @@ import {
   unregisterWorkspaceSession,
 } from "./sessionRegistry";
 
+type InternalCreateTerminalSessionInput = CreateTerminalSessionInput & {
+  capturePendingAiOutput?: boolean;
+};
+
 function waitForTerminalSessionExitOrTimeout(
   activeSession: ActiveTerminalSession,
   pollingMs: number,
@@ -145,7 +149,7 @@ function reuseExistingSession(input: {
 
 async function createTerminalSessionInternal(
   sender: WebContents,
-  input: CreateTerminalSessionInput,
+  input: InternalCreateTerminalSessionInput,
 ): Promise<CreateTerminalSessionResult> {
   attachOwnerCleanup(sender);
 
@@ -191,6 +195,7 @@ async function createTerminalSessionInternal(
 
   const activeSession: ActiveTerminalSession = {
     aiTurnId,
+    capturePendingAiOutput: input.capturePendingAiOutput ?? isAiSession,
     cwd,
     exitCode: null,
     hasExited: false,
@@ -263,7 +268,7 @@ async function createTerminalSessionInternal(
 
 export async function createTerminalSessionForWebContents(
   sender: WebContents,
-  input: CreateTerminalSessionInput,
+  input: InternalCreateTerminalSessionInput,
 ): Promise<CreateTerminalSessionResult> {
   return createTerminalSessionInternal(sender, input);
 }

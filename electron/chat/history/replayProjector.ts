@@ -23,6 +23,7 @@ import {
 } from './contracts'
 import { shouldMigrateCrossProviderHistoryToText } from './providerSwitch'
 import { migrateToolHistoryToUserInput } from './providerToolMigration'
+import { projectModelMessagesForContext } from '../shared/tools/toolOutputBudget'
 
 export interface ReplayProjectionResult {
   compactionPacket: CompactionPacket | null
@@ -231,7 +232,7 @@ export function projectCanonicalReplay(input: {
   const finalizeProjection = (projection: ReplayProjectionResult): ReplayProjectionResult => {
     const legacySafeProjection = {
       ...projection,
-      messages: stripLegacyCompactionContainers(projection.messages),
+      messages: projectModelMessagesForContext(stripLegacyCompactionContainers(projection.messages)),
     }
     const shouldMigrateToolHistory = shouldMigrateCrossProviderHistoryToText({
       document: input.document,

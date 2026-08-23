@@ -138,6 +138,7 @@ const CODE_MODE_TOOL_ROUTING = [
   'Choose the purpose-built inner API for the scenario. Do not use terminal commands as a substitute for structured workspace APIs.',
   'For source mutations containing quotes, backticks, template expressions, Markdown fences, regexes, Windows paths, or other arbitrary text, put the raw strings in the top-level code_mode payloads object and reference payloads.<name> inside tools.edit/tools.write. Do not embed complex source text inside generated JavaScript string literals when payloads can carry it unchanged.',
   '- `tools.read`: inspect one known file or directory. A path is known only when the user supplied it or a prior workspace tool returned that exact path. Never infer filenames from conventions.',
+  '- `tools.read_tool_output`: read only a narrowly targeted section when a truncated result omitted content you actually need; never call it automatically.',
   '- If the exact file path is unknown, discover it first with `tools.list`, `tools.glob`, or `tools.grep`, then pass the returned path to `tools.read` or `tools.edit`.',
   '- `tools.list`: inspect immediate entries of one directory.',
   '- `tools.glob`: discover files by path or filename pattern.',

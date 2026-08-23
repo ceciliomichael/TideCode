@@ -11,6 +11,7 @@ import {
 function createTestSession(): ActiveTerminalSession {
   return {
     aiTurnId: null,
+    capturePendingAiOutput: true,
     cwd: '/workspace',
     exitCode: null,
     hasExited: false,
@@ -28,6 +29,17 @@ function createTestSession(): ActiveTerminalSession {
     workspaceSessionKey: 'test-session',
   }
 }
+
+test('broker-style sessions do not retain obsolete pending AI output chunks', () => {
+  const session = createTestSession()
+  session.capturePendingAiOutput = false
+
+  appendSessionOutputBuffer(session, 'broker-owned output')
+
+  assert.equal(session.outputBuffer, 'broker-owned output')
+  assert.deepEqual(session.pendingAiOutputChunks, [])
+  assert.equal(consumePendingAiOutput(session), '')
+})
 
 test('AI output remains available after the bounded display buffer rolls over', () => {
   const session = createTestSession()

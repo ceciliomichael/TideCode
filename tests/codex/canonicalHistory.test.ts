@@ -476,6 +476,35 @@ test('canonical tool model output is byte-identical for live and wrapped tool ex
   assert.equal(expected.type, 'text')
 })
 
+test('wrapped live tools bound model output while retaining recovery metadata', async () => {
+  const body = Array.from({ length: 5_000 }, (_value, index) => `line ${index} ${'x'.repeat(60)}`).join('\n')
+  const rawResult = {
+    body,
+    semantics: { output_id: 'execute_terminal-existing-output' },
+    status: 'success' as const,
+    summary: 'Large terminal output',
+  }
+  const tools = withCanonicalToolModelOutputs({
+    execute_terminal: {
+      execute: async () => rawResult,
+      inputSchema: jsonSchema({ properties: {}, type: 'object' }),
+    },
+  } as ToolSet)
+  const wrapped = await tools.execute_terminal.toModelOutput?.({
+    input: {},
+    output: rawResult,
+    toolCallId: 'call-large-terminal-1',
+  })
+
+  assert.equal(wrapped?.type, 'text')
+  if (wrapped?.type !== 'text') return
+  assert.ok(Buffer.byteLength(String(wrapped.value), 'utf8') < 40_000)
+  assert.match(String(wrapped.value), /line 0 /u)
+  assert.match(String(wrapped.value), /line 4999 /u)
+  assert.match(String(wrapped.value), /read_tool_output/u)
+  assert.match(String(wrapped.value), /execute_terminal-existing-output/u)
+})
+
 test('tool results can keep model metadata separate from the user-facing display body', () => {
   const result = {
     body: 'session_id: 48448\nstate: needs_interaction',

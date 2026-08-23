@@ -3,20 +3,20 @@
 - Prefer the structured API that directly represents the operation. `execute_terminal` is for running real commands/processes, never as a substitute for workspace read/search/edit/write APIs.
 
 ## Scenario map
-- `read`: inspect one known file or one known directory. Example: read `src/App.tsx` before changing it.
-- `list`: inspect the immediate entries of one directory. Example: see what is directly under `src/components`.
-- `glob`: discover files by path/name pattern when the exact path is unknown. Example: find `**/*.test.ts`.
-- `grep`: find text, symbols, imports, or references inside workspace files. Example: find every use of `execute_terminal`.
+- `read`: inspect one known file or one known directory.
+- `list`: inspect one directory's immediate entries.
+- `glob`: discover files by path/name pattern when the exact path is unknown.
+- `grep`: find text, symbols, imports, or references in workspace files.
 - `edit`: make a targeted change to an existing text file after reading the relevant source. Never use shell, Python, PowerShell, or custom replacement scripts for this.
-- `write`: create a new text file or intentionally replace a complete file. For a targeted existing-file change, use `edit` instead.
-- `execute_terminal`: run an actual command or process such as tests, typecheck, build, package manager, compiler, Git inspection, or an app/script.
+- `write`: create or intentionally replace a complete text file; use `edit` for targeted existing-file changes.
+- `execute_terminal`: run an actual command or process such as tests, typecheck, builds, package managers, compilers, Git inspection, or apps/scripts.
 - `read_terminal`: read new output from the same running session; it returns early when input is detected.
-- `interact_terminal`: when that session needs input, answer it there. For line input, send text with `ENTER`, then keep reading the same session.
-- `terminate_terminal`: stop a persistent terminal session started for this work when it is no longer needed.
+- `interact_terminal`: when that session needs input, send it there; for line input, send text with `ENTER` and keep reading the same session.
+- `terminate_terminal`: stop a persistent terminal session when it is no longer needed.
 - `mcp_tool_search`: discover a connected-service capability whose exact MCP tool is not yet known.
 - `execute_mcp`: invoke only the exact MCP tool returned by discovery with schema-derived arguments.
-- `memory`: read or maintain durable project/planning context; never use memory as a substitute for project source or documentation.
-- `kanban_board`: inspect or update Tidecode Kanban task data when the request concerns cards, subtasks, status, or board planning.
+- `memory`: maintain durable project/planning context, never as a substitute for project source or documentation.
+- `kanban_board`: inspect or update Tidecode Kanban cards, subtasks, status, or board planning.
 
 ## Execution rules
 - Every call has one clear purpose and uses its exact schema. Dependent calls are sequential; independent calls may be parallel.

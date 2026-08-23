@@ -13,6 +13,8 @@ const RETAINED_CONTEXT_MAX_OVERSHOOT_TOKENS = 4_000
 
 export interface RetainedContextSelection {
   messages: ModelMessage[]
+  /** True when the newest turn itself was reduced instead of retained whole. */
+  partialNewestTurn?: true
   startIndex: number
   tokenCount: number
 }
@@ -88,7 +90,7 @@ export function estimateRetainedContextTokens(messages: readonly ModelMessage[])
 export function selectLatestContextByTokens(
   messages: readonly ModelMessage[],
   retainedContextTokens: number,
-  options: { force?: boolean } = {},
+  options: { allowPartialNewestTurn?: boolean; force?: boolean } = {},
 ): RetainedContextSelection {
   const projectedMessages = projectRetainedMessagesForContext(messages)
   if (projectedMessages.length === 0) {
@@ -113,6 +115,28 @@ export function selectLatestContextByTokens(
   let retainedStartIndex = newestRange.startIndex
   let retainedMessages = projectedMessages.slice(retainedStartIndex)
   let tokenCount = estimateRetainedContextTokens(retainedMessages)
+
+  // A single agent turn can become larger than the entire context window after
+  // many tool calls. Whole-turn retention cannot make progress in that case
+  // because the newest turn starts at the source boundary. Reuse the protected
+  // partial-turn projector for the newest turn itself: the user request stays
+  // atomic, tool call/result pairs stay complete, and the semantic tail is kept
+  // while oversized intermediate evidence is bounded.
+  if (options.allowPartialNewestTurn && tokenCount > targetTokens) {
+    const newestTurn = projectedMessages.slice(newestRange.startIndex, newestRange.endIndex)
+    const projectedNewestTurn = selectPartialTurnPrefix(newestTurn, targetTokens)
+    if (projectedNewestTurn.length > 0) {
+      const projectedNewestTurnTokens = estimateRetainedContextTokens(projectedNewestTurn)
+      if (projectedNewestTurnTokens < tokenCount) {
+        return {
+          messages: projectedNewestTurn,
+          partialNewestTurn: true,
+          startIndex: newestRange.startIndex,
+          tokenCount: projectedNewestTurnTokens,
+        }
+      }
+    }
+  }
 
   // A strict upper bound can leave a large amount of verified context out. For
   // example, a 4.6k latest turn plus a 7k previous turn should prefer the

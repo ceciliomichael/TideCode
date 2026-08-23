@@ -37,6 +37,7 @@ import { getStoredSettings, updateStoredConversationModelPreference } from '../s
 import type { CliSessionState } from '../cli/types'
 import { RUN_SERVICE_PROTOCOL_VERSION, isRunServiceRequest, type RunServiceResponse } from './protocol'
 import { ensureRunServiceToken, getRunServiceEndpoint, removeStaleRunServiceSocket } from './paths'
+import { hasTerminalEventRecipient } from './terminalEventRouting'
 import { SharedFollowUpStore } from './followUpStore'
 import { SharedRunRegistry } from './runRegistry'
 import { SharedStreamPersistence } from './streamPersistence'
@@ -866,10 +867,14 @@ getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedIn
   }
 
   private emitTerminalEvent(event: import('../../src/types/chat').TerminalBrokerEvent) {
+    const recipients = Array.from(this.clients).filter((client) =>
+      !client.destroyed
+      && hasTerminalEventRecipient(event, this.terminalClientIdsBySocket.get(client)),
+    )
+    if (recipients.length === 0) return
+
     const payload = `${JSON.stringify({ type: 'terminal_event', event })}\n`
-    for (const client of this.clients) {
-      if (!client.destroyed) client.write(payload)
-    }
+    for (const client of recipients) client.write(payload)
   }
 
   private sendResponse(socket: Socket, response: RunServiceResponse) {

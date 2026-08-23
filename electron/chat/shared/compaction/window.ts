@@ -11,6 +11,7 @@ import {
   DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS,
 } from '../../../../src/lib/contextCompactionSettings'
 import {
+  estimateRetainedContextTokens,
   projectRetainedMessagesForContext,
   selectLatestContextByTokens,
 } from './retention'
@@ -135,12 +136,33 @@ export function hasCompactionEligibleHistory(
   const retainedContextTokens = capRetainedContextTokens(
     options?.retainedContextTokens ?? DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS,
   )
+  const sourceMessages = messages.slice(sourceStartIndex)
   const selection = selectLatestContextByTokens(
-    messages.slice(sourceStartIndex),
+    sourceMessages,
     retainedContextTokens,
+    { allowPartialNewestTurn: true },
   )
   const boundaryIndex = sourceStartIndex + selection.startIndex
-  return boundaryIndex > sourceStartIndex && isSafeCompactionBoundary(messages, boundaryIndex)
+  const sourceTokens = estimateRetainedContextTokens(sourceMessages)
+
+  // A partial newest-turn projection drops intermediate evidence from the raw
+  // turn. Summarize the complete current source so that evidence is captured in
+  // the handoff instead of silently disappearing from provider context.
+  if (selection.partialNewestTurn) {
+    return selection.tokenCount < sourceTokens && isSafeCompactionBoundary(messages, messages.length)
+  }
+
+  if (boundaryIndex > sourceStartIndex && isSafeCompactionBoundary(messages, boundaryIndex)) {
+    return true
+  }
+
+  // Projection alone can also make a one-turn source smaller, for example when
+  // a huge tool argument or Code Mode receipt is bounded. Treat that as a valid
+  // whole-source compaction opportunity when there is no older turn boundary.
+  if (selection.startIndex !== 0 || sourceMessages.length === 0 || hasUnresolvedToolCall(sourceMessages)) {
+    return false
+  }
+  return selection.tokenCount < sourceTokens && isSafeCompactionBoundary(messages, messages.length)
 }
 
 export function selectCompactionWindow(
@@ -148,30 +170,54 @@ export function selectCompactionWindow(
   targetHistoryTokens: number,
   options?: CompactionWindowSelectionOptions,
 ): CompactionWindow | null {
-  if (messages.length < 3 || hasUnresolvedToolCall(messages)) return null
+  if (messages.length === 0 || hasUnresolvedToolCall(messages)) return null
 
   const sourceStartIndex = resolveCompactionSourceStartIndex(messages, options?.previousPacket)
+  const sourceMessages = messages.slice(sourceStartIndex)
+  if (sourceMessages.length === 0) return null
+
   const retainedContextTokens = capRetainedContextTokens(options?.retainedContextTokens ?? targetHistoryTokens)
   const selection = selectLatestContextByTokens(
-    messages.slice(sourceStartIndex),
+    sourceMessages,
     retainedContextTokens,
-    { force: options?.force },
+    { allowPartialNewestTurn: true, force: options?.force },
   )
 
-  // The retained history is selected by token budget, but the boundary remains
-  // a complete user turn. If a malformed/provider-specific sequence makes the
-  // selected index unsafe, walk backward to the nearest complete boundary
-  // rather than splitting a tool call from its result.
-  let boundaryIndex = sourceStartIndex + selection.startIndex
-  while (boundaryIndex > sourceStartIndex && !isSafeCompactionBoundary(messages, boundaryIndex)) {
-    boundaryIndex -= 1
+  // The retained history is selected by token budget, but the normal boundary
+  // remains a complete user turn. If the newest turn itself was projected, the
+  // complete current source must be summarized so projected-away evidence is
+  // represented in the handoff.
+  const selectedBoundaryIndex = sourceStartIndex + selection.startIndex
+  const sourceTokens = estimateRetainedContextTokens(sourceMessages)
+  let boundaryIndex = selection.partialNewestTurn ? messages.length : selectedBoundaryIndex
+  let retainSelectedProjection = selection.partialNewestTurn === true
+
+  if (!selection.partialNewestTurn) {
+    while (boundaryIndex > sourceStartIndex && !isSafeCompactionBoundary(messages, boundaryIndex)) {
+      boundaryIndex -= 1
+    }
+    retainSelectedProjection = boundaryIndex === selectedBoundaryIndex
+  }
+
+  if (boundaryIndex === sourceStartIndex) {
+    const canCompactProjectedCurrentSource =
+      selection.startIndex === 0 &&
+      selection.tokenCount < sourceTokens &&
+      isSafeCompactionBoundary(messages, messages.length)
+
+    if (!canCompactProjectedCurrentSource) return null
+
+    // There is no older turn to cut away, so summarize the complete current
+    // source and retain the bounded projection produced by the selector. The
+    // boundary is the current model-step boundary after completed tool results.
+    boundaryIndex = messages.length
+    retainSelectedProjection = true
   }
 
   if (!isSafeCompactionBoundary(messages, boundaryIndex)) return null
 
   const evictedMessages = messages.slice(sourceStartIndex, boundaryIndex)
   if (evictedMessages.length === 0) return null
-  const selectedBoundaryIndex = sourceStartIndex + selection.startIndex
 
   return {
     anchorMessages: getAnchorMessages(messages, boundaryIndex),
@@ -180,11 +226,11 @@ export function selectCompactionWindow(
     sourceStartIndex,
     sourceEndIndex: boundaryIndex,
     sourceMessageIds: buildSourceMessageIds(sourceStartIndex, boundaryIndex),
-    // A partial retained turn is already projected and truncated by the
-    // token selector. Keep that projection instead of rebuilding the raw
-    // suffix, otherwise a large assistant/tool payload would immediately
-    // restore the history that the selector intentionally removed.
-    tailMessages: boundaryIndex === selectedBoundaryIndex
+    // A partial retained turn is already projected and truncated by the token
+    // selector. Keep that projection instead of rebuilding the raw suffix,
+    // otherwise a large assistant/tool payload would immediately restore the
+    // history that the selector intentionally removed.
+    tailMessages: retainSelectedProjection
       ? selection.messages
       : projectRetainedMessagesForContext(messages.slice(boundaryIndex)),
   }

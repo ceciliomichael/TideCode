@@ -98,8 +98,16 @@ test('legacy Code Mode undefined output replays the completed nested tool result
   assert.match(modelContent, /A hello\.py \(\+1 -0\)/u)
 })
 
-test('provider replay preserves oversized tool content without a recovery-tool loop', () => {
+test('provider replay bounds oversized legacy tool content without mutating stored history', () => {
   const body = Array.from({ length: 4_000 }, (_value, index) => `line ${index} ${'x'.repeat(80)}`).join('\n')
+  const storedToolResult = formatStructuredToolResultContent({
+    arguments: { path: 'src/app.ts' },
+    schema: 'tidecode.tool_result/v1',
+    status: 'success',
+    summary: 'Read a large file',
+    toolCallId: 'tool-call-1',
+    toolName: 'read',
+  }, body)
   const prompt = buildChatPrompt({
     chatMode: 'agent',
     messages: [
@@ -120,14 +128,7 @@ test('provider replay preserves oversized tool content without a recovery-tool l
         }],
       },
       {
-        content: formatStructuredToolResultContent({
-          arguments: { path: 'src/app.ts' },
-          schema: 'tidecode.tool_result/v1',
-          status: 'success',
-          summary: 'Read a large file',
-          toolCallId: 'tool-call-1',
-          toolName: 'read',
-        }, body),
+        content: storedToolResult,
         id: 'tool-1',
         role: 'tool',
         timestamp: 4,
@@ -143,8 +144,12 @@ test('provider replay preserves oversized tool content without a recovery-tool l
     : null
   assert.ok(output && output.type === 'tool-result')
   assert.equal(typeof output.output.value, 'string')
-  assert.equal(output.output.value.includes(body), true)
-  assert.doesNotMatch(output.output.value, /Tool output truncated|read_tool_output/u)
+  assert.ok(Buffer.byteLength(output.output.value, 'utf8') < 40_000)
+  assert.match(output.output.value, /line 0 /u)
+  assert.match(output.output.value, /line 3999 /u)
+  assert.match(output.output.value, /Tool output truncated/u)
+  assert.doesNotMatch(output.output.value, /read_tool_output/u)
+  assert.equal(parseStructuredToolResultContent(storedToolResult).body, body)
 })
 
 test('Codex fallback prompts do not synthesize unsupported generic reasoning parts', () => {

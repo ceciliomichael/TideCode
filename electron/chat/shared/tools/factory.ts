@@ -17,6 +17,7 @@ import { createMcpToolSet } from './mcpTools'
 import { createMemoryTool } from './memoryTool'
 import { createProviderWebTool } from './providerWebTool'
 import { createReadTool } from './readTool'
+import { createReadToolOutputTool } from './readToolOutput'
 import { createPlanToolSet } from './planTools'
 import { createSkillTool } from './skillTool'
 import { createTerminalToolSet } from './terminalTools'
@@ -48,6 +49,7 @@ export async function createNativeAgentTools(
   const tools: ToolSet = {
     list: createListTool(context),
     read: createReadTool(context),
+    read_tool_output: createReadToolOutputTool(),
     glob: createGlobTool(context),
     grep: createGrepTool(context),
     ...createMcpToolSet(context),

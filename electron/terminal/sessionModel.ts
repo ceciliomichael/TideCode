@@ -4,6 +4,7 @@ export const MAX_SESSION_OUTPUT_BUFFER_LENGTH = 300_000;
 
 export interface ActiveTerminalSession {
   aiTurnId: string | null;
+  capturePendingAiOutput: boolean;
   cwd: string;
   exitCode: number | null;
   hasExited: boolean;
@@ -48,7 +49,7 @@ export function appendSessionOutputBuffer(
 ) {
   const previousBufferLength = activeSession.outputBuffer.length;
   activeSession.outputBuffer += chunk;
-  if (activeSession.isAiSession) {
+  if (activeSession.capturePendingAiOutput) {
     activeSession.pendingAiOutputChunks.push(chunk);
   }
 

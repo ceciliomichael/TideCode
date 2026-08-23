@@ -9,6 +9,7 @@ import { getToolResultModelContent, parseStructuredToolResultContent } from '../
 import type { ChatMode, Message, AppTerminalExecutionMode } from '../../../src/types/chat'
 import type { AgentOrchestrationMode } from './orchestration'
 import { buildChatModeSystemPrompt } from './prompts/mode'
+import { projectModelMessagesForContext } from './tools/toolOutputBudget'
 import {
   ensureChatImageReferences,
   getChatImageAttachments,
@@ -595,7 +596,7 @@ export function buildModelMessages(
     appendModelMessage(messages, modelMessage)
   }
 
-  const legacySafeMessages = stripLegacyCompactionContainers(messages)
+  const legacySafeMessages = projectModelMessagesForContext(stripLegacyCompactionContainers(messages))
   return options.includeExecutionModeContext
     ? ensureCurrentExecutionModeContext(legacySafeMessages, options.terminalExecutionMode)
     : legacySafeMessages

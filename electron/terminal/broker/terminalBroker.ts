@@ -45,7 +45,8 @@ const DEFAULT_RECORD_RETENTION_MS = 5 * 60_000
 const DEFAULT_DISCONNECTED_CLIENT_GRACE_MS = 60_000
 const TERMINAL_DATA_CHANNEL = 'terminal:session:data'
 const TERMINAL_EXIT_CHANNEL = 'terminal:session:exit'
-const PERSISTENCE_DEBOUNCE_MS = 250
+const STATE_PERSISTENCE_DELAY_MS = 250
+const OUTPUT_PERSISTENCE_INTERVAL_MS = 2_000
 
 interface BrokerOperationRecord {
   snapshot: TerminalBrokerOperationSnapshot
@@ -121,6 +122,7 @@ export class TerminalBroker {
   private readonly reaperTimer: NodeJS.Timeout
   private readonly persistence = new TerminalBrokerPersistence()
   private persistenceTimer: NodeJS.Timeout | null = null
+  private persistenceDueAt: number | null = null
   private started = false
   private nextOwnerId = -100_000
 
@@ -185,7 +187,12 @@ export class TerminalBroker {
       sessionKey: brokerSessionId,
       workspaceRootPath,
     }
-    const created = await createTerminalSessionForWebContents(owner, serviceInput)
+    const created = await createTerminalSessionForWebContents(owner, {
+      ...serviceInput,
+      // Broker cursors replaced the legacy pending-output polling buffer. Keeping both
+      // makes every AI chunk live in two stores and leaves the legacy chunk array unconsumed.
+      capturePendingAiOutput: false,
+    })
     const createdAt = this.now()
     const output = new TerminalBrokerOutputStore()
     if (created.bufferedOutput) output.append(brokerSessionId, created.bufferedOutput)
@@ -600,7 +607,7 @@ export class TerminalBroker {
       output,
       type: 'terminal_output',
     })
-    this.schedulePersistence()
+    this.schedulePersistence(OUTPUT_PERSISTENCE_INTERVAL_MS)
   }
 
   private handleTerminalExit(brokerSessionId: string, event: TerminalExitEvent) {
@@ -670,12 +677,17 @@ export class TerminalBroker {
     for (const listener of this.listeners) listener(event)
   }
 
-  private schedulePersistence() {
-    if (!this.started || this.persistenceTimer) return
+  private schedulePersistence(delayMs = STATE_PERSISTENCE_DELAY_MS) {
+    if (!this.started) return
+    const dueAt = this.now() + delayMs
+    if (this.persistenceTimer && this.persistenceDueAt !== null && this.persistenceDueAt <= dueAt) return
+    if (this.persistenceTimer) clearTimeout(this.persistenceTimer)
+    this.persistenceDueAt = dueAt
     this.persistenceTimer = setTimeout(() => {
       this.persistenceTimer = null
+      this.persistenceDueAt = null
       void this.persistNow().catch((error) => console.error('Unable to persist terminal broker state.', error))
-    }, PERSISTENCE_DEBOUNCE_MS)
+    }, delayMs)
     this.persistenceTimer.unref()
   }
 
@@ -684,6 +696,7 @@ export class TerminalBroker {
       clearTimeout(this.persistenceTimer)
       this.persistenceTimer = null
     }
+    this.persistenceDueAt = null
     return this.persistence.save({
       operations: Array.from(this.operations.values()).map((record) => cloneOperation(record.snapshot)),
       sessions: Array.from(this.sessions.values()).map((record) => ({
