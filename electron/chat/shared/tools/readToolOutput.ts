@@ -12,7 +12,7 @@ interface ReadToolOutputInput {
 export function createReadToolOutputTool() {
   return tool({
     description:
-      'Read a bounded section of a previously truncated tool result. Use the output_id supplied by the tool result and request only the lines needed.',
+      'Read a bounded section of a previously truncated tool result. Use this only when omitted content is needed, with the output_id supplied by that result and the narrowest useful line range.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
@@ -48,11 +48,19 @@ export function createReadToolOutputTool() {
         })
         return createSuccessResult({
           body: result.body,
+          displayBody: result.body,
           semantics: {
-            line_count: result.lineCount,
+            ...(result.returnedLineCount > 0
+              ? {
+                  end_line: result.endLine,
+                  start_line: result.startLine,
+                }
+              : {}),
+            has_more: result.nextOffset !== null,
             next_offset: result.nextOffset,
-            offset: input.offset ?? 1,
             output_id: result.outputId,
+            returned_line_count: result.returnedLineCount,
+            total_line_count: result.lineCount,
           },
           subject: {
             kind: 'tool_output',

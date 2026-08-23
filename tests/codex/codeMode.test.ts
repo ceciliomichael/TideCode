@@ -996,6 +996,46 @@ test('the registry maps a zero-based first-line offset to the read API contract'
   assert.deepEqual(receivedInput, { offset: 1 })
 })
 
+test('Code Mode receives bounded tool output while nested user-facing results keep the full body', async () => {
+  const fullBody = Array.from(
+    { length: 5_000 },
+    (_value, index) => `output line ${index} ${'x'.repeat(60)}`,
+  ).join('\n')
+  const registry = await createAgentToolRegistry({
+    noisy: tool({
+      description: 'Returns a deliberately large result.',
+      inputSchema: jsonSchema({ additionalProperties: false, properties: {}, type: 'object' }),
+      execute: async () => ({
+        body: fullBody,
+        semantics: { output_id: 'noisy-existing-output' },
+        status: 'success' as const,
+        summary: 'Returned noisy output.',
+      }),
+    }),
+  })
+  const executor = new CodeModeExecutor(registry)
+
+  try {
+    const result = await executor.run([
+      'const noisy = await tools.noisy({})',
+      'return { body: noisy.body, displayBody: noisy.displayBody ?? null, outputId: noisy.semantics.output_id }',
+    ].join('\n'))
+
+    assert.equal(result.status, 'success')
+    assert.equal(result.toolCalls.length, 1)
+    assert.equal(result.toolCalls[0]?.body, fullBody)
+    const output = result.output as { body: string; displayBody: unknown; outputId: string }
+    assert.ok(Buffer.byteLength(output.body, 'utf8') < 40_000)
+    assert.match(output.body, /output line 0 /u)
+    assert.match(output.body, /output line 4999 /u)
+    assert.match(output.body, /read_tool_output/u)
+    assert.equal(output.displayBody, null)
+    assert.equal(output.outputId, 'noisy-existing-output')
+  } finally {
+    await executor.dispose()
+  }
+})
+
 test('Code Mode terminates a synchronous infinite loop', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
 

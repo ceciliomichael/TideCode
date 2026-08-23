@@ -20,6 +20,7 @@ test('createAgentTools omits write tools in plan mode', async () => {
 
     assert.ok('list' in tools)
     assert.ok('read' in tools)
+    assert.ok('read_tool_output' in tools)
     assert.ok('kanban_board' in tools)
     assert.ok('memory' in tools)
     assert.ok('plan_create' in tools)
@@ -63,6 +64,7 @@ test('Code Mode exposes one provider tool while discovery and native executors s
 assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
     assert.ok(bundle.registry.get('tool_search'))
     assert.ok(bundle.registry.get('read'))
+    assert.ok(bundle.registry.get('read_tool_output'))
     assert.ok(bundle.registry.get('edit'))
     assert.equal(bundle.registry.get('patch'), undefined)
     assert.equal(bundle.registry.get('mcp_tool_search'), undefined)
@@ -102,6 +104,7 @@ test('Hybrid orchestration retains direct tools alongside the meta-tools', async
     )
 
     assert.ok('read' in bundle.tools)
+    assert.ok('read_tool_output' in bundle.tools)
     assert.ok('code_mode' in bundle.tools)
     assert.ok(!('tool_search' in bundle.tools))
     assert.ok(bundle.registry.get('tool_search'))

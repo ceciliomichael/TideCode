@@ -64,18 +64,16 @@ export async function readPersistedToolOutput(input: {
   const content = await fs.readFile(filePath, 'utf8')
   const lines = content.split(/\r\n|\n|\r/u)
   const visibleLines = lines.slice(offset - 1, offset - 1 + limit)
-  const nextOffset = offset + visibleLines.length
+  const endLine = visibleLines.length > 0 ? offset + visibleLines.length - 1 : offset - 1
+  const nextOffset = endLine < lines.length ? endLine + 1 : null
 
   return {
-    body: [
-      `Tool output ${outputId}`,
-      `Lines ${offset}-${Math.max(offset, nextOffset - 1)} of ${lines.length}`,
-      '',
-      visibleLines.map((line, index) => `${offset + index}: ${line}`).join('\n'),
-      ...(nextOffset <= lines.length ? ['', `More output is available with offset ${nextOffset}.`] : []),
-    ].join('\n'),
+    body: visibleLines.join('\n'),
+    endLine,
     lineCount: lines.length,
-    nextOffset: nextOffset <= lines.length ? nextOffset : null,
+    nextOffset,
     outputId,
+    returnedLineCount: visibleLines.length,
+    startLine: offset,
   }
 }

@@ -114,7 +114,12 @@ function formatReadToolResultBody(metadata: StructuredToolResultMetadata, body: 
   const headerLines: string[] = []
 
   if (subjectPath.length > 0) {
-    headerLines.push(`${metadata.subject?.kind === 'directory' ? 'Directory' : 'File'}: ${subjectPath}`)
+    const subjectLabel = metadata.subject?.kind === 'directory'
+      ? 'Directory'
+      : metadata.subject?.kind === 'tool_output'
+        ? 'Tool output'
+        : 'File'
+    headerLines.push(`${subjectLabel}: ${subjectPath}`)
   }
 
   const startLine = metadata.semantics && typeof metadata.semantics.start_line === 'number' ? metadata.semantics.start_line : null
@@ -274,7 +279,7 @@ export function getToolResultModelContent(content: string) {
     modelContent = normalizedCodeModeBody.length > 0
       ? normalizedCodeModeBody
       : parsedContent.metadata.summary.trim() || content.trim()
-  } else if (parsedContent.metadata?.toolName === 'read') {
+  } else if (parsedContent.metadata?.toolName === 'read' || parsedContent.metadata?.toolName === 'read_tool_output') {
     modelContent = formatReadToolResultBody(parsedContent.metadata, parsedContent.body)
   } else if (parsedContent.metadata?.toolName === 'list') {
     modelContent = formatListToolResultBody(parsedContent.metadata, parsedContent.body)

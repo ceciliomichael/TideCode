@@ -177,6 +177,7 @@ test('runtime tool exposure gives the provider the concrete native tools', async
       'memory',
       'read',
       'read_terminal',
+      'read_tool_output',
       'terminate_terminal',
       'write',
     ])
@@ -191,6 +192,7 @@ test('runtime tool exposure gives the provider the concrete native tools', async
       'plan_create',
       'plan_edit',
       'read',
+      'read_tool_output',
     ])
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

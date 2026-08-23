@@ -154,14 +154,18 @@ export async function prepareToolExecutionResultForModel(input: {
   return {
     ...input.result,
     body: projection.text,
-    ...(outputId
-      ? {
-          semantics: {
-            ...input.result.semantics,
-            output_id: outputId,
-          },
-        }
-      : {}),
+    semantics: {
+      ...input.result.semantics,
+      omitted_bytes: projection.omittedBytes,
+      omitted_lines: projection.omittedLines,
+      ...(outputId ? { output_id: outputId } : {}),
+      original_approximate_tokens: projection.originalApproximateTokens,
+      total_output_lines: projection.totalLines,
+      visible_line_ranges: projection.visibleRanges?.map((range) => ({
+        end_line: range.endLine,
+        start_line: range.startLine,
+      })),
+    },
     truncated: true,
   }
 }
@@ -199,7 +203,7 @@ export function withCanonicalToolModelOutputs(tools: ToolSet): ToolSet {
       {
         ...tool,
         toModelOutput: (input: { input: unknown; output: unknown; toolCallId: string }) =>
-          createCanonicalToolModelOutput({
+          createBoundedCanonicalToolModelOutput({
             argumentsValue: input.input,
             output: input.output,
             toolCallId: input.toolCallId,

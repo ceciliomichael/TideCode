@@ -148,7 +148,10 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   const diffResultPresentation = displayInvocation.resultPresentation?.kind === 'file_diff' ? displayInvocation.resultPresentation : null
   const changeResultPresentation = displayInvocation.resultPresentation?.kind === 'change_diff' ? displayInvocation.resultPresentation : null
   const imageResultPresentation = displayInvocation.resultPresentation?.kind === 'image' ? displayInvocation.resultPresentation : null
-  const isLiteralSourceTool = displayInvocation.toolName === 'read' || displayInvocation.toolName === 'grep'
+  const isLiteralSourceTool =
+    displayInvocation.toolName === 'read' ||
+    displayInvocation.toolName === 'read_tool_output' ||
+    displayInvocation.toolName === 'grep'
   const parsedStructuredResult = displayInvocation.resultContent ? parseStructuredToolResultContent(displayInvocation.resultContent) : null
   const rawResultBody =
     parsedStructuredResult?.body ??
