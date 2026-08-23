@@ -69,7 +69,7 @@ function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts
     return 'commandCount'
   }
 
-  if (toolName === 'read' || toolName === 'read_tool_output') {
+  if (toolName === 'read') {
     return 'exploredFileCount'
   }
 
@@ -237,7 +237,7 @@ export function buildToolInvocationGroupSummary(
   }
 
   for (const invocation of invocations) {
-    if (invocation.toolName === 'code_mode') {
+    if (invocation.toolName === 'code_mode' || invocation.toolName === 'read_tool_output') {
       continue
     }
 

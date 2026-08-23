@@ -84,6 +84,16 @@ test('buildToolInvocationGroupSummary omits the hidden Code Mode implementation 
   )
 })
 
+test('buildToolInvocationGroupSummary omits internal read_tool_output calls', () => {
+  assert.equal(
+    buildToolInvocationGroupSummary([
+      createInvocation('read'),
+      createInvocation('read_tool_output'),
+    ]),
+    'Explored 1 file',
+  )
+})
+
 test('buildToolInvocationGroupSummary reports failed Code Mode even with successful nested work', () => {
   assert.equal(
     buildToolInvocationGroupSummary([

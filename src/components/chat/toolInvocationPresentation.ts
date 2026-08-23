@@ -36,7 +36,7 @@ function readPartialAction(argumentsText: string) {
 }
 
 function getReadToolRange(invocation: ToolInvocationTrace) {
-  if (invocation.toolName !== 'read' && invocation.toolName !== 'read_tool_output') {
+  if (invocation.toolName !== 'read') {
     return null
   }
 
@@ -114,7 +114,7 @@ function getToolVerb(invocation: ToolInvocationTrace) {
         : 'Search failed'
   }
 
-  if (invocation.toolName === 'read' || invocation.toolName === 'read_tool_output') {
+  if (invocation.toolName === 'read') {
     return invocation.state === 'running'
       ? 'Reading'
       : invocation.state === 'completed'
@@ -490,6 +490,10 @@ function getWholeFileChangeSingleChangeTarget(invocation: ToolInvocationTrace) {
 }
 
 export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace): ToolInvocationDisplayEntry[] {
+  if (invocation.toolName === 'read_tool_output') {
+    return []
+  }
+
   if (invocation.toolName === 'code_mode' && invocation.state === 'running') {
     return []
   }
@@ -655,15 +659,6 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
     }
   }
 
-  if (invocation.toolName === 'read_tool_output') {
-    const outputId = readFirstText([
-      parsedResult?.metadata?.subject?.path,
-      parsedResult?.metadata?.semantics?.output_id,
-      parsedArguments?.output_id,
-    ])
-    return outputId ? getBasename(outputId) : null
-  }
-
   // Precise-edit tools identify their target file through path.
   if (invocation.toolName === 'edit') {
     const toolPath = getToolPath(invocation)
@@ -683,13 +678,7 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
       return toolPath ? getBasename(toolPath) : null
     }
 
-    if (
-      invocation.toolName === 'list' ||
-      invocation.toolName === 'glob' ||
-      invocation.toolName === 'grep' ||
-      invocation.toolName === 'read' ||
-      invocation.toolName === 'read_tool_output'
-    ) {
+    if (invocation.toolName === 'list' || invocation.toolName === 'glob' || invocation.toolName === 'grep' || invocation.toolName === 'read') {
       if (invocation.toolName === 'read') {
         return getReadToolTarget(normalizedStructuredPath, workspaceRootPath)
       }
@@ -704,13 +693,7 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
     return null
   }
 
-  if (
-    invocation.toolName === 'list' ||
-    invocation.toolName === 'glob' ||
-    invocation.toolName === 'grep' ||
-    invocation.toolName === 'read' ||
-    invocation.toolName === 'read_tool_output'
-  ) {
+  if (invocation.toolName === 'list' || invocation.toolName === 'glob' || invocation.toolName === 'grep' || invocation.toolName === 'read') {
     if (invocation.toolName === 'read') {
       return getReadToolTarget(toolPath, workspaceRootPath)
     }
@@ -745,10 +728,9 @@ export function getToolInvocationHeaderLabel(
         }
   const target = getToolTarget(effectiveInvocation, workspaceRootPath)
   const verb = getToolVerb(effectiveInvocation)
-  const isReadTool = effectiveInvocation.toolName === 'read' || effectiveInvocation.toolName === 'read_tool_output'
-  const readRange = isReadTool ? getReadToolRange(effectiveInvocation) : null
+  const readRange = effectiveInvocation.toolName === 'read' ? getReadToolRange(effectiveInvocation) : null
   const targetWithRange =
-    isReadTool && target
+    effectiveInvocation.toolName === 'read' && target
       ? `${target}${readRange ? ` (${readRange})` : ''}`
       : target
   return [verb, targetWithRange]

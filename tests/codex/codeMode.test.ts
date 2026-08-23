@@ -266,6 +266,49 @@ test('Code Mode reports bare tool calls without exposing an undefined result', a
   }
 })
 
+test('Code Mode renders a directly returned ToolResult with literal newlines', async () => {
+  const entries = [{
+    description: 'Returns multiline text.',
+    execute: async () => ({
+      body: 'first line\nsecond line',
+      status: 'success' as const,
+      summary: 'Returned multiline text.',
+    }),
+    inputSchema: { additionalProperties: false, properties: {}, type: 'object' as const },
+    name: 'multiline',
+    namespace: 'test',
+  }]
+  const registry: AgentToolRegistry = {
+    entries,
+    get(name) {
+      return entries.find((entry) => entry.name === name)
+    },
+    search() {
+      return entries.map((entry) => ({ ...entry, score: 1 }))
+    },
+  }
+  const executor = new CodeModeExecutor(registry)
+  const codeModeTool = createCodeModeTool(executor, registry)
+
+  try {
+    type ExecutableTestTool = {
+      execute?: (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>
+    }
+    const execute = (codeModeTool as unknown as ExecutableTestTool).execute
+    assert.equal(typeof execute, 'function')
+    const result = await execute?.(
+      { code: 'return await tools.multiline({})' },
+      { context: {}, messages: [], toolCallId: 'test-code-mode-multiline-result' },
+    ) as { body?: string }
+
+    assert.match(result.body ?? '', /first line\nsecond line/u)
+    assert.doesNotMatch(result.body ?? '', /first line\\nsecond line/u)
+    assert.doesNotMatch(result.body ?? '', /"body"/u)
+  } finally {
+    await executor.dispose()
+  }
+})
+
 test('Code Mode explains non-serializable returned data instead of exposing a clone error', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
 

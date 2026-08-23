@@ -5,7 +5,10 @@ import { createSuccessResult } from './workspaceToolResults'
 import { createToolErrorResult } from './toolResult'
 import type { CodeModeExecutor } from '../codeMode/executor'
 import { CODE_MODE_EXECUTION_CONTRACT } from '../codeMode/promptContract'
-import { formatImplicitCodeModeToolResults } from '../../../../src/lib/codeModeResultOutput'
+import {
+  formatExplicitCodeModeOutput,
+  formatImplicitCodeModeToolResults,
+} from '../../../../src/lib/codeModeResultOutput'
 import { isDynamicAgentTool, type AgentToolRegistry } from './registry'
 import { createAgentToolCallableContract } from './callableContract'
 
@@ -64,21 +67,6 @@ interface CodeModeInput {
   payloads?: Record<string, string>
 }
 
-function stringifyOutput(value: unknown) {
-  if (value === undefined) {
-    return ''
-  }
-
-  if (typeof value === 'string') {
-    return value
-  }
-  try {
-    return JSON.stringify(value, null, 2) ?? ''
-  } catch {
-    return String(value)
-  }
-}
-
 function buildBoundedToolSearchResult(
   query: string,
   matches: ReturnType<AgentToolRegistry['search']>,
@@ -97,7 +85,7 @@ function buildBoundedToolSearchResult(
       query,
       tools: candidateMatches.map(toModelTool),
     }
-    if (Buffer.byteLength(stringifyOutput(candidate), 'utf8') > MAX_TOOL_SEARCH_RESULT_BYTES) break
+    if (Buffer.byteLength(formatExplicitCodeModeOutput(candidate), 'utf8') > MAX_TOOL_SEARCH_RESULT_BYTES) break
     boundedMatches.push(match)
   }
 
@@ -121,7 +109,7 @@ export function createToolSearchTool(registry: AgentToolRegistry, options: { dyn
       const matches = registry.search(query, dynamicOnly ? 'mcp' : input.namespace, input.limit ?? 10)
       const result = buildBoundedToolSearchResult(query, matches)
       return createSuccessResult({
-        body: stringifyOutput(result),
+        body: formatExplicitCodeModeOutput(result),
         semantics: {
           match_count: matches.length,
           operation: 'tool_search',
@@ -194,7 +182,7 @@ export function createCodeModeTool(
       })
       const outputBody = result.output === undefined
         ? formatImplicitCodeModeToolResults(result.toolCalls)
-        : stringifyOutput(result.output)
+        : formatExplicitCodeModeOutput(result.output)
       const body = [
         result.status === 'error' ? result.error ?? result.summary : result.summary,
         outputBody.length > 0 ? outputBody : null,
