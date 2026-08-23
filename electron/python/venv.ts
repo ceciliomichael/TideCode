@@ -78,9 +78,10 @@ export function activateVenvInEnvironment(
   platform: NodeJS.Platform = process.platform,
 ): NodeJS.ProcessEnv {
   const isWindows = platform === 'win32'
+  const platformPath = isWindows ? path.win32 : path.posix
   const venvBin = isWindows
-    ? path.join(venvPath, 'Scripts')
-    : path.join(venvPath, 'bin')
+    ? platformPath.join(venvPath, 'Scripts')
+    : platformPath.join(venvPath, 'bin')
   const pathSeparator = isWindows ? ';' : ':'
   const pathKey = isWindows
     ? Object.keys(env).find((key) => key.toLowerCase() === 'path') ?? 'Path'
