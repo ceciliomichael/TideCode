@@ -8,6 +8,7 @@ import {
   RUN_SERVICE_BUILD_ID_ENV,
 } from './buildIdentity'
 import { RunServiceBuildMismatchError, TideCodeRunServiceClient } from './client'
+import { configureDevelopmentRunServiceNamespace, resolveRunServiceNamespace } from './namespace'
 
 let sharedClientPromise: Promise<TideCodeRunServiceClient> | null = null
 
@@ -17,6 +18,18 @@ function sleep(milliseconds: number) {
 
 function isElectronRuntime() {
   return Boolean(process.versions.electron)
+}
+
+function configureRunServiceNamespaceForRuntime() {
+  const configuredNamespace = resolveRunServiceNamespace()
+  if (configuredNamespace) return configuredNamespace
+
+  const runtimeRoot = getTideCodeRuntimeRoot()
+  const sourceEntry = path.join(runtimeRoot, 'electron', 'runService', 'index.ts')
+  if (!existsSync(sourceEntry)) return null
+  // A source/dev client must not replace the packaged service. That service may own the
+  // terminal process tree which launched this very `npm run dev` command.
+  return configureDevelopmentRunServiceNamespace(runtimeRoot)
 }
 
 export function buildRunServiceEnvironment(
@@ -119,6 +132,7 @@ async function waitForStaleServiceExit(buildId: string) {
 }
 
 async function launchAndConnectService() {
+  configureRunServiceNamespaceForRuntime()
   const launch = getServiceLaunch()
   try {
     return await connectExistingService(launch.buildId)
