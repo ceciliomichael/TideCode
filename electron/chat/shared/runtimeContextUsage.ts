@@ -58,7 +58,9 @@ export async function estimateToolEnabledContextUsage(input: {
   const contextCompaction = normalizeContextCompactionSettings(input.contextCompaction)
   const normalizedWorkspaceRootPath = await resolveAvailableWorkspaceRootPath(input.agentContextRootPath)
   const workspaceRootPath = normalizedWorkspaceRootPath ?? 'No workspace selected'
-  const enabledSkills = await listEnabledSkills(normalizedWorkspaceRootPath)
+  const enabledSkills = normalizedWorkspaceRootPath
+    ? await listEnabledSkills(normalizedWorkspaceRootPath)
+    : []
   const orchestrationMode = 'code_mode' as const
   const promptOptions = {
     includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId),

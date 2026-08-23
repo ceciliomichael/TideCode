@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import path from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import type { ModelMessage } from 'ai'
 import {
   buildContinuationMessage,
@@ -16,6 +18,14 @@ import {
 } from '../../electron/chat/shared/compaction/reasoning'
 import { derivePromptCacheKey } from '../../electron/chat/cache/providerPolicies'
 import { buildCompactionRequestPrompt } from '../../electron/chat/shared/compaction/prompt'
+import { compactModelMessages } from '../../electron/chat/shared/compaction/service'
+import {
+  calculateModelMessagesBudget,
+  shouldCompactContext,
+} from '../../electron/chat/shared/compaction/budget'
+import { configureTideCodeRuntimeRoot } from '../../electron/runtime/runtimeRoot'
+
+const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
 test('v2 continuation accepts natural Markdown and rejects packet JSON or meta-only output', () => {
   const markdown = 'The provider prefix remains stable. Run the focused cache test next.'
@@ -241,6 +251,101 @@ test('the projected continuation preserves the AI-generated Markdown across comp
   })
 
   assert.equal(merged.continuationMarkdown, generatedMarkdown)
+})
+
+test('automatic compaction reduces a single oversized tool-heavy turn below the provider window', async () => {
+  const messages: ModelMessage[] = [
+    { role: 'user', content: 'Inspect the release files and keep working until verification is complete.' },
+    {
+      role: 'assistant',
+      content: [{
+        type: 'tool-call',
+        toolCallId: 'call-package',
+        toolName: 'read',
+        input: { path: 'package-lock.json' },
+      }],
+    },
+    {
+      role: 'tool',
+      content: [{
+        type: 'tool-result',
+        toolCallId: 'call-package',
+        toolName: 'read',
+        output: { type: 'text', value: `package-lock evidence ${'P'.repeat(700_000)}` },
+      }],
+    },
+    {
+      role: 'assistant',
+      content: [{
+        type: 'tool-call',
+        toolCallId: 'call-changelog',
+        toolName: 'read',
+        input: { path: 'CHANGELOG.md' },
+      }],
+    },
+    {
+      role: 'tool',
+      content: [{
+        type: 'tool-result',
+        toolCallId: 'call-changelog',
+        toolName: 'read',
+        output: { type: 'text', value: `changelog evidence ${'C'.repeat(500_000)}` },
+      }],
+    },
+    { role: 'assistant', content: 'The release still needs the final verification command.' },
+  ]
+  const budgetInput = {
+    contextWindowTokens: 200_000,
+    messages,
+    systemPromptTokens: 5_000,
+    toolSchemaTokens: 0,
+    triggerRatio: 0.8,
+  }
+  const before = calculateModelMessagesBudget(budgetInput)
+  const previousRuntimeRoot = process.env.TIDECODE_RUNTIME_ROOT
+  let started = 0
+
+  assert.equal(shouldCompactContext(before), true)
+
+  try {
+    configureTideCodeRuntimeRoot(workspaceRoot)
+    const compacted = await compactModelMessages({
+      ...budgetInput,
+      createStream: async () => ({
+        fullStream: (async function* () {
+          yield {
+            type: 'text-delta',
+            text: 'The release files were inspected. Large intermediate file contents were reduced to verified handoff facts. The final verification command is still pending.',
+          }
+        })(),
+      }),
+      model: 'test-model',
+      onStarted: () => {
+        started += 1
+      },
+      providerId: 'codex',
+      reasoningEffort: 'medium',
+      retainedContextTokens: 10_000,
+    })
+
+    assert.ok(compacted)
+    assert.equal(started, 1)
+    assert.equal(compacted.boundaryIndex, messages.length)
+    assert.equal(compacted.packet.sourceRange?.startIndex, 0)
+    assert.equal(compacted.packet.sourceRange?.endIndex, messages.length)
+    assert.equal(compacted.projectedMessages.some((message) => message.role === 'tool'), false)
+
+    const after = calculateModelMessagesBudget({
+      ...budgetInput,
+      messages: compacted.projectedMessages,
+    })
+    assert.ok(after.totalTokens < before.totalTokens)
+    assert.ok(after.totalTokens < after.contextWindowTokens)
+    assert.equal(shouldCompactContext(after), false)
+  } finally {
+    if (previousRuntimeRoot === undefined) delete process.env.TIDECODE_RUNTIME_ROOT
+    else process.env.TIDECODE_RUNTIME_ROOT = previousRuntimeRoot
+  }
 })
 
 test('projection emits one Markdown continuation and removes raw tool history from the semantic tail', () => {

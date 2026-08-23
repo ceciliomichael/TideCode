@@ -44,7 +44,6 @@ import {
   shouldCompactContext,
 } from './compaction/budget'
 import type { CompactionPacket } from './compaction/contracts'
-import { hasCompactionEligibleHistory } from './compaction/window'
 import {
   buildChatPrompt,
   ensureCurrentExecutionModeContext,
@@ -399,11 +398,11 @@ export async function runToolEnabledChatStream(input: {
           liveContextCompaction.retainedContextTokens,
           compactionBudget,
         )
-        const compactionRequired = shouldCompactContext(compactionBudget) &&
-          hasCompactionEligibleHistory(compactionMessages, {
-            previousPacket: latestCompactionPacket,
-            retainedContextTokens,
-          })
+        // Crossing the configured threshold is itself the requirement. Window
+        // selection decides how to compact, including an oversized current
+        // turn, but it must never downgrade an over-threshold context to
+        // optional and let the next provider step continue uncompressed.
+        const compactionRequired = shouldCompactContext(compactionBudget)
 
         const compactionAttemptId = randomUUID()
         let compactionStarted = false
@@ -594,11 +593,7 @@ export async function runToolEnabledChatStream(input: {
         finalContextCompaction.retainedContextTokens,
         finalCompactionBudget,
       )
-      const finalCompactionRequired = shouldCompactContext(finalCompactionBudget) &&
-        hasCompactionEligibleHistory(finalCompactionMessages, {
-        previousPacket: latestCompactionPacket,
-        retainedContextTokens: finalRetainedContextTokens,
-      })
+      const finalCompactionRequired = shouldCompactContext(finalCompactionBudget)
 
       if (finalCompactionRequired) {
         const compactionAttemptId = randomUUID()

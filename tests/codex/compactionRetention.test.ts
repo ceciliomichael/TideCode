@@ -12,7 +12,11 @@ import {
   RETAINED_TOOL_CALL_ARGUMENT_MAX_BYTES,
   selectLatestContextByTokens,
 } from '../../electron/chat/shared/compaction/retention'
-import { hasUnresolvedToolCall } from '../../electron/chat/shared/compaction/window'
+import {
+  hasCompactionEligibleHistory,
+  hasUnresolvedToolCall,
+  selectCompactionWindow,
+} from '../../electron/chat/shared/compaction/window'
 
 test('retained context keeps complete user multimodal content and tool results', () => {
   const imagePart = {
@@ -133,6 +137,108 @@ test('retained context fills the token target with a partial older turn', () => 
   assert.equal(selection.tokenCount, targetTokens)
   assert.equal(selection.messages.filter((message) => message.role === 'user').length, 2)
   assert.ok(String(selection.messages[1]?.content).length < previousTurn[1].content.length)
+})
+
+test('an oversized newest turn becomes a compactable projected source', () => {
+  const messages: ModelMessage[] = [
+    { role: 'user', content: 'Keep working on the release until it is fully verified.' },
+    {
+      role: 'assistant',
+      content: [{
+        input: { path: 'package-lock.json' },
+        toolCallId: 'call-lockfile',
+        toolName: 'read',
+        type: 'tool-call',
+      }],
+    },
+    {
+      role: 'tool',
+      content: [{
+        output: { type: 'text', value: `Lockfile evidence ${'A'.repeat(500_000)}` },
+        toolCallId: 'call-lockfile',
+        toolName: 'read',
+        type: 'tool-result',
+      }],
+    },
+    {
+      role: 'assistant',
+      content: [{
+        input: { path: 'CHANGELOG.md' },
+        toolCallId: 'call-changelog',
+        toolName: 'read',
+        type: 'tool-call',
+      }],
+    },
+    {
+      role: 'tool',
+      content: [{
+        output: { type: 'text', value: `Changelog evidence ${'B'.repeat(500_000)}` },
+        toolCallId: 'call-changelog',
+        toolName: 'read',
+        type: 'tool-result',
+      }],
+    },
+    { role: 'assistant', content: 'The release still needs its final verification step.' },
+  ]
+  const targetTokens = 10_000
+  const rawTokens = estimateRetainedContextTokens(messages)
+  const selection = selectLatestContextByTokens(messages, targetTokens, { allowPartialNewestTurn: true })
+
+  assert.equal(selection.startIndex, 0)
+  assert.ok(rawTokens > targetTokens)
+  assert.ok(selection.tokenCount < rawTokens)
+  assert.ok(selection.tokenCount <= targetTokens)
+  assert.equal(hasUnresolvedToolCall(selection.messages), false)
+  assert.equal(hasCompactionEligibleHistory(messages, { retainedContextTokens: targetTokens }), true)
+
+  const window = selectCompactionWindow(messages, targetTokens, { retainedContextTokens: targetTokens })
+  assert.ok(window)
+  assert.equal(window.boundaryIndex, messages.length)
+  assert.equal(window.sourceStartIndex, 0)
+  assert.equal(window.sourceEndIndex, messages.length)
+  assert.deepEqual(window.evictedMessages, messages)
+  assert.deepEqual(window.tailMessages, selection.messages)
+})
+
+test('a partial newest turn summarizes the complete source so projected-away current evidence is not lost', () => {
+  const messages: ModelMessage[] = [
+    { role: 'user', content: 'Earlier request.' },
+    { role: 'assistant', content: 'Earlier response.' },
+    { role: 'user', content: 'Continue the current task.' },
+    {
+      role: 'assistant',
+      content: [{
+        input: { path: 'large.log' },
+        toolCallId: 'call-current',
+        toolName: 'read',
+        type: 'tool-call',
+      }],
+    },
+    {
+      role: 'tool',
+      content: [{
+        output: { type: 'text', value: `Current-turn evidence ${'E'.repeat(700_000)}` },
+        toolCallId: 'call-current',
+        toolName: 'read',
+        type: 'tool-result',
+      }],
+    },
+    { role: 'assistant', content: 'The current task is still in progress.' },
+  ]
+
+  const window = selectCompactionWindow(messages, 10_000, { retainedContextTokens: 10_000 })
+
+  assert.ok(window)
+  assert.equal(window.boundaryIndex, messages.length)
+  assert.deepEqual(window.evictedMessages, messages)
+  assert.ok(estimateRetainedContextTokens(window.tailMessages) < estimateRetainedContextTokens(messages))
+})
+
+test('a user prompt that cannot be safely reduced does not invent an intra-turn compaction window', () => {
+  const messages: ModelMessage[] = [{ role: 'user', content: 'U'.repeat(500_000) }]
+
+  assert.equal(hasCompactionEligibleHistory(messages, { retainedContextTokens: 10_000 }), false)
+  assert.equal(selectCompactionWindow(messages, 10_000, { retainedContextTokens: 10_000 }), null)
 })
 
 test('partial retention keeps the final assistant result after a large tool exchange', () => {
