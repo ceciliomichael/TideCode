@@ -64,11 +64,11 @@ function buildPlainMentionRegex(knownMentionLabels?: ReadonlyMap<string, string>
     .map((label) => escapeRegExp(label))
     .join('|')
 
-  // Use a lookbehind for the prefix so the preceding whitespace/boundary is NOT
-  // consumed as part of the match. Without this, consecutive @mentions like
-  // "@natural-writing @flat-design" only highlight the first one because the
-  // space before the second mention is swallowed by the first match[0].
-  return new RegExp(`(?:^|(?<=[\\s(]))@(${escapedLabels})(?=$|[\\s,.;:!?\\]\\)])`, 'g')
+  // Do not require whitespace before a mention. Mentions can be intentionally
+  // attached to preceding text, for example "release@RELEASE_INSTRUCTIONS.md".
+  // The lookahead keeps the known label boundary intact without consuming any
+  // surrounding text, so adjacent mentions and normal text remain separate.
+  return new RegExp(`@(${escapedLabels})(?=$|[\\s,.;:!?\\]\\)])`, 'g')
 }
 
 function pushTextSegment(segments: ChatMentionSegment[], text: string) {
