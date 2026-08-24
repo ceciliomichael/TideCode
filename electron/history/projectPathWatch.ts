@@ -6,7 +6,8 @@ import { readFolderStore } from './folderStore'
 import { deleteStoredFolder } from './store'
 
 const PROJECT_PATH_CHECK_DEBOUNCE_MS = 100
-const PROJECT_PATH_POLL_INTERVAL_MS = 1500
+const PROJECT_PATH_INITIAL_CHECK_DELAY_MS = 10_000
+const PROJECT_PATH_POLL_INTERVAL_MS = 30_000
 
 interface ProjectPathWatchState {
   checkInFlight: boolean
@@ -162,11 +163,11 @@ export async function startProjectPathWatcher(onPruned: (event: ProjectFolderPru
   watchState = state
 
   replaceTrackedFolders(state, await readFolderStore())
-  await reconcileProjectPaths(state)
   if (watchState !== state) {
     return
   }
 
+  scheduleProjectPathCheck(state, PROJECT_PATH_INITIAL_CHECK_DELAY_MS)
   state.pollTimerId = setInterval(() => {
     scheduleProjectPathCheck(state, 0)
   }, PROJECT_PATH_POLL_INTERVAL_MS)
