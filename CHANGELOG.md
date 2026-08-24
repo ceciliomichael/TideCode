@@ -1,9 +1,11 @@
 # Changelog
 
-## 1.2.22 - More reliable Git workflows and attached mentions
+## 1.2.22 - More reliable terminals, updates, and Git workflows
 
-TideCode 1.2.22 improves chat mention handling and makes Git-based workflows more reliable when repositories use named remotes or an operation succeeds only partially.
+TideCode 1.2.22 improves Windows terminal setup, update actions, chat behavior, file mentions, and Git-based workflows.
 
+- Refreshes Windows terminal environments from user and machine registry PATH values, expanding variables and merging entries before shell creation.
+- Improves update status and error presentation, chat scroll following, assistant drafts, and tool-invocation progress handling.
 - Recognizes plain file mentions attached directly to preceding text while preserving label boundaries.
 - Uses the preferred remote when checking default-branch ancestry and merge conflicts.
 - Explains when a commit remains saved locally after pushing or creating a pull request fails.
