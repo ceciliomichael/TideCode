@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.22 - More reliable Git workflows and attached mentions
+
+TideCode 1.2.22 improves chat mention handling and makes Git-based workflows more reliable when repositories use named remotes or an operation succeeds only partially.
+
+- Recognizes plain file mentions attached directly to preceding text while preserving label boundaries.
+- Uses the preferred remote when checking default-branch ancestry and merge conflicts.
+- Explains when a commit remains saved locally after pushing or creating a pull request fails.
+- Requires no manual migration or configuration changes.
+
 ## 1.2.21 - Faster startup after installs and updates
 
 TideCode 1.2.21 improves cold-start responsiveness, especially immediately after installing an update or launching a freshly installed build, by moving nonessential workspace initialization off the first-paint path.
