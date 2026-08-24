@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.18 — More reliable Code Mode routing and compaction progress
+
+TideCode 1.2.18 keeps Code Mode requests on the correct execution boundary and makes completed exploration remain clearly completed as conversations are compacted.
+
+- Repairs provider calls that incorrectly name an inner `tools.*` API by routing registered tools through the model-facing Code Mode executor.
+- Clarifies that `tools.*` names are JavaScript APIs available only inside Code Mode, reducing provider-level tool routing mistakes.
+- Finalizes pre-compaction exploration summaries after compaction commits so completed work is not shown as still active.
+- Requires no migration or configuration changes.
+- Validated with the full automated test suite, TypeScript type checking, the production build, and pull-request CI.
+
 ## 1.2.17 — Clearer tool output and recovery activity
 
 TideCode 1.2.17 keeps internal recovery work out of the visible chat transcript and makes multiline Code Mode results easier to read.
