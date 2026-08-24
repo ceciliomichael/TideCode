@@ -339,6 +339,28 @@ test('chat assistant drafts preserve streamed triple-backtick closers across sin
   assert.equal(latestDraftAssistantMessage?.content, '```ts\nconst value = 1\n```')
 })
 
+test('chat assistant drafts flush the latest coalesced tool arguments before finalization', () => {
+  const { draftManager } = createDraftManager()
+
+  draftManager.appendPlaceholderDraft()
+  draftManager.handleToolInvocationStarted('tool-call-coalesced', {
+    argumentsText: '',
+    startedAt: 10,
+    toolName: 'read',
+  })
+  draftManager.handleToolInvocationDelta('tool-call-coalesced', {
+    argumentsText: '{"path":"README.md"}',
+    toolName: 'read',
+  })
+
+  const streamedMessages = draftManager.finalizeStreamedMessages(true)
+
+  assert.ok(streamedMessages)
+  const assistantMessage = streamedMessages.find((message) => message.role === 'assistant')
+  assert.equal(assistantMessage?.toolInvocations?.[0]?.argumentsText, '{"path":"README.md"}')
+  assert.equal(assistantMessage?.toolInvocations?.[0]?.state, 'failed')
+})
+
 test('chat assistant drafts finalize incomplete tool calls when a stream is aborted', () => {
   const { draftManager, getMessages } = createDraftManager()
 

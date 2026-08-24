@@ -9,6 +9,7 @@ import { normalizeAssistantMessageContent, splitThinkingContent } from '../lib/c
 import { createTerminatedToolResultContent } from '../lib/toolResultContent'
 import type { AssistantWaitingIndicatorVariant, Message, ToolInvocationTrace } from '../types/chat'
 import type { ConversationRuntimeStatePatch } from './chatMessageSendTypes'
+import { ToolInvocationDeltaCoalescer, type ToolInvocationDeltaValue } from './toolInvocationDeltaCoalescer'
 
 type DraftAssistantMessageKind = 'placeholder' | 'content' | 'tool'
 
@@ -478,6 +479,31 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
     }), options)
   }
 
+  const applyToolInvocationDelta = (invocationId: string, nextValue: ToolInvocationDeltaValue) => {
+    input.stopTextStreaming(input.conversationId)
+    const draftAssistantId = toolInvocationMessageIds.get(invocationId) ?? ensureAssistantDraft('tool')
+    toolInvocationMessageIds.set(invocationId, draftAssistantId)
+    const draftAssistantMessage = getDraftAssistantMessage(draftAssistantId)
+    const currentArgumentsTextLength =
+      draftAssistantMessage.toolInvocations?.find((invocation) => invocation.id === invocationId)?.argumentsText.length ?? 0
+    const deltaCharCount = Math.max(0, nextValue.argumentsText.length - currentArgumentsTextLength)
+    updateDraftAssistantMessage(draftAssistantId, (message) => ({
+      ...message,
+      toolInvocations: upsertToolInvocation(message.toolInvocations ?? [], invocationId, (currentValue) => ({
+        argumentsText: nextValue.argumentsText,
+        decisionRequest: currentValue?.decisionRequest,
+        id: invocationId,
+        resultContent: currentValue?.resultContent,
+        resultPresentation: currentValue?.resultPresentation,
+        startedAt: currentValue?.startedAt ?? message.timestamp,
+        state: currentValue?.state ?? 'running',
+        toolName: nextValue.toolName,
+      })),
+    }), undefined, { deltaCharCount })
+  }
+
+  const toolInvocationDeltaCoalescer = new ToolInvocationDeltaCoalescer(applyToolInvocationDelta)
+
   return {
     appendPlaceholderDraft() {
       appendAssistantDraft('placeholder')
@@ -551,8 +577,12 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
       // the thinking UI.
       reasoningCompletionPending = true
     },
-    handleCompactionCommitted,
+    handleCompactionCommitted() {
+      toolInvocationDeltaCoalescer.flush()
+      handleCompactionCommitted()
+    },
     handleSyntheticToolMessage(syntheticMessage: Message) {
+      toolInvocationDeltaCoalescer.flush()
       appendSyntheticToolMessage(syntheticMessage)
     },
     handleStreamStarted(streamId: string) {
@@ -561,6 +591,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
       })
     },
     handleSteerMessagesConsumed(messages: Message[]) {
+      toolInvocationDeltaCoalescer.flush()
       const existingMessageIds = new Set(conversationMessagesSnapshot.map((message) => message.id))
       const nextMessages = messages.filter((message) => !existingMessageIds.has(message.id))
       if (nextMessages.length === 0) {
@@ -592,6 +623,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
         'argumentsText' | 'completedAt' | 'resultContent' | 'resultPresentation' | 'toolName'
       >,
     ) {
+      toolInvocationDeltaCoalescer.flush()
       completeReasoningDraft(nextValue.completedAt)
       reasoningCompletionPending = false
       markReasoningBoundary()
@@ -606,32 +638,13 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
       invocationId: string,
       nextValue: Pick<ToolInvocationTrace, 'argumentsText' | 'toolName'>,
     ) {
-      input.stopTextStreaming(input.conversationId)
-      const draftAssistantId = toolInvocationMessageIds.get(invocationId) ?? ensureAssistantDraft('tool')
-      toolInvocationMessageIds.set(invocationId, draftAssistantId)
-      const draftAssistantMessage = getDraftAssistantMessage(draftAssistantId)
-      const currentArgumentsTextLength =
-        draftAssistantMessage.toolInvocations?.find((invocation) => invocation.id === invocationId)?.argumentsText
-          .length ?? 0
-      const deltaCharCount = Math.max(0, nextValue.argumentsText.length - currentArgumentsTextLength)
-      updateDraftAssistantMessage(draftAssistantId, (message) => ({
-        ...message,
-        toolInvocations: upsertToolInvocation(message.toolInvocations ?? [], invocationId, (currentValue) => ({
-          argumentsText: nextValue.argumentsText,
-          decisionRequest: currentValue?.decisionRequest,
-          id: invocationId,
-          resultContent: currentValue?.resultContent,
-          resultPresentation: currentValue?.resultPresentation,
-          startedAt: currentValue?.startedAt ?? message.timestamp,
-          state: currentValue?.state ?? 'running',
-          toolName: nextValue.toolName,
-        })),
-      }), undefined, { deltaCharCount })
+      toolInvocationDeltaCoalescer.enqueue(invocationId, nextValue)
     },
     handleToolInvocationDecisionRequested(
       invocationId: string,
       nextValue: Pick<ToolInvocationTrace, 'toolName' | 'decisionRequest'>,
     ) {
+      toolInvocationDeltaCoalescer.flush()
       input.stopTextStreaming(input.conversationId)
       const draftAssistantId = toolInvocationMessageIds.get(invocationId) ?? ensureAssistantDraft('tool')
       toolInvocationMessageIds.set(invocationId, draftAssistantId)
@@ -659,6 +672,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
         'argumentsText' | 'completedAt' | 'resultContent' | 'resultPresentation' | 'toolName'
       >,
     ) {
+      toolInvocationDeltaCoalescer.flush()
       completeReasoningDraft(nextValue.completedAt)
       reasoningCompletionPending = false
       markReasoningBoundary()
@@ -673,6 +687,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
       invocationId: string,
       nextValue: Pick<ToolInvocationTrace, 'argumentsText' | 'startedAt' | 'toolName'>,
     ) {
+      toolInvocationDeltaCoalescer.flush()
       completeReasoningDraft(nextValue.startedAt)
       reasoningCompletionPending = false
       markReasoningBoundary()
@@ -682,6 +697,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
       updateToolInvocation(draftAssistantId, invocationId, 'running', nextValue, { immediate: true })
     },
     finalizeStreamedMessages(wasAborted: boolean, failureMessage?: string) {
+      toolInvocationDeltaCoalescer.flush()
       completeReasoningDraft()
       reasoningCompletionPending = false
       input.updateConversationRuntimeState(input.conversationId, {

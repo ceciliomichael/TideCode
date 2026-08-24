@@ -3,6 +3,7 @@ import {
   getScrollContainerMetrics,
   getScrollContainerSnapshot,
   resolveScrollFollowing,
+  shouldMeasureScrollContainerLayout,
   type ScrollContainerSnapshot,
 } from './scrollFollowPolicy'
 
@@ -28,6 +29,8 @@ function useScrollFollower({
   const lastObservedSnapshotRef = useRef<ScrollContainerSnapshot | null>(null)
   const scheduledFrameRef = useRef<number | null>(null)
   const scheduledFrameTypeRef = useRef<'animation' | 'timeout' | null>(null)
+  const scrollObservationFrameRef = useRef<number | null>(null)
+  const scrollObservationFrameTypeRef = useRef<'animation' | 'timeout' | null>(null)
   const lastTouchYRef = useRef<number | null>(null)
   const userGestureActiveRef = useRef(false)
 
@@ -56,6 +59,21 @@ function useScrollFollower({
     cancelScheduledFollow()
     updateFollowingLatest(false)
   }, [cancelScheduledFollow, updateFollowingLatest])
+
+  const cancelScheduledScrollObservation = useCallback(() => {
+    if (scrollObservationFrameRef.current === null || typeof window === 'undefined') {
+      return
+    }
+
+    if (scrollObservationFrameTypeRef.current === 'animation') {
+      window.cancelAnimationFrame(scrollObservationFrameRef.current)
+    } else {
+      window.clearTimeout(scrollObservationFrameRef.current)
+    }
+
+    scrollObservationFrameRef.current = null
+    scrollObservationFrameTypeRef.current = null
+  }, [])
 
   const performInstantScrollToLatest = useCallback(() => {
     const container = scrollContainerRef.current
@@ -100,19 +118,33 @@ function useScrollFollower({
     scheduledFrameRef.current = window.setTimeout(runScroll, 0)
   }, [performInstantScrollToLatest])
 
-  const handleScroll = useCallback(() => {
+  const processScrollObservation = useCallback(() => {
     const container = scrollContainerRef.current
     if (!container) {
       return
     }
 
-    const currentSnapshot = getScrollContainerSnapshot(container)
-    const previousSnapshot = lastObservedSnapshotRef.current ?? currentSnapshot
+    const previousSnapshot = lastObservedSnapshotRef.current
+    const currentScrollTop = container.scrollTop
     const wasFollowingLatest = isFollowingLatestRef.current
+
+    if (
+      previousSnapshot &&
+      !shouldMeasureScrollContainerLayout(wasFollowingLatest, previousSnapshot.scrollTop, currentScrollTop)
+    ) {
+      lastObservedSnapshotRef.current = {
+        ...previousSnapshot,
+        scrollTop: currentScrollTop,
+      }
+      return
+    }
+
+    const currentSnapshot = getScrollContainerSnapshot(container)
+    const comparisonSnapshot = previousSnapshot ?? currentSnapshot
     const shouldFollowLatest = resolveScrollFollowing({
       current: currentSnapshot,
       isFollowingLatest: wasFollowingLatest,
-      previous: previousSnapshot,
+      previous: comparisonSnapshot,
     })
     lastObservedSnapshotRef.current = currentSnapshot
 
@@ -126,6 +158,27 @@ function useScrollFollower({
       scheduleAutoScroll()
     }
   }, [pauseFollowingLatest, scheduleAutoScroll, scrollContainerRef, updateFollowingLatest])
+
+  const handleScroll = useCallback(() => {
+    if (scrollObservationFrameRef.current !== null || typeof window === 'undefined') {
+      return
+    }
+
+    const runObservation = () => {
+      scrollObservationFrameRef.current = null
+      scrollObservationFrameTypeRef.current = null
+      processScrollObservation()
+    }
+
+    if (typeof window.requestAnimationFrame === 'function') {
+      scrollObservationFrameTypeRef.current = 'animation'
+      scrollObservationFrameRef.current = window.requestAnimationFrame(runObservation)
+      return
+    }
+
+    scrollObservationFrameTypeRef.current = 'timeout'
+    scrollObservationFrameRef.current = window.setTimeout(runObservation, 0)
+  }, [processScrollObservation])
 
   const handleWheel = useCallback((event: WheelEvent) => {
     if (Math.abs(event.deltaY) <= 1) {
@@ -276,9 +329,11 @@ function useScrollFollower({
       mutationObserver?.disconnect()
       resizeObserver?.disconnect()
       cancelScheduledFollow()
+      cancelScheduledScrollObservation()
     }
   }, [
     cancelScheduledFollow,
+    cancelScheduledScrollObservation,
     handleScroll,
     handleUserInteractionEnd,
     handleUserInteractionStart,

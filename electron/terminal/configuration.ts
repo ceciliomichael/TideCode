@@ -12,6 +12,7 @@ import {
   resolveWindowsSystemShell,
   type WindowsShellKind,
 } from "./windowsShell";
+import { refreshWindowsPathEnvironment } from "./windowsEnvironment";
 
 const TERMINAL_MIN_COLS = 20;
 const TERMINAL_MAX_COLS = 400;
@@ -230,7 +231,7 @@ export function resolvePreferredTerminalShell() {
 }
 
 export function createTerminalEnvironment(cwd: string, workspaceRootPath: string | null) {
-  const environment: NodeJS.ProcessEnv = {
+  const environment = refreshWindowsPathEnvironment({
     ...process.env,
     TERM: "xterm-256color",
     COLORTERM: "truecolor",
@@ -238,7 +239,7 @@ export function createTerminalEnvironment(cwd: string, workspaceRootPath: string
     PAGER: "cat",
     GIT_PAGER: "cat",
     CI: "1",
-  };
+  });
   delete environment.ELECTRON_RUN_AS_NODE;
   const venvPath = findVenvPath(cwd, workspaceRootPath);
   return venvPath ? activateVenvInEnvironment(environment, venvPath) : environment;
