@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.21 - Faster startup after installs and updates
+
+TideCode 1.2.21 improves cold-start responsiveness, especially immediately after installing an update or launching a freshly installed build, by moving nonessential workspace initialization off the first-paint path.
+
+- Creates the main window before starting saved-project path reconciliation so slow, missing, or numerous workspaces no longer delay the initial UI.
+- Defers Monaco, Shiki, editor-view preloading, and all-workspace Git status and branch cache warming until startup has settled and the renderer is idle.
+- Delays the fallback saved-project validation scan and reduces its polling frequency while preserving event-driven project-folder change detection.
+- Requires no migration or configuration changes.
+- Validated with 1,252 automated tests, TypeScript type checking, and the production build.
+
 ## 1.2.20 - Faster, more responsive terminal output
 
 TideCode 1.2.20 keeps terminal-heavy workflows responsive by reducing CPU, memory, and message-processing overhead during high-volume command output without changing how AI terminal tools behave.
