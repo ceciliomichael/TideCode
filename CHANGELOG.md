@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.19 — Current TideCode build refresh
+
+TideCode 1.2.19 republishes the current stable application build with no product-behavior changes after 1.2.18.
+
+- Keeps the Code Mode routing, compaction progress, and exploration presentation improvements from 1.2.18 available in a new release build.
+- Requires no migration or configuration changes.
+- Validated with TypeScript type checking and the production build; the full test command reaches the existing Codex fixture output but remains open without a completion summary in this environment.
+
 ## 1.2.18 — More reliable Code Mode routing and compaction progress
 
 TideCode 1.2.18 keeps Code Mode requests on the correct execution boundary and makes completed exploration remain clearly completed as conversations are compacted.
