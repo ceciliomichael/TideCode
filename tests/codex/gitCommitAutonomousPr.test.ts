@@ -27,7 +27,7 @@ async function withTemporaryDirectory<T>(callback: (directoryPath: string) => Pr
   }
 }
 
-async function setupRepositoryWithOrigin(tempRootPath: string) {
+async function setupRepositoryWithRemote(tempRootPath: string, remoteName: string) {
   const remotePath = path.join(tempRootPath, 'remote.git')
   const repoPath = path.join(tempRootPath, 'repo')
 
@@ -40,16 +40,20 @@ async function setupRepositoryWithOrigin(tempRootPath: string) {
   await fs.writeFile(path.join(repoPath, 'README.md'), 'initial\n', 'utf8')
   await runGit(['add', '.'], repoPath)
   await runGit(['commit', '-m', 'chore: initial commit'], repoPath)
-  await runGit(['remote', 'add', 'origin', remotePath], repoPath)
-  await runGit(['push', '-u', 'origin', 'main'], repoPath)
+  await runGit(['remote', 'add', remoteName, remotePath], repoPath)
+  await runGit(['push', '-u', remoteName, 'main'], repoPath)
   await runGit(['symbolic-ref', 'HEAD', 'refs/heads/main'], remotePath)
-  await runGit(['fetch', 'origin'], repoPath)
-  await runGit(['remote', 'set-head', 'origin', '-a'], repoPath)
+  await runGit(['fetch', remoteName], repoPath)
+  await runGit(['remote', 'set-head', remoteName, '-a'], repoPath)
 
   return {
     remotePath,
     repoPath,
   }
+}
+
+async function setupRepositoryWithOrigin(tempRootPath: string) {
+  return setupRepositoryWithRemote(tempRootPath, 'origin')
 }
 
 test('gitCommit auto-creates a feature branch for commit-and-create-pr on default branch', async () => {
@@ -80,6 +84,30 @@ test('gitCommit auto-creates a feature branch for commit-and-create-pr on defaul
 
     const { stdout: remoteBranchStdout } = await runGit(['ls-remote', '--heads', 'origin', result.branchName!], repoPath)
     assert.equal(remoteBranchStdout.includes(`refs/heads/${result.branchName}`), true)
+  })
+})
+
+test('gitCommit creates PR branches when the preferred remote is not named origin', async () => {
+  await withTemporaryDirectory(async (tempRootPath) => {
+    const remoteName = 'tidecode'
+    const { repoPath } = await setupRepositoryWithRemote(tempRootPath, remoteName)
+    await fs.writeFile(path.join(repoPath, 'named-remote.txt'), 'named remote work\n', 'utf8')
+
+    const result = await gitCommit({
+      action: 'commit-and-create-pr',
+      message: 'fix: support named git remotes for pull requests',
+      workspacePath: repoPath,
+    })
+
+    assert.equal(result.success, true)
+    assert.equal(typeof result.branchName, 'string')
+    assert.notEqual(result.branchName, 'main')
+
+    const { stdout: remoteBranchStdout } = await runGit(['ls-remote', '--heads', remoteName, result.branchName!], repoPath)
+    assert.equal(remoteBranchStdout.includes(`refs/heads/${result.branchName}`), true)
+
+    const { stdout: currentBranchStdout } = await runGit(['symbolic-ref', '--short', 'HEAD'], repoPath)
+    assert.equal(currentBranchStdout.trim(), 'main')
   })
 })
 

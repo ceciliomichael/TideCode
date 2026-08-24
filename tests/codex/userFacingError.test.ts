@@ -23,6 +23,18 @@ test('context limit failures explain the manual recovery path', () => {
   )
 })
 
+test('git partial-success failures preserve that the commit succeeded', () => {
+  assert.equal(
+    toUserFacingErrorMessage(
+      new Error(
+        "Error invoking remote method 'git:commit': Error: Committed successfully but failed to push: branch could not be published",
+      ),
+      'The changes could not be committed.',
+    ),
+    'The commit succeeded, but the push or pull request step failed. Your commit is still saved locally.',
+  )
+})
+
 test('workspace duplicate errors explain what the user should do', () => {
   assert.equal(
     toUserFacingErrorMessage(
