@@ -272,16 +272,6 @@ app.whenReady().then(async () => {
   registerApplicationIpcHandlers()
   registerMcpHandlers(mcpServerManager)
   registerRemoteWorkspaceHostIpc(remoteWorkspaceHost, () => win)
-  await startProjectPathWatcher((event) => {
-    const currentWindow = win
-    if (!currentWindow || currentWindow.isDestroyed()) {
-      return
-    }
-
-    currentWindow.webContents.send('history:projectFolderPruned', event)
-  }).catch((error) => {
-    console.error('Failed to start the Project path watcher.', error)
-  })
   mcpServerManager.onStateChange(({ state, workspacePath }) => {
     const currentWindow = win
     if (!currentWindow) {
@@ -299,6 +289,16 @@ app.whenReady().then(async () => {
   })
 
   await createWindow(parseTideCodeLaunchRequest(process.argv))
+  void startProjectPathWatcher((event) => {
+    const currentWindow = win
+    if (!currentWindow || currentWindow.isDestroyed()) {
+      return
+    }
+
+    currentWindow.webContents.send('history:projectFolderPruned', event)
+  }).catch((error) => {
+    console.error('Failed to start the Project path watcher.', error)
+  })
   if (hasExternalUpdateRequest(process.argv)) {
     void installLatestRequestedUpdate().catch((error) => {
       console.error('Failed to install the CLI-requested update.', error)

@@ -1,4 +1,5 @@
 import { loader, type Monaco } from '@monaco-editor/react'
+import { scheduleStartupBackgroundTask } from './startupBackgroundTask'
 
 type WorkspaceMonacoEditorViewModule = typeof import(
   '../components/workspaceExplorer/workspaceFileEditor/WorkspaceMonacoEditorView'
@@ -104,5 +105,10 @@ export function scheduleWorkspaceMonacoPreload() {
   }
 
   backgroundPreloadScheduled = true
-  void preloadWorkspaceMonacoEditorView().catch(() => undefined)
+  scheduleStartupBackgroundTask(
+    () => {
+      void preloadWorkspaceMonacoEditorView().catch(() => undefined)
+    },
+    { delayMs: 1_500, idleTimeoutMs: 5_000 },
+  )
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { loadGitBranchState, prefetchGitBranchStates } from '../lib/gitBranchStateCache'
 import { prefetchGitStatuses } from '../lib/gitStatusCache'
 import { createSingleFlightTask, type SingleFlightTask } from '../lib/singleFlightTask'
+import { scheduleStartupBackgroundTask } from '../lib/startupBackgroundTask'
 import { loadInitialChatHistory } from './chatHistoryWorkflows'
 
 interface UseInitializeChatHistoryInput {
@@ -32,6 +33,7 @@ export function useInitializeChatHistory(input: UseInitializeChatHistoryInput) {
     }
 
     let isMounted = true
+    let cancelBackgroundPrefetch: (() => void) | null = null
 
     async function initializeConversations() {
       try {
@@ -54,14 +56,17 @@ export function useInitializeChatHistory(input: UseInitializeChatHistoryInput) {
           ...snapshot.folderSummaries.map((folderSummary) => folderSummary.path),
           ...snapshot.conversationSummaries.map((conversationSummary) => conversationSummary.agentContextRootPath),
         ]
-        void prefetchGitStatuses(workspacePaths)
-        window.setTimeout(() => {
-          if (initialWorkspacePath) {
-            void loadGitBranchState(initialWorkspacePath).catch(() => undefined)
-          }
+        cancelBackgroundPrefetch = scheduleStartupBackgroundTask(
+          () => {
+            if (initialWorkspacePath) {
+              void loadGitBranchState(initialWorkspacePath).catch(() => undefined)
+            }
 
-          void prefetchGitBranchStates(workspacePaths)
-        }, 250)
+            void prefetchGitStatuses(workspacePaths)
+            void prefetchGitBranchStates(workspacePaths)
+          },
+          { delayMs: 1_500, idleTimeoutMs: 5_000 },
+        )
       } catch (caughtError) {
         console.error(caughtError)
         if (isMounted) {
@@ -78,6 +83,7 @@ export function useInitializeChatHistory(input: UseInitializeChatHistoryInput) {
 
     return () => {
       isMounted = false
+      cancelBackgroundPrefetch?.()
     }
   }, [
     enabled,
