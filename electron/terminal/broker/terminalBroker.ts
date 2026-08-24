@@ -31,6 +31,11 @@ import type { TerminalProcessTerminationResult } from './processTermination'
 import { resolveTerminalShellSpec, type TerminalShellSpec } from '../configuration'
 import { TerminalBrokerOutputStore } from './outputStore'
 import {
+  TERMINAL_OUTPUT_BATCH_DELAY_MS,
+  TERMINAL_OUTPUT_BATCH_MAX_LENGTH,
+  TerminalOutputEventCoalescer,
+} from './outputEventCoalescer'
+import {
   TerminalBrokerPersistence,
   type PersistedTerminalBrokerState,
 } from './persistence'
@@ -121,6 +126,7 @@ export class TerminalBroker {
   private readonly disconnectedClientExpiryById = new Map<string, number>()
   private readonly reaperTimer: NodeJS.Timeout
   private readonly persistence = new TerminalBrokerPersistence()
+  private readonly outputEventCoalescer: TerminalOutputEventCoalescer
   private persistenceTimer: NodeJS.Timeout | null = null
   private persistenceDueAt: number | null = null
   private started = false
@@ -130,6 +136,9 @@ export class TerminalBroker {
     this.now = options.now ?? Date.now
     this.recordRetentionMs = options.recordRetentionMs ?? DEFAULT_RECORD_RETENTION_MS
     this.disconnectedClientGraceMs = options.disconnectedClientGraceMs ?? DEFAULT_DISCONNECTED_CLIENT_GRACE_MS
+    this.outputEventCoalescer = new TerminalOutputEventCoalescer({
+      onFlush: (event) => this.emit(event),
+    })
     this.reaperTimer = setInterval(
       () => this.reap().catch((error) => console.error('Terminal broker reaper failed.', error)),
       options.reaperIntervalMs ?? DEFAULT_REAPER_INTERVAL_MS,
@@ -238,6 +247,7 @@ export class TerminalBroker {
 
   attach(input: TerminalBrokerAttachInput): TerminalBrokerAttachResult {
     const record = this.resolveSession(input)
+    this.outputEventCoalescer.flush(record.snapshot.brokerSessionId)
     this.attachClient(record, input.clientId)
     return {
       output: record.output.read(record.snapshot.brokerSessionId, input.cursor),
@@ -247,6 +257,7 @@ export class TerminalBroker {
 
   detach(input: TerminalBrokerSessionReference) {
     const record = this.resolveSession(input)
+    this.outputEventCoalescer.flush(record.snapshot.brokerSessionId)
     const clientId = requireNonEmpty(input.clientId, 'Terminal client id')
     record.snapshot.attachedClientIds = record.snapshot.attachedClientIds.filter((id) => id !== clientId)
     record.snapshot.lastActivityAt = this.now()
@@ -267,13 +278,35 @@ export class TerminalBroker {
 
   async read(input: TerminalBrokerReadInput) {
     const record = this.resolveAttachedSession(input)
-    if ((input.pollingMs ?? 0) > 0 && !['exited', 'terminated', 'session_lost'].includes(record.snapshot.state)) {
+    const pollingMs = Math.max(0, input.pollingMs ?? 0)
+    const pollingStartedAt = Date.now()
+    if (pollingMs > 0 && !['exited', 'terminated', 'session_lost'].includes(record.snapshot.state)) {
       await getTerminalSessionOutputForWebContents(record.owner, {
-        pollingMs: input.pollingMs,
+        pollingMs,
         sessionId: record.snapshot.legacySessionId,
         workspaceRootPath: record.snapshot.workspaceRootPath,
       })
+
+      const cursors = record.output.cursors
+      const requestedCursor = typeof input.cursor === 'number' && Number.isFinite(input.cursor)
+        ? Math.max(cursors.startCursor, Math.min(Math.floor(input.cursor), cursors.endCursor))
+        : cursors.startCursor
+      const availableLength = cursors.endCursor - requestedCursor
+      const elapsedMs = Date.now() - pollingStartedAt
+      const remainingPollingMs = Math.max(0, pollingMs - elapsedMs)
+      if (
+        availableLength > 0
+        && availableLength < TERMINAL_OUTPUT_BATCH_MAX_LENGTH
+        && remainingPollingMs > 0
+        && !['exited', 'terminated', 'session_lost'].includes(record.snapshot.state)
+      ) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, Math.min(TERMINAL_OUTPUT_BATCH_DELAY_MS, remainingPollingMs))
+        })
+      }
     }
+
+    this.outputEventCoalescer.flush(record.snapshot.brokerSessionId)
     return {
       output: record.output.read(record.snapshot.brokerSessionId, input.cursor),
       session: cloneSession(record.snapshot),
@@ -386,6 +419,7 @@ export class TerminalBroker {
     const matching = Array.from(this.sessions.values()).filter((record) => record.snapshot.runId === normalizedRunId)
     if (provenance.policy === 'detach') {
       for (const record of matching) {
+        this.outputEventCoalescer.flush(record.snapshot.brokerSessionId)
         record.snapshot.attachedClientIds = []
         record.snapshot.termination = { ...provenance }
         this.emitSession(record)
@@ -397,6 +431,7 @@ export class TerminalBroker {
 
   async shutdown() {
     clearInterval(this.reaperTimer)
+    this.outputEventCoalescer.flushAll()
     const provenance: TerminalCancellationProvenance = {
       policy: 'terminate',
       reason: 'service_shutdown',
@@ -404,6 +439,7 @@ export class TerminalBroker {
       surface: 'system',
     }
     await Promise.allSettled(Array.from(this.sessions.values()).map((record) => this.terminateRecord(record, provenance)))
+    this.outputEventCoalescer.flushAll()
     await this.persistNow()
     await this.persistence.flush()
   }
@@ -465,6 +501,7 @@ export class TerminalBroker {
         operation.snapshot.endCursor = record.output.cursors.endCursor
         this.emitOperation(operation.snapshot)
       }
+      this.outputEventCoalescer.flush(record.snapshot.brokerSessionId)
       this.emitSession(record)
       return cloneSession(record.snapshot)
     }
@@ -531,6 +568,7 @@ export class TerminalBroker {
 
   private releaseRecord(record: BrokerSessionRecord) {
     const { brokerSessionId, legacySessionId, workspaceRootPath, createdByClientId } = record.snapshot
+    this.outputEventCoalescer.flush(brokerSessionId)
     this.sessions.delete(brokerSessionId)
     this.brokerSessionIdByLegacyId.delete(legacySessionId)
     const reuseKey = this.createReuseKey(createdByClientId, workspaceRootPath, record.sessionKey)
@@ -601,7 +639,7 @@ export class TerminalBroker {
     record.snapshot.transcriptStartCursor = cursors.startCursor
     record.snapshot.transcriptEndCursor = cursors.endCursor
     record.snapshot.lastActivityAt = this.now()
-    this.emit({
+    this.outputEventCoalescer.push({
       clientIds: [...record.snapshot.attachedClientIds],
       legacySessionId: record.snapshot.legacySessionId,
       output,
@@ -613,6 +651,7 @@ export class TerminalBroker {
   private handleTerminalExit(brokerSessionId: string, event: TerminalExitEvent) {
     const record = this.sessions.get(brokerSessionId)
     if (!record) return
+    this.outputEventCoalescer.flush(brokerSessionId)
     record.snapshot.exitCode = event.exitCode
     record.snapshot.signal = event.signal
     record.snapshot.lastActivityAt = this.now()

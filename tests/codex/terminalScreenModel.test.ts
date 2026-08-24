@@ -29,6 +29,7 @@ test("terminal screen model follows cursor movement and alternate screens", asyn
   try {
     await model.write(`first${ESC}[2;4Hsecond`);
     const normalSnapshot = model.getSnapshot();
+    assert.equal(model.getActiveBufferType(), "normal");
     assert.equal(normalSnapshot.activeBuffer, "normal");
     assert.deepEqual(normalSnapshot.visibleRows, [
       { row: 1, text: "first" },
@@ -37,6 +38,7 @@ test("terminal screen model follows cursor movement and alternate screens", asyn
 
     await model.write(`${ESC}[?1049h${ESC}[2J${ESC}[HChoose\r\n> Install`);
     const alternateSnapshot = model.getSnapshot();
+    assert.equal(model.getActiveBufferType(), "alternate");
     assert.equal(alternateSnapshot.activeBuffer, "alternate");
     assert.deepEqual(alternateSnapshot.visibleRows, [
       { row: 1, text: "Choose" },

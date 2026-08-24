@@ -102,6 +102,10 @@ export class TerminalScreenModel {
     this.revision += 1;
   }
 
+  getActiveBufferType(): TerminalScreenSnapshot["activeBuffer"] {
+    return this.terminal.buffer.active.type;
+  }
+
   getSnapshot(): TerminalScreenSnapshot {
     const buffer = this.terminal.buffer.active;
     return {

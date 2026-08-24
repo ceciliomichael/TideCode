@@ -3,6 +3,7 @@ import type { TerminalDataEvent, TerminalExitEvent } from "../../../types/chat";
 import type { TabTerminalInstance } from "./terminalInstance";
 import type { TerminalWorkspaceState } from "./terminalSessionStateTypes";
 import type { TerminalTabState } from "./workspaceTerminalPanelTypes";
+import { appendTerminalReplayBuffer } from "./terminalOutputBuffer";
 import { getWorkspaceKeyFromTerminalTabKey } from "./workspaceTerminalPanelUtils";
 
 interface UseTerminalSessionEventsInput {
@@ -28,7 +29,7 @@ export function useTerminalSessionEvents({
       if (!tabKey) return;
 
       const currentBuffer = tabBuffersRef.current.get(tabKey) ?? "";
-      tabBuffersRef.current.set(tabKey, currentBuffer + event.data);
+      tabBuffersRef.current.set(tabKey, appendTerminalReplayBuffer(currentBuffer, event.data));
       tabInstancesRef.current.get(tabKey)?.terminal.write(event.data);
     });
 
@@ -42,7 +43,7 @@ export function useTerminalSessionEvents({
       const exitMessage = `\r\n\r\n[Terminal session ended with code ${event.exitCode}]`;
       tabBuffersRef.current.set(
         tabKey,
-        `${tabBuffersRef.current.get(tabKey) ?? ""}${exitMessage}`,
+        appendTerminalReplayBuffer(tabBuffersRef.current.get(tabKey) ?? "", exitMessage),
       );
 
       const markExited = (tabs: TerminalTabState[]) => tabs.map((tab) =>
