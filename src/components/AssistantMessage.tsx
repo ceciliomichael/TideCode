@@ -24,6 +24,7 @@ import type { ToolDecisionSubmission } from "./chat/ToolDecisionRequestCard";
 
 interface AssistantMessageProps {
   content: string;
+  finalizeToolGroups?: boolean;
   hasSubsequentAssistantText?: boolean;
   isCompactionInProgress?: boolean;
   isConversationStreaming?: boolean;
@@ -85,6 +86,7 @@ function buildRenderedToolBlocks(entries: readonly ToolInvocationDisplayEntry[])
 
 export function AssistantMessage({
   content,
+  finalizeToolGroups = false,
   hasSubsequentAssistantText = false,
   isCompactionInProgress = false,
   isConversationStreaming = false,
@@ -192,7 +194,7 @@ export function AssistantMessage({
           key={block.key}
           entries={block.entries}
           hasAssistantText={hasVisibleAssistantText}
-          isCompactionInProgress={isCompactionInProgress}
+          isFinalized={finalizeToolGroups}
           isConversationStreaming={isConversationStreaming}
           onToolDecisionSubmit={onToolDecisionSubmit}
           workspaceRootPath={workspaceRootPath}

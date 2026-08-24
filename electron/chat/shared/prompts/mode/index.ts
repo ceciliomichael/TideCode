@@ -57,6 +57,7 @@ const CORE_DECISION_PROMPT = [
 const CODE_MODE_AGENT_PROMPT = [
   '<agent_code_mode_rules description="Use the Code Mode contract without duplicating it">',
   '- The only model-facing tool in this turn is `code_mode`.',
+  '- Names such as `tools.list` and `tools.glob` are JavaScript APIs inside the `code_mode` program, never model-facing tool names. Never emit a `tools.*` provider call.',
   '- Treat the `code_mode` tool description as the authoritative contract for inner APIs, restrictions, schemas, and scenario routing. Do not duplicate or override those mechanics in the system prompt.',
   '- Keep each Code Mode program scoped to the smallest complete inspect, mutate, or verify sequence needed for the current decision.',
   '</agent_code_mode_rules>',
@@ -236,7 +237,7 @@ export function buildChatModeSystemPromptBreakdown(
       '- Prefer paths relative to that root. Use `.` or omit an optional path for the root itself.',
       '- Never guess or construct an absolute path from a project name, display name, process directory, or previous turn. Copy an absolute path only when the user or a tool provided it.',
       isCodeModeAgent
-        ? '- Follow the path rules in the `code_mode` tool description for inner workspace calls. Do not infer child filenames; discover unknown paths with `list`, `glob`, or `grep` first.'
+        ? '- Follow the path rules in the `code_mode` tool description for inner workspace calls. Inside the `code_mode` JavaScript, discover unknown paths with `tools.list`, `tools.glob`, or `tools.grep`; never emit those names as provider tool calls.'
         : '- If unsure, inspect with `list`, `glob`, or `grep` before choosing a path. Do not infer child filenames from naming conventions.',
       '- If a path fails, correct the relative child path; do not retry the same guessed absolute path.',
       '</workspace_path_rules>',

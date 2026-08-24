@@ -91,6 +91,8 @@ test('Code Mode prompt exposes only its meta-tool surface and compact async cont
 
   assert.match(codeModePrompt, /<agent_code_mode_rules/u)
   assert.match(codeModePrompt, /The only model-facing tool in this turn is `code_mode`/u)
+  assert.match(codeModePrompt, /`tools\.list` and `tools\.glob` are JavaScript APIs inside the `code_mode` program/u)
+  assert.match(codeModePrompt, /Never emit a `tools\.\*` provider call/u)
   assert.match(codeModePrompt, /<decision_priority/u)
   assert.match(codeModePrompt, /Treat the `code_mode` tool description as the authoritative contract/u)
   assert.match(codeModePrompt, /smallest complete inspect, mutate, or verify sequence/u)
