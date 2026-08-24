@@ -152,14 +152,13 @@ test('workspace memory rejects paths outside managed folders', async () => {
   }
 })
 
-test('normal read owns workspace memory reads and memory tool is mutation-only', async () => {
+test('normal read owns workspace memory reads and agents expose no memory tool', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-memory-tools-'))
 
   try {
     const tools = await createNativeAgentTools({ workspaceRootPath }, { chatMode: 'plan' })
-    const memoryTool = tools.memory as unknown as ExecutableTool
     const readTool = tools.read as unknown as ExecutableTool
-    assert.ok(memoryTool)
+    assert.ok(!('memory' in tools))
     assert.ok(readTool)
 
     const emptyIndex = await readTool.execute({ path: '.tidecode/memory/MEMORY.md' })
@@ -176,16 +175,11 @@ test('normal read owns workspace memory reads and memory tool is mutation-only',
     assert.equal(invalidPath.status, 'success')
     assert.match(invalidPath.body ?? '', /Invalid workspace memory path/u)
 
-    const removedReadIndex = await memoryTool.execute({ action: 'read_index' })
-    assert.equal(removedReadIndex.status, 'error')
-    await assert.rejects(fs.access(path.join(workspaceRootPath, '.tidecode')), { code: 'ENOENT' })
-
-    const memoryResult = await memoryTool.execute({
-      action: 'write',
+    await writeMemoryEntry({
       content: '# Prompt preference\n\nKeep system instructions compact.',
       path: '.tidecode/memory/folders/preferences/prompts.md',
+      workspaceRootPath,
     })
-    assert.equal(memoryResult.status, 'success')
 
     const indexResult = await readTool.execute({ path: '.tidecode/memory/MEMORY.md' })
     assert.equal(indexResult.status, 'success')
@@ -194,16 +188,6 @@ test('normal read owns workspace memory reads and memory tool is mutation-only',
     const entryResult = await readTool.execute({ path: '.tidecode/memory/folders/preferences/prompts.md' })
     assert.equal(entryResult.status, 'success')
     assert.match(entryResult.body ?? '', /Keep system instructions compact/u)
-
-    const removedRead = await memoryTool.execute({
-      action: 'read',
-      path: '.tidecode/memory/folders/preferences/prompts.md',
-    })
-    assert.equal(removedRead.status, 'error')
-    assert.match(
-      await readWorkspaceFile(workspaceRootPath, '.tidecode/memory/folders/preferences/prompts.md'),
-      /Keep system instructions compact/u,
-    )
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

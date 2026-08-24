@@ -192,6 +192,7 @@ export function AssistantMessage({
           key={block.key}
           entries={block.entries}
           hasAssistantText={hasVisibleAssistantText}
+          isCompactionInProgress={isCompactionInProgress}
           isConversationStreaming={isConversationStreaming}
           onToolDecisionSubmit={onToolDecisionSubmit}
           workspaceRootPath={workspaceRootPath}

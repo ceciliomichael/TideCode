@@ -84,11 +84,50 @@ test('live compaction stays inside one streaming working block', () => {
   const compactingIndex = html.indexOf('Compacting')
   const postIndex = html.indexOf('Post-compaction assistant work.')
 
-  assert.equal(html.match(/Working\.\.\./g)?.length ?? 0, 1)
+  assert.equal(html.match(/Working\.\.\./g)?.length ?? 0, 0)
+  assert.equal(html.match(/Worked for/g)?.length ?? 0, 0)
   assert.equal(html.match(/Compacting/g)?.length ?? 0, 1)
   assert.ok(preIndex >= 0)
   assert.ok(preIndex < compactingIndex)
   assert.ok(compactingIndex < postIndex)
+})
+
+test('compacting finalizes the active exploration label before the turn finishes', () => {
+  const html = renderTranscript([
+    {
+      content: '',
+      id: 'assistant-pre',
+      role: 'assistant',
+      timestamp: 1_000,
+      toolInvocations: [{
+        argumentsText: '{"path":"."}',
+        id: 'tool-1',
+        startedAt: 1_500,
+        state: 'running',
+        toolName: 'list',
+      }],
+    },
+    {
+      content: '',
+      id: 'assistant-post',
+      role: 'assistant',
+      timestamp: 4_000,
+    },
+  ], {
+    liveCompaction: {
+      afterMessageId: 'assistant-pre',
+      attemptId: 'attempt-1',
+      phase: 'compacting',
+      streamId: 'compact-stream',
+    },
+    streamingAssistantMessageId: 'assistant-post',
+  })
+
+  assert.equal(html.match(/Exploring/g)?.length ?? 0, 0)
+  assert.equal(html.match(/Explored 1 list/g)?.length ?? 0, 1)
+  assert.equal(html.match(/Working\.\.\./g)?.length ?? 0, 0)
+  assert.equal(html.match(/Worked for/g)?.length ?? 0, 0)
+  assert.equal(html.match(/Compacting/g)?.length ?? 0, 1)
 })
 
 test('persisted compaction stays inside one collapsed worked block', () => {
