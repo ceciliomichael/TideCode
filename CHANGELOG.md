@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.23 - Clearer update progress from the sidebar
+
+TideCode 1.2.23 makes available and downloading updates easier to see from the sidebar and provides a direct restart action when an update is ready to install.
+
+- Shows an update download percentage while the update is downloading.
+- Changes the indicator to a restart action after the update is downloaded.
+- Keeps the indicator hidden when no update is available and preserves accessible labels for each state.
+- Requires no manual migration or configuration changes.
+
 ## 1.2.22 - More reliable terminals, updates, and Git workflows
 
 TideCode 1.2.22 improves Windows terminal setup, update actions, chat behavior, file mentions, and Git-based workflows.
