@@ -130,6 +130,45 @@ test('compacting finalizes the active exploration label before the turn finishes
   assert.equal(html.match(/Compacting/g)?.length ?? 0, 1)
 })
 
+test('pre-compaction exploration stays finalized after compaction commits', () => {
+  const html = renderTranscript([
+    {
+      content: '',
+      id: 'assistant-pre',
+      role: 'assistant',
+      timestamp: 1_000,
+      toolInvocations: [{
+        argumentsText: '{"path":"."}',
+        id: 'tool-1',
+        startedAt: 1_500,
+        state: 'running',
+        toolName: 'list',
+      }],
+    },
+    {
+      content: '',
+      id: 'assistant-post',
+      role: 'assistant',
+      timestamp: 4_000,
+    },
+  ], {
+    liveCompaction: {
+      afterMessageId: 'assistant-pre',
+      attemptId: 'attempt-1',
+      compactionId: 'compaction-1',
+      phase: 'compacted',
+      streamId: 'compact-stream',
+    },
+    streamingAssistantMessageId: 'assistant-post',
+  })
+
+  assert.equal(html.match(/Exploring/g)?.length ?? 0, 0)
+  assert.equal(html.match(/Explored 1 list/g)?.length ?? 0, 1)
+  assert.equal(html.match(/Working\.\.\./g)?.length ?? 0, 0)
+  assert.equal(html.match(/Worked for/g)?.length ?? 0, 0)
+  assert.equal(html.match(/Compacted/g)?.length ?? 0, 1)
+})
+
 test('persisted compaction stays inside one collapsed worked block', () => {
   const html = renderTranscript([
     {

@@ -9,7 +9,7 @@ import { buildToolInvocationGroupSummary } from './toolInvocationGrouping'
 interface ToolInvocationGroupProps {
   entries: readonly ToolInvocationDisplayEntry[]
   hasAssistantText: boolean
-  isCompactionInProgress?: boolean
+  isFinalized?: boolean
   isConversationStreaming: boolean
   onToolDecisionSubmit?: (
     invocation: ToolInvocationTrace,
@@ -21,7 +21,7 @@ interface ToolInvocationGroupProps {
 export const ToolInvocationGroup = memo(function ToolInvocationGroup({
   entries,
   hasAssistantText,
-  isCompactionInProgress = false,
+  isFinalized = false,
   isConversationStreaming,
   onToolDecisionSubmit,
   workspaceRootPath = null,
@@ -35,7 +35,7 @@ export const ToolInvocationGroup = memo(function ToolInvocationGroup({
     [entries],
   )
   const isActiveGroup =
-    !isCompactionInProgress &&
+    !isFinalized &&
     !hasAssistantText &&
     (hasActiveInvocation || isConversationStreaming)
   const [isOpen, setIsOpen] = useState(isActiveGroup)
@@ -58,9 +58,9 @@ export const ToolInvocationGroup = memo(function ToolInvocationGroup({
   const summaryLabel = useMemo(
     () => buildToolInvocationGroupSummary(
       entries.map((entry) => entry.invocation),
-      isCompactionInProgress ? 'Explored' : isActiveGroup ? 'Exploring' : undefined,
+      isFinalized ? 'Explored' : isActiveGroup ? 'Exploring' : undefined,
     ),
-    [entries, isActiveGroup, isCompactionInProgress],
+    [entries, isActiveGroup, isFinalized],
   )
 
   return (

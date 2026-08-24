@@ -82,6 +82,7 @@ interface MessageRowProps {
   composerValue: string;
   editComposerDirty: boolean;
   editComposerMentionPathMap?: ReadonlyMap<string, string>;
+  finalizeToolGroups: boolean;
   isCompactionInProgress: boolean;
   isEditing: boolean;
   hasSubsequentAssistantText: boolean;
@@ -127,6 +128,7 @@ const MessageRow = memo(
     composerValue,
     editComposerDirty,
     editComposerMentionPathMap,
+    finalizeToolGroups,
     isCompactionInProgress,
     hasSubsequentAssistantText,
     isConversationStreaming,
@@ -230,6 +232,7 @@ const MessageRow = memo(
         ) : (
           <AssistantMessage
             content={message.content}
+            finalizeToolGroups={finalizeToolGroups}
             hasSubsequentAssistantText={hasSubsequentAssistantText}
             isCompactionInProgress={isCompactionInProgress}
             isConversationStreaming={isConversationStreaming}
@@ -253,6 +256,7 @@ const MessageRow = memo(
   (previousProps, nextProps) => {
     if (
       previousProps.message !== nextProps.message ||
+      previousProps.finalizeToolGroups !== nextProps.finalizeToolGroups ||
       previousProps.hasSubsequentAssistantText !== nextProps.hasSubsequentAssistantText ||
       previousProps.isCompactionInProgress !== nextProps.isCompactionInProgress ||
       previousProps.isConversationStreaming !== nextProps.isConversationStreaming ||
@@ -629,7 +633,7 @@ export function MessageList({
     return map;
   }, [visibleMessages]);
 
-  const renderMessageRow = (msg: Message, index: number) => {
+  const renderMessageRow = (msg: Message, index: number, finalizeToolGroups = false) => {
     const showCopyButton =
       editingMessageId === null &&
       msg.role === "assistant" &&
@@ -651,6 +655,7 @@ export function MessageList({
         composerValue={composerValue}
         editComposerDirty={editComposerDirty}
         editComposerMentionPathMap={editComposerMentionPathMap}
+        finalizeToolGroups={finalizeToolGroups}
         hasSubsequentAssistantText={
           subsequentAssistantTextByMessageId.get(msg.id) ?? false
         }
@@ -736,6 +741,11 @@ export function MessageList({
                   m.id === streamingAssistantMessageId ||
                   m.id.startsWith(`${streamingAssistantMessageId}-`),
               );
+            const latestCompactionBoundaryIndex = item.entries.reduce(
+              (latestIndex, entry, entryIndex) =>
+                entry.type === 'message' ? latestIndex : entryIndex,
+              -1,
+            );
 
             return (
               <div key={item.key} className="flex flex-col gap-1.5 w-full">
@@ -744,9 +754,13 @@ export function MessageList({
                   endTime={item.endTime}
                   isStreaming={isWorkingGroupStreaming}
                 >
-                  {item.entries.map((entry) => {
+                  {item.entries.map((entry, entryIndex) => {
                     if (entry.type === 'message') {
-                      return renderMessageRow(entry.message, entry.index);
+                      return renderMessageRow(
+                        entry.message,
+                        entry.index,
+                        latestCompactionBoundaryIndex >= 0 && entryIndex < latestCompactionBoundaryIndex,
+                      );
                     }
                     if (entry.type === 'compaction_marker') {
                       return (

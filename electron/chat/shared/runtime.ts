@@ -54,6 +54,7 @@ import { isUnsupportedImageInputError, resolveModelImageInputSupport } from './m
 import { appendStoredMessages } from '../../history/store'
 import { createAgentToolBundle } from './tools'
 import type { CodeModeExecutor } from './codeMode/executor'
+import { createCodeModeToolCallRepair } from './codeMode/toolCallRepair'
 import { createTerminalSessionOwner, releaseTerminalToolStateForTurn } from './tools/terminalToolShared'
 import { getTerminalBroker } from '../../terminal/broker/instance'
 import { sortToolSet } from './runtimeToolSet'
@@ -321,6 +322,7 @@ export async function runToolEnabledChatStream(input: {
       messages: modelMessages,
       model: input.startInput.modelId,
       reasoningEffort: input.startInput.reasoningEffort,
+      repairToolCall: createCodeModeToolCallRepair(toolBundle.registry),
       signal: input.abortController.signal,
       stopWhen: continueToolLoopUntilModelStops,
       system: prompt.system,
