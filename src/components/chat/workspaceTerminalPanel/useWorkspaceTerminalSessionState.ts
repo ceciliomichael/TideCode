@@ -17,6 +17,7 @@ import { useTerminalSizing } from "./useTerminalSizing";
 import { useTerminalWorkspacePersistence } from "./useTerminalWorkspacePersistence";
 import { useSyncedTerminalStateRefs } from "./useSyncedTerminalStateRefs";
 import { useTerminalInstanceCleanup } from "./useTerminalInstanceCleanup";
+import { boundTerminalReplayBuffer } from "./terminalOutputBuffer";
 import {
   createTerminalTabLabel,
   createTerminalTabKey,
@@ -203,7 +204,7 @@ autoCreateTabOnOpen = false,
       });
 
       sessionIdToTabKeyRef.current.set(session.sessionId, tabKey);
-      const sanitizedOutput = sanitizeTerminalBuffer(session.bufferedOutput);
+      const sanitizedOutput = boundTerminalReplayBuffer(sanitizeTerminalBuffer(session.bufferedOutput));
       tabBuffersRef.current.set(tabKey, sanitizedOutput);
 
       setTerminalTabs((currentTabs) =>
@@ -384,7 +385,7 @@ autoCreateTabOnOpen = false,
         });
 
         sessionIdToTabKeyRef.current.set(session.sessionId, tabKey);
-        const sanitizedOutput = sanitizeTerminalBuffer(session.bufferedOutput);
+        const sanitizedOutput = boundTerminalReplayBuffer(sanitizeTerminalBuffer(session.bufferedOutput));
         tabBuffersRef.current.set(tabKey, sanitizedOutput);
 
         setTerminalTabs((currentTabs) =>

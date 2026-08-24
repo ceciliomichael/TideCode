@@ -25,6 +25,30 @@ test('terminal broker output cursors replay retained output and report eviction'
   assert.equal(output.read('session-1', 4).data, 'ef')
 })
 
+test('terminal broker output store preserves cursor semantics across many small chunks', () => {
+  const output = new TerminalBrokerOutputStore(300_000)
+  const chunk = '0123456789abcdef'
+  for (let index = 0; index < 25_000; index += 1) {
+    output.append('session-1', chunk)
+  }
+
+  assert.deepEqual(output.cursors, { endCursor: 400_000, startCursor: 100_000 })
+  assert.equal(output.retainedData.length, 300_000)
+  assert.equal(output.read('session-1', 399_984).data, chunk)
+  assert.equal(output.read('session-1', 0).outputEvicted, true)
+})
+
+test('terminal broker output store bounds a single oversized chunk without retaining its prefix', () => {
+  const output = new TerminalBrokerOutputStore(5)
+  output.append('session-1', 'abc')
+  const appended = output.append('session-1', '0123456789')
+
+  assert.deepEqual(output.cursors, { endCursor: 13, startCursor: 8 })
+  assert.equal(output.retainedData, '56789')
+  assert.equal(appended.outputEvicted, true)
+  assert.equal(output.read('session-1', 0).data, '56789')
+})
+
 test('terminal broker state machines reject lifecycle shortcuts', () => {
   assert.equal(transitionTerminalSessionState('creating', 'ready'), 'ready')
   assert.equal(transitionTerminalOperationState('queued', 'writing'), 'writing')

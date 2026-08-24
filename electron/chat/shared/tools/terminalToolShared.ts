@@ -469,7 +469,7 @@ function observeActiveScreenInteraction(session: ThreadAiSession) {
   if (
     session.commandComplete ||
     session.interactionMode === "non_interactive" ||
-    session.screen.getSnapshot().activeBuffer !== "alternate"
+    session.screen.getActiveBufferType() !== "alternate"
   ) {
     return;
   }
