@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.20 - Faster, more responsive terminal output
+
+TideCode 1.2.20 keeps terminal-heavy workflows responsive by reducing CPU, memory, and message-processing overhead during high-volume command output without changing how AI terminal tools behave.
+
+- Batches bursts of terminal output before downstream delivery to reduce IPC, renderer, and terminal rendering pressure during noisy commands.
+- Uses bounded terminal history storage that avoids repeated full-buffer copying and prevents renderer replay history from growing indefinitely.
+- Preserves output ordering, cursor and incremental-read semantics, command completion markers, interactive prompt handling, and existing AI terminal tool behavior.
+- Requires no migration or configuration changes.
+- Validated with 1,250 automated tests, TypeScript type checking, the production build, and pull-request CI.
+
 ## 1.2.19 — Current TideCode build refresh
 
 TideCode 1.2.19 republishes the current stable application build with no product-behavior changes after 1.2.18.
