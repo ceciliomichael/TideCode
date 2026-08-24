@@ -1,4 +1,4 @@
-import { Download, FolderPlus, Settings, SquarePen } from 'lucide-react'
+import { Download, FolderPlus, RotateCw, Settings, SquarePen } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from 'react'
 import { getExternalFilePaths } from '../../lib/externalFileDrop'
 import { Tooltip } from '../Tooltip'
@@ -9,6 +9,7 @@ import { ProjectThreadSelector } from './ProjectThreadSelector'
 import { SidebarThreadSearch } from './SidebarThreadSearch'
 import { getUpdatesSessionSnapshot, subscribeToUpdatesSession } from '../settings/updates/updatesSessionStore'
 import type { SettingsItemId } from '../settings/settingsItems'
+import { getSidebarUpdateIndicator } from './sidebarUpdateIndicator'
 import {
   ALL_PROJECTS_FILTER_ID,
   ARCHIVED_PROJECT_FILTER_ID,
@@ -70,6 +71,11 @@ export function SidebarPanel({
     getUpdatesSessionSnapshot,
   )
   const updateIsAvailable = updatesSession.result?.updateAvailable === true
+  const sidebarUpdateIndicator = getSidebarUpdateIndicator({
+    downloadPercent: updatesSession.downloadPercent,
+    downloadState: updatesSession.downloadState,
+    updateAvailable: updateIsAvailable,
+  })
 
   const activeSelectedProjectId = controlledSelectedProjectId ?? internalSelectedProjectId
   const handleSelectProject = useCallback(
@@ -110,6 +116,18 @@ export function SidebarPanel({
 
   const actionButtonClassName =
     'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-150 ease-out hover:bg-[var(--sidebar-hover-surface)] hover:text-foreground'
+
+  const handleSidebarUpdateIndicatorClick = useCallback(() => {
+    if (sidebarUpdateIndicator.kind === 'restart') {
+      void window.tidecodeUpdates.restartToUpdate().catch((error) => {
+        console.error('Failed to restart TideCode to install the downloaded update.', error)
+        onOpenSettings('settings-item7')
+      })
+      return
+    }
+
+    onOpenSettings('settings-item7')
+  }, [onOpenSettings, sidebarUpdateIndicator.kind])
 
   const handleWorkspaceFolderDragOver = useCallback((event: DragEvent<HTMLElement>) => {
     const hasExternalFiles = Array.from(event.dataTransfer.types).includes('Files')
@@ -237,14 +255,23 @@ export function SidebarPanel({
             <span>Settings</span>
           </button>
 
-          {updateIsAvailable ? (
+          {sidebarUpdateIndicator.kind !== 'hidden' ? (
             <button
               type="button"
-              onClick={() => onOpenSettings('settings-item7')}
+              onClick={handleSidebarUpdateIndicatorClick}
               className="mr-1.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-soft p-0 text-brand-soft-foreground transition-colors hover:bg-accent-hover"
-              aria-label="Open Updates"
+              aria-label={sidebarUpdateIndicator.ariaLabel}
+              title={sidebarUpdateIndicator.kind === 'restart' ? sidebarUpdateIndicator.ariaLabel : undefined}
             >
-              <Download size={16} strokeWidth={2} className="block shrink-0" aria-hidden="true" />
+              {sidebarUpdateIndicator.kind === 'downloading' ? (
+                <span className="text-[9px] font-bold leading-none tabular-nums" aria-live="polite">
+                  {sidebarUpdateIndicator.label}
+                </span>
+              ) : sidebarUpdateIndicator.kind === 'restart' ? (
+                <RotateCw size={16} strokeWidth={2} className="block shrink-0" aria-hidden="true" />
+              ) : (
+                <Download size={16} strokeWidth={2} className="block shrink-0" aria-hidden="true" />
+              )}
             </button>
           ) : null}
         </div>
