@@ -46,9 +46,7 @@ test('agent prompt puts tool decisions before scoped execution', async () => {
     assert.doesNotMatch(prompt, /global ~\/\.agents|C:\\Users\\[^\s]+\\\.agents/iu)
     assert.match(prompt, /Latest compatible user request and current source evidence win/u)
     assert.match(prompt, /do not add features, cleanup, refactors, or future-proofing outside scope/u)
-    assert.match(prompt, /\.tidecode\/memory\/folders/u)
-    assert.match(prompt, /Memory is workspace-wide but may be stale/u)
-    assert.match(prompt, /Write only durable decisions, non-obvious conventions, or reusable solved causes/u)
+    assert.doesNotMatch(prompt, /\.tidecode\/memory\/folders|workspace_memory|Memory is workspace-wide/iu)
     assert.doesNotMatch(prompt, /identify the most impactful change that matches the request, and do it/u)
     assert.match(prompt, /`mcp_tool_search`: discover a connected-service capability/u)
     assert.match(prompt, /`execute_mcp`: invoke only the exact MCP tool returned by discovery/u)
@@ -125,7 +123,7 @@ test('plan prompt uses plan tools for the full artifact and keeps the saved plan
     assert.match(prompt, /Before saving, present a concise shared-understanding summary/u)
     assert.match(prompt, /one complete Markdown plan in `\.tidecode\/plans\/`/u)
     assert.match(prompt, /acceptance criterion observable and testable/u)
-    assert.match(prompt, /Memory is workspace-wide but may be stale/u)
+    assert.doesNotMatch(prompt, /workspace_memory|Memory is workspace-wide/iu)
     assert.doesNotMatch(prompt, /relentless planning interviewer/u)
     assert.doesNotMatch(prompt, /initial prompt as a high-level proposal/u)
     assert.match(prompt, /After saving, say only that the plan is visible in preview/u)
@@ -174,7 +172,6 @@ test('runtime tool exposure gives the provider the concrete native tools', async
       'kanban_board',
       'list',
       'mcp_tool_search',
-      'memory',
       'read',
       'read_terminal',
       'read_tool_output',
@@ -188,7 +185,6 @@ test('runtime tool exposure gives the provider the concrete native tools', async
       'kanban_board',
       'list',
       'mcp_tool_search',
-      'memory',
       'plan_create',
       'plan_edit',
       'read',

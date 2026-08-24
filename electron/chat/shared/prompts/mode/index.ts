@@ -14,7 +14,6 @@ const MODE_PROMPT_PATHS: Record<ChatMode, string> = {
 }
 const SHARED_PROMPT_FILES = [
   { id: 'shared_mindset_prompt', relativePath: 'shared/mindset.md' },
-  { id: 'shared_memory_prompt', relativePath: 'shared/memory.md' },
   { id: 'shared_response_prompt', relativePath: 'shared/response.md' },
   { id: 'shared_continuation_prompt', relativePath: 'shared/continuation.md' },
 ] as const

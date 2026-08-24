@@ -38,14 +38,18 @@ export const WorkingBlock = memo(function WorkingBlock({ children, startTime, en
 
   return (
     <div>
-      <WorkingBlockHeader
-        isOpen={isOpen}
-        durationSeconds={durationSeconds}
-        isStreaming={isStreaming}
-        onToggle={handleToggle}
-      />
+      {!isStreaming ? (
+        <WorkingBlockHeader
+          isOpen={isOpen}
+          durationSeconds={durationSeconds}
+          onToggle={handleToggle}
+        />
+      ) : null}
       {isOpen ? (
-        <div className="mt-2.5 flex flex-col gap-2.5 opacity-90 pl-1.5 [&>*:last-child]:mb-0">
+        <div className={isStreaming
+          ? "flex flex-col gap-2.5 opacity-90 pl-1.5 [&>*:last-child]:mb-0"
+          : "mt-2.5 flex flex-col gap-2.5 opacity-90 pl-1.5 [&>*:last-child]:mb-0"}
+        >
           {children}
         </div>
       ) : null}
@@ -56,21 +60,16 @@ export const WorkingBlock = memo(function WorkingBlock({ children, startTime, en
 interface WorkingBlockHeaderProps {
   isOpen: boolean
   durationSeconds: number
-  isStreaming?: boolean
   onToggle: () => void
 }
 
 const WorkingBlockHeader = memo(function WorkingBlockHeader({
   isOpen,
   durationSeconds,
-  isStreaming = false,
   onToggle,
 }: WorkingBlockHeaderProps) {
   const [isHovering, setIsHovering] = useState(false)
-  
-  const headerLabel = isStreaming
-    ? 'Working...'
-    : `Worked for ${formatDuration(durationSeconds)}`
+  const headerLabel = `Worked for ${formatDuration(durationSeconds)}`
 
   return (
     <button
