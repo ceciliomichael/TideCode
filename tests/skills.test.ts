@@ -173,6 +173,13 @@ test('expandChatMentions expands file, folder, skill, and Kanban mentions with r
   const adjacentCollapsed = collapseChatMentionMarkup(adjacent)
   assert.equal(adjacentCollapsed, '@writing @main.ts')
 
+  const attached = expandChatMentions('release@main.ts', map)
+  assert.equal(attached, 'release[[read_file:src/main.ts]]')
+  assert.deepEqual(
+    findChatMentionMatches('release@main.ts', map),
+    [{ end: 'release@main.ts'.length, label: 'main.ts', path: 'read_file:src/main.ts', start: 'release'.length }],
+  )
+
   // Typing normal text after a [[]] mention must NOT bleed into the adjacent text
   const withNormalText = '[[load_skill:natural-writing]] create a new mark'
   const withNormalMatches = findChatMentionMatches(withNormalText)

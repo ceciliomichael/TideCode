@@ -62,6 +62,15 @@ function getDuplicateEntryMessage(message: string, itemKind?: UserFacingErrorIte
     : `An ${itemLabel} with that name already exists. Choose a different name.`
 }
 
+function getPartialGitSuccessMessage(message: string) {
+  const normalizedMessage = message.toLowerCase()
+  if (!normalizedMessage.includes('committed successfully but failed to push')) {
+    return null
+  }
+
+  return 'The commit succeeded, but the push or pull request step failed. Your commit is still saved locally.'
+}
+
 export function toUserFacingErrorMessage(
   error: unknown,
   fallbackMessage: string,
@@ -75,6 +84,11 @@ export function toUserFacingErrorMessage(
   const isRemoteMethodError = /^Error invoking remote method\s+['"][^'"]+['"]:/iu.test(message)
   const applicationMessage = unwrapRemoteMethodMessage(message)
   const normalizedMessage = applicationMessage.toLowerCase()
+  const partialGitSuccessMessage = getPartialGitSuccessMessage(applicationMessage)
+  if (partialGitSuccessMessage) {
+    return partialGitSuccessMessage
+  }
+
   const duplicateEntryMessage = getDuplicateEntryMessage(applicationMessage, options.itemKind)
   if (duplicateEntryMessage) {
     return duplicateEntryMessage

@@ -267,11 +267,11 @@ async function resolveDefaultBranchName(repoRootPath: string) {
 async function checkPotentialConflictsWithDefaultBranch(
   repoRootPath: string,
   currentBranch: string,
-  defaultBranch: string,
+  defaultRemoteRef: string,
 ) {
   try {
     const { stdout: mergeBaseStdout } = await runGit(
-      ['merge-base', currentBranch, `origin/${defaultBranch}`],
+      ['merge-base', currentBranch, defaultRemoteRef],
       repoRootPath,
     )
     const mergeBaseSha = mergeBaseStdout.trim()
@@ -280,7 +280,7 @@ async function checkPotentialConflictsWithDefaultBranch(
     }
 
     const { stdout: mergeTreeStdout } = await runGit(
-      ['merge-tree', mergeBaseSha, currentBranch, `origin/${defaultBranch}`],
+      ['merge-tree', mergeBaseSha, currentBranch, defaultRemoteRef],
       repoRootPath,
     )
 
@@ -301,17 +301,20 @@ async function ensureBranchReadyForPullRequest(
   }
 
   const hasRemote = await fetchOrigin(repoRootPath)
-  if (!hasRemote || !(await hasRemoteTrackingBranch(repoRootPath, defaultBranch))) {
+  const remoteName = await getPreferredRemoteName(repoRootPath)
+  if (!hasRemote || !remoteName || !(await hasRemoteTrackingBranch(repoRootPath, defaultBranch))) {
     return
   }
 
+  const defaultRemoteRef = `${remoteName}/${defaultBranch}`
+
   try {
-    await runGit(['merge-base', '--is-ancestor', `origin/${defaultBranch}`, currentBranch], repoRootPath)
+    await runGit(['merge-base', '--is-ancestor', defaultRemoteRef, currentBranch], repoRootPath)
   } catch {
     const hasPotentialConflicts = await checkPotentialConflictsWithDefaultBranch(
       repoRootPath,
       currentBranch,
-      defaultBranch,
+      defaultRemoteRef,
     )
 
     if (hasPotentialConflicts) {
