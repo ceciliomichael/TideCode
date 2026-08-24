@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, ExternalLink, PackageCheck, RefreshCw, RotateCw } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Download, ExternalLink, PackageCheck, RefreshCw, RotateCw } from 'lucide-react'
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { MarkdownRenderer } from '../../chat/MarkdownRenderer'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
@@ -13,6 +13,7 @@ import {
   type UpdateCheckState,
 } from './updatesSessionStore'
 import { getDisplayedUpdateVersion } from './updateVersionDisplay'
+import { getTargetUpdateVersion, getUpdateActionPresentation } from './updateActionPresentation'
 import type { AppSettings } from '../../../types/chat'
 import { SettingsPanelLayout, SettingsRow, SettingsSection } from '../shared/SettingsPanelPrimitives'
 
@@ -143,18 +144,33 @@ export function UpdatesSettingsPanel({
 
   const checkedAt = formatCheckedAt(session.result?.checkedAt)
   const isDownloading = session.checkState === 'downloading' || session.downloadState === 'downloading'
+  const currentVersion = session.result?.currentVersion ?? session.currentVersion
   // While a download is in progress (or ready to install), show the version
   // being downloaded instead of the version that is currently running.
   const displayedVersion = getDisplayedUpdateVersion({
     checkState: session.checkState,
-    currentVersion: session.result?.currentVersion ?? session.currentVersion,
+    currentVersion,
     downloadState: session.downloadState,
     latestVersion: session.result?.downloadVersion ?? session.result?.latestVersion ?? null,
     pendingVersion: session.pendingVersion,
   })
-  const errorMessage = openReleaseError ?? session.errorMessage
-  const updateIsReady = session.downloadState === 'downloaded'
   const updateIsAvailable = session.result?.updateAvailable === true
+  const targetUpdateVersion = getTargetUpdateVersion({
+    downloadState: session.downloadState,
+    latestVersion: session.result?.latestVersion ?? null,
+    pendingVersion: session.pendingVersion,
+    updateAvailable: updateIsAvailable,
+  })
+  const statusVersion = targetUpdateVersion ?? displayedVersion
+  const updateAction = getUpdateActionPresentation({
+    checkState: session.checkState,
+    downloadPercent: session.downloadPercent,
+    downloadState: session.downloadState,
+    hasResult: session.result !== null,
+    targetVersion: targetUpdateVersion,
+    updateAvailable: updateIsAvailable,
+  })
+  const errorMessage = openReleaseError ?? session.errorMessage
   const statusIcon =
     session.checkState === 'error' ? (
       <AlertCircle size={19} strokeWidth={2} className="text-danger-foreground" aria-hidden="true" />
@@ -178,7 +194,7 @@ export function UpdatesSettingsPanel({
                 )}
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">TideCode {displayedVersion}</p>
+                <p className="text-sm font-medium text-foreground">TideCode {statusVersion}</p>
                 <p className="mt-1 text-sm leading-5 text-muted-foreground">
                   {getStatusCopy(
                     session.checkState,
@@ -188,7 +204,7 @@ export function UpdatesSettingsPanel({
                   )}
                 </p>
                 {isDownloading && session.downloadPercent !== null ? (
-                  <p className="mt-2 text-xs text-subtle-foreground">
+                  <p className="mt-2 text-xs text-subtle-foreground" aria-live="polite">
                     {Math.round(session.downloadPercent)}% downloaded
                   </p>
                 ) : null}
@@ -198,42 +214,43 @@ export function UpdatesSettingsPanel({
 
             <button
               type="button"
-              disabled={session.checkState === 'checking' || isDownloading}
+              aria-label={updateAction.ariaLabel}
+              title={updateAction.kind === 'restart' ? updateAction.ariaLabel : undefined}
+              disabled={updateAction.disabled}
               onClick={() => {
-                if (updateIsReady) {
+                if (updateAction.kind === 'restart') {
                   void handleRestartToUpdate()
                   return
                 }
 
-                if (updateIsAvailable) {
+                if (updateAction.kind === 'download') {
                   handleDownloadUpdate()
                   return
                 }
 
-                handleManualCheck()
+                if (updateAction.kind === 'check') {
+                  handleManualCheck()
+                }
               }}
-              className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-brand-border bg-brand-soft px-4 py-2 text-sm font-semibold text-brand-soft-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+              className={`inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-brand-border bg-brand-soft text-sm font-semibold text-brand-soft-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60 ${
+                updateAction.kind === 'restart' ? 'size-11 px-0 py-0' : 'px-4 py-2'
+              }`}
             >
-              {updateIsReady ? (
-                <RotateCw size={16} strokeWidth={2.2} />
+              {updateAction.kind === 'restart' ? (
+                <RotateCw size={18} strokeWidth={2.2} aria-hidden="true" />
+              ) : updateAction.kind === 'download' ? (
+                <Download size={16} strokeWidth={2.2} aria-hidden="true" />
               ) : (
                 <RefreshCw
                   size={16}
                   strokeWidth={2.2}
-                  className={session.checkState === 'checking' || isDownloading ? 'animate-spin' : undefined}
+                  className={updateAction.kind === 'checking' || updateAction.kind === 'downloading' ? 'animate-spin' : undefined}
+                  aria-hidden="true"
                 />
               )}
-              {updateIsReady
-                ? 'Restart to update'
-                : isDownloading
-                  ? 'Downloading...'
-                  : updateIsAvailable
-                    ? 'Download update'
-                    : session.checkState === 'checking'
-                      ? 'Checking...'
-                      : session.result !== null
-                        ? 'Check again'
-                        : 'Check for updates'}
+              {updateAction.label ? (
+                <span aria-live={updateAction.kind === 'downloading' ? 'polite' : undefined}>{updateAction.label}</span>
+              ) : null}
             </button>
           </div>
 

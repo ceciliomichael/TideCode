@@ -339,9 +339,12 @@ export function MessageList({
 }: MessageListProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isConversationStreaming = streamingAssistantMessageId !== null;
-  const visibleMessages = messages.filter(
-    (message) =>
-      isVisibleTranscriptMessage(message) || isPlanImplementationMessage(message) || isPlanRevisionMessage(message),
+  const visibleMessages = useMemo(
+    () => messages.filter(
+      (message) =>
+        isVisibleTranscriptMessage(message) || isPlanImplementationMessage(message) || isPlanRevisionMessage(message),
+    ),
+    [messages],
   );
   
   const renderItems = useMemo(() => {

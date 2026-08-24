@@ -8,6 +8,7 @@ import {
   isScrollingDown,
   isScrollingUp,
   resolveScrollFollowing,
+  shouldMeasureScrollContainerLayout,
 } from '../src/components/chat/scrollFollowPolicy'
 
 function createScrollContainer(scrollTop: number) {
@@ -42,6 +43,14 @@ test('upward movement is recognized before the viewport leaves the near-bottom b
 test('downward movement is recognized when returning toward the latest message', () => {
   assert.equal(isScrollingDown(598, 599), false)
   assert.equal(isScrollingDown(598, 600), true)
+})
+
+test('paused upward scrolling can skip expensive layout measurements', () => {
+  assert.equal(shouldMeasureScrollContainerLayout(false, 600, 560), false)
+  assert.equal(shouldMeasureScrollContainerLayout(false, 560, 560), false)
+  assert.equal(shouldMeasureScrollContainerLayout(false, 560, 560.25), true)
+  assert.equal(shouldMeasureScrollContainerLayout(false, 560, 600), true)
+  assert.equal(shouldMeasureScrollContainerLayout(true, 600, 560), true)
 })
 
 test('content growth without viewport movement preserves following', () => {

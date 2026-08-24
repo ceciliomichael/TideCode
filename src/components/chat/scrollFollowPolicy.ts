@@ -67,6 +67,14 @@ export function isScrollingDown(
   return currentScrollTop > previousScrollTop + epsilonPx
 }
 
+export function shouldMeasureScrollContainerLayout(
+  isFollowingLatest: boolean,
+  previousScrollTop: number,
+  currentScrollTop: number,
+): boolean {
+  return isFollowingLatest || currentScrollTop > previousScrollTop
+}
+
 export function didScrollableRangeShrink(
   previous: ScrollContainerSnapshot,
   current: ScrollContainerSnapshot,

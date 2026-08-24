@@ -91,6 +91,11 @@ export function createTerminalInstance({
   terminal.loadAddon(webLinksAddon);
   terminal.open(container);
 
+  const clearTerminalInputSelection = () => {
+    terminal.clearSelection();
+    clearSelectionWithinHost(container);
+  };
+
   const handleTerminalContextMenu = (event: MouseEvent) => {
     const selection = terminal.getSelection() || getNativeSelectionTextWithinHost(container);
     event.preventDefault();
@@ -98,8 +103,7 @@ export function createTerminalInstance({
       void copyTerminalSelectionToClipboard({ hostElement: container, terminal })
         .catch((error: unknown) => console.error("Failed to copy selected terminal text", error))
         .finally(() => {
-          terminal.clearSelection();
-          clearSelectionWithinHost(container);
+          clearTerminalInputSelection();
         });
       return;
     }
@@ -110,6 +114,7 @@ export function createTerminalInstance({
   container.addEventListener("contextmenu", handleTerminalContextMenu);
 
   const writeSequence = (sequence: string) => {
+    clearTerminalInputSelection();
     const tab = terminalTabsRef.current.find((candidate) => candidate.key === tabKey);
     if (tab?.sessionId === null || tab?.sessionId === undefined) return;
     void window.tidecodeTerminal.writeToSession({
@@ -179,6 +184,9 @@ export function createTerminalInstance({
 
   const disposables: IDisposable[] = [
     terminal.onData((data) => {
+      // xterm keeps its selection visible after browser text input. Clear both
+      // xterm and native DOM selection before forwarding the input to the PTY.
+      clearTerminalInputSelection();
       const tab = terminalTabsRef.current.find((candidate) => candidate.key === tabKey);
       if (tab?.sessionId === null || tab?.sessionId === undefined) {
         if (tab?.status === "exited" && (data === "\r" || data === "\n")) restartTab(tabKey);
