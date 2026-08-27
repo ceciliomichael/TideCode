@@ -41,7 +41,7 @@ export default defineConfig({
           build: {
             rollupOptions: {
               // Keep native/optional Node dependencies external so their runtime loaders resolve from node_modules.
-              external: ['node-pty', 'ws'],
+              external: ['node-pty', 'uiohook-napi', 'ws'],
             },
           },
         },

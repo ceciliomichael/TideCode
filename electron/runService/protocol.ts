@@ -40,6 +40,7 @@ export const RUN_SERVICE_PROTOCOL_VERSION = 14
 
 export interface RunServiceHello {
   buildId: string
+  processId?: number
   protocolVersion: number
 }
 

@@ -1,9 +1,9 @@
-import { app, BrowserWindow, nativeTheme } from 'electron'
+import { app, BrowserWindow, nativeTheme, Tray } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import type { AppSettings, AppSettingsSurface, StartChatStreamInput } from '../src/types/chat'
 import { flushStoredSettingsUpdates, getStoredSettings } from './settings/store'
-import { applyTideCodeAppIcon } from './window/branding'
+import { applyTideCodeAppIcon, getTideCodeAppIconPath } from './window/branding'
 import { applyWindowTheme } from './window/theme'
 import { createApplicationWindow } from './window/createApplicationWindow'
 import { closeAllTerminalSessions, closeAllTerminalSessionsForWebContents } from './terminal/service'
@@ -29,6 +29,8 @@ import { RemoteWorkspaceHost } from './remote/host'
 import { registerRemoteWorkspaceHostIpc } from './remote/ipc'
 import { REMOTE_EVENT_CHANNELS } from '../src/remote/protocol'
 import { hasSharedAppSettingsInput } from '../src/lib/appSettingsScopes'
+import { shutdownRunServiceForApplication } from './runService/ensureService'
+import { createTrayPopupController } from './window/trayPopup'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // The built directory structure
@@ -55,6 +57,9 @@ app.commandLine.appendSwitch(
 )
 
 let win: BrowserWindow | null
+let tray: Tray | null = null
+let trayPopup: ReturnType<typeof createTrayPopupController> | null = null
+let isSystemShutdownInProgress = false
 const configuredRemotePort = Number.parseInt(process.env.TIDECODE_REMOTE_PORT ?? '', 10)
 const remoteWorkspaceHost = new RemoteWorkspaceHost({
   devServerUrl: VITE_DEV_SERVER_URL,
@@ -108,6 +113,46 @@ function focusApplicationWindow(currentWindow: BrowserWindow) {
   currentWindow.focus()
 }
 
+function showApplicationWindow(launchRequest: TideCodeLaunchRequest | null = null) {
+  const currentWindow = win
+  if (currentWindow && !currentWindow.isDestroyed()) {
+    focusApplicationWindow(currentWindow)
+    if (launchRequest) deliverLaunchRequest(currentWindow, launchRequest)
+    return Promise.resolve()
+  }
+
+  return createWindow(launchRequest)
+}
+
+function toggleApplicationWindow() {
+  const currentWindow = win
+  if (currentWindow && !currentWindow.isDestroyed() && currentWindow.isVisible()) {
+    currentWindow.hide()
+    return
+  }
+
+  void showApplicationWindow()
+}
+
+function createApplicationTray() {
+  if (process.platform !== 'win32' || tray) return
+
+  try {
+    const nextTray = new Tray(getTideCodeAppIconPath())
+    const nextTrayPopup = createTrayPopupController({
+      onQuit: () => app.quit(),
+      onToggleWindow: toggleApplicationWindow,
+    })
+    nextTray.setToolTip('TideCode')
+    nextTray.on('click', () => { void showApplicationWindow() })
+    nextTray.on('right-click', () => { void nextTrayPopup.toggle(nextTray.getBounds()) })
+    tray = nextTray
+    trayPopup = nextTrayPopup
+  } catch (error) {
+    console.error('Failed to create the TideCode system tray icon.', error)
+  }
+}
+
 function deliverLaunchRequest(currentWindow: BrowserWindow, request: TideCodeLaunchRequest) {
   const sendRequest = () => {
     if (!currentWindow.isDestroyed()) {
@@ -131,17 +176,7 @@ app.on('second-instance', (_event, argv) => {
     return
   }
   const launchRequest = parseTideCodeLaunchRequest(argv)
-  // Someone tried to run a second instance, focus our window instead.
-  if (win && !win.isDestroyed()) {
-    focusApplicationWindow(win)
-    if (launchRequest) {
-      deliverLaunchRequest(win, launchRequest)
-    }
-    return
-  }
-
-  // If we don't currently have a window (e.g. it was closed), recreate it.
-  void createWindow(launchRequest)
+  void showApplicationWindow(launchRequest)
 })
 
 let isQuitFlushInProgress = false
@@ -158,11 +193,22 @@ async function createWindow(initialLaunchRequest: TideCodeLaunchRequest | null =
   currentWindow.webContents.on('did-start-loading', () => {
     closeAllTerminalSessionsForWebContents(currentWindow.webContents)
   })
+  currentWindow.on('query-session-end', () => {
+    isSystemShutdownInProgress = true
+  })
+  currentWindow.on('close', (event) => {
+    if (
+      process.platform === 'win32'
+      && !isQuitFlushInProgress
+      && !isSystemShutdownInProgress
+      && !isUpdateInstallInProgress()
+    ) {
+      event.preventDefault()
+      currentWindow.hide()
+    }
+  })
   currentWindow.once('closed', () => {
     if (win === currentWindow) win = null
-    void remoteWorkspaceHost.stop().catch((error) => {
-      console.error('Failed to stop TideCode Remote Workspace host.', error)
-    })
   })
 
   if (!currentWindow.isDestroyed() && currentWindow.webContents.isLoading()) {
@@ -204,17 +250,9 @@ function registerApplicationIpcHandlers() {
 }
 
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    disposeWorkspaceExplorerWatchers()
-    disposeProjectPathWatcher()
-    disposeSourceControlWatchers()
-    disposeKanbanBoardWatchers()
+  if (process.platform !== 'darwin' && process.platform !== 'win32') {
     app.quit()
-    win = null
   }
 })
 
@@ -224,6 +262,10 @@ app.on('before-quit', (event) => {
     disposeProjectPathWatcher()
     disposeSourceControlWatchers()
     disposeKanbanBoardWatchers()
+    trayPopup?.destroy()
+    trayPopup = null
+    tray?.destroy()
+    tray = null
     return
   }
 
@@ -233,6 +275,10 @@ app.on('before-quit', (event) => {
 
   event.preventDefault()
   isQuitFlushInProgress = true
+  trayPopup?.destroy()
+  trayPopup = null
+  tray?.destroy()
+  tray = null
   disposeWorkspaceExplorerWatchers()
   disposeProjectPathWatcher()
   disposeSourceControlWatchers()
@@ -246,6 +292,9 @@ app.on('before-quit', (event) => {
     }),
     flushStoredSettingsUpdates().catch((error) => {
       console.error('Failed to flush settings updates on quit', error)
+    }),
+    shutdownRunServiceForApplication().catch((error) => {
+      console.error('Failed to shut down the TideCode run service on quit.', error)
     }),
   ])
     .finally(() =>
@@ -261,14 +310,11 @@ app.on('before-quit', (event) => {
 })
 
 app.on('activate', () => {
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow()
-  }
+  void showApplicationWindow()
 })
 
 app.whenReady().then(async () => {
+  createApplicationTray()
   registerApplicationIpcHandlers()
   registerMcpHandlers(mcpServerManager)
   registerRemoteWorkspaceHostIpc(remoteWorkspaceHost, () => win)

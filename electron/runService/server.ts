@@ -219,6 +219,7 @@ export class TideCodeRunServiceServer {
             ok: true,
             result: {
               buildId: this.options.buildId,
+              processId: process.pid,
               protocolVersion: RUN_SERVICE_PROTOCOL_VERSION,
             },
           })

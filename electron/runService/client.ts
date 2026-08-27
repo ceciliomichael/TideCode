@@ -66,8 +66,13 @@ export class TideCodeRunServiceClient {
   readonly terminalClientId = randomUUID()
   private buffered = ''
   private token = ''
+  private serviceProcessId: number | null = null
 
   constructor(private readonly expectedBuildId?: string) {}
+
+  get processId() {
+    return this.serviceProcessId
+  }
 
   async connect() {
     if (this.socket && !this.socket.destroyed) return
@@ -103,6 +108,9 @@ export class TideCodeRunServiceClient {
       socket.on('close', () => this.handleDisconnect(new Error('Tidecode run service disconnected.')))
 
       const hello = await this.requestRaw<RunServiceHello>('hello')
+      this.serviceProcessId = Number.isInteger(hello.processId) && (hello.processId ?? 0) > 0
+        ? hello.processId ?? null
+        : null
       if (hello.protocolVersion !== RUN_SERVICE_PROTOCOL_VERSION) {
         socket.destroy()
         if (this.socket === socket) this.socket = null
@@ -281,6 +289,21 @@ export class TideCodeRunServiceClient {
       ...input,
       clientId: this.terminalClientId,
     })
+  }
+
+  async shutdown(timeoutMs = 5_000) {
+    await this.connect()
+    const socket = this.socket
+    if (!socket || socket.destroyed) return
+
+    const disconnected = new Promise<void>((resolve) => socket.once('close', () => resolve()))
+    await this.requestRaw<null>('shutdown')
+    await Promise.race([
+      disconnected,
+      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+    ])
+    if (!socket.destroyed) socket.destroy()
+    if (this.socket === socket) this.socket = null
   }
 
   close() {
