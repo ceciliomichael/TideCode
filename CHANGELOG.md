@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.24 - Unified Code Mode and more reliable tool workflows
+
+TideCode 1.2.24 unifies Code Mode behavior across providers and makes multi-step tool execution, patching, and diff presentation more reliable.
+
+- Uses one TideCode Code Mode instruction and tool contract across OpenAI, Codex, Google, Anthropic, Mistral, DeepSeek, and compatible providers, with provider-specific transport only.
+- Keeps Codex and Luna sessions moving after Code Mode tool calls by preserving continuation context, sticky turn-state routing, pinned account state, and valid custom-tool replay.
+- Improves `apply_patch` matching and recovery, patch wrapper tolerance, multi-hunk line numbers, and grouped per-file diff presentation.
+- Tightens tool-result handling, prompt and cache accounting, workspace instruction loading, and Code Mode execution reliability.
+- Requires no manual migration or configuration changes.
+
 ## 1.2.23 - Clearer update progress from the sidebar
 
 TideCode 1.2.23 makes available and downloading updates easier to see from the sidebar and provides a direct restart action when an update is ready to install.
