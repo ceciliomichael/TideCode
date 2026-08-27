@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.25 - Safer patching and cleaner workspace workflows
+
+TideCode 1.2.25 improves Code Mode resilience, multi-file patch reliability, workspace visibility, and everyday Kanban and settings behavior.
+
+- Recovers the common Code Mode mistake of importing the already-injected `tools` binding while continuing to block real dynamic module loading.
+- Makes `apply_patch` file commits atomic and retry-aware on Windows, with rollback limited to files that were actually changed.
+- Tightens workspace ignore and search visibility behavior so reads, exploration, and fallback search stay consistent.
+- Refines Kanban status handling, reasoning-effort choices, and update action presentation.
+- Requires no manual migration or configuration changes.
+
 ## 1.2.24 - Unified Code Mode and more reliable tool workflows
 
 TideCode 1.2.24 unifies Code Mode behavior across providers and makes multi-step tool execution, patching, and diff presentation more reliable.
