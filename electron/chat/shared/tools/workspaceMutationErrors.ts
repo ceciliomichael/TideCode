@@ -22,6 +22,7 @@ export class WorkspaceMutationError extends Error {
     public readonly code: WorkspaceMutationErrorCode,
     public readonly stage: WorkspaceMutationStage,
     message: string,
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message)
     this.name = 'WorkspaceMutationError'
@@ -38,5 +39,9 @@ export function createWorkspaceMutationErrorResult(
   return createToolErrorResult(summary, undefined, {
     error_code: error.code,
     stage: error.stage,
+    ...(error.code === 'TARGET_AMBIGUOUS' || error.code === 'TARGET_NOT_FOUND'
+      ? { recoverable: true }
+      : {}),
+    ...(error.details ?? {}),
   })
 }

@@ -26,8 +26,8 @@ test('createAgentTools omits write tools in plan mode', async () => {
     assert.ok('plan_create' in tools)
     assert.ok('plan_edit' in tools)
     assert.ok(!('write' in tools))
+    assert.ok(!('apply_patch' in tools))
     assert.ok(!('edit' in tools))
-    assert.ok(!('patch' in tools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -43,8 +43,8 @@ test('createAgentTools exposes write tools in agent mode', async () => {
     })
 
     assert.ok('write' in tools)
+    assert.ok('apply_patch' in tools)
     assert.ok('edit' in tools)
-    assert.ok(!('patch' in tools))
     assert.ok('kanban_board' in tools)
     assert.ok(!('memory' in tools))
   } finally {
@@ -65,11 +65,14 @@ assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
     assert.ok(bundle.registry.get('tool_search'))
     assert.ok(bundle.registry.get('read'))
     assert.ok(bundle.registry.get('read_tool_output'))
-    assert.ok(bundle.registry.get('edit'))
-    assert.equal(bundle.registry.get('patch'), undefined)
+    assert.ok(bundle.registry.get('apply_patch'))
+    assert.equal(bundle.registry.get('edit'), undefined)
+    assert.ok(bundle.nativeTools.edit)
     assert.equal(bundle.registry.get('mcp_tool_search'), undefined)
     assert.equal(bundle.registry.get('execute_mcp'), undefined)
     assert.equal(typeof bundle.registry.get('read')?.execute, 'function')
+    const codeModeWriteSchema = bundle.registry.get('write')?.inputSchema as { properties?: Record<string, unknown> } | undefined
+    assert.equal(Boolean(codeModeWriteSchema?.properties && 'expectedRevision' in codeModeWriteSchema.properties), false)
     await bundle.codeModeExecutor?.dispose()
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -171,7 +174,7 @@ test('createAgentTools exposes the same exact replacement tools for every provid
       { chatMode: 'agent', providerId: 'custom:test-provider' },
     )
 
-    for (const toolName of ['edit']) {
+    for (const toolName of ['apply_patch', 'edit']) {
       const codexTool = codexTools[toolName] as {
         description?: string
         inputSchema?: unknown
@@ -238,8 +241,8 @@ test('createAgentTools keeps plan mode tool descriptions literal', async () => {
       assert.doesNotMatch(description, /patch|write|should|prefer/iu)
     }
     assert.ok(!('write' in tools))
+    assert.ok(!('apply_patch' in tools))
     assert.ok(!('edit' in tools))
-    assert.ok(!('patch' in tools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -259,31 +262,34 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     )
 
     assert.ok('read' in tools)
+    assert.ok('apply_patch' in tools)
     assert.ok('edit' in tools)
-    assert.ok(!('patch' in tools))
     assert.ok('write' in tools)
 
     const readTool = tools.read as { description?: string }
     const globTool = tools.glob as { description?: string }
     const grepTool = tools.grep as { description?: string }
+    const applyPatchTool = tools.apply_patch as { description?: string }
     const editTool = tools.edit as { description?: string }
     const writeTool = tools.write as { description?: string }
 
     assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. By default, returns up to 500 lines. Set full_file: true to read the complete text file; full_file takes precedence over offset and limit.')
+    assert.match(applyPatchTool.description ?? '', /Apply a Codex patch as an array of complete patch lines/u)
     assert.equal(
       editTool.description,
-'Edit an existing file with structured source text by replacing targetContent with replacementContent. Ambiguous targets fail unless replaceAll is explicitly true. Pass expectedRevision from the latest read when available.',
+'Edit an existing file using one exact operation per hunk: replace targetContent, replace an exact startLine/endLine range, or insert insertContent at the file start/end. Ambiguous text targets return recoverable candidate context unless replaceAll is explicitly true.',
     )
     assert.equal(globTool.description, 'Find files by pattern under exactly one directory; an omitted path, empty string, or "." refers to the bound workspace root.')
     assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; an omitted path, empty string, or "." refers to the bound workspace root.')
     assert.equal(
       writeTool.description,
-      'Write a complete file using structured content. Use this tool to create files or intentionally replace an entire file. Pass expectedRevision from the latest read when replacing an existing file when available.',
+      'Write a complete file using structured content. Use this tool to create files or intentionally replace an entire file.',
     )
     for (const description of [
       readTool,
       globTool,
       grepTool,
+      applyPatchTool,
       editTool,
       writeTool,
     ]

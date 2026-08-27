@@ -263,6 +263,59 @@ test('buildChatPrompt preserves assistant tool calls and matching tool results',
   assert.equal('result' in (toolMessage?.content[0] ?? {}), false)
 })
 
+test('buildChatPrompt preserves raw-string Code Mode calls for history replay', () => {
+  const source = "const result = await tools.read({ path: 'src/example.ts' }); return result"
+  const messages: Message[] = [
+    { content: 'Inspect the file', id: 'user-code-mode', role: 'user', timestamp: 1 },
+    {
+      content: '',
+      id: 'assistant-code-mode',
+      role: 'assistant',
+      timestamp: 2,
+      toolInvocations: [{
+        argumentsText: JSON.stringify(source),
+        completedAt: 3,
+        id: 'code-mode-call',
+        resultContent: '',
+        startedAt: 2,
+        state: 'completed',
+        toolName: 'code_mode',
+      }],
+    },
+    {
+      content: formatStructuredToolResultContent({
+        arguments: source,
+        schema: 'tidecode.tool_result/v1',
+        status: 'success',
+        summary: 'Code Mode completed with 1 tool call.',
+        toolCallId: 'code-mode-call',
+        toolName: 'code_mode',
+      }, 'Code Mode completed'),
+      id: 'tool-code-mode',
+      role: 'tool',
+      timestamp: 4,
+      toolCallId: 'code-mode-call',
+    },
+  ]
+
+  const prompt = buildChatPrompt({
+    chatMode: 'agent',
+    messages,
+    workspaceRootPath: 'C:/repo',
+  })
+
+  const assistantMessage = prompt.messages[1]
+  assert.equal(assistantMessage?.role, 'assistant')
+  assert.ok(Array.isArray(assistantMessage?.content))
+  assert.equal(assistantMessage?.content[0]?.type, 'tool-call')
+  assert.equal(assistantMessage?.content[0]?.input, source)
+
+  const toolMessage = prompt.messages[2]
+  assert.equal(toolMessage?.role, 'tool')
+  assert.ok(Array.isArray(toolMessage?.content))
+  assert.equal(toolMessage?.content[0]?.toolName, 'code_mode')
+})
+
 test('buildChatPrompt preserves image attachments in user messages', () => {
   const messages: Message[] = [
     {

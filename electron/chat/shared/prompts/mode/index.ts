@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { ChatMode, AppTerminalExecutionMode } from '../../../../../src/types/chat'
 import type { AgentOrchestrationMode } from '../../orchestration'
-import { buildWorkspaceInstructionsBlock } from '../workspaceInstructions'
+import { buildWorkspaceInstructionsBootstrapBlock } from '../workspaceInstructions'
 import { buildPythonVenvPromptBlock } from '../../../../python/venv'
 import { getTideCodeRuntimeRoot } from '../../../../runtime/runtimeRoot'
 import { resolvePreferredTerminalShell } from '../../../../terminal/configuration'
@@ -256,10 +256,16 @@ export function buildChatModeSystemPromptBreakdown(
         '</terminal_environment>',
       ].join('\n')
     : ''
-  const workspaceInstructions = buildWorkspaceInstructionsBlock(workspaceRootPath)
+  const workspaceInstructionsBootstrap = buildWorkspaceInstructionsBootstrapBlock()
   const workspaceComponents = [
     workspaceRootComponent,
     workspacePathContractComponent,
+    {
+      content: workspaceInstructionsBootstrap,
+      id: 'workspace_instructions_bootstrap',
+      section: 'workspace_context' as const,
+      source: 'electron/chat/shared/prompts/workspaceInstructions.ts',
+    },
     terminalShellPrompt
       ? {
           content: terminalShellPrompt,
@@ -276,14 +282,7 @@ export function buildChatModeSystemPromptBreakdown(
           source: 'electron/python/venv.ts',
         }
       : null,
-    workspaceInstructions
-      ? {
-          content: workspaceInstructions,
-          id: 'workspace_instructions',
-          section: 'workspace_context' as const,
-          source: `${path.join(workspaceRootPath, 'AGENTS.md')}`,
-        }
-      : null,
+
   ].filter((component): component is ChatSystemPromptComponent => component !== null)
 
   const systemRules = systemRuleComponents.map((component) => component.content).join('\n\n')

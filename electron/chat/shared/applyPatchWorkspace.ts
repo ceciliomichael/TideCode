@@ -112,10 +112,16 @@ export async function applyPatchInWorkspace(
     const sourceTarget = resolveTargetPath(hunk.path)
     const nextTarget = hunk.movePath ? resolveTargetPath(hunk.movePath) : undefined
     const existingContent = await readRequiredContent(sourceTarget, 'update')
+    const updateChunkStartLines: number[] = []
     const nextContent = applyUpdateChunks(
       sourceTarget.relativePath,
       existingContent,
       hunk.chunks,
+      {
+        onChunkResolved: ({ chunkIndex, startLineNumber }) => {
+          updateChunkStartLines[chunkIndex] = startLineNumber
+        },
+      },
     )
     const writeTarget = nextTarget ?? sourceTarget
 
@@ -135,6 +141,7 @@ export async function applyPatchInWorkspace(
       oldContent: existingContent,
       relativePath: writeTarget.relativePath,
       type: 'update',
+      updateChunkStartLines,
     })
   }
 

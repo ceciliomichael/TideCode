@@ -39,10 +39,9 @@ export interface CodeModeExecutionResult {
 }
 
 export interface CodeModeWorkerExecuteMessage {
-  code: string
   executionMode: 'full' | 'sandbox'
   limits: CodeModeExecutionLimits
-  payloads: Record<string, string>
+  source: string
   toolNames: string[]
   type: 'execute'
   workspaceRootPath: string
@@ -51,6 +50,7 @@ export interface CodeModeWorkerExecuteMessage {
 export interface CodeModeWorkerToolCallMessage {
   arguments: unknown
   callId: string
+  logicalCallCount?: number
   name: string
   type: 'tool_call'
 }
@@ -58,6 +58,7 @@ export interface CodeModeWorkerToolCallMessage {
 export interface CodeModeWorkerToolResultMessage {
   callId: string
   error?: string
+  errorResult?: unknown
   result?: unknown
   type: 'tool_result'
 }

@@ -58,6 +58,150 @@ test('apply_patch follows Codex first-match sequencing for repeated hunks', asyn
   }
 })
 
+test('apply_patch keeps repeated hunks in source order when an earlier match needs whitespace normalization', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-whitespace-sequence-'))
+  const targetPath = path.join(workspaceRootPath, 'repeated.ts')
+
+  try {
+    await fs.writeFile(
+      targetPath,
+      [
+        "                {activeCardCount} active · {blockedCardCount} blocked ·{' '}",
+        'keep',
+        "              {activeCardCount} active · {blockedCardCount} blocked ·{' '}",
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+
+    await applyPatchInWorkspace(
+      workspaceRootPath,
+      standardPatch(`*** Update File: repeated.ts
+@@
+-              {activeCardCount} active · {blockedCardCount} blocked ·{' '}
++              {activeCardCount} active · {resolvedCardCount} resolved ·{' '}
+@@
+-              {activeCardCount} active · {blockedCardCount} blocked ·{' '}
++              {activeCardCount} active · {resolvedCardCount} resolved ·{' '}`),
+    )
+
+    assert.equal(
+      await fs.readFile(targetPath, 'utf8'),
+      [
+        "              {activeCardCount} active · {resolvedCardCount} resolved ·{' '}",
+        'keep',
+        "              {activeCardCount} active · {resolvedCardCount} resolved ·{' '}",
+        '',
+      ].join('\n'),
+    )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('apply_patch safely recovers unique out-of-order hunks in one file', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-out-of-order-'))
+  const targetPath = path.join(workspaceRootPath, 'kanbanTools.ts')
+  const originalContent = [
+    '                const colTitle =',
+    "                  colId === 'in-progress'",
+    "                    ? 'In Progress'",
+    '                    : colId.charAt(0).toUpperCase() + colId.slice(1)',
+    '              return ok(`Created task in ${card.columnId}: ${card.title}`, { card })',
+    '              return ok(`Moved task to ${card.columnId}: ${card.title}`, { card })',
+    '',
+  ].join('\n')
+
+  try {
+    await fs.writeFile(targetPath, originalContent, 'utf8')
+
+    await applyPatchInWorkspace(
+      workspaceRootPath,
+      standardPatch(`*** Update File: kanbanTools.ts
+@@
+-              return ok(\`Created task in \${card.columnId}: \${card.title}\`, { card })
++              return ok(\`Created task in \${getKanbanColumnTitle(card.columnId)}: \${card.title}\`, { card })
+@@
+-                const colTitle =
+-                  colId === 'in-progress'
+-                    ? 'In Progress'
+-                    : colId.charAt(0).toUpperCase() + colId.slice(1)
++                const colTitle = getKanbanColumnTitle(colId)
+@@
+-              return ok(\`Moved task to \${card.columnId}: \${card.title}\`, { card })
++              return ok(\`Moved task to \${getKanbanColumnTitle(card.columnId)}: \${card.title}\`, { card })`),
+    )
+
+    assert.equal(
+      await fs.readFile(targetPath, 'utf8'),
+      [
+        '                const colTitle = getKanbanColumnTitle(colId)',
+        '              return ok(`Created task in ${getKanbanColumnTitle(card.columnId)}: ${card.title}`, { card })',
+        '              return ok(`Moved task to ${getKanbanColumnTitle(card.columnId)}: ${card.title}`, { card })',
+        '',
+      ].join('\n'),
+    )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('apply_patch rejects ambiguous out-of-order recovery', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-out-of-order-ambiguous-'))
+  const targetPath = path.join(workspaceRootPath, 'ambiguous.ts')
+  const originalContent = 'early\nkeep\nearly\nlate\n'
+
+  try {
+    await fs.writeFile(targetPath, originalContent, 'utf8')
+
+    await assert.rejects(
+      applyPatchInWorkspace(
+        workspaceRootPath,
+        standardPatch(`*** Update File: ambiguous.ts
+@@
+-late
++LATE
+@@
+-early
++EARLY`),
+      ),
+      /Failed to find expected lines/u,
+    )
+    assert.equal(await fs.readFile(targetPath, 'utf8'), originalContent)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('apply_patch rejects overlapping out-of-order recovery', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-out-of-order-overlap-'))
+  const targetPath = path.join(workspaceRootPath, 'overlap.ts')
+  const originalContent = 'alpha\nbeta\ngamma\ndelta\n'
+
+  try {
+    await fs.writeFile(targetPath, originalContent, 'utf8')
+
+    await assert.rejects(
+      applyPatchInWorkspace(
+        workspaceRootPath,
+        standardPatch(`*** Update File: overlap.ts
+@@
+-beta
+-gamma
++BETA-GAMMA
+@@
+-alpha
+-beta
++ALPHA-BETA`),
+      ),
+      /Failed to find expected lines/u,
+    )
+    assert.equal(await fs.readFile(targetPath, 'utf8'), originalContent)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('apply_patch accepts array-of-lines input when source contains template literals', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-lines-'))
   const targetPath = path.join(workspaceRootPath, 'src', 'panel.tsx')
@@ -126,6 +270,7 @@ test('apply_patch explains when a long source line was supplied as a partial anc
         assert.ok(error instanceof Error)
         assert.match(error.message, /partial source line/u)
         assert.match(error.message, /Current source near the match/u)
+        assert.doesNotMatch(error.message, /Current revision|sha256:/u)
         assert.ok(error.message.includes(currentLine))
         return true
       },
@@ -191,6 +336,93 @@ test('apply_patch returns the same file diff result contract as edit', async () 
   }
 })
 
+test('apply_patch presents each update hunk as a separate change while keeping file counts accurate', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-hunk-presentation-'))
+  const targetPath = path.join(workspaceRootPath, 'value.ts')
+  const removePath = path.join(workspaceRootPath, 'remove.ts')
+
+  try {
+    await fs.writeFile(targetPath, 'const anchor = 0\nconst first = 1\nconst middle = 2\nconst last = 3\n', 'utf8')
+    await fs.writeFile(removePath, 'obsolete\n', 'utf8')
+    const applyPatchTool = createApplyPatchTool({ workspaceRootPath })
+    const execute = (applyPatchTool as {
+      execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
+    }).execute
+
+    const result = await execute?.(
+      {
+        patch: standardPatch([
+          '*** Add File: created.ts',
+          '+created',
+          '*** Update File: value.ts',
+          '@@',
+          ' const anchor = 0',
+          '@@',
+          '-const first = 1',
+          '+const first = 10',
+          '@@',
+          '-const middle = 2',
+          '+const middle = 20',
+          '@@',
+          '-const last = 3',
+          '+const last = 30',
+          '*** Delete File: remove.ts',
+        ].join('\n')).split('\n'),
+      },
+      { context: {}, messages: [], toolCallId: 'apply-patch-hunk-presentation-test' },
+    ) as {
+      resultPresentation?: {
+        kind?: string
+        changes?: Array<{
+          fileName?: string
+          kind?: string
+          newContent?: string
+          oldContent?: string | null
+          startLineNumber?: number
+        }>
+      }
+      semantics?: Record<string, unknown>
+      status?: string
+      summary?: string
+    }
+
+    assert.equal(result.status, 'success')
+    assert.equal(result.resultPresentation?.kind, 'change_diff')
+    assert.deepEqual(
+      result.resultPresentation?.changes?.map((change) => [change.fileName, change.kind]),
+      [
+        ['created.ts', 'add'],
+        ['value.ts', 'update'],
+        ['value.ts', 'update'],
+        ['value.ts', 'update'],
+        ['remove.ts', 'delete'],
+      ],
+    )
+    assert.deepEqual(
+      result.resultPresentation?.changes?.slice(1, 4).map((change) => [change.oldContent, change.newContent]),
+      [
+        ['const first = 1', 'const first = 10'],
+        ['const middle = 2', 'const middle = 20'],
+        ['const last = 3', 'const last = 30'],
+      ],
+    )
+    assert.deepEqual(
+      result.resultPresentation?.changes?.slice(1, 4).map((change) => change.startLineNumber),
+      [2, 3, 4],
+    )
+    assert.ok(result.resultPresentation?.changes?.every((change) => change.oldContent !== change.newContent))
+    assert.equal(result.semantics?.added_path_count, 1)
+    assert.equal(result.semantics?.updated_path_count, 1)
+    assert.equal(result.semantics?.deleted_path_count, 1)
+    assert.deepEqual(result.semantics?.changed_paths, ['created.ts', 'value.ts', 'remove.ts'])
+    assert.equal(await fs.readFile(targetPath, 'utf8'), 'const anchor = 0\nconst first = 10\nconst middle = 20\nconst last = 30\n')
+    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'created.ts'), 'utf8'), 'created\n')
+    await assert.rejects(fs.readFile(removePath, 'utf8'))
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('apply_patch rejects the legacy string input at the AI-facing boundary', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-input-'))
   const targetPath = path.join(workspaceRootPath, 'value.ts')
@@ -209,6 +441,59 @@ test('apply_patch rejects the legacy string input at the AI-facing boundary', as
     assert.equal(result.status, 'error')
     assert.match(result.summary ?? '', /array of complete patch lines/u)
     assert.equal(await fs.readFile(targetPath, 'utf8'), 'const value = 1\n')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('apply_patch normalizes outer envelope echoes but rejects interior duplicates', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-envelope-'))
+  const targetPath = path.join(workspaceRootPath, 'value.ts')
+
+  try {
+    await fs.writeFile(targetPath, 'const value = 1\n', 'utf8')
+    const applyPatchTool = createApplyPatchTool({ workspaceRootPath })
+    const execute = (applyPatchTool as {
+      execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
+    }).execute
+
+    const echoedEnvelopeResult = await execute?.(
+      {
+        patch: [
+          '*** Begin Patch',
+          '*** Begin Patch',
+          '*** Update File: value.ts',
+          '@@',
+          '-const value = 1',
+          '+const value = 2',
+          '*** End Patch',
+          'EndPatch',
+        ],
+      },
+      { context: {}, messages: [], toolCallId: 'apply-patch-envelope-echo-test' },
+    ) as { status?: string; summary?: string }
+
+    assert.equal(echoedEnvelopeResult.status, 'success')
+    assert.equal(await fs.readFile(targetPath, 'utf8'), 'const value = 2\n')
+
+    const interiorDuplicateResult = await execute?.(
+      {
+        patch: [
+          '*** Begin Patch',
+          '*** Update File: value.ts',
+          '*** Begin Patch',
+          '@@',
+          '-const value = 2',
+          '+const value = 3',
+          '*** End Patch',
+        ],
+      },
+      { context: {}, messages: [], toolCallId: 'apply-patch-interior-begin-test' },
+    ) as { status?: string; summary?: string }
+
+    assert.equal(interiorDuplicateResult.status, 'error')
+    assert.match(interiorDuplicateResult.summary ?? '', /Begin Patch/u)
+    assert.equal(await fs.readFile(targetPath, 'utf8'), 'const value = 2\n')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -240,38 +525,91 @@ test('apply_patch rejects legacy XML and heredoc wrappers', async () => {
   }
 })
 
-test('Code Mode can execute edit without exposing patch as a provider tool', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-edit-code-mode-'))
+test('apply_patch resolves later hunks against the original file when an earlier hunk changes line count', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-shift-'))
+  const targetPath = path.join(workspaceRootPath, 'shift.ts')
+
+  try {
+    await fs.writeFile(targetPath, 'one\nanchor\ntwo\ntarget\nthree\n', 'utf8')
+    await applyPatchInWorkspace(
+      workspaceRootPath,
+      standardPatch('*** Update File: shift.ts\n@@\n-anchor\n+anchor-a\n+anchor-b\n+anchor-c\n@@\n-target\n+changed'),
+    )
+
+    assert.equal(
+      await fs.readFile(targetPath, 'utf8'),
+      'one\nanchor-a\nanchor-b\nanchor-c\ntwo\nchanged\nthree\n',
+    )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('apply_patch honors end-of-file context when the source has no trailing newline', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-eof-'))
+  const targetPath = path.join(workspaceRootPath, 'eof.ts')
+
+  try {
+    await fs.writeFile(targetPath, 'alpha\nomega', 'utf8')
+    await applyPatchInWorkspace(
+      workspaceRootPath,
+      standardPatch('*** Update File: eof.ts\n@@\n omega\n+tail\n*** End of File'),
+    )
+
+    assert.equal(await fs.readFile(targetPath, 'utf8'), 'alpha\nomega\ntail\n')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode exposes apply_patch while edit remains native-only compatibility', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-code-mode-'))
   let codeModeExecutor: { dispose: () => Promise<void> } | null = null
 
   try {
-    await fs.writeFile(path.join(workspaceRootPath, 'value.ts'), 'const value = 1\n', 'utf8')
+    await fs.writeFile(path.join(workspaceRootPath, 'value.ts'), 'const value = 1\nconst enabled = false\n', 'utf8')
     const bundle = await createAgentToolBundle(
       { workspaceRootPath },
       { chatMode: 'agent', orchestrationMode: 'code_mode' },
     )
     codeModeExecutor = bundle.codeModeExecutor
-    assert.ok(bundle.registry.get('edit'))
-    assert.equal(bundle.registry.get('patch'), undefined)
+    assert.ok(bundle.registry.get('apply_patch'))
+    assert.equal(bundle.registry.get('edit'), undefined)
+    assert.ok(bundle.nativeTools.edit)
     assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
     assert.ok(bundle.registry.get('tool_search'))
-    assert.match(
-      ((bundle.tools.code_mode as { description?: string }).description ?? ''),
-            /tools\.edit\(\{ edits: Array<object>, expectedRevision\?: string, path: string \}/u,
-    )
+    const description = (bundle.tools.code_mode as { description?: string }).description ?? ''
+    assert.match(description, /tools\.apply_patch\(input: string\)/u)
+    assert.match(description, /primary API for targeted source changes/u)
+    assert.doesNotMatch(description, /tools\.edit/u)
 
     const execute = (bundle.tools.code_mode as {
       execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
     }).execute
-    const editCode = "const result = await tools.edit({ path: 'value.ts', edits: [{ targetContent: 'const value = 1', replacementContent: 'const value = 2', startLine: 1, endLine: 1 }] }); return { status: result.status }"
-    const result = await execute?.(
-      { code: editCode },
-      { context: {}, messages: [], toolCallId: 'edit-code-mode-test' },
+    const patch = [
+      '*** Begin Patch',
+      ...standardPatch('*** Update File: value.ts\n@@\n-const value = 1\n+const value = 2').split('\n'),
+    ].join('\n')
+    const source = `const result = await tools.apply_patch(${JSON.stringify(patch)}); return { status: result.status, operation: result.semantics.operation }`
+    const patchResult = await execute?.(
+      { source },
+      { context: {}, messages: [], toolCallId: 'apply-patch-code-mode-test' },
     ) as { body?: string; status?: string }
 
-    assert.equal(result.status, 'success')
-    assert.match(result.body ?? '', /"status": "success"/u)
-    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'value.ts'), 'utf8'), 'const value = 2\n')
+    assert.equal(patchResult.status, 'success')
+    assert.match(patchResult.body ?? '', /"operation": "edit"/u)
+    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'value.ts'), 'utf8'), 'const value = 2\nconst enabled = false\n')
+
+    const nativeEdit = bundle.nativeTools.edit as unknown as {
+      execute: (input: unknown) => Promise<{ status?: string }>
+    }
+    const editResult = await nativeEdit.execute({
+      path: 'value.ts',
+      edits: [{ targetContent: 'const enabled = false', replacementContent: 'const enabled = true' }],
+    })
+
+    assert.equal(editResult.status, 'success')
+    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'value.ts'), 'utf8'), 'const value = 2\nconst enabled = true\n')
 
   } finally {
     await codeModeExecutor?.dispose()

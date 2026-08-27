@@ -1,23 +1,14 @@
 import assert from 'node:assert/strict'
-import { promises as fs } from 'node:fs'
-import { tmpdir } from 'node:os'
-import path from 'node:path'
 import test from 'node:test'
-import { buildWorkspaceInstructionsBlock } from '../../electron/chat/shared/prompts/workspaceInstructions'
+import { buildWorkspaceInstructionsBootstrapBlock } from '../../electron/chat/shared/prompts/workspaceInstructions'
 
-test('workspace instruction cache refreshes after the file changes', async () => {
-  const workspacePath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-workspace-instructions-'))
-  const instructionsPath = path.join(workspacePath, 'AGENTS.md')
+test('workspace instruction bootstrap requires reading and following AGENTS.md', () => {
+  const block = buildWorkspaceInstructionsBootstrapBlock()
 
-  try {
-    await fs.writeFile(instructionsPath, 'First instruction', 'utf8')
-    assert.match(buildWorkspaceInstructionsBlock(workspacePath) ?? '', /First instruction/u)
-
-    await fs.writeFile(instructionsPath, 'Updated instruction with a different size', 'utf8')
-    const updatedBlock = buildWorkspaceInstructionsBlock(workspacePath) ?? ''
-    assert.match(updatedBlock, /Updated instruction with a different size/u)
-    assert.doesNotMatch(updatedBlock, /First instruction/u)
-  } finally {
-    await fs.rm(workspacePath, { force: true, recursive: true })
-  }
+  assert.match(block, /you must read `AGENTS\.md`/u)
+  assert.match(block, /`AGENTS\.md` contains repository instructions/u)
+  assert.match(block, /Follow all applicable instructions in it for project work/u)
+  assert.match(block, /higher-priority instructions/u)
+  assert.doesNotMatch(block, /list, glob, grep|filename inference|discovery results/u)
+  assert.doesNotMatch(block, /<content>/u)
 })

@@ -96,6 +96,24 @@ function capitalizeLeadingWord(value: string) {
   return value.length > 0 ? `${value[0].toUpperCase()}${value.slice(1)}` : value
 }
 
+function getMutationFileKey(invocation: ToolInvocationTrace) {
+  const presentation = invocation.resultPresentation?.kind === 'change_diff'
+    ? invocation.resultPresentation
+    : null
+  if (presentation?.changes.length === 1) {
+    const fileName = presentation.changes[0]?.fileName.trim()
+    if (fileName) {
+      return `file:${fileName.replace(/\\/g, '/')}`
+    }
+  }
+
+  return `invocation:${invocation.id}`
+}
+
+function countDistinctMutationFiles(invocations: readonly ToolInvocationTrace[]) {
+  return new Set(invocations.map((invocation) => getMutationFileKey(invocation))).size
+}
+
 function getMixedBucketPriority(bucketKey: string) {
   if (bucketKey === 'created') {
     return 0
@@ -193,7 +211,7 @@ export function buildToolInvocationGroupSummary(
     summaryVerbOverride === 'Edited'
   ) {
     const summaryVerb = summaryVerbOverride
-    const summary = `${summaryVerb} ${pluralize(invocations.length, 'file')}`
+    const summary = `${summaryVerb} ${pluralize(countDistinctMutationFiles(invocations), 'file')}`
     return hasFailedCodeMode ? `${summary}, local orchestration failed` : summary
   }
 
@@ -223,6 +241,7 @@ export function buildToolInvocationGroupSummary(
     toolSearchCount: 0,
   }
   const otherToolCounts = new Map<string, number>()
+  const mutationFilesByKind = new Map<string, Set<string>>()
   let hasFileMutationBuckets = false
   const mixedBucketOrder: string[] = []
   const mixedBucketCounts = new Map<string, number>()
@@ -244,16 +263,22 @@ export function buildToolInvocationGroupSummary(
     const mutationKind = getFileMutationSummaryKind(invocation)
     if (mutationKind) {
       hasFileMutationBuckets = true
-      if (mutationKind === 'created') {
-        counts.createdCount += 1
-      } else if (mutationKind === 'edited') {
-        counts.editedCount += 1
-      } else if (mutationKind === 'deleted') {
-        counts.deletedCount += 1
-      } else if (mutationKind === 'verified') {
-        counts.verifiedCount += 1
+      const mutationFileKey = getMutationFileKey(invocation)
+      const seenFiles = mutationFilesByKind.get(mutationKind) ?? new Set<string>()
+      if (!seenFiles.has(mutationFileKey)) {
+        seenFiles.add(mutationFileKey)
+        mutationFilesByKind.set(mutationKind, seenFiles)
+        if (mutationKind === 'created') {
+          counts.createdCount += 1
+        } else if (mutationKind === 'edited') {
+          counts.editedCount += 1
+        } else if (mutationKind === 'deleted') {
+          counts.deletedCount += 1
+        } else if (mutationKind === 'verified') {
+          counts.verifiedCount += 1
+        }
+        recordMixedBucket(mutationKind)
       }
-      recordMixedBucket(mutationKind)
       continue
     }
 

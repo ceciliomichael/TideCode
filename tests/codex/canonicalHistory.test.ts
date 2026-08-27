@@ -11,15 +11,20 @@ import {
 } from '../../electron/chat/cache/providerPolicies'
 import { normalizeLanguageModelUsage } from '../../electron/chat/cache/usage'
 import { createEmptyCanonicalHistory, getReplaySlotKey } from '../../electron/chat/history/contracts'
-import { carryCompletedReplaysAcrossBranch } from '../../electron/chat/history/branchReplay'
+import {
+  carryCompletedReplaysAcrossBranch,
+  resolveReplayStateAfterHistoryRewrite,
+} from '../../electron/chat/history/branchReplay'
 import { decodeModelMessages, encodeModelMessages, encodeReplayValue } from '../../electron/chat/history/replayCodec'
 import { projectCanonicalReplay } from '../../electron/chat/history/replayProjector'
+import { buildModelMessages } from '../../electron/chat/shared/messages'
 import { buildFallbackCompactionPacket } from '../../electron/chat/shared/compaction/fallback'
 import {
   createCanonicalToolModelOutput,
   createCanonicalToolResultContent,
   withCanonicalToolModelOutputs,
 } from '../../electron/chat/shared/toolReplay'
+import { estimateModelMessageContextUsage } from '../../src/lib/contextUsage'
 import { formatStructuredToolResultContent, getToolResultModelContent } from '../../src/lib/toolResultContent'
 import type { Message } from '../../src/types/chat'
 
@@ -150,6 +155,88 @@ test('exact replay replaces display-normalized assistant history and appends onl
   assert.deepEqual(result.messages, [...exactMessages, { content: 'second question', role: 'user' }])
 })
 
+test('old run_started replay rebuilds retained tool history from durable messages', () => {
+  const document = createEmptyCanonicalHistory('conversation', 1)
+  const runId = 'legacy-pre-response-run'
+  const anchorUserMessageId = 'user-1'
+  document.revision = 3
+  document.events.push({
+    anchorUserMessageId,
+    branchId: 'main',
+    contextFingerprint: 'context',
+    createdAt: 2,
+    eventId: 'legacy-run-started',
+    fidelity: 'exact',
+    initialMessages: encodeModelMessages([{ content: 'Inspect the workspace.', role: 'user' }]),
+    modelId: 'model',
+    providerId: 'openai',
+    revision: 3,
+    runId,
+    type: 'run_started',
+  })
+  const staleReplay = {
+    anchorUserMessageId,
+    branchId: 'main',
+    contextFingerprint: 'context',
+    fidelity: 'exact' as const,
+    freshnessRevision: 0,
+    messages: encodeModelMessages([{ content: 'Inspect the workspace.', role: 'user' }]),
+    modelId: 'model',
+    providerId: 'openai' as const,
+    runId,
+    sourceRevision: 3,
+    updatedAt: 2,
+  }
+  document.replay = staleReplay
+  document.replays[getReplaySlotKey('openai', 'model')] = staleReplay
+
+  const displayMessages: Message[] = [
+    { content: 'Inspect the workspace.', id: anchorUserMessageId, role: 'user', timestamp: 1 },
+    {
+      content: '',
+      id: 'assistant-tool',
+      role: 'assistant',
+      timestamp: 2,
+      toolInvocations: [{
+        argumentsText: JSON.stringify({ path: 'src/app.ts' }),
+        completedAt: 3,
+        id: 'tool-call-1',
+        resultContent: 'important file contents',
+        startedAt: 2,
+        state: 'completed',
+        toolName: 'read',
+      }],
+    },
+    {
+      content: formatStructuredToolResultContent({
+        arguments: { path: 'src/app.ts' },
+        schema: 'tidecode.tool_result/v1',
+        status: 'success',
+        summary: 'Read src/app.ts',
+        toolCallId: 'tool-call-1',
+        toolName: 'read',
+      }, 'important file contents'),
+      id: 'tool-result-1',
+      role: 'tool',
+      timestamp: 3,
+      toolCallId: 'tool-call-1',
+    },
+    { content: 'Inspection complete.', id: 'assistant-1', role: 'assistant', timestamp: 4 },
+  ]
+  const result = projectCanonicalReplay({
+    document,
+    fallbackMessages: buildModelMessages(displayMessages),
+    messages: displayMessages,
+    modelId: 'model',
+    providerId: 'openai',
+  })
+
+  assert.equal(result.fidelity, 'legacy')
+  assert.deepEqual(result.messages.map((message) => message.role), ['user', 'assistant', 'tool', 'assistant'])
+  assert.match(JSON.stringify(result.messages), /important file contents/u)
+  assert.ok(estimateModelMessageContextUsage(result.messages).toolResultsTokens > 0)
+})
+
 test('rollback branches carry the latest completed assistant result instead of pre-response run state', () => {
   const completedMessages: ModelMessage[] = [
     { content: 'make image bigger', role: 'user' },
@@ -199,6 +286,91 @@ test('rollback branches carry the latest completed assistant result instead of p
 
   assert.equal(result.fidelity, 'exact')
   assert.match(JSON.stringify(result.messages), /64rem by 48rem/u)
+})
+
+test('rollback to an earlier tool turn rebuilds from durable history instead of a pre-response replay', () => {
+  const staleReplay = {
+    anchorUserMessageId: 'removed-user',
+    branchId: 'old-branch',
+    contextFingerprint: 'context',
+    fidelity: 'exact' as const,
+    freshnessRevision: 0,
+    messages: encodeModelMessages([
+      { content: 'Inspect the workspace.', role: 'user' },
+      { content: 'Previous answer.', role: 'assistant' },
+      { content: 'Remove this turn.', role: 'user' },
+      { content: 'Removed answer.', role: 'assistant' },
+    ]),
+    modelId: 'model',
+    providerId: 'openai' as const,
+    runId: 'removed-run',
+    sourceRevision: 20,
+    updatedAt: 20,
+  }
+  const retainedMessages: Message[] = [
+    { content: 'Inspect the workspace.', id: 'user-1', role: 'user', timestamp: 1 },
+    {
+      content: '',
+      id: 'assistant-tool',
+      role: 'assistant',
+      timestamp: 2,
+      toolInvocations: [{
+        argumentsText: JSON.stringify({ path: 'src/app.ts' }),
+        completedAt: 3,
+        id: 'tool-call-1',
+        resultContent: 'important file contents',
+        startedAt: 2,
+        state: 'completed',
+        toolName: 'read',
+      }],
+    },
+    {
+      content: formatStructuredToolResultContent({
+        arguments: { path: 'src/app.ts' },
+        schema: 'tidecode.tool_result/v1',
+        status: 'success',
+        summary: 'Read src/app.ts',
+        toolCallId: 'tool-call-1',
+        toolName: 'read',
+      }, 'important file contents'),
+      id: 'tool-result-1',
+      role: 'tool',
+      timestamp: 3,
+      toolCallId: 'tool-call-1',
+    },
+    { content: 'Previous answer.', id: 'assistant-1', role: 'assistant', timestamp: 4 },
+  ]
+
+  const branchReplay = resolveReplayStateAfterHistoryRewrite({
+    activeBranchId: 'rollback-branch',
+    messageIds: retainedMessages.map((message) => message.id),
+    replay: staleReplay,
+    replays: { [getReplaySlotKey('openai', 'model')]: staleReplay },
+    wasEdited: false,
+  })
+  assert.equal(branchReplay.replay, null)
+  assert.deepEqual(branchReplay.replays, {})
+
+  const document = createEmptyCanonicalHistory('conversation', 1)
+  document.activeBranchId = 'rollback-branch'
+  document.replay = branchReplay.replay
+  document.replays = branchReplay.replays
+  const resentMessages = [
+    ...retainedMessages,
+    { content: 'Try again with this edited request.', id: 'resent-user', role: 'user' as const, timestamp: 5 },
+  ]
+  const fallbackMessages = buildModelMessages(resentMessages)
+  const result = projectCanonicalReplay({
+    document,
+    fallbackMessages,
+    messages: resentMessages,
+    modelId: 'model',
+    providerId: 'openai',
+  })
+
+  assert.deepEqual(result.messages.map((message) => message.role), ['user', 'assistant', 'tool', 'assistant', 'user'])
+  assert.match(JSON.stringify(result.messages), /important file contents/u)
+  assert.ok(estimateModelMessageContextUsage(result.messages).toolResultsTokens > 0)
 })
 
 test('same-run steer messages remain inside the replay prefix instead of being duplicated as a new turn', () => {

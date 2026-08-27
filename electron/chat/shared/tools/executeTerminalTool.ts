@@ -191,9 +191,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
             : "actively_executing"
           : commandState === "needs_interaction"
             ? "waiting_for_input"
-            : session.commandExitCode !== null && session.commandExitCode !== 0
-              ? "failed"
-              : "completed";
+            : "completed";
 
         const bodyLines = [
           `session_id: ${session.localSessionId}`,
@@ -201,8 +199,8 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           `status: ${status}`,
         ];
 
-        if (commandState === "completed" && session.commandExitCode !== null && session.commandExitCode !== 0) {
-          bodyLines.push("result: failed");
+        if (commandState === "completed" && session.commandExitCode !== null) {
+          bodyLines.push(`exit_code: ${session.commandExitCode}`);
         }
 
         if (unreadOutputLines.length > 0) {
@@ -243,9 +241,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           ? unreadOutput.lines.map((line) => line.text).join("\n")
           : commandState === "needs_interaction"
             ? "Waiting for terminal input."
-            : commandState === "completed" && session.commandExitCode !== null && session.commandExitCode !== 0
-              ? "Terminal command failed."
-              : "";
+            : "";
 
         return createSuccessResult({
           body: bodyLines.join("\n"),
@@ -253,6 +249,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           semantics: {
             active: commandState === "running",
             broker_session_id: session.brokerSessionId,
+            exit_code: session.commandExitCode,
             new_output_line_count: unreadOutputLines.length,
             session_id: session.localSessionId,
             operation_id: session.brokerOperationId,

@@ -283,9 +283,7 @@ test('read keeps synthetic EOF metadata out of model source content', async () =
     assert.equal(result.body, 'This note mentions list and needle.')
     assert.doesNotMatch(result.body ?? '', /End of file/u)
     assert.equal(result.displayBody, 'This note mentions list and needle.')
-    const { revision, ...readSemantics } = result.semantics ?? {}
-    assert.match(String(revision), /^sha256:[a-f0-9]{64}$/u)
-    assert.deepEqual(readSemantics, {
+    assert.deepEqual(result.semantics, {
       end_line: 1,
       has_more: false,
       is_directory: false,
@@ -809,7 +807,7 @@ test('resolveReadableTargetPath allows Full Access reads outside the workspace a
 
     assert.equal(result.status, 'success')
     assert.match(result.body ?? '', /outside workspace/u)
-assert.match(String(result.semantics?.revision), /^sha256:[a-f0-9]{64}$/u)
+    assert.equal(result.semantics && 'revision' in result.semantics, false)
     assert.equal(result.subject?.path, outsideFilePath)
     assert.match(result.summary, /Read /u)
     assert.match(result.summary, new RegExp(`${outsideFilePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`))
@@ -879,21 +877,23 @@ test('workspace tool schemas use path consistently for filesystem targets', asyn
     }
     assert.ok(editSchema.properties && 'path' in editSchema.properties)
     assert.ok(editSchema.properties && 'edits' in editSchema.properties)
-    assert.ok(editSchema.properties && 'expectedRevision' in editSchema.properties)
+    assert.ok(editSchema.properties && !('expectedRevision' in editSchema.properties))
     assert.ok(editSchema.properties?.edits?.items?.properties && 'replaceAll' in editSchema.properties.edits.items.properties)
+    assert.ok(editSchema.properties?.edits?.items?.properties && 'insertContent' in editSchema.properties.edits.items.properties)
+    assert.ok(editSchema.properties?.edits?.items?.properties && 'insertAt' in editSchema.properties.edits.items.properties)
 
     const writeSchemaTool = tools.write as { inputSchema: unknown }
     const writeSchema = await asSchema(writeSchemaTool.inputSchema).jsonSchema as {
       properties?: Record<string, unknown>
     }
-    assert.ok(writeSchema.properties && 'expectedRevision' in writeSchema.properties)
+    assert.ok(writeSchema.properties && !('expectedRevision' in writeSchema.properties))
     assert.equal(tools.patch, undefined)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('list, glob, and grep hide AGENTS.md files from AI tool results', async () => {
+test('AGENTS.md stays hidden from discovery but remains directly readable by the agent', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
   const nestedDirectoryPath = path.join(workspaceRootPath, 'nested', 'package-a')
 
@@ -910,6 +910,14 @@ test('list, glob, and grep hide AGENTS.md files from AI tool results', async () 
       'AgentInstructionNeedle',
       '**/*',
     )
+    const agentTools = await createAgentTools(
+      { workspaceRootPath },
+      { chatMode: 'agent' },
+    )
+    const readResult = await (agentTools.read as unknown as ExecutableReadTool).execute({
+      path: 'AGENTS.md',
+      full_file: true,
+    })
 
     assert.equal(listResult.status, 'success')
     assert.doesNotMatch(listResult.body ?? '', /AGENTS\.md/u)
@@ -918,6 +926,8 @@ test('list, glob, and grep hide AGENTS.md files from AI tool results', async () 
     assert.doesNotMatch(globResult.body ?? '', /agents\.md/u)
     assert.equal(grepResult.status, 'success')
     assert.equal(grepResult.body, 'No files found')
+    assert.equal(readResult.status, 'success')
+    assert.equal(readResult.body, 'rootAgentInstructionNeedle')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

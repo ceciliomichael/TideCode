@@ -46,6 +46,28 @@ test('context usage estimation tolerates a workspace deleted before the estimate
   }
 })
 
+test('Code Mode system and tool usage stays aligned across providers', async () => {
+  const providerIds = ['codex', 'openai', 'google', 'anthropic', 'deepseek', 'mistral'] as const
+  const estimates = await Promise.all(providerIds.map(async (providerId) => ({
+    providerId,
+    usage: await estimateToolEnabledContextUsage({
+      agentContextRootPath: process.cwd(),
+      chatMode: 'agent',
+      contextCompaction: DEFAULT_CONTEXT_COMPACTION_SETTINGS,
+      messages: [],
+      modelId: 'test-model',
+      providerId,
+      terminalExecutionMode: 'sandbox',
+    }),
+  })))
+  const tokenCounts = estimates.map(({ usage }) => usage.systemPromptTokens)
+  const minimum = Math.min(...tokenCounts)
+  const maximum = Math.max(...tokenCounts)
+
+  assert.ok(minimum > 2_000, JSON.stringify(estimates))
+  assert.ok(maximum - minimum < 200, JSON.stringify(estimates))
+})
+
 test('context usage counts tool arguments and separates tool result tokens', () => {
   const messages: Message[] = [
     {

@@ -642,9 +642,7 @@ export function buildTerminalCommandSummary(
       : "actively_executing"
     : state === "needs_interaction"
       ? "waiting_for_input"
-      : exitCode !== null && exitCode !== 0
-        ? "failed"
-        : "completed";
+      : "completed";
 
   const bodyLines = [
     `session_id: ${session.localSessionId}`,
@@ -652,8 +650,8 @@ export function buildTerminalCommandSummary(
     `status: ${status}`,
     `total_output_lines: ${transcriptSummary.lineCount}`,
   ];
-  if (state === "completed" && exitCode !== null && exitCode !== 0) {
-    bodyLines.push("result: failed");
+  if (state === "completed" && exitCode !== null) {
+    bodyLines.push(`exit_code: ${exitCode}`);
   }
   if (transcriptSummary.truncated) {
     bodyLines.push(
@@ -691,10 +689,6 @@ export function buildTerminalCommandSummary(
     } else {
       displayBodyLines.push("Waiting for terminal input.");
     }
-  } else if (state === "completed") {
-    if (exitCode !== null && exitCode !== 0) {
-      displayBodyLines.push("Terminal command failed.");
-    }
   }
 
   return {
@@ -703,6 +697,7 @@ export function buildTerminalCommandSummary(
     semantics: {
       active: state === "running",
       available_line_count: transcriptSummary.availableLineCount,
+      exit_code: exitCode,
       first_available_line: transcriptSummary.firstAvailableLine,
       interaction_confidence: interaction?.confidence ?? null,
       interaction_kind: interaction?.kind ?? null,
@@ -711,16 +706,14 @@ export function buildTerminalCommandSummary(
       line_count: transcriptSummary.lineCount,
       session_id: session.localSessionId,
       state,
-      status: state === "running" ? "actively_executing" : state === "needs_interaction" ? "waiting_for_input" : exitCode !== null && exitCode !== 0 ? "failed" : "completed",
+      status,
       output_evicted: transcriptSummary.truncated,
     },
     state,
     summary: state === "needs_interaction"
       ? `Terminal session ${session.localSessionId} needs interaction`
       : state === "completed"
-        ? exitCode !== null && exitCode !== 0
-          ? `Terminal session ${session.localSessionId} failed`
-          : `Completed terminal session ${session.localSessionId}`
+        ? `Completed terminal session ${session.localSessionId}`
         : `Terminal session ${session.localSessionId} is still running`,
   };
 }

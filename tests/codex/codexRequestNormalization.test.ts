@@ -31,6 +31,46 @@ test('keeps Responses function-call arguments as JSON strings for Codex', () => 
   assert.equal(normalized.input?.[0]?.call_id, 'call_previous-provider-1')
 })
 
+test('preserves custom Code Mode calls without injecting function-call arguments', () => {
+  const normalized = parseBody(
+    normalizeCodexRequestBody(
+      JSON.stringify({
+        input: [
+          { type: 'reasoning', id: 'rs_before-code-mode', summary: [] },
+          { type: 'message', role: 'user', content: 'Continue.' },
+          {
+            type: 'custom_tool_call',
+            id: 'ctc_code-mode-1',
+            call_id: 'call_code-mode-1',
+            name: 'code_mode',
+            input: 'return await tools.read({ path: "AGENTS.md", full_file: true })',
+            arguments: { should: 'be removed' },
+          },
+          {
+            type: 'custom_tool_call_output',
+            call_id: 'call_code-mode-1',
+            output: 'Code Mode completed',
+            arguments: { should: 'also be removed' },
+          },
+        ],
+      }),
+    ),
+  )
+
+  assert.deepEqual(normalized.input?.[2], {
+    call_id: 'call_code-mode-1',
+    id: 'ctc_code-mode-1',
+    input: 'return await tools.read({ path: "AGENTS.md", full_file: true })',
+    name: 'code_mode',
+    type: 'custom_tool_call',
+  })
+  assert.deepEqual(normalized.input?.[3], {
+    call_id: 'call_code-mode-1',
+    output: 'Code Mode completed',
+    type: 'custom_tool_call_output',
+  })
+})
+
 test('converts legacy tool-call arguments to objects and defaults missing arguments to an object', () => {
   const normalized = parseBody(
     normalizeCodexRequestBody(

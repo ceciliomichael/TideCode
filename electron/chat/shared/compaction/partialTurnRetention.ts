@@ -2,7 +2,7 @@ import type { ModelMessage } from 'ai'
 import { estimateModelMessageContextUsage } from '../../../../src/lib/contextUsage'
 import { projectCodeModeToolResultPart, truncatePreservingEdges } from './codeModeProjection'
 
-const RETAINED_TEXT_KEYS = new Set(['text', 'value', 'body', 'code', 'program', 'input', 'args', 'arguments', 'output'])
+const RETAINED_TEXT_KEYS = new Set(['text', 'value', 'body', 'source', 'code', 'program', 'input', 'args', 'arguments', 'output'])
 
 type MessageRecord = Record<string, unknown>
 

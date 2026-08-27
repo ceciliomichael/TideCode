@@ -55,6 +55,25 @@ test('a normally completed stream is not marked aborted', async () => {
   assert.equal(result.wasAborted, false)
 })
 
+test('a provider error stream part rejects instead of completing successfully', async () => {
+  const controller = new AbortController()
+  const events: unknown[] = []
+
+  await assert.rejects(
+    processRuntimeStream({
+      abortController: controller,
+      conversationId: null,
+      fullStream: createRuntimeStream([
+        { error: new Error('Codex continuation rejected'), type: 'error' },
+      ]),
+      queueHistoryWrite: () => undefined,
+      streamId: 'stream-provider-error',
+      webContents: createWebContentsStub(events),
+    }),
+    /Codex continuation rejected/u,
+  )
+})
+
 test('reasoning deltas and completion are forwarded to the renderer', async () => {
   const controller = new AbortController()
   const events: unknown[] = []

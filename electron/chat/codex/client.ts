@@ -17,7 +17,31 @@ import { maybeRotateCodexAccountForChat } from '../../providers/codex/service'
 import { writeStoredCodexAuthData, type StoredCodexAuthData } from '../../providers/codex/store'
 
 const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
+export const CODEX_TURN_STATE_HEADER = 'x-codex-turn-state'
 const DUMMY_API_KEY = 'codex-oauth-placeholder'
+
+type CodexFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+
+export function createCodexTurnStateFetch(baseFetch: CodexFetch): CodexFetch {
+  let turnState: string | null = null
+
+  return async (input, init) => {
+    const headers = new Headers(init?.headers)
+    headers.delete(CODEX_TURN_STATE_HEADER)
+    if (turnState) {
+      headers.set(CODEX_TURN_STATE_HEADER, turnState)
+    }
+
+    const response = await baseFetch(input, { ...init, headers })
+    if (turnState === null) {
+      const receivedTurnState = response.headers.get(CODEX_TURN_STATE_HEADER)?.trim()
+      if (receivedTurnState) {
+        turnState = receivedTurnState
+      }
+    }
+    return response
+  }
+}
 
 function stripAuthorizationHeader(headers: HeadersInit | undefined) {
   const nextHeaders = new Headers(headers)
@@ -25,24 +49,30 @@ function stripAuthorizationHeader(headers: HeadersInit | undefined) {
   return nextHeaders
 }
 
+function didCodexAuthDataRefresh(previous: StoredCodexAuthData, next: StoredCodexAuthData) {
+  return (
+    next.tokens.access_token !== previous.tokens.access_token ||
+    next.tokens.refresh_token !== previous.tokens.refresh_token ||
+    next.tokens.id_token !== previous.tokens.id_token ||
+    next.expires_at !== previous.expires_at ||
+    next.last_refresh !== previous.last_refresh
+  )
+}
+
+async function refreshAndPersistCodexAuthData(authData: StoredCodexAuthData) {
+  const refreshedAuthData = await refreshCodexOAuthTokensIfNeeded(authData)
+  if (didCodexAuthDataRefresh(authData, refreshedAuthData)) {
+    await writeStoredCodexAuthData(refreshedAuthData)
+  }
+  return refreshedAuthData
+}
+
 async function resolveCodexAuthData(): Promise<StoredCodexAuthData> {
   const storedAuthData = await maybeRotateCodexAccountForChat()
   if (!storedAuthData) {
     throw new Error('Codex is not connected. Sign in from Settings before starting a chat.')
   }
-
-  const refreshedAuthData = await refreshCodexOAuthTokensIfNeeded(storedAuthData)
-  if (
-    refreshedAuthData.tokens.access_token !== storedAuthData.tokens.access_token ||
-    refreshedAuthData.tokens.refresh_token !== storedAuthData.tokens.refresh_token ||
-    refreshedAuthData.tokens.id_token !== storedAuthData.tokens.id_token ||
-    refreshedAuthData.expires_at !== storedAuthData.expires_at ||
-    refreshedAuthData.last_refresh !== storedAuthData.last_refresh
-  ) {
-    await writeStoredCodexAuthData(refreshedAuthData)
-  }
-
-  return refreshedAuthData
+  return refreshAndPersistCodexAuthData(storedAuthData)
 }
 
 export interface CodexChatCompletionsCreateInput {
@@ -62,12 +92,23 @@ export interface CodexChatCompletionsCreateInput {
 }
 
 export function createCodexClient() {
+  const fetchWithTurnState = createCodexTurnStateFetch(fetch)
+  let pinnedAuthDataPromise: Promise<StoredCodexAuthData> | null = null
+  const resolveTurnAuthData = async () => {
+    if (pinnedAuthDataPromise === null) {
+      pinnedAuthDataPromise = resolveCodexAuthData()
+      return pinnedAuthDataPromise
+    }
+    const currentAuthData = await pinnedAuthDataPromise
+    pinnedAuthDataPromise = refreshAndPersistCodexAuthData(currentAuthData)
+    return pinnedAuthDataPromise
+  }
   const provider = createOpenAI({
     apiKey: DUMMY_API_KEY,
     baseURL: CODEX_BASE_URL,
     name: 'codex',
     fetch: async (input, init) => {
-      const authData = await resolveCodexAuthData()
+      const authData = await resolveTurnAuthData()
       const nextHeaders = stripAuthorizationHeader(init?.headers)
       nextHeaders.set('authorization', `Bearer ${authData.tokens.access_token}`)
       nextHeaders.set('chatgpt-account-id', authData.tokens.account_id)
@@ -89,7 +130,7 @@ export function createCodexClient() {
         nextBody = normalizeCodexRequestBody(bodyString)
       }
 
-      return fetch(input, {
+      return fetchWithTurnState(input, {
         ...init,
         headers: nextHeaders,
         body: nextBody,

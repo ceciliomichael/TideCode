@@ -1,5 +1,7 @@
+import { openai } from '@ai-sdk/openai'
 import { jsonSchema, tool } from 'ai'
 
+import type { ChatProviderId } from '../../../../src/types/chat'
 import type { AgentToolExecutionResult } from '../toolTypes'
 import { createSuccessResult } from './workspaceToolResults'
 import { createToolErrorResult } from './toolResult'
@@ -36,23 +38,28 @@ const TOOL_SEARCH_INPUT_SCHEMA = {
   type: 'object',
 } as const
 
-const CODE_MODE_INPUT_SCHEMA = {
+const CODE_MODE_SOURCE_INPUT_SCHEMA = {
   additionalProperties: false,
   properties: {
-    code: {
-      description: 'Temporary tool-only async JavaScript. Every tools.* function returns Promise<ToolResult>; always await calls before reading or returning them. Use ordinary JavaScript only for in-memory orchestration and return concise JSON-compatible data. Raw source text can be supplied separately in payloads and referenced as payloads.<name>.',
+    source: {
+      description: 'Temporary tool-only async JavaScript source. Every tools.* function returns Promise<ToolResult>; always await calls before reading or returning them.',
       minLength: 1,
       type: 'string',
     },
-    payloads: {
-      additionalProperties: { type: 'string' },
-      description: 'Optional named string payloads passed unchanged into the JavaScript as the read-only payloads object. Put arbitrary file/source text here instead of embedding it inside JavaScript string literals, then reference payloads.<name> in tools.edit/tools.write arguments.',
-      type: 'object',
-    },
   },
-  required: ['code'],
+  required: ['source'],
   type: 'object',
 } as const
+
+const CODE_MODE_FREEFORM_GRAMMAR = String.raw`
+start: pragma_source | plain_source
+pragma_source: PRAGMA_LINE NEWLINE SOURCE
+plain_source: SOURCE
+
+PRAGMA_LINE: /[ \t]*\/\/ @exec:[^\r\n]*/
+NEWLINE: /\r?\n/
+SOURCE: /[\s\S]+/
+`
 
 const MAX_TOOL_SEARCH_RESULT_BYTES = 32_000
 
@@ -62,9 +69,8 @@ interface ToolSearchInput {
   query?: string
 }
 
-interface CodeModeInput {
-  code?: string
-  payloads?: Record<string, string>
+interface CodeModeSourceInput {
+  source?: string
 }
 
 function buildBoundedToolSearchResult(
@@ -125,15 +131,15 @@ export function createToolSearchTool(registry: AgentToolRegistry, options: { dyn
 const CODE_MODE_TOOL_ROUTING = [
   'Provider boundary: invoke the model-facing code_mode tool. Every tools.* name below is a JavaScript API that exists only inside the code_mode code string; never emit tools.* as a provider tool name.',
   'Choose the purpose-built inner API for the scenario. Do not use terminal commands as a substitute for structured workspace APIs.',
-  'For source mutations containing quotes, backticks, template expressions, Markdown fences, regexes, Windows paths, or other arbitrary text, put the raw strings in the top-level code_mode payloads object and reference payloads.<name> inside tools.edit/tools.write. Do not embed complex source text inside generated JavaScript string literals when payloads can carry it unchanged.',
+  'Code Mode receives one JavaScript source program. Do not create a separate payloads object or emit nested provider tool calls.',
   '- `tools.read`: inspect one known file or directory. A path is known only when the user supplied it or a prior workspace tool returned that exact path. Never infer filenames from conventions.',
   '- `tools.read_tool_output`: read only a narrowly targeted section when a truncated result omitted content you actually need; never call it automatically.',
-  '- If the exact file path is unknown, discover it first with `tools.list`, `tools.glob`, or `tools.grep`, then pass the returned path to `tools.read` or `tools.edit`.',
+  '- If the exact file path is unknown, discover it first with `tools.list`, `tools.glob`, or `tools.grep`, then use the returned path in `tools.read` or the patch file header.',
   '- `tools.list`: inspect immediate entries of one directory.',
   '- `tools.glob`: discover files by path or filename pattern.',
   '- `tools.grep`: search workspace text, symbols, imports, or references.',
-  '- `tools.edit`: make a targeted change to an existing text file after reading the relevant source.',
-  '- `tools.write`: create a new text file or intentionally replace a complete file; use edit for targeted existing-file changes.',
+  '- `tools.apply_patch`: primary API for targeted source changes. Pass one raw Codex-style patch string directly, use fresh source context, and include multiple files in one patch when useful; TideCode verifies the full patch before writing.',
+  '- `tools.write`: create a new text file or intentionally replace a complete file; use apply_patch for targeted existing-file changes.',
   '- `tools.execute_terminal`: run an actual command/process such as tests, typecheck, build, package manager, compiler, Git command, or app/script. Never use shell, PowerShell, Python, or Node just to read, search, edit, or write workspace files when the structured APIs above apply.',
   '- `tools.read_terminal`: collect new output from an existing terminal session instead of starting the command again; it returns early when input is detected.',
   '- `tools.interact_terminal`: answer a prompt or send control/navigation keys to that same terminal session. For ordinary line input, send text with ENTER.',
@@ -155,63 +161,96 @@ function buildPreloadedToolDocumentation(registry: AgentToolRegistry) {
   }
 
   return [
-    'Path rule: every supplied path argument is one exact workspace-relative file or directory. For root-capable `read`, `list`, `glob`, and `grep` calls, an omitted path where the schema permits omission, an empty string, or `.` refers to the bound workspace root. Never invent filenames or index files, combine roots with spaces, or treat a path list as one path. If an exact child path has not been supplied by the user or returned by a prior workspace tool, discover it with list, glob, or grep before reading or editing it.',
+    'Path rule: every supplied path argument and every patch file header is one exact workspace-relative file or directory. For root-capable `read`, `list`, `glob`, and `grep` calls, an omitted path where the schema permits omission, an empty string, or `.` refers to the bound workspace root. Never invent filenames or index files, combine roots with spaces, or treat a path list as one path. If an exact child path has not been supplied by the user or returned by a prior workspace tool, discover it with list, glob, or grep before reading or patching it.',
     'Preloaded local APIs (call directly inside the program):',
     ...contracts.map((contract) => `- ${contract.signature} — ${contract.description}`),
     'Connected MCP APIs are dynamic. Inside the same program, call tools.tool_search({ query }), then invoke an exact returned tools.<name>(args) function. Do not guess MCP names.',
   ].join('\n')
 }
 
+export function buildCodeModeDescription(registry: AgentToolRegistry) {
+  return [
+    CODE_MODE_EXECUTION_CONTRACT,
+    CODE_MODE_TOOL_ROUTING,
+    buildPreloadedToolDocumentation(registry),
+  ].join('\n')
+}
+
+export function normalizeCodeModeSourceInput(input: unknown) {
+  if (typeof input === 'string') return input
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return ''
+  const source = (input as CodeModeSourceInput).source
+  return typeof source === 'string' ? source : ''
+}
+
+function usesNativeFreeformCodeModeTransport(providerId?: ChatProviderId) {
+  return providerId === 'openai' || providerId === 'codex'
+}
+
+async function executeCodeModeSource(
+  executor: CodeModeExecutor,
+  input: unknown,
+  options: { abortSignal?: AbortSignal },
+): Promise<AgentToolExecutionResult> {
+  const source = normalizeCodeModeSourceInput(input)
+  if (source.trim().length === 0) return createToolErrorResult('code_mode requires a non-empty JavaScript program.')
+
+  const result = await executor.run(source, { abortSignal: options.abortSignal })
+  const outputBody = result.output === undefined
+    ? formatImplicitCodeModeToolResults(result.toolCalls)
+    : formatExplicitCodeModeOutput(result.output)
+  const body = [
+    result.status === 'error' ? result.error ?? result.summary : result.summary,
+    outputBody.length > 0 ? outputBody : null,
+  ].filter((value): value is string => value !== null).join('\n\n')
+
+  return {
+    body,
+    semantics: {
+      execution_id: result.executionId,
+      operation: 'code_mode',
+      output_limited: result.outputTruncated ?? false,
+      tool_call_count: result.toolCalls.length,
+      tool_calls: result.toolCalls.map((call) => ({
+        arguments: call.arguments,
+        body: call.body,
+        duration_ms: call.durationMs,
+        name: call.name,
+        ...(call.resultPresentation ? { result_presentation: call.resultPresentation } : {}),
+        ...(call.semantics ? { semantics: call.semantics } : {}),
+        status: call.status,
+        ...(call.subject ? { subject: call.subject } : {}),
+        summary: call.summary,
+      })),
+    },
+    status: result.status === 'success' ? 'success' : 'error',
+    subject: { kind: 'code_mode', path: 'local' },
+    summary: result.summary,
+  }
+}
+
 export function createCodeModeTool(
   executor: CodeModeExecutor,
   registry: AgentToolRegistry,
+  options: { providerId?: ChatProviderId } = {},
 ) {
+  const description = buildCodeModeDescription(registry)
+  if (usesNativeFreeformCodeModeTransport(options.providerId)) {
+    return openai.tools.customTool({
+      description,
+      execute: async (source, executionOptions) => executeCodeModeSource(executor, source, executionOptions),
+      format: {
+        definition: CODE_MODE_FREEFORM_GRAMMAR,
+        syntax: 'lark',
+        type: 'grammar',
+      },
+    })
+  }
+
   return tool({
-    description: [
-      CODE_MODE_EXECUTION_CONTRACT,
-      CODE_MODE_TOOL_ROUTING,
-      buildPreloadedToolDocumentation(registry),
-    ].join('\n'),
-    inputSchema: jsonSchema<CodeModeInput>(CODE_MODE_INPUT_SCHEMA),
-    execute: async (input, options): Promise<AgentToolExecutionResult> => {
-      const code = typeof input.code === 'string' ? input.code : ''
-      if (code.trim().length === 0) return createToolErrorResult('code_mode requires a non-empty JavaScript program.')
-
-      const result = await executor.run(code, {
-        abortSignal: options.abortSignal,
-        payloads: input.payloads,
-      })
-      const outputBody = result.output === undefined
-        ? formatImplicitCodeModeToolResults(result.toolCalls)
-        : formatExplicitCodeModeOutput(result.output)
-      const body = [
-        result.status === 'error' ? result.error ?? result.summary : result.summary,
-        outputBody.length > 0 ? outputBody : null,
-      ].filter((value): value is string => value !== null).join('\n\n')
-
-      return {
-        body,
-        semantics: {
-          execution_id: result.executionId,
-          operation: 'code_mode',
-          output_limited: result.outputTruncated ?? false,
-          tool_call_count: result.toolCalls.length,
-          tool_calls: result.toolCalls.map((call) => ({
-            arguments: call.arguments,
-            body: call.body,
-            duration_ms: call.durationMs,
-            name: call.name,
-            ...(call.resultPresentation ? { result_presentation: call.resultPresentation } : {}),
-            ...(call.semantics ? { semantics: call.semantics } : {}),
-            status: call.status,
-            ...(call.subject ? { subject: call.subject } : {}),
-            summary: call.summary,
-          })),
-        },
-        status: result.status === 'success' ? 'success' : 'error',
-        subject: { kind: 'code_mode', path: 'local' },
-        summary: result.summary,
-      }
-    },
+    description,
+    inputSchema: jsonSchema<CodeModeSourceInput>(CODE_MODE_SOURCE_INPUT_SCHEMA),
+    execute: async (input, executionOptions): Promise<AgentToolExecutionResult> =>
+      executeCodeModeSource(executor, input, executionOptions),
   })
 }

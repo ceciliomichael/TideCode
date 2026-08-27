@@ -284,7 +284,7 @@ test('retained Code Mode exchanges preserve semantic edges and cap each nested i
   const program = `START OF PROGRAM\n${'A'.repeat(4_000)}\nMIDDLE_PROGRAM_ONLY\n${'B'.repeat(4_000)}\nEND OF PROGRAM`
   const nestedBody = `START OF RESULT\n${'C'.repeat(4_000)}\nMIDDLE_RESULT_ONLY\n${'D'.repeat(4_000)}\nEND OF RESULT`
   const structuredResult = formatStructuredToolResultContent({
-    arguments: { code: program },
+    arguments: program,
     schema: 'tidecode.tool_result/v1',
     semantics: {
       tool_calls: [{
@@ -304,7 +304,7 @@ test('retained Code Mode exchanges preserve semantic edges and cap each nested i
     {
       role: 'assistant',
       content: [{
-        input: { code: program },
+        input: program,
         toolCallId: 'code-mode-retention',
         toolName: 'code_mode',
         type: 'tool-call',
@@ -323,9 +323,7 @@ test('retained Code Mode exchanges preserve semantic edges and cap each nested i
 
   const projected = projectRetainedMessagesForContext(messages)
   const projectedInput = (projected[0]?.content as Array<Record<string, unknown>>)[0]?.input
-  const projectedProgram = typeof projectedInput === 'object' && projectedInput !== null
-    ? String((projectedInput as Record<string, unknown>).code)
-    : String(projectedInput)
+  const projectedProgram = String(projectedInput)
   assert.equal(projectedProgram.includes('START OF PROGRAM'), true)
   assert.equal(projectedProgram.includes('END OF PROGRAM'), true)
   assert.equal(projectedProgram.includes('MIDDLE_PROGRAM_ONLY'), false)

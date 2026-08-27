@@ -106,7 +106,7 @@ function buildFileChangeInvocation(
 }
 
 function buildMultiFileWriteInvocation(
-  toolName: 'write' | 'edit',
+  toolName: 'write' | 'edit' | 'apply_patch',
   state: ToolInvocationTrace['state'],
   changes: Array<{
     fileName: string
@@ -478,6 +478,114 @@ test('multi-file write invocations expand into separate display blocks', () => {
   assert.equal(displayEntries[0].invocation.resultPresentation?.changes.length, 1)
   assert.equal(displayEntries[1].invocation.resultPresentation?.kind, 'change_diff')
   assert.equal(displayEntries[1].invocation.resultPresentation?.changes.length, 1)
+})
+
+test('apply_patch groups same-file hunks into one display block', () => {
+  const invocation = buildMultiFileWriteInvocation('apply_patch', 'completed', [
+    { fileName: 'src/example.ts', kind: 'update', oldContent: 'one\n', newContent: 'ONE\n' },
+    { fileName: 'src/example.ts', kind: 'update', oldContent: 'two\n', newContent: 'TWO\n' },
+    { fileName: 'src/example.ts', kind: 'update', oldContent: 'three\n', newContent: 'THREE\n' },
+  ])
+
+  const displayEntries = getToolInvocationDisplayEntries(invocation)
+  assert.equal(displayEntries.length, 1)
+  assert.equal(
+    getToolInvocationHeaderLabel(displayEntries[0].invocation, undefined, WORKSPACE_ROOT_PATH),
+    'Edited example.ts',
+  )
+  assert.equal(
+    displayEntries[0].invocation.resultPresentation?.kind === 'change_diff'
+      ? displayEntries[0].invocation.resultPresentation.changes.length
+      : 0,
+    3,
+  )
+  assert.equal(
+    buildToolInvocationGroupSummary(displayEntries.map((entry) => entry.invocation)),
+    'Edited 1 file',
+  )
+  assert.equal(
+    buildToolInvocationGroupSummary(displayEntries.map((entry) => entry.invocation), 'Edited'),
+    'Edited 1 file',
+  )
+})
+
+test('apply_patch reuses edit presentation for mixed multi-file changes', () => {
+  const invocation = buildMultiFileWriteInvocation('apply_patch', 'completed', [
+    { fileName: 'src/edited.ts', kind: 'update', oldContent: 'before\n', newContent: 'after\n' },
+    { fileName: 'src/created.ts', kind: 'add', oldContent: null, newContent: 'created\n' },
+    { fileName: 'src/deleted.ts', kind: 'delete', oldContent: 'obsolete\n', newContent: '' },
+  ])
+
+  const displayEntries = getToolInvocationDisplayEntries(invocation)
+  assert.equal(displayEntries.length, 3)
+  assert.deepEqual(
+    displayEntries.map((entry) => getToolInvocationHeaderLabel(entry.invocation, undefined, WORKSPACE_ROOT_PATH)),
+    ['Edited edited.ts', 'Created created.ts', 'Deleted deleted.ts'],
+  )
+  assert.equal(
+    buildToolInvocationGroupSummary(displayEntries.map((entry) => entry.invocation)),
+    'Created 1 file, edited 1 file, deleted 1 file',
+  )
+  assert.deepEqual(
+    getTerminalToolPresentationItems(invocation, WORKSPACE_ROOT_PATH).map((item) => item.label),
+    ['Edited edited.ts', 'Created created.ts', 'Deleted deleted.ts'],
+  )
+
+  assert.deepEqual(getToolInvocationDisplayEntries({ ...invocation, state: 'running' }), [])
+})
+
+test('Code Mode expands an apply_patch child into the same per-file edit presentation', () => {
+  const changes = [
+    { fileName: 'src/first.ts', kind: 'update' as const, oldContent: 'one\n', newContent: 'ONE\n' },
+    { fileName: 'src/first.ts', kind: 'update' as const, oldContent: 'three\n', newContent: 'THREE\n' },
+    { fileName: 'src/second.ts', kind: 'add' as const, oldContent: null, newContent: 'two\n' },
+  ]
+  const invocation: ToolInvocationTrace = {
+    argumentsText: JSON.stringify({ code: 'return await tools.apply_patch({ patch: payloads.patch })' }),
+    completedAt: 100,
+    id: 'code-mode-apply-patch',
+    resultContent: formatStructuredToolResultContent(
+      {
+        schema: 'tidecode.tool_result/v1',
+        semantics: {
+          operation: 'code_mode',
+          tool_calls: [{
+            arguments: { patch: ['*** Begin Patch', '*** End Patch'] },
+            body: 'Patch applied successfully.',
+            name: 'apply_patch',
+            result_presentation: { changes, kind: 'change_diff' },
+            semantics: { added_path_count: 1, deleted_path_count: 0, operation: 'edit', updated_path_count: 1 },
+            status: 'success',
+            subject: { kind: 'workspace', path: 'workspace' },
+            summary: 'Applied patch to 2 files',
+          }],
+        },
+        status: 'success',
+        subject: { kind: 'code_mode', path: 'local' },
+        summary: 'Code Mode completed with 1 tool call.',
+        toolCallId: 'code-mode-apply-patch',
+        toolName: 'code_mode',
+      },
+      '{"done":true}',
+    ),
+    startedAt: 0,
+    state: 'completed',
+    toolName: 'code_mode',
+  }
+
+  const entries = getToolInvocationDisplayEntries(invocation)
+  assert.deepEqual(entries.map((entry) => entry.invocation.toolName), ['apply_patch', 'apply_patch'])
+  assert.deepEqual(
+    entries.map((entry) => getToolInvocationHeaderLabel(entry.invocation, undefined, WORKSPACE_ROOT_PATH)),
+    ['Edited first.ts', 'Created second.ts'],
+  )
+  assert.equal(
+    entries[0].invocation.resultPresentation?.kind === 'change_diff'
+      ? entries[0].invocation.resultPresentation.changes.length
+      : 0,
+    2,
+  )
+  assert.equal(buildToolInvocationGroupSummary(entries.map((entry) => entry.invocation)), 'Created 1 file, edited 1 file')
 })
 
 test('read tool header labels include the displayed file line range', () => {
