@@ -1,7 +1,7 @@
 export const KANBAN_COLUMN_IDS = [
   'backlog',
   'in-progress',
-  'blocked',
+  'for-review',
   'done',
 ] as const
 export const KANBAN_PRIORITY_IDS = [

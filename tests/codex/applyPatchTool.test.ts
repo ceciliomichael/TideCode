@@ -11,6 +11,79 @@ function standardPatch(body: string) {
   return `*** Begin Patch\n${body}\n*** End Patch`
 }
 
+test('apply_patch retries transient atomic install failures', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-retry-'))
+  const targetPath = path.join(workspaceRootPath, 'value.txt')
+  const mutableFs = fs as unknown as { rename: typeof fs.rename }
+  const originalRename = fs.rename
+  let renameAttempts = 0
+
+  try {
+    await fs.writeFile(targetPath, 'before\n', 'utf8')
+    mutableFs.rename = async (sourcePath, destinationPath) => {
+      if (path.resolve(String(destinationPath)) === targetPath && renameAttempts < 2) {
+        renameAttempts += 1
+        throw Object.assign(new Error('simulated transient Windows file lock'), { code: 'UNKNOWN' })
+      }
+      renameAttempts += 1
+      return originalRename(sourcePath, destinationPath)
+    }
+
+    await applyPatchInWorkspace(
+      workspaceRootPath,
+      standardPatch('*** Update File: value.txt\n@@\n-before\n+after'),
+    )
+
+    assert.equal(await fs.readFile(targetPath, 'utf8'), 'after\n')
+    assert.equal(renameAttempts, 3)
+  } finally {
+    mutableFs.rename = originalRename
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('apply_patch rolls back only files committed before a later install failure', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-rollback-'))
+  const firstPath = path.join(workspaceRootPath, 'first.txt')
+  const secondPath = path.join(workspaceRootPath, 'second.txt')
+  const mutableFs = fs as unknown as { rename: typeof fs.rename }
+  const originalRename = fs.rename
+  let secondRenameAttempts = 0
+
+  try {
+    await fs.writeFile(firstPath, 'first before\n', 'utf8')
+    await fs.writeFile(secondPath, 'second before\n', 'utf8')
+    mutableFs.rename = async (sourcePath, destinationPath) => {
+      if (path.resolve(String(destinationPath)) === secondPath) {
+        secondRenameAttempts += 1
+        throw Object.assign(new Error('simulated persistent Windows file lock'), { code: 'UNKNOWN' })
+      }
+      return originalRename(sourcePath, destinationPath)
+    }
+
+    await assert.rejects(
+      applyPatchInWorkspace(
+        workspaceRootPath,
+        standardPatch(
+          '*** Update File: first.txt\n@@\n-first before\n+first after\n*** Update File: second.txt\n@@\n-second before\n+second after',
+        ),
+      ),
+      (error: unknown) => {
+        assert.match(String(error), /simulated persistent Windows file lock/u)
+        assert.doesNotMatch(String(error), /rollback also failed/u)
+        return true
+      },
+    )
+
+    assert.equal(await fs.readFile(firstPath, 'utf8'), 'first before\n')
+    assert.equal(await fs.readFile(secondPath, 'utf8'), 'second before\n')
+    assert.ok(secondRenameAttempts > 1)
+  } finally {
+    mutableFs.rename = originalRename
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('apply_patch updates standard Codex patches with whitespace-tolerant context', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-'))
   const targetPath = path.join(workspaceRootPath, 'src', 'value.ts')

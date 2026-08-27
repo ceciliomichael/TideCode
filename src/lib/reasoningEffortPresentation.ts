@@ -4,7 +4,7 @@ import { orderReasoningEfforts } from './reasoningEffortOrder'
 const REASONING_EFFORT_LABELS: Readonly<Record<string, string>> = {
   high: 'High',
   low: 'Low',
-  max: 'Maximum',
+  max: 'Max',
   minimal: 'Minimal',
   medium: 'Medium',
   none: 'None',

@@ -18,6 +18,9 @@ test('keeps unknown reasoning efforts after supported values in their original o
 })
 
 test('desktop and CLI share reasoning effort labels including toggle profiles', () => {
+  assert.deepEqual(getReasoningEffortPresentationOptions(['max']), [
+    { label: 'Max', value: 'max' },
+  ])
   assert.deepEqual(getReasoningEffortPresentationOptions(['none', 'high']), [
     { label: 'Enabled', value: 'high' },
     { label: 'Disable', value: 'none' },

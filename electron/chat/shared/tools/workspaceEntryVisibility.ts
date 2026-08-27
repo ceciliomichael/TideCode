@@ -1,7 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import {
-  isAgentInstructionsFile,
   isGitignored,
   loadGitignoreMatchers,
   shouldAlwaysShowEntry,
@@ -20,7 +19,6 @@ export async function listImmediateDirectoryEntries(
   const filteredEntries = entries
     .filter((entry) => !entry.isSymbolicLink())
     .filter((entry) => entry.isDirectory() || entry.isFile())
-    .filter((entry) => !isAgentInstructionsFile(entry.name))
 
   if (options?.relaxIgnore) {
     return filteredEntries
@@ -90,10 +88,6 @@ export function createWorkspaceEntryVisibilityFilter(
       .relative(workspaceRootPath, entryAbsolutePath)
       .split(path.sep)
       .filter((segment) => segment.length > 0)
-
-    if (workspaceRelativeSegments.some((segment) => isAgentInstructionsFile(segment))) {
-      return false
-    }
 
     const underIgnoreBase = isUnderIgnoreBase(workspaceRelativeSegments)
 

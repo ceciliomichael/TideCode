@@ -85,8 +85,8 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
     ? (cards.find((card) => card.id === selectedCardId) ?? null)
     : null
   const doneCardCount = cards.filter((card) => card.columnId === 'done').length
-  const blockedCardCount = cards.filter(
-    (card) => card.columnId === 'blocked',
+  const forReviewCardCount = cards.filter(
+    (card) => card.columnId === 'for-review',
   ).length
   const activeCardCount = cards.filter(
     (card) => card.columnId === 'in-progress',
@@ -143,7 +143,7 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
                 ) : null}
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                {activeCardCount} active · {blockedCardCount} blocked ·{' '}
+                {activeCardCount} active · {forReviewCardCount} for review ·{' '}
                 {doneCardCount} done
               </p>
             </div>
@@ -206,7 +206,7 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
               ) : null}
             </div>
             <p className="mt-0.5 whitespace-nowrap text-[11px] text-muted-foreground">
-              {activeCardCount} active · {blockedCardCount} blocked ·{' '}
+              {activeCardCount} active · {forReviewCardCount} for review ·{' '}
               {doneCardCount} done
             </p>
           </div>

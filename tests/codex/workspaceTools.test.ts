@@ -893,11 +893,12 @@ test('workspace tool schemas use path consistently for filesystem targets', asyn
   }
 })
 
-test('AGENTS.md stays hidden from discovery but remains directly readable by the agent', async () => {
+test('AGENTS.md stays visible in discovery and remains directly readable when gitignored', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
   const nestedDirectoryPath = path.join(workspaceRootPath, 'nested', 'package-a')
 
   try {
+    await fs.appendFile(path.join(workspaceRootPath, '.gitignore'), 'AGENTS.md\n**/agents.md\n', 'utf8')
     await fs.writeFile(path.join(workspaceRootPath, 'AGENTS.md'), 'rootAgentInstructionNeedle\n', 'utf8')
     await fs.writeFile(path.join(nestedDirectoryPath, 'agents.md'), 'nestedAgentInstructionNeedle\n', 'utf8')
 
@@ -920,12 +921,13 @@ test('AGENTS.md stays hidden from discovery but remains directly readable by the
     })
 
     assert.equal(listResult.status, 'success')
-    assert.doesNotMatch(listResult.body ?? '', /AGENTS\.md/u)
+    assert.match(listResult.body ?? '', /AGENTS\.md/u)
     assert.equal(globResult.status, 'success')
-    assert.doesNotMatch(globResult.body ?? '', /AGENTS\.md/u)
-    assert.doesNotMatch(globResult.body ?? '', /agents\.md/u)
+    assert.match(globResult.body ?? '', /AGENTS\.md/u)
+    assert.match(globResult.body ?? '', /nested[\\/]package-a[\\/]agents\.md/u)
     assert.equal(grepResult.status, 'success')
-    assert.equal(grepResult.body, 'No files found')
+    assert.match(grepResult.body ?? '', /AGENTS\.md/u)
+    assert.match(grepResult.body ?? '', /nested[\\/]package-a[\\/]agents\.md/u)
     assert.equal(readResult.status, 'success')
     assert.equal(readResult.body, 'rootAgentInstructionNeedle')
   } finally {

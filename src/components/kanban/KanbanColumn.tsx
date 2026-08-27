@@ -28,7 +28,7 @@ interface KanbanColumnProps {
 
 export const COLUMN_MARKER_CLASS_NAMES: Record<KanbanColumnId, string> = {
   backlog: 'bg-slate-400',
-  blocked: 'bg-red-500',
+  'for-review': 'bg-red-500',
   done: 'bg-emerald-500',
   'in-progress': 'bg-brand',
 }

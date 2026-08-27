@@ -26,6 +26,18 @@ export function isKanbanColumnId(value: unknown): value is KanbanColumnId {
   )
 }
 
+// Keep existing boards readable after the column rename.
+function normalizeStoredKanbanColumnId(
+  value: unknown,
+): KanbanColumnId | undefined {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  const normalizedValue = value === 'blocked' ? 'for-review' : value
+  return isKanbanColumnId(normalizedValue) ? normalizedValue : undefined
+}
+
 export function assertKanbanColumnId(
   value: unknown,
   fieldName = 'columnId',
@@ -223,13 +235,14 @@ export function parseKanbanCard(value: unknown): KanbanCard | null {
     return null
   }
 
+  const columnId = normalizeStoredKanbanColumnId(value.columnId)
   if (
     typeof value.id !== 'string' ||
     typeof value.title !== 'string' ||
     typeof value.description !== 'string' ||
     typeof value.createdAt !== 'number' ||
     typeof value.updatedAt !== 'number' ||
-    !isKanbanColumnId(value.columnId)
+    !columnId
   ) {
     return null
   }
@@ -246,7 +259,7 @@ export function parseKanbanCard(value: unknown): KanbanCard | null {
       value.id,
     ),
     assignee: normalizeOptionalText(value.assignee),
-    columnId: value.columnId,
+    columnId,
     createdAt: value.createdAt,
     description: value.description,
     id: value.id,

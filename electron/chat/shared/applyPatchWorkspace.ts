@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { getSafeWorkspaceTargetPath } from '../../workspace/paths'
+import { retryTransientFilesystemOperation, writeTextFileAtomically } from './tools/workspaceMutationSafety'
 import { applyUpdateChunks, normalizeContentLineEndings } from './applyPatchMatcher'
 import { parseApplyPatch } from './applyPatchParser'
 import type {
@@ -174,7 +175,7 @@ async function readFileSnapshot(absolutePath: string): Promise<FileSnapshot> {
 
 async function restoreFileSnapshot(snapshot: FileSnapshot) {
   if (!snapshot.existed) {
-    await fs.rm(snapshot.absolutePath, { force: true })
+    await retryTransientFilesystemOperation(() => fs.rm(snapshot.absolutePath, { force: true }))
     return
   }
 
@@ -182,34 +183,41 @@ async function restoreFileSnapshot(snapshot: FileSnapshot) {
     throw new Error(`Cannot restore an empty snapshot for ${snapshot.absolutePath}.`)
   }
 
-  await fs.mkdir(path.dirname(snapshot.absolutePath), { recursive: true })
-  await fs.writeFile(snapshot.absolutePath, snapshot.content, 'utf8')
+  await writeTextFileAtomically(snapshot.absolutePath, snapshot.content)
 }
 
 async function commitStagedFiles(stagedFiles: Map<string, StagedFileState>) {
   const snapshots = await Promise.all(
     [...stagedFiles.keys()].map((absolutePath) => readFileSnapshot(absolutePath)),
   )
+  const snapshotsByPath = new Map(snapshots.map((snapshot) => [snapshot.absolutePath, snapshot]))
+  const committedSnapshots: FileSnapshot[] = []
 
   try {
     for (const stagedFile of stagedFiles.values()) {
       if (stagedFile.content === null) {
-        await fs.rm(stagedFile.target.absolutePath, { force: false })
-        continue
+        await retryTransientFilesystemOperation(() => fs.rm(stagedFile.target.absolutePath, { force: false }))
+      } else {
+        await writeTextFileAtomically(stagedFile.target.absolutePath, stagedFile.content)
       }
 
-      await fs.mkdir(path.dirname(stagedFile.target.absolutePath), { recursive: true })
-      await fs.writeFile(stagedFile.target.absolutePath, stagedFile.content, 'utf8')
+      const snapshot = snapshotsByPath.get(stagedFile.target.absolutePath)
+      if (snapshot) committedSnapshots.push(snapshot)
     }
   } catch (error) {
-    for (const snapshot of snapshots.reverse()) {
+    let rollbackError: unknown
+    for (const snapshot of committedSnapshots.reverse()) {
       try {
         await restoreFileSnapshot(snapshot)
       } catch (restoreError) {
-        const originalMessage = error instanceof Error ? error.message : String(error)
-        const restoreMessage = restoreError instanceof Error ? restoreError.message : String(restoreError)
-        throw new Error(`${originalMessage}; rollback also failed: ${restoreMessage}`)
+        rollbackError ??= restoreError
       }
+    }
+
+    if (rollbackError !== undefined) {
+      const originalMessage = error instanceof Error ? error.message : String(error)
+      const restoreMessage = rollbackError instanceof Error ? rollbackError.message : String(rollbackError)
+      throw new Error(`${originalMessage}; rollback also failed: ${restoreMessage}`)
     }
     throw error
   }

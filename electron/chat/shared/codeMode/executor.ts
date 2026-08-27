@@ -10,6 +10,7 @@ import {
   containsDynamicCodeModeImport,
   findBlockedCodeModeRuntimeApi,
   repairCodeModePatchProgram,
+  repairCodeModePreloadedToolsImport,
   repairCodeModeProgramSyntax,
   validateCodeModeProgram,
 } from './validation'
@@ -469,6 +470,10 @@ export class CodeModeExecutor {
     type ModuleWorkerOptions = WorkerOptions & { type: 'module' }
     const workerOptions: ModuleWorkerOptions = { eval: true, type: 'module', stdout: true, stderr: true }
     if (this.executionMode === 'sandbox') {
+      const repairedToolsImport = repairCodeModePreloadedToolsImport(executableCode)
+      if (repairedToolsImport !== null && validateCodeModeProgram(repairedToolsImport, limits.maxCodeBytes) === null) {
+        executableCode = repairedToolsImport
+      }
       if (containsDynamicCodeModeImport(executableCode)) {
         return errorResult(executionId, 'Code Mode tool-only runtime does not allow dynamic module loading. No tool ran. Use the available tools.* APIs instead.')
       }
