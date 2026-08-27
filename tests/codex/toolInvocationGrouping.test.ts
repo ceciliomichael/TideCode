@@ -17,15 +17,16 @@ function createInvocation(toolName: string): ToolInvocationTrace {
 function createMutationInvocation(
   id: string,
   kind: 'add' | 'delete' | 'update',
-  toolName: 'write' | 'edit',
+  toolName: 'write' | 'edit' | 'apply_patch',
+  fileName = 'example.ts',
 ): ToolInvocationTrace {
   return {
-    argumentsText: JSON.stringify({ path: '/workspace/example.ts' }),
+    argumentsText: JSON.stringify({ path: `/workspace/${fileName}` }),
     id,
     resultPresentation: {
       changes: [
         {
-          fileName: 'example.ts',
+          fileName,
           kind,
           newContent: kind === 'delete' ? '' : 'const value = 1;\n',
           oldContent: kind === 'add' ? null : 'const value = 0;\n',
@@ -45,13 +46,13 @@ function createMutationInvocation(
         status: 'success',
         subject: {
           kind: 'file',
-          path: '/workspace/example.ts',
+            path: `/workspace/${fileName}`,
         },
-        summary: 'Updated example.ts',
+        summary: `Updated ${fileName}`,
         toolCallId: id,
         toolName,
       },
-      'updated example.ts',
+      `updated ${fileName}`,
     ),
     startedAt: 0,
     state: 'completed',
@@ -241,10 +242,10 @@ test('buildToolInvocationGroupSummary groups MCP search and execution as MCP wor
 
 test('buildToolInvocationGroupSummary splits mixed file mutations and exploration categories', () => {
   const summary = buildToolInvocationGroupSummary([
-    createMutationInvocation('tool-write-edit-1', 'update', 'write'),
-    createMutationInvocation('tool-write-edit-2', 'update', 'edit'),
-    createMutationInvocation('tool-write-create-1', 'add', 'write'),
-    createMutationInvocation('tool-write-create-2', 'add', 'edit'),
+    createMutationInvocation('tool-write-edit-1', 'update', 'write', 'edited-one.ts'),
+    createMutationInvocation('tool-write-edit-2', 'update', 'edit', 'edited-two.ts'),
+    createMutationInvocation('tool-write-create-1', 'add', 'write', 'created-one.ts'),
+    createMutationInvocation('tool-write-create-2', 'add', 'edit', 'created-two.ts'),
     createInvocation('read'),
     createInvocation('glob'),
     createInvocation('execute_terminal'),
@@ -256,4 +257,15 @@ test('buildToolInvocationGroupSummary splits mixed file mutations and exploratio
     summary,
     'Created 2 files, edited 2 files, explored 1 file, ran 1 search, ran 3 terminal tools',
   )
+})
+
+test('buildToolInvocationGroupSummary counts repeated apply_patch hunks as one edited file', () => {
+  const hunks = [
+    createMutationInvocation('patch-hunk-1', 'update', 'apply_patch', 'src/example.ts'),
+    createMutationInvocation('patch-hunk-2', 'update', 'apply_patch', 'src/example.ts'),
+    createMutationInvocation('patch-hunk-3', 'update', 'apply_patch', 'src/example.ts'),
+  ]
+
+  assert.equal(buildToolInvocationGroupSummary(hunks), 'Edited 1 file')
+  assert.equal(buildToolInvocationGroupSummary(hunks, 'Edited'), 'Edited 1 file')
 })

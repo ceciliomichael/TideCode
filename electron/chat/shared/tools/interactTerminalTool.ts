@@ -174,9 +174,7 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
             : "actively_executing"
           : summary.state === "needs_interaction"
             ? "waiting_for_input"
-            : session.commandExitCode !== null && session.commandExitCode !== 0
-              ? "failed"
-              : "completed";
+            : "completed";
 
         const bodyLines: string[] = [
           `session_id: ${session.localSessionId}`,
@@ -188,8 +186,8 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
           bodyLines.push("input_sent: true");
         }
 
-        if (summary.state === "completed" && session.commandExitCode !== null && session.commandExitCode !== 0) {
-          bodyLines.push("result: failed");
+        if (summary.state === "completed" && session.commandExitCode !== null) {
+          bodyLines.push(`exit_code: ${session.commandExitCode}`);
         }
 
         if (unreadOutput.lines.length > 0) {
@@ -251,11 +249,9 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
           ? rawOutputText
           : summary.state === "needs_interaction"
             ? summary.displayBody
-            : summary.state === "completed" && session.commandExitCode !== null && session.commandExitCode !== 0
-              ? "Terminal command failed."
-              : inputSent
-                ? "Terminal input sent."
-                : "";
+            : inputSent
+              ? "Terminal input sent."
+              : "";
 
         const interactionSummary = summary.state === "completed"
           ? `Terminal session ${session.localSessionId} completed`

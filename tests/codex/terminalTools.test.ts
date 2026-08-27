@@ -309,25 +309,30 @@ test("read_terminal bounds the requested wait to maximum terminal wait limit", a
   assert.ok(observedPollingValues[0] <= 300_000);
 });
 
-test("read_terminal reports command failure without exposing the numeric exit code", async () => {
+test("read_terminal treats a nonzero process exit as a completed tool call with factual exit data", async () => {
   const writeCalls: WriteTerminalSessionInput[] = [];
   const tools = createTools(
-    "terminal-failure",
+    "terminal-nonzero-exit",
     createMockDependencies({
       getPendingOutput: (writtenCommands) => `${readCompletionMarker(writtenCommands[0]?.data ?? "")}:17\n`,
       writeCalls,
     }),
   );
 
-  const started = await getTool(tools, "execute_terminal").execute({ command: "failed-command" });
+  const started = await getTool(tools, "execute_terminal").execute({ command: "failing-command" });
   const result = await getTool(tools, "read_terminal").execute({
     session_id: started.semantics?.session_id,
     wait_seconds: 0,
   });
 
+  assert.equal(result.status, "success");
   assert.equal(result.semantics?.state, "completed");
-  assert.match(result.body ?? "", /result: failed/u);
-  assert.doesNotMatch((result.body ?? "").replace(/^session_id:.*$/m, ""), /17|exit_code/u);
+  assert.equal(result.semantics?.status, "completed");
+  assert.equal(result.semantics?.exit_code, 17);
+  assert.match(result.body ?? "", /status: completed/u);
+  assert.match(result.body ?? "", /exit_code: 17/u);
+  assert.doesNotMatch(result.body ?? "", /result: failed|Terminal command failed/u);
+  assert.doesNotMatch(result.summary ?? "", /failed/u);
 });
 
 test("read_terminal detects a prompt and interact_terminal sends text plus Enter", async () => {

@@ -74,6 +74,16 @@ function parseToolArguments(input: string) {
   }
 }
 
+function getProviderStreamErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim().length > 0) return error.message
+  if (typeof error === 'string' && error.trim().length > 0) return error
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string' && message.trim().length > 0) return message
+  }
+  return 'Provider stream failed.'
+}
+
 function getToolErrorMessage(toolName: string, error: unknown) {
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message
@@ -197,6 +207,10 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
         // it unwinds; do not forward those late events or persist more progress.
         if (input.abortController.signal.aborted) {
           continue
+        }
+
+        if (isStreamPart(part, 'error')) {
+          throw new Error(getProviderStreamErrorMessage(part.error))
         }
 
         if (isStreamPart(part, 'text-delta') && typeof part.text === 'string') {

@@ -61,9 +61,8 @@ function getFunctionCallInputType(record: JsonRecord): 'responses' | 'legacy' | 
 
   if (isOutput) return null
   if (itemType === 'function_call') return 'responses'
-  if (itemType === 'tool_call' || itemType === 'function' || 'call_id' in record || 'name' in record) {
-    return 'legacy'
-  }
+  if (itemType === 'tool_call' || itemType === 'function') return 'legacy'
+  if (itemType.length === 0 && ('call_id' in record || 'name' in record)) return 'legacy'
 
   return null
 }

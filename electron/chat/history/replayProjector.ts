@@ -34,6 +34,22 @@ export interface ReplayProjectionResult {
   replayRunId: string | null
 }
 
+function isPreResponseRunStartedReplay(
+  document: CanonicalHistoryDocument,
+  replay: CanonicalReplayProjection | null,
+) {
+  if (!replay) return false
+
+  const sourceEvent = document.events.find((event) => event.revision === replay.sourceRevision)
+  return (
+    sourceEvent?.type === 'run_started' &&
+    sourceEvent.runId === replay.runId &&
+    sourceEvent.anchorUserMessageId === replay.anchorUserMessageId &&
+    sourceEvent.providerId === replay.providerId &&
+    sourceEvent.modelId === replay.modelId
+  )
+}
+
 type CompactionReplayProjection = CanonicalReplayProjection & {
   compactionPacket: CompactionPacket | null
   isCompacted: true
@@ -248,7 +264,10 @@ export function projectCanonicalReplay(input: {
       replayRunId: null,
     }
   }
-  const storedReplay = input.document.replays[getReplaySlotKey(input.providerId, input.modelId)] ?? input.document.replay
+  const storedReplayCandidate = input.document.replays[getReplaySlotKey(input.providerId, input.modelId)] ?? input.document.replay
+  const storedReplay = isPreResponseRunStartedReplay(input.document, storedReplayCandidate)
+    ? null
+    : storedReplayCandidate
   const compactionProjection = findLatestCompactionProjection({
     document: input.document,
     messages: input.messages,

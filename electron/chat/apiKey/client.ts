@@ -18,6 +18,7 @@ import { isCustomApiKeyProviderId } from '../../providers/providerIds'
 import { mergeProviderOptions, resolvePromptCacheExtraBody, resolvePromptCacheProviderOptions } from '../cache/providerPolicies'
 import { normalizeLanguageModelUsage } from '../cache/usage'
 import type { ProviderStepRecord } from '../history/contracts'
+import { resolveSystemPromptTransportProviderOptions } from '../shared/providerPromptTransport'
 import type { ApiKeyChatProviderConfig } from './config'
 import { normalizeDeepSeekRequestBody } from './deepSeekWire'
 import { createExtraBodyFetch } from './requestBody'
@@ -105,6 +106,7 @@ export function createApiKeyChatClient(config: ApiKeyChatProviderConfig) {
     const model = modelFactory(input.model)
     const providerOptions = mergeProviderOptions(
       resolveProviderReasoningOptions(config, input.model, input.reasoningEffort),
+      resolveSystemPromptTransportProviderOptions(config.providerId, input.system),
       input.cacheKey
         ? resolvePromptCacheProviderOptions({ cacheKey: input.cacheKey, providerId: config.providerId })
         : undefined,

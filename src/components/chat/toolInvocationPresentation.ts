@@ -475,18 +475,25 @@ export function getFileMutationSummaryKind(
   return 'edited'
 }
 
-function getWholeFileChangeSingleChangeTarget(invocation: ToolInvocationTrace) {
+function getWholeFileChangeTarget(invocation: ToolInvocationTrace) {
   if (!isFileWriteTool(invocation.toolName) && !isFileEditTool(invocation.toolName)) {
     return null
   }
 
   const changeResultPresentation = invocation.resultPresentation?.kind === 'change_diff' ? invocation.resultPresentation : null
-  if (!changeResultPresentation || changeResultPresentation.changes.length !== 1) {
+  if (!changeResultPresentation || changeResultPresentation.changes.length === 0) {
     return null
   }
 
-  const [singleChange] = changeResultPresentation.changes
-  return getBasename(singleChange.fileName)
+  const firstFileName = changeResultPresentation.changes[0]?.fileName.trim()
+  if (!firstFileName) {
+    return null
+  }
+  const normalizedFileName = firstFileName.replace(/\\/g, '/')
+  const hasSingleTarget = changeResultPresentation.changes.every(
+    (change) => change.fileName.trim().replace(/\\/g, '/') === normalizedFileName,
+  )
+  return hasSingleTarget ? getBasename(firstFileName) : null
 }
 
 export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace): ToolInvocationDisplayEntry[] {
@@ -543,16 +550,31 @@ export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace)
     changeResultPresentation !== null &&
     changeResultPresentation.changes.length > 1
   ) {
-    return changeResultPresentation.changes.map((change: ChangeDiffToolResultItem, index: number) => ({
+    const groupedChanges: Array<{ fileName: string; changes: ChangeDiffToolResultItem[] }> = []
+    const groupIndexes = new Map<string, number>()
+
+    for (const change of changeResultPresentation.changes) {
+      const normalizedFileName = change.fileName.trim().replace(/\\/g, '/')
+      const existingIndex = groupIndexes.get(normalizedFileName)
+      if (existingIndex !== undefined) {
+        groupedChanges[existingIndex].changes.push(change)
+        continue
+      }
+
+      groupIndexes.set(normalizedFileName, groupedChanges.length)
+      groupedChanges.push({ fileName: change.fileName, changes: [change] })
+    }
+
+    return groupedChanges.map((group, index) => ({
       invocation: {
         ...invocation,
         id: `${invocation.id}:${index}`,
         resultPresentation: {
-          changes: [change],
+          changes: group.changes,
           kind: 'change_diff',
         },
       },
-      key: `${invocation.id}:${index}:${change.fileName}`,
+      key: `${invocation.id}:${index}:${group.fileName}`,
     }))
   }
 
@@ -665,9 +687,9 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
     return toolPath ? getBasename(toolPath) : null
   }
 
-  const wholeFileChangeSingleChangeTarget = getWholeFileChangeSingleChangeTarget(invocation)
-  if (wholeFileChangeSingleChangeTarget) {
-    return wholeFileChangeSingleChangeTarget
+  const wholeFileChangeTarget = getWholeFileChangeTarget(invocation)
+  if (wholeFileChangeTarget) {
+    return wholeFileChangeTarget
   }
 
   const structuredPath = parsedResult?.metadata?.subject?.path

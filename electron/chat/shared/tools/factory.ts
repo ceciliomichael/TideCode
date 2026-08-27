@@ -9,6 +9,7 @@ import { createCodeModeTool, createToolSearchTool } from './metaTools'
 import { createConnectedMcpRegistryTools } from './mcpRegistryTools'
 
 import { createEditTool } from './editTool'
+import { createApplyPatchTool } from './applyPatchTool'
 import { createGlobTool } from './globTool'
 import { createGrepTool } from './grepTool'
 import { createKanbanToolSet } from './kanbanTools'
@@ -36,7 +37,7 @@ export interface AgentToolBundle {
   tools: ToolSet
 }
 
-const CODE_MODE_EXCLUDED_TOOLS = new Set(['mcp_tool_search', 'execute_mcp'])
+const CODE_MODE_EXCLUDED_TOOLS = new Set(['mcp_tool_search', 'execute_mcp', 'edit'])
 
 export async function createNativeAgentTools(
   input: AgentToolContext,
@@ -81,6 +82,7 @@ export async function createNativeAgentTools(
 
   return {
     ...tools,
+    apply_patch: createApplyPatchTool(context),
     edit: createEditTool(context),
     write: createWriteTool(context),
   }
@@ -139,7 +141,7 @@ export async function createAgentToolBundle(
     workspaceRootPath: input.workspaceRootPath,
   })
   const metaTools: ToolSet = {
-    code_mode: createCodeModeTool(codeModeExecutor, registry),
+    code_mode: createCodeModeTool(codeModeExecutor, registry, { providerId: options.providerId }),
   }
 
   return {

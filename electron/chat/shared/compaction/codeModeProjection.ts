@@ -32,9 +32,13 @@ function stringifyValue(value: unknown) {
 }
 
 function projectOuterArgumentValue(value: unknown) {
+  if (typeof value === 'string') {
+    return truncatePreservingEdges(value, CODE_MODE_OUTER_ARGUMENT_MAX_CHARS)
+  }
+
   if (isRecord(value)) {
     const projected = { ...value }
-    for (const key of ['code', 'program']) {
+    for (const key of ['source', 'code', 'program']) {
       if (typeof projected[key] === 'string') {
         projected[key] = truncatePreservingEdges(projected[key], CODE_MODE_OUTER_ARGUMENT_MAX_CHARS)
       }
@@ -48,11 +52,15 @@ function projectOuterArgumentValue(value: unknown) {
   return truncatePreservingEdges(stringifyValue(value), CODE_MODE_OUTER_ARGUMENT_MAX_CHARS)
 }
 
-function projectStructuredMetadataArguments(value: Record<string, unknown>) {
+function projectStructuredMetadataArguments(value: Record<string, unknown> | string) {
+  if (typeof value === 'string') {
+    return truncatePreservingEdges(value, CODE_MODE_OUTER_ARGUMENT_MAX_CHARS)
+  }
+
   const projected = { ...value }
   for (const [key, nestedValue] of Object.entries(projected)) {
     if (typeof nestedValue !== 'string') continue
-    const maximumCharacters = key === 'code' || key === 'program'
+    const maximumCharacters = key === 'source' || key === 'code' || key === 'program'
       ? CODE_MODE_OUTER_ARGUMENT_MAX_CHARS
       : 500
     projected[key] = truncatePreservingEdges(nestedValue, maximumCharacters)

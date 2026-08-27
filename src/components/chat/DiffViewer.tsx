@@ -34,6 +34,7 @@ interface DiffViewerProps {
   onPrewarmReady?: () => void
   oldContent: string | null | undefined
   prewarm?: boolean
+  showHeader?: boolean
   startLineNumber?: number
   viewOnly?: boolean
 }
@@ -62,6 +63,7 @@ function areDiffViewerPropsEqual(left: DiffViewerProps, right: DiffViewerProps) 
     left.onPrewarmReady === right.onPrewarmReady &&
     left.oldContent === right.oldContent &&
     left.prewarm === right.prewarm &&
+    left.showHeader === right.showHeader &&
     left.startLineNumber === right.startLineNumber &&
     left.viewOnly === right.viewOnly
   )
@@ -87,6 +89,7 @@ function DiffViewerComponent({
   onPrewarmReady,
   oldContent,
   prewarm = false,
+  showHeader = true,
   startLineNumber = 1,
   viewOnly = false,
 }: DiffViewerProps) {
@@ -181,7 +184,7 @@ function DiffViewerComponent({
         className ?? '',
       ].join(' ')}
     >
-      {!isPrewarmOnly ? header : null}
+      {!isPrewarmOnly && showHeader ? header : null}
       {shouldRenderDiffContent ? (
         <div className={isStackedLayout ? 'overflow-hidden bg-surface' : 'overflow-hidden rounded-b-2xl bg-surface'}>
           <Suspense fallback={<WorkspaceMonacoDiffLoadingView height={initialBodyHeight} />}>

@@ -37,6 +37,7 @@ export interface ApplyPatchChange {
   oldContent: string | null
   relativePath: string
   type: 'add' | 'delete' | 'update'
+  updateChunkStartLines?: number[]
 }
 
 export interface ParsedApplyPatch {

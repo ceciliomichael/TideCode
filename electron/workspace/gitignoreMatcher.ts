@@ -35,6 +35,7 @@ export const WORKSPACE_IGNORED_ENTRY_NAMES: ReadonlySet<string> = new Set<string
   'DerivedData',
 ])
 const EXPLORER_IGNORED_ENTRY_NAMES = new Set<string>(['.git'])
+const GITIGNORE_IMMUNE_INSTRUCTION_FILES = new Set<string>(['agents.md', 'claude.md'])
 const gitignoreMatcherCache = new Map<string, Promise<GitignoreMatcherEntry[]>>()
 
 function toPosixRelativePath(fromPath: string, toPath: string) {
@@ -99,6 +100,10 @@ export function isGitignored(
   isDirectory: boolean,
   matcherEntries: readonly GitignoreMatcherEntry[],
 ) {
+  if (!isDirectory && GITIGNORE_IMMUNE_INSTRUCTION_FILES.has(path.basename(targetPath).toLowerCase())) {
+    return false
+  }
+
   let isIgnored = false
 
   for (const matcherEntry of matcherEntries) {

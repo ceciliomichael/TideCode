@@ -39,6 +39,17 @@ export function describeTools(tools: ToolSet) {
     } catch {
       inputSchema = { unavailable: true }
     }
+    if ('type' in tool && tool.type === 'provider') {
+      return {
+        args: tool.args,
+        id: tool.id,
+        inputSchema,
+        name,
+        providerOptions: tool.providerOptions,
+        type: tool.type,
+      }
+    }
+
     return {
       description: 'description' in tool ? tool.description : undefined,
       inputSchema,

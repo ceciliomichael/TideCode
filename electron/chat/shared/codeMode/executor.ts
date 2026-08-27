@@ -36,6 +36,58 @@ const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 const pendingToolCalls = new Map()
 const pendingToolPromises = new Set()
 const pendingPromiseThen = new WeakMap()
+const pendingEditBatches = new Map()
+const batchedToolCallIds = new Map()
+
+function getEditBatchKey(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  const keys = Object.keys(input)
+  if (keys.some((key) => key !== 'path' && key !== 'edits' && key !== 'expectedRevision')) return null
+  if (typeof input.path !== 'string' || input.path.trim().length === 0) return null
+  if (!Array.isArray(input.edits) || input.edits.length === 0) return null
+  if (input.expectedRevision !== undefined && typeof input.expectedRevision !== 'string') return null
+
+  const normalizedPath = path.normalize(input.path)
+  const comparablePath = hostProcess.platform === 'win32' ? normalizedPath.toLowerCase() : normalizedPath
+  return JSON.stringify([comparablePath, input.expectedRevision ?? null])
+}
+
+function postToolCall(name, input, callId, logicalCallCount = 1) {
+  parentPort.postMessage({ arguments: input, callId, logicalCallCount, name, type: 'tool_call' })
+}
+
+function flushEditBatch(batchKey) {
+  const batch = pendingEditBatches.get(batchKey)
+  if (!batch) return
+  pendingEditBatches.delete(batchKey)
+
+  if (batch.length === 1) {
+    const item = batch[0]
+    postToolCall('edit', item.input, item.callId)
+    return
+  }
+
+  const transportCallId = batch[0].callId
+  batchedToolCallIds.set(transportCallId, batch.map((item) => item.callId))
+  postToolCall('edit', {
+    ...batch[0].input,
+    edits: batch.flatMap((item) => item.input.edits),
+  }, transportCallId, batch.length)
+}
+
+function queueEditToolCall(input, callId) {
+  const batchKey = getEditBatchKey(input)
+  if (batchKey === null) return false
+
+  let batch = pendingEditBatches.get(batchKey)
+  if (!batch) {
+    batch = []
+    pendingEditBatches.set(batchKey, batch)
+    queueMicrotask(() => flushEditBatch(batchKey))
+  }
+  batch.push({ callId, input })
+  return true
+}
 
 function trackPendingPromise(promise) {
   if (pendingToolPromises.has(promise)) return promise
@@ -65,7 +117,8 @@ function createTools(toolNames) {
       const callId = name + '-' + Date.now() + '-' + Math.random().toString(36).slice(2)
       const promise = new Promise((resolve, reject) => {
         pendingToolCalls.set(callId, { reject, resolve })
-        parentPort.postMessage({ arguments: input, callId, name, type: 'tool_call' })
+        if (name === 'edit' && queueEditToolCall(input, callId)) return
+        postToolCall(name, input, callId)
       })
       return trackPendingPromise(promise)
     }
@@ -222,20 +275,38 @@ async function drainPendingToolPromises() {
 
 async function execute(message) {
   configureRuntime(message)
-  const program = new AsyncFunction('tools', 'payloads', message.code)
-  const payloads = Object.freeze({ ...(message.payloads ?? {}) })
-  const output = await program(createTools(message.toolNames), payloads)
+  const program = new AsyncFunction('tools', message.source)
+  const output = await program(createTools(message.toolNames))
   await drainPendingToolPromises()
   return assertCloneable(await resolveReturnedValue(output))
 }
 
 parentPort.on('message', (message) => {
   if (message.type === 'tool_result') {
-    const pending = pendingToolCalls.get(message.callId)
-    if (!pending) return
-    pendingToolCalls.delete(message.callId)
-    if (message.error) pending.reject(new Error(message.error))
-    else pending.resolve(message.result)
+    const callIds = batchedToolCallIds.get(message.callId) ?? [message.callId]
+    batchedToolCallIds.delete(message.callId)
+    for (const callId of callIds) {
+      const pending = pendingToolCalls.get(callId)
+      if (!pending) continue
+      pendingToolCalls.delete(callId)
+      if (message.error) {
+        const toolError = new Error(message.error)
+        if (message.errorResult !== undefined) {
+          const errorResult = callIds.length > 1 ? structuredClone(message.errorResult) : message.errorResult
+          toolError.result = errorResult
+          const semantics = errorResult && typeof errorResult === 'object'
+            ? errorResult.semantics
+            : undefined
+          if (semantics && typeof semantics === 'object') {
+            toolError.semantics = semantics
+            if (typeof semantics.error_code === 'string') toolError.code = semantics.error_code
+          }
+        }
+        pending.reject(toolError)
+      } else {
+        pending.resolve(callIds.length > 1 ? structuredClone(message.result) : message.result)
+      }
+    }
     return
   }
 
@@ -307,6 +378,18 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined
 }
 
+function isRecoverableEditResult(name: string, result: AgentToolExecutionResult) {
+  return name === 'edit' &&
+    result.status === 'error' &&
+    result.semantics?.recoverable === true
+}
+
+function isRecoverableEditToolCall(toolCall: CodeModeToolCallRecord) {
+  return toolCall.name === 'edit' &&
+    toolCall.status === 'error' &&
+    toolCall.semantics?.recoverable === true
+}
+
 function capExecutionOutput(output: unknown, maxBytes: number) {
   const safeOutput = toJsonSafe(output)
   if (safeOutput === undefined) {
@@ -348,20 +431,19 @@ export class CodeModeExecutor {
   }
 
   public async run(
-    code: string,
+    source: string,
     options: {
       abortSignal?: AbortSignal
       allowedToolNames?: readonly string[]
       limits?: Partial<CodeModeExecutionLimits>
-      payloads?: Readonly<Record<string, string>>
     } = {},
   ): Promise<CodeModeExecutionResult> {
     const limits = { ...DEFAULT_CODE_MODE_EXECUTION_LIMITS, ...options.limits }
     const executionId = randomUUID()
-    let executableCode = code
+    let executableCode = source
     let validationError = validateCodeModeProgram(executableCode, limits.maxCodeBytes)
     if (validationError?.includes('invalid JavaScript') === true) {
-      const repairedCode = repairCodeModePatchProgram(code) ?? repairCodeModeProgramSyntax(code)
+      const repairedCode = repairCodeModePatchProgram(source) ?? repairCodeModeProgramSyntax(source)
       if (repairedCode !== null) {
         const repairedValidationError = validateCodeModeProgram(repairedCode, limits.maxCodeBytes)
         if (repairedValidationError === null) {
@@ -437,8 +519,9 @@ export class CodeModeExecutor {
 
         const output = capExecutionOutput(message.output, limits.maxOutputBytes)
         const failedToolCalls = toolCalls.filter((toolCall) => toolCall.status === 'error')
-        if (failedToolCalls.length > 0) {
-          const failureCount = failedToolCalls.length
+        const fatalFailedToolCalls = failedToolCalls.filter((toolCall) => !isRecoverableEditToolCall(toolCall))
+        if (fatalFailedToolCalls.length > 0) {
+          const failureCount = fatalFailedToolCalls.length
           finish({
             error: `Code Mode completed with ${failureCount} failed tool call${failureCount === 1 ? '' : 's'}.`,
             executionId,
@@ -452,12 +535,15 @@ export class CodeModeExecutor {
           return
         }
 
+        const recoverableEditCount = failedToolCalls.length
         finish({
           executionId,
           output: output.output,
           outputTruncated: output.outputTruncated,
           status: 'success',
-          summary: `Code Mode completed with ${toolCalls.length} tool call${toolCalls.length === 1 ? '' : 's'}.`,
+          summary: recoverableEditCount > 0
+            ? `Code Mode completed with ${recoverableEditCount} recoverable edit conflict${recoverableEditCount === 1 ? '' : 's'}; inspect the structured results and retry with exact context.`
+            : `Code Mode completed with ${toolCalls.length} tool call${toolCalls.length === 1 ? '' : 's'}.`,
           toolCalls,
           truncated: output.outputTruncated,
         })
@@ -494,7 +580,12 @@ export class CodeModeExecutor {
           } satisfies CodeModeWorkerToolResultMessage)
           return
         }
-        if (acceptedToolCallCount >= limits.maxToolCalls) {
+        const logicalCallCount = typeof message.logicalCallCount === 'number' &&
+          Number.isInteger(message.logicalCallCount) &&
+          message.logicalCallCount > 0
+          ? message.logicalCallCount
+          : 1
+        if (acceptedToolCallCount + logicalCallCount > limits.maxToolCalls) {
           const response: CodeModeWorkerToolResultMessage = {
             callId: message.callId,
             error: `Code Mode exceeded the ${limits.maxToolCalls}-tool-call limit.`,
@@ -513,7 +604,7 @@ export class CodeModeExecutor {
           return
         }
 
-        acceptedToolCallCount += 1
+        acceptedToolCallCount += logicalCallCount
         inFlightToolCallCount += 1
         const toolStartedAt = Date.now()
         void entry.execute(message.arguments, {
@@ -540,9 +631,19 @@ export class CodeModeExecutor {
           })
           if (settled) return
           if (result.status === 'error') {
+            if (isRecoverableEditResult(message.name, result)) {
+              worker.postMessage({
+                callId: message.callId,
+                result: serializeToolResult(result),
+                type: 'tool_result',
+              } satisfies CodeModeWorkerToolResultMessage)
+              return
+            }
+
             worker.postMessage({
               callId: message.callId,
               error: result.summary || capDisplayBody(result) || `Tool "${message.name}" failed.`,
+              errorResult: serializeToolResult(result),
               type: 'tool_result',
             } satisfies CodeModeWorkerToolResultMessage)
             return
@@ -578,10 +679,9 @@ export class CodeModeExecutor {
         if (!settled && exitCode !== 0) finish(errorResult(executionId, `Code Mode worker exited with code ${exitCode}.`, toolCalls))
       })
       worker.postMessage({
-        code: executableCode,
         executionMode: this.executionMode,
         limits,
-        payloads: { ...(options.payloads ?? {}) },
+        source: executableCode,
         toolNames,
         type: 'execute',
         workspaceRootPath: this.workspaceRootPath,

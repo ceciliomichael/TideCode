@@ -97,9 +97,7 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
             : "actively_executing"
           : commandSummary.state === "needs_interaction"
             ? "waiting_for_input"
-            : session.commandExitCode !== null && session.commandExitCode !== 0
-              ? "failed"
-              : "completed";
+            : "completed";
 
         const bodyLines: string[] = [
           `session_id: ${session.localSessionId}`,
@@ -107,8 +105,8 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
           `status: ${status}`,
         ];
 
-        if (commandSummary.state === "completed" && session.commandExitCode !== null && session.commandExitCode !== 0) {
-          bodyLines.push("result: failed");
+        if (commandSummary.state === "completed" && session.commandExitCode !== null) {
+          bodyLines.push(`exit_code: ${session.commandExitCode}`);
         }
 
         if (unreadOutput.lines.length > 0) {

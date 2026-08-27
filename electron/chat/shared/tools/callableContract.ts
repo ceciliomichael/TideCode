@@ -81,6 +81,10 @@ function formatPropertyName(name: string) {
 }
 
 function formatSignature(name: string, inputSchema: JSONSchema7) {
+  if (inputSchema.type !== 'object' && !isRecord(inputSchema.properties)) {
+    return `tools${formatMember(name)}(input: ${formatType(inputSchema)}): Promise<ToolResult>`
+  }
+
   const properties = isRecord(inputSchema.properties) ? Object.entries(inputSchema.properties) : []
   const required = new Set(
     Array.isArray(inputSchema.required)

@@ -12,7 +12,7 @@ import {
 } from './workspaceMutationErrors'
 
 const EDIT_TOOL_DESCRIPTION =
-  'Edit an existing file with structured source text by replacing targetContent with replacementContent. Ambiguous targets fail unless replaceAll is explicitly true. Pass expectedRevision from the latest read when available.'
+  'Edit an existing file using one exact operation per hunk: replace targetContent, replace an exact startLine/endLine range, or insert insertContent at the file start/end. Ambiguous text targets return recoverable candidate context unless replaceAll is explicitly true.'
 
 const EDIT_PATH_SCHEMA = {
   description: WORKSPACE_PATH_DESCRIPTION,
@@ -21,32 +21,78 @@ const EDIT_PATH_SCHEMA = {
 
 const EDIT_OPERATION_SCHEMA = {
   additionalProperties: false,
+  allOf: [{
+    oneOf: [
+      {
+        not: {
+          anyOf: [
+            { required: ['insertContent'] },
+            { required: ['insertAt'] },
+          ],
+        },
+        required: ['targetContent', 'replacementContent'],
+      },
+      {
+        not: {
+          anyOf: [
+            { required: ['targetContent'] },
+            { required: ['replaceAll'] },
+            { required: ['insertContent'] },
+            { required: ['insertAt'] },
+          ],
+        },
+        required: ['startLine', 'endLine', 'replacementContent'],
+      },
+      {
+        not: {
+          anyOf: [
+            { required: ['targetContent'] },
+            { required: ['replacementContent'] },
+            { required: ['startLine'] },
+            { required: ['endLine'] },
+            { required: ['replaceAll'] },
+          ],
+        },
+        required: ['insertContent', 'insertAt'],
+      },
+    ],
+  }],
+  description: 'Use targetContent + replacementContent for text replacement, startLine + endLine + replacementContent for exact range replacement, or insertContent + insertAt for exact boundary insertion.',
   properties: {
     endLine: {
-      description: 'Optional inclusive 1-indexed end line.',
+      description: 'Inclusive 1-indexed end line. With targetContent it constrains matching; without targetContent it defines the exact range to replace.',
       minimum: 1,
       type: 'integer',
     },
+    insertAt: {
+      description: 'Exact file boundary for insertion.',
+      enum: ['start', 'end'],
+      type: 'string',
+    },
+    insertContent: {
+      description: 'Content to insert exactly at the selected file boundary.',
+      minLength: 1,
+      type: 'string',
+    },
     replaceAll: {
-      description: 'Replace every matching occurrence. Defaults to false so ambiguous targets fail safely.',
+      description: 'Replace every matching text occurrence. Valid only with targetContent.',
       type: 'boolean',
     },
     replacementContent: {
-      description: 'Replacement text.',
+      description: 'Replacement text. Use an empty string to delete the matched text or exact line range.',
       type: 'string',
     },
     startLine: {
-      description: 'Optional inclusive 1-indexed start line.',
+      description: 'Inclusive 1-indexed start line. With targetContent it constrains matching; without targetContent it defines the exact range to replace.',
       minimum: 1,
       type: 'integer',
     },
     targetContent: {
-      description: 'Current source text to replace.',
+      description: 'Exact current source text to replace. Omit for exact range replacement or boundary insertion.',
       minLength: 1,
       type: 'string',
     },
   },
-  required: ['targetContent', 'replacementContent'],
   type: 'object',
 }
 
@@ -61,11 +107,6 @@ const EDIT_INPUT_SCHEMA = {
   additionalProperties: false,
   properties: {
     edits: EDIT_HUNKS_SCHEMA,
-    expectedRevision: {
-      description: 'Optional sha256 revision returned by the latest read of this file. The edit fails if the file changed since that read.',
-      minLength: 1,
-      type: 'string',
-    },
     path: EDIT_PATH_SCHEMA,
   },
   required: ['path', 'edits'],
@@ -75,12 +116,10 @@ const EDIT_INPUT_SCHEMA = {
 type EditToolInput = {
   path: string
   edits: EditOperationInput[]
-  expectedRevision?: string
 }
 
 interface RawEditInput {
   edits?: unknown
-  expectedRevision?: unknown
   path?: unknown
 }
 
@@ -93,7 +132,6 @@ export function createEditTool(context: WorkspaceToolContext) {
         const input = rawInput as RawEditInput
         const normalizedInput: Parameters<typeof createEditToolResult>[1] = {
           edits: requireEditOperations(input.edits),
-          expectedRevision: requireOptionalRevision(input.expectedRevision),
           path: requirePath(input.path),
         }
         return await createEditToolResult(context, normalizedInput)
@@ -136,22 +174,56 @@ throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', `Edit h
     }
 
     const operation = rawOperation as Record<string, unknown>
+    const label = `Edit hunk ${index + 1}`
+    const hasInsertionFields = operation.insertContent !== undefined || operation.insertAt !== undefined
+
+    if (hasInsertionFields) {
+      if (typeof operation.insertContent !== 'string' || operation.insertContent.length === 0) {
+        throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', `${label} requires non-empty insertContent when using insertion.`)
+      }
+      if (operation.insertAt !== 'start' && operation.insertAt !== 'end') {
+        throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', `${label} requires insertAt to be "start" or "end" when using insertion.`)
+      }
+      if (
+        operation.targetContent !== undefined ||
+        operation.replacementContent !== undefined ||
+        operation.startLine !== undefined ||
+        operation.endLine !== undefined ||
+        operation.replaceAll !== undefined
+      ) {
+        throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', `${label} cannot combine insertion with replacement fields.`)
+      }
+      return {
+        insertAt: operation.insertAt,
+        insertContent: operation.insertContent,
+      }
+    }
+
+    const lineBounds = requireLineBounds(operation.startLine, operation.endLine, label)
+    const replacementContent = requireReplacementContent(operation.replacementContent)
+
+    if (operation.targetContent === undefined) {
+      if (lineBounds.startLine === undefined || lineBounds.endLine === undefined) {
+        throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', `${label} requires targetContent, an exact startLine/endLine range, or insertion fields.`)
+      }
+      if (operation.replaceAll !== undefined) {
+        throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', `${label} cannot use replaceAll with an exact range replacement.`)
+      }
+      return {
+        ...lineBounds,
+        replacementContent,
+      }
+    }
+
     return {
       replaceAll: typeof operation.replaceAll === 'boolean' ? operation.replaceAll : undefined,
-      ...requireLineBounds(operation.startLine, operation.endLine, `Edit hunk ${index + 1}`),
-      replacementContent: requireReplacementContent(operation.replacementContent),
+      ...lineBounds,
+      replacementContent,
       targetContent: requireTargetContent(operation.targetContent),
     }
   })
 }
 
-function requireOptionalRevision(value: unknown) {
-  if (value === undefined) return undefined
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', 'expectedRevision must be a non-empty revision string when provided.')
-  }
-  return value
-}
 
 function requireLineBounds(startLine: unknown, endLine: unknown, label: string) {
   if ((startLine === undefined) !== (endLine === undefined)) {
@@ -168,7 +240,8 @@ throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', `${labe
     startLine < 1 ||
     typeof endLine !== 'number' ||
     !Number.isInteger(endLine) ||
-    endLine < 1
+    endLine < 1 ||
+    endLine < startLine
   ) {
 throw new WorkspaceMutationError('INVALID_ARGUMENT', 'INPUT_VALIDATION', `${label} requires integer startLine and endLine values of at least 1 when using a line range.`)
   }

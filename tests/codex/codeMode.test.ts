@@ -7,7 +7,7 @@ import { asSchema, jsonSchema, tool, type ToolExecutionOptions } from 'ai'
 import { CodeModeExecutor } from '../../electron/chat/shared/codeMode/executor'
 import { CODE_MODE_EXECUTION_CONTRACT } from '../../electron/chat/shared/codeMode/promptContract'
 import { createAgentToolBundle } from '../../electron/chat/shared/tools'
-import { createCodeModeTool, createToolSearchTool } from '../../electron/chat/shared/tools/metaTools'
+import { buildCodeModeDescription, createCodeModeTool, createToolSearchTool } from '../../electron/chat/shared/tools/metaTools'
 import { createAgentToolRegistry, type AgentToolRegistry } from '../../electron/chat/shared/tools/registry'
 
 function createTerminalTestRegistry(): AgentToolRegistry {
@@ -162,6 +162,50 @@ test('Code Mode enforces the tool-call limit against concurrent arrivals', async
   }
 })
 
+test('Code Mode same-file edit batching preserves the logical tool-call limit', async () => {
+  let invoked = 0
+  const entries = [{
+    description: 'Capture a synthetic edit invocation.',
+    execute: async () => {
+      invoked += 1
+      return { status: 'success' as const, summary: 'Synthetic edit completed.' }
+    },
+    inputSchema: { type: 'object' as const },
+    name: 'edit',
+    namespace: 'filesystem',
+  }]
+  const registry: AgentToolRegistry = {
+    entries,
+    get(name) {
+      return entries.find((entry) => entry.name === name)
+    },
+    search() {
+      return entries.map((entry) => ({ ...entry, score: 1 }))
+    },
+  }
+  const executor = new CodeModeExecutor(registry)
+
+  try {
+    const result = await executor.run(`
+      const settled = await Promise.allSettled([
+        tools.edit({ path: 'target.ts', edits: [{ targetContent: 'a', replacementContent: 'b' }] }),
+        tools.edit({ path: 'target.ts', edits: [{ targetContent: 'c', replacementContent: 'd' }] }),
+      ])
+      return {
+        fulfilled: settled.filter((item) => item.status === 'fulfilled').length,
+        rejected: settled.filter((item) => item.status === 'rejected').length,
+      }
+    `, { limits: { maxToolCalls: 1 } })
+
+    assert.equal(invoked, 0)
+    assert.equal(result.toolCalls.length, 0)
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, { fulfilled: 0, rejected: 2 })
+  } finally {
+    await executor.dispose()
+  }
+})
+
 test('Code Mode drains detached tool promise chains before completing', async () => {
   const invoked: number[] = []
   const entries = [{
@@ -250,7 +294,7 @@ test('Code Mode reports bare tool calls without exposing an undefined result', a
     assert.equal(typeof execute, 'function')
 
     const result = await execute?.(
-      { code: "tools.echo({ value: 'completed' })" },
+      { source: "tools.echo({ value: 'completed' })" },
       {
         context: {},
         messages: [],
@@ -297,7 +341,7 @@ test('Code Mode renders a directly returned ToolResult with literal newlines', a
     const execute = (codeModeTool as unknown as ExecutableTestTool).execute
     assert.equal(typeof execute, 'function')
     const result = await execute?.(
-      { code: 'return await tools.multiline({})' },
+      { source: 'return await tools.multiline({})' },
       { context: {}, messages: [], toolCallId: 'test-code-mode-multiline-result' },
     ) as { body?: string }
 
@@ -425,13 +469,13 @@ test('Code Mode allows explicit recovery from a failed tool promise', async () =
   }
 })
 
-test('Code Mode marks semantic process failures as failed inner calls without hiding the result', async () => {
+test('Code Mode does not reinterpret process metadata as a failed tool call', async () => {
   const entries = [
     {
-      description: 'Return a terminal result whose process exited unsuccessfully.',
+      description: 'Return a successfully executed terminal result with a nonzero process exit.',
       execute: async () => ({
-        body: 'status: failed\nresult: failed',
-        semantics: { state: 'completed', status: 'failed' },
+        body: 'state: completed\nstatus: completed\nexit_code: 17',
+        semantics: { exit_code: 17, state: 'completed', status: 'completed' },
         status: 'success' as const,
         summary: 'Started terminal session 43440',
       }),
@@ -452,15 +496,15 @@ test('Code Mode marks semantic process failures as failed inner calls without hi
 
   try {
     const result = await executor.run(
-      "const terminal = await tools.execute_terminal({ command: 'npm test', wait_seconds: 1 }); return { toolStatus: terminal.status, processStatus: terminal.semantics.status }",
+      "const terminal = await tools.execute_terminal({ command: 'npm test', wait_seconds: 1 }); return { toolStatus: terminal.status, processStatus: terminal.semantics.status, exitCode: terminal.semantics.exit_code }",
       { allowedToolNames: ['execute_terminal'] },
     )
 
-    assert.equal(result.status, 'error')
-    assert.match(result.summary, /1 failed tool call/u)
-    assert.equal(result.toolCalls[0]?.status, 'error')
+    assert.equal(result.status, 'success')
+    assert.equal(result.toolCalls[0]?.status, 'success')
     assert.deepEqual(result.output, {
-      processStatus: 'failed',
+      exitCode: 17,
+      processStatus: 'completed',
       toolStatus: 'success',
     })
   } finally {
@@ -666,7 +710,7 @@ test('Code Mode reports generated syntax errors before starting a worker', async
   }
 })
 
-test('Code Mode repairs nested quote delimiters in edit source payloads', async () => {
+test('Code Mode repairs nested quote delimiters in edit source text', async () => {
   const entries = [{
     description: 'Capture edit input.',
     execute: async (input: unknown) => ({
@@ -1119,10 +1163,15 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
 
     assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
     assert.ok(bundle.registry.get('tool_search'))
+    assert.equal(bundle.registry.get('edit'), undefined)
+    assert.ok(bundle.nativeTools.edit)
     const codeModeSchema = await asSchema((bundle.tools.code_mode as { inputSchema: unknown }).inputSchema).jsonSchema as {
       properties?: Record<string, unknown>
     }
-    assert.ok(codeModeSchema.properties && 'payloads' in codeModeSchema.properties)
+    assert.deepEqual(codeModeSchema.required, ['source'])
+    assert.ok(codeModeSchema.properties && 'source' in codeModeSchema.properties)
+    assert.equal(codeModeSchema.properties && 'code' in codeModeSchema.properties, false)
+    assert.equal(codeModeSchema.properties && 'payloads' in codeModeSchema.properties, false)
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
       /tools\.read\(\{ path: string/u,
@@ -1137,7 +1186,7 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
     )
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
-      /Path rule: every supplied path argument is one exact workspace-relative file or directory/u,
+      /Path rule: every supplied path argument and every patch file header is one exact workspace-relative file or directory/u,
     )
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
@@ -1145,7 +1194,7 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
     )
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
-      /discover it with list, glob, or grep before reading or editing it/u,
+      /discover it with list, glob, or grep before reading or patching it/u,
     )
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
@@ -1163,8 +1212,10 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
     assert.equal(codeModeDescription.split(CODE_MODE_EXECUTION_CONTRACT).length - 1, 1)
     assert.match(codeModeDescription, /temporary asynchronous JavaScript program running in a tool-only worker/u)
     assert.match(codeModeDescription, /Choose the purpose-built inner API for the scenario/u)
-    assert.match(codeModeDescription, /top-level code_mode payloads object/u)
-    assert.match(codeModeDescription, /`tools\.edit`: make a targeted change to an existing text file/u)
+    assert.match(codeModeDescription, /one JavaScript source program/u)
+    assert.doesNotMatch(codeModeDescription, /top-level code_mode payloads object/u)
+    assert.match(codeModeDescription, /`tools\.apply_patch`: primary API for targeted source changes/u)
+    assert.doesNotMatch(codeModeDescription, /tools\.edit/u)
     assert.match(codeModeDescription, /`tools\.execute_terminal`: run an actual command\/process/u)
     assert.match(codeModeDescription, /Never use shell, PowerShell, Python, or Node just to read, search, edit, or write workspace files/u)
     assert.doesNotMatch(codeModeDescription, /Tool-only runtime: direct Node\.js and host access is blocked/u)
@@ -1177,13 +1228,138 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
     assert.match(codeModeDescription, /non-executable string, comment, regex, and template-literal text/u)
 
     const codeResult = await invoke(bundle.tools.code_mode, {
-      code: "const search = await tools.tool_search({ query: 'connected memory service', limit: 5 }); const file = await tools.read({ path: 'package.json' }); const root = await tools.read({ path: '' }); return { hasVersion: file.body.includes('1.2.3'), rootPath: root.subject?.path, searchStatus: search.status }",
+      source: "const search = await tools.tool_search({ query: 'connected memory service', limit: 5 }); const file = await tools.read({ path: 'package.json' }); const root = await tools.read({ path: '' }); return { hasVersion: file.body.includes('1.2.3'), rootPath: root.subject?.path, searchStatus: search.status }",
     }) as { body?: string }
     assert.match(codeResult.body ?? '', /"hasVersion": true/u)
     assert.match(codeResult.body ?? '', /"rootPath": "\."/u)
     assert.match(codeResult.body ?? '', /"searchStatus": "success"/u)
+
+    const hiddenEditResult = await invoke(bundle.tools.code_mode, {
+      source: "return await tools.edit({ path: 'package.json', edits: [] })",
+    }) as { semantics?: { tool_call_count?: number }; status?: string }
+    assert.equal(hiddenEditResult.status, 'error')
+    assert.equal(hiddenEditResult.semantics?.tool_call_count, 0)
   } finally {
     await codeModeExecutor?.dispose()
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('every provider exposes the same TideCode Code Mode description', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-description-parity-'))
+  const providerIds = ['openai', 'codex', 'anthropic', 'google', 'mistral', 'deepseek', 'custom:test'] as const
+  const descriptions: string[] = []
+
+  try {
+    for (const providerId of providerIds) {
+      const bundle = await createAgentToolBundle(
+        { workspaceRootPath },
+        { chatMode: 'agent', orchestrationMode: 'code_mode', providerId },
+      )
+      const codeModeTool = bundle.tools.code_mode as unknown as {
+        args?: { description?: string }
+        description?: string
+      }
+
+      try {
+        const description = codeModeTool.args?.description ?? codeModeTool.description ?? ''
+        assert.equal(description, buildCodeModeDescription(bundle.registry))
+        descriptions.push(description)
+      } finally {
+        await bundle.codeModeExecutor?.dispose()
+      }
+    }
+
+    assert.ok(descriptions[0]?.length)
+    assert.deepEqual(new Set(descriptions).size, 1)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('OpenAI and Codex transport Code Mode as the same raw JavaScript string', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-freeform-'))
+
+  try {
+    await fs.writeFile(path.join(workspaceRootPath, 'value.txt'), 'freeform\n', 'utf8')
+
+    for (const providerId of ['openai', 'codex'] as const) {
+      const bundle = await createAgentToolBundle(
+        { workspaceRootPath },
+        { chatMode: 'agent', orchestrationMode: 'code_mode', providerId },
+      )
+      const codeModeTool = bundle.tools.code_mode as unknown as {
+        args?: { description?: string; format?: { definition?: string; syntax?: string; type?: string } }
+        execute?: (input: string, options: ToolExecutionOptions<unknown>) => Promise<unknown>
+        id?: string
+        inputSchema: unknown
+        type?: string
+      }
+
+      try {
+        assert.equal(codeModeTool.type, 'provider')
+        assert.equal(codeModeTool.id, 'openai.custom')
+        const inputSchema = await asSchema(codeModeTool.inputSchema).jsonSchema as { type?: string }
+        assert.equal(inputSchema.type, 'string')
+        assert.equal(codeModeTool.args?.format?.type, 'grammar')
+        assert.equal(codeModeTool.args?.format?.syntax, 'lark')
+        assert.match(codeModeTool.args?.format?.definition ?? '', /plain_source: SOURCE/u)
+        assert.match(codeModeTool.args?.description ?? '', /one JavaScript source program/u)
+
+        const result = await codeModeTool.execute?.(
+          "const value = await tools.read({ path: 'value.txt' }); return value.body.trim()",
+          { context: {}, messages: [], toolCallId: `freeform-${providerId}` },
+        ) as { body?: string; status?: string }
+        assert.equal(result.status, 'success')
+        assert.match(result.body ?? '', /freeform/u)
+      } finally {
+        await bundle.codeModeExecutor?.dispose()
+      }
+    }
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('non-freeform providers transport the same Code Mode source through the source shim', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-source-shim-'))
+
+  try {
+    await fs.writeFile(path.join(workspaceRootPath, 'value.txt'), 'shim\n', 'utf8')
+
+    for (const providerId of ['anthropic', 'google', 'mistral', 'deepseek', 'custom:test'] as const) {
+      const bundle = await createAgentToolBundle(
+        { workspaceRootPath },
+        { chatMode: 'agent', orchestrationMode: 'code_mode', providerId },
+      )
+      const codeModeTool = bundle.tools.code_mode as {
+        execute?: (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>
+        inputSchema: unknown
+        type?: string
+      }
+
+      try {
+        assert.notEqual(codeModeTool.type, 'provider')
+        const inputSchema = await asSchema(codeModeTool.inputSchema).jsonSchema as {
+          properties?: Record<string, unknown>
+          required?: string[]
+          type?: string
+        }
+        assert.equal(inputSchema.type, 'object')
+        assert.deepEqual(inputSchema.required, ['source'])
+        assert.ok(inputSchema.properties && 'source' in inputSchema.properties)
+
+        const result = await codeModeTool.execute?.(
+          { source: "const value = await tools.read({ path: 'value.txt' }); return value.body.trim()" },
+          { context: {}, messages: [], toolCallId: 'source-shim-' + providerId },
+        ) as { body?: string; status?: string }
+        assert.equal(result.status, 'success')
+        assert.match(result.body ?? '', /shim/u)
+      } finally {
+        await bundle.codeModeExecutor?.dispose()
+      }
+    }
+  } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
@@ -1204,7 +1380,7 @@ test('full terminal mode does not grant direct Node access inside provider-facin
     assert.equal(typeof codeModeTool.execute, 'function')
 
     const result = await codeModeTool.execute?.(
-      { code: 'return process.version' },
+      { source: 'return process.version' },
       { context: {}, messages: [], toolCallId: 'full-terminal-code-mode' },
     ) as { body?: string; status?: string }
 

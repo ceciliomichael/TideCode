@@ -22,7 +22,7 @@ type AssistantModelMessage = Extract<ModelMessage, { role: 'assistant' }>
 type AssistantContentPart = Exclude<AssistantModelMessage['content'], string>[number]
 
 interface CanonicalToolCall {
-  argumentsValue: Record<string, unknown>
+  argumentsValue: Record<string, unknown> | string
   toolName: string
 }
 
@@ -280,7 +280,7 @@ export function stripImageAttachmentsFromModelMessages(messages: readonly ModelM
 function parseToolArguments(argumentsText: string) {
   try {
     const parsedValue = JSON.parse(argumentsText) as unknown
-    if (typeof parsedValue !== 'object' || parsedValue === null) {
+    if (parsedValue === null || (typeof parsedValue !== 'object' && typeof parsedValue !== 'string')) {
       return null
     }
 

@@ -1,6 +1,7 @@
 import '../configureAppRoot'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { openai } from '@ai-sdk/openai'
 import type { ModelMessage } from 'ai'
 import type { WebContents } from 'electron'
 import { buildPromptContextManifest } from '../../electron/chat/cache/canonicalization'
@@ -110,6 +111,29 @@ test('execution mode changes do not alter the system prompt or tool context fing
   assert.equal(sandboxManifest.systemHash, fullAccessManifest.systemHash)
   assert.equal(sandboxManifest.toolsHash, fullAccessManifest.toolsHash)
   assert.equal(sandboxManifest.fingerprint, fullAccessManifest.fingerprint)
+})
+
+test('provider-defined tool description and grammar participate in the prompt fingerprint', () => {
+  const createManifest = (description: string, definition: string) => buildPromptContextManifest({
+    modelId: 'test-model',
+    providerId: 'codex',
+    system: 'shared-system',
+    tools: {
+      code_mode: openai.tools.customTool({
+        description,
+        format: { definition, syntax: 'lark', type: 'grammar' },
+      }),
+    },
+  })
+
+  const baseline = createManifest('Shared Code Mode contract.', 'start: SOURCE\nSOURCE: /[\\s\\S]+/')
+  const changedDescription = createManifest('Changed Code Mode contract.', 'start: SOURCE\nSOURCE: /[\\s\\S]+/')
+  const changedGrammar = createManifest('Shared Code Mode contract.', 'start: SOURCE SOURCE\nSOURCE: /[\\s\\S]+/')
+
+  assert.notEqual(baseline.toolsHash, changedDescription.toolsHash)
+  assert.notEqual(baseline.toolsHash, changedGrammar.toolsHash)
+  assert.notEqual(baseline.fingerprint, changedDescription.fingerprint)
+  assert.notEqual(baseline.fingerprint, changedGrammar.fingerprint)
 })
 
 test('legacy compressed history sends only the handoff while preserving the UI container source', () => {

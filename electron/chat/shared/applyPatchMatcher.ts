@@ -1,5 +1,5 @@
 import type { ApplyPatchUpdateChunk } from './applyPatchTypes'
-import { createFileRevision } from './fileRevision'
+
 
 interface PatchableContent {
   hasTrailingLineEnding: boolean
@@ -40,33 +40,76 @@ function linesMatch(actual: string, expected: string, mode: LineMatchMode) {
     : normalizeWhitespace(actual) === normalizeWhitespace(expected)
 }
 
-function findSequenceCandidates(
+function sequenceMatchesAt(
+  lines: readonly string[],
+  pattern: readonly string[],
+  lineIndex: number,
+) {
+  const exactMatch = pattern.every((expected, patternIndex) =>
+    linesMatch(lines[lineIndex + patternIndex], expected, 'exact'),
+  )
+  if (exactMatch) return true
+
+  return pattern.every((expected, patternIndex) =>
+    linesMatch(lines[lineIndex + patternIndex], expected, 'whitespace'),
+  )
+}
+
+function findFirstSequenceCandidate(
   lines: readonly string[],
   pattern: readonly string[],
   startIndex: number,
-  mode: LineMatchMode,
 ) {
+  if (pattern.length === 0) return -1
+
+  for (let lineIndex = startIndex; lineIndex <= lines.length - pattern.length; lineIndex += 1) {
+    if (sequenceMatchesAt(lines, pattern, lineIndex)) return lineIndex
+  }
+
+  return -1
+}
+
+function findSequenceCandidates(lines: readonly string[], pattern: readonly string[]) {
   const candidates: number[] = []
   if (pattern.length === 0) return candidates
 
-  for (let lineIndex = startIndex; lineIndex <= lines.length - pattern.length; lineIndex += 1) {
-    const matches = pattern.every((expected, patternIndex) =>
-      linesMatch(lines[lineIndex + patternIndex], expected, mode),
-    )
-    if (matches) candidates.push(lineIndex)
+  for (let lineIndex = 0; lineIndex <= lines.length - pattern.length; lineIndex += 1) {
+    if (sequenceMatchesAt(lines, pattern, lineIndex)) candidates.push(lineIndex)
   }
 
   return candidates
 }
 
-function findCandidatesAtBestFidelity(
+function replacementOverlapsRange(
+  replacement: Replacement,
+  startIndex: number,
+  deleteCount: number,
+) {
+  const endIndex = startIndex + deleteCount
+  if (replacement.deleteCount === 0) {
+    return replacement.startIndex >= startIndex && replacement.startIndex < endIndex
+  }
+
+  const replacementEndIndex = replacement.startIndex + replacement.deleteCount
+  return replacement.startIndex < endIndex && startIndex < replacementEndIndex
+}
+
+function findUniqueNonOverlappingSequenceCandidate(
   lines: readonly string[],
   pattern: readonly string[],
-  startIndex: number,
+  replacements: readonly Replacement[],
 ) {
-  const exactCandidates = findSequenceCandidates(lines, pattern, startIndex, 'exact')
-  if (exactCandidates.length > 0) return exactCandidates
-  return findSequenceCandidates(lines, pattern, startIndex, 'whitespace')
+  const candidates = findSequenceCandidates(lines, pattern)
+  if (candidates.length !== 1) return -1
+
+  const candidate = candidates[0]
+  if (replacements.some((replacement) =>
+    replacementOverlapsRange(replacement, candidate, pattern.length),
+  )) {
+    return -1
+  }
+
+  return candidate
 }
 
 function formatLinePreview(lines: readonly string[], anchorIndex: number) {
@@ -125,7 +168,6 @@ function createMissingSequenceError(
   filePath: string,
   lines: readonly string[],
   pattern: readonly string[],
-  revision: string,
   startIndex: number,
 ) {
   const nearbyAnchor = findNearbyAnchor(lines, pattern, startIndex)
@@ -136,7 +178,7 @@ function createMissingSequenceError(
     ? ''
     : `\n\nCurrent source near the match:\n${formatLinePreview(lines, nearbyAnchor)}`
   return new Error(
-    `Patch rejected; no files changed.\nCurrent revision: ${revision}\nFailed to find expected lines in ${filePath}. For multiple hunks in one file, emit hunks from top to bottom and retry from a fresh read:\n${pattern.join('\n')}${partialHint}${preview}`,
+    `Patch rejected; no files changed.\nFailed to find expected lines in ${filePath}. For multiple hunks in one file, emit hunks from top to bottom and retry from a fresh read:\n${pattern.join('\n')}${partialHint}${preview}`,
   )
 }
 
@@ -146,10 +188,9 @@ function resolveSequenceIndex(input: {
   isEndOfFile: boolean
   lines: readonly string[]
   pattern: readonly string[]
-  revision: string
   startIndex: number
 }) {
-  const { expectedLine, filePath, isEndOfFile, lines, pattern, revision, startIndex } = input
+  const { expectedLine, filePath, isEndOfFile, lines, pattern, startIndex } = input
   if (pattern.length === 0) return -1
 
   if (isEndOfFile) {
@@ -161,7 +202,7 @@ function resolveSequenceIndex(input: {
       )
       if (exact || whitespace) return candidate
     }
-    throw createMissingSequenceError(filePath, lines, pattern, revision, startIndex)
+    throw createMissingSequenceError(filePath, lines, pattern, startIndex)
   }
 
   if (expectedLine !== undefined) {
@@ -175,10 +216,10 @@ function resolveSequenceIndex(input: {
     }
   }
 
-  const candidates = findCandidatesAtBestFidelity(lines, pattern, startIndex)
-  if (candidates.length > 0) return candidates[0]
+  const candidate = findFirstSequenceCandidate(lines, pattern, startIndex)
+  if (candidate !== -1) return candidate
 
-  throw createMissingSequenceError(filePath, lines, pattern, revision, startIndex)
+  throw createMissingSequenceError(filePath, lines, pattern, startIndex)
 }
 
 function findChangeContextIndex(
@@ -186,7 +227,7 @@ function findChangeContextIndex(
   changeContext: string,
   startIndex: number,
 ) {
-  return findCandidatesAtBestFidelity(lines, [changeContext], startIndex)[0] ?? -1
+  return findFirstSequenceCandidate(lines, [changeContext], startIndex)
 }
 
 function buildReplacementLines(
@@ -213,13 +254,15 @@ export function applyUpdateChunks(
   filePath: string,
   originalContent: string,
   chunks: readonly ApplyPatchUpdateChunk[],
+  options?: {
+    onChunkResolved?: (input: { chunkIndex: number; startLineNumber: number }) => void
+  },
 ) {
   const { hasTrailingLineEnding, lines: originalLines } = splitPatchableContent(originalContent)
-  const revision = createFileRevision(originalContent)
   const replacements: Replacement[] = []
   let searchStartIndex = 0
 
-  for (const chunk of chunks) {
+  for (const [chunkIndex, chunk] of chunks.entries()) {
     if (chunk.changeContext) {
       const contextIndex = findChangeContextIndex(
         originalLines,
@@ -244,30 +287,49 @@ export function applyUpdateChunks(
         newLines: [...chunk.newLines],
         startIndex: insertionIndex,
       })
+      options?.onChunkResolved?.({ chunkIndex, startLineNumber: insertionIndex + 1 })
       searchStartIndex = insertionIndex
       continue
     }
 
-    const foundIndex = resolveSequenceIndex({
-      ...(chunk.offset ? { expectedLine: chunk.offset.startLine } : {}),
-      filePath,
-      isEndOfFile: Boolean(chunk.isEndOfFile),
-      lines: originalLines,
-      pattern: chunk.oldLines,
-      revision,
-      startIndex: searchStartIndex,
-    })
+    let foundIndex: number
+    try {
+      foundIndex = resolveSequenceIndex({
+        ...(chunk.offset ? { expectedLine: chunk.offset.startLine } : {}),
+        filePath,
+        isEndOfFile: Boolean(chunk.isEndOfFile),
+        lines: originalLines,
+        pattern: chunk.oldLines,
+        startIndex: searchStartIndex,
+      })
+    } catch (error) {
+      const recoveredIndex = chunk.changeContext || chunk.isEndOfFile
+        ? -1
+        : findUniqueNonOverlappingSequenceCandidate(
+            originalLines,
+            chunk.oldLines,
+            replacements,
+          )
+      if (recoveredIndex === -1) throw error
+      foundIndex = recoveredIndex
+    }
+
     replacements.push({
       deleteCount: chunk.oldLines.length,
       newLines: buildReplacementLines(chunk, foundIndex, originalLines),
       startIndex: foundIndex,
     })
-    searchStartIndex = foundIndex + chunk.oldLines.length
+    options?.onChunkResolved?.({ chunkIndex, startLineNumber: foundIndex + 1 })
+    searchStartIndex = Math.max(searchStartIndex, foundIndex + chunk.oldLines.length)
   }
 
+  const orderedReplacements = replacements
+    .map((replacement, index) => ({ index, replacement }))
+    .sort((left, right) =>
+      right.replacement.startIndex - left.replacement.startIndex || right.index - left.index,
+    )
   const nextLines = [...originalLines]
-  for (let index = replacements.length - 1; index >= 0; index -= 1) {
-    const replacement = replacements[index]
+  for (const { replacement } of orderedReplacements) {
     nextLines.splice(replacement.startIndex, replacement.deleteCount, ...replacement.newLines)
   }
 

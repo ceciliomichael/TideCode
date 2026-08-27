@@ -17,7 +17,7 @@ import { decodeReplayValue, encodeModelMessages, encodeReplayValue } from './rep
 import { parseCanonicalHistoryDocument } from './validation'
 import type { ModelMessage } from 'ai'
 import { sha256, stableStringify } from '../cache/canonicalization'
-import { carryCompletedReplaysAcrossBranch } from './branchReplay'
+import { resolveReplayStateAfterHistoryRewrite } from './branchReplay'
 import {
   sanitizeCompactedModelMessages,
   sanitizeModelMessages,
@@ -258,57 +258,15 @@ export async function synchronizeCanonicalMessages(conversationId: string, messa
       const wasEdited = priorIds.some((id, index) => (
         messageIds[index] === id && priorDigests[index] !== messageDigests[index]
       ))
-      const retryAnchorId = [...messages].reverse().find((message) => message.role === 'user')?.id ?? null
-      const retryEvent = wasEdited || !retryAnchorId
-        ? null
-        : [...document.events].reverse().find((event) => (
-            event.type === 'run_started' && event.anchorUserMessageId === retryAnchorId
-          ))
-      const carriedReplayState = wasEdited
-        ? { replay: null, replays: {} }
-        : carryCompletedReplaysAcrossBranch({
-            activeBranchId: document.activeBranchId,
-            messageIds,
-            replay: document.replay,
-            replays: document.replays,
-          })
+      const carriedReplayState = resolveReplayStateAfterHistoryRewrite({
+        activeBranchId: document.activeBranchId,
+        messageIds,
+        replay: document.replay,
+        replays: document.replays,
+        wasEdited,
+      })
       document.replays = carriedReplayState.replays
       document.replay = carriedReplayState.replay
-      if (!wasEdited && retryAnchorId) {
-        for (const event of [...document.events].reverse()) {
-          if (event.type !== 'run_started' || event.anchorUserMessageId !== retryAnchorId) continue
-          const slotKey = getReplaySlotKey(event.providerId, event.modelId)
-          if (document.replays[slotKey]) continue
-          document.replays[slotKey] = {
-            anchorUserMessageId: retryAnchorId,
-            branchId: document.activeBranchId,
-            contextFingerprint: event.contextFingerprint,
-            fidelity: event.fidelity,
-            freshnessRevision: document.freshness.revision,
-            messages: event.initialMessages,
-            modelId: event.modelId,
-            providerId: event.providerId,
-            runId: event.runId ?? event.eventId,
-            sourceRevision: event.revision,
-            updatedAt: Date.now(),
-          }
-        }
-      }
-      if (!document.replay && retryEvent && retryEvent.type === 'run_started') {
-        document.replay = document.replays[getReplaySlotKey(retryEvent.providerId, retryEvent.modelId)] ?? {
-          anchorUserMessageId: retryAnchorId,
-          branchId: document.activeBranchId,
-          contextFingerprint: retryEvent.contextFingerprint,
-          fidelity: retryEvent.fidelity,
-          freshnessRevision: document.freshness.revision,
-          messages: retryEvent.initialMessages,
-          modelId: retryEvent.modelId,
-          providerId: retryEvent.providerId,
-          runId: retryEvent.runId ?? retryEvent.eventId,
-          sourceRevision: retryEvent.revision,
-          updatedAt: Date.now(),
-        }
-      }
       appendEvent(document, {
         fromBranchId: previousBranchId,
         reason: wasEdited ? 'edited' : 'history_replaced',
@@ -514,6 +472,7 @@ export async function recordToolFreshness(input: {
     const mutationTools = new Set([
       'write',
       'edit',
+      'apply_patch',
     ])
     const type = mutationTools.has(input.toolName) || isTerminalTool
       ? 'observation_invalidated'

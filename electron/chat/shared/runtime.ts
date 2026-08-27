@@ -75,6 +75,7 @@ import {
   createSameTurnSteerMessages,
   hasCompletedToolBoundary,
 } from './runtimeSteering'
+import { runProviderToolContinuationLoop } from './runtimeToolContinuation'
 
 export { estimateToolEnabledContextUsage } from './runtimeContextUsage'
 
@@ -264,6 +265,8 @@ export async function runToolEnabledChatStream(input: {
     })
     let replayMessages: ModelMessage[] = [...modelMessages]
     let latestCompactionPacket: CompactionPacket | null = replayCompactionPacket
+    let nextRecordedStepNumber = 0
+    let restartingAfterToolBoundary = false
     const systemPromptTokens = approximateTokenCount(prompt.system)
     const emitContextUsage = (usage: ContextUsageEstimate) => {
       if (!conversationId) return
@@ -328,13 +331,28 @@ export async function runToolEnabledChatStream(input: {
       system: prompt.system,
       tools,
       onStepEnd: (step) => {
-        replayMessages.push(...step.responseMessages as ModelMessage[])
+        const recordedStep = {
+          ...step,
+          stepNumber: nextRecordedStepNumber,
+        }
+        nextRecordedStepNumber += 1
+        replayMessages = [
+          ...replayMessages,
+          ...(recordedStep.responseMessages as ModelMessage[]),
+        ]
         if (conversationId) {
-          queueHistoryWrite(() => recordStepCompleted(conversationId, runId, step))
+          queueHistoryWrite(() => recordStepCompleted(conversationId, runId, recordedStep))
         }
       },
       prepareStep: async (stepInput) => {
-        const queuedSteerMessages = hasCompletedToolBoundary(stepInput.steps)
+        // A provider continuation starts a fresh AI SDK stream whose local step
+        // number resets to zero. Keep TideCode's logical step number monotonic
+        // so compaction still sees this as the next tool/model boundary.
+        const logicalStepNumber = nextRecordedStepNumber
+        const queuedSteerMessages = (
+          hasCompletedToolBoundary(stepInput.steps)
+          || (restartingAfterToolBoundary && stepInput.stepNumber === 0)
+        )
           ? input.steering.consumePendingAtToolBoundary()
           : []
         const consumedSteerMessages = createSameTurnSteerMessages(
@@ -374,7 +392,7 @@ export async function runToolEnabledChatStream(input: {
           abortSignal: input.abortController.signal,
           messages: compactionMessages,
           responseMessages: stepInput.responseMessages,
-          stepNumber: stepInput.stepNumber,
+          stepNumber: logicalStepNumber,
         })
         if (!automaticTrigger) {
           return consumedSteerModelMessages.length > 0
@@ -522,43 +540,72 @@ export async function runToolEnabledChatStream(input: {
         }
       },
     }
-    let stream = await createProviderStream(initialStreamInput)
-
-    emitChatStreamEvent(input.webContents, {
-      streamId: input.streamId,
-      type: 'started',
-    })
-
-    let processedStream: Awaited<ReturnType<typeof processRuntimeStream>>
-    try {
-      processedStream = await processRuntimeStream({
-        abortController: input.abortController,
-        conversationId,
-        fullStream: stream.fullStream,
-        queueHistoryWrite,
-        streamId: input.streamId,
-        webContents: input.webContents,
-      })
-    } catch (error) {
-      if (
-        shouldStripImageAttachments ||
-        !hasImageAttachmentsInModelMessages(initialStreamInput.messages) ||
-        !isUnsupportedImageInputError(error)
-      ) {
-        throw error
+    let hasEmittedStarted = false
+    const processProviderStreamInput = async (
+      streamInput: ProviderStreamFactoryInput,
+      continuationIndex: number,
+    ) => {
+      restartingAfterToolBoundary = continuationIndex > 0
+      let streamLastStep: ProviderStepRecord | null = null
+      const providerStreamInput: ProviderStreamFactoryInput = {
+        ...streamInput,
+        onStepEnd: async (step) => {
+          streamLastStep = step
+          await streamInput.onStepEnd?.(step)
+        },
+      }
+      let stream = await createProviderStream(providerStreamInput)
+      if (!hasEmittedStarted) {
+        emitChatStreamEvent(input.webContents, {
+          streamId: input.streamId,
+          type: 'started',
+        })
+        hasEmittedStarted = true
       }
 
-      shouldStripImageAttachments = true
-      stream = await createProviderStream(initialStreamInput)
-      processedStream = await processRuntimeStream({
-        abortController: input.abortController,
-        conversationId,
-        fullStream: stream.fullStream,
-        queueHistoryWrite,
-        streamId: input.streamId,
-        webContents: input.webContents,
-      })
+      try {
+        const result = await processRuntimeStream({
+          abortController: input.abortController,
+          conversationId,
+          fullStream: stream.fullStream,
+          queueHistoryWrite,
+          streamId: input.streamId,
+          webContents: input.webContents,
+        })
+        return { ...result, lastStep: streamLastStep }
+      } catch (error) {
+        if (
+          shouldStripImageAttachments ||
+          !hasImageAttachmentsInModelMessages(streamInput.messages) ||
+          !isUnsupportedImageInputError(error)
+        ) {
+          throw error
+        }
+        shouldStripImageAttachments = true
+        const imageRetryMessages = stripImageAttachmentsFromModelMessages(streamInput.messages)
+        streamLastStep = null
+        stream = await createProviderStream({
+          ...providerStreamInput,
+          messages: imageRetryMessages,
+        })
+        const result = await processRuntimeStream({
+          abortController: input.abortController,
+          conversationId,
+          fullStream: stream.fullStream,
+          queueHistoryWrite,
+          streamId: input.streamId,
+          webContents: input.webContents,
+        })
+        return { ...result, lastStep: streamLastStep }
+      }
     }
+
+    const processedStream = await runProviderToolContinuationLoop({
+      getContinuationMessages: () => replayMessages,
+      initialInput: initialStreamInput,
+      run: processProviderStreamInput,
+    })
+    restartingAfterToolBoundary = false
 
     // Some providers close their async iterable normally after receiving an
     // abort signal instead of throwing an AbortError. Treat that close as an

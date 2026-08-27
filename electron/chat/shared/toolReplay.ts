@@ -90,9 +90,11 @@ export function createCanonicalToolResultContent(input: {
   return formatStructuredToolResultContent(
     {
       arguments:
-        typeof input.argumentsValue === 'object' && input.argumentsValue !== null
-          ? (input.argumentsValue as Record<string, unknown>)
-          : undefined,
+        typeof input.argumentsValue === 'string'
+          ? input.argumentsValue
+          : typeof input.argumentsValue === 'object' && input.argumentsValue !== null && !Array.isArray(input.argumentsValue)
+            ? (input.argumentsValue as Record<string, unknown>)
+            : undefined,
       schema: 'tidecode.tool_result/v1',
       ...(input.result.semantics ? { semantics: input.result.semantics } : {}),
       status: input.result.status,

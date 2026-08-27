@@ -6,7 +6,7 @@ export interface StructuredToolResultSubject {
 }
 
 export interface StructuredToolResultMetadata {
-  arguments?: Record<string, unknown>
+  arguments?: Record<string, unknown> | string
   schema: 'tidecode.tool_result/v1'
   semantics?: Record<string, unknown>
   status: 'error' | 'success'
@@ -33,9 +33,11 @@ export function createTerminatedToolResultContent(input: {
   return formatStructuredToolResultContent(
     {
       arguments:
-        typeof input.argumentsValue === 'object' && input.argumentsValue !== null && !Array.isArray(input.argumentsValue)
-          ? (input.argumentsValue as Record<string, unknown>)
-          : undefined,
+        typeof input.argumentsValue === 'string'
+          ? input.argumentsValue
+          : typeof input.argumentsValue === 'object' && input.argumentsValue !== null && !Array.isArray(input.argumentsValue)
+            ? (input.argumentsValue as Record<string, unknown>)
+            : undefined,
       schema: 'tidecode.tool_result/v1',
       status: 'error',
       summary: TERMINATED_TOOL_EXECUTION_MESSAGE,
@@ -90,7 +92,7 @@ function isStructuredToolResultMetadata(value: unknown): value is StructuredTool
     typeof value.toolCallId === 'string' &&
     typeof value.toolName === 'string' &&
     (value.truncated === undefined || typeof value.truncated === 'boolean') &&
-    (value.arguments === undefined || isRecord(value.arguments)) &&
+    (value.arguments === undefined || typeof value.arguments === 'string' || isRecord(value.arguments)) &&
     (value.semantics === undefined || isRecord(value.semantics)) &&
     (value.subject === undefined || readSubject(value.subject) !== undefined)
   )
