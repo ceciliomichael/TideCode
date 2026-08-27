@@ -1,11 +1,8 @@
 import { BrowserWindow, screen, type Rectangle } from 'electron'
 
 const POPUP_WIDTH = 184
-const POPUP_HEIGHT = 76
-const POPUP_GAP = 6
-const DISMISS_DELAY_MS = 350
-const POINTER_WATCH_INTERVAL_MS = 75
-const INTERACTION_MARGIN = 10
+const POPUP_HEIGHT = 69
+const POPUP_OVERLAP = 10
 
 interface TrayPopupOptions {
   onQuit: () => void
@@ -16,21 +13,6 @@ function clamp(value: number, minimum: number, maximum: number) {
   return Math.max(minimum, Math.min(maximum, value))
 }
 
-function getInteractionBounds(trayBounds: Rectangle, popupBounds: Rectangle): Rectangle {
-  const left = Math.min(trayBounds.x, popupBounds.x) - INTERACTION_MARGIN
-  const top = Math.min(trayBounds.y, popupBounds.y) - INTERACTION_MARGIN
-  const right = Math.max(trayBounds.x + trayBounds.width, popupBounds.x + popupBounds.width) + INTERACTION_MARGIN
-  const bottom = Math.max(trayBounds.y + trayBounds.height, popupBounds.y + popupBounds.height) + INTERACTION_MARGIN
-
-  return { x: left, y: top, width: right - left, height: bottom - top }
-}
-
-function containsPoint(bounds: Rectangle, point: { x: number; y: number }) {
-  return point.x >= bounds.x
-    && point.x <= bounds.x + bounds.width
-    && point.y >= bounds.y
-    && point.y <= bounds.y + bounds.height
-}
 
 function getPopupPosition(trayBounds: Rectangle) {
   const display = screen.getDisplayMatching(trayBounds)
@@ -41,18 +23,18 @@ function getPopupPosition(trayBounds: Rectangle) {
   const trayBottom = trayBounds.y + trayBounds.height
 
   let x = trayRight - POPUP_WIDTH
-  let y = trayBounds.y - POPUP_HEIGHT - POPUP_GAP
+  let y = trayBounds.y - POPUP_HEIGHT + POPUP_OVERLAP
 
   if (trayBounds.y >= workBottom) {
-    y = workBottom - POPUP_HEIGHT - POPUP_GAP
+    y = workBottom - POPUP_HEIGHT
   } else if (trayBottom <= workArea.y) {
-    y = workArea.y + POPUP_GAP
+    y = workArea.y
   } else if (trayBounds.x >= workRight) {
-    x = workRight - POPUP_WIDTH - POPUP_GAP
-    y = trayBottom - POPUP_HEIGHT
+    x = workRight - POPUP_WIDTH
+    y = trayBottom - POPUP_HEIGHT + POPUP_OVERLAP
   } else if (trayRight <= workArea.x) {
-    x = workArea.x + POPUP_GAP
-    y = trayBottom - POPUP_HEIGHT
+    x = workArea.x
+    y = trayBottom - POPUP_HEIGHT + POPUP_OVERLAP
   }
 
   return {
@@ -69,8 +51,8 @@ function createPopupMarkup() {
     ':root{--bg:#fff;--border:#d8d8d8;--hover:#f0f0f0;--text:#111;color-scheme:light dark}' +
     '@media (prefers-color-scheme:dark){:root{--bg:#202020;--border:#3a3a3a;--hover:#303030;--text:#f5f5f5}}' +
     '*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:var(--bg)}' +
-    'body{padding:3px;font-family:"Segoe UI",system-ui,sans-serif;font-size:14px;user-select:none}' +
-    '.menu{width:100%;overflow:hidden;border:1px solid var(--border);border-radius:7px;background:var(--bg);box-shadow:0 4px 14px rgba(0,0,0,.24)}' +
+    'body{font-family:"Segoe UI",system-ui,sans-serif;font-size:14px;user-select:none}' +
+    '.menu{width:100%;height:100%;overflow:hidden;background:var(--bg)}' +
     'a{display:flex;align-items:center;width:100%;height:34px;padding:0 12px;color:var(--text);text-decoration:none;outline:none;cursor:default}' +
     'a+a{border-top:1px solid var(--border)}a:hover,a:focus-visible{background:var(--hover)}' +
     '</style></head><body><div class="menu">' +
@@ -82,50 +64,77 @@ function createPopupMarkup() {
 export function createTrayPopupController(options: TrayPopupOptions) {
   let popup: BrowserWindow | null = null
   let popupReady: Promise<void> | null = null
-  let pointerWatch: ReturnType<typeof setInterval> | null = null
-  let isPopupPresented = false
+  let outsideClickHookModule: typeof import('uiohook-napi') | null = null
+  let outsideClickListener: (() => void) | null = null
+  let outsideClickHookStarted = false
+  let outsideClickHookToken = 0
 
-  const stopPointerWatch = () => {
-    if (pointerWatch !== null) {
-      clearInterval(pointerWatch)
-      pointerWatch = null
-    }
+  const stopOutsideClickHook = () => {
+    outsideClickHookToken += 1
+    const hookModule = outsideClickHookModule
+    const listener = outsideClickListener
+    outsideClickHookModule = null
+    outsideClickListener = null
+
+    if (!hookModule || !outsideClickHookStarted) return
+    outsideClickHookStarted = false
+    if (listener) hookModule.uIOhook.off('mousedown', listener)
+    hookModule.uIOhook.stop()
   }
 
   const hidePopup = () => {
-    stopPointerWatch()
-    isPopupPresented = false
-    if (!popup || popup.isDestroyed()) return
+    if (!popup || popup.isDestroyed()) {
+      stopOutsideClickHook()
+      return
+    }
     popup.setIgnoreMouseEvents(true)
     popup.setOpacity(0)
+    stopOutsideClickHook()
   }
 
-  const startPointerWatch = (currentPopup: BrowserWindow, trayBounds: Rectangle) => {
-    stopPointerWatch()
-    let outsideSince: number | null = null
+  const startOutsideClickHook = () => {
+    const activationToken = ++outsideClickHookToken
+    void import('uiohook-napi')
+      .then((hookModule) => {
+        const currentPopup = popup
+        if (
+          activationToken !== outsideClickHookToken
+          || !currentPopup
+          || currentPopup.isDestroyed()
+          || currentPopup.getOpacity() <= 0
+        ) return
 
-    pointerWatch = setInterval(() => {
-      if (currentPopup.isDestroyed() || !isPopupPresented) {
-        stopPointerWatch()
-        return
-      }
+        const listener = () => {
+          const visiblePopup = popup
+          if (!visiblePopup || visiblePopup.isDestroyed() || visiblePopup.getOpacity() <= 0) return
 
-      const interactionBounds = getInteractionBounds(trayBounds, currentPopup.getBounds())
-      const cursorPoint = screen.getCursorScreenPoint()
-      if (containsPoint(interactionBounds, cursorPoint)) {
-        outsideSince = null
-        return
-      }
+          const point = screen.getCursorScreenPoint()
+          const bounds = visiblePopup.getBounds()
+          const isInside = point.x >= bounds.x
+            && point.x < bounds.x + bounds.width
+            && point.y >= bounds.y
+            && point.y < bounds.y + bounds.height
+          if (!isInside) hidePopup()
+        }
 
-      const now = Date.now()
-      if (outsideSince === null) {
-        outsideSince = now
-        return
-      }
-
-      if (now - outsideSince >= DISMISS_DELAY_MS) hidePopup()
-    }, POINTER_WATCH_INTERVAL_MS)
+        outsideClickHookModule = hookModule
+        outsideClickListener = listener
+        hookModule.uIOhook.on('mousedown', listener)
+        try {
+          hookModule.uIOhook.start()
+          outsideClickHookStarted = true
+        } catch (error) {
+          hookModule.uIOhook.off('mousedown', listener)
+          outsideClickHookModule = null
+          outsideClickListener = null
+          console.error('Failed to start the TideCode tray outside-click hook.', error)
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to load the TideCode tray outside-click hook.', error)
+      })
   }
+
 
   const loadPopupMarkup = () => {
     const currentPopup = popup
@@ -161,7 +170,7 @@ export function createTrayPopupController(options: TrayPopupOptions) {
       alwaysOnTop: true,
       transparent: false,
       backgroundColor: '#202020',
-      hasShadow: true,
+      hasShadow: false,
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
@@ -180,7 +189,6 @@ export function createTrayPopupController(options: TrayPopupOptions) {
       return { action: 'deny' }
     })
     nextPopup.on('closed', () => {
-      stopPointerWatch()
       if (popup === nextPopup) {
         popup = null
         popupReady = null
@@ -188,6 +196,7 @@ export function createTrayPopupController(options: TrayPopupOptions) {
     })
 
     popup = nextPopup
+    nextPopup.setAlwaysOnTop(true, 'pop-up-menu')
     nextPopup.setIgnoreMouseEvents(true)
     // Load exactly once, then keep the native window alive at zero opacity. Theme changes
     // are handled by CSS, so there is no second navigation that can abort the first load.
@@ -202,8 +211,12 @@ export function createTrayPopupController(options: TrayPopupOptions) {
   ensurePopup()
 
   return {
-    async show(trayBounds: Rectangle) {
+    async toggle(trayBounds: Rectangle) {
       const currentPopup = ensurePopup()
+      if (currentPopup.getOpacity() > 0) {
+        hidePopup()
+        return
+      }
       const position = getPopupPosition(trayBounds)
       currentPopup.setBounds({
         x: position.x,
@@ -221,15 +234,14 @@ export function createTrayPopupController(options: TrayPopupOptions) {
       // Windows has no visible window animation to play.
       currentPopup.setIgnoreMouseEvents(false)
       currentPopup.setOpacity(1)
-      isPopupPresented = true
-      startPointerWatch(currentPopup, trayBounds)
+      currentPopup.moveTop()
+      startOutsideClickHook()
     },
     hide() {
       hidePopup()
     },
     destroy() {
-      stopPointerWatch()
-      isPopupPresented = false
+      stopOutsideClickHook()
       if (popup && !popup.isDestroyed()) popup.destroy()
       popup = null
       popupReady = null

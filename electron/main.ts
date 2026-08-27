@@ -145,7 +145,7 @@ function createApplicationTray() {
     })
     nextTray.setToolTip('TideCode')
     nextTray.on('click', () => { void showApplicationWindow() })
-    nextTray.on('right-click', () => { void nextTrayPopup.show(nextTray.getBounds()) })
+    nextTray.on('right-click', () => { void nextTrayPopup.toggle(nextTray.getBounds()) })
     tray = nextTray
     trayPopup = nextTrayPopup
   } catch (error) {
