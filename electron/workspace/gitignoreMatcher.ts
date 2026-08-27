@@ -35,7 +35,7 @@ export const WORKSPACE_IGNORED_ENTRY_NAMES: ReadonlySet<string> = new Set<string
   'DerivedData',
 ])
 const EXPLORER_IGNORED_ENTRY_NAMES = new Set<string>(['.git'])
-const GITIGNORE_IMMUNE_INSTRUCTION_FILES = new Set<string>(['agents.md', 'claude.md'])
+const GITIGNORE_IMMUNE_INSTRUCTION_FILES = new Set<string>(['agents.md'])
 const gitignoreMatcherCache = new Map<string, Promise<GitignoreMatcherEntry[]>>()
 
 function toPosixRelativePath(fromPath: string, toPath: string) {
@@ -146,15 +146,6 @@ export async function isExplicitlyGitignoredPath(
 export function shouldAlwaysShowEntry(entryName: string) {
   const normalized = entryName.toLowerCase()
   return normalized.startsWith('.env') || normalized.startsWith('agents.md')
-}
-
-/**
- * Agent filesystem search tools must not expose repository instruction files.
- * Keep this separate from shouldAlwaysShowEntry because the workspace explorer
- * and instruction loader intentionally retain their existing AGENTS.md behavior.
- */
-export function isAgentInstructionsFile(entryName: string) {
-  return entryName.toLowerCase() === 'agents.md'
 }
 
 /**

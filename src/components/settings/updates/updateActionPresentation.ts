@@ -61,7 +61,7 @@ export function getUpdateActionPresentation({
       ariaLabel: `Restart to install update${target}`,
       disabled: false,
       kind: 'restart',
-      label: null,
+      label: 'Restart to update',
     }
   }
 

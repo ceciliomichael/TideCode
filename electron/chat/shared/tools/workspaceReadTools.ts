@@ -314,7 +314,7 @@ export async function createGlobToolResult(
   offset?: number,
   limit?: number,
 ) {
-  const args = ['--files', '--hidden', '--glob', pattern]
+  const args = ['--files', '--hidden', '--no-ignore-vcs', '--glob', pattern]
   for (const globPattern of RIPGREP_EXCLUDE_GLOBS) {
     args.push('--glob', globPattern)
   }
@@ -379,7 +379,7 @@ export async function createGrepToolResult(
   }
   const subjectKind = stats.isDirectory() ? 'directory' : 'file'
 
-  const args = ['-nH', '--hidden', '--no-messages', '--field-match-separator=|', '--regexp', pattern]
+  const args = ['-nH', '--hidden', '--no-ignore-vcs', '--no-messages', '--field-match-separator=|', '--regexp', pattern]
   const effectiveInclude = normalizeSearchIncludePattern(include)
   if (effectiveInclude) {
     args.push('--glob', effectiveInclude)

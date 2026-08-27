@@ -697,6 +697,17 @@ export function maskNonExecutableText(source: string) {
   return masked.join('')
 }
 
+const PRELOADED_TOOLS_IMPORT = /^\s*(?:const|let|var)\s+\{\s*tools\s*\}\s*=\s*await\s+import\(\s*(['"])\.\/tools\.js\1\s*\)\s*;?[ \t]*(?:\r?\n|$)/u
+
+export function repairCodeModePreloadedToolsImport(code: string): string | null {
+  const match = PRELOADED_TOOLS_IMPORT.exec(code)
+  if (match === null) return null
+
+  const repaired = code.slice(match[0].length)
+  if (!/\btools\s*\./u.test(maskNonExecutableText(repaired))) return null
+  return repaired
+}
+
 export function containsDynamicCodeModeImport(code: string): boolean {
   return /\bimport\s*\(/u.test(maskNonExecutableText(code))
 }

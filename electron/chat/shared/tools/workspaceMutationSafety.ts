@@ -3,6 +3,25 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 
 const UTF8_BOM = '﻿'
+const TRANSIENT_FILESYSTEM_ERROR_CODES = new Set(['EACCES', 'EBUSY', 'EPERM', 'UNKNOWN'])
+const TRANSIENT_FILESYSTEM_RETRY_DELAYS_MS = [10, 25, 50, 100]
+
+function isTransientFilesystemError(error: unknown) {
+  const code = (error as NodeJS.ErrnoException | null | undefined)?.code
+  return typeof code === 'string' && TRANSIENT_FILESYSTEM_ERROR_CODES.has(code)
+}
+
+export async function retryTransientFilesystemOperation<T>(operation: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await operation()
+    } catch (error) {
+      const delayMs = TRANSIENT_FILESYSTEM_RETRY_DELAYS_MS[attempt]
+      if (delayMs === undefined || !isTransientFilesystemError(error)) throw error
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
+  }
+}
 
 export type TextLineEnding = '\n' | '\r\n' | '\r'
 
@@ -58,9 +77,11 @@ export async function writeTextFileAtomically(absolutePath: string, content: str
   const temporaryPath = path.join(directory, '.' + basename + '.tidecode-' + randomUUID() + '.tmp')
 
   try {
-    const handle = existingMode === undefined
-      ? await fs.open(temporaryPath, 'wx')
-      : await fs.open(temporaryPath, 'wx', existingMode)
+    const handle = await retryTransientFilesystemOperation(() =>
+      existingMode === undefined
+        ? fs.open(temporaryPath, 'wx')
+        : fs.open(temporaryPath, 'wx', existingMode),
+    )
     try {
       await handle.writeFile(content, 'utf8')
       await handle.sync()
@@ -68,18 +89,18 @@ export async function writeTextFileAtomically(absolutePath: string, content: str
       await handle.close()
     }
 
-    const temporaryContent = await fs.readFile(temporaryPath, 'utf8')
+    const temporaryContent = await retryTransientFilesystemOperation(() => fs.readFile(temporaryPath, 'utf8'))
     if (temporaryContent !== content) {
       throw new Error('Temporary write verification failed: staged file content does not match the requested content.')
     }
 
-    await fs.rename(temporaryPath, absolutePath)
+    await retryTransientFilesystemOperation(() => fs.rename(temporaryPath, absolutePath))
   } catch (error) {
     await fs.rm(temporaryPath, { force: true }).catch(() => undefined)
     throw error
   }
 
-  const persisted = await fs.readFile(absolutePath, 'utf8')
+  const persisted = await retryTransientFilesystemOperation(() => fs.readFile(absolutePath, 'utf8'))
   if (persisted !== content) {
     throw new Error('Post-write verification failed: persisted file content does not match the requested content.')
   }

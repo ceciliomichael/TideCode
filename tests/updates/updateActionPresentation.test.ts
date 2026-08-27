@@ -74,7 +74,7 @@ test('download action keeps the button label version-free', () => {
   )
 })
 
-test('downloaded update becomes an icon-only restart action', () => {
+test('downloaded update becomes a restart action with its own label', () => {
   assert.deepEqual(
     getUpdateActionPresentation({
       checkState: 'success',
@@ -88,7 +88,7 @@ test('downloaded update becomes an icon-only restart action', () => {
       ariaLabel: 'Restart to install update to TideCode 1.2.22',
       disabled: false,
       kind: 'restart',
-      label: null,
+      label: 'Restart to update',
     },
   )
 })

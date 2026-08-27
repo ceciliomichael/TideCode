@@ -55,8 +55,8 @@ const FLAT_KANBAN_SCHEMA = {
 
     // Card identifiers & target locations
     cardId: { type: 'string' },
-    columnId: { enum: COL_ENUM, type: 'string', description: 'Optional column ID for read_board, move_card, or reorder_card (backlog, in-progress, blocked, done). Omit for read_board to get a board overview with column counts and task titles, or pass columnId to read full details of a specific column.' },
-    targetColumnId: { enum: COL_ENUM, type: 'string', description: 'Destination column ID for move_card or reorder_card (backlog, in-progress, blocked, done).' },
+    columnId: { enum: COL_ENUM, type: 'string', description: 'Optional column ID for read_board, move_card, or reorder_card (backlog, in-progress, for-review, done). Omit for read_board to get a board overview with column counts and task titles, or pass columnId to read full details of a specific column.' },
+    targetColumnId: { enum: COL_ENUM, type: 'string', description: 'Destination column ID for move_card or reorder_card (backlog, in-progress, for-review, done).' },
     targetIndex: { type: 'integer' },
     deleteSubtasks: { type: 'boolean' },
 
@@ -198,18 +198,19 @@ export function createKanbanToolSet(
               const boardData = await getKanbanBoardData({
                 workspacePath: context.workspaceRootPath,
               })
-              const counts = {
-                backlog: boardData.cards.filter((c) => c.columnId === 'backlog').length,
-                'in-progress': boardData.cards.filter((c) => c.columnId === 'in-progress').length,
-                blocked: boardData.cards.filter((c) => c.columnId === 'blocked').length,
-                done: boardData.cards.filter((c) => c.columnId === 'done').length,
-              }
+              const counts = Object.fromEntries(
+                KANBAN_COLUMN_IDS.map((columnId) => [
+                  columnId,
+                  boardData.cards.filter((card) => card.columnId === columnId)
+                    .length,
+                ]),
+              )
               const columns = KANBAN_COLUMN_IDS.map((colId) => {
                 const matchingCards = boardData.cards.filter((c) => c.columnId === colId)
-                const colTitle =
-                  colId === 'in-progress'
-                    ? 'In Progress'
-                    : colId.charAt(0).toUpperCase() + colId.slice(1)
+                const colTitle = colId
+                  .split('-')
+                  .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+                  .join(' ')
                 return {
                   count: matchingCards.length,
                   id: colId,

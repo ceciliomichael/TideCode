@@ -12,9 +12,9 @@ export const KANBAN_COLUMNS: readonly KanbanColumnDefinition[] = [
     title: 'In Progress',
   },
   {
-    description: 'Items waiting on clarification, access, or another dependency.',
-    id: 'blocked',
-    title: 'Blocked',
+    description: 'Items awaiting review, clarification, access, or another dependency.',
+    id: 'for-review',
+    title: 'For Review',
   },
   {
     description: 'Completed work and resolved tasks.',

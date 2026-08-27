@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import {
-  isAgentInstructionsFile,
   isExplicitlyGitignoredPath,
   isGitignored,
   loadGitignoreMatchers,
@@ -43,31 +42,20 @@ test('shouldIgnoreWorkspaceEntry hides generated files and common developer dire
   assert.equal(shouldIgnoreWorkspaceEntry('vendor', 'explorer'), false)
 })
 
-test('isAgentInstructionsFile identifies only AGENTS.md case-insensitively', () => {
-  assert.equal(isAgentInstructionsFile('AGENTS.md'), true)
-  assert.equal(isAgentInstructionsFile('agents.md'), true)
-  assert.equal(isAgentInstructionsFile('AGENTS.md.bak'), false)
-  assert.equal(isAgentInstructionsFile('agents.txt'), false)
-})
-
-test('gitignore matching never hides AGENTS.md or CLAUDE.md', async () => {
+test('gitignore matching never hides AGENTS.md', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-gitignore-instructions-'))
   const agentsPath = path.join(workspaceRootPath, 'AGENTS.md')
-  const claudePath = path.join(workspaceRootPath, 'CLAUDE.md')
   const ignoredPath = path.join(workspaceRootPath, 'private.secret')
 
   try {
-    await fs.writeFile(path.join(workspaceRootPath, '.gitignore'), 'AGENTS.md\nCLAUDE.md\n*.secret\n', 'utf8')
+    await fs.writeFile(path.join(workspaceRootPath, '.gitignore'), 'AGENTS.md\n*.secret\n', 'utf8')
     await fs.writeFile(agentsPath, '# instructions\n', 'utf8')
-    await fs.writeFile(claudePath, '# claude instructions\n', 'utf8')
     await fs.writeFile(ignoredPath, 'secret\n', 'utf8')
 
     const matcherEntries = await loadGitignoreMatchers(workspaceRootPath, workspaceRootPath)
 
     assert.equal(isGitignored(agentsPath, false, matcherEntries), false)
     assert.equal(await isExplicitlyGitignoredPath(workspaceRootPath, agentsPath, false), false)
-    assert.equal(isGitignored(claudePath, false, matcherEntries), false)
-    assert.equal(await isExplicitlyGitignoredPath(workspaceRootPath, claudePath, false), false)
     assert.equal(isGitignored(ignoredPath, false, matcherEntries), true)
     assert.equal(await isExplicitlyGitignoredPath(workspaceRootPath, ignoredPath, false), true)
   } finally {

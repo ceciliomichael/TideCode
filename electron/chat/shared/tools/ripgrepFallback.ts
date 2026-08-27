@@ -4,7 +4,6 @@ import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { minimatch } from 'minimatch'
 import {
-  isAgentInstructionsFile,
   isExplicitlyGitignoredPath,
   isGitignored,
   isInsideWorkspaceIgnoredPath,
@@ -115,10 +114,6 @@ function createWorkspaceEntryVisibilityFilter(
       .relative(workspaceRootPath, entryAbsolutePath)
       .split(path.sep)
       .filter((segment) => segment.length > 0)
-
-    if (workspaceRelativeSegments.some((segment) => isAgentInstructionsFile(segment))) {
-      return false
-    }
 
     const underIgnoreBase = isUnderIgnoreBase(workspaceRelativeSegments)
 

@@ -639,19 +639,51 @@ test('Code Mode preflight still scans executable template expressions', async ()
   }
 })
 
+test('Code Mode repairs mistaken imports of the preloaded tools binding', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
+    terminalExecutionMode: 'sandbox',
+  })
+
+  try {
+    const result = await executor.run(
+      `const { tools } = await import('./tools.js');
+       const response = await tools.echo({ value: 'recovered' })
+       return response.body`,
+      { allowedToolNames: ['echo'] },
+    )
+
+    assert.equal(result.status, 'success')
+    assert.equal(result.toolCalls.length, 1)
+    assert.equal(result.output, JSON.stringify({ value: 'recovered' }))
+  } finally {
+    await executor.dispose()
+  }
+})
+
 test('Code Mode tool-only runtime blocks dynamic module loading', async () => {
   const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
     terminalExecutionMode: 'sandbox',
   })
 
   try {
-    const result = await executor.run("return await import('node:process')")
+    for (const source of [
+      "return await import('node:process')",
+      "const { tools, extra } = await import('./tools.js'); return extra",
+    ]) {
+      const result = await executor.run(source)
 
-    assert.equal(result.status, 'error')
-    assert.match(result.error ?? '', /tool-only runtime does not allow dynamic module loading/u)
+      assert.equal(result.status, 'error')
+      assert.equal(result.toolCalls.length, 0)
+      assert.match(result.error ?? '', /tool-only runtime does not allow dynamic module loading/u)
+    }
   } finally {
     await executor.dispose()
   }
+})
+
+test('Code Mode contract tells every provider that tools is already injected', () => {
+  assert.match(CODE_MODE_EXECUTION_CONTRACT, /tools.*already injected as a global Code Mode binding/u)
+  assert.match(CODE_MODE_EXECUTION_CONTRACT, /Never import, require, redeclare, or initialize `tools`/u)
 })
 
 test('Code Mode allows forbidden words in filenames, URLs, comments, and regex literals', async () => {
