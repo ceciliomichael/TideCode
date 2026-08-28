@@ -99,6 +99,57 @@ test('reasoning deltas and completion are forwarded to the renderer', async () =
   assert.equal(result.wasAborted, false)
 })
 
+test('large streamed tool arguments are coalesced instead of emitting every accumulated snapshot', async () => {
+  const controller = new AbortController()
+  const events: Array<{ argumentsText?: string; type?: string }> = []
+  const chunks = Array.from({ length: 2_000 }, () => 'x')
+
+  const result = await processRuntimeStream({
+    abortController: controller,
+    conversationId: null,
+    fullStream: createRuntimeStream([
+      { id: 'large-tool', toolName: 'apply_patch', type: 'tool-input-start' },
+      ...chunks.map((delta) => ({ delta, id: 'large-tool', toolName: 'apply_patch', type: 'tool-input-delta' })),
+      { finishReason: 'stop', type: 'finish' },
+    ]),
+    queueHistoryWrite: () => undefined,
+    streamId: 'stream-large-tool',
+    webContents: createWebContentsStub(events),
+  })
+
+  const deltaEvents = events.filter((event) => event.type === 'tool_invocation_delta')
+  assert.equal(result.wasAborted, false)
+  assert.equal(deltaEvents.length, 1)
+  assert.equal(deltaEvents[0]?.argumentsText?.length, 2_000)
+})
+
+test('code mode source deltas stay internal until execution because the running block is hidden', async () => {
+  const controller = new AbortController()
+  const events: Array<{ type?: string }> = []
+  const source = 'x'.repeat(200_000)
+
+  await processRuntimeStream({
+    abortController: controller,
+    conversationId: null,
+    fullStream: createRuntimeStream([
+      { id: 'code-mode-tool', toolName: 'code_mode', type: 'tool-input-start' },
+      ...Array.from({ length: 200 }, (_value, index) => ({
+        delta: source.slice(index * 1_000, (index + 1) * 1_000),
+        id: 'code-mode-tool',
+        toolName: 'code_mode',
+        type: 'tool-input-delta',
+      })),
+      { input: source, toolCallId: 'code-mode-tool', toolName: 'code_mode', type: 'tool-call' },
+      { finishReason: 'tool-calls', type: 'finish' },
+    ]),
+    queueHistoryWrite: () => undefined,
+    streamId: 'stream-code-mode-tool',
+    webContents: createWebContentsStub(events),
+  })
+
+  assert.equal(events.filter((event) => event.type === 'tool_invocation_delta').length, 0)
+})
+
 test('an aborted stream ignores late provider events while the tool unwinds', async () => {
   const controller = new AbortController()
   const events: unknown[] = []

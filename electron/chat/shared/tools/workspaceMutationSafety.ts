@@ -11,6 +11,11 @@ function isTransientFilesystemError(error: unknown) {
   return typeof code === 'string' && TRANSIENT_FILESYSTEM_ERROR_CODES.has(code)
 }
 
+function isExistingTargetReplaceError(error: unknown) {
+  const code = (error as NodeJS.ErrnoException | null | undefined)?.code
+  return code === 'EEXIST' || code === 'EPERM'
+}
+
 export async function retryTransientFilesystemOperation<T>(operation: () => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt += 1) {
     try {
@@ -68,6 +73,38 @@ export function computeContentRevision(content: string | Uint8Array) {
   return 'sha256:' + createHash('sha256').update(content).digest('hex')
 }
 
+async function installStagedTextFile(temporaryPath: string, absolutePath: string, targetExists: boolean) {
+  try {
+    await fs.rename(temporaryPath, absolutePath)
+    return
+  } catch (error) {
+    if (!targetExists || !isExistingTargetReplaceError(error)) {
+      await retryTransientFilesystemOperation(() => fs.rename(temporaryPath, absolutePath))
+      return
+    }
+  }
+
+  const directory = path.dirname(absolutePath)
+  const basename = path.basename(absolutePath)
+  const backupPath = path.join(directory, '.' + basename + '.tidecode-' + randomUUID() + '.bak')
+  await retryTransientFilesystemOperation(() => fs.rename(absolutePath, backupPath))
+
+  try {
+    await retryTransientFilesystemOperation(() => fs.rename(temporaryPath, absolutePath))
+  } catch (installError) {
+    try {
+      await retryTransientFilesystemOperation(() => fs.rename(backupPath, absolutePath))
+    } catch (restoreError) {
+      const installMessage = installError instanceof Error ? installError.message : String(installError)
+      const restoreMessage = restoreError instanceof Error ? restoreError.message : String(restoreError)
+      throw new Error(`${installMessage}; failed to restore previous file: ${restoreMessage}`)
+    }
+    throw installError
+  }
+
+  await retryTransientFilesystemOperation(() => fs.rm(backupPath, { force: true })).catch(() => undefined)
+}
+
 export async function writeTextFileAtomically(absolutePath: string, content: string) {
   const directory = path.dirname(absolutePath)
   const basename = path.basename(absolutePath)
@@ -94,7 +131,7 @@ export async function writeTextFileAtomically(absolutePath: string, content: str
       throw new Error('Temporary write verification failed: staged file content does not match the requested content.')
     }
 
-    await retryTransientFilesystemOperation(() => fs.rename(temporaryPath, absolutePath))
+    await installStagedTextFile(temporaryPath, absolutePath, existingMode !== undefined)
   } catch (error) {
     await fs.rm(temporaryPath, { force: true }).catch(() => undefined)
     throw error

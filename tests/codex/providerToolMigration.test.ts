@@ -6,7 +6,7 @@ import { projectCanonicalReplay } from '../../electron/chat/history/replayProjec
 import { encodeModelMessages, encodeReplayValue } from '../../electron/chat/history/replayCodec'
 import { shouldMigrateCrossProviderHistoryToText } from '../../electron/chat/history/providerSwitch'
 import { migrateToolHistoryToUserInput } from '../../electron/chat/history/providerToolMigration'
-import { buildFallbackCompactionPacket } from '../../electron/chat/shared/compaction/fallback'
+import { createCompactionPacketFixture } from './compactionFixtures'
 import {
   buildCompressedHistoryAcknowledgementMessage,
   buildCompressedHistoryMessage,
@@ -142,10 +142,8 @@ test('projectCanonicalReplay strips legacy compressed-history containers from pr
 
 test('projectCanonicalReplay keeps the compacted window when switching from Codex to Mistral', () => {
   const document = createEmptyCanonicalHistory('conversation', 1)
-  const packet = buildFallbackCompactionPacket({
-    messages: [{ content: 'Old history that was compacted away.', role: 'user' }],
-    modelId: 'gpt-5.6-luna',
-    providerId: 'codex',
+  const packet = createCompactionPacketFixture({
+    continuationMarkdown: ['## What happened', '- Old history that was compacted away.'].join('\n'),
     sourceDigest: 'digest',
     sourceMessageIds: ['model:0'],
   })
@@ -205,10 +203,8 @@ test('projectCanonicalReplay keeps the compacted window when switching from Code
 
 test('projectCanonicalReplay does not resurrect raw history when another instance compacted a newer anchor', () => {
   const document = createEmptyCanonicalHistory('conversation', 1)
-  const packet = buildFallbackCompactionPacket({
-    messages: [{ content: 'The newer instance compacted this history.', role: 'user' }],
-    modelId: 'model',
-    providerId: 'openai',
+  const packet = createCompactionPacketFixture({
+    continuationMarkdown: ['## What happened', '- The newer instance compacted this history.'].join('\n'),
     sourceDigest: 'stale-anchor-digest',
     sourceMessageIds: ['model:0'],
   })

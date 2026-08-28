@@ -17,12 +17,18 @@ import {
 } from './toolReplay'
 
 const CHAT_STREAM_EVENT_CHANNEL = 'chat:stream:event'
+const TOOL_INPUT_DELTA_EMIT_INTERVAL_MS = 32
 
 interface ToolInvocationState {
+  argumentChunks?: string[]
   argumentsText: string
   executionAccepted: boolean
   startedAt: number
   toolName: string
+}
+
+function materializeToolArguments(invocation: ToolInvocationState) {
+  return invocation.argumentChunks ? invocation.argumentChunks.join('') : invocation.argumentsText
 }
 
 export interface RuntimeStreamPart {
@@ -51,7 +57,7 @@ export function emitChatStreamEvent(
   if (typeof target.send === 'function') {
     target.send(CHAT_STREAM_EVENT_CHANNEL, payload)
   } else if (typeof (target as { emit?: (e: ChatStreamEvent) => void }).emit === 'function') {
-    ;(target as { emit: (e: ChatStreamEvent) => void }).emit(payload)
+    (target as { emit: (e: ChatStreamEvent) => void }).emit(payload)
   }
 }
 
@@ -148,7 +154,8 @@ function emitTerminatedToolInvocations(
     const interruptionMessage = invocation.executionAccepted
       ? TERMINATED_TOOL_EXECUTION_MESSAGE
       : CANCELLED_TOOL_REQUEST_MESSAGE
-    const argumentsValue = parseToolArguments(invocation.argumentsText)
+    const argumentsText = materializeToolArguments(invocation)
+    const argumentsValue = parseToolArguments(argumentsText)
     const terminatedResult: AgentToolExecutionResult = {
       body: interruptionMessage,
       displayBody: interruptionMessage,
@@ -172,7 +179,7 @@ function emitTerminatedToolInvocations(
     )
 
     emitChatStreamEvent(input.webContents, {
-      argumentsText: invocation.argumentsText,
+      argumentsText,
       completedAt,
       errorMessage: interruptionMessage,
       invocationId,
@@ -198,8 +205,50 @@ interface ProcessRuntimeStreamInput {
 export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
   const { conversationId, queueHistoryWrite } = input
   const invocationStateById = new Map<string, ToolInvocationState>()
+  const pendingToolInputDeltaIds = new Set<string>()
+  let toolInputDeltaTimer: ReturnType<typeof setTimeout> | null = null
   let completedStepCount = 0
   let lastFinishReason: string | null = null
+
+  const flushToolInputDeltas = () => {
+    if (toolInputDeltaTimer) {
+      clearTimeout(toolInputDeltaTimer)
+      toolInputDeltaTimer = null
+    }
+    if (pendingToolInputDeltaIds.size === 0) return
+
+    const invocationIds = [...pendingToolInputDeltaIds]
+    pendingToolInputDeltaIds.clear()
+    for (const invocationId of invocationIds) {
+      const currentState = invocationStateById.get(invocationId)
+      if (!currentState) continue
+      const argumentsText = materializeToolArguments(currentState)
+      invocationStateById.set(invocationId, { ...currentState, argumentsText })
+      emitChatStreamEvent(input.webContents, {
+        argumentsText,
+        invocationId,
+        streamId: input.streamId,
+        toolName: currentState.toolName,
+        type: 'tool_invocation_delta',
+      })
+    }
+  }
+
+  const scheduleToolInputDelta = (invocationId: string) => {
+    pendingToolInputDeltaIds.add(invocationId)
+    if (toolInputDeltaTimer) return
+    toolInputDeltaTimer = setTimeout(() => {
+      toolInputDeltaTimer = null
+      flushToolInputDeltas()
+    }, TOOL_INPUT_DELTA_EMIT_INTERVAL_MS)
+    toolInputDeltaTimer.unref?.()
+  }
+
+  const clearPendingToolInputDeltas = () => {
+    if (toolInputDeltaTimer) clearTimeout(toolInputDeltaTimer)
+    toolInputDeltaTimer = null
+    pendingToolInputDeltaIds.clear()
+  }
 
   try {
       for await (const part of input.fullStream) {
@@ -243,6 +292,7 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
           const startedAt = Date.now()
           const displayedInvocation = resolveDisplayedInvocation(part.toolName, undefined)
           invocationStateById.set(part.id, {
+            argumentChunks: [],
             argumentsText: '',
             executionAccepted: false,
             startedAt,
@@ -266,24 +316,15 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
             startedAt: Date.now(),
             toolName: 'tool',
           }
-          const nextArgumentsText = currentState.argumentsText + part.delta
           const outerToolName = typeof part.toolName === 'string' ? part.toolName : currentState.toolName
-          const displayedInvocation = resolveDisplayedInvocation(outerToolName, parseToolArguments(nextArgumentsText))
-          const displayedArgumentsText = displayedInvocation.toolName === outerToolName
-            ? nextArgumentsText
-            : stringifyToolArguments(displayedInvocation.argumentsValue)
+          const argumentChunks = currentState.argumentChunks ?? (currentState.argumentsText ? [currentState.argumentsText] : [])
+          argumentChunks.push(part.delta)
           invocationStateById.set(part.id, {
             ...currentState,
-            argumentsText: displayedArgumentsText,
-            toolName: displayedInvocation.toolName,
+            argumentChunks,
+            toolName: outerToolName,
           })
-          emitChatStreamEvent(input.webContents, {
-            argumentsText: displayedArgumentsText,
-            invocationId: part.id,
-            streamId: input.streamId,
-            toolName: displayedInvocation.toolName,
-            type: 'tool_invocation_delta',
-          })
+          if (outerToolName !== 'code_mode') scheduleToolInputDelta(part.id)
           continue
         }
   
@@ -295,6 +336,7 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
           const currentState = invocationStateById.get(part.toolCallId)
           const displayedInvocation = resolveDisplayedInvocation(part.toolName, part.input ?? part.args)
           const argumentsText = stringifyToolArguments(displayedInvocation.argumentsValue)
+          pendingToolInputDeltaIds.delete(part.toolCallId)
           if (!currentState) {
             const startedAt = Date.now()
             invocationStateById.set(part.toolCallId, {
@@ -316,11 +358,12 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
   
           invocationStateById.set(part.toolCallId, {
             ...currentState,
+            argumentChunks: undefined,
             argumentsText,
             executionAccepted: true,
             toolName: displayedInvocation.toolName,
           })
-          if (currentState.argumentsText !== argumentsText) {
+          if (displayedInvocation.toolName !== 'code_mode' && materializeToolArguments(currentState) !== argumentsText) {
             emitChatStreamEvent(input.webContents, {
               argumentsText,
               invocationId: part.toolCallId,
@@ -343,6 +386,7 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
   
           const completedAt = Date.now()
           const toolName = part.toolName
+          pendingToolInputDeltaIds.delete(part.toolCallId)
           const normalizedResult = normalizeToolExecutionResult(toolName, part.output ?? part.result)
           const modelResult = normalizedResult
           const displayedInvocation = resolveDisplayedInvocation(
@@ -414,6 +458,7 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
   
           const currentState = invocationStateById.get(part.toolCallId)
           const completedAt = Date.now()
+          pendingToolInputDeltaIds.delete(part.toolCallId)
           const displayedInvocation = resolveDisplayedInvocation(part.toolName, part.input ?? part.args)
           const displayedArgumentsText = stringifyToolArguments(displayedInvocation.argumentsValue)
           const errorMessage = getToolErrorMessage(part.toolName, part.error)
@@ -460,6 +505,7 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
         }
       }
   } catch (error) {
+    clearPendingToolInputDeltas()
     if (input.abortController.signal.aborted) {
       emitTerminatedToolInvocations(input, invocationStateById)
     }
@@ -467,7 +513,10 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
   }
 
   if (input.abortController.signal.aborted) {
+    clearPendingToolInputDeltas()
     emitTerminatedToolInvocations(input, invocationStateById)
+  } else {
+    flushToolInputDeltas()
   }
 
   return {

@@ -9,8 +9,14 @@ import test from 'node:test'
 import { __testOnly } from '../../electron/chat/shared/tools'
 
 class FakeChildProcess extends EventEmitter {
+  killed = false
   stderr = new PassThrough()
   stdout = new PassThrough()
+
+  kill() {
+    this.killed = true
+    return true
+  }
 }
 
 test('resolveCanonicalRipgrepPath uses the repo resources directory in development', () => {
@@ -97,6 +103,77 @@ test('runRipgrepWithCandidates retries another executable after ENOENT', async (
   assert.equal(result.exitCode, 0)
   assert.equal(result.stdout, 'match\n')
   assert.equal(result.stderr, '')
+})
+
+test('runRipgrepWithCandidates kills the child when the caller aborts', async () => {
+  const child = new FakeChildProcess()
+  const fakeSpawn = (() => child as unknown as ReturnType<typeof spawn>) as typeof spawn
+  const controller = new AbortController()
+  const searchPromise = __testOnly.runRipgrepWithCandidates(
+    ['needle'],
+    path.join('C:', 'repo'),
+    ['working-rg.exe'],
+    fakeSpawn,
+    { abortSignal: controller.signal, timeoutMs: 1_000 },
+  )
+
+  controller.abort()
+
+  await assert.rejects(searchPromise, (error: unknown) => {
+    assert.equal((error as Error).name, 'AbortError')
+    return true
+  })
+  assert.equal(child.killed, true)
+})
+
+test('runRipgrepWithCandidates stops an oversized output stream', async () => {
+  const child = new FakeChildProcess()
+  const fakeSpawn = (() => {
+    queueMicrotask(() => child.stdout.write('0123456789'))
+    return child as unknown as ReturnType<typeof spawn>
+  }) as typeof spawn
+
+  await assert.rejects(
+    __testOnly.runRipgrepWithCandidates(
+      ['needle'],
+      path.join('C:', 'repo'),
+      ['working-rg.exe'],
+      fakeSpawn,
+      { maxOutputChars: 5, timeoutMs: 1_000 },
+    ),
+    /safety limit/u,
+  )
+  assert.equal(child.killed, true)
+})
+
+test('runRipgrepWithCandidates stops a child that exceeds the search timeout', async () => {
+  const child = new FakeChildProcess()
+  const fakeSpawn = (() => child as unknown as ReturnType<typeof spawn>) as typeof spawn
+
+  await assert.rejects(
+    __testOnly.runRipgrepWithCandidates(
+      ['needle'],
+      path.join('C:', 'repo'),
+      ['working-rg.exe'],
+      fakeSpawn,
+      { timeoutMs: 10 },
+    ),
+    /exceeded the 10ms timeout/u,
+  )
+  assert.equal(child.killed, true)
+})
+
+test('runRipgrepFallback rejects immediately when already aborted', async () => {
+  const controller = new AbortController()
+  controller.abort()
+
+  await assert.rejects(
+    __testOnly.runRipgrepFallback(['--files'], path.join('C:', 'repo'), { abortSignal: controller.signal }),
+    (error: unknown) => {
+      assert.equal((error as Error).name, 'AbortError')
+      return true
+    },
+  )
 })
 
 test('runRipgrepFallback lists files recursively when ripgrep is unavailable', async () => {

@@ -173,7 +173,7 @@ test('automatic compaction reports its start after the threshold and token bound
   let started = 0
 
   const result = await compactModelMessages({
-    createStream: createTextStreamFactory('not valid packet output'),
+    createStream: createTextStreamFactory('## Current state\n- Automatic compaction captured the current verified state.'),
     messages,
     model: 'test-model',
     onStarted: () => {
@@ -220,6 +220,53 @@ test('AI compaction produces a Markdown summary as the new history beginning', a
   assert.match(result.packet.continuationMarkdown, /## Prior user prompts/u)
   assert.deepEqual(result.projectedMessages[0], { role: 'assistant', content: result.packet.continuationMarkdown })
   assert.doesNotMatch(result.packet.continuationMarkdown, /tidecode\.compaction_packet/u)
+})
+
+test('active automatic compaction keeps the current request open even if the compactor claims completion', async () => {
+  const messages: ModelMessage[] = [
+    { role: 'user', content: 'Fix the runtime issue and keep working until verification is complete.' },
+    {
+      role: 'assistant',
+      content: [{
+        type: 'tool-call',
+        toolCallId: 'call-active-read',
+        toolName: 'read',
+        input: { path: 'runtime.ts' },
+      }],
+    },
+    {
+      role: 'tool',
+      content: [{
+        type: 'tool-result',
+        toolCallId: 'call-active-read',
+        toolName: 'read',
+        output: { type: 'text', value: `runtime evidence ${'x'.repeat(80_000)}` },
+      }],
+    },
+    { role: 'assistant', content: 'The inspection is complete; I still need to run verification.' },
+  ]
+  const misleadingSummary = [
+    '## Completed work',
+    '- The overall latest user request is complete.',
+    '',
+    '## Remaining work',
+    'No unfinished work is currently recorded.',
+  ].join('\n')
+
+  const result = await compactModelMessages({
+    ...createCompactionInput(messages, createTextStreamFactory(misleadingSummary), 1_000),
+    turnState: 'active',
+  })
+
+  assert.ok(result)
+  const activePrompt = result.packet.userPromptLedger.find((entry) => (
+    entry.prompt.includes('Fix the runtime issue')
+  ))
+  assert.equal(activePrompt?.status, 'open')
+  assert.match(result.packet.continuationMarkdown, /Prompt 1 \(open\)/u)
+  assert.match(result.packet.continuationMarkdown, /Host runtime status is authoritative: the latest user request is still active/u)
+  assert.match(result.packet.continuationMarkdown, /overrides any wording elsewhere in the handoff/u)
+  assert.match(result.packet.continuationMarkdown, /Continue the latest user request from the verified state above/u)
 })
 
 test('repeated compaction carries the prior handoff and ledger across the new barrier', async () => {
@@ -285,14 +332,45 @@ test('AI compaction applies the configured retention token target to projected h
   )
 })
 
-test('invalid non-Markdown AI output fails compaction instead of using a fallback', async () => {
+test('invalid non-Markdown AI output fails instead of creating a deterministic compaction', async () => {
   const truncatedPacket = '{"schema":"tidecode.compaction_packet/v2","continuationMarkdown":"'.padEnd(4_000, 'x')
   await assert.rejects(
     compactModelMessages(createCompactionInput(
       createConversationMessages(),
       createTextStreamFactory(truncatedPacket),
     )),
-    /invalid Markdown \(json\); no fallback summary was generated/u,
+    /AI compaction returned invalid continuation Markdown/u,
+  )
+})
+
+test('empty AI compaction output fails instead of creating a deterministic compaction', async () => {
+  const messages: ModelMessage[] = [
+    { role: 'user', content: 'Keep the current workspace task moving.' },
+    { role: 'assistant', content: '' },
+    { role: 'tool', content: `Large tool evidence ${'A'.repeat(80_000)}` },
+    { role: 'assistant', content: '' },
+    { role: 'tool', content: `More tool evidence ${'B'.repeat(80_000)}` },
+    { role: 'assistant', content: 'The task still needs verification.' },
+  ]
+  const emptyStream: CompactionStreamFactory = async () => ({
+    fullStream: (async function* () {
+      yield { type: 'finish' }
+    })(),
+  })
+
+  await assert.rejects(
+    compactModelMessages(createCompactionInput(messages, emptyStream, 7_000)),
+    /AI compaction returned invalid continuation Markdown/u,
+  )
+})
+
+test('meta-only AI compaction output fails instead of creating a deterministic compaction', async () => {
+  await assert.rejects(
+    compactModelMessages(createCompactionInput(
+      createConversationMessages(),
+      createTextStreamFactory('Done.'),
+    )),
+    /AI compaction returned invalid continuation Markdown/u,
   )
 })
 
@@ -369,7 +447,7 @@ test('valid AI Markdown is accepted and malformed AI output is rejected', async 
       [...messages, { role: 'user', content: 'A distinct retry input.' }],
       createTextStreamFactory('{"not":"a packet"}'),
     )),
-    /invalid Markdown \(json\); no fallback summary was generated/u,
+    /AI compaction returned invalid continuation Markdown/u,
   )
 })
 

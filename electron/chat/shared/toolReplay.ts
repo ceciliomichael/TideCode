@@ -7,7 +7,7 @@ import {
   parseWebSearchToolResultBody,
 } from '../../../src/lib/webSearchResults'
 import type { AgentToolExecutionResult } from './toolTypes'
-import { projectToolOutputForModel } from './tools/toolOutputBudget'
+import { projectToolOutputForModel, TOOL_OUTPUT_PAGED_READ_MAX_BYTES } from './tools/toolOutputBudget'
 import { persistToolOutput } from './tools/toolOutputStore'
 
 export function isAgentToolExecutionResult(value: unknown): value is AgentToolExecutionResult {
@@ -136,6 +136,13 @@ export async function prepareToolExecutionResultForModel(input: {
     return input.result
   }
 
+  if (
+    (input.toolName === 'read' || input.toolName === 'read_tool_output') &&
+    Buffer.byteLength(body, 'utf8') <= TOOL_OUTPUT_PAGED_READ_MAX_BYTES
+  ) {
+    return input.result
+  }
+
   const initialProjection = projectToolOutputForModel(body)
   if (!initialProjection.truncated) {
     return input.result
@@ -146,7 +153,7 @@ export async function prepareToolExecutionResultForModel(input: {
   let outputId = existingOutputId
   if (!outputId) {
     try {
-      outputId = await persistToolOutput(input.toolName, body)
+      outputId = await persistToolOutput(body)
     } catch (error) {
       console.warn('Unable to persist truncated tool output for later inspection.', error)
     }
@@ -158,15 +165,7 @@ export async function prepareToolExecutionResultForModel(input: {
     body: projection.text,
     semantics: {
       ...input.result.semantics,
-      omitted_bytes: projection.omittedBytes,
-      omitted_lines: projection.omittedLines,
       ...(outputId ? { output_id: outputId } : {}),
-      original_approximate_tokens: projection.originalApproximateTokens,
-      total_output_lines: projection.totalLines,
-      visible_line_ranges: projection.visibleRanges?.map((range) => ({
-        end_line: range.endLine,
-        start_line: range.startLine,
-      })),
     },
     truncated: true,
   }

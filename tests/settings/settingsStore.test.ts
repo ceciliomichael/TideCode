@@ -7,8 +7,14 @@ import { writeJsonFileAtomic } from '../../electron/settings/fileStore'
 import { DEFAULT_APP_SETTINGS } from '../../src/lib/defaultAppSettings'
 
 function buildLegacySettings() {
+  const legacyDefaults: Partial<typeof DEFAULT_APP_SETTINGS> = { ...DEFAULT_APP_SETTINGS }
+  delete legacyDefaults.agentReasoningEffort
+  delete legacyDefaults.planReasoningEffort
+  delete legacyDefaults.summarizationReasoningEffort
+  delete legacyDefaults.gitCommitReasoningEffort
+  delete legacyDefaults.kanbanReasoningEffort
   return {
-    ...DEFAULT_APP_SETTINGS,
+    ...legacyDefaults,
     appearance: 'dark' as const,
     checkForUpdatesOnLaunch: false,
     chatModelId: 'legacy-model',
@@ -17,7 +23,6 @@ function buildLegacySettings() {
     chatReasoningEffort: 'high' as const,
     language: 'fil-PH' as const,
     sendMessageOnEnter: false,
-    disabledSkillsByPath: { 'skills/shared': true },
     modelToggleState: { 'codex:gpt-5.4': false },
     conversationModelPreferences: {
       'thread-agent': {
@@ -95,8 +100,12 @@ sidebarWidth: 360,
       assert.equal(settings.appearance, 'dark')
       assert.equal(settings.chatModelId, 'legacy-model')
       assert.equal(settings.chatReasoningEffort, 'high')
+      assert.equal(settings.agentReasoningEffort, 'high')
+      assert.equal(settings.planReasoningEffort, 'high')
+      assert.equal(settings.summarizationReasoningEffort, 'high')
+      assert.equal(settings.gitCommitReasoningEffort, 'high')
+      assert.equal(settings.kanbanReasoningEffort, 'high')
 assert.equal(settings.sidebarWidth, 360)
-      assert.equal(settings.disabledSkillsByPath['skills/shared'], true)
     }
 
     for (const surface of ['desktop', 'web', 'cli']) {
@@ -107,7 +116,6 @@ assert.equal(settings.sidebarWidth, 360)
     assert.equal('appearance' in sharedFile, false)
     assert.equal('chatModelId' in sharedFile, false)
     assert.equal('conversationModelPreferences' in sharedFile, false)
-    assert.deepEqual(sharedFile.disabledSkillsByPath, { 'skills/shared': true })
     assert.deepEqual(sharedFile.modelToggleState, { 'codex:gpt-5.4': false })
   })
 })
@@ -139,23 +147,26 @@ test('desktop, web, and cli preferences diverge while shared settings converge',
       chatModelId: 'desktop-model',
       chatModelLabel: 'Desktop model',
       chatReasoningEffort: 'high',
+      agentReasoningEffort: 'high',
     }, 'desktop')
     await updateStoredSettings({
       appearance: 'dark',
       chatModelId: 'web-model',
       chatModelLabel: 'Web model',
       chatReasoningEffort: 'medium',
+      agentReasoningEffort: 'medium',
     }, 'web')
     await updateStoredSettings({
       agentModelId: 'cli-agent-model',
       agentModelLabel: 'CLI agent model',
       chatReasoningEffort: 'low',
+      agentReasoningEffort: 'low',
     }, 'cli')
 
     await updateStoredSettings({
-      disabledSkillsByPath: { 'skills/shared': true },
       modelToggleState: { 'codex:gpt-5.4': false },
       kanbanAiPlanningEnabled: false,
+      gitCommitReasoningEffort: 'low',
     }, 'web')
 
     const desktop = await getStoredSettings('desktop')
@@ -165,16 +176,19 @@ test('desktop, web, and cli preferences diverge while shared settings converge',
     assert.equal(desktop.appearance, 'light')
     assert.equal(desktop.chatModelId, 'desktop-model')
     assert.equal(desktop.chatReasoningEffort, 'high')
+    assert.equal(desktop.agentReasoningEffort, 'high')
     assert.equal(web.appearance, 'dark')
     assert.equal(web.chatModelId, 'web-model')
     assert.equal(web.chatReasoningEffort, 'medium')
+    assert.equal(web.agentReasoningEffort, 'medium')
     assert.equal(cli.agentModelId, 'cli-agent-model')
     assert.equal(cli.chatReasoningEffort, 'low')
+    assert.equal(cli.agentReasoningEffort, 'low')
 
     for (const settings of [desktop, web, cli]) {
-      assert.deepEqual(settings.disabledSkillsByPath, { 'skills/shared': true })
       assert.deepEqual(settings.modelToggleState, { 'codex:gpt-5.4': false })
       assert.equal(settings.kanbanAiPlanningEnabled, false)
+      assert.equal(settings.gitCommitReasoningEffort, 'low')
     }
   })
 })

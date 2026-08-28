@@ -73,6 +73,7 @@ export async function compactConversationForProvider(input: CompactConversationI
     retainedContextTokens: contextCompaction.retainedContextTokens,
     triggerRatio: contextCompaction.triggerPercent / 100,
     toolSchemaTokens: 0,
+    turnState: 'settled',
   })
   if (!result) return null
 

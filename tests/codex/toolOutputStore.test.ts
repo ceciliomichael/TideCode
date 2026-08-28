@@ -23,7 +23,11 @@ test('saved tool output can be recovered through the same paged contract and pre
     })
     const persistedOutputId = boundedResult.semantics?.output_id
     assert.equal(typeof persistedOutputId, 'string')
+    assert.match(String(persistedOutputId), /^\d{5}$/u)
+    assert.deepEqual(boundedResult.semantics, { output_id: persistedOutputId })
     assert.match(boundedResult.body ?? '', /read_tool_output/u)
+    assert.match(boundedResult.body ?? '', new RegExp(`output_id: "${persistedOutputId}"`, 'u'))
+    assert.doesNotMatch(boundedResult.body ?? '', /bytes omitted|original approximately|tokens/u)
     assert.match(boundedResult.body ?? '', /large line 2999/u)
     const persistedTail = await readPersistedToolOutput({
       limit: 1,
@@ -32,7 +36,8 @@ test('saved tool output can be recovered through the same paged contract and pre
     })
     assert.equal(persistedTail.body, 'large line 2999')
 
-    const outputId = await persistToolOutput('execute_terminal', 'one\ntwo\nthree\nfour\nfive')
+    const outputId = await persistToolOutput('one\ntwo\nthree\nfour\nfive')
+    assert.match(outputId, /^\d{5}$/u)
     const storedPage = await readPersistedToolOutput({ limit: 2, offset: 2, outputId })
 
     assert.deepEqual(storedPage, {
@@ -58,10 +63,8 @@ test('saved tool output can be recovered through the same paged contract and pre
     assert.deepEqual(result.subject, { kind: 'tool_output', path: outputId })
     assert.deepEqual(result.semantics, {
       end_line: 3,
-      has_more: true,
       next_offset: 4,
       output_id: outputId,
-      returned_line_count: 2,
       start_line: 2,
       total_line_count: 5,
     })

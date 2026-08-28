@@ -1,8 +1,8 @@
 import type { ChatMode, ConversationRecord, Message } from '../../src/types/chat'
 import { replaceStoredMessages } from '../history/store'
 
-const STREAM_PROGRESS_PERSIST_DEBOUNCE_MS = 600
-const STREAM_PROGRESS_PERSIST_CHAR_FLUSH_THRESHOLD = 768
+const STREAM_PROGRESS_PERSIST_DEBOUNCE_MS = 1_500
+const STREAM_PROGRESS_PERSIST_CHAR_FLUSH_THRESHOLD = 4_096
 
 export interface SharedStreamPersistenceOptions {
   conversationId: string
@@ -14,6 +14,7 @@ export interface SharedStreamPersistenceOptions {
 
 export class SharedStreamPersistence {
   private pendingMessages: Message[] | null = null
+  private pendingShouldNotify = false
   private pendingFlushTimeout: ReturnType<typeof setTimeout> | null = null
   private flushPromise: Promise<ConversationRecord | null> | null = null
   private pendingDeltaCharCount = 0
@@ -22,10 +23,13 @@ export class SharedStreamPersistence {
 
   queue(
     messages: Message[],
-    options?: { immediate?: boolean },
+    options?: { immediate?: boolean; notify?: boolean; transient?: boolean },
     hint?: { deltaCharCount?: number },
   ) {
+    if (options?.transient) return
+
     this.pendingMessages = [...messages]
+    this.pendingShouldNotify ||= options?.notify === true
 
     if (typeof hint?.deltaCharCount === 'number' && hint.deltaCharCount > 0) {
       this.pendingDeltaCharCount += hint.deltaCharCount
@@ -65,13 +69,15 @@ export class SharedStreamPersistence {
       let latest: ConversationRecord | null = null
       while (this.pendingMessages) {
         const messages = this.pendingMessages
+        const shouldNotify = this.pendingShouldNotify
         this.pendingMessages = null
+        this.pendingShouldNotify = false
         latest = await replaceStoredMessages({
           chatMode: this.options.getChatMode?.() ?? this.options.chatMode,
           conversationId: this.options.conversationId,
           messages,
         })
-        this.options.onPersisted?.(latest)
+        if (shouldNotify) this.options.onPersisted?.(latest)
       }
       return latest
     })()

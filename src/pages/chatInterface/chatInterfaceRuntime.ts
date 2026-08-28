@@ -31,3 +31,16 @@ export function buildRuntimeSelection(
     terminalExecutionMode,
   }
 }
+
+export function buildModeRuntimeSelection(
+  currentSelection: ChatRuntimeSelection,
+  modeDefault: Pick<
+    ChatRuntimeSelection,
+    'hasConfiguredProvider' | 'modelId' | 'providerId' | 'providerLabel' | 'reasoningEffort'
+  >,
+): ChatRuntimeSelection {
+  return {
+    ...currentSelection,
+    ...modeDefault,
+  }
+}

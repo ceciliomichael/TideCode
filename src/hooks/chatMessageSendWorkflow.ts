@@ -289,24 +289,26 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       })
     }
 
-    const manager = createChatAssistantDraftManager({
-      appendLocalMessage: usesSharedRunPersistence ? () => undefined : input.appendLocalMessage,
-      conversationId: conversationForRun.id,
-      initialConversationMessages: conversationForRun.messages,
-      markTextStreamingPulse: usesSharedRunPersistence ? () => undefined : input.markTextStreamingPulse,
-      onConversationMessagesUpdated: (messages, options, hint) => {
-        streamProgressPersistence?.queueSnapshot(messages, options, hint)
-      },
-      providerId,
-      removeLocalMessage: usesSharedRunPersistence ? () => undefined : input.removeLocalMessage,
-      runtimeSelection: input.runtimeSelection,
-      stopTextStreaming: usesSharedRunPersistence ? () => undefined : input.stopTextStreaming,
-      updateConversationRuntimeState: usesSharedRunPersistence ? () => undefined : input.updateConversationRuntimeState,
-      updateLocalMessage: usesSharedRunPersistence ? () => undefined : input.updateLocalMessage,
-    })
-    draftManager = manager
+    if (!usesSharedRunPersistence) {
+      draftManager = createChatAssistantDraftManager({
+        appendLocalMessage: input.appendLocalMessage,
+        conversationId: conversationForRun.id,
+        initialConversationMessages: conversationForRun.messages,
+        markTextStreamingPulse: input.markTextStreamingPulse,
+        onConversationMessagesUpdated: (messages, options, hint) => {
+          streamProgressPersistence?.queueSnapshot(messages, options, hint)
+        },
+        providerId,
+        removeLocalMessage: input.removeLocalMessage,
+        runtimeSelection: input.runtimeSelection,
+        stopTextStreaming: input.stopTextStreaming,
+        updateConversationRuntimeState: input.updateConversationRuntimeState,
+        updateLocalMessage: input.updateLocalMessage,
+      })
+      draftManager.appendPlaceholderDraft()
+    }
 
-    manager.appendPlaceholderDraft()
+    const handleNoop = () => undefined
     const streamedAssistant = await streamAssistantResponse({
       agentContextRootPath: conversationForRun.agentContextRootPath,
       cacheScopeId: conversationForRun.compaction?.rootConversationId ?? conversationForRun.id,
@@ -315,10 +317,10 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       contextCompaction: input.runtimeSelection.contextCompaction,
       messages: conversationForRun.messages,
       modelId: input.runtimeSelection.modelId,
-      onContentDelta: manager.handleContentDelta,
-      onCompactionCommitted: manager.handleCompactionCommitted,
-      onReasoningCompleted: manager.handleReasoningCompleted,
-      onReasoningDelta: manager.handleReasoningDelta,
+      onContentDelta: draftManager?.handleContentDelta ?? handleNoop,
+      onCompactionCommitted: draftManager?.handleCompactionCommitted ?? handleNoop,
+      onReasoningCompleted: draftManager?.handleReasoningCompleted ?? handleNoop,
+      onReasoningDelta: draftManager?.handleReasoningDelta ?? handleNoop,
       onStreamStarted: (streamId) => {
         if (usesSharedRunPersistence) {
           sharedStreamStarted = true
@@ -328,20 +330,50 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
           })
           return
         }
-        manager.handleStreamStarted(streamId)
+        draftManager?.handleStreamStarted(streamId)
       },
-      onSteerMessagesConsumed: manager.handleSteerMessagesConsumed,
-      onSyntheticToolMessage: manager.handleSyntheticToolMessage,
-      onToolInvocationCompleted: manager.handleToolInvocationCompleted,
-      onToolInvocationDecisionRequested: manager.handleToolInvocationDecisionRequested,
-      onToolInvocationDelta: manager.handleToolInvocationDelta,
-      onToolInvocationFailed: manager.handleToolInvocationFailed,
-      onToolInvocationStarted: manager.handleToolInvocationStarted,
+      onSteerMessagesConsumed: draftManager?.handleSteerMessagesConsumed ?? handleNoop,
+      onSyntheticToolMessage: draftManager?.handleSyntheticToolMessage ?? handleNoop,
+      onToolInvocationCompleted: draftManager?.handleToolInvocationCompleted ?? handleNoop,
+      onToolInvocationDecisionRequested: draftManager?.handleToolInvocationDecisionRequested ?? handleNoop,
+      onToolInvocationDelta: draftManager?.handleToolInvocationDelta ?? handleNoop,
+      onToolInvocationFailed: draftManager?.handleToolInvocationFailed ?? handleNoop,
+      onToolInvocationStarted: draftManager?.handleToolInvocationStarted ?? handleNoop,
+      processStreamEvents: !usesSharedRunPersistence,
       providerId,
       reasoningEffort: input.runtimeSelection.reasoningEffort,
       terminalExecutionMode: input.runtimeSelection.terminalExecutionMode,
     })
 
+    if (usesSharedRunPersistence) {
+      const shouldRollbackForAbort = streamedAssistant.wasAborted || input.hasPendingAbortRequest()
+      if (shouldRollbackForAbort && !streamedAssistant.hadMeaningfulOutput && shouldRollbackUserMessageOnAbort) {
+        await rollbackAndRestoreComposer(input, {
+          conversationId: conversationForRun.id,
+          fallbackConversation: conversationForRun,
+          restoreComposer: shouldRestoreMainComposerOnAbort(),
+          shouldKeepSelected,
+          userMessageId: persistedUserMessage?.id ?? null,
+        })
+        return requestAccepted
+      }
+
+      const wasUserMessageReverted = input.isUserMessageReverted?.(persistedUserMessage?.id ?? '') ?? false
+      if (wasUserMessageReverted && shouldRollbackUserMessageOnAbort) {
+        await rollbackAndRestoreComposer(input, {
+          conversationId: conversationForRun.id,
+          fallbackConversation: conversationForRun,
+          restoreComposer: shouldRestoreMainComposerOnAbort(),
+          shouldKeepSelected,
+          userMessageId: persistedUserMessage?.id ?? null,
+        })
+      }
+      return requestAccepted
+    }
+
+    if (!draftManager) {
+      throw new Error('Missing local assistant draft manager.')
+    }
     const streamedMessages = draftManager.finalizeStreamedMessages(streamedAssistant.wasAborted)
     if (streamedMessages === null) {
       const shouldRollbackForAbort = streamedAssistant.wasAborted || input.hasPendingAbortRequest()
@@ -375,10 +407,6 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
         userMessageId: persistedUserMessage?.id ?? null,
       })
 
-      return requestAccepted
-    }
-
-    if (usesSharedRunPersistence) {
       return requestAccepted
     }
 

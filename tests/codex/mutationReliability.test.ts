@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { applyPatchInWorkspace } from '../../electron/chat/shared/applyPatchWorkspace'
 import { CodeModeExecutor } from '../../electron/chat/shared/codeMode/executor'
 import { createAgentToolBundle, createNativeAgentTools } from '../../electron/chat/shared/tools'
 import { createCodeModeTool } from '../../electron/chat/shared/tools/metaTools'
@@ -673,6 +674,87 @@ test('successful atomic writes leave no temporary mutation files behind', async 
     const entries = await fs.readdir(fixture.workspaceRootPath)
     assert.equal(entries.some((entry) => entry.includes('.tidecode-') && entry.endsWith('.tmp')), false)
   } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('write and apply_patch use a backup swap when Windows rejects replacing an existing target', async (t) => {
+  const lineEnding = String.fromCharCode(10)
+  const fixture = await createFixture('before' + lineEnding)
+  const realRename = fs.rename.bind(fs)
+
+  t.mock.method(fs, 'rename', async (sourcePath, destinationPath) => {
+    const source = String(sourcePath)
+    const destination = String(destinationPath)
+    if (destination === fixture.targetPath && source.includes('.tidecode-') && source.endsWith('.tmp')) {
+      const targetExists = await fs.stat(fixture.targetPath).then(() => true).catch(() => false)
+      if (targetExists) {
+        const error = new Error('simulated Windows replace failure') as NodeJS.ErrnoException
+        error.code = 'EPERM'
+        throw error
+      }
+    }
+    await realRename(sourcePath, destinationPath)
+  })
+
+  try {
+    await createWholeFileWriteToolResult(fixture.context, { path: 'target.ts', content: 'after' + lineEnding })
+    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), 'after' + lineEnding)
+
+    const patch = [
+      '*** Begin Patch',
+      '*** Update File: target.ts',
+      '@@',
+      '-after',
+      '+patched',
+      '*** End Patch',
+    ].join(lineEnding)
+    await applyPatchInWorkspace(fixture.workspaceRootPath, patch)
+    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), 'patched' + lineEnding)
+
+    const entries = await fs.readdir(fixture.workspaceRootPath)
+    assert.equal(entries.some((entry) => entry.includes('.tidecode-') && (entry.endsWith('.tmp') || entry.endsWith('.bak'))), false)
+  } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('apply_patch holds the same-file mutation queue until its transaction commits', async () => {
+  const fixture = await createFixture('before\n')
+  let releasePatch: (() => void) | undefined
+  let markPatchReady: (() => void) | undefined
+  const patchReady = new Promise<void>((resolve) => { markPatchReady = resolve })
+  const patchRelease = new Promise<void>((resolve) => { releasePatch = resolve })
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: target.ts',
+    '@@',
+    '-before',
+    '+patched',
+    '*** End Patch',
+  ].join('\n')
+
+  try {
+    const patchPromise = applyPatchInWorkspace(fixture.workspaceRootPath, patch, {
+      onBeforeChange: async () => {
+        markPatchReady?.()
+        await patchRelease
+      },
+    })
+    await patchReady
+
+    const writePromise = createWholeFileWriteToolResult(fixture.context, {
+      path: 'target.ts',
+      content: 'written-after-patch\n',
+    })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), 'before\n')
+
+    releasePatch?.()
+    await Promise.all([patchPromise, writePromise])
+    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), 'written-after-patch\n')
+  } finally {
+    releasePatch?.()
     await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
   }
 })

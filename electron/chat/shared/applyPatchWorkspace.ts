@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { getSafeWorkspaceTargetPath } from '../../workspace/paths'
 import { retryTransientFilesystemOperation, writeTextFileAtomically } from './tools/workspaceMutationSafety'
+import { enqueueWorkspaceMutations } from './tools/workspaceMutationQueue'
 import { applyUpdateChunks, normalizeContentLineEndings } from './applyPatchMatcher'
 import { parseApplyPatch } from './applyPatchParser'
 import type {
@@ -57,6 +58,15 @@ export async function applyPatchInWorkspace(
       options?.resolveTargetPath,
       basePath,
     )
+  const mutationTargetPaths = parsedPatch.hunks.flatMap((hunk) => {
+    const sourcePath = resolveTargetPath(hunk.path).absolutePath
+    if (hunk.type === 'update' && hunk.movePath) {
+      return [sourcePath, resolveTargetPath(hunk.movePath).absolutePath]
+    }
+    return [sourcePath]
+  })
+
+  return enqueueWorkspaceMutations(mutationTargetPaths, async () => {
   const readRequiredContent = async (
     target: ApplyPatchTargetPath,
     operation: 'deletion' | 'update',
@@ -156,6 +166,7 @@ export async function applyPatchInWorkspace(
   await commitStagedFiles(stagedFiles)
 
   return { changes, parsedPatch }
+  })
 }
 
 async function readFileSnapshot(absolutePath: string): Promise<FileSnapshot> {

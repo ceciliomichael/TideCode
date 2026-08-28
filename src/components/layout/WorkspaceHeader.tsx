@@ -21,7 +21,7 @@ export function WorkspaceHeader({
   return (
     <header
       className={[
-        'flex h-14 shrink-0 items-center border-b border-border px-4 transition-[padding] duration-300 ease-out md:px-5',
+        'non-selectable-ui flex h-14 shrink-0 items-center border-b border-border px-4 transition-[padding] duration-300 ease-out md:px-5',
         leadingPaddingClassName ?? '',
       ].join(' ')}
     >

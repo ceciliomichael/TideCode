@@ -19,7 +19,7 @@ export function getSessionIdsForOwner(ownerWebContentsId: number) {
   return ownerSessionIds.get(ownerWebContentsId) ?? null;
 }
 
-export function terminateAiSessionsForTurn(
+export async function terminateAiSessionsForTurn(
   ownerWebContentsId: number,
   aiTurnId: string,
   workspaceRootPath?: string | null,
@@ -41,9 +41,7 @@ export function terminateAiSessionsForTurn(
     )
     .map(([sessionId]) => sessionId);
 
-  for (const sessionId of sessionIds) {
-    terminateSession(sessionId);
-  }
+  await Promise.allSettled(sessionIds.map((sessionId) => terminateSession(sessionId)));
 }
 
 export function getNextSessionId() {
@@ -123,14 +121,14 @@ export function findWorkspaceSessionId(
   return ownerMappings?.get(workspaceKey) ?? null;
 }
 
-export function terminateSession(sessionId: number) {
+export async function terminateSession(sessionId: number) {
   const activeSession = sessions.get(sessionId);
   if (!activeSession) {
     return;
   }
 
   notifySessionWaiters(activeSession);
-  const terminationResult = terminatePtyProcessTree(activeSession.ptyProcess);
+  const terminationResult = await terminatePtyProcessTree(activeSession.ptyProcess);
   if (!terminationResult.terminated) {
     return terminationResult;
   }
@@ -144,16 +142,14 @@ export function terminateSession(sessionId: number) {
   return terminationResult;
 }
 
-function terminateSessionsForOwner(ownerWebContentsId: number) {
+async function terminateSessionsForOwner(ownerWebContentsId: number) {
   const activeOwnerSessions = ownerSessionIds.get(ownerWebContentsId);
   if (!activeOwnerSessions) {
     return;
   }
 
   const sessionIds = Array.from(activeOwnerSessions.values());
-  for (const sessionId of sessionIds) {
-    terminateSession(sessionId);
-  }
+  await Promise.allSettled(sessionIds.map((sessionId) => terminateSession(sessionId)));
 
   ownerSessionIds.delete(ownerWebContentsId);
   ownerWorkspaceSessions.delete(ownerWebContentsId);
@@ -167,7 +163,7 @@ export function attachOwnerCleanup(sender: WebContents) {
   ownersWithCleanup.add(sender.id);
   sender.once("destroyed", () => {
     ownersWithCleanup.delete(sender.id);
-    terminateSessionsForOwner(sender.id);
+    void terminateSessionsForOwner(sender.id);
   });
 }
 

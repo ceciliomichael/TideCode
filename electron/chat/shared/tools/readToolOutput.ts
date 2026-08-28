@@ -18,8 +18,8 @@ export function createReadToolOutputTool() {
       properties: {
         limit: {
           default: 200,
-          description: 'Maximum number of lines to return. Defaults to 200 and never exceeds 2000.',
-          maximum: 2_000,
+          description: 'Maximum number of lines to return. Defaults to 200 and never exceeds 500.',
+          maximum: 500,
           minimum: 1,
           type: 'integer',
         },
@@ -30,7 +30,7 @@ export function createReadToolOutputTool() {
           type: 'integer',
         },
         output_id: {
-          description: 'The output_id from the truncated tool result.',
+          description: 'The five-digit output_id from the truncated tool result.',
           minLength: 1,
           type: 'string',
         },
@@ -56,10 +56,8 @@ export function createReadToolOutputTool() {
                   start_line: result.startLine,
                 }
               : {}),
-            has_more: result.nextOffset !== null,
-            next_offset: result.nextOffset,
             output_id: result.outputId,
-            returned_line_count: result.returnedLineCount,
+            ...(result.nextOffset === null ? {} : { next_offset: result.nextOffset }),
             total_line_count: result.lineCount,
           },
           subject: {

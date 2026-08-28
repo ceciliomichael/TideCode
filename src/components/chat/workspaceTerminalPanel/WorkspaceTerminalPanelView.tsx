@@ -41,7 +41,7 @@ export function WorkspaceTerminalPanelView({
     <section
       ref={panelState.panelRef}
       className={[
-        "relative flex min-h-0 w-full shrink-0 self-stretch flex-col overflow-hidden bg-[var(--workspace-panel-surface)]",
+        "non-selectable-ui relative flex min-h-0 w-full shrink-0 self-stretch flex-col overflow-hidden bg-[var(--workspace-panel-surface)]",
         panelState.isFullScreen ? "border-t-0" : "border-t border-border",
       ].join(" ")}
       style={{
@@ -160,7 +160,7 @@ export function WorkspaceTerminalPanelView({
       <div className="relative flex-1 min-h-0 overflow-hidden bg-[var(--workspace-panel-surface)] px-4 py-3">
         <div
           ref={panelState.terminalHostRef}
-          className="workspace-terminal-host relative h-full w-full overflow-hidden text-foreground bg-[var(--workspace-panel-surface)]"
+          className="selectable-ui workspace-terminal-host relative h-full w-full overflow-hidden text-foreground bg-[var(--workspace-panel-surface)]"
         />
         {!panelState.autoCreateTabOnOpen && panelState.terminalTabs.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center p-6">

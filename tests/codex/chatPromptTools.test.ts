@@ -286,7 +286,7 @@ test('provider replay bounds oversized legacy tool content without mutating stor
   assert.ok(Buffer.byteLength(output.output.value, 'utf8') < 40_000)
   assert.match(output.output.value, /line 0 /u)
   assert.match(output.output.value, /line 3999 /u)
-  assert.match(output.output.value, /Tool output truncated/u)
+  assert.match(output.output.value, /Output truncated/u)
   assert.doesNotMatch(output.output.value, /read_tool_output/u)
   assert.equal(parseStructuredToolResultContent(storedToolResult).body, body)
 })
@@ -671,7 +671,7 @@ test('buildSkillToolDescription states only the literal skill operation', () => 
     },
   ])
 
-  assert.equal(description, 'List, search, or load an enabled skill.')
+  assert.equal(description, 'List, search, or load an available skill.')
   assert.doesNotMatch(description, /when|should|use this/iu)
 })
 

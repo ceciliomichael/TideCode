@@ -17,7 +17,7 @@ export function SettingsSidebarPanel({
   const visibleItems = getVisibleSettingsItems(surface, Boolean(window.tidecodeRemoteHost))
 
   return (
-    <aside className="scroll-stable flex h-full min-w-0 flex-1 flex-col overflow-y-auto bg-[var(--sidebar-panel-surface)] px-4 pb-5 pt-3 md:px-5">
+    <aside className="non-selectable-ui scroll-stable flex h-full min-w-0 flex-1 flex-col overflow-y-auto bg-[var(--sidebar-panel-surface)] px-4 pb-5 pt-3 md:px-5">
       <div className="pb-4">
 <div className="hidden h-10 md:block" aria-hidden="true" />
 

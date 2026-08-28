@@ -88,7 +88,7 @@ export function CodexUsageIndicator({ disabled = false, usage }: CodexUsageIndic
           type="button"
           aria-expanded={isOpen}
           aria-label={`Codex usage ${hoverSummary}`}
-        className="inline-flex h-8 w-auto max-w-full items-center bg-transparent px-0 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground disabled:cursor-not-allowed disabled:text-disabled-foreground"
+        className="inline-flex h-8 w-auto max-w-full select-none items-center bg-transparent px-0 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground disabled:cursor-not-allowed disabled:text-disabled-foreground"
         disabled={disabled}
         onClick={togglePopover}
         data-open={isOpen ? 'true' : 'false'}
@@ -106,7 +106,7 @@ export function CodexUsageIndicator({ disabled = false, usage }: CodexUsageIndic
           role="dialog"
           aria-label="Codex usage details"
           className={[
-            'absolute right-0 z-50 w-60 rounded-2xl border border-border bg-surface p-3 text-xs text-foreground shadow-soft',
+            'selectable-ui absolute right-0 z-50 w-60 rounded-2xl border border-border bg-surface p-3 text-xs text-foreground shadow-soft',
             tooltipPosition === 'above' ? 'bottom-full mb-1.5' : 'top-full mt-1.5',
           ].join(' ')}
           style={{ zIndex: 60 }}

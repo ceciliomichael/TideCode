@@ -32,6 +32,13 @@ interface RipgrepFallbackResult {
   stdout: string
 }
 
+function throwIfAborted(abortSignal?: AbortSignal) {
+  if (!abortSignal?.aborted) return
+  const error = new Error('ripgrep fallback search was cancelled.')
+  error.name = 'AbortError'
+  throw error
+}
+
 function hasBinaryContent(buffer: Buffer) {
   const probeLength = Math.min(buffer.length, 1024)
   for (let index = 0; index < probeLength; index += 1) {
@@ -141,11 +148,14 @@ async function visitVisibleFiles(
   currentDirectoryPath: string,
   isVisibleEntry: (entryAbsolutePath: string, isDirectory: boolean) => Promise<boolean>,
   onFile: (fileAbsolutePath: string, fileRelativePath: string) => Promise<boolean | void> | boolean | void,
+  abortSignal?: AbortSignal,
 ) {
+  throwIfAborted(abortSignal)
   const directoryEntries = await fs.readdir(currentDirectoryPath, { withFileTypes: true })
   directoryEntries.sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
 
   for (const directoryEntry of directoryEntries) {
+    throwIfAborted(abortSignal)
     if (directoryEntry.isSymbolicLink()) {
       continue
     }
@@ -161,7 +171,7 @@ async function visitVisibleFiles(
     }
 
     if (isDirectory) {
-      const shouldStop = await visitVisibleFiles(workspaceRootPath, entryAbsolutePath, isVisibleEntry, onFile)
+      const shouldStop = await visitVisibleFiles(workspaceRootPath, entryAbsolutePath, isVisibleEntry, onFile, abortSignal)
       if (shouldStop) {
         return true
       }
@@ -178,12 +188,12 @@ async function visitVisibleFiles(
   return false
 }
 
-async function collectVisibleFilePaths(workspaceRootPath: string) {
+async function collectVisibleFilePaths(workspaceRootPath: string, abortSignal?: AbortSignal) {
   const filePaths: string[] = []
   const isVisibleEntry = createWorkspaceEntryVisibilityFilter(workspaceRootPath)
   await visitVisibleFiles(workspaceRootPath, workspaceRootPath, isVisibleEntry, async (_, fileRelativePath) => {
     filePaths.push(fileRelativePath)
-  })
+  }, abortSignal)
   return filePaths
 }
 
@@ -213,8 +223,10 @@ export async function searchVisibleFiles(
     ignoreWorkspaceRules?: boolean
     literalFallback?: boolean
     regex?: boolean
+    abortSignal?: AbortSignal
   },
 ): Promise<SearchVisibleFilesResult> {
+  throwIfAborted(options?.abortSignal)
   const includePattern = include?.trim()
   let searchExpression: RegExp | null = null
   let invalidPattern = false
@@ -235,6 +247,7 @@ export async function searchVisibleFiles(
   const includeMatchPattern = includePattern ?? null
 
   async function searchFile(fileAbsolutePath: string, fileRelativePath: string) {
+    throwIfAborted(options?.abortSignal)
     if (includeMatchPattern && !matchesWorkspaceGlob(fileRelativePath, includeMatchPattern)) {
       return false
     }
@@ -267,6 +280,7 @@ export async function searchVisibleFiles(
     let lineNumber = 0
     try {
       for await (const line of reader) {
+        throwIfAborted(options?.abortSignal)
         lineNumber += 1
         const hasMatch = searchExpression
           ? searchExpression.test(line)
@@ -322,7 +336,7 @@ export async function searchVisibleFiles(
 
   await visitVisibleFiles(workspaceRootPath, searchRootPath, isVisibleEntry, async (fileAbsolutePath, fileRelativePath) => {
     return searchFile(fileAbsolutePath, fileRelativePath)
-  })
+  }, options?.abortSignal)
 
   matches.sort((left, right) => {
     if (left.absolutePath !== right.absolutePath) {
@@ -389,9 +403,14 @@ function getSearchPathArg(args: string[]) {
   return args[args.length - 1] ?? null
 }
 
-export async function runRipgrepFallback(args: string[], cwd: string): Promise<RipgrepFallbackResult> {
+export async function runRipgrepFallback(
+  args: string[],
+  cwd: string,
+  options: { abortSignal?: AbortSignal } = {},
+): Promise<RipgrepFallbackResult> {
+  throwIfAborted(options.abortSignal)
   if (args.includes('--files')) {
-    const files = await collectVisibleFilePaths(cwd)
+    const files = await collectVisibleFilePaths(cwd, options.abortSignal)
     const globPattern = getPrimaryGlobPattern(args)
     const excludedGlobPatterns = getExcludedGlobPatterns(args)
     const normalizedGlobPattern = normalizeSearchIncludePattern(globPattern)
@@ -438,6 +457,7 @@ export async function runRipgrepFallback(args: string[], cwd: string): Promise<R
         ? searchPath
         : undefined
     const result = await searchVisibleFiles(cwd, searchPath, searchPattern, include, undefined, {
+      abortSignal: options.abortSignal,
       ignoreBasePath,
       ignoreWorkspaceRules: false,
       literalFallback: false,
@@ -477,7 +497,7 @@ export async function runRipgrepFallback(args: string[], cwd: string): Promise<R
     }
 
     const include = normalizeSearchIncludePattern(getPrimaryGlobPattern(args)) ?? undefined
-    const result = await searchVisibleFiles(cwd, cwd, searchPattern, include)
+    const result = await searchVisibleFiles(cwd, cwd, searchPattern, include, undefined, { abortSignal: options.abortSignal })
     if (result.matches.length === 0) {
       return {
         exitCode: 1,

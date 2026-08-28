@@ -1,5 +1,5 @@
 import type { ModelMessage } from 'ai'
-import type { CompactionPacket } from './contracts'
+import type { CompactionPacket, CompactionTurnState } from './contracts'
 import { stripExecutionModeContext } from '../../../../src/lib/executionModeContext'
 import { sanitizeCompactionContent } from './sanitize'
 import { buildChatCompressionSystemPrompt } from '../prompts/compression'
@@ -58,13 +58,16 @@ export function buildCompactionSystemPrompt() {
 }
 
 export function buildCompactionRequestPrompt(input: {
+  latestUserSourceMessageId?: string | null
   messages: readonly ModelMessage[]
   previousPacket?: Pick<CompactionPacket, 'continuationMarkdown'> & Partial<Pick<CompactionPacket, 'userPromptLedger'>> | null
   sourceDigest: string
   sourceMessageIds: string[]
   sourceStartIndex?: number
+  turnState?: CompactionTurnState
 }) {
   const sourceStartIndex = input.sourceStartIndex ?? 0
+  const turnState = input.turnState ?? 'settled'
   const transcript = input.messages
     .map((message, index) => serializeMessage(message, index, sourceStartIndex))
     .join('\n')
@@ -87,6 +90,15 @@ export function buildCompactionRequestPrompt(input: {
           '',
         ].join('\n')
       : '',
+    'HOST TURN LIFECYCLE (authoritative; applies only to the live conversation\'s latest user turn):',
+    `Current turn: ${turnState.toUpperCase()}`,
+    input.latestUserSourceMessageId
+      ? `Latest user source message: ${input.latestUserSourceMessageId}`
+      : 'Latest user source message: unavailable',
+    turnState === 'active'
+      ? 'The latest user request is still in progress. Successful tool calls, edits, reads, searches, or tests are completed substeps only; they do not complete the overall request. Keep the latest request open and preserve what still needs to happen.'
+      : 'The latest assistant turn has settled. Settled means the response/tool loop ended; it does not by itself prove that the user goal succeeded. Keep clearly blocked, failed, or explicitly unfinished work open.',
+    '',
     'The transcript below begins after the previous compaction barrier and contains newer evidence only. Return one complete, concise Markdown summary, not a delta; this summary is the new handoff.',
     'Do not output JSON or repeat the transcript. Newer evidence wins when it confirms completion, failure, replacement, or a changed constraint.',
     'Do not retain raw tool calls or raw tool results in the handoff. Convert them into concise verified facts, file references, validation, or open work.',

@@ -14,6 +14,7 @@ import {
   hasBinaryContent,
 } from './workspaceToolResults'
 import { runRipgrep } from './ripgrep'
+import { TOOL_OUTPUT_PAGED_READ_MAX_BYTES } from './toolOutputBudget'
 import {
   createWorkspaceEntryVisibilityFilter,
   filterVisibleRelativeFileEntries,
@@ -146,11 +147,11 @@ export async function createReadToolResult(
   displayPath: string,
   offset: number | undefined,
   limit: number | undefined,
-  fullFile = false,
+  legacyFullFile = false,
 ) {
   const stats = await fs.stat(absolutePath)
   if (stats.isDirectory()) {
-    if (fullFile) {
+    if (legacyFullFile) {
       throw new Error('full_file is only supported for text files, not directories.')
     }
 
@@ -246,9 +247,11 @@ export async function createReadToolResult(
 
 
 
-  const startLine = fullFile ? 1 : Math.max(1, offset ?? 1)
-  const maxLines = fullFile
-    ? Number.MAX_SAFE_INTEGER
+  // Historical callers may still carry full_file: true. Keep that positional
+  // compatibility without allowing it to bypass the bounded read contract.
+  const startLine = legacyFullFile ? 1 : Math.max(1, offset ?? 1)
+  const maxLines = legacyFullFile
+    ? DEFAULT_FILE_READ_LIMIT
     : Math.min(DEFAULT_FILE_READ_LIMIT, Math.max(1, Math.floor(limit ?? DEFAULT_FILE_READ_LIMIT)))
   const stream = createReadStream(absolutePath)
   const reader = createInterface({
@@ -257,6 +260,7 @@ export async function createReadToolResult(
   })
 
   const collectedLines: string[] = []
+  let collectedBytes = 0
   let hasMoreLines = false
   let lineCount = 0
 
@@ -269,10 +273,17 @@ export async function createReadToolResult(
 
       if (collectedLines.length >= maxLines) {
         hasMoreLines = true
-        continue
+        break
+      }
+
+      const lineBytes = Buffer.byteLength(line, 'utf8') + (collectedLines.length > 0 ? 1 : 0)
+      if (collectedLines.length > 0 && collectedBytes + lineBytes > TOOL_OUTPUT_PAGED_READ_MAX_BYTES) {
+        hasMoreLines = true
+        break
       }
 
       collectedLines.push(line)
+      collectedBytes += lineBytes
     }
   } finally {
     reader.close()
@@ -292,11 +303,8 @@ export async function createReadToolResult(
             start_line: startLine,
           }
         : {}),
-      has_more: hasMoreLines,
-      is_directory: false,
-      next_offset: hasMoreLines ? endLine + 1 : null,
-      returned_line_count: collectedLines.length,
-      total_line_count: lineCount,
+      ...(hasMoreLines ? { next_offset: endLine + 1 } : {}),
+      ...(!hasMoreLines ? { total_line_count: lineCount } : {}),
     },
     subject: {
       kind: 'file',
@@ -313,13 +321,14 @@ export async function createGlobToolResult(
   pattern: string,
   offset?: number,
   limit?: number,
+  abortSignal?: AbortSignal,
 ) {
   const args = ['--files', '--hidden', '--no-ignore-vcs', '--glob', pattern]
   for (const globPattern of RIPGREP_EXCLUDE_GLOBS) {
     args.push('--glob', globPattern)
   }
 
-  const result = await runRipgrep(args, absolutePath)
+  const result = await runRipgrep(args, absolutePath, { abortSignal })
   if (result.exitCode !== 0 && result.exitCode !== 1) {
     return createErrorResult(`Glob failed for ${relativePath}`, {
       body: result.stderr.trim() || `ripgrep exited with code ${result.exitCode}`,
@@ -372,6 +381,7 @@ export async function createGrepToolResult(
   include: string | undefined,
   offset?: number,
   limit?: number,
+  abortSignal?: AbortSignal,
 ) {
   const stats = await fs.stat(absolutePath)
   if (!stats.isDirectory() && !stats.isFile()) {
@@ -391,7 +401,7 @@ export async function createGrepToolResult(
 
   args.push(absolutePath)
 
-  const result = await runRipgrep(args, workspaceRootPath)
+  const result = await runRipgrep(args, workspaceRootPath, { abortSignal })
   const output = result.stdout.trim()
   if (result.exitCode === 1 || (result.exitCode === 2 && output.length === 0)) {
     return createSuccessResult({

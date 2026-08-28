@@ -24,7 +24,7 @@ export function createGlobTool(context: WorkspaceToolContext) {
       required: ['pattern'],
       type: 'object',
     }),
-    execute: async (rawInput) => {
+    execute: async (rawInput, options) => {
       const input = rawInput as { limit?: number; offset?: number; path?: string; pattern: string }
       try {
         const target = await resolveReadOnlyTargetPath(
@@ -39,6 +39,7 @@ export function createGlobTool(context: WorkspaceToolContext) {
           input.pattern,
           input.offset,
           input.limit,
+          options?.abortSignal,
         )
       } catch (error) {
         return createToolErrorResult(getToolErrorSummary(error, 'Glob failed.'))

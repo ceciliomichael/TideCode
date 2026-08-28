@@ -2,7 +2,6 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildCliSettingsPatch } from '../../electron/cli/cliSettingsCommand'
 import { buildCliDefaultModelSettingsPatch } from '../../electron/cli/cliDefaultModelSettings'
-import { buildDisabledSkillsByPath } from '../../electron/cli/cliSkillsCommand'
 import { buildCliMcpConfigUpdate } from '../../electron/cli/cliMcpCommand'
 import type { McpServerConfig } from '../../src/types/mcp'
 
@@ -18,11 +17,13 @@ test('CLI default model selectors build CLI-local model patches while summarizat
       label: 'GPT 5.6',
       modelId: 'gpt-5.6',
       providerId: 'codex',
+      reasoningEffort: 'low',
     }),
     {
       agentModelId: 'gpt-5.6',
       agentModelLabel: 'GPT 5.6',
       agentModelProviderId: 'codex',
+      agentReasoningEffort: 'low',
     },
   )
   assert.deepEqual(buildCliDefaultModelSettingsPatch('plan-model', { kind: 'inherit' }), {
@@ -36,22 +37,15 @@ test('CLI default model selectors build CLI-local model patches while summarizat
       label: 'Claude',
       modelId: 'claude-test',
       providerId: 'anthropic',
+      reasoningEffort: 'high',
     }),
     {
       summarizationModelId: 'claude-test',
       summarizationModelLabel: 'Claude',
       summarizationModelProviderId: 'anthropic',
+      summarizationReasoningEffort: 'high',
     },
   )
-})
-
-test('skills save only discovered disabled paths while preserving unrelated preferences', () => {
-  const result = buildDisabledSkillsByPath(
-    { legacy: true, first: true },
-    ['first', 'second'],
-    new Set(['first']),
-  )
-  assert.deepEqual(result, { legacy: true, second: true })
 })
 
 test('MCP save toggles the server and known tools while preserving unknown overrides', () => {

@@ -126,7 +126,7 @@ const ThinkingBlockHeader = memo(function ThinkingBlockHeader({
       onClick={onToggle}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
-      className="group flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      className="non-selectable-ui group flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
     >
       <span
         className={[

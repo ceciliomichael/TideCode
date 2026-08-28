@@ -151,12 +151,16 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   const isLiteralSourceTool =
     displayInvocation.toolName === 'read' ||
     displayInvocation.toolName === 'grep'
-  const parsedStructuredResult = displayInvocation.resultContent ? parseStructuredToolResultContent(displayInvocation.resultContent) : null
+  const parsedStructuredResult = isOpen && displayInvocation.resultContent
+    ? parseStructuredToolResultContent(displayInvocation.resultContent)
+    : null
   const rawResultBody =
-    parsedStructuredResult?.body ??
-    parsedStructuredResult?.metadata?.summary ??
-    displayInvocation.resultContent ??
-    ''
+    isOpen
+      ? parsedStructuredResult?.body
+        ?? parsedStructuredResult?.metadata?.summary
+        ?? displayInvocation.resultContent
+        ?? ''
+      : ''
   const displayResultBody = getToolResultDisplayBody(displayInvocation.toolName, rawResultBody)
   const markdownResultBody = displayInvocation.toolName === 'web_search'
     ? normalizeWebSearchMarkdownBody(displayResultBody)
@@ -181,7 +185,7 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
           setIsOpen((currentValue) => !currentValue)
         }}
         className={[
-          'group flex w-full min-w-0 items-center text-left text-sm text-muted-foreground transition-colors',
+          'group flex w-full min-w-0 select-none items-center text-left text-sm text-muted-foreground transition-colors',
           disableHeaderToggle ? 'cursor-default opacity-90' : 'hover:text-foreground',
         ].join(' ')}
       >

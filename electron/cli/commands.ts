@@ -1,13 +1,10 @@
-import type { ChatMode, ReasoningEffort } from '../../src/types/chat'
-import { isReasoningEffort } from '../../src/lib/reasoningEffort'
+import type { ChatMode } from '../../src/types/chat'
 import type { CliSessionState, SlashCommandDefinition, SlashCommandHelpers } from './types'
 import { listConversationRecords } from '../history/conversationFileStore'
 import { readPrunedFolderStore } from '../history/folderStore'
 import type { SelectItem } from './interactiveSelect'
-import { findSystemModel, getTideCodeSystemModels } from './models'
 import { buildResumeConversationItems, getResumeProjectLabel } from './resumeCatalog'
 import type { ResumePage } from './terminalResumeView'
-import { buildTerminalReasoningEffortItems } from './terminalReasoningEffort'
 import { runCliSettingsCommand } from './cliSettingsCommand'
 import { runCliSkillsCommand } from './cliSkillsCommand'
 import { runCliMcpCommand } from './cliMcpCommand'
@@ -36,7 +33,7 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
   },
   {
     name: 'skills',
-    description: 'Enable or disable skills available to TideCode',
+    description: 'List skills available to TideCode',
     usage: '/skills',
     execute: async (_args, state, helpers) => runCliSkillsCommand(state, helpers),
   },
@@ -63,53 +60,12 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     execute: async (args, state, helpers) => runCliModelCommand(args, state, helpers),
   },
   {
-    name: 'effort',
-    alias: 'e',
-    description: 'View or change the current model reasoning effort, synced with desktop',
-    usage: '/effort [level]',
-    execute: async (args, state, helpers) => {
-      const snapshot = await getTideCodeSystemModels()
-      const model = findSystemModel(snapshot.allModels, state.modelId, state.providerId)
-      if (!model) {
-        helpers.renderError(`Could not resolve reasoning settings for ${state.modelId}.`)
-        return
-      }
-
-      const items = buildTerminalReasoningEffortItems(model, state.reasoningEffort)
-      if (items.length === 0) {
-        helpers.renderInfo(`${model.label} does not expose configurable reasoning effort.`)
-        return
-      }
-
-      if (args.length > 0) {
-        const requestedEffort = args[0].toLowerCase()
-        const supportedEfforts = items.map((item) => item.value)
-        if (!isReasoningEffort(requestedEffort) || !supportedEfforts.includes(requestedEffort)) {
-          helpers.renderError(`Unsupported effort for ${model.label}. Choose: ${supportedEfforts.join(', ')}.`)
-          return
-        }
-        await helpers.switchReasoningEffort(requestedEffort, model.label)
-        return
-      }
-
-      const currentIndex = items.findIndex((item) => item.isCurrent)
-      const selected = await helpers.select<ReasoningEffort>({
-        title: `Reasoning Effort · ${model.label}`,
-        items,
-        initialIndex: currentIndex >= 0 ? currentIndex : 0,
-        pageSize: 7,
-        footer: `Current: ${state.reasoningEffort}`,
-      })
-      if (selected) await helpers.switchReasoningEffort(selected, model.label)
-    },
-  },
-  {
     name: 'plan',
     description: 'Switch to Plan mode for read-only architectural analysis (or toggle back to Agent mode)',
     usage: '/plan',
     execute: async (_args, state, helpers) => {
       const nextMode = state.chatMode === 'plan' ? 'agent' : 'plan'
-      helpers.switchMode(nextMode)
+      await helpers.switchMode(nextMode)
     },
   },
   {
@@ -117,7 +73,7 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     description: 'Switch to Agent mode for autonomous file edits and tools',
     usage: '/agent',
     execute: async (_args, _state, helpers) => {
-      helpers.switchMode('agent')
+      await helpers.switchMode('agent')
     },
   },
   {
@@ -131,13 +87,13 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
           helpers.renderError('Invalid mode. Choose either "agent" or "plan".')
           return
         }
-        helpers.switchMode(targetMode)
+        await helpers.switchMode(targetMode)
         return
       }
 
       // Toggle directly or pick
       const nextMode = state.chatMode === 'plan' ? 'agent' : 'plan'
-      helpers.switchMode(nextMode)
+      await helpers.switchMode(nextMode)
     },
   },
   {

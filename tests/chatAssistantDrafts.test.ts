@@ -17,6 +17,7 @@ function createRuntimeSelection(): ChatRuntimeSelection {
 
 function createDraftManager() {
   const messages: Message[] = []
+  const messageUpdateOptions: Array<{ immediate?: boolean; transient?: boolean } | undefined> = []
   const runtimePatches: Record<string, unknown>[] = []
   const runtimeSelection = createRuntimeSelection()
   const getMessages = () => messages
@@ -28,7 +29,8 @@ function createDraftManager() {
     conversationId: 'conversation-1',
     initialConversationMessages: [],
     markTextStreamingPulse: () => {},
-    onConversationMessagesUpdated: (nextMessages) => {
+    onConversationMessagesUpdated: (nextMessages, options) => {
+      messageUpdateOptions.push(options)
       messages.splice(0, messages.length, ...nextMessages)
     },
     providerId: 'custom:test-provider',
@@ -50,6 +52,7 @@ function createDraftManager() {
   return {
     draftManager,
     getMessages,
+    messageUpdateOptions,
     runtimePatches,
   }
 }
@@ -359,6 +362,33 @@ test('chat assistant drafts flush the latest coalesced tool arguments before fin
   const assistantMessage = streamedMessages.find((message) => message.role === 'assistant')
   assert.equal(assistantMessage?.toolInvocations?.[0]?.argumentsText, '{"path":"README.md"}')
   assert.equal(assistantMessage?.toolInvocations?.[0]?.state, 'failed')
+})
+
+test('partial tool argument snapshots are marked transient until the tool reaches a boundary', () => {
+  const { draftManager, messageUpdateOptions } = createDraftManager()
+
+  draftManager.appendPlaceholderDraft()
+  draftManager.handleToolInvocationStarted('tool-call-transient', {
+    argumentsText: '',
+    startedAt: 10,
+    toolName: 'apply_patch',
+  })
+  const optionCountBeforeDelta = messageUpdateOptions.length
+  draftManager.handleToolInvocationDelta('tool-call-transient', {
+    argumentsText: 'x'.repeat(100_000),
+    toolName: 'apply_patch',
+  })
+  draftManager.handleToolInvocationCompleted('tool-call-transient', {
+    argumentsText: 'x'.repeat(100_000),
+    completedAt: 12,
+    resultContent: 'done',
+    resultPresentation: undefined,
+    toolName: 'apply_patch',
+  })
+
+  const deltaAndCompletionOptions = messageUpdateOptions.slice(optionCountBeforeDelta)
+  assert.equal(deltaAndCompletionOptions.some((options) => options?.transient === true), true)
+  assert.equal(deltaAndCompletionOptions.some((options) => options?.immediate === true), true)
 })
 
 test('chat assistant drafts finalize incomplete tool calls when a stream is aborted', () => {

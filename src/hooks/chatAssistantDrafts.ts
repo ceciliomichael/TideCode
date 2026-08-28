@@ -30,7 +30,7 @@ interface CreateChatAssistantDraftManagerInput {
   markTextStreamingPulse: (conversationId: string) => void
   onConversationMessagesUpdated: (
     messages: Message[],
-    options?: { immediate?: boolean },
+    options?: { immediate?: boolean; transient?: boolean },
     hint?: { deltaCharCount?: number },
   ) => void
   providerId: NonNullable<ChatRuntimeSelection['providerId']>
@@ -198,13 +198,13 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
   let shouldStartFreshReasoningDraft = false
   let assistantDraftCount = 0
 
-  const notifyConversationMessagesUpdated = (options?: { immediate?: boolean }, hint?: { deltaCharCount?: number }) => {
+  const notifyConversationMessagesUpdated = (options?: { immediate?: boolean; transient?: boolean }, hint?: { deltaCharCount?: number }) => {
     input.onConversationMessagesUpdated([...conversationMessagesSnapshot], options, hint)
   }
 
   const appendSnapshotMessage = (
     message: Message,
-    options?: { immediate?: boolean },
+    options?: { immediate?: boolean; transient?: boolean },
     hint?: { deltaCharCount?: number },
   ) => {
     conversationMessagesSnapshot = [...conversationMessagesSnapshot, message]
@@ -226,7 +226,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
   const updateSnapshotMessage = (
     messageId: string,
     nextMessage: Message,
-    options?: { immediate?: boolean },
+    options?: { immediate?: boolean; transient?: boolean },
     hint?: { deltaCharCount?: number },
   ) => {
     let wasUpdated = false
@@ -346,7 +346,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
   const updateDraftAssistantMessage = (
     draftAssistantId: string,
     updater: (message: Message) => Message,
-    options?: { immediate?: boolean },
+    options?: { immediate?: boolean; transient?: boolean },
     hint?: { deltaCharCount?: number },
   ) => {
     const nextValue = updater(getDraftAssistantMessage(draftAssistantId))
@@ -483,10 +483,6 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
     input.stopTextStreaming(input.conversationId)
     const draftAssistantId = toolInvocationMessageIds.get(invocationId) ?? ensureAssistantDraft('tool')
     toolInvocationMessageIds.set(invocationId, draftAssistantId)
-    const draftAssistantMessage = getDraftAssistantMessage(draftAssistantId)
-    const currentArgumentsTextLength =
-      draftAssistantMessage.toolInvocations?.find((invocation) => invocation.id === invocationId)?.argumentsText.length ?? 0
-    const deltaCharCount = Math.max(0, nextValue.argumentsText.length - currentArgumentsTextLength)
     updateDraftAssistantMessage(draftAssistantId, (message) => ({
       ...message,
       toolInvocations: upsertToolInvocation(message.toolInvocations ?? [], invocationId, (currentValue) => ({
@@ -499,7 +495,7 @@ export function createChatAssistantDraftManager(input: CreateChatAssistantDraftM
         state: currentValue?.state ?? 'running',
         toolName: nextValue.toolName,
       })),
-    }), undefined, { deltaCharCount })
+    }), { transient: true })
   }
 
   const toolInvocationDeltaCoalescer = new ToolInvocationDeltaCoalescer(applyToolInvocationDelta)

@@ -1,9 +1,11 @@
-import type { AppSettings, ChatProviderId } from '../../src/types/chat'
+import type { AppSettings, ChatProviderId, ReasoningEffort } from '../../src/types/chat'
+import { resolveReasoningEffortTransition } from '../../src/lib/reasoningEffortTransition'
 import { getStoredSettings, updateStoredSettings } from '../settings/store'
 import type { SelectItem } from './interactiveSelect'
 import { getConfiguredProviderModels, getTideCodeSystemModels, type SystemModelItem } from './models'
 import { colors } from './renderer'
 import type { SlashCommandHelpers } from './types'
+import { buildTerminalReasoningEffortItems } from './terminalReasoningEffort'
 
 export type CliDefaultModelSettingId = 'agent-model' | 'plan-model' | 'summarization-model'
 
@@ -11,6 +13,7 @@ interface ModelSettingFields {
   label: 'agentModelLabel' | 'planModelLabel' | 'summarizationModelLabel'
   modelId: 'agentModelId' | 'planModelId' | 'summarizationModelId'
   providerId: 'agentModelProviderId' | 'planModelProviderId' | 'summarizationModelProviderId'
+  reasoningEffort: 'agentReasoningEffort' | 'planReasoningEffort' | 'summarizationReasoningEffort'
 }
 
 export type CliDefaultModelSelection =
@@ -20,6 +23,7 @@ export type CliDefaultModelSelection =
       label: string
       modelId: string
       providerId: ChatProviderId
+      reasoningEffort: ReasoningEffort
     }
 
 const MODEL_SETTING_FIELDS: Record<CliDefaultModelSettingId, ModelSettingFields> = {
@@ -27,16 +31,19 @@ const MODEL_SETTING_FIELDS: Record<CliDefaultModelSettingId, ModelSettingFields>
     label: 'agentModelLabel',
     modelId: 'agentModelId',
     providerId: 'agentModelProviderId',
+    reasoningEffort: 'agentReasoningEffort',
   },
   'plan-model': {
     label: 'planModelLabel',
     modelId: 'planModelId',
     providerId: 'planModelProviderId',
+    reasoningEffort: 'planReasoningEffort',
   },
   'summarization-model': {
     label: 'summarizationModelLabel',
     modelId: 'summarizationModelId',
     providerId: 'summarizationModelProviderId',
+    reasoningEffort: 'summarizationReasoningEffort',
   },
 }
 
@@ -70,7 +77,7 @@ export function getCliDefaultModelSettingValue(id: CliDefaultModelSettingId, set
   const fields = MODEL_SETTING_FIELDS[id]
   const modelId = settings[fields.modelId].trim()
   if (!modelId || settings[fields.providerId] === null) return 'Use chat input model'
-  return settings[fields.label].trim() || modelId
+  return `${settings[fields.label].trim() || modelId} · ${settings[fields.reasoningEffort]}`
 }
 
 export function buildCliDefaultModelSettingsPatch(
@@ -90,6 +97,7 @@ export function buildCliDefaultModelSettingsPatch(
     [fields.label]: selection.label,
     [fields.modelId]: selection.modelId,
     [fields.providerId]: selection.providerId,
+    [fields.reasoningEffort]: selection.reasoningEffort,
   }
 }
 
@@ -119,6 +127,11 @@ export async function runCliDefaultModelSetting(
         label: model.label,
         modelId: model.apiModelId,
         providerId: model.providerId,
+        reasoningEffort: resolveReasoningEffortTransition({
+          currentEffort: settings[fields.reasoningEffort],
+          defaultEffort: model.defaultReasoningEffort,
+          supportedEfforts: model.reasoningEfforts,
+        }),
       },
       label: model.label,
       description: model.apiModelId,
@@ -128,7 +141,7 @@ export async function runCliDefaultModelSetting(
   ]
   const currentIndex = items.findIndex((item) => item.isCurrent)
   const setting = CLI_DEFAULT_MODEL_SETTINGS.find((item) => item.id === id)
-  const selected = await helpers.select<CliDefaultModelSelection>({
+  let selected = await helpers.select<CliDefaultModelSelection>({
     title: setting?.label ?? 'Default model',
     items,
     initialIndex: currentIndex >= 0 ? currentIndex : 0,
@@ -139,6 +152,29 @@ export async function runCliDefaultModelSetting(
   })
   if (selected === null) return
 
-    await updateStoredSettings(buildCliDefaultModelSettingsPatch(id, selected), 'cli')
+  if (selected.kind === 'model') {
+    const selectedModelId = selected.modelId
+    const selectedProviderId = selected.providerId
+    const selectedModel = configuredModels.find(
+      (model) => model.apiModelId === selectedModelId && model.providerId === selectedProviderId,
+    )
+    if (selectedModel) {
+      const reasoningItems = buildTerminalReasoningEffortItems(selectedModel, selected.reasoningEffort)
+      if (reasoningItems.length > 0) {
+        const currentReasoningIndex = reasoningItems.findIndex((item) => item.isCurrent)
+        const reasoningEffort = await helpers.select<ReasoningEffort>({
+          title: `Reasoning Effort · ${selectedModel.label}`,
+          items: reasoningItems,
+          initialIndex: currentReasoningIndex >= 0 ? currentReasoningIndex : 0,
+          pageSize: 7,
+          footer: 'Choose the default effort for this model · Esc cancels',
+        })
+        if (reasoningEffort === null) return
+        selected = { ...selected, reasoningEffort }
+      }
+    }
+  }
+
+  await updateStoredSettings(buildCliDefaultModelSettingsPatch(id, selected), 'cli')
   helpers.renderSuccess(`${setting?.label ?? 'Default model'} saved.`)
 }

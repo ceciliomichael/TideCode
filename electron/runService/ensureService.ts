@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
 import { getTideCodeRuntimeRoot } from '../runtime/runtimeRoot'
 import {
@@ -26,14 +26,36 @@ async function waitForChildExit(child: ChildProcess, timeoutMs: number) {
   ])
 }
 
-function forceTerminateRunServiceTree(child: ChildProcess) {
+async function forceTerminateRunServiceTree(child: ChildProcess) {
   const processId = child.pid
   if (!processId) return
 
   if (process.platform === 'win32') {
-    spawnSync('taskkill', ['/PID', String(processId), '/T', '/F'], {
-      stdio: 'ignore',
-      windowsHide: true,
+    await new Promise<void>((resolve) => {
+      let taskkill: ChildProcess
+      try {
+        taskkill = spawn('taskkill', ['/PID', String(processId), '/T', '/F'], {
+          stdio: 'ignore',
+          windowsHide: true,
+        })
+      } catch {
+        resolve()
+        return
+      }
+      let settled = false
+      const finish = () => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeoutId)
+        resolve()
+      }
+      taskkill.once('error', finish)
+      taskkill.once('exit', finish)
+      const timeoutId = setTimeout(() => {
+        taskkill.kill()
+        finish()
+      }, 2_000)
+      timeoutId.unref?.()
     })
     return
   }
@@ -233,11 +255,11 @@ export async function shutdownRunServiceForApplication() {
     await client.shutdown()
     if (await waitForChildExit(child, 1_000)) return
   } catch (error) {
-    forceTerminateRunServiceTree(child)
+    await forceTerminateRunServiceTree(child)
     throw error
   }
 
-  forceTerminateRunServiceTree(child)
+  await forceTerminateRunServiceTree(child)
   await waitForChildExit(child, 1_000)
 }
 

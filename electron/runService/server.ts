@@ -46,10 +46,13 @@ import { getCompactionAfterMessageId } from '../../src/lib/chatCompactionBoundar
 import { hasMinimumCompactionMessages, MIN_COMPACTION_MESSAGE_COUNT } from '../../src/lib/chatCompactionGate'
 import { reduceChatCompactionStatus } from '../../src/lib/chatCompactionStatus'
 import { isAppSettingsSurface } from '../../src/lib/appSettingsScopes'
+import { resolveUpdatedConversationRuntimeModel } from '../../src/lib/conversationRuntimeModel'
 import { getTerminalBroker } from '../terminal/broker/instance'
 
 const TERMINAL_RUN_RETENTION_MS = 60_000
 const TEXT_STREAM_IDLE_GRACE_MS = 1_500
+const RUN_PROJECTION_EMIT_INTERVAL_MS = 32
+const RUN_SERVICE_DROPPABLE_SOCKET_BUFFER_BYTES = 8 * 1024 * 1024
 
 function getConversationRuntimeKey(surface: AppSettingsSurface, conversationId: string) {
   return surface + ':' + conversationId
@@ -84,6 +87,11 @@ function terminalStatusForEvent(event: ChatStreamEvent): SharedRunStatus | null 
   if (event.type === 'aborted') return 'cancelled'
   if (event.type === 'error') return 'failed'
   return null
+}
+
+function isDroppableRunEvent(event: TideCodeRunEvent) {
+  return event.type === 'run_projection'
+    || (event.type === 'chat_event' && event.event.type === 'tool_invocation_delta')
 }
 
 async function canConnectToEndpoint(endpoint: string) {
@@ -412,15 +420,19 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
     if (!conversation) return null
     const settings = await getStoredSettings(surface).catch(() => null)
     const preference = settings?.conversationModelPreferences[conversationId]
+    const chatMode = this.chatModeByConversationId.get(conversationId) ?? conversation.chatMode
+    const activePreference = preference && (preference.chatMode === undefined || preference.chatMode === chatMode)
+      ? preference
+      : null
     const runtime: SharedConversationRuntimeSnapshot = {
-      chatMode: this.chatModeByConversationId.get(conversationId) ?? conversation.chatMode,
+      chatMode,
       conversationId,
-      model: preference
+      model: activePreference
         ? {
-            label: preference.label,
-            modelId: preference.modelId,
-            providerId: preference.providerId,
-            ...(preference.reasoningEffort ? { reasoningEffort: preference.reasoningEffort } : {}),
+            label: activePreference.label,
+            modelId: activePreference.modelId,
+            providerId: activePreference.providerId,
+            ...(activePreference.reasoningEffort ? { reasoningEffort: activePreference.reasoningEffort } : {}),
           }
         : null,
       surface,
@@ -438,23 +450,27 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
     const previous = await this.getConversationRuntime(conversationId, surface)
     const conversation = await getStoredConversation(conversationId).catch(() => null)
     const chatMode = input.chatMode ?? this.chatModeByConversationId.get(conversationId) ?? conversation?.chatMode ?? previous?.chatMode ?? 'agent'
-    const model = input.model ?? previous?.model ?? null
+    const model = resolveUpdatedConversationRuntimeModel({
+      hasModeUpdate: input.chatMode !== undefined,
+      model: input.model,
+      previousModel: previous?.model,
+    })
 
     if (conversation && input.chatMode) {
       await updateStoredConversationChatMode(conversationId, input.chatMode)
       this.chatModeByConversationId.set(conversationId, input.chatMode)
     }
 
-    if (conversation && model && (input.model || input.chatMode)) {
+    if (conversation && input.model) {
       const settings = await getStoredSettings(surface)
       const existingPreference = settings.conversationModelPreferences[conversationId]
       await updateStoredConversationModelPreference(conversationId, {
         chatMode,
-        label: model.label,
-        modelId: model.modelId,
-        providerId: model.providerId,
-        ...(model.reasoningEffort ?? existingPreference?.reasoningEffort
-          ? { reasoningEffort: model.reasoningEffort ?? existingPreference?.reasoningEffort }
+        label: input.model.label,
+        modelId: input.model.modelId,
+        providerId: input.model.providerId,
+        ...(input.model.reasoningEffort ?? existingPreference?.reasoningEffort
+          ? { reasoningEffort: input.model.reasoningEffort ?? existingPreference?.reasoningEffort }
           : {}),
       }, surface)
     }
@@ -471,7 +487,7 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
     if (input.chatMode) {
       for (const [cacheKey, cachedRuntime] of this.runtimeBySurfaceConversationKey) {
         if (cachedRuntime.conversationId !== conversationId || cachedRuntime.surface === surface) continue
-        const synchronizedRuntime = { ...cachedRuntime, chatMode, updatedAt: runtime.updatedAt }
+        const synchronizedRuntime = { ...cachedRuntime, chatMode, model: null, updatedAt: runtime.updatedAt }
         this.runtimeBySurfaceConversationKey.set(cacheKey, synchronizedRuntime)
         this.emitGlobalEvent({
           type: 'conversation_runtime_updated',
@@ -607,22 +623,24 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
       streamingWaitingIndicatorVariant: null,
     }
     this.projectionsByRunId.set(createdRun.runId, projection)
-    let projectionEmitScheduled = false
-    const emitProjection = () => {
-      if (projectionEmitScheduled) return
-      projectionEmitScheduled = true
-      queueMicrotask(() => {
-        projectionEmitScheduled = false
-        projection.revision += 1
-        this.emitEvent(createdRun.runId, {
-          type: 'run_projection',
-          projection: {
-            ...projection,
-            messages: [...projection.messages],
-          },
-          seq: 0,
-        })
+    let projectionEmitTimer: NodeJS.Timeout | null = null
+    const emitProjectionNow = () => {
+      if (projectionEmitTimer) clearTimeout(projectionEmitTimer)
+      projectionEmitTimer = null
+      projection.revision += 1
+      this.emitEvent(createdRun.runId, {
+        type: 'run_projection',
+        projection: {
+          ...projection,
+          messages: [...projection.messages],
+        },
+        seq: 0,
       })
+    }
+    const emitProjection = () => {
+      if (projectionEmitTimer) return
+      projectionEmitTimer = setTimeout(emitProjectionNow, RUN_PROJECTION_EMIT_INTERVAL_MS)
+      projectionEmitTimer.unref?.()
     }
     const stopProjectionTextStreaming = () => {
       const timeout = this.projectionTextIdleTimers.get(createdRun.runId)
@@ -762,11 +780,11 @@ getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedIn
       projection.isStreamingTextActive = false
       projection.streamingAssistantMessageId = null
       projection.streamingWaitingIndicatorVariant = null
-      emitProjection()
+      emitProjectionNow()
       latestSnapshot = finalizedMessages.length > 0 ? [...sharedInput.messages, ...finalizedMessages] : latestSnapshot
       const shouldPersistFinalSnapshot = !(terminalStatus === 'cancelled' && finalizedMessages.length === 0)
       if (shouldPersistFinalSnapshot) {
-        persistence.queue(latestSnapshot, { immediate: true })
+        persistence.queue(latestSnapshot, { immediate: true, notify: true })
       }
       await persistence.flush()
 
@@ -784,19 +802,33 @@ getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedIn
         const textIdleTimer = this.projectionTextIdleTimers.get(createdRun.runId)
         if (textIdleTimer) clearTimeout(textIdleTimer)
         this.projectionTextIdleTimers.delete(createdRun.runId)
+        if (projectionEmitTimer) clearTimeout(projectionEmitTimer)
+        projectionEmitTimer = null
       }, TERMINAL_RUN_RETENTION_MS)
       retentionTimer.unref?.()
     }
 
-    const result = input.providerId === 'codex'
-      ? await startCodexChatStream(target, sharedInput, () => { void settleRun() })
-      : await startApiKeyChatStream(target, sharedInput, () => { void settleRun() })
+    try {
+      const result = input.providerId === 'codex'
+        ? await startCodexChatStream(target, sharedInput, () => { void settleRun() })
+        : await startApiKeyChatStream(target, sharedInput, () => { void settleRun() })
 
-    this.registry.attachStream(createdRun.runId, result.streamId)
-    const followUpSnapshot = this.followUps.register(createdRun.runId, result.streamId, conversationId)
-    this.emitRunState(createdRun.runId)
-    this.emitFollowUps(followUpSnapshot)
-    return result
+      this.registry.attachStream(createdRun.runId, result.streamId)
+      const followUpSnapshot = this.followUps.register(createdRun.runId, result.streamId, conversationId)
+      this.emitRunState(createdRun.runId)
+      this.emitFollowUps(followUpSnapshot)
+      return result
+    } catch (error) {
+      if (projectionEmitTimer) clearTimeout(projectionEmitTimer)
+      projectionEmitTimer = null
+      const textIdleTimer = this.projectionTextIdleTimers.get(createdRun.runId)
+      if (textIdleTimer) clearTimeout(textIdleTimer)
+      this.projectionTextIdleTimers.delete(createdRun.runId)
+      this.projectionsByRunId.delete(createdRun.runId)
+      this.nextSeqByRunId.delete(createdRun.runId)
+      this.registry.remove(createdRun.runId)
+      throw error
+    }
   }
 
   private syncProviderSteers(snapshot: SharedFollowUpSnapshot) {
@@ -833,10 +865,14 @@ getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedIn
       ? { ...event, run: this.registry.getByRunId(runId) ?? event.run }
       : event
     const withSeq = { ...normalizedEvent, seq } as TideCodeRunEvent
+    const droppable = isDroppableRunEvent(withSeq)
+    const recipients = Array.from(this.clients).filter((client) => (
+      !client.destroyed
+      && (!droppable || client.writableLength < RUN_SERVICE_DROPPABLE_SOCKET_BUFFER_BYTES)
+    ))
+    if (recipients.length === 0) return
     const payload = `${JSON.stringify({ type: 'event', event: withSeq })}\n`
-    for (const client of this.clients) {
-      if (!client.destroyed) client.write(payload)
-    }
+    for (const client of recipients) client.write(payload)
   }
 
   private emitConversationAppend(conversation: ConversationRecord) {

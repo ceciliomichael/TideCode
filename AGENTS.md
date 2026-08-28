@@ -27,7 +27,7 @@ The plan should cover, when relevant:
 
 Keep plans end to end. Do not split normal work into artificial phases or defer parts of the solution unless the user explicitly asks for staged delivery.
 
-After the user agrees to the plan, save it under `docs/plan/` using the next sequential filename, starting with `docs/plan/plan-001.md`. Create the directory if needed. Keep plan files concise and easy for less experienced developers to understand.
+After the user agrees to the plan, save it under `docs/plan/` using the next sequential filename, starting with `docs/plan/plan-001.md`. Create the directory if needed. Keep plan files concise and easy for less experienced developers to understand. This can be overriden if the system has a built in planning tool that it can use.
 
 ### 3. Implement End to End
 Once the plan is approved:

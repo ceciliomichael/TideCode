@@ -230,7 +230,7 @@ export function WorkspaceFileTabsPanel({
 
   return (
     <section className="relative flex min-w-0 flex-1 flex-col border-l border-border bg-background">
-      <div className="group relative h-10 border-b border-border bg-background">
+      <div className="non-selectable-ui group relative h-10 border-b border-border bg-background">
         <div
           ref={tabsViewportRef}
           onWheel={handleTabsWheel}
@@ -321,7 +321,7 @@ export function WorkspaceFileTabsPanel({
         (isDocxPreviewablePath(activeTab.relativePath) ||
           isImagePreviewablePath(activeTab.relativePath) ||
           isPdfPreviewablePath(activeTab.relativePath))) ? null : (
-        <div className="flex h-7 items-center bg-surface px-2">
+        <div className="non-selectable-ui flex h-7 items-center bg-surface px-2">
           <div className="flex min-w-0 items-center gap-1 overflow-hidden text-[12px] text-subtle-foreground">
             {breadcrumbSegments.map((segment, index) => (
               <span key={`${segment}-${index}`} className="inline-flex min-w-0 items-center gap-1.5">

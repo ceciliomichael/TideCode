@@ -70,7 +70,7 @@ export const ToolInvocationGroup = memo(function ToolInvocationGroup({
         onClick={() => setIsOpen((currentValue) => !currentValue)}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
-        className="group flex w-full min-w-0 items-center text-left text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="group flex w-full min-w-0 select-none items-center text-left text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <span className="flex min-w-0 flex-1 items-center gap-1">
           <span

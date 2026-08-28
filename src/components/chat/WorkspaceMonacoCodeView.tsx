@@ -97,8 +97,9 @@ export function WorkspaceMonacoCodeView({
 
   return (
     <div className="workspace-monaco-code relative w-full min-w-0 bg-surface" style={{ height: height || 160 }}>
-      <Editor
+        <Editor
         beforeMount={beforeMount}
+          className="selectable-ui"
         height="100%"
 
         language={resolvedLanguage}

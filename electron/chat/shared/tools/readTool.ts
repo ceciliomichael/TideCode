@@ -45,7 +45,7 @@ function createMissingWorkspaceMemoryReadResult(
 
 export function createReadTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. By default, returns up to 500 lines. Set full_file: true to read the complete text file; full_file takes precedence over offset and limit.',
+    description: 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. Text reads return up to 500 lines within a safe model-output byte budget and provide next_offset when more content remains.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
@@ -53,15 +53,14 @@ export function createReadTool(context: WorkspaceToolContext) {
           description: ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION,
           type: 'string',
         },
-        full_file: { description: 'Read the complete text file. When true, this takes precedence over offset and limit.', type: 'boolean' },
-        limit: { description: 'Optional requested number of lines. Values above 500 are capped at 500. Ignored when full_file is true.', minimum: 1, type: 'number' },
+        limit: { description: 'Optional requested number of lines. Values above 500 are capped at 500.', minimum: 1, type: 'number' },
         offset: { description: 'Starting line number (1-based index). Defaults to 1.', minimum: 1, type: 'number' },
       },
       required: ['path'],
       type: 'object',
     }),
     execute: async (rawInput) => {
-      const input = rawInput as { full_file?: boolean; limit?: number; offset?: number; path?: string }
+      const input = rawInput as { limit?: number; offset?: number; path?: string }
       try {
         if (typeof input.path !== 'string') {
           throw new Error('File path ("path") is required.')
@@ -72,7 +71,7 @@ export function createReadTool(context: WorkspaceToolContext) {
           targetPath,
           context.terminalExecutionMode,
         )
-        return await createReadToolResult(target.absolutePath, target.displayPath, input.offset, input.limit, input.full_file === true)
+        return await createReadToolResult(target.absolutePath, target.displayPath, input.offset, input.limit)
       } catch (error) {
         if (error instanceof WorkspaceTargetNotFoundError) {
           const memoryResult = createMissingWorkspaceMemoryReadResult(context.workspaceRootPath, error)

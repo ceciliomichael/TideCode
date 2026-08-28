@@ -127,7 +127,7 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+    <div className="non-selectable-ui relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <header className="shrink-0 border-b border-border bg-surface px-4 pb-3 md:px-5 md:py-3">
         <div className="space-y-3 xl:hidden">
           <div className="flex items-center justify-between gap-4">

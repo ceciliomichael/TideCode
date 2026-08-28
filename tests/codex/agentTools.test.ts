@@ -235,7 +235,7 @@ test('createAgentTools keeps plan mode tool descriptions literal', async () => {
     const grepTool = tools.grep as { description?: string }
 
     assert.equal(listTool.description, 'List exactly one existing directory; an omitted path, empty string, or "." refers to the bound workspace root. Use read for files.')
-    assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. By default, returns up to 500 lines. Set full_file: true to read the complete text file; full_file takes precedence over offset and limit.')
+    assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. Text reads return up to 500 lines within a safe model-output byte budget and provide next_offset when more content remains.')
     assert.equal(globTool.description, 'Find files by pattern under exactly one directory; an omitted path, empty string, or "." refers to the bound workspace root.')
     assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; an omitted path, empty string, or "." refers to the bound workspace root.')
     for (const description of [listTool, readTool, globTool, grepTool].map((tool) => tool.description ?? '')) {
@@ -274,7 +274,7 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     const editTool = tools.edit as { description?: string }
     const writeTool = tools.write as { description?: string }
 
-    assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. By default, returns up to 500 lines. Set full_file: true to read the complete text file; full_file takes precedence over offset and limit.')
+    assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. Text reads return up to 500 lines within a safe model-output byte budget and provide next_offset when more content remains.')
     assert.match(applyPatchTool.description ?? '', /Apply a Codex patch as an array of complete patch lines/u)
     assert.equal(
       editTool.description,

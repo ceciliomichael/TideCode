@@ -139,8 +139,10 @@ function formatReadToolResultBody(metadata: StructuredToolResultMetadata, body: 
     headerLines.push(`Revision: ${revision}`)
   }
 
-  if (startLine !== null && endLine !== null && totalLineCount !== null) {
-    headerLines.push(`Lines: ${startLine}-${endLine} of ${totalLineCount}`)
+  if (startLine !== null && endLine !== null) {
+    headerLines.push(totalLineCount !== null
+      ? `Lines: ${startLine}-${endLine} of ${totalLineCount}`
+      : `Lines: ${startLine}-${endLine}`)
   }
   if (nextOffset !== null) {
     headerLines.push(`Next offset: ${nextOffset}`)

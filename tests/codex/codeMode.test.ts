@@ -499,7 +499,7 @@ test('Code Mode keeps read failures as recoverable values and completes the insp
   }
 })
 
-test('Code Mode read accepts an oversized ignored full-file limit and caps ordinary reads', async () => {
+test('Code Mode read rejects removed full_file and caps oversized limits', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-read-limit-'))
   await fs.writeFile(
     path.join(workspaceRootPath, 'large.txt'),
@@ -516,12 +516,18 @@ test('Code Mode read accepts an oversized ignored full-file limit and caps ordin
   const executor = new CodeModeExecutor(registry, undefined, { workspaceRootPath })
 
   try {
+    const rejected = await registry.get('read')?.execute({
+      full_file: true,
+      path: 'large.txt',
+    })
     const result = await executor.run(
-      "const full = await tools.read({ path: 'large.txt', full_file: true, limit: 1200 }); const paged = await tools.read({ path: 'large.txt', limit: 1200 }); return { fullEnd: full.semantics.end_line, pagedEnd: paged.semantics.end_line }",
+      "const paged = await tools.read({ path: 'large.txt', limit: 1200 }); return { pagedEnd: paged.semantics.end_line, nextOffset: paged.semantics.next_offset }",
     )
 
+    assert.equal(rejected?.status, 'error')
+    assert.match(rejected?.summary ?? '', /additional properties/u)
     assert.equal(result.status, 'success')
-    assert.deepEqual(result.output, { fullEnd: 600, pagedEnd: 500 })
+    assert.deepEqual(result.output, { nextOffset: 501, pagedEnd: 500 })
   } finally {
     await executor.dispose()
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -586,7 +592,15 @@ test('Code Mode does not reinterpret process metadata as a failed tool call', as
       description: 'Return a successfully executed terminal result with a nonzero process exit.',
       execute: async () => ({
         body: 'state: completed\nstatus: completed\nexit_code: 17',
-        semantics: { exit_code: 17, state: 'completed', status: 'completed' },
+        semantics: {
+          active: false,
+          broker_session_id: 999,
+          exit_code: 17,
+          operation_id: 'internal-operation',
+          state: 'completed',
+          status: 'completed',
+          wait_seconds: 1,
+        },
         status: 'success' as const,
         summary: 'Started terminal session 43440',
       }),
@@ -607,7 +621,7 @@ test('Code Mode does not reinterpret process metadata as a failed tool call', as
 
   try {
     const result = await executor.run(
-      "const terminal = await tools.execute_terminal({ command: 'npm test', wait_seconds: 1 }); return { toolStatus: terminal.status, processStatus: terminal.semantics.status, exitCode: terminal.semantics.exit_code }",
+      "const terminal = await tools.execute_terminal({ command: 'npm test', wait_seconds: 1 }); return { toolStatus: terminal.status, processStatus: terminal.semantics.status, exitCode: terminal.semantics.exit_code, semanticKeys: Object.keys(terminal.semantics).sort() }",
       { allowedToolNames: ['execute_terminal'] },
     )
 
@@ -616,6 +630,7 @@ test('Code Mode does not reinterpret process metadata as a failed tool call', as
     assert.deepEqual(result.output, {
       exitCode: 17,
       processStatus: 'completed',
+      semanticKeys: ['exit_code', 'state', 'status'],
       toolStatus: 'success',
     })
   } finally {
@@ -726,6 +741,28 @@ test('Code Mode preflight ignores blocked runtime names in non-executable tool d
 
     assert.equal(result.status, 'success')
     assert.equal(result.toolCalls.length, 1)
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode repairs multiple over-escaped opening parentheses in regex literals', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
+    terminalExecutionMode: 'sandbox',
+  })
+
+  try {
+    const result = await executor.run(
+      String.raw`const pattern = /class |Text\\(|label:|onTap|DeviceStatus|Measurement|History|Settings|status|error|Start|Patient|Card/i
+       const resultPattern = /class |initState|dispose|result|value|level|average|radar|chart|save|Save|PDF|Next|comment|clinic|doctor|Type A|Type B|Type C|Text\\(/i
+       const response = await tools.echo({ home: pattern.test('Text('), result: resultPattern.test('Text(') })
+       return response.body`,
+      { allowedToolNames: ['echo'] },
+    )
+
+    assert.equal(result.status, 'success')
+    assert.equal(result.toolCalls.length, 1)
+    assert.equal(result.output, JSON.stringify({ home: true, result: true }))
   } finally {
     await executor.dispose()
   }
@@ -961,6 +998,7 @@ test('Code Mode repairs simple malformed patch arrays before running the patch t
       "  '@@",
       "  '-old',",
       "  '+new'",
+      "  \"+const newline = '\\n'\"",
       "  '*** End Patch'",
       ']',
       'return await tools.patch({ patch })',
@@ -977,6 +1015,7 @@ test('Code Mode repairs simple malformed patch arrays before running the patch t
           '@@',
           '-old',
           '+new',
+          "+const newline = '\\n'",
           '*** End Patch',
         ],
       }),
@@ -1274,6 +1313,109 @@ test('Code Mode terminates a synchronous infinite loop', async () => {
 
     assert.equal(result.status, 'error')
     assert.match(result.summary, /Code Mode failed|timeout/u)
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode timeout aborts an in-flight host tool before returning', async () => {
+  let observedAbort = false
+  const entries = [{
+    description: 'Wait until the execution is cancelled.',
+    execute: async (_input: unknown, options?: { abortSignal?: AbortSignal }) => {
+      await new Promise<void>((resolve) => {
+        const signal = options?.abortSignal
+        if (signal?.aborted) {
+          observedAbort = true
+          resolve()
+          return
+        }
+        signal?.addEventListener('abort', () => {
+          observedAbort = true
+          resolve()
+        }, { once: true })
+      })
+      return { status: 'success' as const, summary: 'Observed cancellation.' }
+    },
+    inputSchema: { type: 'object' as const },
+    name: 'wait_for_abort',
+    namespace: 'test',
+  }]
+  const registry: AgentToolRegistry = {
+    entries,
+    get(name) {
+      return entries.find((entry) => entry.name === name)
+    },
+    search() {
+      return entries.map((entry) => ({ ...entry, score: 1 }))
+    },
+  }
+  const executor = new CodeModeExecutor(registry)
+
+  try {
+    const result = await executor.run('return await tools.wait_for_abort({})', {
+      allowedToolNames: ['wait_for_abort'],
+      limits: { timeoutMs: 2_000 },
+    })
+
+    assert.equal(result.status, 'error')
+    assert.equal(observedAbort, true)
+    assert.match(result.summary, /timeout/u)
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode forwards caller cancellation to an in-flight host tool', async () => {
+  let observedAbort = false
+  let markStarted: (() => void) | undefined
+  const started = new Promise<void>((resolve) => { markStarted = resolve })
+  const entries = [{
+    description: 'Wait until the caller cancels the execution.',
+    execute: async (_input: unknown, options?: { abortSignal?: AbortSignal }) => {
+      markStarted?.()
+      await new Promise<void>((resolve) => {
+        const signal = options?.abortSignal
+        if (signal?.aborted) {
+          observedAbort = true
+          resolve()
+          return
+        }
+        signal?.addEventListener('abort', () => {
+          observedAbort = true
+          resolve()
+        }, { once: true })
+      })
+      return { status: 'success' as const, summary: 'Observed cancellation.' }
+    },
+    inputSchema: { type: 'object' as const },
+    name: 'wait_for_abort',
+    namespace: 'test',
+  }]
+  const registry: AgentToolRegistry = {
+    entries,
+    get(name) {
+      return entries.find((entry) => entry.name === name)
+    },
+    search() {
+      return entries.map((entry) => ({ ...entry, score: 1 }))
+    },
+  }
+  const executor = new CodeModeExecutor(registry)
+  const controller = new AbortController()
+
+  try {
+    const runPromise = executor.run('return await tools.wait_for_abort({})', {
+      abortSignal: controller.signal,
+      allowedToolNames: ['wait_for_abort'],
+      limits: { timeoutMs: 1_000 },
+    })
+    await started
+    controller.abort()
+    const result = await runPromise
+
+    assert.equal(result.status, 'aborted')
+    assert.equal(observedAbort, true)
   } finally {
     await executor.dispose()
   }

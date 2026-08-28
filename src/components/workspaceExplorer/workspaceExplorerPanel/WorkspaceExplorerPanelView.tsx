@@ -278,7 +278,7 @@ export function WorkspaceExplorerPanelView({
   return (
     <aside
       className={[
-        'relative flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-background max-md:hidden',
+        'non-selectable-ui relative flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-background max-md:hidden',
         isOpen ? 'pointer-events-auto' : 'pointer-events-none invisible',
       ].join(' ')}
       aria-hidden={!isOpen}
@@ -456,7 +456,7 @@ export function WorkspaceExplorerPanelView({
               role="menu"
               aria-label="Explorer actions"
               data-floating-menu-root="true"
-              className="fixed z-[1200] min-w-[210px] overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-soft"
+              className="non-selectable-ui fixed z-[1200] min-w-[210px] overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-soft"
               style={panelState.contextMenuStyle}
             >
               {!panelState.contextMenuState.targetEntry || panelState.contextMenuState.targetEntry.isDirectory ? (

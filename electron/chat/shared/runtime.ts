@@ -473,6 +473,7 @@ export async function runToolEnabledChatStream(input: {
             retainedContextTokens,
             triggerRatio: liveContextCompaction.triggerPercent / 100,
             signal: input.abortController.signal,
+            turnState: 'active',
           })
         } catch (error) {
           emitCompactionFailed('error')
@@ -692,6 +693,7 @@ export async function runToolEnabledChatStream(input: {
             retainedContextTokens: finalRetainedContextTokens,
             triggerRatio: finalContextCompaction.triggerPercent / 100,
             signal: input.abortController.signal,
+            turnState: 'settled',
           })
 
           if (input.abortController.signal.aborted) {

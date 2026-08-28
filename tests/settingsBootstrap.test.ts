@@ -86,24 +86,6 @@ test('parseInitialSettingsArg preserves empty chat launch preference', () => {
   assert.equal(parsedSettings.openEmptyConversationOnLaunch, true)
 })
 
-test('parseInitialSettingsArg sanitizes disabled skill paths', () => {
-  const parsedSettings = parseInitialSettingsArg([
-    'tidecode.exe',
-    serializeInitialSettingsArg({
-      ...DEFAULT_APP_SETTINGS,
-      disabledSkillsByPath: {
-        ' C:/skills/docx/SKILL.md ': true,
-        'C:/skills/imagegen/SKILL.md': false,
-        '': true,
-      },
-    }),
-  ])
-
-  assert.deepEqual(parsedSettings.disabledSkillsByPath, {
-    'C:/skills/docx/SKILL.md': true,
-  })
-})
-
 test('parseInitialSettingsArg preserves AI task planning configuration', () => {
   const parsedSettings = parseInitialSettingsArg([
     'tidecode.exe',
@@ -113,6 +95,7 @@ test('parseInitialSettingsArg preserves AI task planning configuration', () => {
       kanbanModelId: 'gpt-5',
       kanbanModelLabel: 'GPT-5',
       kanbanModelProviderId: 'openai',
+      kanbanReasoningEffort: 'low',
     }),
   ])
 
@@ -120,4 +103,5 @@ test('parseInitialSettingsArg preserves AI task planning configuration', () => {
   assert.equal(parsedSettings.kanbanModelId, 'gpt-5')
   assert.equal(parsedSettings.kanbanModelLabel, 'GPT-5')
   assert.equal(parsedSettings.kanbanModelProviderId, 'openai')
+  assert.equal(parsedSettings.kanbanReasoningEffort, 'low')
 })

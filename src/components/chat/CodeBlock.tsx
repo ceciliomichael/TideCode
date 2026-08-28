@@ -150,7 +150,7 @@ export const CodeBlock = memo(function CodeBlock({
       data-code-renderer={useMonaco ? 'monaco' : 'static'}
     >
       {showHeader ? (
-        <div className="flex items-center gap-3 border-b border-border bg-surface px-3 py-1 text-[12px] text-muted-foreground">
+        <div className="select-none flex items-center gap-3 border-b border-border bg-surface px-3 py-1 text-[12px] text-muted-foreground">
           <span className="inline-flex min-h-4 min-w-0 flex-1 items-center gap-2">
             <span className="flex h-4 w-4 items-center justify-center">
               <LanguageIcon size={14} style={{ color: iconConfig.color }} aria-hidden="true" />

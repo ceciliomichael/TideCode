@@ -235,7 +235,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
       style={{ animation: 'fadeIn 0.15s ease-out' }}
     >
       <div
-        className="relative max-h-[calc(100vh-24px)] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-surface shadow-2xl"
+        className="non-selectable-ui relative max-h-[calc(100vh-24px)] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-surface shadow-2xl"
         style={{ animation: 'slideUp 0.2s ease-out' }}
       >
         {/* Header */}

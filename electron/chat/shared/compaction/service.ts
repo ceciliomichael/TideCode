@@ -29,11 +29,28 @@ import type {
   CompactionPacket,
   CompactModelMessagesInput,
   CompactionResult,
+  CompactionTurnState,
   LocalCompactionPacketV2,
 } from './contracts'
 
 const COMPACTION_TIMEOUT_MS = 90_000
 const inFlightCompactions = new Map<string, Promise<CompactionResult | null>>()
+
+function resolveLatestUserSourceMessageId(messages: readonly { role: string }[]) {
+  const latestUserIndex = messages.findLastIndex((message) => message.role === 'user')
+  return latestUserIndex >= 0 ? `model:${latestUserIndex}` : null
+}
+
+function appendActiveTurnGuard(summary: string, turnState: CompactionTurnState) {
+  if (turnState !== 'active') return summary
+  return [
+    summary.trim(),
+    '',
+    '## Current state',
+    '- Host runtime status is authoritative: the latest user request is still active. This overrides any wording elsewhere in the handoff that implies the overall latest request is complete.',
+    '- Continue the latest user request from the verified state above; completed tool actions are intermediate evidence only.',
+  ].join('\n').trim()
+}
 
 async function collectCompactionText(input: CompactModelMessagesInput, prompt: string) {
   if (!input.createStream) {
@@ -102,6 +119,8 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   if (!input.force && !shouldCompactContext(budget)) return null
 
   const previousPacket = input.previousPacket ?? null
+  const turnState = input.turnState ?? 'settled'
+  const latestUserSourceMessageId = resolveLatestUserSourceMessageId(input.messages)
   const window = selectCompactionWindow(input.messages, budget.targetHistoryTokens, {
     force: input.force,
     previousPacket,
@@ -125,38 +144,49 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
     messages: window.evictedMessages,
   })
   const prompt = buildCompactionRequestPrompt({
+    latestUserSourceMessageId,
     messages: window.evictedMessages,
     previousPacket,
     sourceDigest,
     sourceMessageIds: window.sourceMessageIds,
     sourceStartIndex: window.sourceStartIndex,
+    turnState,
   })
   const rawSummary = await collectCompactionText(input, prompt)
   if (input.signal?.aborted || rawSummary === null) return null
   const summary = validateContinuationMarkdown(rawSummary)
   if (!summary.valid) {
-    throw new Error(`AI compaction returned invalid Markdown (${summary.reason}); no fallback summary was generated.`)
+    throw new Error(`AI compaction returned invalid continuation Markdown (${summary.reason}).`)
   }
+  const summaryMarkdown = summary.normalized
   const summaryWithReceipts = appendCodeModeReceiptsToSummary(
-    summary.normalized,
+    summaryMarkdown,
     window.evictedMessages,
     previousPacket?.continuationMarkdown,
   )
+  const guardedSummary = appendActiveTurnGuard(summaryWithReceipts, turnState)
+  const authoritativeOpenSourceMessageId = turnState === 'active'
+    ? latestUserSourceMessageId
+    : null
   const allUserPromptLedger = mergeUserPromptLedger(
     previousPacket?.userPromptLedger ?? [],
     mergeUserPromptLedger(
-      extractUserPromptLedgerEntries(window.evictedMessages, window.sourceStartIndex),
+      extractUserPromptLedgerEntries(window.evictedMessages, window.sourceStartIndex, {
+        latestUserSourceMessageId,
+        turnState,
+      }),
       extractHistoricalUserPromptLedgerEntries(window.tailMessages, window.sourceEndIndex),
     ),
+    { authoritativeOpenSourceMessageId },
   )
   const summaryTokens = estimateModelMessageContextUsage([{
-    content: summaryWithReceipts,
+    content: guardedSummary,
     role: 'assistant',
   }]).totalTokens
   const tailReserveTokens = Math.max(1, Math.floor(retainedContextTokens * 0.3))
   const ledgerBudget = Math.max(0, retainedContextTokens - summaryTokens - tailReserveTokens)
   const userPromptLedger = selectNewestUserPromptLedger(allUserPromptLedger, ledgerBudget)
-  const continuationCandidate = appendUserPromptLedgerToSummary(summaryWithReceipts, userPromptLedger)
+  const continuationCandidate = appendUserPromptLedgerToSummary(guardedSummary, userPromptLedger)
   const continuation = validateContinuationMarkdown(continuationCandidate)
   if (!continuation.valid) {
     throw new Error(`Compaction handoff became invalid after adding the user prompt ledger (${continuation.reason}).`)

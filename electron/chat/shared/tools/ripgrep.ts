@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url'
 import { runRipgrepFallback } from './ripgrepFallback'
 
 const RIPGREP_EXECUTABLE_NAME = process.platform === 'win32' ? 'rg.exe' : 'rg'
+const DEFAULT_RIPGREP_TIMEOUT_MS = 60_000
+const DEFAULT_RIPGREP_MAX_OUTPUT_CHARS = 16 * 1024 * 1024
 const require = createRequire(import.meta.url)
 const MODULE_DIRECTORY_PATH = path.dirname(fileURLToPath(import.meta.url))
 
@@ -20,6 +22,18 @@ class RipgrepBinaryNotFoundError extends Error {
     this.attemptedCommands = attemptedCommands
     this.name = 'RipgrepBinaryNotFoundError'
   }
+}
+
+interface RunRipgrepOptions {
+  abortSignal?: AbortSignal
+  maxOutputChars?: number
+  timeoutMs?: number
+}
+
+function createRipgrepAbortError(message: string) {
+  const error = new Error(message)
+  error.name = 'AbortError'
+  return error
 }
 
 interface ResolveRipgrepCommandCandidatesOptions {
@@ -164,6 +178,7 @@ export async function runRipgrepWithCandidates(
   cwd: string,
   candidateCommands: string[],
   spawnImpl: typeof spawn = spawn,
+  options: RunRipgrepOptions = {},
 ) {
   const attemptedCommands: string[] = []
   const failures: string[] = []
@@ -173,6 +188,10 @@ export async function runRipgrepWithCandidates(
 
     try {
       const result = await new Promise<{ exitCode: number; stderr: string; stdout: string }>((resolve, reject) => {
+        if (options.abortSignal?.aborted) {
+          reject(createRipgrepAbortError('ripgrep search was cancelled.'))
+          return
+        }
         const child = spawnImpl(candidateCommand, args, {
           cwd,
           stdio: ['ignore', 'pipe', 'pipe'],
@@ -181,21 +200,66 @@ export async function runRipgrepWithCandidates(
 
         let stdout = ''
         let stderr = ''
+        let settled = false
+        const maxOutputChars = options.maxOutputChars ?? DEFAULT_RIPGREP_MAX_OUTPUT_CHARS
+        const timeoutMs = options.timeoutMs ?? DEFAULT_RIPGREP_TIMEOUT_MS
+        let timeoutId: NodeJS.Timeout | undefined
+        const cleanup = () => {
+          if (timeoutId) clearTimeout(timeoutId)
+          options.abortSignal?.removeEventListener('abort', onAbort)
+        }
+        const finishReject = (error: unknown) => {
+          if (settled) return
+          settled = true
+          cleanup()
+          reject(error)
+        }
+        const stopChild = () => {
+          try {
+            child.kill()
+          } catch {
+            // The child may already have exited.
+          }
+        }
+        const onAbort = () => {
+          stopChild()
+          finishReject(createRipgrepAbortError('ripgrep search was cancelled.'))
+        }
+        const appendOutput = (current: string, chunk: Buffer | string, streamName: string) => {
+          const next = current + chunk.toString()
+          if (next.length > maxOutputChars) {
+            stopChild()
+            finishReject(new Error(`ripgrep ${streamName} exceeded the ${maxOutputChars}-character safety limit.`))
+            return current
+          }
+          return next
+        }
 
         child.stdout.on('data', (chunk: Buffer | string) => {
-          stdout += chunk.toString()
+          stdout = appendOutput(stdout, chunk, 'stdout')
         })
         child.stderr.on('data', (chunk: Buffer | string) => {
-          stderr += chunk.toString()
+          stderr = appendOutput(stderr, chunk, 'stderr')
         })
-        child.on('error', reject)
+        child.on('error', finishReject)
         child.on('close', (code) => {
+          if (settled) return
+          settled = true
+          cleanup()
           resolve({
             exitCode: code ?? 1,
             stderr,
             stdout,
           })
         })
+        options.abortSignal?.addEventListener('abort', onAbort, { once: true })
+        if (timeoutMs > 0) {
+          timeoutId = setTimeout(() => {
+            stopChild()
+            finishReject(new Error(`ripgrep search exceeded the ${timeoutMs}ms timeout.`))
+          }, timeoutMs)
+          timeoutId.unref?.()
+        }
       })
 
       return result
@@ -212,9 +276,9 @@ export async function runRipgrepWithCandidates(
   throw new RipgrepBinaryNotFoundError(attemptedCommands, failures)
 }
 
-export async function runRipgrep(args: string[], cwd: string) {
+export async function runRipgrep(args: string[], cwd: string, options: RunRipgrepOptions = {}) {
   try {
-    return await runRipgrepWithCandidates(args, cwd, await resolveRipgrepCommandCandidates())
+    return await runRipgrepWithCandidates(args, cwd, await resolveRipgrepCommandCandidates(), spawn, options)
   } catch (error) {
     if (!(error instanceof RipgrepBinaryNotFoundError)) {
       throw error
@@ -222,13 +286,13 @@ export async function runRipgrep(args: string[], cwd: string) {
 
     resetRipgrepCommandCandidatesCache()
     try {
-      return await runRipgrepWithCandidates(args, cwd, await resolveRipgrepCommandCandidates())
+      return await runRipgrepWithCandidates(args, cwd, await resolveRipgrepCommandCandidates(), spawn, options)
     } catch (retryError) {
       if (!(retryError instanceof RipgrepBinaryNotFoundError)) {
         throw retryError
       }
 
-      return runRipgrepFallback(args, cwd)
+      return runRipgrepFallback(args, cwd, { abortSignal: options.abortSignal })
     }
   }
 }

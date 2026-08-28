@@ -149,6 +149,40 @@ test('a forced refresh starts a fresh request instead of joining an in-flight on
   }
 })
 
+test('background forced refreshes coalesce when explicitly allowed', async () => {
+  const deferredRequests: Deferred<ReturnType<GitApiTestWindow['tidecodeGit']['getDiffs']>>[] = []
+  const restoreWindow = installTestWindow(() => {
+    const deferred = createDeferred<ReturnType<GitApiTestWindow['tidecodeGit']['getDiffs']>>()
+    deferredRequests.push(deferred)
+    return deferred.promise
+  })
+
+  try {
+    const workspacePath = `C:/background-force-refresh-${Date.now()}-${Math.random()}`
+    const firstRequest = loadGitDiffSnapshot(workspacePath, {
+      coalesceForcedRefresh: true,
+      forceRefresh: true,
+      includeContent: false,
+    })
+    const secondRequest = loadGitDiffSnapshot(workspacePath, {
+      coalesceForcedRefresh: true,
+      forceRefresh: true,
+      includeContent: false,
+    })
+
+    assert.equal(deferredRequests.length, 1)
+    deferredRequests[0]?.resolve({
+      fileDiffs: makeModifiedFilePayload({ includeContent: false }),
+      hasRepository: true,
+    })
+
+    const [firstSnapshot, secondSnapshot] = await Promise.all([firstRequest, secondRequest])
+    assert.deepEqual(secondSnapshot, firstSnapshot)
+  } finally {
+    restoreWindow()
+  }
+})
+
 test('a stale superseded request does not overwrite the cache after a forced refresh completes', async () => {
   const deferredRequests: Deferred<ReturnType<GitApiTestWindow['tidecodeGit']['getDiffs']>>[] = []
   const restoreWindow = installTestWindow(() => {

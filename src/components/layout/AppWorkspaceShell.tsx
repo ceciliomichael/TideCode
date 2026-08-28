@@ -23,6 +23,8 @@ interface AppWorkspaceShellProps {
   mobileSidebarPresentation?: MobileSidebarPresentation
   onMobileSidebarRequestClose?: () => void
   onSidebarWidthChange: (sidebarWidth: number) => void
+  onSidebarWidthPreview?: (sidebarWidth: number) => void
+  onSidebarResizeStateChange?: (isResizing: boolean) => void
   sidebar: ReactNode
   sidebarWidth: number
   floatingControls?: ReactNode
@@ -35,6 +37,8 @@ export function AppWorkspaceShell({
   mobileSidebarPresentation,
   onMobileSidebarRequestClose,
   onSidebarWidthChange,
+  onSidebarWidthPreview,
+  onSidebarResizeStateChange,
   sidebar,
   sidebarWidth,
   floatingControls,
@@ -126,6 +130,8 @@ export function AppWorkspaceShell({
         mobileSidebarPresentation={mobileSidebarPresentation}
         onMobileSidebarRequestClose={onMobileSidebarRequestClose}
         onSidebarWidthChange={onSidebarWidthChange}
+        onSidebarWidthPreview={onSidebarWidthPreview}
+        onSidebarResizeStateChange={onSidebarResizeStateChange}
         sidebar={sidebar}
         sidebarWidth={sidebarWidth}
       >

@@ -157,9 +157,12 @@ export function SidebarPanel({
 
   return (
     <aside
-      className={isMobileLayout
-        ? 'relative flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pl-4 pr-0 pt-3'
-        : 'flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] pb-5 pl-4 pr-0 pt-3 md:pl-5 md:pr-0'}
+      className={[
+        'non-selectable-ui',
+        isMobileLayout
+          ? 'relative flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pl-4 pr-0 pt-3'
+          : 'flex h-full min-w-0 flex-1 flex-col bg-[var(--sidebar-panel-surface)] pb-5 pl-4 pr-0 pt-3 md:pl-5 md:pr-0',
+      ].join(' ')}
       onDragOver={handleWorkspaceFolderDragOver}
       onDrop={(event) => {
         void handleWorkspaceFolderDrop(event).catch((error) => {
@@ -176,31 +179,18 @@ export function SidebarPanel({
           <div className="min-w-0 flex-1">
             <SidebarThreadSearch value={searchQuery} onChange={setSearchQuery} />
           </div>
-          <Tooltip
-            content={
-              resolvedSelectedProjectId === ALL_PROJECTS_FILTER_ID
-                ? 'Choose a project for a new thread'
-                : resolvedSelectedProjectId === CHATS_PROJECT_FILTER_ID
-                  ? 'Start new thread in Chats'
-                : resolvedSelectedProjectId === ARCHIVED_PROJECT_FILTER_ID
-                  ? 'Choose a project for a new thread'
-                  : `Start new thread in ${
-                    projects.find((project) => project.id === resolvedSelectedProjectId)?.name ?? 'project'
-                  }`
-            }
-            side="right"
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setIsNewThreadProjectDialogOpen(true)
-              }}
-              className={actionButtonClassName}
-              aria-label="Start new thread"
-            >
-              <SquarePen size={18} strokeWidth={2.2} />
-            </button>
-          </Tooltip>
+          {isMobileLayout ? (
+            <Tooltip content="Choose a project for a new thread" side="bottom">
+              <button
+                type="button"
+                onClick={() => setIsNewThreadProjectDialogOpen(true)}
+                className={actionButtonClassName}
+                aria-label="Choose a project for a new thread"
+              >
+                <SquarePen size={18} strokeWidth={2.2} />
+              </button>
+            </Tooltip>
+          ) : null}
         </div>
 
         <div className="mt-2 flex items-center justify-between gap-1">

@@ -25,6 +25,10 @@ interface GitStdoutStreamOptions {
   charLimit?: number
 }
 
+export interface GitExecutionOptions {
+  timeoutMs?: number
+}
+
 export interface GitCommandError extends Error {
   code?: number | string
   stderr?: string
@@ -56,10 +60,11 @@ function isRepositoryMissing(error: unknown) {
   return getErrorMessage(error).toLowerCase().includes('not a git repository')
 }
 
-export async function runGit(args: string[], cwd: string) {
+export async function runGit(args: string[], cwd: string, options: GitExecutionOptions = {}) {
   return execFileAsync('git', args, {
     ...GIT_EXECUTION_OPTIONS,
     cwd,
+    ...(typeof options.timeoutMs === 'number' && options.timeoutMs > 0 ? { timeout: options.timeoutMs } : {}),
   })
 }
 
@@ -70,11 +75,12 @@ export async function runGh(args: string[], cwd: string) {
   })
 }
 
-export async function runGitBuffer(args: string[], cwd: string) {
+export async function runGitBuffer(args: string[], cwd: string, options: GitExecutionOptions = {}) {
   return execFileAsync('git', args, {
     ...GIT_EXECUTION_OPTIONS,
     cwd,
     encoding: 'buffer',
+    ...(typeof options.timeoutMs === 'number' && options.timeoutMs > 0 ? { timeout: options.timeoutMs } : {}),
   })
 }
 
@@ -145,14 +151,14 @@ export async function validateBranchName(branchName: string, repoRootPath: strin
   }
 }
 
-export async function resolveRepositoryRoot(workspacePath: string) {
+export async function resolveRepositoryRoot(workspacePath: string, options: GitExecutionOptions = {}) {
   const normalizedWorkspacePath = workspacePath.trim()
   if (normalizedWorkspacePath.length === 0) {
     return null
   }
 
   try {
-    const { stdout } = await runGit(['rev-parse', '--show-toplevel'], normalizedWorkspacePath)
+    const { stdout } = await runGit(['rev-parse', '--show-toplevel'], normalizedWorkspacePath, options)
     const repoRootPath = stdout.trim()
     return repoRootPath.length > 0 ? repoRootPath : null
   } catch (error) {
@@ -443,9 +449,9 @@ export async function readWorkingTreeFile(repoRootPath: string, filePath: string
   }
 }
 
-export async function readHeadFile(repoRootPath: string, filePath: string) {
+export async function readHeadFile(repoRootPath: string, filePath: string, options: GitExecutionOptions = {}) {
   try {
-    const { stdout } = await runGitBuffer(['show', `HEAD:${normalizeGitFilePath(filePath)}`], repoRootPath)
+    const { stdout } = await runGitBuffer(['show', `HEAD:${normalizeGitFilePath(filePath)}`], repoRootPath, options)
     const fileContent = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
     if (isBinaryContent(fileContent)) {
       return null

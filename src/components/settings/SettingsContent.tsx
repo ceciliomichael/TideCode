@@ -12,7 +12,7 @@ import type { SettingsItemId } from './settingsItems'
 import type { AppAppearance, AppLanguage, FollowUpBehavior } from '../../lib/appSettings'
 import type { ApiKeyProviderId, AppSettings, ProvidersState, SaveApiKeyProviderInput } from '../../types/chat'
 import type { McpAddServerInput, McpState } from '../../types/mcp'
-import type { CreateSkillInput, SkillsState } from '../../types/skills'
+import type { CreateSkillInput, SkillSummary, SkillsState } from '../../types/skills'
 import type { ContextCompactionSettings } from '../../lib/contextCompactionSettings'
 import type { TideCodeSettingsLaunchRequest } from '../../lib/appLaunchRequest'
 import { getRendererAppSettingsSurface } from '../../lib/appSettingsScopes'
@@ -68,8 +68,8 @@ interface SettingsContentProps {
     errorMessage: string | null
     isLoading: boolean
     onCreateSkill: (input: CreateSkillInput) => Promise<boolean>
-    onUpdateSettings: (input: Partial<AppSettings>) => void
-    settings: Pick<AppSettings, 'disabledSkillsByPath'>
+    onLoadSkill: (skill: SkillSummary) => Promise<CreateSkillInput | null>
+    onUpdateSkill: (skill: SkillSummary, input: CreateSkillInput) => Promise<boolean>
     state: SkillsState | null
   }
   modelsSettings: {
@@ -117,7 +117,7 @@ export function SettingsContent({
   return (
     <div
       ref={scrollViewportRef}
-      className="settings-scroll-viewport scroll-stable flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-3 md:px-5 md:pb-0 md:pt-16"
+      className="non-selectable-ui settings-scroll-viewport scroll-stable flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-3 md:px-5 md:pb-0 md:pt-16"
     >
       <button
         type="button"

@@ -5,6 +5,50 @@
 !define TIDECODE_REMOTE_FIREWALL_RULE "TideCode Remote"
 !define TIDECODE_REMOTE_FIREWALL_REGKEY "Software\TideCode\Remote"
 
+; Append TideCode's bin directory only when the selected PATH does not already
+; contain that exact entry. StrCmp is case-insensitive, matching Windows path
+; semantics, and the comparison tolerates a trailing backslash.
+!macro addTideCodeBinToPath ROOT REGKEY
+  !define UniqueID ${__LINE__}
+  ReadRegStr $0 ${ROOT} "${REGKEY}" "Path"
+  StrCpy $1 "$INSTDIR\resources\bin"
+  StrCpy $2 "$0"
+
+  tidecode_path_entry_${UniqueID}:
+    StrCpy $3 ""
+    StrCpy $4 0
+
+  tidecode_path_char_${UniqueID}:
+    StrCpy $5 $2 1 $4
+    StrCmp $5 "" tidecode_path_compare_${UniqueID}
+    StrCmp $5 ";" tidecode_path_compare_${UniqueID}
+    StrCpy $3 "$3$5"
+    IntOp $4 $4 + 1
+    Goto tidecode_path_char_${UniqueID}
+
+  tidecode_path_compare_${UniqueID}:
+    StrCpy $6 $3 1 -1
+    StrCmp $6 "\" 0 tidecode_path_compare_ready_${UniqueID}
+    StrCpy $3 $3 -1
+
+  tidecode_path_compare_ready_${UniqueID}:
+    StrCmp $3 $1 tidecode_path_done_${UniqueID}
+    StrCmp $5 "" tidecode_path_append_${UniqueID}
+    IntOp $4 $4 + 1
+    StrCpy $2 $2 "" $4
+    Goto tidecode_path_entry_${UniqueID}
+
+  tidecode_path_append_${UniqueID}:
+    ${if} $0 == ""
+      WriteRegExpandStr ${ROOT} "${REGKEY}" "Path" "$1"
+    ${else}
+      WriteRegExpandStr ${ROOT} "${REGKEY}" "Path" "$0;$1"
+    ${endif}
+
+  tidecode_path_done_${UniqueID}:
+  !undef UniqueID
+!macroend
+
 !macro customWelcomePage
   ; An updater launch already has the user's approval. A manually launched
   ; installer with an existing install should also go directly to the native
@@ -105,17 +149,9 @@
 !macro customInstall
   ; Register TideCode bin directory in user or machine PATH
   ${if} $installMode == "all"
-    ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path"
-    ${if} $0 != ""
-      WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$0;$INSTDIR\resources\bin"
-    ${endif}
+    !insertmacro addTideCodeBinToPath HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
   ${else}
-    ReadRegStr $0 HKCU "Environment" "Path"
-    ${if} $0 != ""
-      WriteRegExpandStr HKCU "Environment" "Path" "$0;$INSTDIR\resources\bin"
-    ${else}
-      WriteRegExpandStr HKCU "Environment" "Path" "$INSTDIR\resources\bin"
-    ${endif}
+    !insertmacro addTideCodeBinToPath HKCU "Environment"
   ${endif}
 
   ; Register the packaged TideCode executable for inbound Remote TCP access on

@@ -48,6 +48,8 @@ import {
 const DEFAULT_REAPER_INTERVAL_MS = 2_000
 const DEFAULT_RECORD_RETENTION_MS = 5 * 60_000
 const DEFAULT_DISCONNECTED_CLIENT_GRACE_MS = 60_000
+const MAX_AUTOMATIC_TERMINATION_ATTEMPTS = 3
+const TERMINATION_RETRY_DELAY_MS = 5_000
 const TERMINAL_DATA_CHANNEL = 'terminal:session:data'
 const TERMINAL_EXIT_CHANNEL = 'terminal:session:exit'
 const STATE_PERSISTENCE_DELAY_MS = 250
@@ -449,7 +451,7 @@ export class TerminalBroker {
       return cloneSession(record.snapshot)
     }
     if (record.snapshot.state === 'exited') {
-      terminateSessionForWebContents(
+      await terminateSessionForWebContents(
         record.owner,
         record.snapshot.legacySessionId,
         record.snapshot.workspaceRootPath,
@@ -486,7 +488,7 @@ export class TerminalBroker {
     }
     this.emitSession(record)
 
-    const result = terminateSessionForWebContents(
+    const result = await terminateSessionForWebContents(
       record.owner,
       record.snapshot.legacySessionId,
       record.snapshot.workspaceRootPath,
@@ -547,6 +549,12 @@ export class TerminalBroker {
     }
     for (const record of this.sessions.values()) {
       if (record.snapshot.state === 'orphaned' || record.snapshot.state === 'termination_failed') {
+        if (
+          record.terminationAttempts >= MAX_AUTOMATIC_TERMINATION_ATTEMPTS
+          || now - record.snapshot.lastActivityAt < TERMINATION_RETRY_DELAY_MS
+        ) {
+          continue
+        }
         const provenance = record.snapshot.termination ?? {
           policy: 'terminate' as const,
           reason: 'unknown' as const,

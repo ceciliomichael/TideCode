@@ -139,7 +139,7 @@ function DiffViewerComponent({
   const header = collapsible ? (
     <div
       className={[
-        'group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center bg-surface px-4 py-3 text-[12px] text-muted-foreground',
+        'non-selectable-ui group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center bg-surface px-4 py-3 text-[12px] text-muted-foreground',
         isExpanded ? 'border-b border-border' : '',
         headerClassName ?? '',
       ].join(' ')}
@@ -163,7 +163,7 @@ function DiffViewerComponent({
   ) : (
     <div
       className={[
-        'grid w-full grid-cols-[minmax(0,1fr)_auto] items-center border-b border-border bg-surface px-4 py-3 text-[12px] text-muted-foreground',
+        'non-selectable-ui grid w-full grid-cols-[minmax(0,1fr)_auto] items-center border-b border-border bg-surface px-4 py-3 text-[12px] text-muted-foreground',
         headerClassName ?? '',
       ].join(' ')}
     >
@@ -186,7 +186,13 @@ function DiffViewerComponent({
     >
       {!isPrewarmOnly && showHeader ? header : null}
       {shouldRenderDiffContent ? (
-        <div className={isStackedLayout ? 'overflow-hidden bg-surface' : 'overflow-hidden rounded-b-2xl bg-surface'}>
+        <div
+          data-diff-content="true"
+          className={[
+            'selectable-ui',
+            isStackedLayout ? 'overflow-hidden bg-surface' : 'overflow-hidden rounded-b-2xl bg-surface',
+          ].join(' ')}
+        >
           <Suspense fallback={<WorkspaceMonacoDiffLoadingView height={initialBodyHeight} />}>
             <WorkspaceMonacoDiffView
               key={diffCacheKey ?? filePath}

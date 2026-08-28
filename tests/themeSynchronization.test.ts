@@ -89,30 +89,31 @@ test('remote shared settings preserve all local surface preferences', () => {
     appearance: 'dark' as const,
     lastActiveConversationId: 'desktop-chat',
     sidebarWidth: 320,
-    disabledSkillsByPath: { local: true },
   }
   const remoteSettings = {
     ...DEFAULT_APP_SETTINGS,
     appearance: 'light' as const,
     lastActiveConversationId: 'web-chat',
     sidebarWidth: 220,
-    disabledSkillsByPath: { shared: true },
   }
 
   const merged = preserveLocalSurfaceSettings(remoteSettings, localSettings)
   assert.equal(merged.appearance, 'dark')
   assert.equal(merged.lastActiveConversationId, 'desktop-chat')
   assert.equal(merged.sidebarWidth, 320)
-  assert.deepEqual(merged.disabledSkillsByPath, { shared: true })
 })
 
 test('only shared configuration is broadcast across surfaces', () => {
   assert.equal(hasSharedAppSettingsInput({ lastActiveConversationId: 'web-chat' }), false)
   assert.equal(hasSharedAppSettingsInput({ sidebarWidth: 280 }), false)
   assert.equal(hasSharedAppSettingsInput({ chatReasoningEffort: 'high' }), false)
+  assert.equal(hasSharedAppSettingsInput({ agentReasoningEffort: 'high' }), false)
+  assert.equal(hasSharedAppSettingsInput({ planReasoningEffort: 'low' }), false)
   assert.equal(hasSharedAppSettingsInput({ appearance: 'dark' }), false)
-  assert.equal(hasSharedAppSettingsInput({ disabledSkillsByPath: { shared: true } }), true)
   assert.equal(hasSharedAppSettingsInput({ kanbanAiPlanningEnabled: false }), true)
+  assert.equal(hasSharedAppSettingsInput({ gitCommitReasoningEffort: 'low' }), true)
+  assert.equal(hasSharedAppSettingsInput({ kanbanReasoningEffort: 'high' }), true)
+  assert.equal(hasSharedAppSettingsInput({ summarizationReasoningEffort: 'medium' }), true)
 })
 
 test('web hides desktop-only Remote and Updates settings sections', () => {

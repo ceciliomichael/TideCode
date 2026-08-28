@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MODEL_CATALOG, PROVIDER_SECTIONS } from '../components/settings/models/modelCatalog'
 import { useSettingsModelCatalog } from '../components/settings/models/settingsModelCatalogStore'
 import { toCustomModelCatalogItems } from '../components/settings/models/customModelUtils'
@@ -9,12 +9,13 @@ import { isProviderConfigured } from '../components/settings/models/modelViewUti
 import { resolveModelReasoningProfile } from '../lib/modelReasoningProfiles'
 import { resolveReasoningEffortTransition } from '../lib/reasoningEffortTransition'
 import { getRendererAppSettingsSurface } from '../lib/appSettingsScopes'
-import { buildSurfaceModelSelectionSettingsPatch, resolveSurfaceModeModelSelection } from '../lib/surfaceModelSettings'
+import { resolveConversationModelSelection, resolveSurfaceModeModelSelection } from '../lib/surfaceModelSettings'
 import type {
   AppSettings,
   ChatMode,
   ChatProviderId,
   CustomModelConfig,
+  Message,
   ProviderModelConfig,
   ProvidersState,
   ReasoningEffort,
@@ -92,6 +93,7 @@ function getProviderLabel(providerId: ChatProviderId | null, providersState: Pro
 interface UseChatRuntimeConfigInput {
   activeChatMode: ChatMode
   activeConversationId: string | null
+  activeMessages: readonly Message[]
   isProvidersLoading: boolean
   providersState: ProvidersState | null
   settings: Pick<
@@ -99,15 +101,26 @@ interface UseChatRuntimeConfigInput {
     | 'agentModelId'
     | 'agentModelLabel'
     | 'agentModelProviderId'
+    | 'agentReasoningEffort'
     | 'chatModelId'
     | 'chatModelLabel'
     | 'chatModelProviderId'
     | 'chatReasoningEffort'
+    | 'conversationModelPreferences'
     | 'planModelId'
     | 'planModelLabel'
     | 'planModelProviderId'
+    | 'planReasoningEffort'
   >
   updateSettings: (input: Partial<AppSettings>) => Promise<AppSettings | null>
+}
+
+function matchesModelId(option: ChatModelOption, modelId: string) {
+  return option.id === modelId || option.runtimeModelId === modelId
+}
+
+function matchesCatalogModelId(option: ModelCatalogItem, modelId: string) {
+  return option.id === modelId || option.apiModelId === modelId
 }
 
 function findSelectedModel(
@@ -124,14 +137,14 @@ function findSelectedModel(
 
   if (selection.providerId) {
     const sameProviderModel = options.find(
-      (option) => option.id === normalizedModelId && option.providerId === selection.providerId,
+      (option) => matchesModelId(option, normalizedModelId) && option.providerId === selection.providerId,
     )
     if (sameProviderModel) {
       return sameProviderModel
     }
   }
 
-  return options.find((option) => option.id === normalizedModelId) ?? options[0] ?? null
+  return options.find((option) => matchesModelId(option, normalizedModelId)) ?? options[0] ?? null
 }
 
 function findExactSelectedModel(
@@ -147,10 +160,12 @@ function findExactSelectedModel(
   }
 
   if (selection.providerId) {
-    return options.find((option) => option.id === normalizedModelId && option.providerId === selection.providerId) ?? null
+    return options.find(
+      (option) => matchesModelId(option, normalizedModelId) && option.providerId === selection.providerId,
+    ) ?? null
   }
 
-  return options.find((option) => option.id === normalizedModelId) ?? null
+  return options.find((option) => matchesModelId(option, normalizedModelId)) ?? null
 }
 
 function toStaticChatModelOption(model: ModelCatalogItem): ChatModelOption {
@@ -172,6 +187,7 @@ function toStaticChatModelOption(model: ModelCatalogItem): ChatModelOption {
 export function useChatRuntimeConfig({
   activeChatMode,
   activeConversationId,
+  activeMessages,
   isProvidersLoading,
   providersState,
   settings,
@@ -195,11 +211,58 @@ export function useChatRuntimeConfig({
     () => buildChatModelOptions(providersState, customModels, providerModels),
     [customModels, providerModels, providersState],
   )
+  const [selectionOverride, setSelectionOverride] = useState<{
+    chatMode: ChatMode
+    conversationId: string | null
+    modelId: string
+    modelLabel: string
+    providerId: ChatProviderId | null
+    reasoningEffort: ReasoningEffort
+  } | null>(null)
   const modeSelection = useMemo(
     () => resolveSurfaceModeModelSelection(activeChatMode, settings),
     [activeChatMode, settings],
   )
-  const effectiveModeSelection = modeSelection
+  const latestUserMessage = useMemo(
+    () => [...activeMessages].reverse().find((message) => message.role === 'user') ?? null,
+    [activeMessages],
+  )
+  const conversationSelection = useMemo(
+    () => resolveConversationModelSelection(
+      activeChatMode,
+      modeSelection,
+      activeConversationId ? settings.conversationModelPreferences[activeConversationId] : null,
+      activeConversationId ? latestUserMessage : null,
+    ),
+    [
+      activeChatMode,
+      activeConversationId,
+      latestUserMessage,
+      modeSelection,
+      settings.conversationModelPreferences,
+    ],
+  )
+  const effectiveModeSelection = useMemo(() => {
+    if (
+      selectionOverride?.chatMode === activeChatMode &&
+      selectionOverride.conversationId === activeConversationId
+    ) {
+      return {
+        ...conversationSelection,
+        modelId: selectionOverride.modelId,
+        modelLabel: selectionOverride.modelLabel,
+        providerId: selectionOverride.providerId,
+        reasoningEffort: selectionOverride.reasoningEffort,
+      }
+    }
+
+    return conversationSelection
+  }, [activeChatMode, activeConversationId, conversationSelection, selectionOverride])
+
+  useEffect(() => {
+    setSelectionOverride(null)
+  }, [activeChatMode, activeConversationId])
+
   const selectedProviderConfigured = useMemo(() => {
     if (effectiveModeSelection.providerId === null) {
       return false
@@ -207,10 +270,17 @@ export function useChatRuntimeConfig({
 
     return isProviderConfigured(effectiveModeSelection.providerId, providersState)
   }, [effectiveModeSelection.providerId, providersState])
+  const modeProviderConfigured = useMemo(() => {
+    if (modeSelection.providerId === null) {
+      return false
+    }
+
+    return isProviderConfigured(modeSelection.providerId, providersState)
+  }, [modeSelection.providerId, providersState])
   const missingSelectedModelOption = useMemo<ChatModelOption | null>(() => {
     const normalizedSavedModelId = effectiveModeSelection.modelId.trim()
     const hasExactEnabledCatalogMatch = modelOptions.some((option) => {
-      if (option.id !== normalizedSavedModelId) {
+      if (!matchesModelId(option, normalizedSavedModelId)) {
         return false
       }
 
@@ -222,7 +292,7 @@ export function useChatRuntimeConfig({
     })
 
     const hasExactCatalogMatch = allModelCatalog.some((option) => {
-      if (option.id !== normalizedSavedModelId) {
+      if (!matchesCatalogModelId(option, normalizedSavedModelId)) {
         return false
       }
 
@@ -285,6 +355,13 @@ export function useChatRuntimeConfig({
 
     return exactRuntimeModel ?? findSelectedModel(runtimeModelOptions, selectedModelSelection)
   }, [enabledStaticModelOptions, effectiveModeSelection.modelId, effectiveModeSelection.providerId, runtimeModelOptions])
+  const defaultSelectedModel = useMemo(() => {
+    const selection = {
+      modelId: modeSelection.modelId,
+      providerId: modeSelection.providerId,
+    }
+    return findExactSelectedModel(modelOptions, selection) ?? findExactSelectedModel(enabledStaticModelOptions, selection)
+  }, [enabledStaticModelOptions, modeSelection.modelId, modeSelection.providerId, modelOptions])
   const availableReasoningEfforts = useMemo(() => {
     if (!selectedModel?.reasoningCapable) {
       return [] as readonly ReasoningEffort[]
@@ -294,11 +371,16 @@ export function useChatRuntimeConfig({
   }, [selectedModel])
   const reasoningEffort = useMemo(
     () => resolveReasoningEffortTransition({
-      currentEffort: settings.chatReasoningEffort,
+      currentEffort: effectiveModeSelection.reasoningEffort ?? settings.chatReasoningEffort,
       defaultEffort: selectedModel?.defaultReasoningEffort,
       supportedEfforts: availableReasoningEfforts,
     }),
-    [availableReasoningEfforts, selectedModel?.defaultReasoningEffort, settings.chatReasoningEffort],
+    [
+      availableReasoningEfforts,
+      effectiveModeSelection.reasoningEffort,
+      selectedModel?.defaultReasoningEffort,
+      settings.chatReasoningEffort,
+    ],
   )
   const effectiveReasoningEffort = reasoningEffort
   const hasSavedModelId = effectiveModeSelection.modelId.trim().length > 0
@@ -339,7 +421,7 @@ export function useChatRuntimeConfig({
     }
 
     const hasEnabledSelection = modelOptions.some((option) => {
-      if (option.id !== normalizedSavedModelId) {
+      if (!matchesModelId(option, normalizedSavedModelId)) {
         return false
       }
 
@@ -354,8 +436,8 @@ export function useChatRuntimeConfig({
       return
     }
 
-    const hasKnownSelection = selectedProviderConfigured && allModelCatalog.some((option) => {
-      if (option.id !== normalizedSavedModelId) {
+    const hasKnownSelection = modeProviderConfigured && allModelCatalog.some((option) => {
+      if (!matchesCatalogModelId(option, normalizedSavedModelId)) {
         return false
       }
 
@@ -391,24 +473,24 @@ export function useChatRuntimeConfig({
     modeSelection.updateKeys.modelId,
     modeSelection.updateKeys.modelLabel,
     modeSelection.updateKeys.providerId,
-    selectedProviderConfigured,
+    modeProviderConfigured,
     updateSettings,
   ])
 
   useEffect(() => {
-    if (!selectedModel?.isCatalogBacked) {
+    if (!defaultSelectedModel?.isCatalogBacked) {
       return
     }
 
-    if (modeSelection.providerId === selectedModel.providerId) {
+    if (modeSelection.providerId === defaultSelectedModel.providerId) {
       return
     }
 
     void updateSettings({
-      [modeSelection.updateKeys.providerId]: selectedModel.providerId,
-      chatModelProviderId: selectedModel.providerId,
+      [modeSelection.updateKeys.providerId]: defaultSelectedModel.providerId,
+      chatModelProviderId: defaultSelectedModel.providerId,
     })
-  }, [modeSelection.providerId, modeSelection.updateKeys.providerId, selectedModel, updateSettings])
+  }, [defaultSelectedModel, modeSelection.providerId, modeSelection.updateKeys.providerId, updateSettings])
 
   useEffect(() => {
     if (!selectedModel?.isCatalogBacked) {
@@ -428,6 +510,38 @@ export function useChatRuntimeConfig({
     updateSettings,
   ])
 
+  const resolveDefaultRuntimeModel = useCallback(
+    (chatMode: ChatMode) => {
+      const defaultSelection = resolveSurfaceModeModelSelection(chatMode, settings)
+      const catalogModel = allModelCatalog.find((option) => {
+        if (!matchesCatalogModelId(option, defaultSelection.modelId)) {
+          return false
+        }
+        return defaultSelection.providerId === null || option.providerId === defaultSelection.providerId
+      })
+      const selectedOption =
+        findExactSelectedModel(modelOptions, defaultSelection) ??
+        findExactSelectedModel(enabledStaticModelOptions, defaultSelection) ??
+        (catalogModel ? toStaticChatModelOption(catalogModel) : null)
+      const providerId = selectedOption?.providerId ?? defaultSelection.providerId
+      const supportedEfforts = selectedOption?.reasoningCapable ? selectedOption.reasoningEfforts ?? [] : []
+      const reasoningEffort = resolveReasoningEffortTransition({
+        currentEffort: defaultSelection.reasoningEffort ?? settings.chatReasoningEffort,
+        defaultEffort: selectedOption?.defaultReasoningEffort,
+        supportedEfforts,
+      })
+
+      return {
+        hasConfiguredProvider: modelOptions.length > 0,
+        modelId: selectedOption?.runtimeModelId ?? defaultSelection.modelId,
+        providerId,
+        providerLabel: selectedOption?.providerLabel ?? (providerId ? getProviderLabel(providerId, providersState) : null),
+        reasoningEffort,
+      }
+    },
+    [allModelCatalog, enabledStaticModelOptions, modelOptions, providersState, settings],
+  )
+
   const setSelectedModelId = useCallback(
     (chatModelId: string) => {
       const selectedOption = runtimeModelOptions.find((option) => option.id === chatModelId) ?? null
@@ -437,7 +551,7 @@ export function useChatRuntimeConfig({
       }
 
       const nextReasoningEffort = resolveReasoningEffortTransition({
-        currentEffort: settings.chatReasoningEffort,
+        currentEffort: effectiveReasoningEffort,
         defaultEffort: selectedOption?.defaultReasoningEffort,
         supportedEfforts: selectedOption?.reasoningEfforts,
       })
@@ -451,12 +565,14 @@ export function useChatRuntimeConfig({
         runtimeModelId: selectedOption?.runtimeModelId ?? chatModelId,
       }
 
-      void updateSettings(buildSurfaceModelSelectionSettingsPatch(activeChatMode, {
+      setSelectionOverride({
+        chatMode: activeChatMode,
+        conversationId: activeConversationId,
         modelId: chatModelId,
         modelLabel,
         providerId: nextProviderId,
         reasoningEffort: nextReasoningEffort,
-      }))
+      })
 
       if (activeConversationId) {
         void window.tidecodeRuns.updateConversationRuntime({
@@ -474,10 +590,9 @@ export function useChatRuntimeConfig({
       activeConversationId,
       effectiveModeSelection.modelId,
       effectiveModeSelection.providerId,
+      effectiveReasoningEffort,
       runtimeModelOptions,
       runtimeSurface,
-      settings.chatReasoningEffort,
-      updateSettings,
     ],
   )
 
@@ -487,6 +602,14 @@ export function useChatRuntimeConfig({
         return
       }
 
+      setSelectionOverride({
+        chatMode: activeChatMode,
+        conversationId: activeConversationId,
+        modelId: effectiveModeSelection.modelId,
+        modelLabel: selectedModel?.label ?? (effectiveModeSelection.modelLabel.trim() || effectiveModeSelection.modelId),
+        providerId: effectiveModeSelection.providerId,
+        reasoningEffort: chatReasoningEffort,
+      })
       void updateSettings({ chatReasoningEffort })
 
       if (activeConversationId) {
@@ -529,6 +652,7 @@ export function useChatRuntimeConfig({
     providerId: selectedModel?.providerId ?? null,
     providerLabel: selectedModel?.providerLabel ?? null,
     reasoningEffort: effectiveReasoningEffort,
+    resolveDefaultRuntimeModel,
     selectedModelId: selectedModel?.id ?? effectiveModeSelection.modelId,
     selectedRuntimeModelId: selectedModel?.runtimeModelId ?? effectiveModeSelection.modelId,
     setReasoningEffort,

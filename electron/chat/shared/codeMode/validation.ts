@@ -24,6 +24,8 @@ const PATCH_ARRAY_DECLARATION = /^\s*(?:const|let|var)\s+patch\s*=\s*\[\s*$/u
 const PATCH_ARRAY_END = /^\s*\]\s*;?\s*$/u
 const PATCH_RETURN = /^\s*return\s+(?:await\s+)?tools\.patch\(\s*\{\s*patch(?:\s*:\s*patch)?\s*\}\s*\)\s*;?\s*$/u
 const RAW_PATCH_CONTROL_LINE = /^(?:\*\*\* (?:Begin Patch|End Patch)|\*\*\* (?:Add|Update|Delete) File:?.*|\*\*\* Move to:?.*|@@.*)$/u
+const APPLY_PATCH_DIRECT_TEMPLATE = /\btools\.apply_patch\s*\(\s*$/u
+const APPLY_PATCH_TEMPLATE_BINDING = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*$/u
 
 function isEscaped(value: string, index: number) {
   let slashCount = 0
@@ -93,6 +95,24 @@ function decodePatchStringBody(value: string) {
   return decoded
 }
 
+function decodeLiteralPatchStringBody(value: string, quote: string) {
+  if (quote !== "'" && quote !== '"') return decodePatchStringBody(value)
+  const backslash = String.fromCharCode(92)
+  let decoded = ''
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]
+    if (character === backslash && value[index + 1] === quote) {
+      decoded += quote
+      index += 1
+      continue
+    }
+    decoded += character
+  }
+
+  return decoded
+}
+
 function decodePatchArrayLine(line: string) {
   const trimmed = line.trim()
   if (trimmed.length === 0) return null
@@ -112,7 +132,172 @@ function decodePatchArrayLine(line: string) {
     body = body.slice(0, lastIndex)
   }
 
-  return decodePatchStringBody(body)
+  return decodeLiteralPatchStringBody(body, firstCharacter)
+}
+
+function isPatchWhitespace(character: string | undefined) {
+  if (character === undefined) return false
+  const code = character.charCodeAt(0)
+  return code === 9 || code === 10 || code === 13 || code === 32
+}
+
+function isPatchMarkerLineStart(value: string, index: number) {
+  if (index === 0) return true
+  const previous = value.charCodeAt(index - 1)
+  return previous === 10 || previous === 13
+}
+
+function findPatchEndMarker(value: string, start: number) {
+  const marker = '*** End Patch'
+  const backtick = String.fromCharCode(96)
+  let searchFrom = start
+
+  while (searchFrom < value.length) {
+    const index = value.indexOf(marker, searchFrom)
+    if (index === -1) return -1
+    const next = value[index + marker.length]
+    if (
+      isPatchMarkerLineStart(value, index) &&
+      (next === undefined || next === backtick || isPatchWhitespace(next))
+    ) {
+      return index
+    }
+    searchFrom = index + 1
+  }
+
+  return -1
+}
+
+function patchTemplateReplacementStart(value: string, openingBacktick: number) {
+  let cursor = openingBacktick - 1
+  while (cursor >= 0 && (value[cursor] === ' ' || value.charCodeAt(cursor) === 9)) cursor -= 1
+
+  const rawTag = 'String.raw'
+  const start = cursor - rawTag.length + 1
+  if (start < 0 || value.slice(start, cursor + 1) !== rawTag) return openingBacktick
+
+  const previous = value[start - 1]
+  if (previous !== undefined && /[A-Za-z0-9_$]/u.test(previous)) return openingBacktick
+  return start
+}
+
+function decodePatchTemplateEscapes(body: string) {
+  const backslash = String.fromCharCode(92)
+  const backtick = String.fromCharCode(96)
+  let output = ''
+
+  for (let index = 0; index < body.length; index += 1) {
+    const character = body[index]
+    if (character !== backslash || index + 1 >= body.length) {
+      output += character
+      continue
+    }
+
+    const next = body[index + 1]
+    if (next === backtick) {
+      output += backtick
+      index += 1
+      continue
+    }
+    if (next === '$' && body[index + 2] === '{') {
+      output += '$' + '{'
+      index += 2
+      continue
+    }
+
+    output += backslash
+  }
+
+  return output
+}
+
+function hasApplyPatchVariableUsage(value: string, variableName: string) {
+  const marker = 'tools.apply_patch'
+  let searchFrom = 0
+
+  while (searchFrom < value.length) {
+    const index = value.indexOf(marker, searchFrom)
+    if (index === -1) return false
+    let cursor = index + marker.length
+    while (isPatchWhitespace(value[cursor])) cursor += 1
+    if (value[cursor] !== '(') {
+      searchFrom = index + 1
+      continue
+    }
+    cursor += 1
+    while (isPatchWhitespace(value[cursor])) cursor += 1
+    if (value.slice(cursor, cursor + variableName.length) !== variableName) {
+      searchFrom = index + 1
+      continue
+    }
+    const afterName = value[cursor + variableName.length]
+    if (afterName !== undefined && /[A-Za-z0-9_$]/u.test(afterName)) {
+      searchFrom = index + 1
+      continue
+    }
+    cursor += variableName.length
+    while (isPatchWhitespace(value[cursor])) cursor += 1
+    if (value[cursor] === ')') return true
+    searchFrom = index + 1
+  }
+
+  return false
+}
+
+function isApplyPatchTemplate(value: string, replacementStart: number, closingBacktick: number) {
+  const prefix = value.slice(0, replacementStart)
+  if (APPLY_PATCH_DIRECT_TEMPLATE.test(prefix)) return true
+
+  const variableName = prefix.match(APPLY_PATCH_TEMPLATE_BINDING)?.[1]
+  if (!variableName) return false
+  return hasApplyPatchVariableUsage(value.slice(closingBacktick + 1), variableName)
+}
+
+export function normalizeCodeModePatchTemplateLiterals(code: string) {
+  const beginMarker = '*** Begin Patch'
+  const endMarker = '*** End Patch'
+  const backtick = String.fromCharCode(96)
+  let result = code
+  let searchFrom = 0
+
+  while (searchFrom < result.length) {
+    const begin = result.indexOf(beginMarker, searchFrom)
+    if (begin === -1) break
+
+    let opening = begin - 1
+    while (opening >= 0 && isPatchWhitespace(result[opening])) opening -= 1
+    if (opening < 0 || result[opening] !== backtick) {
+      searchFrom = begin + beginMarker.length
+      continue
+    }
+
+    const end = findPatchEndMarker(result, begin + beginMarker.length)
+    if (end === -1) {
+      searchFrom = begin + beginMarker.length
+      continue
+    }
+
+    let closing = end + endMarker.length
+    while (closing < result.length && isPatchWhitespace(result[closing])) closing += 1
+    if (result[closing] !== backtick) {
+      searchFrom = end + endMarker.length
+      continue
+    }
+
+    const replacementStart = patchTemplateReplacementStart(result, opening)
+    if (!isApplyPatchTemplate(result, replacementStart, closing)) {
+      searchFrom = closing + 1
+      continue
+    }
+
+    let body = result.slice(opening + 1, closing)
+    if (replacementStart === opening) body = decodePatchTemplateEscapes(body)
+    const quoted = JSON.stringify(body) ?? '""'
+    result = result.slice(0, replacementStart) + quoted + result.slice(closing + 1)
+    searchFrom = replacementStart + quoted.length
+  }
+
+  return result
 }
 
 /**
@@ -246,7 +431,58 @@ function repairPythonTripleQuotedStrings(code: string) {
   return changed ? output : code
 }
 
+function repairOverEscapedRegexLiteral(code: string): string | null {
+  let candidate = code
+  let repaired = false
+
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    let message = ''
+    try {
+      validateCodeModeSyntax(candidate)
+      return repaired ? candidate : null
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error)
+    }
+
+    const prefix = 'Invalid regular expression: '
+    const suffix = ': Unterminated group'
+    const literalStart = message.indexOf(prefix)
+    const literalEnd = message.lastIndexOf(suffix)
+    if (literalStart === -1 || literalEnd === -1) return null
+
+    const displayedLiteral = message.slice(literalStart + prefix.length, literalEnd)
+    const sourceLiterals = [displayedLiteral]
+    const decodedLiteral = displayedLiteral.replaceAll('\\\\', '\\')
+    if (decodedLiteral !== displayedLiteral) sourceLiterals.push(decodedLiteral)
+
+    let replacementApplied = false
+    for (const invalidLiteral of sourceLiterals) {
+      const repairedLiteral = invalidLiteral.replaceAll('\\\\(', '\\(')
+      if (repairedLiteral === invalidLiteral) continue
+
+      const literalIndex = candidate.indexOf(invalidLiteral)
+      if (literalIndex === -1) continue
+
+      candidate = candidate.slice(0, literalIndex)
+        + repairedLiteral
+        + candidate.slice(literalIndex + invalidLiteral.length)
+      repaired = true
+      replacementApplied = true
+      break
+    }
+
+    if (!replacementApplied) return null
+  }
+
+  return null
+}
+
 export function repairCodeModeProgramSyntax(code: string): string | null {
+  // Try -0.5: Repair a regex literal where a model doubled the escape before
+  // a literal opening parenthesis, turning it into an unterminated group.
+  const fixedRegexLiteral = repairOverEscapedRegexLiteral(code)
+  if (fixedRegexLiteral !== null) return fixedRegexLiteral
+
   // Try 0: Repair Python-style triple-quoted strings without interpreting opposite delimiters or template expressions.
   if (code.includes('"""') || code.includes("'''")) {
     const fixedTripleQuotes = repairPythonTripleQuotedStrings(code)

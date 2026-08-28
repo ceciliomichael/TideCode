@@ -1,8 +1,8 @@
 import type { ConversationRecord, Message } from '../types/chat'
 import { toUserFacingErrorMessage } from '../lib/userFacingError'
 
-const STREAM_PROGRESS_PERSIST_DEBOUNCE_MS = 600
-const STREAM_PROGRESS_PERSIST_CHAR_FLUSH_THRESHOLD = 768
+const STREAM_PROGRESS_PERSIST_DEBOUNCE_MS = 1_500
+const STREAM_PROGRESS_PERSIST_CHAR_FLUSH_THRESHOLD = 4_096
 
 export interface ChatStreamProgressPersistenceInput {
   conversationId: string
@@ -16,7 +16,7 @@ export interface ChatStreamProgressPersistenceController {
   flush: () => Promise<ConversationRecord | null>
   queueSnapshot: (
     messages: Message[],
-    options?: { immediate?: boolean },
+    options?: { immediate?: boolean; transient?: boolean },
     hint?: { deltaCharCount?: number },
   ) => void
 }
@@ -82,8 +82,12 @@ export function createChatStreamProgressPersistenceController(
     return flushPromise
   }
 
-  const queueSnapshot = (messages: Message[], options?: { immediate?: boolean }) => {
+  const queueSnapshot = (messages: Message[], options?: { immediate?: boolean; transient?: boolean }) => {
     if (shouldDiscardPendingWrites()) {
+      return
+    }
+
+    if (options?.transient) {
       return
     }
 
@@ -112,9 +116,13 @@ export function createChatStreamProgressPersistenceController(
 
   const queueSnapshotWithHint = (
     messages: Message[],
-    options?: { immediate?: boolean },
+    options?: { immediate?: boolean; transient?: boolean },
     hint?: { deltaCharCount?: number },
   ) => {
+    if (options?.transient) {
+      return
+    }
+
     if (typeof hint?.deltaCharCount === 'number' && Number.isFinite(hint.deltaCharCount) && hint.deltaCharCount > 0) {
       pendingDeltaCharCount += hint.deltaCharCount
       if (pendingDeltaCharCount >= STREAM_PROGRESS_PERSIST_CHAR_FLUSH_THRESHOLD) {

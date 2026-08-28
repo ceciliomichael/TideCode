@@ -30,11 +30,13 @@ test('CLI fresh-chat defaults follow the configured model for the active mode', 
   const settings = {
     agentModelId: 'agent-default',
     agentModelProviderId: 'openai' as const,
+    agentReasoningEffort: 'low' as const,
     chatModelId: 'chat-default',
     chatModelProviderId: 'google' as const,
     chatReasoningEffort: 'high' as const,
     planModelId: 'plan-default',
     planModelProviderId: 'anthropic' as const,
+    planReasoningEffort: 'high' as const,
   }
 
   const agentDefault = resolveCliDefaultModelSelection('agent', models, settings)
@@ -43,7 +45,7 @@ test('CLI fresh-chat defaults follow the configured model for the active mode', 
   assert.deepEqual(agentDefault, {
     defaultModelId: 'agent-default',
     defaultProviderId: 'openai',
-    selectedReasoningEffort: 'high',
+    selectedReasoningEffort: 'low',
   })
   assert.deepEqual(planDefault, {
     defaultModelId: 'plan-default',
@@ -62,6 +64,8 @@ test('CLI fresh-chat defaults inherit the chat input model when the mode overrid
     chatReasoningEffort: 'medium' as const,
     planModelId: '',
     planModelProviderId: null,
+    agentReasoningEffort: 'low' as const,
+    planReasoningEffort: 'high' as const,
   }
 
   assert.deepEqual(resolveCliDefaultModelSelection('agent', models, settings), {

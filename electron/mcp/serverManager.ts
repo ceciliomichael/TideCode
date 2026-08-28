@@ -20,6 +20,20 @@ import { executeMcpTool } from './mcpToolExecution'
 import { searchMcpToolCatalog } from './mcpToolSearch'
 import { getMcpStateStore } from './stateStore'
 
+const MCP_CLOSE_TIMEOUT_MS = 5_000
+
+async function settleWithin(promise: Promise<unknown>, timeoutMs: number) {
+  let timeoutId: NodeJS.Timeout | undefined
+  await Promise.race([
+    promise.catch(() => undefined),
+    new Promise<void>((resolve) => {
+      timeoutId = setTimeout(resolve, timeoutMs)
+      timeoutId.unref?.()
+    }),
+  ])
+  if (timeoutId) clearTimeout(timeoutId)
+}
+
 interface ManagedRuntime {
   client: Client | null
   config: McpServerConfig
@@ -107,10 +121,10 @@ async function closeTransport(transport: Transport | null) {
     terminateSession?: () => Promise<void>
   }
   if (typeof maybeTerminable.terminateSession === 'function') {
-    await maybeTerminable.terminateSession().catch(() => undefined)
+    await settleWithin(maybeTerminable.terminateSession(), MCP_CLOSE_TIMEOUT_MS)
   }
 
-  await transport.close().catch(() => undefined)
+  await settleWithin(transport.close(), MCP_CLOSE_TIMEOUT_MS)
 }
 
 class McpWorkspaceSession {
@@ -257,7 +271,7 @@ class McpWorkspaceSession {
       return nextRuntime
     } catch (error) {
       if (nextRuntime.client) {
-        await nextRuntime.client.close().catch(() => undefined)
+        await settleWithin(nextRuntime.client.close(), MCP_CLOSE_TIMEOUT_MS)
       }
       if (nextRuntime.transport) {
         await closeTransport(nextRuntime.transport)
@@ -274,7 +288,7 @@ class McpWorkspaceSession {
 
   private async disconnectRuntime(serverId: string, runtime: ManagedRuntime, deleteAfterDisconnect: boolean) {
     if (runtime.client) {
-      await runtime.client.close().catch(() => undefined)
+      await settleWithin(runtime.client.close(), MCP_CLOSE_TIMEOUT_MS)
     }
 
     if (runtime.transport) {

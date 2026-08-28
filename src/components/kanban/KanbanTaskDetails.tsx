@@ -201,7 +201,7 @@ export function KanbanTaskDetails({
         role="dialog"
         aria-modal="true"
         aria-labelledby="kanban-details-title"
-        className="flex h-full w-full flex-col border-l border-border bg-surface [&_input:focus]:!border-border [&_input:focus]:!shadow-none [&_input:focus]:!outline-none [&_input:focus]:!ring-0 [&_textarea:focus]:!border-border [&_textarea:focus]:!shadow-none [&_textarea:focus]:!outline-none [&_textarea:focus]:!ring-0 md:max-w-[620px]"
+        className="non-selectable-ui flex h-full w-full flex-col border-l border-border bg-surface [&_input:focus]:!border-border [&_input:focus]:!shadow-none [&_input:focus]:!outline-none [&_input:focus]:!ring-0 [&_textarea:focus]:!border-border [&_textarea:focus]:!shadow-none [&_textarea:focus]:!outline-none [&_textarea:focus]:!ring-0 md:max-w-[620px]"
       >
         <header className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-5 py-3 md:px-6">
           <div className="flex min-w-0 items-center gap-2">

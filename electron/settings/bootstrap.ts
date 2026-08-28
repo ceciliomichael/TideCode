@@ -215,25 +215,6 @@ function sanitizeEditSessionsByConversation(value: unknown): AppSettings['editSe
   return sanitizedValue
 }
 
-function sanitizeDisabledSkillsByPath(value: unknown): AppSettings['disabledSkillsByPath'] {
-  if (!value || typeof value !== 'object') {
-    return { ...DEFAULT_APP_SETTINGS.disabledSkillsByPath }
-  }
-
-  const candidateEntries = Object.entries(value as Record<string, unknown>)
-  const sanitizedValue: AppSettings['disabledSkillsByPath'] = {}
-  for (const [skillPath, disabled] of candidateEntries) {
-    const normalizedSkillPath = skillPath.trim()
-    if (normalizedSkillPath.length === 0 || disabled !== true) {
-      continue
-    }
-
-    sanitizedValue[normalizedSkillPath] = true
-  }
-
-  return sanitizedValue
-}
-
 function sanitizeConversationModelPreferences(value: unknown): AppSettings['conversationModelPreferences'] {
   if (!value || typeof value !== 'object') {
     return {}
@@ -322,6 +303,11 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
       typeof candidate?.agentModelLabel === 'string'
         ? candidate.agentModelLabel.trim()
         : DEFAULT_APP_SETTINGS.agentModelLabel,
+    agentReasoningEffort: isReasoningEffort(candidate?.agentReasoningEffort)
+      ? candidate.agentReasoningEffort
+      : isReasoningEffort(candidate?.chatReasoningEffort)
+        ? candidate.chatReasoningEffort
+        : DEFAULT_APP_SETTINGS.agentReasoningEffort,
     planModelId:
       typeof candidate?.planModelId === 'string'
         ? candidate.planModelId.trim()
@@ -333,6 +319,11 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
       typeof candidate?.planModelLabel === 'string'
         ? candidate.planModelLabel.trim()
         : DEFAULT_APP_SETTINGS.planModelLabel,
+    planReasoningEffort: isReasoningEffort(candidate?.planReasoningEffort)
+      ? candidate.planReasoningEffort
+      : isReasoningEffort(candidate?.chatReasoningEffort)
+        ? candidate.chatReasoningEffort
+        : DEFAULT_APP_SETTINGS.planReasoningEffort,
     summarizationModelId:
       typeof candidate?.summarizationModelId === 'string'
         ? candidate.summarizationModelId.trim()
@@ -344,6 +335,11 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
       typeof candidate?.summarizationModelLabel === 'string'
         ? candidate.summarizationModelLabel.trim()
         : DEFAULT_APP_SETTINGS.summarizationModelLabel,
+    summarizationReasoningEffort: isReasoningEffort(candidate?.summarizationReasoningEffort)
+      ? candidate.summarizationReasoningEffort
+      : isReasoningEffort(candidate?.chatReasoningEffort)
+        ? candidate.chatReasoningEffort
+        : DEFAULT_APP_SETTINGS.summarizationReasoningEffort,
     gitCommitModelId:
       typeof candidate?.gitCommitModelId === 'string'
         ? candidate.gitCommitModelId.trim()
@@ -355,6 +351,11 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
       typeof candidate?.gitCommitModelLabel === 'string'
         ? candidate.gitCommitModelLabel.trim()
         : DEFAULT_APP_SETTINGS.gitCommitModelLabel,
+    gitCommitReasoningEffort: isReasoningEffort(candidate?.gitCommitReasoningEffort)
+      ? candidate.gitCommitReasoningEffort
+      : isReasoningEffort(candidate?.chatReasoningEffort)
+        ? candidate.chatReasoningEffort
+        : DEFAULT_APP_SETTINGS.gitCommitReasoningEffort,
     kanbanAiPlanningEnabled:
       typeof candidate?.kanbanAiPlanningEnabled === 'boolean'
         ? candidate.kanbanAiPlanningEnabled
@@ -370,6 +371,11 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
       typeof candidate?.kanbanModelLabel === 'string'
         ? candidate.kanbanModelLabel.trim()
         : DEFAULT_APP_SETTINGS.kanbanModelLabel,
+    kanbanReasoningEffort: isReasoningEffort(candidate?.kanbanReasoningEffort)
+      ? candidate.kanbanReasoningEffort
+      : isReasoningEffort(candidate?.chatReasoningEffort)
+        ? candidate.chatReasoningEffort
+        : DEFAULT_APP_SETTINGS.kanbanReasoningEffort,
     diffPanelWidth:
       typeof candidate?.diffPanelWidth === 'number' && Number.isFinite(candidate.diffPanelWidth)
         ? clampStoredDiffPanelWidth(candidate.diffPanelWidth)
@@ -403,7 +409,6 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
         ? candidate.workspaceFileEditorWordWrap
         : DEFAULT_APP_SETTINGS.workspaceFileEditorWordWrap,
     conversationModelPreferences: sanitizeConversationModelPreferences(candidate?.conversationModelPreferences),
-    disabledSkillsByPath: sanitizeDisabledSkillsByPath(candidate?.disabledSkillsByPath),
     sidebarWidth:
 
       typeof candidate?.sidebarWidth === 'number' && Number.isFinite(candidate.sidebarWidth)

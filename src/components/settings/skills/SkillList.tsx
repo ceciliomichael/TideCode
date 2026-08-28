@@ -2,12 +2,11 @@ import type { SkillSummary } from '../../../types/skills'
 import { SkillCard } from './SkillCard'
 
 interface SkillListProps {
-  disabledSkillsByPath: Record<string, boolean>
-  onToggleSkill: (skill: SkillSummary, enabled: boolean) => void
+  onSelectSkill: (skill: SkillSummary) => void
   skills: SkillSummary[]
 }
 
-export function SkillList({ disabledSkillsByPath, onToggleSkill, skills }: SkillListProps) {
+export function SkillList({ onSelectSkill, skills }: SkillListProps) {
   if (skills.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border bg-surface px-4 py-12 text-center">
@@ -23,12 +22,7 @@ export function SkillList({ disabledSkillsByPath, onToggleSkill, skills }: Skill
   return (
     <div className="flex flex-col gap-3">
       {skills.map((skill) => (
-        <SkillCard
-          key={skill.id}
-          isEnabled={disabledSkillsByPath[skill.location] !== true}
-          onToggle={(enabled) => onToggleSkill(skill, enabled)}
-          skill={skill}
-        />
+        <SkillCard key={skill.id} onClick={() => onSelectSkill(skill)} skill={skill} />
       ))}
     </div>
   )

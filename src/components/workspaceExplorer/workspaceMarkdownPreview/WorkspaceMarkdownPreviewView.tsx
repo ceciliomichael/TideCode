@@ -282,7 +282,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
             This document is truncated. Save the file outside the workspace limit to see the full document.
           </div>
         ) : null}
-        <div className="min-w-0">
+        <div className="selectable-ui min-w-0">
           <ReactMarkdown remarkPlugins={[remarkGfm, remarkEmoji, remarkBreaks]} rehypePlugins={[rehypeRaw, rehypeSlug]} components={markdownComponents}>
             {useMemo(() => preprocessMarkdown(content), [content])}
           </ReactMarkdown>
