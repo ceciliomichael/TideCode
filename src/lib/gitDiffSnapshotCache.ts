@@ -88,7 +88,7 @@ export function getCachedGitStatusSnapshot(workspacePath: string | null | undefi
 
 export async function loadGitDiffSnapshot(
   workspacePath: string | null | undefined,
-  options?: { forceRefresh?: boolean; includeContent?: boolean },
+  options?: { coalesceForcedRefresh?: boolean; forceRefresh?: boolean; includeContent?: boolean },
 ) {
   const normalizedWorkspacePath = normalizeGitWorkspacePath(workspacePath)
   if (!normalizedWorkspacePath) {
@@ -106,12 +106,12 @@ export async function loadGitDiffSnapshot(
     }
   }
 
-  // Coalesce concurrent loads only when the caller accepts cached results.
-  // A forced refresh must never join an older in-flight request: that request
-  // may have captured the repository state before a mutation (for example a
-  // discard) finished, and reusing it would keep stale file changes on screen.
+  // Non-forced loads always coalesce. Background polling may explicitly allow
+  // a forced refresh to coalesce as well, but mutation/watcher refreshes keep
+  // the default behavior of starting a fresh request so they cannot reuse a
+  // pre-mutation snapshot.
   const existingRequest = inFlightDiffSnapshotRequests.get(requestKey)
-  if (existingRequest && !options?.forceRefresh) {
+  if (existingRequest && (!options?.forceRefresh || options.coalesceForcedRefresh)) {
     return existingRequest
   }
 

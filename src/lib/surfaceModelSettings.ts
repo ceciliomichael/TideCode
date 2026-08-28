@@ -1,27 +1,64 @@
-import type { AppSettings, ChatMode, ChatProviderId, ReasoningEffort } from '../types/chat'
+import type { AppSettings, ChatMode, ChatProviderId, ConversationModelPreference, Message, ReasoningEffort } from '../types/chat'
 
 type SurfaceModelSettings = Pick<
   AppSettings,
   | 'agentModelId'
   | 'agentModelLabel'
   | 'agentModelProviderId'
+  | 'agentReasoningEffort'
   | 'chatModelId'
   | 'chatModelLabel'
   | 'chatModelProviderId'
+  | 'chatReasoningEffort'
   | 'planModelId'
   | 'planModelLabel'
   | 'planModelProviderId'
+  | 'planReasoningEffort'
 >
 
 export interface SurfaceModelSelection {
   modelId: string
   modelLabel: string
   providerId: ChatProviderId | null
+  reasoningEffort?: ReasoningEffort
   updateKeys: {
     modelId: 'agentModelId' | 'planModelId'
     modelLabel: 'agentModelLabel' | 'planModelLabel'
     providerId: 'agentModelProviderId' | 'planModelProviderId'
   }
+}
+export function resolveConversationModelSelection(
+  chatMode: ChatMode,
+  defaultSelection: SurfaceModelSelection,
+  preference: ConversationModelPreference | null | undefined,
+  latestUserMessage: Message | null | undefined,
+): SurfaceModelSelection {
+  if (preference && (preference.chatMode === undefined || preference.chatMode === chatMode)) {
+    return {
+      ...defaultSelection,
+      modelId: preference.modelId,
+      modelLabel: preference.label,
+      providerId: preference.providerId,
+      reasoningEffort: preference.reasoningEffort,
+    }
+  }
+
+  if (
+    latestUserMessage?.role === 'user' &&
+    (latestUserMessage.chatMode === undefined || latestUserMessage.chatMode === chatMode) &&
+    latestUserMessage.modelId?.trim() &&
+    latestUserMessage.providerId
+  ) {
+    return {
+      ...defaultSelection,
+      modelId: latestUserMessage.modelId,
+      modelLabel: latestUserMessage.modelId,
+      providerId: latestUserMessage.providerId,
+      reasoningEffort: latestUserMessage.reasoningEffort,
+    }
+  }
+
+  return defaultSelection
 }
 
 export function resolveSurfaceModeModelSelection(
@@ -36,6 +73,7 @@ export function resolveSurfaceModeModelSelection(
         ? settings.planModelLabel
         : settings.chatModelLabel,
       providerId: hasModeModel ? (settings.planModelProviderId ?? settings.chatModelProviderId) : settings.chatModelProviderId,
+      reasoningEffort: hasModeModel ? settings.planReasoningEffort : settings.chatReasoningEffort,
       updateKeys: {
         modelId: 'planModelId',
         modelLabel: 'planModelLabel',
@@ -51,40 +89,11 @@ export function resolveSurfaceModeModelSelection(
       ? settings.agentModelLabel
       : settings.chatModelLabel,
     providerId: hasModeModel ? (settings.agentModelProviderId ?? settings.chatModelProviderId) : settings.chatModelProviderId,
+    reasoningEffort: hasModeModel ? settings.agentReasoningEffort : settings.chatReasoningEffort,
     updateKeys: {
       modelId: 'agentModelId',
       modelLabel: 'agentModelLabel',
       providerId: 'agentModelProviderId',
     },
-  }
-}
-
-export function buildSurfaceModelSelectionSettingsPatch(
-  chatMode: ChatMode,
-  selection: {
-    modelId: string
-    modelLabel: string
-    providerId: ChatProviderId | null
-    reasoningEffort?: ReasoningEffort
-  },
-): Partial<AppSettings> {
-  const modePatch = chatMode === 'plan'
-    ? {
-        planModelId: selection.modelId,
-        planModelLabel: selection.modelLabel,
-        planModelProviderId: selection.providerId,
-      }
-    : {
-        agentModelId: selection.modelId,
-        agentModelLabel: selection.modelLabel,
-        agentModelProviderId: selection.providerId,
-      }
-
-  return {
-    ...modePatch,
-    chatModelId: selection.modelId,
-    chatModelLabel: selection.modelLabel,
-    chatModelProviderId: selection.providerId,
-    ...(selection.reasoningEffort ? { chatReasoningEffort: selection.reasoningEffort } : {}),
   }
 }

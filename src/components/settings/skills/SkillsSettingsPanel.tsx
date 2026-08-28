@@ -1,11 +1,10 @@
 import { Plus } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { SettingsPanelLayout, SETTINGS_SECTION_TITLE_CLASS_NAME } from '../shared/SettingsPanelPrimitives'
 import { SkillAddDialog } from './SkillAddDialog'
 import { SkillList } from './SkillList'
 import { SkillsSettingsSkeleton } from './SkillsSettingsSkeleton'
-import type { AppSettings } from '../../../types/chat'
 import type { CreateSkillInput, SkillSummary, SkillsState } from '../../../types/skills'
 
 const ADD_SKILL_BUTTON_CLASS_NAME =
@@ -15,53 +14,64 @@ interface SkillsSettingsPanelProps {
   errorMessage: string | null
   isLoading: boolean
   onCreateSkill: (input: CreateSkillInput) => Promise<boolean>
-  onUpdateSettings: (input: Partial<AppSettings>) => void
-  settings: Pick<AppSettings, 'disabledSkillsByPath'>
+  onLoadSkill: (skill: SkillSummary) => Promise<CreateSkillInput | null>
+  onUpdateSkill: (skill: SkillSummary, input: CreateSkillInput) => Promise<boolean>
   state: SkillsState | null
-}
-
-function getNextDisabledSkillsByPath(
-  currentValue: Record<string, boolean>,
-  skill: SkillSummary,
-  enabled: boolean,
-) {
-  const nextValue = { ...currentValue }
-  if (enabled) {
-    delete nextValue[skill.location]
-  } else {
-    nextValue[skill.location] = true
-  }
-
-  return nextValue
 }
 
 export function SkillsSettingsPanel({
   errorMessage,
   isLoading,
   onCreateSkill,
-  onUpdateSettings,
-  settings,
+  onLoadSkill,
+  onUpdateSkill,
   state,
 }: SkillsSettingsPanelProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isLoadingSkill, setIsLoadingSkill] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [editingSkill, setEditingSkill] = useState<SkillSummary | null>(null)
+  const [editingValues, setEditingValues] = useState<CreateSkillInput | null>(null)
 
-  const handleToggleSkill = useCallback(
-    (skill: SkillSummary, enabled: boolean) => {
-      onUpdateSettings({
-        disabledSkillsByPath: getNextDisabledSkillsByPath(settings.disabledSkillsByPath, skill, enabled),
-      })
-    },
-    [onUpdateSettings, settings.disabledSkillsByPath],
-  )
-
-  const handleCreateSkill = async (input: CreateSkillInput) => {
+  const handleSkillSubmit = async (input: CreateSkillInput) => {
     setIsSubmitting(true)
     try {
-      return await onCreateSkill(input)
+      return editingSkill ? await onUpdateSkill(editingSkill, input) : await onCreateSkill(input)
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleOpenAddDialog = () => {
+    setEditingSkill(null)
+    setEditingValues(null)
+    setIsDialogOpen(true)
+  }
+
+  const handleSelectSkill = async (skill: SkillSummary) => {
+    if (isLoadingSkill) {
+      return
+    }
+
+    setIsLoadingSkill(true)
+    try {
+      const initialValues = await onLoadSkill(skill)
+      if (!initialValues) {
+        return
+      }
+
+      setEditingSkill(skill)
+      setEditingValues(initialValues)
+      setIsDialogOpen(true)
+    } finally {
+      setIsLoadingSkill(false)
+    }
+  }
+
+  const handleCloseDialog = () => {
+    setIsDialogOpen(false)
+    setEditingSkill(null)
+    setEditingValues(null)
   }
 
   const rawErrorMessage = errorMessage ?? state?.errorMessage ?? null
@@ -80,13 +90,13 @@ export function SkillsSettingsPanel({
           <h2 className={SETTINGS_SECTION_TITLE_CLASS_NAME}>Skills</h2>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <p className="min-w-0 flex-1 text-sm leading-6 text-muted-foreground">
-              Skills are reusable instruction packs for specific workflows. Keep a skill enabled if you want the assistant
-              to recognize it and load its guidance when it fits the task.
+              Skills are reusable instruction packs for specific workflows. All discovered skills are available
+              automatically when they fit the task.
             </p>
             <button
               type="button"
-              onClick={() => setIsDialogOpen(true)}
-              disabled={isLoading}
+              onClick={handleOpenAddDialog}
+              disabled={isLoading || isLoadingSkill}
               className={`${ADD_SKILL_BUTTON_CLASS_NAME} md:shrink-0`}
             >
               <Plus size={15} /> Add Skill
@@ -101,20 +111,19 @@ export function SkillsSettingsPanel({
         ) : null}
 
         {state ? (
-          <SkillList
-            disabledSkillsByPath={settings.disabledSkillsByPath}
-            onToggleSkill={handleToggleSkill}
-            skills={state.skills}
-          />
+          <SkillList onSelectSkill={handleSelectSkill} skills={state.skills} />
         ) : null}
       </div>
 
       {isDialogOpen ? (
         <SkillAddDialog
+          key={editingSkill?.id ?? 'add-skill'}
           errorMessage={visibleErrorMessage}
+          initialValues={editingValues ?? undefined}
           isSubmitting={isSubmitting}
-          onClose={() => setIsDialogOpen(false)}
-          onSubmit={handleCreateSkill}
+          mode={editingSkill ? 'edit' : 'add'}
+          onClose={handleCloseDialog}
+          onSubmit={handleSkillSubmit}
         />
       ) : null}
     </SettingsPanelLayout>

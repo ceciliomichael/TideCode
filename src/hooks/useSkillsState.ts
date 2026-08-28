@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toUserFacingErrorMessage } from '../lib/userFacingError'
-import type { CreateSkillInput, SkillsState } from '../types/skills'
+import type { CreateSkillInput, SkillSummary, SkillsState } from '../types/skills'
 
 export interface UseSkillsStateResult {
   createSkill: (input: CreateSkillInput) => Promise<boolean>
   errorMessage: string | null
   isLoading: boolean
+  loadSkill: (skill: SkillSummary) => Promise<CreateSkillInput | null>
   refreshSkills: () => Promise<void>
   state: SkillsState | null
+  updateSkill: (skill: SkillSummary, input: CreateSkillInput) => Promise<boolean>
 }
 
 function normalizeWorkspacePath(workspacePath?: string | null) {
@@ -85,11 +87,66 @@ export function useSkillsState(workspacePath?: string | null): UseSkillsStateRes
     [fetchSkills, normalizedWorkspacePath],
   )
 
+  const loadSkill = useCallback(
+    async (skill: SkillSummary) => {
+      const api = getSkillsApi()
+      if (!api) {
+        setErrorMessage('Skills API is unavailable.')
+        return null
+      }
+
+      try {
+        const result = await api.loadSkill(skill.name, normalizedWorkspacePath)
+        if (result.error || !result.skill) {
+          setErrorMessage(toUserFacingErrorMessage(result.error, 'The skill could not be loaded.'))
+          return null
+        }
+
+        return {
+          content: result.skill.content,
+          description: result.skill.description,
+          name: result.skill.name,
+        }
+      } catch (error) {
+        setErrorMessage(getErrorMessage(error, 'Failed to load skill.'))
+        return null
+      }
+    },
+    [normalizedWorkspacePath],
+  )
+
+  const updateSkill = useCallback(
+    async (skill: SkillSummary, input: CreateSkillInput) => {
+      const api = getSkillsApi()
+      if (!api) {
+        setErrorMessage('Skills API is unavailable.')
+        return false
+      }
+
+      try {
+        const result = await api.updateSkill(skill.location, input, normalizedWorkspacePath)
+        if (result.error) {
+          setErrorMessage(toUserFacingErrorMessage(result.error, 'The skill could not be saved.'))
+          return false
+        }
+
+        await fetchSkills()
+        return true
+      } catch (error) {
+        setErrorMessage(getErrorMessage(error, 'Failed to save skill.'))
+        return false
+      }
+    },
+    [fetchSkills, normalizedWorkspacePath],
+  )
+
   return {
     createSkill,
     errorMessage,
     isLoading,
+    loadSkill,
     refreshSkills: fetchSkills,
     state,
+    updateSkill,
   }
 }

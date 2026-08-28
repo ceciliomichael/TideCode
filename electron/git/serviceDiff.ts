@@ -10,6 +10,8 @@ interface ChangedFileSets {
 }
 
 const MAX_CONCURRENT_FILE_READS = 24
+const BACKGROUND_GIT_TIMEOUT_MS = 30_000
+const BACKGROUND_GIT_OPTIONS = { timeoutMs: BACKGROUND_GIT_TIMEOUT_MS }
 
 async function mapWithConcurrency<T, R>(items: readonly T[], worker: (item: T) => Promise<R>, limit: number) {
   const results: R[] = []
@@ -30,9 +32,9 @@ async function mapWithConcurrency<T, R>(items: readonly T[], worker: (item: T) =
 
 async function readChangedFileSets(repoRootPath: string): Promise<ChangedFileSets> {
   const [unstagedResult, stagedResult, untrackedResult] = await Promise.all([
-    runGit(['diff', '--name-only', '-z', '--', '.'], repoRootPath).catch(() => ({ stdout: '' })),
-    runGit(['diff', '--name-only', '-z', '--cached', '--', '.'], repoRootPath).catch(() => ({ stdout: '' })),
-    runGit(['ls-files', '--others', '--exclude-standard', '-z', '--', '.'], repoRootPath).catch(() => ({ stdout: '' })),
+    runGit(['diff', '--name-only', '-z', '--', '.'], repoRootPath, BACKGROUND_GIT_OPTIONS).catch(() => ({ stdout: '' })),
+    runGit(['diff', '--name-only', '-z', '--cached', '--', '.'], repoRootPath, BACKGROUND_GIT_OPTIONS).catch(() => ({ stdout: '' })),
+    runGit(['ls-files', '--others', '--exclude-standard', '-z', '--', '.'], repoRootPath, BACKGROUND_GIT_OPTIONS).catch(() => ({ stdout: '' })),
   ])
 
   const unstagedFiles = splitNullDelimitedOutput(unstagedResult.stdout)
@@ -58,7 +60,7 @@ async function buildGitFileDiff(
   changedFileSets: Omit<ChangedFileSets, 'allChangedFiles'>,
 ): Promise<GitFileDiff | null> {
   const [oldContent, newContent] = await Promise.all([
-    readHeadFile(repoRootPath, filePath),
+    readHeadFile(repoRootPath, filePath, BACKGROUND_GIT_OPTIONS),
     readWorkingTreeFile(repoRootPath, filePath),
   ])
 
@@ -81,7 +83,7 @@ export async function getGitDiffSnapshot(
   workspacePath: string,
   options?: GitDiffLoadOptions,
 ): Promise<GitDiffSnapshot> {
-  const repoRootPath = await resolveRepositoryRoot(workspacePath)
+  const repoRootPath = await resolveRepositoryRoot(workspacePath, BACKGROUND_GIT_OPTIONS)
   if (!repoRootPath) {
     return {
       fileDiffs: [],

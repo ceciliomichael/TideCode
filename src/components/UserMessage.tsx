@@ -93,7 +93,7 @@ export function UserMessage({ attachments = [], content, onEdit, onRevert }: Use
 
   if (compressedHistoryMessage) {
     return (
-      <div className="w-full min-w-0 max-w-full">
+      <div className="non-selectable-ui w-full min-w-0 max-w-full">
         <CompressedHistoryMessage summary={compressedHistoryMessage.summary} />
       </div>
     );
@@ -121,7 +121,7 @@ export function UserMessage({ attachments = [], content, onEdit, onRevert }: Use
 
   return (
     <div
-      className={surfaceClassName}
+      className={`non-selectable-ui ${surfaceClassName}`}
       onClick={onEdit ? handleSurfaceClick : undefined}
       onKeyDown={onEdit ? handleSurfaceKeyDown : undefined}
       role={onEdit ? "button" : undefined}

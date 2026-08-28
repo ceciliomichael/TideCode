@@ -13,7 +13,7 @@ interface LiteralToolResultProps {
  */
 export const LiteralToolResult = memo(function LiteralToolResult({ content }: LiteralToolResultProps) {
   return (
-    <pre className="m-0 max-w-full overflow-x-auto whitespace-pre-wrap break-words font-[inherit] text-sm leading-[1.65] text-foreground">
+    <pre className="selectable-ui m-0 max-w-full overflow-x-auto whitespace-pre-wrap break-words font-[inherit] text-sm leading-[1.65] text-foreground">
       {content}
     </pre>
   )

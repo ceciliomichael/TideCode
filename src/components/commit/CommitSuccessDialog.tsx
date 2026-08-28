@@ -61,7 +61,7 @@ export function CommitSuccessDialog({ action, onClose, result }: CommitSuccessDi
         role="dialog"
         aria-modal="true"
         aria-labelledby="commit-success-title"
-        className="w-full max-w-md rounded-2xl border border-border bg-surface p-4 shadow-soft"
+        className="non-selectable-ui w-full max-w-md rounded-2xl border border-border bg-surface p-4 shadow-soft"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">

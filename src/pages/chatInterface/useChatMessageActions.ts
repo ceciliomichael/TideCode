@@ -1,8 +1,9 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { ChatModeOption } from '../../components/chat/ChatModeSelectorField'
 import { getNextChatMode, isChatModeToggleShortcut } from '../../components/chat/chatModeShortcut'
 import type { ToolDecisionSubmission } from '../../components/chat/ToolDecisionRequestCard'
 import type { ChatMessagesController, ChatRuntimeSelection } from '../../hooks/useChatMessages'
+import type { ChatRuntimeConfigState } from '../../hooks/useChatRuntimeConfig'
 import type { ChatAttachment, ToolInvocationTrace } from '../../types/chat'
 import { isPlanRelativePath, type PlanReviewComment } from '../../lib/planContracts'
 import { persistPlanImplementationHandoff } from '../../lib/planHandoff'
@@ -14,6 +15,7 @@ import {
 } from '../../lib/planPresentation'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
 import { shouldQueueMainMessage } from './chatQueueAutoSend'
+import { buildModeRuntimeSelection } from './chatInterfaceRuntime'
 
 interface UseChatMessageActionsInput {
   chatMessages: ChatMessagesController
@@ -23,6 +25,7 @@ interface UseChatMessageActionsInput {
   isCompressingChat: boolean
   onMainTurnAccepted: () => void
   onConversationHistoryChanged: () => void
+  resolveDefaultRuntimeModel: ChatRuntimeConfigState['resolveDefaultRuntimeModel']
   runtimeSelection: ChatRuntimeSelection
   workspaceState: ChatWorkspaceUiState
 }
@@ -64,6 +67,7 @@ export function useChatMessageActions({
   isCompressingChat,
   onMainTurnAccepted,
   onConversationHistoryChanged,
+  resolveDefaultRuntimeModel,
   runtimeSelection,
   workspaceState,
 }: UseChatMessageActionsInput) {
@@ -141,22 +145,42 @@ export function useChatMessageActions({
     chatMessages.isLoading || chatMessages.isSending || chatMessages.isStreamingResponse || isCompressingChat
   const latestPlanPath = getLatestCompletedPlanPresentation(chatMessages.messages)?.relativePath ?? null
   const showImplementPlanButton =
-    chatMessages.selectedChatMode === 'plan' && !isAiBusy && latestPlanPath !== null
+    chatMessages.selectedChatMode === 'plan' && latestPlanPath !== null
+  const queuedImplementationPlanPathRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (queuedImplementationPlanPathRef.current !== null && queuedImplementationPlanPathRef.current !== latestPlanPath) {
+      queuedImplementationPlanPathRef.current = null
+    }
+  }, [latestPlanPath])
 
   const handleImplementPlan = useCallback(async (planPath?: string) => {
-    if (isAiBusy) return
     const implementationPlanPath = planPath ?? latestPlanPath
     if (!implementationPlanPath || !isPlanRelativePath(implementationPlanPath)) return
+    if (isAiBusy && queuedImplementationPlanPathRef.current === implementationPlanPath) return
+    if (isAiBusy) queuedImplementationPlanPathRef.current = implementationPlanPath
 
     const didHandoffPlan = await persistPlanImplementationHandoff(implementationPlanPath, workspaceState)
     if (!didHandoffPlan) {
+      if (isAiBusy && queuedImplementationPlanPathRef.current === implementationPlanPath) {
+        queuedImplementationPlanPathRef.current = null
+      }
       return
     }
 
     chatMessages.setSelectedChatMode('agent')
     const implementationRequest = createPlanImplementationMessage(implementationPlanPath)
-    void chatMessages.sendProgrammaticMessage(runtimeSelection, implementationRequest, { chatMode: 'agent' })
-  }, [chatMessages, isAiBusy, latestPlanPath, runtimeSelection, workspaceState])
+    if (isAiBusy) {
+      enqueueMessage(implementationRequest, [])
+      return
+    }
+
+    void chatMessages.sendProgrammaticMessage(
+      buildModeRuntimeSelection(runtimeSelection, resolveDefaultRuntimeModel('agent')),
+      implementationRequest,
+      { chatMode: 'agent' },
+    )
+  }, [chatMessages, enqueueMessage, isAiBusy, latestPlanPath, resolveDefaultRuntimeModel, runtimeSelection, workspaceState])
 
   const handleRequestPlanChanges = useCallback(
     (relativePath: string, comments: PlanReviewComment[]) => {
@@ -167,12 +191,21 @@ export function useChatMessageActions({
       clearQueuedMessages()
       chatMessages.setSelectedChatMode('plan')
       void chatMessages
-        .sendProgrammaticMessage(runtimeSelection, createPlanRevisionRequestMessage(relativePath, comments), {
-          chatMode: 'plan',
-        })
+        .sendProgrammaticMessage(
+          buildModeRuntimeSelection(runtimeSelection, resolveDefaultRuntimeModel('plan')),
+          createPlanRevisionRequestMessage(relativePath, comments),
+          { chatMode: 'plan' },
+        )
         .then(onConversationHistoryChanged, onConversationHistoryChanged)
     },
-    [chatMessages, clearQueuedMessages, isAiBusy, onConversationHistoryChanged, runtimeSelection],
+    [
+      chatMessages,
+      clearQueuedMessages,
+      isAiBusy,
+      onConversationHistoryChanged,
+      resolveDefaultRuntimeModel,
+      runtimeSelection,
+    ],
   )
 
   const handleToolDecisionSubmit = useCallback(

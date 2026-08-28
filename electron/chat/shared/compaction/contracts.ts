@@ -6,6 +6,8 @@ export const LOCAL_COMPACTION_PACKET_V2_SCHEMA = 'tidecode.compaction_packet/v2'
 export const COMPACTION_PROJECTION_VERSION = 'tidecode.compaction_projection/v2' as const
 export const COMPACTION_MAX_OUTPUT_TOKENS = 8192
 
+export type CompactionTurnState = 'active' | 'settled'
+
 const boundedText = z.string().trim().max(4_000)
 const boundedTextList = z.array(boundedText).max(64)
 
@@ -151,6 +153,7 @@ export interface CompactModelMessagesInput {
   triggerRatio?: number
   previousPacket?: CompactionPacket | null
   signal?: AbortSignal
+  turnState?: CompactionTurnState
 }
 
 export function parseCompactionPacket(value: unknown) {

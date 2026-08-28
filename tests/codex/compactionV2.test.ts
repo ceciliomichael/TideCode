@@ -8,7 +8,7 @@ import {
   repairCompactionPacketContinuation,
   validateContinuationMarkdown,
 } from '../../electron/chat/shared/compaction/markdown'
-import { buildFallbackCompactionPacket } from '../../electron/chat/shared/compaction/fallback'
+import { createCompactionPacketFixture } from './compactionFixtures'
 import { buildCompactionProjection } from '../../electron/chat/shared/compaction/projection'
 import {
   extractActionLinkedReasoning,
@@ -20,12 +20,108 @@ import { derivePromptCacheKey } from '../../electron/chat/cache/providerPolicies
 import { buildCompactionRequestPrompt } from '../../electron/chat/shared/compaction/prompt'
 import { compactModelMessages } from '../../electron/chat/shared/compaction/service'
 import {
+  extractUserPromptLedgerEntries,
+  mergeUserPromptLedger,
+} from '../../electron/chat/shared/compaction/userPromptLedger'
+import {
   calculateModelMessagesBudget,
   shouldCompactContext,
 } from '../../electron/chat/shared/compaction/budget'
 import { configureTideCodeRuntimeRoot } from '../../electron/runtime/runtimeRoot'
 
 const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+
+test('active compaction keeps the latest user prompt open across completed tool substeps', () => {
+  const messages: ModelMessage[] = [
+    { role: 'user', content: 'Fix the compaction bug and verify it.' },
+    {
+      role: 'assistant',
+      content: [{
+        type: 'tool-call',
+        toolCallId: 'call-edit',
+        toolName: 'edit',
+        input: { path: 'runtime.ts' },
+      }],
+    },
+    {
+      role: 'tool',
+      content: [{
+        type: 'tool-result',
+        toolCallId: 'call-edit',
+        toolName: 'edit',
+        output: { type: 'text', value: 'Edit applied successfully.' },
+      }],
+    },
+  ]
+
+  const entries = extractUserPromptLedgerEntries(messages, 0, {
+    latestUserSourceMessageId: 'model:0',
+    turnState: 'active',
+  })
+
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0]?.status, 'open')
+})
+
+test('settled prompt status distinguishes completed work from an explicitly incomplete ending', () => {
+  const completed = extractUserPromptLedgerEntries([
+    { role: 'user', content: 'Implement and verify the fix.' },
+    { role: 'assistant', content: 'Implemented the fix and all focused tests passed.' },
+  ], 0, {
+    latestUserSourceMessageId: 'model:0',
+    turnState: 'settled',
+  })
+  const incomplete = extractUserPromptLedgerEntries([
+    { role: 'user', content: 'Implement and verify the fix.' },
+    { role: 'assistant', content: 'I could not complete verification because the required service is unavailable.' },
+  ], 0, {
+    latestUserSourceMessageId: 'model:0',
+    turnState: 'settled',
+  })
+
+  assert.equal(completed[0]?.status, 'completed')
+  assert.equal(incomplete[0]?.status, 'open')
+})
+
+test('an authoritative active prompt corrects a stale completed ledger entry', () => {
+  const merged = mergeUserPromptLedger([
+    {
+      prompt: 'Fix the compaction bug and verify it.',
+      sourceMessageIds: ['model:0'],
+      status: 'completed',
+      truncated: false,
+    },
+  ], [
+    {
+      prompt: 'Fix the compaction bug and verify it.',
+      sourceMessageIds: ['model:4'],
+      status: 'open',
+      truncated: false,
+    },
+  ], {
+    authoritativeOpenSourceMessageId: 'model:4',
+  })
+
+  assert.equal(merged.length, 1)
+  assert.equal(merged[0]?.status, 'open')
+  assert.deepEqual(merged[0]?.sourceMessageIds, ['model:0', 'model:4'])
+})
+
+test('compaction prompt exposes the authoritative active-turn lifecycle', () => {
+  const prompt = buildCompactionRequestPrompt({
+    latestUserSourceMessageId: 'model:7',
+    messages: [{ role: 'user', content: 'Continue the active fix.' }],
+    sourceDigest: 'active-turn-digest',
+    sourceMessageIds: ['model:7'],
+    sourceStartIndex: 7,
+    turnState: 'active',
+  })
+
+  assert.match(prompt, /Current turn: ACTIVE/u)
+  assert.match(prompt, /Latest user source message: model:7/u)
+  assert.match(prompt, /completed substeps only/u)
+  assert.match(prompt, /Keep the latest request open/u)
+})
 
 test('v2 continuation accepts natural Markdown and rejects packet JSON or meta-only output', () => {
   const markdown = 'The provider prefix remains stable. Run the focused cache test next.'
@@ -46,8 +142,8 @@ test('v2 continuation accepts natural Markdown and rejects packet JSON or meta-o
 })
 
 test('a persisted packet with malformed continuation text can rebuild safe Markdown from structured state', () => {
-  const packet = buildFallbackCompactionPacket({
-    messages: [{ role: 'user', content: 'Preserve the verified release state.' }],
+  const packet = createCompactionPacketFixture({
+    goal: ['Preserve the verified release state.'],
     sourceDigest: 'repair-digest',
     sourceMessageIds: ['model:0'],
   })
@@ -171,17 +267,13 @@ test('visible action rationale is source-linked without copying provider-private
 })
 
 test('packet merging keeps parent lineage and bounds continuity while preserving the stable cache key', () => {
-  const previous = buildFallbackCompactionPacket({
-    messages: [{ role: 'user', content: 'Keep the provider cache prefix stable.' }],
-    modelId: 'deepseek-v4-pro',
-    providerId: 'deepseek',
+  const previous = createCompactionPacketFixture({
+    continuationMarkdown: ['## Current state', '- Keep the provider cache prefix stable.'].join('\n'),
     sourceDigest: 'digest-1',
     sourceMessageIds: ['model:0'],
   })
-  const current = buildFallbackCompactionPacket({
-    messages: [{ role: 'user', content: 'Validate DeepSeek reasoning replay.' }],
-    modelId: 'deepseek-v4-pro',
-    providerId: 'deepseek',
+  const current = createCompactionPacketFixture({
+    continuationMarkdown: ['## Current state', '- Validate DeepSeek reasoning replay.'].join('\n'),
     sourceDigest: 'digest-2',
     sourceMessageIds: ['model:1'],
   })
@@ -212,15 +304,11 @@ test('packet merging keeps parent lineage and bounds continuity while preserving
 })
 
 test('compaction status reconciliation removes completed work from open items and next actions', () => {
-  const previous = buildFallbackCompactionPacket({
-    messages: [{ role: 'user', content: 'Implement the compaction state ledger.' }],
-    modelId: 'test-model',
+  const previous = createCompactionPacketFixture({
     sourceDigest: 'digest-previous-status',
     sourceMessageIds: ['model:0'],
   })
-  const current = buildFallbackCompactionPacket({
-    messages: [{ role: 'assistant', content: 'The compaction state ledger was implemented and verified.' }],
-    modelId: 'test-model',
+  const current = createCompactionPacketFixture({
     sourceDigest: 'digest-current-status',
     sourceMessageIds: ['model:1'],
   })
@@ -260,16 +348,12 @@ test('compaction status reconciliation removes completed work from open items an
 })
 
 test('the projected continuation preserves the AI-generated Markdown across compaction lineage merges', () => {
-  const previous = buildFallbackCompactionPacket({
-    messages: [{ role: 'user', content: 'Keep the existing provider behavior.' }],
-    modelId: 'test-model',
+  const previous = createCompactionPacketFixture({
     sourceDigest: 'digest-previous',
     sourceMessageIds: ['model:0'],
   })
   const generatedMarkdown = 'The release metadata change is complete. The next step is to run the whitespace check.'
-  const current = buildFallbackCompactionPacket({
-    messages: [{ role: 'user', content: 'Run the release validation.' }],
-    modelId: 'test-model',
+  const current = createCompactionPacketFixture({
     sourceDigest: 'digest-current',
     sourceMessageIds: ['model:1'],
   })
@@ -378,9 +462,7 @@ test('automatic compaction reduces a single oversized tool-heavy turn below the 
 })
 
 test('projection emits one Markdown continuation and removes raw tool history from the semantic tail', () => {
-  const packet = buildFallbackCompactionPacket({
-    messages: [{ role: 'user', content: 'Inspect the workspace.' }],
-    modelId: 'test-model',
+  const packet = createCompactionPacketFixture({
     sourceDigest: 'digest',
     sourceMessageIds: ['model:0'],
   })
@@ -406,9 +488,7 @@ test('projection emits one Markdown continuation and removes raw tool history fr
 })
 
 test('projection carries the latest runtime context only after the compaction handoff', () => {
-  const packet = buildFallbackCompactionPacket({
-    messages: [{ role: 'user', content: 'Keep the active mode after compaction.' }],
-    modelId: 'test-model',
+  const packet = createCompactionPacketFixture({
     sourceDigest: 'runtime-carry-digest',
     sourceMessageIds: ['model:0'],
   })
@@ -433,9 +513,7 @@ test('projection carries the latest runtime context only after the compaction ha
 })
 
 test('projection converts image placeholders into provider-valid text parts', () => {
-  const packet = buildFallbackCompactionPacket({
-    messages: [{ role: 'user', content: 'Inspect the screenshot.' }],
-    modelId: 'test-model',
+  const packet = createCompactionPacketFixture({
     sourceDigest: 'image-projection-digest',
     sourceMessageIds: ['model:0'],
   })
@@ -461,9 +539,7 @@ test('projection converts image placeholders into provider-valid text parts', ()
 })
 
 test('token projection retains real image content in the recent context tail', () => {
-  const packet = buildFallbackCompactionPacket({
-    messages: [{ role: 'user', content: 'Keep the recent visual context.' }],
-    modelId: 'test-model',
+  const packet = createCompactionPacketFixture({
     sourceDigest: 'retained-image-digest',
     sourceMessageIds: ['model:0'],
   })

@@ -45,9 +45,14 @@ import {
 } from './protocol'
 import { ensureRunServiceToken, getRunServiceEndpoint } from './paths'
 
+const RUN_SERVICE_CONNECT_TIMEOUT_MS = 2_000
+const RUN_SERVICE_HANDSHAKE_TIMEOUT_MS = 2_000
+const RUN_SERVICE_CONTROL_TIMEOUT_MS = 60_000
+
 interface PendingRequest {
   resolve: (value: unknown) => void
   reject: (error: Error) => void
+  timeoutId?: NodeJS.Timeout
 }
 
 export class RunServiceBuildMismatchError extends Error {
@@ -86,16 +91,27 @@ export class TideCodeRunServiceClient {
 
       try {
         await new Promise<void>((resolve, reject) => {
-          const onConnect = () => {
+          const cleanup = () => {
+            clearTimeout(timeoutId)
+            socket.off('connect', onConnect)
             socket.off('error', onError)
+          }
+          const onConnect = () => {
+            cleanup()
             resolve()
           }
           const onError = (error: Error) => {
-            socket.off('connect', onConnect)
+            cleanup()
             reject(error)
           }
           socket.once('connect', onConnect)
           socket.once('error', onError)
+          const timeoutId = setTimeout(() => {
+            cleanup()
+            socket.destroy()
+            reject(new Error(`Timed out connecting to the Tidecode run service after ${RUN_SERVICE_CONNECT_TIMEOUT_MS}ms.`))
+          }, RUN_SERVICE_CONNECT_TIMEOUT_MS)
+          timeoutId.unref?.()
         })
       } catch (error) {
         socket.destroy()
@@ -107,7 +123,7 @@ export class TideCodeRunServiceClient {
       socket.on('error', (error) => this.handleDisconnect(error))
       socket.on('close', () => this.handleDisconnect(new Error('Tidecode run service disconnected.')))
 
-      const hello = await this.requestRaw<RunServiceHello>('hello')
+      const hello = await this.requestRaw<RunServiceHello>('hello', undefined, RUN_SERVICE_HANDSHAKE_TIMEOUT_MS)
       this.serviceProcessId = Number.isInteger(hello.processId) && (hello.processId ?? 0) > 0
         ? hello.processId ?? null
         : null
@@ -119,7 +135,7 @@ export class TideCodeRunServiceClient {
         )
       }
       if (this.expectedBuildId && hello.buildId !== this.expectedBuildId) {
-        await this.requestRaw<null>('shutdown').catch(() => undefined)
+        await this.requestRaw<null>('shutdown', undefined, RUN_SERVICE_HANDSHAKE_TIMEOUT_MS).catch(() => undefined)
         socket.destroy()
         if (this.socket === socket) this.socket = null
         throw new RunServiceBuildMismatchError(this.expectedBuildId, hello.buildId)
@@ -143,42 +159,42 @@ export class TideCodeRunServiceClient {
 
   async getCompactionState(conversationId: string) {
     await this.connect()
-    return this.requestRaw<ChatCompactionLifecycleState | null>('getCompactionState', { conversationId })
+    return this.requestControlRaw<ChatCompactionLifecycleState | null>('getCompactionState', { conversationId })
   }
 
   async getConversationRuntime(conversationId: string, surface: AppSettingsSurface = 'desktop') {
     await this.connect()
-    return this.requestRaw<SharedConversationRuntimeSnapshot | null>('getConversationRuntime', { conversationId, surface })
+    return this.requestControlRaw<SharedConversationRuntimeSnapshot | null>('getConversationRuntime', { conversationId, surface })
   }
 
   async getPendingFollowUps(streamId: string) {
     await this.connect()
-    return this.requestRaw<SharedFollowUpSnapshot | null>('getPendingFollowUps', { streamId })
+    return this.requestControlRaw<SharedFollowUpSnapshot | null>('getPendingFollowUps', { streamId })
   }
 
   async getRunProjection(runId: string) {
     await this.connect()
-    return this.requestRaw<SharedRunProjection | null>('getRunProjection', { runId })
+    return this.requestControlRaw<SharedRunProjection | null>('getRunProjection', { runId })
   }
 
   async listActiveRuns() {
     await this.connect()
-    return this.requestRaw<SharedRunSnapshot[]>('listActiveRuns')
+    return this.requestControlRaw<SharedRunSnapshot[]>('listActiveRuns')
   }
 
   async ensureWorkspaceProject(workspacePath: string) {
     await this.connect()
-    return this.requestRaw<ConversationFolderRecord>('ensureWorkspaceProject', { workspacePath })
+    return this.requestControlRaw<ConversationFolderRecord>('ensureWorkspaceProject', { workspacePath })
   }
 
   async appendMessages(input: AppendConversationMessagesInput) {
     await this.connect()
-    return this.requestRaw<ConversationRecord>('appendMessages', input)
+    return this.requestControlRaw<ConversationRecord>('appendMessages', input)
   }
 
   async replaceMessages(input: ReplaceConversationMessagesInput) {
     await this.connect()
-    return this.requestRaw<ConversationRecord>('replaceMessages', input)
+    return this.requestControlRaw<ConversationRecord>('replaceMessages', input)
   }
 
   async compactConversation(input: CompactConversationInput) {
@@ -198,37 +214,37 @@ export class TideCodeRunServiceClient {
     surface: 'desktop',
   }) {
     await this.connect()
-    await this.requestRaw<null>('cancelStream', { cancellation, streamId })
+    await this.requestControlRaw<null>('cancelStream', { cancellation, streamId })
   }
 
   async updatePendingSteerMessages(input: UpdatePendingSteerMessagesInput) {
     await this.connect()
-    return this.requestRaw<UpdatePendingSteerMessagesResult>('updatePendingSteerMessages', input)
+    return this.requestControlRaw<UpdatePendingSteerMessagesResult>('updatePendingSteerMessages', input)
   }
 
   async updatePendingFollowUps(input: UpdateSharedFollowUpsInput) {
     await this.connect()
-    return this.requestRaw<SharedFollowUpSnapshot>('updatePendingFollowUps', input)
+    return this.requestControlRaw<SharedFollowUpSnapshot>('updatePendingFollowUps', input)
   }
 
   async claimPendingFollowUps(input: ClaimSharedFollowUpsInput) {
     await this.connect()
-    return this.requestRaw<ClaimSharedFollowUpsResult>('claimPendingFollowUps', input)
+    return this.requestControlRaw<ClaimSharedFollowUpsResult>('claimPendingFollowUps', input)
   }
 
   async submitToolDecision(input: SubmitToolDecisionInput) {
     await this.connect()
-    return this.requestRaw<SubmitToolDecisionResult>('submitToolDecision', input)
+    return this.requestControlRaw<SubmitToolDecisionResult>('submitToolDecision', input)
   }
 
   async updateConversationRuntime(input: UpdateConversationRuntimeInput) {
     await this.connect()
-    return this.requestRaw<SharedConversationRuntimeSnapshot>('updateConversationRuntime', input)
+    return this.requestControlRaw<SharedConversationRuntimeSnapshot>('updateConversationRuntime', input)
   }
 
   async terminalCreateSession(input: Omit<TerminalBrokerCreateSessionInput, 'clientId'>) {
     await this.connect()
-    return this.requestRaw<TerminalBrokerCreateSessionResult>('terminalCreateSession', {
+    return this.requestControlRaw<TerminalBrokerCreateSessionResult>('terminalCreateSession', {
       ...input,
       clientId: this.terminalClientId,
     })
@@ -236,7 +252,7 @@ export class TideCodeRunServiceClient {
 
   async terminalAttachSession(input: Omit<TerminalBrokerAttachInput, 'clientId'>) {
     await this.connect()
-    return this.requestRaw<TerminalBrokerAttachResult>('terminalAttachSession', {
+    return this.requestControlRaw<TerminalBrokerAttachResult>('terminalAttachSession', {
       ...input,
       clientId: this.terminalClientId,
     })
@@ -244,7 +260,7 @@ export class TideCodeRunServiceClient {
 
   async terminalDetachSession(input: Omit<TerminalBrokerSessionReference, 'clientId'>) {
     await this.connect()
-    return this.requestRaw<TerminalBrokerSessionSnapshot>('terminalDetachSession', {
+    return this.requestControlRaw<TerminalBrokerSessionSnapshot>('terminalDetachSession', {
       ...input,
       clientId: this.terminalClientId,
     })
@@ -252,14 +268,14 @@ export class TideCodeRunServiceClient {
 
   async terminalListSessions() {
     await this.connect()
-    return this.requestRaw<TerminalBrokerSessionSnapshot[]>('terminalListSessions', {
+    return this.requestControlRaw<TerminalBrokerSessionSnapshot[]>('terminalListSessions', {
       clientId: this.terminalClientId,
     })
   }
 
   async terminalGetSession(input: Omit<TerminalBrokerSessionReference, 'clientId'>) {
     await this.connect()
-    return this.requestRaw<TerminalBrokerSessionSnapshot>('terminalGetSession', {
+    return this.requestControlRaw<TerminalBrokerSessionSnapshot>('terminalGetSession', {
       ...input,
       clientId: this.terminalClientId,
     })
@@ -267,7 +283,7 @@ export class TideCodeRunServiceClient {
 
   async terminalRead(input: Omit<TerminalBrokerReadInput, 'clientId'>) {
     await this.connect()
-    return this.requestRaw<TerminalBrokerAttachResult>('terminalRead', {
+    return this.requestControlRaw<TerminalBrokerAttachResult>('terminalRead', {
       ...input,
       clientId: this.terminalClientId,
     })
@@ -275,17 +291,17 @@ export class TideCodeRunServiceClient {
 
   async terminalWrite(input: Omit<TerminalBrokerWriteInput, 'clientId'>) {
     await this.connect()
-    await this.requestRaw<null>('terminalWrite', { ...input, clientId: this.terminalClientId })
+    await this.requestControlRaw<null>('terminalWrite', { ...input, clientId: this.terminalClientId })
   }
 
   async terminalResize(input: Omit<TerminalBrokerResizeInput, 'clientId'>) {
     await this.connect()
-    await this.requestRaw<null>('terminalResize', { ...input, clientId: this.terminalClientId })
+    await this.requestControlRaw<null>('terminalResize', { ...input, clientId: this.terminalClientId })
   }
 
   async terminalTerminate(input: Omit<TerminalBrokerTerminateInput, 'clientId'>) {
     await this.connect()
-    return this.requestRaw<TerminalBrokerSessionSnapshot>('terminalTerminate', {
+    return this.requestControlRaw<TerminalBrokerSessionSnapshot>('terminalTerminate', {
       ...input,
       clientId: this.terminalClientId,
     })
@@ -297,7 +313,7 @@ export class TideCodeRunServiceClient {
     if (!socket || socket.destroyed) return
 
     const disconnected = new Promise<void>((resolve) => socket.once('close', () => resolve()))
-    await this.requestRaw<null>('shutdown')
+    await this.requestRaw<null>('shutdown', undefined, Math.min(timeoutMs, RUN_SERVICE_HANDSHAKE_TIMEOUT_MS))
     await Promise.race([
       disconnected,
       new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
@@ -311,16 +327,29 @@ export class TideCodeRunServiceClient {
     this.socket = null
   }
 
-  private requestRaw<T>(method: string, params?: unknown): Promise<T> {
+  private requestControlRaw<T>(method: string, params?: unknown): Promise<T> {
+    return this.requestRaw<T>(method, params, RUN_SERVICE_CONTROL_TIMEOUT_MS)
+  }
+
+  private requestRaw<T>(method: string, params?: unknown, timeoutMs?: number): Promise<T> {
     const socket = this.socket
     if (!socket || socket.destroyed) return Promise.reject(new Error('Tidecode run service is not connected.'))
 
     const id = randomUUID()
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, {
+      const pending: PendingRequest = {
         resolve: (value) => resolve(value as T),
         reject,
-      })
+      }
+      if (typeof timeoutMs === 'number' && timeoutMs > 0) {
+        pending.timeoutId = setTimeout(() => {
+          if (this.pending.get(id) !== pending) return
+          this.pending.delete(id)
+          reject(new Error(`Tidecode run-service request "${method}" timed out after ${timeoutMs}ms.`))
+        }, timeoutMs)
+        pending.timeoutId.unref?.()
+      }
+      this.pending.set(id, pending)
       socket.write(`${JSON.stringify({ id, token: this.token, method, ...(params === undefined ? {} : { params }) })}\n`)
     })
   }
@@ -356,6 +385,7 @@ export class TideCodeRunServiceClient {
       const pending = this.pending.get(response.id)
       if (!pending) continue
       this.pending.delete(response.id)
+      if (pending.timeoutId) clearTimeout(pending.timeoutId)
       if (response.ok) pending.resolve(response.result)
       else pending.reject(new Error(response.error || 'Tidecode run-service request failed.'))
     }
@@ -363,7 +393,10 @@ export class TideCodeRunServiceClient {
 
   private handleDisconnect(error: Error) {
     this.socket = null
-    for (const pending of this.pending.values()) pending.reject(error)
+    for (const pending of this.pending.values()) {
+      if (pending.timeoutId) clearTimeout(pending.timeoutId)
+      pending.reject(error)
+    }
     this.pending.clear()
   }
 }

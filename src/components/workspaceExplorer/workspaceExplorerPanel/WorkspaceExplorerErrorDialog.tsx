@@ -35,7 +35,7 @@ export function WorkspaceExplorerErrorDialog({ onClose, state }: WorkspaceExplor
         aria-modal="true"
         aria-labelledby="workspace-explorer-error-dialog-title"
         aria-describedby="workspace-explorer-error-dialog-description"
-        className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-surface"
+        className="non-selectable-ui w-full max-w-md overflow-hidden rounded-2xl border border-border bg-surface"
       >
         <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-5">
           <div className="flex min-w-0 items-start gap-3">

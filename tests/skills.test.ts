@@ -126,7 +126,7 @@ test('skill tool no longer exposes the read_resource action', () => {
   const description = buildSkillToolDescription()
 
   assert.doesNotMatch(description, /read_resource/u)
-  assert.match(description, /List, search, or load an enabled skill\./u)
+  assert.match(description, /List, search, or load an available skill\./u)
 })
 
 test('expandChatMentions expands file, folder, skill, and Kanban mentions with read_file:, list:, load_skill:, and kanban:', async () => {
@@ -207,7 +207,7 @@ test('createSkill creates a valid skill directory and file', async () => {
   const os = await import('node:os')
   const fs = await import('node:fs/promises')
   const path = await import('node:path')
-  const { createSkill } = await import('../electron/skills/service')
+  const { createSkill, loadSkill, updateSkill } = await import('../electron/skills/service')
 
   const globalSkillFile = path.join(os.homedir(), '.tidecode', 'skills', 'test-skill', 'SKILL.md')
   try {
@@ -222,10 +222,27 @@ test('createSkill creates a valid skill directory and file', async () => {
     assert.equal(result.skill.name, 'test-skill')
     assert.equal(result.skill.description, 'Test skill description')
 
+    const loadedResult = await loadSkill('test-skill')
+    assert.equal(loadedResult.error, undefined)
+    assert.equal(loadedResult.skill?.content, '# Test Skill Instructions')
+
+    const updatedResult = await updateSkill(result.skill.location, {
+      content: '# Updated Skill Instructions',
+      description: 'Updated skill description',
+      name: 'updated-test-skill',
+    })
+    assert.equal(updatedResult.error, undefined)
+    assert.equal(updatedResult.skill?.location, result.skill.location)
+    assert.equal(updatedResult.skill?.name, 'updated-test-skill')
+
+    const reloadedResult = await loadSkill('updated-test-skill')
+    assert.equal(reloadedResult.error, undefined)
+    assert.equal(reloadedResult.skill?.content, '# Updated Skill Instructions')
+
     const fileContent = await fs.readFile(globalSkillFile, 'utf8')
     assert.match(fileContent, /---/)
-    assert.match(fileContent, /name: test-skill/)
-    assert.match(fileContent, /# Test Skill Instructions/)
+    assert.match(fileContent, /name: updated-test-skill/)
+    assert.match(fileContent, /# Updated Skill Instructions/)
   } finally {
     await fs.rm(path.dirname(globalSkillFile), { recursive: true, force: true })
   }

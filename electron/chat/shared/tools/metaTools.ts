@@ -140,7 +140,7 @@ const CODE_MODE_TOOL_ROUTING = [
   '- `tools.list`: inspect immediate entries of one directory.',
   '- `tools.glob`: discover files by path or filename pattern.',
   '- `tools.grep`: search workspace text, symbols, imports, or references.',
-  '- `tools.apply_patch`: primary API for targeted source changes. Pass one raw Codex-style patch string directly, use fresh source context, and include multiple files in one patch when useful; TideCode verifies the full patch before writing.',
+  '- `tools.apply_patch`: primary API for targeted source changes. Pass one raw Codex-style patch string directly. Complete patch templates are literal patch data, so nested backticks, ${...}, \\n-style source text, regex escapes, and Windows paths do not need double escaping. Use fresh source context and include multiple files in one patch when useful; TideCode verifies the full patch before writing.',
   '- `tools.write`: create a new text file or intentionally replace a complete file; use apply_patch for targeted existing-file changes.',
   '- `tools.execute_terminal`: run an actual command/process such as tests, typecheck, build, package manager, compiler, Git command, or app/script. Never use shell, PowerShell, Python, or Node just to read, search, edit, or write workspace files when the structured APIs above apply.',
   '- `tools.read_terminal`: collect new output from an existing terminal session instead of starting the command again; it returns early when input is detected.',

@@ -437,6 +437,88 @@
     -webkit-user-select: none !important;
   }
 
+  body,
+  body * {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body .non-selectable-ui,
+  body .non-selectable-ui * {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body input,
+  body textarea,
+  body [contenteditable='true'],
+  body [contenteditable='true'] * {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  .non-selectable-ui input,
+  .non-selectable-ui textarea,
+  .non-selectable-ui [contenteditable='true'],
+  .non-selectable-ui [contenteditable='true'] * {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  body input::placeholder,
+  body textarea::placeholder,
+  body .non-selectable-ui input::placeholder,
+  body .non-selectable-ui textarea::placeholder {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body .selectable-ui,
+  body .selectable-ui * {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  body .non-selectable-ui .selectable-ui,
+  body .non-selectable-ui .selectable-ui * {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  body .settings-scroll-viewport .selectable-ui,
+  body .settings-scroll-viewport .selectable-ui * {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body .settings-scroll-viewport input,
+  body .settings-scroll-viewport textarea,
+  body .settings-scroll-viewport [contenteditable='true'],
+  body .settings-scroll-viewport [contenteditable='true'] * {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  body .settings-scroll-viewport input::placeholder,
+  body .settings-scroll-viewport textarea::placeholder {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body .selectable-ui .select-none,
+  body .selectable-ui .select-none * {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body .selectable-ui button,
+  body .selectable-ui button *,
+  body .selectable-ui [role='button'],
+  body .selectable-ui [role='button'] * {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
   @keyframes wave-shine {
     0% {
       background-position: 200% 0;
@@ -577,13 +659,15 @@
   }
 
   .workspace-monaco-editor .workspace-monaco-line-added {
-    border-right: 3px solid var(--workspace-editor-line-added-border);
+    border-left: 4px solid var(--workspace-editor-line-added-border);
     box-sizing: border-box;
+    transform: translateX(3px);
   }
 
   .workspace-monaco-editor .workspace-monaco-line-changed {
-    border-right: 3px solid var(--workspace-editor-line-changed-border);
+    border-left: 4px solid var(--workspace-editor-line-changed-border);
     box-sizing: border-box;
+    transform: translateX(3px);
   }
 
   /**

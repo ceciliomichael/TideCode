@@ -381,7 +381,7 @@ function SourceControlPanelContent({
         />
       ) : null}
 
-      <aside className="flex h-full min-w-0 flex-1 flex-col border-l border-border bg-[var(--workspace-panel-surface)]">
+      <aside className="non-selectable-ui flex h-full min-w-0 flex-1 flex-col border-l border-border bg-[var(--workspace-panel-surface)]">
         <div className="flex h-14 shrink-0 items-center justify-between px-4">
           <div className="flex min-w-0 items-center gap-2">
             <GitCommitHorizontal size={16} className="text-muted-foreground" />

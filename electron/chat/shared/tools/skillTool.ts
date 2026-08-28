@@ -123,7 +123,7 @@ export function createSkillTool(context: WorkspaceToolContext, enabledSkills: Sk
             const loadedSkill = await loadEnabledSkillByName(name, context.workspaceRootPath, enabledSkills)
             if (!loadedSkill) {
               return createToolErrorResult(
-                `Skill "${name}" is unavailable or disabled.`,
+                `Skill "${name}" is unavailable.`,
                 `Use action: "search" or action: "list" to check available skills.`,
               )
             }

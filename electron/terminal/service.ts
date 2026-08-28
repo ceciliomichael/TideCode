@@ -351,7 +351,7 @@ async function closeTerminalSessionInternal(
   input: CloseTerminalSessionInput,
 ) {
   assertSessionOwnership(sender.id, input.sessionId, input.workspaceRootPath);
-  terminateSession(input.sessionId);
+  await terminateSession(input.sessionId);
 }
 
 export async function closeTerminalSessionForWebContents(
@@ -434,7 +434,7 @@ export function listSessionsForWebContents(
   return result;
 }
 
-export function terminateSessionForWebContents(
+export async function terminateSessionForWebContents(
   sender: WebContents,
   sessionId: number,
   workspaceRootPath: string,
@@ -448,12 +448,12 @@ export function terminateSessionForWebContents(
   return terminateSession(sessionId);
 }
 
-export function terminateAiSessionsForTurnForWebContents(
+export async function terminateAiSessionsForTurnForWebContents(
   sender: WebContents,
   aiTurnId: string,
   workspaceRootPath: string,
 ) {
-  terminateAiSessionsForTurn(sender.id, aiTurnId, workspaceRootPath);
+  await terminateAiSessionsForTurn(sender.id, aiTurnId, workspaceRootPath);
 }
 
 export async function openExternalTerminalLink(
@@ -463,20 +463,16 @@ export async function openExternalTerminalLink(
   await openExternalWithElectronShell(safeUrl);
 }
 
-export function closeAllTerminalSessionsForWebContents(sender: WebContents) {
+export async function closeAllTerminalSessionsForWebContents(sender: WebContents) {
   const sessionIds = getSessionIdsForOwner(sender.id);
   if (!sessionIds) {
     return;
   }
 
-  for (const sessionId of Array.from(sessionIds)) {
-    terminateSession(sessionId);
-  }
+  await Promise.allSettled(Array.from(sessionIds, (sessionId) => terminateSession(sessionId)));
 }
 
 export async function closeAllTerminalSessions() {
   const sessionIds = Array.from(sessions.keys());
-  for (const sessionId of sessionIds) {
-    terminateSession(sessionId);
-  }
+  await Promise.allSettled(sessionIds.map((sessionId) => terminateSession(sessionId)));
 }

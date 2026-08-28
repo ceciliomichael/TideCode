@@ -206,7 +206,10 @@ const mcpApi: TideCodeMcpApi = {
 
 const skillsApi: TideCodeSkillsApi = {
   createSkill: (input, workspacePath) => ipcRenderer.invoke('skills:createSkill', input, workspacePath),
+  loadSkill: (skillName, workspacePath) => ipcRenderer.invoke('skills:loadSkill', skillName, workspacePath),
   listSkills: (workspacePath?: string | null) => ipcRenderer.invoke('skills:list', workspacePath),
+  updateSkill: (location, input, workspacePath) =>
+    ipcRenderer.invoke('skills:updateSkill', location, input, workspacePath),
 }
 
 const providersApi: TideCodeProvidersApi = {

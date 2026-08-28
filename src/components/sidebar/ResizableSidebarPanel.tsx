@@ -10,6 +10,8 @@ interface ResizableSidebarPanelProps {
   mobileSidebarPresentation?: MobileSidebarPresentation
   onMobileSidebarRequestClose?: () => void
   onSidebarWidthChange: (sidebarWidth: number) => void
+  onSidebarWidthPreview?: (sidebarWidth: number) => void
+  onSidebarResizeStateChange?: (isResizing: boolean) => void
   sidebar: ReactNode
   sidebarWidth: number
   children: ReactNode
@@ -21,6 +23,8 @@ export function ResizableSidebarPanel({
   mobileSidebarPresentation = 'overlay',
   onMobileSidebarRequestClose,
   onSidebarWidthChange,
+  onSidebarWidthPreview,
+  onSidebarResizeStateChange,
   sidebar,
   sidebarWidth,
   children,
@@ -57,7 +61,9 @@ export function ResizableSidebarPanel({
       if (!dragState) return
 
       const nextWidth = dragState.startWidth + (event.clientX - dragState.startX)
-      updateRenderedSidebarWidth(clampSidebarWidth(nextWidth, window.innerWidth))
+      const clampedWidth = clampSidebarWidth(nextWidth, window.innerWidth)
+      updateRenderedSidebarWidth(clampedWidth)
+      onSidebarWidthPreview?.(clampedWidth)
     }
 
     function handlePointerUp(event: PointerEvent) {
@@ -66,6 +72,7 @@ export function ResizableSidebarPanel({
       const finalWidth = clampSidebarWidth(sidebarWidthRef.current, window.innerWidth)
       dragStateRef.current = null
       setIsResizing(false)
+      onSidebarResizeStateChange?.(false)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
 
@@ -81,10 +88,11 @@ export function ResizableSidebarPanel({
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
       setIsResizing(false)
+      onSidebarResizeStateChange?.(false)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
     }
-  }, [onSidebarWidthChange, sidebarWidth])
+  }, [onSidebarResizeStateChange, onSidebarWidthChange, onSidebarWidthPreview, sidebarWidth])
 
   useEffect(() => {
     if (
@@ -114,6 +122,7 @@ export function ResizableSidebarPanel({
     }
 
     setIsResizing(true)
+    onSidebarResizeStateChange?.(true)
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
   }

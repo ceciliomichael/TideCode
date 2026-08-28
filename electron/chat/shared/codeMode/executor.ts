@@ -9,6 +9,7 @@ import { getCodeModeToolCallStatus } from './toolCallStatus'
 import {
   containsDynamicCodeModeImport,
   findBlockedCodeModeRuntimeApi,
+  normalizeCodeModePatchTemplateLiterals,
   repairCodeModePatchProgram,
   repairCodeModePreloadedToolsImport,
   repairCodeModeProgramSyntax,
@@ -355,17 +356,48 @@ function toJsonSafe(value: unknown): unknown {
   }
 }
 
+const CODE_MODE_HIDDEN_MODEL_SEMANTIC_KEYS = new Set([
+  'active',
+  'available_line_count',
+  'broker_session_id',
+  'first_available_line',
+  'has_more',
+  'is_directory',
+  'last_available_line',
+  'line_count',
+  'new_output_line_count',
+  'omitted_bytes',
+  'omitted_lines',
+  'operation_id',
+  'original_approximate_tokens',
+  'returned_line_count',
+  'total_output_lines',
+  'visible_line_ranges',
+  'wait_seconds',
+])
+
+function projectCodeModeModelSemantics(semantics: Record<string, unknown> | undefined) {
+  if (!semantics) return undefined
+  const projected = Object.fromEntries(
+    Object.entries(semantics).filter(([key]) => !CODE_MODE_HIDDEN_MODEL_SEMANTIC_KEYS.has(key)),
+  )
+  return Object.keys(projected).length > 0 ? projected : undefined
+}
+
 function serializeToolResult(result: AgentToolExecutionResult): unknown {
-  const safeResult = toJsonSafe(result) as Record<string, unknown>
-  const modelResult = { ...safeResult }
-  const semantics = asRecord(safeResult.semantics)
+  const modelSource = { ...result }
+  delete modelSource.displayBody
+  delete modelSource.modelOutput
+  delete modelSource.resultPresentation
+  delete modelSource.truncated
+  const projectedSemantics = projectCodeModeModelSemantics(result.semantics)
+  if (projectedSemantics) modelSource.semantics = projectedSemantics
+  else delete modelSource.semantics
+  const modelResult = toJsonSafe(modelSource) as Record<string, unknown>
+  const semantics = asRecord(modelResult.semantics)
   if (modelResult.session_id === undefined && typeof semantics?.session_id === 'number') {
     modelResult.session_id = semantics.session_id
   }
-  delete modelResult.displayBody
-  delete modelResult.modelOutput
-  delete modelResult.resultPresentation
-  delete modelResult.truncated
   return modelResult
 }
 
@@ -445,10 +477,10 @@ export class CodeModeExecutor {
   ): Promise<CodeModeExecutionResult> {
     const limits = { ...DEFAULT_CODE_MODE_EXECUTION_LIMITS, ...options.limits }
     const executionId = randomUUID()
-    let executableCode = source
+    let executableCode = normalizeCodeModePatchTemplateLiterals(source)
     let validationError = validateCodeModeProgram(executableCode, limits.maxCodeBytes)
     if (validationError?.includes('invalid JavaScript') === true) {
-      const repairedCode = repairCodeModePatchProgram(source) ?? repairCodeModeProgramSyntax(source)
+      const repairedCode = repairCodeModePatchProgram(executableCode) ?? repairCodeModeProgramSyntax(executableCode)
       if (repairedCode !== null) {
         const repairedValidationError = validateCodeModeProgram(repairedCode, limits.maxCodeBytes)
         if (repairedValidationError === null) {
@@ -499,6 +531,7 @@ export class CodeModeExecutor {
 
     const worker = new Worker(CODE_MODE_WORKER_SOURCE, workerOptions)
     this.activeWorkers.add(worker)
+    const executionAbortController = new AbortController()
     const toolCalls: CodeModeToolCallRecord[] = []
     let acceptedToolCallCount = 0
     let inFlightToolCallCount = 0
@@ -511,10 +544,11 @@ export class CodeModeExecutor {
     const settle = async (): Promise<void> => {
       if (settled) return
       settled = true
+      if (!executionAbortController.signal.aborted) executionAbortController.abort()
       if (timeoutId) clearTimeout(timeoutId)
       if (abortHandler && options.abortSignal) options.abortSignal.removeEventListener('abort', abortHandler)
       this.activeWorkers.delete(worker)
-      await worker.terminate()
+      await worker.terminate().catch(() => undefined)
     }
 
     return await new Promise<CodeModeExecutionResult>((resolve) => {
@@ -568,10 +602,17 @@ export class CodeModeExecutor {
       }
 
       if (typeof limits.timeoutMs === 'number' && limits.timeoutMs > 0) {
-        timeoutId = setTimeout(() => finish(errorResult(executionId, `Code Mode execution exceeded the ${limits.timeoutMs}ms timeout.`, toolCalls)), limits.timeoutMs)
+        timeoutId = setTimeout(() => {
+          if (!executionAbortController.signal.aborted) executionAbortController.abort()
+          finish(errorResult(executionId, `Code Mode execution exceeded the ${limits.timeoutMs}ms timeout.`, toolCalls))
+        }, limits.timeoutMs)
       }
-      abortHandler = () => finish(errorResult(executionId, 'Code Mode execution was aborted.', toolCalls, 'aborted'))
+      abortHandler = () => {
+        if (!executionAbortController.signal.aborted) executionAbortController.abort(options.abortSignal?.reason)
+        finish(errorResult(executionId, 'Code Mode execution was aborted.', toolCalls, 'aborted'))
+      }
       options.abortSignal?.addEventListener('abort', abortHandler, { once: true })
+      if (options.abortSignal?.aborted) abortHandler()
 
       worker.on('message', (message: CodeModeWorkerResultMessage | CodeModeWorkerErrorMessage | CodeModeWorkerToolCallMessage) => {
         if (settled) return
@@ -627,7 +668,7 @@ export class CodeModeExecutor {
         inFlightToolCallCount += 1
         const toolStartedAt = Date.now()
         void entry.execute(message.arguments, {
-          abortSignal: options.abortSignal,
+          abortSignal: executionAbortController.signal,
           toolCallId: `${executionId}-${message.callId}`,
         }).then((result) => {
           const toolCallStatus = getCodeModeToolCallStatus(result)

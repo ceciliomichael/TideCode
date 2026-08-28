@@ -73,6 +73,7 @@ export function ChatInterface({
   const chatRuntimeConfig = useChatRuntimeConfig({
     activeChatMode: chatMessages.selectedChatMode,
     activeConversationId: chatMessages.activeConversationId,
+    activeMessages: chatMessages.messages,
     isProvidersLoading: providersState.isLoading,
     providersState: providersState.providersState,
     settings,
@@ -94,10 +95,12 @@ export function ChatInterface({
           modelId: chatRuntimeConfig.selectedRuntimeModelId,
           providerId: chatRuntimeConfig.providerId,
           providerLabel: chatRuntimeConfig.providerLabel,
+          reasoningEffort: chatRuntimeConfig.reasoningEffort,
         },
         modelOptions: chatRuntimeConfig.modelOptions,
         taskModelId: settings.gitCommitModelId,
         taskModelProviderId: settings.gitCommitModelProviderId,
+        taskReasoningEffort: settings.gitCommitReasoningEffort,
       }),
     [
       chatRuntimeConfig.hasConfiguredProvider,
@@ -107,12 +110,13 @@ export function ChatInterface({
       chatRuntimeConfig.selectedRuntimeModelId,
       settings.gitCommitModelId,
       settings.gitCommitModelProviderId,
+      settings.gitCommitReasoningEffort,
     ],
   )
   const gitCommitState = useGitCommit({
     modelId: gitTaskModelSelection.modelId,
     providerId: gitTaskModelSelection.providerId,
-    reasoningEffort: chatRuntimeConfig.reasoningEffort,
+    reasoningEffort: gitTaskModelSelection.reasoningEffort,
     workspacePath: activeWorkspacePath,
   })
   // Keep full diff contents warm while the side panels are closed so opening

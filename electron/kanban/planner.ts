@@ -192,18 +192,21 @@ async function resolvePlannerSelection(): Promise<PlannerModelSelection> {
     {
       modelId: settings.kanbanModelId,
       providerId: settings.kanbanModelProviderId,
+      reasoningEffort: settings.kanbanReasoningEffort,
     },
     {
       modelId: settings.planModelId,
       providerId: settings.planModelProviderId,
+      reasoningEffort: settings.planReasoningEffort,
     },
     {
       modelId: settings.chatModelId,
       providerId: settings.chatModelProviderId,
+      reasoningEffort: settings.chatReasoningEffort,
     },
   ]
   const selection = selections.find(
-    (candidate): candidate is { modelId: string; providerId: ChatProviderId } =>
+    (candidate): candidate is { modelId: string; providerId: ChatProviderId; reasoningEffort: ReasoningEffort } =>
       candidate.modelId.trim().length > 0 && candidate.providerId !== null,
   )
 
@@ -216,7 +219,7 @@ async function resolvePlannerSelection(): Promise<PlannerModelSelection> {
   return {
     modelId: selection.modelId.trim(),
     providerId: selection.providerId,
-    reasoningEffort: settings.chatReasoningEffort,
+    reasoningEffort: selection.reasoningEffort,
   }
 }
 

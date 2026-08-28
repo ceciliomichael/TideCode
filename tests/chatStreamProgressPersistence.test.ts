@@ -74,3 +74,23 @@ test('the reverted-turn guard prevents a pending stream snapshot from being writ
 
   assert.deepEqual(persistedSnapshots, [])
 })
+
+test('transient tool argument snapshots are skipped until a durable boundary is queued', async () => {
+  const persistedSnapshots: string[][] = []
+  const controller = createChatStreamProgressPersistenceController({
+    conversationId: 'conversation-1',
+    persistSnapshot: async (_conversationId, messages) => {
+      persistedSnapshots.push(messages.map((message) => message.id))
+      return createConversation(messages)
+    },
+    setError: () => undefined,
+  })
+
+  controller.queueSnapshot([createMessage('partial-tool', 'partial')], { transient: true }, { deltaCharCount: 500_000 })
+  await controller.flush()
+  assert.deepEqual(persistedSnapshots, [])
+
+  controller.queueSnapshot([createMessage('completed-tool', 'complete')], { immediate: true })
+  await controller.flush()
+  assert.deepEqual(persistedSnapshots, [['completed-tool']])
+})

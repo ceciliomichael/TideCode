@@ -77,7 +77,7 @@ const WorkingBlockHeader = memo(function WorkingBlockHeader({
       onClick={onToggle}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
-      className="group flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      className="group flex select-none items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
     >
       <span className={isHovering ? 'text-foreground' : 'text-muted-foreground'}>
         {headerLabel}

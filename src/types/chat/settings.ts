@@ -38,19 +38,24 @@ export interface AppSettings {
   agentModelId: string
   agentModelProviderId: ChatProviderId | null
   agentModelLabel: string
+  agentReasoningEffort: ReasoningEffort
   planModelId: string
   planModelProviderId: ChatProviderId | null
   planModelLabel: string
+  planReasoningEffort: ReasoningEffort
   summarizationModelId: string
   summarizationModelProviderId: ChatProviderId | null
   summarizationModelLabel: string
+  summarizationReasoningEffort: ReasoningEffort
   gitCommitModelId: string
   gitCommitModelProviderId: ChatProviderId | null
   gitCommitModelLabel: string
+  gitCommitReasoningEffort: ReasoningEffort
   kanbanAiPlanningEnabled: boolean
   kanbanModelId: string
   kanbanModelProviderId: ChatProviderId | null
   kanbanModelLabel: string
+  kanbanReasoningEffort: ReasoningEffort
   diffPanelWidth: number
   editSessionsByConversation: Record<string, ConversationEditSession>
   followUpBehavior: FollowUpBehavior
@@ -62,7 +67,6 @@ export interface AppSettings {
   sendMessageOnEnter: boolean
   workspaceFileEditorWordWrap: boolean
   conversationModelPreferences: Record<string, ConversationModelPreference>
-  disabledSkillsByPath: Record<string, boolean>
   sidebarWidth: number
   workspaceEditorWidth: number
   workspaceExplorerWidth: number

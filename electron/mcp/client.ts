@@ -5,6 +5,8 @@ import type { McpServerConfig, McpTool } from '../../src/types/mcp'
 import { createMcpTransport } from './transportFactory'
 import { TIDECODE_VERSION } from '../appVersion'
 
+const MCP_CONNECTION_TIMEOUT_MS = 30_000
+
 export interface ConnectedMcpServer {
   client: Client
   tools: McpTool[]
@@ -62,8 +64,14 @@ export async function connectMcpServer(
     },
   )
 
-  await client.connect(transport)
-  const result = await client.listTools()
+  await client.connect(transport, {
+    maxTotalTimeout: MCP_CONNECTION_TIMEOUT_MS,
+    timeout: MCP_CONNECTION_TIMEOUT_MS,
+  })
+  const result = await client.listTools(undefined, {
+    maxTotalTimeout: MCP_CONNECTION_TIMEOUT_MS,
+    timeout: MCP_CONNECTION_TIMEOUT_MS,
+  })
 
   return {
     client,

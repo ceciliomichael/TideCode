@@ -470,7 +470,7 @@ export function ChatInput({
   const followUpActionLabel = followUpBehavior === 'steer' ? 'Steer message' : 'Queue message'
 
   return (
-    <div ref={containerRef} className="w-full">
+    <div ref={containerRef} className="non-selectable-ui w-full">
       <div className={`${chatInputSurfaceClassName} ${chatConversationSurfacePaddingClassName}`}>
         {isEditing && !isInline ? (
           <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-action/25 bg-action/10 px-3 py-2 text-xs text-foreground">

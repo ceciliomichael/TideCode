@@ -120,7 +120,7 @@ export function KanbanTaskDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="kanban-task-dialog-title"
-                className="flex h-[min(760px,calc(100dvh-1.5rem))] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-surface [&_input:focus]:!border-border [&_input:focus]:!shadow-none [&_input:focus]:!outline-none [&_input:focus]:!ring-0 [&_textarea:focus]:!border-border [&_textarea:focus]:!shadow-none [&_textarea:focus]:!outline-none [&_textarea:focus]:!ring-0 [&_*:focus-visible]:outline-none [&_*:focus-visible]:ring-0 sm:h-[min(760px,calc(100dvh-2rem))] md:h-[min(760px,calc(100dvh-3rem))]"
+                className="non-selectable-ui flex h-[min(760px,calc(100dvh-1.5rem))] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-surface [&_input:focus]:!border-border [&_input:focus]:!shadow-none [&_input:focus]:!outline-none [&_input:focus]:!ring-0 [&_textarea:focus]:!border-border [&_textarea:focus]:!shadow-none [&_textarea:focus]:!outline-none [&_textarea:focus]:!ring-0 [&_*:focus-visible]:outline-none [&_*:focus-visible]:ring-0 sm:h-[min(760px,calc(100dvh-2rem))] md:h-[min(760px,calc(100dvh-3rem))]"
       >
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4 md:px-7 md:py-5">
           <div className="min-w-0">

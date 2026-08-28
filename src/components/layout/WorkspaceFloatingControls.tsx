@@ -1,11 +1,14 @@
 import { FolderTree, Menu, PanelLeft, SquarePen, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { Tooltip } from '../Tooltip'
 
 interface WorkspaceFloatingControlsProps {
   hideMobile?: boolean
   isSidebarOpen: boolean
+  isSidebarResizing?: boolean
   mobileTitle?: string
   onToggleSidebar: () => void
+  sidebarWidth?: number
   newThreadButton?: {
     onClick: () => void
     tooltip?: string
@@ -20,14 +23,31 @@ interface WorkspaceFloatingControlsProps {
 export function WorkspaceFloatingControls({
   hideMobile = false,
   isSidebarOpen,
+  isSidebarResizing = false,
   mobileTitle,
   onToggleSidebar,
+  sidebarWidth,
   newThreadButton,
   explorerButton,
 }: WorkspaceFloatingControlsProps) {
   const sidebarTooltip = isSidebarOpen ? 'Collapse sidebar' : 'Open sidebar'
-  const shouldShowNewThread = Boolean(newThreadButton) && !isSidebarOpen
+  const shouldShowNewThread = Boolean(newThreadButton)
   const shouldShowExplorer = Boolean(explorerButton) && !isSidebarOpen
+  const previousSidebarOpenRef = useRef(isSidebarOpen)
+  const [isSidebarTransitioning, setIsSidebarTransitioning] = useState(false)
+
+  useEffect(() => {
+    if (previousSidebarOpenRef.current === isSidebarOpen) {
+      return
+    }
+
+    previousSidebarOpenRef.current = isSidebarOpen
+    setIsSidebarTransitioning(true)
+    const timeoutId = window.setTimeout(() => setIsSidebarTransitioning(false), 300)
+    return () => window.clearTimeout(timeoutId)
+  }, [isSidebarOpen])
+
+  const sidebarControlIsOpenStyle = isSidebarOpen || isSidebarTransitioning
 
   return (
     <div
@@ -41,7 +61,15 @@ export function WorkspaceFloatingControls({
         <button
           type="button"
           onClick={onToggleSidebar}
-          className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-all duration-150 ease-out hover:scale-110 hover:text-foreground"
+          className={[
+            'pointer-events-auto flex h-10 w-10 items-center justify-center text-muted-foreground transition-all duration-150 ease-out',
+            isSidebarTransitioning ? '' : 'hover:scale-110 hover:text-foreground',
+            sidebarControlIsOpenStyle
+              ? isSidebarTransitioning
+                ? 'rounded-xl'
+                : 'rounded-xl hover:bg-[var(--sidebar-hover-surface)]'
+              : 'rounded-full',
+          ].join(' ')}
           aria-label={sidebarTooltip}
         >
           {isSidebarOpen ? (
@@ -63,16 +91,33 @@ export function WorkspaceFloatingControls({
       ) : null}
 
       {newThreadButton ? (
-        <div className="hidden md:block">
-          <Tooltip content={newThreadButton.tooltip ?? 'New thread'} side="bottom">
+        <div
+          className={[
+            'hidden md:absolute md:block',
+            isSidebarResizing ? 'transition-none' : 'transition-[left] duration-300 ease-out',
+          ].join(' ')}
+          style={{
+            left: `${isSidebarOpen && sidebarWidth ? Math.max(sidebarWidth - 80, 0) : 40}px`,
+          }}
+        >
+          <Tooltip
+            content={newThreadButton.tooltip ?? 'Choose a project for a new thread'}
+            side={isSidebarOpen ? 'left' : 'bottom'}
+          >
             <button
               type="button"
               onClick={newThreadButton.onClick}
               className={[
-                'pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-[opacity,transform,color] duration-180 ease-out hover:scale-110 hover:text-foreground',
+                'pointer-events-auto flex h-10 w-10 items-center justify-center text-muted-foreground transition-[opacity,transform,color] duration-180 ease-out',
+                isSidebarTransitioning ? 'transition-none' : 'hover:scale-110 hover:text-foreground',
+                sidebarControlIsOpenStyle
+                  ? isSidebarTransitioning
+                    ? 'rounded-xl'
+                    : 'rounded-xl hover:bg-[var(--sidebar-hover-surface)]'
+                  : 'rounded-full',
                 shouldShowNewThread ? 'opacity-100 scale-100' : 'pointer-events-none opacity-0 scale-95',
               ].join(' ')}
-              aria-label={newThreadButton.tooltip ?? 'New thread'}
+              aria-label={newThreadButton.tooltip ?? 'Choose a project for a new thread'}
               aria-hidden={!shouldShowNewThread}
               tabIndex={shouldShowNewThread ? 0 : -1}
             >

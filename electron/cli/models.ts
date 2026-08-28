@@ -72,11 +72,13 @@ type CliDefaultModelSettings = Pick<
   AppSettings,
   | 'agentModelId'
   | 'agentModelProviderId'
+  | 'agentReasoningEffort'
   | 'chatModelId'
   | 'chatModelProviderId'
   | 'chatReasoningEffort'
   | 'planModelId'
   | 'planModelProviderId'
+  | 'planReasoningEffort'
 >
 
 export function resolveCliDefaultModelSelection(
@@ -87,6 +89,7 @@ export function resolveCliDefaultModelSelection(
   const configuredModels = allModels.filter((model) => model.isConfigured)
   const modeModelId = chatMode === 'plan' ? settings?.planModelId : settings?.agentModelId
   const modeProviderId = chatMode === 'plan' ? settings?.planModelProviderId : settings?.agentModelProviderId
+  const hasModeModel = Boolean(modeModelId?.trim())
   let defaultModelId = modeModelId?.trim() || settings?.chatModelId?.trim() || 'claude-3-7-sonnet'
   let defaultProviderId: ChatProviderId = modeProviderId ?? settings?.chatModelProviderId ?? 'anthropic'
 
@@ -109,7 +112,9 @@ export function resolveCliDefaultModelSelection(
     defaultProviderId = foundMatch.providerId
   }
 
-  const storedReasoningEffort = settings?.chatReasoningEffort ?? 'medium'
+  const storedReasoningEffort = hasModeModel
+    ? (chatMode === 'plan' ? settings?.planReasoningEffort : settings?.agentReasoningEffort) ?? settings?.chatReasoningEffort ?? 'medium'
+    : settings?.chatReasoningEffort ?? 'medium'
   const selectedReasoningEffort = foundMatch
     ? resolveReasoningEffortTransition({
         currentEffort: storedReasoningEffort,

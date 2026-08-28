@@ -60,6 +60,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 }: MarkdownRendererProps) {
   const rootClassName = [
     'chat-markdown',
+    'selectable-ui',
     'min-w-0 max-w-full overflow-hidden whitespace-normal',
     className,
     '[&>*:first-child]:mt-0',
@@ -82,7 +83,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         <h3 {...props} className="scroll-mt-6 mt-2 mb-1.5 text-[1.15rem] font-semibold leading-[1.3] text-foreground" />
       ),
       p: (props: React.ComponentPropsWithoutRef<'p'>) => (
-        <p {...props} className="my-0 mb-3 leading-[1.65] text-foreground" />
+        <p {...props} className="my-0 mb-2 leading-[1.65] text-foreground" />
       ),
       ul: (props: React.ComponentPropsWithoutRef<'ul'>) => (
         <ul {...props} className="my-2 space-y-1 list-disc pl-6 text-foreground" />

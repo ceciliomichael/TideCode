@@ -69,6 +69,7 @@ export interface SlashCommandDefinition {
 export interface CliModelSelectionMetadata {
   label: string
   preferenceModelId: string
+  reasoningEffort?: ReasoningEffort
 }
 
 export interface SlashCommandHelpers {
@@ -82,8 +83,7 @@ export interface SlashCommandHelpers {
     providerId?: ApiKeyProviderId | 'codex',
     metadata?: CliModelSelectionMetadata,
   ) => Promise<void>
-  switchReasoningEffort: (effort: ReasoningEffort, modelLabel: string) => Promise<void>
-  switchMode: (mode: ChatMode) => void
+  switchMode: (mode: ChatMode) => Promise<void>
   canCompactHistory: () => Promise<boolean>
   compactHistory: () => Promise<void>
   undoLastTurn: () => Promise<void>

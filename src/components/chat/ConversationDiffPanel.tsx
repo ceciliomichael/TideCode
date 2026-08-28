@@ -158,6 +158,40 @@ function ConversationDiffPanelContent({
     setIsScopeMenuOpen(false)
   }, [isOpen])
 
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    function preventDocumentSelectAll(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'a') {
+        return
+      }
+
+      const target = event.target
+      if (!(target instanceof Element)) {
+        event.preventDefault()
+        return
+      }
+
+      if (target.closest('input, textarea, [contenteditable="true"]')) {
+        return
+      }
+
+      const diffContent = target.closest('[data-diff-content="true"]')
+      if (diffContent && panelRef.current?.contains(diffContent)) {
+        return
+      }
+
+      event.preventDefault()
+    }
+
+    document.addEventListener('keydown', preventDocumentSelectAll, true)
+    return () => {
+      document.removeEventListener('keydown', preventDocumentSelectAll, true)
+    }
+  }, [isOpen])
+
   useLayoutEffect(() => {
     if (!isOpen) {
       return
@@ -379,7 +413,7 @@ function ConversationDiffPanelContent({
         />
       ) : null}
 
-      <aside className="flex h-full min-w-0 flex-1 flex-col border-l border-border bg-[var(--workspace-panel-surface)]">
+      <aside className="non-selectable-ui flex h-full min-w-0 flex-1 flex-col border-l border-border bg-[var(--workspace-panel-surface)]">
         <div className="flex h-14 shrink-0 items-center justify-between px-4">
           <div ref={scopeContainerRef} className="relative w-fit max-w-full">
             <button
@@ -408,7 +442,7 @@ function ConversationDiffPanelContent({
                   <div
                     ref={scopeMenuRef}
                     data-floating-menu-root="true"
-                    className="fixed z-40 w-[min(18rem,calc(100vw-1rem))] min-w-[10rem] overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-soft"
+                    className="non-selectable-ui fixed z-40 w-[min(18rem,calc(100vw-1rem))] min-w-[10rem] overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-soft"
                     style={menuStyle}
                   >
                     <div

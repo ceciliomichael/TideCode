@@ -1,7 +1,6 @@
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { AppSettings } from '../../src/types/chat'
 import type { SkillSummary, SkillsState } from '../../src/types/skills'
 import type { AgentToolExecutionResult } from '../chat/shared/toolTypes'
 
@@ -218,13 +217,9 @@ function dedupeSkills(skills: SkillSummary[]) {
   return Array.from(skillsByName.values()).sort((left, right) => left.name.localeCompare(right.name))
 }
 
-function isSkillEnabled(settings: AppSettings, skill: SkillSummary) {
-  return settings.disabledSkillsByPath[skill.location] !== true
-}
-
 export function buildSkillToolDescription(skills: readonly SkillSummary[] = []) {
   void skills
-  return 'List, search, or load an enabled skill.'
+  return 'List, search, or load an available skill.'
 }
 
 export function searchSkills(skills: SkillSummary[], query: string): SkillSummary[] {
@@ -319,9 +314,8 @@ export async function listAvailableSkills(workspacePath?: string | null): Promis
 }
 
 export async function listEnabledSkills(workspacePath?: string | null) {
-  const { getStoredSettings } = await import('../settings/store')
-  const [skillsState, settings] = await Promise.all([listAvailableSkills(workspacePath), getStoredSettings()])
-  return skillsState.skills.filter((skill) => isSkillEnabled(settings, skill))
+  const skillsState = await listAvailableSkills(workspacePath)
+  return skillsState.skills
 }
 
 export async function loadEnabledSkillByName(
@@ -349,6 +343,18 @@ export async function loadEnabledSkillByName(
   }
 }
 
+export async function loadSkill(
+  skillName: string,
+  workspacePath?: string | null,
+): Promise<{ error?: string; skill?: LoadedSkill }> {
+  try {
+    const skill = await loadEnabledSkillByName(skillName, workspacePath)
+    return skill ? { skill } : { error: 'Skill not found.' }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Unable to load skill.' }
+  }
+}
+
 export function buildLoadedSkillResult(skill: LoadedSkill): AgentToolExecutionResult {
   return {
     body: [
@@ -372,6 +378,17 @@ export function buildLoadedSkillResult(skill: LoadedSkill): AgentToolExecutionRe
   }
 }
 
+function buildSkillFileText(input: { name: string; description: string; content: string }) {
+  return [
+    '---',
+    `name: ${input.name}`,
+    `description: ${input.description}`,
+    '---',
+    '',
+    input.content,
+  ].join('\n')
+}
+
 export async function createSkill(
   input: { name: string; description: string; content: string },
   workspacePath?: string | null,
@@ -388,14 +405,11 @@ export async function createSkill(
   const targetDir = path.join(os.homedir(), '.tidecode', 'skills', normalizedName)
   const skillFilePath = path.join(targetDir, SKILL_FILE_NAME)
 
-  const fileText = [
-    '---',
-    `name: ${nameTrimmed}`,
-    `description: ${normalizedDescription}`,
-    '---',
-    '',
-    rawContent,
-  ].join('\n')
+  const fileText = buildSkillFileText({
+    content: rawContent,
+    description: normalizedDescription,
+    name: nameTrimmed,
+  })
 
   try {
     await fs.mkdir(targetDir, { recursive: true })
@@ -421,5 +435,62 @@ export async function createSkill(
     }
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Unable to create skill file.' }
+  }
+}
+
+export async function updateSkill(
+  location: string,
+  input: { name: string; description: string; content: string },
+  workspacePath?: string | null,
+): Promise<{ error?: string; skill?: SkillSummary }> {
+  const nameTrimmed = input.name.trim()
+  if (!nameTrimmed) {
+    return { error: 'Skill name is required.' }
+  }
+
+  const normalizedDescription = input.description.trim()
+  if (!normalizedDescription) {
+    return { error: 'Description is required.' }
+  }
+
+  const rawContent = input.content.trim()
+  if (!rawContent) {
+    return { error: 'Instruction content is required.' }
+  }
+
+  const normalizedLocation = normalizeSkillLocation(location)
+  const skills = await listEnabledSkills(workspacePath)
+  const existingSkill = skills.find(
+    (skill) => normalizeSkillLocation(skill.location) === normalizedLocation,
+  )
+  if (!existingSkill) {
+    return { error: 'Skill not found.' }
+  }
+
+  try {
+    await fs.writeFile(
+      normalizedLocation,
+      buildSkillFileText({
+        content: rawContent,
+        description: normalizedDescription,
+        name: nameTrimmed,
+      }),
+      'utf8',
+    )
+
+    skillDiscoveryCache.clear()
+
+    const state = await discoverAvailableSkills(workspacePath)
+    const updatedSkill = state.skills.find((skill) => skill.location === normalizedLocation)
+
+    return {
+      skill: updatedSkill ?? {
+        ...existingSkill,
+        description: normalizedDescription,
+        name: nameTrimmed,
+      },
+    }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Unable to update skill file.' }
   }
 }

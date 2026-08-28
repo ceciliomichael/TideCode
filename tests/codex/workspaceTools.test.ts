@@ -15,7 +15,8 @@ import {
   resolveReadOnlyTargetPath,
 } from '../../electron/chat/shared/tools/workspaceTools'
 import { getGlobalAgentsDirectory } from '../../electron/chat/shared/tools/sandboxPaths'
-import { createCanonicalToolModelOutput } from '../../electron/chat/shared/toolReplay'
+import { createCanonicalToolModelOutput, prepareToolExecutionResultForModel } from '../../electron/chat/shared/toolReplay'
+import { TOOL_OUTPUT_PAGED_READ_MAX_BYTES } from '../../electron/chat/shared/tools/toolOutputBudget'
 
 interface ExecutableToolResult {
   body?: string
@@ -66,7 +67,7 @@ test('read tool returns image files as numbered multimodal model content', async
 })
 
 interface ExecutableReadTool {
-  execute: (input: { full_file?: boolean; limit?: number; offset?: number; path: string }) => Promise<ExecutableToolResult>
+  execute: (input: { limit?: number; offset?: number; path: string }) => Promise<ExecutableToolResult>
 }
 
 interface ExecutableListTool {
@@ -285,10 +286,6 @@ test('read keeps synthetic EOF metadata out of model source content', async () =
     assert.equal(result.displayBody, 'This note mentions list and needle.')
     assert.deepEqual(result.semantics, {
       end_line: 1,
-      has_more: false,
-      is_directory: false,
-      next_offset: null,
-      returned_line_count: 1,
       start_line: 1,
       total_line_count: 1,
     })
@@ -297,10 +294,10 @@ test('read keeps synthetic EOF metadata out of model source content', async () =
   }
 })
 
-test('read defaults to 500 lines and permits a full-file opt-in', async () => {
+test('read defaults to 500 lines and legacy full-file calls stay bounded', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
   const filePath = path.join(workspaceRootPath, 'large.txt')
-  const lines = Array.from({ length: 750 }, (_, index) => `${index + 1}:${'x'.repeat(100)}`)
+  const lines = Array.from({ length: 750 }, (_, index) => `${index + 1}:${'x'.repeat(20)}`)
   await fs.writeFile(filePath, `${lines.join('\n')}\n`, 'utf8')
 
   try {
@@ -310,32 +307,55 @@ test('read defaults to 500 lines and permits a full-file opt-in', async () => {
     assert.equal(initialResult.status, 'success')
     assert.equal(initialResult.truncated, undefined)
     assert.match(initialResult.body ?? '', /^1:/u)
-    assert.match(initialResult.body ?? '', /500:x{100}$/u)
-    assert.doesNotMatch(initialResult.body ?? '', /501:x{100}/u)
+    assert.match(initialResult.body ?? '', /500:x{20}$/u)
+    assert.doesNotMatch(initialResult.body ?? '', /501:x{20}/u)
     assert.equal(initialResult.semantics?.end_line, 500)
-    assert.equal(initialResult.semantics?.total_line_count, 750)
-    assert.equal(initialResult.semantics?.has_more, true)
+    assert.equal(initialResult.semantics?.total_line_count, undefined)
     assert.equal(initialResult.semantics?.next_offset, 501)
 
     assert.equal(offsetResult.status, 'success')
     assert.equal(offsetResult.truncated, undefined)
     assert.match(offsetResult.body ?? '', /^251:/u)
-    assert.match(offsetResult.body ?? '', /750:x{100}$/u)
+    assert.match(offsetResult.body ?? '', /750:x{20}$/u)
     assert.equal(offsetResult.semantics?.start_line, 251)
     assert.equal(offsetResult.semantics?.end_line, 750)
     assert.equal(offsetResult.semantics?.total_line_count, 750)
-    assert.equal(offsetResult.semantics?.has_more, false)
-    assert.equal(offsetResult.semantics?.next_offset, null)
+    assert.equal(offsetResult.semantics?.next_offset, undefined)
 
-    const fullFileResult = await createReadToolResult(filePath, 'large.txt', 501, 10, true)
-    assert.equal(fullFileResult.status, 'success')
-    assert.equal(fullFileResult.semantics?.start_line, 1)
-    assert.equal(fullFileResult.semantics?.end_line, 750)
-    assert.equal(fullFileResult.semantics?.total_line_count, 750)
-    assert.equal(fullFileResult.semantics?.has_more, false)
-    assert.equal(fullFileResult.semantics?.next_offset, null)
-    assert.match(fullFileResult.body ?? '', /750:x{100}$/u)
+    const legacyFullFileResult = await createReadToolResult(filePath, 'large.txt', 501, 10, true)
+    assert.equal(legacyFullFileResult.status, 'success')
+    assert.equal(legacyFullFileResult.semantics?.start_line, 1)
+    assert.equal(legacyFullFileResult.semantics?.end_line, 500)
+    assert.equal(legacyFullFileResult.semantics?.total_line_count, undefined)
+    assert.equal(legacyFullFileResult.semantics?.next_offset, 501)
+    assert.doesNotMatch(legacyFullFileResult.body ?? '', /750:x{20}$/u)
 
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('read uses byte-aware paging and avoids generic output recovery for ordinary wide files', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const filePath = path.join(workspaceRootPath, 'wide.txt')
+  const lines = Array.from({ length: 100 }, (_, index) => `${index + 1}:${'x'.repeat(1_000)}`)
+  await fs.writeFile(filePath, `${lines.join('\n')}\n`, 'utf8')
+
+  try {
+    const result = await createReadToolResult(filePath, 'wide.txt', undefined, undefined)
+    assert.equal(result.status, 'success')
+    assert.ok(Buffer.byteLength(result.body ?? '', 'utf8') <= TOOL_OUTPUT_PAGED_READ_MAX_BYTES)
+    assert.ok((result.semantics?.end_line as number) < 100)
+    assert.equal(result.semantics?.next_offset, (result.semantics?.end_line as number) + 1)
+
+    const prepared = await prepareToolExecutionResultForModel({ result, toolName: 'read' })
+    assert.equal(prepared.truncated, undefined)
+    assert.equal(prepared.semantics?.output_id, undefined)
+
+    const legacyFullFileResult = await createReadToolResult(filePath, 'wide.txt', 50, 1, true)
+    assert.equal(legacyFullFileResult.semantics?.start_line, 1)
+    assert.ok((legacyFullFileResult.semantics?.end_line as number) < 100)
+    assert.equal(legacyFullFileResult.semantics?.next_offset, (legacyFullFileResult.semantics?.end_line as number) + 1)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -859,6 +879,12 @@ test('workspace tool schemas use path consistently for filesystem targets', asyn
       const schema = await asSchema(tool.inputSchema).jsonSchema as {
         properties?: Record<string, { description?: string }>
       }
+
+    const readSchemaTool = tools.read as { inputSchema: unknown }
+    const readSchema = await asSchema(readSchemaTool.inputSchema).jsonSchema as {
+      properties?: Record<string, unknown>
+    }
+    assert.ok(readSchema.properties && !('full_file' in readSchema.properties))
       assert.ok(schema.properties && 'path' in schema.properties, `${toolName} should expose path`)
       if (['list', 'read', 'glob', 'grep'].includes(toolName)) {
         assert.match(tool.description ?? '', /empty string/u)
@@ -917,7 +943,6 @@ test('AGENTS.md stays visible in discovery and remains directly readable when gi
     )
     const readResult = await (agentTools.read as unknown as ExecutableReadTool).execute({
       path: 'AGENTS.md',
-      full_file: true,
     })
 
     assert.equal(listResult.status, 'success')

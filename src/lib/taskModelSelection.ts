@@ -1,9 +1,12 @@
-import type { ChatProviderId } from '../types/chat'
+import type { ChatProviderId, ReasoningEffort } from '../types/chat'
+import { resolveReasoningEffortTransition } from './reasoningEffortTransition'
 
 interface TaskModelOption {
   id: string
+  defaultReasoningEffort?: ReasoningEffort
   providerId: ChatProviderId | null
   providerLabel: string
+  reasoningEfforts?: readonly ReasoningEffort[]
   runtimeModelId: string
 }
 
@@ -12,6 +15,7 @@ interface DefaultTaskModelSelection {
   modelId: string
   providerId: ChatProviderId | null
   providerLabel: string | null
+  reasoningEffort: ReasoningEffort
 }
 
 interface ResolveTaskModelSelectionInput {
@@ -19,6 +23,7 @@ interface ResolveTaskModelSelectionInput {
   modelOptions: readonly TaskModelOption[]
   taskModelId: string
   taskModelProviderId: ChatProviderId | null
+  taskReasoningEffort: ReasoningEffort
 }
 
 export function resolveTaskModelSelection(input: ResolveTaskModelSelectionInput): DefaultTaskModelSelection {
@@ -43,5 +48,10 @@ export function resolveTaskModelSelection(input: ResolveTaskModelSelectionInput)
     modelId: matchingOption.runtimeModelId,
     providerId: matchingOption.providerId,
     providerLabel: matchingOption.providerLabel,
+    reasoningEffort: resolveReasoningEffortTransition({
+      currentEffort: input.taskReasoningEffort,
+      defaultEffort: matchingOption.defaultReasoningEffort,
+      supportedEfforts: matchingOption.reasoningEfforts,
+    }),
   }
 }

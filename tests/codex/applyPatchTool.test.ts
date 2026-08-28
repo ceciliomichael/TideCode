@@ -41,7 +41,6 @@ test('apply_patch retries transient atomic install failures', async () => {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
-
 test('apply_patch rolls back only files committed before a later install failure', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-rollback-'))
   const firstPath = path.join(workspaceRootPath, 'first.txt')
@@ -684,6 +683,72 @@ test('Code Mode exposes apply_patch while edit remains native-only compatibility
     assert.equal(editResult.status, 'success')
     assert.equal(await fs.readFile(path.join(workspaceRootPath, 'value.ts'), 'utf8'), 'const value = 2\nconst enabled = true\n')
 
+  } finally {
+    await codeModeExecutor?.dispose()
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode apply_patch templates preserve literal source escapes', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-template-literal-'))
+  let codeModeExecutor: { dispose: () => Promise<void>; run: (source: string) => Promise<{ status: string; toolCalls: Array<{ name: string }> }> } | null = null
+
+  try {
+    const bundle = await createAgentToolBundle(
+      { workspaceRootPath },
+      { chatMode: 'agent', orchestrationMode: 'code_mode' },
+    )
+    codeModeExecutor = bundle.codeModeExecutor
+    assert.ok(codeModeExecutor)
+
+    const expected = [
+      "const newline = '\\n';",
+      "const tab = '\\t';",
+      "const carriage = '\\r';",
+      "const hex = '\\x41';",
+      "const unicode = '\\u0041';",
+      'const regex = /\\s+\\w+/;',
+      "const windowsPath = 'C:\\new\\test';",
+      'const template = `hello ${name}`;',
+      '',
+    ].join('\n')
+    const patchText = [
+      '*** Begin Patch',
+      '*** Add File: literal.ts',
+      ...expected.trimEnd().split('\n').map((line) => '+' + line),
+      '*** End Patch',
+    ].join('\n')
+    const tick = String.fromCharCode(96)
+    const source = 'const patch = ' + tick + patchText + tick + '; return await tools.apply_patch(patch)'
+    const result = await codeModeExecutor.run(source)
+
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.toolCalls.map((call) => call.name), ['apply_patch'])
+    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'literal.ts'), 'utf8'), expected)
+  } finally {
+    await codeModeExecutor?.dispose()
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode leaves unrelated patch-looking templates as normal JavaScript', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-template-unrelated-'))
+  let codeModeExecutor: { dispose: () => Promise<void>; run: (source: string) => Promise<{ output?: unknown; status: string }> } | null = null
+
+  try {
+    const bundle = await createAgentToolBundle(
+      { workspaceRootPath },
+      { chatMode: 'agent', orchestrationMode: 'code_mode' },
+    )
+    codeModeExecutor = bundle.codeModeExecutor
+    assert.ok(codeModeExecutor)
+
+    const tick = String.fromCharCode(96)
+    const source = "const name = 'value'; const text = " + tick + '*** Begin Patch\n${name}\n*** End Patch' + tick + '; return text'
+    const result = await codeModeExecutor.run(source)
+
+    assert.equal(result.status, 'success')
+    assert.equal(result.output, '*** Begin Patch\nvalue\n*** End Patch')
   } finally {
     await codeModeExecutor?.dispose()
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

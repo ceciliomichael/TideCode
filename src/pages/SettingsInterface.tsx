@@ -167,10 +167,8 @@ export function SettingsInterface({
             errorMessage: skillsState.errorMessage,
             isLoading: skillsState.isLoading,
             onCreateSkill: skillsState.createSkill,
-            onUpdateSettings: handleUpdateSettings,
-            settings: {
-              disabledSkillsByPath: settings.disabledSkillsByPath,
-            },
+            onLoadSkill: skillsState.loadSkill,
+            onUpdateSkill: skillsState.updateSkill,
             state: skillsState.state,
           }}
           modelsSettings={{

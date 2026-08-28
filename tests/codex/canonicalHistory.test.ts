@@ -18,7 +18,7 @@ import {
 import { decodeModelMessages, encodeModelMessages, encodeReplayValue } from '../../electron/chat/history/replayCodec'
 import { projectCanonicalReplay } from '../../electron/chat/history/replayProjector'
 import { buildModelMessages } from '../../electron/chat/shared/messages'
-import { buildFallbackCompactionPacket } from '../../electron/chat/shared/compaction/fallback'
+import { createCompactionPacketFixture } from './compactionFixtures'
 import {
   createCanonicalToolModelOutput,
   createCanonicalToolResultContent,
@@ -421,10 +421,8 @@ test('same-run steer messages remain inside the replay prefix instead of being d
 
 test('compacted replay retains assistant and tool responses from later turns', () => {
   const document = createEmptyCanonicalHistory('conversation', 1)
-  const packet = buildFallbackCompactionPacket({
-    messages: [{ content: 'first question', role: 'user' }],
-    modelId: 'model',
-    providerId: 'openai',
+  const packet = createCompactionPacketFixture({
+    goal: ['First question.'],
     sourceDigest: 'digest',
     sourceMessageIds: ['model:0'],
   })
@@ -503,10 +501,8 @@ test('compacted replay retains assistant and tool responses from later turns', (
 
 test('compacted replay repairs a truncated packet message before context usage reads it', () => {
   const document = createEmptyCanonicalHistory('conversation', 1)
-  const packet = buildFallbackCompactionPacket({
-    messages: [{ content: 'first question', role: 'user' }],
-    modelId: 'model',
-    providerId: 'openai',
+  const packet = createCompactionPacketFixture({
+    goal: ['First question.'],
     sourceDigest: 'digest',
     sourceMessageIds: ['model:0'],
   })
@@ -548,10 +544,8 @@ test('compacted replay repairs a truncated packet message before context usage r
 
 test('compacted replay rebuilds a missing projection from the stored v2 packet', () => {
   const document = createEmptyCanonicalHistory('conversation', 1)
-  const packet = buildFallbackCompactionPacket({
-    messages: [{ content: 'first question', role: 'user' }],
-    modelId: 'model',
-    providerId: 'openai',
+  const packet = createCompactionPacketFixture({
+    goal: ['First question.'],
     sourceDigest: 'digest',
     sourceMessageIds: ['model:0'],
   })

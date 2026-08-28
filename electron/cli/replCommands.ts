@@ -3,22 +3,19 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { ChatMode } from '../../src/types/chat'
 import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../src/lib/contextCompactionSettings'
-import { buildSurfaceModelSelectionSettingsPatch } from '../../src/lib/surfaceModelSettings'
 import { ensureRunServiceClient } from '../runService/ensureService'
 import { startRemoteRelayDaemon } from './remoteDaemon'
 import { getLatestUndoEditSelection } from './undoEditNavigation'
 import type { CliSessionState, SlashCommandHelpers } from './types'
 import type { TerminalScreen } from './terminalScreen'
 import { resumeCliConversation } from './cliHistory'
-import { persistCliReasoningEffort } from './cliReasoningEffortSettings'
 import { shouldRefreshCodexUsage } from './cliComposerStatus'
 import { attachCliToActiveSharedRun } from './sharedRunAttachment'
 import { updateStoredConversationArchived } from '../history/store'
-import { updateStoredSettings } from '../settings/store'
 import { applyCliConversationRuntime } from './cliConversationRuntime'
 import { listCompactionMarkers } from '../chat/history/eventStore'
 import { hasMinimumCompactionMessages, MIN_COMPACTION_MESSAGE_COUNT } from '../../src/lib/chatCompactionGate'
-import { getTideCodeSystemModels } from './models'
+import { findSystemModel, getTideCodeSystemModels } from './models'
 
 const execFileAsync = promisify(execFile)
 
@@ -58,7 +55,9 @@ export function createReplCommandHelpers(
       const previousProviderId = state.providerId
       state.modelId = modelId
       if (providerId) state.providerId = providerId
+      if (metadata?.reasoningEffort) state.reasoningEffort = metadata.reasoningEffort
       screen.updateSession({ model: state.modelId, provider: state.providerId })
+      screen.updateComposerStatus({ reasoningEffort: state.reasoningEffort })
       onRuntimeChanged?.({
         refreshCodexUsage: shouldRefreshCodexUsage(previousProviderId, state.providerId),
       })
@@ -66,12 +65,6 @@ export function createReplCommandHelpers(
       const preferenceModelId = metadata?.preferenceModelId ?? modelId
       const modelLabel = metadata?.label ?? preferenceModelId
       try {
-        await updateStoredSettings(buildSurfaceModelSelectionSettingsPatch(state.chatMode, {
-          modelId: preferenceModelId,
-          modelLabel,
-          providerId: state.providerId,
-          reasoningEffort: state.reasoningEffort,
-        }), 'cli')
         await (await ensureRunServiceClient()).updateConversationRuntime({
           chatMode: state.chatMode,
           conversationId: state.conversationId,
@@ -88,42 +81,36 @@ export function createReplCommandHelpers(
         screen.addNotice('error', `Could not save the selected CLI model: ${error instanceof Error ? error.message : String(error)}`)
       }
     },
-    switchReasoningEffort: async (effort, modelLabel) => {
-      await persistCliReasoningEffort(state, effort)
-      state.reasoningEffort = effort
+    switchMode: async (mode: ChatMode) => {
+      if (state.chatMode === mode) return
+      const previousProviderId = state.providerId
+      const snapshot = await getSystemModels(mode)
+      const model = findSystemModel(snapshot.allModels, snapshot.defaultModelId, snapshot.defaultProviderId)
+      state.chatMode = mode
+      state.modelId = snapshot.defaultModelId
+      state.providerId = snapshot.defaultProviderId
+      state.reasoningEffort = snapshot.selectedReasoningEffort
+      screen.updateSession({ mode, model: state.modelId, provider: state.providerId })
+      screen.updateComposerStatus({ reasoningEffort: state.reasoningEffort })
+      onRuntimeChanged?.({
+        refreshCodexUsage: shouldRefreshCodexUsage(previousProviderId, state.providerId),
+      })
       try {
         await (await ensureRunServiceClient()).updateConversationRuntime({
-          chatMode: state.chatMode,
+          chatMode: mode,
           conversationId: state.conversationId,
           model: {
-            label: modelLabel,
-            modelId: state.modelId,
+            label: model?.label ?? state.modelId,
+            modelId: model?.id ?? state.modelId,
             providerId: state.providerId,
-            reasoningEffort: effort,
+            reasoningEffort: state.reasoningEffort,
             runtimeModelId: state.modelId,
           },
           surface: 'cli',
         })
       } catch (error) {
-        screen.addNotice('error', `Could not save the CLI reasoning effort: ${error instanceof Error ? error.message : String(error)}`)
+        screen.addNotice('error', `Could not sync the shared chat mode: ${error instanceof Error ? error.message : String(error)}`)
       }
-      screen.updateComposerStatus({ reasoningEffort: effort })
-      onRuntimeChanged?.()
-      screen.addNotice('success', `${modelLabel} reasoning effort is now ${effort}.`)
-    },
-    switchMode: (mode: ChatMode) => {
-      state.chatMode = mode
-      screen.updateSession({ mode })
-      onRuntimeChanged?.()
-      void ensureRunServiceClient()
-        .then((runService) => runService.updateConversationRuntime({
-          chatMode: mode,
-          conversationId: state.conversationId,
-          surface: 'cli',
-        }))
-        .catch((error) => {
-screen.addNotice('error', `Could not sync the shared chat mode: ${error instanceof Error ? error.message : String(error)}`)
-        })
     },
     canCompactHistory: async () => {
       try {

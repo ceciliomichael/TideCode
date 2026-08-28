@@ -14,8 +14,7 @@ test('completion catalog derives slash commands from the command registry', () =
   assert.match(items[0]?.description ?? '', /session/i)
 
   const effortItems = catalog.getItems('/eff', 4)
-  assert.equal(effortItems[0]?.value, '/effort')
-  assert.match(effortItems[0]?.description ?? '', /reasoning effort/i)
+  assert.equal(effortItems.length, 0)
 })
 
 test('completion catalog hides compact while the current thread is below the compaction message minimum', () => {

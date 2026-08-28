@@ -144,7 +144,7 @@ export function CommitModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="commit-modal-title"
-        className="w-full max-w-2xl rounded-2xl border border-border bg-surface shadow-soft"
+        className="non-selectable-ui w-full max-w-2xl rounded-2xl border border-border bg-surface shadow-soft"
       >
         {/* Header */}
         <div className="flex items-start justify-between px-6 pt-5 pb-3">

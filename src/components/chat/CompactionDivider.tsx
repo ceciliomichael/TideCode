@@ -23,7 +23,7 @@ export function CompactionDivider({ marker, phase = 'compacted' }: CompactionDiv
           aria-label={isCompacting ? 'Context compaction in progress' : 'Show compacted context details'}
           aria-live={isCompacting ? 'polite' : undefined}
           className={[
-            'flex shrink-0 items-center text-subtle-foreground transition-colors',
+            'flex shrink-0 select-none items-center text-subtle-foreground transition-colors',
             isCompacting ? 'cursor-default' : 'cursor-pointer hover:text-foreground',
           ].join(' ')}
           onClick={() => {

@@ -22,7 +22,7 @@ interface UseGitDiffSnapshotInput {
 interface UseGitDiffSnapshotResult {
   errorMessage: string | null
   isLoading: boolean
-  refresh: (options?: { forceRefresh?: boolean; silent?: boolean }) => Promise<void>
+  refresh: (options?: { coalesceForcedRefresh?: boolean; forceRefresh?: boolean; silent?: boolean }) => Promise<void>
   snapshot: ConversationDiffSnapshot
 }
 
@@ -85,7 +85,7 @@ export function useGitDiffSnapshot({
     activeWorkspacePathRef.current = normalizedWorkspacePath
   }, [normalizedWorkspacePath])
 
-  const refresh = useCallback(async (options?: { forceRefresh?: boolean; silent?: boolean }) => {
+  const refresh = useCallback(async (options?: { coalesceForcedRefresh?: boolean; forceRefresh?: boolean; silent?: boolean }) => {
     const requestWorkspacePath = normalizeGitWorkspacePath(workspacePath)
     if (!requestWorkspacePath || !hasRepository) {
       if (requestWorkspacePath === activeWorkspacePathRef.current) {
@@ -110,6 +110,7 @@ export function useGitDiffSnapshot({
 
     try {
       const diffSnapshot = await loadGitDiffSnapshot(requestWorkspacePath, {
+        coalesceForcedRefresh: options?.coalesceForcedRefresh,
         forceRefresh: options?.forceRefresh,
         includeContent,
       })
@@ -199,7 +200,7 @@ export function useGitDiffSnapshot({
         return
       }
 
-      void refresh({ forceRefresh: true, silent: true })
+      void refresh({ coalesceForcedRefresh: true, forceRefresh: true, silent: true })
     }, GIT_DIFF_POLL_INTERVAL_MS)
 
     return () => {

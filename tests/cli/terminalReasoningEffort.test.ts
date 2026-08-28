@@ -18,7 +18,7 @@ function createModel(overrides: Partial<SystemModelItem> = {}): SystemModelItem 
   }
 }
 
-test('/effort items match desktop ordering, labels, and current selection', () => {
+test('CLI model reasoning items match desktop ordering, labels, and current selection', () => {
   const items = buildTerminalReasoningEffortItems(createModel(), 'medium')
 
   assert.deepEqual(items.map((item) => item.value), ['high', 'medium', 'low'])
@@ -26,6 +26,6 @@ test('/effort items match desktop ordering, labels, and current selection', () =
   assert.equal(items.find((item) => item.isCurrent)?.value, 'medium')
 })
 
-test('/effort stays unavailable for models without declared reasoning controls', () => {
+test('CLI model reasoning stays unavailable for models without declared reasoning controls', () => {
   assert.deepEqual(buildTerminalReasoningEffortItems(createModel({ reasoningCapable: false }), 'medium'), [])
 })

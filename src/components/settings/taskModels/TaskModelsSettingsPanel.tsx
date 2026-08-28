@@ -1,25 +1,75 @@
-import { memo, useCallback, useMemo } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { PROVIDER_SECTIONS } from '../models/modelCatalog'
 import { buildModelProviderSections } from '../models/modelViewUtils'
-import { ModelSelectorField, type ModelSelectorOption } from '../../chat/ModelSelectorField'
-import { SettingsPanelLayout, SettingsRow, SettingsSection } from '../shared/SettingsPanelPrimitives'
-import type { AppSettings, ChatProviderId, ProvidersState } from '../../../types/chat'
+import { SettingsPanelLayout, SETTINGS_SECTION_TITLE_CLASS_NAME } from '../shared/SettingsPanelPrimitives'
+import type { AppSettings, ChatProviderId, ProvidersState, ReasoningEffort } from '../../../types/chat'
 import { useSettingsModelCatalog } from '../models/settingsModelCatalogStore'
 import { filterEnabledModelCatalogItems, readStoredModelToggleState } from '../models/modelStorage'
 import { MemoizedContextSettingsSections } from '../context/ContextSettingsPanel'
 import type { ContextCompactionSettings } from '../../../lib/contextCompactionSettings'
 import { TaskModelsSettingsSkeleton } from './TaskModelsSettingsSkeleton'
+import { resolveModelReasoningProfile } from '../../../lib/modelReasoningProfiles'
+import { resolveReasoningEffortTransition } from '../../../lib/reasoningEffortTransition'
+import { TaskModelConfigurationCard } from './TaskModelConfigurationCard'
+import {
+  TaskModelConfigurationDialog,
+  type TaskModelConfigurationOption,
+} from './TaskModelConfigurationDialog'
+import { getTaskModelConfigurationSummary } from './taskModelConfiguration'
 
 interface ModelOption {
+  defaultReasoningEffort?: ReasoningEffort
   label: string
   modelId: string
   providerId: ChatProviderId
   providerLabel: string
+  reasoningEfforts?: readonly ReasoningEffort[]
   value: string
 }
 
+type TaskReasoningEffortKey =
+  | 'agentReasoningEffort'
+  | 'gitCommitReasoningEffort'
+  | 'kanbanReasoningEffort'
+  | 'planReasoningEffort'
+  | 'summarizationReasoningEffort'
+
+interface TaskModelSettingsKeys {
+  modelId: 'agentModelId' | 'gitCommitModelId' | 'kanbanModelId' | 'planModelId' | 'summarizationModelId'
+  modelLabel:
+    | 'agentModelLabel'
+    | 'gitCommitModelLabel'
+    | 'kanbanModelLabel'
+    | 'planModelLabel'
+    | 'summarizationModelLabel'
+  providerId:
+    | 'agentModelProviderId'
+    | 'gitCommitModelProviderId'
+    | 'kanbanModelProviderId'
+    | 'planModelProviderId'
+    | 'summarizationModelProviderId'
+  reasoningEffort: TaskReasoningEffortKey
+}
+
+type TaskModelConfigurationId = 'agent' | 'git-commit' | 'kanban' | 'plan' | 'summarization'
+
+interface TaskModelCardConfiguration {
+  description: string
+  id: TaskModelConfigurationId
+  keys: TaskModelSettingsKeys
+  missingOption: ModelOption | null
+  modelId: string
+  modelLabel: string
+  options: readonly TaskModelConfigurationOption[]
+  providerId: ChatProviderId | null
+  reasoningEffort: ReasoningEffort
+  selectedModel: ModelOption | null
+  selectedValue: string
+  title: string
+}
+
 const USE_CHAT_INPUT_MODEL_VALUE = '__use-chat-input-model__'
-const USE_CHAT_INPUT_MODEL_OPTION: ModelSelectorOption = {
+const USE_CHAT_INPUT_MODEL_OPTION: TaskModelConfigurationOption = {
   label: 'Use chat input model',
   providerLabel: 'Default',
   value: USE_CHAT_INPUT_MODEL_VALUE,
@@ -39,27 +89,24 @@ interface TaskModelsSettingsPanelProps {
     | 'agentModelId'
     | 'agentModelLabel'
     | 'agentModelProviderId'
+    | 'agentReasoningEffort'
     | 'gitCommitModelId'
     | 'gitCommitModelLabel'
     | 'gitCommitModelProviderId'
+    | 'gitCommitReasoningEffort'
     | 'kanbanModelId'
     | 'kanbanModelLabel'
     | 'kanbanModelProviderId'
+    | 'kanbanReasoningEffort'
     | 'planModelId'
     | 'planModelLabel'
     | 'planModelProviderId'
+    | 'planReasoningEffort'
     | 'summarizationModelId'
     | 'summarizationModelLabel'
     | 'summarizationModelProviderId'
+    | 'summarizationReasoningEffort'
   >
-}
-
-function toModelSelectorOptions(options: readonly ModelOption[]): ModelSelectorOption[] {
-  return options.map((option) => ({
-    label: option.label,
-    providerLabel: option.providerLabel,
-    value: option.value,
-  }))
 }
 
 function encodeSelectorValue(providerId: ChatProviderId, modelId: string) {
@@ -67,10 +114,7 @@ function encodeSelectorValue(providerId: ChatProviderId, modelId: string) {
 }
 
 function getProviderLabel(providerId: ChatProviderId | null) {
-  if (providerId === null) {
-    return 'Saved model'
-  }
-
+  if (providerId === null) return 'Saved model'
   return PROVIDER_SECTIONS.find((provider) => provider.id === providerId)?.label ?? 'Saved model'
 }
 
@@ -80,9 +124,7 @@ function getMissingOption(
   modelProviderId: ChatProviderId | null,
 ): ModelOption | null {
   const normalizedModelId = modelId.trim()
-  if (normalizedModelId.length === 0 || modelProviderId === null) {
-    return null
-  }
+  if (normalizedModelId.length === 0 || modelProviderId === null) return null
 
   const normalizedModelLabel = modelLabel.trim()
   return {
@@ -94,12 +136,25 @@ function getMissingOption(
   }
 }
 
-function buildSelectorOptions(baseOptions: readonly ModelOption[], missingOption: ModelOption | null) {
+function buildConfigurationOptions(
+  baseOptions: readonly ModelOption[],
+  missingOption: ModelOption | null,
+): TaskModelConfigurationOption[] {
   const withMissing =
     missingOption && !baseOptions.some((option) => option.value === missingOption.value)
       ? [missingOption, ...baseOptions]
       : baseOptions
-  return [USE_CHAT_INPUT_MODEL_OPTION, ...toModelSelectorOptions(withMissing)]
+
+  return [
+    USE_CHAT_INPUT_MODEL_OPTION,
+    ...withMissing.map((option) => ({
+      defaultReasoningEffort: option.defaultReasoningEffort,
+      label: option.label,
+      providerLabel: option.providerLabel,
+      reasoningEfforts: option.reasoningEfforts,
+      value: option.value,
+    })),
+  ]
 }
 
 function findSelectedValue(
@@ -109,22 +164,23 @@ function findSelectedValue(
   modelProviderId: ChatProviderId | null,
 ) {
   const normalizedModelId = modelId.trim()
-  if (normalizedModelId.length === 0 || modelProviderId === null) {
-    return USE_CHAT_INPUT_MODEL_VALUE
-  }
+  if (normalizedModelId.length === 0 || modelProviderId === null) return USE_CHAT_INPUT_MODEL_VALUE
 
   const selectedOption = configuredOptions.find(
     (option) => option.modelId === normalizedModelId && option.providerId === modelProviderId,
   )
-  if (selectedOption) {
-    return selectedOption.value
-  }
-
-  if (missingOption) {
-    return missingOption.value
-  }
-
+  if (selectedOption) return selectedOption.value
+  if (missingOption) return missingOption.value
   return USE_CHAT_INPUT_MODEL_VALUE
+}
+
+function findSelectedModel(
+  configuredOptions: readonly ModelOption[],
+  missingOption: ModelOption | null,
+  selectedValue: string,
+) {
+  return configuredOptions.find((option) => option.value === selectedValue)
+    ?? (missingOption?.value === selectedValue ? missingOption : null)
 }
 
 export function TaskModelsSettingsPanel({
@@ -134,19 +190,25 @@ export function TaskModelsSettingsPanel({
   providersState,
   settings,
 }: TaskModelsSettingsPanelProps) {
+  const [dialogId, setDialogId] = useState<TaskModelConfigurationId | null>(null)
   const { customModels, customModelsLoading, providerModels, providerModelsLoading } = useSettingsModelCatalog(providersState)
 
-  const configuredModelOptions = useMemo(() => {
+  const configuredModelOptions = useMemo<ModelOption[]>(() => {
     const modelToggleState = readStoredModelToggleState()
     const providerSections = buildModelProviderSections('', providersState, customModels, providerModels)
     return providerSections.flatMap((section) =>
-      filterEnabledModelCatalogItems(section.models, modelToggleState).map((model) => ({
-        label: model.label,
-        modelId: model.id,
-        providerId: section.provider.id,
-        providerLabel: section.provider.label,
-        value: encodeSelectorValue(section.provider.id, model.id),
-      })),
+      filterEnabledModelCatalogItems(section.models, modelToggleState).map((model) => {
+        const reasoningProfile = resolveModelReasoningProfile(model)
+        return {
+          defaultReasoningEffort: reasoningProfile?.defaultEffort,
+          label: model.label,
+          modelId: model.id,
+          providerId: section.provider.id,
+          providerLabel: section.provider.label,
+          reasoningEfforts: reasoningProfile?.efforts,
+          value: encodeSelectorValue(section.provider.id, model.id),
+        }
+      }),
     )
   }, [customModels, providerModels, providersState])
 
@@ -159,12 +221,11 @@ export function TaskModelsSettingsPanel({
     [settings.planModelId, settings.planModelLabel, settings.planModelProviderId],
   )
   const summarizationMissingOption = useMemo(
-    () =>
-      getMissingOption(
-        settings.summarizationModelId,
-        settings.summarizationModelLabel,
-        settings.summarizationModelProviderId,
-      ),
+    () => getMissingOption(
+      settings.summarizationModelId,
+      settings.summarizationModelLabel,
+      settings.summarizationModelProviderId,
+    ),
     [settings.summarizationModelId, settings.summarizationModelLabel, settings.summarizationModelProviderId],
   )
   const gitCommitMissingOption = useMemo(
@@ -176,233 +237,274 @@ export function TaskModelsSettingsPanel({
     [settings.kanbanModelId, settings.kanbanModelLabel, settings.kanbanModelProviderId],
   )
 
-  const isSelectorDisabled = isLoading
-  const isModelsLoading = customModelsLoading || providerModelsLoading
-  const sharedOptions = configuredModelOptions
-
-  const agentOptions = useMemo(() => buildSelectorOptions(sharedOptions, agentMissingOption), [agentMissingOption, sharedOptions])
-  const planOptions = useMemo(() => buildSelectorOptions(sharedOptions, planMissingOption), [planMissingOption, sharedOptions])
+  const agentOptions = useMemo(
+    () => buildConfigurationOptions(configuredModelOptions, agentMissingOption),
+    [agentMissingOption, configuredModelOptions],
+  )
+  const planOptions = useMemo(
+    () => buildConfigurationOptions(configuredModelOptions, planMissingOption),
+    [planMissingOption, configuredModelOptions],
+  )
   const summarizationOptions = useMemo(
-    () => buildSelectorOptions(sharedOptions, summarizationMissingOption),
-    [sharedOptions, summarizationMissingOption],
+    () => buildConfigurationOptions(configuredModelOptions, summarizationMissingOption),
+    [configuredModelOptions, summarizationMissingOption],
   )
   const gitCommitOptions = useMemo(
-    () => buildSelectorOptions(sharedOptions, gitCommitMissingOption),
-    [gitCommitMissingOption, sharedOptions],
+    () => buildConfigurationOptions(configuredModelOptions, gitCommitMissingOption),
+    [gitCommitMissingOption, configuredModelOptions],
   )
   const kanbanOptions = useMemo(
-    () => buildSelectorOptions(sharedOptions, kanbanMissingOption),
-    [kanbanMissingOption, sharedOptions],
-  )
-
-  const setTaskModel = useCallback(
-    (
-      nextValue: string,
-      keys: {
-        modelId: 'agentModelId' | 'gitCommitModelId' | 'kanbanModelId' | 'planModelId' | 'summarizationModelId'
-        modelLabel:
-          | 'agentModelLabel'
-          | 'gitCommitModelLabel'
-          | 'kanbanModelLabel'
-          | 'planModelLabel'
-          | 'summarizationModelLabel'
-        providerId:
-          | 'agentModelProviderId'
-          | 'gitCommitModelProviderId'
-          | 'kanbanModelProviderId'
-          | 'planModelProviderId'
-          | 'summarizationModelProviderId'
-      },
-    ) => {
-      if (nextValue === USE_CHAT_INPUT_MODEL_VALUE) {
-        onUpdateSettings({
-          [keys.modelId]: '',
-          [keys.modelLabel]: '',
-          [keys.providerId]: null,
-        })
-        return
-      }
-
-      const nextOption = sharedOptions.find((option) => option.value === nextValue)
-      if (!nextOption) {
-        return
-      }
-
-      onUpdateSettings({
-        [keys.modelId]: nextOption.modelId,
-        [keys.modelLabel]: nextOption.label,
-        [keys.providerId]: nextOption.providerId,
-      })
-    },
-    [onUpdateSettings, sharedOptions],
+    () => buildConfigurationOptions(configuredModelOptions, kanbanMissingOption),
+    [kanbanMissingOption, configuredModelOptions],
   )
 
   const agentSelectedValue = useMemo(
-    () =>
-      findSelectedValue(sharedOptions, agentMissingOption, settings.agentModelId, settings.agentModelProviderId),
-    [agentMissingOption, settings.agentModelId, settings.agentModelProviderId, sharedOptions],
+    () => findSelectedValue(configuredModelOptions, agentMissingOption, settings.agentModelId, settings.agentModelProviderId),
+    [agentMissingOption, configuredModelOptions, settings.agentModelId, settings.agentModelProviderId],
   )
   const planSelectedValue = useMemo(
-    () => findSelectedValue(sharedOptions, planMissingOption, settings.planModelId, settings.planModelProviderId),
-    [planMissingOption, settings.planModelId, settings.planModelProviderId, sharedOptions],
+    () => findSelectedValue(configuredModelOptions, planMissingOption, settings.planModelId, settings.planModelProviderId),
+    [planMissingOption, configuredModelOptions, settings.planModelId, settings.planModelProviderId],
   )
   const summarizationSelectedValue = useMemo(
-    () =>
-      findSelectedValue(
-        sharedOptions,
-        summarizationMissingOption,
-        settings.summarizationModelId,
-        settings.summarizationModelProviderId,
-      ),
-    [settings.summarizationModelId, settings.summarizationModelProviderId, sharedOptions, summarizationMissingOption],
+    () => findSelectedValue(
+      configuredModelOptions,
+      summarizationMissingOption,
+      settings.summarizationModelId,
+      settings.summarizationModelProviderId,
+    ),
+    [configuredModelOptions, settings.summarizationModelId, settings.summarizationModelProviderId, summarizationMissingOption],
   )
   const gitCommitSelectedValue = useMemo(
-    () =>
-      findSelectedValue(sharedOptions, gitCommitMissingOption, settings.gitCommitModelId, settings.gitCommitModelProviderId),
-    [gitCommitMissingOption, settings.gitCommitModelId, settings.gitCommitModelProviderId, sharedOptions],
+    () => findSelectedValue(
+      configuredModelOptions,
+      gitCommitMissingOption,
+      settings.gitCommitModelId,
+      settings.gitCommitModelProviderId,
+    ),
+    [gitCommitMissingOption, configuredModelOptions, settings.gitCommitModelId, settings.gitCommitModelProviderId],
   )
   const kanbanSelectedValue = useMemo(
-    () =>
-      findSelectedValue(
-        sharedOptions,
-        kanbanMissingOption,
-        settings.kanbanModelId,
-        settings.kanbanModelProviderId,
-      ),
-    [kanbanMissingOption, settings.kanbanModelId, settings.kanbanModelProviderId, sharedOptions],
+    () => findSelectedValue(
+      configuredModelOptions,
+      kanbanMissingOption,
+      settings.kanbanModelId,
+      settings.kanbanModelProviderId,
+    ),
+    [kanbanMissingOption, configuredModelOptions, settings.kanbanModelId, settings.kanbanModelProviderId],
   )
 
-  if (isLoading || providersState === null || isModelsLoading) {
-    return <TaskModelsSettingsSkeleton />
-  }
+  const agentSelectedModel = useMemo(
+    () => findSelectedModel(configuredModelOptions, agentMissingOption, agentSelectedValue),
+    [agentMissingOption, agentSelectedValue, configuredModelOptions],
+  )
+  const planSelectedModel = useMemo(
+    () => findSelectedModel(configuredModelOptions, planMissingOption, planSelectedValue),
+    [planMissingOption, planSelectedValue, configuredModelOptions],
+  )
+  const summarizationSelectedModel = useMemo(
+    () => findSelectedModel(configuredModelOptions, summarizationMissingOption, summarizationSelectedValue),
+    [configuredModelOptions, summarizationMissingOption, summarizationSelectedValue],
+  )
+  const gitCommitSelectedModel = useMemo(
+    () => findSelectedModel(configuredModelOptions, gitCommitMissingOption, gitCommitSelectedValue),
+    [gitCommitMissingOption, gitCommitSelectedValue, configuredModelOptions],
+  )
+  const kanbanSelectedModel = useMemo(
+    () => findSelectedModel(configuredModelOptions, kanbanMissingOption, kanbanSelectedValue),
+    [kanbanMissingOption, kanbanSelectedValue, configuredModelOptions],
+  )
+
+  const saveTaskModel = useCallback((
+    nextValue: string,
+    nextReasoningEffort: ReasoningEffort,
+    keys: TaskModelSettingsKeys,
+    missingOption: ModelOption | null,
+  ) => {
+    if (nextValue === USE_CHAT_INPUT_MODEL_VALUE) {
+      onUpdateSettings({
+        [keys.modelId]: '',
+        [keys.modelLabel]: '',
+        [keys.providerId]: null,
+      })
+      return
+    }
+
+    const nextOption = configuredModelOptions.find((option) => option.value === nextValue)
+      ?? (missingOption?.value === nextValue ? missingOption : null)
+    if (!nextOption) return
+
+    onUpdateSettings({
+      [keys.modelId]: nextOption.modelId,
+      [keys.modelLabel]: nextOption.label.replace(/ \(Unavailable\)$/, ''),
+      [keys.providerId]: nextOption.providerId,
+      [keys.reasoningEffort]: resolveReasoningEffortTransition({
+        currentEffort: nextReasoningEffort,
+        defaultEffort: nextOption.defaultReasoningEffort,
+        supportedEfforts: nextOption.reasoningEfforts,
+      }),
+    })
+  }, [configuredModelOptions, onUpdateSettings])
+
+  const configurations: TaskModelCardConfiguration[] = [
+    {
+      description: 'Model used to turn a task title into a reviewable implementation plan.',
+      id: 'kanban',
+      keys: {
+        modelId: 'kanbanModelId',
+        modelLabel: 'kanbanModelLabel',
+        providerId: 'kanbanModelProviderId',
+        reasoningEffort: 'kanbanReasoningEffort',
+      },
+      missingOption: kanbanMissingOption,
+      modelId: settings.kanbanModelId,
+      modelLabel: settings.kanbanModelLabel,
+      options: kanbanOptions,
+      providerId: settings.kanbanModelProviderId,
+      reasoningEffort: settings.kanbanReasoningEffort,
+      selectedModel: kanbanSelectedModel,
+      selectedValue: kanbanSelectedValue,
+      title: 'Task planning model',
+    },
+    {
+      description: 'Default model for Agent mode. Model changes inside a chat remain conversation-specific.',
+      id: 'agent',
+      keys: {
+        modelId: 'agentModelId',
+        modelLabel: 'agentModelLabel',
+        providerId: 'agentModelProviderId',
+        reasoningEffort: 'agentReasoningEffort',
+      },
+      missingOption: agentMissingOption,
+      modelId: settings.agentModelId,
+      modelLabel: settings.agentModelLabel,
+      options: agentOptions,
+      providerId: settings.agentModelProviderId,
+      reasoningEffort: settings.agentReasoningEffort,
+      selectedModel: agentSelectedModel,
+      selectedValue: agentSelectedValue,
+      title: 'Agent mode model',
+    },
+    {
+      description: 'Default model for Plan mode. Model changes inside a chat remain conversation-specific.',
+      id: 'plan',
+      keys: {
+        modelId: 'planModelId',
+        modelLabel: 'planModelLabel',
+        providerId: 'planModelProviderId',
+        reasoningEffort: 'planReasoningEffort',
+      },
+      missingOption: planMissingOption,
+      modelId: settings.planModelId,
+      modelLabel: settings.planModelLabel,
+      options: planOptions,
+      providerId: settings.planModelProviderId,
+      reasoningEffort: settings.planReasoningEffort,
+      selectedModel: planSelectedModel,
+      selectedValue: planSelectedValue,
+      title: 'Plan mode model',
+    },
+    {
+      description: 'Model used for chat compression and summarization.',
+      id: 'summarization',
+      keys: {
+        modelId: 'summarizationModelId',
+        modelLabel: 'summarizationModelLabel',
+        providerId: 'summarizationModelProviderId',
+        reasoningEffort: 'summarizationReasoningEffort',
+      },
+      missingOption: summarizationMissingOption,
+      modelId: settings.summarizationModelId,
+      modelLabel: settings.summarizationModelLabel,
+      options: summarizationOptions,
+      providerId: settings.summarizationModelProviderId,
+      reasoningEffort: settings.summarizationReasoningEffort,
+      selectedModel: summarizationSelectedModel,
+      selectedValue: summarizationSelectedValue,
+      title: 'Summarization',
+    },
+    {
+      description: 'Model used for commit messages and pull request summary generation.',
+      id: 'git-commit',
+      keys: {
+        modelId: 'gitCommitModelId',
+        modelLabel: 'gitCommitModelLabel',
+        providerId: 'gitCommitModelProviderId',
+        reasoningEffort: 'gitCommitReasoningEffort',
+      },
+      missingOption: gitCommitMissingOption,
+      modelId: settings.gitCommitModelId,
+      modelLabel: settings.gitCommitModelLabel,
+      options: gitCommitOptions,
+      providerId: settings.gitCommitModelProviderId,
+      reasoningEffort: settings.gitCommitReasoningEffort,
+      selectedModel: gitCommitSelectedModel,
+      selectedValue: gitCommitSelectedValue,
+      title: 'Git commit and pull request',
+    },
+  ]
+  const activeConfiguration = dialogId === null
+    ? null
+    : configurations.find((configuration) => configuration.id === dialogId) ?? null
+  const isModelsLoading = customModelsLoading || providerModelsLoading
+
+  if (isLoading || providersState === null || isModelsLoading) return <TaskModelsSettingsSkeleton />
 
   return (
     <SettingsPanelLayout>
-      <SettingsSection title="Configuration">
-        <SettingsRow
-          title="Task planning model"
-          description="Model used to turn a task title into a reviewable implementation plan."
-        >
-          <div className="w-full md:w-[240px] lg:w-[252px]">
-            <ModelSelectorField
-              className="w-full"
-              disabled={isSelectorDisabled}
-              fullWidth
-              isLoading={isModelsLoading}
-              options={kanbanOptions}
-              size="comfortable"
-              value={kanbanSelectedValue}
-              onChange={(nextValue) =>
-                setTaskModel(nextValue, {
-                  modelId: 'kanbanModelId',
-                  modelLabel: 'kanbanModelLabel',
-                  providerId: 'kanbanModelProviderId',
+      <section className="flex flex-col gap-4">
+        <header className="flex flex-col gap-1 px-1 pt-1">
+          <h2 className={SETTINGS_SECTION_TITLE_CLASS_NAME}>Configuration</h2>
+          <p className="text-sm leading-6 text-muted-foreground">
+            Choose the default model and reasoning effort used by each workflow. Open a setup to make changes.
+          </p>
+        </header>
+
+        <div className="flex flex-col gap-2.5">
+          {configurations.map((configuration) => {
+            const isConfigured = configuration.modelId.trim().length > 0 && configuration.providerId !== null
+            return (
+              <TaskModelConfigurationCard
+                key={configuration.id}
+                isConfigured={isConfigured}
+                label={configuration.title}
+                summary={getTaskModelConfigurationSummary({
+                  defaultReasoningEffort: configuration.selectedModel?.defaultReasoningEffort,
+                  modelId: configuration.modelId,
+                  modelLabel: configuration.selectedModel?.label ?? configuration.modelLabel,
+                  providerId: configuration.providerId,
+                  providerLabel: configuration.selectedModel?.providerLabel ?? getProviderLabel(configuration.providerId),
+                  reasoningEffort: configuration.reasoningEffort,
+                  reasoningEfforts: configuration.selectedModel?.reasoningEfforts,
                 })}
-            />
-          </div>
-        </SettingsRow>
-
-        <div className="border-t border-border">
-          <SettingsRow
-            title="Agent mode model"
-            description="Default model for Agent mode. Changes made from chat input in Agent mode are saved here."
-          >
-            <div className="w-full md:w-[240px] lg:w-[252px]">
-              <ModelSelectorField
-                className="w-full"
-                disabled={isSelectorDisabled}
-                fullWidth
-                isLoading={isModelsLoading}
-                options={agentOptions}
-                size="comfortable"
-                value={agentSelectedValue}
-                onChange={(nextValue) =>
-                  setTaskModel(nextValue, {
-                    modelId: 'agentModelId',
-                    modelLabel: 'agentModelLabel',
-                    providerId: 'agentModelProviderId',
-                  })}
+                onClick={() => setDialogId(configuration.id)}
               />
-            </div>
-          </SettingsRow>
+            )
+          })}
         </div>
+      </section>
 
-        <div className="border-t border-border">
-          <SettingsRow
-            title="Plan mode model"
-            description="Default model for Plan mode. Changes made from chat input in Plan mode are saved here."
-          >
-            <div className="w-full md:w-[240px] lg:w-[252px]">
-              <ModelSelectorField
-                className="w-full"
-                disabled={isSelectorDisabled}
-                fullWidth
-                isLoading={isModelsLoading}
-                options={planOptions}
-                size="comfortable"
-                value={planSelectedValue}
-                onChange={(nextValue) =>
-                  setTaskModel(nextValue, {
-                    modelId: 'planModelId',
-                    modelLabel: 'planModelLabel',
-                    providerId: 'planModelProviderId',
-                  })}
-              />
-            </div>
-          </SettingsRow>
-        </div>
-
-        <div className="border-t border-border">
-          <SettingsRow
-            title="Summarization"
-            description="Model for chat compression and summarization. “Use chat input model” follows the active chat model."
-          >
-            <div className="w-full md:w-[240px] lg:w-[252px]">
-              <ModelSelectorField
-                className="w-full"
-                disabled={isSelectorDisabled}
-                fullWidth
-                isLoading={isModelsLoading}
-                options={summarizationOptions}
-                size="comfortable"
-                value={summarizationSelectedValue}
-                onChange={(nextValue) =>
-                  setTaskModel(nextValue, {
-                    modelId: 'summarizationModelId',
-                    modelLabel: 'summarizationModelLabel',
-                    providerId: 'summarizationModelProviderId',
-                  })}
-              />
-            </div>
-          </SettingsRow>
-        </div>
-
-        <div className="border-t border-border">
-          <SettingsRow
-            title="Git commit and pull request"
-            description="Model for commit message and pull request summary generation."
-          >
-            <div className="w-full md:w-[240px] lg:w-[252px]">
-              <ModelSelectorField
-                className="w-full"
-                disabled={isSelectorDisabled}
-                fullWidth
-                isLoading={isModelsLoading}
-                options={gitCommitOptions}
-                size="comfortable"
-                value={gitCommitSelectedValue}
-                onChange={(nextValue) =>
-                  setTaskModel(nextValue, {
-                    modelId: 'gitCommitModelId',
-                    modelLabel: 'gitCommitModelLabel',
-                    providerId: 'gitCommitModelProviderId',
-                  })}
-              />
-            </div>
-          </SettingsRow>
-        </div>
-      </SettingsSection>
       <MemoizedContextSettingsSections {...contextSettings} />
+
+      {activeConfiguration ? (
+        <TaskModelConfigurationDialog
+          key={activeConfiguration.id}
+          description={activeConfiguration.description}
+          initialModelValue={activeConfiguration.selectedValue}
+          initialReasoningEffort={activeConfiguration.reasoningEffort}
+          isSubmitting={isLoading}
+          options={activeConfiguration.options}
+          title={`Configure ${activeConfiguration.title}`}
+          onClose={() => setDialogId(null)}
+          onSave={({ modelValue, reasoningEffort }) =>
+            saveTaskModel(
+              modelValue,
+              reasoningEffort,
+              activeConfiguration.keys,
+              activeConfiguration.missingOption,
+            )}
+        />
+      ) : null}
     </SettingsPanelLayout>
   )
 }

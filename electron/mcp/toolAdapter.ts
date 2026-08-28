@@ -78,11 +78,13 @@ export function createMcpToolSetForServer(config: McpServerConfig, client: Clien
       const adaptedTool = tool({
         description: createToolDescription(config, mcpTool),
         inputSchema: jsonSchema(mcpTool.inputSchema),
-        execute: async (rawInput) => {
+        execute: async (rawInput, options) => {
           try {
             const result = await client.callTool({
               arguments: rawInput as Record<string, unknown>,
               name: mcpTool.name,
+            }, undefined, {
+              signal: options?.abortSignal,
             })
 
             const body = toToolBody(result.content as CallToolResult['content'])

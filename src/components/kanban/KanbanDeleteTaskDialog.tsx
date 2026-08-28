@@ -43,7 +43,7 @@ export function KanbanDeleteTaskDialog({
         aria-modal="true"
         aria-labelledby="kanban-delete-dialog-title"
         aria-describedby="kanban-delete-dialog-description"
-        className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
+        className="non-selectable-ui w-full max-w-md overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
       >
         <header className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
           <div className="flex min-w-0 items-start gap-3.5">

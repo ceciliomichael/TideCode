@@ -32,6 +32,7 @@ interface StreamAssistantResponseInput {
   contextCompaction: ContextCompactionSettings
   messages: Message[]
   modelId: string
+  processStreamEvents?: boolean
   onContentDelta: (delta: string) => void
   onReasoningCompleted: () => void
   onReasoningDelta: (delta: string) => void
@@ -67,6 +68,7 @@ interface StreamAssistantResponseInput {
 }
 
 interface StreamAssistantResponseOutput {
+  hadMeaningfulOutput: boolean
   wasAborted: boolean
 }
 
@@ -111,32 +113,41 @@ export async function streamAssistantResponse(
   input: StreamAssistantResponseInput,
 ): Promise<StreamAssistantResponseOutput> {
   let streamId: string | null = null
+  let hadMeaningfulOutput = false
 
   return new Promise<StreamAssistantResponseOutput>((resolve, reject) => {
     const queuedEvents: Parameters<Parameters<typeof window.tidecodeChat.onStreamEvent>[0]>[0][] = []
 
     const handleStreamEvent = (event: Parameters<Parameters<typeof window.tidecodeChat.onStreamEvent>[0]>[0]) => {
       if (event.type === 'content_delta') {
+        hadMeaningfulOutput ||= event.delta.trim().length > 0
+        if (input.processStreamEvents === false) return
         input.onContentDelta(event.delta)
         return
       }
 
       if (event.type === 'reasoning_delta') {
+        hadMeaningfulOutput ||= event.delta.trim().length > 0
+        if (input.processStreamEvents === false) return
         input.onReasoningDelta(event.delta)
         return
       }
 
       if (event.type === 'reasoning_completed') {
+        if (input.processStreamEvents === false) return
         input.onReasoningCompleted()
         return
       }
 
       if (event.type === 'compaction_committed') {
+        if (input.processStreamEvents === false) return
         input.onCompactionCommitted()
         return
       }
 
       if (event.type === 'tool_invocation_started') {
+        hadMeaningfulOutput = true
+        if (input.processStreamEvents === false) return
         input.onToolInvocationStarted(event.invocationId, {
           argumentsText: event.argumentsText,
           startedAt: event.startedAt,
@@ -146,6 +157,7 @@ export async function streamAssistantResponse(
       }
 
       if (event.type === 'tool_invocation_delta') {
+        if (input.processStreamEvents === false) return
         input.onToolInvocationDelta(event.invocationId, {
           argumentsText: event.argumentsText,
           toolName: event.toolName,
@@ -154,6 +166,8 @@ export async function streamAssistantResponse(
       }
 
       if (event.type === 'tool_invocation_decision_requested') {
+        hadMeaningfulOutput = true
+        if (input.processStreamEvents === false) return
         input.onToolInvocationDecisionRequested(event.invocationId, {
           decisionRequest: {
             allowCustomAnswer: event.allowCustomAnswer,
@@ -168,6 +182,8 @@ export async function streamAssistantResponse(
       }
 
       if (event.type === 'tool_invocation_completed') {
+        hadMeaningfulOutput = true
+        if (input.processStreamEvents === false) return
         input.onSyntheticToolMessage(event.syntheticMessage)
         input.onToolInvocationCompleted(event.invocationId, {
           argumentsText: event.argumentsText,
@@ -180,6 +196,8 @@ export async function streamAssistantResponse(
       }
 
       if (event.type === 'tool_invocation_failed') {
+        hadMeaningfulOutput = true
+        if (input.processStreamEvents === false) return
         input.onSyntheticToolMessage(event.syntheticMessage)
         input.onToolInvocationFailed(event.invocationId, {
           argumentsText: event.argumentsText,
@@ -192,19 +210,20 @@ export async function streamAssistantResponse(
       }
 
       if (event.type === 'steer_messages_consumed') {
+        if (input.processStreamEvents === false) return
         input.onSteerMessagesConsumed(event.messages)
         return
       }
 
       if (event.type === 'completed') {
         unsubscribe()
-        resolve({ wasAborted: false })
+        resolve({ hadMeaningfulOutput, wasAborted: false })
         return
       }
 
       if (event.type === 'aborted') {
         unsubscribe()
-        resolve({ wasAborted: true })
+        resolve({ hadMeaningfulOutput, wasAborted: true })
         return
       }
 

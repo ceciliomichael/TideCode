@@ -45,7 +45,7 @@ export function WorkspaceMonacoEditorView({
     <div ref={containerRef} data-workspace-code-editor className="workspace-monaco-editor relative h-full min-h-0 w-full min-w-0 bg-surface">
       <Editor
         beforeMount={beforeMount}
-        className="h-full min-h-0 w-full"
+        className="selectable-ui h-full min-h-0 w-full"
         height="100%"
         keepCurrentModel
         language={language}

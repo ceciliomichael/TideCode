@@ -296,26 +296,6 @@ function sanitizeEditSessionsByConversation(value: unknown): AppSettings['editSe
   return sanitizedValue
 }
 
-function sanitizeDisabledSkillsByPath(value: unknown): AppSettings['disabledSkillsByPath'] {
-  if (!value || typeof value !== 'object') {
-    return { ...DEFAULT_APP_SETTINGS.disabledSkillsByPath }
-  }
-
-  const candidateEntries = Object.entries(value as Record<string, unknown>)
-  const sanitizedValue: AppSettings['disabledSkillsByPath'] = {}
-
-  for (const [skillPath, disabled] of candidateEntries) {
-    const normalizedSkillPath = skillPath.trim()
-    if (normalizedSkillPath.length === 0 || disabled !== true) {
-      continue
-    }
-
-    sanitizedValue[normalizedSkillPath] = true
-  }
-
-  return sanitizedValue
-}
-
 function getConfigDirectoryPath() {
   const overriddenHome = process.env[SETTINGS_HOME_OVERRIDE_ENV]?.trim()
   const homePath = overriddenHome && overriddenHome.length > 0 ? overriddenHome : electronApp.getPath('home')
@@ -577,12 +557,18 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     : DEFAULT_APP_SETTINGS.agentModelProviderId
   const agentModelLabel =
     typeof input?.agentModelLabel === 'string' ? input.agentModelLabel.trim() : DEFAULT_APP_SETTINGS.agentModelLabel
+  const agentReasoningEffort = isReasoningEffort(input?.agentReasoningEffort)
+    ? input.agentReasoningEffort
+    : chatReasoningEffort
   const planModelId = typeof input?.planModelId === 'string' ? input.planModelId.trim() : DEFAULT_APP_SETTINGS.planModelId
   const planModelProviderId = isChatProviderId(input?.planModelProviderId)
     ? input.planModelProviderId
     : DEFAULT_APP_SETTINGS.planModelProviderId
   const planModelLabel =
     typeof input?.planModelLabel === 'string' ? input.planModelLabel.trim() : DEFAULT_APP_SETTINGS.planModelLabel
+  const planReasoningEffort = isReasoningEffort(input?.planReasoningEffort)
+    ? input.planReasoningEffort
+    : chatReasoningEffort
   const summarizationModelId =
     typeof input?.summarizationModelId === 'string'
       ? input.summarizationModelId.trim()
@@ -594,6 +580,9 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     typeof input?.summarizationModelLabel === 'string'
       ? input.summarizationModelLabel.trim()
       : DEFAULT_APP_SETTINGS.summarizationModelLabel
+  const summarizationReasoningEffort = isReasoningEffort(input?.summarizationReasoningEffort)
+    ? input.summarizationReasoningEffort
+    : chatReasoningEffort
   const gitCommitModelId =
     typeof input?.gitCommitModelId === 'string'
       ? input.gitCommitModelId.trim()
@@ -605,6 +594,9 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     typeof input?.gitCommitModelLabel === 'string'
       ? input.gitCommitModelLabel.trim()
       : DEFAULT_APP_SETTINGS.gitCommitModelLabel
+  const gitCommitReasoningEffort = isReasoningEffort(input?.gitCommitReasoningEffort)
+    ? input.gitCommitReasoningEffort
+    : chatReasoningEffort
   const kanbanAiPlanningEnabled =
     typeof input?.kanbanAiPlanningEnabled === 'boolean'
       ? input.kanbanAiPlanningEnabled
@@ -618,6 +610,9 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     typeof input?.kanbanModelLabel === 'string'
       ? input.kanbanModelLabel.trim()
       : DEFAULT_APP_SETTINGS.kanbanModelLabel
+  const kanbanReasoningEffort = isReasoningEffort(input?.kanbanReasoningEffort)
+    ? input.kanbanReasoningEffort
+    : chatReasoningEffort
   const diffPanelWidth =
     typeof input?.diffPanelWidth === 'number' && Number.isFinite(input.diffPanelWidth)
       ? clampStoredDiffPanelWidth(input.diffPanelWidth)
@@ -658,7 +653,6 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     typeof input?.workspaceFileEditorWordWrap === 'boolean'
       ? input.workspaceFileEditorWordWrap
       : DEFAULT_APP_SETTINGS.workspaceFileEditorWordWrap
-  const disabledSkillsByPath = sanitizeDisabledSkillsByPath(input?.disabledSkillsByPath)
   const sourceControlSectionOrder = sanitizeSourceControlSectionOrder(input?.sourceControlSectionOrder)
   const sourceControlSectionOpen = sanitizeSourceControlSectionOpen(input?.sourceControlSectionOpen)
   const sourceControlSectionSizes = sanitizeSourceControlSectionSizes(input?.sourceControlSectionSizes)
@@ -681,19 +675,24 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     agentModelId,
     agentModelProviderId,
     agentModelLabel,
+    agentReasoningEffort,
     planModelId,
     planModelProviderId,
     planModelLabel,
+    planReasoningEffort,
     summarizationModelId,
     summarizationModelProviderId,
     summarizationModelLabel,
+    summarizationReasoningEffort,
     gitCommitModelId,
     gitCommitModelProviderId,
     gitCommitModelLabel,
+    gitCommitReasoningEffort,
     kanbanAiPlanningEnabled,
     kanbanModelId,
     kanbanModelProviderId,
     kanbanModelLabel,
+    kanbanReasoningEffort,
     conversationModelPreferences,
     diffPanelWidth,
     editSessionsByConversation,
@@ -705,7 +704,6 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     revertEditSessionsByConversation,
     sendMessageOnEnter,
     workspaceFileEditorWordWrap,
-    disabledSkillsByPath,
     sidebarWidth,
 
     workspaceEditorWidth,

@@ -1,4 +1,5 @@
-import type { ChatProviderId } from '../../src/types/chat'
+import type { ChatProviderId, ReasoningEffort } from '../../src/types/chat'
+import { resolveReasoningEffortTransition } from '../../src/lib/reasoningEffortTransition'
 import type { TideCodeLaunchRequest } from '../../src/lib/appLaunchRequest'
 import {
   readStoredApiKeyProviders,
@@ -17,6 +18,7 @@ import {
 import { colors } from './renderer'
 import type { SelectItem } from './interactiveSelect'
 import type { CliSessionState, SlashCommandHelpers } from './types'
+import { buildTerminalReasoningEffortItems } from './terminalReasoningEffort'
 
 type ModelMenuAction =
   | { kind: 'add' }
@@ -103,6 +105,43 @@ function modelSelectItem(model: SystemModelItem, state: CliSessionState): Select
       : `${colors.cyan}[${model.providerLabel}]${colors.reset}`,
     isCurrent,
   }
+}
+
+export async function selectReasoningEffortForModel(
+  model: SystemModelItem,
+  currentEffort: ReasoningEffort,
+  helpers: SlashCommandHelpers,
+): Promise<ReasoningEffort | null> {
+  const normalizedEffort = resolveReasoningEffortTransition({
+    currentEffort,
+    defaultEffort: model.defaultReasoningEffort,
+    supportedEfforts: model.reasoningEfforts,
+  })
+  const items = buildTerminalReasoningEffortItems(model, normalizedEffort)
+  if (items.length === 0) return normalizedEffort
+
+  const currentIndex = items.findIndex((item) => item.isCurrent)
+  return helpers.select<ReasoningEffort>({
+    title: `Reasoning Effort · ${model.label}`,
+    items,
+    initialIndex: currentIndex >= 0 ? currentIndex : 0,
+    pageSize: 7,
+    footer: 'Choose reasoning effort · Esc cancels model change',
+  })
+}
+
+async function switchToModel(
+  model: SystemModelItem,
+  state: CliSessionState,
+  helpers: SlashCommandHelpers,
+): Promise<void> {
+  const reasoningEffort = await selectReasoningEffortForModel(model, state.reasoningEffort, helpers)
+  if (reasoningEffort === null) return
+  await helpers.switchModel(model.apiModelId, model.providerId, {
+    label: model.label,
+    preferenceModelId: model.id,
+    reasoningEffort,
+  })
 }
 
 async function openDesktopSettings(
@@ -230,10 +269,7 @@ export async function runCliModelCommand(
       helpers.renderError(`Model "${normalizedArgs[0]}" was not found among configured providers.`)
       return
     }
-    await helpers.switchModel(match.apiModelId, match.providerId, {
-      label: match.label,
-      preferenceModelId: match.id,
-    })
+    await switchToModel(match, state, helpers)
     return
   }
 
@@ -276,9 +312,6 @@ export async function runCliModelCommand(
       'Open TideCode desktop Settings → Models to manage custom models.',
     )
   } else {
-    await helpers.switchModel(selected.model.apiModelId, selected.model.providerId, {
-      label: selected.model.label,
-      preferenceModelId: selected.model.id,
-    })
+    await switchToModel(selected.model, state, helpers)
   }
 }

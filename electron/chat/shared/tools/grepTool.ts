@@ -25,7 +25,7 @@ export function createGrepTool(context: WorkspaceToolContext) {
       required: ['pattern'],
       type: 'object',
     }),
-    execute: async (rawInput) => {
+    execute: async (rawInput, options) => {
       const input = rawInput as { include?: string; limit?: number; offset?: number; path?: string; pattern: string }
       try {
         const target = await resolveReadOnlyTargetPath(
@@ -41,6 +41,7 @@ export function createGrepTool(context: WorkspaceToolContext) {
           input.include,
           input.offset,
           input.limit,
+          options?.abortSignal,
         )
       } catch (error) {
         return createToolErrorResult(getToolErrorSummary(error, 'Search failed.'))

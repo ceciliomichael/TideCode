@@ -4,9 +4,11 @@ import {
   getDesktopCompatibleProviderIds,
   getModelAddLaunchRequest,
   resolveModelAddLaunchRequest,
+  selectReasoningEffortForModel,
 } from '../../electron/cli/cliModelCommand'
 import type { StoredApiKeyProviders } from '../../electron/providers/store'
 import { buildProviderAddLaunchRequest } from '../../electron/cli/cliProviderCommand'
+import type { SlashCommandHelpers } from '../../electron/cli/types'
 
 test('model setup routes to desktop Models when a provider is configured', () => {
   assert.deepEqual(getModelAddLaunchRequest(true), {
@@ -69,4 +71,51 @@ test('requested unavailable providers are rejected instead of being replaced', (
     screen: 'settings',
     section: 'models',
   })
+})
+
+test('CLI model selection asks for reasoning effort using only the selected model capabilities', async () => {
+  let receivedItems: readonly unknown[] = []
+  const helpers = {
+    select: async (options: { items: readonly unknown[] }) => {
+      receivedItems = options.items
+      return 'low'
+    },
+  } as unknown as SlashCommandHelpers
+  const selected = await selectReasoningEffortForModel({
+    apiModelId: 'gpt-test',
+    defaultReasoningEffort: 'medium',
+    id: 'openai:gpt-test',
+    isConfigured: true,
+    isCustom: false,
+    label: 'GPT Test',
+    providerId: 'openai',
+    providerLabel: 'OpenAI',
+    reasoningCapable: true,
+    reasoningEfforts: ['low', 'medium', 'high'],
+  }, 'xhigh', helpers)
+
+  assert.equal(selected, 'low')
+  assert.equal(receivedItems.length, 3)
+})
+
+test('CLI model selection skips the reasoning prompt when the model has no reasoning control', async () => {
+  let selectCount = 0
+  const helpers = {
+    select: async () => {
+      selectCount += 1
+      return 'high'
+    },
+  } as unknown as SlashCommandHelpers
+  const selected = await selectReasoningEffortForModel({
+    apiModelId: 'plain-model',
+    id: 'openai:plain-model',
+    isConfigured: true,
+    isCustom: false,
+    label: 'Plain Model',
+    providerId: 'openai',
+    providerLabel: 'OpenAI',
+  }, 'medium', helpers)
+
+  assert.equal(selected, 'medium')
+  assert.equal(selectCount, 0)
 })

@@ -55,7 +55,7 @@ import { getStoredSettings, updateStoredSettings } from '../settings/store'
 import { isAppSettingsSurface } from '../../src/lib/appSettingsScopes'
 import { applyTideCodeAppIcon } from '../window/branding'
 import { applyWindowTheme } from '../window/theme'
-import { createSkill, listAvailableSkills } from '../skills/service'
+import { createSkill, listAvailableSkills, loadSkill, updateSkill } from '../skills/service'
 import {
   clearCompletedKanbanBoardCards,
   createKanbanBoardCard,
@@ -191,6 +191,18 @@ onSettingsChanged?: (settings: AppSettings, input: Partial<AppSettings>, surface
   ipcMain.handle('skills:list', async (_event, workspacePath?: string | null) => listAvailableSkills(workspacePath))
   ipcMain.handle('skills:createSkill', async (_event, input: Parameters<typeof createSkill>[0], workspacePath?: string | null) =>
     createSkill(input, workspacePath),
+  )
+  ipcMain.handle('skills:loadSkill', async (_event, skillName: string, workspacePath?: string | null) =>
+    loadSkill(skillName, workspacePath),
+  )
+  ipcMain.handle(
+    'skills:updateSkill',
+    async (
+      _event,
+      location: string,
+      input: Parameters<typeof updateSkill>[1],
+      workspacePath?: string | null,
+    ) => updateSkill(location, input, workspacePath),
   )
   ipcMain.handle('kanban:getBoardData', async (_event, input: KanbanWorkspaceInput) => getKanbanBoardData(input))
   ipcMain.handle('kanban:importBoardData', async (_event, input: KanbanWorkspaceInput & { cards: unknown[] }) =>

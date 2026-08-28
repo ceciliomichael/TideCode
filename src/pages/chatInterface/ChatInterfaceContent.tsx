@@ -94,8 +94,14 @@ export function ChatInterfaceContent({
   workspaceState,
 }: ChatInterfaceContentProps) {
   const [selectedProjectId, setSelectedProjectId] = useState<string>(settings.selectedProjectId ?? ALL_PROJECTS_FILTER_ID)
+  const [liveSidebarWidth, setLiveSidebarWidth] = useState(sidebarWidth)
+  const [isSidebarResizing, setIsSidebarResizing] = useState(false)
   const [mobileNewThreadDialogOpenSignal, setMobileNewThreadDialogOpenSignal] = useState(0)
   const previousActiveConversationArchivedRef = useRef<boolean | null>(null)
+
+  useEffect(() => {
+    setLiveSidebarWidth(sidebarWidth)
+  }, [sidebarWidth])
 
   // Sync selectedProjectId with settings
   useEffect(() => {
@@ -223,18 +229,16 @@ synchronizeDraftFolder,
         modelOptions: chatRuntimeConfig.modelOptions,
         taskModelId: settings.summarizationModelId,
         taskModelProviderId: settings.summarizationModelProviderId,
+        taskReasoningEffort: settings.summarizationReasoningEffort,
       })
-
-      return {
-        ...resolvedSelection,
-        reasoningEffort: runtimeSelection.reasoningEffort,
-      }
+      return resolvedSelection
     },
     [
       chatRuntimeConfig.modelOptions,
       runtimeSelection,
       settings.summarizationModelId,
       settings.summarizationModelProviderId,
+      settings.summarizationReasoningEffort,
     ],
   )
   const [compactionRefreshSignal, setCompactionRefreshSignal] = useState(0)
@@ -460,7 +464,6 @@ synchronizeDraftFolder,
   const {
     handleCreateConversation,
     handleCreateFolder,
-    handleCreateWorkspaceConversation,
     handleCreateWorkspaceFolderFromPath,
      handleArchiveConversation,
      handleDeleteConversation,
@@ -496,6 +499,7 @@ synchronizeDraftFolder,
     isCompressingChat,
     onMainTurnAccepted: handleMainTurnAccepted,
     onConversationHistoryChanged: handleConversationHistoryChanged,
+    resolveDefaultRuntimeModel: chatRuntimeConfig.resolveDefaultRuntimeModel,
     runtimeSelection,
     workspaceState,
   })
@@ -552,13 +556,18 @@ synchronizeDraftFolder,
       mobileSidebarPresentation={isMobileViewport ? 'drawer' : undefined}
       onMobileSidebarRequestClose={isMobileViewport ? handleCloseMobileSidebar : undefined}
       onSidebarWidthChange={onSidebarWidthChange}
+      onSidebarWidthPreview={setLiveSidebarWidth}
+      onSidebarResizeStateChange={setIsSidebarResizing}
       floatingControls={
         <WorkspaceFloatingControls
           hideMobile
           isSidebarOpen={interfaceController.isSidebarOpen}
+          isSidebarResizing={isSidebarResizing}
           onToggleSidebar={interfaceController.handleToggleSidebar}
+          sidebarWidth={liveSidebarWidth}
           newThreadButton={{
-            onClick: handleCreateWorkspaceConversation,
+            onClick: () => setMobileNewThreadDialogOpenSignal((currentSignal) => currentSignal + 1),
+            tooltip: 'Choose a project for a new thread',
           }}
         />
       }

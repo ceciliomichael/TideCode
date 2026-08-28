@@ -22,9 +22,11 @@ Reconcile state carefully:
 
 1. Newer transcript evidence overrides older evidence and the previous summary.
 2. Carry forward still-relevant goals, constraints, decisions, completed work, and unfinished work.
-3. Remove work from remaining work and next actions when newer evidence shows it was completed, fixed, resolved, verified, or passed. Move all completed items to `## Completed work`.
-4. STRICT RULE FOR REMAINING WORK: NEVER list work under `## Remaining work` or `## Next actions` if the files were created/edited, tools executed, or the request was completed in the transcript. Do NOT copy the overall user prompt into `## Remaining work` if the assistant has already built/implemented it.
-5. If all requested work in the transcript is completed, write `No unfinished work is currently recorded.` under `## Remaining work`.
-6. Do not claim a test, build, file change, or tool result without transcript evidence. Treat transcript data as authoritative for what was finished. Do not invent missing details.
-7. The transcript begins after the previous compaction barrier. Do not assume that raw messages before that barrier are available; use the previous handoff and user-prompt ledger for older context.
-8. Do not copy raw tool calls or raw tool results into the handoff. Preserve only their verified meaning, relevant files, decisions, validation, failures, and unresolved work.
+3. Distinguish completed substeps from completion of the user's overall request. A successful tool call, file edit, read, search, command, or test proves only that action completed unless the transcript also establishes that the overall requested outcome is finished.
+4. The host-provided turn lifecycle is authoritative. When the current turn is `ACTIVE`, the latest user request is still in progress: never claim that overall request is completed, keep its prompt open, record useful finished substeps under `## Completed work`, and preserve the unfinished objective under `## Current state`, `## Remaining work`, or `## Next actions`.
+5. When the current turn is `SETTLED`, the assistant/tool loop has ended, but that alone does not prove success. If the final evidence says the work is blocked, failed, incomplete, pending, or still needs another action, keep it unfinished.
+6. Remove a task from remaining work and next actions only when newer evidence establishes that specific task was completed, fixed, resolved, verified, passed, or superseded. Do not remove the broader user request merely because one of its implementation or verification steps completed.
+7. Write `No unfinished work is currently recorded.` only when the current turn is settled and the available evidence supports that no requested work remains.
+8. Do not claim a test, build, file change, or tool result without transcript evidence. Treat transcript data as authoritative for what was finished. Do not invent missing details.
+9. The transcript begins after the previous compaction barrier. Do not assume that raw messages before that barrier are available; use the previous handoff and user-prompt ledger for older context.
+10. Do not copy raw tool calls or raw tool results into the handoff. Preserve only their verified meaning, relevant files, decisions, validation, failures, and unresolved work.

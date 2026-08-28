@@ -167,17 +167,9 @@ async function loadWorkspaceMentionIndex(workspaceRootPath: string) {
   }
   if (typeof window !== 'undefined' && window.tidecodeSkills) {
     try {
-      const [skillsState, settings] = await Promise.all([
-        window.tidecodeSkills.listSkills(workspaceRootPath),
-        window.tidecodeSettings ? window.tidecodeSettings.getSettings() : Promise.resolve(null),
-      ])
+      const skillsState = await window.tidecodeSkills.listSkills(workspaceRootPath)
 
-      const disabledSkillsByPath = settings?.disabledSkillsByPath ?? {}
-      const enabledSkills = skillsState.skills.filter(
-        (skill) => disabledSkillsByPath[skill.location] !== true,
-      )
-
-      for (const skill of enabledSkills) {
+      for (const skill of skillsState.skills) {
         skillEntries.push({
           description: skill.description || 'Skill pack',
           kind: 'skill',
