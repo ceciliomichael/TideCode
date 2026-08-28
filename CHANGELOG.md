@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.26 - More reliable planning and background use
+
+TideCode 1.2.26 keeps the app available from the system tray and makes planning, workspace instructions, context reporting, and settings handling more predictable.
+
+- Keeps TideCode running from the system tray with a dedicated tray popup, so the app remains available when the main window is closed.
+- Stabilizes Plan Mode around a persistent runtime contract while keeping Agent and Plan cache context aligned, with `plan_create` and `apply_patch` available under host-enforced plan-only mutation boundaries.
+- Makes root `AGENTS.md` handling revision-aware, reusing instructions already read into model context and reading the file again only when its revision changes.
+- Improves recoverable Code Mode inspection behavior and separates system-prompt and tool-schema token usage in the context indicator.
+- Strengthens settings lock recovery and isolates development settings from the production app to reduce lock contention.
+- Requires no manual migration or configuration changes.
+
 ## 1.2.25 - Safer patching and cleaner workspace workflows
 
 TideCode 1.2.25 improves Code Mode resilience, multi-file patch reliability, workspace visibility, and everyday Kanban and settings behavior.
