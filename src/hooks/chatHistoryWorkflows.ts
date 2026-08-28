@@ -10,6 +10,7 @@ import type {
   Message,
   ReasoningEffort,
   ChatProviderId,
+  ChatRuntimeEnvironmentSnapshot,
   UserMessageRunCheckpoint,
 } from '../types/chat'
 import { getConversationTitleFromInput } from './chatHistoryViewModels'
@@ -21,6 +22,7 @@ import {
 import { isSameTurnSteerMessage } from '../lib/chatMessageMetadata'
 import {
   buildHiddenUserContextTransitions,
+  buildRuntimeEnvironmentHiddenContextTransitions,
   buildWorkspaceInstructionsTransition,
 } from '../lib/hiddenUserContext'
 import type { UserMessageSubmission } from './chatMessageSendTypes'
@@ -110,6 +112,7 @@ async function buildPersistedHiddenUserContext(input: {
   workspaceRootPath: string
 }) {
   let workspaceInstructionsRevision: string | null = null
+  let runtimeEnvironment: ChatRuntimeEnvironmentSnapshot | null = null
   try {
     const result = await window.tidecodeWorkspace.readFile({
       relativePath: 'AGENTS.md',
@@ -122,8 +125,20 @@ async function buildPersistedHiddenUserContext(input: {
     workspaceInstructionsRevision = null
   }
 
+  try {
+    runtimeEnvironment = await window.tidecodeTerminal.getEnvironmentSnapshot(input.workspaceRootPath)
+  } catch {
+    runtimeEnvironment = null
+  }
+
   return [
     ...buildHiddenUserContextTransitions(input),
+    ...(runtimeEnvironment
+      ? buildRuntimeEnvironmentHiddenContextTransitions({
+          environment: runtimeEnvironment,
+          messages: input.messages,
+        })
+      : []),
     ...buildWorkspaceInstructionsTransition({
       messages: input.messages,
       revision: workspaceInstructionsRevision,

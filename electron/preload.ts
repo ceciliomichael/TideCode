@@ -385,6 +385,7 @@ const terminalApi: TideCodeTerminalApi = {
   createSession: (input: CreateTerminalSessionInput) => ipcRenderer.invoke('terminal:createSession', input),
   detachSession: (input) => ipcRenderer.invoke('terminal:detachSession', input),
   getSession: (input) => ipcRenderer.invoke('terminal:getSession', input),
+  getEnvironmentSnapshot: (workspaceRootPath) => ipcRenderer.invoke('terminal:getEnvironmentSnapshot', workspaceRootPath),
   listSessions: () => ipcRenderer.invoke('terminal:listSessions'),
   openExternalLink: (input: OpenExternalTerminalLinkInput) => ipcRenderer.invoke('terminal:openExternalLink', input),
   onData: (listener) => {

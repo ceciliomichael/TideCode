@@ -17,6 +17,7 @@ import {
   buildChatModeHiddenContext,
   buildExecutionModeHiddenContext,
   buildHiddenUserContextTransitions,
+  buildRuntimeEnvironmentHiddenContextTransitions,
 } from '../../src/lib/hiddenUserContext'
 
 function createPromptImageAttachment() {
@@ -127,6 +128,65 @@ test('Plan to Agent transition keeps the previous provider messages as an exact 
   const lastMessageContent = String(agentPrompt.messages.at(-1)?.content ?? '')
   assert.ok(lastMessageContent.includes('mode="agent" state="active_until_superseded"'))
   assert.equal(lastMessageContent.includes('mode="sandbox"'), false)
+})
+
+test('runtime environment transition keeps the previous provider messages as an exact prefix', () => {
+  const initialEnvironment = {
+    pythonVenv: { name: '.venv', relativePath: '.venv' },
+    terminalShell: { command: 'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe', label: 'PowerShell' },
+  }
+  const initialContexts = buildRuntimeEnvironmentHiddenContextTransitions({
+    environment: initialEnvironment,
+    messages: [],
+  })
+  const initialMessages: Message[] = [
+    {
+      chatMode: 'agent',
+      content: 'Inspect the project.',
+      hiddenUserContext: initialContexts,
+      id: 'user-environment-initial',
+      role: 'user',
+      timestamp: 1,
+    },
+    {
+      content: 'Inspection complete.',
+      id: 'assistant-environment-initial',
+      role: 'assistant',
+      timestamp: 2,
+    },
+  ]
+  const initialPrompt = buildChatPrompt({
+    chatMode: 'agent',
+    messages: initialMessages,
+    workspaceRootPath: 'C:/repo',
+  })
+  const changedContexts = buildRuntimeEnvironmentHiddenContextTransitions({
+    environment: { ...initialEnvironment, pythonVenv: null },
+    messages: initialMessages,
+  })
+  assert.deepEqual(changedContexts.map((context) => [context.kind, context.state]), [
+    ['python_venv', 'none'],
+  ])
+
+  const changedMessages: Message[] = [
+    ...initialMessages,
+    {
+      chatMode: 'agent',
+      content: 'Continue without the virtual environment.',
+      hiddenUserContext: changedContexts,
+      id: 'user-environment-changed',
+      role: 'user',
+      timestamp: 3,
+    },
+  ]
+  const changedPrompt = buildChatPrompt({
+    chatMode: 'agent',
+    messages: changedMessages,
+    workspaceRootPath: 'C:/repo',
+  })
+
+  assert.deepEqual(changedPrompt.messages.slice(0, initialPrompt.messages.length), initialPrompt.messages)
+  assert.match(String(changedPrompt.messages.at(-1)?.content ?? ''), /No Python virtual environment is currently detected/u)
 })
 
 test('tool result replay preserves oversized model content without truncation', () => {

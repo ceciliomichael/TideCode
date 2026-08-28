@@ -1,5 +1,6 @@
 import type {
   AppTerminalExecutionMode,
+  ChatRuntimeEnvironmentSnapshot,
   ChatMode,
   HiddenUserContext,
   Message,
@@ -7,6 +8,8 @@ import type {
 
 export const CHAT_MODE_HIDDEN_CONTEXT_KIND = 'chat_mode'
 export const EXECUTION_MODE_HIDDEN_CONTEXT_KIND = 'execution_mode'
+export const PYTHON_VENV_HIDDEN_CONTEXT_KIND = 'python_venv'
+export const TERMINAL_SHELL_HIDDEN_CONTEXT_KIND = 'terminal_shell'
 export const WORKSPACE_INSTRUCTIONS_HIDDEN_CONTEXT_KIND = 'workspace_instructions'
 
 const HIDDEN_USER_CONTEXT_PATTERN =
@@ -24,6 +27,67 @@ function wrapHiddenUserContext(kind: string, state: string, content: string): Hi
     kind,
     state,
   }
+}
+
+function escapeHiddenUserContextMarkup(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+}
+
+function buildTerminalShellState(environment: ChatRuntimeEnvironmentSnapshot) {
+  const shell = environment.terminalShell
+  return shell
+    ? `active:${encodeURIComponent(shell.label)}:${encodeURIComponent(shell.command)}`
+    : 'none'
+}
+
+function buildPythonVenvState(environment: ChatRuntimeEnvironmentSnapshot) {
+  const venv = environment.pythonVenv
+  return venv
+    ? `active:${encodeURIComponent(venv.name)}:${encodeURIComponent(venv.relativePath)}`
+    : 'none'
+}
+
+function buildTerminalShellHiddenContext(environment: ChatRuntimeEnvironmentSnapshot): HiddenUserContext {
+  const shell = environment.terminalShell
+  const state = buildTerminalShellState(environment)
+  return wrapHiddenUserContext(TERMINAL_SHELL_HIDDEN_CONTEXT_KIND, state, shell
+    ? [
+        '<terminal_environment state="active_until_superseded">',
+        'This terminal shell context remains active until a later terminal_shell context supersedes it.',
+        '- Active terminal shell: ' + escapeHiddenUserContextMarkup(shell.label) + ' (' + escapeHiddenUserContextMarkup(shell.command) + ').',
+        '- Write terminal commands using this shell syntax. Do not assume another shell.',
+        '</terminal_environment>',
+      ].join('\\n')
+    : [
+        '<terminal_environment state="unavailable_until_superseded">',
+        'No active terminal shell is currently resolved. This state remains active until a later terminal_shell context supersedes it.',
+        '</terminal_environment>',
+      ].join('\\n'))
+}
+
+function buildPythonVenvHiddenContext(environment: ChatRuntimeEnvironmentSnapshot): HiddenUserContext {
+  const venv = environment.pythonVenv
+  const state = buildPythonVenvState(environment)
+  const venvLabel = venv && venv.relativePath !== venv.name && venv.relativePath !== '.'
+    ? `${escapeHiddenUserContextMarkup(venv.name)} (${escapeHiddenUserContextMarkup(venv.relativePath)})`
+    : venv
+      ? escapeHiddenUserContextMarkup(venv.name)
+      : null
+  return wrapHiddenUserContext(PYTHON_VENV_HIDDEN_CONTEXT_KIND, state, venvLabel
+    ? [
+        '<python_environment state="active_until_superseded">',
+        'This Python environment context remains active until a later python_venv context supersedes it.',
+        `Python virtual environment activated: ${venvLabel}`,
+        '</python_environment>',
+      ].join('\\n')
+    : [
+        '<python_environment state="none_until_superseded">',
+        'No Python virtual environment is currently detected for this workspace. This state remains active until a later python_venv context supersedes it.',
+        '</python_environment>',
+      ].join('\\n'))
 }
 
 export function buildWorkspaceInstructionsHiddenContext(revision: string): HiddenUserContext {
@@ -140,6 +204,39 @@ export function buildHiddenUserContextTransitions(input: {
   ) {
     contexts.push(buildExecutionModeHiddenContext(input.terminalExecutionMode))
   }
+  return contexts
+}
+
+export function buildRuntimeEnvironmentHiddenContextTransitions(input: {
+  environment: ChatRuntimeEnvironmentSnapshot
+  messages: readonly Message[]
+}) {
+  const contexts: HiddenUserContext[] = []
+
+  const terminalShellState = buildTerminalShellState(input.environment)
+  const previousTerminalShellState = getLatestHiddenUserContextState(
+    input.messages,
+    TERMINAL_SHELL_HIDDEN_CONTEXT_KIND,
+  )
+  if (
+    previousTerminalShellState !== terminalShellState
+    && (input.environment.terminalShell !== null || previousTerminalShellState !== null)
+  ) {
+    contexts.push(buildTerminalShellHiddenContext(input.environment))
+  }
+
+  const pythonVenvState = buildPythonVenvState(input.environment)
+  const previousPythonVenvState = getLatestHiddenUserContextState(
+    input.messages,
+    PYTHON_VENV_HIDDEN_CONTEXT_KIND,
+  )
+  if (
+    previousPythonVenvState !== pythonVenvState
+    && (input.environment.pythonVenv !== null || previousPythonVenvState !== null)
+  ) {
+    contexts.push(buildPythonVenvHiddenContext(input.environment))
+  }
+
   return contexts
 }
 

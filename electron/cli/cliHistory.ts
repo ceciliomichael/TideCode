@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import type { ChatAttachment, ConversationModelPreference, ConversationRecord, Message } from '../../src/types/chat'
-import { buildHiddenUserContextTransitions } from '../../src/lib/hiddenUserContext'
+import {
+  buildHiddenUserContextTransitions,
+  buildRuntimeEnvironmentHiddenContextTransitions,
+} from '../../src/lib/hiddenUserContext'
+import { resolveChatRuntimeEnvironment } from '../chat/shared/runtimeEnvironment'
 import { resolveWorkspaceInstructionsTransition } from '../chat/shared/workspaceInstructionsContext'
 import { getConversationTitleFromInput } from '../../src/hooks/chatHistoryViewModels'
 import { appendStoredMessages, getStoredConversation } from '../history/store'
@@ -109,11 +113,16 @@ export async function createAndPersistCliUserMessage(
   const existingConversation = await getStoredConversation(state.conversationId)
   if (!existingConversation) await createCliConversationRecord(state)
   const checkpoint = await createWorkspaceCheckpoint({ workspaceRootPath: state.workspaceRootPath })
+  const runtimeEnvironment = resolveChatRuntimeEnvironment(state.workspaceRootPath)
   const hiddenUserContext = [
     ...buildHiddenUserContextTransitions({
       chatMode: state.chatMode,
       messages: state.messages,
       terminalExecutionMode: state.terminalExecutionMode,
+    }),
+    ...buildRuntimeEnvironmentHiddenContextTransitions({
+      environment: runtimeEnvironment,
+      messages: state.messages,
     }),
     ...await resolveWorkspaceInstructionsTransition({
       messages: state.messages,
