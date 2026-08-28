@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.27 - More stable AI context caching
+
+TideCode 1.2.27 keeps AI prompt caching more stable when terminal shell or Python virtual environment state changes, reducing unnecessary cache invalidation while preserving current workspace authority and mode safety.
+
+- Moves active terminal shell and detected Python virtual environment details from the system prompt into persisted runtime context transitions.
+- Appends shell and virtual-environment updates only when state changes, including an explicit transition when a previously detected Python environment disappears.
+- Preserves the authoritative workspace root, Code Mode tool contract, Plan and Agent cache alignment, and host-side permission boundaries.
+- Requires no manual migration or configuration changes.
+
 ## 1.2.26 - More reliable planning and background use
 
 TideCode 1.2.26 keeps the app available from the system tray and makes planning, workspace instructions, context reporting, and settings handling more predictable.
