@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0 - More reliable agent workflows and configuration
+
+TideCode 1.3.0 strengthens long-running agent work, tool execution, model configuration, and workspace reliability across Desktop and CLI.
+
+- Makes Code Mode patching, mutations, cancellation, run-service requests, and tool-output recovery more resilient, including Windows-safe file replacement and bounded operations.
+- Keeps active requests open across AI compaction and reduces memory and CPU overhead in long, tool-heavy chats with bounded reads, coalesced streaming updates, and leaner recovery payloads.
+- Adds default reasoning effort per task model and clearer configuration cards and dialogs, while keeping Agent and Plan defaults separate from conversation-specific overrides across Desktop and CLI.
+- Makes skills consistently editable from Settings, tightens text-selection behavior across workspace panels, and prevents duplicate TideCode PATH entries when the Windows installer runs repeatedly.
+- Requires no manual migration or configuration changes.
+- Validated with 1,398 automated tests, TypeScript type checking, the production build, and pull-request CI.
+
 ## 1.2.27 - More stable AI context caching
 
 TideCode 1.2.27 keeps AI prompt caching more stable when terminal shell or Python virtual environment state changes, reducing unnecessary cache invalidation while preserving current workspace authority and mode safety.
