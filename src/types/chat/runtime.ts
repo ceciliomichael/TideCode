@@ -94,6 +94,7 @@ export interface ContextUsageEstimate {
   historyTokens: number
   maxTokens: number
   systemPromptTokens: number
+  toolSchemaTokens?: number
   toolResultsTokens: number
   totalTokens: number
 }

@@ -2,9 +2,11 @@ import { v4 as uuidv4 } from 'uuid'
 import type {
   ChatAttachment,
   ChatMode,
+  AppTerminalExecutionMode,
   ConversationFolderSummary,
   ConversationRecord,
   ConversationSummary,
+  HiddenUserContext,
   Message,
   ReasoningEffort,
   ChatProviderId,
@@ -17,6 +19,10 @@ import {
   prefetchChatCompactionMarkers,
 } from '../lib/chatCompactionMarkerCache'
 import { isSameTurnSteerMessage } from '../lib/chatMessageMetadata'
+import {
+  buildHiddenUserContextTransitions,
+  buildWorkspaceInstructionsTransition,
+} from '../lib/hiddenUserContext'
 import type { UserMessageSubmission } from './chatMessageSendTypes'
 
 export interface ChatHistorySnapshot {
@@ -35,6 +41,7 @@ interface PersistUserTurnInput {
   reasoningEffort: ReasoningEffort
   selectedFolderId: string | null
   targetEditMessageId: string | null
+  terminalExecutionMode: AppTerminalExecutionMode
   attachments: ChatAttachment[]
   messages: readonly UserMessageSubmission[]
   trimmedText: string
@@ -61,12 +68,14 @@ function buildUserMessage(
   attachments: ChatAttachment[],
   runCheckpoint: UserMessageRunCheckpoint,
   chatMode: ChatMode,
+  hiddenUserContext: HiddenUserContext[],
   forcedId?: string,
 ): Message {
   return {
     attachments: attachments.length > 0 ? attachments : undefined,
     chatMode,
     content: trimmedText,
+    hiddenUserContext: hiddenUserContext.length > 0 ? hiddenUserContext : undefined,
     id: forcedId ?? uuidv4(),
     modelId,
     providerId,
@@ -92,6 +101,34 @@ async function loadStoredConversationOrThrow(conversationId: string) {
 
     throw new Error(`Unable to load conversation: ${conversationId}`)
   }
+}
+
+async function buildPersistedHiddenUserContext(input: {
+  chatMode: ChatMode
+  messages: readonly Message[]
+  terminalExecutionMode: AppTerminalExecutionMode
+  workspaceRootPath: string
+}) {
+  let workspaceInstructionsRevision: string | null = null
+  try {
+    const result = await window.tidecodeWorkspace.readFile({
+      relativePath: 'AGENTS.md',
+      workspaceRootPath: input.workspaceRootPath,
+    })
+    if (result.status === 'ready' && !result.isBinary && !result.isTruncated) {
+      workspaceInstructionsRevision = `${result.modifiedTimeMs}:${result.sizeBytes}`
+    }
+  } catch {
+    workspaceInstructionsRevision = null
+  }
+
+  return [
+    ...buildHiddenUserContextTransitions(input),
+    ...buildWorkspaceInstructionsTransition({
+      messages: input.messages,
+      revision: workspaceInstructionsRevision,
+    }),
+  ]
 }
 
 async function loadConversationForInitialView(conversationId: string) {
@@ -325,6 +362,21 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
     }
 
     const currentConversation = await loadStoredConversationOrThrow(input.activeConversationId)
+    const targetMessageIndex = currentConversation.messages.findIndex(
+      (message) => message.id === input.targetEditMessageId && message.role === 'user',
+    )
+
+    if (targetMessageIndex < 0) {
+      throw new Error(`Message not found: ${input.targetEditMessageId}`)
+    }
+
+    const messagesBeforeEditedTurn = currentConversation.messages.slice(0, targetMessageIndex)
+    const hiddenUserContext = await buildPersistedHiddenUserContext({
+      chatMode: input.chatMode,
+      messages: messagesBeforeEditedTurn,
+      terminalExecutionMode: input.terminalExecutionMode,
+      workspaceRootPath: currentConversation.agentContextRootPath,
+    })
     const runCheckpoint = await createRunCheckpoint(currentConversation.agentContextRootPath)
     const userMessage = buildUserMessage(
       normalizedMessages[0].text,
@@ -334,15 +386,9 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
       normalizedMessages[0].attachments,
       runCheckpoint,
       input.chatMode,
+      hiddenUserContext,
       input.targetEditMessageId,
     )
-    const targetMessageIndex = currentConversation.messages.findIndex(
-      (message) => message.id === input.targetEditMessageId && message.role === 'user',
-    )
-
-    if (targetMessageIndex < 0) {
-      throw new Error(`Message not found: ${input.targetEditMessageId}`)
-    }
 
     const rewrittenMessages = [...currentConversation.messages.slice(0, targetMessageIndex), userMessage]
     const conversation = await window.tidecodeHistory.replaceMessages({
@@ -385,7 +431,13 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
 
   const shouldUpdateTitle = currentConversation.messages.length === 0
   const runCheckpoint = await createRunCheckpoint(currentConversation.agentContextRootPath)
-  const userMessages = normalizedMessages.map((message) =>
+  const hiddenUserContext = await buildPersistedHiddenUserContext({
+    chatMode: input.chatMode,
+    messages: currentConversation.messages,
+    terminalExecutionMode: input.terminalExecutionMode,
+    workspaceRootPath: currentConversation.agentContextRootPath,
+  })
+  const userMessages = normalizedMessages.map((message, index) =>
     buildUserMessage(
       message.text,
       input.modelId,
@@ -394,6 +446,7 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
       message.attachments,
       runCheckpoint,
       input.chatMode,
+      index === 0 ? hiddenUserContext : [],
     ),
   )
   const userMessage = userMessages[0]

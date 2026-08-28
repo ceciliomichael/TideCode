@@ -62,6 +62,7 @@ SOURCE: /[\s\S]+/
 `
 
 const MAX_TOOL_SEARCH_RESULT_BYTES = 32_000
+const HIDDEN_PRELOADED_TOOL_NAMES = new Set(['plan_create'])
 
 interface ToolSearchInput {
   limit?: number
@@ -132,6 +133,7 @@ const CODE_MODE_TOOL_ROUTING = [
   'Provider boundary: invoke the model-facing code_mode tool. Every tools.* name below is a JavaScript API that exists only inside the code_mode code string; never emit tools.* as a provider tool name.',
   'Choose the purpose-built inner API for the scenario. Do not use terminal commands as a substitute for structured workspace APIs.',
   'Code Mode receives one JavaScript source program. Do not create a separate payloads object or emit nested provider tool calls.',
+  'The APIs documented below are the stable Code Mode capability catalog, not permission for the current execution. Runtime policy can restrict this catalog. Treat the active runtime context and the actual tools object as authoritative. If an API is unavailable or forbidden, do not infer that it should exist, search for a replacement, or substitute another mutation path.',
   '- `tools.read`: inspect one known file or directory. A path is known only when the user supplied it or a prior workspace tool returned that exact path. Never infer filenames from conventions.',
   '- `tools.read_tool_output`: read only a narrowly targeted section when a truncated result omitted content you actually need; never call it automatically.',
   '- If the exact file path is unknown, discover it first with `tools.list`, `tools.glob`, or `tools.grep`, then use the returned path in `tools.read` or the patch file header.',
@@ -153,7 +155,7 @@ const CODE_MODE_TOOL_ROUTING = [
 
 function buildPreloadedToolDocumentation(registry: AgentToolRegistry) {
   const contracts = registry.entries
-    .filter((entry) => !isDynamicAgentTool(entry))
+    .filter((entry) => !isDynamicAgentTool(entry) && !HIDDEN_PRELOADED_TOOL_NAMES.has(entry.name))
     .map((entry) => createAgentToolCallableContract(entry))
 
   if (contracts.length === 0) {
@@ -190,12 +192,15 @@ function usesNativeFreeformCodeModeTransport(providerId?: ChatProviderId) {
 async function executeCodeModeSource(
   executor: CodeModeExecutor,
   input: unknown,
-  options: { abortSignal?: AbortSignal },
+  options: { abortSignal?: AbortSignal; allowedToolNames?: readonly string[] },
 ): Promise<AgentToolExecutionResult> {
   const source = normalizeCodeModeSourceInput(input)
   if (source.trim().length === 0) return createToolErrorResult('code_mode requires a non-empty JavaScript program.')
 
-  const result = await executor.run(source, { abortSignal: options.abortSignal })
+  const result = await executor.run(source, {
+    abortSignal: options.abortSignal,
+    allowedToolNames: options.allowedToolNames,
+  })
   const outputBody = result.output === undefined
     ? formatImplicitCodeModeToolResults(result.toolCalls)
     : formatExplicitCodeModeOutput(result.output)
@@ -232,13 +237,16 @@ async function executeCodeModeSource(
 export function createCodeModeTool(
   executor: CodeModeExecutor,
   registry: AgentToolRegistry,
-  options: { providerId?: ChatProviderId } = {},
+  options: { allowedToolNames?: readonly string[]; providerId?: ChatProviderId } = {},
 ) {
   const description = buildCodeModeDescription(registry)
   if (usesNativeFreeformCodeModeTransport(options.providerId)) {
     return openai.tools.customTool({
       description,
-      execute: async (source, executionOptions) => executeCodeModeSource(executor, source, executionOptions),
+      execute: async (source, executionOptions) => executeCodeModeSource(executor, source, {
+        abortSignal: executionOptions.abortSignal,
+        allowedToolNames: options.allowedToolNames,
+      }),
       format: {
         definition: CODE_MODE_FREEFORM_GRAMMAR,
         syntax: 'lark',
@@ -251,6 +259,9 @@ export function createCodeModeTool(
     description,
     inputSchema: jsonSchema<CodeModeSourceInput>(CODE_MODE_SOURCE_INPUT_SCHEMA),
     execute: async (input, executionOptions): Promise<AgentToolExecutionResult> =>
-      executeCodeModeSource(executor, input, executionOptions),
+      executeCodeModeSource(executor, input, {
+        abortSignal: executionOptions.abortSignal,
+        allowedToolNames: options.allowedToolNames,
+      }),
   })
 }

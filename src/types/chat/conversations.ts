@@ -22,6 +22,12 @@ export interface ToolDecisionRequest {
   streamId: string
 }
 
+export interface HiddenUserContext {
+  content: string
+  kind: string
+  state?: string
+}
+
 export interface FileDiffToolResultPresentation {
   addedLineCount?: number
   contextLines?: number
@@ -108,6 +114,7 @@ export interface ToolInvocationTrace {
 export interface Message {
   attachments?: ChatAttachment[]
   chatMode?: ChatMode
+  hiddenUserContext?: HiddenUserContext[]
   id: string
   role: MessageRole
   content: string

@@ -1,7 +1,64 @@
 import type { Message } from '../types/chat'
-import type { PlanToolResultPresentation } from './planContracts'
+import { isPlanRelativePath, type PlanToolResultPresentation } from './planContracts'
+import { parseStructuredToolResultContent } from './toolResultContent'
 
-const PLAN_TOOL_NAMES = new Set(['plan_create', 'plan_edit'])
+type ToolInvocation = NonNullable<Message['toolInvocations']>[number]
+
+interface CompletedPlanToolCall {
+  presentation: PlanToolResultPresentation
+  toolName: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function readPlanPresentation(value: unknown): PlanToolResultPresentation | null {
+  if (!isRecord(value) || value.kind !== 'plan') return null
+  if (
+    typeof value.content !== 'string' ||
+    typeof value.fileName !== 'string' ||
+    (value.operation !== 'created' && value.operation !== 'updated') ||
+    typeof value.planId !== 'string' ||
+    typeof value.relativePath !== 'string' ||
+    typeof value.title !== 'string' ||
+    typeof value.updatedAt !== 'number' ||
+    !isPlanRelativePath(value.relativePath)
+  ) {
+    return null
+  }
+  return value as unknown as PlanToolResultPresentation
+}
+
+function getCompletedPlanToolCalls(invocation: ToolInvocation): CompletedPlanToolCall[] {
+  const directPresentation = invocation.state === 'completed'
+    ? readPlanPresentation(invocation.resultPresentation)
+    : null
+  const calls: CompletedPlanToolCall[] = directPresentation
+    ? [{ presentation: directPresentation, toolName: invocation.toolName }]
+    : []
+
+  if (invocation.toolName !== 'code_mode' || invocation.state !== 'completed' || !invocation.resultContent) {
+    return calls
+  }
+
+  const parsedResult = parseStructuredToolResultContent(invocation.resultContent)
+  const rawToolCalls = parsedResult.metadata?.semantics?.tool_calls
+  if (!Array.isArray(rawToolCalls)) return calls
+
+  for (const rawToolCall of rawToolCalls) {
+    if (!isRecord(rawToolCall) || rawToolCall.status !== 'success' || typeof rawToolCall.name !== 'string') {
+      continue
+    }
+    const presentation = readPlanPresentation(
+      rawToolCall.result_presentation ?? rawToolCall.resultPresentation,
+    )
+    if (presentation) {
+      calls.push({ presentation, toolName: rawToolCall.name })
+    }
+  }
+  return calls
+}
 
 export function shouldAutoOpenPlanPreview(
   previousPlanKey: string | null,
@@ -13,7 +70,9 @@ export function shouldAutoOpenPlanPreview(
 
 export function hasPlanToolInvocation(messages: readonly Message[]) {
   return messages.some((message) =>
-    message.toolInvocations?.some((invocation) => PLAN_TOOL_NAMES.has(invocation.toolName)),
+    message.toolInvocations?.some((invocation) =>
+      invocation.toolName === 'plan_create' || getCompletedPlanToolCalls(invocation).length > 0,
+    ),
   )
 }
 
@@ -22,11 +81,9 @@ export function getLatestCompletedPlanPresentation(messages: readonly Message[])
 
   for (const message of messages) {
     for (const invocation of message.toolInvocations ?? []) {
-      if (invocation.state !== 'completed' || invocation.resultPresentation?.kind !== 'plan') {
-        continue
+      for (const call of getCompletedPlanToolCalls(invocation)) {
+        latestPresentation = call.presentation
       }
-
-      latestPresentation = invocation.resultPresentation
     }
   }
 
@@ -42,16 +99,11 @@ export function getPlanPathsCreatedByRevertedUserMessage(messages: readonly Mess
   const createdPlanPaths = new Set<string>()
   for (const message of messages.slice(targetIndex + 1)) {
     for (const invocation of message.toolInvocations ?? []) {
-      if (
-        invocation.toolName !== 'plan_create' ||
-        invocation.state !== 'completed' ||
-        invocation.resultPresentation?.kind !== 'plan' ||
-        invocation.resultPresentation.operation !== 'created'
-      ) {
-        continue
+      for (const call of getCompletedPlanToolCalls(invocation)) {
+        if (call.toolName === 'plan_create' && call.presentation.operation === 'created') {
+          createdPlanPaths.add(call.presentation.relativePath)
+        }
       }
-
-      createdPlanPaths.add(invocation.resultPresentation.relativePath)
     }
   }
 

@@ -122,6 +122,14 @@ function getToolVerb(invocation: ToolInvocationTrace) {
         : 'Read failed'
   }
 
+  if (invocation.resultPresentation?.kind === 'plan' && invocation.toolName === 'apply_patch') {
+    return invocation.state === 'running'
+      ? 'Updating plan'
+      : invocation.state === 'completed'
+        ? 'Updated plan'
+        : 'Plan update failed'
+  }
+
   if (isFileWriteTool(invocation.toolName) || isFileEditTool(invocation.toolName)) {
     const semantics =
       parsedResult?.metadata?.semantics && typeof parsedResult.metadata.semantics === 'object'
@@ -194,14 +202,6 @@ function getToolVerb(invocation: ToolInvocationTrace) {
       : invocation.state === 'completed'
         ? 'Created plan'
         : 'Plan creation failed'
-  }
-
-  if (invocation.toolName === 'plan_edit') {
-    return invocation.state === 'running'
-      ? 'Updating plan'
-      : invocation.state === 'completed'
-        ? 'Updated plan'
-        : 'Plan update failed'
   }
 
   if (invocation.toolName === 'ask_question') {

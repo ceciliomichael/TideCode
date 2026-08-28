@@ -379,16 +379,20 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined
 }
 
-function isRecoverableEditResult(name: string, result: AgentToolExecutionResult) {
-  return name === 'edit' &&
-    result.status === 'error' &&
-    result.semantics?.recoverable === true
+const RECOVERABLE_INSPECTION_TOOLS = new Set(['glob', 'grep', 'list', 'read'])
+
+function isRecoverableToolResult(name: string, result: AgentToolExecutionResult) {
+  if (result.status !== 'error') return false
+  return RECOVERABLE_INSPECTION_TOOLS.has(name) || (
+    name === 'edit' && result.semantics?.recoverable === true
+  )
 }
 
-function isRecoverableEditToolCall(toolCall: CodeModeToolCallRecord) {
-  return toolCall.name === 'edit' &&
-    toolCall.status === 'error' &&
-    toolCall.semantics?.recoverable === true
+function isRecoverableToolCall(toolCall: CodeModeToolCallRecord) {
+  if (toolCall.status !== 'error') return false
+  return RECOVERABLE_INSPECTION_TOOLS.has(toolCall.name) || (
+    toolCall.name === 'edit' && toolCall.semantics?.recoverable === true
+  )
 }
 
 function capExecutionOutput(output: unknown, maxBytes: number) {
@@ -458,10 +462,12 @@ export class CodeModeExecutor {
     if (validationError) return errorResult(executionId, validationError)
     if (options.abortSignal?.aborted) return errorResult(executionId, 'Code Mode execution was aborted.', [], 'aborted')
 
-    const toolNames = Array.from(new Set([
-      ...this.preloadedToolNames,
-      ...(options.allowedToolNames ?? []),
-    ]))
+    const toolNames = Array.from(new Set(
+      options.allowedToolNames ?? this.preloadedToolNames,
+    ))
+    const allowedToolNameSet = options.allowedToolNames
+      ? new Set(toolNames)
+      : null
     const unavailableToolName = toolNames.find((name) => !this.registry.get(name))
     if (unavailableToolName) {
       return errorResult(executionId, `Tool "${unavailableToolName}" is not available in the Code Mode registry.`)
@@ -524,7 +530,7 @@ export class CodeModeExecutor {
 
         const output = capExecutionOutput(message.output, limits.maxOutputBytes)
         const failedToolCalls = toolCalls.filter((toolCall) => toolCall.status === 'error')
-        const fatalFailedToolCalls = failedToolCalls.filter((toolCall) => !isRecoverableEditToolCall(toolCall))
+        const fatalFailedToolCalls = failedToolCalls.filter((toolCall) => !isRecoverableToolCall(toolCall))
         if (fatalFailedToolCalls.length > 0) {
           const failureCount = fatalFailedToolCalls.length
           finish({
@@ -540,14 +546,14 @@ export class CodeModeExecutor {
           return
         }
 
-        const recoverableEditCount = failedToolCalls.length
+        const recoverableFailureCount = failedToolCalls.length
         finish({
           executionId,
           output: output.output,
           outputTruncated: output.outputTruncated,
           status: 'success',
-          summary: recoverableEditCount > 0
-            ? `Code Mode completed with ${recoverableEditCount} recoverable edit conflict${recoverableEditCount === 1 ? '' : 's'}; inspect the structured results and retry with exact context.`
+          summary: recoverableFailureCount > 0
+            ? `Code Mode completed with ${recoverableFailureCount} recoverable tool failure${recoverableFailureCount === 1 ? '' : 's'}; inspect the structured results and retry with exact context.`
             : `Code Mode completed with ${toolCalls.length} tool call${toolCalls.length === 1 ? '' : 's'}.`,
           toolCalls,
           truncated: output.outputTruncated,
@@ -599,6 +605,14 @@ export class CodeModeExecutor {
           worker.postMessage(response)
           return
         }
+        if (allowedToolNameSet && !allowedToolNameSet.has(message.name)) {
+          worker.postMessage({
+            callId: message.callId,
+            error: 'Tool "' + message.name + '" is not permitted for this Code Mode execution.',
+            type: 'tool_result',
+          } satisfies CodeModeWorkerToolResultMessage)
+          return
+        }
         const entry = this.registry.get(message.name)
         if (!entry) {
           worker.postMessage({
@@ -636,7 +650,7 @@ export class CodeModeExecutor {
           })
           if (settled) return
           if (result.status === 'error') {
-            if (isRecoverableEditResult(message.name, result)) {
+            if (isRecoverableToolResult(message.name, result)) {
               worker.postMessage({
                 callId: message.callId,
                 result: serializeToolResult(result),

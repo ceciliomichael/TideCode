@@ -9,6 +9,7 @@ import { CODE_MODE_EXECUTION_CONTRACT } from '../../electron/chat/shared/codeMod
 import { createAgentToolBundle } from '../../electron/chat/shared/tools'
 import { buildCodeModeDescription, createCodeModeTool, createToolSearchTool } from '../../electron/chat/shared/tools/metaTools'
 import { createAgentToolRegistry, type AgentToolRegistry } from '../../electron/chat/shared/tools/registry'
+import { createReadTool } from '../../electron/chat/shared/tools/readTool'
 
 function createTerminalTestRegistry(): AgentToolRegistry {
   const entries = [
@@ -80,6 +81,45 @@ test('Code Mode runs a filtered program through the registry bridge', async () =
       first: JSON.stringify({ value: 'first' }),
       second: JSON.stringify({ value: 'second' }),
     })
+
+test('Code Mode allowedToolNames is a restrictive executable allowlist', async () => {
+  let blockedCalls = 0
+  const entries = [
+    ...createTestRegistry().entries,
+    {
+      description: 'A blocked mutating tool.',
+      execute: async () => {
+        blockedCalls += 1
+        return { status: 'success' as const, summary: 'Blocked tool ran.' }
+      },
+      inputSchema: { type: 'object' as const },
+      name: 'write',
+      namespace: 'test',
+    },
+  ]
+  const registry: AgentToolRegistry = {
+    entries,
+    get(name) {
+      return entries.find((entry) => entry.name === name)
+    },
+    search() {
+      return entries.map((entry) => ({ ...entry, score: 1 }))
+    },
+  }
+  const executor = new CodeModeExecutor(registry)
+
+  try {
+    const result = await executor.run('return await tools.write({ value: 1 })', {
+      allowedToolNames: ['echo'],
+    })
+
+    assert.equal(result.status, 'error')
+    assert.equal(blockedCalls, 0)
+    assert.equal(result.toolCalls.length, 0)
+  } finally {
+    await executor.dispose()
+  }
+})
   } finally {
     await executor.dispose()
   }
@@ -414,6 +454,77 @@ test('Code Mode rejects failed tool promises and stops uncaught sequential execu
     assert.equal(result.output, undefined)
   } finally {
     await executor.dispose()
+  }
+})
+
+test('Code Mode keeps read failures as recoverable values and completes the inspection program', async () => {
+  let successfulReadWasInvoked = false
+  const entries = [
+    {
+      description: 'Read a test path.',
+      execute: async (input: unknown) => {
+        const requestedPath = (input as { path?: string }).path
+        if (requestedPath === 'missing.ts') {
+          return { status: 'error' as const, summary: 'Path not found: missing.ts' }
+        }
+        successfulReadWasInvoked = true
+        return { body: 'found', status: 'success' as const, summary: 'Read known.ts' }
+      },
+      inputSchema: { type: 'object' as const },
+      name: 'read',
+      namespace: 'workspace',
+    },
+  ]
+  const executor = new CodeModeExecutor({
+    entries,
+    get(name) {
+      return entries.find((entry) => entry.name === name)
+    },
+    search() {
+      return entries.map((entry) => ({ ...entry, score: 1 }))
+    },
+  })
+
+  try {
+    const result = await executor.run(
+      "const missing = await tools.read({ path: 'missing.ts' }); const known = await tools.read({ path: 'known.ts' }); return { missing: missing.status, known: known.body }",
+    )
+
+    assert.equal(result.status, 'success')
+    assert.equal(successfulReadWasInvoked, true)
+    assert.deepEqual(result.output, { known: 'found', missing: 'error' })
+    assert.match(result.summary, /1 recoverable tool failure/u)
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode read accepts an oversized ignored full-file limit and caps ordinary reads', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-read-limit-'))
+  await fs.writeFile(
+    path.join(workspaceRootPath, 'large.txt'),
+    `${Array.from({ length: 600 }, (_, index) => `line-${index + 1}`).join('\n')}\n`,
+    'utf8',
+  )
+  const registry = await createAgentToolRegistry({
+    read: createReadTool({
+      checkpointId: null,
+      terminalExecutionMode: 'sandbox',
+      workspaceRootPath,
+    }),
+  })
+  const executor = new CodeModeExecutor(registry, undefined, { workspaceRootPath })
+
+  try {
+    const result = await executor.run(
+      "const full = await tools.read({ path: 'large.txt', full_file: true, limit: 1200 }); const paged = await tools.read({ path: 'large.txt', limit: 1200 }); return { fullEnd: full.semantics.end_line, pagedEnd: paged.semantics.end_line }",
+    )
+
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, { fullEnd: 600, pagedEnd: 500 })
+  } finally {
+    await executor.dispose()
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 

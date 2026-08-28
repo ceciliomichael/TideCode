@@ -16,6 +16,7 @@ import type {
 } from '../../../src/types/chat'
 import { approximateTokenCount } from '../../../src/lib/contextUsage'
 import { normalizeContextCompactionSettings } from '../../../src/lib/contextCompactionSettings'
+import { getLatestCompletedPlanPresentation } from '../../../src/lib/planPresentation'
 import { getStoredSettings } from '../../settings/store'
 import { listEnabledSkills } from '../../skills/service'
 import { buildPromptContextManifest } from '../cache/canonicalization'
@@ -32,6 +33,7 @@ import {
   synchronizeCanonicalMessages,
 } from '../history/eventStore'
 import { projectCanonicalReplay } from '../history/replayProjector'
+import { applyWorkspaceInstructionsContext } from './prompts/workspaceInstructions'
 import { compactModelMessages } from './compaction/service'
 import {
   resolveAutomaticCompactionMessages,
@@ -46,7 +48,6 @@ import {
 import type { CompactionPacket } from './compaction/contracts'
 import {
   buildChatPrompt,
-  ensureCurrentExecutionModeContext,
   hasImageAttachmentsInModelMessages,
   stripImageAttachmentsFromModelMessages,
 } from './messages'
@@ -179,6 +180,7 @@ export async function runToolEnabledChatStream(input: {
     workspaceRootPath = normalizeWorkspacePath(input.startInput.agentContextRootPath)
     terminalOwner = createTerminalSessionOwner(input.webContents)
     const enabledSkills = await listEnabledSkills(workspaceRootPath)
+    const activePlanPath = getLatestCompletedPlanPresentation(input.startInput.messages)?.relativePath ?? null
     const orchestrationMode = 'code_mode' as const
     const toolBundle = await createAgentToolBundle(
       {
@@ -190,6 +192,7 @@ export async function runToolEnabledChatStream(input: {
         webContents: terminalOwner,
       },
       {
+        activePlanPath,
         chatMode: input.startInput.chatMode,
         enabledSkills,
         orchestrationMode,
@@ -246,13 +249,10 @@ export async function runToolEnabledChatStream(input: {
       replayFidelity = replay.fidelity === 'exact' ? 'exact' : 'migrated_legacy'
       replayCompactionPacket = replay.compactionPacket
     }
-    modelMessages = ensureCurrentExecutionModeContext(
-      modelMessages,
-      input.startInput.terminalExecutionMode,
-    )
     if (!promptOptions.includeImageAttachments) {
       modelMessages = stripImageAttachmentsFromModelMessages(modelMessages)
     }
+    modelMessages = applyWorkspaceInstructionsContext(modelMessages, workspaceRootPath)
 
     const anchorUserMessageId = [...input.startInput.messages].reverse()
       .find((message) => message.role === 'user')?.id ?? null

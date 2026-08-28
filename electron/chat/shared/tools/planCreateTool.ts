@@ -2,10 +2,11 @@ import { jsonSchema, tool } from 'ai'
 import { createPlan } from '../../../plans/service'
 import type { WorkspaceToolContext } from './workspaceToolPaths'
 import { createPlanToolResult } from './planToolResult'
+import type { PlanRuntimeState } from './planRuntimeState'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 import { captureCheckpointFileStateIfNeeded } from './workspaceToolResults'
 
-export function createPlanCreateTool(context: WorkspaceToolContext) {
+export function createPlanCreateTool(context: WorkspaceToolContext, runtimeState: PlanRuntimeState) {
   return tool({
     description: 'Create a complete engineering implementation plan in .tidecode/plans/.',
     inputSchema: jsonSchema({
@@ -25,6 +26,17 @@ export function createPlanCreateTool(context: WorkspaceToolContext) {
       type: 'object',
     }),
     execute: async (rawInput) => {
+      if (!runtimeState.enabled) {
+        return createToolErrorResult('plan_create is available only while Plan Mode is active.')
+      }
+      if (runtimeState.activePlanPath) {
+        return createToolErrorResult('Plan Mode already has an active plan: ' + runtimeState.activePlanPath)
+      }
+      if (runtimeState.isCreatingPlan) {
+        return createToolErrorResult('Plan creation is already in progress for this turn.')
+      }
+
+      runtimeState.isCreatingPlan = true
       try {
         const input = rawInput as { content?: unknown; title?: unknown }
         if (typeof input.content !== 'string') {
@@ -34,16 +46,18 @@ export function createPlanCreateTool(context: WorkspaceToolContext) {
           throw new Error('plan_create "title" must be a string when provided.')
         }
 
-        return createPlanToolResult(
-          await createPlan({
-            beforeMutation: (absolutePath) => captureCheckpointFileStateIfNeeded(context.checkpointId, absolutePath),
-            content: input.content,
-            ...(typeof input.title === 'string' ? { title: input.title } : {}),
-            workspaceRootPath: context.workspaceRootPath,
-          }),
-        )
+        const artifact = await createPlan({
+          beforeMutation: (absolutePath) => captureCheckpointFileStateIfNeeded(context.checkpointId, absolutePath),
+          content: input.content,
+          ...(typeof input.title === 'string' ? { title: input.title } : {}),
+          workspaceRootPath: context.workspaceRootPath,
+        })
+        runtimeState.activePlanPath = artifact.relativePath
+        return createPlanToolResult(artifact)
       } catch (error) {
         return createToolErrorResult(getToolErrorSummary(error, 'Plan creation failed.'))
+      } finally {
+        runtimeState.isCreatingPlan = false
       }
     },
   })

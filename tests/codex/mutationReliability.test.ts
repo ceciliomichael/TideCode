@@ -395,7 +395,7 @@ test('Code Mode resolves structured ambiguous edits as recoverable results', asy
       }
     `)
     assert.equal(result.status, 'success')
-    assert.match(result.summary, /recoverable edit conflict/u)
+    assert.match(result.summary, /recoverable tool failure/u)
     assert.equal(result.toolCalls[0]?.status, 'error')
     assert.deepEqual(result.output, {
       code: 'TARGET_AMBIGUOUS',
@@ -428,7 +428,7 @@ test('model-facing Code Mode keeps recoverable edit conflicts non-fatal', async 
     }, {})
 
     assert.equal(result.status, 'success')
-    assert.match(result.body, /recoverable edit conflict/u)
+    assert.match(result.body, /recoverable tool failure/u)
     assert.equal(result.semantics?.tool_calls?.[0]?.status, 'error')
     assert.equal(result.semantics?.tool_calls?.[0]?.semantics?.recoverable, true)
     assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
@@ -462,7 +462,7 @@ test('Code Mode Promise.all preserves recoverable edit conflicts while other edi
     `)
 
     assert.equal(result.status, 'success')
-    assert.match(result.summary, /2 recoverable edit conflicts/u)
+    assert.match(result.summary, /2 recoverable tool failures/u)
     assert.equal(result.toolCalls.length, 3)
     assert.deepEqual(result.output, [
       { code: 'TARGET_AMBIGUOUS', contextCount: 2, recoverable: true, status: 'error' },

@@ -106,6 +106,35 @@ test('compaction transcripts also redact nested image files returned by tools', 
   assert.ok(prompt.length < 5_000)
 })
 
+test('compaction model input excludes persisted runtime context from transcript and prior handoff data', () => {
+  const hiddenPlanContext = [
+    '<hidden_user_context kind="chat_mode" state="plan">',
+    '<chat_mode_context mode="plan" state="active_until_superseded">',
+    'Plan Mode is active.',
+    '</chat_mode_context>',
+    '</hidden_user_context>',
+  ].join('\\n')
+  const prompt = buildCompactionRequestPrompt({
+    messages: [{ role: 'user', content: `Keep this visible request.\\n\\n${hiddenPlanContext}` }],
+    previousPacket: {
+      continuationMarkdown: `Prior visible handoff.\\n\\n${hiddenPlanContext}`,
+      userPromptLedger: [{
+        prompt: `Earlier visible request.\\n\\n${hiddenPlanContext}`,
+        sourceMessageIds: ['model:0'],
+        status: 'completed',
+        truncated: false,
+      }],
+    },
+    sourceDigest: 'hidden-context-digest',
+    sourceMessageIds: ['model:1'],
+  })
+
+  assert.match(prompt, /Keep this visible request\./u)
+  assert.match(prompt, /Prior visible handoff\./u)
+  assert.match(prompt, /Earlier visible request\./u)
+  assert.doesNotMatch(prompt, /hidden_user_context|chat_mode_context|Plan Mode is active/u)
+})
+
 test('visible action rationale is source-linked without copying provider-private reasoning', () => {
   const messages: ModelMessage[] = [
     { role: 'user', content: 'Inspect the entry point before editing it.' },
@@ -374,6 +403,33 @@ test('projection emits one Markdown continuation and removes raw tool history fr
   assert.equal(projected.some((message) => message.role === 'tool'), false)
   assert.doesNotMatch(JSON.stringify(projected), /tool-call|tool-result/u)
   assert.equal(projected.some((message) => typeof message.content === 'string' && message.content.includes('tidecode.compaction_packet/v2')), false)
+})
+
+test('projection carries the latest runtime context only after the compaction handoff', () => {
+  const packet = buildFallbackCompactionPacket({
+    messages: [{ role: 'user', content: 'Keep the active mode after compaction.' }],
+    modelId: 'test-model',
+    sourceDigest: 'runtime-carry-digest',
+    sourceMessageIds: ['model:0'],
+  })
+  const hiddenAgentContext = [
+    '<hidden_user_context kind="chat_mode" state="agent">',
+    '<chat_mode_context mode="agent" state="active_until_superseded">',
+    'Agent Mode is active.',
+    '</chat_mode_context>',
+    '</hidden_user_context>',
+  ].join('\\n')
+  const projected = buildCompactionProjection({
+    anchorMessages: [],
+    contextMessages: [{ role: 'user', content: `Visible request.\\n\\n${hiddenAgentContext}` }],
+    packet,
+    tailMessages: [{ role: 'assistant', content: 'Recent visible result.' }],
+  })
+
+  assert.doesNotMatch(String(projected[0]?.content ?? ''), /hidden_user_context|chat_mode_context/u)
+  assert.equal(projected[1]?.role, 'user')
+  assert.equal(projected[1]?.content, hiddenAgentContext)
+  assert.deepEqual(projected.slice(-1), [{ role: 'assistant', content: 'Recent visible result.' }])
 })
 
 test('projection converts image placeholders into provider-valid text parts', () => {

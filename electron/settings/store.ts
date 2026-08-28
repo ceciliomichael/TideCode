@@ -32,9 +32,10 @@ const SURFACE_SETTINGS_FILE_PREFIX = 'surface-settings'
 const SETTINGS_LOCK_FILE_NAME = 'settings.lock'
 const SETTINGS_HOME_OVERRIDE_ENV = 'TIDECODE_SETTINGS_HOME'
 const SETTINGS_LOCK_RETRY_MS = 20
-const SETTINGS_LOCK_STALE_MS = 30_000
+const SETTINGS_LOCK_STALE_MS = 5_000
 const SETTINGS_LOCK_TIMEOUT_MS = 5_000
 let settingsUpdateQueue: Promise<void> = Promise.resolve()
+let settingsLockQueue: Promise<void> = Promise.resolve()
 const cachedStoredSettingsBySurface = new Map<AppSettingsSurface, AppSettings>()
 const SOURCE_CONTROL_SECTION_IDS: readonly SourceControlSectionId[] = ['commit', 'changes', 'history']
 
@@ -348,7 +349,18 @@ async function waitForSettingsLockRetry() {
 async function removeStaleSettingsLock(lockPath: string) {
   try {
     const stats = await fs.stat(lockPath)
-    if (Date.now() - stats.mtimeMs < SETTINGS_LOCK_STALE_MS) {
+    const rawOwnerPid = await fs.readFile(lockPath, 'utf8').catch(() => '')
+    const ownerPid = Number.parseInt(rawOwnerPid.trim(), 10)
+    if (Number.isInteger(ownerPid) && ownerPid > 0) {
+      try {
+        process.kill(ownerPid, 0)
+        return false
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') {
+          return false
+        }
+      }
+    } else if (Date.now() - stats.mtimeMs < SETTINGS_LOCK_STALE_MS) {
       return false
     }
     await fs.unlink(lockPath)
@@ -362,6 +374,21 @@ async function removeStaleSettingsLock(lockPath: string) {
 }
 
 async function withSettingsFileLock<T>(operation: () => Promise<T>): Promise<T> {
+  let releaseQueue!: () => void
+  const previousOperation = settingsLockQueue
+  settingsLockQueue = new Promise<void>((resolve) => {
+    releaseQueue = resolve
+  })
+  await previousOperation.catch(() => undefined)
+
+  try {
+    return await acquireSettingsFileLock(operation)
+  } finally {
+    releaseQueue()
+  }
+}
+
+async function acquireSettingsFileLock<T>(operation: () => Promise<T>): Promise<T> {
   await ensureConfigDirectory()
   const lockPath = getSettingsLockFilePath()
   const deadline = Date.now() + SETTINGS_LOCK_TIMEOUT_MS
@@ -370,6 +397,7 @@ async function withSettingsFileLock<T>(operation: () => Promise<T>): Promise<T> 
     try {
       const handle = await fs.open(lockPath, 'wx')
       try {
+        await handle.writeFile(`${process.pid}\n`, 'utf8')
         return await operation()
       } finally {
         await handle.close().catch(() => undefined)

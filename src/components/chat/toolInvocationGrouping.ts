@@ -73,7 +73,7 @@ function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts
     return 'exploredFileCount'
   }
 
-  if (toolName === 'plan_create' || toolName === 'plan_edit') {
+  if (toolName === 'plan_create') {
     return 'planCount'
   }
 
@@ -257,6 +257,12 @@ export function buildToolInvocationGroupSummary(
 
   for (const invocation of invocations) {
     if (invocation.toolName === 'code_mode' || invocation.toolName === 'read_tool_output') {
+      continue
+    }
+
+    if (invocation.resultPresentation?.kind === 'plan') {
+      counts.planCount += 1
+      recordMixedBucket('plan')
       continue
     }
 

@@ -108,14 +108,13 @@ export function calculateModelMessagesContextState(input: ModelMessagesBudgetInp
     toolSchemaTokens: input.toolSchemaTokens,
     triggerRatio: input.triggerRatio,
   })
-  const systemPromptTokens = Math.max(0, Math.floor(input.systemPromptTokens + input.toolSchemaTokens))
-
   return {
     budget,
     usage: {
       historyTokens: messageUsage.historyTokens,
       maxTokens: budget.contextWindowTokens,
-      systemPromptTokens,
+      systemPromptTokens: input.systemPromptTokens,
+      toolSchemaTokens: input.toolSchemaTokens,
       toolResultsTokens: messageUsage.toolResultsTokens,
       totalTokens: budget.totalTokens,
     },

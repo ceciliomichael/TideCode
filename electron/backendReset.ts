@@ -85,6 +85,7 @@ export async function estimateResetChatContextUsage(): Promise<ContextUsageEstim
     historyTokens: 0,
     maxTokens: 0,
     systemPromptTokens: 0,
+    toolSchemaTokens: 0,
     toolResultsTokens: 0,
     totalTokens: 0,
   }

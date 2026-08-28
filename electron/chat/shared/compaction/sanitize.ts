@@ -21,7 +21,7 @@ function sanitizeReasoningEntry(entry: LocalCompactionPacketV2['reasoningContinu
 export function sanitizeCompactionPacketV2(packet: LocalCompactionPacketV2): LocalCompactionPacketV2 {
   return {
     ...packet,
-    continuationMarkdown: normalizeContinuationMarkdown(packet.continuationMarkdown),
+    continuationMarkdown: normalizeContinuationMarkdown(stripExecutionModeContext(packet.continuationMarkdown)),
     constraints: sanitizeTextList(packet.constraints),
     currentState: sanitizeTextList(packet.currentState),
     completedWork: sanitizeTextList(packet.completedWork),

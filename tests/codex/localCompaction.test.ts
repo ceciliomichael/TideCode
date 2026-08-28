@@ -14,6 +14,11 @@ import {
 import type { CompactionStreamFactory } from '../../electron/chat/shared/compaction/contracts'
 import { buildCompactionRequestPrompt, buildCompactionSystemPrompt } from '../../electron/chat/shared/compaction/prompt'
 import { buildChatCompressionSystemPrompt } from '../../electron/chat/shared/prompts/compression'
+import {
+  buildChatModeHiddenContext,
+  buildExecutionModeHiddenContext,
+  buildWorkspaceInstructionsHiddenContext,
+} from '../../src/lib/hiddenUserContext'
 
 function createConversationMessages(): ModelMessage[] {
   return [
@@ -312,6 +317,39 @@ test('compaction strips execution mode context from prompts and summary messages
 
   assert.doesNotMatch(prompt, /execution_mode_context/u)
   assert.doesNotMatch(typeof replayMessage.content === 'string' ? replayMessage.content : '', /execution_mode_context/u)
+})
+
+test('compaction carries the latest persisted hidden state when its original turn is evicted', async () => {
+  const planContext = buildChatModeHiddenContext('plan')
+  const executionContext = buildExecutionModeHiddenContext('sandbox')
+  const workspaceContext = buildWorkspaceInstructionsHiddenContext('revision-1')
+  const messages = createSizedTurnHistory(6)
+  const firstUser = messages[0]
+  assert.ok(firstUser?.role === 'user' && typeof firstUser.content === 'string')
+  messages[0] = {
+    ...firstUser,
+    content: [
+      firstUser.content,
+      planContext.content,
+      executionContext.content,
+      workspaceContext.content,
+    ].join('\\n\\n'),
+  }
+
+  const result = await compactModelMessages(createCompactionInput(
+    messages,
+    createTextStreamFactory('## Goal\\n- Continue the requested workspace change.'),
+    7_000,
+  ))
+
+  assert.ok(result)
+  const projectedText = result.projectedMessages
+    .map((message) => typeof message.content === 'string' ? message.content : JSON.stringify(message.content))
+    .join('\\n')
+  assert.equal(projectedText.split(planContext.content).length - 1, 1)
+  assert.equal(projectedText.split(executionContext.content).length - 1, 1)
+  assert.equal(projectedText.split(workspaceContext.content).length - 1, 1)
+  assert.doesNotMatch(result.packet.continuationMarkdown, /hidden_user_context|chat_mode_context|execution_mode_context|workspace_instruction_context/u)
 })
 
 test('valid AI Markdown is accepted and malformed AI output is rejected', async () => {

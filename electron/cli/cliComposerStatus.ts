@@ -51,7 +51,7 @@ export async function refreshCliComposerStatus(
   const codexSummary = buildCodexUsageSummaryItems(activeUsage)[0]
   const totalTokens = Number.isFinite(usage.totalTokens)
     ? usage.totalTokens ?? 0
-    : usage.systemPromptTokens + usage.historyTokens + usage.toolResultsTokens
+    : usage.systemPromptTokens + (usage.toolSchemaTokens ?? 0) + usage.historyTokens + usage.toolResultsTokens
   const contextPercent = usage.maxTokens > 0 ? (totalTokens / usage.maxTokens) * 100 : 0
   screen.updateComposerStatus({
     contextPercent,

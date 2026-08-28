@@ -8,7 +8,10 @@ import { isPlanRelativePath, type PlanReviewComment } from '../../lib/planContra
 import { persistPlanImplementationHandoff } from '../../lib/planHandoff'
 import { createPlanImplementationMessage } from '../../lib/planImplementation'
 import { createPlanRevisionRequestMessage } from '../../lib/planRevision'
-import { getPlanPathsCreatedByRevertedUserMessage, hasPlanToolInvocation } from '../../lib/planPresentation'
+import {
+  getLatestCompletedPlanPresentation,
+  getPlanPathsCreatedByRevertedUserMessage,
+} from '../../lib/planPresentation'
 import type { ChatWorkspaceUiState } from './useChatWorkspaceUiState'
 import { shouldQueueMainMessage } from './chatQueueAutoSend'
 
@@ -136,28 +139,24 @@ export function useChatMessageActions({
 
   const isAiBusy =
     chatMessages.isLoading || chatMessages.isSending || chatMessages.isStreamingResponse || isCompressingChat
-  const hasUsedPlanTool = hasPlanToolInvocation(chatMessages.messages)
+  const latestPlanPath = getLatestCompletedPlanPresentation(chatMessages.messages)?.relativePath ?? null
   const showImplementPlanButton =
-    chatMessages.selectedChatMode === 'plan' && chatMessages.messages.length > 0 && !isAiBusy && !hasUsedPlanTool
+    chatMessages.selectedChatMode === 'plan' && !isAiBusy && latestPlanPath !== null
 
   const handleImplementPlan = useCallback(async (planPath?: string) => {
-    if (isAiBusy || (!planPath && chatMessages.selectedChatMode !== 'plan')) return
+    if (isAiBusy) return
+    const implementationPlanPath = planPath ?? latestPlanPath
+    if (!implementationPlanPath || !isPlanRelativePath(implementationPlanPath)) return
 
-    if (planPath && !isPlanRelativePath(planPath)) return
-
-    if (planPath) {
-      const didHandoffPlan = await persistPlanImplementationHandoff(planPath, workspaceState)
-      if (!didHandoffPlan) {
-        return
-      }
+    const didHandoffPlan = await persistPlanImplementationHandoff(implementationPlanPath, workspaceState)
+    if (!didHandoffPlan) {
+      return
     }
 
     chatMessages.setSelectedChatMode('agent')
-    const implementationRequest = planPath
-      ? createPlanImplementationMessage(planPath)
-      : 'Implement the plan.'
+    const implementationRequest = createPlanImplementationMessage(implementationPlanPath)
     void chatMessages.sendProgrammaticMessage(runtimeSelection, implementationRequest, { chatMode: 'agent' })
-  }, [chatMessages, isAiBusy, runtimeSelection, workspaceState])
+  }, [chatMessages, isAiBusy, latestPlanPath, runtimeSelection, workspaceState])
 
   const handleRequestPlanChanges = useCallback(
     (relativePath: string, comments: PlanReviewComment[]) => {

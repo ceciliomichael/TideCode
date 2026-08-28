@@ -13,6 +13,7 @@ const EMPTY_CONTEXT_USAGE: ContextUsageEstimate = {
   historyTokens: 0,
   maxTokens: 200_000,
   systemPromptTokens: 0,
+  toolSchemaTokens: 0,
   toolResultsTokens: 0,
   totalTokens: 0,
 }

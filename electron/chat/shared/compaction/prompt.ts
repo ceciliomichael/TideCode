@@ -1,5 +1,6 @@
 import type { ModelMessage } from 'ai'
 import type { CompactionPacket } from './contracts'
+import { stripExecutionModeContext } from '../../../../src/lib/executionModeContext'
 import { sanitizeCompactionContent } from './sanitize'
 import { buildChatCompressionSystemPrompt } from '../prompts/compression'
 import { extractCodeModeReceipts, formatCodeModeReceipts } from './codeModeReceipts'
@@ -67,8 +68,12 @@ export function buildCompactionRequestPrompt(input: {
   const transcript = input.messages
     .map((message, index) => serializeMessage(message, index, sourceStartIndex))
     .join('\n')
-  const previousContinuation = input.previousPacket?.continuationMarkdown ?? ''
-  const previousUserPromptLedger = renderUserPromptLedger(input.previousPacket?.userPromptLedger ?? [])
+  const previousContinuation = stripExecutionModeContext(input.previousPacket?.continuationMarkdown ?? '')
+  const previousUserPromptLedger = renderUserPromptLedger(
+    (input.previousPacket?.userPromptLedger ?? [])
+      .map((entry) => ({ ...entry, prompt: stripExecutionModeContext(entry.prompt) }))
+      .filter((entry) => entry.prompt.length > 0),
+  )
   const codeModeReceipts = formatCodeModeReceipts(extractCodeModeReceipts(input.messages))
 
   return [

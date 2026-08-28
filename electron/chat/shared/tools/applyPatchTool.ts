@@ -1,7 +1,16 @@
 import { jsonSchema, tool } from 'ai'
 import path from 'node:path'
 import type { AgentToolExecutionResult } from '../toolTypes'
+import { parseApplyPatch } from '../applyPatchParser'
 import { applyPatchInWorkspace } from '../applyPatchWorkspace'
+import {
+  extractPlanTitle,
+  getPlanIdFromRelativePath,
+  isPlanRelativePath,
+  normalizePlanRelativePath,
+} from '../../../../src/lib/planContracts'
+import { createPlanToolResult } from './planToolResult'
+import type { PlanRuntimeState } from './planRuntimeState'
 import { createToolErrorResult, getToolErrorSummary } from './toolResult'
 import {
   aggregateFileChangeItems,
@@ -185,7 +194,45 @@ function createPatchPresentationChanges(
   return presentationChanges
 }
 
-export function createApplyPatchTool(context: WorkspaceToolContext) {
+function resolvePlanPatchTarget(
+  context: WorkspaceToolContext,
+  runtimeState: PlanRuntimeState | undefined,
+  patchText: string,
+) {
+  if (!runtimeState?.enabled) return null
+  const activePlanPath = runtimeState.activePlanPath
+  if (!activePlanPath || !isPlanRelativePath(activePlanPath)) {
+    throw new Error('Plan Mode apply_patch requires an active Tidecode plan before any patch can be applied.')
+  }
+
+  const normalizedPlanPath = normalizePlanRelativePath(activePlanPath)
+  const activeTarget = resolveReadableTargetPath(
+    context.workspaceRootPath,
+    normalizedPlanPath,
+    context.terminalExecutionMode,
+  )
+  const parsedPatch = parseApplyPatch(patchText)
+  for (const hunk of parsedPatch.hunks) {
+    if (hunk.type !== 'update' || hunk.movePath) {
+      throw new Error('Plan Mode apply_patch may only update the active plan. Add, delete, and move hunks are not allowed.')
+    }
+    const target = resolveReadableTargetPath(
+      context.workspaceRootPath,
+      hunk.path,
+      context.terminalExecutionMode,
+    )
+    if (path.resolve(target.absolutePath) !== path.resolve(activeTarget.absolutePath)) {
+      throw new Error('Plan Mode apply_patch may only update the active plan: ' + normalizedPlanPath)
+    }
+  }
+
+  return {
+    absolutePath: activeTarget.absolutePath,
+    relativePath: normalizedPlanPath,
+  }
+}
+
+export function createApplyPatchTool(context: WorkspaceToolContext, runtimeState?: PlanRuntimeState) {
   return tool({
     description: APPLY_PATCH_DESCRIPTION,
     inputSchema: jsonSchema<ApplyPatchInput>(APPLY_PATCH_INPUT_SCHEMA),
@@ -197,6 +244,7 @@ export function createApplyPatchTool(context: WorkspaceToolContext) {
       }
 
       try {
+        const planTarget = resolvePlanPatchTarget(context, runtimeState, patchText)
         const result = await applyPatchInWorkspace(context.workspaceRootPath, patchText, {
           resolveTargetPath: (candidatePath) => {
             const target = resolveReadableTargetPath(
@@ -218,6 +266,25 @@ export function createApplyPatchTool(context: WorkspaceToolContext) {
         })
 
         notifyWorkspaceExplorerChange(context.workspaceRootPath)
+        if (planTarget) {
+          const finalPlanChange = [...result.changes]
+            .reverse()
+            .find((change) => path.resolve(change.absolutePath) === path.resolve(planTarget.absolutePath))
+          const planId = getPlanIdFromRelativePath(planTarget.relativePath)
+          if (!finalPlanChange || !planId) {
+            throw new Error('Plan patch completed without a valid active plan result.')
+          }
+          return createPlanToolResult({
+            content: finalPlanChange.newContent,
+            fileName: path.posix.basename(planTarget.relativePath),
+            operation: 'updated',
+            planId,
+            relativePath: planTarget.relativePath,
+            title: extractPlanTitle(finalPlanChange.newContent),
+            updatedAt: Date.now(),
+          })
+        }
+
         const fileChanges = createFileChanges(context.workspaceRootPath, result.changes)
         const patchResult = buildFileChangeResult(
           `Applied patch to ${fileChanges.length} file${fileChanges.length === 1 ? '' : 's'}`,

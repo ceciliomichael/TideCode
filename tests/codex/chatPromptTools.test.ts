@@ -13,6 +13,11 @@ import {
   supportsModelImageInput,
 } from '../../electron/chat/shared/modelImageSupport'
 import { buildSkillToolDescription } from '../../electron/skills/service'
+import {
+  buildChatModeHiddenContext,
+  buildExecutionModeHiddenContext,
+  buildHiddenUserContextTransitions,
+} from '../../src/lib/hiddenUserContext'
 
 function createPromptImageAttachment() {
   return {
@@ -25,29 +30,103 @@ function createPromptImageAttachment() {
   }
 }
 
-test('buildChatSystemPrompt loads the mode-specific prompt content', () => {
+test('buildChatSystemPrompt is mode-neutral', () => {
   const agentPrompt = buildChatSystemPrompt('agent', 'C:/repo')
   const planPrompt = buildChatSystemPrompt('plan', 'C:/repo')
 
+  assert.equal(planPrompt, agentPrompt)
   assert.match(agentPrompt, /<decision_priority/u)
-  assert.match(agentPrompt, /`edit`: make a targeted change to an existing text file/u)
-  assert.equal((agentPrompt.match(/<agent_tooling_instructions\b/gu) ?? []).length, 1)
-  assert.equal((agentPrompt.match(/<tool_instructions>/gu) ?? []).length, 0)
-  assert.match(agentPrompt, /after reading the relevant source/u)
-  assert.match(agentPrompt, /`execute_terminal`: run an actual command or process/u)
-  assert.match(agentPrompt, /never as a substitute for workspace read\/search\/edit\/write APIs/u)
-  assert.doesNotMatch(agentPrompt, /\blist_dir\b/u)
   assert.match(agentPrompt, /Answer first\. Report only the outcome/u)
-  assert.match(agentPrompt, /Every call has one clear purpose and uses its exact schema/u)
-  assert.doesNotMatch(agentPrompt, /caveman|authorization_override/iu)
+  assert.match(agentPrompt, /<workspace_root authoritative="true"/u)
+  assert.doesNotMatch(agentPrompt, /Agent Mode|Plan Mode|<chat_mode_context|plan_create|agent_tooling_instructions|<intent_rules/iu)
+})
 
-  assert.match(planPrompt, /Use Plan mode only when the user wants a plan/u)
-  assert.match(planPrompt, /Ask one focused question only for an unresolved judgment call/u)
-  assert.match(planPrompt, /one complete Markdown plan in `\.tidecode\/plans\/`/u)
-  assert.match(planPrompt, /After saving, say only that the plan is visible in preview/u)
-  assert.match(planPrompt, /Use the exact schema and the narrowest read-only call/u)
-  assert.match(planPrompt, /`plan_create`: after planning has converged/u)
-  assert.doesNotMatch(planPrompt, /caveman|authorization_override/iu)
+test('buildChatPrompt replays persisted hidden user context exactly without synthesizing mode state', () => {
+  const planContext = buildChatModeHiddenContext('plan')
+  const executionContext = buildExecutionModeHiddenContext('sandbox')
+  const sourceMessage: Message = {
+    chatMode: 'plan',
+    content: 'Plan the change.',
+    hiddenUserContext: [planContext, executionContext],
+    id: 'user-plan',
+    role: 'user',
+    timestamp: 1,
+  }
+  const prompt = buildChatPrompt({
+    chatMode: 'agent',
+    messages: [sourceMessage],
+    workspaceRootPath: 'C:/repo',
+  })
+  const plainPrompt = buildChatPrompt({
+    chatMode: 'plan',
+    messages: [{ content: 'No persisted context.', id: 'plain', role: 'user', timestamp: 1 }],
+    workspaceRootPath: 'C:/repo',
+  })
+
+  assert.equal(sourceMessage.content, 'Plan the change.')
+  assert.equal(prompt.messages[0]?.role, 'user')
+  assert.equal(
+    prompt.messages[0]?.content,
+    ['Plan the change.', planContext.content, executionContext.content].join('\n\n'),
+  )
+  assert.equal(plainPrompt.messages[0]?.content, 'No persisted context.')
+  assert.doesNotMatch(JSON.stringify(plainPrompt.messages), /<chat_mode_context|<execution_mode_context/u)
+})
+
+test('Plan to Agent transition keeps the previous provider messages as an exact prefix', () => {
+  const planContext = buildChatModeHiddenContext('plan')
+  const executionContext = buildExecutionModeHiddenContext('sandbox')
+  const planMessages: Message[] = [
+    {
+      chatMode: 'plan',
+      content: 'Plan the change.',
+      hiddenUserContext: [planContext, executionContext],
+      id: 'user-plan',
+      role: 'user',
+      timestamp: 1,
+    },
+    {
+      content: 'The plan is ready for approval.',
+      id: 'assistant-plan',
+      role: 'assistant',
+      timestamp: 2,
+    },
+  ]
+  const planPrompt = buildChatPrompt({
+    chatMode: 'plan',
+    messages: planMessages,
+    workspaceRootPath: 'C:/repo',
+  })
+  const agentTransitions = buildHiddenUserContextTransitions({
+    chatMode: 'agent',
+    messages: planMessages,
+    terminalExecutionMode: 'sandbox',
+  })
+  assert.equal(agentTransitions.length, 1)
+  assert.equal(agentTransitions[0]?.kind, 'chat_mode')
+  assert.equal(agentTransitions[0]?.state, 'agent')
+
+  const agentMessages: Message[] = [
+    ...planMessages,
+    {
+      chatMode: 'agent',
+      content: 'Implement the approved plan.',
+      hiddenUserContext: agentTransitions,
+      id: 'user-agent',
+      role: 'user',
+      timestamp: 3,
+    },
+  ]
+  const agentPrompt = buildChatPrompt({
+    chatMode: 'agent',
+    messages: agentMessages,
+    workspaceRootPath: 'C:/repo',
+  })
+
+  assert.deepEqual(agentPrompt.messages.slice(0, planPrompt.messages.length), planPrompt.messages)
+  const lastMessageContent = String(agentPrompt.messages.at(-1)?.content ?? '')
+  assert.ok(lastMessageContent.includes('mode="agent" state="active_until_superseded"'))
+  assert.equal(lastMessageContent.includes('mode="sandbox"'), false)
 })
 
 test('tool result replay preserves oversized model content without truncation', () => {

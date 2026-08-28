@@ -24,9 +24,9 @@ test('createAgentTools omits write tools in plan mode', async () => {
     assert.ok('kanban_board' in tools)
     assert.ok(!('memory' in tools))
     assert.ok('plan_create' in tools)
-    assert.ok('plan_edit' in tools)
+    assert.ok(!('plan_edit' in tools))
     assert.ok(!('write' in tools))
-    assert.ok(!('apply_patch' in tools))
+    assert.ok('apply_patch' in tools)
     assert.ok(!('edit' in tools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -43,6 +43,7 @@ test('createAgentTools exposes write tools in agent mode', async () => {
     })
 
     assert.ok('write' in tools)
+    assert.ok(!('plan_create' in tools))
     assert.ok('apply_patch' in tools)
     assert.ok('edit' in tools)
     assert.ok('kanban_board' in tools)
@@ -241,7 +242,7 @@ test('createAgentTools keeps plan mode tool descriptions literal', async () => {
       assert.doesNotMatch(description, /patch|write|should|prefer/iu)
     }
     assert.ok(!('write' in tools))
-    assert.ok(!('apply_patch' in tools))
+    assert.ok('apply_patch' in tools)
     assert.ok(!('edit' in tools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

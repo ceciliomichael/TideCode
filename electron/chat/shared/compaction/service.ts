@@ -194,6 +194,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   }
   const projectedMessages = buildCompactionProjection({
     anchorMessages: window.anchorMessages,
+    contextMessages: input.messages,
     packet,
     tailMessages: window.tailMessages,
     retainedContextTokens,
