@@ -186,6 +186,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       reasoningEffort: input.runtimeSelection.reasoningEffort,
       selectedFolderId: initiatingFolderId,
       targetEditMessageId: input.targetEditMessageId,
+      terminalExecutionMode: input.runtimeSelection.terminalExecutionMode,
       trimmedText: input.trimmedText,
       title: input.title,
     })

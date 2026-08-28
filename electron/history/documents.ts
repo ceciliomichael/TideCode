@@ -7,6 +7,7 @@ import type {
   ConversationFolderRecord,
   ConversationRecord,
   ConversationSummary,
+  HiddenUserContext,
   ToolInvocationResultPresentation,
   Message,
   UserMessageRunCheckpoint,
@@ -154,6 +155,18 @@ function isUserMessageRunCheckpoint(value: unknown): value is UserMessageRunChec
   return typeof checkpoint.id === 'string' && typeof checkpoint.createdAt === 'number'
 }
 
+function isHiddenUserContext(value: unknown): value is HiddenUserContext {
+  if (!value || typeof value !== 'object') return false
+  const context = value as Partial<HiddenUserContext>
+  return (
+    typeof context.content === 'string' &&
+    context.content.trim().length > 0 &&
+    typeof context.kind === 'string' &&
+    context.kind.trim().length > 0 &&
+    (context.state === undefined || typeof context.state === 'string')
+  )
+}
+
 function isMessage(value: unknown): value is Message {
   if (!value || typeof value !== 'object') {
     return false
@@ -179,6 +192,13 @@ function isMessage(value: unknown): value is Message {
     (Array.isArray(message.attachments) && message.attachments.every((attachment) => isChatAttachment(attachment)))
   const hasValidRunCheckpoint =
     message.runCheckpoint === undefined || isUserMessageRunCheckpoint(message.runCheckpoint)
+  const hasValidHiddenUserContext =
+    message.hiddenUserContext === undefined ||
+    (
+      message.role === 'user' &&
+      Array.isArray(message.hiddenUserContext) &&
+      message.hiddenUserContext.every(isHiddenUserContext)
+    )
 
   return (
     typeof message.id === 'string' &&
@@ -196,7 +216,8 @@ function isMessage(value: unknown): value is Message {
     hasRequiredToolCallId &&
     hasValidToolInvocations &&
     hasValidAttachments &&
-    hasValidRunCheckpoint
+    hasValidRunCheckpoint &&
+    hasValidHiddenUserContext
   )
 }
 

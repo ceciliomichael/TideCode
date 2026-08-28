@@ -2,6 +2,8 @@ import http from 'node:http'
 import { randomUUID } from 'node:crypto'
 import type { StartChatStreamInput } from '../../src/types/chat'
 import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '../../src/lib/contextCompactionSettings'
+import { buildHiddenUserContextTransitions } from '../../src/lib/hiddenUserContext'
+import { resolveWorkspaceInstructionsTransition } from '../chat/shared/workspaceInstructionsContext'
 import type { CliSessionState } from './types'
 import { colors, renderBoxMessage } from './renderer'
 import { startApiKeyChatStream } from '../chat/apiKey/runtime'
@@ -79,9 +81,21 @@ export async function startRemoteRelayDaemon(
           }
 
           const userMessage = {
+            chatMode: state.chatMode,
             id: randomUUID(),
             role: 'user' as const,
             content: promptText,
+            hiddenUserContext: [
+              ...buildHiddenUserContextTransitions({
+                chatMode: state.chatMode,
+                messages: state.messages,
+                terminalExecutionMode: state.terminalExecutionMode,
+              }),
+              ...await resolveWorkspaceInstructionsTransition({
+                messages: state.messages,
+                workspaceRootPath: state.workspaceRootPath,
+              }),
+            ],
             timestamp: Date.now(),
           }
 

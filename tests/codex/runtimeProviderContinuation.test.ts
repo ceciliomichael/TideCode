@@ -23,7 +23,7 @@ function createCodeModeStep(): ProviderStepRecord {
       {
         role: 'assistant',
         content: [{
-          input: 'return await tools.read({ path: "AGENTS.md", full_file: true })',
+          input: 'return await tools.read({ path: "package.json", full_file: true })',
           toolCallId: 'call-luna-1',
           toolName: 'code_mode',
           type: 'tool-call',
@@ -110,7 +110,7 @@ test('runtime issues a second provider request after a completed Luna Code Mode 
         chatMode: 'agent',
         contextCompaction: DEFAULT_CONTEXT_COMPACTION_SETTINGS,
         messages: [{
-          content: 'Read the instructions, then implement the change.',
+          content: 'Inspect the package, then implement the change.',
           id: 'user-luna-1',
           role: 'user',
           timestamp: 1,
@@ -127,6 +127,12 @@ test('runtime issues a second provider request after a completed Luna Code Mode 
 
     assert.equal(requests.length, 2)
     assert.equal(requests[0]?.cacheKey, requests[1]?.cacheKey)
+    for (const request of requests) {
+      const serializedMessages = JSON.stringify(request.messages)
+      assert.match(serializedMessages, /kind=\\?"workspace_instructions\\?"/u)
+      assert.match(serializedMessages, /A root AGENTS\.md exists/u)
+      assert.doesNotMatch(serializedMessages, /# Test workspace/u)
+    }
     assert.equal(requests[1]?.messages.some((message) => (
       message.role === 'assistant'
       && Array.isArray(message.content)

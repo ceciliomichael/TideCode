@@ -61,11 +61,14 @@ test('Code Mode system and tool usage stays aligned across providers', async () 
     }),
   })))
   const tokenCounts = estimates.map(({ usage }) => usage.systemPromptTokens)
+  const toolTokenCounts = estimates.map(({ usage }) => usage.toolSchemaTokens ?? 0)
   const minimum = Math.min(...tokenCounts)
   const maximum = Math.max(...tokenCounts)
 
-  assert.ok(minimum > 2_000, JSON.stringify(estimates))
+  assert.ok(minimum > 0, JSON.stringify(estimates))
   assert.ok(maximum - minimum < 200, JSON.stringify(estimates))
+  assert.ok(Math.min(...toolTokenCounts) > 2_000, JSON.stringify(estimates))
+  assert.ok(Math.max(...toolTokenCounts) - Math.min(...toolTokenCounts) < 200, JSON.stringify(estimates))
 })
 
 test('context usage counts tool arguments and separates tool result tokens', () => {
@@ -148,11 +151,15 @@ test('live context usage and automatic compaction share one calculated state', (
   })
 
   assert.equal(state.usage.maxTokens, state.budget.contextWindowTokens)
-  assert.equal(state.usage.systemPromptTokens, 5_000)
+  assert.equal(state.usage.systemPromptTokens, 4_300)
+  assert.equal(state.usage.toolSchemaTokens, 700)
   assert.equal(state.usage.totalTokens, state.budget.totalTokens)
   assert.equal(
     state.usage.totalTokens,
-    state.usage.systemPromptTokens + state.usage.historyTokens + state.usage.toolResultsTokens,
+    state.usage.systemPromptTokens
+      + (state.usage.toolSchemaTokens ?? 0)
+      + state.usage.historyTokens
+      + state.usage.toolResultsTokens,
   )
   assert.ok(state.usage.toolResultsTokens > 0)
   assert.equal(shouldCompactContext(state.budget), state.usage.totalTokens >= 160_000)

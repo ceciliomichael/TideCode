@@ -54,7 +54,7 @@ export function createReadTool(context: WorkspaceToolContext) {
           type: 'string',
         },
         full_file: { description: 'Read the complete text file. When true, this takes precedence over offset and limit.', type: 'boolean' },
-        limit: { description: 'Optional number of lines to read, up to 500. Omit for the default 500-line window.', maximum: 500, minimum: 1, type: 'number' },
+        limit: { description: 'Optional requested number of lines. Values above 500 are capped at 500. Ignored when full_file is true.', minimum: 1, type: 'number' },
         offset: { description: 'Starting line number (1-based index). Defaults to 1.', minimum: 1, type: 'number' },
       },
       required: ['path'],

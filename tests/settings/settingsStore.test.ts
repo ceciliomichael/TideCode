@@ -112,6 +112,24 @@ assert.equal(settings.sidebarWidth, 360)
   })
 })
 
+test('settings reads serialize in-process and recover an exited-owner lock', async () => {
+  await withSettingsHome(async ({ configDirectoryPath }) => {
+    await fs.writeFile(path.join(configDirectoryPath, 'settings.lock'), '2147483647\n', 'utf8')
+
+    const { getStoredSettings } = await import('../../electron/settings/store')
+    const [first, second, third] = await Promise.all([
+      getStoredSettings('desktop'),
+      getStoredSettings('desktop'),
+      getStoredSettings('desktop'),
+    ])
+
+    assert.equal(first.chatModelId, DEFAULT_APP_SETTINGS.chatModelId)
+    assert.equal(second.chatModelId, DEFAULT_APP_SETTINGS.chatModelId)
+    assert.equal(third.chatModelId, DEFAULT_APP_SETTINGS.chatModelId)
+    await assert.rejects(fs.access(path.join(configDirectoryPath, 'settings.lock')), { code: 'ENOENT' })
+  })
+})
+
 test('desktop, web, and cli preferences diverge while shared settings converge', async () => {
   await withSettingsHome(async () => {
     const { getStoredSettings, updateStoredSettings } = await import('../../electron/settings/store')

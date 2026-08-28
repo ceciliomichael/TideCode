@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { createNativeAgentTools } from '../../electron/chat/shared/tools'
+import type { AgentToolExecutionResult } from '../../electron/chat/shared/toolTypes'
 import { createPlan, editPlan } from '../../electron/plans/service'
 import { getPlanDisplayContent, getPlanLineRange, getPlanStatus, setPlanStatus } from '../../src/lib/planContracts'
 import { createPlanImplementationMessage, parsePlanImplementationMessage } from '../../src/lib/planImplementation'
@@ -13,6 +14,7 @@ import {
   parsePlanRevisionRequestMessage,
 } from '../../src/lib/planRevision'
 import { PLAN_HANDOFF_SUCCESS_LABEL } from '../../src/lib/planStatusMessages'
+import { formatStructuredToolResultContent } from '../../src/lib/toolResultContent'
 import {
   getLatestCompletedPlanPresentation,
   getPlanPathsCreatedByRevertedUserMessage,
@@ -102,7 +104,7 @@ test('plan editing can override the document title without losing the full revis
   }
 })
 
-test('plan mode exposes plan tools while agent mode does not', async () => {
+test('plan mode keeps plan_create and apply_patch available while agent mode omits plan_create', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-plan-tool-set-'))
 
   try {
@@ -110,9 +112,17 @@ test('plan mode exposes plan tools while agent mode does not', async () => {
     const agentTools = await createNativeAgentTools({ workspaceRootPath }, { chatMode: 'agent' })
 
     assert.ok('plan_create' in planTools)
-    assert.ok('plan_edit' in planTools)
+    assert.ok('apply_patch' in planTools)
+    assert.ok(!('plan_edit' in planTools))
     assert.ok(!('plan_create' in agentTools))
     assert.ok(!('plan_edit' in agentTools))
+
+    const revisionTools = await createNativeAgentTools(
+      { workspaceRootPath },
+      { activePlanPath: '.tidecode/plans/plan-001.md', chatMode: 'plan' },
+    )
+    assert.ok('apply_patch' in revisionTools)
+    assert.ok('plan_create' in revisionTools)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -148,29 +158,97 @@ test('plan tool execution returns a persisted plan presentation', async () => {
   }
 })
 
-test('plan_edit accepts an explicit title parameter', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-plan-edit-title-tool-'))
+test('Plan Mode creates one active plan and apply_patch revises only that artifact', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-plan-apply-patch-'))
 
   try {
-    await createPlan({ content: '# Existing title\n\nOriginal body.', workspaceRootPath })
-    const planTools = await createNativeAgentTools({ workspaceRootPath }, { chatMode: 'plan' })
-    const editPlanTool = planTools.plan_edit as unknown as {
-      execute: (input: { content: string; path: string; title: string }) => Promise<{
-        resultPresentation?: {
-          content: string
-          title: string
-        }
-      }>
+    await fs.writeFile(path.join(workspaceRootPath, 'source.ts'), 'export const value = 1\n', 'utf8')
+    const createTools = await createNativeAgentTools({ workspaceRootPath }, { chatMode: 'plan' })
+    const createPlanTool = createTools.plan_create as unknown as {
+      execute: (input: { content: string; title: string }) => Promise<AgentToolExecutionResult>
+    }
+    const createPhaseApplyPatchTool = createTools.apply_patch as unknown as {
+      execute: (input: { patch: string[] }) => Promise<AgentToolExecutionResult>
     }
 
-    const result = await editPlanTool.execute({
-      content: '## Revised body\n\nThe new plan content.',
-      path: '.tidecode/plans/plan-001.md',
-      title: 'Renamed plan',
+    const beforePlan = await createPhaseApplyPatchTool.execute({
+      patch: [
+        '*** Begin Patch',
+        '*** Update File: .tidecode/plans/plan-001.md',
+        '@@',
+        '-1. Review the change.',
+        '+1. Review the revised change.',
+        '*** End Patch',
+      ],
     })
+    assert.equal(beforePlan.status, 'error')
+    assert.match(beforePlan.summary, /requires an active Tidecode plan/u)
 
-    assert.equal(result.resultPresentation?.title, 'Renamed plan')
-    assert.match(result.resultPresentation?.content ?? '', /# Renamed plan\n\n## Revised body/u)
+    const created = await createPlanTool.execute({
+      content: '## Steps\n\n1. Review the change.',
+      title: 'Patchable plan',
+    })
+    assert.equal(created.status, 'success')
+    assert.equal(created.resultPresentation?.relativePath, '.tidecode/plans/plan-001.md')
+    assert.ok('apply_patch' in createTools)
+
+    const duplicate = await createPlanTool.execute({
+      content: '## Steps\n\n1. Duplicate.',
+      title: 'Duplicate plan',
+    })
+    assert.equal(duplicate.status, 'error')
+    assert.match(duplicate.summary, /already has an active plan/u)
+
+    const revisionTools = await createNativeAgentTools(
+      { workspaceRootPath },
+      { activePlanPath: created.resultPresentation.relativePath, chatMode: 'plan' },
+    )
+    assert.ok('plan_create' in revisionTools)
+    const applyPatchTool = revisionTools.apply_patch as unknown as {
+      execute: (input: { patch: string[] }) => Promise<AgentToolExecutionResult>
+    }
+
+    const revised = await applyPatchTool.execute({
+      patch: [
+        '*** Begin Patch',
+        '*** Update File: .tidecode/plans/plan-001.md',
+        '@@',
+        '-1. Review the change.',
+        '+1. Review the revised change.',
+        '*** End Patch',
+      ],
+    })
+    assert.equal(revised.status, 'success')
+    assert.equal(revised.resultPresentation?.kind, 'plan')
+    assert.equal(revised.resultPresentation?.operation, 'updated')
+    assert.equal(revised.resultPresentation?.relativePath, '.tidecode/plans/plan-001.md')
+    assert.match(revised.resultPresentation?.content ?? '', /Review the revised change/u)
+
+    const blockedSourcePatch = await applyPatchTool.execute({
+      patch: [
+        '*** Begin Patch',
+        '*** Update File: source.ts',
+        '@@',
+        '-export const value = 1',
+        '+export const value = 2',
+        '*** End Patch',
+      ],
+    })
+    assert.equal(blockedSourcePatch.status, 'error')
+    assert.match(blockedSourcePatch.summary, /only update the active plan/u)
+    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'source.ts'), 'utf8'), 'export const value = 1\n')
+
+    const blockedAdd = await applyPatchTool.execute({
+      patch: [
+        '*** Begin Patch',
+        '*** Add File: .tidecode/plans/plan-999.md',
+        '+# Extra plan',
+        '*** End Patch',
+      ],
+    })
+    assert.equal(blockedAdd.status, 'error')
+    assert.match(blockedAdd.summary, /Add, delete, and move hunks are not allowed/u)
+
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -194,7 +272,7 @@ test('plan review utilities preserve source lines and actionable comments', () =
     },
   ])
 
-  assert.match(request, /plan_edit/u)
+  assert.match(request, /tools\.apply_patch/u)
   assert.match(request, /Lines 3–5/u)
   assert.match(request, /Add a rollback step/u)
 })
@@ -282,7 +360,7 @@ test('final plan presentation uses the latest completed plan tool result', () =>
           },
           startedAt: Date.now(),
           state: 'completed',
-          toolName: 'plan_edit',
+          toolName: 'apply_patch',
         },
       ],
     },
@@ -290,6 +368,50 @@ test('final plan presentation uses the latest completed plan tool result', () =>
 
   assert.equal(latestPlan?.title, 'Revised plan')
   assert.equal(latestPlan?.updatedAt, 2)
+})
+
+test('final plan presentation reads Plan results nested under Code Mode', () => {
+  const presentation = {
+    content: '# Nested plan\n',
+    fileName: 'plan-032.md',
+    kind: 'plan' as const,
+    operation: 'updated' as const,
+    planId: '032',
+    relativePath: '.tidecode/plans/plan-032.md',
+    title: 'Nested plan',
+    updatedAt: 32,
+  }
+  const resultContent = formatStructuredToolResultContent({
+    schema: 'tidecode.tool_result/v1',
+    semantics: {
+      tool_calls: [{
+        name: 'apply_patch',
+        resultPresentation: presentation,
+        status: 'success',
+      }],
+    },
+    status: 'success',
+    summary: 'Ran Code Mode.',
+    toolCallId: 'code-mode-call',
+    toolName: 'code_mode',
+  }, 'Completed nested plan update.')
+
+  const latestPlan = getLatestCompletedPlanPresentation([{
+    content: '',
+    id: 'assistant-code-mode',
+    role: 'assistant',
+    timestamp: 1,
+    toolInvocations: [{
+      argumentsText: '',
+      id: 'code-mode-call',
+      resultContent,
+      startedAt: 1,
+      state: 'completed',
+      toolName: 'code_mode',
+    }],
+  }])
+
+  assert.deepEqual(latestPlan, presentation)
 })
 
 test('implementation requests use a six-digit tag that can be rendered as status', () => {
@@ -321,7 +443,7 @@ test('plan revision requests use a six-digit tag while preserving the review pro
 
   assert.match(message, /^<plan_revision_\d{6}>[\s\S]*<\/plan_revision_\d{6}>$/u)
   assert.match(parsePlanRevisionRequestMessage(message)?.message ?? '', /Add a rollback step/u)
-  assert.match(parsePlanRevisionRequestMessage(message)?.message ?? '', /plan_edit/u)
+  assert.match(parsePlanRevisionRequestMessage(message)?.message ?? '', /tools\.apply_patch/u)
 })
 
 test('plan status frontmatter survives implementation updates without entering the preview body', () => {

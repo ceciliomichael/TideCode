@@ -18,6 +18,7 @@ import { projectCanonicalReplay } from '../history/replayProjector'
 import { shouldReplayAssistantReasoning } from './assistantReasoningPolicy'
 import { selectContextUsageMessages } from './contextUsageProjection'
 import { buildChatPrompt, stripImageAttachmentsFromModelMessages } from './messages'
+import { applyWorkspaceInstructionsContext } from './prompts/workspaceInstructions'
 import { resolveModelImageInputSupport } from './modelImageSupport'
 import { createAgentToolBundle } from './tools'
 import { sortToolSet } from './runtimeToolSet'
@@ -94,6 +95,7 @@ export async function estimateToolEnabledContextUsage(input: {
   if (!promptOptions.includeImageAttachments) {
     modelMessages = stripImageAttachmentsFromModelMessages(modelMessages)
   }
+  modelMessages = applyWorkspaceInstructionsContext(modelMessages, normalizedWorkspaceRootPath)
   const systemPrompt = prompt.system
   const messageUsage = estimateModelMessageContextUsage(modelMessages)
   let toolSchemaTokens = 0
@@ -126,13 +128,14 @@ export async function estimateToolEnabledContextUsage(input: {
       }
     }
   }
-  const systemPromptTokens = approximateTokenCount(systemPrompt) + toolSchemaTokens
+  const systemPromptTokens = approximateTokenCount(systemPrompt)
 
   return {
     historyTokens: messageUsage.historyTokens,
     maxTokens: contextCompaction.contextWindowTokens,
     systemPromptTokens,
+    toolSchemaTokens,
     toolResultsTokens: messageUsage.toolResultsTokens,
-    totalTokens: messageUsage.totalTokens + systemPromptTokens,
+    totalTokens: messageUsage.totalTokens + systemPromptTokens + toolSchemaTokens,
   }
 }

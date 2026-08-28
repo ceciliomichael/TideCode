@@ -121,8 +121,21 @@ test('buildToolInvocationGroupSummary pluralizes grouped categories', () => {
 })
 
 test('buildToolInvocationGroupSummary gives plan tools a readable label', () => {
+  const planUpdate: ToolInvocationTrace = {
+    ...createInvocation('apply_patch'),
+    resultPresentation: {
+      content: '# Updated plan\n',
+      fileName: 'plan-001.md',
+      kind: 'plan',
+      operation: 'updated',
+      planId: '001',
+      relativePath: '.tidecode/plans/plan-001.md',
+      title: 'Updated plan',
+      updatedAt: 1,
+    },
+  }
   assert.equal(
-    buildToolInvocationGroupSummary([createInvocation('plan_create'), createInvocation('plan_edit')]),
+    buildToolInvocationGroupSummary([createInvocation('plan_create'), planUpdate]),
     'Created 2 plans',
   )
 })

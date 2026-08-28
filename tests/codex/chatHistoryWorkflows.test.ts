@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   loadInitialChatHistory,
+  persistUserTurn,
   prepareRevertSessionForMessage,
   restoreWorkspaceCheckpointForMessage,
 } from '../../src/hooks/chatHistoryWorkflows'
@@ -27,6 +28,62 @@ type WindowMock = {
     restoreCheckpointSequence: (checkpointIds: string[]) => Promise<void>
   }
 }
+
+test('persistUserTurn stores workspace instructions beside Plan Mode context', async () => {
+  const conversation = { ...buildConversation([]), chatMode: 'plan' as const }
+  let appendedMessage: Message | null = null
+  const globalWithWindow = globalThis as typeof globalThis & { window?: unknown }
+  const previousWindow = globalWithWindow.window
+  globalWithWindow.window = {
+    tidecodeHistory: {
+      appendMessages: async (input: { messages: Message[] }) => {
+        appendedMessage = input.messages[0] ?? null
+        return { ...conversation, messages: input.messages }
+      },
+      getConversation: async () => conversation,
+    },
+    tidecodeWorkspace: {
+      createCheckpoint: async () => ({ createdAt: 1, id: 'checkpoint-workspace-context' }),
+      readFile: async () => ({
+        content: '# Plan rules\n\nInspect before planning.\n',
+        isBinary: false,
+        isTruncated: false,
+        modifiedTimeMs: 1,
+        relativePath: 'AGENTS.md',
+        sizeBytes: 39,
+        status: 'ready',
+      }),
+    },
+  }
+
+  try {
+    await persistUserTurn({
+      activeConversationId: conversation.id,
+      attachments: [],
+      chatMode: 'plan',
+      messages: [{ attachments: [], text: 'Plan the requested change.' }],
+      modelId: 'gpt-test',
+      providerId: 'codex',
+      reasoningEffort: 'high',
+      selectedFolderId: null,
+      targetEditMessageId: null,
+      terminalExecutionMode: 'sandbox',
+      trimmedText: 'Plan the requested change.',
+    })
+
+    const contexts = appendedMessage?.hiddenUserContext ?? []
+    assert.deepEqual(contexts.map((context) => context.kind), [
+      'chat_mode',
+      'execution_mode',
+      'workspace_instructions',
+    ])
+    assert.match(contexts[2]?.content ?? '', /A root AGENTS\.md exists/u)
+    assert.doesNotMatch(contexts[2]?.content ?? '', /# Plan rules|Inspect before planning/u)
+  } finally {
+    if (previousWindow === undefined) delete globalWithWindow.window
+    else globalWithWindow.window = previousWindow
+  }
+})
 
 function installWindowMock(windowMock: WindowMock) {
   const globalWithWindow = globalThis as typeof globalThis & { window?: WindowMock }

@@ -4,7 +4,6 @@ import {
   COMPRESSION_ACKNOWLEDGEMENT_TEXT,
   parseCompressedHistoryMessage,
 } from '../../../src/lib/chatCompression'
-import { EXECUTION_MODE_CONTEXT_PATTERN } from '../../../src/lib/executionModeContext'
 import { getToolResultModelContent, parseStructuredToolResultContent } from '../../../src/lib/toolResultContent'
 import type { ChatMode, Message, AppTerminalExecutionMode } from '../../../src/types/chat'
 import type { AgentOrchestrationMode } from './orchestration'
@@ -50,98 +49,7 @@ type UserFilePart = {
 }
 
 type UserContentPart = UserTextPart | UserFilePart
-
 type UserModelMessage = Extract<ModelMessage, { role: 'user' }>
-
-export function buildExecutionModeContext(terminalExecutionMode: AppTerminalExecutionMode) {
-  const details =
-    terminalExecutionMode === 'sandbox'
-      ? [
-          'Terminal execution mode: sandbox.',
-          'Filesystem access is limited to the workspace. A loaded skill may provide a specific skill directory for its own referenced resources.',
-        ]
-      : [
-          'Terminal execution mode: full access.',
-          'Filesystem tools and terminal commands may access paths outside the workspace only when required by the user request or a loaded skill.',
-        ]
-
-  return [
-    `<execution_mode_context mode="${terminalExecutionMode}">`,
-    ...details,
-    '</execution_mode_context>',
-  ].join('\n')
-}
-
-function appendExecutionModeContext(
-  message: UserModelMessage,
-  terminalExecutionMode: AppTerminalExecutionMode,
-): UserModelMessage {
-  const notice = buildExecutionModeContext(terminalExecutionMode)
-  const content =
-    typeof message.content === 'string'
-      ? `${message.content}\n\n${notice}`
-      : [...message.content, { text: notice, type: 'text' as const }]
-
-  return {
-    ...message,
-    content,
-  }
-}
-
-function getExecutionModeFromUserMessage(message: UserModelMessage) {
-  const text =
-    typeof message.content === 'string'
-      ? message.content
-      : message.content
-          .filter((part): part is Extract<typeof part, { type: 'text' }> => part.type === 'text')
-          .map((part) => part.text)
-          .join('\n')
-  const matches = Array.from(text.matchAll(EXECUTION_MODE_CONTEXT_PATTERN))
-  const mode = matches.at(-1)?.[1]
-  return mode === 'sandbox' || mode === 'full' ? mode : null
-}
-
-export function ensureCurrentExecutionModeContext(
-  messages: ModelMessage[],
-  terminalExecutionMode: AppTerminalExecutionMode,
-) {
-  const nextMessages = [...messages]
-  const userMessageIndexes = nextMessages
-    .map((message, index) => message.role === 'user' ? index : -1)
-    .filter((index) => index >= 0)
-  const latestUserMessageIndex = userMessageIndexes.at(-1)
-  if (latestUserMessageIndex === undefined) {
-    return nextMessages
-  }
-
-  let lastContextMode: AppTerminalExecutionMode | null = null
-  for (let position = userMessageIndexes.length - 1; position >= 0; position -= 1) {
-    const messageIndex = userMessageIndexes[position]
-    const message = nextMessages[messageIndex] as UserModelMessage
-    const mode = getExecutionModeFromUserMessage(message)
-    if (mode) {
-      lastContextMode = mode
-      break
-    }
-  }
-
-  const shouldAppend = lastContextMode === null || lastContextMode !== terminalExecutionMode
-  if (!shouldAppend) {
-    return nextMessages
-  }
-
-  // Establish the initial mode at the start of the user-visible history so it
-  // behaves like version 1 of the execution context. Later mode changes belong
-  // on the latest user message so they take effect immediately.
-  const targetUserMessageIndex = lastContextMode === null
-    ? userMessageIndexes[0]
-    : latestUserMessageIndex
-  nextMessages[targetUserMessageIndex] = appendExecutionModeContext(
-    nextMessages[targetUserMessageIndex] as UserModelMessage,
-    terminalExecutionMode,
-  )
-  return nextMessages
-}
 
 function buildUserContent(
   message: Message,
@@ -199,6 +107,11 @@ function buildUserContent(
         type: 'text',
       })
     }
+  }
+
+  for (const context of message.hiddenUserContext ?? []) {
+    const prefix = parts.length > 0 ? '\n\n' : ''
+    appendText(prefix + context.content)
   }
 
   if (parts.length === 0) {
@@ -552,12 +465,8 @@ export function buildChatPrompt(input: {
   options?: BuildChatPromptOptions
   workspaceRootPath: string
 }): { messages: ModelMessage[]; system: string } {
-  const terminalExecutionMode = input.options?.terminalExecutionMode ?? 'sandbox'
   return {
-    messages: ensureCurrentExecutionModeContext(
-      buildModelMessages(input.messages, input.options),
-      terminalExecutionMode,
-    ),
+    messages: buildModelMessages(input.messages, input.options),
     system: buildChatSystemPrompt(input.chatMode, input.workspaceRootPath, input.options),
   }
 }
@@ -596,8 +505,5 @@ export function buildModelMessages(
     appendModelMessage(messages, modelMessage)
   }
 
-  const legacySafeMessages = projectModelMessagesForContext(stripLegacyCompactionContainers(messages))
-  return options.includeExecutionModeContext
-    ? ensureCurrentExecutionModeContext(legacySafeMessages, options.terminalExecutionMode)
-    : legacySafeMessages
+  return projectModelMessagesForContext(stripLegacyCompactionContainers(messages))
 }

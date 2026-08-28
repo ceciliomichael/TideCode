@@ -6,6 +6,7 @@ import { readCanonicalHistory, readLatestCompactionPacket, recordCompactionCommi
 import { projectCanonicalReplay } from '../../history/replayProjector'
 import { shouldReplayAssistantReasoning } from '../assistantReasoningPolicy'
 import { buildChatPrompt, stripImageAttachmentsFromModelMessages } from '../messages'
+import { applyWorkspaceInstructionsContext } from '../prompts/workspaceInstructions'
 import { resolveModelImageInputSupport } from '../modelImageSupport'
 import { sanitizeModelMessages } from '../modelMessageIntegrity'
 import { compactModelMessages } from './service'
@@ -52,11 +53,12 @@ export async function compactConversationForProvider(input: CompactConversationI
     },
     providerId: input.providerId,
   })
-  const safeModelMessages = sanitizeModelMessages(
+  const safeModelMessages = sanitizeModelMessages(applyWorkspaceInstructionsContext(
     includeImageAttachments
       ? replay.messages
       : stripImageAttachmentsFromModelMessages(replay.messages),
-  )
+    input.agentContextRootPath,
+  ))
   const previousPacket = await readLatestCompactionPacket(input.conversationId)
   const result = await compactModelMessages({
     createStream: input.createStream,

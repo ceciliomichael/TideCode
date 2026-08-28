@@ -31,6 +31,7 @@ import { REMOTE_EVENT_CHANNELS } from '../src/remote/protocol'
 import { hasSharedAppSettingsInput } from '../src/lib/appSettingsScopes'
 import { shutdownRunServiceForApplication } from './runService/ensureService'
 import { createTrayPopupController } from './window/trayPopup'
+import { synchronizeDevSettingsSnapshot } from './settings/devSnapshot'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // The built directory structure
@@ -88,12 +89,18 @@ onProvidersStateChanged(() => {
 //
 // We solve this by giving dev and packaged runs distinct userData/cache directories.
 const isDevInstance = Boolean(VITE_DEV_SERVER_URL) || !app.isPackaged
+let devSettingsSnapshot: { productionHomePath: string; developmentHomePath: string } | null = null
 if (isDevInstance) {
   const appDataPath = app.getPath('appData')
   const devUserDataPath = path.join(appDataPath, `${app.getName()}-dev`)
   app.setPath('userData', devUserDataPath)
   // Keep cache within the dev profile too (avoids sharing GPUCache/Code Cache/etc.).
   app.setPath('cache', path.join(devUserDataPath, 'Cache'))
+  devSettingsSnapshot = {
+    productionHomePath: app.getPath('home'),
+    developmentHomePath: path.join(devUserDataPath, 'settings-home'),
+  }
+  process.env.TIDECODE_SETTINGS_HOME = devSettingsSnapshot.developmentHomePath
 }
 
 // Prevent multiple running instances *within the same flavor* (dev or packaged) from contending
@@ -314,6 +321,13 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(async () => {
+  if (devSettingsSnapshot) {
+    await synchronizeDevSettingsSnapshot(
+      devSettingsSnapshot.productionHomePath,
+      devSettingsSnapshot.developmentHomePath,
+    )
+  }
+
   createApplicationTray()
   registerApplicationIpcHandlers()
   registerMcpHandlers(mcpServerManager)

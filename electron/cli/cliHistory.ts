@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import type { ChatAttachment, ConversationModelPreference, ConversationRecord, Message } from '../../src/types/chat'
+import { buildHiddenUserContextTransitions } from '../../src/lib/hiddenUserContext'
+import { resolveWorkspaceInstructionsTransition } from '../chat/shared/workspaceInstructionsContext'
 import { getConversationTitleFromInput } from '../../src/hooks/chatHistoryViewModels'
 import { appendStoredMessages, getStoredConversation } from '../history/store'
 import { readPrunedFolderStore } from '../history/folderStore'
@@ -107,10 +109,22 @@ export async function createAndPersistCliUserMessage(
   const existingConversation = await getStoredConversation(state.conversationId)
   if (!existingConversation) await createCliConversationRecord(state)
   const checkpoint = await createWorkspaceCheckpoint({ workspaceRootPath: state.workspaceRootPath })
+  const hiddenUserContext = [
+    ...buildHiddenUserContextTransitions({
+      chatMode: state.chatMode,
+      messages: state.messages,
+      terminalExecutionMode: state.terminalExecutionMode,
+    }),
+    ...await resolveWorkspaceInstructionsTransition({
+      messages: state.messages,
+      workspaceRootPath: state.workspaceRootPath,
+    }),
+  ]
   const message: Message = {
     attachments: attachments.length > 0 ? [...attachments] : undefined,
     chatMode: state.chatMode,
     content,
+    hiddenUserContext: hiddenUserContext.length > 0 ? hiddenUserContext : undefined,
     id: randomUUID(),
     modelId: state.modelId,
     providerId: state.providerId,
