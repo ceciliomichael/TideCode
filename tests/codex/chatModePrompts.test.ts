@@ -25,9 +25,7 @@ test('mode-neutral system prompt keeps stable core and workspace authority', asy
     assert.ok(prompt.includes(`\n${workspaceRootPath}\n</workspace_root>`))
     assert.match(prompt, /Use the exact value inside <workspace_root> as the only workspace root/u)
     assert.match(prompt, /Never guess or construct an absolute path/u)
-    assert.match(prompt, /<terminal_environment>/u)
-    assert.match(prompt, /Active terminal shell:/u)
-    assert.match(prompt, /Write terminal commands using this shell syntax/u)
+    assert.doesNotMatch(prompt, /<terminal_environment>|Active terminal shell:/u)
     assert.match(prompt, /inspect with `list`, `glob`, or `grep` before choosing a path/u)
     assert.ok(approximateTokenCount(prompt) < 1_500)
     assert.match(prompt, /<decision_priority description="Required order for every model turn">/u)
@@ -364,18 +362,20 @@ test('workspace prompt is stable when AGENTS.md presence changes', async () => {
   }
 })
 
-test('buildChatModeSystemPrompt includes python venv notification when venv exists', async () => {
+test('buildChatModeSystemPrompt remains stable when python venv state changes', async () => {
   const workspaceRootPath = await fs.mkdtemp(
     path.join(tmpdir(), 'tidecode-venv-prompt-'),
   )
 
   try {
+    const promptWithoutVenv = buildChatModeSystemPrompt('agent', workspaceRootPath)
     const venvDir = path.join(workspaceRootPath, '.venv')
     await fs.mkdir(venvDir, { recursive: true })
     await fs.writeFile(path.join(venvDir, 'pyvenv.cfg'), 'home = /usr/bin/python\n', 'utf8')
 
-    const prompt = buildChatModeSystemPrompt('agent', workspaceRootPath)
-    assert.match(prompt, /Python virtual environment activated: \.venv/u)
+    const promptWithVenv = buildChatModeSystemPrompt('agent', workspaceRootPath)
+    assert.equal(promptWithVenv, promptWithoutVenv)
+    assert.doesNotMatch(promptWithVenv, /Python virtual environment activated|<python_environment>/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }

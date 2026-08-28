@@ -29,6 +29,7 @@ import type {
 } from '../../src/types/chat'
 import { estimateCodexContextUsage } from '../chat/codex/runtime'
 import { estimateApiKeyContextUsage } from '../chat/apiKey/runtime'
+import { resolveChatRuntimeEnvironment } from '../chat/shared/runtimeEnvironment'
 import { ensureRunServiceClient } from '../runService/ensureService'
 import { refreshProjectPathWatcher } from '../history/projectPathWatch'
 import {
@@ -239,6 +240,9 @@ export function registerChatGitTerminalIpcHandlers(
   )
   ipcMain.handle('terminal:getSession', async (_event, input) =>
     (await ensureRunServiceClient()).terminalGetSession(input),
+  )
+  ipcMain.handle('terminal:getEnvironmentSnapshot', (_event, workspaceRootPath: string) =>
+    resolveChatRuntimeEnvironment(workspaceRootPath),
   )
   ipcMain.handle('terminal:listSessions', async () =>
     (await ensureRunServiceClient()).terminalListSessions(),

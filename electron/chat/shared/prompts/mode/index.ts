@@ -3,9 +3,7 @@ import path from 'node:path'
 import type { ChatMode, AppTerminalExecutionMode } from '../../../../../src/types/chat'
 import type { AgentOrchestrationMode } from '../../orchestration'
 import { buildWorkspaceInstructionsRuntimeBlock } from '../workspaceInstructions'
-import { buildPythonVenvPromptBlock } from '../../../../python/venv'
 import { getTideCodeRuntimeRoot } from '../../../../runtime/runtimeRoot'
-import { resolvePreferredTerminalShell } from '../../../../terminal/configuration'
 
 const PROMPT_REPO_PATH = 'electron/chat/shared/prompts/mode'
 const SHARED_PROMPT_FILES = [
@@ -163,16 +161,6 @@ export function buildChatModeSystemPromptBreakdown(
     section: 'workspace_context' as const,
     source: 'electron/chat/shared/prompts/mode/index.ts',
   }
-  const venvPrompt = buildPythonVenvPromptBlock(workspaceRootPath)
-  const terminalShell = resolvePreferredTerminalShell()
-  const terminalShellPrompt = terminalShell
-    ? [
-        '<terminal_environment>',
-        '- Active terminal shell: ' + escapePromptMarkup(terminalShell.label) + ' (' + escapePromptMarkup(terminalShell.command) + ').',
-        '- Write terminal commands using this shell syntax. Do not assume another shell.',
-        '</terminal_environment>',
-      ].join('\n')
-    : ''
   const workspaceInstructionsContext = buildWorkspaceInstructionsRuntimeBlock()
   const workspaceComponents = [
     workspaceRootComponent,
@@ -183,23 +171,6 @@ export function buildChatModeSystemPromptBreakdown(
       section: 'workspace_context' as const,
       source: 'electron/chat/shared/prompts/workspaceInstructions.ts',
     },
-    terminalShellPrompt
-      ? {
-          content: terminalShellPrompt,
-          id: 'terminal_shell_context',
-          section: 'workspace_context' as const,
-          source: 'electron/terminal/configuration.ts',
-        }
-      : null,
-    venvPrompt
-      ? {
-          content: venvPrompt,
-          id: 'python_venv_context',
-          section: 'workspace_context' as const,
-          source: 'electron/python/venv.ts',
-        }
-      : null,
-
   ].filter((component): component is ChatSystemPromptComponent => component !== null)
 
   const systemRules = systemRuleComponents.map((component) => component.content).join('\n\n')

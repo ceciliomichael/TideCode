@@ -259,6 +259,7 @@ export interface TideCodeTerminalApi {
   getSession: (
     input: Omit<import('./terminalBroker').TerminalBrokerSessionReference, 'clientId'>,
   ) => Promise<import('./terminalBroker').TerminalBrokerSessionSnapshot>
+  getEnvironmentSnapshot: (workspaceRootPath: string) => Promise<import('./runtime').ChatRuntimeEnvironmentSnapshot>
   listSessions: () => Promise<import('./terminalBroker').TerminalBrokerSessionSnapshot[]>
   openExternalLink: (input: OpenExternalTerminalLinkInput) => Promise<void>
   onData: (listener: (event: TerminalDataEvent) => void) => () => void

@@ -15,6 +15,21 @@ import type {
   TerminalCancellationReason,
 } from './terminalBroker'
 
+export interface ChatRuntimeTerminalShell {
+  command: string
+  label: string
+}
+
+export interface ChatRuntimePythonVenv {
+  name: string
+  relativePath: string
+}
+
+export interface ChatRuntimeEnvironmentSnapshot {
+  pythonVenv: ChatRuntimePythonVenv | null
+  terminalShell: ChatRuntimeTerminalShell | null
+}
+
 export interface ChatStreamCancellation {
   policy: TerminalCancellationPolicy
   reason: TerminalCancellationReason

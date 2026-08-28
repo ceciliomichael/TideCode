@@ -8,6 +8,7 @@ import {
 } from '../../electron/history/documents'
 import {
   buildHiddenUserContextTransitions,
+  buildRuntimeEnvironmentHiddenContextTransitions,
   buildWorkspaceInstructionsTransition,
   extractHiddenUserContexts,
 } from '../../src/lib/hiddenUserContext'
@@ -146,4 +147,57 @@ test('workspace instructions persist only when their content state changes', () 
   assert.notEqual(changed[0]?.state, initial[0]?.state)
 
   assert.deepEqual(buildWorkspaceInstructionsTransition({ messages: history, revision: null }), [])
+})
+
+test('terminal shell and python venv contexts persist only on runtime environment transitions', () => {
+  assert.deepEqual(buildRuntimeEnvironmentHiddenContextTransitions({
+    environment: { pythonVenv: null, terminalShell: null },
+    messages: [],
+  }), [])
+
+  const initialEnvironment = {
+    pythonVenv: { name: '.venv', relativePath: '.venv' },
+    terminalShell: { command: 'C:/Program Files/PowerShell/7/pwsh.exe', label: 'PowerShell' },
+  }
+  const initial = buildRuntimeEnvironmentHiddenContextTransitions({
+    environment: initialEnvironment,
+    messages: [],
+  })
+  assert.deepEqual(initial.map((context) => context.kind), ['terminal_shell', 'python_venv'])
+  assert.match(initial[0]?.content ?? '', /Active terminal shell: PowerShell/u)
+  assert.match(initial[1]?.content ?? '', /Python virtual environment activated: \.venv/u)
+
+  const history = [createUserMessage('user-1', 'Inspect this.', initial)]
+  assert.deepEqual(buildRuntimeEnvironmentHiddenContextTransitions({
+    environment: initialEnvironment,
+    messages: history,
+  }), [])
+
+  const changedShell = buildRuntimeEnvironmentHiddenContextTransitions({
+    environment: {
+      ...initialEnvironment,
+      terminalShell: { command: '/bin/zsh', label: 'zsh' },
+    },
+    messages: history,
+  })
+  assert.deepEqual(changedShell.map((context) => context.kind), ['terminal_shell'])
+  assert.match(changedShell[0]?.content ?? '', /Active terminal shell: zsh/u)
+
+  const removedVenv = buildRuntimeEnvironmentHiddenContextTransitions({
+    environment: { ...initialEnvironment, pythonVenv: null },
+    messages: history,
+  })
+  assert.deepEqual(removedVenv.map((context) => [context.kind, context.state]), [
+    ['python_venv', 'none'],
+  ])
+  assert.match(removedVenv[0]?.content ?? '', /No Python virtual environment is currently detected/u)
+
+  const noVenvHistory = [
+    ...history,
+    createUserMessage('user-2', 'Continue.', removedVenv),
+  ]
+  assert.deepEqual(buildRuntimeEnvironmentHiddenContextTransitions({
+    environment: { pythonVenv: null, terminalShell: initialEnvironment.terminalShell },
+    messages: noVenvHistory,
+  }), [])
 })
