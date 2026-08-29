@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.1 - More reliable Kanban review and agent tools
+
+TideCode 1.3.1 improves agent tool reliability, Kanban review workflows, chat model continuity, and task export usability.
+
+- Makes Code Mode more tolerant of malformed generated patch and edit calls, while bounding broad search output instead of failing when ripgrep reaches its safety cap.
+- Keeps AI-managed Kanban work in For Review until human approval, shows only top-level tasks on the board, improves owner and subtask metadata, and adds CSV and Markdown exports.
+- Preserves per-mode model and reasoning choices across conversations and improves Kanban mention labels plus queued follow-up behavior.
+- Refines task-detail dropdowns, reasoning controls, and review-oriented task UI.
+- Requires no manual migration or configuration changes.
+- Validated with 1,437 automated tests, TypeScript type checking, the production build, and pull-request CI.
+
 ## 1.3.0 - More reliable agent workflows and configuration
 
 TideCode 1.3.0 strengthens long-running agent work, tool execution, model configuration, and workspace reliability across Desktop and CLI.
