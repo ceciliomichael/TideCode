@@ -19,12 +19,16 @@ export interface RevertEditSession {
   revertedPlanPaths?: string[]
 }
 
-export interface ConversationModelPreference {
-  chatMode?: ChatMode
+export interface ConversationModeModelPreference {
   label: string
   modelId: string
   providerId: ChatProviderId | null
   reasoningEffort?: ReasoningEffort
+}
+
+export interface ConversationModelPreference extends ConversationModeModelPreference {
+  chatMode?: ChatMode
+  modeSelections?: Partial<Record<ChatMode, ConversationModeModelPreference>>
 }
 
 export interface AppSettings {

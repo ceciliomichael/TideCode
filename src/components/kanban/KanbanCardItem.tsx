@@ -11,7 +11,7 @@ import {
 import type { DragEvent } from 'react'
 import { KANBAN_COLUMNS } from './kanbanDefaults'
 import type { KanbanCardDisplayMeta } from './kanbanHierarchy'
-import { getKanbanPriorityOption } from './kanbanPresentation'
+import { getKanbanOwnerLabel, getKanbanPriorityOption } from './kanbanPresentation'
 import type { KanbanCard, KanbanColumnId } from './kanbanTypes'
 import { Tooltip } from '../Tooltip'
 
@@ -198,17 +198,17 @@ export function KanbanCardItem({
           ) : null}
 
           {hasFooterMetadata ? (
-            <div className="mt-2.5 flex min-h-5 items-center gap-3 text-[11px] text-muted-foreground">
+            <div className="mt-2.5 flex min-h-5 items-center gap-3 text-[11px] leading-none text-muted-foreground">
               {card.assignee ? (
-                <span className="inline-flex min-w-0 items-center gap-1">
-                  <CircleUserRound size={13} />
-                  <span className="max-w-24 truncate">{card.assignee}</span>
+                <span className="inline-flex h-4 min-w-0 items-center gap-1 leading-none">
+                  <CircleUserRound size={13} className="shrink-0" />
+                  <span className="max-w-24 truncate">{getKanbanOwnerLabel(card.assignee)}</span>
                 </span>
               ) : null}
               {meta.childCount > 0 ? (
                 <Tooltip content={`${meta.doneChildCount} of ${meta.childCount} subtasks done`} side="top" noWrap>
-                  <span className="inline-flex items-center gap-1">
-                    <ListTodo size={13} />
+                  <span className="inline-flex h-4 items-center gap-1 leading-none">
+                    <ListTodo size={13} className="shrink-0" />
                     {meta.doneChildCount}/{meta.childCount}
                   </span>
                 </Tooltip>
@@ -219,8 +219,8 @@ export function KanbanCardItem({
                   side="top"
                   noWrap
                 >
-                  <span className="inline-flex items-center gap-1">
-                    <CheckSquare2 size={13} />
+                  <span className="inline-flex h-4 items-center gap-1 leading-none">
+                    <CheckSquare2 size={13} className="shrink-0" />
                     {completedCriteriaCount}/{card.acceptanceCriteria.length}
                   </span>
                 </Tooltip>

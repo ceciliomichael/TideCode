@@ -10,7 +10,12 @@ interface ChatQueueBlockProps {
   onClearQueue?: () => void
   onRemove: (id: string) => void
   onReorder: (sourceId: string, targetId: string) => void
-  onUpdate: (id: string, content: string, attachments?: ChatAttachment[]) => void
+  onUpdate: (
+    id: string,
+    content: string,
+    attachments?: ChatAttachment[],
+    mentionPathMap?: ReadonlyMap<string, string>,
+  ) => void
 }
 
 export function ChatQueueBlock({

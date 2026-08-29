@@ -90,6 +90,39 @@ function getPathBasename(path: string) {
   return segments[segments.length - 1] ?? path
 }
 
+function getKnownMentionLabelForPath(
+  path: string,
+  knownMentionLabels?: ReadonlyMap<string, string>,
+) {
+  if (!knownMentionLabels) {
+    return null
+  }
+
+  for (const [label, knownPath] of knownMentionLabels) {
+    if (knownPath === path) {
+      return label
+    }
+  }
+
+  return null
+}
+
+export function serializeChatMentionPathMap(
+  mentionPathMap?: ReadonlyMap<string, string> | null,
+): Record<string, string> | undefined {
+  if (!mentionPathMap || mentionPathMap.size === 0) {
+    return undefined
+  }
+
+  return Object.fromEntries(mentionPathMap)
+}
+
+export function restoreChatMentionPathMap(
+  mentionPathMap?: Readonly<Record<string, string>> | null,
+) {
+  return new Map(Object.entries(mentionPathMap ?? {}))
+}
+
 export function findChatMentionMatches(
   text: string,
   knownMentionLabels?: ReadonlyMap<string, string>,
@@ -112,7 +145,7 @@ export function findChatMentionMatches(
 
     matches.push({
       end,
-      label: getPathBasename(targetPath),
+      label: getKnownMentionLabelForPath(actionTag, knownMentionLabels) ?? getPathBasename(targetPath),
       path: actionTag,
       start,
     })
@@ -185,12 +218,15 @@ export function splitChatMentionSegments(
   return segments
 }
 
-export function collapseChatMentionMarkup(text: string) {
+export function collapseChatMentionMarkup(
+  text: string,
+  knownMentionLabels?: ReadonlyMap<string, string>,
+) {
   if (text.length === 0) {
     return text
   }
 
-  const matches = findChatMentionMatches(text)
+  const matches = findChatMentionMatches(text, knownMentionLabels)
   if (matches.length === 0) {
     return text
   }

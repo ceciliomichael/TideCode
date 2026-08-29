@@ -621,13 +621,14 @@ test('Code Mode does not reinterpret process metadata as a failed tool call', as
 
   try {
     const result = await executor.run(
-      "const terminal = await tools.execute_terminal({ command: 'npm test', wait_seconds: 1 }); return { toolStatus: terminal.status, processStatus: terminal.semantics.status, exitCode: terminal.semantics.exit_code, semanticKeys: Object.keys(terminal.semantics).sort() }",
+      "const terminal = await tools.execute_terminal({ command: 'npm test', wait_seconds: 1 }); return { toolStatus: terminal.status, processStatus: terminal.semantics.status, directExitCode: terminal.exit_code, exitCode: terminal.semantics.exit_code, semanticKeys: Object.keys(terminal.semantics).sort() }",
       { allowedToolNames: ['execute_terminal'] },
     )
 
     assert.equal(result.status, 'success')
     assert.equal(result.toolCalls[0]?.status, 'success')
     assert.deepEqual(result.output, {
+      directExitCode: 17,
       exitCode: 17,
       processStatus: 'completed',
       semanticKeys: ['exit_code', 'state', 'status'],
@@ -1494,6 +1495,40 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
       /tools\.tool_search\(\{ limit\?: number/u,
     )
     const codeModeDescription = (bundle.tools.code_mode as { description?: string }).description ?? ''
+    assert.ok(codeModeDescription.includes(
+      'AI-completed main work stops at `for-review`, which completes direct subtasks. Never directly target `done`',
+    ))
+    assert.ok(codeModeDescription.includes(
+      'Set Owner per task: `Human` for user-originated work, `Agent` for work you introduce autonomously; do not blindly inherit parent ownership, and preserve explicit owner names.',
+    ))
+    assert.ok(codeModeDescription.includes(
+      'action: "read_board" | "read_card" | "create_card" | "create_task_with_subtasks" | "update_card" | "move_card" | "reorder_card" | "delete_card"',
+    ))
+    assert.ok(codeModeDescription.includes(
+      'acceptanceCriteria?: Array<{ text: string; completed?: boolean; id?: string }>',
+    ))
+    const kanbanEntry = bundle.registry.get('kanban_board')
+    assert.ok(kanbanEntry)
+    const kanbanActionSchema = (kanbanEntry.inputSchema.properties as Record<string, { enum?: unknown[] }> | undefined)?.action
+    assert.deepEqual(kanbanActionSchema?.enum, [
+      'read_board',
+      'read_card',
+      'create_card',
+      'create_task_with_subtasks',
+      'update_card',
+      'move_card',
+      'reorder_card',
+      'delete_card',
+    ])
+    const invalidKanbanResult = await invoke(bundle.nativeTools.kanban_board, { action: 'list' }) as {
+      status?: string
+      summary?: string
+    }
+    assert.equal(invalidKanbanResult.status, 'error')
+    assert.match(
+      invalidKanbanResult.summary ?? '',
+      /Unknown action: list\. Valid actions: read_board, read_card, create_card, create_task_with_subtasks, update_card, move_card, reorder_card, delete_card\./u,
+    )
     assert.equal(codeModeDescription.split(CODE_MODE_EXECUTION_CONTRACT).length - 1, 1)
     assert.match(codeModeDescription, /temporary asynchronous JavaScript program running in a tool-only worker/u)
     assert.match(codeModeDescription, /Choose the purpose-built inner API for the scenario/u)

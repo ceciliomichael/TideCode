@@ -19,6 +19,7 @@ export function createSameTurnSteerMessages(
     chatMode: startInput.chatMode,
     content: queuedMessage.content,
     id: queuedMessage.id,
+    mentionPathMap: queuedMessage.mentionPathMap ? { ...queuedMessage.mentionPathMap } : undefined,
     modelId: startInput.modelId,
     providerId: startInput.providerId,
     reasoningEffort: startInput.reasoningEffort,

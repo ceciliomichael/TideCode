@@ -155,6 +155,12 @@ test('expandChatMentions expands file, folder, skill, and Kanban mentions with r
     'Please use @writing to help write @main.ts in @components for @card-123 and @AllSpaces AI Engine — Complete Step-by-Step Build Guide.md',
   )
 
+  const collapsedWithSavedLabels = collapseChatMentionMarkup(expanded, map)
+  assert.equal(
+    collapsedWithSavedLabels,
+    'Please use @writing to help write @main.ts in @components for @Fix login bug and @AllSpaces AI Engine — Complete Step-by-Step Build Guide.md',
+  )
+
   const pathMap = buildChatMentionPathMap(expanded)
   assert.equal(pathMap.get('card-123'), 'kanban:card-123')
   assert.equal(pathMap.get('AllSpaces AI Engine — Complete Step-by-Step Build Guide.md'),
@@ -166,6 +172,7 @@ test('expandChatMentions expands file, folder, skill, and Kanban mentions with r
   assert.equal(matches[3].label, 'card-123')
   assert.equal(matches[3].path, 'kanban:card-123')
   assert.equal(matches[4].label, 'AllSpaces AI Engine — Complete Step-by-Step Build Guide.md')
+  assert.equal(findChatMentionMatches(expanded, map)[3]?.label, 'Fix login bug')
 
   // Adjacent mentions with no space-bleed between them
   const adjacent = expandChatMentions('@writing @main.ts', map)

@@ -274,6 +274,101 @@ test('apply_patch rejects overlapping out-of-order recovery', async () => {
   }
 })
 
+test('apply_patch auto-repairs one extra backslash escaping layer for a unique anchor', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-escaping-autofix-'))
+  const targetPath = path.join(workspaceRootPath, 'escaped.ts')
+  const beforeLine = 'const regex = /\\s+\\w+/'
+  const afterLine = 'const regex = /\\s+\\d+/'
+  const overescape = (value: string) => value.replaceAll('\\', '\\\\')
+
+  try {
+    await fs.writeFile(targetPath, `${beforeLine}\n`, 'utf8')
+    const applyPatchTool = createApplyPatchTool({ workspaceRootPath })
+    const execute = (applyPatchTool as {
+      execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
+    }).execute
+    const patchLines = standardPatch(
+      `*** Update File: escaped.ts\n@@\n-${overescape(beforeLine)}\n+${overescape(afterLine)}`,
+    ).split('\n')
+    const result = await execute?.(
+      { patch: patchLines },
+      { context: {}, messages: [], toolCallId: 'apply-patch-escaping-autofix-test' },
+    ) as { body?: string; semantics?: Record<string, unknown>; status?: string }
+
+    assert.equal(result.status, 'success')
+    assert.equal(await fs.readFile(targetPath, 'utf8'), `${afterLine}\n`)
+    assert.deepEqual(result.semantics?.autofixed_paths, ['escaped.ts'])
+    assert.match(result.body ?? '', /Autofixed escaping: escaped\.ts/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('apply_patch escaping autofix rejects ambiguous candidates without mutation', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-escaping-ambiguous-'))
+  const targetPath = path.join(workspaceRootPath, 'ambiguous.ts')
+  const line = 'const regex = /\\s+\\w+/'
+  const originalContent = `${line}\nkeep\n${line}\n`
+  const overescape = (value: string) => value.replaceAll('\\', '\\\\')
+
+  try {
+    await fs.writeFile(targetPath, originalContent, 'utf8')
+    await assert.rejects(
+      applyPatchInWorkspace(
+        workspaceRootPath,
+        standardPatch(`*** Update File: ambiguous.ts\n@@\n-${overescape(line)}\n+const regex = /changed/`),
+      ),
+      /Failed to find expected lines/u,
+    )
+    assert.equal(await fs.readFile(targetPath, 'utf8'), originalContent)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('apply_patch escaping autofix requires exact backslash doubling', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-escaping-exact-'))
+  const targetPath = path.join(workspaceRootPath, 'exact.ts')
+  const actualLine = `const value = "${'\\'.repeat(2)}"`
+  const mismatchedAnchor = `const value = "${'\\'.repeat(3)}"`
+
+  try {
+    await fs.writeFile(targetPath, `${actualLine}\n`, 'utf8')
+    await assert.rejects(
+      applyPatchInWorkspace(
+        workspaceRootPath,
+        standardPatch(`*** Update File: exact.ts\n@@\n-${mismatchedAnchor}\n+const value = "changed"`),
+      ),
+      /Failed to find expected lines/u,
+    )
+    assert.equal(await fs.readFile(targetPath, 'utf8'), `${actualLine}\n`)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('apply_patch escaping autofix preserves end-of-file constraints', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-escaping-eof-'))
+  const targetPath = path.join(workspaceRootPath, 'escaped-eof.ts')
+  const line = 'const regex = /\\s+/'
+  const originalContent = `${line}\ntail\n`
+  const overescaped = line.replaceAll('\\', '\\\\')
+
+  try {
+    await fs.writeFile(targetPath, originalContent, 'utf8')
+    await assert.rejects(
+      applyPatchInWorkspace(
+        workspaceRootPath,
+        standardPatch(`*** Update File: escaped-eof.ts\n@@\n-${overescaped}\n+const regex = /changed/\n*** End of File`),
+      ),
+      /Failed to find expected lines/u,
+    )
+    assert.equal(await fs.readFile(targetPath, 'utf8'), originalContent)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('apply_patch accepts array-of-lines input when source contains template literals', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-lines-'))
   const targetPath = path.join(workspaceRootPath, 'src', 'panel.tsx')

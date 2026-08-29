@@ -1,6 +1,6 @@
 import { getChatAttachmentSummary } from './chatAttachments'
 import { normalizeAssistantMessageContent } from './chatMessageContent'
-import { collapseChatMentionMarkup } from './chatMentions'
+import { collapseChatMentionMarkup, restoreChatMentionPathMap } from './chatMentions'
 import { isPlanRevisionRequestMessage } from './planRevision'
 import { isPlanImplementationStatusMessage } from './planImplementation'
 import { isPlanStatusMessage } from './planStatusMessages'
@@ -48,7 +48,10 @@ export function getConversationPreviewContent(messages: Message[]) {
 
     const rawContent =
       message.role === 'assistant' ? normalizeAssistantMessageContent(message).content : message.content
-    const previewContent = collapseChatMentionMarkup(rawContent)
+    const previewContent = collapseChatMentionMarkup(
+      rawContent,
+      message.role === 'user' ? restoreChatMentionPathMap(message.mentionPathMap) : undefined,
+    )
     const trimmedContent = previewContent.trim()
     if (trimmedContent.length > 0) {
       return previewContent

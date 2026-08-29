@@ -11,6 +11,7 @@ function cloneQueuedMessage(message: QueuedMessage): QueuedMessage {
     attachments: Array.isArray(message.attachments)
       ? message.attachments.map((attachment) => ({ ...attachment }))
       : undefined,
+    mentionPathMap: message.mentionPathMap ? { ...message.mentionPathMap } : undefined,
   }
 }
 

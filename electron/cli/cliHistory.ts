@@ -14,6 +14,7 @@ import { writeConversationFile } from '../history/conversationFileStore'
 import { createWorkspaceCheckpoint } from '../workspace/checkpoints'
 import type { CliSessionState } from './types'
 import { getStoredSettings } from '../settings/store'
+import { getConversationModeModelPreference } from '../../src/lib/conversationModelPreference'
 
 function normalizeWorkspacePath(value: string): string {
   const resolved = path.resolve(value.trim()).replace(/\\/g, '/')
@@ -51,11 +52,13 @@ export function applyConversationRecordToCliState(
     if (latestRuntimeMessage?.reasoningEffort) state.reasoningEffort = latestRuntimeMessage.reasoningEffort
 
     if (options.conversationPreference) {
-      state.modelId = options.conversationPreference.modelId
-      if (options.conversationPreference.providerId) state.providerId = options.conversationPreference.providerId
-      if (options.conversationPreference.chatMode) state.chatMode = options.conversationPreference.chatMode
-      if (options.conversationPreference.reasoningEffort) {
-        state.reasoningEffort = options.conversationPreference.reasoningEffort
+      const modePreference = getConversationModeModelPreference(options.conversationPreference, state.chatMode)
+      if (modePreference) {
+        state.modelId = modePreference.modelId
+        if (modePreference.providerId) state.providerId = modePreference.providerId
+        if (modePreference.reasoningEffort) {
+          state.reasoningEffort = modePreference.reasoningEffort
+        }
       }
     }
   }

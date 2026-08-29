@@ -100,8 +100,8 @@ function formatUpdatedAtLabel(timestamp: number, language: AppLanguage) {
   return getShortDateFormatter(language).format(timestamp)
 }
 
-export function getConversationTitle(seed: string) {
-  const collapsed = collapseChatMentionMarkup(seed)
+export function getConversationTitle(seed: string, mentionPathMap?: ReadonlyMap<string, string>) {
+  const collapsed = collapseChatMentionMarkup(seed, mentionPathMap)
   const normalized = collapsed.trim().replace(/\s+/g, ' ')
   if (normalized.length === 0) {
     return 'New chat'
@@ -111,10 +111,14 @@ export function getConversationTitle(seed: string) {
   return conciseTitle.length > 48 ? `${conciseTitle.slice(0, 45)}...` : conciseTitle
 }
 
-export function getConversationTitleFromInput(seed: string, attachments: readonly ChatAttachment[]) {
+export function getConversationTitleFromInput(
+  seed: string,
+  attachments: readonly ChatAttachment[],
+  mentionPathMap?: ReadonlyMap<string, string>,
+) {
   const normalized = seed.trim().replace(/\s+/g, ' ')
   if (normalized.length > 0) {
-    return getConversationTitle(normalized)
+    return getConversationTitle(normalized, mentionPathMap)
   }
 
   const attachmentSummary = getChatAttachmentSummary(attachments)

@@ -27,7 +27,15 @@ class RipgrepBinaryNotFoundError extends Error {
 interface RunRipgrepOptions {
   abortSignal?: AbortSignal
   maxOutputChars?: number
+  truncateStdoutOnLimit?: boolean
   timeoutMs?: number
+}
+
+interface RipgrepRunResult {
+  exitCode: number
+  stderr: string
+  stdout: string
+  stdoutTruncated: boolean
 }
 
 function createRipgrepAbortError(message: string) {
@@ -187,7 +195,7 @@ export async function runRipgrepWithCandidates(
     attemptedCommands.push(candidateCommand)
 
     try {
-      const result = await new Promise<{ exitCode: number; stderr: string; stdout: string }>((resolve, reject) => {
+      const result = await new Promise<RipgrepRunResult>((resolve, reject) => {
         if (options.abortSignal?.aborted) {
           reject(createRipgrepAbortError('ripgrep search was cancelled.'))
           return
@@ -214,6 +222,12 @@ export async function runRipgrepWithCandidates(
           cleanup()
           reject(error)
         }
+        const finishResolve = (result: RipgrepRunResult) => {
+          if (settled) return
+          settled = true
+          cleanup()
+          resolve(result)
+        }
         const stopChild = () => {
           try {
             child.kill()
@@ -236,7 +250,28 @@ export async function runRipgrepWithCandidates(
         }
 
         child.stdout.on('data', (chunk: Buffer | string) => {
-          stdout = appendOutput(stdout, chunk, 'stdout')
+          const next = stdout + chunk.toString()
+          if (next.length <= maxOutputChars) {
+            stdout = next
+            return
+          }
+
+          if (!options.truncateStdoutOnLimit) {
+            stopChild()
+            finishReject(new Error(`ripgrep stdout exceeded the ${maxOutputChars}-character safety limit.`))
+            return
+          }
+
+          const clipped = next.slice(0, maxOutputChars)
+          const lastCompleteLineEnd = clipped.lastIndexOf(String.fromCharCode(10))
+          stdout = lastCompleteLineEnd >= 0 ? clipped.slice(0, lastCompleteLineEnd + 1) : ''
+          stopChild()
+          finishResolve({
+            exitCode: 0,
+            stderr,
+            stdout,
+            stdoutTruncated: true,
+          })
         })
         child.stderr.on('data', (chunk: Buffer | string) => {
           stderr = appendOutput(stderr, chunk, 'stderr')
@@ -244,12 +279,11 @@ export async function runRipgrepWithCandidates(
         child.on('error', finishReject)
         child.on('close', (code) => {
           if (settled) return
-          settled = true
-          cleanup()
-          resolve({
+          finishResolve({
             exitCode: code ?? 1,
             stderr,
             stdout,
+            stdoutTruncated: false,
           })
         })
         options.abortSignal?.addEventListener('abort', onAbort, { once: true })
@@ -292,7 +326,11 @@ export async function runRipgrep(args: string[], cwd: string, options: RunRipgre
         throw retryError
       }
 
-      return runRipgrepFallback(args, cwd, { abortSignal: options.abortSignal })
+      const fallbackResult = await runRipgrepFallback(args, cwd, { abortSignal: options.abortSignal })
+      return {
+        ...fallbackResult,
+        stdoutTruncated: false,
+      }
     }
   }
 }

@@ -58,7 +58,7 @@ function normalizeResultPage(offset: number | undefined, limit: number | undefin
   }
 }
 
-function buildPageSemantics(total: number, offset: number, returnedCount: number) {
+function buildPageSemantics(total: number, offset: number, returnedCount: number, totalIsExact = true) {
   const nextOffset = offset + returnedCount
   const hasMore = nextOffset < total
   return {
@@ -66,16 +66,27 @@ function buildPageSemantics(total: number, offset: number, returnedCount: number
     next_offset: hasMore ? nextOffset : null,
     offset,
     returned_count: returnedCount,
-    total_count: total,
+    ...(totalIsExact ? { total_count: total } : {}),
   }
 }
 
-function formatGrepOutput(matches: GrepMatch[], hasErrors: boolean, offset?: number, limit?: number) {
+function formatGrepOutput(
+  matches: GrepMatch[],
+  hasErrors: boolean,
+  offset?: number,
+  limit?: number,
+  outputTruncated = false,
+) {
   if (matches.length === 0) {
     return {
-      body: 'No files found',
-      page: buildPageSemantics(0, 0, 0),
-      summary: 'No files found',
+      body: outputTruncated
+        ? 'No visible matches were found before search output was truncated. Narrow the path, include, or pattern to search further.'
+        : 'No files found',
+      page: {
+        ...buildPageSemantics(0, 0, 0, !outputTruncated),
+        ...(outputTruncated ? { output_truncated: true } : {}),
+      },
+      summary: outputTruncated ? 'Search output was truncated before any visible matches were found' : 'No files found',
     }
   }
 
@@ -102,10 +113,18 @@ function formatGrepOutput(matches: GrepMatch[], hasErrors: boolean, offset?: num
     outputLines.push('(Some paths were inaccessible and skipped)')
   }
 
+  if (outputTruncated) {
+    outputLines.push('')
+    outputLines.push('(Search output was truncated. Narrow the path, include, or pattern to search further.)')
+  }
+
   return {
     body: outputLines.join('\n'),
-    page: buildPageSemantics(totalMatches, page.offset, visibleMatches.length),
-    summary: `Found ${totalMatches} matches`,
+    page: {
+      ...buildPageSemantics(totalMatches, page.offset, visibleMatches.length, !outputTruncated),
+      ...(outputTruncated ? { output_truncated: true } : {}),
+    },
+    summary: outputTruncated ? `Found at least ${totalMatches} matches before search output was truncated` : `Found ${totalMatches} matches`,
   }
 }
 
@@ -328,7 +347,7 @@ export async function createGlobToolResult(
     args.push('--glob', globPattern)
   }
 
-  const result = await runRipgrep(args, absolutePath, { abortSignal })
+  const result = await runRipgrep(args, absolutePath, { abortSignal, truncateStdoutOnLimit: true })
   if (result.exitCode !== 0 && result.exitCode !== 1) {
     return createErrorResult(`Glob failed for ${relativePath}`, {
       body: result.stderr.trim() || `ripgrep exited with code ${result.exitCode}`,
@@ -354,22 +373,29 @@ export async function createGlobToolResult(
   const matches = visibleRelativeMatches.map((entry) => path.resolve(absolutePath, entry))
   const page = normalizeResultPage(offset, limit)
   const visibleMatches = matches.slice(page.offset, page.offset + page.limit)
-  const bodyLines = matches.length === 0 ? ['No files found'] : visibleMatches
+  const bodyLines = matches.length === 0
+    ? [result.stdoutTruncated
+        ? 'No visible files were found before search output was truncated. Narrow the path or pattern to search further.'
+        : 'No files found']
+    : visibleMatches
 
   return createSuccessResult({
     body: bodyLines.join('\n'),
     semantics: {
-      ...buildPageSemantics(matches.length, page.offset, visibleMatches.length),
+      ...buildPageSemantics(matches.length, page.offset, visibleMatches.length, !result.stdoutTruncated),
       pattern,
+      ...(result.stdoutTruncated ? { output_truncated: true } : {}),
     },
     subject: {
       kind: 'directory',
       path: relativePath,
     },
-    summary:
-      matches.length === 0
+    summary: result.stdoutTruncated
+      ? `Found at least ${matches.length} file${matches.length === 1 ? '' : 's'} matching ${pattern} before search output was truncated`
+      : matches.length === 0
         ? `No files matched ${pattern} in ${relativePath}`
         : `Found ${matches.length} file${matches.length === 1 ? '' : 's'} matching ${pattern}`,
+    ...(result.stdoutTruncated ? { truncated: true } : {}),
   })
 }
 
@@ -401,7 +427,7 @@ export async function createGrepToolResult(
 
   args.push(absolutePath)
 
-  const result = await runRipgrep(args, workspaceRootPath, { abortSignal })
+  const result = await runRipgrep(args, workspaceRootPath, { abortSignal, truncateStdoutOnLimit: true })
   const output = result.stdout.trim()
   if (result.exitCode === 1 || (result.exitCode === 2 && output.length === 0)) {
     return createSuccessResult({
@@ -460,7 +486,7 @@ export async function createGrepToolResult(
     return left.lineNumber - right.lineNumber
   })
 
-  const formatted = formatGrepOutput(parsedMatches, result.exitCode === 2, offset, limit)
+  const formatted = formatGrepOutput(parsedMatches, result.exitCode === 2, offset, limit, result.stdoutTruncated)
   return createSuccessResult({
     body: formatted.body,
     semantics: {
@@ -471,5 +497,6 @@ export async function createGrepToolResult(
       path: relativePath,
     },
     summary: formatted.summary,
+    ...(result.stdoutTruncated ? { truncated: true } : {}),
   })
 }

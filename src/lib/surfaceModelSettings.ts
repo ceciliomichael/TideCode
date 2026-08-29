@@ -1,4 +1,5 @@
 import type { AppSettings, ChatMode, ChatProviderId, ConversationModelPreference, Message, ReasoningEffort } from '../types/chat'
+import { getConversationModeModelPreference } from './conversationModelPreference'
 
 type SurfaceModelSettings = Pick<
   AppSettings,
@@ -33,13 +34,14 @@ export function resolveConversationModelSelection(
   preference: ConversationModelPreference | null | undefined,
   latestUserMessage: Message | null | undefined,
 ): SurfaceModelSelection {
-  if (preference && (preference.chatMode === undefined || preference.chatMode === chatMode)) {
+  const modePreference = getConversationModeModelPreference(preference, chatMode)
+  if (modePreference) {
     return {
       ...defaultSelection,
-      modelId: preference.modelId,
-      modelLabel: preference.label,
-      providerId: preference.providerId,
-      reasoningEffort: preference.reasoningEffort,
+      modelId: modePreference.modelId,
+      modelLabel: modePreference.label,
+      providerId: modePreference.providerId,
+      reasoningEffort: modePreference.reasoningEffort,
     }
   }
 

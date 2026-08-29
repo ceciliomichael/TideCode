@@ -50,8 +50,16 @@ interface ChatConversationSurfaceProps {
   isKanbanBoardOpen: boolean
   isTerminalSurfaceOpen: boolean
   messageListBoundaryRef: RefObject<HTMLDivElement>
-  onQueueMessage: (value: string, attachments: ChatAttachment[]) => void
-  onAlternateFollowUpMessage: (value: string, attachments: ChatAttachment[]) => void
+  onQueueMessage: (
+    value: string,
+    attachments: ChatAttachment[],
+    mentionPathMap: ReadonlyMap<string, string>,
+  ) => void
+  onAlternateFollowUpMessage: (
+    value: string,
+    attachments: ChatAttachment[],
+    mentionPathMap: ReadonlyMap<string, string>,
+  ) => void
   onTerminalExecutionModeChange: (mode: AppTerminalExecutionMode) => void
   queuedMessages: QueuedMessage[]
   refactorCandidates: WorkspaceRefactorCandidate[]
@@ -63,7 +71,12 @@ interface ChatConversationSurfaceProps {
   showImplementPlanButton: boolean
   showQueueBlock: boolean
   terminalExecutionMode: AppTerminalExecutionMode
-  updateQueuedMessage: (messageId: string, value: string, attachments?: ChatAttachment[]) => void
+  updateQueuedMessage: (
+    messageId: string,
+    value: string,
+    attachments?: ChatAttachment[],
+    mentionPathMap?: ReadonlyMap<string, string>,
+  ) => void
   workspaceState: ChatWorkspaceUiState
 }
 
@@ -113,16 +126,16 @@ export function ChatConversationSurface({
     setFollowLatestSignal((currentSignal) => currentSignal + 1)
   }, [])
   const handleSendMainMessageAndFollow = useCallback<ChatInputProps['onSend']>(
-    (value, attachments) => {
+    (value, attachments, mentionPathMap) => {
       requestFollowLatest()
-      handleSendMainMessage(value, attachments)
+      handleSendMainMessage(value, attachments, mentionPathMap)
     },
     [handleSendMainMessage, requestFollowLatest],
   )
   const handleSendEditedMessageAndFollow = useCallback<MessageListProps['onSendEditedMessage']>(
-    (value, attachments) => {
+    (value, attachments, mentionPathMap) => {
       requestFollowLatest()
-      handleSendEditedMessage(value, attachments)
+      handleSendEditedMessage(value, attachments, mentionPathMap)
     },
     [handleSendEditedMessage, requestFollowLatest],
   )

@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createConversationModelPreference } from '../src/lib/conversationModelPreference'
+import {
+  createConversationModelPreference,
+  getConversationModeModelPreference,
+  mergeConversationModeModelPreference,
+} from '../src/lib/conversationModelPreference'
 
 test('preserves the active provider and model when reasoning changes before a conversation preference exists', () => {
   const preference = createConversationModelPreference({
-    activeChatMode: 'chat',
+    activeChatMode: 'agent',
     activeSelection: {
       label: 'DeepSeek Reasoner',
       modelId: 'deepseek-reasoner',
@@ -17,12 +21,20 @@ test('preserves the active provider and model when reasoning changes before a co
     label: 'DeepSeek Reasoner',
     modelId: 'deepseek-reasoner',
     providerId: 'deepseek',
-    chatMode: 'chat',
+    chatMode: 'agent',
     reasoningEffort: 'high',
+    modeSelections: {
+      agent: {
+        label: 'DeepSeek Reasoner',
+        modelId: 'deepseek-reasoner',
+        providerId: 'deepseek',
+        reasoningEffort: 'high',
+      },
+    },
   })
 })
 
-test('keeps an existing conversation model preference while changing only reasoning effort', () => {
+test('reasoning changes use the existing preference for the active mode only', () => {
   const preference = createConversationModelPreference({
     activeChatMode: 'plan',
     activeSelection: {
@@ -34,18 +46,32 @@ test('keeps an existing conversation model preference while changing only reason
       label: 'Saved DeepSeek',
       modelId: 'saved-deepseek',
       providerId: 'deepseek',
-      chatMode: 'chat',
+      chatMode: 'agent',
       reasoningEffort: 'low',
     },
     reasoningEffort: 'medium',
   })
 
   assert.deepEqual(preference, {
-    label: 'Saved DeepSeek',
-    modelId: 'saved-deepseek',
-    providerId: 'deepseek',
-    chatMode: 'chat',
+    label: 'Current model',
+    modelId: 'current-model',
+    providerId: 'openai',
+    chatMode: 'plan',
     reasoningEffort: 'medium',
+    modeSelections: {
+      agent: {
+        label: 'Saved DeepSeek',
+        modelId: 'saved-deepseek',
+        providerId: 'deepseek',
+        reasoningEffort: 'low',
+      },
+      plan: {
+        label: 'Current model',
+        modelId: 'current-model',
+        providerId: 'openai',
+        reasoningEffort: 'medium',
+      },
+    },
   })
 })
 
@@ -61,4 +87,32 @@ test('does not create an invalid empty-model conversation preference', () => {
   })
 
   assert.equal(preference, null)
+})
+
+test('merging a plan selection preserves the conversation agent selection', () => {
+  const agentPreference = mergeConversationModeModelPreference(null, 'agent', {
+    label: 'Agent Two',
+    modelId: 'agent-2',
+    providerId: 'openai',
+    reasoningEffort: 'high',
+  })
+  const combinedPreference = mergeConversationModeModelPreference(agentPreference, 'plan', {
+    label: 'Plan Three',
+    modelId: 'plan-3',
+    providerId: 'codex',
+    reasoningEffort: 'low',
+  })
+
+  assert.deepEqual(getConversationModeModelPreference(combinedPreference, 'agent'), {
+    label: 'Agent Two',
+    modelId: 'agent-2',
+    providerId: 'openai',
+    reasoningEffort: 'high',
+  })
+  assert.deepEqual(getConversationModeModelPreference(combinedPreference, 'plan'), {
+    label: 'Plan Three',
+    modelId: 'plan-3',
+    providerId: 'codex',
+    reasoningEffort: 'low',
+  })
 })

@@ -105,3 +105,41 @@ test('parseInitialSettingsArg preserves AI task planning configuration', () => {
   assert.equal(parsedSettings.kanbanModelProviderId, 'openai')
   assert.equal(parsedSettings.kanbanReasoningEffort, 'low')
 })
+
+test('parseInitialSettingsArg preserves per-mode conversation model preferences', () => {
+  const parsedSettings = parseInitialSettingsArg([
+    'tidecode.exe',
+    serializeInitialSettingsArg({
+      ...DEFAULT_APP_SETTINGS,
+      conversationModelPreferences: {
+        'thread-modes': {
+          chatMode: 'plan',
+          label: 'Plan Three',
+          modelId: 'plan-3',
+          providerId: 'codex',
+          reasoningEffort: 'low',
+          modeSelections: {
+            agent: {
+              label: 'Agent Two',
+              modelId: 'agent-2',
+              providerId: 'openai',
+              reasoningEffort: 'high',
+            },
+            plan: {
+              label: 'Plan Three',
+              modelId: 'plan-3',
+              providerId: 'codex',
+              reasoningEffort: 'low',
+            },
+          },
+        },
+      },
+    }),
+  ])
+
+  const preference = parsedSettings.conversationModelPreferences['thread-modes']
+  assert.equal(preference?.modeSelections?.agent?.modelId, 'agent-2')
+  assert.equal(preference?.modeSelections?.agent?.reasoningEffort, 'high')
+  assert.equal(preference?.modeSelections?.plan?.modelId, 'plan-3')
+  assert.equal(preference?.modeSelections?.plan?.reasoningEffort, 'low')
+})

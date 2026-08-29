@@ -21,7 +21,11 @@ interface UseChatMessageActionsInput {
   chatMessages: ChatMessagesController
   chatModeOptions: readonly ChatModeOption[]
   clearQueuedMessages: () => void
-  enqueueMessage: (value: string, attachments: ChatAttachment[]) => void
+  enqueueMessage: (
+    value: string,
+    attachments: ChatAttachment[],
+    mentionPathMap?: ReadonlyMap<string, string>,
+  ) => void
   isCompressingChat: boolean
   onMainTurnAccepted: () => void
   onConversationHistoryChanged: () => void
@@ -101,17 +105,17 @@ export function useChatMessageActions({
   }, [chatMessages, workspaceState])
 
   const handleSendMainMessage = useCallback(
-    (value: string, attachments: ChatAttachment[]) => {
+    (value: string, attachments: ChatAttachment[], mentionPathMap: ReadonlyMap<string, string>) => {
       if (shouldQueueMainMessage({
         isCompressingChat,
         isAbortInProgress: chatMessages.isAbortInProgress,
         isLoading: chatMessages.isLoading,
         isSending: chatMessages.isSending,
       })) {
-        enqueueMessage(value, attachments)
+        enqueueMessage(value, attachments, mentionPathMap)
         return
       }
-      void chatMessages.sendNewMessage(runtimeSelection, value, attachments).then(
+      void chatMessages.sendNewMessage(runtimeSelection, value, attachments, { mentionPathMap }).then(
         (result) => {
           onConversationHistoryChanged()
           if (result.accepted) {
@@ -132,8 +136,8 @@ export function useChatMessageActions({
   )
 
   const handleSendEditedMessage = useCallback(
-    (value: string, attachments: ChatAttachment[]) => {
-      void chatMessages.sendEditedMessage(runtimeSelection, value, attachments).then(
+    (value: string, attachments: ChatAttachment[], mentionPathMap: ReadonlyMap<string, string>) => {
+      void chatMessages.sendEditedMessage(runtimeSelection, value, attachments, mentionPathMap).then(
         onConversationHistoryChanged,
         onConversationHistoryChanged,
       )

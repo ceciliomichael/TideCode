@@ -109,6 +109,30 @@ test('history normalization and message logs preserve exact hidden context while
   assert.match(log, /active_until_superseded/u)
 })
 
+test('history normalization preserves Kanban mention labels for visible previews', () => {
+  const message: Message = {
+    chatMode: 'agent',
+    content: 'Please handle [[kanban:card-123]]',
+    id: 'user-kanban',
+    mentionPathMap: { 'Fix login bug': 'kanban:card-123' },
+    role: 'user',
+    timestamp: 1,
+  }
+  const conversation = normalizeConversationRecord({
+    agentContextRootPath: 'C:/repo',
+    chatMode: 'agent',
+    createdAt: 1,
+    folderId: null,
+    id: 'conversation-kanban',
+    messages: [message],
+    title: 'Kanban mention test',
+    updatedAt: 1,
+  })
+
+  assert.deepEqual(conversation.messages[0]?.mentionPathMap, message.mentionPathMap)
+  assert.equal(buildConversationSummary(conversation).preview, 'Please handle @Fix login bug')
+})
+
 test('stored hidden context can be extracted without changing its exact serialized text', () => {
   const contexts = buildHiddenUserContextTransitions({
     chatMode: 'agent',

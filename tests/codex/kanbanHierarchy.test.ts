@@ -64,13 +64,61 @@ test('kanban parent tasks expose child progress and auto-complete with subtasks'
       cardId: parent.id,
       workspacePath: workspaceRootPath,
     })
-    assert.equal(parentDetails?.card.columnId, 'done')
+    assert.equal(parentDetails?.card.columnId, 'for-review')
     assert.equal(parentDetails?.childCount, 1)
     assert.equal(parentDetails?.doneChildCount, 1)
 
     const boardData = await getKanbanBoardData({ workspacePath: workspaceRootPath })
-    assert.equal(boardData.cards.find((card) => card.id === parent.id)?.columnId, 'done')
+    assert.equal(boardData.cards.find((card) => card.id === parent.id)?.columnId, 'for-review')
     assert.equal(boardData.cards.find((card) => card.id === child.id)?.columnId, 'done')
+
+    const approvedParent = await moveKanbanBoardCard({
+      cardId: parent.id,
+      targetColumnId: 'done',
+      workspacePath: workspaceRootPath,
+    })
+    assert.equal(approvedParent.columnId, 'done')
+  } finally {
+    mock.restoreAll()
+    await fs.rm(tempRootPath, { force: true, recursive: true })
+  }
+})
+
+test('moving a parent task to for-review completes its direct subtasks', async () => {
+  const tempRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-kanban-review-subtasks-'))
+  const workspaceRootPath = path.join(tempRootPath, 'workspace')
+  const kanbanHomePath = path.join(tempRootPath, 'home')
+
+  await fs.mkdir(workspaceRootPath, { recursive: true })
+  mock.method(os, 'homedir', () => kanbanHomePath)
+
+  try {
+    const parent = await createKanbanBoardCard({
+      title: 'Review parent',
+      workspacePath: workspaceRootPath,
+    })
+    const firstChild = await createKanbanBoardCard({
+      parentCardId: parent.id,
+      title: 'First child',
+      workspacePath: workspaceRootPath,
+    })
+    const secondChild = await createKanbanBoardCard({
+      columnId: 'in-progress',
+      parentCardId: parent.id,
+      title: 'Second child',
+      workspacePath: workspaceRootPath,
+    })
+
+    const reviewedParent = await moveKanbanBoardCard({
+      cardId: parent.id,
+      targetColumnId: 'for-review',
+      workspacePath: workspaceRootPath,
+    })
+    assert.equal(reviewedParent.columnId, 'for-review')
+
+    const boardData = await getKanbanBoardData({ workspacePath: workspaceRootPath })
+    assert.equal(boardData.cards.find((card) => card.id === firstChild.id)?.columnId, 'done')
+    assert.equal(boardData.cards.find((card) => card.id === secondChild.id)?.columnId, 'done')
   } finally {
     mock.restoreAll()
     await fs.rm(tempRootPath, { force: true, recursive: true })

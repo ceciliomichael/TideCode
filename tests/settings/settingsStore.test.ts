@@ -230,3 +230,37 @@ test('conversation model and reasoning preferences are isolated per surface', as
     assert.equal(cli.conversationModelPreferences['thread-1']?.reasoningEffort, 'low')
   })
 })
+
+test('conversation model preferences preserve independent agent and plan selections', async () => {
+  await withSettingsHome(async () => {
+    const { getStoredSettings, updateStoredConversationModelPreference } = await import('../../electron/settings/store')
+
+    await updateStoredConversationModelPreference('thread-modes', {
+      chatMode: 'plan',
+      label: 'Plan Three',
+      modelId: 'plan-3',
+      providerId: 'codex',
+      reasoningEffort: 'low',
+      modeSelections: {
+        agent: {
+          label: 'Agent Two',
+          modelId: 'agent-2',
+          providerId: 'openai',
+          reasoningEffort: 'high',
+        },
+        plan: {
+          label: 'Plan Three',
+          modelId: 'plan-3',
+          providerId: 'codex',
+          reasoningEffort: 'low',
+        },
+      },
+    }, 'desktop')
+
+    const stored = (await getStoredSettings('desktop')).conversationModelPreferences['thread-modes']
+    assert.equal(stored?.modeSelections?.agent?.modelId, 'agent-2')
+    assert.equal(stored?.modeSelections?.agent?.reasoningEffort, 'high')
+    assert.equal(stored?.modeSelections?.plan?.modelId, 'plan-3')
+    assert.equal(stored?.modeSelections?.plan?.reasoningEffort, 'low')
+  })
+})

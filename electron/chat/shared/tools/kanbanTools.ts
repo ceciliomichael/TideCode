@@ -22,10 +22,24 @@ import {
 import { captureKanbanBoardSnapshotIfNeeded } from '../../../kanban/checkpoints'
 
 const COL_ENUM = [...KANBAN_COLUMN_IDS]
+const MUTATION_COL_ENUM = KANBAN_COLUMN_IDS.filter((columnId) => columnId !== 'done')
 const TYPE_ENUM = [...KANBAN_ISSUE_TYPE_IDS]
 const PRI_ENUM = [...KANBAN_PRIORITY_IDS]
+const KANBAN_ACTIONS = [
+  'read_board',
+  'read_card',
+  'create_card',
+  'create_task_with_subtasks',
+  'update_card',
+  'move_card',
+  'reorder_card',
+  'delete_card',
+] as const
+type KanbanAction = (typeof KANBAN_ACTIONS)[number]
 const KANBAN_TOOL_DESCRIPTION =
-  'Manage Kanban cards.'
+  'Manage Kanban. Main tasks finish at for-review and complete subtasks; never target done. Owner: Human for user-originated work, Agent for AI-originated work.'
+const AI_DONE_RESERVED_MESSAGE =
+  'AI Kanban actions cannot directly target done. Move completed main work to for-review; only the user approves main tasks as Done.'
 
 function err(error: unknown, fallback: string): AgentToolExecutionResult {
   return {
@@ -44,19 +58,23 @@ function ok(summary: string, body: unknown): AgentToolExecutionResult {
 }
 
 // ---------------------------------------------------------------------------
-// Flat, clear schema: uses readable standard names so LLMs call it perfectly,
-// while staying flat (no oneOf repetition) to keep token footprint ultra-low (~450 tokens).
+// Keep the top-level schema flat so the model-facing contract stays compact.
+// Exact action values and small nested item shapes remain explicit for discoverability.
 // ---------------------------------------------------------------------------
 const FLAT_KANBAN_SCHEMA = {
   type: 'object',
   description: KANBAN_TOOL_DESCRIPTION,
   properties: {
-    action: { type: 'string' },
+    action: {
+      enum: [...KANBAN_ACTIONS],
+      type: 'string',
+      description: 'Kanban operation to perform. Use exactly one listed action value.',
+    },
 
     // Card identifiers & target locations
     cardId: { type: 'string' },
-    columnId: { enum: COL_ENUM, type: 'string', description: 'Optional column ID for read_board, move_card, or reorder_card (backlog, in-progress, for-review, done). Omit for read_board to get a board overview with column counts and task titles, or pass columnId to read full details of a specific column.' },
-    targetColumnId: { enum: COL_ENUM, type: 'string', description: 'Destination column ID for move_card or reorder_card (backlog, in-progress, for-review, done).' },
+    columnId: { enum: COL_ENUM, type: 'string', description: 'Column ID. read_board may inspect any column including done. For AI mutations, never directly target done; completed main work goes to for-review and that handoff completes direct subtasks.' },
+    targetColumnId: { enum: MUTATION_COL_ENUM, type: 'string', description: 'AI mutation destination (backlog, in-progress, for-review). Done is not a direct AI target.' },
     targetIndex: { type: 'integer' },
     deleteSubtasks: { type: 'boolean' },
 
@@ -65,7 +83,10 @@ const FLAT_KANBAN_SCHEMA = {
     description: { type: 'string' },
     issueType: { enum: TYPE_ENUM, type: 'string' },
     priority: { enum: PRI_ENUM, type: 'string' },
-    assignee: { type: 'string' },
+    assignee: {
+      type: 'string',
+      description: 'Free-form task Owner. Use Human when the user introduced this work, Agent when the AI introduced it autonomously, or preserve an explicit owner name.',
+    },
     labels: { type: 'array', items: { type: 'string' } },
     parentCardId: { type: 'string' },
     sourceMessageId: { type: 'string' },
@@ -99,7 +120,10 @@ const FLAT_KANBAN_SCHEMA = {
           issueType: { enum: TYPE_ENUM, type: 'string' },
           priority: { enum: PRI_ENUM, type: 'string' },
           description: { type: 'string' },
-          assignee: { type: 'string' },
+          assignee: {
+            type: 'string',
+            description: 'Free-form subtask Owner. Decide independently: Human for user-originated work, Agent for AI-originated work, or an explicit owner name.',
+          },
           labels: { type: 'array', items: { type: 'string' } },
           acceptanceCriteria: {
             type: 'array',
@@ -121,7 +145,7 @@ const FLAT_KANBAN_SCHEMA = {
 }
 
 interface KanbanBoardInput {
-  action: string
+  action: KanbanAction
   cardId?: string
   columnId?: KanbanColumnId
   targetColumnId?: KanbanColumnId
@@ -245,10 +269,13 @@ export function createKanbanToolSet(
             }
 
             case 'create_card': {
+              if (input.columnId === 'done') {
+                return err(null, AI_DONE_RESERVED_MESSAGE)
+              }
               const card = await mutate(() =>
                 createKanbanBoardCard({
                   acceptanceCriteria: input.acceptanceCriteria,
-                  assignee: input.assignee ?? undefined,
+                  assignee: input.assignee?.trim() || undefined,
                   columnId: input.columnId,
                   description: input.description,
                   issueType: input.issueType,
@@ -264,10 +291,13 @@ export function createKanbanToolSet(
             }
 
             case 'create_task_with_subtasks': {
+              if (input.columnId === 'done') {
+                return err(null, AI_DONE_RESERVED_MESSAGE)
+              }
               const result = await mutate(() =>
                 createKanbanBoardTask({
                   acceptanceCriteria: input.acceptanceCriteria,
-                  assignee: input.assignee ?? undefined,
+                  assignee: input.assignee?.trim() || undefined,
                   columnId: input.columnId,
                   description: input.description,
                   issueType: input.issueType,
@@ -278,7 +308,7 @@ export function createKanbanToolSet(
                     issueType: s.issueType,
                     priority: s.priority,
                     description: s.description,
-                    assignee: s.assignee,
+                    assignee: s.assignee?.trim() || undefined,
                     labels: s.labels,
                     acceptanceCriteria: s.acceptanceCriteria,
                   })),
@@ -294,6 +324,9 @@ export function createKanbanToolSet(
 
             case 'update_card': {
               const destination = input.targetColumnId || input.columnId
+              if (destination === 'done') {
+                return err(null, AI_DONE_RESERVED_MESSAGE)
+              }
               const card = await mutate(async () => {
                 let updated = await updateKanbanBoardCardContent({
                   acceptanceCriteria: input.acceptanceCriteria,
@@ -324,6 +357,9 @@ export function createKanbanToolSet(
               if (!destination) {
                 return err(null, 'move_card requires targetColumnId or columnId.')
               }
+              if (destination === 'done') {
+                return err(null, AI_DONE_RESERVED_MESSAGE)
+              }
               const card = await mutate(() =>
                 moveKanbanBoardCard({
                   cardId: input.cardId!,
@@ -338,6 +374,9 @@ export function createKanbanToolSet(
               const destination = input.targetColumnId || input.columnId
               if (!destination) {
                 return err(null, 'reorder_card requires targetColumnId or columnId.')
+              }
+              if (destination === 'done') {
+                return err(null, AI_DONE_RESERVED_MESSAGE)
               }
               const card = await mutate(() =>
                 reorderKanbanBoardCard({
@@ -368,7 +407,7 @@ export function createKanbanToolSet(
             }
 
             default: {
-              return err(null, `Unknown action: ${input.action}`)
+              return err(null, `Unknown action: ${String(input.action)}. Valid actions: ${KANBAN_ACTIONS.join(', ')}.`)
             }
           }
         } catch (error) {

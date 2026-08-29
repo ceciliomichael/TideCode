@@ -224,16 +224,20 @@ function syncParentTaskState(
   if (
     allChildrenDone &&
     allAcceptanceCriteriaDone &&
+    parentCard.columnId !== 'for-review' &&
     parentCard.columnId !== 'done'
   ) {
     return moveKanbanCard(
       boardData,
-      { cardId: parentCard.id, targetColumnId: 'done' },
+      { cardId: parentCard.id, targetColumnId: 'for-review' },
       now,
     )
   }
 
-  if (!allChildrenDone && parentCard.columnId === 'done') {
+  if (
+    !allChildrenDone &&
+    (parentCard.columnId === 'done' || parentCard.columnId === 'for-review')
+  ) {
     return moveKanbanCard(
       boardData,
       { cardId: parentCard.id, targetColumnId: 'in-progress' },
@@ -334,10 +338,7 @@ export async function updateKanbanBoardCardContent(
       nextBoardData = syncParentTaskState(nextBoardData, previousParentCardId)
     }
     if (updatedCard.parentCardId) {
-      nextBoardData = syncParentTaskState(
-        nextBoardData,
-        updatedCard.parentCardId,
-      )
+      nextBoardData = syncParentTaskState(nextBoardData, updatedCard.parentCardId)
     }
 
     return { boardData: nextBoardData, result: updatedCard }
@@ -356,10 +357,7 @@ export async function updateKanbanBoardCard(
 
     let nextBoardData = boardData
     if (updatedCard.parentCardId) {
-      nextBoardData = syncParentTaskState(
-        nextBoardData,
-        updatedCard.parentCardId,
-      )
+      nextBoardData = syncParentTaskState(nextBoardData, updatedCard.parentCardId)
     }
 
     return { boardData: nextBoardData, result: updatedCard }
@@ -397,10 +395,7 @@ export async function reorderKanbanBoardCard(
 
     let nextBoardData = boardData
     if (reorderedCard.parentCardId) {
-      nextBoardData = syncParentTaskState(
-        nextBoardData,
-        reorderedCard.parentCardId,
-      )
+      nextBoardData = syncParentTaskState(nextBoardData, reorderedCard.parentCardId)
     }
 
     return { boardData: nextBoardData, result: reorderedCard }

@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import type { AppSettings, AppSettingsSurface } from '../../src/types/chat'
+import type { AppSettings, AppSettingsSurface, ConversationModeModelPreference } from '../../src/types/chat'
 import { DEFAULT_APP_SETTINGS } from '../../src/lib/defaultAppSettings'
 import {
   APP_SETTINGS_SURFACES,
@@ -152,6 +152,31 @@ function sanitizeTerminalPanelHeightsByWorkspace(value: unknown): Record<string,
   return sanitizedValue
 }
 
+function sanitizeConversationModeModelPreference(value: unknown): ConversationModeModelPreference | null {
+  if (!value || typeof value !== 'object') return null
+
+  const preference = value as Record<string, unknown>
+  const modelId = typeof preference.modelId === 'string' ? preference.modelId.trim() : ''
+  if (!modelId) return null
+
+  const label = typeof preference.label === 'string' ? preference.label.trim() : ''
+  const providerId =
+    preference.providerId === null || isChatProviderId(preference.providerId)
+      ? (preference.providerId ?? null)
+      : null
+  const reasoningEffort =
+    typeof preference.reasoningEffort === 'string' && isReasoningEffort(preference.reasoningEffort)
+      ? preference.reasoningEffort
+      : undefined
+
+  return {
+    label,
+    modelId,
+    providerId,
+    ...(reasoningEffort ? { reasoningEffort } : {}),
+  }
+}
+
 function sanitizeConversationModelPreferences(value: unknown): AppSettings['conversationModelPreferences'] {
   if (!value || typeof value !== 'object') {
     return {}
@@ -171,34 +196,28 @@ function sanitizeConversationModelPreferences(value: unknown): AppSettings['conv
     }
 
     const preference = candidatePreference as Record<string, unknown>
-    const modelId =
-      typeof preference.modelId === 'string' ? preference.modelId.trim() : ''
-    const label =
-      typeof preference.label === 'string' ? preference.label.trim() : ''
-    const providerId =
-      preference.providerId === null || isChatProviderId(preference.providerId)
-        ? (preference.providerId ?? null)
-        : null
+    const sanitizedPreference = sanitizeConversationModeModelPreference(candidatePreference)
     const chatMode =
       preference.chatMode === 'agent' || preference.chatMode === 'plan'
         ? preference.chatMode
         : undefined
-    const reasoningEffort =
-      typeof preference.reasoningEffort === 'string' && isReasoningEffort(preference.reasoningEffort)
-        ? preference.reasoningEffort
-        : undefined
-
-    if (modelId.length === 0) {
+    if (!sanitizedPreference) {
       continue
     }
 
     const entry: AppSettings['conversationModelPreferences'][string] = {
-      label,
-      modelId,
-      providerId,
+      ...sanitizedPreference,
     }
     if (chatMode !== undefined) entry.chatMode = chatMode
-    if (reasoningEffort !== undefined) entry.reasoningEffort = reasoningEffort
+    if (preference.modeSelections && typeof preference.modeSelections === 'object') {
+      const modeSelections: NonNullable<typeof entry.modeSelections> = {}
+      const rawModeSelections = preference.modeSelections as Record<string, unknown>
+      const agentSelection = sanitizeConversationModeModelPreference(rawModeSelections.agent)
+      const planSelection = sanitizeConversationModeModelPreference(rawModeSelections.plan)
+      if (agentSelection) modeSelections.agent = agentSelection
+      if (planSelection) modeSelections.plan = planSelection
+      if (modeSelections.agent || modeSelections.plan) entry.modeSelections = modeSelections
+    }
 
     sanitizedValue[normalizedId] = entry
   }

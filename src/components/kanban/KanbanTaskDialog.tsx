@@ -337,7 +337,7 @@ export function KanbanTaskDialog({
                       id="kanban-task-assignee"
                       value={assignee}
                       onChange={(event) => setAssignee(event.target.value)}
-                      placeholder="Person or agent"
+                      placeholder="Human or Agent"
                       className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground shadow-none placeholder:text-subtle-foreground focus:border-border focus:outline-none focus:ring-0 focus:shadow-none"
                     />
                   </div>

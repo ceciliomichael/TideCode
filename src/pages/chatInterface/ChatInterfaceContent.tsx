@@ -393,10 +393,14 @@ synchronizeDraftFolder,
       pendingAlternateFollowUpsRef.current.push(item)
     })
   }, [])
-  const enqueueAlternateFollowUpMessage = useCallback((value: string, attachments: ChatAttachment[]) => {
+  const enqueueAlternateFollowUpMessage = useCallback((
+    value: string,
+    attachments: ChatAttachment[],
+    mentionPathMap: ReadonlyMap<string, string>,
+  ) => {
     const item: SharedFollowUpItem = {
       behavior: resolveFollowUpBehaviorForAction('alternate', settings.followUpBehavior),
-      message: createQueuedComposerMessage({ attachments, content: value }),
+      message: createQueuedComposerMessage({ attachments, content: value, mentionPathMap }),
     }
     const streamId = chatMessages.activeStreamId
     if (streamId) {

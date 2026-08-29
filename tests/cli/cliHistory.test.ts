@@ -96,19 +96,28 @@ test('explicit CLI model selection can be preserved while restoring all conversa
   assert.equal(state.messages.length, 2)
 })
 
-test('desktop conversation preference overrides stale message reasoning metadata', () => {
+test('desktop conversation preference restores the selection for the conversation mode', () => {
   const state = createState()
   const conversation = createDesktopConversation()
   applyConversationRecordToCliState(state, conversation, {
     conversationPreference: {
       chatMode: 'agent',
-      label: 'Claude Test',
-      modelId: 'claude-test',
-      providerId: 'anthropic',
-      reasoningEffort: 'max',
+      label: 'Agent Model',
+      modelId: 'agent-model',
+      providerId: 'openai',
+      reasoningEffort: 'low',
+      modeSelections: {
+        plan: {
+          label: 'Claude Test',
+          modelId: 'claude-test',
+          providerId: 'anthropic',
+          reasoningEffort: 'max',
+        },
+      },
     },
   })
 
-  assert.equal(state.chatMode, 'agent')
+  assert.equal(state.chatMode, 'plan')
+  assert.equal(state.modelId, 'claude-test')
   assert.equal(state.reasoningEffort, 'max')
 })

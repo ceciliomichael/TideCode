@@ -14,6 +14,7 @@ import type {
   UserMessageRunCheckpoint,
 } from '../types/chat'
 import { getConversationTitleFromInput } from './chatHistoryViewModels'
+import { restoreChatMentionPathMap } from '../lib/chatMentions'
 import { hasPlanToolInvocation } from '../lib/planPresentation'
 import {
   loadChatCompactionMarkers,
@@ -71,6 +72,7 @@ function buildUserMessage(
   runCheckpoint: UserMessageRunCheckpoint,
   chatMode: ChatMode,
   hiddenUserContext: HiddenUserContext[],
+  mentionPathMap?: Record<string, string>,
   forcedId?: string,
 ): Message {
   return {
@@ -79,6 +81,7 @@ function buildUserMessage(
     content: trimmedText,
     hiddenUserContext: hiddenUserContext.length > 0 ? hiddenUserContext : undefined,
     id: forcedId ?? uuidv4(),
+    mentionPathMap,
     modelId,
     providerId,
     reasoningEffort,
@@ -361,6 +364,7 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
 
   const normalizedMessages = input.messages.map((message) => ({
     attachments: message.attachments,
+    mentionPathMap: message.mentionPathMap,
     text: message.text.trim(),
   }))
   if (normalizedMessages.every((message) => message.text.length === 0 && message.attachments.length === 0)) {
@@ -402,6 +406,7 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
       runCheckpoint,
       input.chatMode,
       hiddenUserContext,
+      normalizedMessages[0].mentionPathMap,
       input.targetEditMessageId,
     )
 
@@ -413,7 +418,11 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
       synchronizeCanonicalHistory: true,
       title:
         targetMessageIndex === 0
-          ? input.title?.trim() || getConversationTitleFromInput(normalizedMessages[0].text, normalizedMessages[0].attachments)
+          ? input.title?.trim() || getConversationTitleFromInput(
+              normalizedMessages[0].text,
+              normalizedMessages[0].attachments,
+              restoreChatMentionPathMap(normalizedMessages[0].mentionPathMap),
+            )
           : undefined,
     })
 
@@ -462,6 +471,7 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
       runCheckpoint,
       input.chatMode,
       index === 0 ? hiddenUserContext : [],
+      message.mentionPathMap,
     ),
   )
   const userMessage = userMessages[0]
@@ -473,7 +483,11 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
     conversationId,
     messages: userMessages,
     title: shouldUpdateTitle
-      ? input.title?.trim() || getConversationTitleFromInput(userMessage.content, userMessage.attachments ?? [])
+      ? input.title?.trim() || getConversationTitleFromInput(
+          userMessage.content,
+          userMessage.attachments ?? [],
+          restoreChatMentionPathMap(userMessage.mentionPathMap),
+        )
       : undefined,
   })
 

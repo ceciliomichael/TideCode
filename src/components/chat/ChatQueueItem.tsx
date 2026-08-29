@@ -24,6 +24,11 @@ import {
   insertChatImageReferences,
   removeChatImageReference,
 } from '../../lib/chatImageReferences'
+import {
+  collapseChatMentionMarkup,
+  expandChatMentions,
+  restoreChatMentionPathMap,
+} from '../../lib/chatMentions'
 
 interface ChatQueueItemProps {
   index: number
@@ -33,7 +38,12 @@ interface ChatQueueItemProps {
   onDragStart: (id: string) => void
   onDrop: (id: string) => void
   onRemove: (id: string) => void
-  onUpdate: (id: string, content: string, attachments?: ChatAttachment[]) => void
+  onUpdate: (
+    id: string,
+    content: string,
+    attachments?: ChatAttachment[],
+    mentionPathMap?: ReadonlyMap<string, string>,
+  ) => void
 }
 
 export function ChatQueueItem({
@@ -50,7 +60,11 @@ export function ChatQueueItem({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const editorRef = useRef<HTMLDivElement>(null)
   const [isEditing, setIsEditing] = useState(false)
-  const [draftContent, setDraftContent] = useState(message.content)
+  const initialMentionPathMap = restoreChatMentionPathMap(message.mentionPathMap)
+  const [draftMentionPathMap, setDraftMentionPathMap] = useState(initialMentionPathMap)
+  const [draftContent, setDraftContent] = useState(
+    () => collapseChatMentionMarkup(message.content, initialMentionPathMap),
+  )
   const draftContentRef = useRef(draftContent)
   draftContentRef.current = draftContent
   const [draftAttachments, setDraftAttachments] = useState<ChatAttachment[]>(message.attachments ?? [])
@@ -59,10 +73,12 @@ export function ChatQueueItem({
   const [isDragOver, setIsDragOver] = useState(false)
 
   useEffect(() => {
-    setDraftContent(message.content)
+    const nextMentionPathMap = restoreChatMentionPathMap(message.mentionPathMap)
+    setDraftMentionPathMap(nextMentionPathMap)
+    setDraftContent(collapseChatMentionMarkup(message.content, nextMentionPathMap))
     setDraftAttachments(message.attachments ?? [])
     setAttachmentError(null)
-  }, [message.attachments, message.content])
+  }, [message.attachments, message.content, message.mentionPathMap])
 
   useEffect(() => {
     if (!isEditing) {
@@ -123,11 +139,13 @@ export function ChatQueueItem({
   }
 
   const handleCancel = useCallback(() => {
-    setDraftContent(message.content)
+    const nextMentionPathMap = restoreChatMentionPathMap(message.mentionPathMap)
+    setDraftMentionPathMap(nextMentionPathMap)
+    setDraftContent(collapseChatMentionMarkup(message.content, nextMentionPathMap))
     setDraftAttachments(message.attachments ?? [])
     setAttachmentError(null)
     setIsEditing(false)
-  }, [message.attachments, message.content])
+  }, [message.attachments, message.content, message.mentionPathMap])
 
   async function handleAttachmentsChange(files: readonly File[]) {
     if (files.length === 0) {
@@ -159,7 +177,12 @@ export function ChatQueueItem({
   }
 
   function handleSave() {
-    onUpdate(message.id, draftContent, draftAttachments)
+    onUpdate(
+      message.id,
+      expandChatMentions(draftContent, draftMentionPathMap),
+      draftAttachments,
+      draftMentionPathMap,
+    )
     setIsEditing(false)
   }
 
@@ -264,6 +287,7 @@ export function ChatQueueItem({
 
           <ChatMentionTextarea
             imageAttachments={draftImageAttachments}
+            mentionPathMap={draftMentionPathMap}
             textareaRef={textareaRef}
             value={draftContent}
             onChange={(event) => setDraftContent(event.target.value)}
@@ -313,6 +337,8 @@ export function ChatQueueItem({
   const messageImageAttachments = getChatImageAttachments(messageAttachments)
   const attachmentCount = messageAttachments.length - messageImageAttachments.length
   const renderedMessageContent = ensureChatImageReferences(message.content, messageAttachments)
+  const messageMentionPathMap = restoreChatMentionPathMap(message.mentionPathMap)
+  const visibleMessageContent = collapseChatMentionMarkup(message.content, messageMentionPathMap)
 
   return (
     <div
@@ -340,10 +366,11 @@ export function ChatQueueItem({
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
         <GripVertical size={13} className="shrink-0 text-muted-foreground/70" aria-hidden="true" />
         <span className="shrink-0 text-sm font-medium leading-5 text-muted-foreground">{`${index + 1}.`}</span>
-        <Tooltip content={message.content} side="top" triggerClassName="min-w-0 flex-1">
+        <Tooltip content={visibleMessageContent} side="top" triggerClassName="min-w-0 flex-1">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <ChatMentionText
               imageAttachments={messageImageAttachments}
+              mentionPathMap={messageMentionPathMap}
               text={renderedMessageContent}
               variant="rendered"
               wrap="nowrap"

@@ -49,6 +49,7 @@ export async function applyPatchInWorkspace(
 ) {
   const parsedPatch = parseApplyPatch(patchText)
   const changes: ApplyPatchChange[] = []
+  const autofixedPaths = new Set<string>()
   const stagedFiles = new Map<string, StagedFileState>()
   const basePath = options?.basePath ? path.resolve(options.basePath) : workspaceRootPath
   const resolveTargetPath = (candidatePath: string) =>
@@ -129,8 +130,9 @@ export async function applyPatchInWorkspace(
       existingContent,
       hunk.chunks,
       {
-        onChunkResolved: ({ chunkIndex, startLineNumber }) => {
+        onChunkResolved: ({ autofixedEscaping, chunkIndex, startLineNumber }) => {
           updateChunkStartLines[chunkIndex] = startLineNumber
+          if (autofixedEscaping) autofixedPaths.add(sourceTarget.relativePath)
         },
       },
     )
@@ -165,7 +167,7 @@ export async function applyPatchInWorkspace(
 
   await commitStagedFiles(stagedFiles)
 
-  return { changes, parsedPatch }
+  return { autofixedPaths: [...autofixedPaths], changes, parsedPatch }
   })
 }
 

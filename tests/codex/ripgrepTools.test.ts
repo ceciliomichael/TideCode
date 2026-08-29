@@ -146,6 +146,27 @@ test('runRipgrepWithCandidates stops an oversized output stream', async () => {
   assert.equal(child.killed, true)
 })
 
+test('runRipgrepWithCandidates can return complete buffered lines when stdout reaches the safety limit', async () => {
+  const child = new FakeChildProcess()
+  const fakeSpawn = (() => {
+    queueMicrotask(() => child.stdout.write(['first', 'second', 'third', ''].join(String.fromCharCode(10))))
+    return child as unknown as ReturnType<typeof spawn>
+  }) as typeof spawn
+
+  const result = await __testOnly.runRipgrepWithCandidates(
+    ['needle'],
+    path.join('C:', 'repo'),
+    ['working-rg.exe'],
+    fakeSpawn,
+    { maxOutputChars: 14, timeoutMs: 1_000, truncateStdoutOnLimit: true },
+  )
+
+  assert.equal(result.exitCode, 0)
+  assert.equal(result.stdout, ['first', 'second', ''].join(String.fromCharCode(10)))
+  assert.equal(result.stdoutTruncated, true)
+  assert.equal(child.killed, true)
+})
+
 test('runRipgrepWithCandidates stops a child that exceeds the search timeout', async () => {
   const child = new FakeChildProcess()
   const fakeSpawn = (() => child as unknown as ReturnType<typeof spawn>) as typeof spawn
@@ -235,6 +256,28 @@ test('runRipgrepFallback filters recursive file listings by glob', async () => {
   assert.equal(result.exitCode, 0)
   assert.equal(result.stderr, '')
   assert.deepEqual(result.stdout.split(/\r?\n/u), [path.join('src', 'nested', 'file.test.ts')])
+})
+
+test('runRipgrepFallback applies basename include globs to nested grep results', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-ripgrep-basename-glob-'))
+  await fs.mkdir(path.join(workspaceRootPath, 'src', 'nested'), { recursive: true })
+  await fs.writeFile(path.join(workspaceRootPath, 'src', 'nested', 'file.ts'), 'const needle = true;\n')
+  await fs.writeFile(path.join(workspaceRootPath, 'src', 'nested', 'file.js'), 'const needle = true;\n')
+
+  try {
+    const result = await __testOnly.runRipgrepFallback(
+      ['-nH', '--hidden', '--glob', '*.ts', '--regexp', 'needle', workspaceRootPath],
+      workspaceRootPath,
+    )
+
+    assert.equal(result.exitCode, 0)
+    assert.equal(result.stderr, '')
+    assert.deepEqual(result.stdout.split(/\r?\n/u), [
+      `${path.join(workspaceRootPath, 'src', 'nested', 'file.ts')}|1|const needle = true;`,
+    ])
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
 })
 
 test('runRipgrepFallback searches file contents and emits json match lines', async () => {

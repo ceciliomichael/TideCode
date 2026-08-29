@@ -1,9 +1,11 @@
 import { v4 as uuidv4 } from 'uuid'
 import type { ChatAttachment, QueuedMessage } from '../../types/chat'
+import { serializeChatMentionPathMap } from '../../lib/chatMentions'
 
 export interface QueuedComposerMessageInput {
   attachments?: ChatAttachment[]
   content: string
+  mentionPathMap?: ReadonlyMap<string, string>
 }
 
 export function createQueuedComposerMessage(input: QueuedComposerMessageInput): QueuedMessage {
@@ -11,6 +13,7 @@ export function createQueuedComposerMessage(input: QueuedComposerMessageInput): 
     attachments: input.attachments?.length ? [...input.attachments] : undefined,
     content: input.content,
     id: uuidv4(),
+    mentionPathMap: serializeChatMentionPathMap(input.mentionPathMap),
     timestamp: Date.now(),
   }
 }
@@ -20,6 +23,7 @@ export function updateQueuedComposerMessage(
   id: string,
   nextContent: string,
   nextAttachments?: ChatAttachment[],
+  nextMentionPathMap?: ReadonlyMap<string, string>,
 ) {
   return messages.map((message) =>
     message.id === id
@@ -27,6 +31,9 @@ export function updateQueuedComposerMessage(
           ...message,
           attachments: nextAttachments?.length ? [...nextAttachments] : undefined,
           content: nextContent,
+          mentionPathMap: nextMentionPathMap === undefined
+            ? message.mentionPathMap
+            : serializeChatMentionPathMap(nextMentionPathMap),
         }
       : message,
   )

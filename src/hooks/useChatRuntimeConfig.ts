@@ -211,21 +211,26 @@ export function useChatRuntimeConfig({
     () => buildChatModelOptions(providersState, customModels, providerModels),
     [customModels, providerModels, providersState],
   )
-  const [selectionOverride, setSelectionOverride] = useState<{
-    chatMode: ChatMode
+  type SelectionOverride = {
     conversationId: string | null
     modelId: string
     modelLabel: string
     providerId: ChatProviderId | null
     reasoningEffort: ReasoningEffort
-  } | null>(null)
+  }
+  const [selectionOverrides, setSelectionOverrides] = useState<{
+    conversationId: string | null
+    byMode: Partial<Record<ChatMode, SelectionOverride>>
+  }>({ conversationId: activeConversationId, byMode: {} })
   const modeSelection = useMemo(
     () => resolveSurfaceModeModelSelection(activeChatMode, settings),
     [activeChatMode, settings],
   )
   const latestUserMessage = useMemo(
-    () => [...activeMessages].reverse().find((message) => message.role === 'user') ?? null,
-    [activeMessages],
+    () => [...activeMessages].reverse().find(
+      (message) => message.role === 'user' && (message.chatMode === undefined || message.chatMode === activeChatMode),
+    ) ?? null,
+    [activeChatMode, activeMessages],
   )
   const conversationSelection = useMemo(
     () => resolveConversationModelSelection(
@@ -243,9 +248,11 @@ export function useChatRuntimeConfig({
     ],
   )
   const effectiveModeSelection = useMemo(() => {
+    const selectionOverride = selectionOverrides.conversationId === activeConversationId
+      ? selectionOverrides.byMode[activeChatMode]
+      : undefined
     if (
-      selectionOverride?.chatMode === activeChatMode &&
-      selectionOverride.conversationId === activeConversationId
+      selectionOverride?.conversationId === activeConversationId
     ) {
       return {
         ...conversationSelection,
@@ -257,11 +264,11 @@ export function useChatRuntimeConfig({
     }
 
     return conversationSelection
-  }, [activeChatMode, activeConversationId, conversationSelection, selectionOverride])
+  }, [activeChatMode, activeConversationId, conversationSelection, selectionOverrides])
 
   useEffect(() => {
-    setSelectionOverride(null)
-  }, [activeChatMode, activeConversationId])
+    setSelectionOverrides({ conversationId: activeConversationId, byMode: {} })
+  }, [activeConversationId])
 
   const selectedProviderConfigured = useMemo(() => {
     if (effectiveModeSelection.providerId === null) {
@@ -492,24 +499,6 @@ export function useChatRuntimeConfig({
     })
   }, [defaultSelectedModel, modeSelection.providerId, modeSelection.updateKeys.providerId, updateSettings])
 
-  useEffect(() => {
-    if (!selectedModel?.isCatalogBacked) {
-      return
-    }
-
-    if (availableReasoningEfforts.length === 0 || effectiveReasoningEffort === settings.chatReasoningEffort) {
-      return
-    }
-
-    void updateSettings({ chatReasoningEffort: effectiveReasoningEffort })
-  }, [
-    availableReasoningEfforts.length,
-    effectiveReasoningEffort,
-    selectedModel,
-    settings.chatReasoningEffort,
-    updateSettings,
-  ])
-
   const resolveDefaultRuntimeModel = useCallback(
     (chatMode: ChatMode) => {
       const defaultSelection = resolveSurfaceModeModelSelection(chatMode, settings)
@@ -565,14 +554,19 @@ export function useChatRuntimeConfig({
         runtimeModelId: selectedOption?.runtimeModelId ?? chatModelId,
       }
 
-      setSelectionOverride({
-        chatMode: activeChatMode,
+      setSelectionOverrides((current) => ({
         conversationId: activeConversationId,
-        modelId: chatModelId,
-        modelLabel,
-        providerId: nextProviderId,
-        reasoningEffort: nextReasoningEffort,
-      })
+        byMode: {
+          ...(current.conversationId === activeConversationId ? current.byMode : {}),
+          [activeChatMode]: {
+            conversationId: activeConversationId,
+            modelId: chatModelId,
+            modelLabel,
+            providerId: nextProviderId,
+            reasoningEffort: nextReasoningEffort,
+          },
+        },
+      }))
 
       if (activeConversationId) {
         void window.tidecodeRuns.updateConversationRuntime({
@@ -602,15 +596,19 @@ export function useChatRuntimeConfig({
         return
       }
 
-      setSelectionOverride({
-        chatMode: activeChatMode,
+      setSelectionOverrides((current) => ({
         conversationId: activeConversationId,
-        modelId: effectiveModeSelection.modelId,
-        modelLabel: selectedModel?.label ?? (effectiveModeSelection.modelLabel.trim() || effectiveModeSelection.modelId),
-        providerId: effectiveModeSelection.providerId,
-        reasoningEffort: chatReasoningEffort,
-      })
-      void updateSettings({ chatReasoningEffort })
+        byMode: {
+          ...(current.conversationId === activeConversationId ? current.byMode : {}),
+          [activeChatMode]: {
+            conversationId: activeConversationId,
+            modelId: effectiveModeSelection.modelId,
+            modelLabel: selectedModel?.label ?? (effectiveModeSelection.modelLabel.trim() || effectiveModeSelection.modelId),
+            providerId: effectiveModeSelection.providerId,
+            reasoningEffort: chatReasoningEffort,
+          },
+        },
+      }))
 
       if (activeConversationId) {
         const sharedModel = {
@@ -640,7 +638,6 @@ export function useChatRuntimeConfig({
       selectedModel?.label,
       selectedModel?.runtimeModelId,
       runtimeSurface,
-      updateSettings,
     ],
   )
 
