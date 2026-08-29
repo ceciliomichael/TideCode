@@ -53,7 +53,8 @@ function hasBinaryContent(buffer: Buffer) {
 function matchesWorkspaceGlob(candidatePath: string, globPattern: string) {
   const normalizedCandidatePath = candidatePath.split(path.sep).join('/')
   const normalizedPattern = globPattern.split(path.sep).join('/')
-  return minimatch(normalizedCandidatePath, normalizedPattern, { dot: true })
+  return minimatch(normalizedCandidatePath, normalizedPattern, { dot: true }) ||
+    minimatch(path.posix.basename(normalizedCandidatePath), normalizedPattern, { dot: true })
 }
 
 function normalizeSearchIncludePattern(includePattern: string | null) {

@@ -47,6 +47,10 @@ import { hasMinimumCompactionMessages, MIN_COMPACTION_MESSAGE_COUNT } from '../.
 import { reduceChatCompactionStatus } from '../../src/lib/chatCompactionStatus'
 import { isAppSettingsSurface } from '../../src/lib/appSettingsScopes'
 import { resolveUpdatedConversationRuntimeModel } from '../../src/lib/conversationRuntimeModel'
+import {
+  getConversationModeModelPreference,
+  mergeConversationModeModelPreference,
+} from '../../src/lib/conversationModelPreference'
 import { getTerminalBroker } from '../terminal/broker/instance'
 
 const TERMINAL_RUN_RETENTION_MS = 60_000
@@ -421,9 +425,7 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
     const settings = await getStoredSettings(surface).catch(() => null)
     const preference = settings?.conversationModelPreferences[conversationId]
     const chatMode = this.chatModeByConversationId.get(conversationId) ?? conversation.chatMode
-    const activePreference = preference && (preference.chatMode === undefined || preference.chatMode === chatMode)
-      ? preference
-      : null
+    const activePreference = getConversationModeModelPreference(preference, chatMode)
     const runtime: SharedConversationRuntimeSnapshot = {
       chatMode,
       conversationId,
@@ -450,9 +452,20 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
     const previous = await this.getConversationRuntime(conversationId, surface)
     const conversation = await getStoredConversation(conversationId).catch(() => null)
     const chatMode = input.chatMode ?? this.chatModeByConversationId.get(conversationId) ?? conversation?.chatMode ?? previous?.chatMode ?? 'agent'
+    const settings = conversation ? await getStoredSettings(surface) : null
+    const existingPreference = settings?.conversationModelPreferences[conversationId]
+    const modePreference = getConversationModeModelPreference(existingPreference, chatMode)
     const model = resolveUpdatedConversationRuntimeModel({
       hasModeUpdate: input.chatMode !== undefined,
       model: input.model,
+      modeModel: modePreference
+        ? {
+            label: modePreference.label,
+            modelId: modePreference.modelId,
+            providerId: modePreference.providerId,
+            ...(modePreference.reasoningEffort ? { reasoningEffort: modePreference.reasoningEffort } : {}),
+          }
+        : null,
       previousModel: previous?.model,
     })
 
@@ -462,17 +475,18 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
     }
 
     if (conversation && input.model) {
-      const settings = await getStoredSettings(surface)
-      const existingPreference = settings.conversationModelPreferences[conversationId]
-      await updateStoredConversationModelPreference(conversationId, {
+      await updateStoredConversationModelPreference(conversationId, mergeConversationModeModelPreference(
+        existingPreference,
         chatMode,
-        label: input.model.label,
-        modelId: input.model.modelId,
-        providerId: input.model.providerId,
-        ...(input.model.reasoningEffort ?? existingPreference?.reasoningEffort
-          ? { reasoningEffort: input.model.reasoningEffort ?? existingPreference?.reasoningEffort }
-          : {}),
-      }, surface)
+        {
+          label: input.model.label,
+          modelId: input.model.modelId,
+          providerId: input.model.providerId,
+          ...(input.model.reasoningEffort ?? modePreference?.reasoningEffort
+            ? { reasoningEffort: input.model.reasoningEffort ?? modePreference?.reasoningEffort }
+            : {}),
+        },
+      ), surface)
     }
 
     const runtime: SharedConversationRuntimeSnapshot = {

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { isHumanUserMessage } from '../lib/chatMessageMetadata'
-import { buildChatMentionPathMap, collapseChatMentionMarkup } from '../lib/chatMentions'
+import {
+  buildChatMentionPathMap,
+  collapseChatMentionMarkup,
+  restoreChatMentionPathMap,
+} from '../lib/chatMentions'
 import type { ChatAttachment, Message } from '../types/chat'
 
 export interface EditComposerDraftSession {
@@ -76,9 +80,11 @@ export function useChatComposerState(messages: Message[]) {
       return false
     }
 
-    const collapsedContent = collapseChatMentionMarkup(targetMessage.content)
     const initialAttachments = cloneAttachments(targetMessage.attachments ?? [])
-    const initialMentionPathMap = buildChatMentionPathMap(targetMessage.content)
+    const initialMentionPathMap = targetMessage.mentionPathMap
+      ? restoreChatMentionPathMap(targetMessage.mentionPathMap)
+      : buildChatMentionPathMap(targetMessage.content)
+    const collapsedContent = collapseChatMentionMarkup(targetMessage.content, initialMentionPathMap)
 
     setEditingMessageId(session.messageId)
     setEditComposerValue('value' in session ? session.value : collapsedContent)

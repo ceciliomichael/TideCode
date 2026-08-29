@@ -96,6 +96,7 @@ export interface QueuedMessage {
   attachments?: ChatAttachment[]
   content: string
   id: string
+  mentionPathMap?: Record<string, string>
   timestamp: number
 }
 
@@ -118,6 +119,7 @@ export interface Message {
   id: string
   role: MessageRole
   content: string
+  mentionPathMap?: Record<string, string>
   modelId?: string
   providerId?: ChatProviderId
   reasoningContent?: string

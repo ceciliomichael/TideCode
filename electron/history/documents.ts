@@ -167,6 +167,17 @@ function isHiddenUserContext(value: unknown): value is HiddenUserContext {
   )
 }
 
+function isMentionPathMap(value: unknown): value is Record<string, string> {
+  return (
+    Boolean(value) &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.entries(value as Record<string, unknown>).every(
+      ([label, path]) => label.trim().length > 0 && typeof path === 'string' && path.trim().length > 0,
+    )
+  )
+}
+
 function isMessage(value: unknown): value is Message {
   if (!value || typeof value !== 'object') {
     return false
@@ -199,6 +210,8 @@ function isMessage(value: unknown): value is Message {
       Array.isArray(message.hiddenUserContext) &&
       message.hiddenUserContext.every(isHiddenUserContext)
     )
+  const hasValidMentionPathMap =
+    message.mentionPathMap === undefined || isMentionPathMap(message.mentionPathMap)
 
   return (
     typeof message.id === 'string' &&
@@ -217,7 +230,8 @@ function isMessage(value: unknown): value is Message {
     hasValidToolInvocations &&
     hasValidAttachments &&
     hasValidRunCheckpoint &&
-    hasValidHiddenUserContext
+    hasValidHiddenUserContext &&
+    hasValidMentionPathMap
   )
 }
 

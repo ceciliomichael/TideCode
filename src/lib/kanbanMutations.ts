@@ -233,6 +233,9 @@ export function moveKanbanCard(
     throw new Error(`Task not found: ${normalizedCardId}`)
   }
 
+  const shouldCompleteChildren =
+    targetColumnId === 'for-review' && currentCard.parentCardId === undefined
+
   if (targetColumnId === 'done' && currentCard.parentCardId === undefined) {
     const children = getKanbanCardChildrenInternal(boardData, currentCard.id)
     const incompleteChildCount = children.filter(
@@ -258,6 +261,18 @@ export function moveKanbanCard(
 
   let didUpdate = false
   const cards = boardData.cards.map((card) => {
+    if (shouldCompleteChildren && card.parentCardId === currentCard.id) {
+      if (card.columnId === 'done') {
+        return card
+      }
+      return {
+        ...card,
+        columnId: 'done' as const,
+        revision: card.revision + 1,
+        updatedAt: now,
+      }
+    }
+
     if (card.id !== normalizedCardId) {
       return card
     }
@@ -369,24 +384,20 @@ export function deleteKanbanCard(
 export function clearDoneKanbanCards(
   boardData: KanbanBoardData,
 ): KanbanBoardData {
-  const completedCardIds = new Set(
+  const completedParentIds = new Set(
     boardData.cards
-      .filter((card) => card.columnId === 'done')
+      .filter(
+        (card) => card.parentCardId === undefined && card.columnId === 'done',
+      )
       .map((card) => card.id),
   )
 
   return {
-    cards: boardData.cards
-      .filter((card) => card.columnId !== 'done')
-      .map((card) =>
-        card.parentCardId && completedCardIds.has(card.parentCardId)
-          ? {
-              ...card,
-              parentCardId: undefined,
-              revision: card.revision + 1,
-            }
-          : card,
-      ),
+    cards: boardData.cards.filter(
+      (card) =>
+        !completedParentIds.has(card.id) &&
+        !(card.parentCardId && completedParentIds.has(card.parentCardId)),
+    ),
     revision: boardData.revision,
   }
 }

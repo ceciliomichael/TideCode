@@ -67,6 +67,50 @@ test('conversation model preference overrides the default only for the matching 
   }, null).modelId, 'plan-default')
 })
 
+test('conversation keeps independent model and reasoning selections for agent and plan', () => {
+  const preference = {
+    chatMode: 'plan' as const,
+    label: 'Plan Three',
+    modelId: 'plan-3',
+    providerId: 'codex' as const,
+    reasoningEffort: 'low' as const,
+    modeSelections: {
+      agent: {
+        label: 'Agent Two',
+        modelId: 'agent-2',
+        providerId: 'openai' as const,
+        reasoningEffort: 'high' as const,
+      },
+      plan: {
+        label: 'Plan Three',
+        modelId: 'plan-3',
+        providerId: 'codex' as const,
+        reasoningEffort: 'low' as const,
+      },
+    },
+  }
+
+  const agentSelection = resolveConversationModelSelection(
+    'agent',
+    resolveSurfaceModeModelSelection('agent', DEFAULT_APP_SETTINGS),
+    preference,
+    null,
+  )
+  const planSelection = resolveConversationModelSelection(
+    'plan',
+    resolveSurfaceModeModelSelection('plan', DEFAULT_APP_SETTINGS),
+    preference,
+    null,
+  )
+
+  assert.equal(agentSelection.modelId, 'agent-2')
+  assert.equal(agentSelection.providerId, 'openai')
+  assert.equal(agentSelection.reasoningEffort, 'high')
+  assert.equal(planSelection.modelId, 'plan-3')
+  assert.equal(planSelection.providerId, 'codex')
+  assert.equal(planSelection.reasoningEffort, 'low')
+})
+
 test('latest user model restores an unsaved draft choice without changing the configured default', () => {
   const defaultSelection = resolveSurfaceModeModelSelection('agent', {
     ...DEFAULT_APP_SETTINGS,

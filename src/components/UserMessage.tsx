@@ -20,21 +20,27 @@ import {
   ensureChatImageReferences,
   getChatImageAttachments,
 } from "../lib/chatImageReferences";
+import { restoreChatMentionPathMap } from "../lib/chatMentions";
 
 interface UserMessageProps {
   attachments?: readonly ChatAttachment[];
   content: string;
+  mentionPathMap?: Readonly<Record<string, string>>;
   onEdit?: () => void;
   onRevert?: () => void;
 }
 
-export function UserMessage({ attachments = [], content, onEdit, onRevert }: UserMessageProps) {
+export function UserMessage({ attachments = [], content, mentionPathMap, onEdit, onRevert }: UserMessageProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [isMultiline, setIsMultiline] = useState(false);
   const [isImageReferenceHovered, setIsImageReferenceHovered] = useState(false);
   const trimmedContent = content.trim();
   const imageAttachments = getChatImageAttachments(attachments);
   const renderedContent = ensureChatImageReferences(content, attachments);
+  const renderedMentionPathMap = useMemo(
+    () => restoreChatMentionPathMap(mentionPathMap),
+    [mentionPathMap],
+  );
   const trimmedRenderedContent = renderedContent.trim();
   const compressedHistoryMessage = useMemo(
     () => parseCompressedHistoryMessage(content),
@@ -135,6 +141,7 @@ export function UserMessage({ attachments = [], content, onEdit, onRevert }: Use
         {trimmedRenderedContent.length > 0 ? (
           <ChatMentionText
             imageAttachments={imageAttachments}
+            mentionPathMap={renderedMentionPathMap}
             onImageReferenceHoverChange={setIsImageReferenceHovered}
             text={renderedContent}
             variant="rendered"

@@ -105,6 +105,31 @@ export const ChatMentionText = memo(function ChatMentionText({
 
         const textColorClass = 'text-foreground font-normal'
 
+        if (isKanban) {
+          if (isBackdrop) {
+            return (
+              <span key={`mention-${index}`} className={`${highlightClass} text-transparent`}>
+                {segment.text}
+              </span>
+            )
+          }
+
+          return (
+            <span
+              key={`mention-${index}`}
+              className={`relative ${isRendered ? 'inline' : 'inline-block'} align-baseline [overflow-wrap:anywhere]`}
+            >
+              <span className={`relative ${textColorClass}`}>
+                {segment.text}
+              </span>
+              <span
+                aria-hidden="true"
+                className={`pointer-events-none absolute inset-0 z-[1] ${highlightClass}`}
+              />
+            </span>
+          )
+        }
+
         if (isRendered) {
           return (
             <Tooltip

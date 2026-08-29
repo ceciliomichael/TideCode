@@ -35,6 +35,14 @@ export function getKanbanIssueTypeLabel(issueType: KanbanIssueType) {
   )
 }
 
+export function getKanbanOwnerLabel(assignee?: string | null) {
+  const normalized = assignee?.trim() ?? ''
+  if (!normalized) {
+    return ''
+  }
+  return normalized.toLocaleLowerCase() === 'person' ? 'Human' : normalized
+}
+
 export function doesKanbanCardMatchQuery(card: KanbanCard, query: string) {
   const normalizedQuery = query.trim().toLocaleLowerCase()
   if (!normalizedQuery) {
@@ -44,7 +52,7 @@ export function doesKanbanCardMatchQuery(card: KanbanCard, query: string) {
   return [
     card.title,
     card.description,
-    card.assignee ?? '',
+    getKanbanOwnerLabel(card.assignee),
     card.labels.join(' '),
     card.issueType,
     card.priority,

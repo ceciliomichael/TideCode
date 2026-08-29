@@ -1,6 +1,7 @@
 import type { DropdownOption } from '../ui/DropdownField'
 import { KANBAN_COLUMNS } from './kanbanDefaults'
-import type { KanbanCard, KanbanColumnId } from './kanbanTypes'
+import { doesKanbanCardMatchQuery } from './kanbanPresentation'
+import type { KanbanCard, KanbanColumnId, KanbanPriority } from './kanbanTypes'
 
 export interface KanbanCardDisplayMeta {
   childCount: number
@@ -14,6 +15,11 @@ export interface KanbanBoardDisplayData {
   orderedCardsByColumn: Record<KanbanColumnId, KanbanCard[]>
 }
 
+interface KanbanBoardDisplayFilters {
+  priority: KanbanPriority | 'all'
+  query: string
+}
+
 function createEmptyColumnCardMap() {
   return KANBAN_COLUMNS.reduce(
     (accumulator, column) => {
@@ -24,7 +30,10 @@ function createEmptyColumnCardMap() {
   )
 }
 
-export function buildKanbanBoardDisplayData(cards: readonly KanbanCard[]): KanbanBoardDisplayData {
+export function buildKanbanBoardDisplayData(
+  cards: readonly KanbanCard[],
+  filters: KanbanBoardDisplayFilters = { priority: 'all', query: '' },
+): KanbanBoardDisplayData {
   const cardsById = new Map(cards.map((card) => [card.id, card] as const))
   const childCardsByParentId = new Map<string, KanbanCard[]>()
 
@@ -53,31 +62,19 @@ export function buildKanbanBoardDisplayData(cards: readonly KanbanCard[]): Kanba
   const orderedCardsByColumn = createEmptyColumnCardMap()
   for (const column of KANBAN_COLUMNS) {
     const cardsInColumn = cards
+      .filter((card) => card.parentCardId === undefined)
       .filter((card) => card.columnId === column.id)
-      .sort((left, right) => left.position - right.position || left.createdAt - right.createdAt)
-    const topLevelCards = cardsInColumn.filter((card) => card.parentCardId === undefined)
-    const childCardsInColumn = cardsInColumn.filter((card) => card.parentCardId !== undefined)
-    const appendedCardIds = new Set<string>()
-
-    for (const card of topLevelCards) {
-      orderedCardsByColumn[column.id].push(card)
-      appendedCardIds.add(card.id)
-
-      for (const childCard of childCardsByParentId.get(card.id) ?? []) {
-        if (childCard.columnId !== column.id) {
-          continue
+      .filter((card) => filters.priority === 'all' || card.priority === filters.priority)
+      .filter((card) => {
+        if (doesKanbanCardMatchQuery(card, filters.query)) {
+          return true
         }
-
-        orderedCardsByColumn[column.id].push(childCard)
-        appendedCardIds.add(childCard.id)
-      }
-    }
-
-    for (const card of childCardsInColumn) {
-      if (!appendedCardIds.has(card.id)) {
-        orderedCardsByColumn[column.id].push(card)
-      }
-    }
+        return (childCardsByParentId.get(card.id) ?? []).some((child) =>
+          doesKanbanCardMatchQuery(child, filters.query),
+        )
+      })
+      .sort((left, right) => left.position - right.position || left.createdAt - right.createdAt)
+    orderedCardsByColumn[column.id].push(...cardsInColumn)
   }
 
   return {

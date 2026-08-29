@@ -26,6 +26,8 @@ const PATCH_RETURN = /^\s*return\s+(?:await\s+)?tools\.patch\(\s*\{\s*patch(?:\s
 const RAW_PATCH_CONTROL_LINE = /^(?:\*\*\* (?:Begin Patch|End Patch)|\*\*\* (?:Add|Update|Delete) File:?.*|\*\*\* Move to:?.*|@@.*)$/u
 const APPLY_PATCH_DIRECT_TEMPLATE = /\btools\.apply_patch\s*\(\s*$/u
 const APPLY_PATCH_TEMPLATE_BINDING = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*$/u
+const SOURCE_PAYLOAD_STRING_BINDING = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(String\.raw\s*)?(['"\x60])/gu
+const MISSING_OBJECT_PROPERTY_COLON = /([,{]\s*)([A-Za-z_$][\w$]*)(\s+)(?=(?:['"\x60]|\[|\{|[-+]?\d|true\b|false\b|null\b|undefined\b|\/))/gu
 
 function isEscaped(value: string, index: number) {
   let slashCount = 0
@@ -478,6 +480,18 @@ function repairOverEscapedRegexLiteral(code: string): string | null {
 }
 
 export function repairCodeModeProgramSyntax(code: string): string | null {
+  // Try -1: Repair narrow, high-confidence object/payload mistakes commonly
+  // produced while models are emitting long freeform Code Mode programs.
+  const fixedCommonProgram = repairSourcePayloadStringBindings(repairMissingObjectPropertyColons(code))
+  if (fixedCommonProgram !== code) {
+    try {
+      validateCodeModeSyntax(fixedCommonProgram)
+      return fixedCommonProgram
+    } catch {
+      // continue
+    }
+  }
+
   // Try -0.5: Repair a regex literal where a model doubled the escape before
   // a literal opening parenthesis, turning it into an unterminated group.
   const fixedRegexLiteral = repairOverEscapedRegexLiteral(code)
@@ -646,6 +660,118 @@ function escapeSourceMutationStringBody(value: string, quote: SourceMutationStri
   }
 
   return escaped
+}
+
+function hasGeneratedBindingTerminator(source: string, quoteIndex: number) {
+  const suffix = source.slice(quoteIndex + 1)
+  return (
+    /^\s*;?\s*(?:\r?\n|$)/u.test(suffix) ||
+    /^\s*;\s*(?:const|let|var|return|await)\b/u.test(suffix)
+  )
+}
+
+function hasToolArgumentBindingUsage(source: string, variableName: string) {
+  const executable = maskNonExecutableText(source)
+  const shorthand = new RegExp(
+    `\\btools\\.[A-Za-z_$][\\w$]*\\s*\\(\\s*\\{[\\s\\S]*?\\b${variableName}\\b\\s*(?:[,}])`,
+    'u',
+  )
+  const explicitValue = new RegExp(
+    `\\btools\\.[A-Za-z_$][\\w$]*\\s*\\(\\s*\\{[\\s\\S]*?\\b[A-Za-z_$][\\w$]*\\s*:\\s*${variableName}\\b`,
+    'u',
+  )
+  return shorthand.test(executable) || explicitValue.test(executable)
+}
+
+/**
+ * Repairs long model-generated payload bindings before they are passed into a
+ * tool object, for example a plan binding initialized with String.raw and later
+ * passed as `tools.plan_create({ content: plan })`.
+ * String.raw templates are replaced with JSON string literals so Markdown
+ * backticks and ${...} text
+ * keep their literal value instead of becoming JavaScript syntax.
+ */
+export function repairSourcePayloadStringBindings(code: string): string {
+  let result = code
+  let searchFrom = 0
+
+  while (searchFrom < result.length) {
+    SOURCE_PAYLOAD_STRING_BINDING.lastIndex = searchFrom
+    const match = SOURCE_PAYLOAD_STRING_BINDING.exec(result)
+    if (!match || match.index === undefined) break
+
+    const rawTag = match[2] ?? ''
+    const quote = match[3] as SourceMutationStringQuote
+    const openingQuoteIndex = SOURCE_PAYLOAD_STRING_BINDING.lastIndex - 1
+    const startBodyIndex = openingQuoteIndex + 1
+    let endBodyIndex = -1
+
+    for (let index = startBodyIndex; index < result.length; index += 1) {
+      if (result[index] !== quote || isEscaped(result, index)) continue
+      if (!hasGeneratedBindingTerminator(result, index)) continue
+      endBodyIndex = index
+      break
+    }
+
+    if (endBodyIndex === -1) {
+      searchFrom = startBodyIndex
+      continue
+    }
+
+    const rawBody = result.slice(startBodyIndex, endBodyIndex)
+    const bindingName = match[1] ?? ''
+    if (!hasToolArgumentBindingUsage(result.slice(endBodyIndex + 1), bindingName)) {
+      searchFrom = endBodyIndex + 1
+      continue
+    }
+    if (rawTag.length > 0 && quote === '\x60') {
+      const expressionStart = openingQuoteIndex - rawTag.length
+      const literal = JSON.stringify(rawBody)
+      result = result.slice(0, expressionStart) + literal + result.slice(endBodyIndex + 1)
+      searchFrom = expressionStart + literal.length
+      continue
+    }
+
+    const safeBody = escapeSourceMutationStringBody(rawBody, quote)
+    if (safeBody === rawBody) {
+      searchFrom = endBodyIndex + 1
+      continue
+    }
+
+    result = result.slice(0, startBodyIndex) + safeBody + result.slice(endBodyIndex)
+    searchFrom = startBodyIndex + safeBody.length + 1
+  }
+
+  return result
+}
+
+/**
+ * Repairs a narrow invalid-object shape models occasionally emit in tool
+ * arguments, such as `{ include \"*.go\" }`. Only executable object-property
+ * keys are touched, so matching text inside strings, comments, regexes, and
+ * template text is left unchanged.
+ */
+export function repairMissingObjectPropertyColons(code: string): string {
+  const masked = maskNonExecutableText(code)
+  const insertions: number[] = []
+  MISSING_OBJECT_PROPERTY_COLON.lastIndex = 0
+
+  for (let match = MISSING_OBJECT_PROPERTY_COLON.exec(code); match; match = MISSING_OBJECT_PROPERTY_COLON.exec(code)) {
+    if (match.index === undefined) continue
+    const prefixLength = match[1]?.length ?? 0
+    const key = match[2] ?? ''
+    const keyStart = match.index + prefixLength
+    if (masked.slice(keyStart, keyStart + key.length) !== key) continue
+    insertions.push(keyStart + key.length)
+  }
+
+  if (insertions.length === 0) return code
+  let result = code
+  for (let index = insertions.length - 1; index >= 0; index -= 1) {
+    const position = insertions[index]
+    if (position !== undefined) result = result.slice(0, position) + ':' + result.slice(position)
+  }
+  return result
 }
 
 /**

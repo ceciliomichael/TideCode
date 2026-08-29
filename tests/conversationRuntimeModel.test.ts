@@ -16,6 +16,21 @@ test('mode-only runtime updates do not carry the previous mode model forward', (
   }), null)
 })
 
+test('mode-only runtime updates restore the saved model for the target mode', () => {
+  const agentModel = {
+    label: 'Agent Model',
+    modelId: 'agent-model',
+    providerId: 'openai' as const,
+    reasoningEffort: 'medium' as const,
+  }
+
+  assert.deepEqual(resolveUpdatedConversationRuntimeModel({
+    hasModeUpdate: true,
+    modeModel: agentModel,
+    previousModel,
+  }), agentModel)
+})
+
 test('model-only runtime updates retain the previous model when no replacement is supplied', () => {
   assert.deepEqual(resolveUpdatedConversationRuntimeModel({
     hasModeUpdate: false,

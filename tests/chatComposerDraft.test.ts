@@ -16,3 +16,18 @@ test('restoreChatComposerDraft returns visible mention text with a resendable pa
   )
   assert.equal(expandChatMentions(restoredDraft.value, restoredDraft.mentionPathMap), storedContent)
 })
+
+test('restoreChatComposerDraft keeps a persisted Kanban title instead of exposing its card id', () => {
+  const storedContent = 'Please fix [[kanban:ebaf1f26-ca68-4a4f-838f-c937033eb1ad]]'
+  const persistedMentionPathMap = {
+    'Fix chat mention rendering': 'kanban:ebaf1f26-ca68-4a4f-838f-c937033eb1ad',
+  }
+
+  const restoredDraft = restoreChatComposerDraft(storedContent, persistedMentionPathMap)
+
+  assert.equal(restoredDraft.value, 'Please fix @Fix chat mention rendering')
+  assert.equal(
+    expandChatMentions(restoredDraft.value, restoredDraft.mentionPathMap),
+    storedContent,
+  )
+})

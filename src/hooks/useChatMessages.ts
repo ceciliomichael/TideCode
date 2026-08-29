@@ -35,7 +35,6 @@ interface UseChatMessagesInput {
 
 export function useChatMessages(input: UseChatMessagesInput) {
   const {
-    conversationModelPreferences,
     editSessionsByConversation: persistedEditSessionsByConversation,
     language,
     persistConversationLaunchPreference,
@@ -236,11 +235,6 @@ export function useChatMessages(input: UseChatMessagesInput) {
       return
     }
 
-    const savedPreference = conversationModelPreferences[activeConversationId]
-    if (savedPreference?.chatMode) {
-      setDraftChatMode(savedPreference.chatMode)
-      return
-    }
     const draftModeForConversation = draftChatModeByConversationRef.current[activeConversationId]
     if (draftModeForConversation) {
       setDraftChatMode(draftModeForConversation)
@@ -253,7 +247,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     }
 
     setDraftChatMode(activeConversationChatMode)
-  }, [conversationModelPreferences, sessionState.activeConversationChatMode, sessionState.activeConversationId])
+  }, [sessionState.activeConversationChatMode, sessionState.activeConversationId])
 
   useEffect(() => {
     if (!activeConversationId) {

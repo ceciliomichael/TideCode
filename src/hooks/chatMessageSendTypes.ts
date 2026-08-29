@@ -29,6 +29,7 @@ export interface PersistedUserTurn {
 
 export interface UserMessageSubmission {
   attachments: ChatAttachment[]
+  mentionPathMap?: Record<string, string>
   text: string
 }
 

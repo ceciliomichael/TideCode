@@ -136,8 +136,12 @@ export function useChatMessageQueue({
     }
   }), [claimSharedFollowUps, mergeSharedSnapshot])
 
-  const enqueueMessage = useCallback((content: string, attachments?: ChatAttachment[]) => {
-    const message = createQueuedComposerMessage({ attachments, content })
+  const enqueueMessage = useCallback((
+    content: string,
+    attachments?: ChatAttachment[],
+    mentionPathMap?: ReadonlyMap<string, string>,
+  ) => {
+    const message = createQueuedComposerMessage({ attachments, content, mentionPathMap })
     const item: SharedFollowUpItem = { behavior: followUpBehavior, message }
     attemptedAutoSendKeyRef.current = null
     updateItems((current) => [...current, item])
@@ -155,12 +159,17 @@ export function useChatMessageQueue({
     if (streamId) publishMutation(streamId, { type: 'remove', id })
   }, [publishMutation, updateItems])
 
-  const updateQueuedMessage = useCallback((id: string, content: string, attachments?: ChatAttachment[]) => {
+  const updateQueuedMessage = useCallback((
+    id: string,
+    content: string,
+    attachments?: ChatAttachment[],
+    mentionPathMap?: ReadonlyMap<string, string>,
+  ) => {
     queueLifecycleVersionRef.current += 1
     attemptedAutoSendKeyRef.current = null
     const currentMessage = followUpItemsRef.current.find((item) => item.message.id === id)?.message
     if (!currentMessage) return
-    const message = updateQueuedComposerMessage([currentMessage], id, content, attachments)[0]
+    const message = updateQueuedComposerMessage([currentMessage], id, content, attachments, mentionPathMap)[0]
     if (!message) return
     updateItems((current) => current.map((item) => item.message.id === id ? { ...item, message } : item))
     const streamId = sharedStreamIdRef.current

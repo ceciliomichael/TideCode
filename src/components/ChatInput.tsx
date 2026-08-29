@@ -69,12 +69,12 @@ interface ChatInputProps {
   onGitBranchChange?: (branchName: string) => void
   onGitBranchRefresh?: () => void
   onModelChange?: (modelId: string) => void
-  onAlternateFollowUp?: (value: string, attachments: ChatAttachment[]) => void
+  onAlternateFollowUp?: (value: string, attachments: ChatAttachment[], mentionPathMap: ReadonlyMap<string, string>) => void
   onReasoningEffortChange?: (effort: ReasoningEffort) => void
   onRefactorCandidateSelect?: (relativePath: string) => void
   onTerminalExecutionModeChange?: (mode: AppTerminalExecutionMode) => void
-  onQueue?: (value: string, attachments: ChatAttachment[]) => void
-  onSend: (value: string, attachments: ChatAttachment[]) => void
+  onQueue?: (value: string, attachments: ChatAttachment[], mentionPathMap: ReadonlyMap<string, string>) => void
+  onSend: (value: string, attachments: ChatAttachment[], mentionPathMap: ReadonlyMap<string, string>) => void
   refactorCandidates?: readonly WorkspaceRefactorCandidate[]
   refactorCandidatesLoading?: boolean
   selectedChatMode?: ChatMode
@@ -227,10 +227,13 @@ export function ChatInput({
     onAbort()
   }
 
-  function submitFollowUp(callback: (value: string, attachments: ChatAttachment[]) => void) {
+  function submitFollowUp(
+    callback: (value: string, attachments: ChatAttachment[], mentionPathMap: ReadonlyMap<string, string>) => void,
+  ) {
     if (!canSend) return
     mentionMenu.closeMenu()
-    callback(mentionMenu.expandValueForSend(value), attachments)
+    const mentionPathMap = new Map(mentionMenu.mentionPathMapRef.current)
+    callback(mentionMenu.expandValueForSend(value), attachments, mentionPathMap)
     onValueChange('')
     onAttachmentsChange?.([])
     mentionMenu.clearMentionPathMap()

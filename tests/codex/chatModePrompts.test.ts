@@ -120,6 +120,14 @@ test('Agent and Plan share a mode-neutral system while hidden contexts express m
     assert.match(planContext.content, /remains available but cannot revise a plan until one exists/u)
     assert.match(planContext.content, /Never mutate source files/u)
     assert.match(planContext.content, /latest successful Plan presentation/u)
+    assert.match(planContext.content, /Make the plan goal-oriented/u)
+    assert.match(planContext.content, /Use Goal as the primary top-level framing/u)
+    assert.match(planContext.content, /strong handoff specification/u)
+    assert.match(planContext.content, /files expected to be created, modified, deleted, or moved/u)
+    assert.match(planContext.content, /expected operation: create, modify, delete, or move/u)
+    assert.match(planContext.content, /leaving room for normal low-risk implementation judgment/u)
+    assert.match(planContext.content, /Define verification around the goal/u)
+    assert.match(planContext.content, /can be used as summaries/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -202,7 +210,10 @@ test('plan mode excludes workspace mutation tools but permits Kanban planning ac
 
     const planKanban = planTools.kanban_board
     assert.ok(planKanban)
-    assert.equal(planKanban.description, 'Manage Kanban cards.')
+    assert.equal(
+      planKanban.description,
+      'Manage Kanban. Main tasks finish at for-review and complete subtasks; never target done. Owner: Human for user-originated work, Agent for AI-originated work.',
+    )
 
     const revisionTools = await createNativeAgentTools(
       { workspaceRootPath },

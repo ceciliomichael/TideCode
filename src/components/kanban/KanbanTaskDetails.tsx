@@ -1,17 +1,29 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
+  ArrowLeft,
   Check,
   CheckCircle2,
   Circle,
+  FileSpreadsheet,
+  FileText,
   ListTree,
+  MoreHorizontal,
   Plus,
   Trash2,
-  X,
 } from 'lucide-react'
 import { DropdownField, type DropdownOption } from '../ui/DropdownField'
 import { KANBAN_COLUMNS } from './kanbanDefaults'
-import { KANBAN_ISSUE_TYPE_OPTIONS, KANBAN_PRIORITY_OPTIONS } from './kanbanPresentation'
+import {
+  KANBAN_ISSUE_TYPE_OPTIONS,
+  KANBAN_PRIORITY_OPTIONS,
+  getKanbanOwnerLabel,
+} from './kanbanPresentation'
+import {
+  buildKanbanCsvExport,
+  buildKanbanExportFilename,
+  buildKanbanMarkdownExport,
+} from './kanbanExport'
 import { KanbanDeleteTaskDialog } from './KanbanDeleteTaskDialog'
 import { useKanbanTaskAutosave } from './useKanbanTaskAutosave'
 import type {
@@ -63,7 +75,7 @@ export function KanbanTaskDetails({
   const [columnId, setColumnId] = useState(card.columnId)
   const [priority, setPriority] = useState(card.priority)
   const [issueType, setIssueType] = useState(card.issueType)
-  const [assignee, setAssignee] = useState(card.assignee ?? '')
+  const [assignee, setAssignee] = useState(getKanbanOwnerLabel(card.assignee))
   const [labels, setLabels] = useState(card.labels.join(', '))
   const [criteria, setCriteria] = useState<KanbanAcceptanceCriterion[]>(
     card.acceptanceCriteria,
@@ -71,6 +83,8 @@ export function KanbanTaskDetails({
   const [newCriterion, setNewCriterion] = useState('')
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
 
   const subtasks = useMemo(
     () =>
@@ -78,6 +92,13 @@ export function KanbanTaskDetails({
         .filter((candidate) => candidate.parentCardId === card.id)
         .sort((left, right) => left.position - right.position),
     [card.id, cards],
+  )
+  const parentTask = useMemo(
+    () =>
+      card.parentCardId
+        ? cards.find((candidate) => candidate.id === card.parentCardId)
+        : undefined,
+    [card.parentCardId, cards],
   )
   const isSubtask = card.parentCardId !== undefined
   const isDraftValid = title.trim().length > 0
@@ -101,7 +122,7 @@ export function KanbanTaskDetails({
   const initialDraft = useMemo<KanbanUpdateCardInput>(
     () => ({
       acceptanceCriteria: card.acceptanceCriteria,
-      assignee: card.assignee ?? null,
+      assignee: getKanbanOwnerLabel(card.assignee) || null,
       cardId: card.id,
       columnId: card.columnId,
       description: card.description,
@@ -161,15 +182,42 @@ export function KanbanTaskDetails({
     onClose()
   }, [autosave, onClose])
 
+  const handleOpenCard = useCallback(async (cardId: string) => {
+    if (autosave.status === 'unsaved' || autosave.status === 'saving') {
+      const didSave = await autosave.flush()
+      if (!didSave) {
+        return
+      }
+    }
+    onOpenCard(cardId)
+  }, [autosave, onOpenCard])
+
+  useEffect(() => {
+    if (!isExportMenuOpen) {
+      return
+    }
+    function handlePointerDown(event: PointerEvent) {
+      if (!exportMenuRef.current?.contains(event.target as Node)) {
+        setIsExportMenuOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [isExportMenuOpen])
+
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
       if (event.key === 'Escape' && !isBusy) {
+        if (isExportMenuOpen) {
+          setIsExportMenuOpen(false)
+          return
+        }
         void handleClose()
       }
     }
     document.addEventListener('keydown', handleEscape)
     return () => document.removeEventListener('keydown', handleEscape)
-  }, [handleClose, isBusy])
+  }, [handleClose, isBusy, isExportMenuOpen])
 
   async function handleAddSubtask() {
     const subtaskTitle = newSubtaskTitle.trim()
@@ -185,6 +233,37 @@ export function KanbanTaskDetails({
     if (result) {
       setNewSubtaskTitle('')
     }
+  }
+
+  function downloadExport(format: 'csv' | 'md') {
+    const exportCard: KanbanCard = {
+      ...card,
+      acceptanceCriteria: criteria,
+      assignee: assignee.trim() || undefined,
+      columnId,
+      description,
+      issueType,
+      labels: parseLabels(labels),
+      priority,
+      title: title.trim() || card.title,
+    }
+    const exportSubtasks = isSubtask ? [] : subtasks
+    const content = format === 'csv'
+      ? buildKanbanCsvExport(exportCard, exportSubtasks)
+      : buildKanbanMarkdownExport(exportCard, exportSubtasks)
+    const blob = new Blob([content], {
+      type: format === 'csv' ? 'text/csv;charset=utf-8' : 'text/markdown;charset=utf-8',
+    })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = buildKanbanExportFilename(exportCard.title, format)
+    anchor.style.display = 'none'
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+    setIsExportMenuOpen(false)
   }
 
   return createPortal(
@@ -203,24 +282,56 @@ export function KanbanTaskDetails({
         aria-labelledby="kanban-details-title"
         className="non-selectable-ui flex h-full w-full flex-col border-l border-border bg-surface [&_input:focus]:!border-border [&_input:focus]:!shadow-none [&_input:focus]:!outline-none [&_input:focus]:!ring-0 [&_textarea:focus]:!border-border [&_textarea:focus]:!shadow-none [&_textarea:focus]:!outline-none [&_textarea:focus]:!ring-0 md:max-w-[620px]"
       >
-        <header className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-5 py-3 md:px-6">
+        <header className="relative flex shrink-0 items-center justify-between gap-4 border-b border-border px-5 py-3 md:px-6">
           <div className="flex min-w-0 items-center gap-2">
             <span className="rounded-md border border-border bg-surface-muted px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-              {isSubtask ? 'Subtask' : issueType}
-            </span>
-            <span className="truncate text-xs text-muted-foreground">
-              Updated {new Date(card.updatedAt).toLocaleString()}
+              {isSubtask ? 'Subtask' : 'Task'}
             </span>
           </div>
-          <button
-            type="button"
-            aria-label="Close task details"
-            disabled={isBusy}
-            onClick={() => void handleClose()}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-50"
-          >
-            <X size={18} />
-          </button>
+          <div ref={exportMenuRef} className="relative shrink-0">
+            <button
+              type="button"
+              aria-label="Task actions"
+              aria-haspopup="menu"
+              aria-expanded={isExportMenuOpen}
+              onClick={() => setIsExportMenuOpen((current) => !current)}
+              className={[
+                'inline-flex h-8 w-8 items-center justify-center rounded-lg border text-muted-foreground transition-[background-color,border-color,color]',
+                isExportMenuOpen
+                  ? 'border-[var(--dropdown-control-open-border)] bg-[var(--dropdown-control-open-surface)] text-foreground'
+                  : 'border-transparent hover:border-[var(--dropdown-control-hover-border)] hover:bg-[var(--dropdown-control-hover-surface)] hover:text-foreground',
+              ].join(' ')}
+            >
+              <MoreHorizontal size={17} />
+            </button>
+            {isExportMenuOpen ? (
+              <div
+                role="menu"
+                className="absolute right-0 top-[calc(100%+0.4rem)] z-30 w-48 rounded-xl border border-border bg-surface p-1 shadow-soft"
+              >
+                <div className="space-y-0.5">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => downloadExport('csv')}
+                    className="flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-left text-[13px] text-foreground transition-[background-color,color,box-shadow] hover:bg-[var(--dropdown-option-active-surface)] md:text-sm"
+                  >
+                    <FileSpreadsheet size={15} className="shrink-0 text-muted-foreground" />
+                    Export to CSV
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => downloadExport('md')}
+                    className="flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-left text-[13px] text-foreground transition-[background-color,color,box-shadow] hover:bg-[var(--dropdown-option-active-surface)] md:text-sm"
+                  >
+                    <FileText size={15} className="shrink-0 text-muted-foreground" />
+                    Export to Markdown
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 md:px-6">
@@ -251,6 +362,8 @@ export function KanbanTaskDetails({
                     value={columnId}
                     onChange={(value) => setColumnId(value as KanbanColumnId)}
                     options={columnOptions}
+                    selectedOptionClassName="text-white"
+                    selectedOptionIconClassName="text-white"
                     triggerClassName="h-10"
                   />
                 </div>
@@ -267,6 +380,8 @@ export function KanbanTaskDetails({
                     value={priority}
                     onChange={(value) => setPriority(value as KanbanPriority)}
                     options={priorityOptions}
+                    selectedOptionClassName="text-white"
+                    selectedOptionIconClassName="text-white"
                     triggerClassName="h-10"
                   />
                 </div>
@@ -283,6 +398,8 @@ export function KanbanTaskDetails({
                     value={issueType}
                     onChange={(value) => setIssueType(value as KanbanIssueType)}
                     options={issueTypeOptions}
+                    selectedOptionClassName="text-white"
+                    selectedOptionIconClassName="text-white"
                     triggerClassName="h-10"
                   />
                 </div>
@@ -300,7 +417,7 @@ export function KanbanTaskDetails({
                     id="kanban-details-owner"
                     value={assignee}
                     onChange={(event) => setAssignee(event.target.value)}
-                    placeholder="Person or agent"
+                    placeholder="Human or Agent"
                     className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground shadow-none placeholder:text-subtle-foreground focus:border-border focus:outline-none focus:ring-0 focus:shadow-none"
                   />
                 </div>
@@ -429,7 +546,50 @@ export function KanbanTaskDetails({
               </form>
             </section>
 
-            {!isSubtask ? (
+            {isSubtask ? (
+              <section className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <ListTree size={16} className="text-muted-foreground" />
+                  <h3 className="text-sm font-semibold text-foreground">
+                    Main task
+                  </h3>
+                </div>
+                {parentTask ? (
+                  <div className="overflow-hidden rounded-xl border border-border bg-background">
+                    <div className="flex min-h-12 items-center gap-3 px-3">
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => void handleOpenCard(parentTask.id)}
+                        aria-label={`Open main task ${parentTask.title}`}
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-50"
+                      >
+                        <ArrowLeft size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => void handleOpenCard(parentTask.id)}
+                        className="min-w-0 flex-1 truncate text-left text-sm text-foreground disabled:opacity-50"
+                      >
+                        {parentTask.title}
+                      </button>
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-subtle-foreground">
+                        {
+                          KANBAN_COLUMNS.find(
+                            (column) => column.id === parentTask.columnId,
+                          )?.title
+                        }
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border bg-background px-4 py-5 text-center text-sm text-muted-foreground">
+                    Main task is unavailable.
+                  </div>
+                )}
+              </section>
+            ) : (
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -479,7 +639,7 @@ export function KanbanTaskDetails({
                           </button>
                           <button
                             type="button"
-                            onClick={() => onOpenCard(subtask.id)}
+                            onClick={() => void handleOpenCard(subtask.id)}
                             className={[
                               'min-w-0 flex-1 truncate text-left text-sm',
                               isDone
@@ -528,7 +688,7 @@ export function KanbanTaskDetails({
                   </button>
                 </form>
               </section>
-            ) : null}
+            )}
           </div>
         </div>
 
@@ -547,18 +707,6 @@ export function KanbanTaskDetails({
             {!isDraftValid ? (
               <span className="truncate text-xs font-medium text-amber-500">
                 Add a title to save
-              </span>
-            ) : autosave.status === 'saving' || isBusy ? (
-              <span className="truncate text-xs text-muted-foreground">
-                Saving…
-              </span>
-            ) : autosave.status === 'saved' ? (
-              <span className="truncate text-xs text-muted-foreground">
-                Saved
-              </span>
-            ) : autosave.status === 'unsaved' ? (
-              <span className="truncate text-xs text-muted-foreground">
-                Waiting to save…
               </span>
             ) : null}
           </div>

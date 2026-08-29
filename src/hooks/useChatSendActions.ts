@@ -12,6 +12,7 @@ import { persistAndStreamMessage } from './chatMessageSendWorkflow'
 import type { ChatRuntimeSelection } from './chatMessageRuntime'
 import type { PersistAndStreamMessageInput, PersistedUserTurn } from './chatMessageSendTypes'
 import { restoreChatComposerDraft } from '../lib/chatComposerDraft'
+import { serializeChatMentionPathMap } from '../lib/chatMentions'
 import { isPlanStatusMessage } from '../lib/planStatusMessages'
 import { getPlanPathsCreatedByRevertedUserMessage } from '../lib/planPresentation'
 import { readChatSelectionFromRefs } from '../lib/chatSelection'
@@ -65,6 +66,7 @@ interface UseChatSendActionsInput
 }
 
 interface SendNewMessageOptions {
+  mentionPathMap?: ReadonlyMap<string, string>
   resetMainComposerAfterSend?: boolean
   waitForConversationToSettle?: boolean
 }
@@ -147,7 +149,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         return false
       }
 
-      const restoredComposerDraft = restoreChatComposerDraft(message.content)
+      const restoredComposerDraft = restoreChatComposerDraft(message.content, message.mentionPathMap)
       input.setMainComposerValue(restoredComposerDraft.value)
       input.setMainComposerAttachments(message.attachments ?? [])
       input.setMainComposerMentionPathMap(restoredComposerDraft.mentionPathMap)
@@ -624,12 +626,17 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
   const sendNewMessages = useCallback(
     async (
       runtimeSelection: ChatRuntimeSelection,
-      messages: readonly { content: string; attachments?: ChatAttachment[] }[],
+      messages: readonly {
+        content: string
+        attachments?: ChatAttachment[]
+        mentionPathMap?: Readonly<Record<string, string>>
+      }[],
       options?: SendNewMessageOptions,
     ): Promise<ChatSendAttemptResult> => {
       const messageBatch = messages
         .map((message) => ({
           attachments: message.attachments ? [...message.attachments] : [],
+          mentionPathMap: message.mentionPathMap ? { ...message.mentionPathMap } : undefined,
           text: message.content.trim(),
         }))
         .filter((message) => message.text.length > 0 || message.attachments.length > 0)
@@ -743,6 +750,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         [{
           attachments,
           content: messageText ?? input.mainComposerValue,
+          mentionPathMap: serializeChatMentionPathMap(options?.mentionPathMap),
         }],
         options,
       )
@@ -828,6 +836,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       runtimeSelection: ChatRuntimeSelection,
       messageText?: string,
       attachments = input.editComposerAttachments,
+      mentionPathMap?: ReadonlyMap<string, string>,
     ) => {
       const conversationId = readChatSelectionFromRefs(input).activeConversationId
       const editingMessageId = input.editingMessageId
@@ -944,6 +953,11 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
             !suppressAbortComposerRestoreConversationIdsRef.current.has(conversationId),
           isUserMessageReverted,
           clearUserMessageRevert,
+          messageBatch: [{
+            attachments,
+            mentionPathMap: serializeChatMentionPathMap(mentionPathMap),
+            text: trimmedText,
+          }],
           originalText: nextMessageText,
           runtimeSelection,
           selectedFolderId: readChatSelectionFromRefs(input).selectedFolderId,

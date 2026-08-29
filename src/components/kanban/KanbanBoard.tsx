@@ -5,7 +5,6 @@ import { useIsMobileViewport } from '../../hooks/useIsMobileViewport'
 import { DropdownField, type DropdownOption } from '../ui/DropdownField'
 import { KANBAN_COLUMNS } from './kanbanDefaults'
 import { buildKanbanBoardDisplayData } from './kanbanHierarchy'
-import { doesKanbanCardMatchQuery } from './kanbanPresentation'
 import { COLUMN_MARKER_CLASS_NAMES, KanbanColumn } from './KanbanColumn'
 import { KanbanErrorDialog } from './KanbanErrorDialog'
 import { KanbanTaskDetails } from './KanbanTaskDetails'
@@ -68,34 +67,24 @@ export function KanbanBoard({ workspacePath, messages }: KanbanBoardProps) {
   })
   const aiPlanner = useKanbanAiPlanner({ workspacePath })
 
-  const filteredCards = useMemo(
-    () =>
-      cards.filter(
-        (card) =>
-          doesKanbanCardMatchQuery(card, searchQuery) &&
-          (priorityFilter === 'all' || card.priority === priorityFilter),
-      ),
-    [cards, priorityFilter, searchQuery],
-  )
   const boardDisplayData = useMemo(
-    () => buildKanbanBoardDisplayData(filteredCards),
-    [filteredCards],
+    () => buildKanbanBoardDisplayData(cards, { priority: priorityFilter, query: searchQuery }),
+    [cards, priorityFilter, searchQuery],
   )
   const selectedCard = selectedCardId
     ? (cards.find((card) => card.id === selectedCardId) ?? null)
     : null
-  const doneCardCount = cards.filter((card) => card.columnId === 'done').length
+  const topLevelCards = cards.filter((card) => card.parentCardId === undefined)
+  const doneCardCount = topLevelCards.filter((card) => card.columnId === 'done').length
   const forReviewCardCount = cards.filter(
-    (card) => card.columnId === 'for-review',
+    (card) => card.parentCardId === undefined && card.columnId === 'for-review',
   ).length
   const activeCardCount = cards.filter(
-    (card) => card.columnId === 'in-progress',
+    (card) => card.parentCardId === undefined && card.columnId === 'in-progress',
   ).length
   const columnCounts = KANBAN_COLUMNS.reduce(
     (accumulator, column) => {
-      accumulator[column.id] = filteredCards.filter(
-        (card) => card.columnId === column.id,
-      ).length
+      accumulator[column.id] = boardDisplayData.orderedCardsByColumn[column.id].length
       return accumulator
     },
     {} as Record<KanbanColumnId, number>,

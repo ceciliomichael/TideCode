@@ -80,6 +80,96 @@ function findSequenceCandidates(lines: readonly string[], pattern: readonly stri
   return candidates
 }
 
+function lineMatchesOneExtraBackslashLayer(actual: string, expected: string) {
+  const compare = (left: string, right: string) => {
+    let leftIndex = 0
+    let rightIndex = 0
+    let collapsed = false
+
+    while (leftIndex < left.length && rightIndex < right.length) {
+      if (left[leftIndex] === '\\' || right[rightIndex] === '\\') {
+        if (left[leftIndex] !== '\\' || right[rightIndex] !== '\\') return false
+
+        let leftEnd = leftIndex
+        while (leftEnd < left.length && left[leftEnd] === '\\') leftEnd += 1
+        let rightEnd = rightIndex
+        while (rightEnd < right.length && right[rightEnd] === '\\') rightEnd += 1
+
+        const leftRun = leftEnd - leftIndex
+        const rightRun = rightEnd - rightIndex
+        if (rightRun === leftRun) {
+          leftIndex = leftEnd
+          rightIndex = rightEnd
+          continue
+        }
+        if (rightRun !== leftRun * 2) return false
+
+        collapsed = true
+        leftIndex = leftEnd
+        rightIndex = rightEnd
+        continue
+      }
+
+      if (left[leftIndex] !== right[rightIndex]) return false
+      leftIndex += 1
+      rightIndex += 1
+    }
+
+    return collapsed && leftIndex === left.length && rightIndex === right.length
+  }
+
+  return compare(actual, expected) || compare(normalizeWhitespace(actual), normalizeWhitespace(expected))
+}
+
+function sequenceMatchesOneExtraBackslashLayerAt(
+  lines: readonly string[],
+  pattern: readonly string[],
+  lineIndex: number,
+) {
+  if (lineIndex < 0 || lineIndex + pattern.length > lines.length) return false
+
+  let repaired = false
+  for (const [patternIndex, expected] of pattern.entries()) {
+    const actual = lines[lineIndex + patternIndex]
+    if (linesMatch(actual, expected, 'exact') || linesMatch(actual, expected, 'whitespace')) continue
+    if (!lineMatchesOneExtraBackslashLayer(actual, expected)) return false
+    repaired = true
+  }
+  return repaired
+}
+
+function findEscapedSequenceCandidates(
+  lines: readonly string[],
+  pattern: readonly string[],
+  startIndex = 0,
+) {
+  const candidates: number[] = []
+  if (pattern.length === 0) return candidates
+
+  for (let lineIndex = startIndex; lineIndex <= lines.length - pattern.length; lineIndex += 1) {
+    if (sequenceMatchesOneExtraBackslashLayerAt(lines, pattern, lineIndex)) candidates.push(lineIndex)
+  }
+  return candidates
+}
+
+function decodeOneGeneratedBackslashLayer(value: string) {
+  let decoded = ''
+  for (let index = 0; index < value.length;) {
+    if (value[index] !== '\\') {
+      decoded += value[index]
+      index += 1
+      continue
+    }
+
+    let end = index
+    while (end < value.length && value[end] === '\\') end += 1
+    const runLength = end - index
+    decoded += '\\'.repeat(runLength >= 2 && runLength % 2 === 0 ? runLength / 2 : runLength)
+    index = end
+  }
+  return decoded
+}
+
 function replacementOverlapsRange(
   replacement: Replacement,
   startIndex: number,
@@ -100,6 +190,25 @@ function findUniqueNonOverlappingSequenceCandidate(
   replacements: readonly Replacement[],
 ) {
   const candidates = findSequenceCandidates(lines, pattern)
+  if (candidates.length !== 1) return -1
+
+  const candidate = candidates[0]
+  if (replacements.some((replacement) =>
+    replacementOverlapsRange(replacement, candidate, pattern.length),
+  )) {
+    return -1
+  }
+
+  return candidate
+}
+
+function findUniqueNonOverlappingEscapedSequenceCandidate(
+  lines: readonly string[],
+  pattern: readonly string[],
+  replacements: readonly Replacement[],
+  startIndex = 0,
+) {
+  const candidates = findEscapedSequenceCandidates(lines, pattern, startIndex)
   if (candidates.length !== 1) return -1
 
   const candidate = candidates[0]
@@ -234,8 +343,11 @@ function buildReplacementLines(
   chunk: ApplyPatchUpdateChunk,
   foundIndex: number,
   originalLines: readonly string[],
+  decodeGeneratedEscaping = false,
 ) {
-  const replacementLines = [...chunk.newLines]
+  const replacementLines = decodeGeneratedEscaping
+    ? chunk.newLines.map(decodeOneGeneratedBackslashLayer)
+    : [...chunk.newLines]
   for (const mapping of chunk.contextLineMappings) {
     replacementLines[mapping.newLineIndex] = originalLines[foundIndex + mapping.oldLineIndex]
   }
@@ -255,7 +367,7 @@ export function applyUpdateChunks(
   originalContent: string,
   chunks: readonly ApplyPatchUpdateChunk[],
   options?: {
-    onChunkResolved?: (input: { chunkIndex: number; startLineNumber: number }) => void
+    onChunkResolved?: (input: { autofixedEscaping: boolean; chunkIndex: number; startLineNumber: number }) => void
   },
 ) {
   const { hasTrailingLineEnding, lines: originalLines } = splitPatchableContent(originalContent)
@@ -287,12 +399,13 @@ export function applyUpdateChunks(
         newLines: [...chunk.newLines],
         startIndex: insertionIndex,
       })
-      options?.onChunkResolved?.({ chunkIndex, startLineNumber: insertionIndex + 1 })
+      options?.onChunkResolved?.({ autofixedEscaping: false, chunkIndex, startLineNumber: insertionIndex + 1 })
       searchStartIndex = insertionIndex
       continue
     }
 
     let foundIndex: number
+    let autofixedEscaping = false
     try {
       foundIndex = resolveSequenceIndex({
         ...(chunk.offset ? { expectedLine: chunk.offset.startLine } : {}),
@@ -310,16 +423,41 @@ export function applyUpdateChunks(
             chunk.oldLines,
             replacements,
           )
-      if (recoveredIndex === -1) throw error
-      foundIndex = recoveredIndex
+      if (recoveredIndex !== -1) {
+        foundIndex = recoveredIndex
+      } else if (chunk.isEndOfFile) {
+        const eofCandidate = originalLines.length - chunk.oldLines.length
+        const overlaps = replacements.some((replacement) =>
+          replacementOverlapsRange(replacement, eofCandidate, chunk.oldLines.length),
+        )
+        if (
+          eofCandidate < searchStartIndex ||
+          overlaps ||
+          !sequenceMatchesOneExtraBackslashLayerAt(originalLines, chunk.oldLines, eofCandidate)
+        ) {
+          throw error
+        }
+        foundIndex = eofCandidate
+        autofixedEscaping = true
+      } else {
+        const escapedIndex = findUniqueNonOverlappingEscapedSequenceCandidate(
+          originalLines,
+          chunk.oldLines,
+          replacements,
+          chunk.changeContext ? searchStartIndex : 0,
+        )
+        if (escapedIndex === -1) throw error
+        foundIndex = escapedIndex
+        autofixedEscaping = true
+      }
     }
 
     replacements.push({
       deleteCount: chunk.oldLines.length,
-      newLines: buildReplacementLines(chunk, foundIndex, originalLines),
+      newLines: buildReplacementLines(chunk, foundIndex, originalLines, autofixedEscaping),
       startIndex: foundIndex,
     })
-    options?.onChunkResolved?.({ chunkIndex, startLineNumber: foundIndex + 1 })
+    options?.onChunkResolved?.({ autofixedEscaping, chunkIndex, startLineNumber: foundIndex + 1 })
     searchStartIndex = Math.max(searchStartIndex, foundIndex + chunk.oldLines.length)
   }
 

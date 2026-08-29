@@ -24,6 +24,7 @@ interface DropdownFieldProps {
   id?: string
   onChange: (value: string) => void
   options: readonly DropdownOption[]
+  selectedOptionClassName?: string
   selectedOptionIconClassName?: string
   triggerClassName?: string
   value: string
@@ -42,6 +43,7 @@ export function DropdownField({
   id,
   onChange,
   options,
+  selectedOptionClassName,
   selectedOptionIconClassName,
   triggerClassName,
   value,
@@ -66,6 +68,7 @@ export function DropdownField({
     anchorRef: buttonRef,
     isOpen,
     menuRef: listboxRef,
+    preferredPlacement: variant === 'text' ? 'above' : 'below',
   })
   const selectedOption = useMemo(
     () => options.find((option) => option.value === value) ?? options[0],
@@ -301,7 +304,13 @@ export function DropdownField({
               }}
               className={[
                 'fixed z-[1500] overflow-y-auto rounded-xl border border-border bg-surface shadow-soft',
-                fitToContent ? 'p-0.5' : 'p-1',
+                variant === 'text'
+                  ? fitToContent
+                    ? 'w-[min(9rem,calc(100vw-1rem))] p-1'
+                    : 'p-1'
+                  : fitToContent
+                    ? 'p-0.5'
+                    : 'p-1',
               ].join(' ')}
               style={menuStyle}
             >
@@ -323,20 +332,32 @@ export function DropdownField({
                           onMouseEnter={() => setHighlightedIndex(optionIndex)}
                           onMouseDown={(event) => event.preventDefault()}
                           onClick={() => commitValue(option.value)}
-                          className={[
-                            'flex h-9 w-full items-center justify-between px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
-                            'rounded-lg',
+                          className={twMerge(
+                            variant === 'text'
+                              ? 'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]'
+                              : 'flex h-9 w-full items-center justify-between rounded-lg px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
                             isHighlighted
                               ? 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
                               : 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]',
-                          ].join(' ')}
+                            isSelected ? selectedOptionClassName : undefined,
+                          )}
                         >
-                          <span className="truncate pr-3">{option.label}</span>
+                          <span
+                            className={variant === 'text'
+                              ? 'block min-w-0 flex-1 truncate text-[15px] leading-5'
+                              : 'truncate pr-3'}
+                          >
+                            {option.label}
+                          </span>
                           {isSelected ? (
                             <Check
                               size={16}
                               strokeWidth={2.2}
-                              className={['shrink-0', selectedOptionIconClassName ?? 'text-brand'].join(' ')}
+                              className={[
+                                variant === 'text' ? 'mt-0.5' : '',
+                                'shrink-0',
+                                selectedOptionIconClassName ?? 'text-brand',
+                              ].filter(Boolean).join(' ')}
                             />
                           ) : null}
                         </button>
@@ -345,39 +366,53 @@ export function DropdownField({
                   </div>
                 </div>
               ) : (
-                options.map((option, index) => {
-                  const isSelected = option.value === value
-                  const isHighlighted = index === highlightedIndex
+                <div className="space-y-0.5">
+                  {options.map((option, index) => {
+                    const isSelected = option.value === value
+                    const isHighlighted = index === highlightedIndex
 
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      role="option"
-                      aria-selected={isSelected}
-                      data-option-index={index}
-                      onMouseEnter={() => setHighlightedIndex(index)}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => commitValue(option.value)}
-                      className={[
-                        'flex h-9 w-full items-center justify-between px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
-                        'rounded-lg',
-                        isHighlighted
-                          ? 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
-                          : 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]',
-                      ].join(' ')}
-                    >
-                      <span className="truncate pr-3">{option.label}</span>
-                      {isSelected ? (
-                        <Check
-                          size={16}
-                          strokeWidth={2.2}
-                          className={['shrink-0', selectedOptionIconClassName ?? 'text-brand'].join(' ')}
-                        />
-                      ) : null}
-                    </button>
-                  )
-                })
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="option"
+                        aria-selected={isSelected}
+                        data-option-index={index}
+                        onMouseEnter={() => setHighlightedIndex(index)}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => commitValue(option.value)}
+                        className={twMerge(
+                          variant === 'text'
+                            ? 'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]'
+                            : 'flex h-9 w-full items-center justify-between rounded-lg px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
+                          isHighlighted
+                            ? 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
+                            : 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]',
+                          isSelected ? selectedOptionClassName : undefined,
+                        )}
+                      >
+                        <span
+                          className={variant === 'text'
+                            ? 'block min-w-0 flex-1 truncate text-[15px] leading-5'
+                            : 'truncate pr-3'}
+                        >
+                          {option.label}
+                        </span>
+                        {isSelected ? (
+                          <Check
+                            size={16}
+                            strokeWidth={2.2}
+                            className={[
+                              variant === 'text' ? 'mt-0.5' : '',
+                              'shrink-0',
+                              selectedOptionIconClassName ?? 'text-brand',
+                            ].filter(Boolean).join(' ')}
+                          />
+                        ) : null}
+                      </button>
+                    )
+                  })}
+                </div>
               )}
             </div>,
             document.body,

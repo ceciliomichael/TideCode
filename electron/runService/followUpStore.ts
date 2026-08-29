@@ -11,6 +11,7 @@ function cloneItem(item: SharedFollowUpItem): SharedFollowUpItem {
     message: {
       ...item.message,
       ...(item.message.attachments ? { attachments: [...item.message.attachments] } : {}),
+      ...(item.message.mentionPathMap ? { mentionPathMap: { ...item.message.mentionPathMap } } : {}),
     },
   }
 }

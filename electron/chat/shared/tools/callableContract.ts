@@ -1,6 +1,9 @@
 import type { JSONSchema7 } from '@ai-sdk/provider'
 
 const MAX_MODEL_DESCRIPTION_LENGTH = 160
+const MAX_INLINE_ENUM_VALUES = 12
+const MAX_INLINE_OBJECT_FIELDS = 5
+const MAX_INLINE_TYPE_DEPTH = 3
 const SAFE_MEMBER_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/u
 
 export interface AgentToolCallableContract {
@@ -23,7 +26,7 @@ function formatLiteral(value: unknown) {
 }
 
 function formatType(schema: unknown, depth = 0): string {
-  if (depth > 2 || !isRecord(schema)) {
+  if (depth > MAX_INLINE_TYPE_DEPTH || !isRecord(schema)) {
     return 'unknown'
   }
 
@@ -32,7 +35,7 @@ function formatType(schema: unknown, depth = 0): string {
   }
 
   if (Array.isArray(schema.enum) && schema.enum.length > 0) {
-    const values = schema.enum.slice(0, 6).map((value) => formatLiteral(value))
+    const values = schema.enum.slice(0, MAX_INLINE_ENUM_VALUES).map((value) => formatLiteral(value))
     return schema.enum.length > values.length ? `${values.join(' | ')} | …` : values.join(' | ')
   }
 
@@ -63,8 +66,21 @@ function formatType(schema: unknown, depth = 0): string {
     }
     case 'null':
       return 'null'
-    case 'object':
-      return 'object'
+    case 'object': {
+      if (!isRecord(schema.properties)) return 'object'
+      const properties = Object.entries(schema.properties)
+      if (properties.length === 0 || properties.length > MAX_INLINE_OBJECT_FIELDS) return 'object'
+      const required = new Set(
+        Array.isArray(schema.required)
+          ? schema.required.filter((value: unknown): value is string => typeof value === 'string')
+          : [],
+      )
+      const fields = properties.map(([propertyName, propertySchema]) => {
+        const optionalMarker = required.has(propertyName) ? '' : '?'
+        return `${formatPropertyName(propertyName)}${optionalMarker}: ${formatType(propertySchema, depth + 1)}`
+      })
+      return `{ ${fields.join('; ')} }`
+    }
     case 'string':
       return 'string'
     default:

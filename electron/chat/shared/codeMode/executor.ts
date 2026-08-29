@@ -398,6 +398,9 @@ function serializeToolResult(result: AgentToolExecutionResult): unknown {
   if (modelResult.session_id === undefined && typeof semantics?.session_id === 'number') {
     modelResult.session_id = semantics.session_id
   }
+  if (modelResult.exit_code === undefined && typeof semantics?.exit_code === 'number') {
+    modelResult.exit_code = semantics.exit_code
+  }
   return modelResult
 }
 

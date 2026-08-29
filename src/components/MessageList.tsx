@@ -59,7 +59,11 @@ interface MessageListProps {
   onRevertUserMessage?: (messageId: string) => void;
   onModelChange?: (modelId: string) => void;
   onReasoningEffortChange?: (effort: ReasoningEffort) => void;
-  onSendEditedMessage: (value: string, attachments: ChatAttachment[]) => void;
+  onSendEditedMessage: (
+    value: string,
+    attachments: ChatAttachment[],
+    mentionPathMap: ReadonlyMap<string, string>,
+  ) => void;
   selectedChatMode?: ChatMode;
   modelOptions?: readonly ModelSelectorOption[];
   modelOptionsLoading?: boolean;
@@ -104,7 +108,11 @@ interface MessageRowProps {
   onRevertUserMessage?: (messageId: string) => void;
   onModelChange?: (modelId: string) => void;
   onReasoningEffortChange?: (effort: ReasoningEffort) => void;
-  onSendEditedMessage: (value: string, attachments: ChatAttachment[]) => void;
+  onSendEditedMessage: (
+    value: string,
+    attachments: ChatAttachment[],
+    mentionPathMap: ReadonlyMap<string, string>,
+  ) => void;
   selectedChatMode?: ChatMode;
   modelOptions?: readonly ModelSelectorOption[];
   modelOptionsLoading?: boolean;
@@ -216,6 +224,7 @@ const MessageRow = memo(
               <UserMessage
                 attachments={message.attachments}
                 content={message.content}
+                mentionPathMap={message.mentionPathMap}
                 onEdit={
                   onEditUserMessage
                     ? () => onEditUserMessage(message.id)
