@@ -304,6 +304,58 @@ test('apply_patch auto-repairs one extra backslash escaping layer for a unique a
   }
 })
 
+test('apply_patch auto-repairs redundant JSX quote escaping for a unique anchor', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-jsx-escaping-autofix-'))
+  const targetPath = path.join(workspaceRootPath, 'Card.tsx')
+  const beforeLine = 'return <div className="card" data-state="open">Hello</div>'
+  const afterLine = 'return <div className="card card--ready" data-state="open">Hello</div>'
+  const overescape = (value: string) => value.replaceAll('"', '\\"')
+
+  try {
+    await fs.writeFile(targetPath, `${beforeLine}\n`, 'utf8')
+    const applyPatchTool = createApplyPatchTool({ workspaceRootPath })
+    const execute = (applyPatchTool as {
+      execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
+    }).execute
+    const patchLines = standardPatch(
+      `*** Update File: Card.tsx\n@@\n-${overescape(beforeLine)}\n+${overescape(afterLine)}`,
+    ).split('\n')
+    const result = await execute?.(
+      { patch: patchLines },
+      { context: {}, messages: [], toolCallId: 'apply-patch-jsx-escaping-autofix-test' },
+    ) as { body?: string; semantics?: Record<string, unknown>; status?: string }
+
+    assert.equal(result.status, 'success')
+    assert.equal(await fs.readFile(targetPath, 'utf8'), `${afterLine}\n`)
+    assert.deepEqual(result.semantics?.autofixed_paths, ['Card.tsx'])
+    assert.match(result.body ?? '', /Autofixed escaping: Card\.tsx/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('apply_patch JSX quote escaping autofix rejects ambiguous candidates without mutation', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-jsx-escaping-ambiguous-'))
+  const targetPath = path.join(workspaceRootPath, 'Cards.tsx')
+  const line = 'return <div className="card">Hello</div>'
+  const originalContent = `${line}\n${line}\n`
+  const overescape = (value: string) => value.replaceAll('"', '\\"')
+
+  try {
+    await fs.writeFile(targetPath, originalContent, 'utf8')
+    await assert.rejects(
+      applyPatchInWorkspace(
+        workspaceRootPath,
+        standardPatch(`*** Update File: Cards.tsx\n@@\n-${overescape(line)}\n+${overescape('return <div className="changed">Hello</div>')}`),
+      ),
+      /Failed to find expected lines/u,
+    )
+    assert.equal(await fs.readFile(targetPath, 'utf8'), originalContent)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('apply_patch escaping autofix rejects ambiguous candidates without mutation', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-escaping-ambiguous-'))
   const targetPath = path.join(workspaceRootPath, 'ambiguous.ts')
@@ -820,6 +872,43 @@ test('Code Mode apply_patch templates preserve literal source escapes', async ()
     assert.equal(result.status, 'success')
     assert.deepEqual(result.toolCalls.map((call) => call.name), ['apply_patch'])
     assert.equal(await fs.readFile(path.join(workspaceRootPath, 'literal.ts'), 'utf8'), expected)
+  } finally {
+    await codeModeExecutor?.dispose()
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode apply_patch repairs redundant JSX quote escaping', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-code-mode-jsx-escaping-'))
+  let codeModeExecutor: { dispose: () => Promise<void>; run: (source: string) => Promise<{ status: string; toolCalls: Array<{ name: string }> }> } | null = null
+  const beforeLine = 'return <div className="card" data-state="open">Hello</div>'
+  const afterLine = 'return <div className="card card--ready" data-state="open">Hello</div>'
+  const overescape = (value: string) => value.replaceAll('"', '\\"')
+
+  try {
+    await fs.writeFile(path.join(workspaceRootPath, 'Card.tsx'), `${beforeLine}\n`, 'utf8')
+    const bundle = await createAgentToolBundle(
+      { workspaceRootPath },
+      { chatMode: 'agent', orchestrationMode: 'code_mode' },
+    )
+    codeModeExecutor = bundle.codeModeExecutor
+    assert.ok(codeModeExecutor)
+
+    const patchText = [
+      '*** Begin Patch',
+      '*** Update File: Card.tsx',
+      '@@',
+      `-${overescape(beforeLine)}`,
+      `+${overescape(afterLine)}`,
+      '*** End Patch',
+    ].join('\n')
+    const tick = String.fromCharCode(96)
+    const source = 'const patch = ' + tick + patchText + tick + '; return await tools.apply_patch(patch)'
+    const result = await codeModeExecutor.run(source)
+
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.toolCalls.map((call) => call.name), ['apply_patch'])
+    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'Card.tsx'), 'utf8'), `${afterLine}\n`)
   } finally {
     await codeModeExecutor?.dispose()
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
