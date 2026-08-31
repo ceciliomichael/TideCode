@@ -1,8 +1,23 @@
 import type { ToolSet } from 'ai'
+import { getMcpServerManager } from '../../../mcp/serverManager'
 import type { AgentToolContext } from '../toolTypes'
+import { resolveRunServiceBuildIdFromEnvironment } from '../../../runService/buildIdentity'
 
-function isElectronRuntime() {
-  return typeof process !== 'undefined' && Boolean(process.versions?.electron)
+function isMcpRegistryRuntime() {
+  if (typeof process === 'undefined') {
+    return false
+  }
+
+  if (process.versions?.electron) {
+    return true
+  }
+
+  try {
+    resolveRunServiceBuildIdFromEnvironment(process.env)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -17,12 +32,11 @@ function isElectronRuntime() {
 export async function createConnectedMcpRegistryTools(
   context: AgentToolContext,
 ): Promise<ToolSet> {
-  if (!isElectronRuntime()) {
+  if (!isMcpRegistryRuntime()) {
     return {}
   }
 
   try {
-    const { getMcpServerManager } = await import('../../../mcp/serverManager')
     return await getMcpServerManager().getToolSet(context.workspaceRootPath)
   } catch (error) {
     console.warn('Unable to add connected MCP tools to the Code Mode registry.', error)

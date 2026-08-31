@@ -177,6 +177,10 @@ class McpWorkspaceSession {
             tools: [],
             transport: null,
           })
+
+          if (config.enabled && config.autoConnect) {
+            await this.connectRuntime(config.id, config)
+          }
           continue
         }
 
