@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.2 - More reliable Code Mode and connected tools
+
+TideCode 1.3.2 improves Code Mode editing and connected tool behavior so automated changes and external tools work more consistently.
+
+- Makes Code Mode recover from extra quote escaping in generated edits, reducing failed changes in quote-heavy code.
+- Makes connected MCP tools available more consistently and restores configured auto-connect behavior when sessions restart.
+- Makes MCP activity clearer in chat by showing the connected server and tool being used.
+- Requires no manual migration or configuration changes.
+
 ## 1.3.1 - More reliable Kanban review and agent tools
 
 TideCode 1.3.1 improves agent tool reliability, Kanban review workflows, chat model continuity, and task export usability.
