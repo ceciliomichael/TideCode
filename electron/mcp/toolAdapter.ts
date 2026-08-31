@@ -13,9 +13,14 @@ function createSuccessResult(input: Omit<AgentToolExecutionResult, 'status'>): A
   }
 }
 
-function createErrorResult(summary: string, body?: string): AgentToolExecutionResult {
+function createErrorResult(
+  summary: string,
+  body?: string,
+  semantics?: Record<string, unknown>,
+): AgentToolExecutionResult {
   return {
     ...(body ? { body } : {}),
+    ...(semantics ? { semantics } : {}),
     status: 'error',
     summary,
   }
@@ -75,6 +80,12 @@ export function createMcpToolSetForServer(config: McpServerConfig, client: Clien
 
   return Object.fromEntries(
     identifyMcpTools(config, allowedTools).map(({ catalogId, tool: mcpTool }) => {
+      const semantics = {
+        mcp_server_name: config.name,
+        mcp_tool_id: catalogId,
+        mcp_tool_name: mcpTool.name,
+        operation: 'mcp_execute',
+      }
       const adaptedTool = tool({
         description: createToolDescription(config, mcpTool),
         inputSchema: jsonSchema(mcpTool.inputSchema),
@@ -89,17 +100,22 @@ export function createMcpToolSetForServer(config: McpServerConfig, client: Clien
 
             const body = toToolBody(result.content as CallToolResult['content'])
             if (result.isError) {
-              return createErrorResult(`MCP tool ${mcpTool.name} failed.`, body.length > 0 ? body : undefined)
+              return createErrorResult(
+                `MCP tool ${mcpTool.name} failed.`,
+                body.length > 0 ? body : undefined,
+                semantics,
+              )
             }
 
             return createSuccessResult({
               ...(body.length > 0 ? { body } : {}),
+              semantics,
               summary: body.length > 0 ? `Completed ${mcpTool.name}` : `Completed ${mcpTool.name}`,
             })
           } catch (error) {
             const message =
               error instanceof Error && error.message.trim().length > 0 ? error.message : 'Tool call failed.'
-            return createErrorResult(`MCP tool ${mcpTool.name} failed.`, message)
+            return createErrorResult(`MCP tool ${mcpTool.name} failed.`, message, semantics)
           }
         },
       })

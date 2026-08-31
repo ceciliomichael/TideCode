@@ -1072,6 +1072,35 @@ test('Code Mode triple-quote repair preserves opposite delimiters and multiple s
   }
 })
 
+test('Code Mode triple-quote repair normalizes redundant TSX quote escaping conservatively', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry())
+  const tripleQuote = '"'.repeat(3)
+  const escapedQuote = '\\' + '"'
+  const tsx = [
+    `import React from ${escapedQuote}react${escapedQuote}`,
+    `const label = \`card-\${open ? ${escapedQuote}open${escapedQuote} : ${escapedQuote}closed${escapedQuote}}\``,
+    'const matcher = /\\w+/',
+    `return <div className=${escapedQuote}card${escapedQuote}>Hello</div>`,
+  ].join('\n')
+  const intentional = 'const message = "He said \\"hello\\"";'
+
+  try {
+    const repairedResult = await executor.run(
+      `const snippet = ${tripleQuote}${tsx}${tripleQuote}; return snippet`,
+    )
+    assert.equal(repairedResult.status, 'success')
+    assert.equal(repairedResult.output, tsx.replaceAll(escapedQuote, '"'))
+
+    const preservedResult = await executor.run(
+      `const snippet = ${tripleQuote}${intentional}${tripleQuote}; return snippet`,
+    )
+    assert.equal(preservedResult.status, 'success')
+    assert.equal(preservedResult.output, intentional)
+  } finally {
+    await executor.dispose()
+  }
+})
+
 test('Code Mode repairs unescaped inner backticks and template expressions in tool arguments', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
 

@@ -968,7 +968,39 @@ test('MCP execution headers use the discovered tool name and MCP marker in every
   )
   assert.equal(
     getToolInvocationHeaderLabel(completedInvocation, undefined, WORKSPACE_ROOT_PATH),
-    'Ran create_invoice mcp',
+    'Ran Stripe (create_invoice)',
+  )
+})
+
+test('dynamic MCP execution headers show the MCP server with the tool name in parentheses', () => {
+  const invocation: ToolInvocationTrace = {
+    argumentsText: JSON.stringify({ project_id: 'proj_123' }),
+    id: 'tool-mcp-dynamic-1',
+    resultContent: formatStructuredToolResultContent(
+      {
+        arguments: { project_id: 'proj_123' },
+        schema: 'tidecode.tool_result/v1',
+        semantics: {
+          mcp_server_name: 'Routegate',
+          mcp_tool_id: 'mcp_routegate_list_routes',
+          mcp_tool_name: 'list_routes',
+          operation: 'mcp_execute',
+        },
+        status: 'success',
+        summary: 'Completed list_routes',
+        toolCallId: 'tool-mcp-dynamic-1',
+        toolName: 'mcp_routegate_list_routes',
+      },
+      'routes',
+    ),
+    startedAt: 0,
+    state: 'completed',
+    toolName: 'mcp_routegate_list_routes',
+  }
+
+  assert.equal(
+    getToolInvocationHeaderLabel(invocation, undefined, WORKSPACE_ROOT_PATH),
+    'Ran Routegate (list_routes)',
   )
 })
 

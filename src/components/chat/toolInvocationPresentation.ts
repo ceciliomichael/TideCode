@@ -268,7 +268,11 @@ function getToolVerb(invocation: ToolInvocationTrace) {
     return null
   }
 
-  if (invocation.toolName === 'execute_mcp') {
+  if (
+    invocation.toolName === 'execute_mcp' ||
+    operation === 'mcp_execute' ||
+    (invocation.toolName.startsWith('mcp_') && invocation.toolName !== 'mcp_tool_search')
+  ) {
     return invocation.state === 'running'
       ? 'Running'
       : invocation.state === 'completed'
@@ -627,15 +631,21 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
         : 'Code failed'
   }
 
-  if (invocation.toolName === 'execute_mcp') {
-    const parsedResult = invocation.resultContent ? parseStructuredToolResultContent(invocation.resultContent) : null
-    const resultToolName = parsedResult?.metadata?.semantics?.mcp_tool_name
-    const toolName = readFirstText([resultToolName, parsedArguments?.tool_name])
+  if (
+    invocation.toolName === 'execute_mcp' ||
+    parsedResult?.metadata?.semantics?.operation === 'mcp_execute' ||
+    (invocation.toolName.startsWith('mcp_') && invocation.toolName !== 'mcp_tool_search')
+  ) {
+    const serverName = readFirstText(parsedResult?.metadata?.semantics?.mcp_server_name)
+    const toolName = readFirstText([
+      parsedResult?.metadata?.semantics?.mcp_tool_name,
+      parsedArguments?.tool_name,
+    ])
     if (!toolName) {
       return null
     }
 
-    return `${toolName} mcp`
+    return serverName ? `${serverName} (${toolName})` : `${toolName} mcp`
   }
 
   if (invocation.toolName === 'execute_terminal') {

@@ -65,13 +65,24 @@ test('createMcpToolSetForServer namespaces tools and filters disabled entries', 
   assert.ok(!('mcp_srv_hidden_tool' in tools))
 
   const tool = tools['mcp_srv_search'] as {
-    execute: (input: { query: string }) => Promise<{ body?: string; status: string; summary: string }>
+    execute: (input: { query: string }) => Promise<{
+      body?: string
+      semantics?: Record<string, unknown>
+      status: string
+      summary: string
+    }>
   }
   const result = await tool.execute({ query: 'atlas' })
 
   assert.equal(result.status, 'success')
   assert.equal(result.summary, 'Completed search')
   assert.equal(result.body, 'search:{"query":"atlas"}')
+  assert.deepEqual(result.semantics, {
+    mcp_server_name: 'server-one',
+    mcp_tool_id: 'mcp_srv_search',
+    mcp_tool_name: 'search',
+    operation: 'mcp_execute',
+  })
   assert.deepEqual(calls, [{ arguments: { query: 'atlas' }, name: 'search' }])
   assert.deepEqual(getMcpToolSource(tool), {
     catalogName: 'mcp_srv_search',

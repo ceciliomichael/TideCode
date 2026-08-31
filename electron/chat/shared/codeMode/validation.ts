@@ -343,6 +343,37 @@ export function repairCodeModePatchProgram(code: string) {
     .join('\n')
 }
 
+function decodeRedundantTripleQuoteDelimiterEscapes(body: string, delimiter: "'" | '"') {
+  let escapedCount = 0
+  let hasUnescaped = false
+  for (let index = 0; index < body.length; index += 1) {
+    if (body[index] !== delimiter) continue
+    if (isEscaped(body, index)) escapedCount += 1
+    else hasUnescaped = true
+  }
+  if (escapedCount === 0 || hasUnescaped) return body
+
+  let decoded = ''
+  for (let index = 0; index < body.length;) {
+    if (body[index] !== '\\') {
+      decoded += body[index]
+      index += 1
+      continue
+    }
+
+    const runStart = index
+    while (index < body.length && body[index] === '\\') index += 1
+    const runLength = index - runStart
+    if (index < body.length && body[index] === delimiter && runLength % 2 === 1) {
+      decoded += '\\'.repeat(runLength - 1) + delimiter
+      index += 1
+      continue
+    }
+    decoded += body.slice(runStart, index)
+  }
+  return decoded
+}
+
 function repairPythonTripleQuotedStrings(code: string) {
   let cursor = 0
   let output = ''
@@ -424,8 +455,12 @@ function repairPythonTripleQuotedStrings(code: string) {
       break
     }
 
+    const body = decodeRedundantTripleQuoteDelimiterEscapes(
+      code.slice(openingIndex + delimiter.length, closingIndex),
+      delimiter[0] as "'" | '"',
+    )
     output += code.slice(cursor, openingIndex)
-    output += JSON.stringify(code.slice(openingIndex + delimiter.length, closingIndex))
+    output += JSON.stringify(body)
     cursor = closingIndex + delimiter.length
     changed = true
   }
