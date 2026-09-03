@@ -18,6 +18,7 @@ interface ProjectPathWatchState {
   trackedFolders: Map<string, ConversationFolderRecord>
   watcher: FSWatcher | null
   watcherGeneration: number
+  watchAllowedPaths: Set<string>
   watchTargets: Set<string>
 }
 
@@ -41,13 +42,30 @@ function resolveProjectPathWatchTargets(folders: Iterable<ConversationFolderReco
   return new Set(Array.from(folders, (folder) => path.dirname(path.resolve(folder.path))))
 }
 
+function normalizeProjectPathWatchPath(candidatePath: string) {
+  const resolvedPath = path.resolve(candidatePath)
+  return process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath
+}
+
+export function shouldIgnoreProjectPathWatchEntry(candidatePath: string, allowedPaths: ReadonlySet<string>) {
+  return !allowedPaths.has(normalizeProjectPathWatchPath(candidatePath))
+}
+
 function restartProjectDirectoryWatcher(state: ProjectPathWatchState) {
   const nextTargets = resolveProjectPathWatchTargets(state.trackedFolders.values())
-  if (setsMatch(state.watchTargets, nextTargets)) {
+  const nextAllowedPaths = new Set<string>()
+  for (const target of nextTargets) {
+    nextAllowedPaths.add(normalizeProjectPathWatchPath(target))
+  }
+  for (const folder of state.trackedFolders.values()) {
+    nextAllowedPaths.add(normalizeProjectPathWatchPath(folder.path))
+  }
+  if (setsMatch(state.watchTargets, nextTargets) && setsMatch(state.watchAllowedPaths, nextAllowedPaths)) {
     return
   }
 
   state.watchTargets = nextTargets
+  state.watchAllowedPaths = nextAllowedPaths
   state.watcherGeneration += 1
   const watcherGeneration = state.watcherGeneration
   const previousWatcher = state.watcher
@@ -62,6 +80,7 @@ function restartProjectDirectoryWatcher(state: ProjectPathWatchState) {
 
   const watcher = chokidar.watch(Array.from(nextTargets), {
     depth: 0,
+    ignored: (candidatePath) => shouldIgnoreProjectPathWatchEntry(candidatePath, nextAllowedPaths),
     ignoreInitial: true,
   })
   state.watcher = watcher
@@ -79,6 +98,7 @@ function restartProjectDirectoryWatcher(state: ProjectPathWatchState) {
 
     console.error('Project path watcher reported an error; polling remains active.', error)
     state.watcher = null
+    state.watchAllowedPaths = new Set()
     state.watchTargets = new Set()
     void watcher.close().catch(() => undefined)
   })
@@ -158,6 +178,7 @@ export async function startProjectPathWatcher(onPruned: (event: ProjectFolderPru
     trackedFolders: new Map(),
     watcher: null,
     watcherGeneration: 0,
+    watchAllowedPaths: new Set(),
     watchTargets: new Set(),
   }
   watchState = state

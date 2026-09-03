@@ -18,6 +18,7 @@ interface ToolInvocationSummaryCounts {
   exploredFileCount: number
   kanbanCount: number
   planCount: number
+  planUpdateCount: number
   memoryCount: number
   toolSearchCount: number
 }
@@ -154,11 +155,14 @@ function getMixedBucketPriority(bucketKey: string) {
   if (bucketKey === 'plan') {
     return 12
   }
-  if (bucketKey === 'memory') {
+  if (bucketKey === 'plan-update') {
     return 13
   }
+  if (bucketKey === 'memory') {
+    return 14
+  }
 
-  return 13
+  return 14
 }
 
 function formatMixedSummaryParts(
@@ -237,6 +241,7 @@ export function buildToolInvocationGroupSummary(
     exploredFileCount: 0,
     kanbanCount: 0,
     planCount: 0,
+    planUpdateCount: 0,
     memoryCount: 0,
     toolSearchCount: 0,
   }
@@ -246,6 +251,16 @@ export function buildToolInvocationGroupSummary(
   const mixedBucketOrder: string[] = []
   const mixedBucketCounts = new Map<string, number>()
   const summaryParts: string[] = []
+
+  const formatPlanSummary = () => {
+    if (counts.planUpdateCount > 0) {
+      return 'updated plan'
+    }
+    if (counts.planCount > 0) {
+      return 'created plan'
+    }
+    return null
+  }
 
   const recordMixedBucket = (bucketKey: string) => {
     if (!mixedBucketCounts.has(bucketKey)) {
@@ -261,8 +276,13 @@ export function buildToolInvocationGroupSummary(
     }
 
     if (invocation.resultPresentation?.kind === 'plan') {
-      counts.planCount += 1
-      recordMixedBucket('plan')
+      if (invocation.resultPresentation.operation === 'updated') {
+        counts.planUpdateCount += 1
+        recordMixedBucket('plan-update')
+      } else {
+        counts.planCount += 1
+        recordMixedBucket('plan')
+      }
       continue
     }
 
@@ -367,7 +387,10 @@ export function buildToolInvocationGroupSummary(
         return buildKanbanToolInvocationGroupSummary(count)
       }
       if (bucketKey === 'plan') {
-        return `created ${pluralize(count, 'plan')}`
+        return 'created plan'
+      }
+      if (bucketKey === 'plan-update') {
+        return 'updated plan'
       }
       if (bucketKey === 'memory') {
         return `handled ${pluralize(count, 'memory operation')}`
@@ -398,6 +421,7 @@ export function buildToolInvocationGroupSummary(
     counts.verifiedCount === 0 &&
     counts.exploredFileCount === 0 &&
     counts.planCount === 0 &&
+    counts.planUpdateCount === 0 &&
     counts.memoryCount === 0 &&
     !hasFailedCodeMode &&
     otherToolCounts.size === 0
@@ -430,8 +454,9 @@ export function buildToolInvocationGroupSummary(
   if (counts.kanbanCount > 0) {
     summaryParts.push(buildKanbanToolInvocationGroupSummary(counts.kanbanCount))
   }
-  if (counts.planCount > 0) {
-    summaryParts.push(`created ${pluralize(counts.planCount, 'plan')}`)
+  const planSummary = formatPlanSummary()
+  if (planSummary) {
+    summaryParts.push(planSummary)
   }
   if (counts.memoryCount > 0) {
     summaryParts.push(`handled ${pluralize(counts.memoryCount, 'memory operation')}`)

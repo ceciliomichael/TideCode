@@ -91,12 +91,15 @@ export function resolveWorkspaceMonacoLanguage(filePath: string) {
     return specialLanguage
   }
 
-  const extensionIndex = fileName.lastIndexOf('.')
-  if (extensionIndex < 0 || extensionIndex === fileName.length - 1) {
-    return 'plaintext'
+  const fileNameParts = fileName.split('.')
+  for (let index = fileNameParts.length - 1; index > 0; index -= 1) {
+    const extensionLanguage = EXTENSION_LANGUAGES[fileNameParts[index]]
+    if (extensionLanguage) {
+      return extensionLanguage
+    }
   }
 
-  return EXTENSION_LANGUAGES[fileName.slice(extensionIndex + 1)] ?? 'plaintext'
+  return 'plaintext'
 }
 
 function normalizeWorkspaceMonacoRelativePath(filePath: string) {

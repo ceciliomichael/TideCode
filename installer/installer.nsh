@@ -5,6 +5,36 @@
 !define TIDECODE_REMOTE_FIREWALL_RULE "TideCode Remote"
 !define TIDECODE_REMOTE_FIREWALL_REGKEY "Software\TideCode\Remote"
 
+; Close a running TideCode desktop process before files are replaced. The
+; installer itself is a Setup.exe process, so matching the packaged executable
+; name avoids terminating unrelated Electron applications.
+!macro closeRunningTideCode
+  DetailPrint "Checking for a running TideCode instance..."
+  StrCpy $0 0
+
+  tidecode_close_attempt:
+    ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM "${APP_EXECUTABLE_FILENAME}"' $1
+    ${if} $1 == "128"
+      Goto tidecode_close_complete
+    ${elseif} $1 != "0"
+      MessageBox MB_ICONSTOP|MB_OK "TideCode is running and could not be closed. Please close TideCode manually and run the installer again."
+      Abort
+    ${endif}
+
+    IntOp $0 $0 + 1
+    ${if} $0 >= 10
+      MessageBox MB_ICONSTOP|MB_OK "TideCode is still running. Please close TideCode manually and run the installer again."
+      Abort
+    ${endif}
+    Sleep 500
+    Goto tidecode_close_attempt
+
+  tidecode_close_complete:
+    ${if} $0 > 0
+      DetailPrint "TideCode was closed. Continuing installation..."
+    ${endif}
+!macroend
+
 ; Append TideCode's bin directory only when the selected PATH does not already
 ; contain that exact entry. StrCmp is case-insensitive, matching Windows path
 ; semantics, and the comparison tolerates a trailing backslash.
@@ -69,6 +99,8 @@
 !macroend
 
 !macro customInit
+  !insertmacro closeRunningTideCode
+
   ; electron-builder normally detects an existing install from
   ; Software\${APP_GUID}\InstallLocation. Older TideCode installers may
   ; have only written the Windows uninstall entry, so recover the install

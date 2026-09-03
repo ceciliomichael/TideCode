@@ -6,6 +6,7 @@ import { flushStoredSettingsUpdates, getStoredSettings } from './settings/store'
 import { applyTideCodeAppIcon, getTideCodeAppIconPath } from './window/branding'
 import { applyWindowTheme } from './window/theme'
 import { createApplicationWindow } from './window/createApplicationWindow'
+import { saveWindowState } from './window/windowState'
 import { closeAllTerminalSessions, closeAllTerminalSessionsForWebContents } from './terminal/service'
 import { initializeProvidersState } from './providers/service'
 import { onProvidersStateChanged } from './providers/events'
@@ -197,6 +198,11 @@ async function createWindow(initialLaunchRequest: TideCodeLaunchRequest | null =
   })
 
   const currentWindow = win
+  currentWindow.on('close', () => {
+    void saveWindowState(currentWindow).catch((error) => {
+      console.error('Failed to save TideCode window state.', error)
+    })
+  })
   currentWindow.webContents.on('did-start-loading', () => {
     closeAllTerminalSessionsForWebContents(currentWindow.webContents)
   })
@@ -291,6 +297,7 @@ app.on('before-quit', (event) => {
   disposeSourceControlWatchers()
   disposeKanbanBoardWatchers()
   void Promise.all([
+    win && !win.isDestroyed() ? saveWindowState(win) : Promise.resolve(),
     closeAllTerminalSessions().catch((error) => {
       console.error('Failed to close terminal sessions on quit', error)
     }),

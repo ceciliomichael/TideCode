@@ -48,14 +48,16 @@ export async function refreshCliComposerStatus(
   ) return
 
   const activeUsage = codexStatus?.accounts.find((account) => account.isActive)?.usage ?? null
-  const codexSummary = buildCodexUsageSummaryItems(activeUsage)[0]
+  const codexUsage = buildCodexUsageSummaryItems(activeUsage)
+    .map((item) => `${item.label} ${item.remainingPercent}%`)
+    .join(' · ')
   const totalTokens = Number.isFinite(usage.totalTokens)
     ? usage.totalTokens ?? 0
     : usage.systemPromptTokens + (usage.toolSchemaTokens ?? 0) + usage.historyTokens + usage.toolResultsTokens
   const contextPercent = usage.maxTokens > 0 ? (totalTokens / usage.maxTokens) * 100 : 0
   screen.updateComposerStatus({
     contextPercent,
-    codexUsage: codexSummary ? `${codexSummary.label} ${codexSummary.remainingPercent}%` : undefined,
+    codexUsage: codexUsage || undefined,
     reasoningEffort: state.reasoningEffort,
   })
 }

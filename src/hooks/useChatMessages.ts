@@ -773,6 +773,9 @@ export function useChatMessages(input: UseChatMessagesInput) {
 
     return getPlanPathsCreatedByRevertedUserMessage(messages, editingMessageId)
   })()
+  const revertAnchorMessageId = activeConversationId
+    ? (revertEditSessionsRef.current[activeConversationId]?.messageId ?? null)
+    : null
 
   return {
     activeConversationId,
@@ -806,6 +809,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     mainComposerMentionPathMap: composerState.mainComposerMentionPathMap,
     mainComposerValue: composerState.mainComposerValue,
     messages,
+    revertAnchorMessageId,
     revertedPlanPaths: activeRevertedPlanPaths,
     selectedChatMode: draftChatMode,
     selectedFolderId: sessionState.selectedFolderId,

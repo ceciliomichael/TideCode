@@ -69,6 +69,7 @@ interface MessageListProps {
   modelOptionsLoading?: boolean;
   reasoningEffort?: ReasoningEffort;
   reasoningEffortOptions?: readonly ReasoningEffort[];
+  revertAnchorMessageId?: string | null;
   selectedModelId?: string;
   sendMessageOnEnter: boolean;
   showReasoningEffortSelector?: boolean;
@@ -338,6 +339,7 @@ export function MessageList({
   onReasoningEffortChange,
   reasoningEffort,
   reasoningEffortOptions,
+  revertAnchorMessageId = null,
   selectedModelId,
   sendMessageOnEnter,
   showReasoningEffortSelector = false,
@@ -618,6 +620,7 @@ export function MessageList({
     conversationId,
     followLatestSignal,
     messages: visibleMessages,
+    resetAnchorMessageId: revertAnchorMessageId,
     scrollContainerRef,
   });
   const subsequentAssistantTextByMessageId = useMemo(() => {

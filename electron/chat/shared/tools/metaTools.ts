@@ -62,7 +62,7 @@ SOURCE: /[\s\S]+/
 `
 
 const MAX_TOOL_SEARCH_RESULT_BYTES = 32_000
-const HIDDEN_PRELOADED_TOOL_NAMES = new Set(['plan_create'])
+const HIDDEN_PRELOADED_TOOL_NAMES = new Set(['plan_create', 'plan_edit'])
 
 interface ToolSearchInput {
   limit?: number
@@ -102,18 +102,29 @@ function buildBoundedToolSearchResult(
   }
 }
 
-export function createToolSearchTool(registry: AgentToolRegistry, options: { dynamicOnly?: boolean } = {}) {
+export function createToolSearchTool(
+  registry: AgentToolRegistry,
+  options: { dynamicOnly?: boolean; onDemandToolNames?: readonly string[] } = {},
+) {
   const dynamicOnly = options.dynamicOnly === true
+  const onDemandToolNames = new Set(options.onDemandToolNames ?? [])
   return tool({
     description: dynamicOnly
-      ? 'Find connected MCP tools available to Code Mode. Returns compact tools.<name>({ ... }) signatures. Local tools are preloaded in code_mode.'
+      ? 'Find connected or on-demand tools available to Code Mode. Returns compact tools.<name>({ ... }) signatures. Documented local tools are preloaded in code_mode.'
       : 'Find tools available to Code Mode. Returns compact tools.<name>({ ... }) signatures without raw JSON schemas.',
     inputSchema: jsonSchema<ToolSearchInput>(TOOL_SEARCH_INPUT_SCHEMA),
     execute: async (input): Promise<AgentToolExecutionResult> => {
       const query = typeof input.query === 'string' ? input.query.trim() : ''
       if (query.length === 0) return createToolErrorResult('tool_search requires a non-empty query.')
 
-      const matches = registry.search(query, dynamicOnly ? 'mcp' : input.namespace, input.limit ?? 10)
+      const limit = input.limit ?? 10
+      const normalizedNamespace = typeof input.namespace === 'string' ? input.namespace.trim().toLowerCase() : ''
+      const matches = dynamicOnly
+        ? registry.search(query, undefined, 20)
+          .filter((match) => match.namespace === 'mcp' || onDemandToolNames.has(match.name))
+          .filter((match) => normalizedNamespace.length === 0 || match.namespace === normalizedNamespace)
+          .slice(0, limit)
+        : registry.search(query, input.namespace, limit)
       const result = buildBoundedToolSearchResult(query, matches)
       return createSuccessResult({
         body: formatExplicitCodeModeOutput(result),

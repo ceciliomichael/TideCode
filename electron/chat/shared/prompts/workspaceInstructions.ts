@@ -1,7 +1,11 @@
 import { statSync } from 'node:fs'
 import path from 'node:path'
 import type { ModelMessage } from 'ai'
-import { buildWorkspaceInstructionsHiddenContext } from '../../../../src/lib/hiddenUserContext'
+import {
+  buildWorkspaceInstructionsHiddenContext,
+  extractHiddenUserContexts,
+  WORKSPACE_INSTRUCTIONS_REVISION_CHANGED_PROMPT,
+} from '../../../../src/lib/hiddenUserContext'
 
 const WORKSPACE_INSTRUCTIONS_REPO_PATH = 'AGENTS.md'
 export const WORKSPACE_INSTRUCTIONS_HIDDEN_CONTEXT_KIND = 'workspace_instructions'
@@ -44,6 +48,39 @@ function stripWorkspaceInstructionsFromMessages(messages: readonly ModelMessage[
   })
 }
 
+function getWorkspaceInstructionsContexts(messages: readonly ModelMessage[]) {
+  return messages.flatMap((message, messageIndex) => {
+    if (message.role !== 'user') return []
+    const textParts = typeof message.content === 'string'
+      ? [message.content]
+      : message.content
+        .filter((part): part is { text: string; type: 'text' } => part.type === 'text')
+        .map((part) => part.text)
+
+    return textParts.flatMap((text) => extractHiddenUserContexts(text)
+      .filter((context) => context.kind === WORKSPACE_INSTRUCTIONS_HIDDEN_CONTEXT_KIND)
+      .map((context) => ({ context, messageIndex })))
+  })
+}
+
+function isWorkspaceInstructionsRevisionChanged(
+  messages: readonly ModelMessage[],
+  revision: string,
+) {
+  const contexts = getWorkspaceInstructionsContexts(messages)
+  const latest = contexts.at(-1)
+  if (!latest) return false
+  if (latest.context.state !== revision) return true
+
+  const latestUserIndex = messages.findLastIndex((message) => message.role === 'user')
+  if (latest.messageIndex !== latestUserIndex) return false
+
+  const previous = contexts.at(-2)
+  return previous !== undefined
+    && previous.context.state !== latest.context.state
+    && !latest.context.content.includes(WORKSPACE_INSTRUCTIONS_REVISION_CHANGED_PROMPT)
+}
+
 export function applyWorkspaceInstructionsContext(
   messages: readonly ModelMessage[],
   workspaceRootPath: string | null,
@@ -60,7 +97,9 @@ export function applyWorkspaceInstructionsContext(
     return projectedMessages
   }
 
-  const hiddenContext = buildWorkspaceInstructionsHiddenContext(revision).content
+  const hiddenContext = buildWorkspaceInstructionsHiddenContext(revision, {
+    revisionChanged: isWorkspaceInstructionsRevisionChanged(messages, revision),
+  }).content
   const targetIndex = projectedMessages.findLastIndex((message) => message.role === 'user')
   if (targetIndex < 0) {
     return [...projectedMessages, { role: 'user', content: hiddenContext }]

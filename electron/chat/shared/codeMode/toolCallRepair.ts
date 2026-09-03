@@ -37,8 +37,7 @@ export function repairMisroutedCodeModeToolCall(input: {
   registry: AgentToolRegistry
   toolCall: LanguageModelV4ToolCall
 }): LanguageModelV4ToolCall | null {
-  const providerToolNames = Object.keys(input.providerTools)
-  if (providerToolNames.length !== 1 || providerToolNames[0] !== 'code_mode') {
+  if (!input.providerTools.code_mode) {
     return null
   }
 

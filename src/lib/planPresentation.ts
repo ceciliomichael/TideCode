@@ -71,7 +71,9 @@ export function shouldAutoOpenPlanPreview(
 export function hasPlanToolInvocation(messages: readonly Message[]) {
   return messages.some((message) =>
     message.toolInvocations?.some((invocation) =>
-      invocation.toolName === 'plan_create' || getCompletedPlanToolCalls(invocation).length > 0,
+      invocation.toolName === 'plan_create' ||
+      invocation.toolName === 'plan_edit' ||
+      getCompletedPlanToolCalls(invocation).length > 0,
     ),
   )
 }
