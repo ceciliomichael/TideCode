@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.3 - Smoother agent and workspace workflows
+
+TideCode 1.3.3 improves planning, Code Mode filesystem access, chat behavior, workspace handling, and CLI reliability.
+
+- Adds editable planning workflows and clearer plan presentation while keeping provider-facing Code Mode runtime execution sandboxed and honoring Full Access through filesystem tools.
+- Refreshes changed root `AGENTS.md` instructions without rewriting conversation history, and improves tool-call repair and grouped tool progress around compaction.
+- Refines chat auto-scroll behavior, project and workspace watching, window state restoration, CLI compose and Codex usage display, sidebar spacing, installer PATH handling, and Monaco workspace configuration.
+- Requires no manual migration or configuration changes.
+- Validated with 1,452 automated tests, TypeScript type checking, the production build, and pull-request CI.
+
 ## 1.3.2 - More reliable Code Mode and connected tools
 
 TideCode 1.3.2 improves Code Mode editing and connected tool behavior so automated changes and external tools work more consistently.
