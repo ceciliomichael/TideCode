@@ -473,6 +473,7 @@ export async function recordToolFreshness(input: {
       'write',
       'edit',
       'apply_patch',
+      'plan_edit',
     ])
     const type = mutationTools.has(input.toolName) || isTerminalTool
       ? 'observation_invalidated'

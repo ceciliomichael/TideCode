@@ -77,6 +77,48 @@ test('running tool keeps the waiting indicator visible while assistant text is i
   assert.doesNotMatch(activeTextMarkup, /Thinking/u)
 })
 
+test('assistant renders one visible tool directly and groups multiple visible tools', () => {
+  const createReadInvocation = (id: string, path: string) => ({
+    argumentsText: JSON.stringify({ path }),
+    id,
+    resultContent: JSON.stringify({
+      body: '1: example',
+      schema: 'tidecode.tool_result/v1',
+      status: 'success',
+      subject: { kind: 'file', path },
+      summary: 'Read file.',
+      toolCallId: id,
+      toolName: 'read',
+    }),
+    startedAt: 1,
+    state: 'completed' as const,
+    toolName: 'read',
+  })
+
+  const singleMarkup = renderToStaticMarkup(
+    createElement(AssistantMessage, {
+      content: '',
+      timestamp: 0,
+      toolInvocations: [createReadInvocation('read-one', 'src/one.ts')],
+    }),
+  )
+  const groupedMarkup = renderToStaticMarkup(
+    createElement(AssistantMessage, {
+      content: '',
+      timestamp: 0,
+      toolInvocations: [
+        createReadInvocation('read-one', 'src/one.ts'),
+        createReadInvocation('read-two', 'src/two.ts'),
+      ],
+    }),
+  )
+
+  assert.match(singleMarkup, /Read one\.ts/u)
+  assert.doesNotMatch(singleMarkup, /Explored 1 file/u)
+  assert.match(groupedMarkup, /Explored 2 files/u)
+  assert.doesNotMatch(groupedMarkup, /Read one\.ts|Read two\.ts/u)
+})
+
 test('chat markdown strips streamed style, script, event, and inline-style injection', () => {
   const markup = renderMarkdown(
     '<style>body { display: none }</style><script>alert("xss")</script><div style="position:fixed" onclick="alert(1)">Visible text</div>',

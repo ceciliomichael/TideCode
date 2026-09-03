@@ -235,6 +235,7 @@ export function ChatConversationSurface({
                   onReasoningEffortChange={chatRuntimeConfig.setReasoningEffort}
                   reasoningEffort={chatRuntimeConfig.reasoningEffort}
                   reasoningEffortOptions={chatRuntimeConfig.availableReasoningEfforts}
+                  revertAnchorMessageId={chatMessages.revertAnchorMessageId}
                   selectedChatMode={chatMessages.selectedChatMode}
                   selectedModelId={chatRuntimeConfig.selectedModelId}
                   sendMessageOnEnter={sendMessageOnEnter}

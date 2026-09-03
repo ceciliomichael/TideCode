@@ -340,7 +340,10 @@ export class TerminalScreen {
     this.view.entries.push({ kind: 'user', id: nextTranscriptId('user'), text })
     if (print) {
       const leadingSpacer = options.leadingSpacer === false ? '' : '\n'
-      this.output.write(`${leadingSpacer}${colors.accent}›${colors.reset} ${formatCliImageReferenceInText(text)}\n`)
+      text.split('\n').forEach((line, index) => {
+        const prefix = index === 0 ? `${colors.accent}›${colors.reset} ` : '  '
+        this.output.write(`${index === 0 ? leadingSpacer : ''}${prefix}${formatCliImageReferenceInText(line)}\n`)
+      })
     }
   }
 
@@ -916,7 +919,7 @@ export class TerminalScreen {
       this.resetBracketedPasteInput()
       const expandedText = expandChatMentions(text, this.mentionPathMap)
       this.selectedHistoryUserMessageId = null
-      this.finishPrompt(text)
+      this.clearPromptDisplay()
       this.mentionPathMap.clear()
       resolve({ text: expandedText, attachments })
       return
@@ -1304,16 +1307,6 @@ export class TerminalScreen {
     this.renderedPromptRows = 0
     this.renderedPromptLines = []
     this.renderedPromptCursorRow = 0
-  }
-
-  private finishPrompt(text: string): void {
-    this.clearPromptDisplay()
-    if (text.startsWith('/')) return
-    const lines = text.split('\n')
-    lines.forEach((line, index) => {
-      const prefix = index === 0 ? `${colors.accent}›${colors.reset} ` : '  '
-      this.output.write(`${prefix}${formatCliImageReferenceInText(line)}\n`)
-    })
   }
 
   private renderCurrentPrompt(): void {

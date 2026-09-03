@@ -109,15 +109,17 @@ test('Agent and Plan share a mode-neutral system while hidden contexts express m
     assert.equal(agentContext.state, 'agent')
     assert.match(agentContext.content, /mode="agent" state="active_until_superseded"/u)
     assert.match(agentContext.content, /explicit do-it requests do/u)
+    assert.doesNotMatch(agentContext.content, /plan_create/u)
     assert.equal(planContext.kind, 'chat_mode')
     assert.equal(planContext.state, 'plan')
-    assert.ok(planContext.content.includes('intentionally omitted from the permanent Code Mode documentation'))
-    assert.ok(planContext.content.includes('Do not use tools.tool_search to discover tools.plan_create'))
+    assert.ok(planContext.content.includes('intentionally omitted from permanent Code Mode documentation'))
+    assert.ok(planContext.content.includes('Do not use tools.tool_search to discover tools.plan_create or tools.plan_edit'))
     assert.ok(planContext.content.includes('stable superset of TideCode capabilities, not permission'))
     assert.match(planContext.content, /mode="plan" state="active_until_superseded"/u)
     assert.match(planContext.content, /tools\.plan_create/u)
-    assert.match(planContext.content, /tools\.apply_patch/u)
-    assert.match(planContext.content, /remains available but cannot revise a plan until one exists/u)
+    assert.match(planContext.content, /tools\.plan_edit/u)
+    assert.match(planContext.content, /Do not call tools\.apply_patch in Plan Mode/u)
+    assert.match(planContext.content, /Do not call tools\.plan_edit before an active plan exists/u)
     assert.match(planContext.content, /Never mutate source files/u)
     assert.match(planContext.content, /latest successful Plan presentation/u)
     assert.match(planContext.content, /Make the plan goal-oriented/u)
@@ -161,6 +163,8 @@ test('native tool catalog contains the internal executors used to build Code Mod
       'kanban_board',
       'list',
       'mcp_tool_search',
+      'plan_create',
+      'plan_edit',
       'read',
       'read_terminal',
       'read_tool_output',
@@ -168,12 +172,12 @@ test('native tool catalog contains the internal executors used to build Code Mod
       'write',
     ])
     assert.deepEqual(Object.keys(planTools).sort(), [
-      'apply_patch',
       'glob',
       'grep',
       'kanban_board',
       'list',
       'plan_create',
+      'plan_edit',
       'read',
       'read_tool_output',
     ])
@@ -203,8 +207,11 @@ test('plan mode excludes workspace mutation tools but permits Kanban planning ac
     assert.ok('apply_patch' in agentTools)
     assert.ok('edit' in agentTools)
     assert.ok('execute_terminal' in agentTools)
+    assert.ok('plan_create' in agentTools)
+    assert.ok('plan_edit' in agentTools)
     assert.ok(!('write' in planTools))
-    assert.ok('apply_patch' in planTools)
+    assert.ok(!('apply_patch' in planTools))
+    assert.ok('plan_edit' in planTools)
     assert.ok(!('edit' in planTools))
     assert.ok(!('execute_terminal' in planTools))
 
@@ -219,8 +226,8 @@ test('plan mode excludes workspace mutation tools but permits Kanban planning ac
       { workspaceRootPath },
       { activePlanPath: '.tidecode/plans/plan-001.md', chatMode: 'plan', providerId: 'custom:test-provider' },
     )
-    assert.ok('apply_patch' in revisionTools)
     assert.ok('plan_create' in revisionTools)
+    assert.ok('plan_edit' in revisionTools)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -258,8 +265,50 @@ test('new Plan Mode Code Mode cannot attempt source mutation before creating the
       }) as { semantics?: { tool_call_count?: number }; status?: string }
 
       assert.equal(result.status, 'error')
-      assert.equal(result.semantics?.tool_call_count, 1)
+      assert.equal(result.semantics?.tool_call_count, 0)
       assert.equal(await fs.readFile(path.join(workspaceRootPath, 'source.ts'), 'utf8'), 'export const value = 1\n')
+    } finally {
+      await bundle.codeModeExecutor?.dispose()
+    }
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Agent Mode Code Mode discovers planning tools on demand before using them', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-mode-agent-plan-'))
+
+  try {
+    const bundle = await createAgentToolBundle(
+      { workspaceRootPath },
+      { chatMode: 'agent', orchestrationMode: 'code_mode', providerId: 'custom:test-provider' },
+    )
+    const codeMode = bundle.tools.code_mode as {
+      execute?: (input: unknown, options: { context: unknown; messages: never[]; toolCallId: string }) => Promise<unknown>
+    }
+
+    try {
+      const result = await codeMode.execute?.({
+        source: [
+          "const found = await tools.tool_search({ query: 'plan', namespace: 'planning' })",
+          "await tools.plan_create({ content: '## Goal\\n\\nKeep a concise implementation note.', title: 'Agent supplement' })",
+          "await tools.plan_edit({ path: '.tidecode/plans/plan-001.md', content: '# Agent supplement\\n\\n## Goal\\n\\nKeep a revised implementation note.' })",
+          'return found',
+        ].join('\n'),
+      }, {
+        context: {},
+        messages: [],
+        toolCallId: 'agent-plan-supplement',
+      }) as { body?: string; semantics?: { tool_call_count?: number }; status?: string }
+
+      assert.equal(result.status, 'success')
+      assert.equal(result.semantics?.tool_call_count, 3)
+      assert.match(result.body ?? '', /plan_create/u)
+      assert.match(result.body ?? '', /plan_edit/u)
+      assert.match(
+        await fs.readFile(path.join(workspaceRootPath, '.tidecode', 'plans', 'plan-001.md'), 'utf8'),
+        /Keep a revised implementation note/u,
+      )
     } finally {
       await bundle.codeModeExecutor?.dispose()
     }
@@ -303,10 +352,13 @@ test('Agent and Plan keep the same provider-facing Code Mode cache context', asy
     assert.equal(agentManifest.fingerprint, planManifest.fingerprint)
     assert.ok(agentBundle.registry.get('plan_create'))
     assert.ok(planBundle.registry.get('plan_create'))
+    assert.ok(agentBundle.registry.get('plan_edit'))
+    assert.ok(planBundle.registry.get('plan_edit'))
     const agentCodeMode = agentBundle.tools.code_mode as { description?: string }
     const planCodeMode = planBundle.tools.code_mode as { description?: string }
     assert.equal(agentCodeMode.description, planCodeMode.description)
     assert.doesNotMatch(agentCodeMode.description ?? '', /plan_create/u)
+    assert.doesNotMatch(agentCodeMode.description ?? '', /plan_edit/u)
 
     await agentBundle.codeModeExecutor?.dispose()
     await planBundle.codeModeExecutor?.dispose()

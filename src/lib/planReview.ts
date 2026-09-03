@@ -10,7 +10,7 @@ export function formatPlanReviewRequest(relativePath: string, comments: readonly
 
   return [
     `Please revise the implementation plan at ${relativePath} using the review comments below.`,
-    'Use tools.apply_patch to update that exact active plan artifact, keep the plan focused on the requested changes, and return the revised plan for another review.',
+    'Use tools.plan_edit with that exact active plan path and the complete revised Markdown, keep the plan focused on the requested changes, and return the revised plan for another review.',
     '',
     ...reviewLines,
   ].join('\n')

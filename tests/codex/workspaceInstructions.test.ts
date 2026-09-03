@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import type { ModelMessage } from 'ai'
+import { buildWorkspaceInstructionsHiddenContext } from '../../src/lib/hiddenUserContext'
 import {
   applyWorkspaceInstructionsContext,
   buildWorkspaceInstructionsRuntimeBlock,
@@ -41,9 +42,34 @@ test('workspace bootstrap replaces stale context without embedding file contents
 
     assert.match(injectedText, /Implement this\./u)
     assert.match(injectedText, /A root AGENTS\.md exists/u)
+    assert.match(injectedText, /AGENTS\.md revision changed since the last workspace-instructions context/u)
+    assert.match(injectedText, /Read the current AGENTS\.md again before continuing project work/u)
     assert.doesNotMatch(injectedText, /# Current rules|Use tests\./u)
     assert.doesNotMatch(injectedText, /old rules/u)
     assert.equal(injectedText.match(/kind="workspace_instructions"/gu)?.length, 1)
+    assert.match(messages[0]?.content ?? '', /old rules/u)
+
+    const unchanged = modelText(applyWorkspaceInstructionsContext(injected, workspaceRootPath))
+    assert.doesNotMatch(unchanged, /AGENTS\.md revision changed since the last workspace-instructions context/u)
+
+    const fileStats = await fs.stat(path.join(workspaceRootPath, 'AGENTS.md'))
+    const currentRevision = `${fileStats.mtimeMs}:${fileStats.size}`
+    const transitionedMessages: ModelMessage[] = [
+      {
+        role: 'user',
+        content: buildWorkspaceInstructionsHiddenContext('old-revision').content,
+      },
+      {
+        role: 'user',
+        content: [
+          'Implement this.',
+          buildWorkspaceInstructionsHiddenContext(currentRevision).content,
+        ].join('\n\n'),
+      },
+    ]
+    const transitioned = modelText(applyWorkspaceInstructionsContext(transitionedMessages, workspaceRootPath))
+    assert.match(transitioned, /AGENTS\.md revision changed since the last workspace-instructions context/u)
+    assert.doesNotMatch(transitionedMessages[1]?.content ?? '', /AGENTS\.md revision changed since the last workspace-instructions context/u)
 
     await fs.rm(path.join(workspaceRootPath, 'AGENTS.md'))
     const removed = modelText(applyWorkspaceInstructionsContext(injected, workspaceRootPath))

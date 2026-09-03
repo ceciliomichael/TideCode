@@ -8,13 +8,13 @@ import { captureCheckpointFileStateIfNeeded } from './workspaceToolResults'
 
 export function createPlanCreateTool(context: WorkspaceToolContext, runtimeState: PlanRuntimeState) {
   return tool({
-    description: 'Create a complete engineering implementation plan in .tidecode/plans/.',
+    description: 'Create a persisted engineering plan in .tidecode/plans/ when a plan artifact would be useful.',
     inputSchema: jsonSchema({
       additionalProperties: false,
       properties: {
         content: {
           description:
-            'Complete self-contained Markdown document. Include context, goals/non-goals, requirements, proposed solution, concrete file-level steps, verification, risks, and acceptance criteria when relevant.',
+            'Self-contained Markdown plan sized to the task. Include the goal, useful context, concrete implementation steps, verification, risks, and acceptance criteria in proportion to the work.',
           type: 'string',
         },
         title: {
@@ -26,11 +26,8 @@ export function createPlanCreateTool(context: WorkspaceToolContext, runtimeState
       type: 'object',
     }),
     execute: async (rawInput) => {
-      if (!runtimeState.enabled) {
-        return createToolErrorResult('plan_create is available only while Plan Mode is active.')
-      }
       if (runtimeState.activePlanPath) {
-        return createToolErrorResult('Plan Mode already has an active plan: ' + runtimeState.activePlanPath)
+        return createToolErrorResult('A Tidecode plan is already active: ' + runtimeState.activePlanPath)
       }
       if (runtimeState.isCreatingPlan) {
         return createToolErrorResult('Plan creation is already in progress for this turn.')

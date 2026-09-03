@@ -314,8 +314,8 @@ export async function startInteractiveRepl(
     }
 
     try {
-      let printUserMessage = isQueuedInput
-      let userMessageLeadingSpacer: boolean | undefined
+      let printUserMessage = true
+      let userMessageLeadingSpacer: boolean | undefined = isQueuedInput ? undefined : false
       const pendingUndoEdit = state.pendingUndoEdit
       if (pendingUndoEdit) {
         const targetUserIndex = state.messages.findIndex((message) => message.id === pendingUndoEdit.targetUserMessageId)
@@ -366,10 +366,9 @@ export async function startInteractiveRepl(
             provider: state.providerId,
             workspace: state.workspaceRootPath,
           }, true)
-          // ask() already printed the edited draft before returning it to this
-          // loop. The history redraw above intentionally removes that stale
-          // line, so print the submitted edit once as the new user turn. The
-          // restored history already owns the spacer immediately above it.
+          // The restored history already owns the spacer immediately above
+          // the replacement turn, so print the submitted edit without adding
+          // another leading blank row.
           printUserMessage = true
           userMessageLeadingSpacer = false
         } finally {

@@ -122,12 +122,12 @@ function getToolVerb(invocation: ToolInvocationTrace) {
         : 'Read failed'
   }
 
-  if (invocation.resultPresentation?.kind === 'plan' && invocation.toolName === 'apply_patch') {
+  if (invocation.toolName === 'plan_edit') {
     return invocation.state === 'running'
-      ? 'Updating plan'
+      ? 'Updating'
       : invocation.state === 'completed'
-        ? 'Updated plan'
-        : 'Plan update failed'
+        ? 'Updated'
+        : 'Update failed'
   }
 
   if (isFileWriteTool(invocation.toolName) || isFileEditTool(invocation.toolName)) {

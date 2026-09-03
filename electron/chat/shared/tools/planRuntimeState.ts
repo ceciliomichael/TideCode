@@ -1,13 +1,13 @@
 export interface PlanRuntimeState {
   activePlanPath: string | null
-  enabled: boolean
   isCreatingPlan: boolean
+  planMode: boolean
 }
 
-export function createPlanRuntimeState(enabled: boolean, activePlanPath?: string | null): PlanRuntimeState {
+export function createPlanRuntimeState(planMode: boolean, activePlanPath?: string | null): PlanRuntimeState {
   return {
     activePlanPath: activePlanPath?.trim() || null,
-    enabled,
     isCreatingPlan: false,
+    planMode,
   }
 }

@@ -199,7 +199,7 @@ function resolvePlanPatchTarget(
   runtimeState: PlanRuntimeState | undefined,
   patchText: string,
 ) {
-  if (!runtimeState?.enabled) return null
+  if (!runtimeState?.planMode) return null
   const activePlanPath = runtimeState.activePlanPath
   if (!activePlanPath || !isPlanRelativePath(activePlanPath)) {
     throw new Error('Plan Mode apply_patch requires an active Tidecode plan before any patch can be applied.')

@@ -130,7 +130,7 @@ export function ProjectThreadSelector({
           aria-expanded={isOpen}
           aria-label={`Filter threads by project. Current selection: ${selectedLabel}`}
           onClick={() => setIsOpen((currentValue) => !currentValue)}
-          className="flex h-10 w-full min-w-0 items-center gap-2 rounded-xl px-2 text-left text-foreground transition-colors hover:bg-[var(--sidebar-hover-surface)]"
+          className="flex h-10 w-full min-w-0 items-center gap-2 rounded-xl pl-3 pr-2 text-left text-foreground transition-colors hover:bg-[var(--sidebar-hover-surface)]"
         >
           <Folder size={17} strokeWidth={2} className="shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate text-sm font-semibold">{selectedLabel}</span>

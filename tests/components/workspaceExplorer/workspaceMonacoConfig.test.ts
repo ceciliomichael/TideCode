@@ -50,7 +50,15 @@ test('workspace Monaco resolves common and special file languages', () => {
   assert.equal(resolveWorkspaceMonacoLanguage('config/settings.jsonc'), 'json')
   assert.equal(resolveWorkspaceMonacoLanguage('Dockerfile'), 'dockerfile')
   assert.equal(resolveWorkspaceMonacoLanguage('AGENTS.md'), 'markdown')
+  assert.equal(resolveWorkspaceMonacoLanguage('.env'), 'ini')
   assert.equal(resolveWorkspaceMonacoLanguage('LICENSE'), 'plaintext')
+})
+
+test('workspace Monaco resolves languages from known segments in compound filenames', () => {
+  assert.equal(resolveWorkspaceMonacoLanguage('.env.example'), 'ini')
+  assert.equal(resolveWorkspaceMonacoLanguage('config/.env.local'), 'ini')
+  assert.equal(resolveWorkspaceMonacoLanguage('config/app.json.example'), 'json')
+  assert.equal(resolveWorkspaceMonacoLanguage('src/Button.tsx.template'), 'typescript')
 })
 
 test('workspace Monaco creates stable encoded file model paths', () => {

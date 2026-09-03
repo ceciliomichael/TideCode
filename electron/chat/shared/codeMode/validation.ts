@@ -1157,7 +1157,7 @@ export function validateCodeModeProgram(code: string, maxCodeBytes: number) {
     const position = line === null
       ? ''
       : ` at generated code line ${line}${column === null ? '' : `, column ${column}`}`
-    let guidance = "No tool ran. Retry with plain sequential tools.* calls. For targeted source changes, call tools.apply_patch with one raw Codex patch string using complete patch lines and fresh source context. Use tools.write only for a deliberate whole-file write."
+    let guidance = 'No tool ran. Retry with valid plain sequential tools.* calls using only APIs permitted by the active mode.'
     if (message.includes("Unexpected identifier") || message.includes("Invalid or unexpected token") || message.includes("Unexpected token")) {
       guidance += " If embedding code snippets or template literals inside script strings, make sure backticks (`) and template expressions (${...}) are properly escaped."
     }

@@ -42,15 +42,15 @@ test('plan tool headers use review-oriented labels', () => {
   )
   assert.equal(
     getToolInvocationHeaderLabel({
-      argumentsText: JSON.stringify({ patch: ['*** Begin Patch', '*** End Patch'] }),
-      id: 'plan-apply-patch',
+      argumentsText: JSON.stringify({ content: '# Updated plan', path: '.tidecode/plans/plan-001.md' }),
+      id: 'plan-edit',
       resultContent: formatStructuredToolResultContent({
         schema: 'tidecode.tool_result/v1',
         status: 'success',
         subject: { kind: 'plan', path: '.tidecode/plans/plan-001.md' },
         summary: 'Updated implementation plan plan-001.md',
-        toolCallId: 'plan-apply-patch',
-        toolName: 'apply_patch',
+        toolCallId: 'plan-edit',
+        toolName: 'plan_edit',
       }, 'Updated plan.'),
       resultPresentation: {
         content: '# Updated plan\n',
@@ -64,9 +64,9 @@ test('plan tool headers use review-oriented labels', () => {
       },
       startedAt: 0,
       state: 'completed',
-      toolName: 'apply_patch',
+      toolName: 'plan_edit',
     }),
-    'Updated plan plan-001.md',
+    'Updated plan-001.md',
   )
 })
 

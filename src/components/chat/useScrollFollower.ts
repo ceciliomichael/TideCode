@@ -15,13 +15,17 @@ export interface UseScrollFollowerOptions {
   scrollContainerRef: RefObject<HTMLDivElement>
 }
 
+export interface ScrollFollowerControls {
+  pauseFollowingLatest: () => void
+}
+
 function useScrollFollower({
   anchorOnReset = false,
   contentRevision,
   isAutoFollowEnabled,
   resetSignal = null,
   scrollContainerRef,
-}: UseScrollFollowerOptions): void {
+}: UseScrollFollowerOptions): ScrollFollowerControls {
   const isFollowingLatestRef = useRef(true)
   const isAutoFollowEnabledRef = useRef(isAutoFollowEnabled)
   const shouldAnchorToLatestRef = useRef(anchorOnReset)
@@ -344,6 +348,8 @@ function useScrollFollower({
     scheduleAutoScroll,
     scrollContainerRef,
   ])
+
+  return { pauseFollowingLatest }
 }
 
 export { useScrollFollower }

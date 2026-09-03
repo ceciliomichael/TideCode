@@ -11,6 +11,8 @@ export const EXECUTION_MODE_HIDDEN_CONTEXT_KIND = 'execution_mode'
 export const PYTHON_VENV_HIDDEN_CONTEXT_KIND = 'python_venv'
 export const TERMINAL_SHELL_HIDDEN_CONTEXT_KIND = 'terminal_shell'
 export const WORKSPACE_INSTRUCTIONS_HIDDEN_CONTEXT_KIND = 'workspace_instructions'
+export const WORKSPACE_INSTRUCTIONS_REVISION_CHANGED_PROMPT =
+  'The AGENTS.md revision changed since the last workspace-instructions context. Read the current AGENTS.md again before continuing project work.'
 
 const HIDDEN_USER_CONTEXT_PATTERN =
   /<hidden_user_context\b[^>]*>[\s\S]*?<\/hidden_user_context>/gu
@@ -90,12 +92,17 @@ function buildPythonVenvHiddenContext(environment: ChatRuntimeEnvironmentSnapsho
       ].join('\\n'))
 }
 
-export function buildWorkspaceInstructionsHiddenContext(revision: string): HiddenUserContext {
+export function buildWorkspaceInstructionsHiddenContext(
+  revision: string,
+  options: { revisionChanged?: boolean } = {},
+): HiddenUserContext {
   return wrapHiddenUserContext(WORKSPACE_INSTRUCTIONS_HIDDEN_CONTEXT_KIND, revision, [
     '<workspace_instruction_context path="AGENTS.md" state="present">',
     'A root AGENTS.md exists in this workspace. Follow all applicable repository instructions from its current revision.',
     'Read AGENTS.md only if this exact revision has not already been read into the model context. If the same revision is already available from earlier history or tool output, reuse it and do not read the file again.',
-    'If the revision changes, read the updated AGENTS.md before continuing project work.',
+    options.revisionChanged
+      ? WORKSPACE_INSTRUCTIONS_REVISION_CHANGED_PROMPT
+      : 'If the revision changes, read the updated AGENTS.md before continuing project work.',
     '</workspace_instruction_context>',
   ].join('\n'))
 }
@@ -132,13 +139,14 @@ export function buildChatModeHiddenContext(chatMode: ChatMode): HiddenUserContex
       '- Favor concrete planning language. Broad phrases such as “update relevant files”, “refactor as needed”, “handle edge cases”, or “add tests” can be used as summaries, but expand them with the concrete files, behavior, rationale, or verification details that are already knowable and useful for handoff.',
       '- Ask a focused question only when a material product or scope judgment cannot be resolved from the workspace.',
       '- Do not implement source changes, run implementation commands, or proceed into implementation while Plan Mode is active. Implementation requires a later Agent Mode turn after user approval.',
-      '- Plan Mode tool contract: tools.plan_create({ content: string, title?: string }) and tools.apply_patch are preloaded Code Mode APIs throughout Plan Mode. plan_create is intentionally omitted from the permanent Code Mode documentation for cache stability; that omission does not mean the API is unavailable.',
-      '- Do not use tools.tool_search to discover tools.plan_create. tool_search is for connected dynamic capabilities, not hidden local Plan Mode APIs.',
-      '- The active plan is the latest successful Plan presentation in conversation history. If no active plan exists, call tools.plan_create to create the canonical plan artifact; tools.apply_patch remains available but cannot revise a plan until one exists.',
-      '- Once an active plan exists, do not create another. Use tools.apply_patch only to revise that exact active plan artifact. A duplicate tools.plan_create call must be treated as invalid.',
+      '- Plan Mode tool contract: tools.plan_create({ content: string, title?: string }) creates the canonical plan, and tools.plan_edit({ path: string, content: string, title?: string }) replaces that active plan when revision is needed. Both are intentionally omitted from permanent Code Mode documentation for cache stability; that omission does not mean the APIs are unavailable.',
+      '- Do not use tools.tool_search to discover tools.plan_create or tools.plan_edit. tool_search is for connected dynamic capabilities, not hidden local Plan Mode APIs.',
+      '- The active plan is the latest successful Plan presentation in conversation history. If no active plan exists, finish read-only discovery and call tools.plan_create when the plan is ready. Do not call tools.plan_edit before an active plan exists.',
+      '- Once an active plan exists, do not create another. Use tools.plan_edit only when that exact active plan needs revision, passing its exact path and the complete revised Markdown. A duplicate tools.plan_create call must be treated as invalid.',
+      '- Do not call tools.apply_patch in Plan Mode. It is an Agent source-mutation API and is not part of Plan Mode\'s allowed tool set.',
       '- Never mutate source files, tests, configuration, documentation, or other workspace files in Plan Mode. If a mutation API is unavailable, do not substitute another mutation mechanism.',
       '- The permanent Code Mode tool catalog describes the stable superset of TideCode capabilities, not permission for the current mode. The active runtime policy and actual tools object are authoritative for what may be called now.',
-      '- Plan Mode runtime policy restricts Code Mode to planning-safe APIs plus plan_create and apply_patch, and enforces the plan-artifact boundary on the host side.',
+      '- Plan Mode runtime policy restricts Code Mode to planning-safe APIs plus plan_create and plan_edit, and enforces the plan-artifact boundary on the host side.',
       '- After a successful plan create or revision, return the normal Plan preview result instead of duplicating the full artifact in chat.',
       '</chat_mode_context>',
     ].join('\n'))

@@ -14,6 +14,7 @@ import { MarkdownRenderer } from "./chat/MarkdownRenderer";
 import { ThinkingBlock } from "./chat/ThinkingBlock";
 import { ThinkingIndicator } from "./chat/ThinkingIndicator";
 import { resolveAssistantWaitingIndicatorVariant } from "./chat/assistantWaitingIndicator";
+import { ToolInvocationBlock } from "./chat/ToolInvocationBlock";
 import { ToolInvocationGroup } from "./chat/ToolInvocationGroup";
 import { Tooltip } from "./Tooltip";
 import {
@@ -189,17 +190,29 @@ export function AssistantMessage({
         />
       ) : null}
 
-      {renderedToolBlocks.map((block) => (
-        <ToolInvocationGroup
-          key={block.key}
-          entries={block.entries}
-          hasAssistantText={hasVisibleAssistantText}
-          isFinalized={finalizeToolGroups}
-          isConversationStreaming={isConversationStreaming}
-          onToolDecisionSubmit={onToolDecisionSubmit}
-          workspaceRootPath={workspaceRootPath}
-        />
-      ))}
+      {renderedToolBlocks.map((block) => {
+        const singleEntry = block.entries.length === 1 && !finalizeToolGroups
+          ? block.entries[0]
+          : null;
+        return singleEntry ? (
+          <ToolInvocationBlock
+            key={block.key}
+            invocation={singleEntry.invocation}
+            onToolDecisionSubmit={onToolDecisionSubmit}
+            workspaceRootPath={workspaceRootPath}
+          />
+        ) : (
+          <ToolInvocationGroup
+            key={block.key}
+            entries={block.entries}
+            hasAssistantText={hasVisibleAssistantText}
+            isFinalized={finalizeToolGroups}
+            isConversationStreaming={isConversationStreaming}
+            onToolDecisionSubmit={onToolDecisionSubmit}
+            workspaceRootPath={workspaceRootPath}
+          />
+        );
+      })}
 
       {shouldShowWaitingIndicator ? (
         <ThinkingIndicator variant={effectiveWaitingIndicatorVariant} />

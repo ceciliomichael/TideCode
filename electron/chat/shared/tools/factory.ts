@@ -43,6 +43,7 @@ interface NativeToolSets {
   allTools: ToolSet
   agentTools: ToolSet
   planTools: ToolSet
+  providerTools: ToolSet
 }
 
 const CODE_MODE_EXCLUDED_TOOLS = new Set(['mcp_tool_search', 'execute_mcp', 'edit'])
@@ -67,8 +68,10 @@ async function createNativeToolSets(
     planningSafeTools.skill = createSkillTool(context, enabledSkills)
   }
 
+  const providerTools: ToolSet = {}
   const providerWebTool = createProviderWebTool(options.providerId)
   if (providerWebTool) {
+    providerTools[providerWebTool.name] = providerWebTool.tool
     planningSafeTools[providerWebTool.name] = providerWebTool.tool
   }
 
@@ -84,14 +87,12 @@ async function createNativeToolSets(
     write: createWriteTool(context),
   }
   const agentTools: ToolSet = { ...allTools }
-  delete agentTools.plan_create
   const planTools: ToolSet = {
     ...planningSafeTools,
     ...planArtifactTools,
-    apply_patch: applyPatchTool,
   }
 
-  return { agentTools, allTools, planTools }
+  return { agentTools, allTools, planTools, providerTools }
 }
 
 function createRuntimePlanState(options: CreateAgentToolsOptions) {
@@ -145,7 +146,10 @@ export async function createAgentToolBundle(
   // separate provider-native tool call that some providers treat as terminal.
   const registry = await createAgentToolRegistry({
     ...registryTools,
-    tool_search: createToolSearchTool(baseRegistry, { dynamicOnly: true }),
+    tool_search: createToolSearchTool(baseRegistry, {
+      dynamicOnly: true,
+      onDemandToolNames: options.chatMode === 'agent' ? ['plan_create', 'plan_edit'] : [],
+    }),
   })
   // Dynamic MCP functions exist in the sandbox but remain absent from the
   // model-visible documentation until tools.tool_search returns their names.
@@ -169,6 +173,8 @@ export async function createAgentToolBundle(
     codeModeExecutor,
     nativeTools,
     registry,
-    tools: orchestrationMode === 'hybrid' ? { ...nativeTools, ...metaTools } : metaTools,
+    tools: orchestrationMode === 'hybrid'
+      ? { ...nativeTools, ...metaTools }
+      : { ...toolSets.providerTools, ...metaTools },
   }
 }

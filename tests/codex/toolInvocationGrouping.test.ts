@@ -122,7 +122,7 @@ test('buildToolInvocationGroupSummary pluralizes grouped categories', () => {
 
 test('buildToolInvocationGroupSummary gives plan tools a readable label', () => {
   const planUpdate: ToolInvocationTrace = {
-    ...createInvocation('apply_patch'),
+    ...createInvocation('plan_edit'),
     resultPresentation: {
       content: '# Updated plan\n',
       fileName: 'plan-001.md',
@@ -136,7 +136,17 @@ test('buildToolInvocationGroupSummary gives plan tools a readable label', () => 
   }
   assert.equal(
     buildToolInvocationGroupSummary([createInvocation('plan_create'), planUpdate]),
-    'Created 2 plans',
+    'Updated plan',
+  )
+
+  assert.equal(
+    buildToolInvocationGroupSummary([createInvocation('plan_create')]),
+    'Created plan',
+  )
+
+  assert.equal(
+    buildToolInvocationGroupSummary([planUpdate]),
+    'Updated plan',
   )
 })
 

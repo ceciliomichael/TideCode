@@ -10,6 +10,7 @@ import { getStoredSettings } from '../settings/store'
 import { serializeInitialSettingsArg } from '../settings/bootstrap'
 import { serializeTideCodeLaunchRequest, type TideCodeLaunchRequest } from '../../src/lib/appLaunchRequest'
 import { applyTideCodeAppIcon, getTideCodeAppIconPath } from './branding'
+import { readWindowState, type TideCodeWindowState } from './windowState'
 import {
   applyWindowTheme,
   getTitleBarOverlay,
@@ -17,16 +18,44 @@ import {
   syncNativeThemeSource,
 } from './theme'
 
-const MIN_WINDOW_WIDTH = 960
-const MIN_WINDOW_HEIGHT = 680
-function getInitialWindowBounds() {
+const MIN_WINDOW_WIDTH = 900
+const MIN_WINDOW_HEIGHT = 600
+const DEFAULT_WINDOW_WIDTH = 1440
+const DEFAULT_WINDOW_HEIGHT = 900
+const WINDOW_SCREEN_MARGIN = 32
+
+function getInitialWindowBounds(savedState: TideCodeWindowState | null) {
   const { workArea } = screen.getPrimaryDisplay()
+  const availableWidth = Math.max(1, workArea.width - WINDOW_SCREEN_MARGIN)
+  const availableHeight = Math.max(1, workArea.height - WINDOW_SCREEN_MARGIN)
+  const width = Math.min(
+    Math.max(MIN_WINDOW_WIDTH, savedState?.width ?? DEFAULT_WINDOW_WIDTH),
+    availableWidth,
+  )
+  const height = Math.min(
+    Math.max(MIN_WINDOW_HEIGHT, savedState?.height ?? DEFAULT_WINDOW_HEIGHT),
+    availableHeight,
+  )
+
+  const savedPositionIsVisible = savedState
+    ? screen.getAllDisplays().some(({ workArea: displayWorkArea }) => {
+        const overlapsHorizontally = savedState.x < displayWorkArea.x + displayWorkArea.width
+          && savedState.x + width > displayWorkArea.x
+        const overlapsVertically = savedState.y < displayWorkArea.y + displayWorkArea.height
+          && savedState.y + height > displayWorkArea.y
+        return overlapsHorizontally && overlapsVertically
+      })
+    : false
 
   return {
-    x: workArea.x,
-    y: workArea.y,
-    width: workArea.width,
-    height: workArea.height,
+    x: savedPositionIsVisible && savedState
+      ? savedState.x
+      : workArea.x + Math.round((workArea.width - width) / 2),
+    y: savedPositionIsVisible && savedState
+      ? savedState.y
+      : workArea.y + Math.round((workArea.height - height) / 2),
+    width,
+    height,
   }
 }
 
@@ -36,7 +65,8 @@ export async function createApplicationWindow(input: {
   preloadDirectory: string
   rendererDist: string
 }) {
-  const initialBounds = getInitialWindowBounds()
+  const savedWindowState = await readWindowState()
+  const initialBounds = getInitialWindowBounds(savedWindowState)
   const initialSettings = await getStoredSettings().catch(() => null)
   const initialAppearance = initialSettings?.appearance ?? 'system'
   syncNativeThemeSource(initialAppearance)
@@ -76,14 +106,11 @@ export async function createApplicationWindow(input: {
 
   win.setMenuBarVisibility(false)
   win.once('ready-to-show', () => {
-    if (!win) {
-      return
-    }
-
-    if (!win.isMaximized()) {
+    if (savedWindowState?.isFullScreen) {
+      win.setFullScreen(true)
+    } else if (savedWindowState?.isMaximized) {
       win.maximize()
     }
-
     win.show()
   })
 
