@@ -30,7 +30,7 @@ const CODE_MODE_EDIT_DESCRIPTION =
   'Edit one existing file using hunks shaped as { target, replacement }, { startLine, endLine, replacement }, or { insertAt, content }; replaceAll is explicit.'
 
 const CODE_MODE_APPLY_PATCH_DESCRIPTION =
-  'Apply one raw Codex-style patch string beginning with *** Begin Patch and ending with *** End Patch. Complete patch templates passed to apply_patch are treated as literal patch data, so nested backticks, ${...}, \\n-style source text, regex escapes, JSX/TSX quotes, and Windows paths do not need double escaping. If a generated anchor still contains one redundant escaping layer, TideCode repairs it only when there is one unique non-overlapping source match. Use fresh source context; TideCode verifies the full patch before writing.'
+  'Apply one raw Codex-style patch string beginning with *** Begin Patch and ending with *** End Patch. The surrounding Code Mode program must remain valid JavaScript-like source; encode escape-heavy or multiline patch text as a normal string value (JSON-style string escaping is safest). If a patch anchor contains one redundant escaping layer, TideCode repairs it only when there is one unique non-overlapping source match. Use fresh source context; TideCode verifies the full patch before writing.'
 
 const CODE_MODE_APPLY_PATCH_INPUT_SCHEMA: JSONSchema7 = {
   description: 'Raw Codex-style patch text. Do not wrap it in an object, array, or Markdown fence.',

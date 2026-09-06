@@ -290,7 +290,7 @@ test('Agent Mode Code Mode discovers planning tools on demand before using them'
     try {
       const result = await codeMode.execute?.({
         source: [
-          "const found = await tools.tool_search({ query: 'plan', namespace: 'planning' })",
+          "const found = await tools.$codemode.search({ query: 'plan', namespace: 'planning' })",
           "await tools.plan_create({ content: '## Goal\\n\\nKeep a concise implementation note.', title: 'Agent supplement' })",
           "await tools.plan_edit({ path: '.tidecode/plans/plan-001.md', content: '# Agent supplement\\n\\n## Goal\\n\\nKeep a revised implementation note.' })",
           'return found',
@@ -302,7 +302,7 @@ test('Agent Mode Code Mode discovers planning tools on demand before using them'
       }) as { body?: string; semantics?: { tool_call_count?: number }; status?: string }
 
       assert.equal(result.status, 'success')
-      assert.equal(result.semantics?.tool_call_count, 3)
+      assert.equal(result.semantics?.tool_call_count, 2)
       assert.match(result.body ?? '', /plan_create/u)
       assert.match(result.body ?? '', /plan_edit/u)
       assert.match(
