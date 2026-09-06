@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.4 - Unified scrolling and Code Mode reliability
+
+TideCode 1.3.4 makes scrolling consistent across the desktop app and improves Code Mode reliability when working with workspace modules.
+
+- Adds hover-only overlay scrollbars across TideCode, including Monaco editors, diff views, settings, chat, and workspace previews, without reserving layout space.
+- Preserves workspace tab scroll positions and unifies Monaco scrolling with TideCode's shared scrollbar behavior.
+- Improves Code Mode sandbox validation and workspace-relative ES module resolution, with expanded reliability coverage.
+- Requires no manual migration or configuration changes.
+
 ## 1.3.3 - Smoother agent and workspace workflows
 
 TideCode 1.3.3 improves planning, Code Mode filesystem access, chat behavior, workspace handling, and CLI reliability.
