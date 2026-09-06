@@ -12,6 +12,7 @@ import type { TideCodeLaunchRequest } from './lib/appLaunchRequest'
 import { resolveBootConversationLaunchState } from './pages/chatInterface/chatLaunchState'
 import { hydrateCachedUpdate, requestAutomaticUpdateCheck } from './components/settings/updates/updatesSessionStore'
 import type { SettingsItemId } from './components/settings/settingsItems'
+import { GlobalOverlayScrollbars } from './components/ui/GlobalOverlayScrollbars'
 
 type AppScreen = 'chat' | 'settings'
 
@@ -243,6 +244,8 @@ export default function App() {
           pendingLaunchRequest={pendingLaunchRequest}
         />
       </div>
+
+      <GlobalOverlayScrollbars />
     </div>
   )
 }

@@ -117,7 +117,7 @@ export function SettingsContent({
   return (
     <div
       ref={scrollViewportRef}
-      className="non-selectable-ui settings-scroll-viewport scroll-stable flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-3 md:px-5 md:pb-0 md:pt-16"
+      className="non-selectable-ui settings-scroll-viewport flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-3 md:px-5 md:pb-0 md:pt-16"
     >
       <button
         type="button"

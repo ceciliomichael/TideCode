@@ -3,6 +3,7 @@ import type { BeforeMount, Monaco, OnMount } from '@monaco-editor/react'
 import type { editor, IDisposable, Uri } from 'monaco-editor'
 import type { GitFileDiff } from '../../../types/chat'
 import { useResolvedDocumentTheme } from '../../../hooks/useResolvedDocumentTheme'
+import { registerMonacoOverlayScrollbar } from '../../ui/globalOverlayScrollbarTargets'
 import { isMarkdownPreviewablePath } from '../../../lib/markdown-preview'
 import { isSvgPreviewablePath } from '../../../lib/svg-preview'
 import { buildWorkspaceEditorLineStatusMap } from './workspaceEditorGitStatus'
@@ -202,6 +203,7 @@ suspendWorkspaceMonacoTypeScriptDiagnostics(monacoInstance, scriptLanguage, work
     }
 
     disposablesRef.current.push(
+      registerMonacoOverlayScrollbar(editorInstance),
       monacoInstance.editor.registerEditorOpener({
 openCodeEditor: (_source: editor.ICodeEditor, resource: Uri) => {
           const relativePath = getWorkspaceRelativePathFromMonacoUri(resource.toString())

@@ -2,6 +2,7 @@ import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { editor } from 'monaco-editor'
 import { useResolvedDocumentTheme } from '../../hooks/useResolvedDocumentTheme'
+import { registerMonacoOverlayScrollbar } from '../ui/globalOverlayScrollbarTargets'
 import {
   createWorkspaceMonacoModelPath,
   defineWorkspaceMonacoThemes,
@@ -54,6 +55,7 @@ export function WorkspaceMonacoCodeView({
   const [height, setHeight] = useState(() => resolveInitialCodeContentHeight(code))
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const contentSizeDisposableRef = useRef<{ dispose: () => void } | null>(null)
+  const overlayScrollbarDisposableRef = useRef<{ dispose: () => void } | null>(null)
   const maxHeight = maxBodyHeightClassName?.includes('max-h-80') ? 320 : null
   const maxHeightRef = useRef<number | null>(maxHeight)
   maxHeightRef.current = maxHeight
@@ -74,7 +76,9 @@ export function WorkspaceMonacoCodeView({
   const onMount = useCallback<OnMount>((editorInstance) => {
     editorRef.current = editorInstance
     contentSizeDisposableRef.current?.dispose()
+    overlayScrollbarDisposableRef.current?.dispose()
     contentSizeDisposableRef.current = editorInstance.onDidContentSizeChange(updateHeight)
+    overlayScrollbarDisposableRef.current = registerMonacoOverlayScrollbar(editorInstance)
     updateHeight()
   }, [updateHeight])
 
@@ -92,6 +96,8 @@ export function WorkspaceMonacoCodeView({
   useEffect(() => () => {
     contentSizeDisposableRef.current?.dispose()
     contentSizeDisposableRef.current = null
+    overlayScrollbarDisposableRef.current?.dispose()
+    overlayScrollbarDisposableRef.current = null
     editorRef.current = null
   }, [])
 
@@ -121,7 +127,7 @@ export function WorkspaceMonacoCodeView({
           lineHeight: 20,
           scrollBeyondLastColumn: 0,
           scrollBeyondLastLine: false,
-          scrollbar: { alwaysConsumeMouseWheel: false, horizontal: 'hidden', horizontalScrollbarSize: 0, useShadows: false, vertical: maxHeight === null ? 'hidden' : 'auto', verticalScrollbarSize: maxHeight === null ? 0 : 8 },
+          scrollbar: { alwaysConsumeMouseWheel: false, horizontal: 'hidden', horizontalScrollbarSize: 0, useShadows: false, vertical: 'hidden', verticalScrollbarSize: 0 },
           stickyScroll: { enabled: false },
           wordWrap: 'on',
           wrappingIndent: 'same',

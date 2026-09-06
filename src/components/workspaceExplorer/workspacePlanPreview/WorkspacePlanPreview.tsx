@@ -4,6 +4,7 @@ import { getPlanDisplayContent, getPlanStatus, type PlanReviewComment } from '..
 import { PLAN_HANDOFF_SUCCESS_LABEL } from '../../../lib/planStatusMessages'
 import { WorkspacePlanActionsMenu } from './WorkspacePlanActionsMenu'
 import { WorkspacePlanCommentsMenu } from './WorkspacePlanCommentsMenu'
+import { useWorkspaceTabScrollPosition } from '../workspaceTabScrollState'
 
 interface WorkspacePlanPreviewProps {
   comments: readonly PlanReviewComment[]
@@ -13,6 +14,7 @@ interface WorkspacePlanPreviewProps {
   onImplementPlan: (relativePath: string) => void
   onRequestChanges: (relativePath: string, comments: PlanReviewComment[]) => void
   relativePath: string
+  tabKey: string
 }
 
 function createCommentId() {
@@ -35,7 +37,9 @@ export function WorkspacePlanPreview({
   onImplementPlan,
   onRequestChanges,
   relativePath,
+  tabKey,
 }: WorkspacePlanPreviewProps) {
+  const { handleScroll, registerViewport } = useWorkspaceTabScrollPosition(tabKey, content)
   const [isImplementationSubmitted, setIsImplementationSubmitted] = useState(
     () => getPlanStatus(content) === 'implementation_started',
   )
@@ -118,7 +122,7 @@ export function WorkspacePlanPreview({
         </div>
       ) : null}
 
-      <div className="relative min-h-0 flex-1 overflow-y-auto">
+      <div ref={registerViewport} onScroll={handleScroll} className="relative min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-4xl px-5 py-6 md:px-10 md:py-8">
           <MarkdownRenderer
             key={content}

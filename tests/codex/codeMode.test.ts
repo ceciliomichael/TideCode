@@ -574,8 +574,8 @@ test('Code Mode allows explicit recovery from a failed tool promise', async () =
       { allowedToolNames: ['failing_tool', 'recovery_tool'] },
     )
 
-    assert.equal(result.status, 'error')
-    assert.match(result.summary, /1 failed tool call/u)
+    assert.equal(result.status, 'success')
+    assert.match(result.summary, /handling 1 failed tool call/u)
     assert.deepEqual(result.toolCalls.map((call) => call.name), ['failing_tool', 'recovery_tool'])
     assert.deepEqual(result.output, {
       failure: 'The recoverable tool failed.',
@@ -704,7 +704,7 @@ test('Code Mode tool-only runtime blocks direct Node and host APIs', async () =>
   }
 })
 
-test('Code Mode preflights blocked runtime access before any tool call can run', async () => {
+test('Code Mode sandbox blocks direct runtime access when execution reaches it', async () => {
   const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
     terminalExecutionMode: 'sandbox',
   })
@@ -716,15 +716,14 @@ test('Code Mode preflights blocked runtime access before any tool call can run',
     )
 
     assert.equal(result.status, 'error')
-    assert.equal(result.toolCalls.length, 0)
-    assert.match(result.summary, /blocked process before execution/u)
-    assert.match(result.summary, /No tool ran/u)
+    assert.equal(result.toolCalls.length, 1)
+    assert.match(result.summary, /tool-only runtime blocked process/u)
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode preflight ignores blocked runtime names in non-executable tool data', async () => {
+test('Code Mode sandbox allows host API words in non-executable tool data', async () => {
   const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
     terminalExecutionMode: 'sandbox',
   })
@@ -769,7 +768,7 @@ test('Code Mode repairs multiple over-escaped opening parentheses in regex liter
   }
 })
 
-test('Code Mode preflight still scans executable template expressions', async () => {
+test('Code Mode sandbox blocks runtime access inside executable template expressions', async () => {
   const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
     terminalExecutionMode: 'sandbox',
   })
@@ -781,8 +780,8 @@ test('Code Mode preflight still scans executable template expressions', async ()
     )
 
     assert.equal(result.status, 'error')
-    assert.equal(result.toolCalls.length, 0)
-    assert.match(result.summary, /blocked process before execution/u)
+    assert.equal(result.toolCalls.length, 1)
+    assert.match(result.summary, /tool-only runtime blocked process/u)
   } finally {
     await executor.dispose()
   }
@@ -823,7 +822,7 @@ test('Code Mode tool-only runtime blocks dynamic module loading', async () => {
 
       assert.equal(result.status, 'error')
       assert.equal(result.toolCalls.length, 0)
-      assert.match(result.error ?? '', /tool-only runtime does not allow dynamic module loading/u)
+      assert.match(result.error ?? '', /sandbox runtime does not allow module loading/u)
     }
   } finally {
     await executor.dispose()
@@ -1559,7 +1558,7 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
       /Unknown action: list\. Valid actions: read_board, read_card, create_card, create_task_with_subtasks, update_card, move_card, reorder_card, delete_card\./u,
     )
     assert.equal(codeModeDescription.split(CODE_MODE_EXECUTION_CONTRACT).length - 1, 1)
-    assert.match(codeModeDescription, /temporary asynchronous JavaScript program running in a tool-only worker/u)
+    assert.match(codeModeDescription, /runs one temporary asynchronous JavaScript program/u)
     assert.match(codeModeDescription, /Choose the purpose-built inner API for the scenario/u)
     assert.match(codeModeDescription, /one JavaScript source program/u)
     assert.doesNotMatch(codeModeDescription, /top-level code_mode payloads object/u)
@@ -1568,13 +1567,12 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
     assert.match(codeModeDescription, /`tools\.execute_terminal`: run an actual command\/process/u)
     assert.match(codeModeDescription, /Never use shell, PowerShell, Python, or Node just to read, search, edit, or write workspace files/u)
     assert.doesNotMatch(codeModeDescription, /Tool-only runtime: direct Node\.js and host access is blocked/u)
-    assert.match(codeModeDescription, /Unavailable host\/runtime APIs in Code Mode include/u)
-    assert.match(codeModeDescription, /`fs` \/ `node:fs`/u)
-    assert.match(codeModeDescription, /`child_process` \/ `node:child_process`/u)
+    assert.match(codeModeDescription, /Sandbox is active for Code Mode/u)
+    assert.match(codeModeDescription, /Host globals such as `process`/u)
+    assert.match(codeModeDescription, /blocked at runtime/u)
     assert.match(codeModeDescription, /session_id.*directly/u)
-    assert.match(codeModeDescription, /dynamic `import\(\)` are blocked/u)
-    assert.match(codeModeDescription, /rejected before execution/u)
-    assert.match(codeModeDescription, /non-executable string, comment, regex, and template-literal text/u)
+    assert.match(codeModeDescription, /Static and dynamic module loading are unavailable in sandbox mode/u)
+    assert.match(codeModeDescription, /Blocked names are legal as ordinary local variable and property names/u)
 
     const codeResult = await invoke(bundle.tools.code_mode, {
       source: "const search = await tools.tool_search({ query: 'connected memory service', limit: 5 }); const file = await tools.read({ path: 'package.json' }); const root = await tools.read({ path: '' }); return { hasVersion: file.body.includes('1.2.3'), rootPath: root.subject?.path, searchStatus: search.status }",
@@ -1713,7 +1711,7 @@ test('non-freeform providers transport the same Code Mode source through the sou
   }
 })
 
-test('full terminal mode does not grant direct Node access inside provider-facing Code Mode', async () => {
+test('Full Access grants direct Node imports inside provider-facing Code Mode', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-full-terminal-'))
   let codeModeExecutor: CodeModeExecutor | null = null
 
@@ -1729,12 +1727,79 @@ test('full terminal mode does not grant direct Node access inside provider-facin
     assert.equal(typeof codeModeTool.execute, 'function')
 
     const result = await codeModeTool.execute?.(
-      { source: 'return process.version' },
+      {
+        source: `import http from 'node:http'
+const path = await import('node:path')
+return { file: path.basename('/tmp/example.txt'), node: typeof process.version === 'string', request: typeof http.request === 'function' }`,
+      },
       { context: {}, messages: [], toolCallId: 'full-terminal-code-mode' },
     ) as { body?: string; status?: string }
 
+    assert.equal(result.status, 'success')
+    assert.match(result.body ?? '', /"file": "example\.txt"/u)
+    assert.match(result.body ?? '', /"node": true/u)
+    assert.match(result.body ?? '', /"request": true/u)
+  } finally {
+    await codeModeExecutor?.dispose()
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Plan Mode keeps Code Mode sandboxed even when terminal Full Access is selected', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-plan-full-'))
+  const bypassPath = path.join(workspaceRootPath, 'plan-mode-bypass.txt')
+  let codeModeExecutor: CodeModeExecutor | null = null
+
+  try {
+    const bundle = await createAgentToolBundle(
+      { terminalExecutionMode: 'full', workspaceRootPath },
+      { chatMode: 'plan', orchestrationMode: 'code_mode' },
+    )
+    codeModeExecutor = bundle.codeModeExecutor
+    const codeModeTool = bundle.tools.code_mode as {
+      args?: { description?: string }
+      description?: string
+      execute?: (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>
+    }
+    const description = codeModeTool.args?.description ?? codeModeTool.description ?? ''
+    assert.match(description, /Sandbox is active for Code Mode/u)
+    assert.doesNotMatch(description, /Full Access is active for Agent Mode Code Mode/u)
+
+    const result = await codeModeTool.execute?.(
+      { source: "fs.writeFileSync('plan-mode-bypass.txt', 'blocked'); return 'mutated'" },
+      { context: {}, messages: [], toolCallId: 'plan-full-code-mode' },
+    ) as { body?: string; status?: string }
+
     assert.equal(result.status, 'error')
-    assert.match(result.body ?? '', /tool-only runtime blocked process/u)
+    assert.match(result.body ?? '', /tool-only runtime blocked fs/u)
+    await assert.rejects(fs.access(bypassPath))
+  } finally {
+    await codeModeExecutor?.dispose()
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Plan Mode rejects module loading when module parsing rejects function-body-only syntax', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-plan-parse-'))
+  let codeModeExecutor: CodeModeExecutor | null = null
+
+  try {
+    const bundle = await createAgentToolBundle(
+      { terminalExecutionMode: 'full', workspaceRootPath },
+      { chatMode: 'plan', orchestrationMode: 'code_mode' },
+    )
+    codeModeExecutor = bundle.codeModeExecutor
+    const codeModeTool = bundle.tools.code_mode as {
+      execute?: (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>
+    }
+    const result = await codeModeTool.execute?.(
+      { source: "with ({}) {}\nreturn await import('node:os');" },
+      { context: {}, messages: [], toolCallId: 'plan-parse-code-mode' },
+    ) as { semantics?: { tool_call_count?: number }; status?: string; body?: string }
+
+    assert.equal(result.status, 'error')
+    assert.equal(result.semantics?.tool_call_count, 0)
+    assert.match(result.body ?? '', /invalid JavaScript|module analysis|strict mode/u)
   } finally {
     await codeModeExecutor?.dispose()
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

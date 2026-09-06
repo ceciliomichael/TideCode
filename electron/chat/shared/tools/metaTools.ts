@@ -1,12 +1,12 @@
 import { openai } from '@ai-sdk/openai'
 import { jsonSchema, tool } from 'ai'
 
-import type { ChatProviderId } from '../../../../src/types/chat'
+import type { AppTerminalExecutionMode, ChatProviderId } from '../../../../src/types/chat'
 import type { AgentToolExecutionResult } from '../toolTypes'
 import { createSuccessResult } from './workspaceToolResults'
 import { createToolErrorResult } from './toolResult'
 import type { CodeModeExecutor } from '../codeMode/executor'
-import { CODE_MODE_EXECUTION_CONTRACT } from '../codeMode/promptContract'
+import { buildCodeModeExecutionContract } from '../codeMode/promptContract'
 import {
   formatExplicitCodeModeOutput,
   formatImplicitCodeModeToolResults,
@@ -42,7 +42,7 @@ const CODE_MODE_SOURCE_INPUT_SCHEMA = {
   additionalProperties: false,
   properties: {
     source: {
-      description: 'Temporary tool-only async JavaScript source. Every tools.* function returns Promise<ToolResult>; always await calls before reading or returning them.',
+      description: 'Temporary asynchronous JavaScript source for Code Mode. Runtime capabilities depend on the active execution and chat modes. Every tools.* function returns Promise<ToolResult>; always await calls before reading or returning them.',
       minLength: 1,
       type: 'string',
     },
@@ -181,9 +181,12 @@ function buildPreloadedToolDocumentation(registry: AgentToolRegistry) {
   ].join('\n')
 }
 
-export function buildCodeModeDescription(registry: AgentToolRegistry) {
+export function buildCodeModeDescription(
+  registry: AgentToolRegistry,
+  executionMode: AppTerminalExecutionMode = 'sandbox',
+) {
   return [
-    CODE_MODE_EXECUTION_CONTRACT,
+    buildCodeModeExecutionContract(executionMode),
     CODE_MODE_TOOL_ROUTING,
     buildPreloadedToolDocumentation(registry),
   ].join('\n')
@@ -248,9 +251,13 @@ async function executeCodeModeSource(
 export function createCodeModeTool(
   executor: CodeModeExecutor,
   registry: AgentToolRegistry,
-  options: { allowedToolNames?: readonly string[]; providerId?: ChatProviderId } = {},
+  options: {
+    allowedToolNames?: readonly string[]
+    executionMode?: AppTerminalExecutionMode
+    providerId?: ChatProviderId
+  } = {},
 ) {
-  const description = buildCodeModeDescription(registry)
+  const description = buildCodeModeDescription(registry, options.executionMode)
   if (usesNativeFreeformCodeModeTransport(options.providerId)) {
     return openai.tools.customTool({
       description,

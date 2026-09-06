@@ -14,13 +14,13 @@ interface TerminalExecutionModeOption {
 
 const TERMINAL_MODE_OPTIONS: readonly TerminalExecutionModeOption[] = [
   {
-    description: 'Runs terminal commands through WSL sandbox mode.',
+    description: 'Runs terminal commands in WSL sandbox mode and keeps Code Mode tool-only.',
     icon: Shield,
     label: 'Sandbox',
     value: 'sandbox',
   },
   {
-    description: 'Runs terminal commands directly on the host shell.',
+    description: 'Runs terminal commands with direct host access; Agent Mode Code Mode also gets host access, while Plan Mode stays restricted.',
     icon: Terminal,
     label: 'Full Access',
     value: 'full',

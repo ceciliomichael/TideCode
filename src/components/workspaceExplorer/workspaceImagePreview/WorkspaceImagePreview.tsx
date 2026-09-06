@@ -6,6 +6,7 @@ interface WorkspaceImagePreviewProps {
   previewDataUrl?: string
   previewError?: string
   relativePath: string
+  tabKey: string
 }
 
 export const WorkspaceImagePreview = memo(function WorkspaceImagePreview({
@@ -13,6 +14,7 @@ export const WorkspaceImagePreview = memo(function WorkspaceImagePreview({
   previewDataUrl,
   previewError,
   relativePath,
+  tabKey,
 }: WorkspaceImagePreviewProps) {
   return (
     <WorkspaceImagePreviewView
@@ -20,6 +22,7 @@ export const WorkspaceImagePreview = memo(function WorkspaceImagePreview({
       previewDataUrl={previewDataUrl}
       previewError={previewError}
       relativePath={relativePath}
+      tabKey={tabKey}
     />
   )
 })

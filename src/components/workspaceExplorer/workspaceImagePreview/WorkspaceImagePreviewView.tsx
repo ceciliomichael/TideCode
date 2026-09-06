@@ -8,12 +8,14 @@ import {
 import { useWorkspaceDocumentCanvasInteraction } from '../workspaceDocumentPreview/useWorkspaceDocumentCanvasInteraction'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { Tooltip } from '../../Tooltip'
+import { useWorkspaceTabScrollPosition } from '../workspaceTabScrollState'
 
 interface WorkspaceImagePreviewViewProps {
   fileName: string
   previewDataUrl?: string
   previewError?: string
   relativePath: string
+  tabKey: string
 }
 
 function getPathSegments(relativePath: string) {
@@ -35,6 +37,7 @@ export const WorkspaceImagePreviewView = memo(function WorkspaceImagePreviewView
   previewDataUrl,
   previewError,
   relativePath,
+  tabKey,
 }: WorkspaceImagePreviewViewProps) {
   const [hasError, setHasError] = useState(false)
   const [imageSize, setImageSize] = useState<ImagePreviewSize | null>(null)
@@ -53,6 +56,7 @@ export const WorkspaceImagePreviewView = memo(function WorkspaceImagePreviewView
     maxZoom: MAX_ZOOM,
     minZoom: MIN_ZOOM,
   })
+  const { handleScroll, registerViewport } = useWorkspaceTabScrollPosition(tabKey, `${previewDataUrl ?? ''}:${zoom}:${imageSize?.width ?? 0}:${imageSize?.height ?? 0}`)
   const pathSegments = useMemo(() => getPathSegments(relativePath), [relativePath])
   const previewErrorMessage = previewError
     ? toUserFacingErrorMessage(previewError, `TideCode could not render ${fileName}.`)
@@ -118,7 +122,11 @@ export const WorkspaceImagePreviewView = memo(function WorkspaceImagePreviewView
         </div>
       </div>
       <div
-        ref={viewportRef}
+        ref={(viewport) => {
+          viewportRef.current = viewport
+          registerViewport(viewport)
+        }}
+        onScroll={handleScroll}
         onPointerCancel={handleViewportPointerEnd}
         onPointerDown={handleViewportPointerDown}
         onPointerMove={handleViewportPointerMove}

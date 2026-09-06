@@ -171,12 +171,14 @@ export function buildExecutionModeHiddenContext(
 ): HiddenUserContext {
   const details = terminalExecutionMode === 'sandbox'
     ? [
-        'Terminal execution mode: sandbox.',
+        'Execution mode: sandbox.',
         'Filesystem access is limited to the workspace. A loaded skill may provide a specific skill directory for its own referenced resources.',
+        'Code Mode is tool-only in this mode. Direct host APIs and module loading are unavailable.',
       ]
     : [
-        'Terminal execution mode: full access.',
+        'Execution mode: full access.',
         'Filesystem tools and terminal commands may access paths outside the workspace only when required by the user request or a loaded skill.',
+        'In Agent Mode, Code Mode may use direct Node.js host APIs and module loading with the same Full Access authority. Plan Mode remains planning-only and keeps Code Mode sandboxed.',
       ]
   return wrapHiddenUserContext(EXECUTION_MODE_HIDDEN_CONTEXT_KIND, terminalExecutionMode, [
     `<execution_mode_context mode="${terminalExecutionMode}">`,

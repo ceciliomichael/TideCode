@@ -151,12 +151,15 @@ export async function createAgentToolBundle(
       onDemandToolNames: options.chatMode === 'agent' ? ['plan_create', 'plan_edit'] : [],
     }),
   })
+  const codeModeExecutionMode = options.chatMode === 'plan'
+    ? 'sandbox'
+    : input.terminalExecutionMode ?? 'sandbox'
   // Dynamic MCP functions exist in the sandbox but remain absent from the
   // model-visible documentation until tools.tool_search returns their names.
   // This permits discovery and invocation in one temporary program.
   const preloadedToolNames = registry.entries.map((entry) => entry.name)
   const codeModeExecutor = new CodeModeExecutor(registry, preloadedToolNames, {
-    terminalExecutionMode: 'sandbox',
+    terminalExecutionMode: codeModeExecutionMode,
     workspaceRootPath: input.workspaceRootPath,
   })
   const allowedToolNames = options.chatMode === 'plan'
@@ -165,6 +168,7 @@ export async function createAgentToolBundle(
   const metaTools: ToolSet = {
     code_mode: createCodeModeTool(codeModeExecutor, registry, {
       allowedToolNames,
+      executionMode: codeModeExecutionMode,
       providerId: options.providerId,
     }),
   }

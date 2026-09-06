@@ -1,3 +1,5 @@
+import { parse } from 'acorn'
+
 const REGEX_PREFIX_KEYWORDS = new Set([
   'await',
   'case',
@@ -15,6 +17,20 @@ const REGEX_PREFIX_KEYWORDS = new Set([
 ])
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+
+type CodeModeSyntaxValidator = (code: string) => unknown
+
+function parseCodeModeModule(code: string) {
+  return parse(code, {
+    allowReturnOutsideFunction: true,
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+  })
+}
+
+export function validateCodeModeModuleSyntax(code: string) {
+  return parseCodeModeModule(code)
+}
 
 function validateCodeModeSyntax(code: string) {
   return new AsyncFunction(code)
@@ -468,14 +484,17 @@ function repairPythonTripleQuotedStrings(code: string) {
   return changed ? output : code
 }
 
-function repairOverEscapedRegexLiteral(code: string): string | null {
+function repairOverEscapedRegexLiteral(
+  code: string,
+  validateSyntax: CodeModeSyntaxValidator = validateCodeModeSyntax,
+): string | null {
   let candidate = code
   let repaired = false
 
   for (let attempt = 0; attempt < 16; attempt += 1) {
     let message = ''
     try {
-      validateCodeModeSyntax(candidate)
+      validateSyntax(candidate)
       return repaired ? candidate : null
     } catch (error) {
       message = error instanceof Error ? error.message : String(error)
@@ -514,13 +533,16 @@ function repairOverEscapedRegexLiteral(code: string): string | null {
   return null
 }
 
-export function repairCodeModeProgramSyntax(code: string): string | null {
+export function repairCodeModeProgramSyntax(
+  code: string,
+  validateSyntax: CodeModeSyntaxValidator = validateCodeModeSyntax,
+): string | null {
   // Try -1: Repair narrow, high-confidence object/payload mistakes commonly
   // produced while models are emitting long freeform Code Mode programs.
   const fixedCommonProgram = repairSourcePayloadStringBindings(repairMissingObjectPropertyColons(code))
   if (fixedCommonProgram !== code) {
     try {
-      validateCodeModeSyntax(fixedCommonProgram)
+      validateSyntax(fixedCommonProgram)
       return fixedCommonProgram
     } catch {
       // continue
@@ -529,7 +551,7 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
 
   // Try -0.5: Repair a regex literal where a model doubled the escape before
   // a literal opening parenthesis, turning it into an unterminated group.
-  const fixedRegexLiteral = repairOverEscapedRegexLiteral(code)
+  const fixedRegexLiteral = repairOverEscapedRegexLiteral(code, validateSyntax)
   if (fixedRegexLiteral !== null) return fixedRegexLiteral
 
   // Try 0: Repair Python-style triple-quoted strings without interpreting opposite delimiters or template expressions.
@@ -537,7 +559,7 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
     const fixedTripleQuotes = repairPythonTripleQuotedStrings(code)
     if (fixedTripleQuotes !== code) {
       try {
-        validateCodeModeSyntax(fixedTripleQuotes)
+        validateSyntax(fixedTripleQuotes)
         return fixedTripleQuotes
       } catch {
         // continue
@@ -550,7 +572,7 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
     const fixedMutationStrings = repairSourceMutationStringLiterals(code)
     if (fixedMutationStrings !== code) {
       try {
-        validateCodeModeSyntax(fixedMutationStrings)
+        validateSyntax(fixedMutationStrings)
         return fixedMutationStrings
       } catch {
         // continue
@@ -563,78 +585,12 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
     const fixedTerminalCommands = repairTerminalCommandStringLiterals(code)
     if (fixedTerminalCommands !== code) {
       try {
-        validateCodeModeSyntax(fixedTerminalCommands)
+        validateSyntax(fixedTerminalCommands)
         return fixedTerminalCommands
       } catch {
         // continue
       }
     }
-  }
-
-  // Try 1: Fix extra braces before closing brackets `}, }` -> `}` or `}, ]` -> `}]`
-  let candidate = code.replace(/\},\s*\}/gu, '}')
-  candidate = candidate.replace(/\},\s*\]/gu, '}]')
-  candidate = candidate.replace(/,\s*([}\]])/gu, '$1')
-
-  try {
-    validateCodeModeSyntax(candidate)
-    return candidate
-  } catch {
-    // continue
-  }
-
-  // Try 2: Remove a trailing stray closing brace at the very end of code
-  const trimmed = code.trimEnd()
-  if (trimmed.endsWith('}')) {
-    const withoutLastBrace = trimmed.slice(0, trimmed.lastIndexOf('}')).trimEnd()
-    try {
-      validateCodeModeSyntax(withoutLastBrace)
-      return withoutLastBrace
-    } catch {
-      // continue
-    }
-  }
-
-  // Try 3: Balance unclosed brackets/braces/parentheses at end of program
-  let openParens = 0
-  let openBrackets = 0
-  let openBraces = 0
-  let inString: string | null = null
-
-  for (let i = 0; i < code.length; i += 1) {
-    const char = code[i]
-    if (inString) {
-      if (char === '\\') {
-        i += 1
-      } else if (char === inString) {
-        inString = null
-      }
-      continue
-    }
-
-    if (char === "'" || char === '"' || char === '`') {
-      inString = char
-      continue
-    }
-
-    if (char === '(') openParens += 1
-    else if (char === ')') openParens = Math.max(0, openParens - 1)
-    else if (char === '[') openBrackets += 1
-    else if (char === ']') openBrackets = Math.max(0, openBrackets - 1)
-    else if (char === '{') openBraces += 1
-    else if (char === '}') openBraces = Math.max(0, openBraces - 1)
-  }
-
-  let balanced = code
-  if (openBrackets > 0) balanced += ']'.repeat(openBrackets)
-  if (openBraces > 0) balanced += '}'.repeat(openBraces)
-  if (openParens > 0) balanced += ')'.repeat(openParens)
-
-  try {
-    validateCodeModeSyntax(balanced)
-    return balanced
-  } catch {
-    // continue
   }
 
   return null
@@ -1105,39 +1061,218 @@ export function repairCodeModePreloadedToolsImport(code: string): string | null 
   return repaired
 }
 
-export function containsDynamicCodeModeImport(code: string): boolean {
-  return /\bimport\s*\(/u.test(maskNonExecutableText(code))
+interface ParsedJavaScriptNode {
+  end: number
+  start: number
+  type: string
+  [key: string]: unknown
 }
 
-const BLOCKED_CODE_MODE_RUNTIME_APIS = [
-  { name: 'process', pattern: /\bprocess\b/u },
-  { name: 'global', pattern: /\bglobal\b/u },
-  { name: 'require', pattern: /\brequire\s*\(/u },
-  { name: 'module', pattern: /\bmodule\b/u },
-  { name: 'fs', pattern: /\bfs\s*\./u },
-  { name: 'child_process', pattern: /\bchild_process\b/u },
-  { name: 'http', pattern: /\bhttp\b/u },
-  { name: 'https', pattern: /\bhttps\b/u },
-  { name: 'net', pattern: /\bnet\b/u },
-  { name: 'fetch', pattern: /\bfetch\s*\(/u },
-  { name: 'Worker', pattern: /\bWorker\b/u },
-  { name: 'worker_threads', pattern: /\bworker_threads\b/u },
-  { name: 'Buffer', pattern: /\bBuffer\b/u },
-  { name: 'WebAssembly', pattern: /\bWebAssembly\b/u },
-  { name: 'Electron', pattern: /\bElectron\b/u },
-  { name: 'Bun', pattern: /\bBun\b/u },
-  { name: 'Deno', pattern: /\bDeno\b/u },
-  { name: 'eval', pattern: /\beval\s*\(/u },
-  { name: 'Function', pattern: /\bFunction\s*\(/u },
-  { name: 'Function constructor', pattern: /\.constructor\s*\(/u },
-] as const
+interface SourceReplacement {
+  end: number
+  replacement: string
+  start: number
+}
 
-export function findBlockedCodeModeRuntimeApi(code: string): string | null {
-  const executableCode = maskNonExecutableText(code)
-  for (const blockedApi of BLOCKED_CODE_MODE_RUNTIME_APIS) {
-    if (blockedApi.pattern.test(executableCode)) return blockedApi.name
+export interface CodeModeStaticImportDeclaration {
+  end: number
+  sourceEnd: number
+  sourceStart: number
+  specifier: string
+  start: number
+}
+
+export interface CodeModeProgramAnalysis {
+  body: string
+  code: string
+  dynamicImportCount: number
+  dynamicImportIdentifier: string
+  staticImports: CodeModeStaticImportDeclaration[]
+}
+
+export type CodeModeProgramAnalysisResult =
+  | { analysis: CodeModeProgramAnalysis; error?: never; reason?: never }
+  | { analysis?: never; error: string; reason: 'empty' | 'size' | 'syntax' }
+
+function asParsedJavaScriptNode(value: unknown): ParsedJavaScriptNode | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const candidate = value as Record<string, unknown>
+  return typeof candidate.type === 'string' &&
+    typeof candidate.start === 'number' &&
+    typeof candidate.end === 'number'
+    ? candidate as ParsedJavaScriptNode
+    : null
+}
+
+function formatCodeModeModuleParseError(error: unknown, source: string) {
+  const candidate = error && typeof error === 'object'
+    ? error as { loc?: { column?: number; line?: number }; message?: string; pos?: number }
+    : null
+  const rawMessage = candidate?.message ?? String(error)
+  const token = typeof candidate?.pos === 'number' ? source[candidate.pos] : undefined
+  const escapedToken = token === "'" ? "\\'" : token
+  const message = escapedToken && rawMessage.startsWith('Unexpected token')
+    ? `Unexpected token '${escapedToken}'${rawMessage.slice('Unexpected token'.length)}`
+    : rawMessage
+  const line = candidate?.loc?.line
+  const column = candidate?.loc?.column
+  const position = typeof line === 'number'
+    ? ` at line ${line}${typeof column === 'number' ? `, column ${column + 1}` : ''}`
+    : ''
+  return `Code Mode program has invalid JavaScript during module analysis${position}: ${message} No tool ran. Retry with valid JavaScript and plain sequential tools.* calls using only APIs permitted by the active mode.`
+}
+
+function blankSourceRange(value: string) {
+  let blanked = ''
+  for (const character of value) {
+    blanked += character === '\n' || character === '\r' ? character : ' '
   }
-  return null
+  return blanked
+}
+
+function chooseGeneratedIdentifier(identifiers: ReadonlySet<string>, base: string) {
+  let candidate = base
+  let suffix = 0
+  while (identifiers.has(candidate)) {
+    suffix += 1
+    candidate = `${base}${suffix}`
+  }
+  return candidate
+}
+
+export function analyzeCodeModeProgram(code: string, maxCodeBytes: number): CodeModeProgramAnalysisResult {
+  if (code.trim().length === 0) {
+    return { error: 'Code Mode requires a non-empty JavaScript program.', reason: 'empty' }
+  }
+  if (new TextEncoder().encode(code).byteLength > maxCodeBytes) {
+    return { error: `Code Mode program exceeds the ${maxCodeBytes}-byte limit.`, reason: 'size' }
+  }
+
+  let program: ParsedJavaScriptNode | null
+  try {
+    program = asParsedJavaScriptNode(parseCodeModeModule(code))
+  } catch (error) {
+    return { error: formatCodeModeModuleParseError(error, code), reason: 'syntax' }
+  }
+  if (!program) {
+    return {
+      error: 'Code Mode program has invalid JavaScript during module analysis. No tool ran.',
+      reason: 'syntax',
+    }
+  }
+
+  const identifiers = new Set<string>()
+  const dynamicImports: ParsedJavaScriptNode[] = []
+  const staticImports: CodeModeStaticImportDeclaration[] = []
+  const replacements: SourceReplacement[] = []
+  const body = Array.isArray(program.body) ? program.body : []
+  for (const rawNode of body) {
+    const node = asParsedJavaScriptNode(rawNode)
+    if (!node || node.type !== 'ImportDeclaration') continue
+    const sourceNode = asParsedJavaScriptNode(node.source)
+    if (!sourceNode || typeof sourceNode.value !== 'string') {
+      return {
+        error: 'Code Mode could not analyze a static import declaration. No tool ran.',
+        reason: 'syntax',
+      }
+    }
+    staticImports.push({
+      end: node.end,
+      sourceEnd: sourceNode.end,
+      sourceStart: sourceNode.start,
+      specifier: sourceNode.value,
+      start: node.start,
+    })
+    replacements.push({
+      end: node.end,
+      replacement: blankSourceRange(code.slice(node.start, node.end)),
+      start: node.start,
+    })
+  }
+
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item)
+      return
+    }
+    const node = asParsedJavaScriptNode(value)
+    if (!node) return
+    if (node.type === 'Identifier' && typeof node.name === 'string') identifiers.add(node.name)
+    if (node.type === 'ImportExpression') {
+      dynamicImports.push(node)
+      return
+    }
+    for (const [key, child] of Object.entries(node)) {
+      if (key === 'start' || key === 'end' || key === 'type') continue
+      visit(child)
+    }
+  }
+  visit(program)
+
+  const dynamicImportIdentifier = chooseGeneratedIdentifier(identifiers, '__tidecodeDynamicImport')
+  for (const node of dynamicImports) {
+    replacements.push({
+      end: node.start + 'import'.length,
+      replacement: dynamicImportIdentifier,
+      start: node.start,
+    })
+  }
+
+  let executableBody = code
+  for (const replacement of replacements.sort((left, right) => right.start - left.start)) {
+    executableBody = executableBody.slice(0, replacement.start)
+      + replacement.replacement
+      + executableBody.slice(replacement.end)
+  }
+  return {
+    analysis: {
+      body: executableBody,
+      code,
+      dynamicImportCount: dynamicImports.length,
+      dynamicImportIdentifier,
+      staticImports,
+    },
+  }
+}
+
+function renderResolvedStaticImport(
+  code: string,
+  declaration: CodeModeStaticImportDeclaration,
+  resolvedSpecifier: string,
+) {
+  const declarationSource = code.slice(declaration.start, declaration.end)
+  const sourceStart = declaration.sourceStart - declaration.start
+  const sourceEnd = declaration.sourceEnd - declaration.start
+  return declarationSource.slice(0, sourceStart)
+    + JSON.stringify(resolvedSpecifier)
+    + declarationSource.slice(sourceEnd)
+}
+
+export function createCodeModeModuleSource(
+  analysis: CodeModeProgramAnalysis,
+  resolvedStaticSpecifiers: readonly string[],
+) {
+  if (analysis.staticImports.length !== resolvedStaticSpecifiers.length) {
+    throw new Error('Code Mode static import resolution did not return one result per import.')
+  }
+  const imports = analysis.staticImports.map((declaration, index) => (
+    renderResolvedStaticImport(analysis.code, declaration, resolvedStaticSpecifiers[index])
+  ))
+  return [
+    ...imports,
+    `export default async function (tools, ${analysis.dynamicImportIdentifier}) {`,
+    analysis.body,
+    '}',
+  ].join('\n')
+}
+
+export function validateCodeModeModuleSource(code: string) {
+  try {
+    parse(code, { ecmaVersion: 'latest', sourceType: 'module' })
+    return null
+  } catch (error) {
+    return formatCodeModeModuleParseError(error, code)
+  }
 }
 
 export function validateCodeModeProgram(code: string, maxCodeBytes: number) {

@@ -19,6 +19,7 @@ import type { WorkspaceTab } from './types'
 import type { PlanReviewComment } from '../../lib/planContracts'
 import type { PlanCommentsByPath } from '../../lib/planComments'
 import type { TextSelectionRange } from './workspaceFileEditor/workspaceEditorTypes'
+import { WorkspaceTabScrollStateProvider } from './workspaceTabScrollState'
 import { WorkspaceFileTabsPanelContent } from './workspaceFileTabsPanel/WorkspaceFileTabsPanelContent'
 import { findWorkspaceTabByKey } from './workspaceFileTabsPanel/workspaceFileTabsPanelUtils'
 
@@ -336,7 +337,8 @@ export function WorkspaceFileTabsPanel({
       )}
 
       <div className="min-h-0 flex-1 overflow-hidden">
-        <WorkspaceFileTabsPanelContent
+        <WorkspaceTabScrollStateProvider tabKeys={tabs.map((tab) => tab.tabKey)}>
+          <WorkspaceFileTabsPanelContent
           activeTab={activeTab}
           gitFileDiffs={gitFileDiffs}
           hasRepository={hasRepository}
@@ -353,7 +355,8 @@ export function WorkspaceFileTabsPanel({
           onSelectionChange={handleEditorSelectionChange}
           wordWrapEnabled={wordWrapEnabled}
           workspaceRootPath={workspaceRootPath}
-        />
+          />
+        </WorkspaceTabScrollStateProvider>
       </div>
     </section>
   )

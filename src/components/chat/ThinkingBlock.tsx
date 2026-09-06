@@ -162,7 +162,7 @@ const ThinkingBlockContent = memo(function ThinkingBlockContent({ normalizedCont
   return (
     <div
       ref={contentRef}
-      className="chat-scroll-viewport mt-1.5 max-h-80 w-full min-w-0 overflow-y-auto pr-1 text-sm text-muted-foreground/90 [&>*:last-child]:mb-0 [scrollbar-width:none] [scrollbar-gutter:stable] [&::-webkit-scrollbar]:hidden"
+      className="chat-scroll-viewport mt-1.5 max-h-80 w-full min-w-0 overflow-y-auto pr-1 text-sm text-muted-foreground/90 [&>*:last-child]:mb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {normalizedContent.trim().length > 0 ? (
         <MarkdownRenderer

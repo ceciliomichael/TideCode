@@ -719,7 +719,7 @@ export function MessageList({
   return (
     <div
       ref={scrollContainerRef}
-      className="chat-scroll-viewport scroll-stable min-h-0 flex-1 w-full overflow-y-auto"
+      className="chat-scroll-viewport min-h-0 flex-1 w-full overflow-y-auto"
     >
       <div className="chat-column mx-auto space-y-2.5 px-4 pb-6 pt-6">
         {renderItems.map((item) => {

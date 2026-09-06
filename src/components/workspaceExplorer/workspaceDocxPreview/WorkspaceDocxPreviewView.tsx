@@ -4,12 +4,14 @@ import { requestDocxPreviewRender } from '../../../lib/docxPreviewRenderCache'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { useWorkspaceDocumentCanvasInteraction } from '../workspaceDocumentPreview/useWorkspaceDocumentCanvasInteraction'
 import { Tooltip } from '../../Tooltip'
+import { useWorkspaceTabScrollPosition } from '../workspaceTabScrollState'
 
 interface WorkspaceDocxPreviewViewProps {
   fileName: string
   previewDataUrl?: string
   previewError?: string
   relativePath: string
+  tabKey: string
 }
 
 const MIN_ZOOM = 0.65
@@ -24,6 +26,7 @@ export const WorkspaceDocxPreviewView = memo(function WorkspaceDocxPreviewView({
   previewDataUrl,
   previewError,
   relativePath,
+  tabKey,
 }: WorkspaceDocxPreviewViewProps) {
   const [isRendering, setIsRendering] = useState(Boolean(previewDataUrl) && !previewError)
   const [errorMessage, setErrorMessage] = useState<string | null>(
@@ -43,6 +46,7 @@ export const WorkspaceDocxPreviewView = memo(function WorkspaceDocxPreviewView({
     viewportRef,
     zoom,
   } = useWorkspaceDocumentCanvasInteraction({ maxZoom: MAX_ZOOM, minZoom: MIN_ZOOM })
+  const { handleScroll, registerViewport } = useWorkspaceTabScrollPosition(tabKey, `${previewDataUrl ?? ''}:${renderedSize.width}:${renderedSize.height}:${zoom}`)
   const pathSegments = useMemo(() => getPathSegments(relativePath), [relativePath])
 
   useEffect(() => {
@@ -121,12 +125,16 @@ export const WorkspaceDocxPreviewView = memo(function WorkspaceDocxPreviewView({
       </div>
       <div ref={renderedStyleRef} className="docx-rendered-styles" aria-hidden="true" />
       <div
-        ref={viewportRef}
         onPointerCancel={handleViewportPointerEnd}
         onPointerDown={handleViewportPointerDown}
         onPointerMove={handleViewportPointerMove}
         onPointerUp={handleViewportPointerEnd}
         onWheel={handleViewportWheel}
+        ref={(viewport) => {
+          viewportRef.current = viewport
+          registerViewport(viewport)
+        }}
+        onScroll={handleScroll}
         className={`relative min-h-0 flex-1 overflow-auto bg-surface ${isPanning ? 'cursor-grabbing select-none' : 'cursor-default'}`}
       >
         <div className="docx-canvas workspace-document-page-stack">
