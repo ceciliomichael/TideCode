@@ -220,7 +220,7 @@ export function SidebarPanel({
         </div>
       </div>
 
-      <div className="scroll-stable mt-2 flex-1 overflow-y-auto pr-6 md:pr-7">
+      <div className="mt-2 flex-1 overflow-y-auto pr-6 md:pr-7">
         <ConversationHistoryList
           conversationGroups={conversationGroups}
           isLoading={isLoading}

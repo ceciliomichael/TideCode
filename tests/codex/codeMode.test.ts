@@ -1779,6 +1779,33 @@ test('Plan Mode keeps Code Mode sandboxed even when terminal Full Access is sele
   }
 })
 
+test('Plan Mode rejects module loading when module parsing rejects function-body-only syntax', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-plan-parse-'))
+  let codeModeExecutor: CodeModeExecutor | null = null
+
+  try {
+    const bundle = await createAgentToolBundle(
+      { terminalExecutionMode: 'full', workspaceRootPath },
+      { chatMode: 'plan', orchestrationMode: 'code_mode' },
+    )
+    codeModeExecutor = bundle.codeModeExecutor
+    const codeModeTool = bundle.tools.code_mode as {
+      execute?: (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>
+    }
+    const result = await codeModeTool.execute?.(
+      { source: "with ({}) {}\nreturn await import('node:os');" },
+      { context: {}, messages: [], toolCallId: 'plan-parse-code-mode' },
+    ) as { semantics?: { tool_call_count?: number }; status?: string; body?: string }
+
+    assert.equal(result.status, 'error')
+    assert.equal(result.semantics?.tool_call_count, 0)
+    assert.match(result.body ?? '', /invalid JavaScript|module analysis|strict mode/u)
+  } finally {
+    await codeModeExecutor?.dispose()
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('Code Mode discovers and invokes an MCP tool in the same program', async () => {
   const mcpTools = {
     mcp_project_memory: tool({

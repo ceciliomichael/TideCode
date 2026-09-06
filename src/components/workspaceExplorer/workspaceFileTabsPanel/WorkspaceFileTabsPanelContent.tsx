@@ -99,6 +99,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
 
     return (
       <WorkspaceMarkdownPreview
+          tabKey={activeTab.tabKey}
         content={contentToDisplay}
         relativePath={activeTab.relativePath}
         isTruncated={sourceTab ? sourceTab.isTruncated : activeTab.isTruncated}
@@ -126,6 +127,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
 
     return (
       <WorkspacePlanPreview
+          tabKey={activeTab.tabKey}
         comments={getPlanCommentsForPath(planCommentsByPath, activeTab.relativePath)}
         content={activeTab.content}
         isTruncated={activeTab.isTruncated}
@@ -178,6 +180,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
 
     return (
       <WorkspaceSvgPreview
+          tabKey={activeTab.tabKey}
         content={sourceTab.content}
         fileName={sourceTab.fileName}
         relativePath={sourceTab.relativePath}
@@ -202,6 +205,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
     if (isDocxPreviewablePath(activeTab.relativePath)) {
       return (
         <WorkspaceDocxPreview
+          tabKey={activeTab.tabKey}
           fileName={activeTab.fileName}
           previewDataUrl={activeTab.previewDataUrl}
           previewError={activeTab.previewError}
@@ -213,6 +217,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
     if (isPdfPreviewablePath(activeTab.relativePath)) {
       return (
         <WorkspacePdfPreview
+          tabKey={activeTab.tabKey}
           fileName={activeTab.fileName}
           previewDataUrl={activeTab.previewDataUrl}
           previewError={activeTab.previewError}
@@ -224,6 +229,7 @@ export const WorkspaceFileTabsPanelContent = memo(function WorkspaceFileTabsPane
     if (isImagePreviewablePath(activeTab.relativePath)) {
       return (
         <WorkspaceImagePreview
+          tabKey={activeTab.tabKey}
           fileName={activeTab.fileName}
           previewDataUrl={activeTab.previewDataUrl}
           previewError={activeTab.previewError}

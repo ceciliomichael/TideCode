@@ -18,6 +18,20 @@ const REGEX_PREFIX_KEYWORDS = new Set([
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 
+type CodeModeSyntaxValidator = (code: string) => unknown
+
+function parseCodeModeModule(code: string) {
+  return parse(code, {
+    allowReturnOutsideFunction: true,
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+  })
+}
+
+export function validateCodeModeModuleSyntax(code: string) {
+  return parseCodeModeModule(code)
+}
+
 function validateCodeModeSyntax(code: string) {
   return new AsyncFunction(code)
 }
@@ -470,14 +484,17 @@ function repairPythonTripleQuotedStrings(code: string) {
   return changed ? output : code
 }
 
-function repairOverEscapedRegexLiteral(code: string): string | null {
+function repairOverEscapedRegexLiteral(
+  code: string,
+  validateSyntax: CodeModeSyntaxValidator = validateCodeModeSyntax,
+): string | null {
   let candidate = code
   let repaired = false
 
   for (let attempt = 0; attempt < 16; attempt += 1) {
     let message = ''
     try {
-      validateCodeModeSyntax(candidate)
+      validateSyntax(candidate)
       return repaired ? candidate : null
     } catch (error) {
       message = error instanceof Error ? error.message : String(error)
@@ -516,13 +533,16 @@ function repairOverEscapedRegexLiteral(code: string): string | null {
   return null
 }
 
-export function repairCodeModeProgramSyntax(code: string): string | null {
+export function repairCodeModeProgramSyntax(
+  code: string,
+  validateSyntax: CodeModeSyntaxValidator = validateCodeModeSyntax,
+): string | null {
   // Try -1: Repair narrow, high-confidence object/payload mistakes commonly
   // produced while models are emitting long freeform Code Mode programs.
   const fixedCommonProgram = repairSourcePayloadStringBindings(repairMissingObjectPropertyColons(code))
   if (fixedCommonProgram !== code) {
     try {
-      validateCodeModeSyntax(fixedCommonProgram)
+      validateSyntax(fixedCommonProgram)
       return fixedCommonProgram
     } catch {
       // continue
@@ -531,7 +551,7 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
 
   // Try -0.5: Repair a regex literal where a model doubled the escape before
   // a literal opening parenthesis, turning it into an unterminated group.
-  const fixedRegexLiteral = repairOverEscapedRegexLiteral(code)
+  const fixedRegexLiteral = repairOverEscapedRegexLiteral(code, validateSyntax)
   if (fixedRegexLiteral !== null) return fixedRegexLiteral
 
   // Try 0: Repair Python-style triple-quoted strings without interpreting opposite delimiters or template expressions.
@@ -539,7 +559,7 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
     const fixedTripleQuotes = repairPythonTripleQuotedStrings(code)
     if (fixedTripleQuotes !== code) {
       try {
-        validateCodeModeSyntax(fixedTripleQuotes)
+        validateSyntax(fixedTripleQuotes)
         return fixedTripleQuotes
       } catch {
         // continue
@@ -552,7 +572,7 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
     const fixedMutationStrings = repairSourceMutationStringLiterals(code)
     if (fixedMutationStrings !== code) {
       try {
-        validateCodeModeSyntax(fixedMutationStrings)
+        validateSyntax(fixedMutationStrings)
         return fixedMutationStrings
       } catch {
         // continue
@@ -565,7 +585,7 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
     const fixedTerminalCommands = repairTerminalCommandStringLiterals(code)
     if (fixedTerminalCommands !== code) {
       try {
-        validateCodeModeSyntax(fixedTerminalCommands)
+        validateSyntax(fixedTerminalCommands)
         return fixedTerminalCommands
       } catch {
         // continue
@@ -1041,12 +1061,6 @@ export function repairCodeModePreloadedToolsImport(code: string): string | null 
   return repaired
 }
 
-interface CodeModeImportNormalization {
-  code: string
-  dynamicImportCount: number
-  moduleSpecifiers: string[]
-}
-
 interface ParsedJavaScriptNode {
   end: number
   start: number
@@ -1060,6 +1074,26 @@ interface SourceReplacement {
   start: number
 }
 
+export interface CodeModeStaticImportDeclaration {
+  end: number
+  sourceEnd: number
+  sourceStart: number
+  specifier: string
+  start: number
+}
+
+export interface CodeModeProgramAnalysis {
+  body: string
+  code: string
+  dynamicImportCount: number
+  dynamicImportIdentifier: string
+  staticImports: CodeModeStaticImportDeclaration[]
+}
+
+export type CodeModeProgramAnalysisResult =
+  | { analysis: CodeModeProgramAnalysis; error?: never; reason?: never }
+  | { analysis?: never; error: string; reason: 'empty' | 'size' | 'syntax' }
+
 function asParsedJavaScriptNode(value: unknown): ParsedJavaScriptNode | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const candidate = value as Record<string, unknown>
@@ -1070,84 +1104,92 @@ function asParsedJavaScriptNode(value: unknown): ParsedJavaScriptNode | null {
     : null
 }
 
-function parsedNodeName(value: unknown) {
-  const node = asParsedJavaScriptNode(value)
-  if (!node) return null
-  if (typeof node.name === 'string') return node.name
-  if (typeof node.value === 'string') return node.value
-  return null
+function formatCodeModeModuleParseError(error: unknown, source: string) {
+  const candidate = error && typeof error === 'object'
+    ? error as { loc?: { column?: number; line?: number }; message?: string; pos?: number }
+    : null
+  const rawMessage = candidate?.message ?? String(error)
+  const token = typeof candidate?.pos === 'number' ? source[candidate.pos] : undefined
+  const escapedToken = token === "'" ? "\\'" : token
+  const message = escapedToken && rawMessage.startsWith('Unexpected token')
+    ? `Unexpected token '${escapedToken}'${rawMessage.slice('Unexpected token'.length)}`
+    : rawMessage
+  const line = candidate?.loc?.line
+  const column = candidate?.loc?.column
+  const position = typeof line === 'number'
+    ? ` at line ${line}${typeof column === 'number' ? `, column ${column + 1}` : ''}`
+    : ''
+  return `Code Mode program has invalid JavaScript during module analysis${position}: ${message} No tool ran. Retry with valid JavaScript and plain sequential tools.* calls using only APIs permitted by the active mode.`
 }
 
-function lowerStaticImportDeclaration(node: ParsedJavaScriptNode, moduleIndex: number) {
-  const sourceNode = asParsedJavaScriptNode(node.source)
-  const specifier = sourceNode && typeof sourceNode.value === 'string' ? sourceNode.value : null
-  if (specifier === null) return null
-  const specifiers = Array.isArray(node.specifiers) ? node.specifiers : []
-  if (specifiers.length === 0) {
-    return { replacement: `await __tideImport(${JSON.stringify(specifier)});`, specifier }
+function blankSourceRange(value: string) {
+  let blanked = ''
+  for (const character of value) {
+    blanked += character === '\n' || character === '\r' ? character : ' '
   }
-
-  const moduleVariable = `__tidecodeImportedModule${moduleIndex}`
-  const lines = [`const ${moduleVariable} = await __tideImport(${JSON.stringify(specifier)});`]
-  for (const rawSpecifier of specifiers) {
-    const importSpecifier = asParsedJavaScriptNode(rawSpecifier)
-    const localName = importSpecifier ? parsedNodeName(importSpecifier.local) : null
-    if (!importSpecifier || localName === null) return null
-
-    if (importSpecifier.type === 'ImportDefaultSpecifier') {
-      lines.push(`const ${localName} = ${moduleVariable}.default;`)
-      continue
-    }
-    if (importSpecifier.type === 'ImportNamespaceSpecifier') {
-      lines.push(`const ${localName} = ${moduleVariable};`)
-      continue
-    }
-    if (importSpecifier.type === 'ImportSpecifier') {
-      const importedName = parsedNodeName(importSpecifier.imported)
-      if (importedName === null) return null
-      lines.push(`const ${localName} = ${moduleVariable}[${JSON.stringify(importedName)}];`)
-      continue
-    }
-    return null
-  }
-  return { replacement: lines.join('\n'), specifier }
+  return blanked
 }
 
-/**
- * AsyncFunction bodies cannot contain static import declarations and native
- * dynamic imports resolve relative to the worker module. Parse valid JavaScript
- * as a module, then lower both forms to the injected workspace-aware importer.
- * If parsing fails, leave the source untouched so the existing narrow repair
- * pipeline can still handle known model syntax mistakes.
- */
-export function normalizeCodeModeImports(code: string): CodeModeImportNormalization {
-  let program: ParsedJavaScriptNode | null = null
+function chooseGeneratedIdentifier(identifiers: ReadonlySet<string>, base: string) {
+  let candidate = base
+  let suffix = 0
+  while (identifiers.has(candidate)) {
+    suffix += 1
+    candidate = `${base}${suffix}`
+  }
+  return candidate
+}
+
+export function analyzeCodeModeProgram(code: string, maxCodeBytes: number): CodeModeProgramAnalysisResult {
+  if (code.trim().length === 0) {
+    return { error: 'Code Mode requires a non-empty JavaScript program.', reason: 'empty' }
+  }
+  if (new TextEncoder().encode(code).byteLength > maxCodeBytes) {
+    return { error: `Code Mode program exceeds the ${maxCodeBytes}-byte limit.`, reason: 'size' }
+  }
+
+  let program: ParsedJavaScriptNode | null
   try {
-    program = asParsedJavaScriptNode(parse(code, {
-      allowReturnOutsideFunction: true,
-      ecmaVersion: 'latest',
-      sourceType: 'module',
-    }))
-  } catch {
-    return { code, dynamicImportCount: 0, moduleSpecifiers: [] }
+    program = asParsedJavaScriptNode(parseCodeModeModule(code))
+  } catch (error) {
+    return { error: formatCodeModeModuleParseError(error, code), reason: 'syntax' }
   }
-  if (!program) return { code, dynamicImportCount: 0, moduleSpecifiers: [] }
+  if (!program) {
+    return {
+      error: 'Code Mode program has invalid JavaScript during module analysis. No tool ran.',
+      reason: 'syntax',
+    }
+  }
 
+  const identifiers = new Set<string>()
+  const dynamicImports: ParsedJavaScriptNode[] = []
+  const staticImports: CodeModeStaticImportDeclaration[] = []
   const replacements: SourceReplacement[] = []
-  const moduleSpecifiers: string[] = []
-  let importIndex = 0
   const body = Array.isArray(program.body) ? program.body : []
   for (const rawNode of body) {
     const node = asParsedJavaScriptNode(rawNode)
     if (!node || node.type !== 'ImportDeclaration') continue
-    const lowered = lowerStaticImportDeclaration(node, importIndex)
-    if (!lowered) continue
-    replacements.push({ end: node.end, replacement: lowered.replacement, start: node.start })
-    moduleSpecifiers.push(lowered.specifier)
-    importIndex += 1
+    const sourceNode = asParsedJavaScriptNode(node.source)
+    if (!sourceNode || typeof sourceNode.value !== 'string') {
+      return {
+        error: 'Code Mode could not analyze a static import declaration. No tool ran.',
+        reason: 'syntax',
+      }
+    }
+    staticImports.push({
+      end: node.end,
+      sourceEnd: sourceNode.end,
+      sourceStart: sourceNode.start,
+      specifier: sourceNode.value,
+      start: node.start,
+    })
+    replacements.push({
+      end: node.end,
+      replacement: blankSourceRange(code.slice(node.start, node.end)),
+      start: node.start,
+    })
   }
 
-  let dynamicImportCount = 0
   const visit = (value: unknown): void => {
     if (Array.isArray(value)) {
       for (const item of value) visit(item)
@@ -1155,13 +1197,9 @@ export function normalizeCodeModeImports(code: string): CodeModeImportNormalizat
     }
     const node = asParsedJavaScriptNode(value)
     if (!node) return
+    if (node.type === 'Identifier' && typeof node.name === 'string') identifiers.add(node.name)
     if (node.type === 'ImportExpression') {
-      replacements.push({
-        end: node.end,
-        replacement: `__tideImport${code.slice(node.start + 'import'.length, node.end)}`,
-        start: node.start,
-      })
-      dynamicImportCount += 1
+      dynamicImports.push(node)
       return
     }
     for (const [key, child] of Object.entries(node)) {
@@ -1171,13 +1209,70 @@ export function normalizeCodeModeImports(code: string): CodeModeImportNormalizat
   }
   visit(program)
 
-  let normalized = code
-  for (const replacement of replacements.sort((left, right) => right.start - left.start)) {
-    normalized = normalized.slice(0, replacement.start)
-      + replacement.replacement
-      + normalized.slice(replacement.end)
+  const dynamicImportIdentifier = chooseGeneratedIdentifier(identifiers, '__tidecodeDynamicImport')
+  for (const node of dynamicImports) {
+    replacements.push({
+      end: node.start + 'import'.length,
+      replacement: dynamicImportIdentifier,
+      start: node.start,
+    })
   }
-  return { code: normalized, dynamicImportCount, moduleSpecifiers }
+
+  let executableBody = code
+  for (const replacement of replacements.sort((left, right) => right.start - left.start)) {
+    executableBody = executableBody.slice(0, replacement.start)
+      + replacement.replacement
+      + executableBody.slice(replacement.end)
+  }
+  return {
+    analysis: {
+      body: executableBody,
+      code,
+      dynamicImportCount: dynamicImports.length,
+      dynamicImportIdentifier,
+      staticImports,
+    },
+  }
+}
+
+function renderResolvedStaticImport(
+  code: string,
+  declaration: CodeModeStaticImportDeclaration,
+  resolvedSpecifier: string,
+) {
+  const declarationSource = code.slice(declaration.start, declaration.end)
+  const sourceStart = declaration.sourceStart - declaration.start
+  const sourceEnd = declaration.sourceEnd - declaration.start
+  return declarationSource.slice(0, sourceStart)
+    + JSON.stringify(resolvedSpecifier)
+    + declarationSource.slice(sourceEnd)
+}
+
+export function createCodeModeModuleSource(
+  analysis: CodeModeProgramAnalysis,
+  resolvedStaticSpecifiers: readonly string[],
+) {
+  if (analysis.staticImports.length !== resolvedStaticSpecifiers.length) {
+    throw new Error('Code Mode static import resolution did not return one result per import.')
+  }
+  const imports = analysis.staticImports.map((declaration, index) => (
+    renderResolvedStaticImport(analysis.code, declaration, resolvedStaticSpecifiers[index])
+  ))
+  return [
+    ...imports,
+    `export default async function (tools, ${analysis.dynamicImportIdentifier}) {`,
+    analysis.body,
+    '}',
+  ].join('\n')
+}
+
+export function validateCodeModeModuleSource(code: string) {
+  try {
+    parse(code, { ecmaVersion: 'latest', sourceType: 'module' })
+    return null
+  } catch (error) {
+    return formatCodeModeModuleParseError(error, code)
+  }
 }
 
 export function validateCodeModeProgram(code: string, maxCodeBytes: number) {

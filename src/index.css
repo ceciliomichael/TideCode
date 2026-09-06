@@ -127,8 +127,8 @@
     --color-danger-foreground-hover: #ffb3a7;
     --color-disabled: color-mix(in srgb, var(--color-brand-action) 38%, var(--color-surface-muted));
     --color-disabled-foreground: color-mix(in srgb, var(--color-brand) 58%, var(--color-muted-foreground));
-    --color-scrollbar-thumb: rgb(124 124 129 / 0.72);
-    --color-scrollbar-thumb-hover: rgb(146 146 153 / 0.82);
+    --color-scrollbar-thumb: rgb(124 124 129 / 0.5);
+    --color-scrollbar-thumb-hover: rgb(146 146 153 / 0.55);
 
     --shadow-soft: 0 14px 34px oklch(0 0 0 / 0.32);
     --shadow-control-inset: inset 0 1px 2px oklch(0 0 0 / 0.34);
@@ -198,22 +198,17 @@
     min-height: 100vh;
   }
 
+  * {
+    scrollbar-width: none;
+  }
+
   *::-webkit-scrollbar {
-    width: 7px;
-    height: 7px;
+    width: 0;
+    height: 0;
   }
 
   *::-webkit-scrollbar-track {
     background: transparent;
-  }
-
-  *::-webkit-scrollbar-thumb {
-    background-color: var(--color-scrollbar-thumb);
-    cursor: pointer;
-  }
-
-  *::-webkit-scrollbar-thumb:hover {
-    background-color: var(--color-scrollbar-thumb-hover);
   }
 
   *::-webkit-scrollbar-corner {
@@ -554,8 +549,16 @@
     -webkit-app-region: no-drag;
   }
 
-  .scroll-stable {
-    scrollbar-gutter: stable both-edges;
+  .global-overlay-scrollbar-thumb {
+    position: fixed;
+    z-index: 2200;
+    display: none;
+    background-color: var(--color-scrollbar-thumb);
+    cursor: default;
+  }
+
+  .global-overlay-scrollbar-thumb:hover {
+    background-color: var(--color-scrollbar-thumb-hover);
   }
 
   .chat-scroll-viewport,

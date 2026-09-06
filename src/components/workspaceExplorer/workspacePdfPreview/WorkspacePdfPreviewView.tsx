@@ -11,12 +11,14 @@ import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 import { useWorkspaceDocumentCanvasInteraction } from '../workspaceDocumentPreview/useWorkspaceDocumentCanvasInteraction'
 import { WorkspacePdfPage } from './WorkspacePdfPage'
 import { Tooltip } from '../../Tooltip'
+import { useWorkspaceTabScrollPosition } from '../workspaceTabScrollState'
 
 interface WorkspacePdfPreviewViewProps {
   fileName: string
   previewDataUrl?: string
   previewError?: string
   relativePath: string
+  tabKey: string
 }
 
 const MIN_ZOOM = 0.65
@@ -30,6 +32,7 @@ export const WorkspacePdfPreviewView = memo(function WorkspacePdfPreviewView({
   previewDataUrl,
   previewError,
   relativePath,
+  tabKey,
 }: WorkspacePdfPreviewViewProps) {
   const [previewSnapshot, setPreviewSnapshot] = useState<PdfPreviewRenderSnapshot | null>(null)
   const [isLoading, setIsLoading] = useState(Boolean(previewDataUrl))
@@ -46,6 +49,7 @@ export const WorkspacePdfPreviewView = memo(function WorkspacePdfPreviewView({
     viewportRef,
     zoom,
   } = useWorkspaceDocumentCanvasInteraction({ maxZoom: MAX_ZOOM, minZoom: MIN_ZOOM })
+  const { handleScroll, registerViewport } = useWorkspaceTabScrollPosition(tabKey, `${previewDataUrl ?? ''}:${previewSnapshot?.pageLayouts.length ?? 0}:${zoom}`)
   const pathSegments = useMemo(() => getPathSegments(relativePath), [relativePath])
 
   useEffect(() => {
@@ -119,7 +123,11 @@ export const WorkspacePdfPreviewView = memo(function WorkspacePdfPreviewView({
         ) : null}
       </div>
       <div
-        ref={viewportRef}
+        ref={(viewport) => {
+          viewportRef.current = viewport
+          registerViewport(viewport)
+        }}
+        onScroll={handleScroll}
         onPointerCancel={handleViewportPointerEnd}
         onPointerDown={handleViewportPointerDown}
         onPointerMove={handleViewportPointerMove}

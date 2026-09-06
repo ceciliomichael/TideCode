@@ -2,6 +2,7 @@ import Editor, { DiffEditor, type DiffOnMount, type OnMount } from '@monaco-edit
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { editor, IDisposable } from 'monaco-editor'
 import { useResolvedDocumentTheme } from '../../../hooks/useResolvedDocumentTheme'
+import { registerMonacoOverlayScrollbar } from '../../ui/globalOverlayScrollbarTargets'
 import {
   defineWorkspaceMonacoThemes,
   getWorkspaceMonacoTheme,
@@ -116,6 +117,8 @@ export function WorkspaceMonacoDiffView({
     }
 
     disposablesRef.current.push(
+      registerMonacoOverlayScrollbar(originalEditor),
+      registerMonacoOverlayScrollbar(modifiedEditor),
       originalEditor.onDidContentSizeChange(updateHeight),
       modifiedEditor.onDidContentSizeChange(updateHeight),
       diffEditor.onDidUpdateDiff(() => {
@@ -139,7 +142,10 @@ export function WorkspaceMonacoDiffView({
       setHeight(clampWorkspaceMonacoDiffHeight(editorInstance.getContentHeight(), maxHeight))
     }
 
-    disposablesRef.current.push(editorInstance.onDidContentSizeChange(updateHeight))
+    disposablesRef.current.push(
+      registerMonacoOverlayScrollbar(editorInstance),
+      editorInstance.onDidContentSizeChange(updateHeight),
+    )
     updateHeight()
     onReadyRef.current?.()
   }, [clearDisposables, closeDiffCopyMenu, maxHeight])

@@ -10,8 +10,10 @@ import { MarkdownListItem, MarkdownOrderedList } from '../../markdown/MarkdownLi
 import { CodeBlock } from '../../chat/CodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
 import { WorkspaceMarkdownImage } from './WorkspaceMarkdownImage'
+import { useWorkspaceTabScrollPosition } from '../workspaceTabScrollState'
 
 interface WorkspaceMarkdownPreviewViewProps {
+  tabKey: string
   content: string
   relativePath?: string
   workspaceRootPath?: string | null
@@ -56,11 +58,13 @@ function isSummaryElement(child: React.ReactNode): boolean {
 }
 
 export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPreviewView({
+  tabKey,
   content,
   relativePath,
   workspaceRootPath,
   isTruncated = false,
 }: WorkspaceMarkdownPreviewViewProps) {
+  const { handleScroll, registerViewport } = useWorkspaceTabScrollPosition(tabKey, content)
   const markdownComponents = useMemo(
     () => ({
       h1: (props: React.ComponentPropsWithoutRef<'h1'>) => (
@@ -275,7 +279,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
   )
 
   return (
-    <div className="workspace-markdown-preview h-full min-h-0 overflow-auto bg-background text-foreground">
+    <div ref={registerViewport} onScroll={handleScroll} className="workspace-markdown-preview h-full min-h-0 overflow-auto bg-background text-foreground">
       <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 py-3 md:px-6 md:py-4">
         {isTruncated ? (
           <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">

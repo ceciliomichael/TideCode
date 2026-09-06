@@ -42,7 +42,7 @@ const CODE_MODE_SOURCE_INPUT_SCHEMA = {
   additionalProperties: false,
   properties: {
     source: {
-      description: 'Temporary tool-only async JavaScript source. Every tools.* function returns Promise<ToolResult>; always await calls before reading or returning them.',
+      description: 'Temporary asynchronous JavaScript source for Code Mode. Runtime capabilities depend on the active execution and chat modes. Every tools.* function returns Promise<ToolResult>; always await calls before reading or returning them.',
       minLength: 1,
       type: 'string',
     },

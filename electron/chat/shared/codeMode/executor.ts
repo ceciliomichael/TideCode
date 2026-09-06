@@ -6,12 +6,16 @@ import type { AgentToolRegistry } from '../tools/registry'
 import { isDynamicAgentTool } from '../tools/registry'
 import type { AgentToolExecutionResult } from '../toolTypes'
 import { getCodeModeToolCallStatus } from './toolCallStatus'
+import { resolveCodeModeEsmSpecifier } from './moduleResolver'
 import {
-  normalizeCodeModeImports,
+  analyzeCodeModeProgram,
+  createCodeModeModuleSource,
   normalizeCodeModePatchTemplateLiterals,
   repairCodeModePatchProgram,
   repairCodeModePreloadedToolsImport,
   repairCodeModeProgramSyntax,
+  validateCodeModeModuleSource,
+  validateCodeModeModuleSyntax,
   validateCodeModeProgram,
 } from './validation'
 import {
@@ -20,6 +24,8 @@ import {
   type CodeModeExecutionResult,
   type CodeModeToolCallRecord,
   type CodeModeWorkerErrorMessage,
+  type CodeModeWorkerModuleResolveMessage,
+  type CodeModeWorkerModuleResolveResultMessage,
   type CodeModeWorkerResultMessage,
   type CodeModeWorkerToolCallMessage,
   type CodeModeWorkerToolResultMessage,
@@ -28,7 +34,7 @@ import {
 const CODE_MODE_WORKER_SOURCE = String.raw`
 const { parentPort } = await import('node:worker_threads')
 const hostProcess = process
-const { createRequire, isBuiltin } = await import('node:module')
+const { createRequire } = await import('node:module')
 const { pathToFileURL } = await import('node:url')
 const path = await import('node:path')
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
@@ -38,6 +44,7 @@ const pendingToolPromises = new Set()
 const pendingPromiseThen = new WeakMap()
 const pendingEditBatches = new Map()
 const batchedToolCallIds = new Map()
+const pendingModuleResolutions = new Map()
 
 function getEditBatchKey(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null
@@ -124,6 +131,14 @@ function createTools(toolNames) {
     }
   }
   return Object.freeze(tools)
+}
+
+function resolveModuleSpecifier(specifier) {
+  const requestId = 'module-' + Date.now() + '-' + Math.random().toString(36).slice(2)
+  return new Promise((resolve, reject) => {
+    pendingModuleResolutions.set(requestId, { reject, resolve })
+    parentPort.postMessage({ requestId, specifier, type: 'module_resolve' })
+  })
 }
 
 function createBlockedRuntimeApi(name) {
@@ -276,7 +291,7 @@ async function drainPendingToolPromises() {
 }
 
 async function execute(message) {
-  const workspaceRequire = configureRuntime(message)
+  configureRuntime(message)
   const importModule = async (specifier) => {
     if (message.executionMode !== 'full') {
       throw new Error('Code Mode sandbox runtime does not allow module loading. Switch to Full Access or use the matching tools.* API.')
@@ -284,17 +299,38 @@ async function execute(message) {
     if (typeof specifier !== 'string' || specifier.length === 0) {
       throw new Error('Code Mode import requires a non-empty module specifier.')
     }
-    if (isBuiltin(specifier) || specifier.startsWith('file:')) return await import(specifier)
-    const resolved = workspaceRequire.resolve(specifier)
-    return await import(pathToFileURL(resolved).href)
+    const resolved = await resolveModuleSpecifier(specifier)
+    return await import(resolved)
   }
-  const program = new AsyncFunction('tools', '__tideImport', message.source)
-  const output = await program(createTools(message.toolNames), importModule)
+  let output
+  if (message.moduleSource !== undefined) {
+    if (message.executionMode !== 'full') {
+      throw new Error('Code Mode sandbox runtime does not allow module execution.')
+    }
+    const moduleUrl = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(message.moduleSource)
+    const codeModule = await import(moduleUrl)
+    const program = codeModule.default
+    if (typeof program !== 'function') throw new Error('Code Mode module did not expose an executable program.')
+    output = await program(createTools(message.toolNames), importModule)
+  } else {
+    const program = new AsyncFunction('tools', '__tideImport', message.source)
+    output = await program(createTools(message.toolNames), importModule)
+  }
   await drainPendingToolPromises()
   return assertCloneable(await resolveReturnedValue(output))
 }
 
 parentPort.on('message', (message) => {
+  if (message.type === 'module_resolve_result') {
+    const pending = pendingModuleResolutions.get(message.requestId)
+    if (!pending) return
+    pendingModuleResolutions.delete(message.requestId)
+    if (message.error) pending.reject(new Error(message.error))
+    else if (typeof message.resolved === 'string') pending.resolve(message.resolved)
+    else pending.reject(new Error('Code Mode module resolver returned no module URL.'))
+    return
+  }
+
   if (message.type === 'tool_result') {
     const callIds = batchedToolCallIds.get(message.callId) ?? [message.callId]
     batchedToolCallIds.delete(message.callId)
@@ -491,55 +527,62 @@ export class CodeModeExecutor {
   ): Promise<CodeModeExecutionResult> {
     const limits = { ...DEFAULT_CODE_MODE_EXECUTION_LIMITS, ...options.limits }
     const executionId = randomUUID()
-    let importSource = source
+    let executableCode = source
     if (this.executionMode === 'sandbox') {
-      const repairedToolsImport = repairCodeModePreloadedToolsImport(importSource)
-      if (repairedToolsImport !== null) importSource = repairedToolsImport
+      const repairedToolsImport = repairCodeModePreloadedToolsImport(executableCode)
+      if (repairedToolsImport !== null) executableCode = repairedToolsImport
     }
-    let normalizedImports = normalizeCodeModeImports(importSource)
-    if (this.executionMode === 'sandbox' && (
-      normalizedImports.moduleSpecifiers.length > 0 || normalizedImports.dynamicImportCount > 0
-    )) {
-      const importLabel = normalizedImports.moduleSpecifiers.length > 0
-        ? normalizedImports.moduleSpecifiers.join(', ')
-        : 'dynamic import'
-      return errorResult(
-        executionId,
-        `Code Mode sandbox runtime does not allow module loading (${importLabel}). No tool ran. Use the matching tools.* API instead.`,
-      )
-    }
-    let executableCode = normalizeCodeModePatchTemplateLiterals(normalizedImports.code)
-    let validationError = validateCodeModeProgram(executableCode, limits.maxCodeBytes)
-    if (validationError?.includes('invalid JavaScript') === true) {
-      const repairedCode = repairCodeModePatchProgram(executableCode) ?? repairCodeModeProgramSyntax(executableCode)
-      if (repairedCode !== null) {
-        const repairedValidationError = validateCodeModeProgram(repairedCode, limits.maxCodeBytes)
-        if (repairedValidationError === null) {
+    executableCode = normalizeCodeModePatchTemplateLiterals(executableCode)
+
+    let analysisResult = analyzeCodeModeProgram(executableCode, limits.maxCodeBytes)
+    if (analysisResult.error && analysisResult.reason === 'syntax') {
+      const repairCandidates = [
+        repairCodeModePatchProgram(executableCode),
+        repairCodeModeProgramSyntax(executableCode, validateCodeModeModuleSyntax),
+      ].filter((candidate): candidate is string => candidate !== null && candidate !== executableCode)
+      for (const repairedCode of repairCandidates) {
+        const repairedAnalysis = analyzeCodeModeProgram(repairedCode, limits.maxCodeBytes)
+        if (repairedAnalysis.analysis) {
           executableCode = repairedCode
-          validationError = null
-        } else {
-          validationError = repairedValidationError
+          analysisResult = repairedAnalysis
+          break
         }
       }
     }
-    if (validationError) return errorResult(executionId, validationError)
+    if (!analysisResult.analysis) return errorResult(executionId, analysisResult.error)
 
-    normalizedImports = normalizeCodeModeImports(executableCode)
+    const analysis = analysisResult.analysis
     if (this.executionMode === 'sandbox' && (
-      normalizedImports.moduleSpecifiers.length > 0 || normalizedImports.dynamicImportCount > 0
+      analysis.staticImports.length > 0 || analysis.dynamicImportCount > 0
     )) {
-      const importLabel = normalizedImports.moduleSpecifiers.length > 0
-        ? normalizedImports.moduleSpecifiers.join(', ')
+      const importLabel = analysis.staticImports.length > 0
+        ? analysis.staticImports.map((entry) => entry.specifier).join(', ')
         : 'dynamic import'
       return errorResult(
         executionId,
         `Code Mode sandbox runtime does not allow module loading (${importLabel}). No tool ran. Use the matching tools.* API instead.`,
       )
     }
-    if (normalizedImports.code !== executableCode) {
-      executableCode = normalizedImports.code
-      const normalizedValidationError = validateCodeModeProgram(executableCode, limits.maxCodeBytes)
-      if (normalizedValidationError) return errorResult(executionId, normalizedValidationError)
+
+    let moduleSource: string | undefined
+    let workerSource = analysis.body
+    if (this.executionMode === 'sandbox') {
+      const validationError = validateCodeModeProgram(workerSource, limits.maxCodeBytes)
+      if (validationError) return errorResult(executionId, validationError)
+    } else {
+      let resolvedStaticSpecifiers: string[]
+      try {
+        resolvedStaticSpecifiers = analysis.staticImports.map((entry) => (
+          resolveCodeModeEsmSpecifier(entry.specifier, this.workspaceRootPath)
+        ))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        return errorResult(executionId, `${message} No tool ran.`)
+      }
+      moduleSource = createCodeModeModuleSource(analysis, resolvedStaticSpecifiers)
+      const moduleValidationError = validateCodeModeModuleSource(moduleSource)
+      if (moduleValidationError) return errorResult(executionId, moduleValidationError)
+      workerSource = analysis.body
     }
     if (options.abortSignal?.aborted) return errorResult(executionId, 'Code Mode execution was aborted.', [], 'aborted')
 
@@ -637,8 +680,30 @@ export class CodeModeExecutor {
       options.abortSignal?.addEventListener('abort', abortHandler, { once: true })
       if (options.abortSignal?.aborted) abortHandler()
 
-      worker.on('message', (message: CodeModeWorkerResultMessage | CodeModeWorkerErrorMessage | CodeModeWorkerToolCallMessage) => {
+      worker.on('message', (message:
+        | CodeModeWorkerResultMessage
+        | CodeModeWorkerErrorMessage
+        | CodeModeWorkerModuleResolveMessage
+        | CodeModeWorkerToolCallMessage
+      ) => {
         if (settled) return
+        if (message.type === 'module_resolve') {
+          const response: CodeModeWorkerModuleResolveResultMessage = {
+            requestId: message.requestId,
+            type: 'module_resolve_result',
+          }
+          if (this.executionMode !== 'full' || workerCompletionReceived) {
+            response.error = 'Code Mode module resolution is unavailable after execution completion or outside Full Access.'
+          } else {
+            try {
+              response.resolved = resolveCodeModeEsmSpecifier(message.specifier, this.workspaceRootPath)
+            } catch (error) {
+              response.error = error instanceof Error ? error.message : String(error)
+            }
+          }
+          worker.postMessage(response)
+          return
+        }
         if (message.type === 'result' || message.type === 'error') {
           workerCompletionReceived = true
           pendingWorkerCompletion = message
@@ -764,7 +829,8 @@ export class CodeModeExecutor {
       worker.postMessage({
         executionMode: this.executionMode,
         limits,
-        source: executableCode,
+        ...(moduleSource === undefined ? {} : { moduleSource }),
+        source: workerSource,
         toolNames,
         type: 'execute',
         workspaceRootPath: this.workspaceRootPath,

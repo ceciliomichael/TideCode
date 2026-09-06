@@ -6,6 +6,7 @@ interface WorkspaceDocxPreviewProps {
   previewDataUrl?: string
   previewError?: string
   relativePath: string
+  tabKey: string
 }
 
 export const WorkspaceDocxPreview = memo(function WorkspaceDocxPreview({
@@ -13,6 +14,7 @@ export const WorkspaceDocxPreview = memo(function WorkspaceDocxPreview({
   previewDataUrl,
   previewError,
   relativePath,
+  tabKey,
 }: WorkspaceDocxPreviewProps) {
   return (
     <WorkspaceDocxPreviewView
@@ -20,6 +22,7 @@ export const WorkspaceDocxPreview = memo(function WorkspaceDocxPreview({
       previewDataUrl={previewDataUrl}
       previewError={previewError}
       relativePath={relativePath}
+      tabKey={tabKey}
     />
   )
 })

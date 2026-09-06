@@ -17,12 +17,14 @@ export function buildCodeModeExecutionContract(executionMode: AppTerminalExecuti
   const modeContract = executionMode === 'full'
     ? [
         'Full Access is active for Agent Mode Code Mode. Normal Node.js host APIs, `require`, dynamic module imports, and standard top-level `import ...` declarations are available with the same host authority already granted to Full Access terminal execution.',
-        'Module loading resolves relative to the selected workspace, so workspace-installed packages and relative modules are preferred over TideCode application dependencies.',
+        'Static and dynamic `import` use normal ESM resolution relative to the selected workspace, including ESM package export conditions. `require()` keeps CommonJS resolution relative to that same workspace. Missing workspace packages do not fall back to TideCode application dependencies.',
+        'Static imports keep normal module semantics: they are initialized before ordinary program statements, named bindings stay live and read-only, and missing exports fail before the program body runs.',
         'Prefer the documented `tools.*` workspace APIs when they directly fit the task because they provide structured results and safer edits, but direct runtime libraries are allowed when useful.',
       ]
     : [
         'Sandbox is active for Code Mode. Filesystem, operating-system, process, terminal, network, worker, memory, plan, and connected-service interaction must go through the documented `tools.*` APIs.',
         'Host globals such as `process`, `require`, `fs`, `child_process`, `http`, `https`, `net`, `fetch`, `Worker`, and code-generation APIs are blocked at runtime. Static and dynamic module loading are unavailable in sandbox mode.',
+        'TideCode must successfully parse and analyze the executable JavaScript before Sandbox execution; source whose module-loading capabilities cannot be determined is rejected before any tool runs.',
         'Blocked names are legal as ordinary local variable and property names. TideCode restricts actual host capability access rather than rejecting harmless identifiers.',
       ]
   return [...CODE_MODE_BASE_EXECUTION_CONTRACT, ...modeContract].join(' ')

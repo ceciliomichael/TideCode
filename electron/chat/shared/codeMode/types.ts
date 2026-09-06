@@ -41,10 +41,24 @@ export interface CodeModeExecutionResult {
 export interface CodeModeWorkerExecuteMessage {
   executionMode: 'full' | 'sandbox'
   limits: CodeModeExecutionLimits
+  moduleSource?: string
   source: string
   toolNames: string[]
   type: 'execute'
   workspaceRootPath: string
+}
+
+export interface CodeModeWorkerModuleResolveMessage {
+  requestId: string
+  specifier: string
+  type: 'module_resolve'
+}
+
+export interface CodeModeWorkerModuleResolveResultMessage {
+  error?: string
+  requestId: string
+  resolved?: string
+  type: 'module_resolve_result'
 }
 
 export interface CodeModeWorkerToolCallMessage {

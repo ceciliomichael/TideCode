@@ -1,8 +1,10 @@
 import { ChevronRight } from 'lucide-react'
 import { memo, useMemo, useState } from 'react'
 import { Tooltip } from '../../Tooltip'
+import { useWorkspaceTabScrollPosition } from '../workspaceTabScrollState'
 
 interface WorkspaceSvgPreviewViewProps {
+  tabKey: string
   content: string
   fileName: string
   relativePath: string
@@ -18,11 +20,13 @@ function getPathSegments(relativePath: string) {
 }
 
 export const WorkspaceSvgPreviewView = memo(function WorkspaceSvgPreviewView({
+  tabKey,
   content,
   fileName,
   relativePath,
   isTruncated = false,
 }: WorkspaceSvgPreviewViewProps) {
+  const { handleScroll, registerViewport } = useWorkspaceTabScrollPosition(tabKey, content)
   const [hasError, setHasError] = useState(false)
   const svgSource = useMemo(() => createSvgDataUrl(content), [content])
   const pathSegments = useMemo(() => getPathSegments(relativePath), [relativePath])
@@ -41,7 +45,7 @@ export const WorkspaceSvgPreviewView = memo(function WorkspaceSvgPreviewView({
           ))}
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div ref={registerViewport} onScroll={handleScroll} className="min-h-0 flex-1 overflow-auto">
         {isTruncated ? (
           <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
             This document is truncated. Save the file outside the workspace limit to see the full image.

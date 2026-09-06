@@ -6,6 +6,7 @@ interface WorkspacePdfPreviewProps {
   previewDataUrl?: string
   previewError?: string
   relativePath: string
+  tabKey: string
 }
 
 export const WorkspacePdfPreview = memo(function WorkspacePdfPreview({
@@ -13,6 +14,7 @@ export const WorkspacePdfPreview = memo(function WorkspacePdfPreview({
   previewDataUrl,
   previewError,
   relativePath,
+  tabKey,
 }: WorkspacePdfPreviewProps) {
   return (
     <WorkspacePdfPreviewView
@@ -20,6 +22,7 @@ export const WorkspacePdfPreview = memo(function WorkspacePdfPreview({
       previewDataUrl={previewDataUrl}
       previewError={previewError}
       relativePath={relativePath}
+      tabKey={tabKey}
     />
   )
 })
