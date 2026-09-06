@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.0 - Owned Code Mode V2
+
+TideCode 1.4.0 replaces the previous generated-Node execution path with a TideCode-owned Code Mode interpreter designed for more predictable and safer agent work.
+
+- Keeps the model-facing action surface Code Mode-only while routing filesystem, terminal, planning, MCP, and other external effects through explicit `tools.*` capabilities.
+- Adds deterministic JavaScript-like orchestration with lexical scopes, loops, functions, async/await, structured errors, bounded execution, and internal capability discovery through `tools.$codemode.search(...)`.
+- Bounds concurrent host tool execution and serializes conflicting same-file mutations while still allowing independent work to run concurrently.
+- Improves Code Mode diagnostics, provider consistency, tool failure handling, edit and patch reliability, and Full Access behavior without exposing ambient Node.js authority.
+- Requires no manual migration or configuration changes.
+- Validated with 1,465 automated tests, TypeScript type checking, the production build, and protected-branch pull-request CI.
+
 ## 1.3.4 - Unified scrolling and Code Mode reliability
 
 TideCode 1.3.4 makes scrolling consistent across the desktop app and improves Code Mode reliability when working with workspace modules.
