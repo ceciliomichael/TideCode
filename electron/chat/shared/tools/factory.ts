@@ -151,7 +151,9 @@ export async function createAgentToolBundle(
       onDemandToolNames: options.chatMode === 'agent' ? ['plan_create', 'plan_edit'] : [],
     }),
   })
-  const codeModeExecutionMode = input.terminalExecutionMode ?? 'sandbox'
+  const codeModeExecutionMode = options.chatMode === 'plan'
+    ? 'sandbox'
+    : input.terminalExecutionMode ?? 'sandbox'
   // Dynamic MCP functions exist in the sandbox but remain absent from the
   // model-visible documentation until tools.tool_search returns their names.
   // This permits discovery and invocation in one temporary program.

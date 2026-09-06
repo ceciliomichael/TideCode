@@ -822,7 +822,7 @@ test('Code Mode tool-only runtime blocks dynamic module loading', async () => {
 
       assert.equal(result.status, 'error')
       assert.equal(result.toolCalls.length, 0)
-      assert.match(result.error ?? '', /tool-only runtime does not allow dynamic module loading/u)
+      assert.match(result.error ?? '', /sandbox runtime does not allow module loading/u)
     }
   } finally {
     await executor.dispose()
@@ -1558,7 +1558,7 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
       /Unknown action: list\. Valid actions: read_board, read_card, create_card, create_task_with_subtasks, update_card, move_card, reorder_card, delete_card\./u,
     )
     assert.equal(codeModeDescription.split(CODE_MODE_EXECUTION_CONTRACT).length - 1, 1)
-    assert.match(codeModeDescription, /temporary asynchronous JavaScript program running in a tool-only worker/u)
+    assert.match(codeModeDescription, /runs one temporary asynchronous JavaScript program/u)
     assert.match(codeModeDescription, /Choose the purpose-built inner API for the scenario/u)
     assert.match(codeModeDescription, /one JavaScript source program/u)
     assert.doesNotMatch(codeModeDescription, /top-level code_mode payloads object/u)
@@ -1739,6 +1739,40 @@ return { file: path.basename('/tmp/example.txt'), node: typeof process.version =
     assert.match(result.body ?? '', /"file": "example\.txt"/u)
     assert.match(result.body ?? '', /"node": true/u)
     assert.match(result.body ?? '', /"request": true/u)
+  } finally {
+    await codeModeExecutor?.dispose()
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Plan Mode keeps Code Mode sandboxed even when terminal Full Access is selected', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-plan-full-'))
+  const bypassPath = path.join(workspaceRootPath, 'plan-mode-bypass.txt')
+  let codeModeExecutor: CodeModeExecutor | null = null
+
+  try {
+    const bundle = await createAgentToolBundle(
+      { terminalExecutionMode: 'full', workspaceRootPath },
+      { chatMode: 'plan', orchestrationMode: 'code_mode' },
+    )
+    codeModeExecutor = bundle.codeModeExecutor
+    const codeModeTool = bundle.tools.code_mode as {
+      args?: { description?: string }
+      description?: string
+      execute?: (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>
+    }
+    const description = codeModeTool.args?.description ?? codeModeTool.description ?? ''
+    assert.match(description, /Sandbox is active for Code Mode/u)
+    assert.doesNotMatch(description, /Full Access is active for Agent Mode Code Mode/u)
+
+    const result = await codeModeTool.execute?.(
+      { source: "fs.writeFileSync('plan-mode-bypass.txt', 'blocked'); return 'mutated'" },
+      { context: {}, messages: [], toolCallId: 'plan-full-code-mode' },
+    ) as { body?: string; status?: string }
+
+    assert.equal(result.status, 'error')
+    assert.match(result.body ?? '', /tool-only runtime blocked fs/u)
+    await assert.rejects(fs.access(bypassPath))
   } finally {
     await codeModeExecutor?.dispose()
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

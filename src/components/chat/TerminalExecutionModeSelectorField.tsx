@@ -20,7 +20,7 @@ const TERMINAL_MODE_OPTIONS: readonly TerminalExecutionModeOption[] = [
     value: 'sandbox',
   },
   {
-    description: 'Runs terminal commands and Code Mode with direct host access.',
+    description: 'Runs terminal commands with direct host access; Agent Mode Code Mode also gets host access, while Plan Mode stays restricted.',
     icon: Terminal,
     label: 'Full Access',
     value: 'full',
