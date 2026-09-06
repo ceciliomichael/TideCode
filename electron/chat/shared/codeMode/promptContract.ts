@@ -1,33 +1,21 @@
 import type { AppTerminalExecutionMode } from '../../../../src/types/chat'
 
-/**
- * Model-facing contract for the Code Mode worker.
- */
-const CODE_MODE_BASE_EXECUTION_CONTRACT = [
-  'Code Mode runs one temporary asynchronous JavaScript program. Available host capabilities depend on the active execution and chat modes.',
-  'Use ordinary JavaScript for control flow, calculation, parsing, filtering, shaping data, and, when Full Access is active in Agent Mode, normal Node.js runtime work.',
-  '`tools` is already injected as a global Code Mode binding. Call `tools.read(...)`, `tools.list(...)`, and other documented APIs directly. Never import, require, redeclare, or initialize `tools`, and never look for a `tools.js` module.',
-  'Await every `tools.*` call. If you need its data, assign it and return a concise JSON-compatible value; for an action-only call, await it before ending the program. Do not use a bare `tools.*` expression as the program result.',
-  'For native asynchronous work in Full Access, await or return the Promise that represents completion. Detached callbacks or background work are not kept alive after the Code Mode program finishes.',
-  'Terminal tool results expose `session_id` directly when a session exists and `exit_code` directly when a command has completed; use those direct fields instead of digging through semantics.',
-  'If a needed capability is not preloaded, use `tools.tool_search` before attempting another mechanism.',
+const CODE_MODE_LANGUAGE_CONTRACT = [
+  'Code Mode executes a Tidecode-owned JavaScript-like orchestration language. It is not Node.js and model source never receives ambient host authority.',
+  'The language supports JSON-like values, variables, lexical scopes, objects, arrays, destructuring, spread/rest, template strings, conditionals, switch, loops, functions, async functions, closures, await, try/catch/finally, throw, top-level await, top-level return, and selected Array/String/Object/Math/JSON/Promise helpers.',
+  'The `tools` binding is injected. Every external effect must use a documented `tools.*` capability. Never import, require, redeclare, or initialize `tools`.',
+  'Imports, dynamic imports, require, classes, generators, eval, Function construction, Node/process globals, direct filesystem/network APIs, workers, WebAssembly, and prototype traversal are not part of the Code Mode language.',
+  'Await tool calls before reading their results. Use Promise.all or Promise.allSettled only for genuinely independent work; Tidecode bounds host tool concurrency automatically.',
+  'Tool failures throw sanitized errors. Catch only failures you can meaningfully recover from; normal empty results such as an empty search are successful values.',
+  'Use `tools.$codemode.search({ query, namespace?, limit?, offset? })` to discover capabilities that are not already documented. Invoke only exact callable paths returned by search.',
+  'Return a concise JSON-compatible value that helps the next reasoning step. Terminal results expose session_id directly when a session exists and exit_code directly after completion.',
 ] as const
 
 export function buildCodeModeExecutionContract(executionMode: AppTerminalExecutionMode = 'sandbox') {
-  const modeContract = executionMode === 'full'
-    ? [
-        'Full Access is active for Agent Mode Code Mode. Normal Node.js host APIs, `require`, dynamic module imports, and standard top-level `import ...` declarations are available with the same host authority already granted to Full Access terminal execution.',
-        'Static and dynamic `import` use normal ESM resolution relative to the selected workspace, including ESM package export conditions. `require()` keeps CommonJS resolution relative to that same workspace. Missing workspace packages do not fall back to TideCode application dependencies.',
-        'Static imports keep normal module semantics: they are initialized before ordinary program statements, named bindings stay live and read-only, and missing exports fail before the program body runs.',
-        'Prefer the documented `tools.*` workspace APIs when they directly fit the task because they provide structured results and safer edits, but direct runtime libraries are allowed when useful.',
-      ]
-    : [
-        'Sandbox is active for Code Mode. Filesystem, operating-system, process, terminal, network, worker, memory, plan, and connected-service interaction must go through the documented `tools.*` APIs.',
-        'Host globals such as `process`, `require`, `fs`, `child_process`, `http`, `https`, `net`, `fetch`, `Worker`, and code-generation APIs are blocked at runtime. Static and dynamic module loading are unavailable in sandbox mode.',
-        'TideCode must successfully parse and analyze the executable JavaScript before Sandbox execution; source whose module-loading capabilities cannot be determined is rejected before any tool runs.',
-        'Blocked names are legal as ordinary local variable and property names. TideCode restricts actual host capability access rather than rejecting harmless identifiers.',
-      ]
-  return [...CODE_MODE_BASE_EXECUTION_CONTRACT, ...modeContract].join(' ')
+  const authority = executionMode === 'full'
+    ? 'Full Access may broaden which tools.* capabilities the host authorizes, but it does not change Code Mode language semantics or enable direct Node.js/module access.'
+    : 'Sandbox keeps host authority restricted to the tools.* capabilities authorized for the current chat and workspace.'
+  return [...CODE_MODE_LANGUAGE_CONTRACT, authority].join(' ')
 }
 
 export const CODE_MODE_EXECUTION_CONTRACT = buildCodeModeExecutionContract('sandbox')

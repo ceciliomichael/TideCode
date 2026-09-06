@@ -40,7 +40,7 @@ test('Code Mode repairs a misrouted tools.list provider call into code_mode', as
   }
 })
 
-test('Code Mode repair rejects unknown inner tools and malformed input', async () => {
+test('Code Mode repair rejects unknown inner tools and malformed input but repairs known edit calls', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-repair-'))
 
   try {
@@ -71,16 +71,21 @@ test('Code Mode repair rejects unknown inner tools and malformed input', async (
       },
     }), null)
 
-    assert.equal(repairMisroutedCodeModeToolCall({
+    const repairedEdit = repairMisroutedCodeModeToolCall({
       providerTools: bundle.tools,
       registry: bundle.registry,
       toolCall: {
         input: JSON.stringify({ path: 'value.ts', edits: [] }),
-        toolCallId: 'call-hidden-edit',
+        toolCallId: 'call-edit',
         toolName: 'tools.edit',
         type: 'tool-call',
       },
-    }), null)
+    })
+    assert.ok(repairedEdit)
+    assert.equal(repairedEdit.toolName, 'code_mode')
+    assert.equal(repairedEdit.toolCallId, 'call-edit')
+    const repairedEditInput = JSON.parse(repairedEdit.input) as { source?: string }
+    assert.match(repairedEditInput.source ?? '', /await tools\.edit/u)
 
     await bundle.codeModeExecutor?.dispose()
   } finally {

@@ -3,7 +3,6 @@ import { jsonSchema, tool } from 'ai'
 
 import type { AppTerminalExecutionMode, ChatProviderId } from '../../../../src/types/chat'
 import type { AgentToolExecutionResult } from '../toolTypes'
-import { createSuccessResult } from './workspaceToolResults'
 import { createToolErrorResult } from './toolResult'
 import type { CodeModeExecutor } from '../codeMode/executor'
 import { buildCodeModeExecutionContract } from '../codeMode/promptContract'
@@ -14,35 +13,11 @@ import {
 import { isDynamicAgentTool, type AgentToolRegistry } from './registry'
 import { createAgentToolCallableContract } from './callableContract'
 
-const TOOL_SEARCH_INPUT_SCHEMA = {
-  additionalProperties: false,
-  properties: {
-    limit: {
-      default: 10,
-      description: 'Maximum number of matching tools to return (1-20).',
-      maximum: 20,
-      minimum: 1,
-      type: 'integer',
-    },
-    namespace: {
-      description: 'Optional namespace filter such as filesystem, shell, git, mcp, or skills.',
-      type: 'string',
-    },
-    query: {
-      description: 'Natural-language description of the operation you need.',
-      minLength: 1,
-      type: 'string',
-    },
-  },
-  required: ['query'],
-  type: 'object',
-} as const
-
 const CODE_MODE_SOURCE_INPUT_SCHEMA = {
   additionalProperties: false,
   properties: {
     source: {
-      description: 'Temporary asynchronous JavaScript source for Code Mode. Runtime capabilities depend on the active execution and chat modes. Every tools.* function returns Promise<ToolResult>; always await calls before reading or returning them.',
+      description: 'Tidecode Code Mode source. Use the supported JavaScript-like orchestration language and tools.* capabilities only. Every tools.* call is asynchronous; await it before reading its result.',
       minLength: 1,
       type: 'string',
     },
@@ -61,83 +36,10 @@ NEWLINE: /\r?\n/
 SOURCE: /[\s\S]+/
 `
 
-const MAX_TOOL_SEARCH_RESULT_BYTES = 32_000
 const HIDDEN_PRELOADED_TOOL_NAMES = new Set(['plan_create', 'plan_edit'])
-
-interface ToolSearchInput {
-  limit?: number
-  namespace?: string
-  query?: string
-}
 
 interface CodeModeSourceInput {
   source?: string
-}
-
-function buildBoundedToolSearchResult(
-  query: string,
-  matches: ReturnType<AgentToolRegistry['search']>,
-) {
-  const toModelTool = (match: ReturnType<AgentToolRegistry['search']>[number]) => createAgentToolCallableContract({
-    description: match.description,
-    inputSchema: match.inputSchema,
-    name: match.name,
-    namespace: match.namespace,
-  })
-
-  const boundedMatches = []
-  for (const match of matches) {
-    const candidateMatches = [...boundedMatches, match]
-    const candidate = {
-      query,
-      tools: candidateMatches.map(toModelTool),
-    }
-    if (Buffer.byteLength(formatExplicitCodeModeOutput(candidate), 'utf8') > MAX_TOOL_SEARCH_RESULT_BYTES) break
-    boundedMatches.push(match)
-  }
-
-  return {
-    query,
-    tools: boundedMatches.map(toModelTool),
-  }
-}
-
-export function createToolSearchTool(
-  registry: AgentToolRegistry,
-  options: { dynamicOnly?: boolean; onDemandToolNames?: readonly string[] } = {},
-) {
-  const dynamicOnly = options.dynamicOnly === true
-  const onDemandToolNames = new Set(options.onDemandToolNames ?? [])
-  return tool({
-    description: dynamicOnly
-      ? 'Find connected or on-demand tools available to Code Mode. Returns compact tools.<name>({ ... }) signatures. Documented local tools are preloaded in code_mode.'
-      : 'Find tools available to Code Mode. Returns compact tools.<name>({ ... }) signatures without raw JSON schemas.',
-    inputSchema: jsonSchema<ToolSearchInput>(TOOL_SEARCH_INPUT_SCHEMA),
-    execute: async (input): Promise<AgentToolExecutionResult> => {
-      const query = typeof input.query === 'string' ? input.query.trim() : ''
-      if (query.length === 0) return createToolErrorResult('tool_search requires a non-empty query.')
-
-      const limit = input.limit ?? 10
-      const normalizedNamespace = typeof input.namespace === 'string' ? input.namespace.trim().toLowerCase() : ''
-      const matches = dynamicOnly
-        ? registry.search(query, undefined, 20)
-          .filter((match) => match.namespace === 'mcp' || onDemandToolNames.has(match.name))
-          .filter((match) => normalizedNamespace.length === 0 || match.namespace === normalizedNamespace)
-          .slice(0, limit)
-        : registry.search(query, input.namespace, limit)
-      const result = buildBoundedToolSearchResult(query, matches)
-      return createSuccessResult({
-        body: formatExplicitCodeModeOutput(result),
-        semantics: {
-          match_count: matches.length,
-          operation: 'tool_search',
-          query,
-        },
-        subject: { kind: 'tool_search', path: query },
-        summary: `Found ${matches.length} connected tool${matches.length === 1 ? '' : 's'} for ${query}.`,
-      })
-    },
-  })
 }
 
 const CODE_MODE_TOOL_ROUTING = [
@@ -160,7 +62,7 @@ const CODE_MODE_TOOL_ROUTING = [
   'Terminal interaction loop: execute once, read the same session, interact only when its output/state needs input, then continue reading that same session. Do not retry equivalent newline, CRLF, Enter, or Return variants unless fresh output shows the first normal interaction was not accepted.',
   '- `tools.memory`: read or maintain durable project/planning context, not project source.',
   '- `tools.kanban_board`: inspect or update Kanban task data when the request concerns cards, subtasks, status, or board planning. AI-completed main work stops at `for-review`, which completes direct subtasks. Never directly target `done`; only the user approves main tasks as Done. Set Owner per task: `Human` for user-originated work, `Agent` for work you introduce autonomously; do not blindly inherit parent ownership, and preserve explicit owner names.',
-  '- `tools.tool_search`: discover a connected MCP capability that is not preloaded, then invoke only an exact returned function.',
+  '- `tools.$codemode.search`: discover capabilities that are not preloaded in this description. Use the exact callable path returned by search and never guess MCP/tool names.',
   'Any additional preloaded API should be used only for the capability described by its generated contract below.',
 ].join('\n')
 
@@ -170,14 +72,14 @@ function buildPreloadedToolDocumentation(registry: AgentToolRegistry) {
     .map((entry) => createAgentToolCallableContract(entry))
 
   if (contracts.length === 0) {
-    return 'No local tools are preloaded. Use tools.tool_search({ query }) inside Code Mode for dynamic capabilities.'
+    return 'No local tools are preloaded. Use tools.$codemode.search({ query }) inside Code Mode for available capabilities.'
   }
 
   return [
     'Path rule: every supplied path argument and every patch file header is one exact workspace-relative file or directory. For root-capable `read`, `list`, `glob`, and `grep` calls, an omitted path where the schema permits omission, an empty string, or `.` refers to the bound workspace root. Never invent filenames or index files, combine roots with spaces, or treat a path list as one path. If an exact child path has not been supplied by the user or returned by a prior workspace tool, discover it with list, glob, or grep before reading or patching it.',
     'Preloaded local APIs (call directly inside the program):',
     ...contracts.map((contract) => `- ${contract.signature} — ${contract.description}`),
-    'Connected MCP APIs are dynamic. Inside the same program, call tools.tool_search({ query }), then invoke an exact returned tools.<name>(args) function. Do not guess MCP names.',
+    'Connected MCP APIs are discoverable inside Code Mode. Call tools.$codemode.search({ query, namespace: "mcp" }), then invoke an exact returned path such as tools.mcp.<name>(args). Do not guess MCP names.',
   ].join('\n')
 }
 
@@ -215,9 +117,11 @@ async function executeCodeModeSource(
     abortSignal: options.abortSignal,
     allowedToolNames: options.allowedToolNames,
   })
-  const outputBody = result.output === undefined
-    ? formatImplicitCodeModeToolResults(result.toolCalls)
-    : formatExplicitCodeModeOutput(result.output)
+  const outputBody = result.status !== 'success'
+    ? ''
+    : result.output === undefined
+      ? formatImplicitCodeModeToolResults(result.toolCalls)
+      : formatExplicitCodeModeOutput(result.output)
   const body = [
     result.status === 'error' ? result.error ?? result.summary : result.summary,
     outputBody.length > 0 ? outputBody : null,
@@ -227,8 +131,11 @@ async function executeCodeModeSource(
     body,
     semantics: {
       execution_id: result.executionId,
+      engine: result.engine ?? 'v2',
       operation: 'code_mode',
       output_limited: result.outputTruncated ?? false,
+      steps: result.steps ?? 0,
+      ...(result.diagnostic ? { diagnostic: result.diagnostic } : {}),
       tool_call_count: result.toolCalls.length,
       tool_calls: result.toolCalls.map((call) => ({
         arguments: call.arguments,

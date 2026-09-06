@@ -31,6 +31,10 @@ interface CodeBlockProps {
   bodyClassName?: string
 }
 
+function normalizeCodeForDisplay(code: string) {
+  return code.replace(/\r\n?/gu, '\n').replace(/(?:\n[ \t]*)+$/u, '')
+}
+
 function toLanguageLabel(language: string | undefined, resolvedLabel: string) {
   if (!language || language.trim().length === 0) {
     return 'text'
@@ -115,7 +119,8 @@ export const CodeBlock = memo(function CodeBlock({
   bodyClassName,
 }: CodeBlockProps) {
   const [isCopied, setIsCopied] = useState(false)
-  const highlightedLines = useHighlightedCodeLines(code, { fileName, language, stripTrailingNewline: true })
+  const displayCode = normalizeCodeForDisplay(code)
+  const highlightedLines = useHighlightedCodeLines(displayCode, { fileName, language, stripTrailingNewline: true })
   const hasNamedCodeType = Boolean(language?.trim() || fileName?.trim())
   const iconConfig = hasNamedCodeType
     ? resolveFileIconConfig({ fileName, languageId: language })
@@ -137,7 +142,7 @@ export const CodeBlock = memo(function CodeBlock({
 
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(code)
+      await navigator.clipboard.writeText(displayCode)
       setIsCopied(true)
     } catch {
       setIsCopied(false)
@@ -192,7 +197,7 @@ export const CodeBlock = memo(function CodeBlock({
           {useMonaco ? (
             <Suspense fallback={<CodeRows lines={highlightedLines} startLineNumber={startLineNumber} fillHeight={fillHeight} showLineNumberDivider={showLineNumberDivider} />}>
               <WorkspaceMonacoCodeView
-                code={code}
+                code={displayCode}
                 fileName={fileName}
                 language={language}
                 startLineNumber={startLineNumber}
