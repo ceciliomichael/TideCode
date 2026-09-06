@@ -571,72 +571,6 @@ export function repairCodeModeProgramSyntax(code: string): string | null {
     }
   }
 
-  // Try 1: Fix extra braces before closing brackets `}, }` -> `}` or `}, ]` -> `}]`
-  let candidate = code.replace(/\},\s*\}/gu, '}')
-  candidate = candidate.replace(/\},\s*\]/gu, '}]')
-  candidate = candidate.replace(/,\s*([}\]])/gu, '$1')
-
-  try {
-    validateCodeModeSyntax(candidate)
-    return candidate
-  } catch {
-    // continue
-  }
-
-  // Try 2: Remove a trailing stray closing brace at the very end of code
-  const trimmed = code.trimEnd()
-  if (trimmed.endsWith('}')) {
-    const withoutLastBrace = trimmed.slice(0, trimmed.lastIndexOf('}')).trimEnd()
-    try {
-      validateCodeModeSyntax(withoutLastBrace)
-      return withoutLastBrace
-    } catch {
-      // continue
-    }
-  }
-
-  // Try 3: Balance unclosed brackets/braces/parentheses at end of program
-  let openParens = 0
-  let openBrackets = 0
-  let openBraces = 0
-  let inString: string | null = null
-
-  for (let i = 0; i < code.length; i += 1) {
-    const char = code[i]
-    if (inString) {
-      if (char === '\\') {
-        i += 1
-      } else if (char === inString) {
-        inString = null
-      }
-      continue
-    }
-
-    if (char === "'" || char === '"' || char === '`') {
-      inString = char
-      continue
-    }
-
-    if (char === '(') openParens += 1
-    else if (char === ')') openParens = Math.max(0, openParens - 1)
-    else if (char === '[') openBrackets += 1
-    else if (char === ']') openBrackets = Math.max(0, openBrackets - 1)
-    else if (char === '{') openBraces += 1
-    else if (char === '}') openBraces = Math.max(0, openBraces - 1)
-  }
-
-  let balanced = code
-  if (openBrackets > 0) balanced += ']'.repeat(openBrackets)
-  if (openBraces > 0) balanced += '}'.repeat(openBraces)
-  if (openParens > 0) balanced += ')'.repeat(openParens)
-
-  try {
-    validateCodeModeSyntax(balanced)
-    return balanced
-  } catch {
-    // continue
-  }
-
   return null
 }
 
@@ -1105,39 +1039,174 @@ export function repairCodeModePreloadedToolsImport(code: string): string | null 
   return repaired
 }
 
-export function containsDynamicCodeModeImport(code: string): boolean {
-  return /\bimport\s*\(/u.test(maskNonExecutableText(code))
+interface CodeModeStaticImportNormalization {
+  code: string
+  error?: string
+  moduleSpecifiers: string[]
 }
 
-const BLOCKED_CODE_MODE_RUNTIME_APIS = [
-  { name: 'process', pattern: /\bprocess\b/u },
-  { name: 'global', pattern: /\bglobal\b/u },
-  { name: 'require', pattern: /\brequire\s*\(/u },
-  { name: 'module', pattern: /\bmodule\b/u },
-  { name: 'fs', pattern: /\bfs\s*\./u },
-  { name: 'child_process', pattern: /\bchild_process\b/u },
-  { name: 'http', pattern: /\bhttp\b/u },
-  { name: 'https', pattern: /\bhttps\b/u },
-  { name: 'net', pattern: /\bnet\b/u },
-  { name: 'fetch', pattern: /\bfetch\s*\(/u },
-  { name: 'Worker', pattern: /\bWorker\b/u },
-  { name: 'worker_threads', pattern: /\bworker_threads\b/u },
-  { name: 'Buffer', pattern: /\bBuffer\b/u },
-  { name: 'WebAssembly', pattern: /\bWebAssembly\b/u },
-  { name: 'Electron', pattern: /\bElectron\b/u },
-  { name: 'Bun', pattern: /\bBun\b/u },
-  { name: 'Deno', pattern: /\bDeno\b/u },
-  { name: 'eval', pattern: /\beval\s*\(/u },
-  { name: 'Function', pattern: /\bFunction\s*\(/u },
-  { name: 'Function constructor', pattern: /\.constructor\s*\(/u },
-] as const
+interface ParsedStaticImport {
+  clause: string | null
+  specifier: string
+  specifierLiteral: string
+}
 
-export function findBlockedCodeModeRuntimeApi(code: string): string | null {
-  const executableCode = maskNonExecutableText(code)
-  for (const blockedApi of BLOCKED_CODE_MODE_RUNTIME_APIS) {
-    if (blockedApi.pattern.test(executableCode)) return blockedApi.name
+const STATIC_IMPORT_SIDE_EFFECT = /^import\s+((['"])([^'"\r\n]+)\2)\s*;?\s*(?:\/\/[^\r\n]*)?$/u
+const STATIC_IMPORT_FROM = /^import\s+([\s\S]+?)\s+from\s+((['"])([^'"\r\n]+)\3)\s*;?\s*(?:\/\/[^\r\n]*)?$/u
+const STATIC_IMPORT_IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/u
+
+function parseStaticImport(statement: string): ParsedStaticImport | null {
+  const sideEffect = STATIC_IMPORT_SIDE_EFFECT.exec(statement)
+  if (sideEffect) {
+    return {
+      clause: null,
+      specifier: sideEffect[3],
+      specifierLiteral: sideEffect[1],
+    }
   }
-  return null
+
+  const from = STATIC_IMPORT_FROM.exec(statement)
+  if (!from) return null
+  return {
+    clause: from[1].trim(),
+    specifier: from[4],
+    specifierLiteral: from[2],
+  }
+}
+
+function splitStaticImportClause(clause: string) {
+  let braceDepth = 0
+  for (let index = 0; index < clause.length; index += 1) {
+    const character = clause[index]
+    if (character === '{') braceDepth += 1
+    else if (character === '}') braceDepth = Math.max(0, braceDepth - 1)
+    else if (character === ',' && braceDepth === 0) {
+      return [clause.slice(0, index).trim(), clause.slice(index + 1).trim()] as const
+    }
+  }
+  return [clause.trim(), ''] as const
+}
+
+function lowerNamedStaticImport(value: string, moduleVariable: string) {
+  if (!value.startsWith('{') || !value.endsWith('}')) return null
+  const body = value.slice(1, -1).trim()
+  if (body.length === 0) return `const {} = ${moduleVariable}`
+
+  const bindings: string[] = []
+  for (const rawBinding of body.split(',')) {
+    const binding = rawBinding.trim()
+    if (binding.length === 0) continue
+    const match = /^([A-Za-z_$][A-Za-z0-9_$]*)(?:\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*))?$/u.exec(binding)
+    if (!match) return null
+    bindings.push(match[2] ? `${match[1]}: ${match[2]}` : match[1])
+  }
+  return `const { ${bindings.join(', ')} } = ${moduleVariable}`
+}
+
+function lowerStaticImportClause(clause: string | null, specifierLiteral: string, moduleIndex: number) {
+  if (clause === null) return [`await __tideImport(${specifierLiteral})`]
+
+  const moduleVariable = `__tidecodeImportedModule${moduleIndex}`
+  const lines = [`const ${moduleVariable} = await __tideImport(${specifierLiteral})`]
+  const [primary, secondary] = splitStaticImportClause(clause)
+
+  const appendBinding = (value: string) => {
+    if (value.startsWith('{')) {
+      const named = lowerNamedStaticImport(value, moduleVariable)
+      if (!named) return false
+      lines.push(named)
+      return true
+    }
+
+    const namespace = /^\*\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)$/u.exec(value)
+    if (namespace) {
+      lines.push(`const ${namespace[1]} = ${moduleVariable}`)
+      return true
+    }
+
+    if (!STATIC_IMPORT_IDENTIFIER.test(value)) return false
+    lines.push(`const ${value} = ${moduleVariable}.default`)
+    return true
+  }
+
+  if (!appendBinding(primary)) return null
+  if (secondary.length > 0 && !appendBinding(secondary)) return null
+  return lines
+}
+
+/**
+ * AsyncFunction bodies cannot contain static import declarations. Models still
+ * naturally emit ordinary Node.js imports, so lower leading imports into an
+ * injected async importer before syntax validation. The transform is purposely
+ * limited to standard import declarations and never guesses malformed syntax.
+ */
+export function normalizeCodeModeStaticImports(code: string): CodeModeStaticImportNormalization {
+  const lines = code.split(/\r?\n/u)
+  const output: string[] = []
+  const moduleSpecifiers: string[] = []
+  let lineIndex = 0
+  let inBlockComment = false
+  let importIndex = 0
+
+  while (lineIndex < lines.length) {
+    const line = lines[lineIndex]
+    const trimmed = line.trim()
+
+    if (inBlockComment) {
+      output.push(line)
+      if (trimmed.includes('*/')) inBlockComment = false
+      lineIndex += 1
+      continue
+    }
+    if (trimmed.length === 0 || trimmed.startsWith('//')) {
+      output.push(line)
+      lineIndex += 1
+      continue
+    }
+    if (trimmed.startsWith('/*')) {
+      output.push(line)
+      if (!trimmed.includes('*/')) inBlockComment = true
+      lineIndex += 1
+      continue
+    }
+    if (!/^import\b/u.test(trimmed) || /^import\s*\(/u.test(trimmed)) break
+
+    let statement = trimmed
+    let statementEnd = lineIndex
+    let parsed = parseStaticImport(statement)
+    while (!parsed && statementEnd + 1 < lines.length && statementEnd - lineIndex < 40) {
+      statementEnd += 1
+      statement += `\n${lines[statementEnd].trim()}`
+      parsed = parseStaticImport(statement)
+    }
+    if (!parsed) {
+      return {
+        code,
+        error: `Code Mode could not normalize static import declaration near line ${lineIndex + 1}. Use standard JavaScript import syntax.`,
+        moduleSpecifiers,
+      }
+    }
+
+    const lowered = lowerStaticImportClause(parsed.clause, parsed.specifierLiteral, importIndex)
+    if (!lowered) {
+      return {
+        code,
+        error: `Code Mode does not support this static import binding near line ${lineIndex + 1}. Use a default, namespace, or named JavaScript import.`,
+        moduleSpecifiers,
+      }
+    }
+    output.push(...lowered)
+    moduleSpecifiers.push(parsed.specifier)
+    importIndex += 1
+    lineIndex = statementEnd + 1
+  }
+
+  output.push(...lines.slice(lineIndex))
+  return { code: output.join('\n'), moduleSpecifiers }
+}
+
+export function containsDynamicCodeModeImport(code: string): boolean {
+  return /\bimport\s*\(/u.test(maskNonExecutableText(code))
 }
 
 export function validateCodeModeProgram(code: string, maxCodeBytes: number) {

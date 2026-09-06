@@ -8,8 +8,8 @@ import type { AgentToolExecutionResult } from '../toolTypes'
 import { getCodeModeToolCallStatus } from './toolCallStatus'
 import {
   containsDynamicCodeModeImport,
-  findBlockedCodeModeRuntimeApi,
   normalizeCodeModePatchTemplateLiterals,
+  normalizeCodeModeStaticImports,
   repairCodeModePatchProgram,
   repairCodeModePreloadedToolsImport,
   repairCodeModeProgramSyntax,
@@ -277,8 +277,17 @@ async function drainPendingToolPromises() {
 
 async function execute(message) {
   configureRuntime(message)
-  const program = new AsyncFunction('tools', message.source)
-  const output = await program(createTools(message.toolNames))
+  const importModule = async (specifier) => {
+    if (message.executionMode !== 'full') {
+      throw new Error('Code Mode sandbox runtime does not allow module loading. Switch to Full Access or use the matching tools.* API.')
+    }
+    if (typeof specifier !== 'string' || specifier.length === 0) {
+      throw new Error('Code Mode import requires a non-empty module specifier.')
+    }
+    return await import(specifier)
+  }
+  const program = new AsyncFunction('tools', '__tideImport', message.source)
+  const output = await program(createTools(message.toolNames), importModule)
   await drainPendingToolPromises()
   return assertCloneable(await resolveReturnedValue(output))
 }
@@ -480,7 +489,15 @@ export class CodeModeExecutor {
   ): Promise<CodeModeExecutionResult> {
     const limits = { ...DEFAULT_CODE_MODE_EXECUTION_LIMITS, ...options.limits }
     const executionId = randomUUID()
-    let executableCode = normalizeCodeModePatchTemplateLiterals(source)
+    const normalizedImports = normalizeCodeModeStaticImports(source)
+    if (normalizedImports.error) return errorResult(executionId, normalizedImports.error)
+    if (this.executionMode === 'sandbox' && normalizedImports.moduleSpecifiers.length > 0) {
+      return errorResult(
+        executionId,
+        `Code Mode sandbox runtime does not allow module loading (${normalizedImports.moduleSpecifiers.join(', ')}). No tool ran. Switch to Full Access or use the matching tools.* API.`,
+      )
+    }
+    let executableCode = normalizeCodeModePatchTemplateLiterals(normalizedImports.code)
     let validationError = validateCodeModeProgram(executableCode, limits.maxCodeBytes)
     if (validationError?.includes('invalid JavaScript') === true) {
       const repairedCode = repairCodeModePatchProgram(executableCode) ?? repairCodeModeProgramSyntax(executableCode)
@@ -517,13 +534,6 @@ export class CodeModeExecutor {
       }
       if (containsDynamicCodeModeImport(executableCode)) {
         return errorResult(executionId, 'Code Mode tool-only runtime does not allow dynamic module loading. No tool ran. Use the available tools.* APIs instead.')
-      }
-      const blockedRuntimeApi = findBlockedCodeModeRuntimeApi(executableCode)
-      if (blockedRuntimeApi !== null) {
-        return errorResult(
-          executionId,
-          `Code Mode tool-only runtime blocked ${blockedRuntimeApi} before execution. No tool ran. Use the matching tools.* API instead.`,
-        )
       }
       const nodeMajorVersion = Number.parseInt(process.versions.node.split('.')[0] ?? '', 10)
       if (!Number.isInteger(nodeMajorVersion) || nodeMajorVersion < 20) {
@@ -567,31 +577,19 @@ export class CodeModeExecutor {
 
         const output = capExecutionOutput(message.output, limits.maxOutputBytes)
         const failedToolCalls = toolCalls.filter((toolCall) => toolCall.status === 'error')
-        const fatalFailedToolCalls = failedToolCalls.filter((toolCall) => !isRecoverableToolCall(toolCall))
-        if (fatalFailedToolCalls.length > 0) {
-          const failureCount = fatalFailedToolCalls.length
-          finish({
-            error: `Code Mode completed with ${failureCount} failed tool call${failureCount === 1 ? '' : 's'}.`,
-            executionId,
-            output: output.output,
-            outputTruncated: output.outputTruncated,
-            status: 'error',
-            summary: `Code Mode finished with ${failureCount} failed tool call${failureCount === 1 ? '' : 's'}.`,
-            toolCalls,
-            truncated: output.outputTruncated,
-          })
-          return
-        }
-
-        const recoverableFailureCount = failedToolCalls.length
+        const recoverableFailureCount = failedToolCalls.filter(isRecoverableToolCall).length
+        const handledFailureCount = failedToolCalls.length - recoverableFailureCount
+        const failureSummary = handledFailureCount > 0
+          ? `Code Mode completed after handling ${handledFailureCount} failed tool call${handledFailureCount === 1 ? '' : 's'}${recoverableFailureCount > 0 ? ` and ${recoverableFailureCount} recoverable tool failure${recoverableFailureCount === 1 ? '' : 's'}` : ''}.`
+          : recoverableFailureCount > 0
+            ? `Code Mode completed with ${recoverableFailureCount} recoverable tool failure${recoverableFailureCount === 1 ? '' : 's'}; inspect the structured results and retry with exact context.`
+            : null
         finish({
           executionId,
           output: output.output,
           outputTruncated: output.outputTruncated,
           status: 'success',
-          summary: recoverableFailureCount > 0
-            ? `Code Mode completed with ${recoverableFailureCount} recoverable tool failure${recoverableFailureCount === 1 ? '' : 's'}; inspect the structured results and retry with exact context.`
-            : `Code Mode completed with ${toolCalls.length} tool call${toolCalls.length === 1 ? '' : 's'}.`,
+          summary: failureSummary ?? `Code Mode completed with ${toolCalls.length} tool call${toolCalls.length === 1 ? '' : 's'}.`,
           toolCalls,
           truncated: output.outputTruncated,
         })
