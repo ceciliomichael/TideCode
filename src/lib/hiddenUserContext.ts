@@ -178,7 +178,7 @@ export function buildExecutionModeHiddenContext(
     : [
         'Execution mode: full access.',
         'Filesystem tools and terminal commands may access paths outside the workspace only when required by the user request or a loaded skill.',
-        'Code Mode may use direct Node.js host APIs and module loading with the same Full Access authority.',
+        'In Agent Mode, Code Mode may use direct Node.js host APIs and module loading with the same Full Access authority. Plan Mode remains planning-only and keeps Code Mode sandboxed.',
       ]
   return wrapHiddenUserContext(EXECUTION_MODE_HIDDEN_CONTEXT_KIND, terminalExecutionMode, [
     `<execution_mode_context mode="${terminalExecutionMode}">`,

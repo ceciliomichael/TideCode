@@ -1,3 +1,5 @@
+import { parse } from 'acorn'
+
 const REGEX_PREFIX_KEYWORDS = new Set([
   'await',
   'case',
@@ -1039,174 +1041,143 @@ export function repairCodeModePreloadedToolsImport(code: string): string | null 
   return repaired
 }
 
-interface CodeModeStaticImportNormalization {
+interface CodeModeImportNormalization {
   code: string
-  error?: string
+  dynamicImportCount: number
   moduleSpecifiers: string[]
 }
 
-interface ParsedStaticImport {
-  clause: string | null
-  specifier: string
-  specifierLiteral: string
+interface ParsedJavaScriptNode {
+  end: number
+  start: number
+  type: string
+  [key: string]: unknown
 }
 
-const STATIC_IMPORT_SIDE_EFFECT = /^import\s+((['"])([^'"\r\n]+)\2)\s*;?\s*(?:\/\/[^\r\n]*)?$/u
-const STATIC_IMPORT_FROM = /^import\s+([\s\S]+?)\s+from\s+((['"])([^'"\r\n]+)\3)\s*;?\s*(?:\/\/[^\r\n]*)?$/u
-const STATIC_IMPORT_IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/u
-
-function parseStaticImport(statement: string): ParsedStaticImport | null {
-  const sideEffect = STATIC_IMPORT_SIDE_EFFECT.exec(statement)
-  if (sideEffect) {
-    return {
-      clause: null,
-      specifier: sideEffect[3],
-      specifierLiteral: sideEffect[1],
-    }
-  }
-
-  const from = STATIC_IMPORT_FROM.exec(statement)
-  if (!from) return null
-  return {
-    clause: from[1].trim(),
-    specifier: from[4],
-    specifierLiteral: from[2],
-  }
+interface SourceReplacement {
+  end: number
+  replacement: string
+  start: number
 }
 
-function splitStaticImportClause(clause: string) {
-  let braceDepth = 0
-  for (let index = 0; index < clause.length; index += 1) {
-    const character = clause[index]
-    if (character === '{') braceDepth += 1
-    else if (character === '}') braceDepth = Math.max(0, braceDepth - 1)
-    else if (character === ',' && braceDepth === 0) {
-      return [clause.slice(0, index).trim(), clause.slice(index + 1).trim()] as const
-    }
-  }
-  return [clause.trim(), ''] as const
+function asParsedJavaScriptNode(value: unknown): ParsedJavaScriptNode | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const candidate = value as Record<string, unknown>
+  return typeof candidate.type === 'string' &&
+    typeof candidate.start === 'number' &&
+    typeof candidate.end === 'number'
+    ? candidate as ParsedJavaScriptNode
+    : null
 }
 
-function lowerNamedStaticImport(value: string, moduleVariable: string) {
-  if (!value.startsWith('{') || !value.endsWith('}')) return null
-  const body = value.slice(1, -1).trim()
-  if (body.length === 0) return `const {} = ${moduleVariable}`
-
-  const bindings: string[] = []
-  for (const rawBinding of body.split(',')) {
-    const binding = rawBinding.trim()
-    if (binding.length === 0) continue
-    const match = /^([A-Za-z_$][A-Za-z0-9_$]*)(?:\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*))?$/u.exec(binding)
-    if (!match) return null
-    bindings.push(match[2] ? `${match[1]}: ${match[2]}` : match[1])
-  }
-  return `const { ${bindings.join(', ')} } = ${moduleVariable}`
+function parsedNodeName(value: unknown) {
+  const node = asParsedJavaScriptNode(value)
+  if (!node) return null
+  if (typeof node.name === 'string') return node.name
+  if (typeof node.value === 'string') return node.value
+  return null
 }
 
-function lowerStaticImportClause(clause: string | null, specifierLiteral: string, moduleIndex: number) {
-  if (clause === null) return [`await __tideImport(${specifierLiteral})`]
+function lowerStaticImportDeclaration(node: ParsedJavaScriptNode, moduleIndex: number) {
+  const sourceNode = asParsedJavaScriptNode(node.source)
+  const specifier = sourceNode && typeof sourceNode.value === 'string' ? sourceNode.value : null
+  if (specifier === null) return null
+  const specifiers = Array.isArray(node.specifiers) ? node.specifiers : []
+  if (specifiers.length === 0) {
+    return { replacement: `await __tideImport(${JSON.stringify(specifier)});`, specifier }
+  }
 
   const moduleVariable = `__tidecodeImportedModule${moduleIndex}`
-  const lines = [`const ${moduleVariable} = await __tideImport(${specifierLiteral})`]
-  const [primary, secondary] = splitStaticImportClause(clause)
+  const lines = [`const ${moduleVariable} = await __tideImport(${JSON.stringify(specifier)});`]
+  for (const rawSpecifier of specifiers) {
+    const importSpecifier = asParsedJavaScriptNode(rawSpecifier)
+    const localName = importSpecifier ? parsedNodeName(importSpecifier.local) : null
+    if (!importSpecifier || localName === null) return null
 
-  const appendBinding = (value: string) => {
-    if (value.startsWith('{')) {
-      const named = lowerNamedStaticImport(value, moduleVariable)
-      if (!named) return false
-      lines.push(named)
-      return true
+    if (importSpecifier.type === 'ImportDefaultSpecifier') {
+      lines.push(`const ${localName} = ${moduleVariable}.default;`)
+      continue
     }
-
-    const namespace = /^\*\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)$/u.exec(value)
-    if (namespace) {
-      lines.push(`const ${namespace[1]} = ${moduleVariable}`)
-      return true
+    if (importSpecifier.type === 'ImportNamespaceSpecifier') {
+      lines.push(`const ${localName} = ${moduleVariable};`)
+      continue
     }
-
-    if (!STATIC_IMPORT_IDENTIFIER.test(value)) return false
-    lines.push(`const ${value} = ${moduleVariable}.default`)
-    return true
+    if (importSpecifier.type === 'ImportSpecifier') {
+      const importedName = parsedNodeName(importSpecifier.imported)
+      if (importedName === null) return null
+      lines.push(`const ${localName} = ${moduleVariable}[${JSON.stringify(importedName)}];`)
+      continue
+    }
+    return null
   }
-
-  if (!appendBinding(primary)) return null
-  if (secondary.length > 0 && !appendBinding(secondary)) return null
-  return lines
+  return { replacement: lines.join('\n'), specifier }
 }
 
 /**
- * AsyncFunction bodies cannot contain static import declarations. Models still
- * naturally emit ordinary Node.js imports, so lower leading imports into an
- * injected async importer before syntax validation. The transform is purposely
- * limited to standard import declarations and never guesses malformed syntax.
+ * AsyncFunction bodies cannot contain static import declarations and native
+ * dynamic imports resolve relative to the worker module. Parse valid JavaScript
+ * as a module, then lower both forms to the injected workspace-aware importer.
+ * If parsing fails, leave the source untouched so the existing narrow repair
+ * pipeline can still handle known model syntax mistakes.
  */
-export function normalizeCodeModeStaticImports(code: string): CodeModeStaticImportNormalization {
-  const lines = code.split(/\r?\n/u)
-  const output: string[] = []
+export function normalizeCodeModeImports(code: string): CodeModeImportNormalization {
+  let program: ParsedJavaScriptNode | null = null
+  try {
+    program = asParsedJavaScriptNode(parse(code, {
+      allowReturnOutsideFunction: true,
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+    }))
+  } catch {
+    return { code, dynamicImportCount: 0, moduleSpecifiers: [] }
+  }
+  if (!program) return { code, dynamicImportCount: 0, moduleSpecifiers: [] }
+
+  const replacements: SourceReplacement[] = []
   const moduleSpecifiers: string[] = []
-  let lineIndex = 0
-  let inBlockComment = false
   let importIndex = 0
-
-  while (lineIndex < lines.length) {
-    const line = lines[lineIndex]
-    const trimmed = line.trim()
-
-    if (inBlockComment) {
-      output.push(line)
-      if (trimmed.includes('*/')) inBlockComment = false
-      lineIndex += 1
-      continue
-    }
-    if (trimmed.length === 0 || trimmed.startsWith('//')) {
-      output.push(line)
-      lineIndex += 1
-      continue
-    }
-    if (trimmed.startsWith('/*')) {
-      output.push(line)
-      if (!trimmed.includes('*/')) inBlockComment = true
-      lineIndex += 1
-      continue
-    }
-    if (!/^import\b/u.test(trimmed) || /^import\s*\(/u.test(trimmed)) break
-
-    let statement = trimmed
-    let statementEnd = lineIndex
-    let parsed = parseStaticImport(statement)
-    while (!parsed && statementEnd + 1 < lines.length && statementEnd - lineIndex < 40) {
-      statementEnd += 1
-      statement += `\n${lines[statementEnd].trim()}`
-      parsed = parseStaticImport(statement)
-    }
-    if (!parsed) {
-      return {
-        code,
-        error: `Code Mode could not normalize static import declaration near line ${lineIndex + 1}. Use standard JavaScript import syntax.`,
-        moduleSpecifiers,
-      }
-    }
-
-    const lowered = lowerStaticImportClause(parsed.clause, parsed.specifierLiteral, importIndex)
-    if (!lowered) {
-      return {
-        code,
-        error: `Code Mode does not support this static import binding near line ${lineIndex + 1}. Use a default, namespace, or named JavaScript import.`,
-        moduleSpecifiers,
-      }
-    }
-    output.push(...lowered)
-    moduleSpecifiers.push(parsed.specifier)
+  const body = Array.isArray(program.body) ? program.body : []
+  for (const rawNode of body) {
+    const node = asParsedJavaScriptNode(rawNode)
+    if (!node || node.type !== 'ImportDeclaration') continue
+    const lowered = lowerStaticImportDeclaration(node, importIndex)
+    if (!lowered) continue
+    replacements.push({ end: node.end, replacement: lowered.replacement, start: node.start })
+    moduleSpecifiers.push(lowered.specifier)
     importIndex += 1
-    lineIndex = statementEnd + 1
   }
 
-  output.push(...lines.slice(lineIndex))
-  return { code: output.join('\n'), moduleSpecifiers }
-}
+  let dynamicImportCount = 0
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item)
+      return
+    }
+    const node = asParsedJavaScriptNode(value)
+    if (!node) return
+    if (node.type === 'ImportExpression') {
+      replacements.push({
+        end: node.end,
+        replacement: `__tideImport${code.slice(node.start + 'import'.length, node.end)}`,
+        start: node.start,
+      })
+      dynamicImportCount += 1
+      return
+    }
+    for (const [key, child] of Object.entries(node)) {
+      if (key === 'start' || key === 'end' || key === 'type') continue
+      visit(child)
+    }
+  }
+  visit(program)
 
-export function containsDynamicCodeModeImport(code: string): boolean {
-  return /\bimport\s*\(/u.test(maskNonExecutableText(code))
+  let normalized = code
+  for (const replacement of replacements.sort((left, right) => right.start - left.start)) {
+    normalized = normalized.slice(0, replacement.start)
+      + replacement.replacement
+      + normalized.slice(replacement.end)
+  }
+  return { code: normalized, dynamicImportCount, moduleSpecifiers }
 }
 
 export function validateCodeModeProgram(code: string, maxCodeBytes: number) {
