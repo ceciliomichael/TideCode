@@ -149,6 +149,16 @@ test('workspace Markdown preview uses static code blocks so wheel input reaches 
   assert.doesNotMatch(markup, /data-code-renderer="monaco"/u)
 })
 
+test('workspace Markdown preview removes trailing blank lines from code blocks', () => {
+  const markup = renderToStaticMarkup(
+    createElement(WorkspaceMarkdownPreviewView, {
+      content: '```ts\nconst value = 42\n\n\n\n```',
+    }),
+  )
+
+  assert.equal(markup.match(/code-block-line whitespace-pre/gu)?.length, 1)
+})
+
 test('preprocessMarkdown does not turn inline details examples into HTML blocks', () => {
   const input = '- Pricing FAQ: native `<details>/<summary>` accordion (no JS needed)\n\n## Styling / Design System'
 
