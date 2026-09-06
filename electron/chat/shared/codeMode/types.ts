@@ -2,17 +2,23 @@ import type { ToolInvocationResultPresentation } from '../../../../src/types/cha
 import type { AgentToolResultSubject } from '../toolTypes'
 
 export interface CodeModeExecutionLimits {
+  maxCallDepth: number
   maxCodeBytes: number
+  maxConcurrentToolCalls: number
   maxOutputBytes: number
+  maxSteps: number
   maxToolCalls: number
   timeoutMs: number
 }
 
 export const DEFAULT_CODE_MODE_EXECUTION_LIMITS: CodeModeExecutionLimits = {
+  maxCallDepth: 100,
   maxCodeBytes: 100_000,
+  maxConcurrentToolCalls: 8,
   maxOutputBytes: 1_000_000,
+  maxSteps: 100_000,
   maxToolCalls: 100,
-  timeoutMs: 1_800_000,
+  timeoutMs: 300_000,
 }
 
 export interface CodeModeToolCallRecord {
@@ -28,10 +34,18 @@ export interface CodeModeToolCallRecord {
 }
 
 export interface CodeModeExecutionResult {
+  diagnostic?: {
+    kind: string
+    location?: { line: number; column: number }
+    message: string
+    suggestions?: string[]
+  }
+  engine?: 'v2'
   executionId: string
   error?: string
   output?: unknown
   outputTruncated?: boolean
+  steps?: number
   summary: string
   toolCalls: CodeModeToolCallRecord[]
   status: 'aborted' | 'error' | 'success'

@@ -781,7 +781,7 @@ test('apply_patch honors end-of-file context when the source has no trailing new
   }
 })
 
-test('Code Mode exposes apply_patch while edit remains native-only compatibility', async () => {
+test('Code Mode exposes apply_patch and edit through its internal registry', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-code-mode-'))
   let codeModeExecutor: { dispose: () => Promise<void> } | null = null
 
@@ -793,14 +793,14 @@ test('Code Mode exposes apply_patch while edit remains native-only compatibility
     )
     codeModeExecutor = bundle.codeModeExecutor
     assert.ok(bundle.registry.get('apply_patch'))
-    assert.equal(bundle.registry.get('edit'), undefined)
+    assert.ok(bundle.registry.get('edit'))
     assert.ok(bundle.nativeTools.edit)
     assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
-    assert.ok(bundle.registry.get('tool_search'))
+    assert.equal(bundle.registry.get('tool_search'), undefined)
     const description = (bundle.tools.code_mode as { description?: string }).description ?? ''
     assert.match(description, /tools\.apply_patch\(input: string\)/u)
     assert.match(description, /primary API for targeted source changes/u)
-    assert.doesNotMatch(description, /tools\.edit/u)
+    assert.match(description, /tools\.edit/u)
 
     const execute = (bundle.tools.code_mode as {
       execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
@@ -836,7 +836,7 @@ test('Code Mode exposes apply_patch while edit remains native-only compatibility
   }
 })
 
-test('Code Mode apply_patch templates preserve literal source escapes', async () => {
+test('Code Mode apply_patch string payloads preserve literal source escapes', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-template-literal-'))
   let codeModeExecutor: { dispose: () => Promise<void>; run: (source: string) => Promise<{ status: string; toolCalls: Array<{ name: string }> }> } | null = null
 
@@ -865,8 +865,7 @@ test('Code Mode apply_patch templates preserve literal source escapes', async ()
       ...expected.trimEnd().split('\n').map((line) => '+' + line),
       '*** End Patch',
     ].join('\n')
-    const tick = String.fromCharCode(96)
-    const source = 'const patch = ' + tick + patchText + tick + '; return await tools.apply_patch(patch)'
+    const source = 'const patch = ' + JSON.stringify(patchText) + '; return await tools.apply_patch(patch)'
     const result = await codeModeExecutor.run(source)
 
     assert.equal(result.status, 'success')

@@ -2,7 +2,7 @@ export { createAgentToolBundle, createAgentTools, createNativeAgentTools } from 
 export type { AgentToolBundle, CreateAgentToolsOptions } from './factory'
 export { createAgentToolRegistry } from './registry'
 export type { AgentToolRegistry, AgentToolRegistryEntry, AgentToolSearchMatch } from './registry'
-export { createCodeModeTool, createToolSearchTool } from './metaTools'
+export { createCodeModeTool } from './metaTools'
 export { createConnectedMcpRegistryTools } from './mcpRegistryTools'
 export { createMcpToolSet } from './mcpTools'
 export { createEditTool } from './editTool'

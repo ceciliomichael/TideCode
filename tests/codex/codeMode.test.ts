@@ -7,7 +7,7 @@ import { asSchema, jsonSchema, tool, type ToolExecutionOptions } from 'ai'
 import { CodeModeExecutor } from '../../electron/chat/shared/codeMode/executor'
 import { CODE_MODE_EXECUTION_CONTRACT } from '../../electron/chat/shared/codeMode/promptContract'
 import { createAgentToolBundle } from '../../electron/chat/shared/tools'
-import { buildCodeModeDescription, createCodeModeTool, createToolSearchTool } from '../../electron/chat/shared/tools/metaTools'
+import { buildCodeModeDescription, createCodeModeTool } from '../../electron/chat/shared/tools/metaTools'
 import { createAgentToolRegistry, type AgentToolRegistry } from '../../electron/chat/shared/tools/registry'
 import { createReadTool } from '../../electron/chat/shared/tools/readTool'
 
@@ -139,6 +139,21 @@ test('Code Mode preserves an omitted program return as undefined', async () => {
   }
 })
 
+test('Code Mode supports canonical non-zero array and string indexes', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry())
+
+  try {
+    const result = await executor.run(
+      "const values = ['zero', 'one', 'two']; const text = 'abc'; return { one: values[1], two: values[2], char: text[2] }",
+    )
+
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, { char: 'c', one: 'one', two: 'two' })
+  } finally {
+    await executor.dispose()
+  }
+})
+
 test('Code Mode allows more than sixteen concurrent tool calls', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
 
@@ -202,7 +217,7 @@ test('Code Mode enforces the tool-call limit against concurrent arrivals', async
   }
 })
 
-test('Code Mode same-file edit batching preserves the logical tool-call limit', async () => {
+test('Code Mode counts serialized same-file edits as logical tool calls', async () => {
   let invoked = 0
   const entries = [{
     description: 'Capture a synthetic edit invocation.',
@@ -237,16 +252,16 @@ test('Code Mode same-file edit batching preserves the logical tool-call limit', 
       }
     `, { limits: { maxToolCalls: 1 } })
 
-    assert.equal(invoked, 0)
-    assert.equal(result.toolCalls.length, 0)
+    assert.equal(invoked, 1)
+    assert.equal(result.toolCalls.length, 1)
     assert.equal(result.status, 'success')
-    assert.deepEqual(result.output, { fulfilled: 0, rejected: 2 })
+    assert.deepEqual(result.output, { fulfilled: 1, rejected: 1 })
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode drains detached tool promise chains before completing', async () => {
+test('Code Mode awaits bare tool-call expression statements before completing', async () => {
   const invoked: number[] = []
   const entries = [{
     description: 'Resolve slowly and record the requested sequence number.',
@@ -275,21 +290,24 @@ test('Code Mode drains detached tool promise chains before completing', async ()
 
   try {
     const result = await executor.run(
-      'tools.slow({ value: 1 }).then(() => tools.slow({ value: 2 })); return true',
+      'tools.slow({ value: 1 }); tools.slow({ value: 2 }); return true',
       { allowedToolNames: ['slow'] },
     )
 
     assert.equal(result.status, 'success')
     assert.deepEqual(invoked, [1, 2])
     assert.equal(result.toolCalls.length, 2)
-    assert.deepEqual(result.toolCalls.map((call) => call.arguments), [{ value: 1 }, { value: 2 }])
+    assert.deepEqual(
+      result.toolCalls.map((call) => ({ ...(call.arguments as { value: number }) })),
+      [{ value: 1 }, { value: 2 }],
+    )
     assert.match(result.summary, /2 tool calls/u)
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode resolves returned tool Promises when a small model omits await', async () => {
+test('Code Mode rejects un-awaited tool Promises embedded in returned data', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
 
   try {
@@ -300,22 +318,10 @@ test('Code Mode resolves returned tool Promises when a small model omits await',
       { allowedToolNames: ['echo'] },
     )
 
-    assert.equal(result.status, 'success')
+    assert.equal(result.status, 'error')
     assert.equal(result.toolCalls.length, 2)
-    assert.deepEqual(result.output, {
-      first: {
-        body: JSON.stringify({ value: 'first' }),
-        status: 'success',
-        summary: 'Returned test value.',
-      },
-      nested: {
-        second: {
-          body: JSON.stringify({ value: 'second' }),
-          status: 'success',
-          summary: 'Returned test value.',
-        },
-      },
-    })
+    assert.match(result.summary, /un-awaited Promise/u)
+    assert.equal(result.output, undefined)
   } finally {
     await executor.dispose()
   }
@@ -345,6 +351,35 @@ test('Code Mode reports bare tool calls without exposing an undefined result', a
     assert.match(result.body ?? '', /completed tool calls but returned no explicit value/u)
     assert.match(result.body ?? '', /echo \(success\):[\s\S]*\{"value":"completed"\}/u)
     assert.doesNotMatch(result.body ?? '', /undefined/u)
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode does not append implicit-success text when execution fails after a successful tool call', async () => {
+  const registry = createTestRegistry()
+  const executor = new CodeModeExecutor(registry)
+  const codeModeTool = createCodeModeTool(executor, registry)
+
+  try {
+    type ExecutableTestTool = {
+      execute?: (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>
+    }
+    const execute = (codeModeTool as unknown as ExecutableTestTool).execute
+    assert.equal(typeof execute, 'function')
+
+    const result = await execute?.(
+      { source: "await tools.echo({ value: 'completed' }); const values = [1]; return values.notAvailable" },
+      {
+        context: {},
+        messages: [],
+        toolCallId: 'test-code-mode-error-after-successful-tool-call',
+      },
+    ) as { body?: string; status?: string }
+
+    assert.equal(result.status, 'error')
+    assert.match(result.body ?? '', /not available in Tidecode Code Mode/u)
+    assert.doesNotMatch(result.body ?? '', /completed tool calls but returned no explicit value/u)
   } finally {
     await executor.dispose()
   }
@@ -400,8 +435,7 @@ test('Code Mode explains non-serializable returned data instead of exposing a cl
     const result = await executor.run('return { invalid: () => true }')
 
     assert.equal(result.status, 'error')
-    assert.match(result.summary, /non-serializable data/u)
-    assert.match(result.summary, /await every tools\.\* call/u)
+    assert.match(result.summary, /Code Mode result must contain plain objects only/u)
   } finally {
     await executor.dispose()
   }
@@ -457,7 +491,7 @@ test('Code Mode rejects failed tool promises and stops uncaught sequential execu
   }
 })
 
-test('Code Mode keeps read failures as recoverable values and completes the inspection program', async () => {
+test('Code Mode lets inspection programs recover explicitly from read failures', async () => {
   let successfulReadWasInvoked = false
   const entries = [
     {
@@ -487,13 +521,13 @@ test('Code Mode keeps read failures as recoverable values and completes the insp
 
   try {
     const result = await executor.run(
-      "const missing = await tools.read({ path: 'missing.ts' }); const known = await tools.read({ path: 'known.ts' }); return { missing: missing.status, known: known.body }",
+      "let missing; try { await tools.read({ path: 'missing.ts' }) } catch (error) { missing = error.name } const known = await tools.read({ path: 'known.ts' }); return { missing, known: known.body }",
     )
 
     assert.equal(result.status, 'success')
     assert.equal(successfulReadWasInvoked, true)
-    assert.deepEqual(result.output, { known: 'found', missing: 'error' })
-    assert.match(result.summary, /1 recoverable tool failure/u)
+    assert.deepEqual(result.output, { known: 'found', missing: 'ToolExecutionError' })
+    assert.match(result.summary, /handling 1 failed tool call/u)
   } finally {
     await executor.dispose()
   }
@@ -646,38 +680,29 @@ test('Code Mode rejects unavailable tools before starting execution', async () =
     const result = await executor.run('return null', { allowedToolNames: ['missing_tool'] })
 
     assert.equal(result.status, 'error')
-    assert.match(result.summary, /not available/u)
+    assert.match(result.summary, /UnknownTool:.*unavailable/u)
     assert.equal(result.toolCalls.length, 0)
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode executes runtime APIs when requested', async () => {
+test('Code Mode Full Access keeps the same owned language and blocks ambient host APIs', async () => {
   const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
     terminalExecutionMode: 'full',
   })
 
   try {
-    const result = await executor.run(
-      "const path = require('node:path'); return { directFs: typeof fs.readFileSync === 'function', directHttp: typeof http.request === 'function', directWorker: typeof Worker === 'function', node: typeof process.versions.node === 'string', file: path.basename('/tmp/example.txt'), encoded: Buffer.from('ok').toString('base64') }",
-    )
 
-    assert.equal(result.status, 'success')
-    assert.deepEqual(result.output, {
-      encoded: 'b2s=',
-      file: 'example.txt',
-      directFs: true,
-      directHttp: true,
-      directWorker: true,
-      node: true,
-    })
+    const result = await executor.run("return process.version")
+    assert.equal(result.status, 'error')
+    assert.match(result.summary, /ReferenceError: process is not defined/u)
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode tool-only runtime blocks direct Node and host APIs', async () => {
+test('Code Mode structurally blocks direct Node and host APIs', async () => {
   const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
     terminalExecutionMode: 'sandbox',
   })
@@ -696,7 +721,7 @@ test('Code Mode tool-only runtime blocks direct Node and host APIs', async () =>
     for (const program of blockedPrograms) {
       const result = await executor.run(program)
       assert.equal(result.status, 'error')
-      assert.match(result.summary, /tool-only runtime blocked|Use the matching tools/u)
+      assert.match(result.summary, /ReferenceError|UnsupportedSyntax|TypeError/u)
       assert.equal(result.toolCalls.length, 0)
     }
   } finally {
@@ -717,13 +742,13 @@ test('Code Mode sandbox blocks direct runtime access when execution reaches it',
 
     assert.equal(result.status, 'error')
     assert.equal(result.toolCalls.length, 1)
-    assert.match(result.summary, /tool-only runtime blocked process/u)
+    assert.match(result.summary, /ReferenceError: process is not defined/u)
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode sandbox allows host API words in non-executable tool data', async () => {
+test('Code Mode allows host API words in comments and string data', async () => {
   const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
     terminalExecutionMode: 'sandbox',
   })
@@ -733,8 +758,7 @@ test('Code Mode sandbox allows host API words in non-executable tool data', asyn
       "// process.version and require('node:fs') are source text here",
       "const payload = \"process.version require('node:fs') fetch('https://example.com')\"",
       "const templateText = `process.version require('node:fs')`",
-      "const pattern = /process\\.version|require\\('node:fs'\\)/u",
-      "const response = await tools.echo({ payload, templateText, pattern: String(pattern) })",
+      "const response = await tools.echo({ payload, templateText })",
       "return response.body",
     ].join('\n')
     const result = await executor.run(program, { allowedToolNames: ['echo'] })
@@ -746,23 +770,17 @@ test('Code Mode sandbox allows host API words in non-executable tool data', asyn
   }
 })
 
-test('Code Mode repairs multiple over-escaped opening parentheses in regex literals', async () => {
+test('Code Mode rejects regex literals deterministically', async () => {
   const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
     terminalExecutionMode: 'sandbox',
   })
 
   try {
-    const result = await executor.run(
-      String.raw`const pattern = /class |Text\\(|label:|onTap|DeviceStatus|Measurement|History|Settings|status|error|Start|Patient|Card/i
-       const resultPattern = /class |initState|dispose|result|value|level|average|radar|chart|save|Save|PDF|Next|comment|clinic|doctor|Type A|Type B|Type C|Text\\(/i
-       const response = await tools.echo({ home: pattern.test('Text('), result: resultPattern.test('Text(') })
-       return response.body`,
-      { allowedToolNames: ['echo'] },
-    )
 
-    assert.equal(result.status, 'success')
-    assert.equal(result.toolCalls.length, 1)
-    assert.equal(result.output, JSON.stringify({ home: true, result: true }))
+    const result = await executor.run('const pattern = /Text/u; return pattern')
+    assert.equal(result.status, 'error')
+    assert.equal(result.toolCalls.length, 0)
+    assert.match(result.summary, /UnsupportedSyntax: Regular expression literals are not supported/u)
   } finally {
     await executor.dispose()
   }
@@ -781,13 +799,13 @@ test('Code Mode sandbox blocks runtime access inside executable template express
 
     assert.equal(result.status, 'error')
     assert.equal(result.toolCalls.length, 1)
-    assert.match(result.summary, /tool-only runtime blocked process/u)
+    assert.match(result.summary, /ReferenceError: process is not defined/u)
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode repairs mistaken imports of the preloaded tools binding', async () => {
+test('Code Mode rejects attempts to import the injected tools binding', async () => {
   const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
     terminalExecutionMode: 'sandbox',
   })
@@ -800,9 +818,9 @@ test('Code Mode repairs mistaken imports of the preloaded tools binding', async 
       { allowedToolNames: ['echo'] },
     )
 
-    assert.equal(result.status, 'success')
-    assert.equal(result.toolCalls.length, 1)
-    assert.equal(result.output, JSON.stringify({ value: 'recovered' }))
+    assert.equal(result.status, 'error')
+    assert.equal(result.toolCalls.length, 0)
+    assert.match(result.summary, /UnsupportedSyntax/u)
   } finally {
     await executor.dispose()
   }
@@ -822,19 +840,19 @@ test('Code Mode tool-only runtime blocks dynamic module loading', async () => {
 
       assert.equal(result.status, 'error')
       assert.equal(result.toolCalls.length, 0)
-      assert.match(result.error ?? '', /sandbox runtime does not allow module loading/u)
+      assert.match(result.error ?? '', /UnsupportedSyntax: Syntax 'ImportExpression'/u)
     }
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode contract tells every provider that tools is already injected', () => {
-  assert.match(CODE_MODE_EXECUTION_CONTRACT, /tools.*already injected as a global Code Mode binding/u)
+test('Code Mode contract tells every provider that tools is injected', () => {
+  assert.match(CODE_MODE_EXECUTION_CONTRACT, /The `tools` binding is injected/u)
   assert.match(CODE_MODE_EXECUTION_CONTRACT, /Never import, require, redeclare, or initialize `tools`/u)
 })
 
-test('Code Mode allows forbidden words in filenames, URLs, comments, and regex literals', async () => {
+test('Code Mode allows host-related words in filenames, URLs, and comments', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
 
   try {
@@ -842,8 +860,7 @@ test('Code Mode allows forbidden words in filenames, URLs, comments, and regex l
       `// fs and process are allowed as data here
        const filename = 'src/types/electron.d.ts'
        const url = 'https://example.com/module'
-       const pattern = /https?:\\/\\/electron/iu
-       const response = await tools.echo({ filename, url, pattern: String(pattern) })
+       const response = await tools.echo({ filename, url })
        return response.body`,
       { allowedToolNames: ['echo'] },
     )
@@ -865,14 +882,14 @@ test('Code Mode reports malformed template text before scanning prose for runtim
 
     assert.equal(result.status, 'error')
     assert.equal(result.toolCalls.length, 0)
-    assert.match(result.summary, /invalid JavaScript/u)
+    assert.match(result.summary, /ParseError: Unexpected token/u)
     assert.doesNotMatch(result.summary, /forbidden runtime API: electron/iu)
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode reports generated syntax errors before starting a worker', async () => {
+test('Code Mode reports generated syntax errors before executing tools', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
 
   try {
@@ -882,15 +899,14 @@ test('Code Mode reports generated syntax errors before starting a worker', async
 
     assert.equal(result.status, 'error')
     assert.equal(result.toolCalls.length, 0)
-    assert.match(result.summary, /invalid JavaScript/u)
-    assert.match(result.summary, /Unexpected token '\)'/u)
-    assert.match(result.summary, /sequential tools\.\* calls/u)
+    assert.match(result.summary, /ParseError: Unexpected token/u)
+    assert.match(result.summary, /line 2/u)
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode repairs nested quote delimiters in edit source text', async () => {
+test('Code Mode rejects malformed nested quote delimiters instead of repairing source', async () => {
   const entries = [{
     description: 'Capture edit input.',
     execute: async (input: unknown) => ({
@@ -957,16 +973,16 @@ test('Code Mode repairs nested quote delimiters in edit source text', async () =
   try {
     for (const testCase of cases) {
       const result = await executor.run(testCase.program, { allowedToolNames: ['edit'] })
-      assert.equal(result.status, 'success')
-      assert.equal(result.toolCalls.length, 1)
-      assert.deepEqual(result.toolCalls[0]?.arguments, testCase.expected)
+      assert.equal(result.status, 'error')
+      assert.equal(result.toolCalls.length, 0)
+      assert.match(result.summary, /ParseError|UnsupportedSyntax/u)
     }
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode repairs simple malformed patch arrays before running the patch tool', async () => {
+test('Code Mode rejects malformed patch-array source before running the patch tool', async () => {
   const entries = [
     {
       description: 'Capture a patch payload.',
@@ -1005,43 +1021,29 @@ test('Code Mode repairs simple malformed patch arrays before running the patch t
     ].join('\n')
     const result = await executor.run(malformedPatchProgram)
 
-    assert.equal(result.status, 'success')
-    assert.equal(result.toolCalls.length, 1)
-    assert.deepEqual(result.output, {
-      body: JSON.stringify({
-        patch: [
-          '*** Begin Patch',
-          '*** Update File: src/example.ts',
-          '@@',
-          '-old',
-          '+new',
-          "+const newline = '\\n'",
-          '*** End Patch',
-        ],
-      }),
-      status: 'success',
-      summary: 'Captured patch.',
-    })
+    assert.equal(result.status, 'error')
+    assert.equal(result.toolCalls.length, 0)
+    assert.match(result.summary, /ParseError|UnsupportedSyntax/u)
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode repairs Python-style triple quotes in program syntax', async () => {
+test('Code Mode rejects Python-style triple quotes', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
 
   try {
     const tripleQuoteProgram = 'const snippet = """<div>hello</div>"""; return { ok: true, text: snippet };'
     const result = await executor.run(tripleQuoteProgram)
 
-    assert.equal(result.status, 'success')
-    assert.deepEqual(result.output, { ok: true, text: '<div>hello</div>' })
+    assert.equal(result.status, 'error')
+    assert.match(result.summary, /ParseError|UnsupportedSyntax/u)
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode triple-quote repair preserves opposite delimiters and multiple strings', async () => {
+test('Code Mode rejects triple-quote variants consistently', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
   const doubleTriple = '"'.repeat(3)
   const singleTriple = "'".repeat(3)
@@ -1063,15 +1065,15 @@ test('Code Mode triple-quote repair preserves opposite delimiters and multiple s
   try {
     for (const testCase of cases) {
       const result = await executor.run(testCase.program)
-      assert.equal(result.status, 'success')
-      assert.deepEqual(result.output, testCase.expected)
+      assert.equal(result.status, 'error')
+      assert.match(result.summary, /ParseError|UnsupportedSyntax/u)
     }
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode triple-quote repair normalizes redundant TSX quote escaping conservatively', async () => {
+test('Code Mode rejects triple-quoted TSX source instead of rewriting it', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
   const tripleQuote = '"'.repeat(3)
   const escapedQuote = '\\' + '"'
@@ -1087,34 +1089,34 @@ test('Code Mode triple-quote repair normalizes redundant TSX quote escaping cons
     const repairedResult = await executor.run(
       `const snippet = ${tripleQuote}${tsx}${tripleQuote}; return snippet`,
     )
-    assert.equal(repairedResult.status, 'success')
-    assert.equal(repairedResult.output, tsx.replaceAll(escapedQuote, '"'))
+    assert.equal(repairedResult.status, 'error')
+    assert.match(repairedResult.summary, /ParseError|UnsupportedSyntax/u)
 
     const preservedResult = await executor.run(
       `const snippet = ${tripleQuote}${intentional}${tripleQuote}; return snippet`,
     )
-    assert.equal(preservedResult.status, 'success')
-    assert.equal(preservedResult.output, intentional)
+    assert.equal(preservedResult.status, 'error')
+    assert.match(preservedResult.summary, /ParseError|UnsupportedSyntax/u)
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode repairs unescaped inner backticks and template expressions in tool arguments', async () => {
+test('Code Mode rejects malformed nested template delimiters', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
 
   try {
     const nestedProgram = 'const payload = { content: `const val = `${x}` ` }; return { ok: true, val: payload.content };'
     const result = await executor.run(nestedProgram)
 
-    assert.equal(result.status, 'success')
-    assert.deepEqual(result.output, { ok: true, val: 'const val = `${x}` ' })
+    assert.equal(result.status, 'error')
+    assert.match(result.summary, /ParseError|UnsupportedSyntax/u)
   } finally {
     await executor.dispose()
   }
 })
 
-test('Code Mode repairs malformed quoted execute_terminal commands from generated programs', async () => {
+test('Code Mode rejects malformed quoted terminal commands before tool execution', async () => {
   const executor = new CodeModeExecutor(createTerminalTestRegistry())
   const expectedBindingCommand = "$payload = @{ quote = ''a b''; slash = ''C:\\temp\\x''; unicode = ''✓ 漢字 🚀''; delimiters = ''{}[],:; <>&'' }"
   const escapedBindingCommand = expectedBindingCommand.replaceAll('\\', '\\\\')
@@ -1133,9 +1135,9 @@ test('Code Mode repairs malformed quoted execute_terminal commands from generate
   try {
     for (const testCase of cases) {
       const result = await executor.run(testCase.program)
-      assert.equal(result.status, 'success')
-      assert.equal(result.toolCalls.length, 1)
-      assert.deepEqual(result.toolCalls[0]?.arguments, testCase.expected)
+      assert.equal(result.status, 'error')
+      assert.equal(result.toolCalls.length, 0)
+      assert.match(result.summary, /ParseError|UnsupportedSyntax/u)
     }
   } finally {
     await executor.dispose()
@@ -1158,16 +1160,16 @@ test('Code Mode exposes terminal session_id directly as well as in semantics', a
   }
 })
 
-test('Code Mode repairs multiline Markdown content with nested backticks and template text', async () => {
+test('Code Mode rejects malformed multiline Markdown template source', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
   const markdown = "# Stress report\nUse `inline code` and ${literal} as literal text."
   const malformedProgram = 'return await tools.echo({ content: `' + markdown + '` })'
 
   try {
     const result = await executor.run(malformedProgram)
-    assert.equal(result.status, 'success')
-    assert.equal(result.toolCalls.length, 1)
-    assert.deepEqual(result.toolCalls[0]?.arguments, { content: markdown })
+    assert.equal(result.status, 'error')
+    assert.equal(result.toolCalls.length, 0)
+    assert.match(result.summary, /ParseError|UnsupportedSyntax/u)
   } finally {
     await executor.dispose()
   }
@@ -1450,7 +1452,7 @@ test('Code Mode forwards caller cancellation to an in-flight host tool', async (
   }
 })
 
-test('tool_search runs inside Code Mode while local tools remain preloaded', async () => {
+test('Code Mode capability search runs inside Code Mode while local tools remain preloaded', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-e2e-'))
   let codeModeExecutor: CodeModeExecutor | null = null
 
@@ -1476,8 +1478,7 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
     }
 
     assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
-    assert.ok(bundle.registry.get('tool_search'))
-    assert.equal(bundle.registry.get('edit'), undefined)
+    assert.equal(bundle.registry.get('tool_search'), undefined)
     assert.ok(bundle.nativeTools.edit)
     const codeModeSchema = await asSchema((bundle.tools.code_mode as { inputSchema: unknown }).inputSchema).jsonSchema as {
       properties?: Record<string, unknown>
@@ -1496,7 +1497,7 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
     )
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
-      /Await every `tools\.\*` call/u,
+      /Await tool calls before reading their results/u,
     )
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
@@ -1520,7 +1521,7 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
     )
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
-      /tools\.tool_search\(\{ limit\?: number/u,
+      /tools\.\$codemode\.search/u,
     )
     const codeModeDescription = (bundle.tools.code_mode as { description?: string }).description ?? ''
     assert.ok(codeModeDescription.includes(
@@ -1558,34 +1559,32 @@ test('tool_search runs inside Code Mode while local tools remain preloaded', asy
       /Unknown action: list\. Valid actions: read_board, read_card, create_card, create_task_with_subtasks, update_card, move_card, reorder_card, delete_card\./u,
     )
     assert.equal(codeModeDescription.split(CODE_MODE_EXECUTION_CONTRACT).length - 1, 1)
-    assert.match(codeModeDescription, /runs one temporary asynchronous JavaScript program/u)
+    assert.match(codeModeDescription, /executes a Tidecode-owned JavaScript-like orchestration language/u)
     assert.match(codeModeDescription, /Choose the purpose-built inner API for the scenario/u)
     assert.match(codeModeDescription, /one JavaScript source program/u)
     assert.doesNotMatch(codeModeDescription, /top-level code_mode payloads object/u)
     assert.match(codeModeDescription, /`tools\.apply_patch`: primary API for targeted source changes/u)
-    assert.doesNotMatch(codeModeDescription, /tools\.edit/u)
+    assert.match(codeModeDescription, /tools\.edit/u)
     assert.match(codeModeDescription, /`tools\.execute_terminal`: run an actual command\/process/u)
     assert.match(codeModeDescription, /Never use shell, PowerShell, Python, or Node just to read, search, edit, or write workspace files/u)
     assert.doesNotMatch(codeModeDescription, /Tool-only runtime: direct Node\.js and host access is blocked/u)
-    assert.match(codeModeDescription, /Sandbox is active for Code Mode/u)
-    assert.match(codeModeDescription, /Host globals such as `process`/u)
-    assert.match(codeModeDescription, /blocked at runtime/u)
+    assert.match(codeModeDescription, /Sandbox keeps host authority restricted/u)
+    assert.match(codeModeDescription, /Node\/process globals.*not part of the Code Mode language/u)
     assert.match(codeModeDescription, /session_id.*directly/u)
-    assert.match(codeModeDescription, /Static and dynamic module loading are unavailable in sandbox mode/u)
-    assert.match(codeModeDescription, /Blocked names are legal as ordinary local variable and property names/u)
+    assert.match(codeModeDescription, /Imports, dynamic imports, require.*not part of the Code Mode language/u)
 
     const codeResult = await invoke(bundle.tools.code_mode, {
-      source: "const search = await tools.tool_search({ query: 'connected memory service', limit: 5 }); const file = await tools.read({ path: 'package.json' }); const root = await tools.read({ path: '' }); return { hasVersion: file.body.includes('1.2.3'), rootPath: root.subject?.path, searchStatus: search.status }",
+      source: "const search = await tools.$codemode.search({ query: 'read', limit: 5 }); const file = await tools.read({ path: 'package.json' }); const root = await tools.read({ path: '' }); return { hasVersion: file.body.includes('1.2.3'), rootPath: root.subject?.path, discoveredRead: search.items.some((item) => item.path === 'tools.read') }",
     }) as { body?: string }
     assert.match(codeResult.body ?? '', /"hasVersion": true/u)
     assert.match(codeResult.body ?? '', /"rootPath": "\."/u)
-    assert.match(codeResult.body ?? '', /"searchStatus": "success"/u)
+    assert.match(codeResult.body ?? '', /"discoveredRead": true/u)
 
-    const hiddenEditResult = await invoke(bundle.tools.code_mode, {
+    const invalidEditResult = await invoke(bundle.tools.code_mode, {
       source: "return await tools.edit({ path: 'package.json', edits: [] })",
     }) as { semantics?: { tool_call_count?: number }; status?: string }
-    assert.equal(hiddenEditResult.status, 'error')
-    assert.equal(hiddenEditResult.semantics?.tool_call_count, 0)
+    assert.equal(invalidEditResult.status, 'error')
+    assert.equal(invalidEditResult.semantics?.tool_call_count, 1)
   } finally {
     await codeModeExecutor?.dispose()
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -1711,7 +1710,7 @@ test('non-freeform providers transport the same Code Mode source through the sou
   }
 })
 
-test('Full Access grants direct Node imports inside provider-facing Code Mode', async () => {
+test('Full Access keeps provider-facing Code Mode on the same confined language', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-full-terminal-'))
   let codeModeExecutor: CodeModeExecutor | null = null
 
@@ -1735,17 +1734,15 @@ return { file: path.basename('/tmp/example.txt'), node: typeof process.version =
       { context: {}, messages: [], toolCallId: 'full-terminal-code-mode' },
     ) as { body?: string; status?: string }
 
-    assert.equal(result.status, 'success')
-    assert.match(result.body ?? '', /"file": "example\.txt"/u)
-    assert.match(result.body ?? '', /"node": true/u)
-    assert.match(result.body ?? '', /"request": true/u)
+    assert.equal(result.status, 'error')
+    assert.match(result.body ?? '', /ParseError|UnsupportedSyntax/u)
   } finally {
     await codeModeExecutor?.dispose()
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('Plan Mode keeps Code Mode sandboxed even when terminal Full Access is selected', async () => {
+test('Plan Mode keeps Code Mode on the same confined language when terminal Full Access is selected', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-plan-full-'))
   const bypassPath = path.join(workspaceRootPath, 'plan-mode-bypass.txt')
   let codeModeExecutor: CodeModeExecutor | null = null
@@ -1762,7 +1759,7 @@ test('Plan Mode keeps Code Mode sandboxed even when terminal Full Access is sele
       execute?: (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>
     }
     const description = codeModeTool.args?.description ?? codeModeTool.description ?? ''
-    assert.match(description, /Sandbox is active for Code Mode/u)
+    assert.match(description, /Tidecode-owned JavaScript-like orchestration language/u)
     assert.doesNotMatch(description, /Full Access is active for Agent Mode Code Mode/u)
 
     const result = await codeModeTool.execute?.(
@@ -1771,7 +1768,7 @@ test('Plan Mode keeps Code Mode sandboxed even when terminal Full Access is sele
     ) as { body?: string; status?: string }
 
     assert.equal(result.status, 'error')
-    assert.match(result.body ?? '', /tool-only runtime blocked fs/u)
+    assert.match(result.body ?? '', /ReferenceError: fs is not defined/u)
     await assert.rejects(fs.access(bypassPath))
   } finally {
     await codeModeExecutor?.dispose()
@@ -1779,7 +1776,7 @@ test('Plan Mode keeps Code Mode sandboxed even when terminal Full Access is sele
   }
 })
 
-test('Plan Mode rejects module loading when module parsing rejects function-body-only syntax', async () => {
+test('Plan Mode rejects unsupported syntax before any tool execution', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-plan-parse-'))
   let codeModeExecutor: CodeModeExecutor | null = null
 
@@ -1799,7 +1796,7 @@ test('Plan Mode rejects module loading when module parsing rejects function-body
 
     assert.equal(result.status, 'error')
     assert.equal(result.semantics?.tool_call_count, 0)
-    assert.match(result.body ?? '', /invalid JavaScript|module analysis|strict mode/u)
+    assert.match(result.body ?? '', /UnsupportedSyntax: Syntax 'WithStatement'/u)
   } finally {
     await codeModeExecutor?.dispose()
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -1823,29 +1820,23 @@ test('Code Mode discovers and invokes an MCP tool in the same program', async ()
       }),
     }),
   }
-  const searchableRegistry = await createAgentToolRegistry(mcpTools)
-  const registry = await createAgentToolRegistry({
-    ...mcpTools,
-    tool_search: createToolSearchTool(searchableRegistry, { dynamicOnly: true }),
-  })
+  const registry = await createAgentToolRegistry(mcpTools)
   const executor = new CodeModeExecutor(registry, registry.entries.map((entry) => entry.name))
 
   try {
     const result = await executor.run(
-      `const search = await tools.tool_search({ query: 'connected project memory' })
-       const catalog = JSON.parse(search.body)
-       const name = catalog.tools[0].name
-       const memory = await tools[name]({ topic: 'architecture' })
-       return { discovered: name, value: memory.body }`,
+      `const search = await tools.$codemode.search({ query: 'connected project memory', namespace: 'mcp' })
+       const discovered = search.items[0].path
+       const memory = await tools.mcp.project_memory({ topic: 'architecture' })
+       return { discovered, value: memory.body }`,
     )
 
     assert.equal(result.status, 'success')
     assert.deepEqual(result.output, {
-      discovered: 'mcp_project_memory',
+      discovered: 'tools.mcp.project_memory',
       value: 'memory:architecture',
     })
     assert.deepEqual(result.toolCalls.map((call) => call.name), [
-      'tool_search',
       'mcp_project_memory',
     ])
   } finally {

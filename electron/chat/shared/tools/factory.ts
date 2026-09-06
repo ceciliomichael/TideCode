@@ -5,7 +5,7 @@ import type { AgentToolContext } from '../toolTypes'
 import { DEFAULT_AGENT_ORCHESTRATION_MODE, type AgentOrchestrationMode } from '../orchestration'
 import { CodeModeExecutor } from '../codeMode/executor'
 import { createAgentToolRegistry, type AgentToolRegistry } from './registry'
-import { createCodeModeTool, createToolSearchTool } from './metaTools'
+import { createCodeModeTool } from './metaTools'
 import { createConnectedMcpRegistryTools } from './mcpRegistryTools'
 
 import { createEditTool } from './editTool'
@@ -46,7 +46,7 @@ interface NativeToolSets {
   providerTools: ToolSet
 }
 
-const CODE_MODE_EXCLUDED_TOOLS = new Set(['mcp_tool_search', 'execute_mcp', 'edit'])
+const CODE_MODE_EXCLUDED_TOOLS = new Set(['mcp_tool_search', 'execute_mcp'])
 
 async function createNativeToolSets(
   input: AgentToolContext,
@@ -139,24 +139,10 @@ export async function createAgentToolBundle(
     ...Object.entries(toolSets.allTools).filter(([name]) => !CODE_MODE_EXCLUDED_TOOLS.has(name)),
     ...Object.entries(connectedMcpTools),
   ])
-  const baseRegistry = await createAgentToolRegistry(registryTools)
-
-  // Discovery is itself a Code Mode API. Building the final registry in a
-  // second pass keeps tool_search backed by the same catalog while avoiding a
-  // separate provider-native tool call that some providers treat as terminal.
-  const registry = await createAgentToolRegistry({
-    ...registryTools,
-    tool_search: createToolSearchTool(baseRegistry, {
-      dynamicOnly: true,
-      onDemandToolNames: options.chatMode === 'agent' ? ['plan_create', 'plan_edit'] : [],
-    }),
-  })
+  const registry = await createAgentToolRegistry(registryTools)
   const codeModeExecutionMode = options.chatMode === 'plan'
     ? 'sandbox'
     : input.terminalExecutionMode ?? 'sandbox'
-  // Dynamic MCP functions exist in the sandbox but remain absent from the
-  // model-visible documentation until tools.tool_search returns their names.
-  // This permits discovery and invocation in one temporary program.
   const preloadedToolNames = registry.entries.map((entry) => entry.name)
   const codeModeExecutor = new CodeModeExecutor(registry, preloadedToolNames, {
     terminalExecutionMode: codeModeExecutionMode,
@@ -179,6 +165,6 @@ export async function createAgentToolBundle(
     registry,
     tools: orchestrationMode === 'hybrid'
       ? { ...nativeTools, ...metaTools }
-      : { ...toolSets.providerTools, ...metaTools },
+      : metaTools,
   }
 }

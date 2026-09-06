@@ -63,14 +63,14 @@ test('Code Mode exposes one provider tool while discovery and native executors s
       { chatMode: 'agent', orchestrationMode: 'code_mode' },
     )
 
-assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
-    assert.ok(bundle.registry.get('tool_search'))
+    assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
+    assert.equal(bundle.registry.get('tool_search'), undefined)
     assert.ok(bundle.registry.get('read'))
     assert.ok(bundle.registry.get('read_tool_output'))
     assert.ok(bundle.registry.get('apply_patch'))
     assert.ok(bundle.registry.get('plan_create'))
     assert.ok(bundle.registry.get('plan_edit'))
-    assert.equal(bundle.registry.get('edit'), undefined)
+    assert.ok(bundle.registry.get('edit'))
     assert.ok(bundle.nativeTools.edit)
     assert.equal(bundle.registry.get('mcp_tool_search'), undefined)
     assert.equal(bundle.registry.get('execute_mcp'), undefined)
@@ -92,8 +92,8 @@ test('createAgentToolBundle defaults agent mode to Code Mode', async () => {
       { chatMode: 'agent' },
     )
 
-assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
-    assert.ok(bundle.registry.get('tool_search'))
+    assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
+    assert.equal(bundle.registry.get('tool_search'), undefined)
     assert.ok(bundle.codeModeExecutor)
     await bundle.codeModeExecutor?.dispose()
   } finally {
@@ -148,8 +148,9 @@ test('Code Mode honors Full Access when listing a directory outside the workspac
       return { status: result.status }
     `)
 
-    assert.equal(sandboxResult.status, 'success')
-    assert.deepEqual(sandboxResult.output, { status: 'error' })
+    assert.equal(sandboxResult.status, 'error')
+    assert.equal(sandboxResult.toolCalls.length, 1)
+    assert.equal(sandboxResult.toolCalls[0]?.status, 'error')
   } finally {
     await fullBundle?.codeModeExecutor?.dispose()
     await sandboxBundle?.codeModeExecutor?.dispose()
@@ -171,7 +172,7 @@ test('Hybrid orchestration retains direct tools alongside the meta-tools', async
     assert.ok('read_tool_output' in bundle.tools)
     assert.ok('code_mode' in bundle.tools)
     assert.ok(!('tool_search' in bundle.tools))
-    assert.ok(bundle.registry.get('tool_search'))
+    assert.equal(bundle.registry.get('tool_search'), undefined)
     await bundle.codeModeExecutor?.dispose()
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -224,7 +225,7 @@ test('createAgentTools does not expose web search for unsupported providers', as
   }
 })
 
-test('Code Mode keeps native web_search provider-facing without exposing workspace tools directly', async () => {
+test('Code Mode keeps one provider-facing tool even when the provider supports native web search', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-web-search-'))
 
   try {
@@ -235,10 +236,7 @@ test('Code Mode keeps native web_search provider-facing without exposing workspa
       )
 
       try {
-        assert.deepEqual(Object.keys(bundle.tools).sort(), ['code_mode', 'web_search'])
-        const webSearchTool = bundle.tools.web_search as { id?: string; type?: string }
-        assert.equal(webSearchTool.type, 'provider')
-        assert.equal(webSearchTool.id, 'openai.web_search')
+        assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
         assert.ok(!('read' in bundle.tools))
         assert.ok(!('write' in bundle.tools))
         assert.ok(!('execute_terminal' in bundle.tools))

@@ -379,32 +379,21 @@ test('Code Mode repairs lineStart/lineEnd into an exact range edit before valida
   }
 })
 
-test('Code Mode resolves structured ambiguous edits as recoverable results', async () => {
+test('Code Mode reports ambiguous edits as tool errors with structured receipts', async () => {
   const originalContent = 'const item = 1\nconst item = 1\n'
   const fixture = await createFixture(originalContent)
   try {
     const bundle = await createInternalEditCompatibilityBundle(fixture.workspaceRootPath)
     assert.ok(bundle.codeModeExecutor)
-    const result = await bundle.codeModeExecutor.run(`
-      const edit = await tools.edit({ path: 'target.ts', edits: [{ targetContent: 'const item = 1', replacementContent: 'const item = 2' }] })
-      return {
-        code: edit.semantics?.error_code,
-        ranges: edit.semantics?.candidate_line_ranges,
-        contextRanges: edit.semantics?.candidate_contexts?.map((context) => context.line_range),
-        recoverable: edit.semantics?.recoverable,
-        resultStatus: edit.status,
-      }
-    `)
-    assert.equal(result.status, 'success')
-    assert.match(result.summary, /recoverable tool failure/u)
+    const result = await bundle.codeModeExecutor.run(
+      "return await tools.edit({ path: 'target.ts', edits: [{ targetContent: 'const item = 1', replacementContent: 'const item = 2' }] })",
+    )
+    assert.equal(result.status, 'error')
     assert.equal(result.toolCalls[0]?.status, 'error')
-    assert.deepEqual(result.output, {
-      code: 'TARGET_AMBIGUOUS',
-      ranges: ['1-1', '2-2'],
-      contextRanges: ['1-1', '2-2'],
-      recoverable: true,
-      resultStatus: 'error',
-    })
+    assert.equal(result.toolCalls[0]?.semantics?.error_code, 'TARGET_AMBIGUOUS')
+    assert.deepEqual(result.toolCalls[0]?.semantics?.candidate_line_ranges, ['1-1', '2-2'])
+    assert.equal(result.toolCalls[0]?.semantics?.recoverable, true)
+    assert.equal(result.output, undefined)
     assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
     await bundle.codeModeExecutor.dispose()
   } finally {
@@ -412,7 +401,7 @@ test('Code Mode resolves structured ambiguous edits as recoverable results', asy
   }
 })
 
-test('model-facing Code Mode keeps recoverable edit conflicts non-fatal', async () => {
+test('model-facing Code Mode exposes ambiguous edit conflicts as failures with recovery metadata', async () => {
   const originalContent = 'const item = 1\nconst item = 1\n'
   const fixture = await createFixture(originalContent)
   try {
@@ -428,8 +417,7 @@ test('model-facing Code Mode keeps recoverable edit conflicts non-fatal', async 
       source: "return await tools.edit({ path: 'target.ts', edits: [{ targetContent: 'const item = 1', replacementContent: 'const item = 2' }] })",
     }, {})
 
-    assert.equal(result.status, 'success')
-    assert.match(result.body, /recoverable tool failure/u)
+    assert.equal(result.status, 'error')
     assert.equal(result.semantics?.tool_calls?.[0]?.status, 'error')
     assert.equal(result.semantics?.tool_calls?.[0]?.semantics?.recoverable, true)
     assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
@@ -439,7 +427,7 @@ test('model-facing Code Mode keeps recoverable edit conflicts non-fatal', async 
   }
 })
 
-test('Code Mode Promise.all preserves recoverable edit conflicts while other edits complete', async () => {
+test('Code Mode Promise.allSettled lets independent edits complete while conflicts reject', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-recoverable-parallel-edit-'))
   try {
     await fs.writeFile(path.join(workspaceRootPath, 'first.ts'), 'const repeated = 1\nconst repeated = 1\n', 'utf8')
@@ -449,27 +437,18 @@ test('Code Mode Promise.all preserves recoverable edit conflicts while other edi
     const bundle = await createInternalEditCompatibilityBundle(workspaceRootPath)
     assert.ok(bundle.codeModeExecutor)
     const result = await bundle.codeModeExecutor.run(`
-      const results = await Promise.all([
+      const results = await Promise.allSettled([
         tools.edit({ path: 'first.ts', edits: [{ targetContent: 'const repeated = 1', replacementContent: 'const repeated = 10' }] }),
         tools.edit({ path: 'second.ts', edits: [{ targetContent: 'const repeated = 2', replacementContent: 'const repeated = 20' }] }),
         tools.edit({ path: 'third.ts', edits: [{ targetContent: 'const unique = 3', replacementContent: 'const unique = 30' }] }),
       ])
-      return results.map((edit) => ({
-        code: edit.semantics?.error_code ?? null,
-        contextCount: edit.semantics?.candidate_contexts?.length ?? 0,
-        recoverable: edit.semantics?.recoverable === true,
-        status: edit.status,
-      }))
+      return results.map((item) => item.status)
     `)
 
     assert.equal(result.status, 'success')
-    assert.match(result.summary, /2 recoverable tool failures/u)
+    assert.match(result.summary, /handling 2 failed tool calls/u)
     assert.equal(result.toolCalls.length, 3)
-    assert.deepEqual(result.output, [
-      { code: 'TARGET_AMBIGUOUS', contextCount: 2, recoverable: true, status: 'error' },
-      { code: 'TARGET_AMBIGUOUS', contextCount: 2, recoverable: true, status: 'error' },
-      { code: null, contextCount: 0, recoverable: false, status: 'success' },
-    ])
+    assert.deepEqual(result.output, ['rejected', 'rejected', 'fulfilled'])
     assert.equal(result.toolCalls.filter((call) => call.status === 'error').length, 2)
     assert.equal(await fs.readFile(path.join(workspaceRootPath, 'first.ts'), 'utf8'), 'const repeated = 1\nconst repeated = 1\n')
     assert.equal(await fs.readFile(path.join(workspaceRootPath, 'second.ts'), 'utf8'), 'const repeated = 2\nconst repeated = 2\n')
@@ -480,7 +459,7 @@ test('Code Mode Promise.all preserves recoverable edit conflicts while other edi
   }
 })
 
-test('Code Mode coalesces concurrent same-file edits against one source snapshot', async () => {
+test('Code Mode serializes concurrent same-file edits without losing either mutation', async () => {
   const originalContent = 'header\nkeep\ntarget\ntail\n'
   const fixture = await createFixture(originalContent)
   try {
@@ -494,12 +473,7 @@ test('Code Mode coalesces concurrent same-file edits against one source snapshot
         }),
         tools.edit({
           path: 'target.ts',
-          edits: [{
-            targetContent: 'target',
-            replacementContent: 'changed',
-            startLine: 3,
-            endLine: 3,
-          }],
+          edits: [{ insertAt: 'end', insertContent: 'suffix\\n' }],
         }),
       ])
       return results.map((edit) => ({ operation: edit.semantics?.operation, status: edit.status }))
@@ -510,12 +484,10 @@ test('Code Mode coalesces concurrent same-file edits against one source snapshot
       { operation: 'edit', status: 'success' },
       { operation: 'edit', status: 'success' },
     ])
-    assert.equal(result.toolCalls.length, 1)
-    const mergedArguments = result.toolCalls[0]?.arguments as { edits?: unknown[] } | undefined
-    assert.equal(mergedArguments?.edits?.length, 2)
+    assert.equal(result.toolCalls.length, 2)
     assert.equal(
       await fs.readFile(fixture.targetPath, 'utf8'),
-      'prefix\nheader\nkeep\nchanged\ntail\n',
+      'prefix\nheader\nkeep\ntarget\ntail\nsuffix\n',
     )
     await bundle.codeModeExecutor.dispose()
   } finally {
