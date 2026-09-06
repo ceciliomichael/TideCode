@@ -15,6 +15,7 @@ const EXPECTED_LIMITS: Record<ChatProviderId, Record<string, number | undefined>
     'gpt-5.6-luna': 128000,
     'gpt-5.6-sol': 128000,
     'gpt-5.6-terra': 128000,
+    'gpt-6-astra': 128000,
   },
   deepseek: {
     'deepseek-v4-flash': 384000,
@@ -36,6 +37,7 @@ const EXPECTED_LIMITS: Record<ChatProviderId, Record<string, number | undefined>
     'gpt-5.6-luna': 128000,
     'gpt-5.6-sol': 128000,
     'gpt-5.6-terra': 128000,
+    'gpt-6-astra': 128000,
   },
 }
 
