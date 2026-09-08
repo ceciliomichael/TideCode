@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.1 - More reliable CLI and update flows
+
+TideCode 1.4.1 improves CLI continuity, Windows update reliability, project switching, and Code Mode behavior.
+
+- Keeps CLI work running when the desktop app closes by leaving the shared run service independent from the desktop lifecycle.
+- Makes Windows updates close TideCode only after installation begins and uses the installer-native process handling path to avoid false "cannot be closed" failures.
+- Makes dropping an already-added project folder switch to that project instead of showing an error.
+- Improves terminal input, active-turn rendering, Code Mode tool-call repair, mutation reliability, and source-quality guidance.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.0 - Owned Code Mode V2
 
 TideCode 1.4.0 replaces the previous generated-Node execution path with a TideCode-owned Code Mode interpreter designed for more predictable and safer agent work.
