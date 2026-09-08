@@ -6,6 +6,7 @@ export interface CodeModeExecutionLimits {
   maxCodeBytes: number
   maxConcurrentToolCalls: number
   maxOutputBytes: number
+  maxPayloadBytes: number
   maxSteps: number
   maxToolCalls: number
   timeoutMs: number
@@ -16,6 +17,7 @@ export const DEFAULT_CODE_MODE_EXECUTION_LIMITS: CodeModeExecutionLimits = {
   maxCodeBytes: 100_000,
   maxConcurrentToolCalls: 8,
   maxOutputBytes: 1_000_000,
+  maxPayloadBytes: 2_000_000,
   maxSteps: 100_000,
   maxToolCalls: 100,
   timeoutMs: 300_000,

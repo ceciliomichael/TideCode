@@ -261,3 +261,17 @@ test('live reasoning has one blank row after the previous tool', () => {
   assert.equal(lines[reasoningIndex].includes('Thinking'), false)
   assert.equal(lines[toolIndex + 1], '')
 })
+
+test('multiline queued follow-ups render as separate terminal rows', () => {
+  const render = renderActiveTurn({
+    activity: { kind: 'idle', label: '' },
+    entries: [{ id: 'assistant-1', kind: 'assistant', text: 'Working.' }],
+    followUps: [{ behavior: 'queue', text: 'first queued line\nsecond queued line' }],
+    panel: createPanel(),
+  })
+  const lines = render.lines.map(stripAnsi)
+
+  assert.equal(render.lines.some((line) => line.includes('\n') || line.includes('\r')), false)
+  assert.equal(lines.some((line) => line.includes('[Queued] first queued line')), true)
+  assert.equal(lines.some((line) => line.includes('second queued line')), true)
+})

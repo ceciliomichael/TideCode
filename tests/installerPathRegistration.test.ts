@@ -7,6 +7,15 @@ const workspaceRoot = resolve(import.meta.dirname, '..')
 const installerSource = readFileSync(resolve(workspaceRoot, 'installer/installer.nsh'), 'utf8')
 const backslash = String.fromCharCode(92)
 
+const extractMacroBody = (macroName: string): string => {
+  const startMarker = `!macro ${macroName}\n`
+  const startIndex = installerSource.indexOf(startMarker)
+  assert.notEqual(startIndex, -1)
+  const endIndex = installerSource.indexOf('!macroend', startIndex)
+  assert.notEqual(endIndex, -1)
+  return installerSource.slice(startIndex, endIndex)
+}
+
 const normalizePathEntryForComparison = (value: string): string => {
   const withoutTrailingSlash = value.endsWith(backslash) ? value.slice(0, -1) : value
   return withoutTrailingSlash.toLowerCase()
@@ -68,4 +77,19 @@ test('Windows PATH comparison contract recognizes repeated TideCode entries', ()
   assert.equal(pathContainsEntry(`${system32};${tideCodeBin}${backslash}`, tideCodeBin), true)
   assert.equal(pathContainsEntry(`${system32};${tideCodeBin.toUpperCase()}`, tideCodeBin), true)
   assert.equal(pathContainsEntry(`${system32};${tideCodeBin}2`, tideCodeBin), false)
+})
+
+test('Windows installer closes TideCode only after the install flow starts', () => {
+  const initMacro = extractMacroBody('customInit')
+  const installMacro = extractMacroBody('customInstall')
+  const closeMacro = extractMacroBody('customCheckAppRunning')
+
+  assert.equal(initMacro.includes('KillProcess'), false)
+  assert.equal(installMacro.includes('KillProcess'), false)
+  assert.equal(installerSource.includes('!macro customCheckAppRunning'), true)
+  assert.equal(closeMacro.includes('${nsProcess::FindProcess} "${APP_EXECUTABLE_FILENAME}" $R0'), true)
+  assert.equal(closeMacro.includes('${nsProcess::KillProcess} "${APP_EXECUTABLE_FILENAME}" $R0'), true)
+  assert.equal(closeMacro.includes('taskkill'), false)
+  assert.equal(closeMacro.includes('IntOp $R1 $R1 + 1'), true)
+  assert.equal(closeMacro.includes('${if} $R1 >= 10'), true)
 })

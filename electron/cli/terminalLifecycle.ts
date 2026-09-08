@@ -8,6 +8,8 @@ let keypressEventsInitialized = false
 // function, and modified keys arrive as a single terminal write in normal TTYs,
 // so a short timeout keeps those sequences intact while making Escape immediate.
 export const TERMINAL_ESCAPE_CODE_TIMEOUT_MS = 35
+const WINDOWS_INPUT_MODE_ENABLE = '\x1b[?9001h'
+const WINDOWS_INPUT_MODE_DISABLE = '\x1b[?9001l'
 
 export function ensureKeypressEvents(): void {
   if (keypressEventsInitialized) return
@@ -38,7 +40,7 @@ export class TerminalLifecycle {
     ensureKeypressEvents()
     try {
       process.stdin.setRawMode(true)
-      process.stdout.write('\x1b[?2004h')
+      process.stdout.write(`${process.platform === 'win32' ? WINDOWS_INPUT_MODE_ENABLE : ''}\x1b[?2004h`)
     } catch {
       // Non-standard TTY implementations may not expose raw mode.
     }
@@ -47,7 +49,7 @@ export class TerminalLifecycle {
 
   disableRawInput(): void {
     try {
-      process.stdout.write('\x1b[?2004l')
+      process.stdout.write(`\x1b[?2004l${process.platform === 'win32' ? WINDOWS_INPUT_MODE_DISABLE : ''}`)
       process.stdin.setRawMode(false)
     } catch {
       // Non-standard TTY implementations may not expose raw mode.

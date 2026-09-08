@@ -87,6 +87,22 @@ test('Code Mode repair rejects unknown inner tools and malformed input but repai
     const repairedEditInput = JSON.parse(repairedEdit.input) as { source?: string }
     assert.match(repairedEditInput.source ?? '', /await tools\.edit/u)
 
+    for (const [toolName, input] of [
+      ['tools.write', { path: 'value.ts', content: 'next' }],
+      ['tools.apply_patch', { patch: ['*** Begin Patch', '*** End Patch'] }],
+    ] as const) {
+      assert.equal(repairMisroutedCodeModeToolCall({
+        providerTools: bundle.tools,
+        registry: bundle.registry,
+        toolCall: {
+          input: JSON.stringify(input),
+          toolCallId: 'direct-' + toolName,
+          toolName,
+          type: 'tool-call',
+        },
+      }), null)
+    }
+
     await bundle.codeModeExecutor?.dispose()
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -122,8 +138,8 @@ test('Code Mode leaves canonical code_mode calls unrepaired', async () => {
   }
 })
 
-test('Code Mode repair emits raw JavaScript for freeform provider transport', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-freeform-repair-'))
+test('Code Mode repair emits the same structured source for OpenAI', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-structured-repair-'))
 
   try {
     const bundle = await createAgentToolBundle(
@@ -143,9 +159,9 @@ test('Code Mode repair emits raw JavaScript for freeform provider transport', as
 
     assert.ok(repaired)
     assert.equal(repaired.toolName, 'code_mode')
-    assert.match(repaired.input, /^const result = await tools\.list/u)
-    assert.match(repaired.input, /return result;/u)
-    assert.doesNotMatch(repaired.input, /^\{/u)
+    const parsed = JSON.parse(repaired.input) as { source?: string }
+    assert.match(parsed.source ?? '', /^const result = await tools\.list/u)
+    assert.match(parsed.source ?? '', /return result;/u)
 
     await bundle.codeModeExecutor?.dispose()
   } finally {

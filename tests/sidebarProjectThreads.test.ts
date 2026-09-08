@@ -7,6 +7,7 @@ import {
   UNASSIGNED_WORKSPACE_NAME,
   buildSidebarProjectOptions,
   buildSidebarThreadRows,
+  findSidebarProjectIdByPath,
   resolveLatestThreadProject,
   resolveSidebarProjectFilter,
   resolveSidebarProjectLabel,
@@ -101,6 +102,12 @@ test('buildSidebarProjectOptions returns projects in persisted order and counts 
       name: 'Data science',
     },
   ])
+})
+
+test('findSidebarProjectIdByPath resolves an existing dropped project path', () => {
+  assert.equal(findSidebarProjectIdByPath(groups, 'C:/projects/movie-tracker'), 'project-one')
+  assert.equal(findSidebarProjectIdByPath(groups, 'c:\\projects\\MOVIE-TRACKER\\'), 'project-one')
+  assert.equal(findSidebarProjectIdByPath(groups, 'C:/projects/not-added'), null)
 })
 
 test('all-projects rows are globally recent and include workspace labels', () => {

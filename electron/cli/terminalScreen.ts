@@ -26,7 +26,7 @@ import { interactiveChecklist, type ChecklistOptions } from './interactiveCheckl
 import { interactiveTextInput, type TextInputOptions } from './interactiveTextInput'
 import { createActiveTurnPromptPanel, renderActiveTurn as renderActiveTurnView, renderCommittedTurn, renderConversationHistory } from './terminalActiveTurn'
 import { ensureKeypressEvents, TerminalLifecycle } from './terminalLifecycle'
-import { getTerminalInputAction, type TerminalInputAction } from './terminalInput'
+import { getTerminalInputAction, Win32TerminalInputDecoder, type TerminalInputAction } from './terminalInput'
 import { colors, renderDiffLines, stripAnsi } from './renderer'
 import { StreamingTerminalMarkdown } from './terminalMarkdown'
 import { getTerminalPanelWidth, renderPromptPanel, renderSessionPanel } from './terminalPanels'
@@ -160,6 +160,7 @@ export class TerminalScreen {
   private activeFollowUps: ActiveTurnFollowUpView[] = []
   private nextPromptDraft: { text: string; attachments: ChatAttachment[] } | null = null
   private readonly bracketedPasteDecoder = new BracketedPasteDecoder()
+  private readonly win32InputDecoder = new Win32TerminalInputDecoder()
   private suppressKeypressEvents = false
   private keypressSuppressionHandle: NodeJS.Immediate | null = null
   private resizeRedrawTimer: NodeJS.Timeout | null = null
@@ -337,10 +338,11 @@ export class TerminalScreen {
     print = true,
     options: { leadingSpacer?: boolean } = {},
   ): void {
-    this.view.entries.push({ kind: 'user', id: nextTranscriptId('user'), text })
+    const displayText = collapseChatMentionMarkup(text)
+    this.view.entries.push({ kind: 'user', id: nextTranscriptId('user'), text: displayText })
     if (print) {
       const leadingSpacer = options.leadingSpacer === false ? '' : '\n'
-      text.split('\n').forEach((line, index) => {
+      displayText.split('\n').forEach((line, index) => {
         const prefix = index === 0 ? `${colors.accent}›${colors.reset} ` : '  '
         this.output.write(`${index === 0 ? leadingSpacer : ''}${prefix}${formatCliImageReferenceInText(line)}\n`)
       })
@@ -382,7 +384,10 @@ export class TerminalScreen {
   }
 
   setActiveFollowUps(followUps: readonly ActiveTurnFollowUpView[]): void {
-    this.activeFollowUps = followUps.map((followUp) => ({ ...followUp }))
+    this.activeFollowUps = followUps.map((followUp) => ({
+      ...followUp,
+      text: collapseChatMentionMarkup(followUp.text),
+    }))
     if (this.activeTurn) this.renderActiveTurn()
   }
 
@@ -397,7 +402,11 @@ export class TerminalScreen {
     this.activeThoughtDurationSeconds = 0
     for (const message of nextMessages) {
       existingEntryIds.add(message.id)
-      this.view.entries.push({ kind: 'user', id: message.id, text: stripAnsi(message.content) })
+      this.view.entries.push({
+        kind: 'user',
+        id: message.id,
+        text: collapseChatMentionMarkup(stripAnsi(message.content)),
+      })
     }
 
     if (this.activeTurn) {
@@ -770,6 +779,15 @@ export class TerminalScreen {
       return
     }
 
+    if (process.platform === 'win32') {
+      const decodedWin32Input = this.win32InputDecoder.consume(str)
+      if (decodedWin32Input.consumed) {
+        this.suppressKeypressesUntilDataCycleCompletes()
+        for (const action of decodedWin32Input.actions) this.handlePromptAction(action)
+        return
+      }
+    }
+
     if (str === '\u001b') {
       this.suppressKeypressesUntilDataCycleCompletes()
       if (this.requestActiveTurnCancellation()) return
@@ -1065,6 +1083,7 @@ export class TerminalScreen {
 
   private resetBracketedPasteInput(): void {
     this.bracketedPasteDecoder.reset()
+    this.win32InputDecoder.reset()
     this.suppressKeypressEvents = false
     if (this.keypressSuppressionHandle) {
       clearImmediate(this.keypressSuppressionHandle)

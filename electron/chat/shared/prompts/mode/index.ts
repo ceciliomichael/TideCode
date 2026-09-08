@@ -8,6 +8,7 @@ import { getTideCodeRuntimeRoot } from '../../../../runtime/runtimeRoot'
 const PROMPT_REPO_PATH = 'electron/chat/shared/prompts/mode'
 const SHARED_PROMPT_FILES = [
   { id: 'shared_mindset_prompt', relativePath: 'shared/mindset.md' },
+  { id: 'shared_source_quality_prompt', relativePath: 'shared/sourceQuality.md' },
   { id: 'shared_response_prompt', relativePath: 'shared/response.md' },
   { id: 'shared_continuation_prompt', relativePath: 'shared/continuation.md' },
 ] as const
@@ -40,7 +41,7 @@ const CORE_DECISION_PROMPT = [
 
 const CODE_MODE_PROMPT = [
   '<code_mode_rules description="Use the Code Mode contract without duplicating it">',
-  '- The only model-facing tool in this turn is `code_mode`.',
+  '- The model-facing Tidecode surface always includes `code_mode`; when direct `apply_patch` or `write` tools are present, use them for targeted patches or complete-file creation/replacement instead of routing those mutations through Code Mode. Treat the actual provider tool surface as authoritative.',
   '- Names such as `tools.list` and `tools.glob` are JavaScript APIs inside the `code_mode` program, never model-facing tool names. Never emit a `tools.*` provider call.',
   '- Treat the `code_mode` tool description as the authoritative contract for inner APIs, restrictions, schemas, and scenario routing. Do not duplicate or override those mechanics in the system prompt.',
   '- Keep each Code Mode program scoped to the smallest complete inspect, mutate, or verify sequence needed for the current decision.',

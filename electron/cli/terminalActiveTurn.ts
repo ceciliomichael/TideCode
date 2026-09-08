@@ -35,11 +35,13 @@ export interface ActiveTurnRenderData {
 function renderActiveFollowUp(followUp: ActiveTurnFollowUpView, width: number): string[] {
   const label = followUp.behavior === 'steer' ? 'Steer' : 'Queued'
   const labelColor = followUp.behavior === 'steer' ? colors.accent : colors.subtle
-  return wrapPrefixed(
-    `${labelColor}[${label}]${colors.reset} ${colors.foreground}${followUp.text}${colors.reset}`,
-    '  ',
-    width,
-  )
+  return followUp.text.split(/\r\n|\r|\n/u).flatMap((line, index) => (
+    wrapPrefixed(
+      `${index === 0 ? `${labelColor}[${label}]${colors.reset} ` : ''}${colors.foreground}${line}${colors.reset}`,
+      '  ',
+      width,
+    )
+  ))
 }
 
 export interface ActiveTurnRender {

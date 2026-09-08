@@ -25,13 +25,6 @@ function parseInnerToolInput(
   return parsed
 }
 
-function encodeCodeModeSource(providerTools: ToolSet, source: string) {
-  const codeModeTool = providerTools.code_mode as { id?: unknown; type?: unknown } | undefined
-  return codeModeTool?.type === 'provider' && codeModeTool.id === 'openai.custom'
-    ? source
-    : JSON.stringify({ source })
-}
-
 export function repairMisroutedCodeModeToolCall(input: {
   providerTools: ToolSet
   registry: AgentToolRegistry
@@ -65,7 +58,7 @@ export function repairMisroutedCodeModeToolCall(input: {
   ].join('\n')
 
   return {
-    input: encodeCodeModeSource(input.providerTools, source),
+    input: JSON.stringify({ source }),
     toolCallId: input.toolCall.toolCallId,
     toolName: 'code_mode',
     type: 'tool-call',

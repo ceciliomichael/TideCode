@@ -1477,7 +1477,7 @@ test('Code Mode capability search runs inside Code Mode while local tools remain
       })
     }
 
-    assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
+    assert.deepEqual(Object.keys(bundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
     assert.equal(bundle.registry.get('tool_search'), undefined)
     assert.ok(bundle.nativeTools.edit)
     const codeModeSchema = await asSchema((bundle.tools.code_mode as { inputSchema: unknown }).inputSchema).jsonSchema as {
@@ -1486,7 +1486,7 @@ test('Code Mode capability search runs inside Code Mode while local tools remain
     assert.deepEqual(codeModeSchema.required, ['source'])
     assert.ok(codeModeSchema.properties && 'source' in codeModeSchema.properties)
     assert.equal(codeModeSchema.properties && 'code' in codeModeSchema.properties, false)
-    assert.equal(codeModeSchema.properties && 'payloads' in codeModeSchema.properties, false)
+    assert.ok(codeModeSchema.properties && 'payloads' in codeModeSchema.properties)
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
       /tools\.read\(\{ path: string/u,
@@ -1561,9 +1561,10 @@ test('Code Mode capability search runs inside Code Mode while local tools remain
     assert.equal(codeModeDescription.split(CODE_MODE_EXECUTION_CONTRACT).length - 1, 1)
     assert.match(codeModeDescription, /executes a Tidecode-owned JavaScript-like orchestration language/u)
     assert.match(codeModeDescription, /Choose the purpose-built inner API for the scenario/u)
-    assert.match(codeModeDescription, /one JavaScript source program/u)
-    assert.doesNotMatch(codeModeDescription, /top-level code_mode payloads object/u)
-    assert.match(codeModeDescription, /`tools\.apply_patch`: primary API for targeted source changes/u)
+    assert.match(codeModeDescription, /structured outer input with `source` plus optional opaque `payloads`/u)
+    assert.match(codeModeDescription, /Payload text is inert data and is never parsed as Code Mode source/u)
+    assert.match(codeModeDescription, /Direct model-facing `apply_patch`: prefer this for a standalone targeted patch/u)
+    assert.doesNotMatch(codeModeDescription, /tools\.apply_patch/u)
     assert.match(codeModeDescription, /tools\.edit/u)
     assert.match(codeModeDescription, /`tools\.execute_terminal`: run an actual command\/process/u)
     assert.match(codeModeDescription, /Never use shell, PowerShell, Python, or Node just to read, search, edit, or write workspace files/u)
@@ -1623,57 +1624,13 @@ test('every provider exposes the same TideCode Code Mode description', async () 
   }
 })
 
-test('OpenAI and Codex transport Code Mode as the same raw JavaScript string', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-freeform-'))
+test('every provider uses the same structured Code Mode source and payload schema', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-structured-'))
 
   try {
-    await fs.writeFile(path.join(workspaceRootPath, 'value.txt'), 'freeform\n', 'utf8')
+    await fs.writeFile(path.join(workspaceRootPath, 'value.txt'), 'structured\n', 'utf8')
 
-    for (const providerId of ['openai', 'codex'] as const) {
-      const bundle = await createAgentToolBundle(
-        { workspaceRootPath },
-        { chatMode: 'agent', orchestrationMode: 'code_mode', providerId },
-      )
-      const codeModeTool = bundle.tools.code_mode as unknown as {
-        args?: { description?: string; format?: { definition?: string; syntax?: string; type?: string } }
-        execute?: (input: string, options: ToolExecutionOptions<unknown>) => Promise<unknown>
-        id?: string
-        inputSchema: unknown
-        type?: string
-      }
-
-      try {
-        assert.equal(codeModeTool.type, 'provider')
-        assert.equal(codeModeTool.id, 'openai.custom')
-        const inputSchema = await asSchema(codeModeTool.inputSchema).jsonSchema as { type?: string }
-        assert.equal(inputSchema.type, 'string')
-        assert.equal(codeModeTool.args?.format?.type, 'grammar')
-        assert.equal(codeModeTool.args?.format?.syntax, 'lark')
-        assert.match(codeModeTool.args?.format?.definition ?? '', /plain_source: SOURCE/u)
-        assert.match(codeModeTool.args?.description ?? '', /one JavaScript source program/u)
-
-        const result = await codeModeTool.execute?.(
-          "const value = await tools.read({ path: 'value.txt' }); return value.body.trim()",
-          { context: {}, messages: [], toolCallId: `freeform-${providerId}` },
-        ) as { body?: string; status?: string }
-        assert.equal(result.status, 'success')
-        assert.match(result.body ?? '', /freeform/u)
-      } finally {
-        await bundle.codeModeExecutor?.dispose()
-      }
-    }
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('non-freeform providers transport the same Code Mode source through the source shim', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-source-shim-'))
-
-  try {
-    await fs.writeFile(path.join(workspaceRootPath, 'value.txt'), 'shim\n', 'utf8')
-
-    for (const providerId of ['anthropic', 'google', 'mistral', 'deepseek', 'custom:test'] as const) {
+    for (const providerId of ['openai', 'codex', 'anthropic', 'google', 'mistral', 'deepseek', 'custom:test'] as const) {
       const bundle = await createAgentToolBundle(
         { workspaceRootPath },
         { chatMode: 'agent', orchestrationMode: 'code_mode', providerId },
@@ -1694,16 +1651,92 @@ test('non-freeform providers transport the same Code Mode source through the sou
         assert.equal(inputSchema.type, 'object')
         assert.deepEqual(inputSchema.required, ['source'])
         assert.ok(inputSchema.properties && 'source' in inputSchema.properties)
+        assert.ok(inputSchema.properties && 'payloads' in inputSchema.properties)
 
         const result = await codeModeTool.execute?.(
-          { source: "const value = await tools.read({ path: 'value.txt' }); return value.body.trim()" },
-          { context: {}, messages: [], toolCallId: 'source-shim-' + providerId },
+          {
+            payloads: { expected: 'structured' },
+            source: "const value = await tools.read({ path: 'value.txt' }); return { file: value.body.trim(), payload: payloads.expected }",
+          },
+          { context: {}, messages: [], toolCallId: 'structured-' + providerId },
         ) as { body?: string; status?: string }
         assert.equal(result.status, 'success')
-        assert.match(result.body ?? '', /shim/u)
+        assert.ok((result.body ?? '').includes('"file": "structured"'))
+        assert.ok((result.body ?? '').includes('"payload": "structured"'))
       } finally {
         await bundle.codeModeExecutor?.dispose()
       }
+    }
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode payloads preserve arbitrary nested text and are read-only', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-payloads-'))
+  const fence = String.fromCharCode(96).repeat(3)
+  const payload = [
+    fence + 'tsx',
+    'const view = `hello ${name}`',
+    String.raw`const rx = /a\\b\\s+/g`,
+    String.raw`const path = "C:\\Users\\Admin\\file.ts"`,
+    fence,
+  ].join('\\n')
+
+  try {
+    const bundle = await createAgentToolBundle(
+      { workspaceRootPath },
+      { chatMode: 'agent', orchestrationMode: 'code_mode', providerId: 'openai' },
+    )
+    const codeModeTool = bundle.tools.code_mode as {
+      execute?: (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>
+    }
+    try {
+      const result = await codeModeTool.execute?.(
+        { payloads: { source: payload }, source: 'return payloads.source' },
+        { context: {}, messages: [], toolCallId: 'payload-preserve' },
+      ) as { body?: string; status?: string }
+      assert.equal(result.status, 'success')
+      assert.ok((result.body ?? '').includes(fence + 'tsx'))
+      assert.ok((result.body ?? '').includes('const view = `hello ${name}`'))
+      assert.ok((result.body ?? '').includes(String.raw`const rx = /a\\b\\s+/g`))
+      assert.ok((result.body ?? '').includes(String.raw`C:\\Users\\Admin\\file.ts`))
+
+      const mutation = await codeModeTool.execute?.(
+        { payloads: { source: payload }, source: "payloads.source = 'changed'; return payloads.source" },
+        { context: {}, messages: [], toolCallId: 'payload-readonly' },
+      ) as { body?: string; semantics?: { tool_call_count?: number }; status?: string }
+      assert.equal(mutation.status, 'error')
+      assert.match(mutation.body ?? '', /read-only/u)
+      assert.equal(mutation.semantics?.tool_call_count, 0)
+    } finally {
+      await bundle.codeModeExecutor?.dispose()
+    }
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode rejects oversized payloads before executing tools', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-payload-limit-'))
+  try {
+    const bundle = await createAgentToolBundle(
+      { workspaceRootPath },
+      { chatMode: 'agent', orchestrationMode: 'code_mode' },
+    )
+    const codeModeTool = bundle.tools.code_mode as {
+      execute?: (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>
+    }
+    try {
+      const result = await codeModeTool.execute?.(
+        { payloads: { huge: 'x'.repeat(2_000_001) }, source: 'return await tools.list({})' },
+        { context: {}, messages: [], toolCallId: 'payload-limit' },
+      ) as { body?: string; semantics?: { tool_call_count?: number }; status?: string }
+      assert.equal(result.status, 'error')
+      assert.match(result.body ?? '', /payloads exceeded the 2000000-byte limit/u)
+      assert.equal(result.semantics?.tool_call_count, 0)
+    } finally {
+      await bundle.codeModeExecutor?.dispose()
     }
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

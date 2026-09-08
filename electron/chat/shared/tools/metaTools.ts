@@ -1,4 +1,3 @@
-import { openai } from '@ai-sdk/openai'
 import { jsonSchema, tool } from 'ai'
 
 import type { AppTerminalExecutionMode, ChatProviderId } from '../../../../src/types/chat'
@@ -21,31 +20,29 @@ const CODE_MODE_SOURCE_INPUT_SCHEMA = {
       minLength: 1,
       type: 'string',
     },
+    payloads: {
+      additionalProperties: { type: 'string' },
+      description: 'Optional opaque exact-text payloads available inside Code Mode through the read-only payloads global. Prefer this for multiline patches, Markdown/code fences, generated source, JSX, JSON, regex-heavy text, shell snippets, and other delimiter-heavy data.',
+      maxProperties: 64,
+      propertyNames: { maxLength: 128, minLength: 1 },
+      type: 'object',
+    },
   },
   required: ['source'],
   type: 'object',
 } as const
 
-const CODE_MODE_FREEFORM_GRAMMAR = String.raw`
-start: pragma_source | plain_source
-pragma_source: PRAGMA_LINE NEWLINE SOURCE
-plain_source: SOURCE
-
-PRAGMA_LINE: /[ \t]*\/\/ @exec:[^\r\n]*/
-NEWLINE: /\r?\n/
-SOURCE: /[\s\S]+/
-`
-
 const HIDDEN_PRELOADED_TOOL_NAMES = new Set(['plan_create', 'plan_edit'])
 
 interface CodeModeSourceInput {
+  payloads?: Record<string, string>
   source?: string
 }
 
 const CODE_MODE_TOOL_ROUTING = [
-  'Provider boundary: invoke the model-facing code_mode tool. Every tools.* name below is a JavaScript API that exists only inside the code_mode code string; never emit tools.* as a provider tool name.',
+  'Provider boundary: the model-facing Tidecode tools are code_mode, apply_patch, and write in Agent Mode. Use direct apply_patch for targeted patches and direct write for complete-file creation/replacement. Every tools.* name below is a JavaScript API that exists only inside the code_mode source string; never emit tools.* as a provider tool name.',
   'Choose the purpose-built inner API for the scenario. Do not use terminal commands as a substitute for structured workspace APIs.',
-  'Code Mode receives one JavaScript source program. Do not create a separate payloads object or emit nested provider tool calls.',
+  'Code Mode receives one structured outer input with `source` plus optional opaque `payloads`. Inside source, read payload text through `payloads.<name>` or bracket access. Payload text is inert data and is never parsed as Code Mode source.',
   'The APIs documented below are the stable Code Mode capability catalog, not permission for the current execution. Runtime policy can restrict this catalog. Treat the active runtime context and the actual tools object as authoritative. If an API is unavailable or forbidden, do not infer that it should exist, search for a replacement, or substitute another mutation path.',
   '- `tools.read`: inspect one known file or directory. A path is known only when the user supplied it or a prior workspace tool returned that exact path. Never infer filenames from conventions.',
   '- `tools.read_tool_output`: read only a narrowly targeted section when a truncated result omitted content you actually need; never call it automatically.',
@@ -53,8 +50,8 @@ const CODE_MODE_TOOL_ROUTING = [
   '- `tools.list`: inspect immediate entries of one directory.',
   '- `tools.glob`: discover files by path or filename pattern.',
   '- `tools.grep`: search workspace text, symbols, imports, or references.',
-  '- `tools.apply_patch`: primary API for targeted source changes. Pass one raw Codex-style patch string directly. The Code Mode program itself must remain valid; encode multiline or escape-heavy patch text as a normal JavaScript string value, with JSON-style string escaping as the safest representation for backticks, ${...}, backslashes, regex text, quotes, and Windows paths. If a patch anchor contains one redundant escaping layer, TideCode repairs it only when there is one unique non-overlapping source match. Use fresh source context and include multiple files in one patch when useful; TideCode verifies the full patch before writing.',
-  '- `tools.write`: create a new text file or intentionally replace a complete file; use apply_patch for targeted existing-file changes.',
+  '- Direct model-facing `apply_patch`: prefer this for a standalone targeted patch; its structured patch-line array bypasses Code Mode source parsing entirely.',
+  '- Direct model-facing `write`: create a new text file or intentionally replace a complete file. Its structured `{ path, content }` input bypasses Code Mode source parsing entirely; do not embed complete file contents in code_mode source.',
   '- `tools.execute_terminal`: run an actual command/process such as tests, typecheck, build, package manager, compiler, Git command, or app/script. Terminal results expose `session_id` directly, and completed commands expose `exit_code` directly. Never use shell, PowerShell, Python, or Node just to read, search, edit, or write workspace files when the structured APIs above apply.',
   '- `tools.read_terminal`: collect new output from an existing terminal session instead of starting the command again; it returns early when input is detected.',
   '- `tools.interact_terminal`: answer a prompt or send control/navigation keys to that same terminal session. For ordinary line input, send text with ENTER.',
@@ -94,15 +91,14 @@ export function buildCodeModeDescription(
   ].join('\n')
 }
 
-export function normalizeCodeModeSourceInput(input: unknown) {
-  if (typeof input === 'string') return input
-  if (!input || typeof input !== 'object' || Array.isArray(input)) return ''
-  const source = (input as CodeModeSourceInput).source
-  return typeof source === 'string' ? source : ''
-}
-
-function usesNativeFreeformCodeModeTransport(providerId?: ChatProviderId) {
-  return providerId === 'openai' || providerId === 'codex'
+export function normalizeCodeModeSourceInput(input: unknown): { payloads?: Record<string, string>; source: string } {
+  if (typeof input === 'string') return { source: input }
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return { source: '' }
+  const record = input as CodeModeSourceInput
+  return {
+    ...(record.payloads && typeof record.payloads === 'object' && !Array.isArray(record.payloads) ? { payloads: record.payloads } : {}),
+    source: typeof record.source === 'string' ? record.source : '',
+  }
 }
 
 async function executeCodeModeSource(
@@ -110,12 +106,14 @@ async function executeCodeModeSource(
   input: unknown,
   options: { abortSignal?: AbortSignal; allowedToolNames?: readonly string[] },
 ): Promise<AgentToolExecutionResult> {
-  const source = normalizeCodeModeSourceInput(input)
+  const normalized = normalizeCodeModeSourceInput(input)
+  const source = normalized.source
   if (source.trim().length === 0) return createToolErrorResult('code_mode requires a non-empty JavaScript program.')
 
   const result = await executor.run(source, {
     abortSignal: options.abortSignal,
     allowedToolNames: options.allowedToolNames,
+    payloads: normalized.payloads,
   })
   const outputBody = result.status !== 'success'
     ? ''
@@ -165,21 +163,6 @@ export function createCodeModeTool(
   } = {},
 ) {
   const description = buildCodeModeDescription(registry, options.executionMode)
-  if (usesNativeFreeformCodeModeTransport(options.providerId)) {
-    return openai.tools.customTool({
-      description,
-      execute: async (source, executionOptions) => executeCodeModeSource(executor, source, {
-        abortSignal: executionOptions.abortSignal,
-        allowedToolNames: options.allowedToolNames,
-      }),
-      format: {
-        definition: CODE_MODE_FREEFORM_GRAMMAR,
-        syntax: 'lark',
-        type: 'grammar',
-      },
-    })
-  }
-
   return tool({
     description,
     inputSchema: jsonSchema<CodeModeSourceInput>(CODE_MODE_SOURCE_INPUT_SCHEMA),

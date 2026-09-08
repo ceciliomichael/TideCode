@@ -11,6 +11,7 @@ import {
   GlobalNamespace,
   IntrinsicReference,
   NativeFunction,
+  PayloadNamespace,
   ProgramThrow,
   ReturnSignal,
   ToolReference,
@@ -259,10 +260,12 @@ export class CodeModeInterpreter {
 
   constructor(
     private readonly tools: ToolRuntime,
+    payloads: Readonly<Record<string, string>>,
     private readonly limits: CodeModeExecutionLimits,
     private readonly abortSignal: AbortSignal,
     private readonly deadline: number,
   ) {
+    this.global.declare('payloads', new PayloadNamespace(payloads), false)
     this.installGlobals()
   }
 
@@ -483,6 +486,7 @@ export class CodeModeInterpreter {
 
   private enumerableKeys(value: unknown, node: AstNode): string[] {
     if (value instanceof ToolReference) return this.tools.keys(value)
+    if (value instanceof PayloadNamespace) return value.keys()
     if (Array.isArray(value)) return Object.keys(value)
     if (value && typeof value === 'object') return Object.keys(value)
     throw new CodeModeRuntimeError('TypeError', 'for...in expects a data object, array, or tools namespace.', node)
@@ -800,6 +804,7 @@ export class CodeModeInterpreter {
   private memberValue(receiver: unknown, key: string | number, node: AstNode): unknown {
     const name = String(key)
     if (receiver instanceof ToolReference) return this.tools.member(receiver, name, node)
+    if (receiver instanceof PayloadNamespace) return receiver.get(name)
     if (receiver instanceof CodePromise) {
       throw new CodeModeRuntimeError('TypeError', 'Promise chaining is not supported. Await the promise first.', node)
     }
@@ -888,6 +893,7 @@ export class CodeModeInterpreter {
   private typeofValue(value: unknown): string {
     if (value instanceof CodeFunction || value instanceof NativeFunction || value instanceof IntrinsicReference) return 'function'
     if (value instanceof ToolReference) return value.path.length === 0 ? 'object' : 'function'
+    if (value instanceof PayloadNamespace) return 'object'
     if (value instanceof GlobalNamespace) return ['Math', 'JSON', 'console'].includes(value.name) ? 'object' : 'function'
     if (value instanceof CodePromise) return 'object'
     return typeof value
@@ -900,7 +906,8 @@ export class CodeModeInterpreter {
       value instanceof NativeFunction ||
       value instanceof IntrinsicReference ||
       value instanceof ToolReference ||
-      value instanceof GlobalNamespace
+      value instanceof GlobalNamespace ||
+      value instanceof PayloadNamespace
     ) {
       throw new CodeModeRuntimeError('TypeError', 'This operation requires a data value. Await tool calls before using their results.', node)
     }
@@ -935,6 +942,7 @@ export class CodeModeInterpreter {
       case 'in': {
         const key = String(left)
         if (right instanceof ToolReference) return this.tools.keys(right).includes(key)
+        if (right instanceof PayloadNamespace) return right.keys().includes(key)
         if (right && typeof right === 'object') return key in right
         throw new CodeModeRuntimeError('TypeError', "Right-hand side of 'in' must be an object.", node)
       }
@@ -1024,7 +1032,7 @@ export class CodeModeInterpreter {
 
   private async memberLValue(node: AstNode, environment: Environment): Promise<MemberLValue> {
     const receiver = await this.evaluate(asNode(node.object, 'member object'), environment)
-    if (receiver instanceof ToolReference || receiver instanceof GlobalNamespace || receiver instanceof CodePromise) {
+    if (receiver instanceof ToolReference || receiver instanceof GlobalNamespace || receiver instanceof CodePromise || receiver instanceof PayloadNamespace) {
       throw new CodeModeRuntimeError('TypeError', 'This Code Mode value is read-only.', node)
     }
     if (!Array.isArray(receiver) && (!receiver || typeof receiver !== 'object')) {
@@ -1140,6 +1148,7 @@ export class CodeModeInterpreter {
     const value = args[0]
     const entriesOf = (input: unknown): Array<[string, unknown]> => {
       if (input instanceof ToolReference) return this.tools.keys(input).map((key) => [key, this.tools.member(input, key, node)])
+      if (input instanceof PayloadNamespace) return input.entries()
       if (Array.isArray(input)) return Object.entries(input)
       if (!input || typeof input !== 'object') throw new CodeModeRuntimeError('TypeError', `Object.${name} expects a data object or array.`, node)
       return Object.entries(input)
