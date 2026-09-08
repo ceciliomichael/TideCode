@@ -36,6 +36,10 @@ test('mode-neutral system prompt keeps stable core and workspace authority', asy
     assert.match(prompt, /Answer first/u)
     assert.match(prompt, /Latest compatible user request and current source evidence win/u)
     assert.match(prompt, /do not add features, cleanup, refactors, or future-proofing outside scope/u)
+    assert.match(prompt, /Write project source for humans to read and maintain, not as compressed or minified output/u)
+    assert.match(prompt, /one meaningful statement per line/u)
+    assert.match(prompt, /Do not pack multiple declarations, assignments, branches, loops, function bodies, or unrelated operations onto one line/u)
+    assert.match(prompt, /Only produce intentionally compact\/minified source when the user explicitly asks for it/u)
     assert.doesNotMatch(prompt, /Agent Mode|Plan Mode|<chat_mode_context|agent_mode_prompt|agent_tooling_instructions|<intent_rules/iu)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -57,9 +61,10 @@ test('prompt assembly keeps one stable core before workspace context', () => {
   const breakdown = buildChatModeSystemPromptBreakdown('agent', 'C:/workspace')
   const componentIds = breakdown.components.map((component) => component.id)
 
-  assert.deepEqual(componentIds.slice(0, 5), [
+  assert.deepEqual(componentIds.slice(0, 6), [
     'core_decision_priority',
     'shared_mindset_prompt',
+    'shared_source_quality_prompt',
     'shared_response_prompt',
     'shared_continuation_prompt',
     'workspace_root',
@@ -77,7 +82,8 @@ test('Code Mode prompt exposes only its meta-tool surface and compact async cont
   const directPrompt = buildChatModeSystemPrompt('agent', 'C:/workspace', { orchestrationMode: 'direct' })
 
   assert.match(codeModePrompt, /<code_mode_rules/u)
-  assert.match(codeModePrompt, /The only model-facing tool in this turn is `code_mode`/u)
+  assert.match(codeModePrompt, /model-facing Tidecode surface always includes `code_mode`/u)
+  assert.match(codeModePrompt, /when direct `apply_patch` or `write` tools are present, use them for targeted patches or complete-file creation\/replacement/u)
   assert.match(codeModePrompt, /`tools\.list` and `tools\.glob` are JavaScript APIs inside the `code_mode` program/u)
   assert.match(codeModePrompt, /Never emit a `tools\.\*` provider call/u)
   assert.match(codeModePrompt, /<decision_priority/u)
@@ -317,7 +323,7 @@ test('Agent Mode Code Mode discovers planning tools on demand before using them'
   }
 })
 
-test('Agent and Plan keep the same provider-facing Code Mode cache context', async () => {
+test('Agent and Plan keep the same Code Mode system context while provider tool hashes reflect authorized direct tools', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-mode-cache-'))
   const providerId = 'custom:test-provider' as const
 
@@ -348,8 +354,10 @@ test('Agent and Plan keep the same provider-facing Code Mode cache context', asy
     })
 
     assert.equal(agentManifest.systemHash, planManifest.systemHash)
-    assert.equal(agentManifest.toolsHash, planManifest.toolsHash)
-    assert.equal(agentManifest.fingerprint, planManifest.fingerprint)
+    assert.notEqual(agentManifest.toolsHash, planManifest.toolsHash)
+    assert.notEqual(agentManifest.fingerprint, planManifest.fingerprint)
+    assert.deepEqual(Object.keys(agentBundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
+    assert.deepEqual(Object.keys(planBundle.tools), ['code_mode'])
     assert.ok(agentBundle.registry.get('plan_create'))
     assert.ok(planBundle.registry.get('plan_create'))
     assert.ok(agentBundle.registry.get('plan_edit'))

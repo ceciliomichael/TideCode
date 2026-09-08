@@ -5,32 +5,42 @@
 !define TIDECODE_REMOTE_FIREWALL_RULE "TideCode Remote"
 !define TIDECODE_REMOTE_FIREWALL_REGKEY "Software\TideCode\Remote"
 
-; Close a running TideCode desktop process before files are replaced. The
-; installer itself is a Setup.exe process, so matching the packaged executable
-; name avoids terminating unrelated Electron applications.
-!macro closeRunningTideCode
+!ifndef nsProcess::FindProcess
+  !include "nsProcess.nsh"
+!endif
+
+; electron-builder calls customCheckAppRunning after the user starts the
+; installation and before uninstalling/replacing application files. Use the
+; bundled native process plugin here instead of taskkill so shutdown does not
+; depend on shell exit codes or terminate TideCode's detached child processes.
+!macro customCheckAppRunning
   DetailPrint "Checking for a running TideCode instance..."
-  StrCpy $0 0
+  StrCpy $R1 0
 
   tidecode_close_attempt:
-    ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM "${APP_EXECUTABLE_FILENAME}"' $1
-    ${if} $1 == "128"
+    ${nsProcess::FindProcess} "${APP_EXECUTABLE_FILENAME}" $R0
+    ${if} $R0 != "0"
       Goto tidecode_close_complete
-    ${elseif} $1 != "0"
+    ${endif}
+
+    ${nsProcess::KillProcess} "${APP_EXECUTABLE_FILENAME}" $R0
+    Sleep 300
+
+    ${nsProcess::FindProcess} "${APP_EXECUTABLE_FILENAME}" $R0
+    ${if} $R0 != "0"
+      Goto tidecode_close_complete
+    ${endif}
+
+    IntOp $R1 $R1 + 1
+    ${if} $R1 >= 10
       MessageBox MB_ICONSTOP|MB_OK "TideCode is running and could not be closed. Please close TideCode manually and run the installer again."
       Abort
     ${endif}
-
-    IntOp $0 $0 + 1
-    ${if} $0 >= 10
-      MessageBox MB_ICONSTOP|MB_OK "TideCode is still running. Please close TideCode manually and run the installer again."
-      Abort
-    ${endif}
-    Sleep 500
+    Sleep 200
     Goto tidecode_close_attempt
 
   tidecode_close_complete:
-    ${if} $0 > 0
+    ${if} $R1 > 0
       DetailPrint "TideCode was closed. Continuing installation..."
     ${endif}
 !macroend
@@ -99,8 +109,6 @@
 !macroend
 
 !macro customInit
-  !insertmacro closeRunningTideCode
-
   ; electron-builder normally detects an existing install from
   ; Software\${APP_GUID}\InstallLocation. Older TideCode installers may
   ; have only written the Windows uninstall entry, so recover the install

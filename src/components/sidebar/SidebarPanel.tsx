@@ -15,6 +15,7 @@ import {
   ARCHIVED_PROJECT_FILTER_ID,
   CHATS_PROJECT_FILTER_ID,
   buildSidebarProjectOptions,
+  findSidebarProjectIdByPath,
   resolveSidebarProjectFilter,
 } from './sidebarProjectThreads'
 
@@ -150,9 +151,16 @@ export function SidebarPanel({
       event.preventDefault()
       event.stopPropagation()
 
-      await onCreateWorkspaceFolderFromPath(folderPaths[0])
+      const folderPath = folderPaths[0]
+      const existingProjectId = findSidebarProjectIdByPath(conversationGroups, folderPath)
+      if (existingProjectId) {
+        handleSelectProject(existingProjectId)
+        return
+      }
+
+      await onCreateWorkspaceFolderFromPath(folderPath)
     },
-    [onCreateWorkspaceFolderFromPath],
+    [conversationGroups, handleSelectProject, onCreateWorkspaceFolderFromPath],
   )
 
   return (

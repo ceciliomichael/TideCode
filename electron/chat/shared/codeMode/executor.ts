@@ -25,6 +25,7 @@ export class CodeModeExecutor {
       abortSignal?: AbortSignal
       allowedToolNames?: readonly string[]
       limits?: Partial<CodeModeExecutionLimits>
+      payloads?: Readonly<Record<string, string>>
     } = {},
   ): Promise<CodeModeExecutionResult> {
     return executeCodeModeV2({
@@ -32,6 +33,7 @@ export class CodeModeExecutor {
       allowedToolNames: options.allowedToolNames,
       executionId: randomUUID(),
       limits: options.limits,
+      payloads: options.payloads,
       registry: this.registry,
       source,
       workspaceRootPath: this.workspaceRootPath,

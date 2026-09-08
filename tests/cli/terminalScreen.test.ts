@@ -69,6 +69,40 @@ test('screen lifecycle renders session before compose and keeps cursor in compos
   assert.ok(output.writes.map(stripAnsi).includes('\n  Hello! How can I help?\n\n'))
 })
 
+test('streaming CLI user messages display canonical mentions as @ labels', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+  screen.addUserMessage('inspect [[list:docs]] and [[read_file:src/main.ts]]')
+  screen.beginTurn()
+
+  const rows = output.visibleRows()
+  assert.equal(rows.some((row) => row.includes('inspect @docs and @main.ts')), true)
+  assert.equal(rows.some((row) => row.includes('[[list:docs]]')), false)
+  assert.equal(rows.some((row) => row.includes('[[read_file:src/main.ts]]')), false)
+})
+
+test('streaming follow-ups and consumed user messages hide canonical mention markup', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  screen.start()
+  screen.addUserMessage('start')
+  screen.beginTurn()
+
+  screen.setActiveFollowUps([{ behavior: 'steer', text: 'check [[list:docs]]' }])
+  screen.addConsumedUserMessages([{
+    content: 'also inspect [[read_file:src/main.ts]]',
+    id: 'consumed-with-mention',
+    role: 'user',
+    timestamp: 1,
+  }])
+
+  const rows = output.visibleRows()
+  assert.equal(rows.some((row) => row.includes('[Steer] check @docs')), true)
+  assert.equal(rows.some((row) => row.includes('also inspect @main.ts')), true)
+  assert.equal(rows.some((row) => row.includes('[[list:docs]]') || row.includes('[[read_file:src/main.ts]]')), false)
+})
+
 test('tool execution restores the thinking indicator until the active turn continues', () => {
   const output = new TerminalGridOutput()
   const screen = createScreen(output)
@@ -773,6 +807,35 @@ test('screen clears active steer and queue submissions so more messages can be e
   assert.equal(submittedRows.filter((row) => row.includes('╭─ compose')).length, 1)
   assert.equal(submittedRows.some((row) => row.includes('Enter steer · Tab queue · Esc stop')), true)
 
+  screen.eventPresentation.onCompleted()
+})
+
+test('screen keeps a multiline queued message inside a valid active frame', () => {
+  const output = new TerminalGridOutput()
+  const screen = createScreen(output)
+  const submissions: Array<{ behavior: 'steer' | 'queue'; text: string }> = []
+  screen.start()
+  screen.addUserMessage('inspect the workspace')
+  screen.beginTurn()
+  void screen.ask({
+    mode: 'agent',
+    modelId: 'gpt-test',
+    providerId: 'codex',
+    onActiveMessage: (text, behavior) => submissions.push({ behavior, text }),
+  })
+  screen.eventPresentation.onContentStart()
+  screen.eventPresentation.onContentDelta('Command failed with a traceback, but the turn is still active.')
+  screen.handleInputAction({ type: 'insert', text: 'fix the server' })
+  screen.handleInputAction({ type: 'newline' })
+  screen.handleInputAction({ type: 'insert', text: 'then rerun it' })
+  screen.handleInputAction({ type: 'alternate-submit' })
+
+  const rows = output.visibleRows()
+  assert.deepEqual(submissions, [{ behavior: 'queue', text: 'fix the server\nthen rerun it' }])
+  assert.equal(rows.filter((row) => row.includes('╭─ compose')).length, 1)
+  assert.equal(rows.filter((row) => row.includes('[Queued] fix the server')).length, 1)
+  assert.equal(rows.filter((row) => row.includes('then rerun it')).length, 1)
+  assert.equal(rows.some((row) => row.includes('Enter steer · Tab queue · Esc stop')), true)
   screen.eventPresentation.onCompleted()
 })
 

@@ -46,7 +46,7 @@ interface NativeToolSets {
   providerTools: ToolSet
 }
 
-const CODE_MODE_EXCLUDED_TOOLS = new Set(['mcp_tool_search', 'execute_mcp'])
+const CODE_MODE_EXCLUDED_TOOLS = new Set(['mcp_tool_search', 'execute_mcp', 'apply_patch', 'write'])
 
 async function createNativeToolSets(
   input: AgentToolContext,
@@ -152,6 +152,8 @@ export async function createAgentToolBundle(
     ? Object.keys(toolSets.planTools).filter((name) => registry.get(name) !== undefined)
     : undefined
   const metaTools: ToolSet = {
+    ...(options.chatMode === 'plan' ? {} : { apply_patch: toolSets.agentTools.apply_patch }),
+    ...(options.chatMode === 'plan' ? {} : { write: toolSets.agentTools.write }),
     code_mode: createCodeModeTool(codeModeExecutor, registry, {
       allowedToolNames,
       executionMode: codeModeExecutionMode,

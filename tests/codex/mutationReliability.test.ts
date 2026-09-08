@@ -242,12 +242,15 @@ test('public edit returns structured error code and stage for ambiguous source',
   }
 })
 
-test('Code Mode source strings preserve arbitrary nested text for write and apply_patch', async () => {
+test('direct write and apply_patch preserve arbitrary nested mutation text outside Code Mode', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-payload-mutation-'))
   try {
     const bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent' })
-    assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
-    const codeMode = bundle.tools.code_mode as unknown as {
+    assert.deepEqual(Object.keys(bundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
+    const write = bundle.tools.write as unknown as {
+      execute: (input: unknown, options: { abortSignal?: AbortSignal }) => Promise<{ status: string }>
+    }
+    const applyPatch = bundle.tools.apply_patch as unknown as {
       execute: (input: unknown, options: { abortSignal?: AbortSignal }) => Promise<{ status: string }>
     }
     const rawSource = [
@@ -261,8 +264,7 @@ test('Code Mode source strings preserve arbitrary nested text for write and appl
       '',
     ].join('\n')
 
-    const writeSource = `return await tools.write({ path: 'nested-source.txt', content: ${JSON.stringify(rawSource)} })`
-    const writeResult = await codeMode.execute({ source: writeSource }, {})
+    const writeResult = await write.execute({ path: 'nested-source.txt', content: rawSource }, {})
     assert.equal(writeResult.status, 'success')
     assert.equal(await fs.readFile(path.join(workspaceRootPath, 'nested-source.txt'), 'utf8'), rawSource)
 
@@ -273,9 +275,8 @@ test('Code Mode source strings preserve arbitrary nested text for write and appl
       '-const template = `hello ${name}`',
       '+const template = `hi ${name}`',
       '*** End Patch',
-    ].join('\n')
-    const patchSource = `return await tools.apply_patch(${JSON.stringify(patch)})`
-    const patchResult = await codeMode.execute({ source: patchSource }, {})
+    ]
+    const patchResult = await applyPatch.execute({ patch }, {})
     assert.equal(patchResult.status, 'success')
     assert.equal(
       await fs.readFile(path.join(workspaceRootPath, 'nested-source.txt'), 'utf8'),

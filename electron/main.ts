@@ -30,7 +30,7 @@ import { RemoteWorkspaceHost } from './remote/host'
 import { registerRemoteWorkspaceHostIpc } from './remote/ipc'
 import { REMOTE_EVENT_CHANNELS } from '../src/remote/protocol'
 import { hasSharedAppSettingsInput } from '../src/lib/appSettingsScopes'
-import { shutdownRunServiceForApplication } from './runService/ensureService'
+import { disconnectRunServiceForApplication } from './runService/ensureService'
 import { createTrayPopupController } from './window/trayPopup'
 import { synchronizeDevSettingsSnapshot } from './settings/devSnapshot'
 
@@ -307,8 +307,8 @@ app.on('before-quit', (event) => {
     flushStoredSettingsUpdates().catch((error) => {
       console.error('Failed to flush settings updates on quit', error)
     }),
-    shutdownRunServiceForApplication().catch((error) => {
-      console.error('Failed to shut down the TideCode run service on quit.', error)
+    disconnectRunServiceForApplication().catch((error) => {
+      console.error('Failed to disconnect from the TideCode run service on quit.', error)
     }),
   ])
     .finally(() =>

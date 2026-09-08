@@ -54,7 +54,7 @@ test('createAgentTools exposes write tools in agent mode', async () => {
   }
 })
 
-test('Code Mode exposes one provider tool while discovery and native executors stay in its registry', async () => {
+test('Code Mode exposes code_mode plus direct apply_patch/write while discovery and native executors stay in its registry', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-tools-'))
 
   try {
@@ -63,11 +63,12 @@ test('Code Mode exposes one provider tool while discovery and native executors s
       { chatMode: 'agent', orchestrationMode: 'code_mode' },
     )
 
-    assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
+    assert.deepEqual(Object.keys(bundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
     assert.equal(bundle.registry.get('tool_search'), undefined)
     assert.ok(bundle.registry.get('read'))
     assert.ok(bundle.registry.get('read_tool_output'))
-    assert.ok(bundle.registry.get('apply_patch'))
+    assert.equal(bundle.registry.get('apply_patch'), undefined)
+    assert.equal(bundle.registry.get('write'), undefined)
     assert.ok(bundle.registry.get('plan_create'))
     assert.ok(bundle.registry.get('plan_edit'))
     assert.ok(bundle.registry.get('edit'))
@@ -75,8 +76,6 @@ test('Code Mode exposes one provider tool while discovery and native executors s
     assert.equal(bundle.registry.get('mcp_tool_search'), undefined)
     assert.equal(bundle.registry.get('execute_mcp'), undefined)
     assert.equal(typeof bundle.registry.get('read')?.execute, 'function')
-    const codeModeWriteSchema = bundle.registry.get('write')?.inputSchema as { properties?: Record<string, unknown> } | undefined
-    assert.equal(Boolean(codeModeWriteSchema?.properties && 'expectedRevision' in codeModeWriteSchema.properties), false)
     await bundle.codeModeExecutor?.dispose()
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -92,10 +91,76 @@ test('createAgentToolBundle defaults agent mode to Code Mode', async () => {
       { chatMode: 'agent' },
     )
 
-    assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
+    assert.deepEqual(Object.keys(bundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
     assert.equal(bundle.registry.get('tool_search'), undefined)
     assert.ok(bundle.codeModeExecutor)
     await bundle.codeModeExecutor?.dispose()
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode direct apply_patch bypasses the interpreter and applies the native patch schema', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-direct-apply-patch-'))
+
+  try {
+    await fs.writeFile(path.join(workspaceRootPath, 'value.txt'), 'before\n', 'utf8')
+    const bundle = await createAgentToolBundle(
+      { workspaceRootPath },
+      { chatMode: 'agent', orchestrationMode: 'code_mode', providerId: 'openai' },
+    )
+    const applyPatch = bundle.tools.apply_patch as {
+      execute?: (input: unknown, options: { toolCallId: string; messages: never[]; context: Record<string, never> }) => Promise<unknown>
+    }
+
+    try {
+      assert.equal(typeof applyPatch.execute, 'function')
+      const result = await applyPatch.execute?.(
+        { patch: ['*** Begin Patch', '*** Update File: value.txt', '@@', '-before', '+after', '*** End Patch'] },
+        { context: {}, messages: [], toolCallId: 'direct-patch' },
+      ) as { status?: string }
+      assert.equal(result.status, 'success')
+      assert.equal(await fs.readFile(path.join(workspaceRootPath, 'value.txt'), 'utf8'), 'after\n')
+    } finally {
+      await bundle.codeModeExecutor?.dispose()
+    }
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode direct write bypasses the interpreter and preserves delimiter-heavy content', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-direct-write-'))
+  const fence = String.fromCharCode(96).repeat(3)
+  const content = [
+    fence + 'tsx',
+    'const view = `hello ${name}`',
+    'const rx = /a\\b\\s+/g',
+    'const path = "C:\\Users\\Admin\\file.ts"',
+    fence,
+    '',
+  ].join('\n')
+
+  try {
+    const bundle = await createAgentToolBundle(
+      { workspaceRootPath },
+      { chatMode: 'agent', orchestrationMode: 'code_mode', providerId: 'openai' },
+    )
+    const write = bundle.tools.write as {
+      execute?: (input: unknown, options: { toolCallId: string; messages: never[]; context: Record<string, never> }) => Promise<unknown>
+    }
+
+    try {
+      assert.equal(typeof write.execute, 'function')
+      const result = await write.execute?.(
+        { content, path: 'nested.tsx' },
+        { context: {}, messages: [], toolCallId: 'direct-write' },
+      ) as { status?: string }
+      assert.equal(result.status, 'success')
+      assert.equal(await fs.readFile(path.join(workspaceRootPath, 'nested.tsx'), 'utf8'), content)
+    } finally {
+      await bundle.codeModeExecutor?.dispose()
+    }
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -225,7 +290,7 @@ test('createAgentTools does not expose web search for unsupported providers', as
   }
 })
 
-test('Code Mode keeps one provider-facing tool even when the provider supports native web search', async () => {
+test('Code Mode keeps only Tidecode code_mode/apply_patch/write provider tools even when native web search exists', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-web-search-'))
 
   try {
@@ -236,9 +301,9 @@ test('Code Mode keeps one provider-facing tool even when the provider supports n
       )
 
       try {
-        assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
+        assert.deepEqual(Object.keys(bundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
         assert.ok(!('read' in bundle.tools))
-        assert.ok(!('write' in bundle.tools))
+        assert.ok('write' in bundle.tools)
         assert.ok(!('execute_terminal' in bundle.tools))
       } finally {
         await bundle.codeModeExecutor?.dispose()
@@ -250,7 +315,7 @@ test('Code Mode keeps one provider-facing tool even when the provider supports n
       { chatMode: 'agent', orchestrationMode: 'code_mode', providerId: 'custom:test-provider' },
     )
     try {
-      assert.deepEqual(Object.keys(unsupportedBundle.tools), ['code_mode'])
+      assert.deepEqual(Object.keys(unsupportedBundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
     } finally {
       await unsupportedBundle.codeModeExecutor?.dispose()
     }

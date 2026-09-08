@@ -48,6 +48,27 @@ function isProjectGroup(group: ConversationGroupPreview) {
   return group.folder.id !== null && group.folder.id !== PINNED_FOLDER_ID && group.folder.id !== ARCHIVED_FOLDER_ID
 }
 
+function normalizeProjectPathForComparison(folderPath: string) {
+  return folderPath.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLocaleLowerCase()
+}
+
+export function findSidebarProjectIdByPath(
+  conversationGroups: readonly ConversationGroupPreview[],
+  folderPath: string,
+) {
+  const normalizedFolderPath = normalizeProjectPathForComparison(folderPath)
+  if (normalizedFolderPath.length === 0) return null
+
+  const matchingGroup = conversationGroups.find(
+    (group) =>
+      isProjectGroup(group) &&
+      group.folder.path !== null &&
+      normalizeProjectPathForComparison(group.folder.path) === normalizedFolderPath,
+  )
+
+  return matchingGroup?.folder.id ?? null
+}
+
 export function buildSidebarProjectOptions(
   conversationGroups: readonly ConversationGroupPreview[],
 ): SidebarProjectOption[] {

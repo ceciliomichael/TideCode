@@ -781,7 +781,7 @@ test('apply_patch honors end-of-file context when the source has no trailing new
   }
 })
 
-test('Code Mode exposes apply_patch and edit through its internal registry', async () => {
+test('Code Mode exposes apply_patch directly while edit remains an internal capability', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-code-mode-'))
   let codeModeExecutor: { dispose: () => Promise<void> } | null = null
 
@@ -792,31 +792,30 @@ test('Code Mode exposes apply_patch and edit through its internal registry', asy
       { chatMode: 'agent', orchestrationMode: 'code_mode' },
     )
     codeModeExecutor = bundle.codeModeExecutor
-    assert.ok(bundle.registry.get('apply_patch'))
+    assert.equal(bundle.registry.get('apply_patch'), undefined)
     assert.ok(bundle.registry.get('edit'))
     assert.ok(bundle.nativeTools.edit)
-    assert.deepEqual(Object.keys(bundle.tools), ['code_mode'])
+    assert.deepEqual(Object.keys(bundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
     assert.equal(bundle.registry.get('tool_search'), undefined)
     const description = (bundle.tools.code_mode as { description?: string }).description ?? ''
-    assert.match(description, /tools\.apply_patch\(input: string\)/u)
-    assert.match(description, /primary API for targeted source changes/u)
+    assert.doesNotMatch(description, /tools\.apply_patch/u)
+    assert.match(description, /Direct model-facing `apply_patch`/u)
     assert.match(description, /tools\.edit/u)
 
-    const execute = (bundle.tools.code_mode as {
+    const executePatch = (bundle.tools.apply_patch as {
       execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
     }).execute
     const patch = [
       '*** Begin Patch',
       ...standardPatch('*** Update File: value.ts\n@@\n-const value = 1\n+const value = 2').split('\n'),
-    ].join('\n')
-    const source = `const result = await tools.apply_patch(${JSON.stringify(patch)}); return { status: result.status, operation: result.semantics.operation }`
-    const patchResult = await execute?.(
-      { source },
+    ]
+    const patchResult = await executePatch?.(
+      { patch },
       { context: {}, messages: [], toolCallId: 'apply-patch-code-mode-test' },
-    ) as { body?: string; status?: string }
+    ) as { semantics?: { operation?: string }; status?: string }
 
     assert.equal(patchResult.status, 'success')
-    assert.match(patchResult.body ?? '', /"operation": "edit"/u)
+    assert.equal(patchResult.semantics?.operation, 'edit')
     assert.equal(await fs.readFile(path.join(workspaceRootPath, 'value.ts'), 'utf8'), 'const value = 2\nconst enabled = false\n')
 
     const nativeEdit = bundle.nativeTools.edit as unknown as {
@@ -836,7 +835,7 @@ test('Code Mode exposes apply_patch and edit through its internal registry', asy
   }
 })
 
-test('Code Mode apply_patch string payloads preserve literal source escapes', async () => {
+test('direct apply_patch preserves literal source escapes without Code Mode string transport', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-template-literal-'))
   let codeModeExecutor: { dispose: () => Promise<void>; run: (source: string) => Promise<{ status: string; toolCalls: Array<{ name: string }> }> } | null = null
 
@@ -846,7 +845,10 @@ test('Code Mode apply_patch string payloads preserve literal source escapes', as
       { chatMode: 'agent', orchestrationMode: 'code_mode' },
     )
     codeModeExecutor = bundle.codeModeExecutor
-    assert.ok(codeModeExecutor)
+    const executePatch = (bundle.tools.apply_patch as {
+      execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
+    }).execute
+    assert.equal(typeof executePatch, 'function')
 
     const expected = [
       "const newline = '\\n';",
@@ -859,17 +861,18 @@ test('Code Mode apply_patch string payloads preserve literal source escapes', as
       'const template = `hello ${name}`;',
       '',
     ].join('\n')
-    const patchText = [
+    const patch = [
       '*** Begin Patch',
       '*** Add File: literal.ts',
       ...expected.trimEnd().split('\n').map((line) => '+' + line),
       '*** End Patch',
-    ].join('\n')
-    const source = 'const patch = ' + JSON.stringify(patchText) + '; return await tools.apply_patch(patch)'
-    const result = await codeModeExecutor.run(source)
+    ]
+    const result = await executePatch?.(
+      { patch },
+      { context: {}, messages: [], toolCallId: 'direct-patch-literal' },
+    ) as { status?: string }
 
     assert.equal(result.status, 'success')
-    assert.deepEqual(result.toolCalls.map((call) => call.name), ['apply_patch'])
     assert.equal(await fs.readFile(path.join(workspaceRootPath, 'literal.ts'), 'utf8'), expected)
   } finally {
     await codeModeExecutor?.dispose()
@@ -877,7 +880,7 @@ test('Code Mode apply_patch string payloads preserve literal source escapes', as
   }
 })
 
-test('Code Mode apply_patch repairs redundant JSX quote escaping', async () => {
+test('direct apply_patch repairs redundant JSX quote escaping', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-code-mode-jsx-escaping-'))
   let codeModeExecutor: { dispose: () => Promise<void>; run: (source: string) => Promise<{ status: string; toolCalls: Array<{ name: string }> }> } | null = null
   const beforeLine = 'return <div className="card" data-state="open">Hello</div>'
@@ -891,22 +894,25 @@ test('Code Mode apply_patch repairs redundant JSX quote escaping', async () => {
       { chatMode: 'agent', orchestrationMode: 'code_mode' },
     )
     codeModeExecutor = bundle.codeModeExecutor
-    assert.ok(codeModeExecutor)
+    const executePatch = (bundle.tools.apply_patch as {
+      execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>
+    }).execute
+    assert.equal(typeof executePatch, 'function')
 
-    const patchText = [
+    const patch = [
       '*** Begin Patch',
       '*** Update File: Card.tsx',
       '@@',
       `-${overescape(beforeLine)}`,
       `+${overescape(afterLine)}`,
       '*** End Patch',
-    ].join('\n')
-    const tick = String.fromCharCode(96)
-    const source = 'const patch = ' + tick + patchText + tick + '; return await tools.apply_patch(patch)'
-    const result = await codeModeExecutor.run(source)
+    ]
+    const result = await executePatch?.(
+      { patch },
+      { context: {}, messages: [], toolCallId: 'direct-patch-jsx-escape' },
+    ) as { status?: string }
 
     assert.equal(result.status, 'success')
-    assert.deepEqual(result.toolCalls.map((call) => call.name), ['apply_patch'])
     assert.equal(await fs.readFile(path.join(workspaceRootPath, 'Card.tsx'), 'utf8'), `${afterLine}\n`)
   } finally {
     await codeModeExecutor?.dispose()

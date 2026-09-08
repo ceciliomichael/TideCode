@@ -169,6 +169,26 @@ export class ToolReference {
   constructor(readonly path: readonly string[]) {}
 }
 
+export class PayloadNamespace {
+  private readonly values: Readonly<Record<string, string>>
+
+  constructor(payloads: Readonly<Record<string, string>>) {
+    this.values = Object.freeze(Object.assign(Object.create(null), payloads)) as Readonly<Record<string, string>>
+  }
+
+  get(name: string): string | undefined {
+    return Object.hasOwn(this.values, name) ? this.values[name] : undefined
+  }
+
+  keys(): string[] {
+    return Object.keys(this.values).sort()
+  }
+
+  entries(): Array<[string, string]> {
+    return this.keys().map((key) => [key, this.values[key]!])
+  }
+}
+
 export const BLOCKED_MEMBER_NAMES = new Set(['__proto__', 'prototype', 'constructor'])
 
 export const sourcePosition = (node?: AstNode): SourcePosition | undefined => {

@@ -15,6 +15,7 @@ export interface ExecuteCodeModeV2Options {
   allowedToolNames?: readonly string[]
   executionId: string
   limits?: Partial<CodeModeExecutionLimits>
+  payloads?: Readonly<Record<string, string>>
   registry: AgentToolRegistry
   source: string
   workspaceRootPath: string
@@ -49,6 +50,37 @@ export async function executeCodeModeV2(options: ExecuteCodeModeV2Options): Prom
       summary: `${diagnostic.kind}: ${diagnostic.message}`,
       toolCalls,
       truncated: false,
+    }
+  }
+
+  const payloads = options.payloads ?? {}
+  const payloadEntries = Object.entries(payloads)
+  if (payloadEntries.length > 64) {
+    const diagnostic = { kind: 'InvalidToolArguments', message: 'Code Mode payloads exceeded the 64-item limit.' }
+    return { diagnostic, engine: 'v2', error: `${diagnostic.kind}: ${diagnostic.message}`, executionId: options.executionId, status: 'error', summary: `${diagnostic.kind}: ${diagnostic.message}`, toolCalls, truncated: false }
+  }
+  let payloadBytes = 0
+  for (const [key, value] of payloadEntries) {
+    if (key.trim().length === 0) {
+      const diagnostic = { kind: 'InvalidToolArguments', message: 'Code Mode payload keys must be non-empty.' }
+      return { diagnostic, engine: 'v2', error: `${diagnostic.kind}: ${diagnostic.message}`, executionId: options.executionId, status: 'error', summary: `${diagnostic.kind}: ${diagnostic.message}`, toolCalls, truncated: false }
+    }
+    if (Buffer.byteLength(key, 'utf8') > 128) {
+      const diagnostic = { kind: 'InvalidToolArguments', message: `Code Mode payload key '${key}' exceeded the 128-byte limit.` }
+      return { diagnostic, engine: 'v2', error: `${diagnostic.kind}: ${diagnostic.message}`, executionId: options.executionId, status: 'error', summary: `${diagnostic.kind}: ${diagnostic.message}`, toolCalls, truncated: false }
+    }
+    if (['__proto__', 'prototype', 'constructor'].includes(key)) {
+      const diagnostic = { kind: 'InvalidToolArguments', message: `Code Mode payload key '${key}' is reserved.` }
+      return { diagnostic, engine: 'v2', error: `${diagnostic.kind}: ${diagnostic.message}`, executionId: options.executionId, status: 'error', summary: `${diagnostic.kind}: ${diagnostic.message}`, toolCalls, truncated: false }
+    }
+    if (typeof value !== 'string') {
+      const diagnostic = { kind: 'InvalidToolArguments', message: `Code Mode payload '${key}' must be a string.` }
+      return { diagnostic, engine: 'v2', error: `${diagnostic.kind}: ${diagnostic.message}`, executionId: options.executionId, status: 'error', summary: `${diagnostic.kind}: ${diagnostic.message}`, toolCalls, truncated: false }
+    }
+    payloadBytes += Buffer.byteLength(key, 'utf8') + Buffer.byteLength(value, 'utf8')
+    if (payloadBytes > limits.maxPayloadBytes) {
+      const diagnostic = { kind: 'InvalidToolArguments', message: `Code Mode payloads exceeded the ${limits.maxPayloadBytes}-byte limit.` }
+      return { diagnostic, engine: 'v2', error: `${diagnostic.kind}: ${diagnostic.message}`, executionId: options.executionId, status: 'error', summary: `${diagnostic.kind}: ${diagnostic.message}`, toolCalls, truncated: false }
     }
   }
 
@@ -110,7 +142,7 @@ export async function executeCodeModeV2(options: ExecuteCodeModeV2Options): Prom
       truncated: false,
     }
   }
-  const interpreter = new CodeModeInterpreter(toolRuntime, limits, executionController.signal, deadline)
+  const interpreter = new CodeModeInterpreter(toolRuntime, payloads, limits, executionController.signal, deadline)
   let steps = 0
   try {
     const result = await interpreter.execute(program)

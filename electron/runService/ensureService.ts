@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { getTideCodeRuntimeRoot } from '../runtime/runtimeRoot'
 import {
@@ -11,60 +11,10 @@ import { RunServiceBuildMismatchError, TideCodeRunServiceClient } from './client
 import { configureDevelopmentRunServiceNamespace, resolveRunServiceNamespace } from './namespace'
 
 let sharedClientPromise: Promise<TideCodeRunServiceClient> | null = null
-let ownedRunServiceChild: ChildProcess | null = null
 let runServiceShutdownRequested = false
 
 function sleep(milliseconds: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, milliseconds))
-}
-
-async function waitForChildExit(child: ChildProcess, timeoutMs: number) {
-  if (child.exitCode !== null || child.signalCode !== null) return true
-  return Promise.race([
-    new Promise<boolean>((resolve) => child.once('exit', () => resolve(true))),
-    sleep(timeoutMs).then(() => false),
-  ])
-}
-
-async function forceTerminateRunServiceTree(child: ChildProcess) {
-  const processId = child.pid
-  if (!processId) return
-
-  if (process.platform === 'win32') {
-    await new Promise<void>((resolve) => {
-      let taskkill: ChildProcess
-      try {
-        taskkill = spawn('taskkill', ['/PID', String(processId), '/T', '/F'], {
-          stdio: 'ignore',
-          windowsHide: true,
-        })
-      } catch {
-        resolve()
-        return
-      }
-      let settled = false
-      const finish = () => {
-        if (settled) return
-        settled = true
-        clearTimeout(timeoutId)
-        resolve()
-      }
-      taskkill.once('error', finish)
-      taskkill.once('exit', finish)
-      const timeoutId = setTimeout(() => {
-        taskkill.kill()
-        finish()
-      }, 2_000)
-      timeoutId.unref?.()
-    })
-    return
-  }
-
-  try {
-    process.kill(-processId, 'SIGTERM')
-  } catch {
-    child.kill('SIGTERM')
-  }
 }
 
 function isElectronRuntime() {
@@ -210,9 +160,6 @@ async function launchAndConnectService() {
     await sleep(50)
     try {
       const client = await connectExistingService(launch.buildId)
-      if (child.pid && client.processId === child.pid) {
-        ownedRunServiceChild = child
-      }
       return client
     } catch (error) {
       lastError = error
@@ -235,36 +182,18 @@ export function ensureRunServiceClient() {
   return sharedClientPromise
 }
 
-export async function shutdownRunServiceForApplication() {
+export async function disconnectRunServiceForApplication() {
   runServiceShutdownRequested = true
   const clientPromise = sharedClientPromise
-  const child = ownedRunServiceChild
   sharedClientPromise = null
-  ownedRunServiceChild = null
 
   if (!clientPromise) return
   const client = await clientPromise.catch(() => null)
   if (!client) return
-
-  if (!child?.pid || client.processId !== child.pid) {
-    client.close()
-    return
-  }
-
-  try {
-    await client.shutdown()
-    if (await waitForChildExit(child, 1_000)) return
-  } catch (error) {
-    await forceTerminateRunServiceTree(child)
-    throw error
-  }
-
-  await forceTerminateRunServiceTree(child)
-  await waitForChildExit(child, 1_000)
+  client.close()
 }
 
 export function resetRunServiceClientForTests() {
   sharedClientPromise = null
-  ownedRunServiceChild = null
   runServiceShutdownRequested = false
 }
