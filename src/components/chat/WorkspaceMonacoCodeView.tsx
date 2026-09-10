@@ -15,6 +15,7 @@ import {
   clampRenderedCodeContentHeight,
   CODE_VERTICAL_PADDING_PX,
   resolveInitialCodeContentHeight,
+  resolveWorkspaceMonacoCodeMaxHeight,
 } from './workspaceMonacoCodeSizing'
 
 interface WorkspaceMonacoCodeViewProps {
@@ -52,11 +53,11 @@ export function WorkspaceMonacoCodeView({
     () => createCodeBlockModelPath(fileName, code),
     [code, fileName],
   )
-  const [height, setHeight] = useState(() => resolveInitialCodeContentHeight(code))
+  const maxHeight = resolveWorkspaceMonacoCodeMaxHeight(maxBodyHeightClassName)
+  const [height, setHeight] = useState(() => resolveInitialCodeContentHeight(code, maxHeight))
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const contentSizeDisposableRef = useRef<{ dispose: () => void } | null>(null)
   const overlayScrollbarDisposableRef = useRef<{ dispose: () => void } | null>(null)
-  const maxHeight = maxBodyHeightClassName?.includes('max-h-80') ? 320 : null
   const maxHeightRef = useRef<number | null>(maxHeight)
   maxHeightRef.current = maxHeight
   const theme = getWorkspaceMonacoTheme(resolvedTheme)
@@ -88,8 +89,7 @@ export function WorkspaceMonacoCodeView({
       return
     }
     setHeight(() => {
-      const contentHeight = resolveInitialCodeContentHeight(code)
-      return maxHeight === null ? contentHeight : Math.min(maxHeight, contentHeight)
+      return resolveInitialCodeContentHeight(code, maxHeight)
     })
   }, [code, maxHeight, updateHeight])
 
@@ -102,14 +102,14 @@ export function WorkspaceMonacoCodeView({
   }, [])
 
   return (
-    <div className="workspace-monaco-code relative w-full min-w-0 bg-surface" style={{ height: height || 160 }}>
+    <div className="workspace-monaco-code relative w-full min-w-0 bg-surface" style={{ height }}>
         <Editor
         beforeMount={beforeMount}
           className="selectable-ui"
         height="100%"
 
         language={resolvedLanguage}
-        loading={<WorkspaceMonacoDiffLoadingView height={height || 160} />}
+        loading={<WorkspaceMonacoDiffLoadingView height={height} />}
         onMount={onMount}
         options={{
           automaticLayout: true,

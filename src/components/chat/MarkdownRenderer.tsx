@@ -23,6 +23,10 @@ interface CodeNodeProps extends React.ComponentPropsWithoutRef<'code'> {
   inline?: boolean
 }
 
+const MARKDOWN_FENCE_PATTERN = /(?:^|\r?\n)[ \t]{0,3}(?:`{3,}|~{3,})[^\r\n]*(?:\r?\n|$)/u
+const MARKDOWN_INDENTED_CODE_PATTERN = /(?:^|\r?\n)(?: {4}|\t)\S/u
+const HTML_PRE_BLOCK_PATTERN = /<pre(?:\s|>)/iu
+
 function extractCodeText(children: React.ReactNode): string {
   if (typeof children === 'string') {
     return children.replace(/\n$/, '')
@@ -50,6 +54,15 @@ function isSummaryElement(child: React.ReactNode): boolean {
   if (typeof child.type === 'string' && child.type.toLowerCase() === 'summary') return true
   if (child.props && (child.props as { node?: { tagName?: string } }).node?.tagName === 'summary') return true
   return false
+}
+
+export function containsMarkdownBlockCode(content: string) {
+  if (detectRawHtmlDocument(content) !== null || HTML_PRE_BLOCK_PATTERN.test(content)) {
+    return true
+  }
+
+  const processedContent = preprocessMarkdown(content)
+  return MARKDOWN_FENCE_PATTERN.test(processedContent) || MARKDOWN_INDENTED_CODE_PATTERN.test(processedContent)
 }
 
 export const MarkdownRenderer = memo(function MarkdownRenderer({
