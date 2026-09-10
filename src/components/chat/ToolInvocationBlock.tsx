@@ -2,12 +2,12 @@ import { memo, useEffect, useMemo, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import type { ToolInvocationTrace } from '../../types/chat'
 import { normalizeMarkdownText } from '../../lib/chatMessageContent'
-import { DiffViewer } from './DiffViewer'
-import { ChangeDiffResult } from './FileChangeDiffResult'
 import { LiteralToolResult } from './LiteralToolResult'
-import { MarkdownRenderer } from './MarkdownRenderer'
+import { containsMarkdownBlockCode, MarkdownRenderer } from './MarkdownRenderer'
 import { TerminalToolResult } from './TerminalToolResult'
 import { ToolDecisionRequestCard, type ToolDecisionSubmission } from './ToolDecisionRequestCard'
+import { ToolDiffResult } from './ToolDiffResult'
+import { ToolMarkdownResult } from './ToolMarkdownResult'
 import { getToolInvocationHeaderLabel } from './toolInvocationPresentation'
 import { isFileEditTool, isFileWriteTool } from './toolInvocationKinds'
 import { isKanbanTool } from './kanbanToolInvocationKinds'
@@ -71,7 +71,6 @@ function renderDiffCountSummary(invocation: ToolInvocationTrace) {
 
   return null
 }
-
 
 export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   invocation,
@@ -145,22 +144,24 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
     displayInvocation.toolName === 'get_terminal_output'
       ? displayInvocation.toolName
       : null
-  const diffResultPresentation = displayInvocation.resultPresentation?.kind === 'file_diff' ? displayInvocation.resultPresentation : null
-  const changeResultPresentation = displayInvocation.resultPresentation?.kind === 'change_diff' ? displayInvocation.resultPresentation : null
-  const imageResultPresentation = displayInvocation.resultPresentation?.kind === 'image' ? displayInvocation.resultPresentation : null
+  const resultPresentation = displayInvocation.resultPresentation
+  const toolDiffPresentation =
+    resultPresentation?.kind === 'file_diff' || resultPresentation?.kind === 'change_diff'
+      ? resultPresentation
+      : null
+  const imageResultPresentation = resultPresentation?.kind === 'image' ? resultPresentation : null
   const isLiteralSourceTool =
     displayInvocation.toolName === 'read' ||
     displayInvocation.toolName === 'grep'
-  const parsedStructuredResult = isOpen && displayInvocation.resultContent
+  const isKanbanInvocation = isKanbanTool(displayInvocation.toolName)
+  const parsedStructuredResult = displayInvocation.resultContent
     ? parseStructuredToolResultContent(displayInvocation.resultContent)
     : null
   const rawResultBody =
-    isOpen
-      ? parsedStructuredResult?.body
-        ?? parsedStructuredResult?.metadata?.summary
-        ?? displayInvocation.resultContent
-        ?? ''
-      : ''
+    parsedStructuredResult?.body
+    ?? parsedStructuredResult?.metadata?.summary
+    ?? displayInvocation.resultContent
+    ?? ''
   const displayResultBody = getToolResultDisplayBody(displayInvocation.toolName, rawResultBody)
   const markdownResultBody = displayInvocation.toolName === 'web_search'
     ? normalizeWebSearchMarkdownBody(displayResultBody)
@@ -171,9 +172,24 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   )
   const shouldLimitResultHeight =
     terminalToolName === null && !isFileWriteTool(displayInvocation.toolName) && !isFileEditTool(displayInvocation.toolName)
+  const canPremeasureMarkdownResult =
+    displayInvocation.state !== 'running' &&
+    displayInvocation.resultContent !== undefined &&
+    toolDiffPresentation === null &&
+    imageResultPresentation === null &&
+    terminalToolName === null &&
+    !isKanbanInvocation &&
+    !isLiteralSourceTool
+  const shouldPremeasureMarkdownResult = useMemo(() => {
+    if (!canPremeasureMarkdownResult) {
+      return false
+    }
+
+    return containsMarkdownBlockCode(normalizedResultBody)
+  }, [canPremeasureMarkdownResult, normalizedResultBody])
 
   return (
-    <div className="w-full">
+    <div className="relative w-full">
       <button
         type="button"
         disabled={disableHeaderToggle}
@@ -203,26 +219,27 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
         </span>
       </button>
 
-      {isOpen && displayInvocation.resultContent ? (
+      {toolDiffPresentation ? (
+        <ToolDiffResult
+          isOpen={isOpen}
+          isStreaming={displayInvocation.state === 'running'}
+          presentation={toolDiffPresentation}
+        />
+      ) : shouldPremeasureMarkdownResult ? (
+        <ToolMarkdownResult
+          content={normalizedResultBody}
+          isOpen={isOpen}
+          isStreaming={displayInvocation.state === 'running'}
+          shouldLimitHeight={shouldLimitResultHeight}
+        />
+      ) : isOpen && displayInvocation.resultContent ? (
         <div
           className={[
             'mt-1.5 w-full text-sm text-muted-foreground/90 [&>*:last-child]:mb-0',
             shouldLimitResultHeight ? 'max-h-80 overflow-y-auto pr-1' : '',
           ].join(' ')}
         >
-          {diffResultPresentation ? (
-            <DiffViewer
-              contextLines={diffResultPresentation.contextLines}
-              filePath={diffResultPresentation.fileName}
-              isStreaming={displayInvocation.state === 'running'}
-              newContent={diffResultPresentation.newContent}
-              oldContent={diffResultPresentation.oldContent}
-              startLineNumber={diffResultPresentation.startLineNumber}
-              maxBodyHeightClassName="max-h-80"
-            />
-          ) : changeResultPresentation ? (
-            <ChangeDiffResult parsedResult={changeResultPresentation} />
-          ) : imageResultPresentation ? (
+          {imageResultPresentation ? (
             <ToolImageResult
               presentation={imageResultPresentation}
               workspaceRootPath={workspaceRootPath}
@@ -233,7 +250,7 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
               isStreaming={displayInvocation.state === 'running'}
               toolName={terminalToolName}
             />
-          ) : isKanbanTool(displayInvocation.toolName) ? (
+          ) : isKanbanInvocation ? (
             <KanbanToolResult
               invocation={displayInvocation}
               isStreaming={displayedState === 'running'}

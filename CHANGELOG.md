@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.2 - More accurate tool result rendering
+
+TideCode 1.4.2 improves collapsed tool-result measurement and Monaco code sizing so chat content lays out more accurately before expansion.
+
+- Premeasures collapsed diff results so file and grouped change diffs reserve the correct rendered height.
+- Premeasures Markdown tool results when they contain block code, while keeping plain-text collapsed results unmounted.
+- Improves Monaco code-view sizing based on visible source lines and preserves the tool-result height cap.
+- Includes refreshed project engineering guidance for focused implementation and verification workflows.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.1 - More reliable CLI and update flows
 
 TideCode 1.4.1 improves CLI continuity, Windows update reliability, project switching, and Code Mode behavior.

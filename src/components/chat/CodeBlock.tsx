@@ -7,6 +7,10 @@ import { HighlightedCodeLine } from './HighlightedCodeLine'
 import type { HighlightedCodeLine as HighlightedCodeLineData } from '../../lib/codeHighlighting'
 import { Tooltip } from '../Tooltip'
 import { preloadWorkspaceMonacoCodeView } from '../../lib/workspaceMonacoPreload'
+import {
+  resolveInitialCodeContentHeight,
+  resolveWorkspaceMonacoCodeMaxHeight,
+} from './workspaceMonacoCodeSizing'
 
 const WorkspaceMonacoCodeView = lazy(async () => {
   const module = await preloadWorkspaceMonacoCodeView()
@@ -127,6 +131,10 @@ export const CodeBlock = memo(function CodeBlock({
     : DEFAULT_CODE_ICON
   const titleLabel = headerLabel?.trim() || fileName?.trim() || toLanguageLabel(language, iconConfig.label)
   const LanguageIcon = iconConfig.icon
+  const initialBodyHeight = resolveInitialCodeContentHeight(
+    displayCode,
+    resolveWorkspaceMonacoCodeMaxHeight(maxBodyHeightClassName),
+  )
 
   useEffect(() => {
     if (!isCopied) {
@@ -195,7 +203,18 @@ export const CodeBlock = memo(function CodeBlock({
       >
         <div className={['min-w-0 bg-surface font-mono text-[12px] leading-5', fillHeight ? 'h-full' : ''].join(' ')}>
           {useMonaco ? (
-            <Suspense fallback={<CodeRows lines={highlightedLines} startLineNumber={startLineNumber} fillHeight={fillHeight} showLineNumberDivider={showLineNumberDivider} />}>
+            <Suspense
+              fallback={(
+                <div style={{ height: initialBodyHeight }}>
+                  <CodeRows
+                    lines={highlightedLines}
+                    startLineNumber={startLineNumber}
+                    fillHeight={fillHeight}
+                    showLineNumberDivider={showLineNumberDivider}
+                  />
+                </div>
+              )}
+            >
               <WorkspaceMonacoCodeView
                 code={displayCode}
                 fileName={fileName}
