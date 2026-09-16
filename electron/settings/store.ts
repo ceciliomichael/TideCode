@@ -22,7 +22,7 @@ import { normalizeContextCompactionSettings } from '../../src/lib/contextCompact
 import { isPlanRelativePath, normalizePlanRelativePath } from '../../src/lib/planContracts'
 import type { ChatMode, SourceControlSectionId } from '../../src/types/chat'
 import { electronApp } from '../electronApp'
-import { writeJsonFileAtomic } from './fileStore'
+import { recoverInterruptedJsonWrite, writeJsonFileAtomic } from './fileStore'
 import { isChatProviderId as isSupportedChatProviderId } from '../providers/providerIds'
 
 const CONFIG_ROOT_SEGMENTS = ['.tidecode', 'config'] as const
@@ -437,6 +437,7 @@ async function writeSurfaceSettingsFile(surface: AppSettingsSurface, settings: S
 async function readLegacySettingsFile(): Promise<AppSettings> {
   try {
     await ensureConfigDirectory()
+    await recoverInterruptedJsonWrite(getSettingsFilePath())
     const raw = await fs.readFile(getSettingsFilePath(), 'utf8')
     return sanitizeSettings(JSON.parse(raw) as Partial<AppSettings>)
   } catch (error) {
@@ -475,6 +476,7 @@ async function readLegacyMergedSettings(): Promise<AppSettings> {
 
 async function readSharedSettingsFile(): Promise<SharedAppSettings> {
   try {
+    await recoverInterruptedJsonWrite(getSettingsFilePath())
     const raw = await fs.readFile(getSettingsFilePath(), 'utf8')
     return pickSharedAppSettings(sanitizeSettings(JSON.parse(raw) as Partial<AppSettings>))
   } catch (error) {

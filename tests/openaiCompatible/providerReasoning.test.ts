@@ -21,15 +21,15 @@ function createConfig(overrides: Partial<ApiKeyChatProviderConfig>): ApiKeyChatP
 
 test('DeepSeek user efforts map to backend values with thinking enabled', () => {
   const config = createConfig({ providerId: 'deepseek' })
-  assert.deepEqual(resolveReasoningExtraBody(config, 'deepseek-v4-pro', 'low'), {
+  assert.deepEqual(resolveReasoningExtraBody(config, 'deepseek-flash', 'low'), {
     reasoning_effort: 'low',
     thinking: { type: 'enabled' },
   })
-  assert.deepEqual(resolveReasoningExtraBody(config, 'deepseek-v4-pro', 'medium'), {
+  assert.deepEqual(resolveReasoningExtraBody(config, 'deepseek-flash', 'medium'), {
     reasoning_effort: 'high',
     thinking: { type: 'enabled' },
   })
-  assert.deepEqual(resolveReasoningExtraBody(config, 'deepseek-v4-pro', 'high'), {
+  assert.deepEqual(resolveReasoningExtraBody(config, 'deepseek-flash', 'high'), {
     reasoning_effort: 'max',
     thinking: { type: 'enabled' },
   })
@@ -37,13 +37,13 @@ test('DeepSeek user efforts map to backend values with thinking enabled', () => 
 
 test('DeepSeek rejects efforts outside the user-facing profile', () => {
   const config = createConfig({ providerId: 'deepseek' })
-  assert.deepEqual(resolveReasoningExtraBody(config, 'deepseek-v4-pro', 'max'), {})
-  assert.deepEqual(resolveReasoningExtraBody(config, 'deepseek-v4-pro', 'xhigh'), {})
+  assert.deepEqual(resolveReasoningExtraBody(config, 'deepseek-flash', 'max'), {})
+  assert.deepEqual(resolveReasoningExtraBody(config, 'deepseek-flash', 'xhigh'), {})
 })
 
 test('DeepSeek none disables thinking and sends no reasoning effort', () => {
   const config = createConfig({ providerId: 'deepseek' })
-  assert.deepEqual(resolveReasoningExtraBody(config, 'deepseek-v4-pro', 'none'), {
+  assert.deepEqual(resolveReasoningExtraBody(config, 'deepseek-flash', 'none'), {
     thinking: { type: 'disabled' },
   })
 })

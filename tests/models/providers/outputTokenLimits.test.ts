@@ -18,9 +18,7 @@ const EXPECTED_LIMITS: Record<ChatProviderId, Record<string, number | undefined>
     'gpt-6-astra': 128000,
   },
   deepseek: {
-    'deepseek-v4-flash': 384000,
-    'deepseek-v4-flash-vision-exp': 384000,
-    'deepseek-v4-pro': 384000,
+    'deepseek-flash': 384000,
   },
   google: {
     'gemini-3.1-pro-preview': 65536,

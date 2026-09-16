@@ -6,6 +6,7 @@ import {
   TOOL_OUTPUT_MAX_LINE_LENGTH,
   TOOL_OUTPUT_MAX_LINES,
 } from '../../electron/chat/shared/tools/toolOutputBudget'
+import { formatExplicitCodeModeOutput } from '../../src/lib/codeModeResultOutput'
 
 test('context-only output projection keeps a bounded head and tail with a compact recovery handle', () => {
   const result = projectToolOutputForModel(
@@ -66,4 +67,29 @@ test('very large single-line output is truncated without materializing the full 
   assert.match(result.text, /head-/u)
   assert.match(result.text, /-tail/u)
   assert.match(result.text, /middle of line truncated/u)
+})
+
+test('Code Mode nested ToolResult files survive normal context projection', () => {
+  const middleSentinel = 'KEEP THIS MIDDLE FILE CONTENT'
+  const fileBody = [
+    'start of file',
+    ...Array.from({ length: 120 }, (_value, index) => `before ${index}: ${'a'.repeat(80)}`),
+    middleSentinel,
+    ...Array.from({ length: 120 }, (_value, index) => `after ${index}: ${'b'.repeat(80)}`),
+    'end of file',
+  ].join('\n')
+  const formatted = formatExplicitCodeModeOutput({
+    file: {
+      body: fileBody,
+      status: 'success',
+      summary: 'Read arbitrary.txt',
+    },
+  })
+  const result = projectToolOutputForModel(formatted)
+
+  assert.equal(result.truncated, false)
+  assert.ok(result.text.includes(middleSentinel))
+  assert.ok(result.text.includes('start of file'))
+  assert.ok(result.text.includes('end of file'))
+  assert.doesNotMatch(result.text, /middle of line truncated/u)
 })

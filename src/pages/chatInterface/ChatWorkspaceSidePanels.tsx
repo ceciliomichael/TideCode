@@ -3,6 +3,7 @@ import { ConversationDiffPanel, type DiffPanelScope } from '../../components/cha
 import { SourceControlPanel } from '../../components/sourceControl/SourceControlPanel'
 import { WorkspaceExplorerPanel } from '../../components/workspaceExplorer/WorkspaceExplorerPanel'
 import { WorkspaceFileTabsPanel } from '../../components/workspaceExplorer/WorkspaceFileTabsPanel'
+import { WorkspaceTabScrollStateProvider } from '../../components/workspaceExplorer/workspaceTabScrollState'
 import type { ChatInterfaceControllerState } from '../../hooks/useChatInterfaceController'
 import type { GitBranchStateController } from '../../hooks/useGitBranchState'
 import type { GitDiffSnapshotController } from '../../hooks/useGitDiffSnapshot'
@@ -50,27 +51,31 @@ export function ChatWorkspaceSidePanels({
 
   return (
     <>
-      {workspaceState.isWorkspaceTabsPanelOpen ? (
-        <WorkspaceFileTabsPanel
-          activeTabKey={workspaceState.activeWorkspaceTabKey}
-          gitFileDiffs={gitDiffSnapshot.snapshot.fileDiffs}
-          hasRepository={hasRepository}
-          isOpen={workspaceState.isWorkspaceTabsPanelOpen}
-          onCloseTab={workspaceState.handleCloseWorkspaceTab}
-          onFileContentChange={workspaceState.handleWorkspaceFileContentChange}
-          onPlanCommentsChange={workspaceState.handlePlanCommentsChange}
-          onImplementPlan={onImplementPlan}
-          onOpenFile={workspaceState.handleOpenWorkspaceFile}
-          onOpenMarkdownPreview={workspaceState.handleOpenWorkspaceMarkdownPreview}
-          onOpenSvgPreview={workspaceState.handleOpenWorkspaceSvgPreview}
-          onRequestPlanChanges={onRequestPlanChanges}
-          planCommentsByPath={workspaceState.planCommentsByPath}
-          onSelectTab={workspaceState.handleSelectWorkspaceTab}
-          tabs={workspaceState.workspaceFileTabs}
-          wordWrapEnabled={settings.workspaceFileEditorWordWrap}
-          workspaceRootPath={workspaceState.activeWorkspacePath}
-        />
-      ) : null}
+      <WorkspaceTabScrollStateProvider
+        tabKeys={workspaceState.workspaceFileTabs.map((tab) => tab.tabKey)}
+      >
+        {workspaceState.isWorkspaceTabsPanelOpen ? (
+          <WorkspaceFileTabsPanel
+            activeTabKey={workspaceState.activeWorkspaceTabKey}
+            gitFileDiffs={gitDiffSnapshot.snapshot.fileDiffs}
+            hasRepository={hasRepository}
+            isOpen={workspaceState.isWorkspaceTabsPanelOpen}
+            onCloseTab={workspaceState.handleCloseWorkspaceTab}
+            onFileContentChange={workspaceState.handleWorkspaceFileContentChange}
+            onPlanCommentsChange={workspaceState.handlePlanCommentsChange}
+            onImplementPlan={onImplementPlan}
+            onOpenFile={workspaceState.handleOpenWorkspaceFile}
+            onOpenMarkdownPreview={workspaceState.handleOpenWorkspaceMarkdownPreview}
+            onOpenSvgPreview={workspaceState.handleOpenWorkspaceSvgPreview}
+            onRequestPlanChanges={onRequestPlanChanges}
+            planCommentsByPath={workspaceState.planCommentsByPath}
+            onSelectTab={workspaceState.handleSelectWorkspaceTab}
+            tabs={workspaceState.workspaceFileTabs}
+            wordWrapEnabled={settings.workspaceFileEditorWordWrap}
+            workspaceRootPath={workspaceState.activeWorkspacePath}
+          />
+        ) : null}
+      </WorkspaceTabScrollStateProvider>
       <WorkspaceExplorerPanel
         activeFilePath={workspaceState.activeWorkspaceFilePath}
         clipboardEntry={workspaceState.workspaceClipboard}

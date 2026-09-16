@@ -439,6 +439,8 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
 
     assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. Text reads return up to 500 lines within a safe model-output byte budget and provide next_offset when more content remains.')
     assert.match(applyPatchTool.description ?? '', /Apply a Codex patch as an array of complete patch lines/u)
+    assert.match(applyPatchTool.description ?? '', /Every file-content line in an Add File hunk must start with \+/u)
+    assert.match(applyPatchTool.description ?? '', /Use \*\*\* Update File for edits to an existing path/u)
     assert.equal(
       editTool.description,
 'Edit an existing file using one exact operation per hunk: replace targetContent, replace an exact startLine/endLine range, or insert insertContent at the file start/end. Ambiguous text targets return recoverable candidate context unless replaceAll is explicitly true.',

@@ -25,6 +25,8 @@ const APPLY_PATCH_DESCRIPTION = [
   'Apply a Codex patch as an array of complete patch lines: one array item per line, starting with *** Begin Patch and ending with *** End Patch. Every removed or added source line must be complete; never use a prefix or suffix as an anchor.',
   'Use a standard patch beginning with *** Begin Patch and ending with *** End Patch.',
   'Supported hunks are *** Add File, *** Update File, *** Move to, and *** Delete File.',
+  'Use *** Add File only for a new path. Every file-content line in an Add File hunk must start with +; represent an added blank line as +.',
+  'Use *** Update File for edits to an existing path.',
   'Update hunks use @@ context followed by lines prefixed with a space, -, or +.',
   'Put hunks for each file in source top-to-bottom order. The patch is verified completely before any file is changed; matching tolerates line-ending and indentation whitespace differences while preserving actual source context.',
   'Use the latest read content as context and include unchanged lines around each change. Do not use this for an unchanged patch.',

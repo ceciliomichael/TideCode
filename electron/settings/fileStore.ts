@@ -67,3 +67,49 @@ export async function writeJsonFileAtomic(filePath: string, content: string) {
 
   await safeUnlink(backupPath)
 }
+
+export async function recoverInterruptedJsonWrite(filePath: string) {
+  const directoryPath = path.dirname(filePath)
+  const tempPrefix = `${path.basename(filePath)}.tmp-`
+
+  let entries: string[]
+  try {
+    entries = (await fs.readdir(directoryPath)).filter((entry) => entry.startsWith(tempPrefix))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw error
+  }
+
+  if (entries.length === 0) return false
+
+  const candidates = await Promise.all(entries.map(async (entry) => {
+    const candidatePath = path.join(directoryPath, entry)
+    const stat = await fs.stat(candidatePath)
+    return { candidatePath, mtimeMs: stat.mtimeMs }
+  }))
+  candidates.sort((left, right) => right.mtimeMs - left.mtimeMs)
+
+  const targetMtimeMs = await fs.stat(filePath).then((stat) => stat.mtimeMs).catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return -1
+    throw error
+  })
+  const newest = candidates[0]
+
+  if (newest.mtimeMs <= targetMtimeMs) {
+    await Promise.all(candidates.map(({ candidatePath }) => safeUnlink(candidatePath)))
+    return false
+  }
+
+  let content: string
+  try {
+    content = await fs.readFile(newest.candidatePath, 'utf8')
+    JSON.parse(content)
+  } catch {
+    await safeUnlink(newest.candidatePath)
+    return false
+  }
+
+  await writeJsonFileAtomic(filePath, content)
+  await Promise.all(candidates.map(({ candidatePath }) => safeUnlink(candidatePath)))
+  return true
+}
