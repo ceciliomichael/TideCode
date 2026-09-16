@@ -137,7 +137,16 @@ async function executeCodeModeSource(
       tool_call_count: result.toolCalls.length,
       tool_calls: result.toolCalls.map((call) => ({
         arguments: call.arguments,
-        body: call.body,
+        // Keep semantics lightweight. The complete Code Mode output is already
+        // represented by the top-level body/output formatting above. Persisting
+        // every nested tool body here duplicates large reads/grep/terminal
+        // results into chat history and causes context to balloon on each step.
+        body: typeof call.body === 'string' && call.body.length > 2_000
+          ? `${call.body.slice(0, 2_000)}\n\n[Nested tool body omitted from semantics.]`
+          : call.body,
+        ...(typeof call.body === 'string' && call.body.length > 2_000
+          ? { body_omitted: true, body_bytes: Buffer.byteLength(call.body, 'utf8') }
+          : {}),
         duration_ms: call.durationMs,
         name: call.name,
         ...(call.resultPresentation ? { result_presentation: call.resultPresentation } : {}),

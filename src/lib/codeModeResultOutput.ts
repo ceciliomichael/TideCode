@@ -5,6 +5,12 @@ export interface CodeModeToolCallOutput {
   summary: string
 }
 
+interface NestedReturnedToolResult {
+  body: string
+  status: 'error' | 'success'
+  summary: string
+}
+
 const IMPLICIT_TOOL_RESULT_OUTPUT_LIMIT = 32_000
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -20,6 +26,64 @@ function isReturnedToolResult(value: unknown): value is Record<string, unknown> 
     (value.status === 'error' || value.status === 'success') &&
     typeof value.summary === 'string' &&
     (value.body === undefined || typeof value.body === 'string')
+}
+
+function replaceNestedReturnedToolResults(
+  value: unknown,
+  results: NestedReturnedToolResult[],
+  ancestors: WeakSet<object>,
+): unknown {
+  if (isReturnedToolResult(value) && typeof value.body === 'string') {
+    const index = results.length + 1
+    results.push({
+      body: value.body,
+      status: value.status,
+      summary: value.summary,
+    })
+    return {
+      ...value,
+      body: `[ToolResult ${index} body below]`,
+    }
+  }
+
+  if (Array.isArray(value)) {
+    if (ancestors.has(value)) throw new TypeError('Circular Code Mode return value')
+    ancestors.add(value)
+    const projected = value.map((item) => replaceNestedReturnedToolResults(item, results, ancestors))
+    ancestors.delete(value)
+    return projected
+  }
+
+  if (!isRecord(value)) {
+    return value
+  }
+
+  if (ancestors.has(value)) throw new TypeError('Circular Code Mode return value')
+  ancestors.add(value)
+  const projected = Object.fromEntries(
+    Object.entries(value).map(([key, nestedValue]) => [
+      key,
+      replaceNestedReturnedToolResults(nestedValue, results, ancestors),
+    ]),
+  )
+  ancestors.delete(value)
+  return projected
+}
+
+function formatStructuredCodeModeOutput(value: unknown) {
+  const nestedResults: NestedReturnedToolResult[] = []
+  const projected = replaceNestedReturnedToolResults(value, nestedResults, new WeakSet<object>())
+  const structure = JSON.stringify(projected, null, 2) ?? ''
+  if (nestedResults.length === 0) {
+    return structure
+  }
+
+  const resultSections = nestedResults.map((result, index) => [
+    `ToolResult ${index + 1} (${result.status}): ${result.summary}`,
+    result.body,
+  ].join('\n'))
+
+  return [structure, ...resultSections].filter((section) => section.length > 0).join('\n\n')
 }
 
 function limitOutput(value: string) {
@@ -50,7 +114,7 @@ export function formatExplicitCodeModeOutput(value: unknown) {
   }
 
   try {
-    return JSON.stringify(value, null, 2) ?? ''
+    return formatStructuredCodeModeOutput(value)
   } catch {
     return String(value)
   }
