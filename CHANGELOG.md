@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.3 - More reliable compaction and Code Mode results
+
+TideCode 1.4.3 improves chat compaction behavior, compacted-history visibility, Code Mode result handling, workspace panels, and the DeepSeek model catalog.
+
+- Prevents chat compaction from triggering before the configured threshold and respects larger configured context limits.
+- Makes compacted history entries inspectable so their summarized content can be opened from the chat timeline.
+- Improves Code Mode result budgeting and rendering, including patch and meta-tool output handling.
+- Refines workspace side-panel, file-tab, and settings persistence behavior.
+- Updates the DeepSeek catalog to the current V4.1 Flash model and aligns provider capability tests with it.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.2 - More accurate tool result rendering
 
 TideCode 1.4.2 improves collapsed tool-result measurement and Monaco code sizing so chat content lays out more accurately before expansion.
