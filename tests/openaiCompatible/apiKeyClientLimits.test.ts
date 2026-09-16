@@ -49,10 +49,10 @@ async function captureRequestBody(
 test('built-in providers use the exact catalog maxTokens value on the wire', async () => {
   const requestBody = await captureRequestBody(
     createConfig({
-      models: [{ apiModelId: 'deepseek-v4-flash', maxTokens: 8192 }],
+      models: [{ apiModelId: 'deepseek-flash', maxTokens: 8192 }],
       providerId: 'deepseek',
     }),
-    'deepseek-v4-flash',
+    'deepseek-flash',
   )
 
   assert.equal(requestBody.max_tokens, 384000)

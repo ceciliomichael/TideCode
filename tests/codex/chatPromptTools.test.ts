@@ -644,10 +644,8 @@ test('text-only models retain the raw image reference without an image content p
   assert.doesNotMatch(String(userMessage?.content), /data:image\/png/u)
 })
 
-test('DeepSeek enables image prompts only for the vision catalog model', () => {
-  assert.equal(supportsModelImageInput('deepseek', 'deepseek-v4-flash-vision-exp'), true)
-  assert.equal(supportsModelImageInput('deepseek', 'deepseek-v4-flash'), false)
-  assert.equal(supportsModelImageInput('deepseek', 'deepseek-v4-pro'), false)
+test('DeepSeek image prompts follow the current catalog model capability', () => {
+  assert.equal(supportsModelImageInput('deepseek', 'deepseek-flash'), false)
   assert.equal(supportsModelImageInput('deepseek', 'unlisted-deepseek-model'), false)
 })
 
