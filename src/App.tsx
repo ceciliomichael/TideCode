@@ -68,7 +68,7 @@ export default function App() {
   })
   const activeWorkspacePath = chatMessages.activeConversationRootPath ?? chatMessages.selectedFolderPath
   const skillsState = useSkillsState(activeWorkspacePath)
-  const mcpSettings = useMcpServersState(null)
+  const mcpSettings = useMcpServersState(activeWorkspacePath)
   const handleSidebarWidthChange = useCallback((sidebarWidth: number) => {
     void updateSettings({ sidebarWidth })
   }, [updateSettings])

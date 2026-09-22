@@ -18,6 +18,9 @@ export function registerMcpHandlers(mcpServerManager: ReturnType<typeof getMcpSe
   ipcMain.handle('mcp:disconnectServer', async (_event, serverId: string, workspacePath?: string | null) =>
     mcpServerManager.disconnectServer(serverId, workspacePath),
   )
+  ipcMain.handle('mcp:releaseWorkspace', async (_event, workspacePath?: string | null) =>
+    mcpServerManager.releaseWorkspace(workspacePath),
+  )
   ipcMain.handle('mcp:removeServer', async (_event, serverId: string, workspacePath?: string | null) =>
     mcpServerManager.removeServer(serverId, workspacePath),
   )

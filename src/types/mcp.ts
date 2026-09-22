@@ -69,6 +69,7 @@ export interface TideCodeMcpApi {
   disconnectServer: (serverId: string, workspacePath?: string | null) => Promise<McpState>
   getState: (workspacePath?: string | null) => Promise<McpState>
   onStateChange: (listener: (payload: { state: McpState; workspacePath: string | null }) => void) => () => void
+  releaseWorkspace: (workspacePath?: string | null) => Promise<void>
   removeServer: (serverId: string, workspacePath?: string | null) => Promise<McpState>
   refreshServer: (serverId: string, workspacePath?: string | null) => Promise<McpState>
   updateServer: (

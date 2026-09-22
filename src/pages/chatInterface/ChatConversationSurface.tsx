@@ -5,6 +5,7 @@ import { MessageList } from '../../components/MessageList'
 import { ChatQueueBlock } from '../../components/chat/ChatQueueBlock'
 import type { ChatModeOption } from '../../components/chat/ChatModeSelectorField'
 import { KanbanBoard } from '../../components/kanban/KanbanBoard'
+import { BrowserPanel } from '../../components/browser/BrowserPanel'
 import type { ChatMessagesController } from '../../hooks/useChatMessages'
 import type { ChatRuntimeConfigState } from '../../hooks/useChatRuntimeConfig'
 import type { GitBranchStateController } from '../../hooks/useGitBranchState'
@@ -47,6 +48,7 @@ interface ChatConversationSurfaceProps {
   handleToolDecisionSubmit: MessageListProps['onToolDecisionSubmit']
   isCompressingChat: boolean
   liveCompaction: ChatCompactionLifecycleState | null
+  isBrowserOpen: boolean
   isKanbanBoardOpen: boolean
   isTerminalSurfaceOpen: boolean
   messageListBoundaryRef: RefObject<HTMLDivElement>
@@ -102,6 +104,7 @@ export function ChatConversationSurface({
   handleToolDecisionSubmit,
   isCompressingChat,
   liveCompaction,
+  isBrowserOpen,
   isKanbanBoardOpen,
   isTerminalSurfaceOpen,
   messageListBoundaryRef,
@@ -122,6 +125,16 @@ export function ChatConversationSurface({
   workspaceState,
 }: ChatConversationSurfaceProps) {
   const [followLatestSignal, setFollowLatestSignal] = useState(0)
+  const browserProjectKey = activeWorkspacePath ?? '__no-workspace__'
+  const [initializedBrowserProjectKeys, setInitializedBrowserProjectKeys] = useState<string[]>([])
+
+  useEffect(() => {
+    if (!isBrowserOpen) return
+
+    setInitializedBrowserProjectKeys((currentKeys) =>
+      currentKeys.includes(browserProjectKey) ? currentKeys : [...currentKeys, browserProjectKey],
+    )
+  }, [browserProjectKey, isBrowserOpen])
   const requestFollowLatest = useCallback(() => {
     setFollowLatestSignal((currentSignal) => currentSignal + 1)
   }, [])
@@ -189,7 +202,15 @@ export function ChatConversationSurface({
             style={{ display: isTerminalSurfaceOpen ? 'none' : 'flex' }}
     >
       <div className="flex min-h-0 w-full flex-1 flex-col">
-        {isKanbanBoardOpen ? (
+        {initializedBrowserProjectKeys.map((projectKey) => (
+          <div
+            key={projectKey}
+            className={isBrowserOpen && projectKey === browserProjectKey ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}
+          >
+            <BrowserPanel active={isBrowserOpen && projectKey === browserProjectKey} />
+          </div>
+        ))}
+        {!isBrowserOpen && (isKanbanBoardOpen ? (
           <KanbanBoard workspacePath={activeWorkspacePath} messages={chatMessages.messages} />
         ) : (
           <>
@@ -248,9 +269,9 @@ export function ChatConversationSurface({
               </div>
             )}
           </>
-        )}
+        ))}
       </div>
-      {!isKanbanBoardOpen ? (
+      {!isKanbanBoardOpen && !isBrowserOpen ? (
         <div className="flex w-full shrink-0 flex-col items-center pb-4">
           <div className="chat-composer-shell">
             {showQueueBlock ? (

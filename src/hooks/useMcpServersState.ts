@@ -84,6 +84,7 @@ export function useMcpServersState(workspacePath?: string | null): UseMcpServers
 
     return () => {
       isActive = false
+      void api.releaseWorkspace(normalizedWorkspacePath)
     }
   }, [normalizedWorkspacePath])
 

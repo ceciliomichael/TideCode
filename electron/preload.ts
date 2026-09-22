@@ -194,6 +194,7 @@ const mcpApi: TideCodeMcpApi = {
       ipcRenderer.off('mcp:stateChanged', wrappedListener)
     }
   },
+  releaseWorkspace: (workspacePath?: string | null) => ipcRenderer.invoke('mcp:releaseWorkspace', workspacePath),
   removeServer: (serverId: string, workspacePath?: string | null) =>
     ipcRenderer.invoke('mcp:removeServer', serverId, workspacePath),
   refreshServer: (serverId: string, workspacePath?: string | null) =>

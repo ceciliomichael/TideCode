@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import path from 'node:path'
 import type { ToolSet } from 'ai'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
@@ -45,7 +46,12 @@ interface ManagedRuntime {
 
 function normalizeWorkspacePath(workspacePath?: string | null) {
   const trimmed = workspacePath?.trim() ?? ''
-  return trimmed.length > 0 ? trimmed : null
+  if (trimmed.length === 0) {
+    return null
+  }
+
+  const normalized = path.resolve(trimmed)
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
 }
 
 function createConnectionSignature(config: McpServerConfig) {
@@ -661,6 +667,17 @@ export class McpServerManager {
       workspacePath: normalizeWorkspacePath(workspacePath),
     })
     return state
+  }
+
+  async releaseWorkspace(workspacePath?: string | null) {
+    const key = this.getSessionKey(workspacePath)
+    const session = this.workspaceSessions.get(key)
+    if (!session) {
+      return
+    }
+
+    this.workspaceSessions.delete(key)
+    await session.dispose()
   }
 
   async removeServer(serverId: string, workspacePath?: string | null) {
