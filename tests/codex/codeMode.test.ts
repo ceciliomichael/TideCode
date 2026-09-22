@@ -1869,6 +1869,46 @@ test('Code Mode discovers and invokes an MCP tool in the same program', async ()
       discovered: 'tools.mcp.project_memory',
       value: 'memory:architecture',
     })
+    assert.deepEqual(result.toolCalls.map((call) => call.name), [
+      'mcp_project_memory',
+    ])
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode indexes MCP tools using JSON Schema draft 2019-09', async () => {
+  const mcpTools = {
+    mcp_ark_cp_get_space: tool({
+      description: '[TideCode MCP server "ark-cp"; original tool "get_space"] Get space details.',
+      inputSchema: jsonSchema({
+        $schema: 'https://json-schema.org/draft/2019-09/schema',
+        additionalProperties: false,
+        properties: {},
+        type: 'object',
+      }),
+      execute: async () => ({
+        body: 'space',
+        status: 'success' as const,
+        summary: 'Read space.',
+      }),
+    }),
+  }
+  const registry = await createAgentToolRegistry(mcpTools)
+  const executor = new CodeModeExecutor(registry, registry.entries.map((entry) => entry.name))
+
+  try {
+    const result = await executor.run(
+      `const search = await tools.$codemode.search({ query: 'ark-cp', namespace: 'mcp' })
+       return search.items.map((item) => item.path)`,
+    )
+
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, ['tools.mcp.ark_cp_get_space'])
+  } finally {
+    await executor.dispose()
+  }
+})
 
 test('Code Mode indexes MCP tools using JSON Schema draft 2020-12', async () => {
   const mcpTools = {
@@ -1898,13 +1938,6 @@ test('Code Mode indexes MCP tools using JSON Schema draft 2020-12', async () => 
 
     assert.equal(result.status, 'success')
     assert.deepEqual(result.output, ['tools.mcp.ark_cp_get_space'])
-  } finally {
-    await executor.dispose()
-  }
-})
-    assert.deepEqual(result.toolCalls.map((call) => call.name), [
-      'mcp_project_memory',
-    ])
   } finally {
     await executor.dispose()
   }
