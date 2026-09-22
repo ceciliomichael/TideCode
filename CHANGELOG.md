@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.4 - Integrated browser and safer MCP lifecycle
+
+TideCode 1.4.4 adds an integrated browser surface to the chat workspace and improves MCP server lifecycle handling.
+
+- Adds a browser panel that can be opened from the chat workspace for in-app browsing alongside conversations.
+- Improves MCP server process tracking and shutdown behavior, with lifecycle coverage for spawned server processes.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.3 - More reliable compaction and Code Mode results
 
 TideCode 1.4.3 improves chat compaction behavior, compacted-history visibility, Code Mode result handling, workspace panels, and the DeepSeek model catalog.
