@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.5 - Broader JSON Schema support for connected tools
+
+TideCode 1.4.5 improves Code Mode compatibility with connected MCP tools that use newer JSON Schema dialects.
+
+- Adds JSON Schema draft 2019-09 and 2020-12 support when indexing and validating Code Mode tools.
+- Keeps draft 7 behavior for existing tool schemas while selecting the matching validator for modern schemas.
+- Expands regression coverage for MCP tool discovery across supported JSON Schema dialects.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.4 - Integrated browser and safer MCP lifecycle
 
 TideCode 1.4.4 adds an integrated browser surface to the chat workspace and improves MCP server lifecycle handling.
