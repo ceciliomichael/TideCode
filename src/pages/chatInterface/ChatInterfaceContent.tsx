@@ -46,7 +46,7 @@ import { buildRuntimeSelection, CHAT_MODE_OPTIONS } from './chatInterfaceRuntime
 import type { SettingsItemId } from '../../components/settings/settingsItems'
 import { MobileWorkspaceHeader, type MobileWorkspaceSurface } from './MobileWorkspaceHeader'
 
-type ChatWorkspaceViewMode = 'chat' | 'kanban'
+type ChatWorkspaceViewMode = 'chat' | 'kanban' | 'browser'
 
 interface ChatInterfaceContentProps {
   chatMessages: ChatMessagesController
@@ -303,6 +303,7 @@ synchronizeDraftFolder,
   const [workspaceViewMode, setWorkspaceViewMode] = useState<ChatWorkspaceViewMode>('chat')
   const [mobileSurface, setMobileSurface] = useState<MobileWorkspaceSurface>('chat')
   const isKanbanBoardOpen = isMobileViewport ? mobileSurface === 'board' : workspaceViewMode === 'kanban'
+  const isBrowserOpen = !isMobileViewport && workspaceViewMode === 'browser'
   const isMobileTerminalOpen = isMobileViewport && mobileSurface === 'terminal'
   const isTerminalSurfaceOpen = isMobileTerminalOpen || (
     !isMobileViewport && workspaceState.isTerminalOpen && workspaceState.isTerminalFullScreen
@@ -342,6 +343,15 @@ synchronizeDraftFolder,
     workspaceState,
   ])
 
+  const handleToggleWorkspaceBrowser = useCallback(() => {
+    if (isBrowserOpen) {
+      setWorkspaceViewMode('chat')
+      return
+    }
+    setWorkspaceViewMode('browser')
+  }, [
+    isBrowserOpen,
+  ])
   const isQueueAutoSendBlocked =
     chatMessages.isAbortInProgress ||
     chatMessages.isLoading ||
@@ -626,6 +636,7 @@ synchronizeDraftFolder,
                 hasRepository={hasRepository}
                 isDiffPanelOpen={interfaceController.isDiffPanelOpen}
                 isExplorerOpen={workspaceState.isExplorerOpen}
+                isBrowserOpen={isBrowserOpen}
                 isKanbanBoardOpen={isKanbanBoardOpen}
                 isSourceControlPanelOpen={interfaceController.isSourceControlPanelOpen}
                 isSourceControlButtonDisabled={isSourceControlButtonDisabled}
@@ -636,6 +647,7 @@ synchronizeDraftFolder,
                 onOpenDiffPanel={workspaceState.handleOpenDiffPanel}
                 onOpenSourceControlPanel={workspaceState.handleOpenSourceControlPanel}
                 onToggleExplorerPanel={workspaceState.handleToggleExplorerPanel}
+                onToggleWorkspaceBrowser={handleToggleWorkspaceBrowser}
                 onToggleTerminalPanel={() => workspaceState.handleTerminalOpenChange(!workspaceState.isTerminalOpen)}
                 onToggleWorkspaceBoard={handleToggleWorkspaceBoard}
                 removedLineCount={gitRemovedLineCount}
@@ -697,6 +709,7 @@ synchronizeDraftFolder,
               handleSendMainMessage={handleSendMainMessage}
               handleToolDecisionSubmit={handleToolDecisionSubmit}
               isCompressingChat={isCompressingChat}
+              isBrowserOpen={isBrowserOpen}
               isKanbanBoardOpen={isKanbanBoardOpen}
               isTerminalSurfaceOpen={isTerminalSurfaceOpen}
               messageListBoundaryRef={messageListBoundaryRef}

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Columns3, FolderTree, GitBranch, GitCommitHorizontal, GitCompareArrows, Terminal } from 'lucide-react'
+import { Columns3, FolderTree, GitBranch, GitCommitHorizontal, GitCompareArrows, Globe2, Terminal } from 'lucide-react'
 import { Tooltip } from '../../components/Tooltip'
 
 interface HeaderControlProps {
@@ -63,6 +63,7 @@ interface ChatWorkspaceHeaderControlsProps {
   hasRepository: boolean
   isDiffPanelOpen: boolean
   isExplorerOpen: boolean
+  isBrowserOpen: boolean
   isKanbanBoardOpen: boolean
   isSourceControlPanelOpen: boolean
   isTerminalOpen: boolean
@@ -73,6 +74,7 @@ interface ChatWorkspaceHeaderControlsProps {
   onOpenDiffPanel: () => void
   onOpenSourceControlPanel: () => void
   onToggleExplorerPanel: () => void
+  onToggleWorkspaceBrowser: () => void
   onToggleTerminalPanel: () => void
   onToggleWorkspaceBoard: () => void
   removedLineCount: number | null
@@ -83,6 +85,7 @@ export function ChatWorkspaceHeaderControls({
   hasRepository,
   isDiffPanelOpen,
   isExplorerOpen,
+  isBrowserOpen,
   isKanbanBoardOpen,
   isSourceControlPanelOpen,
   isTerminalOpen,
@@ -93,10 +96,13 @@ export function ChatWorkspaceHeaderControls({
   onOpenDiffPanel,
   onOpenSourceControlPanel,
   onToggleExplorerPanel,
+  onToggleWorkspaceBrowser,
   onToggleTerminalPanel,
   onToggleWorkspaceBoard,
   removedLineCount,
 }: ChatWorkspaceHeaderControlsProps) {
+  const isElectron = typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('electron')
+
   return (
         <div className="hidden items-center gap-1 md:flex">
       <HeaderControl
@@ -109,6 +115,21 @@ export function ChatWorkspaceHeaderControls({
       >
         <Columns3 size={16} className="shrink-0" />
       </HeaderControl>
+      {isElectron ? (
+        <>
+          <HeaderDivider />
+          <HeaderControl
+            active={isBrowserOpen}
+            ariaPressed={isBrowserOpen}
+            disabled={false}
+            label={isBrowserOpen ? 'Return to chat' : 'Open browser'}
+            onClick={onToggleWorkspaceBrowser}
+            text="Browser"
+          >
+            <Globe2 size={16} className="shrink-0" />
+          </HeaderControl>
+        </>
+      ) : null}
       <HeaderDivider />
       <HeaderControl
         active={isTerminalOpen}

@@ -88,6 +88,7 @@ export async function createApplicationWindow(input: {
         ...(input.initialLaunchRequest ? [serializeTideCodeLaunchRequest(input.initialLaunchRequest)] : []),
       ],
       preload: path.join(input.preloadDirectory, 'preload.mjs'),
+      webviewTag: true,
     },
   }
 
