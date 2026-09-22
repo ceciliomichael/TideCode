@@ -1,6 +1,8 @@
 import { asSchema, type ToolExecutionOptions, type ToolSet } from 'ai'
 import type { JSONSchema7 } from '@ai-sdk/provider'
 import Ajv, { type ValidateFunction } from 'ajv'
+import Ajv2019 from 'ajv/dist/2019.js'
+import Ajv2020 from 'ajv/dist/2020.js'
 import type { AgentToolExecutionResult } from '../toolTypes'
 import { normalizeToolExecutionResult, prepareToolExecutionResultForModel } from '../toolReplay'
 import { createToolErrorResult } from './toolResult'
@@ -353,7 +355,20 @@ function scoreMatch(entry: AgentToolRegistryEntry, queryTerms: string[]) {
 
 export async function createAgentToolRegistry(nativeTools: ToolSet): Promise<AgentToolRegistry> {
   const entries: AgentToolRegistryEntry[] = []
-  const ajv = new Ajv({ allErrors: true, strict: false })
+  const draft7Ajv = new Ajv({ allErrors: true, strict: false })
+  const draft2019Ajv = new Ajv2019({ allErrors: true, strict: false })
+  const draft2020Ajv = new Ajv2020({ allErrors: true, strict: false })
+
+  function compileSchema(schema: JSONSchema7) {
+    const schemaDialect = typeof schema.$schema === 'string' ? schema.$schema.toLowerCase() : ''
+    if (schemaDialect.includes('/draft/2020-12/schema')) {
+      return draft2020Ajv.compile(schema)
+    }
+    if (schemaDialect.includes('/draft/2019-09/schema')) {
+      return draft2019Ajv.compile(schema)
+    }
+    return draft7Ajv.compile(schema)
+  }
 
   for (const [name, tool] of Object.entries(nativeTools)) {
     if (!isExecutableTool(tool)) {
@@ -364,7 +379,7 @@ export async function createAgentToolRegistry(nativeTools: ToolSet): Promise<Age
     let validateInput: ValidateFunction
     try {
       nativeInputSchema = await getToolInputSchema(tool)
-      validateInput = ajv.compile(nativeInputSchema)
+      validateInput = compileSchema(nativeInputSchema)
     } catch (error) {
       console.warn(`Skipping ${name} from the Code Mode registry because its schema could not be resolved.`, error)
       continue
