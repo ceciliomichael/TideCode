@@ -1,5 +1,5 @@
 import { jsonSchema, tool } from 'ai'
-import { classifyWorkspaceMemoryPath, MEMORY_INDEX_PATH } from '../../../memory/service'
+import { classifyWorkspaceMemoryPath, MEMORY_INDEX_PATH, migrateLegacyWorkspaceMemory } from '../../../memory/service'
 import {
   createReadToolResult,
   resolveReadOnlyTargetPath,
@@ -65,7 +65,12 @@ export function createReadTool(context: WorkspaceToolContext) {
         if (typeof input.path !== 'string') {
           throw new Error('File path ("path") is required.')
         }
-        const targetPath = input.path === '' ? '.' : input.path
+        let targetPath = input.path === '' ? '.' : input.path
+        const normalizedTargetPath = targetPath.replace(/\\/gu, '/')
+        if (normalizedTargetPath.includes('.tidecode/memory/folders/')) {
+          await migrateLegacyWorkspaceMemory(context.workspaceRootPath)
+          targetPath = normalizedTargetPath.replace('.tidecode/memory/folders/', '.tidecode/memory/details/')
+        }
         const target = await resolveReadOnlyTargetPath(
           context.workspaceRootPath,
           targetPath,

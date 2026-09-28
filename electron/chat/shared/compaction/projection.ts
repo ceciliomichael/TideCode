@@ -14,7 +14,7 @@ import { selectLatestContextByTokens } from './retention'
 import { removeRawToolHistory } from './toolFreeContext'
 import { extractHiddenUserContexts } from '../../../../src/lib/hiddenUserContext'
 import type { HiddenUserContext } from '../../../../src/types/chat'
-import type { ConversationMemory } from './durableMemory'
+import { buildDurableMemoryMessage, type ConversationMemory } from './durableMemory'
 
 function getMessageText(message: ModelMessage) {
   if (typeof message.content === 'string') return message.content
@@ -52,14 +52,19 @@ export interface CompactionProjectionInput {
   anchorMessages: readonly ModelMessage[]
   contextMessages?: readonly ModelMessage[]
   durableMemory: ConversationMemory
+  includeDurableMemoryMessage?: boolean
   packet: LocalCompactionPacketV2
   tailMessages: readonly ModelMessage[]
   retainedContextTokens?: number
 }
 
 export function buildCompactionProjection(input: CompactionProjectionInput) {
+  const durableMemoryMessage = input.includeDurableMemoryMessage === true
+    ? buildDurableMemoryMessage(input.durableMemory)
+    : null
   const handoffMessage = buildContinuationMessage(input.packet.continuationMarkdown)
-  const fixedTokens = estimateModelMessageContextUsage([handoffMessage]).totalTokens
+  const fixedMessages = durableMemoryMessage ? [durableMemoryMessage, handoffMessage] : [handoffMessage]
+  const fixedTokens = estimateModelMessageContextUsage(fixedMessages).totalTokens
   const retainedContextTokens = capRetainedContextTokens(
     input.retainedContextTokens ?? DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS,
   )
@@ -82,6 +87,7 @@ export function buildCompactionProjection(input: CompactionProjectionInput) {
       }
     : null
   return sanitizeCompactedModelMessages([
+    ...(durableMemoryMessage ? [durableMemoryMessage] : []),
     // The AI-generated summary is the new beginning of provider history. The
     // original messages remain in durable display history and are not replayed
     // before this carried-forward summary.

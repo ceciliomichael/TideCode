@@ -1496,11 +1496,17 @@ test('Code Mode capability search runs inside Code Mode while local tools remain
     assert.equal(bundle.registry.get('tool_search'), undefined)
     assert.ok(bundle.nativeTools.edit)
     const codeModeSchema = await asSchema((bundle.tools.code_mode as { inputSchema: unknown }).inputSchema).jsonSchema as {
+      anyOf?: unknown
       properties?: Record<string, unknown>
+      required?: string[]
     }
-    assert.deepEqual(codeModeSchema.required, ['code'])
+    assert.equal(codeModeSchema.required, undefined)
     assert.ok(codeModeSchema.properties && 'code' in codeModeSchema.properties)
-    assert.equal(codeModeSchema.properties && 'source' in codeModeSchema.properties, false)
+    assert.ok(codeModeSchema.properties && 'source' in codeModeSchema.properties)
+    assert.deepEqual(codeModeSchema.anyOf, [
+      { required: ['code'] },
+      { required: ['source'] },
+    ])
     assert.ok(codeModeSchema.properties && 'payloads' in codeModeSchema.properties)
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
@@ -1659,13 +1665,19 @@ test('every provider uses the same structured Code Mode source and payload schem
       try {
         assert.notEqual(codeModeTool.type, 'provider')
         const inputSchema = await asSchema(codeModeTool.inputSchema).jsonSchema as {
+          anyOf?: unknown
           properties?: Record<string, unknown>
           required?: string[]
           type?: string
         }
         assert.equal(inputSchema.type, 'object')
-        assert.deepEqual(inputSchema.required, ['code'])
+        assert.equal(inputSchema.required, undefined)
         assert.ok(inputSchema.properties && 'code' in inputSchema.properties)
+        assert.ok(inputSchema.properties && 'source' in inputSchema.properties)
+        assert.deepEqual(inputSchema.anyOf, [
+          { required: ['code'] },
+          { required: ['source'] },
+        ])
         assert.ok(inputSchema.properties && 'payloads' in inputSchema.properties)
 
         const result = await codeModeTool.execute?.(

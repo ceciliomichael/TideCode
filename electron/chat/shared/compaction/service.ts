@@ -19,6 +19,7 @@ import { validateContinuationMarkdown } from './markdown'
 import { COMPACTION_MAX_OUTPUT_TOKENS } from './contracts'
 import { reconcileDurableMemory, type ConversationMemory } from './durableMemory'
 import { updateWorkspaceDurableMemory } from '../../../memory/service'
+import { normalizeWorkspacePath } from '../../../workspace/paths'
 import { estimateModelMessageContextUsage } from '../../../../src/lib/contextUsage'
 import {
   appendUserPromptLedgerToSummary,
@@ -106,6 +107,7 @@ function buildCompactionKey(
     sourceDigest,
     previousPacket?.packetId ?? null,
     input.previousMemory?.sourceDigest ?? null,
+    input.workspaceRootPath ? normalizeWorkspacePath(input.workspaceRootPath) : null,
     retainedContextTokens,
   ])
 }
@@ -269,6 +271,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
     anchorMessages: window.anchorMessages,
     contextMessages: input.messages,
     durableMemory,
+    includeDurableMemoryMessage: !input.workspaceRootPath,
     packet,
     tailMessages: window.tailMessages,
     retainedContextTokens,

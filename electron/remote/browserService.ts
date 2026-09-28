@@ -1,6 +1,7 @@
 import { BrowserWindow } from 'electron'
 import { createHash } from 'node:crypto'
 import type { RemoteBrowserFrameEvent, RemoteBrowserKeyInput, RemoteBrowserState } from '../../src/types/browser'
+import { normalizeRemoteBrowserUrl } from './browserUrlPolicy'
 
 const DEFAULT_URL = 'https://www.google.com/'
 const WIDTH = 1280
@@ -52,7 +53,11 @@ class RemoteBrowserService {
     this.sessions.set(key, entry)
 
     window.webContents.setWindowOpenHandler(({ url }) => {
-      void window.loadURL(url)
+      try {
+        void window.loadURL(normalizeRemoteBrowserUrl(url))
+      } catch {
+        // Unsupported popup schemes stay denied and are never loaded.
+      }
       return { action: 'deny' }
     })
 
@@ -67,7 +72,7 @@ class RemoteBrowserService {
       this.frameListener?.({
         projectKey,
         tabId,
-        screenshotDataUrl: `data:image/jpeg;base64,${frame.data}`,
+        screenshotDataUrl: `data:image/png;base64,${frame.data}`,
         ...this.metadata(entry),
       })
     })
@@ -162,7 +167,7 @@ class RemoteBrowserService {
 
   async navigate(projectKey: string, tabId: string, url: string) {
     const entry = this.getOrCreate(projectKey, tabId)
-    await entry.window.loadURL(url)
+    await entry.window.loadURL(normalizeRemoteBrowserUrl(url))
     return this.state(projectKey, tabId)
   }
 

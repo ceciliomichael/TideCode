@@ -20,6 +20,11 @@ const CODE_MODE_SOURCE_INPUT_SCHEMA = {
       minLength: 1,
       type: 'string',
     },
+    source: {
+      description: 'Legacy alias for code. Prefer code for new calls. If both are provided they must be identical.',
+      minLength: 1,
+      type: 'string',
+    },
     payloads: {
       additionalProperties: { type: 'string' },
       description: 'Optional opaque exact-text payloads available inside Code Mode through the read-only payloads global. Use this only for arbitrary data needed by an inner Code Mode capability; targeted patches use direct apply_patch and complete-file writes use direct write.',
@@ -28,7 +33,10 @@ const CODE_MODE_SOURCE_INPUT_SCHEMA = {
       type: 'object',
     },
   },
-  required: ['code'],
+  anyOf: [
+    { required: ['code'] },
+    { required: ['source'] },
+  ],
   type: 'object',
 } as const
 

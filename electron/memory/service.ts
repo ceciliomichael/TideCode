@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { notifyWorkspaceExplorerChange } from '../workspace/explorerNotifications'
+import { writeJsonFileAtomic } from '../settings/fileStore'
 import {
   assertWorkspaceDirectory,
   getSafeWorkspaceTargetPath,
@@ -13,6 +14,7 @@ export const DURABLE_MEMORY_PATH = `${MEMORY_DIRECTORY}/DURABLE.md`
 export const MEMORY_DETAILS_DIRECTORY = `${MEMORY_DIRECTORY}/details`
 /** @deprecated Use MEMORY_DETAILS_DIRECTORY. */
 export const MEMORY_FOLDERS_DIRECTORY = MEMORY_DETAILS_DIRECTORY
+const LEGACY_MEMORY_FOLDERS_DIRECTORY = `${MEMORY_DIRECTORY}/folders`
 
 const MAX_MEMORY_CONTENT_BYTES = 512 * 1024
 const MAX_DURABLE_MEMORY_BYTES = 128 * 1024
@@ -317,6 +319,87 @@ async function buildCurrentIndex(workspaceRootPath: string) {
   return renderMemoryIndex(await collectMemoryEntries(detailsTarget.absolutePath))
 }
 
+async function migrateLegacyDirectoryContents(sourceDirectory: string, destinationDirectory: string): Promise<boolean> {
+  let entries: Array<import('node:fs').Dirent<string>>
+  try {
+    entries = await fs.readdir(sourceDirectory, { withFileTypes: true })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw error
+  }
+
+  let changed = false
+  await fs.mkdir(destinationDirectory, { recursive: true })
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue
+    const sourcePath = path.join(sourceDirectory, entry.name)
+    const destinationPath = path.join(destinationDirectory, entry.name)
+    if (entry.isDirectory()) {
+      changed = await migrateLegacyDirectoryContents(sourcePath, destinationPath) || changed
+      continue
+    }
+    if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.md')) continue
+
+    const destinationExists = await fs.stat(destinationPath).then(() => true).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+      throw error
+    })
+    if (!destinationExists) {
+      await fs.mkdir(path.dirname(destinationPath), { recursive: true })
+      await fs.rename(sourcePath, destinationPath)
+      changed = true
+      continue
+    }
+
+    const [sourceContent, destinationContent] = await Promise.all([
+      fs.readFile(sourcePath, 'utf8'),
+      fs.readFile(destinationPath, 'utf8'),
+    ])
+    if (sourceContent === destinationContent) {
+      await fs.unlink(sourcePath)
+      changed = true
+      continue
+    }
+
+    const extension = path.extname(entry.name)
+    const stem = path.basename(entry.name, extension)
+    let legacyDestination = path.join(destinationDirectory, `${stem}.legacy${extension}`)
+    let suffix = 2
+    while (await fs.stat(legacyDestination).then(() => true).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+      throw error
+    })) {
+      legacyDestination = path.join(destinationDirectory, `${stem}.legacy-${suffix}${extension}`)
+      suffix += 1
+    }
+    await fs.rename(sourcePath, legacyDestination)
+    changed = true
+  }
+
+  const remaining = await fs.readdir(sourceDirectory).catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw error
+  })
+  if (remaining.length === 0) {
+    await fs.rmdir(sourceDirectory).catch(() => undefined)
+  }
+  return changed
+}
+
+export async function migrateLegacyWorkspaceMemory(workspaceRootPathInput: string) {
+  const workspaceRootPath = normalizeWorkspacePath(workspaceRootPathInput)
+  await assertWorkspaceDirectory(workspaceRootPath)
+  return withMemoryLock(workspaceRootPath, async () => {
+    const legacy = getSafeWorkspaceTargetPath(workspaceRootPath, LEGACY_MEMORY_FOLDERS_DIRECTORY)
+    const details = getSafeWorkspaceTargetPath(workspaceRootPath, MEMORY_DETAILS_DIRECTORY)
+    await assertManagedPathContainsNoSymlink(workspaceRootPath, legacy.absolutePath)
+    await assertManagedPathContainsNoSymlink(workspaceRootPath, details.absolutePath)
+    const changed = await migrateLegacyDirectoryContents(legacy.absolutePath, details.absolutePath)
+    if (changed) notifyWorkspaceExplorerChange(workspaceRootPath)
+    return changed
+  })
+}
+
 async function readWorkspaceMemoryFile(
   workspaceRootPathInput: string,
   relativePath: string,
@@ -366,18 +449,7 @@ export async function updateWorkspaceDurableMemory(
     await assertManagedPathContainsNoSymlink(workspaceRootPath, target.absolutePath)
     await fs.mkdir(path.dirname(target.absolutePath), { recursive: true })
     if (previous?.content !== content) {
-      const temporaryPath = `${target.absolutePath}.tmp-${process.pid}-${Date.now()}`
-      await fs.writeFile(temporaryPath, content, 'utf8')
-      try {
-        await fs.rename(temporaryPath, target.absolutePath)
-      } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code
-        if (code !== 'EEXIST' && code !== 'EPERM') throw error
-        await fs.rm(target.absolutePath, { force: true })
-        await fs.rename(temporaryPath, target.absolutePath)
-      } finally {
-        await fs.rm(temporaryPath, { force: true }).catch(() => undefined)
-      }
+      await writeJsonFileAtomic(target.absolutePath, content)
       notifyWorkspaceExplorerChange(workspaceRootPath)
     }
     return (await readWorkspaceMemoryFile(workspaceRootPath, DURABLE_MEMORY_PATH)) ?? {
@@ -413,6 +485,7 @@ export async function refreshWorkspaceMemoryIndex(
 ): Promise<WorkspaceMemorySnapshot | null> {
   const workspaceRootPath = normalizeWorkspacePath(workspaceRootPathInput)
   await assertWorkspaceDirectory(workspaceRootPath)
+  await migrateLegacyWorkspaceMemory(workspaceRootPath)
   return withMemoryLock(workspaceRootPath, async () => {
     const detailsTarget = getSafeWorkspaceTargetPath(workspaceRootPath, MEMORY_DETAILS_DIRECTORY)
     await assertManagedPathContainsNoSymlink(workspaceRootPath, detailsTarget.absolutePath)

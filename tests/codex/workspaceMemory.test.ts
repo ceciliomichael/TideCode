@@ -10,6 +10,7 @@ import {
   forgetMemoryEntry,
   readWorkspaceDurableMemory,
   readWorkspaceMemoryIndex,
+  refreshWorkspaceMemoryIndex,
   updateWorkspaceDurableMemory,
   writeMemoryEntry,
 } from '../../electron/memory/service'
@@ -233,6 +234,30 @@ test('optional workspace memory injects MEMORY.md as an index and points to deta
       path: 'details/workflow.md',
       workspaceRootPath,
     })
+
+test('legacy folders memory migrates to details without losing conflicting entries', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-memory-legacy-'))
+  const legacyDirectory = path.join(workspaceRootPath, '.tidecode', 'memory', 'folders', 'architecture')
+  const detailsDirectory = path.join(workspaceRootPath, '.tidecode', 'memory', 'details', 'architecture')
+
+  try {
+    await fs.mkdir(legacyDirectory, { recursive: true })
+    await fs.mkdir(detailsDirectory, { recursive: true })
+    await fs.writeFile(path.join(legacyDirectory, 'runtime.md'), '# Legacy runtime\n\nLegacy fact.\n', 'utf8')
+    await fs.writeFile(path.join(legacyDirectory, 'conflict.md'), '# Legacy conflict\n\nOld fact.\n', 'utf8')
+    await fs.writeFile(path.join(detailsDirectory, 'conflict.md'), '# Current conflict\n\nNew fact.\n', 'utf8')
+
+    const index = await refreshWorkspaceMemoryIndex(workspaceRootPath)
+    assert.ok(index)
+    assert.match(index.content, /details\/architecture\/runtime\.md/u)
+    assert.match(index.content, /details\/architecture\/conflict\.legacy\.md/u)
+    assert.match(await fs.readFile(path.join(detailsDirectory, 'runtime.md'), 'utf8'), /Legacy fact/u)
+    assert.match(await fs.readFile(path.join(detailsDirectory, 'conflict.legacy.md'), 'utf8'), /Old fact/u)
+    await assert.rejects(fs.access(path.join(workspaceRootPath, '.tidecode', 'memory', 'folders')), { code: 'ENOENT' })
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
     const index = await readWorkspaceMemoryIndex(workspaceRootPath)
     assert.ok(index)
     assert.match(index.content, /\[Workflow\]\(details\/workflow\.md\)/u)

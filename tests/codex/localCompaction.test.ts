@@ -227,7 +227,8 @@ test('AI compaction produces a Markdown summary as the new history beginning', a
   assert.ok(result)
   assert.match(result.packet.continuationMarkdown, /^## Goal\n- Continue the requested workspace change\./u)
   assert.match(result.packet.continuationMarkdown, /## Prior user prompts/u)
-  assert.deepEqual(result.projectedMessages[0], { role: 'assistant', content: result.packet.continuationMarkdown })
+  assert.match(String(result.projectedMessages[0]?.content ?? ''), /Durable conversation memory/u)
+  assert.deepEqual(result.projectedMessages[1], { role: 'assistant', content: result.packet.continuationMarkdown })
   assert.doesNotMatch(result.packet.continuationMarkdown, /tidecode\.compaction_packet/u)
 })
 
@@ -263,7 +264,9 @@ test('durable memory is reconciled before the short handoff and stays separate i
   assert.match(handoffPrompt, /DURABLE CONVERSATION MEMORY/u)
   assert.match(handoffPrompt, /Preserve feature branches after merge/u)
   assert.doesNotMatch(result.packet.continuationMarkdown, /Preserve feature branches after merge/u)
-  assert.equal(result.projectedMessages[0]?.content, result.packet.continuationMarkdown)
+  assert.match(String(result.projectedMessages[0]?.content ?? ''), /Durable conversation memory/u)
+  assert.match(String(result.projectedMessages[0]?.content ?? ''), /Preserve feature branches after merge/u)
+  assert.equal(result.projectedMessages[1]?.content, result.packet.continuationMarkdown)
 })
 
 test('workspace compaction persists reconciled durable memory to DURABLE.md', async () => {
@@ -571,7 +574,8 @@ test('valid AI Markdown is accepted and malformed AI output is rejected', async 
   assert.ok(accepted)
   assert.ok(accepted.packet.continuationMarkdown.startsWith(generatedMarkdown))
   assert.match(accepted.packet.continuationMarkdown, /## Prior user prompts/u)
-  assert.equal(accepted.projectedMessages[0]?.content, accepted.packet.continuationMarkdown)
+  assert.match(String(accepted.projectedMessages[0]?.content ?? ''), /Durable conversation memory/u)
+  assert.equal(accepted.projectedMessages[1]?.content, accepted.packet.continuationMarkdown)
 
   await assert.rejects(
     compactModelMessages(createCompactionInput(
@@ -597,4 +601,31 @@ test('same compaction digest shares one in-flight two-phase compaction pipeline'
   assert.ok(second)
   assert.equal(calls, 2)
   assert.equal(first.packet.sourceDigest, second.packet.sourceDigest)
+})
+
+test('identical compactions in different workspaces do not share the same in-flight durable write', async () => {
+  const firstWorkspace = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-compaction-workspace-a-'))
+  const secondWorkspace = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-compaction-workspace-b-'))
+  const messages = createConversationMessages()
+  let calls = 0
+  const createStream = createTextStreamFactory('## Current state\n- Workspace-specific compaction completed.', () => {
+    calls += 1
+  })
+
+  try {
+    const [first, second] = await Promise.all([
+      compactModelMessages({ ...createCompactionInput(messages, createStream), workspaceRootPath: firstWorkspace }),
+      compactModelMessages({ ...createCompactionInput(messages, createStream), workspaceRootPath: secondWorkspace }),
+    ])
+    assert.ok(first)
+    assert.ok(second)
+    assert.equal(calls, 4)
+    assert.ok(await readWorkspaceDurableMemory(firstWorkspace))
+    assert.ok(await readWorkspaceDurableMemory(secondWorkspace))
+  } finally {
+    await Promise.all([
+      fs.rm(firstWorkspace, { force: true, recursive: true }),
+      fs.rm(secondWorkspace, { force: true, recursive: true }),
+    ])
+  }
 })

@@ -79,6 +79,28 @@ async function connectWebSocket(
   })
 }
 
+async function rpc(socket: WebSocket, request: Record<string, unknown>) {
+  return new Promise<Record<string, unknown>>((resolve, reject) => {
+    const onMessage = (raw: import('ws').RawData) => {
+      try {
+        const parsed = JSON.parse(raw.toString()) as Record<string, unknown>
+        if (parsed.kind !== 'rpc-result' || parsed.id !== request.id) return
+        socket.off('message', onMessage)
+        resolve(parsed)
+      } catch (error) {
+        socket.off('message', onMessage)
+        reject(error)
+      }
+    }
+    socket.on('message', onMessage)
+    socket.send(JSON.stringify(request), (error) => {
+      if (!error) return
+      socket.off('message', onMessage)
+      reject(error)
+    })
+  })
+}
+
 test('Remote host gates browser UI and WebSocket, then restarts on a new port', async () => {
   const stateRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-remote-state-'))
   const rendererRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-remote-renderer-'))
@@ -133,6 +155,17 @@ const sockets: WebSocket[] = []
     const direct = await connectWebSocket(firstPort, cookie)
     sockets.push(direct.socket)
     assert.match(direct.ready, /"kind":"ready"/)
+
+    const privateBrowserMethod = await rpc(direct.socket, {
+      args: ['project', 'tab', 'Runtime.evaluate', {}],
+      id: 'private-browser-method',
+      kind: 'rpc',
+      method: 'send',
+      namespace: 'tidecodeBrowser',
+      protocolVersion: 1,
+    })
+    assert.equal(privateBrowserMethod.ok, false)
+    assert.match(String(privateBrowserMethod.error ?? ''), /Remote browser method is unavailable/u)
 
     await assert.rejects(() => connectWebSocket(firstPort, cookie, {
       Origin: 'https://other.example.test',
