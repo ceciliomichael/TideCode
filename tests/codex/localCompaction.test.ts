@@ -1,5 +1,8 @@
 import '../configureAppRoot'
 import assert from 'node:assert/strict'
+import { promises as fs } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 import type { ModelMessage } from 'ai'
 import {
@@ -14,6 +17,7 @@ import {
 import type { CompactionStreamFactory } from '../../electron/chat/shared/compaction/contracts'
 import { buildCompactionRequestPrompt, buildCompactionSystemPrompt } from '../../electron/chat/shared/compaction/prompt'
 import { buildChatCompressionSystemPrompt } from '../../electron/chat/shared/prompts/compression'
+import { readWorkspaceDurableMemory } from '../../electron/memory/service'
 import {
   buildChatModeHiddenContext,
   buildExecutionModeHiddenContext,
@@ -77,10 +81,15 @@ function createSizedTurnHistory(turnCount: number): ModelMessage[] {
 }
 
 function createTextStreamFactory(text: string, onCall?: () => void): CompactionStreamFactory {
-  return async () => ({
+  return async ({ system }) => ({
     fullStream: (async function* () {
       onCall?.()
-      yield { type: 'text-delta', text }
+      yield {
+        type: 'text-delta',
+        text: system.includes('durable-memory reconciliation worker')
+          ? '## Important project facts\n- The durable memory phase completed.'
+          : text,
+      }
     })(),
   })
 }
@@ -206,7 +215,7 @@ test('automatic compaction requires an AI stream when five or more turns are eli
       contextWindowTokens: 16_000,
       triggerRatio: 0.8,
     }),
-    /no compaction model stream was provided/u,
+    /Durable-memory reconciliation is unavailable because no model stream was provided/u,
   )
 })
 
@@ -218,8 +227,128 @@ test('AI compaction produces a Markdown summary as the new history beginning', a
   assert.ok(result)
   assert.match(result.packet.continuationMarkdown, /^## Goal\n- Continue the requested workspace change\./u)
   assert.match(result.packet.continuationMarkdown, /## Prior user prompts/u)
-  assert.deepEqual(result.projectedMessages[0], { role: 'assistant', content: result.packet.continuationMarkdown })
+  assert.match(String(result.projectedMessages[0]?.content ?? ''), /Durable conversation memory/u)
+  assert.deepEqual(result.projectedMessages[1], { role: 'assistant', content: result.packet.continuationMarkdown })
   assert.doesNotMatch(result.packet.continuationMarkdown, /tidecode\.compaction_packet/u)
+})
+
+test('durable memory is reconciled before the short handoff and stays separate in projected context', async () => {
+  const messages = createConversationMessages()
+  const phases: string[] = []
+  let handoffPrompt = ''
+  const createStream: CompactionStreamFactory = async ({ messages: requestMessages, system }) => ({
+    fullStream: (async function* () {
+      if (system.includes('durable-memory reconciliation worker')) {
+        phases.push('memory')
+        yield {
+          type: 'text-delta',
+          text: '## Decisions\n- Targeted source edits use apply_patch.\n\n## User constraints\n- Preserve feature branches after merge.',
+        }
+        return
+      }
+
+      phases.push('handoff')
+      handoffPrompt = String(requestMessages[0]?.content ?? '')
+      yield {
+        type: 'text-delta',
+        text: '## Current state\n- Continue implementing the compaction pipeline.',
+      }
+    })(),
+  })
+
+  const result = await compactModelMessages(createCompactionInput(messages, createStream))
+
+  assert.ok(result)
+  assert.deepEqual(phases, ['memory', 'handoff'])
+  assert.match(result.durableMemory.markdown, /Targeted source edits use apply_patch/u)
+  assert.match(handoffPrompt, /DURABLE CONVERSATION MEMORY/u)
+  assert.match(handoffPrompt, /Preserve feature branches after merge/u)
+  assert.doesNotMatch(result.packet.continuationMarkdown, /Preserve feature branches after merge/u)
+  assert.match(String(result.projectedMessages[0]?.content ?? ''), /Durable conversation memory/u)
+  assert.match(String(result.projectedMessages[0]?.content ?? ''), /Preserve feature branches after merge/u)
+  assert.equal(result.projectedMessages[1]?.content, result.packet.continuationMarkdown)
+})
+
+test('workspace compaction persists reconciled durable memory to DURABLE.md', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-compaction-durable-'))
+  const messages = createConversationMessages()
+  const createStream: CompactionStreamFactory = async ({ system }) => ({
+    fullStream: (async function* () {
+      yield {
+        type: 'text-delta',
+        text: system.includes('durable-memory reconciliation worker')
+          ? '## Decisions\n- Workspace durable state is shared across chats.'
+          : '## Current state\n- Continue the workspace implementation.',
+      }
+    })(),
+  })
+
+  try {
+    const result = await compactModelMessages({
+      ...createCompactionInput(messages, createStream),
+      workspaceRootPath,
+    })
+
+    assert.ok(result)
+    const durable = await readWorkspaceDurableMemory(workspaceRootPath)
+    assert.ok(durable)
+    assert.equal(durable.path, '.tidecode/memory/DURABLE.md')
+    assert.match(durable.content, /Workspace durable state is shared across chats/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('durable memory reconciliation receives the previous canonical memory and replaces stale decisions', async () => {
+  const messages = createConversationMessages()
+  const previousMemory = {
+    schema: 'tidecode.conversation_memory/v1' as const,
+    markdown: '## Decisions\n- Code Mode exposes edit and apply_patch.\n\n## User constraints\n- Preserve feature branches after merge.',
+    sourceDigest: 'previous-memory-digest',
+  }
+  let memoryPrompt = ''
+  const createStream: CompactionStreamFactory = async ({ messages: requestMessages, system }) => ({
+    fullStream: (async function* () {
+      if (system.includes('durable-memory reconciliation worker')) {
+        memoryPrompt = String(requestMessages[0]?.content ?? '')
+        yield {
+          type: 'text-delta',
+          text: '## Decisions\n- Code Mode uses apply_patch for targeted edits and does not expose edit.\n\n## User constraints\n- Preserve feature branches after merge.',
+        }
+        return
+      }
+
+      yield { type: 'text-delta', text: '## Current state\n- The updated decision is active.' }
+    })(),
+  })
+
+  const result = await compactModelMessages({
+    ...createCompactionInput(messages, createStream),
+    previousMemory,
+  })
+
+  assert.ok(result)
+  assert.match(memoryPrompt, /Code Mode exposes edit and apply_patch/u)
+  assert.match(memoryPrompt, /Preserve feature branches after merge/u)
+  assert.match(result.durableMemory.markdown, /does not expose edit/u)
+  assert.doesNotMatch(result.durableMemory.markdown, /exposes edit and apply_patch/u)
+})
+
+test('invalid durable memory output stops compaction before the handoff phase', async () => {
+  const messages = createConversationMessages()
+  let calls = 0
+  const createStream: CompactionStreamFactory = async () => ({
+    fullStream: (async function* () {
+      calls += 1
+      yield { type: 'text-delta', text: '{"memory":"invalid"}' }
+    })(),
+  })
+
+  await assert.rejects(
+    compactModelMessages(createCompactionInput(messages, createStream)),
+    /Durable-memory reconciliation returned invalid Markdown/u,
+  )
+  assert.equal(calls, 1)
 })
 
 test('active automatic compaction keeps the current request open even if the compactor claims completion', async () => {
@@ -300,6 +429,7 @@ test('repeated compaction carries the prior handoff and ledger across the new ba
       7_000,
     ),
     previousPacket: first.packet,
+    previousMemory: first.durableMemory,
   })
 
   assert.ok(second)
@@ -352,8 +482,12 @@ test('empty AI compaction output fails instead of creating a deterministic compa
     { role: 'tool', content: `More tool evidence ${'B'.repeat(80_000)}` },
     { role: 'assistant', content: 'The task still needs verification.' },
   ]
-  const emptyStream: CompactionStreamFactory = async () => ({
+  const emptyStream: CompactionStreamFactory = async ({ system }) => ({
     fullStream: (async function* () {
+      if (system.includes('durable-memory reconciliation worker')) {
+        yield { type: 'text-delta', text: '## Important project facts\n- Preserve the current workspace task.' }
+        return
+      }
       yield { type: 'finish' }
     })(),
   })
@@ -440,7 +574,8 @@ test('valid AI Markdown is accepted and malformed AI output is rejected', async 
   assert.ok(accepted)
   assert.ok(accepted.packet.continuationMarkdown.startsWith(generatedMarkdown))
   assert.match(accepted.packet.continuationMarkdown, /## Prior user prompts/u)
-  assert.equal(accepted.projectedMessages[0]?.content, accepted.packet.continuationMarkdown)
+  assert.match(String(accepted.projectedMessages[0]?.content ?? ''), /Durable conversation memory/u)
+  assert.equal(accepted.projectedMessages[1]?.content, accepted.packet.continuationMarkdown)
 
   await assert.rejects(
     compactModelMessages(createCompactionInput(
@@ -451,7 +586,7 @@ test('valid AI Markdown is accepted and malformed AI output is rejected', async 
   )
 })
 
-test('same compaction digest shares one in-flight summarizer call', async () => {
+test('same compaction digest shares one in-flight two-phase compaction pipeline', async () => {
   const messages = createConversationMessages()
   let calls = 0
   const createStream = createTextStreamFactory('## Current state\n- The same compaction is already in flight.', () => {
@@ -464,6 +599,33 @@ test('same compaction digest shares one in-flight summarizer call', async () => 
 
   assert.ok(first)
   assert.ok(second)
-  assert.equal(calls, 1)
+  assert.equal(calls, 2)
   assert.equal(first.packet.sourceDigest, second.packet.sourceDigest)
+})
+
+test('identical compactions in different workspaces do not share the same in-flight durable write', async () => {
+  const firstWorkspace = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-compaction-workspace-a-'))
+  const secondWorkspace = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-compaction-workspace-b-'))
+  const messages = createConversationMessages()
+  let calls = 0
+  const createStream = createTextStreamFactory('## Current state\n- Workspace-specific compaction completed.', () => {
+    calls += 1
+  })
+
+  try {
+    const [first, second] = await Promise.all([
+      compactModelMessages({ ...createCompactionInput(messages, createStream), workspaceRootPath: firstWorkspace }),
+      compactModelMessages({ ...createCompactionInput(messages, createStream), workspaceRootPath: secondWorkspace }),
+    ])
+    assert.ok(first)
+    assert.ok(second)
+    assert.equal(calls, 4)
+    assert.ok(await readWorkspaceDurableMemory(firstWorkspace))
+    assert.ok(await readWorkspaceDurableMemory(secondWorkspace))
+  } finally {
+    await Promise.all([
+      fs.rm(firstWorkspace, { force: true, recursive: true }),
+      fs.rm(secondWorkspace, { force: true, recursive: true }),
+    ])
+  }
 })

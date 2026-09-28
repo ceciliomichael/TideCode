@@ -1,6 +1,7 @@
 import type { ModelMessage } from 'ai'
 import type { ChatProviderId } from '../../../../src/types/chat'
 import { z } from 'zod'
+import type { ConversationMemory } from './durableMemory'
 
 export const LOCAL_COMPACTION_PACKET_V2_SCHEMA = 'tidecode.compaction_packet/v2' as const
 export const COMPACTION_PROJECTION_VERSION = 'tidecode.compaction_projection/v2' as const
@@ -110,6 +111,7 @@ export interface CompactionWindow {
 
 export interface CompactionResult {
   boundaryIndex: number
+  durableMemory: ConversationMemory
   packet: LocalCompactionPacketV2
   projectedMessages: ModelMessage[]
   sourceDigest: string
@@ -150,8 +152,12 @@ export interface CompactModelMessagesInput {
   toolSchemaTokens: number
   contextWindowTokens?: number
   retainedContextTokens?: number
+  sourceModel?: string
+  sourceProviderId?: ChatProviderId
   triggerRatio?: number
   previousPacket?: CompactionPacket | null
+  previousMemory?: ConversationMemory | null
+  workspaceRootPath?: string | null
   signal?: AbortSignal
   turnState?: CompactionTurnState
 }

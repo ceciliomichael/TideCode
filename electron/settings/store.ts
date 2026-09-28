@@ -634,6 +634,10 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
   const kanbanReasoningEffort = isReasoningEffort(input?.kanbanReasoningEffort)
     ? input.kanbanReasoningEffort
     : chatReasoningEffort
+  const workspaceMemoryEnabled =
+    typeof input?.workspaceMemoryEnabled === 'boolean'
+      ? input.workspaceMemoryEnabled
+      : DEFAULT_APP_SETTINGS.workspaceMemoryEnabled
   const diffPanelWidth =
     typeof input?.diffPanelWidth === 'number' && Number.isFinite(input.diffPanelWidth)
       ? clampStoredDiffPanelWidth(input.diffPanelWidth)
@@ -714,6 +718,7 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     kanbanModelProviderId,
     kanbanModelLabel,
     kanbanReasoningEffort,
+    workspaceMemoryEnabled,
     conversationModelPreferences,
     diffPanelWidth,
     editSessionsByConversation,

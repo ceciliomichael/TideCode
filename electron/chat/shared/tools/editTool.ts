@@ -20,7 +20,7 @@ const EDIT_PATH_SCHEMA = {
 }
 
 const EDIT_OPERATION_SCHEMA = {
-  additionalProperties: false,
+    additionalProperties: true,
   allOf: [{
     oneOf: [
       {
@@ -104,7 +104,7 @@ const EDIT_HUNKS_SCHEMA = {
 }
 
 const EDIT_INPUT_SCHEMA = {
-  additionalProperties: false,
+      additionalProperties: true,
   properties: {
     edits: EDIT_HUNKS_SCHEMA,
     path: EDIT_PATH_SCHEMA,

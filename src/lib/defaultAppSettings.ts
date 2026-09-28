@@ -36,6 +36,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   kanbanModelProviderId: null,
   kanbanModelLabel: '',
   kanbanReasoningEffort: 'medium',
+  workspaceMemoryEnabled: true,
   diffPanelWidth: DEFAULT_DIFF_PANEL_WIDTH,
   editSessionsByConversation: {},
   followUpBehavior: DEFAULT_FOLLOW_UP_BEHAVIOR,

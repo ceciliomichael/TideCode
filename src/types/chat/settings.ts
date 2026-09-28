@@ -60,6 +60,7 @@ export interface AppSettings {
   kanbanModelProviderId: ChatProviderId | null
   kanbanModelLabel: string
   kanbanReasoningEffort: ReasoningEffort
+  workspaceMemoryEnabled: boolean
   diffPanelWidth: number
   editSessionsByConversation: Record<string, ConversationEditSession>
   followUpBehavior: FollowUpBehavior

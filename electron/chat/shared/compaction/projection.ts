@@ -14,6 +14,7 @@ import { selectLatestContextByTokens } from './retention'
 import { removeRawToolHistory } from './toolFreeContext'
 import { extractHiddenUserContexts } from '../../../../src/lib/hiddenUserContext'
 import type { HiddenUserContext } from '../../../../src/types/chat'
+import { buildDurableMemoryMessage, type ConversationMemory } from './durableMemory'
 
 function getMessageText(message: ModelMessage) {
   if (typeof message.content === 'string') return message.content
@@ -50,18 +51,24 @@ function sanitizeProjectedMessage(message: ModelMessage): ModelMessage {
 export interface CompactionProjectionInput {
   anchorMessages: readonly ModelMessage[]
   contextMessages?: readonly ModelMessage[]
+  durableMemory: ConversationMemory
+  includeDurableMemoryMessage?: boolean
   packet: LocalCompactionPacketV2
   tailMessages: readonly ModelMessage[]
   retainedContextTokens?: number
 }
 
 export function buildCompactionProjection(input: CompactionProjectionInput) {
+  const durableMemoryMessage = input.includeDurableMemoryMessage === true
+    ? buildDurableMemoryMessage(input.durableMemory)
+    : null
   const handoffMessage = buildContinuationMessage(input.packet.continuationMarkdown)
-  const handoffTokens = estimateModelMessageContextUsage([handoffMessage]).totalTokens
+  const fixedMessages = durableMemoryMessage ? [durableMemoryMessage, handoffMessage] : [handoffMessage]
+  const fixedTokens = estimateModelMessageContextUsage(fixedMessages).totalTokens
   const retainedContextTokens = capRetainedContextTokens(
     input.retainedContextTokens ?? DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS,
   )
-  const tailBudget = Math.max(1, retainedContextTokens - handoffTokens)
+  const tailBudget = Math.max(1, retainedContextTokens - fixedTokens)
   const toolFreeTailMessages = removeRawToolHistory(input.tailMessages)
   const selectedTail = selectLatestContextByTokens(
     toolFreeTailMessages,
@@ -80,6 +87,7 @@ export function buildCompactionProjection(input: CompactionProjectionInput) {
       }
     : null
   return sanitizeCompactedModelMessages([
+    ...(durableMemoryMessage ? [durableMemoryMessage] : []),
     // The AI-generated summary is the new beginning of provider history. The
     // original messages remain in durable display history and are not replayed
     // before this carried-forward summary.

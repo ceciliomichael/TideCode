@@ -12,6 +12,8 @@ const EXPECTED_LIMITS: Record<ChatProviderId, Record<string, number | undefined>
   },
   codex: {
     'gpt-5.5': 128000,
+    'gpt-6-luna': 128000,
+    'gpt-6-sol': 128000,
     'gpt-5.6-luna': 128000,
     'gpt-5.6-sol': 128000,
     'gpt-5.6-terra': 128000,
@@ -32,6 +34,8 @@ const EXPECTED_LIMITS: Record<ChatProviderId, Record<string, number | undefined>
   },
   openai: {
     'gpt-5.5': 128000,
+    'gpt-6-luna': 128000,
+    'gpt-6-sol': 128000,
     'gpt-5.6-luna': 128000,
     'gpt-5.6-sol': 128000,
     'gpt-5.6-terra': 128000,

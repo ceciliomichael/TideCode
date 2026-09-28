@@ -7,7 +7,8 @@ import { asSchema, jsonSchema, tool, type ToolExecutionOptions } from 'ai'
 import { CodeModeExecutor } from '../../electron/chat/shared/codeMode/executor'
 import { CODE_MODE_EXECUTION_CONTRACT } from '../../electron/chat/shared/codeMode/promptContract'
 import { createAgentToolBundle } from '../../electron/chat/shared/tools'
-import { buildCodeModeDescription, createCodeModeTool } from '../../electron/chat/shared/tools/metaTools'
+import { createListTool } from '../../electron/chat/shared/tools/listTool'
+import { buildCodeModeDescription, createCodeModeTool, normalizeCodeModeSourceInput } from '../../electron/chat/shared/tools/metaTools'
 import { createAgentToolRegistry, type AgentToolRegistry } from '../../electron/chat/shared/tools/registry'
 import { createReadTool } from '../../electron/chat/shared/tools/readTool'
 
@@ -212,50 +213,6 @@ test('Code Mode enforces the tool-call limit against concurrent arrivals', async
     assert.equal(result.toolCalls.length, 5)
     assert.equal(result.status, 'success')
     assert.deepEqual(result.output, { fulfilled: 5, rejected: 15 })
-  } finally {
-    await executor.dispose()
-  }
-})
-
-test('Code Mode counts serialized same-file edits as logical tool calls', async () => {
-  let invoked = 0
-  const entries = [{
-    description: 'Capture a synthetic edit invocation.',
-    execute: async () => {
-      invoked += 1
-      return { status: 'success' as const, summary: 'Synthetic edit completed.' }
-    },
-    inputSchema: { type: 'object' as const },
-    name: 'edit',
-    namespace: 'filesystem',
-  }]
-  const registry: AgentToolRegistry = {
-    entries,
-    get(name) {
-      return entries.find((entry) => entry.name === name)
-    },
-    search() {
-      return entries.map((entry) => ({ ...entry, score: 1 }))
-    },
-  }
-  const executor = new CodeModeExecutor(registry)
-
-  try {
-    const result = await executor.run(`
-      const settled = await Promise.allSettled([
-        tools.edit({ path: 'target.ts', edits: [{ targetContent: 'a', replacementContent: 'b' }] }),
-        tools.edit({ path: 'target.ts', edits: [{ targetContent: 'c', replacementContent: 'd' }] }),
-      ])
-      return {
-        fulfilled: settled.filter((item) => item.status === 'fulfilled').length,
-        rejected: settled.filter((item) => item.status === 'rejected').length,
-      }
-    `, { limits: { maxToolCalls: 1 } })
-
-    assert.equal(invoked, 1)
-    assert.equal(result.toolCalls.length, 1)
-    assert.equal(result.status, 'success')
-    assert.deepEqual(result.output, { fulfilled: 1, rejected: 1 })
   } finally {
     await executor.dispose()
   }
@@ -533,7 +490,7 @@ test('Code Mode lets inspection programs recover explicitly from read failures',
   }
 })
 
-test('Code Mode read rejects removed full_file and caps oversized limits', async () => {
+test('Code Mode read ignores removed full_file and caps oversized limits', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-read-limit-'))
   await fs.writeFile(
     path.join(workspaceRootPath, 'large.txt'),
@@ -550,7 +507,7 @@ test('Code Mode read rejects removed full_file and caps oversized limits', async
   const executor = new CodeModeExecutor(registry, undefined, { workspaceRootPath })
 
   try {
-    const rejected = await registry.get('read')?.execute({
+    const compatibilityCall = await registry.get('read')?.execute({
       full_file: true,
       path: 'large.txt',
     })
@@ -558,12 +515,40 @@ test('Code Mode read rejects removed full_file and caps oversized limits', async
       "const paged = await tools.read({ path: 'large.txt', limit: 1200 }); return { pagedEnd: paged.semantics.end_line, nextOffset: paged.semantics.next_offset }",
     )
 
-    assert.equal(rejected?.status, 'error')
-    assert.match(rejected?.summary ?? '', /additional properties/u)
+    assert.equal(compatibilityCall?.status, 'success')
     assert.equal(result.status, 'success')
     assert.deepEqual(result.output, { nextOffset: 501, pagedEnd: 500 })
   } finally {
     await executor.dispose()
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode list ignores unsupported depth without changing list semantics', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-list-depth-'))
+  await fs.mkdir(path.join(workspaceRootPath, 'nested'))
+  await fs.writeFile(path.join(workspaceRootPath, 'root.txt'), 'root\n', 'utf8')
+  await fs.writeFile(path.join(workspaceRootPath, 'nested', 'child.txt'), 'child\n', 'utf8')
+  const registry = await createAgentToolRegistry({
+    list: createListTool({
+      checkpointId: null,
+      terminalExecutionMode: 'sandbox',
+      workspaceRootPath,
+    }),
+  })
+
+  try {
+    const result = await registry.get('list')?.execute({
+      depth: 99,
+      path: '.',
+      recursive: true,
+    })
+
+    assert.equal(result?.status, 'success')
+    assert.match(result?.body ?? '', /nested/u)
+    assert.match(result?.body ?? '', /root\.txt/u)
+    assert.doesNotMatch(result?.body ?? '', /child\.txt/u)
+  } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
@@ -852,6 +837,12 @@ test('Code Mode contract tells every provider that tools is injected', () => {
   assert.match(CODE_MODE_EXECUTION_CONTRACT, /Never import, require, redeclare, or initialize `tools`/u)
 })
 
+test('Code Mode normalizes legacy source input but rejects conflicting code/source values', () => {
+  assert.deepEqual(normalizeCodeModeSourceInput({ source: 'return 1' }), { code: 'return 1' })
+  assert.deepEqual(normalizeCodeModeSourceInput({ code: 'return 1', source: 'return 1' }), { code: 'return 1' })
+  assert.deepEqual(normalizeCodeModeSourceInput({ code: 'return 1', source: 'return 2' }), { code: '' })
+})
+
 test('Code Mode allows host-related words in filenames, URLs, and comments', async () => {
   const executor = new CodeModeExecutor(createTestRegistry())
 
@@ -908,15 +899,15 @@ test('Code Mode reports generated syntax errors before executing tools', async (
 
 test('Code Mode rejects malformed nested quote delimiters instead of repairing source', async () => {
   const entries = [{
-    description: 'Capture edit input.',
+    description: 'Capture malformed-input test data.',
     execute: async (input: unknown) => ({
       body: JSON.stringify(input),
       status: 'success' as const,
-      summary: 'Captured edit input.',
+      summary: 'Captured test input.',
     }),
     inputSchema: { type: 'object' as const },
-    name: 'edit',
-    namespace: 'filesystem',
+    name: 'capture',
+    namespace: 'test',
   }]
   const registry: AgentToolRegistry = {
     entries,
@@ -938,10 +929,7 @@ test('Code Mode rejects malformed nested quote delimiters instead of repairing s
         path: 'value.ts',
       },
       program: [
-        "return await tools.edit({ path: 'value.ts', edits: [{",
-        '  targetContent: `const label = `old ${name}``,',
-        '  replacementContent: `const label = `new ${name}``,',
-        '}] })',
+        "return await tools.capture({ path: 'value.ts', before: `const label = `old ${name}``, after: `const label = `new ${name}`` })",
       ].join('\n'),
     },
     {
@@ -950,10 +938,7 @@ test('Code Mode rejects malformed nested quote delimiters instead of repairing s
         path: 'value.ts',
       },
       program: [
-        "return await tools.edit({ path: 'value.ts', edits: [{",
-        "  targetContent: 'const label = 'old'',",
-        "  replacementContent: 'const label = 'new'',",
-        '}] })',
+        "return await tools.capture({ path: 'value.ts', before: 'const label = 'old'', after: 'const label = 'new'' })",
       ].join('\n'),
     },
     {
@@ -962,17 +947,14 @@ test('Code Mode rejects malformed nested quote delimiters instead of repairing s
         path: 'value.ts',
       },
       program: [
-        "return await tools.edit({ path: 'value.ts', edits: [{",
-        '  targetContent: "const label = "old"",',
-        '  replacementContent: "const label = "new"",',
-        '}] })',
+        'return await tools.capture({ path: "value.ts", before: "const label = "old"", after: "const label = "new"" })',
       ].join('\n'),
     },
   ]
 
   try {
     for (const testCase of cases) {
-      const result = await executor.run(testCase.program, { allowedToolNames: ['edit'] })
+      const result = await executor.run(testCase.program, { allowedToolNames: ['capture'] })
       assert.equal(result.status, 'error')
       assert.equal(result.toolCalls.length, 0)
       assert.match(result.summary, /ParseError|UnsupportedSyntax/u)
@@ -1200,7 +1182,7 @@ test('the registry validates Code Mode arguments before invoking a native tool',
   assert.match(result?.summary ?? '', /Invalid arguments/u)
 })
 
-test('the registry omits unsupported false properties while preserving supported false values', async () => {
+test('the registry omits unsupported properties of any value shape while preserving supported values', async () => {
   let receivedInput: unknown
   const registry = await createAgentToolRegistry({
     configurable: tool({
@@ -1226,35 +1208,49 @@ test('the registry omits unsupported false properties while preserving supported
     }),
   })
 
-  const result = await registry.get('configurable')?.execute({
-    enabled: false,
-    ignoredFlag: false,
-    options: { mode: 'safe', replaceAll: false },
-  })
+  const unsupportedValues = [
+    false,
+    true,
+    3,
+    2.5,
+    'recursive',
+    null,
+    ['nested', 1, true],
+    { nested: true },
+  ]
 
-  assert.equal(result?.status, 'success')
-  assert.deepEqual(receivedInput, {
-    enabled: false,
-    options: { mode: 'safe' },
-  })
+  for (const unsupportedValue of unsupportedValues) {
+    receivedInput = undefined
+    const result = await registry.get('configurable')?.execute({
+      depth: unsupportedValue,
+      enabled: false,
+      metadata: { ignored: true },
+      options: {
+        mode: 'safe',
+        recursive: unsupportedValue,
+      },
+    })
+
+    assert.equal(result?.status, 'success')
+    assert.deepEqual(receivedInput, {
+      enabled: false,
+      options: { mode: 'safe' },
+    })
+  }
 })
 
-test('the registry still rejects unsupported truthy properties', async () => {
+test('the registry still rejects invalid recognized properties after dropping unsupported properties', async () => {
   let wasInvoked = false
   const registry = await createAgentToolRegistry({
     configurable: tool({
-      description: 'Accepts a strict nested configuration.',
+      description: 'Accepts strict recognized fields.',
       inputSchema: jsonSchema({
         additionalProperties: false,
         properties: {
-          options: {
-            additionalProperties: false,
-            properties: { mode: { type: 'string' } },
-            required: ['mode'],
-            type: 'object',
-          },
+          limit: { maximum: 10, minimum: 1, type: 'integer' },
+          mode: { enum: ['safe', 'fast'], type: 'string' },
         },
-        required: ['options'],
+        required: ['limit', 'mode'],
         type: 'object',
       }),
       execute: async () => {
@@ -1264,13 +1260,32 @@ test('the registry still rejects unsupported truthy properties', async () => {
     }),
   })
 
-  const result = await registry.get('configurable')?.execute({
-    options: { mode: 'safe', replaceAll: true },
+  const wrongType = await registry.get('configurable')?.execute({
+    depth: 4,
+    limit: 'three',
+    mode: 'safe',
   })
-
   assert.equal(wasInvoked, false)
-  assert.equal(result?.status, 'error')
-  assert.match(result?.summary ?? '', /additional properties/u)
+  assert.equal(wrongType?.status, 'error')
+  assert.match(wrongType?.summary ?? '', /must be integer/u)
+
+  const wrongRange = await registry.get('configurable')?.execute({
+    limit: 99,
+    metadata: { ignored: true },
+    mode: 'safe',
+  })
+  assert.equal(wasInvoked, false)
+  assert.equal(wrongRange?.status, 'error')
+  assert.match(wrongRange?.summary ?? '', /must be <= 10/u)
+
+  const wrongEnum = await registry.get('configurable')?.execute({
+    limit: 2,
+    mode: 'unknown',
+    recursive: true,
+  })
+  assert.equal(wasInvoked, false)
+  assert.equal(wrongEnum?.status, 'error')
+  assert.match(wrongEnum?.summary ?? '', /must be equal to one of the allowed values/u)
 })
 
 test('the registry maps a zero-based first-line offset to the read API contract', async () => {
@@ -1481,11 +1496,17 @@ test('Code Mode capability search runs inside Code Mode while local tools remain
     assert.equal(bundle.registry.get('tool_search'), undefined)
     assert.ok(bundle.nativeTools.edit)
     const codeModeSchema = await asSchema((bundle.tools.code_mode as { inputSchema: unknown }).inputSchema).jsonSchema as {
+      anyOf?: unknown
       properties?: Record<string, unknown>
+      required?: string[]
     }
-    assert.deepEqual(codeModeSchema.required, ['source'])
+    assert.equal(codeModeSchema.required, undefined)
+    assert.ok(codeModeSchema.properties && 'code' in codeModeSchema.properties)
     assert.ok(codeModeSchema.properties && 'source' in codeModeSchema.properties)
-    assert.equal(codeModeSchema.properties && 'code' in codeModeSchema.properties, false)
+    assert.deepEqual(codeModeSchema.anyOf, [
+      { required: ['code'] },
+      { required: ['source'] },
+    ])
     assert.ok(codeModeSchema.properties && 'payloads' in codeModeSchema.properties)
     assert.match(
       ((bundle.tools.code_mode as { description?: string }).description ?? ''),
@@ -1561,11 +1582,11 @@ test('Code Mode capability search runs inside Code Mode while local tools remain
     assert.equal(codeModeDescription.split(CODE_MODE_EXECUTION_CONTRACT).length - 1, 1)
     assert.match(codeModeDescription, /executes a Tidecode-owned JavaScript-like orchestration language/u)
     assert.match(codeModeDescription, /Choose the purpose-built inner API for the scenario/u)
-    assert.match(codeModeDescription, /structured outer input with `source` plus optional opaque `payloads`/u)
+    assert.match(codeModeDescription, /structured outer input with canonical `code` plus optional opaque `payloads`/u)
     assert.match(codeModeDescription, /Payload text is inert data and is never parsed as Code Mode source/u)
     assert.match(codeModeDescription, /Direct model-facing `apply_patch`: prefer this for a standalone targeted patch/u)
     assert.doesNotMatch(codeModeDescription, /tools\.apply_patch/u)
-    assert.match(codeModeDescription, /tools\.edit/u)
+    assert.doesNotMatch(codeModeDescription, /tools\.edit/u)
     assert.match(codeModeDescription, /`tools\.execute_terminal`: run an actual command\/process/u)
     assert.match(codeModeDescription, /Never use shell, PowerShell, Python, or Node just to read, search, edit, or write workspace files/u)
     assert.doesNotMatch(codeModeDescription, /Tool-only runtime: direct Node\.js and host access is blocked/u)
@@ -1575,17 +1596,17 @@ test('Code Mode capability search runs inside Code Mode while local tools remain
     assert.match(codeModeDescription, /Imports, dynamic imports, require.*not part of the Code Mode language/u)
 
     const codeResult = await invoke(bundle.tools.code_mode, {
-      source: "const search = await tools.$codemode.search({ query: 'read', limit: 5 }); const file = await tools.read({ path: 'package.json' }); const root = await tools.read({ path: '' }); return { hasVersion: file.body.includes('1.2.3'), rootPath: root.subject?.path, discoveredRead: search.items.some((item) => item.path === 'tools.read') }",
+      code: "const search = await tools.$codemode.search({ query: 'read', limit: 5 }); const file = await tools.read({ path: 'package.json' }); const root = await tools.read({ path: '' }); return { hasVersion: file.body.includes('1.2.3'), rootPath: root.subject?.path, discoveredRead: search.items.some((item) => item.path === 'tools.read') }",
     }) as { body?: string }
     assert.match(codeResult.body ?? '', /"hasVersion": true/u)
     assert.match(codeResult.body ?? '', /"rootPath": "\."/u)
     assert.match(codeResult.body ?? '', /"discoveredRead": true/u)
 
     const invalidEditResult = await invoke(bundle.tools.code_mode, {
-      source: "return await tools.edit({ path: 'package.json', edits: [] })",
+      code: "return await tools.edit({ path: 'package.json', edits: [] })",
     }) as { semantics?: { tool_call_count?: number }; status?: string }
     assert.equal(invalidEditResult.status, 'error')
-    assert.equal(invalidEditResult.semantics?.tool_call_count, 1)
+    assert.equal(invalidEditResult.semantics?.tool_call_count, 0)
   } finally {
     await codeModeExecutor?.dispose()
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -1644,19 +1665,25 @@ test('every provider uses the same structured Code Mode source and payload schem
       try {
         assert.notEqual(codeModeTool.type, 'provider')
         const inputSchema = await asSchema(codeModeTool.inputSchema).jsonSchema as {
+          anyOf?: unknown
           properties?: Record<string, unknown>
           required?: string[]
           type?: string
         }
         assert.equal(inputSchema.type, 'object')
-        assert.deepEqual(inputSchema.required, ['source'])
+        assert.equal(inputSchema.required, undefined)
+        assert.ok(inputSchema.properties && 'code' in inputSchema.properties)
         assert.ok(inputSchema.properties && 'source' in inputSchema.properties)
+        assert.deepEqual(inputSchema.anyOf, [
+          { required: ['code'] },
+          { required: ['source'] },
+        ])
         assert.ok(inputSchema.properties && 'payloads' in inputSchema.properties)
 
         const result = await codeModeTool.execute?.(
           {
             payloads: { expected: 'structured' },
-            source: "const value = await tools.read({ path: 'value.txt' }); return { file: value.body.trim(), payload: payloads.expected }",
+            code: "const value = await tools.read({ path: 'value.txt' }); return { file: value.body.trim(), payload: payloads.expected }",
           },
           { context: {}, messages: [], toolCallId: 'structured-' + providerId },
         ) as { body?: string; status?: string }
@@ -1861,17 +1888,102 @@ test('Code Mode discovers and invokes an MCP tool in the same program', async ()
       `const search = await tools.$codemode.search({ query: 'connected project memory', namespace: 'mcp' })
        const discovered = search.items[0].path
        const memory = await tools.mcp.project_memory({ topic: 'architecture' })
-       return { discovered, value: memory.body }`,
+       return { discovered, signature: search.items[0].signature, value: memory }`,
     )
 
     assert.equal(result.status, 'success')
     assert.deepEqual(result.output, {
       discovered: 'tools.mcp.project_memory',
+      signature: 'tools.mcp.project_memory(input: {"additionalProperties":false,"properties":{"topic":{"type":"string"}},"required":["topic"],"type":"object"}): Promise<McpValue>',
       value: 'memory:architecture',
     })
     assert.deepEqual(result.toolCalls.map((call) => call.name), [
       'mcp_project_memory',
     ])
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode exposes decoded MCP JSON directly for array operations', async () => {
+  const mcpTools = {
+    mcp_ark_cp_get_issues: tool({
+      description: '[TideCode MCP server "ark-cp"; original tool "get_issues"] Get issues.',
+      inputSchema: jsonSchema({ type: 'object' }),
+      execute: async () => ({
+        body: JSON.stringify([
+          { issueKey: '2026_SILLHA-83', summary: 'LOC-01' },
+          { issueKey: '2026_SILLHA-84', summary: 'OTHER' },
+        ]),
+        status: 'success' as const,
+        summary: 'Completed get_issues',
+      }),
+    }),
+  }
+  const registry = await createAgentToolRegistry(mcpTools)
+  const executor = new CodeModeExecutor(registry, registry.entries.map((entry) => entry.name))
+
+  try {
+    const result = await executor.run(
+      `const issues = await tools.mcp.ark_cp_get_issues({})
+       return issues.filter((issue) => issue.summary.indexOf('LOC-') >= 0).map((issue) => issue.issueKey)`,
+    )
+
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, ['2026_SILLHA-83'])
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode exposes decoded MCP JSON objects directly', async () => {
+  const mcpTools = {
+    mcp_get_project: tool({
+      description: 'Get project.',
+      inputSchema: jsonSchema({ type: 'object' }),
+      execute: async () => ({
+        body: JSON.stringify({ id: 815540, projectKey: '2026_SILLHA' }),
+        status: 'success' as const,
+        summary: 'Completed get_project',
+      }),
+    }),
+  }
+  const registry = await createAgentToolRegistry(mcpTools)
+  const executor = new CodeModeExecutor(registry, registry.entries.map((entry) => entry.name))
+
+  try {
+    const result = await executor.run(
+      'const project = await tools.mcp.get_project({}); return project.projectKey',
+    )
+
+    assert.equal(result.status, 'success')
+    assert.equal(result.output, '2026_SILLHA')
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode preserves actionable MCP error bodies', async () => {
+  const mcpTools = {
+    mcp_get_project: tool({
+      description: 'Get project.',
+      inputSchema: jsonSchema({ type: 'object' }),
+      execute: async () => ({
+        body: 'Backlog API error (code: 6, status: 404)\nNo such project. (key:LOC)',
+        status: 'error' as const,
+        summary: 'MCP tool get_project failed.',
+      }),
+    }),
+  }
+  const registry = await createAgentToolRegistry(mcpTools)
+  const executor = new CodeModeExecutor(registry, registry.entries.map((entry) => entry.name))
+
+  try {
+    const result = await executor.run('return await tools.mcp.get_project({})')
+
+    assert.equal(result.status, 'error')
+    assert.match(result.error ?? '', /Backlog API error \(code: 6, status: 404\)/u)
+    assert.match(result.error ?? '', /No such project\. \(key:LOC\)/u)
   } finally {
     await executor.dispose()
   }

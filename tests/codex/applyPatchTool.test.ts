@@ -642,7 +642,7 @@ test('apply_patch presents each update hunk as a separate change while keeping f
   }
 })
 
-test('apply_patch rejects the legacy string input at the AI-facing boundary', async () => {
+test('apply_patch accepts the canonical raw string input at the AI-facing boundary', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-input-'))
   const targetPath = path.join(workspaceRootPath, 'value.ts')
 
@@ -657,9 +657,8 @@ test('apply_patch rejects the legacy string input at the AI-facing boundary', as
       { context: {}, messages: [], toolCallId: 'apply-patch-input-test' },
     ) as { status?: string; summary?: string }
 
-    assert.equal(result.status, 'error')
-    assert.match(result.summary ?? '', /array of complete patch lines/u)
-    assert.equal(await fs.readFile(targetPath, 'utf8'), 'const value = 1\n')
+    assert.equal(result.status, 'success')
+    assert.equal(await fs.readFile(targetPath, 'utf8'), 'const value = 2\n')
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
@@ -781,7 +780,7 @@ test('apply_patch honors end-of-file context when the source has no trailing new
   }
 })
 
-test('Code Mode exposes apply_patch directly while edit remains an internal capability', async () => {
+test('Code Mode exposes apply_patch directly while edit is excluded from Code Mode', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-patch-code-mode-'))
   let codeModeExecutor: { dispose: () => Promise<void> } | null = null
 
@@ -793,14 +792,14 @@ test('Code Mode exposes apply_patch directly while edit remains an internal capa
     )
     codeModeExecutor = bundle.codeModeExecutor
     assert.equal(bundle.registry.get('apply_patch'), undefined)
-    assert.ok(bundle.registry.get('edit'))
+    assert.equal(bundle.registry.get('edit'), undefined)
     assert.ok(bundle.nativeTools.edit)
     assert.deepEqual(Object.keys(bundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
     assert.equal(bundle.registry.get('tool_search'), undefined)
     const description = (bundle.tools.code_mode as { description?: string }).description ?? ''
     assert.doesNotMatch(description, /tools\.apply_patch/u)
     assert.match(description, /Direct model-facing `apply_patch`/u)
-    assert.match(description, /tools\.edit/u)
+    assert.doesNotMatch(description, /tools\.edit/u)
 
     const executePatch = (bundle.tools.apply_patch as {
       execute?: (input: unknown, options: Record<string, unknown>) => Promise<unknown>

@@ -24,6 +24,7 @@ import {
 } from '../shared/modelMessageIntegrity'
 import { stripExecutionModeContext } from '../../../src/lib/executionModeContext'
 import { parseCompactionPacket, type CompactionPacket } from '../shared/compaction/contracts'
+import { parseConversationMemory, type ConversationMemory } from '../shared/compaction/durableMemory'
 import {
   buildContinuationMarkdownFromPacket,
   repairCompactionPacketContinuation,
@@ -184,10 +185,31 @@ export async function readLatestCompactionPacket(conversationId: string): Promis
     ) {
       continue
     }
-
     try {
       const packet = parseCompactionPacket(decodeReplayValue(event.packet))
       if (packet) return repairCompactionPacketContinuation(packet)
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
+export async function readLatestConversationMemory(conversationId: string): Promise<ConversationMemory | null> {
+  const document = await readCanonicalHistory(conversationId)
+  for (const event of [...document.events].reverse()) {
+    if (
+      event.branchId !== document.activeBranchId ||
+      event.type !== 'compaction_committed' ||
+      !('durableMemory' in event) ||
+      event.durableMemory === undefined
+    ) {
+      continue
+    }
+
+    try {
+      const memory = parseConversationMemory(decodeReplayValue(event.durableMemory))
+      if (memory) return memory
     } catch {
       continue
     }
@@ -338,6 +360,7 @@ export async function recordCompactionCommitted(input: {
   conversationId: string
   contextFingerprint?: string | null
   degradedDiagnostics?: string[]
+  durableMemory?: ConversationMemory
   modelId: string
   parentPacketId?: string | null
   packet: unknown
@@ -359,6 +382,7 @@ export async function recordCompactionCommitted(input: {
       compactionSequence,
       contextFingerprint: input.contextFingerprint ?? document.contextFingerprint,
       ...(input.degradedDiagnostics ? { degradedDiagnostics: input.degradedDiagnostics } : {}),
+      ...(input.durableMemory ? { durableMemory: encodeReplayValue(input.durableMemory) } : {}),
       modelId: input.modelId,
       parentPacketId: input.parentPacketId ?? null,
       packet: encodeReplayValue(input.packet),

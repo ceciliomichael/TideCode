@@ -10,7 +10,7 @@ export function createPlanCreateTool(context: WorkspaceToolContext, runtimeState
   return tool({
     description: 'Create a persisted engineering plan in .tidecode/plans/ when a plan artifact would be useful.',
     inputSchema: jsonSchema({
-      additionalProperties: false,
+      additionalProperties: true,
       properties: {
         content: {
           description:

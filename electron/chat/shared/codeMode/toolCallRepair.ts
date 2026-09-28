@@ -38,7 +38,36 @@ export function repairMisroutedCodeModeToolCall(input: {
     return null
   }
 
-  const match = /^tools\.([A-Za-z_$][A-Za-z0-9_$]*)$/u.exec(input.toolCall.toolName.trim())
+  const requestedName = input.toolCall.toolName.trim()
+  const directMatch = /^tools\.(apply_patch|write)$/u.exec(requestedName)
+  if (directMatch) {
+    const directToolName = directMatch[1]
+    if (!directToolName || !input.providerTools[directToolName]) return null
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(input.toolCall.input) as unknown
+    } catch {
+      return null
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    const record = parsed as Record<string, unknown>
+    if (directToolName === 'write') {
+      if (typeof record.path !== 'string' || typeof record.content !== 'string') return null
+    } else if (
+      typeof record.patch !== 'string' &&
+      !(Array.isArray(record.patch) && record.patch.length > 0 && record.patch.every((line) => typeof line === 'string'))
+    ) {
+      return null
+    }
+    return {
+      input: input.toolCall.input,
+      toolCallId: input.toolCall.toolCallId,
+      toolName: directToolName,
+      type: 'tool-call',
+    }
+  }
+
+  const match = /^tools\.([A-Za-z_$][A-Za-z0-9_$]*)$/u.exec(requestedName)
   const innerToolName = match?.[1]
   const entry = innerToolName && INNER_TOOL_NAME_PATTERN.test(innerToolName)
     ? input.registry.get(innerToolName)
@@ -58,7 +87,7 @@ export function repairMisroutedCodeModeToolCall(input: {
   ].join('\n')
 
   return {
-    input: JSON.stringify({ source }),
+    input: JSON.stringify({ code: source }),
     toolCallId: input.toolCall.toolCallId,
     toolName: 'code_mode',
     type: 'tool-call',

@@ -217,6 +217,34 @@ test('Windows terminal resolution honors an explicit TideCode shell path first',
   assert.equal(shell.label, 'PowerShell 7')
 })
 
+test('AI PowerShell terminals disable persistent PSReadLine history without affecting user terminals', () => {
+  const configuredPath = 'D:/Portable/PowerShell/pwsh.exe'
+  const environment = {
+    PATH: 'C:/unrelated',
+    TIDECODE_TERMINAL_SHELL: configuredPath,
+  }
+  const isCommandAvailable = (command: string) => command === configuredPath
+  const userShell = resolveTerminalShellSpec({
+    env: environment,
+    isCommandAvailable,
+    platform: 'win32',
+  })
+  const aiShell = resolveTerminalShellSpec({
+    disablePersistentHistory: true,
+    env: environment,
+    isCommandAvailable,
+    platform: 'win32',
+  })
+
+  assert.equal(userShell.args.some((arg) => arg.includes('HistorySaveStyle SaveNothing')), false)
+  assert.equal(aiShell.args.some((arg) => arg.includes('HistorySaveStyle SaveNothing')), true)
+  assert.equal(aiShell.args.some((arg) => arg.includes('Import-Module PSReadLine')), true)
+  assert.equal(aiShell.args.some((arg) => arg.includes('AddToHistoryHandler')), true)
+  assert.equal(aiShell.args.some((arg) => arg.includes('return $false')), true)
+  assert.equal(aiShell.args.some((arg) => arg.includes('HistorySavePath')), true)
+  assert.equal(aiShell.args.some((arg) => arg.includes('tidecode-psreadline-')), true)
+})
+
 test('macOS and Linux prefer the configured account login shell', () => {
   for (const platform of ['darwin', 'linux'] as const) {
     const shell = resolveTerminalShellSpec({

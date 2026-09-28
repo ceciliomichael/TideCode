@@ -187,6 +187,7 @@ async function createTerminalSessionInternal(
   const { ptyProcess, shellLabel } = spawnResolvedTerminalShell({
     cols,
     cwd,
+    disablePersistentHistory: isAiSession,
     env: terminalEnvironment,
     rows,
   });

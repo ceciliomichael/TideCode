@@ -4,10 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { applyPatchInWorkspace } from '../../electron/chat/shared/applyPatchWorkspace'
-import { CodeModeExecutor } from '../../electron/chat/shared/codeMode/executor'
 import { createAgentToolBundle, createNativeAgentTools } from '../../electron/chat/shared/tools'
-import { createCodeModeTool } from '../../electron/chat/shared/tools/metaTools'
-import { createAgentToolRegistry } from '../../electron/chat/shared/tools/registry'
 import {
   createEditToolResult,
   createWholeFileWriteToolResult,
@@ -30,21 +27,6 @@ async function createFixture(content: string, fileName = 'target.ts') {
 
 async function getCurrentRevision(targetPath: string) {
   return computeContentRevision(await fs.readFile(targetPath))
-}
-
-async function createInternalEditCompatibilityBundle(workspaceRootPath: string) {
-  const nativeTools = await createNativeAgentTools({ workspaceRootPath }, { chatMode: 'agent' })
-  const registry = await createAgentToolRegistry(nativeTools)
-  const codeModeExecutor = new CodeModeExecutor(registry, registry.entries.map((entry) => entry.name), {
-    terminalExecutionMode: 'sandbox',
-    workspaceRootPath,
-  })
-  return {
-    codeModeExecutor,
-    nativeTools,
-    registry,
-    tools: { code_mode: createCodeModeTool(codeModeExecutor, registry) },
-  }
 }
 
 test('edit never applies a fuzzy-only near match', async () => {
@@ -359,281 +341,17 @@ test('public edit supports exact file-boundary insertion without a text anchor',
   }
 })
 
-test('Code Mode repairs lineStart/lineEnd into an exact range edit before validation', async () => {
-  const lines = Array.from({ length: 180 }, (_value, index) => `line ${index + 1}`)
-  const originalContent = `${lines.join('\n')}\n`
-  const fixture = await createFixture(originalContent, 'kanbanAcceptanceCriteriaAutoComplete.test.ts')
-  try {
-    const bundle = await createInternalEditCompatibilityBundle(fixture.workspaceRootPath)
-    const codeMode = bundle.tools.code_mode as unknown as {
-      execute: (input: unknown, options: { abortSignal?: AbortSignal }) => Promise<{ status: string }>
-    }
-    const result = await codeMode.execute({
-      source: "return await tools.edit({ path: 'kanbanAcceptanceCriteriaAutoComplete.test.ts', edits: [{ lineStart: 144, lineEnd: 178, replacementContent: '' }] })",
-    }, {})
-    assert.equal(result.status, 'success')
-    const expected = [...lines.slice(0, 143), ...lines.slice(178)].join('\n') + '\n'
-    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), expected)
-    await bundle.codeModeExecutor?.dispose()
-  } finally {
-    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Code Mode reports ambiguous edits as tool errors with structured receipts', async () => {
-  const originalContent = 'const item = 1\nconst item = 1\n'
-  const fixture = await createFixture(originalContent)
-  try {
-    const bundle = await createInternalEditCompatibilityBundle(fixture.workspaceRootPath)
-    assert.ok(bundle.codeModeExecutor)
-    const result = await bundle.codeModeExecutor.run(
-      "return await tools.edit({ path: 'target.ts', edits: [{ targetContent: 'const item = 1', replacementContent: 'const item = 2' }] })",
-    )
-    assert.equal(result.status, 'error')
-    assert.equal(result.toolCalls[0]?.status, 'error')
-    assert.equal(result.toolCalls[0]?.semantics?.error_code, 'TARGET_AMBIGUOUS')
-    assert.deepEqual(result.toolCalls[0]?.semantics?.candidate_line_ranges, ['1-1', '2-2'])
-    assert.equal(result.toolCalls[0]?.semantics?.recoverable, true)
-    assert.equal(result.output, undefined)
-    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
-    await bundle.codeModeExecutor.dispose()
-  } finally {
-    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('model-facing Code Mode exposes ambiguous edit conflicts as failures with recovery metadata', async () => {
-  const originalContent = 'const item = 1\nconst item = 1\n'
-  const fixture = await createFixture(originalContent)
-  try {
-    const bundle = await createInternalEditCompatibilityBundle(fixture.workspaceRootPath)
-    const codeMode = bundle.tools.code_mode as unknown as {
-      execute: (input: unknown, options: { abortSignal?: AbortSignal }) => Promise<{
-        body: string
-        semantics?: { tool_calls?: Array<{ semantics?: Record<string, unknown>; status?: string }> }
-        status: string
-      }>
-    }
-    const result = await codeMode.execute({
-      source: "return await tools.edit({ path: 'target.ts', edits: [{ targetContent: 'const item = 1', replacementContent: 'const item = 2' }] })",
-    }, {})
-
-    assert.equal(result.status, 'error')
-    assert.equal(result.semantics?.tool_calls?.[0]?.status, 'error')
-    assert.equal(result.semantics?.tool_calls?.[0]?.semantics?.recoverable, true)
-    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
-    await bundle.codeModeExecutor?.dispose()
-  } finally {
-    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Code Mode Promise.allSettled lets independent edits complete while conflicts reject', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-recoverable-parallel-edit-'))
-  try {
-    await fs.writeFile(path.join(workspaceRootPath, 'first.ts'), 'const repeated = 1\nconst repeated = 1\n', 'utf8')
-    await fs.writeFile(path.join(workspaceRootPath, 'second.ts'), 'const repeated = 2\nconst repeated = 2\n', 'utf8')
-    await fs.writeFile(path.join(workspaceRootPath, 'third.ts'), 'const unique = 3\n', 'utf8')
-
-    const bundle = await createInternalEditCompatibilityBundle(workspaceRootPath)
-    assert.ok(bundle.codeModeExecutor)
-    const result = await bundle.codeModeExecutor.run(`
-      const results = await Promise.allSettled([
-        tools.edit({ path: 'first.ts', edits: [{ targetContent: 'const repeated = 1', replacementContent: 'const repeated = 10' }] }),
-        tools.edit({ path: 'second.ts', edits: [{ targetContent: 'const repeated = 2', replacementContent: 'const repeated = 20' }] }),
-        tools.edit({ path: 'third.ts', edits: [{ targetContent: 'const unique = 3', replacementContent: 'const unique = 30' }] }),
-      ])
-      return results.map((item) => item.status)
-    `)
-
-    assert.equal(result.status, 'success')
-    assert.match(result.summary, /handling 2 failed tool calls/u)
-    assert.equal(result.toolCalls.length, 3)
-    assert.deepEqual(result.output, ['rejected', 'rejected', 'fulfilled'])
-    assert.equal(result.toolCalls.filter((call) => call.status === 'error').length, 2)
-    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'first.ts'), 'utf8'), 'const repeated = 1\nconst repeated = 1\n')
-    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'second.ts'), 'utf8'), 'const repeated = 2\nconst repeated = 2\n')
-    assert.equal(await fs.readFile(path.join(workspaceRootPath, 'third.ts'), 'utf8'), 'const unique = 30\n')
-    await bundle.codeModeExecutor.dispose()
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Code Mode serializes concurrent same-file edits without losing either mutation', async () => {
-  const originalContent = 'header\nkeep\ntarget\ntail\n'
-  const fixture = await createFixture(originalContent)
-  try {
-    const bundle = await createInternalEditCompatibilityBundle(fixture.workspaceRootPath)
-    assert.ok(bundle.codeModeExecutor)
-    const result = await bundle.codeModeExecutor.run(`
-      const results = await Promise.all([
-        tools.edit({
-          path: 'target.ts',
-          edits: [{ insertAt: 'start', insertContent: 'prefix\\n' }],
-        }),
-        tools.edit({
-          path: 'target.ts',
-          edits: [{ insertAt: 'end', insertContent: 'suffix\\n' }],
-        }),
-      ])
-      return results.map((edit) => ({ operation: edit.semantics?.operation, status: edit.status }))
-    `)
-
-    assert.equal(result.status, 'success')
-    assert.deepEqual(result.output, [
-      { operation: 'edit', status: 'success' },
-      { operation: 'edit', status: 'success' },
-    ])
-    assert.equal(result.toolCalls.length, 2)
-    assert.equal(
-      await fs.readFile(fixture.targetPath, 'utf8'),
-      'prefix\nheader\nkeep\ntarget\ntail\nsuffix\n',
-    )
-    await bundle.codeModeExecutor.dispose()
-  } finally {
-    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Code Mode canonicalizes the reported targetContent plus replacement shape', async () => {
-  const originalContent = "export const states = [\n  'blocked',\n]\n"
-  const fixture = await createFixture(originalContent)
-  try {
-    const bundle = await createInternalEditCompatibilityBundle(fixture.workspaceRootPath)
-    assert.ok(bundle.codeModeExecutor)
-    const result = await bundle.codeModeExecutor.run(`
-      return await tools.edit({
-        path: 'target.ts',
-        edits: [{ targetContent: "  'blocked',", replacement: "  'resolved'," }],
-      })
-    `)
-
-    assert.equal(result.status, 'success')
-    assert.equal(
-      await fs.readFile(fixture.targetPath, 'utf8'),
-      "export const states = [\n  'resolved',\n]\n",
-    )
-    await bundle.codeModeExecutor.dispose()
-  } finally {
-    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Code Mode supports the semantic text, range, and insertion edit forms', async () => {
-  const fixture = await createFixture('alpha\nbeta\ngamma\n')
-  try {
-    const bundle = await createInternalEditCompatibilityBundle(fixture.workspaceRootPath)
-    assert.ok(bundle.codeModeExecutor)
-    const result = await bundle.codeModeExecutor.run(`
-      return await tools.edit({
-        path: 'target.ts',
-        edits: [
-          { target: 'alpha', replacement: 'ALPHA' },
-          { startLine: 2, endLine: 2, replacement: 'BETA\\n' },
-          { insertAt: 'end', content: 'tail\\n' },
-        ],
-      })
-    `)
-
-    assert.equal(result.status, 'success')
-    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), 'ALPHA\nBETA\ngamma\ntail\n')
-    await bundle.codeModeExecutor.dispose()
-  } finally {
-    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Code Mode exposes the semantic edit contract instead of native edit field names', async () => {
+test('production Code Mode excludes edit while the native legacy edit tool remains available', async () => {
   const fixture = await createFixture('const value = 1\n')
   try {
-    const bundle = await createInternalEditCompatibilityBundle(fixture.workspaceRootPath)
-    const editEntry = bundle.registry.get('edit')
-    assert.ok(editEntry)
-    const editProperties = editEntry.inputSchema.properties as Record<string, unknown> | undefined
-    const editsSchema = editProperties?.edits as { items?: { properties?: Record<string, unknown> } } | undefined
-    const hunkProperties = editsSchema?.items?.properties
-    assert.ok(hunkProperties)
-    for (const publicField of ['target', 'replacement', 'startLine', 'endLine', 'replaceAll', 'insertAt', 'content']) {
-      assert.ok(publicField in hunkProperties)
-    }
-    for (const nativeField of ['targetContent', 'replacementContent', 'insertContent']) {
-      assert.ok(!(nativeField in hunkProperties))
-    }
-    assert.match(editEntry.description, /\{ target, replacement \}/u)
-
-    const codeModeDescription = (bundle.tools.code_mode as { description?: string }).description ?? ''
-    assert.match(codeModeDescription, /\{ target, replacement \}/u)
-    assert.match(codeModeDescription, /\{ startLine, endLine, replacement \}/u)
-    assert.match(codeModeDescription, /\{ insertAt, content \}/u)
-    assert.doesNotMatch(codeModeDescription, /targetContent|replacementContent|insertContent/u)
-    await bundle.codeModeExecutor?.dispose()
-  } finally {
-    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Code Mode repairs legacy edit aliases and duplicated hunk paths before validation', async () => {
-  const originalContent = 'const value = 1\n'
-  const fixture = await createFixture(originalContent)
-  try {
-    const bundle = await createInternalEditCompatibilityBundle(fixture.workspaceRootPath)
-    const codeMode = bundle.tools.code_mode as unknown as {
-      execute: (input: unknown, options: { abortSignal?: AbortSignal }) => Promise<{ status: string }>
-    }
-    const result = await codeMode.execute({
-      source: "return await tools.edit({ path: 'target.ts', edits: [{ path: 'target.ts', oldText: 'const value = 1', newText: 'const value = 2' }] })",
-    }, {})
-    assert.equal(result.status, 'success')
-    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), 'const value = 2\n')
-    await bundle.codeModeExecutor?.dispose()
-  } finally {
-    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Code Mode accepts equivalent edit aliases without guessing between conflicting values', async () => {
-  const fixture = await createFixture('const value = 1\n')
-  try {
-    const bundle = await createInternalEditCompatibilityBundle(fixture.workspaceRootPath)
-    const codeMode = bundle.tools.code_mode as unknown as {
-      execute: (input: unknown, options: { abortSignal?: AbortSignal }) => Promise<{ status: string }>
-    }
-    const result = await codeMode.execute({
-      source: "return await tools.edit({ path: 'target.ts', edits: [{ target: 'const value = 1', targetContent: 'const value = 1', replacement: 'const value = 2', replacementContent: 'const value = 2' }] })",
-    }, {})
-
-    assert.equal(result.status, 'success')
-    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), 'const value = 2\n')
-    await bundle.codeModeExecutor?.dispose()
-  } finally {
-    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Code Mode leaves conflicting edit aliases and mismatched hunk paths invalid', async () => {
-  const originalContent = 'const value = 1\n'
-  const fixture = await createFixture(originalContent)
-  try {
-    const bundle = await createInternalEditCompatibilityBundle(fixture.workspaceRootPath)
-    const codeMode = bundle.tools.code_mode as unknown as {
-      execute: (input: unknown, options: { abortSignal?: AbortSignal }) => Promise<{ status: string }>
-    }
-    const invalidPrograms = [
-      "return await tools.edit({ path: 'target.ts', edits: [{ targetContent: 'const value = 1', oldText: 'const other = 1', replacementContent: 'const value = 2' }] })",
-      "return await tools.edit({ path: 'target.ts', edits: [{ targetContent: 'const value = 1', target: 'const other = 1', replacement: 'const value = 2' }] })",
-      "return await tools.edit({ path: 'target.ts', edits: [{ path: 'other.ts', oldText: 'const value = 1', newText: 'const value = 2' }] })",
-      "return await tools.edit({ path: 'target.ts', edits: [{ startLine: 1, lineStart: 2, endLine: 1, replacementContent: '' }] })",
-      "return await tools.edit({ path: 'target.ts', edits: [{ startLine: 1, replacementContent: '' }] })",
-      "return await tools.edit({ path: 'target.ts', edits: [{ startLine: 1, endLine: 1, replacementContent: '', replaceAll: true }] })",
-      "return await tools.edit({ path: 'target.ts', edits: [{ insertAt: 'end', insertContent: 'x', targetContent: 'const value = 1', replacementContent: 'const value = 2' }] })",
-    ]
-
-    for (const code of invalidPrograms) {
-      const result = await codeMode.execute({ source: code }, {})
-      assert.equal(result.status, 'error')
-      assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
-    }
+    const bundle = await createAgentToolBundle(
+      { workspaceRootPath: fixture.workspaceRootPath },
+      { chatMode: 'agent', orchestrationMode: 'code_mode' },
+    )
+    assert.equal(bundle.registry.get('edit'), undefined)
+    assert.ok(bundle.nativeTools.edit)
+    const description = (bundle.tools.code_mode as { description?: string }).description ?? ''
+    assert.doesNotMatch(description, /tools\.edit|targetContent|replacementContent|insertContent/u)
     await bundle.codeModeExecutor?.dispose()
   } finally {
     await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })

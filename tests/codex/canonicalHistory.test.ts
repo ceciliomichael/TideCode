@@ -584,6 +584,55 @@ test('compacted replay rebuilds a missing projection from the stored v2 packet',
   assert.deepEqual(result.messages.map((message) => message.role), ['user', 'assistant', 'user'])
 })
 
+test('compacted replay recovery restores persisted durable memory before the short handoff', () => {
+  const document = createEmptyCanonicalHistory('conversation', 1)
+  const packet = createCompactionPacketFixture({
+    goal: ['Continue the current task.'],
+    sourceDigest: 'digest-with-memory',
+    sourceMessageIds: ['model:0'],
+  })
+  const durableMemory = {
+    schema: 'tidecode.conversation_memory/v1' as const,
+    markdown: '## Decisions\n- Preserve feature branches after merge.',
+    sourceDigest: 'digest-with-memory',
+  }
+  document.events.push({
+    anchorUserMessageId: 'user-1',
+    branchId: 'main',
+    compactionId: 'compaction-memory-recovery',
+    createdAt: 2,
+    durableMemory: encodeReplayValue(durableMemory),
+    eventId: 'event-memory-recovery',
+    modelId: 'model',
+    packet: encodeReplayValue(packet),
+    projectedMessages: encodeReplayValue({ invalid: 'projection' }),
+    providerId: 'openai',
+    revision: 1,
+    runId: null,
+    sourceDigest: 'digest-with-memory',
+    sourceMessageIds: ['model:0'],
+    type: 'compaction_committed',
+    usedFallback: false,
+  })
+
+  const result = projectCanonicalReplay({
+    document,
+    fallbackMessages: [{ content: 'legacy', role: 'user' }],
+    messages: [
+      { content: 'first question', id: 'user-1', role: 'user', timestamp: 1 },
+      { content: 'second question', id: 'user-2', role: 'user', timestamp: 3 },
+    ],
+    modelId: 'model',
+    providerId: 'openai',
+  })
+
+  assert.equal(result.isCompacted, true)
+  assert.deepEqual(result.messages.map((message) => message.role), ['user', 'assistant', 'assistant', 'user'])
+  assert.match(String(result.messages[1]?.content), /Durable conversation memory/u)
+  assert.match(String(result.messages[1]?.content), /Preserve feature branches after merge/u)
+  assert.equal(result.messages[2]?.content, packet.continuationMarkdown)
+})
+
 test('provider and model replay slots survive switching away and back', () => {
   const document = createEmptyCanonicalHistory('conversation', 1)
   const deepSeekMessages = [{ content: 'deepseek question', role: 'user' }, { content: 'deepseek answer', role: 'assistant' }] as ModelMessage[]

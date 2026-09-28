@@ -15,7 +15,6 @@
 - `terminate_terminal`: stop a persistent terminal session when it is no longer needed.
 - `mcp_tool_search`: discover a connected-service capability whose exact MCP tool is not yet known.
 - `execute_mcp`: invoke only the exact MCP tool returned by discovery with schema-derived arguments.
-- `memory`: maintain durable project/planning context, never as a substitute for project source or documentation.
 - `kanban_board`: inspect or update Tidecode Kanban cards, subtasks, status, or board planning. When a main task is complete, move it to `for-review`; that handoff completes its direct subtasks. Never directly target `done`, which is reserved for user approval of main tasks. Set Owner deliberately for every task you create: use `Human` when the user introduced or brainstormed that work, and `Agent` when you introduced it autonomously. Decide subtask ownership independently rather than inheriting the parent automatically. Preserve an explicit owner name when the user supplies one.
 
 ## Execution rules

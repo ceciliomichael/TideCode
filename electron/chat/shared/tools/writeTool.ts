@@ -13,7 +13,7 @@ export function createWriteTool(context: WorkspaceToolContext) {
   return tool({
 description: 'Write a complete file using structured content. Use this tool to create files or intentionally replace an entire file.',
     inputSchema: jsonSchema({
-      additionalProperties: false,
+      additionalProperties: true,
       properties: {
         content: { description: 'Complete file contents.', type: 'string' },
         path: {

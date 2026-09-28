@@ -38,7 +38,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
     description:
       "Start a terminal command asynchronously and return its session_id immediately (or wait up to wait_seconds for initial output). Keep using that same session: read_terminal observes later output and interact_terminal supplies input only when the terminal needs it.",
     inputSchema: jsonSchema({
-      additionalProperties: false,
+      additionalProperties: true,
       properties: {
         command: {
           description: "Command to run.",

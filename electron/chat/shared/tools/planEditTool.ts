@@ -11,7 +11,7 @@ export function createPlanEditTool(context: WorkspaceToolContext, runtimeState: 
   return tool({
     description: 'Replace the active persisted Tidecode plan with revised Markdown. Use only when an active plan already exists and needs revision.',
     inputSchema: jsonSchema({
-      additionalProperties: false,
+      additionalProperties: true,
       properties: {
         content: {
           description: 'Complete revised Markdown content for the active plan.',

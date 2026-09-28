@@ -117,7 +117,7 @@ function serializeResult(result: AgentToolExecutionResult): Record<string, unkno
 }
 
 function toolFailure(name: string, result: AgentToolExecutionResult): CodeModeRuntimeError {
-  const message = result.summary || result.displayBody || result.body || `Tool '${name}' failed.`
+  const message = result.displayBody || result.body || result.summary || `Tool '${name}' failed.`
   if (/invalid arguments|input validation/iu.test(message)) {
     return new CodeModeRuntimeError('InvalidToolArguments', message)
   }
@@ -127,10 +127,23 @@ function toolFailure(name: string, result: AgentToolExecutionResult): CodeModeRu
   return new CodeModeRuntimeError('ToolExecutionError', message)
 }
 
+function dynamicToolValue(result: AgentToolExecutionResult): unknown {
+  const body = result.displayBody ?? result.body
+  if (typeof body !== 'string') return body
+  const trimmed = body.trim()
+  if (trimmed.length === 0) return ''
+  try {
+    return JSON.parse(trimmed) as unknown
+  } catch {
+    return body
+  }
+}
+
 function schemaSignature(tool: ProjectedTool): string {
   const schema = JSON.stringify(tool.entry.inputSchema)
   const bounded = schema.length > 1200 ? `${schema.slice(0, 1197)}...` : schema
-  return `${tool.expression}(input: ${bounded}): Promise<ToolResult>`
+  const returnType = tool.entry.namespace === 'mcp' ? 'McpValue' : 'ToolResult'
+  return `${tool.expression}(input: ${bounded}): Promise<${returnType}>`
 }
 
 function scoreTool(tool: ProjectedTool, terms: string[]): number {
@@ -343,6 +356,6 @@ export class ToolRuntime {
       summary: result.summary,
     })
     if (result.status === 'error' || status === 'error') throw toolFailure(tool.entry.name, result)
-    return serializeResult(result)
+    return tool.entry.namespace === 'mcp' ? dynamicToolValue(result) : serializeResult(result)
   }
 }

@@ -2,11 +2,18 @@ import type { ModelMessage } from 'ai'
 import type { AppTerminalExecutionMode, ChatMode, ChatProviderId, Message, ReasoningEffort } from '../../../../src/types/chat'
 import { approximateTokenCount } from '../../../../src/lib/contextUsage'
 import { normalizeContextCompactionSettings, type ContextCompactionSettings } from '../../../../src/lib/contextCompactionSettings'
-import { readCanonicalHistory, readLatestCompactionPacket, recordCompactionCommitted } from '../../history/eventStore'
+import {
+  readCanonicalHistory,
+  readLatestCompactionPacket,
+  readLatestConversationMemory,
+  recordCompactionCommitted,
+} from '../../history/eventStore'
 import { projectCanonicalReplay } from '../../history/replayProjector'
 import { shouldReplayAssistantReasoning } from '../assistantReasoningPolicy'
 import { buildChatPrompt, stripImageAttachmentsFromModelMessages } from '../messages'
 import { applyWorkspaceInstructionsContext } from '../prompts/workspaceInstructions'
+import { applyWorkspaceMemoryContext } from '../memory/runtimeContext'
+import { getStoredSettings } from '../../../settings/store'
 import { resolveModelImageInputSupport } from '../modelImageSupport'
 import { sanitizeModelMessages } from '../modelMessageIntegrity'
 import { compactModelMessages } from './service'
@@ -53,13 +60,19 @@ export async function compactConversationForProvider(input: CompactConversationI
     },
     providerId: input.providerId,
   })
-  const safeModelMessages = sanitizeModelMessages(applyWorkspaceInstructionsContext(
-    includeImageAttachments
-      ? replay.messages
-      : stripImageAttachmentsFromModelMessages(replay.messages),
+  const storedSettings = await getStoredSettings().catch(() => null)
+  const safeModelMessages = sanitizeModelMessages(await applyWorkspaceMemoryContext(
+    applyWorkspaceInstructionsContext(
+      includeImageAttachments
+        ? replay.messages
+        : stripImageAttachmentsFromModelMessages(replay.messages),
+      input.agentContextRootPath,
+    ),
     input.agentContextRootPath,
+    storedSettings?.workspaceMemoryEnabled ?? true,
   ))
   const previousPacket = await readLatestCompactionPacket(input.conversationId)
+  const previousMemory = await readLatestConversationMemory(input.conversationId)
   const result = await compactModelMessages({
     createStream: input.createStream,
     force: true,
@@ -67,7 +80,11 @@ export async function compactConversationForProvider(input: CompactConversationI
     model: input.modelId,
     providerId: input.providerId,
     previousPacket,
+    previousMemory,
+    workspaceRootPath: input.agentContextRootPath,
     reasoningEffort: input.reasoningEffort,
+    sourceModel: input.targetModelId?.trim() || input.modelId,
+    sourceProviderId: input.targetProviderId ?? input.providerId,
     systemPromptTokens: approximateTokenCount(prompt.system),
     contextWindowTokens: contextCompaction.contextWindowTokens,
     retainedContextTokens: contextCompaction.retainedContextTokens,
@@ -77,11 +94,18 @@ export async function compactConversationForProvider(input: CompactConversationI
   })
   if (!result) return null
 
+  result.projectedMessages = await applyWorkspaceMemoryContext(
+    result.projectedMessages,
+    input.agentContextRootPath,
+    storedSettings?.workspaceMemoryEnabled ?? true,
+  )
+
   await recordCompactionCommitted({
     anchorUserMessageId: [...input.messages].reverse().find((message) => message.role === 'user')?.id ?? null,
     compactionId: result.packet.packetId,
     conversationId: input.conversationId,
     modelId: input.targetModelId?.trim() || input.modelId,
+    durableMemory: result.durableMemory,
     packet: result.packet,
     projectedMessages: result.projectedMessages as ModelMessage[],
     providerId: input.targetProviderId ?? input.providerId,

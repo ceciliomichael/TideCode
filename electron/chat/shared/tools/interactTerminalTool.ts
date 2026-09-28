@@ -36,7 +36,7 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
     description:
       "Send input or control keys to an existing terminal session. Use the same session_id returned by execute_terminal after read_terminal shows that input is needed. For ordinary line prompts, send text with the ENTER key. input_sent confirms only that input was written to the PTY; verify acceptance from returned output/state or read_terminal. A short post-input wait observes the command response.",
     inputSchema: jsonSchema({
-      additionalProperties: false,
+      additionalProperties: true,
       properties: {
         cols: {
           description: "Optional. Terminal column width.",

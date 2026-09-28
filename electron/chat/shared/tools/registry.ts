@@ -28,116 +28,6 @@ export interface AgentToolSearchMatch {
   score: number
 }
 
-const CODE_MODE_EDIT_DESCRIPTION =
-  'Edit one existing file using hunks shaped as { target, replacement }, { startLine, endLine, replacement }, or { insertAt, content }; replaceAll is explicit.'
-
-const CODE_MODE_APPLY_PATCH_DESCRIPTION =
-  'Apply one raw Codex-style patch string beginning with *** Begin Patch and ending with *** End Patch. The surrounding Code Mode program must remain valid JavaScript-like source; encode escape-heavy or multiline patch text as a normal string value (JSON-style string escaping is safest). If a patch anchor contains one redundant escaping layer, TideCode repairs it only when there is one unique non-overlapping source match. Use fresh source context; TideCode verifies the full patch before writing.'
-
-const CODE_MODE_APPLY_PATCH_INPUT_SCHEMA: JSONSchema7 = {
-  description: 'Raw Codex-style patch text. Do not wrap it in an object, array, or Markdown fence.',
-  minLength: 1,
-  type: 'string',
-}
-
-const CODE_MODE_EDIT_OPERATION_SCHEMA: JSONSchema7 = {
-  additionalProperties: false,
-  allOf: [{
-    oneOf: [
-      {
-        not: {
-          anyOf: [
-            { required: ['insertAt'] },
-            { required: ['content'] },
-          ],
-        },
-        required: ['target', 'replacement'],
-      },
-      {
-        not: {
-          anyOf: [
-            { required: ['target'] },
-            { required: ['replaceAll'] },
-            { required: ['insertAt'] },
-            { required: ['content'] },
-          ],
-        },
-        required: ['startLine', 'endLine', 'replacement'],
-      },
-      {
-        not: {
-          anyOf: [
-            { required: ['target'] },
-            { required: ['replacement'] },
-            { required: ['startLine'] },
-            { required: ['endLine'] },
-            { required: ['replaceAll'] },
-          ],
-        },
-        required: ['insertAt', 'content'],
-      },
-    ],
-  }],
-  description: 'Use exactly one semantic form: { target, replacement }, { startLine, endLine, replacement }, or { insertAt, content }. Text replacement may also include startLine/endLine bounds and replaceAll.',
-  properties: {
-    content: {
-      description: 'Content inserted at the selected file boundary.',
-      minLength: 1,
-      type: 'string',
-    },
-    endLine: {
-      description: 'Inclusive 1-indexed end line for an exact range or optional text-match constraint.',
-      minimum: 1,
-      type: 'integer',
-    },
-    insertAt: {
-      description: 'Exact file boundary for insertion.',
-      enum: ['start', 'end'],
-      type: 'string',
-    },
-    replaceAll: {
-      description: 'Replace every matching text occurrence. Valid only with target.',
-      type: 'boolean',
-    },
-    replacement: {
-      description: 'Replacement text. Use an empty string to delete a text target or exact line range.',
-      type: 'string',
-    },
-    startLine: {
-      description: 'Inclusive 1-indexed start line for an exact range or optional text-match constraint.',
-      minimum: 1,
-      type: 'integer',
-    },
-    target: {
-      description: 'Exact current source text to replace.',
-      minLength: 1,
-      type: 'string',
-    },
-  },
-  type: 'object',
-}
-
-function createCodeModeEditInputSchema(nativeInputSchema: JSONSchema7): JSONSchema7 {
-  const nativeProperties = nativeInputSchema.properties && typeof nativeInputSchema.properties === 'object' && !Array.isArray(nativeInputSchema.properties)
-    ? nativeInputSchema.properties
-    : {}
-
-  return {
-    additionalProperties: false,
-    properties: {
-      edits: {
-        description: 'One or more semantic edit hunks for the single file in path.',
-        items: CODE_MODE_EDIT_OPERATION_SCHEMA,
-        minItems: 1,
-        type: 'array',
-      },
-      ...(nativeProperties.path ? { path: nativeProperties.path } : { path: { type: 'string' } }),
-    },
-    required: ['path', 'edits'],
-    type: 'object',
-  }
-}
-
 export interface AgentToolRegistry {
   entries: readonly AgentToolRegistryEntry[]
   get(name: string): AgentToolRegistryEntry | undefined
@@ -167,7 +57,6 @@ function resolveToolNamespace(name: string) {
   ) {
     return 'filesystem'
   }
-  if (normalizedName === 'memory') return 'memory'
   if (normalizedName === 'skill') return 'skills'
   if (normalizedName.startsWith('git') || normalizedName.includes('commit')) return 'git'
   if (normalizedName.startsWith('plan')) return 'planning'
@@ -211,7 +100,7 @@ function getValueAtPath(value: unknown, pathParts: string[]): unknown {
   return current
 }
 
-function omitUnsupportedFalseProperties(input: unknown, validateInput: ValidateFunction) {
+function omitUnsupportedProperties(input: unknown, validateInput: ValidateFunction) {
   let normalizedInput = input
 
   for (;;) {
@@ -225,7 +114,6 @@ function omitUnsupportedFalseProperties(input: unknown, validateInput: ValidateF
       const parentPath = decodeJsonPointer(validationError.instancePath)
       const parentValue = getValueAtPath(normalizedInput, parentPath)
       if (!parentValue || typeof parentValue !== 'object' || Array.isArray(parentValue)) return []
-      if ((parentValue as Record<string, unknown>)[additionalProperty] !== false) return []
 
       return [[...parentPath, additionalProperty]]
     })
@@ -239,7 +127,6 @@ function omitUnsupportedFalseProperties(input: unknown, validateInput: ValidateF
       const propertyName = propertyPath.at(-1)
       const parentValue = getValueAtPath(nextInput, parentPath)
       if (!propertyName || !parentValue || typeof parentValue !== 'object' || Array.isArray(parentValue)) continue
-      if ((parentValue as Record<string, unknown>)[propertyName] !== false) continue
       delete (parentValue as Record<string, unknown>)[propertyName]
       removedAny = true
     }
@@ -249,72 +136,12 @@ function omitUnsupportedFalseProperties(input: unknown, validateInput: ValidateF
   }
 }
 
-function applyEditFieldAlias(
-  edit: Record<string, unknown>,
-  alias: string,
-  canonical: string,
-) {
-  if (!(alias in edit)) return false
-  if (!(canonical in edit)) {
-    edit[canonical] = edit[alias]
-    delete edit[alias]
-    return true
-  }
-  if (edit[canonical] === edit[alias]) {
-    delete edit[alias]
-    return true
-  }
-  return false
-}
-
-function normalizeCodeModeEditInput(input: unknown) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) return input
-
-  const record = input as Record<string, unknown>
-  if (typeof record.path !== 'string' || !Array.isArray(record.edits)) return input
-
-  let changed = false
-  const edits = record.edits.map((rawEdit) => {
-    if (!rawEdit || typeof rawEdit !== 'object' || Array.isArray(rawEdit)) return rawEdit
-
-    const edit = { ...(rawEdit as Record<string, unknown>) }
-    if ('path' in edit && edit.path === record.path) {
-      delete edit.path
-      changed = true
-    }
-
-    for (const [alias, canonical] of [
-      ['target', 'targetContent'],
-      ['replacement', 'replacementContent'],
-      ['oldText', 'targetContent'],
-      ['newText', 'replacementContent'],
-      ['lineStart', 'startLine'],
-      ['lineEnd', 'endLine'],
-    ] as const) {
-      changed = applyEditFieldAlias(edit, alias, canonical) || changed
-    }
-
-    if ('insertAt' in edit || 'insertContent' in edit) {
-      changed = applyEditFieldAlias(edit, 'content', 'insertContent') || changed
-    }
-
-    return edit
-  })
-
-  return changed ? { ...record, edits } : input
-}
-
 function normalizeCodeModeInput(
-  name: string,
   input: unknown,
   inputSchema: JSONSchema7,
   validateInput: ValidateFunction,
 ) {
-  let normalizedInput = name === 'edit'
-    ? normalizeCodeModeEditInput(input)
-    : name === 'apply_patch' && typeof input === 'string'
-      ? { patch: input.split(/\r?\n/u) }
-      : input
+  let normalizedInput = input
   if (normalizedInput && typeof normalizedInput === 'object' && !Array.isArray(normalizedInput)) {
     const properties = inputSchema.properties
     if (properties && typeof properties === 'object' && !Array.isArray(properties)) {
@@ -329,11 +156,12 @@ function normalizeCodeModeInput(
     }
   }
 
-  // A false value for a property that the concrete tool schema does not support
-  // is equivalent to omitting that optional capability. Strip only properties
-  // Ajv identifies as additional, and only when their value is exactly false.
-  // Supported false values and unsupported truthy values are preserved.
-  return omitUnsupportedFalseProperties(normalizedInput, validateInput)
+  // Generated tool calls can include harmless compatibility hints that an
+  // older or narrower tool schema does not implement. Strip only properties
+  // Ajv identifies as additional, at any nesting depth, then revalidate.
+  // Recognized properties keep their original values and remain fully subject
+  // to the concrete schema's type, enum, range, and required-field rules.
+  return omitUnsupportedProperties(normalizedInput, validateInput)
 }
 
 function scoreMatch(entry: AgentToolRegistryEntry, queryTerms: string[]) {
@@ -386,29 +214,17 @@ export async function createAgentToolRegistry(nativeTools: ToolSet): Promise<Age
     }
 
     const execute = tool.execute
-    const modelInputSchema = name === 'edit'
-      ? createCodeModeEditInputSchema(nativeInputSchema)
-      : name === 'apply_patch'
-        ? CODE_MODE_APPLY_PATCH_INPUT_SCHEMA
-        : nativeInputSchema
+    const modelInputSchema = nativeInputSchema
     entries.push({
-      description: name === 'edit'
-        ? CODE_MODE_EDIT_DESCRIPTION
-        : name === 'apply_patch'
-          ? CODE_MODE_APPLY_PATCH_DESCRIPTION
-          : getToolDescription(tool, name),
+      description: getToolDescription(tool, name),
       execute: async (input, options = {}) => {
-        const normalizedInput = normalizeCodeModeInput(name, input, nativeInputSchema, validateInput)
+        const normalizedInput = normalizeCodeModeInput(input, nativeInputSchema, validateInput)
         if (!validateInput(normalizedInput)) {
           const validationDetails = (validateInput.errors ?? [])
             .map((validationError) => `${validationError.instancePath || '/'} ${validationError.message ?? 'is invalid'}`)
             .join('; ')
           return createToolErrorResult(
             `Invalid arguments for ${name}${validationDetails ? `: ${validationDetails}` : '.'}`,
-            undefined,
-            name === 'edit'
-              ? { error_code: 'INVALID_ARGUMENT', stage: 'INPUT_VALIDATION' }
-              : undefined,
           )
         }
 

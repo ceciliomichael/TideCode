@@ -1,6 +1,7 @@
 export const REMOTE_PROTOCOL_VERSION = 1
 
 export const REMOTE_RPC_NAMESPACES = [
+  'tidecodeBrowser',
   'tidecodeApp',
   'tidecodeChat',
   'tidecodeGit',
@@ -21,6 +22,7 @@ export type RemoteRpcNamespace = (typeof REMOTE_RPC_NAMESPACES)[number]
 
 export const REMOTE_EVENT_CHANNELS = {
   appLaunchRequest: 'app.launchRequest',
+  browserFrame: 'browser.frame',
   chatStream: 'chat.stream',
   gitSourceControl: 'git.sourceControl',
   historyChanged: 'history.changed',

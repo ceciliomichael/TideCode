@@ -19,7 +19,7 @@ export function createTerminateTerminalTool(runtime: TerminalToolRuntime) {
     description:
       "Terminate an existing broker-owned terminal session early and retain its final lifecycle record.",
     inputSchema: jsonSchema({
-      additionalProperties: false,
+      additionalProperties: true,
       properties: {
         session_id: {
           description: "Terminal session returned by execute_terminal.",

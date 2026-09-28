@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { WebContents } from 'electron'
 import {
-  stepCountIs,
   type PrepareStepFunction,
   type ModelMessage,
   type StopCondition,
@@ -24,6 +23,7 @@ import { applyPromptCacheBreakpoints, derivePromptCacheKey } from '../cache/prov
 import type { ProviderStepRecord } from '../history/contracts'
 import {
   readCanonicalHistory,
+  readLatestConversationMemory,
   recordCompactionCommitted,
   recordContextEpoch,
   recordRunCompleted,
@@ -34,6 +34,7 @@ import {
 } from '../history/eventStore'
 import { projectCanonicalReplay } from '../history/replayProjector'
 import { applyWorkspaceInstructionsContext } from './prompts/workspaceInstructions'
+import { applyWorkspaceMemoryContext } from './memory/runtimeContext'
 import { compactModelMessages } from './compaction/service'
 import {
   resolveAutomaticCompactionMessages,
@@ -46,6 +47,11 @@ import {
   shouldCompactContext,
 } from './compaction/budget'
 import type { CompactionPacket } from './compaction/contracts'
+import type { ConversationMemory } from './compaction/durableMemory'
+import {
+  createCompactionStreamFactory,
+  resolveCompactionModelSelection,
+} from './compaction/modelSelection'
 import {
   buildChatPrompt,
   hasImageAttachmentsInModelMessages,
@@ -231,6 +237,7 @@ export async function runToolEnabledChatStream(input: {
     let freshnessRevision = 0
     let replayFidelity: 'exact' | 'migrated_legacy' = 'migrated_legacy'
     let replayCompactionPacket: CompactionPacket | null = null
+    let replayConversationMemory: ConversationMemory | null = null
 
     if (conversationId) {
       await safelyPersistHistory(() => synchronizeCanonicalMessages(conversationId, input.startInput.messages))
@@ -248,11 +255,18 @@ export async function runToolEnabledChatStream(input: {
       freshnessRevision = replay.freshnessRevision
       replayFidelity = replay.fidelity === 'exact' ? 'exact' : 'migrated_legacy'
       replayCompactionPacket = replay.compactionPacket
+      replayConversationMemory = await readLatestConversationMemory(conversationId)
     }
     if (!promptOptions.includeImageAttachments) {
       modelMessages = stripImageAttachmentsFromModelMessages(modelMessages)
     }
     modelMessages = applyWorkspaceInstructionsContext(modelMessages, workspaceRootPath)
+    const initialStoredSettings = await getStoredSettings().catch(() => null)
+    modelMessages = await applyWorkspaceMemoryContext(
+      modelMessages,
+      workspaceRootPath,
+      initialStoredSettings?.workspaceMemoryEnabled ?? true,
+    )
 
     const anchorUserMessageId = [...input.startInput.messages].reverse()
       .find((message) => message.role === 'user')?.id ?? null
@@ -265,6 +279,7 @@ export async function runToolEnabledChatStream(input: {
     })
     let replayMessages: ModelMessage[] = [...modelMessages]
     let latestCompactionPacket: CompactionPacket | null = replayCompactionPacket
+    let latestConversationMemory: ConversationMemory | null = replayConversationMemory
     let nextRecordedStepNumber = 0
     let restartingAfterToolBoundary = false
     const systemPromptTokens = approximateTokenCount(prompt.system)
@@ -400,9 +415,10 @@ export async function runToolEnabledChatStream(input: {
             : undefined
         }
 
-        const liveContextCompaction = await getStoredSettings()
-          .then((settings) => normalizeContextCompactionSettings(settings.contextCompaction))
-          .catch(() => contextCompaction)
+        const liveStoredSettings = await getStoredSettings().catch(() => null)
+        const liveContextCompaction = liveStoredSettings
+          ? normalizeContextCompactionSettings(liveStoredSettings.contextCompaction)
+          : contextCompaction
 
         const compactionBudgetInput = {
           contextWindowTokens: liveContextCompaction.contextWindowTokens,
@@ -439,22 +455,20 @@ export async function runToolEnabledChatStream(input: {
 
         let compacted: Awaited<ReturnType<typeof compactModelMessages>>
         try {
-          compacted = await compactModelMessages({
-            createStream: (compactionInput) => createProviderStream({
-              cacheKey: `${cacheKey}:compaction`,
-              maxOutputTokens: compactionInput.maxOutputTokens,
-              messages: compactionInput.messages,
-              model: compactionInput.model,
-              reasoningEffort: compactionInput.reasoningEffort as StartChatStreamInput['reasoningEffort'],
-              signal: compactionInput.signal,
-              stopWhen: stepCountIs(1),
-              maxSteps: 1,
-              system: compactionInput.system,
-              tools: {},
-            }),
-            messages: compactionMessages,
-            model: input.startInput.modelId,
+          const compactionModel = await resolveCompactionModelSelection({
+            modelId: input.startInput.modelId,
             providerId: input.startInput.providerId,
+            reasoningEffort: input.startInput.reasoningEffort,
+          })
+          const compactionStream = await createCompactionStreamFactory(
+            compactionModel.providerId,
+            `${cacheKey}:compaction`,
+          )
+          compacted = await compactModelMessages({
+            createStream: compactionStream,
+            messages: compactionMessages,
+            model: compactionModel.modelId,
+            providerId: compactionModel.providerId,
             onStarted: () => {
               compactionStarted = true
               if (!conversationId) return
@@ -465,10 +479,14 @@ export async function runToolEnabledChatStream(input: {
                 type: 'compaction_started',
               })
             },
-            reasoningEffort: input.startInput.reasoningEffort,
+            reasoningEffort: compactionModel.reasoningEffort,
+            sourceModel: input.startInput.modelId,
+            sourceProviderId: input.startInput.providerId,
             systemPromptTokens,
             toolSchemaTokens: promptContext.toolSchemaTokens,
             previousPacket: latestCompactionPacket,
+            previousMemory: latestConversationMemory,
+            workspaceRootPath,
             contextWindowTokens: liveContextCompaction.contextWindowTokens,
             retainedContextTokens,
             triggerRatio: liveContextCompaction.triggerPercent / 100,
@@ -498,6 +516,12 @@ export async function runToolEnabledChatStream(input: {
             : undefined
         }
 
+        const refreshedProjectedMessages = await applyWorkspaceMemoryContext(
+          compacted.projectedMessages,
+          workspaceRootPath,
+          liveStoredSettings?.workspaceMemoryEnabled ?? true,
+        )
+        compacted.projectedMessages = refreshedProjectedMessages
         const projectedContextState = calculateModelMessagesContextState({
           ...compactionBudgetInput,
           messages: compacted.projectedMessages,
@@ -512,12 +536,14 @@ export async function runToolEnabledChatStream(input: {
 
         replayMessages = [...compacted.projectedMessages]
         latestCompactionPacket = compacted.packet
+        latestConversationMemory = compacted.durableMemory
         if (conversationId) {
           await safelyPersistHistory(() => recordCompactionCommitted({
             anchorUserMessageId: replayAnchorUserMessageId,
             compactionId: compacted.packet.packetId,
             conversationId,
             contextFingerprint,
+            durableMemory: compacted.durableMemory,
             modelId: input.startInput.modelId,
             packet: compacted.packet,
             projectedMessages: compacted.projectedMessages,
@@ -622,9 +648,10 @@ export async function runToolEnabledChatStream(input: {
     // before committing the completed replay so a finished turn cannot leave
     // the active canonical context over the configured threshold.
     if (conversationId) {
-      const finalContextCompaction = await getStoredSettings()
-        .then((settings) => normalizeContextCompactionSettings(settings.contextCompaction))
-        .catch(() => contextCompaction)
+      const finalStoredSettings = await getStoredSettings().catch(() => null)
+      const finalContextCompaction = finalStoredSettings
+        ? normalizeContextCompactionSettings(finalStoredSettings.contextCompaction)
+        : contextCompaction
       // Use the same provider-facing replay that ContextIndicator estimates.
       // The compaction prompt applies its own bounded tool-output formatting;
       // truncating here would make the threshold disagree with the indicator.
@@ -660,22 +687,20 @@ export async function runToolEnabledChatStream(input: {
         }
 
         try {
-          const compacted = await compactModelMessages({
-            createStream: (compactionInput) => createProviderStream({
-              cacheKey: `${cacheKey}:compaction:final`,
-              maxOutputTokens: compactionInput.maxOutputTokens,
-              messages: compactionInput.messages,
-              model: compactionInput.model,
-              reasoningEffort: compactionInput.reasoningEffort as StartChatStreamInput['reasoningEffort'],
-              signal: compactionInput.signal,
-              stopWhen: stepCountIs(1),
-              maxSteps: 1,
-              system: compactionInput.system,
-              tools: {},
-            }),
-            messages: finalCompactionMessages,
-            model: input.startInput.modelId,
+          const compactionModel = await resolveCompactionModelSelection({
+            modelId: input.startInput.modelId,
             providerId: input.startInput.providerId,
+            reasoningEffort: input.startInput.reasoningEffort,
+          })
+          const compactionStream = await createCompactionStreamFactory(
+            compactionModel.providerId,
+            `${cacheKey}:compaction:final`,
+          )
+          const compacted = await compactModelMessages({
+            createStream: compactionStream,
+            messages: finalCompactionMessages,
+            model: compactionModel.modelId,
+            providerId: compactionModel.providerId,
             onStarted: () => {
               compactionStarted = true
               emitChatStreamEvent(input.webContents, {
@@ -685,10 +710,14 @@ export async function runToolEnabledChatStream(input: {
                 type: 'compaction_started',
               })
             },
-            reasoningEffort: input.startInput.reasoningEffort,
+            reasoningEffort: compactionModel.reasoningEffort,
+            sourceModel: input.startInput.modelId,
+            sourceProviderId: input.startInput.providerId,
             systemPromptTokens,
             toolSchemaTokens: promptContext.toolSchemaTokens,
             previousPacket: latestCompactionPacket,
+            previousMemory: latestConversationMemory,
+            workspaceRootPath,
             contextWindowTokens: finalContextCompaction.contextWindowTokens,
             retainedContextTokens: finalRetainedContextTokens,
             triggerRatio: finalContextCompaction.triggerPercent / 100,
@@ -701,17 +730,24 @@ export async function runToolEnabledChatStream(input: {
           } else if (!compacted) {
             emitFinalCompactionFailed('unavailable')
           } else {
+            compacted.projectedMessages = await applyWorkspaceMemoryContext(
+              compacted.projectedMessages,
+              workspaceRootPath,
+              finalStoredSettings?.workspaceMemoryEnabled ?? true,
+            )
             const projectedFinalContextState = calculateModelMessagesContextState({
               ...finalCompactionBudgetInput,
               messages: compacted.projectedMessages,
             })
             replayMessages = [...compacted.projectedMessages]
             latestCompactionPacket = compacted.packet
+            latestConversationMemory = compacted.durableMemory
             await safelyPersistHistory(() => recordCompactionCommitted({
               anchorUserMessageId: replayAnchorUserMessageId,
               compactionId: compacted.packet.packetId,
               conversationId,
               contextFingerprint,
+              durableMemory: compacted.durableMemory,
               modelId: input.startInput.modelId,
               packet: compacted.packet,
               projectedMessages: compacted.projectedMessages,

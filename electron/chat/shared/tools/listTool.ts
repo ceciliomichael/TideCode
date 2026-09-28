@@ -11,7 +11,7 @@ export function createListTool(context: WorkspaceToolContext) {
   return tool({
     description: 'List exactly one existing directory; an omitted path, empty string, or "." refers to the bound workspace root. Use read for files.',
     inputSchema: jsonSchema({
-      additionalProperties: false,
+      additionalProperties: true,
       properties: {
         path: {
           description: OPTIONAL_ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION,

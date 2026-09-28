@@ -21,7 +21,7 @@ export function createSkillTool(context: WorkspaceToolContext, enabledSkills: Sk
   return tool({
     description: buildSkillToolDescription(enabledSkills),
     inputSchema: jsonSchema({
-      additionalProperties: false,
+      additionalProperties: true,
       properties: {
         action: {
           description: 'The mode/action to perform: "load" (loads SKILL.md with its location), "list", or "search".',

@@ -70,6 +70,8 @@ test('execution mode changes create one persisted transition without duplicating
   assert.equal(fullTransition[0]?.kind, 'execution_mode')
   assert.equal(fullTransition[0]?.state, 'full')
   assert.match(fullTransition[0]?.content ?? '', /<execution_mode_context mode="full">/u)
+  assert.match(fullTransition[0]?.content ?? '', /Code Mode remains tool-only in Full Access/u)
+  assert.doesNotMatch(fullTransition[0]?.content ?? '', /may use direct Node\.js host APIs and module loading/u)
 
   const fullMessages: Message[] = [...sandboxMessages, {
     chatMode: 'agent',

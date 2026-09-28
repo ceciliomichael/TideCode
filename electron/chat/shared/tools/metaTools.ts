@@ -13,36 +13,46 @@ import { isDynamicAgentTool, type AgentToolRegistry } from './registry'
 import { createAgentToolCallableContract } from './callableContract'
 
 const CODE_MODE_SOURCE_INPUT_SCHEMA = {
-  additionalProperties: false,
+  additionalProperties: true,
   properties: {
+    code: {
+      description: 'Tidecode Code Mode program. Use the supported JavaScript-like orchestration language and tools.* capabilities only. Every tools.* call is asynchronous; await it before reading its result.',
+      minLength: 1,
+      type: 'string',
+    },
     source: {
-      description: 'Tidecode Code Mode source. Use the supported JavaScript-like orchestration language and tools.* capabilities only. Every tools.* call is asynchronous; await it before reading its result.',
+      description: 'Legacy alias for code. Prefer code for new calls. If both are provided they must be identical.',
       minLength: 1,
       type: 'string',
     },
     payloads: {
       additionalProperties: { type: 'string' },
-      description: 'Optional opaque exact-text payloads available inside Code Mode through the read-only payloads global. Prefer this for multiline patches, Markdown/code fences, generated source, JSX, JSON, regex-heavy text, shell snippets, and other delimiter-heavy data.',
+      description: 'Optional opaque exact-text payloads available inside Code Mode through the read-only payloads global. Use this only for arbitrary data needed by an inner Code Mode capability; targeted patches use direct apply_patch and complete-file writes use direct write.',
       maxProperties: 64,
       propertyNames: { maxLength: 128, minLength: 1 },
       type: 'object',
     },
   },
-  required: ['source'],
+  anyOf: [
+    { required: ['code'] },
+    { required: ['source'] },
+  ],
   type: 'object',
 } as const
 
 const HIDDEN_PRELOADED_TOOL_NAMES = new Set(['plan_create', 'plan_edit'])
 
 interface CodeModeSourceInput {
+  code?: string
   payloads?: Record<string, string>
   source?: string
 }
 
 const CODE_MODE_TOOL_ROUTING = [
-  'Provider boundary: the model-facing Tidecode tools are code_mode, apply_patch, and write in Agent Mode. Use direct apply_patch for targeted patches and direct write for complete-file creation/replacement. Every tools.* name below is a JavaScript API that exists only inside the code_mode source string; never emit tools.* as a provider tool name.',
+  'Provider boundary: the model-facing Tidecode tools are code_mode, apply_patch, and write in Agent Mode. Use direct apply_patch for targeted patches and direct write for complete-file creation/replacement. Every tools.* name below is a JavaScript API that exists only inside the code_mode code string; never emit tools.* as a provider tool name.',
   'Choose the purpose-built inner API for the scenario. Do not use terminal commands as a substitute for structured workspace APIs.',
-  'Code Mode receives one structured outer input with `source` plus optional opaque `payloads`. Inside source, read payload text through `payloads.<name>` or bracket access. Payload text is inert data and is never parsed as Code Mode source.',
+  'Code Mode receives one structured outer input with canonical `code` plus optional opaque `payloads`. Inside code, read payload text through `payloads.<name>` or bracket access. Payload text is inert data and is never parsed as Code Mode source.',
+  'Generated-call compatibility: unsupported argument properties are ignored instead of failing an otherwise valid tool call. Recognized arguments remain strict, and ignored properties do not gain behavior.',
   'The APIs documented below are the stable Code Mode capability catalog, not permission for the current execution. Runtime policy can restrict this catalog. Treat the active runtime context and the actual tools object as authoritative. If an API is unavailable or forbidden, do not infer that it should exist, search for a replacement, or substitute another mutation path.',
   '- `tools.read`: inspect one known file or directory. A path is known only when the user supplied it or a prior workspace tool returned that exact path. Never infer filenames from conventions.',
   '- `tools.read_tool_output`: read only a narrowly targeted section when a truncated result omitted content you actually need; never call it automatically.',
@@ -50,16 +60,15 @@ const CODE_MODE_TOOL_ROUTING = [
   '- `tools.list`: inspect immediate entries of one directory.',
   '- `tools.glob`: discover files by path or filename pattern.',
   '- `tools.grep`: search workspace text, symbols, imports, or references.',
-  '- Direct model-facing `apply_patch`: prefer this for a standalone targeted patch; its structured patch-line array bypasses Code Mode source parsing entirely.',
-  '- Direct model-facing `write`: create a new text file or intentionally replace a complete file. Its structured `{ path, content }` input bypasses Code Mode source parsing entirely; do not embed complete file contents in code_mode source.',
+  '- Direct model-facing `apply_patch`: prefer this for a standalone targeted patch; its raw patch string bypasses Code Mode source parsing entirely.',
+  '- Direct model-facing `write`: create a new text file or intentionally replace a complete file. Its structured `{ path, content }` input bypasses Code Mode parsing entirely; do not embed complete file contents in code_mode code.',
   '- `tools.execute_terminal`: run an actual command/process such as tests, typecheck, build, package manager, compiler, Git command, or app/script. Terminal results expose `session_id` directly, and completed commands expose `exit_code` directly. Never use shell, PowerShell, Python, or Node just to read, search, edit, or write workspace files when the structured APIs above apply.',
   '- `tools.read_terminal`: collect new output from an existing terminal session instead of starting the command again; it returns early when input is detected.',
   '- `tools.interact_terminal`: answer a prompt or send control/navigation keys to that same terminal session. For ordinary line input, send text with ENTER.',
   '- `tools.terminate_terminal`: stop a persistent terminal session started for the current work.',
   'Terminal interaction loop: execute once, read the same session, interact only when its output/state needs input, then continue reading that same session. Do not retry equivalent newline, CRLF, Enter, or Return variants unless fresh output shows the first normal interaction was not accepted.',
-  '- `tools.memory`: read or maintain durable project/planning context, not project source.',
   '- `tools.kanban_board`: inspect or update Kanban task data when the request concerns cards, subtasks, status, or board planning. AI-completed main work stops at `for-review`, which completes direct subtasks. Never directly target `done`; only the user approves main tasks as Done. Set Owner per task: `Human` for user-originated work, `Agent` for work you introduce autonomously; do not blindly inherit parent ownership, and preserve explicit owner names.',
-  '- `tools.$codemode.search`: discover capabilities that are not preloaded in this description. Use the exact callable path returned by search and never guess MCP/tool names.',
+  '- `tools.$codemode.search`: discover capabilities that are not preloaded in this description. Use the exact callable path returned by search and never guess MCP/tool names. Successful connected MCP calls return their useful payload directly rather than a ToolResult envelope.',
   'Any additional preloaded API should be used only for the capability described by its generated contract below.',
 ].join('\n')
 
@@ -76,7 +85,7 @@ function buildPreloadedToolDocumentation(registry: AgentToolRegistry) {
     'Path rule: every supplied path argument and every patch file header is one exact workspace-relative file or directory. For root-capable `read`, `list`, `glob`, and `grep` calls, an omitted path where the schema permits omission, an empty string, or `.` refers to the bound workspace root. Never invent filenames or index files, combine roots with spaces, or treat a path list as one path. If an exact child path has not been supplied by the user or returned by a prior workspace tool, discover it with list, glob, or grep before reading or patching it.',
     'Preloaded local APIs (call directly inside the program):',
     ...contracts.map((contract) => `- ${contract.signature} — ${contract.description}`),
-    'Connected MCP APIs are discoverable inside Code Mode. Call tools.$codemode.search({ query, namespace: "mcp" }), then invoke an exact returned path such as tools.mcp.<name>(args). Do not guess MCP names.',
+    'Connected MCP APIs are discoverable inside Code Mode. Call tools.$codemode.search({ query, namespace: "mcp" }), then invoke an exact returned path such as tools.mcp.<name>(args). Do not guess MCP names. The returned value is the MCP payload itself: decoded JSON when possible, otherwise text.',
   ].join('\n')
 }
 
@@ -91,13 +100,18 @@ export function buildCodeModeDescription(
   ].join('\n')
 }
 
-export function normalizeCodeModeSourceInput(input: unknown): { payloads?: Record<string, string>; source: string } {
-  if (typeof input === 'string') return { source: input }
-  if (!input || typeof input !== 'object' || Array.isArray(input)) return { source: '' }
+export function normalizeCodeModeSourceInput(input: unknown): { code: string; payloads?: Record<string, string> } {
+  if (typeof input === 'string') return { code: input }
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return { code: '' }
   const record = input as CodeModeSourceInput
+  const code = typeof record.code === 'string' ? record.code : undefined
+  const legacySource = typeof record.source === 'string' ? record.source : undefined
+  if (code !== undefined && legacySource !== undefined && code !== legacySource) {
+    return { code: '' }
+  }
   return {
     ...(record.payloads && typeof record.payloads === 'object' && !Array.isArray(record.payloads) ? { payloads: record.payloads } : {}),
-    source: typeof record.source === 'string' ? record.source : '',
+    code: code ?? legacySource ?? '',
   }
 }
 
@@ -107,10 +121,12 @@ async function executeCodeModeSource(
   options: { abortSignal?: AbortSignal; allowedToolNames?: readonly string[] },
 ): Promise<AgentToolExecutionResult> {
   const normalized = normalizeCodeModeSourceInput(input)
-  const source = normalized.source
-  if (source.trim().length === 0) return createToolErrorResult('code_mode requires a non-empty JavaScript program.')
+  const code = normalized.code
+  if (code.trim().length === 0) {
+    return createToolErrorResult('code_mode requires a non-empty "code" JavaScript-like program. Do not provide conflicting code/source values.')
+  }
 
-  const result = await executor.run(source, {
+  const result = await executor.run(code, {
     abortSignal: options.abortSignal,
     allowedToolNames: options.allowedToolNames,
     payloads: normalized.payloads,

@@ -11,7 +11,7 @@ export function createGrepTool(context: WorkspaceToolContext) {
   return tool({
     description: 'Search file contents under exactly one existing file or directory; an omitted path, empty string, or "." refers to the bound workspace root.',
     inputSchema: jsonSchema({
-      additionalProperties: false,
+      additionalProperties: true,
       properties: {
         path: {
           description: OPTIONAL_ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION,
