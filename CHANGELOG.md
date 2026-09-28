@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.6 - More reliable agent memory and workspace tools
+
+TideCode 1.4.6 improves long-running agent continuity, workspace memory, Code Mode reliability, remote browsing, terminals, and model support.
+
+- Adds workspace-scoped durable memory that survives compaction and is shared across chats, plus optional indexed project memory controlled from Configuration.
+- Improves Code Mode tool-call repair, argument handling, mutation reliability, and compaction behavior for long tool-heavy conversations.
+- Improves integrated and remote browser behavior, including multi-tab handling, safer remote browser isolation, and more reliable input and screencast behavior.
+- Prevents AI PowerShell sessions from polluting persistent PSReadLine history and improves terminal shell handling.
+- Refreshes supported model catalogs and expands regression coverage across memory, compaction, browser, terminal, and provider workflows.
+- Migrates legacy workspace memory into the new indexed memory layout while preserving conflicting entries.
+
 ## 1.4.5 - Broader JSON Schema support for connected tools
 
 TideCode 1.4.5 improves Code Mode compatibility with connected MCP tools that use newer JSON Schema dialects.
