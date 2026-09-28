@@ -30,7 +30,6 @@ import {
 import { getLoginPageHtml, readAuthJsonBody, writeJson } from './webAuth'
 import { RemoteWebSessionStore } from './sessionStore'
 import { getRemoteStateRoot } from './statePath'
-import { remoteBrowserService } from './browserService'
 
 const MAX_CLIENT_MESSAGE_BYTES = 16 * 1024 * 1024
 const LOGIN_FAILURE_WINDOW_MS = 60_000
@@ -162,15 +161,25 @@ export class RemoteWorkspaceHost {
     webAuthEnabled: false,
     webCredentialsConfigured: false,
   }
+  private browserServicePromise: Promise<typeof import('./browserService').remoteBrowserService> | null = null
 
   constructor(options: RemoteWorkspaceHostOptions) {
     this.options = options
-    remoteBrowserService.setFrameListener((payload) => {
-      this.broadcastEvent({ channel: REMOTE_EVENT_CHANNELS.browserFrame, payload })
-    })
     this.sessions = new RemoteWebSessionStore({
       persistencePath: path.join(getRemoteStateRoot(), 'remote-sessions.json'),
     })
+  }
+
+  private getBrowserService() {
+    if (!this.browserServicePromise) {
+      this.browserServicePromise = import('./browserService').then(({ remoteBrowserService }) => {
+        remoteBrowserService.setFrameListener((payload) => {
+          this.broadcastEvent({ channel: REMOTE_EVENT_CHANNELS.browserFrame, payload })
+        })
+        return remoteBrowserService
+      })
+    }
+    return this.browserServicePromise
   }
 
   getStatus() {
@@ -690,23 +699,26 @@ export class RemoteWorkspaceHost {
     }
 
     if (value.namespace === 'tidecodeBrowser') {
-      const method = remoteBrowserService[value.method as keyof typeof remoteBrowserService]
-      if (typeof method !== 'function') {
-        this.sendRpcError(socket, value.id, `Remote browser method is unavailable: ${value.method}`)
-        return
-      }
-      void Reflect.apply(method, remoteBrowserService, value.args)
+      const request = value
+      void this.getBrowserService()
+        .then((remoteBrowserService) => {
+          const method = remoteBrowserService[request.method as keyof typeof remoteBrowserService]
+          if (typeof method !== 'function') {
+            throw new Error(`Remote browser method is unavailable: ${request.method}`)
+          }
+          return Reflect.apply(method, remoteBrowserService, request.args)
+        })
         .then((result: unknown) => {
           if (socket.readyState !== WebSocket.OPEN) return
           socket.send(JSON.stringify({
-            id: value.id,
+            id: request.id,
             kind: 'rpc-result',
             ok: true,
             protocolVersion: REMOTE_PROTOCOL_VERSION,
             result,
           } satisfies RemoteRpcResponse))
         })
-        .catch((error: unknown) => this.sendRpcError(socket, value.id, error instanceof Error ? error.message : String(error)))
+        .catch((error: unknown) => this.sendRpcError(socket, request.id, error instanceof Error ? error.message : String(error)))
       return
     }
 
