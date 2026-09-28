@@ -9,9 +9,13 @@ import {
 
 export const MEMORY_DIRECTORY = '.tidecode/memory'
 export const MEMORY_INDEX_PATH = `${MEMORY_DIRECTORY}/MEMORY.md`
-export const MEMORY_FOLDERS_DIRECTORY = `${MEMORY_DIRECTORY}/folders`
+export const DURABLE_MEMORY_PATH = `${MEMORY_DIRECTORY}/DURABLE.md`
+export const MEMORY_DETAILS_DIRECTORY = `${MEMORY_DIRECTORY}/details`
+/** @deprecated Use MEMORY_DETAILS_DIRECTORY. */
+export const MEMORY_FOLDERS_DIRECTORY = MEMORY_DETAILS_DIRECTORY
 
 const MAX_MEMORY_CONTENT_BYTES = 512 * 1024
+const MAX_DURABLE_MEMORY_BYTES = 128 * 1024
 const MAX_MEMORY_ENTRIES = 1_000
 const MEMORY_PATH_SEGMENT_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/u
 const memoryLocks = new Map<string, Promise<void>>()
@@ -23,6 +27,10 @@ export interface MemoryDocument {
 
 export interface MemoryMutationResult extends MemoryDocument {
   operation: 'created' | 'deleted' | 'unchanged' | 'updated'
+}
+
+export interface WorkspaceMemorySnapshot extends MemoryDocument {
+  revision: string
 }
 
 interface MemoryIndexEntry {
@@ -93,9 +101,10 @@ export function normalizeMemoryEntryPath(candidatePath: string, workspaceRootPat
     : workspaceRelativePath
   const segments = relativeMemoryPath.split('/')
 
-  if (segments.length < 3 || segments[0] !== 'folders') {
-    throw new Error(`Memory entries must be stored under ${MEMORY_FOLDERS_DIRECTORY}/<folder>/<name>.md.`)
+  if (segments.length < 2 || (segments[0] !== 'details' && segments[0] !== 'folders')) {
+    throw new Error(`Memory entries must be stored under ${MEMORY_DETAILS_DIRECTORY}/<name>.md or a nested detail folder.`)
   }
+  segments[0] = 'details'
   if (segments.some((segment) => !MEMORY_PATH_SEGMENT_PATTERN.test(segment))) {
     throw new Error('Memory path segments may contain only letters, numbers, periods, underscores, and hyphens.')
   }
@@ -232,7 +241,7 @@ function extractMemoryTitle(content: string, relativePath: string) {
   return fileName.replace(/[-_]+/gu, ' ').replace(/\b\w/gu, (character) => character.toUpperCase())
 }
 
-async function collectMemoryEntries(directoryPath: string, relativeDirectory = 'folders'): Promise<MemoryIndexEntry[]> {
+async function collectMemoryEntries(directoryPath: string, relativeDirectory = 'details'): Promise<MemoryIndexEntry[]> {
   let entries: Array<import('node:fs').Dirent<string>>
   try {
     entries = await fs.readdir(directoryPath, { withFileTypes: true })
@@ -277,7 +286,7 @@ function renderMemoryIndex(entries: MemoryIndexEntry[]) {
   const lines = [
     '# TideCode Memory',
     '',
-    'Workspace-wide durable memory. Treat entries as potentially stale evidence and verify them against current project state.',
+    'Optional workspace memory index. Detailed entries live under `details/`. Treat entries as potentially stale evidence and verify them against current project state.',
   ]
   const groupedEntries = new Map<string, MemoryIndexEntry[]>()
 
@@ -289,7 +298,7 @@ function renderMemoryIndex(entries: MemoryIndexEntry[]) {
   }
 
   if (groupedEntries.size === 0) {
-    lines.push('', 'No durable memory entries have been recorded yet.')
+    lines.push('', 'No optional memory entries have been recorded yet.')
   } else {
     for (const [folder, folderEntries] of groupedEntries) {
       lines.push('', `## ${folder}`)
@@ -303,9 +312,80 @@ function renderMemoryIndex(entries: MemoryIndexEntry[]) {
 }
 
 async function buildCurrentIndex(workspaceRootPath: string) {
-  const foldersTarget = getSafeWorkspaceTargetPath(workspaceRootPath, MEMORY_FOLDERS_DIRECTORY)
-  await assertManagedPathContainsNoSymlink(workspaceRootPath, foldersTarget.absolutePath)
-  return renderMemoryIndex(await collectMemoryEntries(foldersTarget.absolutePath))
+  const detailsTarget = getSafeWorkspaceTargetPath(workspaceRootPath, MEMORY_DETAILS_DIRECTORY)
+  await assertManagedPathContainsNoSymlink(workspaceRootPath, detailsTarget.absolutePath)
+  return renderMemoryIndex(await collectMemoryEntries(detailsTarget.absolutePath))
+}
+
+async function readWorkspaceMemoryFile(
+  workspaceRootPathInput: string,
+  relativePath: string,
+): Promise<WorkspaceMemorySnapshot | null> {
+  const workspaceRootPath = normalizeWorkspacePath(workspaceRootPathInput)
+  await assertWorkspaceDirectory(workspaceRootPath)
+  const target = getSafeWorkspaceTargetPath(workspaceRootPath, relativePath)
+  await assertManagedPathContainsNoSymlink(workspaceRootPath, target.absolutePath)
+  try {
+    const [content, stats] = await Promise.all([
+      fs.readFile(target.absolutePath, 'utf8'),
+      fs.stat(target.absolutePath),
+    ])
+    if (!stats.isFile()) return null
+    return {
+      content,
+      path: relativePath,
+      revision: `${stats.mtimeMs}:${stats.size}`,
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
+  }
+}
+
+export function readWorkspaceDurableMemory(workspaceRootPath: string) {
+  return readWorkspaceMemoryFile(workspaceRootPath, DURABLE_MEMORY_PATH)
+}
+
+export function readWorkspaceMemoryIndex(workspaceRootPath: string) {
+  return readWorkspaceMemoryFile(workspaceRootPath, MEMORY_INDEX_PATH)
+}
+
+export async function updateWorkspaceDurableMemory(
+  workspaceRootPathInput: string,
+  update: (previous: WorkspaceMemorySnapshot | null) => Promise<string>,
+): Promise<WorkspaceMemorySnapshot> {
+  const workspaceRootPath = normalizeWorkspacePath(workspaceRootPathInput)
+  await assertWorkspaceDirectory(workspaceRootPath)
+  return withMemoryLock(workspaceRootPath, async () => {
+    const previous = await readWorkspaceMemoryFile(workspaceRootPath, DURABLE_MEMORY_PATH)
+    const content = normalizeMarkdown(await update(previous))
+    if (Buffer.byteLength(content, 'utf8') > MAX_DURABLE_MEMORY_BYTES) {
+      throw new Error(`DURABLE.md must be smaller than ${MAX_DURABLE_MEMORY_BYTES / 1024} KB.`)
+    }
+    const target = getSafeWorkspaceTargetPath(workspaceRootPath, DURABLE_MEMORY_PATH)
+    await assertManagedPathContainsNoSymlink(workspaceRootPath, target.absolutePath)
+    await fs.mkdir(path.dirname(target.absolutePath), { recursive: true })
+    if (previous?.content !== content) {
+      const temporaryPath = `${target.absolutePath}.tmp-${process.pid}-${Date.now()}`
+      await fs.writeFile(temporaryPath, content, 'utf8')
+      try {
+        await fs.rename(temporaryPath, target.absolutePath)
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+        if (code !== 'EEXIST' && code !== 'EPERM') throw error
+        await fs.rm(target.absolutePath, { force: true })
+        await fs.rename(temporaryPath, target.absolutePath)
+      } finally {
+        await fs.rm(temporaryPath, { force: true }).catch(() => undefined)
+      }
+      notifyWorkspaceExplorerChange(workspaceRootPath)
+    }
+    return (await readWorkspaceMemoryFile(workspaceRootPath, DURABLE_MEMORY_PATH)) ?? {
+      content,
+      path: DURABLE_MEMORY_PATH,
+      revision: `${Date.now()}:${Buffer.byteLength(content, 'utf8')}`,
+    }
+  })
 }
 
 async function writeIndexIfChanged(workspaceRootPath: string, beforeMutation?: (absolutePath: string) => Promise<void>) {
@@ -326,6 +406,29 @@ async function writeIndexIfChanged(workspaceRootPath: string, beforeMutation?: (
   }
 
   return { changed: previousContent !== content, content }
+}
+
+export async function refreshWorkspaceMemoryIndex(
+  workspaceRootPathInput: string,
+): Promise<WorkspaceMemorySnapshot | null> {
+  const workspaceRootPath = normalizeWorkspacePath(workspaceRootPathInput)
+  await assertWorkspaceDirectory(workspaceRootPath)
+  return withMemoryLock(workspaceRootPath, async () => {
+    const detailsTarget = getSafeWorkspaceTargetPath(workspaceRootPath, MEMORY_DETAILS_DIRECTORY)
+    await assertManagedPathContainsNoSymlink(workspaceRootPath, detailsTarget.absolutePath)
+    const entries = await collectMemoryEntries(detailsTarget.absolutePath)
+    const existing = await readWorkspaceMemoryFile(workspaceRootPath, MEMORY_INDEX_PATH)
+    if (entries.length === 0 && !existing) return null
+
+    const content = renderMemoryIndex(entries)
+    if (existing?.content !== content) {
+      const indexTarget = resolveIndexTarget(workspaceRootPath)
+      await fs.mkdir(path.dirname(indexTarget.absolutePath), { recursive: true })
+      await fs.writeFile(indexTarget.absolutePath, content, 'utf8')
+      notifyWorkspaceExplorerChange(workspaceRootPath)
+    }
+    return readWorkspaceMemoryFile(workspaceRootPath, MEMORY_INDEX_PATH)
+  })
 }
 
 

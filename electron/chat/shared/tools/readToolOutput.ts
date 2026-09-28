@@ -14,7 +14,7 @@ export function createReadToolOutputTool() {
     description:
       'Read a bounded section of a previously truncated tool result. Use this only when omitted content is needed, with the output_id supplied by that result and the narrowest useful line range.',
     inputSchema: jsonSchema({
-      additionalProperties: false,
+      additionalProperties: true,
       properties: {
         limit: {
           default: 200,

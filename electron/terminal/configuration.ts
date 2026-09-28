@@ -28,6 +28,7 @@ export interface TerminalShellSpec {
 }
 
 interface TerminalShellResolutionOptions {
+  disablePersistentHistory?: boolean;
   env?: NodeJS.ProcessEnv;
   isCommandAvailable?: (command: string, env: NodeJS.ProcessEnv) => boolean;
   platform?: NodeJS.Platform;
@@ -149,20 +150,31 @@ function isTerminalShellCommandAvailable(
   );
 }
 
-function createPowerShellInteractiveArgs() {
+function createPowerShellInteractiveArgs(disablePersistentHistory = false) {
+  const startupCommands = [
+    ...(disablePersistentHistory
+      ? [
+          "Import-Module PSReadLine -ErrorAction SilentlyContinue",
+          "if (Get-Module -Name PSReadLine) { $tidecodeHistoryPath = Join-Path ([IO.Path]::GetTempPath()) ('tidecode-psreadline-' + $PID + '.txt'); Set-PSReadLineOption -HistorySavePath $tidecodeHistoryPath; Set-PSReadLineOption -HistorySaveStyle SaveNothing; Set-PSReadLineOption -AddToHistoryHandler { param($line) return $false } }",
+        ]
+      : []),
+    "function prompt { $esc = [char]27; $vName = if ($env:VIRTUAL_ENV) { '(' + (Split-Path $env:VIRTUAL_ENV -Leaf) + ') ' } else { '' }; \"$esc]133;D;$LASTEXITCODE`a$esc]133;A`a$vName$($executionContext.SessionState.Path.CurrentLocation)> $esc]133;B`a\" }",
+  ];
   return [
     "-NoLogo",
     "-NoExit",
     "-Command",
-    [
-      "function prompt { $esc = [char]27; $vName = if ($env:VIRTUAL_ENV) { '(' + (Split-Path $env:VIRTUAL_ENV -Leaf) + ') ' } else { '' }; \"$esc]133;D;$LASTEXITCODE`a$esc]133;A`a$vName$($executionContext.SessionState.Path.CurrentLocation)> $esc]133;B`a\" }",
-    ].join("; "),
+    startupCommands.join("; "),
   ];
 }
 
-function createWindowsInteractiveArgs(kind: WindowsShellKind, profileArgs: string[]) {
+function createWindowsInteractiveArgs(
+  kind: WindowsShellKind,
+  profileArgs: string[],
+  disablePersistentHistory = false,
+) {
   return kind === "powershell"
-    ? [...profileArgs, ...createPowerShellInteractiveArgs()]
+    ? [...profileArgs, ...createPowerShellInteractiveArgs(disablePersistentHistory)]
     : profileArgs;
 }
 
@@ -196,10 +208,11 @@ function resolveUnixLoginShell(
 function resolveWindowsShellSpec(
   environment: NodeJS.ProcessEnv,
   isAvailable: (command: string, env: NodeJS.ProcessEnv) => boolean,
+  disablePersistentHistory = false,
 ): TerminalShellSpec {
   const { args, command, kind, label } = resolveWindowsSystemShell(environment, isAvailable);
   return {
-    args: createWindowsInteractiveArgs(kind, args),
+    args: createWindowsInteractiveArgs(kind, args, disablePersistentHistory),
     command,
     label,
   };
@@ -214,7 +227,11 @@ export function resolveTerminalShellSpec(
     ?? ((command: string, env: NodeJS.ProcessEnv) => isTerminalShellCommandAvailable(command, env, platform));
 
   if (platform === "win32") {
-    return resolveWindowsShellSpec(environment, isAvailable);
+    return resolveWindowsShellSpec(
+      environment,
+      isAvailable,
+      options.disablePersistentHistory ?? false,
+    );
   }
   if (platform === "darwin" || platform === "linux") {
     return resolveUnixLoginShell(environment, isAvailable, platform);
@@ -263,10 +280,14 @@ export function parseExternalTerminalLink(rawUrl: string) {
 export function spawnResolvedTerminalShell(input: {
   cols: number;
   cwd: string;
+  disablePersistentHistory?: boolean;
   env: NodeJS.ProcessEnv;
   rows: number;
 }) {
-  const shellSpec = resolveTerminalShellSpec({ env: input.env });
+  const shellSpec = resolveTerminalShellSpec({
+    disablePersistentHistory: input.disablePersistentHistory,
+    env: input.env,
+  });
   try {
     return {
       ptyProcess: spawn(shellSpec.command, shellSpec.args, {

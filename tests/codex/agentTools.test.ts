@@ -71,7 +71,7 @@ test('Code Mode exposes code_mode plus direct apply_patch/write while discovery 
     assert.equal(bundle.registry.get('write'), undefined)
     assert.ok(bundle.registry.get('plan_create'))
     assert.ok(bundle.registry.get('plan_edit'))
-    assert.ok(bundle.registry.get('edit'))
+    assert.equal(bundle.registry.get('edit'), undefined)
     assert.ok(bundle.nativeTools.edit)
     assert.equal(bundle.registry.get('mcp_tool_search'), undefined)
     assert.equal(bundle.registry.get('execute_mcp'), undefined)
@@ -116,7 +116,12 @@ test('Code Mode direct apply_patch bypasses the interpreter and applies the nati
     try {
       assert.equal(typeof applyPatch.execute, 'function')
       const result = await applyPatch.execute?.(
-        { patch: ['*** Begin Patch', '*** Update File: value.txt', '@@', '-before', '+after', '*** End Patch'] },
+        {
+          compat: { ignored: true },
+          depth: 3,
+          patch: ['*** Begin Patch', '*** Update File: value.txt', '@@', '-before', '+after', '*** End Patch'],
+          recursive: true,
+        },
         { context: {}, messages: [], toolCallId: 'direct-patch' },
       ) as { status?: string }
       assert.equal(result.status, 'success')
@@ -153,7 +158,13 @@ test('Code Mode direct write bypasses the interpreter and preserves delimiter-he
     try {
       assert.equal(typeof write.execute, 'function')
       const result = await write.execute?.(
-        { content, path: 'nested.tsx' },
+        {
+          compat: ['ignored', 1, true],
+          content,
+          depth: 9,
+          path: 'nested.tsx',
+          recursive: 'ignored',
+        },
         { context: {}, messages: [], toolCallId: 'direct-write' },
       ) as { status?: string }
       assert.equal(result.status, 'success')
@@ -438,7 +449,7 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     const writeTool = tools.write as { description?: string }
 
     assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. Text reads return up to 500 lines within a safe model-output byte budget and provide next_offset when more content remains.')
-    assert.match(applyPatchTool.description ?? '', /Apply a Codex patch as an array of complete patch lines/u)
+    assert.match(applyPatchTool.description ?? '', /Apply one raw Codex patch string/u)
     assert.match(applyPatchTool.description ?? '', /Every file-content line in an Add File hunk must start with \+/u)
     assert.match(applyPatchTool.description ?? '', /Use \*\*\* Update File for edits to an existing path/u)
     assert.equal(

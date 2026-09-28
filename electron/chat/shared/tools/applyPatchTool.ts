@@ -22,7 +22,7 @@ import { resolveReadableTargetPath } from './workspaceToolPaths'
 import { notifyWorkspaceExplorerChange } from '../../../workspace/explorerNotifications'
 
 const APPLY_PATCH_DESCRIPTION = [
-  'Apply a Codex patch as an array of complete patch lines: one array item per line, starting with *** Begin Patch and ending with *** End Patch. Every removed or added source line must be complete; never use a prefix or suffix as an anchor.',
+  'Apply one raw Codex patch string starting with *** Begin Patch and ending with *** End Patch. Every removed or added source line must be complete; never use a prefix or suffix as an anchor.',
   'Use a standard patch beginning with *** Begin Patch and ending with *** End Patch.',
   'Supported hunks are *** Add File, *** Update File, *** Move to, and *** Delete File.',
   'Use *** Add File only for a new path. Every file-content line in an Add File hunk must start with +; represent an added blank line as +.',
@@ -33,13 +33,22 @@ const APPLY_PATCH_DESCRIPTION = [
 ].join(' ')
 
 const APPLY_PATCH_INPUT_SCHEMA = {
-  additionalProperties: false,
+  additionalProperties: true,
   properties: {
     patch: {
-      description: 'Array of complete patch lines. Use one item per line and do not include a markdown fence.',
-      items: { type: 'string' },
-      minItems: 1,
-      type: 'array',
+      anyOf: [
+        {
+          description: 'Canonical raw Codex patch string. Do not include a Markdown fence.',
+          minLength: 1,
+          type: 'string',
+        },
+        {
+          description: 'Legacy compatibility form: one complete patch line per array item.',
+          items: { type: 'string' },
+          minItems: 1,
+          type: 'array',
+        },
+      ],
     },
   },
   required: ['patch'],
@@ -47,7 +56,7 @@ const APPLY_PATCH_INPUT_SCHEMA = {
 } as const
 
 interface ApplyPatchInput {
-  patch: string[]
+  patch: string | string[]
 }
 
 type PatchFileChangeInput = Parameters<typeof aggregateFileChangeItems>[0][number]
@@ -68,6 +77,9 @@ function getOuterPatchMarkerKind(line: string) {
 }
 
 function normalizePatchInput(value: unknown) {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value
+  }
   if (
     Array.isArray(value) &&
     value.length > 0 &&
@@ -242,7 +254,7 @@ export function createApplyPatchTool(context: WorkspaceToolContext, runtimeState
       const input = rawInput as ApplyPatchInput
       const patchText = normalizePatchInput(input.patch)
       if (patchText === null) {
-        return createToolErrorResult('patch requires a non-empty array of complete patch lines.')
+        return createToolErrorResult('patch requires a non-empty raw Codex patch string.')
       }
 
       try {

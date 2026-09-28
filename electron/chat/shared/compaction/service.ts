@@ -17,6 +17,8 @@ import { appendCodeModeReceiptsToSummary } from './codeModeReceipts'
 import { resolveProviderReasoningCapability, resolveReasoningRetention } from './reasoning'
 import { validateContinuationMarkdown } from './markdown'
 import { COMPACTION_MAX_OUTPUT_TOKENS } from './contracts'
+import { reconcileDurableMemory, type ConversationMemory } from './durableMemory'
+import { updateWorkspaceDurableMemory } from '../../../memory/service'
 import { estimateModelMessageContextUsage } from '../../../../src/lib/contextUsage'
 import {
   appendUserPromptLedgerToSummary,
@@ -103,6 +105,7 @@ function buildCompactionKey(
     boundaryIndex,
     sourceDigest,
     previousPacket?.packetId ?? null,
+    input.previousMemory?.sourceDigest ?? null,
     retainedContextTokens,
   ])
 }
@@ -135,15 +138,55 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
     window.sourceEndIndex,
     window.sourceStartIndex,
   )
+  let durableMemory: ConversationMemory | null = null
+  if (input.workspaceRootPath) {
+    await updateWorkspaceDurableMemory(input.workspaceRootPath, async (previous) => {
+      durableMemory = await reconcileDurableMemory({
+        createStream: input.createStream,
+        messages: window.evictedMessages,
+        model: input.model,
+        providerId: input.providerId,
+        previousMemory: previous
+          ? {
+              schema: 'tidecode.conversation_memory/v1',
+              markdown: previous.content,
+              sourceDigest: previous.revision,
+            }
+          : input.previousMemory,
+        reasoningEffort: input.reasoningEffort,
+        signal: input.signal,
+        sourceDigest,
+        sourceStartIndex: window.sourceStartIndex,
+      })
+      return durableMemory.markdown
+    })
+  } else {
+    durableMemory = await reconcileDurableMemory({
+      createStream: input.createStream,
+      messages: window.evictedMessages,
+      model: input.model,
+      providerId: input.providerId,
+      previousMemory: input.previousMemory,
+      reasoningEffort: input.reasoningEffort,
+      signal: input.signal,
+      sourceDigest,
+      sourceStartIndex: window.sourceStartIndex,
+    })
+  }
+  if (!durableMemory) {
+    throw new Error('Durable-memory reconciliation did not produce a workspace memory snapshot.')
+  }
+  if (input.signal?.aborted) return null
   const capability = resolveProviderReasoningCapability({
-    modelId: input.model,
-    providerId: input.providerId,
+    modelId: input.sourceModel ?? input.model,
+    providerId: input.sourceProviderId ?? input.providerId,
   })
   const actualRetention = resolveReasoningRetention({
     capability,
     messages: window.evictedMessages,
   })
   const prompt = buildCompactionRequestPrompt({
+    durableMemory,
     latestUserSourceMessageId,
     messages: window.evictedMessages,
     previousPacket,
@@ -200,7 +243,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
     continuationMarkdown: continuation.normalized,
     reasoningRetention: {
       ...actualRetention,
-      providerId: input.providerId?.trim() || actualRetention.providerId,
+      providerId: input.sourceProviderId?.trim() || input.providerId?.trim() || actualRetention.providerId,
     },
     reasoningContinuity: [],
     goal: [],
@@ -225,6 +268,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
   const projectedMessages = buildCompactionProjection({
     anchorMessages: window.anchorMessages,
     contextMessages: input.messages,
+    durableMemory,
     packet,
     tailMessages: window.tailMessages,
     retainedContextTokens,
@@ -232,6 +276,7 @@ async function compactModelMessagesInternal(input: CompactModelMessagesInput): P
 
   return {
     boundaryIndex: window.boundaryIndex,
+    durableMemory,
     packet,
     projectedMessages,
     projectionVersion: 'tidecode.compaction_projection/v2',

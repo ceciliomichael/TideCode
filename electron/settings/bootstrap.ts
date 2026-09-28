@@ -395,6 +395,10 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
       : isReasoningEffort(candidate?.chatReasoningEffort)
         ? candidate.chatReasoningEffort
         : DEFAULT_APP_SETTINGS.kanbanReasoningEffort,
+    workspaceMemoryEnabled:
+      typeof candidate?.workspaceMemoryEnabled === 'boolean'
+        ? candidate.workspaceMemoryEnabled
+        : DEFAULT_APP_SETTINGS.workspaceMemoryEnabled,
     diffPanelWidth:
       typeof candidate?.diffPanelWidth === 'number' && Number.isFinite(candidate.diffPanelWidth)
         ? clampStoredDiffPanelWidth(candidate.diffPanelWidth)

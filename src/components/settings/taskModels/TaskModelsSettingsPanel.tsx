@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import { PROVIDER_SECTIONS } from '../models/modelCatalog'
 import { buildModelProviderSections } from '../models/modelViewUtils'
-import { SettingsPanelLayout, SETTINGS_SECTION_TITLE_CLASS_NAME } from '../shared/SettingsPanelPrimitives'
+import { SettingsPanelLayout, SettingsRow, SETTINGS_SECTION_TITLE_CLASS_NAME } from '../shared/SettingsPanelPrimitives'
 import type { AppSettings, ChatProviderId, ProvidersState, ReasoningEffort } from '../../../types/chat'
 import { useSettingsModelCatalog } from '../models/settingsModelCatalogStore'
 import { filterEnabledModelCatalogItems, readStoredModelToggleState } from '../models/modelStorage'
@@ -16,6 +16,12 @@ import {
   type TaskModelConfigurationOption,
 } from './TaskModelConfigurationDialog'
 import { getTaskModelConfigurationSummary } from './taskModelConfiguration'
+import { SegmentedField } from '../../ui/SegmentedField'
+
+const BOOLEAN_SEGMENT_OPTIONS = [
+  { label: 'Off', value: 'off' },
+  { label: 'On', value: 'on' },
+] as const
 
 interface ModelOption {
   defaultReasoningEffort?: ReasoningEffort
@@ -106,6 +112,7 @@ interface TaskModelsSettingsPanelProps {
     | 'summarizationModelLabel'
     | 'summarizationModelProviderId'
     | 'summarizationReasoningEffort'
+    | 'workspaceMemoryEnabled'
   >
 }
 
@@ -481,6 +488,21 @@ export function TaskModelsSettingsPanel({
               />
             )
           })}
+        </div>
+
+        <div className="border-t border-border pt-2">
+          <SettingsRow
+            title="Memory"
+            description="Allow optional workspace MEMORY.md context and linked memory/details entries. DURABLE.md remains enabled regardless of this setting."
+          >
+            <SegmentedField
+              ariaLabel="Optional workspace memory"
+              value={settings.workspaceMemoryEnabled ? 'on' : 'off'}
+              options={BOOLEAN_SEGMENT_OPTIONS}
+              disabled={isLoading}
+              onChange={(value) => onUpdateSettings({ workspaceMemoryEnabled: value === 'on' })}
+            />
+          </SettingsRow>
         </div>
       </section>
 

@@ -30,6 +30,11 @@ import {
 import { configureTideCodeRuntimeRoot } from '../../electron/runtime/runtimeRoot'
 
 const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+const durableMemoryFixture = {
+  schema: 'tidecode.conversation_memory/v1' as const,
+  markdown: '## Important project facts\n- Durable memory fixture.',
+  sourceDigest: 'durable-memory-fixture',
+}
 
 test('active compaction keeps the latest user prompt open across completed tool substeps', () => {
   const messages: ModelMessage[] = [
@@ -476,6 +481,7 @@ test('projection emits one Markdown continuation and removes raw tool history fr
   }
   const projected = buildCompactionProjection({
     anchorMessages: [{ role: 'user', content: 'Inspect the workspace.' }],
+    durableMemory: durableMemoryFixture,
     packet,
     tailMessages: [toolCall, toolResult, { role: 'assistant', content: 'The result is ready.' }],
   })
@@ -502,6 +508,7 @@ test('projection carries the latest runtime context only after the compaction ha
   const projected = buildCompactionProjection({
     anchorMessages: [],
     contextMessages: [{ role: 'user', content: `Visible request.\\n\\n${hiddenAgentContext}` }],
+    durableMemory: durableMemoryFixture,
     packet,
     tailMessages: [{ role: 'assistant', content: 'Recent visible result.' }],
   })
@@ -519,6 +526,7 @@ test('projection converts image placeholders into provider-valid text parts', ()
   })
   const projected = buildCompactionProjection({
     anchorMessages: [],
+    durableMemory: durableMemoryFixture,
     packet,
     tailMessages: [{
       role: 'user',
@@ -559,6 +567,7 @@ test('token projection retains real image content in the recent context tail', (
 
   const projected = buildCompactionProjection({
     anchorMessages: [],
+    durableMemory: durableMemoryFixture,
     packet,
     tailMessages,
   })

@@ -567,8 +567,8 @@ export function repairCodeModeProgramSyntax(
     }
   }
 
-  // Try 0.5: Repair malformed string literals in tools.write / tools.edit source text.
-  if (code.includes('content:') || code.includes('targetContent:') || code.includes('replacementContent:')) {
+  // Try 0.5: Repair malformed inline content strings for remaining structured inner tools.
+  if (code.includes('content:')) {
     const fixedMutationStrings = repairSourceMutationStringLiterals(code)
     if (fixedMutationStrings !== code) {
       try {
@@ -596,17 +596,15 @@ export function repairCodeModeProgramSyntax(
   return null
 }
 
-type SourceMutationStringKey = 'content' | 'targetContent' | 'replacementContent'
 type SourceMutationStringQuote = "'" | '"' | '`'
 
-const SOURCE_MUTATION_STRING_FIELD = /\b(content|targetContent|replacementContent)\s*:\s*(['"`])/gu
-const SOURCE_MUTATION_NEXT_PROPERTY = /^\s*,\s*(?:content|path|targetContent|replacementContent|startLine|endLine|replaceAll)\s*:/u
+const SOURCE_MUTATION_STRING_FIELD = /\b(content)\s*:\s*(['"`])/gu
+const SOURCE_MUTATION_NEXT_PROPERTY = /^\s*,\s*[A-Za-z_$][\w$]*\s*:/u
 
-function hasSourceMutationStringTerminator(source: string, key: SourceMutationStringKey, quoteIndex: number) {
+function hasSourceMutationStringTerminator(source: string, quoteIndex: number) {
   const suffix = source.slice(quoteIndex + 1)
   if (SOURCE_MUTATION_NEXT_PROPERTY.test(suffix)) return true
-  if (key === 'content') return /^\s*,?\s*\}/u.test(suffix)
-  return /^\s*,?\s*\}\s*(?:,\s*\{|\]\s*\}\s*\))/u.test(suffix)
+  return /^\s*,?\s*\}/u.test(suffix)
 }
 
 function escapeSourceMutationStringBody(value: string, quote: SourceMutationStringQuote) {
@@ -766,10 +764,10 @@ export function repairMissingObjectPropertyColons(code: string): string {
 }
 
 /**
- * Repairs malformed model-generated source payload strings for tools.write and
- * tools.edit. Only content/targetContent/replacementContent values are touched,
- * and only when a same-delimiter quote, raw line break, backtick, or template
- * expression would otherwise terminate or interpolate the generated program.
+ * Repairs malformed model-generated inline `content` payload strings used by
+ * remaining structured inner tools. Only the content value is touched, and only
+ * when a same-delimiter quote, raw line break, backtick, or template expression
+ * would otherwise terminate or interpolate the generated program.
  */
 export function repairSourceMutationStringLiterals(code: string): string {
   let result = code
@@ -780,14 +778,13 @@ export function repairSourceMutationStringLiterals(code: string): string {
     const match = SOURCE_MUTATION_STRING_FIELD.exec(result)
     if (!match || match.index === undefined) break
 
-    const key = match[1] as SourceMutationStringKey
     const quote = match[2] as SourceMutationStringQuote
     const startBodyIndex = SOURCE_MUTATION_STRING_FIELD.lastIndex
     let endBodyIndex = -1
 
     for (let index = startBodyIndex; index < result.length; index += 1) {
       if (result[index] !== quote || isEscaped(result, index)) continue
-      if (!hasSourceMutationStringTerminator(result, key, index)) continue
+      if (!hasSourceMutationStringTerminator(result, index)) continue
       endBodyIndex = index
       break
     }

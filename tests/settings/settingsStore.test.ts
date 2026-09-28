@@ -167,6 +167,7 @@ test('desktop, web, and cli preferences diverge while shared settings converge',
       modelToggleState: { 'codex:gpt-5.4': false },
       kanbanAiPlanningEnabled: false,
       gitCommitReasoningEffort: 'low',
+      workspaceMemoryEnabled: false,
     }, 'web')
 
     const desktop = await getStoredSettings('desktop')
@@ -189,6 +190,7 @@ test('desktop, web, and cli preferences diverge while shared settings converge',
       assert.deepEqual(settings.modelToggleState, { 'codex:gpt-5.4': false })
       assert.equal(settings.kanbanAiPlanningEnabled, false)
       assert.equal(settings.gitCommitReasoningEffort, 'low')
+      assert.equal(settings.workspaceMemoryEnabled, false)
     }
   })
 })

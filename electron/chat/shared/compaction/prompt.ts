@@ -5,6 +5,7 @@ import { sanitizeCompactionContent } from './sanitize'
 import { buildChatCompressionSystemPrompt } from '../prompts/compression'
 import { extractCodeModeReceipts, formatCodeModeReceipts } from './codeModeReceipts'
 import { renderUserPromptLedger } from './userPromptLedgerRendering'
+import type { ConversationMemory } from './durableMemory'
 
 const COMPACTION_TOOL_OUTPUT_MAX_CHARS = 2_000
 
@@ -58,6 +59,7 @@ export function buildCompactionSystemPrompt() {
 }
 
 export function buildCompactionRequestPrompt(input: {
+  durableMemory?: ConversationMemory | null
   latestUserSourceMessageId?: string | null
   messages: readonly ModelMessage[]
   previousPacket?: Pick<CompactionPacket, 'continuationMarkdown'> & Partial<Pick<CompactionPacket, 'userPromptLedger'>> | null
@@ -80,6 +82,9 @@ export function buildCompactionRequestPrompt(input: {
   const codeModeReceipts = formatCodeModeReceipts(extractCodeModeReceipts(input.messages))
 
   return [
+    'DURABLE CONVERSATION MEMORY (long-term context; do not copy it wholesale into the short handoff):',
+    input.durableMemory?.markdown ?? '(none)',
+    '',
     'PREVIOUS SUMMARY / HANDOFF (carry-forward evidence; reconcile it with newer evidence):',
     previousContinuation || '(none)',
     '',

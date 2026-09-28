@@ -10,6 +10,18 @@ test('listCodexModels returns the codex model catalog from codex_models.json', (
     models.map((model) => model.providerId),
     Array.from({ length: models.length }, () => 'codex'),
   )
-  assert.equal(models.find((model) => model.id === 'gpt-5.6-sol')?.enabledByDefault, true)
+  const solModel = models.find((model) => model.id === 'gpt-6-sol')
+  const lunaModel = models.find((model) => model.id === 'gpt-6-luna')
+  assert.equal(solModel?.enabledByDefault, true)
+  assert.deepEqual(solModel?.reasoningEfforts, ['low', 'medium', 'high', 'xhigh', 'max'])
+  assert.deepEqual(lunaModel?.reasoningEfforts, ['low', 'medium', 'high', 'xhigh', 'max'])
+  assert.deepEqual(
+    models.find((model) => model.id === 'gpt-5.6-sol')?.reasoningEfforts,
+    ['low', 'medium', 'high', 'xhigh', 'max'],
+  )
+  assert.deepEqual(
+    models.find((model) => model.id === 'gpt-5.6-luna')?.reasoningEfforts,
+    ['low', 'medium', 'high', 'xhigh', 'max'],
+  )
   assert.equal(models.find((model) => model.id === 'gpt-5.5')?.reasoningCapable, true)
 })

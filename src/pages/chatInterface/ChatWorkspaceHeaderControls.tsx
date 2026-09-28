@@ -101,7 +101,9 @@ export function ChatWorkspaceHeaderControls({
   onToggleWorkspaceBoard,
   removedLineCount,
 }: ChatWorkspaceHeaderControlsProps) {
-  const isElectron = typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('electron')
+  const supportsBrowser = typeof window !== 'undefined' && (
+    navigator.userAgent.toLowerCase().includes('electron') || 'tidecodeBrowser' in window
+  )
 
   return (
         <div className="hidden items-center gap-1 md:flex">
@@ -115,7 +117,7 @@ export function ChatWorkspaceHeaderControls({
       >
         <Columns3 size={16} className="shrink-0" />
       </HeaderControl>
-      {isElectron ? (
+      {supportsBrowser ? (
         <>
           <HeaderDivider />
           <HeaderControl

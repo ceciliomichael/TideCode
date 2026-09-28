@@ -14,7 +14,7 @@ const EXECUTE_MCP_DESCRIPTION =
   'Execute one MCP tool returned by mcp_tool_search using its exact tool_id, its exact name as tool_name, and an object of arguments.'
 
 const MCP_TOOL_SEARCH_INPUT_SCHEMA = {
-  additionalProperties: false,
+  additionalProperties: true,
   properties: {
     include_schema: {
       default: false,
@@ -39,7 +39,7 @@ const MCP_TOOL_SEARCH_INPUT_SCHEMA = {
 } as const
 
 const EXECUTE_MCP_INPUT_SCHEMA = {
-  additionalProperties: false,
+  additionalProperties: true,
   properties: {
     arguments: {
       additionalProperties: true,

@@ -46,7 +46,7 @@ interface NativeToolSets {
   providerTools: ToolSet
 }
 
-const CODE_MODE_EXCLUDED_TOOLS = new Set(['mcp_tool_search', 'execute_mcp', 'apply_patch', 'write'])
+const CODE_MODE_EXCLUDED_TOOLS = new Set(['mcp_tool_search', 'execute_mcp', 'apply_patch', 'edit', 'write'])
 
 async function createNativeToolSets(
   input: AgentToolContext,

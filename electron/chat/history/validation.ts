@@ -12,6 +12,7 @@ import {
 } from './contracts'
 import { decodeReplayValue } from './replayCodec'
 import { parseCompactionPacket } from '../shared/compaction/contracts'
+import { parseConversationMemory } from '../shared/compaction/durableMemory'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -62,6 +63,14 @@ function isStoredCompactionPacket(value: unknown) {
   }
 }
 
+function isStoredConversationMemory(value: unknown) {
+  try {
+    return parseConversationMemory(decodeReplayValue(value as EncodedReplayValue)) !== null
+  } catch {
+    return false
+  }
+}
+
 function isEvent(value: unknown): value is CanonicalHistoryEvent {
   if (!isRecord(value)) return false
   if (
@@ -95,6 +104,7 @@ function isEvent(value: unknown): value is CanonicalHistoryEvent {
       (value.projectionVersion === undefined || typeof value.projectionVersion === 'string') &&
       (value.degradedDiagnostics === undefined || isStringArray(value.degradedDiagnostics)) &&
       (value.reasoningRetention === undefined || isReasoningRetention(value.reasoningRetention)) &&
+      (value.durableMemory === undefined || isStoredConversationMemory(value.durableMemory)) &&
       isStoredCompactionPacket(value.packet)
   }
 

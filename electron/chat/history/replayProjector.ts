@@ -10,6 +10,10 @@ import {
   sanitizeModelMessages,
 } from '../shared/modelMessageIntegrity'
 import { parseCompactionPacket, type CompactionPacket } from '../shared/compaction/contracts'
+import {
+  buildDurableMemoryMessage,
+  parseConversationMemory,
+} from '../shared/compaction/durableMemory'
 import { buildCompactionMessage } from '../shared/compaction/window'
 import {
   isCompactionContinuationMessage,
@@ -123,8 +127,12 @@ function findLatestCompactionProjection(input: {
       const recoveredAnchor = buildModelMessages([anchorMessage], {
         includeExecutionModeContext: false,
       })
+      const recoveredMemory = 'durableMemory' in event && event.durableMemory !== undefined
+        ? parseConversationMemory(decodeReplayValue(event.durableMemory))
+        : null
       const recoveredMessages = sanitizeModelMessages([
         ...recoveredAnchor,
+        ...(recoveredMemory ? [buildDurableMemoryMessage(recoveredMemory)] : []),
         buildCompactionMessage(repairedPacket),
       ])
       console.warn('Canonical compaction projection was unavailable; rebuilding it from the stored packet.')

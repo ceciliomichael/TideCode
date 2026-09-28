@@ -30,9 +30,9 @@ test('Code Mode repairs a misrouted tools.list provider call into code_mode', as
     assert.ok(repaired)
     assert.equal(repaired.toolName, 'code_mode')
     assert.equal(repaired.toolCallId, 'call-1')
-    const repairedInput = JSON.parse(repaired.input) as { source?: string }
-    assert.match(repairedInput.source ?? '', /await tools\.list\(\{"path":"\."\}\)/u)
-    assert.match(repairedInput.source ?? '', /return result;/u)
+    const repairedInput = JSON.parse(repaired.input) as { code?: string }
+    assert.match(repairedInput.code ?? '', /await tools\.list\(\{"path":"\."\}\)/u)
+    assert.match(repairedInput.code ?? '', /return result;/u)
 
     await bundle.codeModeExecutor?.dispose()
   } finally {
@@ -40,7 +40,7 @@ test('Code Mode repairs a misrouted tools.list provider call into code_mode', as
   }
 })
 
-test('Code Mode repair rejects unknown inner tools and malformed input but repairs known edit calls', async () => {
+test('Code Mode repair rejects unknown/edit calls and routes direct mutation mistakes losslessly', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-repair-'))
 
   try {
@@ -71,7 +71,7 @@ test('Code Mode repair rejects unknown inner tools and malformed input but repai
       },
     }), null)
 
-    const repairedEdit = repairMisroutedCodeModeToolCall({
+    assert.equal(repairMisroutedCodeModeToolCall({
       providerTools: bundle.tools,
       registry: bundle.registry,
       toolCall: {
@@ -80,18 +80,13 @@ test('Code Mode repair rejects unknown inner tools and malformed input but repai
         toolName: 'tools.edit',
         type: 'tool-call',
       },
-    })
-    assert.ok(repairedEdit)
-    assert.equal(repairedEdit.toolName, 'code_mode')
-    assert.equal(repairedEdit.toolCallId, 'call-edit')
-    const repairedEditInput = JSON.parse(repairedEdit.input) as { source?: string }
-    assert.match(repairedEditInput.source ?? '', /await tools\.edit/u)
+    }), null)
 
     for (const [toolName, input] of [
       ['tools.write', { path: 'value.ts', content: 'next' }],
-      ['tools.apply_patch', { patch: ['*** Begin Patch', '*** End Patch'] }],
+      ['tools.apply_patch', { patch: '*** Begin Patch\n*** End Patch' }],
     ] as const) {
-      assert.equal(repairMisroutedCodeModeToolCall({
+      const repaired = repairMisroutedCodeModeToolCall({
         providerTools: bundle.tools,
         registry: bundle.registry,
         toolCall: {
@@ -100,7 +95,10 @@ test('Code Mode repair rejects unknown inner tools and malformed input but repai
           toolName,
           type: 'tool-call',
         },
-      }), null)
+      })
+      assert.ok(repaired)
+      assert.equal(repaired.toolName, toolName.slice('tools.'.length))
+      assert.equal(repaired.input, JSON.stringify(input))
     }
 
     await bundle.codeModeExecutor?.dispose()
@@ -159,9 +157,9 @@ test('Code Mode repair emits the same structured source for OpenAI', async () =>
 
     assert.ok(repaired)
     assert.equal(repaired.toolName, 'code_mode')
-    const parsed = JSON.parse(repaired.input) as { source?: string }
-    assert.match(parsed.source ?? '', /^const result = await tools\.list/u)
-    assert.match(parsed.source ?? '', /return result;/u)
+    const parsed = JSON.parse(repaired.input) as { code?: string }
+    assert.match(parsed.code ?? '', /^const result = await tools\.list/u)
+    assert.match(parsed.code ?? '', /return result;/u)
 
     await bundle.codeModeExecutor?.dispose()
   } finally {

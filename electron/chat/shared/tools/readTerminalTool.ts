@@ -33,7 +33,7 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
     description:
       "Wait up to wait_seconds for an existing terminal session and return only new output since the previous read. The wait returns early when the command finishes or interactive input is detected. If input is needed, use interact_terminal with this same session_id.",
     inputSchema: jsonSchema({
-      additionalProperties: false,
+      additionalProperties: true,
       properties: {
         session_id: {
           description: "Terminal session returned by execute_terminal.",

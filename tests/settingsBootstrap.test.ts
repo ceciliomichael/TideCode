@@ -106,6 +106,18 @@ test('parseInitialSettingsArg preserves AI task planning configuration', () => {
   assert.equal(parsedSettings.kanbanReasoningEffort, 'low')
 })
 
+test('parseInitialSettingsArg preserves optional workspace memory configuration', () => {
+  const parsedSettings = parseInitialSettingsArg([
+    'tidecode.exe',
+    serializeInitialSettingsArg({
+      ...DEFAULT_APP_SETTINGS,
+      workspaceMemoryEnabled: false,
+    }),
+  ])
+
+  assert.equal(parsedSettings.workspaceMemoryEnabled, false)
+})
+
 test('parseInitialSettingsArg preserves per-mode conversation model preferences', () => {
   const parsedSettings = parseInitialSettingsArg([
     'tidecode.exe',

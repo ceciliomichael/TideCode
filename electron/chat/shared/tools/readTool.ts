@@ -36,7 +36,7 @@ function createMissingWorkspaceMemoryReadResult(
   }
 
   return createSuccessResult({
-    body: `Invalid workspace memory path: ${memoryPath.path}. Read ${MEMORY_INDEX_PATH} or a Markdown entry under .tidecode/memory/folders/.../.`,
+    body: `Invalid workspace memory path: ${memoryPath.path}. Read ${MEMORY_INDEX_PATH} or a Markdown entry under .tidecode/memory/details/.../.`,
     semantics: { memory_state: 'invalid_path', path: memoryPath.path },
     subject: { kind: 'file', path: memoryPath.path },
     summary: `Invalid workspace memory path: ${memoryPath.path}`,
@@ -47,7 +47,7 @@ export function createReadTool(context: WorkspaceToolContext) {
   return tool({
     description: 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. Text reads return up to 500 lines within a safe model-output byte budget and provide next_offset when more content remains.',
     inputSchema: jsonSchema({
-      additionalProperties: false,
+      additionalProperties: true,
       properties: {
         path: {
           description: ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION,

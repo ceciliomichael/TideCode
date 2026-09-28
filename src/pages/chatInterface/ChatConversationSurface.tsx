@@ -207,7 +207,7 @@ export function ChatConversationSurface({
             key={projectKey}
             className={isBrowserOpen && projectKey === browserProjectKey ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}
           >
-            <BrowserPanel active={isBrowserOpen && projectKey === browserProjectKey} />
+            <BrowserPanel active={isBrowserOpen && projectKey === browserProjectKey} projectKey={projectKey} />
           </div>
         ))}
         {!isBrowserOpen && (isKanbanBoardOpen ? (

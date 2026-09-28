@@ -30,6 +30,7 @@ import {
 import { getLoginPageHtml, readAuthJsonBody, writeJson } from './webAuth'
 import { RemoteWebSessionStore } from './sessionStore'
 import { getRemoteStateRoot } from './statePath'
+import { remoteBrowserService } from './browserService'
 
 const MAX_CLIENT_MESSAGE_BYTES = 16 * 1024 * 1024
 const LOGIN_FAILURE_WINDOW_MS = 60_000
@@ -119,11 +120,6 @@ function getForwardedHost(request: IncomingMessage) {
   return null
 }
 
-function isLoopbackPeer(request: IncomingMessage) {
-  const address = request.socket.remoteAddress?.toLowerCase() ?? ''
-  return address === '127.0.0.1' || address === '::1' || address.startsWith('::ffff:127.')
-}
-
 function isSameOriginRequest(request: IncomingMessage) {
   const origin = request.headers.origin
   const host = request.headers.host
@@ -131,8 +127,8 @@ function isSameOriginRequest(request: IncomingMessage) {
   try {
     const originHost = new URL(origin).host.toLowerCase()
     if (originHost === host.toLowerCase()) return true
-    if (!isLoopbackPeer(request)) return false
-    return originHost === getForwardedHost(request)?.toLowerCase()
+    const forwardedHost = getForwardedHost(request)?.toLowerCase()
+    return Boolean(forwardedHost && originHost === forwardedHost)
   } catch {
     return false
   }
@@ -169,6 +165,9 @@ export class RemoteWorkspaceHost {
 
   constructor(options: RemoteWorkspaceHostOptions) {
     this.options = options
+    remoteBrowserService.setFrameListener((payload) => {
+      this.broadcastEvent({ channel: REMOTE_EVENT_CHANNELS.browserFrame, payload })
+    })
     this.sessions = new RemoteWebSessionStore({
       persistencePath: path.join(getRemoteStateRoot(), 'remote-sessions.json'),
     })
@@ -573,8 +572,12 @@ export class RemoteWorkspaceHost {
       let headers = `${request.method ?? 'GET'} ${request.url ?? '/'} HTTP/1.1\r\n`
       for (const [key, value] of Object.entries(request.headers)) {
         if (value === undefined) continue
+        const normalizedKey = key.toLowerCase()
+        if (normalizedKey === 'host' || normalizedKey === 'origin') continue
         headers += `${key}: ${Array.isArray(value) ? value.join(', ') : value}\r\n`
       }
+      headers += `host: ${target.host}\r\n`
+      headers += `origin: ${target.protocol}//${target.host}\r\n`
       headers += '\r\n'
       upstream.write(headers)
       if (head.length > 0) upstream.write(head)
@@ -683,6 +686,27 @@ export class RemoteWorkspaceHost {
         ? (value as { id: string }).id
         : ''
       this.sendRpcError(socket, id, 'Unsupported or invalid remote protocol request.')
+      return
+    }
+
+    if (value.namespace === 'tidecodeBrowser') {
+      const method = remoteBrowserService[value.method as keyof typeof remoteBrowserService]
+      if (typeof method !== 'function') {
+        this.sendRpcError(socket, value.id, `Remote browser method is unavailable: ${value.method}`)
+        return
+      }
+      void Reflect.apply(method, remoteBrowserService, value.args)
+        .then((result: unknown) => {
+          if (socket.readyState !== WebSocket.OPEN) return
+          socket.send(JSON.stringify({
+            id: value.id,
+            kind: 'rpc-result',
+            ok: true,
+            protocolVersion: REMOTE_PROTOCOL_VERSION,
+            result,
+          } satisfies RemoteRpcResponse))
+        })
+        .catch((error: unknown) => this.sendRpcError(socket, value.id, error instanceof Error ? error.message : String(error)))
       return
     }
 

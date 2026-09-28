@@ -109,6 +109,7 @@ export type CanonicalHistoryEvent =
       degradedDiagnostics?: string[]
       modelId: string
       parentPacketId?: string | null
+      durableMemory?: EncodedReplayValue
       packet: EncodedReplayValue
       projectionVersion?: string
       projectedMessages: EncodedReplayValue

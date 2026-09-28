@@ -14,6 +14,7 @@ import { selectLatestContextByTokens } from './retention'
 import { removeRawToolHistory } from './toolFreeContext'
 import { extractHiddenUserContexts } from '../../../../src/lib/hiddenUserContext'
 import type { HiddenUserContext } from '../../../../src/types/chat'
+import type { ConversationMemory } from './durableMemory'
 
 function getMessageText(message: ModelMessage) {
   if (typeof message.content === 'string') return message.content
@@ -50,6 +51,7 @@ function sanitizeProjectedMessage(message: ModelMessage): ModelMessage {
 export interface CompactionProjectionInput {
   anchorMessages: readonly ModelMessage[]
   contextMessages?: readonly ModelMessage[]
+  durableMemory: ConversationMemory
   packet: LocalCompactionPacketV2
   tailMessages: readonly ModelMessage[]
   retainedContextTokens?: number
@@ -57,11 +59,11 @@ export interface CompactionProjectionInput {
 
 export function buildCompactionProjection(input: CompactionProjectionInput) {
   const handoffMessage = buildContinuationMessage(input.packet.continuationMarkdown)
-  const handoffTokens = estimateModelMessageContextUsage([handoffMessage]).totalTokens
+  const fixedTokens = estimateModelMessageContextUsage([handoffMessage]).totalTokens
   const retainedContextTokens = capRetainedContextTokens(
     input.retainedContextTokens ?? DEFAULT_CONTEXT_COMPACTION_RETAINED_TOKENS,
   )
-  const tailBudget = Math.max(1, retainedContextTokens - handoffTokens)
+  const tailBudget = Math.max(1, retainedContextTokens - fixedTokens)
   const toolFreeTailMessages = removeRawToolHistory(input.tailMessages)
   const selectedTail = selectLatestContextByTokens(
     toolFreeTailMessages,
