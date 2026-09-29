@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.7 - More capable browser and workspace reliability
+
+TideCode 1.4.7 improves the integrated browser, workspace file handling, Git responsiveness, and Code Mode reliability.
+
+- Expands the integrated browser with native dockable DevTools, improved multi-tab behavior, website favicons, local-development URL handling, and more consistent browser focus and navigation behavior.
+- Improves workspace file operations, including multi-file clipboard paste, drag-and-drop refresh behavior, stale editor state after file recreation, and source-control state after repository initialization.
+- Makes Git change detection more responsive and keeps browser keyboard shortcuts scoped to the browser experience.
+- Improves Code Mode mutation and argument handling so generated tool calls fail less often and recover more predictably.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.6 - More reliable agent memory and workspace tools
 
 TideCode 1.4.6 improves long-running agent continuity, workspace memory, Code Mode reliability, remote browsing, terminals, and model support.
