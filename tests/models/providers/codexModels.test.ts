@@ -14,8 +14,8 @@ test('listCodexModels returns the codex model catalog from codex_models.json', (
   const lunaModel = models.find((model) => model.id === 'gpt-6-luna')
   const latestSolModel = models.find((model) => model.id === 'gpt-6.1-sol')
   assert.equal(solModel?.enabledByDefault, true)
-  assert.deepEqual(solModel?.reasoningEfforts, ['none', 'low', 'medium', 'high', 'xhigh', 'max'])
-  assert.deepEqual(lunaModel?.reasoningEfforts, ['none', 'low', 'medium', 'high', 'xhigh', 'max'])
+  assert.deepEqual(solModel?.reasoningEfforts, ['low', 'medium', 'high', 'xhigh', 'max'])
+  assert.deepEqual(lunaModel?.reasoningEfforts, ['low', 'medium', 'high', 'xhigh', 'max'])
   assert.deepEqual(latestSolModel?.reasoningEfforts, ['low', 'medium', 'high', 'xhigh', 'max'])
   assert.deepEqual(
     models.find((model) => model.id === 'gpt-5.6-sol')?.reasoningEfforts,
@@ -23,7 +23,7 @@ test('listCodexModels returns the codex model catalog from codex_models.json', (
   )
   assert.deepEqual(
     models.find((model) => model.id === 'gpt-5.6-luna')?.reasoningEfforts,
-    ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+    ['low', 'medium', 'high', 'xhigh', 'max'],
   )
   assert.equal(latestSolModel?.reasoningCapable, true)
 })
