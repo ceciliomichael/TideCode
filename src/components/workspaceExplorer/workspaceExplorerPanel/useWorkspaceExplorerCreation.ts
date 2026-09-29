@@ -60,13 +60,15 @@ export function useWorkspaceExplorerCreation({
   }, [creationDraft])
 
   const startCreateEntry = useCallback(
-    (isDirectory: boolean) => {
+    (isDirectory: boolean, targetParentPath?: string) => {
       const targetEntry = contextMenuState?.targetEntry ?? null
-      const parentPath = targetEntry
-        ? targetEntry.isDirectory
-          ? targetEntry.relativePath
-          : getPathDirname(targetEntry.relativePath)
-        : ROOT_DIRECTORY_KEY
+      const parentPath = targetParentPath ?? (
+        targetEntry
+          ? targetEntry.isDirectory
+            ? targetEntry.relativePath
+            : getPathDirname(targetEntry.relativePath)
+          : ROOT_DIRECTORY_KEY
+      )
 
       closeContextMenu()
       setErrorMessage(null)

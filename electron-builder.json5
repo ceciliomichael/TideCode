@@ -34,6 +34,13 @@
       ]
     },
     {
+      "from": "dist-cli-runtime/node_modules/node-pty",
+      "to": "cli/node_modules/node-pty",
+      "filter": [
+        "**/*"
+      ]
+    },
+    {
       "from": "bin",
       "to": "bin",
       "filter": [

@@ -43,14 +43,14 @@ export interface WorkspaceTerminalPanelState {
   openTerminalTab: () => void;
   onClose: () => void;
   panelHeight: number;
-  panelRef: RefObject<HTMLElement>;
+  panelRef: RefObject<HTMLElement | null>;
   reorderTerminalTabs: (
     sourceTabKey: string,
     targetTabKey: string,
     position: "before" | "after",
   ) => void;
   selectTerminalTab: (tabKey: string) => void;
-  terminalHostRef: RefObject<HTMLDivElement>;
+  terminalHostRef: RefObject<HTMLDivElement | null>;
   terminalTabs: readonly TerminalTabState[];
   isFullScreen?: boolean;
   onFullScreenChange?: (nextFullScreen: boolean) => void;

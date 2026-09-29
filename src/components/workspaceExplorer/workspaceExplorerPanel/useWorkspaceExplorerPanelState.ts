@@ -249,6 +249,7 @@ export function useWorkspaceExplorerPanelState({
     renameInputRef,
     renameName,
     requestRenameEntry,
+    requestRenameSpecificEntry,
     resetRename,
     submitRenameEntry,
   } = useWorkspaceExplorerRename({
@@ -270,9 +271,9 @@ export function useWorkspaceExplorerPanelState({
   })
 
   const startCreateEntryWithDeferredReloads = useCallback(
-    (isDirectory: boolean) => {
+    (isDirectory: boolean, parentPath?: string) => {
       prepareForCreation()
-      startCreateEntry(isDirectory)
+      startCreateEntry(isDirectory, parentPath)
     },
     [prepareForCreation, startCreateEntry],
   )
@@ -466,6 +467,7 @@ export function useWorkspaceExplorerPanelState({
     expandedDirectories,
     loadDirectory,
     onOpenFile,
+    requestRenameEntry: requestRenameSpecificEntry,
     requestDeleteEntries,
     requestCopyOrCutEntries,
     rootEntries,
@@ -476,6 +478,7 @@ export function useWorkspaceExplorerPanelState({
     setExpandedDirectories,
     setSelectedEntryPaths,
     setSelectionDirectoryPath,
+    startCreateEntry: startCreateEntryWithDeferredReloads,
     submitClipboardContents,
     undoStack,
   })

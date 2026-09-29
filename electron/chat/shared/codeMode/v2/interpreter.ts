@@ -6,6 +6,7 @@ import {
   CodeFunction,
   CodeModeRuntimeError,
   CodePromise,
+  CodeRegex,
   ContinueSignal,
   Environment,
   GlobalNamespace,
@@ -56,6 +57,7 @@ const SUPPORTED_NODE_TYPES = new Set([
   'UpdateExpression',
   'SequenceExpression',
   'TemplateLiteral',
+  'TaggedTemplateExpression',
   'TemplateElement',
   'IfStatement',
   'SwitchStatement',
@@ -95,7 +97,10 @@ const STRING_METHODS = new Set([
   'toLowerCase', 'toUpperCase', 'trim', 'trimStart', 'trimEnd', 'split', 'slice', 'substring',
   'includes', 'startsWith', 'endsWith', 'indexOf', 'lastIndexOf', 'replace', 'replaceAll', 'repeat',
   'padStart', 'padEnd', 'charAt', 'charCodeAt', 'codePointAt', 'at', 'concat', 'localeCompare', 'normalize',
+  'match', 'matchAll', 'search',
 ])
+
+const REGEX_METHODS = new Set(['test', 'exec'])
 
 const MATH_METHODS = new Set([
   'abs', 'ceil', 'floor', 'round', 'trunc', 'min', 'max', 'pow', 'sqrt', 'cbrt', 'sign',
@@ -164,8 +169,21 @@ function unsupported(node: AstNode, detail?: string): never {
   )
 }
 
+function isStringRawTag(node: AstNode): boolean {
+  if (node.type !== 'MemberExpression' || booleanField(node, 'computed')) return false
+  const object = asNode(node.object, 'tag object')
+  const property = asNode(node.property, 'tag property')
+  return object.type === 'Identifier'
+    && stringField(object, 'name') === 'String'
+    && property.type === 'Identifier'
+    && stringField(property, 'name') === 'raw'
+}
+
 function validateNode(node: AstNode): void {
   if (!SUPPORTED_NODE_TYPES.has(node.type)) unsupported(node)
+  if (node.type === 'TaggedTemplateExpression' && !isStringRawTag(asNode(node.tag, 'tag'))) {
+    unsupported(node, 'Only String.raw tagged templates are supported in Tidecode Code Mode.')
+  }
   if ((node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression') && booleanField(node, 'generator')) {
     unsupported(node, 'Generator functions are not supported in Tidecode Code Mode.')
   }
@@ -182,7 +200,6 @@ function validateNode(node: AstNode): void {
     unsupported(node, `Assignment operator '${stringField(node, 'operator')}' is not supported in Tidecode Code Mode.`)
   }
   if (node.type === 'Literal') {
-    if (node.regex !== undefined) unsupported(node, 'Regular expression literals are not supported in Tidecode Code Mode. Use string operations or tools.grep instead.')
     if (node.bigint !== undefined) unsupported(node, 'BigInt literals are not supported in Tidecode Code Mode.')
   }
   if (node.type === 'Property') {
@@ -296,6 +313,7 @@ export class CodeModeInterpreter {
     for (const name of ['Array', 'Object', 'Math', 'JSON', 'Promise', 'console', 'Number', 'String'] as const) {
       this.global.declare(name, new GlobalNamespace(name), false)
     }
+    this.global.declare('RegExp', new NativeFunction('RegExp', (args, node) => this.createRegex(args, node)), false)
     this.global.declare('undefined', undefined, false)
     this.global.declare('NaN', Number.NaN, false)
     this.global.declare('Infinity', Number.POSITIVE_INFINITY, false)
@@ -630,6 +648,11 @@ export class CodeModeInterpreter {
       case 'Identifier':
         return environment.get(stringField(node, 'name'), node)
       case 'Literal':
+        if (isRecord(node.regex)) {
+          const pattern = typeof node.regex.pattern === 'string' ? node.regex.pattern : ''
+          const flags = typeof node.regex.flags === 'string' ? node.regex.flags : ''
+          return this.createRegex([pattern, flags], node)
+        }
         return node.value
       case 'ArrayExpression': {
         const raw = node.elements
@@ -684,8 +707,8 @@ export class CodeModeInterpreter {
         return this.evaluateCall(node, environment)
       case 'NewExpression': {
         const callee = await this.evaluate(asNode(node.callee, 'callee'), environment)
-        if (!(callee instanceof NativeFunction) || !['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError'].includes(callee.name)) {
-          unsupported(node, 'Only standard Error values may be constructed with new in Tidecode Code Mode.')
+        if (!(callee instanceof NativeFunction) || !['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'RegExp'].includes(callee.name)) {
+          unsupported(node, 'Only standard Error values and RegExp may be constructed with new in Tidecode Code Mode.')
         }
         const args = await this.evaluateArguments(node, environment)
         return callee.invoke(args, node)
@@ -723,6 +746,21 @@ export class CodeModeInterpreter {
             : isRecord(quasiValue) && typeof quasiValue.raw === 'string'
               ? quasiValue.raw
               : ''
+          if (index < expressions.length) out += this.coerceString(await this.evaluate(expressions[index]!, environment), expressions[index]!)
+        }
+        return out
+      }
+      case 'TaggedTemplateExpression': {
+        const tag = asNode(node.tag, 'tag')
+        if (!isStringRawTag(tag)) unsupported(node, 'Only String.raw tagged templates are supported in Tidecode Code Mode.')
+        const quasi = asNode(node.quasi, 'tagged template')
+        if (quasi.type !== 'TemplateLiteral') unsupported(quasi)
+        const quasis = nodeArray(quasi, 'quasis')
+        const expressions = nodeArray(quasi, 'expressions')
+        let out = ''
+        for (let index = 0; index < quasis.length; index += 1) {
+          const quasiValue = quasis[index]!.value
+          out += isRecord(quasiValue) && typeof quasiValue.raw === 'string' ? quasiValue.raw : ''
           if (index < expressions.length) out += this.coerceString(await this.evaluate(expressions[index]!, environment), expressions[index]!)
         }
         return out
@@ -812,6 +850,22 @@ export class CodeModeInterpreter {
       if (receiver.name === 'Math' && Object.hasOwn(MATH_CONSTANTS, name)) return MATH_CONSTANTS[name]
       return new IntrinsicReference(receiver, name)
     }
+    if (receiver instanceof CodeRegex) {
+      if (REGEX_METHODS.has(name)) return new IntrinsicReference(receiver, name)
+      if (name === 'source') return receiver.source
+      if (name === 'flags') return receiver.flags
+      const flagByProperty: Record<string, string> = {
+        global: 'g',
+        ignoreCase: 'i',
+        multiline: 'm',
+        dotAll: 's',
+        unicode: 'u',
+        sticky: 'y',
+      }
+      const flag = flagByProperty[name]
+      if (flag !== undefined) return receiver.flags.includes(flag)
+      throw new CodeModeRuntimeError('TypeError', `RegExp method/property '${name}' is not available in Tidecode Code Mode.`, node)
+    }
     if (Array.isArray(receiver)) {
       if (name === 'length') return receiver.length
       if (isCanonicalIndexProperty(name)) return receiver[Number(name)]
@@ -896,6 +950,7 @@ export class CodeModeInterpreter {
     if (value instanceof PayloadNamespace) return 'object'
     if (value instanceof GlobalNamespace) return ['Math', 'JSON', 'console'].includes(value.name) ? 'object' : 'function'
     if (value instanceof CodePromise) return 'object'
+    if (value instanceof CodeRegex) return 'object'
     return typeof value
   }
 
@@ -907,7 +962,8 @@ export class CodeModeInterpreter {
       value instanceof IntrinsicReference ||
       value instanceof ToolReference ||
       value instanceof GlobalNamespace ||
-      value instanceof PayloadNamespace
+      value instanceof PayloadNamespace ||
+      value instanceof CodeRegex
     ) {
       throw new CodeModeRuntimeError('TypeError', 'This operation requires a data value. Await tool calls before using their results.', node)
     }
@@ -1032,7 +1088,7 @@ export class CodeModeInterpreter {
 
   private async memberLValue(node: AstNode, environment: Environment): Promise<MemberLValue> {
     const receiver = await this.evaluate(asNode(node.object, 'member object'), environment)
-    if (receiver instanceof ToolReference || receiver instanceof GlobalNamespace || receiver instanceof CodePromise || receiver instanceof PayloadNamespace) {
+    if (receiver instanceof ToolReference || receiver instanceof GlobalNamespace || receiver instanceof CodePromise || receiver instanceof PayloadNamespace || receiver instanceof CodeRegex) {
       throw new CodeModeRuntimeError('TypeError', 'This Code Mode value is read-only.', node)
     }
     if (!Array.isArray(receiver) && (!receiver || typeof receiver !== 'object')) {
@@ -1051,6 +1107,9 @@ export class CodeModeInterpreter {
     }
     if (typeof reference.receiver === 'string') {
       return this.invokeString(reference.receiver, reference.name, args, node)
+    }
+    if (reference.receiver instanceof CodeRegex) {
+      return this.invokeRegex(reference.receiver, reference.name, args, node)
     }
     throw new CodeModeRuntimeError('TypeError', `Intrinsic '${reference.name}' is not callable for this value.`, node)
   }
@@ -1294,6 +1353,7 @@ export class CodeModeInterpreter {
   }
 
   private invokeString(value: string, name: string, args: unknown[], node: AstNode): unknown {
+    const pattern = args[0] instanceof CodeRegex ? args[0].createNative() : args[0]
     switch (name) {
       case 'toLowerCase': return value.toLowerCase()
       case 'toUpperCase': return value.toUpperCase()
@@ -1302,7 +1362,7 @@ export class CodeModeInterpreter {
       case 'trimEnd': return value.trimEnd()
       case 'split': return args[0] === undefined
         ? [value]
-        : value.split(String(args[0]), args[1] === undefined ? undefined : Number(args[1]))
+        : value.split(pattern instanceof RegExp ? pattern : String(pattern), args[1] === undefined ? undefined : Number(args[1]))
       case 'slice': return value.slice(args[0] === undefined ? undefined : Number(args[0]), args[1] === undefined ? undefined : Number(args[1]))
       case 'substring': return value.substring(args[0] === undefined ? 0 : Number(args[0]), args[1] === undefined ? undefined : Number(args[1]))
       case 'includes': return value.includes(String(args[0]), args[1] === undefined ? undefined : Number(args[1]))
@@ -1310,8 +1370,23 @@ export class CodeModeInterpreter {
       case 'endsWith': return value.endsWith(String(args[0]), args[1] === undefined ? undefined : Number(args[1]))
       case 'indexOf': return value.indexOf(String(args[0]), args[1] === undefined ? undefined : Number(args[1]))
       case 'lastIndexOf': return value.lastIndexOf(String(args[0]), args[1] === undefined ? undefined : Number(args[1]))
-      case 'replace': return value.replace(String(args[0]), String(args[1] ?? ''))
-      case 'replaceAll': return value.replaceAll(String(args[0]), String(args[1] ?? ''))
+      case 'replace': return value.replace(pattern instanceof RegExp ? pattern : String(pattern), String(args[1] ?? ''))
+      case 'replaceAll': {
+        if (pattern instanceof RegExp && !pattern.global) {
+          throw new CodeModeRuntimeError('TypeError', 'String.replaceAll requires a global RegExp.', node)
+        }
+        return value.replaceAll(pattern instanceof RegExp ? pattern : String(pattern), String(args[1] ?? ''))
+      }
+      case 'match': {
+        const result = value.match(pattern instanceof RegExp ? pattern : new RegExp(String(pattern)))
+        return result ? Array.from(result) : null
+      }
+      case 'matchAll': {
+        const regex = pattern instanceof RegExp ? pattern : new RegExp(String(pattern), 'g')
+        if (!regex.global) throw new CodeModeRuntimeError('TypeError', 'String.matchAll requires a global RegExp.', node)
+        return Array.from(value.matchAll(regex), (match) => Array.from(match))
+      }
+      case 'search': return value.search(pattern instanceof RegExp ? pattern : new RegExp(String(pattern)))
       case 'repeat': return value.repeat(Number(args[0]))
       case 'padStart': return value.padStart(Number(args[0]), args[1] === undefined ? undefined : String(args[1]))
       case 'padEnd': return value.padEnd(Number(args[0]), args[1] === undefined ? undefined : String(args[1]))
@@ -1331,6 +1406,30 @@ export class CodeModeInterpreter {
       }
       default: throw new CodeModeRuntimeError('TypeError', `String.${name} is not available in Tidecode Code Mode.`, node)
     }
+  }
+
+  private createRegex(args: unknown[], node: AstNode): CodeRegex {
+    const source = args[0] instanceof CodeRegex ? args[0].source : args[0] === undefined ? '' : String(args[0])
+    const flags = args[1] === undefined
+      ? args[0] instanceof CodeRegex ? args[0].flags : ''
+      : String(args[1])
+    try {
+      const regex = new RegExp(source, flags)
+      return new CodeRegex(regex.source, regex.flags)
+    } catch (error) {
+      throw new CodeModeRuntimeError('TypeError', error instanceof Error ? error.message : String(error), node)
+    }
+  }
+
+  private invokeRegex(value: CodeRegex, name: string, args: unknown[], node: AstNode): unknown {
+    const input = String(args[0] ?? '')
+    const regex = value.createNative()
+    if (name === 'test') return regex.test(input)
+    if (name === 'exec') {
+      const match = regex.exec(input)
+      return match ? Array.from(match) : null
+    }
+    throw new CodeModeRuntimeError('TypeError', `RegExp.${name} is not available in Tidecode Code Mode.`, node)
   }
 
   private async invokeArrayCallback(

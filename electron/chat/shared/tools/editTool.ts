@@ -126,7 +126,9 @@ interface RawEditInput {
 export function createEditTool(context: WorkspaceToolContext) {
   return tool({
     description: EDIT_TOOL_DESCRIPTION,
-    inputSchema: jsonSchema<EditToolInput>(EDIT_INPUT_SCHEMA),
+    inputSchema: jsonSchema<EditToolInput>(
+      EDIT_INPUT_SCHEMA as Parameters<typeof jsonSchema>[0],
+    ),
     execute: async (rawInput): Promise<AgentToolExecutionResult> => {
       try {
         const input = rawInput as RawEditInput

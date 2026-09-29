@@ -18,7 +18,7 @@ interface UseTerminalSizingOptions {
   isResizingRef: MutableRefObject<boolean>;
   resolvedTheme: "light" | "dark";
   tabInstancesRef: MutableRefObject<Map<string, TabTerminalInstance>>;
-  terminalHostRef: RefObject<HTMLDivElement>;
+  terminalHostRef: RefObject<HTMLDivElement | null>;
   terminalTabsRef: MutableRefObject<TerminalTabState[]>;
   workspaceKey: string;
 }

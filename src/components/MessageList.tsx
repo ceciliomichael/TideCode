@@ -125,7 +125,7 @@ interface MessageRowProps {
   waitingIndicatorVariant?: AssistantWaitingIndicatorVariant;
   isTextStreaming?: boolean;
   workspaceRootPath?: string | null;
-  editClickBoundaryRef?: RefObject<HTMLElement>;
+  editClickBoundaryRef?: RefObject<HTMLElement | null>;
 }
 
 const MessageRow = memo(

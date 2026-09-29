@@ -4,13 +4,13 @@ import {
   ExternalLink,
   GitBranch,
   Globe,
-  Github,
   Link2,
   Loader2,
   Lock,
   Server,
   X,
 } from 'lucide-react'
+import { SiGithub } from 'react-icons/si'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   GitCommitModelSelection,
@@ -303,7 +303,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
                     : 'text-muted-foreground hover:text-foreground hover:bg-surface/50 border border-transparent',
                 ].join(' ')}
               >
-                <Github
+                <SiGithub
                   size={13}
                   className={[
                     'shrink-0 transition-colors',
@@ -418,7 +418,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
             /* TAB 2: GitHub Sign In Gate */
             <div className="flex flex-col items-center gap-4 px-6 py-8 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-surface-muted shadow-xs">
-                <Github size={22} className="text-foreground" />
+                <SiGithub size={22} className="text-foreground" />
               </div>
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold text-foreground">Connect to GitHub</h3>
@@ -466,7 +466,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
                     onClick={() => void handleConnectGitHub()}
                     className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#24292e] px-4 text-xs font-medium text-white transition-colors hover:bg-[#1a1f23] shadow-xs"
                   >
-                    <Github size={14} className="shrink-0" />
+                    <SiGithub size={14} className="shrink-0" />
                     Connect to GitHub
                   </button>
                 </div>
@@ -589,7 +589,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
                   disabled={!isGitHubFormValid}
                   className="inline-flex items-center gap-2 rounded-lg bg-[#24292e] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#1a1f23] disabled:cursor-not-allowed disabled:opacity-50 shadow-xs"
                 >
-                  <Github size={13} className="shrink-0" />
+                  <SiGithub size={13} className="shrink-0" />
                   Publish to GitHub
                 </button>
               </div>

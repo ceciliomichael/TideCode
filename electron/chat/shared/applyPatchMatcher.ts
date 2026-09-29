@@ -350,6 +350,70 @@ function hasPartialAnchor(
   })
 }
 
+function findClosestSequenceMismatch(
+  lines: readonly string[],
+  pattern: readonly string[],
+  startIndex: number,
+) {
+  if (pattern.length === 0 || lines.length === 0) return null
+
+  const maxStart = Math.max(startIndex, lines.length - pattern.length)
+  let bestStart = -1
+  let bestScore = -1
+
+  for (let lineIndex = startIndex; lineIndex <= maxStart; lineIndex += 1) {
+    let score = 0
+    for (let patternIndex = 0; patternIndex < pattern.length; patternIndex += 1) {
+      const actual = lines[lineIndex + patternIndex]
+      if (actual === undefined) continue
+      if (linesMatch(actual, pattern[patternIndex]!, 'exact')) score += 2
+      else if (linesMatch(actual, pattern[patternIndex]!, 'whitespace')) score += 1
+    }
+    if (score > bestScore) {
+      bestScore = score
+      bestStart = lineIndex
+    }
+  }
+
+  if (bestStart === -1 || bestScore <= 0) return null
+
+  for (let patternIndex = 0; patternIndex < pattern.length; patternIndex += 1) {
+    const expected = pattern[patternIndex]!
+    const actual = lines[bestStart + patternIndex]
+    if (actual === undefined || !linesMatch(actual, expected, 'whitespace')) {
+      return {
+        actual: actual ?? '<end of file>',
+        expected,
+        lineNumber: bestStart + patternIndex + 1,
+      }
+    }
+  }
+
+  return null
+}
+
+function findPartialLineMismatch(
+  lines: readonly string[],
+  pattern: readonly string[],
+  startIndex: number,
+) {
+  for (const expected of pattern) {
+    const trimmedExpected = expected.trim()
+    if (trimmedExpected.length < 12) continue
+    const lineIndex = lines.findIndex((line, index) =>
+      index >= startIndex && line !== expected && line.includes(trimmedExpected),
+    )
+    if (lineIndex !== -1) {
+      return {
+        actual: lines[lineIndex]!,
+        expected,
+        lineNumber: lineIndex + 1,
+      }
+    }
+  }
+  return null
+}
+
 function createMissingSequenceError(
   filePath: string,
   lines: readonly string[],
@@ -363,8 +427,20 @@ function createMissingSequenceError(
   const preview = nearbyAnchor === -1
     ? ''
     : `\n\nCurrent source near the match:\n${formatLinePreview(lines, nearbyAnchor)}`
+  const mismatch = findClosestSequenceMismatch(lines, pattern, startIndex)
+    ?? findPartialLineMismatch(lines, pattern, startIndex)
+  const mismatchHint = mismatch
+    ? [
+        '',
+        '',
+        `First unmatched line near the closest hunk candidate (source line ${mismatch.lineNumber}):`,
+        `Patch expected: ${mismatch.expected}`,
+        `Current source: ${mismatch.actual}`,
+        'Re-read this source line and copy it verbatim into the removal/context side of the hunk before retrying.',
+      ].join('\n')
+    : ''
   return new Error(
-    `Patch rejected; no files changed.\nFailed to find expected lines in ${filePath}. For multiple hunks in one file, emit hunks from top to bottom and retry from a fresh read:\n${pattern.join('\n')}${partialHint}${preview}`,
+    `Patch rejected; no files changed.\nFailed to find expected lines in ${filePath}. For multiple hunks in one file, emit hunks from top to bottom and retry from a fresh read:\n${pattern.join('\n')}${partialHint}${mismatchHint}${preview}`,
   )
 }
 

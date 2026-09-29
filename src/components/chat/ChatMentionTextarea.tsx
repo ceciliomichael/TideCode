@@ -19,7 +19,7 @@ interface ChatMentionTextareaProps {
   placeholder?: string
   rows?: number
   style?: CSSProperties
-  textareaRef: RefObject<HTMLTextAreaElement>
+  textareaRef: RefObject<HTMLTextAreaElement | null>
   value: string
 }
 

@@ -252,7 +252,9 @@ function resolvePlanPatchTarget(
 export function createApplyPatchTool(context: WorkspaceToolContext, runtimeState?: PlanRuntimeState) {
   return tool({
     description: APPLY_PATCH_DESCRIPTION,
-    inputSchema: jsonSchema<ApplyPatchInput>(APPLY_PATCH_INPUT_SCHEMA),
+    inputSchema: jsonSchema<ApplyPatchInput>(
+      APPLY_PATCH_INPUT_SCHEMA as unknown as Parameters<typeof jsonSchema>[0],
+    ),
     execute: async (rawInput): Promise<AgentToolExecutionResult> => {
       const input = rawInput as ApplyPatchInput
       const patchText = normalizePatchInput(input.patch)

@@ -8,7 +8,7 @@ import {
 } from './workspaceMonacoDiffCopy'
 
 interface UseWorkspaceMonacoDiffCopyMenuOptions {
-  containerRef: RefObject<HTMLDivElement>
+  containerRef: RefObject<HTMLDivElement | null>
   diffEditorRef: RefObject<editor.IStandaloneDiffEditor | null>
   startLineNumber: number
 }

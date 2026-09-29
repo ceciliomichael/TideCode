@@ -24,7 +24,7 @@ interface WorkspaceTerminalPanelSizingState {
   isOpen: boolean;
   isResizing: boolean;
   panelHeight: number;
-  panelRef: RefObject<HTMLElement>;
+  panelRef: RefObject<HTMLElement | null>;
 }
 
 export function useWorkspaceTerminalPanelSizing({

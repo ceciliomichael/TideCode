@@ -51,7 +51,7 @@ interface ChatConversationSurfaceProps {
   isBrowserOpen: boolean
   isKanbanBoardOpen: boolean
   isTerminalSurfaceOpen: boolean
-  messageListBoundaryRef: RefObject<HTMLDivElement>
+  messageListBoundaryRef: RefObject<HTMLDivElement | null>
   onQueueMessage: (
     value: string,
     attachments: ChatAttachment[],

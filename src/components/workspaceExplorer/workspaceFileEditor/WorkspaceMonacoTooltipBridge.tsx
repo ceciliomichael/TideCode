@@ -7,7 +7,7 @@ import { useWorkspaceMonacoTypeScriptTooltip } from './useWorkspaceMonacoTypeScr
 import type { WorkspaceMonacoTypeScriptTooltipState } from './useWorkspaceMonacoTypeScriptTooltip'
 
 interface WorkspaceMonacoTooltipBridgeProps {
-  containerRef: RefObject<HTMLDivElement>
+  containerRef: RefObject<HTMLDivElement | null>
   editorInstance: editor.IStandaloneCodeEditor | null
   monacoInstance: Monaco | null
 }

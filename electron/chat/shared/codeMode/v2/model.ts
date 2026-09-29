@@ -71,6 +71,14 @@ export class CodePromise {
   constructor(readonly promise: Promise<unknown>) {}
 }
 
+export class CodeRegex {
+  constructor(readonly source: string, readonly flags: string) {}
+
+  createNative(): RegExp {
+    return new RegExp(this.source, this.flags)
+  }
+}
+
 export interface Binding {
   mutable: boolean
   initialized: boolean

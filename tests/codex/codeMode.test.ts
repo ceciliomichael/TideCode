@@ -755,17 +755,57 @@ test('Code Mode allows host API words in comments and string data', async () => 
   }
 })
 
-test('Code Mode rejects regex literals deterministically', async () => {
+test('Code Mode supports regex literals for common parsing operations', async () => {
   const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
     terminalExecutionMode: 'sandbox',
   })
 
   try {
-
-    const result = await executor.run('const pattern = /Text/u; return pattern')
-    assert.equal(result.status, 'error')
+    const result = await executor.run([
+      "const input = 'make_video.py:12\\nmake_video.py:34\\nother.py:99'",
+      'const pattern = /make_video\\.py:\\d+/g',
+      'const matches = input.match(pattern)',
+      "const replaced = input.replace(/make_video\\.py:(\\d+)/g, 'scene:$1')",
+      "const split = 'a1b2c'.split(/\\d/g)",
+      'return { matches, replaced, split, source: pattern.source, flags: pattern.flags, global: pattern.global }',
+    ].join('\n'))
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, {
+      flags: 'g',
+      global: true,
+      matches: ['make_video.py:12', 'make_video.py:34'],
+      replaced: 'scene:12\nscene:34\nother.py:99',
+      source: 'make_video\\.py:\\d+',
+      split: ['a', 'b', 'c'],
+    })
     assert.equal(result.toolCalls.length, 0)
-    assert.match(result.summary, /UnsupportedSyntax: Regular expression literals are not supported/u)
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode supports RegExp constructor plus test, exec, search, and matchAll', async () => {
+  const executor = new CodeModeExecutor(createTestRegistry(), undefined, {
+    terminalExecutionMode: 'sandbox',
+  })
+
+  try {
+    const result = await executor.run([
+      "const pattern = new RegExp('Line\\\\s+(\\\\d+)', 'g')",
+      "const text = 'Line 12: alpha\\nLine 34: beta'",
+      'const tested = /Line\\s+\\d+/.test(text)',
+      'const executed = /Line\\s+(\\d+)/.exec(text)',
+      'const index = text.search(/34/)',
+      'const all = text.matchAll(pattern)',
+      'return { tested, executed, index, all }',
+    ].join('\n'))
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, {
+      all: [['Line 12', '12'], ['Line 34', '34']],
+      executed: ['Line 12', '12'],
+      index: 20,
+      tested: true,
+    })
   } finally {
     await executor.dispose()
   }
@@ -1635,6 +1675,9 @@ test('every provider exposes the same TideCode Code Mode description', async () 
       try {
         const description = codeModeTool.args?.description ?? codeModeTool.description ?? ''
         assert.equal(description, buildCodeModeDescription(bundle.registry))
+        assert.match(description, /# TideCode Code Mode/u)
+        assert.match(description, /safe `String\.raw` tagged-template form/u)
+        assert.match(description, /Before patching an existing file, inspect the exact current source region/u)
         descriptions.push(description)
       } finally {
         await bundle.codeModeExecutor?.dispose()
@@ -1669,7 +1712,9 @@ test('every provider uses the same structured Code Mode source and payload schem
         assert.notEqual(codeModeTool.type, 'provider')
         const inputSchema = await asSchema(codeModeTool.inputSchema).jsonSchema as {
           anyOf?: unknown
-          properties?: Record<string, unknown>
+          properties?: Record<string, {
+            propertyNames?: { type?: string }
+          }>
           required?: string[]
           type?: string
         }
@@ -1682,6 +1727,7 @@ test('every provider uses the same structured Code Mode source and payload schem
           { required: ['source'] },
         ])
         assert.ok(inputSchema.properties && 'payloads' in inputSchema.properties)
+        assert.equal(inputSchema.properties?.payloads?.propertyNames?.type, 'string')
 
         const result = await codeModeTool.execute?.(
           {
@@ -1739,6 +1785,41 @@ test('Code Mode payloads preserve arbitrary nested text and are read-only', asyn
       assert.equal(mutation.status, 'error')
       assert.match(mutation.body ?? '', /read-only/u)
       assert.equal(mutation.semantics?.tool_call_count, 0)
+    } finally {
+      await bundle.codeModeExecutor?.dispose()
+    }
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode supports only the String.raw tagged-template form', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-string-raw-'))
+  try {
+    const bundle = await createAgentToolBundle(
+      { workspaceRootPath },
+      { chatMode: 'agent', orchestrationMode: 'code_mode', providerId: 'openai' },
+    )
+    const codeModeTool = bundle.tools.code_mode as {
+      execute?: (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>
+    }
+    try {
+      const raw = await codeModeTool.execute?.(
+        {
+          code: 'const name = "Admin"; return String.raw`C:\\\\Users\\\\${name}\\\\file.txt\\nnext`',
+        },
+        { context: {}, messages: [], toolCallId: 'string-raw-tag' },
+      ) as { body?: string; status?: string }
+      assert.equal(raw.status, 'success')
+      assert.ok((raw.body ?? '').includes(String.raw`C:\\Users\\Admin\\file.txt\nnext`))
+
+      const custom = await codeModeTool.execute?.(
+        { code: 'const tag = (value) => value; return tag`blocked`' },
+        { context: {}, messages: [], toolCallId: 'custom-tag-rejected' },
+      ) as { body?: string; semantics?: { tool_call_count?: number }; status?: string }
+      assert.equal(custom.status, 'error')
+      assert.match(custom.body ?? '', /Only String\.raw tagged templates are supported/u)
+      assert.equal(custom.semantics?.tool_call_count, 0)
     } finally {
       await bundle.codeModeExecutor?.dispose()
     }

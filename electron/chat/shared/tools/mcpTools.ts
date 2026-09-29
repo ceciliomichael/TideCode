@@ -146,7 +146,9 @@ export function createMcpToolSet(context: AgentToolContext) {
   return {
     execute_mcp: tool({
       description: EXECUTE_MCP_DESCRIPTION,
-      inputSchema: jsonSchema<McpExecuteInput>(EXECUTE_MCP_INPUT_SCHEMA),
+      inputSchema: jsonSchema<McpExecuteInput>(
+        EXECUTE_MCP_INPUT_SCHEMA as unknown as Parameters<typeof jsonSchema>[0],
+      ),
       execute: async (rawInput): Promise<AgentToolExecutionResult> => {
         try {
           const input = normalizeMcpExecuteInput(rawInput)
@@ -160,7 +162,9 @@ export function createMcpToolSet(context: AgentToolContext) {
     }),
     mcp_tool_search: tool({
       description: MCP_TOOL_SEARCH_DESCRIPTION,
-      inputSchema: jsonSchema<McpToolSearchInput>(MCP_TOOL_SEARCH_INPUT_SCHEMA),
+      inputSchema: jsonSchema<McpToolSearchInput>(
+        MCP_TOOL_SEARCH_INPUT_SCHEMA as unknown as Parameters<typeof jsonSchema>[0],
+      ),
       execute: async (rawInput): Promise<AgentToolExecutionResult> => {
         try {
           const input = normalizeMcpToolSearchInput(rawInput)

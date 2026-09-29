@@ -172,8 +172,7 @@ export function useWorkspaceExplorerRename({
     undoStack,
   ])
 
-  const requestRenameEntry = useCallback(() => {
-    const targetEntry = contextMenuState?.targetEntry
+  const requestRenameSpecificEntry = useCallback((targetEntry: PendingExplorerRename['entry'] | null) => {
     if (!targetEntry) {
       closeContextMenu()
       return
@@ -201,6 +200,10 @@ export function useWorkspaceExplorerRename({
     setSelectionDirectoryPath,
   ])
 
+  const requestRenameEntry = useCallback(() => {
+    requestRenameSpecificEntry(contextMenuState?.targetEntry ?? null)
+  }, [contextMenuState, requestRenameSpecificEntry])
+
   return {
     cancelRenameEntry,
     isSubmittingRenameRef,
@@ -210,6 +213,7 @@ export function useWorkspaceExplorerRename({
     renameInputRef,
     renameName,
     requestRenameEntry,
+    requestRenameSpecificEntry,
     resetRename,
     submitRenameEntry,
   }
