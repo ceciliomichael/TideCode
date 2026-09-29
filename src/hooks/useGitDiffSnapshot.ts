@@ -26,7 +26,8 @@ interface UseGitDiffSnapshotResult {
   snapshot: ConversationDiffSnapshot
 }
 
-const GIT_DIFF_POLL_INTERVAL_MS = 10000
+const GIT_DIFF_POLL_INTERVAL_MS = 2000
+const GIT_FULL_DIFF_POLL_EVERY = 5
 
 function areDiffSnapshotsEqual(left: ConversationDiffSnapshot, right: ConversationDiffSnapshot) {
   if (
@@ -59,6 +60,53 @@ function areDiffSnapshotsEqual(left: ConversationDiffSnapshot, right: Conversati
   return true
 }
 
+function areGitStatusSnapshotsEqual(left: ConversationDiffSnapshot, right: ConversationDiffSnapshot) {
+  if (left.fileDiffs.length !== right.fileDiffs.length) {
+    return false
+  }
+
+  const rightByFileName = new Map(right.fileDiffs.map((fileDiff) => [fileDiff.fileName, fileDiff]))
+  for (const leftFileDiff of left.fileDiffs) {
+    const rightFileDiff = rightByFileName.get(leftFileDiff.fileName)
+    if (
+      !rightFileDiff ||
+      leftFileDiff.isStaged !== rightFileDiff.isStaged ||
+      leftFileDiff.isUnstaged !== rightFileDiff.isUnstaged ||
+      leftFileDiff.isUntracked !== rightFileDiff.isUntracked
+    ) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function mergeGitStatusSnapshot(
+  currentSnapshot: ConversationDiffSnapshot,
+  statusSnapshot: ConversationDiffSnapshot,
+): ConversationDiffSnapshot {
+  const currentByFileName = new Map(currentSnapshot.fileDiffs.map((fileDiff) => [fileDiff.fileName, fileDiff]))
+  const fileDiffs = statusSnapshot.fileDiffs.map((statusFileDiff) => {
+    const currentFileDiff = currentByFileName.get(statusFileDiff.fileName)
+    if (!currentFileDiff) {
+      return statusFileDiff
+    }
+
+    return {
+      ...currentFileDiff,
+      isStaged: statusFileDiff.isStaged,
+      isUnstaged: statusFileDiff.isUnstaged,
+      isUntracked: statusFileDiff.isUntracked,
+    }
+  })
+
+  return {
+    fileDiffs,
+    totalAddedLineCount: fileDiffs.reduce((total, fileDiff) => total + fileDiff.addedLineCount, 0),
+    totalRemovedLineCount: fileDiffs.reduce((total, fileDiff) => total + fileDiff.removedLineCount, 0),
+  }
+}
+
 export function useGitDiffSnapshot({
   hasRepository,
   includeContent = true,
@@ -76,6 +124,8 @@ export function useGitDiffSnapshot({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const requestIdRef = useRef(0)
   const activeWorkspacePathRef = useRef(normalizedWorkspacePath)
+  const pollCycleRef = useRef(0)
+  const snapshotRef = useRef(snapshot)
   const snapshotIdentityRef = useRef({
     includeContent,
     workspacePath: normalizedWorkspacePath,
@@ -85,9 +135,13 @@ export function useGitDiffSnapshot({
     activeWorkspacePathRef.current = normalizedWorkspacePath
   }, [normalizedWorkspacePath])
 
+  useEffect(() => {
+    snapshotRef.current = snapshot
+  }, [snapshot])
+
   const refresh = useCallback(async (options?: { coalesceForcedRefresh?: boolean; forceRefresh?: boolean; silent?: boolean }) => {
     const requestWorkspacePath = normalizeGitWorkspacePath(workspacePath)
-    if (!requestWorkspacePath || !hasRepository) {
+    if (!requestWorkspacePath) {
       if (requestWorkspacePath === activeWorkspacePathRef.current) {
         setSnapshot((currentSnapshot) => {
           const emptySnapshot = getEmptyGitDiffSnapshot()
@@ -149,7 +203,37 @@ export function useGitDiffSnapshot({
         setIsLoading(false)
       }
     }
-  }, [hasRepository, includeContent, workspacePath])
+  }, [includeContent, workspacePath])
+
+  const refreshStatus = useCallback(async (options?: { coalesceForcedRefresh?: boolean }) => {
+    const requestWorkspacePath = normalizeGitWorkspacePath(workspacePath)
+    if (!requestWorkspacePath) {
+      return false
+    }
+
+    try {
+      const statusSnapshot = await loadGitDiffSnapshot(requestWorkspacePath, {
+        coalesceForcedRefresh: options?.coalesceForcedRefresh,
+        forceRefresh: true,
+        includeContent: false,
+      })
+      if (requestWorkspacePath !== activeWorkspacePathRef.current) {
+        return false
+      }
+
+      const currentSnapshot = snapshotRef.current
+      if (areGitStatusSnapshotsEqual(currentSnapshot, statusSnapshot)) {
+        return false
+      }
+
+      const nextSnapshot = mergeGitStatusSnapshot(currentSnapshot, statusSnapshot)
+      snapshotRef.current = nextSnapshot
+      setSnapshot(nextSnapshot)
+      return true
+    } catch {
+      return false
+    }
+  }, [workspacePath])
 
   useEffect(() => {
     snapshotIdentityRef.current = {
@@ -182,13 +266,18 @@ export function useGitDiffSnapshot({
         return
       }
 
-      void refresh({ forceRefresh: true, silent: true })
+      void (async () => {
+        await refreshStatus()
+        if (includeContent) {
+          await refresh({ forceRefresh: true, silent: true })
+        }
+      })()
     })
 
     return () => {
       unsubscribe()
     }
-  }, [hasRepository, normalizedWorkspacePath, pollingEnabled, refresh])
+  }, [hasRepository, includeContent, normalizedWorkspacePath, pollingEnabled, refresh, refreshStatus])
 
   useEffect(() => {
     if (!pollingEnabled || !hasRepository || !workspacePath) {
@@ -200,13 +289,18 @@ export function useGitDiffSnapshot({
         return
       }
 
-      void refresh({ coalesceForcedRefresh: true, forceRefresh: true, silent: true })
+      pollCycleRef.current = (pollCycleRef.current + 1) % GIT_FULL_DIFF_POLL_EVERY
+      void refreshStatus({ coalesceForcedRefresh: true }).then((statusChanged) => {
+        if (includeContent && (statusChanged || pollCycleRef.current === 0)) {
+          void refresh({ coalesceForcedRefresh: true, forceRefresh: true, silent: true })
+        }
+      })
     }, GIT_DIFF_POLL_INTERVAL_MS)
 
     return () => {
       window.clearInterval(intervalId)
     }
-  }, [hasRepository, pollingEnabled, refresh, workspacePath])
+  }, [hasRepository, includeContent, pollingEnabled, refresh, refreshStatus, workspacePath])
 
   return {
     errorMessage,

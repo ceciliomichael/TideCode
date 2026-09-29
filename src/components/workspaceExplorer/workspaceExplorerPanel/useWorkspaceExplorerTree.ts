@@ -31,6 +31,7 @@ interface ReloadExplorerTreeOptions {
 
 interface UseWorkspaceExplorerTreeOptions {
   activeFilePath: string | null
+  isExplorerBatchImportRef: MutableRefObject<boolean>
   isExplorerEditingRef: MutableRefObject<boolean>
   isOpen: boolean
   pendingExplorerReloadRef: MutableRefObject<boolean>
@@ -41,6 +42,7 @@ interface UseWorkspaceExplorerTreeOptions {
 
 export function useWorkspaceExplorerTree({
   activeFilePath,
+  isExplorerBatchImportRef,
   isExplorerEditingRef,
   isOpen,
   pendingExplorerReloadRef,
@@ -123,16 +125,27 @@ export function useWorkspaceExplorerTree({
   }, [treeContainerRef])
 
   const reloadExplorerTree = useCallback((options?: ReloadExplorerTreeOptions) => {
-    if (isExplorerEditingRef.current && !options?.force) {
+    if ((isExplorerEditingRef.current || isExplorerBatchImportRef.current) && !options?.force) {
       pendingExplorerReloadRef.current = true
       return Promise.resolve()
+    }
+
+    if (options?.force) {
+      pendingExplorerReloadRef.current = false
     }
 
     const directoriesToReload = [ROOT_DIRECTORY_KEY, ...expandedDirectories]
     return preserveTreeScrollDuring(async () => {
       await Promise.all(directoriesToReload.map((directoryPath) => loadDirectory(directoryPath, { hideError: true })))
     })
-  }, [expandedDirectories, isExplorerEditingRef, loadDirectory, pendingExplorerReloadRef, preserveTreeScrollDuring])
+  }, [
+    expandedDirectories,
+    isExplorerBatchImportRef,
+    isExplorerEditingRef,
+    loadDirectory,
+    pendingExplorerReloadRef,
+    preserveTreeScrollDuring,
+  ])
   const reloadExplorerTreeRef = useRef(reloadExplorerTree)
 
   useEffect(() => {

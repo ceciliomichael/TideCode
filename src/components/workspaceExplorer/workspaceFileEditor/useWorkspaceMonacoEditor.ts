@@ -198,6 +198,9 @@ suspendWorkspaceMonacoTypeScriptDiagnostics(monacoInstance, scriptLanguage, work
     monacoRef.current = monacoInstance
     const mountedModel = editorInstance.getModel()
     if (mountedModel) {
+      if (mountedModel.getValue() !== value) {
+        mountedModel.setValue(value)
+      }
       retainedModelRef.current = mountedModel
       retainWorkspaceMonacoModel(mountedModel)
     }
@@ -262,7 +265,7 @@ openCodeEditor: (_source: editor.ICodeEditor, resource: Uri) => {
 
     const nextDecorations = toMonacoModelDecorations(monacoInstance, lineDecorations)
     decorationsRef.current = editorInstance.createDecorationsCollection(nextDecorations)
-}, [fileName, initialSelection, lineDecorations])
+}, [fileName, initialSelection, lineDecorations, value])
 
   const handleChange = useCallback((nextValue: string | undefined) => {
     if (nextValue !== undefined && nextValue !== value) {
@@ -273,6 +276,15 @@ openCodeEditor: (_source: editor.ICodeEditor, resource: Uri) => {
   useEffect(() => {
     applyLineDecorations()
   }, [applyLineDecorations])
+
+  useEffect(() => {
+    const model = editorRef.current?.getModel()
+    if (!model || model.getValue() === value) {
+      return
+    }
+
+    model.setValue(value)
+  }, [value])
 
   useEffect(() => {
     const editorInstance = editorRef.current

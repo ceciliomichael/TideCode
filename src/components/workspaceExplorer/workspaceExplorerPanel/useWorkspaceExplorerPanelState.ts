@@ -55,6 +55,7 @@ export function useWorkspaceExplorerPanelState({
   const [isExplorerFocused, setIsExplorerFocused] = useState(false)
   const draggedEntriesRef = useRef<WorkspaceExplorerEntry[]>([])
   const selectionAnchorEntryPathRef = useRef<string | null>(null)
+  const isExplorerBatchImportRef = useRef(false)
   const isExplorerEditingRef = useRef(false)
   const pendingExplorerReloadRef = useRef(false)
   const isWorkspaceConfigured = typeof workspaceRootPath === 'string' && workspaceRootPath.trim().length > 0
@@ -114,6 +115,7 @@ export function useWorkspaceExplorerPanelState({
     setExpandedDirectories,
   } = useWorkspaceExplorerTree({
     activeFilePath,
+    isExplorerBatchImportRef,
     isExplorerEditingRef,
     isOpen,
     pendingExplorerReloadRef,
@@ -357,6 +359,7 @@ export function useWorkspaceExplorerPanelState({
     directoryEntriesByPath,
     draggedEntriesRef,
     dropTargetDirectoryPath,
+    isExplorerBatchImportRef,
     loadDirectory,
     onImportEntry,
     onMoveEntry,

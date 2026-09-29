@@ -1,4 +1,4 @@
-import { dialog, ipcMain, shell, type BrowserWindow, type OpenDialogOptions } from 'electron'
+import { BrowserWindow, dialog, ipcMain, shell, webContents, WebContentsView, type OpenDialogOptions } from 'electron'
 import type {
   ApiKeyProviderId,
   AppendConversationMessagesInput,
@@ -57,6 +57,21 @@ import { applyTideCodeAppIcon } from '../window/branding'
 import { applyWindowTheme } from '../window/theme'
 import { createSkill, listAvailableSkills, loadSkill, updateSkill } from '../skills/service'
 import {
+  type BrowserDevToolsDockMode,
+  type BrowserDevToolsMenuInput,
+  isBrowserDevToolsDockMode,
+  type BrowserDevToolsTargetInput,
+  type OpenBrowserDevToolsInput,
+  type SetBrowserDevToolsVisibilityInput,
+  type UpdateBrowserDevToolsBoundsInput,
+} from '../../src/types/browser'
+import {
+  closeBrowserGuestDevTools,
+  openBrowserGuestDevTools,
+  setBrowserGuestDevToolsVisible,
+  updateBrowserGuestDevToolsBounds,
+} from '../window/createApplicationWindow'
+import {
   clearCompletedKanbanBoardCards,
   createKanbanBoardCard,
   createKanbanBoardTask,
@@ -92,6 +107,300 @@ export function registerCoreIpcHandlers(
   getWindow: () => BrowserWindow | null,
 onSettingsChanged?: (settings: AppSettings, input: Partial<AppSettings>, surface: AppSettingsSurface) => void | Promise<void>,
 ) {
+  let browserDevToolsMenuOverlay: {
+    onOwnerWindowBlur: () => void
+    ownerWindow: BrowserWindow
+    resolve: (mode: BrowserDevToolsDockMode | null) => void
+    resolved: boolean
+    view: WebContentsView
+  } | null = null
+
+  const closeBrowserDevToolsMenuOverlay = (mode: BrowserDevToolsDockMode | null = null) => {
+    const overlay = browserDevToolsMenuOverlay
+    if (!overlay || overlay.resolved) {
+      return
+    }
+
+    overlay.resolved = true
+    browserDevToolsMenuOverlay = null
+    if (!overlay.ownerWindow.isDestroyed()) {
+      overlay.ownerWindow.removeListener('blur', overlay.onOwnerWindowBlur)
+      try {
+        overlay.ownerWindow.contentView.removeChildView(overlay.view)
+      } catch {
+        // The owner window may be closing.
+      }
+    }
+    if (!overlay.view.webContents.isDestroyed()) {
+      overlay.view.webContents.close()
+    }
+    overlay.resolve(mode)
+  }
+
+  const resolveBrowserGuest = (senderId: number, webContentsId: number) => {
+    if (!Number.isInteger(webContentsId) || webContentsId <= 0) {
+      return null
+    }
+
+    const target = webContents.fromId(webContentsId)
+    if (
+      !target ||
+      target.isDestroyed() ||
+      target.getType() !== 'webview' ||
+      target.hostWebContents?.id !== senderId
+    ) {
+      return null
+    }
+
+    return target
+  }
+
+  ipcMain.handle('browser:openDevTools', async (event, input: OpenBrowserDevToolsInput) => {
+    if (
+      !input ||
+      !Number.isInteger(input.webContentsId) ||
+      input.webContentsId <= 0 ||
+      !isBrowserDevToolsDockMode(input.mode)
+    ) {
+      return false
+    }
+
+    const target = resolveBrowserGuest(event.sender.id, input.webContentsId)
+    const activeWindow = getWindow()
+    if (!target || !activeWindow || activeWindow.isDestroyed()) {
+      return false
+    }
+
+    if (
+      input.mode !== 'undocked' &&
+      (!input.bounds ||
+        !Number.isFinite(input.bounds.x) ||
+        !Number.isFinite(input.bounds.y) ||
+        !Number.isFinite(input.bounds.width) ||
+        !Number.isFinite(input.bounds.height))
+    ) {
+      return false
+    }
+
+    await openBrowserGuestDevTools(target, input.mode, activeWindow, input.bounds)
+    return true
+  })
+  ipcMain.handle('browser:showDevToolsDockMenu', async (event, input: BrowserDevToolsMenuInput) => {
+    const activeWindow = getWindow()
+    if (
+      !activeWindow ||
+      activeWindow.isDestroyed() ||
+      activeWindow.webContents.id !== event.sender.id ||
+      !input ||
+      !isBrowserDevToolsDockMode(input.mode) ||
+      !input.anchor ||
+      !Number.isFinite(input.anchor.x) ||
+      !Number.isFinite(input.anchor.y) ||
+      !Number.isFinite(input.anchor.width) ||
+      !Number.isFinite(input.anchor.height) ||
+      !input.theme
+    ) {
+      return null
+    }
+
+    if (
+      browserDevToolsMenuOverlay &&
+      !browserDevToolsMenuOverlay.resolved &&
+      browserDevToolsMenuOverlay.ownerWindow === activeWindow
+    ) {
+      closeBrowserDevToolsMenuOverlay()
+      return null
+    }
+
+    const sanitizeColor = (value: unknown, fallback: string) => {
+      if (typeof value !== 'string') {
+        return fallback
+      }
+      const trimmed = value.trim()
+      return trimmed && trimmed.length <= 160 ? trimmed : fallback
+    }
+    const escapeHtml = (value: string) => value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;')
+
+    const background = sanitizeColor(input.theme.background, '#171718')
+    const border = sanitizeColor(input.theme.border, '#36363a')
+    const foreground = sanitizeColor(input.theme.foreground, '#e7e7e7')
+    const activeSurface = sanitizeColor(input.theme.activeSurface, '#223630')
+    const hoverSurface = sanitizeColor(input.theme.hoverSurface, '#27272a')
+
+    const contentBounds = activeWindow.getContentBounds()
+
+    const popup = new WebContentsView({
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    })
+    popup.setBackgroundColor('#00000000')
+    popup.setVisible(false)
+    activeWindow.contentView.addChildView(popup)
+    popup.setBounds({
+      x: 0,
+      y: 0,
+      width: contentBounds.width,
+      height: contentBounds.height,
+    })
+
+    const menuRight = Math.max(
+      8,
+      Math.round(contentBounds.width - (input.anchor.x + input.anchor.width)),
+    )
+    const menuTop = Math.max(8, Math.round(input.anchor.y + input.anchor.height + 4))
+
+    const options: Array<{ label: string; mode: BrowserDevToolsDockMode }> = [
+      { label: 'Right sidebar', mode: 'right' },
+      { label: 'Bottom', mode: 'bottom' },
+      { label: 'Floating', mode: 'undocked' },
+    ]
+    const optionHtml = options.map((option) => {
+      const active = option.mode === input.mode
+      return [
+        `<a class="option${active ? ' active' : ''}" href="https://tidecode.local/devtools/${option.mode}">`,
+        `<span>${escapeHtml(option.label)}</span>`,
+        '</a>',
+      ].join('')
+    }).join('')
+
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; background: transparent; overflow: hidden; }
+    body { padding: 0; font-family: "Google Sans Flex", "Segoe UI", sans-serif; color: ${escapeHtml(foreground)}; }
+    .backdrop {
+      position: absolute;
+      inset: 0;
+      display: block;
+      background: transparent;
+    }
+    .menu {
+      position: absolute;
+      z-index: 1;
+      top: ${menuTop}px;
+      right: ${menuRight}px;
+      width: max-content;
+      height: auto;
+      padding: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      border: 1px solid ${escapeHtml(border)};
+      border-radius: 12px;
+      background: ${escapeHtml(background)};
+    }
+    .option {
+      display: flex;
+      height: 36px;
+      flex: 0 0 36px;
+      align-items: center;
+      padding: 0 10px;
+      border-radius: 8px;
+      color: ${escapeHtml(foreground)};
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .option:hover { background: ${escapeHtml(hoverSurface)}; }
+    .option.active { background: ${escapeHtml(activeSurface)}; }
+  </style>
+</head>
+<body>
+  <a class="backdrop" href="https://tidecode.local/devtools/close" aria-label="Close DevTools menu"></a>
+  <div class="menu">${optionHtml}</div>
+</body>
+</html>`
+
+    return new Promise<BrowserDevToolsDockMode | null>((resolve) => {
+      const onOwnerWindowBlur = () => finish(null)
+      browserDevToolsMenuOverlay = {
+        onOwnerWindowBlur,
+        ownerWindow: activeWindow,
+        resolve,
+        resolved: false,
+        view: popup,
+      }
+      activeWindow.on('blur', onOwnerWindowBlur)
+
+      const finish = (mode: BrowserDevToolsDockMode | null) => {
+        if (browserDevToolsMenuOverlay?.view !== popup) {
+          return
+        }
+        closeBrowserDevToolsMenuOverlay(mode)
+      }
+
+      popup.webContents.on('will-navigate', (navigationEvent, url) => {
+        const match = /^https:\/\/tidecode\.local\/devtools\/(right|bottom|undocked|close)$/u.exec(url)
+        if (!match) {
+          return
+        }
+        navigationEvent.preventDefault()
+        const mode = match[1]
+        finish(mode !== 'close' && isBrowserDevToolsDockMode(mode) ? mode : null)
+      })
+      popup.webContents.once('destroyed', () => {
+        if (browserDevToolsMenuOverlay?.view === popup) {
+          if (!activeWindow.isDestroyed()) {
+            activeWindow.removeListener('blur', onOwnerWindowBlur)
+          }
+          browserDevToolsMenuOverlay.resolved = true
+          browserDevToolsMenuOverlay = null
+          resolve(null)
+        }
+      })
+      void popup.webContents.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+        .then(() => {
+          if (!popup.webContents.isDestroyed() && browserDevToolsMenuOverlay?.view === popup) {
+            popup.setVisible(true)
+            popup.webContents.focus()
+          }
+        })
+        .catch(() => finish(null))
+    })
+  })
+  ipcMain.handle('browser:closeDevTools', async (event, input: BrowserDevToolsTargetInput) => {
+    const target = resolveBrowserGuest(event.sender.id, input?.webContentsId)
+    if (!target) {
+      return false
+    }
+    closeBrowserGuestDevTools(target)
+    return true
+  })
+  ipcMain.handle('browser:updateDevToolsBounds', async (event, input: UpdateBrowserDevToolsBoundsInput) => {
+    const target = resolveBrowserGuest(event.sender.id, input?.webContentsId)
+    if (
+      !target ||
+      !input.bounds ||
+      !Number.isFinite(input.bounds.x) ||
+      !Number.isFinite(input.bounds.y) ||
+      !Number.isFinite(input.bounds.width) ||
+      !Number.isFinite(input.bounds.height)
+    ) {
+      return false
+    }
+    return updateBrowserGuestDevToolsBounds(target.id, input.bounds)
+  })
+  ipcMain.handle('browser:setDevToolsVisible', async (event, input: SetBrowserDevToolsVisibilityInput) => {
+    const target = resolveBrowserGuest(event.sender.id, input?.webContentsId)
+    if (!target || typeof input.visible !== 'boolean') {
+      return false
+    }
+    return setBrowserGuestDevToolsVisible(target.id, input.visible)
+  })
+
   // Synchronous channel: lets the renderer read the draft path on first paint without an async round-trip
   ipcMain.on('history:getDraftAgentContextPathSync', (event) => {
     event.returnValue = getDraftAgentContextPath()

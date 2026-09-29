@@ -29,6 +29,9 @@ const APPLY_PATCH_DESCRIPTION = [
   'Use *** Update File for edits to an existing path.',
   'Update hunks use @@ context followed by lines prefixed with a space, -, or +.',
   'Put hunks for each file in source top-to-bottom order. The patch is verified completely before any file is changed; matching tolerates line-ending and indentation whitespace differences while preserving actual source context.',
+  'Before modifying an existing file, inspect the exact current source region that will be used as the patch anchor. Build removal and context lines only from current tool-returned source, never from memory, inferred structure, or a partial snippet.',
+  'For a multi-file patch, every hunk must be backed by current exact source for that file. If one file or region is uncertain, leave it out, inspect it first, then patch it separately instead of risking the whole transaction.',
+  'If a patch is rejected for a context mismatch, stale anchor, or partial source line, do not retry the same hunk. Re-read the affected region, rebuild that hunk from the returned current source, and retry only after the anchor is exact.',
   'Use the latest read content as context and include unchanged lines around each change. Do not use this for an unchanged patch.',
 ].join(' ')
 

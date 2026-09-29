@@ -6,7 +6,7 @@ import { resolveRepositoryRoot } from './repositoryContext'
 import { SourceControlWatchSubscriptions } from './sourceControlWatchSubscriptions'
 import { shouldIgnoreGitSourceControlWatchPath } from './sourceControlWatchFilter'
 
-const SOURCE_CONTROL_CHANGE_DEBOUNCE_MS = 120
+const SOURCE_CONTROL_CHANGE_DEBOUNCE_MS = 50
 
 interface SourceControlWatcherState {
   pendingEmitTimerId: ReturnType<typeof setTimeout> | null

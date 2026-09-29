@@ -1,6 +1,28 @@
 import { Globe2, Plus, X } from 'lucide-react'
+import { useState } from 'react'
 import type { WheelEvent as ReactWheelEvent } from 'react'
 import type { BrowserTab } from './browserTabUtils'
+
+function BrowserTabFavicon({ faviconUrl }: { faviconUrl: string }) {
+  const [failedUrl, setFailedUrl] = useState('')
+  const showFavicon = Boolean(faviconUrl) && failedUrl !== faviconUrl
+
+  return (
+    <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+      {showFavicon ? (
+        <img
+          src={faviconUrl}
+          alt=""
+          draggable={false}
+          className="max-h-full max-w-full object-contain"
+          onError={() => setFailedUrl(faviconUrl)}
+        />
+      ) : (
+        <Globe2 size={14} />
+      )}
+    </span>
+  )
+}
 
 interface BrowserTabsBarProps {
   activeTabId: string
@@ -53,7 +75,7 @@ export function BrowserTabsBar({
                     : 'border-t-2 border-t-transparent bg-background text-muted-foreground hover:bg-surface-muted hover:text-foreground',
                 ].join(' ')}
               >
-                <Globe2 size={14} className="shrink-0" />
+                <BrowserTabFavicon faviconUrl={tab.faviconUrl} />
                 <span className="min-w-0 flex-1 truncate text-left">{tab.title}</span>
               </button>
               <button

@@ -1,98 +1,105 @@
-import { app, clipboard } from 'electron'
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { clipboard } from 'electron'
+import { spawn } from 'node:child_process'
 import { readClipboardFilesDirect } from './windowsDropFilesParser.ts'
 
-class WindowsClipboardReader {
-  private ps: ChildProcessWithoutNullStreams | null = null
-  private pendingRequests: Array<(paths: string[]) => void> = []
-  private currentPaths: string[] = []
-  private isShuttingDown = false
+const WINDOWS_CLIPBOARD_READ_TIMEOUT_MS = 2500
+const WINDOWS_CLIPBOARD_READ_SCRIPT = `
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Windows.Forms
+if ([System.Windows.Forms.Clipboard]::ContainsFileDropList()) {
+    $paths = @([System.Windows.Forms.Clipboard]::GetFileDropList() | ForEach-Object { [string]$_ })
+    ConvertTo-Json -Compress -InputObject $paths
+} else {
+    Write-Output '[]'
+}
+`
 
-  public constructor() {
-    app.on('quit', () => {
-      this.isShuttingDown = true
-      if (this.ps) {
-        this.ps.kill()
+function parseNativeFileDropList(output: string) {
+  const trimmedOutput = output.trim()
+  if (!trimmedOutput) {
+    return []
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(trimmedOutput)
+    const paths = Array.isArray(parsed) ? parsed : typeof parsed === 'string' ? [parsed] : []
+    return Array.from(
+      new Set(
+        paths
+          .filter((value): value is string => typeof value === 'string')
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0),
+      ),
+    )
+  } catch (error) {
+    console.warn('Failed to parse native Windows clipboard file list', error)
+    return []
+  }
+}
+
+class WindowsClipboardReader {
+  private readNativeFileDropList(): Promise<string[]> {
+    return new Promise((resolve) => {
+      const process = spawn(
+        'powershell',
+        ['-STA', '-NoProfile', '-NonInteractive', '-Command', WINDOWS_CLIPBOARD_READ_SCRIPT],
+        { windowsHide: true },
+      )
+      let stdout = ''
+      let settled = false
+      const finish = (paths: string[]) => {
+        if (settled) {
+          return
+        }
+        settled = true
+        clearTimeout(timeoutId)
+        resolve(paths)
       }
+      const timeoutId = setTimeout(() => {
+        process.kill()
+        finish([])
+      }, WINDOWS_CLIPBOARD_READ_TIMEOUT_MS)
+
+      process.stdout.on('data', (data: Buffer) => {
+        stdout += data.toString('utf8')
+      })
+      process.on('error', (error) => {
+        console.warn('Native Windows clipboard reader failed to start', error)
+        finish([])
+      })
+      process.on('close', (exitCode) => {
+        if (exitCode !== 0) {
+          finish([])
+          return
+        }
+        finish(parseNativeFileDropList(stdout))
+      })
     })
   }
 
-  private getProcess() {
-    if (!this.ps && !this.isShuttingDown) {
-      this.ps = spawn('powershell', ['-STA', '-NoProfile', '-Command', '-'], { windowsHide: true })
-      // Initialize UTF-8 encoding for PowerShell stdout
-      this.ps.stdin.write('[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $OutputEncoding = [System.Text.Encoding]::UTF8\n')
-      this.ps.stdout.on('data', (data: Buffer) => {
-        const lines = data.toString('utf8').split(/\r?\n/)
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (trimmed === 'EOF') {
-            const req = this.pendingRequests.shift()
-            if (req) req([...this.currentPaths])
-            this.currentPaths = []
-          } else if (trimmed.length > 0) {
-            this.currentPaths.push(trimmed)
-          }
-        }
-      })
-      this.ps.on('exit', () => {
-        this.ps = null
-        for (const req of this.pendingRequests) {
-          req([])
-        }
-        this.pendingRequests = []
-      })
-    }
-    return this.ps
-  }
-
   public async readFiles(): Promise<string[]> {
-    // 1. Direct memory reading first (zero-latency < 1ms)
+    let directPaths: string[] = []
+
+    // Direct memory reading is authoritative when it already contains
+    // multiple paths. A single FileName/FileNameW path can be only the
+    // focused Explorer item from a larger Windows selection, so confirm it
+    // against the native file-drop list before returning it.
     try {
-      const directPaths = readClipboardFilesDirect(clipboard)
-      if (directPaths.length > 0) {
+      directPaths = readClipboardFilesDirect(clipboard)
+      if (directPaths.length > 1) {
         return directPaths
       }
     } catch (directError) {
       console.warn('Direct clipboard buffer parsing encountered an issue, trying fallback:', directError)
     }
 
-    // 2. PowerShell fallback only if direct memory parsing returned no files
-    return new Promise((resolve) => {
-      if (this.isShuttingDown) {
-        resolve([])
-        return
-      }
-
-      const timeoutId = setTimeout(() => {
-        const index = this.pendingRequests.indexOf(resolve)
-        if (index !== -1) {
-          this.pendingRequests.splice(index, 1)
-          resolve([])
-        }
-      }, 1500)
-
-      this.pendingRequests.push((paths) => {
-        clearTimeout(timeoutId)
-        resolve(paths)
-      })
-
-      const ps = this.getProcess()
-      if (ps) {
-        ps.stdin.write(`
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.Encoding]::UTF8
-Add-Type -AssemblyName System.Windows.Forms
-if ([System.Windows.Forms.Clipboard]::ContainsFileDropList()) {
-    $files = [System.Windows.Forms.Clipboard]::GetFileDropList()
-    foreach ($file in $files) { Write-Host $file }
-}
-Write-Host "EOF"\n`)
-      } else {
-        clearTimeout(timeoutId)
-        resolve([])
-      }
-    })
+    // Query the native Windows file-drop list in an isolated STA process.
+    // Keeping each read independent avoids stale/partial output from a shared
+    // PowerShell session and gives Windows Explorer multi-selection semantics.
+    const nativePaths = await this.readNativeFileDropList()
+    return nativePaths.length > 0 ? nativePaths : directPaths
   }
 }
 

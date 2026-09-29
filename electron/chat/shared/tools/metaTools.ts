@@ -60,7 +60,7 @@ const CODE_MODE_TOOL_ROUTING = [
   '- `tools.list`: inspect immediate entries of one directory.',
   '- `tools.glob`: discover files by path or filename pattern.',
   '- `tools.grep`: search workspace text, symbols, imports, or references.',
-  '- Direct model-facing `apply_patch`: prefer this for a standalone targeted patch; its raw patch string bypasses Code Mode source parsing entirely.',
+  '- Direct model-facing `apply_patch`: prefer this for a standalone targeted patch; its raw patch string bypasses Code Mode source parsing entirely. Before patching an existing file, inspect the exact current source region used by each hunk. For multi-file patches, every hunk must have current exact source evidence; split out any uncertain file and read it first. After a context-mismatch rejection, re-read the affected region and rebuild the hunk instead of retrying the same stale anchor.',
   '- Direct model-facing `write`: create a new text file or intentionally replace a complete file. Its structured `{ path, content }` input bypasses Code Mode parsing entirely; do not embed complete file contents in code_mode code.',
   '- `tools.execute_terminal`: run an actual command/process such as tests, typecheck, build, package manager, compiler, Git command, or app/script. Terminal results expose `session_id` directly, and completed commands expose `exit_code` directly. Never use shell, PowerShell, Python, or Node just to read, search, edit, or write workspace files when the structured APIs above apply.',
   '- `tools.read_terminal`: collect new output from an existing terminal session instead of starting the command again; it returns early when input is detected.',
