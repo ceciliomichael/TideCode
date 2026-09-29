@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.9 - Corrected model reasoning and release packaging
+
+TideCode 1.4.9 corrects the OpenAI and Codex reasoning profiles and completes the release setup needed for reliable cross-platform builds.
+
+- Removes unsupported `none` reasoning options from affected OpenAI and Codex model profiles while keeping the refreshed model catalog.
+- Includes the current project agent guidance, architecture/design documentation, and updated workspace memory index.
+- Installs the required X11 development packages on Linux release runners so `uiohook-napi` can rebuild successfully with the upgraded Electron toolchain.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.8 - Updated runtime and more reliable AI tooling
 
 TideCode 1.4.8 refreshes the application stack and improves reliability across AI tools, workspace interactions, and the packaged CLI runtime.
