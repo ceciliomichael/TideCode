@@ -11,13 +11,13 @@ const EXPECTED_LIMITS: Record<ChatProviderId, Record<string, number | undefined>
     'claude-sonnet-5': 128000,
   },
   codex: {
-    'gpt-5.5': 128000,
-    'gpt-6-luna': 128000,
-    'gpt-6-sol': 128000,
     'gpt-5.6-luna': 128000,
     'gpt-5.6-sol': 128000,
     'gpt-5.6-terra': 128000,
     'gpt-6-astra': 128000,
+    'gpt-6-luna': 128000,
+    'gpt-6-sol': 128000,
+    'gpt-6.1-sol': 128000,
   },
   deepseek: {
     'deepseek-flash': 384000,
@@ -33,13 +33,13 @@ const EXPECTED_LIMITS: Record<ChatProviderId, Record<string, number | undefined>
     'mistral-small-latest': undefined,
   },
   openai: {
-    'gpt-5.5': 128000,
-    'gpt-6-luna': 128000,
-    'gpt-6-sol': 128000,
     'gpt-5.6-luna': 128000,
     'gpt-5.6-sol': 128000,
     'gpt-5.6-terra': 128000,
     'gpt-6-astra': 128000,
+    'gpt-6-luna': 128000,
+    'gpt-6-sol': 128000,
+    'gpt-6.1-sol': 128000,
   },
 }
 

@@ -57,7 +57,7 @@ const CODE_MODE_SOURCE_INPUT_SCHEMA = {
       additionalProperties: { type: 'string' },
       description: 'Optional opaque exact-text payloads available inside Code Mode through the read-only payloads global. Use this only for arbitrary data needed by an inner Code Mode capability; targeted patches use direct apply_patch and complete-file writes use direct write.',
       maxProperties: 64,
-      propertyNames: { maxLength: 128, minLength: 1 },
+      propertyNames: { maxLength: 128, minLength: 1, type: 'string' },
       type: 'object',
     },
   },

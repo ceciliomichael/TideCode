@@ -1712,7 +1712,9 @@ test('every provider uses the same structured Code Mode source and payload schem
         assert.notEqual(codeModeTool.type, 'provider')
         const inputSchema = await asSchema(codeModeTool.inputSchema).jsonSchema as {
           anyOf?: unknown
-          properties?: Record<string, unknown>
+          properties?: Record<string, {
+            propertyNames?: { type?: string }
+          }>
           required?: string[]
           type?: string
         }
@@ -1725,6 +1727,7 @@ test('every provider uses the same structured Code Mode source and payload schem
           { required: ['source'] },
         ])
         assert.ok(inputSchema.properties && 'payloads' in inputSchema.properties)
+        assert.equal(inputSchema.properties?.payloads?.propertyNames?.type, 'string')
 
         const result = await codeModeTool.execute?.(
           {
