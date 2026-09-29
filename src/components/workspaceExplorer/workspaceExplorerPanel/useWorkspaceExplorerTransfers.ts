@@ -25,6 +25,7 @@ interface UseWorkspaceExplorerTransfersOptions {
   directoryEntriesByPath: Record<string, WorkspaceExplorerEntry[]>
   draggedEntriesRef: MutableRefObject<WorkspaceExplorerEntry[]>
   dropTargetDirectoryPath: string | null
+  isExplorerBatchImportRef: MutableRefObject<boolean>
   loadDirectory: (relativePath?: string, options?: { hideError?: boolean }) => Promise<void>
   onImportEntry: (sourcePath: string, targetDirectoryRelativePath: string) => Promise<void>
   onMoveEntry: (relativePath: string, targetDirectoryRelativePath: string) => Promise<void>
@@ -49,6 +50,7 @@ export function useWorkspaceExplorerTransfers({
   directoryEntriesByPath,
   draggedEntriesRef,
   dropTargetDirectoryPath,
+  isExplorerBatchImportRef,
   loadDirectory,
   onImportEntry,
   onMoveEntry,
@@ -166,22 +168,39 @@ export function useWorkspaceExplorerTransfers({
       }
 
       setDropTargetDirectoryPath(null)
+      isExplorerBatchImportRef.current = true
+      let importError: unknown = null
       try {
         for (const sourcePath of uniqueSourcePaths) {
           await onImportEntry(sourcePath, targetDirectoryRelativePath)
         }
-        setErrorMessage(null)
-        setSelectedEntryPaths(new Set())
-        const loadOperations = [reloadExplorerTree({ force: true })]
-        if (targetDirectoryRelativePath !== ROOT_DIRECTORY_KEY) {
-          loadOperations.push(loadDirectory(targetDirectoryRelativePath))
-        }
-        await Promise.all(loadOperations)
       } catch (error) {
-        setErrorMessage(toUserFacingErrorMessage(error, 'The workspace item could not be imported.'))
+        importError = error
+      } finally {
+        isExplorerBatchImportRef.current = false
+        try {
+          const loadOperations = [reloadExplorerTree({ force: true })]
+          if (targetDirectoryRelativePath !== ROOT_DIRECTORY_KEY) {
+            loadOperations.push(loadDirectory(targetDirectoryRelativePath, { hideError: true }))
+          }
+          await Promise.all(loadOperations)
+        } catch (error) {
+          if (!importError) {
+            importError = error
+          }
+        }
       }
+
+      if (importError) {
+        setErrorMessage(toUserFacingErrorMessage(importError, 'The workspace item could not be imported.'))
+        return
+      }
+
+      setErrorMessage(null)
+      setSelectedEntryPaths(new Set())
     },
     [
+      isExplorerBatchImportRef,
       loadDirectory,
       onImportEntry,
       reloadExplorerTree,

@@ -109,7 +109,19 @@ export function registerWorkspaceIpcHandlers() {
     },
   )
   ipcMain.handle('clipboard:readFiles', async () => {
-    // 1. Direct memory binary reading (< 1ms)
+    if (process.platform === 'win32') {
+      try {
+        const paths = await windowsClipboard.readFiles()
+        if (paths.length > 0) {
+          return paths
+        }
+      } catch (error) {
+        console.error('Failed to read Windows clipboard files', error)
+      }
+    }
+
+    // Direct memory binary reading remains the fast path on non-Windows
+    // platforms and a fallback if the Windows-specific reader returns nothing.
     try {
       const directPaths = readClipboardFilesDirect(clipboard)
       if (directPaths.length > 0) {
@@ -117,20 +129,6 @@ export function registerWorkspaceIpcHandlers() {
       }
     } catch (directError) {
       console.warn('Direct clipboard extraction failed, trying fallbacks:', directError)
-    }
-
-    // 2. Windows-specific fallback if direct buffers were not populated
-    if (process.platform === 'win32') {
-      if (clipboard.has('FileNameW') || clipboard.has('FileName')) {
-        try {
-          const paths = await windowsClipboard.readFiles()
-          if (paths && paths.length > 0) {
-            return paths
-          }
-        } catch (e) {
-          console.error('Failed to read files from persistent clipboard reader', e)
-        }
-      }
     }
 
     const uriList = clipboard.read('text/uri-list')

@@ -66,6 +66,7 @@ import type { TideCodeMcpApi, McpAddServerInput, McpState } from '../src/types/m
 import type { TideCodeSkillsApi } from '../src/types/skills'
 import type { TideCodeUpdatesApi } from '../src/types/updates'
 import type { RemoteBridgeEvent, TideCodeRemoteHostBridgeApi } from '../src/remote/protocol'
+import type { TideCodeBrowserDevToolsApi } from '../src/types/browser'
 
 // --------- Expose some API to the Renderer process ---------
 contextBridge.exposeInMainWorld('ipcRenderer', {
@@ -383,6 +384,35 @@ const clipboardApi = {
   readFiles: () => ipcRenderer.invoke('clipboard:readFiles'),
 }
 
+const browserDevToolsApi: TideCodeBrowserDevToolsApi = {
+  close: (input) => ipcRenderer.invoke('browser:closeDevTools', input),
+  onClosed: (listener) => {
+    const wrappedListener = (_event: unknown, webContentsId: number) => listener(webContentsId)
+    ipcRenderer.on('browser:devToolsClosed', wrappedListener)
+    return () => {
+      ipcRenderer.off('browser:devToolsClosed', wrappedListener)
+    }
+  },
+  onReady: (listener) => {
+    const wrappedListener = (_event: unknown, webContentsId: number) => listener(webContentsId)
+    ipcRenderer.on('browser:devToolsReady', wrappedListener)
+    return () => {
+      ipcRenderer.off('browser:devToolsReady', wrappedListener)
+    }
+  },
+  onShortcut: (listener) => {
+    const wrappedListener = (_event: unknown, webContentsId: number) => listener(webContentsId)
+    ipcRenderer.on('browser:devToolsShortcut', wrappedListener)
+    return () => {
+      ipcRenderer.off('browser:devToolsShortcut', wrappedListener)
+    }
+  },
+  open: (input) => ipcRenderer.invoke('browser:openDevTools', input),
+  showDockMenu: (input) => ipcRenderer.invoke('browser:showDevToolsDockMenu', input),
+  setVisible: (input) => ipcRenderer.invoke('browser:setDevToolsVisible', input),
+  updateBounds: (input) => ipcRenderer.invoke('browser:updateDevToolsBounds', input),
+}
+
 const terminalApi: TideCodeTerminalApi = {
   attachSession: (input) => ipcRenderer.invoke('terminal:attachSession', input),
   closeSession: (input: CloseTerminalSessionInput) => ipcRenderer.invoke('terminal:closeSession', input),
@@ -445,6 +475,7 @@ contextBridge.exposeInMainWorld('tidecodeSkills', skillsApi)
 contextBridge.exposeInMainWorld('tidecodeChat', chatApi)
 contextBridge.exposeInMainWorld('tidecodeRuns', runsApi)
 contextBridge.exposeInMainWorld('tidecodeGit', gitApi)
+contextBridge.exposeInMainWorld('tidecodeBrowserDevTools', browserDevToolsApi)
 contextBridge.exposeInMainWorld('tidecodeFileDrop', fileDropApi)
 contextBridge.exposeInMainWorld('tidecodeClipboard', clipboardApi)
 contextBridge.exposeInMainWorld('tidecodeWorkspace', workspaceApi)

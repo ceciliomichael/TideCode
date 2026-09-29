@@ -2,6 +2,9 @@ import {
   BrowserWindow,
   screen,
   shell,
+  WebContentsView,
+  type Rectangle,
+  type WebContents,
   type BrowserWindowConstructorOptions,
 } from 'electron'
 import { existsSync } from 'node:fs'
@@ -17,12 +20,258 @@ import {
   getWindowBackgroundColor,
   syncNativeThemeSource,
 } from './theme'
+import type { BrowserDevToolsDockMode } from '../../src/types/browser'
 
 const MIN_WINDOW_WIDTH = 900
 const MIN_WINDOW_HEIGHT = 600
 const DEFAULT_WINDOW_WIDTH = 1440
 const DEFAULT_WINDOW_HEIGHT = 900
 const WINDOW_SCREEN_MARGIN = 32
+const browserGuestDevToolsModes = new Map<number, BrowserDevToolsDockMode>()
+const browserGuestDevToolsTransitions = new Set<number>()
+const EMBEDDED_BROWSER_POINTER_FOCUS_SCRIPT = `
+(() => {
+  const root = document.documentElement
+  if (!root || root.dataset.tidecodeFocusTracking === 'true') return
+
+  root.dataset.tidecodeFocusTracking = 'true'
+  const properties = [
+    'outline',
+    'outline-offset',
+    'box-shadow',
+    'border-top-color',
+    'border-right-color',
+    'border-bottom-color',
+    'border-left-color',
+  ]
+  let activeOverrides = []
+
+  const restoreOverrides = () => {
+    for (const entry of activeOverrides) {
+      if (!entry.element?.style) continue
+      for (const original of entry.originals) {
+        if (original.value) {
+          entry.element.style.setProperty(original.property, original.value, original.priority)
+        } else {
+          entry.element.style.removeProperty(original.property)
+        }
+      }
+    }
+    activeOverrides = []
+  }
+
+  addEventListener('pointerdown', (event) => {
+    const snapshot = []
+    for (const candidate of event.composedPath()) {
+      if (!(candidate instanceof HTMLElement || candidate instanceof SVGElement)) continue
+      const computed = getComputedStyle(candidate)
+      snapshot.push({
+        element: candidate,
+        values: properties.map((property) => [property, computed.getPropertyValue(property)]),
+      })
+    }
+
+    restoreOverrides()
+    requestAnimationFrame(() => {
+      activeOverrides = snapshot.map(({ element, values }) => {
+        const originals = values.map(([property]) => ({
+          property,
+          value: element.style.getPropertyValue(property),
+          priority: element.style.getPropertyPriority(property),
+        }))
+        for (const [property, value] of values) {
+          element.style.setProperty(property, value, 'important')
+        }
+        return { element, originals }
+      })
+    })
+  }, true)
+
+  addEventListener('keydown', (event) => {
+    if (event.key === 'Tab') {
+      restoreOverrides()
+    }
+  }, true)
+  addEventListener('blur', restoreOverrides, true)
+})()
+`
+
+interface BrowserGuestDevToolsViewEntry {
+  ownerWindow: BrowserWindow
+  ready: boolean
+  visible: boolean
+  view: WebContentsView
+}
+
+const browserGuestDevToolsViews = new Map<number, BrowserGuestDevToolsViewEntry>()
+
+function normalizeBrowserDevToolsBounds(bounds: Rectangle): Rectangle {
+  return {
+    x: Math.max(0, Math.round(bounds.x)),
+    y: Math.max(0, Math.round(bounds.y)),
+    width: Math.max(1, Math.round(bounds.width)),
+    height: Math.max(1, Math.round(bounds.height)),
+  }
+}
+
+function destroyBrowserGuestDevToolsView(guestWebContentsId: number) {
+  const entry = browserGuestDevToolsViews.get(guestWebContentsId)
+  if (!entry) {
+    return
+  }
+
+  browserGuestDevToolsViews.delete(guestWebContentsId)
+  try {
+    entry.ownerWindow.contentView.removeChildView(entry.view)
+  } catch {
+    // The owner window may already be closing.
+  }
+  if (!entry.view.webContents.isDestroyed()) {
+    entry.view.webContents.close()
+  }
+}
+
+function notifyBrowserGuestDevToolsReady(guestWebContentsId: number) {
+  const entry = browserGuestDevToolsViews.get(guestWebContentsId)
+  if (!entry || entry.ownerWindow.isDestroyed()) {
+    return
+  }
+
+  entry.ready = true
+  if (entry.visible) {
+    entry.view.setVisible(true)
+  }
+  entry.ownerWindow.webContents.send('browser:devToolsReady', guestWebContentsId)
+}
+
+async function closeDevToolsForTransition(guestWebContents: WebContents) {
+  if (!guestWebContents.isDevToolsOpened()) {
+    return
+  }
+
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(resolve, 250)
+    guestWebContents.once('devtools-closed', () => {
+      clearTimeout(timeout)
+      resolve()
+    })
+    guestWebContents.closeDevTools()
+  })
+}
+
+export async function openBrowserGuestDevTools(
+  guestWebContents: WebContents,
+  mode: BrowserDevToolsDockMode,
+  ownerWindow: BrowserWindow,
+  bounds?: Rectangle,
+) {
+  const previousMode = browserGuestDevToolsModes.get(guestWebContents.id)
+  browserGuestDevToolsModes.set(guestWebContents.id, mode)
+  const isModeTransition = previousMode !== undefined && previousMode !== mode
+  if (isModeTransition) {
+    browserGuestDevToolsTransitions.add(guestWebContents.id)
+  }
+
+  try {
+    if (mode === 'undocked') {
+      if (browserGuestDevToolsViews.has(guestWebContents.id)) {
+        await closeDevToolsForTransition(guestWebContents)
+        destroyBrowserGuestDevToolsView(guestWebContents.id)
+      } else if (guestWebContents.isDevToolsOpened() && previousMode !== mode) {
+        await closeDevToolsForTransition(guestWebContents)
+      }
+      guestWebContents.openDevTools({ mode: 'undocked', activate: true })
+      return
+    }
+
+    if (!bounds) {
+      throw new Error('Docked Browser DevTools require bounds.')
+    }
+
+    const normalizedBounds = normalizeBrowserDevToolsBounds(bounds)
+    let entry = browserGuestDevToolsViews.get(guestWebContents.id)
+
+    if (!entry || entry.ownerWindow.isDestroyed()) {
+      if (guestWebContents.isDevToolsOpened()) {
+        await closeDevToolsForTransition(guestWebContents)
+      }
+      destroyBrowserGuestDevToolsView(guestWebContents.id)
+
+      const view = new WebContentsView({
+        webPreferences: {
+          sandbox: true,
+        },
+      })
+      view.setBackgroundColor(ownerWindow.getBackgroundColor())
+      view.setVisible(false)
+      ownerWindow.contentView.addChildView(view)
+      entry = { ownerWindow, ready: false, visible: false, view }
+      browserGuestDevToolsViews.set(guestWebContents.id, entry)
+      let readyScheduled = false
+      let readyFallback: ReturnType<typeof setTimeout> | null = null
+      const handleReady = () => {
+        if (readyScheduled) {
+          return
+        }
+        readyScheduled = true
+        if (readyFallback) {
+          clearTimeout(readyFallback)
+          readyFallback = null
+        }
+        setTimeout(() => notifyBrowserGuestDevToolsReady(guestWebContents.id), 32)
+      }
+      readyFallback = setTimeout(handleReady, 1000)
+      view.webContents.once('did-finish-load', handleReady)
+      guestWebContents.setDevToolsWebContents(view.webContents)
+      guestWebContents.openDevTools({ mode: 'detach', activate: true })
+    } else {
+      if (!guestWebContents.isDevToolsOpened()) {
+        guestWebContents.setDevToolsWebContents(entry.view.webContents)
+        guestWebContents.openDevTools({ mode: 'detach', activate: true })
+      }
+    }
+
+    entry.view.setBounds(normalizedBounds)
+    if (entry.ready) {
+      if (!entry.ownerWindow.isDestroyed()) {
+        entry.ownerWindow.webContents.send('browser:devToolsReady', guestWebContents.id)
+      }
+    }
+  } finally {
+    if (isModeTransition) {
+      setTimeout(() => browserGuestDevToolsTransitions.delete(guestWebContents.id), 100)
+    }
+  }
+}
+
+export function updateBrowserGuestDevToolsBounds(guestWebContentsId: number, bounds: Rectangle) {
+  const entry = browserGuestDevToolsViews.get(guestWebContentsId)
+  if (!entry || entry.ownerWindow.isDestroyed()) {
+    return false
+  }
+  entry.view.setBounds(normalizeBrowserDevToolsBounds(bounds))
+  return true
+}
+
+export function setBrowserGuestDevToolsVisible(guestWebContentsId: number, visible: boolean) {
+  const entry = browserGuestDevToolsViews.get(guestWebContentsId)
+  if (!entry || entry.ownerWindow.isDestroyed()) {
+    return false
+  }
+  entry.visible = visible
+  entry.view.setVisible(visible && entry.ready)
+  return true
+}
+
+export function closeBrowserGuestDevTools(guestWebContents: WebContents) {
+  browserGuestDevToolsModes.delete(guestWebContents.id)
+  const entry = browserGuestDevToolsViews.get(guestWebContents.id)
+  if (entry) {
+    entry.visible = false
+    entry.view.setVisible(false)
+  }
+  guestWebContents.closeDevTools()
+}
 
 function getInitialWindowBounds(savedState: TideCodeWindowState | null) {
   const { workArea } = screen.getPrimaryDisplay()
@@ -106,6 +355,68 @@ export async function createApplicationWindow(input: {
   applyTideCodeAppIcon(win)
 
   win.setMenuBarVisibility(false)
+  win.webContents.on('before-input-event', (event, inputEvent) => {
+    const isPrimaryReloadShortcut =
+      inputEvent.type === 'keyDown' &&
+      (inputEvent.control || inputEvent.meta) &&
+      !inputEvent.alt &&
+      inputEvent.key.toLowerCase() === 'r'
+
+    if (isPrimaryReloadShortcut) {
+      event.preventDefault()
+    }
+  })
+  win.webContents.on('did-attach-webview', (_event, guestWebContents) => {
+    const applyEmbeddedBrowserFocusBehavior = () => {
+      void guestWebContents
+        .executeJavaScript(EMBEDDED_BROWSER_POINTER_FOCUS_SCRIPT, true)
+        .catch(() => undefined)
+    }
+
+    guestWebContents.on('dom-ready', applyEmbeddedBrowserFocusBehavior)
+    guestWebContents.once('destroyed', () => {
+      browserGuestDevToolsModes.delete(guestWebContents.id)
+      browserGuestDevToolsTransitions.delete(guestWebContents.id)
+      destroyBrowserGuestDevToolsView(guestWebContents.id)
+    })
+    guestWebContents.on('devtools-closed', () => {
+      const entry = browserGuestDevToolsViews.get(guestWebContents.id)
+      if (entry) {
+        entry.visible = false
+        entry.view.setVisible(false)
+      }
+      if (!browserGuestDevToolsTransitions.has(guestWebContents.id) && !win.isDestroyed()) {
+        win.webContents.send('browser:devToolsClosed', guestWebContents.id)
+      }
+    })
+    guestWebContents.on('before-input-event', (event, inputEvent) => {
+      if (inputEvent.type !== 'keyDown') {
+        return
+      }
+
+      const normalizedKey = inputEvent.key.toLowerCase()
+      const isF12 = inputEvent.key === 'F12'
+      const isWindowsOrLinuxDevTools =
+        inputEvent.control &&
+        inputEvent.shift &&
+        !inputEvent.alt &&
+        normalizedKey === 'i'
+      const isMacDevTools =
+        inputEvent.meta &&
+        inputEvent.alt &&
+        !inputEvent.control &&
+        normalizedKey === 'i'
+
+      if (!isF12 && !isWindowsOrLinuxDevTools && !isMacDevTools) {
+        return
+      }
+
+      event.preventDefault()
+      if (!win.isDestroyed()) {
+        win.webContents.send('browser:devToolsShortcut', guestWebContents.id)
+      }
+    })
+  })
   win.once('ready-to-show', () => {
     if (savedWindowState?.isFullScreen) {
       win.setFullScreen(true)
