@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.8 - Updated runtime and more reliable AI tooling
+
+TideCode 1.4.8 refreshes the application stack and improves reliability across AI tools, workspace interactions, and the packaged CLI runtime.
+
+- Updates major application dependencies, including React, Vite, Electron tooling, the AI SDK providers, Tailwind, Shiki, Mermaid, and related development tooling.
+- Improves Code Mode tool routing, patch handling, schema compatibility, and provider behavior for OpenAI and Codex models.
+- Improves workspace explorer selection, rename, and file-operation behavior for faster keyboard-driven project navigation.
+- Fixes packaged CLI and shared run-service startup by ensuring the required native terminal runtime is included in Windows builds.
+- Refreshes the OpenAI and Codex model catalogs and reasoning-effort support.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.7 - More capable browser and workspace reliability
 
 TideCode 1.4.7 improves the integrated browser, workspace file handling, Git responsiveness, and Code Mode reliability.
