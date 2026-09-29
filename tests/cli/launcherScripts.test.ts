@@ -32,6 +32,8 @@ test('the packaged CLI build emits the entrypoint used by installed launchers', 
   assert.match(buildScript, /packages:\s*['"]external['"]/u)
   assert.match(builderConfig, /"from": "dist-cli-runtime"/u)
   assert.match(builderConfig, /"to": "cli"/u)
+  assert.match(builderConfig, /"from": "dist-cli-runtime\/node_modules\/node-pty"/u)
+  assert.match(builderConfig, /"to": "cli\/node_modules\/node-pty"/u)
 })
 
 test('Unix launcher supports Linux, macOS, and source-checkout layouts', () => {
