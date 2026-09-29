@@ -82,6 +82,10 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Install Linux native build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxrandr-dev libxtst-dev libxt-dev
+
       - name: Install dependencies
         run: npm ci
 
