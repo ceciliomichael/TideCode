@@ -13,10 +13,10 @@ export interface ChatMentionMenuItem {
 }
 
 interface ChatMentionMenuProps {
-  anchorRef: RefObject<HTMLElement>
+  anchorRef: RefObject<HTMLElement | null>
   isOpen: boolean
   loading: boolean
-  menuRef: RefObject<HTMLDivElement>
+  menuRef: RefObject<HTMLDivElement | null>
   menuStyle: CSSProperties
   onItemMouseDown?: () => void
   onSelect: (item: ChatMentionMenuItem) => void

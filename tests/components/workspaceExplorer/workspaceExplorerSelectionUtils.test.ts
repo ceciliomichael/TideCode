@@ -2,7 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { WorkspaceExplorerEntry } from '../../../src/types/chat'
 import { ROOT_DIRECTORY_KEY } from '../../../src/components/workspaceExplorer/workspaceExplorerPanel/workspaceExplorerPanelUtils'
-import { resolvePasteTargetDirectoryPath } from '../../../src/components/workspaceExplorer/workspaceExplorerPanel/workspaceExplorerSelectionUtils'
+import {
+  collectVisibleExplorerEntries,
+  getFirstVisibleExplorerChild,
+  getVisibleExplorerParentPath,
+  resolvePasteTargetDirectoryPath,
+} from '../../../src/components/workspaceExplorer/workspaceExplorerPanel/workspaceExplorerSelectionUtils'
 
 function createEntry(relativePath: string, isDirectory: boolean): WorkspaceExplorerEntry {
   return {
@@ -27,6 +32,31 @@ const directoryEntriesByPath: Record<string, WorkspaceExplorerEntry[]> = {
     createEntry('folder2/file2.txt', false),
   ],
 }
+
+test('visible explorer entries include descendants only for expanded directories', () => {
+  assert.deepEqual(
+    collectVisibleExplorerEntries(rootEntries, directoryEntriesByPath, new Set()).map((entry) => entry.relativePath),
+    ['file1.txt', 'folder1', 'folder2'],
+  )
+  assert.deepEqual(
+    collectVisibleExplorerEntries(rootEntries, directoryEntriesByPath, new Set(['folder1'])).map((entry) => entry.relativePath),
+    ['file1.txt', 'folder1', 'folder1/file1.txt', 'folder1/subfolder', 'folder2'],
+  )
+})
+
+test('visible explorer parent path resolves nested entries and excludes the root', () => {
+  assert.equal(getVisibleExplorerParentPath('folder1/file1.txt'), 'folder1')
+  assert.equal(getVisibleExplorerParentPath('folder1/subfolder/file.txt'), 'folder1/subfolder')
+  assert.equal(getVisibleExplorerParentPath('file1.txt'), null)
+})
+
+test('first visible explorer child resolves only directory children', () => {
+  assert.equal(
+    getFirstVisibleExplorerChild(createEntry('folder1', true), directoryEntriesByPath)?.relativePath,
+    'folder1/file1.txt',
+  )
+  assert.equal(getFirstVisibleExplorerChild(createEntry('file1.txt', false), directoryEntriesByPath), null)
+})
 
 test('paste target is the selected directory when a single directory is selected', () => {
   assert.equal(

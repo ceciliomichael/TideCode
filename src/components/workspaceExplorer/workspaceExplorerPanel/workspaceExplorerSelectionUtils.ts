@@ -37,6 +37,45 @@ export function collectLoadedExplorerEntryPaths(
   return relativePaths
 }
 
+export function collectVisibleExplorerEntries(
+  entries: readonly WorkspaceExplorerEntry[],
+  directoryEntriesByPath: Record<string, WorkspaceExplorerEntry[]>,
+  expandedDirectories: ReadonlySet<string>,
+) {
+  const visibleEntries: WorkspaceExplorerEntry[] = []
+
+  for (const entry of entries) {
+    visibleEntries.push(entry)
+    if (!entry.isDirectory || !expandedDirectories.has(toDirectoryKey(entry.relativePath))) {
+      continue
+    }
+    visibleEntries.push(
+      ...collectVisibleExplorerEntries(
+        directoryEntriesByPath[toDirectoryKey(entry.relativePath)] ?? [],
+        directoryEntriesByPath,
+        expandedDirectories,
+      ),
+    )
+  }
+
+  return visibleEntries
+}
+
+export function getVisibleExplorerParentPath(relativePath: string) {
+  const parentPath = toDirectoryKey(getPathDirname(relativePath))
+  return parentPath === ROOT_DIRECTORY_KEY ? null : parentPath
+}
+
+export function getFirstVisibleExplorerChild(
+  entry: WorkspaceExplorerEntry,
+  directoryEntriesByPath: Record<string, WorkspaceExplorerEntry[]>,
+) {
+  if (!entry.isDirectory) {
+    return null
+  }
+  return directoryEntriesByPath[toDirectoryKey(entry.relativePath)]?.[0] ?? null
+}
+
 export function findLoadedExplorerEntry(
   entries: readonly WorkspaceExplorerEntry[],
   directoryEntriesByPath: Record<string, WorkspaceExplorerEntry[]>,

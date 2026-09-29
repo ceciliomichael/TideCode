@@ -6,7 +6,7 @@ interface UseThinkingAutoScrollOptions {
   isStreaming: boolean
 }
 
-export function useThinkingAutoScroll({ content, isStreaming }: UseThinkingAutoScrollOptions): RefObject<HTMLDivElement> {
+export function useThinkingAutoScroll({ content, isStreaming }: UseThinkingAutoScrollOptions): RefObject<HTMLDivElement | null> {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useScrollFollower({

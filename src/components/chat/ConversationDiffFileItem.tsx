@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, type CSSProperties } from 'react'
+import { memo, useCallback, useMemo, type CSSProperties, type ReactElement } from 'react'
 import { ChevronRight, Minus, Plus, Undo2 } from 'lucide-react'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
@@ -47,7 +47,7 @@ interface DiffFileActionButtonProps {
   className: string
   content: string
   disabled?: boolean
-  icon: JSX.Element
+  icon: ReactElement
   useTooltips: boolean
   onClick: () => void
 }

@@ -29,7 +29,7 @@ interface UseChatAutoScrollOptions {
   followLatestSignal?: number
   messages: readonly Message[]
   resetAnchorMessageId?: string | null
-  scrollContainerRef: RefObject<HTMLDivElement>
+  scrollContainerRef: RefObject<HTMLDivElement | null>
 }
 
 export function useChatAutoScroll({

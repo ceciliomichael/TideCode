@@ -26,7 +26,7 @@ interface UseWorkspaceExplorerContextMenuOptions {
   selectionAnchorEntryPathRef: MutableRefObject<string | null>
   setSelectedEntryPaths: Dispatch<SetStateAction<Set<string>>>
   setSelectionDirectoryPath: Dispatch<SetStateAction<string>>
-  treeContainerRef: RefObject<HTMLDivElement>
+  treeContainerRef: RefObject<HTMLDivElement | null>
 }
 
 export function useWorkspaceExplorerContextMenu({

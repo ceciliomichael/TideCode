@@ -488,9 +488,54 @@ test('apply_patch explains when a long source line was supplied as a partial anc
       (error: unknown) => {
         assert.ok(error instanceof Error)
         assert.match(error.message, /partial source line/u)
+        assert.match(error.message, /First unmatched line near the closest hunk candidate/u)
+        assert.match(error.message, /Patch expected:/u)
+        assert.match(error.message, /Current source:/u)
         assert.match(error.message, /Current source near the match/u)
         assert.doesNotMatch(error.message, /Current revision|sha256:/u)
         assert.ok(error.message.includes(currentLine))
+        return true
+      },
+    )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('apply_patch reports the exact mismatched line for a one-character typo', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-mismatch-'))
+  const targetPath = path.join(workspaceRootPath, 'tools', 'make_video.py')
+  const currentLine = '    acts += sparkle_parts(1570, 700, 30, seed=154)'
+
+  try {
+    await fs.mkdir(path.dirname(targetPath), { recursive: true })
+    await fs.writeFile(targetPath, [
+      'def scene_cta():',
+      '    acts = []',
+      currentLine,
+      '    return acts',
+      '',
+    ].join('\n'), 'utf8')
+
+    await assert.rejects(
+      applyPatchInWorkspace(
+        workspaceRootPath,
+        standardPatch([
+          '*** Update File: tools/make_video.py',
+          '@@',
+          ' def scene_cta():',
+          '     acts = []',
+          '-    acts += sparkle_parts(1570, 700, 30, seed=154))',
+          '+    acts += sparkle_parts(1570, 700, 30, seed=155)',
+          '     return acts',
+        ].join('\n')),
+      ),
+      (error: unknown) => {
+        assert.ok(error instanceof Error)
+        assert.match(error.message, /First unmatched line near the closest hunk candidate \(source line 3\)/u)
+        assert.ok(error.message.includes('Patch expected:     acts += sparkle_parts(1570, 700, 30, seed=154))'))
+        assert.ok(error.message.includes(`Current source: ${currentLine}`))
+        assert.match(error.message, /copy it verbatim/u)
         return true
       },
     )

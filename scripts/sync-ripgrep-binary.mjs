@@ -3,26 +3,19 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { execSync } from 'node:child_process'
+import { rgPath } from '@vscode/ripgrep'
 
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRootPath = path.resolve(__dirname, '..')
 const executableName = process.platform === 'win32' ? 'rg.exe' : 'rg'
 
-const ripgrepPkgDir = path.dirname(require.resolve('@vscode/ripgrep/package.json'))
-const sourcePath = path.join(ripgrepPkgDir, 'bin', executableName)
+const sourcePath = rgPath
 const targetDirectoryPath = path.join(repoRootPath, 'resources', 'ripgrep')
 const targetPath = path.join(targetDirectoryPath, executableName)
 
-// 1. Ensure Ripgrep binary exists in node_modules
-try {
-  await access(sourcePath)
-} catch {
-  console.log('[setup] Ripgrep binary missing in @vscode/ripgrep. Downloading prebuilt binary...')
-  const postinstallScript = path.join(ripgrepPkgDir, 'lib', 'postinstall.js')
-  execSync(`node "${postinstallScript}"`, { stdio: 'inherit' })
-  await access(sourcePath)
-}
+// 1. Ensure the platform-specific Ripgrep binary resolved by @vscode/ripgrep exists.
+await access(sourcePath)
 
 // 2. Sync to resources directory if modified or missing
 await mkdir(targetDirectoryPath, { recursive: true })

@@ -9,10 +9,13 @@ import {
 import type { WorkspaceExplorerEntry } from '../../../types/chat'
 import { ROOT_DIRECTORY_KEY, toDirectoryKey } from './workspaceExplorerPanelUtils'
 import {
+  collectVisibleExplorerEntries,
   collectLoadedExplorerEntryPaths,
   findLoadedExplorerEntry,
+  getFirstVisibleExplorerChild,
   getDirectoryEntriesForSelection,
   getSelectionDirectoryPath,
+  getVisibleExplorerParentPath,
   isTreeShortcutTarget,
   resolvePasteTargetDirectoryPath,
 } from './workspaceExplorerSelectionUtils'
@@ -28,8 +31,10 @@ interface UseWorkspaceExplorerSelectionOptions {
   expandedDirectories: Set<string>
   loadDirectory: (relativePath?: string, options?: { hideError?: boolean }) => Promise<void>
   onOpenFile: (relativePath: string) => void
+  requestRenameEntry: (entry: WorkspaceExplorerEntry) => void
   requestDeleteEntries: (targetRelativePaths: readonly string[]) => Promise<void>
   requestCopyOrCutEntries: (relativePaths: readonly string[], mode: 'copy' | 'cut') => void
+  startCreateEntry: (isDirectory: boolean, parentPath: string) => void
   rootEntries: WorkspaceExplorerEntry[]
   selectedEntryPaths: Set<string>
   selectionAnchorEntryPathRef: MutableRefObject<string | null>
@@ -48,8 +53,10 @@ export function useWorkspaceExplorerSelection({
   expandedDirectories,
   loadDirectory,
   onOpenFile,
+  requestRenameEntry,
   requestDeleteEntries,
   requestCopyOrCutEntries,
+  startCreateEntry,
   rootEntries,
   selectedEntryPaths,
   selectionAnchorEntryPathRef,
@@ -158,9 +165,144 @@ export function useWorkspaceExplorerSelection({
     setSelectedEntryPaths,
   ])
 
+  const toggleDirectory = useCallback(
+    (directory: WorkspaceExplorerEntry) => {
+      const directoryPath = toDirectoryKey(directory.relativePath)
+      const isExpanding = !expandedDirectories.has(directoryPath)
+
+      setExpandedDirectories((current) => {
+        const nextState = new Set(current)
+        if (isExpanding) {
+          nextState.add(directoryPath)
+        } else {
+          nextState.delete(directoryPath)
+        }
+        return nextState
+      })
+
+      if (isExpanding) {
+        void loadDirectory(directoryPath)
+      }
+    },
+    [expandedDirectories, loadDirectory, setExpandedDirectories],
+  )
+
+  const focusSelectedEntry = useCallback((relativePath: string) => {
+    window.requestAnimationFrame(() => {
+      const entryButton = Array.from(
+        document.querySelectorAll<HTMLButtonElement>('[data-workspace-entry-path]'),
+      ).find((button) => button.dataset.workspaceEntryPath === relativePath)
+      entryButton?.focus({ preventScroll: true })
+      entryButton?.scrollIntoView({ block: 'nearest' })
+    })
+  }, [])
+
+  const selectKeyboardEntry = useCallback((entry: WorkspaceExplorerEntry) => {
+    selectEntry(entry)
+    focusSelectedEntry(entry.relativePath)
+  }, [focusSelectedEntry, selectEntry])
+
   const handleTreeKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (!isTreeShortcutTarget(event.target)) {
+        return
+      }
+
+      const hasModifier = event.ctrlKey || event.metaKey || event.shiftKey || event.altKey
+      const selectedPath = selectedEntryPaths.size === 1 ? Array.from(selectedEntryPaths)[0] : null
+      const selectedEntry = selectedPath
+        ? findLoadedExplorerEntry(rootEntries, directoryEntriesByPath, selectedPath)
+        : null
+
+      if (!hasModifier && event.key === 'F2') {
+        if (!selectedEntry) {
+          return
+        }
+        event.preventDefault()
+        requestRenameEntry(selectedEntry)
+        return
+      }
+
+      if (!hasModifier && event.key === 'Escape') {
+        if (selectedEntryPaths.size === 0) {
+          return
+        }
+        event.preventDefault()
+        clearEntrySelection()
+        return
+      }
+
+      if (!hasModifier && event.key === 'Enter') {
+        if (!selectedEntry) {
+          return
+        }
+        event.preventDefault()
+        if (selectedEntry.isDirectory) {
+          toggleDirectory(selectedEntry)
+        } else {
+          onOpenFile(selectedEntry.relativePath)
+        }
+        return
+      }
+
+      if (!hasModifier && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+        const visibleEntries = collectVisibleExplorerEntries(
+          rootEntries,
+          directoryEntriesByPath,
+          expandedDirectories,
+        )
+        if (visibleEntries.length === 0) {
+          return
+        }
+        const currentIndex = selectedPath
+          ? visibleEntries.findIndex((entry) => entry.relativePath === selectedPath)
+          : -1
+        const nextIndex = event.key === 'ArrowDown'
+          ? Math.min(visibleEntries.length - 1, currentIndex < 0 ? 0 : currentIndex + 1)
+          : Math.max(0, currentIndex < 0 ? visibleEntries.length - 1 : currentIndex - 1)
+        const nextEntry = visibleEntries[nextIndex]
+        if (!nextEntry) {
+          return
+        }
+        event.preventDefault()
+        selectKeyboardEntry(nextEntry)
+        return
+      }
+
+      if (!hasModifier && event.key === 'ArrowRight') {
+        if (!selectedEntry?.isDirectory) {
+          return
+        }
+        event.preventDefault()
+        const directoryPath = toDirectoryKey(selectedEntry.relativePath)
+        if (!expandedDirectories.has(directoryPath)) {
+          toggleDirectory(selectedEntry)
+          return
+        }
+        const firstChild = getFirstVisibleExplorerChild(selectedEntry, directoryEntriesByPath)
+        if (firstChild) {
+          selectKeyboardEntry(firstChild)
+        }
+        return
+      }
+
+      if (!hasModifier && event.key === 'ArrowLeft') {
+        if (!selectedEntry) {
+          return
+        }
+        event.preventDefault()
+        const directoryPath = toDirectoryKey(selectedEntry.relativePath)
+        if (selectedEntry.isDirectory && expandedDirectories.has(directoryPath)) {
+          toggleDirectory(selectedEntry)
+          return
+        }
+        const parentPath = getVisibleExplorerParentPath(selectedEntry.relativePath)
+        const parentEntry = parentPath
+          ? findLoadedExplorerEntry(rootEntries, directoryEntriesByPath, parentPath)
+          : null
+        if (parentEntry) {
+          selectKeyboardEntry(parentEntry)
+        }
         return
       }
 
@@ -178,7 +320,23 @@ export function useWorkspaceExplorerSelection({
       }
 
       const key = event.key.toLowerCase()
-      if (event.shiftKey || event.altKey) {
+      if (event.altKey) {
+        return
+      }
+
+      if (key === 'n') {
+        event.preventDefault()
+        const targetDirectoryPath = resolvePasteTargetDirectoryPath({
+          directoryEntriesByPath,
+          rootEntries,
+          selectedEntryPaths,
+          selectionDirectoryPath,
+        })
+        startCreateEntry(event.shiftKey, targetDirectoryPath)
+        return
+      }
+
+      if (event.shiftKey) {
         return
       }
 
@@ -229,39 +387,25 @@ export function useWorkspaceExplorerSelection({
     },
     [
       activeFilePath,
+      clearEntrySelection,
       directoryEntriesByPath,
+      expandedDirectories,
+      focusSelectedEntry,
+      onOpenFile,
       requestDeleteEntries,
       requestCopyOrCutEntries,
+      requestRenameEntry,
       rootEntries,
       selectAllLoadedEntriesInSelectionDirectory,
+      selectKeyboardEntry,
       selectedEntryPaths,
       selectionDirectoryPath,
+      startCreateEntry,
       setErrorMessage,
       submitClipboardContents,
+      toggleDirectory,
       undoStack,
     ],
-  )
-
-  const toggleDirectory = useCallback(
-    (directory: WorkspaceExplorerEntry) => {
-      const directoryPath = toDirectoryKey(directory.relativePath)
-      const isExpanding = !expandedDirectories.has(directoryPath)
-
-      setExpandedDirectories((current) => {
-        const nextState = new Set(current)
-        if (isExpanding) {
-          nextState.add(directoryPath)
-        } else {
-          nextState.delete(directoryPath)
-        }
-        return nextState
-      })
-
-      if (isExpanding) {
-        void loadDirectory(directoryPath)
-      }
-    },
-    [expandedDirectories, loadDirectory, setExpandedDirectories],
   )
 
   const handleEntryClick = useCallback(

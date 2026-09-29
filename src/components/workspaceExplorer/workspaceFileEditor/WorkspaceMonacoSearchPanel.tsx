@@ -24,9 +24,9 @@ export interface WorkspaceMonacoSearchPanelProps {
   moveSearchMatch: (direction: 1 | -1) => void
   replaceAllMatches: () => void
   replaceCurrentMatch: () => void
-  replaceInputRef: RefObject<HTMLInputElement>
+  replaceInputRef: RefObject<HTMLInputElement | null>
   replaceValue: string
-  searchInputRef: RefObject<HTMLInputElement>
+  searchInputRef: RefObject<HTMLInputElement | null>
   searchValue: string
   setIsMatchCaseEnabled: Dispatch<SetStateAction<boolean>>
   setIsRegexEnabled: Dispatch<SetStateAction<boolean>>

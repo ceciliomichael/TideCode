@@ -28,6 +28,6 @@ export interface WorkspaceTerminalSessionState {
     position: "before" | "after",
   ) => void;
   selectTerminalTab: (tabKey: string) => void;
-  terminalHostRef: RefObject<HTMLDivElement>;
+  terminalHostRef: RefObject<HTMLDivElement | null>;
   terminalTabs: readonly TerminalTabState[];
 }

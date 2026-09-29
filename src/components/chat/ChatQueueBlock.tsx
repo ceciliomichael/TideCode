@@ -6,7 +6,7 @@ import { ChatQueueItem } from './ChatQueueItem'
 
 interface ChatQueueBlockProps {
   queuedMessages: readonly QueuedMessage[]
-  editCancelBoundaryRef?: RefObject<HTMLElement>
+  editCancelBoundaryRef?: RefObject<HTMLElement | null>
   onClearQueue?: () => void
   onRemove: (id: string) => void
   onReorder: (sourceId: string, targetId: string) => void

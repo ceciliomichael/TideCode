@@ -1,5 +1,5 @@
 import { AlertCircle, ChevronRight, File, Folder, FolderOpen, X } from 'lucide-react'
-import type { DragEvent as ReactDragEvent } from 'react'
+import type { DragEvent as ReactDragEvent, ReactElement } from 'react'
 import { useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { resolveFileIconConfig } from '../../../lib/fileIconResolver'
@@ -208,7 +208,7 @@ export function WorkspaceExplorerPanelView({
     )
   }
 
-  function renderEntries(entries: readonly WorkspaceExplorerEntry[], depth: number): JSX.Element[] {
+  function renderEntries(entries: readonly WorkspaceExplorerEntry[], depth: number): ReactElement[] {
     return entries.flatMap((entry) => {
       const isDirectory = entry.isDirectory
       const entryPath = normalizeEntryPath(entry.relativePath)

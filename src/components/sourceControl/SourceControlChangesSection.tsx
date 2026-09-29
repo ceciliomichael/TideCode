@@ -16,7 +16,7 @@ import {
 interface SourceControlChangesSectionProps {
   aheadCommitCount: number
   commitModelSelection: GitCommitModelSelection
-  commitActionControlsRef: RefObject<HTMLDivElement>
+  commitActionControlsRef: RefObject<HTMLDivElement | null>
   commitMessage: string
   hasRemote: boolean
   isChangesSectionOpen: boolean

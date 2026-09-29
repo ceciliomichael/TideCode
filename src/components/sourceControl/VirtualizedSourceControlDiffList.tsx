@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement } from 'react'
 import { Minus, Plus, Undo2 } from 'lucide-react'
 import type { ConversationFileDiff } from '../../lib/chatDiffs'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
@@ -63,7 +63,7 @@ function DiffFileActionButton({
   className: string
   content: string
   disabled?: boolean
-  icon: JSX.Element
+  icon: ReactElement
   useTooltips: boolean
   onClick: () => void
 }) {

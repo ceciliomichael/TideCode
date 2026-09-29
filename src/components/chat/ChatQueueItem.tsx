@@ -33,7 +33,7 @@ import {
 interface ChatQueueItemProps {
   index: number
   message: QueuedMessage
-  editCancelBoundaryRef?: RefObject<HTMLElement>
+  editCancelBoundaryRef?: RefObject<HTMLElement | null>
   onDragEnd: () => void
   onDragStart: (id: string) => void
   onDrop: (id: string) => void

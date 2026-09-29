@@ -36,7 +36,7 @@ interface UseWorkspaceExplorerTreeOptions {
   isOpen: boolean
   pendingExplorerReloadRef: MutableRefObject<boolean>
   setErrorMessage: Dispatch<SetStateAction<string | null>>
-  treeContainerRef: RefObject<HTMLDivElement>
+  treeContainerRef: RefObject<HTMLDivElement | null>
   workspaceRootPath: string | null
 }
 

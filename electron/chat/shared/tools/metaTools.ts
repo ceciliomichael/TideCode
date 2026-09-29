@@ -1,6 +1,10 @@
 import { jsonSchema, tool } from 'ai'
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import type { AppTerminalExecutionMode, ChatProviderId } from '../../../../src/types/chat'
+import { getTideCodeRuntimeRoot } from '../../../runtime/runtimeRoot'
 import type { AgentToolExecutionResult } from '../toolTypes'
 import { createToolErrorResult } from './toolResult'
 import type { CodeModeExecutor } from '../codeMode/executor'
@@ -11,6 +15,30 @@ import {
 } from '../../../../src/lib/codeModeResultOutput'
 import { isDynamicAgentTool, type AgentToolRegistry } from './registry'
 import { createAgentToolCallableContract } from './callableContract'
+
+const TOOL_ROUTING_PROMPT_REPO_PATH = 'electron/chat/shared/prompts/agent'
+const TOOL_ROUTING_PROMPT_FILE_NAME = 'tool-routing.md'
+const TOOL_ROUTING_PROMPT_FALLBACK = 'Use direct apply_patch for targeted existing-file changes and direct write for complete-file creation or replacement. Inspect exact current source before apply_patch. Use code_mode for orchestration and tools.* capabilities only.'
+
+let cachedToolRoutingPrompt: string | null = null
+
+function getToolRoutingPrompt() {
+  if (cachedToolRoutingPrompt !== null) return cachedToolRoutingPrompt
+  let promptPath: string
+  try {
+    promptPath = path.join(getTideCodeRuntimeRoot(), TOOL_ROUTING_PROMPT_REPO_PATH, TOOL_ROUTING_PROMPT_FILE_NAME)
+  } catch {
+    promptPath = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '../prompts/agent',
+      TOOL_ROUTING_PROMPT_FILE_NAME,
+    )
+  }
+  cachedToolRoutingPrompt = existsSync(promptPath)
+    ? readFileSync(promptPath, 'utf8').trim()
+    : TOOL_ROUTING_PROMPT_FALLBACK
+  return cachedToolRoutingPrompt
+}
 
 const CODE_MODE_SOURCE_INPUT_SCHEMA = {
   additionalProperties: true,
@@ -48,30 +76,6 @@ interface CodeModeSourceInput {
   source?: string
 }
 
-const CODE_MODE_TOOL_ROUTING = [
-  'Provider boundary: the model-facing Tidecode tools are code_mode, apply_patch, and write in Agent Mode. Use direct apply_patch for targeted patches and direct write for complete-file creation/replacement. Every tools.* name below is a JavaScript API that exists only inside the code_mode code string; never emit tools.* as a provider tool name.',
-  'Choose the purpose-built inner API for the scenario. Do not use terminal commands as a substitute for structured workspace APIs.',
-  'Code Mode receives one structured outer input with canonical `code` plus optional opaque `payloads`. Inside code, read payload text through `payloads.<name>` or bracket access. Payload text is inert data and is never parsed as Code Mode source.',
-  'Generated-call compatibility: unsupported argument properties are ignored instead of failing an otherwise valid tool call. Recognized arguments remain strict, and ignored properties do not gain behavior.',
-  'The APIs documented below are the stable Code Mode capability catalog, not permission for the current execution. Runtime policy can restrict this catalog. Treat the active runtime context and the actual tools object as authoritative. If an API is unavailable or forbidden, do not infer that it should exist, search for a replacement, or substitute another mutation path.',
-  '- `tools.read`: inspect one known file or directory. A path is known only when the user supplied it or a prior workspace tool returned that exact path. Never infer filenames from conventions.',
-  '- `tools.read_tool_output`: read only a narrowly targeted section when a truncated result omitted content you actually need; never call it automatically.',
-  '- If the exact file path is unknown, discover it first with `tools.list`, `tools.glob`, or `tools.grep`, then use the returned path in `tools.read` or the patch file header.',
-  '- `tools.list`: inspect immediate entries of one directory.',
-  '- `tools.glob`: discover files by path or filename pattern.',
-  '- `tools.grep`: search workspace text, symbols, imports, or references.',
-  '- Direct model-facing `apply_patch`: prefer this for a standalone targeted patch; its raw patch string bypasses Code Mode source parsing entirely. Before patching an existing file, inspect the exact current source region used by each hunk. For multi-file patches, every hunk must have current exact source evidence; split out any uncertain file and read it first. After a context-mismatch rejection, re-read the affected region and rebuild the hunk instead of retrying the same stale anchor.',
-  '- Direct model-facing `write`: create a new text file or intentionally replace a complete file. Its structured `{ path, content }` input bypasses Code Mode parsing entirely; do not embed complete file contents in code_mode code.',
-  '- `tools.execute_terminal`: run an actual command/process such as tests, typecheck, build, package manager, compiler, Git command, or app/script. Terminal results expose `session_id` directly, and completed commands expose `exit_code` directly. Never use shell, PowerShell, Python, or Node just to read, search, edit, or write workspace files when the structured APIs above apply.',
-  '- `tools.read_terminal`: collect new output from an existing terminal session instead of starting the command again; it returns early when input is detected.',
-  '- `tools.interact_terminal`: answer a prompt or send control/navigation keys to that same terminal session. For ordinary line input, send text with ENTER.',
-  '- `tools.terminate_terminal`: stop a persistent terminal session started for the current work.',
-  'Terminal interaction loop: execute once, read the same session, interact only when its output/state needs input, then continue reading that same session. Do not retry equivalent newline, CRLF, Enter, or Return variants unless fresh output shows the first normal interaction was not accepted.',
-  '- `tools.kanban_board`: inspect or update Kanban task data when the request concerns cards, subtasks, status, or board planning. AI-completed main work stops at `for-review`, which completes direct subtasks. Never directly target `done`; only the user approves main tasks as Done. Set Owner per task: `Human` for user-originated work, `Agent` for work you introduce autonomously; do not blindly inherit parent ownership, and preserve explicit owner names.',
-  '- `tools.$codemode.search`: discover capabilities that are not preloaded in this description. Use the exact callable path returned by search and never guess MCP/tool names. Successful connected MCP calls return their useful payload directly rather than a ToolResult envelope.',
-  'Any additional preloaded API should be used only for the capability described by its generated contract below.',
-].join('\n')
-
 function buildPreloadedToolDocumentation(registry: AgentToolRegistry) {
   const contracts = registry.entries
     .filter((entry) => !isDynamicAgentTool(entry) && !HIDDEN_PRELOADED_TOOL_NAMES.has(entry.name))
@@ -95,7 +99,7 @@ export function buildCodeModeDescription(
 ) {
   return [
     buildCodeModeExecutionContract(executionMode),
-    CODE_MODE_TOOL_ROUTING,
+    getToolRoutingPrompt(),
     buildPreloadedToolDocumentation(registry),
   ].join('\n')
 }
@@ -190,7 +194,9 @@ export function createCodeModeTool(
   const description = buildCodeModeDescription(registry, options.executionMode)
   return tool({
     description,
-    inputSchema: jsonSchema<CodeModeSourceInput>(CODE_MODE_SOURCE_INPUT_SCHEMA),
+    inputSchema: jsonSchema<CodeModeSourceInput>(
+      CODE_MODE_SOURCE_INPUT_SCHEMA as unknown as Parameters<typeof jsonSchema>[0],
+    ),
     execute: async (input, executionOptions): Promise<AgentToolExecutionResult> =>
       executeCodeModeSource(executor, input, {
         abortSignal: executionOptions.abortSignal,

@@ -12,7 +12,7 @@ export interface UseScrollFollowerOptions {
   contentRevision: unknown
   isAutoFollowEnabled: boolean
   resetSignal?: string | number | null
-  scrollContainerRef: RefObject<HTMLDivElement>
+  scrollContainerRef: RefObject<HTMLDivElement | null>
 }
 
 export interface ScrollFollowerControls {
