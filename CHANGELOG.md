@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.10 - Faster workspace workflows and mobile Explorer
+
+TideCode 1.4.10 improves mobile workspace navigation, Explorer responsiveness, chat compaction presentation, local-file browsing, and Code Mode reliability.
+
+- Adds a mobile full-screen Explorer and single-file viewer flow with device Back navigation plus previews for Markdown, SVG, PDF, DOCX, and supported images.
+- Speeds up Windows Explorer paste operations by prioritizing native clipboard data, reducing fallback work, copying independent items concurrently, and refreshing only the changed directory.
+- Prevents stale live compaction state from showing a false Compacted divider when no committed compaction marker exists.
+- Lets the integrated browser open local Windows and UNC file paths directly as file URLs.
+- Improves Code Mode handling for multiline Markdown containing backticks and keeps Plan Mode payload guidance compatible with prompt caching.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.9 - Corrected model reasoning and release packaging
 
 TideCode 1.4.9 corrects the OpenAI and Codex reasoning profiles and completes the release setup needed for reliable cross-platform builds.
