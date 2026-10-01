@@ -9,6 +9,7 @@ import { WorkspacePanel } from '../../components/layout/WorkspacePanel'
 import { SidebarPanel } from '../../components/sidebar/SidebarPanel'
 import { ALL_PROJECTS_FILTER_ID, ARCHIVED_PROJECT_FILTER_ID, CHATS_PROJECT_FILTER_ID } from '../../components/sidebar/sidebarProjectThreads'
 import { WorkspaceTerminalPanel } from '../../components/chat/WorkspaceTerminalPanel'
+import { MobileWorkspaceExplorerSurface } from '../../components/workspaceExplorer/MobileWorkspaceExplorerSurface'
 import { useChatContextUsage } from '../../hooks/useChatContextUsage'
 import { useChatCompactionMarkers } from '../../hooks/useChatCompactionMarkers'
 import { useChatCompactionStatus } from '../../hooks/useChatCompactionStatus'
@@ -305,6 +306,7 @@ synchronizeDraftFolder,
   const isKanbanBoardOpen = isMobileViewport ? mobileSurface === 'board' : workspaceViewMode === 'kanban'
   const isBrowserOpen = !isMobileViewport && workspaceViewMode === 'browser'
   const isMobileTerminalOpen = isMobileViewport && mobileSurface === 'terminal'
+  const isMobileExplorerOpen = isMobileViewport && mobileSurface === 'explorer'
   const isTerminalSurfaceOpen = isMobileTerminalOpen || (
     !isMobileViewport && workspaceState.isTerminalOpen && workspaceState.isTerminalFullScreen
   )
@@ -519,9 +521,24 @@ synchronizeDraftFolder,
   })
 
   const handleMobileSurfaceChange = useCallback((surface: MobileWorkspaceSurface) => {
+    if (mobileSurface === 'explorer' && surface === 'chat') {
+      const historyState =
+        typeof window.history.state === 'object' && window.history.state !== null
+          ? window.history.state as Record<string, unknown>
+          : null
+      const depth =
+        historyState?.tidecodeMobileExplorer === true &&
+        typeof historyState.tidecodeMobileExplorerDepth === 'number'
+          ? historyState.tidecodeMobileExplorerDepth
+          : 0
+      if (depth > 0) {
+        window.history.go(-depth)
+        return
+      }
+    }
     setMobileSurface(surface)
     setIsSidebarOpen(false)
-  }, [setIsSidebarOpen])
+  }, [mobileSurface, setIsSidebarOpen])
 
   const handleMobileCreateConversation = useCallback(() => {
     setMobileSurface('chat')
@@ -747,6 +764,19 @@ synchronizeDraftFolder,
               isFullScreen={isMobileViewport ? true : workspaceState.isTerminalFullScreen}
               onFullScreenChange={isMobileViewport ? undefined : workspaceState.handleTerminalFullScreenChange}
             />
+            {isMobileExplorerOpen ? (
+              <div className="absolute inset-0 z-40 flex min-h-0 bg-background md:hidden">
+                <MobileWorkspaceExplorerSurface
+                  gitFileDiffs={gitDiffSnapshot.snapshot.fileDiffs}
+                  hasRepository={hasRepository}
+                  onExit={() => setMobileSurface('chat')}
+                  onImplementPlan={handleImplementPlan}
+                  onRequestPlanChanges={handleRequestPlanChanges}
+                  wordWrapEnabled={settings.workspaceFileEditorWordWrap}
+                  workspaceState={workspaceState}
+                />
+              </div>
+            ) : null}
           </div>
           {!isMobileViewport ? (
             <ChatWorkspaceSidePanels

@@ -4,6 +4,7 @@ import {
   DEFAULT_BROWSER_URL,
   normalizeBrowserInput,
   normalizeEmbeddedBrowserUserAgent,
+  resolveBrowserTabTitle,
 } from '../../../src/components/browser/browserTabUtils'
 
 test('browser input keeps explicit HTTP and HTTPS URLs unchanged', () => {
@@ -26,6 +27,38 @@ test('browser input keeps HTTPS as the default for ordinary web hosts', () => {
 
 test('browser input treats host-and-port values as navigable hosts', () => {
   assert.equal(normalizeBrowserInput('devbox:3000'), 'https://devbox:3000')
+})
+
+test('browser input converts Windows absolute paths into local file URLs', () => {
+  assert.equal(
+    normalizeBrowserInput('C:\\Users\\CP25P012-ARk\\.tidecode\\history\\agent-contexts\\VIRT_dcd375d1f05f\\index.html'),
+    'file:///C:/Users/CP25P012-ARk/.tidecode/history/agent-contexts/VIRT_dcd375d1f05f/index.html',
+  )
+  assert.equal(
+    normalizeBrowserInput('C:\\Users\\Admin\\Desktop\\My Site\\index test.html'),
+    'file:///C:/Users/Admin/Desktop/My%20Site/index%20test.html',
+  )
+})
+
+test('browser input keeps explicit local file URLs unchanged', () => {
+  assert.equal(
+    normalizeBrowserInput('file:///C:/Users/Admin/Desktop/index.html'),
+    'file:///C:/Users/Admin/Desktop/index.html',
+  )
+})
+
+test('browser input supports Windows UNC paths', () => {
+  assert.equal(
+    normalizeBrowserInput('\\\\server\\share\\My Site\\index.html'),
+    'file://server/share/My%20Site/index.html',
+  )
+})
+
+test('browser tab title uses the local filename for file URLs', () => {
+  assert.equal(
+    resolveBrowserTabTitle('', 'file:///C:/Users/Admin/Desktop/My%20Site/index.html'),
+    'index.html',
+  )
 })
 
 test('browser input searches normal text and uses the default home for empty input', () => {

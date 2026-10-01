@@ -104,6 +104,19 @@ export function parseUriList(uriList: string | null | undefined): string[] {
   return paths
 }
 
+export function readClipboardDropFilesDirect(clipboard: {
+  readBuffer?: (format: string) => Buffer
+}): string[] {
+  if (!clipboard || typeof clipboard.readBuffer !== 'function') {
+    return []
+  }
+  const hdropBuffer = clipboard.readBuffer('CF_HDROP')
+  if (!hdropBuffer || hdropBuffer.length < 20) {
+    return []
+  }
+  return Array.from(new Set(parseDropFilesBuffer(hdropBuffer)))
+}
+
 /**
  * Synchronously extracts file paths directly from Electron clipboard buffers.
  * Executes in memory with zero external subprocess calls.

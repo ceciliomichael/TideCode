@@ -5,6 +5,7 @@ import {
   parseFileNameBuffer,
   parseFileNameWBuffer,
   parseUriList,
+  readClipboardDropFilesDirect,
   readClipboardFilesDirect,
 } from '../electron/clipboard/windowsDropFilesParser.ts'
 
@@ -88,6 +89,15 @@ test('readClipboardFilesDirect extracts paths from CF_HDROP buffer with priority
     readBuffer: (format: string) => (format === 'CF_HDROP' ? buf : Buffer.alloc(0)),
   }
   const result = readClipboardFilesDirect(mockClipboard)
+  assert.deepEqual(result, paths)
+})
+
+test('readClipboardDropFilesDirect treats a valid single CF_HDROP path as authoritative', () => {
+  const paths = ['C:\\test\\single.txt']
+  const buf = createDropFilesBuffer(paths, true)
+  const result = readClipboardDropFilesDirect({
+    readBuffer: (format: string) => (format === 'CF_HDROP' ? buf : Buffer.alloc(0)),
+  })
   assert.deepEqual(result, paths)
 })
 

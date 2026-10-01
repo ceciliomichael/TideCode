@@ -7,6 +7,7 @@ export interface WorkspaceExplorerPanelProps {
   clipboardEntry: WorkspaceClipboardEntry | null
   gitFileDiffs: readonly GitFileDiff[]
   isOpen: boolean
+  presentation?: 'desktop' | 'mobile'
   onCopyEntry: (relativePaths: string[]) => Promise<void>
   onCreateEntry: (relativePath: string, isDirectory: boolean) => Promise<void>
   onCutEntry: (relativePaths: string[]) => Promise<void>

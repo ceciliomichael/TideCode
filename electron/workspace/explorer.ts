@@ -201,9 +201,9 @@ async function copyDirectoryRecursively(sourcePath: string, targetPath: string) 
   await fs.mkdir(targetPath, { recursive: true })
   const entries = await fs.readdir(sourcePath, { withFileTypes: true })
 
-  for (const entry of entries) {
+  await Promise.all(entries.map(async (entry) => {
     if (entry.isSymbolicLink()) {
-      continue
+      return
     }
 
     const sourceEntryPath = path.join(sourcePath, entry.name)
@@ -211,13 +211,13 @@ async function copyDirectoryRecursively(sourcePath: string, targetPath: string) 
 
     if (entry.isDirectory()) {
       await copyDirectoryRecursively(sourceEntryPath, targetEntryPath)
-      continue
+      return
     }
 
     if (entry.isFile()) {
       await fs.copyFile(sourceEntryPath, targetEntryPath)
     }
-  }
+  }))
 }
 
 function isNestedWithinDirectory(parentAbsolutePath: string, targetAbsolutePath: string) {

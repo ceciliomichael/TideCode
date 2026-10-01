@@ -43,7 +43,6 @@ interface UseWorkspaceExplorerSelectionOptions {
   setExpandedDirectories: Dispatch<SetStateAction<Set<string>>>
   setSelectedEntryPaths: Dispatch<SetStateAction<Set<string>>>
   setSelectionDirectoryPath: Dispatch<SetStateAction<string>>
-  submitClipboardContents: (targetDirectoryRelativePath: string) => Promise<void>
   undoStack: ExplorerUndoActions
 }
 
@@ -65,7 +64,6 @@ export function useWorkspaceExplorerSelection({
   setExpandedDirectories,
   setSelectedEntryPaths,
   setSelectionDirectoryPath,
-  submitClipboardContents,
   undoStack,
 }: UseWorkspaceExplorerSelectionOptions) {
   const selectEntry = useCallback((entry: WorkspaceExplorerEntry) => {
@@ -372,18 +370,10 @@ export function useWorkspaceExplorerSelection({
       if (key !== 'v') {
         return
       }
-
-      event.preventDefault()
-      void (async () => {
-        const pasteTargetPath = resolvePasteTargetDirectoryPath({
-          directoryEntriesByPath,
-          rootEntries,
-          selectedEntryPaths,
-          selectionDirectoryPath,
-        })
-
-        await submitClipboardContents(pasteTargetPath)
-      })()
+      // Let the native paste event fire. onPasteCapture can read ClipboardEvent
+      // file data synchronously and only falls back to the slower OS clipboard
+      // bridge when Chromium did not expose any file paths.
+      return
     },
     [
       activeFilePath,
@@ -402,7 +392,6 @@ export function useWorkspaceExplorerSelection({
       selectionDirectoryPath,
       startCreateEntry,
       setErrorMessage,
-      submitClipboardContents,
       toggleDirectory,
       undoStack,
     ],

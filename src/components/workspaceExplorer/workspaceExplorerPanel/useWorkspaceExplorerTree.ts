@@ -58,6 +58,7 @@ export function useWorkspaceExplorerTree({
     filePath: null,
   })
   const lastScrolledActiveFileRef = useRef<string | null>(null)
+  const suppressExplorerReloadUntilRef = useRef(0)
 
   const loadDirectory = useCallback(
     async (relativePath?: string, options?: { hideError?: boolean }) => {
@@ -105,6 +106,18 @@ export function useWorkspaceExplorerTree({
       }
     },
     [setErrorMessage, workspaceRootPath],
+  )
+
+  const refreshDirectoryAfterMutation = useCallback(
+    async (relativePath?: string) => {
+      pendingExplorerReloadRef.current = false
+      // Explicit mutation refreshes already know exactly which directory
+      // changed. Ignore the watcher echo that follows shortly afterward so it
+      // does not trigger a redundant full-tree reload.
+      suppressExplorerReloadUntilRef.current = Date.now() + 300
+      await loadDirectory(relativePath, { hideError: true })
+    },
+    [loadDirectory, pendingExplorerReloadRef],
   )
 
   const preserveTreeScrollDuring = useCallback(async (operation: () => Promise<void>) => {
@@ -200,6 +213,9 @@ export function useWorkspaceExplorerTree({
         normalizeWorkspaceRootPathForComparison(event.workspaceRootPath) === comparableWorkspaceRootPath
       ) {
         clearWorkspaceFilePreviewCache(workspaceRootPath)
+        if (Date.now() < suppressExplorerReloadUntilRef.current) {
+          return
+        }
         void reloadExplorerTreeRef.current()
       }
     })
@@ -320,6 +336,7 @@ export function useWorkspaceExplorerTree({
     expandedDirectories,
     loadDirectory,
     loadingDirectories,
+    refreshDirectoryAfterMutation,
     reloadExplorerTree,
     resetTree,
     rootEntries,

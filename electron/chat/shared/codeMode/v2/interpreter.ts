@@ -231,6 +231,32 @@ function validateNode(node: AstNode): void {
   }
 }
 
+function repairMalformedPlanMarkdownTemplate(source: string): string | null {
+  const planToolMatch = /\btools\.(?:plan_create|plan_edit)\s*\(/u.exec(source)
+  if (!planToolMatch) return null
+
+  const searchStart = (planToolMatch.index ?? 0) + planToolMatch[0].length
+  const contentMatch = /\bcontent\s*:\s*\x60/u.exec(source.slice(searchStart))
+  if (!contentMatch) return null
+
+  const openingBacktickIndex =
+    searchStart + (contentMatch.index ?? 0) + contentMatch[0].lastIndexOf('\x60')
+  const closingBacktickIndex = source.lastIndexOf('\x60')
+  if (closingBacktickIndex <= openingBacktickIndex) return null
+
+  const content = source.slice(openingBacktickIndex + 1, closingBacktickIndex)
+  if (!content.includes('\x60')) return null
+
+  const suffix = source.slice(closingBacktickIndex + 1)
+  if (!/^\s*\}\s*\)\s*;?/u.test(suffix)) return null
+
+  return [
+    source.slice(0, openingBacktickIndex),
+    JSON.stringify(content),
+    source.slice(closingBacktickIndex + 1),
+  ].join('')
+}
+
 export function parseCodeModeProgram(source: string): ProgramNode {
   let parsed: unknown
   try {
@@ -242,10 +268,38 @@ export function parseCodeModeProgram(source: string): ProgramNode {
       sourceType: 'script',
     })
   } catch (error) {
+    const repairedSource = repairMalformedPlanMarkdownTemplate(source)
+    if (repairedSource) {
+      try {
+        parsed = parse(repairedSource, {
+          allowAwaitOutsideFunction: true,
+          allowReturnOutsideFunction: true,
+          ecmaVersion: 'latest',
+          locations: true,
+          sourceType: 'script',
+        })
+      } catch {
+        parsed = undefined
+      }
+      if (parsed) {
+        if (!isRecord(parsed) || parsed.type !== 'Program' || !Array.isArray(parsed.body)) {
+          throw new CodeModeRuntimeError('ParseError', 'Code Mode source did not parse as a program.')
+        }
+        const program = parsed as unknown as ProgramNode
+        validateNode(program)
+        return program
+      }
+    }
+
     const location = isRecord(error) && isRecord(error.loc)
       ? { line: Number(error.loc.line) || 1, column: (Number(error.loc.column) || 0) + 1 }
       : undefined
-    const runtimeError = new CodeModeRuntimeError('ParseError', error instanceof Error ? error.message : String(error))
+    const runtimeError = new CodeModeRuntimeError(
+      'ParseError',
+      error instanceof Error ? error.message : String(error),
+      undefined,
+      ['For arbitrary multiline Markdown or code text, pass it through the outer code_mode payloads object and reference payloads.<name> instead of nesting raw backticks inside a JavaScript template literal.'],
+    )
     if (location) {
       const locatedError = runtimeError as CodeModeRuntimeError & { parseLocation?: { line: number; column: number } }
       locatedError.parseLocation = location

@@ -10,7 +10,7 @@ Other tagged templates are not supported.
 
 The `tools` binding is injected. Every external effect must use a documented `tools.*` capability. Never import, require, redeclare, or initialize `tools`.
 
-The read-only `payloads` binding contains optional opaque text supplied beside the code program. Use payloads only for arbitrary data that genuinely must enter a remaining Code Mode capability instead of embedding or rewriting it inside JavaScript syntax.
+The read-only payloads binding contains optional opaque text supplied beside the code program. Use payloads for arbitrary multiline Markdown, source code, patches, or other exact text that can contain quotes, backticks, or interpolation-like text. Reference it as payloads.<name> instead of embedding that text in a JavaScript string or template literal. Targeted patches still use direct apply_patch and complete-file writes use direct write.
 
 Imports, dynamic imports, require, classes, generators, eval, Function construction, Node/process globals, direct filesystem/network APIs, workers, WebAssembly, and prototype traversal are not part of the Code Mode language.
 
