@@ -1,6 +1,7 @@
 import {
   useCallback,
   useRef,
+  useState,
   type ClipboardEvent as ReactClipboardEvent,
   type Dispatch,
   type DragEvent as ReactDragEvent,
@@ -30,6 +31,7 @@ interface UseWorkspaceExplorerTransfersOptions {
   onImportEntry: (sourcePath: string, targetDirectoryRelativePath: string) => Promise<void>
   onMoveEntry: (relativePath: string, targetDirectoryRelativePath: string) => Promise<void>
   onPasteEntry: (targetDirectoryRelativePath: string) => Promise<void>
+  refreshDirectoryAfterMutation: (relativePath?: string) => Promise<void>
   recordMove: (sourceRelativePath: string, resultRelativePath: string) => void
   reloadExplorerTree: (options?: { force?: boolean }) => Promise<void>
   rootEntries: WorkspaceExplorerEntry[]
@@ -44,6 +46,13 @@ interface UseWorkspaceExplorerTransfersOptions {
   workspaceRootPath: string | null
 }
 
+export interface PendingExplorerPasteEntry {
+  id: string
+  isDirectory: boolean
+  name: string
+  parentPath: string
+}
+
 export function useWorkspaceExplorerTransfers({
   clipboardEntry,
   closeContextMenu,
@@ -55,6 +64,7 @@ export function useWorkspaceExplorerTransfers({
   onImportEntry,
   onMoveEntry,
   onPasteEntry,
+  refreshDirectoryAfterMutation,
   recordMove,
   reloadExplorerTree,
   rootEntries,
@@ -69,23 +79,49 @@ export function useWorkspaceExplorerTransfers({
   workspaceRootPath,
 }: UseWorkspaceExplorerTransfersOptions) {
   const isPastingRef = useRef(false)
+  const [pendingPasteEntries, setPendingPasteEntries] = useState<PendingExplorerPasteEntry[]>([])
+
+  const showPendingPastePaths = useCallback(
+    (sourcePaths: readonly string[], targetDirectoryRelativePath: string) => {
+      setPendingPasteEntries(sourcePaths.map((sourcePath, index) => {
+        const loadedSourceEntry = findLoadedExplorerEntry(rootEntries, directoryEntriesByPath, sourcePath)
+        return {
+          id: `pending-paste-${Date.now()}-${index}`,
+          isDirectory: loadedSourceEntry?.isDirectory ?? false,
+          name: getPathBasename(sourcePath),
+          parentPath: targetDirectoryRelativePath,
+        }
+      }))
+    },
+    [directoryEntriesByPath, rootEntries],
+  )
 
   const submitPasteEntry = useCallback(
     async (targetDirectoryRelativePath: string) => {
       closeContextMenu()
+      const relativePaths = clipboardEntry?.relativePaths ?? []
+      if (relativePaths.length > 0) {
+        showPendingPastePaths(relativePaths, targetDirectoryRelativePath)
+      }
       try {
         await onPasteEntry(targetDirectoryRelativePath)
         setErrorMessage(null)
-        const loadOperations = [reloadExplorerTree({ force: true })]
-        if (targetDirectoryRelativePath !== ROOT_DIRECTORY_KEY) {
-          loadOperations.push(loadDirectory(targetDirectoryRelativePath))
-        }
-        await Promise.all(loadOperations)
+        setPendingPasteEntries([])
+        await refreshDirectoryAfterMutation(targetDirectoryRelativePath)
       } catch (error) {
         setErrorMessage(toUserFacingErrorMessage(error, 'The workspace item could not be pasted.'))
+      } finally {
+        setPendingPasteEntries([])
       }
     },
-    [closeContextMenu, loadDirectory, onPasteEntry, reloadExplorerTree, setErrorMessage],
+    [
+      clipboardEntry,
+      closeContextMenu,
+      onPasteEntry,
+      refreshDirectoryAfterMutation,
+      setErrorMessage,
+      showPendingPastePaths,
+    ],
   )
 
   const submitMoveEntries = useCallback(
@@ -169,26 +205,34 @@ export function useWorkspaceExplorerTransfers({
 
       setDropTargetDirectoryPath(null)
       isExplorerBatchImportRef.current = true
+      showPendingPastePaths(uniqueSourcePaths, targetDirectoryRelativePath)
       let importError: unknown = null
       try {
-        for (const sourcePath of uniqueSourcePaths) {
-          await onImportEntry(sourcePath, targetDirectoryRelativePath)
+        const basenames = uniqueSourcePaths.map(getPathBasename)
+        const canCopyInParallel = new Set(basenames.map((name) => name.toLowerCase())).size === basenames.length
+        if (canCopyInParallel) {
+          await Promise.all(uniqueSourcePaths.map((sourcePath) =>
+            onImportEntry(sourcePath, targetDirectoryRelativePath)))
+        } else {
+          for (const sourcePath of uniqueSourcePaths) {
+            await onImportEntry(sourcePath, targetDirectoryRelativePath)
+          }
         }
       } catch (error) {
         importError = error
+      }
+
+      // The copy itself is complete at this point. Do not keep showing
+      // "Pasting…" while unrelated explorer refresh work catches up.
+      setPendingPasteEntries([])
+      try {
+        await refreshDirectoryAfterMutation(targetDirectoryRelativePath)
+      } catch (error) {
+        if (!importError) {
+          importError = error
+        }
       } finally {
         isExplorerBatchImportRef.current = false
-        try {
-          const loadOperations = [reloadExplorerTree({ force: true })]
-          if (targetDirectoryRelativePath !== ROOT_DIRECTORY_KEY) {
-            loadOperations.push(loadDirectory(targetDirectoryRelativePath, { hideError: true }))
-          }
-          await Promise.all(loadOperations)
-        } catch (error) {
-          if (!importError) {
-            importError = error
-          }
-        }
       }
 
       if (importError) {
@@ -201,13 +245,13 @@ export function useWorkspaceExplorerTransfers({
     },
     [
       isExplorerBatchImportRef,
-      loadDirectory,
       onImportEntry,
-      reloadExplorerTree,
+      refreshDirectoryAfterMutation,
       setDropTargetDirectoryPath,
       setErrorMessage,
       setSelectedEntryPaths,
       workspaceRootPath,
+      showPendingPastePaths,
     ],
   )
 
@@ -283,7 +327,13 @@ export function useWorkspaceExplorerTransfers({
         isPastingRef.current = false
       }
     },
-    [clipboardEntry, setErrorMessage, submitClipboardImage, submitImportEntries, submitPasteEntry],
+    [
+      clipboardEntry,
+      setErrorMessage,
+      submitClipboardImage,
+      submitImportEntries,
+      submitPasteEntry,
+    ],
   )
 
   const handleExplorerPaste = useCallback(
@@ -507,6 +557,7 @@ export function useWorkspaceExplorerTransfers({
     handleExternalDragLeave,
     handleExternalDragOver,
     handleExternalDrop,
+    pendingPasteEntries,
     submitImportEntries,
     submitClipboardContents,
     submitMoveEntry,

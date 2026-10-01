@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import { Columns3, PanelLeft, SquarePen, Terminal } from 'lucide-react'
+import { Columns3, FolderTree, PanelLeft, SquarePen, Terminal } from 'lucide-react'
 
-export type MobileWorkspaceSurface = 'chat' | 'terminal' | 'board'
+export type MobileWorkspaceSurface = 'chat' | 'terminal' | 'board' | 'explorer'
 
 export interface MobileWorkspaceControlsProps {
   activeSurface: MobileWorkspaceSurface
@@ -57,6 +57,10 @@ export function MobileWorkspaceControls({
     onSurfaceChange(activeSurface === 'board' ? 'chat' : 'board')
   }
 
+  const handleExplorerClick = () => {
+    onSurfaceChange(activeSurface === 'explorer' ? 'chat' : 'explorer')
+  }
+
   return (
     <div className="flex w-full items-center justify-between gap-3" aria-label="Mobile workspace controls">
       <div className="flex shrink-0 items-center rounded-xl border border-border bg-[var(--sidebar-raised-surface)] p-1">
@@ -79,6 +83,13 @@ export function MobileWorkspaceControls({
       <div className="flex shrink-0 items-center rounded-xl border border-border bg-[var(--sidebar-raised-surface)] p-1">
         <SegmentedIconButton ariaLabel="Start new chat" onClick={onCreateConversation}>
           <SquarePen size={18} strokeWidth={2.2} aria-hidden="true" />
+        </SegmentedIconButton>
+        <SegmentedIconButton
+          active={activeSurface === 'explorer'}
+          ariaLabel={activeSurface === 'explorer' ? 'Return to chat' : 'Open Explorer'}
+          onClick={handleExplorerClick}
+        >
+          <FolderTree size={18} strokeWidth={2.2} aria-hidden="true" />
         </SegmentedIconButton>
         <SegmentedIconButton
           active={activeSurface === 'terminal'}

@@ -130,7 +130,7 @@ test('compacting finalizes the active exploration label before the turn finishes
   assert.equal(html.match(/Compacting/g)?.length ?? 0, 1)
 })
 
-test('pre-compaction exploration stays finalized after compaction commits', () => {
+test('unpersisted compacted live state finalizes prior work without rendering a Compacted divider', () => {
   const html = renderTranscript([
     {
       content: '',
@@ -166,7 +166,7 @@ test('pre-compaction exploration stays finalized after compaction commits', () =
   assert.equal(html.match(/Explored 1 list/g)?.length ?? 0, 1)
   assert.equal(html.match(/Working\.\.\./g)?.length ?? 0, 0)
   assert.equal(html.match(/Worked for/g)?.length ?? 0, 0)
-  assert.equal(html.match(/Compacted/g)?.length ?? 0, 1)
+  assert.equal(html.match(/Compacted/g)?.length ?? 0, 0)
 })
 
 test('persisted compaction stays inside one collapsed worked block', () => {

@@ -740,15 +740,12 @@ export function MessageList({
           }
 
           if (item.type === 'live_compaction') {
-            let marker;
             if (item.status.phase === 'compacted') {
-              const compactionId = item.status.compactionId;
-              marker = compactionMarkers.find((candidate) => candidate.compactionId === compactionId);
+              return null;
             }
             return (
               <CompactionDivider
-                key={`live-compaction-${item.status.phase}-${item.status.phase === 'compacting' ? item.status.attemptId : item.status.compactionId}`}
-                marker={marker}
+                key={`live-compaction-compacting-${item.status.attemptId}`}
                 phase={item.status.phase}
               />
             );
@@ -791,15 +788,12 @@ export function MessageList({
                         />
                       );
                     }
-                    let marker;
                     if (entry.status.phase === 'compacted') {
-                      const compactionId = entry.status.compactionId;
-                      marker = compactionMarkers.find((candidate) => candidate.compactionId === compactionId);
+                      return null;
                     }
                     return (
                       <CompactionDivider
-                        key={`live-compaction-${entry.status.phase}-${entry.status.phase === 'compacting' ? entry.status.attemptId : entry.status.compactionId}`}
-                        marker={marker}
+                        key={`live-compaction-compacting-${entry.status.attemptId}`}
                         phase={entry.status.phase}
                       />
                     );

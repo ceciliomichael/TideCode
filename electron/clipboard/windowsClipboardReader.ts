@@ -1,6 +1,6 @@
 import { clipboard } from 'electron'
 import { spawn } from 'node:child_process'
-import { readClipboardFilesDirect } from './windowsDropFilesParser.ts'
+import { readClipboardDropFilesDirect, readClipboardFilesDirect } from './windowsDropFilesParser.ts'
 
 const WINDOWS_CLIPBOARD_READ_TIMEOUT_MS = 2500
 const WINDOWS_CLIPBOARD_READ_SCRIPT = `
@@ -80,6 +80,15 @@ class WindowsClipboardReader {
   }
 
   public async readFiles(): Promise<string[]> {
+    try {
+      const dropPaths = readClipboardDropFilesDirect(clipboard)
+      if (dropPaths.length > 0) {
+        return dropPaths
+      }
+    } catch (dropError) {
+      console.warn('Direct CF_HDROP clipboard parsing encountered an issue, trying fallbacks:', dropError)
+    }
+
     let directPaths: string[] = []
 
     // Direct memory reading is authoritative when it already contains

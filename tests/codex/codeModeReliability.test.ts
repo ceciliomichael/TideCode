@@ -51,6 +51,54 @@ test('Code Mode rejects malformed String.raw payload source without rewriting it
   await expectSourceFailure(malformedProgram)
 })
 
+test('Code Mode recovers plan Markdown templates containing unescaped Markdown backticks', async () => {
+  const captured: unknown[] = []
+  const entries = [{
+    description: 'Create a plan artifact.',
+    execute: async (input: unknown) => {
+      captured.push(input)
+      return {
+        body: JSON.stringify(input),
+        status: 'success' as const,
+        summary: 'Created plan.',
+      }
+    },
+    inputSchema: { type: 'object' as const },
+    name: 'plan_create',
+    namespace: 'test',
+  }]
+  const registry: AgentToolRegistry = {
+    entries,
+    get(name) {
+      return entries.find((entry) => entry.name === name)
+    },
+    search() {
+      return entries.map((entry) => ({ ...entry, score: 1 }))
+    },
+  }
+  const executor = new CodeModeExecutor(registry)
+  const tick = String.fromCharCode(96)
+  const markdown = '# Goal\nUse ' + tick + 'PatientInfo' + tick + ' and ' + tick + 'loadForPatient' + tick + '.\n'
+  const source =
+    'const r = await tools.plan_create({ title: "Plan", content: ' +
+    tick +
+    markdown +
+    tick +
+    ' }); return r;'
+
+  try {
+    const result = await executor.run(source, { allowedToolNames: ['plan_create'] })
+    assert.equal(result.status, 'success')
+    assert.equal(result.toolCalls.length, 1)
+    assert.equal(captured.length, 1)
+    const capturedPlan = captured[0] as Record<string, unknown>
+    assert.equal(capturedPlan.title, 'Plan')
+    assert.equal(capturedPlan.content, markdown)
+  } finally {
+    await executor.dispose()
+  }
+})
+
 test('Code Mode rejects malformed payload bindings instead of repairing arbitrary names', async () => {
   const markdown = '# Plan\nPlace the adapter in the existing `backend` module.\n'
   const malformedProgram = [

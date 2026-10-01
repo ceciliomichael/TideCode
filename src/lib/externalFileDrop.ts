@@ -76,17 +76,6 @@ export function getExternalFilePaths(event: ReactDragEvent<HTMLElement>) {
 }
 
 export async function getExternalClipboardFilePaths(event: ReactClipboardEvent<HTMLElement>) {
-  if (typeof window !== 'undefined' && window.tidecodeClipboard) {
-    try {
-      const osPaths = await window.tidecodeClipboard.readFiles()
-      if (osPaths.length > 0) {
-        return osPaths
-      }
-    } catch (e) {
-      console.error('Failed to read OS clipboard files', e)
-    }
-  }
-
   const filePaths = getExternalFilePathsFromFileList(event.clipboardData.files)
   if (filePaths.length > 0) {
     return filePaths
@@ -106,6 +95,19 @@ export async function getExternalClipboardFilePaths(event: ReactClipboardEvent<H
 
     fallbackPaths.push(...getExternalFilePathsFromFileList([file]))
   }
+  if (fallbackPaths.length > 0) {
+    return fallbackPaths
+  }
 
-  return fallbackPaths
+  if (typeof window !== 'undefined' && window.tidecodeClipboard) {
+    try {
+      const osPaths = await window.tidecodeClipboard.readFiles()
+      if (osPaths.length > 0) {
+        return osPaths
+      }
+    } catch (e) {
+      console.error('Failed to read OS clipboard files', e)
+    }
+  }
+  return []
 }

@@ -47,10 +47,44 @@ function looksLikeHost(input: string) {
   )
 }
 
+function windowsPathToFileUrl(input: string) {
+  const normalizedPath = input.replace(/\\/gu, '/')
+  const driveMatch = /^([a-z]):\/(.*)$/iu.exec(normalizedPath)
+  if (driveMatch) {
+    const drive = driveMatch[1].toUpperCase()
+    const encodedPath = driveMatch[2]
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')
+    return `file:///${drive}:/${encodedPath}`
+  }
+
+  const uncMatch = /^\/\/([^/]+)\/(.*)$/u.exec(normalizedPath)
+  if (uncMatch) {
+    const host = uncMatch[1]
+    const encodedPath = uncMatch[2]
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')
+    return `file://${host}/${encodedPath}`
+  }
+
+  return null
+}
+
 export function normalizeBrowserInput(value: string) {
   const input = value.trim()
   if (!input) {
     return DEFAULT_BROWSER_URL
+  }
+
+  if (/^file:\/\//iu.test(input)) {
+    return input
+  }
+
+  const localFileUrl = windowsPathToFileUrl(input)
+  if (localFileUrl) {
+    return localFileUrl
   }
 
   if (/^https?:\/\//iu.test(input)) {
@@ -78,6 +112,10 @@ export function resolveBrowserTabTitle(title: string, url: string) {
 
   try {
     const parsed = new URL(url)
+    if (parsed.protocol === 'file:') {
+      const fileName = decodeURIComponent(parsed.pathname.split('/').filter(Boolean).pop() ?? '')
+      return fileName || 'Local File'
+    }
     return parsed.hostname || 'New Tab'
   } catch {
     return 'New Tab'

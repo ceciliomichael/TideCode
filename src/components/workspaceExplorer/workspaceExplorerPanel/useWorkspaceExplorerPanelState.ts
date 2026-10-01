@@ -109,6 +109,7 @@ export function useWorkspaceExplorerPanelState({
     expandedDirectories,
     loadDirectory,
     loadingDirectories,
+    refreshDirectoryAfterMutation,
     reloadExplorerTree,
     resetTree,
     rootEntries,
@@ -352,6 +353,7 @@ export function useWorkspaceExplorerPanelState({
     handleExternalDragLeave,
     handleExternalDragOver,
     handleExternalDrop,
+    pendingPasteEntries,
     submitClipboardContents,
     submitMoveEntry,
   } = useWorkspaceExplorerTransfers({
@@ -365,6 +367,7 @@ export function useWorkspaceExplorerPanelState({
     onImportEntry,
     onMoveEntry,
     onPasteEntry,
+    refreshDirectoryAfterMutation,
     recordMove: undoStack.recordMove,
     reloadExplorerTree,
     rootEntries,
@@ -479,7 +482,6 @@ export function useWorkspaceExplorerPanelState({
     setSelectedEntryPaths,
     setSelectionDirectoryPath,
     startCreateEntry: startCreateEntryWithDeferredReloads,
-    submitClipboardContents,
     undoStack,
   })
 
@@ -528,6 +530,7 @@ export function useWorkspaceExplorerPanelState({
     onRenameNameChange,
     deletingEntryPaths,
     openContextMenu,
+    pendingPasteEntries,
     renderedWidth,
     copyContextEntryPath,
     requestCopyOrCutEntry,

@@ -24,8 +24,10 @@ export function WorkspaceExplorerPanelView({
   gitFileDiffs,
   isOpen,
   panelState,
+  presentation = 'desktop',
   workspaceRootPath,
 }: WorkspaceExplorerPanelViewProps) {
+  const isMobilePresentation = presentation === 'mobile'
   const gitStatusByPath = useMemo(() => buildExplorerGitStatusMap(gitFileDiffs), [gitFileDiffs])
   const normalizedWorkspaceRootPath = workspaceRootPath ? normalizeWorkspaceRootPath(workspaceRootPath) : null
   const entryRowActionsRef = useRef<WorkspaceExplorerEntryRowActions>({
@@ -269,24 +271,64 @@ export function WorkspaceExplorerPanelView({
           ? renderCreationRow(depth + 1)
           : null
 
-      return [row, ...renderEntries(nestedEntries, depth + 1), ...(creationRow ? [creationRow] : [])]
+      return [
+        row,
+        ...renderEntries(nestedEntries, depth + 1),
+        ...renderPendingPasteRows(entryPath, depth + 1),
+        ...(creationRow ? [creationRow] : []),
+      ]
     })
   }
 
-  const showExplorerTree = panelState.rootEntries.length > 0 || Boolean(panelState.creationDraft)
+  function renderPendingPasteRows(parentPath: string, depth: number): ReactElement[] {
+    return panelState.pendingPasteEntries
+      .filter((pendingEntry) => normalizeEntryPath(pendingEntry.parentPath) === normalizeEntryPath(parentPath))
+      .map((pendingEntry) => (
+        <WorkspaceExplorerEntryRow
+          key={pendingEntry.id}
+          actionsRef={entryRowActionsRef}
+          depth={depth}
+          entry={{
+            isDirectory: pendingEntry.isDirectory,
+            name: pendingEntry.name,
+            relativePath: pendingEntry.id,
+          }}
+          isActiveFile={false}
+          isContextTarget={false}
+          isCutEntry={false}
+          isDeleting={false}
+          isDropTarget={false}
+          isExpanded={false}
+          isGitignoredEntry={false}
+          isLoading={false}
+          isPasting
+          isSelectedEntry={false}
+          isSelectionFocused={false}
+        />
+      ))
+  }
+
+  const showExplorerTree =
+    panelState.rootEntries.length > 0 ||
+    panelState.pendingPasteEntries.length > 0 ||
+    Boolean(panelState.creationDraft)
 
   return (
     <aside
       className={[
-        'non-selectable-ui relative flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-background max-md:hidden',
+        isMobilePresentation
+          ? 'non-selectable-ui relative flex h-full min-w-0 flex-1 flex-col overflow-hidden border-t border-border bg-background md:hidden'
+          : 'non-selectable-ui relative flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-background max-md:hidden',
         isOpen ? 'pointer-events-auto' : 'pointer-events-none invisible',
       ].join(' ')}
       aria-hidden={!isOpen}
-      style={{ width: isOpen ? `${panelState.renderedWidth}px` : '0px' }}
+      style={isMobilePresentation ? undefined : { width: isOpen ? `${panelState.renderedWidth}px` : '0px' }}
     >
-      <div className="flex h-11 items-center justify-between pl-5 pr-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-subtle-foreground">Explorer</p>
-      </div>
+      {!isMobilePresentation ? (
+        <div className="flex h-11 items-center justify-between pl-5 pr-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-subtle-foreground">Explorer</p>
+        </div>
+      ) : null}
       <div
         ref={panelState.treeContainerRef}
         className={[
@@ -430,6 +472,7 @@ export function WorkspaceExplorerPanelView({
             }}
           >
             {renderEntries(panelState.rootEntries, 0)}
+            {renderPendingPasteRows(ROOT_DIRECTORY_KEY, 0)}
             {panelState.creationDraft && normalizeEntryPath(panelState.creationDraft.parentPath) === ROOT_DIRECTORY_KEY
               ? renderCreationRow(0)
               : null}
@@ -441,7 +484,10 @@ export function WorkspaceExplorerPanelView({
       {panelState.isDraggingExplorerEntry ? (
         <div
           aria-hidden="true"
-          className="absolute bottom-0 right-0 top-11 z-40 w-6 cursor-ns-resize border-l border-border/70 bg-surface-muted/80"
+          className={[
+            'absolute bottom-0 right-0 z-40 w-6 cursor-ns-resize border-l border-border/70 bg-surface-muted/80',
+            isMobilePresentation ? 'top-0' : 'top-11',
+          ].join(' ')}
           onDragOver={panelState.handleExplorerScrollbarDragOver}
           onDrop={(event) => {
             event.preventDefault()
@@ -582,7 +628,7 @@ export function WorkspaceExplorerPanelView({
           state={panelState.errorDialogState}
         />
       ) : null}
-      {isOpen ? (
+      {isOpen && !isMobilePresentation ? (
         <div
           role="separator"
           aria-orientation="vertical"
