@@ -4,7 +4,6 @@ export interface BrowserTab {
   title: string
 }
 
-export const DEFAULT_BROWSER_URL = 'https://www.google.com/'
 const SEARCH_URL = 'https://www.google.com/search?q='
 
 export function normalizeEmbeddedBrowserUserAgent(userAgent: string) {
@@ -75,7 +74,7 @@ function windowsPathToFileUrl(input: string) {
 export function normalizeBrowserInput(value: string) {
   const input = value.trim()
   if (!input) {
-    return DEFAULT_BROWSER_URL
+    return ''
   }
 
   if (/^file:\/\//iu.test(input)) {

@@ -154,4 +154,7 @@ export function registerWorkspaceIpcHandlers() {
 
     return []
   })
+  ipcMain.handle('clipboard:clear', () => {
+    clipboard.clear()
+  })
 }

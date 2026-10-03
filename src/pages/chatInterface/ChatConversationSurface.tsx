@@ -49,6 +49,7 @@ interface ChatConversationSurfaceProps {
   isCompressingChat: boolean
   liveCompaction: ChatCompactionLifecycleState | null
   isBrowserOpen: boolean
+  onCloseBrowser: () => void
   isKanbanBoardOpen: boolean
   isTerminalSurfaceOpen: boolean
   messageListBoundaryRef: RefObject<HTMLDivElement | null>
@@ -105,6 +106,7 @@ export function ChatConversationSurface({
   isCompressingChat,
   liveCompaction,
   isBrowserOpen,
+  onCloseBrowser,
   isKanbanBoardOpen,
   isTerminalSurfaceOpen,
   messageListBoundaryRef,
@@ -135,6 +137,10 @@ export function ChatConversationSurface({
       currentKeys.includes(browserProjectKey) ? currentKeys : [...currentKeys, browserProjectKey],
     )
   }, [browserProjectKey, isBrowserOpen])
+  const handleCloseBrowser = useCallback((projectKey: string) => {
+    setInitializedBrowserProjectKeys((currentKeys) => currentKeys.filter((key) => key !== projectKey))
+    onCloseBrowser()
+  }, [onCloseBrowser])
   const requestFollowLatest = useCallback(() => {
     setFollowLatestSignal((currentSignal) => currentSignal + 1)
   }, [])
@@ -207,7 +213,11 @@ export function ChatConversationSurface({
             key={projectKey}
             className={isBrowserOpen && projectKey === browserProjectKey ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}
           >
-            <BrowserPanel active={isBrowserOpen && projectKey === browserProjectKey} projectKey={projectKey} />
+            <BrowserPanel
+              active={isBrowserOpen && projectKey === browserProjectKey}
+              onClose={() => handleCloseBrowser(projectKey)}
+              projectKey={projectKey}
+            />
           </div>
         ))}
         {!isBrowserOpen && (isKanbanBoardOpen ? (

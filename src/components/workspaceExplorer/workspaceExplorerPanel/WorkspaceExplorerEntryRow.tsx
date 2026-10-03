@@ -37,7 +37,6 @@ interface WorkspaceExplorerEntryRowProps {
   isExpanded: boolean
   isGitignoredEntry: boolean
   isLoading: boolean
-  isPasting?: boolean
   isSelectedEntry: boolean
   isSelectionFocused: boolean
   gitStatus?: 'modified' | 'untracked'
@@ -62,7 +61,6 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
   isExpanded,
   isGitignoredEntry,
   isLoading,
-  isPasting = false,
   isSelectedEntry,
   isSelectionFocused,
   gitStatus,
@@ -103,8 +101,8 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
     >
       <button
         type="button"
-        disabled={isDeleting || isPasting}
-        draggable={!isDeleting && !isPasting}
+        disabled={isDeleting}
+        draggable={!isDeleting}
         onClick={(event) => {
           if (event.button !== 0) {
             return
@@ -159,23 +157,21 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
         className={[
           'flex h-8 w-full min-w-0 items-center gap-1 rounded-none px-2 text-left text-sm transition-colors outline-none focus:outline-none focus-visible:outline-none',
           isCutEntry ? 'opacity-55' : '',
-          isDeleting || isPasting ? 'cursor-wait opacity-70' : '',
+          isDeleting ? 'cursor-wait opacity-70' : '',
           rowStateClass,
         ].join(' ')}
         data-workspace-entry-path={entry.relativePath}
         aria-selected={isSelectedEntry || isActiveFile || isContextTarget}
         style={{ paddingLeft: `${Math.max(8, depth * 12 + 8)}px` }}
       >
-        {isPasting ? (
-          <RefreshCw size={13} className="shrink-0 animate-spin text-subtle-foreground" />
-        ) : isDirectory && isDeleting ? (
+        {isDirectory && isDeleting ? (
           <RefreshCw size={13} className="shrink-0 animate-spin text-subtle-foreground" />
         ) : isDirectory ? (
           <ChevronRight size={14} className={['shrink-0 transition-transform', isExpanded ? 'rotate-90' : ''].join(' ')} />
         ) : (
           <span className="w-[14px] shrink-0" />
         )}
-        {!isDirectory && !isPasting && isDeleting ? (
+        {!isDirectory && isDeleting ? (
           <RefreshCw size={13} className="shrink-0 animate-spin text-subtle-foreground" />
         ) : !isDirectory && FileIcon ? (
           <FileIcon size={14} className="shrink-0" style={{ color: fileIconConfig?.color }} />
@@ -189,7 +185,6 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
           ].join(' ')}
         >
           {entry.name}
-          {isPasting ? <span className="ml-2 text-xs text-subtle-foreground">Pasting…</span> : null}
         </span>
         {isLoading && !isExpanded ? (
           <RefreshCw size={12} className="ml-auto shrink-0 animate-spin text-subtle-foreground" />
@@ -215,7 +210,6 @@ function areWorkspaceExplorerEntryRowPropsEqual(
     left.isExpanded === right.isExpanded &&
     left.isGitignoredEntry === right.isGitignoredEntry &&
     left.isLoading === right.isLoading &&
-    left.isPasting === right.isPasting &&
     left.isSelectedEntry === right.isSelectedEntry &&
     left.isSelectionFocused === right.isSelectionFocused &&
     left.gitStatus === right.gitStatus

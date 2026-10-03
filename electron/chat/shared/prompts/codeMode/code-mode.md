@@ -12,6 +12,8 @@ The `tools` binding is injected. Every external effect must use a documented `to
 
 The read-only payloads binding contains optional opaque text supplied beside the code program. Use payloads for arbitrary multiline Markdown, source code, patches, or other exact text that can contain quotes, backticks, or interpolation-like text. Reference it as payloads.<name> instead of embedding that text in a JavaScript string or template literal. Targeted patches still use direct apply_patch and complete-file writes use direct write.
 
+When direct write or apply_patch is used for human-authored source, readability is required. Never pseudo-minify, compress, or line-pack code to save tokens. Preserve existing formatting when editing; for new source, use conventional formatting appropriate to the file type. Keep logical structure visually clear with normal indentation, line breaks, spacing, and grouping.
+
 Imports, dynamic imports, require, classes, generators, eval, Function construction, Node/process globals, direct filesystem/network APIs, workers, WebAssembly, and prototype traversal are not part of the Code Mode language.
 
 Await tool calls before reading their results. Use `Promise.all` or `Promise.allSettled` only for genuinely independent work; TideCode bounds host tool concurrency automatically.

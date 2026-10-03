@@ -54,6 +54,7 @@ import { ensureRunServiceClient } from '../runService/ensureService'
 import { getStoredSettings, updateStoredSettings } from '../settings/store'
 import { isAppSettingsSurface } from '../../src/lib/appSettingsScopes'
 import { applyTideCodeAppIcon } from '../window/branding'
+import { browserFaviconCache } from '../browser/faviconCache'
 import { applyWindowTheme } from '../window/theme'
 import { createSkill, listAvailableSkills, loadSkill, updateSkill } from '../skills/service'
 import {
@@ -154,6 +155,17 @@ onSettingsChanged?: (settings: AppSettings, input: Partial<AppSettings>, surface
 
     return target
   }
+
+  ipcMain.handle('browser:getFavicon', async (event, webContentsId: number) => {
+    if (event.senderFrame !== event.sender.mainFrame || event.sender !== getWindow()?.webContents) {
+      return null
+    }
+    const guest = resolveBrowserGuest(event.sender.id, webContentsId)
+    if (!guest) {
+      return null
+    }
+    return browserFaviconCache.get(guest)
+  })
 
   ipcMain.handle('browser:openDevTools', async (event, input: OpenBrowserDevToolsInput) => {
     if (

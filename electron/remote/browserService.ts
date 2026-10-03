@@ -2,8 +2,9 @@ import { BrowserWindow } from 'electron'
 import { createHash } from 'node:crypto'
 import type { RemoteBrowserFrameEvent, RemoteBrowserKeyInput, RemoteBrowserState } from '../../src/types/browser'
 import { normalizeRemoteBrowserUrl } from './browserUrlPolicy'
+import { browserFaviconCache } from '../browser/faviconCache'
 
-const DEFAULT_URL = 'https://www.google.com/'
+const EMPTY_URL = 'about:blank'
 const WIDTH = 1280
 const HEIGHT = 800
 
@@ -51,6 +52,7 @@ class RemoteBrowserService {
     })
     const entry: SessionEntry = { casting: false, deviceScaleFactor: 1, height: HEIGHT, window, width: WIDTH }
     this.sessions.set(key, entry)
+    browserFaviconCache.track(window.webContents)
 
     window.webContents.setWindowOpenHandler(({ url }) => {
       try {
@@ -81,7 +83,6 @@ class RemoteBrowserService {
       this.sessions.delete(key)
     })
 
-    void window.loadURL(DEFAULT_URL)
     return entry
   }
 
@@ -92,7 +93,8 @@ class RemoteBrowserService {
       canGoForward: webContents.canGoForward(),
       isLoading: webContents.isLoading(),
       title: webContents.getTitle(),
-      url: webContents.getURL() || DEFAULT_URL,
+      url: webContents.getURL() || EMPTY_URL,
+      faviconDataUrl: browserFaviconCache.peek(webContents),
     }
   }
 

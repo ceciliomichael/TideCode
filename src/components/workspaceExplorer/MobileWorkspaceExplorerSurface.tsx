@@ -306,7 +306,7 @@ export function MobileWorkspaceExplorerSurface({
       ) : null}
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {view === 'explorer' ? (
+        <div className={view === 'explorer' ? 'flex min-h-0 flex-1' : 'hidden'}>
           <WorkspaceExplorerPanel
             activeFilePath={workspaceState.activeWorkspaceFilePath}
             clipboardEntry={workspaceState.workspaceClipboard}
@@ -327,11 +327,12 @@ export function MobileWorkspaceExplorerSurface({
             width={workspaceState.workspaceExplorerWidth}
             workspaceRootPath={workspaceState.activeWorkspacePath}
           />
-        ) : view === 'preview' ? (
-          renderPreviewContent()
-        ) : (
-          renderFileContent()
-        )}
+        </div>
+        {view === 'preview'
+          ? renderPreviewContent()
+          : view === 'file'
+            ? renderFileContent()
+            : null}
       </div>
     </section>
   )

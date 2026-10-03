@@ -18,7 +18,7 @@ import { createAgentToolCallableContract } from './callableContract'
 
 const TOOL_ROUTING_PROMPT_REPO_PATH = 'electron/chat/shared/prompts/agent'
 const TOOL_ROUTING_PROMPT_FILE_NAME = 'tool-routing.md'
-const TOOL_ROUTING_PROMPT_FALLBACK = 'Use direct apply_patch for targeted existing-file changes and direct write for complete-file creation or replacement. Inspect exact current source before apply_patch. Use code_mode for orchestration and tools.* capabilities only.'
+const TOOL_ROUTING_PROMPT_FALLBACK = 'Use direct apply_patch for targeted existing-file changes and direct write for complete-file creation or replacement. Inspect exact current source before apply_patch. Keep human-authored source conventionally formatted and readable; never minify or line-pack code merely to save tokens unless the user explicitly requests it. Use code_mode for orchestration and tools.* capabilities only.'
 
 let cachedToolRoutingPrompt: string | null = null
 

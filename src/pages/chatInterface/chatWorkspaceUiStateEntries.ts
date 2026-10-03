@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { WorkspaceClipboardEntry } from "../../components/workspaceExplorer/workspaceClipboardTypes";
+import { getPathBasename } from "../../lib/pathPresentation";
 import {
   createWorkspaceClipboardEntry,
   resolveWorkspaceClipboardPasteInputs,
@@ -111,6 +112,9 @@ export function createWorkspaceEntryHandlers({
         sourceWorkspaceRootPath: workspaceRootPath,
       }),
     });
+    if (typeof window !== "undefined" && window.tidecodeClipboard) {
+      await window.tidecodeClipboard.clear().catch(() => undefined);
+    }
   };
 
   const handleCutWorkspaceEntry = async (relativePaths: string[]) => {
@@ -126,6 +130,9 @@ export function createWorkspaceEntryHandlers({
         sourceWorkspaceRootPath: workspaceRootPath,
       }),
     });
+    if (typeof window !== "undefined" && window.tidecodeClipboard) {
+      await window.tidecodeClipboard.clear().catch(() => undefined);
+    }
   };
 
   const handlePasteWorkspaceEntry = async (
@@ -145,17 +152,34 @@ export function createWorkspaceEntryHandlers({
       workspaceRootPath,
     });
 
-    for (const pasteInput of pasteInputs) {
+    const runPasteInput = async (pasteInput: (typeof pasteInputs)[number]) => {
       if (pasteInput.kind === "transfer") {
         const result = await window.tidecodeWorkspace.transferEntry(pasteInput.input);
         if (result.mode === "move" && result.targetRelativePath !== result.relativePath) {
           clearWorkspaceClipboardByPathPrefix(result.relativePath);
           closeWorkspaceTabsByPathPrefix(result.relativePath);
         }
-        continue;
+        return;
       }
 
       await window.tidecodeWorkspace.importEntry(pasteInput.input);
+    };
+
+    const copyBasenames = pasteInputs.map((pasteInput) =>
+      pasteInput.kind === "transfer" ? getPathBasename(pasteInput.input.relativePath).toLowerCase() : "",
+    );
+    const canCopyInParallel =
+      pasteInputs.length > 1 &&
+      pasteInputs.every((pasteInput) => pasteInput.kind === "transfer" && pasteInput.input.mode === "copy") &&
+      new Set(copyBasenames).size === copyBasenames.length;
+
+    if (canCopyInParallel) {
+      await Promise.all(pasteInputs.map(runPasteInput));
+      return;
+    }
+
+    for (const pasteInput of pasteInputs) {
+      await runPasteInput(pasteInput);
     }
   };
 
