@@ -11,11 +11,18 @@ import {
 
 export function createWriteTool(context: WorkspaceToolContext) {
   return tool({
-description: 'Write a complete file using structured content. Use this tool to create files or intentionally replace an entire file.',
+    description: [
+      'Write a complete file using structured content. Use this tool to create files or intentionally replace an entire file.',
+      'Write human-readable source by default: preserve the repository\'s existing formatting conventions and never minify, compress, or line-pack code merely to reduce tool-call size or token usage unless the user explicitly requests minified output.',
+      'Keep logical structure visually clear using normal indentation, line breaks, spacing, and grouping appropriate to the file type and surrounding source.',
+    ].join(' '),
     inputSchema: jsonSchema({
       additionalProperties: true,
       properties: {
-        content: { description: 'Complete file contents.', type: 'string' },
+        content: {
+          description: 'Complete file contents. Keep human-authored source conventionally formatted and readable; do not pseudo-minify or collapse unrelated code onto long lines unless explicitly requested.',
+          type: 'string',
+        },
         path: {
           description: `${WORKSPACE_PATH_DESCRIPTION} Use the JSON key \`path\`, not \`file\`.`,
           type: 'string',

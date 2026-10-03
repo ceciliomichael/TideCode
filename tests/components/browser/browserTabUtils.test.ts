@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  DEFAULT_BROWSER_URL,
+  createBrowserTab,
   normalizeBrowserInput,
   normalizeEmbeddedBrowserUserAgent,
   resolveBrowserTabTitle,
@@ -61,12 +61,27 @@ test('browser tab title uses the local filename for file URLs', () => {
   )
 })
 
-test('browser input searches normal text and uses the default home for empty input', () => {
+test('browser input searches normal text with Google and leaves empty input idle', () => {
   assert.equal(
     normalizeBrowserInput('nextjs dev overlay'),
     'https://www.google.com/search?q=nextjs%20dev%20overlay',
   )
-  assert.equal(normalizeBrowserInput('   '), DEFAULT_BROWSER_URL)
+  assert.equal(normalizeBrowserInput(''), '')
+  assert.equal(normalizeBrowserInput('   '), '')
+})
+
+test('new browser tabs start with a local title and no favicon', () => {
+  const tab = createBrowserTab()
+  assert.equal(tab.title, 'New Tab')
+  assert.equal(tab.faviconUrl, '')
+  assert.equal(resolveBrowserTabTitle('', ''), 'New Tab')
+})
+
+test('Google searches encode punctuation and Unicode without treating them as URLs', () => {
+  assert.equal(
+    normalizeBrowserInput('  tidecode & café?  '),
+    'https://www.google.com/search?q=tidecode%20%26%20caf%C3%A9%3F',
+  )
 })
 
 test('embedded browser user agent removes Electron identity while preserving Chromium identity', () => {

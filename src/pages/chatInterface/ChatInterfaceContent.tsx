@@ -729,6 +729,7 @@ synchronizeDraftFolder,
               isBrowserOpen={isBrowserOpen}
               isKanbanBoardOpen={isKanbanBoardOpen}
               isTerminalSurfaceOpen={isTerminalSurfaceOpen}
+              onCloseBrowser={() => setWorkspaceViewMode('chat')}
               messageListBoundaryRef={messageListBoundaryRef}
               onQueueMessage={enqueueMessage}
               onAlternateFollowUpMessage={enqueueAlternateFollowUpMessage}

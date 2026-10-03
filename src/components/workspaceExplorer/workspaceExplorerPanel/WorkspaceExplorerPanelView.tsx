@@ -274,44 +274,12 @@ export function WorkspaceExplorerPanelView({
       return [
         row,
         ...renderEntries(nestedEntries, depth + 1),
-        ...renderPendingPasteRows(entryPath, depth + 1),
         ...(creationRow ? [creationRow] : []),
       ]
     })
   }
 
-  function renderPendingPasteRows(parentPath: string, depth: number): ReactElement[] {
-    return panelState.pendingPasteEntries
-      .filter((pendingEntry) => normalizeEntryPath(pendingEntry.parentPath) === normalizeEntryPath(parentPath))
-      .map((pendingEntry) => (
-        <WorkspaceExplorerEntryRow
-          key={pendingEntry.id}
-          actionsRef={entryRowActionsRef}
-          depth={depth}
-          entry={{
-            isDirectory: pendingEntry.isDirectory,
-            name: pendingEntry.name,
-            relativePath: pendingEntry.id,
-          }}
-          isActiveFile={false}
-          isContextTarget={false}
-          isCutEntry={false}
-          isDeleting={false}
-          isDropTarget={false}
-          isExpanded={false}
-          isGitignoredEntry={false}
-          isLoading={false}
-          isPasting
-          isSelectedEntry={false}
-          isSelectionFocused={false}
-        />
-      ))
-  }
-
-  const showExplorerTree =
-    panelState.rootEntries.length > 0 ||
-    panelState.pendingPasteEntries.length > 0 ||
-    Boolean(panelState.creationDraft)
+  const showExplorerTree = panelState.rootEntries.length > 0 || Boolean(panelState.creationDraft)
 
   return (
     <aside
@@ -472,7 +440,6 @@ export function WorkspaceExplorerPanelView({
             }}
           >
             {renderEntries(panelState.rootEntries, 0)}
-            {renderPendingPasteRows(ROOT_DIRECTORY_KEY, 0)}
             {panelState.creationDraft && normalizeEntryPath(panelState.creationDraft.parentPath) === ROOT_DIRECTORY_KEY
               ? renderCreationRow(0)
               : null}

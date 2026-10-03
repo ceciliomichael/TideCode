@@ -1,7 +1,6 @@
 import {
   useCallback,
   useRef,
-  useState,
   type ClipboardEvent as ReactClipboardEvent,
   type Dispatch,
   type DragEvent as ReactDragEvent,
@@ -46,13 +45,6 @@ interface UseWorkspaceExplorerTransfersOptions {
   workspaceRootPath: string | null
 }
 
-export interface PendingExplorerPasteEntry {
-  id: string
-  isDirectory: boolean
-  name: string
-  parentPath: string
-}
-
 export function useWorkspaceExplorerTransfers({
   clipboardEntry,
   closeContextMenu,
@@ -79,48 +71,39 @@ export function useWorkspaceExplorerTransfers({
   workspaceRootPath,
 }: UseWorkspaceExplorerTransfersOptions) {
   const isPastingRef = useRef(false)
-  const [pendingPasteEntries, setPendingPasteEntries] = useState<PendingExplorerPasteEntry[]>([])
-
-  const showPendingPastePaths = useCallback(
-    (sourcePaths: readonly string[], targetDirectoryRelativePath: string) => {
-      setPendingPasteEntries(sourcePaths.map((sourcePath, index) => {
-        const loadedSourceEntry = findLoadedExplorerEntry(rootEntries, directoryEntriesByPath, sourcePath)
-        return {
-          id: `pending-paste-${Date.now()}-${index}`,
-          isDirectory: loadedSourceEntry?.isDirectory ?? false,
-          name: getPathBasename(sourcePath),
-          parentPath: targetDirectoryRelativePath,
-        }
-      }))
-    },
-    [directoryEntriesByPath, rootEntries],
-  )
 
   const submitPasteEntry = useCallback(
     async (targetDirectoryRelativePath: string) => {
       closeContextMenu()
-      const relativePaths = clipboardEntry?.relativePaths ?? []
-      if (relativePaths.length > 0) {
-        showPendingPastePaths(relativePaths, targetDirectoryRelativePath)
-      }
+      isExplorerBatchImportRef.current = true
       try {
         await onPasteEntry(targetDirectoryRelativePath)
         setErrorMessage(null)
-        setPendingPasteEntries([])
-        await refreshDirectoryAfterMutation(targetDirectoryRelativePath)
+        const directoriesToRefresh = new Set<string>([targetDirectoryRelativePath])
+        if (clipboardEntry?.mode === 'cut') {
+          for (const relativePath of clipboardEntry.relativePaths) {
+            directoriesToRefresh.add(getPathDirname(relativePath))
+          }
+        }
+        await Promise.all(
+          Array.from(directoriesToRefresh).map((relativePath) =>
+            refreshDirectoryAfterMutation(relativePath)),
+        )
       } catch (error) {
         setErrorMessage(toUserFacingErrorMessage(error, 'The workspace item could not be pasted.'))
+        await reloadExplorerTree({ force: true })
       } finally {
-        setPendingPasteEntries([])
+        isExplorerBatchImportRef.current = false
       }
     },
     [
       clipboardEntry,
       closeContextMenu,
+      isExplorerBatchImportRef,
       onPasteEntry,
       refreshDirectoryAfterMutation,
+      reloadExplorerTree,
       setErrorMessage,
-      showPendingPastePaths,
     ],
   )
 
@@ -205,7 +188,6 @@ export function useWorkspaceExplorerTransfers({
 
       setDropTargetDirectoryPath(null)
       isExplorerBatchImportRef.current = true
-      showPendingPastePaths(uniqueSourcePaths, targetDirectoryRelativePath)
       let importError: unknown = null
       try {
         const basenames = uniqueSourcePaths.map(getPathBasename)
@@ -222,9 +204,6 @@ export function useWorkspaceExplorerTransfers({
         importError = error
       }
 
-      // The copy itself is complete at this point. Do not keep showing
-      // "Pasting…" while unrelated explorer refresh work catches up.
-      setPendingPasteEntries([])
       try {
         await refreshDirectoryAfterMutation(targetDirectoryRelativePath)
       } catch (error) {
@@ -251,7 +230,6 @@ export function useWorkspaceExplorerTransfers({
       setErrorMessage,
       setSelectedEntryPaths,
       workspaceRootPath,
-      showPendingPastePaths,
     ],
   )
 
@@ -557,7 +535,6 @@ export function useWorkspaceExplorerTransfers({
     handleExternalDragLeave,
     handleExternalDragOver,
     handleExternalDrop,
-    pendingPasteEntries,
     submitImportEntries,
     submitClipboardContents,
     submitMoveEntry,

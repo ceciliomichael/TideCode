@@ -1628,6 +1628,8 @@ test('Code Mode capability search runs inside Code Mode while local tools remain
     assert.match(codeModeDescription, /Before patching an existing file, inspect the exact current source region/u)
     assert.match(codeModeDescription, /split out any uncertain file and read it first/u)
     assert.match(codeModeDescription, /re-read the affected region and rebuild the hunk/u)
+    assert.match(codeModeDescription, /Human readability is part of correctness for source mutations/u)
+    assert.match(codeModeDescription, /Never compress, minify, line-pack, or collapse source merely to reduce tool-call size or token usage/u)
     assert.doesNotMatch(codeModeDescription, /tools\.apply_patch/u)
     assert.doesNotMatch(codeModeDescription, /tools\.edit/u)
     assert.match(codeModeDescription, /`tools\.execute_terminal`: run an actual command\/process/u)

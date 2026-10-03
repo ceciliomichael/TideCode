@@ -33,6 +33,8 @@ const APPLY_PATCH_DESCRIPTION = [
   'For a multi-file patch, every hunk must be backed by current exact source for that file. If one file or region is uncertain, leave it out, inspect it first, then patch it separately instead of risking the whole transaction.',
   'If a patch is rejected for a context mismatch, stale anchor, or partial source line, do not retry the same hunk. Re-read the affected region, rebuild that hunk from the returned current source, and retry only after the anchor is exact.',
   'Use the latest read content as context and include unchanged lines around each change. Do not use this for an unchanged patch.',
+  'Human readability is part of the mutation. Preserve the file\'s existing formatting conventions and never minify, compress, or line-pack source merely to reduce patch size or token usage unless the user explicitly requests minified output.',
+  'Keep logical structure visually clear using normal indentation, line breaks, spacing, and grouping appropriate to the file type and surrounding source. Do not collapse unrelated statements, declarations, branches, data structures, markup, rules, or configuration entries onto long physical lines merely because the syntax permits it.',
 ].join(' ')
 
 const APPLY_PATCH_INPUT_SCHEMA = {

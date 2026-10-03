@@ -1,4 +1,5 @@
 export interface RemoteBrowserState {
+  faviconDataUrl?: string
   canGoBack: boolean
   canGoForward: boolean
   isLoading: boolean
@@ -8,6 +9,7 @@ export interface RemoteBrowserState {
 }
 
 export interface RemoteBrowserFrameEvent {
+  faviconDataUrl?: string
   projectKey: string
   tabId: string
   screenshotDataUrl: string
@@ -49,6 +51,15 @@ export interface BrowserDevToolsBounds {
 
 export interface BrowserDevToolsTargetInput {
   webContentsId: number
+}
+
+export interface BrowserPageFavicon {
+  url: string
+  faviconDataUrl: string
+}
+
+export interface TideCodeBrowserFaviconsApi {
+  get: (webContentsId: number) => Promise<BrowserPageFavicon | null>
 }
 
 export interface BrowserDevToolsMenuAnchor {

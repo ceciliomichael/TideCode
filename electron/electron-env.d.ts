@@ -25,6 +25,7 @@ declare namespace NodeJS {
 interface Window {
   tidecodeBrowser: import('../src/types/browser').TideCodeBrowserApi
   tidecodeBrowserDevTools: import('../src/types/browser').TideCodeBrowserDevToolsApi
+  tidecodeBrowserFavicons: import('../src/types/browser').TideCodeBrowserFaviconsApi
   ipcRenderer: import('electron').IpcRenderer
   tidecodeApp: import('../src/types/chat').TideCodeAppApi
   tidecodeChat: import('../src/types/chat').TideCodeChatApi
@@ -42,6 +43,7 @@ interface Window {
     getPathForFile: (file: File) => string
   }
   tidecodeClipboard: {
+    clear: () => Promise<void>
     readFiles: () => Promise<string[]>
   }
   tidecodeTerminal: import('../src/types/chat').TideCodeTerminalApi

@@ -455,6 +455,8 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     assert.match(applyPatchTool.description ?? '', /do not retry the same hunk/u)
     assert.match(applyPatchTool.description ?? '', /Every file-content line in an Add File hunk must start with \+/u)
     assert.match(applyPatchTool.description ?? '', /Use \*\*\* Update File for edits to an existing path/u)
+    assert.match(applyPatchTool.description ?? '', /Human readability is part of the mutation/u)
+    assert.match(applyPatchTool.description ?? '', /Do not collapse unrelated statements, declarations, branches, data structures, markup, rules, or configuration entries/u)
     assert.equal(
       editTool.description,
 'Edit an existing file using one exact operation per hunk: replace targetContent, replace an exact startLine/endLine range, or insert insertContent at the file start/end. Ambiguous text targets return recoverable candidate context unless replaceAll is explicitly true.',
@@ -463,7 +465,7 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; an omitted path, empty string, or "." refers to the bound workspace root.')
     assert.equal(
       writeTool.description,
-      'Write a complete file using structured content. Use this tool to create files or intentionally replace an entire file.',
+      'Write a complete file using structured content. Use this tool to create files or intentionally replace an entire file. Write human-readable source by default: preserve the repository\'s existing formatting conventions and never minify, compress, or line-pack code merely to reduce tool-call size or token usage unless the user explicitly requests minified output. Keep logical structure visually clear using normal indentation, line breaks, spacing, and grouping appropriate to the file type and surrounding source.',
     )
     for (const description of [
       readTool,

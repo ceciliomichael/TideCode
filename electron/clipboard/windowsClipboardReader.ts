@@ -104,6 +104,22 @@ class WindowsClipboardReader {
       console.warn('Direct clipboard buffer parsing encountered an issue, trying fallback:', directError)
     }
 
+    const availableFormats = clipboard.availableFormats()
+    const hasFileDropFormat = availableFormats.some((format) => {
+      const normalizedFormat = format.toLowerCase()
+      return (
+        normalizedFormat === 'cf_hdrop' ||
+        normalizedFormat === 'filename' ||
+        normalizedFormat === 'filenamew' ||
+        normalizedFormat === 'text/uri-list' ||
+        normalizedFormat.includes('filegroupdescriptor') ||
+        normalizedFormat.includes('shell idlist')
+      )
+    })
+    if (availableFormats.length === 0 || !hasFileDropFormat) {
+      return directPaths
+    }
+
     // Query the native Windows file-drop list in an isolated STA process.
     // Keeping each read independent avoids stale/partial output from a shared
     // PowerShell session and gives Windows Explorer multi-selection semantics.

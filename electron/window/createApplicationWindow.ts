@@ -13,6 +13,7 @@ import { getStoredSettings } from '../settings/store'
 import { serializeInitialSettingsArg } from '../settings/bootstrap'
 import { serializeTideCodeLaunchRequest, type TideCodeLaunchRequest } from '../../src/lib/appLaunchRequest'
 import { applyTideCodeAppIcon, getTideCodeAppIconPath } from './branding'
+import { browserFaviconCache } from '../browser/faviconCache'
 import { readWindowState, type TideCodeWindowState } from './windowState'
 import {
   applyWindowTheme,
@@ -367,9 +368,12 @@ export async function createApplicationWindow(input: {
     }
   })
   win.webContents.on('did-attach-webview', (_event, guestWebContents) => {
+    browserFaviconCache.track(guestWebContents)
     const applyEmbeddedBrowserFocusBehavior = () => {
       void guestWebContents
-        .executeJavaScript(EMBEDDED_BROWSER_POINTER_FOCUS_SCRIPT, true)
+        // Background setup must not grant user activation to the guest. Electron
+        // may defer this execution until did-stop-loading.
+        .executeJavaScript(EMBEDDED_BROWSER_POINTER_FOCUS_SCRIPT, false)
         .catch(() => undefined)
     }
 

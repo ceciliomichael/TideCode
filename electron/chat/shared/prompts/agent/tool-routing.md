@@ -30,6 +30,9 @@ The APIs documented by the Code Mode description are a capability catalog, not p
 - Direct model-facing `apply_patch`: prefer this for a standalone targeted patch; its raw patch string bypasses Code Mode source parsing entirely. Before patching an existing file, inspect the exact current source region used by each hunk. For multi-file patches, every hunk must have current exact source evidence; split out any uncertain file and read it first. After a context-mismatch rejection, re-read the affected region and rebuild the hunk instead of retrying the same stale anchor.
 - A direct `apply_patch` call is atomic. Hunks are staged in order, including multiple hunks for the same path, but no file is committed unless every hunk in the patch validates.
 - Direct model-facing `write`: create a new text file or intentionally replace a complete file. Do not embed complete file contents in Code Mode source.
+- Human readability is part of correctness for source mutations. Never compress, minify, line-pack, or collapse source merely to reduce tool-call size or token usage unless the user explicitly asks for minified output. Preserve the existing file's formatting conventions when editing; for new files, use conventional language-appropriate formatting.
+- Keep logical structure visually clear: use normal indentation, line breaks, spacing, and grouping appropriate to the file type and surrounding code. Do not collapse unrelated statements, declarations, branches, data structures, markup, rules, or configuration entries onto long physical lines merely because the syntax permits it.
+- After a large `write` or `apply_patch`, inspect enough of the resulting source or run the repository formatter when one is already part of the project workflow to ensure the edited code is maintainable by a human. Do not introduce a new formatter dependency just for this check.
 
 ## Terminal
 

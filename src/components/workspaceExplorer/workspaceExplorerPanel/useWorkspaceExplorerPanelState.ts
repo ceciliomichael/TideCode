@@ -353,7 +353,6 @@ export function useWorkspaceExplorerPanelState({
     handleExternalDragLeave,
     handleExternalDragOver,
     handleExternalDrop,
-    pendingPasteEntries,
     submitClipboardContents,
     submitMoveEntry,
   } = useWorkspaceExplorerTransfers({
@@ -530,7 +529,6 @@ export function useWorkspaceExplorerPanelState({
     onRenameNameChange,
     deletingEntryPaths,
     openContextMenu,
-    pendingPasteEntries,
     renderedWidth,
     copyContextEntryPath,
     requestCopyOrCutEntry,

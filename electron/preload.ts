@@ -66,7 +66,7 @@ import type { TideCodeMcpApi, McpAddServerInput, McpState } from '../src/types/m
 import type { TideCodeSkillsApi } from '../src/types/skills'
 import type { TideCodeUpdatesApi } from '../src/types/updates'
 import type { RemoteBridgeEvent, TideCodeRemoteHostBridgeApi } from '../src/remote/protocol'
-import type { TideCodeBrowserDevToolsApi } from '../src/types/browser'
+import type { TideCodeBrowserDevToolsApi, TideCodeBrowserFaviconsApi } from '../src/types/browser'
 
 // --------- Expose some API to the Renderer process ---------
 contextBridge.exposeInMainWorld('ipcRenderer', {
@@ -381,6 +381,7 @@ const fileDropApi = {
 }
 
 const clipboardApi = {
+  clear: () => ipcRenderer.invoke('clipboard:clear'),
   readFiles: () => ipcRenderer.invoke('clipboard:readFiles'),
 }
 
@@ -411,6 +412,10 @@ const browserDevToolsApi: TideCodeBrowserDevToolsApi = {
   showDockMenu: (input) => ipcRenderer.invoke('browser:showDevToolsDockMenu', input),
   setVisible: (input) => ipcRenderer.invoke('browser:setDevToolsVisible', input),
   updateBounds: (input) => ipcRenderer.invoke('browser:updateDevToolsBounds', input),
+}
+
+const browserFaviconsApi: TideCodeBrowserFaviconsApi = {
+  get: (webContentsId) => ipcRenderer.invoke('browser:getFavicon', webContentsId),
 }
 
 const terminalApi: TideCodeTerminalApi = {
@@ -476,6 +481,7 @@ contextBridge.exposeInMainWorld('tidecodeChat', chatApi)
 contextBridge.exposeInMainWorld('tidecodeRuns', runsApi)
 contextBridge.exposeInMainWorld('tidecodeGit', gitApi)
 contextBridge.exposeInMainWorld('tidecodeBrowserDevTools', browserDevToolsApi)
+contextBridge.exposeInMainWorld('tidecodeBrowserFavicons', browserFaviconsApi)
 contextBridge.exposeInMainWorld('tidecodeFileDrop', fileDropApi)
 contextBridge.exposeInMainWorld('tidecodeClipboard', clipboardApi)
 contextBridge.exposeInMainWorld('tidecodeWorkspace', workspaceApi)
