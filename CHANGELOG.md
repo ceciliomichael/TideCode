@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.11 - Smoother browser and Explorer workflows
+
+TideCode 1.4.11 improves the integrated browser, workspace Explorer responsiveness, mobile navigation, Code Mode reliability, and release-build clarity.
+
+- Adds a richer browser new-tab and history experience with improved favicon handling and more reliable address-bar focus behavior during page loads.
+- Makes TideCode-to-TideCode Explorer copy/paste faster by avoiding unnecessary clipboard fallback work, batching refreshes, and copying safe multi-item transfers concurrently.
+- Preserves expanded folders and Explorer state when opening a file on mobile and returning with the device Back action.
+- Improves Code Mode tool routing and mutation reliability, including clearer direct write/apply-patch behavior and updated architecture guidance for durable compaction state.
+- Cleans up release/build output, removes the Vite native-config warning, and keeps real build failures visible.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.10 - Faster workspace workflows and mobile Explorer
 
 TideCode 1.4.10 improves mobile workspace navigation, Explorer responsiveness, chat compaction presentation, local-file browsing, and Code Mode reliability.
