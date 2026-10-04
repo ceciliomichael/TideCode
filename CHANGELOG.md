@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.13 - Better remote folder access and Explorer workflows
+
+TideCode 1.4.13 makes remote project selection feel much closer to the desktop Explorer experience and improves remote-web compatibility.
+
+- Adds a host-backed Explorer-style folder picker for Remote Web with Quick Access, drives, breadcrumbs, search, fuzzy folder-name suggestions, inline folder creation/rename, and folder selection.
+- Adds remote folder context actions for refresh, paste, delete, rename, cut, copy, copy path, and copy relative path, while keeping system folders hidden and ordinary user-hidden folders visible.
+- Keeps native desktop folder selection unchanged and avoids unnecessary reloads when selecting the already-open Quick Access location.
+- Adds Refresh to the main workspace Explorer context menu and aligns remote picker active/button styling with existing TideCode settings patterns.
+- Fixes Remote Web startup on browsers where `crypto.randomUUID()` is unavailable.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.12 - Better chat attachments and workspace file workflows
 
 TideCode 1.4.12 improves chat attachments, workspace file mentions, tool path aliases, queued-message editing, and native file clipboard behavior.
