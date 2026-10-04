@@ -11,9 +11,11 @@ import {
   createListToolResult,
   createReadToolResult,
   createWholeFileWriteToolResult,
+  resolveMutableTargetPath,
   resolveReadableTargetPath,
   resolveReadOnlyTargetPath,
 } from '../../electron/chat/shared/tools/workspaceTools'
+import { getConversationAttachmentsPath } from '../../electron/history/paths'
 import { getGlobalAgentsDirectory } from '../../electron/chat/shared/tools/sandboxPaths'
 import { createCanonicalToolModelOutput, prepareToolExecutionResultForModel } from '../../electron/chat/shared/toolReplay'
 import { TOOL_OUTPUT_PAGED_READ_MAX_BYTES } from '../../electron/chat/shared/tools/toolOutputBudget'
@@ -25,6 +27,13 @@ interface ExecutableToolResult {
   subject?: {
     path?: string
   }
+}
+
+async function executeTestTool<TInput>(execute: unknown, input: TInput) {
+  if (typeof execute !== 'function') {
+    throw new Error('Expected tool execute function.')
+  }
+  return (execute as (toolInput: TInput) => Promise<ExecutableToolResult>)(input)
 }
 
 test('read tool returns image files as numbered multimodal model content', async () => {
@@ -643,6 +652,142 @@ test('resolveReadableTargetPath keeps sandbox reads inside the workspace', async
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
     await fs.rm(outsideFilePath, { force: true })
+  }
+})
+
+test('virtual workspace aliases resolve without creating workspace metadata', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  try {
+    const target = resolveReadableTargetPath(workspaceRootPath, '@workspace/src', 'sandbox')
+    assert.equal(target.absolutePath, path.join(workspaceRootPath, 'src'))
+    assert.equal(target.displayPath, '@workspace/src')
+
+    const workspaceName = path.basename(workspaceRootPath)
+    const canonicalTarget = resolveReadableTargetPath(
+      workspaceRootPath,
+      `@workspace/${workspaceName}/src`,
+      'sandbox',
+    )
+    assert.equal(canonicalTarget.absolutePath, path.join(workspaceRootPath, 'src'))
+    assert.equal(canonicalTarget.displayPath, `@workspace/${workspaceName}/src`)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('sandbox read aliases can access only the current conversation attachment root', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const conversationId = `workspace-tools-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  const attachmentRoot = getConversationAttachmentsPath(conversationId)
+  try {
+    await fs.mkdir(attachmentRoot, { recursive: true })
+    await fs.writeFile(path.join(attachmentRoot, 'note.txt'), 'attachment needle\n', 'utf8')
+    const target = await resolveReadOnlyTargetPath(
+      workspaceRootPath,
+      '@attachments/note.txt',
+      'sandbox',
+      { conversationId },
+    )
+    assert.equal(target.absolutePath, path.join(attachmentRoot, 'note.txt'))
+    assert.equal(target.displayPath, '@attachments/note.txt')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+    await fs.rm(attachmentRoot, { force: true, recursive: true })
+  }
+})
+
+test('sandbox read, list, glob, and grep operate on current-chat attachment aliases', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const conversationId = `workspace-tools-discovery-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  const attachmentRoot = getConversationAttachmentsPath(conversationId)
+  try {
+    const nestedDirectory = path.join(attachmentRoot, 'docs')
+    await fs.mkdir(nestedDirectory, { recursive: true })
+    await fs.writeFile(path.join(nestedDirectory, 'guide.md'), 'attachment-discovery-needle\n', 'utf8')
+    const tools = await createAgentTools({
+      conversationId,
+      workspaceRootPath,
+    })
+
+    const listResult = await executeTestTool(tools.list.execute, { path: '@attachments/' })
+    assert.equal(listResult.status, 'success')
+    assert.match(listResult.body ?? '', /docs\//u)
+
+    const readResult = await executeTestTool(tools.read.execute, { path: '@attachments/docs/guide.md' })
+    assert.equal(readResult.status, 'success')
+    assert.equal(readResult.subject?.path, '@attachments/docs/guide.md')
+    assert.match(readResult.body ?? '', /attachment-discovery-needle/u)
+
+    const globResult = await executeTestTool(tools.glob.execute, {
+      path: '@attachments/',
+      pattern: '**/*.md',
+    })
+    assert.equal(globResult.status, 'success')
+    assert.match(globResult.body ?? '', /@attachments\/docs\/guide\.md/u)
+    assert.equal((globResult.body ?? '').includes(attachmentRoot), false)
+
+    const grepResult = await executeTestTool(tools.grep.execute, {
+      path: '@attachments/',
+      pattern: 'attachment-discovery-needle',
+    })
+    assert.equal(grepResult.status, 'success')
+    assert.match(grepResult.body ?? '', /@attachments\/docs\/guide\.md/u)
+    assert.equal((grepResult.body ?? '').includes(attachmentRoot), false)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+    await fs.rm(attachmentRoot, { force: true, recursive: true })
+  }
+})
+
+test('sandbox skill aliases resolve enabled skill resources outside the workspace', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const skillRoot = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-skill-alias-'))
+  try {
+    const skillFile = path.join(skillRoot, 'SKILL.md')
+    await fs.writeFile(skillFile, '# Skill\n', 'utf8')
+    const target = await resolveReadOnlyTargetPath(
+      workspaceRootPath,
+      '@skills/test-skill/SKILL.md',
+      'sandbox',
+      {
+        enabledSkills: [{
+          baseDirectory: skillRoot,
+          description: 'Test skill',
+          id: skillFile,
+          location: skillFile,
+          name: 'test-skill',
+          source: 'global',
+          sourceLabel: 'Global',
+        }],
+      },
+    )
+    assert.equal(target.absolutePath, skillFile)
+    assert.equal(target.displayPath, '@skills/test-skill/SKILL.md')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+    await fs.rm(skillRoot, { force: true, recursive: true })
+  }
+})
+
+test('mutation path aliases keep attachments and skills read-only', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  try {
+    const workspaceTarget = resolveMutableTargetPath(
+      workspaceRootPath,
+      '@workspace/src/alias-write.ts',
+      'sandbox',
+    )
+    assert.equal(workspaceTarget.absolutePath, path.join(workspaceRootPath, 'src', 'alias-write.ts'))
+    assert.throws(
+      () => resolveMutableTargetPath(workspaceRootPath, '@attachments/note.txt', 'full'),
+      /read-only/u,
+    )
+    assert.throws(
+      () => resolveMutableTargetPath(workspaceRootPath, '@skills/test-skill/SKILL.md', 'full'),
+      /read-only/u,
+    )
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 

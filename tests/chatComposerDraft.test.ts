@@ -31,3 +31,21 @@ test('restoreChatComposerDraft keeps a persisted Kanban title instead of exposin
     storedContent,
   )
 })
+
+test('virtual alias mentions round-trip between compact UI labels and model-facing aliases', () => {
+  const storedContent =
+    'Compare @workspace/project1/src/App.tsx with @attachments/spec.pdf and @skills/pdfs/'
+  const persistedMentionPathMap = {
+    'App.tsx': '@workspace/project1/src/App.tsx',
+    'spec.pdf': '@attachments/spec.pdf',
+    pdfs: '@skills/pdfs/',
+  }
+
+  const restoredDraft = restoreChatComposerDraft(storedContent, persistedMentionPathMap)
+
+  assert.equal(restoredDraft.value, 'Compare @App.tsx with @spec.pdf and @pdfs')
+  assert.equal(
+    expandChatMentions(restoredDraft.value, restoredDraft.mentionPathMap),
+    storedContent,
+  )
+})

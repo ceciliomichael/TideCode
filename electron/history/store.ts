@@ -35,6 +35,11 @@ import {
   cleanupDraftAgentContextDirectory,
   ensureDraftAgentContextDirectory,
 } from './draftAgentContextStore'
+import {
+  adoptDraftChatAttachments,
+  cloneConversationChatAttachments,
+  deleteConversationChatAttachments,
+} from './chatAttachments'
 import { runConversationMutation } from './conversationMutationQueue'
 import { getConversationAgentContextPath } from './paths'
 
@@ -212,6 +217,11 @@ export async function createStoredConversation(input?: CreateConversationInput) 
     sourceConversation?.agentContextRootPath ??
     (await resolveAgentContextRootPath(conversationId, folderId, chatMode))
 
+  if (sourceConversation) {
+    await cloneConversationChatAttachments(sourceConversation.id, conversationId)
+  } else if (input?.draftAttachmentScopeId?.trim()) {
+    await adoptDraftChatAttachments(conversationId, input.draftAttachmentScopeId.trim())
+  }
   if (!folderId) {
     await adoptDraftAgentContextDirectory(conversationId)
   }
@@ -557,6 +567,10 @@ export async function deleteStoredConversation(conversationId: string) {
     await deleteConversationFile(conversationId)
     await deleteCanonicalHistory(conversationId)
     return existingConversation
+  })
+
+  await deleteConversationChatAttachments(conversationId).catch((error) => {
+    console.warn(`Failed to remove chat attachments for conversation ${conversationId}`, error)
   })
 
   const contextOwnerConversationId = conversation?.compaction?.rootConversationId ?? conversationId

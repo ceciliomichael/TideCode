@@ -282,6 +282,17 @@ export function useWorkspaceExplorerTransfers({
       try {
         if (typeof window !== 'undefined' && window.tidecodeClipboard) {
           try {
+            if (
+              clipboardEntry &&
+              await window.tidecodeClipboard.isWorkspaceFilesCurrent({
+                mode: clipboardEntry.mode,
+                relativePaths: clipboardEntry.relativePaths,
+                workspaceRootPath: clipboardEntry.sourceWorkspaceRootPath,
+              })
+            ) {
+              await submitPasteEntry(targetDirectoryRelativePath)
+              return
+            }
             const osPaths = await window.tidecodeClipboard.readFiles()
             if (osPaths.length > 0) {
               await submitImportEntries(osPaths, targetDirectoryRelativePath)
@@ -335,6 +346,22 @@ export function useWorkspaceExplorerTransfers({
           selectionDirectoryPath,
         })
 
+        if (
+          clipboardEntry &&
+          typeof window !== 'undefined' &&
+          window.tidecodeClipboard &&
+          await window.tidecodeClipboard.isWorkspaceFilesCurrent({
+            mode: clipboardEntry.mode,
+            relativePaths: clipboardEntry.relativePaths,
+            workspaceRootPath: clipboardEntry.sourceWorkspaceRootPath,
+          })
+        ) {
+          event.preventDefault()
+          event.stopPropagation()
+          await submitPasteEntry(pasteTargetPath)
+          return
+        }
+
         const filePaths = await getExternalClipboardFilePaths(event)
         if (filePaths.length > 0) {
           event.preventDefault()
@@ -385,10 +412,42 @@ export function useWorkspaceExplorerTransfers({
 
       draggedEntriesRef.current = entriesToDrag
       setIsDraggingExplorerEntry(true)
+      if (workspaceRootPath && typeof window !== 'undefined' && window.tidecodeClipboard) {
+        event.preventDefault()
+        event.stopPropagation()
+        void window.tidecodeClipboard
+          .startWorkspaceFileDrag({
+            mode: 'copy',
+            relativePaths: entriesToDrag.map((draggedEntry) => draggedEntry.relativePath),
+            workspaceRootPath,
+          })
+          .catch((error) => {
+            console.error('Failed to start native workspace drag', error)
+            setErrorMessage(toUserFacingErrorMessage(error, 'The workspace item could not be dragged.'))
+          })
+          .finally(() => {
+            draggedEntriesRef.current = []
+            setIsDraggingExplorerEntry(false)
+            setDropTargetDirectoryPath(null)
+            stopDragScroll()
+          })
+        return
+      }
+
       event.dataTransfer.effectAllowed = 'move'
       event.dataTransfer.setData('text/plain', entriesToDrag.map((draggedEntry) => draggedEntry.relativePath).join('\n'))
     },
-    [directoryEntriesByPath, draggedEntriesRef, rootEntries, selectedEntryPaths, setIsDraggingExplorerEntry],
+    [
+      directoryEntriesByPath,
+      draggedEntriesRef,
+      rootEntries,
+      selectedEntryPaths,
+      setDropTargetDirectoryPath,
+      setErrorMessage,
+      setIsDraggingExplorerEntry,
+      stopDragScroll,
+      workspaceRootPath,
+    ],
   )
 
   const handleEntryDragEnd = useCallback(() => {

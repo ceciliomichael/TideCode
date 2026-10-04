@@ -2,6 +2,7 @@ export {
   OPTIONAL_ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION,
   resolveReadableTargetPath,
   resolveReadOnlyTargetPath,
+  resolveMutableTargetPath,
   resolveWorkspaceTargetPath,
   ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION,
   WorkspaceTargetNotFoundError,

@@ -35,6 +35,18 @@ const mockSkills: SkillSummary[] = [
   },
 ]
 
+interface ExecutableSkillToolResult {
+  body?: string
+  status: string
+}
+
+async function executeSkillTool<TInput>(execute: unknown, input: TInput) {
+  if (typeof execute !== 'function') {
+    throw new Error('Expected skill tool execute function.')
+  }
+  return (execute as (toolInput: TInput) => Promise<ExecutableSkillToolResult>)(input)
+}
+
 test('paginateSkills correctly paginates skills array', () => {
   const result = paginateSkills(mockSkills, 1, 1)
   assert.equal(result.currentPage, 1)
@@ -58,32 +70,35 @@ test('searchSkills filters skills by query token matching', () => {
 })
 
 test('createSkillTool executes list and search actions', async () => {
-  const toolInstance = createSkillTool({ workspaceRootPath: '/workspace' } as any, mockSkills)
+  const toolInstance = createSkillTool({
+    enabledSkills: mockSkills,
+    workspaceRootPath: '/workspace',
+  }, mockSkills)
 
   // List action
-  const listResult = await (toolInstance.execute as any)({ action: 'list', page: 1 })
+  const listResult = await executeSkillTool(toolInstance.execute, { action: 'list', page: 1 })
   assert.equal(listResult.status, 'success')
   assert.match(listResult.body, /writing/)
 
   // Search action
-  const searchResult = await (toolInstance.execute as any)({ action: 'search', query: 'narrative' })
+  const searchResult = await executeSkillTool(toolInstance.execute, { action: 'search', query: 'narrative' })
   assert.equal(searchResult.status, 'success')
   assert.match(searchResult.body, /writing/)
 })
 
-test('loaded skill results expose the skill file and base directory to the agent', () => {
+test('loaded skill results expose stable skill aliases to the agent', () => {
   const result = buildLoadedSkillResult({
     ...mockSkills[0],
     content: 'Run scripts/check.mjs before completing the task.',
   })
 
   assert.equal(result.status, 'success')
-  assert.match(result.body ?? '', /Skill file: \/path\/to\/writing\/SKILL\.md/u)
-  assert.match(result.body ?? '', /Skill directory: \/path\/to\/writing/u)
+  assert.match(result.body ?? '', /Skill file: @skills\/writing\/SKILL\.md/u)
+  assert.match(result.body ?? '', /Skill directory: @skills\/writing\//u)
   assert.match(result.body ?? '', /Run scripts\/check\.mjs/u)
   assert.deepEqual(result.semantics, {
-    skill_directory: '/path/to/writing',
-    skill_file: '/path/to/writing/SKILL.md',
+    skill_directory: '@skills/writing/',
+    skill_file: '@skills/writing/SKILL.md',
     skill_name: 'writing',
   })
 })
@@ -112,8 +127,8 @@ test('skill location context remains model-visible but is filtered from the disp
   const modelContent = getToolResultModelContent(structuredContent)
   const displayContent = getToolResultDisplayBody('skill', modelContent)
 
-  assert.match(modelContent, /Skill file: \/path\/to\/writing\/SKILL\.md/u)
-  assert.match(modelContent, /Skill directory: \/path\/to\/writing/u)
+  assert.match(modelContent, /Skill file: @skills\/writing\/SKILL\.md/u)
+  assert.match(modelContent, /Skill directory: @skills\/writing\//u)
   assert.match(modelContent, /Resolve relative resource and script paths/u)
   assert.doesNotMatch(displayContent, /Skill file:/u)
   assert.doesNotMatch(displayContent, /Skill directory:/u)

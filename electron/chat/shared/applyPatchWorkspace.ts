@@ -3,6 +3,7 @@ import path from 'node:path'
 import { getSafeWorkspaceTargetPath } from '../../workspace/paths'
 import { retryTransientFilesystemOperation, writeTextFileAtomically } from './tools/workspaceMutationSafety'
 import { enqueueWorkspaceMutations } from './tools/workspaceMutationQueue'
+import { resolveWorkspaceAliasRelativePath } from './tools/workspaceToolPaths'
 import { applyUpdateChunks, normalizeContentLineEndings } from './applyPatchMatcher'
 import { parseApplyPatch } from './applyPatchParser'
 import type {
@@ -28,6 +29,20 @@ function resolvePatchTargetPath(
   customResolver: ApplyPatchWorkspaceOptions['resolveTargetPath'],
   basePath: string,
 ) {
+  const normalizedAliasPath = candidatePath.trim().replace(/\\/gu, '/')
+  if (
+    normalizedAliasPath === '@attachments' ||
+    normalizedAliasPath.startsWith('@attachments/') ||
+    normalizedAliasPath === '@skills' ||
+    normalizedAliasPath.startsWith('@skills/')
+  ) {
+    throw new Error('The @attachments and @skills virtual roots are read-only. Copy content into @workspace/ before modifying it.')
+  }
+  if (normalizedAliasPath === '@workspace' || normalizedAliasPath.startsWith('@workspace/')) {
+    const relativePath =
+      resolveWorkspaceAliasRelativePath(workspaceRootPath, normalizedAliasPath) || '.'
+    return getSafeWorkspaceTargetPath(workspaceRootPath, relativePath)
+  }
   if (customResolver) return customResolver(candidatePath)
 
   if (path.isAbsolute(candidatePath)) {

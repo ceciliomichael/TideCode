@@ -88,10 +88,15 @@ export function estimateMessageContextUsage(messages: readonly Message[]) {
     for (const attachment of message.attachments ?? []) {
       if (attachment.kind === 'text') {
         historyTokens += approximateTokenCount(`Attachment ${attachment.fileName}:\n${attachment.textContent}`)
-      } else {
+      } else if (attachment.kind === 'image') {
         // Image tokenization is provider- and resolution-dependent. A stable
         // allowance is more useful than counting the much larger base64 string.
         historyTokens += MODEL_IMAGE_TOKEN_ALLOWANCE
+        if (attachment.path) {
+          historyTokens += approximateTokenCount(`Attached image: ${attachment.path}`)
+        }
+      } else {
+        historyTokens += approximateTokenCount(`Attached ${attachment.kind}: ${attachment.path}`)
       }
     }
 

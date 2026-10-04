@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type CSSProperties, type KeyboardEvent, type RefObject } from 'react'
-import { ArrowUp, Clock, Paperclip, Square } from 'lucide-react'
-import { CHAT_ATTACHMENT_INPUT_ACCEPT, readChatAttachmentsFromFiles } from '../lib/chatAttachmentFiles'
+import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type CSSProperties, type DragEvent, type KeyboardEvent, type RefObject } from 'react'
+import { ArrowUp, Clock, File, Folder, Paperclip, Square } from 'lucide-react'
+import { readChatAttachmentsFromFiles } from '../lib/chatAttachmentFiles'
+import { CHAT_ATTACHMENT_MAX_COUNT, isSupportedImageMimeType } from '../lib/chatAttachments'
 import { chatConversationSurfacePaddingClassName, chatInputSurfaceClassName } from '../lib/chatStyles'
 import { DEFAULT_FOLLOW_UP_BEHAVIOR, type FollowUpBehavior } from '../lib/appSettings'
 import { resolveChatFollowUpShortcutAction } from '../lib/chatFollowUpShortcuts'
@@ -30,18 +31,19 @@ import { ModelSelectorField, type ModelSelectorOption } from './chat/ModelSelect
 import { ReasoningEffortBlock } from './chat/ReasoningEffortBlock'
 import { RuntimeTargetSelectorField } from './chat/RuntimeTargetSelectorField'
 import { TerminalExecutionModeSelectorField } from './chat/TerminalExecutionModeSelectorField'
-import { AttachmentPillList } from './chat/AttachmentPillList'
 import {
   ensureChatImageReferences,
   findChatImageReferenceForDeletion,
   getChatImageAttachments,
-  insertChatImageReferences,
   removeChatImageReference,
 } from '../lib/chatImageReferences'
+import { findChatMentionMatches } from '../lib/chatMentions'
+import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPathComparison'
 
 interface ChatInputProps {
   actionButtonMode?: 'auto' | 'abort' | 'send'
   attachments?: ChatAttachment[]
+  conversationId?: string | null
   chatModeOptions?: readonly ChatModeOption[]
   chatModeSelectorDisabled?: boolean
   contextUsage?: ContextUsageEstimate
@@ -98,6 +100,7 @@ interface ChatInputProps {
 export function ChatInput({
   actionButtonMode = 'auto',
   attachments = [],
+  conversationId = null,
   value,
   onValueChange,
   onSend,
@@ -156,6 +159,7 @@ export function ChatInput({
   const containerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false)
   const isMobileViewport = useIsMobileViewport()
   const isInline = variant === 'inline'
   const canManageAttachments = typeof onAttachmentsChange === 'function'
@@ -186,6 +190,8 @@ export function ChatInput({
     showRuntimeTargetControl || showTerminalExecutionModeControl || showGitBranchSelector
   const showRefactorCandidatesIndicator = workspaceRootPath && !isEditing
   const mentionMenu = useChatFileMentionMenu({
+    attachmentRefreshKey: attachments.length,
+    attachmentScopeId: conversationId,
     disabled,
     initialMentionPathMap,
     onValueChange,
@@ -202,7 +208,7 @@ export function ChatInput({
     value,
   })
   const imageAttachments = getChatImageAttachments(attachments)
-  const nonImageAttachments = attachments.filter((attachment) => attachment.kind !== 'image')
+  const legacyImageAttachments = imageAttachments.filter((attachment) => !attachment.path)
   const hasContent = value.trim().length > 0 || attachments.length > 0
   const resolvedActionButtonMode =
     actionButtonMode === 'auto'
@@ -273,7 +279,7 @@ export function ChatInput({
       const textarea = textareaRef.current
       const imageReference = textarea
         ? findChatImageReferenceForDeletion({
-            imageCount: imageAttachments.length,
+            imageCount: legacyImageAttachments.length,
             key: e.key,
             selectionEnd: textarea.selectionEnd,
             selectionStart: textarea.selectionStart,
@@ -340,35 +346,225 @@ export function ChatInput({
     }
   }
 
+  async function persistNativeAttachment(file: File, sourcePath: string): Promise<ChatAttachment> {
+    const stored = await window.tidecodeHistory.storeChatAttachment({
+      conversationId,
+      sourcePath,
+    })
+    if (stored.kind === 'folder') {
+      return {
+        fileName: stored.fileName,
+        id: crypto.randomUUID(),
+        kind: 'folder',
+        mimeType: stored.mimeType,
+        path: stored.path,
+        sizeBytes: stored.sizeBytes,
+      }
+    }
+    if (isSupportedImageMimeType(file.type)) {
+      const imageResult = await readChatAttachmentsFromFiles([file], [])
+      const imageAttachment = imageResult.attachments.find((attachment) => attachment.kind === 'image')
+      if (imageAttachment?.kind === 'image') {
+        return {
+          ...imageAttachment,
+          fileName: stored.fileName,
+          path: stored.path,
+        }
+      }
+    }
+    return {
+      fileName: stored.fileName,
+      id: crypto.randomUUID(),
+      kind: 'file',
+      mimeType: file.type || stored.mimeType,
+      path: stored.path,
+      sizeBytes: stored.sizeBytes,
+    }
+  }
+
   async function handleAttachments(files: readonly File[]) {
     if (!canManageAttachments || disabled || files.length === 0) {
       return
     }
 
     const initialInsertionPosition = textareaRef.current?.selectionStart ?? value.length
-    const result = await readChatAttachmentsFromFiles(files, attachments)
-    if (result.attachments.length > 0) {
-      const nextAttachments = [...attachments, ...result.attachments]
-      const newImageCount = getChatImageAttachments(result.attachments).length
-      const latestValue = valueRef.current
-      const insertionPosition = textareaRef.current?.selectionStart ?? initialInsertionPosition
-      const insertion = insertChatImageReferences({
-        count: newImageCount,
-        firstImageNumber: imageAttachments.length + 1,
-        position: insertionPosition,
-        text: latestValue,
-      })
-      onAttachmentsChange?.(nextAttachments)
-      if (insertion.text !== latestValue) {
-        onValueChange(insertion.text)
+    const availableSlots = Math.max(CHAT_ATTACHMENT_MAX_COUNT - attachments.length, 0)
+    if (availableSlots === 0) {
+      setAttachmentError(`You can attach up to ${CHAT_ATTACHMENT_MAX_COUNT} items per message.`)
+      return
+    }
+    const nextNewAttachments: ChatAttachment[] = []
+    const errors: string[] = []
+    for (const file of files.slice(0, availableSlots)) {
+      let sourcePath = ''
+      try {
+        sourcePath = window.tidecodeFileDrop?.getPathForFile(file)?.trim() ?? ''
+      } catch {
+        sourcePath = ''
       }
-      textareaRef.current?.focus()
-      window.requestAnimationFrame(() => {
-        textareaRef.current?.setSelectionRange(insertion.cursorPosition, insertion.cursorPosition)
-      })
+      try {
+        if (sourcePath.length > 0) {
+          nextNewAttachments.push(await persistNativeAttachment(file, sourcePath))
+          continue
+        }
+        const fallbackResult = await readChatAttachmentsFromFiles(
+          [file],
+          [...attachments, ...nextNewAttachments],
+        )
+        for (const attachment of fallbackResult.attachments) {
+          if (attachment.kind === 'image') {
+            const stored = await window.tidecodeHistory.storeChatImageAttachment({
+              conversationId,
+              dataUrl: attachment.dataUrl,
+              fileName: attachment.fileName,
+            })
+            nextNewAttachments.push({
+              ...attachment,
+              fileName: stored.fileName,
+              path: stored.path,
+            })
+          } else {
+            nextNewAttachments.push(attachment)
+          }
+        }
+        errors.push(...fallbackResult.errors)
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : `Unable to attach ${file.name || 'item'}.`)
+      }
+    }
+    if (files.length > availableSlots) {
+      errors.push(`You can attach up to ${CHAT_ATTACHMENT_MAX_COUNT} items per message.`)
     }
 
-    setAttachmentError(result.errors[0] ?? null)
+    if (nextNewAttachments.length > 0) {
+      const nextAttachments = [...attachments, ...nextNewAttachments]
+      const insertionPosition = textareaRef.current?.selectionStart ?? initialInsertionPosition
+      onAttachmentsChange?.(nextAttachments)
+      mentionMenu.insertMentionReferences(
+        nextNewAttachments
+          .filter((attachment): attachment is Extract<ChatAttachment, { path: string }> => 'path' in attachment && Boolean(attachment.path))
+          .map((attachment) => ({
+            label: attachment.fileName,
+            path: attachment.path,
+          })),
+        insertionPosition,
+      )
+    }
+
+    setAttachmentError(errors[0] ?? null)
+  }
+
+  async function handleAttachmentPaths(paths: readonly string[]) {
+    if (!canManageAttachments || disabled || paths.length === 0) {
+      return
+    }
+    const availableSlots = Math.max(CHAT_ATTACHMENT_MAX_COUNT - attachments.length, 0)
+    if (availableSlots === 0) {
+      setAttachmentError(`You can attach up to ${CHAT_ATTACHMENT_MAX_COUNT} items per message.`)
+      return
+    }
+    const nextAttachments: ChatAttachment[] = []
+    const errors: string[] = []
+    for (const sourcePath of paths.slice(0, availableSlots)) {
+      try {
+        const stored = await window.tidecodeHistory.storeChatAttachment({
+          conversationId,
+          sourcePath,
+        })
+        nextAttachments.push({
+          fileName: stored.fileName,
+          id: crypto.randomUUID(),
+          kind: stored.kind,
+          mimeType: stored.mimeType,
+          path: stored.path,
+          sizeBytes: stored.sizeBytes,
+        })
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : `Unable to attach ${sourcePath}.`)
+      }
+    }
+    if (paths.length > availableSlots) {
+      errors.push(`You can attach up to ${CHAT_ATTACHMENT_MAX_COUNT} items per message.`)
+    }
+    if (nextAttachments.length > 0) {
+      onAttachmentsChange?.([...attachments, ...nextAttachments])
+      mentionMenu.insertMentionReferences(
+        nextAttachments
+          .filter((attachment): attachment is Extract<ChatAttachment, { kind: 'file' | 'folder' }> => (
+            attachment.kind === 'file' || attachment.kind === 'folder'
+          ))
+          .map((attachment) => ({
+          label: attachment.fileName,
+          path: attachment.path,
+          })),
+      )
+    }
+    setAttachmentError(errors[0] ?? null)
+  }
+
+  function insertWorkspaceClipboardMentions(input: {
+    entries: readonly { isDirectory: boolean; relativePath: string }[]
+    workspaceRootPath: string
+  }) {
+    const normalizedWorkspaceRootPath = workspaceRootPath?.trim() ?? ''
+    if (
+      normalizedWorkspaceRootPath.length === 0 ||
+      normalizeWorkspaceRootPathForComparison(normalizedWorkspaceRootPath) !==
+        normalizeWorkspaceRootPathForComparison(input.workspaceRootPath)
+    ) {
+      return false
+    }
+
+    const normalizedRoot = normalizedWorkspaceRootPath.replace(/[\\/]+$/u, '')
+    const workspaceName = normalizedRoot.split(/[\\/]/u).filter(Boolean).at(-1) ?? ''
+    if (!workspaceName) {
+      return false
+    }
+
+    const references = input.entries.flatMap((entry) => {
+      const normalizedRelativePath = entry.relativePath.trim().replace(/\\/gu, '/').replace(/^\/+|\/+$/gu, '')
+      if (!normalizedRelativePath) {
+        return []
+      }
+      const label = normalizedRelativePath.split('/').filter(Boolean).at(-1)
+      if (!label) {
+        return []
+      }
+      return [{
+        label,
+        path: `@workspace/${workspaceName}/${normalizedRelativePath}${entry.isDirectory ? '/' : ''}`,
+      }]
+    })
+    if (references.length === 0) {
+      return false
+    }
+
+    mentionMenu.insertMentionReferences(references)
+    setAttachmentError(null)
+    return true
+  }
+
+  async function handleClipboardFilePaste(files: readonly File[]) {
+    try {
+      const workspaceFiles = await window.tidecodeClipboard.readWorkspaceFiles()
+      if (workspaceFiles && insertWorkspaceClipboardMentions(workspaceFiles)) {
+        return
+      }
+    } catch {
+      // Fall through to the normal external attachment path.
+    }
+
+    if (files.length > 0) {
+      await handleAttachments(files)
+      return
+    }
+
+    try {
+      const paths = await window.tidecodeClipboard.readFiles()
+      await handleAttachmentPaths(paths)
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : 'Unable to read files from the clipboard.')
+    }
   }
 
   function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
@@ -377,12 +573,45 @@ export function ChatInput({
     }
 
     const files = Array.from(event.clipboardData.files)
-    if (files.length === 0) {
+    const hasFiles = files.length > 0 || Array.from(event.clipboardData.types).includes('Files')
+    if (hasFiles) {
+      event.preventDefault()
+      void handleClipboardFilePaste(files)
       return
     }
+  }
 
+  function handleAttachmentDragOver(event: DragEvent<HTMLDivElement>) {
+    if (!canManageAttachments || disabled || !Array.from(event.dataTransfer.types).includes('Files')) {
+      return
+    }
     event.preventDefault()
-    void handleAttachments(files)
+    event.dataTransfer.dropEffect = 'copy'
+  }
+
+  function handleAttachmentDrop(event: DragEvent<HTMLDivElement>) {
+    if (!canManageAttachments || disabled || !Array.from(event.dataTransfer.types).includes('Files')) {
+      return
+    }
+    event.preventDefault()
+    const files = Array.from(event.dataTransfer.files)
+    if (files.length > 0) {
+      void handleAttachments(files)
+      return
+    }
+    const paths: string[] = []
+    for (const item of Array.from(event.dataTransfer.items)) {
+      if (item.kind !== 'file') continue
+      const file = item.getAsFile()
+      if (!file) continue
+      try {
+        const sourcePath = window.tidecodeFileDrop?.getPathForFile(file)?.trim() ?? ''
+        if (sourcePath) paths.push(sourcePath)
+      } catch {
+        // Ignore items without a native path.
+      }
+    }
+    void handleAttachmentPaths(paths)
   }
 
   function handleManualAttachClick() {
@@ -390,22 +619,51 @@ export function ChatInput({
       return
     }
 
+    setIsAttachmentMenuOpen((current) => !current)
+  }
+
+  function handleAttachFileClick() {
+    setIsAttachmentMenuOpen(false)
     fileInputRef.current?.click()
+  }
+
+  async function handleAttachFolderClick() {
+    setIsAttachmentMenuOpen(false)
+    if (!canManageAttachments || disabled) {
+      return
+    }
+    if (attachments.length >= CHAT_ATTACHMENT_MAX_COUNT) {
+      setAttachmentError(`You can attach up to ${CHAT_ATTACHMENT_MAX_COUNT} items per message.`)
+      return
+    }
+    try {
+      const stored = await window.tidecodeHistory.pickAndStoreChatAttachmentFolder(conversationId)
+      if (!stored) {
+        return
+      }
+      const attachment: ChatAttachment = {
+        fileName: stored.fileName,
+        id: crypto.randomUUID(),
+        kind: 'folder',
+        mimeType: stored.mimeType,
+        path: stored.path,
+        sizeBytes: stored.sizeBytes,
+      }
+      onAttachmentsChange?.([...attachments, attachment])
+      mentionMenu.insertMentionReferences([{
+        label: attachment.fileName,
+        path: attachment.path,
+      }])
+      setAttachmentError(null)
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : 'Unable to attach folder.')
+    }
   }
 
   function handleFileInputChange(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? [])
     event.target.value = ''
     void handleAttachments(files)
-  }
-
-  function handleRemoveAttachment(attachmentId: string) {
-    if (!canManageAttachments) {
-      return
-    }
-
-    onAttachmentsChange?.(attachments.filter((attachment) => attachment.id !== attachmentId))
-    setAttachmentError(null)
   }
 
   useEffect(() => {
@@ -456,6 +714,21 @@ export function ChatInput({
   }, [editClickBoundaryRef, isInline, isEditing, onCancelEdit])
 
   useEffect(() => {
+    if (!isAttachmentMenuOpen) {
+      return
+    }
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target
+      if (target instanceof Element && target.closest('[data-attachment-menu-root="true"]')) {
+        return
+      }
+      setIsAttachmentMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [isAttachmentMenuOpen])
+
+  useEffect(() => {
     if (value.trim().length > 0 || disabled) {
       return
     }
@@ -470,10 +743,35 @@ export function ChatInput({
     }
   }, [attachments, onValueChange, value])
 
+  useEffect(() => {
+    if (!canManageAttachments || attachments.length === 0) {
+      return
+    }
+    const activeMentionPaths = new Set(
+      findChatMentionMatches(value, mentionMenu.mentionPathMap)
+        .map((match) => match.path)
+        .filter((path): path is string => Boolean(path)),
+    )
+    const nextAttachments = attachments.filter((attachment) => {
+      if (!('path' in attachment) || !attachment.path) {
+        return true
+      }
+      return activeMentionPaths.has(attachment.path)
+    })
+    if (nextAttachments.length !== attachments.length) {
+      onAttachmentsChange?.(nextAttachments)
+    }
+  }, [attachments, canManageAttachments, mentionMenu.mentionPathMap, onAttachmentsChange, value])
+
   const followUpActionLabel = followUpBehavior === 'steer' ? 'Steer message' : 'Queue message'
 
   return (
-    <div ref={containerRef} className="non-selectable-ui w-full">
+    <div
+      ref={containerRef}
+      className="non-selectable-ui w-full"
+      onDragOver={handleAttachmentDragOver}
+      onDrop={handleAttachmentDrop}
+    >
       <div className={`${chatInputSurfaceClassName} ${chatConversationSurfacePaddingClassName}`}>
         {isEditing && !isInline ? (
           <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-action/25 bg-action/10 px-3 py-2 text-xs text-foreground">
@@ -485,17 +783,10 @@ export function ChatInput({
           ref={fileInputRef}
           type="file"
           multiple
-          accept={CHAT_ATTACHMENT_INPUT_ACCEPT}
           onChange={handleFileInputChange}
           className="hidden"
           tabIndex={-1}
         />
-
-        {nonImageAttachments.length > 0 ? (
-          <div className="mb-3">
-            <AttachmentPillList attachments={nonImageAttachments} onRemoveAttachment={handleRemoveAttachment} />
-          </div>
-        ) : null}
 
         <div ref={mentionMenu.anchorRef} className="relative">
           <ChatMentionTextarea
@@ -553,17 +844,43 @@ export function ChatInput({
                 : 'flex min-w-0 flex-1 flex-wrap items-center gap-2 md:flex-nowrap'}
             >
               {canManageAttachments ? (
-                <Tooltip content="Attach files">
-                  <button
-                    type="button"
-                    onClick={handleManualAttachClick}
-                    disabled={disabled}
-                    aria-label="Attach files"
-                    className="group flex h-8 w-8 items-center justify-center bg-transparent text-foreground disabled:cursor-not-allowed disabled:text-disabled-foreground"
-                  >
-                    <Paperclip size={14} className="shrink-0 transition-colors duration-150 group-hover:text-foreground" />
-                  </button>
-                </Tooltip>
+                <div className="relative" data-attachment-menu-root="true">
+                  <Tooltip content="Attach">
+                    <button
+                      type="button"
+                      onClick={handleManualAttachClick}
+                      disabled={disabled}
+                      aria-label="Attach file or folder"
+                      aria-expanded={isAttachmentMenuOpen}
+                      className="group flex h-8 w-8 items-center justify-center bg-transparent text-foreground disabled:cursor-not-allowed disabled:text-disabled-foreground"
+                    >
+                      <Paperclip size={14} className="shrink-0 transition-colors duration-150 group-hover:text-foreground" />
+                    </button>
+                  </Tooltip>
+                  {isAttachmentMenuOpen ? (
+                    <div
+                      data-floating-menu-root="true"
+                      className="absolute bottom-10 left-0 z-[1200] min-w-[150px] rounded-lg border border-border bg-surface p-1 shadow-soft"
+                    >
+                      <button
+                        type="button"
+                        onClick={handleAttachFileClick}
+                        className="flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm text-foreground hover:bg-surface-muted"
+                      >
+                        <File size={14} />
+                        Attach File
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleAttachFolderClick()}
+                        className="flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm text-foreground hover:bg-surface-muted"
+                      >
+                        <Folder size={14} />
+                        Attach Folder
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
 
               {showChatModeSelector ? (

@@ -30,6 +30,9 @@ import type {
   RenameConversationFolderInput,
   ReorderConversationFolderInput,
   ReplaceConversationMessagesInput,
+  StoreChatAttachmentInput,
+  StoreChatImageAttachmentInput,
+  StoredChatAttachment,
   UserMessageRunCheckpoint,
 } from './conversations'
 import type {
@@ -133,6 +136,11 @@ export interface TideCodeHistoryApi {
   getDraftAgentContextPathSync: () => string
   ensureDraftAgentContext: () => Promise<string>
   cleanupDraftAgentContext: () => Promise<void>
+  cleanupChatAttachmentScope: (scopeId: string) => Promise<void>
+  pickAndStoreChatAttachmentFolder: (conversationId?: string | null) => Promise<StoredChatAttachment | null>
+  listChatAttachments: (conversationId: string) => Promise<StoredChatAttachment[]>
+  storeChatAttachment: (input: StoreChatAttachmentInput) => Promise<StoredChatAttachment>
+  storeChatImageAttachment: (input: StoreChatImageAttachmentInput) => Promise<StoredChatAttachment>
   listConversations: () => Promise<ConversationSummary[]>
   listFolders: () => Promise<ConversationFolderSummary[]>
   onProjectFolderPruned: (listener: (event: ProjectFolderPrunedEvent) => void) => () => void

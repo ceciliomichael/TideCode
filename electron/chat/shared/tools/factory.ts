@@ -53,8 +53,8 @@ async function createNativeToolSets(
   options: CreateAgentToolsOptions,
   planRuntimeState: PlanRuntimeState,
 ): Promise<NativeToolSets> {
-  const context = await createToolContext(input)
   const enabledSkills = options.enabledSkills ?? []
+  const context = await createToolContext(input, enabledSkills)
   const planningSafeTools: ToolSet = {
     list: createListTool(context),
     read: createReadTool(context),

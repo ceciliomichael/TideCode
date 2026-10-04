@@ -29,6 +29,10 @@ export function createListTool(context: WorkspaceToolContext) {
           context.workspaceRootPath,
           input.path,
           context.terminalExecutionMode,
+          {
+            conversationId: context.conversationId,
+            enabledSkills: context.enabledSkills,
+          },
         )
         return await createListToolResult(context.workspaceRootPath, target.absolutePath, target.displayPath, input.offset, input.limit)
       } catch (error) {

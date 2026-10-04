@@ -180,6 +180,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       attachments: input.attachments,
       chatMode: input.draftChatMode,
       compactionSourceConversationId: input.compactionSourceConversationId,
+      draftAttachmentScopeId: input.draftAttachmentScopeId,
       messages: input.messageBatch ?? [{ attachments: input.attachments, text: input.trimmedText }],
       modelId: input.runtimeSelection.modelId,
       providerId,

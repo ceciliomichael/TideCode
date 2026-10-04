@@ -6,7 +6,7 @@ export type ChatMode = 'agent' | 'plan'
 export type UserMessageKind = 'human' | 'steer' | 'tool_result'
 export type ToolInvocationState = 'running' | 'completed' | 'failed'
 export type AssistantWaitingIndicatorVariant = 'thinking' | 'splash' | 'rate_limit_retry'
-export type ChatAttachmentKind = 'image' | 'text'
+export type ChatAttachmentKind = 'file' | 'folder' | 'image' | 'text'
 export type ToolDecisionKind = 'ready_implement' | 'ask_question'
 
 export interface ToolDecisionOption {
@@ -82,6 +82,7 @@ export interface ChatImageAttachment extends ChatAttachmentBase {
   dataUrl: string
   height?: number
   kind: 'image'
+  path?: string
   width?: number
 }
 
@@ -90,7 +91,40 @@ export interface ChatTextAttachment extends ChatAttachmentBase {
   textContent: string
 }
 
-export type ChatAttachment = ChatImageAttachment | ChatTextAttachment
+export interface ChatFileAttachment extends ChatAttachmentBase {
+  kind: 'file'
+  path: string
+}
+
+export interface ChatFolderAttachment extends ChatAttachmentBase {
+  kind: 'folder'
+  path: string
+}
+
+export type ChatAttachment =
+  | ChatFileAttachment
+  | ChatFolderAttachment
+  | ChatImageAttachment
+  | ChatTextAttachment
+
+export interface StoreChatAttachmentInput {
+  conversationId?: string | null
+  sourcePath: string
+}
+
+export interface StoreChatImageAttachmentInput {
+  conversationId?: string | null
+  dataUrl: string
+  fileName: string
+}
+
+export interface StoredChatAttachment {
+  fileName: string
+  kind: 'file' | 'folder'
+  mimeType: string
+  path: string
+  sizeBytes: number
+}
 
 export interface QueuedMessage {
   attachments?: ChatAttachment[]
@@ -227,6 +261,7 @@ export interface ConversationGroupPreview {
 export interface CreateConversationInput {
   chatMode?: ChatMode
   compactionSourceConversationId?: string
+  draftAttachmentScopeId?: string
   folderId?: string | null
 }
 

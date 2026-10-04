@@ -32,6 +32,10 @@ export function createGrepTool(context: WorkspaceToolContext) {
           context.workspaceRootPath,
           input.path,
           context.terminalExecutionMode,
+          {
+            conversationId: context.conversationId,
+            enabledSkills: context.enabledSkills,
+          },
         )
         return await createGrepToolResult(
           context.workspaceRootPath,

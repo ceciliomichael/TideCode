@@ -6,6 +6,7 @@
 
 // Matches the NEW canonical [[action:path]] delimited format (may contain spaces)
 const BRACKETED_ACTION_REGEX = /\[\[((?:read_file|list|load_skill|kanban):[^\]]+)\]\]/g
+const VIRTUAL_MENTION_PREFIXES = ['@workspace/', '@attachments/', '@skills/'] as const
 
 export interface ChatMentionMatch {
   end: number
@@ -107,6 +108,10 @@ function getKnownMentionLabelForPath(
   return null
 }
 
+function isVirtualMentionPath(path: string) {
+  return VIRTUAL_MENTION_PREFIXES.some((prefix) => path.startsWith(prefix))
+}
+
 export function serializeChatMentionPathMap(
   mentionPathMap?: ReadonlyMap<string, string> | null,
 ): Record<string, string> | undefined {
@@ -151,7 +156,35 @@ export function findChatMentionMatches(
     })
   }
 
-  // 2. Plain @label mentions (only when knownMentionLabels provided — in-composer use)
+  // 2. Persisted virtual alias paths. Stored/model-facing text keeps the
+  // full alias while the UI collapses it back to the known short label.
+  if (knownMentionLabels) {
+    const virtualEntries = Array.from(knownMentionLabels.entries())
+      .filter(([, path]) => isVirtualMentionPath(path))
+      .sort((left, right) => right[1].length - left[1].length)
+    for (const [label, knownPath] of virtualEntries) {
+      let searchStart = 0
+      while (searchStart < text.length) {
+        const start = text.indexOf(knownPath, searchStart)
+        if (start < 0) {
+          break
+        }
+        const end = start + knownPath.length
+        searchStart = end
+        if (matches.some((existingMatch) => start < existingMatch.end && end > existingMatch.start)) {
+          continue
+        }
+        matches.push({
+          end,
+          label,
+          path: knownPath,
+          start,
+        })
+      }
+    }
+  }
+
+  // 3. Plain @label mentions (only when knownMentionLabels provided — in-composer use)
   const plainMentionRegex = buildPlainMentionRegex(knownMentionLabels)
   if (plainMentionRegex) {
     while ((match = plainMentionRegex.exec(text)) !== null) {
@@ -314,6 +347,20 @@ export function insertChatMention(text: string, cursorPosition: number, label: s
   }
 }
 
+export function insertChatMentionAtPosition(text: string, cursorPosition: number, label: string) {
+  const position = Math.max(0, Math.min(cursorPosition, text.length))
+  const before = text.slice(0, position)
+  const after = text.slice(position)
+  const mentionText = `@${label}`
+  const leadingSpace = before.length > 0 && !/\s$/u.test(before) ? ' ' : ''
+  const trailingSpace = after.length === 0 || !/^\s/u.test(after) ? ' ' : ''
+  const insertion = `${leadingSpace}${mentionText}${trailingSpace}`
+  return {
+    nextCursorPosition: position + insertion.length,
+    nextValue: `${before}${insertion}${after}`,
+  }
+}
+
 export function getChatMentionAtPosition(
   text: string,
   cursorPosition: number,
@@ -417,8 +464,11 @@ export function expandChatMentions(text: string, knownMentionLabels: ReadonlyMap
       return `@${label}`
     }
 
-    // Wrap in [[...]] delimiters — gives unambiguous boundaries so regex can
-    // never bleed into adjacent normal text regardless of spaces in the path.
+    if (isVirtualMentionPath(path)) {
+      return path
+    }
+
+    // Legacy action references keep the old unambiguous markup.
     return `[[${path}]]`
   })
 }

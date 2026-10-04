@@ -500,6 +500,53 @@ test('buildChatPrompt preserves image attachments in user messages', () => {
   })
 })
 
+test('path-backed attachments keep aliases in model text while images stay multimodal', () => {
+  const prompt = buildChatPrompt({
+    chatMode: 'agent',
+    messages: [{
+      attachments: [
+        {
+          fileName: 'spec.pdf',
+          id: 'attachment-file',
+          kind: 'file',
+          mimeType: 'application/pdf',
+          path: '@attachments/spec.pdf',
+          sizeBytes: 20,
+        },
+        {
+          dataUrl: 'data:image/png;base64,path-backed-image',
+          fileName: 'screenshot.png',
+          id: 'attachment-image',
+          kind: 'image',
+          mimeType: 'image/png',
+          path: '@attachments/screenshot.png',
+          sizeBytes: 24,
+        },
+      ],
+      content: 'Compare @attachments/spec.pdf with @attachments/screenshot.png',
+      id: 'user-path-attachments',
+      role: 'user',
+      timestamp: 1,
+    }],
+    workspaceRootPath: 'C:/repo',
+  })
+
+  const content = prompt.messages[0]?.content
+  assert.ok(Array.isArray(content))
+  assert.deepEqual(content, [
+    {
+      text: 'Compare @attachments/spec.pdf with @attachments/screenshot.png',
+      type: 'text',
+    },
+    {
+      data: { data: 'path-backed-image', type: 'data' },
+      filename: 'screenshot.png',
+      mediaType: 'image/png',
+      type: 'file',
+    },
+  ])
+})
+
 test('buildChatPrompt interleaves numbered images where the user referenced them', () => {
   const attachments = ['first', 'second'].map((id) => ({
     dataUrl: `data:image/png;base64,${id}`,

@@ -75,6 +75,10 @@ export function createReadTool(context: WorkspaceToolContext) {
           context.workspaceRootPath,
           targetPath,
           context.terminalExecutionMode,
+          {
+            conversationId: context.conversationId,
+            enabledSkills: context.enabledSkills,
+          },
         )
         return await createReadToolResult(target.absolutePath, target.displayPath, input.offset, input.limit)
       } catch (error) {

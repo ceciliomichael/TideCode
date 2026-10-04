@@ -10,6 +10,8 @@ Other tagged templates are not supported.
 
 The `tools` binding is injected. Every external effect must use a documented `tools.*` capability. Never import, require, redeclare, or initialize `tools`.
 
+Workspace discovery APIs understand TideCode virtual paths. `@workspace/...` explicitly addresses the active workspace, `@attachments/...` addresses durable current-chat attachments, and `@skills/<skill-name>/...` addresses enabled skill resources. Attachment and skill aliases are read-only; use read/list/glob/grep for them and copy content into `@workspace/...` before mutation. Relative workspace paths and policy-permitted full absolute paths continue to work.
+
 The read-only payloads binding contains optional opaque text supplied beside the code program. Use payloads for arbitrary multiline Markdown, source code, patches, or other exact text that can contain quotes, backticks, or interpolation-like text. Reference it as payloads.<name> instead of embedding that text in a JavaScript string or template literal. Targeted patches still use direct apply_patch and complete-file writes use direct write.
 
 When direct write or apply_patch is used for human-authored source, readability is required. Never pseudo-minify, compress, or line-pack code to save tokens. Preserve existing formatting when editing; for new source, use conventional formatting appropriate to the file type. Keep logical structure visually clear with normal indentation, line breaks, spacing, and grouping.

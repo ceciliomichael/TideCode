@@ -134,25 +134,41 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
         onDragStart={(event) => actionsRef.current?.handleEntryDragStart(event, entry)}
         onDragEnd={() => actionsRef.current?.handleEntryDragEnd()}
         onDragOver={(event) => {
+          if (isDirectory) {
+            actionsRef.current?.handleDirectoryDragOver(event, targetDirectoryPath)
+            if (event.defaultPrevented) {
+              return
+            }
+          }
           if (isExternalFileDrag(event)) {
-            actionsRef.current?.handleExternalDragOver(event, targetDirectoryPath)
+            if (isDirectory) {
+              actionsRef.current?.handleExternalDragOver(event, targetDirectoryPath)
+            }
             return
           }
-          actionsRef.current?.handleDirectoryDragOver(event, targetDirectoryPath)
         }}
         onDragLeave={(event) => {
-          if (isExternalFileDrag(event)) {
+          if (isDirectory && isExternalFileDrag(event)) {
             actionsRef.current?.handleExternalDragLeave(event, targetDirectoryPath)
             return
           }
-          actionsRef.current?.handleDirectoryDragLeave(event, targetDirectoryPath)
+          if (isDirectory) {
+            actionsRef.current?.handleDirectoryDragLeave(event, targetDirectoryPath)
+          }
         }}
         onDrop={(event) => {
+          if (isDirectory) {
+            actionsRef.current?.handleDirectoryDrop(event, targetDirectoryPath)
+            if (event.defaultPrevented) {
+              return
+            }
+          }
           if (isExternalFileDrag(event)) {
-            void actionsRef.current?.handleExternalDrop(event, targetDirectoryPath)
+            if (isDirectory) {
+              void actionsRef.current?.handleExternalDrop(event, targetDirectoryPath)
+            }
             return
           }
-          actionsRef.current?.handleDirectoryDrop(event, targetDirectoryPath)
         }}
         className={[
           'flex h-8 w-full min-w-0 items-center gap-1 rounded-none px-2 text-left text-sm transition-colors outline-none focus:outline-none focus-visible:outline-none',

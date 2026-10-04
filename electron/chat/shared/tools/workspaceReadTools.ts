@@ -141,10 +141,16 @@ export async function createListToolResult(
     throw new Error(`Expected a directory for list, but "${relativePath}" is a file. Use read for the file.`)
   }
 
+  const isVirtualRoot = relativePath.startsWith('@')
   const relaxIgnore =
+    isVirtualRoot ||
     isInsideWorkspaceIgnoredPath(workspaceRootPath, absolutePath) ||
     (await isExplicitlyGitignoredPath(workspaceRootPath, absolutePath, true))
-  const immediateEntries = await listImmediateDirectoryEntries(workspaceRootPath, absolutePath, { relaxIgnore })
+  const immediateEntries = await listImmediateDirectoryEntries(
+    isVirtualRoot ? absolutePath : workspaceRootPath,
+    absolutePath,
+    { relaxIgnore },
+  )
   const page = normalizeResultPage(offset, limit)
   const visibleEntries = immediateEntries.slice(page.offset, page.offset + page.limit)
   const bodyLines = immediateEntries.length === 0 ? ['Empty directory'] : visibleEntries
@@ -362,15 +368,26 @@ export async function createGlobToolResult(
     .split(/\r?\n/u)
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0)
-  const ignoreBasePath =
-    isInsideWorkspaceIgnoredPath(workspaceRootPath, absolutePath) ||
-    (await isExplicitlyGitignoredPath(workspaceRootPath, absolutePath, true))
+  const isVirtualRoot = relativePath.startsWith('@')
+  const ignoreBasePath = isVirtualRoot
+    ? absolutePath
+    : isInsideWorkspaceIgnoredPath(workspaceRootPath, absolutePath) ||
+        (await isExplicitlyGitignoredPath(workspaceRootPath, absolutePath, true))
       ? absolutePath
       : undefined
-  const visibleRelativeMatches = await filterVisibleRelativeFileEntries(workspaceRootPath, absolutePath, relativeMatches, {
-    ignoreBasePath,
-  })
-  const matches = visibleRelativeMatches.map((entry) => path.resolve(absolutePath, entry))
+  const visibleRelativeMatches = isVirtualRoot
+    ? relativeMatches
+    : await filterVisibleRelativeFileEntries(workspaceRootPath, absolutePath, relativeMatches, {
+        ignoreBasePath,
+      })
+  const virtualDisplayBase = isVirtualRoot
+    ? relativePath.replace(/\/+$/u, '')
+    : null
+  const matches = visibleRelativeMatches.map((entry) => (
+    virtualDisplayBase
+      ? `${virtualDisplayBase}/${entry.replace(/\\/gu, '/')}`
+      : path.resolve(absolutePath, entry)
+  ))
   const page = normalizeResultPage(offset, limit)
   const visibleMatches = matches.slice(page.offset, page.offset + page.limit)
   const bodyLines = matches.length === 0
@@ -448,15 +465,18 @@ export async function createGrepToolResult(
   }
 
   const parsedMatches: GrepMatch[] = []
-  const ignoreBasePath =
+  const isVirtualRoot = relativePath.startsWith('@')
+  const ignoreBasePath = !isVirtualRoot &&
     stats.isDirectory() &&
     (isInsideWorkspaceIgnoredPath(workspaceRootPath, absolutePath) ||
       (await isExplicitlyGitignoredPath(workspaceRootPath, absolutePath, true)))
       ? absolutePath
       : undefined
-  const isVisibleEntry = createWorkspaceEntryVisibilityFilter(workspaceRootPath, {
-    ignoreBasePath,
-  })
+  const isVisibleEntry = isVirtualRoot
+    ? null
+    : createWorkspaceEntryVisibilityFilter(workspaceRootPath, {
+        ignoreBasePath,
+      })
   for (const line of output.split(/\r?\n/u)) {
     if (!line) {
       continue
@@ -467,12 +487,21 @@ export async function createGrepToolResult(
       continue
     }
 
-    if (!(await isVisibleEntry(parsedLine.filePath, false))) {
+    if (isVisibleEntry && !(await isVisibleEntry(parsedLine.filePath, false))) {
       continue
     }
 
+    const virtualDisplayBase = isVirtualRoot
+      ? relativePath.replace(/\/+$/u, '')
+      : null
+    const displayedFilePath = virtualDisplayBase
+      ? stats.isDirectory()
+        ? `${virtualDisplayBase}/${path.relative(absolutePath, parsedLine.filePath).replace(/\\/gu, '/')}`
+        : relativePath
+      : parsedLine.filePath
+
     parsedMatches.push({
-      filePath: parsedLine.filePath,
+      filePath: displayedFilePath,
       lineNumber: parsedLine.lineNumber,
       lineText: parsedLine.lineText,
     })

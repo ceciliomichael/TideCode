@@ -1,8 +1,10 @@
 import { memo } from 'react'
 import { splitChatMentionSegments } from '../../lib/chatMentions'
+import { findChatMentionImageAttachment } from '../../lib/chatMentionImages'
 import { splitChatImageReferenceSegments } from '../../lib/chatImageReferences'
 import type { ChatImageAttachment } from '../../types/chat'
 import { Tooltip } from '../Tooltip'
+import { ChatMentionImageHoverContent } from './ChatMentionImageHoverContent'
 import { ChatImageReferenceLabel } from './ChatImageReferenceLabel'
 
 interface ChatMentionTextProps {
@@ -29,7 +31,8 @@ export const ChatMentionText = memo(function ChatMentionText({
   variant = 'inline',
   wrap = 'wrap',
 }: ChatMentionTextProps) {
-  const imageSegments = splitChatImageReferenceSegments(text, imageAttachments.length)
+  const referenceImageAttachments = imageAttachments.filter((attachment) => !attachment.path)
+  const imageSegments = splitChatImageReferenceSegments(text, referenceImageAttachments.length)
   const segments = splitChatMentionSegments(text, mentionPathMap)
   const rootClassName = [
     wrap === 'nowrap'
@@ -55,14 +58,16 @@ export const ChatMentionText = memo(function ChatMentionText({
             return (
               <ChatMentionText
                 key={`image-text-${index}`}
+                imageAttachments={imageAttachments}
                 mentionPathMap={mentionPathMap}
+                onImageReferenceHoverChange={onImageReferenceHoverChange}
                 text={segment.text}
                 variant={variant}
               />
             )
           }
 
-          const attachment = imageAttachments[segment.imageIndex]
+          const attachment = referenceImageAttachments[segment.imageIndex]
           return attachment ? (
             <ChatImageReferenceLabel
               key={`image-${segment.imageNumber}-${index}`}
@@ -90,11 +95,26 @@ export const ChatMentionText = memo(function ChatMentionText({
           )
         }
 
-        const isSkill = Boolean(segment.path?.startsWith('load_skill:'))
-        const isFolder = Boolean(segment.path?.startsWith('list:'))
+        const isSkill = Boolean(
+          segment.path?.startsWith('load_skill:') ||
+          segment.path?.startsWith('@skills/'),
+        )
+        const isFolder = Boolean(
+          segment.path?.startsWith('list:') ||
+          segment.path?.endsWith('/'),
+        )
         const isKanban = Boolean(segment.path?.startsWith('kanban:'))
         const isBackdrop = variant === 'backdrop'
         const isRendered = variant === 'rendered'
+        const imageAttachment = segment.path
+          ? findChatMentionImageAttachment(segment.path, imageAttachments)
+          : null
+        const tooltipContent = imageAttachment && segment.path
+          ? <ChatMentionImageHoverContent attachment={imageAttachment} />
+          : segment.path ?? segment.label
+        const tooltipPanelClassName = imageAttachment
+          ? '!max-w-[min(26rem,calc(100vw-24px))] !items-stretch !p-2'
+          : undefined
         const highlightClass = isSkill
           ? skillHighlightSurfaceClassName
           : isKanban
@@ -134,7 +154,8 @@ export const ChatMentionText = memo(function ChatMentionText({
           return (
             <Tooltip
               key={`mention-${index}`}
-              content={segment.path ?? segment.label}
+              content={tooltipContent}
+              panelClassName={tooltipPanelClassName}
               triggerClassName="align-baseline"
               triggerLayout="inline"
             >
@@ -155,7 +176,8 @@ export const ChatMentionText = memo(function ChatMentionText({
           return (
             <Tooltip
               key={`mention-${index}`}
-              content={segment.path ?? segment.label}
+              content={tooltipContent}
+              panelClassName={tooltipPanelClassName}
               triggerClassName="align-baseline"
               triggerLayout="inline"
             >
@@ -173,14 +195,13 @@ export const ChatMentionText = memo(function ChatMentionText({
         }
 
         return (
-          <Tooltip
+          <span
             key={`mention-${index}`}
-            content={segment.path ?? segment.label}
-            triggerClassName="align-baseline"
-            triggerLayout="inline"
+            data-chat-mention-path={segment.path ?? segment.label}
+            className={`${highlightClass} text-transparent`}
           >
-            <span className={`${highlightClass} text-transparent`}>{segment.text}</span>
-          </Tooltip>
+            {segment.text}
+          </span>
         )
       })}
     </span>

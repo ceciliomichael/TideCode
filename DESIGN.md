@@ -11,3 +11,13 @@ Closing the last Browser tab closes the Browser panel and returns to chat, witho
 Users can edit the address while the current page loads. Background load completion and metadata updates must preserve their text and keyboard focus. Page setup does not simulate user interaction, and address editing does not use repeated focus restoration or remove the page from keyboard navigation.
 
 Clicking the webpage transfers focus normally. DevTools initialize when opened through the toolbar or keyboard shortcut; choosing a dock position alone does not open them. The first opening therefore includes DevTools initialization.
+
+## Chat mentions
+
+Chat mentions keep compact labels in the composer and rendered messages while resolving to their canonical paths on hover. Path-backed image attachments show only an image preview on hover. Non-image mentions remain path-only. Image previews use the attachment data already held by the chat model rather than reading from the workspace or hard-coding filename extensions.
+
+## Chat attachments
+
+Attaching a file, folder, or image inserts a compact mention directly into the composer instead of adding a separate attachment-pill row. Attachment mentions participate in normal mention editing, queued-message editing, and message history. Image mentions show their preview on hover with even padding around the preview.
+
+The attachment picker and drag/drop flow accept workspace items and external files without placing copies into the user's workspace. Stored attachments remain scoped to the draft or conversation, and removing the corresponding mention removes the attachment from the message state. Folder attachments omit ignored workspace content and symbolic links.

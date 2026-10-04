@@ -148,7 +148,7 @@ export function WorkspaceExplorerPanelView({
     )
   }
 
-  function renderRenameRow(entry: WorkspaceExplorerEntry, depth: number) {
+  function renderRenameRow(entry: WorkspaceExplorerEntry, depth: number, isExpanded: boolean) {
     const fileIconConfig = !entry.isDirectory ? resolveFileIconConfig({ fileName: entry.relativePath }) : null
     const FileIcon = fileIconConfig?.icon
 
@@ -167,21 +167,20 @@ export function WorkspaceExplorerPanelView({
           style={{ paddingLeft: `${Math.max(8, depth * 12 + 8)}px` }}
         >
           {entry.isDirectory ? (
-            <ChevronRight size={14} className="shrink-0 opacity-0" />
+            <ChevronRight
+              size={14}
+              className={['shrink-0 transition-transform', isExpanded ? 'rotate-90' : ''].join(' ')}
+            />
           ) : (
             <span className="w-[14px] shrink-0" />
           )}
-          {entry.isDirectory ? (
-            <Folder size={14} className="shrink-0 text-subtle-foreground" />
-          ) : FileIcon ? (
+          {!entry.isDirectory && FileIcon ? (
             <FileIcon
               size={14}
               className="shrink-0"
               style={{ color: fileIconConfig?.color }}
             />
-          ) : (
-            <File size={14} className="shrink-0 text-subtle-foreground" />
-          )}
+          ) : null}
           <input
             ref={panelState.renameInputRef}
             value={panelState.renameName}
@@ -230,7 +229,7 @@ export function WorkspaceExplorerPanelView({
       const isDropTarget =
         activeDropTarget !== null &&
         activeDropTarget !== ROOT_DIRECTORY_KEY &&
-        isPathWithinTarget(entry.relativePath, activeDropTarget)
+        entryPath === normalizeEntryPath(activeDropTarget)
       const gitStatus = gitStatusByPath.get(entryPath)
       const isCutEntry =
         clipboardEntry?.mode === 'cut' &&
@@ -238,29 +237,27 @@ export function WorkspaceExplorerPanelView({
         normalizeWorkspaceRootPath(clipboardEntry.sourceWorkspaceRootPath) === normalizedWorkspaceRootPath &&
         clipboardEntry.relativePaths.some((clipboardPath) => isPathWithinTarget(entry.relativePath, clipboardPath))
       const nestedEntries = isDirectory ? panelState.directoryEntriesByPath[entryPath] ?? [] : []
-      if (isRenamingEntry) {
-        return [renderRenameRow(entry, depth)]
-      }
-
-      const row = (
-        <WorkspaceExplorerEntryRow
-          key={entry.relativePath}
-          actionsRef={entryRowActionsRef}
-          depth={depth}
-          entry={entry}
-          gitStatus={gitStatus}
-          isActiveFile={isActiveFileSelection}
-          isContextTarget={isContextTarget}
-          isCutEntry={isCutEntry}
-          isDropTarget={isDropTarget}
-          isDeleting={isDeleting}
-          isExpanded={isExpanded}
-          isGitignoredEntry={isGitignoredEntry}
-          isLoading={isLoading}
-          isSelectedEntry={isSelectedEntry}
-          isSelectionFocused={panelState.isExplorerFocused}
-        />
-      )
+      const row = isRenamingEntry
+        ? renderRenameRow(entry, depth, isExpanded)
+        : (
+          <WorkspaceExplorerEntryRow
+            key={entry.relativePath}
+            actionsRef={entryRowActionsRef}
+            depth={depth}
+            entry={entry}
+            gitStatus={gitStatus}
+            isActiveFile={isActiveFileSelection}
+            isContextTarget={isContextTarget}
+            isCutEntry={isCutEntry}
+            isDropTarget={isDropTarget}
+            isDeleting={isDeleting}
+            isExpanded={isExpanded}
+            isGitignoredEntry={isGitignoredEntry}
+            isLoading={isLoading}
+            isSelectedEntry={isSelectedEntry}
+            isSelectionFocused={panelState.isExplorerFocused}
+          />
+        )
 
       if (!isDirectory || !isExpanded) {
         return [row]
@@ -525,6 +522,22 @@ export function WorkspaceExplorerPanelView({
                     className="flex h-10 w-full items-center rounded-lg px-2.5 text-left text-sm text-foreground transition-colors hover:bg-surface-muted"
                   >
                     Rename
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => panelState.requestCopyOrCutEntry('cut')}
+                    className="flex h-10 w-full items-center rounded-lg px-2.5 text-left text-sm text-foreground transition-colors hover:bg-surface-muted"
+                  >
+                    Cut
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => panelState.requestCopyOrCutEntry('copy')}
+                    className="flex h-10 w-full items-center rounded-lg px-2.5 text-left text-sm text-foreground transition-colors hover:bg-surface-muted"
+                  >
+                    Copy
                   </button>
                 </>
               ) : null}

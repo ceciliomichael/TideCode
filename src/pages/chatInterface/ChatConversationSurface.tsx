@@ -233,7 +233,7 @@ export function ChatConversationSurface({
               <div className="flex flex-1 items-center justify-center px-4 text-sm text-subtle-foreground">
                 Loading conversations...
               </div>
-            ) : chatMessages.messages.length === 0 ? (
+            ) : chatMessages.messages.length === 0 && !chatMessages.isSending ? (
               <EmptyState folderName={emptyStateFolderName} />
             ) : (
               <div ref={messageListBoundaryRef} className="flex min-h-0 flex-1 flex-col">
@@ -287,6 +287,7 @@ export function ChatConversationSurface({
             {showQueueBlock ? (
               <div className="chat-queue-shell">
                 <ChatQueueBlock
+                  conversationId={chatMessages.activeConversationId ?? chatMessages.draftAttachmentScopeId}
                   queuedMessages={queuedMessages}
                   editCancelBoundaryRef={messageListBoundaryRef}
                   onRemove={removeQueuedMessage}
@@ -310,6 +311,7 @@ export function ChatConversationSurface({
             ) : null}
             <ChatInput
               attachments={chatMessages.mainComposerAttachments}
+              conversationId={chatMessages.activeConversationId ?? chatMessages.draftAttachmentScopeId}
               contextUsage={contextUsage ?? undefined}
               codexUsage={codexUsage}
               isCompressingChat={isCompressingChat}

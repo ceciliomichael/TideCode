@@ -7,7 +7,7 @@ import {
   findIndentationTolerantMatchOffsets,
 } from './textReplacementMatching'
 import type { WorkspaceToolContext } from './workspaceToolPaths'
-import { resolveReadableTargetPath } from './workspaceToolPaths'
+import { resolveMutableTargetPath } from './workspaceToolPaths'
 import { WorkspaceMutationError } from './workspaceMutationErrors'
 import { enqueueWorkspaceMutation } from './workspaceMutationQueue'
 import {
@@ -339,7 +339,7 @@ export async function createEditToolResult(
   input: EditInput,
 ): Promise<AgentToolExecutionResult> {
   const chunks = normalizeEditChunks(input)
-  const target = resolveReadableTargetPath(
+  const target = resolveMutableTargetPath(
     context.workspaceRootPath,
     input.path,
     context.terminalExecutionMode,
@@ -353,7 +353,7 @@ export async function createEditToolResult(
 async function createEditToolResultInternal(
   context: WorkspaceToolContext,
   chunks: EditChunk[],
-  target: ReturnType<typeof resolveReadableTargetPath>,
+  target: ReturnType<typeof resolveMutableTargetPath>,
   expectedRevision?: string,
 ): Promise<AgentToolExecutionResult> {
   let oldBytes: Buffer

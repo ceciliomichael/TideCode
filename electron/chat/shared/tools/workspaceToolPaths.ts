@@ -1,6 +1,8 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { AppTerminalExecutionMode } from '../../../../src/types/chat'
+import type { SkillSummary } from '../../../../src/types/skills'
+import { getConversationAttachmentsPath } from '../../../history/paths'
 import {
   DEFAULT_WORKSPACE_RELATIVE_PATH,
   getSafeWorkspaceTargetPath,
@@ -14,10 +16,12 @@ import {
   resolveSandboxPath,
 } from './sandboxPaths'
 
-export interface WorkspaceToolContext extends Pick<AgentToolContext, 'checkpointId' | 'terminalExecutionMode' | 'workspaceRootPath'> {}
+export interface WorkspaceToolContext extends Pick<AgentToolContext, 'checkpointId' | 'conversationId' | 'terminalExecutionMode' | 'workspaceRootPath'> {
+  enabledSkills: readonly SkillSummary[]
+}
 
 export const WORKSPACE_PATH_DESCRIPTION =
-  'Accepts exactly one path; read, list, glob, and grep targets must already exist. Prefer a path relative to the workspace root. Use an absolute path only when copied exactly from the user or a tool result; never construct one. To inspect multiple roots, make separate calls; never join paths with spaces.'
+  'Accepts exactly one path. Relative paths resolve from the workspace. @workspace/... explicitly addresses the workspace, @attachments/... addresses current-chat attachments, and @skills/<skill-name>/... addresses an enabled skill. Full absolute paths remain supported according to Sandbox/Full Access policy. Read, list, glob, and grep targets must already exist. To inspect multiple roots, make separate calls; never join paths with spaces.'
 
 export const ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION =
   `${WORKSPACE_PATH_DESCRIPTION} An empty string or "." refers to the bound workspace root.`
@@ -34,6 +38,28 @@ export class WorkspaceTargetNotFoundError extends Error {
     super(`Path not found: ${requestedPath}. Use a path relative to the workspace root. Do not guess a replacement filename; discover the actual path with list, glob, or grep from a known directory.${multiplePathHint}`)
     this.name = 'WorkspaceTargetNotFoundError'
   }
+}
+
+export function resolveWorkspaceAliasRelativePath(
+  workspaceRootPath: string,
+  aliasPath: string,
+) {
+  const normalizedAliasPath = aliasPath.trim().replace(/\\/gu, '/').replace(/\/+$/u, '')
+  if (normalizedAliasPath === '@workspace') {
+    return ''
+  }
+  if (!normalizedAliasPath.startsWith('@workspace/')) {
+    return null
+  }
+
+  const remainder = normalizedAliasPath.slice('@workspace/'.length)
+  const segments = remainder.split('/').filter(Boolean)
+  const workspaceName = path.basename(normalizeWorkspacePath(workspaceRootPath))
+  const firstSegment = segments[0] ?? ''
+  const matchesWorkspaceName = process.platform === 'win32'
+    ? firstSegment.toLowerCase() === workspaceName.toLowerCase()
+    : firstSegment === workspaceName
+  return (matchesWorkspaceName ? segments.slice(1) : segments).join('/')
 }
 
 function assertWorkspaceRootIsNotRepeated(workspaceRootPath: string, candidatePath: string) {
@@ -63,21 +89,154 @@ export function resolveWorkspaceTargetPath(workspaceRootPath: string, candidateP
     }
   }
 
-  if (path.isAbsolute(candidatePath.trim())) {
-    assertWorkspaceRootIsNotRepeated(normalizedWorkspaceRootPath, candidatePath.trim())
+  const trimmedCandidatePath = candidatePath.trim()
+  const normalizedAliasPath = trimmedCandidatePath.replace(/\\/gu, '/')
+  if (normalizedAliasPath === '@workspace' || normalizedAliasPath.startsWith('@workspace/')) {
+    const workspaceRelativePath =
+      resolveWorkspaceAliasRelativePath(normalizedWorkspaceRootPath, normalizedAliasPath) ||
+      DEFAULT_WORKSPACE_RELATIVE_PATH
+    return getSafeWorkspaceTargetPath(normalizedWorkspaceRootPath, workspaceRelativePath)
+  }
+  if (
+    normalizedAliasPath === '@attachments' ||
+    normalizedAliasPath.startsWith('@attachments/') ||
+    normalizedAliasPath === '@skills' ||
+    normalizedAliasPath.startsWith('@skills/')
+  ) {
+    throw new Error('The @attachments and @skills virtual roots are read-only. Copy content into @workspace/ before modifying it.')
+  }
+
+  if (path.isAbsolute(trimmedCandidatePath)) {
+    assertWorkspaceRootIsNotRepeated(normalizedWorkspaceRootPath, trimmedCandidatePath)
   }
 
   return getSafeWorkspaceTargetPath(normalizedWorkspaceRootPath, candidatePath)
+}
+
+export function resolveMutableTargetPath(
+  workspaceRootPath: string,
+  candidatePath: string | undefined,
+  terminalExecutionMode: AppTerminalExecutionMode = 'sandbox',
+) {
+  const normalizedWorkspaceRootPath = normalizeWorkspacePath(workspaceRootPath)
+  const normalizedCandidatePath = candidatePath?.trim() ?? ''
+  const normalizedAliasPath = normalizedCandidatePath.replace(/\\/gu, '/')
+  if (
+    normalizedAliasPath === '@attachments' ||
+    normalizedAliasPath.startsWith('@attachments/') ||
+    normalizedAliasPath === '@skills' ||
+    normalizedAliasPath.startsWith('@skills/')
+  ) {
+    throw new Error('The @attachments and @skills virtual roots are read-only. Copy content into @workspace/ before modifying it.')
+  }
+  if (normalizedAliasPath === '@workspace' || normalizedAliasPath.startsWith('@workspace/')) {
+    const relativePath =
+      resolveWorkspaceAliasRelativePath(normalizedWorkspaceRootPath, normalizedAliasPath) ?? ''
+    const target = getSafeWorkspaceTargetPath(normalizedWorkspaceRootPath, relativePath)
+    return {
+      absolutePath: target.absolutePath,
+      displayPath: normalizedAliasPath === '@workspace' ? '@workspace/' : normalizedAliasPath,
+      sandboxRootPath: normalizedWorkspaceRootPath,
+    }
+  }
+  return resolveReadableTargetPath(
+    normalizedWorkspaceRootPath,
+    candidatePath,
+    terminalExecutionMode,
+  )
+}
+
+function resolveVirtualReadPath(
+  workspaceRootPath: string,
+  candidatePath: string,
+  options: {
+    conversationId?: string | null
+    enabledSkills?: readonly SkillSummary[]
+  },
+) {
+  const normalizedAliasPath = candidatePath.replace(/\\/gu, '/').replace(/\/+$/u, '')
+  if (normalizedAliasPath === '@workspace' || normalizedAliasPath.startsWith('@workspace/')) {
+    const relativePath =
+      resolveWorkspaceAliasRelativePath(workspaceRootPath, normalizedAliasPath) ?? ''
+    const absolutePath = path.resolve(workspaceRootPath, relativePath)
+    if (!isPathInsideRoot(workspaceRootPath, absolutePath)) {
+      throw new Error(`Virtual workspace path escapes @workspace/: ${candidatePath}`)
+    }
+    return {
+      absolutePath,
+      displayPath: normalizedAliasPath === '@workspace' ? '@workspace/' : normalizedAliasPath,
+      sandboxRootPath: workspaceRootPath,
+    }
+  }
+
+  if (normalizedAliasPath === '@attachments' || normalizedAliasPath.startsWith('@attachments/')) {
+    const conversationId = options.conversationId?.trim() ?? ''
+    if (!conversationId) {
+      throw new Error('@attachments/ is unavailable until the chat has a conversation id.')
+    }
+    const rootPath = getConversationAttachmentsPath(conversationId)
+    const relativePath = normalizedAliasPath === '@attachments'
+      ? ''
+      : normalizedAliasPath.slice('@attachments/'.length)
+    const absolutePath = path.resolve(rootPath, relativePath)
+    if (!isPathInsideRoot(rootPath, absolutePath)) {
+      throw new Error(`Virtual attachment path escapes @attachments/: ${candidatePath}`)
+    }
+    return {
+      absolutePath,
+      displayPath: relativePath.length > 0 ? `@attachments/${relativePath.replace(/\\/gu, '/')}` : '@attachments/',
+      sandboxRootPath: rootPath,
+    }
+  }
+
+  if (normalizedAliasPath === '@skills') {
+    throw new Error('Use the skill tool to list enabled skills, then address one as @skills/<skill-name>/.')
+  }
+  if (normalizedAliasPath.startsWith('@skills/')) {
+    const remainder = normalizedAliasPath.slice('@skills/'.length)
+    const [skillName, ...relativeSegments] = remainder.split('/').filter(Boolean)
+    const skill = options.enabledSkills?.find(
+      (candidate) => candidate.name.trim().toLowerCase() === skillName?.trim().toLowerCase(),
+    )
+    if (!skill) {
+      throw new Error(`Unknown enabled skill in virtual path: ${skillName || '(missing name)'}`)
+    }
+    const relativePath = relativeSegments.join('/')
+    const rootPath = path.resolve(skill.baseDirectory)
+    const absolutePath = path.resolve(rootPath, relativePath)
+    if (!isPathInsideRoot(rootPath, absolutePath)) {
+      throw new Error(`Virtual skill path escapes @skills/${skill.name}/: ${candidatePath}`)
+    }
+    return {
+      absolutePath,
+      displayPath: relativePath.length > 0
+        ? `@skills/${skill.name}/${relativePath.replace(/\\/gu, '/')}`
+        : `@skills/${skill.name}/`,
+      sandboxRootPath: rootPath,
+    }
+  }
+
+  return null
 }
 
 export function resolveReadableTargetPath(
   workspaceRootPath: string,
   candidatePath: string | undefined,
   terminalExecutionMode: AppTerminalExecutionMode = 'sandbox',
-  options: { allowGlobalAgentsDirectory?: boolean } = {},
+  options: {
+    allowGlobalAgentsDirectory?: boolean
+    conversationId?: string | null
+    enabledSkills?: readonly SkillSummary[]
+  } = {},
 ) {
   const normalizedWorkspaceRootPath = normalizeWorkspacePath(workspaceRootPath)
   const normalizedCandidatePath = candidatePath?.trim()
+  const virtualTarget = normalizedCandidatePath
+    ? resolveVirtualReadPath(normalizedWorkspaceRootPath, normalizedCandidatePath, options)
+    : null
+  if (virtualTarget) {
+    return virtualTarget
+  }
   if (normalizedCandidatePath && path.isAbsolute(normalizedCandidatePath)) {
     assertWorkspaceRootIsNotRepeated(normalizedWorkspaceRootPath, normalizedCandidatePath)
   }
@@ -88,6 +247,9 @@ export function resolveReadableTargetPath(
       return {
         absolutePath: target.absolutePath,
         displayPath: target.displayPath,
+        sandboxRootPath: isPathInsideRoot(normalizedWorkspaceRootPath, target.absolutePath)
+          ? normalizedWorkspaceRootPath
+          : target.absolutePath,
       }
     }
 
@@ -95,6 +257,7 @@ export function resolveReadableTargetPath(
     return {
       absolutePath: target.absolutePath,
       displayPath: target.relativePath,
+      sandboxRootPath: normalizedWorkspaceRootPath,
     }
   }
 
@@ -102,6 +265,7 @@ export function resolveReadableTargetPath(
     return {
       absolutePath: normalizedWorkspaceRootPath,
       displayPath: DEFAULT_WORKSPACE_RELATIVE_PATH,
+      sandboxRootPath: normalizedWorkspaceRootPath,
     }
   }
 
@@ -119,6 +283,9 @@ export function resolveReadableTargetPath(
         ? DEFAULT_WORKSPACE_RELATIVE_PATH
         : relativePath
       : absolutePath,
+    sandboxRootPath: isPathInsideRoot(normalizedWorkspaceRootPath, absolutePath)
+      ? normalizedWorkspaceRootPath
+      : absolutePath,
   }
 }
 
@@ -126,19 +293,36 @@ export async function resolveReadOnlyTargetPath(
   workspaceRootPath: string,
   candidatePath: string | undefined,
   terminalExecutionMode: AppTerminalExecutionMode = 'sandbox',
+  options: {
+    conversationId?: string | null
+    enabledSkills?: readonly SkillSummary[]
+  } = {},
 ) {
   const target = resolveReadableTargetPath(
     workspaceRootPath,
     candidatePath,
     terminalExecutionMode,
-    { allowGlobalAgentsDirectory: true },
+    {
+      allowGlobalAgentsDirectory: true,
+      conversationId: options.conversationId,
+      enabledSkills: options.enabledSkills,
+    },
   )
 
   if (terminalExecutionMode === 'sandbox') {
-    await assertSandboxPathDoesNotEscapeThroughSymlink(
-      target.absolutePath,
-      getSandboxPathRoots(normalizeWorkspacePath(workspaceRootPath)),
-    )
+    const normalizedWorkspaceRootPath = normalizeWorkspacePath(workspaceRootPath)
+    if (target.sandboxRootPath === normalizedWorkspaceRootPath) {
+      await assertSandboxPathDoesNotEscapeThroughSymlink(
+        target.absolutePath,
+        getSandboxPathRoots(normalizedWorkspaceRootPath),
+      )
+    } else {
+      const realRoot = await fs.realpath(target.sandboxRootPath).catch(() => target.sandboxRootPath)
+      const realTarget = await fs.realpath(target.absolutePath).catch(() => target.absolutePath)
+      if (!isPathInsideRoot(realRoot, realTarget)) {
+        throw new Error(`Path escapes its read-only virtual root through a symbolic link: ${candidatePath ?? ''}.`)
+      }
+    }
   }
 
   await assertWorkspaceTargetExists(candidatePath, target.absolutePath)

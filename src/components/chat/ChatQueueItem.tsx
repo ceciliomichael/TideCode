@@ -10,9 +10,9 @@ import {
   type RefObject,
 } from 'react'
 import { Check, GripVertical, Paperclip, Undo2 } from 'lucide-react'
-import { CHAT_ATTACHMENT_INPUT_ACCEPT, readChatAttachmentsFromFiles } from '../../lib/chatAttachmentFiles'
+import { readChatAttachmentsFromFiles } from '../../lib/chatAttachmentFiles'
+import { isSupportedImageMimeType } from '../../lib/chatAttachments'
 import { chatInputSurfaceClassName } from '../../lib/chatStyles'
-import { AttachmentPillList } from './AttachmentPillList'
 import type { ChatAttachment, QueuedMessage } from '../../types/chat'
 import { ChatMentionText } from './ChatMentionText'
 import { ChatMentionTextarea } from './ChatMentionTextarea'
@@ -21,16 +21,19 @@ import {
   ensureChatImageReferences,
   findChatImageReferenceForDeletion,
   getChatImageAttachments,
-  insertChatImageReferences,
   removeChatImageReference,
 } from '../../lib/chatImageReferences'
 import {
   collapseChatMentionMarkup,
   expandChatMentions,
+  findChatMentionMatches,
+  insertChatMentionAtPosition,
   restoreChatMentionPathMap,
 } from '../../lib/chatMentions'
+import { useChatMentionNavigation } from '../../hooks/useChatMentionNavigation'
 
 interface ChatQueueItemProps {
+  conversationId?: string | null
   index: number
   message: QueuedMessage
   editCancelBoundaryRef?: RefObject<HTMLElement | null>
@@ -47,6 +50,7 @@ interface ChatQueueItemProps {
 }
 
 export function ChatQueueItem({
+  conversationId = null,
   index,
   message,
   editCancelBoundaryRef,
@@ -71,6 +75,12 @@ export function ChatQueueItem({
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
+  const mentionNavigation = useChatMentionNavigation({
+    mentionPathMap: draftMentionPathMap,
+    onValueChange: setDraftContent,
+    textareaRef,
+    value: draftContent,
+  })
 
   useEffect(() => {
     const nextMentionPathMap = restoreChatMentionPathMap(message.mentionPathMap)
@@ -152,28 +162,102 @@ export function ChatQueueItem({
       return
     }
 
-    const initialInsertionPosition = textareaRef.current?.selectionStart ?? draftContent.length
-    const existingImageCount = getChatImageAttachments(draftAttachments).length
-    const result = await readChatAttachmentsFromFiles(files, draftAttachments)
-    if (result.attachments.length > 0) {
-      const newImageCount = getChatImageAttachments(result.attachments).length
-      const latestContent = draftContentRef.current
-      const insertionPosition = textareaRef.current?.selectionStart ?? initialInsertionPosition
-      const insertion = insertChatImageReferences({
-        count: newImageCount,
-        firstImageNumber: existingImageCount + 1,
-        position: insertionPosition,
-        text: latestContent,
-      })
-      setDraftAttachments((currentValue) => [...currentValue, ...result.attachments])
-      setDraftContent(insertion.text)
+    const insertionPosition = textareaRef.current?.selectionStart ?? draftContent.length
+    const nextAttachments: ChatAttachment[] = []
+    const errors: string[] = []
+
+    for (const file of files) {
+      let sourcePath = ''
+      try {
+        sourcePath = window.tidecodeFileDrop?.getPathForFile(file)?.trim() ?? ''
+      } catch {
+        sourcePath = ''
+      }
+
+      try {
+        if (sourcePath) {
+          const stored = await window.tidecodeHistory.storeChatAttachment({
+            conversationId,
+            sourcePath,
+          })
+          if (isSupportedImageMimeType(file.type)) {
+            const imageResult = await readChatAttachmentsFromFiles([file], [])
+            const imageAttachment = imageResult.attachments.find((attachment) => attachment.kind === 'image')
+            if (imageAttachment?.kind === 'image') {
+              nextAttachments.push({
+                ...imageAttachment,
+                fileName: stored.fileName,
+                path: stored.path,
+              })
+              continue
+            }
+          }
+          nextAttachments.push({
+            fileName: stored.fileName,
+            id: crypto.randomUUID(),
+            kind: stored.kind,
+            mimeType: file.type || stored.mimeType,
+            path: stored.path,
+            sizeBytes: stored.sizeBytes,
+          })
+          continue
+        }
+
+        const fallbackResult = await readChatAttachmentsFromFiles([file], [
+          ...draftAttachments,
+          ...nextAttachments,
+        ])
+        for (const attachment of fallbackResult.attachments) {
+          if (attachment.kind === 'image') {
+            const stored = await window.tidecodeHistory.storeChatImageAttachment({
+              conversationId,
+              dataUrl: attachment.dataUrl,
+              fileName: attachment.fileName,
+            })
+            nextAttachments.push({
+              ...attachment,
+              fileName: stored.fileName,
+              path: stored.path,
+            })
+          } else {
+            nextAttachments.push(attachment)
+          }
+        }
+        errors.push(...fallbackResult.errors)
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : `Unable to attach ${file.name || 'item'}.`)
+      }
+    }
+
+    if (nextAttachments.length > 0) {
+      const nextMentionMap = new Map(draftMentionPathMap)
+      let nextContent = draftContentRef.current
+      let nextCursorPosition = insertionPosition
+      for (const attachment of nextAttachments) {
+        if (!('path' in attachment) || !attachment.path) {
+          continue
+        }
+        let label = attachment.fileName
+        let suffix = 2
+        while (nextMentionMap.has(label) && nextMentionMap.get(label) !== attachment.path) {
+          label = `${attachment.fileName} (${suffix})`
+          suffix += 1
+        }
+        nextMentionMap.set(label, attachment.path)
+        const insertion = insertChatMentionAtPosition(nextContent, nextCursorPosition, label)
+        nextContent = insertion.nextValue
+        nextCursorPosition = insertion.nextCursorPosition
+      }
+      setDraftMentionPathMap(nextMentionMap)
+      setDraftAttachments((currentValue) => [...currentValue, ...nextAttachments])
+      setDraftContent(nextContent)
       window.requestAnimationFrame(() => {
         textareaRef.current?.focus()
-        textareaRef.current?.setSelectionRange(insertion.cursorPosition, insertion.cursorPosition)
+        textareaRef.current?.setSelectionRange(nextCursorPosition, nextCursorPosition)
       })
     }
 
-    setAttachmentError(result.errors[0] ?? null)
+    setAttachmentError(errors[0] ?? null)
   }
 
   function handleSave() {
@@ -186,12 +270,10 @@ export function ChatQueueItem({
     setIsEditing(false)
   }
 
-  function handleRemoveAttachment(attachmentId: string) {
-    setDraftAttachments((currentValue) => currentValue.filter((attachment) => attachment.id !== attachmentId))
-    setAttachmentError(null)
-  }
-
   function handleEditorKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentionNavigation.handleKeyDown(event)) {
+      return
+    }
     if (event.key !== 'Backspace' && event.key !== 'Delete') {
       return
     }
@@ -200,7 +282,7 @@ export function ChatQueueItem({
       return
     }
     const imageReference = findChatImageReferenceForDeletion({
-      imageCount: getChatImageAttachments(draftAttachments).length,
+      imageCount: getChatImageAttachments(draftAttachments).filter((attachment) => !attachment.path).length,
       key: event.key,
       selectionEnd: textarea.selectionEnd,
       selectionStart: textarea.selectionStart,
@@ -258,8 +340,27 @@ export function ChatQueueItem({
     }
   }, [draftAttachments, draftContent])
 
+  useEffect(() => {
+    if (!isEditing || draftAttachments.length === 0) {
+      return
+    }
+    const activeMentionPaths = new Set(
+      findChatMentionMatches(draftContent, draftMentionPathMap)
+        .map((match) => match.path)
+        .filter((path): path is string => Boolean(path)),
+    )
+    const nextAttachments = draftAttachments.filter((attachment) => {
+      if (!('path' in attachment) || !attachment.path) {
+        return true
+      }
+      return activeMentionPaths.has(attachment.path)
+    })
+    if (nextAttachments.length !== draftAttachments.length) {
+      setDraftAttachments(nextAttachments)
+    }
+  }, [draftAttachments, draftContent, draftMentionPathMap, isEditing])
+
   const draftImageAttachments = getChatImageAttachments(draftAttachments)
-  const draftNonImageAttachments = draftAttachments.filter((attachment) => attachment.kind !== 'image')
 
   if (isEditing) {
     return (
@@ -269,7 +370,6 @@ export function ChatQueueItem({
             ref={fileInputRef}
             type="file"
             multiple
-            accept={CHAT_ATTACHMENT_INPUT_ACCEPT}
             onChange={(event: ChangeEvent<HTMLInputElement>) => {
               const files = Array.from(event.target.files ?? [])
               event.target.value = ''
@@ -279,19 +379,15 @@ export function ChatQueueItem({
             tabIndex={-1}
           />
 
-          {draftNonImageAttachments.length > 0 ? (
-            <div className="mb-3">
-              <AttachmentPillList attachments={draftNonImageAttachments} onRemoveAttachment={handleRemoveAttachment} />
-            </div>
-          ) : null}
-
           <ChatMentionTextarea
             imageAttachments={draftImageAttachments}
             mentionPathMap={draftMentionPathMap}
             textareaRef={textareaRef}
             value={draftContent}
+            onBeforeInput={mentionNavigation.handleBeforeInput}
             onChange={(event) => setDraftContent(event.target.value)}
             onKeyDown={handleEditorKeyDown}
+            onClick={mentionNavigation.handleClick}
             placeholder="Edit queued message"
             rows={1}
             style={{ fieldSizing: 'content' } as CSSProperties}
@@ -335,7 +431,6 @@ export function ChatQueueItem({
 
   const messageAttachments = message.attachments ?? []
   const messageImageAttachments = getChatImageAttachments(messageAttachments)
-  const attachmentCount = messageAttachments.length - messageImageAttachments.length
   const renderedMessageContent = ensureChatImageReferences(message.content, messageAttachments)
   const messageMentionPathMap = restoreChatMentionPathMap(message.mentionPathMap)
   const visibleMessageContent = collapseChatMentionMarkup(message.content, messageMentionPathMap)
@@ -376,11 +471,6 @@ export function ChatQueueItem({
               wrap="nowrap"
               className="min-w-0 truncate text-sm leading-5 text-foreground"
             />
-            {attachmentCount > 0 ? (
-              <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                {`${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}`}
-              </span>
-            ) : null}
           </div>
         </Tooltip>
       </div>

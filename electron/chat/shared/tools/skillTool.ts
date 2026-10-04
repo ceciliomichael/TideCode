@@ -3,6 +3,7 @@ import type { SkillSummary } from '../../../../src/types/skills'
 import {
   buildLoadedSkillResult,
   buildSkillToolDescription,
+  getSkillAliasDirectory,
   loadEnabledSkillByName,
   paginateSkills,
   searchSkills,
@@ -62,7 +63,7 @@ export function createSkillTool(context: WorkspaceToolContext, enabledSkills: Sk
             const formattedList = pagination.items
               .map((skill, idx) => {
                 const globalIndex = (pagination.currentPage - 1) * pagination.pageSize + idx + 1
-                return `${globalIndex}. **${skill.name}**\n   ${skill.description}`
+                return `${globalIndex}. **${skill.name}**\n   Alias: ${getSkillAliasDirectory(skill)}\n   ${skill.description}`
               })
               .join('\n\n')
 
@@ -100,7 +101,7 @@ export function createSkillTool(context: WorkspaceToolContext, enabledSkills: Sk
             }
 
             const formattedMatches = matches
-              .map((skill, idx) => `${idx + 1}. **${skill.name}**\n   ${skill.description}`)
+              .map((skill, idx) => `${idx + 1}. **${skill.name}**\n   Alias: ${getSkillAliasDirectory(skill)}\n   ${skill.description}`)
               .join('\n\n')
 
             return {

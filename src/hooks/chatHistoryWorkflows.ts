@@ -39,6 +39,7 @@ interface PersistUserTurnInput {
   activeConversationId: string | null
   chatMode: ChatMode
   compactionSourceConversationId?: string
+  draftAttachmentScopeId?: string
   modelId: string
   providerId: ChatProviderId
   reasoningEffort: ReasoningEffort
@@ -440,6 +441,9 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
   } else {
     const createdConversation = await window.tidecodeHistory.createConversation({
       chatMode: input.chatMode,
+      ...(input.draftAttachmentScopeId
+        ? { draftAttachmentScopeId: input.draftAttachmentScopeId }
+        : {}),
       ...(input.compactionSourceConversationId
         ? { compactionSourceConversationId: input.compactionSourceConversationId }
         : {}),

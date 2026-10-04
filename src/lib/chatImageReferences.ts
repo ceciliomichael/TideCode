@@ -72,7 +72,7 @@ export function splitChatImageReferenceSegments(text: string, imageCount: number
 }
 
 export function ensureChatImageReferences(text: string, attachments: readonly ChatAttachment[]) {
-  const imageCount = getChatImageAttachments(attachments).length
+  const imageCount = getChatImageAttachments(attachments).filter((attachment) => !attachment.path).length
   if (imageCount === 0) {
     return text
   }
@@ -122,7 +122,7 @@ export function removeChatImageReference(input: {
   text: string
 }) {
   const targetImageIndex = input.imageNumber - 1
-  const images = getChatImageAttachments(input.attachments)
+  const images = getChatImageAttachments(input.attachments).filter((attachment) => !attachment.path)
   const targetImage = images[targetImageIndex]
   if (!targetImage) {
     return { attachments: [...input.attachments], text: input.text }

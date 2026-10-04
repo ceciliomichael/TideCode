@@ -18,6 +18,7 @@ import { WorkingBlock } from "./chat/WorkingBlock";
 import { CompactionDivider } from "./chat/CompactionDivider";
 import { PlanImplementationDivider } from "./chat/PlanImplementationDivider";
 import { PlanRevisionDivider } from "./chat/PlanRevisionDivider";
+import { ThinkingIndicator } from "./chat/ThinkingIndicator";
 import { hasAssistantWork, splitFinishedAssistantRun } from './chat/assistantWorkGrouping';
 import {
   buildAssistantWorkTimeline,
@@ -85,6 +86,7 @@ interface MessageRowProps {
   composerAttachments: ChatAttachment[];
   composerFocusSignal?: number;
   composerValue: string;
+  conversationId: string | null;
   editComposerDirty: boolean;
   editComposerMentionPathMap?: ReadonlyMap<string, string>;
   finalizeToolGroups: boolean;
@@ -135,6 +137,7 @@ const MessageRow = memo(
     composerAttachments,
     composerFocusSignal,
     composerValue,
+    conversationId,
     editComposerDirty,
     editComposerMentionPathMap,
     finalizeToolGroups,
@@ -188,6 +191,7 @@ const MessageRow = memo(
             <div className="-mx-4 flex-1 min-w-0 w-[calc(100%+2rem)]">
               <ChatInput
                 attachments={composerAttachments}
+                conversationId={conversationId}
                 value={composerValue}
                 onAttachmentsChange={onComposerAttachmentsChange}
                 onValueChange={onComposerValueChange}
@@ -350,6 +354,7 @@ export function MessageList({
 }: MessageListProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isConversationStreaming = streamingAssistantMessageId !== null;
+  const showPendingAssistantIndicator = isSending && streamingAssistantMessageId === null;
   const visibleMessages = useMemo(
     () => messages.filter(
       (message) =>
@@ -668,6 +673,7 @@ export function MessageList({
         composerAttachments={composerAttachments}
         composerFocusSignal={composerFocusSignal}
         composerValue={composerValue}
+        conversationId={conversationId}
         editComposerDirty={editComposerDirty}
         editComposerMentionPathMap={editComposerMentionPathMap}
         finalizeToolGroups={finalizeToolGroups}
@@ -806,6 +812,11 @@ export function MessageList({
             return renderMessageRow(item.message, item.index);
           }
         })}
+        {showPendingAssistantIndicator ? (
+          <div className="w-full">
+            <ThinkingIndicator variant={streamingWaitingIndicatorVariant ?? 'thinking'} />
+          </div>
+        ) : null}
       </div>
     </div>
   );

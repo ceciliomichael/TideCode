@@ -12,7 +12,8 @@ export interface RestoredChatComposerDraft {
 /**
  * Converts persisted/send-ready mention markup back into the composer format.
  * The visible composer uses @labels, while the send pipeline expands those
- * labels back to [[action:path]] using the returned path map.
+ * labels back to stable aliases or legacy [[action:path]] references using the
+ * returned path map.
  */
 export function restoreChatComposerDraft(
   content: string,
