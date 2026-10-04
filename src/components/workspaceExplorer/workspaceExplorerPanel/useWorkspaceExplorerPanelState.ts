@@ -125,6 +125,12 @@ export function useWorkspaceExplorerPanelState({
     workspaceRootPath,
   })
 
+  const refreshExplorer = useCallback(async () => {
+    closeContextMenu()
+    setErrorMessage(null)
+    await reloadExplorerTree({ force: true })
+  }, [closeContextMenu, reloadExplorerTree])
+
   const undoStack = useWorkspaceExplorerUndoStack({
     workspaceRootPath,
     reloadExplorerTree,
@@ -534,6 +540,7 @@ export function useWorkspaceExplorerPanelState({
     requestCopyOrCutEntry,
     requestDeleteEntry,
     requestRenameEntry,
+    refreshExplorer,
     rootEntries,
     selectedEntryPaths,
     startCreateEntry: startCreateEntryWithDeferredReloads,

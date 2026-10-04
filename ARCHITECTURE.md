@@ -21,3 +21,7 @@ Chat file, folder, and image attachments are copied into TideCode-managed per-dr
 The renderer refers to persisted attachments through stable `@attachments/...` aliases and workspace files through `@workspace/...` aliases. Workspace tool path resolution maps those aliases, along with enabled `@skills/...` paths, to their authorized backing locations while retaining the existing sandbox/full-access checks for absolute paths. Conversation identity is part of tool context so `@attachments/...` always resolves within the current chat.
 
 Windows workspace copy/cut writes native file-drop clipboard data in addition to TideCode's internal marker, allowing Explorer and other native applications to receive the selected files while TideCode can still recognize its own clipboard operations.
+
+## Remote project folder selection
+
+Desktop project creation keeps the native Electron directory picker. Remote web clients use an in-app folder picker backed by the desktop host: the renderer requests host roots, directory listings, and folder mutations through the existing `tidecodeHistory` remote bridge, then passes the selected absolute path through the existing project creation flow. Rename, delete, copy/cut, and paste actions execute on the desktop host, while the web client receives directory metadata rather than file contents.

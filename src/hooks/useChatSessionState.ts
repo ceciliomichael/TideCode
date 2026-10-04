@@ -22,6 +22,7 @@ import {
 } from './chatHistoryViewModels'
 import type { ChatHistorySnapshot } from './chatHistoryWorkflows'
 import type { AppLanguage } from '../lib/appSettings'
+import { createClientId } from '../lib/clientId'
 
 interface ConversationRuntimeState {
   conversation: ConversationRecord
@@ -113,7 +114,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
   const [folderSummaries, setFolderSummaries] = useState<ConversationFolderSummary[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [draftAttachmentScopeId, setDraftAttachmentScopeId] = useState(
-    () => `VIRT_draft_${crypto.randomUUID()}`,
+    () => `VIRT_draft_${createClientId()}`,
   )
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(() => initialSelection?.initialSelectedFolderId ?? null)
   const [activeConversationChatMode, setActiveConversationChatMode] = useState<ChatMode | null>(null)
@@ -139,7 +140,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
     setActiveConversationId(null)
     setActiveConversationChatMode(null)
     setSelectedFolderId(nextFolderId)
-    setDraftAttachmentScopeId(`VIRT_draft_${crypto.randomUUID()}`)
+    setDraftAttachmentScopeId(`VIRT_draft_${createClientId()}`)
   }, [])
 
   const synchronizeDraftFolder = useCallback((nextFolderId: string | null) => {

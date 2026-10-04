@@ -4,6 +4,7 @@ import { readChatAttachmentsFromFiles } from '../lib/chatAttachmentFiles'
 import { CHAT_ATTACHMENT_MAX_COUNT, isSupportedImageMimeType } from '../lib/chatAttachments'
 import { chatConversationSurfacePaddingClassName, chatInputSurfaceClassName } from '../lib/chatStyles'
 import { DEFAULT_FOLLOW_UP_BEHAVIOR, type FollowUpBehavior } from '../lib/appSettings'
+import { createClientId } from '../lib/clientId'
 import { resolveChatFollowUpShortcutAction } from '../lib/chatFollowUpShortcuts'
 import { ChatMentionMenu } from './chat/ChatMentionMenu'
 import { ChatMentionTextarea } from './chat/ChatMentionTextarea'
@@ -354,7 +355,7 @@ export function ChatInput({
     if (stored.kind === 'folder') {
       return {
         fileName: stored.fileName,
-        id: crypto.randomUUID(),
+        id: createClientId(),
         kind: 'folder',
         mimeType: stored.mimeType,
         path: stored.path,
@@ -374,7 +375,7 @@ export function ChatInput({
     }
     return {
       fileName: stored.fileName,
-      id: crypto.randomUUID(),
+      id: createClientId(),
       kind: 'file',
       mimeType: file.type || stored.mimeType,
       path: stored.path,
@@ -473,7 +474,7 @@ export function ChatInput({
         })
         nextAttachments.push({
           fileName: stored.fileName,
-          id: crypto.randomUUID(),
+          id: createClientId(),
           kind: stored.kind,
           mimeType: stored.mimeType,
           path: stored.path,
@@ -643,7 +644,7 @@ export function ChatInput({
       }
       const attachment: ChatAttachment = {
         fileName: stored.fileName,
-        id: crypto.randomUUID(),
+        id: createClientId(),
         kind: 'folder',
         mimeType: stored.mimeType,
         path: stored.path,

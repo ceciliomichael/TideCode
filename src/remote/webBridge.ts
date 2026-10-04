@@ -1,4 +1,5 @@
 import type { AppSettings } from '../types/chat'
+import { createClientId } from '../lib/clientId'
 import {
   REMOTE_EVENT_CHANNELS,
   REMOTE_PROTOCOL_VERSION,
@@ -12,10 +13,7 @@ const RPC_TIMEOUT_MS = 120_000
 type Listener = (payload: unknown) => void
 
 function createRequestId() {
-  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')
+  return createClientId()
 }
 
 class RemoteConnection {

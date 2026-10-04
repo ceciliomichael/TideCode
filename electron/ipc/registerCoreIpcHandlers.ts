@@ -57,6 +57,15 @@ import {
   storeChatImageAttachment,
 } from '../history/chatAttachments'
 import { refreshProjectPathWatcher } from '../history/projectPathWatch'
+import {
+  createFolderPickerDirectory,
+  deleteFolderPickerDirectory,
+  getFolderPickerRoots,
+  listFolderPickerDirectory,
+  pasteFolderPickerClipboard,
+  renameFolderPickerDirectory,
+  writeFolderPickerClipboard,
+} from '../folderPicker'
 import { ensureRunServiceClient } from '../runService/ensureService'
 import { getStoredSettings, updateStoredSettings } from '../settings/store'
 import { isAppSettingsSurface } from '../../src/lib/appSettingsScopes'
@@ -471,6 +480,35 @@ onSettingsChanged?: (settings: AppSettings, input: Partial<AppSettings>, surface
     refreshProjectPathWatcher()
     return folder
   })
+  ipcMain.handle('history:getFolderPickerRoots', async () => getFolderPickerRoots())
+  ipcMain.handle('history:listFolderPickerDirectory', async (_event, folderPath: string) =>
+    listFolderPickerDirectory(folderPath),
+  )
+  ipcMain.handle(
+    'history:createFolderPickerDirectory',
+    async (_event, parentPath: string, folderName: string) =>
+      createFolderPickerDirectory(parentPath, folderName),
+  )
+  ipcMain.handle(
+    'history:renameFolderPickerDirectory',
+    async (_event, folderPath: string, folderName: string) =>
+      renameFolderPickerDirectory(folderPath, folderName),
+  )
+  ipcMain.handle(
+    'history:deleteFolderPickerDirectory',
+    async (_event, folderPath: string) =>
+      deleteFolderPickerDirectory(folderPath),
+  )
+  ipcMain.handle(
+    'history:writeFolderPickerClipboard',
+    async (_event, folderPath: string, mode: 'copy' | 'cut') =>
+      writeFolderPickerClipboard(folderPath, mode),
+  )
+  ipcMain.handle(
+    'history:pasteFolderPickerClipboard',
+    async (_event, targetDirectoryPath: string) =>
+      pasteFolderPickerClipboard(targetDirectoryPath),
+  )
   ipcMain.handle('history:moveFolder', async (_event, folderId: string, direction: FolderMoveDirection) =>
     moveStoredFolder(folderId, direction),
   )

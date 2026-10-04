@@ -1,3 +1,5 @@
+import { createClientId } from '../../lib/clientId'
+
 export interface BrowserTab {
   faviconUrl: string
   id: string
@@ -100,7 +102,7 @@ export function normalizeBrowserInput(value: string) {
 export function createBrowserTab(): BrowserTab {
   return {
     faviconUrl: '',
-    id: crypto.randomUUID(),
+    id: createClientId(),
     title: 'New Tab',
   }
 }
