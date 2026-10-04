@@ -796,6 +796,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           ...input,
           attachments: [],
           activeConversationId,
+          draftAttachmentScopeId: options?.forceNewConversation ? undefined : input.draftAttachmentScopeId,
           hasPendingAbortRequest: () => pendingAbortBeforeStreamStartRef.current,
           consumePendingAbortBeforeStreamStart: () => {
             if (!pendingAbortBeforeStreamStartRef.current) {
@@ -871,6 +872,10 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       }
 
       actionInFlightRef.current = true
+      input.updateConversationRuntimeState(conversationId, {
+        isSending: true,
+      })
+      let startedPersistAndStream = false
       try {
         let persistedConversation
         try {
@@ -931,6 +936,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         pendingAbortBeforeStreamStartRef.current = false
         actionInFlightRef.current = false
 
+        startedPersistAndStream = true
         await persistAndStreamMessage({
           ...input,
           attachments,
@@ -975,6 +981,11 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         input.setError(toActionErrorMessage(caughtError, 'Unable to resend your edit.'))
       } finally {
         actionInFlightRef.current = false
+        if (!startedPersistAndStream) {
+          input.updateConversationRuntimeState(conversationId, {
+            isSending: false,
+          })
+        }
         if (ownsSendScopeGate) {
           releaseChatSendScopeGate(submissionInFlightRef, sendScopeKey)
         }

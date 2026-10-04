@@ -1,6 +1,9 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, type CSSProperties, type ClipboardEvent, type ChangeEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type RefObject } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ClipboardEvent, type ChangeEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type RefObject } from 'react'
 import { ChatMentionText } from './ChatMentionText'
+import { findChatMentionImageAttachment } from '../../lib/chatMentionImages'
 import type { ChatImageAttachment } from '../../types/chat'
+import { AnchoredTooltip, type AnchoredTooltipRect } from '../Tooltip'
+import { ChatMentionImageHoverContent } from './ChatMentionImageHoverContent'
 
 interface ChatMentionTextareaProps {
   className?: string
@@ -47,6 +50,10 @@ export function ChatMentionTextarea({
 }: ChatMentionTextareaProps) {
   const backdropRef = useRef<HTMLDivElement>(null)
   const backdropContentRef = useRef<HTMLDivElement>(null)
+  const [hoveredMention, setHoveredMention] = useState<{
+    path: string
+    rect: AnchoredTooltipRect
+  } | null>(null)
   const textareaStyle = useMemo(
     () =>
       ({
@@ -151,8 +158,52 @@ export function ChatMentionTextarea({
     window.requestAnimationFrame(syncBackdropLayout)
   }
 
+  function handleMouseMove(event: MouseEvent<HTMLDivElement>) {
+    const backdropContent = backdropContentRef.current
+    if (!backdropContent) {
+      setHoveredMention(null)
+      return
+    }
+
+    const mentionElements = backdropContent.querySelectorAll<HTMLElement>('[data-chat-mention-path]')
+    for (const mentionElement of mentionElements) {
+      const rect = mentionElement.getBoundingClientRect()
+      if (
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom
+      ) {
+        const path = mentionElement.dataset.chatMentionPath
+        if (path) {
+          setHoveredMention({
+            path,
+            rect: {
+              bottom: rect.bottom,
+              height: rect.height,
+              left: rect.left,
+              right: rect.right,
+              top: rect.top,
+              width: rect.width,
+            },
+          })
+          return
+        }
+      }
+    }
+    setHoveredMention(null)
+  }
+
+  const hoveredImageAttachment = hoveredMention
+    ? findChatMentionImageAttachment(hoveredMention.path, imageAttachments)
+    : null
+
   return (
-    <div className="relative w-full">
+    <div
+      className="relative w-full"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => setHoveredMention(null)}
+    >
       <textarea
         ref={textareaRef}
         value={value}
@@ -192,6 +243,17 @@ export function ChatMentionTextarea({
             variant="backdrop"
           />
         </div>
+      <AnchoredTooltip
+        anchorElement={null}
+        anchorRect={hoveredMention?.rect ?? null}
+        content={hoveredImageAttachment && hoveredMention
+          ? <ChatMentionImageHoverContent attachment={hoveredImageAttachment} />
+          : hoveredMention?.path ?? ''}
+        panelClassName={hoveredImageAttachment
+          ? '!max-w-[min(26rem,calc(100vw-24px))] !items-stretch !p-2'
+          : undefined}
+        visible={hoveredMention !== null}
+      />
       </div>
     </div>
   )

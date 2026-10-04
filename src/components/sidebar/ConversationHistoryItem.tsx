@@ -113,12 +113,12 @@ export function ConversationHistoryItem({
       <div className="flex h-8 w-[96px] shrink-0 cursor-pointer items-center justify-end">
         {!conversation.isArchived ? (
           conversation.hasRunningTask ? (
-            <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium text-subtle-foreground group-hover:hidden">
+            <span className="hidden items-center gap-1.5 whitespace-nowrap text-[11px] font-medium text-subtle-foreground md:inline-flex md:group-hover:hidden">
               <LuLoader className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
               <span>Running</span>
             </span>
           ) : (
-            <span className="whitespace-nowrap text-[11px] font-medium tabular-nums text-subtle-foreground group-hover:hidden">
+            <span className="hidden whitespace-nowrap text-[11px] font-medium tabular-nums text-subtle-foreground md:inline md:group-hover:hidden">
               {conversation.updatedAtLabel}
             </span>
           )
@@ -133,7 +133,7 @@ export function ConversationHistoryItem({
                 'h-8 w-8 origin-center transform-gpu items-center justify-center rounded-full transition-[color,opacity,transform] duration-150 ease-out',
                 conversation.isPinned
                   ? 'flex text-foreground'
-                  : 'hidden text-subtle-foreground hover:scale-110 hover:text-foreground group-hover:flex',
+                  : 'flex text-subtle-foreground hover:scale-110 hover:text-foreground md:hidden md:group-hover:flex',
               ].join(' ')}
               aria-label={conversation.isPinned ? `Unpin thread ${conversation.title}` : `Pin thread ${conversation.title}`}
             >
@@ -151,7 +151,7 @@ export function ConversationHistoryItem({
             <button
               type="button"
               onClick={handleArchiveClick}
-              className="hidden h-8 w-8 origin-center transform-gpu items-center justify-center rounded-full text-subtle-foreground transition-[color,opacity,transform] duration-150 ease-out hover:scale-110 hover:text-foreground group-hover:flex"
+              className="flex h-8 w-8 origin-center transform-gpu items-center justify-center rounded-full text-subtle-foreground transition-[color,opacity,transform] duration-150 ease-out hover:scale-110 hover:text-foreground md:hidden md:group-hover:flex"
               aria-label={conversation.isArchived ? `Unarchive thread ${conversation.title}` : `Archive thread ${conversation.title}`}
             >
               {conversation.isArchived ? (
@@ -180,7 +180,7 @@ export function ConversationHistoryItem({
                   event.stopPropagation()
                   setIsDeleteConfirmationVisible(true)
                 }}
-                className="hidden h-8 w-8 origin-center transform-gpu items-center justify-center text-subtle-foreground transition-[color,opacity,transform] duration-150 ease-out hover:scale-110 hover:text-destructive group-hover:flex"
+                className="flex h-8 w-8 origin-center transform-gpu items-center justify-center text-subtle-foreground transition-[color,opacity,transform] duration-150 ease-out hover:scale-110 hover:text-destructive md:hidden md:group-hover:flex"
                 aria-label={`Delete archived thread ${conversation.title}`}
               >
                 <Trash2 size={15} strokeWidth={2} className="block" />

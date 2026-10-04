@@ -222,6 +222,10 @@ export function buildSkillToolDescription(skills: readonly SkillSummary[] = []) 
   return 'List, search, or load an available skill.'
 }
 
+export function getSkillAliasDirectory(skill: Pick<SkillSummary, 'name'>) {
+  return `@skills/${skill.name}/`
+}
+
 export function searchSkills(skills: SkillSummary[], query: string): SkillSummary[] {
   const normalizedQuery = query.trim().toLowerCase()
   if (!normalizedQuery) {
@@ -356,23 +360,25 @@ export async function loadSkill(
 }
 
 export function buildLoadedSkillResult(skill: LoadedSkill): AgentToolExecutionResult {
+  const aliasDirectory = getSkillAliasDirectory(skill)
+  const aliasFile = `${aliasDirectory}SKILL.md`
   return {
     body: [
-      `Skill file: ${skill.location}`,
-      `Skill directory: ${skill.baseDirectory}`,
+      `Skill file: ${aliasFile}`,
+      `Skill directory: ${aliasDirectory}`,
       'Resolve relative resource and script paths from the skill directory above.',
       '',
       skill.content.trim(),
     ].join('\n'),
     semantics: {
-      skill_directory: skill.baseDirectory,
-      skill_file: skill.location,
+      skill_directory: aliasDirectory,
+      skill_file: aliasFile,
       skill_name: skill.name,
     },
     status: 'success',
     subject: {
       kind: 'file',
-      path: skill.location,
+      path: aliasFile,
     },
     summary: `Loaded skill ${skill.name}`,
   }

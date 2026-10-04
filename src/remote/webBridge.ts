@@ -275,5 +275,12 @@ connection.rpc('tidecodeSettings', 'getSettings', ['web']) as Promise<AppSetting
   })
 
   globals.tidecodeFileDrop = { getPathForFile: () => '' }
-  globals.tidecodeClipboard = { readFiles: async () => [] }
+  globals.tidecodeClipboard = {
+    clear: async () => undefined,
+    isWorkspaceFilesCurrent: async () => false,
+    readFiles: async () => [],
+    readWorkspaceFiles: async () => null,
+    startWorkspaceFileDrag: async () => undefined,
+    writeWorkspaceFiles: async () => undefined,
+  }
 }

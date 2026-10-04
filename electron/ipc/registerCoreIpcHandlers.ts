@@ -49,6 +49,13 @@ import {
 } from '../history/store'
 import { listCompactionMarkers } from '../chat/history/eventStore'
 import { getDraftAgentContextPath } from '../history/paths'
+import {
+  cleanupChatAttachmentScope,
+  cleanupDraftChatAttachments,
+  listChatAttachments,
+  storeChatAttachment,
+  storeChatImageAttachment,
+} from '../history/chatAttachments'
 import { refreshProjectPathWatcher } from '../history/projectPathWatch'
 import { ensureRunServiceClient } from '../runService/ensureService'
 import { getStoredSettings, updateStoredSettings } from '../settings/store'
@@ -418,7 +425,37 @@ onSettingsChanged?: (settings: AppSettings, input: Partial<AppSettings>, surface
     event.returnValue = getDraftAgentContextPath()
   })
   ipcMain.handle('history:ensureDraftAgentContext', async () => ensureDraftAgentContextDirectory())
-  ipcMain.handle('history:cleanupDraftAgentContext', async () => cleanupDraftAgentContextDirectory())
+  ipcMain.handle('history:cleanupDraftAgentContext', async () => {
+    await Promise.all([
+      cleanupDraftAgentContextDirectory(),
+      cleanupDraftChatAttachments(),
+    ])
+  })
+  ipcMain.handle('history:cleanupChatAttachmentScope', async (_event, scopeId: string) =>
+    cleanupChatAttachmentScope(scopeId),
+  )
+  ipcMain.handle('history:storeChatAttachment', async (_event, input) => storeChatAttachment(input))
+  ipcMain.handle('history:listChatAttachments', async (_event, conversationId: string) =>
+    listChatAttachments(conversationId),
+  )
+  ipcMain.handle('history:storeChatImageAttachment', async (_event, input) => storeChatImageAttachment(input))
+  ipcMain.handle('history:pickAndStoreChatAttachmentFolder', async (_event, conversationId?: string | null) => {
+    const dialogOptions: OpenDialogOptions = {
+      properties: ['openDirectory'],
+      title: 'Attach folder',
+    }
+    const activeWindow = getWindow()
+    const result = activeWindow
+      ? await dialog.showOpenDialog(activeWindow, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions)
+    if (result.canceled || result.filePaths.length === 0) {
+      return null
+    }
+    return storeChatAttachment({
+      conversationId,
+      sourcePath: result.filePaths[0],
+    })
+  })
   ipcMain.handle('history:list', async () => listStoredConversations())
   ipcMain.handle('history:listFolders', async () => listStoredFolders())
   ipcMain.handle('history:get', async (_event, conversationId: string) => getStoredConversation(conversationId))

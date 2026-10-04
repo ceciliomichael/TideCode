@@ -112,6 +112,9 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
   const [conversationSummaries, setConversationSummaries] = useState<ConversationSummary[]>([])
   const [folderSummaries, setFolderSummaries] = useState<ConversationFolderSummary[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [draftAttachmentScopeId, setDraftAttachmentScopeId] = useState(
+    () => `VIRT_draft_${crypto.randomUUID()}`,
+  )
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(() => initialSelection?.initialSelectedFolderId ?? null)
   const [activeConversationChatMode, setActiveConversationChatMode] = useState<ChatMode | null>(null)
   const [conversationRuntimeStates, setConversationRuntimeStates] = useState<ConversationRuntimeStateMap>({})
@@ -136,6 +139,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
     setActiveConversationId(null)
     setActiveConversationChatMode(null)
     setSelectedFolderId(nextFolderId)
+    setDraftAttachmentScopeId(`VIRT_draft_${crypto.randomUUID()}`)
   }, [])
 
   const synchronizeDraftFolder = useCallback((nextFolderId: string | null) => {
@@ -738,6 +742,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
       language,
     ),
     conversationRuntimeStates,
+    draftAttachmentScopeId,
     error,
     getDeletionContext,
     initializeHistory,

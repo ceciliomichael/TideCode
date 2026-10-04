@@ -31,6 +31,10 @@ export function createGlobTool(context: WorkspaceToolContext) {
           context.workspaceRootPath,
           input.path,
           context.terminalExecutionMode,
+          {
+            conversationId: context.conversationId,
+            enabledSkills: context.enabledSkills,
+          },
         )
         return await createGlobToolResult(
           context.workspaceRootPath,

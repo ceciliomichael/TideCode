@@ -7,6 +7,7 @@ import {
   findChatMentionMatches,
   getChatMentionTriggerState,
   insertChatMention,
+  insertChatMentionAtPosition,
   resolveChatMentionNativeDeletionChange,
   shouldCloseChatMentionMenuForNormalText,
 } from '../lib/chatMentions'
@@ -14,12 +15,16 @@ import type { WorkspaceExplorerEntry } from '../types/chat'
 import type { ChatMentionMenuItem, ChatMentionMenuType } from '../components/chat/ChatMentionMenu'
 
 interface ChatFileMentionIndex {
+  attachmentRefreshKey: number
+  attachmentScopeId: string
   basenameCounts: Map<string, number>
   entries: ChatMentionMenuItem[]
   workspaceRootPath: string
 }
 
 interface UseChatFileMentionMenuInput {
+  attachmentRefreshKey?: number
+  attachmentScopeId?: string | null
   disabled?: boolean
   initialMentionPathMap?: ReadonlyMap<string, string> | null
   textareaRef: RefObject<HTMLTextAreaElement | null>
@@ -30,7 +35,7 @@ interface UseChatFileMentionMenuInput {
 
 const MAX_MENTION_RESULTS = 8
 const MENTION_MENU_PLACEMENT_HEIGHT_PX = 240
-const ROOT_MENU_OPTION_COUNT = 4
+const ROOT_MENU_OPTION_COUNT = 5
 
 function normalizeRelativePath(relativePath: string) {
   return relativePath.replace(/\\/g, '/')
@@ -131,7 +136,12 @@ function scoreMentionResult(relativePath: string, query: string, label = getPath
   return null
 }
 
-async function loadWorkspaceMentionIndex(workspaceRootPath: string) {
+async function loadWorkspaceMentionIndex(
+  workspaceRootPath: string,
+  attachmentScopeId?: string | null,
+  attachmentRefreshKey = 0,
+) {
+  const workspaceName = getPathBasename(workspaceRootPath)
   const discoveredEntries: WorkspaceExplorerEntry[] = await window.tidecodeWorkspace.listDirectory({
     recursive: true,
     workspaceRootPath,
@@ -144,12 +154,29 @@ async function loadWorkspaceMentionIndex(workspaceRootPath: string) {
         description: normalizedRelativePath,
         kind: entry.isDirectory ? ('folder' as const) : ('file' as const),
         label: toMentionLabel(entry.relativePath),
-        relativePath: entry.isDirectory ? `list:${normalizedRelativePath}` : `read_file:${normalizedRelativePath}`,
+        relativePath: `@workspace/${workspaceName}/${normalizedRelativePath}${entry.isDirectory ? '/' : ''}`,
       }
     })
 
   const skillEntries: ChatMentionMenuItem[] = []
   const kanbanEntries: ChatMentionMenuItem[] = []
+  const attachmentEntries: ChatMentionMenuItem[] = []
+  if (attachmentScopeId?.trim() && typeof window !== 'undefined' && window.tidecodeHistory) {
+    try {
+      const attachments = await window.tidecodeHistory.listChatAttachments(attachmentScopeId.trim())
+      for (const attachment of attachments) {
+        attachmentEntries.push({
+          description: attachment.path,
+          isDirectory: attachment.kind === 'folder',
+          kind: 'attachment',
+          label: attachment.fileName,
+          relativePath: attachment.path,
+        })
+      }
+    } catch (error) {
+      console.error('Failed to load chat attachments for mention menu index', error)
+    }
+  }
   if (typeof window !== 'undefined' && window.tidecodeKanban) {
     try {
       const boardData = await window.tidecodeKanban.getBoardData({ workspacePath: workspaceRootPath })
@@ -174,7 +201,7 @@ async function loadWorkspaceMentionIndex(workspaceRootPath: string) {
           description: skill.description || 'Skill pack',
           kind: 'skill',
           label: skill.name,
-          relativePath: `load_skill:${skill.name}`,
+          relativePath: `@skills/${skill.name}/`,
         })
       }
     } catch (error) {
@@ -182,11 +209,13 @@ async function loadWorkspaceMentionIndex(workspaceRootPath: string) {
     }
   }
 
-  const entries = [...fileAndFolderEntries, ...skillEntries, ...kanbanEntries].sort((left, right) =>
+  const entries = [...fileAndFolderEntries, ...attachmentEntries, ...skillEntries, ...kanbanEntries].sort((left, right) =>
     left.description.localeCompare(right.description, undefined, { sensitivity: 'base' }),
   )
 
   return {
+    attachmentRefreshKey,
+    attachmentScopeId: attachmentScopeId?.trim() ?? '',
     basenameCounts,
     entries,
     workspaceRootPath,
@@ -194,6 +223,8 @@ async function loadWorkspaceMentionIndex(workspaceRootPath: string) {
 }
 
 export function useChatFileMentionMenu({
+  attachmentRefreshKey = 0,
+  attachmentScopeId = null,
   disabled = false,
   initialMentionPathMap = null,
   onValueChange,
@@ -333,6 +364,8 @@ export function useChatFileMentionMenu({
 
     if (
       workspaceMentionIndex?.workspaceRootPath === workspaceRootPath &&
+      workspaceMentionIndex.attachmentScopeId === (attachmentScopeId?.trim() ?? '') &&
+      workspaceMentionIndex.attachmentRefreshKey === attachmentRefreshKey &&
       workspaceMentionIndexLoadedKey === workspaceMentionIndexRefreshKey
     ) {
       return
@@ -342,7 +375,7 @@ export function useChatFileMentionMenu({
     const nextRefreshKey = workspaceMentionIndexRefreshKey
     setIsIndexLoading(true)
 
-    void loadWorkspaceMentionIndex(workspaceRootPath)
+    void loadWorkspaceMentionIndex(workspaceRootPath, attachmentScopeId, attachmentRefreshKey)
       .then((index) => {
         if (isCancelled) {
           return
@@ -355,6 +388,8 @@ export function useChatFileMentionMenu({
         if (!isCancelled) {
           console.error('Failed to build file mention index', error)
           setWorkspaceMentionIndex({
+            attachmentRefreshKey,
+            attachmentScopeId: attachmentScopeId?.trim() ?? '',
             basenameCounts: new Map(),
             entries: [],
             workspaceRootPath,
@@ -371,7 +406,17 @@ export function useChatFileMentionMenu({
     return () => {
       isCancelled = true
     }
-  }, [isOpen, workspaceMentionIndex?.workspaceRootPath, workspaceMentionIndexLoadedKey, workspaceMentionIndexRefreshKey, workspaceRootPath])
+  }, [
+    attachmentRefreshKey,
+    attachmentScopeId,
+    isOpen,
+    workspaceMentionIndex?.attachmentRefreshKey,
+    workspaceMentionIndex?.attachmentScopeId,
+    workspaceMentionIndex?.workspaceRootPath,
+    workspaceMentionIndexLoadedKey,
+    workspaceMentionIndexRefreshKey,
+    workspaceRootPath,
+  ])
 
   const searchResults = useMemo(() => {
     if (!workspaceMentionIndex) {
@@ -591,11 +636,17 @@ function handlePointerDown(event: PointerEvent) {
       const textarea = textareaRef.current
       const cursorPosition = textarea?.selectionStart ?? value.length
       const nextMentionMap = new Map(mentionPathMapRef.current)
-      nextMentionMap.set(item.label, item.relativePath)
+      let mentionLabel = item.label
+      let suffix = 2
+      while (nextMentionMap.has(mentionLabel) && nextMentionMap.get(mentionLabel) !== item.relativePath) {
+        mentionLabel = `${item.label} (${suffix})`
+        suffix += 1
+      }
+      nextMentionMap.set(mentionLabel, item.relativePath)
       mentionPathMapRef.current = nextMentionMap
       setMentionPathMap(nextMentionMap)
 
-      const { nextCursorPosition, nextValue } = insertChatMention(value, cursorPosition, item.label)
+      const { nextCursorPosition, nextValue } = insertChatMention(value, cursorPosition, mentionLabel)
       onValueChange(nextValue)
       closeMenu()
 
@@ -605,6 +656,48 @@ function handlePointerDown(event: PointerEvent) {
           return
         }
 
+        nextTextarea.focus()
+        nextTextarea.setSelectionRange(nextCursorPosition, nextCursorPosition)
+      })
+    },
+    [closeMenu, onValueChange, textareaRef, value],
+  )
+
+  const insertMentionReferences = useCallback(
+    (
+      references: readonly { label: string; path: string }[],
+      cursorPosition = textareaRef.current?.selectionStart ?? value.length,
+    ) => {
+      if (references.length === 0) {
+        return
+      }
+
+      const nextMentionMap = new Map(mentionPathMapRef.current)
+      let nextValue = value
+      let nextCursorPosition = cursorPosition
+      for (const reference of references) {
+        let label = reference.label
+        let suffix = 2
+        while (nextMentionMap.has(label) && nextMentionMap.get(label) !== reference.path) {
+          label = `${reference.label} (${suffix})`
+          suffix += 1
+        }
+        nextMentionMap.set(label, reference.path)
+        const insertion = insertChatMentionAtPosition(nextValue, nextCursorPosition, label)
+        nextValue = insertion.nextValue
+        nextCursorPosition = insertion.nextCursorPosition
+      }
+
+      mentionPathMapRef.current = nextMentionMap
+      setMentionPathMap(nextMentionMap)
+      onValueChange(nextValue)
+      closeMenu()
+
+      window.requestAnimationFrame(() => {
+        const nextTextarea = textareaRef.current
+        if (!nextTextarea) {
+          return
+        }
         nextTextarea.focus()
         nextTextarea.setSelectionRange(nextCursorPosition, nextCursorPosition)
       })
@@ -640,7 +733,17 @@ function handlePointerDown(event: PointerEvent) {
 
         if (event.key === 'Enter' || event.key === 'Tab') {
           event.preventDefault()
-          handleSelectCategory(selectedIndex === 3 ? 'kanban' : selectedIndex === 2 ? 'skill' : selectedIndex === 1 ? 'folder' : 'file')
+          handleSelectCategory(
+            selectedIndex === 4
+              ? 'kanban'
+              : selectedIndex === 3
+                ? 'skill'
+                : selectedIndex === 2
+                  ? 'attachment'
+                  : selectedIndex === 1
+                    ? 'folder'
+                    : 'file',
+          )
           return true
         }
 
@@ -715,6 +818,7 @@ function handlePointerDown(event: PointerEvent) {
     handleFocus,
     handleKeyDown,
     handleSelectMention,
+    insertMentionReferences,
     handleSelectCategory,
     handleValueChange,
     markTriggerUpdateSuppressed,

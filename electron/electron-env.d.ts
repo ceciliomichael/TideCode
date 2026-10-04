@@ -44,7 +44,31 @@ interface Window {
   }
   tidecodeClipboard: {
     clear: () => Promise<void>
+    isWorkspaceFilesCurrent: (input: {
+      mode: 'copy' | 'cut'
+      relativePaths: string[]
+      workspaceRootPath: string
+    }) => Promise<boolean>
     readFiles: () => Promise<string[]>
+    readWorkspaceFiles: () => Promise<{
+      entries: Array<{
+        isDirectory: boolean
+        relativePath: string
+      }>
+      mode: 'copy' | 'cut'
+      relativePaths: string[]
+      workspaceRootPath: string
+    } | null>
+    startWorkspaceFileDrag: (input: {
+      mode: 'copy' | 'cut'
+      relativePaths: string[]
+      workspaceRootPath: string
+    }) => Promise<void>
+    writeWorkspaceFiles: (input: {
+      mode: 'copy' | 'cut'
+      relativePaths: string[]
+      workspaceRootPath: string
+    }) => Promise<void>
   }
   tidecodeTerminal: import('../src/types/chat').TideCodeTerminalApi
   tidecodeWorkspace: import('../src/types/chat').TideCodeWorkspaceApi

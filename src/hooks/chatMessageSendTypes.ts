@@ -45,6 +45,7 @@ export interface PersistAndStreamMessageInput {
   completeEditingAfterPersist?: boolean
   conversationRuntimeStatesRef: { current: Record<string, ConversationRuntimeSnapshot> }
   compactionSourceConversationId?: string
+  draftAttachmentScopeId?: string
   draftChatMode: ChatMode
   markTextStreamingPulse: (conversationId: string) => void
   removeLocalMessage: (conversationId: string, messageId: string) => void

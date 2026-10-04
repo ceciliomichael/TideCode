@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { copyTextToClipboard } from '../src/lib/clipboard'
+import { parseDropFilesBuffer } from '../electron/clipboard/windowsDropFilesParser'
+import {
+  buildDropFilesBuffer,
+  buildPreferredDropEffectBuffer,
+} from '../electron/clipboard/windowsDropFilesWriter'
 
 function createLegacyDocument(copyResult: boolean) {
   const calls: string[] = []
@@ -87,4 +92,18 @@ test('copyTextToClipboard reports failure when no copy path succeeds', async () 
 
   assert.equal(copied, false)
   assert.equal(legacy.calls.at(-1), 'remove')
+})
+
+test('Windows file clipboard writer creates a valid CF_HDROP buffer', () => {
+  const paths = [
+    'C:\\Users\\Admin\\Desktop\\tidecode\\README.md',
+    'C:\\Users\\Admin\\Desktop\\tidecode\\src',
+  ]
+
+  assert.deepEqual(parseDropFilesBuffer(buildDropFilesBuffer(paths)), paths)
+})
+
+test('Windows file clipboard writer sets copy and move drop effects', () => {
+  assert.equal(buildPreferredDropEffectBuffer('copy').readUInt32LE(0), 1)
+  assert.equal(buildPreferredDropEffectBuffer('cut').readUInt32LE(0), 2)
 })

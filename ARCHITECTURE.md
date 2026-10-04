@@ -13,3 +13,11 @@ New tabs render the local `BrowserNewTabPage.tsx` with an empty address. No webv
 Closing the last tab calls the Browser panel's parent close action. `ChatConversationSurface.tsx` removes that project's initialized Browser session, unmounting its guests, and `ChatInterfaceContent.tsx` returns to chat. Remote sessions are explicitly closed. Other projects' Browser sessions and locally saved recent sites remain intact; reopening the closed Browser creates a fresh new tab.
 
 DevTools are initialized on explicit user opening, rather than during guest load. The renderer requests native DevTools creation and visibility through the preload bridge; the main process owns the native views. Page title, favicon, and loading updates retain the existing webview session.
+
+## Chat attachments and workspace aliases
+
+Chat file, folder, and image attachments are copied into TideCode-managed per-draft or per-conversation storage under the history area instead of being added to the active workspace. The main process owns attachment persistence, draft adoption, conversation cloning, listing, and cleanup. Folder copies reject symbolic links and apply TideCode workspace ignores plus nested `.gitignore` rules.
+
+The renderer refers to persisted attachments through stable `@attachments/...` aliases and workspace files through `@workspace/...` aliases. Workspace tool path resolution maps those aliases, along with enabled `@skills/...` paths, to their authorized backing locations while retaining the existing sandbox/full-access checks for absolute paths. Conversation identity is part of tool context so `@attachments/...` always resolves within the current chat.
+
+Windows workspace copy/cut writes native file-drop clipboard data in addition to TideCode's internal marker, allowing Explorer and other native applications to receive the selected files while TideCode can still recognize its own clipboard operations.

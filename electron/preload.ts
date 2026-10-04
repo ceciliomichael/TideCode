@@ -95,6 +95,12 @@ const historyApi: TideCodeHistoryApi = {
   getDraftAgentContextPathSync: () => ipcRenderer.sendSync('history:getDraftAgentContextPathSync') as string,
   ensureDraftAgentContext: () => ipcRenderer.invoke('history:ensureDraftAgentContext'),
   cleanupDraftAgentContext: () => ipcRenderer.invoke('history:cleanupDraftAgentContext'),
+  cleanupChatAttachmentScope: (scopeId) => ipcRenderer.invoke('history:cleanupChatAttachmentScope', scopeId),
+  pickAndStoreChatAttachmentFolder: (conversationId) =>
+    ipcRenderer.invoke('history:pickAndStoreChatAttachmentFolder', conversationId),
+  listChatAttachments: (conversationId) => ipcRenderer.invoke('history:listChatAttachments', conversationId),
+  storeChatAttachment: (input) => ipcRenderer.invoke('history:storeChatAttachment', input),
+  storeChatImageAttachment: (input) => ipcRenderer.invoke('history:storeChatImageAttachment', input),
   listConversations: () => ipcRenderer.invoke('history:list'),
   listFolders: () => ipcRenderer.invoke('history:listFolders'),
   onProjectFolderPruned: (listener: (event: ProjectFolderPrunedEvent) => void) => {
@@ -382,7 +388,23 @@ const fileDropApi = {
 
 const clipboardApi = {
   clear: () => ipcRenderer.invoke('clipboard:clear'),
+  isWorkspaceFilesCurrent: (input: {
+    mode: 'copy' | 'cut'
+    relativePaths: string[]
+    workspaceRootPath: string
+  }) => ipcRenderer.invoke('clipboard:isWorkspaceFilesCurrent', input),
   readFiles: () => ipcRenderer.invoke('clipboard:readFiles'),
+  readWorkspaceFiles: () => ipcRenderer.invoke('clipboard:readWorkspaceFiles'),
+  startWorkspaceFileDrag: (input: {
+    mode: 'copy' | 'cut'
+    relativePaths: string[]
+    workspaceRootPath: string
+  }) => ipcRenderer.invoke('workspace:explorer:startNativeDrag', input),
+  writeWorkspaceFiles: (input: {
+    mode: 'copy' | 'cut'
+    relativePaths: string[]
+    workspaceRootPath: string
+  }) => ipcRenderer.invoke('clipboard:writeWorkspaceFiles', input),
 }
 
 const browserDevToolsApi: TideCodeBrowserDevToolsApi = {

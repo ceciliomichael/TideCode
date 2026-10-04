@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
 import { notifyWorkspaceExplorerChange } from '../../../workspace/explorerNotifications'
 import type { WorkspaceToolContext } from './workspaceToolPaths'
-import { resolveReadableTargetPath } from './workspaceToolPaths'
+import { resolveMutableTargetPath } from './workspaceToolPaths'
 import { WorkspaceMutationError } from './workspaceMutationErrors'
 import { enqueueWorkspaceMutation } from './workspaceMutationQueue'
 import {
@@ -25,7 +25,7 @@ export async function createWholeFileWriteToolResult(
     path: string
   },
 ) {
-  const target = resolveReadableTargetPath(
+  const target = resolveMutableTargetPath(
     context.workspaceRootPath,
     input.path,
     context.terminalExecutionMode,
@@ -39,7 +39,7 @@ export async function createWholeFileWriteToolResult(
 async function createWholeFileWriteToolResultInternal(
   context: WorkspaceToolContext,
   input: { content: string; expectedRevision?: string; path: string },
-  target: ReturnType<typeof resolveReadableTargetPath>,
+  target: ReturnType<typeof resolveMutableTargetPath>,
 ) {
   let previousBytes: Buffer | null = null
   try {

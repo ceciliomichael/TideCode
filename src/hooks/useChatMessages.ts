@@ -189,11 +189,12 @@ export function useChatMessages(input: UseChatMessagesInput) {
     setIsLoading: sessionState.setIsLoading,
   })
 
+  const removeFolder = sessionState.removeFolder
   useEffect(() => {
     return window.tidecodeHistory.onProjectFolderPruned(({ deletedConversationIds, folderId }) => {
-      sessionState.removeFolder(folderId, deletedConversationIds)
+      removeFolder(folderId, deletedConversationIds)
     })
-  }, [sessionState.removeFolder])
+  }, [removeFolder])
 
   const conversationActions = useChatConversationActions({
     activeConversationId,
@@ -588,6 +589,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     clearTextStreamingIdleTimeout: streamingState.clearTextStreamingIdleTimeout,
     completeEditingMessage,
     conversationRuntimeStatesRef: streamingState.conversationRuntimeStatesRef,
+    draftAttachmentScopeId: sessionState.draftAttachmentScopeId,
     draftChatMode,
     editComposerAttachments: composerState.editComposerAttachments,
     editComposerValue: composerState.editComposerValue,
@@ -615,6 +617,15 @@ export function useChatMessages(input: UseChatMessagesInput) {
 
   const deleteAbandonedActiveConversation = useCallback(async () => {
     if (pendingDraftSendCount > 0) {
+      return
+    }
+
+    if (sessionState.activeConversationId === null) {
+      await window.tidecodeHistory
+        .cleanupChatAttachmentScope(sessionState.draftAttachmentScopeId)
+        .catch((error) => {
+          console.warn('Skipped cleanup for abandoned draft attachments.', error)
+        })
       return
     }
 
@@ -779,6 +790,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
 
   return {
     activeConversationId,
+    draftAttachmentScopeId: sessionState.draftAttachmentScopeId,
     activeConversationRootPath: activeWorkspacePath,
     activeConversationTitle: sessionState.activeConversationTitle,
     cancelEditingMessage,

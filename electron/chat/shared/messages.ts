@@ -57,6 +57,7 @@ function buildUserContent(
 ): ModelMessage['content'] {
   const parts: UserContentPart[] = []
   const imageAttachments = getChatImageAttachments(message.attachments ?? [])
+  const legacyImageAttachments = imageAttachments.filter((attachment) => !attachment.path)
   const referencedImageIndexes = new Set<number>()
   const referencedContent = ensureChatImageReferences(message.content, imageAttachments)
 
@@ -73,15 +74,16 @@ function buildUserContent(
   if (!includeImageAttachments) {
     appendText(referencedContent)
   } else {
-    for (const segment of splitChatImageReferenceSegments(referencedContent, imageAttachments.length)) {
+    for (const segment of splitChatImageReferenceSegments(referencedContent, legacyImageAttachments.length)) {
       if (segment.type === 'text') {
         appendText(segment.text)
         continue
       }
 
       appendText(segment.text)
-      const attachment = imageAttachments[segment.imageIndex]
-      if (attachment && !referencedImageIndexes.has(segment.imageIndex)) {
+      const attachment = legacyImageAttachments[segment.imageIndex]
+      const imageIndex = attachment ? imageAttachments.indexOf(attachment) : -1
+      if (attachment && imageIndex >= 0 && !referencedImageIndexes.has(imageIndex)) {
         const normalizedMediaType = attachment.mimeType.trim() || 'image/png'
         const separatorIndex = attachment.dataUrl.indexOf(',')
         const base64Data = separatorIndex >= 0
@@ -93,14 +95,36 @@ function buildUserContent(
           mediaType: normalizedMediaType,
           type: 'file',
         })
-        referencedImageIndexes.add(segment.imageIndex)
+        referencedImageIndexes.add(imageIndex)
       }
+    }
+
+    for (const [imageIndex, attachment] of imageAttachments.entries()) {
+      if (!attachment.path || referencedImageIndexes.has(imageIndex)) {
+        continue
+      }
+      const normalizedMediaType = attachment.mimeType.trim() || 'image/png'
+      const separatorIndex = attachment.dataUrl.indexOf(',')
+      const base64Data = separatorIndex >= 0
+        ? attachment.dataUrl.slice(separatorIndex + 1)
+        : attachment.dataUrl
+      parts.push({
+        data: { data: base64Data, type: 'data' },
+        filename: attachment.fileName,
+        mediaType: normalizedMediaType,
+        type: 'file',
+      })
+      referencedImageIndexes.add(imageIndex)
     }
   }
 
   for (const attachment of message.attachments ?? []) {
-    if (attachment.kind === 'image') continue
-    const attachmentText = `Attachment ${attachment.fileName}:\n${attachment.textContent}`
+    if (attachment.kind === 'image') {
+      continue
+    }
+    const attachmentText = attachment.kind === 'text'
+      ? `Attachment ${attachment.fileName}:\n${attachment.textContent}`
+      : ''
     if (attachmentText.trim().length > 0) {
       parts.push({
         text: attachmentText,

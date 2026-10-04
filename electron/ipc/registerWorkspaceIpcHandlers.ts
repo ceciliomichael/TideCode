@@ -1,4 +1,6 @@
-import { clipboard, ipcMain } from 'electron'
+import { clipboard, ipcMain, nativeImage } from 'electron'
+import { stat } from 'node:fs/promises'
+import { pathToFileURL } from 'node:url'
 import type {
   CreateWorkspaceCheckpointInput,
   WorkspaceExplorerCreateEntryInput,
@@ -39,8 +41,70 @@ import {
 } from '../workspace/explorer'
 import { windowsClipboard } from '../clipboard/windowsClipboardReader'
 import { readClipboardFilesDirect } from '../clipboard/windowsDropFilesParser'
+import {
+  TIDECODE_WORKSPACE_CLIPBOARD_FORMAT,
+  type NativeFileClipboardMode,
+  writeWindowsFileClipboard,
+} from '../clipboard/windowsDropFilesWriter'
 import { writeClipboardImageToWorkspace } from '../workspace/clipboardImage'
+import { getSafeWorkspaceTargetPath, normalizeWorkspacePath } from '../workspace/paths'
 import { getWorkspaceTypeScriptProject } from '../workspace/typescriptProject'
+
+interface WorkspaceNativeFilesInput {
+  mode: NativeFileClipboardMode
+  relativePaths: string[]
+  workspaceRootPath: string
+}
+
+const NATIVE_DRAG_ICON = nativeImage.createFromDataURL(
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+)
+
+function resolveWorkspaceNativeFilePaths(input: WorkspaceNativeFilesInput) {
+  const workspaceRootPath = normalizeWorkspacePath(input.workspaceRootPath)
+  return Array.from(
+    new Set(
+      input.relativePaths
+        .map((relativePath) => relativePath.trim())
+        .filter((relativePath) => relativePath.length > 0)
+        .map((relativePath) => getSafeWorkspaceTargetPath(workspaceRootPath, relativePath).absolutePath),
+    ),
+  )
+}
+
+function createWorkspaceClipboardMarker(input: WorkspaceNativeFilesInput) {
+  return JSON.stringify({
+    mode: input.mode,
+    relativePaths: input.relativePaths,
+    workspaceRootPath: normalizeWorkspacePath(input.workspaceRootPath),
+  })
+}
+
+function readWorkspaceClipboardMarker(): WorkspaceNativeFilesInput | null {
+  const marker = clipboard.readBuffer(TIDECODE_WORKSPACE_CLIPBOARD_FORMAT)
+  if (marker.length === 0) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(marker.toString('utf8')) as Partial<WorkspaceNativeFilesInput>
+    if (
+      (parsed.mode !== 'copy' && parsed.mode !== 'cut') ||
+      !Array.isArray(parsed.relativePaths) ||
+      !parsed.relativePaths.every((relativePath) => typeof relativePath === 'string') ||
+      typeof parsed.workspaceRootPath !== 'string' ||
+      parsed.workspaceRootPath.trim().length === 0
+    ) {
+      return null
+    }
+    return {
+      mode: parsed.mode,
+      relativePaths: parsed.relativePaths,
+      workspaceRootPath: normalizeWorkspacePath(parsed.workspaceRootPath),
+    }
+  } catch {
+    return null
+  }
+}
 
 export function registerWorkspaceIpcHandlers() {
   ipcMain.handle('workspace:checkpoint:create', async (_event, input: CreateWorkspaceCheckpointInput) =>
@@ -156,5 +220,72 @@ export function registerWorkspaceIpcHandlers() {
   })
   ipcMain.handle('clipboard:clear', () => {
     clipboard.clear()
+  })
+  ipcMain.handle('clipboard:writeWorkspaceFiles', async (_event, input: WorkspaceNativeFilesInput) => {
+    const filePaths = resolveWorkspaceNativeFilePaths(input)
+    const marker = createWorkspaceClipboardMarker(input)
+    if (filePaths.length === 0) {
+      clipboard.clear()
+      return
+    }
+
+    if (process.platform === 'win32') {
+      await writeWindowsFileClipboard(filePaths, input.mode, marker)
+    } else {
+      clipboard.clear()
+      const uriList = filePaths.map((filePath) => pathToFileURL(filePath).href).join('\r\n')
+      clipboard.writeBuffer('text/uri-list', Buffer.from(uriList, 'utf8'))
+      clipboard.writeText(filePaths.join('\n'))
+      clipboard.writeBuffer(TIDECODE_WORKSPACE_CLIPBOARD_FORMAT, Buffer.from(marker, 'utf8'))
+    }
+  })
+  ipcMain.handle('clipboard:isWorkspaceFilesCurrent', (_event, input: WorkspaceNativeFilesInput) => {
+    const marker = clipboard.readBuffer(TIDECODE_WORKSPACE_CLIPBOARD_FORMAT)
+    if (marker.length === 0) {
+      return false
+    }
+    return marker.toString('utf8') === createWorkspaceClipboardMarker(input)
+  })
+  ipcMain.handle('clipboard:readWorkspaceFiles', async () => {
+    const marker = readWorkspaceClipboardMarker()
+    if (!marker) {
+      return null
+    }
+    const workspaceRootPath = normalizeWorkspacePath(marker.workspaceRootPath)
+    const entries = await Promise.all(marker.relativePaths.map(async (relativePath) => {
+      const target = getSafeWorkspaceTargetPath(workspaceRootPath, relativePath)
+      try {
+        const targetStat = await stat(target.absolutePath)
+        return {
+          isDirectory: targetStat.isDirectory(),
+          relativePath,
+        }
+      } catch {
+        return {
+          isDirectory: false,
+          relativePath,
+        }
+      }
+    }))
+    return {
+      ...marker,
+      entries,
+    }
+  })
+  ipcMain.handle('workspace:explorer:startNativeDrag', (event, input: WorkspaceNativeFilesInput) => {
+    try {
+      const filePaths = resolveWorkspaceNativeFilePaths(input)
+      if (filePaths.length === 0) {
+        return
+      }
+      event.sender.startDrag({
+        file: filePaths[0],
+        files: filePaths,
+        icon: NATIVE_DRAG_ICON,
+      })
+    } catch (error) {
+      console.error('Failed to start native workspace file drag', error)
+      throw error
+    }
   })
 }

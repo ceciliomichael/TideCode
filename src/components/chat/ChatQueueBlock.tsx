@@ -5,6 +5,7 @@ import type { ChatAttachment, QueuedMessage } from '../../types/chat'
 import { ChatQueueItem } from './ChatQueueItem'
 
 interface ChatQueueBlockProps {
+  conversationId?: string | null
   queuedMessages: readonly QueuedMessage[]
   editCancelBoundaryRef?: RefObject<HTMLElement | null>
   onClearQueue?: () => void
@@ -19,6 +20,7 @@ interface ChatQueueBlockProps {
 }
 
 export function ChatQueueBlock({
+  conversationId = null,
   queuedMessages,
   editCancelBoundaryRef,
   onClearQueue,
@@ -81,6 +83,7 @@ export function ChatQueueBlock({
           <div className="max-h-72 overflow-y-auto">
             {queuedMessages.map((message, index) => (
               <ChatQueueItem
+                conversationId={conversationId}
                 key={message.id}
                 index={index}
                 message={message}

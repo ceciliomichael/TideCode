@@ -105,15 +105,22 @@ export function createWorkspaceEntryHandlers({
       throw new Error("Select a workspace folder first.");
     }
 
+    const uniquePaths = uniqueRelativePaths(relativePaths);
     setWorkspaceClipboard({
       ...createWorkspaceClipboardEntry({
         mode: "copy",
-        relativePaths: uniqueRelativePaths(relativePaths),
+        relativePaths: uniquePaths,
         sourceWorkspaceRootPath: workspaceRootPath,
       }),
     });
     if (typeof window !== "undefined" && window.tidecodeClipboard) {
-      await window.tidecodeClipboard.clear().catch(() => undefined);
+      await window.tidecodeClipboard.writeWorkspaceFiles({
+        mode: "copy",
+        relativePaths: uniquePaths,
+        workspaceRootPath,
+      }).catch(async () => {
+        await window.tidecodeClipboard.clear().catch(() => undefined);
+      });
     }
   };
 
@@ -123,15 +130,22 @@ export function createWorkspaceEntryHandlers({
       throw new Error("Select a workspace folder first.");
     }
 
+    const uniquePaths = uniqueRelativePaths(relativePaths);
     setWorkspaceClipboard({
       ...createWorkspaceClipboardEntry({
         mode: "cut",
-        relativePaths: uniqueRelativePaths(relativePaths),
+        relativePaths: uniquePaths,
         sourceWorkspaceRootPath: workspaceRootPath,
       }),
     });
     if (typeof window !== "undefined" && window.tidecodeClipboard) {
-      await window.tidecodeClipboard.clear().catch(() => undefined);
+      await window.tidecodeClipboard.writeWorkspaceFiles({
+        mode: "cut",
+        relativePaths: uniquePaths,
+        workspaceRootPath,
+      }).catch(async () => {
+        await window.tidecodeClipboard.clear().catch(() => undefined);
+      });
     }
   };
 

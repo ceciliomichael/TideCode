@@ -15,16 +15,19 @@ export interface EditComposerDraftSession {
 }
 
 function getAttachmentFingerprint(attachment: ChatAttachment) {
-  return attachment.kind === 'image'
-    ? [
+  if (attachment.kind === 'image') {
+    return [
         attachment.id,
         attachment.kind,
         attachment.fileName,
         attachment.mimeType,
         attachment.sizeBytes,
         attachment.dataUrl,
+        attachment.path ?? '',
       ].join('::')
-    : [
+  }
+  if (attachment.kind === 'text') {
+    return [
         attachment.id,
         attachment.kind,
         attachment.fileName,
@@ -32,6 +35,15 @@ function getAttachmentFingerprint(attachment: ChatAttachment) {
         attachment.sizeBytes,
         attachment.textContent,
       ].join('::')
+  }
+  return [
+    attachment.id,
+    attachment.kind,
+    attachment.fileName,
+    attachment.mimeType,
+    attachment.sizeBytes,
+    attachment.path,
+  ].join('::')
 }
 
 function haveSameAttachments(left: readonly ChatAttachment[], right: readonly ChatAttachment[]) {

@@ -113,7 +113,10 @@ export function getChatAttachmentLabel(attachment: ChatAttachment) {
     return trimmedName
   }
 
-  return attachment.kind === 'image' ? 'Image attachment' : 'Text attachment'
+  if (attachment.kind === 'image') return 'Image attachment'
+  if (attachment.kind === 'folder') return 'Folder attachment'
+  if (attachment.kind === 'file') return 'File attachment'
+  return 'Text attachment'
 }
 
 export function getChatAttachmentSummary(attachments: readonly ChatAttachment[]) {
@@ -164,6 +167,10 @@ export function isChatAttachment(value: unknown): value is ChatAttachment {
 
   if (attachment.kind === 'text') {
     return typeof attachment.textContent === 'string'
+  }
+
+  if (attachment.kind === 'file' || attachment.kind === 'folder') {
+    return typeof attachment.path === 'string' && attachment.path.startsWith('@attachments/')
   }
 
   return false
