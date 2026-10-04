@@ -88,6 +88,12 @@ import type {
   SubmitToolDecisionResult,
 } from './runtime'
 import type { AppSettings, AppSettingsSurface } from './settings'
+import type {
+  FolderPickerClipboardMode,
+  FolderPickerDirectory,
+  FolderPickerEntry,
+  FolderPickerRoots,
+} from './folderPicker'
 import type { TideCodeLaunchRequest } from '../../lib/appLaunchRequest'
 import type {
   CloseTerminalSessionInput,
@@ -151,6 +157,13 @@ export interface TideCodeHistoryApi {
   createConversation: (input?: CreateConversationInput) => Promise<ConversationRecord>
   createFolder: (input: CreateConversationFolderInput) => Promise<ConversationFolderRecord>
   createFolderFromPath: (folderPath: string) => Promise<ConversationFolderRecord>
+  createFolderPickerDirectory: (parentPath: string, folderName: string) => Promise<FolderPickerEntry>
+  deleteFolderPickerDirectory: (folderPath: string) => Promise<void>
+  getFolderPickerRoots: () => Promise<FolderPickerRoots>
+  listFolderPickerDirectory: (folderPath: string) => Promise<FolderPickerDirectory>
+  pasteFolderPickerClipboard: (targetDirectoryPath: string) => Promise<FolderPickerEntry[]>
+  renameFolderPickerDirectory: (folderPath: string, folderName: string) => Promise<FolderPickerEntry>
+  writeFolderPickerClipboard: (folderPath: string, mode: FolderPickerClipboardMode) => Promise<void>
   moveFolder: (folderId: string, direction: FolderMoveDirection) => Promise<ConversationFolderRecord>
   reorderFolder: (input: ReorderConversationFolderInput) => Promise<ConversationFolderRecord>
   renameFolder: (input: RenameConversationFolderInput) => Promise<ConversationFolderRecord>

@@ -3,9 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { getExternalFilePaths } from '../../lib/externalFileDrop'
 import { Tooltip } from '../Tooltip'
 import type { ConversationGroupPreview } from '../../types/chat'
+import { isRemoteBrowserRuntime } from '../../remote/webBridge'
 import { ConversationHistoryList } from './ConversationHistoryList'
 import { NewThreadProjectDialog } from './NewThreadProjectDialog'
 import { ProjectThreadSelector } from './ProjectThreadSelector'
+import { RemoteFolderPickerDialog } from './RemoteFolderPickerDialog'
 import { SidebarThreadSearch } from './SidebarThreadSearch'
 import { getUpdatesSessionSnapshot, subscribeToUpdatesSession } from '../settings/updates/updatesSessionStore'
 import type { SettingsItemId } from '../settings/settingsItems'
@@ -65,7 +67,9 @@ export function SidebarPanel({
   const [internalSelectedProjectId, setInternalSelectedProjectId] = useState(ALL_PROJECTS_FILTER_ID)
   const [searchQuery, setSearchQuery] = useState('')
   const [isNewThreadProjectDialogOpen, setIsNewThreadProjectDialogOpen] = useState(false)
+  const [isRemoteFolderPickerOpen, setIsRemoteFolderPickerOpen] = useState(false)
   const previousNewThreadDialogOpenSignalRef = useRef(newThreadDialogOpenSignal)
+  const isRemoteBrowser = isRemoteBrowserRuntime()
   const updatesSession = useSyncExternalStore(
     subscribeToUpdatesSession,
     getUpdatesSessionSnapshot,
@@ -117,6 +121,14 @@ export function SidebarPanel({
 
   const actionButtonClassName =
     'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-150 ease-out hover:bg-[var(--sidebar-hover-surface)] hover:text-foreground'
+
+  const handleAddProject = useCallback(async () => {
+    if (isRemoteBrowser) {
+      setIsRemoteFolderPickerOpen(true)
+      return
+    }
+    await onCreateFolder()
+  }, [isRemoteBrowser, onCreateFolder])
 
   const handleSidebarUpdateIndicatorClick = useCallback(() => {
     if (sidebarUpdateIndicator.kind === 'restart') {
@@ -216,7 +228,7 @@ export function SidebarPanel({
               <button
                 type="button"
                 onClick={() => {
-                  void onCreateFolder()
+                  void handleAddProject()
                 }}
                 className={actionButtonClassName}
                 aria-label="Open folder picker"
@@ -280,7 +292,7 @@ export function SidebarPanel({
         <NewThreadProjectDialog
           conversationGroups={conversationGroups}
           projects={projects}
-          onAddProject={onCreateFolder}
+          onAddProject={handleAddProject}
           onCancel={() => setIsNewThreadProjectDialogOpen(false)}
           onOpenSettings={onOpenSettings}
           onSelectConversation={onSelectConversation}
@@ -289,6 +301,16 @@ export function SidebarPanel({
             onCreateConversation(projectId === CHATS_PROJECT_FILTER_ID ? null : projectId)
           }}
           selectedProjectId={resolvedSelectedProjectId}
+        />
+      ) : null}
+
+      {isRemoteFolderPickerOpen ? (
+        <RemoteFolderPickerDialog
+          onCancel={() => setIsRemoteFolderPickerOpen(false)}
+          onSelect={async (folderPath) => {
+            await onCreateWorkspaceFolderFromPath(folderPath)
+            setIsRemoteFolderPickerOpen(false)
+          }}
         />
       ) : null}
     </aside>

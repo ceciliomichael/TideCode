@@ -12,6 +12,7 @@ import {
 import type { ChatAttachment } from '../types/chat'
 import { normalizeChatImageFile } from './chatImageNormalization'
 import { toUserFacingErrorMessage } from './userFacingError'
+import { createClientId } from './clientId'
 
 export { CHAT_ATTACHMENT_INPUT_ACCEPT }
 
@@ -101,7 +102,7 @@ export async function readChatAttachmentsFromFiles(
           dataUrl: normalizedImage.dataUrl,
           fileName,
           height: normalizedImage.height,
-          id: crypto.randomUUID(),
+          id: createClientId(),
           kind: 'image',
           mimeType: normalizedImage.mimeType,
           sizeBytes: normalizedImage.sizeBytes,
@@ -123,7 +124,7 @@ export async function readChatAttachmentsFromFiles(
     try {
       attachments.push({
         fileName,
-        id: crypto.randomUUID(),
+        id: createClientId(),
         kind: 'text',
         mimeType: file.type || 'text/plain',
         sizeBytes: file.size,

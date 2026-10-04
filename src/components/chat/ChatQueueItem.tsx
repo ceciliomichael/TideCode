@@ -13,6 +13,7 @@ import { Check, GripVertical, Paperclip, Undo2 } from 'lucide-react'
 import { readChatAttachmentsFromFiles } from '../../lib/chatAttachmentFiles'
 import { isSupportedImageMimeType } from '../../lib/chatAttachments'
 import { chatInputSurfaceClassName } from '../../lib/chatStyles'
+import { createClientId } from '../../lib/clientId'
 import type { ChatAttachment, QueuedMessage } from '../../types/chat'
 import { ChatMentionText } from './ChatMentionText'
 import { ChatMentionTextarea } from './ChatMentionTextarea'
@@ -194,7 +195,7 @@ export function ChatQueueItem({
           }
           nextAttachments.push({
             fileName: stored.fileName,
-            id: crypto.randomUUID(),
+            id: createClientId(),
             kind: stored.kind,
             mimeType: file.type || stored.mimeType,
             path: stored.path,

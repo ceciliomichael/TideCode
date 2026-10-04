@@ -8,6 +8,7 @@ import type {
   SaveApiKeyProviderInput,
 } from '../../../types/chat'
 import type { TideCodeSettingsLaunchRequest } from '../../../lib/appLaunchRequest'
+import { createClientId } from '../../../lib/clientId'
 import { SettingsPanelLayout, SETTINGS_SECTION_TITLE_CLASS_NAME } from '../shared/SettingsPanelPrimitives'
 import { CodexProviderDialog } from './CodexProviderDialog'
 import { ProviderCard } from './ProviderCard'
@@ -205,7 +206,7 @@ export function ProvidersSettingsPanel(props: ProvidersSettingsPanelProps) {
           onSubmit={(input) =>
             saveProvider({
               ...input,
-              providerId: dialog.status?.id ?? `custom:${crypto.randomUUID()}`,
+              providerId: dialog.status?.id ?? `custom:${createClientId()}`,
             })
           }
           schema={CUSTOM_PROVIDER_SCHEMA}

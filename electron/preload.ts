@@ -124,6 +124,18 @@ const historyApi: TideCodeHistoryApi = {
   createConversation: (input?: CreateConversationInput) => ipcRenderer.invoke('history:create', input),
   createFolder: (input: CreateConversationFolderInput) => ipcRenderer.invoke('history:createFolder', input),
   createFolderFromPath: (folderPath: string) => ipcRenderer.invoke('history:createFolderFromPath', folderPath),
+  createFolderPickerDirectory: (parentPath, folderName) =>
+    ipcRenderer.invoke('history:createFolderPickerDirectory', parentPath, folderName),
+  deleteFolderPickerDirectory: (folderPath) =>
+    ipcRenderer.invoke('history:deleteFolderPickerDirectory', folderPath),
+  getFolderPickerRoots: () => ipcRenderer.invoke('history:getFolderPickerRoots'),
+  listFolderPickerDirectory: (folderPath) => ipcRenderer.invoke('history:listFolderPickerDirectory', folderPath),
+  pasteFolderPickerClipboard: (targetDirectoryPath) =>
+    ipcRenderer.invoke('history:pasteFolderPickerClipboard', targetDirectoryPath),
+  renameFolderPickerDirectory: (folderPath, folderName) =>
+    ipcRenderer.invoke('history:renameFolderPickerDirectory', folderPath, folderName),
+  writeFolderPickerClipboard: (folderPath, mode) =>
+    ipcRenderer.invoke('history:writeFolderPickerClipboard', folderPath, mode),
   moveFolder: (folderId: string, direction: FolderMoveDirection) =>
     ipcRenderer.invoke('history:moveFolder', folderId, direction),
   reorderFolder: (input: ReorderConversationFolderInput) => ipcRenderer.invoke('history:reorderFolder', input),

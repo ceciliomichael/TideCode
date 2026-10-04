@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { MarkdownRenderer } from '../../chat/MarkdownRenderer'
 import { getPlanDisplayContent, getPlanStatus, type PlanReviewComment } from '../../../lib/planContracts'
 import { PLAN_HANDOFF_SUCCESS_LABEL } from '../../../lib/planStatusMessages'
+import { createClientId } from '../../../lib/clientId'
 import { WorkspacePlanActionsMenu } from './WorkspacePlanActionsMenu'
 import { WorkspacePlanCommentsMenu } from './WorkspacePlanCommentsMenu'
 import { useWorkspaceTabScrollPosition } from '../workspaceTabScrollState'
@@ -18,11 +19,7 @@ interface WorkspacePlanPreviewProps {
 }
 
 function createCommentId() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-
-  return `plan-comment-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  return `plan-comment-${createClientId()}`
 }
 
 function getPlanLineCount(content: string) {

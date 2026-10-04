@@ -504,6 +504,16 @@ export function WorkspaceExplorerPanelView({
                   </button>
                 </>
               ) : null}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  void panelState.refreshExplorer()
+                }}
+                className="flex h-10 w-full items-center rounded-lg px-2.5 text-left text-sm text-foreground transition-colors hover:bg-surface-muted"
+              >
+                Refresh
+              </button>
               {panelState.contextMenuState.targetEntry?.isDirectory ? (
                 <>
                   <div className="my-1 h-px bg-border" />
