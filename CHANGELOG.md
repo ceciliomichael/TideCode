@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.12 - Better chat attachments and workspace file workflows
+
+TideCode 1.4.12 improves chat attachments, workspace file mentions, tool path aliases, queued-message editing, and native file clipboard behavior.
+
+- Stores attached files, folders, and images per draft or conversation and represents them as inline mentions instead of a separate attachment-pill row.
+- Adds hover previews for image attachment mentions while keeping file, folder, workspace, skill, and Kanban mentions compact and path-aware.
+- Adds stable `@workspace/...`, `@attachments/...`, and `@skills/...` aliases for workspace tools, including current-chat attachment access without copying files into the workspace.
+- Improves folder attachment safety by respecting workspace ignores and nested `.gitignore` rules while rejecting symbolic links.
+- Improves queued-message, history, and conversation attachment persistence plus Windows native copy/cut interoperability with Explorer and other applications.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.11 - Smoother browser and Explorer workflows
 
 TideCode 1.4.11 improves the integrated browser, workspace Explorer responsiveness, mobile navigation, Code Mode reliability, and release-build clarity.
