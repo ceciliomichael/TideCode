@@ -152,6 +152,82 @@ export async function storeChatImageAttachment(input: StoreChatImageAttachmentIn
   }
 }
 
+export interface PreparedRemoteChatAttachmentUpload {
+  absolutePath: string
+  attachment: StoredChatAttachment
+}
+
+export async function prepareRemoteChatAttachmentUpload(input: {
+  conversationId?: string | null
+  fileName: string
+  isDirectory: boolean
+  mimeType?: string
+}): Promise<PreparedRemoteChatAttachmentUpload> {
+  await ensureAttachmentsDirectory()
+  const rootPath = getAttachmentRoot(input.conversationId)
+  await fs.mkdir(rootPath, { recursive: true })
+  const target = await resolveUniqueTargetPath(rootPath, input.fileName, input.isDirectory)
+  if (input.isDirectory) {
+    await fs.mkdir(target.absolutePath, { recursive: false })
+  } else {
+    await fs.writeFile(target.absolutePath, Buffer.alloc(0), { flag: 'wx' })
+  }
+  return {
+    absolutePath: target.absolutePath,
+    attachment: {
+      fileName: target.fileName,
+      kind: input.isDirectory ? 'folder' : 'file',
+      mimeType: input.isDirectory ? 'inode/directory' : (input.mimeType?.trim() || 'application/octet-stream'),
+      path: target.aliasPath,
+      sizeBytes: 0,
+    },
+  }
+}
+
+export async function resolveRemoteChatAttachmentFolderEntryPath(rootPath: string, relativePath: string) {
+  const normalizedRelativePath = relativePath.replace(/\\/gu, '/').replace(/^\/+|\/+$/gu, '')
+  if (!normalizedRelativePath || normalizedRelativePath.split('/').some((part) => !part || part === '.' || part === '..')) {
+    throw new Error('Invalid attachment folder path.')
+  }
+  const normalizedRoot = path.resolve(rootPath)
+  const targetPath = path.resolve(normalizedRoot, ...normalizedRelativePath.split('/'))
+  const allowedPrefix = normalizedRoot.endsWith(path.sep) ? normalizedRoot : `${normalizedRoot}${path.sep}`
+  if (!targetPath.startsWith(allowedPrefix)) {
+    throw new Error('Invalid attachment folder path.')
+  }
+  await fs.mkdir(path.dirname(targetPath), { recursive: true })
+  return targetPath
+}
+
+export async function cleanupPreparedRemoteChatAttachmentUpload(absolutePath: string) {
+  await fs.rm(absolutePath, { force: true, recursive: true })
+}
+
+export async function finalizeRemoteChatAttachmentDirectory(rootPath: string) {
+  const normalizedRoot = path.resolve(rootPath)
+
+  async function pruneDirectory(directoryPath: string): Promise<void> {
+    const entries = await fs.readdir(directoryPath, { withFileTypes: true })
+    for (const entry of entries) {
+      const entryPath = path.join(directoryPath, entry.name)
+      if (entry.isSymbolicLink() || shouldIgnoreWorkspaceEntry(entry.name)) {
+        await fs.rm(entryPath, { force: true, recursive: true })
+        continue
+      }
+
+      const isDirectory = entry.isDirectory()
+      const matchers = await loadGitignoreMatchers(normalizedRoot, directoryPath)
+      if (isGitignored(entryPath, isDirectory, matchers)) {
+        await fs.rm(entryPath, { force: true, recursive: true })
+        continue
+      }
+      if (isDirectory) await pruneDirectory(entryPath)
+    }
+  }
+
+  await pruneDirectory(normalizedRoot)
+}
+
 export async function adoptDraftChatAttachments(targetConversationId: string, draftScopeId: string) {
   const draftPath = getDraftAttachmentsPath(draftScopeId)
   const targetPath = getConversationAttachmentsPath(targetConversationId)

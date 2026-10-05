@@ -32,6 +32,8 @@ import {
   restoreChatMentionPathMap,
 } from '../../lib/chatMentions'
 import { useChatMentionNavigation } from '../../hooks/useChatMentionNavigation'
+import { isRemoteBrowserRuntime } from '../../remote/webBridge'
+import { uploadRemoteAttachmentSelection } from '../../remote/remoteAttachmentUpload'
 
 interface ChatQueueItemProps {
   conversationId?: string | null
@@ -168,6 +170,14 @@ export function ChatQueueItem({
     const errors: string[] = []
 
     for (const file of files) {
+      if (isRemoteBrowserRuntime()) {
+        try {
+          nextAttachments.push(await uploadRemoteAttachmentSelection({ file, kind: 'file' }, conversationId))
+        } catch (error) {
+          errors.push(error instanceof Error ? error.message : `Unable to attach ${file.name || 'item'}.`)
+        }
+        continue
+      }
       let sourcePath = ''
       try {
         sourcePath = window.tidecodeFileDrop?.getPathForFile(file)?.trim() ?? ''

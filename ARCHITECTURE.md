@@ -20,6 +20,8 @@ DevTools are initialized on explicit user opening, rather than during guest load
 
 Chat file, folder, and image attachments are copied into TideCode-managed per-draft or per-conversation storage under the history area instead of being added to the active workspace. The main process owns attachment persistence, draft adoption, conversation cloning, listing, and cleanup. Folder copies reject symbolic links and apply TideCode workspace ignores plus nested `.gitignore` rules.
 
+Remote browser attachments use an authenticated same-origin HTTP upload path owned by the desktop remote host. Browser files are streamed to the laptop and committed into the same managed attachment storage and `@attachments/...` alias space used by desktop attachments. Remote folder uploads preserve their browser-exposed relative paths, while incomplete upload sessions are cleaned up by the host.
+
 The renderer refers to persisted attachments through stable `@attachments/...` aliases and workspace files through `@workspace/...` aliases. Workspace tool path resolution maps those aliases, along with enabled `@skills/...` paths, to their authorized backing locations while retaining the existing sandbox/full-access checks for absolute paths. Conversation identity is part of tool context so `@attachments/...` always resolves within the current chat.
 
 Windows workspace copy/cut writes native file-drop clipboard data in addition to TideCode's internal marker, allowing Explorer and other native applications to receive the selected files while TideCode can still recognize its own clipboard operations.
