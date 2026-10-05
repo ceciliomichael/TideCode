@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.14 - Leaner Remote workspace
+
+TideCode 1.4.14 simplifies Remote Web by removing the embedded Browser feature and its host-side virtualization path while keeping the desktop Browser unchanged.
+
+- Removes the Browser button and Browser surface from Remote Web.
+- Removes remote browser screencasting, virtual BrowserWindows, browser frame streaming, and Browser RPC handling from the Remote host.
+- Keeps the integrated Browser, DevTools, tabs, history, and favicon behavior available in the desktop Electron app.
+- Remote Web users who relied on the embedded Browser must use their device browser or the desktop TideCode Browser instead.
+
 ## 1.4.13 - Better remote folder access and Explorer workflows
 
 TideCode 1.4.13 makes remote project selection feel much closer to the desktop Explorer experience and improves remote-web compatibility.
