@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.15 - Remote attachment parity
+
+TideCode 1.4.15 fixes Remote Web attachment handling so PDFs, arbitrary files, images, and browser-exposed folders work through the same managed attachment storage used by desktop.
+
+- Adds authenticated streaming uploads from Remote Web to the desktop host for binary and non-text files instead of rejecting them as unsupported.
+- Preserves image previews while storing remote attachments under normal `@attachments/...` aliases.
+- Supports browser-exposed folder paste and drag/drop with nested paths, traversal protection, cleanup of incomplete uploads, and the same ignore rules used by desktop folder attachments.
+- Applies the remote upload path to queued-message editing and reports a clear browser limitation when pasted folder contents are not exposed.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.14 - Leaner Remote workspace
 
 TideCode 1.4.14 simplifies Remote Web by removing the embedded Browser feature and its host-side virtualization path while keeping the desktop Browser unchanged.
