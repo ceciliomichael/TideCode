@@ -156,16 +156,16 @@ const sockets: WebSocket[] = []
     sockets.push(direct.socket)
     assert.match(direct.ready, /"kind":"ready"/)
 
-    const privateBrowserMethod = await rpc(direct.socket, {
+    const removedBrowserNamespace = await rpc(direct.socket, {
       args: ['project', 'tab', 'Runtime.evaluate', {}],
-      id: 'private-browser-method',
+      id: 'removed-browser-namespace',
       kind: 'rpc',
       method: 'send',
       namespace: 'tidecodeBrowser',
       protocolVersion: 1,
     })
-    assert.equal(privateBrowserMethod.ok, false)
-    assert.match(String(privateBrowserMethod.error ?? ''), /Remote browser method is unavailable/u)
+    assert.equal(removedBrowserNamespace.ok, false)
+    assert.match(String(removedBrowserNamespace.error ?? ''), /Unsupported or invalid remote protocol request/u)
 
     await assert.rejects(() => connectWebSocket(firstPort, cookie, {
       Origin: 'https://other.example.test',

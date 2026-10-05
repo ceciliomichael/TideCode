@@ -214,9 +214,6 @@ connection.rpc('tidecodeSettings', 'getSettings', ['web']) as Promise<AppSetting
   ])
 
   const globals = window as unknown as Record<string, unknown>
-  globals.tidecodeBrowser = createRemoteApi(connection, 'tidecodeBrowser', {
-    onFrame: { channel: REMOTE_EVENT_CHANNELS.browserFrame },
-  })
   globals.tidecodeApp = createRemoteApi(connection, 'tidecodeApp', {
     onLaunchRequest: { channel: REMOTE_EVENT_CHANNELS.appLaunchRequest },
   }, {

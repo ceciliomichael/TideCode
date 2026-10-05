@@ -12,6 +12,8 @@ Users can edit the address while the current page loads. Background load complet
 
 Clicking the webpage transfers focus normally. DevTools initialize when opened through the toolbar or keyboard shortcut; choosing a dock position alone does not open them. The first opening therefore includes DevTools initialization.
 
+The Browser control is available only in the desktop Electron app. Remote web clients do not show or open the Browser surface, and there is no remote page virtualization or screencast interaction path.
+
 ## Chat mentions
 
 Chat mentions keep compact labels in the composer and rendered messages while resolving to their canonical paths on hover. Path-backed image attachments show only an image preview on hover. Non-image mentions remain path-only. Image previews use the attachment data already held by the chat model rather than reading from the workspace or hard-coding filename extensions.

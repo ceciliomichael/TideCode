@@ -46,6 +46,7 @@ import { useConversationNavigationActions } from './useConversationNavigationAct
 import { buildRuntimeSelection, CHAT_MODE_OPTIONS } from './chatInterfaceRuntime'
 import type { SettingsItemId } from '../../components/settings/settingsItems'
 import { MobileWorkspaceHeader, type MobileWorkspaceSurface } from './MobileWorkspaceHeader'
+import { isRemoteBrowserRuntime } from '../../remote/webBridge'
 
 type ChatWorkspaceViewMode = 'chat' | 'kanban' | 'browser'
 
@@ -303,8 +304,9 @@ synchronizeDraftFolder,
   const isMobileViewport = useIsMobileViewport()
   const [workspaceViewMode, setWorkspaceViewMode] = useState<ChatWorkspaceViewMode>('chat')
   const [mobileSurface, setMobileSurface] = useState<MobileWorkspaceSurface>('chat')
+  const isRemoteBrowser = isRemoteBrowserRuntime()
   const isKanbanBoardOpen = isMobileViewport ? mobileSurface === 'board' : workspaceViewMode === 'kanban'
-  const isBrowserOpen = !isMobileViewport && workspaceViewMode === 'browser'
+  const isBrowserOpen = !isRemoteBrowser && !isMobileViewport && workspaceViewMode === 'browser'
   const isMobileTerminalOpen = isMobileViewport && mobileSurface === 'terminal'
   const isMobileExplorerOpen = isMobileViewport && mobileSurface === 'explorer'
   const isTerminalSurfaceOpen = isMobileTerminalOpen || (
@@ -346,6 +348,9 @@ synchronizeDraftFolder,
   ])
 
   const handleToggleWorkspaceBrowser = useCallback(() => {
+    if (isRemoteBrowser) {
+      return
+    }
     if (isBrowserOpen) {
       setWorkspaceViewMode('chat')
       return
@@ -353,6 +358,7 @@ synchronizeDraftFolder,
     setWorkspaceViewMode('browser')
   }, [
     isBrowserOpen,
+    isRemoteBrowser,
   ])
   const isQueueAutoSendBlocked =
     chatMessages.isAbortInProgress ||
