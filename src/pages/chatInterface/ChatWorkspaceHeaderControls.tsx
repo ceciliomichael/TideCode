@@ -102,7 +102,7 @@ export function ChatWorkspaceHeaderControls({
   removedLineCount,
 }: ChatWorkspaceHeaderControlsProps) {
   const supportsBrowser = typeof window !== 'undefined' && (
-    navigator.userAgent.toLowerCase().includes('electron') || 'tidecodeBrowser' in window
+    navigator.userAgent.toLowerCase().includes('electron')
   )
 
   return (

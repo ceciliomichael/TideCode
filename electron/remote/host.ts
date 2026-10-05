@@ -141,7 +141,6 @@ function isSameOriginRequest(request: IncomingMessage) {
 
 export class RemoteWorkspaceHost {
   private readonly clients = new Set<WebSocket>()
-  private readonly browserFrameSubscribers = new Map<string, Set<WebSocket>>()
   private readonly clientSessionTimers = new Map<WebSocket, ReturnType<typeof setTimeout>>()
   private readonly loginFailures = new Map<string, { count: number; firstFailureAt: number }>()
   private readonly sessions: RemoteWebSessionStore
@@ -168,50 +167,11 @@ export class RemoteWorkspaceHost {
     webAuthEnabled: false,
     webCredentialsConfigured: false,
   }
-  private browserServicePromise: Promise<typeof import('./browserService').remoteBrowserService> | null = null
-
-  private browserSessionKey(projectKey: string, tabId: string) {
-    return `${projectKey}::${tabId}`
-  }
-
-  private removeBrowserSubscriptions(socket: WebSocket) {
-    for (const [key, subscribers] of this.browserFrameSubscribers) {
-      subscribers.delete(socket)
-      if (subscribers.size === 0) this.browserFrameSubscribers.delete(key)
-    }
-  }
-
-  private sendBrowserFrame(payload: import('../../src/types/browser').RemoteBrowserFrameEvent) {
-    const subscribers = this.browserFrameSubscribers.get(this.browserSessionKey(payload.projectKey, payload.tabId))
-    if (!subscribers || subscribers.size === 0) return
-    const message = JSON.stringify({
-      channel: REMOTE_EVENT_CHANNELS.browserFrame,
-      kind: 'event',
-      payload,
-      protocolVersion: REMOTE_PROTOCOL_VERSION,
-    })
-    for (const socket of subscribers) {
-      if (socket.readyState === WebSocket.OPEN) socket.send(message)
-    }
-  }
-
   constructor(options: RemoteWorkspaceHostOptions) {
     this.options = options
     this.sessions = new RemoteWebSessionStore({
       persistencePath: path.join(getRemoteStateRoot(), 'remote-sessions.json'),
     })
-  }
-
-  private getBrowserService() {
-    if (!this.browserServicePromise) {
-      this.browserServicePromise = import('./browserService').then(({ remoteBrowserService }) => {
-        remoteBrowserService.setFrameListener((payload) => {
-          this.sendBrowserFrame(payload)
-        })
-        return remoteBrowserService
-      })
-    }
-    return this.browserServicePromise
   }
 
   getStatus() {
@@ -648,7 +608,6 @@ export class RemoteWorkspaceHost {
     socket.on('message', (raw) => this.handleClientMessage(socket, raw))
     socket.on('close', () => {
       this.clients.delete(socket)
-      this.removeBrowserSubscriptions(socket)
       const timer = this.clientSessionTimers.get(socket)
       if (timer) clearTimeout(timer)
       this.clientSessionTimers.delete(socket)
@@ -728,66 +687,6 @@ export class RemoteWorkspaceHost {
         ? (value as { id: string }).id
         : ''
       this.sendRpcError(socket, id, 'Unsupported or invalid remote protocol request.')
-      return
-    }
-
-    if (value.namespace === 'tidecodeBrowser') {
-      const request = value
-      const allowedMethods = new Set([
-        'back',
-        'capture',
-        'close',
-        'forward',
-        'getSelectionText',
-        'key',
-        'movePointer',
-        'navigate',
-        'pointerDown',
-        'pointerUp',
-        'reload',
-        'resize',
-        'startScreencast',
-        'stopScreencast',
-        'typeText',
-        'wheel',
-      ])
-      if (!allowedMethods.has(request.method)) {
-        this.sendRpcError(socket, request.id, `Remote browser method is unavailable: ${request.method}`)
-        return
-      }
-      const projectKey = typeof request.args[0] === 'string' ? request.args[0] : null
-      const tabId = typeof request.args[1] === 'string' ? request.args[1] : null
-      if (projectKey && tabId && request.method === 'startScreencast') {
-        const key = this.browserSessionKey(projectKey, tabId)
-        const subscribers = this.browserFrameSubscribers.get(key) ?? new Set<WebSocket>()
-        subscribers.add(socket)
-        this.browserFrameSubscribers.set(key, subscribers)
-      }
-      void this.getBrowserService()
-        .then((remoteBrowserService) => {
-          const method = remoteBrowserService[request.method as keyof typeof remoteBrowserService]
-          if (typeof method !== 'function') {
-            throw new Error(`Remote browser method is unavailable: ${request.method}`)
-          }
-          return Reflect.apply(method, remoteBrowserService, request.args)
-        })
-        .then((result: unknown) => {
-          if (projectKey && tabId && (request.method === 'stopScreencast' || request.method === 'close')) {
-            const key = this.browserSessionKey(projectKey, tabId)
-            const subscribers = this.browserFrameSubscribers.get(key)
-            subscribers?.delete(socket)
-            if (subscribers?.size === 0) this.browserFrameSubscribers.delete(key)
-          }
-          if (socket.readyState !== WebSocket.OPEN) return
-          socket.send(JSON.stringify({
-            id: request.id,
-            kind: 'rpc-result',
-            ok: true,
-            protocolVersion: REMOTE_PROTOCOL_VERSION,
-            result,
-          } satisfies RemoteRpcResponse))
-        })
-        .catch((error: unknown) => this.sendRpcError(socket, request.id, error instanceof Error ? error.message : String(error)))
       return
     }
 

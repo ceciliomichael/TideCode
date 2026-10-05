@@ -165,15 +165,13 @@ test('Browser starts with an empty local new tab in Electron and web runtimes', 
   }
 })
 
-test('closing a non-last tab keeps Browser open; closing its last tab closes the panel and remote session', () => {
+test('closing a non-last tab keeps Browser open; closing its last tab closes the panel', () => {
   const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
-  const closedSessions: string[] = []
   let panelClosures = 0
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: {
       localStorage: { getItem: () => null },
-      tidecodeBrowser: { close: async (_project: string, tab: string) => closedSessions.push(tab) },
     },
   })
   try {
@@ -196,7 +194,6 @@ test('closing a non-last tab keeps Browser open; closing its last tab closes the
     assert.equal(panelClosures, 0)
     bar.onCloseTab(bar.tabs[0].id)
     assert.equal(panelClosures, 1)
-    assert.deepEqual(closedSessions, [firstTabId, bar.tabs[0].id])
   } finally {
     if (windowDescriptor) {
       Object.defineProperty(globalThis, 'window', windowDescriptor)

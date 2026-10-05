@@ -1,10 +1,6 @@
 import { createElement, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, Code2, EllipsisVertical, Globe2, Home, LoaderCircle, RefreshCw, Search, X } from 'lucide-react'
-import type {
-  BrowserDevToolsDockMode,
-  RemoteBrowserFrameEvent,
-  RemoteBrowserState,
-} from '../../types/browser'
+import type { BrowserDevToolsDockMode } from '../../types/browser'
 import { Tooltip } from '../Tooltip'
 import { BrowserTabsBar } from './BrowserTabsBar'
 import { BrowserNewTabPage } from './BrowserNewTabPage'
@@ -57,7 +53,6 @@ interface BrowserTabSessionProps {
   onTitleChange: (tabId: string, title: string) => void
   onVisit: (url: string, faviconDataUrl?: string) => void
   visitedSites: readonly BrowserVisitedSite[]
-  projectKey: string
   tabId: string
 }
 
@@ -70,18 +65,14 @@ function BrowserTabSession({
   onTitleChange,
   onVisit,
   visitedSites,
-  projectKey,
   tabId,
 }: BrowserTabSessionProps) {
   const webviewRef = useRef<TidecodeWebview | null>(null)
   const webviewReadyRef = useRef(false)
-  const remoteSurfaceRef = useRef<HTMLDivElement | null>(null)
-  const remotePointerDownRef = useRef(false)
   const addressInputRef = useRef<HTMLInputElement | null>(null)
   const addressFocusedRef = useRef(false)
   const addressEditingRef = useRef(false)
   const pendingNavigationRef = useRef<{ started: boolean; url: string } | null>(null)
-  const remoteOperationRef = useRef(0)
   const devToolsMenuButtonRef = useRef<HTMLButtonElement | null>(null)
   const devToolsHostRef = useRef<HTMLDivElement | null>(null)
   const isElectron = useMemo(() => navigator.userAgent.toLowerCase().includes('electron'), [])
@@ -89,7 +80,6 @@ function BrowserTabSession({
     () => normalizeEmbeddedBrowserUserAgent(navigator.userAgent),
     [],
   )
-  const isRemote = !isElectron && typeof window !== 'undefined' && 'tidecodeBrowser' in window
   const [address, setAddress] = useState('')
   const [currentUrl, setCurrentUrl] = useState('')
   const [iframeUrl, setIframeUrl] = useState('')
@@ -98,8 +88,6 @@ function BrowserTabSession({
   const [canGoForward, setCanGoForward] = useState(false)
   const [loadFailure, setLoadFailure] = useState<BrowserLoadFailure | null>(null)
   const [devToolsOpen, setDevToolsOpen] = useState(false)
-  const [remoteScreenshot, setRemoteScreenshot] = useState('')
-  const [remoteCursor, setRemoteCursor] = useState('default')
   const isNewTab = !currentUrl
 
   const releaseAddressEditing = useCallback(() => {
@@ -123,102 +111,6 @@ function BrowserTabSession({
     }
     webviewRef.current = node
   }, [])
-
-  const applyRemoteState = useCallback((state: RemoteBrowserState) => {
-    if (!addressFocusedRef.current && !addressEditingRef.current) setAddress(state.url)
-    setCanGoBack(state.canGoBack)
-    setCanGoForward(state.canGoForward)
-    setIsLoading(state.isLoading)
-    setRemoteScreenshot(state.screenshotDataUrl)
-    updateTitle(state.title, state.url)
-    if (!state.isLoading) {
-      onVisit(state.url, state.faviconDataUrl)
-    }
-  }, [onVisit, updateTitle])
-
-  const applyRemoteFrame = useCallback((frame: RemoteBrowserFrameEvent) => {
-    if (!addressFocusedRef.current && !addressEditingRef.current) setAddress(frame.url)
-    setCanGoBack(frame.canGoBack)
-    setCanGoForward(frame.canGoForward)
-    setIsLoading(frame.isLoading)
-    setRemoteScreenshot(frame.screenshotDataUrl)
-    updateTitle(frame.title, frame.url)
-    if (!frame.isLoading) {
-      onVisit(frame.url, frame.faviconDataUrl)
-    }
-  }, [onVisit, updateTitle])
-
-  const runRemote = useCallback(async (operation: () => Promise<RemoteBrowserState>) => {
-    const operationId = ++remoteOperationRef.current
-    setIsLoading(true)
-    try {
-      const state = await operation()
-      if (remoteOperationRef.current === operationId) {
-        applyRemoteState(state)
-      }
-    } catch (error) {
-      if (remoteOperationRef.current === operationId) {
-        throw error
-      }
-    } finally {
-      if (remoteOperationRef.current === operationId) {
-        setIsLoading(false)
-      }
-    }
-  }, [applyRemoteState])
-
-  useEffect(() => {
-    if (!active || !isRemote || isNewTab) return
-
-    let cancelled = false
-    const surface = remoteSurfaceRef.current
-    const width = surface?.clientWidth || 1280
-    const height = surface?.clientHeight || 800
-    const deviceScaleFactor = window.devicePixelRatio || 1
-    const unsubscribe = window.tidecodeBrowser.onFrame((frame) => {
-      if (!cancelled && frame.projectKey === projectKey && frame.tabId === tabId) {
-        applyRemoteFrame(frame)
-      }
-    })
-
-    void window.tidecodeBrowser.startScreencast(projectKey, tabId, width, height, deviceScaleFactor)
-      .then((state) => {
-        if (!cancelled) applyRemoteState(state)
-      })
-      .catch(() => window.tidecodeBrowser.capture(projectKey, tabId).then((state) => {
-        if (!cancelled) applyRemoteState(state)
-      }))
-
-    return () => {
-      cancelled = true
-      unsubscribe()
-      void window.tidecodeBrowser.stopScreencast(projectKey, tabId)
-    }
-  }, [active, applyRemoteFrame, applyRemoteState, isNewTab, isRemote, projectKey, tabId])
-
-  useEffect(() => {
-    if (!active || !isRemote || isNewTab) return
-
-    const surface = remoteSurfaceRef.current
-    if (!surface) return
-
-    let lastWidth = 0
-    let lastHeight = 0
-    const resize = () => {
-      const width = Math.max(1, Math.round(surface.clientWidth))
-      const height = Math.max(1, Math.round(surface.clientHeight))
-      if (width === lastWidth && height === lastHeight) return
-
-      lastWidth = width
-      lastHeight = height
-      void window.tidecodeBrowser.resize(projectKey, tabId, width, height, window.devicePixelRatio || 1)
-    }
-
-    resize()
-    const observer = new ResizeObserver(resize)
-    observer.observe(surface)
-    return () => observer.disconnect()
-  }, [active, isNewTab, isRemote, projectKey, tabId])
 
   useEffect(() => {
     if (active && isNewTab) {
@@ -553,14 +445,9 @@ function BrowserTabSession({
         return
       }
 
-      if (isRemote) {
-        void runRemote(() => window.tidecodeBrowser.navigate(projectKey, tabId, nextUrl))
-        return
-      }
-
       setIframeUrl(nextUrl)
     },
-    [currentUrl, isElectron, isRemote, projectKey, releaseAddressEditing, runRemote, tabId, updateTitle],
+    [currentUrl, isElectron, releaseAddressEditing, updateTitle],
   )
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -571,7 +458,6 @@ function BrowserTabSession({
   const handleHome = () => {
     releaseAddressEditing()
     pendingNavigationRef.current = null
-    remoteOperationRef.current += 1
     setAddress('')
     setCurrentUrl('')
     setIframeUrl('')
@@ -580,13 +466,8 @@ function BrowserTabSession({
     setCanGoForward(false)
     setLoadFailure(null)
     setDevToolsOpen(false)
-    setRemoteScreenshot('')
-    setRemoteCursor('default')
     onFaviconChange(tabId, '')
     updateTitle('', '')
-    if (isRemote) {
-      void window.tidecodeBrowser.close(projectKey, tabId)
-    }
   }
   const handleToggleDevTools = () => {
     const webview = webviewRef.current
@@ -685,9 +566,7 @@ function BrowserTabSession({
           type="button"
           aria-label="Back"
           disabled={!canGoBack}
-          onClick={() => isRemote
-            ? void runRemote(() => window.tidecodeBrowser.back(projectKey, tabId))
-            : webviewRef.current?.goBack?.()}
+          onClick={() => webviewRef.current?.goBack?.()}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-default disabled:opacity-35"
         >
           <ArrowLeft size={16} />
@@ -696,9 +575,7 @@ function BrowserTabSession({
           type="button"
           aria-label="Forward"
           disabled={!canGoForward}
-          onClick={() => isRemote
-            ? void runRemote(() => window.tidecodeBrowser.forward(projectKey, tabId))
-            : webviewRef.current?.goForward?.()}
+          onClick={() => webviewRef.current?.goForward?.()}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-default disabled:opacity-35"
         >
           <ArrowRight size={16} />
@@ -708,10 +585,6 @@ function BrowserTabSession({
           aria-label={isLoading ? 'Stop loading' : 'Reload'}
           disabled={isNewTab}
           onClick={() => {
-            if (isRemote) {
-              void runRemote(() => window.tidecodeBrowser.reload(projectKey, tabId))
-              return
-            }
             if (!isElectron) {
               setIframeUrl((value) => value)
               return
@@ -754,19 +627,6 @@ function BrowserTabSession({
                 return
               }
               if (pendingNavigationRef.current) {
-                return
-              }
-              if (isRemote) {
-                const operationId = remoteOperationRef.current
-                void window.tidecodeBrowser.capture(projectKey, tabId)
-                  .then((state) => {
-                    if (remoteOperationRef.current !== operationId) {
-                      return
-                    }
-                    setAddress(state.url)
-                    updateTitle(state.title, state.url)
-                  })
-                  .catch(() => undefined)
                 return
               }
               if (isElectron) {
@@ -866,130 +726,7 @@ function BrowserTabSession({
                 pointerEvents: active ? 'auto' : 'none',
               },
             })
-          : isRemote ? (
-              <div
-                ref={remoteSurfaceRef}
-                tabIndex={active ? 0 : -1}
-                className="flex h-full w-full items-center justify-center overflow-hidden bg-white outline-none"
-                style={{ cursor: remoteCursor }}
-                onKeyDown={(event) => {
-                  event.preventDefault()
-                  const key = event.key
-                  const hasModifier = event.ctrlKey || event.metaKey || event.altKey
-                  const primaryModifier = event.ctrlKey || event.metaKey
-                  const normalizedKey = key.toLowerCase()
-
-                  if (primaryModifier && normalizedKey === 'l') {
-                    addressInputRef.current?.focus()
-                    addressInputRef.current?.select()
-                    return
-                  }
-                  if ((primaryModifier && normalizedKey === 'r') || key === 'F5') {
-                    void runRemote(() => window.tidecodeBrowser.reload(projectKey, tabId))
-                    return
-                  }
-                  if (event.altKey && key === 'ArrowLeft') {
-                    void runRemote(() => window.tidecodeBrowser.back(projectKey, tabId))
-                    return
-                  }
-                  if (event.altKey && key === 'ArrowRight') {
-                    void runRemote(() => window.tidecodeBrowser.forward(projectKey, tabId))
-                    return
-                  }
-                  if (primaryModifier && normalizedKey === 'c') {
-                    void window.tidecodeBrowser.getSelectionText(projectKey, tabId)
-                      .then((text) => text ? navigator.clipboard?.writeText(text) : undefined)
-                      .catch(() => undefined)
-                  }
-                  if (primaryModifier && normalizedKey === 'x') {
-                    void window.tidecodeBrowser.getSelectionText(projectKey, tabId)
-                      .then((text) => text ? navigator.clipboard?.writeText(text) : undefined)
-                      .catch(() => undefined)
-                  }
-                  if (primaryModifier && normalizedKey === 'v' && navigator.clipboard?.readText) {
-                    void navigator.clipboard.readText()
-                      .then((text) => text ? window.tidecodeBrowser.typeText(projectKey, tabId, text) : undefined)
-                      .catch(() => undefined)
-                    return
-                  }
-                  if (key.length === 1 && !hasModifier) {
-                    void window.tidecodeBrowser.typeText(projectKey, tabId, key)
-                  } else {
-                    void window.tidecodeBrowser.key(projectKey, tabId, {
-                      altKey: event.altKey,
-                      code: event.code,
-                      ctrlKey: event.ctrlKey,
-                      key,
-                      metaKey: event.metaKey,
-                      shiftKey: event.shiftKey,
-                    })
-                  }
-                }}
-                onPointerDown={(event) => {
-                  if (event.button !== 0) return
-                  event.currentTarget.setPointerCapture(event.pointerId)
-                  remotePointerDownRef.current = true
-                  const rect = event.currentTarget.getBoundingClientRect()
-                  void window.tidecodeBrowser.pointerDown(
-                    projectKey,
-                    tabId,
-                    event.clientX - rect.left,
-                    event.clientY - rect.top,
-                  )
-                  event.currentTarget.focus()
-                }}
-                onPointerUp={(event) => {
-                  if (event.button !== 0) return
-                  remotePointerDownRef.current = false
-                  const rect = event.currentTarget.getBoundingClientRect()
-                  void window.tidecodeBrowser.pointerUp(
-                    projectKey,
-                    tabId,
-                    event.clientX - rect.left,
-                    event.clientY - rect.top,
-                  )
-                  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                    event.currentTarget.releasePointerCapture(event.pointerId)
-                  }
-                }}
-                onPointerCancel={() => {
-                  remotePointerDownRef.current = false
-                }}
-                onPointerMove={(event) => {
-                  const rect = event.currentTarget.getBoundingClientRect()
-                  void window.tidecodeBrowser.movePointer(
-                    projectKey,
-                    tabId,
-                    event.clientX - rect.left,
-                    event.clientY - rect.top,
-                    remotePointerDownRef.current ? 1 : 0,
-                  ).then(setRemoteCursor).catch(() => undefined)
-                }}
-                onWheel={(event) => {
-                  event.preventDefault()
-                  const rect = event.currentTarget.getBoundingClientRect()
-                  void window.tidecodeBrowser.wheel(
-                    projectKey,
-                    tabId,
-                    event.clientX - rect.left,
-                    event.clientY - rect.top,
-                    event.deltaX,
-                    event.deltaY,
-                  )
-                }}
-              >
-                {remoteScreenshot ? (
-                  <img
-                    src={remoteScreenshot}
-                    alt="Remote browser"
-                    draggable={false}
-                    className="h-full w-full object-fill select-none"
-                  />
-              ) : (
-                  <LoaderCircle size={20} className="animate-spin text-muted-foreground" />
-                )}
-              </div>
-            ) : (
+          : (
               <iframe
                 key={iframeUrl}
                 src={iframeUrl}
@@ -1046,8 +783,6 @@ export function BrowserPanel({ active, onClose, projectKey }: BrowserPanelProps)
   const [activeTabId, setActiveTabId] = useState(initialTabRef.current.id)
   const [devToolsMode, setDevToolsMode] = useState<BrowserDevToolsDockMode>('right')
   const { visitedSites, recordVisit, cacheFavicon } = useBrowserHistory(projectKey)
-  const isElectron = useMemo(() => navigator.userAgent.toLowerCase().includes('electron'), [])
-  const isRemote = !isElectron && typeof window !== 'undefined' && 'tidecodeBrowser' in window
 
   const handleTitleChange = useCallback((tabId: string, title: string) => {
     setTabs((currentTabs) => currentTabs.map((tab) => (
@@ -1069,9 +804,6 @@ export function BrowserPanel({ active, onClose, projectKey }: BrowserPanelProps)
 
   const handleCloseTab = useCallback((tabId: string) => {
     if (tabs.length === 1) {
-      if (isRemote) {
-        void window.tidecodeBrowser.close(projectKey, tabId)
-      }
       onClose()
       return
     }
@@ -1079,11 +811,7 @@ export function BrowserPanel({ active, onClose, projectKey }: BrowserPanelProps)
     const nextActiveTabId = selectBrowserTabAfterClose(tabs, activeTabId, tabId)
     setTabs(tabs.filter((tab) => tab.id !== tabId))
     setActiveTabId(nextActiveTabId)
-
-    if (isRemote) {
-      void window.tidecodeBrowser.close(projectKey, tabId)
-    }
-  }, [activeTabId, isRemote, onClose, projectKey, tabs])
+  }, [activeTabId, onClose, tabs])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -1107,7 +835,6 @@ export function BrowserPanel({ active, onClose, projectKey }: BrowserPanelProps)
             onTitleChange={handleTitleChange}
             onVisit={recordVisit}
             visitedSites={visitedSites}
-            projectKey={projectKey}
             tabId={tab.id}
           />
         ))}
