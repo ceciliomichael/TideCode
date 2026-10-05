@@ -475,7 +475,8 @@ export async function writeFolderPickerClipboard(
     paths: [normalizedFolderPath],
   })
   if (process.platform === 'win32') {
-    await writeWindowsFileClipboard([normalizedFolderPath], mode, marker)
+    const { clipboard } = await import('electron')
+    writeWindowsFileClipboard(clipboard, [normalizedFolderPath], mode, marker)
     return
   }
 

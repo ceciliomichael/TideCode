@@ -1,10 +1,14 @@
-import { clipboard } from 'electron'
 import {
   buildDropFilesBuffer,
   buildPreferredDropEffectBuffer,
   TIDECODE_WORKSPACE_CLIPBOARD_FORMAT,
   type NativeFileClipboardMode,
 } from './windowsClipboardFormats'
+
+interface ClipboardWriter {
+  clear(): void
+  writeBuffer(format: string, buffer: Buffer): void
+}
 
 export {
   buildDropFilesBuffer,
@@ -14,6 +18,7 @@ export {
 } from './windowsClipboardFormats'
 
 export function writeWindowsFileClipboard(
+  clipboard: ClipboardWriter,
   paths: readonly string[],
   mode: NativeFileClipboardMode,
   marker: string,

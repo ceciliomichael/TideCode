@@ -230,7 +230,7 @@ export function registerWorkspaceIpcHandlers() {
     }
 
     if (process.platform === 'win32') {
-      writeWindowsFileClipboard(filePaths, input.mode, marker)
+      writeWindowsFileClipboard(clipboard, filePaths, input.mode, marker)
     } else {
       clipboard.clear()
       const uriList = filePaths.map((filePath) => pathToFileURL(filePath).href).join('\r\n')
