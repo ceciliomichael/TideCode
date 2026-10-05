@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.16 - Faster Explorer clipboard
+
+TideCode 1.4.16 removes the Windows clipboard delay introduced in recent Explorer copy and paste workflows.
+
+- Restores immediate TideCode Explorer copy and cut by writing native Windows file-drop clipboard data directly instead of launching PowerShell.
+- Makes valid single-file Windows Explorer clipboard paths use the direct fast path instead of waiting for native fallback verification.
+- Keeps the slower native Windows fallback only for virtual-shell clipboard items that do not expose normal filesystem paths.
+- Preserves Windows Explorer interoperability, copy/cut drop effects, and TideCode workspace clipboard markers.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.15 - Remote attachment parity
 
 TideCode 1.4.15 fixes Remote Web attachment handling so PDFs, arbitrary files, images, and browser-exposed folders work through the same managed attachment storage used by desktop.
