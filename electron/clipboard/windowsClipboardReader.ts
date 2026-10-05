@@ -1,6 +1,7 @@
 import { clipboard } from 'electron'
 import { spawn } from 'node:child_process'
 import { readClipboardDropFilesDirect, readClipboardFilesDirect } from './windowsDropFilesParser.ts'
+import { shouldUseNativeWindowsClipboardFallback } from './windowsClipboardFormats'
 
 const WINDOWS_CLIPBOARD_READ_TIMEOUT_MS = 2500
 const WINDOWS_CLIPBOARD_READ_SCRIPT = `
@@ -91,13 +92,9 @@ class WindowsClipboardReader {
 
     let directPaths: string[] = []
 
-    // Direct memory reading is authoritative when it already contains
-    // multiple paths. A single FileName/FileNameW path can be only the
-    // focused Explorer item from a larger Windows selection, so confirm it
-    // against the native file-drop list before returning it.
     try {
       directPaths = readClipboardFilesDirect(clipboard)
-      if (directPaths.length > 1) {
+      if (directPaths.length > 0) {
         return directPaths
       }
     } catch (directError) {
@@ -105,24 +102,12 @@ class WindowsClipboardReader {
     }
 
     const availableFormats = clipboard.availableFormats()
-    const hasFileDropFormat = availableFormats.some((format) => {
-      const normalizedFormat = format.toLowerCase()
-      return (
-        normalizedFormat === 'cf_hdrop' ||
-        normalizedFormat === 'filename' ||
-        normalizedFormat === 'filenamew' ||
-        normalizedFormat === 'text/uri-list' ||
-        normalizedFormat.includes('filegroupdescriptor') ||
-        normalizedFormat.includes('shell idlist')
-      )
-    })
-    if (availableFormats.length === 0 || !hasFileDropFormat) {
+    if (!shouldUseNativeWindowsClipboardFallback(directPaths, availableFormats)) {
       return directPaths
     }
 
-    // Query the native Windows file-drop list in an isolated STA process.
-    // Keeping each read independent avoids stale/partial output from a shared
-    // PowerShell session and gives Windows Explorer multi-selection semantics.
+    // Only virtual-shell clipboard formats that expose no direct filesystem
+    // paths need the slower native Windows fallback.
     const nativePaths = await this.readNativeFileDropList()
     return nativePaths.length > 0 ? nativePaths : directPaths
   }

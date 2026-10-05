@@ -8,6 +8,11 @@ import {
   readClipboardDropFilesDirect,
   readClipboardFilesDirect,
 } from '../electron/clipboard/windowsDropFilesParser.ts'
+import {
+  buildDropFilesBuffer,
+  buildPreferredDropEffectBuffer,
+  shouldUseNativeWindowsClipboardFallback,
+} from '../electron/clipboard/windowsClipboardFormats.ts'
 
 function createDropFilesBuffer(paths: string[], isWide = true): Buffer {
   const headerSize = 20
@@ -110,4 +115,32 @@ test('readClipboardFilesDirect falls back to FileNameW if CF_HDROP is absent', (
   }
   const result = readClipboardFilesDirect(mockClipboard)
   assert.deepEqual(result, ['C:\\work\\single-file.txt'])
+})
+
+test('single direct Windows clipboard paths never require the PowerShell fallback', () => {
+  assert.equal(
+    shouldUseNativeWindowsClipboardFallback(
+      ['C:\\work\\single-file.txt'],
+      ['FileNameW', 'Shell IDList Array'],
+    ),
+    false,
+  )
+})
+
+test('native Windows clipboard fallback is reserved for virtual shell items without direct paths', () => {
+  assert.equal(
+    shouldUseNativeWindowsClipboardFallback([], ['FileGroupDescriptorW']),
+    true,
+  )
+  assert.equal(
+    shouldUseNativeWindowsClipboardFallback([], ['CF_HDROP', 'FileNameW']),
+    false,
+  )
+})
+
+test('Windows clipboard writer buffers encode file-drop paths and copy/move effects', () => {
+  const paths = ['C:\\work\\a.txt', 'C:\\work\\b.pdf']
+  assert.deepEqual(parseDropFilesBuffer(buildDropFilesBuffer(paths)), paths)
+  assert.equal(buildPreferredDropEffectBuffer('copy').readUInt32LE(0), 1)
+  assert.equal(buildPreferredDropEffectBuffer('cut').readUInt32LE(0), 2)
 })
