@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+import { createWriteStream } from 'node:fs'
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { networkInterfaces } from 'node:os'
@@ -5,6 +7,7 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import net from 'node:net'
 import type { Duplex } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import type { BrowserWindow } from 'electron'
 import { WebSocket, WebSocketServer, type RawData } from 'ws'
 import {
@@ -30,8 +33,16 @@ import {
 import { getLoginPageHtml, readAuthJsonBody, writeJson } from './webAuth'
 import { RemoteWebSessionStore } from './sessionStore'
 import { getRemoteStateRoot } from './statePath'
+import {
+  cleanupPreparedRemoteChatAttachmentUpload,
+  finalizeRemoteChatAttachmentDirectory,
+  prepareRemoteChatAttachmentUpload,
+  resolveRemoteChatAttachmentFolderEntryPath,
+  type PreparedRemoteChatAttachmentUpload,
+} from '../history/chatAttachments'
 
 const MAX_CLIENT_MESSAGE_BYTES = 16 * 1024 * 1024
+const REMOTE_ATTACHMENT_UPLOAD_TTL_MS = 10 * 60 * 1000
 const LOGIN_FAILURE_WINDOW_MS = 60_000
 const MAX_LOGIN_FAILURES = 5
 
@@ -40,6 +51,26 @@ interface RemoteWorkspaceHostOptions {
   getWindow: () => BrowserWindow | null
   portOverride?: number
   rendererDist: string
+}
+
+interface RemoteAttachmentUploadSession extends PreparedRemoteChatAttachmentUpload {
+  kind: 'file' | 'folder'
+  timer: ReturnType<typeof setTimeout>
+  uploadedPaths: Set<string>
+  uploadedSizeBytes: number
+}
+
+async function readJsonRequestBody(request: IncomingMessage) {
+  const chunks: Buffer[] = []
+  let totalBytes = 0
+  for await (const chunk of request) {
+    const buffer = Buffer.from(chunk)
+    totalBytes += buffer.byteLength
+    if (totalBytes > 64 * 1024) throw new Error('Request body is too large.')
+    chunks.push(buffer)
+  }
+  if (chunks.length === 0) return null
+  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown
 }
 
 function getContentType(filePath: string) {
@@ -140,6 +171,7 @@ function isSameOriginRequest(request: IncomingMessage) {
 }
 
 export class RemoteWorkspaceHost {
+  private readonly attachmentUploads = new Map<string, RemoteAttachmentUploadSession>()
   private readonly clients = new Set<WebSocket>()
   private readonly clientSessionTimers = new Map<WebSocket, ReturnType<typeof setTimeout>>()
   private readonly loginFailures = new Map<string, { count: number; firstFailureAt: number }>()
@@ -276,6 +308,12 @@ export class RemoteWorkspaceHost {
     for (const socket of this.clients) socket.close(1001, reason)
     this.clients.clear()
     this.sessions.clear(false)
+    const pendingUploads = [...this.attachmentUploads.values()]
+    this.attachmentUploads.clear()
+    for (const upload of pendingUploads) {
+      clearTimeout(upload.timer)
+      await cleanupPreparedRemoteChatAttachmentUpload(upload.absolutePath).catch(() => undefined)
+    }
     this.setStatus({ connectedClientCount: 0 })
     if (server) await new Promise<void>((resolve) => server.close(() => resolve()))
   }
@@ -479,12 +517,145 @@ export class RemoteWorkspaceHost {
       return
     }
 
+    if (requestUrl.pathname.startsWith('/remote/attachments/')) {
+      const sessionId = this.configuration.webAuthEnabled ? this.sessions.validate(request) : null
+      const originAllowed = sessionId
+        ? this.sessions.matchesOrigin(sessionId, request) || isSameOriginRequest(request)
+        : isSameOriginRequest(request)
+      if (!originAllowed) {
+        writeJson(response, 403, { error: 'Forbidden.' })
+        return
+      }
+      await this.handleAttachmentUploadRequest(request, response, requestUrl)
+      return
+    }
+
     if (this.options.devServerUrl) {
       await this.proxyHttpRequest(request, response, this.options.devServerUrl)
       return
     }
 
     await this.serveRendererFile(requestUrl.pathname, response)
+  }
+
+  private async handleAttachmentUploadRequest(
+    request: IncomingMessage,
+    response: ServerResponse,
+    requestUrl: URL,
+  ) {
+    if (requestUrl.pathname === '/remote/attachments/start' && request.method === 'POST') {
+      let body: unknown
+      try {
+        body = await readJsonRequestBody(request)
+      } catch (error) {
+        writeJson(response, 400, { error: error instanceof Error ? error.message : 'Invalid request.' })
+        return
+      }
+      const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
+      const fileName = typeof input.fileName === 'string' ? input.fileName.trim() : ''
+      const kind = input.kind === 'folder' ? 'folder' : input.kind === 'file' ? 'file' : null
+      const conversationId = typeof input.conversationId === 'string' ? input.conversationId : null
+      const mimeType = typeof input.mimeType === 'string' ? input.mimeType : undefined
+      if (!fileName || !kind) {
+        writeJson(response, 400, { error: 'A valid attachment name and kind are required.' })
+        return
+      }
+      const prepared = await prepareRemoteChatAttachmentUpload({
+        conversationId,
+        fileName,
+        isDirectory: kind === 'folder',
+        mimeType,
+      })
+      const uploadId = randomUUID()
+      const timer = setTimeout(() => {
+        const expired = this.attachmentUploads.get(uploadId)
+        if (!expired) return
+        this.attachmentUploads.delete(uploadId)
+        void cleanupPreparedRemoteChatAttachmentUpload(expired.absolutePath)
+      }, REMOTE_ATTACHMENT_UPLOAD_TTL_MS)
+      timer.unref?.()
+      this.attachmentUploads.set(uploadId, {
+        ...prepared,
+        kind,
+        timer,
+        uploadedPaths: new Set(),
+        uploadedSizeBytes: 0,
+      })
+      writeJson(response, 200, { attachment: prepared.attachment, uploadId })
+      return
+    }
+
+    const match = /^\/remote\/attachments\/([0-9a-f-]+)(?:\/(complete))?$/iu.exec(requestUrl.pathname)
+    if (!match) {
+      writeJson(response, 404, { error: 'Upload session not found.' })
+      return
+    }
+    const uploadId = match[1]
+    const action = match[2] ?? 'content'
+    const upload = this.attachmentUploads.get(uploadId)
+    if (!upload) {
+      writeJson(response, 404, { error: 'Upload session not found or expired.' })
+      return
+    }
+
+    if (request.method === 'DELETE' && action === 'content') {
+      this.attachmentUploads.delete(uploadId)
+      clearTimeout(upload.timer)
+      await cleanupPreparedRemoteChatAttachmentUpload(upload.absolutePath)
+      writeJson(response, 200, { ok: true })
+      return
+    }
+
+    if (request.method === 'POST' && action === 'complete') {
+      if (upload.kind === 'folder') {
+        try {
+          await finalizeRemoteChatAttachmentDirectory(upload.absolutePath)
+        } catch (error) {
+          writeJson(response, 400, { error: error instanceof Error ? error.message : 'Unable to finalize attachment folder.' })
+          return
+        }
+      }
+      this.attachmentUploads.delete(uploadId)
+      clearTimeout(upload.timer)
+      writeJson(response, 200, {
+        attachment: {
+          ...upload.attachment,
+          sizeBytes: upload.kind === 'file' ? upload.uploadedSizeBytes : 0,
+        },
+      })
+      return
+    }
+
+    if (request.method !== 'PUT' || action !== 'content') {
+      writeJson(response, 405, { error: 'Method not allowed.' })
+      return
+    }
+
+    let targetPath = upload.absolutePath
+    let pathKey = ''
+    try {
+      if (upload.kind === 'folder') {
+        pathKey = requestUrl.searchParams.get('path')?.trim() ?? ''
+        targetPath = await resolveRemoteChatAttachmentFolderEntryPath(upload.absolutePath, pathKey)
+        if (upload.uploadedPaths.has(pathKey)) throw new Error('Duplicate attachment folder entry.')
+      } else if (requestUrl.searchParams.has('path')) {
+        throw new Error('File uploads do not accept a relative path.')
+      }
+
+      let receivedBytes = 0
+      request.on('data', (chunk) => { receivedBytes += Buffer.byteLength(chunk) })
+      await pipeline(request, createWriteStream(targetPath, { flags: upload.kind === 'folder' ? 'wx' : 'w' }))
+      upload.uploadedSizeBytes += receivedBytes
+      if (upload.kind === 'folder') upload.uploadedPaths.add(pathKey)
+      writeJson(response, 200, { ok: true })
+    } catch (error) {
+      if (upload.kind === 'file') {
+        this.attachmentUploads.delete(uploadId)
+        clearTimeout(upload.timer)
+        await cleanupPreparedRemoteChatAttachmentUpload(upload.absolutePath).catch(() => undefined)
+      }
+      writeJson(response, 400, { error: error instanceof Error ? error.message : 'Unable to upload attachment.' })
+    }
   }
 
   private async proxyHttpRequest(request: IncomingMessage, response: ServerResponse, targetBase: string) {

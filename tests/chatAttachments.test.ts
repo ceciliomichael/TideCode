@@ -5,7 +5,11 @@ import { tmpdir } from 'node:os'
 import test from 'node:test'
 import {
   adoptDraftChatAttachments,
+  cleanupPreparedRemoteChatAttachmentUpload,
+  finalizeRemoteChatAttachmentDirectory,
   listChatAttachments,
+  prepareRemoteChatAttachmentUpload,
+  resolveRemoteChatAttachmentFolderEntryPath,
   storeChatAttachment,
 } from '../electron/history/chatAttachments'
 import {
@@ -133,5 +137,41 @@ test('draft attachment scopes adopt only their own files into the created conver
     await fs.rm(getConversationAttachmentsPath(conversationId), { force: true, recursive: true })
     await fs.rm(getConversationAttachmentsPath(firstDraftScope), { force: true, recursive: true })
     await fs.rm(getConversationAttachmentsPath(secondDraftScope), { force: true, recursive: true })
+  }
+})
+
+test('remote attachment uploads reserve managed paths and reject folder traversal', async () => {
+  const scopeId = uniqueScope('remote-attachment-upload')
+  const prepared = await prepareRemoteChatAttachmentUpload({
+    conversationId: scopeId,
+    fileName: 'docs',
+    isDirectory: true,
+  })
+
+  try {
+    assert.equal(prepared.attachment.kind, 'folder')
+    assert.equal(prepared.attachment.path, '@attachments/docs/')
+    const nestedPath = await resolveRemoteChatAttachmentFolderEntryPath(
+      prepared.absolutePath,
+      'nested/spec.pdf',
+    )
+    assert.equal(path.dirname(nestedPath), path.join(prepared.absolutePath, 'nested'))
+    await fs.writeFile(path.join(prepared.absolutePath, '.gitignore'), 'ignored.bin\n', 'utf8')
+    await fs.writeFile(path.join(prepared.absolutePath, 'ignored.bin'), 'ignore me', 'utf8')
+    await fs.writeFile(nestedPath, 'keep me', 'utf8')
+    await finalizeRemoteChatAttachmentDirectory(prepared.absolutePath)
+    await assert.rejects(fs.access(path.join(prepared.absolutePath, 'ignored.bin')))
+    assert.equal(await fs.readFile(nestedPath, 'utf8'), 'keep me')
+    await assert.rejects(
+      () => resolveRemoteChatAttachmentFolderEntryPath(prepared.absolutePath, '../outside.txt'),
+      /Invalid attachment folder path/u,
+    )
+    await assert.rejects(
+      () => resolveRemoteChatAttachmentFolderEntryPath(prepared.absolutePath, 'nested/../../outside.txt'),
+      /Invalid attachment folder path/u,
+    )
+  } finally {
+    await cleanupPreparedRemoteChatAttachmentUpload(prepared.absolutePath)
+    await fs.rm(getConversationAttachmentsPath(scopeId), { force: true, recursive: true })
   }
 })

@@ -40,6 +40,9 @@ import {
 } from '../lib/chatImageReferences'
 import { findChatMentionMatches } from '../lib/chatMentions'
 import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPathComparison'
+import { collectRemoteAttachmentSelections, type RemoteAttachmentSelection } from '../lib/remoteAttachmentEntries'
+import { isRemoteBrowserRuntime } from '../remote/webBridge'
+import { uploadRemoteAttachmentSelection } from '../remote/remoteAttachmentUpload'
 
 interface ChatInputProps {
   actionButtonMode?: 'auto' | 'abort' | 'send'
@@ -383,8 +386,45 @@ export function ChatInput({
     }
   }
 
+  async function handleRemoteAttachmentSelections(selections: readonly RemoteAttachmentSelection[]) {
+    if (!canManageAttachments || disabled || selections.length === 0) return
+    const initialInsertionPosition = textareaRef.current?.selectionStart ?? value.length
+    const availableSlots = Math.max(CHAT_ATTACHMENT_MAX_COUNT - attachments.length, 0)
+    if (availableSlots === 0) {
+      setAttachmentError(`You can attach up to ${CHAT_ATTACHMENT_MAX_COUNT} items per message.`)
+      return
+    }
+    const nextNewAttachments: ChatAttachment[] = []
+    const errors: string[] = []
+    for (const selection of selections.slice(0, availableSlots)) {
+      try {
+        nextNewAttachments.push(await uploadRemoteAttachmentSelection(selection, conversationId))
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : 'Unable to upload attachment.')
+      }
+    }
+    if (selections.length > availableSlots) {
+      errors.push(`You can attach up to ${CHAT_ATTACHMENT_MAX_COUNT} items per message.`)
+    }
+    if (nextNewAttachments.length > 0) {
+      onAttachmentsChange?.([...attachments, ...nextNewAttachments])
+      mentionMenu.insertMentionReferences(
+        nextNewAttachments
+          .filter((attachment): attachment is Extract<ChatAttachment, { path: string }> => 'path' in attachment && Boolean(attachment.path))
+          .map((attachment) => ({ label: attachment.fileName, path: attachment.path })),
+        initialInsertionPosition,
+      )
+    }
+    setAttachmentError(errors[0] ?? null)
+  }
+
   async function handleAttachments(files: readonly File[]) {
     if (!canManageAttachments || disabled || files.length === 0) {
+      return
+    }
+
+    if (isRemoteBrowserRuntime()) {
+      await handleRemoteAttachmentSelections(files.map((file) => ({ file, kind: 'file' as const })))
       return
     }
 
@@ -577,6 +617,19 @@ export function ChatInput({
     const hasFiles = files.length > 0 || Array.from(event.clipboardData.types).includes('Files')
     if (hasFiles) {
       event.preventDefault()
+      if (isRemoteBrowserRuntime()) {
+        const items = Array.from(event.clipboardData.items)
+        void collectRemoteAttachmentSelections(items, files)
+          .then((selections) => {
+            if (selections.length === 0) {
+              setAttachmentError('This browser does not expose the pasted folder contents.')
+              return
+            }
+            return handleRemoteAttachmentSelections(selections)
+          })
+          .catch((error) => setAttachmentError(error instanceof Error ? error.message : 'Unable to read pasted items.'))
+        return
+      }
       void handleClipboardFilePaste(files)
       return
     }
@@ -596,6 +649,13 @@ export function ChatInput({
     }
     event.preventDefault()
     const files = Array.from(event.dataTransfer.files)
+    if (isRemoteBrowserRuntime()) {
+      const items = Array.from(event.dataTransfer.items)
+      void collectRemoteAttachmentSelections(items, files)
+        .then((selections) => handleRemoteAttachmentSelections(selections))
+        .catch((error) => setAttachmentError(error instanceof Error ? error.message : 'Unable to read dropped items.'))
+      return
+    }
     if (files.length > 0) {
       void handleAttachments(files)
       return

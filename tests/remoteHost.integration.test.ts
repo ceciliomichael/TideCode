@@ -8,6 +8,7 @@ import { WebSocket } from 'ws'
 import { RemoteWorkspaceHost } from '../electron/remote/host'
 import { clearRemotePassword } from '../electron/remote/authStore'
 import { writeRemoteConfiguration } from '../electron/remote/configStore'
+import { getConversationAttachmentsPath } from '../electron/history/paths'
 
 async function reservePort() {
   return new Promise<number>((resolve, reject) => {
@@ -113,6 +114,7 @@ test('Remote host gates browser UI and WebSocket, then restarts on a new port', 
   await writeRemoteConfiguration({ port: firstPort, webAuthEnabled: false, webUsername: '' })
 
   const host = new RemoteWorkspaceHost({ getWindow: () => null, rendererDist: rendererRoot })
+  const uploadScopeId = 'remote-upload-' + Date.now()
 const sockets: WebSocket[] = []
   try {
     const started = await host.start()
@@ -122,6 +124,46 @@ const sockets: WebSocket[] = []
     const openPage = await requestText(firstPort, '/')
     assert.equal(openPage.statusCode, 200)
     assert.match(openPage.body, new RegExp(marker))
+
+    const origin = 'http://127.0.0.1:' + firstPort
+    const startUpload = await requestText(firstPort, '/remote/attachments/start', {
+      body: JSON.stringify({
+        conversationId: uploadScopeId,
+        fileName: 'spec.pdf',
+        kind: 'file',
+        mimeType: 'application/pdf',
+      }),
+      headers: { Origin: origin },
+      method: 'POST',
+    })
+    assert.equal(startUpload.statusCode, 200)
+    const uploadId = (JSON.parse(startUpload.body) as { uploadId: string }).uploadId
+    const uploadBody = '%PDF-1.7 remote attachment test'
+    const uploadContent = await requestText(firstPort, '/remote/attachments/' + uploadId, {
+      body: uploadBody,
+      headers: {
+        'Content-Type': 'application/pdf',
+        Origin: origin,
+      },
+      method: 'PUT',
+    })
+    assert.equal(uploadContent.statusCode, 200)
+    const completeUpload = await requestText(firstPort, '/remote/attachments/' + uploadId + '/complete', {
+      headers: { Origin: origin },
+      method: 'POST',
+    })
+    assert.equal(completeUpload.statusCode, 200)
+    assert.equal(
+      await fs.readFile(path.join(getConversationAttachmentsPath(uploadScopeId), 'spec.pdf'), 'utf8'),
+      uploadBody,
+    )
+
+    const forbiddenUpload = await requestText(firstPort, '/remote/attachments/start', {
+      body: JSON.stringify({ fileName: 'blocked.pdf', kind: 'file' }),
+      headers: { Origin: 'https://other.example.test' },
+      method: 'POST',
+    })
+    assert.equal(forbiddenUpload.statusCode, 403)
 
     await host.updateWebAuth({ enabled: true, username: 'alice', password: 'correct horse battery staple' })
 
@@ -204,5 +246,6 @@ const sockets: WebSocket[] = []
     delete process.env.TIDECODE_REMOTE_STATE_HOME
     await fs.rm(stateRoot, { recursive: true, force: true })
     await fs.rm(rendererRoot, { recursive: true, force: true })
+    await fs.rm(getConversationAttachmentsPath(uploadScopeId), { recursive: true, force: true })
   }
 })
