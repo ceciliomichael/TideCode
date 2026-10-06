@@ -695,7 +695,7 @@ test('wrapped live tools bound model output while retaining recovery metadata', 
   const body = Array.from({ length: 5_000 }, (_value, index) => `line ${index} ${'x'.repeat(60)}`).join('\n')
   const rawResult = {
     body,
-    semantics: { output_id: 'execute_terminal-existing-output' },
+    semantics: { output_path: '@tool-output/tool_12345.txt' },
     status: 'success' as const,
     summary: 'Large terminal output',
   }
@@ -713,11 +713,11 @@ test('wrapped live tools bound model output while retaining recovery metadata', 
 
   assert.equal(wrapped?.type, 'text')
   if (wrapped?.type !== 'text') return
-  assert.ok(Buffer.byteLength(String(wrapped.value), 'utf8') < 40_000)
+  assert.ok(Buffer.byteLength(String(wrapped.value), 'utf8') < 50 * 1024)
   assert.match(String(wrapped.value), /line 0 /u)
   assert.match(String(wrapped.value), /line 4999 /u)
-  assert.match(String(wrapped.value), /read_tool_output/u)
-  assert.match(String(wrapped.value), /execute_terminal-existing-output/u)
+  assert.match(String(wrapped.value), /@tool-output\/tool_12345\.txt/u)
+  assert.match(String(wrapped.value), /Use grep to search it or read with a narrow offset\/limit/u)
 })
 
 test('tool results can keep model metadata separate from the user-facing display body', () => {

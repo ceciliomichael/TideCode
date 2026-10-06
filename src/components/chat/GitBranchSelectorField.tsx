@@ -189,6 +189,11 @@ export function GitBranchSelectorField({
         data-open={isOpen ? 'true' : 'false'}
         disabled={isControlDisabled}
         onClick={() => setIsOpen((currentValue) => !currentValue)}
+        style={
+          !hasRepository
+            ? { color: 'var(--color-muted-foreground)', opacity: 0.5 }
+            : undefined
+        }
         className={['chat-runtime-control-trigger min-w-0 w-full max-w-full disabled:cursor-not-allowed', triggerClassName]
           .filter(Boolean)
           .join(' ')}

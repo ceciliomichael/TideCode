@@ -7,6 +7,7 @@ import {
   createSuccessResult,
   createTerminalErrorResult,
   drainUnreadTerminalOutput,
+  formatTerminalOutputForModel,
   getOrCreateThreadStore,
   getRecentTranscriptTail,
   getThreadSession,
@@ -108,14 +109,18 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
         if (commandSummary.state === "completed" && session.commandExitCode !== null) {
           bodyLines.push(`exit_code: ${session.commandExitCode}`);
         }
+        if (session.outputPath) {
+          bodyLines.push(`full_output: ${session.outputPath}`);
+        }
 
         if (unreadOutput.lines.length > 0) {
+          const modelOutputLines = formatTerminalOutputForModel(session, unreadOutput.lines);
           bodyLines.push(
             `new_output_lines: ${unreadOutput.lines.length}`,
             `total_output_lines: ${transcriptSummary.lineCount}`,
             "",
             "new_output:",
-            ...unreadOutput.lines.map((line) => `${line.lineNumber}: ${line.text}`),
+            ...modelOutputLines,
           );
           if (commandSummary.state === "running") {
             if (session.isDaemon) {
@@ -179,6 +184,7 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
             operation_id: session.brokerOperationId,
             next_unread_line: session.nextUnreadLine,
             output_evicted: unreadOutput.skippedEvictedLines,
+            ...(session.outputPath ? { output_path: session.outputPath } : {}),
             status,
             total_output_lines: transcriptSummary.lineCount,
             wait_seconds: waitedSeconds,

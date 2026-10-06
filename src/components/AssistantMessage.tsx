@@ -191,7 +191,9 @@ export function AssistantMessage({
       ) : null}
 
       {renderedToolBlocks.map((block) => {
-        const singleEntry = block.entries.length === 1 && !finalizeToolGroups
+        const singleEntry = block.entries.length === 1 &&
+          !finalizeToolGroups &&
+          block.entries[0]?.invocation.toolName !== 'web_search'
           ? block.entries[0]
           : null;
         return singleEntry ? (

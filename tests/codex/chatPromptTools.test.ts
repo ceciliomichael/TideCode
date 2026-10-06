@@ -283,7 +283,7 @@ test('provider replay bounds oversized legacy tool content without mutating stor
     : null
   assert.ok(output && output.type === 'tool-result')
   assert.equal(typeof output.output.value, 'string')
-  assert.ok(Buffer.byteLength(output.output.value, 'utf8') < 40_000)
+  assert.ok(Buffer.byteLength(output.output.value, 'utf8') < 50 * 1024)
   assert.match(output.output.value, /line 0 /u)
   assert.match(output.output.value, /line 3999 /u)
   assert.match(output.output.value, /Output truncated/u)

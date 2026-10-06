@@ -283,7 +283,7 @@ export function getToolResultModelContent(content: string) {
     modelContent = normalizedCodeModeBody.length > 0
       ? normalizedCodeModeBody
       : parsedContent.metadata.summary.trim() || content.trim()
-  } else if (parsedContent.metadata?.toolName === 'read' || parsedContent.metadata?.toolName === 'read_tool_output') {
+  } else if (parsedContent.metadata?.toolName === 'read') {
     modelContent = formatReadToolResultBody(parsedContent.metadata, parsedContent.body)
   } else if (parsedContent.metadata?.toolName === 'list') {
     modelContent = formatListToolResultBody(parsedContent.metadata, parsedContent.body)

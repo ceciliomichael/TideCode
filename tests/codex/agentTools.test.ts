@@ -20,7 +20,6 @@ test('createAgentTools omits write tools in plan mode', async () => {
 
     assert.ok('list' in tools)
     assert.ok('read' in tools)
-    assert.ok('read_tool_output' in tools)
     assert.ok('kanban_board' in tools)
     assert.ok(!('memory' in tools))
     assert.ok('plan_create' in tools)
@@ -66,11 +65,11 @@ test('Code Mode exposes code_mode plus direct apply_patch/write while discovery 
     assert.deepEqual(Object.keys(bundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
     assert.equal(bundle.registry.get('tool_search'), undefined)
     assert.ok(bundle.registry.get('read'))
-    assert.ok(bundle.registry.get('read_tool_output'))
+    assert.equal(bundle.registry.get('read_tool_output'), undefined)
     assert.equal(bundle.registry.get('apply_patch'), undefined)
     assert.equal(bundle.registry.get('write'), undefined)
-    assert.ok(bundle.registry.get('plan_create'))
-    assert.ok(bundle.registry.get('plan_edit'))
+    assert.equal(bundle.registry.get('plan_create'), undefined)
+    assert.equal(bundle.registry.get('plan_edit'), undefined)
     assert.equal(bundle.registry.get('edit'), undefined)
     assert.ok(bundle.nativeTools.edit)
     assert.equal(bundle.registry.get('mcp_tool_search'), undefined)
@@ -245,7 +244,6 @@ test('Hybrid orchestration retains direct tools alongside the meta-tools', async
     )
 
     assert.ok('read' in bundle.tools)
-    assert.ok('read_tool_output' in bundle.tools)
     assert.ok('code_mode' in bundle.tools)
     assert.ok(!('tool_search' in bundle.tools))
     assert.equal(bundle.registry.get('tool_search'), undefined)
@@ -301,7 +299,7 @@ test('createAgentTools does not expose web search for unsupported providers', as
   }
 })
 
-test('Code Mode keeps only Tidecode code_mode/apply_patch/write provider tools even when native web search exists', async () => {
+test('Code Mode keeps provider-native web search directly exposed for Codex and OpenAI', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-web-search-'))
 
   try {
@@ -312,10 +310,13 @@ test('Code Mode keeps only Tidecode code_mode/apply_patch/write provider tools e
       )
 
       try {
-        assert.deepEqual(Object.keys(bundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
+        assert.deepEqual(Object.keys(bundle.tools).sort(), ['apply_patch', 'code_mode', 'web_search', 'write'])
         assert.ok(!('read' in bundle.tools))
         assert.ok('write' in bundle.tools)
         assert.ok(!('execute_terminal' in bundle.tools))
+        const webSearchTool = bundle.tools.web_search as { id?: string; type?: string }
+        assert.equal(webSearchTool.type, 'provider')
+        assert.equal(webSearchTool.id, 'openai.web_search')
       } finally {
         await bundle.codeModeExecutor?.dispose()
       }
@@ -329,6 +330,30 @@ test('Code Mode keeps only Tidecode code_mode/apply_patch/write provider tools e
       assert.deepEqual(Object.keys(unsupportedBundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
     } finally {
       await unsupportedBundle.codeModeExecutor?.dispose()
+    }
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Plan Mode keeps provider-native web search directly exposed for Codex and OpenAI', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-plan-web-search-'))
+
+  try {
+    for (const providerId of ['codex', 'openai'] as const) {
+      const bundle = await createAgentToolBundle(
+        { workspaceRootPath },
+        { chatMode: 'plan', orchestrationMode: 'code_mode', providerId },
+      )
+
+      try {
+        assert.deepEqual(Object.keys(bundle.tools).sort(), ['code_mode', 'web_search'])
+        const webSearchTool = bundle.tools.web_search as { id?: string; type?: string }
+        assert.equal(webSearchTool.type, 'provider')
+        assert.equal(webSearchTool.id, 'openai.web_search')
+      } finally {
+        await bundle.codeModeExecutor?.dispose()
+      }
     }
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

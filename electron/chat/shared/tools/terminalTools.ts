@@ -1,5 +1,6 @@
 import type { WebContents } from "electron";
 import type { AgentToolContext } from "../toolTypes";
+import type { SkillSummary } from "../../../../src/types/skills";
 import type { ChatStreamEventTarget } from "../runtimeStreamEvents";
 import { createExecuteTerminalTool } from "./executeTerminalTool";
 import { createInteractTerminalTool } from "./interactTerminalTool";
@@ -15,7 +16,7 @@ import {
 export type { TerminalToolDependencies } from "./terminalToolShared";
 
 export function createTerminalToolSet(
-  context: AgentToolContext,
+  context: AgentToolContext & { enabledSkills?: readonly SkillSummary[] },
   dependencies: Partial<TerminalToolDependencies> = {},
 ) {
   const runtime = createTerminalToolRuntime(context, dependencies);

@@ -41,7 +41,8 @@ test('chat mode markers are emitted only for persisted transitions', () => {
   assert.ok((initial[0]?.content ?? '').includes('tools.plan_edit({ path: string, content: string, title?: string })'))
   assert.ok((initial[0]?.content ?? '').includes('content: payloads.plan'))
   assert.ok((initial[0]?.content ?? '').includes('Do not embed plan Markdown directly in a JavaScript template literal'))
-  assert.ok((initial[0]?.content ?? '').includes('Do not use tools.tool_search to discover tools.plan_create or tools.plan_edit'))
+  assert.ok((initial[0]?.content ?? '').includes('tools.plan_create and tools.plan_edit are injected Plan Mode APIs'))
+  assert.ok((initial[0]?.content ?? '').includes('Do not use tools.$codemode.search or any other discovery API to look them up'))
   assert.ok((initial[0]?.content ?? '').includes('Do not call tools.apply_patch in Plan Mode'))
   assert.ok((initial[0]?.content ?? '').includes('stable superset of TideCode capabilities, not permission'))
 

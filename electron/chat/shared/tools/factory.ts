@@ -17,7 +17,6 @@ import { createListTool } from './listTool'
 import { createMcpToolSet } from './mcpTools'
 import { createProviderWebTool } from './providerWebTool'
 import { createReadTool } from './readTool'
-import { createReadToolOutputTool } from './readToolOutput'
 import { createPlanRuntimeState, type PlanRuntimeState } from './planRuntimeState'
 import { createPlanToolSet } from './planTools'
 import { createSkillTool } from './skillTool'
@@ -47,6 +46,7 @@ interface NativeToolSets {
 }
 
 const CODE_MODE_EXCLUDED_TOOLS = new Set(['mcp_tool_search', 'execute_mcp', 'apply_patch', 'edit', 'write'])
+const PLAN_MODE_INJECTED_CODE_MODE_TOOLS = new Set(['plan_create', 'plan_edit'])
 
 async function createNativeToolSets(
   input: AgentToolContext,
@@ -58,7 +58,6 @@ async function createNativeToolSets(
   const planningSafeTools: ToolSet = {
     list: createListTool(context),
     read: createReadTool(context),
-    read_tool_output: createReadToolOutputTool(),
     glob: createGlobTool(context),
     grep: createGrepTool(context),
     ...createKanbanToolSet(context),
@@ -136,7 +135,10 @@ export async function createAgentToolBundle(
 
   const connectedMcpTools = await createConnectedMcpRegistryTools(input)
   const registryTools = Object.fromEntries([
-    ...Object.entries(toolSets.allTools).filter(([name]) => !CODE_MODE_EXCLUDED_TOOLS.has(name)),
+    ...Object.entries(toolSets.allTools).filter(([name]) => (
+      !CODE_MODE_EXCLUDED_TOOLS.has(name) &&
+      (options.chatMode === 'plan' || !PLAN_MODE_INJECTED_CODE_MODE_TOOLS.has(name))
+    )),
     ...Object.entries(connectedMcpTools),
   ])
   const registry = await createAgentToolRegistry(registryTools)
@@ -159,6 +161,7 @@ export async function createAgentToolBundle(
       executionMode: codeModeExecutionMode,
       providerId: options.providerId,
     }),
+    ...toolSets.providerTools,
   }
 
   return {

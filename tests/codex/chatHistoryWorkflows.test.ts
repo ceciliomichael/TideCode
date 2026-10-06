@@ -85,6 +85,81 @@ test('persistUserTurn stores workspace instructions beside Plan Mode context', a
   }
 })
 
+test('persistUserTurn replaces an edited user message in place and removes the later branch', async () => {
+  const originalCheckpoint: UserMessageRunCheckpoint = {
+    createdAt: 10,
+    id: 'checkpoint-original',
+  }
+  const conversation = buildConversation([
+    {
+      content: 'Original request',
+      id: 'message-edit',
+      reasoningEffort: 'low',
+      role: 'user',
+      runCheckpoint: originalCheckpoint,
+      timestamp: 10,
+    },
+    {
+      content: 'Old assistant response',
+      id: 'assistant-old',
+      role: 'assistant',
+      timestamp: 20,
+    },
+    {
+      content: 'Later request',
+      id: 'message-later',
+      reasoningEffort: 'low',
+      role: 'user',
+      timestamp: 30,
+    },
+  ])
+  let replacedMessages: Message[] | null = null
+  const globalWithWindow = globalThis as typeof globalThis & { window?: unknown }
+  const previousWindow = globalWithWindow.window
+  globalWithWindow.window = {
+    tidecodeHistory: {
+      getConversation: async () => conversation,
+      replaceMessages: async (input: { messages: Message[] }) => {
+        replacedMessages = input.messages
+        return { ...conversation, messages: input.messages }
+      },
+    },
+    tidecodeTerminal: {
+      getEnvironmentSnapshot: async () => null,
+    },
+    tidecodeWorkspace: {
+      createCheckpoint: async () => ({ createdAt: 40, id: 'checkpoint-edited' }),
+      readFile: async () => ({ status: 'missing' }),
+    },
+  }
+
+  try {
+    const result = await persistUserTurn({
+      activeConversationId: conversation.id,
+      attachments: [],
+      chatMode: 'agent',
+      messages: [{ attachments: [], text: 'Edited request' }],
+      modelId: 'gpt-test',
+      providerId: 'codex',
+      reasoningEffort: 'high',
+      selectedFolderId: null,
+      targetEditMessageId: 'message-edit',
+      terminalExecutionMode: 'sandbox',
+      trimmedText: 'Edited request',
+    })
+
+    assert.equal(result.userMessage.id, 'message-edit')
+    assert.equal(result.userMessage.content, 'Edited request')
+    assert.equal(result.userMessage.runCheckpoint?.id, 'checkpoint-edited')
+    assert.deepEqual(replacedMessages?.map((message) => message.id), ['message-edit'])
+    assert.equal(result.conversation.messages[0]?.id, 'message-edit')
+    assert.equal(result.conversation.messages[0]?.content, 'Edited request')
+  } finally {
+    if (previousWindow === undefined) delete globalWithWindow.window
+    else globalWithWindow.window = previousWindow
+  }
+})
+
 function installWindowMock(windowMock: WindowMock) {
   const globalWithWindow = globalThis as typeof globalThis & { window?: WindowMock }
   const previousWindow = globalWithWindow.window
