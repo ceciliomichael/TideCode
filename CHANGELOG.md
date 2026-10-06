@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.17 - Better AI tool workflows
+
+TideCode 1.4.17 improves native web search, long tool-output recovery, edited-message resends, Plan Mode tooling, and small workspace UI details.
+
+- Exposes OpenAI and Codex native web search directly in Agent and Plan modes, with normal grouped tool presentation and completed search rows while the standard Thinking indicator remains during execution.
+- Keeps edited user messages in the same message block and reuses their original message id while replacing content and rerunning the assistant branch.
+- Persists oversized tool and terminal output for seven days behind read-only `@tool-output/...` aliases, with bounded model previews and tail-focused terminal output for easier recovery.
+- Keeps `plan_create` and `plan_edit` as injected Plan Mode capabilities that can be called directly without capability discovery and remain unavailable from normal Agent Mode Code Mode.
+- Tightens the workspace header and clarifies the disabled branch selector state when no Git repository is available.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.16 - Faster Explorer clipboard
 
 TideCode 1.4.16 removes the Windows clipboard delay introduced in recent Explorer copy and paste workflows.
