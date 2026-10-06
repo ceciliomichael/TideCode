@@ -13,6 +13,7 @@ import {
   createTerminalErrorResult,
   createThreadAiSession,
   drainUnreadTerminalOutput,
+  formatTerminalOutputForModel,
   getOrCreateThreadStore,
   MAX_TERMINAL_WAIT_SECONDS,
   normalizeCommand,
@@ -180,7 +181,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
           unreadOutput = drainUnreadTerminalOutput(session);
           const commandSummary = buildTerminalCommandSummary(session);
           commandState = commandSummary.state;
-          unreadOutputLines = unreadOutput.lines.map((line) => `${line.lineNumber}: ${line.text}`);
+          unreadOutputLines = formatTerminalOutputForModel(session, unreadOutput.lines);
         }
 
         await synchronizeBrokerOperation(session, dependencies);
@@ -201,6 +202,9 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
 
         if (commandState === "completed" && session.commandExitCode !== null) {
           bodyLines.push(`exit_code: ${session.commandExitCode}`);
+        }
+        if (session.outputPath) {
+          bodyLines.push(`full_output: ${session.outputPath}`);
         }
 
         if (unreadOutputLines.length > 0) {
@@ -251,6 +255,7 @@ export function createExecuteTerminalTool(runtime: TerminalToolRuntime) {
             broker_session_id: session.brokerSessionId,
             exit_code: session.commandExitCode,
             new_output_line_count: unreadOutputLines.length,
+            ...(session.outputPath ? { output_path: session.outputPath } : {}),
             session_id: session.localSessionId,
             operation_id: session.brokerOperationId,
             state: commandState,

@@ -8,16 +8,16 @@ import {
 } from '../../electron/chat/shared/tools/toolOutputBudget'
 import { formatExplicitCodeModeOutput } from '../../src/lib/codeModeResultOutput'
 
-test('context-only output projection keeps a bounded head and tail with a compact recovery handle', () => {
+test('context-only output projection keeps a bounded head and tail with a saved output path', () => {
   const result = projectToolOutputForModel(
     Array.from({ length: 8_000 }, (_value, index) => `line ${index} ${'x'.repeat(80)}`).join('\n'),
-    '48317',
+    '@tool-output/tool_48317.txt',
   )
 
   assert.equal(result.truncated, true)
   assert.ok(Buffer.byteLength(result.text, 'utf8') < TOOL_OUTPUT_MAX_BYTES)
-  assert.match(result.text, /output_id: "48317"/u)
-  assert.match(result.text, /read_tool_output/u)
+  assert.match(result.text, /@tool-output\/tool_48317\.txt/u)
+  assert.match(result.text, /Use grep to search it or read with a narrow offset\/limit/u)
   assert.match(result.text, /Omitted lines /u)
   assert.match(result.text, /line 0 /u)
   assert.match(result.text, /line 7999 /u)
@@ -26,7 +26,11 @@ test('context-only output projection keeps a bounded head and tail with a compac
   const repeatedProjection = projectToolOutputForModel(result.text)
   assert.equal(repeatedProjection.truncated, false)
   assert.equal(repeatedProjection.text, result.text)
-  assert.match(repeatedProjection.text, /output_id: "48317"/u)
+  assert.match(repeatedProjection.text, /@tool-output\/tool_48317\.txt/u)
+})
+
+test('tool output default byte budget is 50 KiB', () => {
+  assert.equal(TOOL_OUTPUT_MAX_BYTES, 50 * 1024)
 })
 
 test('tool output caps long lines and line count independently', () => {

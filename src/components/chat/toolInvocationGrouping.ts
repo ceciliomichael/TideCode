@@ -271,7 +271,7 @@ export function buildToolInvocationGroupSummary(
   }
 
   for (const invocation of invocations) {
-    if (invocation.toolName === 'code_mode' || invocation.toolName === 'read_tool_output') {
+    if (invocation.toolName === 'code_mode') {
       continue
     }
 
@@ -407,29 +407,6 @@ export function buildToolInvocationGroupSummary(
     return summaryParts.length > 0 ? summaryParts.join(', ') : 'Explored actions'
   }
 
-  const hasOnlyWebSearch =
-    counts.webSearchCount > 0 &&
-    counts.mcpCount === 0 &&
-    counts.listCount === 0 &&
-    counts.commandCount === 0 &&
-    counts.fileCount === 0 &&
-    counts.kanbanCount === 0 &&
-    counts.searchCount === 0 &&
-    counts.createdCount === 0 &&
-    counts.editedCount === 0 &&
-    counts.deletedCount === 0 &&
-    counts.verifiedCount === 0 &&
-    counts.exploredFileCount === 0 &&
-    counts.planCount === 0 &&
-    counts.planUpdateCount === 0 &&
-    counts.memoryCount === 0 &&
-    !hasFailedCodeMode &&
-    otherToolCounts.size === 0
-
-  if (hasOnlyWebSearch) {
-    return `Ran ${pluralize(counts.webSearchCount, 'web search')}`
-  }
-
   if (counts.listCount > 0) {
     summaryParts.push(`explored ${pluralize(counts.listCount, 'list')}`)
   }
@@ -470,11 +447,29 @@ export function buildToolInvocationGroupSummary(
     summaryParts.push(`explored ${pluralize(count, toolLabel)}`)
   }
 
-  if (summaryParts.length === 1) {
-    summaryParts[0] = capitalizeLeadingWord(summaryParts[0])
-  } else if (summaryParts.length > 1) {
+  if (summaryParts.length > 0) {
     summaryParts[0] = capitalizeLeadingWord(summaryParts[0])
   }
 
   return summaryParts.length > 0 ? summaryParts.join(', ') : 'Explored actions'
+}
+
+export function shouldToolInvocationGroupBeActive(input: {
+  entries: readonly ToolInvocationTrace[]
+  hasAssistantText: boolean
+  isConversationStreaming: boolean
+  isFinalized: boolean
+}) {
+  const hasActiveInvocation = input.entries.some(
+    (invocation) => invocation.state === 'running' || invocation.decisionRequest !== undefined,
+  )
+  const hasOnlyCompletedWebSearch = input.entries.length > 0 && input.entries.every(
+    (invocation) => invocation.toolName === 'web_search' && invocation.state === 'completed',
+  )
+
+  return (
+    !input.isFinalized &&
+    !input.hasAssistantText &&
+    (hasActiveInvocation || (input.isConversationStreaming && !hasOnlyCompletedWebSearch))
+  )
 }

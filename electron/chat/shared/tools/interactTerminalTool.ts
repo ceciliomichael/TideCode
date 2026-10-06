@@ -8,6 +8,7 @@ import {
   createTerminalErrorResult,
   drainUnreadTerminalOutput,
   encodeTerminalInput,
+  formatTerminalOutputForModel,
   getOrCreateThreadStore,
   getRecentTranscriptTail,
   getThreadSession,
@@ -189,14 +190,18 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
         if (summary.state === "completed" && session.commandExitCode !== null) {
           bodyLines.push(`exit_code: ${session.commandExitCode}`);
         }
+        if (session.outputPath) {
+          bodyLines.push(`full_output: ${session.outputPath}`);
+        }
 
         if (unreadOutput.lines.length > 0) {
+          const modelOutputLines = formatTerminalOutputForModel(session, unreadOutput.lines);
           bodyLines.push(
             `new_output_lines: ${unreadOutput.lines.length}`,
             `total_output_lines: ${transcriptSummary.lineCount}`,
             "",
             "new_output:",
-            ...unreadOutput.lines.map((line) => `${line.lineNumber}: ${line.text}`),
+            ...modelOutputLines,
           );
           if (summary.state === "running") {
             if (session.isDaemon) {
@@ -274,6 +279,7 @@ export function createInteractTerminalTool(runtime: TerminalToolRuntime) {
             new_output_line_count: unreadOutput.lines.length,
             next_unread_line: session.nextUnreadLine,
             output_evicted: unreadOutput.skippedEvictedLines,
+            ...(session.outputPath ? { output_path: session.outputPath } : {}),
             session_id: session.localSessionId,
             state: summary.state,
             status,

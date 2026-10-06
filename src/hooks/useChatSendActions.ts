@@ -872,9 +872,6 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       }
 
       actionInFlightRef.current = true
-      input.updateConversationRuntimeState(conversationId, {
-        isSending: true,
-      })
       let startedPersistAndStream = false
       try {
         let persistedConversation
@@ -915,8 +912,6 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           restorePendingDraftToComposer: false,
           suppressActiveRunComposerRestore: true,
         })
-
-        await rollbackConversationBeforeUserMessage(conversationId, editingMessageId)
 
         if (!ownsSendScopeGate) {
           const previousSendReleased = await waitForChatSendScopeGateRelease(
@@ -967,7 +962,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           originalText: nextMessageText,
           runtimeSelection,
           selectedFolderId: readChatSelectionFromRefs(input).selectedFolderId,
-          targetEditMessageId: null,
+          targetEditMessageId: editingMessageId,
           trimmedText,
         })
       } catch (caughtError) {

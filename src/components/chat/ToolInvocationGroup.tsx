@@ -4,7 +4,7 @@ import type { ToolInvocationTrace } from '../../types/chat'
 import type { ToolInvocationDisplayEntry } from './toolInvocationPresentation'
 import { ToolInvocationBlock } from './ToolInvocationBlock'
 import type { ToolDecisionSubmission } from './ToolDecisionRequestCard'
-import { buildToolInvocationGroupSummary } from './toolInvocationGrouping'
+import { buildToolInvocationGroupSummary, shouldToolInvocationGroupBeActive } from './toolInvocationGrouping'
 
 interface ToolInvocationGroupProps {
   entries: readonly ToolInvocationDisplayEntry[]
@@ -27,17 +27,15 @@ export const ToolInvocationGroup = memo(function ToolInvocationGroup({
   workspaceRootPath = null,
 }: ToolInvocationGroupProps) {
   const [isHovering, setIsHovering] = useState(false)
-  const hasActiveInvocation = useMemo(
-    () =>
-      entries.some(
-        (entry) => entry.invocation.state === 'running' || entry.invocation.decisionRequest !== undefined,
-      ),
-    [entries],
+  const isActiveGroup = useMemo(
+    () => shouldToolInvocationGroupBeActive({
+      entries: entries.map((entry) => entry.invocation),
+      hasAssistantText,
+      isConversationStreaming,
+      isFinalized,
+    }),
+    [entries, hasAssistantText, isConversationStreaming, isFinalized],
   )
-  const isActiveGroup =
-    !isFinalized &&
-    !hasAssistantText &&
-    (hasActiveInvocation || isConversationStreaming)
   const [isOpen, setIsOpen] = useState(isActiveGroup)
   const previousIsActiveGroupRef = useRef(isActiveGroup)
 

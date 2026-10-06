@@ -5,13 +5,20 @@ import path from "node:path";
 import test from "node:test";
 import type { WebContents } from "electron";
 import type { CreateTerminalSessionInput, WriteTerminalSessionInput } from "../../src/types/chat";
+import { electronApp } from "../../electron/electronApp";
 import { createNativeAgentTools } from "../../electron/chat/shared/tools";
 import {
   createTerminalToolSet,
   terminateAllBackgroundSessionsForTurn,
   type TerminalToolDependencies,
 } from "../../electron/chat/shared/tools/terminalTools";
-import { buildMarkedCommand, createTerminalSessionOwner, encodeTerminalInput } from "../../electron/chat/shared/tools/terminalToolShared";
+import {
+  buildMarkedCommand,
+  createTerminalSessionOwner,
+  encodeTerminalInput,
+  resolveTerminalWorkspaceCwd,
+} from "../../electron/chat/shared/tools/terminalToolShared";
+import { resolveToolOutputAliasPath } from "../../electron/chat/shared/tools/toolOutputStore";
 
 const webContentsStub = {
   id: 42,
@@ -556,6 +563,57 @@ test("execute_terminal preserves sandbox validation", async () => {
   assert.match(result.summary ?? "", /outside the sandbox roots/u);
 });
 
+test("terminal cwd resolves enabled @skills aliases outside the virtual workspace", async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), "tidecode-terminal-workspace-"));
+  const skillRootPath = await fs.mkdtemp(path.join(tmpdir(), "tidecode-terminal-skill-"));
+  try {
+    const resolved = resolveTerminalWorkspaceCwd(
+      {
+        conversationId: "terminal-skill-alias",
+        enabledSkills: [{
+          baseDirectory: skillRootPath,
+          description: "Test skill",
+          id: path.join(skillRootPath, "SKILL.md"),
+          location: path.join(skillRootPath, "SKILL.md"),
+          name: "web-search",
+          source: "global",
+          sourceLabel: "Global",
+        }],
+        terminalExecutionMode: "sandbox",
+        workspaceRootPath,
+      },
+      "@skills/web-search",
+    );
+
+    assert.equal(resolved.absolutePath, skillRootPath);
+    assert.ok(resolved.roots.additionalRoots.includes(skillRootPath));
+  } finally {
+    await Promise.all([
+      fs.rm(workspaceRootPath, { force: true, recursive: true }),
+      fs.rm(skillRootPath, { force: true, recursive: true }),
+    ]);
+  }
+});
+
+test("terminal cwd rejects the read-only @tool-output alias", async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), "tidecode-terminal-tool-output-cwd-"));
+  try {
+    assert.throws(
+      () => resolveTerminalWorkspaceCwd(
+        {
+          conversationId: "terminal-tool-output-cwd",
+          terminalExecutionMode: "sandbox",
+          workspaceRootPath,
+        },
+        "@tool-output/",
+      ),
+      /read-only/u,
+    );
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true });
+  }
+});
+
 test("turn cleanup terminates every session even when terminate_terminal is unused", async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), "tidecode-terminal-turn-cleanup-"));
   const terminatedSessionIds: number[] = [];
@@ -645,6 +703,97 @@ test("execute_terminal with wait_seconds collects initial output directly", asyn
   assert.match(result.body ?? "", /session_id: /u);
   assert.match(result.body ?? "", /initial output line/u);
   assert.match(result.displayBody ?? "", /initial output line/u);
+});
+
+test("large terminal output keeps a tail preview while saving the full transcript behind @tool-output", async () => {
+  const tempHomePath = await fs.mkdtemp(path.join(tmpdir(), "tidecode-terminal-tool-output-"));
+  const originalGetPath = electronApp.getPath;
+  const writeCalls: WriteTerminalSessionInput[] = [];
+  let outputDelivered = false;
+
+  try {
+    electronApp.getPath = () => tempHomePath;
+    const mockDeps = createMockDependencies({
+      getPendingOutput: (writtenCommands) => {
+        if (outputDelivered) return "";
+        outputDelivered = true;
+        const marker = readCompletionMarker(writtenCommands[0]?.data ?? "");
+        const output = Array.from(
+          { length: 2_200 },
+          (_value, index) => `terminal-line-${index}-${"x".repeat(30)}`,
+        ).join("\n");
+        return `${output}\n${marker}:0\n`;
+      },
+      writeCalls,
+    });
+    const tools = createTools("terminal-large-output", mockDeps);
+
+    const result = await getTool(tools, "execute_terminal").execute({
+      command: "large-output-command",
+      wait_seconds: 5,
+    });
+
+    assert.equal(result.status, "success");
+    const outputPath = result.semantics?.output_path;
+    assert.equal(typeof outputPath, "string");
+    assert.match(String(outputPath), /^@tool-output\/tool_\d{5}\.txt$/u);
+    assert.match(result.body ?? "", /\.\.\.output truncated\.\.\./u);
+    assert.match(result.body ?? "", /terminal-line-2199-/u);
+    assert.doesNotMatch(result.body ?? "", /terminal-line-0-/u);
+    assert.match(result.body ?? "", /full_output: @tool-output\/tool_\d{5}\.txt/u);
+    assert.match(result.displayBody ?? "", /terminal-line-0-/u);
+    assert.match(result.displayBody ?? "", /terminal-line-2199-/u);
+    assert.doesNotMatch(result.displayBody ?? "", /@tool-output/u);
+
+    const stored = await fs.readFile(resolveToolOutputAliasPath(String(outputPath)).absolutePath, "utf8");
+    assert.match(stored, /terminal-line-0-/u);
+    assert.match(stored, /terminal-line-2199-/u);
+  } finally {
+    electronApp.getPath = originalGetPath;
+    await fs.rm(tempHomePath, { force: true, recursive: true });
+  }
+});
+
+test("saved terminal output preserves early lines after the in-memory transcript evicts them", async () => {
+  const tempHomePath = await fs.mkdtemp(path.join(tmpdir(), "tidecode-terminal-evicted-output-"));
+  const originalGetPath = electronApp.getPath;
+  const writeCalls: WriteTerminalSessionInput[] = [];
+  let outputDelivered = false;
+
+  try {
+    electronApp.getPath = () => tempHomePath;
+    const mockDeps = createMockDependencies({
+      getPendingOutput: (writtenCommands) => {
+        if (outputDelivered) return "";
+        outputDelivered = true;
+        const marker = readCompletionMarker(writtenCommands[0]?.data ?? "");
+        const output = Array.from(
+          { length: 8_000 },
+          (_value, index) => `eviction-line-${index}-${"y".repeat(40)}`,
+        ).join("\n");
+        return `${output}\n${marker}:0\n`;
+      },
+      writeCalls,
+    });
+    const tools = createTools("terminal-evicted-output", mockDeps);
+
+    const result = await getTool(tools, "execute_terminal").execute({
+      command: "eviction-output-command",
+      wait_seconds: 5,
+    });
+
+    const outputPath = result.semantics?.output_path;
+    assert.equal(typeof outputPath, "string");
+    assert.match(result.body ?? "", /eviction-line-7999-/u);
+    assert.doesNotMatch(result.body ?? "", /eviction-line-0-/u);
+
+    const stored = await fs.readFile(resolveToolOutputAliasPath(String(outputPath)).absolutePath, "utf8");
+    assert.match(stored, /eviction-line-0-/u);
+    assert.match(stored, /eviction-line-7999-/u);
+  } finally {
+    electronApp.getPath = originalGetPath;
+    await fs.rm(tempHomePath, { force: true, recursive: true });
+  }
 });
 
 test("terminal text newlines are normalized to PTY Enter carriage returns", () => {

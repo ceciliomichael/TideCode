@@ -161,9 +161,9 @@ async function executeCodeModeSource(
         // represented by the top-level body/output formatting above. Persisting
         // every nested tool body here duplicates large reads/grep/terminal
         // results into chat history and causes context to balloon on each step.
-        body: typeof call.body === 'string' && call.body.length > 2_000
-          ? `${call.body.slice(0, 2_000)}\n\n[Nested tool body omitted from semantics.]`
-          : call.body,
+        ...(typeof call.body === 'string' && call.body.length <= 2_000
+          ? { body: call.body }
+          : {}),
         ...(typeof call.body === 'string' && call.body.length > 2_000
           ? { body_omitted: true, body_bytes: Buffer.byteLength(call.body, 'utf8') }
           : {}),

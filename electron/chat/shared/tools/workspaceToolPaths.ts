@@ -9,6 +9,7 @@ import {
   normalizeWorkspacePath,
 } from '../../../workspace/paths'
 import type { AgentToolContext } from '../toolTypes'
+import { getToolOutputDirectory, TOOL_OUTPUT_ALIAS_ROOT } from './toolOutputStore'
 import {
   assertSandboxPathDoesNotEscapeThroughSymlink,
   getSandboxPathRoots,
@@ -21,7 +22,7 @@ export interface WorkspaceToolContext extends Pick<AgentToolContext, 'checkpoint
 }
 
 export const WORKSPACE_PATH_DESCRIPTION =
-  'Accepts exactly one path. Relative paths resolve from the workspace. @workspace/... explicitly addresses the workspace, @attachments/... addresses current-chat attachments, and @skills/<skill-name>/... addresses an enabled skill. Full absolute paths remain supported according to Sandbox/Full Access policy. Read, list, glob, and grep targets must already exist. To inspect multiple roots, make separate calls; never join paths with spaces.'
+  'Accepts exactly one path. Relative paths resolve from the workspace. @workspace/... explicitly addresses the workspace, @attachments/... addresses current-chat attachments, @skills/<skill-name>/... addresses an enabled skill, and @tool-output/... addresses temporary read-only saved tool output. Full absolute paths remain supported according to Sandbox/Full Access policy. Read, list, glob, and grep targets must already exist. To inspect multiple roots, make separate calls; never join paths with spaces.'
 
 export const ROOT_CAPABLE_WORKSPACE_PATH_DESCRIPTION =
   `${WORKSPACE_PATH_DESCRIPTION} An empty string or "." refers to the bound workspace root.`
@@ -101,9 +102,11 @@ export function resolveWorkspaceTargetPath(workspaceRootPath: string, candidateP
     normalizedAliasPath === '@attachments' ||
     normalizedAliasPath.startsWith('@attachments/') ||
     normalizedAliasPath === '@skills' ||
-    normalizedAliasPath.startsWith('@skills/')
+    normalizedAliasPath.startsWith('@skills/') ||
+    normalizedAliasPath === TOOL_OUTPUT_ALIAS_ROOT ||
+    normalizedAliasPath.startsWith(`${TOOL_OUTPUT_ALIAS_ROOT}/`)
   ) {
-    throw new Error('The @attachments and @skills virtual roots are read-only. Copy content into @workspace/ before modifying it.')
+    throw new Error('The @attachments, @skills, and @tool-output virtual roots are read-only. Copy content into @workspace/ before modifying it.')
   }
 
   if (path.isAbsolute(trimmedCandidatePath)) {
@@ -125,9 +128,11 @@ export function resolveMutableTargetPath(
     normalizedAliasPath === '@attachments' ||
     normalizedAliasPath.startsWith('@attachments/') ||
     normalizedAliasPath === '@skills' ||
-    normalizedAliasPath.startsWith('@skills/')
+    normalizedAliasPath.startsWith('@skills/') ||
+    normalizedAliasPath === TOOL_OUTPUT_ALIAS_ROOT ||
+    normalizedAliasPath.startsWith(`${TOOL_OUTPUT_ALIAS_ROOT}/`)
   ) {
-    throw new Error('The @attachments and @skills virtual roots are read-only. Copy content into @workspace/ before modifying it.')
+    throw new Error('The @attachments, @skills, and @tool-output virtual roots are read-only. Copy content into @workspace/ before modifying it.')
   }
   if (normalizedAliasPath === '@workspace' || normalizedAliasPath.startsWith('@workspace/')) {
     const relativePath =
@@ -212,6 +217,24 @@ function resolveVirtualReadPath(
       displayPath: relativePath.length > 0
         ? `@skills/${skill.name}/${relativePath.replace(/\\/gu, '/')}`
         : `@skills/${skill.name}/`,
+      sandboxRootPath: rootPath,
+    }
+  }
+
+  if (normalizedAliasPath === TOOL_OUTPUT_ALIAS_ROOT || normalizedAliasPath.startsWith(`${TOOL_OUTPUT_ALIAS_ROOT}/`)) {
+    const rootPath = getToolOutputDirectory()
+    const relativePath = normalizedAliasPath === TOOL_OUTPUT_ALIAS_ROOT
+      ? ''
+      : normalizedAliasPath.slice(`${TOOL_OUTPUT_ALIAS_ROOT}/`.length)
+    const absolutePath = path.resolve(rootPath, relativePath)
+    if (!isPathInsideRoot(rootPath, absolutePath)) {
+      throw new Error(`Virtual tool output path escapes ${TOOL_OUTPUT_ALIAS_ROOT}/: ${candidatePath}`)
+    }
+    return {
+      absolutePath,
+      displayPath: relativePath.length > 0
+        ? `${TOOL_OUTPUT_ALIAS_ROOT}/${relativePath.replace(/\\/gu, '/')}`
+        : `${TOOL_OUTPUT_ALIAS_ROOT}/`,
       sandboxRootPath: rootPath,
     }
   }

@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 export interface SandboxPathRoots {
+  additionalRoots: string[]
   globalAgentsDirectory: string
   workspaceRootPath: string
 }
@@ -11,8 +12,12 @@ export function getGlobalAgentsDirectory() {
   return path.resolve(os.homedir(), '.agents')
 }
 
-export function getSandboxPathRoots(workspaceRootPath: string): SandboxPathRoots {
+export function getSandboxPathRoots(
+  workspaceRootPath: string,
+  additionalRoots: readonly string[] = [],
+): SandboxPathRoots {
   return {
+    additionalRoots: additionalRoots.map((rootPath) => path.resolve(rootPath)),
     globalAgentsDirectory: getGlobalAgentsDirectory(),
     workspaceRootPath: path.resolve(workspaceRootPath),
   }
@@ -24,9 +29,11 @@ export function isPathInsideRoot(rootPath: string, targetPath: string) {
 }
 
 export function isPathAllowedInSandbox(targetPath: string, roots: SandboxPathRoots) {
+  const additionalRoots = roots.additionalRoots ?? []
   return (
     isPathInsideRoot(roots.workspaceRootPath, targetPath) ||
-    isPathInsideRoot(roots.globalAgentsDirectory, targetPath)
+    isPathInsideRoot(roots.globalAgentsDirectory, targetPath) ||
+    additionalRoots.some((rootPath) => isPathInsideRoot(rootPath, targetPath))
   )
 }
 
@@ -91,11 +98,16 @@ export async function assertSandboxPathDoesNotEscapeThroughSymlink(
     return
   }
 
-  const [realWorkspaceRootPath, realGlobalAgentsDirectory] = await Promise.all([
+  const additionalRoots = roots.additionalRoots ?? []
+  const [realWorkspaceRootPath, realGlobalAgentsDirectory, ...realAdditionalRoots] = await Promise.all([
     resolveExistingRealPath(roots.workspaceRootPath),
     resolveExistingRealPath(roots.globalAgentsDirectory),
+    ...additionalRoots.map((rootPath) => resolveExistingRealPath(rootPath)),
   ])
   const canonicalRoots: SandboxPathRoots = {
+    additionalRoots: additionalRoots.map(
+      (rootPath, index) => realAdditionalRoots[index] ?? rootPath,
+    ),
     globalAgentsDirectory: realGlobalAgentsDirectory ?? roots.globalAgentsDirectory,
     workspaceRootPath: realWorkspaceRootPath ?? roots.workspaceRootPath,
   }
@@ -118,8 +130,8 @@ export function assertSandboxCommandWorkingDirectories(
   command: string,
   workspaceRootPath: string,
   initialWorkingDirectory: string,
+  roots = getSandboxPathRoots(workspaceRootPath),
 ) {
-  const roots = getSandboxPathRoots(workspaceRootPath)
   const resolvedWorkingDirectories: string[] = []
   const changeDirectoryPattern =
     /(?:^|[;&|]\s*)(?:cd|chdir|pushd|set-location|sl)\s+(?:(?:-literalpath|-path)\s+)?(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/giu

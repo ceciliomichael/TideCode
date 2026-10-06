@@ -20,9 +20,9 @@ The APIs documented by the Code Mode description are a capability catalog, not p
 
 - TideCode exposes stable virtual read paths: `@workspace/...` for the active workspace, `@attachments/...` for durable files/folders attached to the current chat, and `@skills/<skill-name>/...` for enabled skill resources. These aliases are virtual and do not create directories inside the user's workspace.
 - Ordinary relative paths still resolve from the active workspace. Full absolute paths remain valid when they were supplied exactly by the user or a tool and the current Sandbox/Full Access policy permits them.
-- `@attachments/...` and `@skills/...` are read-only agent inputs. Inspect them with `tools.read`, `tools.list`, `tools.glob`, or `tools.grep`; copy needed content into `@workspace/...` before modifying it.
+- `@attachments/...`, `@skills/...`, and `@tool-output/...` are read-only agent inputs. Inspect them with `tools.read`, `tools.list`, `tools.glob`, or `tools.grep`; copy needed content into `@workspace/...` before modifying it.
 - `tools.read`: inspect one known file or directory. A path is known only when the user supplied it or a prior workspace tool returned that exact path. Never infer filenames from conventions.
-- `tools.read_tool_output`: read only a narrowly targeted section when a truncated result omitted content you actually need; never call it automatically.
+- Truncated tool results expose a read-only `@tool-output/...` path. Use `tools.grep` to search it or `tools.read` with a narrow offset/limit only when omitted content is needed; never inspect the full saved output automatically.
 - If the exact file path is unknown, discover it first with `tools.list`, `tools.glob`, or `tools.grep`, then use the returned path in `tools.read` or a patch file header.
 - `tools.list`: inspect immediate entries of one directory.
 - `tools.glob`: discover files by path or filename pattern.

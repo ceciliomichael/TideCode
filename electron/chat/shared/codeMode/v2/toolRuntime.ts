@@ -28,6 +28,7 @@ const HIDDEN_MODEL_SEMANTIC_KEYS = new Set([
 ])
 
 const MUTATING_FILE_TOOLS = new Set(['edit', 'write', 'delete', 'remove', 'move', 'rename'])
+const HIDDEN_CAPABILITY_SEARCH_TOOL_NAMES = new Set(['plan_create', 'plan_edit'])
 const RESERVED_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor'])
 
 class AsyncSemaphore {
@@ -276,6 +277,7 @@ export class ToolRuntime {
     const offset = Number.isInteger(value.offset) ? Math.max(0, Number(value.offset)) : 0
     const terms = query.split(/\s+/u).filter(Boolean)
     const matches = [...this.projectedByPath.values()]
+      .filter((tool) => !HIDDEN_CAPABILITY_SEARCH_TOOL_NAMES.has(tool.entry.name))
       .map((tool) => ({ tool, score: scoreTool(tool, terms) + (namespace && tool.entry.namespace === namespace ? 1000 : 0) }))
       .filter(({ tool, score }) => (!namespace || tool.entry.namespace === namespace) && (query.length === 0 || score > 0))
       .sort((a, b) => b.score - a.score || a.tool.expression.localeCompare(b.tool.expression))

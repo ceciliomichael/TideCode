@@ -47,7 +47,6 @@ function resolveToolNamespace(name: string) {
   }
   if (
     normalizedName === 'read' ||
-    normalizedName === 'read_tool_output' ||
     normalizedName === 'write' ||
     normalizedName === 'edit' ||
     normalizedName === 'apply_patch' ||

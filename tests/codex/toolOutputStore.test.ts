@@ -5,81 +5,94 @@ import path from 'node:path'
 import test from 'node:test'
 import type { AgentToolExecutionResult } from '../../electron/chat/shared/toolTypes'
 import { electronApp } from '../../electron/electronApp'
-import { createCanonicalToolModelOutput, prepareToolExecutionResultForModel } from '../../electron/chat/shared/toolReplay'
-import { createReadToolOutputTool } from '../../electron/chat/shared/tools/readToolOutput'
-import { persistToolOutput, readPersistedToolOutput } from '../../electron/chat/shared/tools/toolOutputStore'
-import { getToolResultModelContent } from '../../src/lib/toolResultContent'
+import { prepareToolExecutionResultForModel } from '../../electron/chat/shared/toolReplay'
+import { createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
+import {
+  appendToolOutput,
+  getToolOutputDirectory,
+  persistToolOutput,
+  resolveToolOutputAliasPath,
+} from '../../electron/chat/shared/tools/toolOutputStore'
 
-test('saved tool output can be recovered through the same paged contract and presentation as read', async () => {
-  const tempHomePath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tool-output-'))
+async function executeTool(
+  execute: unknown,
+  input: Record<string, unknown>,
+): Promise<AgentToolExecutionResult> {
+  assert.equal(typeof execute, 'function')
+  return await (execute as (
+    value: Record<string, unknown>,
+    options: { context: Record<string, never>; messages: never[]; toolCallId: string },
+  ) => Promise<AgentToolExecutionResult>)(input, {
+    context: {},
+    messages: [],
+    toolCallId: 'tool-output-test',
+  })
+}
+
+test('truncated output is saved behind @tool-output and recovered with normal read and grep tools', async () => {
+  const tempHomePath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tool-output-home-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tool-output-workspace-'))
   const originalGetPath = electronApp.getPath
 
   try {
     electronApp.getPath = () => tempHomePath
-    const largeBody = Array.from({ length: 3_000 }, (_value, index) => `large line ${index}`).join('\n')
+    const largeBody = Array.from({ length: 3_000 }, (_value, index) => 'large line ' + index).join('\n')
     const boundedResult = await prepareToolExecutionResultForModel({
       result: { body: largeBody, status: 'success', summary: 'Large output' },
       toolName: 'execute_terminal',
     })
-    const persistedOutputId = boundedResult.semantics?.output_id
-    assert.equal(typeof persistedOutputId, 'string')
-    assert.match(String(persistedOutputId), /^\d{5}$/u)
-    assert.deepEqual(boundedResult.semantics, { output_id: persistedOutputId })
-    assert.match(boundedResult.body ?? '', /read_tool_output/u)
-    assert.match(boundedResult.body ?? '', new RegExp(`output_id: "${persistedOutputId}"`, 'u'))
-    assert.doesNotMatch(boundedResult.body ?? '', /bytes omitted|original approximately|tokens/u)
-    assert.match(boundedResult.body ?? '', /large line 2999/u)
-    const persistedTail = await readPersistedToolOutput({
-      limit: 1,
-      offset: 3_000,
-      outputId: String(persistedOutputId),
-    })
-    assert.equal(persistedTail.body, 'large line 2999')
 
-    const outputId = await persistToolOutput('one\ntwo\nthree\nfour\nfive')
-    assert.match(outputId, /^\d{5}$/u)
-    const storedPage = await readPersistedToolOutput({ limit: 2, offset: 2, outputId })
+    const outputPath = boundedResult.semantics?.output_path
+    assert.equal(typeof outputPath, 'string')
+    assert.match(String(outputPath), /^@tool-output\/tool_\d{5}\.txt$/u)
+    assert.equal((boundedResult.body ?? '').includes(String(outputPath)), true)
+    assert.match(boundedResult.body ?? '', /Use grep to search it or read with a narrow offset\/limit/u)
+    assert.doesNotMatch(boundedResult.body ?? '', /output_id|read_tool_output/u)
 
-    assert.deepEqual(storedPage, {
-      body: 'two\nthree',
-      endLine: 3,
-      lineCount: 5,
-      nextOffset: 4,
-      outputId,
-      returnedLineCount: 2,
-      startLine: 2,
-    })
+    const resolved = resolveToolOutputAliasPath(String(outputPath))
+    assert.equal(resolved.absolutePath.startsWith(getToolOutputDirectory()), true)
+    assert.equal(await fs.readFile(resolved.absolutePath, 'utf8'), largeBody)
 
-    const readTool = createReadToolOutputTool()
-    assert.equal(typeof readTool.execute, 'function')
-    const result = await readTool.execute?.(
-      { limit: 2, offset: 2, output_id: outputId },
-      { context: {}, messages: [], toolCallId: 'read-output-1' },
-    ) as AgentToolExecutionResult
-
-    assert.equal(result.status, 'success')
-    assert.equal(result.body, 'two\nthree')
-    assert.equal(result.displayBody, 'two\nthree')
-    assert.deepEqual(result.subject, { kind: 'tool_output', path: outputId })
-    assert.deepEqual(result.semantics, {
-      end_line: 3,
-      next_offset: 4,
-      output_id: outputId,
-      start_line: 2,
-      total_line_count: 5,
-    })
-
-    const modelOutput = createCanonicalToolModelOutput({
-      argumentsValue: { limit: 2, offset: 2, output_id: outputId },
-      output: result,
-      toolCallId: 'read-output-1',
-      toolName: 'read_tool_output',
-    })
-    assert.equal(modelOutput.type, 'text')
-    assert.equal(
-      getToolResultModelContent(String(modelOutput.value)),
-      `Tool output: ${outputId}\nLines: 2-3 of 5\nNext offset: 4\n\ntwo\nthree`,
+    const tools = await createAgentTools(
+      { workspaceRootPath },
+      { chatMode: 'agent' },
     )
+
+    const readResult = await executeTool(tools.read.execute, {
+      limit: 2,
+      offset: 2_999,
+      path: outputPath,
+    })
+    assert.equal(readResult.status, 'success')
+    assert.match(readResult.body ?? '', /large line 2998\nlarge line 2999/u)
+    assert.equal(readResult.subject?.path, outputPath)
+
+    const grepResult = await executeTool(tools.grep.execute, {
+      path: '@tool-output/',
+      pattern: 'large line 2999',
+    })
+    assert.equal(grepResult.status, 'success')
+    assert.match(grepResult.body ?? '', /@tool-output\/tool_\d{5}\.txt/u)
+    assert.equal((grepResult.body ?? '').includes(tempHomePath), false)
+  } finally {
+    electronApp.getPath = originalGetPath
+    await fs.rm(tempHomePath, { force: true, recursive: true })
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('tool output files use readable aliases and support append-only terminal recovery', async () => {
+  const tempHomePath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tool-output-append-'))
+  const originalGetPath = electronApp.getPath
+
+  try {
+    electronApp.getPath = () => tempHomePath
+    const stored = await persistToolOutput('one\ntwo\n')
+    assert.match(stored.aliasPath, /^@tool-output\/tool_\d{5}\.txt$/u)
+    assert.equal(stored.absolutePath, resolveToolOutputAliasPath(stored.aliasPath).absolutePath)
+
+    await appendToolOutput(stored.aliasPath, 'three\nfour\n')
+    assert.equal(await fs.readFile(stored.absolutePath, 'utf8'), 'one\ntwo\nthree\nfour\n')
   } finally {
     electronApp.getPath = originalGetPath
     await fs.rm(tempHomePath, { force: true, recursive: true })

@@ -501,7 +501,7 @@ function getWholeFileChangeTarget(invocation: ToolInvocationTrace) {
 }
 
 export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace): ToolInvocationDisplayEntry[] {
-  if (invocation.toolName === 'read_tool_output') {
+  if (invocation.toolName === 'web_search' && invocation.state === 'running') {
     return []
   }
 

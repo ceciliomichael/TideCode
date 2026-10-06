@@ -1362,7 +1362,7 @@ test('Code Mode receives bounded tool output while nested user-facing results ke
       inputSchema: jsonSchema({ additionalProperties: false, properties: {}, type: 'object' }),
       execute: async () => ({
         body: fullBody,
-        semantics: { output_id: 'noisy-existing-output' },
+        semantics: { output_path: '@tool-output/tool_54321.txt' },
         status: 'success' as const,
         summary: 'Returned noisy output.',
       }),
@@ -1373,19 +1373,19 @@ test('Code Mode receives bounded tool output while nested user-facing results ke
   try {
     const result = await executor.run([
       'const noisy = await tools.noisy({})',
-      'return { body: noisy.body, displayBody: noisy.displayBody ?? null, outputId: noisy.semantics.output_id }',
+      'return { body: noisy.body, displayBody: noisy.displayBody ?? null, outputPath: noisy.semantics.output_path }',
     ].join('\n'))
 
     assert.equal(result.status, 'success')
     assert.equal(result.toolCalls.length, 1)
     assert.equal(result.toolCalls[0]?.body, fullBody)
-    const output = result.output as { body: string; displayBody: unknown; outputId: string }
-    assert.ok(Buffer.byteLength(output.body, 'utf8') < 40_000)
+    const output = result.output as { body: string; displayBody: unknown; outputPath: string }
+    assert.ok(Buffer.byteLength(output.body, 'utf8') < 50 * 1024)
     assert.match(output.body, /output line 0 /u)
     assert.match(output.body, /output line 4999 /u)
-    assert.match(output.body, /read_tool_output/u)
+    assert.match(output.body, /@tool-output\/tool_54321\.txt/u)
     assert.equal(output.displayBody, null)
-    assert.equal(output.outputId, 'noisy-existing-output')
+    assert.equal(output.outputPath, '@tool-output/tool_54321.txt')
   } finally {
     await executor.dispose()
   }
@@ -1530,6 +1530,52 @@ test('Code Mode capability search runs inside Code Mode while local tools remain
         messages: [],
         toolCallId: 'test-code-mode',
       })
+
+test('Code Mode capability search does not expose injected plan APIs while direct calls remain available', async () => {
+  const entries = [
+    {
+      description: 'Create an injected plan.',
+      execute: async () => ({
+        body: 'created',
+        status: 'success' as const,
+        summary: 'Created plan.',
+      }),
+      inputSchema: { type: 'object' as const },
+      name: 'plan_create',
+      namespace: 'local',
+    },
+  ]
+  const registry: AgentToolRegistry = {
+    entries,
+    get(name) {
+      return entries.find((entry) => entry.name === name)
+    },
+    search() {
+      return entries.map((entry) => ({ ...entry, score: 1 }))
+    },
+  }
+  const executor = new CodeModeExecutor(registry)
+
+  try {
+    const searchResult = await executor.run(
+      "return await tools.$codemode.search({ query: 'plan_create', limit: 5 })",
+      { allowedToolNames: ['plan_create'] },
+    )
+    assert.equal(searchResult.status, 'success')
+    assert.deepEqual(searchResult.output, { items: [], next: null, remaining: 0 })
+    assert.equal(searchResult.toolCalls.length, 0)
+
+    const directResult = await executor.run(
+      'return await tools.plan_create({})',
+      { allowedToolNames: ['plan_create'] },
+    )
+    assert.equal(directResult.status, 'success')
+    assert.equal(directResult.toolCalls.length, 1)
+    assert.equal(directResult.toolCalls[0]?.name, 'plan_create')
+  } finally {
+    await executor.dispose()
+  }
+})
     }
 
     assert.deepEqual(Object.keys(bundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
@@ -1642,10 +1688,31 @@ test('Code Mode capability search runs inside Code Mode while local tools remain
 
     const codeResult = await invoke(bundle.tools.code_mode, {
       code: "const search = await tools.$codemode.search({ query: 'read', limit: 5 }); const file = await tools.read({ path: 'package.json' }); const root = await tools.read({ path: '' }); return { hasVersion: file.body.includes('1.2.3'), rootPath: root.subject?.path, discoveredRead: search.items.some((item) => item.path === 'tools.read') }",
-    }) as { body?: string }
+    }) as {
+      body?: string
+      semantics?: {
+        tool_calls?: Array<{ body?: string; body_bytes?: number; body_omitted?: boolean }>
+      }
+    }
     assert.match(codeResult.body ?? '', /"hasVersion": true/u)
     assert.match(codeResult.body ?? '', /"rootPath": "\."/u)
     assert.match(codeResult.body ?? '', /"discoveredRead": true/u)
+
+    await fs.writeFile(path.join(workspaceRootPath, 'large-output.txt'), 'x'.repeat(4_000), 'utf8')
+    const largeNestedResult = await invoke(bundle.tools.code_mode, {
+      code: "await tools.read({ path: 'large-output.txt' })",
+    }) as {
+      body?: string
+      semantics?: {
+        tool_calls?: Array<{ body?: string; body_bytes?: number; body_omitted?: boolean }>
+      }
+    }
+    const largeNestedCall = largeNestedResult.semantics?.tool_calls?.[0]
+    assert.ok(largeNestedCall)
+    assert.equal(largeNestedCall.body, undefined)
+    assert.equal(largeNestedCall.body_omitted, true)
+    assert.ok((largeNestedCall.body_bytes ?? 0) > 2_000)
+    assert.doesNotMatch(JSON.stringify(largeNestedResult.semantics), /Nested tool body omitted from semantics/u)
 
     const invalidEditResult = await invoke(bundle.tools.code_mode, {
       code: "return await tools.edit({ path: 'package.json', edits: [] })",

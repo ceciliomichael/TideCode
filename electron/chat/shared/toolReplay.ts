@@ -136,10 +136,7 @@ export async function prepareToolExecutionResultForModel(input: {
     return input.result
   }
 
-  if (
-    (input.toolName === 'read' || input.toolName === 'read_tool_output') &&
-    Buffer.byteLength(body, 'utf8') <= TOOL_OUTPUT_PAGED_READ_MAX_BYTES
-  ) {
+  if (input.toolName === 'read' && Buffer.byteLength(body, 'utf8') <= TOOL_OUTPUT_PAGED_READ_MAX_BYTES) {
     return input.result
   }
 
@@ -148,24 +145,24 @@ export async function prepareToolExecutionResultForModel(input: {
     return input.result
   }
 
-  const existingOutputId =
-    typeof input.result.semantics?.output_id === 'string' ? input.result.semantics.output_id : undefined
-  let outputId = existingOutputId
-  if (!outputId) {
+  const existingOutputPath =
+    typeof input.result.semantics?.output_path === 'string' ? input.result.semantics.output_path : undefined
+  let outputPath = existingOutputPath
+  if (!outputPath) {
     try {
-      outputId = await persistToolOutput(body)
+      outputPath = (await persistToolOutput(body)).aliasPath
     } catch (error) {
       console.warn('Unable to persist truncated tool output for later inspection.', error)
     }
   }
 
-  const projection = projectToolOutputForModel(body, outputId)
+  const projection = projectToolOutputForModel(body, outputPath)
   return {
     ...input.result,
     body: projection.text,
     semantics: {
       ...input.result.semantics,
-      ...(outputId ? { output_id: outputId } : {}),
+      ...(outputPath ? { output_path: outputPath } : {}),
     },
     truncated: true,
   }

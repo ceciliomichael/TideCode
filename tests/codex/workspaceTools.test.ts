@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
+import { electronApp } from '../../electron/electronApp'
 import {
   createGlobToolResult,
   createGrepToolResult,
@@ -19,6 +20,7 @@ import { getConversationAttachmentsPath } from '../../electron/history/paths'
 import { getGlobalAgentsDirectory } from '../../electron/chat/shared/tools/sandboxPaths'
 import { createCanonicalToolModelOutput, prepareToolExecutionResultForModel } from '../../electron/chat/shared/toolReplay'
 import { TOOL_OUTPUT_PAGED_READ_MAX_BYTES } from '../../electron/chat/shared/tools/toolOutputBudget'
+import { persistToolOutput } from '../../electron/chat/shared/tools/toolOutputStore'
 
 interface ExecutableToolResult {
   body?: string
@@ -359,7 +361,7 @@ test('read uses byte-aware paging and avoids generic output recovery for ordinar
 
     const prepared = await prepareToolExecutionResultForModel({ result, toolName: 'read' })
     assert.equal(prepared.truncated, undefined)
-    assert.equal(prepared.semantics?.output_id, undefined)
+    assert.equal(prepared.semantics?.output_path, undefined)
 
     const legacyFullFileResult = await createReadToolResult(filePath, 'wide.txt', 50, 1, true)
     assert.equal(legacyFullFileResult.semantics?.start_line, 1)
@@ -739,6 +741,46 @@ test('sandbox read, list, glob, and grep operate on current-chat attachment alia
   }
 })
 
+test('sandbox read, list, glob, and grep operate on read-only tool output aliases', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const tempHomePath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tool-output-alias-'))
+  const originalGetPath = electronApp.getPath
+  try {
+    electronApp.getPath = () => tempHomePath
+    const stored = await persistToolOutput('first line\ntool-output-needle\nlast line\n')
+    const tools = await createAgentTools({ workspaceRootPath })
+
+    const listResult = await executeTestTool(tools.list.execute, { path: '@tool-output/' })
+    assert.equal(listResult.status, 'success')
+    assert.match(listResult.body ?? '', /tool_\d{5}\.txt/u)
+
+    const readResult = await executeTestTool(tools.read.execute, { path: stored.aliasPath })
+    assert.equal(readResult.status, 'success')
+    assert.equal(readResult.subject?.path, stored.aliasPath)
+    assert.match(readResult.body ?? '', /tool-output-needle/u)
+
+    const globResult = await executeTestTool(tools.glob.execute, {
+      path: '@tool-output/',
+      pattern: '*.txt',
+    })
+    assert.equal(globResult.status, 'success')
+    assert.match(globResult.body ?? '', /@tool-output\/tool_\d{5}\.txt/u)
+    assert.equal((globResult.body ?? '').includes(tempHomePath), false)
+
+    const grepResult = await executeTestTool(tools.grep.execute, {
+      path: '@tool-output/',
+      pattern: 'tool-output-needle',
+    })
+    assert.equal(grepResult.status, 'success')
+    assert.match(grepResult.body ?? '', /@tool-output\/tool_\d{5}\.txt/u)
+    assert.equal((grepResult.body ?? '').includes(tempHomePath), false)
+  } finally {
+    electronApp.getPath = originalGetPath
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+    await fs.rm(tempHomePath, { force: true, recursive: true })
+  }
+})
+
 test('sandbox skill aliases resolve enabled skill resources outside the workspace', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
   const skillRoot = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-skill-alias-'))
@@ -769,7 +811,7 @@ test('sandbox skill aliases resolve enabled skill resources outside the workspac
   }
 })
 
-test('mutation path aliases keep attachments and skills read-only', async () => {
+test('mutation path aliases keep attachments, skills, and tool output read-only', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
   try {
     const workspaceTarget = resolveMutableTargetPath(
@@ -784,6 +826,10 @@ test('mutation path aliases keep attachments and skills read-only', async () => 
     )
     assert.throws(
       () => resolveMutableTargetPath(workspaceRootPath, '@skills/test-skill/SKILL.md', 'full'),
+      /read-only/u,
+    )
+    assert.throws(
+      () => resolveMutableTargetPath(workspaceRootPath, '@tool-output/tool_12345.txt', 'full'),
       /read-only/u,
     )
   } finally {

@@ -1,9 +1,6 @@
 import type { ModelMessage } from 'ai'
 
-export const TOOL_OUTPUT_DEFAULT_MAX_TOKENS = 10_000
-export const TOOL_OUTPUT_APPROXIMATE_BYTES_PER_TOKEN = 4
-export const TOOL_OUTPUT_MAX_BYTES =
-  TOOL_OUTPUT_DEFAULT_MAX_TOKENS * TOOL_OUTPUT_APPROXIMATE_BYTES_PER_TOKEN
+export const TOOL_OUTPUT_MAX_BYTES = 50 * 1024
 export const TOOL_OUTPUT_MAX_LINES = 2_000
 export const TOOL_OUTPUT_MAX_LINE_LENGTH = 2_000
 export const TOOL_OUTPUT_PAGED_READ_MAX_BYTES = 32 * 1024
@@ -93,15 +90,15 @@ function collectTailLines(
   return reversedLines.reverse()
 }
 
-function buildRecoveryHint(outputId?: string) {
-  if (outputId) {
-    return `output_id: "${outputId}". Use read_tool_output with this output_id and a narrow offset/limit only if omitted content is needed.`
+function buildRecoveryHint(outputPath?: string) {
+  if (outputPath) {
+    return `Full output saved to: ${outputPath}. Use grep to search it or read with a narrow offset/limit only if omitted content is needed.`
   }
 
   return 'Re-run the original tool with narrower arguments only if omitted content is needed.'
 }
 
-export function projectToolOutputForModel(value: string, outputId?: string): ToolOutputProjection {
+export function projectToolOutputForModel(value: string, outputPath?: string): ToolOutputProjection {
   const sourceBytes = byteLength(value)
   const sourceLines = splitLines(value)
   const hasLongLine = sourceLines.some((line) => hasMoreThanCodePoints(line, TOOL_OUTPUT_MAX_LINE_LENGTH))
@@ -138,7 +135,7 @@ export function projectToolOutputForModel(value: string, outputId?: string): Too
   const omittedRange = omittedEndLine >= omittedStartLine
     ? ` Omitted lines ${omittedStartLine}-${omittedEndLine}.`
     : ''
-  const notice = `[Output truncated.${omittedRange} ${buildRecoveryHint(outputId)}]`
+  const notice = `[Output truncated.${omittedRange} ${buildRecoveryHint(outputPath)}]`
 
   const headText = headLines.map((line) => line.text).join('\n')
   const tailText = tailLines.map((line) => line.text).join('\n')

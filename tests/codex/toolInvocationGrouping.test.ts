@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ToolInvocationTrace } from '../../src/types/chat'
 import { formatStructuredToolResultContent } from '../../src/lib/toolResultContent'
-import { buildToolInvocationGroupSummary } from '../../src/components/chat/toolInvocationGrouping'
+import {
+  buildToolInvocationGroupSummary,
+  shouldToolInvocationGroupBeActive,
+} from '../../src/components/chat/toolInvocationGrouping'
 
 function createInvocation(toolName: string): ToolInvocationTrace {
   return {
@@ -82,16 +85,6 @@ test('buildToolInvocationGroupSummary omits the hidden Code Mode implementation 
   assert.equal(
     buildToolInvocationGroupSummary([createInvocation('tool_search'), createInvocation('code_mode')]),
     'Ran 1 tool search',
-  )
-})
-
-test('buildToolInvocationGroupSummary omits internal read_tool_output calls', () => {
-  assert.equal(
-    buildToolInvocationGroupSummary([
-      createInvocation('read'),
-      createInvocation('read_tool_output'),
-    ]),
-    'Explored 1 file',
   )
 })
 
@@ -245,12 +238,48 @@ test('buildToolInvocationGroupSummary includes uncategorized tools by name', () 
   assert.equal(summary, 'Explored 1 ready implement')
 })
 
-test('buildToolInvocationGroupSummary reports web search with readable labels', () => {
+test('buildToolInvocationGroupSummary gives web search the same completed summary style as terminal tools', () => {
   assert.equal(buildToolInvocationGroupSummary([createInvocation('web_search')]), 'Ran 1 web search')
   assert.equal(
     buildToolInvocationGroupSummary([createInvocation('web_search'), createInvocation('web_search')]),
     'Ran 2 web searches',
   )
+})
+
+test('buildToolInvocationGroupSummary integrates web search with the existing grouped summary order', () => {
+  assert.equal(
+    buildToolInvocationGroupSummary([
+      createInvocation('web_search'),
+      createInvocation('read'),
+      createInvocation('read'),
+    ]),
+    'Ran 1 web search, explored 2 files',
+  )
+
+  assert.equal(
+    buildToolInvocationGroupSummary([
+      createInvocation('read'),
+      createInvocation('read'),
+      createInvocation('web_search'),
+    ]),
+    'Ran 1 web search, explored 2 files',
+  )
+})
+
+test('completed web search group is not shown as actively exploring while the assistant continues', () => {
+  assert.equal(shouldToolInvocationGroupBeActive({
+    entries: [{ ...createInvocation('web_search'), state: 'completed' }],
+    hasAssistantText: false,
+    isConversationStreaming: true,
+    isFinalized: false,
+  }), false)
+
+  assert.equal(shouldToolInvocationGroupBeActive({
+    entries: [{ ...createInvocation('grep'), state: 'completed' }],
+    hasAssistantText: false,
+    isConversationStreaming: true,
+    isFinalized: false,
+  }), true)
 })
 
 test('buildToolInvocationGroupSummary groups MCP search and execution as MCP work', () => {

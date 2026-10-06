@@ -1,5 +1,4 @@
 import { randomInt } from "node:crypto";
-import path from "node:path";
 import type { WebContents } from "electron";
 import type { ChatStreamEventTarget } from "../runtimeStreamEvents";
 import type {
@@ -13,9 +12,10 @@ import type {
   TerminalBrokerOperationState,
 } from "../../../../src/types/chat";
 import type { AgentToolContext, AgentToolExecutionResult } from "../toolTypes";
+import type { SkillSummary } from "../../../../src/types/skills";
 import type { TerminalSessionSnapshot } from "../../../terminal/service";
 import { MAX_TERMINAL_POLLING_MS } from "../../../terminal/configuration";
-import { AiTerminalTranscript } from "../../../terminal/aiTranscript";
+import { AiTerminalTranscript, stripTerminalControlSequences } from "../../../terminal/aiTranscript";
 import {
   formatTerminalScreenForDisplay,
   formatTerminalScreenForModel,
@@ -29,9 +29,11 @@ import {
   assertSandboxCommandWorkingDirectories,
   assertSandboxPathDoesNotEscapeThroughSymlink,
   getSandboxPathRoots,
-  resolveSandboxPath,
   type SandboxPathRoots,
 } from "./sandboxPaths";
+import { resolveReadableTargetPath } from "./workspaceToolPaths";
+import { TOOL_OUTPUT_MAX_BYTES, TOOL_OUTPUT_MAX_LINES } from "./toolOutputBudget";
+import { appendToolOutput, persistToolOutput, TOOL_OUTPUT_ALIAS_ROOT } from "./toolOutputStore";
 
 const MIN_VISIBLE_SESSION_ID = 10_000;
 const MAX_VISIBLE_SESSION_ID_EXCLUSIVE = 100_000;
@@ -126,8 +128,12 @@ export interface TerminalToolDependencies {
   ) => Promise<void>;
 }
 
+export type TerminalToolContext = AgentToolContext & {
+  enabledSkills?: readonly SkillSummary[];
+};
+
 export interface TerminalToolRuntime {
-  context: AgentToolContext;
+  context: TerminalToolContext;
   getDependencies: () => Promise<TerminalToolDependencies>;
   namespace: string;
   ownerWebContents: WebContents | null;
@@ -154,6 +160,10 @@ export interface ThreadAiSession {
   label: string | null;
   localSessionId: number;
   nextUnreadLine: number;
+  outputArchiveBytes: number;
+  outputArchiveChunks: string[];
+  outputArchiveLineCount: number;
+  outputPath: string | null;
   screen: TerminalScreenModel;
   shell: string;
   transcript: AiTerminalTranscript;
@@ -252,7 +262,7 @@ async function loadDefaultTerminalToolDependencies(context: AgentToolContext): P
 }
 
 export function createTerminalToolRuntime(
-  context: AgentToolContext,
+  context: TerminalToolContext,
   dependencies: Partial<TerminalToolDependencies> = {},
 ): TerminalToolRuntime {
   let resolvedDependencies: TerminalToolDependencies | null = null;
@@ -328,19 +338,27 @@ export function resolveTerminalThreadNamespace(context: AgentToolContext) {
   return `workspace:${context.workspaceRootPath}`;
 }
 
-export function resolveTerminalWorkspaceCwd(context: AgentToolContext, cwd: string | undefined) {
-  const terminalExecutionMode = context.terminalExecutionMode ?? "sandbox";
-  if (terminalExecutionMode === "sandbox") {
-    return resolveSandboxPath(context.workspaceRootPath, cwd);
+export function resolveTerminalWorkspaceCwd(context: TerminalToolContext, cwd: string | undefined) {
+  const normalizedCwd = cwd?.trim().replace(/\\/gu, '/') ?? '';
+  if (normalizedCwd === TOOL_OUTPUT_ALIAS_ROOT || normalizedCwd.startsWith(`${TOOL_OUTPUT_ALIAS_ROOT}/`)) {
+    throw new Error(`${TOOL_OUTPUT_ALIAS_ROOT}/ is read-only and cannot be used as a terminal working directory.`);
   }
-
-  const normalizedCwd = cwd?.trim() ?? "";
+  const terminalExecutionMode = context.terminalExecutionMode ?? "sandbox";
+  const resolvedTarget = resolveReadableTargetPath(
+    context.workspaceRootPath,
+    cwd,
+    terminalExecutionMode,
+    {
+      conversationId: context.conversationId,
+      enabledSkills: context.enabledSkills,
+    },
+  );
+  const additionalRoots = resolvedTarget.sandboxRootPath === context.workspaceRootPath
+    ? []
+    : [resolvedTarget.sandboxRootPath];
   return {
-    absolutePath:
-      normalizedCwd.length === 0
-        ? context.workspaceRootPath
-        : path.resolve(context.workspaceRootPath, normalizedCwd),
-    roots: getSandboxPathRoots(context.workspaceRootPath),
+    absolutePath: resolvedTarget.absolutePath,
+    roots: getSandboxPathRoots(context.workspaceRootPath, additionalRoots),
   };
 }
 
@@ -493,6 +511,7 @@ async function observePendingOutput(
   session.lastSnapshot = snapshot;
 
   if (pendingOutput.length > 0) {
+    await recordTerminalOutputForRecovery(session, pendingOutput);
     await session.screen.write(pendingOutput);
     const markerProbe = `${session.completionMarkerProbe}${pendingOutput}`;
     const commandExitCode = readCompletionCode(markerProbe, session.completionMarker);
@@ -540,6 +559,75 @@ async function observePendingOutput(
   if (session.commandComplete) {
     session.transcript.finalize();
   }
+}
+
+async function recordTerminalOutputForRecovery(session: ThreadAiSession, pendingOutput: string) {
+  const cleaned = stripTerminalControlSequences(pendingOutput);
+  if (cleaned.length === 0) return;
+
+  if (session.outputPath) {
+    try {
+      await appendToolOutput(session.outputPath, cleaned);
+    } catch (error) {
+      console.warn('Unable to append terminal output recovery file.', error);
+    }
+    return;
+  }
+
+  session.outputArchiveChunks.push(cleaned);
+  session.outputArchiveBytes += Buffer.byteLength(cleaned, 'utf8');
+  const newlineCount = (cleaned.match(/\n/gu) ?? []).length;
+  session.outputArchiveLineCount = session.outputArchiveLineCount === 0
+    ? newlineCount + 1
+    : session.outputArchiveLineCount + newlineCount;
+
+  if (
+    session.outputArchiveBytes <= TOOL_OUTPUT_MAX_BYTES &&
+    session.outputArchiveLineCount <= TOOL_OUTPUT_MAX_LINES
+  ) {
+    return;
+  }
+
+  try {
+    const stored = await persistToolOutput(session.outputArchiveChunks.join(''));
+    session.outputPath = stored.aliasPath;
+    session.outputArchiveChunks = [];
+  } catch (error) {
+    console.warn('Unable to persist terminal output for later inspection.', error);
+  }
+}
+
+export function formatTerminalOutputForModel(
+  session: ThreadAiSession,
+  lines: readonly { lineNumber: number; text: string }[],
+) {
+  const selected: { lineNumber: number; text: string }[] = [];
+  let bytes = 0;
+  const maxOutputBytes = Math.max(0, TOOL_OUTPUT_MAX_BYTES - 2_048);
+  for (let index = lines.length - 1; index >= 0 && selected.length < TOOL_OUTPUT_MAX_LINES; index -= 1) {
+    const line = lines[index];
+    const rendered = `${line.lineNumber}: ${line.text}`;
+    const lineBytes = Buffer.byteLength(rendered, 'utf8') + (selected.length > 0 ? 1 : 0);
+    if (selected.length > 0 && bytes + lineBytes > maxOutputBytes) break;
+    selected.unshift(line);
+    bytes += lineBytes;
+  }
+
+  const truncated = selected.length < lines.length;
+  const output = selected.map((line) => `${line.lineNumber}: ${line.text}`);
+  if (!truncated) return output;
+
+  return [
+    '...output truncated...',
+    ...(session.outputPath
+      ? [
+          `Full output saved to: ${session.outputPath}`,
+          'Use grep to search it or read with a narrow offset/limit only if omitted content is needed.',
+        ]
+      : []),
+    '',
+    ...output,
+  ];
 }
 
 export async function syncTerminalSessionOutput(
@@ -658,6 +746,9 @@ export function buildTerminalCommandSummary(
       `available_lines: ${transcriptSummary.firstAvailableLine}-${transcriptSummary.lastAvailableLine}`,
     );
   }
+  if (session.outputPath) {
+    bodyLines.push(`full_output: ${session.outputPath}`);
+  }
   if (interaction) {
     bodyLines.push(`input_required: ${interaction.kind}`);
     bodyLines.push(`prompt: ${interaction.hint}`);
@@ -708,6 +799,7 @@ export function buildTerminalCommandSummary(
       state,
       status,
       output_evicted: transcriptSummary.truncated,
+      ...(session.outputPath ? { output_path: session.outputPath } : {}),
     },
     state,
     summary: state === "needs_interaction"
@@ -752,6 +844,10 @@ export function resetThreadSessionForCommand(
   session.isDaemon = false;
   session.lastSnapshot = null;
   session.nextUnreadLine = 1;
+  session.outputArchiveBytes = 0;
+  session.outputArchiveChunks = [];
+  session.outputArchiveLineCount = 0;
+  session.outputPath = null;
   session.screen.reset();
   session.transcript.reset({ command, marker });
 }
@@ -788,6 +884,10 @@ export function createThreadAiSession(input: {
     lastSnapshot: null,
     localSessionId: input.localSessionId,
     nextUnreadLine: 1,
+    outputArchiveBytes: 0,
+    outputArchiveChunks: [],
+    outputArchiveLineCount: 0,
+    outputPath: null,
     screen: new TerminalScreenModel({ cols: input.cols, rows: input.rows }),
     shell: input.shell,
     transcript: new AiTerminalTranscript(),
@@ -910,7 +1010,7 @@ export function assertSandboxCommand(
   }
 
   return Promise.all(
-    [cwd, ...assertSandboxCommandWorkingDirectories(command, runtime.context.workspaceRootPath, cwd)].map(
+    [cwd, ...assertSandboxCommandWorkingDirectories(command, runtime.context.workspaceRootPath, cwd, roots)].map(
       (directoryPath) => assertSandboxPathDoesNotEscapeThroughSymlink(directoryPath, roots),
     ),
   ).then(() => undefined);
