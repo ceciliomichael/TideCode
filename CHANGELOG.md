@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.19 - Stable source-control change counts
+
+TideCode 1.4.19 fixes source-control change totals that could flicker after initializing a repository containing binary files.
+
+- Keeps binary and otherwise non-text changed files represented in full Git diff snapshots instead of dropping them during content loading.
+- Keeps lightweight Git status and full diff refreshes aligned so the displayed change count remains stable during background polling.
+- Preserves binary file safety by reporting them as changed with zero text-line additions or removals instead of decoding their contents as text.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.18 - Smoother Remote chat and branching
 
 TideCode 1.4.18 makes Remote Web chat feel immediate and adds a clearer way to branch completed assistant responses into a new chat.
