@@ -58,22 +58,31 @@ async function buildGitFileDiff(
   repoRootPath: string,
   filePath: string,
   changedFileSets: Omit<ChangedFileSets, 'allChangedFiles'>,
-): Promise<GitFileDiff | null> {
+): Promise<GitFileDiff> {
+  const normalizedFilePath = normalizeGitFilePath(filePath)
+  const statusMetadata = {
+    fileName: normalizedFilePath,
+    isStaged: changedFileSets.stagedFileSet.has(normalizedFilePath),
+    isUnstaged: changedFileSets.unstagedFileSet.has(normalizedFilePath),
+    isUntracked: changedFileSets.untrackedFileSet.has(normalizedFilePath),
+  }
   const [oldContent, newContent] = await Promise.all([
     readHeadFile(repoRootPath, filePath, BACKGROUND_GIT_OPTIONS),
     readWorkingTreeFile(repoRootPath, filePath),
   ])
 
   if (newContent === null) {
-    return null
+    return {
+      ...statusMetadata,
+      addedLineCount: 0,
+      newContent: '',
+      oldContent: null,
+      removedLineCount: 0,
+    }
   }
 
-  const normalizedFilePath = normalizeGitFilePath(filePath)
   return {
-    fileName: normalizedFilePath,
-    isStaged: changedFileSets.stagedFileSet.has(normalizedFilePath),
-    isUnstaged: changedFileSets.unstagedFileSet.has(normalizedFilePath),
-    isUntracked: changedFileSets.untrackedFileSet.has(normalizedFilePath),
+    ...statusMetadata,
     newContent,
     oldContent,
   }
@@ -115,7 +124,7 @@ export async function getGitDiffSnapshot(
             }),
           MAX_CONCURRENT_FILE_READS,
         )
-      ).filter((fileDiff): fileDiff is GitFileDiff => fileDiff !== null)
+      )
 
   return {
     fileDiffs,
