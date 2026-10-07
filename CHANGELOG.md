@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.18 - Smoother Remote chat and branching
+
+TideCode 1.4.18 makes Remote Web chat feel immediate and adds a clearer way to branch completed assistant responses into a new chat.
+
+- Shows Remote Web user messages immediately while preserving the final persisted message id, reducing send and edit jumpiness over the desktop-host round trip.
+- Keeps edited Remote Web messages in the same bubble while replacing the later response branch in place.
+- Shows the Updates settings tab in Remote Web using the existing desktop-host update bridge.
+- Adds assistant message actions with Copy and a `Branch in new chat` menu, creating a same-project branch through the selected assistant response.
+- Names branched chats as `Branch · <original chat title>` and preserves the source project, chat mode, attachments, and transcript context through the branch point.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.17 - Better AI tool workflows
 
 TideCode 1.4.17 improves native web search, long tool-output recovery, edited-message resends, Plan Mode tooling, and small workspace UI details.
