@@ -116,9 +116,9 @@ test('only shared configuration is broadcast across surfaces', () => {
   assert.equal(hasSharedAppSettingsInput({ summarizationReasoningEffort: 'medium' }), true)
 })
 
-test('web hides desktop-only Remote and Updates settings sections', () => {
+test('web hides desktop-only Remote settings while keeping Updates available', () => {
   const webIds = getVisibleSettingsItems('web', false).map((item) => item.id)
-  assert.equal(webIds.includes('settings-item7'), false)
+  assert.equal(webIds.includes('settings-item7'), true)
   assert.equal(webIds.includes('settings-item8'), false)
 
   const desktopIds = getVisibleSettingsItems('desktop', true).map((item) => item.id)

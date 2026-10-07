@@ -259,6 +259,8 @@ export interface ConversationGroupPreview {
 }
 
 export interface CreateConversationInput {
+  branchSourceConversationId?: string
+  branchThroughMessageId?: string
   chatMode?: ChatMode
   compactionSourceConversationId?: string
   draftAttachmentScopeId?: string

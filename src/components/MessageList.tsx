@@ -48,6 +48,7 @@ interface MessageListProps {
   isSending?: boolean;
   messages: Message[];
   onAbortStreamingResponse?: () => void;
+  onBranchAssistantMessage?: (messageId: string) => void;
   onCancelEditingMessage: () => void;
   onChatModeChange?: (mode: ChatMode) => void;
   onToolDecisionSubmit?: (
@@ -99,6 +100,7 @@ interface MessageRowProps {
   message: Message;
   showCopyButton: boolean;
   onAbortStreamingResponse?: () => void;
+  onBranchAssistantMessage?: (messageId: string) => void;
   onCancelEditingMessage: () => void;
   onChatModeChange?: (mode: ChatMode) => void;
   onToolDecisionSubmit?: (
@@ -150,6 +152,7 @@ const MessageRow = memo(
     message,
     showCopyButton,
     onAbortStreamingResponse,
+    onBranchAssistantMessage,
     onCancelEditingMessage,
     onChatModeChange,
     onToolDecisionSubmit,
@@ -251,6 +254,11 @@ const MessageRow = memo(
             isCompactionInProgress={isCompactionInProgress}
             isConversationStreaming={isConversationStreaming}
             isStreaming={isStreaming}
+            onBranch={
+              onBranchAssistantMessage && showCopyButton
+                ? () => onBranchAssistantMessage(message.id)
+                : undefined
+            }
             onToolDecisionSubmit={(invocation, submission) => {
               onToolDecisionSubmit?.(invocation, submission);
             }}
@@ -323,6 +331,7 @@ export function MessageList({
   editComposerMentionPathMap,
   messages,
   onAbortStreamingResponse,
+  onBranchAssistantMessage,
   editingMessageId = null,
   followLatestSignal = 0,
   onEditUserMessage,
@@ -688,6 +697,7 @@ export function MessageList({
         message={msg}
         showCopyButton={showCopyButton}
         onAbortStreamingResponse={onAbortStreamingResponse}
+        onBranchAssistantMessage={onBranchAssistantMessage}
         onCancelEditingMessage={onCancelEditingMessage}
         onChatModeChange={onChatModeChange}
         onToolDecisionSubmit={onToolDecisionSubmit}

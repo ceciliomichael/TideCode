@@ -15,7 +15,6 @@ import type { McpAddServerInput, McpState } from '../../types/mcp'
 import type { CreateSkillInput, SkillSummary, SkillsState } from '../../types/skills'
 import type { ContextCompactionSettings } from '../../lib/contextCompactionSettings'
 import type { TideCodeSettingsLaunchRequest } from '../../lib/appLaunchRequest'
-import { getRendererAppSettingsSurface } from '../../lib/appSettingsScopes'
 
 interface SettingsPanelSlotProps {
   active: boolean
@@ -106,7 +105,6 @@ export function SettingsContent({
   providersSettings,
 }: SettingsContentProps) {
   const scrollViewportRef = useRef<HTMLDivElement>(null)
-  const surface = getRendererAppSettingsSurface()
 
   useLayoutEffect(() => {
     if (scrollViewportRef.current) {
@@ -156,16 +154,14 @@ export function SettingsContent({
         <SettingsPanelSlot active={activeItemId === 'settings-item8'}>
           <RemoteSettingsPanel />
         </SettingsPanelSlot>
-        {surface === 'desktop' ? (
-          <SettingsPanelSlot active={activeItemId === 'settings-item7'}>
-            <UpdatesSettingsPanel
-              autoDownloadUpdates={appSettings.autoDownloadUpdates}
-              checkForUpdatesOnLaunch={appSettings.checkForUpdatesOnLaunch}
-              isLoading={generalSettings.isLoading}
-              onUpdateSettings={generalSettings.onUpdateSettings}
-            />
-          </SettingsPanelSlot>
-        ) : null}
+        <SettingsPanelSlot active={activeItemId === 'settings-item7'}>
+          <UpdatesSettingsPanel
+            autoDownloadUpdates={appSettings.autoDownloadUpdates}
+            checkForUpdatesOnLaunch={appSettings.checkForUpdatesOnLaunch}
+            isLoading={generalSettings.isLoading}
+            onUpdateSettings={generalSettings.onUpdateSettings}
+          />
+        </SettingsPanelSlot>
       </div>
     </div>
   )

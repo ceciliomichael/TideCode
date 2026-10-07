@@ -59,11 +59,15 @@ export interface PersistAndStreamMessageInput {
   isUserMessageReverted?: (messageId: string) => boolean
   clearUserMessageRevert?: (messageId: string) => void
   messageBatch?: readonly UserMessageSubmission[]
+  optimisticRemotePresentation?: boolean
+  preferredMessageIds?: readonly string[]
+  replaceLocalMessages: (conversationId: string, messages: Message[]) => void
   setError: (errorMessage: string | null) => void
   setMainComposerAttachments: (attachments: ChatAttachment[]) => void
   setMainComposerMentionPathMap: (mentionPathMap: Map<string, string>) => void
   setMainComposerValue: (value: string) => void
   setPendingDraftSendCount: (updater: (currentValue: number) => number) => void
+  setOptimisticDraftMessages: (messages: Message[]) => void
   resetMainComposerAfterSend?: boolean
   shouldRestoreMainComposerOnAbort?: () => boolean
   shouldApplyAbortRollbackToRuntime?: () => boolean
