@@ -42,6 +42,7 @@ import {
 } from './chatAttachments'
 import { runConversationMutation } from './conversationMutationQueue'
 import { getConversationAgentContextPath } from './paths'
+import { getConversationBranchMessages, getConversationBranchTitle } from '../../src/lib/chatBranching'
 
 export { cleanupDraftAgentContextDirectory, ensureDraftAgentContextDirectory }
 
@@ -202,12 +203,29 @@ export async function getStoredUserMessageCheckpointHistory(conversationId: stri
 export async function createStoredConversation(input?: CreateConversationInput) {
   const timestamp = Date.now()
   const compactionSourceConversationId = input?.compactionSourceConversationId?.trim() ?? ''
-  const sourceConversation = compactionSourceConversationId
-    ? await getStoredConversation(compactionSourceConversationId)
+  const branchSourceConversationId = input?.branchSourceConversationId?.trim() ?? ''
+  const branchThroughMessageId = input?.branchThroughMessageId?.trim() ?? ''
+  if (compactionSourceConversationId && branchSourceConversationId) {
+    throw new Error('A conversation cannot be created from both compaction and branch sources.')
+  }
+  if ((branchSourceConversationId && !branchThroughMessageId) || (!branchSourceConversationId && branchThroughMessageId)) {
+    throw new Error('Branch source conversation and message are both required.')
+  }
+
+  const sourceConversationId = compactionSourceConversationId || branchSourceConversationId
+  const sourceConversation = sourceConversationId
+    ? await getStoredConversation(sourceConversationId)
     : null
   if (compactionSourceConversationId && !sourceConversation) {
     throw new Error('The chat selected for compression no longer exists.')
   }
+  if (branchSourceConversationId && !sourceConversation) {
+    throw new Error('The chat selected for branching no longer exists.')
+  }
+
+  const branchMessages = branchSourceConversationId && sourceConversation
+    ? getConversationBranchMessages(sourceConversation.messages, branchThroughMessageId)
+    : []
 
   const folderId = sourceConversation?.folderId ?? input?.folderId ?? null
   const chatMode = input?.chatMode ?? sourceConversation?.chatMode ?? 'agent'
@@ -226,6 +244,7 @@ export async function createStoredConversation(input?: CreateConversationInput) 
     await adoptDraftAgentContextDirectory(conversationId)
   }
   const compaction = sourceConversation
+    && compactionSourceConversationId
     ? buildConversationCompaction(sourceConversation, await listConversationRecords(), timestamp)
     : undefined
 
@@ -234,14 +253,19 @@ export async function createStoredConversation(input?: CreateConversationInput) 
     chatMode,
     ...(compaction ? { compaction } : {}),
     id: conversationId,
-    title: 'New chat',
+    title: branchSourceConversationId && sourceConversation
+      ? getConversationBranchTitle(sourceConversation.title)
+      : 'New chat',
     createdAt: timestamp,
     updatedAt: timestamp,
     folderId,
-    messages: [],
+    messages: branchMessages,
   }
 
-  await writeConversationFile(conversation)
+  await Promise.all([
+    writeConversationFile(conversation),
+    ...(branchMessages.length > 0 ? [synchronizeCanonicalMessages(conversation.id, branchMessages)] : []),
+  ])
   return conversation
 }
 

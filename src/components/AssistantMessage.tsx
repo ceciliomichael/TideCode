@@ -1,5 +1,5 @@
-import { Check, Copy } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Check, Copy, GitBranch, MoreHorizontal } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { chatMessageContentWidthClassName } from "../lib/chatStyles";
 import { copyTextToClipboard } from "../lib/clipboard";
 import {
@@ -16,7 +16,7 @@ import { ThinkingIndicator } from "./chat/ThinkingIndicator";
 import { resolveAssistantWaitingIndicatorVariant } from "./chat/assistantWaitingIndicator";
 import { ToolInvocationBlock } from "./chat/ToolInvocationBlock";
 import { ToolInvocationGroup } from "./chat/ToolInvocationGroup";
-import { Tooltip } from "./Tooltip";
+import { AnchoredTooltip, Tooltip } from "./Tooltip";
 import {
   getToolInvocationDisplayEntries,
   type ToolInvocationDisplayEntry,
@@ -31,6 +31,7 @@ interface AssistantMessageProps {
   isConversationStreaming?: boolean;
   isStreaming?: boolean;
   isTextStreaming?: boolean;
+  onBranch?: () => void;
   reasoningCompletedAt?: number;
   reasoningContent?: string;
   showCopyButton?: boolean;
@@ -42,6 +43,22 @@ interface AssistantMessageProps {
   ) => void;
   waitingIndicatorVariant?: AssistantWaitingIndicatorVariant;
   workspaceRootPath?: string | null;
+}
+
+function formatAssistantActionTimestamp(timestamp: number) {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const isToday =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+
+  if (isToday) {
+    return `Today, ${time}`
+  }
+
+  return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`
 }
 
 interface RenderedToolBlock {
@@ -93,6 +110,7 @@ export function AssistantMessage({
   isConversationStreaming = false,
   isStreaming = false,
   isTextStreaming = false,
+  onBranch,
   reasoningCompletedAt,
   reasoningContent = "",
   showCopyButton = false,
@@ -103,6 +121,8 @@ export function AssistantMessage({
   workspaceRootPath = null,
 }: AssistantMessageProps) {
   const [isCopied, setIsCopied] = useState(false);
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const actionsButtonRef = useRef<HTMLButtonElement | null>(null);
   const normalizedContent = normalizeAssistantMessageContent({
     content,
     reasoningContent,
@@ -132,8 +152,8 @@ export function AssistantMessage({
   const copyableText = getCopyableAssistantMessageText({ content, reasoningContent });
   const canShowCopyButton =
     showCopyButton && copyableText.length > 0;
-  const isCopyButtonVisible = canShowCopyButton && !isStreaming;
-  const messagePaddingClassName = canShowCopyButton ? "pb-5 pr-5" : "";
+  const isActionRowVisible = showCopyButton && !isStreaming && (canShowCopyButton || onBranch !== undefined);
+  const messagePaddingClassName = isActionRowVisible ? "pb-6" : "";
 
   useEffect(() => {
     if (!isCopied) {
@@ -148,6 +168,29 @@ export function AssistantMessage({
       window.clearTimeout(timeoutId);
     };
   }, [isCopied]);
+
+  useEffect(() => {
+    if (!isActionsOpen) return
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (actionsButtonRef.current?.contains(target)) return
+      if (target instanceof Element && target.closest('[data-assistant-message-actions-menu="true"]')) return
+      setIsActionsOpen(false)
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setIsActionsOpen(false)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isActionsOpen]);
 
   async function handleCopy() {
     setIsCopied(await copyTextToClipboard(copyableText));
@@ -220,24 +263,62 @@ export function AssistantMessage({
         <ThinkingIndicator variant={effectiveWaitingIndicatorVariant} />
       ) : null}
 
-      {isCopyButtonVisible ? (
-        <Tooltip
-          content={isCopied ? "Copied" : "Copy"}
-          triggerClassName="absolute bottom-1.5 right-1.5 inline-flex h-5 w-5 pointer-events-auto opacity-100 transition-[color,opacity,transform] duration-150 md:pointer-events-none md:opacity-0 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:focus-within:opacity-100 md:focus-within:pointer-events-auto"
-        >
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="inline-flex h-5 w-5 items-center justify-center text-muted-foreground transition-transform hover:scale-105 hover:text-foreground"
-            aria-label={isCopied ? "Copied message" : "Copy message"}
-          >
-            {isCopied ? (
-              <Check className="h-4 w-4" />
-            ) : (
-              <Copy className="h-4 w-4" />
-            )}
-          </button>
-        </Tooltip>
+      {isActionRowVisible ? (
+        <div className="absolute bottom-1.5 right-0 flex items-center gap-1 pointer-events-auto opacity-100 transition-opacity duration-150 md:pointer-events-none md:opacity-0 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:focus-within:opacity-100 md:focus-within:pointer-events-auto">
+          {canShowCopyButton ? (
+            <Tooltip content={isCopied ? "Copied" : "Copy"}>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-[background-color,color,transform] hover:scale-105 hover:bg-surface-muted hover:text-foreground"
+                aria-label={isCopied ? "Copied message" : "Copy message"}
+              >
+                {isCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              </button>
+            </Tooltip>
+          ) : null}
+
+          {onBranch ? (
+            <>
+              <button
+                ref={actionsButtonRef}
+                type="button"
+                aria-label="Message actions"
+                aria-haspopup="menu"
+                aria-expanded={isActionsOpen}
+                onClick={() => setIsActionsOpen((currentValue) => !currentValue)}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-[background-color,color,transform] hover:scale-105 hover:bg-surface-muted hover:text-foreground"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+              <AnchoredTooltip
+                anchorElement={actionsButtonRef.current}
+                content={
+                  <div data-assistant-message-actions-menu="true" className="w-[210px] py-0.5">
+                    <div className="px-2.5 py-1.5 text-[12px] font-normal text-muted-foreground">
+                      {formatAssistantActionTimestamp(timestamp)}
+                    </div>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setIsActionsOpen(false)
+                        onBranch()
+                      }}
+                      className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm font-normal text-foreground transition-colors hover:bg-[var(--dropdown-option-hover-surface)]"
+                    >
+                      <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span>Branch in new chat</span>
+                    </button>
+                  </div>
+                }
+                panelClassName="!pointer-events-auto !block !p-1"
+                side="top"
+                visible={isActionsOpen}
+              />
+            </>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

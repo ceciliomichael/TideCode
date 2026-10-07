@@ -49,7 +49,6 @@ export const DEFAULT_SETTINGS_ITEM_ID: SettingsItemId = SETTINGS_ITEMS[0].id
 export function getVisibleSettingsItems(surface: 'desktop' | 'web', hasRemoteHost: boolean) {
   return SETTINGS_ITEMS.filter((item) => {
     if (item.id === 'settings-item8') return surface === 'desktop' && hasRemoteHost
-    if (item.id === 'settings-item7') return surface === 'desktop'
     return true
   })
 }

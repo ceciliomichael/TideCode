@@ -249,6 +249,7 @@ export function ChatConversationSurface({
                   editComposerMentionPathMap={chatMessages.editComposerMentionPathMap}
                   onChatModeChange={chatMessages.setSelectedChatMode}
                   onToolDecisionSubmit={handleToolDecisionSubmit}
+                  onBranchAssistantMessage={chatMessages.branchConversationFromAssistantMessage}
                   onEditUserMessage={handleEditUserMessage}
                   onRevertUserMessage={handleRevertUserMessage}
                   composerAttachments={chatMessages.editComposerAttachments}

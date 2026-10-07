@@ -9,6 +9,7 @@ import { useChatStreamingState } from './useChatStreamingState'
 import { useInitializeChatHistory } from './useInitializeChatHistory'
 import type { AppLanguage } from '../lib/appSettings'
 import { getPlanPathsCreatedByRevertedUserMessage } from '../lib/planPresentation'
+import { isRemoteBrowserRuntime } from '../remote/webBridge'
 import type { ChatMode, ConversationEditSession, ConversationModelPreference, Message, RevertEditSession } from '../types/chat'
 
 const EMPTY_MESSAGES: Message[] = []
@@ -51,7 +52,8 @@ export function useChatMessages(input: UseChatMessagesInput) {
     initialSelectedFolderId: preferredDraftFolderId,
     initialSelectedFolderName: preferredDraftFolderName,
   })
-  const messages = sessionState.activeConversationState?.conversation.messages ?? EMPTY_MESSAGES
+  const [optimisticDraftMessages, setOptimisticDraftMessages] = useState<Message[]>(EMPTY_MESSAGES)
+  const messages = sessionState.activeConversationState?.conversation.messages ?? optimisticDraftMessages
   // Read the draft agent context path synchronously so the Explorer panel
   // always has a valid path on the very first render — no "Explorer is waiting" flash.
   const [draftAgentContextPath] = useState<string | null>(() => {
@@ -598,7 +600,9 @@ export function useChatMessages(input: UseChatMessagesInput) {
     mainComposerValue: composerState.mainComposerValue,
     markTextStreamingPulse: streamingState.markTextStreamingPulse,
     pendingDraftSendCount,
+    optimisticRemotePresentation: isRemoteBrowserRuntime(),
     removeLocalMessage: sessionState.removeLocalMessage,
+    replaceLocalMessages: sessionState.replaceLocalMessages,
     selectedFolderId: sessionState.selectedFolderId,
     selectedFolderIdRef: streamingState.selectedFolderIdRef,
     setError: sessionState.setError,
@@ -606,6 +610,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
     setMainComposerMentionPathMap: composerState.setMainComposerMentionPathMap,
     setMainComposerValue: composerState.setMainComposerValue,
     setPendingDraftSendCount,
+    setOptimisticDraftMessages,
     stopTextStreaming: streamingState.stopTextStreaming,
     updateConversationRuntimeState: sessionState.updateConversationRuntimeState,
     updateConversationSummary: sessionState.updateConversationSummary,
@@ -681,6 +686,42 @@ export function useChatMessages(input: UseChatMessagesInput) {
       captureActiveEditDraftSession,
       conversationActions,
       deleteAbandonedActiveConversation,
+      persistConversationLaunchPreference,
+      sessionState,
+    ],
+  )
+
+  const branchConversationFromAssistantMessage = useCallback(
+    async (messageId: string) => {
+      const sourceConversationId = sessionState.activeConversationId
+      if (!sourceConversationId) {
+        return
+      }
+
+      captureActiveEditDraftSession()
+      sessionState.clearError()
+
+      try {
+        const branchedConversation = await window.tidecodeHistory.createConversation({
+          branchSourceConversationId: sourceConversationId,
+          branchThroughMessageId: messageId,
+        })
+
+        sessionState.upsertConversation(branchedConversation)
+        persistConversationLaunchPreference({
+          conversationId: branchedConversation.id,
+          draftFolderId: null,
+          openEmptyConversationOnLaunch: false,
+        })
+        await conversationActions.selectConversation(branchedConversation.id)
+      } catch (caughtError) {
+        console.error(caughtError)
+        sessionState.setError('Unable to branch this chat.')
+      }
+    },
+    [
+      captureActiveEditDraftSession,
+      conversationActions,
       persistConversationLaunchPreference,
       sessionState,
     ],
@@ -790,6 +831,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
 
   return {
     activeConversationId,
+    branchConversationFromAssistantMessage,
     draftAttachmentScopeId: sessionState.draftAttachmentScopeId,
     activeConversationRootPath: activeWorkspacePath,
     activeConversationTitle: sessionState.activeConversationTitle,

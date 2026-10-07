@@ -28,12 +28,24 @@ function createConversation(id = 'conversation-1'): ConversationRecord {
 function createFakeHistory(initialConversation: ConversationRecord) {
   const conversations = new Map<string, ConversationRecord>([[initialConversation.id, initialConversation]])
   const calls: HistoryCall[] = []
+  let createdConversationCount = 0
 
   return {
     calls,
     conversations,
     getStoredMessages: (conversationId: string) => conversations.get(conversationId)?.messages ?? [],
     api: {
+      createConversation: async (input?: { chatMode?: 'agent' | 'plan'; folderId?: string | null }) => {
+        createdConversationCount += 1
+        const createdConversation = createConversation(`conversation-created-${createdConversationCount}`)
+        const nextConversation = {
+          ...createdConversation,
+          chatMode: input?.chatMode ?? createdConversation.chatMode,
+          folderId: input?.folderId ?? null,
+        }
+        conversations.set(nextConversation.id, nextConversation)
+        return nextConversation
+      },
       getConversation: async (conversationId: string) => conversations.get(conversationId) ?? null,
       appendMessages: async (input: {
         chatMode?: string
@@ -107,6 +119,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
   let streamListener: ((event: Record<string, unknown> & { streamId: string; type: string }) => void) | null = null
   const errors: string[] = []
   const composerValues: string[] = []
+  let optimisticDraftMessages: Message[] = []
   const originalText = options.originalText ?? 'Please update the README'
 
   const upsertConversationRecord = (nextConversation: ConversationRecord) => {
@@ -182,6 +195,20 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     isUserMessageReverted: () => options.isUserMessageReverted ?? false,
     markTextStreamingPulse: () => undefined,
     originalText,
+    optimisticRemotePresentation: false,
+    replaceLocalMessages: (conversationId, messages) => {
+      const existingState = runtimeStatesRef.current[conversationId]
+      if (!existingState) {
+        return
+      }
+      runtimeStatesRef.current[conversationId] = {
+        ...existingState,
+        conversation: {
+          ...existingState.conversation,
+          messages,
+        },
+      }
+    },
     removeLocalMessage: (conversationId, messageId) => {
       const existingState = runtimeStatesRef.current[conversationId]
       if (!existingState) {
@@ -220,6 +247,9 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
       composerValues.push(value)
     },
     setPendingDraftSendCount: () => undefined,
+    setOptimisticDraftMessages: (messages) => {
+      optimisticDraftMessages = messages
+    },
     stopTextStreaming: () => undefined,
     targetEditMessageId: null,
     trimmedText: originalText,
@@ -309,6 +339,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
   const globalScope = globalThis as Record<string, unknown>
   const previousWindow = globalScope.window
   globalScope.window = windowStub
+  upsertConversationRecord(conversation)
 
 
   return {
@@ -316,6 +347,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     composerValues,
     conversation,
     errors,
+    getOptimisticDraftMessages: () => optimisticDraftMessages,
     getRuntimeMessages: (conversationId: string) =>
       runtimeStatesRef.current[conversationId]?.conversation.messages ?? [],
     getRuntimeState: (conversationId: string) => runtimeStatesRef.current[conversationId] ?? null,
@@ -330,6 +362,93 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     },
   }
 }
+
+test('remote web send presents the user message immediately and still completes through shared run persistence', async () => {
+  const harness = createWorkflowHarness({ streamContent: 'Done', usesSharedRunPersistence: true })
+  harness.input.optimisticRemotePresentation = true
+  harness.input.upsertConversation(harness.conversation)
+
+  try {
+    const pendingSend = persistAndStreamMessage(harness.input)
+    const optimisticMessages = harness.getRuntimeMessages(harness.conversation.id)
+
+    assert.equal(optimisticMessages.length, 1)
+    assert.equal(optimisticMessages[0]?.content, 'Please update the README')
+    assert.equal(harness.composerValues[0], '')
+
+    const optimisticMessageId = optimisticMessages[0]?.id
+    assert.ok(optimisticMessageId)
+
+    assert.equal(await pendingSend, true)
+    assert.equal(harness.history.getStoredMessages(harness.conversation.id)[0]?.id, optimisticMessageId)
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
+test('remote web edit replaces the existing user bubble immediately and removes the later branch', async () => {
+  const harness = createWorkflowHarness({ streamContent: 'Updated response' })
+  const originalUserMessage: Message = {
+    content: 'Original request',
+    id: 'user-edit-1',
+    role: 'user',
+    timestamp: 10,
+  }
+  const originalAssistantMessage: Message = {
+    content: 'Original response',
+    id: 'assistant-old-1',
+    role: 'assistant',
+    timestamp: 20,
+  }
+  const conversationWithHistory = {
+    ...harness.conversation,
+    messages: [originalUserMessage, originalAssistantMessage],
+  }
+  harness.history.conversations.set(conversationWithHistory.id, conversationWithHistory)
+  harness.input.upsertConversation(conversationWithHistory)
+  harness.input.optimisticRemotePresentation = true
+  harness.input.targetEditMessageId = originalUserMessage.id
+  harness.input.originalText = 'Edited request'
+  harness.input.trimmedText = 'Edited request'
+
+  try {
+    const pendingSend = persistAndStreamMessage(harness.input)
+    const optimisticMessages = harness.getRuntimeMessages(conversationWithHistory.id)
+
+    assert.deepEqual(optimisticMessages.map((message) => message.id), [originalUserMessage.id])
+    assert.equal(optimisticMessages[0]?.content, 'Edited request')
+
+    assert.equal(await pendingSend, true)
+    assert.equal(harness.history.getStoredMessages(conversationWithHistory.id)[0]?.id, originalUserMessage.id)
+    assert.equal(harness.history.getStoredMessages(conversationWithHistory.id)[0]?.content, 'Edited request')
+  } finally {
+    harness.restoreWindow()
+  }
+})
+
+test('remote web new chat presents a draft user bubble before the host creates the conversation', async () => {
+  const harness = createWorkflowHarness({ streamContent: 'Welcome' })
+  harness.input.activeConversationId = null
+  harness.activeConversationIdRef.current = null
+  harness.input.optimisticRemotePresentation = true
+
+  try {
+    const pendingSend = persistAndStreamMessage(harness.input)
+    const optimisticDraftMessages = harness.getOptimisticDraftMessages()
+
+    assert.equal(optimisticDraftMessages.length, 1)
+    assert.equal(optimisticDraftMessages[0]?.content, 'Please update the README')
+    const optimisticMessageId = optimisticDraftMessages[0]?.id
+    assert.ok(optimisticMessageId)
+
+    assert.equal(await pendingSend, true)
+    assert.deepEqual(harness.getOptimisticDraftMessages(), [])
+    const createdConversation = harness.history.conversations.get('conversation-created-1')
+    assert.equal(createdConversation?.messages[0]?.id, optimisticMessageId)
+  } finally {
+    harness.restoreWindow()
+  }
+})
 
 test('a stream that completes after the turn was reverted must not resurrect the user message in history', async () => {
   const harness = createWorkflowHarness({

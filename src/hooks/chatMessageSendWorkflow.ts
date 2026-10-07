@@ -1,5 +1,6 @@
 import type { ConversationRecord, Message } from '../types/chat'
 import { restoreChatComposerDraft } from '../lib/chatComposerDraft'
+import { createClientId } from '../lib/clientId'
 import { isPlanStatusMessage } from '../lib/planStatusMessages'
 import {
   getMessagesBeforeUserMessage,
@@ -148,6 +149,10 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
   let persistedUserMessage: Message | null = null
   let persistedUserTurn: PersistedUserTurn | null = null
   let fallbackConversationForRollback: ConversationRecord | null = null
+  let optimisticOriginalMessages: Message[] | null = null
+  let optimisticPresentationConversationId: string | null = null
+  let optimisticDraftApplied = false
+  let optimisticallyClearedMainComposer = false
   const shouldRollbackUserMessageOnAbort = input.targetEditMessageId === null
   const canRestoreMainComposerOnAbort =
     shouldRollbackUserMessageOnAbort && !isPlanStatusMessage(input.originalText)
@@ -174,6 +179,73 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
     input.setPendingDraftSendCount((currentValue) => currentValue + 1)
   }
 
+  const submittedMessages = input.messageBatch ?? [{ attachments: input.attachments, text: input.trimmedText }]
+  const preferredMessageIds = input.targetEditMessageId
+    ? [input.targetEditMessageId]
+    : input.preferredMessageIds ?? (
+        input.optimisticRemotePresentation
+          ? submittedMessages.map(() => createClientId())
+          : undefined
+      )
+
+  if (input.optimisticRemotePresentation) {
+    const timestamp = Date.now()
+    const optimisticMessages = submittedMessages.map((message, index): Message => ({
+      ...(message.attachments.length > 0 ? { attachments: [...message.attachments] } : {}),
+      chatMode: input.draftChatMode,
+      content: message.text.trim(),
+      id: preferredMessageIds?.[index] ?? createClientId(),
+      mentionPathMap: message.mentionPathMap,
+      modelId: input.runtimeSelection.modelId,
+      providerId,
+      reasoningEffort: input.runtimeSelection.reasoningEffort,
+      role: 'user',
+      timestamp: timestamp + index,
+    }))
+
+    if (initiatingConversationId) {
+      const currentConversation = input.conversationRuntimeStatesRef.current[initiatingConversationId]?.conversation
+      if (currentConversation) {
+        optimisticOriginalMessages = currentConversation.messages
+        optimisticPresentationConversationId = initiatingConversationId
+
+        if (input.targetEditMessageId) {
+          const targetMessageIndex = currentConversation.messages.findIndex(
+            (message) => message.id === input.targetEditMessageId && message.role === 'user',
+          )
+          const optimisticEditedMessage = optimisticMessages[0]
+          if (targetMessageIndex >= 0 && optimisticEditedMessage) {
+            const currentTargetMessage = currentConversation.messages[targetMessageIndex]
+            input.replaceLocalMessages(initiatingConversationId, [
+              ...currentConversation.messages.slice(0, targetMessageIndex),
+              {
+                ...currentTargetMessage,
+                ...optimisticEditedMessage,
+                id: currentTargetMessage.id,
+                timestamp: currentTargetMessage.timestamp,
+              },
+            ])
+          }
+        } else {
+          input.replaceLocalMessages(initiatingConversationId, [
+            ...currentConversation.messages,
+            ...optimisticMessages,
+          ])
+        }
+      }
+    } else {
+      input.setOptimisticDraftMessages(optimisticMessages)
+      optimisticDraftApplied = true
+    }
+
+    if (input.targetEditMessageId === null && input.resetMainComposerAfterSend !== false) {
+      input.setMainComposerValue('')
+      input.setMainComposerAttachments([])
+      input.setMainComposerMentionPathMap(new Map())
+      optimisticallyClearedMainComposer = true
+    }
+  }
+
   try {
     const { conversation, userMessage } = await persistUserTurn({
       activeConversationId: initiatingConversationId,
@@ -183,6 +255,7 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
       draftAttachmentScopeId: input.draftAttachmentScopeId,
       messages: input.messageBatch ?? [{ attachments: input.attachments, text: input.trimmedText }],
       modelId: input.runtimeSelection.modelId,
+      preferredMessageIds,
       providerId,
       reasoningEffort: input.runtimeSelection.reasoningEffort,
       selectedFolderId: initiatingFolderId,
@@ -217,6 +290,10 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
     releasePendingDraftReservation()
 
     if (isUserMessageReverted || hasPendingAbort) {
+      if (optimisticDraftApplied) {
+        input.setOptimisticDraftMessages([])
+        optimisticDraftApplied = false
+      }
       if (shouldRollbackUserMessageOnAbort) {
         await rollbackAndRestoreComposer(input, {
           conversationId: conversationForRun.id,
@@ -225,6 +302,11 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
           shouldKeepSelected,
           userMessageId: persistedUserMessage.id,
         })
+      } else if (input.optimisticRemotePresentation) {
+        input.upsertConversation(conversationForRun)
+        if (shouldKeepSelected) {
+          input.applyConversation(conversationForRun)
+        }
       }
 
       return requestAccepted
@@ -237,6 +319,10 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
 
     if (shouldKeepSelected) {
       input.applyConversation(conversationForRun)
+    }
+    if (optimisticDraftApplied) {
+      input.setOptimisticDraftMessages([])
+      optimisticDraftApplied = false
     }
 
     if (input.targetEditMessageId !== null || input.completeEditingAfterPersist) {
@@ -449,6 +535,21 @@ export async function persistAndStreamMessage(input: PersistAndStreamMessageInpu
     input.updateConversationSummary(savedConversationForRun)
   } catch (caughtError) {
     console.error(caughtError)
+    if (!requestAccepted && input.optimisticRemotePresentation) {
+      if (optimisticPresentationConversationId && optimisticOriginalMessages) {
+        input.replaceLocalMessages(optimisticPresentationConversationId, optimisticOriginalMessages)
+      }
+      if (optimisticDraftApplied) {
+        input.setOptimisticDraftMessages([])
+        optimisticDraftApplied = false
+      }
+      if (optimisticallyClearedMainComposer) {
+        const restoredComposerDraft = restoreChatComposerDraft(input.originalText)
+        input.setMainComposerValue(restoredComposerDraft.value)
+        input.setMainComposerAttachments(input.attachments)
+        input.setMainComposerMentionPathMap(restoredComposerDraft.mentionPathMap)
+      }
+    }
     const stopWasRequested = input.hasPendingAbortRequest()
     if (stopWasRequested && shouldRollbackUserMessageOnAbort && conversationIdForCleanup && requestAccepted) {
       await streamProgressPersistence?.discard()

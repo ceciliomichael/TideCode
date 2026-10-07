@@ -48,6 +48,7 @@ interface PersistUserTurnInput {
   terminalExecutionMode: AppTerminalExecutionMode
   attachments: ChatAttachment[]
   messages: readonly UserMessageSubmission[]
+  preferredMessageIds?: readonly string[]
   trimmedText: string
   title?: string
 }
@@ -371,6 +372,9 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
   if (normalizedMessages.every((message) => message.text.length === 0 && message.attachments.length === 0)) {
     throw new Error('Cannot persist an empty user message batch.')
   }
+  if (input.preferredMessageIds && input.preferredMessageIds.length !== normalizedMessages.length) {
+    throw new Error('Preferred user message ids must match the persisted message batch.')
+  }
 
   if (input.targetEditMessageId !== null) {
     if (!input.activeConversationId) {
@@ -476,6 +480,7 @@ export async function persistUserTurn(input: PersistUserTurnInput): Promise<Pers
       input.chatMode,
       index === 0 ? hiddenUserContext : [],
       message.mentionPathMap,
+      input.preferredMessageIds?.[index],
     ),
   )
   const userMessage = userMessages[0]

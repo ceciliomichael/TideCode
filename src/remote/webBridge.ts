@@ -168,12 +168,16 @@ class RemoteConnection {
       if (current.size === 0) this.listeners.delete(channel)
     }
   }
+
 }
 
 function createRemoteApi(
   connection: RemoteConnection,
   namespace: RemoteRpcNamespace,
-  events: Record<string, { channel: RemoteEventChannel; noPayload?: boolean }> = {},
+  events: Record<string, {
+    channel: RemoteEventChannel
+    noPayload?: boolean
+  }> = {},
   overrides: Record<string, unknown> = {},
 ) {
   return new Proxy({}, {

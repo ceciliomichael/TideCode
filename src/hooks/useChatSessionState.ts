@@ -624,6 +624,23 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
     })
   }, [])
 
+  const replaceLocalMessages = useCallback((conversationId: string, messages: Message[]) => {
+    setConversationRuntimeStates((currentValue) => {
+      const conversationState = currentValue[conversationId]
+      if (!conversationState) {
+        return currentValue
+      }
+
+      return {
+        ...currentValue,
+        [conversationId]: updateConversationRecord(conversationState, (conversation) => ({
+          ...conversation,
+          messages,
+        })),
+      }
+    })
+  }, [])
+
   const insertLocalMessagesBefore = useCallback((conversationId: string, targetMessageId: string, nextMessages: Message[]) => {
     if (nextMessages.length === 0) {
       return
@@ -765,6 +782,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
     updateConversationRuntimeState,
     updateConversationSummary: upsertConversationSummaryOnly,
     updateLocalMessage,
+    replaceLocalMessages,
     insertLocalMessagesBefore,
     appendLocalMessage,
     removeLocalMessage,
