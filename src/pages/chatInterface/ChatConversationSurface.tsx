@@ -83,6 +83,8 @@ interface ChatConversationSurfaceProps {
   workspaceState: ChatWorkspaceUiState
 }
 
+const MAX_RETAINED_BROWSER_PROJECT_SESSIONS = 2
+
 export function ChatConversationSurface({
   activeWorkspacePath,
   chatMessages,
@@ -133,9 +135,11 @@ export function ChatConversationSurface({
   useEffect(() => {
     if (!isBrowserOpen) return
 
-    setInitializedBrowserProjectKeys((currentKeys) =>
-      currentKeys.includes(browserProjectKey) ? currentKeys : [...currentKeys, browserProjectKey],
-    )
+    setInitializedBrowserProjectKeys((currentKeys) => {
+      if (currentKeys.at(-1) === browserProjectKey) return currentKeys
+      const nextKeys = [...currentKeys.filter((key) => key !== browserProjectKey), browserProjectKey]
+      return nextKeys.slice(-MAX_RETAINED_BROWSER_PROJECT_SESSIONS)
+    })
   }, [browserProjectKey, isBrowserOpen])
   const handleCloseBrowser = useCallback((projectKey: string) => {
     setInitializedBrowserProjectKeys((currentKeys) => currentKeys.filter((key) => key !== projectKey))

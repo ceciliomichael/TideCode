@@ -15,7 +15,7 @@ import { useIsMobileViewport } from '../hooks/useIsMobileViewport'
 import type { AppSettings, ApiKeyProviderId, ProvidersState, SaveApiKeyProviderInput } from '../types/chat'
 import type { TideCodeLaunchRequest, TideCodeSettingsLaunchRequest } from '../lib/appLaunchRequest'
 
-interface SettingsInterfaceProps {
+export interface SettingsInterfaceProps {
   initialItemId: SettingsItemId | null
   isActiveScreen: boolean
   isSettingsLoading: boolean

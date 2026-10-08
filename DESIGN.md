@@ -8,11 +8,23 @@ The text-only `tidecode-word.svg` serves as a large new-tab heading, using the t
 
 Closing the last Browser tab closes the Browser panel and returns to chat, without closing TideCode. It does not create a replacement tab. Reopening Browser starts a fresh new tab while preserving recently visited websites.
 
+Browser page state is preserved for the two most recently active projects. Opening Browser in a third project evicts the least-recent inactive project session and releases its guest pages; that project's saved recent websites remain available when Browser is opened again.
+
 Users can edit the address while the current page loads. Background load completion and metadata updates must preserve their text and keyboard focus. Page setup does not simulate user interaction, and address editing does not use repeated focus restoration or remove the page from keyboard navigation.
 
 Clicking the webpage transfers focus normally. DevTools initialize when opened through the toolbar or keyboard shortcut; choosing a dock position alone does not open them. The first opening therefore includes DevTools initialization.
 
+Closing DevTools releases its native view. Opening it again initializes a fresh view; changing dock position preserves the transition behavior.
+
 The Browser control is available only in the desktop Electron app. Remote web clients do not show or open the Browser surface, and there is no remote page virtualization or screencast interaction path.
+
+## Resource retention and previews
+
+The selected chat and ongoing background runs stay available. Three recent inactive transcripts may be reused within a memory budget; other chats reload from saved history when selected. Retention never deletes conversations or their attachments.
+
+Compaction markers load with the opened conversation. Starting on an empty draft does not load markers for saved chats; switching chats loads that chat's markers, and completed compactions refresh the visible markers.
+
+PDF previews preserve page positions, page count, scrolling, panning, and zoom while rendering pages near the viewport. Offscreen pages keep their layout and recreate their canvas when approached. Very large pages or high zoom levels use a capped raster resolution while retaining their displayed dimensions.
 
 ## Chat mentions
 

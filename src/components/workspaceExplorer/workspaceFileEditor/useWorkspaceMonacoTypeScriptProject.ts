@@ -9,6 +9,7 @@ import { normalizeWorkspaceRootPathForComparison } from '../../../lib/workspaceR
 import { createWorkspaceMonacoModelPath } from './workspaceMonacoConfig'
 import {
   applyWorkspaceMonacoTypeScriptProject,
+  retainWorkspaceMonacoTypeScriptProject,
   getWorkspaceMonacoScriptLanguage,
   isWorkspaceMonacoTypeScriptFileHydrated,
   type WorkspaceMonacoScriptLanguage,
@@ -31,6 +32,8 @@ type TypeScriptWorker = Awaited<ReturnType<TypeScriptWorkerFactory>>
 
 const PROJECT_REFRESH_DEBOUNCE_MS = 140
 const PROJECT_SNAPSHOT_CACHE_LIMIT = 4
+const PROJECT_SNAPSHOT_MAX_BYTES = 16 * 1024 * 1024
+const snapshotBytes = new Map<string, number>()
 const projectSnapshotCache = new Map<string, Promise<WorkspaceTypeScriptProjectSnapshot>>()
 
 function createProjectBaseKey(workspaceRootPath: string, filePath: string) {
@@ -50,9 +53,12 @@ function createProjectRequestKey(
 function cacheProjectSnapshot(key: string, promise: Promise<WorkspaceTypeScriptProjectSnapshot>) {
   projectSnapshotCache.delete(key)
   projectSnapshotCache.set(key, promise)
-  while (projectSnapshotCache.size > PROJECT_SNAPSHOT_CACHE_LIMIT) {
+  let bytes = [...snapshotBytes.values()].reduce((total, size) => total + size, 0)
+  while (projectSnapshotCache.size > PROJECT_SNAPSHOT_CACHE_LIMIT || bytes > PROJECT_SNAPSHOT_MAX_BYTES) {
     const oldestKey = projectSnapshotCache.keys().next().value as string | undefined
     if (!oldestKey) break
+    bytes -= snapshotBytes.get(oldestKey) ?? 0
+    snapshotBytes.delete(oldestKey)
     projectSnapshotCache.delete(oldestKey)
   }
 }
@@ -62,6 +68,7 @@ function invalidateWorkspaceProjectSnapshots(workspaceRootPath: string) {
   for (const key of Array.from(projectSnapshotCache.keys())) {
     if (key.startsWith(prefix)) {
       projectSnapshotCache.delete(key)
+      snapshotBytes.delete(key)
     }
   }
 }
@@ -77,6 +84,7 @@ function requestWorkspaceTypeScriptProject(
     const cached = projectSnapshotCache.get(requestKey)
     if (cached) {
       projectSnapshotCache.delete(requestKey)
+      snapshotBytes.delete(requestKey)
       projectSnapshotCache.set(requestKey, cached)
       return cached
     }
@@ -86,6 +94,12 @@ function requestWorkspaceTypeScriptProject(
     includeDependencyDeclarations,
     relativePath: filePath,
     workspaceRootPath,
+  }).then((snapshot) => {
+    if (projectSnapshotCache.get(requestKey) === promise) {
+      snapshotBytes.set(requestKey, snapshot.files.reduce((total, file) => total + file.content.length * 2, 0))
+      cacheProjectSnapshot(requestKey, promise)
+    }
+    return snapshot
   }).catch((error: unknown) => {
     if (projectSnapshotCache.get(requestKey) === promise) {
       projectSnapshotCache.delete(requestKey)
@@ -119,6 +133,7 @@ export function useWorkspaceMonacoTypeScriptProject({
   workspaceRootPath,
 }: UseWorkspaceMonacoTypeScriptProjectOptions) {
   const activeProjectKeyRef = useRef<string | null>(null)
+  const projectLeaseRef = useRef<{ monaco: Monaco; language: WorkspaceMonacoScriptLanguage; release: () => void } | null>(null)
 
   const refreshProject = useCallback(async (
     monacoOverride?: Monaco,
@@ -135,6 +150,21 @@ export function useWorkspaceMonacoTypeScriptProject({
     activeProjectKeyRef.current = projectKey
     const force = options.force === true
     const existingMonaco = monacoOverride ?? monacoRef.current ?? getPreloadedWorkspaceMonacoRuntime()
+    const retainProject = (monaco: Monaco) => {
+      const lease = projectLeaseRef.current
+      if (lease && lease.monaco === monaco && lease.language === scriptLanguage) {
+        return
+      }
+      lease?.release()
+      projectLeaseRef.current = {
+        monaco,
+        language: scriptLanguage,
+        release: retainWorkspaceMonacoTypeScriptProject(monaco, scriptLanguage),
+      }
+    }
+    if (existingMonaco) {
+      retainProject(existingMonaco)
+    }
     if (
       !force &&
       existingMonaco &&
@@ -175,6 +205,7 @@ export function useWorkspaceMonacoTypeScriptProject({
         return
       }
 
+      retainProject(monacoInstance)
       applyWorkspaceMonacoTypeScriptProject(
         monacoInstance,
         scriptLanguage,
@@ -256,6 +287,8 @@ export function useWorkspaceMonacoTypeScriptProject({
 
     return () => {
       activeProjectKeyRef.current = null
+      projectLeaseRef.current?.release()
+      projectLeaseRef.current = null
       if (refreshTimer !== null) {
         clearTimeout(refreshTimer)
       }

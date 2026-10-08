@@ -18,7 +18,13 @@ function createTerminalTestRegistry(): AgentToolRegistry {
       description: 'Capture a terminal command and return a running session.',
       execute: async (input: unknown) => ({
         body: JSON.stringify(input),
-        semantics: { session_id: 43440, state: 'running' },
+        displayBody: 'initial terminal output',
+        semantics: {
+          new_output_line_count: 1,
+          output_path: '@tool-output/tool_43440.txt',
+          session_id: 43440,
+          state: 'running',
+        },
         status: 'success' as const,
         summary: 'Started terminal session 43440.',
       }),
@@ -1166,17 +1172,57 @@ test('Code Mode rejects malformed quoted terminal commands before tool execution
   }
 })
 
-test('Code Mode exposes terminal session_id directly as well as in semantics', async () => {
+test('Code Mode exposes terminal recovery fields directly as well as in semantics', async () => {
   const executor = new CodeModeExecutor(createTerminalTestRegistry())
 
   try {
     const result = await executor.run([
       "const started = await tools.execute_terminal({ command: 'long-running' })",
-      'return { direct: started.session_id, nested: started.semantics.session_id }',
+      'return { direct: started.session_id, nested: started.semantics.session_id, state: started.state, newOutput: started.new_output, outputPath: started.output_path }',
     ].join('\n'))
 
     assert.equal(result.status, 'success')
-    assert.deepEqual(result.output, { direct: 43440, nested: 43440 })
+    assert.deepEqual(result.output, {
+      direct: 43440,
+      nested: 43440,
+      newOutput: 'initial terminal output',
+      outputPath: '@tool-output/tool_43440.txt',
+      state: 'running',
+    })
+  } finally {
+    await executor.dispose()
+  }
+})
+
+test('Code Mode tool failures preserve the detailed model body', async () => {
+  const entries = [{
+    description: 'Return a detailed failure.',
+    execute: async () => ({
+      body: 'Detailed recovery: use session_id 43210 with read_terminal.',
+      displayBody: 'Terminal session unavailable.',
+      status: 'error' as const,
+      summary: 'Terminal failed.',
+    }),
+    inputSchema: { type: 'object' as const },
+    name: 'failing_terminal',
+    namespace: 'terminal',
+  }]
+  const registry: AgentToolRegistry = {
+    entries,
+    get(name) {
+      return entries.find((entry) => entry.name === name)
+    },
+    search() {
+      return entries.map((entry) => ({ ...entry, score: 1 }))
+    },
+  }
+  const executor = new CodeModeExecutor(registry)
+
+  try {
+    const result = await executor.run('return await tools.failing_terminal({})')
+    assert.equal(result.status, 'error')
+    assert.match(result.summary, /Detailed recovery: use session_id 43210 with read_terminal/u)
+    assert.doesNotMatch(result.summary, /Terminal session unavailable/u)
   } finally {
     await executor.dispose()
   }
@@ -1684,6 +1730,9 @@ test('Code Mode capability search does not expose injected plan APIs while direc
     assert.match(codeModeDescription, /Sandbox keeps host authority restricted/u)
     assert.match(codeModeDescription, /Node\/process globals.*not part of the Code Mode language/u)
     assert.match(codeModeDescription, /session_id.*directly/u)
+    assert.match(codeModeDescription, /new_output.*output_path/u)
+    assert.match(codeModeDescription, /Promise chaining methods/u)
+    assert.match(codeModeDescription, /~\/\.tidecode\/tool-output/u)
     assert.match(codeModeDescription, /Imports, dynamic imports, require.*not part of the Code Mode language/u)
 
     const codeResult = await invoke(bundle.tools.code_mode, {

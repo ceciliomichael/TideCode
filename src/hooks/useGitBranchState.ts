@@ -12,6 +12,7 @@ import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPat
 import { useGitSourceControlWatcher } from './useGitSourceControlWatcher'
 
 const EMPTY_BRANCH_STATE: GitBranchState = getEmptyGitBranchState()
+const GIT_BRANCH_FALLBACK_POLL_INTERVAL_MS = 30_000
 
 interface UseGitBranchStateResult {
   branchState: GitBranchState
@@ -164,7 +165,7 @@ export function useGitBranchState(workspacePath: string | null | undefined): Use
       }
 
       void refresh({ forceRefresh: true, silent: true })
-    }, 5000)
+    }, GIT_BRANCH_FALLBACK_POLL_INTERVAL_MS)
 
     return () => {
       window.clearInterval(intervalId)

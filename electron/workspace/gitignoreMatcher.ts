@@ -36,7 +36,21 @@ export const WORKSPACE_IGNORED_ENTRY_NAMES: ReadonlySet<string> = new Set<string
 ])
 const EXPLORER_IGNORED_ENTRY_NAMES = new Set<string>(['.git'])
 const GITIGNORE_IMMUNE_INSTRUCTION_FILES = new Set<string>(['agents.md'])
+const MAX_GITIGNORE_MATCHER_CACHE_ENTRIES = 256
 const gitignoreMatcherCache = new Map<string, Promise<GitignoreMatcherEntry[]>>()
+
+function touchGitignoreMatcherCacheEntry(cacheKey: string, matchersPromise: Promise<GitignoreMatcherEntry[]>) {
+  gitignoreMatcherCache.delete(cacheKey)
+  gitignoreMatcherCache.set(cacheKey, matchersPromise)
+}
+
+function pruneGitignoreMatcherCache() {
+  while (gitignoreMatcherCache.size > MAX_GITIGNORE_MATCHER_CACHE_ENTRIES) {
+    const oldestKey = gitignoreMatcherCache.keys().next().value
+    if (typeof oldestKey !== 'string') return
+    gitignoreMatcherCache.delete(oldestKey)
+  }
+}
 
 function toPosixRelativePath(fromPath: string, toPath: string) {
   return path.relative(fromPath, toPath).split(path.sep).join('/')
@@ -72,26 +86,34 @@ export async function loadGitignoreMatchers(
   const normalizedDirectoryPath = path.resolve(directoryPath)
   const cacheKey = `${normalizedRootPath}\0${normalizedDirectoryPath}`
 
-  let matchersPromise: Promise<GitignoreMatcherEntry[]> | undefined = gitignoreMatcherCache.get(cacheKey)
-  if (!matchersPromise) {
-    matchersPromise = (async () => {
-      const relativePath = path.relative(normalizedRootPath, normalizedDirectoryPath)
-      if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-        return []
-      }
-
-      const parentPath = normalizedDirectoryPath === normalizedRootPath ? null : path.dirname(normalizedDirectoryPath)
-      const parentMatchers: GitignoreMatcherEntry[] = parentPath
-        ? await loadGitignoreMatchers(normalizedRootPath, parentPath)
-        : []
-      const localMatcher = await loadGitignoreMatcher(normalizedDirectoryPath)
-
-      return localMatcher ? [...parentMatchers, localMatcher] : parentMatchers
-    })()
-
-    gitignoreMatcherCache.set(cacheKey, matchersPromise)
+  const cachedPromise = gitignoreMatcherCache.get(cacheKey)
+  if (cachedPromise) {
+    touchGitignoreMatcherCacheEntry(cacheKey, cachedPromise)
+    return cachedPromise
   }
 
+  const matchersPromise = (async () => {
+    const relativePath = path.relative(normalizedRootPath, normalizedDirectoryPath)
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      return []
+    }
+
+    const parentPath = normalizedDirectoryPath === normalizedRootPath ? null : path.dirname(normalizedDirectoryPath)
+    const parentMatchers: GitignoreMatcherEntry[] = parentPath
+      ? await loadGitignoreMatchers(normalizedRootPath, parentPath)
+      : []
+    const localMatcher = await loadGitignoreMatcher(normalizedDirectoryPath)
+
+    return localMatcher ? [...parentMatchers, localMatcher] : parentMatchers
+  })().catch((error: unknown) => {
+    if (gitignoreMatcherCache.get(cacheKey) === matchersPromise) {
+      gitignoreMatcherCache.delete(cacheKey)
+    }
+    throw error
+  })
+
+  gitignoreMatcherCache.set(cacheKey, matchersPromise)
+  pruneGitignoreMatcherCache()
   return matchersPromise
 }
 

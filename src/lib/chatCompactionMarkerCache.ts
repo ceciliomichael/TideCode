@@ -1,7 +1,26 @@
 import type { ChatCompactionMarker } from '../types/chat'
 
+const MAX_CACHED_CONVERSATION_MARKERS = 128
 const markerCache = new Map<string, ChatCompactionMarker[]>()
 const markerLoadPromises = new Map<string, Promise<ChatCompactionMarker[]>>()
+
+function getCachedMarkers(conversationId: string) {
+  const cachedMarkers = markerCache.get(conversationId)
+  if (!cachedMarkers) return null
+  markerCache.delete(conversationId)
+  markerCache.set(conversationId, cachedMarkers)
+  return cachedMarkers
+}
+
+function cacheMarkers(conversationId: string, markers: ChatCompactionMarker[]) {
+  markerCache.delete(conversationId)
+  markerCache.set(conversationId, markers)
+  while (markerCache.size > MAX_CACHED_CONVERSATION_MARKERS) {
+    const oldestConversationId = markerCache.keys().next().value
+    if (typeof oldestConversationId !== 'string') break
+    markerCache.delete(oldestConversationId)
+  }
+}
 
 function normalizeConversationId(conversationId: string) {
   return conversationId.trim()
@@ -13,7 +32,7 @@ export function getCachedChatCompactionMarkers(conversationId: string | null) {
     return null
   }
 
-  return markerCache.get(normalizedConversationId) ?? null
+  return getCachedMarkers(normalizedConversationId)
 }
 
 export function loadChatCompactionMarkers(
@@ -31,7 +50,7 @@ export function loadChatCompactionMarkers(
   }
 
   if (!options.forceRefresh) {
-    const cachedMarkers = markerCache.get(normalizedConversationId)
+    const cachedMarkers = getCachedMarkers(normalizedConversationId)
     if (cachedMarkers) {
       return Promise.resolve(cachedMarkers)
     }
@@ -41,7 +60,7 @@ export function loadChatCompactionMarkers(
     .then(() => window.tidecodeHistory.listCompactionMarkers(normalizedConversationId))
     .then((markers) => {
       if (markerLoadPromises.get(normalizedConversationId) === loadPromise) {
-        markerCache.set(normalizedConversationId, markers)
+        cacheMarkers(normalizedConversationId, markers)
       }
       return markers
     })
@@ -60,12 +79,4 @@ export function clearCachedChatCompactionMarkers(conversationId: string) {
   if (normalizedConversationId.length > 0) {
     markerCache.delete(normalizedConversationId)
   }
-}
-
-export async function prefetchChatCompactionMarkers(conversationIds: readonly string[]) {
-  const uniqueConversationIds = Array.from(
-    new Set(conversationIds.map(normalizeConversationId).filter((conversationId) => conversationId.length > 0)),
-  )
-
-  await Promise.allSettled(uniqueConversationIds.map((conversationId) => loadChatCompactionMarkers(conversationId)))
 }

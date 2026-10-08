@@ -140,11 +140,13 @@ export class TideCodeRunServiceServer {
   private readonly runtimeBySurfaceConversationKey = new Map<string, SharedConversationRuntimeSnapshot>()
   private readonly chatModeByConversationId = new Map<string, SharedConversationRuntimeSnapshot['chatMode']>()
   private readonly terminalBroker = getTerminalBroker()
+  private readonly runRetentionTimers = new Map<string, NodeJS.Timeout>()
+  private readonly unsubscribeTerminalEvents: () => void
   private nextConversationEventSeq = 0
   private token = ''
 
   constructor(private readonly options: TideCodeRunServiceServerOptions) {
-    this.terminalBroker.onEvent((event) => this.emitTerminalEvent(event))
+    this.unsubscribeTerminalEvents = this.terminalBroker.onEvent((event) => this.emitTerminalEvent(event))
   }
 
   async start() {
@@ -164,6 +166,20 @@ export class TideCodeRunServiceServer {
   }
 
   async close() {
+    this.unsubscribeTerminalEvents()
+    for (const timer of this.runRetentionTimers.values()) {
+      clearTimeout(timer)
+    }
+    this.runRetentionTimers.clear()
+    for (const timer of this.projectionTextIdleTimers.values()) {
+      clearTimeout(timer)
+    }
+    this.projectionTextIdleTimers.clear()
+    this.nextSeqByRunId.clear()
+    this.projectionsByRunId.clear()
+    this.runtimeBySurfaceConversationKey.clear()
+    this.chatModeByConversationId.clear()
+    this.compactionStateByConversationId.clear()
     await this.terminalBroker.shutdown()
     for (const client of this.clients) client.destroy()
     await new Promise<void>((resolve) => this.server.close(() => resolve()))
@@ -186,6 +202,7 @@ export class TideCodeRunServiceServer {
       }
     })
     socket.on('close', () => {
+      buffered = ''
       this.clients.delete(socket)
       const terminalClientIds = this.terminalClientIdsBySocket.get(socket)
       this.terminalClientIdsBySocket.delete(socket)
@@ -418,7 +435,11 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
     const surface = isAppSettingsSurface(requestedSurface) ? requestedSurface : 'desktop'
     const cacheKey = getConversationRuntimeKey(surface, conversationId)
     const cached = this.runtimeBySurfaceConversationKey.get(cacheKey)
-    if (cached) return cached
+    if (cached) {
+      this.runtimeBySurfaceConversationKey.delete(cacheKey)
+      this.runtimeBySurfaceConversationKey.set(cacheKey, cached)
+      return cached
+    }
 
     const conversation = await getStoredConversation(conversationId).catch(() => null)
     if (!conversation) return null
@@ -441,6 +462,7 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
       updatedAt: conversation.updatedAt,
     }
     this.runtimeBySurfaceConversationKey.set(cacheKey, runtime)
+    this.pruneConversationMetadata()
     return runtime
   }
 
@@ -497,6 +519,7 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
       updatedAt: Date.now(),
     }
     this.runtimeBySurfaceConversationKey.set(getConversationRuntimeKey(surface, conversationId), runtime)
+    this.pruneConversationMetadata()
 
     if (input.chatMode) {
       for (const [cacheKey, cachedRuntime] of this.runtimeBySurfaceConversationKey) {
@@ -586,6 +609,7 @@ result: await this.getConversationRuntime(parsed.params.conversationId, parsed.p
       )
       if (compactedState) {
         this.compactionStateByConversationId.set(conversationId, compactedState)
+        this.pruneConversationMetadata()
       }
       this.emitGlobalEvent({
         type: 'compaction_event',
@@ -734,6 +758,7 @@ getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedIn
           const nextCompaction = reduceChatCompactionStatus(currentCompaction, forwardedEvent, conversationId)
           if (nextCompaction) {
             this.compactionStateByConversationId.set(conversationId, nextCompaction)
+            this.pruneConversationMetadata()
           } else {
             this.compactionStateByConversationId.delete(conversationId)
           }
@@ -808,18 +833,11 @@ getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedIn
       this.registry.updateStatus(createdRun.runId, status)
       this.emitRunState(createdRun.runId)
       stopProjectionTextStreaming()
-      const retentionTimer = setTimeout(() => {
-        const retainedRun = this.registry.getByRunId(createdRun.runId)
-        if (retainedRun?.streamId) this.followUps.remove(retainedRun.streamId)
-        this.registry.remove(createdRun.runId)
-        this.projectionsByRunId.delete(createdRun.runId)
-        const textIdleTimer = this.projectionTextIdleTimers.get(createdRun.runId)
-        if (textIdleTimer) clearTimeout(textIdleTimer)
-        this.projectionTextIdleTimers.delete(createdRun.runId)
-        if (projectionEmitTimer) clearTimeout(projectionEmitTimer)
+      if (projectionEmitTimer) {
+        clearTimeout(projectionEmitTimer)
         projectionEmitTimer = null
-      }, TERMINAL_RUN_RETENTION_MS)
-      retentionTimer.unref?.()
+      }
+      this.scheduleRunRelease(createdRun.runId)
     }
 
     try {
@@ -843,6 +861,61 @@ getChatMode: () => this.chatModeByConversationId.get(conversationId) ?? sharedIn
       this.registry.remove(createdRun.runId)
       throw error
     }
+  }
+
+  private pruneConversationMetadata() {
+    const activeIds = new Set(this.registry.listActive().map((run) => run.conversationId))
+    for (const [key, runtime] of this.runtimeBySurfaceConversationKey) {
+      if (this.runtimeBySurfaceConversationKey.size <= 128) {
+        break
+      }
+      if (!activeIds.has(runtime.conversationId)) {
+        this.runtimeBySurfaceConversationKey.delete(key)
+      }
+    }
+    for (const id of this.chatModeByConversationId.keys()) {
+      if (this.chatModeByConversationId.size <= 128) {
+        break
+      }
+      if (!activeIds.has(id)) {
+        this.chatModeByConversationId.delete(id)
+      }
+    }
+    for (const [id, state] of this.compactionStateByConversationId) {
+      if (this.compactionStateByConversationId.size <= 128) {
+        break
+      }
+      if (!activeIds.has(id) && state.phase !== 'compacting') {
+        this.compactionStateByConversationId.delete(id)
+      }
+    }
+  }
+
+  private scheduleRunRelease(runId: string) {
+    const previousTimer = this.runRetentionTimers.get(runId)
+    if (previousTimer) {
+      clearTimeout(previousTimer)
+    }
+    // Keep timer closures outside stream setup so they cannot retain its input,
+    // collector, and persistence buffers for the entire retention interval.
+    const timer = setTimeout(() => this.releaseRun(runId), TERMINAL_RUN_RETENTION_MS)
+    timer.unref()
+    this.runRetentionTimers.set(runId, timer)
+  }
+
+  private releaseRun(runId: string) {
+    clearTimeout(this.runRetentionTimers.get(runId))
+    this.runRetentionTimers.delete(runId)
+    const retainedRun = this.registry.getByRunId(runId)
+    if (retainedRun?.streamId) {
+      this.followUps.remove(retainedRun.streamId)
+    }
+    this.registry.remove(runId)
+    this.projectionsByRunId.delete(runId)
+    this.nextSeqByRunId.delete(runId)
+    clearTimeout(this.projectionTextIdleTimers.get(runId))
+    this.projectionTextIdleTimers.delete(runId)
+    this.pruneConversationMetadata()
   }
 
   private syncProviderSteers(snapshot: SharedFollowUpSnapshot) {

@@ -11,6 +11,31 @@ function standardPatch(body: string) {
   return `*** Begin Patch\n${body}\n*** End Patch`
 }
 
+test('apply_patch explains context-only update hunks without changing the file', async () => {
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-noop-'))
+  const targetPath = path.join(workspaceRootPath, 'value.txt')
+
+  try {
+    await fs.writeFile(targetPath, 'before\n', 'utf8')
+    await assert.rejects(
+      applyPatchInWorkspace(
+        workspaceRootPath,
+        standardPatch('*** Update File: value.txt\n@@\n before'),
+      ),
+      (error: unknown) => {
+        assert.ok(error instanceof Error)
+        assert.match(error.message, /Patch did not change value\.txt/u)
+        assert.match(error.message, /real content change/u)
+        assert.match(error.message, /context-only hunks/u)
+        return true
+      },
+    )
+    assert.equal(await fs.readFile(targetPath, 'utf8'), 'before\n')
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('apply_patch retries transient atomic install failures', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-retry-'))
   const targetPath = path.join(workspaceRootPath, 'value.txt')

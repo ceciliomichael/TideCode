@@ -8,7 +8,28 @@ import {
   normalizeRenderedMermaidSvg,
 } from './mermaid-utils'
 
+const MAX_MERMAID_RENDER_CACHE_ENTRIES = 24
+const MAX_CACHED_MERMAID_SVG_LENGTH = 256 * 1024
 const mermaidRenderCache = new Map<string, string>()
+
+function getCachedMermaidSvg(cacheKey: string) {
+  const cachedSvg = mermaidRenderCache.get(cacheKey)
+  if (!cachedSvg) return null
+  mermaidRenderCache.delete(cacheKey)
+  mermaidRenderCache.set(cacheKey, cachedSvg)
+  return cachedSvg
+}
+
+function cacheMermaidSvg(cacheKey: string, svg: string) {
+  if (svg.length > MAX_CACHED_MERMAID_SVG_LENGTH) return
+  mermaidRenderCache.delete(cacheKey)
+  mermaidRenderCache.set(cacheKey, svg)
+  while (mermaidRenderCache.size > MAX_MERMAID_RENDER_CACHE_ENTRIES) {
+    const oldestKey = mermaidRenderCache.keys().next().value
+    if (typeof oldestKey !== 'string') break
+    mermaidRenderCache.delete(oldestKey)
+  }
+}
 
 interface UseMermaidRendererInput {
   code: string
@@ -35,7 +56,7 @@ export function useMermaidRenderer({ code, renderId, theme }: UseMermaidRenderer
       return
     }
 
-    const cachedSvg = mermaidRenderCache.get(cacheKey)
+    const cachedSvg = getCachedMermaidSvg(cacheKey)
     if (cachedSvg) {
       setSvg(cachedSvg)
       setError(null)
@@ -71,7 +92,7 @@ export function useMermaidRenderer({ code, renderId, theme }: UseMermaidRenderer
           return
         }
 
-        mermaidRenderCache.set(cacheKey, responsiveSvg)
+        cacheMermaidSvg(cacheKey, responsiveSvg)
         setSvg(responsiveSvg)
         setError(null)
       } catch (renderError) {

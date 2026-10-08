@@ -60,10 +60,14 @@ async function collectCompactionText(input: CompactModelMessagesInput, prompt: s
     throw new Error('AI compaction is unavailable because no compaction model stream was provided.')
   }
   const abortController = new AbortController()
+  const handleParentAbort = () => abortController.abort()
   const timeoutId = setTimeout(() => abortController.abort(), COMPACTION_TIMEOUT_MS)
   if (input.signal) {
-    if (input.signal.aborted) abortController.abort()
-    else input.signal.addEventListener('abort', () => abortController.abort(), { once: true })
+    if (input.signal.aborted) {
+      abortController.abort()
+    } else {
+      input.signal.addEventListener('abort', handleParentAbort, { once: true })
+    }
   }
 
   try {
@@ -89,6 +93,7 @@ async function collectCompactionText(input: CompactModelMessagesInput, prompt: s
     )
   } finally {
     clearTimeout(timeoutId)
+    input.signal?.removeEventListener('abort', handleParentAbort)
   }
 }
 

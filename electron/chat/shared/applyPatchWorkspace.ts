@@ -154,7 +154,11 @@ export async function applyPatchInWorkspace(
     const writeTarget = nextTarget ?? sourceTarget
 
     if (!nextTarget && nextContent === normalizeContentLineEndings(existingContent)) {
-      throw new Error(`Patch did not change ${sourceTarget.relativePath}`)
+      throw new Error(
+        `Patch did not change ${sourceTarget.relativePath}. The Update File hunk produced identical content. `
+        + "Ensure the hunk contains a real content change using '-' removal and/or '+' addition lines; "
+        + "context-only hunks and identical replacements are no-ops.",
+      )
     }
 
     stagedFiles.set(writeTarget.absolutePath, { content: nextContent, target: writeTarget })

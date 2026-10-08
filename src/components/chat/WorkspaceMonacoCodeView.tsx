@@ -121,6 +121,7 @@ export function WorkspaceMonacoCodeView({
           lineNumbers: (lineNumber) => String(lineNumber + Math.max(1, Math.trunc(startLineNumber)) - 1),
           lineNumbersMinChars: 5,
           minimap: { enabled: false },
+          occurrencesHighlight: 'off',
           padding: { bottom: CODE_VERTICAL_PADDING_PX, top: CODE_VERTICAL_PADDING_PX },
           readOnly: true,
           renderLineHighlight: 'none',

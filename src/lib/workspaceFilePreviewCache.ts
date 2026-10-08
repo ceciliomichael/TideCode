@@ -1,8 +1,6 @@
 import type { WorkspaceExplorerReadFileResult } from '../types/chat/workspace'
 import { isDocxPreviewablePath } from './docx-preview'
 import { isPdfPreviewablePath } from './pdf-preview'
-import { clearPdfPreviewRenderCache, prefetchPdfPreviewRender, requestPdfPreviewRender } from './pdfPreviewRenderCache'
-import { clearDocxPreviewRenderCache, prefetchDocxPreviewRender, requestDocxPreviewRender } from './docxPreviewRenderCache'
 import {
   isWorkspaceFileCacheEntryFresh,
   MAX_CACHED_WORKSPACE_FILES,
@@ -16,6 +14,8 @@ interface WorkspaceFileCacheEntry {
 }
 
 const workspaceFileCache = new Map<string, WorkspaceFileCacheEntry>()
+let docxPreviewRenderModulePromise: Promise<typeof import('./docxPreviewRenderCache')> | null = null
+let pdfPreviewRenderModulePromise: Promise<typeof import('./pdfPreviewRenderCache')> | null = null
 
 interface WorkspaceFileCacheOptions {
   consume?: boolean
@@ -38,26 +38,44 @@ function isBackgroundPreviewablePath(relativePath: string) {
   return isDocxPreviewablePath(relativePath) || isPdfPreviewablePath(relativePath)
 }
 
+function loadDocxPreviewRenderModule() {
+  docxPreviewRenderModulePromise ??= import('./docxPreviewRenderCache')
+  return docxPreviewRenderModulePromise
+}
+
+function loadPdfPreviewRenderModule() {
+  pdfPreviewRenderModulePromise ??= import('./pdfPreviewRenderCache')
+  return pdfPreviewRenderModulePromise
+}
+
 function warmPreview(result: WorkspaceExplorerReadFileResult, priority: boolean) {
   if (result.status !== 'ready' || !result.previewDataUrl) {
     return
   }
 
   if (isDocxPreviewablePath(result.relativePath)) {
-    if (priority) {
-      requestDocxPreviewRender(result.previewDataUrl)
-    } else {
-      prefetchDocxPreviewRender(result.previewDataUrl)
-    }
+    void loadDocxPreviewRenderModule()
+      .then((previewModule) => {
+        if (priority) {
+          void previewModule.requestDocxPreviewRender(result.previewDataUrl!)
+        } else {
+          previewModule.prefetchDocxPreviewRender(result.previewDataUrl!)
+        }
+      })
+      .catch(() => undefined)
     return
   }
 
   if (isPdfPreviewablePath(result.relativePath)) {
-    if (priority) {
-      void requestPdfPreviewRender(result.previewDataUrl)
-    } else {
-      prefetchPdfPreviewRender(result.previewDataUrl)
-    }
+    void loadPdfPreviewRenderModule()
+      .then((previewModule) => {
+        if (priority) {
+          void previewModule.requestPdfPreviewRender(result.previewDataUrl!)
+        } else {
+          previewModule.prefetchPdfPreviewRender(result.previewDataUrl!)
+        }
+      })
+      .catch(() => undefined)
   }
 }
 
@@ -139,6 +157,14 @@ export function clearWorkspaceFilePreviewCache(workspaceRootPath?: string) {
   } else {
     workspaceFileCache.clear()
   }
-  clearDocxPreviewRenderCache()
-  clearPdfPreviewRenderCache()
+  if (docxPreviewRenderModulePromise) {
+    void docxPreviewRenderModulePromise
+      .then((previewModule) => previewModule.clearDocxPreviewRenderCache())
+      .catch(() => undefined)
+  }
+  if (pdfPreviewRenderModulePromise) {
+    void pdfPreviewRenderModulePromise
+      .then((previewModule) => previewModule.clearPdfPreviewRenderCache())
+      .catch(() => undefined)
+  }
 }

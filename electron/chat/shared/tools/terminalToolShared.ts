@@ -310,6 +310,32 @@ export function getOrCreateThreadStore(namespace: string) {
   return store;
 }
 
+export function describeMissingTerminalSession(store: ThreadSessionStore, requestedSessionId: number) {
+  const activeSessionIds = [...store.sessions.keys()];
+  if (activeSessionIds.length === 0) {
+    return [
+      "Terminal session " + requestedSessionId + " is no longer available in this chat turn.",
+      "No active terminal sessions remain. Start a new command with execute_terminal and preserve its returned session_id.",
+    ].join(" ");
+  }
+
+  const latestSessionId =
+    store.latestLocalSessionId !== null && store.sessions.has(store.latestLocalSessionId)
+      ? store.latestLocalSessionId
+      : activeSessionIds.at(-1)!;
+  const orderedSessionIds = [
+    latestSessionId,
+    ...activeSessionIds.filter((sessionId) => sessionId !== latestSessionId),
+  ];
+
+  return [
+    "Terminal session " + requestedSessionId + " is no longer available in this chat turn.",
+    "Latest active session_id: " + latestSessionId + ".",
+    "Active session IDs: " + orderedSessionIds.join(", ") + ".",
+    "Use the appropriate active session_id with read_terminal/interact_terminal/terminate_terminal instead of reusing the missing ID.",
+  ].join(" ");
+}
+
 export function allocateVisibleSessionId(store: ThreadSessionStore) {
   for (let attempt = 0; attempt < MAX_VISIBLE_SESSION_ID_ATTEMPTS; attempt += 1) {
     const candidate = randomInt(MIN_VISIBLE_SESSION_ID, MAX_VISIBLE_SESSION_ID_EXCLUSIVE);

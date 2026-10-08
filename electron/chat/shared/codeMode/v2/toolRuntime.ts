@@ -109,16 +109,29 @@ function serializeResult(result: AgentToolExecutionResult): Record<string, unkno
   if (result.body !== undefined) out.body = result.body
   out.status = result.status
   out.summary = result.summary
-  const semantics = modelSemantics(result.semantics)
+  if (result.truncated !== undefined) out.truncated = result.truncated
+  const rawSemantics = result.semantics
+  const semantics = modelSemantics(rawSemantics)
   if (semantics) out.semantics = copyBoundaryValue(semantics, 'Tool result semantics')
   if (result.subject) out.subject = copyBoundaryValue(result.subject, 'Tool result subject')
-  if (semantics && typeof semantics.session_id === 'number') out.session_id = semantics.session_id
-  if (semantics && typeof semantics.exit_code === 'number') out.exit_code = semantics.exit_code
+  if (rawSemantics && typeof rawSemantics.session_id === 'number') out.session_id = rawSemantics.session_id
+  if (rawSemantics && typeof rawSemantics.exit_code === 'number') out.exit_code = rawSemantics.exit_code
+  if (rawSemantics && typeof rawSemantics.state === 'string') out.state = rawSemantics.state
+  if (rawSemantics && typeof rawSemantics.output_path === 'string') out.output_path = rawSemantics.output_path
+  if (
+    rawSemantics
+    && typeof rawSemantics.session_id === 'number'
+    && typeof rawSemantics.new_output_line_count === 'number'
+  ) {
+    out.new_output = rawSemantics.new_output_line_count > 0
+      ? (result.displayBody ?? result.body ?? '')
+      : ''
+  }
   return out
 }
 
 function toolFailure(name: string, result: AgentToolExecutionResult): CodeModeRuntimeError {
-  const message = result.displayBody || result.body || result.summary || `Tool '${name}' failed.`
+  const message = result.body || result.displayBody || result.summary || `Tool '${name}' failed.`
   if (/invalid arguments|input validation/iu.test(message)) {
     return new CodeModeRuntimeError('InvalidToolArguments', message)
   }

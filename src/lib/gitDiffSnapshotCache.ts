@@ -6,7 +6,8 @@ const EMPTY_DIFF_SNAPSHOT: ConversationDiffSnapshot = {
   totalAddedLineCount: 0,
   totalRemovedLineCount: 0,
 }
-const MAX_DIFF_SNAPSHOT_CACHE_ENTRIES = 12
+const MAX_FULL_DIFF_SNAPSHOT_CACHE_ENTRIES = 3
+const MAX_STATUS_SNAPSHOT_CACHE_ENTRIES = 12
 
 const diffSnapshotCache = new Map<string, ConversationDiffSnapshot>()
 const statusSnapshotCache = new Map<string, ConversationDiffSnapshot>()
@@ -26,7 +27,7 @@ function setCachedDiffSnapshot(cacheKey: string, snapshot: ConversationDiffSnaps
   }
 
   diffSnapshotCache.set(cacheKey, snapshot)
-  while (diffSnapshotCache.size > MAX_DIFF_SNAPSHOT_CACHE_ENTRIES) {
+  while (diffSnapshotCache.size > MAX_FULL_DIFF_SNAPSHOT_CACHE_ENTRIES) {
     const oldestKey = diffSnapshotCache.keys().next().value
     if (typeof oldestKey !== 'string') {
       break
@@ -62,7 +63,7 @@ function setCachedStatusSnapshot(cacheKey: string, snapshot: ConversationDiffSna
   }
 
   statusSnapshotCache.set(cacheKey, snapshot)
-  while (statusSnapshotCache.size > MAX_DIFF_SNAPSHOT_CACHE_ENTRIES) {
+  while (statusSnapshotCache.size > MAX_STATUS_SNAPSHOT_CACHE_ENTRIES) {
     const oldestKey = statusSnapshotCache.keys().next().value
     if (typeof oldestKey !== 'string') {
       break

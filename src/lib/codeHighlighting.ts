@@ -1,5 +1,6 @@
-import { getSingletonHighlighter, type BundledLanguage, type ThemedToken } from 'shiki/bundle/full'
+import type { BundledLanguage, ThemedToken } from 'shiki/bundle/full'
 import type { ResolvedTheme } from './theme'
+import { loadShikiLanguage } from './shikiRuntime'
 
 export type HighlightedToken = Pick<ThemedToken, 'content' | 'color' | 'fontStyle'>
 
@@ -23,6 +24,8 @@ type HighlightLanguage = BundledLanguage | 'text'
 
 const SHIKI_LIGHT_THEME = 'github-light-default'
 const SHIKI_DARK_THEME = 'github-dark-default'
+const MAX_HIGHLIGHT_CACHE_ENTRIES = 48
+const MAX_CACHED_HIGHLIGHT_CODE_LENGTH = 48 * 1024
 const MARKDOWN_LIST_LANGUAGES = new Set(['markdown', 'mdx'])
 const MARKDOWN_ORDERED_LIST_MARKER_PATTERN = /^\s*\d+\.(?=\s)/u
 
@@ -117,12 +120,6 @@ const HIGHLIGHT_LANGUAGE_ALIASES: Record<string, string> = {
   yml: 'yaml',
   zsh: 'shellscript',
 }
-
-const highlighterPromise = getSingletonHighlighter({
-  langs: [],
-  themes: [SHIKI_LIGHT_THEME, SHIKI_DARK_THEME],
-  warnings: false,
-})
 
 const highlightCache = new Map<string, HighlightedCodeLine[]>()
 
@@ -255,17 +252,31 @@ export function resolveHighlightLanguage({ fileName, language }: ResolveHighligh
   return resolveFileNameLanguage(fileName)
 }
 
-async function getHighlighter() {
-  return highlighterPromise
-}
-
-async function ensureLanguageLoaded(language: HighlightLanguage) {
-  const highlighter = await getHighlighter()
-  if (!highlighter.getLoadedLanguages().includes(language)) {
-    await highlighter.loadLanguage(language)
+function getCachedHighlight(cacheKey: string) {
+  const cachedLines = highlightCache.get(cacheKey)
+  if (!cachedLines) {
+    return null
   }
 
-  return highlighter
+  highlightCache.delete(cacheKey)
+  highlightCache.set(cacheKey, cachedLines)
+  return cachedLines
+}
+
+function cacheHighlight(cacheKey: string, sourceLength: number, lines: HighlightedCodeLine[]) {
+  if (sourceLength > MAX_CACHED_HIGHLIGHT_CODE_LENGTH) {
+    return
+  }
+
+  highlightCache.delete(cacheKey)
+  highlightCache.set(cacheKey, lines)
+  while (highlightCache.size > MAX_HIGHLIGHT_CACHE_ENTRIES) {
+    const oldestKey = highlightCache.keys().next().value
+    if (typeof oldestKey !== 'string') {
+      break
+    }
+    highlightCache.delete(oldestKey)
+  }
 }
 
 export async function highlightCodeLines({
@@ -283,14 +294,14 @@ export async function highlightCodeLines({
   }
 
   const cacheKey = `${theme}:${resolvedLanguage}:${normalizedCode}`
-  const cachedLines = highlightCache.get(cacheKey)
+  const cachedLines = getCachedHighlight(cacheKey)
   if (cachedLines) {
     return cachedLines
   }
 
   try {
     const languageToLoad = resolvedLanguage as HighlightLanguage
-    const highlighter = await ensureLanguageLoaded(languageToLoad)
+    const highlighter = await loadShikiLanguage(languageToLoad)
     const tokens = await highlighter.codeToTokensBase(normalizedCode, {
       lang: languageToLoad,
       theme: theme === 'dark' ? SHIKI_DARK_THEME : SHIKI_LIGHT_THEME,
@@ -299,11 +310,11 @@ export async function highlightCodeLines({
       convertTokensToLines(tokens),
       resolvedLanguage,
     )
-    highlightCache.set(cacheKey, highlightedLines)
+    cacheHighlight(cacheKey, normalizedCode.length, highlightedLines)
     return highlightedLines
   } catch {
     const plainLines = createPlainLines(normalizedCode)
-    highlightCache.set(cacheKey, plainLines)
+    cacheHighlight(cacheKey, normalizedCode.length, plainLines)
     return plainLines
   }
 }

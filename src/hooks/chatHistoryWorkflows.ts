@@ -16,10 +16,7 @@ import type {
 import { getConversationTitleFromInput } from './chatHistoryViewModels'
 import { restoreChatMentionPathMap } from '../lib/chatMentions'
 import { hasPlanToolInvocation } from '../lib/planPresentation'
-import {
-  loadChatCompactionMarkers,
-  prefetchChatCompactionMarkers,
-} from '../lib/chatCompactionMarkerCache'
+import { loadChatCompactionMarkers } from '../lib/chatCompactionMarkerCache'
 import { isSameTurnSteerMessage } from '../lib/chatMessageMetadata'
 import {
   buildHiddenUserContextTransitions,
@@ -281,7 +278,6 @@ export async function loadInitialChatHistory(
     window.tidecodeHistory.listFolders(),
     preferredConversationPromise,
   ])
-  void prefetchChatCompactionMarkers(conversationSummaries.map((conversation) => conversation.id))
 
   const normalizedPreferredDraftFolderId = preferredDraftFolderId?.trim() ?? ''
   const validPreferredFolderId =

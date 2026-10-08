@@ -6,8 +6,11 @@ import { assertWorkspaceDirectory, getSafeWorkspaceTargetPath, normalizeWorkspac
 import { resolveWorkspaceTypeScriptConfig } from './typescriptProjectConfig'
 import { buildWorkspaceTypeScriptGraph, hydrateWorkspaceTypeScriptGraph } from './typescriptProjectGraph'
 
-const MAX_CACHED_PROJECT_SNAPSHOTS = 24
+const MAX_CACHED_PROJECT_SNAPSHOTS = 6
 const projectSnapshotCache = new Map<string, Promise<WorkspaceTypeScriptProjectSnapshot>>()
+
+const MAX_CACHED_PROJECT_BYTES = 32 * 1024 * 1024
+const snapshotBytes = new Map<string, number>()
 
 function normalizeCacheRelativePath(relativePath: string) {
   return relativePath.trim().replace(/\\/gu, '/').replace(/^\.\/+/u, '')
@@ -26,9 +29,12 @@ function createCacheKey(
 }
 
 function pruneSnapshotCache() {
-  while (projectSnapshotCache.size > MAX_CACHED_PROJECT_SNAPSHOTS) {
+  let totalBytes = [...snapshotBytes.values()].reduce((total, bytes) => total + bytes, 0)
+  while (projectSnapshotCache.size > MAX_CACHED_PROJECT_SNAPSHOTS || totalBytes > MAX_CACHED_PROJECT_BYTES) {
     const oldestKey = projectSnapshotCache.keys().next().value as string | undefined
     if (!oldestKey) return
+    totalBytes -= snapshotBytes.get(oldestKey) ?? 0
+    snapshotBytes.delete(oldestKey)
     projectSnapshotCache.delete(oldestKey)
   }
 }
@@ -91,12 +97,14 @@ export function invalidateWorkspaceTypeScriptProjectCache(workspaceRootPathInput
   for (const key of Array.from(projectSnapshotCache.keys())) {
     if (key.startsWith(prefix)) {
       projectSnapshotCache.delete(key)
+      snapshotBytes.delete(key)
     }
   }
 }
 
 export function clearWorkspaceTypeScriptProjectCache() {
   projectSnapshotCache.clear()
+  snapshotBytes.clear()
 }
 
 export function getWorkspaceTypeScriptProject(
@@ -115,9 +123,17 @@ export function getWorkspaceTypeScriptProject(
   const snapshotPromise = buildProjectSnapshot({
     ...input,
     workspaceRootPath,
+  }).then((snapshot) => {
+    if (projectSnapshotCache.get(cacheKey) === snapshotPromise) {
+      const bytes = snapshot.files.reduce((total, file) => total + file.content.length * 2, 0)
+      snapshotBytes.set(cacheKey, bytes)
+      pruneSnapshotCache()
+    }
+    return snapshot
   }).catch((error: unknown) => {
     if (projectSnapshotCache.get(cacheKey) === snapshotPromise) {
       projectSnapshotCache.delete(cacheKey)
+      snapshotBytes.delete(cacheKey)
     }
     throw error
   })

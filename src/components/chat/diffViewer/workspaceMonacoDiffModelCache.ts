@@ -20,10 +20,12 @@ interface WorkspaceMonacoDiffModelCacheEntry {
   modifiedModel: editor.ITextModel
   originalModel: editor.ITextModel
   paths: WorkspaceMonacoDiffModelPaths
+  releaseTimer: number | null
   retainedCount: number
 }
 
-const MAX_CACHED_DIFF_MODEL_ENTRIES = 96
+const MAX_CACHED_DIFF_MODEL_ENTRIES = 16
+const DIFF_MODEL_RELEASE_DELAY_MS = 30_000
 const cachedDiffModels = new Map<string, WorkspaceMonacoDiffModelCacheEntry>()
 const pendingRetainCounts = new Map<string, number>()
 
@@ -96,13 +98,31 @@ function touchEntry(entry: WorkspaceMonacoDiffModelCacheEntry) {
   cachedDiffModels.set(entry.paths.cacheKey, entry)
 }
 
-function disposeEntry(entry: WorkspaceMonacoDiffModelCacheEntry) {
+function disposeEntry(cacheKey: string, entry: WorkspaceMonacoDiffModelCacheEntry) {
+  if (entry.retainedCount > 0 || cachedDiffModels.get(cacheKey) !== entry) {
+    return
+  }
+  if (entry.releaseTimer !== null) {
+    window.clearTimeout(entry.releaseTimer)
+    entry.releaseTimer = null
+  }
+  cachedDiffModels.delete(cacheKey)
   if (!entry.originalModel.isDisposed()) {
     entry.originalModel.dispose()
   }
   if (!entry.modifiedModel.isDisposed()) {
     entry.modifiedModel.dispose()
   }
+}
+
+function scheduleEntryRelease(entry: WorkspaceMonacoDiffModelCacheEntry) {
+  if (entry.retainedCount > 0) return
+  if (entry.releaseTimer !== null) {
+    window.clearTimeout(entry.releaseTimer)
+  }
+  entry.releaseTimer = window.setTimeout(() => {
+    disposeEntry(entry.paths.cacheKey, entry)
+  }, DIFF_MODEL_RELEASE_DELAY_MS)
 }
 
 function evictUnusedEntries() {
@@ -115,8 +135,7 @@ function evictUnusedEntries() {
       return
     }
 
-    cachedDiffModels.delete(candidate.paths.cacheKey)
-    disposeEntry(candidate)
+    disposeEntry(candidate.paths.cacheKey, candidate)
   }
 }
 
@@ -128,6 +147,7 @@ export function ensureWorkspaceMonacoDiffModels(
   const existingEntry = cachedDiffModels.get(paths.cacheKey)
   if (existingEntry) {
     touchEntry(existingEntry)
+    scheduleEntryRelease(existingEntry)
     return paths
   }
 
@@ -148,10 +168,12 @@ export function ensureWorkspaceMonacoDiffModels(
     modifiedModel,
     originalModel,
     paths,
+    releaseTimer: null,
     retainedCount: pendingRetainCounts.get(paths.cacheKey) ?? 0,
   }
 
   cachedDiffModels.set(paths.cacheKey, entry)
+  scheduleEntryRelease(entry)
   evictUnusedEntries()
   return paths
 }
@@ -162,6 +184,10 @@ export function retainWorkspaceMonacoDiffModels(paths: WorkspaceMonacoDiffModelP
 
   const entry = cachedDiffModels.get(paths.cacheKey)
   if (entry) {
+    if (entry.releaseTimer !== null) {
+      window.clearTimeout(entry.releaseTimer)
+      entry.releaseTimer = null
+    }
     entry.retainedCount = nextRetainCount
     touchEntry(entry)
   }
@@ -179,6 +205,7 @@ export function releaseWorkspaceMonacoDiffModels(paths: WorkspaceMonacoDiffModel
   if (entry) {
     entry.retainedCount = nextRetainCount
     touchEntry(entry)
+    scheduleEntryRelease(entry)
     evictUnusedEntries()
   }
 }

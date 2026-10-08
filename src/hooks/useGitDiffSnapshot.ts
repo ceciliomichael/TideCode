@@ -26,8 +26,8 @@ interface UseGitDiffSnapshotResult {
   snapshot: ConversationDiffSnapshot
 }
 
-const GIT_DIFF_POLL_INTERVAL_MS = 2000
-const GIT_FULL_DIFF_POLL_EVERY = 5
+const GIT_DIFF_POLL_INTERVAL_MS = 10_000
+const GIT_FULL_DIFF_POLL_EVERY = 6
 
 function areDiffSnapshotsEqual(left: ConversationDiffSnapshot, right: ConversationDiffSnapshot) {
   if (

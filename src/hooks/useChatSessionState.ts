@@ -23,6 +23,7 @@ import {
 import type { ChatHistorySnapshot } from './chatHistoryWorkflows'
 import type { AppLanguage } from '../lib/appSettings'
 import { createClientId } from '../lib/clientId'
+import { retainConversationRuntimes } from './conversationRuntimeRetention'
 
 interface ConversationRuntimeState {
   conversation: ConversationRecord
@@ -119,6 +120,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(() => initialSelection?.initialSelectedFolderId ?? null)
   const [activeConversationChatMode, setActiveConversationChatMode] = useState<ChatMode | null>(null)
   const [conversationRuntimeStates, setConversationRuntimeStates] = useState<ConversationRuntimeStateMap>({})
+  const conversationLastUsedRef = useRef(new Map<string, number>())
   const sharedRunsByConversationIdRef = useRef(new Map<string, SharedRunSnapshot>())
   const sharedRunProjectionsByConversationIdRef = useRef(new Map<string, SharedRunProjection>())
   const [sharedRunningConversationIds, setSharedRunningConversationIds] = useState<Set<string>>(() => new Set())
@@ -135,6 +137,28 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
     }
     return runningIds
   }, [conversationRuntimeStates, sharedRunningConversationIds])
+
+  useEffect(() => {
+    if (activeConversationId) {
+      conversationLastUsedRef.current.set(activeConversationId, Date.now())
+    }
+    const nextStates = retainConversationRuntimes(
+      conversationRuntimeStates, activeConversationId, runningConversationIds, conversationLastUsedRef.current,
+    )
+    for (const id of conversationLastUsedRef.current.keys()) {
+      if (!nextStates[id]) {
+        conversationLastUsedRef.current.delete(id)
+      }
+    }
+    if (nextStates !== conversationRuntimeStates) {
+      setConversationRuntimeStates((current) => {
+        if (current !== conversationRuntimeStates) {
+          return current
+        }
+        return nextStates
+      })
+    }
+  }, [activeConversationId, conversationRuntimeStates, runningConversationIds])
 
   const clearConversationSelection = useCallback((nextFolderId: string | null) => {
     setActiveConversationId(null)
@@ -157,6 +181,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
   )
 
   const upsertConversationRecord = useCallback((conversation: ConversationRecord) => {
+    conversationLastUsedRef.current.set(conversation.id, Date.now())
     setConversationRuntimeStates((currentValue) => {
       const currentState = currentValue[conversation.id]
       const nextState = createConversationRuntimeState(conversation, currentState)
@@ -435,7 +460,7 @@ export function useChatSessionState(language: AppLanguage, initialSelection?: In
     }
 
     refreshSharedRuns()
-    const reconciliationIntervalId = window.setInterval(refreshSharedRuns, 2_000)
+    const reconciliationIntervalId = window.setInterval(refreshSharedRuns, 10_000)
 
     const unsubscribe = window.tidecodeRuns.onEvent((event) => {
       if (event.type === 'run_state') {

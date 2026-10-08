@@ -544,6 +544,25 @@ test("terminate_terminal is optional and stops a selected session early", async 
   assert.equal(missing.status, "error");
 });
 
+test("missing terminal session reports the latest active session for recovery", async () => {
+  const tools = createTools(
+    "terminal-missing-session-recovery",
+    createMockDependencies({ writeCalls: [] }),
+  );
+  const started = await getTool(tools, "execute_terminal").execute({ command: "long-running" });
+  const activeSessionId = started.semantics?.session_id as number;
+
+  const missing = await getTool(tools, "read_terminal").execute({
+    session_id: 99_999,
+    wait_seconds: 0,
+  });
+
+  assert.equal(missing.status, "error");
+  assert.match(missing.body ?? "", new RegExp(`Latest active session_id: ${activeSessionId}\\.`));
+  assert.match(missing.body ?? "", /Active session IDs:/u);
+  assert.match(missing.body ?? "", /instead of reusing the missing ID/u);
+});
+
 test("execute_terminal preserves sandbox validation", async () => {
   let createSessionCalled = false;
   const tools = createTools(

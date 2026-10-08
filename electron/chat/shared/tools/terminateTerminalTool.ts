@@ -4,6 +4,7 @@ import {
   assertTerminalOwner,
   createSuccessResult,
   createTerminalErrorResult,
+  describeMissingTerminalSession,
   getOrCreateThreadStore,
   getThreadSession,
   removeThreadSession,
@@ -44,6 +45,7 @@ export function createTerminateTerminalTool(runtime: TerminalToolRuntime) {
           return createTerminalErrorResult(
             `Terminal session ${input.session_id} was not found in this chat turn.`,
             "The terminal session is no longer available.",
+            describeMissingTerminalSession(store, input.session_id),
           );
         }
 

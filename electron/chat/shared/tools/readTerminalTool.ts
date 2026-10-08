@@ -6,6 +6,7 @@ import {
   clampInteger,
   createSuccessResult,
   createTerminalErrorResult,
+  describeMissingTerminalSession,
   drainUnreadTerminalOutput,
   formatTerminalOutputForModel,
   getOrCreateThreadStore,
@@ -67,6 +68,7 @@ export function createReadTerminalTool(runtime: TerminalToolRuntime) {
           return createTerminalErrorResult(
             `Terminal session ${input.session_id} was not found in this chat turn.`,
             "The terminal session is no longer available.",
+            describeMissingTerminalSession(store, input.session_id),
           );
         }
 

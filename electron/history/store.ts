@@ -17,6 +17,7 @@ import {
   appendMessagesToLog,
   deleteConversationFile,
   listConversationRecords,
+  mapStoredConversationFiles,
   readUserMessageCheckpointHistory,
   readConversationFile,
   writeConversationFile,
@@ -107,12 +108,14 @@ async function readConversationForMutation(conversationId: string) {
 }
 
 export async function listStoredConversations() {
-  const conversations = await listConversationRecords()
-  const hydratedConversations = await Promise.all(conversations.map((conversation) => ensureConversationAgentContext(conversation)))
-  return hydratedConversations
-    .filter((conversation) => conversation.messages.length > 0)
-    .sort((left, right) => right.updatedAt - left.updatedAt)
-    .map((conversation) => buildConversationSummary(conversation))
+  const summaries = await mapStoredConversationFiles(async (conversation) => {
+    const hydrated = await ensureConversationAgentContext(conversation)
+    if (hydrated.messages.length === 0) {
+      return null
+    }
+    return buildConversationSummary(hydrated)
+  })
+  return summaries.sort((left, right) => right.updatedAt - left.updatedAt)
 }
 
 export async function listStoredFolders() {
