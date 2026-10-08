@@ -82,6 +82,8 @@ test('loads status-only git metadata without reading diff content and coalesces 
     assert.deepEqual(calls[0], { includeContent: false, workspacePath })
     assert.equal(statusSnapshot.fileDiffs[0]?.newContent, '')
     assert.equal(coalescedStatusSnapshot.fileDiffs[0]?.oldContent, null)
+    assert.equal(statusSnapshot.fileDiffs[0]?.addedLineCount, 0)
+    assert.equal(statusSnapshot.fileDiffs[0]?.removedLineCount, 0)
     assert.equal(getCachedGitStatusSnapshot(workspacePath)?.fileDiffs[0]?.isUnstaged, true)
 
     const detailedSnapshot = await loadGitDiffSnapshot(workspacePath, {

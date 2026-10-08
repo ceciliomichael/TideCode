@@ -20,6 +20,11 @@ test('full Git diff snapshots retain binary untracked files from status snapshot
     const statusSnapshot = await getGitDiffSnapshot(repoPath, { includeContent: false })
     const fullSnapshot = await getGitDiffSnapshot(repoPath, { includeContent: true })
 
+    for (const statusDiff of statusSnapshot.fileDiffs) {
+      assert.equal(statusDiff.addedLineCount, 0)
+      assert.equal(statusDiff.removedLineCount, 0)
+    }
+
     assert.deepEqual(
       fullSnapshot.fileDiffs.map((fileDiff) => fileDiff.fileName).sort(),
       statusSnapshot.fileDiffs.map((fileDiff) => fileDiff.fileName).sort(),

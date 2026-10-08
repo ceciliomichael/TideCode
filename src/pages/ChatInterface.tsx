@@ -107,6 +107,7 @@ export function ChatInterface({
       chatRuntimeConfig.modelOptions,
       chatRuntimeConfig.providerLabel,
       chatRuntimeConfig.providerId,
+      chatRuntimeConfig.reasoningEffort,
       chatRuntimeConfig.selectedRuntimeModelId,
       settings.gitCommitModelId,
       settings.gitCommitModelProviderId,
@@ -126,6 +127,7 @@ export function ChatInterface({
     pollingEnabled: true,
     workspacePath: activeWorkspacePath,
   })
+  const refreshGitDiffSnapshot = gitDiffSnapshot.refresh
   const sidebarOpenChangeHandlerRef = useRef<(nextSidebarOpen: boolean) => void>(() => undefined)
   const activeTerminalWorkspaceKey = getTerminalWorkspaceKey({
     activeConversationId: chatMessages.activeConversationId,
@@ -143,7 +145,7 @@ export function ChatInterface({
     isActiveScreen,
     isRightPanelOpen,
     messagesLength: chatMessages.messages.length,
-    onDiffRefresh: gitDiffSnapshot.refresh,
+    onDiffRefresh: refreshGitDiffSnapshot,
     onRightPanelOpenChange,
     onRightPanelTabChange,
     onSidebarOpenChange: (nextSidebarOpen) => sidebarOpenChangeHandlerRef.current(nextSidebarOpen),
@@ -171,6 +173,14 @@ export function ChatInterface({
   useEffect(() => {
     sidebarOpenChangeHandlerRef.current = workspaceState.handleSidebarOpenChange
   }, [workspaceState.handleSidebarOpenChange])
+
+  useEffect(() => {
+    if (!hasRepository || !isRightPanelOpen) {
+      return
+    }
+
+    void refreshGitDiffSnapshot({ forceRefresh: true, silent: true })
+  }, [hasRepository, isRightPanelOpen, refreshGitDiffSnapshot, rightPanelTab])
 
   return (
     <ChatInterfaceContent
