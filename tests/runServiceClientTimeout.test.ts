@@ -69,13 +69,13 @@ test('disconnect clears partial response data, process identity, requests, and t
 })
 
 test('failed hello handshake destroys its socket and releases an incomplete receive buffer', async (t) => {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tidecode-handshake-'))
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tc-'))
   const previousHome = process.env.USERPROFILE
   const previousUnixHome = process.env.HOME
   const previousNamespace = process.env.TIDECODE_RUN_SERVICE_NAMESPACE
   process.env.USERPROFILE = directory
   process.env.HOME = directory
-  process.env.TIDECODE_RUN_SERVICE_NAMESPACE = `test-${randomUUID()}`
+  process.env.TIDECODE_RUN_SERVICE_NAMESPACE = `test-${randomUUID().slice(0, 8)}`
   const connections = new Set<net.Socket>()
   const server = net.createServer((socket) => {
     connections.add(socket)
