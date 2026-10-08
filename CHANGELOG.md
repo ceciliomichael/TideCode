@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.21 - Reliable Source Control diffs
+
+TideCode 1.4.21 fixes Source Control and Diff panel regressions introduced by the recent memory-optimization work.
+
+- Restores real line counts and file contents instead of showing status-only changes as fake `+1 -0` diffs.
+- Keeps full diff contents intact while staged, unstaged, and untracked status metadata refreshes in the background.
+- Forces a fresh full diff when Source Control or Diff is opened and restores a responsive fallback refresh for nested file edits.
+- Adds regression coverage for status-only snapshots, full diff preservation, and Git diff loading behavior.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.20 - Lower memory use and more reliable AI tools
 
 TideCode 1.4.20 reduces retained runtime memory and improves agent tooling, workspace memory, and editor responsiveness.
