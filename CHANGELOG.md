@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.20 - Lower memory use and more reliable AI tools
+
+TideCode 1.4.20 reduces retained runtime memory and improves agent tooling, workspace memory, and editor responsiveness.
+
+- Reduces idle memory retention across conversations, run-service connections, previews, syntax highlighting, Git caches, and TypeScript projects, with a memory profiling script and performance documentation.
+- Improves Code Mode terminal polling, missing-session recovery, truncated output retrieval, and patch error messages.
+- Makes enabled workspace memory explicit and active in AI context instead of describing it as optional.
+- Reduces redundant background work and improves cache cleanup for Git state, chat context, document previews, and editor resources.
+- Includes regression tests covering memory lifetime, terminal cleanup, run-service reconnection, and preview resource management.
+- Requires no manual migration or configuration changes.
+
 ## 1.4.19 - Stable source-control change counts
 
 TideCode 1.4.19 fixes source-control change totals that could flicker after initializing a repository containing binary files.
