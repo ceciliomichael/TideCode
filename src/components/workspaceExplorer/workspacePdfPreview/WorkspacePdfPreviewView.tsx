@@ -1,10 +1,8 @@
 import { ChevronRight } from 'lucide-react'
 import { memo, useEffect, useMemo, useState } from 'react'
 import {
-  ensurePdfPageRender,
+  acquirePdfPreview,
   PDF_PAGE_SCALE,
-  PDF_PREFETCH_PAGE_LIMIT,
-  requestPdfPreviewRender,
   type PdfPreviewRenderSnapshot,
 } from '../../../lib/pdfPreviewRenderCache'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
@@ -67,8 +65,10 @@ export const WorkspacePdfPreviewView = memo(function WorkspacePdfPreviewView({
       }
     }
 
+    let lease: ReturnType<typeof acquirePdfPreview> | undefined
     try {
-      void requestPdfPreviewRender(previewDataUrl)
+      lease = acquirePdfPreview(previewDataUrl)
+      void lease.promise
         .then((loadedSnapshot) => {
           if (isDisposed) {
             return
@@ -90,18 +90,11 @@ export const WorkspacePdfPreviewView = memo(function WorkspacePdfPreviewView({
 
     return () => {
       isDisposed = true
+      lease?.release()
     }
   }, [fileName, previewDataUrl, previewError, resetZoom])
 
   const previewUnavailable = !previewDataUrl || Boolean(errorMessage)
-  const pageRenderPromises = useMemo(() => {
-    if (!previewSnapshot || !previewDataUrl) {
-      return []
-    }
-    return previewSnapshot.pageLayouts.map((_, index) =>
-      index < PDF_PREFETCH_PAGE_LIMIT ? ensurePdfPageRender(previewDataUrl, index + 1) : undefined,
-    )
-  }, [previewDataUrl, previewSnapshot])
 
   return (
     <div className="workspace-pdf-preview flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
@@ -153,7 +146,7 @@ export const WorkspacePdfPreviewView = memo(function WorkspacePdfPreviewView({
             {previewSnapshot.pageLayouts.map((pageLayout, index) => (
               <WorkspacePdfPage
                 key={`${previewSnapshot.documentProxy.fingerprints[0] ?? fileName}-${index + 1}`}
-                cachedPageRender={pageRenderPromises[index]}
+                viewportRef={viewportRef}
                 documentProxy={previewSnapshot.documentProxy}
                 pageNumber={index + 1}
                 pageLayout={pageLayout}

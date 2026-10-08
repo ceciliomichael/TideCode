@@ -34,6 +34,40 @@ interface ApplyWorkspaceMonacoTypeScriptProjectOptions {
 }
 
 const appliedProjectStates = new WeakMap<object, Map<WorkspaceMonacoScriptLanguage, AppliedProjectState>>()
+const projectConsumers = new WeakMap<object, Map<WorkspaceMonacoScriptLanguage, {
+  references: number
+  expiry?: ReturnType<typeof setTimeout>
+}>>()
+
+export function retainWorkspaceMonacoTypeScriptProject(monaco: Monaco, language: WorkspaceMonacoScriptLanguage) {
+  let consumers = projectConsumers.get(monaco)
+  if (!consumers) {
+    consumers = new Map()
+    projectConsumers.set(monaco, consumers)
+  }
+  let consumer = consumers.get(language)
+  if (!consumer) {
+    consumer = { references: 0 }
+    consumers.set(language, consumer)
+  }
+  clearTimeout(consumer.expiry)
+  consumer.references += 1
+  const retainedConsumer = consumer
+  let released = false
+  return () => {
+    if (released) {
+      return
+    }
+    released = true
+    retainedConsumer.references -= 1
+    if (retainedConsumer.references === 0) {
+      retainedConsumer.expiry = setTimeout(() => {
+        clearWorkspaceMonacoTypeScriptProject(monaco, language)
+        consumers.delete(language)
+      }, 30_000)
+    }
+  }
+}
 
 export function getWorkspaceMonacoScriptLanguage(language: string): WorkspaceMonacoScriptLanguage | null {
   if (language === 'typescript') return 'typescript'

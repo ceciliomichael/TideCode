@@ -1,5 +1,4 @@
 import { createReadStream, promises as fs } from 'node:fs'
-import path from 'node:path'
 import { createInterface } from 'node:readline'
 import type { ConversationRecord, Message, UserMessageRunCheckpoint } from '../../src/types/chat'
 import {
@@ -8,39 +7,17 @@ import {
   type MessageLogEntry,
 } from './documents'
 import { readConversationRecordFromPath } from './conversationFileReader'
+import { mapConversationFiles } from './conversationListing'
 import {
   ensureHistoryDirectory,
-  FOLDERS_FILE_NAME,
   getConversationFilePath,
   getHistoryDirectoryPath,
   getMessageLogPath,
-  MESSAGE_LOG_FILE_NAME,
 } from './paths'
 import { writeConversationFileAtomic } from './conversationFileWriter'
 
-const CONVERSATION_FILE_SUFFIX = '.json'
-const BACKUP_FILE_SUFFIX = `${CONVERSATION_FILE_SUFFIX}.bak`
+const MAX_CACHED_CHECKPOINT_CONVERSATIONS = 128
 const userMessageCheckpointHistoryCache = new Map<string, Map<string, UserMessageRunCheckpoint[]>>()
-
-function isBackupConversationFileName(fileName: string) {
-  return fileName.endsWith(BACKUP_FILE_SUFFIX)
-}
-
-function isPrimaryConversationFileName(fileName: string) {
-  return fileName.endsWith(CONVERSATION_FILE_SUFFIX)
-}
-
-function normalizeConversationFileNameToId(fileName: string) {
-  if (isBackupConversationFileName(fileName)) {
-    return fileName.slice(0, -BACKUP_FILE_SUFFIX.length)
-  }
-
-  if (isPrimaryConversationFileName(fileName)) {
-    return fileName.slice(0, -CONVERSATION_FILE_SUFFIX.length)
-  }
-
-  return null
-}
 
 function getCheckpointHistoryCacheForConversation(conversationId: string) {
   const normalizedConversationId = conversationId.trim()
@@ -50,11 +27,18 @@ function getCheckpointHistoryCacheForConversation(conversationId: string) {
 
   const cachedConversation = userMessageCheckpointHistoryCache.get(normalizedConversationId)
   if (cachedConversation) {
+    userMessageCheckpointHistoryCache.delete(normalizedConversationId)
+    userMessageCheckpointHistoryCache.set(normalizedConversationId, cachedConversation)
     return cachedConversation
   }
 
   const nextConversationCache = new Map<string, UserMessageRunCheckpoint[]>()
   userMessageCheckpointHistoryCache.set(normalizedConversationId, nextConversationCache)
+  while (userMessageCheckpointHistoryCache.size > MAX_CACHED_CHECKPOINT_CONVERSATIONS) {
+    const oldestConversationId = userMessageCheckpointHistoryCache.keys().next().value
+    if (typeof oldestConversationId !== 'string') break
+    userMessageCheckpointHistoryCache.delete(oldestConversationId)
+  }
   return nextConversationCache
 }
 
@@ -174,63 +158,27 @@ export async function readUserMessageCheckpointHistory(conversationId: string, m
   return [...history]
 }
 
-export async function listConversationSummaries() {
-  const conversations = await listConversationRecords()
+export async function mapStoredConversationFiles<T>(
+  transform: (conversation: ConversationRecord) => T | null | Promise<T | null>,
+) {
+  await ensureHistoryDirectory()
+  return mapConversationFiles(getHistoryDirectoryPath(), transform)
+}
 
-  return conversations.sort((left, right) => right.updatedAt - left.updatedAt).map(buildConversationSummary)
+export async function listConversationSummaries() {
+  const summaries = await mapStoredConversationFiles(buildConversationSummary)
+  return summaries.sort((left, right) => right.updatedAt - left.updatedAt)
 }
 
 export async function listConversationRecords() {
-  await ensureHistoryDirectory()
-
-  const fileNames = await fs.readdir(getHistoryDirectoryPath())
-
-  const conversationFileById = new Map<string, string>()
-  for (const fileName of fileNames) {
-    if (!isPrimaryConversationFileName(fileName)) {
-      continue
-    }
-
-    if (fileName === FOLDERS_FILE_NAME || fileName === MESSAGE_LOG_FILE_NAME) {
-      continue
-    }
-
-    const id = normalizeConversationFileNameToId(fileName)
-    if (!id) {
-      continue
-    }
-
-    conversationFileById.set(id, fileName)
-  }
-
-  for (const fileName of fileNames) {
-    if (!isBackupConversationFileName(fileName)) {
-      continue
-    }
-
-    const id = normalizeConversationFileNameToId(fileName)
-    if (!id || conversationFileById.has(id)) {
-      continue
-    }
-
-    conversationFileById.set(id, fileName)
-  }
-
-  const conversations = await Promise.all(
-    Array.from(conversationFileById.values()).map(async (fileName) => {
-      try {
-        return await readConversationRecordFromPath(path.join(getHistoryDirectoryPath(), fileName))
-      } catch (error) {
-        console.error(`Failed to read conversation file: ${fileName}`, error)
-        return null
-      }
-    }),
-  )
-
-  return conversations.filter((conversation): conversation is ConversationRecord => conversation !== null)
+  return mapStoredConversationFiles((conversation) => conversation)
 }
 
 export async function deleteConversationFile(conversationId: string) {
+  const normalizedConversationId = conversationId.trim()
+  if (normalizedConversationId.length > 0) {
+    userMessageCheckpointHistoryCache.delete(normalizedConversationId)
+  }
   try {
     await ensureHistoryDirectory()
     await fs.unlink(getConversationFilePath(conversationId))

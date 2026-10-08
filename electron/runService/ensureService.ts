@@ -11,7 +11,9 @@ import { RunServiceBuildMismatchError, TideCodeRunServiceClient } from './client
 import { configureDevelopmentRunServiceNamespace, resolveRunServiceNamespace } from './namespace'
 
 let sharedClientPromise: Promise<TideCodeRunServiceClient> | null = null
+let existingServiceProbe: Promise<TideCodeRunServiceClient | null> | null = null
 let runServiceShutdownRequested = false
+let cachedServiceLaunch: ReturnType<typeof getServiceLaunch> | null = null
 
 function sleep(milliseconds: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, milliseconds))
@@ -113,10 +115,30 @@ function getServiceLaunch() {
   throw new Error('Unable to locate the TideCode run service from the configured runtime root.')
 }
 
+function getCachedServiceLaunch() {
+  cachedServiceLaunch ??= getServiceLaunch()
+  return cachedServiceLaunch
+}
+
 async function connectExistingService(buildId: string) {
   const client = new TideCodeRunServiceClient(buildId)
-  await client.connect()
-  return client
+  try {
+    await client.connect()
+    return client
+  } catch (error) {
+    client.close()
+    throw error
+  }
+}
+
+async function connectExistingRunServiceIfAvailable() {
+  configureRunServiceNamespaceForRuntime()
+  const launch = getCachedServiceLaunch()
+  try {
+    return await connectExistingService(launch.buildId)
+  } catch {
+    return null
+  }
 }
 
 async function waitForStaleServiceExit(buildId: string) {
@@ -134,7 +156,7 @@ async function waitForStaleServiceExit(buildId: string) {
 
 async function launchAndConnectService() {
   configureRunServiceNamespaceForRuntime()
-  const launch = getServiceLaunch()
+  const launch = getCachedServiceLaunch()
   try {
     return await connectExistingService(launch.buildId)
   } catch (error) {
@@ -182,6 +204,44 @@ export function ensureRunServiceClient() {
   return sharedClientPromise
 }
 
+export async function connectRunServiceClientIfAvailable() {
+  if (runServiceShutdownRequested) {
+    return null
+  }
+  if (sharedClientPromise) {
+    return sharedClientPromise.catch(() => null)
+  }
+
+  if (!existingServiceProbe) {
+    const probe = connectExistingRunServiceIfAvailable().finally(() => {
+      if (existingServiceProbe === probe) {
+        existingServiceProbe = null
+      }
+    })
+    existingServiceProbe = probe
+  }
+  const client = await existingServiceProbe
+  if (!client) {
+    return null
+  }
+  if (runServiceShutdownRequested) {
+    client.close()
+    return null
+  }
+
+  const concurrentClientPromise = sharedClientPromise as Promise<TideCodeRunServiceClient> | null
+  if (concurrentClientPromise) {
+    const concurrentClient = await concurrentClientPromise.catch(() => null)
+    if (concurrentClient !== client) {
+      client.close()
+    }
+    return concurrentClient
+  }
+
+  sharedClientPromise = Promise.resolve(client)
+  return client
+}
+
 export async function disconnectRunServiceForApplication() {
   runServiceShutdownRequested = true
   const clientPromise = sharedClientPromise
@@ -195,5 +255,7 @@ export async function disconnectRunServiceForApplication() {
 
 export function resetRunServiceClientForTests() {
   sharedClientPromise = null
+  existingServiceProbe = null
   runServiceShutdownRequested = false
+  cachedServiceLaunch = null
 }

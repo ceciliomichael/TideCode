@@ -22,7 +22,7 @@ The APIs documented by the Code Mode description are a capability catalog, not p
 - Ordinary relative paths still resolve from the active workspace. Full absolute paths remain valid when they were supplied exactly by the user or a tool and the current Sandbox/Full Access policy permits them.
 - `@attachments/...`, `@skills/...`, and `@tool-output/...` are read-only agent inputs. Inspect them with `tools.read`, `tools.list`, `tools.glob`, or `tools.grep`; copy needed content into `@workspace/...` before modifying it.
 - `tools.read`: inspect one known file or directory. A path is known only when the user supplied it or a prior workspace tool returned that exact path. Never infer filenames from conventions.
-- Truncated tool results expose a read-only `@tool-output/...` path. Use `tools.grep` to search it or `tools.read` with a narrow offset/limit only when omitted content is needed; never inspect the full saved output automatically.
+- Truncated tool results expose an exact read-only `@tool-output/...` path backed by the user's `~/.tidecode/tool-output` directory. When a result is marked truncated or exposes `output_path`, preserve that exact path and inspect it with `tools.grep` first, or `tools.read` with a narrow offset/limit when the omitted section is needed. Never guess a tool-output filename and never read the full saved output automatically.
 - If the exact file path is unknown, discover it first with `tools.list`, `tools.glob`, or `tools.grep`, then use the returned path in `tools.read` or a patch file header.
 - `tools.list`: inspect immediate entries of one directory.
 - `tools.glob`: discover files by path or filename pattern.
@@ -31,6 +31,7 @@ The APIs documented by the Code Mode description are a capability catalog, not p
 ## Mutations
 
 - Direct model-facing `apply_patch`: prefer this for a standalone targeted patch; its raw patch string bypasses Code Mode source parsing entirely. Before patching an existing file, inspect the exact current source region used by each hunk. For multi-file patches, every hunk must have current exact source evidence; split out any uncertain file and read it first. After a context-mismatch rejection, re-read the affected region and rebuild the hunk instead of retrying the same stale anchor.
+- Every `*** Update File` hunk must contain at least one real changed line using `-` removal and/or `+` addition syntax. A hunk containing only context lines is a no-op and must not be sent.
 - A direct `apply_patch` call is atomic. Hunks are staged in order, including multiple hunks for the same path, but no file is committed unless every hunk in the patch validates.
 - Direct model-facing `write`: create a new text file or intentionally replace a complete file. Do not embed complete file contents in Code Mode source.
 - Human readability is part of correctness for source mutations. Never compress, minify, line-pack, or collapse source merely to reduce tool-call size or token usage unless the user explicitly asks for minified output. Preserve the existing file's formatting conventions when editing; for new files, use conventional language-appropriate formatting.
@@ -45,6 +46,8 @@ The APIs documented by the Code Mode description are a capability catalog, not p
 - `tools.interact_terminal`: answer a prompt or send control/navigation keys to that same terminal session. For ordinary line input, send text with ENTER.
 - `tools.terminate_terminal`: stop a persistent terminal session started for the current work.
 - Execute once, read the same session, interact only when fresh output/state needs input, then continue reading that same session.
+- Preserve the `session_id` returned by `execute_terminal`. Do not use shell sleeps such as `Start-Sleep` as a polling mechanism and do not start status-check commands just to wait. Call `read_terminal` on the same session instead.
+- Code Mode terminal results expose direct convenience fields such as `session_id`, `state`, `exit_code`, `new_output`, and `output_path` when available. Use those fields instead of inventing result properties.
 
 ## Other capabilities
 

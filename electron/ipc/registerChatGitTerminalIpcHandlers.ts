@@ -30,7 +30,7 @@ import type {
 import { estimateCodexContextUsage } from '../chat/codex/runtime'
 import { estimateApiKeyContextUsage } from '../chat/apiKey/runtime'
 import { resolveChatRuntimeEnvironment } from '../chat/shared/runtimeEnvironment'
-import { ensureRunServiceClient } from '../runService/ensureService'
+import { connectRunServiceClientIfAvailable, ensureRunServiceClient } from '../runService/ensureService'
 import { refreshProjectPathWatcher } from '../history/projectPathWatch'
 import {
   checkoutGitBranch,
@@ -74,8 +74,10 @@ export function registerChatGitTerminalIpcHandlers(
   activeChatStreamProviders: Map<string, StartChatStreamInput['providerId']>,
 ) {
   const emittedTerminalExitSessionIds = new Set<string>()
-  void ensureRunServiceClient()
-    .then((runService) => {
+  let runServiceClientPromise: ReturnType<typeof ensureRunServiceClient> | null = null
+  const getRunService = () => {
+    if (!runServiceClientPromise) {
+      runServiceClientPromise = ensureRunServiceClient().then((runService) => {
       runService.onEvent((runEvent) => {
         if (runEvent.type === 'chat_event') {
           if (
@@ -144,33 +146,52 @@ export function registerChatGitTerminalIpcHandlers(
           )
         }
       })
-    })
-    .catch((error) => console.error('Unable to connect Electron to the Tidecode run service.', error))
+        return runService
+      }).catch((error: unknown) => {
+        runServiceClientPromise = null
+        throw error
+      })
+    }
 
-  ipcMain.handle('runs:getCompactionState', async (_event, conversationId: string) =>
-    (await ensureRunServiceClient()).getCompactionState(conversationId),
-  )
-  ipcMain.handle('runs:getConversationRuntime', async (_event, conversationId: string, surface?: AppSettingsSurface) =>
-    (await ensureRunServiceClient()).getConversationRuntime(conversationId, surface),
-  )
-  ipcMain.handle('runs:getPendingFollowUps', async (_event, streamId: string) =>
-    (await ensureRunServiceClient()).getPendingFollowUps(streamId),
-  )
-  ipcMain.handle('runs:getProjection', async (_event, runId: string) =>
-    (await ensureRunServiceClient()).getRunProjection(runId),
-  )
-  ipcMain.handle('runs:listActive', async () => (await ensureRunServiceClient()).listActiveRuns())
+    return runServiceClientPromise
+  }
+
+  ipcMain.handle('runs:getCompactionState', async (_event, conversationId: string) => {
+    const runService = await connectRunServiceClientIfAvailable()
+    if (!runService) return null
+    return (await getRunService()).getCompactionState(conversationId)
+  })
+  ipcMain.handle('runs:getConversationRuntime', async (_event, conversationId: string, surface?: AppSettingsSurface) => {
+    const runService = await connectRunServiceClientIfAvailable()
+    if (!runService) return null
+    return (await getRunService()).getConversationRuntime(conversationId, surface)
+  })
+  ipcMain.handle('runs:getPendingFollowUps', async (_event, streamId: string) => {
+    const runService = await connectRunServiceClientIfAvailable()
+    if (!runService) return null
+    return (await getRunService()).getPendingFollowUps(streamId)
+  })
+  ipcMain.handle('runs:getProjection', async (_event, runId: string) => {
+    const runService = await connectRunServiceClientIfAvailable()
+    if (!runService) return null
+    return (await getRunService()).getRunProjection(runId)
+  })
+  ipcMain.handle('runs:listActive', async () => {
+    const runService = await connectRunServiceClientIfAvailable()
+    if (!runService) return []
+    return (await getRunService()).listActiveRuns()
+  })
   ipcMain.handle('runs:claimPendingFollowUps', async (_event, input: ClaimSharedFollowUpsInput) =>
-    (await ensureRunServiceClient()).claimPendingFollowUps(input),
+    (await getRunService()).claimPendingFollowUps(input),
   )
   ipcMain.handle('runs:updatePendingFollowUps', async (_event, input: UpdateSharedFollowUpsInput) =>
-    (await ensureRunServiceClient()).updatePendingFollowUps(input),
+    (await getRunService()).updatePendingFollowUps(input),
   )
   ipcMain.handle('runs:updateConversationRuntime', async (_event, input: UpdateConversationRuntimeInput) =>
-    (await ensureRunServiceClient()).updateConversationRuntime(input),
+    (await getRunService()).updateConversationRuntime(input),
   )
   ipcMain.handle('chat:stream:start', async (_event, input: StartChatStreamInput) => {
-    const result = await (await ensureRunServiceClient()).startStream(input)
+    const result = await (await getRunService()).startStream(input)
     activeChatStreamProviders.set(result.streamId, input.providerId)
     return result
   })
@@ -179,7 +200,7 @@ export function registerChatGitTerminalIpcHandlers(
     streamId: string,
     cancellation?: ChatStreamCancellation,
   ) => {
-    await (await ensureRunServiceClient()).cancelStream(streamId, cancellation ?? {
+    await (await getRunService()).cancelStream(streamId, cancellation ?? {
       policy: 'terminate',
       reason: 'user_stop',
       requestedAt: Date.now(),
@@ -192,14 +213,14 @@ export function registerChatGitTerminalIpcHandlers(
       if (!input || typeof input.streamId !== 'string' || !input.streamId.trim()) {
         return { accepted: false }
       }
-      return (await ensureRunServiceClient()).updatePendingSteerMessages(input)
+      return (await getRunService()).updatePendingSteerMessages(input)
     },
   )
   ipcMain.handle('chat:compactConversation', async (_event, input: CompactConversationInput) =>
-    (await ensureRunServiceClient()).compactConversation(input),
+    (await getRunService()).compactConversation(input),
   )
   ipcMain.handle('chat:stream:submitToolDecision', async (_event, input: SubmitToolDecisionInput) =>
-    (await ensureRunServiceClient()).submitToolDecision(input),
+    (await getRunService()).submitToolDecision(input),
   )
   ipcMain.handle('chat:context-usage:estimate', async (event, input: EstimateContextUsageInput) => {
     if (input.providerId === 'codex') {
@@ -209,7 +230,7 @@ export function registerChatGitTerminalIpcHandlers(
     return estimateApiKeyContextUsage(event.sender, input)
   })
   ipcMain.handle('terminal:createSession', async (_event, input: CreateTerminalSessionInput) => {
-    const created = await (await ensureRunServiceClient()).terminalCreateSession({
+    const created = await (await getRunService()).terminalCreateSession({
       cols: input.cols,
       cwd: input.cwd,
       label: input.label,
@@ -233,29 +254,29 @@ export function registerChatGitTerminalIpcHandlers(
     }
   })
   ipcMain.handle('terminal:attachSession', async (_event, input) =>
-    (await ensureRunServiceClient()).terminalAttachSession(input),
+    (await getRunService()).terminalAttachSession(input),
   )
   ipcMain.handle('terminal:detachSession', async (_event, input) =>
-    (await ensureRunServiceClient()).terminalDetachSession(input),
+    (await getRunService()).terminalDetachSession(input),
   )
   ipcMain.handle('terminal:getSession', async (_event, input) =>
-    (await ensureRunServiceClient()).terminalGetSession(input),
+    (await getRunService()).terminalGetSession(input),
   )
   ipcMain.handle('terminal:getEnvironmentSnapshot', (_event, workspaceRootPath: string) =>
     resolveChatRuntimeEnvironment(workspaceRootPath),
   )
   ipcMain.handle('terminal:listSessions', async () =>
-    (await ensureRunServiceClient()).terminalListSessions(),
+    (await getRunService()).terminalListSessions(),
   )
   ipcMain.handle('terminal:writeToSession', async (_event, input: WriteTerminalSessionInput) =>
-    (await ensureRunServiceClient()).terminalWrite({
+    (await getRunService()).terminalWrite({
       data: input.data,
       legacySessionId: input.sessionId,
       workspaceRootPath: input.workspaceRootPath,
     }),
   )
   ipcMain.handle('terminal:resizeSession', async (_event, input: ResizeTerminalSessionInput) =>
-    (await ensureRunServiceClient()).terminalResize({
+    (await getRunService()).terminalResize({
       cols: input.cols,
       legacySessionId: input.sessionId,
       rows: input.rows,
@@ -263,7 +284,7 @@ export function registerChatGitTerminalIpcHandlers(
     }),
   )
   ipcMain.handle('terminal:closeSession', async (_event, input: CloseTerminalSessionInput) => {
-    await (await ensureRunServiceClient()).terminalTerminate({
+    await (await getRunService()).terminalTerminate({
       legacySessionId: input.sessionId,
       provenance: {
         policy: 'terminate',

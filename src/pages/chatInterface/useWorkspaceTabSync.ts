@@ -20,7 +20,7 @@ import {
   normalizeWorkspaceRelativePath,
 } from "./chatWorkspaceUiState.utils";
 
-const ACTIVE_WORKSPACE_TAB_SYNC_INTERVAL_MS = 1000;
+const ACTIVE_WORKSPACE_TAB_SYNC_INTERVAL_MS = 5000;
 
 function isMissingWorkspaceFileError(error: unknown) {
   if (!(error instanceof Error)) {

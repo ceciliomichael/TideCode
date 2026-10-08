@@ -5,6 +5,7 @@ import type { WorkspaceTypeScriptProjectSnapshot } from '../../../src/types/chat
 import {
   applyWorkspaceMonacoTypeScriptProject,
   isWorkspaceMonacoTypeScriptFileHydrated,
+  retainWorkspaceMonacoTypeScriptProject,
 } from '../../../src/components/workspaceExplorer/workspaceFileEditor/workspaceMonacoTypeScriptProject'
 
 function createFakeMonaco() {
@@ -49,6 +50,27 @@ function createSnapshot(files: WorkspaceTypeScriptProjectSnapshot['files']): Wor
     truncated: false,
   }
 }
+
+test('Monaco project libraries expire only after the final editor consumer releases them', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const fake = createFakeMonaco()
+  applyWorkspaceMonacoTypeScriptProject(fake.monaco, 'typescript', 'C:/repo', createSnapshot([
+    { filePath: 'src/a.ts', content: 'export const a = 1' },
+  ]))
+  const first = retainWorkspaceMonacoTypeScriptProject(fake.monaco, 'typescript')
+  const second = retainWorkspaceMonacoTypeScriptProject(fake.monaco, 'typescript')
+  first()
+  t.mock.timers.tick(30_000)
+  assert.equal(fake.disposed.length, 0)
+  second()
+  const reopened = retainWorkspaceMonacoTypeScriptProject(fake.monaco, 'typescript')
+  t.mock.timers.tick(30_000)
+  assert.equal(fake.disposed.length, 0)
+  reopened()
+  reopened()
+  t.mock.timers.tick(30_000)
+  assert.deepEqual(fake.disposed, ['file:///workspace/src/a.ts'])
+})
 
 test('workspace Monaco retains unchanged TypeScript project libraries between file switches', () => {
   const fake = createFakeMonaco()

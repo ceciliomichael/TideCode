@@ -80,8 +80,8 @@ export class TideCodeRunServiceClient {
   }
 
   async connect() {
-    if (this.socket && !this.socket.destroyed) return
     if (this.connectPromise) return this.connectPromise
+    if (this.socket && !this.socket.destroyed) return
 
     this.connectPromise = (async () => {
       this.token = await ensureRunServiceToken()
@@ -119,26 +119,42 @@ export class TideCodeRunServiceClient {
         throw error
       }
 
-      socket.on('data', (chunk: string) => this.handleData(chunk))
-      socket.on('error', (error) => this.handleDisconnect(error))
-      socket.on('close', () => this.handleDisconnect(new Error('Tidecode run service disconnected.')))
+      socket.on('data', (chunk: string) => {
+        if (this.socket === socket) {
+          this.handleData(chunk)
+        }
+      })
+      socket.on('error', (error) => {
+        if (this.socket === socket) {
+          this.handleDisconnect(error)
+        }
+      })
+      socket.on('close', () => {
+        if (this.socket === socket) {
+          this.handleDisconnect(new Error('Tidecode run service disconnected.'))
+        }
+      })
 
-      const hello = await this.requestRaw<RunServiceHello>('hello', undefined, RUN_SERVICE_HANDSHAKE_TIMEOUT_MS)
-      this.serviceProcessId = Number.isInteger(hello.processId) && (hello.processId ?? 0) > 0
-        ? hello.processId ?? null
-        : null
-      if (hello.protocolVersion !== RUN_SERVICE_PROTOCOL_VERSION) {
+      try {
+        const hello = await this.requestRaw<RunServiceHello>('hello', undefined, RUN_SERVICE_HANDSHAKE_TIMEOUT_MS)
+        this.serviceProcessId = Number.isInteger(hello.processId) && (hello.processId ?? 0) > 0
+          ? hello.processId ?? null
+          : null
+        if (hello.protocolVersion !== RUN_SERVICE_PROTOCOL_VERSION) {
+          throw new Error(
+            `Tidecode run-service protocol mismatch: expected ${RUN_SERVICE_PROTOCOL_VERSION}, got ${hello.protocolVersion}.`,
+          )
+        }
+        if (this.expectedBuildId && hello.buildId !== this.expectedBuildId) {
+          await this.requestRaw<null>('shutdown', undefined, RUN_SERVICE_HANDSHAKE_TIMEOUT_MS).catch(() => undefined)
+          throw new RunServiceBuildMismatchError(this.expectedBuildId, hello.buildId)
+        }
+      } catch (error) {
+        if (this.socket === socket) {
+          this.handleDisconnect(error instanceof Error ? error : new Error(String(error)))
+        }
         socket.destroy()
-        if (this.socket === socket) this.socket = null
-        throw new Error(
-          `Tidecode run-service protocol mismatch: expected ${RUN_SERVICE_PROTOCOL_VERSION}, got ${hello.protocolVersion}.`,
-        )
-      }
-      if (this.expectedBuildId && hello.buildId !== this.expectedBuildId) {
-        await this.requestRaw<null>('shutdown', undefined, RUN_SERVICE_HANDSHAKE_TIMEOUT_MS).catch(() => undefined)
-        socket.destroy()
-        if (this.socket === socket) this.socket = null
-        throw new RunServiceBuildMismatchError(this.expectedBuildId, hello.buildId)
+        throw error
       }
     })().finally(() => {
       this.connectPromise = null
@@ -323,8 +339,9 @@ export class TideCodeRunServiceClient {
   }
 
   close() {
-    this.socket?.destroy()
-    this.socket = null
+    const socket = this.socket
+    this.handleDisconnect(new Error('Tidecode run service connection closed.'))
+    socket?.destroy()
   }
 
   private requestControlRaw<T>(method: string, params?: unknown): Promise<T> {
@@ -393,6 +410,8 @@ export class TideCodeRunServiceClient {
 
   private handleDisconnect(error: Error) {
     this.socket = null
+    this.buffered = ''
+    this.serviceProcessId = null
     for (const pending of this.pending.values()) {
       if (pending.timeoutId) clearTimeout(pending.timeoutId)
       pending.reject(error)

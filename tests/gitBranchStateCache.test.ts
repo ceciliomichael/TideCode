@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { GitBranchState } from '../src/types/chat'
-import { loadGitBranchState } from '../src/lib/gitBranchStateCache'
+import { loadGitBranchState, getCachedGitBranchState, storeCachedGitBranchState } from '../src/lib/gitBranchStateCache'
 
 function createBranchState(currentBranch: string): GitBranchState {
   return {
@@ -17,6 +17,19 @@ function createBranchState(currentBranch: string): GitBranchState {
     repoRootPath: 'C:/workspace',
   }
 }
+
+test('branch cache bounds project paths and repository aliases while preserving recent entries', () => {
+  const state = createBranchState('main')
+  for (let index = 0; index < 12; index += 1) {
+    storeCachedGitBranchState(`workspace-${index}`, { ...state, repoRootPath: `root-${index}` })
+  }
+  assert.ok(getCachedGitBranchState('workspace-0'))
+  storeCachedGitBranchState('workspace-new', { ...state, repoRootPath: 'root-new' })
+  assert.ok(getCachedGitBranchState('workspace-0'))
+  assert.equal(getCachedGitBranchState('root-0'), null)
+  assert.equal(getCachedGitBranchState('workspace-1'), null)
+  assert.ok(getCachedGitBranchState('root-new'))
+})
 
 test('forced branch refreshes coalesce while one repository read is already running', async () => {
   const originalWindow = globalThis.window

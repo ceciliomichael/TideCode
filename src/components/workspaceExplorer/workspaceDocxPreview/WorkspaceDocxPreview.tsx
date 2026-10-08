@@ -1,5 +1,8 @@
-import { memo } from 'react'
-import { WorkspaceDocxPreviewView } from './WorkspaceDocxPreviewView'
+import { lazy, memo, Suspense } from 'react'
+
+const WorkspaceDocxPreviewView = lazy(() =>
+  import('./WorkspaceDocxPreviewView').then((module) => ({ default: module.WorkspaceDocxPreviewView })),
+)
 
 interface WorkspaceDocxPreviewProps {
   fileName: string
@@ -17,12 +20,20 @@ export const WorkspaceDocxPreview = memo(function WorkspaceDocxPreview({
   tabKey,
 }: WorkspaceDocxPreviewProps) {
   return (
-    <WorkspaceDocxPreviewView
-      fileName={fileName}
-      previewDataUrl={previewDataUrl}
-      previewError={previewError}
-      relativePath={relativePath}
-      tabKey={tabKey}
-    />
+    <Suspense
+      fallback={(
+        <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-subtle-foreground">
+          Loading {fileName}...
+        </div>
+      )}
+    >
+      <WorkspaceDocxPreviewView
+        fileName={fileName}
+        previewDataUrl={previewDataUrl}
+        previewError={previewError}
+        relativePath={relativePath}
+        tabKey={tabKey}
+      />
+    </Suspense>
   )
 })

@@ -1,13 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import type { DiffPanelScope } from './components/chat/ConversationDiffPanel'
 import { ChatInterface, type RightPanelTab } from './pages/ChatInterface'
-import { SettingsInterface } from './pages/SettingsInterface'
 import { useAppSettings } from './hooks/useAppSettings'
 import { useChatMessages } from './hooks/useChatMessages'
 import { useDocumentTheme } from './hooks/useDocumentTheme'
-import { useMcpServersState } from './hooks/useMcpServersState'
 import { useProvidersState } from './hooks/useProvidersState'
-import { useSkillsState } from './hooks/useSkillsState'
 import type { TideCodeLaunchRequest } from './lib/appLaunchRequest'
 import { resolveBootConversationLaunchState } from './pages/chatInterface/chatLaunchState'
 import { hydrateCachedUpdate, requestAutomaticUpdateCheck } from './components/settings/updates/updatesSessionStore'
@@ -15,6 +12,8 @@ import type { SettingsItemId } from './components/settings/settingsItems'
 import { GlobalOverlayScrollbars } from './components/ui/GlobalOverlayScrollbars'
 
 type AppScreen = 'chat' | 'settings'
+
+const SettingsScreen = lazy(() => import('./pages/SettingsScreen'))
 
 export default function App() {
   const [initialLaunchRequest] = useState<TideCodeLaunchRequest | null>(() => window.tidecodeApp.getInitialLaunchRequest())
@@ -67,8 +66,6 @@ export default function App() {
     shouldInitializeHistory: true,
   })
   const activeWorkspacePath = chatMessages.activeConversationRootPath ?? chatMessages.selectedFolderPath
-  const skillsState = useSkillsState(activeWorkspacePath)
-  const mcpSettings = useMcpServersState(activeWorkspacePath)
   const handleSidebarWidthChange = useCallback((sidebarWidth: number) => {
     void updateSettings({ sidebarWidth })
   }, [updateSettings])
@@ -209,41 +206,38 @@ export default function App() {
         />
       </div>
 
-      <div
-        className={[
-          'absolute inset-0 z-50',
-          activeScreen === 'settings' ? 'visible' : 'invisible pointer-events-none',
-        ].join(' ')}
-        aria-hidden={activeScreen !== 'settings'}
-      >
-        <SettingsInterface
-          isActiveScreen={activeScreen === 'settings'}
-          initialItemId={settingsInitialItemId}
-          onLaunchRequestConsumed={consumeLaunchRequest}
-          settings={settings}
-          isSettingsLoading={isLoading}
-          onBackToApp={() => setActiveScreen('chat')}
-          onSidebarWidthChange={handleSidebarWidthChange}
-          onUpdateSettings={updateSettings}
-          mcpSettings={mcpSettings}
-          providersState={{
-            activeOperation: providersState.activeOperation,
-            addCodexAccountWithOAuth: providersState.addCodexAccountWithOAuth,
-            connectCodexWithOAuth: providersState.connectCodexWithOAuth,
-            disconnectCodex: providersState.disconnectCodex,
-            removeCodexAccount: providersState.removeCodexAccount,
-            errorMessage: providersState.errorMessage,
-            isLoading: providersState.isLoading,
-            onRemoveApiKeyProvider: providersState.removeApiKeyProvider,
-            onSaveApiKeyProvider: providersState.saveApiKeyProvider,
-            onSwitchCodexAccount: providersState.switchCodexAccount,
-            providersState: providersState.providersState,
-          }}
-          skillsState={skillsState}
-          sidebarWidth={settings.sidebarWidth}
-          pendingLaunchRequest={pendingLaunchRequest}
-        />
-      </div>
+      {activeScreen === 'settings' ? (
+        <div className="absolute inset-0 z-50">
+          <Suspense fallback={null}>
+            <SettingsScreen
+              activeWorkspacePath={activeWorkspacePath}
+              isActiveScreen
+              initialItemId={settingsInitialItemId}
+              onLaunchRequestConsumed={consumeLaunchRequest}
+              settings={settings}
+              isSettingsLoading={isLoading}
+              onBackToApp={() => setActiveScreen('chat')}
+              onSidebarWidthChange={handleSidebarWidthChange}
+              onUpdateSettings={updateSettings}
+              providersState={{
+                activeOperation: providersState.activeOperation,
+                addCodexAccountWithOAuth: providersState.addCodexAccountWithOAuth,
+                connectCodexWithOAuth: providersState.connectCodexWithOAuth,
+                disconnectCodex: providersState.disconnectCodex,
+                removeCodexAccount: providersState.removeCodexAccount,
+                errorMessage: providersState.errorMessage,
+                isLoading: providersState.isLoading,
+                onRemoveApiKeyProvider: providersState.removeApiKeyProvider,
+                onSaveApiKeyProvider: providersState.saveApiKeyProvider,
+                onSwitchCodexAccount: providersState.switchCodexAccount,
+                providersState: providersState.providersState,
+              }}
+              sidebarWidth={settings.sidebarWidth}
+              pendingLaunchRequest={pendingLaunchRequest}
+            />
+          </Suspense>
+        </div>
+      ) : null}
 
       <GlobalOverlayScrollbars />
     </div>

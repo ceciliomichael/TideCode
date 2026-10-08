@@ -46,7 +46,9 @@ test('truncated output is saved behind @tool-output and recovered with normal re
     assert.equal(typeof outputPath, 'string')
     assert.match(String(outputPath), /^@tool-output\/tool_\d{5}\.txt$/u)
     assert.equal((boundedResult.body ?? '').includes(String(outputPath)), true)
-    assert.match(boundedResult.body ?? '', /Use grep to search it or read with a narrow offset\/limit/u)
+    assert.match(boundedResult.body ?? '', /~\/\.tidecode\/tool-output/u)
+    assert.match(boundedResult.body ?? '', /tools\.grep/u)
+    assert.match(boundedResult.body ?? '', /tools\.read with a narrow offset\/limit/u)
     assert.doesNotMatch(boundedResult.body ?? '', /output_id|read_tool_output/u)
 
     const resolved = resolveToolOutputAliasPath(String(outputPath))

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { EventEmitter } from 'node:events'
 import type { WebContents } from 'electron'
 import type {
   CreateTerminalSessionInput,
@@ -162,6 +163,17 @@ export class TerminalBroker {
     this.disconnectedClientExpiryById.set(normalizedClientId, this.now() + this.disconnectedClientGraceMs)
   }
 
+  releaseAiRunClient(runId: string) {
+    const clientId = `ai:${runId}`
+    for (const record of this.sessions.values()) {
+      if (record.snapshot.ownerKind !== 'ai' || !record.snapshot.attachedClientIds.includes(clientId)) {
+        continue
+      }
+      record.snapshot.attachedClientIds = record.snapshot.attachedClientIds.filter((id) => id !== clientId)
+      this.emitSession(record)
+    }
+  }
+
   async start() {
     if (this.started) return
     resolveTerminalShellSpec()
@@ -180,7 +192,7 @@ export class TerminalBroker {
     const reuseKey = this.createReuseKey(clientId, workspaceRootPath, input.sessionKey)
     const reusableId = reuseKey ? this.brokerSessionIdByReuseKey.get(reuseKey) : null
     const reusable = reusableId ? this.sessions.get(reusableId) : null
-    if (reusable && !['terminated', 'session_lost'].includes(reusable.snapshot.state)) {
+    if (reusable && !['exited', 'terminated', 'session_lost'].includes(reusable.snapshot.state)) {
       this.attachClient(reusable, clientId)
       return this.buildCreateResult(reusable, true)
     }
@@ -198,12 +210,18 @@ export class TerminalBroker {
       sessionKey: brokerSessionId,
       workspaceRootPath,
     }
-    const created = await createTerminalSessionForWebContents(owner, {
-      ...serviceInput,
-      // Broker cursors replaced the legacy pending-output polling buffer. Keeping both
-      // makes every AI chunk live in two stores and leaves the legacy chunk array unconsumed.
-      capturePendingAiOutput: false,
-    })
+    let created: Awaited<ReturnType<typeof createTerminalSessionForWebContents>>
+    try {
+      created = await createTerminalSessionForWebContents(owner, {
+        ...serviceInput,
+        // Broker cursors replace the legacy pending-output polling buffer.
+        // Retaining both would leave the legacy chunk array unconsumed.
+        capturePendingAiOutput: false,
+      })
+    } catch (error) {
+      owner.emit('destroyed')
+      throw error
+    }
     const createdAt = this.now()
     const output = new TerminalBrokerOutputStore()
     if (created.bufferedOutput) output.append(brokerSessionId, created.bufferedOutput)
@@ -418,6 +436,7 @@ export class TerminalBroker {
 
   async applyRunCancellation(runId: string, provenance: TerminalCancellationProvenance) {
     const normalizedRunId = requireNonEmpty(runId, 'Run id')
+    this.releaseAiRunClient(normalizedRunId)
     const matching = Array.from(this.sessions.values()).filter((record) => record.snapshot.runId === normalizedRunId)
     if (provenance.policy === 'detach') {
       for (const record of matching) {
@@ -444,6 +463,15 @@ export class TerminalBroker {
     this.outputEventCoalescer.flushAll()
     await this.persistNow()
     await this.persistence.flush()
+    for (const record of this.sessions.values()) {
+      record.owner.emit('destroyed')
+    }
+    this.sessions.clear()
+    this.operations.clear()
+    this.brokerSessionIdByLegacyId.clear()
+    this.brokerSessionIdByReuseKey.clear()
+    this.disconnectedClientExpiryById.clear()
+    this.listeners.clear()
   }
 
   private async terminateRecord(record: BrokerSessionRecord, provenance: TerminalCancellationProvenance) {
@@ -548,6 +576,7 @@ export class TerminalBroker {
       }
     }
     for (const record of this.sessions.values()) {
+      this.pruneOperations(record, now)
       if (record.snapshot.state === 'orphaned' || record.snapshot.state === 'termination_failed') {
         if (
           record.terminationAttempts >= MAX_AUTOMATIC_TERMINATION_ATTEMPTS
@@ -566,11 +595,37 @@ export class TerminalBroker {
       }
 
       if (
-        ['terminated', 'session_lost'].includes(record.snapshot.state)
+        (['terminated', 'session_lost'].includes(record.snapshot.state)
+          || (record.snapshot.state === 'exited' && record.snapshot.attachedClientIds.length === 0))
         && now - record.snapshot.lastActivityAt >= this.recordRetentionMs
       ) {
+        if (record.snapshot.state === 'exited') {
+          await this.terminateRecord(record, {
+            policy: 'terminate', reason: 'surface_shutdown', requestedAt: now, surface: 'system',
+          })
+        }
         this.releaseRecord(record)
       }
+    }
+  }
+
+  private pruneOperations(record: BrokerSessionRecord, now: number) {
+    const completed = record.snapshot.operationIds.filter((id) => {
+      const operation = this.operations.get(id)?.snapshot
+      return operation && isTerminalOperationFinal(operation.state)
+    })
+    const evicted = new Set<string>()
+    for (let index = 0; index < completed.length; index += 1) {
+      const id = completed[index]
+      const operation = this.operations.get(id)!.snapshot
+      if (index < completed.length - 64 || now - (operation.completedAt ?? operation.createdAt) >= this.recordRetentionMs) {
+        this.operations.delete(id)
+        evicted.add(id)
+      }
+    }
+    if (evicted.size > 0) {
+      record.snapshot.operationIds = record.snapshot.operationIds.filter((id) => !evicted.has(id))
+      this.schedulePersistence()
     }
   }
 
@@ -578,6 +633,7 @@ export class TerminalBroker {
     const { brokerSessionId, legacySessionId, workspaceRootPath, createdByClientId } = record.snapshot
     this.outputEventCoalescer.flush(brokerSessionId)
     this.sessions.delete(brokerSessionId)
+    record.owner.emit('destroyed')
     this.brokerSessionIdByLegacyId.delete(legacySessionId)
     const reuseKey = this.createReuseKey(createdByClientId, workspaceRootPath, record.sessionKey)
     if (reuseKey && this.brokerSessionIdByReuseKey.get(reuseKey) === brokerSessionId) {
@@ -624,10 +680,12 @@ export class TerminalBroker {
   }
 
   private createOwner(brokerSessionId: string) {
-    const owner = {
+    const events = new EventEmitter()
+    let destroyed = false
+    events.once('destroyed', () => { destroyed = true })
+    const owner = Object.assign(events, {
       id: this.nextOwnerId--,
-      isDestroyed: () => false,
-      once: () => owner,
+      isDestroyed: () => destroyed,
       send: (channel: string, payload: unknown) => {
         if (channel === TERMINAL_DATA_CHANNEL) {
           this.handleTerminalData(brokerSessionId, payload as TerminalDataEvent)
@@ -635,7 +693,7 @@ export class TerminalBroker {
           this.handleTerminalExit(brokerSessionId, payload as TerminalExitEvent)
         }
       },
-    } as unknown as WebContents
+    }) as unknown as WebContents
     return owner
   }
 

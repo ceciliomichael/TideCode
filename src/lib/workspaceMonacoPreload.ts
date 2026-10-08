@@ -1,5 +1,4 @@
 import { loader, type Monaco } from '@monaco-editor/react'
-import { scheduleStartupBackgroundTask } from './startupBackgroundTask'
 
 type WorkspaceMonacoEditorViewModule = typeof import(
   '../components/workspaceExplorer/workspaceFileEditor/WorkspaceMonacoEditorView'
@@ -16,7 +15,6 @@ let runtimeInstance: Monaco | null = null
 let editorViewPromise: Promise<WorkspaceMonacoEditorViewModule> | null = null
 let diffViewPromise: Promise<WorkspaceMonacoDiffViewModule> | null = null
 let codeViewPromise: Promise<WorkspaceMonacoCodeViewModule> | null = null
-let backgroundPreloadScheduled = false
 
 export function preloadWorkspaceMonacoRuntime() {
   if (runtimePromise) {
@@ -97,18 +95,4 @@ export function preloadWorkspaceMonacoDiffView() {
     })
 
   return diffViewPromise
-}
-
-export function scheduleWorkspaceMonacoPreload() {
-  if (backgroundPreloadScheduled || typeof window === 'undefined') {
-    return
-  }
-
-  backgroundPreloadScheduled = true
-  scheduleStartupBackgroundTask(
-    () => {
-      void preloadWorkspaceMonacoEditorView().catch(() => undefined)
-    },
-    { delayMs: 1_500, idleTimeoutMs: 5_000 },
-  )
 }

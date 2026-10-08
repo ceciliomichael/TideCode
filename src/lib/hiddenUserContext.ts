@@ -132,8 +132,8 @@ export function buildWorkspaceMemoryHiddenContext(input: {
   if (!input.enabled) {
     return wrapHiddenUserContext(WORKSPACE_MEMORY_HIDDEN_CONTEXT_KIND, 'disabled', [
       '<workspace_memory_context state="disabled_until_superseded">',
-      'Optional workspace memory is disabled.',
-      'Do not rely on, create, update, or request optional MEMORY.md or memory/details state while this setting remains disabled.',
+      'Workspace memory is disabled.',
+      'Do not rely on, create, update, or request MEMORY.md or memory/details state while this setting remains disabled.',
       'DURABLE.md remains automatically managed by TideCode.',
       '</workspace_memory_context>',
     ].join('\n'))
@@ -143,15 +143,15 @@ export function buildWorkspaceMemoryHiddenContext(input: {
   const state = input.revision ? `enabled:${input.revision}` : 'enabled:missing'
   return wrapHiddenUserContext(WORKSPACE_MEMORY_HIDDEN_CONTEXT_KIND, state, [
     '<workspace_memory_context state="enabled_until_superseded">',
-    'Optional workspace memory is enabled.',
-    'You may create and maintain optional workspace memory whenever information is useful across future chats in this workspace, even if no memory files exist yet.',
+    'Workspace memory is enabled and active for this workspace.',
+    'Use and maintain workspace memory whenever confirmed information should carry across future chats in this workspace, even if no memory files exist yet.',
     'Memory layout:',
     '- .tidecode/memory/MEMORY.md is the compact index.',
     '- .tidecode/memory/details/*.md contains focused detailed memory entries. Nested topic folders under details are allowed when useful.',
     'MEMORY.md format rules:',
     '- Keep it short and use Markdown links to detail files instead of copying full detail content into the index.',
     '- Prefer one index line per topic in the form: `- [Topic](details/topic.md) - Short description.`',
-    '- When saving the first optional memory, create the relevant detail file and create MEMORY.md with its first index link.',
+    '- When saving the first memory, create the relevant detail file and create MEMORY.md with its first index link.',
     'Detail-file rules:',
     '- Keep each file focused on one durable topic such as architecture, workflow, testing, preferences, or another clearly named project concern.',
     '- Update an existing relevant detail file instead of creating duplicate memories for the same topic.',
@@ -163,7 +163,7 @@ export function buildWorkspaceMemoryHiddenContext(input: {
     'Use normal workspace file tools to create or update memory files and keep MEMORY.md links consistent; there is no dedicated memory tool.',
     ...(content
       ? ['', 'Current MEMORY.md index:', '', escapeHiddenUserContextMarkup(content)]
-      : ['', 'No MEMORY.md index currently exists. This does not disable memory; create the first indexed detail entry when persistent optional workspace memory becomes useful.']),
+      : ['', 'No MEMORY.md index currently exists. Workspace memory is still enabled; create the first indexed detail entry when persistent workspace memory becomes useful.']),
     '</workspace_memory_context>',
   ].join('\n'))
 }

@@ -43,7 +43,7 @@ const EMPTY_STATUS: GitStatusResult = {
   unstagedFileCount: 0,
   untrackedFileCount: 0,
 }
-const GIT_STATUS_POLL_INTERVAL_MS = 10000
+const GIT_STATUS_POLL_INTERVAL_MS = 30_000
 
 export function useGitCommit({
   modelId,

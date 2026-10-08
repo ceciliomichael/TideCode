@@ -16,6 +16,31 @@ async function writeFixtureFile(rootPath: string, relativePath: string, content:
   await writeFile(targetPath, content, 'utf8')
 }
 
+test('TypeScript snapshot cache evicts older project requests and keeps recently used snapshots', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'tidecode-ts-retention-'))
+  t.after(async () => {
+    clearWorkspaceTypeScriptProjectCache()
+    await rm(root, { recursive: true, force: true })
+  })
+  clearWorkspaceTypeScriptProjectCache()
+  const input = (index: number) => ({ workspaceRootPath: root, relativePath: `file-${index}.ts`, includeDependencyDeclarations: false })
+  for (let index = 0; index < 8; index += 1) {
+    await writeFixtureFile(root, `file-${index}.ts`, `export const value = ${index}`)
+  }
+  const first = await getWorkspaceTypeScriptProject(input(0))
+  for (let index = 1; index < 6; index += 1) {
+    await getWorkspaceTypeScriptProject(input(index))
+  }
+  assert.equal(await getWorkspaceTypeScriptProject(input(0)), first)
+  await getWorkspaceTypeScriptProject(input(6))
+  await getWorkspaceTypeScriptProject(input(7))
+  assert.equal(await getWorkspaceTypeScriptProject(input(0)), first)
+  // File 1 was evicted; its next request must read the changed source.
+  await writeFixtureFile(root, 'file-1.ts', 'export const value = 99')
+  const reloaded = await getWorkspaceTypeScriptProject(input(1))
+  assert.ok(reloaded.files.some((file) => file.content.includes('value = 99')))
+})
+
 test('workspace TypeScript project snapshot indexes local source and only needed package declarations', async (t) => {
   const workspaceRootPath = await mkdtemp(path.join(os.tmpdir(), 'tidecode-ts-project-'))
   t.after(async () => {

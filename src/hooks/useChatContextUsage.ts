@@ -17,6 +17,7 @@ const EMPTY_CONTEXT_USAGE: ContextUsageEstimate = {
   toolResultsTokens: 0,
   totalTokens: 0,
 }
+const CONTEXT_USAGE_FALLBACK_INTERVAL_MS = 60_000
 
 interface UseChatContextUsageInput {
   agentContextRootPath: string | null
@@ -28,6 +29,33 @@ interface UseChatContextUsageInput {
   providerId: ChatProviderId | null
   refreshSignal?: number
   terminalExecutionMode: AppTerminalExecutionMode
+}
+
+export function createContextUsageRefresh() {
+  let active = false
+  let pending: (() => Promise<void>) | null = null
+  const drain = async () => {
+    if (active) {
+      return
+    }
+    active = true
+    try {
+      while (pending) {
+        const task = pending
+        pending = null
+        await task()
+      }
+    } finally {
+      active = false
+    }
+  }
+  return {
+    request: (task: () => Promise<void>) => {
+      pending = task
+      void drain().catch((error) => console.error('Failed to refresh context usage', error))
+    },
+    cancelPending: () => { pending = null },
+  }
 }
 
 export function useChatContextUsage({
@@ -45,6 +73,7 @@ export function useChatContextUsage({
   const messagesRef = useRef(messages)
   const fetchUsageRef = useRef<(() => void) | null>(null)
   const requestSequenceRef = useRef(0)
+  const [refreshQueue] = useState(createContextUsageRefresh)
   messagesRef.current = messages
 
   useEffect(() => {
@@ -62,25 +91,30 @@ export function useChatContextUsage({
     const fetchUsage = (force = false) => {
       if (liveStreamId && !force) return
       const requestSequence = ++requestSequenceRef.current
-      void window.tidecodeChat
-        .estimateContextUsage({
-          agentContextRootPath,
-          chatMode,
-          conversationId,
-          contextCompaction,
-          messages: messagesRef.current,
-          modelId,
-          providerId,
-          terminalExecutionMode,
-        })
-        .then((nextUsage) => {
-          if (!isCancelled && requestSequence === requestSequenceRef.current) {
-            setUsage(nextUsage)
-          }
-        })
-        .catch((error) => {
-          console.error('Failed to estimate chat context usage', error)
-        })
+      refreshQueue.request(async () => {
+        if (isCancelled || (liveStreamId && !force)) {
+          return
+        }
+        await window.tidecodeChat
+          .estimateContextUsage({
+            agentContextRootPath,
+            chatMode,
+            conversationId,
+            contextCompaction,
+            messages: messagesRef.current,
+            modelId,
+            providerId,
+            terminalExecutionMode,
+          })
+          .then((nextUsage) => {
+            if (!isCancelled && requestSequence === requestSequenceRef.current) {
+              setUsage(nextUsage)
+            }
+          })
+          .catch((error) => {
+            console.error('Failed to estimate chat context usage', error)
+          })
+      })
     }
 
     const refreshAfterCompaction = () => {
@@ -100,6 +134,7 @@ export function useChatContextUsage({
     const unsubscribeChat = window.tidecodeChat.onStreamEvent((event) => {
       if (event.type === 'context_usage_updated' && event.conversationId === conversationId) {
         liveStreamId = event.streamId
+        refreshQueue.cancelPending()
         requestSequenceRef.current += 1
         setUsage(event.usage)
         return
@@ -149,12 +184,17 @@ export function useChatContextUsage({
       void window.tidecodeWorkspace.watchExplorerChanges({ workspaceRootPath: rootPath })
     }
 
-    const intervalId = window.setInterval(fetchUsage, 10_000)
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchUsage()
+      }
+    }, CONTEXT_USAGE_FALLBACK_INTERVAL_MS)
     const handleFocus = () => fetchUsage()
     window.addEventListener('focus', handleFocus)
 
     return () => {
       isCancelled = true
+      refreshQueue.cancelPending()
       requestSequenceRef.current += 1
       window.clearInterval(intervalId)
       for (const refreshTimeoutId of pendingCompactionRefreshes) {
@@ -176,7 +216,7 @@ export function useChatContextUsage({
         fetchUsageRef.current = null
       }
     }
-  }, [agentContextRootPath, chatMode, contextCompaction, conversationId, modelId, providerId, refreshSignal, terminalExecutionMode])
+  }, [agentContextRootPath, chatMode, contextCompaction, conversationId, modelId, providerId, refreshQueue, refreshSignal, terminalExecutionMode])
 
   useEffect(() => {
     if (!providerId) return

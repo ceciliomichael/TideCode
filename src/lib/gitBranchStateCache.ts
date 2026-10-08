@@ -16,6 +16,7 @@ const EMPTY_BRANCH_STATE: GitBranchState = {
 
 
 const branchStateCache = new Map<string, GitBranchState>()
+const MAX_BRANCH_CACHE_ENTRIES = 24
 const inFlightBranchStateRequests = new Map<string, Promise<GitBranchState>>()
 
 export function getEmptyGitBranchState(): GitBranchState {
@@ -28,11 +29,20 @@ export function normalizeGitWorkspacePath(workspacePath: string | null | undefin
 }
 
 function cacheBranchState(cacheKey: string, branchState: GitBranchState) {
+  branchStateCache.delete(cacheKey)
   branchStateCache.set(cacheKey, branchState)
 
   const repoRootPath = normalizeGitWorkspacePath(branchState.repoRootPath)
   if (repoRootPath) {
+    branchStateCache.delete(repoRootPath)
     branchStateCache.set(repoRootPath, branchState)
+  }
+  while (branchStateCache.size > MAX_BRANCH_CACHE_ENTRIES) {
+    const oldestKey = branchStateCache.keys().next().value
+    if (oldestKey === undefined) {
+      break
+    }
+    branchStateCache.delete(oldestKey)
   }
 }
 
@@ -42,7 +52,12 @@ export function getCachedGitBranchState(workspacePath: string | null | undefined
     return null
   }
 
-  return branchStateCache.get(normalizedWorkspacePath) ?? null
+  const cached = branchStateCache.get(normalizedWorkspacePath)
+  if (cached) {
+    branchStateCache.delete(normalizedWorkspacePath)
+    branchStateCache.set(normalizedWorkspacePath, cached)
+  }
+  return cached ?? null
 }
 
 export function storeCachedGitBranchState(
@@ -67,7 +82,7 @@ export async function loadGitBranchState(
   }
 
   if (!options?.forceRefresh) {
-    const cachedBranchState = branchStateCache.get(normalizedWorkspacePath)
+    const cachedBranchState = getCachedGitBranchState(normalizedWorkspacePath)
     if (cachedBranchState) {
       return cachedBranchState
     }

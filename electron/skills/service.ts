@@ -9,8 +9,22 @@ const GLOBAL_SKILL_DIRECTORIES = ['.tidecode/skills', '.codex/skills', '.agents/
 const WORKSPACE_SKILL_DIRECTORIES = ['skills', '.tidecode/skills', '.codex/skills', '.agents/skills', '.claude/skills'] as const
 const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/
 const SKILL_DISCOVERY_CACHE_TTL_MS = 3_000
+const MAX_SKILL_DISCOVERY_CACHE_ENTRIES = 16
 const skillDiscoveryCache = new Map<string, { expiresAt: number; state: SkillsState }>()
 const skillDiscoveryInFlight = new Map<string, Promise<SkillsState>>()
+
+function pruneSkillDiscoveryCache(now: number) {
+  for (const [cacheKey, cached] of skillDiscoveryCache) {
+    if (cached.expiresAt <= now) {
+      skillDiscoveryCache.delete(cacheKey)
+    }
+  }
+  while (skillDiscoveryCache.size > MAX_SKILL_DISCOVERY_CACHE_ENTRIES) {
+    const oldestKey = skillDiscoveryCache.keys().next().value
+    if (typeof oldestKey !== 'string') return
+    skillDiscoveryCache.delete(oldestKey)
+  }
+}
 
 interface SkillSearchRoot {
   directory: string
@@ -292,8 +306,12 @@ async function discoverAvailableSkills(workspacePath?: string | null): Promise<S
 
 export async function listAvailableSkills(workspacePath?: string | null): Promise<SkillsState> {
   const cacheKey = normalizeWorkspacePath(workspacePath) ?? ''
+  const now = Date.now()
+  pruneSkillDiscoveryCache(now)
   const cached = skillDiscoveryCache.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) {
+  if (cached && cached.expiresAt > now) {
+    skillDiscoveryCache.delete(cacheKey)
+    skillDiscoveryCache.set(cacheKey, cached)
     return cached.state
   }
 
@@ -308,6 +326,7 @@ export async function listAvailableSkills(workspacePath?: string | null): Promis
         expiresAt: Date.now() + SKILL_DISCOVERY_CACHE_TTL_MS,
         state,
       })
+      pruneSkillDiscoveryCache(Date.now())
       return state
     })
     .finally(() => {

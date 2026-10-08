@@ -1,5 +1,8 @@
-import { memo } from 'react'
-import { WorkspacePdfPreviewView } from './WorkspacePdfPreviewView'
+import { lazy, memo, Suspense } from 'react'
+
+const WorkspacePdfPreviewView = lazy(() =>
+  import('./WorkspacePdfPreviewView').then((module) => ({ default: module.WorkspacePdfPreviewView })),
+)
 
 interface WorkspacePdfPreviewProps {
   fileName: string
@@ -17,12 +20,20 @@ export const WorkspacePdfPreview = memo(function WorkspacePdfPreview({
   tabKey,
 }: WorkspacePdfPreviewProps) {
   return (
-    <WorkspacePdfPreviewView
-      fileName={fileName}
-      previewDataUrl={previewDataUrl}
-      previewError={previewError}
-      relativePath={relativePath}
-      tabKey={tabKey}
-    />
+    <Suspense
+      fallback={(
+        <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-subtle-foreground">
+          Loading {fileName}...
+        </div>
+      )}
+    >
+      <WorkspacePdfPreviewView
+        fileName={fileName}
+        previewDataUrl={previewDataUrl}
+        previewError={previewError}
+        relativePath={relativePath}
+        tabKey={tabKey}
+      />
+    </Suspense>
   )
 })

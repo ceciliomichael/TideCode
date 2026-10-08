@@ -35,7 +35,9 @@ test('workspace Monaco uses VS Code wrapping indentation when word wrap is enabl
   assert.equal(options.showFoldingControls, 'mouseover')
   assert.equal(options.renderLineHighlight, 'none')
   assert.equal(options.links, false)
-assert.deepEqual(options.hover, { enabled: false })
+  assert.equal(options.occurrencesHighlight, 'off')
+  assert.equal(options.selectionHighlight, true)
+  assert.deepEqual(options.hover, { enabled: false })
 })
 
 test('workspace Monaco disables wrapping without changing wrapped indentation semantics', () => {

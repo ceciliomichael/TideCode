@@ -151,11 +151,13 @@ async function closeDevToolsForTransition(guestWebContents: WebContents) {
   }
 
   await new Promise<void>((resolve) => {
-    const timeout = setTimeout(resolve, 250)
-    guestWebContents.once('devtools-closed', () => {
+    const finish = () => {
       clearTimeout(timeout)
+      guestWebContents.off('devtools-closed', finish)
       resolve()
-    })
+    }
+    const timeout = setTimeout(finish, 250)
+    guestWebContents.once('devtools-closed', finish)
     guestWebContents.closeDevTools()
   })
 }
@@ -210,6 +212,7 @@ export async function openBrowserGuestDevTools(
       browserGuestDevToolsViews.set(guestWebContents.id, entry)
       let readyScheduled = false
       let readyFallback: ReturnType<typeof setTimeout> | null = null
+      let readyNotification: ReturnType<typeof setTimeout> | null = null
       const handleReady = () => {
         if (readyScheduled) {
           return
@@ -219,10 +222,19 @@ export async function openBrowserGuestDevTools(
           clearTimeout(readyFallback)
           readyFallback = null
         }
-        setTimeout(() => notifyBrowserGuestDevToolsReady(guestWebContents.id), 32)
+        readyNotification = setTimeout(() => notifyBrowserGuestDevToolsReady(guestWebContents.id), 32)
       }
       readyFallback = setTimeout(handleReady, 1000)
       view.webContents.once('did-finish-load', handleReady)
+      view.webContents.once('destroyed', () => {
+        if (readyFallback) {
+          clearTimeout(readyFallback)
+        }
+        if (readyNotification) {
+          clearTimeout(readyNotification)
+        }
+        view.webContents.off('did-finish-load', handleReady)
+      })
       guestWebContents.setDevToolsWebContents(view.webContents)
       guestWebContents.openDevTools({ mode: 'detach', activate: true })
     } else {
@@ -389,8 +401,11 @@ export async function createApplicationWindow(input: {
         entry.visible = false
         entry.view.setVisible(false)
       }
-      if (!browserGuestDevToolsTransitions.has(guestWebContents.id) && !win.isDestroyed()) {
-        win.webContents.send('browser:devToolsClosed', guestWebContents.id)
+      if (!browserGuestDevToolsTransitions.has(guestWebContents.id)) {
+        destroyBrowserGuestDevToolsView(guestWebContents.id)
+        if (!win.isDestroyed()) {
+          win.webContents.send('browser:devToolsClosed', guestWebContents.id)
+        }
       }
     })
     guestWebContents.on('before-input-event', (event, inputEvent) => {

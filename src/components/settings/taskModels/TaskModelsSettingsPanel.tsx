@@ -493,10 +493,10 @@ export function TaskModelsSettingsPanel({
         <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
           <SettingsRow
             title="Memory"
-            description="Allow optional workspace MEMORY.md and linked memory/details entries across chats. DURABLE.md remains enabled regardless of this setting."
+            description="Enable workspace MEMORY.md and linked memory/details entries across chats. DURABLE.md remains enabled regardless of this setting."
           >
             <SegmentedField
-              ariaLabel="Optional workspace memory"
+              ariaLabel="Workspace memory"
               value={settings.workspaceMemoryEnabled ? 'on' : 'off'}
               options={BOOLEAN_SEGMENT_OPTIONS}
               disabled={isLoading}

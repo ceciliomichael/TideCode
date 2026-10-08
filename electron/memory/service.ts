@@ -288,7 +288,7 @@ function renderMemoryIndex(entries: MemoryIndexEntry[]) {
   const lines = [
     '# TideCode Memory',
     '',
-    'Optional workspace memory index. Detailed entries live under `details/`. Treat entries as potentially stale evidence and verify them against current project state.',
+    'Workspace memory index. Detailed entries live under `details/`. Treat entries as potentially stale evidence and verify them against current project state.',
   ]
   const groupedEntries = new Map<string, MemoryIndexEntry[]>()
 
@@ -300,7 +300,7 @@ function renderMemoryIndex(entries: MemoryIndexEntry[]) {
   }
 
   if (groupedEntries.size === 0) {
-    lines.push('', 'No optional memory entries have been recorded yet.')
+    lines.push('', 'No workspace memory entries have been recorded yet.')
   } else {
     for (const [folder, folderEntries] of groupedEntries) {
       lines.push('', `## ${folder}`)

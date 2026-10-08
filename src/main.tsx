@@ -1,7 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import { scheduleWorkspaceMonacoPreload } from './lib/workspaceMonacoPreload'
 import { installDesktopRemoteBridge } from './remote/desktopBridge'
 import { installRemoteBrowserBridge, isRemoteBrowserRuntime } from './remote/webBridge'
 
@@ -39,7 +38,6 @@ async function bootstrap() {
         <App />
       </StrictMode>,
     )
-    scheduleWorkspaceMonacoPreload()
   } catch (error) {
     console.error('Unable to initialize TideCode.', error)
     renderBootstrapError(error)

@@ -1,16 +1,16 @@
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist'
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState, type RefObject } from 'react'
 import {
   PDF_PAGE_SCALE,
   PDF_RENDER_RESOLUTION_SCALE,
   type PdfPageLayout,
-  type PdfPageRenderSnapshot,
+  PDF_MAX_CANVAS_PIXELS,
 } from '../../../lib/pdfPreviewRenderCache'
 import { toUserFacingErrorMessage } from '../../../lib/userFacingError'
 
 interface WorkspacePdfPageProps {
   documentProxy: PDFDocumentProxy
-  cachedPageRender?: Promise<PdfPageRenderSnapshot>
+  viewportRef: RefObject<HTMLDivElement | null>
   pageNumber: number
   pageLayout: PdfPageLayout
   scale: number
@@ -22,6 +22,7 @@ async function renderPdfPage(
   canvas: HTMLCanvasElement,
   scale: number,
   isDisposed: () => boolean,
+  registerTask: (task: RenderTask) => void,
 ) {
   const page: PDFPageProxy = await documentProxy.getPage(pageNumber)
   if (isDisposed()) {
@@ -32,6 +33,7 @@ async function renderPdfPage(
   const devicePixelRatio = Math.min(
     3,
     Math.max(window.devicePixelRatio || 1, PDF_RENDER_RESOLUTION_SCALE),
+    Math.sqrt(PDF_MAX_CANVAS_PIXELS / (viewport.width * viewport.height)),
   )
   const canvasContext = canvas.getContext('2d')
   if (!canvasContext) {
@@ -50,20 +52,35 @@ async function renderPdfPage(
     transform: [devicePixelRatio, 0, 0, devicePixelRatio, 0, 0],
     viewport,
   })
+  registerTask(renderTask)
   await renderTask.promise
   return renderTask
 }
 
 export const WorkspacePdfPage = memo(function WorkspacePdfPage({
-  cachedPageRender,
+  viewportRef,
   documentProxy,
   pageNumber,
   pageLayout,
   scale,
 }: WorkspacePdfPageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const renderTaskRef = useRef<RenderTask | null>(null)
+  const [isNearViewport, setIsNearViewport] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) {
+      return
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsNearViewport(entry.isIntersecting)
+    }, { root: viewportRef.current, rootMargin: '400px' })
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [viewportRef])
 
   useEffect(() => {
     let isDisposed = false
@@ -72,7 +89,11 @@ export const WorkspacePdfPage = memo(function WorkspacePdfPage({
     renderTaskRef.current = null
 
     const canvas = canvasRef.current
-    if (!canvas) {
+    if (!canvas || !isNearViewport) {
+      if (canvas) {
+        canvas.width = 0
+        canvas.height = 0
+      }
       return () => {
         isDisposed = true
       }
@@ -83,42 +104,10 @@ export const WorkspacePdfPage = memo(function WorkspacePdfPage({
     canvas.style.width = `${expectedWidth}px`
     canvas.style.height = `${expectedHeight}px`
 
-    const renderPromise = Math.abs(scale - PDF_PAGE_SCALE) < 0.001 && cachedPageRender
-      ? cachedPageRender.then((snapshot) => {
-          if (isDisposed) {
-            return null
-          }
-
-          canvas.width = snapshot.pixelWidth
-          canvas.height = snapshot.pixelHeight
-          canvas.style.width = `${snapshot.width}px`
-          canvas.style.height = `${snapshot.height}px`
-          const canvasContext = canvas.getContext('2d')
-          if (!canvasContext) {
-            throw new Error('The browser could not create a PDF canvas.')
-          }
-          canvasContext.setTransform(1, 0, 0, 1, 0, 0)
-          if (snapshot.bitmap) {
-            canvasContext.drawImage(snapshot.bitmap, 0, 0, snapshot.pixelWidth, snapshot.pixelHeight)
-          } else if (snapshot.dataUrl) {
-            const dataUrl = snapshot.dataUrl
-            const image = new Image()
-            return new Promise<RenderTask | null>((resolve, reject) => {
-              image.onload = () => {
-                if (isDisposed) {
-                  resolve(null)
-                  return
-                }
-                canvasContext.drawImage(image, 0, 0, snapshot.pixelWidth, snapshot.pixelHeight)
-                resolve(null)
-              }
-              image.onerror = () => reject(new Error('The cached PDF page image could not be decoded.'))
-              image.src = dataUrl
-            })
-          }
-          return null
-        })
-      : renderPdfPage(documentProxy, pageNumber, canvas, scale, () => isDisposed)
+    const renderPromise = renderPdfPage(
+      documentProxy, pageNumber, canvas, scale, () => isDisposed,
+      (task) => { renderTaskRef.current = task },
+    )
 
     void renderPromise
       .then((renderTask) => {
@@ -139,11 +128,14 @@ export const WorkspacePdfPage = memo(function WorkspacePdfPage({
       isDisposed = true
       renderTaskRef.current?.cancel()
       renderTaskRef.current = null
+      canvas.width = 0
+      canvas.height = 0
     }
-  }, [cachedPageRender, documentProxy, pageLayout.height, pageLayout.width, pageNumber, scale])
+  }, [isNearViewport, documentProxy, pageLayout.height, pageLayout.width, pageNumber, scale])
 
   return (
     <div
+      ref={containerRef}
       className="relative flex min-h-16 min-w-16 items-center justify-center border border-border bg-white"
       style={{
         height: `${Math.max(1, Math.ceil(pageLayout.height * (scale / PDF_PAGE_SCALE)))}px`,

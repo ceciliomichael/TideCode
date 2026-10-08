@@ -6,7 +6,9 @@ import {
   prepareRevertSessionForMessage,
   restoreWorkspaceCheckpointForMessage,
 } from '../../src/hooks/chatHistoryWorkflows'
+import { getCachedChatCompactionMarkers } from '../../src/lib/chatCompactionMarkerCache'
 import type {
+  ChatCompactionMarker,
   ConversationFolderSummary,
   ConversationRecord,
   ConversationSummary,
@@ -19,6 +21,7 @@ type WindowMock = {
     listConversations: () => Promise<ConversationSummary[]>
     listFolders: () => Promise<ConversationFolderSummary[]>
     getConversation: (conversationId: string) => Promise<ConversationRecord | null>
+    listCompactionMarkers?: (conversationId: string) => Promise<ChatCompactionMarker[]>
     getUserMessageCheckpointHistory: (conversationId: string, messageId: string) => Promise<UserMessageRunCheckpoint[]>
   }
   tidecodeWorkspace: {
@@ -453,6 +456,78 @@ test('revert helpers fall back to checkpoint history when the message checkpoint
     restoreWindow()
   }
 })
+
+for (const scenario of ['preferred', 'fallback', 'draft'] as const) {
+  test(`startup loads markers only for the opened conversation: ${scenario}`, async () => {
+    const conversations = Array.from({ length: 80 }, (_, index) => ({
+      ...buildConversation([]),
+      id: `startup-markers-${scenario}-${index}`,
+      title: `Thread ${index}`,
+    }))
+    const conversationSummaries: ConversationSummary[] = conversations.map((conversation) => ({
+      agentContextRootPath: conversation.agentContextRootPath,
+      chatMode: conversation.chatMode,
+      folderId: conversation.folderId,
+      id: conversation.id,
+      messageCount: 0,
+      preview: 'New Chat',
+      title: conversation.title,
+      updatedAt: conversation.updatedAt,
+    }))
+    const markerRequests: string[] = []
+    const conversationRequests: string[] = []
+    const marker: ChatCompactionMarker = {
+      anchorUserMessageId: null,
+      compactionId: `startup-compaction-${scenario}`,
+      createdAt: 1,
+      detailSections: [],
+    }
+    const restoreWindow = installWindowMock({
+      tidecodeHistory: {
+        listConversations: async () => conversationSummaries,
+        listFolders: async () => [],
+        getConversation: async (conversationId) => {
+          conversationRequests.push(conversationId)
+          return conversations.find((conversation) => conversation.id === conversationId) ?? null
+        },
+        listCompactionMarkers: async (conversationId) => {
+          markerRequests.push(conversationId)
+          return [marker]
+        },
+        getUserMessageCheckpointHistory: async () => [],
+      },
+      tidecodeWorkspace: {
+        createRedoCheckpointFromSource: async () => ({ createdAt: 1, id: 'unused' }),
+        createRedoCheckpointFromSources: async () => ({ createdAt: 1, id: 'unused' }),
+        restoreCheckpoint: async () => undefined,
+        restoreCheckpointSequence: async () => undefined,
+      },
+    })
+
+    try {
+      const preferredId = conversations[50].id
+      const requestedId = scenario === 'fallback' ? null : preferredId
+      const snapshot = await loadInitialChatHistory(requestedId, scenario === 'draft')
+      await new Promise<void>((resolve) => setImmediate(resolve))
+
+      let expectedId: string | null = preferredId
+      if (scenario === 'draft') {
+        expectedId = null
+      } else if (scenario === 'fallback') {
+        expectedId = conversations[0].id
+      }
+      assert.equal(snapshot.initialConversation?.id ?? null, expectedId)
+      assert.equal(snapshot.conversationSummaries.length, 80)
+      assert.deepEqual(conversationRequests, expectedId ? [expectedId] : [])
+      assert.deepEqual(markerRequests, expectedId ? [expectedId] : [])
+      if (expectedId) {
+        assert.deepEqual(getCachedChatCompactionMarkers(expectedId), [marker])
+      }
+    } finally {
+      restoreWindow()
+    }
+  })
+}
 
 test('loadInitialChatHistory keeps the workspace on an empty draft when requested', async () => {
   const conversation: ConversationRecord = buildConversation([

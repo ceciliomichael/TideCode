@@ -219,13 +219,14 @@ test('workspace durable memory is stored once per workspace and injected into ne
     const text = String(projected[0]?.content ?? '')
     assert.match(text, /workspace_durable_memory/u)
     assert.match(text, /Keep Code Mode tool-only/u)
-    assert.match(text, /Optional workspace memory is disabled/u)
+    assert.match(text, /Workspace memory is disabled/u)
+    assert.doesNotMatch(text, /optional workspace memory/iu)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('optional workspace memory injects MEMORY.md as an index and points to details', async () => {
+test('enabled workspace memory injects MEMORY.md as an index and points to details', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-optional-memory-'))
 
   try {
@@ -268,8 +269,9 @@ test('legacy folders memory migrates to details without losing conflicting entri
       true,
     )
     const enabledText = String(enabled[0]?.content ?? '')
-    assert.match(enabledText, /Optional workspace memory is enabled/u)
+    assert.match(enabledText, /Workspace memory is enabled and active for this workspace/u)
     assert.match(enabledText, /even if no memory files exist yet/u)
+    assert.doesNotMatch(enabledText, /optional workspace memory/iu)
     assert.match(enabledText, /\.tidecode\/memory\/MEMORY\.md is the compact index/u)
     assert.match(enabledText, /\.tidecode\/memory\/details\/\*\.md contains focused detailed memory entries/u)
     assert.match(enabledText, /- \[Topic\]\(details\/topic\.md\) - Short description\./u)
@@ -278,14 +280,14 @@ test('legacy folders memory migrates to details without losing conflicting entri
 
     const disabled = await applyWorkspaceMemoryContext(enabled, workspaceRootPath, false)
     const disabledText = String(disabled[0]?.content ?? '')
-    assert.match(disabledText, /Optional workspace memory is disabled/u)
+    assert.match(disabledText, /Workspace memory is disabled/u)
     assert.doesNotMatch(disabledText, /details\/workflow\.md/u)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })
 
-test('enabled optional memory teaches bootstrap format even before MEMORY.md exists', async () => {
+test('enabled workspace memory teaches bootstrap format even before MEMORY.md exists', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-memory-bootstrap-'))
 
   try {
@@ -295,9 +297,10 @@ test('enabled optional memory teaches bootstrap format even before MEMORY.md exi
       true,
     )
     const text = String(projected[0]?.content ?? '')
-    assert.match(text, /Optional workspace memory is enabled/u)
-    assert.match(text, /No MEMORY\.md index currently exists\. This does not disable memory/u)
+    assert.match(text, /Workspace memory is enabled and active for this workspace/u)
+    assert.match(text, /No MEMORY\.md index currently exists\. Workspace memory is still enabled/u)
     assert.match(text, /create the first indexed detail entry/u)
+    assert.doesNotMatch(text, /optional workspace memory/iu)
     await assert.rejects(fs.access(path.join(workspaceRootPath, '.tidecode', 'memory', 'MEMORY.md')), { code: 'ENOENT' })
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })

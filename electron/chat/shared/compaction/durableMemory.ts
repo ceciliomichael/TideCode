@@ -198,12 +198,13 @@ export async function reconcileDurableMemory(input: {
   }
 
   const abortController = new AbortController()
+  const handleParentAbort = () => abortController.abort()
   const timeoutId = setTimeout(() => abortController.abort(), MEMORY_TIMEOUT_MS)
   if (input.signal) {
     if (input.signal.aborted) {
       abortController.abort()
     } else {
-      input.signal.addEventListener('abort', () => abortController.abort(), { once: true })
+      input.signal.addEventListener('abort', handleParentAbort, { once: true })
     }
   }
 
@@ -244,5 +245,6 @@ export async function reconcileDurableMemory(input: {
     }
   } finally {
     clearTimeout(timeoutId)
+    input.signal?.removeEventListener('abort', handleParentAbort)
   }
 }
