@@ -119,8 +119,15 @@ export async function loadGitDiffSnapshot(
   const nextRequest = window.tidecodeGit
     .getDiffs(normalizedWorkspacePath, { includeContent })
     .then((diffSnapshot) => {
+      const fileDiffs = includeContent
+        ? diffSnapshot.fileDiffs
+        : diffSnapshot.fileDiffs.map((fileDiff) => ({
+            ...fileDiff,
+            addedLineCount: 0,
+            removedLineCount: 0,
+          }))
       const normalizedSnapshot = diffSnapshot.hasRepository
-        ? buildFileDiffSnapshot(diffSnapshot.fileDiffs)
+        ? buildFileDiffSnapshot(fileDiffs)
         : EMPTY_DIFF_SNAPSHOT
       // Only the newest request for this key may populate the cache. A request
       // superseded by a forced refresh could otherwise overwrite fresher

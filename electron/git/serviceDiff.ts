@@ -105,12 +105,14 @@ export async function getGitDiffSnapshot(
     ? changedFileSets.allChangedFiles.map((filePath): GitFileDiff => {
         const normalizedFilePath = normalizeGitFilePath(filePath)
         return {
+          addedLineCount: 0,
           fileName: normalizedFilePath,
           isStaged: changedFileSets.stagedFileSet.has(normalizedFilePath),
           isUnstaged: changedFileSets.unstagedFileSet.has(normalizedFilePath),
           isUntracked: changedFileSets.untrackedFileSet.has(normalizedFilePath),
           newContent: '',
           oldContent: null,
+          removedLineCount: 0,
         }
       })
     : (

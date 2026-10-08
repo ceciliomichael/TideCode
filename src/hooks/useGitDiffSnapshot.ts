@@ -26,8 +26,8 @@ interface UseGitDiffSnapshotResult {
   snapshot: ConversationDiffSnapshot
 }
 
-const GIT_DIFF_POLL_INTERVAL_MS = 10_000
-const GIT_FULL_DIFF_POLL_EVERY = 6
+const GIT_DIFF_POLL_INTERVAL_MS = 2_000
+const GIT_FULL_DIFF_POLL_EVERY = 5
 
 function areDiffSnapshotsEqual(left: ConversationDiffSnapshot, right: ConversationDiffSnapshot) {
   if (
@@ -81,23 +81,24 @@ function areGitStatusSnapshotsEqual(left: ConversationDiffSnapshot, right: Conve
   return true
 }
 
-function mergeGitStatusSnapshot(
+export function mergeGitStatusSnapshot(
   currentSnapshot: ConversationDiffSnapshot,
   statusSnapshot: ConversationDiffSnapshot,
+  preserveContent = false,
 ): ConversationDiffSnapshot {
   const currentByFileName = new Map(currentSnapshot.fileDiffs.map((fileDiff) => [fileDiff.fileName, fileDiff]))
-  const fileDiffs = statusSnapshot.fileDiffs.map((statusFileDiff) => {
+  const fileDiffs = statusSnapshot.fileDiffs.flatMap((statusFileDiff) => {
     const currentFileDiff = currentByFileName.get(statusFileDiff.fileName)
     if (!currentFileDiff) {
-      return statusFileDiff
+      return preserveContent ? [] : [statusFileDiff]
     }
 
-    return {
+    return [{
       ...currentFileDiff,
       isStaged: statusFileDiff.isStaged,
       isUnstaged: statusFileDiff.isUnstaged,
       isUntracked: statusFileDiff.isUntracked,
-    }
+    }]
   })
 
   return {
@@ -226,14 +227,14 @@ export function useGitDiffSnapshot({
         return false
       }
 
-      const nextSnapshot = mergeGitStatusSnapshot(currentSnapshot, statusSnapshot)
+      const nextSnapshot = mergeGitStatusSnapshot(currentSnapshot, statusSnapshot, includeContent)
       snapshotRef.current = nextSnapshot
       setSnapshot(nextSnapshot)
       return true
     } catch {
       return false
     }
-  }, [workspacePath])
+  }, [includeContent, workspacePath])
 
   useEffect(() => {
     snapshotIdentityRef.current = {
