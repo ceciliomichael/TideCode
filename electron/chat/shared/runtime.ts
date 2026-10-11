@@ -83,6 +83,14 @@ import {
   hasCompletedToolBoundary,
 } from './runtimeSteering'
 import { runProviderToolContinuationLoop } from './runtimeToolContinuation'
+import {
+  createEphemeralToolVisualMessages,
+  externalizeVisualToolResultMessages,
+  isEphemeralToolVisualMessage,
+  stripEphemeralToolVisualMessages,
+  stripVisualToolResultFiles,
+} from './toolVisualResultMessages'
+import type { ToolResultOutput } from '@ai-sdk/provider-utils'
 
 export { estimateToolEnabledContextUsage } from './runtimeContextUsage'
 
@@ -188,8 +196,29 @@ export async function runToolEnabledChatStream(input: {
     const enabledSkills = await listEnabledSkills(workspaceRootPath)
     const activePlanPath = getLatestCompletedPlanPresentation(input.startInput.messages)?.relativePath ?? null
     const orchestrationMode = 'code_mode' as const
+    const pendingVisualModelOutputs: ToolResultOutput[] = []
+    let offeredVisualModelOutputCount = 0
+    const acknowledgeOfferedVisualModelOutputs = () => {
+      if (offeredVisualModelOutputCount <= 0) return
+      pendingVisualModelOutputs.splice(0, offeredVisualModelOutputCount)
+      offeredVisualModelOutputCount = 0
+    }
+    const createPendingVisualOfferMessages = () => {
+      if (pendingVisualModelOutputs.length === 0 || offeredVisualModelOutputCount > 0) {
+        return []
+      }
+
+      const messages = createEphemeralToolVisualMessages(pendingVisualModelOutputs)
+      if (messages.length > 0) {
+        offeredVisualModelOutputCount = pendingVisualModelOutputs.length
+      }
+      return messages
+    }
     const toolBundle = await createAgentToolBundle(
       {
+        captureModelOutput: (output) => {
+          pendingVisualModelOutputs.push(output)
+        },
         checkpointId: resolveActiveCheckpointId(input.startInput.messages),
         conversationId: input.startInput.conversationId ?? null,
         turnId: runId,
@@ -257,6 +286,7 @@ export async function runToolEnabledChatStream(input: {
       replayCompactionPacket = replay.compactionPacket
       replayConversationMemory = await readLatestConversationMemory(conversationId)
     }
+    modelMessages = stripVisualToolResultFiles(modelMessages)
     if (!promptOptions.includeImageAttachments) {
       modelMessages = stripImageAttachmentsFromModelMessages(modelMessages)
     }
@@ -346,14 +376,19 @@ export async function runToolEnabledChatStream(input: {
       system: prompt.system,
       tools,
       onStepEnd: (step) => {
+        const providerResponseMessages = externalizeVisualToolResultMessages(
+          step.responseMessages as ModelMessage[],
+        ).messages
+        const durableResponseMessages = stripEphemeralToolVisualMessages(providerResponseMessages)
         const recordedStep = {
           ...step,
+          responseMessages: durableResponseMessages,
           stepNumber: nextRecordedStepNumber,
         }
         nextRecordedStepNumber += 1
         replayMessages = [
           ...replayMessages,
-          ...(recordedStep.responseMessages as ModelMessage[]),
+          ...providerResponseMessages,
         ]
         if (conversationId) {
           queueHistoryWrite(() => recordStepCompleted(conversationId, runId, recordedStep))
@@ -378,12 +413,25 @@ export async function runToolEnabledChatStream(input: {
           consumedSteerMessages,
           promptOptions,
         )
-        const currentStepMessages = consumedSteerModelMessages.length > 0
-          ? [...stepInput.messages, ...consumedSteerModelMessages]
-          : stepInput.messages
+        const visualProjection = externalizeVisualToolResultMessages(stepInput.messages)
+        const pendingVisualMessages = createPendingVisualOfferMessages()
+        const currentStepMessages = [
+          ...visualProjection.messages,
+          ...pendingVisualMessages,
+          ...consumedSteerModelMessages,
+        ]
+        const hasPreparedMessageChanges = (
+          consumedSteerModelMessages.length > 0
+          || pendingVisualMessages.length > 0
+          || visualProjection.changed
+        )
+        const durableCurrentStepMessages = stripEphemeralToolVisualMessages(currentStepMessages)
+        const durableResponseMessages = stripEphemeralToolVisualMessages(
+          externalizeVisualToolResultMessages(stepInput.responseMessages as ModelMessage[]).messages,
+        )
         const compactionMessages = resolveAutomaticCompactionMessages({
-          messages: currentStepMessages,
-          responseMessages: stepInput.responseMessages,
+          messages: durableCurrentStepMessages,
+          responseMessages: durableResponseMessages,
         })
 
         if (consumedSteerMessages.length > 0) {
@@ -410,7 +458,7 @@ export async function runToolEnabledChatStream(input: {
           stepNumber: logicalStepNumber,
         })
         if (!automaticTrigger) {
-          return consumedSteerModelMessages.length > 0
+          return hasPreparedMessageChanges
             ? { messages: currentStepMessages }
             : undefined
         }
@@ -499,7 +547,7 @@ export async function runToolEnabledChatStream(input: {
         }
         if (input.abortController.signal.aborted) {
           emitCompactionFailed('aborted')
-          return consumedSteerModelMessages.length > 0
+          return hasPreparedMessageChanges
             ? { messages: currentStepMessages }
             : undefined
         }
@@ -511,7 +559,7 @@ export async function runToolEnabledChatStream(input: {
             projectedBudget: null,
             required: compactionRequired,
           })
-          return consumedSteerModelMessages.length > 0
+          return hasPreparedMessageChanges
             ? { messages: currentStepMessages }
             : undefined
         }
@@ -534,7 +582,8 @@ export async function runToolEnabledChatStream(input: {
           required: compactionRequired,
         })
 
-        replayMessages = [...compacted.projectedMessages]
+        const ephemeralVisualMessages = currentStepMessages.filter(isEphemeralToolVisualMessage)
+        replayMessages = [...compacted.projectedMessages, ...ephemeralVisualMessages]
         latestCompactionPacket = compacted.packet
         latestConversationMemory = compacted.durableMemory
         if (conversationId) {
@@ -563,7 +612,7 @@ export async function runToolEnabledChatStream(input: {
         }
         emitContextUsage(projectedContextState.usage)
         return {
-          messages: compacted.projectedMessages,
+          messages: [...compacted.projectedMessages, ...ephemeralVisualMessages],
         }
       },
     }
@@ -578,6 +627,7 @@ export async function runToolEnabledChatStream(input: {
         ...streamInput,
         onStepEnd: async (step) => {
           streamLastStep = step
+          acknowledgeOfferedVisualModelOutputs()
           await streamInput.onStepEnd?.(step)
         },
       }
@@ -628,7 +678,12 @@ export async function runToolEnabledChatStream(input: {
     }
 
     const processedStream = await runProviderToolContinuationLoop({
-      getContinuationMessages: () => replayMessages,
+      getContinuationMessages: () => {
+        const pendingVisualMessages = createPendingVisualOfferMessages()
+        return pendingVisualMessages.length > 0
+          ? [...replayMessages, ...pendingVisualMessages]
+          : replayMessages
+      },
       initialInput: initialStreamInput,
       run: processProviderStreamInput,
     })
@@ -655,7 +710,7 @@ export async function runToolEnabledChatStream(input: {
       // Use the same provider-facing replay that ContextIndicator estimates.
       // The compaction prompt applies its own bounded tool-output formatting;
       // truncating here would make the threshold disagree with the indicator.
-      const finalCompactionMessages = replayMessages
+      const finalCompactionMessages = stripEphemeralToolVisualMessages(replayMessages)
       const finalCompactionBudgetInput = {
         contextWindowTokens: finalContextCompaction.contextWindowTokens,
         messages: finalCompactionMessages,
@@ -791,7 +846,7 @@ export async function runToolEnabledChatStream(input: {
         conversationId,
         freshnessRevision: finalDocument.freshness.revision || freshnessRevision,
         fidelity: replayFidelity,
-        messages: replayMessages,
+        messages: stripEphemeralToolVisualMessages(replayMessages),
         modelId: input.startInput.modelId,
         providerId: input.startInput.providerId,
         runId,

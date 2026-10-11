@@ -48,7 +48,8 @@ test('truncated output is saved behind @tool-output and recovered with normal re
     assert.equal((boundedResult.body ?? '').includes(String(outputPath)), true)
     assert.match(boundedResult.body ?? '', /~\/\.tidecode\/tool-output/u)
     assert.match(boundedResult.body ?? '', /tools\.grep/u)
-    assert.match(boundedResult.body ?? '', /tools\.read with a narrow offset\/limit/u)
+    assert.match(boundedResult.body ?? '', /next_offset/u)
+    assert.match(boundedResult.body ?? '', /next_cursor/u)
     assert.doesNotMatch(boundedResult.body ?? '', /output_id|read_tool_output/u)
 
     const resolved = resolveToolOutputAliasPath(String(outputPath))
@@ -98,5 +99,57 @@ test('tool output files use readable aliases and support append-only terminal re
   } finally {
     electronApp.getPath = originalGetPath
     await fs.rm(tempHomePath, { force: true, recursive: true })
+  }
+})
+
+test('single-line tool output recovery pages with next_cursor without creating another truncation output', async () => {
+  const tempHomePath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tool-output-single-line-'))
+  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tool-output-single-line-workspace-'))
+  const originalGetPath = electronApp.getPath
+
+  try {
+    electronApp.getPath = () => tempHomePath
+    const marker = 'UNIQUE_RECOVERY_MARKER'
+    const hugeSingleLine = `${'a'.repeat(5_000)}${marker}${'b'.repeat(5_000)}`
+    const boundedResult = await prepareToolExecutionResultForModel({
+      result: { body: hugeSingleLine, status: 'success', summary: 'Huge JSON-like output' },
+      toolName: 'execute_terminal',
+    })
+    const outputPath = boundedResult.semantics?.output_path
+    assert.equal(typeof outputPath, 'string')
+
+    const tools = await createAgentTools(
+      { workspaceRootPath },
+      { chatMode: 'agent' },
+    )
+    let cursor: string | undefined
+    let recovered = ''
+
+    for (let page = 0; page < 10; page += 1) {
+      const readResult = await executeTool(tools.read.execute, {
+        ...(cursor ? { cursor } : {}),
+        path: outputPath,
+      })
+      assert.equal(readResult.status, 'success')
+      assert.equal(readResult.truncated, undefined)
+      const preparedRead = await prepareToolExecutionResultForModel({
+        result: readResult,
+        toolName: 'read',
+      })
+      assert.equal(preparedRead.truncated, undefined)
+      assert.equal(preparedRead.semantics?.output_path, undefined)
+      assert.ok(Buffer.byteLength(preparedRead.body ?? '', 'utf8') <= 32 * 1024)
+      recovered += readResult.body ?? ''
+      if (recovered.includes(marker)) break
+      cursor = readResult.semantics?.next_cursor as string | undefined
+      assert.equal(typeof cursor, 'string')
+      assert.equal(readResult.semantics?.next_offset, undefined)
+    }
+
+    assert.match(recovered, new RegExp(marker, 'u'))
+  } finally {
+    electronApp.getPath = originalGetPath
+    await fs.rm(tempHomePath, { force: true, recursive: true })
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
 })

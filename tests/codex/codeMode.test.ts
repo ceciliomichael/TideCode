@@ -1758,9 +1758,9 @@ test('Code Mode capability search does not expose injected plan APIs while direc
     }
     const largeNestedCall = largeNestedResult.semantics?.tool_calls?.[0]
     assert.ok(largeNestedCall)
-    assert.equal(largeNestedCall.body, undefined)
-    assert.equal(largeNestedCall.body_omitted, true)
-    assert.ok((largeNestedCall.body_bytes ?? 0) > 2_000)
+    assert.equal(typeof largeNestedCall.body, 'string')
+    assert.notEqual(largeNestedCall.body_omitted, true)
+    assert.ok((largeNestedCall.body?.length ?? 0) > 0)
     assert.doesNotMatch(JSON.stringify(largeNestedResult.semantics), /Nested tool body omitted from semantics/u)
 
     const invalidEditResult = await invoke(bundle.tools.code_mode, {

@@ -17,7 +17,7 @@ import {
   resolveSandboxPath,
 } from './sandboxPaths'
 
-export interface WorkspaceToolContext extends Pick<AgentToolContext, 'checkpointId' | 'conversationId' | 'terminalExecutionMode' | 'workspaceRootPath'> {
+export interface WorkspaceToolContext extends Pick<AgentToolContext, 'captureModelOutput' | 'checkpointId' | 'conversationId' | 'terminalExecutionMode' | 'workspaceRootPath'> {
   enabledSkills: readonly SkillSummary[]
 }
 

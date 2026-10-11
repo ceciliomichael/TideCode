@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { applyPatchInWorkspace } from '../../electron/chat/shared/applyPatchWorkspace'
+import { CodeModeExecutor } from '../../electron/chat/shared/codeMode/executor'
 import { createAgentToolBundle, createNativeAgentTools } from '../../electron/chat/shared/tools'
+import { createAgentToolRegistry } from '../../electron/chat/shared/tools/registry'
 import {
   createEditToolResult,
   createWholeFileWriteToolResult,
@@ -27,6 +29,15 @@ async function createFixture(content: string, fileName = 'target.ts') {
 
 async function getCurrentRevision(targetPath: string) {
   return computeContentRevision(await fs.readFile(targetPath))
+}
+
+async function createNativeEditExecutor(workspaceRootPath: string) {
+  const nativeTools = await createNativeAgentTools({ workspaceRootPath }, { chatMode: 'agent' })
+  const registry = await createAgentToolRegistry(nativeTools)
+  return new CodeModeExecutor(registry, registry.entries.map((entry) => entry.name), {
+    terminalExecutionMode: 'sandbox',
+    workspaceRootPath,
+  })
 }
 
 test('edit never applies a fuzzy-only near match', async () => {
@@ -354,6 +365,81 @@ test('production Code Mode excludes edit while the native legacy edit tool remai
     assert.doesNotMatch(description, /tools\.edit|targetContent|replacementContent|insertContent/u)
     await bundle.codeModeExecutor?.dispose()
   } finally {
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode reports ambiguous native edits as errors with recovery receipts', async () => {
+  const originalContent = 'const item = 1\nconst item = 1\n'
+  const fixture = await createFixture(originalContent)
+  const executor = await createNativeEditExecutor(fixture.workspaceRootPath)
+
+  try {
+    const result = await executor.run(
+      "return await tools.edit({ path: 'target.ts', edits: [{ targetContent: 'const item = 1', replacementContent: 'const item = 2' }] })",
+    )
+
+    assert.equal(result.status, 'error')
+    assert.equal(result.toolCalls[0]?.status, 'error')
+    assert.equal(result.toolCalls[0]?.semantics?.error_code, 'TARGET_AMBIGUOUS')
+    assert.deepEqual(result.toolCalls[0]?.semantics?.candidate_line_ranges, ['1-1', '2-2'])
+    assert.equal(result.toolCalls[0]?.semantics?.recoverable, true)
+    assert.equal(result.output, undefined)
+    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), originalContent)
+  } finally {
+    await executor.dispose()
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode allSettled completes independent native edits while conflicts reject', async () => {
+  const fixture = await createFixture('const repeated = 1\nconst repeated = 1\n', 'first.ts')
+  await fs.writeFile(path.join(fixture.workspaceRootPath, 'second.ts'), 'const unique = 2\n', 'utf8')
+  const executor = await createNativeEditExecutor(fixture.workspaceRootPath)
+
+  try {
+    const result = await executor.run(`
+      const results = await Promise.allSettled([
+        tools.edit({ path: 'first.ts', edits: [{ targetContent: 'const repeated = 1', replacementContent: 'const repeated = 10' }] }),
+        tools.edit({ path: 'second.ts', edits: [{ targetContent: 'const unique = 2', replacementContent: 'const unique = 20' }] }),
+      ])
+      return results.map((item) => item.status)
+    `)
+
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, ['rejected', 'fulfilled'])
+    assert.equal(result.toolCalls.length, 2)
+    assert.equal(result.toolCalls.filter((call) => call.status === 'error').length, 1)
+    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), 'const repeated = 1\nconst repeated = 1\n')
+    assert.equal(
+      await fs.readFile(path.join(fixture.workspaceRootPath, 'second.ts'), 'utf8'),
+      'const unique = 20\n',
+    )
+  } finally {
+    await executor.dispose()
+    await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('Code Mode serializes concurrent native same-file edits without losing either mutation', async () => {
+  const fixture = await createFixture('header\nkeep\ntarget\ntail\n')
+  const executor = await createNativeEditExecutor(fixture.workspaceRootPath)
+
+  try {
+    const result = await executor.run(`
+      const results = await Promise.all([
+        tools.edit({ path: 'target.ts', edits: [{ insertAt: 'start', insertContent: 'prefix\\n' }] }),
+        tools.edit({ path: 'target.ts', edits: [{ insertAt: 'end', insertContent: 'suffix\\n' }] }),
+      ])
+      return results.map((edit) => edit.status)
+    `)
+
+    assert.equal(result.status, 'success')
+    assert.deepEqual(result.output, ['success', 'success'])
+    assert.equal(result.toolCalls.length, 2)
+    assert.equal(await fs.readFile(fixture.targetPath, 'utf8'), 'prefix\nheader\nkeep\ntarget\ntail\nsuffix\n')
+  } finally {
+    await executor.dispose()
     await fs.rm(fixture.workspaceRootPath, { force: true, recursive: true })
   }
 })

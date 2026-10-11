@@ -92,7 +92,7 @@ function collectTailLines(
 
 function buildRecoveryHint(outputPath?: string) {
   if (outputPath) {
-    return `Full output saved to read-only ${outputPath} (backed by ~/.tidecode/tool-output). In Code Mode, inspect that exact path with tools.grep, or tools.read with a narrow offset/limit only if omitted content is needed.`
+    return `Full output saved to read-only ${outputPath} (backed by ~/.tidecode/tool-output). In Code Mode, inspect that exact path with tools.grep, or tools.read only if omitted content is needed. Follow read next_offset for later lines and next_cursor exactly for oversized single-line fragments.`
   }
 
   return 'Re-run the original tool with narrower arguments only if omitted content is needed.'

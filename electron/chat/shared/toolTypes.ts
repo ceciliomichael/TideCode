@@ -22,6 +22,7 @@ export interface AgentToolExecutionResult {
 }
 
 export interface AgentToolContext {
+  captureModelOutput?: (output: ToolResultOutput) => void
   checkpointId?: string | null
   conversationId?: string | null
   turnId?: string | null

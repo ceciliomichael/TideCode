@@ -13,6 +13,7 @@ export async function createToolContext(
   const workspaceRootPath = normalizeWorkspacePath(input.workspaceRootPath)
   await assertWorkspaceDirectory(workspaceRootPath)
   return {
+    ...(input.captureModelOutput ? { captureModelOutput: input.captureModelOutput } : {}),
     checkpointId: input.checkpointId?.trim() || null,
     conversationId: input.conversationId?.trim() || null,
     enabledSkills,

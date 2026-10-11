@@ -14,7 +14,10 @@ import {
   hasBinaryContent,
 } from './workspaceToolResults'
 import { runRipgrep } from './ripgrep'
-import { TOOL_OUTPUT_PAGED_READ_MAX_BYTES } from './toolOutputBudget'
+import {
+  TOOL_OUTPUT_MAX_LINE_LENGTH,
+  TOOL_OUTPUT_PAGED_READ_MAX_BYTES,
+} from './toolOutputBudget'
 import {
   createWorkspaceEntryVisibilityFilter,
   filterVisibleRelativeFileEntries,
@@ -25,7 +28,48 @@ import {
 const DIRECTORY_READ_DEFAULT_LIMIT = 500
 const DEFAULT_FILE_READ_LIMIT = 500
 const MAX_RESULT_PAGE_SIZE = 500
+const READ_LONG_LINE_FRAGMENT_CODEPOINTS = Math.max(256, TOOL_OUTPUT_MAX_LINE_LENGTH - 128)
 const RIPGREP_EXCLUDE_GLOBS: string[] = []
+
+interface ReadContinuationCursor {
+  characterOffset: number
+  lineNumber: number
+}
+
+function encodeReadContinuationCursor(cursor: ReadContinuationCursor) {
+  return `line:${cursor.lineNumber}:char:${cursor.characterOffset}`
+}
+
+function parseReadContinuationCursor(cursor: string | undefined): ReadContinuationCursor | null {
+  if (!cursor) return null
+  const match = /^line:(\d+):char:(\d+)$/u.exec(cursor.trim())
+  if (!match) {
+    throw new Error('Invalid read cursor. Pass next_cursor back exactly as returned by the previous read.')
+  }
+  const lineNumber = Number.parseInt(match[1], 10)
+  const characterOffset = Number.parseInt(match[2], 10)
+  if (!Number.isSafeInteger(lineNumber) || lineNumber < 1 || !Number.isSafeInteger(characterOffset) || characterOffset < 0) {
+    throw new Error('Invalid read cursor. Pass next_cursor back exactly as returned by the previous read.')
+  }
+  return { characterOffset, lineNumber }
+}
+
+function takeCodePointFragment(value: string, characterOffset: number, maxCodePoints: number) {
+  if (characterOffset >= value.length) {
+    return { endOffset: value.length, text: '' }
+  }
+  let endOffset = characterOffset
+  let count = 0
+  for (const character of value.slice(characterOffset)) {
+    if (count >= maxCodePoints) break
+    endOffset += character.length
+    count += 1
+  }
+  return {
+    endOffset,
+    text: value.slice(characterOffset, endOffset),
+  }
+}
 
 interface GrepMatch {
   filePath: string
@@ -92,20 +136,35 @@ function formatGrepOutput(
 
   const totalMatches = matches.length
   const page = normalizeResultPage(offset, limit)
-  const visibleMatches = matches.slice(page.offset, page.offset + page.limit)
+  const candidateMatches = matches.slice(page.offset, page.offset + page.limit)
   const outputLines: string[] = []
+  let outputBytes = 0
+  let returnedMatchCount = 0
 
   let currentFilePath = ''
-  for (const match of visibleMatches) {
+  for (const match of candidateMatches) {
+    const clippedLine = takeCodePointFragment(match.lineText, 0, READ_LONG_LINE_FRAGMENT_CODEPOINTS)
+    const lineText = clippedLine.endOffset < match.lineText.length
+      ? `${clippedLine.text} ... (match line clipped; use read for full content)`
+      : clippedLine.text
+    const nextLines: string[] = []
     if (currentFilePath !== match.filePath) {
       if (currentFilePath !== '') {
-        outputLines.push('')
+        nextLines.push('')
       }
-      currentFilePath = match.filePath
-      outputLines.push(`${match.filePath}:`)
+      nextLines.push(`${match.filePath}:`)
     }
-
-    outputLines.push(`  Line ${match.lineNumber}: ${match.lineText}`)
+    nextLines.push(`  Line ${match.lineNumber}: ${lineText}`)
+    const nextText = nextLines.join('\n')
+    const separatorBytes = outputLines.length > 0 ? 1 : 0
+    const nextBytes = Buffer.byteLength(nextText, 'utf8') + separatorBytes
+    if (returnedMatchCount > 0 && outputBytes + nextBytes > TOOL_OUTPUT_PAGED_READ_MAX_BYTES) {
+      break
+    }
+    currentFilePath = match.filePath
+    outputLines.push(...nextLines)
+    outputBytes += nextBytes
+    returnedMatchCount += 1
   }
 
   if (hasErrors) {
@@ -121,7 +180,7 @@ function formatGrepOutput(
   return {
     body: outputLines.join('\n'),
     page: {
-      ...buildPageSemantics(totalMatches, page.offset, visibleMatches.length, !outputTruncated),
+      ...buildPageSemantics(totalMatches, page.offset, returnedMatchCount, !outputTruncated),
       ...(outputTruncated ? { output_truncated: true } : {}),
     },
     summary: outputTruncated ? `Found at least ${totalMatches} matches before search output was truncated` : `Found ${totalMatches} matches`,
@@ -173,6 +232,7 @@ export async function createReadToolResult(
   offset: number | undefined,
   limit: number | undefined,
   legacyFullFile = false,
+  cursor?: string,
 ) {
   const stats = await fs.stat(absolutePath)
   if (stats.isDirectory()) {
@@ -274,7 +334,8 @@ export async function createReadToolResult(
 
   // Historical callers may still carry full_file: true. Keep that positional
   // compatibility without allowing it to bypass the bounded read contract.
-  const startLine = legacyFullFile ? 1 : Math.max(1, offset ?? 1)
+  const continuationCursor = parseReadContinuationCursor(cursor)
+  const startLine = continuationCursor?.lineNumber ?? (legacyFullFile ? 1 : Math.max(1, offset ?? 1))
   const maxLines = legacyFullFile
     ? DEFAULT_FILE_READ_LIMIT
     : Math.min(DEFAULT_FILE_READ_LIMIT, Math.max(1, Math.floor(limit ?? DEFAULT_FILE_READ_LIMIT)))
@@ -288,6 +349,9 @@ export async function createReadToolResult(
   let collectedBytes = 0
   let hasMoreLines = false
   let lineCount = 0
+  let nextCursor: string | null = null
+  let fragmentCharacterOffset: number | null = null
+  let fragmentEndCharacterOffset: number | null = null
 
   try {
     for await (const line of reader) {
@@ -296,12 +360,50 @@ export async function createReadToolResult(
         continue
       }
 
+      if (continuationCursor && lineCount === continuationCursor.lineNumber) {
+        const fragment = takeCodePointFragment(
+          line,
+          continuationCursor.characterOffset,
+          READ_LONG_LINE_FRAGMENT_CODEPOINTS,
+        )
+        collectedLines.push(fragment.text)
+        fragmentCharacterOffset = continuationCursor.characterOffset
+        fragmentEndCharacterOffset = fragment.endOffset
+        if (fragment.endOffset < line.length) {
+          nextCursor = encodeReadContinuationCursor({
+            characterOffset: fragment.endOffset,
+            lineNumber: lineCount,
+          })
+          hasMoreLines = true
+        } else {
+          hasMoreLines = true
+        }
+        break
+      }
+
       if (collectedLines.length >= maxLines) {
         hasMoreLines = true
         break
       }
 
       const lineBytes = Buffer.byteLength(line, 'utf8') + (collectedLines.length > 0 ? 1 : 0)
+      const longLineFragment = takeCodePointFragment(line, 0, READ_LONG_LINE_FRAGMENT_CODEPOINTS)
+      if (longLineFragment.endOffset < line.length) {
+        if (collectedLines.length > 0) {
+          hasMoreLines = true
+          break
+        }
+        collectedLines.push(longLineFragment.text)
+        collectedBytes += Buffer.byteLength(longLineFragment.text, 'utf8')
+        fragmentCharacterOffset = 0
+        fragmentEndCharacterOffset = longLineFragment.endOffset
+        nextCursor = encodeReadContinuationCursor({
+          characterOffset: longLineFragment.endOffset,
+          lineNumber: lineCount,
+        })
+        hasMoreLines = true
+        break
+      }
       if (collectedLines.length > 0 && collectedBytes + lineBytes > TOOL_OUTPUT_PAGED_READ_MAX_BYTES) {
         hasMoreLines = true
         break
@@ -328,7 +430,15 @@ export async function createReadToolResult(
             start_line: startLine,
           }
         : {}),
-      ...(hasMoreLines ? { next_offset: endLine + 1 } : {}),
+      ...(hasMoreLines && !nextCursor ? { next_offset: endLine + 1 } : {}),
+      ...(nextCursor ? { next_cursor: nextCursor } : {}),
+      ...(fragmentCharacterOffset !== null && fragmentEndCharacterOffset !== null
+        ? {
+            fragment_character_end: fragmentEndCharacterOffset,
+            fragment_character_start: fragmentCharacterOffset,
+            fragment_line: startLine,
+          }
+        : {}),
       ...(!hasMoreLines ? { total_line_count: lineCount } : {}),
     },
     subject: {

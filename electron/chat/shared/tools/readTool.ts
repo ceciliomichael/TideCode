@@ -45,7 +45,7 @@ function createMissingWorkspaceMemoryReadResult(
 
 export function createReadTool(context: WorkspaceToolContext) {
   return tool({
-    description: 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. Text reads return up to 500 lines within a safe model-output byte budget and provide next_offset when more content remains.',
+    description: 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. Text reads stay within safe model-output budgets. Use next_offset for later lines and pass next_cursor back exactly when an oversized single line is returned in fragments.',
     inputSchema: jsonSchema({
       additionalProperties: true,
       properties: {
@@ -55,12 +55,13 @@ export function createReadTool(context: WorkspaceToolContext) {
         },
         limit: { description: 'Optional requested number of lines. Values above 500 are capped at 500.', minimum: 1, type: 'number' },
         offset: { description: 'Starting line number (1-based index). Defaults to 1.', minimum: 1, type: 'number' },
+        cursor: { description: 'Opaque continuation cursor from a previous read next_cursor. Pass it back exactly; do not construct or modify it.', type: 'string' },
       },
       required: ['path'],
       type: 'object',
     }),
     execute: async (rawInput) => {
-      const input = rawInput as { limit?: number; offset?: number; path?: string }
+      const input = rawInput as { cursor?: string; limit?: number; offset?: number; path?: string }
       try {
         if (typeof input.path !== 'string') {
           throw new Error('File path ("path") is required.')
@@ -80,7 +81,22 @@ export function createReadTool(context: WorkspaceToolContext) {
             enabledSkills: context.enabledSkills,
           },
         )
-        return await createReadToolResult(target.absolutePath, target.displayPath, input.offset, input.limit)
+        const result = await createReadToolResult(
+          target.absolutePath,
+          target.displayPath,
+          input.offset,
+          input.limit,
+          false,
+          input.cursor,
+        )
+        if (result.modelOutput && context.captureModelOutput) {
+          context.captureModelOutput(result.modelOutput)
+          return {
+            ...result,
+            modelOutput: undefined,
+          }
+        }
+        return result
       } catch (error) {
         if (error instanceof WorkspaceTargetNotFoundError) {
           const memoryResult = createMissingWorkspaceMemoryReadResult(context.workspaceRootPath, error)

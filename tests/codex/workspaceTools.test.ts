@@ -372,6 +372,41 @@ test('read uses byte-aware paging and avoids generic output recovery for ordinar
   }
 })
 
+test('read fragments oversized single lines with an opaque cursor instead of retruncating them', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const filePath = path.join(workspaceRootPath, 'single-line.txt')
+  const content = `${'x'.repeat(3_000)}MIDDLE${'y'.repeat(3_000)}`
+  await fs.writeFile(filePath, content, 'utf8')
+
+  try {
+    const first = await createReadToolResult(filePath, 'single-line.txt', undefined, undefined)
+    assert.equal(first.status, 'success')
+    assert.equal(first.truncated, undefined)
+    assert.ok((first.body ?? '').length < 2_000)
+    assert.equal(first.semantics?.next_offset, undefined)
+    assert.equal(typeof first.semantics?.next_cursor, 'string')
+
+    const second = await createReadToolResult(
+      filePath,
+      'single-line.txt',
+      undefined,
+      undefined,
+      false,
+      first.semantics?.next_cursor as string,
+    )
+    assert.equal(second.status, 'success')
+    assert.equal(second.truncated, undefined)
+    assert.notEqual(second.body, first.body)
+    assert.equal(second.semantics?.fragment_line, 1)
+
+    const prepared = await prepareToolExecutionResultForModel({ result: first, toolName: 'read' })
+    assert.equal(prepared.truncated, undefined)
+    assert.equal(prepared.semantics?.output_path, undefined)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
 test('list rejects a file path with an actionable type error', async () => {
   const workspaceRootPath = await createWorkspaceFixture()
 
@@ -513,6 +548,34 @@ test('createGrepToolResult supports searching a specific file path', async () =>
     assert.equal(result.semantics?.total_count, 1)
     assert.match(result.body ?? '', /src[\\/]+visible\.ts/u)
     assert.doesNotMatch(result.body ?? '', /notes\.md/u)
+  } finally {
+    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  }
+})
+
+test('grep clips giant matching lines and pages within the safe tool-output budget', async () => {
+  const workspaceRootPath = await createWorkspaceFixture()
+  const filePath = path.join(workspaceRootPath, 'giant-json.txt')
+  const hugeLine = `prefix-${'x'.repeat(20_000)}-needle-${'y'.repeat(20_000)}`
+  await fs.writeFile(filePath, hugeLine, 'utf8')
+
+  try {
+    const result = await createGrepToolResult(
+      workspaceRootPath,
+      filePath,
+      'giant-json.txt',
+      'needle',
+      undefined,
+      undefined,
+      undefined,
+    )
+    assert.equal(result.status, 'success')
+    assert.match(result.body ?? '', /match line clipped; use read for full content/u)
+    assert.ok(Buffer.byteLength(result.body ?? '', 'utf8') <= TOOL_OUTPUT_PAGED_READ_MAX_BYTES)
+
+    const prepared = await prepareToolExecutionResultForModel({ result, toolName: 'grep' })
+    assert.equal(prepared.truncated, undefined)
+    assert.equal(prepared.semantics?.output_path, undefined)
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
   }
