@@ -14,7 +14,6 @@ import type {
   TideCodeChatApi,
   TideCodeAppApi,
   TideCodeGitApi,
-  TideCodeKanbanApi,
   TideCodeModelsApi,
   TideCodeProvidersApi,
   TideCodeRunsApi,
@@ -297,29 +296,6 @@ const chatApi: TideCodeChatApi = {
     ipcRenderer.invoke('chat:stream:updatePendingSteerMessages', input),
 }
 
-const kanbanApi: TideCodeKanbanApi = {
-  clearCompletedCards: (input) => ipcRenderer.invoke('kanban:clearCompletedCards', input),
-  createCard: (input) => ipcRenderer.invoke('kanban:createCard', input),
-  createTask: (input) => ipcRenderer.invoke('kanban:createTask', input),
-  deleteCard: (input) => ipcRenderer.invoke('kanban:deleteCard', input),
-  getBoardData: (input) => ipcRenderer.invoke('kanban:getBoardData', input),
-  importBoardData: (input) => ipcRenderer.invoke('kanban:importBoardData', input),
-  moveCard: (input) => ipcRenderer.invoke('kanban:moveCard', input),
-  onBoardChange: (listener) => {
-    const wrappedListener = (_event: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)
-    ipcRenderer.on('kanban:changed', wrappedListener)
-    return () => {
-      ipcRenderer.off('kanban:changed', wrappedListener)
-    }
-  },
-  planTask: (input) => ipcRenderer.invoke('kanban:planTask', input),
-  readBoard: (input) => ipcRenderer.invoke('kanban:readBoard', input),
-  readCard: (input) => ipcRenderer.invoke('kanban:readCard', input),
-  reorderCard: (input) => ipcRenderer.invoke('kanban:reorderCard', input),
-  updateCard: (input) => ipcRenderer.invoke('kanban:updateCard', input),
-  updateCardContent: (input) => ipcRenderer.invoke('kanban:updateCardContent', input),
-}
-
 const gitApi: TideCodeGitApi = {
   checkoutBranch: (input) => ipcRenderer.invoke('git:checkoutBranch', input),
   commit: (input: GitCommitInput) => ipcRenderer.invoke('git:commit', input),
@@ -504,7 +480,6 @@ const remoteHostApi: TideCodeRemoteHostBridgeApi = {
 
 contextBridge.exposeInMainWorld('tidecodeHistory', historyApi)
 contextBridge.exposeInMainWorld('tidecodeApp', appApi)
-contextBridge.exposeInMainWorld('tidecodeKanban', kanbanApi)
 contextBridge.exposeInMainWorld('tidecodeModels', modelsApi)
 contextBridge.exposeInMainWorld('tidecodeMcp', mcpApi)
 contextBridge.exposeInMainWorld('tidecodeSettings', settingsApi)

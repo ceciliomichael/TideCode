@@ -30,7 +30,6 @@ interface Window {
   tidecodeChat: import('../src/types/chat').TideCodeChatApi
   tidecodeGit: import('../src/types/chat').TideCodeGitApi
   tidecodeHistory: import('../src/types/chat').TideCodeHistoryApi
-  tidecodeKanban: import('../src/types/chat').TideCodeKanbanApi
   tidecodeModels: import('../src/types/chat').TideCodeModelsApi
   tidecodeMcp: import('../src/types/mcp').TideCodeMcpApi
   tidecodeProviders: import('../src/types/chat').TideCodeProvidersApi

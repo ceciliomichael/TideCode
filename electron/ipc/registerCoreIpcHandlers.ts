@@ -14,20 +14,6 @@ import type {
   SaveApiKeyProviderInput,
   SaveCustomModelInput,
 } from '../../src/types/chat'
-import type {
-  KanbanBoardData,
-  KanbanCreateCardRequest,
-  KanbanCreateTaskRequest,
-  KanbanDeleteCardRequest,
-  KanbanMoveCardRequest,
-  KanbanReadBoardRequest,
-  KanbanReadCardRequest,
-  KanbanReorderCardRequest,
-  KanbanTaskPlanInput,
-  KanbanUpdateCardInput,
-  KanbanUpdateCardRequest,
-  KanbanWorkspaceInput,
-} from '../../src/lib/kanban'
 import {
   cleanupDraftAgentContextDirectory,
   createStoredConversation,
@@ -88,21 +74,6 @@ import {
   setBrowserGuestDevToolsVisible,
   updateBrowserGuestDevToolsBounds,
 } from '../window/createApplicationWindow'
-import {
-  clearCompletedKanbanBoardCards,
-  createKanbanBoardCard,
-  createKanbanBoardTask,
-  deleteKanbanBoardCard,
-  getKanbanBoardData,
-  getKanbanCard,
-  importKanbanBoardData,
-  moveKanbanBoardCard,
-  readKanbanBoardColumn,
-  reorderKanbanBoardCard,
-  updateKanbanBoardCard,
-  updateKanbanBoardCardContent,
-} from '../kanban/store'
-import { generateKanbanTaskPlan } from '../kanban/planner'
 import {
   addCodexAccountWithOAuth,
   connectCodexWithOAuth,
@@ -599,29 +570,6 @@ onSettingsChanged?: (settings: AppSettings, input: Partial<AppSettings>, surface
       input: Parameters<typeof updateSkill>[1],
       workspacePath?: string | null,
     ) => updateSkill(location, input, workspacePath),
-  )
-  ipcMain.handle('kanban:getBoardData', async (_event, input: KanbanWorkspaceInput) => getKanbanBoardData(input))
-  ipcMain.handle('kanban:importBoardData', async (_event, input: KanbanWorkspaceInput & { cards: unknown[] }) =>
-    importKanbanBoardData(input as KanbanWorkspaceInput & KanbanBoardData),
-  )
-  ipcMain.handle('kanban:readBoard', async (_event, input: KanbanReadBoardRequest) => readKanbanBoardColumn(input))
-  ipcMain.handle('kanban:readCard', async (_event, input: KanbanReadCardRequest) => getKanbanCard(input))
-  ipcMain.handle('kanban:planTask', async (_event, input: KanbanTaskPlanInput) => generateKanbanTaskPlan(input))
-  ipcMain.handle('kanban:createCard', async (_event, input: KanbanCreateCardRequest) => createKanbanBoardCard(input))
-  ipcMain.handle('kanban:createTask', async (_event, input: KanbanCreateTaskRequest) => createKanbanBoardTask(input))
-  ipcMain.handle('kanban:updateCardContent', async (_event, input: KanbanUpdateCardRequest) =>
-    updateKanbanBoardCardContent(input),
-  )
-  ipcMain.handle('kanban:updateCard', async (_event, input: KanbanWorkspaceInput & KanbanUpdateCardInput) =>
-    updateKanbanBoardCard(input),
-  )
-  ipcMain.handle('kanban:moveCard', async (_event, input: KanbanMoveCardRequest) => moveKanbanBoardCard(input))
-  ipcMain.handle('kanban:reorderCard', async (_event, input: KanbanReorderCardRequest) =>
-    reorderKanbanBoardCard(input),
-  )
-  ipcMain.handle('kanban:deleteCard', async (_event, input: KanbanDeleteCardRequest) => deleteKanbanBoardCard(input))
-  ipcMain.handle('kanban:clearCompletedCards', async (_event, input: KanbanWorkspaceInput) =>
-    clearCompletedKanbanBoardCards(input),
   )
   ipcMain.handle('providers:state', async (_event, hydrate?: boolean) => getProvidersState(hydrate === true))
   ipcMain.handle('providers:codex:addAccountOauth', async () => addCodexAccountWithOAuth((url) => shell.openExternal(url)))

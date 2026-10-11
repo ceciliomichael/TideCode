@@ -159,7 +159,6 @@ async function loadWorkspaceMentionIndex(
     })
 
   const skillEntries: ChatMentionMenuItem[] = []
-  const kanbanEntries: ChatMentionMenuItem[] = []
   const attachmentEntries: ChatMentionMenuItem[] = []
   if (attachmentScopeId?.trim() && typeof window !== 'undefined' && window.tidecodeHistory) {
     try {
@@ -175,21 +174,6 @@ async function loadWorkspaceMentionIndex(
       }
     } catch (error) {
       console.error('Failed to load chat attachments for mention menu index', error)
-    }
-  }
-  if (typeof window !== 'undefined' && window.tidecodeKanban) {
-    try {
-      const boardData = await window.tidecodeKanban.getBoardData({ workspacePath: workspaceRootPath })
-      for (const card of boardData.cards) {
-        kanbanEntries.push({
-          description: `${card.columnId} · ${card.issueType} · ${card.priority}`,
-          kind: 'kanban',
-          label: card.title,
-          relativePath: `kanban:${card.id}`,
-        })
-      }
-    } catch (error) {
-      console.error('Failed to load Kanban mention index', error)
     }
   }
   if (typeof window !== 'undefined' && window.tidecodeSkills) {
@@ -209,7 +193,7 @@ async function loadWorkspaceMentionIndex(
     }
   }
 
-  const entries = [...fileAndFolderEntries, ...attachmentEntries, ...skillEntries, ...kanbanEntries].sort((left, right) =>
+  const entries = [...fileAndFolderEntries, ...attachmentEntries, ...skillEntries].sort((left, right) =>
     left.description.localeCompare(right.description, undefined, { sensitivity: 'base' }),
   )
 
@@ -331,14 +315,6 @@ export function useChatFileMentionMenu({
       setWorkspaceMentionIndexRefreshKey((currentValue) => currentValue + 1)
     })
 
-    const unsubscribeKanbanChanges = window.tidecodeKanban?.onBoardChange((event) => {
-      if (isDisposed || event.workspaceRootPath !== workspaceRootPath) {
-        return
-      }
-
-      setWorkspaceMentionIndexRefreshKey((currentValue) => currentValue + 1)
-    })
-
     void window.tidecodeWorkspace.watchExplorerChanges({
       workspaceRootPath,
     }).catch((error) => {
@@ -348,7 +324,6 @@ export function useChatFileMentionMenu({
     return () => {
       isDisposed = true
       unsubscribeWorkspaceChanges()
-      unsubscribeKanbanChanges?.()
       void window.tidecodeWorkspace.unwatchExplorerChanges({
         workspaceRootPath,
       }).catch((error) => {
@@ -734,11 +709,9 @@ function handlePointerDown(event: PointerEvent) {
         if (event.key === 'Enter' || event.key === 'Tab') {
           event.preventDefault()
           handleSelectCategory(
-            selectedIndex === 4
-              ? 'kanban'
-              : selectedIndex === 3
-                ? 'skill'
-                : selectedIndex === 2
+            selectedIndex === 3
+              ? 'skill'
+              : selectedIndex === 2
                   ? 'attachment'
                   : selectedIndex === 1
                     ? 'folder'

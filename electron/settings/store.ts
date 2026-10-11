@@ -618,22 +618,6 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
   const gitCommitReasoningEffort = isReasoningEffort(input?.gitCommitReasoningEffort)
     ? input.gitCommitReasoningEffort
     : chatReasoningEffort
-  const kanbanAiPlanningEnabled =
-    typeof input?.kanbanAiPlanningEnabled === 'boolean'
-      ? input.kanbanAiPlanningEnabled
-      : DEFAULT_APP_SETTINGS.kanbanAiPlanningEnabled
-  const kanbanModelId =
-    typeof input?.kanbanModelId === 'string' ? input.kanbanModelId.trim() : DEFAULT_APP_SETTINGS.kanbanModelId
-  const kanbanModelProviderId = isChatProviderId(input?.kanbanModelProviderId)
-    ? input.kanbanModelProviderId
-    : DEFAULT_APP_SETTINGS.kanbanModelProviderId
-  const kanbanModelLabel =
-    typeof input?.kanbanModelLabel === 'string'
-      ? input.kanbanModelLabel.trim()
-      : DEFAULT_APP_SETTINGS.kanbanModelLabel
-  const kanbanReasoningEffort = isReasoningEffort(input?.kanbanReasoningEffort)
-    ? input.kanbanReasoningEffort
-    : chatReasoningEffort
   const workspaceMemoryEnabled =
     typeof input?.workspaceMemoryEnabled === 'boolean'
       ? input.workspaceMemoryEnabled
@@ -713,11 +697,6 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
     gitCommitModelProviderId,
     gitCommitModelLabel,
     gitCommitReasoningEffort,
-    kanbanAiPlanningEnabled,
-    kanbanModelId,
-    kanbanModelProviderId,
-    kanbanModelLabel,
-    kanbanReasoningEffort,
     workspaceMemoryEnabled,
     conversationModelPreferences,
     diffPanelWidth,

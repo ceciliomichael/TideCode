@@ -59,7 +59,6 @@ function resolveToolNamespace(name: string) {
   if (normalizedName === 'skill') return 'skills'
   if (normalizedName.startsWith('git') || normalizedName.includes('commit')) return 'git'
   if (normalizedName.startsWith('plan')) return 'planning'
-  if (normalizedName.startsWith('kanban')) return 'kanban'
   return 'workspace'
 }
 

@@ -375,26 +375,6 @@ function sanitizeBootstrappedSettings(input: unknown): AppSettings {
       : isReasoningEffort(candidate?.chatReasoningEffort)
         ? candidate.chatReasoningEffort
         : DEFAULT_APP_SETTINGS.gitCommitReasoningEffort,
-    kanbanAiPlanningEnabled:
-      typeof candidate?.kanbanAiPlanningEnabled === 'boolean'
-        ? candidate.kanbanAiPlanningEnabled
-        : DEFAULT_APP_SETTINGS.kanbanAiPlanningEnabled,
-    kanbanModelId:
-      typeof candidate?.kanbanModelId === 'string'
-        ? candidate.kanbanModelId.trim()
-        : DEFAULT_APP_SETTINGS.kanbanModelId,
-    kanbanModelProviderId: isChatProviderId(candidate?.kanbanModelProviderId)
-      ? candidate.kanbanModelProviderId
-      : DEFAULT_APP_SETTINGS.kanbanModelProviderId,
-    kanbanModelLabel:
-      typeof candidate?.kanbanModelLabel === 'string'
-        ? candidate.kanbanModelLabel.trim()
-        : DEFAULT_APP_SETTINGS.kanbanModelLabel,
-    kanbanReasoningEffort: isReasoningEffort(candidate?.kanbanReasoningEffort)
-      ? candidate.kanbanReasoningEffort
-      : isReasoningEffort(candidate?.chatReasoningEffort)
-        ? candidate.chatReasoningEffort
-        : DEFAULT_APP_SETTINGS.kanbanReasoningEffort,
     workspaceMemoryEnabled:
       typeof candidate?.workspaceMemoryEnabled === 'boolean'
         ? candidate.workspaceMemoryEnabled

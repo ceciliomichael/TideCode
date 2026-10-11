@@ -53,7 +53,6 @@ Keep the diagram simple: *You → TideCode → Project tools → Review result*
 - **Files and folders** so you can inspect the codebase
 - **Source control view** so you can review changes
 - **Terminal support** for running and checking work
-- **Task board / Kanban** for keeping work organized
 - **Settings and model choices** so you can adjust how Echo behaves
 
 **Plain-English takeaway:**  

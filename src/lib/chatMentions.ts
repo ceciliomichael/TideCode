@@ -1,11 +1,11 @@
 // Canonical expanded mention format: [[action:path]]
-// e.g. [[load_skill:natural-writing]], [[read_file:src/main.ts]], [[list:src/components]], [[kanban:card-id]]
+// e.g. [[load_skill:natural-writing]], [[read_file:src/main.ts]], [[list:src/components]]
 // The double-bracket delimiters give unambiguous boundaries so no greedy-match
 // issues can bleed into surrounding normal text.
 
 
 // Matches the NEW canonical [[action:path]] delimited format (may contain spaces)
-const BRACKETED_ACTION_REGEX = /\[\[((?:read_file|list|load_skill|kanban):[^\]]+)\]\]/g
+const BRACKETED_ACTION_REGEX = /\[\[((?:read_file|list|load_skill):[^\]]+)\]\]/g
 const VIRTUAL_MENTION_PREFIXES = ['@workspace/', '@attachments/', '@skills/'] as const
 
 export interface ChatMentionMatch {

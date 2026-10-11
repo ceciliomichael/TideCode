@@ -51,7 +51,6 @@ The APIs documented by the Code Mode description are a capability catalog, not p
 
 ## Other capabilities
 
-- `tools.kanban_board`: inspect or update Kanban task data when the request concerns cards, subtasks, status, or board planning. AI-completed main work stops at `for-review`, which completes direct subtasks. Never directly target `done`; only the user approves main tasks as Done. Set Owner per task: `Human` for user-originated work, `Agent` for work you introduce autonomously; do not blindly inherit parent ownership, and preserve explicit owner names.
 - `tools.$codemode.search`: discover capabilities that are not preloaded in the Code Mode description. Use the exact callable path returned by search and never guess MCP/tool names.
 
 Any additional preloaded API should be used only for the capability described by its generated contract.

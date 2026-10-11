@@ -1,9 +1,9 @@
-import { File, Folder, ListTodo, Paperclip, Wand2 } from 'lucide-react'
+import { File, Folder, Paperclip, Wand2 } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties, RefObject } from 'react'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
 
-export type ChatMentionMenuType = 'file' | 'folder' | 'attachment' | 'skill' | 'kanban'
+export type ChatMentionMenuType = 'file' | 'folder' | 'attachment' | 'skill'
 
 export interface ChatMentionMenuItem {
   description: string
@@ -60,12 +60,6 @@ const ROOT_OPTIONS: readonly {
     icon: Wand2,
     kind: 'skill',
     label: 'Skills',
-  },
-  {
-    description: 'Search Kanban items',
-    icon: ListTodo,
-    kind: 'kanban',
-    label: 'Kanban',
   },
 ]
 
@@ -168,9 +162,7 @@ export function ChatMentionMenu({
                 ? 'Attachment mentions'
                 : selectedMenuType === 'skill'
                   ? 'Skill mentions'
-                  : selectedMenuType === 'kanban'
-                    ? 'Kanban mentions'
-                    : 'File, folder, attachment, skill, and Kanban mentions'
+                   : 'File, folder, attachment, and skill mentions'
         }
         data-floating-menu-root="true"
         className="fixed z-40 w-[min(26rem,calc(100vw-1rem))] overflow-hidden rounded-[22px] border border-border bg-surface shadow-[0_10px_30px_rgba(15,23,42,0.08)]"
@@ -197,9 +189,7 @@ export function ChatMentionMenu({
                       ? 'No attachments in this chat yet'
                       : selectedMenuType === 'skill'
                         ? 'Type to search skills...'
-                        : selectedMenuType === 'kanban'
-                          ? 'Type to search Kanban items...'
-                          : 'Type to search files, folders, attachments, skills, or Kanban items...'}
+                         : 'Type to search files, folders, attachments, or skills...'}
             </div>
           ) : (
             results.map((item, index) => {
@@ -232,8 +222,6 @@ export function ChatMentionMenu({
                 >
                   {item.kind === 'skill' ? (
                     <Wand2 size={14} className="shrink-0 text-[#A855F7]" />
-                  ) : item.kind === 'kanban' ? (
-                    <ListTodo size={14} className="shrink-0 text-[#10B981]" />
                   ) : item.kind === 'folder' || (item.kind === 'attachment' && item.isDirectory) ? (
                     <Folder size={14} className="shrink-0 text-[#F59E0B]" />
                   ) : FileIcon ? (

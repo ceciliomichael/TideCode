@@ -235,9 +235,6 @@ connection.rpc('tidecodeSettings', 'getSettings', ['web']) as Promise<AppSetting
   }, {
     getDraftAgentContextPathSync: () => draftAgentContextPath,
   })
-  globals.tidecodeKanban = createRemoteApi(connection, 'tidecodeKanban', {
-    onBoardChange: { channel: REMOTE_EVENT_CHANNELS.kanbanChanged },
-  })
   globals.tidecodeModels = createRemoteApi(connection, 'tidecodeModels')
   globals.tidecodeMcp = createRemoteApi(connection, 'tidecodeMcp', {
     onStateChange: { channel: REMOTE_EVENT_CHANNELS.mcpState },

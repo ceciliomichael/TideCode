@@ -14,7 +14,6 @@ import { getMcpServerManager } from './mcp/serverManager'
 import { disposeWorkspaceExplorerWatchers } from './workspace/explorerWatch'
 import { disposeProjectPathWatcher, startProjectPathWatcher } from './history/projectPathWatch'
 import { disposeSourceControlWatchers } from './git/sourceControlWatch'
-import { disposeKanbanBoardWatchers } from './kanban/watch'
 import { registerCoreIpcHandlers } from './ipc/registerCoreIpcHandlers'
 import { registerChatGitTerminalIpcHandlers } from './ipc/registerChatGitTerminalIpcHandlers'
 import { registerWorkspaceIpcHandlers } from './ipc/registerWorkspaceIpcHandlers'
@@ -274,7 +273,6 @@ app.on('before-quit', (event) => {
     disposeWorkspaceExplorerWatchers()
     disposeProjectPathWatcher()
     disposeSourceControlWatchers()
-    disposeKanbanBoardWatchers()
     trayPopup?.destroy()
     trayPopup = null
     tray?.destroy()
@@ -295,7 +293,6 @@ app.on('before-quit', (event) => {
   disposeWorkspaceExplorerWatchers()
   disposeProjectPathWatcher()
   disposeSourceControlWatchers()
-  disposeKanbanBoardWatchers()
   void Promise.all([
     win && !win.isDestroyed() ? saveWindowState(win) : Promise.resolve(),
     closeAllTerminalSessions().catch((error) => {

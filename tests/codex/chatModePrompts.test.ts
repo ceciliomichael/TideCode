@@ -167,7 +167,6 @@ test('native tool catalog contains the internal executors used to build Code Mod
       'glob',
       'grep',
       'interact_terminal',
-      'kanban_board',
       'list',
       'mcp_tool_search',
       'plan_create',
@@ -180,7 +179,6 @@ test('native tool catalog contains the internal executors used to build Code Mod
     assert.deepEqual(Object.keys(planTools).sort(), [
       'glob',
       'grep',
-      'kanban_board',
       'list',
       'plan_create',
       'plan_edit',
@@ -191,7 +189,7 @@ test('native tool catalog contains the internal executors used to build Code Mod
   }
 })
 
-test('plan mode excludes workspace mutation tools but permits Kanban planning actions', async () => {
+test('plan mode excludes workspace mutations but retains planning actions', async () => {
   const workspaceRootPath = await fs.mkdtemp(
     path.join(tmpdir(), 'tidecode-mode-native-tools-'),
   )
@@ -219,13 +217,6 @@ test('plan mode excludes workspace mutation tools but permits Kanban planning ac
     assert.ok('plan_edit' in planTools)
     assert.ok(!('edit' in planTools))
     assert.ok(!('execute_terminal' in planTools))
-
-    const planKanban = planTools.kanban_board
-    assert.ok(planKanban)
-    assert.equal(
-      planKanban.description,
-      'Manage Kanban. Main tasks finish at for-review and complete subtasks; never target done. Owner: Human for user-originated work, Agent for AI-originated work.',
-    )
 
     const revisionTools = await createNativeAgentTools(
       { workspaceRootPath },

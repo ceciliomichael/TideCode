@@ -116,12 +116,12 @@ test('history normalization and message logs preserve exact hidden context while
   assert.match(log, /active_until_superseded/u)
 })
 
-test('history normalization preserves Kanban mention labels for visible previews', () => {
+test('history normalization preserves file mention labels for visible previews', () => {
   const message: Message = {
     chatMode: 'agent',
-    content: 'Please handle [[kanban:card-123]]',
-    id: 'user-kanban',
-    mentionPathMap: { 'Fix login bug': 'kanban:card-123' },
+    content: 'Please handle [[read_file:src/login.ts]]',
+    id: 'user-file-mention',
+    mentionPathMap: { 'Fix login bug': 'read_file:src/login.ts' },
     role: 'user',
     timestamp: 1,
   }
@@ -130,9 +130,9 @@ test('history normalization preserves Kanban mention labels for visible previews
     chatMode: 'agent',
     createdAt: 1,
     folderId: null,
-    id: 'conversation-kanban',
+    id: 'conversation-file-mention',
     messages: [message],
-    title: 'Kanban mention test',
+    title: 'File mention test',
     updatedAt: 1,
   })
 

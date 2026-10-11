@@ -86,26 +86,6 @@ test('parseInitialSettingsArg preserves empty chat launch preference', () => {
   assert.equal(parsedSettings.openEmptyConversationOnLaunch, true)
 })
 
-test('parseInitialSettingsArg preserves AI task planning configuration', () => {
-  const parsedSettings = parseInitialSettingsArg([
-    'tidecode.exe',
-    serializeInitialSettingsArg({
-      ...DEFAULT_APP_SETTINGS,
-      kanbanAiPlanningEnabled: true,
-      kanbanModelId: 'gpt-5',
-      kanbanModelLabel: 'GPT-5',
-      kanbanModelProviderId: 'openai',
-      kanbanReasoningEffort: 'low',
-    }),
-  ])
-
-  assert.equal(parsedSettings.kanbanAiPlanningEnabled, true)
-  assert.equal(parsedSettings.kanbanModelId, 'gpt-5')
-  assert.equal(parsedSettings.kanbanModelLabel, 'GPT-5')
-  assert.equal(parsedSettings.kanbanModelProviderId, 'openai')
-  assert.equal(parsedSettings.kanbanReasoningEffort, 'low')
-})
-
 test('parseInitialSettingsArg preserves optional workspace memory configuration', () => {
   const parsedSettings = parseInitialSettingsArg([
     'tidecode.exe',

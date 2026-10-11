@@ -10,14 +10,14 @@ test('same-file change hunks render inside one diff card with one file header', 
       kind: 'change_diff',
       changes: [
         {
-          fileName: 'src/kanbanContracts.ts',
+          fileName: 'src/taskContracts.ts',
           kind: 'update',
           oldContent: "'blocked',",
           newContent: "'for-review',",
           startLineNumber: 10,
         },
         {
-          fileName: 'src/kanbanContracts.ts',
+          fileName: 'src/taskContracts.ts',
           kind: 'update',
           oldContent: "blocked: 'Blocked',",
           newContent: "'for-review': 'For Review',",

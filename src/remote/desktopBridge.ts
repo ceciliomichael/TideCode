@@ -56,7 +56,6 @@ export function installDesktopRemoteBridge() {
   window.tidecodeChat.onStreamEvent((payload) => emit(REMOTE_EVENT_CHANNELS.chatStream, payload))
   window.tidecodeGit.onSourceControlChange((payload) => emit(REMOTE_EVENT_CHANNELS.gitSourceControl, payload))
   window.tidecodeHistory.onProjectFolderPruned((payload) => emit(REMOTE_EVENT_CHANNELS.historyProjectFolderPruned, payload))
-  window.tidecodeKanban.onBoardChange((payload) => emit(REMOTE_EVENT_CHANNELS.kanbanChanged, payload))
   window.tidecodeMcp.onStateChange((payload) => emit(REMOTE_EVENT_CHANNELS.mcpState, payload))
   window.tidecodeProviders.onStateChange(() => emit(REMOTE_EVENT_CHANNELS.providersState, null))
   window.tidecodeRuns.onEvent((payload) => emit(REMOTE_EVENT_CHANNELS.runsEvent, payload))

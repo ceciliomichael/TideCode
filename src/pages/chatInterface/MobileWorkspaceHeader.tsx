@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import { Columns3, FolderTree, PanelLeft, SquarePen, Terminal } from 'lucide-react'
+import { FolderTree, PanelLeft, SquarePen, Terminal } from 'lucide-react'
 
-export type MobileWorkspaceSurface = 'chat' | 'terminal' | 'board' | 'explorer'
+export type MobileWorkspaceSurface = 'chat' | 'terminal' | 'explorer'
 
 export interface MobileWorkspaceControlsProps {
   activeSurface: MobileWorkspaceSurface
@@ -53,10 +53,6 @@ export function MobileWorkspaceControls({
     onSurfaceChange(activeSurface === 'terminal' ? 'chat' : 'terminal')
   }
 
-  const handleBoardClick = () => {
-    onSurfaceChange(activeSurface === 'board' ? 'chat' : 'board')
-  }
-
   const handleExplorerClick = () => {
     onSurfaceChange(activeSurface === 'explorer' ? 'chat' : 'explorer')
   }
@@ -97,13 +93,6 @@ export function MobileWorkspaceControls({
           onClick={handleTerminalClick}
         >
           <Terminal size={18} strokeWidth={2.2} aria-hidden="true" />
-        </SegmentedIconButton>
-        <SegmentedIconButton
-          active={activeSurface === 'board'}
-          ariaLabel={activeSurface === 'board' ? 'Return to chat' : 'Open Kanban board'}
-          onClick={handleBoardClick}
-        >
-          <Columns3 size={18} strokeWidth={2.2} aria-hidden="true" />
         </SegmentedIconButton>
       </div>
     </div>

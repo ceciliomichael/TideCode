@@ -12,7 +12,6 @@ import { createEditTool } from './editTool'
 import { createApplyPatchTool } from './applyPatchTool'
 import { createGlobTool } from './globTool'
 import { createGrepTool } from './grepTool'
-import { createKanbanToolSet } from './kanbanTools'
 import { createListTool } from './listTool'
 import { createMcpToolSet } from './mcpTools'
 import { createProviderWebTool } from './providerWebTool'
@@ -60,7 +59,6 @@ async function createNativeToolSets(
     read: createReadTool(context),
     glob: createGlobTool(context),
     grep: createGrepTool(context),
-    ...createKanbanToolSet(context),
   }
 
   if (enabledSkills.length > 0) {

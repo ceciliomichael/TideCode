@@ -25,7 +25,7 @@ function createTextAttachment(id: string): ChatAttachment {
 
 test('createQueuedComposerMessage copies attachments and assigns queue metadata', () => {
   const attachments = [createTextAttachment('attachment-1')]
-  const mentionPathMap = new Map([['Fix login bug', 'kanban:card-123']])
+  const mentionPathMap = new Map([['login.ts', 'read_file:src/login.ts']])
   const queuedMessage = createQueuedComposerMessage({
     attachments,
     content: 'Queue this message',
@@ -35,7 +35,7 @@ test('createQueuedComposerMessage copies attachments and assigns queue metadata'
   assert.equal(queuedMessage.content, 'Queue this message')
   assert.equal(queuedMessage.attachments?.length, 1)
   assert.equal(queuedMessage.attachments?.[0]?.id, 'attachment-1')
-  assert.deepEqual(queuedMessage.mentionPathMap, { 'Fix login bug': 'kanban:card-123' })
+  assert.deepEqual(queuedMessage.mentionPathMap, { 'login.ts': 'read_file:src/login.ts' })
   assert.notEqual(queuedMessage.id.length, 0)
   assert.ok(queuedMessage.timestamp > 0)
 })
@@ -49,13 +49,13 @@ test('updateQueuedComposerMessage updates one queued message without affecting t
     secondMessage.id,
     'Updated second',
     [createTextAttachment('attachment-2')],
-    new Map([['New title', 'kanban:card-456']]),
+    new Map([['new.ts', 'read_file:src/new.ts']]),
   )
 
   assert.equal(nextMessages[0]?.content, 'First')
   assert.equal(nextMessages[1]?.content, 'Updated second')
   assert.equal(nextMessages[1]?.attachments?.[0]?.id, 'attachment-2')
-  assert.deepEqual(nextMessages[1]?.mentionPathMap, { 'New title': 'kanban:card-456' })
+  assert.deepEqual(nextMessages[1]?.mentionPathMap, { 'new.ts': 'read_file:src/new.ts' })
 })
 
 test('removeQueuedComposerMessage deletes the matching queued message', () => {

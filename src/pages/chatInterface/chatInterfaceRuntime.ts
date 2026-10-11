@@ -10,7 +10,7 @@ export const CHAT_MODE_OPTIONS: readonly ChatModeOption[] = [
     value: 'agent',
   },
   {
-    description: 'Echo explores and plans with workspace + kanban tools before implementation',
+    description: 'Echo explores and plans with workspace tools before implementation',
     label: 'Plan',
     value: 'plan',
   },

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Columns3, FolderTree, GitBranch, GitCommitHorizontal, GitCompareArrows, Globe2, Terminal } from 'lucide-react'
+import { FolderTree, GitBranch, GitCommitHorizontal, GitCompareArrows, Globe2, Terminal } from 'lucide-react'
 import { Tooltip } from '../../components/Tooltip'
 
 interface HeaderControlProps {
@@ -64,10 +64,8 @@ interface ChatWorkspaceHeaderControlsProps {
   isDiffPanelOpen: boolean
   isExplorerOpen: boolean
   isBrowserOpen: boolean
-  isKanbanBoardOpen: boolean
   isSourceControlPanelOpen: boolean
   isTerminalOpen: boolean
-  isWorkspaceHeaderControlDisabled: boolean
   isWorkspaceRepoHeaderControlDisabled: boolean
   isSourceControlButtonDisabled: boolean
   onOpenCommitModal: () => void
@@ -76,7 +74,6 @@ interface ChatWorkspaceHeaderControlsProps {
   onToggleExplorerPanel: () => void
   onToggleWorkspaceBrowser: () => void
   onToggleTerminalPanel: () => void
-  onToggleWorkspaceBoard: () => void
   removedLineCount: number | null
 }
 
@@ -86,10 +83,8 @@ export function ChatWorkspaceHeaderControls({
   isDiffPanelOpen,
   isExplorerOpen,
   isBrowserOpen,
-  isKanbanBoardOpen,
   isSourceControlPanelOpen,
   isTerminalOpen,
-  isWorkspaceHeaderControlDisabled,
   isWorkspaceRepoHeaderControlDisabled,
   isSourceControlButtonDisabled,
   onOpenCommitModal,
@@ -98,7 +93,6 @@ export function ChatWorkspaceHeaderControls({
   onToggleExplorerPanel,
   onToggleWorkspaceBrowser,
   onToggleTerminalPanel,
-  onToggleWorkspaceBoard,
   removedLineCount,
 }: ChatWorkspaceHeaderControlsProps) {
   const supportsBrowser = typeof window !== 'undefined' && (
@@ -106,20 +100,9 @@ export function ChatWorkspaceHeaderControls({
   )
 
   return (
-        <div className="hidden items-center gap-1 md:flex">
-      <HeaderControl
-        active={isKanbanBoardOpen}
-        ariaPressed={isKanbanBoardOpen}
-        disabled={false}
-        label={isKanbanBoardOpen ? 'Return to chat' : 'Open Kanban board'}
-        onClick={onToggleWorkspaceBoard}
-        text="Board"
-      >
-        <Columns3 size={16} className="shrink-0" />
-      </HeaderControl>
+    <div className="hidden items-center gap-1 md:flex">
       {supportsBrowser ? (
         <>
-          <HeaderDivider />
           <HeaderControl
             active={isBrowserOpen}
             ariaPressed={isBrowserOpen}
@@ -130,12 +113,12 @@ export function ChatWorkspaceHeaderControls({
           >
             <Globe2 size={16} className="shrink-0" />
           </HeaderControl>
+          <HeaderDivider />
         </>
       ) : null}
-      <HeaderDivider />
       <HeaderControl
         active={isTerminalOpen}
-        disabled={isWorkspaceHeaderControlDisabled}
+        disabled={false}
         label={isTerminalOpen ? 'Hide terminal panel' : 'Open terminal panel'}
         onClick={onToggleTerminalPanel}
         text="Terminal"
@@ -182,7 +165,7 @@ export function ChatWorkspaceHeaderControls({
       <HeaderDivider />
       <HeaderControl
         active={isExplorerOpen}
-        disabled={isWorkspaceHeaderControlDisabled}
+        disabled={false}
         label={isExplorerOpen ? 'Close explorer panel' : 'Open explorer panel'}
         onClick={onToggleExplorerPanel}
         text="Explorer"

@@ -48,7 +48,7 @@ import type { SettingsItemId } from '../../components/settings/settingsItems'
 import { MobileWorkspaceHeader, type MobileWorkspaceSurface } from './MobileWorkspaceHeader'
 import { isRemoteBrowserRuntime } from '../../remote/webBridge'
 
-type ChatWorkspaceViewMode = 'chat' | 'kanban' | 'browser'
+type ChatWorkspaceViewMode = 'chat' | 'browser'
 
 interface ChatInterfaceContentProps {
   chatMessages: ChatMessagesController
@@ -305,14 +305,12 @@ synchronizeDraftFolder,
   const [workspaceViewMode, setWorkspaceViewMode] = useState<ChatWorkspaceViewMode>('chat')
   const [mobileSurface, setMobileSurface] = useState<MobileWorkspaceSurface>('chat')
   const isRemoteBrowser = isRemoteBrowserRuntime()
-  const isKanbanBoardOpen = isMobileViewport ? mobileSurface === 'board' : workspaceViewMode === 'kanban'
   const isBrowserOpen = !isRemoteBrowser && !isMobileViewport && workspaceViewMode === 'browser'
   const isMobileTerminalOpen = isMobileViewport && mobileSurface === 'terminal'
   const isMobileExplorerOpen = isMobileViewport && mobileSurface === 'explorer'
   const isTerminalSurfaceOpen = isMobileTerminalOpen || (
     !isMobileViewport && workspaceState.isTerminalOpen && workspaceState.isTerminalFullScreen
   )
-  const isWorkspaceHeaderControlDisabled = isKanbanBoardOpen
   const setIsSidebarOpen = interfaceController.setIsSidebarOpen
 
   useEffect(() => {
@@ -320,33 +318,6 @@ synchronizeDraftFolder,
     setIsSidebarOpen(false)
     setMobileSurface('chat')
   }, [isMobileViewport, setIsSidebarOpen])
-  const handleToggleWorkspaceBoard = useCallback(() => {
-    if (isKanbanBoardOpen) {
-      setWorkspaceViewMode('chat')
-      return
-    }
-
-    if (workspaceState.isExplorerOpen) {
-      workspaceState.handleToggleExplorerPanel()
-    }
-
-    if (interfaceController.isDiffPanelOpen) {
-      workspaceState.handleOpenDiffPanel()
-    } else if (interfaceController.isSourceControlPanelOpen) {
-      workspaceState.handleOpenSourceControlPanel()
-    }
-
-    if (workspaceState.isTerminalOpen) {
-      workspaceState.handleTerminalOpenChange(false)
-    }
-
-    setWorkspaceViewMode('kanban')
-  }, [
-    interfaceController,
-    isKanbanBoardOpen,
-    workspaceState,
-  ])
-
   const handleToggleWorkspaceBrowser = useCallback(() => {
     if (isRemoteBrowser) {
       return
@@ -471,8 +442,8 @@ synchronizeDraftFolder,
   const hasRepository = gitBranchState.branchState.hasRepository
   const hasWorkspacePath = Boolean(workspaceState.activeWorkspacePath?.trim())
   // Commit/Diff buttons require an actual git repo; Source Control panel only needs a workspace path
-  const isWorkspaceRepoHeaderControlDisabled = isWorkspaceHeaderControlDisabled || !hasRepository
-  const isSourceControlButtonDisabled = isWorkspaceHeaderControlDisabled || !hasWorkspacePath
+  const isWorkspaceRepoHeaderControlDisabled = !hasRepository
+  const isSourceControlButtonDisabled = !hasWorkspacePath
   const messageListBoundaryRef = useRef<HTMLDivElement>(null)
 
   const {
@@ -660,11 +631,9 @@ synchronizeDraftFolder,
                 isDiffPanelOpen={interfaceController.isDiffPanelOpen}
                 isExplorerOpen={workspaceState.isExplorerOpen}
                 isBrowserOpen={isBrowserOpen}
-                isKanbanBoardOpen={isKanbanBoardOpen}
                 isSourceControlPanelOpen={interfaceController.isSourceControlPanelOpen}
                 isSourceControlButtonDisabled={isSourceControlButtonDisabled}
                 isTerminalOpen={workspaceState.isTerminalOpen}
-                isWorkspaceHeaderControlDisabled={isWorkspaceHeaderControlDisabled}
                 isWorkspaceRepoHeaderControlDisabled={isWorkspaceRepoHeaderControlDisabled}
                 onOpenCommitModal={interfaceController.handleOpenCommitModal}
                 onOpenDiffPanel={workspaceState.handleOpenDiffPanel}
@@ -672,7 +641,6 @@ synchronizeDraftFolder,
                 onToggleExplorerPanel={workspaceState.handleToggleExplorerPanel}
                 onToggleWorkspaceBrowser={handleToggleWorkspaceBrowser}
                 onToggleTerminalPanel={() => workspaceState.handleTerminalOpenChange(!workspaceState.isTerminalOpen)}
-                onToggleWorkspaceBoard={handleToggleWorkspaceBoard}
                 removedLineCount={gitRemovedLineCount}
               />
             }
@@ -733,7 +701,6 @@ synchronizeDraftFolder,
               handleToolDecisionSubmit={handleToolDecisionSubmit}
               isCompressingChat={isCompressingChat}
               isBrowserOpen={isBrowserOpen}
-              isKanbanBoardOpen={isKanbanBoardOpen}
               isTerminalSurfaceOpen={isTerminalSurfaceOpen}
               onCloseBrowser={() => setWorkspaceViewMode('chat')}
               messageListBoundaryRef={messageListBoundaryRef}

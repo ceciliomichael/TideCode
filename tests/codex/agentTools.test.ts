@@ -20,7 +20,7 @@ test('createAgentTools omits write tools in plan mode', async () => {
 
     assert.ok('list' in tools)
     assert.ok('read' in tools)
-    assert.ok('kanban_board' in tools)
+    assert.ok(!('kanban_board' in tools))
     assert.ok(!('memory' in tools))
     assert.ok('plan_create' in tools)
     assert.ok('plan_edit' in tools)
@@ -46,7 +46,7 @@ test('createAgentTools exposes write tools in agent mode', async () => {
     assert.ok('plan_edit' in tools)
     assert.ok('apply_patch' in tools)
     assert.ok('edit' in tools)
-    assert.ok('kanban_board' in tools)
+    assert.ok(!('kanban_board' in tools))
     assert.ok(!('memory' in tools))
   } finally {
     await fs.rm(workspaceRootPath, { force: true, recursive: true })
@@ -433,7 +433,7 @@ test('createAgentTools keeps plan mode tool descriptions literal', async () => {
     const grepTool = tools.grep as { description?: string }
 
     assert.equal(listTool.description, 'List exactly one existing directory; an omitted path, empty string, or "." refers to the bound workspace root. Use read for files.')
-    assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. Text reads return up to 500 lines within a safe model-output byte budget and provide next_offset when more content remains.')
+    assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. Text reads stay within safe model-output budgets. Use next_offset for later lines and pass next_cursor back exactly when an oversized single line is returned in fragments.')
     assert.equal(globTool.description, 'Find files by pattern under exactly one directory; an omitted path, empty string, or "." refers to the bound workspace root.')
     assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; an omitted path, empty string, or "." refers to the bound workspace root.')
     for (const description of [listTool, readTool, globTool, grepTool].map((tool) => tool.description ?? '')) {
@@ -473,7 +473,7 @@ test('createAgentTools keeps mutation descriptions mechanical and workflow-free'
     const editTool = tools.edit as { description?: string }
     const writeTool = tools.write as { description?: string }
 
-    assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. Text reads return up to 500 lines within a safe model-output byte budget and provide next_offset when more content remains.')
+    assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. Text reads stay within safe model-output budgets. Use next_offset for later lines and pass next_cursor back exactly when an oversized single line is returned in fragments.')
     assert.match(applyPatchTool.description ?? '', /Apply one raw Codex patch string/u)
     assert.match(applyPatchTool.description ?? '', /inspect the exact current source region/u)
     assert.match(applyPatchTool.description ?? '', /every hunk must be backed by current exact source/u)

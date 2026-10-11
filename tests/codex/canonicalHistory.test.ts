@@ -719,7 +719,7 @@ test('wrapped live tools bound model output while retaining recovery metadata', 
   assert.match(String(wrapped.value), /@tool-output\/tool_12345\.txt/u)
   assert.match(String(wrapped.value), /~\/\.tidecode\/tool-output/u)
   assert.match(String(wrapped.value), /tools\.grep/u)
-  assert.match(String(wrapped.value), /tools\.read with a narrow offset\/limit/u)
+  assert.match(String(wrapped.value), /Follow read next_offset for later lines and next_cursor exactly for oversized single-line fragments/u)
 })
 
 test('tool results can keep model metadata separate from the user-facing display body', () => {

@@ -152,32 +152,6 @@ test('buildToolInvocationGroupSummary counts write tools inside explored groups'
   assert.equal(summary, 'Explored 2 files')
 })
 
-test('buildToolInvocationGroupSummary uses a kanban label for kanban-only groups', () => {
-  const summary = buildToolInvocationGroupSummary([
-    createInvocation('read_board'),
-  ])
-
-  assert.equal(summary, 'Ran 1 kanban tool')
-})
-
-test('buildToolInvocationGroupSummary includes kanban tools alongside other work', () => {
-  const summary = buildToolInvocationGroupSummary([
-    createInvocation('execute_terminal'),
-    createInvocation('create_card'),
-  ])
-
-  assert.equal(summary, 'Ran 1 terminal tool, ran 1 kanban tool')
-})
-
-test('buildToolInvocationGroupSummary keeps kanban after file exploration in mixed summaries', () => {
-  const summary = buildToolInvocationGroupSummary([
-    createInvocation('read'),
-    createInvocation('create_card'),
-  ])
-
-  assert.equal(summary, 'Explored 1 file, ran 1 kanban tool')
-})
-
 test('buildToolInvocationGroupSummary uses Ran for search-only summaries', () => {
   const summary = buildToolInvocationGroupSummary([
     createInvocation('glob'),

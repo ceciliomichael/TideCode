@@ -20,7 +20,6 @@ interface ChatMentionTextProps {
 const mentionHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(59,130,246,0.18)]'
 const folderHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(245,158,11,0.18)]'
 const skillHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(168,85,247,0.18)]'
-const kanbanHighlightSurfaceClassName = 'rounded-[4px] bg-[rgba(34,197,94,0.2)]'
 
 export const ChatMentionText = memo(function ChatMentionText({
   className,
@@ -103,7 +102,6 @@ export const ChatMentionText = memo(function ChatMentionText({
           segment.path?.startsWith('list:') ||
           segment.path?.endsWith('/'),
         )
-        const isKanban = Boolean(segment.path?.startsWith('kanban:'))
         const isBackdrop = variant === 'backdrop'
         const isRendered = variant === 'rendered'
         const imageAttachment = segment.path
@@ -117,38 +115,11 @@ export const ChatMentionText = memo(function ChatMentionText({
           : undefined
         const highlightClass = isSkill
           ? skillHighlightSurfaceClassName
-          : isKanban
-            ? kanbanHighlightSurfaceClassName
-            : isFolder
+          : isFolder
             ? folderHighlightSurfaceClassName
             : mentionHighlightSurfaceClassName
 
         const textColorClass = 'text-foreground font-normal'
-
-        if (isKanban) {
-          if (isBackdrop) {
-            return (
-              <span key={`mention-${index}`} className={`${highlightClass} text-transparent`}>
-                {segment.text}
-              </span>
-            )
-          }
-
-          return (
-            <span
-              key={`mention-${index}`}
-              className={`relative ${isRendered ? 'inline' : 'inline-block'} align-baseline [overflow-wrap:anywhere]`}
-            >
-              <span className={`relative ${textColorClass}`}>
-                {segment.text}
-              </span>
-              <span
-                aria-hidden="true"
-                className={`pointer-events-none absolute inset-0 z-[1] ${highlightClass}`}
-              />
-            </span>
-          )
-        }
 
         if (isRendered) {
           return (

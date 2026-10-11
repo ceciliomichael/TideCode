@@ -1677,40 +1677,8 @@ test('Code Mode capability search does not expose injected plan APIs while direc
       /tools\.\$codemode\.search/u,
     )
     const codeModeDescription = (bundle.tools.code_mode as { description?: string }).description ?? ''
-    assert.ok(codeModeDescription.includes(
-      'AI-completed main work stops at `for-review`, which completes direct subtasks. Never directly target `done`',
-    ))
-    assert.ok(codeModeDescription.includes(
-      'Set Owner per task: `Human` for user-originated work, `Agent` for work you introduce autonomously; do not blindly inherit parent ownership, and preserve explicit owner names.',
-    ))
-    assert.ok(codeModeDescription.includes(
-      'action: "read_board" | "read_card" | "create_card" | "create_task_with_subtasks" | "update_card" | "move_card" | "reorder_card" | "delete_card"',
-    ))
-    assert.ok(codeModeDescription.includes(
-      'acceptanceCriteria?: Array<{ text: string; completed?: boolean; id?: string }>',
-    ))
-    const kanbanEntry = bundle.registry.get('kanban_board')
-    assert.ok(kanbanEntry)
-    const kanbanActionSchema = (kanbanEntry.inputSchema.properties as Record<string, { enum?: unknown[] }> | undefined)?.action
-    assert.deepEqual(kanbanActionSchema?.enum, [
-      'read_board',
-      'read_card',
-      'create_card',
-      'create_task_with_subtasks',
-      'update_card',
-      'move_card',
-      'reorder_card',
-      'delete_card',
-    ])
-    const invalidKanbanResult = await invoke(bundle.nativeTools.kanban_board, { action: 'list' }) as {
-      status?: string
-      summary?: string
-    }
-    assert.equal(invalidKanbanResult.status, 'error')
-    assert.match(
-      invalidKanbanResult.summary ?? '',
-      /Unknown action: list\. Valid actions: read_board, read_card, create_card, create_task_with_subtasks, update_card, move_card, reorder_card, delete_card\./u,
-    )
+    assert.equal(bundle.registry.get('kanban_board'), undefined)
+    assert.ok(!codeModeDescription.includes('kanban_board'))
     assert.equal(codeModeDescription.split(CODE_MODE_EXECUTION_CONTRACT).length - 1, 1)
     assert.match(codeModeDescription, /executes a Tidecode-owned JavaScript-like orchestration language/u)
     assert.match(codeModeDescription, /Choose the purpose-built inner API for the scenario/u)

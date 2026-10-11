@@ -12,7 +12,6 @@ function buildLegacySettings() {
   delete legacyDefaults.planReasoningEffort
   delete legacyDefaults.summarizationReasoningEffort
   delete legacyDefaults.gitCommitReasoningEffort
-  delete legacyDefaults.kanbanReasoningEffort
   return {
     ...legacyDefaults,
     appearance: 'dark' as const,
@@ -104,7 +103,6 @@ sidebarWidth: 360,
       assert.equal(settings.planReasoningEffort, 'high')
       assert.equal(settings.summarizationReasoningEffort, 'high')
       assert.equal(settings.gitCommitReasoningEffort, 'high')
-      assert.equal(settings.kanbanReasoningEffort, 'high')
 assert.equal(settings.sidebarWidth, 360)
     }
 
@@ -165,7 +163,6 @@ test('desktop, web, and cli preferences diverge while shared settings converge',
 
     await updateStoredSettings({
       modelToggleState: { 'codex:gpt-5.4': false },
-      kanbanAiPlanningEnabled: false,
       gitCommitReasoningEffort: 'low',
       workspaceMemoryEnabled: false,
     }, 'web')
@@ -188,7 +185,6 @@ test('desktop, web, and cli preferences diverge while shared settings converge',
 
     for (const settings of [desktop, web, cli]) {
       assert.deepEqual(settings.modelToggleState, { 'codex:gpt-5.4': false })
-      assert.equal(settings.kanbanAiPlanningEnabled, false)
       assert.equal(settings.gitCommitReasoningEffort, 'low')
       assert.equal(settings.workspaceMemoryEnabled, false)
     }

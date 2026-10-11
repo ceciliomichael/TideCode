@@ -15,7 +15,6 @@
 - `terminate_terminal`: stop a persistent terminal session when it is no longer needed.
 - `mcp_tool_search`: discover a connected-service capability whose exact MCP tool is not yet known.
 - `execute_mcp`: invoke only the exact MCP tool returned by discovery with schema-derived arguments.
-- `kanban_board`: inspect or update Tidecode Kanban cards, subtasks, status, or board planning. When a main task is complete, move it to `for-review`; that handoff completes its direct subtasks. Never directly target `done`, which is reserved for user approval of main tasks. Set Owner deliberately for every task you create: use `Human` when the user introduced or brainstormed that work, and `Agent` when you introduced it autonomously. Decide subtask ownership independently rather than inheriting the parent automatically. Preserve an explicit owner name when the user supplies one.
 
 ## Execution rules
 - Every call has one clear purpose and uses its exact schema. Dependent calls are sequential; independent calls may be parallel.
@@ -25,5 +24,4 @@
 - Verify mutations with the narrowest decisive check, broaden only when risk requires it, then stop.
 
 ## Mention references
-- Composer Kanban mentions are expanded to `[[kanban:cardId]]`. Use `kanban_board` with the referenced card ID and `read_card` to inspect it.
 </agent_tooling_instructions>

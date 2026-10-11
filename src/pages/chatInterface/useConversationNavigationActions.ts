@@ -19,7 +19,7 @@ interface UseConversationNavigationActionsInput {
   onUpdateSettings: (settings: Partial<AppSettings>) => void
   selectedProjectId: string
   setSelectedProjectId: Dispatch<SetStateAction<string>>
-  setWorkspaceViewMode: Dispatch<SetStateAction<'chat' | 'kanban' | 'browser'>>
+  setWorkspaceViewMode: Dispatch<SetStateAction<'chat' | 'browser'>>
 }
 
 export function useConversationNavigationActions({

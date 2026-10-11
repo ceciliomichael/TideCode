@@ -10,8 +10,6 @@ import { ToolDiffResult } from './ToolDiffResult'
 import { ToolMarkdownResult } from './ToolMarkdownResult'
 import { getToolInvocationHeaderLabel } from './toolInvocationPresentation'
 import { isFileEditTool, isFileWriteTool } from './toolInvocationKinds'
-import { isKanbanTool } from './kanbanToolInvocationKinds'
-import { KanbanToolResult } from './KanbanToolResult'
 import { getToolResultDisplayBody, parseStructuredToolResultContent } from '../../lib/toolResultContent'
 import { normalizeWebSearchMarkdownBody } from '../../lib/webSearchResults'
 import { ToolImageResult } from './ToolImageResult'
@@ -153,7 +151,6 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   const isLiteralSourceTool =
     displayInvocation.toolName === 'read' ||
     displayInvocation.toolName === 'grep'
-  const isKanbanInvocation = isKanbanTool(displayInvocation.toolName)
   const parsedStructuredResult = displayInvocation.resultContent
     ? parseStructuredToolResultContent(displayInvocation.resultContent)
     : null
@@ -178,7 +175,6 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
     toolDiffPresentation === null &&
     imageResultPresentation === null &&
     terminalToolName === null &&
-    !isKanbanInvocation &&
     !isLiteralSourceTool
   const shouldPremeasureMarkdownResult = useMemo(() => {
     if (!canPremeasureMarkdownResult) {
@@ -249,11 +245,6 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
               content={rawResultBody}
               isStreaming={displayInvocation.state === 'running'}
               toolName={terminalToolName}
-            />
-          ) : isKanbanInvocation ? (
-            <KanbanToolResult
-              invocation={displayInvocation}
-              isStreaming={displayedState === 'running'}
             />
           ) : isLiteralSourceTool ? (
             <LiteralToolResult content={displayResultBody} />

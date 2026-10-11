@@ -110,9 +110,7 @@ test('only shared configuration is broadcast across surfaces', () => {
   assert.equal(hasSharedAppSettingsInput({ agentReasoningEffort: 'high' }), false)
   assert.equal(hasSharedAppSettingsInput({ planReasoningEffort: 'low' }), false)
   assert.equal(hasSharedAppSettingsInput({ appearance: 'dark' }), false)
-  assert.equal(hasSharedAppSettingsInput({ kanbanAiPlanningEnabled: false }), true)
   assert.equal(hasSharedAppSettingsInput({ gitCommitReasoningEffort: 'low' }), true)
-  assert.equal(hasSharedAppSettingsInput({ kanbanReasoningEffort: 'high' }), true)
   assert.equal(hasSharedAppSettingsInput({ summarizationReasoningEffort: 'medium' }), true)
 })
 

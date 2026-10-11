@@ -198,7 +198,7 @@ test('apply_patch keeps repeated hunks in source order when an earlier match nee
 
 test('apply_patch safely recovers unique out-of-order hunks in one file', async () => {
   const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-apply-patch-out-of-order-'))
-  const targetPath = path.join(workspaceRootPath, 'kanbanTools.ts')
+  const targetPath = path.join(workspaceRootPath, 'taskTools.ts')
   const originalContent = [
     '                const colTitle =',
     "                  colId === 'in-progress'",
@@ -214,27 +214,27 @@ test('apply_patch safely recovers unique out-of-order hunks in one file', async 
 
     await applyPatchInWorkspace(
       workspaceRootPath,
-      standardPatch(`*** Update File: kanbanTools.ts
+      standardPatch(`*** Update File: taskTools.ts
 @@
 -              return ok(\`Created task in \${card.columnId}: \${card.title}\`, { card })
-+              return ok(\`Created task in \${getKanbanColumnTitle(card.columnId)}: \${card.title}\`, { card })
++              return ok(\`Created task in \${getTaskColumnTitle(card.columnId)}: \${card.title}\`, { card })
 @@
 -                const colTitle =
 -                  colId === 'in-progress'
 -                    ? 'In Progress'
 -                    : colId.charAt(0).toUpperCase() + colId.slice(1)
-+                const colTitle = getKanbanColumnTitle(colId)
++                const colTitle = getTaskColumnTitle(colId)
 @@
 -              return ok(\`Moved task to \${card.columnId}: \${card.title}\`, { card })
-+              return ok(\`Moved task to \${getKanbanColumnTitle(card.columnId)}: \${card.title}\`, { card })`),
++              return ok(\`Moved task to \${getTaskColumnTitle(card.columnId)}: \${card.title}\`, { card })`),
     )
 
     assert.equal(
       await fs.readFile(targetPath, 'utf8'),
       [
-        '                const colTitle = getKanbanColumnTitle(colId)',
-        '              return ok(`Created task in ${getKanbanColumnTitle(card.columnId)}: ${card.title}`, { card })',
-        '              return ok(`Moved task to ${getKanbanColumnTitle(card.columnId)}: ${card.title}`, { card })',
+        '                const colTitle = getTaskColumnTitle(colId)',
+        '              return ok(`Created task in ${getTaskColumnTitle(card.columnId)}: ${card.title}`, { card })',
+        '              return ok(`Moved task to ${getTaskColumnTitle(card.columnId)}: ${card.title}`, { card })',
         '',
       ].join('\n'),
     )
@@ -508,7 +508,7 @@ test('apply_patch explains when a long source line was supplied as a partial anc
     await assert.rejects(
       applyPatchInWorkspace(
         workspaceRootPath,
-        standardPatch(`*** Update File: src/chatMentions.ts\n@@\n-${currentLine.slice(0, 78)}\n+const LEGACY_ACTION_REGEX = /(?:^|[\\s(])((?:read|list|load_skill|kanban):`),
+        standardPatch(`*** Update File: src/chatMentions.ts\n@@\n-${currentLine.slice(0, 78)}\n+const LEGACY_ACTION_REGEX = /(?:^|[\\s(])((?:read|list|load_skill|task):`),
       ),
       (error: unknown) => {
         assert.ok(error instanceof Error)

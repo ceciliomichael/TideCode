@@ -1,6 +1,4 @@
 import type { ToolInvocationTrace } from '../../types/chat'
-import { buildKanbanToolInvocationGroupSummary } from './kanbanToolInvocationGrouping'
-import { isKanbanTool } from './kanbanToolInvocationKinds'
 import { isFileWriteTool } from './toolInvocationKinds'
 import { getFileMutationSummaryKind } from './toolInvocationPresentation'
 
@@ -16,7 +14,6 @@ interface ToolInvocationSummaryCounts {
   deletedCount: number
   verifiedCount: number
   exploredFileCount: number
-  kanbanCount: number
   planCount: number
   planUpdateCount: number
   memoryCount: number
@@ -143,9 +140,6 @@ function getMixedBucketPriority(bucketKey: string) {
   if (bucketKey === 'command') {
     return 8
   }
-  if (bucketKey === 'kanban') {
-    return 9
-  }
   if (bucketKey === 'web-search') {
     return 10
   }
@@ -239,7 +233,6 @@ export function buildToolInvocationGroupSummary(
     deletedCount: 0,
     verifiedCount: 0,
     exploredFileCount: 0,
-    kanbanCount: 0,
     planCount: 0,
     planUpdateCount: 0,
     memoryCount: 0,
@@ -305,12 +298,6 @@ export function buildToolInvocationGroupSummary(
         }
         recordMixedBucket(mutationKind)
       }
-      continue
-    }
-
-    if (isKanbanTool(invocation.toolName)) {
-      counts.kanbanCount += 1
-      recordMixedBucket('kanban')
       continue
     }
 
@@ -383,9 +370,6 @@ export function buildToolInvocationGroupSummary(
       if (bucketKey === 'file') {
         return `explored ${pluralize(count, 'file')}`
       }
-      if (bucketKey === 'kanban') {
-        return buildKanbanToolInvocationGroupSummary(count)
-      }
       if (bucketKey === 'plan') {
         return 'created plan'
       }
@@ -427,9 +411,6 @@ export function buildToolInvocationGroupSummary(
   }
   if (counts.exploredFileCount + counts.fileCount > 0) {
     summaryParts.push(`explored ${pluralize(counts.exploredFileCount + counts.fileCount, 'file')}`)
-  }
-  if (counts.kanbanCount > 0) {
-    summaryParts.push(buildKanbanToolInvocationGroupSummary(counts.kanbanCount))
   }
   const planSummary = formatPlanSummary()
   if (planSummary) {

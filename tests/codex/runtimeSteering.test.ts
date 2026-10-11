@@ -32,9 +32,9 @@ test('steering opens only after a completed tool-result boundary', () => {
 test('steer messages become user messages without creating a new run checkpoint', () => {
   const messages = createSameTurnSteerMessages([
     {
-      content: 'first [[kanban:card-123]]',
+      content: 'first [[read_file:src/login.ts]]',
       id: 'steer-1',
-      mentionPathMap: { 'Fix login bug': 'kanban:card-123' },
+      mentionPathMap: { 'login.ts': 'read_file:src/login.ts' },
       timestamp: 10,
     },
     { content: 'second steer', id: 'steer-2', timestamp: 11 },
@@ -44,7 +44,7 @@ test('steer messages become user messages without creating a new run checkpoint'
   assert.equal(messages.every((message) => message.role === 'user'), true)
   assert.equal(messages.every((message) => message.userMessageKind === 'steer'), true)
   assert.equal(messages.every((message) => message.runCheckpoint === undefined), true)
-  assert.deepEqual(messages[0]?.mentionPathMap, { 'Fix login bug': 'kanban:card-123' })
+  assert.deepEqual(messages[0]?.mentionPathMap, { 'login.ts': 'read_file:src/login.ts' })
   assert.deepEqual(
     buildSameTurnSteerModelMessages(messages, {}).map((message) => message.role),
     ['user', 'user'],

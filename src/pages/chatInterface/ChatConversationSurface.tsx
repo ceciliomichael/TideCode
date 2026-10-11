@@ -4,7 +4,6 @@ import { EmptyState } from '../../components/EmptyState'
 import { MessageList } from '../../components/MessageList'
 import { ChatQueueBlock } from '../../components/chat/ChatQueueBlock'
 import type { ChatModeOption } from '../../components/chat/ChatModeSelectorField'
-import { KanbanBoard } from '../../components/kanban/KanbanBoard'
 import { BrowserPanel } from '../../components/browser/BrowserPanel'
 import type { ChatMessagesController } from '../../hooks/useChatMessages'
 import type { ChatRuntimeConfigState } from '../../hooks/useChatRuntimeConfig'
@@ -50,7 +49,6 @@ interface ChatConversationSurfaceProps {
   liveCompaction: ChatCompactionLifecycleState | null
   isBrowserOpen: boolean
   onCloseBrowser: () => void
-  isKanbanBoardOpen: boolean
   isTerminalSurfaceOpen: boolean
   messageListBoundaryRef: RefObject<HTMLDivElement | null>
   onQueueMessage: (
@@ -109,7 +107,6 @@ export function ChatConversationSurface({
   liveCompaction,
   isBrowserOpen,
   onCloseBrowser,
-  isKanbanBoardOpen,
   isTerminalSurfaceOpen,
   messageListBoundaryRef,
   onQueueMessage,
@@ -224,9 +221,7 @@ export function ChatConversationSurface({
             />
           </div>
         ))}
-        {!isBrowserOpen && (isKanbanBoardOpen ? (
-          <KanbanBoard workspacePath={activeWorkspacePath} messages={chatMessages.messages} />
-        ) : (
+        {!isBrowserOpen && (
           <>
             {chatMessages.error ? (
               <div className="chat-input-shell mx-auto rounded-2xl border border-danger-border bg-danger-surface px-4 py-3 text-sm text-danger-foreground">
@@ -284,9 +279,9 @@ export function ChatConversationSurface({
               </div>
             )}
           </>
-        ))}
+        )}
       </div>
-      {!isKanbanBoardOpen && !isBrowserOpen ? (
+      {!isBrowserOpen ? (
         <div className="flex w-full shrink-0 flex-col items-center pb-4">
           <div className="chat-composer-shell">
             {showQueueBlock ? (

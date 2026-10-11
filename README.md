@@ -29,7 +29,6 @@ The workspace keeps the conversation, project files, terminal, planning board, a
 
 ### Plan work that stays understandable
 
-- Turn ideas into tasks on a Kanban board.
 - Organize subtasks, descriptions, labels, assignees, and acceptance criteria.
 - Use the assistant to help turn a task into a reviewable plan, then implement it from the conversation when you are ready.
 

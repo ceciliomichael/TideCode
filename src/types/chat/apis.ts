@@ -1,23 +1,4 @@
 import type {
-  KanbanBoardData,
-  KanbanCard,
-  KanbanCardDetails,
-  KanbanColumnReadResult,
-  KanbanCreateCardRequest,
-  KanbanCreateTaskRequest,
-  KanbanCreateTaskResult,
-  KanbanDeleteCardRequest,
-  KanbanMoveCardRequest,
-  KanbanReadBoardRequest,
-  KanbanReadCardRequest,
-  KanbanReorderCardRequest,
-  KanbanTaskPlan,
-  KanbanTaskPlanInput,
-  KanbanUpdateCardInput,
-  KanbanUpdateCardRequest,
-  KanbanWorkspaceInput,
-} from '../../lib/kanban'
-import type {
   AppendConversationMessagesInput,
   ConversationFolderRecord,
   ConversationFolderSummary,
@@ -222,23 +203,6 @@ export interface TideCodeChatApi {
   ) => Promise<UpdatePendingSteerMessagesResult>
 }
 
-export interface TideCodeKanbanApi {
-  clearCompletedCards: (input: KanbanWorkspaceInput) => Promise<KanbanBoardData>
-  createCard: (input: KanbanCreateCardRequest) => Promise<KanbanCard>
-  createTask: (input: KanbanCreateTaskRequest) => Promise<KanbanCreateTaskResult>
-  deleteCard: (input: KanbanDeleteCardRequest) => Promise<KanbanBoardData>
-  getBoardData: (input: KanbanWorkspaceInput) => Promise<KanbanBoardData>
-  importBoardData: (input: KanbanWorkspaceInput & KanbanBoardData) => Promise<KanbanBoardData>
-  moveCard: (input: KanbanMoveCardRequest) => Promise<KanbanCard>
-  onBoardChange: (listener: (event: KanbanBoardChangeEvent) => void) => () => void
-  planTask: (input: KanbanTaskPlanInput) => Promise<KanbanTaskPlan>
-  readBoard: (input: KanbanReadBoardRequest) => Promise<KanbanColumnReadResult>
-  readCard: (input: KanbanReadCardRequest) => Promise<KanbanCardDetails | null>
-  reorderCard: (input: KanbanReorderCardRequest) => Promise<KanbanCard>
-  updateCard: (input: KanbanWorkspaceInput & KanbanUpdateCardInput) => Promise<KanbanCard>
-  updateCardContent: (input: KanbanUpdateCardRequest) => Promise<KanbanCard>
-}
-
 export interface TideCodeWorkspaceApi {
   createCheckpoint: (input: CreateWorkspaceCheckpointInput) => Promise<UserMessageRunCheckpoint>
   createRedoCheckpointFromSource: (sourceCheckpointId: string) => Promise<UserMessageRunCheckpoint>
@@ -262,10 +226,6 @@ export interface TideCodeWorkspaceApi {
   writeFile: (input: WorkspaceExplorerWriteFileInput) => Promise<WorkspaceExplorerWriteFileResult>
   restoreCheckpoint: (checkpointId: string) => Promise<void>
   restoreCheckpointSequence: (checkpointIds: string[]) => Promise<void>
-}
-
-export interface KanbanBoardChangeEvent {
-  workspaceRootPath: string
 }
 
 export interface TideCodeTerminalApi {

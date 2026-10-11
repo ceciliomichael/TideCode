@@ -36,28 +36,25 @@ interface ModelOption {
 type TaskReasoningEffortKey =
   | 'agentReasoningEffort'
   | 'gitCommitReasoningEffort'
-  | 'kanbanReasoningEffort'
   | 'planReasoningEffort'
   | 'summarizationReasoningEffort'
 
 interface TaskModelSettingsKeys {
-  modelId: 'agentModelId' | 'gitCommitModelId' | 'kanbanModelId' | 'planModelId' | 'summarizationModelId'
+  modelId: 'agentModelId' | 'gitCommitModelId' | 'planModelId' | 'summarizationModelId'
   modelLabel:
     | 'agentModelLabel'
     | 'gitCommitModelLabel'
-    | 'kanbanModelLabel'
     | 'planModelLabel'
     | 'summarizationModelLabel'
   providerId:
     | 'agentModelProviderId'
     | 'gitCommitModelProviderId'
-    | 'kanbanModelProviderId'
     | 'planModelProviderId'
     | 'summarizationModelProviderId'
   reasoningEffort: TaskReasoningEffortKey
 }
 
-type TaskModelConfigurationId = 'agent' | 'git-commit' | 'kanban' | 'plan' | 'summarization'
+type TaskModelConfigurationId = 'agent' | 'git-commit' | 'plan' | 'summarization'
 
 interface TaskModelCardConfiguration {
   description: string
@@ -100,10 +97,6 @@ interface TaskModelsSettingsPanelProps {
     | 'gitCommitModelLabel'
     | 'gitCommitModelProviderId'
     | 'gitCommitReasoningEffort'
-    | 'kanbanModelId'
-    | 'kanbanModelLabel'
-    | 'kanbanModelProviderId'
-    | 'kanbanReasoningEffort'
     | 'planModelId'
     | 'planModelLabel'
     | 'planModelProviderId'
@@ -239,11 +232,6 @@ export function TaskModelsSettingsPanel({
     () => getMissingOption(settings.gitCommitModelId, settings.gitCommitModelLabel, settings.gitCommitModelProviderId),
     [settings.gitCommitModelId, settings.gitCommitModelLabel, settings.gitCommitModelProviderId],
   )
-  const kanbanMissingOption = useMemo(
-    () => getMissingOption(settings.kanbanModelId, settings.kanbanModelLabel, settings.kanbanModelProviderId),
-    [settings.kanbanModelId, settings.kanbanModelLabel, settings.kanbanModelProviderId],
-  )
-
   const agentOptions = useMemo(
     () => buildConfigurationOptions(configuredModelOptions, agentMissingOption),
     [agentMissingOption, configuredModelOptions],
@@ -260,11 +248,6 @@ export function TaskModelsSettingsPanel({
     () => buildConfigurationOptions(configuredModelOptions, gitCommitMissingOption),
     [gitCommitMissingOption, configuredModelOptions],
   )
-  const kanbanOptions = useMemo(
-    () => buildConfigurationOptions(configuredModelOptions, kanbanMissingOption),
-    [kanbanMissingOption, configuredModelOptions],
-  )
-
   const agentSelectedValue = useMemo(
     () => findSelectedValue(configuredModelOptions, agentMissingOption, settings.agentModelId, settings.agentModelProviderId),
     [agentMissingOption, configuredModelOptions, settings.agentModelId, settings.agentModelProviderId],
@@ -291,16 +274,6 @@ export function TaskModelsSettingsPanel({
     ),
     [gitCommitMissingOption, configuredModelOptions, settings.gitCommitModelId, settings.gitCommitModelProviderId],
   )
-  const kanbanSelectedValue = useMemo(
-    () => findSelectedValue(
-      configuredModelOptions,
-      kanbanMissingOption,
-      settings.kanbanModelId,
-      settings.kanbanModelProviderId,
-    ),
-    [kanbanMissingOption, configuredModelOptions, settings.kanbanModelId, settings.kanbanModelProviderId],
-  )
-
   const agentSelectedModel = useMemo(
     () => findSelectedModel(configuredModelOptions, agentMissingOption, agentSelectedValue),
     [agentMissingOption, agentSelectedValue, configuredModelOptions],
@@ -317,11 +290,6 @@ export function TaskModelsSettingsPanel({
     () => findSelectedModel(configuredModelOptions, gitCommitMissingOption, gitCommitSelectedValue),
     [gitCommitMissingOption, gitCommitSelectedValue, configuredModelOptions],
   )
-  const kanbanSelectedModel = useMemo(
-    () => findSelectedModel(configuredModelOptions, kanbanMissingOption, kanbanSelectedValue),
-    [kanbanMissingOption, kanbanSelectedValue, configuredModelOptions],
-  )
-
   const saveTaskModel = useCallback((
     nextValue: string,
     nextReasoningEffort: ReasoningEffort,
@@ -354,25 +322,6 @@ export function TaskModelsSettingsPanel({
   }, [configuredModelOptions, onUpdateSettings])
 
   const configurations: TaskModelCardConfiguration[] = [
-    {
-      description: 'Model used to turn a task title into a reviewable implementation plan.',
-      id: 'kanban',
-      keys: {
-        modelId: 'kanbanModelId',
-        modelLabel: 'kanbanModelLabel',
-        providerId: 'kanbanModelProviderId',
-        reasoningEffort: 'kanbanReasoningEffort',
-      },
-      missingOption: kanbanMissingOption,
-      modelId: settings.kanbanModelId,
-      modelLabel: settings.kanbanModelLabel,
-      options: kanbanOptions,
-      providerId: settings.kanbanModelProviderId,
-      reasoningEffort: settings.kanbanReasoningEffort,
-      selectedModel: kanbanSelectedModel,
-      selectedValue: kanbanSelectedValue,
-      title: 'Task planning model',
-    },
     {
       description: 'Default model for Agent mode. Model changes inside a chat remain conversation-specific.',
       id: 'agent',

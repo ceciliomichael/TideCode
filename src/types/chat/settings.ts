@@ -55,11 +55,6 @@ export interface AppSettings {
   gitCommitModelProviderId: ChatProviderId | null
   gitCommitModelLabel: string
   gitCommitReasoningEffort: ReasoningEffort
-  kanbanAiPlanningEnabled: boolean
-  kanbanModelId: string
-  kanbanModelProviderId: ChatProviderId | null
-  kanbanModelLabel: string
-  kanbanReasoningEffort: ReasoningEffort
   workspaceMemoryEnabled: boolean
   diffPanelWidth: number
   editSessionsByConversation: Record<string, ConversationEditSession>

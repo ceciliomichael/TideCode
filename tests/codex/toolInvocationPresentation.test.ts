@@ -415,18 +415,18 @@ test('sub-tool only failure in Code Mode renders child entries independently wit
           operation: 'code_mode',
           tool_calls: [
             {
-              arguments: { path: 'src/lib/kanbanContracts.ts' },
-              body: 'export const KANBAN_COLUMN_IDS = ...',
+              arguments: { path: 'src/lib/taskContracts.ts' },
+              body: 'export const TASK_COLUMN_IDS = ...',
               name: 'read',
               status: 'success',
-              summary: 'Read src/lib/kanbanContracts.ts',
+              summary: 'Read src/lib/taskContracts.ts',
             },
             {
-              arguments: { path: 'electron/ipc/kanban.ts' },
-              body: 'Path not found: electron/ipc/kanban.ts. Use a path relative to the workspace root.',
+              arguments: { path: 'electron/ipc/task.ts' },
+              body: 'Path not found: electron/ipc/task.ts. Use a path relative to the workspace root.',
               name: 'read',
               status: 'error',
-              summary: 'Path not found: electron/ipc/kanban.ts. Use a path relative to the workspace root.',
+              summary: 'Path not found: electron/ipc/task.ts. Use a path relative to the workspace root.',
             },
           ],
         },
@@ -702,99 +702,6 @@ test('empty list results keep the listed tool header', () => {
   }
 
   assert.equal(getToolInvocationHeaderLabel(invocation, undefined, WORKSPACE_ROOT_PATH), 'Listed .')
-})
-
-test('kanban tool header labels use kanban-specific verbs', () => {
-  const readBoardRunning: ToolInvocationTrace = {
-    argumentsText: '{}',
-    id: 'tool-kanban-read-board',
-    startedAt: 0,
-    state: 'running',
-    toolName: 'read_board',
-  }
-
-  const readBoardCompleted: ToolInvocationTrace = {
-    ...readBoardRunning,
-    state: 'completed',
-  }
-
-  const readCardRunning: ToolInvocationTrace = {
-    argumentsText: '{}',
-    id: 'tool-kanban-read-card',
-    startedAt: 0,
-    state: 'running',
-    toolName: 'read_card',
-  }
-
-  const readCardCompleted: ToolInvocationTrace = {
-    ...readCardRunning,
-    state: 'completed',
-  }
-
-  const createCardRunning: ToolInvocationTrace = {
-    argumentsText: '{}',
-    id: 'tool-kanban-create-card',
-    startedAt: 0,
-    state: 'running',
-    toolName: 'create_card',
-  }
-
-  const createCardCompleted: ToolInvocationTrace = {
-    ...createCardRunning,
-    state: 'completed',
-  }
-
-  const updateCardRunning: ToolInvocationTrace = {
-    argumentsText: '{}',
-    id: 'tool-kanban-update-card',
-    startedAt: 0,
-    state: 'running',
-    toolName: 'update_card',
-  }
-
-  const updateCardCompleted: ToolInvocationTrace = {
-    ...updateCardRunning,
-    state: 'completed',
-  }
-
-  const moveCardRunning: ToolInvocationTrace = {
-    argumentsText: '{}',
-    id: 'tool-kanban-move-card',
-    startedAt: 0,
-    state: 'running',
-    toolName: 'move_card',
-  }
-
-  const moveCardCompleted: ToolInvocationTrace = {
-    ...moveCardRunning,
-    state: 'completed',
-  }
-
-  const reorderCardRunning: ToolInvocationTrace = {
-    argumentsText: '{}',
-    id: 'tool-kanban-reorder-card',
-    startedAt: 0,
-    state: 'running',
-    toolName: 'reorder_card',
-  }
-
-  const reorderCardCompleted: ToolInvocationTrace = {
-    ...reorderCardRunning,
-    state: 'completed',
-  }
-
-  assert.equal(getToolInvocationHeaderLabel(readBoardRunning, undefined, WORKSPACE_ROOT_PATH), 'Reading board')
-  assert.equal(getToolInvocationHeaderLabel(readBoardCompleted, undefined, WORKSPACE_ROOT_PATH), 'Read board')
-  assert.equal(getToolInvocationHeaderLabel(readCardRunning, undefined, WORKSPACE_ROOT_PATH), 'Reading card')
-  assert.equal(getToolInvocationHeaderLabel(readCardCompleted, undefined, WORKSPACE_ROOT_PATH), 'Read card')
-  assert.equal(getToolInvocationHeaderLabel(createCardRunning, undefined, WORKSPACE_ROOT_PATH), 'Creating card')
-  assert.equal(getToolInvocationHeaderLabel(createCardCompleted, undefined, WORKSPACE_ROOT_PATH), 'Created card')
-  assert.equal(getToolInvocationHeaderLabel(updateCardRunning, undefined, WORKSPACE_ROOT_PATH), 'Updating card')
-  assert.equal(getToolInvocationHeaderLabel(updateCardCompleted, undefined, WORKSPACE_ROOT_PATH), 'Updated card')
-  assert.equal(getToolInvocationHeaderLabel(moveCardRunning, undefined, WORKSPACE_ROOT_PATH), 'Moving card')
-  assert.equal(getToolInvocationHeaderLabel(moveCardCompleted, undefined, WORKSPACE_ROOT_PATH), 'Moved card')
-  assert.equal(getToolInvocationHeaderLabel(reorderCardRunning, undefined, WORKSPACE_ROOT_PATH), 'Reordering card')
-  assert.equal(getToolInvocationHeaderLabel(reorderCardCompleted, undefined, WORKSPACE_ROOT_PATH), 'Reordered card')
 })
 
 test('web search header labels use readable product wording', () => {

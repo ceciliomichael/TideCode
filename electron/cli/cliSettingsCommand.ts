@@ -10,15 +10,11 @@ import {
 } from './cliDefaultModelSettings'
 import type { CliSessionState, SlashCommandHelpers } from './types'
 
-type CliSettingId = 'follow-up' | 'terminal-access' | 'kanban-ai'
+type CliSettingId = 'follow-up' | 'terminal-access'
 
 interface SettingChoice {
   label: string
   value: string
-}
-
-function booleanChoices(): SettingChoice[] {
-  return [{ label: 'On', value: 'true' }, { label: 'Off', value: 'false' }]
 }
 
 function getSettingChoices(id: CliSettingId): SettingChoice[] {
@@ -27,8 +23,6 @@ function getSettingChoices(id: CliSettingId): SettingChoice[] {
       return FOLLOW_UP_BEHAVIOR_OPTIONS.map((option) => ({ ...option }))
     case 'terminal-access':
       return [{ label: 'Full access', value: 'full' }, { label: 'Sandboxed', value: 'sandbox' }]
-    case 'kanban-ai':
-      return booleanChoices()
   }
 }
 
@@ -36,7 +30,6 @@ function getCurrentValue(id: CliSettingId, settings: AppSettings, state: CliSess
   switch (id) {
     case 'follow-up': return settings.followUpBehavior
     case 'terminal-access': return state.terminalExecutionMode
-    case 'kanban-ai': return String(settings.kanbanAiPlanningEnabled)
   }
 }
 
@@ -44,7 +37,6 @@ export function buildCliSettingsPatch(id: CliSettingId, value: string): Partial<
   switch (id) {
     case 'follow-up': return { followUpBehavior: value === 'steer' ? 'steer' : 'queue' }
     case 'terminal-access': return { terminalExecutionMode: value === 'sandbox' ? 'sandbox' : 'full' }
-    case 'kanban-ai': return { kanbanAiPlanningEnabled: value === 'true' }
   }
 }
 
@@ -54,7 +46,6 @@ export async function runCliSettingsCommand(state: CliSessionState, helpers: Sla
     ...CLI_DEFAULT_MODEL_SETTINGS,
     { id: 'follow-up', label: 'Follow-up keys', description: 'CLI Enter/Tab behavior' },
     { id: 'terminal-access', label: 'Terminal access', description: 'CLI execution access for this client' },
-    { id: 'kanban-ai', label: 'Kanban AI planning', description: 'Shared across TideCode' },
   ]
   const selectedId = await helpers.select<CliSettingId | CliDefaultModelSettingId>({
     title: 'TideCode Settings',

@@ -200,8 +200,6 @@ async function measure(label) {
 }
 
 const checkpoints = []
-const smokeTaskTitle = `Mobile smoke task ${Date.now()}`
-const smokeTaskCardSelector = `article[aria-label=${JSON.stringify('Open task ' + smokeTaskTitle)}]`
 try {
   await send('Runtime.enable')
   await send('Page.enable')
@@ -444,7 +442,7 @@ try {
   checkpoints.push(await measure('Chat with workspace'))
 
   const desktopControlsVisible = await evaluate(`(() => {
-    const labels = ['Open Kanban board', 'Open terminal panel', 'Commit changes', 'Toggle Source Control panel', 'Toggle Diff panel', 'Toggle explorer panel']
+    const labels = ['Open terminal panel', 'Commit changes', 'Toggle Source Control panel', 'Toggle Diff panel', 'Toggle explorer panel']
     return [...document.querySelectorAll('button')].some((button) => {
       const rect = button.getBoundingClientRect()
       const title = button.getAttribute('aria-label') ?? button.textContent ?? ''
@@ -524,68 +522,6 @@ try {
   const terminalTabLeft = await evaluate(`document.querySelector('.workspace-tabs-scroll-viewport button')?.getBoundingClientRect().left ?? null`)
   assert(typeof terminalTabLeft === 'number' && terminalTabLeft < 8, 'Terminal header still reserves the old mobile menu gutter')
   checkpoints.push(await measure('Terminal'))
-
-  await clickButton('Board')
-  await waitFor(`document.body.textContent?.includes('Work board') ?? false`, 'board surface')
-  const boardMetrics = await evaluate(`(() => {
-    const hasMenu = Boolean(document.querySelector('button[aria-label="Open history"]'))
-    const heading = [...document.querySelectorAll('h1')].find((element) => element.textContent?.trim() === 'Work board')
-    const left = heading instanceof HTMLElement ? heading.getBoundingClientRect().left : null
-    return { hasMenu, left }
-  })()`)
-  assert(boardMetrics?.hasMenu, 'History is not reachable from Board')
-  assert(typeof boardMetrics?.left === 'number' && boardMetrics.left < 24, 'Board header still reserves the old mobile menu gutter')
-  const boardLayoutMetrics = await evaluate(`(() => {
-    const nav = document.querySelector('nav[aria-label="Board columns"]')
-    const buttons = nav ? [...nav.querySelectorAll('button')] : []
-    const widths = buttons.map((button) => button.getBoundingClientRect().width)
-    const cardScroll = document.querySelector('[data-kanban-card-scroll="true"]')
-    const scrollStyle = cardScroll instanceof HTMLElement ? getComputedStyle(cardScroll) : null
-    const scrollRect = cardScroll instanceof HTMLElement ? cardScroll.getBoundingClientRect() : null
-    return { widths, overflowY: scrollStyle?.overflowY ?? null, height: scrollRect?.height ?? 0 }
-  })()` )
-  assert(boardLayoutMetrics?.widths.length === 4, 'Board does not expose four mobile column filters')
-  assert(Math.max(...boardLayoutMetrics.widths) - Math.min(...boardLayoutMetrics.widths) < 1, 'Board mobile column filters are not equal width')
-  assert(boardLayoutMetrics.overflowY === 'auto' && boardLayoutMetrics.height > 0, 'Board card list is not independently scrollable')
-  checkpoints.push(await measure('Board'))
-
-  await waitFor(`Boolean(document.querySelector('button[aria-label="Add task to Backlog"]'))`, 'Board task controls')
-  await clickAria('Add task to Backlog')
-  await waitFor(`Boolean(document.querySelector('[aria-labelledby="kanban-task-dialog-title"]'))`, 'task composer modal')
-  const taskModal = await evaluate(`(() => {
-    const dialog = document.querySelector('[aria-labelledby="kanban-task-dialog-title"]')
-    const rect = dialog?.getBoundingClientRect()
-    return rect ? { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, radius: getComputedStyle(dialog).borderRadius } : null
-  })()`)
-  assert(taskModal && taskModal.left > 0 && taskModal.right < viewport.width, 'Board task composer is not an inset modal')
-  assert(taskModal && taskModal.top > 0 && taskModal.bottom < viewport.height, 'Board task composer exceeds the mobile viewport')
-  checkpoints.push(await measure('Board task modal'))
-
-  const titleSet = await evaluate(`(() => {
-    const input = document.querySelector('#kanban-task-title')
-    if (!(input instanceof HTMLInputElement)) return false
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-    setter?.call(input, ${JSON.stringify(smokeTaskTitle)})
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    input.dispatchEvent(new Event('change', { bubbles: true }))
-    return input.value === ${JSON.stringify(smokeTaskTitle)}
-  })()`)
-  assert(titleSet, 'Could not populate Board task title')
-  await clickButton('Create task')
-  await waitFor(`!document.querySelector('[aria-labelledby="kanban-task-dialog-title"]')`, 'Board task creation')
-  await waitFor(`Boolean(document.querySelector(${JSON.stringify(smokeTaskCardSelector)}))`, 'new Board task card')
-  checkpoints.push(await measure('Board after task creation'))
-
-  const taskOpened = await evaluate(`(() => {
-    const card = document.querySelector(${JSON.stringify(smokeTaskCardSelector)})
-    if (!(card instanceof HTMLElement)) return false
-    card.click()
-    return true
-  })()`)
-  assert(taskOpened, 'Could not open Board task details')
-  await waitFor(`Boolean(document.querySelector('[aria-labelledby="kanban-details-title"]'))`, 'Board task details')
-  checkpoints.push(await measure('Board task details'))
-  await clickAria('Close task details')
 
   await clickButton('Settings')
   await waitFor(`Boolean(document.querySelector('nav[aria-label="Settings navigation"]'))`, 'Settings mobile navigation')
