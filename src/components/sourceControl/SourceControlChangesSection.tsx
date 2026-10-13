@@ -205,14 +205,20 @@ export function SourceControlChangesSection({
                   </button>
                 ) : (
                   <div ref={commitActionControlsRef} className="relative inline-flex items-center">
+                    <div
+                      className={[
+                        'inline-flex overflow-hidden rounded-lg border border-[var(--sidebar-item-active-border)]',
+                        isPrimaryActionDisabled ? 'bg-disabled text-disabled-foreground' : 'bg-action text-action-foreground',
+                      ].join(' ')}
+                    >
                       <button
                         type="button"
                         disabled={isPrimaryActionDisabled}
                         onClick={() => void onQuickCommitSubmit('commit')}
                         className={[
-                          'inline-flex h-8 min-w-[66px] items-center justify-center rounded-l-lg rounded-r-none pl-2 text-xs font-medium transition-colors',
+                          'inline-flex h-[30px] min-w-[66px] items-center justify-center bg-transparent pl-2 text-xs font-medium text-inherit transition-colors',
                           isCommitPrimaryBusy ? 'pr-2' : 'pr-1',
-                          isPrimaryActionDisabled ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
+                          isPrimaryActionDisabled ? 'cursor-not-allowed' : 'hover:bg-action-hover',
                         ].join(' ')}
                       >
                         {isQuickCommitting ? 'Committing' : isCommitPrimaryBusy ? 'Pushing' : 'Commit'}
@@ -227,13 +233,14 @@ export function SourceControlChangesSection({
                           onCommitActionMenuOpenChange(!isCommitActionMenuOpen)
                         }}
                         className={[
-                      'inline-flex h-8 w-8 items-center justify-center rounded-l-none rounded-r-lg border-l border-action-foreground/15 text-xs transition-colors',
-                          isPrimaryActionDisabled ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
+                          'inline-flex h-[30px] w-8 items-center justify-center border-l border-[var(--commit-action-divider)] bg-transparent text-xs text-inherit transition-colors',
+                          isPrimaryActionDisabled ? 'cursor-not-allowed' : 'hover:bg-action-hover',
                         ].join(' ')}
                       >
                         <ChevronDown size={13} />
                       </button>
-                      {isCommitActionMenuOpen ? (
+                    </div>
+                    {isCommitActionMenuOpen ? (
                         <div
                           role="menu"
                           aria-label="Commit actions"

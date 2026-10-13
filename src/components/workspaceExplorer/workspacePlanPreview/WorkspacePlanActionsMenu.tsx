@@ -79,7 +79,7 @@ export function WorkspacePlanActionsMenu({
           aria-expanded={isOpen}
           aria-label="Open plan actions"
           onClick={toggleMenu}
-          className={`chat-send-button-enabled inline-flex ${actionControlHeightClass} w-8 items-center justify-center rounded-l-none rounded-r-lg border-l border-action-foreground/15 text-xs transition active:scale-[0.98]`}
+                  className={`chat-send-button-enabled inline-flex ${actionControlHeightClass} w-8 items-center justify-center rounded-l-none rounded-r-lg border-l border-[var(--sidebar-item-active-border)] text-xs transition active:scale-[0.98]`}
         >
           <ChevronDown size={13} className={isOpen ? 'rotate-180 transition-transform' : 'transition-transform'} aria-hidden="true" />
         </button>

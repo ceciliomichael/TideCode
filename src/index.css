@@ -101,6 +101,7 @@
     --sidebar-muted-surface-mix: color-mix(in srgb, var(--sidebar-hover-surface) 84%, var(--sidebar-panel-surface));
     --sidebar-item-active-surface: var(--color-brand-soft);
     --sidebar-item-active-border: color-mix(in srgb, var(--color-brand) 26%, var(--color-border-muted));
+    --commit-action-divider: var(--sidebar-item-active-border);
     --user-message-hover-border: color-mix(in srgb, var(--color-action) 28%, var(--color-border));
     --segmented-control-hover-surface: color-mix(in srgb, var(--color-foreground) 5%, var(--color-surface));
     --segmented-control-active-surface: var(--color-brand-soft);
@@ -137,7 +138,7 @@
 
     --color-action: #223630;
     --color-action-hover: #2a443d;
-    --color-action-foreground: #bfd7d1;
+    --color-action-foreground: #ffffff;
     --color-switch-off-track: #68686e;
     --color-switch-off-thumb: #ffffff;
     --color-brand: #87aea4;
@@ -146,7 +147,7 @@
     --color-brand-action-hover: var(--color-action-hover);
     --color-brand-soft: #223630;
     --color-brand-soft-foreground: #bfd7d1;
-    --color-brand-border: #58776f;
+    --color-brand-border: transparent;
     --color-accent: var(--color-brand-soft);
     --color-accent-hover: #2a443d;
     --color-accent-soft: #1d2f2a;
@@ -201,7 +202,8 @@
     --sidebar-raised-surface: var(--color-surface-raised);
     --sidebar-hover-surface: var(--color-surface-hover);
     --sidebar-item-active-surface: var(--color-brand-soft);
-    --sidebar-item-active-border: color-mix(in srgb, var(--color-brand) 34%, var(--color-border-muted));
+    --sidebar-item-active-border: transparent;
+    --commit-action-divider: rgb(255 255 255 / 0.26);
     --user-message-hover-border: color-mix(in srgb, var(--color-foreground) 22%, var(--color-border));
     --segmented-control-hover-surface: var(--color-surface-hover);
     --segmented-control-active-surface: var(--color-brand-soft);

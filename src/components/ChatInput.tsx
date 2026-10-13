@@ -835,7 +835,7 @@ export function ChatInput({
     >
       <div className={`${chatInputSurfaceClassName} ${chatConversationSurfacePaddingClassName}`}>
         {isEditing && !isInline ? (
-          <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-action/25 bg-action/10 px-3 py-2 text-xs text-foreground">
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-[var(--sidebar-item-active-border)] bg-action/10 px-3 py-2 text-xs text-foreground">
             <span>Editing message</span>
           </div>
         ) : null}

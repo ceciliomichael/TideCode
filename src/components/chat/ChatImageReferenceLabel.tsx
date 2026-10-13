@@ -8,7 +8,7 @@ interface ChatImageReferenceLabelProps {
   variant: 'backdrop' | 'inline' | 'rendered'
 }
 
-const surfaceClassName = 'rounded-[4px] border border-action/20 bg-action/15'
+const surfaceClassName = 'rounded-[4px] border border-[var(--sidebar-item-active-border)] bg-action/15'
 
 export function ChatImageReferenceLabel({ attachment, label, onHoverChange, variant }: ChatImageReferenceLabelProps) {
   return (

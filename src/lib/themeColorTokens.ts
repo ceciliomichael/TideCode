@@ -74,7 +74,7 @@ const FALLBACKS: Record<ResolvedTheme, Record<ThemeColorTokenName, string>> = {
     '--color-accent-hover': '#2a443d',
     '--color-action': '#223630',
     '--color-action-hover': '#2a443d',
-    '--color-action-foreground': '#bfd7d1',
+    '--color-action-foreground': '#ffffff',
     '--color-switch-off-track': '#68686e',
     '--color-switch-off-thumb': '#ffffff',
     '--color-success-foreground': '#8bd6a1',

@@ -132,7 +132,7 @@ test('primary actions and checked switches match the selected conversation accen
   assert.equal(lightAction, '#d9e9e6')
   assert.equal(lightText, '#315f59')
   assert.equal(darkAction, '#223630')
-  assert.equal(darkText, '#bfd7d1')
+  assert.equal(darkText, '#ffffff')
   assert.ok(luminance(lightText) < luminance(lightAction))
   assert.ok(luminance(darkText) > luminance(darkAction))
 
@@ -140,7 +140,11 @@ test('primary actions and checked switches match the selected conversation accen
     const action = getThemeColorFallback('--color-action', theme)
     const actionForeground = getThemeColorFallback('--color-action-foreground', theme)
     assert.equal(action, getThemeColorFallback('--color-brand-soft', theme))
-    assert.equal(actionForeground, getThemeColorFallback('--color-brand-soft-foreground', theme))
+    if (theme === 'light') {
+      assert.equal(actionForeground, getThemeColorFallback('--color-brand-soft-foreground', theme))
+    } else {
+      assert.equal(actionForeground, '#ffffff')
+    }
     assert.equal(getThemeColorFallback('--color-action-hover', theme), getThemeColorFallback('--color-accent-hover', theme))
     assert.ok(contrast(action, actionForeground) >= 4.5)
     assert.ok(contrast(
@@ -164,6 +168,47 @@ test('primary actions and checked switches match the selected conversation accen
   assert.match(INDEX_CSS, /button\.bg-action\s*\{[^}]*box-shadow:\s*inset 0 0 0 1px var\(--sidebar-item-active-border\)/s)
   assert.doesNotMatch(mcpCardSource, /backgroundColor:\s*['"]var\(--color-brand-action\)/)
   assert.match(mcpCardSource, /bg-action text-action-foreground hover:bg-action-hover/)
+})
+
+test('Commit split action uses one shared outline and one dropdown divider', () => {
+  const source = readFileSync(path.join(REPOSITORY_ROOT, 'src', 'components', 'sourceControl', 'SourceControlChangesSection.tsx'), 'utf8')
+  const start = source.indexOf('ref={commitActionControlsRef}')
+  const end = source.indexOf('{isCommitActionMenuOpen ? (', start)
+  assert.ok(start >= 0 && end > start)
+  const splitButtons = source.slice(start, end)
+
+  assert.match(splitButtons, /overflow-hidden rounded-lg border border-\[var\(--sidebar-item-active-border\)\]/)
+  assert.match(splitButtons, /border-l border-\[var\(--commit-action-divider\)\]/)
+  assert.match(INDEX_CSS, /--commit-action-divider: var\(--sidebar-item-active-border\);/)
+  assert.match(INDEX_CSS, /--commit-action-divider: rgb\(255 255 255 \/ 0\.26\);/)
+  assert.equal((splitButtons.match(/border-l /g) ?? []).length, 1)
+  assert.equal((splitButtons.match(/bg-transparent/g) ?? []).length, 2)
+  assert.doesNotMatch(splitButtons, /chat-send-button-(?:enabled|disabled)/)
+})
+
+test('green selected states show accent borders only in light mode', () => {
+  const darkThemeBlock = INDEX_CSS.match(/:root\[data-theme='dark'\]\s*\{([\s\S]*?)^\s*\}/m)?.[1]
+  assert.ok(darkThemeBlock)
+  assert.match(INDEX_CSS, /--color-brand-border: #789a93;/)
+  assert.match(INDEX_CSS, /--sidebar-item-active-border: color-mix\(/)
+  assert.match(darkThemeBlock, /--color-brand-border: transparent;/)
+  assert.match(darkThemeBlock, /--sidebar-item-active-border: transparent;/)
+  assert.match(darkThemeBlock, /--commit-action-divider: rgb\(255 255 255 \/ 0\.26\);/)
+  assert.match(darkThemeBlock, /--color-action-foreground: #ffffff;/)
+
+  const component = (filePath: string) => readFileSync(path.join(REPOSITORY_ROOT, 'src', 'components', filePath), 'utf8')
+  assert.match(component('sidebar/ConversationHistoryItem.tsx'), /border-\[var\(--sidebar-item-active-border\)\] bg-\[var\(--sidebar-item-active-surface\)\]/)
+  assert.match(component('settings/SettingsSidebarPanel.tsx'), /border-\[var\(--sidebar-item-active-border\)\] bg-\[var\(--sidebar-item-active-surface\)\]/)
+  assert.match(component('settings/providers/CodexAccountsList.tsx'), /border-brand-border bg-brand-soft/)
+  assert.match(component('settings/remote/RemoteSettingsPanel.tsx'), /border-brand-border bg-brand-soft/)
+  assert.match(component('chat/ChatImageReferenceLabel.tsx'), /border-\[var\(--sidebar-item-active-border\)\]/)
+  assert.match(component('ChatInput.tsx'), /border-\[var\(--sidebar-item-active-border\)\] bg-action\/10/)
+  const publishModal = component('sourceControl/PublishToGitHubModal.tsx')
+  assert.equal((publishModal.match(/border-brand-border bg-brand\/10 text-foreground/g) ?? []).length, 2)
+  assert.doesNotMatch(publishModal, /ring-1 ring-brand\/30/)
+  assert.match(INDEX_CSS, /\.chat-send-button-enabled\s*\{[^}]*box-shadow:\s*inset 0 0 0 1px var\(--sidebar-item-active-border\)/s)
+  assert.match(INDEX_CSS, /\.provider-primary-action-button\s*\{[^}]*box-shadow:\s*inset 0 0 0 1px var\(--sidebar-item-active-border\)/s)
+  assert.match(component('workspaceExplorer/workspacePlanPreview/WorkspacePlanActionsMenu.tsx'), /border-l border-\[var\(--sidebar-item-active-border\)\]/)
 })
 
 test('Settings views do not bypass the semantic palette with raw theme variants', () => {

@@ -69,6 +69,7 @@ export function getLoginPageHtml(credentialsConfigured: boolean) {
   --action:#d9e9e6;
   --action-hover:#cfe2de;
   --action-foreground:#315f59;
+  --action-outline:var(--border);
   --danger:#b4232d;
   --shadow:0 28px 80px rgb(23 31 27 / .14);
 }
@@ -86,7 +87,8 @@ export function getLoginPageHtml(credentialsConfigured: boolean) {
   --brand-soft:#223630;
   --action:#223630;
   --action-hover:#2a443d;
-  --action-foreground:#bfd7d1;
+  --action-foreground:#ffffff;
+  --action-outline:transparent;
   --danger:#f48771;
   --shadow:0 28px 80px rgb(0 0 0 / .46);
 }
@@ -119,7 +121,7 @@ input:disabled{opacity:.55;cursor:not-allowed}
 .remember-row input{width:16px;height:16px;margin:0;padding:0;accent-color:var(--brand);cursor:pointer}
 .remember-row input:focus,.remember-row input:focus-visible{box-shadow:none}
 .remember-row input:disabled{cursor:not-allowed}
-button.submit{width:100%;height:48px;margin-top:24px;border:0;border-radius:12px;padding:0 14px;background:var(--action);color:var(--action-foreground);box-shadow:inset 0 0 0 1px var(--border);font:600 14px inherit;line-height:24px;cursor:pointer;transition:background .15s ease,opacity .15s ease}
+button.submit{width:100%;height:48px;margin-top:24px;border:0;border-radius:12px;padding:0 14px;background:var(--action);color:var(--action-foreground);box-shadow:inset 0 0 0 1px var(--action-outline);font:600 14px inherit;line-height:24px;cursor:pointer;transition:background .15s ease,opacity .15s ease}
 button.submit:hover:not(:disabled){background:var(--action-hover)}
 button:disabled{opacity:.5;cursor:not-allowed}
 #error{min-height:20px;margin-top:11px;color:var(--danger);font-size:13px;line-height:1.45}

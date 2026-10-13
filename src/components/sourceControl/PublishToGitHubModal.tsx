@@ -538,7 +538,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
                     className={[
                       'flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm transition-all',
                       !isPrivate
-                        ? 'border-brand bg-brand/10 text-foreground ring-1 ring-brand/30'
+                        ? 'border-brand-border bg-brand/10 text-foreground'
                         : 'border-border bg-surface-muted text-muted-foreground hover:text-foreground hover:bg-surface',
                     ].join(' ')}
                   >
@@ -555,7 +555,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
                     className={[
                       'flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm transition-all',
                       isPrivate
-                        ? 'border-brand bg-brand/10 text-foreground ring-1 ring-brand/30'
+                        ? 'border-brand-border bg-brand/10 text-foreground'
                         : 'border-border bg-surface-muted text-muted-foreground hover:text-foreground hover:bg-surface',
                     ].join(' ')}
                   >
