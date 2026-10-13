@@ -160,3 +160,17 @@ test('Remote login page is constrained to the mobile viewport', () => {
   assert.equal(html.includes('*{box-sizing:border-box}'), true)
   assert.match(html, /input:focus,input:focus-visible\{outline:none;box-shadow:none;/)
 })
+
+test('Remote login page follows the same saved or system appearance contract as the app', () => {
+  const html = getLoginPageHtml(true)
+  assert.match(html, /tidecode:appearance/)
+  assert.match(html, /prefers-color-scheme: dark/)
+  assert.match(html, /data-theme="dark"/)
+  assert.match(html, /--background:#f6f7f6/)
+  assert.match(html, /--background:#0f0f10/)
+  assert.match(html, /--surface:#171718/)
+  assert.match(html, /--action:#d9e9e6/)
+  assert.match(html, /--action-foreground:#315f59/)
+  assert.match(html, /--action:#223630/)
+  assert.match(html, /--action-foreground:#bfd7d1/)
+})

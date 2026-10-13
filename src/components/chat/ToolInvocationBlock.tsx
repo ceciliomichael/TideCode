@@ -53,18 +53,18 @@ function renderDiffCountSummary(invocation: ToolInvocationTrace) {
   if (addedLineCount > 0 && removedLineCount > 0) {
     return (
       <>
-        <span className="text-emerald-500">{`+${addedLineCount}`}</span>
-        <span className="text-red-500">{`-${removedLineCount}`}</span>
+    <span className="text-git-added">{`+${addedLineCount}`}</span>
+    <span className="text-git-removed">{`-${removedLineCount}`}</span>
       </>
     )
   }
 
   if (addedLineCount > 0) {
-    return <span className="text-emerald-500">{`+${addedLineCount}`}</span>
+    return <span className="text-git-added">{`+${addedLineCount}`}</span>
   }
 
   if (removedLineCount > 0) {
-    return <span className="text-red-500">{`-${removedLineCount}`}</span>
+    return <span className="text-git-removed">{`-${removedLineCount}`}</span>
   }
 
   return null

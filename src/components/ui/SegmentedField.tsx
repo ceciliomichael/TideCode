@@ -36,7 +36,7 @@ export function SegmentedField({
       role="group"
       aria-label={ariaLabel}
       className={[
-'inline-flex w-full gap-1 rounded-xl border border-border bg-background p-1 shadow-[var(--shadow-control-inset)] md:w-auto',
+'inline-flex w-full gap-1 rounded-xl border border-border bg-surface-muted p-1 shadow-[var(--shadow-control-inset)] md:w-auto',
         disabled ? 'opacity-70' : '',
         className ?? '',
       ].join(' ')}
@@ -90,8 +90,8 @@ export function DiffPanelSegmentedToggle({
         <GitCompareArrows size={16} className="shrink-0" />
         {disabled ? null : (
           <>
-            <span className="text-emerald-600 dark:text-emerald-400">{`+${totalAddedLineCount}`}</span>
-            <span className="text-red-600 dark:text-red-400">{`-${totalRemovedLineCount}`}</span>
+            <span className="text-git-added">{`+${totalAddedLineCount}`}</span>
+            <span className="text-git-removed">{`-${totalRemovedLineCount}`}</span>
           </>
         )}
       </button>

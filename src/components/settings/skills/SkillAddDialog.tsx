@@ -94,7 +94,7 @@ export function SkillAddDialog({
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6">
       <div
-        className="fixed inset-0 bg-black/60 transition-opacity"
+        className="fixed inset-0 bg-overlay-backdrop transition-opacity"
         onClick={() => {
           if (!isSubmitting) onClose()
         }}
@@ -185,7 +185,7 @@ export function SkillAddDialog({
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
-                className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-4 text-sm font-medium text-foreground transition-colors hover:bg-border-muted disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Cancel
               </button>

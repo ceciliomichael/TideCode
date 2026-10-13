@@ -170,7 +170,7 @@ export function WorkspaceTerminalPanelView({
               <button
                 type="button"
                 onClick={() => void panelState.openTerminalTab()}
-                className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-action px-4 text-sm font-semibold text-white"
+                className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-action px-4 text-sm font-semibold text-action-foreground hover:bg-action-hover"
               >
                 <Plus size={15} />
                 New terminal
@@ -202,7 +202,7 @@ export function WorkspaceTerminalPanelView({
           <button
             type="button"
             onClick={() => void panelState.restartTerminalTab(activeTerminalTab.key)}
-            className="rounded bg-surface-muted-hover px-2 py-0.5 font-medium transition-colors hover:text-foreground"
+            className="rounded bg-surface-hover px-2 py-0.5 font-medium transition-colors hover:bg-surface-pressed hover:text-foreground"
           >
             Restart Terminal
           </button>

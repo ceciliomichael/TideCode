@@ -55,7 +55,7 @@ function detectRemoteProvider(url: string): { name: string; dotColor: string } {
   if (lower.includes('bitbucket')) return { name: 'Bitbucket', dotColor: 'bg-[#2684ff]' }
   if (lower.includes('github')) return { name: 'GitHub', dotColor: 'bg-foreground' }
   if (lower.includes('gitea') || lower.includes('codeberg')) return { name: 'Gitea', dotColor: 'bg-[#609926]' }
-  return { name: 'Git Remote', dotColor: 'bg-emerald-500' }
+  return { name: 'Git Remote', dotColor: 'bg-success-foreground' }
 }
 
 type PublishTab = 'remote' | 'github'
@@ -231,7 +231,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
     <div
       ref={overlayRef}
       onClick={handleOverlayClick}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay-backdrop px-3 backdrop-blur-[2px]"
       style={{ animation: 'fadeIn 0.15s ease-out' }}
     >
       <div
@@ -327,7 +327,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label htmlFor="publish-remote-url" className="block text-xs font-medium text-foreground">
-                    Remote Repository URL <span className="text-red-500">*</span>
+                Remote Repository URL <span className="text-danger-foreground">*</span>
                   </label>
                   {remoteUrl.trim().length > 0 && (
                     <span className="inline-flex items-center gap-1.5 rounded-md bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-foreground border border-border">
@@ -389,9 +389,9 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
               </div>
 
               {error && (
-                <div className="flex items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5">
-                  <AlertCircle size={14} className="mt-0.5 shrink-0 text-red-500" />
-                  <p className="text-xs leading-relaxed text-red-600 dark:text-red-400">{error}</p>
+              <div className="flex items-start gap-2.5 rounded-lg border border-danger-border bg-danger-surface px-3 py-2.5">
+                <AlertCircle size={14} className="mt-0.5 shrink-0 text-danger-foreground" />
+                <p className="text-xs leading-relaxed text-danger-foreground">{error}</p>
                 </div>
               )}
 
@@ -456,9 +456,9 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
               ) : (
                 <div className="flex flex-col items-center gap-3">
                   {error ? (
-                    <div className="inline-flex max-w-[22rem] items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-center">
-                      <AlertCircle size={14} className="mt-0.5 shrink-0 text-red-500" aria-hidden="true" />
-                      <p className="text-xs leading-relaxed text-red-600 dark:text-red-400">{error}</p>
+            <div className="inline-flex max-w-[22rem] items-start gap-2 rounded-lg border border-danger-border bg-danger-surface px-3 py-2 text-center">
+              <AlertCircle size={14} className="mt-0.5 shrink-0 text-danger-foreground" aria-hidden="true" />
+              <p className="text-xs leading-relaxed text-danger-foreground">{error}</p>
                     </div>
                   ) : null}
                   <button
@@ -477,7 +477,7 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
             <div className="space-y-4 px-6 py-4">
               <div className="space-y-1.5">
                 <label htmlFor="publish-repo-name" className="block text-xs font-medium text-foreground">
-                  Repository name <span className="text-red-500">*</span>
+                Repository name <span className="text-danger-foreground">*</span>
                 </label>
                 <input
                   id="publish-repo-name"
@@ -569,9 +569,9 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
               </div>
 
               {error && (
-                <div className="flex items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5">
-                  <AlertCircle size={14} className="mt-0.5 shrink-0 text-red-500" />
-                  <p className="text-xs leading-relaxed text-red-600 dark:text-red-400">{error}</p>
+              <div className="flex items-start gap-2.5 rounded-lg border border-danger-border bg-danger-surface px-3 py-2.5">
+                <AlertCircle size={14} className="mt-0.5 shrink-0 text-danger-foreground" />
+                <p className="text-xs leading-relaxed text-danger-foreground">{error}</p>
                 </div>
               )}
 
@@ -616,8 +616,8 @@ export function PublishToGitHubModal({ commitModelSelection, workspacePath, onCl
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-muted border border-border text-foreground shadow-lg">
                 <Globe size={24} className="text-foreground" />
               </div>
-              <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 shadow-xs">
-                <CheckCircle2 size={14} className="text-white" />
+              <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border border-success-border bg-success-surface shadow-xs">
+                <CheckCircle2 size={14} className="text-success-foreground" />
               </div>
             </div>
             <div className="space-y-1 text-center">

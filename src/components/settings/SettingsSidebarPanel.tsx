@@ -44,8 +44,10 @@ export function SettingsSidebarPanel({
                 <div
                   key={item.id}
                   className={[
-                    'group flex items-center gap-2 rounded-xl px-2 py-1 transition-colors',
-                    isActive ? 'bg-brand-soft shadow-sm' : 'hover:bg-[var(--sidebar-hover-surface)]',
+                    'group flex items-center gap-2 rounded-xl border px-2 py-1 transition-colors',
+                    isActive
+                      ? 'border-[var(--sidebar-item-active-border)] bg-[var(--sidebar-item-active-surface)] shadow-sm'
+                      : 'border-transparent hover:bg-[var(--sidebar-hover-surface)]',
                   ].join(' ')}
                 >
                   <button

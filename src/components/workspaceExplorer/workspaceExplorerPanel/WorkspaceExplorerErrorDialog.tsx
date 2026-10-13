@@ -22,7 +22,7 @@ export function WorkspaceExplorerErrorDialog({ onClose, state }: WorkspaceExplor
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[1400] flex items-center justify-center bg-black/20 px-4 py-4"
+      className="fixed inset-0 z-[1400] flex items-center justify-center bg-overlay-backdrop px-4 py-4"
       style={{ top: 'env(titlebar-area-height, 0px)' }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
@@ -69,7 +69,7 @@ export function WorkspaceExplorerErrorDialog({ onClose, state }: WorkspaceExplor
             type="button"
             onClick={onClose}
             autoFocus
-            className="inline-flex h-11 items-center justify-center rounded-xl bg-action px-5 text-sm font-semibold text-white transition-colors hover:bg-action-hover"
+          className="inline-flex h-11 items-center justify-center rounded-xl bg-action px-5 text-sm font-semibold text-action-foreground transition-colors hover:bg-action-hover"
           >
             Got it
           </button>

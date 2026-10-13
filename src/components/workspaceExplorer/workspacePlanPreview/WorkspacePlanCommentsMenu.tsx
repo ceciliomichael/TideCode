@@ -153,7 +153,7 @@ export function WorkspacePlanCommentsMenu({ comments, onAddComment }: WorkspaceP
                     type="button"
                     onClick={handleAddComment}
                     disabled={commentDraft.trim().length === 0}
-                    className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-medium text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-action px-3 text-xs font-medium text-action-foreground transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Send size={13} aria-hidden="true" />
                     Add comment

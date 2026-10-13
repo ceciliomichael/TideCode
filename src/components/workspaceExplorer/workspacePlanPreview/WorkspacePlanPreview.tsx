@@ -114,7 +114,7 @@ export function WorkspacePlanPreview({
       </header>
 
       {isTruncated ? (
-        <div className="mx-5 mt-4 shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 md:mx-7">
+        <div className="mx-5 mt-4 shrink-0 rounded-xl border border-warning-border bg-warning-surface px-3 py-2 text-sm text-warning-foreground md:mx-7">
           This plan is truncated. Review the saved file directly before approving it.
         </div>
       ) : null}

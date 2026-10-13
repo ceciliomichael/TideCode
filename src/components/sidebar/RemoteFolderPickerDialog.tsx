@@ -553,7 +553,7 @@ export function RemoteFolderPickerDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[2200] flex items-stretch justify-center bg-black/60 p-0 sm:items-center sm:p-6"
+      className="fixed inset-0 z-[2200] flex items-stretch justify-center bg-overlay-backdrop p-0 sm:items-center sm:p-6"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !isSubmitting) {

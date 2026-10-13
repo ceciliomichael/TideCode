@@ -1,17 +1,9 @@
 import type { ResolvedTheme } from '../../../lib/theme'
+import { readThemeColor } from '../../../lib/themeColorTokens'
 
 type MermaidModule = (typeof import('mermaid'))['default']
 
 let mermaidModulePromise: Promise<MermaidModule> | null = null
-
-function readCssVariable(name: string, fallback: string) {
-  if (typeof window === 'undefined' || typeof document === 'undefined') {
-    return fallback
-  }
-
-  const value = window.getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-  return value.length > 0 ? value : fallback
-}
 
 export function loadMermaidModule() {
   if (!mermaidModulePromise) {
@@ -25,18 +17,18 @@ export function createMermaidRenderCacheKey(code: string, theme: ResolvedTheme) 
   return `${theme}::${code}`
 }
 
-export function getMermaidThemeVariables() {
+export function getMermaidThemeVariables(theme: ResolvedTheme) {
   const rootStyles =
     typeof window !== 'undefined' && typeof document !== 'undefined'
       ? window.getComputedStyle(document.documentElement)
       : null
 
-  const background = readCssVariable('--color-background', '#ffffff')
-  const foreground = readCssVariable('--color-foreground', '#101011')
-  const mutedForeground = readCssVariable('--color-muted-foreground', '#606266')
-  const surface = readCssVariable('--color-surface', '#ffffff')
-  const surfaceMuted = readCssVariable('--color-surface-muted', '#f8f7ff')
-  const border = readCssVariable('--color-border', '#f0f2f6')
+  const background = readThemeColor('--color-background', theme)
+  const foreground = readThemeColor('--color-foreground', theme)
+  const mutedForeground = readThemeColor('--color-muted-foreground', theme)
+  const surface = readThemeColor('--color-surface', theme)
+  const surfaceMuted = readThemeColor('--color-surface-muted', theme)
+  const border = readThemeColor('--color-border', theme)
 
   return {
     background: 'transparent',

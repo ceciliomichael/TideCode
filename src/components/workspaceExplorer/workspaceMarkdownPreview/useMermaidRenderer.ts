@@ -72,12 +72,13 @@ export function useMermaidRenderer({ code, renderId, theme }: UseMermaidRenderer
           return
         }
 
+        const themeVariables = getMermaidThemeVariables(theme)
         mermaid.initialize({
-          fontFamily: getMermaidThemeVariables().fontFamily,
+          fontFamily: themeVariables.fontFamily,
           securityLevel: 'loose',
           startOnLoad: false,
           theme: 'base',
-          themeVariables: getMermaidThemeVariables(),
+          themeVariables,
         })
 
         const rendered = await mermaid.render(`mermaid-${renderId}`, normalizedCode)
@@ -111,7 +112,7 @@ export function useMermaidRenderer({ code, renderId, theme }: UseMermaidRenderer
     return () => {
       isCancelled = true
     }
-  }, [cacheKey, normalizedCode, renderId])
+  }, [cacheKey, normalizedCode, renderId, theme])
 
   return {
     error,

@@ -242,7 +242,7 @@ export function NewThreadProjectDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[2100] flex items-start justify-center overflow-y-auto bg-black/60 px-3 pb-3 pt-[calc(env(safe-area-inset-top,0px)+4.25rem)] sm:px-5 sm:pb-5 sm:pt-[10vh]"
+      className="fixed inset-0 z-[2100] flex items-start justify-center overflow-y-auto bg-overlay-backdrop px-3 pb-3 pt-[calc(env(safe-area-inset-top,0px)+4.25rem)] sm:px-5 sm:pb-5 sm:pt-[10vh]"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {

@@ -48,14 +48,14 @@ export function CodexAccountsList({ accounts, isBusy, onSwitchAccount }: CodexAc
   if (accounts.length === 0) {
     if (isBusy) {
       return (
-        <div className="rounded-xl border border-border bg-background px-3 py-3">
+        <div className="rounded-xl border border-border bg-surface-muted px-3 py-3">
           <p className="text-sm text-muted-foreground">Loading Codex accounts…</p>
         </div>
       )
     }
 
     return (
-      <div className="rounded-xl border border-border bg-background px-3 py-3">
+      <div className="rounded-xl border border-border bg-surface-muted px-3 py-3">
         <p className="text-sm text-muted-foreground">No Codex accounts saved yet.</p>
       </div>
     )
@@ -68,9 +68,9 @@ export function CodexAccountsList({ accounts, isBusy, onSwitchAccount }: CodexAc
         const canSwitch = !account.isActive
         const baseCardClassName = [
           'flex w-full flex-col gap-3 rounded-xl border px-3 py-3 text-left transition-colors md:flex-row md:items-start md:justify-between',
-          account.isActive ? 'border-brand/60 bg-brand-soft' : 'border-border bg-background',
+          account.isActive ? 'border-brand-border bg-brand-soft' : 'border-border bg-surface-muted',
         ].join(' ')
-        const clickableCardClassName = `${baseCardClassName} cursor-pointer hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60`
+        const clickableCardClassName = `${baseCardClassName} cursor-pointer hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60`
 
         const content = (
           <>
@@ -95,7 +95,7 @@ export function CodexAccountsList({ accounts, isBusy, onSwitchAccount }: CodexAc
                     </span>
                   ) : null}
                   {account.isActive ? (
-                    <span className="inline-flex h-7 items-center rounded-full border border-brand/50 bg-brand-soft px-3 text-[11px] font-medium text-brand-soft-foreground">
+                    <span className="inline-flex h-7 items-center rounded-full border border-brand-border bg-brand-soft px-3 text-[11px] font-medium text-brand-soft-foreground">
                       <span className="leading-none">active</span>
                     </span>
                   ) : null}

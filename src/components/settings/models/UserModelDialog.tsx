@@ -238,7 +238,7 @@ export function UserModelDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-3 sm:p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay-backdrop p-3 sm:p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !isSaving) onClose()
       }}

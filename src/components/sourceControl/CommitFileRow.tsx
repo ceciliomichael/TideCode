@@ -7,10 +7,10 @@ import { isDeletedCommitFile } from './commitFileStatus'
 function FileStatusBadge({ status }: { status: string }) {
   const key = status.toUpperCase().charAt(0)
   const colorMap: Record<string, string> = {
-    A: 'text-emerald-500',
-    D: 'text-red-500',
-    M: 'text-amber-500',
-    R: 'text-blue-500',
+  A: 'text-git-added',
+  D: 'text-git-removed',
+  M: 'text-git-modified',
+  R: 'text-git-renamed',
   }
 
   return (
@@ -85,7 +85,7 @@ export function CommitFileRow({ file, indentPx }: { file: GitHistoryCommitFile; 
             {directoryPath.length > 0 ? <span className="ml-1 text-muted-foreground/80">{directoryPath}</span> : null}
           </span>
           {isDeleted ? (
-            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-red-500">D</span>
+        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-git-removed">D</span>
           ) : (
             <FileStatusBadge status={file.status} />
           )}

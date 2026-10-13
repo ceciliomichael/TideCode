@@ -232,7 +232,7 @@ export function UpdatesSettingsPanel({
                   handleManualCheck()
                 }
               }}
-              className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-brand-border bg-brand-soft px-4 py-2 text-sm font-semibold text-brand-soft-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-transparent bg-action px-4 py-2 text-sm font-semibold text-action-foreground transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
               {updateAction.kind === 'restart' ? (
                 <RotateCw size={18} strokeWidth={2.2} aria-hidden="true" />

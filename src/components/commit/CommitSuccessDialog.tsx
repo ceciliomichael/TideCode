@@ -49,7 +49,7 @@ export function CommitSuccessDialog({ action, onClose, result }: CommitSuccessDi
 
   return createPortal(
     <div
-      className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-center bg-black/12 px-4"
+          className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-center bg-overlay-backdrop px-4"
       style={{ top: 'env(titlebar-area-height, 0px)' }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {

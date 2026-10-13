@@ -4,8 +4,8 @@ export type ResolvedTheme = 'light' | 'dark'
 
 export const THEME_STORAGE_KEY = 'tidecode:appearance'
 export const SYSTEM_DARK_MODE_QUERY = '(prefers-color-scheme: dark)'
-export const LIGHT_THEME_COLOR = '#EEF4EE'
-export const DARK_THEME_COLOR = '#171717'
+export const LIGHT_THEME_COLOR = '#eef1ef'
+export const DARK_THEME_COLOR = '#131314'
 
 export function getCachedAppearancePreference(): AppAppearance {
   if (typeof window === 'undefined' || typeof window.tidecodeSettings?.getInitialSettings !== 'function') {

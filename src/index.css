@@ -7,28 +7,34 @@
   --font-sans: 'Google Sans Flex Variable', 'Google Sans Flex', sans-serif;
   --font-mono: Consolas, 'Courier New', monospace;
 
-  --color-background: oklch(0.985 0 0);
-  --color-foreground: oklch(0.19 0 0);
-  --color-muted-foreground: oklch(0.48 0 0);
-  --color-subtle-foreground: oklch(0.7 0 0);
+  --color-background: #f6f7f6;
+  --color-foreground: #202221;
+  --color-muted-foreground: #666b68;
+  --color-subtle-foreground: #8a908c;
 
-  --color-surface: oklch(1 0 0);
-  --color-surface-muted: oklch(0.975 0 0);
-  --color-sidebar: oklch(0.955 0 0);
-  --color-sidebar-muted: oklch(0.935 0 0);
+  --color-surface: #ffffff;
+  --color-surface-muted: #f0f2f0;
+  --color-surface-raised: #ffffff;
+  --color-surface-hover: #e9ecea;
+  --color-surface-pressed: #e1e5e2;
+  --color-sidebar: #eef1ef;
+  --color-sidebar-muted: #e4e8e5;
   --color-tooltip-surface: var(--color-surface);
   --color-tooltip-foreground: var(--color-foreground);
   --color-tooltip-border: var(--color-border);
 
-  --color-border: oklch(0.885 0 0);
-  --color-border-muted: oklch(0.925 0 0);
+  --color-border: #d4d9d5;
+  --color-border-muted: #e1e5e2;
 
-  --color-action: #315f59;
-  --color-action-hover: #284f4a;
+  --color-action: #d9e9e6;
+  --color-action-hover: #cfe2de;
+  --color-action-foreground: #315f59;
+  --color-switch-off-track: #8b918d;
+  --color-switch-off-thumb: #ffffff;
   --color-brand: #315f59;
   --color-brand-hover: #284f4a;
-  --color-brand-action: #315f59;
-  --color-brand-action-hover: #284f4a;
+  --color-brand-action: var(--color-action);
+  --color-brand-action-hover: var(--color-action-hover);
   --color-brand-soft: #d9e9e6;
   --color-brand-soft-foreground: #315f59;
   --color-brand-soft-faint: color-mix(in srgb, var(--color-brand-soft) 55%, var(--color-surface));
@@ -37,10 +43,28 @@
   --color-accent-hover: #cfe2de;
   --color-accent-soft: #e6f0ee;
   --color-accent-foreground: var(--color-brand-soft-foreground);
-  --color-danger-surface: oklch(0.97 0.03 22);
-  --color-danger-border: oklch(0.9 0.04 22);
-  --color-danger-foreground: oklch(0.56 0.16 24);
-  --color-danger-foreground-hover: oklch(0.49 0.15 24);
+  --color-success-surface: #e7f6ec;
+  --color-success-border: #b8dfc4;
+  --color-success-foreground: #24783f;
+  --color-success-foreground-strong: #185c2e;
+  --color-warning-surface: #fff5db;
+  --color-warning-border: #eed79b;
+  --color-warning-foreground: #8a5a05;
+  --color-warning-foreground-strong: #704700;
+  --color-info-surface: #eaf4fc;
+  --color-info-border: #bdd8ee;
+  --color-info-foreground: #1d5f91;
+  --color-info-foreground-strong: #174a70;
+  --color-danger-surface: #fff0f1;
+  --color-danger-border: #f3c3c7;
+  --color-danger-foreground: #b4232d;
+  --color-danger-foreground-hover: #8f1c24;
+  --color-status-neutral: #8b918d;
+  --color-git-added: var(--color-success-foreground);
+  --color-git-removed: var(--color-danger-foreground);
+  --color-git-modified: var(--color-warning-foreground);
+  --color-git-renamed: var(--color-info-foreground);
+  --color-overlay-backdrop: rgb(0 0 0 / 0.32);
   --color-disabled: color-mix(in srgb, var(--color-brand-action) 28%, var(--color-surface));
   --color-disabled-foreground: color-mix(in srgb, var(--color-brand) 62%, var(--color-muted-foreground));
   --color-scrollbar-thumb: oklch(0.86 0 0 / 1);
@@ -58,13 +82,13 @@
     --workspace-editor-line-changed-surface: rgb(0 120 215 / 0.12);
     --workspace-editor-line-changed-border: rgb(0 120 215 / 0.5);
     --workspace-editor-line-changed-foreground: rgb(0 92 170);
-    --workspace-find-widget-surface: #ffffff;
-    --workspace-find-widget-border: #d7d7da;
-    --workspace-find-widget-input-surface: #f7f7f8;
-    --workspace-find-widget-input-border: #c9c9cd;
-    --workspace-find-widget-foreground: #303033;
-    --workspace-find-widget-muted: #727278;
-    --workspace-find-widget-hover: #ececee;
+    --workspace-find-widget-surface: var(--color-surface-raised);
+    --workspace-find-widget-border: var(--color-border);
+    --workspace-find-widget-input-surface: var(--color-surface-muted);
+    --workspace-find-widget-input-border: var(--color-border);
+    --workspace-find-widget-foreground: var(--color-foreground);
+    --workspace-find-widget-muted: var(--color-muted-foreground);
+    --workspace-find-widget-hover: var(--color-surface-hover);
     --workspace-find-match-background: #b8d8f4;
     --workspace-find-match-active-background: #1267b2;
     /* High-opacity selection used in diff viewer so blue cleanly overrides red/green row colors */
@@ -93,38 +117,62 @@
 
   :root[data-theme='dark'] {
     --color-background: #0f0f10;
-    --color-foreground: #e7e7e7;
-    --color-muted-foreground: #b4b4b6;
-    --color-subtle-foreground: #8f8f94;
+    --color-foreground: #e9e9ea;
+    --color-muted-foreground: #b5b5b8;
+    --color-subtle-foreground: #8f8f95;
 
     --color-surface: #171718;
-    --color-surface-muted: #1f1f21;
-    --color-sidebar: #141415;
-    --color-sidebar-muted: #1d1d1f;
+    --color-surface-muted: #202022;
+    --color-surface-raised: #242426;
+    --color-surface-hover: #2a2a2d;
+    --color-surface-pressed: #323236;
+    --color-sidebar: #131314;
+    --color-sidebar-muted: #1c1c1e;
     --color-tooltip-surface: var(--color-surface);
     --color-tooltip-foreground: var(--color-foreground);
     --color-tooltip-border: var(--color-border);
 
-    --color-border: #36363a;
-    --color-border-muted: #2b2b2e;
+    --color-border: #38383d;
+    --color-border-muted: #2c2c30;
 
-    --color-action: #467b72;
-    --color-action-hover: #52887f;
-    --color-brand: #7fa59c;
-    --color-brand-hover: #8eafa7;
-    --color-brand-action: #467b72;
-    --color-brand-action-hover: #52887f;
+    --color-action: #223630;
+    --color-action-hover: #2a443d;
+    --color-action-foreground: #bfd7d1;
+    --color-switch-off-track: #68686e;
+    --color-switch-off-thumb: #ffffff;
+    --color-brand: #87aea4;
+    --color-brand-hover: #9abbb3;
+    --color-brand-action: var(--color-action);
+    --color-brand-action-hover: var(--color-action-hover);
     --color-brand-soft: #223630;
-    --color-brand-soft-foreground: #b8cec9;
-    --color-brand-border: #527069;
+    --color-brand-soft-foreground: #bfd7d1;
+    --color-brand-border: #58776f;
     --color-accent: var(--color-brand-soft);
-    --color-accent-hover: #29413b;
-    --color-accent-soft: #1d2e2a;
+    --color-accent-hover: #2a443d;
+    --color-accent-soft: #1d2f2a;
     --color-accent-foreground: var(--color-brand-soft-foreground);
+    --color-success-surface: #193322;
+    --color-success-border: #355d42;
+    --color-success-foreground: #8bd6a1;
+    --color-success-foreground-strong: #b6e8c4;
+    --color-warning-surface: #352d18;
+    --color-warning-border: #65552a;
+    --color-warning-foreground: #e8c56a;
+    --color-warning-foreground-strong: #f4d98f;
+    --color-info-surface: #182b3a;
+    --color-info-border: #34546c;
+    --color-info-foreground: #84bfea;
+    --color-info-foreground-strong: #add5f2;
     --color-danger-surface: rgb(95 34 41 / 0.28);
     --color-danger-border: rgb(188 79 91 / 0.45);
     --color-danger-foreground: #f48771;
     --color-danger-foreground-hover: #ffb3a7;
+    --color-status-neutral: #8e8e94;
+    --color-git-added: var(--color-success-foreground);
+    --color-git-removed: var(--color-danger-foreground);
+    --color-git-modified: var(--color-warning-foreground);
+    --color-git-renamed: var(--color-info-foreground);
+    --color-overlay-backdrop: rgb(0 0 0 / 0.62);
     --color-disabled: color-mix(in srgb, var(--color-brand-action) 38%, var(--color-surface-muted));
     --color-disabled-foreground: color-mix(in srgb, var(--color-brand) 58%, var(--color-muted-foreground));
     --color-scrollbar-thumb: rgb(124 124 129 / 0.5);
@@ -137,32 +185,32 @@
     --workspace-editor-line-changed-surface: rgb(38 120 190 / 0.24);
     --workspace-editor-line-changed-border: rgb(90 170 255 / 0.72);
     --workspace-editor-line-changed-foreground: rgb(173 214 255);
-    --workspace-find-widget-surface: #1e1e1e;
-    --workspace-find-widget-border: #2e2e2e;
-    --workspace-find-widget-input-surface: #252526;
-    --workspace-find-widget-input-border: #3c3c3c;
-    --workspace-find-widget-foreground: #d4d4d4;
-    --workspace-find-widget-muted: #c5c5c5;
-    --workspace-find-widget-hover: #2a2d2e;
+    --workspace-find-widget-surface: var(--color-surface-raised);
+    --workspace-find-widget-border: var(--color-border);
+    --workspace-find-widget-input-surface: var(--color-surface-muted);
+    --workspace-find-widget-input-border: var(--color-border);
+    --workspace-find-widget-foreground: var(--color-foreground);
+    --workspace-find-widget-muted: var(--color-muted-foreground);
+    --workspace-find-widget-hover: var(--color-surface-hover);
     --workspace-find-match-background: #294c6b;
     --workspace-find-match-active-background: #1976c8;
-    --titlebar-surface: #141415;
-    --workspace-shell-surface: #141415;
-    --workspace-panel-surface: #121213;
-    --sidebar-panel-surface: #141415;
-    --sidebar-raised-surface: #232326;
-    --sidebar-hover-surface: #2a2a2d;
+    --titlebar-surface: var(--color-sidebar);
+    --workspace-shell-surface: var(--color-sidebar);
+    --workspace-panel-surface: var(--color-surface);
+    --sidebar-panel-surface: var(--color-sidebar);
+    --sidebar-raised-surface: var(--color-surface-raised);
+    --sidebar-hover-surface: var(--color-surface-hover);
     --sidebar-item-active-surface: var(--color-brand-soft);
     --sidebar-item-active-border: color-mix(in srgb, var(--color-brand) 34%, var(--color-border-muted));
     --user-message-hover-border: color-mix(in srgb, var(--color-foreground) 22%, var(--color-border));
-    --segmented-control-hover-surface: #2a2a2d;
+    --segmented-control-hover-surface: var(--color-surface-hover);
     --segmented-control-active-surface: var(--color-brand-soft);
-    --dropdown-control-surface: #131314;
-    --dropdown-control-hover-surface: #1f1f22;
+    --dropdown-control-surface: var(--color-surface-muted);
+    --dropdown-control-hover-surface: var(--color-surface-hover);
     --dropdown-control-hover-border: #45454a;
-    --dropdown-control-open-surface: #242427;
+    --dropdown-control-open-surface: var(--color-surface-raised);
     --dropdown-control-open-border: #59595f;
-    --dropdown-option-hover-surface: #27272a;
+    --dropdown-option-hover-surface: var(--color-surface-hover);
     --dropdown-option-active-surface: var(--color-brand-soft);
     --dropdown-option-active-hover-surface: #263630;
     --dropdown-option-active-border: transparent;
@@ -252,7 +300,8 @@
 
   .chat-send-button-enabled {
     background-color: var(--color-action);
-    color: #fff;
+    color: var(--color-action-foreground);
+    box-shadow: inset 0 0 0 1px var(--sidebar-item-active-border);
   }
 
   .chat-send-button-enabled:hover {
@@ -266,7 +315,12 @@
 
   .provider-primary-action-button {
     background-color: var(--color-action);
-    color: #fff;
+    color: var(--color-action-foreground);
+    box-shadow: inset 0 0 0 1px var(--sidebar-item-active-border);
+  }
+
+  button.bg-action {
+    box-shadow: inset 0 0 0 1px var(--sidebar-item-active-border);
   }
 
   .provider-primary-action-button:not(:disabled):hover {
@@ -525,7 +579,7 @@
 
   :root[data-theme='dark'] .chat-send-button-enabled {
     background-color: var(--color-brand-action);
-    color: #fff;
+    color: var(--color-action-foreground);
   }
 
   :root[data-theme='dark'] .chat-send-button-enabled:hover {
@@ -534,7 +588,7 @@
 
   :root[data-theme='dark'] .provider-primary-action-button {
     background-color: var(--color-brand-action);
-    color: #fff;
+    color: var(--color-action-foreground);
   }
 
   :root[data-theme='dark'] .provider-primary-action-button:not(:disabled):hover {

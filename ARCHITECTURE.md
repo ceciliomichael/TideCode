@@ -1,5 +1,13 @@
 # Architecture
 
+## Theme ownership and propagation
+
+`src/index.css` is the renderer source of truth for TideCode semantic colors. Light values are declared in the root theme and dark values override them under `:root[data-theme='dark']`. `useDocumentTheme.ts` resolves the persisted light/dark/system preference, updates the root dataset and `color-scheme`, and synchronizes browser theme metadata. `useResolvedDocumentTheme.ts` exposes the resolved theme to renderers that need an explicit mode value.
+
+Normal React UI consumes Tailwind utilities generated from those semantic variables. `src/lib/themeColorTokens.ts` is the narrow adapter for libraries that require concrete color strings at runtime. Monaco keeps specialized editor selection/diff values but aligns its structural background, foreground, border, widget, and suggestion colors with the TideCode palette. Xterm reads the host surface plus semantic TideCode foreground/status colors while retaining a dedicated light/dark ANSI palette. Mermaid reads semantic colors before each theme-specific render, and its cache key includes the resolved theme.
+
+Pre-render or non-React surfaces cannot depend on renderer CSS. `index.html`, `electron/window/theme.ts`, `electron/window/trayPopup.ts`, and `electron/remote/webAuth.ts` therefore mirror only the minimal palette necessary for first paint, native chrome, tray UI, and unauthenticated Remote login. Tests guard these mirrored values and core contrast relationships. The Remote login page reads the same local appearance key and system color-scheme preference before painting.
+
 ## Embedded Browser
 
 `BrowserPanel.tsx` owns tab sessions, address drafts, navigation state, and the Electron webview elements. The application window attaches guest behavior and manages native DevTools views. Guest setup runs without synthetic user activation, including when Electron defers script execution until loading stops.

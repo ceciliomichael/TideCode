@@ -208,8 +208,8 @@ function CollapsedConversationDiffFileRow({
             <span className="relative top-px inline-flex min-w-0 items-center gap-2">
               <PathLabel path={diff.fileName} className="min-w-0 leading-[1] text-foreground" />
               <span className="inline-flex items-center gap-1 text-xs leading-none">
-                <span className="leading-none text-emerald-600 dark:text-emerald-400">{`+${diff.addedLineCount}`}</span>
-                <span className="leading-none text-red-600 dark:text-red-400">{`-${diff.removedLineCount}`}</span>
+                    <span className="leading-none text-git-added">{`+${diff.addedLineCount}`}</span>
+                    <span className="leading-none text-git-removed">{`-${diff.removedLineCount}`}</span>
               </span>
             </span>
           </span>
@@ -293,8 +293,8 @@ function ConversationDiffFileItemComponent({
         onPrewarmReady={handlePrewarmReady}
         headerInlineContent={
           <span className="inline-flex items-center gap-1 text-xs leading-none">
-            <span className="leading-none text-emerald-600 dark:text-emerald-400">{`+${diff.addedLineCount}`}</span>
-            <span className="leading-none text-red-600 dark:text-red-400">{`-${diff.removedLineCount}`}</span>
+                    <span className="leading-none text-git-added">{`+${diff.addedLineCount}`}</span>
+                    <span className="leading-none text-git-removed">{`-${diff.removedLineCount}`}</span>
           </span>
         }
         headerRightContent={

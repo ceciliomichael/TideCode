@@ -115,7 +115,7 @@ export function ContextIndicator({
             type="button"
             onClick={onCompress}
             disabled={compressDisabled || isCompressing}
-            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-action px-3 text-sm font-medium text-white transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-foreground"
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-action px-3 text-sm font-medium text-action-foreground transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-foreground"
           >
             <span>{isCompressing ? 'Compressing...' : 'Compress Chat'}</span>
           </button>

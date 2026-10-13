@@ -25,7 +25,7 @@ export function McpRemoveDialog({ isSubmitting, onClose, onConfirm, serverName }
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/12 px-4 py-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay-backdrop px-4 py-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !isSubmitting) {
           onClose()
@@ -65,7 +65,7 @@ export function McpRemoveDialog({ isSubmitting, onClose, onConfirm, serverName }
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-3.5 text-sm font-medium text-foreground transition-colors hover:bg-border-muted disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-3.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
               Cancel
             </button>

@@ -157,8 +157,8 @@ export function ChatWorkspaceHeaderControls({
         <GitCompareArrows size={16} className="shrink-0" />
         {hasRepository && addedLineCount !== null && removedLineCount !== null ? (
           <>
-            <span className="text-emerald-600 dark:text-emerald-400">{`+${addedLineCount}`}</span>
-            <span className="text-red-600 dark:text-red-400">{`-${removedLineCount}`}</span>
+          <span className="text-git-added">{`+${addedLineCount}`}</span>
+          <span className="text-git-removed">{`-${removedLineCount}`}</span>
           </>
         ) : null}
       </HeaderControl>

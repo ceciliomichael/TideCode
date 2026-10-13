@@ -227,7 +227,7 @@ export function SourceControlChangesSection({
                           onCommitActionMenuOpenChange(!isCommitActionMenuOpen)
                         }}
                         className={[
-                          'inline-flex h-8 w-8 items-center justify-center rounded-l-none rounded-r-lg border-l border-white/15 text-xs transition-colors',
+                      'inline-flex h-8 w-8 items-center justify-center rounded-l-none rounded-r-lg border-l border-action-foreground/15 text-xs transition-colors',
                           isPrimaryActionDisabled ? 'chat-send-button-disabled cursor-not-allowed' : 'chat-send-button-enabled',
                         ].join(' ')}
                       >

@@ -99,8 +99,8 @@ function DiffFileActionButton({
 function DiffLineSummary({ addedLineCount, removedLineCount }: { addedLineCount: number; removedLineCount: number }) {
   return (
     <span className="inline-flex items-center gap-1 text-xs leading-none">
-      <span className="leading-none text-emerald-600 dark:text-emerald-400">{`+${addedLineCount}`}</span>
-      {removedLineCount > 0 ? <span className="leading-none text-red-600 dark:text-red-400">{`-${removedLineCount}`}</span> : null}
+        <span className="leading-none text-git-added">{`+${addedLineCount}`}</span>
+        {removedLineCount > 0 ? <span className="leading-none text-git-removed">{`-${removedLineCount}`}</span> : null}
     </span>
   )
 }
@@ -259,7 +259,7 @@ function DeletedDiffRow({
         <Tooltip content={normalizedPath} side="top" noWrap triggerClassName="min-w-0 flex-1">
           <div className="relative top-px inline-flex min-w-0 flex-1 items-center gap-1.5">
             <span className="min-w-0 truncate text-left text-foreground decoration-white decoration-[1.5px] line-through">{fileName}</span>
-            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-red-500">D</span>
+                  <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-git-removed">D</span>
             <DiffLineSummary addedLineCount={diff.addedLineCount} removedLineCount={diff.removedLineCount} />
           </div>
         </Tooltip>

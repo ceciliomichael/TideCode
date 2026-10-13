@@ -67,7 +67,7 @@ function createTideCodeShikiTheme(
       ...baseTheme.colors,
       ...colors,
     },
-    fg: colors['editor.foreground'] ?? baseTheme.fg ?? '#303033',
+    fg: colors['editor.foreground'] ?? baseTheme.fg ?? '#202221',
     name,
     settings: baseTheme.settings ?? baseTheme.tokenColors ?? [],
     type,

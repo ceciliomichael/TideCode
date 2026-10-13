@@ -65,9 +65,9 @@ export function SourceControlNoRepoView({ commitModelSelection, workspacePath, o
 
         {/* Error message */}
         {(initStep === 'error' && initError) && (
-          <div className="w-full flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5">
-            <AlertCircle size={13} className="mt-0.5 shrink-0 text-red-500" />
-            <p className="text-xs text-red-600 dark:text-red-400 leading-relaxed">{initError}</p>
+          <div className="w-full flex items-start gap-2 rounded-lg border border-danger-border bg-danger-surface px-3 py-2.5">
+            <AlertCircle size={13} className="mt-0.5 shrink-0 text-danger-foreground" />
+            <p className="text-xs text-danger-foreground leading-relaxed">{initError}</p>
           </div>
         )}
 
@@ -82,7 +82,7 @@ export function SourceControlNoRepoView({ commitModelSelection, workspacePath, o
             className={[
               'group relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl border px-4 py-3 text-sm font-medium transition-all duration-200',
               initStep === 'success'
-                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                ? 'border-success-border bg-success-surface text-success-foreground'
                 : initStep === 'loading'
                   ? 'border-border bg-surface-muted text-muted-foreground cursor-wait'
                   : 'border-border bg-surface-muted text-foreground hover:bg-surface hover:border-border/80 active:scale-[0.98] cursor-pointer',
@@ -90,13 +90,13 @@ export function SourceControlNoRepoView({ commitModelSelection, workspacePath, o
           >
             {/* Shimmer effect on hover */}
             {initStep === 'idle' && (
-              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/5 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-foreground/5 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
             )}
 
             {initStep === 'loading' ? (
               <Loader2 size={15} className="animate-spin text-brand" />
             ) : initStep === 'success' ? (
-              <CheckCircle2 size={15} className="text-emerald-500" />
+              <CheckCircle2 size={15} className="text-success-foreground" />
             ) : (
               <GitBranch size={15} className="text-muted-foreground group-hover:text-foreground transition-colors" />
             )}

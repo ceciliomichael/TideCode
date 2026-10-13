@@ -56,9 +56,9 @@ export function CommitHistoryTooltipContent({ details, entry, isLoadingDetails }
         {!isLoadingDetails && details ? (
           <p className="border-t border-border/70 pt-2 text-[12px] text-muted-foreground">
             <span>{`${details.changedFileCount} files changed, `}</span>
-            <span className="text-emerald-600 dark:text-emerald-400">{`${details.insertions} insertions(+)`}</span>
+          <span className="text-git-added">{`${details.insertions} insertions(+)`}</span>
             <span>{', '}</span>
-            <span className="text-red-600 dark:text-red-400">{`${details.deletions} deletions(-)`}</span>
+          <span className="text-git-removed">{`${details.deletions} deletions(-)`}</span>
           </p>
         ) : null}
       </div>

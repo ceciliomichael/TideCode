@@ -303,7 +303,7 @@ export function DropdownField({
                 setListboxViewportHeight(event.currentTarget.clientHeight)
               }}
               className={[
-                'fixed z-[1500] overflow-y-auto rounded-xl border border-border bg-surface shadow-soft',
+                'fixed z-[1500] overflow-y-auto rounded-xl border border-border bg-surface-raised shadow-soft',
                 variant === 'text'
                   ? fitToContent
                     ? 'w-[min(9rem,calc(100vw-1rem))] p-1'
@@ -337,8 +337,12 @@ export function DropdownField({
                               ? 'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]'
                               : 'flex h-9 w-full items-center justify-between rounded-lg px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
                             isHighlighted
-                              ? 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
-                              : 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]',
+                              ? isSelected
+                                ? 'bg-[var(--dropdown-option-active-hover-surface)] text-foreground shadow-sm'
+                                : 'bg-[var(--dropdown-option-hover-surface)] text-foreground'
+                              : isSelected
+                                ? 'bg-[var(--dropdown-option-active-surface)] text-foreground'
+                                : 'text-foreground hover:bg-[var(--dropdown-option-hover-surface)]',
                             isSelected ? selectedOptionClassName : undefined,
                           )}
                         >
@@ -386,8 +390,12 @@ export function DropdownField({
                             ? 'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]'
                             : 'flex h-9 w-full items-center justify-between rounded-lg px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
                           isHighlighted
-                            ? 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
-                            : 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]',
+                            ? isSelected
+                              ? 'bg-[var(--dropdown-option-active-hover-surface)] text-foreground shadow-sm'
+                              : 'bg-[var(--dropdown-option-hover-surface)] text-foreground'
+                            : isSelected
+                              ? 'bg-[var(--dropdown-option-active-surface)] text-foreground'
+                              : 'text-foreground hover:bg-[var(--dropdown-option-hover-surface)]',
                           isSelected ? selectedOptionClassName : undefined,
                         )}
                       >

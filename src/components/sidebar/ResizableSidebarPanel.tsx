@@ -144,7 +144,7 @@ export function ResizableSidebarPanel({
             aria-label="Close chat sidebar"
             onClick={onMobileSidebarRequestClose}
             className={[
-              'absolute inset-0 bg-black/35 transition-opacity duration-300 ease-out',
+              'absolute inset-0 bg-overlay-backdrop transition-opacity duration-300 ease-out',
               isSidebarOpen ? 'opacity-100' : 'opacity-0',
             ].join(' ')}
           />

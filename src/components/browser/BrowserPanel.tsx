@@ -1,6 +1,8 @@
 import { createElement, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, Code2, EllipsisVertical, Globe2, Home, LoaderCircle, RefreshCw, Search, X } from 'lucide-react'
 import type { BrowserDevToolsDockMode } from '../../types/browser'
+import { useResolvedDocumentTheme } from '../../hooks/useResolvedDocumentTheme'
+import { readThemeColor } from '../../lib/themeColorTokens'
 import { Tooltip } from '../Tooltip'
 import { BrowserTabsBar } from './BrowserTabsBar'
 import { BrowserNewTabPage } from './BrowserNewTabPage'
@@ -67,6 +69,7 @@ function BrowserTabSession({
   visitedSites,
   tabId,
 }: BrowserTabSessionProps) {
+  const resolvedTheme = useResolvedDocumentTheme()
   const webviewRef = useRef<TidecodeWebview | null>(null)
   const webviewReadyRef = useRef(false)
   const addressInputRef = useRef<HTMLInputElement | null>(null)
@@ -505,9 +508,6 @@ function BrowserTabSession({
     }
 
     const rect = menuButton.getBoundingClientRect()
-    const styles = getComputedStyle(document.documentElement)
-    const readColor = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback
-
     void window.tidecodeBrowserDevTools.showDockMenu({
       anchor: {
         x: rect.left,
@@ -517,13 +517,13 @@ function BrowserTabSession({
       },
       mode: devToolsMode,
       theme: {
-        activeSurface: readColor('--color-brand-soft', '#223630'),
-        background: readColor('--color-surface', '#171718'),
-        border: readColor('--color-border', '#36363a'),
-        brand: readColor('--color-brand', '#7fa59c'),
-        foreground: readColor('--color-foreground', '#e7e7e7'),
-        hoverSurface: readColor('--color-surface-muted', '#27272a'),
-        mutedForeground: readColor('--color-muted-foreground', '#b4b4b6'),
+        activeSurface: readThemeColor('--color-brand-soft', resolvedTheme),
+        background: readThemeColor('--color-surface-raised', resolvedTheme),
+        border: readThemeColor('--color-border', resolvedTheme),
+        brand: readThemeColor('--color-brand', resolvedTheme),
+        foreground: readThemeColor('--color-foreground', resolvedTheme),
+        hoverSurface: readThemeColor('--color-surface-hover', resolvedTheme),
+        mutedForeground: readThemeColor('--color-muted-foreground', resolvedTheme),
       },
     }).then((mode) => {
       if (mode) {
@@ -702,7 +702,7 @@ function BrowserTabSession({
           }}
         >
           {isLoading ? (
-            <div className="pointer-events-none absolute bottom-3 left-3 z-10 inline-flex h-7 items-center gap-2 rounded-md border border-black/10 bg-white px-2.5 text-xs text-neutral-600 shadow-sm">
+            <div className="pointer-events-none absolute bottom-3 left-3 z-10 inline-flex h-7 items-center gap-2 rounded-md border border-border bg-surface-raised px-2.5 text-xs text-muted-foreground shadow-soft">
               <LoaderCircle size={13} className="animate-spin" />
               <span>Loading...</span>
             </div>

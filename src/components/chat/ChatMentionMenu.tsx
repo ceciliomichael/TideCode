@@ -92,7 +92,7 @@ export function ChatMentionMenu({
         role="listbox"
         aria-label="File mentions"
         data-floating-menu-root="true"
-        className="fixed z-40 w-[min(26rem,calc(100vw-1rem))] overflow-hidden rounded-[22px] border border-border bg-surface shadow-[0_10px_30px_rgba(15,23,42,0.08)]"
+        className="fixed z-40 w-[min(26rem,calc(100vw-1rem))] overflow-hidden rounded-[22px] border border-border bg-surface-raised shadow-soft"
         style={menuStyle}
       >
         <div onMouseLeave={onResetHighlight}>
@@ -120,22 +120,22 @@ export function ChatMentionMenu({
                     className={[
                       'flex w-full items-center gap-3 px-4 py-2.5 text-left transition-[background-color,color,box-shadow]',
                       isHighlighted
-                        ? 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
-                        : 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]',
+                        ? 'bg-[var(--dropdown-option-hover-surface)] text-foreground shadow-sm'
+                        : 'text-foreground hover:bg-[var(--dropdown-option-hover-surface)]',
                     ].join(' ')}
                   >
                     <Icon
                       size={17}
                       className={`shrink-0 ${
                         option.kind === 'file'
-                          ? 'text-[#2563EB]'
+                          ? 'text-info-foreground'
                           : option.kind === 'folder'
-                            ? 'text-[#F59E0B]'
+                            ? 'text-warning-foreground'
                             : option.kind === 'attachment'
-                              ? 'text-[#64748B]'
+                              ? 'text-muted-foreground'
                               : option.kind === 'skill'
-                                ? 'text-[#A855F7]'
-                                : 'text-[#16A34A]'
+                                ? 'text-brand'
+                                : 'text-success-foreground'
                       }`}
                     />
                     <span className="min-w-0 flex-1">
@@ -165,7 +165,7 @@ export function ChatMentionMenu({
                    : 'File, folder, attachment, and skill mentions'
         }
         data-floating-menu-root="true"
-        className="fixed z-40 w-[min(26rem,calc(100vw-1rem))] overflow-hidden rounded-[22px] border border-border bg-surface shadow-[0_10px_30px_rgba(15,23,42,0.08)]"
+        className="fixed z-40 w-[min(26rem,calc(100vw-1rem))] overflow-hidden rounded-[22px] border border-border bg-surface-raised shadow-soft"
         style={menuStyle}
       >
         <div className="max-h-[200px] overflow-y-auto" onMouseLeave={onResetHighlight}>
@@ -216,18 +216,18 @@ export function ChatMentionMenu({
                   className={[
                     'flex w-full items-center gap-2 px-4 py-2.5 text-left transition-[background-color,color,box-shadow]',
                     isHighlighted
-                      ? 'bg-[var(--dropdown-option-active-surface)] text-foreground shadow-sm'
-                      : 'text-foreground hover:bg-[var(--dropdown-option-active-surface)]',
+                      ? 'bg-[var(--dropdown-option-hover-surface)] text-foreground shadow-sm'
+                      : 'text-foreground hover:bg-[var(--dropdown-option-hover-surface)]',
                   ].join(' ')}
                 >
                   {item.kind === 'skill' ? (
-                    <Wand2 size={14} className="shrink-0 text-[#A855F7]" />
+                    <Wand2 size={14} className="shrink-0 text-brand" />
                   ) : item.kind === 'folder' || (item.kind === 'attachment' && item.isDirectory) ? (
-                    <Folder size={14} className="shrink-0 text-[#F59E0B]" />
+                    <Folder size={14} className="shrink-0 text-warning-foreground" />
                   ) : FileIcon ? (
                     <FileIcon size={14} className="shrink-0" style={{ color: fileIconConfig.color }} />
                   ) : (
-                    <File size={14} className="shrink-0 text-[#2563EB]" />
+                    <File size={14} className="shrink-0 text-info-foreground" />
                   )}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[15px] leading-5">{item.label}</span>

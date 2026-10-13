@@ -1,5 +1,6 @@
 import type { ITerminalOptions, Terminal } from "@xterm/xterm";
 import type { ResolvedTheme } from "../../../lib/theme";
+import { readThemeColor } from "../../../lib/themeColorTokens";
 import { MIN_TERMINAL_PANEL_HEIGHT } from "../../../lib/terminalPanelSizing";
 import { toUserFacingErrorMessage } from "../../../lib/userFacingError";
 
@@ -111,10 +112,14 @@ export function getTerminalTheme(
   resolvedTheme: ResolvedTheme,
 ): TerminalTheme {
   const hostStyles = window.getComputedStyle(hostElement);
-  const foreground = hostStyles.color;
-  const background = hostStyles.backgroundColor;
-  const lightModeTextColor = "#101011";
-  const selectionBackground = "rgba(96, 98, 102, 0.22)";
+  const foreground = hostStyles.color || readThemeColor("--color-foreground", resolvedTheme);
+  const hostBackground = hostStyles.backgroundColor;
+  const background = hostBackground && hostBackground !== "rgba(0, 0, 0, 0)"
+    ? hostBackground
+    : readThemeColor("--color-surface", resolvedTheme);
+  const selectionBackground = resolvedTheme === "dark"
+    ? "rgba(135, 174, 164, 0.28)"
+    : "rgba(49, 95, 89, 0.22)";
   const selectionInactiveBackground = selectionBackground;
 
   if (resolvedTheme === "dark") {
@@ -124,10 +129,10 @@ export function getTerminalTheme(
       cursor: foreground,
       selectionBackground,
       selectionInactiveBackground,
-      black: "#1f1f21",
-      red: "#f48771",
-      green: "#9ad792",
-      yellow: "#f5d76e",
+      black: "#202022",
+      red: readThemeColor("--color-danger-foreground", resolvedTheme),
+      green: readThemeColor("--color-success-foreground", resolvedTheme),
+      yellow: readThemeColor("--color-warning-foreground", resolvedTheme),
       blue: "#7aa2f7",
       magenta: "#bb9af7",
       cyan: "#7dcfff",
@@ -145,26 +150,26 @@ export function getTerminalTheme(
 
   return {
     background,
-    foreground: lightModeTextColor,
-    cursor: lightModeTextColor,
+    foreground,
+    cursor: foreground,
     selectionBackground,
     selectionInactiveBackground,
-    black: lightModeTextColor,
-    red: lightModeTextColor,
-    green: lightModeTextColor,
-    yellow: lightModeTextColor,
-    blue: lightModeTextColor,
-    magenta: lightModeTextColor,
-    cyan: lightModeTextColor,
-    white: lightModeTextColor,
-    brightBlack: lightModeTextColor,
-    brightRed: lightModeTextColor,
-    brightGreen: lightModeTextColor,
-    brightYellow: lightModeTextColor,
-    brightBlue: lightModeTextColor,
-    brightMagenta: lightModeTextColor,
-    brightCyan: lightModeTextColor,
-    brightWhite: "#ffffff",
+    black: foreground,
+    red: readThemeColor("--color-danger-foreground", resolvedTheme),
+    green: readThemeColor("--color-success-foreground", resolvedTheme),
+    yellow: readThemeColor("--color-warning-foreground", resolvedTheme),
+    blue: readThemeColor("--color-info-foreground", resolvedTheme),
+    magenta: "#75429b",
+    cyan: "#176d78",
+    white: "#6d736f",
+    brightBlack: "#7d837f",
+    brightRed: "#d1454e",
+    brightGreen: "#338f4f",
+    brightYellow: "#a86e08",
+    brightBlue: "#2b78ad",
+    brightMagenta: "#9460b7",
+    brightCyan: "#218692",
+    brightWhite: foreground,
   };
 }
 

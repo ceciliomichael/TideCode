@@ -70,7 +70,7 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
   const entryPath = entry.relativePath
   const fileIconConfig = !isDirectory ? resolveFileIconConfig({ fileName: entry.relativePath }) : null
   const FileIcon = fileIconConfig?.icon
-  const gitStatusTextClass = gitStatus === 'untracked' ? 'text-[#5D9F73]' : gitStatus === 'modified' ? 'text-[#C7904A]' : ''
+  const gitStatusTextClass = gitStatus === 'untracked' ? 'text-git-added' : gitStatus === 'modified' ? 'text-git-modified' : ''
   const isHighlightedEntry = isSelectedEntry || isActiveFile || isContextTarget
   const rowStateClass = isDropTarget
     ? 'bg-brand-soft text-foreground'
@@ -197,7 +197,6 @@ export const WorkspaceExplorerEntryRow = memo(function WorkspaceExplorerEntryRow
             'truncate',
             isGitignoredEntry && !isHighlightedEntry && !isDropTarget ? 'opacity-60' : '',
             gitStatusTextClass,
-            isGitignoredEntry && (isHighlightedEntry || isDropTarget) ? 'text-white' : '',
           ].join(' ')}
         >
           {entry.name}

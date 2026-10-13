@@ -48,8 +48,8 @@ function createPopupMarkup() {
     '<html><head><meta charset="utf-8">' +
     '<meta name="color-scheme" content="light dark">' +
     '<style>' +
-    ':root{--bg:#fff;--border:#d8d8d8;--hover:#f0f0f0;--text:#111;color-scheme:light dark}' +
-    '@media (prefers-color-scheme:dark){:root{--bg:#202020;--border:#3a3a3a;--hover:#303030;--text:#f5f5f5}}' +
+    ':root{--bg:#fff;--border:#d4d9d5;--hover:#e9ecea;--text:#202221;color-scheme:light dark}' +
+    '@media (prefers-color-scheme:dark){:root{--bg:#242426;--border:#38383d;--hover:#2a2a2d;--text:#e9e9ea}}' +
     '*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:var(--bg)}' +
     'body{font-family:"Segoe UI",system-ui,sans-serif;font-size:14px;user-select:none}' +
     '.menu{width:100%;height:100%;overflow:hidden;background:var(--bg)}' +

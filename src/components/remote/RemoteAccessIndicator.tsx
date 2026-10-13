@@ -45,7 +45,7 @@ export function RemoteAccessIndicator() {
     }
   }
 
-  const dotClass = status?.enabled ? 'bg-emerald-500' : status?.error ? 'bg-red-500' : 'bg-amber-500'
+  const dotClass = status?.enabled ? 'bg-success-foreground' : status?.error ? 'bg-danger-foreground' : 'bg-warning-foreground'
 
   return (
     <button
@@ -53,12 +53,12 @@ export function RemoteAccessIndicator() {
       onClick={copyRemoteUrl}
       disabled={!status?.remoteUrl}
       title={status?.remoteUrl ? 'Copy TideCode LAN remote URL. No login is required on the current LAN-only build.' : status?.error ?? 'Remote host is starting'}
-      className="fixed bottom-3 right-3 z-40 flex max-w-[min(520px,calc(100vw-24px))] items-center gap-2 rounded-lg border border-border/80 bg-background/95 px-3 py-2 text-xs text-muted-foreground shadow-lg backdrop-blur transition hover:text-foreground disabled:cursor-default disabled:opacity-70"
+      className="fixed bottom-3 right-3 z-40 flex max-w-[min(520px,calc(100vw-24px))] items-center gap-2 rounded-lg border border-border bg-surface-raised/95 px-3 py-2 text-xs text-muted-foreground shadow-soft backdrop-blur transition hover:text-foreground disabled:cursor-default disabled:opacity-70"
     >
       <span className={'h-2 w-2 shrink-0 rounded-full ' + dotClass} />
       <span className="truncate">{copied ? 'Remote URL copied' : 'Remote ' + label}</span>
       {status?.connectedClientCount ? (
-        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-foreground">
+        <span className="shrink-0 rounded bg-surface-muted px-1.5 py-0.5 text-[10px] text-foreground">
           {status.connectedClientCount} connected
         </span>
       ) : null}

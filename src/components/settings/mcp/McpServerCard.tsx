@@ -32,13 +32,13 @@ function getStatusLabel(status?: McpServerStatus) {
 function getStatusColor(status?: McpServerStatus) {
   switch (status?.status) {
     case 'connected':
-      return 'bg-emerald-500'
+      return 'bg-success-foreground'
     case 'connecting':
-      return 'bg-amber-500'
+      return 'bg-warning-foreground'
     case 'error':
-      return 'bg-red-500'
+      return 'bg-danger-foreground'
     default:
-      return 'bg-neutral-400'
+      return 'bg-status-neutral'
   }
 }
 
@@ -109,12 +109,7 @@ export function McpServerCard({
       type="button"
       onClick={() => onEdit(config)}
       disabled={isBusy || isReadOnly}
-      className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-2.5 text-xs font-medium leading-none transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-      style={{
-        backgroundColor: 'var(--color-brand-action)',
-        borderColor: 'transparent',
-        color: '#fff',
-      }}
+      className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-transparent bg-action px-2.5 text-xs font-medium leading-none text-action-foreground transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
     >
       <PencilLine className="block h-3.5 w-3.5 shrink-0 self-center" />
       <span className="relative top-px flex items-center leading-none">Edit</span>
@@ -145,12 +140,7 @@ export function McpServerCard({
             type="button"
             onClick={() => (isConnected ? void onDisconnect(config.id) : void onConnect(config.id))}
             disabled={isConnecting || !config.enabled || isBusy}
-            className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-2.5 text-xs font-medium leading-none transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-            style={{
-              backgroundColor: 'var(--color-brand-action)',
-              borderColor: 'transparent',
-              color: '#fff',
-            }}
+            className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-transparent bg-action px-2.5 text-xs font-medium leading-none text-action-foreground transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Power className="block h-3.5 w-3.5 shrink-0 self-center" />
             <span className="relative top-px flex items-center leading-none">{connectionLabel}</span>
@@ -264,12 +254,12 @@ export function McpServerCard({
                           aria-pressed={enabled}
                           onClick={() => void onToggleTool(config.id, tool.name, !enabled)}
                           disabled={isToolBusy || isBusy || isReadOnly}
-                          className="rounded-lg border px-3 py-1 text-xs font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-                          style={{
-                            backgroundColor: enabled ? 'var(--color-brand-action)' : 'var(--color-surface-muted)',
-                            borderColor: enabled ? 'var(--color-brand-action)' : 'transparent',
-                            color: enabled ? '#fff' : 'var(--color-muted-foreground)',
-                          }}
+                          className={[
+                            'rounded-lg border px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+                            enabled
+                              ? 'border-transparent bg-action text-action-foreground hover:bg-action-hover'
+                              : 'border-transparent bg-surface-muted text-muted-foreground hover:bg-surface-hover',
+                          ].join(' ')}
                         >
                           {tool.name}
                         </button>

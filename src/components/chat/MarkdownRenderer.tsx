@@ -140,7 +140,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
             className={[
               supClassName,
               'text-[0.75em] leading-none text-foreground',
-              isFootnoteRef ? 'ml-0.5 font-semibold text-primary underline-offset-2 hover:underline' : '',
+              isFootnoteRef ? 'ml-0.5 font-semibold text-brand underline-offset-2 hover:underline' : '',
             ]
               .filter(Boolean)
               .join(' ')}
@@ -148,7 +148,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         )
       },
       mark: (props: React.ComponentPropsWithoutRef<'mark'>) => (
-        <mark {...props} className="mx-[2px] rounded-xs bg-amber-500/25 px-1 py-[1px] text-inherit font-[inherit]" />
+        <mark {...props} className="mx-[2px] rounded-xs bg-warning-surface px-1 py-[1px] text-inherit font-[inherit]" />
       ),
       details: ({ children, ...props }: React.ComponentPropsWithoutRef<'details'>) => {
         const childArray = React.Children.toArray(children)
@@ -211,7 +211,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
             className={[
               sectionClassName,
               isFootnoteSection
-                ? 'mt-6 border-t border-border/60 pt-3 text-xs text-muted-foreground [&>ol]:pl-0 [&>ol]:space-y-1.5 [&_a]:text-primary [&_a]:underline'
+                ? 'mt-6 border-t border-border/60 pt-3 text-xs text-muted-foreground [&>ol]:pl-0 [&>ol]:space-y-1.5 [&_a]:text-brand [&_a]:underline'
                 : 'my-3 border-t border-border pt-2 text-xs text-muted-foreground',
             ]
               .filter(Boolean)

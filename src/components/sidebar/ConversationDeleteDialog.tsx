@@ -22,7 +22,7 @@ export function ConversationDeleteDialog({ conversationTitle, onClose, onConfirm
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[1600] flex items-center justify-center bg-black/30 px-4 py-4 backdrop-blur-[1px]"
+      className="fixed inset-0 z-[1600] flex items-center justify-center bg-overlay-backdrop px-4 py-4 backdrop-blur-[1px]"
       style={{ top: 'env(titlebar-area-height, 0px)' }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {

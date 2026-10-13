@@ -144,7 +144,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
             className={[
               supClassName,
               'text-[0.75em] leading-none text-foreground',
-              isFootnoteRef ? 'ml-0.5 font-semibold text-primary underline-offset-2 hover:underline' : '',
+              isFootnoteRef ? 'ml-0.5 font-semibold text-brand underline-offset-2 hover:underline' : '',
             ]
               .filter(Boolean)
               .join(' ')}
@@ -152,7 +152,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
         )
       },
       mark: (props: React.ComponentPropsWithoutRef<'mark'>) => (
-        <mark {...props} className="mx-[2px] rounded-xs bg-amber-500/25 px-1 py-[1px] text-inherit font-[inherit]" />
+        <mark {...props} className="mx-[2px] rounded-xs bg-warning-surface px-1 py-[1px] text-inherit font-[inherit]" />
       ),
       details: ({ children, ...props }: React.ComponentPropsWithoutRef<'details'>) => {
         const childArray = React.Children.toArray(children)
@@ -194,7 +194,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
         <del {...props} className="line-through text-muted-foreground" />
       ),
       ins: (props: React.ComponentPropsWithoutRef<'ins'>) => (
-        <ins {...props} className="underline text-foreground decoration-emerald-500" />
+        <ins {...props} className="underline text-foreground decoration-git-added" />
       ),
       dl: (props: React.ComponentPropsWithoutRef<'dl'>) => (
         <dl {...props} className="my-2 space-y-1 text-foreground" />
@@ -215,7 +215,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
             className={[
               sectionClassName,
               isFootnoteSection
-                ? 'mt-6 border-t border-border/60 pt-3 text-xs text-muted-foreground [&>ol]:pl-0 [&>ol]:space-y-1.5 [&_a]:text-primary [&_a]:underline'
+                ? 'mt-6 border-t border-border/60 pt-3 text-xs text-muted-foreground [&>ol]:pl-0 [&>ol]:space-y-1.5 [&_a]:text-brand [&_a]:underline'
                 : 'my-3 border-t border-border pt-2 text-xs text-muted-foreground',
             ]
               .filter(Boolean)
@@ -282,7 +282,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
     <div ref={registerViewport} onScroll={handleScroll} className="workspace-markdown-preview h-full min-h-0 overflow-auto bg-background text-foreground">
       <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 py-3 md:px-6 md:py-4">
         {isTruncated ? (
-          <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          <div className="mb-4 rounded-2xl border border-warning-border bg-warning-surface px-4 py-3 text-sm text-warning-foreground">
             This document is truncated. Save the file outside the workspace limit to see the full document.
           </div>
         ) : null}

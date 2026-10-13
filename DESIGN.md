@@ -1,5 +1,17 @@
 # Design
 
+## Light and dark color system
+
+TideCode uses one semantic color hierarchy for all app-owned UI. Light mode starts from a light canvas and distinguishes controls and nested surfaces with progressively darker muted, hover, and pressed surfaces. Dark mode mirrors that relationship from the existing near-black canvas: panels, fields, raised menus, hover states, and pressed states become progressively lighter so controls remain visibly separated instead of blending into the black base.
+
+`src/index.css` owns the renderer palette. Components should use semantic roles such as `background`, `surface`, `surface-muted`, `surface-raised`, `surface-hover`, `foreground`, `muted-foreground`, `border`, `action`, `brand-soft`, and the success/warning/danger/info families rather than local light/dark color pairs. Primary actions use `action` with `action-foreground`; soft brand selections use `brand-soft` with `brand-soft-foreground`. Git additions, removals, modifications, and renames use their semantic Git roles consistently across chat, Explorer, commits, and Source Control.
+
+Settings follows the same hierarchy even when a page owns its controls directly rather than using a shared component. Dialog backdrops use the shared overlay role, fields use muted surfaces, popup/raised content uses raised surfaces, and selected navigation/cards use the shared brand-soft treatment. Semantic status colors remain distinct from selected-state colors.
+
+Primary actions and checked switches use the same soft green selected surface as active conversation-history and Settings navigation items, not the neutral sidebar background: `#d9e9e6` in light mode and `#223630` in dark mode. The action foreground follows the selected brand-soft foreground (`#315f59` light, `#bfd7d1` dark); checked switch thumbs use the same color. Hover surfaces follow `accent-hover`, and primary controls use the same subtle active-item border to stay distinguishable against panels. Unchecked switches remain neutral and distinct.
+
+Literal colors remain appropriate where the color is part of the content or another established visual language: user images, PDF/DOCX paper, actual websites, file-type icons, syntax highlighting, terminal ANSI colors, Git graph lane colors, and third-party brand marks. These exceptions must still remain readable against both TideCode themes.
+
 ## Browser interaction
 
 Browser startup, new tabs, and Home show a local TideCode page with a search/URL field. The address starts empty and receives focus when the new tab becomes active. Searches from either field use Google; URLs open directly. Empty submissions do nothing. The idle view has no loading indicator or page DevTools, and Reload is disabled until navigation. Home starts a fresh page session and resets navigation history.

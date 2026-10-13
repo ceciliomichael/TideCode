@@ -17,7 +17,7 @@ export function Switch({ checked, className = '', disabled = false, label, onCha
       onClick={() => onChange(!checked)}
       className={[
         'relative h-6 w-11 shrink-0 rounded-full transition-colors focus:outline-none focus-visible:outline-none',
-        checked ? 'bg-brand' : 'bg-border',
+        checked ? 'bg-action' : 'bg-switch-off-track',
         disabled ? 'cursor-not-allowed opacity-50' : '',
         className,
       ]
@@ -26,7 +26,8 @@ export function Switch({ checked, className = '', disabled = false, label, onCha
     >
       <span
         className={[
-          'absolute left-0.5 top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-sm transition-transform',
+          'absolute left-0.5 top-1/2 h-5 w-5 -translate-y-1/2 rounded-full shadow-sm transition-transform',
+          checked ? 'bg-action-foreground' : 'bg-switch-off-thumb',
           checked ? 'translate-x-5' : 'translate-x-0',
         ].join(' ')}
       />

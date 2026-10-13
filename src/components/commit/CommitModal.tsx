@@ -132,7 +132,7 @@ export function CommitModal({
 
   return createPortal(
     <div
-      className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-center bg-black/12 px-4"
+          className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-center bg-overlay-backdrop px-4"
       style={{ top: 'env(titlebar-area-height, 0px)' }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !isCommitting) {
@@ -207,8 +207,8 @@ export function CommitModal({
                 </span>
                 {hasChanges ? (
                   <>
-                    <span className="text-sm text-emerald-600 dark:text-emerald-400">+{addedLineCount}</span>
-                    <span className="text-sm text-red-600 dark:text-red-400">-{removedLineCount}</span>
+          <span className="text-sm text-git-added">+{addedLineCount}</span>
+          <span className="text-sm text-git-removed">-{removedLineCount}</span>
                   </>
                 ) : null}
               </div>
