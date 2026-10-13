@@ -8,91 +8,56 @@ const CIRCLE_RADIUS = 4
 const CIRCLE_STROKE_WIDTH = 2
 const GRAPH_LANE_COLORS = ['#FFB000', '#DC267F', '#994F00', '#40B0A6', '#B66DFF', '#4ea1ff'] as const
 
-function findLastGraphNodeIndex(nodes: GraphNode[], id: string): number {
-  for (let index = nodes.length - 1; index >= 0; index--) {
-    if (nodes[index].id === id) {
-      return index
-    }
-  }
-
-  return -1
-}
-
 export function GitGraphLane({ viewModel }: { viewModel: HistoryItemViewModel }) {
   const { entry, inputSwimlanes, outputSwimlanes, kind } = viewModel
 
   const inputIndex = inputSwimlanes.findIndex((node) => node.id === entry.hash)
   const circleIndex = inputIndex !== -1 ? inputIndex : inputSwimlanes.length
-  const circleColor =
-    circleIndex < outputSwimlanes.length
-      ? outputSwimlanes[circleIndex].color
-      : circleIndex < inputSwimlanes.length
-        ? inputSwimlanes[circleIndex].color
-        : GRAPH_LANE_COLORS[0]
+  const circleColor = inputIndex !== -1
+    ? inputSwimlanes[inputIndex].color
+    : outputSwimlanes.find((node) => node.id === entry.parentIds[0])?.color ?? GRAPH_LANE_COLORS[0]
 
   const svgElements: ReactNode[] = []
-  let outputSwimlaneIdx = 0
+  const halfHeight = SWIMLANE_HEIGHT / 2
 
   for (let index = 0; index < inputSwimlanes.length; index++) {
     const color = inputSwimlanes[index].color
+    const x1 = SWIMLANE_WIDTH * (index + 1)
 
     if (inputSwimlanes[index].id === entry.hash) {
-      if (index !== circleIndex) {
-        const x1 = SWIMLANE_WIDTH * (index + 1)
-        const x2 = SWIMLANE_WIDTH * (circleIndex + 1)
-        svgElements.push(
-          <path
-            key={`in-${index}`}
-            d={`M ${x1} 0 A ${SWIMLANE_WIDTH} ${SWIMLANE_WIDTH} 0 0 1 ${x1 - SWIMLANE_WIDTH} ${SWIMLANE_WIDTH} H ${x2}`}
-            stroke={color}
-            strokeWidth={1}
-            strokeLinecap="round"
-            fill="none"
-          />,
-        )
-      } else {
-        outputSwimlaneIdx++
-      }
-    } else if (
-      outputSwimlaneIdx < outputSwimlanes.length &&
-      inputSwimlanes[index].id === outputSwimlanes[outputSwimlaneIdx].id
-    ) {
-      if (index === outputSwimlaneIdx) {
-        const cx = SWIMLANE_WIDTH * (index + 1)
-        svgElements.push(
-          <line
-            key={`str-${index}`}
-            x1={cx}
-            y1={0}
-            x2={cx}
-            y2={SWIMLANE_HEIGHT}
-            stroke={color}
-            strokeWidth={1}
-            strokeLinecap="round"
-          />,
-        )
-      } else {
-        const x1 = SWIMLANE_WIDTH * (index + 1)
-        const x2 = SWIMLANE_WIDTH * (outputSwimlaneIdx + 1)
-        const r = SWIMLANE_CURVE_RADIUS
-        const halfH = SWIMLANE_HEIGHT / 2
-        svgElements.push(
-          <path
-            key={`shift-${index}`}
-            d={`M ${x1} 0 V ${halfH - r} A ${r} ${r} 0 0 1 ${x1 - r} ${halfH} H ${x2 + r} A ${r} ${r} 0 0 0 ${x2} ${halfH + r} V ${SWIMLANE_HEIGHT}`}
-            stroke={color}
-            strokeWidth={1}
-            strokeLinecap="round"
-            fill="none"
-          />,
-        )
-      }
-      outputSwimlaneIdx++
+      svgElements.push(
+        <line key={`in-${index}`} x1={x1} y1={0} x2={x1} y2={halfHeight} stroke={color} strokeWidth={1} strokeLinecap="round" />,
+      )
+      continue
+    }
+
+    const nextIndex = outputSwimlanes.findIndex((node) => node.id === inputSwimlanes[index].id)
+    if (nextIndex === -1) {
+      continue
+    }
+
+    const x2 = SWIMLANE_WIDTH * (nextIndex + 1)
+    if (x1 === x2) {
+      svgElements.push(
+        <line key={`str-${index}`} x1={x1} y1={0} x2={x2} y2={SWIMLANE_HEIGHT} stroke={color} strokeWidth={1} strokeLinecap="round" />,
+      )
+    } else {
+      const r = SWIMLANE_CURVE_RADIUS
+      svgElements.push(
+        <path
+          key={`shift-${index}`}
+          d={`M ${x1} 0 V ${halfHeight - r} C ${x1} ${halfHeight} ${x2} ${halfHeight} ${x2} ${halfHeight + r} V ${SWIMLANE_HEIGHT}`}
+          stroke={color}
+          strokeWidth={1}
+          strokeLinecap="round"
+          fill="none"
+        />,
+      )
     }
   }
 
-  for (let index = 1; index < entry.parentIds.length; index++) {
-    const parentOutputIndex = findLastGraphNodeIndex(outputSwimlanes, entry.parentIds[index])
+  for (const [index, parentId] of entry.parentIds.entries()) {
+    const parentOutputIndex = outputSwimlanes.findIndex((node) => node.id === parentId)
     if (parentOutputIndex === -1) {
       continue
     }
@@ -100,50 +65,23 @@ export function GitGraphLane({ viewModel }: { viewModel: HistoryItemViewModel })
     const parentColor = outputSwimlanes[parentOutputIndex].color
     const parentX = SWIMLANE_WIDTH * (parentOutputIndex + 1)
     const circleX = SWIMLANE_WIDTH * (circleIndex + 1)
-    const halfHeight = SWIMLANE_HEIGHT / 2
-    const controlY = halfHeight + SWIMLANE_CURVE_RADIUS + 1
-    svgElements.push(
-      <path
-        key={`par-${index}`}
-        d={`M ${circleX} ${halfHeight} C ${circleX} ${controlY} ${parentX} ${controlY} ${parentX} ${SWIMLANE_HEIGHT}`}
-        stroke={parentColor}
-        strokeWidth={1}
-        strokeLinecap="round"
-        fill="none"
-      />,
-    )
-  }
-
-  if (inputIndex !== -1) {
-    const circleX = SWIMLANE_WIDTH * (circleIndex + 1)
-    svgElements.push(
-      <line
-        key="l-to"
-        x1={circleX}
-        y1={0}
-        x2={circleX}
-        y2={SWIMLANE_HEIGHT / 2}
-        stroke={inputSwimlanes[inputIndex].color}
-        strokeWidth={1}
-        strokeLinecap="round"
-      />,
-    )
-  }
-
-  if (entry.parentIds.length > 0) {
-    const circleX = SWIMLANE_WIDTH * (circleIndex + 1)
-    svgElements.push(
-      <line
-        key="l-from"
-        x1={circleX}
-        y1={SWIMLANE_HEIGHT / 2}
-        x2={circleX}
-        y2={SWIMLANE_HEIGHT}
-        stroke={circleColor}
-        strokeWidth={1}
-        strokeLinecap="round"
-      />,
-    )
+    if (parentX === circleX) {
+      svgElements.push(
+        <line key={`par-${index}`} x1={circleX} y1={halfHeight} x2={parentX} y2={SWIMLANE_HEIGHT} stroke={parentColor} strokeWidth={1} strokeLinecap="round" />,
+      )
+    } else {
+      const controlY = halfHeight + SWIMLANE_CURVE_RADIUS + 1
+      svgElements.push(
+        <path
+          key={`par-${index}`}
+          d={`M ${circleX} ${halfHeight} C ${circleX} ${controlY} ${parentX} ${controlY} ${parentX} ${SWIMLANE_HEIGHT}`}
+          stroke={parentColor}
+          strokeWidth={1}
+          strokeLinecap="round"
+          fill="none"
+        />,
+      )
+    }
   }
 
   const nodeX = SWIMLANE_WIDTH * (circleIndex + 1)
@@ -189,7 +127,7 @@ export function GitGraphLane({ viewModel }: { viewModel: HistoryItemViewModel })
     )
   }
 
-  const totalLanes = Math.max(inputSwimlanes.length, outputSwimlanes.length, 1) + 1
+  const totalLanes = Math.max(inputSwimlanes.length, outputSwimlanes.length, circleIndex + 1) + 1
   const svgWidth = SWIMLANE_WIDTH * totalLanes
 
   return (

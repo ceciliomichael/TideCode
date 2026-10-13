@@ -25,34 +25,32 @@ export function computeSwimlanes(entries: GitHistoryEntry[]): HistoryItemViewMod
 
   for (const entry of entries) {
     const kind: 'HEAD' | 'node' = entry.isHead ? 'HEAD' : 'node'
-    const outputSwimlanesFromPrev = viewModels.at(-1)?.outputSwimlanes ?? []
-    const inputSwimlanes = outputSwimlanesFromPrev.map((node) => ({ ...node }))
-    const outputSwimlanes: GraphNode[] = []
+    const inputSwimlanes = (viewModels.at(-1)?.outputSwimlanes ?? []).map((node) => ({ ...node }))
+    const activeIndex = inputSwimlanes.findIndex((node) => node.id === entry.hash)
+    const activeColor = activeIndex === -1 ? null : inputSwimlanes[activeIndex].color
+    const outputSwimlanes = inputSwimlanes.filter((node) => node.id !== entry.hash)
 
-    let firstParentAdded = false
-
-    if (entry.parentIds.length > 0) {
-      for (const node of inputSwimlanes) {
-        if (node.id === entry.hash) {
-          if (!firstParentAdded) {
-            outputSwimlanes.push({
-              id: entry.parentIds[0],
-              color: node.color,
-            })
-            firstParentAdded = true
-          }
-          continue
-        }
-        outputSwimlanes.push({ ...node })
+    for (const [parentIndex, parentId] of entry.parentIds.entries()) {
+      // A parent may already be on another lane (notably for Git stash commits).
+      // Reuse that lane instead of drawing two independent copies of the same commit.
+      if (outputSwimlanes.some((node) => node.id === parentId)) {
+        continue
       }
-    }
 
-    for (let index = firstParentAdded ? 1 : 0; index < entry.parentIds.length; index++) {
-      colorIndex = rot(colorIndex + 1, GRAPH_LANE_COLORS.length)
-      outputSwimlanes.push({
-        id: entry.parentIds[index],
-        color: GRAPH_LANE_COLORS[colorIndex],
-      })
+      let color: string
+      if (parentIndex === 0 && activeColor !== null) {
+        color = activeColor
+      } else {
+        colorIndex = rot(colorIndex + 1, GRAPH_LANE_COLORS.length)
+        color = GRAPH_LANE_COLORS[colorIndex]
+      }
+
+      const nextNode = { id: parentId, color }
+      if (parentIndex === 0 && activeIndex !== -1) {
+        outputSwimlanes.splice(activeIndex, 0, nextNode)
+      } else {
+        outputSwimlanes.push(nextNode)
+      }
     }
 
     viewModels.push({ entry, kind, inputSwimlanes, outputSwimlanes })
