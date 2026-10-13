@@ -26,14 +26,19 @@ export interface CreateGitBranchInput {
 
 export interface GitFileDiff {
   addedLineCount?: number
+  changeStatus?: 'added' | 'modified' | 'deleted' | 'renamed' | 'conflicted' | 'untracked'
   fileName: string
+  indexContent?: string | null
   isDeleted?: boolean
+  originalFileName?: string
   isStaged: boolean
   isUnstaged: boolean
   isUntracked: boolean
   newContent: string
   oldContent: string | null
   removedLineCount?: number
+  stagedChangeStatus?: GitFileDiff['changeStatus']
+  unstagedChangeStatus?: GitFileDiff['changeStatus']
 }
 
 export interface GitDiffSnapshot {

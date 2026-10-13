@@ -183,6 +183,12 @@ function DiffRow({
   const iconConfig = resolveFileIconConfig({ fileName: diff.fileName })
   const FileIcon = iconConfig.icon
   const { normalizedPath } = splitFilePath(diff.fileName)
+  const statusLabel = diff.changeStatus === 'conflicted' ? 'U'
+    : diff.changeStatus === 'renamed' ? 'R'
+      : diff.changeStatus === 'untracked' ? '?'
+        : diff.changeStatus === 'added' ? 'A' : null
+  const statusColor = diff.changeStatus === 'conflicted' ? 'text-danger-foreground'
+    : diff.changeStatus === 'renamed' ? 'text-git-renamed' : 'text-git-added'
 
   return (
     <div
@@ -200,6 +206,7 @@ function DiffRow({
           <FileIcon size={14} style={{ color: iconConfig.color }} className="shrink-0" />
           <span className="relative top-px inline-flex min-w-0 items-center gap-1.5">
               <PathLabel path={normalizedPath} className="min-w-0 leading-[1] text-foreground" />
+               {statusLabel ? <span title={diff.originalFileName ? `Renamed from ${diff.originalFileName}` : diff.changeStatus} className={`shrink-0 text-[10px] font-bold ${statusColor}`}>{statusLabel}</span> : null}
               <DiffLineSummary addedLineCount={diff.addedLineCount} removedLineCount={diff.removedLineCount} />
           </span>
         </span>

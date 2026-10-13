@@ -45,6 +45,11 @@ function areDiffSnapshotsEqual(left: ConversationDiffSnapshot, right: Conversati
       leftFileDiff.fileName !== rightFileDiff.fileName ||
       leftFileDiff.addedLineCount !== rightFileDiff.addedLineCount ||
       leftFileDiff.contentSignature !== rightFileDiff.contentSignature ||
+      leftFileDiff.indexContent !== rightFileDiff.indexContent ||
+      leftFileDiff.changeStatus !== rightFileDiff.changeStatus ||
+      leftFileDiff.stagedChangeStatus !== rightFileDiff.stagedChangeStatus ||
+      leftFileDiff.unstagedChangeStatus !== rightFileDiff.unstagedChangeStatus ||
+      leftFileDiff.originalFileName !== rightFileDiff.originalFileName ||
       leftFileDiff.isDeleted !== rightFileDiff.isDeleted ||
       leftFileDiff.removedLineCount !== rightFileDiff.removedLineCount ||
       leftFileDiff.isStaged !== rightFileDiff.isStaged ||
@@ -72,7 +77,12 @@ function areGitStatusSnapshotsEqual(left: ConversationDiffSnapshot, right: Conve
       !rightFileDiff ||
       leftFileDiff.isStaged !== rightFileDiff.isStaged ||
       leftFileDiff.isUnstaged !== rightFileDiff.isUnstaged ||
-      leftFileDiff.isUntracked !== rightFileDiff.isUntracked
+      leftFileDiff.isUntracked !== rightFileDiff.isUntracked ||
+      leftFileDiff.changeStatus !== rightFileDiff.changeStatus ||
+      leftFileDiff.stagedChangeStatus !== rightFileDiff.stagedChangeStatus ||
+      leftFileDiff.unstagedChangeStatus !== rightFileDiff.unstagedChangeStatus ||
+      leftFileDiff.originalFileName !== rightFileDiff.originalFileName ||
+      leftFileDiff.isDeleted !== rightFileDiff.isDeleted
     ) {
       return false
     }
@@ -98,6 +108,11 @@ export function mergeGitStatusSnapshot(
       isStaged: statusFileDiff.isStaged,
       isUnstaged: statusFileDiff.isUnstaged,
       isUntracked: statusFileDiff.isUntracked,
+      isDeleted: statusFileDiff.isDeleted,
+      changeStatus: statusFileDiff.changeStatus,
+      stagedChangeStatus: statusFileDiff.stagedChangeStatus,
+      unstagedChangeStatus: statusFileDiff.unstagedChangeStatus,
+      originalFileName: statusFileDiff.originalFileName,
     }]
   })
 

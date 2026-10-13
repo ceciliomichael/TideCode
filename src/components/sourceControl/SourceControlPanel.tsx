@@ -1,7 +1,7 @@
 import { GitCommitHorizontal } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toUserFacingErrorMessage } from '../../lib/userFacingError'
-import type { ConversationFileDiff } from '../../lib/chatDiffs'
+import { projectGitFileDiffScope, type ConversationFileDiff } from '../../lib/chatDiffs'
 import type { DiffPanelScope } from '../chat/ConversationDiffPanel'
 import type {
   GitCommitModelSelection,
@@ -19,6 +19,7 @@ import { useSourceControlHistory } from './useSourceControlHistory'
 
 interface SourceControlPanelProps {
   aheadCommitCount: number
+  behindCommitCount: number
   commitModelSelection: GitCommitModelSelection
   hasRepository: boolean
   hasRemote: boolean
@@ -33,7 +34,7 @@ interface SourceControlPanelProps {
   onOpenCommitModal: () => void
   onDiffPanelFileFocus: (filePath: string) => void
   onOpenDiffPanel: () => void
-  onQuickCommit: (input: { action: 'commit' | 'commit-and-push'; message: string }) => Promise<GitCommitResult | null>
+  onQuickCommit: (input: { action: 'commit' | 'commit-and-push'; includeUnstaged?: boolean; message: string }) => Promise<GitCommitResult | null>
   onRefreshAll: () => Promise<void>
   onSectionOpenChange: (nextValue: Record<'changes' | 'commit' | 'history' | 'staged' | 'unstaged', boolean>) => void
   onStageFiles: (filePaths: string[]) => Promise<void>
@@ -51,6 +52,7 @@ interface SourceControlPanelProps {
 
 function SourceControlPanelContent({
   aheadCommitCount,
+  behindCommitCount,
   commitModelSelection,
   hasRepository,
   hasRemote,
@@ -123,9 +125,9 @@ function SourceControlPanelContent({
       fileDiff.isUnstaged || fileDiff.isUntracked || (!fileDiff.isStaged && !fileDiff.isUnstaged && !fileDiff.isUntracked),
     [],
   )
-  const stagedFileDiffs = useMemo(() => fileDiffs.filter((fileDiff) => fileDiff.isStaged), [fileDiffs])
+  const stagedFileDiffs = useMemo(() => fileDiffs.filter((fileDiff) => fileDiff.isStaged).map((fileDiff) => projectGitFileDiffScope(fileDiff, 'staged')), [fileDiffs])
   const unstagedFileDiffs = useMemo(
-    () => fileDiffs.filter((fileDiff) => isUnstagedLikeFileDiff(fileDiff)),
+    () => fileDiffs.filter((fileDiff) => isUnstagedLikeFileDiff(fileDiff)).map((fileDiff) => projectGitFileDiffScope(fileDiff, 'unstaged')),
     [fileDiffs, isUnstagedLikeFileDiff],
   )
   const shouldUseSplitLayout = isChangesSectionOpen
@@ -307,22 +309,31 @@ function SourceControlPanelContent({
       return
     }
 
+    const includeUnstaged = stagedFileDiffs.length === 0
+    if (includeUnstaged && !window.confirm('Nothing is staged. Stage all current changes and commit them?')) {
+      return
+    }
+
     setIsCommitActionMenuOpen(false)
     setOperationNotice(null)
 
     try {
       const commitResult = await onQuickCommit({
         action,
+        includeUnstaged,
         message: commitMessage,
       })
 
-      if (commitResult) {
+      if (!commitResult) return
+      try {
         await appendCommittedHistoryEntry(commitResult)
+      } catch (historyError) {
+        console.error('Failed to update Source Control history after the commit completed.', historyError)
       }
       setCommitMessage('')
       setOperationNotice({
-        kind: 'success',
-        message: action === 'commit-and-push' ? 'Committed and pushed changes.' : 'Committed changes.',
+        kind: commitResult.postCommitWarning ? 'warning' : 'success',
+        message: commitResult.postCommitWarning ?? (action === 'commit-and-push' ? 'Committed and pushed changes.' : 'Committed changes.'),
       })
     } catch (error) {
       setOperationNotice({
@@ -409,6 +420,7 @@ function SourceControlPanelContent({
 
           <SourceControlChangesSection
             aheadCommitCount={aheadCommitCount}
+            behindCommitCount={behindCommitCount}
             commitModelSelection={commitModelSelection}
             commitActionControlsRef={commitActionControlsRef}
             commitMessage={commitMessage}

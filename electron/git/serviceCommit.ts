@@ -442,13 +442,19 @@ export async function gitCommit(input: GitCommitInput): Promise<GitCommitResult>
     throw new Error('No git repository was found for this workspace.')
   }
 
-  const currentStagedNumstat = await readStagedNumstatText(repoRootPath)
-  if (currentStagedNumstat.trim().length === 0) {
+  if (input.includeUnstaged === true) {
     try {
       await runGit(['add', '-A'], repoRootPath)
     } catch (error) {
       throw new Error(`Failed to stage changes: ${getErrorMessage(error)}`)
     }
+  }
+
+  // The cached numstat can be empty for changes with no textual diff (e.g.
+  // empty-file additions). A commit must depend on the index, not that summary.
+  const { stdout: stagedPaths } = await runGit(['diff', '--cached', '--name-only', '-z'], repoRootPath)
+  if (stagedPaths.length === 0) {
+    throw new Error('No staged changes. Stage files before committing, or explicitly include unstaged changes.')
   }
 
   let stagedNumstatText = await readStagedNumstatText(repoRootPath)
@@ -593,7 +599,9 @@ export async function gitCommit(input: GitCommitInput): Promise<GitCommitResult>
         throw new Error('Git is not available in the current environment.')
       }
 
-      throw new Error(`Committed successfully but failed to push: ${getErrorMessage(error)}`)
+      postCommitWarning = input.action === 'commit-and-push'
+        ? `Committed locally, but push failed: ${getErrorMessage(error)}`
+        : `Committed locally, but the follow-up action failed: ${getErrorMessage(error)}`
     }
   }
 

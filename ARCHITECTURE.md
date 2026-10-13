@@ -42,6 +42,8 @@ Windows workspace copy/cut writes native file-drop clipboard data in addition to
 
 ## Renderer resource lifecycle
 
+Source Control reads a single Git porcelain status snapshot to preserve staged, unstaged, rename, and unmerged metadata and surfaces errors rather than replacing failed reads with empty lists. Full Git file snapshots carry HEAD, Git index, and working-tree text separately; the existing Staged and Unstaged views project HEAD-to-index and index-to-worktree diffs. Status-only snapshots retain metadata without pretending to contain renderable file contents. Commit operations only stage all when `includeUnstaged` is explicitly authorized, and a successful local commit followed by failed push/PR follow-up is returned with a warning rather than reported as a failed commit. History refresh compares actual refs and commit rows, not just HEAD, so remote-only updates remain visible.
+
 Heavy editor and preview runtimes are demand-loaded. Monaco and its language workers are not prewarmed during application startup, Settings plus its MCP/skills state mount only while Settings is open, and PDF/DOCX renderer modules load only when those preview types are requested. Shiki highlighting is also initialized on first use rather than at renderer bootstrap.
 
 Long-lived renderer caches use bounded retention. Highlighted code tokens, Mermaid SVGs, compaction markers, full Git diff snapshots, and Monaco diff models all have explicit caps; unreferenced Monaco diff models also expire after a short grace period. Native source-control notifications remain the primary refresh path while slower polling acts only as a fallback.

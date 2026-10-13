@@ -463,6 +463,17 @@ export async function readHeadFile(repoRootPath: string, filePath: string, optio
   }
 }
 
+export async function readIndexFile(repoRootPath: string, filePath: string, options: GitExecutionOptions = {}) {
+  try {
+    const { stdout } = await runGitBuffer(['show', `:${normalizeGitFilePath(filePath)}`], repoRootPath, options)
+    const content = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
+    return isBinaryContent(content) ? null : content.toString('utf8')
+  } catch {
+    // The index has no stage-zero blob for untracked, deleted, or unresolved paths.
+    return null
+  }
+}
+
 export async function resolveAndValidateGitFilePath(repoRootPath: string, rawFilePath: string) {
   const normalizedFilePath = normalizeForGitPathspec(rawFilePath.trim())
   if (normalizedFilePath.length === 0) {

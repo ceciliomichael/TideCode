@@ -1,17 +1,30 @@
 import type { GitDiffLoadOptions, GitDiffSnapshot, GitFileDiff } from '../../src/types/chat'
-import { readHeadFile, readWorkingTreeFile, resolveRepositoryRoot, runGit } from './repositoryContext'
-import { normalizeGitFilePath, splitNullDelimitedOutput } from './serviceHelpers'
+import { readHeadFile, readIndexFile, readWorkingTreeFile, resolveRepositoryRoot, runGit } from './repositoryContext'
+import { normalizeGitFilePath } from './serviceHelpers'
 
-interface ChangedFileSets {
-  allChangedFiles: string[]
-  stagedFileSet: Set<string>
-  unstagedFileSet: Set<string>
-  untrackedFileSet: Set<string>
+type ChangeStatus = NonNullable<GitFileDiff['changeStatus']>
+interface ChangedFileStatus {
+  fileName: string
+  changeStatus: ChangeStatus
+  isStaged: boolean
+  isUnstaged: boolean
+  isUntracked: boolean
+  isDeleted: boolean
+  stagedChangeStatus?: ChangeStatus
+  unstagedChangeStatus?: ChangeStatus
+  originalFileName?: string
 }
 
 const MAX_CONCURRENT_FILE_READS = 24
 const BACKGROUND_GIT_TIMEOUT_MS = 30_000
 const BACKGROUND_GIT_OPTIONS = { timeoutMs: BACKGROUND_GIT_TIMEOUT_MS }
+
+function classifyGitChangeCode(code: string): ChangeStatus {
+  if (code === 'R' || code === 'C') return 'renamed'
+  if (code === 'D') return 'deleted'
+  if (code === 'A') return 'added'
+  return 'modified'
+}
 
 async function mapWithConcurrency<T, R>(items: readonly T[], worker: (item: T) => Promise<R>, limit: number) {
   const results: R[] = []
@@ -30,61 +43,77 @@ async function mapWithConcurrency<T, R>(items: readonly T[], worker: (item: T) =
   return results
 }
 
-async function readChangedFileSets(repoRootPath: string): Promise<ChangedFileSets> {
-  const [unstagedResult, stagedResult, untrackedResult] = await Promise.all([
-    runGit(['diff', '--name-only', '-z', '--', '.'], repoRootPath, BACKGROUND_GIT_OPTIONS).catch(() => ({ stdout: '' })),
-    runGit(['diff', '--name-only', '-z', '--cached', '--', '.'], repoRootPath, BACKGROUND_GIT_OPTIONS).catch(() => ({ stdout: '' })),
-    runGit(['ls-files', '--others', '--exclude-standard', '-z', '--', '.'], repoRootPath, BACKGROUND_GIT_OPTIONS).catch(() => ({ stdout: '' })),
-  ])
+export function parseGitPorcelainStatus(output: string): ChangedFileStatus[] {
+  const fields = output.split('\0')
+  const changedFiles: ChangedFileStatus[] = []
+  const unmergedCodes = new Set(['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU'])
 
-  const unstagedFiles = splitNullDelimitedOutput(unstagedResult.stdout)
-  const stagedFiles = splitNullDelimitedOutput(stagedResult.stdout)
-  const untrackedFiles = splitNullDelimitedOutput(untrackedResult.stdout)
+  for (let index = 0; index < fields.length; index++) {
+    const record = fields[index]
+    if (!record || record.length < 4 || record[2] !== ' ') continue
 
-  const stagedFileSet = new Set(stagedFiles.map((filePath) => normalizeGitFilePath(filePath)))
-  const unstagedFileSet = new Set(unstagedFiles.map((filePath) => normalizeGitFilePath(filePath)))
-  const untrackedFileSet = new Set(untrackedFiles.map((filePath) => normalizeGitFilePath(filePath)))
-  const allChangedFiles = Array.from(new Set([...unstagedFileSet, ...stagedFileSet, ...untrackedFileSet]))
+    const code = record.slice(0, 2)
+    const indexCode = code[0]
+    const worktreeCode = code[1]
+    const fileName = normalizeGitFilePath(record.slice(3))
+    const isUntracked = code === '??'
+    const isConflicted = unmergedCodes.has(code)
+    const isRenamed = indexCode === 'R' || worktreeCode === 'R' || indexCode === 'C' || worktreeCode === 'C'
+    const originalFileName = isRenamed ? normalizeGitFilePath(fields[++index] ?? '') : undefined
+    const isDeleted = indexCode === 'D' || worktreeCode === 'D'
+    const stagedChangeStatus = !isConflicted && !isUntracked && indexCode !== ' '
+      ? classifyGitChangeCode(indexCode) : undefined
+    const unstagedChangeStatus = isConflicted ? 'conflicted'
+      : isUntracked ? 'untracked'
+        : worktreeCode !== ' ' ? classifyGitChangeCode(worktreeCode) : undefined
+    const changeStatus: ChangeStatus = isConflicted ? 'conflicted'
+      : isUntracked ? 'untracked'
+        : isRenamed ? 'renamed'
+          : isDeleted ? 'deleted'
+            : indexCode === 'A' || worktreeCode === 'A' ? 'added' : 'modified'
 
-  return {
-    allChangedFiles,
-    stagedFileSet,
-    unstagedFileSet,
-    untrackedFileSet,
+    changedFiles.push({
+      fileName,
+      changeStatus,
+      isStaged: !isConflicted && !isUntracked && indexCode !== ' ',
+      isUnstaged: isConflicted || (!isUntracked && worktreeCode !== ' '),
+      isUntracked,
+      isDeleted,
+      ...(stagedChangeStatus ? { stagedChangeStatus } : {}),
+      ...(unstagedChangeStatus ? { unstagedChangeStatus } : {}),
+      ...(originalFileName ? { originalFileName } : {}),
+    })
   }
+
+  return changedFiles
+}
+
+async function readChangedFiles(repoRootPath: string): Promise<ChangedFileStatus[]> {
+  // One porcelain snapshot keeps rename and merge codes coherent with file lists.
+  // Errors must propagate: empty output must mean clean, not an unreadable index.
+  const { stdout } = await runGit(
+    ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.'],
+    repoRootPath,
+    BACKGROUND_GIT_OPTIONS,
+  )
+  return parseGitPorcelainStatus(stdout)
 }
 
 async function buildGitFileDiff(
   repoRootPath: string,
-  filePath: string,
-  changedFileSets: Omit<ChangedFileSets, 'allChangedFiles'>,
+  status: ChangedFileStatus,
 ): Promise<GitFileDiff> {
-  const normalizedFilePath = normalizeGitFilePath(filePath)
-  const statusMetadata = {
-    fileName: normalizedFilePath,
-    isStaged: changedFileSets.stagedFileSet.has(normalizedFilePath),
-    isUnstaged: changedFileSets.unstagedFileSet.has(normalizedFilePath),
-    isUntracked: changedFileSets.untrackedFileSet.has(normalizedFilePath),
-  }
-  const [oldContent, newContent] = await Promise.all([
-    readHeadFile(repoRootPath, filePath, BACKGROUND_GIT_OPTIONS),
-    readWorkingTreeFile(repoRootPath, filePath),
+  const [oldContent, indexContent, newContent] = await Promise.all([
+    readHeadFile(repoRootPath, status.originalFileName ?? status.fileName, BACKGROUND_GIT_OPTIONS),
+    readIndexFile(repoRootPath, status.fileName, BACKGROUND_GIT_OPTIONS),
+    readWorkingTreeFile(repoRootPath, status.fileName),
   ])
-
-  if (newContent === null) {
-    return {
-      ...statusMetadata,
-      addedLineCount: 0,
-      newContent: '',
-      oldContent: null,
-      removedLineCount: 0,
-    }
-  }
-
   return {
-    ...statusMetadata,
-    newContent,
+    ...status,
+    indexContent,
+    newContent: newContent ?? '',
     oldContent,
+    ...(newContent === null ? { addedLineCount: 0, removedLineCount: 0 } : {}),
   }
 }
 
@@ -100,16 +129,13 @@ export async function getGitDiffSnapshot(
     }
   }
 
-  const changedFileSets = await readChangedFileSets(repoRootPath)
+  const changedFiles = await readChangedFiles(repoRootPath)
   const fileDiffs = options?.includeContent === false
-    ? changedFileSets.allChangedFiles.map((filePath): GitFileDiff => {
-        const normalizedFilePath = normalizeGitFilePath(filePath)
+    ? changedFiles.map((status): GitFileDiff => {
         return {
+          ...status,
           addedLineCount: 0,
-          fileName: normalizedFilePath,
-          isStaged: changedFileSets.stagedFileSet.has(normalizedFilePath),
-          isUnstaged: changedFileSets.unstagedFileSet.has(normalizedFilePath),
-          isUntracked: changedFileSets.untrackedFileSet.has(normalizedFilePath),
+          indexContent: null,
           newContent: '',
           oldContent: null,
           removedLineCount: 0,
@@ -117,13 +143,8 @@ export async function getGitDiffSnapshot(
       })
     : (
         await mapWithConcurrency(
-          changedFileSets.allChangedFiles,
-          (filePath) =>
-            buildGitFileDiff(repoRootPath, filePath, {
-              stagedFileSet: changedFileSets.stagedFileSet,
-              untrackedFileSet: changedFileSets.untrackedFileSet,
-              unstagedFileSet: changedFileSets.unstagedFileSet,
-            }),
+          changedFiles,
+          (status) => buildGitFileDiff(repoRootPath, status),
           MAX_CONCURRENT_FILE_READS,
         )
       )

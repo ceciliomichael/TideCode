@@ -65,6 +65,7 @@ test('gitCommit auto-creates a feature branch for commit-and-create-pr on defaul
     const result = await gitCommit({
       action: 'commit-and-create-pr',
       message: 'fix: support autonomous PR commits',
+      includeUnstaged: true,
       workspacePath: repoPath,
     })
 
@@ -96,6 +97,7 @@ test('gitCommit creates PR branches when the preferred remote is not named origi
     const result = await gitCommit({
       action: 'commit-and-create-pr',
       message: 'fix: support named git remotes for pull requests',
+      includeUnstaged: true,
       workspacePath: repoPath,
     })
 
@@ -119,6 +121,7 @@ test('gitCommit respects preferredBranchName when creating PR commits', async ()
     const result = await gitCommit({
       action: 'commit-and-create-pr',
       message: 'feat: add preferred branch support',
+      includeUnstaged: true,
       preferredBranchName: 'feat/custom-branch',
       workspacePath: repoPath,
     })
@@ -147,6 +150,7 @@ test('gitCommit keeps manual commit messages exactly as provided', async () => {
     await gitCommit({
       action: 'commit',
       message: 'fix: tighten commit pipeline formatting',
+      includeUnstaged: true,
       workspacePath: repoPath,
     })
 
@@ -163,6 +167,7 @@ test('gitCommit creates and checks out a preferred branch for a local commit', a
     const result = await gitCommit({
       action: 'commit',
       message: 'feat: add local preferred branch support',
+      includeUnstaged: true,
       preferredBranchName: 'feat/local-branch',
       workspacePath: repoPath,
     })
@@ -187,6 +192,7 @@ test('gitCommit commit-and-push preserves the selected branch and its configured
     const result = await gitCommit({
       action: 'commit-and-push',
       message: 'fix: preserve selected branch upstream',
+      includeUnstaged: true,
       workspacePath: repoPath,
     })
 

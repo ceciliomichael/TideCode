@@ -2,6 +2,10 @@
 
 ## Light and dark color system
 
+Source Control retains the existing Commit split button, Staged/Unstaged sections, file rows, history graph, and accent palette. File status indicators use the established Git semantic colors; conflicted paths are identified explicitly. Destructive discard actions and stage-all-before-commit require user confirmation, and operation notices distinguish complete success, partial success (local commit followed by failed remote action), and errors without clearing an unsuccessful commit message.
+
+Advanced commit opens as a modal over the existing Source Control panel without closing it. Its remote-only choices remain disabled when no remote is configured; completing a local commit without finishing a remote push/PR step is clearly labeled as partial success. The composer branch selector keeps its popup open after a failed checkout so the Git error is visible, and closes after successful checkout. Creation and checkout preserve local changes on failure; no auto-pull is triggered by a branch switch.
+
 TideCode uses one semantic color hierarchy for all app-owned UI. Light mode starts from a light canvas and distinguishes controls and nested surfaces with progressively darker muted, hover, and pressed surfaces. Dark mode mirrors that relationship from the existing near-black canvas: panels, fields, raised menus, hover states, and pressed states become progressively lighter so controls remain visibly separated instead of blending into the black base.
 
 `src/index.css` owns the renderer palette. Components should use semantic roles such as `background`, `surface`, `surface-muted`, `surface-raised`, `surface-hover`, `foreground`, `muted-foreground`, `border`, `action`, `brand-soft`, and the success/warning/danger/info families rather than local light/dark color pairs. Primary actions use `action` with `action-foreground`; soft brand selections use `brand-soft` with `brand-soft-foreground`. Git additions, removals, modifications, and renames use their semantic Git roles consistently across chat, Explorer, commits, and Source Control.

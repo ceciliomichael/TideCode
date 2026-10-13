@@ -76,7 +76,7 @@ export function CommitModal({
 
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape' && !isCommitting) {
+      if (event.key === 'Escape' && !isCommitting && !isSubmitting && !isSwitchingBranch) {
         onClose()
       }
     }
@@ -85,7 +85,7 @@ export function CommitModal({
     return () => {
       document.removeEventListener('keydown', handleEscape)
     }
-  }, [isCommitting, onClose])
+  }, [isCommitting, isSubmitting, isSwitchingBranch, onClose])
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -94,9 +94,15 @@ export function CommitModal({
       setLocalError(null)
 
       try {
+        const stagedCount = status?.stagedFileCount ?? diffSnapshot.fileDiffs.filter((fileDiff) => fileDiff.isStaged).length
+        const includeUnstaged = stagedCount === 0
+        if (includeUnstaged && !window.confirm('Nothing is staged. Stage all current changes and commit them?')) {
+          return
+        }
         const targetBranch = normalizeGitBranchName(commitBranchName)
         await onCommit({
           action: selectedAction,
+          includeUnstaged,
           message: commitMessage,
           preferredBranchName: targetBranch.length > 0 ? targetBranch : undefined,
         })
@@ -106,7 +112,7 @@ export function CommitModal({
         setIsSubmitting(false)
       }
     },
-    [commitBranchName, commitMessage, onCommit, selectedAction],
+    [commitBranchName, commitMessage, diffSnapshot.fileDiffs, onCommit, selectedAction, status?.stagedFileCount],
   )
 
   const stagedFileCount = status?.stagedFileCount ?? diffSnapshot.fileDiffs.filter((fileDiff) => fileDiff.isStaged).length
@@ -115,13 +121,15 @@ export function CommitModal({
   const addedLineCount = diffSnapshot.totalAddedLineCount
   const removedLineCount = diffSnapshot.totalRemovedLineCount
   const hasChanges = totalChangedFileCount > 0 || addedLineCount > 0 || removedLineCount > 0
+  const hasRemote = Boolean(branchState.remoteUrl)
   const disableActionSelection = isSubmitting || isCommitting || isSwitchingBranch
   const disableFields = isSubmitting || isCommitting || isSwitchingBranch
   const disableSubmit =
     isSubmitting ||
     isCommitting ||
     isSwitchingBranch ||
-    !hasChanges
+    !hasChanges ||
+    (selectedAction !== 'commit' && !hasRemote)
 
   const actionLabel =
     selectedAction === 'commit'
@@ -135,7 +143,7 @@ export function CommitModal({
           className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-center bg-overlay-backdrop px-4"
       style={{ top: 'env(titlebar-area-height, 0px)' }}
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !isCommitting) {
+        if (event.target === event.currentTarget && !isCommitting && !isSubmitting && !isSwitchingBranch) {
           onClose()
         }
       }}
@@ -159,7 +167,7 @@ export function CommitModal({
           <button
             type="button"
             aria-label="Close commit dialog"
-            disabled={isCommitting}
+            disabled={isCommitting || isSubmitting || isSwitchingBranch}
             onClick={onClose}
             className="inline-flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -191,7 +199,7 @@ export function CommitModal({
                   />
                 </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">
-                  This branch will be used for the commit and pull request. Missing branches are created automatically.
+                   Optional: switch to this branch before committing, or create it if missing. Git will refuse the switch if it would overwrite local changes.
                 </p>
               </div>
             </div>
@@ -243,7 +251,7 @@ export function CommitModal({
             <div className="w-full overflow-hidden rounded-xl border border-border divide-y divide-border">
               {COMMIT_NEXT_STEPS.map((step) => {
                 const isSelected = step.value === selectedAction
-                const isDisabled = disableActionSelection
+                const isDisabled = disableActionSelection || (!hasRemote && step.value !== 'commit')
 
                 return (
                   <button
@@ -256,6 +264,7 @@ export function CommitModal({
                       setSelectedAction(step.value)
                     }}
                     disabled={isDisabled}
+                      title={!hasRemote && step.value !== 'commit' ? 'Configure a Git remote before pushing or creating a pull request.' : undefined}
                     className={[
                       'flex min-h-11 w-full items-center justify-start gap-2 px-3 text-left text-sm transition-colors',
                       isSelected

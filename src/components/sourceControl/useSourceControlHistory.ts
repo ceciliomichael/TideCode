@@ -22,7 +22,6 @@ export function useSourceControlHistory({
 }: UseSourceControlHistoryInput) {
   useGitSourceControlWatcher(normalizedWorkspacePath)
   const historyRowRefMap = useRef(new Map<string, HTMLButtonElement | null>())
-  const headHashRef = useRef<string | null>(null)
   const [historyEntries, setHistoryEntries] = useState<GitHistoryEntry[]>([])
   const [headHash, setHeadHash] = useState<string | null>(null)
   const [hasMoreHistory, setHasMoreHistory] = useState(false)
@@ -39,7 +38,7 @@ export function useSourceControlHistory({
   const historyViewModels = useMemo(() => computeSwimlanes(historyEntries), [historyEntries])
 
   const loadHistoryPage = useCallback(
-    async (offset: number, append: boolean, options?: { skipIfHeadUnchanged?: boolean }) => {
+    async (offset: number, append: boolean) => {
       if (!hasWorkspacePath) return
       const requestId = historyRequestIdRef.current + 1
       historyRequestIdRef.current = requestId
@@ -52,15 +51,16 @@ export function useSourceControlHistory({
         return
       }
 
-      if (!append && options?.skipIfHeadUnchanged && result.headHash === headHashRef.current) {
-        return
-      }
-      headHashRef.current = result.headHash
       setHeadHash(result.headHash)
       setHasMoreHistory(result.hasMore)
-      setHistoryEntries((currentEntries) =>
-        append ? [...currentEntries, ...result.entries] : result.entries,
-      )
+      setHistoryEntries((currentEntries) => {
+        if (append) return [...currentEntries, ...result.entries]
+        const unchanged = currentEntries.length === result.entries.length && currentEntries.every((entry, index) => {
+          const next = result.entries[index]
+          return next && entry.hash === next.hash && entry.refs.join('|') === next.refs.join('|') && entry.isHead === next.isHead
+        })
+        return unchanged ? currentEntries : result.entries
+      })
       setSelectedCommitHash((currentSelectedHash) => {
         if (currentSelectedHash && result.entries.some((entry) => entry.hash === currentSelectedHash)) {
           return currentSelectedHash
@@ -74,11 +74,10 @@ export function useSourceControlHistory({
     [hasWorkspacePath, normalizedWorkspacePath],
   )
 
-  const refreshHistory = useCallback(async (options?: { silent?: boolean; skipIfHeadUnchanged?: boolean }) => {
+  const refreshHistory = useCallback(async (options?: { silent?: boolean }) => {
     if (!hasWorkspacePath || !hasRepository) {
       historyRequestIdRef.current += 1
       setHistoryEntries([])
-      headHashRef.current = null
       setHeadHash(null)
       setHasMoreHistory(false)
       setHistoryError(null)
@@ -91,7 +90,7 @@ export function useSourceControlHistory({
     setHistoryError(null)
     if (!options?.silent) setIsLoadingHistory(true)
     try {
-      await loadHistoryPage(0, false, { skipIfHeadUnchanged: options?.skipIfHeadUnchanged })
+      await loadHistoryPage(0, false)
     } catch (error) {
       if (!options?.silent) {
         setHistoryEntries([])
@@ -109,7 +108,6 @@ export function useSourceControlHistory({
     const nextEntry = commitResult.historyEntry
     if (nextEntry) {
       setHistoryEntries((currentValue) => prependCommittedHistoryEntry(currentValue, nextEntry))
-      headHashRef.current = nextEntry.hash
       setHeadHash(nextEntry.hash)
       setSelectedCommitHash(nextEntry.hash)
       setHistoryError(null)
@@ -124,7 +122,6 @@ export function useSourceControlHistory({
       const latestEntry = result.entries[0]
       if (!latestEntry || latestEntry.hash !== commitResult.commitHash) return false
       setHistoryEntries((currentValue) => prependCommittedHistoryEntry(currentValue, latestEntry))
-      headHashRef.current = result.headHash
       setHeadHash(result.headHash)
       setSelectedCommitHash(latestEntry.hash)
       setHistoryError(null)
@@ -201,7 +198,7 @@ export function useSourceControlHistory({
         return
       }
 
-      void refreshHistory({ silent: true, skipIfHeadUnchanged: true })
+      void refreshHistory({ silent: true })
     })
 
     return () => {
@@ -211,7 +208,7 @@ export function useSourceControlHistory({
 
   useEffect(() => {
     const handleFocus = () => {
-      if (isOpen && hasRepository) void refreshHistory({ silent: true, skipIfHeadUnchanged: true })
+      if (isOpen && hasRepository) void refreshHistory({ silent: true })
     }
     window.addEventListener('focus', handleFocus)
     return () => window.removeEventListener('focus', handleFocus)
@@ -222,11 +219,11 @@ export function useSourceControlHistory({
       return
     }
 
-    void refreshHistory({ silent: true, skipIfHeadUnchanged: true })
+    void refreshHistory({ silent: true })
 
     const refreshWhenVisible = () => {
       if (document.visibilityState === 'visible') {
-        void refreshHistory({ silent: true, skipIfHeadUnchanged: true })
+        void refreshHistory({ silent: true })
       }
     }
     const intervalId = window.setInterval(() => {
@@ -234,7 +231,7 @@ export function useSourceControlHistory({
         return
       }
 
-      void refreshHistory({ silent: true, skipIfHeadUnchanged: true })
+      void refreshHistory({ silent: true })
     }, HISTORY_REFRESH_INTERVAL_MS)
 
     document.addEventListener('visibilitychange', refreshWhenVisible)

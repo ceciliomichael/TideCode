@@ -97,6 +97,22 @@ export function GitBranchSelectorField({
       return
     }
 
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !isSwitching) {
+        setIsOpen(false)
+        buttonRef.current?.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [isOpen, isSwitching])
+
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
     searchInputRef.current?.focus()
   }, [isOpen])
 
@@ -108,7 +124,7 @@ export function GitBranchSelectorField({
     createBranchInputRef.current?.focus()
 
     function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !isSwitching) {
         setIsCreateModalOpen(false)
       }
     }
@@ -117,7 +133,7 @@ export function GitBranchSelectorField({
     return () => {
       document.removeEventListener('keydown', handleEscape)
     }
-  }, [isCreateModalOpen])
+  }, [isCreateModalOpen, isSwitching])
 
   useEffect(() => {
     if (!isOpen) {
@@ -134,13 +150,20 @@ export function GitBranchSelectorField({
     }
   }, [hasRepository])
 
-  function handleSelect(branchName: string) {
-    setIsOpen(false)
-    if (branchName === currentBranch) {
+  async function handleSelect(branchName: string) {
+    if (isSwitching) return
+    if (branchName === currentBranch && !isDetachedHead) {
+      setIsOpen(false)
       return
     }
 
-    void onChange(branchName)
+    try {
+      await onChange(branchName)
+      setIsOpen(false)
+    } catch {
+      // Keep the dropdown visible so the error passed by the branch controller can be read.
+      searchInputRef.current?.focus()
+    }
   }
 
   function openCreateBranchModal() {
@@ -173,7 +196,7 @@ export function GitBranchSelectorField({
     }
   }
 
-  const controlLabel = currentBranch ?? 'No repo'
+  const controlLabel = !hasRepository ? 'No repo' : isDetachedHead ? 'Detached HEAD' : currentBranch ?? 'No branch'
 
   return (
     <div
@@ -231,7 +254,7 @@ export function GitBranchSelectorField({
                 <button
                   type="button"
                   aria-label="Refresh branch list"
-                  disabled={isLoading}
+                  disabled={isLoading || isSwitching}
                   onClick={() => void onRefresh?.()}
                   className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-muted text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -259,7 +282,8 @@ export function GitBranchSelectorField({
                         aria-selected={isSelected}
                         onMouseEnter={() => setHighlightedBranch(branchName)}
                         onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => handleSelect(branchName)}
+                        disabled={isSwitching}
+                        onClick={() => void handleSelect(branchName)}
                         className={[
                           'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]',
                           isHighlighted
@@ -291,6 +315,7 @@ export function GitBranchSelectorField({
               <button
                 type="button"
                 onMouseDown={(event) => event.preventDefault()}
+                disabled={isSwitching}
                 onClick={openCreateBranchModal}
                 className="flex h-11 w-full items-center gap-2 border-t border-border px-3 text-left text-sm text-foreground transition-colors hover:bg-[var(--dropdown-option-active-surface)]"
               >

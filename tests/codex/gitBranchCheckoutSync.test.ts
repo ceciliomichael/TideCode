@@ -149,3 +149,22 @@ test('checkoutGitBranch does not block local switching on remote divergence', as
     await assert.rejects(fs.access(path.join(clonePath, 'remote.txt')))
   })
 })
+
+test('checkoutGitBranch preserves local edits and current branch when checkout would overwrite them', async () => {
+  await withTemporaryDirectory(async (tempRootPath) => {
+    const { clonePath } = await setupRemoteAndClone(tempRootPath)
+    await runGit(['checkout', '-b', 'feature/different-readme'], clonePath)
+    await commitFile(clonePath, 'README.md', 'different branch content\n', 'change readme on feature')
+    await runGit(['checkout', 'main'], clonePath)
+    await fs.writeFile(path.join(clonePath, 'README.md'), 'local unstaged content\n', 'utf8')
+
+    await assert.rejects(
+      checkoutGitBranch({ branchName: 'feature/different-readme', workspacePath: clonePath }),
+      /Cannot switch branches because local changes would be overwritten/,
+    )
+
+    const { stdout: branch } = await runGit(['branch', '--show-current'], clonePath)
+    assert.equal(branch.trim(), 'main')
+    assert.equal(await fs.readFile(path.join(clonePath, 'README.md'), 'utf8'), 'local unstaged content\n')
+  })
+})

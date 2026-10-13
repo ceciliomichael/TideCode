@@ -25,8 +25,8 @@ function getActionCopy(action: GitCommitAction): { description: string; title: s
   }
 
   return {
-    description: 'Your commit was pushed and a pull request was created.',
-    title: 'Commit and pull request created',
+    description: 'Your commit was pushed. Review the pull request or compare link to finish the next step.',
+    title: 'Commit and push complete',
   }
 }
 
@@ -44,7 +44,9 @@ export function CommitSuccessDialog({ action, onClose, result }: CommitSuccessDi
     }
   }, [onClose])
 
-  const copy = getActionCopy(action)
+  const copy = result.postCommitWarning
+    ? { title: 'Commit created locally', description: result.postCommitWarning }
+    : getActionCopy(action)
   const shortHash = result.commitHash.slice(0, 8)
 
   return createPortal(
@@ -93,7 +95,7 @@ export function CommitSuccessDialog({ action, onClose, result }: CommitSuccessDi
           </p>
         </div>
 
-        {action === 'commit-and-create-pr' ? (
+        {action === 'commit-and-create-pr' && !result.postCommitWarning ? (
           <div className="mt-3 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-muted-foreground">
             {result.prUrl ? (
               <a
@@ -102,11 +104,11 @@ export function CommitSuccessDialog({ action, onClose, result }: CommitSuccessDi
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 text-foreground transition-colors hover:text-muted-foreground"
               >
-                Open pull request
+                Open pull request or compare
                 <ExternalLink size={14} />
               </a>
             ) : (
-              <span>Pull request was created, but no URL was returned.</span>
+              <span>No pull request or compare URL was returned.</span>
             )}
           </div>
         ) : null}

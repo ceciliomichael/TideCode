@@ -119,6 +119,7 @@ export function ChatWorkspaceSidePanels({
         <SourceControlPanel
           key={workspaceState.activeWorkspacePath?.trim() ?? 'no-workspace'}
           aheadCommitCount={gitBranchState.branchState.aheadCommitCount}
+          behindCommitCount={gitBranchState.branchState.behindCommitCount}
           commitModelSelection={gitCommitModelSelection}
           hasRepository={hasRepository}
           hasRemote={Boolean(gitBranchState.branchState.remoteUrl)}

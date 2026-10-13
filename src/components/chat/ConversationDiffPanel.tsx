@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEven
 import { createPortal } from 'react-dom'
 import { Check, ChevronDown, Maximize, Minimize } from 'lucide-react'
 import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
-import type { ConversationFileDiff } from '../../lib/chatDiffs'
+import { projectGitFileDiffScope, type ConversationFileDiff } from '../../lib/chatDiffs'
 import { getMaxDiffPanelWidth, getMinDiffPanelWidth } from '../../lib/diffPanelSizing'
 import { Tooltip } from '../Tooltip'
 import { VirtualizedConversationDiffFileList } from './VirtualizedConversationDiffFileList'
@@ -75,11 +75,11 @@ function ConversationDiffPanelContent({
   const branchLabel = currentBranch ? `${currentBranch} → origin/${currentBranch}` : 'No branch selected'
   const displayedFileDiffs = useMemo(() => {
     if (selectedScope === 'staged') {
-      return fileDiffs.filter((fileDiff) => fileDiff.isStaged)
+      return fileDiffs.filter((fileDiff) => fileDiff.isStaged).map((fileDiff) => projectGitFileDiffScope(fileDiff, 'staged'))
     }
 
     if (selectedScope === 'unstaged') {
-      return fileDiffs.filter((fileDiff) => fileDiff.isUnstaged || fileDiff.isUntracked || (!fileDiff.isStaged && !fileDiff.isUnstaged && !fileDiff.isUntracked))
+      return fileDiffs.filter((fileDiff) => fileDiff.isUnstaged || fileDiff.isUntracked || (!fileDiff.isStaged && !fileDiff.isUnstaged && !fileDiff.isUntracked)).map((fileDiff) => projectGitFileDiffScope(fileDiff, 'unstaged'))
     }
 
     return fileDiffs

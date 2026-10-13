@@ -2,6 +2,7 @@ export type SourceControlPrimaryAction = 'commit' | 'publish-to-github' | 'sync-
 
 export interface SourceControlPrimaryActionInput {
   aheadCommitCount: number
+  behindCommitCount: number
   hasRemote: boolean
   stagedFileCount: number
   unstagedFileCount: number
@@ -9,7 +10,7 @@ export interface SourceControlPrimaryActionInput {
 export function getSourceControlPrimaryAction(input: SourceControlPrimaryActionInput): SourceControlPrimaryAction {
   const hasWorkingTreeChanges = input.stagedFileCount > 0 || input.unstagedFileCount > 0
 
-  if (!hasWorkingTreeChanges && input.hasRemote && input.aheadCommitCount > 0) {
+  if (!hasWorkingTreeChanges && input.hasRemote && (input.aheadCommitCount > 0 || input.behindCommitCount > 0)) {
     return 'sync-changes'
   }
 

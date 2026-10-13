@@ -3,15 +3,20 @@ import type { FileDiffToolResultPresentation, GitFileDiff, Message } from '../ty
 
 export interface ConversationFileDiff {
   addedLineCount: number
+  changeStatus?: 'added' | 'modified' | 'deleted' | 'renamed' | 'conflicted' | 'untracked'
   contentSignature: string
   contextLines?: number
   fileName: string
+  indexContent?: string | null
   isStaged: boolean
   isUnstaged: boolean
   isUntracked: boolean
   isDeleted: boolean
   newContent: string
   oldContent: string | null
+  originalFileName?: string
+  stagedChangeStatus?: ConversationFileDiff['changeStatus']
+  unstagedChangeStatus?: ConversationFileDiff['changeStatus']
   removedLineCount: number
   startLineNumber?: number
 }
@@ -63,12 +68,17 @@ function normalizeFileDiff(result: FileDiffToolResultPresentation): Conversation
 
 function normalizeRawFileDiff(result: GitFileDiff): ConversationFileDiff {
   const computedSummary = getDiffSummary(result.oldContent, result.newContent)
-  const isDeleted = result.isDeleted ?? (!result.isUntracked && result.oldContent !== null && result.newContent.length === 0)
+  const isDeleted = result.isDeleted ?? false
 
   return {
     addedLineCount: result.addedLineCount ?? computedSummary.addedLineCount,
     contentSignature: buildDiffContentSignature(result.oldContent, result.newContent),
     fileName: result.fileName,
+    ...(result.changeStatus ? { changeStatus: result.changeStatus } : {}),
+    ...(result.originalFileName ? { originalFileName: result.originalFileName } : {}),
+    ...(result.stagedChangeStatus ? { stagedChangeStatus: result.stagedChangeStatus } : {}),
+    ...(result.unstagedChangeStatus ? { unstagedChangeStatus: result.unstagedChangeStatus } : {}),
+    ...(result.indexContent !== undefined ? { indexContent: result.indexContent } : {}),
     isStaged: result.isStaged,
     isUnstaged: result.isUnstaged,
     isUntracked: result.isUntracked,
@@ -76,6 +86,26 @@ function normalizeRawFileDiff(result: GitFileDiff): ConversationFileDiff {
     newContent: result.newContent,
     oldContent: result.oldContent,
     removedLineCount: result.removedLineCount ?? computedSummary.removedLineCount,
+  }
+}
+
+export function projectGitFileDiffScope(diff: ConversationFileDiff, scope: 'staged' | 'unstaged'): ConversationFileDiff {
+  // Ordinary chat/branch diff snapshots have no index snapshot to project.
+  if (diff.indexContent === undefined || diff.changeStatus === 'conflicted') return diff
+
+  const oldContent = scope === 'staged' ? diff.oldContent : diff.indexContent
+  const newContent = scope === 'staged' ? (diff.indexContent ?? '') : diff.newContent
+  const summary = getDiffSummary(oldContent, newContent)
+  const changeStatus = scope === 'staged' ? diff.stagedChangeStatus : diff.unstagedChangeStatus
+  return {
+    ...diff,
+    changeStatus: changeStatus ?? diff.changeStatus,
+    isDeleted: changeStatus === 'deleted',
+    addedLineCount: summary.addedLineCount,
+    contentSignature: buildDiffContentSignature(oldContent, newContent),
+    newContent,
+    oldContent,
+    removedLineCount: summary.removedLineCount,
   }
 }
 

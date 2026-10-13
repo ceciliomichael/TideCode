@@ -147,14 +147,10 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
       return
     }
 
-    if (isRightPanelOpen && rightPanelTab === 'source-control') {
-      onRightPanelOpenChange(false)
-    }
-
     gitCommitState.resetResult()
     void gitCommitState.refreshStatus({ forceRefresh: true })
     setIsCommitModalOpen(true)
-  }, [gitCommitState, hasRepository, isRightPanelOpen, onRightPanelOpenChange, rightPanelTab])
+  }, [gitCommitState, hasRepository])
 
   const handleCloseCommitModal = useCallback(() => {
     setIsCommitModalOpen(false)
@@ -196,6 +192,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
         return
       }
 
+      if (action === 'discard' && !window.confirm(`Discard unstaged changes to ${filePath}? This cannot be undone.`)) return
       setPendingFileActionPath(filePath)
       setFileActionErrorMessage(null)
       try {
@@ -226,6 +223,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
         return
       }
 
+      if (action === 'discard' && !window.confirm(`Discard unstaged changes in ${filePaths.length} files? Untracked files will be deleted. This cannot be undone.`)) return
       setPendingFileActionPath(filePaths[0] ?? null)
       setFileActionErrorMessage(null)
       try {
@@ -244,6 +242,11 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
         setFileActionErrorMessage(
           `Could not ${action} files: ${toUserFacingErrorMessage(error, 'The file action could not be completed.')}`,
         )
+        // A batch can have partially completed before an individual discard fails.
+        // Reconcile the file list without masking the original operation error.
+        await onDiffRefresh({ forceRefresh: true, silent: true }).catch((refreshError) => {
+          console.error('Failed to refresh Source Control after a partial file action.', refreshError)
+        })
       } finally {
         setPendingFileActionPath(null)
       }
@@ -274,7 +277,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
   }, [gitBranchState, onDiffRefresh])
 
   const handleQuickCommit = useCallback(
-    async (commitInput: { action: 'commit' | 'commit-and-push'; message: string }) => {
+    async (commitInput: { action: 'commit' | 'commit-and-push'; includeUnstaged?: boolean; message: string }) => {
       const workspacePathAtStart = activeWorkspacePathRef.current
       const commitResult = await gitCommitState.commit({
         action: commitInput.action,
@@ -285,11 +288,16 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
         return null
       }
 
-      await Promise.all([
+      const refreshResults = await Promise.allSettled([
         onDiffRefresh({ forceRefresh: true }),
         gitBranchState.refresh(),
         gitCommitState.refreshStatus({ forceRefresh: true }),
       ])
+      for (const result of refreshResults) {
+        if (result.status === 'rejected') {
+          console.error('Source Control refresh failed after a successful commit.', result.reason)
+        }
+      }
       return commitResult
     },
     [gitBranchState, gitCommitState, onDiffRefresh],

@@ -30,9 +30,9 @@ export async function getGitStatus(workspacePath: string): Promise<GitStatusResu
   }
 
   const [stagedResult, unstagedResult, untrackedResult] = await Promise.all([
-    runGit(['diff', '--cached', '--name-only', '-z', '--', '.'], repoRootPath).catch(() => ({ stdout: '' })),
-    runGit(['diff', '--name-only', '-z', '--', '.'], repoRootPath).catch(() => ({ stdout: '' })),
-    runGit(['ls-files', '--others', '--exclude-standard', '-z', '--', '.'], repoRootPath).catch(() => ({ stdout: '' })),
+    runGit(['diff', '--cached', '--name-only', '-z', '--', '.'], repoRootPath),
+    runGit(['diff', '--name-only', '-z', '--', '.'], repoRootPath),
+    runGit(['ls-files', '--others', '--exclude-standard', '-z', '--', '.'], repoRootPath),
   ])
 
   const stagedFiles = splitNullDelimitedOutput(stagedResult.stdout)

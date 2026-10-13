@@ -15,6 +15,7 @@ import {
 
 interface SourceControlChangesSectionProps {
   aheadCommitCount: number
+  behindCommitCount: number
   commitModelSelection: GitCommitModelSelection
   commitActionControlsRef: RefObject<HTMLDivElement | null>
   commitMessage: string
@@ -57,6 +58,7 @@ interface SourceControlChangesSectionProps {
 
 export function SourceControlChangesSection({
   aheadCommitCount,
+  behindCommitCount,
   commitModelSelection,
   commitActionControlsRef,
   commitMessage,
@@ -116,6 +118,7 @@ export function SourceControlChangesSection({
   const isBulkUnstageActionDisabled = isOperationInProgress || stagedFilePaths.length === 0
   const primaryAction = getSourceControlPrimaryAction({
     aheadCommitCount,
+    behindCommitCount,
     hasRemote,
     stagedFileCount,
     unstagedFileCount,
