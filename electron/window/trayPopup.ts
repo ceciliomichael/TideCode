@@ -1,8 +1,9 @@
-import { BrowserWindow, screen, type Rectangle } from 'electron'
+import { BrowserWindow, screen, type Point, type Rectangle } from 'electron'
 
 const POPUP_WIDTH = 184
 const POPUP_HEIGHT = 69
 const POPUP_OVERLAP = 10
+const TRAY_CLICK_SLOP = 10
 
 interface TrayPopupOptions {
   onQuit: () => void
@@ -13,6 +14,29 @@ function clamp(value: number, minimum: number, maximum: number) {
   return Math.max(minimum, Math.min(maximum, value))
 }
 
+function containsPoint(bounds: Rectangle, x: number, y: number) {
+  return x >= bounds.x
+    && x < bounds.x + bounds.width
+    && y >= bounds.y
+    && y < bounds.y + bounds.height
+}
+
+function getTrayClickArea(trayBounds: Rectangle, click: Point): Rectangle {
+  // Match TideStudio: Windows can report a zero-sized or incomplete overflow tray rect.
+  if (trayBounds.width <= 0 || trayBounds.height <= 0) {
+    return {
+      x: Math.round(click.x) - TRAY_CLICK_SLOP,
+      y: Math.round(click.y) - TRAY_CLICK_SLOP,
+      width: TRAY_CLICK_SLOP * 2,
+      height: TRAY_CLICK_SLOP * 2,
+    }
+  }
+  const x = Math.min(trayBounds.x, Math.round(click.x) - TRAY_CLICK_SLOP)
+  const y = Math.min(trayBounds.y, Math.round(click.y) - TRAY_CLICK_SLOP)
+  const right = Math.max(trayBounds.x + trayBounds.width, Math.round(click.x) + TRAY_CLICK_SLOP)
+  const bottom = Math.max(trayBounds.y + trayBounds.height, Math.round(click.y) + TRAY_CLICK_SLOP)
+  return { x, y, width: right - x, height: bottom - y }
+}
 
 function getPopupPosition(trayBounds: Rectangle) {
   const display = screen.getDisplayMatching(trayBounds)
@@ -65,9 +89,13 @@ export function createTrayPopupController(options: TrayPopupOptions) {
   let popup: BrowserWindow | null = null
   let popupReady: Promise<void> | null = null
   let outsideClickHookModule: typeof import('uiohook-napi') | null = null
-  let outsideClickListener: (() => void) | null = null
+  let outsideClickListener: ((event: import('uiohook-napi').UiohookMouseEvent) => void) | null = null
   let outsideClickHookStarted = false
   let outsideClickHookToken = 0
+  let popupVisibilityToken = 0
+  let popupOpening = false
+  let activeTrayBounds: Rectangle | null = null
+  let pendingTrayToggle: 'mouse-down' | 'blur' | null = null
 
   const stopOutsideClickHook = () => {
     outsideClickHookToken += 1
@@ -83,56 +111,74 @@ export function createTrayPopupController(options: TrayPopupOptions) {
   }
 
   const hidePopup = () => {
+    popupVisibilityToken += 1
     if (!popup || popup.isDestroyed()) {
       stopOutsideClickHook()
       return
     }
-    popup.setIgnoreMouseEvents(true)
     popup.setOpacity(0)
-    stopOutsideClickHook()
+    popup.setIgnoreMouseEvents(true)
+    // Keep observing a pending tray gesture until its callback is consumed or a
+    // new press proves it was cancelled. Do not suppress a later deliberate click.
+    if (!pendingTrayToggle) stopOutsideClickHook()
   }
 
-  const startOutsideClickHook = () => {
+  const startOutsideClickHook = async () => {
     const activationToken = ++outsideClickHookToken
-    void import('uiohook-napi')
-      .then((hookModule) => {
-        const currentPopup = popup
-        if (
-          activationToken !== outsideClickHookToken
-          || !currentPopup
-          || currentPopup.isDestroyed()
-          || currentPopup.getOpacity() <= 0
-        ) return
+    let hookModule: typeof import('uiohook-napi')
+    try {
+      hookModule = await import('uiohook-napi')
+    } catch (error) {
+      console.error('Failed to load the TideCode tray outside-click hook.', error)
+      return
+    }
 
-        const listener = () => {
-          const visiblePopup = popup
-          if (!visiblePopup || visiblePopup.isDestroyed() || visiblePopup.getOpacity() <= 0) return
+    const currentPopup = popup
+    if (
+      activationToken !== outsideClickHookToken
+      || !currentPopup
+      || currentPopup.isDestroyed()
+    ) return
 
-          const point = screen.getCursorScreenPoint()
-          const bounds = visiblePopup.getBounds()
-          const isInside = point.x >= bounds.x
-            && point.x < bounds.x + bounds.width
-            && point.y >= bounds.y
-            && point.y < bounds.y + bounds.height
-          if (!isInside) hidePopup()
+    const listener = (event: import('uiohook-napi').UiohookMouseEvent) => {
+      const visiblePopup = popup
+      if (!visiblePopup || visiblePopup.isDestroyed()) return
+
+      // The hook reports physical pixels; Electron tray and window bounds use DIP.
+      const point = screen.screenToDipPoint({ x: event.x, y: event.y })
+      const insidePopup = containsPoint(visiblePopup.getBounds(), point.x, point.y)
+      const insideTray = activeTrayBounds !== null
+        && containsPoint(activeTrayBounds, point.x, point.y)
+
+      if (visiblePopup.getOpacity() <= 0) {
+        // Windows blur and the asynchronously delivered hook can arrive in either
+        // order. This down still belongs to the gesture that blur already closed.
+        if (pendingTrayToggle === 'blur' && insideTray && event.button === 2) {
+          pendingTrayToggle = 'mouse-down'
+          return
         }
+        pendingTrayToggle = null
+        stopOutsideClickHook()
+        return
+      }
 
-        outsideClickHookModule = hookModule
-        outsideClickListener = listener
-        hookModule.uIOhook.on('mousedown', listener)
-        try {
-          hookModule.uIOhook.start()
-          outsideClickHookStarted = true
-        } catch (error) {
-          hookModule.uIOhook.off('mousedown', listener)
-          outsideClickHookModule = null
-          outsideClickListener = null
-          console.error('Failed to start the TideCode tray outside-click hook.', error)
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to load the TideCode tray outside-click hook.', error)
-      })
+      if (insidePopup) return
+      pendingTrayToggle = insideTray && event.button === 2 ? 'mouse-down' : null
+      hidePopup()
+    }
+
+    outsideClickHookModule = hookModule
+    outsideClickListener = listener
+    hookModule.uIOhook.on('mousedown', listener)
+    try {
+      hookModule.uIOhook.start()
+      outsideClickHookStarted = true
+    } catch (error) {
+      hookModule.uIOhook.off('mousedown', listener)
+      outsideClickHookModule = null
+      outsideClickListener = null
+      console.error('Failed to start the TideCode tray outside-click hook.', error)
+    }
   }
 
 
@@ -188,10 +234,31 @@ export function createTrayPopupController(options: TrayPopupOptions) {
       }
       return { action: 'deny' }
     })
+    nextPopup.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown' || input.key !== 'Escape') return
+      event.preventDefault()
+      hidePopup()
+    })
+    nextPopup.webContents.on('context-menu', (event) => {
+      event.preventDefault()
+      hidePopup()
+    })
+    nextPopup.on('blur', () => {
+      if (nextPopup.isDestroyed() || nextPopup.getOpacity() <= 0) return
+      const point = screen.getCursorScreenPoint()
+      // Close now, including over the tray, rather than leaving a visible popup
+      // behind the overflow panel while waiting for the tray's right-click event.
+      pendingTrayToggle = activeTrayBounds && containsPoint(activeTrayBounds, point.x, point.y)
+        ? 'blur'
+        : null
+      hidePopup()
+    })
     nextPopup.on('closed', () => {
       if (popup === nextPopup) {
+        pendingTrayToggle = null
         popup = null
         popupReady = null
+        stopOutsideClickHook()
       }
     })
 
@@ -212,11 +279,21 @@ export function createTrayPopupController(options: TrayPopupOptions) {
 
   return {
     async toggle(trayBounds: Rectangle) {
+      if (pendingTrayToggle) {
+        pendingTrayToggle = null
+        stopOutsideClickHook()
+        return
+      }
       const currentPopup = ensurePopup()
       if (currentPopup.getOpacity() > 0) {
         hidePopup()
         return
       }
+      if (popupOpening) return
+
+      activeTrayBounds = getTrayClickArea(trayBounds, screen.getCursorScreenPoint())
+      popupOpening = true
+      const visibilityToken = ++popupVisibilityToken
       const position = getPopupPosition(trayBounds)
       currentPopup.setBounds({
         x: position.x,
@@ -225,22 +302,41 @@ export function createTrayPopupController(options: TrayPopupOptions) {
         height: POPUP_HEIGHT,
       })
 
-      const ready = popupReady
-      if (ready) await ready
-      if (popup !== currentPopup || currentPopup.isDestroyed()) return
+      try {
+        const ready = popupReady
+        if (ready) await ready
+        if (
+          popup !== currentPopup
+          || currentPopup.isDestroyed()
+          || visibilityToken !== popupVisibilityToken
+        ) return
 
-      // Right-click can be delivered more than once by the Windows tray surface.
-      // Presentation is intentionally idempotent, and uses opacity instead of show/hide so
-      // Windows has no visible window animation to play.
-      currentPopup.setIgnoreMouseEvents(false)
-      currentPopup.setOpacity(1)
-      currentPopup.moveTop()
-      startOutsideClickHook()
+        // Install dismissal before showing the popup so the first outside click is not lost
+        // while the native hook is being loaded.
+        await startOutsideClickHook()
+        if (
+          popup !== currentPopup
+          || currentPopup.isDestroyed()
+          || visibilityToken !== popupVisibilityToken
+        ) return
+
+        // Keep the original opacity-based presentation, but take focus so blur can
+        // dismiss outside clicks even when the global mouse hook is unavailable.
+        currentPopup.setIgnoreMouseEvents(false)
+        currentPopup.setOpacity(1)
+        currentPopup.moveTop()
+        currentPopup.focus()
+      } finally {
+        popupOpening = false
+      }
     },
     hide() {
+      pendingTrayToggle = null
       hidePopup()
     },
     destroy() {
+      popupVisibilityToken += 1
+      pendingTrayToggle = null
       stopOutsideClickHook()
       if (popup && !popup.isDestroyed()) popup.destroy()
       popup = null

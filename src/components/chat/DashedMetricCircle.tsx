@@ -3,10 +3,10 @@ interface DashedMetricCircleProps {
   inactiveColor?: string
   percent: number
   size?: number
+  strokeWidth?: number
 }
 
-function buildDashPath(size: number, dashIndex: number, dashCount: number) {
-  const strokeWidth = 1.5
+function buildDashPath(size: number, dashIndex: number, dashCount: number, strokeWidth: number) {
   const radius = (size - strokeWidth) / 2
   const center = size / 2
   const anglePerDash = 360 / dashCount
@@ -28,6 +28,7 @@ export function DashedMetricCircle({
   inactiveColor = 'var(--color-border)',
   percent,
   size = 18,
+  strokeWidth = 1.5,
 }: DashedMetricCircleProps) {
   const dashCount = 8
   const activeDashCount = Math.min(dashCount, Math.ceil((Math.min(Math.max(percent, 0), 100) / 100) * dashCount))
@@ -39,11 +40,11 @@ export function DashedMetricCircle({
         return (
           <path
             key={dashIndex}
-            d={buildDashPath(size, dashIndex, dashCount)}
+            d={buildDashPath(size, dashIndex, dashCount, strokeWidth)}
             fill="none"
             stroke={isActive ? activeColor : inactiveColor}
             strokeLinecap="round"
-            strokeWidth={1.5}
+            strokeWidth={strokeWidth}
           />
         )
       })}

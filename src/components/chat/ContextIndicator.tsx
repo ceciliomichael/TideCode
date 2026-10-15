@@ -24,10 +24,10 @@ function getUsageColor(usageRatio: number) {
   }
 
   if (usageRatio >= 0.75) {
-    return 'color-mix(in srgb, var(--color-danger-foreground) 72%, var(--color-foreground))'
+    return 'var(--color-warning-foreground)'
   }
 
-  return 'var(--color-action)'
+  return 'var(--color-brand)'
 }
 
 function getEstimatedContextTokens(usage: ContextUsageEstimate) {
@@ -56,9 +56,10 @@ function DashedUsageCircle({
   return (
     <DashedMetricCircle
       activeColor={activeColor}
-      inactiveColor="var(--color-border)"
+      inactiveColor="color-mix(in srgb, var(--color-muted-foreground) 60%, var(--color-surface))"
       percent={forceAllActive ? 100 : usageRatio * 100}
-      size={18}
+      size={20}
+      strokeWidth={2.25}
     />
   )
 }
@@ -79,7 +80,7 @@ export function ContextIndicator({
     <div className="flex flex-col gap-0">
       <div className="flex items-center justify-between gap-3">
         <span className="font-medium text-foreground">Context estimate</span>
-        <span className="inline-flex min-h-5 items-center justify-center rounded-full bg-accent px-2 py-0.5 text-[11px] font-medium leading-none text-accent-foreground">
+        <span className="inline-flex min-h-5 items-center justify-center rounded-full bg-accent px-2 py-0.5 text-[11px] font-medium leading-none text-foreground">
           {usagePercent.toFixed(1)}%
         </span>
       </div>
@@ -115,7 +116,7 @@ export function ContextIndicator({
             type="button"
             onClick={onCompress}
             disabled={compressDisabled || isCompressing}
-          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-action px-3 text-sm font-medium text-action-foreground transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-foreground"
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-action px-3 text-sm font-medium text-foreground transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:bg-disabled disabled:text-disabled-foreground"
           >
             <span>{isCompressing ? 'Compressing...' : 'Compress Chat'}</span>
           </button>

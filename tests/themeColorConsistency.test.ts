@@ -214,6 +214,14 @@ test('green selected states show accent borders only in light mode', () => {
   assert.doesNotMatch(publishModal, /ring-1 ring-brand\/30/)
   assert.match(INDEX_CSS, /\.chat-send-button-enabled\s*\{[^}]*box-shadow:\s*inset 0 0 0 1px var\(--sidebar-item-active-border\)/s)
   assert.match(INDEX_CSS, /\.provider-primary-action-button\s*\{[^}]*box-shadow:\s*inset 0 0 0 1px var\(--sidebar-item-active-border\)/s)
+  assert.match(INDEX_CSS, /\.chat-send-button-enabled\s*\{[^}]*color:\s*var\(--color-foreground\)/s)
+  assert.match(INDEX_CSS, /\.provider-primary-action-button\s*\{[^}]*color:\s*var\(--color-foreground\)/s)
+  assert.match(darkThemeBlock, /--color-foreground: #e9e9ea;/)
+  assert.match(INDEX_CSS, /:root\[data-theme='dark'\] \.chat-send-button-enabled\s*\{[^}]*color:\s*var\(--color-foreground\)/s)
+  assert.match(INDEX_CSS, /:root\[data-theme='dark'\] \.provider-primary-action-button\s*\{[^}]*color:\s*var\(--color-foreground\)/s)
+  for (const filePath of ['models/ModelsSettingsPanel.tsx', 'mcp/McpServersSettingsPanel.tsx', 'skills/SkillsSettingsPanel.tsx']) {
+    assert.match(component(`settings/${filePath}`), /provider-primary-action-button/u)
+  }
   assert.match(component('workspaceExplorer/workspacePlanPreview/WorkspacePlanActionsMenu.tsx'), /border-l border-\[var\(--sidebar-item-active-border\)\]/)
 })
 

@@ -17,6 +17,10 @@ The measure of success is not simply faster model output. The workspace should h
 7. **Safe capability access**: give the assistant narrow, validated tools instead of unrestricted access to the operating system.
 8. **Leave the workspace clearer**: completed work should improve understanding, organization, and traceability rather than add hidden state.
 
+## Confirmed interaction preferences
+
+- The Windows tray popup must retain its custom design (colors, sizing, layout, and Show/Hide Window / Quit TideCode labels). Dismissal fixes must not replace it with a native-styled menu. The user's latest direction supersedes copying TideStudio: restore the original closing behavior from Git while keeping outside-click dismissal. Keep the opacity-based toggle and closing sequence (disable mouse input, then set opacity to zero), but focus the popup when opening so outside focus loss can dismiss it if the native mouse hook is unavailable. Removing opening focus caused a user-reported outside-click regression; regression tests must not manually focus the popup before testing the fallback. Retain tray callback ownership and padded click-area hit testing so an icon click does not close through an outside handler and then reopen through the tray callback. Live Windows timing still requires a real app retest; mocked tests do not establish it.
+
 ## Long-running assistant goal
 
 The assistant should build an accurate, revisable model of the project over time. It should remember durable facts that future work will need, but should not treat stale memory as truth. Before relying on a memory entry, verify it against the current repository. When the code or user decision changes, update the relevant memory entry rather than accumulating contradictory notes.

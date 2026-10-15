@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { GitBranch, GitCommitHorizontal, ArrowUp, X, Loader2 } from 'lucide-react'
 import { FaGithub } from 'react-icons/fa'
+import { ConfirmUnstagedCommitDialog } from './ConfirmUnstagedCommitDialog'
 import { toUserFacingErrorMessage } from '../../lib/userFacingError'
 import type { GitBranchState, GitCommitAction, GitStatusResult } from '../../types/chat'
 import type { ConversationDiffSnapshot } from '../../lib/chatDiffs'
@@ -67,6 +68,7 @@ export function CommitModal({
   const [commitBranchName, setCommitBranchName] = useState('')
   const [selectedAction, setSelectedAction] = useState<CommitNextStep>('commit')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isUnstagedCommitConfirmationOpen, setIsUnstagedCommitConfirmationOpen] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
@@ -87,18 +89,12 @@ export function CommitModal({
     }
   }, [isCommitting, isSubmitting, isSwitchingBranch, onClose])
 
-  const handleSubmit = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
+  const submitCommit = useCallback(
+    async (includeUnstaged: boolean) => {
       setIsSubmitting(true)
       setLocalError(null)
 
       try {
-        const stagedCount = status?.stagedFileCount ?? diffSnapshot.fileDiffs.filter((fileDiff) => fileDiff.isStaged).length
-        const includeUnstaged = stagedCount === 0
-        if (includeUnstaged && !window.confirm('Nothing is staged. Stage all current changes and commit them?')) {
-          return
-        }
         const targetBranch = normalizeGitBranchName(commitBranchName)
         await onCommit({
           action: selectedAction,
@@ -112,8 +108,29 @@ export function CommitModal({
         setIsSubmitting(false)
       }
     },
-    [commitBranchName, commitMessage, diffSnapshot.fileDiffs, onCommit, selectedAction, status?.stagedFileCount],
+    [commitBranchName, commitMessage, onCommit, selectedAction],
   )
+
+  const handleSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      setLocalError(null)
+
+      const stagedCount = status?.stagedFileCount ?? diffSnapshot.fileDiffs.filter((fileDiff) => fileDiff.isStaged).length
+      if (stagedCount === 0) {
+        setIsUnstagedCommitConfirmationOpen(true)
+        return
+      }
+
+      void submitCommit(false)
+    },
+    [diffSnapshot.fileDiffs, status?.stagedFileCount, submitCommit],
+  )
+
+  const handleConfirmUnstagedCommit = useCallback(() => {
+    setIsUnstagedCommitConfirmationOpen(false)
+    void submitCommit(true)
+  }, [submitCommit])
 
   const stagedFileCount = status?.stagedFileCount ?? diffSnapshot.fileDiffs.filter((fileDiff) => fileDiff.isStaged).length
   const totalChangedFileCount = status?.changedFileCount ?? diffSnapshot.fileDiffs.length
@@ -312,6 +329,13 @@ export function CommitModal({
           </div>
         </form>
       </div>
+      {isUnstagedCommitConfirmationOpen ? (
+        <ConfirmUnstagedCommitDialog
+          confirmDisabled={disableSubmit}
+          onCancel={() => setIsUnstagedCommitConfirmationOpen(false)}
+          onConfirm={handleConfirmUnstagedCommit}
+        />
+      ) : null}
     </div>,
     document.body,
   )

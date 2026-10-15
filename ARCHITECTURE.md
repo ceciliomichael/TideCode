@@ -8,6 +8,10 @@ Normal React UI consumes Tailwind utilities generated from those semantic variab
 
 Pre-render or non-React surfaces cannot depend on renderer CSS. `index.html`, `electron/window/theme.ts`, `electron/window/trayPopup.ts`, and `electron/remote/webAuth.ts` therefore mirror only the minimal palette necessary for first paint, native chrome, tray UI, and unauthenticated Remote login. Tests guard these mirrored values and core contrast relationships. The Remote login page reads the same local appearance key and system color-scheme preference before painting.
 
+## Windows tray popup
+
+`electron/window/trayPopup.ts` reuses the loaded custom popup with the original opacity-based toggle: opening enables mouse input, restores opacity, and raises and focuses the window; closing disables mouse input, sets opacity to zero, and stops the outside-click hook. Taking focus allows outside-click dismissal through blur even when the native hook is unavailable. The tray right-click callback owns tray toggling, while outside-click and focus-loss handlers exclude the saved tray click area to avoid reopening on the same click. That area includes the reported rectangle plus a 10-pixel margin around the opening click, covering zero-sized and incomplete overflow rectangles. Native hook positions are converted to Electron's DIP coordinates before hit testing. Pending openings are cancelled on dismissal. The existing markup and palette are unchanged.
+
 ## Embedded Browser
 
 `BrowserPanel.tsx` owns tab sessions, address drafts, navigation state, and the Electron webview elements. The application window attaches guest behavior and manages native DevTools views. Guest setup runs without synthetic user activation, including when Electron defers script execution until loading stops.
@@ -42,7 +46,7 @@ Windows workspace copy/cut writes native file-drop clipboard data in addition to
 
 ## Renderer resource lifecycle
 
-Source Control reads a single Git porcelain status snapshot to preserve staged, unstaged, rename, and unmerged metadata and surfaces errors rather than replacing failed reads with empty lists. Full Git file snapshots carry HEAD, Git index, and working-tree text separately; the existing Staged and Unstaged views project HEAD-to-index and index-to-worktree diffs. Status-only snapshots retain metadata without pretending to contain renderable file contents. Commit operations only stage all when `includeUnstaged` is explicitly authorized, and a successful local commit followed by failed push/PR follow-up is returned with a warning rather than reported as a failed commit. History refresh compares actual refs and commit rows, not just HEAD, so remote-only updates remain visible.
+Source Control reads a single Git porcelain status snapshot to preserve staged, unstaged, rename, and unmerged metadata and surfaces errors rather than replacing failed reads with empty lists. Full Git file snapshots carry HEAD, Git index, and working-tree text separately; the existing Staged and Unstaged views project HEAD-to-index and index-to-worktree diffs. Status-only snapshots retain metadata without pretending to contain renderable file contents. Quick and advanced commits use the shared renderer confirmation when nothing is staged, and its explicit `includeUnstaged` authorization is carried through the controller before Git stages all changes. A successful local commit followed by failed push/PR follow-up is returned with a warning rather than reported as a failed commit. History refresh compares actual refs and commit rows, not just HEAD, so remote-only updates remain visible.
 
 Heavy editor and preview runtimes are demand-loaded. Monaco and its language workers are not prewarmed during application startup, Settings plus its MCP/skills state mount only while Settings is open, and PDF/DOCX renderer modules load only when those preview types are requested. Shiki highlighting is also initialized on first use rather than at renderer bootstrap.
 

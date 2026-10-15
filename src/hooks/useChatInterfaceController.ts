@@ -281,6 +281,7 @@ export function useChatInterfaceController(input: UseChatInterfaceControllerInpu
       const workspacePathAtStart = activeWorkspacePathRef.current
       const commitResult = await gitCommitState.commit({
         action: commitInput.action,
+        includeUnstaged: commitInput.includeUnstaged,
         message: commitInput.message,
       })
 

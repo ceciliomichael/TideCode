@@ -31,3 +31,26 @@ test('Advanced modal only offers remote actions with a configured remote', () =>
   assert.match(modal, /includeUnstaged,/)
   assert.match(read('src/components/commit/CommitSuccessDialog.tsx'), /result\.postCommitWarning/)
 })
+
+test('quick commits preserve explicit approval to stage unstaged changes', () => {
+  const controller = read('src/hooks/useChatInterfaceController.ts')
+  const quickCommit = controller.slice(
+    controller.indexOf('const handleQuickCommit ='),
+    controller.indexOf('const handleSourceControlSectionOpenChange ='),
+  )
+
+  assert.match(quickCommit, /includeUnstaged:\s*commitInput\.includeUnstaged/)
+})
+
+test('unstaged commits use the TideCode confirmation dialog in both entry points', () => {
+  const dialog = read('src/components/commit/ConfirmUnstagedCommitDialog.tsx')
+  const commitModal = read('src/components/commit/CommitModal.tsx')
+  const sourceControlPanel = read('src/components/sourceControl/SourceControlPanel.tsx')
+
+  assert.match(dialog, /role="alertdialog"/)
+  assert.match(dialog, /Stage all and commit/)
+  assert.match(commitModal, /ConfirmUnstagedCommitDialog/)
+  assert.match(sourceControlPanel, /ConfirmUnstagedCommitDialog/)
+  assert.doesNotMatch(commitModal, /window\.confirm/)
+  assert.doesNotMatch(sourceControlPanel, /window\.confirm/)
+})

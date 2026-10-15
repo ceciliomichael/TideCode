@@ -280,7 +280,7 @@ export const WorkspaceMarkdownPreviewView = memo(function WorkspaceMarkdownPrevi
 
   return (
     <div ref={registerViewport} onScroll={handleScroll} className="workspace-markdown-preview h-full min-h-0 overflow-auto bg-background text-foreground">
-      <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 py-3 md:px-6 md:py-4">
+      <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 py-10 md:px-6 md:py-14">
         {isTruncated ? (
           <div className="mb-4 rounded-2xl border border-warning-border bg-warning-surface px-4 py-3 text-sm text-warning-foreground">
             This document is truncated. Save the file outside the workspace limit to see the full document.

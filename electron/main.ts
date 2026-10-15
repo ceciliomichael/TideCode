@@ -151,7 +151,10 @@ function createApplicationTray() {
       onToggleWindow: toggleApplicationWindow,
     })
     nextTray.setToolTip('TideCode')
-    nextTray.on('click', () => { void showApplicationWindow() })
+    nextTray.on('click', () => {
+      nextTrayPopup.hide()
+      void showApplicationWindow()
+    })
     nextTray.on('right-click', () => { void nextTrayPopup.toggle(nextTray.getBounds()) })
     tray = nextTray
     trayPopup = nextTrayPopup

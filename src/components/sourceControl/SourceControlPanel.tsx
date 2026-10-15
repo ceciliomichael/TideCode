@@ -9,6 +9,7 @@ import type {
   GitSyncAction,
 } from '../../types/chat'
 import { describeSourceControlPendingAction, beginSourceControlSyncOperation, endSourceControlSyncOperation } from '../../lib/sourceControlPendingStateStore'
+import { ConfirmUnstagedCommitDialog } from '../commit/ConfirmUnstagedCommitDialog'
 import { SourceControlChangesSection } from './SourceControlChangesSection'
 import { SourceControlHistorySection } from './SourceControlHistorySection'
 import { SourceControlNoRepoView } from './SourceControlNoRepoView'
@@ -85,6 +86,10 @@ function SourceControlPanelContent({
   const commitActionControlsRef = useRef<HTMLDivElement | null>(null)
   const [commitMessage, setCommitMessage] = useState('')
   const [isCommitActionMenuOpen, setIsCommitActionMenuOpen] = useState(false)
+  const [pendingUnstagedCommit, setPendingUnstagedCommit] = useState<{
+    action: 'commit' | 'commit-and-push'
+    message: string
+  } | null>(null)
   const [operationNotice, setOperationNotice] = useState<SourceControlOperationNotice | null>(null)
   const [isChangesSectionOpen, setIsChangesSectionOpen] = useState(sectionOpen.changes)
   const [isHistorySectionOpen, setIsHistorySectionOpen] = useState(sectionOpen.history)
@@ -304,25 +309,16 @@ function SourceControlPanelContent({
     }
   }
 
-  async function handleQuickCommitSubmit(action: 'commit' | 'commit-and-push' = 'commit') {
-    if (isCommitActionDisabled) {
-      return
-    }
-
-    const includeUnstaged = stagedFileDiffs.length === 0
-    if (includeUnstaged && !window.confirm('Nothing is staged. Stage all current changes and commit them?')) {
-      return
-    }
-
+  async function performQuickCommit(input: {
+    action: 'commit' | 'commit-and-push'
+    includeUnstaged: boolean
+    message: string
+  }) {
     setIsCommitActionMenuOpen(false)
     setOperationNotice(null)
 
     try {
-      const commitResult = await onQuickCommit({
-        action,
-        includeUnstaged,
-        message: commitMessage,
-      })
+      const commitResult = await onQuickCommit(input)
 
       if (!commitResult) return
       try {
@@ -333,7 +329,7 @@ function SourceControlPanelContent({
       setCommitMessage('')
       setOperationNotice({
         kind: commitResult.postCommitWarning ? 'warning' : 'success',
-        message: commitResult.postCommitWarning ?? (action === 'commit-and-push' ? 'Committed and pushed changes.' : 'Committed changes.'),
+        message: commitResult.postCommitWarning ?? (input.action === 'commit-and-push' ? 'Committed and pushed changes.' : 'Committed changes.'),
       })
     } catch (error) {
       setOperationNotice({
@@ -341,6 +337,30 @@ function SourceControlPanelContent({
         message: toUserFacingErrorMessage(error, 'The changes could not be committed.'),
       })
     }
+  }
+
+  async function handleQuickCommitSubmit(action: 'commit' | 'commit-and-push' = 'commit') {
+    if (isCommitActionDisabled) {
+      return
+    }
+
+    const includeUnstaged = stagedFileDiffs.length === 0
+    if (includeUnstaged) {
+      setPendingUnstagedCommit({ action, message: commitMessage })
+      return
+    }
+
+    await performQuickCommit({ action, includeUnstaged: false, message: commitMessage })
+  }
+
+  function handleConfirmUnstagedCommit() {
+    if (!pendingUnstagedCommit || isCommitActionDisabled) {
+      return
+    }
+
+    const confirmedCommit = pendingUnstagedCommit
+    setPendingUnstagedCommit(null)
+    void performQuickCommit({ ...confirmedCommit, includeUnstaged: true })
   }
 
   function handleOpenDiffPanelForFile(filePath: string, scope: DiffPanelScope) {
@@ -493,6 +513,13 @@ function SourceControlPanelContent({
           )}
         </div>
       </aside>
+      {pendingUnstagedCommit ? (
+        <ConfirmUnstagedCommitDialog
+          confirmDisabled={isCommitActionDisabled}
+          onCancel={() => setPendingUnstagedCommit(null)}
+          onConfirm={handleConfirmUnstagedCommit}
+        />
+      ) : null}
     </div>
   )
 }
