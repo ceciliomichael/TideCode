@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom'
 import { twMerge } from 'tailwind-merge'
 import { useFloatingMenuPosition } from '../../hooks/useFloatingMenuPosition'
+import { getDropdownOptionStateClassName } from './dropdownOptionStyles'
 
 export interface DropdownOption {
   label: string
@@ -336,13 +337,7 @@ export function DropdownField({
                             variant === 'text'
                               ? 'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]'
                               : 'flex h-9 w-full items-center justify-between rounded-lg px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
-                            isHighlighted
-                              ? isSelected
-                                ? 'bg-[var(--dropdown-option-active-hover-surface)] text-foreground shadow-sm'
-                                : 'bg-[var(--dropdown-option-hover-surface)] text-foreground'
-                              : isSelected
-                                ? 'bg-[var(--dropdown-option-active-surface)] text-foreground'
-                                : 'text-foreground hover:bg-[var(--dropdown-option-hover-surface)]',
+                            getDropdownOptionStateClassName(isSelected, isHighlighted),
                             isSelected ? selectedOptionClassName : undefined,
                           )}
                         >
@@ -389,13 +384,7 @@ export function DropdownField({
                           variant === 'text'
                             ? 'flex w-full items-start justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-[background-color,color,box-shadow]'
                             : 'flex h-9 w-full items-center justify-between rounded-lg px-3 text-left text-[13px] transition-[background-color,color,box-shadow] md:text-sm',
-                          isHighlighted
-                            ? isSelected
-                              ? 'bg-[var(--dropdown-option-active-hover-surface)] text-foreground shadow-sm'
-                              : 'bg-[var(--dropdown-option-hover-surface)] text-foreground'
-                            : isSelected
-                              ? 'bg-[var(--dropdown-option-active-surface)] text-foreground'
-                              : 'text-foreground hover:bg-[var(--dropdown-option-hover-surface)]',
+                          getDropdownOptionStateClassName(isSelected, isHighlighted),
                           isSelected ? selectedOptionClassName : undefined,
                         )}
                       >

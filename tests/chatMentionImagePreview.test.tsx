@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
+import { createRef } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
   ChatMentionImageHoverContent,
 } from '../src/components/chat/ChatMentionImageHoverContent'
 import { ChatMentionText } from '../src/components/chat/ChatMentionText'
+import { ChatMentionTextarea } from '../src/components/chat/ChatMentionTextarea'
 import { findChatMentionImageAttachment } from '../src/lib/chatMentionImages'
 import type { ChatImageAttachment } from '../src/types/chat'
 
@@ -56,4 +58,19 @@ test('rendered mention text stays above its highlight surface', () => {
   assert.match(markup, /@preview\.png/u)
   assert.match(markup, /z-\[2\]/u)
   assert.match(markup, /z-\[1\]/u)
+})
+
+test('composer textarea text stays above the mention highlight backdrop', () => {
+  const markup = renderToStaticMarkup(
+    <ChatMentionTextarea
+      mentionPathMap={new Map([['preview.png', '@attachments/preview.png']])}
+      onChange={() => undefined}
+      onKeyDown={() => undefined}
+      textareaRef={createRef<HTMLTextAreaElement>()}
+      value="look at @preview.png"
+    />,
+  )
+
+  assert.match(markup, /<textarea[^>]*z-\[2\]/u)
+  assert.match(markup, /pointer-events-none absolute inset-0 z-\[1\]/u)
 })

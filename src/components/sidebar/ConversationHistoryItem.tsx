@@ -73,15 +73,15 @@ export function ConversationHistoryItem({
         ref={itemRef}
         onClick={handleItemClick}
         className={[
-          'group relative flex w-full items-center gap-2 rounded-xl border border-transparent px-2 py-0.5 transition-[background-color,border-color,box-shadow]',
+          'group relative flex w-full items-center gap-2 rounded-xl border px-2 py-0.5 transition-[background-color,border-color,box-shadow]',
           conversation.compaction
             ? 'ml-3 w-[calc(100%-0.75rem)] before:absolute before:-left-2 before:bottom-1 before:top-1 before:w-px before:bg-border'
             : '',
           isDeleteConfirmationVisible
             ? 'cursor-pointer border-danger-border bg-danger-surface'
             : conversation.isActive
-              ? 'border-[var(--sidebar-item-active-border)] bg-[var(--sidebar-item-active-surface)]'
-              : 'hover:bg-[var(--sidebar-hover-surface)]',
+              ? 'border-[var(--sidebar-item-active-border)] bg-[var(--sidebar-item-active-surface)] shadow-sm'
+              : 'border-transparent hover:bg-[var(--sidebar-hover-surface)]',
         ].join(' ')}
       >
       <button

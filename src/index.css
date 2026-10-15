@@ -112,7 +112,6 @@
     --dropdown-control-surface: var(--color-surface-muted);
     --dropdown-option-hover-surface: color-mix(in srgb, var(--color-foreground) 4%, var(--color-surface));
     --dropdown-option-active-surface: var(--color-brand-soft);
-    --dropdown-option-active-hover-surface: color-mix(in srgb, var(--color-brand) 16%, var(--color-surface));
     --dropdown-option-active-border: transparent;
   }
 
@@ -214,7 +213,6 @@
     --dropdown-control-open-border: #59595f;
     --dropdown-option-hover-surface: var(--color-surface-hover);
     --dropdown-option-active-surface: var(--color-brand-soft);
-    --dropdown-option-active-hover-surface: #263630;
     --dropdown-option-active-border: transparent;
   }
 

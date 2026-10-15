@@ -13,7 +13,7 @@ const AUTH_OPTIONS = [
 
 const INPUT_CLASS = 'h-10 w-full rounded-xl border border-border bg-surface-muted px-3 text-sm text-foreground outline-none placeholder:text-subtle-foreground transition-colors hover:border-[var(--dropdown-control-hover-border)] disabled:cursor-not-allowed disabled:opacity-60'
 const BUTTON_CLASS = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border bg-surface-raised px-3.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50'
-const PRIMARY_BUTTON_CLASS = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-transparent bg-action px-3.5 text-sm font-semibold text-action-foreground transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50'
+const PRIMARY_BUTTON_CLASS = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-transparent bg-action px-3.5 text-sm font-semibold text-foreground transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50'
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'The Remote setting could not be updated.'

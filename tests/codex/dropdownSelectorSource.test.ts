@@ -15,6 +15,8 @@ test('DropdownField uses the compact selector gap and Chat Mode styling for text
     /flex w-full items-start justify-between gap-2 rounded-lg px-2\.5 py-2 text-left transition-\[background-color,color,box-shadow\]/u,
   )
   assert.match(source, /block min-w-0 flex-1 truncate text-\[15px\] leading-5/u)
+  assert.equal((source.match(/getDropdownOptionStateClassName\(isSelected, isHighlighted\)/g) ?? []).length, 2)
+  assert.doesNotMatch(source, /dropdown-option-active-hover-surface/u)
 })
 
 test('ReasoningEffortBlock uses the text dropdown variant that inherits the Chat Mode selector design', async () => {

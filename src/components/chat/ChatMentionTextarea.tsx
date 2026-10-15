@@ -68,7 +68,7 @@ export function ChatMentionTextarea({
   const textareaClassName = useMemo(
     () =>
       [
-        'min-h-[28px] max-h-[200px] w-full resize-none border-none bg-transparent text-[15px] leading-6 text-foreground outline-none placeholder:text-subtle-foreground focus:outline-none focus:ring-0',
+        'relative z-[2] min-h-[28px] max-h-[200px] w-full resize-none border-none bg-transparent text-[15px] leading-6 text-foreground outline-none placeholder:text-subtle-foreground focus:outline-none focus:ring-0',
         className,
       ]
         .filter(Boolean)
