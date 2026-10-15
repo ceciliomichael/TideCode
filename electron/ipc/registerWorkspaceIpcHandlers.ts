@@ -49,6 +49,7 @@ import {
 import { writeClipboardImageToWorkspace } from '../workspace/clipboardImage'
 import { getSafeWorkspaceTargetPath, normalizeWorkspacePath } from '../workspace/paths'
 import { getWorkspaceTypeScriptProject } from '../workspace/typescriptProject'
+import { readToolImagePreview } from '../chat/shared/tools/toolImagePreview'
 
 interface WorkspaceNativeFilesInput {
   mode: NativeFileClipboardMode
@@ -139,6 +140,9 @@ export function registerWorkspaceIpcHandlers() {
   )
   ipcMain.handle('workspace:explorer:readFile', async (_event, input: WorkspaceExplorerReadFileInput) =>
     readWorkspaceFile(input),
+  )
+  ipcMain.handle('workspace:toolImagePreview:read', async (_event, absolutePath: string) =>
+    readToolImagePreview(absolutePath),
   )
   ipcMain.handle('workspace:typescript:getProject', async (_event, input: WorkspaceTypeScriptProjectInput) =>
     getWorkspaceTypeScriptProject(input),

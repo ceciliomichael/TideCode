@@ -24,6 +24,7 @@ import {
 import type { ToolDecisionSubmission } from "./chat/ToolDecisionRequestCard";
 
 interface AssistantMessageProps {
+  conversationId?: string | null;
   content: string;
   finalizeToolGroups?: boolean;
   hasSubsequentAssistantText?: boolean;
@@ -103,6 +104,7 @@ function buildRenderedToolBlocks(entries: readonly ToolInvocationDisplayEntry[])
 }
 
 export function AssistantMessage({
+  conversationId = null,
   content,
   finalizeToolGroups = false,
   hasSubsequentAssistantText = false,
@@ -241,6 +243,7 @@ export function AssistantMessage({
           : null;
         return singleEntry ? (
           <ToolInvocationBlock
+            conversationId={conversationId}
             key={block.key}
             invocation={singleEntry.invocation}
             onToolDecisionSubmit={onToolDecisionSubmit}
@@ -248,6 +251,7 @@ export function AssistantMessage({
           />
         ) : (
           <ToolInvocationGroup
+            conversationId={conversationId}
             key={block.key}
             entries={block.entries}
             hasAssistantText={hasVisibleAssistantText}
@@ -264,7 +268,7 @@ export function AssistantMessage({
       ) : null}
 
       {isActionRowVisible ? (
-        <div className="absolute bottom-1.5 right-0 flex items-center gap-1 pointer-events-auto opacity-100 transition-opacity duration-150 md:pointer-events-none md:opacity-0 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:focus-within:opacity-100 md:focus-within:pointer-events-auto">
+        <div className="absolute bottom-1.5 right-0 flex items-center gap-1 pointer-events-auto opacity-100 transition-opacity duration-150 [@media(hover:hover)]:pointer-events-none [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:pointer-events-auto [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:pointer-events-auto [@media(hover:hover)]:focus-within:opacity-100">
           {canShowCopyButton ? (
             <Tooltip content={isCopied ? "Copied" : "Copy"}>
               <button

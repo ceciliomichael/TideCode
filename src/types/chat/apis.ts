@@ -126,6 +126,7 @@ export interface TideCodeHistoryApi {
   cleanupChatAttachmentScope: (scopeId: string) => Promise<void>
   pickAndStoreChatAttachmentFolder: (conversationId?: string | null) => Promise<StoredChatAttachment | null>
   listChatAttachments: (conversationId: string) => Promise<StoredChatAttachment[]>
+  readChatAttachmentImagePreview: (conversationId: string, aliasPath: string) => Promise<string | null>
   storeChatAttachment: (input: StoreChatAttachmentInput) => Promise<StoredChatAttachment>
   storeChatImageAttachment: (input: StoreChatImageAttachmentInput) => Promise<StoredChatAttachment>
   listConversations: () => Promise<ConversationSummary[]>
@@ -217,6 +218,7 @@ export interface TideCodeWorkspaceApi {
   onExplorerChange: (listener: (event: WorkspaceExplorerChangeEvent) => void) => () => void
   listDirectory: (input: WorkspaceExplorerListDirectoryInput) => Promise<WorkspaceExplorerEntry[]>
   readFile: (input: WorkspaceExplorerReadFileInput) => Promise<WorkspaceExplorerReadFileResult>
+  readToolImagePreview: (absolutePath: string) => Promise<string | null>
   getTypeScriptProject: (input: WorkspaceTypeScriptProjectInput) => Promise<WorkspaceTypeScriptProjectSnapshot>
   renameEntry: (input: WorkspaceExplorerRenameEntryInput) => Promise<WorkspaceExplorerRenameEntryResult>
   updateExplorerWatchPaths: (input: WorkspaceExplorerWatchChangesInput) => Promise<void>

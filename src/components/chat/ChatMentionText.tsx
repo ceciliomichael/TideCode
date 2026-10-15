@@ -131,7 +131,7 @@ export const ChatMentionText = memo(function ChatMentionText({
               triggerLayout="inline"
             >
               <span className="relative inline align-baseline [overflow-wrap:anywhere]">
-                <span className={`relative ${textColorClass}`}>
+                <span className={`relative z-[2] ${textColorClass}`}>
                   {segment.text}
                 </span>
                 <span
@@ -153,7 +153,7 @@ export const ChatMentionText = memo(function ChatMentionText({
               triggerLayout="inline"
             >
               <span className="relative inline-block align-baseline [overflow-wrap:anywhere]">
-                <span className={`relative ${textColorClass}`}>
+                <span className={`relative z-[2] ${textColorClass}`}>
                   {segment.text}
                 </span>
                 <span

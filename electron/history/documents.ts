@@ -94,6 +94,14 @@ function isToolInvocationResultPresentation(value: unknown): value is ToolInvoca
     return Array.isArray(presentation.changes) && presentation.changes.every((change) => isChangeDiffItem(change))
   }
 
+  if (presentation.kind === 'image') {
+    return (
+      typeof presentation.fileName === 'string' &&
+      typeof presentation.mediaType === 'string' &&
+      typeof presentation.relativePath === 'string'
+    )
+  }
+
   if (presentation.kind === 'plan') {
     return (
       typeof presentation.content === 'string' &&

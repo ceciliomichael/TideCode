@@ -8,6 +8,7 @@ import type { ChatCompactionLifecycleState, ChatCompactionMarker, Message } from
 interface RenderTranscriptOptions {
   compactionMarkers?: readonly ChatCompactionMarker[]
   liveCompaction?: ChatCompactionLifecycleState | null
+  onBranchAssistantMessage?: (messageId: string) => void
   streamingAssistantMessageId?: string | null
 }
 
@@ -20,8 +21,10 @@ function renderTranscript(messages: Message[], options: RenderTranscriptOptions 
       composerAttachments: [],
       composerValue: '',
       conversationId: 'conversation-1',
+      editingMessageId: null,
       liveCompaction: options.liveCompaction,
       messages,
+      onBranchAssistantMessage: options.onBranchAssistantMessage,
       onCancelEditingMessage: () => undefined,
       onComposerAttachmentsChange: () => undefined,
       onComposerValueChange: () => undefined,
@@ -33,6 +36,97 @@ function renderTranscript(messages: Message[], options: RenderTranscriptOptions 
     console.error = previousConsoleError
   }
 }
+
+test('running tools are visible before the assistant turn finishes', () => {
+  const html = renderTranscript([
+    {
+      content: '',
+      id: 'assistant-1',
+      role: 'assistant',
+      timestamp: 1,
+      toolInvocations: [{
+        argumentsText: '{"path":"."}',
+        id: 'tool-1',
+        startedAt: 1,
+        state: 'running',
+        toolName: 'list',
+      }],
+    },
+  ], {
+    streamingAssistantMessageId: 'assistant-1',
+  })
+
+  assert.match(html, /Listing/u)
+})
+
+test('attached images do not invent read tool activity', () => {
+  const html = renderTranscript([
+    {
+      attachments: [{
+        dataUrl: 'data:image/png;base64,preview',
+        fileName: 'portrait.png',
+        id: 'image-1',
+        kind: 'image',
+        mimeType: 'image/png',
+        path: '@attachments/portrait.png',
+        sizeBytes: 100,
+      }],
+      content: 'What is this?',
+      id: 'user-image',
+      role: 'user',
+      timestamp: 1,
+    },
+    {
+      content: 'I can see the image directly.',
+      id: 'assistant-1',
+      role: 'assistant',
+      timestamp: 2,
+    },
+  ])
+
+  assert.doesNotMatch(html, /Read portrait\.png/u)
+  assert.doesNotMatch(html, /Reading portrait\.png/u)
+})
+
+test('a genuine running image read tool is visible before the turn finishes', () => {
+  const html = renderTranscript([
+    {
+      content: '',
+      id: 'assistant-1',
+      role: 'assistant',
+      timestamp: 1,
+      toolInvocations: [{
+        argumentsText: '{"path":"@attachments/portrait.png"}',
+        id: 'tool-read-image',
+        startedAt: 1,
+        state: 'running',
+        toolName: 'read',
+      }],
+    },
+  ], {
+    streamingAssistantMessageId: 'assistant-1',
+  })
+
+  assert.match(html, /Reading portrait\.png/u)
+})
+
+test('reasoning work never exposes a branch action while the final answer remains branchable', () => {
+  const html = renderTranscript([
+    {
+      content: 'Final answer.',
+      id: 'assistant-1',
+      reasoningContent: 'Internal thought.',
+      reasoningCompletedAt: 2,
+      role: 'assistant',
+      timestamp: 1,
+    },
+  ], {
+    onBranchAssistantMessage: () => undefined,
+  })
+
+  assert.equal(html.match(/aria-label="Message actions"/gu)?.length ?? 0, 1)
+  assert.match(html, /Final answer\./u)
+})
 
 test('live compaction after a finished assistant run renders the answer only once', () => {
   const html = renderTranscript([

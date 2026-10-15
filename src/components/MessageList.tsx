@@ -248,6 +248,7 @@ const MessageRow = memo(
           )
         ) : (
           <AssistantMessage
+            conversationId={conversationId}
             content={message.content}
             finalizeToolGroups={finalizeToolGroups}
             hasSubsequentAssistantText={hasSubsequentAssistantText}
@@ -467,6 +468,7 @@ export function MessageList({
         const inlineBoundaries = inlineBoundaryCount > 0
           ? assistantRunBoundaries.filter((boundary) => boundary.afterMessageCount <= presentation.workingMessages.length)
           : [];
+        const timelineEndTime = getTimelineEndTime(presentation.workingMessages, inlineBoundaries);
 
         items.push({
           type: 'working_group',
@@ -479,7 +481,7 @@ export function MessageList({
               }
             : undefined,
           startTime: presentation.workingMessages[0].timestamp,
-          endTime: getTimelineEndTime(presentation.workingMessages, inlineBoundaries),
+          endTime: timelineEndTime,
           key: `wg-${presentation.workingMessages[0].id}`,
         });
 
@@ -662,8 +664,14 @@ export function MessageList({
     return map;
   }, [visibleMessages]);
 
-  const renderMessageRow = (msg: Message, index: number, finalizeToolGroups = false) => {
+  const renderMessageRow = (
+    msg: Message,
+    index: number,
+    finalizeToolGroups = false,
+    allowAssistantActions = true,
+  ) => {
     const showCopyButton =
+      allowAssistantActions &&
       editingMessageId === null &&
       msg.role === "assistant" &&
       (index === visibleMessages.length - 1 ||
@@ -794,6 +802,7 @@ export function MessageList({
                         entry.message,
                         entry.index,
                         latestCompactionBoundaryIndex >= 0 && entryIndex < latestCompactionBoundaryIndex,
+                        false,
                       );
                     }
                     if (entry.type === 'compaction_marker') {

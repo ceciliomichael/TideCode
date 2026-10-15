@@ -39,6 +39,7 @@ import {
   cleanupChatAttachmentScope,
   cleanupDraftChatAttachments,
   listChatAttachments,
+  readChatAttachmentImagePreview,
   storeChatAttachment,
   storeChatImageAttachment,
 } from '../history/chatAttachments'
@@ -417,6 +418,11 @@ onSettingsChanged?: (settings: AppSettings, input: Partial<AppSettings>, surface
   ipcMain.handle('history:storeChatAttachment', async (_event, input) => storeChatAttachment(input))
   ipcMain.handle('history:listChatAttachments', async (_event, conversationId: string) =>
     listChatAttachments(conversationId),
+  )
+  ipcMain.handle(
+    'history:readChatAttachmentImagePreview',
+    async (_event, conversationId: string, aliasPath: string) =>
+      readChatAttachmentImagePreview(conversationId, aliasPath),
   )
   ipcMain.handle('history:storeChatImageAttachment', async (_event, input) => storeChatImageAttachment(input))
   ipcMain.handle('history:pickAndStoreChatAttachmentFolder', async (_event, conversationId?: string | null) => {

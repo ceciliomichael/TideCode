@@ -7,6 +7,7 @@ import type { ToolDecisionSubmission } from './ToolDecisionRequestCard'
 import { buildToolInvocationGroupSummary, shouldToolInvocationGroupBeActive } from './toolInvocationGrouping'
 
 interface ToolInvocationGroupProps {
+  conversationId?: string | null
   entries: readonly ToolInvocationDisplayEntry[]
   hasAssistantText: boolean
   isFinalized?: boolean
@@ -19,6 +20,7 @@ interface ToolInvocationGroupProps {
 }
 
 export const ToolInvocationGroup = memo(function ToolInvocationGroup({
+  conversationId = null,
   entries,
   hasAssistantText,
   isFinalized = false,
@@ -96,6 +98,7 @@ export const ToolInvocationGroup = memo(function ToolInvocationGroup({
         <div className="mt-1.5 space-y-1.5 [&>*:last-child]:mb-0">
           {entries.map((entry) => (
             <ToolInvocationBlock
+              conversationId={conversationId}
               key={entry.key}
               invocation={entry.invocation}
               onToolDecisionSubmit={onToolDecisionSubmit}

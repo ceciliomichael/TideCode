@@ -100,7 +100,7 @@ function buildUserContent(
     }
 
     for (const [imageIndex, attachment] of imageAttachments.entries()) {
-      if (!attachment.path || referencedImageIndexes.has(imageIndex)) {
+      if (attachment.path || referencedImageIndexes.has(imageIndex)) {
         continue
       }
       const normalizedMediaType = attachment.mimeType.trim() || 'image/png'
@@ -116,6 +116,21 @@ function buildUserContent(
       })
       referencedImageIndexes.add(imageIndex)
     }
+  }
+
+  const durableAttachmentPaths = Array.from(new Set(
+    (message.attachments ?? [])
+      .map((attachment) => ('path' in attachment ? attachment.path?.trim() : undefined))
+      .filter((attachmentPath): attachmentPath is string => (
+        typeof attachmentPath === 'string' && attachmentPath.startsWith('@attachments/')
+      )),
+  ))
+  const missingDurableAttachmentPaths = durableAttachmentPaths.filter(
+    (attachmentPath) => !referencedContent.includes(attachmentPath),
+  )
+  if (missingDurableAttachmentPaths.length > 0) {
+    const prefix = parts.length > 0 || referencedContent.length > 0 ? '\n\n' : ''
+    appendText(`${prefix}Attached: ${missingDurableAttachmentPaths.join(', ')}`)
   }
 
   for (const attachment of message.attachments ?? []) {

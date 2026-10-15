@@ -152,7 +152,9 @@ export function buildChatModeSystemPromptBreakdown(
       '- Use the exact value inside <workspace_root> as the only workspace root for this turn.',
       '- Prefer paths relative to that root. Use `.` or omit an optional path for the root itself. `@workspace/...` is a stable explicit alias for the same root.',
       '- `@attachments/...` addresses durable files and folders attached to the current chat. It is a virtual read-only root and does not exist inside the user workspace.',
+      '- `@tool-output/...` addresses the exact persisted full text of a truncated tool result. Inspect the exact returned path instead of rerunning the original broad tool. Prefer grep first; when reading, follow `next_offset` for later lines and pass `next_cursor` back exactly for oversized single-line fragments. Never restart at the same offset/cursor unless you intentionally need the same page.',
       '- Inspect attachment aliases with read/list/glob/grep. Copy content into the workspace before attempting mutation.',
+      '- Durable attachments are references, not pre-read contents. If the user request depends on an attachment\'s contents, inspect the exact `@attachments/...` path before describing, analyzing, comparing, or relying on it. In Code Mode use `tools.read`; never infer attachment contents from the filename or mention text.',
       '- Never guess or construct an absolute path from a project name, display name, process directory, or previous turn. Copy an absolute path only when the user or a tool provided it.',
       isCodeMode
         ? '- Follow the path rules in the `code_mode` tool description for inner workspace calls. Inside the `code_mode` JavaScript, discover unknown paths with `tools.list`, `tools.glob`, or `tools.grep`; never emit those names as provider tool calls.'

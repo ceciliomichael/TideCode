@@ -15,6 +15,7 @@ import { normalizeWebSearchMarkdownBody } from '../../lib/webSearchResults'
 import { ToolImageResult } from './ToolImageResult'
 
 interface ToolInvocationBlockProps {
+  conversationId?: string | null
   invocation: ToolInvocationTrace
   onToolDecisionSubmit?: (
     invocation: ToolInvocationTrace,
@@ -71,6 +72,7 @@ function renderDiffCountSummary(invocation: ToolInvocationTrace) {
 }
 
 export const ToolInvocationBlock = memo(function ToolInvocationBlock({
+  conversationId = null,
   invocation,
   onToolDecisionSubmit,
   workspaceRootPath = null,
@@ -237,6 +239,7 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
         >
           {imageResultPresentation ? (
             <ToolImageResult
+              conversationId={conversationId}
               presentation={imageResultPresentation}
               workspaceRootPath={workspaceRootPath}
             />

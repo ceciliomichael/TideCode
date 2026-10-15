@@ -12,6 +12,8 @@ The `tools` binding is injected. Every external effect must use a documented `to
 
 Workspace discovery APIs understand TideCode virtual paths. `@workspace/...` explicitly addresses the active workspace, `@attachments/...` addresses durable current-chat attachments, `@skills/<skill-name>/...` addresses enabled skill resources, and `@tool-output/...` addresses persisted truncated tool output backed by `~/.tidecode/tool-output`. Attachment, skill, and tool-output aliases are read-only; use read/list/glob/grep for them and copy content into `@workspace/...` before mutation. Relative workspace paths and policy-permitted full absolute paths continue to work.
 
+Durable chat attachments are references until you inspect them. When the task depends on the contents of an `@attachments/...` file, call `tools.read` on that exact path before describing, analyzing, comparing, or otherwise relying on its contents. Do not guess attachment contents from the filename or surrounding user text.
+
 The read-only payloads binding contains optional opaque text supplied beside the code program. Use payloads for arbitrary multiline Markdown, source code, patches, or other exact text that can contain quotes, backticks, or interpolation-like text. Reference it as payloads.<name> instead of embedding that text in a JavaScript string or template literal. Targeted patches still use direct apply_patch and complete-file writes use direct write.
 
 When direct write or apply_patch is used for human-authored source, readability is required. Never pseudo-minify, compress, or line-pack code to save tokens. Preserve existing formatting when editing; for new source, use conventional formatting appropriate to the file type. Keep logical structure visually clear with normal indentation, line breaks, spacing, and grouping.
@@ -28,6 +30,6 @@ Use `tools.$codemode.search({ query, namespace?, limit?, offset? })` to discover
 
 Connected MCP calls return their useful payload directly: JSON response bodies become arrays, objects, or primitives and non-JSON bodies remain strings. Do not access `.body` on a successful MCP result or parse its JSON yourself.
 
-When a tool result is truncated, preserve its exact `output_path` and inspect that `@tool-output/...` path only as needed, preferably with `tools.grep` before a narrow `tools.read`. Do not guess the persisted filename or automatically load the whole saved output.
+When a tool result is truncated, preserve its exact `output_path` and inspect that `@tool-output/...` path only as needed, preferably with `tools.grep` before `tools.read`. For read continuation, use `next_offset` for later lines and pass `next_cursor` back exactly for oversized single-line fragments. Do not guess the persisted filename or automatically load the whole saved output.
 
 Return a concise JSON-compatible value that helps the next reasoning step. Terminal results expose `session_id`, `state`, `new_output`, `output_path`, and completed `exit_code` directly when available. Preserve a running command's `session_id` and continue it with `read_terminal`; do not poll by launching shell sleep/status commands.

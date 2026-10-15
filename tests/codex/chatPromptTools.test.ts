@@ -500,7 +500,7 @@ test('buildChatPrompt preserves image attachments in user messages', () => {
   })
 })
 
-test('path-backed attachments keep aliases in model text while images stay multimodal', () => {
+test('path-backed attachments stay as readable aliases instead of being injected multimodally', () => {
   const prompt = buildChatPrompt({
     chatMode: 'agent',
     messages: [{
@@ -532,19 +532,46 @@ test('path-backed attachments keep aliases in model text while images stay multi
   })
 
   const content = prompt.messages[0]?.content
-  assert.ok(Array.isArray(content))
-  assert.deepEqual(content, [
-    {
-      text: 'Compare @attachments/spec.pdf with @attachments/screenshot.png',
-      type: 'text',
-    },
-    {
-      data: { data: 'path-backed-image', type: 'data' },
-      filename: 'screenshot.png',
-      mediaType: 'image/png',
-      type: 'file',
-    },
-  ])
+  assert.equal(content, 'Compare @attachments/spec.pdf with @attachments/screenshot.png')
+})
+
+test('path-backed attachments are always named in model text even when the user did not type the alias', () => {
+  const prompt = buildChatPrompt({
+    chatMode: 'agent',
+    messages: [{
+      attachments: [
+        {
+          fileName: 'spec.pdf',
+          id: 'attachment-file',
+          kind: 'file',
+          mimeType: 'application/pdf',
+          path: '@attachments/spec.pdf',
+          sizeBytes: 20,
+        },
+        {
+          dataUrl: 'data:image/png;base64,path-backed-image',
+          fileName: 'screenshot.png',
+          id: 'attachment-image',
+          kind: 'image',
+          mimeType: 'image/png',
+          path: '@attachments/screenshot.png',
+          sizeBytes: 24,
+        },
+      ],
+      content: 'Inspect these.',
+      id: 'user-path-attachments',
+      role: 'user',
+      timestamp: 1,
+    }],
+    workspaceRootPath: 'C:/repo',
+  })
+
+  const content = prompt.messages[0]?.content
+  assert.equal(typeof content, 'string')
+  assert.match(String(content), /Inspect these\./u)
+  assert.match(String(content), /@attachments\/spec\.pdf/u)
+  assert.match(String(content), /@attachments\/screenshot\.png/u)
+  assert.doesNotMatch(String(content), /path-backed-image/u)
 })
 
 test('buildChatPrompt interleaves numbered images where the user referenced them', () => {
@@ -668,6 +695,11 @@ test('buildChatSystemPrompt does not expose skill metadata', () => {
   const prompt = buildChatSystemPrompt('agent', 'C:/repo')
 
   assert.doesNotMatch(prompt, /<available_skills>|<names>|skill/iu)
+  assert.match(prompt, /Durable attachments are references, not pre-read contents/u)
+  assert.match(prompt, /tools\.read/u)
+  assert.match(prompt, /@tool-output\/\.\.\./u)
+  assert.match(prompt, /next_offset/u)
+  assert.match(prompt, /next_cursor/u)
 })
 
 test('text-only models retain the raw image reference without an image content part', () => {

@@ -1,9 +1,11 @@
 import { useCallback, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { toUserFacingErrorMessage } from '../lib/userFacingError'
 import {
   getMessagesThroughUserMessage,
   prepareRevertSessionForMessage,
   persistConversationSnapshot,
+  resolveRevertTargetMessage,
   rollbackConversationBeforeUserMessage,
   restoreWorkspaceCheckpointForMessage,
   restoreWorkspaceCheckpointSequence,
@@ -31,6 +33,7 @@ import {
 } from './chatPendingMessageRevert'
 import { stopAndRollbackPendingTurn } from './chatPendingTurnWorkflow'
 import type { ChatAttachment, ChatMode, Message } from '../types/chat'
+import type { OptimisticEditedMessagePresentation } from './chatOptimisticEditPresentation'
 
 const RUN_STATE_SETTLE_TIMEOUT_MS = 20_000
 const STREAM_REGISTRATION_POLL_TIMEOUT_MS = 8_000
@@ -56,7 +59,15 @@ interface UseChatSendActionsInput
       revertedChatMode: ChatMode
     },
   ) => void
+  beginHistoryCutoff: (conversationId: string, messageId: string) => void
+  beginOptimisticEditedPresentation: (
+    conversationId: string,
+    presentation: OptimisticEditedMessagePresentation,
+  ) => void
+  beginPendingRevertEditingMessage: (conversationId: string, messageId: string) => void
   cancelEditingMessage: () => void
+  clearHistoryCutoff: (conversationId: string) => void
+  clearOptimisticEditedPresentation: (conversationId: string) => void
   editComposerAttachments: PersistAndStreamMessageInput['attachments']
   editComposerValue: string
   editingMessageId: string | null
@@ -117,6 +128,46 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
   const suppressAbortComposerRestoreConversationIdsRef = useRef<Set<string>>(new Set())
   const suppressAbortRollbackPresentationConversationIdsRef = useRef<Set<string>>(new Set())
   const [isAbortInProgress, setIsAbortInProgress] = useState(false)
+
+  const beginHistoryCutoffImmediately = useCallback(
+    (conversationId: string, messageId: string) => {
+      flushSync(() => {
+        input.beginHistoryCutoff(conversationId, messageId)
+      })
+    },
+    [input],
+  )
+
+  const beginOptimisticEditedPresentationImmediately = useCallback(
+    (
+      conversationId: string,
+      presentation: OptimisticEditedMessagePresentation,
+    ) => {
+      flushSync(() => {
+        input.beginHistoryCutoff(conversationId, presentation.messageId)
+        input.beginOptimisticEditedPresentation(conversationId, presentation)
+      })
+    },
+    [input],
+  )
+
+  const beginRevertPresentationImmediately = useCallback(
+    (conversationId: string, messageId: string) => {
+      flushSync(() => {
+        input.beginHistoryCutoff(conversationId, messageId)
+        input.beginPendingRevertEditingMessage(conversationId, messageId)
+      })
+    },
+    [input],
+  )
+
+  const clearOptimisticEditedPresentation = useCallback(
+    (conversationId: string) => {
+      input.clearOptimisticEditedPresentation(conversationId)
+      input.clearHistoryCutoff(conversationId)
+    },
+    [input],
+  )
 
   const isUserMessageReverted = useCallback((messageId: string) => {
     return revertedUserMessageIdsRef.current.has(messageId)
@@ -862,6 +913,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       if (trimmedText.length === 0 && attachments.length === 0) {
         return
       }
+      const serializedMentionPathMap = serializeChatMentionPathMap(mentionPathMap)
 
       let ownsSendScopeGate = false
       if (!hasSubmissionInFlight) {
@@ -874,11 +926,30 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       actionInFlightRef.current = true
       let startedPersistAndStream = false
       try {
+        const hasEditableMessage = Boolean(
+          getConversationState(conversationId)?.conversation.messages.some(
+            (message) => message.id === editingMessageId && message.role === 'user',
+          ),
+        )
+        if (!hasEditableMessage) {
+          input.cancelEditingMessage()
+          input.setError('This message is no longer available to edit.')
+          return
+        }
+
+        beginOptimisticEditedPresentationImmediately(conversationId, {
+          attachments: attachments.map((attachment) => ({ ...attachment })),
+          content: trimmedText,
+          mentionPathMap: serializedMentionPathMap,
+          messageId: editingMessageId,
+        })
+
         let persistedConversation
         try {
           persistedConversation = await window.tidecodeHistory.getConversation(conversationId)
         } catch (caughtError) {
           console.error(caughtError)
+          clearOptimisticEditedPresentation(conversationId)
           input.cancelEditingMessage()
           input.setError('Unable to reload that conversation right now.')
           return
@@ -890,17 +961,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           ),
         )
         if (!hasPersistedEditableMessage) {
-          input.cancelEditingMessage()
-          input.setError('This message is no longer available to edit.')
-          return
-        }
-
-        const hasEditableMessage = Boolean(
-          getConversationState(conversationId)?.conversation.messages.some(
-            (message) => message.id === editingMessageId && message.role === 'user',
-          ),
-        )
-        if (!hasEditableMessage) {
+          clearOptimisticEditedPresentation(conversationId)
           input.cancelEditingMessage()
           input.setError('This message is no longer available to edit.')
           return
@@ -932,7 +993,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         actionInFlightRef.current = false
 
         startedPersistAndStream = true
-        await persistAndStreamMessage({
+        const accepted = await persistAndStreamMessage({
           ...input,
           attachments,
           activeConversationId: conversationId,
@@ -956,7 +1017,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           clearUserMessageRevert,
           messageBatch: [{
             attachments,
-            mentionPathMap: serializeChatMentionPathMap(mentionPathMap),
+            mentionPathMap: serializedMentionPathMap,
             text: trimmedText,
           }],
           originalText: nextMessageText,
@@ -965,8 +1026,12 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           targetEditMessageId: editingMessageId,
           trimmedText,
         })
+        if (!accepted) {
+          clearOptimisticEditedPresentation(conversationId)
+        }
       } catch (caughtError) {
         console.error(caughtError)
+        clearOptimisticEditedPresentation(conversationId)
         if (isMessageNotFoundError(caughtError)) {
           input.cancelEditingMessage()
           input.setError('This message is no longer available to edit.')
@@ -987,7 +1052,9 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       }
     },
     [
+      beginOptimisticEditedPresentationImmediately,
       clearPersistedUserTurn,
+      clearOptimisticEditedPresentation,
       clearUserMessageRevert,
       getConversationState,
       input,
@@ -1066,9 +1133,21 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
       }
 
       const conversationState = getConversationState(conversationId)
+      let optimisticRevertMessageId = messageId
+      if (conversationState) {
+        try {
+          optimisticRevertMessageId = resolveRevertTargetMessage(
+            conversationState.conversation,
+            messageId,
+          ).targetMessage.id
+        } catch {
+          optimisticRevertMessageId = messageId
+        }
+      }
+      beginRevertPresentationImmediately(conversationId, optimisticRevertMessageId)
       const revertedPlanPaths = getPlanPathsCreatedByRevertedUserMessage(
         conversationState?.conversation.messages ?? [],
-        messageId,
+        optimisticRevertMessageId,
       )
 
       actionInFlightRef.current = true
@@ -1081,12 +1160,19 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
           suppressActiveRunComposerRestore: false,
         })
         if (!revertPreparation) {
+          input.clearHistoryCutoff(conversationId)
+          input.cancelEditingMessage()
           return true
+        }
+
+        if (revertPreparation.messageId !== optimisticRevertMessageId) {
+          beginHistoryCutoffImmediately(conversationId, revertPreparation.messageId)
+          input.beginPendingRevertEditingMessage(conversationId, revertPreparation.messageId)
         }
 
         input.beginRevertEditingMessage(
           conversationId,
-          messageId,
+          revertPreparation.messageId,
           revertPreparation.redoCheckpointId,
           revertedPlanPaths,
           {
@@ -1097,6 +1183,7 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
         return true
       } catch (caughtError) {
         console.error(caughtError)
+        input.clearHistoryCutoff(conversationId)
         input.cancelEditingMessage()
         input.setError(toActionErrorMessage(caughtError, 'Unable to revert to that checkpoint.'))
         return false
@@ -1106,6 +1193,8 @@ export function useChatSendActions(input: UseChatSendActionsInput) {
     },
     [
       getConversationState,
+      beginHistoryCutoffImmediately,
+      beginRevertPresentationImmediately,
       input,
       prepareMessageRevert,
     ],

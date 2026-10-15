@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   ChatMentionImageHoverContent,
 } from '../src/components/chat/ChatMentionImageHoverContent'
+import { ChatMentionText } from '../src/components/chat/ChatMentionText'
 import { findChatMentionImageAttachment } from '../src/lib/chatMentionImages'
 import type { ChatImageAttachment } from '../src/types/chat'
 
@@ -41,4 +42,18 @@ test('image mention hover content renders only the preview image', () => {
   assert.match(markup, /src="data:image\/png;base64,preview-data"/u)
   assert.match(markup, /alt="preview.png"/u)
   assert.doesNotMatch(markup, /@attachments\/preview\.png/u)
+})
+
+test('rendered mention text stays above its highlight surface', () => {
+  const markup = renderToStaticMarkup(
+    <ChatMentionText
+      mentionPathMap={new Map([['preview.png', '@attachments/preview.png']])}
+      text="@preview.png"
+      variant="rendered"
+    />,
+  )
+
+  assert.match(markup, /@preview\.png/u)
+  assert.match(markup, /z-\[2\]/u)
+  assert.match(markup, /z-\[1\]/u)
 })

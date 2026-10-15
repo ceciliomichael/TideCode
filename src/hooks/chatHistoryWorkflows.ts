@@ -175,7 +175,7 @@ function isIndependentUserTurn(message: Message) {
   return message.role === 'user' && !isSameTurnSteerMessage(message)
 }
 
-function resolveRevertTarget(conversation: ConversationRecord, messageId: string) {
+export function resolveRevertTargetMessage(conversation: ConversationRecord, messageId: string) {
   const selectedTarget = findUserMessageOrThrow(conversation, messageId)
   if (!isSameTurnSteerMessage(selectedTarget.targetMessage)) {
     return selectedTarget
@@ -247,7 +247,7 @@ async function resolveRevertCheckpointIdsOrThrow(conversation: ConversationRecor
 }
 
 async function findUserMessageForRevertOrThrow(conversation: ConversationRecord, messageId: string) {
-  const { targetMessage, targetMessageIndex } = resolveRevertTarget(conversation, messageId)
+  const { targetMessage, targetMessageIndex } = resolveRevertTargetMessage(conversation, messageId)
   const checkpointIds = await resolveRevertCheckpointIdsOrThrow(conversation, targetMessageIndex)
 
   return {

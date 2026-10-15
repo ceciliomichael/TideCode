@@ -1,10 +1,12 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { detectMediaType } from '@ai-sdk/provider-utils'
 import type {
   StoreChatAttachmentInput,
   StoreChatImageAttachmentInput,
   StoredChatAttachment,
 } from '../../src/types/chat'
+import { CHAT_ATTACHMENT_MAX_IMAGE_BYTES } from '../../src/lib/chatAttachments'
 import {
   ensureAttachmentsDirectory,
   getConversationAttachmentsPath,
@@ -103,6 +105,41 @@ function dataUrlToBuffer(dataUrl: string) {
     buffer: match[2] ? Buffer.from(match[3], 'base64') : Buffer.from(decodeURIComponent(match[3]), 'utf8'),
     mimeType: match[1]?.trim() || 'application/octet-stream',
   }
+}
+
+function resolveAttachmentAliasPath(conversationId: string, aliasPath: string) {
+  const normalizedAliasPath = aliasPath.trim().replace(/\\/gu, '/')
+  if (!normalizedAliasPath.startsWith(`${ATTACHMENTS_ALIAS}/`)) {
+    throw new Error(`Invalid attachment alias: ${aliasPath}`)
+  }
+  const relativePath = normalizedAliasPath.slice(`${ATTACHMENTS_ALIAS}/`.length)
+  if (!relativePath || relativePath.split('/').some((part) => !part || part === '.' || part === '..')) {
+    throw new Error(`Invalid attachment alias: ${aliasPath}`)
+  }
+  const rootPath = path.resolve(getAttachmentRoot(conversationId))
+  const absolutePath = path.resolve(rootPath, ...relativePath.split('/'))
+  const allowedPrefix = rootPath.endsWith(path.sep) ? rootPath : `${rootPath}${path.sep}`
+  if (!absolutePath.startsWith(allowedPrefix)) {
+    throw new Error(`Attachment alias escapes its conversation root: ${aliasPath}`)
+  }
+  return absolutePath
+}
+
+export async function readChatAttachmentImagePreview(
+  conversationId: string,
+  aliasPath: string,
+): Promise<string | null> {
+  const absolutePath = resolveAttachmentAliasPath(conversationId, aliasPath)
+  const stats = await fs.stat(absolutePath)
+  if (!stats.isFile() || stats.size > CHAT_ATTACHMENT_MAX_IMAGE_BYTES) {
+    return null
+  }
+  const data = await fs.readFile(absolutePath)
+  const mediaType = detectMediaType({ data, topLevelType: 'image' })
+  if (!mediaType) {
+    return null
+  }
+  return `data:${mediaType};base64,${data.toString('base64')}`
 }
 
 export async function storeChatAttachment(input: StoreChatAttachmentInput): Promise<StoredChatAttachment> {

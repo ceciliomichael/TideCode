@@ -11,6 +11,11 @@ import type { AppLanguage } from '../lib/appSettings'
 import { getPlanPathsCreatedByRevertedUserMessage } from '../lib/planPresentation'
 import { isRemoteBrowserRuntime } from '../remote/webBridge'
 import type { ChatMode, ConversationEditSession, ConversationModelPreference, Message, RevertEditSession } from '../types/chat'
+import { applyHistoryCutoff } from './chatHistoryCutoff'
+import {
+  applyOptimisticEditedMessagePresentation,
+  type OptimisticEditedMessagePresentation,
+} from './chatOptimisticEditPresentation'
 
 const EMPTY_MESSAGES: Message[] = []
 
@@ -53,7 +58,26 @@ export function useChatMessages(input: UseChatMessagesInput) {
     initialSelectedFolderName: preferredDraftFolderName,
   })
   const [optimisticDraftMessages, setOptimisticDraftMessages] = useState<Message[]>(EMPTY_MESSAGES)
-  const messages = sessionState.activeConversationState?.conversation.messages ?? optimisticDraftMessages
+  const [historyCutoffByConversation, setHistoryCutoffByConversation] = useState<Record<string, string>>({})
+  const [optimisticEditedPresentationByConversation, setOptimisticEditedPresentationByConversation] = useState<
+    Record<string, OptimisticEditedMessagePresentation>
+  >({})
+  const activeConversationId = sessionState.activeConversationId
+  const rawMessages = sessionState.activeConversationState?.conversation.messages ?? optimisticDraftMessages
+  const transientHistoryCutoffMessageId = activeConversationId
+    ? historyCutoffByConversation[activeConversationId] ?? null
+    : null
+  const persistedHistoryCutoffMessageId = activeConversationId
+    ? persistedRevertEditSessionsByConversation[activeConversationId]?.messageId ?? null
+    : null
+  const historyCutoffMessageId = transientHistoryCutoffMessageId ?? persistedHistoryCutoffMessageId
+  const activeOptimisticEditedPresentation = activeConversationId
+    ? optimisticEditedPresentationByConversation[activeConversationId] ?? null
+    : null
+  const messages = applyOptimisticEditedMessagePresentation(
+    applyHistoryCutoff(rawMessages, historyCutoffMessageId),
+    activeOptimisticEditedPresentation,
+  )
   // Read the draft agent context path synchronously so the Explorer panel
   // always has a valid path on the very first render — no "Explorer is waiting" flash.
   const [draftAgentContextPath] = useState<string | null>(() => {
@@ -77,7 +101,6 @@ export function useChatMessages(input: UseChatMessagesInput) {
     sessionState.selectedFolderPath ??
     draftAgentContextPath
   const composerState = useChatComposerState(messages)
-  const activeConversationId = sessionState.activeConversationId
   const setSessionError = sessionState.setError
   const captureComposerEditingSession = composerState.captureEditingSession
   const editingMessageId = composerState.editingMessageId
@@ -95,10 +118,52 @@ export function useChatMessages(input: UseChatMessagesInput) {
   const editSessionsRef = useRef<Record<string, ConversationEditSession>>(editSessionsByConversation)
   const revertEditSessionsRef = useRef<Record<string, RevertEditSession>>(persistedRevertEditSessionsByConversation)
   const draftEditSessionsRef = useRef<Record<string, EditComposerDraftSession>>({})
+  const pendingRevertEditingMessageIdsRef = useRef<Record<string, string>>({})
   const appliedRevertSessionKeysRef = useRef<Record<string, string>>({})
   const resumeSessionKeyRef = useRef<string | null>(null)
   const syncedConversationModeIdRef = useRef<string | null>(null)
   const draftChatModeByConversationRef = useRef<Record<string, ChatMode>>({})
+
+  const beginHistoryCutoff = useCallback((conversationId: string, messageId: string) => {
+    setHistoryCutoffByConversation((currentValue) => {
+      if (currentValue[conversationId] === messageId) {
+        return currentValue
+      }
+      return { ...currentValue, [conversationId]: messageId }
+    })
+  }, [])
+
+  const clearHistoryCutoff = useCallback((conversationId: string) => {
+    setHistoryCutoffByConversation((currentValue) => {
+      if (!(conversationId in currentValue)) {
+        return currentValue
+      }
+      const nextValue = { ...currentValue }
+      delete nextValue[conversationId]
+      return nextValue
+    })
+  }, [])
+
+  const beginOptimisticEditedPresentation = useCallback(
+    (conversationId: string, presentation: OptimisticEditedMessagePresentation) => {
+      setOptimisticEditedPresentationByConversation((currentValue) => ({
+        ...currentValue,
+        [conversationId]: presentation,
+      }))
+    },
+    [],
+  )
+
+  const clearOptimisticEditedPresentation = useCallback((conversationId: string) => {
+    setOptimisticEditedPresentationByConversation((currentValue) => {
+      if (!(conversationId in currentValue)) {
+        return currentValue
+      }
+      const nextValue = { ...currentValue }
+      delete nextValue[conversationId]
+      return nextValue
+    })
+  }, [])
 
   useEffect(() => {
     const mergedEditSessions = mergeConversationEditSessions(
@@ -161,6 +226,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
 
   const clearRevertEditSession = useCallback(
     (conversationId: string) => {
+      clearHistoryCutoff(conversationId)
       const currentValue = revertEditSessionsRef.current
       if (!(conversationId in currentValue)) {
         return
@@ -171,7 +237,7 @@ export function useChatMessages(input: UseChatMessagesInput) {
       delete appliedRevertSessionKeysRef.current[conversationId]
       setRevertEditSessions(nextValue)
     },
-    [setRevertEditSessions],
+    [clearHistoryCutoff, setRevertEditSessions],
   )
 
   const streamingState = useChatStreamingState({
@@ -327,6 +393,16 @@ export function useChatMessages(input: UseChatMessagesInput) {
     return appliedRevertSessionKeysRef.current[conversationId] === buildRevertSessionKey(conversationId, revertSession)
   }, [])
 
+  const beginPendingRevertEditingMessage = useCallback(
+    (conversationId: string, messageId: string) => {
+      pendingRevertEditingMessageIdsRef.current[conversationId] = messageId
+      clearDraftEditSession(conversationId)
+      upsertEditSession(conversationId, messageId)
+      startComposerEditingMessage(messageId)
+    },
+    [clearDraftEditSession, startComposerEditingMessage, upsertEditSession],
+  )
+
   const beginRevertEditingMessage = useCallback(
     (
       conversationId: string,
@@ -338,6 +414,9 @@ export function useChatMessages(input: UseChatMessagesInput) {
         revertedChatMode: ChatMode
       },
     ) => {
+      const shouldPreserveExistingDraft =
+        pendingRevertEditingMessageIdsRef.current[conversationId] === messageId
+      delete pendingRevertEditingMessageIdsRef.current[conversationId]
       clearDraftEditSession(conversationId)
       const currentValue = revertEditSessionsRef.current
       const nextSession: RevertEditSession = {
@@ -368,7 +447,9 @@ export function useChatMessages(input: UseChatMessagesInput) {
 
       markRevertSessionApplied(conversationId, nextSession)
       upsertEditSession(conversationId, messageId)
-      startComposerEditingMessage(messageId)
+      if (!shouldPreserveExistingDraft) {
+        startComposerEditingMessage(messageId)
+      }
       if (chatModeTransition) {
         draftChatModeByConversationRef.current[conversationId] = chatModeTransition.revertedChatMode
         setDraftChatMode(chatModeTransition.revertedChatMode)
@@ -386,11 +467,14 @@ export function useChatMessages(input: UseChatMessagesInput) {
   const completeEditingMessage = useCallback(() => {
     cancelComposerEditingMessage()
     if (activeConversationId) {
+      delete pendingRevertEditingMessageIdsRef.current[activeConversationId]
+      clearHistoryCutoff(activeConversationId)
+      clearOptimisticEditedPresentation(activeConversationId)
       clearDraftEditSession(activeConversationId)
       clearEditSession(activeConversationId)
       clearRevertEditSession(activeConversationId)
     }
-  }, [activeConversationId, cancelComposerEditingMessage, clearDraftEditSession, clearEditSession, clearRevertEditSession])
+  }, [activeConversationId, cancelComposerEditingMessage, clearDraftEditSession, clearEditSession, clearHistoryCutoff, clearOptimisticEditedPresentation, clearRevertEditSession])
 
   const redoRevertSession = useCallback(
     async (conversationId: string, revertSession: RevertEditSession, failureMessage: string) => {
@@ -414,6 +498,9 @@ export function useChatMessages(input: UseChatMessagesInput) {
       return true
     }
 
+    delete pendingRevertEditingMessageIdsRef.current[activeConversationId]
+    clearHistoryCutoff(activeConversationId)
+    clearOptimisticEditedPresentation(activeConversationId)
     clearDraftEditSession(activeConversationId)
     clearEditSession(activeConversationId)
     const revertSession = revertEditSessionsRef.current[activeConversationId]
@@ -443,6 +530,8 @@ export function useChatMessages(input: UseChatMessagesInput) {
     cancelComposerEditingMessage,
     clearDraftEditSession,
     clearEditSession,
+    clearHistoryCutoff,
+    clearOptimisticEditedPresentation,
     clearRevertEditSession,
     editingMessageId,
     hasAppliedRevertSession,
@@ -585,9 +674,14 @@ export function useChatMessages(input: UseChatMessagesInput) {
     activeConversationIdRef: streamingState.activeConversationIdRef,
     applyConversation: sessionState.applyConversation,
     appendLocalMessage: sessionState.appendLocalMessage,
+    beginHistoryCutoff,
+    beginOptimisticEditedPresentation,
+    beginPendingRevertEditingMessage,
     beginRevertEditingMessage,
     cancelEditingMessage,
     clearError: sessionState.clearError,
+    clearHistoryCutoff,
+    clearOptimisticEditedPresentation,
     clearTextStreamingIdleTimeout: streamingState.clearTextStreamingIdleTimeout,
     completeEditingMessage,
     conversationRuntimeStatesRef: streamingState.conversationRuntimeStatesRef,
@@ -825,9 +919,11 @@ export function useChatMessages(input: UseChatMessagesInput) {
 
     return getPlanPathsCreatedByRevertedUserMessage(messages, editingMessageId)
   })()
-  const revertAnchorMessageId = activeConversationId
-    ? (revertEditSessionsRef.current[activeConversationId]?.messageId ?? null)
-    : null
+  const revertAnchorMessageId = historyCutoffMessageId
+  const renderedEditingMessageId =
+    activeOptimisticEditedPresentation?.messageId === editingMessageId
+      ? null
+      : editingMessageId
 
   return {
     activeConversationId,
@@ -848,9 +944,9 @@ export function useChatMessages(input: UseChatMessagesInput) {
     editComposerFocusSignal: composerState.editComposerFocusSignal,
     editComposerMentionPathMap: composerState.editComposerMentionPathMap,
     editComposerValue: composerState.editComposerValue,
-    editingMessageId,
+    editingMessageId: renderedEditingMessageId,
     error: sessionState.error,
-    isEditingMessage: editingMessageId !== null,
+    isEditingMessage: renderedEditingMessageId !== null,
     isEditComposerDirty: composerState.isEditComposerDirty,
     isLoading: sessionState.isLoading,
     isOpeningEmptyConversation: sessionState.isLoading && openEmptyConversationOnLaunch,

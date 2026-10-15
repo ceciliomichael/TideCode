@@ -98,6 +98,8 @@ const historyApi: TideCodeHistoryApi = {
   pickAndStoreChatAttachmentFolder: (conversationId) =>
     ipcRenderer.invoke('history:pickAndStoreChatAttachmentFolder', conversationId),
   listChatAttachments: (conversationId) => ipcRenderer.invoke('history:listChatAttachments', conversationId),
+  readChatAttachmentImagePreview: (conversationId, aliasPath) =>
+    ipcRenderer.invoke('history:readChatAttachmentImagePreview', conversationId, aliasPath),
   storeChatAttachment: (input) => ipcRenderer.invoke('history:storeChatAttachment', input),
   storeChatImageAttachment: (input) => ipcRenderer.invoke('history:storeChatImageAttachment', input),
   listConversations: () => ipcRenderer.invoke('history:list'),
@@ -355,6 +357,7 @@ const workspaceApi: TideCodeWorkspaceApi = {
   listRefactorCandidates: (input: WorkspaceRefactorCandidatesInput) =>
     ipcRenderer.invoke('workspace:refactorCandidates:list', input),
   readFile: (input) => ipcRenderer.invoke('workspace:explorer:readFile', input),
+  readToolImagePreview: (absolutePath: string) => ipcRenderer.invoke('workspace:toolImagePreview:read', absolutePath),
   getTypeScriptProject: (input) => ipcRenderer.invoke('workspace:typescript:getProject', input),
   renameEntry: (input) => ipcRenderer.invoke('workspace:explorer:renameEntry', input),
   unwatchExplorerChanges: (input: WorkspaceExplorerWatchChangesInput) =>
