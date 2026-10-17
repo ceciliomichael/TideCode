@@ -1,3 +1,3 @@
-# tools.skill.load
+# tools.skill.load.load
 
-Load the complete SKILL.md instructions of one enabled skill. Use an exact skill name obtained from tools.skill.search or tools.skill.list. Read referenced resources relative to the returned @skills alias.
+Load full `SKILL.md` instructions for one enabled skill. Pass its exact name from skill search or list; read referenced resources relative to the returned `@skills` alias.

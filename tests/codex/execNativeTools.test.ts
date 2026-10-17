@@ -55,11 +55,12 @@ test('search returns names only; exact get exposes documentation and schema', as
   ].join('\n'))
   assert.equal(result.status, 'success', result.body)
   const body = result.body ?? ''
-  assert.match(body, /"name": "tools\.read"/u)
-  assert.match(body, /"inputSchema"/u)
-  assert.match(body, /Read one file or directory/u)
+  assert.match(body, /# tools\.read/u)
+  assert.match(body, /await tools\.read\(input:/u)
+  assert.doesNotMatch(body, /"inputSchema"/u)
+  assert.match(body, /Read one existing file or directory/u)
   const searchOnly = await execute(bundle, 'return await tools.available.search({ query: "tools.read", namespace: "native" });')
-  assert.doesNotMatch(searchOnly.body ?? '', /Read one file or directory/u)
+  assert.doesNotMatch(searchOnly.body ?? '', /Read one existing file or directory/u)
   await bundle.codeModeExecutor.dispose()
 }))
 
@@ -83,7 +84,7 @@ test('multiple contract retrievals emit visible nested receipts instead of only 
   const result = await execute(bundle, [
     'const first = await tools.available.get({ name: "tools.read" });',
     'const second = await tools.available.get({ name: "tools.list" });',
-    'return [first.name, second.name];',
+    'return [first, second];',
   ].join('\n'))
   assert.equal(result.status, 'success', result.body)
   const calls = result.semantics?.tool_calls ?? []
@@ -139,7 +140,7 @@ test('MCP requires search then exact get; search exposes names only', async () =
   assert.equal(executions, 0)
   const fetched = await executor.run('return await tools.available.get({ name: "tools.mcp.search_repositories" });')
   assert.equal(fetched.status, 'success', fetched.error)
-  assert.match((fetched.output as { description: string }).description, /GitHub repositories/u)
+  assert.match(fetched.output as string, /GitHub repositories/u)
   const executed = await executor.run('return await tools.mcp.search_repositories({ query: "test" });')
   assert.equal(executed.status, 'success', executed.error)
   assert.equal(executions, 1)

@@ -11,9 +11,9 @@ function describeType(raw: unknown, depth = 0): string {
     if (Array.isArray(schema[key])) return (schema[key] as unknown[]).map((item) => describeType(item, depth + 1)).join(' | ')
   }
   if (Array.isArray(schema.type)) return schema.type.map((type) => describeType({ ...schema, type }, depth + 1)).join(' | ')
-  if (schema.type === 'array') return `${describeType(schema.items, depth + 1)}[]`
+  if (schema.type === 'array') return `(${describeType(schema.items, depth + 1)})[]`
   if (schema.type === 'object' || schema.properties) {
-    if (depth > 3) return 'object'
+    if (depth > 5) return 'object'
     const properties = schema.properties && typeof schema.properties === 'object' ? schema.properties as Schema : {}
     const required = new Set(Array.isArray(schema.required) ? schema.required : [])
     const fields = Object.entries(properties).map(([key, value]) => `${JSON.stringify(key)}${required.has(key) ? '' : '?'}: ${describeType(value, depth + 1)}`)
@@ -34,6 +34,7 @@ function schemaNotes(raw: unknown, prefix = '', depth = 0): string[] {
     .filter((key) => schema[key] !== undefined)
     .map((key) => key === 'description' ? String(schema[key]).trim() : `${key}: ${JSON.stringify(schema[key])}`)
   if (prefix && details.length) notes.push(`- \`${prefix}\`: ${details.join('; ')}`)
+  if (schema.items) notes.push(...schemaNotes(schema.items, prefix ? `${prefix}[]` : '[]', depth + 1))
   if (schema.properties && typeof schema.properties === 'object') {
     for (const [key, value] of Object.entries(schema.properties as Schema)) {
       notes.push(...schemaNotes(value, prefix ? `${prefix}.${key}` : key, depth + 1))
@@ -48,7 +49,14 @@ export function getAvailableApi(tool: AgentToolRegistryEntry, name: string): str
   const description = tool.description.trim()
   const header = description.startsWith(`# ${name}`) ? description : `# ${name}\n\n${description}`
   const notes = schemaNotes(schema)
-  const fallback = schema.allOf || schema.not || schema.if || schema.then || schema.else || schema.$ref
+  const needsFallback = (value: unknown, depth = 0): boolean => {
+    if (!value || typeof value !== 'object' || depth > 15) return depth > 15
+    if (Array.isArray(value)) return value.some((part) => needsFallback(part, depth + 1))
+    const object = value as Schema
+    if (['allOf', 'not', 'if', 'then', 'else', '$ref', '$defs', 'definitions', 'dependentRequired', 'dependentSchemas', 'propertyNames', 'patternProperties', 'contains', 'unevaluatedProperties', 'minProperties', 'maxProperties', 'uniqueItems', 'prefixItems'].some((key) => object[key] !== undefined)) return true
+    return Object.values(object).some((part) => needsFallback(part, depth + 1))
+  }
+  const fallback = needsFallback(schema)
     ? `\n\nAdditional schema constraints:\n\n\`\`\`json\n${JSON.stringify(schema, null, 2)}\n\`\`\`` : ''
   return `${header}\n\n## Call\n\n\`\`\`ts\nawait ${name}(input: ${describeType(schema)}): Promise<${returnType}>\n\`\`\`${notes.length ? `\n\n## Parameters\n\n${notes.join('\n')}` : ''}${fallback}`
 }

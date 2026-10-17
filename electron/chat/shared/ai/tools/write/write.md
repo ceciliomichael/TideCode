@@ -1,5 +1,3 @@
 # tools.write
 
-Create or replace one complete file.
-
-Use the exact destination path and complete readable content. Use tools.patch for smaller targeted changes. Await the result and check status.
+Create or replace one complete file. Supply the exact destination path and entire content. For smaller targeted edits, use `tools.patch`; preserve exact source text with `exec.payloads` when needed.

@@ -1,9 +1,3 @@
-# tools.readread
+# tools.read
 
-Read one file or directory. Use exact workspace paths. Paginate large reads using returned offsets and cursors.
-
-## Rules
-- Use the actual registered signature and its required parameters.
-- Never guess paths, names, or identifiers; discover them first.
-- Await the call and inspect its status and result.
-- Follow the workspace and current chat-mode authorization policy.
+Read one existing file or directory. Paths resolve relative to the workspace unless an authorized alias or absolute path is used. Continue large reads using the returned `next_cursor` verbatim or 1-based offsets; line limits are capped at 500.
