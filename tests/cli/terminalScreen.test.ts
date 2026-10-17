@@ -73,13 +73,13 @@ test('streaming CLI user messages display canonical mentions as @ labels', () =>
   const output = new TerminalGridOutput()
   const screen = createScreen(output)
   screen.start()
-  screen.addUserMessage('inspect [[list:docs]] and [[read_file:src/main.ts]]')
+  screen.addUserMessage('inspect [[tools.list:docs]] and [[tools.read:src/main.ts]]')
   screen.beginTurn()
 
   const rows = output.visibleRows()
   assert.equal(rows.some((row) => row.includes('inspect @docs and @main.ts')), true)
-  assert.equal(rows.some((row) => row.includes('[[list:docs]]')), false)
-  assert.equal(rows.some((row) => row.includes('[[read_file:src/main.ts]]')), false)
+  assert.equal(rows.some((row) => row.includes('[[tools.list:docs]]')), false)
+  assert.equal(rows.some((row) => row.includes('[[tools.read:src/main.ts]]')), false)
 })
 
 test('streaming follow-ups and consumed user messages hide canonical mention markup', () => {
@@ -89,9 +89,9 @@ test('streaming follow-ups and consumed user messages hide canonical mention mar
   screen.addUserMessage('start')
   screen.beginTurn()
 
-  screen.setActiveFollowUps([{ behavior: 'steer', text: 'check [[list:docs]]' }])
+  screen.setActiveFollowUps([{ behavior: 'steer', text: 'check [[tools.list:docs]]' }])
   screen.addConsumedUserMessages([{
-    content: 'also inspect [[read_file:src/main.ts]]',
+    content: 'also inspect [[tools.read:src/main.ts]]',
     id: 'consumed-with-mention',
     role: 'user',
     timestamp: 1,
@@ -100,7 +100,7 @@ test('streaming follow-ups and consumed user messages hide canonical mention mar
   const rows = output.visibleRows()
   assert.equal(rows.some((row) => row.includes('[Steer] check @docs')), true)
   assert.equal(rows.some((row) => row.includes('also inspect @main.ts')), true)
-  assert.equal(rows.some((row) => row.includes('[[list:docs]]') || row.includes('[[read_file:src/main.ts]]')), false)
+  assert.equal(rows.some((row) => row.includes('[[tools.list:docs]]') || row.includes('[[tools.read:src/main.ts]]')), false)
 })
 
 test('tool execution restores the thinking indicator until the active turn continues', () => {
@@ -391,7 +391,7 @@ test('/undo restores canonical file mentions as editable @mentions without losin
   const screen = createScreen(output)
   const messages: Message[] = [
     {
-      content: 'hi look [[read_file:AGENTS.md]]',
+      content: 'hi look [[tools.read:AGENTS.md]]',
       id: 'user-mention',
       role: 'user',
       timestamp: 1,
@@ -427,24 +427,24 @@ test('/undo restores canonical file mentions as editable @mentions without losin
           label: '@AGENTS.md',
           description: 'file · AGENTS.md',
           mentionKind: 'file',
-          mentionPath: 'read_file:AGENTS.md',
+          mentionPath: 'tools.read:AGENTS.md',
         }]
       : [],
   })
 
-  assert.equal(output.visibleRows().some((row) => row.includes('[[read_file:AGENTS.md]]')), false)
+  assert.equal(output.visibleRows().some((row) => row.includes('[[tools.read:AGENTS.md]]')), false)
   assert.equal(output.visibleRows().some((row) => row.includes('hi look @AGENTS.md')), true)
   assert.equal(output.visibleRows().some((row) => row.includes('file · AGENTS.md')), false)
 
   screen.handleInputAction({ type: 'submit' })
   const submission = await submissionPromise
-  assert.equal(submission.text, 'hi look [[read_file:AGENTS.md]]')
+  assert.equal(submission.text, 'hi look [[tools.read:AGENTS.md]]')
 })
 
 test('/undo removes a restored mention atomically with Backspace', async () => {
   const output = new TerminalGridOutput()
   const screen = createScreen(output)
-  screen.setNextPromptDraft('hi look [[read_file:AGENTS.md]]')
+  screen.setNextPromptDraft('hi look [[tools.read:AGENTS.md]]')
 
   const submissionPromise = screen.ask({
     mode: 'agent',
@@ -575,7 +575,7 @@ test('screen selects an active mention completion with Enter before submitting i
           label: '@code-review',
           description: 'skill · Reviews code carefully.',
           mentionKind: 'skill',
-          mentionPath: 'load_skill:code-review',
+          mentionPath: 'tools.skill.load:code-review',
         }]
       : [],
   })
@@ -593,7 +593,7 @@ test('screen selects an active mention completion with Enter before submitting i
 
   screen.handleInputAction({ type: 'submit' })
   const submitted = await submissionPromise
-  assert.equal(submitted.text, '[[load_skill:code-review]]')
+  assert.equal(submitted.text, '[[tools.skill.load:code-review]]')
 })
 
 test('screen keypress Enter selects the highlighted mention completion before submitting', async () => {
@@ -612,14 +612,14 @@ test('screen keypress Enter selects the highlighted mention completion before su
             label: '@code-review',
             description: 'skill · Reviews code carefully.',
             mentionKind: 'skill',
-            mentionPath: 'load_skill:code-review',
+            mentionPath: 'tools.skill.load:code-review',
           },
           {
             value: '@code-search',
             label: '@code-search',
             description: 'skill · Searches code carefully.',
             mentionKind: 'skill',
-            mentionPath: 'load_skill:code-search',
+            mentionPath: 'tools.skill.load:code-search',
           },
         ]
       : [],
@@ -643,7 +643,7 @@ test('screen keypress Enter selects the highlighted mention completion before su
 
   inputInternals.handleKeypress('\r', { name: 'return' })
   const submitted = await submissionPromise
-  assert.equal(submitted.text, '[[load_skill:code-search]]')
+  assert.equal(submitted.text, '[[tools.skill.load:code-search]]')
 })
 
 test('screen lifecycle streams reasoning text and commits its duration label', () => {

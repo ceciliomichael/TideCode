@@ -11,19 +11,19 @@ import {
   resolveChatMentionNativeDeletionChange,
   shouldCloseChatMentionMenuForNormalText,
 } from '../lib/chatMentions'
-import type { WorkspaceExplorerEntry } from '../types/chat'
-import type { ChatMentionMenuItem, ChatMentionMenuType } from '../components/chat/ChatMentionMenu'
+import type { ChatAttachment, StoredChatAttachment, WorkspaceExplorerEntry } from '../types/chat'
+import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPathComparison'
+import type { McpState } from '../types/mcp'
+import { getAttachmentMentionEntries, getChatMentionCategories, getMcpMentionEntries, type ChatMentionMenuItem, type ChatMentionMenuType } from '../components/chat/chatMentionCatalog'
 
 interface ChatFileMentionIndex {
-  attachmentRefreshKey: number
-  attachmentScopeId: string
   basenameCounts: Map<string, number>
   entries: ChatMentionMenuItem[]
   workspaceRootPath: string
 }
 
 interface UseChatFileMentionMenuInput {
-  attachmentRefreshKey?: number
+  attachments?: readonly ChatAttachment[]
   attachmentScopeId?: string | null
   disabled?: boolean
   initialMentionPathMap?: ReadonlyMap<string, string> | null
@@ -35,7 +35,6 @@ interface UseChatFileMentionMenuInput {
 
 const MAX_MENTION_RESULTS = 8
 const MENTION_MENU_PLACEMENT_HEIGHT_PX = 240
-const ROOT_MENU_OPTION_COUNT = 5
 
 function normalizeRelativePath(relativePath: string) {
   return relativePath.replace(/\\/g, '/')
@@ -136,11 +135,7 @@ function scoreMentionResult(relativePath: string, query: string, label = getPath
   return null
 }
 
-async function loadWorkspaceMentionIndex(
-  workspaceRootPath: string,
-  attachmentScopeId?: string | null,
-  attachmentRefreshKey = 0,
-) {
+async function loadWorkspaceMentionIndex(workspaceRootPath: string) {
   const workspaceName = getPathBasename(workspaceRootPath)
   const discoveredEntries: WorkspaceExplorerEntry[] = await window.tidecodeWorkspace.listDirectory({
     recursive: true,
@@ -159,23 +154,6 @@ async function loadWorkspaceMentionIndex(
     })
 
   const skillEntries: ChatMentionMenuItem[] = []
-  const attachmentEntries: ChatMentionMenuItem[] = []
-  if (attachmentScopeId?.trim() && typeof window !== 'undefined' && window.tidecodeHistory) {
-    try {
-      const attachments = await window.tidecodeHistory.listChatAttachments(attachmentScopeId.trim())
-      for (const attachment of attachments) {
-        attachmentEntries.push({
-          description: attachment.path,
-          isDirectory: attachment.kind === 'folder',
-          kind: 'attachment',
-          label: attachment.fileName,
-          relativePath: attachment.path,
-        })
-      }
-    } catch (error) {
-      console.error('Failed to load chat attachments for mention menu index', error)
-    }
-  }
   if (typeof window !== 'undefined' && window.tidecodeSkills) {
     try {
       const skillsState = await window.tidecodeSkills.listSkills(workspaceRootPath)
@@ -185,7 +163,7 @@ async function loadWorkspaceMentionIndex(
           description: skill.description || 'Skill pack',
           kind: 'skill',
           label: skill.name,
-          relativePath: `@skills/${skill.name}/`,
+          relativePath: `tools.skill.load:${skill.name}`,
         })
       }
     } catch (error) {
@@ -193,21 +171,21 @@ async function loadWorkspaceMentionIndex(
     }
   }
 
-  const entries = [...fileAndFolderEntries, ...attachmentEntries, ...skillEntries].sort((left, right) =>
+  const entries = [...fileAndFolderEntries, ...skillEntries].sort((left, right) =>
     left.description.localeCompare(right.description, undefined, { sensitivity: 'base' }),
   )
 
   return {
-    attachmentRefreshKey,
-    attachmentScopeId: attachmentScopeId?.trim() ?? '',
     basenameCounts,
     entries,
     workspaceRootPath,
   } satisfies ChatFileMentionIndex
 }
 
+const EMPTY_ATTACHMENTS: readonly ChatAttachment[] = []
+
 export function useChatFileMentionMenu({
-  attachmentRefreshKey = 0,
+  attachments = EMPTY_ATTACHMENTS,
   attachmentScopeId = null,
   disabled = false,
   initialMentionPathMap = null,
@@ -216,6 +194,8 @@ export function useChatFileMentionMenu({
   value,
   workspaceRootPath,
 }: UseChatFileMentionMenuInput) {
+  const [storedAttachmentIndex, setStoredAttachmentIndex] = useState<{ scopeId: string; attachments: StoredChatAttachment[] } | null>(null)
+  const [mcpEntries, setMcpEntries] = useState<ChatMentionMenuItem[]>([])
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -339,8 +319,6 @@ export function useChatFileMentionMenu({
 
     if (
       workspaceMentionIndex?.workspaceRootPath === workspaceRootPath &&
-      workspaceMentionIndex.attachmentScopeId === (attachmentScopeId?.trim() ?? '') &&
-      workspaceMentionIndex.attachmentRefreshKey === attachmentRefreshKey &&
       workspaceMentionIndexLoadedKey === workspaceMentionIndexRefreshKey
     ) {
       return
@@ -350,7 +328,7 @@ export function useChatFileMentionMenu({
     const nextRefreshKey = workspaceMentionIndexRefreshKey
     setIsIndexLoading(true)
 
-    void loadWorkspaceMentionIndex(workspaceRootPath, attachmentScopeId, attachmentRefreshKey)
+    void loadWorkspaceMentionIndex(workspaceRootPath)
       .then((index) => {
         if (isCancelled) {
           return
@@ -363,8 +341,6 @@ export function useChatFileMentionMenu({
         if (!isCancelled) {
           console.error('Failed to build file mention index', error)
           setWorkspaceMentionIndex({
-            attachmentRefreshKey,
-            attachmentScopeId: attachmentScopeId?.trim() ?? '',
             basenameCounts: new Map(),
             entries: [],
             workspaceRootPath,
@@ -382,24 +358,99 @@ export function useChatFileMentionMenu({
       isCancelled = true
     }
   }, [
-    attachmentRefreshKey,
-    attachmentScopeId,
     isOpen,
-    workspaceMentionIndex?.attachmentRefreshKey,
-    workspaceMentionIndex?.attachmentScopeId,
     workspaceMentionIndex?.workspaceRootPath,
     workspaceMentionIndexLoadedKey,
     workspaceMentionIndexRefreshKey,
     workspaceRootPath,
   ])
 
-  const searchResults = useMemo(() => {
-    if (!workspaceMentionIndex) {
-      return [] as ChatMentionMenuItem[]
+  useEffect(() => {
+    setMcpEntries([])
+    const api = window.tidecodeMcp
+    if (!workspaceRootPath || !api) {
+      return
     }
+    let isDisposed = false
+    let receivedStateEvent = false
+    const updateEntries = (state: McpState) => {
+      if (isDisposed) {
+        return
+      }
+      setMcpEntries(getMcpMentionEntries(state))
+    }
+    const unsubscribe = api.onStateChange((event) => {
+      if (
+        event.workspacePath &&
+        normalizeWorkspaceRootPathForComparison(event.workspacePath) === normalizeWorkspaceRootPathForComparison(workspaceRootPath)
+      ) {
+        receivedStateEvent = true
+        updateEntries(event.state)
+      }
+    })
+    void api.getState(workspaceRootPath).then((state) => {
+      if (!receivedStateEvent) {
+        updateEntries(state)
+      }
+    }).catch((error) => {
+      if (!isDisposed) {
+        console.error('Failed to load MCP servers for mention menu', error)
+      }
+    })
+    return () => {
+      isDisposed = true
+      unsubscribe()
+    }
+  }, [workspaceRootPath])
 
+  const normalizedAttachmentScopeId = attachmentScopeId?.trim() ?? ''
+  const attachmentRevision = JSON.stringify(attachments.map((attachment) => [
+    attachment.id,
+    'path' in attachment ? attachment.path : null,
+  ]))
+
+  useEffect(() => {
+    if (!isOpen || !normalizedAttachmentScopeId || !window.tidecodeHistory) {
+      return
+    }
+    let isCancelled = false
+    void window.tidecodeHistory.listChatAttachments(normalizedAttachmentScopeId).then((storedAttachments) => {
+      if (!isCancelled) {
+        setStoredAttachmentIndex({ scopeId: normalizedAttachmentScopeId, attachments: storedAttachments })
+      }
+    }).catch((error) => {
+      if (!isCancelled) {
+        console.error('Failed to load chat attachments for mention menu', error)
+      }
+    })
+    return () => {
+      isCancelled = true
+    }
+  }, [attachmentRevision, isOpen, normalizedAttachmentScopeId])
+
+  const attachmentEntries = useMemo(() => {
+    const storedAttachments = storedAttachmentIndex?.scopeId === normalizedAttachmentScopeId
+      ? storedAttachmentIndex.attachments
+      : EMPTY_ATTACHMENTS
+    return getAttachmentMentionEntries([...storedAttachments, ...attachments])
+  }, [attachments, normalizedAttachmentScopeId, storedAttachmentIndex])
+
+  const categories = useMemo(() => getChatMentionCategories(
+    attachmentEntries.length > 0,
+    mcpEntries.length > 0,
+  ), [attachmentEntries.length, mcpEntries.length])
+
+  useEffect(() => {
+    setSelectedIndex(0)
+    setHighlightedIndex(0)
+    if (!categories.some((category) => category.kind === selectedMenuType)) {
+      setSelectedMenuType(null)
+    }
+  }, [categories, selectedMenuType])
+
+  const searchResults = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase()
-    const scoredResults = workspaceMentionIndex.entries.filter((item) =>
+    const scoredResults = [...(workspaceMentionIndex?.entries ?? []), ...attachmentEntries, ...mcpEntries].filter((item) =>
       selectedMenuType === null ? true : item.kind === selectedMenuType,
     )
       .map((item) => {
@@ -430,7 +481,7 @@ export function useChatFileMentionMenu({
       ...item,
       label: item.label,
     }))
-  }, [searchQuery, selectedMenuType, workspaceMentionIndex])
+  }, [attachmentEntries, mcpEntries, searchQuery, selectedMenuType, workspaceMentionIndex])
 
   useEffect(() => {
     if (!isOpen) {
@@ -699,7 +750,7 @@ function handlePointerDown(event: PointerEvent) {
           event.preventDefault()
           const direction = event.key === 'ArrowDown' ? 1 : -1
           setSelectedIndex((currentValue) => {
-            const nextIndex = (currentValue + direction + ROOT_MENU_OPTION_COUNT) % ROOT_MENU_OPTION_COUNT
+            const nextIndex = (currentValue + direction + categories.length) % categories.length
             setHighlightedIndex(nextIndex)
             return nextIndex
           })
@@ -708,15 +759,7 @@ function handlePointerDown(event: PointerEvent) {
 
         if (event.key === 'Enter' || event.key === 'Tab') {
           event.preventDefault()
-          handleSelectCategory(
-            selectedIndex === 3
-              ? 'skill'
-              : selectedIndex === 2
-                  ? 'attachment'
-                  : selectedIndex === 1
-                    ? 'folder'
-                    : 'file',
-          )
+          handleSelectCategory(categories[selectedIndex % categories.length].kind)
           return true
         }
 
@@ -752,7 +795,7 @@ function handlePointerDown(event: PointerEvent) {
 
       return false
     },
-    [closeMenu, handleSelectCategory, handleSelectMention, isOpen, searchQuery, searchResults, selectedIndex, selectedMenuType],
+    [categories, closeMenu, handleSelectCategory, handleSelectMention, isOpen, searchQuery, searchResults, selectedIndex, selectedMenuType],
   )
 
   const handleBlur = useCallback(() => {
@@ -784,6 +827,7 @@ function handlePointerDown(event: PointerEvent) {
 
   return {
     anchorRef,
+    categories,
     clearMentionPathMap,
     expandValueForSend,
     closeMenu,
@@ -795,7 +839,7 @@ function handlePointerDown(event: PointerEvent) {
     handleSelectCategory,
     handleValueChange,
     markTriggerUpdateSuppressed,
-    isIndexLoading,
+    isIndexLoading: isIndexLoading && selectedMenuType !== 'attachment' && selectedMenuType !== 'mcp' && searchResults.length === 0,
     isOpen,
     menuRef,
     menuStyle,

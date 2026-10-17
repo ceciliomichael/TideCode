@@ -32,9 +32,9 @@ test('restoreChatComposerDraft keeps a persisted file label instead of exposing 
   )
 })
 
-test('virtual alias mentions round-trip between compact UI labels and model-facing aliases', () => {
+test('virtual alias drafts resend using explicit tool markers', () => {
   const storedContent =
-    'Compare @workspace/project1/src/App.tsx with @attachments/spec.pdf and @skills/pdfs/'
+    'Compare [[tools.read:@workspace/project1/src/App.tsx]] with [[tools.read:@attachments/spec.pdf]] and [[tools.skill.load:pdfs]]'
   const persistedMentionPathMap = {
     'App.tsx': '@workspace/project1/src/App.tsx',
     'spec.pdf': '@attachments/spec.pdf',

@@ -55,6 +55,8 @@
   --color-info-border: #bdd8ee;
   --color-info-foreground: #1d5f91;
   --color-info-foreground-strong: #174a70;
+  --color-mcp-surface: #f0eafa;
+  --color-mcp-foreground: #7543a6;
   --color-danger-surface: #fff0f1;
   --color-danger-border: #f3c3c7;
   --color-danger-foreground: #b4232d;
@@ -163,6 +165,8 @@
     --color-info-border: #34546c;
     --color-info-foreground: #84bfea;
     --color-info-foreground-strong: #add5f2;
+    --color-mcp-surface: #30233f;
+    --color-mcp-foreground: #c9a4ef;
     --color-danger-surface: rgb(95 34 41 / 0.28);
     --color-danger-border: rgb(188 79 91 / 0.45);
     --color-danger-foreground: #f48771;

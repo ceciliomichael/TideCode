@@ -55,7 +55,7 @@ function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts
     return 'mcpCount'
   }
 
-  if (toolName === 'tool_search' || toolName === 'available.search') {
+  if (toolName === 'tool_search' || toolName === 'available.search' || toolName === 'available.list') {
     return 'toolSearchCount'
   }
   if (toolName === 'available.get') return 'toolGetCount'

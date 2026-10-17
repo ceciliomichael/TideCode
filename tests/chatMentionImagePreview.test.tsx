@@ -10,6 +10,8 @@ import { ChatMentionText } from '../src/components/chat/ChatMentionText'
 import { ChatMentionTextarea } from '../src/components/chat/ChatMentionTextarea'
 import { findChatMentionImageAttachment } from '../src/lib/chatMentionImages'
 import type { ChatImageAttachment } from '../src/types/chat'
+import { ChatMentionMenu } from '../src/components/chat/ChatMentionMenu'
+import { getChatMentionCategories } from '../src/components/chat/chatMentionCatalog'
 
 const attachment: ChatImageAttachment = {
   dataUrl: 'data:image/png;base64,preview-data',
@@ -22,6 +24,10 @@ const attachment: ChatImageAttachment = {
 }
 
 test('image mention hover lookup resolves only the matching path-backed image', () => {
+  assert.equal(
+    findChatMentionImageAttachment('tools.read:@attachments/preview.png', [attachment]),
+    attachment,
+  )
   assert.equal(
     findChatMentionImageAttachment('@attachments/preview.png', [attachment]),
     attachment,
@@ -73,4 +79,40 @@ test('composer textarea text stays above the mention highlight backdrop', () => 
 
   assert.match(markup, /<textarea[^>]*z-\[2\]/u)
   assert.match(markup, /pointer-events-none absolute inset-0 z-\[1\]/u)
+})
+
+test('catalog hides empty attachments and renders MCP with its violet accent', () => {
+  const renderMenu = (hasAttachments: boolean, hasConnectedMcp: boolean) => renderToStaticMarkup(
+    <ChatMentionMenu
+      anchorRef={null!}
+      categories={getChatMentionCategories(hasAttachments, hasConnectedMcp)}
+      isOpen
+      loading={false}
+      menuRef={createRef<HTMLDivElement>()}
+      menuStyle={{}}
+      onSelect={() => undefined}
+      onSelectCategory={() => undefined}
+      onHighlightIndex={() => undefined}
+      onResetHighlight={() => undefined}
+      results={[]}
+      highlightedIndex={0}
+      selectedMenuType={null}
+      searchQuery=""
+      workspaceRootAvailable
+    />,
+  )
+  const emptyMarkup = renderMenu(false, true)
+  assert.doesNotMatch(emptyMarkup, />Attachments</u)
+  assert.match(emptyMarkup, />MCP</u)
+  assert.match(emptyMarkup, /text-mcp-foreground/u)
+  assert.match(renderMenu(true, true), />Attachments</u)
+  assert.doesNotMatch(renderMenu(false, false), />MCP</u)
+})
+
+test('MCP mentions use the violet highlight surface', () => {
+  const markup = renderToStaticMarkup(
+    <ChatMentionText text="[[tools.available.search:GitHub]]" variant="rendered" />,
+  )
+  assert.match(markup, /@GitHub/u)
+  assert.match(markup, /bg-mcp-surface/u)
 })

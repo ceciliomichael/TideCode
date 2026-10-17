@@ -1,19 +1,11 @@
-import { File, Folder, Paperclip, Wand2 } from 'lucide-react'
+import { File, Folder, Plug, Wand2 } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties, RefObject } from 'react'
 import { resolveFileIconConfig } from '../../lib/fileIconResolver'
-
-export type ChatMentionMenuType = 'file' | 'folder' | 'attachment' | 'skill'
-
-export interface ChatMentionMenuItem {
-  description: string
-  kind: ChatMentionMenuType
-  label: string
-  relativePath: string
-  isDirectory?: boolean
-}
+import { CHAT_MENTION_CATEGORIES, type ChatMentionMenuItem, type ChatMentionMenuType } from './chatMentionCatalog'
 
 interface ChatMentionMenuProps {
+  categories: typeof CHAT_MENTION_CATEGORIES
   anchorRef: RefObject<HTMLElement | null>
   isOpen: boolean
   loading: boolean
@@ -31,39 +23,8 @@ interface ChatMentionMenuProps {
   workspaceRootAvailable: boolean
 }
 
-const ROOT_OPTIONS: readonly {
-  description: string
-  icon: typeof File
-  kind: ChatMentionMenuType
-  label: string
-}[] = [
-  {
-    description: 'Search for files',
-    icon: File,
-    kind: 'file',
-    label: 'File',
-  },
-  {
-    description: 'Search for folders',
-    icon: Folder,
-    kind: 'folder',
-    label: 'Folder',
-  },
-  {
-    description: 'Mention files attached to this chat',
-    icon: Paperclip,
-    kind: 'attachment',
-    label: 'Attachments',
-  },
-  {
-    description: 'Search for skills',
-    icon: Wand2,
-    kind: 'skill',
-    label: 'Skills',
-  },
-]
-
 export function ChatMentionMenu({
+  categories,
   anchorRef,
   isOpen,
   loading,
@@ -100,7 +61,7 @@ export function ChatMentionMenu({
             {!workspaceRootAvailable ? (
               <div className="px-4 py-3 text-sm text-subtle-foreground">Select a workspace folder to mention files.</div>
             ) : (
-              ROOT_OPTIONS.map((option, index) => {
+              categories.map((option, index) => {
                 const isHighlighted = index === highlightedIndex
                 const Icon = option.icon
 
@@ -135,7 +96,7 @@ export function ChatMentionMenu({
                               ? 'text-muted-foreground'
                               : option.kind === 'skill'
                                 ? 'text-brand'
-                                : 'text-success-foreground'
+                                : 'text-mcp-foreground'
                       }`}
                     />
                     <span className="min-w-0 flex-1">
@@ -162,7 +123,9 @@ export function ChatMentionMenu({
                 ? 'Attachment mentions'
                 : selectedMenuType === 'skill'
                   ? 'Skill mentions'
-                   : 'File, folder, attachment, and skill mentions'
+                  : selectedMenuType === 'mcp'
+                    ? 'MCP mentions'
+                    : 'File, folder, attachment, skill, and MCP mentions'
         }
         data-floating-menu-root="true"
         className="fixed z-40 w-[min(26rem,calc(100vw-1rem))] overflow-hidden rounded-[22px] border border-border bg-surface-raised shadow-soft"
@@ -189,7 +152,9 @@ export function ChatMentionMenu({
                       ? 'No attachments in this chat yet'
                       : selectedMenuType === 'skill'
                         ? 'Type to search skills...'
-                         : 'Type to search files, folders, attachments, or skills...'}
+                        : selectedMenuType === 'mcp'
+                          ? 'No MCP servers available'
+                          : 'Type to search files, folders, attachments, skills, or MCPs...'}
             </div>
           ) : (
             results.map((item, index) => {
@@ -220,7 +185,9 @@ export function ChatMentionMenu({
                       : 'text-foreground hover:bg-[var(--dropdown-option-hover-surface)]',
                   ].join(' ')}
                 >
-                  {item.kind === 'skill' ? (
+                  {item.kind === 'mcp' ? (
+                    <Plug size={14} className="shrink-0 text-mcp-foreground" />
+                  ) : item.kind === 'skill' ? (
                     <Wand2 size={14} className="shrink-0 text-brand" />
                   ) : item.kind === 'folder' || (item.kind === 'attachment' && item.isDirectory) ? (
                     <Folder size={14} className="shrink-0 text-warning-foreground" />

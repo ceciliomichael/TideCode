@@ -173,7 +173,7 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   )
   const shouldLimitResultHeight =
     terminalToolName === null && !isFileWriteTool(displayInvocation.toolName) && !isFileEditTool(displayInvocation.toolName)
-  const isMarkdownResult = toolDiffPresentation === null && imageResultPresentation === null && terminalToolName === null && !isLiteralSourceTool
+  const isMarkdownResult = toolDiffPresentation === null && imageResultPresentation === null && terminalToolName === null && displayInvocation.toolName === 'web_search'
 
   return (
     <div className="relative w-full">

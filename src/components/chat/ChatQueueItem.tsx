@@ -28,6 +28,7 @@ import {
   collapseChatMentionMarkup,
   expandChatMentions,
   findChatMentionMatches,
+  getChatMentionTarget,
   insertChatMentionAtPosition,
   restoreChatMentionPathMap,
 } from '../../lib/chatMentions'
@@ -357,7 +358,7 @@ export function ChatQueueItem({
     }
     const activeMentionPaths = new Set(
       findChatMentionMatches(draftContent, draftMentionPathMap)
-        .map((match) => match.path)
+        .map((match) => match.path ? getChatMentionTarget(match.path) : null)
         .filter((path): path is string => Boolean(path)),
     )
     const nextAttachments = draftAttachments.filter((attachment) => {

@@ -9,7 +9,7 @@ import {
 
 test('selected mentions are atomic deletion targets for mobile and desktop input events', () => {
   const value = 'see @main.ts please'
-  const knownMentions = new Map([['main.ts', 'read_file:src/main.ts']])
+  const knownMentions = new Map([['main.ts', 'tools.read:src/main.ts']])
 
   assert.deepEqual(
     findChatMentionForDeletion({
@@ -19,7 +19,7 @@ test('selected mentions are atomic deletion targets for mobile and desktop input
       selectionStart: 12,
       text: value,
     }),
-    { end: 12, label: 'main.ts', path: 'read_file:src/main.ts', start: 4 },
+    { end: 12, label: 'main.ts', path: 'tools.read:src/main.ts', start: 4 },
   )
   assert.deepEqual(
     findChatMentionForDeletion({
@@ -29,7 +29,7 @@ test('selected mentions are atomic deletion targets for mobile and desktop input
       selectionStart: 8,
       text: value,
     }),
-    { end: 12, label: 'main.ts', path: 'read_file:src/main.ts', start: 4 },
+    { end: 12, label: 'main.ts', path: 'tools.read:src/main.ts', start: 4 },
   )
   assert.deepEqual(
     findChatMentionForDeletion({
@@ -39,7 +39,7 @@ test('selected mentions are atomic deletion targets for mobile and desktop input
       selectionStart: 4,
       text: value,
     }),
-    { end: 12, label: 'main.ts', path: 'read_file:src/main.ts', start: 4 },
+    { end: 12, label: 'main.ts', path: 'tools.read:src/main.ts', start: 4 },
   )
   assert.equal(
     findChatMentionForDeletion({
@@ -54,7 +54,7 @@ test('selected mentions are atomic deletion targets for mobile and desktop input
 })
 
 test('mobile native deletion repairs a partially deleted mention into an atomic deletion', () => {
-  const knownMentions = new Map([['main.ts', 'read_file:src/main.ts']])
+  const knownMentions = new Map([['main.ts', 'tools.read:src/main.ts']])
 
   assert.deepEqual(
     resolveChatMentionNativeDeletionChange({
@@ -92,7 +92,7 @@ test('mobile native deletion repairs a partially deleted mention into an atomic 
 
 test('an unselected mention becomes normal text after a space', () => {
   const value = '@not-a-real-file '
-  const knownMentions = new Map([['main.ts', 'read_file:src/main.ts']])
+  const knownMentions = new Map([['main.ts', 'tools.read:src/main.ts']])
   const triggerState = getChatMentionTriggerState(value, value.length, knownMentions)
 
   assert.deepEqual(triggerState, {

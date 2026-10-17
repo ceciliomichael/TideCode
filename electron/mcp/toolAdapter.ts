@@ -58,7 +58,7 @@ function toToolBody(content: CallToolResult['content']) {
 function createToolDescription(config: McpServerConfig, tool: McpTool) {
   const baseDescription = tool.description?.trim() ?? ''
   const sourceLabel = config.owner === 'tidecode' ? 'TideCode' : config.owner
-  const sourceContext = `${sourceLabel} MCP server "${config.name}"; original tool "${tool.name}"`
+  const sourceContext = `${sourceLabel} MCP server "${config.name}"; original tool "${tool.name}"; namespace "${config.toolNamespace || config.name}"`
   return baseDescription.length > 0 ? `[${sourceContext}] ${baseDescription}` : `[${sourceContext}] MCP tool`
 }
 

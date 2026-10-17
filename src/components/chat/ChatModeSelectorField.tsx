@@ -34,7 +34,7 @@ export function ChatModeSelectorField({
     anchorRef: buttonRef,
     isOpen,
     menuRef,
-    preferredPlacement: 'above',
+    preferredPlacement: 'below',
   })
 
   useEffect(() => {

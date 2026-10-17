@@ -1,11 +1,11 @@
-// Canonical expanded mention format: [[action:path]]
-// e.g. [[load_skill:natural-writing]], [[read_file:src/main.ts]], [[list:src/components]]
+// Canonical expanded mention format: [[tool:target]]
+// e.g. [[tools.skill.load:writing]], [[tools.read:@workspace/app/src/main.ts]]
 // The double-bracket delimiters give unambiguous boundaries so no greedy-match
 // issues can bleed into surrounding normal text.
 
 
-// Matches the NEW canonical [[action:path]] delimited format (may contain spaces)
-const BRACKETED_ACTION_REGEX = /\[\[((?:read_file|list|load_skill):[^\]]+)\]\]/g
+// Bracket delimiters preserve exact targets, including names and paths with spaces.
+const BRACKETED_ACTION_REGEX = /\[\[((?:tools\.read|tools\.list|tools\.skill\.load|tools\.available\.search|read_file|list|load_skill):[^\]]+)\]\]/g
 const VIRTUAL_MENTION_PREFIXES = ['@workspace/', '@attachments/', '@skills/'] as const
 
 export interface ChatMentionMatch {
@@ -100,7 +100,7 @@ function getKnownMentionLabelForPath(
   }
 
   for (const [label, knownPath] of knownMentionLabels) {
-    if (knownPath === path) {
+    if (knownPath === path || toChatMentionToolReference(knownPath) === path) {
       return label
     }
   }
@@ -110,6 +110,25 @@ function getKnownMentionLabelForPath(
 
 function isVirtualMentionPath(path: string) {
   return VIRTUAL_MENTION_PREFIXES.some((prefix) => path.startsWith(prefix))
+}
+
+export function getChatMentionTarget(reference: string) {
+  if (reference.startsWith('tools.')) {
+    return reference.slice(reference.indexOf(':') + 1)
+  }
+  return reference
+}
+
+function toChatMentionToolReference(path: string) {
+  if (path.startsWith('@skills/')) {
+    const skillName = path.slice('@skills/'.length).replace(/\/$/u, '')
+    return `tools.skill.load:${skillName}`
+  }
+  if (isVirtualMentionPath(path)) {
+    const tool = path.endsWith('/') ? 'tools.list' : 'tools.read'
+    return `${tool}:${path}`
+  }
+  return path
 }
 
 export function serializeChatMentionPathMap(
@@ -138,9 +157,11 @@ export function findChatMentionMatches(
   // 1. Canonical format: [[action:path]] with unambiguous boundaries
   const bracketedRegex = new RegExp(BRACKETED_ACTION_REGEX.source, 'g')
   while ((match = bracketedRegex.exec(text)) !== null) {
-    const actionTag = match[1] // e.g. "read_file:src/main.ts" or "load_skill:natural-writing"
+    const actionTag = match[1]
     const colonIndex = actionTag.indexOf(':')
     const targetPath = actionTag.slice(colonIndex + 1)
+    const isNamedTool = actionTag.startsWith('tools.skill.load:') || actionTag.startsWith('tools.available.search:')
+    const targetLabel = isNamedTool ? targetPath : getPathBasename(targetPath)
     const start = match.index
     const end = start + match[0].length
 
@@ -150,7 +171,7 @@ export function findChatMentionMatches(
 
     matches.push({
       end,
-      label: getKnownMentionLabelForPath(actionTag, knownMentionLabels) ?? getPathBasename(targetPath),
+      label: getKnownMentionLabelForPath(actionTag, knownMentionLabels) ?? targetLabel,
       path: actionTag,
       start,
     })
@@ -464,11 +485,7 @@ export function expandChatMentions(text: string, knownMentionLabels: ReadonlyMap
       return `@${label}`
     }
 
-    if (isVirtualMentionPath(path)) {
-      return path
-    }
-
-    // Legacy action references keep the old unambiguous markup.
-    return `[[${path}]]`
+    // Tool references use bracket delimiters to preserve target boundaries.
+    return `[[${toChatMentionToolReference(path)}]]`
   })
 }

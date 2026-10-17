@@ -4,5 +4,6 @@ export function findChatMentionImageAttachment(
   path: string,
   imageAttachments: readonly ChatImageAttachment[],
 ) {
-  return imageAttachments.find((attachment) => attachment.path === path) ?? null
+  const attachmentPath = path.startsWith('tools.read:') ? path.slice('tools.read:'.length) : path
+  return imageAttachments.find((attachment) => attachment.path === attachmentPath) ?? null
 }

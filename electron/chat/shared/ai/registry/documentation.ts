@@ -8,7 +8,7 @@ const API_NAMES = new Set([
   'read', 'list', 'glob', 'grep',
   'terminal.execute', 'terminal.read', 'terminal.interact', 'terminal.terminate',
   'skill.list', 'skill.search', 'skill.load', 'plan.create',
-  'patch', 'write', 'available.search', 'available.get',
+  'patch', 'write', 'available.list', 'available.search', 'available.get',
 ])
 
 function readRequiredMarkdown(relativePath: string): string {

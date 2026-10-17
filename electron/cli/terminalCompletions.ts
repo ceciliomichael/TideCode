@@ -138,7 +138,7 @@ export class TerminalCompletionCatalog {
             label: `@${label}`,
             description: `folder · ${normalizedPath}`,
             mentionKind: 'folder',
-            mentionPath: `list:${normalizedPath}`,
+            mentionPath: `tools.list:${normalizedPath}`,
             searchLabel: label,
             searchPath: normalizedPath,
           })
@@ -150,7 +150,7 @@ export class TerminalCompletionCatalog {
             label: `@${label}`,
             description: `file · ${normalizedPath}`,
             mentionKind: 'file',
-            mentionPath: `read_file:${normalizedPath}`,
+            mentionPath: `tools.read:${normalizedPath}`,
             searchLabel: label,
             searchPath: normalizedPath,
           })
@@ -167,9 +167,9 @@ export class TerminalCompletionCatalog {
         label: `@${skill.name}`,
         description: `skill · ${skill.description || 'Skill pack'}`,
         mentionKind: 'skill',
-        mentionPath: `load_skill:${skill.name}`,
+        mentionPath: `tools.skill.load:${skill.name}`,
         searchLabel: skill.name,
-        searchPath: `load_skill:${skill.name}`,
+        searchPath: `tools.skill.load:${skill.name}`,
       })
     }
 

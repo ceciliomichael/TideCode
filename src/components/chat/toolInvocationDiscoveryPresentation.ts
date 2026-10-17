@@ -5,6 +5,7 @@ import { parseCompleteToolArguments, readFirstText } from './toolInvocationParsi
 export function getDiscoveryToolVerb(invocation: ToolInvocationTrace): string | null {
   const state = invocation.state
   const labels: Record<string, [string, string, string]> = {
+    'available.list': ['Listing tools', 'Listed tools', 'Tool list failed'],
     'available.search': ['Searching tools', 'Searched tools', 'Tool search failed'],
     'available.get': ['Retrieving', 'Retrieved', 'Tool retrieval failed'],
     'skill.list': ['Listing skills', 'Listed skills', 'Skill list failed'],

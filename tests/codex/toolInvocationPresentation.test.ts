@@ -38,7 +38,8 @@ test('multiple retrieved contracts display as individually named nested tool blo
     'Retrieved read contract', 'Retrieved skill.list contract',
   ])
 })
-  assert.equal(getToolInvocationHeaderLabel(invocation('available.search', { query: 'repository' })), 'Searched tools')
+   assert.equal(getToolInvocationHeaderLabel(invocation('available.list', { page: 1 })), 'Listed tools')
+   assert.equal(getToolInvocationHeaderLabel(invocation('available.search', { query: 'repository' })), 'Searched tools')
   assert.equal(getToolInvocationHeaderLabel(invocation('available.get', { name: 'tools.read' })), 'Retrieved read contract')
   assert.equal(getToolInvocationHeaderLabel(invocation('available.get', { name: 'tools.mcp.search_tool' })), 'Retrieved mcp.search_tool contract')
   assert.equal(getToolInvocationHeaderLabel(invocation('skill.list', {})), 'Listed skills')

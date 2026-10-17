@@ -66,18 +66,18 @@ test('completion catalog matches desktop workspace visibility and supports files
     const fileItems = catalog.getItems('please inspect @comp', 'please inspect @comp'.length)
     assert.equal(fileItems[0]?.value, '@composer.ts')
     assert.equal(fileItems[0]?.mentionKind, 'file')
-    assert.equal(fileItems[0]?.mentionPath, 'read_file:src/composer.ts')
+    assert.equal(fileItems[0]?.mentionPath, 'tools.read:src/composer.ts')
     assert.match(fileItems[0]?.description ?? '', /src\/composer\.ts/)
 
     const folderItems = catalog.getItems('@src', '@src'.length)
     assert.equal(folderItems[0]?.value, '@src')
     assert.equal(folderItems[0]?.mentionKind, 'folder')
-    assert.equal(folderItems[0]?.mentionPath, 'list:src')
+    assert.equal(folderItems[0]?.mentionPath, 'tools.list:src')
 
     const skillItems = catalog.getItems('@code-rev', '@code-rev'.length)
     assert.equal(skillItems[0]?.value, '@code-review')
     assert.equal(skillItems[0]?.mentionKind, 'skill')
-    assert.equal(skillItems[0]?.mentionPath, 'load_skill:code-review')
+    assert.equal(skillItems[0]?.mentionPath, 'tools.skill.load:code-review')
     assert.match(skillItems[0]?.description ?? '', /Reviews code carefully/)
 
     assert.equal(catalog.getItems('@should-not', '@should-not'.length).length, 0)

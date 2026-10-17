@@ -2,7 +2,7 @@ import { jsonSchema, tool } from 'ai'
 import { formatExplicitCodeModeOutput, formatImplicitCodeModeToolResults } from '../../../../../src/lib/codeModeResultOutput'
 import type { AgentToolExecutionResult } from '../../toolTypes'
 import type { CodeModeExecutor } from '../../codeMode/executor'
-import { isDynamicAgentTool, type AgentToolRegistry } from '../../tools/registry'
+import type { AgentToolRegistry } from '../../tools/registry'
 import { getApiInstructions, getExecInstructions } from '../registry/documentation'
 
 const EXEC_INPUT_SCHEMA = {
@@ -41,23 +41,22 @@ function displayReceipt(body: string | undefined) {
   }
 }
 
-export function buildExecDescription(registry: AgentToolRegistry) {
+export function buildExecDescription(_registry: AgentToolRegistry) {
   const authority = 'The host enforces current workspace and mode permissions. Sandbox restricts paths; Full Access may broaden authorized paths. Neither mode enables imports, Node globals or ambient host authority.'
-  const docs = registry.entries
-    .filter((entry) => !isDynamicAgentTool(entry))
-    .map((entry) => `- tools.${entry.name}`)
+  const listing = getApiInstructions('available.list')
   const discovery = getApiInstructions('available.search')
   const getContract = getApiInstructions('available.get')
   return [
     getExecInstructions(),
     authority,
-    'Authorized native API names (details are NOT preloaded):',
-    ...docs,
-    'tools.available.search({ query?: string, namespace?: string, limit?: number, offset?: number }): Promise<{ items: { name: string }[], remaining: number, next: { offset: number } | null }>',
+    'Prefer available.list: native by default, mcp lists server namespaces, and each server namespace lists its tools. Use available.search for targeted discovery. Names and contracts are not preloaded.',
+    'tools.available.list({ namespace?: string, page?: number }): Promise<string> // Markdown: native, MCP server namespaces, or server-specific tool pages',
+    'tools.available.search({ query?: string, namespace?: string, limit?: number, offset?: number }): Promise<string> // Markdown names-only results with continuation',
     'tools.available.get({ name: string }): Promise<string> // Markdown contract with typed arguments',
+    listing,
     discovery,
     getContract,
-    'Before executing ANY native API, retrieve its exact contract using tools.available.get. For MCP, search by capability first, then get the exact returned name. Retrieved contracts are remembered for the lifetime of this chat runtime.',
+    'Before executing an API, retrieve its exact contract using tools.available.get. MCP names must be discovered through available.list or available.search first. Retrieved contracts are remembered for the lifetime of this chat runtime.',
   ].join('\n\n')
 }
 

@@ -192,7 +192,7 @@ export function buildChatModeHiddenContext(chatMode: ChatMode): HiddenUserContex
       '- Once an active plan exists, do not create another. Use tools.patch only to revise that active plan, with its exact path and current source as patch context.',
       '- tools.patch is host-restricted in Plan Mode to updating the active plan. It cannot add, delete, move, or modify other files.',
       '- Never mutate source files, tests, configuration, documentation, or other workspace files in Plan Mode. If a mutation API is unavailable, do not substitute another mutation mechanism.',
-      '- The current exec catalog and its host-enforced permissions are authoritative for what may be called now.',
+       '- The previous Agent Mode tool catalog is no longer authoritative. Discover current authorized tool names with tools.available.list or tools.available.search, and retrieve needed contracts with tools.available.get. Terminal, source writes, and MCP tools are unavailable in Plan Mode.',
       '- Plan Mode runtime policy permits read-only workspace APIs, skill APIs, tools.plan.create and restricted tools.patch; the host enforces the plan-artifact boundary.',
       '- After a successful plan create or revision, return the normal Plan preview result instead of duplicating the full artifact in chat.',
       '</chat_mode_context>',
@@ -208,7 +208,8 @@ export function buildChatModeHiddenContext(chatMode: ChatMode): HiddenUserContex
     '- Resolve low-risk technical choices from current evidence and existing patterns. Ask only when user-owned intent, material risk, irreversible behavior, or new authority is required.',
     '- Read the smallest relevant source before changing it, preserve user work, stay in scope, and avoid unrelated cleanup or speculative refactors.',
     '- When mutation is authorized, implement the complete requested change and run the narrowest decisive verification before reporting completion.',
-    '- Use the active provider tool contract as authoritative. TideCode-owned APIs are invoked inside exec; provider-native tools may be exposed separately when supported.',
+     '- The previous Plan Mode tool catalog is no longer authoritative. Refresh currently authorized tool names with tools.available.list or tools.available.search; obtain exact contracts with tools.available.get. Implementation, terminal, and source-editing tools may now be available, while Plan-only creation is unavailable.',
+     '- Use the active provider tool contract as authoritative. TideCode-owned APIs are invoked inside exec; provider-native tools may be exposed separately when supported.',
     '</chat_mode_context>',
   ].join('\n'))
 }

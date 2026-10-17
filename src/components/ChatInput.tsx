@@ -38,7 +38,7 @@ import {
   getChatImageAttachments,
   removeChatImageReference,
 } from '../lib/chatImageReferences'
-import { findChatMentionMatches } from '../lib/chatMentions'
+import { findChatMentionMatches, getChatMentionTarget } from '../lib/chatMentions'
 import { normalizeWorkspaceRootPathForComparison } from '../lib/workspaceRootPathComparison'
 import { collectRemoteAttachmentSelections, type RemoteAttachmentSelection } from '../lib/remoteAttachmentEntries'
 import { isRemoteBrowserRuntime } from '../remote/webBridge'
@@ -194,7 +194,7 @@ export function ChatInput({
     showRuntimeTargetControl || showTerminalExecutionModeControl || showGitBranchSelector
   const showRefactorCandidatesIndicator = workspaceRootPath && !isEditing
   const mentionMenu = useChatFileMentionMenu({
-    attachmentRefreshKey: attachments.length,
+    attachments,
     attachmentScopeId: conversationId,
     disabled,
     initialMentionPathMap,
@@ -810,7 +810,7 @@ export function ChatInput({
     }
     const activeMentionPaths = new Set(
       findChatMentionMatches(value, mentionMenu.mentionPathMap)
-        .map((match) => match.path)
+        .map((match) => match.path ? getChatMentionTarget(match.path) : null)
         .filter((path): path is string => Boolean(path)),
     )
     const nextAttachments = attachments.filter((attachment) => {
@@ -874,6 +874,7 @@ export function ChatInput({
 
           <ChatMentionMenu
             anchorRef={mentionMenu.anchorRef}
+            categories={mentionMenu.categories}
             isOpen={mentionMenu.isOpen}
             loading={mentionMenu.isIndexLoading}
             menuRef={mentionMenu.menuRef}

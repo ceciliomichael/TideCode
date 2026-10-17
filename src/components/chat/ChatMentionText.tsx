@@ -20,6 +20,7 @@ interface ChatMentionTextProps {
 const mentionHighlightSurfaceClassName = 'rounded-[4px] bg-info-surface'
 const folderHighlightSurfaceClassName = 'rounded-[4px] bg-warning-surface'
 const skillHighlightSurfaceClassName = 'rounded-[4px] bg-brand-soft'
+const mcpHighlightSurfaceClassName = 'rounded-[4px] bg-mcp-surface'
 
 export const ChatMentionText = memo(function ChatMentionText({
   className,
@@ -95,10 +96,13 @@ export const ChatMentionText = memo(function ChatMentionText({
         }
 
         const isSkill = Boolean(
+          segment.path?.startsWith('tools.skill.load:') ||
           segment.path?.startsWith('load_skill:') ||
           segment.path?.startsWith('@skills/'),
         )
+        const isMcp = Boolean(segment.path?.startsWith('tools.available.search:'))
         const isFolder = Boolean(
+          segment.path?.startsWith('tools.list:') ||
           segment.path?.startsWith('list:') ||
           segment.path?.endsWith('/'),
         )
@@ -113,11 +117,14 @@ export const ChatMentionText = memo(function ChatMentionText({
         const tooltipPanelClassName = imageAttachment
           ? '!max-w-[min(26rem,calc(100vw-24px))] !items-stretch !p-2'
           : undefined
-        const highlightClass = isSkill
-          ? skillHighlightSurfaceClassName
-          : isFolder
-            ? folderHighlightSurfaceClassName
-            : mentionHighlightSurfaceClassName
+        let highlightClass = mentionHighlightSurfaceClassName
+        if (isMcp) {
+          highlightClass = mcpHighlightSurfaceClassName
+        } else if (isSkill) {
+          highlightClass = skillHighlightSurfaceClassName
+        } else if (isFolder) {
+          highlightClass = folderHighlightSurfaceClassName
+        }
 
         const textColorClass = 'text-foreground font-normal'
 
