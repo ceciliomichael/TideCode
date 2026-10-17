@@ -2,26 +2,29 @@ import type { ToolSet } from 'ai'
 import type { ChatMode, ChatProviderId } from '../../../../src/types/chat'
 import type { SkillSummary } from '../../../../src/types/skills'
 import type { AgentToolContext } from '../toolTypes'
-import { DEFAULT_AGENT_ORCHESTRATION_MODE, type AgentOrchestrationMode } from '../orchestration'
 import { CodeModeExecutor } from '../codeMode/executor'
+import { createExecTool } from '../ai/exec/exec'
+import { documentNativeApi } from '../ai/registry/documentation'
+import { createReadApi } from '../ai/tools/read/read'
+import { createListApi } from '../ai/tools/list/list'
+import { createGlobApi } from '../ai/tools/glob/glob'
+import { createGrepApi } from '../ai/tools/grep/grep'
+import { createPatchApi } from '../ai/tools/patch/patch'
+import { createWriteApi } from '../ai/tools/write/write'
+import { createPlanCreateApi } from '../ai/tools/plan/create/create'
+import { createSkillListApi } from '../ai/tools/skill/list/list'
+import { createSkillSearchApi } from '../ai/tools/skill/search/search'
+import { createSkillLoadApi } from '../ai/tools/skill/load/load'
 import { createAgentToolRegistry, type AgentToolRegistry } from './registry'
-import { createCodeModeTool } from './metaTools'
 import { createConnectedMcpRegistryTools } from './mcpRegistryTools'
-
-import { createEditTool } from './editTool'
-import { createApplyPatchTool } from './applyPatchTool'
-import { createGlobTool } from './globTool'
-import { createGrepTool } from './grepTool'
-import { createListTool } from './listTool'
-import { createMcpToolSet } from './mcpTools'
 import { createProviderWebTool } from './providerWebTool'
-import { createReadTool } from './readTool'
-import { createPlanRuntimeState, type PlanRuntimeState } from './planRuntimeState'
-import { createPlanToolSet } from './planTools'
-import { createSkillTool } from './skillTool'
+import { createPlanRuntimeState } from './planRuntimeState'
 import { createTerminalToolSet } from './terminalTools'
+import { createTerminalExecuteApi } from '../ai/tools/terminal/execute/execute'
+import { createTerminalReadApi } from '../ai/tools/terminal/read/read'
+import { createTerminalInteractApi } from '../ai/tools/terminal/interact/interact'
+import { createTerminalTerminateApi } from '../ai/tools/terminal/terminate/terminate'
 import { createToolContext } from './workspaceTools'
-import { createWriteTool } from './writeTool'
 
 export interface CreateAgentToolsOptions {
   activePlanPath?: string | null
@@ -31,143 +34,67 @@ export interface CreateAgentToolsOptions {
 }
 
 export interface AgentToolBundle {
-  codeModeExecutor: CodeModeExecutor | null
+  codeModeExecutor: CodeModeExecutor
   nativeTools: ToolSet
   registry: AgentToolRegistry
   tools: ToolSet
 }
 
-interface NativeToolSets {
-  allTools: ToolSet
-  agentTools: ToolSet
-  planTools: ToolSet
-  providerTools: ToolSet
-}
-
-const CODE_MODE_EXCLUDED_TOOLS = new Set(['mcp_tool_search', 'execute_mcp', 'apply_patch', 'edit', 'write'])
-const PLAN_MODE_INJECTED_CODE_MODE_TOOLS = new Set(['plan_create', 'plan_edit'])
-
-async function createNativeToolSets(
-  input: AgentToolContext,
-  options: CreateAgentToolsOptions,
-  planRuntimeState: PlanRuntimeState,
-): Promise<NativeToolSets> {
-  const enabledSkills = options.enabledSkills ?? []
-  const context = await createToolContext(input, enabledSkills)
-  const planningSafeTools: ToolSet = {
-    list: createListTool(context),
-    read: createReadTool(context),
-    glob: createGlobTool(context),
-    grep: createGrepTool(context),
-  }
-
-  if (enabledSkills.length > 0) {
-    planningSafeTools.skill = createSkillTool(context, enabledSkills)
-  }
-
-  const providerTools: ToolSet = {}
-  const providerWebTool = createProviderWebTool(options.providerId)
-  if (providerWebTool) {
-    providerTools[providerWebTool.name] = providerWebTool.tool
-    planningSafeTools[providerWebTool.name] = providerWebTool.tool
-  }
-
-  const planArtifactTools = createPlanToolSet(context, planRuntimeState)
-  const applyPatchTool = createApplyPatchTool(context, planRuntimeState)
-  const allTools: ToolSet = {
-    ...planningSafeTools,
-    ...createMcpToolSet(context),
-    ...createTerminalToolSet({ ...context, conversationId: input.conversationId, webContents: input.webContents }),
-    ...planArtifactTools,
-    apply_patch: applyPatchTool,
-    edit: createEditTool(context),
-    write: createWriteTool(context),
-  }
-  const agentTools: ToolSet = { ...allTools }
-  const planTools: ToolSet = {
-    ...planningSafeTools,
-    ...planArtifactTools,
-  }
-
-  return { agentTools, allTools, planTools, providerTools }
-}
-
-function createRuntimePlanState(options: CreateAgentToolsOptions) {
-  return createPlanRuntimeState(options.chatMode === 'plan', options.activePlanPath)
-}
-
-export async function createNativeAgentTools(
-  input: AgentToolContext,
-  options: CreateAgentToolsOptions = {},
-): Promise<ToolSet> {
-  const toolSets = await createNativeToolSets(input, options, createRuntimePlanState(options))
-  return options.chatMode === 'plan' ? toolSets.planTools : toolSets.agentTools
-}
-
-/** Builds the exact provider-facing native tool set. */
-export async function createAgentTools(
-  input: AgentToolContext,
-  options: CreateAgentToolsOptions = {},
-): Promise<ToolSet> {
-  return createNativeAgentTools(input, options)
-}
-
+/** Code Mode is the sole TideCode provider execution boundary. */
 export async function createAgentToolBundle(
   input: AgentToolContext,
-  options: CreateAgentToolsOptions & { orchestrationMode?: AgentOrchestrationMode } = {},
+  options: CreateAgentToolsOptions = {},
 ): Promise<AgentToolBundle> {
-  const planRuntimeState = createRuntimePlanState(options)
-  const toolSets = await createNativeToolSets(input, options, planRuntimeState)
-  const nativeTools = options.chatMode === 'plan' ? toolSets.planTools : toolSets.agentTools
-  const orchestrationMode = options.orchestrationMode ?? DEFAULT_AGENT_ORCHESTRATION_MODE
+  const context = await createToolContext(input, options.enabledSkills ?? [])
+  const planMode = options.chatMode === 'plan'
+  const state = createPlanRuntimeState(planMode, options.activePlanPath)
+  const entries: ToolSet = {}
 
-  if (orchestrationMode === 'direct') {
-    const registry = await createAgentToolRegistry(nativeTools)
-    return {
-      codeModeExecutor: null,
-      nativeTools,
-      registry,
-      tools: nativeTools,
-    }
+  function register(path: string, definition: ToolSet[string]) {
+    if (Object.hasOwn(entries, path)) throw new Error(`Duplicate native API: tools.${path}`)
+    entries[path] = documentNativeApi(path, definition)
   }
 
-  const connectedMcpTools = await createConnectedMcpRegistryTools(input)
-  const registryTools = Object.fromEntries([
-    ...Object.entries(toolSets.allTools).filter(([name]) => (
-      !CODE_MODE_EXCLUDED_TOOLS.has(name) &&
-      (options.chatMode === 'plan' || !PLAN_MODE_INJECTED_CODE_MODE_TOOLS.has(name))
-    )),
-    ...Object.entries(connectedMcpTools),
-  ])
-  const registry = await createAgentToolRegistry(registryTools)
-  const codeModeExecutionMode = options.chatMode === 'plan'
-    ? 'sandbox'
-    : input.terminalExecutionMode ?? 'sandbox'
-  const preloadedToolNames = registry.entries.map((entry) => entry.name)
-  const codeModeExecutor = new CodeModeExecutor(registry, preloadedToolNames, {
-    terminalExecutionMode: codeModeExecutionMode,
+  register('list', createListApi(context))
+  register('read', createReadApi(context))
+  register('glob', createGlobApi(context))
+  register('grep', createGrepApi(context))
+
+  if (options.enabledSkills?.length) {
+    register('skill.list', createSkillListApi(options.enabledSkills))
+    register('skill.search', createSkillSearchApi(options.enabledSkills))
+    register('skill.load', createSkillLoadApi(context, options.enabledSkills))
+  }
+
+  if (planMode) {
+    register('plan.create', createPlanCreateApi(context, state))
+    register('patch', createPatchApi(context, state))
+  } else {
+    const terminal = createTerminalToolSet({
+      ...context,
+      conversationId: input.conversationId,
+      webContents: input.webContents,
+    })
+    register('terminal.execute', createTerminalExecuteApi(terminal))
+    register('terminal.read', createTerminalReadApi(terminal))
+    register('terminal.interact', createTerminalInteractApi(terminal))
+    register('terminal.terminate', createTerminalTerminateApi(terminal))
+    register('patch', createPatchApi(context, state))
+    register('write', createWriteApi(context))
+  }
+
+  const mcp = planMode ? {} : await createConnectedMcpRegistryTools(input)
+  const registry = await createAgentToolRegistry({ ...entries, ...mcp })
+  const executor = new CodeModeExecutor(registry, undefined, {
+    terminalExecutionMode: planMode ? 'sandbox' : input.terminalExecutionMode,
     workspaceRootPath: input.workspaceRootPath,
   })
-  const allowedToolNames = options.chatMode === 'plan'
-    ? Object.keys(toolSets.planTools).filter((name) => registry.get(name) !== undefined)
-    : undefined
-  const metaTools: ToolSet = {
-    ...(options.chatMode === 'plan' ? {} : { apply_patch: toolSets.agentTools.apply_patch }),
-    ...(options.chatMode === 'plan' ? {} : { write: toolSets.agentTools.write }),
-    code_mode: createCodeModeTool(codeModeExecutor, registry, {
-      allowedToolNames,
-      executionMode: codeModeExecutionMode,
-      providerId: options.providerId,
-    }),
-    ...toolSets.providerTools,
+  const tools: ToolSet = {
+    exec: createExecTool(executor, registry),
   }
 
-  return {
-    codeModeExecutor,
-    nativeTools,
-    registry,
-    tools: orchestrationMode === 'hybrid'
-      ? { ...nativeTools, ...metaTools }
-      : metaTools,
-  }
+  const nativeWeb = createProviderWebTool(options.providerId)
+  if (nativeWeb) tools[nativeWeb.name] = nativeWeb.tool
+
+  return { codeModeExecutor: executor, nativeTools: entries, registry, tools }
 }

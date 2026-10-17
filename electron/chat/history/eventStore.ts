@@ -495,9 +495,7 @@ export async function recordToolFreshness(input: {
     const invalidated = new Set(document.freshness.invalidatedSubjects)
     const mutationTools = new Set([
       'write',
-      'edit',
-      'apply_patch',
-      'plan_edit',
+      'patch',
     ])
     const type = mutationTools.has(input.toolName) || isTerminalTool
       ? 'observation_invalidated'

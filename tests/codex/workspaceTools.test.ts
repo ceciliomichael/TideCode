@@ -4,7 +4,10 @@ import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
+import { createAgentToolBundle } from '../../electron/chat/shared/tools'
+
+const createAgentTools = async (...args: Parameters<typeof createAgentToolBundle>) =>
+  (await createAgentToolBundle(...args)).nativeTools
 import { electronApp } from '../../electron/electronApp'
 import {
   createGlobToolResult,

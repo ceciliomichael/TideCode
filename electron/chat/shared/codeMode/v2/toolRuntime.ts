@@ -6,6 +6,7 @@ import { getCodeModeToolCallStatus } from '../toolCallStatus'
 import type { CodeModeExecutionLimits, CodeModeToolCallRecord } from '../types'
 import { CodeModeRuntimeError, CodePromise, ToolReference, type AstNode } from './model'
 import { copyBoundaryValue } from './values'
+import { searchAvailableApis } from '../../ai/tools/available/search/search'
 
 const HIDDEN_MODEL_SEMANTIC_KEYS = new Set([
   'active',
@@ -27,8 +28,7 @@ const HIDDEN_MODEL_SEMANTIC_KEYS = new Set([
   'wait_seconds',
 ])
 
-const MUTATING_FILE_TOOLS = new Set(['edit', 'write', 'delete', 'remove', 'move', 'rename'])
-const HIDDEN_CAPABILITY_SEARCH_TOOL_NAMES = new Set(['plan_create', 'plan_edit'])
+const MUTATING_FILE_TOOLS = new Set(['patch', 'write'])
 const RESERVED_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor'])
 
 class AsyncSemaphore {
@@ -160,21 +160,6 @@ function schemaSignature(tool: ProjectedTool): string {
   return `${tool.expression}(input: ${bounded}): Promise<${returnType}>`
 }
 
-function scoreTool(tool: ProjectedTool, terms: string[]): number {
-  const name = tool.entry.name.toLowerCase()
-  const namespace = tool.entry.namespace.toLowerCase()
-  const description = tool.entry.description.toLowerCase()
-  let score = 0
-  for (const term of terms) {
-    if (name === term) score += 100
-    else if (name.includes(term)) score += 50
-    if (namespace === term) score += 30
-    else if (namespace.includes(term)) score += 15
-    if (description.includes(term)) score += 10
-  }
-  return score
-}
-
 export class ToolRuntime {
   private readonly mutationQueue = new MutationQueue()
   private readonly pending = new Set<Promise<unknown>>()
@@ -191,12 +176,13 @@ export class ToolRuntime {
       if (allowed && !allowed.has(entry.name)) continue
       const base = entry.namespace === 'mcp'
         ? ['mcp', safeSegment(entry.name.replace(/^mcp[_:-]?/iu, ''))]
-        : [safeSegment(entry.name)]
-      let candidate = base
-      let suffix = 2
-      while (usedPaths.has(candidate.join('.'))) {
-        candidate = [...base.slice(0, -1), `${base.at(-1)}_${suffix}`]
-        suffix += 1
+        : entry.name.split('.')
+      if (base.some((segment) => segment !== safeSegment(segment))) {
+        throw new Error(`Invalid native API path: tools.${entry.name}`)
+      }
+      const candidate = base
+      if (usedPaths.has(candidate.join('.'))) {
+        throw new Error(`Duplicate Code Mode API path: tools.${candidate.join('.')}`)
       }
       usedPaths.add(candidate.join('.'))
       const projected: ProjectedTool = {
@@ -213,9 +199,14 @@ export class ToolRuntime {
       }
     }
     const rootChildren = this.childNames.get('') ?? new Set<string>()
-    rootChildren.add('$codemode')
+    rootChildren.add('available')
     this.childNames.set('', rootChildren)
-    this.childNames.set('$codemode', new Set(['search']))
+    this.childNames.set('available', new Set(['search']))
+    for (const key of this.projectedByPath.keys()) {
+      if (this.childNames.has(key)) {
+        throw new Error(`Code Mode API path is both a namespace and callable: tools.${key}`)
+      }
+    }
   }
 
   unavailableAllowedTool(): string | undefined {
@@ -234,7 +225,7 @@ export class ToolRuntime {
     }
     const next = [...reference.path, name]
     const key = next.join('.')
-    if (this.projectedByPath.has(key) || this.childNames.has(key) || key === '$codemode.search') {
+    if (this.projectedByPath.has(key) || this.childNames.has(key) || key === 'available.search') {
       return new ToolReference(next)
     }
     const available = [...(this.childNames.get(reference.path.join('.')) ?? [])].slice(0, 8)
@@ -242,7 +233,7 @@ export class ToolRuntime {
       'UnknownTool',
       `Unknown Code Mode capability tools.${key}.`,
       node,
-      available.length > 0 ? [`Available here: ${available.join(', ')}. Use tools.$codemode.search(...) for discovery.`] : ['Use tools.$codemode.search(...) for discovery.'],
+      available.length > 0 ? [`Available here: ${available.join(', ')}. Use tools.available.search(...) for discovery.`] : ['Use tools.available.search(...) for discovery.'],
     )
   }
 
@@ -252,7 +243,7 @@ export class ToolRuntime {
 
   call(reference: ToolReference, args: unknown[], node: AstNode): CodePromise {
     const key = reference.path.join('.')
-    if (key === '$codemode.search') {
+    if (key === 'available.search') {
       return this.track(Promise.resolve(this.search(args[0], node)))
     }
     const tool = this.projectedByPath.get(key)
@@ -288,29 +279,19 @@ export class ToolRuntime {
     const namespace = typeof value.namespace === 'string' ? value.namespace.trim().toLowerCase() : undefined
     const limit = Number.isInteger(value.limit) ? Math.max(1, Math.min(50, Number(value.limit))) : 10
     const offset = Number.isInteger(value.offset) ? Math.max(0, Number(value.offset)) : 0
-    const terms = query.split(/\s+/u).filter(Boolean)
-    const matches = [...this.projectedByPath.values()]
-      .filter((tool) => !HIDDEN_CAPABILITY_SEARCH_TOOL_NAMES.has(tool.entry.name))
-      .map((tool) => ({ tool, score: scoreTool(tool, terms) + (namespace && tool.entry.namespace === namespace ? 1000 : 0) }))
-      .filter(({ tool, score }) => (!namespace || tool.entry.namespace === namespace) && (query.length === 0 || score > 0))
-      .sort((a, b) => b.score - a.score || a.tool.expression.localeCompare(b.tool.expression))
-    const page = matches.slice(offset, offset + limit)
-    const remaining = Math.max(0, matches.length - offset - page.length)
-    return Object.assign(Object.create(null), {
-      items: page.map(({ tool }) => Object.assign(Object.create(null), {
-        path: tool.expression,
-        description: tool.entry.description,
-        namespace: tool.entry.namespace,
-        signature: schemaSignature(tool),
-      })),
-      remaining,
-      next: remaining > 0 ? Object.assign(Object.create(null), { offset: offset + page.length }) : null,
-    })
+    return searchAvailableApis([...this.projectedByPath.values()].map((tool) => ({
+      path: tool.expression,
+      description: tool.entry.description,
+      namespace: tool.entry.namespace,
+      signature: schemaSignature(tool),
+    })), { query, namespace, limit, offset })
   }
 
   private async mutationKeys(tool: ProjectedTool, input: unknown): Promise<string[]> {
-    if (tool.entry.name === 'apply_patch') return ['__workspace_patch__']
     if (!MUTATING_FILE_TOOLS.has(tool.entry.name)) return []
+    // A patch can touch multiple files, so serialize all native mutations
+    // through one queue rather than racing an independent whole-file write.
+    if (tool.entry.name === 'patch' || tool.entry.name === 'write') return ['__workspace_mutation__']
     if (!input || typeof input !== 'object' || Array.isArray(input)) return ['__workspace_mutation__']
     const rawPath = (input as Record<string, unknown>).path
     if (typeof rawPath !== 'string' || rawPath.trim().length === 0) return ['__workspace_mutation__']

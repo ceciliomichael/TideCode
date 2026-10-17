@@ -152,12 +152,12 @@ export function projectCodeModeToolCallPart(part: Record<string, unknown>) {
 }
 
 export function projectCodeModeToolResultPart(part: Record<string, unknown>) {
-  if (part.toolName !== 'code_mode' || !isRecord(part.output) || part.output.type !== 'text' || typeof part.output.value !== 'string') {
+  if (part.toolName !== 'exec' || !isRecord(part.output) || part.output.type !== 'text' || typeof part.output.value !== 'string') {
     return part
   }
 
   const parsed = parseStructuredToolResultContent(part.output.value)
-  if (!parsed.metadata || parsed.metadata.toolName !== 'code_mode') {
+  if (!parsed.metadata || parsed.metadata.toolName !== 'exec') {
     return {
       ...part,
       output: {

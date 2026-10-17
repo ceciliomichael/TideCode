@@ -49,7 +49,7 @@ function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts
     return 'webSearchCount'
   }
 
-  if (toolName === 'mcp_tool_search' || toolName === 'execute_mcp') {
+  if (toolName.startsWith('mcp.')) {
     return 'mcpCount'
   }
 
@@ -58,11 +58,7 @@ function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts
   }
 
   if (
-    toolName === 'execute_terminal' ||
-    toolName === 'get_terminal_output' ||
-    toolName === 'exec_command' ||
-    toolName === 'write_stdin' ||
-    toolName.includes('terminal')
+    toolName.startsWith('terminal.')
   ) {
     return 'commandCount'
   }
@@ -71,7 +67,7 @@ function classifyInvocation(toolName: string): keyof ToolInvocationSummaryCounts
     return 'exploredFileCount'
   }
 
-  if (toolName === 'plan_create') {
+  if (toolName === 'plan.create') {
     return 'planCount'
   }
 
@@ -193,10 +189,10 @@ export function buildToolInvocationGroupSummary(
     (invocation) => invocation.state === 'running' || invocation.decisionRequest !== undefined,
   )
   const hasFailedCodeMode = invocations.some(
-    (invocation) => invocation.toolName === 'code_mode' && invocation.state === 'failed',
+    (invocation) => invocation.toolName === 'exec' && invocation.state === 'failed',
   )
   const hasOnlyCodeModeInvocations = invocations.length > 0 && invocations.every(
-    (invocation) => invocation.toolName === 'code_mode',
+    (invocation) => invocation.toolName === 'exec',
   )
   if (summaryVerbOverride === 'Exploring' || (summaryVerbOverride === undefined && hasActiveInvocation)) {
     return 'Exploring'
@@ -264,7 +260,7 @@ export function buildToolInvocationGroupSummary(
   }
 
   for (const invocation of invocations) {
-    if (invocation.toolName === 'code_mode') {
+    if (invocation.toolName === 'exec') {
       continue
     }
 

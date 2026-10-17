@@ -25,11 +25,13 @@ Avoiding over-engineering doesn't mean avoiding frameworks, libraries, abstracti
 
 - Inspect the relevant project files, current behavior, constraints, and existing patterns before proposing changes.
 - Produce a concrete implementation plan before changing code: the intended result, what areas it touches, the approach, any real tradeoffs, and how you'll verify it.
+- Explain the planned approach in plain language with a numbered, step-by-step breakdown. For each step, say what you'll do, why it's needed, and how it contributes to the intended result. Make the explanation easy to follow for someone unfamiliar with the code, and keep the detail proportional to the task.
 - Every implementation plan must include the planned project structure for the affected area. Show the relevant directory/file tree as it is expected to look after the change, not just a prose description.
 - Every implementation plan must include an explicit file-by-file change list. For each affected file, label whether it will be created, modified, moved/renamed, or deleted, and briefly state what responsibility or change belongs there.
 - Include all files you currently expect to touch in that list, including tests, configuration, migrations, schemas, generated-source inputs, or documentation when they are part of the requested implementation. Do not hide expected file changes behind vague phrases like "update related files."
 
-- Keep `ARCHITECTURE.md` and `DESIGN.md` current throughout development. Before implementation, review both documents when they exist; create either one if it is missing. Update them in the same change whenever the work changes or clarifies project architecture, system boundaries, key flows, design principles, or significant user-facing interaction and visual decisions. Keep their contents concise and grounded in the current implementation; don't record speculative plans or duplicate implementation details. Include any required documentation updates in the implementation plan.
+- Treat `ARCHITECTURE.md`, `DESIGN.md`, and `AGENTS_LEARNING.md` as persistent project knowledge for the AI, not documents that may only change alongside implementation work. Review and create any of them if missing, and update them whenever useful information or a user clarification should be remembered, even when no development has occurred. Keep `ARCHITECTURE.md` and `DESIGN.md` accurate: distinguish the current implementation from confirmed decisions or intended direction, and don't present speculation as fact. Keep all three concise and relevant.
+- Maintain `AGENTS_LEARNING.md` as a record of durable information the AI should carry forward, including the user's explicit preferences for how it should work and respond (writing, explanations, tone, and format) and other long-term lessons the user wants remembered. Update it when the user states or corrects something meant to be remembered; don't turn one-off requests into lasting preferences or present uncertain inferences as facts. Do not record sensitive personal information or secrets. When preferences conflict, follow the latest explicit user instruction.
 - The planned structure must reflect the Code Structure rules below. If a proposed file would mix unrelated responsibilities or become a catch-all, split those responsibilities in the plan before implementation.
 - Keep the plan inside the user's request. Don't add cleanup, refactors, future-proofing, or unrelated improvements unless they asked for them.
 - Present the plan and wait for the user's approval before touching code.
@@ -131,6 +133,8 @@ When two approaches solve the task equally well, pick the simpler one.
 - Remove code the requested change makes obsolete, when it's safe and directly related.
 - Don't do unrelated refactors.
 - Don't add a dependency without a clear, practical reason.
+
+**Only write a test if it would actually fail when the code is broken in a way that matters.** Before adding a test, identify the concrete failure it catches and why that failure matters. If you can't, don't write it. Don't add tests just because code changed, to increase test counts or coverage numbers, or to mirror the implementation. Avoid redundant cases and tests for hypothetical scenarios. Use the smallest set of tests that verifies meaningful behavior; everything else is bloat. For low-risk changes that are easy to check directly, manual verification is enough.
 
 **How much verification to do depends on the risk, not just the size of the change:**
 

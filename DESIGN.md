@@ -1,5 +1,9 @@
 # Design
 
+## AI tool invocation presentation
+
+Chat displays a TideCode `exec` call through its individual nested API invocations, preserving file diffs, terminal sessions, plan previews and errors. The model may also receive provider-native search tools. Tool names and usage documentation come from the registered canonical paths; missing instructions, unknown names and invalid arguments are explicit failures. The internal `tools.available.search` API exposes discoverable, mode-authorized native and connected MCP paths without introducing separate provider-facing TideCode tools.
+
 ## Light and dark color system
 
 Source Control retains the existing Commit split button, Staged/Unstaged sections, file rows, history graph, and accent palette. File status indicators use the established Git semantic colors; conflicted paths are identified explicitly. Destructive discard actions require user confirmation. When no changes are staged, quick and advanced commits use the same TideCode-styled confirmation dialog before staging all current changes; operation notices distinguish complete success, partial success (local commit followed by failed remote action), and errors without clearing an unsuccessful commit message.
@@ -38,9 +42,13 @@ The Browser control is available only in the desktop Electron app. Remote web cl
 
 ## Resource retention and previews
 
+Current visibility behavior has resource costs: closing Diff or Source Control unmounts the panel but keeps its shared full-content Git refresh active. Individual collapsed tool diffs and Markdown results containing code may render hidden bodies for premeasurement; collapsing the outer work group unmounts its children. The Browser toolbar toggle returns to chat while retaining live pages; closing the final tab releases that project's session. An Electron-first resource optimization proposal is recorded in `docs/plans/electron-resource-optimization.md`; its proposed behavior changes are not implemented or approved.
+
 The selected chat and ongoing background runs stay available. Three recent inactive transcripts may be reused within a memory budget; other chats reload from saved history when selected. Retention never deletes conversations or their attachments.
 
 Compaction markers load with the opened conversation. Starting on an empty draft does not load markers for saved chats; switching chats loads that chat's markers, and completed compactions refresh the visible markers.
+
+Switching models or providers preserves the conversation's compacted context and completed turns since compaction, including when switching back to a previously used model. It does not restore discarded history or rewind to that model's older context. Token usage can vary with provider formatting and overhead; changing the model must not undo compaction.
 
 PDF previews preserve page positions, page count, scrolling, panning, and zoom while rendering pages near the viewport. Offscreen pages keep their layout and recreate their canvas when approached. Very large pages or high zoom levels use a capped raster resolution while retaining their displayed dimensions.
 

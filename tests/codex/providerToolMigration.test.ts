@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ModelMessage } from 'ai'
-import { createEmptyCanonicalHistory } from '../../electron/chat/history/contracts'
+import { createEmptyCanonicalHistory, getReplaySlotKey } from '../../electron/chat/history/contracts'
 import { projectCanonicalReplay } from '../../electron/chat/history/replayProjector'
 import { encodeModelMessages, encodeReplayValue } from '../../electron/chat/history/replayCodec'
 import { shouldMigrateCrossProviderHistoryToText } from '../../electron/chat/history/providerSwitch'
 import { migrateToolHistoryToUserInput } from '../../electron/chat/history/providerToolMigration'
 import { createCompactionPacketFixture } from './compactionFixtures'
+import type { ChatProviderId } from '../../src/types/chat'
 import {
   buildCompressedHistoryAcknowledgementMessage,
   buildCompressedHistoryMessage,
@@ -199,6 +200,85 @@ test('projectCanonicalReplay keeps the compacted window when switching from Code
   assert.match(JSON.stringify(result.messages), /retained result/u)
   assert.ok(result.messages.some((message) => String(message.content).includes('The next request after compaction.')))
   assert.doesNotMatch(JSON.stringify(result.messages), /A very large old tool result/u)
+})
+
+test('completed compacted context survives every provider switch and switching back', () => {
+  const providers: ChatProviderId[] = ['codex', 'openai', 'anthropic', 'google', 'mistral', 'deepseek', 'custom:local']
+  for (const sourceProvider of providers) {
+    const document = createEmptyCanonicalHistory('conversation', 1)
+    const packet = createCompactionPacketFixture({ sourceDigest: 'digest', sourceMessageIds: ['model:0'] })
+    const compactedMessages: ModelMessage[] = [
+      { content: 'retained request', role: 'user' },
+      { content: packet.continuationMarkdown, role: 'assistant' },
+    ]
+    document.events.push({
+      anchorUserMessageId: 'user-1',
+      branchId: 'main',
+      compactionId: 'compaction-1',
+      createdAt: 2,
+      eventId: 'compaction-event',
+      modelId: 'source-model',
+      packet: encodeReplayValue(packet),
+      projectedMessages: encodeModelMessages(compactedMessages),
+      providerId: sourceProvider,
+      revision: 1,
+      runId: null,
+      sourceDigest: 'digest',
+      sourceMessageIds: ['model:0'],
+      type: 'compaction_committed',
+      usedFallback: false,
+    })
+    const latestMessages: ModelMessage[] = [
+      ...compactedMessages,
+      {
+        content: [{ input: { path: 'app.ts' }, toolCallId: 'retained-call', toolName: 'read', type: 'tool-call' }],
+        role: 'assistant',
+      },
+      {
+        content: [{ output: { type: 'text', value: 'retained tool output' }, toolCallId: 'retained-call', toolName: 'read', type: 'tool-result' }],
+        role: 'tool',
+      },
+      { content: 'latest completed answer', role: 'assistant' },
+    ]
+    document.replay = {
+      anchorUserMessageId: 'user-1',
+      branchId: 'main',
+      contextFingerprint: 'context',
+      fidelity: 'exact',
+      freshnessRevision: 0,
+      messages: encodeModelMessages(latestMessages),
+      modelId: 'source-model',
+      providerId: sourceProvider,
+      runId: 'completed-run',
+      sourceRevision: 3,
+      updatedAt: 4,
+    }
+    document.replays[getReplaySlotKey(sourceProvider, 'source-model')] = document.replay
+    for (const targetProvider of [...providers, sourceProvider]) {
+      const result = projectCanonicalReplay({
+        document,
+        fallbackMessages: [{ content: 'discarded raw tool output '.repeat(10_000), role: 'user' }],
+        messages: [
+          { content: 'old request', id: 'user-1', providerId: sourceProvider, role: 'user', timestamp: 1 },
+          { content: 'next request', id: 'user-2', role: 'user', timestamp: 5 },
+        ],
+        modelId: 'target-model',
+        providerId: targetProvider,
+      })
+      const label = `${sourceProvider} -> ${targetProvider}`
+      assert.equal(result.isCompacted, true, label)
+      assert.match(JSON.stringify(result.messages), /latest completed answer/u, label)
+      assert.match(JSON.stringify(result.messages), /retained tool output/u, label)
+      assert.match(JSON.stringify(result.messages), /next request/u, label)
+      assert.doesNotMatch(JSON.stringify(result.messages), /discarded raw tool output/u, label)
+      assert.equal(result.compactionPacket?.sourceDigest, 'digest', label)
+      if (targetProvider === 'codex' && sourceProvider !== 'codex') {
+        assert.equal(result.messages.some((message) => message.role === 'tool'), false, label)
+      } else {
+        assert.deepEqual(result.messages, [...latestMessages, { content: 'next request', role: 'user' }], label)
+      }
+    }
+  }
 })
 
 test('projectCanonicalReplay does not resurrect raw history when another instance compacted a newer anchor', () => {

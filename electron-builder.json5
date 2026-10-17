@@ -16,7 +16,7 @@
   "files": [
     "dist",
     "dist-electron",
-    "electron/chat/shared/prompts/**/*",
+    "electron/chat/shared/ai/**/*.md",
     "public/assets/tidecode-icon-dark.svg",
     "public/assets/tidecode-icon-dark.png",
     "public/assets/tidecode-icon-light.svg",

@@ -71,7 +71,7 @@ export function projectRetainedMessageForContext(message: ModelMessage): ModelMe
     ...message,
     content: (message.content as readonly unknown[]).map((part) => (
       isRecord(part) && part.type === 'tool-call'
-        ? part.toolName === 'code_mode'
+        ? part.toolName === 'exec'
           ? projectCodeModeToolCallPart(part)
           : projectToolCallPart(part)
         : part

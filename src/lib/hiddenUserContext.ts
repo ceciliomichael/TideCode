@@ -200,15 +200,15 @@ export function buildChatModeHiddenContext(chatMode: ChatMode): HiddenUserContex
       '- Favor concrete planning language. Broad phrases such as “update relevant files”, “refactor as needed”, “handle edge cases”, or “add tests” can be used as summaries, but expand them with the concrete files, behavior, rationale, or verification details that are already knowable and useful for handoff.',
       '- Ask a focused question only when a material product or scope judgment cannot be resolved from the workspace.',
       '- Do not implement source changes, run implementation commands, or proceed into implementation while Plan Mode is active. Implementation requires a later Agent Mode turn after user approval.',
-      '- Plan Mode tool contract: tools.plan_create({ content: string, title?: string }) creates the canonical plan, and tools.plan_edit({ path: string, content: string, title?: string }) replaces that active plan when revision is needed. Both are intentionally omitted from permanent Code Mode documentation for cache stability; that omission does not mean the APIs are unavailable.',
-      '- When plan Markdown contains backticks, quotes, code spans, or other arbitrary multiline text, pass the complete Markdown through the outer code_mode payloads object and call plan_create/plan_edit with content: payloads.plan. Do not embed plan Markdown directly in a JavaScript template literal.',
-      '- tools.plan_create and tools.plan_edit are injected Plan Mode APIs. Call them directly from this contract when needed. Do not use tools.$codemode.search or any other discovery API to look them up; they are intentionally excluded from capability discovery and permanent Code Mode documentation.',
-      '- The active plan is the latest successful Plan presentation in conversation history. If no active plan exists, finish read-only discovery and call tools.plan_create when the plan is ready. Do not call tools.plan_edit before an active plan exists.',
-      '- Once an active plan exists, do not create another. Use tools.plan_edit only when that exact active plan needs revision, passing its exact path and the complete revised Markdown. A duplicate tools.plan_create call must be treated as invalid.',
-      '- Do not call tools.apply_patch in Plan Mode. It is an Agent source-mutation API and is not part of Plan Mode\'s allowed tool set.',
+      '- Plan Mode tool contract: tools.plan.create({ content: string, title?: string }) creates the canonical plan. When an active plan needs revision, use tools.patch({ patch: string }) with an update hunk restricted to that exact active plan path.',
+      '- When plan Markdown contains backticks, quotes, code spans, or other arbitrary multiline text, pass the complete Markdown through the outer exec payloads object and call tools.plan.create with content: payloads.plan. Do not embed arbitrary Markdown directly in a JavaScript template literal.',
+      '- Plan Mode APIs are registered exactly in the exec catalog. Use tools.available.search to inspect available signatures and do not guess alternate names.',
+      '- The active plan is the latest successful Plan presentation in conversation history. If no active plan exists, finish read-only discovery and call tools.plan.create when the plan is ready. Do not patch a plan before an active plan exists.',
+      '- Once an active plan exists, do not create another. Use tools.patch only to revise that active plan, with its exact path and current source as patch context.',
+      '- tools.patch is host-restricted in Plan Mode to updating the active plan. It cannot add, delete, move, or modify other files.',
       '- Never mutate source files, tests, configuration, documentation, or other workspace files in Plan Mode. If a mutation API is unavailable, do not substitute another mutation mechanism.',
-      '- The permanent Code Mode tool catalog describes the stable superset of TideCode capabilities, not permission for the current mode. The active runtime policy and actual tools object are authoritative for what may be called now.',
-      '- Plan Mode runtime policy restricts Code Mode to planning-safe APIs plus plan_create and plan_edit, and enforces the plan-artifact boundary on the host side.',
+      '- The current exec catalog and its host-enforced permissions are authoritative for what may be called now.',
+      '- Plan Mode runtime policy permits read-only workspace APIs, skill APIs, tools.plan.create and restricted tools.patch; the host enforces the plan-artifact boundary.',
       '- After a successful plan create or revision, return the normal Plan preview result instead of duplicating the full artifact in chat.',
       '</chat_mode_context>',
     ].join('\n'))
@@ -223,7 +223,7 @@ export function buildChatModeHiddenContext(chatMode: ChatMode): HiddenUserContex
     '- Resolve low-risk technical choices from current evidence and existing patterns. Ask only when user-owned intent, material risk, irreversible behavior, or new authority is required.',
     '- Read the smallest relevant source before changing it, preserve user work, stay in scope, and avoid unrelated cleanup or speculative refactors.',
     '- When mutation is authorized, implement the complete requested change and run the narrowest decisive verification before reporting completion.',
-    '- Use the active provider tool contract as authoritative. When Code Mode is the tool boundary, use its documented inner APIs rather than inventing provider-facing tools.',
+    '- Use the active provider tool contract as authoritative. TideCode-owned APIs are invoked inside exec; provider-native tools may be exposed separately when supported.',
     '</chat_mode_context>',
   ].join('\n'))
 }
@@ -235,12 +235,12 @@ export function buildExecutionModeHiddenContext(
     ? [
         'Execution mode: sandbox.',
         'Filesystem access is limited to the workspace. A loaded skill may provide a specific skill directory for its own referenced resources.',
-        'Code Mode is tool-only in this mode. Direct host APIs and module loading are unavailable.',
+        'TideCode exec is restricted to registered tools in this mode. Direct host APIs and module loading are unavailable.',
       ]
     : [
         'Execution mode: full access.',
         'Filesystem tools and terminal commands may access paths outside the workspace only when required by the user request or a loaded skill.',
-        'Code Mode remains tool-only in Full Access. Full Access may broaden authorized tools, but it does not enable direct Node.js host APIs or module loading. Plan Mode remains planning-only.',
+        'TideCode exec remains restricted to registered tools in Full Access. This mode may broaden authorized paths, but it does not enable direct Node.js host APIs or module loading. Plan Mode remains planning-only.',
       ]
   return wrapHiddenUserContext(EXECUTION_MODE_HIDDEN_CONTEXT_KIND, terminalExecutionMode, [
     `<execution_mode_context mode="${terminalExecutionMode}">`,

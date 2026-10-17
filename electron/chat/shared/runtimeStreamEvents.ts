@@ -324,7 +324,7 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
             argumentChunks,
             toolName: outerToolName,
           })
-          if (outerToolName !== 'code_mode') scheduleToolInputDelta(part.id)
+           if (outerToolName !== 'exec') scheduleToolInputDelta(part.id)
           continue
         }
   
@@ -363,7 +363,7 @@ export async function processRuntimeStream(input: ProcessRuntimeStreamInput) {
             executionAccepted: true,
             toolName: displayedInvocation.toolName,
           })
-          if (displayedInvocation.toolName !== 'code_mode' && materializeToolArguments(currentState) !== argumentsText) {
+           if (displayedInvocation.toolName !== 'exec' && materializeToolArguments(currentState) !== argumentsText) {
             emitChatStreamEvent(input.webContents, {
               argumentsText,
               invocationId: part.toolCallId,

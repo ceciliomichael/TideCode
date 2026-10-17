@@ -5,25 +5,22 @@ interface TerminalToolResultProps {
 }
 
 function getTerminalResultLabel(toolName: string) {
-  if (toolName === 'execute_terminal') {
+  if (toolName === 'terminal.execute') {
     return 'Terminal command'
   }
 
-  if (toolName === 'interact_terminal') {
+  if (toolName === 'terminal.interact') {
     return 'Terminal interaction'
   }
 
-  if (toolName === 'read_terminal') {
+  if (toolName === 'terminal.read') {
     return 'Terminal output'
   }
 
-  if (toolName === 'terminate_terminal') {
+  if (toolName === 'terminal.terminate') {
     return 'Terminal termination'
   }
 
-  if (toolName === 'get_terminal_output') {
-    return 'Terminal session output'
-  }
 
   return 'Terminal output'
 }

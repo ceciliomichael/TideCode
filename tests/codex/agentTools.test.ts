@@ -1,509 +1,72 @@
+import '../configureAppRoot'
 import assert from 'node:assert/strict'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { createAgentToolBundle, createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
+import { createAgentToolBundle } from '../../electron/chat/shared/tools'
+import { buildExecDescription } from '../../electron/chat/shared/ai/exec/exec'
 
-test('createAgentTools omits write tools in plan mode', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
+async function withWorkspace(run: (root: string) => Promise<void>) {
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
+  try { await run(root) } finally { await fs.rm(root, { recursive: true, force: true }) }
+}
 
-  try {
-    const tools = await createAgentTools(
-      {
-        workspaceRootPath,
-      },
-      {
-        chatMode: 'plan',
-      },
-    )
+test('Agent Mode exposes one TideCode-owned exec tool and registered internal APIs', async () => withWorkspace(async (workspaceRootPath) => {
+  const bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent' })
+  assert.deepEqual(Object.keys(bundle.tools), ['exec'])
+  assert.ok(bundle.registry.get('read'))
+  assert.ok(bundle.registry.get('patch'))
+  assert.ok(bundle.registry.get('write'))
+  assert.ok(bundle.registry.get('terminal.execute'))
+  assert.ok(bundle.registry.get('terminal.read'))
+  assert.ok(bundle.registry.get('terminal.interact'))
+  assert.ok(bundle.registry.get('terminal.terminate'))
+  assert.equal(bundle.registry.get('edit'), undefined)
+  assert.equal(bundle.registry.get('apply_patch'), undefined)
+  assert.equal(bundle.registry.get('mcp_tool_search'), undefined)
+  assert.equal(bundle.registry.get('execute_mcp'), undefined)
+  assert.equal(bundle.registry.get('plan.create'), undefined)
+  assert.match(buildExecDescription(bundle.registry), /tools\.terminal\.execute/u)
+  await bundle.codeModeExecutor.dispose()
+}))
 
-    assert.ok('list' in tools)
-    assert.ok('read' in tools)
-    assert.ok(!('kanban_board' in tools))
-    assert.ok(!('memory' in tools))
-    assert.ok('plan_create' in tools)
-    assert.ok('plan_edit' in tools)
-    assert.ok(!('write' in tools))
-    assert.ok(!('apply_patch' in tools))
-    assert.ok(!('edit' in tools))
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+test('Plan Mode exposes only planning-safe APIs and the active-plan patch tool', async () => withWorkspace(async (workspaceRootPath) => {
+  const bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'plan' })
+  assert.deepEqual(Object.keys(bundle.tools), ['exec'])
+  for (const name of ['read', 'list', 'glob', 'grep', 'plan.create', 'patch']) {
+    assert.ok(bundle.registry.get(name), name)
   }
-})
-test('createAgentTools exposes write tools in agent mode', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
-
-  try {
-    const tools = await createAgentTools({
-      workspaceRootPath,
-    }, {
-      chatMode: 'agent',
-    })
-
-    assert.ok('write' in tools)
-    assert.ok('plan_create' in tools)
-    assert.ok('plan_edit' in tools)
-    assert.ok('apply_patch' in tools)
-    assert.ok('edit' in tools)
-    assert.ok(!('kanban_board' in tools))
-    assert.ok(!('memory' in tools))
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+  for (const name of ['write', 'terminal.execute', 'terminal.interact', 'terminal.read', 'terminal.terminate']) {
+    assert.equal(bundle.registry.get(name), undefined)
   }
-})
+  await bundle.codeModeExecutor.dispose()
+}))
 
-test('Code Mode exposes code_mode plus direct apply_patch/write while discovery and native executors stay in its registry', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-tools-'))
-
-  try {
-    const bundle = await createAgentToolBundle(
-      { workspaceRootPath },
-      { chatMode: 'agent', orchestrationMode: 'code_mode' },
-    )
-
-    assert.deepEqual(Object.keys(bundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
-    assert.equal(bundle.registry.get('tool_search'), undefined)
-    assert.ok(bundle.registry.get('read'))
-    assert.equal(bundle.registry.get('read_tool_output'), undefined)
-    assert.equal(bundle.registry.get('apply_patch'), undefined)
-    assert.equal(bundle.registry.get('write'), undefined)
-    assert.equal(bundle.registry.get('plan_create'), undefined)
-    assert.equal(bundle.registry.get('plan_edit'), undefined)
-    assert.equal(bundle.registry.get('edit'), undefined)
-    assert.ok(bundle.nativeTools.edit)
-    assert.equal(bundle.registry.get('mcp_tool_search'), undefined)
-    assert.equal(bundle.registry.get('execute_mcp'), undefined)
-    assert.equal(typeof bundle.registry.get('read')?.execute, 'function')
-    await bundle.codeModeExecutor?.dispose()
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+test('Provider-native web_search is exposed separately when supported', async () => withWorkspace(async (workspaceRootPath) => {
+  for (const providerId of ['openai', 'codex'] as const) {
+    const bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent', providerId })
+    assert.deepEqual(Object.keys(bundle.tools).sort(), ['exec', 'web_search'])
+    assert.equal(bundle.registry.get('web_search'), undefined)
+    await bundle.codeModeExecutor.dispose()
   }
-})
+  const other = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent', providerId: 'custom:test-provider' })
+  assert.deepEqual(Object.keys(other.tools), ['exec'])
+  await other.codeModeExecutor.dispose()
+}))
 
-test('createAgentToolBundle defaults agent mode to Code Mode', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-default-code-mode-tools-'))
-
-  try {
-    const bundle = await createAgentToolBundle(
-      { workspaceRootPath },
-      { chatMode: 'agent' },
-    )
-
-    assert.deepEqual(Object.keys(bundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
-    assert.equal(bundle.registry.get('tool_search'), undefined)
-    assert.ok(bundle.codeModeExecutor)
-    await bundle.codeModeExecutor?.dispose()
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Code Mode direct apply_patch bypasses the interpreter and applies the native patch schema', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-direct-apply-patch-'))
-
-  try {
-    await fs.writeFile(path.join(workspaceRootPath, 'value.txt'), 'before\n', 'utf8')
-    const bundle = await createAgentToolBundle(
-      { workspaceRootPath },
-      { chatMode: 'agent', orchestrationMode: 'code_mode', providerId: 'openai' },
-    )
-    const applyPatch = bundle.tools.apply_patch as {
-      execute?: (input: unknown, options: { toolCallId: string; messages: never[]; context: Record<string, never> }) => Promise<unknown>
-    }
-
-    try {
-      assert.equal(typeof applyPatch.execute, 'function')
-      const result = await applyPatch.execute?.(
-        {
-          compat: { ignored: true },
-          depth: 3,
-          patch: ['*** Begin Patch', '*** Update File: value.txt', '@@', '-before', '+after', '*** End Patch'],
-          recursive: true,
-        },
-        { context: {}, messages: [], toolCallId: 'direct-patch' },
-      ) as { status?: string }
-      assert.equal(result.status, 'success')
-      assert.equal(await fs.readFile(path.join(workspaceRootPath, 'value.txt'), 'utf8'), 'after\n')
-    } finally {
-      await bundle.codeModeExecutor?.dispose()
-    }
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Code Mode direct write bypasses the interpreter and preserves delimiter-heavy content', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-direct-write-'))
-  const fence = String.fromCharCode(96).repeat(3)
-  const content = [
-    fence + 'tsx',
-    'const view = `hello ${name}`',
-    'const rx = /a\\b\\s+/g',
-    'const path = "C:\\Users\\Admin\\file.ts"',
-    fence,
-    '',
-  ].join('\n')
-
-  try {
-    const bundle = await createAgentToolBundle(
-      { workspaceRootPath },
-      { chatMode: 'agent', orchestrationMode: 'code_mode', providerId: 'openai' },
-    )
-    const write = bundle.tools.write as {
-      execute?: (input: unknown, options: { toolCallId: string; messages: never[]; context: Record<string, never> }) => Promise<unknown>
-    }
-
-    try {
-      assert.equal(typeof write.execute, 'function')
-      const result = await write.execute?.(
-        {
-          compat: ['ignored', 1, true],
-          content,
-          depth: 9,
-          path: 'nested.tsx',
-          recursive: 'ignored',
-        },
-        { context: {}, messages: [], toolCallId: 'direct-write' },
-      ) as { status?: string }
-      assert.equal(result.status, 'success')
-      assert.equal(await fs.readFile(path.join(workspaceRootPath, 'nested.tsx'), 'utf8'), content)
-    } finally {
-      await bundle.codeModeExecutor?.dispose()
-    }
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Code Mode honors Full Access when listing a directory outside the workspace', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-workspace-'))
-  const outsideDirectoryPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-outside-'))
-  const outsideFileName = 'external-navigation.txt'
-  await fs.writeFile(path.join(outsideDirectoryPath, outsideFileName), 'external content\n', 'utf8')
-
-  let fullBundle: Awaited<ReturnType<typeof createAgentToolBundle>> | null = null
-  let sandboxBundle: Awaited<ReturnType<typeof createAgentToolBundle>> | null = null
-
-  try {
-    fullBundle = await createAgentToolBundle(
-      {
-        terminalExecutionMode: 'full',
-        workspaceRootPath,
-      },
-      { chatMode: 'agent', orchestrationMode: 'code_mode' },
-    )
-    assert.ok(fullBundle.codeModeExecutor)
-
-    const fullResult = await fullBundle.codeModeExecutor.run(`
-      const result = await tools.list({ path: ${JSON.stringify(outsideDirectoryPath)} })
-      return { body: result.body, status: result.status, subjectPath: result.subject?.path }
-    `)
-
-    assert.equal(fullResult.status, 'success')
-    assert.deepEqual(fullResult.output, {
-      body: outsideFileName,
-      status: 'success',
-      subjectPath: outsideDirectoryPath,
-    })
-    await fullBundle.codeModeExecutor.dispose()
-    fullBundle = null
-
-    sandboxBundle = await createAgentToolBundle(
-      {
-        terminalExecutionMode: 'sandbox',
-        workspaceRootPath,
-      },
-      { chatMode: 'agent', orchestrationMode: 'code_mode' },
-    )
-    assert.ok(sandboxBundle.codeModeExecutor)
-
-    const sandboxResult = await sandboxBundle.codeModeExecutor.run(`
-      const result = await tools.list({ path: ${JSON.stringify(outsideDirectoryPath)} })
-      return { status: result.status }
-    `)
-
-    assert.equal(sandboxResult.status, 'error')
-    assert.equal(sandboxResult.toolCalls.length, 1)
-    assert.equal(sandboxResult.toolCalls[0]?.status, 'error')
-  } finally {
-    await fullBundle?.codeModeExecutor?.dispose()
-    await sandboxBundle?.codeModeExecutor?.dispose()
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-    await fs.rm(outsideDirectoryPath, { force: true, recursive: true })
-  }
-})
-
-test('Hybrid orchestration retains direct tools alongside the meta-tools', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-hybrid-tools-'))
-
-  try {
-    const bundle = await createAgentToolBundle(
-      { workspaceRootPath },
-      { chatMode: 'agent', orchestrationMode: 'hybrid' },
-    )
-
-    assert.ok('read' in bundle.tools)
-    assert.ok('code_mode' in bundle.tools)
-    assert.ok(!('tool_search' in bundle.tools))
-    assert.equal(bundle.registry.get('tool_search'), undefined)
-    await bundle.codeModeExecutor?.dispose()
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('createAgentTools exposes OpenAI web_search for Codex and OpenAI providers', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
-
-  try {
-    for (const providerId of ['codex', 'openai'] as const) {
-      const tools = await createAgentTools(
-        {
-          workspaceRootPath,
-        },
-        {
-          chatMode: 'agent',
-          providerId,
-        },
-      )
-
-      const webSearchTool = tools.web_search as { id?: string; type?: string }
-
-      assert.equal(webSearchTool.type, 'provider')
-      assert.equal(webSearchTool.id, 'openai.web_search')
-    }
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('createAgentTools does not expose web search for unsupported providers', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
-
-  try {
-    const tools = await createAgentTools(
-      {
-        workspaceRootPath,
-      },
-      {
-        chatMode: 'agent',
-        providerId: 'custom:test-provider',
-      },
-    )
-
-    assert.ok(!('webfetch' in tools))
-    assert.ok(!('web_search' in tools))
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Code Mode keeps provider-native web search directly exposed for Codex and OpenAI', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-web-search-'))
-
-  try {
-    for (const providerId of ['codex', 'openai'] as const) {
-      const bundle = await createAgentToolBundle(
-        { workspaceRootPath },
-        { chatMode: 'agent', orchestrationMode: 'code_mode', providerId },
-      )
-
-      try {
-        assert.deepEqual(Object.keys(bundle.tools).sort(), ['apply_patch', 'code_mode', 'web_search', 'write'])
-        assert.ok(!('read' in bundle.tools))
-        assert.ok('write' in bundle.tools)
-        assert.ok(!('execute_terminal' in bundle.tools))
-        const webSearchTool = bundle.tools.web_search as { id?: string; type?: string }
-        assert.equal(webSearchTool.type, 'provider')
-        assert.equal(webSearchTool.id, 'openai.web_search')
-      } finally {
-        await bundle.codeModeExecutor?.dispose()
-      }
-    }
-
-    const unsupportedBundle = await createAgentToolBundle(
-      { workspaceRootPath },
-      { chatMode: 'agent', orchestrationMode: 'code_mode', providerId: 'custom:test-provider' },
-    )
-    try {
-      assert.deepEqual(Object.keys(unsupportedBundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
-    } finally {
-      await unsupportedBundle.codeModeExecutor?.dispose()
-    }
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Plan Mode keeps provider-native web search directly exposed for Codex and OpenAI', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-code-mode-plan-web-search-'))
-
-  try {
-    for (const providerId of ['codex', 'openai'] as const) {
-      const bundle = await createAgentToolBundle(
-        { workspaceRootPath },
-        { chatMode: 'plan', orchestrationMode: 'code_mode', providerId },
-      )
-
-      try {
-        assert.deepEqual(Object.keys(bundle.tools).sort(), ['code_mode', 'web_search'])
-        const webSearchTool = bundle.tools.web_search as { id?: string; type?: string }
-        assert.equal(webSearchTool.type, 'provider')
-        assert.equal(webSearchTool.id, 'openai.web_search')
-      } finally {
-        await bundle.codeModeExecutor?.dispose()
-      }
-    }
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('createAgentTools exposes the same exact replacement tools for every provider', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
-
-  try {
-    const codexTools = await createAgentTools(
-      { workspaceRootPath },
-      { chatMode: 'agent', providerId: 'codex' },
-    )
-    const compatibleTools = await createAgentTools(
-      { workspaceRootPath },
-      { chatMode: 'agent', providerId: 'custom:test-provider' },
-    )
-
-    for (const toolName of ['apply_patch', 'edit']) {
-      const codexTool = codexTools[toolName] as {
-        description?: string
-        inputSchema?: unknown
-      }
-      const compatibleTool = compatibleTools[toolName] as {
-        description?: string
-        inputSchema?: unknown
-      }
-      assert.equal(codexTool.description, compatibleTool.description)
-      assert.ok(codexTool.inputSchema)
-      assert.ok(compatibleTool.inputSchema)
-    }
-
-    assert.ok('web_search' in codexTools)
-    assert.ok(!('webfetch' in compatibleTools))
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('createAgentTools describes grep mechanics without workflow guidance', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
-
-  try {
-    const tools = await createAgentTools({
-      workspaceRootPath,
-    }, {
-      chatMode: 'agent',
-    })
-
-    assert.ok('grep' in tools)
-    const grepTool = tools.grep as { description?: string }
-
-    assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; an omitted path, empty string, or "." refers to the bound workspace root.')
-    assert.doesNotMatch(grepTool.description ?? '', /use `read`|patch|should|prefer/iu)
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('createAgentTools keeps plan mode tool descriptions literal', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
-
-  try {
-    const tools = await createAgentTools(
-      {
-        workspaceRootPath,
-      },
-      {
-        chatMode: 'plan',
-      },
-    )
-
-    const listTool = tools.list as { description?: string }
-    const readTool = tools.read as { description?: string }
-    const globTool = tools.glob as { description?: string }
-    const grepTool = tools.grep as { description?: string }
-
-    assert.equal(listTool.description, 'List exactly one existing directory; an omitted path, empty string, or "." refers to the bound workspace root. Use read for files.')
-    assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. Text reads stay within safe model-output budgets. Use next_offset for later lines and pass next_cursor back exactly when an oversized single line is returned in fragments.')
-    assert.equal(globTool.description, 'Find files by pattern under exactly one directory; an omitted path, empty string, or "." refers to the bound workspace root.')
-    assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; an omitted path, empty string, or "." refers to the bound workspace root.')
-    for (const description of [listTool, readTool, globTool, grepTool].map((tool) => tool.description ?? '')) {
-      assert.doesNotMatch(description, /patch|write|should|prefer/iu)
-    }
-    assert.ok(!('write' in tools))
-    assert.ok(!('apply_patch' in tools))
-    assert.ok('plan_edit' in tools)
-    assert.ok(!('edit' in tools))
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('createAgentTools keeps mutation descriptions mechanical and workflow-free', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-tools-'))
-
-  try {
-    const tools = await createAgentTools(
-      {
-        workspaceRootPath,
-      },
-      {
-        chatMode: 'agent',
-      },
-    )
-
-    assert.ok('read' in tools)
-    assert.ok('apply_patch' in tools)
-    assert.ok('edit' in tools)
-    assert.ok('write' in tools)
-
-    const readTool = tools.read as { description?: string }
-    const globTool = tools.glob as { description?: string }
-    const grepTool = tools.grep as { description?: string }
-    const applyPatchTool = tools.apply_patch as { description?: string }
-    const editTool = tools.edit as { description?: string }
-    const writeTool = tools.write as { description?: string }
-
-    assert.equal(readTool.description, 'Read exactly one existing text file, image, or directory; an empty string or "." refers to the bound workspace root. Text reads stay within safe model-output budgets. Use next_offset for later lines and pass next_cursor back exactly when an oversized single line is returned in fragments.')
-    assert.match(applyPatchTool.description ?? '', /Apply one raw Codex patch string/u)
-    assert.match(applyPatchTool.description ?? '', /inspect the exact current source region/u)
-    assert.match(applyPatchTool.description ?? '', /every hunk must be backed by current exact source/u)
-    assert.match(applyPatchTool.description ?? '', /do not retry the same hunk/u)
-    assert.match(applyPatchTool.description ?? '', /Every file-content line in an Add File hunk must start with \+/u)
-    assert.match(applyPatchTool.description ?? '', /Use \*\*\* Update File for edits to an existing path/u)
-    assert.match(applyPatchTool.description ?? '', /Human readability is part of the mutation/u)
-    assert.match(applyPatchTool.description ?? '', /Do not collapse unrelated statements, declarations, branches, data structures, markup, rules, or configuration entries/u)
-    assert.equal(
-      editTool.description,
-'Edit an existing file using one exact operation per hunk: replace targetContent, replace an exact startLine/endLine range, or insert insertContent at the file start/end. Ambiguous text targets return recoverable candidate context unless replaceAll is explicitly true.',
-    )
-    assert.equal(globTool.description, 'Find files by pattern under exactly one directory; an omitted path, empty string, or "." refers to the bound workspace root.')
-    assert.equal(grepTool.description, 'Search file contents under exactly one existing file or directory; an omitted path, empty string, or "." refers to the bound workspace root.')
-    assert.equal(
-      writeTool.description,
-      'Write a complete file using structured content. Use this tool to create files or intentionally replace an entire file. Write human-readable source by default: preserve the repository\'s existing formatting conventions and never minify, compress, or line-pack code merely to reduce tool-call size or token usage unless the user explicitly requests minified output. Keep logical structure visually clear using normal indentation, line breaks, spacing, and grouping appropriate to the file type and surrounding source.',
-    )
-    for (const description of [
-      readTool,
-      globTool,
-      grepTool,
-      applyPatchTool,
-      editTool,
-      writeTool,
-    ]
-      .map((tool) => tool.description ?? '')) {
-      assert.doesNotMatch(description, /should|prefer|before editing/iu)
-    }
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
+test('Skill APIs are independent documented operations when enabled', async () => withWorkspace(async (workspaceRootPath) => {
+  const skills = [{
+    name: 'example',
+    description: 'Example skill',
+    location: path.join(workspaceRootPath, 'SKILL.md'),
+  }]
+  await fs.writeFile(skills[0].location, '---\nname: example\ndescription: Example skill\n---\n# Example instructions\n')
+  const bundle = await createAgentToolBundle({ workspaceRootPath }, { chatMode: 'agent', enabledSkills: skills })
+  for (const name of ['skill.list', 'skill.search', 'skill.load']) assert.ok(bundle.registry.get(name))
+  assert.equal(bundle.registry.get('skill'), undefined)
+  const result = await bundle.codeModeExecutor.run('const s = await tools.skill.list({}); return s.body;')
+  assert.equal(result.status, 'success', result.error)
+  assert.match(String(result.output), /example/u)
+  await bundle.codeModeExecutor.dispose()
+}))

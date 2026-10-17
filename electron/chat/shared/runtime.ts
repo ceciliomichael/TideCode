@@ -61,7 +61,6 @@ import { isUnsupportedImageInputError, resolveModelImageInputSupport } from './m
 import { appendStoredMessages } from '../../history/store'
 import { createAgentToolBundle } from './tools'
 import type { CodeModeExecutor } from './codeMode/executor'
-import { createCodeModeToolCallRepair } from './codeMode/toolCallRepair'
 import { createTerminalSessionOwner, releaseTerminalToolStateForTurn } from './tools/terminalToolShared'
 import { getTerminalBroker } from '../../terminal/broker/instance'
 import { sortToolSet } from './runtimeToolSet'
@@ -195,7 +194,6 @@ export async function runToolEnabledChatStream(input: {
     terminalOwner = createTerminalSessionOwner(input.webContents)
     const enabledSkills = await listEnabledSkills(workspaceRootPath)
     const activePlanPath = getLatestCompletedPlanPresentation(input.startInput.messages)?.relativePath ?? null
-    const orchestrationMode = 'code_mode' as const
     const pendingVisualModelOutputs: ToolResultOutput[] = []
     let offeredVisualModelOutputCount = 0
     const acknowledgeOfferedVisualModelOutputs = () => {
@@ -230,7 +228,6 @@ export async function runToolEnabledChatStream(input: {
         activePlanPath,
         chatMode: input.startInput.chatMode,
         enabledSkills,
-        orchestrationMode,
         providerId: input.startInput.providerId,
       },
     )
@@ -246,7 +243,6 @@ export async function runToolEnabledChatStream(input: {
         input.startInput.providerId,
         input.startInput.modelId,
       ),
-      orchestrationMode,
       terminalExecutionMode: input.startInput.terminalExecutionMode,
     }
     const prompt = buildChatPrompt({
@@ -370,7 +366,6 @@ export async function runToolEnabledChatStream(input: {
       messages: modelMessages,
       model: input.startInput.modelId,
       reasoningEffort: input.startInput.reasoningEffort,
-      repairToolCall: createCodeModeToolCallRepair(toolBundle.registry),
       signal: input.abortController.signal,
       stopWhen: continueToolLoopUntilModelStops,
       system: prompt.system,

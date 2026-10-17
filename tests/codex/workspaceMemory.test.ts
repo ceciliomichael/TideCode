@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import type { AgentToolExecutionResult } from '../../electron/chat/shared/toolTypes'
-import { createNativeAgentTools } from '../../electron/chat/shared/tools'
+import { createAgentToolBundle } from '../../electron/chat/shared/tools'
+
+const createNativeAgentTools = async (...args: Parameters<typeof createAgentToolBundle>) =>
+  (await createAgentToolBundle(...args)).nativeTools
 import {
   editMemoryEntry,
   forgetMemoryEntry,

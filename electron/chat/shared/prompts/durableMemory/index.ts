@@ -2,8 +2,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { getTideCodeRuntimeRoot } from '../../../../runtime/runtimeRoot'
 
-const PROMPT_REPO_PATH = 'electron/chat/shared/prompts/durableMemory'
-const MEMORY_PROMPT_FILE_NAME = 'prompt.md'
+const PROMPT_REPO_PATH = 'electron/chat/shared/ai/prompts/workers'
+const MEMORY_PROMPT_FILE_NAME = 'durable-memory.md'
 
 function readPromptFile(fileName: string) {
   const promptPath = path.join(getTideCodeRuntimeRoot(), PROMPT_REPO_PATH, fileName)

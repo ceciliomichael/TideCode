@@ -10,7 +10,7 @@ import {
   buildCompressedHistoryAcknowledgementMessage,
   buildCompressedHistoryMessage,
 } from '../../src/lib/chatCompression'
-import { createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
+import { createAgentToolBundle } from '../../electron/chat/shared/tools'
 import type { Message } from '../../src/types/chat'
 import { buildHiddenUserContextTransitions } from '../../src/lib/hiddenUserContext'
 
@@ -70,7 +70,7 @@ test('execution mode changes create one persisted transition without duplicating
   assert.equal(fullTransition[0]?.kind, 'execution_mode')
   assert.equal(fullTransition[0]?.state, 'full')
   assert.match(fullTransition[0]?.content ?? '', /<execution_mode_context mode="full">/u)
-  assert.match(fullTransition[0]?.content ?? '', /Code Mode remains tool-only in Full Access/u)
+  assert.match(fullTransition[0]?.content ?? '', /TideCode exec remains restricted to registered tools in Full Access/u)
   assert.doesNotMatch(fullTransition[0]?.content ?? '', /may use direct Node\.js host APIs and module loading/u)
 
   const fullMessages: Message[] = [...sandboxMessages, {
@@ -96,12 +96,12 @@ test('execution mode changes do not alter the system prompt or tool context fing
   const fullAccessSystem = buildChatSystemPrompt('agent', workspaceRootPath, {
     terminalExecutionMode: 'full',
   })
-  const sandboxTools = await createAgentTools({
+  const sandboxBundle = await createAgentToolBundle({
     terminalExecutionMode: 'sandbox',
     webContents: webContentsStub,
     workspaceRootPath,
   })
-  const fullAccessTools = await createAgentTools({
+  const fullAccessBundle = await createAgentToolBundle({
     terminalExecutionMode: 'full',
     webContents: webContentsStub,
     workspaceRootPath,
@@ -110,13 +110,13 @@ test('execution mode changes do not alter the system prompt or tool context fing
     modelId: 'test-model',
     providerId: 'openai',
     system: sandboxSystem,
-    tools: sandboxTools,
+    tools: sandboxBundle.tools,
   })
   const fullAccessManifest = buildPromptContextManifest({
     modelId: 'test-model',
     providerId: 'openai',
     system: fullAccessSystem,
-    tools: fullAccessTools,
+    tools: fullAccessBundle.tools,
   })
 
   assert.equal(sandboxSystem, fullAccessSystem)

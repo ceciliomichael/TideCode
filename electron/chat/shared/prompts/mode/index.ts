@@ -1,16 +1,15 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { ChatMode, AppTerminalExecutionMode } from '../../../../../src/types/chat'
-import type { AgentOrchestrationMode } from '../../orchestration'
 import { buildWorkspaceInstructionsRuntimeBlock } from '../workspaceInstructions'
 import { getTideCodeRuntimeRoot } from '../../../../runtime/runtimeRoot'
 
-const PROMPT_REPO_PATH = 'electron/chat/shared/prompts/mode'
+const PROMPT_REPO_PATH = 'electron/chat/shared/ai/prompts/chat'
 const SHARED_PROMPT_FILES = [
-  { id: 'shared_mindset_prompt', relativePath: 'shared/mindset.md' },
-  { id: 'shared_source_quality_prompt', relativePath: 'shared/sourceQuality.md' },
-  { id: 'shared_response_prompt', relativePath: 'shared/response.md' },
-  { id: 'shared_continuation_prompt', relativePath: 'shared/continuation.md' },
+  { id: 'shared_mindset_prompt', relativePath: 'mindset.md' },
+  { id: 'shared_source_quality_prompt', relativePath: 'sourceQuality.md' },
+  { id: 'shared_response_prompt', relativePath: 'response.md' },
+  { id: 'shared_continuation_prompt', relativePath: 'continuation.md' },
 ] as const
 
 function readPromptFile(relativePath: string) {
@@ -18,7 +17,9 @@ function readPromptFile(relativePath: string) {
   if (!existsSync(promptPath)) {
     throw new Error(`Unable to load chat prompt file: ${relativePath}`)
   }
-  return readFileSync(promptPath, 'utf8').trim()
+  const content = readFileSync(promptPath, 'utf8').trim()
+  if (!content) throw new Error(`Required chat prompt is empty: ${promptPath}`)
+  return content
 }
 
 function escapePromptMarkup(content: string) {
@@ -39,14 +40,14 @@ const CORE_DECISION_PROMPT = [
   '</decision_priority>',
 ].join('\n')
 
-const CODE_MODE_PROMPT = [
-  '<code_mode_rules description="Use the Code Mode contract without duplicating it">',
-  '- The model-facing Tidecode surface always includes `code_mode`; when direct `apply_patch` or `write` tools are present, use them for targeted patches or complete-file creation/replacement instead of routing those mutations through Code Mode. Treat the actual provider tool surface as authoritative.',
-  '- Names such as `tools.list` and `tools.glob` are JavaScript APIs inside the `code_mode` program, never model-facing tool names. Never emit a `tools.*` provider call.',
-  '- Treat the `code_mode` tool description as the authoritative contract for inner APIs, restrictions, schemas, and scenario routing. Do not duplicate or override those mechanics in the system prompt.',
-  '- Keep each Code Mode program scoped to the smallest complete inspect, mutate, or verify sequence needed for the current decision.',
+const EXEC_PROMPT = [
+  '<exec_rules description="Use the exec contract without duplicating it">',
+  '- The only TideCode-owned provider-facing tool is `exec`. Provider-native tools such as `web_search` may also be available when supported.',
+  '- Names such as `tools.list` and `tools.terminal.execute` are APIs inside an `exec` program, never provider-facing tool names.',
+  '- The `exec` tool description is authoritative for available internal APIs, exact signatures, and execution restrictions.',
+  '- Keep each exec program scoped to the smallest complete inspect, mutate, or verify sequence needed for the current decision.',
   '- Never invent or assume a child file path from project conventions. Read a child path only when the user supplied it or a prior tool returned that exact path; otherwise discover it with `tools.list`, `tools.glob`, or `tools.grep` first.',
-  '</code_mode_rules>',
+  '</exec_rules>',
 ].join('\n')
 
 export interface ChatSystemPromptComponent {
@@ -69,22 +70,13 @@ function getSharedPromptComponents(): ChatSystemPromptComponent[] {
   const components: ChatSystemPromptComponent[] = []
   for (const { id, relativePath } of SHARED_PROMPT_FILES) {
 
-    let content = ''
-    try {
-      content = readPromptFile(relativePath)
-    } catch {
-      continue
-    }
-
-    if (content.length === 0) {
-      continue
-    }
+    const content = readPromptFile(relativePath)
 
     components.push({
       content,
       id,
       section: 'system_contract',
-      source: `electron/chat/shared/prompts/mode/${relativePath}`,
+      source: `electron/chat/shared/ai/prompts/chat/${relativePath}`,
     })
   }
 
@@ -96,45 +88,28 @@ export function buildChatModeSystemPromptBreakdown(
   _chatMode: ChatMode,
   workspaceRootPath: string,
   options?: {
-    orchestrationMode?: AgentOrchestrationMode
     terminalExecutionMode?: AppTerminalExecutionMode
   },
 ): ChatSystemPromptBreakdown {
-  const isCodeMode = options?.orchestrationMode === 'code_mode'
-  const isHybrid = options?.orchestrationMode === 'hybrid'
+  void options
   const coreDecisionComponent: ChatSystemPromptComponent = {
     content: CORE_DECISION_PROMPT,
     id: 'core_decision_priority',
     section: 'system_contract',
     source: 'electron/chat/shared/prompts/mode/index.ts',
   }
-  const modeComponents: ChatSystemPromptComponent[] = isCodeMode
-    ? [{
-        content: CODE_MODE_PROMPT,
-        id: 'code_mode_contract',
-        section: 'system_contract' as const,
-        source: 'electron/chat/shared/prompts/mode/index.ts',
-      }]
-    : []
+  const modeComponents: ChatSystemPromptComponent[] = [{
+    content: EXEC_PROMPT,
+    id: 'exec_contract',
+    section: 'system_contract',
+    source: 'electron/chat/shared/prompts/mode/index.ts',
+  }]
   const systemRuleComponents: ChatSystemPromptComponent[] = [
     coreDecisionComponent,
     ...modeComponents,
 ...getSharedPromptComponents(),
   ]
 
-  if (isHybrid) {
-    systemRuleComponents.push({
-      content: [
-        '<code_mode_contract>',
-        'Use a direct tool for one simple operation; use `code_mode` for related calls, loops, filtering, or batching.',
-        'Treat the `code_mode` tool description as authoritative for its inner APIs, restrictions, and discovery mechanics.',
-        '</code_mode_contract>',
-      ].join('\n'),
-      id: 'code_mode_contract',
-      section: 'system_contract' as const,
-      source: 'electron/chat/shared/prompts/mode/index.ts',
-    })
-  }
 
   const workspaceRootComponent: ChatSystemPromptComponent = {
     content: [
@@ -156,9 +131,7 @@ export function buildChatModeSystemPromptBreakdown(
       '- Inspect attachment aliases with read/list/glob/grep. Copy content into the workspace before attempting mutation.',
       '- Durable attachments are references, not pre-read contents. If the user request depends on an attachment\'s contents, inspect the exact `@attachments/...` path before describing, analyzing, comparing, or relying on it. In Code Mode use `tools.read`; never infer attachment contents from the filename or mention text.',
       '- Never guess or construct an absolute path from a project name, display name, process directory, or previous turn. Copy an absolute path only when the user or a tool provided it.',
-      isCodeMode
-        ? '- Follow the path rules in the `code_mode` tool description for inner workspace calls. Inside the `code_mode` JavaScript, discover unknown paths with `tools.list`, `tools.glob`, or `tools.grep`; never emit those names as provider tool calls.'
-        : '- If unsure, inspect with `list`, `glob`, or `grep` before choosing a path. Do not infer child filenames from naming conventions.',
+      '- Follow the path rules in the `exec` tool description. Discover unknown child paths with `tools.list`, `tools.glob`, or `tools.grep` inside an exec program.',
       '- If a path fails, correct the relative child path; do not retry the same guessed absolute path.',
       '</workspace_path_rules>',
     ].join('\n'),
@@ -211,7 +184,6 @@ export function buildChatModeSystemPrompt(
   chatMode: ChatMode,
   workspaceRootPath: string,
   options?: {
-    orchestrationMode?: AgentOrchestrationMode
     terminalExecutionMode?: AppTerminalExecutionMode
   },
 ) {

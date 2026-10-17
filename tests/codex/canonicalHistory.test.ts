@@ -499,6 +499,125 @@ test('compacted replay retains assistant and tool responses from later turns', (
   )
 })
 
+test('switching Codex models preserves the latest completed compacted replay over an older model slot', () => {
+  const document = createEmptyCanonicalHistory('conversation', 1)
+  const packet = createCompactionPacketFixture({ sourceDigest: 'digest', sourceMessageIds: ['model:0'] })
+  const compactedMessages: ModelMessage[] = [
+    { content: 'retained request', role: 'user' },
+    { content: packet.continuationMarkdown, role: 'assistant' },
+  ]
+  document.events.push({
+    anchorUserMessageId: 'user-1',
+    branchId: 'main',
+    compactionId: 'compaction-1',
+    createdAt: 2,
+    eventId: 'compaction-event',
+    modelId: 'model-a',
+    packet: encodeReplayValue(packet),
+    projectedMessages: encodeModelMessages(compactedMessages),
+    providerId: 'codex',
+    revision: 1,
+    runId: null,
+    sourceDigest: 'digest',
+    sourceMessageIds: ['model:0'],
+    type: 'compaction_committed',
+    usedFallback: false,
+  })
+  const latestMessages: ModelMessage[] = [
+    ...compactedMessages,
+    { content: 'completed after compaction', role: 'assistant' },
+  ]
+  document.replay = {
+    anchorUserMessageId: 'user-1',
+    branchId: 'main',
+    contextFingerprint: 'context',
+    fidelity: 'exact',
+    freshnessRevision: 0,
+    messages: encodeModelMessages(latestMessages),
+    modelId: 'model-a',
+    providerId: 'codex',
+    runId: 'latest-run',
+    sourceRevision: 3,
+    updatedAt: 4,
+  }
+  document.replays[getReplaySlotKey('codex', 'model-a')] = document.replay
+  document.replays[getReplaySlotKey('codex', 'model-b')] = {
+    ...document.replay,
+    messages: encodeModelMessages(compactedMessages),
+    modelId: 'model-b',
+    runId: 'older-run',
+    sourceRevision: 2,
+  }
+  document.replays[getReplaySlotKey('codex', 'other-branch')] = {
+    ...document.replay,
+    branchId: 'other-branch',
+    messages: encodeModelMessages([{ content: 'wrong branch', role: 'user' }]),
+    sourceRevision: 10,
+  }
+  document.replays[getReplaySlotKey('codex', 'pending-model')] = {
+    ...document.replay,
+    messages: encodeModelMessages([{ content: 'unfinished prompt', role: 'user' }]),
+    modelId: 'pending-model',
+    runId: 'pending-run',
+    sourceRevision: 11,
+  }
+  document.events.push({
+    anchorUserMessageId: 'user-1',
+    branchId: 'main',
+    contextFingerprint: 'context',
+    createdAt: 6,
+    eventId: 'pending-event',
+    fidelity: 'exact',
+    initialMessages: [],
+    modelId: 'pending-model',
+    providerId: 'codex',
+    revision: 11,
+    runId: 'pending-run',
+    type: 'run_started',
+  })
+
+  for (const modelId of ['model-new', 'model-b', 'model-a']) {
+    const result = projectCanonicalReplay({
+      document,
+      fallbackMessages: [{ content: 'discarded raw history', role: 'user' }],
+      messages: [
+        { content: 'old request', id: 'user-1', role: 'user', timestamp: 1 },
+        { content: 'next request', id: 'user-2', role: 'user', timestamp: 5 },
+      ],
+      modelId,
+      providerId: 'codex',
+    })
+    assert.equal(result.isCompacted, true, modelId)
+    assert.deepEqual(result.messages, [...latestMessages, { content: 'next request', role: 'user' }])
+    assert.equal(result.replayRunId, 'latest-run')
+    assert.equal(result.compactionPacket?.sourceDigest, 'digest')
+  }
+
+  // A completed response from another provider must become shared context,
+  // even when switching back to a Codex slot that predates that response.
+  const switchedMessages: ModelMessage[] = [
+    ...latestMessages,
+    { content: 'answer from the other provider', role: 'assistant' },
+  ]
+  document.replays[getReplaySlotKey('mistral', 'other-model')] = {
+    ...document.replay,
+    messages: encodeModelMessages(switchedMessages),
+    modelId: 'other-model',
+    providerId: 'mistral',
+    runId: 'switched-run',
+    sourceRevision: 5,
+  }
+  const switchedResult = projectCanonicalReplay({
+    document,
+    fallbackMessages: [{ content: 'discarded raw history', role: 'user' }],
+    messages: [{ content: 'old request', id: 'user-1', role: 'user', timestamp: 1 }],
+    modelId: 'model-a',
+    providerId: 'codex',
+  })
+  assert.equal(switchedResult.isCompacted, true)
+  assert.deepEqual(switchedResult.messages, switchedMessages)
+})
+
 test('compacted replay repairs a truncated packet message before context usage reads it', () => {
   const document = createEmptyCanonicalHistory('conversation', 1)
   const packet = createCompactionPacketFixture({

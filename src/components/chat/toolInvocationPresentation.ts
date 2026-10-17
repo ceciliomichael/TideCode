@@ -120,14 +120,6 @@ function getToolVerb(invocation: ToolInvocationTrace) {
         : 'Read failed'
   }
 
-  if (invocation.toolName === 'plan_edit') {
-    return invocation.state === 'running'
-      ? 'Updating'
-      : invocation.state === 'completed'
-        ? 'Updated'
-        : 'Update failed'
-  }
-
   if (isFileWriteTool(invocation.toolName) || isFileEditTool(invocation.toolName)) {
     const semantics =
       parsedResult?.metadata?.semantics && typeof parsedResult.metadata.semantics === 'object'
@@ -139,7 +131,7 @@ function getToolVerb(invocation: ToolInvocationTrace) {
       : formatEditVerb(actionKind === 'overwrite' ? 'edit' : actionKind, invocation.state)
   }
 
-  if (invocation.toolName === 'execute_terminal') {
+  if (invocation.toolName === 'terminal.execute') {
     return invocation.state === 'running'
       ? 'Starting'
       : invocation.state === 'completed'
@@ -147,7 +139,7 @@ function getToolVerb(invocation: ToolInvocationTrace) {
         : 'Start failed'
   }
 
-  if (invocation.toolName === 'interact_terminal') {
+  if (invocation.toolName === 'terminal.interact') {
     return invocation.state === 'running'
       ? 'Interacting with terminal'
       : invocation.state === 'completed'
@@ -163,7 +155,7 @@ function getToolVerb(invocation: ToolInvocationTrace) {
         : 'Terminal read failed'
   }
 
-  if (invocation.toolName === 'read_terminal') {
+  if (invocation.toolName === 'terminal.read') {
     const waitSeconds = parsedArguments?.wait_seconds
     return invocation.state === 'running'
       ? typeof waitSeconds === 'number' && waitSeconds === 0
@@ -174,7 +166,7 @@ function getToolVerb(invocation: ToolInvocationTrace) {
         : 'Terminal read failed'
   }
 
-  if (invocation.toolName === 'terminate_terminal') {
+  if (invocation.toolName === 'terminal.terminate') {
     return invocation.state === 'running'
       ? 'Terminating terminal'
       : invocation.state === 'completed'
@@ -194,7 +186,7 @@ function getToolVerb(invocation: ToolInvocationTrace) {
         : 'Implementation gate failed'
   }
 
-  if (invocation.toolName === 'plan_create') {
+  if (invocation.toolName === 'plan.create') {
     return invocation.state === 'running'
       ? 'Creating plan'
       : invocation.state === 'completed'
@@ -262,7 +254,7 @@ function getToolVerb(invocation: ToolInvocationTrace) {
     return readFirstText([parsedArguments?.query, resultQuery])
   }
 
-  if (invocation.toolName === 'code_mode') {
+  if (invocation.toolName === 'exec') {
     return null
   }
 
@@ -503,21 +495,21 @@ export function getToolInvocationDisplayEntries(invocation: ToolInvocationTrace)
     return []
   }
 
-  if (invocation.toolName === 'code_mode' && invocation.state === 'running') {
+  if (invocation.toolName === 'exec' && invocation.state === 'running') {
     return []
   }
 
-  if (invocation.toolName === 'code_mode' && invocation.state === 'failed' && invocation.resultContent) {
+  if (invocation.toolName === 'exec' && invocation.state === 'failed' && invocation.resultContent) {
     const parsedResult = parseStructuredToolResultContent(invocation.resultContent)
     if (
-      parsedResult.metadata?.toolName === 'code_mode' &&
+      parsedResult.metadata?.toolName === 'exec' &&
       parsedResult.metadata.summary === TERMINATED_TOOL_EXECUTION_MESSAGE
     ) {
       return []
     }
   }
 
-  if (invocation.toolName === 'code_mode' && invocation.state !== 'running') {
+  if (invocation.toolName === 'exec' && invocation.state !== 'running') {
     const childInvocations = getCodeModeChildInvocations(invocation)
     if (childInvocations.length > 0) {
       const childEntries = childInvocations.flatMap((childInvocation) => getToolInvocationDisplayEntries(childInvocation))
@@ -621,7 +613,7 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
         : 'Tool discovery failed'
   }
 
-  if (invocation.toolName === 'code_mode') {
+  if (invocation.toolName === 'exec') {
     return invocation.state === 'running'
       ? 'Running code'
       : invocation.state === 'completed'
@@ -646,7 +638,7 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
     return serverName ? `${serverName} (${toolName})` : `${toolName} mcp`
   }
 
-  if (invocation.toolName === 'execute_terminal') {
+  if (invocation.toolName === 'terminal.execute') {
     const commandText = readFirstText([parsedArguments?.command, parsedArguments?.cmd])
     if (commandText) {
       return commandText
@@ -655,9 +647,9 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
   }
 
   if (
-    invocation.toolName === 'interact_terminal' ||
-    invocation.toolName === 'read_terminal' ||
-    invocation.toolName === 'terminate_terminal'
+    invocation.toolName === 'terminal.interact' ||
+    invocation.toolName === 'terminal.read' ||
+    invocation.toolName === 'terminal.terminate'
   ) {
     return null
   }
@@ -666,21 +658,8 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
     return null
   }
 
-  if (invocation.toolName === 'skill') {
-    const action = parsedArguments?.action || 'load'
-    if (action === 'list') {
-      return null
-    }
-
-    if (action === 'search') {
-      return readFirstText(parsedArguments?.query)
-    }
-
-    const skillNameText = readSkillName(parsedArguments?.name)
-    if (skillNameText) {
-      return skillNameText
-    }
-  }
+  if (invocation.toolName === 'skill.search') return readFirstText(parsedArguments?.query)
+  if (invocation.toolName === 'skill.load') return readSkillName(parsedArguments?.name)
 
   if (invocation.toolName === 'glob' || invocation.toolName === 'grep') {
     const searchTarget = getSearchTarget(invocation.argumentsText)
@@ -690,10 +669,6 @@ function getToolTarget(invocation: ToolInvocationTrace, workspaceRootPath?: stri
   }
 
   // Precise-edit tools identify their target file through path.
-  if (invocation.toolName === 'edit') {
-    const toolPath = getToolPath(invocation)
-    return toolPath ? getBasename(toolPath) : null
-  }
 
   const wholeFileChangeTarget = getWholeFileChangeTarget(invocation)
   if (wholeFileChangeTarget) {

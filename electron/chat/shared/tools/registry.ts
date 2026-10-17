@@ -34,149 +34,26 @@ export interface AgentToolRegistry {
   search(query: string, namespace?: string, limit?: number): AgentToolSearchMatch[]
 }
 
-/** MCP capabilities are discovered on demand; local tools are preloaded into Code Mode. */
 export function isDynamicAgentTool(entry: Pick<AgentToolRegistryEntry, 'namespace'>) {
   return entry.namespace === 'mcp'
 }
 
-function resolveToolNamespace(name: string) {
-  const normalizedName = name.trim().toLowerCase()
-  if (normalizedName.startsWith('mcp_') || normalizedName === 'execute_mcp') return 'mcp'
-  if (normalizedName === 'run' || normalizedName.includes('terminal') || normalizedName.includes('command')) {
-    return 'shell'
-  }
-  if (
-    normalizedName === 'read' ||
-    normalizedName === 'write' ||
-    normalizedName === 'edit' ||
-    normalizedName === 'apply_patch' ||
-    normalizedName === 'glob' ||
-    normalizedName === 'grep' ||
-    normalizedName === 'list'
-  ) {
-    return 'filesystem'
-  }
-  if (normalizedName === 'skill') return 'skills'
-  if (normalizedName.startsWith('git') || normalizedName.includes('commit')) return 'git'
-  if (normalizedName.startsWith('plan')) return 'planning'
-  return 'workspace'
+function resolveToolNamespace(name: string): string {
+  if (name.startsWith('mcp_')) return 'mcp'
+  if (name.startsWith('terminal.')) return 'shell'
+  if (name.startsWith('skill.')) return 'skills'
+  if (name.startsWith('plan.')) return 'planning'
+  return 'filesystem'
 }
 
-function getToolDescription(tool: ToolSet[string], name: string) {
-  if (typeof tool.description === 'string' && tool.description.trim().length > 0) {
-    return tool.description.trim()
-  }
-
-  return `Execute the ${name} workspace operation.`
-}
-
-async function getToolInputSchema(tool: ToolSet[string]) {
-  const schema = asSchema(tool.inputSchema)
-  return (await schema.jsonSchema) as JSONSchema7
-}
-
-function isExecutableTool(tool: ToolSet[string]): tool is ToolSet[string] & {
-  execute: (input: unknown, options: ToolExecutionOptions<unknown>) => unknown
-} {
-  return typeof tool.execute === 'function'
-}
-
-function decodeJsonPointer(instancePath: string) {
-  if (instancePath.length === 0) return []
-  return instancePath
-    .slice(1)
-    .split('/')
-    .map((part) => part.replace(/~1/gu, '/').replace(/~0/gu, '~'))
-}
-
-function getValueAtPath(value: unknown, pathParts: string[]): unknown {
-  let current = value
-  for (const part of pathParts) {
-    if (!current || typeof current !== 'object') return undefined
-    current = (current as Record<string, unknown>)[part]
-  }
-  return current
-}
-
-function omitUnsupportedProperties(input: unknown, validateInput: ValidateFunction) {
-  let normalizedInput = input
-
-  for (;;) {
-    if (validateInput(normalizedInput)) return normalizedInput
-
-    const removablePaths = (validateInput.errors ?? []).flatMap((validationError) => {
-      if (validationError.keyword !== 'additionalProperties') return []
-      const additionalProperty = (validationError.params as { additionalProperty?: unknown }).additionalProperty
-      if (typeof additionalProperty !== 'string') return []
-
-      const parentPath = decodeJsonPointer(validationError.instancePath)
-      const parentValue = getValueAtPath(normalizedInput, parentPath)
-      if (!parentValue || typeof parentValue !== 'object' || Array.isArray(parentValue)) return []
-
-      return [[...parentPath, additionalProperty]]
-    })
-
-    if (removablePaths.length === 0) return normalizedInput
-
-    const nextInput = structuredClone(normalizedInput)
-    let removedAny = false
-    for (const propertyPath of removablePaths) {
-      const parentPath = propertyPath.slice(0, -1)
-      const propertyName = propertyPath.at(-1)
-      const parentValue = getValueAtPath(nextInput, parentPath)
-      if (!propertyName || !parentValue || typeof parentValue !== 'object' || Array.isArray(parentValue)) continue
-      delete (parentValue as Record<string, unknown>)[propertyName]
-      removedAny = true
-    }
-
-    if (!removedAny) return normalizedInput
-    normalizedInput = nextInput
-  }
-}
-
-function normalizeCodeModeInput(
-  input: unknown,
-  inputSchema: JSONSchema7,
-  validateInput: ValidateFunction,
-) {
-  let normalizedInput = input
-  if (normalizedInput && typeof normalizedInput === 'object' && !Array.isArray(normalizedInput)) {
-    const properties = inputSchema.properties
-    if (properties && typeof properties === 'object' && !Array.isArray(properties)) {
-      const offsetSchema = properties.offset
-      const record = normalizedInput as Record<string, unknown>
-      if (offsetSchema && typeof offsetSchema === 'object' && !Array.isArray(offsetSchema) &&
-          offsetSchema.minimum === 1 && record.offset === 0) {
-        // Code Mode models often use zero-based offsets. The concrete read APIs are
-        // intentionally one-based, so map the harmless first-line spelling here.
-        normalizedInput = { ...record, offset: 1 }
-      }
-    }
-  }
-
-  // Generated tool calls can include harmless compatibility hints that an
-  // older or narrower tool schema does not implement. Strip only properties
-  // Ajv identifies as additional, at any nesting depth, then revalidate.
-  // Recognized properties keep their original values and remain fully subject
-  // to the concrete schema's type, enum, range, and required-field rules.
-  return omitUnsupportedProperties(normalizedInput, validateInput)
-}
-
-function scoreMatch(entry: AgentToolRegistryEntry, queryTerms: string[]) {
+function scoreMatch(entry: AgentToolRegistryEntry, terms: string[]): number {
   const name = entry.name.toLowerCase()
   const namespace = entry.namespace.toLowerCase()
   const description = entry.description.toLowerCase()
-  let score = 0
-
-  for (const term of queryTerms) {
-    if (name === term) score += 100
-    else if (name.includes(term)) score += 50
-    if (namespace === term) score += 30
-    else if (namespace.includes(term)) score += 15
-    if (description.includes(term)) score += 10
-  }
-
-  return score
+  return terms.reduce((score, term) => score +
+    (name === term ? 100 : name.includes(term) ? 50 : 0) +
+    (namespace === term ? 30 : namespace.includes(term) ? 15 : 0) +
+    (description.includes(term) ? 10 : 0), 0)
 }
 
 export async function createAgentToolRegistry(nativeTools: ToolSet): Promise<AgentToolRegistry> {
@@ -185,92 +62,64 @@ export async function createAgentToolRegistry(nativeTools: ToolSet): Promise<Age
   const draft2019Ajv = new Ajv2019({ allErrors: true, strict: false })
   const draft2020Ajv = new Ajv2020({ allErrors: true, strict: false })
 
-  function compileSchema(schema: JSONSchema7) {
-    const schemaDialect = typeof schema.$schema === 'string' ? schema.$schema.toLowerCase() : ''
-    if (schemaDialect.includes('/draft/2020-12/schema')) {
-      return draft2020Ajv.compile(schema)
-    }
-    if (schemaDialect.includes('/draft/2019-09/schema')) {
-      return draft2019Ajv.compile(schema)
-    }
+  function compileSchema(schema: JSONSchema7): ValidateFunction {
+    const dialect = typeof schema.$schema === 'string' ? schema.$schema.toLowerCase() : ''
+    if (dialect.includes('/draft/2020-12/schema')) return draft2020Ajv.compile(schema)
+    if (dialect.includes('/draft/2019-09/schema')) return draft2019Ajv.compile(schema)
     return draft7Ajv.compile(schema)
   }
 
-  for (const [name, tool] of Object.entries(nativeTools)) {
-    if (!isExecutableTool(tool)) {
-      continue
+  for (const [name, definition] of Object.entries(nativeTools)) {
+    if (typeof definition.execute !== 'function') throw new Error(`Native API ${name} is not executable.`)
+    if (typeof definition.description !== 'string' || !definition.description.trim()) {
+      throw new Error(`Missing native API documentation: ${name}`)
     }
-
-    let nativeInputSchema: JSONSchema7
-    let validateInput: ValidateFunction
-    try {
-      nativeInputSchema = await getToolInputSchema(tool)
-      validateInput = compileSchema(nativeInputSchema)
-    } catch (error) {
-      console.warn(`Skipping ${name} from the Code Mode registry because its schema could not be resolved.`, error)
-      continue
-    }
-
-    const execute = tool.execute
-    const modelInputSchema = nativeInputSchema
+    const namespace = resolveToolNamespace(name)
+    const raw = (await asSchema(definition.inputSchema).jsonSchema) as JSONSchema7
+    const inputSchema: JSONSchema7 = namespace === 'mcp' || raw.type !== 'object'
+      ? raw : { ...raw, additionalProperties: false }
+    const validate = compileSchema(inputSchema)
+    const execute = definition.execute
     entries.push({
-      description: getToolDescription(tool, name),
+      description: definition.description.trim(),
+      name,
+      namespace,
+      inputSchema,
       execute: async (input, options = {}) => {
-        const normalizedInput = normalizeCodeModeInput(input, nativeInputSchema, validateInput)
-        if (!validateInput(normalizedInput)) {
-          const validationDetails = (validateInput.errors ?? [])
-            .map((validationError) => `${validationError.instancePath || '/'} ${validationError.message ?? 'is invalid'}`)
-            .join('; ')
-          return createToolErrorResult(
-            `Invalid arguments for ${name}${validationDetails ? `: ${validationDetails}` : '.'}`,
-          )
+        if (!validate(input)) {
+          const details = (validate.errors ?? []).map((error) =>
+            `${error.instancePath || '/'} ${error.message ?? 'is invalid'}`).join('; ')
+          return createToolErrorResult(`Invalid arguments for tools.${name}: ${details}`)
         }
-
         const toolOptions: ToolExecutionOptions<unknown> = {
           abortSignal: options.abortSignal,
           context: {},
           messages: [],
-          toolCallId: options.toolCallId ?? `code-mode-${name}`,
+          toolCallId: options.toolCallId ?? `exec-${name}`,
         }
-        const output = await execute(normalizedInput, toolOptions)
-        const normalizedOutput = normalizeToolExecutionResult(name, output)
-        const boundedOutput = await prepareToolExecutionResultForModel({
-          result: normalizedOutput,
-          toolName: name,
-        })
-        return normalizedOutput.body !== undefined && normalizedOutput.displayBody === undefined
-          ? { ...boundedOutput, displayBody: normalizedOutput.body }
-          : boundedOutput
+        const output = await execute(input, toolOptions)
+        const normalized = normalizeToolExecutionResult(name, output)
+        const bounded = await prepareToolExecutionResultForModel({ result: normalized, toolName: name })
+        return normalized.body !== undefined && normalized.displayBody === undefined
+          ? { ...bounded, displayBody: normalized.body } : bounded
       },
-      inputSchema: modelInputSchema,
-      name,
-      namespace: resolveToolNamespace(name),
     })
   }
 
   const entryByName = new Map(entries.map((entry) => [entry.name, entry]))
   return {
     entries: Object.freeze(entries),
-    get(name) {
-      return entryByName.get(name)
-    },
+    get(name) { return entryByName.get(name) },
     search(query, namespace, limit = 10) {
-      const normalizedQuery = query.trim().toLowerCase()
-      const queryTerms = normalizedQuery.split(/\s+/).filter(Boolean)
-      const normalizedNamespace = namespace?.trim().toLowerCase()
-      return entries
-        .map((entry) => ({
-          description: entry.description,
-          inputSchema: entry.inputSchema,
-          name: entry.name,
-          namespace: entry.namespace,
-          score: scoreMatch(entry, queryTerms) +
-            (normalizedNamespace && entry.namespace === normalizedNamespace ? 1000 : 0),
-        }))
-        .filter((entry) => {
-          if (normalizedNamespace && entry.namespace !== normalizedNamespace) return false
-          return normalizedQuery.length === 0 || entry.score > 0
-        })
+      const terms = query.trim().toLowerCase().split(/\s+/u).filter(Boolean)
+      const filter = namespace?.trim().toLowerCase()
+      return entries.map((entry) => ({
+        description: entry.description,
+        inputSchema: entry.inputSchema,
+        name: entry.name,
+        namespace: entry.namespace,
+        score: scoreMatch(entry, terms) + (filter && entry.namespace === filter ? 1000 : 0),
+      })).filter((entry) => (!filter || entry.namespace === filter) && (terms.length === 0 || entry.score > 0))
         .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))
         .slice(0, Math.max(1, Math.min(20, Math.floor(limit))))
     },

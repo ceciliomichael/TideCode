@@ -20,7 +20,7 @@ function createInvocation(toolName: string): ToolInvocationTrace {
 function createMutationInvocation(
   id: string,
   kind: 'add' | 'delete' | 'update',
-  toolName: 'write' | 'edit' | 'apply_patch',
+  toolName: 'write' | 'patch' | 'patch',
   fileName = 'example.ts',
 ): ToolInvocationTrace {
   return {
@@ -43,7 +43,7 @@ function createMutationInvocation(
         semantics: {
           added_path_count: kind === 'add' ? 1 : 0,
           deleted_path_count: kind === 'delete' ? 1 : 0,
-          operation: 'edit',
+          operation: 'patch',
           updated_path_count: kind === 'update' ? 1 : 0,
         },
         status: 'success',
@@ -67,7 +67,7 @@ test('buildToolInvocationGroupSummary reports list, search, terminal tool, and f
   const summary = buildToolInvocationGroupSummary([
     createInvocation('list'),
     createInvocation('glob'),
-    createInvocation('execute_terminal'),
+    createInvocation('terminal.execute'),
     createInvocation('read'),
   ])
 
@@ -83,7 +83,7 @@ test('buildToolInvocationGroupSummary gives memory tools durable-context labels'
 
 test('buildToolInvocationGroupSummary omits the hidden Code Mode implementation detail', () => {
   assert.equal(
-    buildToolInvocationGroupSummary([createInvocation('tool_search'), createInvocation('code_mode')]),
+    buildToolInvocationGroupSummary([createInvocation('tool_search'), createInvocation('exec')]),
     'Ran 1 tool search',
   )
 })
@@ -92,7 +92,7 @@ test('buildToolInvocationGroupSummary reports failed Code Mode even with success
   assert.equal(
     buildToolInvocationGroupSummary([
       {
-        ...createInvocation('code_mode'),
+        ...createInvocation('exec'),
         state: 'failed',
       },
       createInvocation('list'),
@@ -105,7 +105,7 @@ test('buildToolInvocationGroupSummary pluralizes grouped categories', () => {
   const summary = buildToolInvocationGroupSummary([
     createInvocation('grep'),
     createInvocation('search_query'),
-    createInvocation('exec_command'),
+    createInvocation('terminal.execute'),
     createInvocation('read'),
     createInvocation('read'),
   ])
@@ -115,7 +115,7 @@ test('buildToolInvocationGroupSummary pluralizes grouped categories', () => {
 
 test('buildToolInvocationGroupSummary gives plan tools a readable label', () => {
   const planUpdate: ToolInvocationTrace = {
-    ...createInvocation('plan_edit'),
+    ...createInvocation('patch'),
     resultPresentation: {
       content: '# Updated plan\n',
       fileName: 'plan-001.md',
@@ -128,12 +128,12 @@ test('buildToolInvocationGroupSummary gives plan tools a readable label', () => 
     },
   }
   assert.equal(
-    buildToolInvocationGroupSummary([createInvocation('plan_create'), planUpdate]),
+    buildToolInvocationGroupSummary([createInvocation('plan.create'), planUpdate]),
     'Updated plan',
   )
 
   assert.equal(
-    buildToolInvocationGroupSummary([createInvocation('plan_create')]),
+    buildToolInvocationGroupSummary([createInvocation('plan.create')]),
     'Created plan',
   )
 
@@ -161,17 +161,17 @@ test('buildToolInvocationGroupSummary uses Ran for search-only summaries', () =>
   assert.equal(summary, 'Ran 2 searches')
 })
 
-test('buildToolInvocationGroupSummary aggregates execute_terminal and get_terminal_output as terminal tools', () => {
+test('buildToolInvocationGroupSummary aggregates terminal.execute and terminal.read as terminal tools', () => {
   const summary = buildToolInvocationGroupSummary([
-    createInvocation('execute_terminal'),
-    createInvocation('get_terminal_output'),
+    createInvocation('terminal.execute'),
+    createInvocation('terminal.read'),
   ])
 
   assert.equal(summary, 'Ran 2 terminal tools')
 })
 
 test('buildToolInvocationGroupSummary uses a terminal tool label when terminal tools are the only work', () => {
-  const summary = buildToolInvocationGroupSummary([createInvocation('execute_terminal')])
+  const summary = buildToolInvocationGroupSummary([createInvocation('terminal.execute')])
 
   assert.equal(summary, 'Ran 1 terminal tool')
 })
@@ -179,10 +179,10 @@ test('buildToolInvocationGroupSummary uses a terminal tool label when terminal t
 test('buildToolInvocationGroupSummary switches to exploring while a child invocation is active', () => {
   const summary = buildToolInvocationGroupSummary([
     {
-      ...createInvocation('execute_terminal'),
+      ...createInvocation('terminal.execute'),
       state: 'running',
     },
-    createInvocation('get_terminal_output'),
+    createInvocation('terminal.read'),
   ])
 
   assert.equal(summary, 'Exploring')
@@ -195,14 +195,14 @@ test('buildToolInvocationGroupSummary returns only the exploring label for activ
       state: 'running',
     },
     createInvocation('glob'),
-    createInvocation('execute_terminal'),
+    createInvocation('terminal.execute'),
   ], 'Exploring')
 
   assert.equal(summary, 'Exploring')
 })
 
 test('buildToolInvocationGroupSummary allows the explored label to be overridden', () => {
-  const summary = buildToolInvocationGroupSummary([createInvocation('execute_terminal')], 'Explored')
+  const summary = buildToolInvocationGroupSummary([createInvocation('terminal.execute')], 'Explored')
 
   assert.equal(summary, 'Ran 1 terminal tool')
 })
@@ -259,8 +259,8 @@ test('completed web search group is not shown as actively exploring while the as
 test('buildToolInvocationGroupSummary groups MCP search and execution as MCP work', () => {
   assert.equal(
     buildToolInvocationGroupSummary([
-      createInvocation('mcp_tool_search'),
-      createInvocation('execute_mcp'),
+      createInvocation('mcp.search'),
+      createInvocation('mcp.execute'),
     ]),
     'Ran 2 MCPs',
   )
@@ -269,14 +269,14 @@ test('buildToolInvocationGroupSummary groups MCP search and execution as MCP wor
 test('buildToolInvocationGroupSummary splits mixed file mutations and exploration categories', () => {
   const summary = buildToolInvocationGroupSummary([
     createMutationInvocation('tool-write-edit-1', 'update', 'write', 'edited-one.ts'),
-    createMutationInvocation('tool-write-edit-2', 'update', 'edit', 'edited-two.ts'),
+    createMutationInvocation('tool-write-edit-2', 'update', 'patch', 'edited-two.ts'),
     createMutationInvocation('tool-write-create-1', 'add', 'write', 'created-one.ts'),
-    createMutationInvocation('tool-write-create-2', 'add', 'edit', 'created-two.ts'),
+    createMutationInvocation('tool-write-create-2', 'add', 'patch', 'created-two.ts'),
     createInvocation('read'),
     createInvocation('glob'),
-    createInvocation('execute_terminal'),
-    createInvocation('get_terminal_output'),
-    createInvocation('execute_terminal'),
+    createInvocation('terminal.execute'),
+    createInvocation('terminal.read'),
+    createInvocation('terminal.execute'),
   ])
 
   assert.equal(
@@ -285,13 +285,15 @@ test('buildToolInvocationGroupSummary splits mixed file mutations and exploratio
   )
 })
 
-test('buildToolInvocationGroupSummary counts repeated apply_patch hunks as one edited file', () => {
+test('buildToolInvocationGroupSummary counts repeated patch hunks as one edited file', () => {
   const hunks = [
-    createMutationInvocation('patch-hunk-1', 'update', 'apply_patch', 'src/example.ts'),
-    createMutationInvocation('patch-hunk-2', 'update', 'apply_patch', 'src/example.ts'),
-    createMutationInvocation('patch-hunk-3', 'update', 'apply_patch', 'src/example.ts'),
+    createMutationInvocation('patch-hunk-1', 'update', 'patch', 'src/example.ts'),
+    createMutationInvocation('patch-hunk-2', 'update', 'patch', 'src/example.ts'),
+    createMutationInvocation('patch-hunk-3', 'update', 'patch', 'src/example.ts'),
   ]
 
   assert.equal(buildToolInvocationGroupSummary(hunks), 'Edited 1 file')
   assert.equal(buildToolInvocationGroupSummary(hunks, 'Edited'), 'Edited 1 file')
 })
+
+

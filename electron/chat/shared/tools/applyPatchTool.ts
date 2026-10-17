@@ -38,22 +38,12 @@ const APPLY_PATCH_DESCRIPTION = [
 ].join(' ')
 
 const APPLY_PATCH_INPUT_SCHEMA = {
-  additionalProperties: true,
+  additionalProperties: false,
   properties: {
     patch: {
-      anyOf: [
-        {
-          description: 'Canonical raw Codex patch string. Do not include a Markdown fence.',
-          minLength: 1,
-          type: 'string',
-        },
-        {
-          description: 'Legacy compatibility form: one complete patch line per array item.',
-          items: { type: 'string' },
-          minItems: 1,
-          type: 'array',
-        },
-      ],
+      description: 'Canonical raw Codex patch string. Do not include a Markdown fence.',
+      minLength: 1,
+      type: 'string',
     },
   },
   required: ['patch'],
@@ -61,7 +51,7 @@ const APPLY_PATCH_INPUT_SCHEMA = {
 } as const
 
 interface ApplyPatchInput {
-  patch: string | string[]
+  patch: string
 }
 
 type PatchFileChangeInput = Parameters<typeof aggregateFileChangeItems>[0][number]
@@ -74,48 +64,8 @@ function displayPath(workspaceRootPath: string, absolutePath: string) {
   return absolutePath
 }
 
-function getOuterPatchMarkerKind(line: string) {
-  const compactMarker = line.trim().replace(/\*/g, '').replace(/\s+/g, '')
-  if (compactMarker === 'BeginPatch') return 'begin'
-  if (compactMarker === 'EndPatch') return 'end'
-  return null
-}
-
 function normalizePatchInput(value: unknown) {
-  if (typeof value === 'string' && value.trim().length > 0) {
-    return value
-  }
-  if (
-    Array.isArray(value) &&
-    value.length > 0 &&
-    value.every((line) => typeof line === 'string')
-  ) {
-    const lines = [...value]
-
-    let leadingMarkerCount = 0
-    let hasCanonicalBegin = false
-    while (leadingMarkerCount < lines.length && getOuterPatchMarkerKind(lines[leadingMarkerCount]) === 'begin') {
-      hasCanonicalBegin ||= lines[leadingMarkerCount]?.trim() === '*** Begin Patch'
-      leadingMarkerCount += 1
-    }
-    if (hasCanonicalBegin && leadingMarkerCount > 0) {
-      lines.splice(0, leadingMarkerCount, '*** Begin Patch')
-    }
-
-    let trailingMarkerStart = lines.length
-    let hasCanonicalEnd = false
-    while (trailingMarkerStart > 0 && getOuterPatchMarkerKind(lines[trailingMarkerStart - 1]) === 'end') {
-      hasCanonicalEnd ||= lines[trailingMarkerStart - 1]?.trim() === '*** End Patch'
-      trailingMarkerStart -= 1
-    }
-    if (hasCanonicalEnd && trailingMarkerStart < lines.length) {
-      lines.splice(trailingMarkerStart, lines.length - trailingMarkerStart, '*** End Patch')
-    }
-
-    return lines.join('\n')
-  }
-
-  return null
+  return typeof value === 'string' && value.trim().length > 0 ? value : null
 }
 
 function createFileChanges(

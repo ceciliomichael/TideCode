@@ -23,11 +23,8 @@ function isMcpRegistryRuntime() {
 /**
  * Returns connected MCP tools as ordinary registry inputs for Code Mode.
  *
- * The legacy `mcp_tool_search`/`execute_mcp` pair remains available to direct
- * mode for history compatibility. Code Mode must not search through that
- * second protocol: connected MCP tools are catalogued beside filesystem,
- * terminal, memory, and other local tools and are invoked through the same
- * registry bridge.
+ * Connected MCP capabilities share the internal exec registry with local
+ * APIs and are discovered by tools.available.search.
  */
 export async function createConnectedMcpRegistryTools(
   context: AgentToolContext,
@@ -36,10 +33,5 @@ export async function createConnectedMcpRegistryTools(
     return {}
   }
 
-  try {
-    return await getMcpServerManager().getToolSet(context.workspaceRootPath)
-  } catch (error) {
-    console.warn('Unable to add connected MCP tools to the Code Mode registry.', error)
-    return {}
-  }
+  return getMcpServerManager().getToolSet(context.workspaceRootPath)
 }

@@ -1,5 +1,6 @@
 import { generateGitModelText, type GitModelSelection } from './modelTextGeneration'
 import { parseTouchedFilesFromNumstat } from './serviceHelpers'
+import { getWorkerInstructions } from '../chat/shared/ai/registry/documentation'
 import {
   collectIdentifiers,
   collectKeywords,
@@ -21,12 +22,6 @@ import {
   type CommitMessagePromptContext,
 } from './commitMessageAnalysis'
 
-const MODEL_SYSTEM_PROMPT = [
-  'You write production-grade git commit messages from staged diffs.',
-  'Stay strictly grounded in the visible diff and metadata.',
-  'Do not output markdown fences, analysis, or commentary.',
-  'You must exclusively use the English language.',
-].join(' ')
 
 interface GenerateCommitMessageInput {
   diffText: string
@@ -153,7 +148,7 @@ export async function generateCommitMessageFromDiff(input: GenerateCommitMessage
       const generatedMessage = await generateGitModelText({
         promptText: promptContext.promptText,
         selection: input.selection,
-        systemPrompt: MODEL_SYSTEM_PROMPT,
+        systemPrompt: getWorkerInstructions('git-commit'),
       })
       if (generatedMessage.length > 0) {
         return generatedMessage

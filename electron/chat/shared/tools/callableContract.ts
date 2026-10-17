@@ -112,7 +112,7 @@ function formatSignature(name: string, inputSchema: JSONSchema7) {
     return `${formatPropertyName(propertyName)}${optionalMarker}: ${formatType(propertySchema)}`
   })
 
-  return `tools${formatMember(name)}({ ${fields.join(', ')} }): Promise<ToolResult>`
+  return `tools${name.split('.').map(formatMember).join('')}({ ${fields.join(', ')} }): Promise<ToolResult>`
 }
 
 function compactDescription(description: string) {

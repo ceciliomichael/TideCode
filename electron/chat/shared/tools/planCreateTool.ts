@@ -37,10 +37,10 @@ export function createPlanCreateTool(context: WorkspaceToolContext, runtimeState
       try {
         const input = rawInput as { content?: unknown; title?: unknown }
         if (typeof input.content !== 'string') {
-          throw new Error('plan_create requires Markdown "content".')
+          throw new Error('tools.plan.create requires Markdown "content".')
         }
         if (input.title !== undefined && typeof input.title !== 'string') {
-          throw new Error('plan_create "title" must be a string when provided.')
+          throw new Error('tools.plan.create "title" must be a string when provided.')
         }
 
         const artifact = await createPlan({

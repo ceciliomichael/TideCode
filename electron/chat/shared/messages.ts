@@ -6,7 +6,6 @@ import {
 } from '../../../src/lib/chatCompression'
 import { getToolResultModelContent, parseStructuredToolResultContent } from '../../../src/lib/toolResultContent'
 import type { ChatMode, Message, AppTerminalExecutionMode } from '../../../src/types/chat'
-import type { AgentOrchestrationMode } from './orchestration'
 import { buildChatModeSystemPrompt } from './prompts/mode'
 import { projectModelMessagesForContext } from './tools/toolOutputBudget'
 import {
@@ -29,7 +28,6 @@ export interface BuildChatPromptOptions {
   includeAssistantReasoningParts?: boolean
   includeExecutionModeContext?: boolean
   includeImageAttachments?: boolean
-  orchestrationMode?: AgentOrchestrationMode
   terminalExecutionMode?: AppTerminalExecutionMode
 }
 
@@ -493,7 +491,6 @@ function isLegacyCompactionAcknowledgement(message: Message) {
 
 export function buildChatSystemPrompt(chatMode: ChatMode, workspaceRootPath: string, options?: BuildChatPromptOptions) {
   return buildChatModeSystemPrompt(chatMode, workspaceRootPath, {
-    orchestrationMode: options?.orchestrationMode,
     terminalExecutionMode: options?.terminalExecutionMode,
   })
 }
@@ -521,7 +518,6 @@ export function buildModelMessages(
     includeAssistantReasoningParts: inputOptions?.includeAssistantReasoningParts ?? true,
     includeExecutionModeContext: inputOptions?.includeExecutionModeContext ?? true,
     includeImageAttachments: inputOptions?.includeImageAttachments ?? true,
-    orchestrationMode: inputOptions?.orchestrationMode ?? 'direct',
     terminalExecutionMode: inputOptions?.terminalExecutionMode ?? 'sandbox',
   }
 

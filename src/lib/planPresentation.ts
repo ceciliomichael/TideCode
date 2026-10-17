@@ -38,7 +38,7 @@ function getCompletedPlanToolCalls(invocation: ToolInvocation): CompletedPlanToo
     ? [{ presentation: directPresentation, toolName: invocation.toolName }]
     : []
 
-  if (invocation.toolName !== 'code_mode' || invocation.state !== 'completed' || !invocation.resultContent) {
+  if (invocation.toolName !== 'exec' || invocation.state !== 'completed' || !invocation.resultContent) {
     return calls
   }
 
@@ -71,8 +71,7 @@ export function shouldAutoOpenPlanPreview(
 export function hasPlanToolInvocation(messages: readonly Message[]) {
   return messages.some((message) =>
     message.toolInvocations?.some((invocation) =>
-      invocation.toolName === 'plan_create' ||
-      invocation.toolName === 'plan_edit' ||
+      invocation.toolName === 'plan.create' ||
       getCompletedPlanToolCalls(invocation).length > 0,
     ),
   )
@@ -102,7 +101,7 @@ export function getPlanPathsCreatedByRevertedUserMessage(messages: readonly Mess
   for (const message of messages.slice(targetIndex + 1)) {
     for (const invocation of message.toolInvocations ?? []) {
       for (const call of getCompletedPlanToolCalls(invocation)) {
-        if (call.toolName === 'plan_create' && call.presentation.operation === 'created') {
+        if (call.toolName === 'plan.create' && call.presentation.operation === 'created') {
           createdPlanPaths.add(call.presentation.relativePath)
         }
       }

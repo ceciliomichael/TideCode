@@ -65,7 +65,7 @@ function readNestedToolReceipts(metadata: StructuredToolResultMetadata) {
 }
 
 function readCodeModeReceipt(value: unknown): CodeModeExecutionReceipt | null {
-  if (!isRecord(value) || value.type !== 'tool-result' || value.toolName !== 'code_mode') {
+  if (!isRecord(value) || value.type !== 'tool-result' || value.toolName !== 'exec') {
     return null
   }
   if (!isRecord(value.output) || value.output.type !== 'text' || typeof value.output.value !== 'string') {
@@ -73,7 +73,7 @@ function readCodeModeReceipt(value: unknown): CodeModeExecutionReceipt | null {
   }
 
   const parsed = parseStructuredToolResultContent(value.output.value)
-  const metadata = parsed.metadata?.toolName === 'code_mode' ? parsed.metadata : null
+  const metadata = parsed.metadata?.toolName === 'exec' ? parsed.metadata : null
   if (!metadata) return null
 
   return {

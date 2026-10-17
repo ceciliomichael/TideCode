@@ -1,5 +1,11 @@
 # Architecture
 
+## AI execution boundary and instruction ownership
+
+The TideCode-owned provider-facing chat tool is `exec` only. Supported provider-native tools such as `web_search` remain separate and capability-gated. `exec` executes a restricted JavaScript-like program through the Code Mode V2 interpreter, with exact hierarchical native API paths (such as `tools.terminal.execute` and `tools.skill.load`) and on-demand authorized MCP discovery through `tools.available.search`. The runtime rejects unknown capabilities and unsupported input fields rather than translating old names. Plan Mode's registry contains only read-only discovery, skills, `tools.plan.create`, and `tools.patch`, whose host validation allows only an update to the active plan.
+
+Each built-in API is represented in `electron/chat/shared/ai/tools/<path>/` by a TypeScript entry and adjacent Markdown usage contract. `electron/chat/shared/ai/registry/documentation.ts` loads these required documents from the configured TideCode runtime root and fails explicitly if missing. The `ai/exec` directory owns the single provider tool and its instruction contract; `ai/prompts` owns shared chat and auxiliary worker instructions. The original filesystem, terminal-session, patch and workspace security engines remain behind the API layer. User-supplied workspace `AGENTS.md` and third-party skills/MCP definitions are still external content, not bundled prompt sources.
+
 ## Theme ownership and propagation
 
 `src/index.css` is the renderer source of truth for TideCode semantic colors. Light values are declared in the root theme and dark values override them under `:root[data-theme='dark']`. `useDocumentTheme.ts` resolves the persisted light/dark/system preference, updates the root dataset and `color-scheme`, and synchronizes browser theme metadata. `useResolvedDocumentTheme.ts` exposes the resolved theme to renderers that need an explicit mode value.
@@ -45,6 +51,10 @@ Text reads respect a bounded byte budget, paginate by line offset, and use an op
 Windows workspace copy/cut writes native file-drop clipboard data in addition to TideCode's internal marker, allowing Explorer and other native applications to receive the selected files while TideCode can still recognize its own clipboard operations.
 
 ## Renderer resource lifecycle
+
+The 2026-10-17 resource audit found remaining demand/lifecycle gaps despite the protections below: `ChatInterface` keeps full Git snapshots refreshing with the right panels closed; startup prefetches Git metadata across saved projects; individual collapsed diff/code-bearing tool results can mount hidden premeasurement views. Switching Browser back to chat hides retained guests, whereas closing the last tab releases them. These are current behaviors, not completed optimizations. Findings and an unapproved Electron-first implementation proposal are in `docs/resource-audit-2026-10-17.md` and `docs/plans/electron-resource-optimization.md`.
+
+Canonical compaction is active-branch conversation state shared by every model and provider. `electron/chat/history/replayProjector.ts` selects the newest completed replay at or after that branch's latest compaction, regardless of model slot, and appends new turns. Provider-specific tool migration runs on this retained window. Both runtime requests and context estimation use this projector, so switching cannot restore compacted-away history or an older model-slot window. Pre-response snapshots and replays from other branches are not eligible.
 
 Source Control reads a single Git porcelain status snapshot to preserve staged, unstaged, rename, and unmerged metadata and surfaces errors rather than replacing failed reads with empty lists. Full Git file snapshots carry HEAD, Git index, and working-tree text separately; the existing Staged and Unstaged views project HEAD-to-index and index-to-worktree diffs. Status-only snapshots retain metadata without pretending to contain renderable file contents. Quick and advanced commits use the shared renderer confirmation when nothing is staged, and its explicit `includeUnstaged` authorization is carried through the controller before Git stages all changes. A successful local commit followed by failed push/PR follow-up is returned with a warning rather than reported as a failed commit. History refresh compares actual refs and commit rows, not just HEAD, so remote-only updates remain visible.
 

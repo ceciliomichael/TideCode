@@ -298,7 +298,7 @@ export function parseCodeModeProgram(source: string): ProgramNode {
       'ParseError',
       error instanceof Error ? error.message : String(error),
       undefined,
-      ['For arbitrary multiline Markdown or code text, pass it through the outer code_mode payloads object and reference payloads.<name> instead of nesting raw backticks inside a JavaScript template literal.'],
+       ['For arbitrary multiline Markdown or code text, pass it through the outer exec payloads object and reference payloads.<name> instead of nesting raw backticks inside a JavaScript template literal.'],
     )
     if (location) {
       const locatedError = runtimeError as CodeModeRuntimeError & { parseLocation?: { line: number; column: number } }

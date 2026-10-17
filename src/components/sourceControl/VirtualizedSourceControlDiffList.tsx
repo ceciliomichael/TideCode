@@ -96,15 +96,6 @@ function DiffFileActionButton({
   )
 }
 
-function DiffLineSummary({ addedLineCount, removedLineCount }: { addedLineCount: number; removedLineCount: number }) {
-  return (
-    <span className="inline-flex items-center gap-1 text-xs leading-none">
-        <span className="leading-none text-git-added">{`+${addedLineCount}`}</span>
-        {removedLineCount > 0 ? <span className="leading-none text-git-removed">{`-${removedLineCount}`}</span> : null}
-    </span>
-  )
-}
-
 function DiffFileActionButtons({
   diff,
   areFileActionsDisabled,
@@ -185,10 +176,11 @@ function DiffRow({
   const { normalizedPath } = splitFilePath(diff.fileName)
   const statusLabel = diff.changeStatus === 'conflicted' ? 'U'
     : diff.changeStatus === 'renamed' ? 'R'
-      : diff.changeStatus === 'untracked' ? '?'
-        : diff.changeStatus === 'added' ? 'A' : null
+      : diff.changeStatus === 'untracked' ? 'U'
+        : diff.changeStatus === 'added' ? 'A' : 'M'
   const statusColor = diff.changeStatus === 'conflicted' ? 'text-danger-foreground'
-    : diff.changeStatus === 'renamed' ? 'text-git-renamed' : 'text-git-added'
+    : diff.changeStatus === 'renamed' ? 'text-git-renamed'
+      : diff.changeStatus === 'modified' ? 'text-git-modified' : 'text-git-added'
 
   return (
     <div
@@ -197,20 +189,21 @@ function DiffRow({
         'hover:bg-surface-muted/50',
       ].join(' ')}
     >
-      <button
-        type="button"
-        onClick={() => onOpenDiffPanelForFile(diff.fileName, selectedScope)}
-        className="group flex min-w-0 flex-1 items-center px-4 py-3 text-left text-[12px] text-muted-foreground"
-      >
-        <span className="inline-flex min-h-4 min-w-0 flex-1 items-center gap-2.5">
-          <FileIcon size={14} style={{ color: iconConfig.color }} className="shrink-0" />
-          <span className="relative top-px inline-flex min-w-0 items-center gap-1.5">
+      <Tooltip content={normalizedPath} side="top" noWrap triggerClassName="min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={() => onOpenDiffPanelForFile(diff.fileName, selectedScope)}
+          className="group flex min-w-0 flex-1 items-center px-4 py-3 text-left text-[12px] text-muted-foreground"
+        >
+          <span className="inline-flex min-h-4 min-w-0 flex-1 items-center gap-2.5">
+            <FileIcon size={14} style={{ color: iconConfig.color }} className="shrink-0" />
+            <span className="relative top-px inline-flex min-w-0 items-center gap-1.5">
               <PathLabel path={normalizedPath} className="min-w-0 leading-[1] text-foreground" />
-               {statusLabel ? <span title={diff.originalFileName ? `Renamed from ${diff.originalFileName}` : diff.changeStatus} className={`shrink-0 text-[10px] font-bold ${statusColor}`}>{statusLabel}</span> : null}
-              <DiffLineSummary addedLineCount={diff.addedLineCount} removedLineCount={diff.removedLineCount} />
+              <span title={diff.originalFileName ? `Renamed from ${diff.originalFileName}` : diff.changeStatus} className={`shrink-0 text-[10px] font-bold ${statusColor}`}>{statusLabel}</span>
+            </span>
           </span>
-        </span>
-      </button>
+        </button>
+      </Tooltip>
       <span className="ml-3 inline-flex w-[4.5rem] shrink-0 items-center justify-end pr-3">
         <DiffFileActionButtons
           diff={diff}
@@ -266,8 +259,7 @@ function DeletedDiffRow({
         <Tooltip content={normalizedPath} side="top" noWrap triggerClassName="min-w-0 flex-1">
           <div className="relative top-px inline-flex min-w-0 flex-1 items-center gap-1.5">
             <span className="min-w-0 truncate text-left text-foreground decoration-white decoration-[1.5px] line-through">{fileName}</span>
-                  <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-git-removed">D</span>
-            <DiffLineSummary addedLineCount={diff.addedLineCount} removedLineCount={diff.removedLineCount} />
+            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-git-removed">D</span>
           </div>
         </Tooltip>
       </button>

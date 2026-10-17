@@ -81,17 +81,14 @@ function countOccurrences(value: string, pattern: RegExp) {
 async function run() {
   const workspaceRootPath = process.cwd()
   const chatMode = 'agent' as const
-  const orchestrationMode = 'code_mode' as const
   const providerId = 'openai' as const
   const terminalExecutionMode = 'sandbox' as const
   const outputPath = parseOutputPath(workspaceRootPath)
 
   const promptBreakdown = buildChatModeSystemPromptBreakdown(chatMode, workspaceRootPath, {
-    orchestrationMode,
     terminalExecutionMode,
   })
   const systemPrompt = buildChatSystemPrompt(chatMode, workspaceRootPath, {
-    orchestrationMode,
     terminalExecutionMode,
   })
   if (systemPrompt !== promptBreakdown.systemPrompt) {
@@ -123,11 +120,20 @@ async function run() {
     {
       chatMode,
       enabledSkills,
-      orchestrationMode,
       providerId,
     },
   )
   const tools = toolBundle.tools
+  const planBundle = await createAgentToolBundle(
+    {
+      checkpointId: null,
+      conversationId: 'prompt-context-audit-plan',
+      terminalExecutionMode,
+      webContents: mockWebContents,
+      workspaceRootPath,
+    },
+    { chatMode: 'plan', enabledSkills, providerId },
+  )
 
   const sortedTools = sortToolSet(tools)
   const describedTools = describeTools(sortedTools)
@@ -191,10 +197,25 @@ async function run() {
       raw: describedTools,
       stableSerialized: stableToolSchema,
     },
+    internalApis: {
+      agent: toolBundle.registry.entries.map((entry) => ({
+        name: entry.name,
+        namespace: entry.namespace,
+        description: entry.description,
+        schema: entry.inputSchema,
+      })),
+      plan: planBundle.registry.entries.map((entry) => ({
+        name: entry.name,
+        namespace: entry.namespace,
+        description: entry.description,
+        schema: entry.inputSchema,
+      })),
+    },
   }
 
   fs.writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
   await toolBundle.codeModeExecutor?.dispose()
+  await planBundle.codeModeExecutor.dispose()
 
   const largestSystemComponents = systemComponents
     .slice()

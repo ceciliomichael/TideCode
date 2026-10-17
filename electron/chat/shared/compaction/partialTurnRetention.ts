@@ -56,7 +56,7 @@ function truncateAssistantPart(part: MessageRecord, maximumCharacters: number) {
 
 function truncateToolResultPart(part: MessageRecord, maximumCharacters: number) {
   const projected = projectCodeModeToolResultPart(part)
-  if (projected !== part || part.toolName === 'code_mode') return projected
+  if (projected !== part || part.toolName === 'exec') return projected
   if (!isRecord(projected.output)) return projected
 
   return {

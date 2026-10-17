@@ -159,22 +159,6 @@ function findLatestCompactionProjection(input: {
   }
 }
 
-function replayIncludesCompaction(
-  document: CanonicalHistoryDocument,
-  replay: CanonicalHistoryDocument['replay'],
-) {
-  if (!replay) return false
-
-  return document.events.some((event) => (
-    event.branchId === document.activeBranchId &&
-    event.type === 'compaction_committed' &&
-    'projectedMessages' in event &&
-    event.providerId === replay.providerId &&
-    event.modelId === replay.modelId &&
-    event.revision <= replay.sourceRevision
-  ))
-}
-
 function findLatestCompactionPacketForReplay(input: {
   document: CanonicalHistoryDocument
   modelId: string
@@ -282,14 +266,28 @@ export function projectCanonicalReplay(input: {
     modelId: input.modelId,
     providerId: input.providerId,
   })
-  const replay = compactionProjection && (!storedReplay || compactionProjection.sourceRevision > storedReplay.sourceRevision)
-    ? compactionProjection
-    : storedReplay
+  let replay = storedReplay
+  if (compactionProjection) {
+    // Compaction belongs to the conversation, not a model slot. Continue from
+    // the newest completed window, including responses after compaction, even
+    // when the selected provider/model has an older replay of its own.
+    replay = compactionProjection
+    for (const candidate of [input.document.replay, ...Object.values(input.document.replays)]) {
+      if (
+        candidate &&
+        candidate.branchId === input.document.activeBranchId &&
+        candidate.anchorUserMessageId &&
+        candidate.sourceRevision > replay.sourceRevision &&
+        !isPreResponseRunStartedReplay(input.document, candidate)
+      ) {
+        replay = candidate
+      }
+    }
+  }
   if (
     !replay ||
     replay.branchId !== input.document.activeBranchId ||
-    replay.providerId !== input.providerId ||
-    replay.modelId !== input.modelId ||
+    (!compactionProjection && (replay.providerId !== input.providerId || replay.modelId !== input.modelId)) ||
     !replay.anchorUserMessageId
   ) {
     const fidelity = input.messages.some((message) => message.role === 'assistant' || message.role === 'tool')
@@ -348,10 +346,7 @@ export function projectCanonicalReplay(input: {
     const messages = replay.freshnessRevision < input.document.freshness.revision
       ? appendFreshnessNotice([...exactPrefix, ...suffix], input.document.freshness.invalidatedSubjects)
       : [...exactPrefix, ...suffix]
-    const replayIsCompacted = compactionProjection?.sourceRevision === replay.sourceRevision || replayIncludesCompaction(
-      input.document,
-      replay,
-    )
+    const replayIsCompacted = compactionProjection !== null && compactionProjection.sourceRevision <= replay.sourceRevision
     return finalizeProjection({
       fidelity: replay.fidelity,
       freshnessRevision: input.document.freshness.revision,

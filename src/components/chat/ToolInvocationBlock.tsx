@@ -137,11 +137,10 @@ export const ToolInvocationBlock = memo(function ToolInvocationBlock({
   const headerLabel = getToolInvocationHeaderLabel(displayInvocation, displayedState, workspaceRootPath)
   const diffCountSummary = renderDiffCountSummary(displayInvocation)
   const terminalToolName =
-    displayInvocation.toolName === 'execute_terminal' ||
-    displayInvocation.toolName === 'interact_terminal' ||
-    displayInvocation.toolName === 'read_terminal' ||
-    displayInvocation.toolName === 'terminate_terminal' ||
-    displayInvocation.toolName === 'get_terminal_output'
+    displayInvocation.toolName === 'terminal.execute' ||
+    displayInvocation.toolName === 'terminal.interact' ||
+    displayInvocation.toolName === 'terminal.read' ||
+    displayInvocation.toolName === 'terminal.terminate'
       ? displayInvocation.toolName
       : null
   const resultPresentation = displayInvocation.resultPresentation

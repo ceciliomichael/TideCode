@@ -278,7 +278,7 @@ export function getToolResultModelContent(content: string) {
   // This is the final text that gets replayed to the model when history is rebuilt.
   const parsedContent = parseStructuredToolResultContent(content)
   let modelContent: string
-  if (parsedContent.metadata?.toolName === 'code_mode') {
+  if (parsedContent.metadata?.toolName === 'exec') {
     const normalizedCodeModeBody = normalizeLegacyCodeModeModelBody(parsedContent.metadata, parsedContent.body)
     modelContent = normalizedCodeModeBody.length > 0
       ? normalizedCodeModeBody
@@ -301,7 +301,7 @@ export function getToolResultModelContent(content: string) {
 export function getToolResultDisplayBody(toolName: string, body: string) {
   let displayBody = body
 
-  if (toolName === 'code_mode') {
+  if (toolName === 'exec') {
     displayBody = displayBody.replace(CODE_MODE_ZERO_TOOL_SUMMARY_PATTERN, '')
   }
 
@@ -309,7 +309,7 @@ export function getToolResultDisplayBody(toolName: string, body: string) {
     displayBody = removeInternalNextFieldsFromJson(displayBody)
   }
 
-  if (toolName === 'skill') {
+  if (toolName === 'skill.load') {
     return displayBody.replace(SKILL_LOCATION_PREAMBLE_PATTERN, '')
   }
 

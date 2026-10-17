@@ -2,14 +2,8 @@ import { splitThinkingContent } from '../../src/lib/chatMessageContent'
 import { summarizeNumstatForPrompt, truncateDiffForPrompt } from './commitMessageAnalysis'
 import { generateGitModelText, type GitModelSelection } from './modelTextGeneration'
 import { getCommitMessageBody, getCommitMessageSubject } from './serviceHelpers'
+import { getWorkerInstructions } from '../chat/shared/ai/registry/documentation'
 
-const MODEL_SYSTEM_PROMPT = [
-  'You write production-grade GitHub pull request titles and descriptions from repository changes.',
-  'Stay strictly grounded in the provided branch diff, commit list, and file statistics.',
-  'Do not invent tests, commands, issue IDs, reviewers, deployment status, or behavior not visible in the input.',
-  'Do not mention AI, prompts, or model generation.',
-  'Use English only.',
-].join(' ')
 
 const MAX_PR_TITLE_LENGTH = 100
 const MAX_PR_BODY_LENGTH = 6_000
@@ -139,7 +133,7 @@ export async function generatePullRequestDetails(
     const generatedText = await generateGitModelText({
       promptText: buildPullRequestMessagePrompt(input),
       selection: input.selection,
-      systemPrompt: MODEL_SYSTEM_PROMPT,
+      systemPrompt: getWorkerInstructions('git-pull-request'),
     })
     return normalizeGeneratedPullRequestDetails(generatedText, input.fallbackCommitMessage)
   } catch {

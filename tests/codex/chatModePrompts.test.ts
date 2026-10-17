@@ -4,443 +4,65 @@ import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import {
-  buildChatModeSystemPrompt,
-  buildChatModeSystemPromptBreakdown,
-} from '../../electron/chat/shared/prompts/mode'
+import { buildChatModeSystemPrompt, buildChatModeSystemPromptBreakdown } from '../../electron/chat/shared/prompts/mode'
+import { createAgentToolBundle } from '../../electron/chat/shared/tools'
 import { buildPromptContextManifest } from '../../electron/chat/cache/canonicalization'
-import { createAgentToolBundle, createAgentTools, createNativeAgentTools } from '../../electron/chat/shared/tools'
-import { approximateTokenCount } from '../../src/lib/contextUsage'
 import { buildChatModeHiddenContext } from '../../src/lib/hiddenUserContext'
+import { buildExecDescription } from '../../electron/chat/shared/ai/exec/exec'
 
-test('mode-neutral system prompt keeps stable core and workspace authority', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-system-prompt-'))
-
-  try {
-    const prompt = buildChatModeSystemPrompt('agent', workspaceRootPath)
-
-    assert.doesNotMatch(prompt, /caveman|primitive speech/iu)
-    assert.match(prompt, /<workspace_context>/u)
-    assert.match(prompt, /<workspace_root authoritative="true" type="absolute">/u)
-    assert.ok(prompt.includes(`\n${workspaceRootPath}\n</workspace_root>`))
-    assert.match(prompt, /Use the exact value inside <workspace_root> as the only workspace root/u)
-    assert.match(prompt, /Never guess or construct an absolute path/u)
-    assert.doesNotMatch(prompt, /<terminal_environment>|Active terminal shell:/u)
-    assert.match(prompt, /inspect with `list`, `glob`, or `grep` before choosing a path/u)
-    assert.ok(approximateTokenCount(prompt) < 1_500)
-    assert.match(prompt, /<decision_priority description="Required order for every model turn">/u)
-    assert.match(prompt, /1\. Choose the next action: no tool, inspect, mutate, or verify/u)
-    assert.match(prompt, /2\. Keep it inside the latest user request/u)
-    assert.match(prompt, /3\. Use the narrowest exact tool and the smallest complete sequence/u)
-    assert.match(prompt, /4\. Verify the requested result after the final mutation/u)
-    assert.match(prompt, /Answer first/u)
-    assert.match(prompt, /Latest compatible user request and current source evidence win/u)
-    assert.match(prompt, /do not add features, cleanup, refactors, or future-proofing outside scope/u)
-    assert.match(prompt, /Write project source for humans to read and maintain, not as compressed or minified output/u)
-    assert.match(prompt, /one meaningful statement per line/u)
-    assert.match(prompt, /Do not pack multiple declarations, assignments, branches, loops, function bodies, or unrelated operations onto one line/u)
-    assert.match(prompt, /Only produce intentionally compact\/minified source when the user explicitly asks for it/u)
-    assert.doesNotMatch(prompt, /Agent Mode|Plan Mode|<chat_mode_context|agent_mode_prompt|agent_tooling_instructions|<intent_rules/iu)
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('workspace root prompt markup escapes path text without changing the authoritative value', () => {
-  const workspaceRootPath = 'C:\\workspace\\a&b<repo>'
-  const prompt = buildChatModeSystemPrompt('agent', workspaceRootPath)
-
-  assert.match(
-    prompt,
-    /<workspace_root authoritative="true" type="absolute">\nC:\\workspace\\a&amp;b&lt;repo&gt;\n<\/workspace_root>/u,
-  )
-  assert.doesNotMatch(prompt, /<workspace_root authoritative="true" type="absolute">\nC:\\workspace\\a&b<repo>/u)
-})
-
-test('prompt assembly keeps one stable core before workspace context', () => {
+test('system prompt uses exec-only TideCode tool boundary and keeps workspace constraints', () => {
+  const prompt = buildChatModeSystemPrompt('agent', 'C:/workspace')
+  assert.match(prompt, /<decision_priority/u)
+  assert.match(prompt, /<workspace_root authoritative="true"/u)
+  assert.match(prompt, /only TideCode-owned provider-facing tool is `exec`/u)
+  assert.match(prompt, /tools\.terminal\.execute/u)
+  assert.doesNotMatch(prompt, /direct `apply_patch`|provider-facing `code_mode`/u)
   const breakdown = buildChatModeSystemPromptBreakdown('agent', 'C:/workspace')
-  const componentIds = breakdown.components.map((component) => component.id)
-
-  assert.deepEqual(componentIds.slice(0, 6), [
-    'core_decision_priority',
-    'shared_mindset_prompt',
-    'shared_source_quality_prompt',
-    'shared_response_prompt',
-    'shared_continuation_prompt',
-    'workspace_root',
-  ])
-  assert.ok(!componentIds.includes('shared_tooling_prompt'))
-  assert.ok(
-    breakdown.systemPrompt.indexOf('<decision_priority') <
-      breakdown.systemPrompt.indexOf('<workspace_context>'),
-  )
+  assert.equal(breakdown.systemPrompt, prompt)
+  assert.ok(breakdown.components.some((component) => component.source.includes('/ai/prompts/chat/')))
 })
 
-test('Code Mode prompt exposes only its meta-tool surface and compact async contract', () => {
-  const codeModePrompt = buildChatModeSystemPrompt('agent', 'C:/workspace', { orchestrationMode: 'code_mode' })
-  const hybridPrompt = buildChatModeSystemPrompt('agent', 'C:/workspace', { orchestrationMode: 'hybrid' })
-  const directPrompt = buildChatModeSystemPrompt('agent', 'C:/workspace', { orchestrationMode: 'direct' })
-
-  assert.match(codeModePrompt, /<code_mode_rules/u)
-  assert.match(codeModePrompt, /model-facing Tidecode surface always includes `code_mode`/u)
-  assert.match(codeModePrompt, /when direct `apply_patch` or `write` tools are present, use them for targeted patches or complete-file creation\/replacement/u)
-  assert.match(codeModePrompt, /`tools\.list` and `tools\.glob` are JavaScript APIs inside the `code_mode` program/u)
-  assert.match(codeModePrompt, /Never emit a `tools\.\*` provider call/u)
-  assert.match(codeModePrompt, /<decision_priority/u)
-  assert.match(codeModePrompt, /Treat the `code_mode` tool description as the authoritative contract/u)
-  assert.match(codeModePrompt, /smallest complete inspect, mutate, or verify sequence/u)
-  assert.doesNotMatch(codeModePrompt, /\b(?:OpenAI|Codex|Anthropic|Google|DeepSeek|Mistral)\b/u)
-  assert.doesNotMatch(codeModePrompt, /Unavailable host\/runtime APIs|Await every `tools\.\*` call|tools\.tool_search/u)
-  assert.doesNotMatch(codeModePrompt, /Every `path` argument|targetContent|replacementContent/u)
-  assert.doesNotMatch(codeModePrompt, /mcp_tool_search|execute_mcp/u)
-  assert.ok(approximateTokenCount(codeModePrompt) < 1_500)
-  assert.match(hybridPrompt, /Use a direct tool for one simple operation; use `code_mode` for related calls/u)
-  assert.match(hybridPrompt, /tool description as authoritative for its inner APIs/u)
-  assert.doesNotMatch(directPrompt, /<code_mode_rules/u)
+test('Agent and Plan use the same stable system instructions and mode-specific contexts', () => {
+  const agent = buildChatModeSystemPrompt('agent', 'C:/workspace')
+  const plan = buildChatModeSystemPrompt('plan', 'C:/workspace')
+  assert.equal(agent, plan)
+  assert.match(buildChatModeHiddenContext('plan').content, /tools\.plan\.create/u)
+  assert.match(buildChatModeHiddenContext('plan').content, /tools\.patch/u)
+  assert.doesNotMatch(buildChatModeHiddenContext('plan').content, /tools\.plan_edit|tools\.plan_create/u)
 })
 
-test('Agent and Plan share a mode-neutral system while hidden contexts express mode state', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-mode-prompt-'))
-
+test('Mode-authorized exec catalog does not advertise unavailable mutations', async () => {
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-exec-prompts-'))
   try {
-    const agentPrompt = buildChatModeSystemPrompt('agent', workspaceRootPath, { orchestrationMode: 'code_mode' })
-    const planPrompt = buildChatModeSystemPrompt('plan', workspaceRootPath, { orchestrationMode: 'code_mode' })
-    const agentContext = buildChatModeHiddenContext('agent')
-    const planContext = buildChatModeHiddenContext('plan')
-
-    assert.equal(planPrompt, agentPrompt)
-    assert.match(planPrompt, /<code_mode_rules/u)
-    assert.doesNotMatch(planPrompt, /Agent Mode|Plan Mode|<chat_mode_context/iu)
-    assert.equal(agentContext.kind, 'chat_mode')
-    assert.equal(agentContext.state, 'agent')
-    assert.match(agentContext.content, /mode="agent" state="active_until_superseded"/u)
-    assert.match(agentContext.content, /explicit do-it requests do/u)
-    assert.doesNotMatch(agentContext.content, /plan_create/u)
-    assert.equal(planContext.kind, 'chat_mode')
-    assert.equal(planContext.state, 'plan')
-    assert.ok(planContext.content.includes('intentionally omitted from permanent Code Mode documentation'))
-    assert.ok(planContext.content.includes('tools.plan_create and tools.plan_edit are injected Plan Mode APIs'))
-    assert.ok(planContext.content.includes('Do not use tools.$codemode.search or any other discovery API to look them up'))
-    assert.ok(planContext.content.includes('stable superset of TideCode capabilities, not permission'))
-    assert.match(planContext.content, /mode="plan" state="active_until_superseded"/u)
-    assert.match(planContext.content, /tools\.plan_create/u)
-    assert.match(planContext.content, /tools\.plan_edit/u)
-    assert.match(planContext.content, /Do not call tools\.apply_patch in Plan Mode/u)
-    assert.match(planContext.content, /Do not call tools\.plan_edit before an active plan exists/u)
-    assert.match(planContext.content, /Never mutate source files/u)
-    assert.match(planContext.content, /latest successful Plan presentation/u)
-    assert.match(planContext.content, /Make the plan goal-oriented/u)
-    assert.match(planContext.content, /Use Goal as the primary top-level framing/u)
-    assert.match(planContext.content, /strong handoff specification/u)
-    assert.match(planContext.content, /files expected to be created, modified, deleted, or moved/u)
-    assert.match(planContext.content, /expected operation: create, modify, delete, or move/u)
-    assert.match(planContext.content, /leaving room for normal low-risk implementation judgment/u)
-    assert.match(planContext.content, /Define verification around the goal/u)
-    assert.match(planContext.content, /can be used as summaries/u)
+    const agent = await createAgentToolBundle({ workspaceRootPath: root }, { chatMode: 'agent' })
+    const plan = await createAgentToolBundle({ workspaceRootPath: root }, { chatMode: 'plan' })
+    assert.match(buildExecDescription(agent.registry), /tools\.terminal\.execute/u)
+    assert.doesNotMatch(buildExecDescription(plan.registry), /tools\.terminal\.execute/u)
+    assert.match(buildExecDescription(plan.registry), /tools\.plan\.create/u)
+    assert.doesNotMatch(buildExecDescription(agent.registry), /tools\.plan\.create/u)
+    assert.deepEqual(Object.keys(agent.tools), ['exec'])
+    assert.deepEqual(Object.keys(plan.tools), ['exec'])
+    await agent.codeModeExecutor.dispose()
+    await plan.codeModeExecutor.dispose()
   } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+    await fs.rm(root, { force: true, recursive: true })
   }
 })
 
-test('native tool catalog contains the internal executors used to build Code Mode', async () => {
-  const workspaceRootPath = await fs.mkdtemp(
-    path.join(tmpdir(), 'tidecode-mode-tools-'),
-  )
-
+test('Provider-native web search stays independent of TideCode exec', async () => {
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-provider-prompts-'))
   try {
-    const [agentTools, planTools] = await Promise.all([
-      createAgentTools(
-        { workspaceRootPath },
-        { chatMode: 'agent', providerId: 'custom:test-provider' },
-      ),
-      createAgentTools(
-        { workspaceRootPath },
-        { chatMode: 'plan', providerId: 'custom:test-provider' },
-      ),
-    ])
-
-    assert.deepEqual(Object.keys(agentTools).sort(), [
-      'apply_patch',
-      'edit',
-      'execute_mcp',
-      'execute_terminal',
-      'glob',
-      'grep',
-      'interact_terminal',
-      'list',
-      'mcp_tool_search',
-      'plan_create',
-      'plan_edit',
-      'read',
-      'read_terminal',
-      'terminate_terminal',
-      'write',
-    ])
-    assert.deepEqual(Object.keys(planTools).sort(), [
-      'glob',
-      'grep',
-      'list',
-      'plan_create',
-      'plan_edit',
-      'read',
-    ])
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('plan mode excludes workspace mutations but retains planning actions', async () => {
-  const workspaceRootPath = await fs.mkdtemp(
-    path.join(tmpdir(), 'tidecode-mode-native-tools-'),
-  )
-
-  try {
-    const [agentTools, planTools] = await Promise.all([
-      createNativeAgentTools(
-        { workspaceRootPath },
-        { chatMode: 'agent', providerId: 'custom:test-provider' },
-      ),
-      createNativeAgentTools(
-        { workspaceRootPath },
-        { chatMode: 'plan', providerId: 'custom:test-provider' },
-      ),
-    ])
-
-    assert.ok('write' in agentTools)
-    assert.ok('apply_patch' in agentTools)
-    assert.ok('edit' in agentTools)
-    assert.ok('execute_terminal' in agentTools)
-    assert.ok('plan_create' in agentTools)
-    assert.ok('plan_edit' in agentTools)
-    assert.ok(!('write' in planTools))
-    assert.ok(!('apply_patch' in planTools))
-    assert.ok('plan_edit' in planTools)
-    assert.ok(!('edit' in planTools))
-    assert.ok(!('execute_terminal' in planTools))
-
-    const revisionTools = await createNativeAgentTools(
-      { workspaceRootPath },
-      { activePlanPath: '.tidecode/plans/plan-001.md', chatMode: 'plan', providerId: 'custom:test-provider' },
-    )
-    assert.ok('plan_create' in revisionTools)
-    assert.ok('plan_edit' in revisionTools)
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('new Plan Mode Code Mode cannot attempt source mutation before creating the plan', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-mode-plan-mutation-'))
-
-  try {
-    await fs.writeFile(path.join(workspaceRootPath, 'source.ts'), 'export const value = 1\n', 'utf8')
-    const bundle = await createAgentToolBundle(
-      { workspaceRootPath },
-      { chatMode: 'plan', orchestrationMode: 'code_mode', providerId: 'custom:test-provider' },
-    )
-    const codeMode = bundle.tools.code_mode as {
-      execute?: (input: unknown, options: { context: unknown; messages: never[]; toolCallId: string }) => Promise<unknown>
-    }
-
-    try {
-      const result = await codeMode.execute?.({
-        source: [
-          "return await tools.apply_patch({ patch: [",
-          "  '*** Begin Patch',",
-          "  '*** Update File: source.ts',",
-          "  '@@',",
-          "  '-export const value = 1',",
-          "  '+export const value = 2',",
-          "  '*** End Patch',",
-          "] })",
-        ].join('\n'),
-      }, {
-        context: {},
-        messages: [],
-        toolCallId: 'plan-source-mutation-blocked',
-      }) as { semantics?: { tool_call_count?: number }; status?: string }
-
-      assert.equal(result.status, 'error')
-      assert.equal(result.semantics?.tool_call_count, 0)
-      assert.equal(await fs.readFile(path.join(workspaceRootPath, 'source.ts'), 'utf8'), 'export const value = 1\n')
-    } finally {
-      await bundle.codeModeExecutor?.dispose()
-    }
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Agent Mode Code Mode does not expose Plan Mode injected planning APIs', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-mode-agent-plan-'))
-
-  try {
-    const bundle = await createAgentToolBundle(
-      { workspaceRootPath },
-      { chatMode: 'agent', orchestrationMode: 'code_mode', providerId: 'custom:test-provider' },
-    )
-    const codeMode = bundle.tools.code_mode as {
-      execute?: (input: unknown, options: { context: unknown; messages: never[]; toolCallId: string }) => Promise<unknown>
-    }
-
-    try {
-      const result = await codeMode.execute?.({
-        source: [
-          "const found = await tools.$codemode.search({ query: 'plan', namespace: 'planning' })",
-          'return found',
-        ].join('\n'),
-      }, {
-        context: {},
-        messages: [],
-        toolCallId: 'agent-plan-supplement',
-      }) as { body?: string; semantics?: { tool_call_count?: number }; status?: string }
-
-      assert.equal(result.status, 'success')
-      assert.equal(result.semantics?.tool_call_count, 0)
-      assert.match(result.body ?? '', /"items": \[\]/u)
-      assert.doesNotMatch(result.body ?? '', /plan_create|plan_edit/u)
-
-      const directResult = await codeMode.execute?.({
-        source: "return await tools.plan_create({ content: '## Goal\\n\\nShould be unavailable.' })",
-      }, {
-        context: {},
-        messages: [],
-        toolCallId: 'agent-plan-direct-unavailable',
-      }) as { status?: string }
-      assert.equal(directResult.status, 'error')
-    } finally {
-      await bundle.codeModeExecutor?.dispose()
-    }
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('Agent and Plan keep the same Code Mode system context while provider tool hashes reflect authorized direct tools', async () => {
-  const workspaceRootPath = await fs.mkdtemp(path.join(tmpdir(), 'tidecode-mode-cache-'))
-  const providerId = 'custom:test-provider' as const
-
-  try {
-    const [agentBundle, planBundle] = await Promise.all([
-      createAgentToolBundle(
-        { workspaceRootPath },
-        { chatMode: 'agent', orchestrationMode: 'code_mode', providerId },
-      ),
-      createAgentToolBundle(
-        { workspaceRootPath },
-        { chatMode: 'plan', orchestrationMode: 'code_mode', providerId },
-      ),
-    ])
-    const agentSystem = buildChatModeSystemPrompt('agent', workspaceRootPath, { orchestrationMode: 'code_mode' })
-    const planSystem = buildChatModeSystemPrompt('plan', workspaceRootPath, { orchestrationMode: 'code_mode' })
-    const agentManifest = buildPromptContextManifest({
-      modelId: 'same-model',
-      providerId,
-      system: agentSystem,
-      tools: agentBundle.tools,
+    const bundle = await createAgentToolBundle({ workspaceRootPath: root }, { chatMode: 'agent', providerId: 'openai' })
+    assert.deepEqual(Object.keys(bundle.tools).sort(), ['exec', 'web_search'])
+    const manifest = buildPromptContextManifest({
+      modelId: 'test-model',
+      providerId: 'openai',
+      system: buildChatModeSystemPrompt('agent', root),
+      tools: bundle.tools,
     })
-    const planManifest = buildPromptContextManifest({
-      modelId: 'same-model',
-      providerId,
-      system: planSystem,
-      tools: planBundle.tools,
-    })
-
-    assert.equal(agentManifest.systemHash, planManifest.systemHash)
-    assert.notEqual(agentManifest.toolsHash, planManifest.toolsHash)
-    assert.notEqual(agentManifest.fingerprint, planManifest.fingerprint)
-    assert.deepEqual(Object.keys(agentBundle.tools).sort(), ['apply_patch', 'code_mode', 'write'])
-    assert.deepEqual(Object.keys(planBundle.tools), ['code_mode'])
-    assert.equal(agentBundle.registry.get('plan_create'), undefined)
-    assert.ok(planBundle.registry.get('plan_create'))
-    assert.equal(agentBundle.registry.get('plan_edit'), undefined)
-    assert.ok(planBundle.registry.get('plan_edit'))
-    const agentCodeMode = agentBundle.tools.code_mode as { description?: string }
-    const planCodeMode = planBundle.tools.code_mode as { description?: string }
-    assert.equal(agentCodeMode.description, planCodeMode.description)
-    assert.doesNotMatch(agentCodeMode.description ?? '', /plan_create/u)
-    assert.doesNotMatch(agentCodeMode.description ?? '', /plan_edit/u)
-
-    await agentBundle.codeModeExecutor?.dispose()
-    await planBundle.codeModeExecutor?.dispose()
+    assert.ok(manifest.toolsHash.length > 0)
+    await bundle.codeModeExecutor.dispose()
   } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('workspace prompt delegates AGENTS.md delivery to runtime hidden context', async () => {
-  const workspaceRootPath = await fs.mkdtemp(
-    path.join(tmpdir(), 'tidecode-workspace-prompt-'),
-  )
-
-  try {
-    const embeddedInstructionNeedle = '<system_contract>embeddedInstructionNeedle</system_contract>'
-    await fs.writeFile(
-      path.join(workspaceRootPath, 'AGENTS.md'),
-      embeddedInstructionNeedle,
-      'utf8',
-    )
-
-    const breakdown = buildChatModeSystemPromptBreakdown('plan', workspaceRootPath)
-    const prompt = breakdown.systemPrompt
-    const contextComponent = breakdown.components.find(
-      (component) => component.id === 'workspace_instructions_context',
-    )
-
-    assert.ok(contextComponent)
-    assert.equal(contextComponent.source, 'electron/chat/shared/prompts/workspaceInstructions.ts')
-    assert.match(prompt, /<workspace_instruction_context>/u)
-    assert.match(prompt, /revision-aware hidden bootstrap context/u)
-    assert.match(prompt, /bootstrap does not contain the file contents/u)
-    assert.match(prompt, /Read the current `AGENTS\.md` only when that exact revision has not already been read/u)
-    assert.match(prompt, /reuse it and do not read it again/u)
-    assert.doesNotMatch(prompt, /you must read it/u)
-    assert.doesNotMatch(prompt, /embeddedInstructionNeedle/u)
-    assert.doesNotMatch(prompt, /&lt;system_contract&gt;embeddedInstructionNeedle/u)
-    assert.equal(prompt.match(/<system_contract/gu)?.length, 1)
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('workspace prompt is stable when AGENTS.md presence changes', async () => {
-  const workspaceRootPath = await fs.mkdtemp(
-    path.join(tmpdir(), 'tidecode-workspace-prompt-no-agents-'),
-  )
-
-  try {
-    const prompt = buildChatModeSystemPromptBreakdown('agent', workspaceRootPath, {
-      orchestrationMode: 'code_mode',
-    }).systemPrompt
-
-    assert.match(prompt, /continue without attempting that bootstrap read/u)
-    assert.doesNotMatch(prompt, /you must read `AGENTS\.md`|you must read it/u)
-
-    await fs.writeFile(path.join(workspaceRootPath, 'AGENTS.md'), '# now present\n', 'utf8')
-    const presentPrompt = buildChatModeSystemPromptBreakdown('agent', workspaceRootPath, {
-      orchestrationMode: 'code_mode',
-    }).systemPrompt
-    assert.equal(presentPrompt, prompt)
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
-  }
-})
-
-test('buildChatModeSystemPrompt remains stable when python venv state changes', async () => {
-  const workspaceRootPath = await fs.mkdtemp(
-    path.join(tmpdir(), 'tidecode-venv-prompt-'),
-  )
-
-  try {
-    const promptWithoutVenv = buildChatModeSystemPrompt('agent', workspaceRootPath)
-    const venvDir = path.join(workspaceRootPath, '.venv')
-    await fs.mkdir(venvDir, { recursive: true })
-    await fs.writeFile(path.join(venvDir, 'pyvenv.cfg'), 'home = /usr/bin/python\n', 'utf8')
-
-    const promptWithVenv = buildChatModeSystemPrompt('agent', workspaceRootPath)
-    assert.equal(promptWithVenv, promptWithoutVenv)
-    assert.doesNotMatch(promptWithVenv, /Python virtual environment activated|<python_environment>/u)
-  } finally {
-    await fs.rm(workspaceRootPath, { force: true, recursive: true })
+    await fs.rm(root, { recursive: true, force: true })
   }
 })

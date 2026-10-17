@@ -62,6 +62,8 @@ Compaction exists in two forms:
 
 The compaction gate verifies that a required compaction actually produced a usable projected budget. A failed or unavailable compaction must remain observable and must not silently discard context.
 
+Compacted context belongs to the active conversation branch, not a provider/model slot. `electron/chat/history/replayProjector.ts` selects the newest completed replay at or after the latest compaction across slots, then appends new turns and applies provider-specific tool migration. Switching models/providers must not restore raw pre-compaction history or rewind to an older slot. Other-branch and pre-response `run_started` snapshots are excluded. Runtime requests and context estimates share this projection. Regression coverage lives in `tests/codex/canonicalHistory.test.ts` and `tests/codex/providerToolMigration.test.ts`.
+
 ## Tool and workspace context
 
 Tools are created from the current workspace root and execution mode. Workspace paths, terminal sessions, checkpoint IDs, and conversation IDs are passed into tool construction so file mutations can be attributed to the active turn. The runtime also tracks tool freshness: observation tools record knowledge, while mutation tools and terminal activity invalidate affected subjects.

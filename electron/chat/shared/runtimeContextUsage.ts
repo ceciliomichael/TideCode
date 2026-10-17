@@ -62,11 +62,9 @@ export async function estimateToolEnabledContextUsage(input: {
   const enabledSkills = normalizedWorkspaceRootPath
     ? await listEnabledSkills(normalizedWorkspaceRootPath)
     : []
-  const orchestrationMode = 'code_mode' as const
   const promptOptions = {
     includeAssistantReasoningParts: shouldReplayAssistantReasoning(input.providerId),
     includeImageAttachments: await resolveModelImageInputSupport(input.providerId, input.modelId ?? ''),
-    orchestrationMode,
     terminalExecutionMode: input.terminalExecutionMode,
   }
   const prompt = buildChatPrompt({
@@ -112,7 +110,6 @@ export async function estimateToolEnabledContextUsage(input: {
         {
           chatMode: input.chatMode,
           enabledSkills,
-          orchestrationMode,
           providerId: input.providerId,
         },
       )

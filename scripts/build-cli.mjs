@@ -1,4 +1,4 @@
-import { chmod, copyFile, cp, mkdir, rm } from 'node:fs/promises'
+import { access, chmod, copyFile, cp, mkdir, readdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
@@ -27,6 +27,8 @@ const promptsDestination = path.join(
   'shared',
   'prompts',
 )
+const aiSource = path.join(workspaceRoot, 'electron', 'chat', 'shared', 'ai')
+const aiDestination = path.join(consoleRuntimeDirectory, 'electron', 'chat', 'shared', 'ai')
 
 await rm(consoleRuntimeDirectory, { force: true, recursive: true })
 await Promise.all([
@@ -85,7 +87,22 @@ await Promise.all([
   copyFile(process.execPath, consoleNodeExecutable),
   cp(nodePtySource, nodePtyDestination, { recursive: true }),
   cp(promptsSource, promptsDestination, { recursive: true }),
+  cp(aiSource, aiDestination, { recursive: true, filter: (source) =>
+    source === aiSource || !path.extname(source) || source.endsWith('.md') }),
 ])
+
+async function verifyPackagedAiInstructions(sourceDirectory, relativePath = '') {
+  for (const entry of await readdir(path.join(sourceDirectory, relativePath), { withFileTypes: true })) {
+    const relativeEntry = path.join(relativePath, entry.name)
+    if (entry.isDirectory()) {
+      await verifyPackagedAiInstructions(sourceDirectory, relativeEntry)
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
+      await access(path.join(aiDestination, relativeEntry))
+    }
+  }
+}
+
+await verifyPackagedAiInstructions(aiSource)
 
 if (process.platform !== 'win32') {
   await chmod(consoleNodeExecutable, 0o755)

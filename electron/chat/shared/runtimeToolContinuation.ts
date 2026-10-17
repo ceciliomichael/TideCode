@@ -19,7 +19,7 @@ function hasCodeModeToolResult(step: ProviderStepRecord | null) {
       typeof part === 'object'
       && part !== null
       && (part as { type?: unknown }).type === 'tool-result'
-      && (part as { toolName?: unknown }).toolName === 'code_mode'
+      && (part as { toolName?: unknown }).toolName === 'exec'
     ))
   })
 }

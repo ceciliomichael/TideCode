@@ -6,7 +6,10 @@ import test from 'node:test'
 import type { AgentToolExecutionResult } from '../../electron/chat/shared/toolTypes'
 import { electronApp } from '../../electron/electronApp'
 import { prepareToolExecutionResultForModel } from '../../electron/chat/shared/toolReplay'
-import { createNativeAgentTools as createAgentTools } from '../../electron/chat/shared/tools'
+import { createAgentToolBundle } from '../../electron/chat/shared/tools'
+
+const createAgentTools = async (...args: Parameters<typeof createAgentToolBundle>) =>
+  (await createAgentToolBundle(...args)).nativeTools
 import {
   appendToolOutput,
   getToolOutputDirectory,
